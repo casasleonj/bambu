@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import { Providers } from '@/components/providers'
+import { ServiceWorkerRegister } from '@/components/sw-register'
 
 export const metadata: Metadata = {
   title: 'Agua Bambú - Sistema de Gestión',
@@ -17,6 +18,7 @@ export default function RootLayout({
     <html lang="es">
       <body className="antialiased">
         <Providers>{children}</Providers>
+        <ServiceWorkerRegister />
       </body>
     </html>
   )
