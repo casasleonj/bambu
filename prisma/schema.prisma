@@ -212,10 +212,14 @@ model Pedido {
   repartidor   String?
   obs         String?
 
-  // Auto-relación
+  // Auto-relación / Recurrencia
   idOrigen     String?
   pedidoOrigen Pedido?  @relation("PedidoHijo", fields: [idOrigen], references: [id])
   pedidoHijo  Pedido[] @relation("PedidoHijo")
+
+  esRecurrente     Boolean   @default(false)
+  frecuencia       String?   // DIARIO, SEMANAL, QUINCENAL, MENSUAL
+  ultimaGeneracion DateTime?
 
   factura    Factura?
   pagos      Pago[]
