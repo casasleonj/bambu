@@ -36,49 +36,66 @@ export async function POST(request: NextRequest) {
     }
     const { facturaId, clienteId, monto, metodoPago } = parsed.data
 
-    // Verificar que la factura existe
-    const factura = await prisma.factura.findUnique({
-      where: { id: facturaId },
+    const result = await prisma.$transaction(async (tx) => {
+      // Verificar que la factura existe
+      const factura = await tx.factura.findUnique({
+        where: { id: facturaId },
+      })
+
+      if (!factura) {
+        throw new Error('FACTURA_NOT_FOUND')
+      }
+
+      // Calcular siguiente número
+      const [{ nextval }] = await tx.$queryRaw<{ nextval: bigint }[]>`
+        SELECT nextval('abono_numero_seq')
+      `
+      const nextNum = Number(nextval)
+
+      // Crear abono
+      const abono = await tx.abono.create({
+        data: {
+          numero: `ABO-${nextNum.toString().padStart(5, '0')}`,
+          facturaId,
+          clienteId,
+          monto,
+          metodoPago,
+        },
+      })
+
+      // Actualizar saldo y monto pagado de la factura atómicamente
+      const updatedFactura = await tx.factura.update({
+        where: { id: facturaId },
+        data: {
+          saldo: { decrement: monto },
+          montoPagado: { increment: monto },
+        },
+      })
+
+      if (updatedFactura.saldo < 0) {
+        throw new Error('Abono excede saldo de factura')
+      }
+
+      const nuevoEstado = updatedFactura.saldo === 0 ? 'PAGADA' : 'EMITIDA'
+      if (updatedFactura.estado !== nuevoEstado) {
+        await tx.factura.update({
+          where: { id: facturaId },
+          data: { estado: nuevoEstado },
+        })
+      }
+
+      return { abono }
     })
 
-    if (!factura) {
-      return NextResponse.json({ error: 'Factura no encontrada' }, { status: 404 })
-    }
-
-    // Calcular siguiente número
-    const lastAbono = await prisma.abono.findFirst({
-      orderBy: { numero: 'desc' },
-    })
-    const nextNum = lastAbono ? parseInt(lastAbono.numero.replace('ABO-', '')) + 1 : 1
-
-    // Crear abono
-    const abono = await prisma.abono.create({
-      data: {
-        numero: `ABO-${nextNum.toString().padStart(5, '0')}`,
-        facturaId,
-        clienteId,
-        monto,
-        metodoPago,
-      },
-    })
-
-    // Actualizar montoPagado y saldo de la factura
-    const nuevoPagado = factura.montoPagado + monto
-    const nuevoSaldo = Math.max(0, factura.total - nuevoPagado)
-    const nuevoEstado = nuevoSaldo === 0 ? 'PAGADA' : 'EMITIDA'
-
-    await prisma.factura.update({
-      where: { id: facturaId },
-      data: {
-        montoPagado: nuevoPagado,
-        saldo: nuevoSaldo,
-        estado: nuevoEstado,
-      },
-    })
-
-    return NextResponse.json({ success: true, abono })
+    return NextResponse.json({ success: true, abono: result.abono })
   } catch (error) {
     console.error('Error creating abono:', error)
+    if (error instanceof Error && error.message === 'FACTURA_NOT_FOUND') {
+      return NextResponse.json({ error: 'Factura no encontrada' }, { status: 404 })
+    }
+    if (error instanceof Error && error.message === 'Abono excede saldo de factura') {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
     return NextResponse.json({ error: 'Error creating abono' }, { status: 500 })
   }
 }
