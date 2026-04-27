@@ -1,0 +1,16 @@
+{
+  "name": "Agua Bambú",
+  "short_name": "Bambú",
+  "description": "Gestión de pedidos y repartos de agua",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#3b82f6",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "48x48",
+      "type": "image/x-icon"
+    }
+  ]
+}

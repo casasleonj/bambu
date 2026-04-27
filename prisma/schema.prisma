@@ -1,0 +1,460 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ====================
+// USUARIOS
+// ====================
+
+model User {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  password  String
+  rol       String   @default("ASISTENTE")
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ====================
+// RUTA (Inteligencia real - rutas con días de entrega)
+// ====================
+
+model Ruta {
+  id        String   @id @default(cuid())
+  nombre    String   // "Norte", "Centro", "Sur"
+  dias      String?  // "LUN,MIE,VIE" - días de entrega
+  activo   Boolean  @default(true)
+
+  clientes  Cliente[]
+  embarques Embarque[]
+
+  createdAt DateTime @default(now())
+}
+
+// ====================
+// CLIENTE (todo integrado - sin sobre-ingeniería)
+// ====================
+
+model Cliente {
+  id            String   @id @default(cuid())
+  
+  // Datos básicos
+  nombre        String
+  apellido     String?
+  telefono      String
+  direccion    String?
+  barrio       String?
+  referencia  String?
+  linkUbicacion String?
+
+  // Datos del negocio
+  nombreNegocio String?
+  tipoNegocio   String?
+  horaApertura String?
+  precioAguaPref Float?
+
+  // Ubicación - FK a Ruta
+  rutaId       String?
+  ruta        Ruta?   @relation(fields: [rutaId], references: [id])
+
+  // Frecuencia de pedidos
+  frecuencia   String   @default("NINGUNA") // NINGUNA, DIARIA, SEMANAL, QUINCENAL, MENSUAL
+  cadaNDias    Int?
+
+  // Control de entregas
+  ultEntrega   DateTime?
+  proxEntrega DateTime?
+
+  // Preferencias de productos
+  habAgua      Boolean @default(true)
+  habHielo     Boolean @default(true)
+  habBotellon  Boolean @default(true)
+  habBolsaAgua Boolean @default(true)
+  habBolsaHielo Boolean @default(true)
+
+  notas        String?
+  activo      Boolean  @default(true)
+
+  pedidos     Pedido[]
+  facturas    Factura[]
+  abonos      Abono[]
+
+  createdAt   DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+// ====================
+// TRABAJADOR
+// ====================
+
+model Trabajador {
+  id            String   @id @default(cuid())
+  nombre        String
+  rol           String   // SELLADOR, REPARTIDOR, ADMIN, CONTADOR
+  tipoPago      String   @default("COMISION")
+
+  usaMoto       Boolean  @default(false)
+  comPacaAgua   Float    @default(200)
+  comPacaHielo  Float    @default(200)
+  salarioFijo  Float    @default(0)
+
+  deudaReposAgua  Float    @default(0)
+  deudaReposHielo Float   @default(0)
+  telefono      String?
+  activo       Boolean  @default(true)
+
+  embarques    Embarque[]
+  producciones Produccion[]
+  nominas     Nomina[]
+
+  createdAt  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ====================
+// NOMINA
+// ====================
+
+model Nomina {
+  id                String     @id @default(cuid())
+  trabajadorId      String
+  trabajador       Trabajador @relation(fields: [trabajadorId], references: [id])
+
+  fechaInicio       DateTime
+  fechaFin         DateTime
+
+  comEntregasAgua  Float     @default(0)
+  comEntregasHielo Float    @default(0)
+  totalComisiones Float     @default(0)
+
+  salario        Float     @default(0)
+  total         Float
+
+  estado        String    @default("PENDIENTE")
+  fechaPago    DateTime?
+
+  createdAt    DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ====================
+// PEDIDO (productos y pagos embebidos)
+// ====================
+
+model Pedido {
+  id          String    @id @default(cuid())
+  numero      Int
+  clienteId   String
+  cliente    Cliente   @relation(fields: [clienteId], references: [id])
+  embarqueId String?
+  embarque   Embarque? @relation(fields: [embarqueId], references: [id])
+
+  tipo        String    @default("ENVIO")
+  estado      String    @default("PENDIENTE")
+
+  fechaEntrega DateTime?
+  fecha       DateTime  @default(now())
+
+  // Productos embebidos (no tabla separada)
+  cAguaPed       Int     @default(0)
+  cAguaEnt       Int     @default(0)
+  precioAgua     Float   @default(0)
+
+  cHieloPed      Int     @default(0)
+  cHieloEnt     Int     @default(0)
+  precioHielo   Float   @default(0)
+
+  cBotellonPed   Int     @default(0)
+  cBotellonEnt  Int     @default(0)
+  precioBotellon Float   @default(0)
+
+  cBolsaAguaPed  Int     @default(0)
+  cBolsaAguaEnt Int     @default(0)
+  precioBolsaAgua Float  @default(0)
+
+  cBolsaHieloPed Int    @default(0)
+  cBolsaHieloEnt Int    @default(0)
+  precioBolsaHielo Float @default(0)
+
+  // Totales
+  total        Float    @default(0)
+  totalPagado  Float    @default(0)
+  saldo       Float    @default(0)
+
+  // Pagos embebidos (método principal + monto)
+  metodoPago    String?
+  montoPagado  Float    @default(0)
+
+  repartidor   String?
+  obs         String?
+
+  // Auto-relación
+  idOrigen     String?
+  pedidoOrigen Pedido?  @relation("PedidoHijo", fields: [idOrigen], references: [id])
+  pedidoHijo  Pedido[] @relation("PedidoHijo")
+
+  factura    Factura?
+
+  createdAt  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ====================
+// EMBARQUE
+// ====================
+
+model Embarque {
+  id            String     @id @default(cuid())
+  numero        Int
+  fecha         DateTime   @default(now())
+  trabajadorId String
+  trabajador   Trabajador @relation(fields: [trabajadorId], references: [id])
+  rutaId        String?
+  ruta         Ruta?     @relation(fields: [rutaId], references: [id])
+  horaSalida    DateTime?
+  horaLlegada   DateTime?
+  estado      String     @default("ABIERTO")
+
+  pacasAgua    Int       @default(0)
+  pacasHielo  Int       @default(0)
+  devueltasAgua Int      @default(0)
+  devueltasHielo Int     @default(0)
+  rotasAgua    Int       @default(0)
+  rotasHielo   Int       @default(0)
+
+  obs         String?
+
+  pedidos     Pedido[]
+
+  createdAt  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ====================
+// FACTURA
+// ====================
+
+model Factura {
+  id          String    @id @default(cuid())
+  numero      String    @unique
+  clienteId   String
+  cliente    Cliente   @relation(fields: [clienteId], references: [id])
+  pedidoId    String    @unique
+  pedido     Pedido    @relation(fields: [pedidoId], references: [id])
+
+  fecha       DateTime   @default(now())
+  subtotal    Float
+  total      Float
+
+  estado     String    @default("EMITIDA")
+  notaCredito String?
+
+  montoPagado Float    @default(0)
+  saldo     Float
+
+  abonos    Abono[]
+
+  createdAt  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ====================
+// ABONO
+// ====================
+
+model Abono {
+  id          String   @id @default(cuid())
+  numero      String  @unique
+  facturaId   String
+  factura    Factura  @relation(fields: [facturaId], references: [id])
+  clienteId  String
+  cliente   Cliente  @relation(fields: [clienteId], references: [id])
+  monto     Float
+  metodoPago String
+  fecha     DateTime @default(now())
+
+  createdAt DateTime @default(now())
+}
+
+// ====================
+// PRODUCCION
+// ====================
+
+model Produccion {
+  id             String     @id @default(cuid())
+  fecha          DateTime    @default(now())
+  turno          String     // MANANA, TARDE, NOCHE
+  trabajadorId  String
+  trabajador   Trabajador  @relation(fields: [trabajadorId], references: [id])
+
+  stockIniAgua   Int        @default(0)
+  stockIniHielo Int        @default(0)
+
+  conteoAAgua   Int        @default(0)
+  conteoBAgua  Int        @default(0)
+  conteoAHielo Int        @default(0)
+  conteoBHielo Int        @default(0)
+
+  prodAgua     Int        @default(0)
+  prodHielo   Int        @default(0)
+
+  ventasAgua   Int        @default(0)
+  ventasHielo Int        @default(0)
+
+  stockFinAgua Int        @default(0)
+  stockFinHielo Int      @default(0)
+
+  comSelladorAgua Float   @default(0)
+  comSelladorHielo Float  @default(0)
+  comSellTotal   Float    @default(0)
+
+  obs         String?
+
+  createdAt  DateTime @default(now())
+}
+
+// ====================
+// GASTO
+// ====================
+
+model Gasto {
+  id           String   @id @default(cuid())
+  fecha        DateTime @default(now())
+  categoria   String
+  descripcion String
+  monto       Float
+  responsable String?
+  notas       String?
+
+  createdAt  DateTime @default(now())
+}
+
+// ====================
+// PROVEEDOR
+// ====================
+
+model Proveedor {
+  id         String     @id @default(cuid())
+  nombre     String
+  telefono   String?
+  email     String?
+  direccion String?
+  activo    Boolean   @default(true)
+
+  insumos   Insumo[]
+  compras   CompraInsumo[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ====================
+// INSUMO
+// ====================
+
+model Insumo {
+  id          String     @id @default(cuid())
+  nombre     String
+  unidad    String
+  stock     Float      @default(0)
+  stockMin  Float      @default(0)
+  precioUnit Float     @default(0)
+
+  proveedorId String?
+  proveedor  Proveedor? @relation(fields: [proveedorId], references: [id])
+
+  compras    CompraInsumo[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ====================
+// COMPRA_INSUMO
+// ====================
+
+model CompraInsumo {
+  id           String    @id @default(cuid())
+  numero      String    @unique
+  proveedorId String
+  proveedor  Proveedor @relation(fields: [proveedorId], references: [id])
+  insumoId    String
+  insumo     Insumo   @relation(fields: [insumoId], references: [id])
+  cantidad   Float
+  montoTotal Float
+  fecha      DateTime @default(now())
+
+  createdAt  DateTime @default(now())
+}
+
+// ====================
+// CONFIG
+// ====================
+
+model Config {
+  id        String   @id @default(cuid())
+  clave     String   @unique
+  valor     String
+  updatedAt DateTime @updatedAt
+}
+
+// ====================
+// CIERRE_DIA
+// ====================
+
+model CierreDia {
+  id            String   @id @default(cuid())
+  fecha         DateTime @unique
+
+  numPedidos   Int     @default(0)
+  totalVentas  Float   @default(0)
+
+  aguaVendida    Int     @default(0)
+  hieloVendido  Int     @default(0)
+  botellonVendido Int   @default(0)
+  bolsaAguaVendida Int  @default(0)
+  bolsaHieloVendida Int @default(0)
+
+  cobrado       Float   @default(0)
+  fiado         Float   @default(0)
+  efectivo     Float   @default(0)
+  nequi        Float   @default(0)
+  daviplata    Float   @default(0)
+  transferencia Float   @default(0)
+
+  baseDia      Float    @default(0)
+  comisiones  Float    @default(0)
+  salarios   Float    @default(0)
+  gastos     Float    @default(0)
+
+  stockIniAgua Int      @default(0)
+  prodAgua    Int      @default(0)
+  stockFinAgua Int     @default(0)
+  stockIniHielo Int    @default(0)
+  prodHielo    Int     @default(0)
+  stockFinHielo Int     @default(0)
+
+  netoCaja    Float    @default(0)
+
+  createdAt   DateTime @default(now())
+}
+
+// ====================
+// HISTORIAL
+// ====================
+
+model Historial {
+  id         String   @id @default(cuid())
+  entidad    String
+  registroId String
+  accion    String   // CREATE, UPDATE, DELETE
+  datos     String   // JSON
+  usuarioId String?
+  fecha     DateTime @default(now())
+}
