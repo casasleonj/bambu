@@ -10,14 +10,33 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const fecha = searchParams.get('fecha')
 
-    const produccion = await prisma.produccion.findMany({
-      where: fecha ? { fecha: new Date(fecha) } : {},
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const tomorrow = new Date(today)
+    tomorrow.setDate(tomorrow.getDate() + 1)
+
+    const where = fecha
+      ? {
+          fecha: {
+            gte: new Date(`${fecha}T00:00:00`),
+            lt: new Date(`${fecha}T23:59:59.999`),
+          },
+        }
+      : {
+          fecha: {
+            gte: today,
+            lt: tomorrow,
+          },
+        }
+
+    const registros = await prisma.produccion.findMany({
+      where,
       orderBy: { turno: 'asc' },
-      take: fecha ? undefined : 100,
       include: { trabajador: true },
     })
-    return NextResponse.json({ produccion })
+    return NextResponse.json({ produccion: registros })
   } catch (error) {
+    console.error('Error fetching produccion:', error)
     return NextResponse.json({ error: 'Error' }, { status: 500 })
   }
 }
