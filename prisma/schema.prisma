@@ -9,6 +9,25 @@ datasource db {
 }
 
 // ====================
+// ENUMS
+// ====================
+
+enum EstadoPedido {
+  PENDIENTE
+  EMBARCADO
+  ENTREGADO
+  CANCELADO
+}
+
+enum MetodoPago {
+  EFECTIVO
+  TRANSFERENCIA
+  NEQUI
+  DAVIPLATA
+  BONO
+}
+
+// ====================
 // USUARIOS
 // ====================
 
@@ -88,6 +107,8 @@ model Cliente {
 
   createdAt   DateTime @default(now())
   updatedAt  DateTime @updatedAt
+
+  @@index([rutaId])
 }
 
 // ====================
@@ -145,7 +166,7 @@ model Nomina {
 }
 
 // ====================
-// PEDIDO (productos y pagos embebidos)
+// PEDIDO (productos embebidos, pagos en tabla Pago)
 // ====================
 
 model Pedido {
@@ -157,7 +178,7 @@ model Pedido {
   embarque   Embarque? @relation(fields: [embarqueId], references: [id])
 
   tipo        String    @default("ENVIO")
-  estado      String    @default("PENDIENTE")
+  estado      EstadoPedido @default(PENDIENTE)
 
   fechaEntrega DateTime?
   fecha       DateTime  @default(now())
@@ -188,10 +209,6 @@ model Pedido {
   totalPagado  Float    @default(0)
   saldo       Float    @default(0)
 
-  // Pagos embebidos (método principal + monto)
-  metodoPago    String?
-  montoPagado  Float    @default(0)
-
   repartidor   String?
   obs         String?
 
@@ -201,9 +218,29 @@ model Pedido {
   pedidoHijo  Pedido[] @relation("PedidoHijo")
 
   factura    Factura?
+  pagos      Pago[]
 
   createdAt  DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([clienteId])
+  @@index([fecha])
+  @@index([estado])
+}
+
+// ====================
+// PAGO (múltiples métodos de pago por pedido)
+// ====================
+
+model Pago {
+  id        String   @id @default(cuid())
+  pedidoId  String
+  pedido    Pedido   @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  metodo    MetodoPago
+  monto     Decimal  @db.Decimal(10, 2)
+  createdAt DateTime @default(now())
+
+  @@index([pedidoId])
 }
 
 // ====================
@@ -263,6 +300,10 @@ model Factura {
 
   createdAt  DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([pedidoId])
+  @@index([clienteId])
+  @@index([estado])
 }
 
 // ====================
@@ -438,7 +479,7 @@ model CierreDia {
   prodAgua    Int      @default(0)
   stockFinAgua Int     @default(0)
   stockIniHielo Int    @default(0)
-  prodHielo    Int     @default(0)
+  prodHielo    Int      @default(0)
   stockFinHielo Int     @default(0)
 
   netoCaja    Float    @default(0)
@@ -458,4 +499,18 @@ model Historial {
   datos     String   // JSON
   usuarioId String?
   fecha     DateTime @default(now())
+}
+
+// ====================
+// PRECIO_HISTORIAL
+// ====================
+
+model PrecioHistorial {
+  id            String   @id @default(cuid())
+  producto      String   // AGUA_GALON, HIELO_5KG, BOTELLON_FABRICA, BOTELLON_DOMICILIO, BOLSA_AGUA, BOLSA_HIELO
+  precio        Decimal  @db.Decimal(10, 2)
+  vigenteDesde  DateTime @default(now())
+  creadoPor     String
+
+  createdAt     DateTime @default(now())
 }
