@@ -3,17 +3,17 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
 import { ProduccionCreateSchema } from '@/lib/validators'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
   try {
-    const produccion = await prisma.produccion.findFirst({
-      where: {
-        fecha: {
-          gte: new Date(new Date().setHours(0, 0, 0, 0)),
-          lt: new Date(new Date().setHours(23, 59, 59, 999)),
-        },
-      },
+    const { searchParams } = new URL(request.url)
+    const fecha = searchParams.get('fecha')
+
+    const produccion = await prisma.produccion.findMany({
+      where: fecha ? { fecha: new Date(fecha) } : {},
+      orderBy: { turno: 'asc' },
+      take: fecha ? undefined : 100,
       include: { trabajador: true },
     })
     return NextResponse.json({ produccion })
