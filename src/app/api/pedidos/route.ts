@@ -78,6 +78,10 @@ export async function POST(request: NextRequest) {
       // Calcular total con precios del cliente
       const total = calculateTotal(productos, precioAgua, precioHielo)
 
+      // Procesar pagos
+      const pagosData = parsed.data.pagos || []
+      const totalPagado = pagosData.reduce((sum, p) => sum + p.monto, 0)
+
       // Obtener siguiente número secuencial
       const [{ nextval: pedidoNext }] = await tx.$queryRaw<{ nextval: bigint }[]>`
         SELECT nextval('pedido_numero_seq')
@@ -102,12 +106,23 @@ export async function POST(request: NextRequest) {
           precioBolsaAgua: 5000,
           precioBolsaHielo: 5000,
           total,
-          saldo: total,
-          totalPagado: 0,
+          saldo: total - totalPagado,
+          totalPagado,
           obs,
           fechaEntrega: fechaEntrega ? new Date(fechaEntrega) : null,
         },
       })
+
+      // Crear pagos
+      for (const pago of pagosData) {
+        await tx.pago.create({
+          data: {
+            pedidoId: pedido.id,
+            metodo: pago.metodo,
+            monto: pago.monto,
+          },
+        })
+      }
 
       // Crear factura automáticamente
       const [{ nextval: facturaNext }] = await tx.$queryRaw<{ nextval: bigint }[]>`
@@ -122,7 +137,7 @@ export async function POST(request: NextRequest) {
           pedidoId: pedido.id,
           subtotal: total,
           total,
-          saldo: total,
+          saldo: total - totalPagado,
         },
       })
 

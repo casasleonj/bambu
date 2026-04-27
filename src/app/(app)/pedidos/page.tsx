@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { formatCurrency } from '@/lib/utils'
+import { PedidoForm } from '@/components/pedido-form'
+
 
 interface Pedido {
   id: string
@@ -18,6 +20,14 @@ interface Pedido {
   fecha: string
 }
 
+interface Cliente {
+  id: string
+  nombre: string
+  telefono: string
+  direccion?: string
+  precioAguaPref: number
+}
+
 const ESTADOS = ['TODOS', 'PENDIENTE', 'EN_RUTA', 'ENTREGADO', 'CANCELADO', 'ANULADO']
 const TIPO_PEDIDO = ['ENVIO', 'MOSTRADOR', 'RECURRENTE']
 
@@ -27,9 +37,13 @@ export default function PedidosPage() {
   const [filtroEstado, setFiltroEstado] = useState('TODOS')
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
+  const [clientes, setClientes] = useState<Cliente[]>([])
+  const [precios, setPrecios] = useState<Record<string, number>>({})
 
   useEffect(() => {
     fetchPedidos()
+    fetchClientes()
+    fetchPrecios()
   }, [])
 
   async function fetchPedidos() {
@@ -41,6 +55,50 @@ export default function PedidosPage() {
       console.error('Error fetching pedidos:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function fetchClientes() {
+    try {
+      const res = await fetch('/api/clientes')
+      const data = await res.json()
+      setClientes(data.clientes || [])
+    } catch (error) {
+      console.error('Error fetching clientes:', error)
+    }
+  }
+
+  async function fetchPrecios() {
+    try {
+      const res = await fetch('/api/precios')
+      const data = await res.json()
+      const map: Record<string, number> = {}
+      for (const p of data.precios || []) {
+        map[p.producto] = Number(p.precio)
+      }
+      setPrecios(map)
+    } catch (error) {
+      console.error('Error fetching precios:', error)
+    }
+  }
+
+  async function handleCrearPedido(pedidoData: any) {
+    try {
+      const res = await fetch('/api/pedidos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pedidoData),
+      })
+      if (res.ok) {
+        setShowModal(false)
+        fetchPedidos()
+      } else {
+        const err = await res.json()
+        alert(err.error?.formErrors?.[0] || 'Error creando pedido')
+      }
+    } catch (error) {
+      console.error('Error creating pedido:', error)
+      alert('Error creando pedido')
     }
   }
 
@@ -135,6 +193,30 @@ export default function PedidosPage() {
           </div>
         </div>
       </div>
+
+      {/* Modal Nuevo Pedido */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="p-4 border-b flex justify-between items-center">
+              <h2 className="text-xl font-bold">Nuevo Pedido</h2>
+              <button
+                onClick={() => setShowModal(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto">
+              <PedidoForm
+                clientes={clientes}
+                precios={precios}
+                onSubmit={handleCrearPedido}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Lista de Pedidos */}
       <div className="bg-white rounded-xl shadow overflow-hidden">

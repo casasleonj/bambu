@@ -4,7 +4,6 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 interface Cliente {
@@ -15,55 +14,46 @@ interface Cliente {
   precioAguaPref: number
 }
 
-type ProductoId = 'agua19L' | 'hielo' | 'botellon' | 'bolsaAgua' | 'bolsaHielo'
+type ProductoId = 'agua19L' | 'hielo' | 'botellonFabrica' | 'botellonDomicilio' | 'bolsaAgua' | 'bolsaHielo'
 
 interface PedidoFormProps {
   onSubmit?: (pedido: any) => void
   clientes?: Cliente[]
+  precios?: Record<string, number>
 }
 
-const productoInfo: Record<ProductoId, { nombre: string; unidad: string; emoji: string }> = {
-  agua19L: { nombre: 'Agua 19L', unidad: 'botellones', emoji: '💧' },
-  hielo: { nombre: 'Hielo', unidad: 'kg', emoji: '🧊' },
-  botellon: { nombre: 'Botellón', unidad: 'unid.', emoji: '🫙' },
-  bolsaAgua: { nombre: 'Bolsa Agua', unidad: 'bolsas', emoji: '💧' },
-  bolsaHielo: { nombre: 'Bolsa Hielo', unidad: 'bolsas', emoji: '🧊' },
+const productoInfo: Record<ProductoId, { nombre: string; unidad: string; emoji: string; precioKey: string }> = {
+  agua19L: { nombre: 'Agua 19L', unidad: 'botellones', emoji: '💧', precioKey: 'AGUA_GALON' },
+  hielo: { nombre: 'Hielo 5kg', unidad: 'kg', emoji: '🧊', precioKey: 'HIELO_5KG' },
+  botellonFabrica: { nombre: 'Botellón Fábrica', unidad: 'unid.', emoji: '🏭', precioKey: 'BOTELLON_FABRICA' },
+  botellonDomicilio: { nombre: 'Botellón Domicilio', unidad: 'unid.', emoji: '🚚', precioKey: 'BOTELLON_DOMICILIO' },
+  bolsaAgua: { nombre: 'Bolsa Agua', unidad: 'bolsas', emoji: '💧', precioKey: 'BOLSA_AGUA' },
+  bolsaHielo: { nombre: 'Bolsa Hielo', unidad: 'bolsas', emoji: '🧊', precioKey: 'BOLSA_HIELO' },
 }
 
-const metodosPago = [
-  { id: 'efectivo', nombre: 'Efectivo' },
-  { id: 'transferencia', nombre: 'Transferencia' },
-  { id: 'tarjeta', nombre: 'Tarjeta' },
-  { id: 'credito', nombre: 'Crédito' },
+const METODOS_PAGO = [
+  { id: 'EFECTIVO', nombre: 'Efectivo' },
+  { id: 'TRANSFERENCIA', nombre: 'Transferencia' },
+  { id: 'NEQUI', nombre: 'Nequi' },
+  { id: 'DAVIPLATA', nombre: 'Daviplata' },
+  { id: 'BONO', nombre: 'Bono' },
 ]
 
-const PRECIOS_DEFAULT = {
-  agua19L: 12000,
-  hielo: 5000,
-  botellon: 5000,
-  bolsaAgua: 5000,
-  bolsaHielo: 5000,
-}
-
-export function PedidoForm({ onSubmit, clientes = [] }: PedidoFormProps) {
+export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoFormProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [clienteSeleccionado, setClienteSeleccionado] = useState<Cliente | null>(null)
-  const [showNuevoCliente, setShowNuevoCliente] = useState(false)
   const [productos, setProductos] = useState<Record<ProductoId, number>>({
     agua19L: 0,
     hielo: 0,
-    botellon: 0,
+    botellonFabrica: 0,
+    botellonDomicilio: 0,
     bolsaAgua: 0,
     bolsaHielo: 0,
   })
-  const [metodoPago, setMetodoPago] = useState('efectivo')
+  const [pagos, setPagos] = useState<{ metodo: string; monto: number }[]>([
+    { metodo: 'EFECTIVO', monto: 0 },
+  ])
   const [observaciones, setObservaciones] = useState('')
-  const [nuevoCliente, setNuevoCliente] = useState({
-    nombre: '',
-    telefono: '',
-    direccion: '',
-    precioAguaPref: 12000,
-  })
 
   const filteredClientes = searchTerm
     ? clientes.filter((c) =>
@@ -73,10 +63,11 @@ export function PedidoForm({ onSubmit, clientes = [] }: PedidoFormProps) {
     : clientes.slice(0, 5)
 
   const getPrecio = (productoId: ProductoId): number => {
+    const info = productoInfo[productoId]
     if (productoId === 'agua19L' && clienteSeleccionado?.precioAguaPref) {
       return clienteSeleccionado.precioAguaPref
     }
-    return PRECIOS_DEFAULT[productoId]
+    return precios[info.precioKey] || 0
   }
 
   const calcularTotal = (): number => {
@@ -85,48 +76,74 @@ export function PedidoForm({ onSubmit, clientes = [] }: PedidoFormProps) {
     }, 0)
   }
 
+  const totalPagado = pagos.reduce((sum, p) => sum + (p.monto || 0), 0)
+  const total = calcularTotal()
+  const saldoPendiente = total - totalPagado
+
   const handleCantidadChange = (productoId: ProductoId, value: string) => {
     const cant = parseInt(value) || 0
     setProductos((prev) => ({ ...prev, [productoId]: cant }))
   }
 
+  const handlePagoChange = (idx: number, field: 'metodo' | 'monto', value: string) => {
+    setPagos((prev) => {
+      const nuevos = [...prev]
+      if (field === 'monto') {
+        nuevos[idx].monto = parseFloat(value) || 0
+      } else {
+        nuevos[idx].metodo = value
+      }
+      return nuevos
+    })
+  }
+
+  const agregarPago = () => {
+    setPagos((prev) => [...prev, { metodo: 'EFECTIVO', monto: 0 }])
+  }
+
+  const eliminarPago = (idx: number) => {
+    setPagos((prev) => prev.filter((_, i) => i !== idx))
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!clienteSeleccionado && !showNuevoCliente) {
-      alert('Selecciona un cliente o crea uno nuevo')
+    if (!clienteSeleccionado) {
+      alert('Selecciona un cliente')
       return
     }
+    if (total <= 0) {
+      alert('El pedido debe tener al menos un producto')
+      return
+    }
+    if (pagos.length === 0 || pagos.every((p) => p.monto <= 0)) {
+      alert('Debe registrar al menos un pago')
+      return
+    }
+
     const pedido = {
-      clienteId: clienteSeleccionado?.id || 'nuevo',
-      clienteData: clienteSeleccionado || nuevoCliente,
-      cantidades: productos,
-      precios: {
-        agua19L: getPrecio('agua19L'),
-        hielo: getPrecio('hielo'),
-        botellon: getPrecio('botellon'),
-        bolsaAgua: getPrecio('bolsaAgua'),
-        bolsaHielo: getPrecio('bolsaHielo'),
+      clienteId: clienteSeleccionado.id,
+      productos: {
+        agua19L: productos.agua19L,
+        hielo: productos.hielo,
+        botellon: productos.botellonFabrica + productos.botellonDomicilio,
+        bolsaAgua: productos.bolsaAgua,
+        bolsaHielo: productos.bolsaHielo,
       },
-      metodoPago,
-      observaciones,
-      total: calcularTotal(),
+      pagos: pagos.filter((p) => p.monto > 0),
+      obs: observaciones,
+      total,
     }
     onSubmit?.(pedido)
   }
 
-  const handleSelectCliente = (cliente: Cliente) => {
-    setClienteSeleccionado(cliente)
-    setSearchTerm('')
-  }
-
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto pr-2">
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-lg">👤 Cliente</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {!showNuevoCliente ? (
+          {!clienteSeleccionado ? (
             <>
               <div>
                 <Label>Buscar Cliente</Label>
@@ -136,14 +153,16 @@ export function PedidoForm({ onSubmit, clientes = [] }: PedidoFormProps) {
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
-
               {searchTerm && filteredClientes.length > 0 && (
                 <div className="border rounded-md max-h-40 overflow-y-auto">
                   {filteredClientes.map((cliente) => (
                     <button
                       key={cliente.id}
                       type="button"
-                      onClick={() => handleSelectCliente(cliente)}
+                      onClick={() => {
+                        setClienteSeleccionado(cliente)
+                        setSearchTerm('')
+                      }}
                       className="w-full text-left px-3 py-2 hover:bg-accent flex justify-between items-center"
                     >
                       <span>{cliente.nombre}</span>
@@ -154,89 +173,23 @@ export function PedidoForm({ onSubmit, clientes = [] }: PedidoFormProps) {
                   ))}
                 </div>
               )}
-
-              {clienteSeleccionado && (
-                <div className="flex items-center justify-between p-3 bg-muted rounded-md">
-                  <div>
-                    <p className="font-medium">{clienteSeleccionado.nombre}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {clienteSeleccionado.telefono} • ${clienteSeleccionado.precioAguaPref}
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setClienteSeleccionado(null)}
-                  >
-                    ✕
-                  </Button>
-                </div>
-              )}
-
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full"
-                onClick={() => setShowNuevoCliente(true)}
-              >
-                ➕ Nuevo Cliente
-              </Button>
             </>
           ) : (
-            <div className="space-y-3">
+            <div className="flex items-center justify-between p-3 bg-muted rounded-md">
               <div>
-                <Label>Nombre</Label>
-                <Input
-                  value={nuevoCliente.nombre}
-                  onChange={(e) =>
-                    setNuevoCliente({ ...nuevoCliente, nombre: e.target.value })
-                  }
-                  placeholder="Nombre del cliente"
-                />
+                <p className="font-medium">{clienteSeleccionado.nombre}</p>
+                <p className="text-sm text-muted-foreground">
+                  {clienteSeleccionado.telefono} • Precio agua: ${clienteSeleccionado.precioAguaPref.toLocaleString()}
+                </p>
               </div>
-              <div>
-                <Label>Teléfono</Label>
-                <Input
-                  value={nuevoCliente.telefono}
-                  onChange={(e) =>
-                    setNuevoCliente({ ...nuevoCliente, telefono: e.target.value })
-                  }
-                  placeholder="Teléfono"
-                />
-              </div>
-              <div>
-                <Label>Dirección</Label>
-                <Input
-                  value={nuevoCliente.direccion}
-                  onChange={(e) =>
-                    setNuevoCliente({ ...nuevoCliente, direccion: e.target.value })
-                  }
-                  placeholder="Dirección"
-                />
-              </div>
-              <div>
-                <Label>Precio Agua</Label>
-                <Input
-                  type="number"
-                  value={nuevoCliente.precioAguaPref}
-                  onChange={(e) =>
-                    setNuevoCliente({
-                      ...nuevoCliente,
-                      precioAguaPref: parseInt(e.target.value) || 0,
-                    })
-                  }
-                />
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setShowNuevoCliente(false)}
-                >
-                  Cancelar
-                </Button>
-              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setClienteSeleccionado(null)}
+              >
+                ✕
+              </Button>
             </div>
           )}
         </CardContent>
@@ -249,10 +202,16 @@ export function PedidoForm({ onSubmit, clientes = [] }: PedidoFormProps) {
         <CardContent className="space-y-3">
           {(Object.keys(productoInfo) as ProductoId[]).map((prodId) => {
             const info = productoInfo[prodId]
+            const precio = getPrecio(prodId)
             return (
               <div key={prodId} className="flex items-center gap-3">
                 <span className="text-xl">{info.emoji}</span>
-                <Label className="flex-1">{info.nombre}</Label>
+                <div className="flex-1">
+                  <div className="font-medium">{info.nombre}</div>
+                  <div className="text-xs text-muted-foreground">
+                    ${precio.toLocaleString()} / {info.unidad}
+                  </div>
+                </div>
                 <Input
                   type="number"
                   min="0"
@@ -261,51 +220,94 @@ export function PedidoForm({ onSubmit, clientes = [] }: PedidoFormProps) {
                   className="w-20"
                   placeholder="0"
                 />
-                <span className="text-sm text-muted-foreground w-20 text-right">
-                  ${getPrecio(prodId).toLocaleString()}
-                </span>
               </div>
             )
           })}
 
           <div className="flex justify-between items-center pt-3 border-t">
-            <span className="font-medium">Total:</span>
-            <span className="text-xl font-bold">
-              ${calcularTotal().toLocaleString()}
-            </span>
+            <span className="font-medium">Total Pedido:</span>
+            <span className="text-xl font-bold">${total.toLocaleString()}</span>
           </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg">💳 Pago</CardTitle>
+          <CardTitle className="text-lg">💳 Pagos</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div>
-            <Label>Método de Pago</Label>
-            <Select value={metodoPago} onChange={(e) => setMetodoPago(e.target.value)}>
-              {metodosPago.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.nombre}
-                </option>
-              ))}
-            </Select>
-          </div>
+          {pagos.map((pago, idx) => (
+            <div key={idx} className="flex items-center gap-2">
+              <select
+                value={pago.metodo}
+                onChange={(e) => handlePagoChange(idx, 'metodo', e.target.value)}
+                className="border rounded px-2 py-1 text-sm"
+              >
+                {METODOS_PAGO.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.nombre}
+                  </option>
+                ))}
+              </select>
+              <Input
+                type="number"
+                min="0"
+                value={pago.monto || ''}
+                onChange={(e) => handlePagoChange(idx, 'monto', e.target.value)}
+                className="w-28"
+                placeholder="Monto"
+              />
+              {pagos.length > 1 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => eliminarPago(idx)}
+                >
+                  🗑️
+                </Button>
+              )}
+            </div>
+          ))}
 
-          <div>
-            <Label>Observaciones</Label>
-            <Input
-              value={observaciones}
-              onChange={(e) => setObservaciones(e.target.value)}
-              placeholder="Notas adicionales..."
-            />
+          <Button type="button" variant="outline" size="sm" onClick={agregarPago}>
+            + Agregar pago
+          </Button>
+
+          <div className="flex justify-between items-center pt-2 border-t text-sm">
+            <span>Total pagado:</span>
+            <span className="font-bold text-green-600">${totalPagado.toLocaleString()}</span>
           </div>
+          {saldoPendiente > 0 && (
+            <div className="flex justify-between items-center text-sm text-red-600">
+              <span>Saldo pendiente:</span>
+              <span className="font-bold">${saldoPendiente.toLocaleString()}</span>
+            </div>
+          )}
+          {saldoPendiente < 0 && (
+            <div className="flex justify-between items-center text-sm text-blue-600">
+              <span>Cambio / Sobrepago:</span>
+              <span className="font-bold">${Math.abs(saldoPendiente).toLocaleString()}</span>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg">📝 Observaciones</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Input
+            value={observaciones}
+            onChange={(e) => setObservaciones(e.target.value)}
+            placeholder="Notas adicionales..."
+          />
         </CardContent>
       </Card>
 
       <Button type="submit" className="w-full" size="lg">
-        💵 Crear Pedido (${calcularTotal().toLocaleString()})
+        💵 Crear Pedido (${total.toLocaleString()})
       </Button>
     </form>
   )

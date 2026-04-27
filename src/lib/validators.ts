@@ -10,7 +10,12 @@ export const PedidoCreateSchema = z.object({
     bolsaAgua: z.coerce.number().int().min(0).optional(),
     bolsaHielo: z.coerce.number().int().min(0).optional(),
   }).optional(),
-  metodoPago: z.string().optional(),
+  pagos: z.array(
+    z.object({
+      metodo: z.enum(['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA', 'BONO']),
+      monto: z.coerce.number().positive(),
+    })
+  ).min(1),
   obs: z.string().max(500).optional(),
   fechaEntrega: z.string().optional(),
 });
