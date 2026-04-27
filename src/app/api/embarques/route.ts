@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { requireAuth } from '@/lib/auth-check'
 
 export async function GET() {
+  const authResult = await requireAuth()
+  if (authResult instanceof Response) return authResult
   try {
     const embarques = await prisma.embarque.findMany({
       where: {
@@ -23,6 +26,8 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const authResult = await requireAuth()
+  if (authResult instanceof Response) return authResult
   try {
     const body = await request.json()
     

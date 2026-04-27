@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { requireAuth } from '@/lib/auth-check'
 
 export async function GET() {
+  const authResult = await requireAuth()
+  if (authResult instanceof Response) return authResult
   try {
     const config = await prisma.config.findUnique({
       where: { clave: 'BASE_DIA' },

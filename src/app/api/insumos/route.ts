@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { requireAuth } from '@/lib/auth-check'
 
 export async function GET(request: NextRequest) {
+  const authResult = await requireAuth()
+  if (authResult instanceof Response) return authResult
   const { searchParams } = new URL(request.url)
   const conStock = searchParams.get('conStock') === 'true'
   const alertOnly = searchParams.get('alertas') === 'true'
@@ -27,6 +30,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const authResult = await requireAuth()
+  if (authResult instanceof Response) return authResult
   try {
     const body = await request.json()
     const { nombre, unidad, stock, stockMin, precioUnit, proveedorId } = body
