@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
 import { PedidoCreateSchema } from '@/lib/validators'
+import { withAdvisoryLock } from '@/lib/locks'
 
 function calculateTotal(
   productos: { agua19L?: number; hielo?: number; botellon?: number; bolsaAgua?: number; bolsaHielo?: number } | undefined,
@@ -63,7 +64,7 @@ export async function POST(request: NextRequest) {
     }
     const { clienteId, tipo, productos, obs, fechaEntrega } = parsed.data
 
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await withAdvisoryLock('PEDIDO', () => prisma.$transaction(async (tx) => {
       // Obtener cliente para precio preferencial
       const cliente = await tx.cliente.findUnique({
         where: { id: clienteId },
@@ -142,7 +143,7 @@ export async function POST(request: NextRequest) {
       })
 
       return { pedido }
-    })
+    }))
 
     return NextResponse.json({ success: true, pedido: result.pedido })
   } catch (error) {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
 import { AbonoCreateSchema } from '@/lib/validators'
+import { withAdvisoryLock } from '@/lib/locks'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest) {
     }
     const { facturaId, clienteId, monto, metodoPago } = parsed.data
 
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await withAdvisoryLock('ABONO', () => prisma.$transaction(async (tx) => {
       // Verificar que la factura existe
       const factura = await tx.factura.findUnique({
         where: { id: facturaId },
@@ -85,7 +86,7 @@ export async function POST(request: NextRequest) {
       }
 
       return { abono }
-    })
+    }))
 
     return NextResponse.json({ success: true, abono: result.abono })
   } catch (error) {
