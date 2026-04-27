@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { Providers } from '@/components/providers'
 import BaseCajaModal from '@/components/base-caja-modal'
+import { ConnectivityIndicator } from '@/components/connectivity-indicator'
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: '🏠' },
@@ -93,6 +94,9 @@ function AppContent({ children }: { children: React.ReactNode }) {
 
       {/* Modal Base de Caja */}
       <BaseCajaModal />
+
+      {/* Indicador de conectividad */}
+      <ConnectivityIndicator />
     </div>
   )
 }
