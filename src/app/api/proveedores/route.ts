@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
+import { ProveedorCreateSchema } from '@/lib/validators'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -21,12 +22,16 @@ export async function POST(request: NextRequest) {
   if (authResult instanceof Response) return authResult
   try {
     const body = await request.json()
+    const parsed = ProveedorCreateSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+    }
     const proveedor = await prisma.proveedor.create({
       data: {
-        nombre: body.nombre,
-        telefono: body.telefono,
-        email: body.email,
-        direccion: body.direccion,
+        nombre: parsed.data.nombre,
+        telefono: parsed.data.telefono,
+        email: parsed.data.email,
+        direccion: parsed.data.direccion,
       },
     })
     return NextResponse.json({ success: true, proveedor })

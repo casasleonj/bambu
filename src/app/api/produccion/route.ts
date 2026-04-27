@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
+import { ProduccionCreateSchema } from '@/lib/validators'
 
 export async function GET() {
   const authResult = await requireAuth()
@@ -26,9 +27,13 @@ export async function POST(request: NextRequest) {
   if (authResult instanceof Response) return authResult
   try {
     const body = await request.json()
+    const parsed = ProduccionCreateSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+    }
     
-    const prodAgua = Math.round((body.conteoAAgua + body.conteoBAgua) / 2)
-    const prodHielo = Math.round((body.conteoAHielo + body.conteoBHielo) / 2)
+    const prodAgua = Math.round((parsed.data.conteoAAgua + parsed.data.conteoBAgua) / 2)
+    const prodHielo = Math.round((parsed.data.conteoAHielo + parsed.data.conteoBHielo) / 2)
     
     const ultimoCierre = await prisma.cierreDia.findFirst({
       orderBy: { fecha: 'desc' },
@@ -36,17 +41,17 @@ export async function POST(request: NextRequest) {
     
     const produccion = await prisma.produccion.create({
       data: {
-        turno: body.turno,
-        trabajadorId: body.trabajadorId,
+        turno: parsed.data.turno,
+        trabajadorId: parsed.data.trabajadorId,
         stockIniAgua: ultimoCierre?.stockFinAgua || 0,
         stockIniHielo: ultimoCierre?.stockFinHielo || 0,
-        conteoAAgua: body.conteoAAgua,
-        conteoBAgua: body.conteoBAgua,
-        conteoAHielo: body.conteoAHielo,
-        conteoBHielo: body.conteoBHielo,
+        conteoAAgua: parsed.data.conteoAAgua,
+        conteoBAgua: parsed.data.conteoBAgua,
+        conteoAHielo: parsed.data.conteoAHielo,
+        conteoBHielo: parsed.data.conteoBHielo,
         prodAgua,
         prodHielo,
-        obs: body.obs,
+        obs: parsed.data.obs,
       },
       include: { trabajador: true },
     })

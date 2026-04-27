@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
+import { ClienteCreateSchema } from '@/lib/validators'
 
 export async function GET() {
   const authResult = await requireAuth()
@@ -24,20 +25,24 @@ export async function POST(request: NextRequest) {
   if (authResult instanceof Response) return authResult
   try {
     const body = await request.json()
+    const parsed = ClienteCreateSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+    }
 
     const cliente = await prisma.cliente.create({
       data: {
-        nombre: body.nombre,
-        apellido: body.apellido,
-        telefono: body.telefono,
-        nombreNegocio: body.nombreNegocio,
-        tipoNegocio: body.tipoNegocio,
-        barrio: body.barrio,
-        direccion: body.direccion,
-        frecuencia: body.frecuencia || 'NINGUNA',
-        cadaNDias: body.cadaNDias,
-        precioAguaPref: body.precioAguaPref,
-        notas: body.notas,
+        nombre: parsed.data.nombre,
+        apellido: parsed.data.apellido,
+        telefono: parsed.data.telefono,
+        nombreNegocio: parsed.data.nombreNegocio,
+        tipoNegocio: parsed.data.tipoNegocio,
+        barrio: parsed.data.barrio,
+        direccion: parsed.data.direccion,
+        frecuencia: parsed.data.frecuencia || 'NINGUNA',
+        cadaNDias: parsed.data.cadaNDias,
+        precioAguaPref: parsed.data.precioAguaPref,
+        notas: parsed.data.notas,
       },
     })
     return NextResponse.json({ success: true, cliente })

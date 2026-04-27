@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
+import { InsumoCreateSchema } from '@/lib/validators'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -34,15 +35,19 @@ export async function POST(request: NextRequest) {
   if (authResult instanceof Response) return authResult
   try {
     const body = await request.json()
-    const { nombre, unidad, stock, stockMin, precioUnit, proveedorId } = body
+    const parsed = InsumoCreateSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+    }
+    const { nombre, unidad, stock, stockMin, precioUnit, proveedorId } = parsed.data
 
     const insumo = await prisma.insumo.create({
       data: {
         nombre,
         unidad: unidad || 'UNIDAD',
-        stock: parseFloat(stock) || 0,
-        stockMin: parseFloat(stockMin) || 0,
-        precioUnit: parseFloat(precioUnit) || 0,
+        stock: stock || 0,
+        stockMin: stockMin || 0,
+        precioUnit: precioUnit || 0,
         proveedorId: proveedorId || null,
       },
     })

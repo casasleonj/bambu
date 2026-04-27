@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
+import { NominaCreateSchema } from '@/lib/validators'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -29,7 +30,11 @@ export async function POST(request: NextRequest) {
   if (authResult instanceof Response) return authResult
   try {
     const body = await request.json()
-    const { trabajadorId, fechaInicio, fechaFin, tipoCalculo } = body
+    const parsed = NominaCreateSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+    }
+    const { trabajadorId, fechaInicio, fechaFin, tipoCalculo } = parsed.data
 
     // Obtener configuraciones de comisiones
     const configs = await prisma.config.findMany()
@@ -117,11 +122,11 @@ export async function POST(request: NextRequest) {
         trabajadorId,
         fechaInicio: ini,
         fechaFin: fin,
-        comEntregasAgua: body.comEntregasAgua || 0,
-        comEntregasHielo: body.comEntregasHielo || 0,
-        totalComisiones: body.totalComisiones || 0,
-        salario: body.salario || 0,
-        total: body.total || 0,
+        comEntregasAgua: parsed.data.comEntregasAgua || 0,
+        comEntregasHielo: parsed.data.comEntregasHielo || 0,
+        totalComisiones: parsed.data.totalComisiones || 0,
+        salario: parsed.data.salario || 0,
+        total: parsed.data.total || 0,
         estado: 'PENDIENTE',
       },
     })

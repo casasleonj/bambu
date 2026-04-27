@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
+import { CierreCreateSchema } from '@/lib/validators'
 
 export async function GET() {
   const authResult = await requireAuth()
@@ -11,6 +12,7 @@ export async function GET() {
     
     const pedidos = await prisma.pedido.findMany({
       where: { fecha: { gte: hoy } },
+      include: { pagos: true },
     })
     
     const produccion = await prisma.produccion.findFirst({
@@ -26,9 +28,9 @@ export async function GET() {
     const cobrado = pedidos.reduce((acc, p) => acc + p.totalPagado, 0)
     const fiado = pedidos.reduce((acc, p) => acc + p.saldo, 0)
     
-    const efectivo = pedidos.filter(p => p.metodoPago === 'EFECTIVO').reduce((acc, p) => acc + p.montoPagado, 0)
-    const transferencia = pedidos.filter(p => p.metodoPago === 'TRANSFERENCIA').reduce((acc, p) => acc + p.montoPagado, 0)
-    const nequi = pedidos.filter(p => p.metodoPago === 'NEQUI').reduce((acc, p) => acc + p.montoPagado, 0)
+    const efectivo = pedidos.flatMap(p => p.pagos).filter(p => p.metodo === 'EFECTIVO').reduce((acc, p) => acc + Number(p.monto), 0)
+    const transferencia = pedidos.flatMap(p => p.pagos).filter(p => p.metodo === 'TRANSFERENCIA').reduce((acc, p) => acc + Number(p.monto), 0)
+    const nequi = pedidos.flatMap(p => p.pagos).filter(p => p.metodo === 'NEQUI').reduce((acc, p) => acc + Number(p.monto), 0)
     
     const aguaVendida = pedidos.reduce((acc, p) => acc + p.cAguaEnt, 0)
     const hieloVendido = pedidos.reduce((acc, p) => acc + p.cHieloEnt, 0)
@@ -58,26 +60,30 @@ export async function POST(request: NextRequest) {
   if (authResult instanceof Response) return authResult
   try {
     const body = await request.json()
+    const parsed = CierreCreateSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+    }
     
     const cierre = await prisma.cierreDia.create({
       data: {
         fecha: new Date(),
-        numPedidos: body.numPedidos,
-        totalVentas: body.totalVentas,
-        cobrado: body.cobrado,
-        fiado: body.fiado,
-        efectivo: body.efectivo,
-        nequi: body.nequi,
-        baseDia: body.baseDia,
-        comisiones: body.comisiones,
-        gastos: body.gastos,
-        stockIniAgua: body.stockIniAgua,
-        prodAgua: body.prodAgua,
-        stockFinAgua: body.stockFinAgua,
-        stockIniHielo: body.stockIniHielo,
-        prodHielo: body.prodHielo,
-        stockFinHielo: body.stockFinHielo,
-        netoCaja: body.netoCaja,
+        numPedidos: parsed.data.numPedidos,
+        totalVentas: parsed.data.totalVentas,
+        cobrado: parsed.data.cobrado,
+        fiado: parsed.data.fiado,
+        efectivo: parsed.data.efectivo,
+        nequi: parsed.data.nequi,
+        baseDia: parsed.data.baseDia,
+        comisiones: parsed.data.comisiones,
+        gastos: parsed.data.gastos,
+        stockIniAgua: parsed.data.stockIniAgua,
+        prodAgua: parsed.data.prodAgua,
+        stockFinAgua: parsed.data.stockFinAgua,
+        stockIniHielo: parsed.data.stockIniHielo,
+        prodHielo: parsed.data.prodHielo,
+        stockFinHielo: parsed.data.stockFinHielo,
+        netoCaja: parsed.data.netoCaja,
       },
     })
     

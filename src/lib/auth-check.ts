@@ -11,7 +11,7 @@ export async function requireAuth() {
 
 export async function requireRole(role: string) {
   const session = await auth();
-  if (!session || session.user.role !== role) {
+  if (!session || session.user?.role !== role) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   return session;

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
+import { EmbarqueCreateSchema } from '@/lib/validators'
 
 export async function GET() {
   const authResult = await requireAuth()
@@ -30,6 +31,10 @@ export async function POST(request: NextRequest) {
   if (authResult instanceof Response) return authResult
   try {
     const body = await request.json()
+    const parsed = EmbarqueCreateSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+    }
     
     // Obtener siguiente número secuencial
     const lastEmbarque = await prisma.embarque.findFirst({
@@ -39,7 +44,7 @@ export async function POST(request: NextRequest) {
     
     // Obtener trabajador
     const trabajador = await prisma.trabajador.findUnique({
-      where: { id: body.trabajadorId },
+      where: { id: parsed.data.trabajadorId },
     })
     
     if (!trabajador) {
@@ -49,13 +54,10 @@ export async function POST(request: NextRequest) {
     const embarque = await prisma.embarque.create({
       data: {
         numero: nextNum,
-        trabajadorId: body.trabajadorId,
-        horaSalida: body.horaSalida ? new Date(body.horaSalida) : null,
+        trabajadorId: parsed.data.trabajadorId,
+        horaSalida: parsed.data.horaSalida ? new Date(parsed.data.horaSalida) : null,
         estado: 'ABIERTO',
-        obs: body.obs,
-        trabajador: {
-          connect: { id: body.trabajadorId },
-        },
+        obs: parsed.data.obs,
       },
       include: {
         trabajador: true,

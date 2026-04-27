@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
+import { AbonoCreateSchema } from '@/lib/validators'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -29,7 +30,11 @@ export async function POST(request: NextRequest) {
   if (authResult instanceof Response) return authResult
   try {
     const body = await request.json()
-    const { facturaId, clienteId, monto, metodoPago } = body
+    const parsed = AbonoCreateSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+    }
+    const { facturaId, clienteId, monto, metodoPago } = parsed.data
 
     // Verificar que la factura existe
     const factura = await prisma.factura.findUnique({

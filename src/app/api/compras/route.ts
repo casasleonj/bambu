@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
+import { CompraCreateSchema } from '@/lib/validators'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -22,7 +23,11 @@ export async function POST(request: NextRequest) {
   if (authResult instanceof Response) return authResult
   try {
     const body = await request.json()
-    const { insumoId, proveedorId, cantidad, montoTotal, notas } = body
+    const parsed = CompraCreateSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+    }
+    const { insumoId, proveedorId, cantidad, montoTotal } = parsed.data
 
     const insumo = await prisma.insumo.findUnique({ where: { id: insumoId } })
     if (!insumo) {
@@ -38,8 +43,8 @@ export async function POST(request: NextRequest) {
         numero: `COM-${nextNum.toString().padStart(5, '0')}`,
         insumoId,
         proveedorId,
-        cantidad: parseFloat(cantidad),
-        montoTotal: parseFloat(montoTotal),
+        cantidad,
+        montoTotal,
 
       },
     })
@@ -47,7 +52,7 @@ export async function POST(request: NextRequest) {
     // Actualizar stock
     await prisma.insumo.update({
       where: { id: insumoId },
-      data: { stock: { increment: parseFloat(cantidad) } },
+      data: { stock: { increment: cantidad } },
     })
 
     return NextResponse.json({ success: true })

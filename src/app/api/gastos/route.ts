@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
+import { GastoCreateSchema } from '@/lib/validators'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -33,13 +34,17 @@ export async function POST(request: NextRequest) {
   if (authResult instanceof Response) return authResult
   try {
     const body = await request.json()
-    const { categoria, descripcion, monto, responsable, notas, fecha } = body
+    const parsed = GastoCreateSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+    }
+    const { categoria, descripcion, monto, responsable, notas, fecha } = parsed.data
 
     const gasto = await prisma.gasto.create({
       data: {
         categoria,
         descripcion,
-        monto: parseFloat(monto),
+        monto,
         responsable,
         notas,
         fecha: fecha ? new Date(fecha) : new Date(),

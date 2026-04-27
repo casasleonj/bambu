@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
+import { PedidoCreateSchema } from '@/lib/validators'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -11,7 +12,7 @@ export async function GET(request: NextRequest) {
   try {
     const pedidos = await prisma.pedido.findMany({
       where: all
-        ? { estado: { not: 'ANULADO' } }
+        ? { estado: { not: 'CANCELADO' } }
         : {
             fecha: {
               gte: new Date(new Date().setHours(0, 0, 0, 0)),
@@ -36,11 +37,11 @@ export async function POST(request: NextRequest) {
   if (authResult instanceof Response) return authResult
   try {
     const body = await request.json()
-    const { clienteId, tipo, productos, metodoPago, obs, fechaEntrega } = body
-
-    if (!clienteId) {
-      return NextResponse.json({ error: 'Cliente requerido' }, { status: 400 })
+    const parsed = PedidoCreateSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
     }
+    const { clienteId, tipo, productos, metodoPago, obs, fechaEntrega } = parsed.data
 
     // Obtener cliente para precio preferencial
     const cliente = await prisma.cliente.findUnique({
@@ -91,8 +92,7 @@ export async function POST(request: NextRequest) {
         precioBolsaHielo: 5000,
         total,
         saldo: total,
-        metodoPago: metodoPago || 'EFECTIVO',
-        montoPagado: 0,
+        totalPagado: 0,
         obs,
         fechaEntrega: fechaEntrega ? new Date(fechaEntrega) : null,
       },
