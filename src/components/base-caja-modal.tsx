@@ -23,7 +23,7 @@ export default function BaseCajaModal() {
 
   async function checkBaseDia() {
     try {
-      const res = await fetch('/api/config/BASE_DIA')
+      const res = await fetch('/api/config?clave=BASE_DIA')
       const data = await res.json()
       
       if (data.config) {

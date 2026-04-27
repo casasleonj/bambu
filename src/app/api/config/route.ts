@@ -8,7 +8,16 @@ export async function GET(request: NextRequest) {
   if (authResult instanceof Response) return authResult
   try {
     const { searchParams } = new URL(request.url)
+    const clave = searchParams.get('clave')
     const keysParam = searchParams.get('keys')
+    
+    if (clave) {
+      const config = await prisma.config.findUnique({ where: { clave } })
+      if (!config) {
+        return NextResponse.json({ error: 'Not found' }, { status: 404 })
+      }
+      return NextResponse.json({ config })
+    }
     
     if (keysParam) {
       const keys = keysParam.split(',')

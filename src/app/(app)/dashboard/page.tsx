@@ -127,7 +127,7 @@ export default function DashboardPage() {
       }
 
       // Base de caja
-      const configRes = await fetch('/api/config/BASE_DIA')
+      const configRes = await fetch('/api/config?clave=BASE_DIA')
       const configData = await configRes.json()
       const baseDia = configData.config ? parseFloat(configData.config.valor) : 0
       
