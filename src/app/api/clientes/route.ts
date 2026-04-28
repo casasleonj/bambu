@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
         direccion: parsed.data.direccion,
         frecuencia: parsed.data.frecuencia || 'NINGUNA',
         cadaNDias: parsed.data.cadaNDias,
-        precioAguaPref: parsed.data.precioAguaPref,
+        preciosEspeciales: parsed.data.preciosEspeciales,
         notas: parsed.data.notas,
       },
     })

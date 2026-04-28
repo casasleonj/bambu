@@ -34,9 +34,9 @@ export async function GET() {
     const daviplata = pedidos.flatMap(p => p.pagos).filter(p => p.metodo === 'DAVIPLATA').reduce((acc, p) => acc + Number(p.monto), 0)
     const bono = pedidos.flatMap(p => p.pagos).filter(p => p.metodo === 'BONO').reduce((acc, p) => acc + Number(p.monto), 0)
     
-    const aguaVendida = pedidos.reduce((acc, p) => acc + p.cAguaEnt, 0)
-    const hieloVendido = pedidos.reduce((acc, p) => acc + p.cHieloEnt, 0)
-    const botellonVendido = pedidos.reduce((acc, p) => acc + p.cBotellonEnt, 0)
+    const aguaVendida = pedidos.reduce((acc, p) => acc + p.cPacaAguaEnt, 0)
+    const hieloVendido = pedidos.reduce((acc, p) => acc + p.cPacaHieloEnt, 0)
+    const botellonVendido = pedidos.reduce((acc, p) => acc + p.cBotellonFabEnt + p.cBotellonDomEnt, 0)
     const bolsaAguaVendida = pedidos.reduce((acc, p) => acc + p.cBolsaAguaEnt, 0)
     const bolsaHieloVendida = pedidos.reduce((acc, p) => acc + p.cBolsaHieloEnt, 0)
     

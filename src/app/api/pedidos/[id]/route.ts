@@ -39,9 +39,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         if (!current) {
           throw new Error('PEDIDO_NOT_FOUND')
         }
-        if (parsed.data.cAguaEnt === undefined) updateData.cAguaEnt = current.cAguaPed
-        if (parsed.data.cHieloEnt === undefined) updateData.cHieloEnt = current.cHieloPed
-        if (parsed.data.cBotellonEnt === undefined) updateData.cBotellonEnt = current.cBotellonPed
+        if (parsed.data.cPacaAguaEnt === undefined) updateData.cPacaAguaEnt = current.cPacaAguaPed
+        if (parsed.data.cPacaHieloEnt === undefined) updateData.cPacaHieloEnt = current.cPacaHieloPed
+        if (parsed.data.cBotellonFabEnt === undefined) updateData.cBotellonFabEnt = current.cBotellonFabPed
+        if (parsed.data.cBotellonDomEnt === undefined) updateData.cBotellonDomEnt = current.cBotellonDomPed
         if (parsed.data.cBolsaAguaEnt === undefined) updateData.cBolsaAguaEnt = current.cBolsaAguaPed
         if (parsed.data.cBolsaHieloEnt === undefined) updateData.cBolsaHieloEnt = current.cBolsaHieloPed
       }

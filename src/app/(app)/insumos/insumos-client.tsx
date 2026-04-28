@@ -73,7 +73,11 @@ export default function InsumosClient({ initialInsumos, initialProveedores }: In
   }
 
   const alertas = insumos.filter(i => i.stock <= i.stockMin)
-  const totalStock = insumos.reduce((sum, i) => sum + i.stock, 0)
+  const stockByUnit = insumos.reduce((acc, i) => {
+    const unit = i.unidad || 'UNIDAD'
+    acc[unit] = (acc[unit] || 0) + Number(i.stock)
+    return acc
+  }, {} as Record<string, number>)
 
   return (
     <div className="p-4 space-y-4">
@@ -102,12 +106,14 @@ export default function InsumosClient({ initialInsumos, initialProveedores }: In
             <div className="text-sm text-muted-foreground">Insumos</div>
           </CardContent>
         </Card>
-        <Card className="bg-muted">
-          <CardContent className="p-4 text-center">
-            <div className="text-2xl font-bold">{totalStock.toLocaleString()}</div>
-            <div className="text-sm text-muted-foreground">Total Stock</div>
-          </CardContent>
-        </Card>
+        {Object.entries(stockByUnit).map(([unit, total]) => (
+          <Card key={unit} className="bg-muted">
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold">{total.toLocaleString()}</div>
+              <div className="text-sm text-muted-foreground">{unit}</div>
+            </CardContent>
+          </Card>
+        ))}
         <Card className="bg-muted">
           <CardContent className="p-4 text-center">
             <div className="text-2xl font-bold">{alertas.length}</div>

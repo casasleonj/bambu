@@ -321,6 +321,12 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
           <CardTitle className="text-lg">Productos</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
+          {/* Column headers */}
+          <div className="flex items-center gap-3 text-xs text-gray-500 font-medium border-b pb-2">
+            <div className="flex-1">Producto</div>
+            <div className="w-20 text-center">Precio</div>
+            <div className="w-20 text-center">Cant.</div>
+          </div>
           {(Object.keys(productoInfo) as ProductoId[]).map((prodId) => {
             const info = productoInfo[prodId]
             return (

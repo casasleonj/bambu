@@ -43,9 +43,10 @@ export async function GET(request: NextRequest) {
       totalPagado: pedidos.reduce((sum, p) => sum + Number(p.totalPagado || 0), 0),
       totalFiado: pedidos.reduce((sum, p) => sum + (Number(p.saldo) > 0 ? Number(p.saldo) : 0), 0),
       porProducto: {
-        agua: pedidos.reduce((sum, p) => sum + p.cAguaPed, 0),
-        hielo: pedidos.reduce((sum, p) => sum + p.cHieloPed, 0),
-        botellon: pedidos.reduce((sum, p) => sum + p.cBotellonPed, 0),
+        pacaAgua: pedidos.reduce((sum, p) => sum + p.cPacaAguaPed, 0),
+        pacaHielo: pedidos.reduce((sum, p) => sum + p.cPacaHieloPed, 0),
+        botellonFab: pedidos.reduce((sum, p) => sum + p.cBotellonFabPed, 0),
+        botellonDom: pedidos.reduce((sum, p) => sum + p.cBotellonDomPed, 0),
         bolsaAgua: pedidos.reduce((sum, p) => sum + p.cBolsaAguaPed, 0),
         bolsaHielo: pedidos.reduce((sum, p) => sum + p.cBolsaHieloPed, 0),
       },

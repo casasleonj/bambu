@@ -14,7 +14,7 @@ export default async function ClientesPage() {
     (c: Record<string, unknown>) => ({
       ...c,
       clienteId: c.id,
-      precioAguaPref: c.precioAguaPref ? Number(c.precioAguaPref) : undefined,
+      preciosEspeciales: c.preciosEspeciales || undefined,
     })
   )
 

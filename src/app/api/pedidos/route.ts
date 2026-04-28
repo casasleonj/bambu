@@ -58,7 +58,11 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
     }
-    const { clienteId, tipo, productos, obs, fechaEntrega, canal, preciosManuales } = parsed.data
+    const { clienteId, productos, obs, fechaEntrega, canal, preciosManuales } = parsed.data
+
+    const isVentaRapida = parsed.data.ventaRapida === true
+    const tipo = parsed.data.tipo || (isVentaRapida ? 'MOSTRADOR' : 'ENVIO')
+    const estadoInicial = (tipo === 'MOSTRADOR') ? 'ENTREGADO' : 'PENDIENTE'
 
     const result = await withAdvisoryLock('PEDIDO', () => prisma.$transaction(async (tx) => {
       // Build items array for pricing engine
@@ -96,9 +100,9 @@ export async function POST(request: NextRequest) {
         data: {
           numero,
           clienteId,
-          tipo: tipo || 'ENVIO',
+          tipo,
           canal: canal || 'DOMICILIO',
-          estado: 'PENDIENTE',
+          estado: estadoInicial,
           cPacaAguaPed: productos?.pacaAgua || 0,
           cPacaHieloPed: productos?.pacaHielo || 0,
           cBotellonFabPed: productos?.botellonFab || 0,
@@ -112,8 +116,8 @@ export async function POST(request: NextRequest) {
           precioBolsaAgua: precioMap['BOLSA_AGUA'] || 0,
           precioBolsaHielo: precioMap['BOLSA_HIELO'] || 0,
           total,
-          saldo: total - totalPagado,
-          totalPagado,
+          saldo: isVentaRapida ? 0 : (total - totalPagado),
+          totalPagado: isVentaRapida ? total : totalPagado,
           obs,
           fechaEntrega: fechaEntrega ? new Date(fechaEntrega) : null,
         },
@@ -140,7 +144,7 @@ export async function POST(request: NextRequest) {
           pedidoId: pedido.id,
           subtotal: total,
           total,
-          saldo: total - totalPagado,
+          saldo: isVentaRapida ? 0 : (total - totalPagado),
         },
       })
 

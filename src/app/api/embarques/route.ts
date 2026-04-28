@@ -3,15 +3,14 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
 import { EmbarqueCreateSchema } from '@/lib/validators'
 import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
+import { getTodayRange } from '@/lib/dates'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
   const pagination = getPaginationParams(request.nextUrl.searchParams)
   try {
-    const today = new Date().toISOString().split('T')[0]
-    const startOfDay = new Date(today + 'T00:00:00.000Z')
-    const endOfDay = new Date(today + 'T23:59:59.999Z')
+    const { startOfDay, endOfDay } = getTodayRange()
 
     const where = pagination.all ? {} : {
       fecha: { gte: startOfDay, lt: endOfDay },

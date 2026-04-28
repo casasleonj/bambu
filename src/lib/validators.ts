@@ -2,7 +2,6 @@ import { z } from "zod";
 
 export const PedidoCreateSchema = z.object({
   clienteId: z.string().min(1),
-  tipo: z.string().optional(),
   canal: z.enum(['PUNTO', 'DOMICILIO']).optional().default('DOMICILIO'),
   productos: z.object({
     pacaAgua: z.coerce.number().int().min(0).optional(),
@@ -21,7 +20,16 @@ export const PedidoCreateSchema = z.object({
   ),
   obs: z.string().max(500).optional(),
   fechaEntrega: z.string().optional(),
+  ventaRapida: z.boolean().optional(),
+  tipo: z.enum(['ENVIO', 'MOSTRADOR', 'RECURRENTE']).optional(),
 });
+
+export const ClienteQuickCreateSchema = z.object({
+  nombre: z.string().min(2, 'Nombre requerido'),
+  telefono: z.string().min(7, 'Celular requerido'),
+  direccion: z.string().min(3, 'Dirección requerida'),
+  barrio: z.string().optional(),
+})
 
 export const PedidoUpdateSchema = z.object({
   estado: z.enum(['PENDIENTE', 'EN_RUTA', 'ENTREGADO', 'CANCELADO', 'ANULADO']).optional(),

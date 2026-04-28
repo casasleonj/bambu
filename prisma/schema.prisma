@@ -132,7 +132,7 @@ model Cliente {
   nombreNegocio String?
   tipoNegocio   String?
   horaApertura String?
-  precioAguaPref Decimal? @db.Decimal(10, 2)
+  preciosEspeciales String?  // JSON: {"PACA_AGUA": 2600, "BOTELLON_DOM": 9000}
 
   // Ubicación - FK a Ruta
   rutaId       String?
@@ -249,26 +249,32 @@ model Pedido {
   fechaEntrega DateTime?
   fecha       DateTime  @default(now())
 
-  // Productos embebidos (no tabla separada)
-  cAguaPed       Int     @default(0)
-  cAguaEnt       Int     @default(0)
-  precioAgua     Decimal @default(0) @db.Decimal(10, 2)
+  canal       String    @default("DOMICILIO") // PUNTO, DOMICILIO
 
-  cHieloPed      Int     @default(0)
-  cHieloEnt     Int     @default(0)
-  precioHielo   Decimal @default(0) @db.Decimal(10, 2)
+  // Productos
+  cPacaAguaPed      Int     @default(0)
+  cPacaAguaEnt      Int     @default(0)
+  precioPacaAgua    Decimal @default(0) @db.Decimal(10, 2)
 
-  cBotellonPed   Int     @default(0)
-  cBotellonEnt  Int     @default(0)
-  precioBotellon Decimal @default(0) @db.Decimal(10, 2)
+  cPacaHieloPed     Int     @default(0)
+  cPacaHieloEnt     Int     @default(0)
+  precioPacaHielo   Decimal @default(0) @db.Decimal(10, 2)
 
-  cBolsaAguaPed  Int     @default(0)
-  cBolsaAguaEnt Int     @default(0)
-  precioBolsaAgua Decimal @default(0) @db.Decimal(10, 2)
+  cBotellonFabPed   Int     @default(0)
+  cBotellonFabEnt   Int     @default(0)
+  precioBotellonFab Decimal @default(0) @db.Decimal(10, 2)
 
-  cBolsaHieloPed Int    @default(0)
-  cBolsaHieloEnt Int    @default(0)
-  precioBolsaHielo Decimal @default(0) @db.Decimal(10, 2)
+  cBotellonDomPed   Int     @default(0)
+  cBotellonDomEnt   Int     @default(0)
+  precioBotellonDom Decimal @default(0) @db.Decimal(10, 2)
+
+  cBolsaAguaPed     Int     @default(0)
+  cBolsaAguaEnt     Int     @default(0)
+  precioBolsaAgua   Decimal @default(0) @db.Decimal(10, 2)
+
+  cBolsaHieloPed    Int     @default(0)
+  cBolsaHieloEnt    Int     @default(0)
+  precioBolsaHielo  Decimal @default(0) @db.Decimal(10, 2)
 
   // Totales
   total        Decimal  @default(0) @db.Decimal(10, 2)
@@ -534,6 +540,49 @@ model CompraInsumo {
   updatedAt DateTime @updatedAt
 
   @@index([createdById])
+}
+
+// ====================
+// PRODUCTO (catalogo de productos)
+// ====================
+
+model Producto {
+  id          String   @id @default(cuid())
+  codigo      String   @unique
+  nombre      String
+  descripcion String?
+  unidad      String
+  contenido   String?
+  activo      Boolean  @default(true)
+  
+  precios     PrecioVolumen[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ====================
+// PRECIO_VOLUMEN (precios por volumen y canal)
+// ====================
+
+model PrecioVolumen {
+  id          String   @id @default(cuid())
+  productoId  String
+  producto    Producto @relation(fields: [productoId], references: [id])
+  
+  canal       String   // PUNTO, DOMICILIO
+  cantMin     Int      @default(1)
+  cantMax     Int?     // null = unlimited (10+)
+  precio      Decimal  @db.Decimal(10, 2)
+  
+  activo      Boolean  @default(true)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([productoId])
+  @@index([canal])
+  @@unique([productoId, canal, cantMin])
 }
 
 // ====================

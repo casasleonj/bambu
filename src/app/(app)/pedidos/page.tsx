@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 import { formatCurrency } from '@/lib/utils'
 import { PedidoForm } from '@/components/pedido-form'
+import { VentaRapidaForm } from '@/components/venta-rapida-form'
 import { Modal } from '@/components/modal'
 
 
@@ -57,6 +58,7 @@ export default function PedidosPage() {
   const [filtroEstado, setFiltroEstado] = useState('TODOS')
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
+  const [showVentaRapida, setShowVentaRapida] = useState(false)
   const [selectedPedido, setSelectedPedido] = useState<Pedido | null>(null)
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [clientes, setClientes] = useState<Cliente[]>([])
@@ -66,6 +68,24 @@ export default function PedidosPage() {
     fetchPedidos()
     fetchClientes()
     fetchPrecios()
+  }, [])
+
+  // Auto-refresh para sincronizar entre browsers
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchPedidos()
+    }, 15000)
+    return () => clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        fetchPedidos()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
   }, [])
 
   async function fetchPedidos() {
@@ -124,6 +144,56 @@ export default function PedidosPage() {
     }
   }
 
+  async function handleVentaRapida(data: any) {
+    try {
+      let clienteId = 'CLIENTE_MOSTRADOR'
+
+      // Si quiere envío, crear/buscar cliente primero
+      if (data.clienteNuevo) {
+        const clienteRes = await fetch('/api/clientes/quick', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data.clienteNuevo),
+        })
+        if (clienteRes.ok) {
+          const { cliente } = await clienteRes.json()
+          clienteId = cliente.id
+        } else {
+          toast.error('Error creando cliente')
+          return
+        }
+      }
+
+      const pedidoData = {
+        clienteId,
+        canal: data.canal,
+        tipo: data.tipo,
+        ventaRapida: true,
+        productos: data.productos,
+        pagos: data.pagos,
+        obs: data.obs,
+      }
+
+      const res = await fetch('/api/pedidos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pedidoData),
+      })
+
+      if (res.ok) {
+        setShowVentaRapida(false)
+        fetchPedidos()
+        toast.success(`Venta cobrada: $${data.total.toLocaleString()}`)
+      } else {
+        const err = await res.json()
+        toast.error(err.error?.formErrors?.[0] || 'Error procesando venta')
+      }
+    } catch (error) {
+      console.error('Error venta rápida:', error)
+      toast.error('Error procesando venta')
+    }
+  }
+
   const pedidosFiltrados = pedidos.filter((p) => {
     const matchEstado = filtroEstado === 'TODOS' || p.estado === filtroEstado
     const matchSearch =
@@ -133,8 +203,8 @@ export default function PedidosPage() {
     return matchEstado && matchSearch
   })
 
-  const totalVentas = pedidosFiltrados.reduce((acc, p) => acc + p.total, 0)
-  const totalFiado = pedidosFiltrados.reduce((acc, p) => acc + (p.saldo > 0 ? p.saldo : 0), 0)
+  const totalVentas = pedidosFiltrados.reduce((acc, p) => acc + Number(p.total || 0), 0)
+  const totalFiado = pedidosFiltrados.reduce((acc, p) => acc + (Number(p.saldo) > 0 ? Number(p.saldo) : 0), 0)
 
   function getEstadoBadge(estado: string) {
     const styles: Record<string, string> = {
@@ -180,12 +250,20 @@ export default function PedidosPage() {
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-800">Pedidos del Dia</h1>
-        <button
-          onClick={() => setShowModal(true)}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-        >
-          + Nuevo Pedido
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowVentaRapida(true)}
+            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium"
+          >
+            $ Venta Rapida
+          </button>
+          <button
+            onClick={() => setShowModal(true)}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+          >
+            + Nuevo Pedido
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -252,9 +330,29 @@ export default function PedidosPage() {
         </div>
       </Modal>
 
+      {/* Modal Venta Rápida */}
+      <Modal open={showVentaRapida} onClose={() => setShowVentaRapida(false)} className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="p-4 border-b flex justify-between items-center bg-green-50">
+          <h2 className="text-xl font-bold text-green-800">$ Venta Rapida</h2>
+          <button
+            onClick={() => setShowVentaRapida(false)}
+            className="text-gray-500 hover:text-gray-700"
+          >
+            X
+          </button>
+        </div>
+        <div className="p-4 overflow-y-auto">
+          <VentaRapidaForm
+            precios={precios}
+            onSubmit={handleVentaRapida}
+          />
+        </div>
+      </Modal>
+
       {/* Lista de Pedidos */}
       <div className="bg-white rounded-xl shadow overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Desktop table - hidden on mobile */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
@@ -305,27 +403,65 @@ export default function PedidosPage() {
                     <td className="px-4 py-3">{pedido.cBolsaAguaPed}</td>
                     <td className="px-4 py-3">{pedido.cBolsaHieloPed}</td>
                     <td className="px-4 py-3 font-semibold text-gray-800">
-                      {formatCurrency(pedido.total)}
+                      {formatCurrency(Number(pedido.total))}
                     </td>
                     <td className="px-4 py-3">{getEstadoBadge(pedido.estado)}</td>
                     <td className="px-4 py-3">
-                      <div className="flex gap-2">
-                        <button 
-                          onClick={() => {
-                            setSelectedPedido(pedido)
-                            setShowDetailModal(true)
-                          }}
-                          className="text-blue-600 hover:text-blue-800 text-sm"
-                        >
-                          Ver
-                        </button>
-                      </div>
+                      <button 
+                        onClick={() => {
+                          setSelectedPedido(pedido)
+                          setShowDetailModal(true)
+                        }}
+                        className="text-blue-600 hover:text-blue-800 text-sm"
+                      >
+                        Ver
+                      </button>
                     </td>
                   </tr>
                 ))
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile cards - visible only on mobile */}
+        <div className="md:hidden divide-y divide-gray-100">
+          {pedidosFiltrados.length === 0 ? (
+            <div className="px-4 py-8 text-center text-gray-500">No hay pedidos</div>
+          ) : (
+            pedidosFiltrados.map((pedido) => (
+              <div 
+                key={pedido.id} 
+                className="p-4 hover:bg-gray-50 cursor-pointer"
+                onClick={() => {
+                  setSelectedPedido(pedido)
+                  setShowDetailModal(true)
+                }}
+              >
+                <div className="flex justify-between items-start mb-2">
+                  <div>
+                    <span className="text-sm text-gray-500">#{pedido.numero}</span>
+                    <h3 className="font-medium text-gray-800">{pedido.nombreCli}</h3>
+                    <p className="text-sm text-gray-500">{pedido.telefonoCli}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-bold text-gray-800">{formatCurrency(Number(pedido.total))}</p>
+                    {getEstadoBadge(pedido.estado)}
+                  </div>
+                </div>
+                <div className="flex gap-2 flex-wrap text-xs text-gray-500">
+                  {pedido.canal && <span className="bg-gray-100 px-2 py-0.5 rounded">{pedido.canal}</span>}
+                  <span className="bg-gray-100 px-2 py-0.5 rounded">{pedido.tipo}</span>
+                  {pedido.cPacaAguaPed > 0 && <span>P.Ag:{pedido.cPacaAguaPed}</span>}
+                  {pedido.cPacaHieloPed > 0 && <span>P.Hi:{pedido.cPacaHieloPed}</span>}
+                  {pedido.cBotellonFabPed > 0 && <span>B.Fb:{pedido.cBotellonFabPed}</span>}
+                  {pedido.cBotellonDomPed > 0 && <span>B.Dm:{pedido.cBotellonDomPed}</span>}
+                  {pedido.cBolsaAguaPed > 0 && <span>Bl.Ag:{pedido.cBolsaAguaPed}</span>}
+                  {pedido.cBolsaHieloPed > 0 && <span>Bl.Hi:{pedido.cBolsaHieloPed}</span>}
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
 

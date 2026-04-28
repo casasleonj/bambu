@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { formatCurrency } from '@/lib/utils'
+import { getTodayRange } from '@/lib/dates'
 import Link from 'next/link'
 
 interface VentaPorPrecio {
@@ -14,24 +15,27 @@ function buildVentasPorPrecio(pedidos: any[]): VentaPorPrecio[] {
   if (pedidos.length === 0) return ventasPorPrecio
 
   const buckets: Record<string, Record<number, number>> = {
-    'Agua 19L': {},
-    'Hielo': {},
-    'Botellón': {},
+    'Paca Agua': {},
+    'Paca Hielo': {},
+    'Botellon Fab': {},
+    'Botellon Dom': {},
     'Bolsa Agua': {},
     'Bolsa Hielo': {},
   }
 
   for (const p of pedidos) {
-    if (p.cAguaPed > 0 && p.precioAgua > 0)
-      buckets['Agua 19L'][p.precioAgua] = (buckets['Agua 19L'][p.precioAgua] || 0) + p.cAguaPed
-    if (p.cHieloPed > 0 && p.precioHielo > 0)
-      buckets['Hielo'][p.precioHielo] = (buckets['Hielo'][p.precioHielo] || 0) + p.cHieloPed
-    if (p.cBotellonPed > 0 && p.precioBotellon > 0)
-      buckets['Botellón'][p.precioBotellon] = (buckets['Botellón'][p.precioBotellon] || 0) + p.cBotellonPed
-    if (p.cBolsaAguaPed > 0 && p.precioBolsaAgua > 0)
-      buckets['Bolsa Agua'][p.precioBolsaAgua] = (buckets['Bolsa Agua'][p.precioBolsaAgua] || 0) + p.cBolsaAguaPed
-    if (p.cBolsaHieloPed > 0 && p.precioBolsaHielo > 0)
-      buckets['Bolsa Hielo'][p.precioBolsaHielo] = (buckets['Bolsa Hielo'][p.precioBolsaHielo] || 0) + p.cBolsaHieloPed
+    if (p.cPacaAguaPed > 0 && Number(p.precioPacaAgua) > 0)
+      buckets['Paca Agua'][Number(p.precioPacaAgua)] = (buckets['Paca Agua'][Number(p.precioPacaAgua)] || 0) + p.cPacaAguaPed
+    if (p.cPacaHieloPed > 0 && Number(p.precioPacaHielo) > 0)
+      buckets['Paca Hielo'][Number(p.precioPacaHielo)] = (buckets['Paca Hielo'][Number(p.precioPacaHielo)] || 0) + p.cPacaHieloPed
+    if (p.cBotellonFabPed > 0 && Number(p.precioBotellonFab) > 0)
+      buckets['Botellon Fab'][Number(p.precioBotellonFab)] = (buckets['Botellon Fab'][Number(p.precioBotellonFab)] || 0) + p.cBotellonFabPed
+    if (p.cBotellonDomPed > 0 && Number(p.precioBotellonDom) > 0)
+      buckets['Botellon Dom'][Number(p.precioBotellonDom)] = (buckets['Botellon Dom'][Number(p.precioBotellonDom)] || 0) + p.cBotellonDomPed
+    if (p.cBolsaAguaPed > 0 && Number(p.precioBolsaAgua) > 0)
+      buckets['Bolsa Agua'][Number(p.precioBolsaAgua)] = (buckets['Bolsa Agua'][Number(p.precioBolsaAgua)] || 0) + p.cBolsaAguaPed
+    if (p.cBolsaHieloPed > 0 && Number(p.precioBolsaHielo) > 0)
+      buckets['Bolsa Hielo'][Number(p.precioBolsaHielo)] = (buckets['Bolsa Hielo'][Number(p.precioBolsaHielo)] || 0) + p.cBolsaHieloPed
   }
 
   for (const [producto, precios] of Object.entries(buckets)) {
@@ -45,9 +49,7 @@ function buildVentasPorPrecio(pedidos: any[]): VentaPorPrecio[] {
 }
 
 export default async function DashboardPage() {
-  const today = new Date().toISOString().split('T')[0]
-  const startOfDay = new Date(today + 'T00:00:00.000Z')
-  const endOfDay = new Date(today + 'T23:59:59.999Z')
+  const { startOfDay, endOfDay } = getTodayRange()
 
   // All queries in parallel
   const [pedidos, baseDiaConfig, lastCierre, gastosAgg, embarquesAbiertos] = await Promise.all([
@@ -75,9 +77,9 @@ export default async function DashboardPage() {
   const ventasPorPrecio = buildVentasPorPrecio(pedidos)
 
   // Stock calculation
-  const aguaVendida = pedidos.filter(p => p.estado === 'ENTREGADO').reduce((acc, p) => acc + (p.cAguaEnt || 0), 0)
-  const hieloVendido = pedidos.filter(p => p.estado === 'ENTREGADO').reduce((acc, p) => acc + (p.cHieloEnt || 0), 0)
-  const botellonVendido = pedidos.filter(p => p.estado === 'ENTREGADO').reduce((acc, p) => acc + (p.cBotellonEnt || 0), 0)
+  const aguaVendida = pedidos.filter(p => p.estado === 'ENTREGADO').reduce((acc, p) => acc + (p.cPacaAguaEnt || 0), 0)
+  const hieloVendido = pedidos.filter(p => p.estado === 'ENTREGADO').reduce((acc, p) => acc + (p.cPacaHieloEnt || 0), 0)
+  const botellonVendido = pedidos.filter(p => p.estado === 'ENTREGADO').reduce((acc, p) => acc + (p.cBotellonFabEnt || 0) + (p.cBotellonDomEnt || 0), 0)
 
   let stockIniAgua = lastCierre?.stockFinAgua || 0
   let stockIniHielo = lastCierre?.stockFinHielo || 0
@@ -116,7 +118,7 @@ export default async function DashboardPage() {
         <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-blue-500">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500">Pedidos del Día</p>
+              <p className="text-sm text-gray-500">Pedidos del Dia</p>
               <p className="text-3xl font-bold text-gray-800">{pedidos.length}</p>
               <p className="text-xs text-gray-400 mt-1">
                 {pedidosPendientes} pendientes &bull; {pedidosEntregados} entregados
@@ -128,7 +130,7 @@ export default async function DashboardPage() {
         <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-green-500">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500">Ventas del Día</p>
+              <p className="text-sm text-gray-500">Ventas del Dia</p>
               <p className="text-3xl font-bold text-green-600">{formatCurrency(ventas)}</p>
               <p className="text-xs text-gray-400 mt-1">Total vendido</p>
             </div>
@@ -187,7 +189,7 @@ export default async function DashboardPage() {
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span className="text-2xl font-bold text-gray-800">{item.cantidad}</span>
-                      <span className="text-sm text-gray-400 ml-1">pacas</span>
+                      <span className="text-sm text-gray-400 ml-1">und</span>
                     </td>
                     <td className="px-4 py-3 text-right">
                       <span className="font-semibold text-green-600">{formatCurrency(item.subtotal)}</span>
@@ -210,8 +212,8 @@ export default async function DashboardPage() {
 
       {/* Resumen por Producto */}
       {ventasPorPrecio.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
-          {['Agua 19L', 'Hielo', 'Botellón', 'Bolsa Agua', 'Bolsa Hielo'].map((producto) => {
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          {['Paca Agua', 'Paca Hielo', 'Botellon Fab', 'Botellon Dom', 'Bolsa Agua', 'Bolsa Hielo'].map((producto) => {
             const items = ventasPorPrecio.filter(v => v.producto === producto)
             const totalCantidad = items.reduce((acc, v) => acc + v.cantidad, 0)
             const totalSubtotal = items.reduce((acc, v) => acc + v.subtotal, 0)
@@ -227,9 +229,9 @@ export default async function DashboardPage() {
         </div>
       )}
 
-      {/* Acciones Rápidas */}
+      {/* Acciones Rapidas */}
       <div className="bg-white p-6 rounded-xl shadow-sm">
-        <h2 className="text-lg font-semibold text-gray-800 mb-4">Acciones Rápidas</h2>
+        <h2 className="text-lg font-semibold text-gray-800 mb-4">Acciones Rapidas</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Link href="/pedidos" className="flex items-center gap-3 p-4 bg-blue-50 rounded-lg hover:bg-blue-100 transition">
             <span className="text-sm font-medium">Nuevo Pedido</span>
@@ -241,7 +243,7 @@ export default async function DashboardPage() {
             <span className="text-sm font-medium">Nuevo Embarque</span>
           </Link>
           <Link href="/produccion" className="flex items-center gap-3 p-4 bg-purple-50 rounded-lg hover:bg-purple-100 transition">
-            <span className="text-sm font-medium">Producción</span>
+            <span className="text-sm font-medium">Produccion</span>
           </Link>
         </div>
       </div>
@@ -262,16 +264,16 @@ export default async function DashboardPage() {
               <p className="text-xs text-gray-400">pacas</p>
             </div>
             <div className="bg-purple-50 p-4 rounded-xl text-center">
-              <p className="text-sm text-gray-500 mb-1">Botellón</p>
+              <p className="text-sm text-gray-500 mb-1">Botellon</p>
               <p className="text-3xl font-bold text-purple-600">{stockBotellon}</p>
               <p className="text-xs text-gray-400">und</p>
             </div>
           </div>
           <p className="text-xs text-gray-400 mt-3 text-center">
-            Stock inicial + Producción - Ventas entregadas
+            Stock inicial + Produccion - Ventas entregadas
           </p>
           <Link href="/produccion" className="block mt-3 text-center text-sm text-blue-600 hover:underline">
-            Registrar producción
+            Registrar produccion
           </Link>
         </div>
 
@@ -279,7 +281,7 @@ export default async function DashboardPage() {
           <h2 className="text-lg font-semibold text-gray-800 mb-4">Resumen de Caja</h2>
           <div className="space-y-3">
             <div className="flex justify-between items-center py-2 border-b border-gray-100">
-              <span className="text-gray-600">Base del día</span>
+              <span className="text-gray-600">Base del dia</span>
               <span className="font-medium">{formatCurrency(baseDia)}</span>
             </div>
             <div className="flex justify-between items-center py-2 border-b border-gray-100">

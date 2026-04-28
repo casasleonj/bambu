@@ -72,8 +72,8 @@ export async function POST(request: NextRequest) {
 
         for (const emp of embarques) {
           for (const ped of emp.pedidos) {
-            entregasAgua += ped.cAguaEnt
-            entregasHielo += ped.cHieloEnt
+            entregasAgua += ped.cPacaAguaEnt
+            entregasHielo += ped.cPacaHieloEnt
           }
         }
 
@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Crear nómina manual
+    // Crear nomina manual
     const result = await prisma.$transaction(async (tx) => {
       const nomina = await tx.nomina.create({
         data: {

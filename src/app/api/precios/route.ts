@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { z } from 'zod'
 
-const PrecioCreateSchema = z.object({
+const PrecioHistorialSchema = z.object({
   producto: z.enum([
     'AGUA_GALON',
     'HIELO_5KG',
@@ -15,12 +15,17 @@ const PrecioCreateSchema = z.object({
   precio: z.coerce.number().positive(),
 })
 
+const PrecioVolumenSchema = z.object({
+  precioVolumenId: z.string().min(1),
+  precio: z.coerce.number().positive(),
+})
+
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
 
   try {
-    // Get latest price for each product
+    // Get latest price for each product (legacy PrecioHistorial)
     const precios = await prisma.precioHistorial.findMany({
       orderBy: { vigenteDesde: 'desc' },
       distinct: ['producto'],
@@ -41,24 +46,38 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const parsed = PrecioCreateSchema.safeParse(body)
-    if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+
+    // Handle PrecioVolumen update
+    const volumenParsed = PrecioVolumenSchema.safeParse(body)
+    if (volumenParsed.success) {
+      const { precioVolumenId, precio } = volumenParsed.data
+      await prisma.precioVolumen.update({
+        where: { id: precioVolumenId },
+        data: { precio },
+      })
+      return NextResponse.json({ success: true })
     }
 
-    const { producto, precio } = parsed.data
+    // Handle legacy PrecioHistorial create
+    const historialParsed = PrecioHistorialSchema.safeParse(body)
+    if (historialParsed.success) {
+      const { producto, precio } = historialParsed.data
+      const record = await prisma.precioHistorial.create({
+        data: {
+          producto,
+          precio,
+          creadoPor: authResult.user?.email || 'unknown',
+        },
+      })
+      return NextResponse.json({ success: true, precio: record }, { status: 201 })
+    }
 
-    const record = await prisma.precioHistorial.create({
-      data: {
-        producto,
-        precio,
-        creadoPor: authResult.user?.email || 'unknown',
-      },
-    })
-
-    return NextResponse.json({ success: true, precio: record }, { status: 201 })
+    return NextResponse.json(
+      { error: 'Datos invalidos. Envie {precioVolumenId, precio} o {producto, precio}.' },
+      { status: 400 }
+    )
   } catch (error) {
-    console.error('Error creating precio:', error)
-    return NextResponse.json({ error: 'Error creating precio' }, { status: 500 })
+    console.error('Error updating precio:', error)
+    return NextResponse.json({ error: 'Error actualizando precio' }, { status: 500 })
   }
 }

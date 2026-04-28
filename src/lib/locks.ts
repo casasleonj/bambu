@@ -17,11 +17,11 @@ export async function withAdvisoryLock<T>(
   fn: () => Promise<T>
 ): Promise<T> {
   const lockId = LOCK_IDS[lockName];
-  await prisma.$queryRaw`SELECT pg_advisory_lock(${lockId})`;
+  await prisma.$queryRaw`SELECT pg_advisory_lock(${lockId})::text`;
   try {
     return await fn();
   } finally {
-    await prisma.$queryRaw`SELECT pg_advisory_unlock(${lockId})`;
+    await prisma.$queryRaw`SELECT pg_advisory_unlock(${lockId})::text`;
   }
 }
 

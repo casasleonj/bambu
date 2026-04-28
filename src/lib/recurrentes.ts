@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getNextNumero } from "@/lib/sequence";
+import { resolverPreciosPedido, type Canal, type ProductCode } from "@/lib/pricing";
 
 function addDays(date: Date, days: number): Date {
   const result = new Date(date);
@@ -48,6 +49,29 @@ export async function generarPedidosRecurrentes(fechaReferencia: Date = new Date
 
     if (diasDesdeUltima < dias) continue;
 
+    // Resolve fresh prices using the pricing engine
+    const items: Array<{ codigo: ProductCode; cantidad: number }> = [
+      { codigo: 'PACA_AGUA', cantidad: pedido.cPacaAguaPed },
+      { codigo: 'PACA_HIELO', cantidad: pedido.cPacaHieloPed },
+      { codigo: 'BOTELLON_FAB', cantidad: pedido.cBotellonFabPed },
+      { codigo: 'BOTELLON_DOM', cantidad: pedido.cBotellonDomPed },
+      { codigo: 'BOLSA_AGUA', cantidad: pedido.cBolsaAguaPed },
+      { codigo: 'BOLSA_HIELO', cantidad: pedido.cBolsaHieloPed },
+    ];
+
+    const preciosResueltos = await resolverPreciosPedido(
+      items,
+      (pedido.canal || 'DOMICILIO') as Canal,
+      pedido.clienteId,
+    );
+
+    const precioMap: Record<string, number> = {};
+    for (const pr of preciosResueltos) {
+      precioMap[pr.codigo] = pr.precio;
+    }
+
+    const total = preciosResueltos.reduce((sum, pr) => sum + pr.subtotal, 0);
+
     const nuevo = await prisma.$transaction(async (tx) => {
       const numero = await getNextNumero(tx, { seqName: 'pedido_numero_seq', model: 'pedido' });
 
@@ -56,19 +80,22 @@ export async function generarPedidosRecurrentes(fechaReferencia: Date = new Date
           numero,
           clienteId: pedido.clienteId,
           tipo: pedido.tipo,
+          canal: pedido.canal || 'DOMICILIO',
           estado: "PENDIENTE",
-          cAguaPed: pedido.cAguaPed,
-          cHieloPed: pedido.cHieloPed,
-          cBotellonPed: pedido.cBotellonPed,
+          cPacaAguaPed: pedido.cPacaAguaPed,
+          cPacaHieloPed: pedido.cPacaHieloPed,
+          cBotellonFabPed: pedido.cBotellonFabPed,
+          cBotellonDomPed: pedido.cBotellonDomPed,
           cBolsaAguaPed: pedido.cBolsaAguaPed,
           cBolsaHieloPed: pedido.cBolsaHieloPed,
-          precioAgua: pedido.precioAgua,
-          precioHielo: pedido.precioHielo,
-          precioBotellon: pedido.precioBotellon,
-          precioBolsaAgua: pedido.precioBolsaAgua,
-          precioBolsaHielo: pedido.precioBolsaHielo,
-          total: pedido.total,
-          saldo: pedido.total,
+          precioPacaAgua: precioMap['PACA_AGUA'] || 0,
+          precioPacaHielo: precioMap['PACA_HIELO'] || 0,
+          precioBotellonFab: precioMap['BOTELLON_FAB'] || 0,
+          precioBotellonDom: precioMap['BOTELLON_DOM'] || 0,
+          precioBolsaAgua: precioMap['BOLSA_AGUA'] || 0,
+          precioBolsaHielo: precioMap['BOLSA_HIELO'] || 0,
+          total,
+          saldo: total,
           totalPagado: 0,
           idOrigen: pedido.id,
           esRecurrente: false,
@@ -82,9 +109,9 @@ export async function generarPedidosRecurrentes(fechaReferencia: Date = new Date
           numero: `FAC-${facturaNum.toString().padStart(5, "0")}`,
           clienteId: pedido.clienteId,
           pedidoId: creado.id,
-          subtotal: pedido.total,
-          total: pedido.total,
-          saldo: pedido.total,
+          subtotal: total,
+          total,
+          saldo: total,
         },
       });
 
