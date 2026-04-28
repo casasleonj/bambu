@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { ClienteQuickCreateSchema } from '@/lib/validators'
+import { requireAuth } from '@/lib/auth-check'
 
 export async function POST(request: NextRequest) {
+  const authError = await requireAuth()
+  if (authError instanceof NextResponse) return authError
+
   try {
     const body = await request.json()
     const parsed = ClienteQuickCreateSchema.safeParse(body)

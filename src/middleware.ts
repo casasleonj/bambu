@@ -20,6 +20,13 @@ const PROTECTED_PAGE_ROUTES = [
   '/precios',
 ]
 
+const ADMIN_PAGE_ROUTES = [
+  '/trabajadores',
+  '/cierre',
+  '/reportes',
+  '/precios',
+]
+
 /**
  * Get the real client IP. Only trust x-forwarded-for if we're behind a known proxy
  * (Vercel sets x-real-ip; standalone Node uses req.ip).
@@ -88,6 +95,14 @@ export default auth(async (req) => {
       return NextResponse.redirect(new URL('/dashboard', req.url))
     }
 
+    // Role-based access control for admin pages
+    if (ADMIN_PAGE_ROUTES.some(route => req.nextUrl.pathname.startsWith(route))) {
+      const userRole = (req.auth?.user as { role?: string } | undefined)?.role
+      if (userRole !== 'ADMIN' && userRole !== 'CONTADOR') {
+        return NextResponse.redirect(new URL('/dashboard', req.nextUrl))
+      }
+    }
+
     return response
   }
 
@@ -98,6 +113,14 @@ export default auth(async (req) => {
 
   if (isProtectedPage && !isLoggedIn && !isApiAuth) {
     return NextResponse.redirect(new URL('/login', req.url))
+  }
+
+  // Role-based access control for admin pages (static assets path)
+  if (ADMIN_PAGE_ROUTES.some(route => req.nextUrl.pathname.startsWith(route))) {
+    const userRole = (req.auth?.user as { role?: string } | undefined)?.role
+    if (userRole !== 'ADMIN' && userRole !== 'CONTADOR') {
+      return NextResponse.redirect(new URL('/dashboard', req.nextUrl))
+    }
   }
 
   return NextResponse.next()

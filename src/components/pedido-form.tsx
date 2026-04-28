@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { DEFAULT_PRICES, PRODUCTO_INFO } from '@/lib/prices'
 
 interface Cliente {
   id: string
@@ -45,14 +46,7 @@ interface PedidoFormProps {
   precios?: Record<string, number>
 }
 
-const productoInfo: Record<ProductoId, { nombre: string; unidad: string; precioKey: string; codigo: string }> = {
-  pacaAgua: { nombre: 'Paca de Agua (40u 300ml)', unidad: 'pacas', precioKey: 'PACA_AGUA', codigo: 'PACA_AGUA' },
-  pacaHielo: { nombre: 'Paca de Hielo (20u 600ml)', unidad: 'pacas', precioKey: 'PACA_HIELO', codigo: 'PACA_HIELO' },
-  botellonFab: { nombre: 'Botellon Fabrica 20LT', unidad: 'und', precioKey: 'BOTELLON_FAB', codigo: 'BOTELLON_FAB' },
-  botellonDom: { nombre: 'Botellon Domicilio 20LT', unidad: 'und', precioKey: 'BOTELLON_DOM', codigo: 'BOTELLON_DOM' },
-  bolsaAgua: { nombre: 'Bolsa de Agua 300ml', unidad: 'bolsas', precioKey: 'BOLSA_AGUA', codigo: 'BOLSA_AGUA' },
-  bolsaHielo: { nombre: 'Bolsa de Hielo 600ml', unidad: 'bolsas', precioKey: 'BOLSA_HIELO', codigo: 'BOLSA_HIELO' },
-}
+
 
 const METODOS_PAGO = [
   { id: 'EFECTIVO', nombre: 'Efectivo' },
@@ -93,10 +87,10 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
     canalVal: string,
     clienteId?: string,
   ) => {
-    const items = (Object.keys(productoInfo) as ProductoId[])
+    const items = (Object.keys(PRODUCTO_INFO) as ProductoId[])
       .filter(id => prods[id] > 0)
       .map(id => ({
-        codigo: productoInfo[id].codigo,
+        codigo: PRODUCTO_INFO[id].codigo,
         cantidad: prods[id],
       }))
 
@@ -127,33 +121,25 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
   }, [])
 
   const getPrecio = (productoId: ProductoId): number => {
-    const info = productoInfo[productoId]
+    const info = PRODUCTO_INFO[productoId]
     // Use resolved price from API if available
     if (preciosResueltos[info.codigo] && preciosResueltos[info.codigo] > 0) {
       return preciosResueltos[info.codigo]
     }
     // Fallback defaults if no prices resolved
-    const defaults: Record<string, number> = {
-      'PACA_AGUA': 6500,
-      'PACA_HIELO': 8000,
-      'BOTELLON_FAB': 7500,
-      'BOTELLON_DOM': 10000,
-      'BOLSA_AGUA': 2500,
-      'BOLSA_HIELO': 3000,
-    }
-    return precios[info.precioKey] || defaults[info.precioKey] || 0
+    return precios[info.precioKey] || DEFAULT_PRICES[info.precioKey] || 0
   }
 
   function getEffectivePrice(codigo: string): number {
     if (preciosManuales[codigo] !== undefined) return preciosManuales[codigo]
     if (preciosResueltos[codigo]) return preciosResueltos[codigo]
-    return getPrecio(Object.keys(productoInfo).find(k => productoInfo[k as ProductoId].codigo === codigo) as ProductoId)
+    return getPrecio(Object.keys(PRODUCTO_INFO).find(k => PRODUCTO_INFO[k as ProductoId].codigo === codigo) as ProductoId)
   }
 
   const calcularTotal = (): number => {
     return Object.entries(productos).reduce((total, [prod, cant]) => {
       if (cant <= 0) return total
-      const info = productoInfo[prod as ProductoId]
+      const info = PRODUCTO_INFO[prod as ProductoId]
       return total + cant * getEffectivePrice(info.codigo)
     }, 0)
   }
@@ -327,8 +313,8 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
             <div className="w-20 text-center">Precio</div>
             <div className="w-20 text-center">Cant.</div>
           </div>
-          {(Object.keys(productoInfo) as ProductoId[]).map((prodId) => {
-            const info = productoInfo[prodId]
+          {(Object.keys(PRODUCTO_INFO) as ProductoId[]).map((prodId) => {
+            const info = PRODUCTO_INFO[prodId]
             return (
               <div key={prodId} className="flex items-center gap-3">
                 <div className="flex-1">

@@ -107,13 +107,9 @@ export default function LoginPage() {
         </form>
 
         {IS_DEV && (
-          <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-            <p className="text-xs text-gray-500 mb-2">Usuarios de prueba:</p>
-            <div className="text-xs text-gray-600 space-y-1">
-              <p><strong>admin</strong> / admin123</p>
-              <p><strong>asistente</strong> / asist123</p>
-              <p><strong>contador</strong> / cont123</p>
-            </div>
+          <div className="mt-4 p-3 bg-blue-50 rounded text-sm text-blue-700">
+            <p className="font-medium">Modo desarrollo</p>
+            <p>Usa las credenciales de prueba configuradas en el seed.</p>
           </div>
         )}
       </div>

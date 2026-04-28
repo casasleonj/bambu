@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { DEFAULT_PRICES } from '@/lib/prices'
 
 interface VentaRapidaFormProps {
   precios: Record<string, number>
@@ -39,14 +40,7 @@ const PRODUCTOS = [
   { id: 'bolsaHielo', nombre: 'Bolsa Hielo', codigo: 'BOLSA_HIELO' },
 ]
 
-const DEFAULTS: Record<string, number> = {
-  PACA_AGUA: 6500,
-  PACA_HIELO: 8000,
-  BOTELLON_FAB: 7500,
-  BOTELLON_DOM: 10000,
-  BOLSA_AGUA: 2500,
-  BOLSA_HIELO: 3000,
-}
+
 
 const METODOS_PAGO = [
   { id: 'EFECTIVO', nombre: 'Efectivo' },
@@ -63,7 +57,7 @@ export function VentaRapidaForm({ precios, onSubmit }: VentaRapidaFormProps) {
   const [metodoPago, setMetodoPago] = useState('EFECTIVO')
   const [submitting, setSubmitting] = useState(false)
 
-  const getPrecio = (codigo: string) => precios[codigo] || DEFAULTS[codigo] || 0
+  const getPrecio = (codigo: string) => precios[codigo] || DEFAULT_PRICES[codigo] || 0
 
   const total = PRODUCTOS.reduce((sum, prod) => {
     const cant = cantidades[prod.id] || 0
