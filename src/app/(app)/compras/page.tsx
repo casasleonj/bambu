@@ -54,9 +54,9 @@ export default function ComprasPage() {
       const cData = await cRes.json()
       const pData = await pRes.json()
       const iData = await iRes.json()
-      setCompras(cData.compras || [])
-      setProveedores(pData.proveedores || [])
-      setInsumos(iData.insumos || [])
+      setCompras(cData.compras || cData.data || [])
+      setProveedores(pData.proveedores || pData.data || [])
+      setInsumos(iData.insumos || iData.data || [])
     } catch (e) {
       console.error(e)
     }

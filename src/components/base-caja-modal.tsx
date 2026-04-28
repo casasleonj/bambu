@@ -9,7 +9,11 @@ interface BaseDia {
   valor: string
 }
 
-export default function BaseCajaModal() {
+interface BaseCajaModalProps {
+  onSave?: (val: string) => void
+}
+
+export default function BaseCajaModal({ onSave }: BaseCajaModalProps) {
   const [showModal, setShowModal] = useState(false)
   const [baseDia, setBaseDia] = useState('')
   const [loading, setLoading] = useState(true)
@@ -62,6 +66,7 @@ export default function BaseCajaModal() {
       if (res.ok) {
         localStorage.setItem('baseDiaDate', new Date().toISOString().split('T')[0])
         localStorage.setItem('baseDia', baseDia)
+        onSave?.(baseDia)
         setShowModal(false)
       }
     } catch (error) {

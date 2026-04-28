@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,18 +12,10 @@ interface Cliente {
   nombre: string
   telefono: string
   direccion?: string
-  precioAguaPref: number
+  preciosEspeciales?: string
 }
 
-type ProductoId = 'agua19L' | 'hielo' | 'botellonFabrica' | 'botellonDomicilio' | 'bolsaAgua' | 'bolsaHielo'
-
-interface ProductosPedido {
-  agua19L: number
-  hielo: number
-  botellon: number
-  bolsaAgua: number
-  bolsaHielo: number
-}
+type ProductoId = 'pacaAgua' | 'pacaHielo' | 'botellonFab' | 'botellonDom' | 'bolsaAgua' | 'bolsaHielo'
 
 interface PagoPedido {
   metodo: string
@@ -32,7 +24,16 @@ interface PagoPedido {
 
 interface PedidoFormData {
   clienteId: string
-  productos: ProductosPedido
+  canal: string
+  productos: {
+    pacaAgua: number
+    pacaHielo: number
+    botellonFab: number
+    botellonDom: number
+    bolsaAgua: number
+    bolsaHielo: number
+  }
+  preciosManuales: Record<string, number>
   pagos: PagoPedido[]
   obs: string
   total: number
@@ -44,13 +45,13 @@ interface PedidoFormProps {
   precios?: Record<string, number>
 }
 
-const productoInfo: Record<ProductoId, { nombre: string; unidad: string; emoji: string; precioKey: string }> = {
-  agua19L: { nombre: 'Agua 19L', unidad: 'botellones', emoji: '💧', precioKey: 'AGUA_GALON' },
-  hielo: { nombre: 'Hielo 5kg', unidad: 'kg', emoji: '🧊', precioKey: 'HIELO_5KG' },
-  botellonFabrica: { nombre: 'Botellón Fábrica', unidad: 'unid.', emoji: '🏭', precioKey: 'BOTELLON_FABRICA' },
-  botellonDomicilio: { nombre: 'Botellón Domicilio', unidad: 'unid.', emoji: '🚚', precioKey: 'BOTELLON_DOMICILIO' },
-  bolsaAgua: { nombre: 'Bolsa Agua', unidad: 'bolsas', emoji: '💧', precioKey: 'BOLSA_AGUA' },
-  bolsaHielo: { nombre: 'Bolsa Hielo', unidad: 'bolsas', emoji: '🧊', precioKey: 'BOLSA_HIELO' },
+const productoInfo: Record<ProductoId, { nombre: string; unidad: string; precioKey: string; codigo: string }> = {
+  pacaAgua: { nombre: 'Paca de Agua (40u 300ml)', unidad: 'pacas', precioKey: 'PACA_AGUA', codigo: 'PACA_AGUA' },
+  pacaHielo: { nombre: 'Paca de Hielo (20u 600ml)', unidad: 'pacas', precioKey: 'PACA_HIELO', codigo: 'PACA_HIELO' },
+  botellonFab: { nombre: 'Botellon Fabrica 20LT', unidad: 'und', precioKey: 'BOTELLON_FAB', codigo: 'BOTELLON_FAB' },
+  botellonDom: { nombre: 'Botellon Domicilio 20LT', unidad: 'und', precioKey: 'BOTELLON_DOM', codigo: 'BOTELLON_DOM' },
+  bolsaAgua: { nombre: 'Bolsa de Agua 300ml', unidad: 'bolsas', precioKey: 'BOLSA_AGUA', codigo: 'BOLSA_AGUA' },
+  bolsaHielo: { nombre: 'Bolsa de Hielo 600ml', unidad: 'bolsas', precioKey: 'BOLSA_HIELO', codigo: 'BOLSA_HIELO' },
 }
 
 const METODOS_PAGO = [
@@ -64,14 +65,17 @@ const METODOS_PAGO = [
 export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoFormProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [clienteSeleccionado, setClienteSeleccionado] = useState<Cliente | null>(null)
+  const [canal, setCanal] = useState<'PUNTO' | 'DOMICILIO'>('DOMICILIO')
   const [productos, setProductos] = useState<Record<ProductoId, number>>({
-    agua19L: 0,
-    hielo: 0,
-    botellonFabrica: 0,
-    botellonDomicilio: 0,
+    pacaAgua: 0,
+    pacaHielo: 0,
+    botellonFab: 0,
+    botellonDom: 0,
     bolsaAgua: 0,
     bolsaHielo: 0,
   })
+  const [preciosResueltos, setPreciosResueltos] = useState<Record<string, number>>({})
+  const [preciosManuales, setPreciosManuales] = useState<Record<string, number>>({})
   const [pagos, setPagos] = useState<{ metodo: string; monto: number }[]>([
     { metodo: 'EFECTIVO', monto: 0 },
   ])
@@ -84,26 +88,73 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
       )
     : clientes.slice(0, 5)
 
+  const resolverPrecios = useCallback(async (
+    prods: Record<ProductoId, number>,
+    canalVal: string,
+    clienteId?: string,
+  ) => {
+    const items = (Object.keys(productoInfo) as ProductoId[])
+      .filter(id => prods[id] > 0)
+      .map(id => ({
+        codigo: productoInfo[id].codigo,
+        cantidad: prods[id],
+      }))
+
+    if (items.length === 0) {
+      setPreciosResueltos({})
+      return
+    }
+
+    try {
+      const res = await fetch('/api/precios/resolver', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items, canal: canalVal, clienteId }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.precios) {
+          const nuevos: Record<string, number> = {}
+          for (const [codigo, info] of Object.entries(data.precios)) {
+            nuevos[codigo] = (info as any).precio
+          }
+          setPreciosResueltos(nuevos)
+        }
+      }
+    } catch (error) {
+      // Fall back to local defaults on network error
+    }
+  }, [])
+
   const getPrecio = (productoId: ProductoId): number => {
     const info = productoInfo[productoId]
-    if (productoId === 'agua19L' && clienteSeleccionado?.precioAguaPref) {
-      return clienteSeleccionado.precioAguaPref
+    // Use resolved price from API if available
+    if (preciosResueltos[info.codigo] && preciosResueltos[info.codigo] > 0) {
+      return preciosResueltos[info.codigo]
     }
-    // Fallback defaults if no prices configured in DB yet
+    // Fallback defaults if no prices resolved
     const defaults: Record<string, number> = {
-      'AGUA_GALON': 6500,
-      'HIELO_5KG': 8000,
-      'BOTELLON_FABRICA': 7500,
-      'BOTELLON_DOMICILIO': 10000,
+      'PACA_AGUA': 6500,
+      'PACA_HIELO': 8000,
+      'BOTELLON_FAB': 7500,
+      'BOTELLON_DOM': 10000,
       'BOLSA_AGUA': 2500,
       'BOLSA_HIELO': 3000,
     }
     return precios[info.precioKey] || defaults[info.precioKey] || 0
   }
 
+  function getEffectivePrice(codigo: string): number {
+    if (preciosManuales[codigo] !== undefined) return preciosManuales[codigo]
+    if (preciosResueltos[codigo]) return preciosResueltos[codigo]
+    return getPrecio(Object.keys(productoInfo).find(k => productoInfo[k as ProductoId].codigo === codigo) as ProductoId)
+  }
+
   const calcularTotal = (): number => {
     return Object.entries(productos).reduce((total, [prod, cant]) => {
-      return total + cant * getPrecio(prod as ProductoId)
+      if (cant <= 0) return total
+      const info = productoInfo[prod as ProductoId]
+      return total + cant * getEffectivePrice(info.codigo)
     }, 0)
   }
 
@@ -113,7 +164,14 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
 
   const handleCantidadChange = (productoId: ProductoId, value: string) => {
     const cant = parseInt(value) || 0
-    setProductos((prev) => ({ ...prev, [productoId]: cant }))
+    const newProds = { ...productos, [productoId]: cant }
+    setProductos(newProds)
+    resolverPrecios(newProds, canal, clienteSeleccionado?.id)
+  }
+
+  const handleCanalChange = (newCanal: 'PUNTO' | 'DOMICILIO') => {
+    setCanal(newCanal)
+    resolverPrecios(productos, newCanal, clienteSeleccionado?.id)
   }
 
   const handlePagoChange = (idx: number, field: 'metodo' | 'monto', value: string) => {
@@ -147,15 +205,18 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
       return
     }
 
-    const pedido = {
+    const pedido: PedidoFormData = {
       clienteId: clienteSeleccionado.id,
+      canal,
       productos: {
-        agua19L: productos.agua19L,
-        hielo: productos.hielo,
-        botellon: productos.botellonFabrica + productos.botellonDomicilio,
+        pacaAgua: productos.pacaAgua,
+        pacaHielo: productos.pacaHielo,
+        botellonFab: productos.botellonFab,
+        botellonDom: productos.botellonDom,
         bolsaAgua: productos.bolsaAgua,
         bolsaHielo: productos.bolsaHielo,
       },
+      preciosManuales,
       pagos: pagos.filter((p) => p.monto > 0),
       obs: observaciones,
       total,
@@ -167,7 +228,7 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
     <form onSubmit={handleSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto pr-2">
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg">👤 Cliente</CardTitle>
+          <CardTitle className="text-lg">Cliente</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           {!clienteSeleccionado ? (
@@ -175,7 +236,7 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
               <div>
                 <Label>Buscar Cliente</Label>
                 <Input
-                  placeholder="Buscar por nombre o teléfono..."
+                  placeholder="Buscar por nombre o telefono..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
@@ -189,6 +250,7 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
                       onClick={() => {
                         setClienteSeleccionado(cliente)
                         setSearchTerm('')
+                        resolverPrecios(productos, canal, cliente.id)
                       }}
                       className="w-full text-left px-3 py-2 hover:bg-accent flex justify-between items-center"
                     >
@@ -206,7 +268,7 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
               <div>
                 <p className="font-medium">{clienteSeleccionado.nombre}</p>
                 <p className="text-sm text-muted-foreground">
-                  {clienteSeleccionado.telefono} • Precio agua: ${clienteSeleccionado.precioAguaPref.toLocaleString()}
+                  {clienteSeleccionado.telefono}
                 </p>
               </div>
               <Button
@@ -215,7 +277,7 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
                 size="sm"
                 onClick={() => setClienteSeleccionado(null)}
               >
-                ✕
+                X
               </Button>
             </div>
           )}
@@ -224,20 +286,61 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg">📦 Productos</CardTitle>
+          <CardTitle className="text-lg">Canal de Venta</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => handleCanalChange('DOMICILIO')}
+              className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition ${
+                canal === 'DOMICILIO'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              Domicilio
+            </button>
+            <button
+              type="button"
+              onClick={() => handleCanalChange('PUNTO')}
+              className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition ${
+                canal === 'PUNTO'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              Punto de Venta
+            </button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg">Productos</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           {(Object.keys(productoInfo) as ProductoId[]).map((prodId) => {
             const info = productoInfo[prodId]
-            const precio = getPrecio(prodId)
             return (
               <div key={prodId} className="flex items-center gap-3">
-                <span className="text-xl">{info.emoji}</span>
                 <div className="flex-1">
                   <div className="font-medium">{info.nombre}</div>
-                  <div className="text-xs text-muted-foreground">
-                    ${precio.toLocaleString()} / {info.unidad}
-                  </div>
+                </div>
+                {/* Price input - editable */}
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-gray-400">$</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={getEffectivePrice(info.codigo)}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value) || 0
+                      setPreciosManuales(prev => ({ ...prev, [info.codigo]: val }))
+                    }}
+                    className="w-20 border rounded px-2 py-1 text-sm text-right"
+                  />
                 </div>
                 <Input
                   type="number"
@@ -260,7 +363,7 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg">💳 Pagos</CardTitle>
+          <CardTitle className="text-lg">Pagos</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           {pagos.map((pago, idx) => (
@@ -291,7 +394,7 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
                   size="sm"
                   onClick={() => eliminarPago(idx)}
                 >
-                  🗑️
+                  X
                 </Button>
               )}
             </div>
@@ -322,7 +425,7 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg">📝 Observaciones</CardTitle>
+          <CardTitle className="text-lg">Observaciones</CardTitle>
         </CardHeader>
         <CardContent>
           <Input
@@ -334,7 +437,7 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
       </Card>
 
       <Button type="submit" className="w-full" size="lg">
-        💵 Crear Pedido (${total.toLocaleString()})
+        Crear Pedido (${total.toLocaleString()})
       </Button>
     </form>
   )

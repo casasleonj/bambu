@@ -5,47 +5,8 @@ import { PedidoCreateSchema } from '@/lib/validators'
 import { withAdvisoryLock } from '@/lib/locks'
 import { getNextNumero } from '@/lib/sequence'
 import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
-
-async function getPrecios(tx: any, clientePrefAgua?: number | null) {
-  const precios = await tx.precioHistorial.findMany({
-    orderBy: { vigenteDesde: 'desc' },
-    distinct: ['producto'],
-  })
-  const map: Record<string, number> = {}
-  for (const p of precios) {
-    map[p.producto] = Number(p.precio)
-  }
-
-  const configs = await tx.config.findMany()
-  const configMap = Object.fromEntries(configs.map((c: any) => [c.clave, c.valor]))
-
-  return {
-    agua: clientePrefAgua || parseFloat(configMap.PRECIO_AGUA) || map.AGUA_GALON || 12000,
-    hielo: parseFloat(configMap.PRECIO_HIELO) || map.HIELO_5KG || 5000,
-    botellon: parseFloat(configMap.PRECIO_BOTELLON) || map.BOTELLON_FABRICA || 5000,
-    bolsaAgua: parseFloat(configMap.PRECIO_BOLSA_AGUA) || map.BOLSA_AGUA || 3000,
-    bolsaHielo: parseFloat(configMap.PRECIO_BOLSA_HIELO) || map.BOLSA_HIELO || 3000,
-  }
-}
-
-function calculateTotal(
-  productos: { agua19L?: number; hielo?: number; botellon?: number; bolsaAgua?: number; bolsaHielo?: number } | undefined,
-  precios: { agua: number; hielo: number; botellon: number; bolsaAgua: number; bolsaHielo: number }
-): number {
-  const cAgua = productos?.agua19L || 0
-  const cHielo = productos?.hielo || 0
-  const cBotellon = productos?.botellon || 0
-  const cBolsaAgua = productos?.bolsaAgua || 0
-  const cBolsaHielo = productos?.bolsaHielo || 0
-
-  return (
-    cAgua * precios.agua +
-    cHielo * precios.hielo +
-    cBotellon * precios.botellon +
-    cBolsaAgua * precios.bolsaAgua +
-    cBolsaHielo * precios.bolsaHielo
-  )
-}
+import { getTodayRange } from '@/lib/dates'
+import { resolverPreciosPedido, type Canal, type ProductCode } from '@/lib/pricing'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -54,9 +15,7 @@ export async function GET(request: NextRequest) {
   const pagination = getPaginationParams(searchParams)
 
   try {
-    const today = new Date().toISOString().split('T')[0]
-    const startOfDay = new Date(today + 'T00:00:00.000Z')
-    const endOfDay = new Date(today + 'T23:59:59.999Z')
+    const { startOfDay, endOfDay } = getTodayRange()
 
     const where = pagination.all
       ? { estado: { not: 'CANCELADO' as any } }
@@ -99,16 +58,34 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
     }
-    const { clienteId, tipo, productos, obs, fechaEntrega } = parsed.data
+    const { clienteId, tipo, productos, obs, fechaEntrega, canal, preciosManuales } = parsed.data
 
     const result = await withAdvisoryLock('PEDIDO', () => prisma.$transaction(async (tx) => {
-      const cliente = await tx.cliente.findUnique({
-        where: { id: clienteId },
-      })
+      // Build items array for pricing engine
+      const manualPrices = preciosManuales || {}
+      const items: Array<{ codigo: ProductCode; cantidad: number; precioManual?: number }> = [
+        { codigo: 'PACA_AGUA', cantidad: productos?.pacaAgua || 0, precioManual: manualPrices['PACA_AGUA'] },
+        { codigo: 'PACA_HIELO', cantidad: productos?.pacaHielo || 0, precioManual: manualPrices['PACA_HIELO'] },
+        { codigo: 'BOTELLON_FAB', cantidad: productos?.botellonFab || 0, precioManual: manualPrices['BOTELLON_FAB'] },
+        { codigo: 'BOTELLON_DOM', cantidad: productos?.botellonDom || 0, precioManual: manualPrices['BOTELLON_DOM'] },
+        { codigo: 'BOLSA_AGUA', cantidad: productos?.bolsaAgua || 0, precioManual: manualPrices['BOLSA_AGUA'] },
+        { codigo: 'BOLSA_HIELO', cantidad: productos?.bolsaHielo || 0, precioManual: manualPrices['BOLSA_HIELO'] },
+      ]
 
-      const precios = await getPrecios(tx, cliente?.precioAguaPref ? Number(cliente.precioAguaPref) : null)
+      // Resolve prices using pricing engine
+      const preciosResueltos = await resolverPreciosPedido(
+        items,
+        (canal || 'DOMICILIO') as Canal,
+        clienteId,
+      )
 
-      const total = calculateTotal(productos, precios)
+      // Build price map from resolved prices
+      const precioMap: Record<string, number> = {}
+      for (const pr of preciosResueltos) {
+        precioMap[pr.codigo] = pr.precio
+      }
+
+      const total = preciosResueltos.reduce((sum, pr) => sum + pr.subtotal, 0)
 
       const pagosData = parsed.data.pagos || []
       const totalPagado = pagosData.reduce((sum, p) => sum + p.monto, 0)
@@ -120,17 +97,20 @@ export async function POST(request: NextRequest) {
           numero,
           clienteId,
           tipo: tipo || 'ENVIO',
+          canal: canal || 'DOMICILIO',
           estado: 'PENDIENTE',
-          cAguaPed: productos?.agua19L || 0,
-          cHieloPed: productos?.hielo || 0,
-          cBotellonPed: productos?.botellon || 0,
+          cPacaAguaPed: productos?.pacaAgua || 0,
+          cPacaHieloPed: productos?.pacaHielo || 0,
+          cBotellonFabPed: productos?.botellonFab || 0,
+          cBotellonDomPed: productos?.botellonDom || 0,
           cBolsaAguaPed: productos?.bolsaAgua || 0,
           cBolsaHieloPed: productos?.bolsaHielo || 0,
-          precioAgua: precios.agua,
-          precioHielo: precios.hielo,
-          precioBotellon: precios.botellon,
-          precioBolsaAgua: precios.bolsaAgua,
-          precioBolsaHielo: precios.bolsaHielo,
+          precioPacaAgua: precioMap['PACA_AGUA'] || 0,
+          precioPacaHielo: precioMap['PACA_HIELO'] || 0,
+          precioBotellonFab: precioMap['BOTELLON_FAB'] || 0,
+          precioBotellonDom: precioMap['BOTELLON_DOM'] || 0,
+          precioBolsaAgua: precioMap['BOLSA_AGUA'] || 0,
+          precioBolsaHielo: precioMap['BOLSA_HIELO'] || 0,
           total,
           saldo: total - totalPagado,
           totalPagado,
@@ -150,7 +130,7 @@ export async function POST(request: NextRequest) {
         })
       }
 
-      // Crear factura automáticamente
+      // Crear factura automaticamente
       const facturaNum = await getNextNumero(tx, { seqName: 'factura_numero_seq', model: 'factura' })
 
       await tx.factura.create({

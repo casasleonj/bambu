@@ -44,7 +44,7 @@ export default function FacturasPage() {
     try {
       const res = await fetch('/api/facturas')
       const data = await res.json()
-      setFacturas(data.facturas || [])
+      setFacturas(data.facturas || data.data || [])
     } catch (e) {
       console.error(e)
     }

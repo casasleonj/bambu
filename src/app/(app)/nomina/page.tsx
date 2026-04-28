@@ -44,8 +44,8 @@ export default function NominaPage() {
       ])
       const nData = await nRes.json()
       const tData = await tRes.json()
-      setNominas(nData.nominas || [])
-      setTrabajadores(tData.trabajadores || [])
+      setNominas(nData.nominas || nData.data || [])
+      setTrabajadores(tData.trabajadores || tData.data || [])
     } catch (e) {
       console.error(e)
     }

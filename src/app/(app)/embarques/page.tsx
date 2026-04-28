@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { Modal } from '@/components/modal'
 
 interface Trabajador {
   id: string
@@ -55,9 +56,9 @@ export default function EmbarquesPage() {
       const embarques = await embarquesData.json()
       const trabajadores = await trabajadoresData.json()
 
-      setEmbarques(embarques.embarques || [])
-      setTrabajadores(trabajadores.trabajadores || [])
-      setPedidos(pedidosData.pedidos || [])
+      setEmbarques(embarques.embarques || embarques.data || [])
+      setTrabajadores(trabajadores.trabajadores || trabajadores.data || [])
+      setPedidos(pedidosData.pedidos || pedidosData.data || [])
     } catch (error) {
       console.error('Error fetching data:', error)
     } finally {
@@ -218,62 +219,58 @@ export default function EmbarquesPage() {
         )}
       </div>
 
-      {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md">
-            <h2 className="text-xl font-bold mb-4">Nuevo Embarque</h2>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Trabajador
-                </label>
-                <select
-                  value={selectedTrabajadorId}
-                  onChange={(e) => setSelectedTrabajadorId(e.target.value)}
-                  className="w-full p-2 border rounded-lg"
-                >
-                  <option value="">Seleccionar...</option>
-                  {trabajadores.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.nombre}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Observaciones
-                </label>
-                <textarea
-                  value={obs}
-                  onChange={(e) => setObs(e.target.value)}
-                  className="w-full p-2 border rounded-lg"
-                  rows={3}
-                />
-              </div>
-            </div>
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => setShowModal(false)}
-                className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={createEmbarque}
-                disabled={!selectedTrabajadorId}
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-              >
-                Crear
-              </button>
-            </div>
+      <Modal open={showModal} onClose={() => setShowModal(false)} className="bg-white rounded-xl p-6 w-full max-w-md">
+        <h2 className="text-xl font-bold mb-4">Nuevo Embarque</h2>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Trabajador
+            </label>
+            <select
+              value={selectedTrabajadorId}
+              onChange={(e) => setSelectedTrabajadorId(e.target.value)}
+              className="w-full p-2 border rounded-lg"
+            >
+              <option value="">Seleccionar...</option>
+              {trabajadores.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.nombre}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Observaciones
+            </label>
+            <textarea
+              value={obs}
+              onChange={(e) => setObs(e.target.value)}
+              className="w-full p-2 border rounded-lg"
+              rows={3}
+            />
           </div>
         </div>
-      )}
+        <div className="flex gap-3 mt-6">
+          <button
+            onClick={() => setShowModal(false)}
+            className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={createEmbarque}
+            disabled={!selectedTrabajadorId}
+            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          >
+            Crear
+          </button>
+        </div>
+      </Modal>
 
-      {showDetailModal && selectedEmbarque && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+      <Modal open={showDetailModal && !!selectedEmbarque} onClose={() => setShowDetailModal(false)} className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        {selectedEmbarque && (
+          <>
             <div className="flex justify-between items-start mb-4">
               <div>
                 <h2 className="text-xl font-bold">Embarque #{selectedEmbarque.numero}</h2>
@@ -375,9 +372,9 @@ export default function EmbarquesPage() {
                 Cerrar
               </button>
             </div>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </Modal>
     </div>
   )
 }

@@ -28,6 +28,7 @@ const categorias = [
 export default function GastosPage() {
   const [gastos, setGastos] = useState<Gasto[]>([])
   const [showCrear, setShowCrear] = useState(false)
+  const [showAll, setShowAll] = useState(false)
   const [categoria, setCategoria] = useState('OTRO')
   const [descripcion, setDescripcion] = useState('')
   const [monto, setMonto] = useState('')
@@ -35,14 +36,16 @@ export default function GastosPage() {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    fetchGastos()
-  }, [])
+    fetchGastos(showAll)
+  }, [showAll])
 
-  const fetchGastos = async () => {
+  const fetchGastos = async (all = false) => {
     try {
-      const res = await fetch('/api/gastos')
+      const today = new Date().toISOString().split('T')[0]
+      const url = all ? '/api/gastos?all=true' : `/api/gastos?fecha=${today}`
+      const res = await fetch(url)
       const data = await res.json()
-      setGastos(data.gastos || [])
+      setGastos(data.gastos || data.data || [])
     } catch (e) {
       console.error(e)
     }
@@ -62,7 +65,7 @@ export default function GastosPage() {
         setDescripcion('')
         setMonto('')
         setResponsable('')
-        fetchGastos()
+        fetchGastos(showAll)
       }
     } catch (e) {
       console.error(e)
@@ -86,9 +89,14 @@ export default function GastosPage() {
     <div className="p-4 space-y-4">
       <h1 className="text-2xl font-bold">📝 Gastos</h1>
 
-      <Button onClick={() => setShowCrear(!showCrear)}>
-        ➕ Nuevo Gasto
-      </Button>
+      <div className="flex gap-2">
+        <Button onClick={() => setShowCrear(!showCrear)}>
+          Nuevo Gasto
+        </Button>
+        <Button variant="outline" onClick={() => setShowAll(!showAll)}>
+          {showAll ? 'Solo Hoy' : 'Ver Todos'}
+        </Button>
+      </div>
 
       {showCrear && (
         <Card>
@@ -127,7 +135,7 @@ export default function GastosPage() {
 
       {gastos.length === 0 ? (
         <div className="text-center py-8 text-muted-foreground">
-          No hay gastos registrados
+          {showAll ? 'No hay gastos registrados' : 'No hay gastos registrados hoy'}
         </div>
       ) : (
         <div className="space-y-2">

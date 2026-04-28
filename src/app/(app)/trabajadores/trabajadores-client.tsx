@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { formatCurrency } from '@/lib/utils'
+import { Modal } from '@/components/modal'
 
 interface Trabajador {
   id: string
@@ -268,144 +269,140 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
         )}
       </div>
 
-      {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <h2 className="text-xl font-bold mb-4">
-              {isEdit ? 'Editar Trabajador' : 'Nuevo Trabajador'}
-            </h2>
-            {formError && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm mb-4">
-                {formError}
-              </div>
-            )}
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Nombre *</label>
-                <input
-                  type="text"
-                  required
-                  value={formData.nombre}
-                  onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Rol *</label>
-                  <select
-                    required
-                    value={formData.rol}
-                    onChange={(e) => setFormData({ ...formData, rol: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  >
-                    {rolOptions.map((r) => (
-                      <option key={r} value={r}>
-                        {rolLabels[r]}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Tipo de pago</label>
-                  <select
-                    value={formData.tipoPago}
-                    onChange={(e) => setFormData({ ...formData, tipoPago: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  >
-                    {tipoPagoOptions.map((tp) => (
-                      <option key={tp} value={tp}>
-                        {tipoPagoLabels[tp]}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <input
-                  id="usaMoto"
-                  type="checkbox"
-                  checked={formData.usaMoto}
-                  onChange={(e) => setFormData({ ...formData, usaMoto: e.target.checked })}
-                  className="h-4 w-4 text-blue-600 border-gray-300 rounded"
-                />
-                <label htmlFor="usaMoto" className="text-sm font-medium text-gray-700">
-                  Usa moto
-                </label>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Com. paca agua</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={formData.comPacaAgua}
-                    onChange={(e) =>
-                      setFormData({ ...formData, comPacaAgua: parseFloat(e.target.value) })
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Com. paca hielo</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={formData.comPacaHielo}
-                    onChange={(e) =>
-                      setFormData({ ...formData, comPacaHielo: parseFloat(e.target.value) })
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Salario fijo</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={formData.salarioFijo}
-                    onChange={(e) =>
-                      setFormData({ ...formData, salarioFijo: parseFloat(e.target.value) })
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Telefono</label>
-                  <input
-                    type="text"
-                    value={formData.telefono}
-                    onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                >
-                  Guardar
-                </button>
-              </div>
-            </form>
+      <Modal open={showModal} onClose={() => setShowModal(false)} className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <h2 className="text-xl font-bold mb-4">
+          {isEdit ? 'Editar Trabajador' : 'Nuevo Trabajador'}
+        </h2>
+        {formError && (
+          <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm mb-4">
+            {formError}
           </div>
-        </div>
-      )}
+        )}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-1">Nombre *</label>
+            <input
+              type="text"
+              required
+              value={formData.nombre}
+              onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Rol *</label>
+              <select
+                required
+                value={formData.rol}
+                onChange={(e) => setFormData({ ...formData, rol: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              >
+                {rolOptions.map((r) => (
+                  <option key={r} value={r}>
+                    {rolLabels[r]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Tipo de pago</label>
+              <select
+                value={formData.tipoPago}
+                onChange={(e) => setFormData({ ...formData, tipoPago: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              >
+                {tipoPagoOptions.map((tp) => (
+                  <option key={tp} value={tp}>
+                    {tipoPagoLabels[tp]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              id="usaMoto"
+              type="checkbox"
+              checked={formData.usaMoto}
+              onChange={(e) => setFormData({ ...formData, usaMoto: e.target.checked })}
+              className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+            />
+            <label htmlFor="usaMoto" className="text-sm font-medium text-gray-700">
+              Usa moto
+            </label>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Com. paca agua</label>
+              <input
+                type="number"
+                min={0}
+                value={formData.comPacaAgua}
+                onChange={(e) =>
+                  setFormData({ ...formData, comPacaAgua: parseFloat(e.target.value) })
+                }
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Com. paca hielo</label>
+              <input
+                type="number"
+                min={0}
+                value={formData.comPacaHielo}
+                onChange={(e) =>
+                  setFormData({ ...formData, comPacaHielo: parseFloat(e.target.value) })
+                }
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Salario fijo</label>
+              <input
+                type="number"
+                min={0}
+                value={formData.salarioFijo}
+                onChange={(e) =>
+                  setFormData({ ...formData, salarioFijo: parseFloat(e.target.value) })
+                }
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Telefono</label>
+              <input
+                type="text"
+                value={formData.telefono}
+                onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-3 pt-4">
+            <button
+              type="button"
+              onClick={() => setShowModal(false)}
+              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Guardar
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   )
 }

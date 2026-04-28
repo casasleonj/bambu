@@ -3,13 +3,16 @@ import { z } from "zod";
 export const PedidoCreateSchema = z.object({
   clienteId: z.string().min(1),
   tipo: z.string().optional(),
+  canal: z.enum(['PUNTO', 'DOMICILIO']).optional().default('DOMICILIO'),
   productos: z.object({
-    agua19L: z.coerce.number().int().min(0).optional(),
-    hielo: z.coerce.number().int().min(0).optional(),
-    botellon: z.coerce.number().int().min(0).optional(),
+    pacaAgua: z.coerce.number().int().min(0).optional(),
+    pacaHielo: z.coerce.number().int().min(0).optional(),
+    botellonFab: z.coerce.number().int().min(0).optional(),
+    botellonDom: z.coerce.number().int().min(0).optional(),
     bolsaAgua: z.coerce.number().int().min(0).optional(),
     bolsaHielo: z.coerce.number().int().min(0).optional(),
   }).optional(),
+  preciosManuales: z.record(z.string(), z.number()).optional(),
   pagos: z.array(
     z.object({
       metodo: z.enum(['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA', 'BONO']),
@@ -23,9 +26,10 @@ export const PedidoCreateSchema = z.object({
 export const PedidoUpdateSchema = z.object({
   estado: z.enum(['PENDIENTE', 'EN_RUTA', 'ENTREGADO', 'CANCELADO', 'ANULADO']).optional(),
   embarqueId: z.string().optional().nullable(),
-  cAguaEnt: z.coerce.number().int().min(0).optional(),
-  cHieloEnt: z.coerce.number().int().min(0).optional(),
-  cBotellonEnt: z.coerce.number().int().min(0).optional(),
+  cPacaAguaEnt: z.coerce.number().int().min(0).optional(),
+  cPacaHieloEnt: z.coerce.number().int().min(0).optional(),
+  cBotellonFabEnt: z.coerce.number().int().min(0).optional(),
+  cBotellonDomEnt: z.coerce.number().int().min(0).optional(),
   cBolsaAguaEnt: z.coerce.number().int().min(0).optional(),
   cBolsaHieloEnt: z.coerce.number().int().min(0).optional(),
 });
@@ -40,7 +44,7 @@ export const ClienteCreateSchema = z.object({
   direccion: z.string().max(200).optional(),
   frecuencia: z.string().max(20).optional(),
   cadaNDias: z.coerce.number().int().min(0).optional().transform(v => v === 0 ? undefined : v),
-  precioAguaPref: z.coerce.number().min(0).optional().transform(v => v === 0 ? undefined : v),
+  preciosEspeciales: z.string().optional(),
   notas: z.string().max(500).optional(),
 });
 

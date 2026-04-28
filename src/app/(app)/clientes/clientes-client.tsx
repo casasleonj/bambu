@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import { Modal } from '@/components/modal'
 
 interface Cliente {
   id: string
@@ -15,7 +16,7 @@ interface Cliente {
   direccion?: string
   frecuencia: string
   cadaNDias?: number
-  precioAguaPref?: number
+  preciosEspeciales?: string
   notas?: string
   ultEntrega?: string
   activo: boolean
@@ -65,7 +66,7 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
     direccion: '',
     frecuencia: 'NINGUNA',
     cadaNDias: 0,
-    precioAguaPref: 0,
+    preciosEspeciales: '',
     notas: '',
   })
 
@@ -105,7 +106,7 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
       direccion: '',
       frecuencia: 'NINGUNA',
       cadaNDias: 0,
-      precioAguaPref: 0,
+      preciosEspeciales: '',
       notas: '',
     })
     setFormError('')
@@ -125,7 +126,7 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
       direccion: selectedCliente.direccion || '',
       frecuencia: selectedCliente.frecuencia,
       cadaNDias: selectedCliente.cadaNDias || 0,
-      precioAguaPref: selectedCliente.precioAguaPref || 0,
+      preciosEspeciales: selectedCliente.preciosEspeciales || '',
       notas: selectedCliente.notas || '',
     })
     setIsEdit(true)
@@ -184,7 +185,7 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('¿Desactivar este cliente?')) return
+    if (!confirm('Desactivar este cliente?')) return
     try {
       const res = await fetch(`/api/clientes/${id}`, { method: 'DELETE' })
       if (res.ok) {
@@ -194,6 +195,18 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
       }
     } catch (error) {
       console.error('Error deleting cliente:', error)
+    }
+  }
+
+  function formatPreciosEspeciales(json: string | undefined): string {
+    if (!json) return '-'
+    try {
+      const parsed = JSON.parse(json)
+      return Object.entries(parsed)
+        .map(([k, v]) => `${k}: $${Number(v).toLocaleString()}`)
+        .join(', ')
+    } catch {
+      return '-'
     }
   }
 
@@ -270,155 +283,153 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
         )}
       </div>
 
-      {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <h2 className="text-xl font-bold mb-4">
-              {isEdit ? 'Editar Cliente' : 'Nuevo Cliente'}
-            </h2>
-            {formError && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm mb-4">
-                {formError}
-              </div>
-            )}
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Nombre *</label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.nombre}
-                    onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Apellido</label>
-                  <input
-                    type="text"
-                    value={formData.apellido}
-                    onChange={(e) => setFormData({ ...formData, apellido: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  />
-                </div>
-              </div>
+      <Modal open={showModal} onClose={() => setShowModal(false)} className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <h2 className="text-xl font-bold mb-4">
+          {isEdit ? 'Editar Cliente' : 'Nuevo Cliente'}
+        </h2>
+        {formError && (
+          <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm mb-4">
+            {formError}
+          </div>
+        )}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Nombre *</label>
+              <input
+                type="text"
+                required
+                value={formData.nombre}
+                onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Apellido</label>
+              <input
+                type="text"
+                value={formData.apellido}
+                onChange={(e) => setFormData({ ...formData, apellido: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Telefono *</label>
+            <input
+              type="tel"
+              required
+              value={formData.telefono}
+              onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Negocio</label>
+              <input
+                type="text"
+                value={formData.nombreNegocio}
+                onChange={(e) => setFormData({ ...formData, nombreNegocio: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Tipo</label>
+              <input
+                type="text"
+                value={formData.tipoNegocio}
+                onChange={(e) => setFormData({ ...formData, tipoNegocio: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Barrio</label>
+            <input
+              type="text"
+              value={formData.barrio}
+              onChange={(e) => setFormData({ ...formData, barrio: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Direccion</label>
+            <input
+              type="text"
+              value={formData.direccion}
+              onChange={(e) => setFormData({ ...formData, direccion: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Frecuencia</label>
+              <select
+                value={formData.frecuencia}
+                onChange={(e) => setFormData({ ...formData, frecuencia: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              >
+                {freqOptions.map((f) => (
+                  <option key={f} value={f}>
+                    {f}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {formData.frecuencia === 'CADA_N_DIAS' && (
               <div>
-                <label className="block text-sm font-medium mb-1">Telefono *</label>
-                <input
-                  type="tel"
-                  required
-                  value={formData.telefono}
-                  onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Negocio</label>
-                  <input
-                    type="text"
-                    value={formData.nombreNegocio}
-                    onChange={(e) => setFormData({ ...formData, nombreNegocio: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Tipo</label>
-                  <input
-                    type="text"
-                    value={formData.tipoNegocio}
-                    onChange={(e) => setFormData({ ...formData, tipoNegocio: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Barrio</label>
-                <input
-                  type="text"
-                  value={formData.barrio}
-                  onChange={(e) => setFormData({ ...formData, barrio: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Direccion</label>
-                <input
-                  type="text"
-                  value={formData.direccion}
-                  onChange={(e) => setFormData({ ...formData, direccion: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Frecuencia</label>
-                  <select
-                    value={formData.frecuencia}
-                    onChange={(e) => setFormData({ ...formData, frecuencia: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  >
-                    {freqOptions.map((f) => (
-                      <option key={f} value={f}>
-                        {f}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {formData.frecuencia === 'CADA_N_DIAS' && (
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Cada N dias</label>
-                    <input
-                      type="number"
-                      value={formData.cadaNDias}
-                      onChange={(e) => setFormData({ ...formData, cadaNDias: parseInt(e.target.value) })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                    />
-                  </div>
-                )}
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Precio Agua Pref.</label>
+                <label className="block text-sm font-medium mb-1">Cada N dias</label>
                 <input
                   type="number"
-                  value={formData.precioAguaPref}
-                  onChange={(e) => setFormData({ ...formData, precioAguaPref: parseFloat(e.target.value) })}
+                  value={formData.cadaNDias}
+                  onChange={(e) => setFormData({ ...formData, cadaNDias: parseInt(e.target.value) })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Notas</label>
-                <textarea
-                  value={formData.notas}
-                  onChange={(e) => setFormData({ ...formData, notas: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  rows={3}
-                />
-              </div>
-              <div className="flex gap-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                >
-                  Guardar
-                </button>
-              </div>
-            </form>
+            )}
           </div>
-        </div>
-      )}
+          <div>
+            <label className="block text-sm font-medium mb-1">Precios Especiales (JSON)</label>
+            <input
+              type="text"
+              value={formData.preciosEspeciales}
+              onChange={(e) => setFormData({ ...formData, preciosEspeciales: e.target.value })}
+              placeholder='{"PACA_AGUA": 2600, "BOTELLON_DOM": 9000}'
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+            />
+            <p className="text-xs text-gray-400 mt-1">Formato: {`{"PACA_AGUA": 2600, "BOTELLON_DOM": 9000}`}</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Notas</label>
+            <textarea
+              value={formData.notas}
+              onChange={(e) => setFormData({ ...formData, notas: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              rows={3}
+            />
+          </div>
+          <div className="flex gap-3 pt-4">
+            <button
+              type="button"
+              onClick={() => setShowModal(false)}
+              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Guardar
+            </button>
+          </div>
+        </form>
+      </Modal>
 
-      {showDetail && selectedCliente && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+      <Modal open={showDetail && !!selectedCliente} onClose={() => setShowDetail(false)} className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+        {selectedCliente && (
+          <>
             <div className="p-4 border-b flex justify-between items-center">
               <div>
                 <h2 className="text-xl font-bold text-gray-800">
@@ -475,11 +486,9 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
                       <p className="font-medium">{selectedCliente.frecuencia}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-500">Pref. Precio</p>
+                      <p className="text-sm text-gray-500">Precios Especiales</p>
                       <p className="font-medium">
-                        {selectedCliente.precioAguaPref
-                          ? formatCurrency(selectedCliente.precioAguaPref)
-                          : '-'}
+                        {formatPreciosEspeciales(selectedCliente.preciosEspeciales)}
                       </p>
                     </div>
                   </div>
@@ -572,9 +581,9 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
                 Desactivar
               </button>
             </div>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </Modal>
     </div>
   )
 }

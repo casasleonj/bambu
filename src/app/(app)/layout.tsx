@@ -33,6 +33,9 @@ function AppContent({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [baseDia, setBaseDia] = useState<string | null>(null)
   const [fechaStr, setFechaStr] = useState('')
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => { setMounted(true) }, [])
 
   useEffect(() => {
     const saved = localStorage.getItem('baseDia')
@@ -126,11 +129,11 @@ function AppContent({ children }: { children: React.ReactNode }) {
       </main>
 
       {/* Modal Base de Caja */}
-      <BaseCajaModal />
+      <BaseCajaModal onSave={(val) => setBaseDia(val)} />
 
       {/* Update Notification */}
       <UpdateNotification />
-      <Toaster />
+      {mounted && <Toaster />}
     </div>
   )
 }

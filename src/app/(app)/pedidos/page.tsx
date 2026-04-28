@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import { formatCurrency } from '@/lib/utils'
 import { PedidoForm } from '@/components/pedido-form'
+import { Modal } from '@/components/modal'
 
 
 interface Pedido {
@@ -13,20 +14,24 @@ interface Pedido {
   telefonoCli: string
   zonaCli: string
   tipo: string
+  canal: string
   estado: string
-  cAguaPed: number
-  cHieloPed: number
-  cBotellonPed: number
+  cPacaAguaPed: number
+  cPacaHieloPed: number
+  cBotellonFabPed: number
+  cBotellonDomPed: number
   cBolsaAguaPed: number
   cBolsaHieloPed: number
-  cAguaEnt: number
-  cHieloEnt: number
-  cBotellonEnt: number
+  cPacaAguaEnt: number
+  cPacaHieloEnt: number
+  cBotellonFabEnt: number
+  cBotellonDomEnt: number
   cBolsaAguaEnt: number
   cBolsaHieloEnt: number
-  precioAgua: number
-  precioHielo: number
-  precioBotellon: number
+  precioPacaAgua: number
+  precioPacaHielo: number
+  precioBotellonFab: number
+  precioBotellonDom: number
   precioBolsaAgua: number
   precioBolsaHielo: number
   totalPagado: number
@@ -40,7 +45,7 @@ interface Cliente {
   nombre: string
   telefono: string
   direccion?: string
-  precioAguaPref: number
+  preciosEspeciales?: string
 }
 
 const ESTADOS = ['TODOS', 'PENDIENTE', 'EN_RUTA', 'ENTREGADO', 'CANCELADO', 'ANULADO']
@@ -67,7 +72,7 @@ export default function PedidosPage() {
     try {
       const res = await fetch('/api/pedidos')
       const data = await res.json()
-      setPedidos(data.pedidos || [])
+      setPedidos(data.pedidos || data.data || [])
     } catch (error) {
       console.error('Error fetching pedidos:', error)
     } finally {
@@ -77,9 +82,9 @@ export default function PedidosPage() {
 
   async function fetchClientes() {
     try {
-      const res = await fetch('/api/clientes')
+      const res = await fetch('/api/clientes?all=true')
       const data = await res.json()
-      setClientes(data.clientes || [])
+      setClientes(data.clientes || data.data || [])
     } catch (error) {
       console.error('Error fetching clientes:', error)
     }
@@ -90,7 +95,7 @@ export default function PedidosPage() {
       const res = await fetch('/api/precios')
       const data = await res.json()
       const map: Record<string, number> = {}
-      for (const p of data.precios || []) {
+      for (const p of data.precios || data.data || []) {
         map[p.producto] = Number(p.precio)
       }
       setPrecios(map)
@@ -174,7 +179,7 @@ export default function PedidosPage() {
     <div>
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">Pedidos del Día</h1>
+        <h1 className="text-2xl font-bold text-gray-800">Pedidos del Dia</h1>
         <button
           onClick={() => setShowModal(true)}
           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
@@ -204,7 +209,7 @@ export default function PedidosPage() {
         <div className="flex flex-wrap gap-4 items-center">
           <input
             type="text"
-            placeholder="Buscar por nombre o teléfono..."
+            placeholder="Buscar por nombre o telefono..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="flex-1 min-w-64 px-4 py-2 border border-gray-300 rounded-lg"
@@ -228,28 +233,24 @@ export default function PedidosPage() {
       </div>
 
       {/* Modal Nuevo Pedido */}
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="p-4 border-b flex justify-between items-center">
-              <h2 className="text-xl font-bold">Nuevo Pedido</h2>
-              <button
-                onClick={() => setShowModal(false)}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="p-4 overflow-y-auto">
-              <PedidoForm
-                clientes={clientes}
-                precios={precios}
-                onSubmit={handleCrearPedido}
-              />
-            </div>
-          </div>
+      <Modal open={showModal} onClose={() => setShowModal(false)} className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="p-4 border-b flex justify-between items-center">
+          <h2 className="text-xl font-bold">Nuevo Pedido</h2>
+          <button
+            onClick={() => setShowModal(false)}
+            className="text-gray-500 hover:text-gray-700"
+          >
+            X
+          </button>
         </div>
-      )}
+        <div className="p-4 overflow-y-auto">
+          <PedidoForm
+            clientes={clientes}
+            precios={precios}
+            onSubmit={handleCrearPedido}
+          />
+        </div>
+      </Modal>
 
       {/* Lista de Pedidos */}
       <div className="bg-white rounded-xl shadow overflow-hidden">
@@ -259,13 +260,14 @@ export default function PedidosPage() {
               <tr>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">#</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Cliente</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Zona</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Canal</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Tipo</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Ag 19L</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Hielo</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Bot</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">B.Ag</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">B.Hi</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">P.Ag</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">P.Hi</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">B.Fb</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">B.Dm</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Bl.Ag</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Bl.Hi</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Total</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Estado</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Acciones</th>
@@ -274,7 +276,7 @@ export default function PedidosPage() {
             <tbody className="divide-y divide-gray-100">
               {pedidosFiltrados.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan={13} className="px-4 py-8 text-center text-gray-500">
                     No hay pedidos
                   </td>
                 </tr>
@@ -286,15 +288,20 @@ export default function PedidosPage() {
                       <div className="font-medium text-gray-800">{pedido.nombreCli}</div>
                       <div className="text-sm text-gray-500">{pedido.telefonoCli}</div>
                     </td>
-                    <td className="px-4 py-3 text-gray-600">{pedido.zonaCli || '-'}</td>
+                    <td className="px-4 py-3">
+                      <span className="text-xs bg-gray-100 px-2 py-1 rounded">
+                        {pedido.canal || '-'}
+                      </span>
+                    </td>
                     <td className="px-4 py-3">
                       <span className="text-sm bg-gray-100 px-2 py-1 rounded">
                         {pedido.tipo}
                       </span>
                     </td>
-                    <td className="px-4 py-3">{pedido.cAguaPed}</td>
-                    <td className="px-4 py-3">{pedido.cHieloPed}</td>
-                    <td className="px-4 py-3">{pedido.cBotellonPed}</td>
+                    <td className="px-4 py-3">{pedido.cPacaAguaPed}</td>
+                    <td className="px-4 py-3">{pedido.cPacaHieloPed}</td>
+                    <td className="px-4 py-3">{pedido.cBotellonFabPed}</td>
+                    <td className="px-4 py-3">{pedido.cBotellonDomPed}</td>
                     <td className="px-4 py-3">{pedido.cBolsaAguaPed}</td>
                     <td className="px-4 py-3">{pedido.cBolsaHieloPed}</td>
                     <td className="px-4 py-3 font-semibold text-gray-800">
@@ -322,17 +329,18 @@ export default function PedidosPage() {
         </div>
       </div>
 
-      {showDetailModal && selectedPedido && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+      <Modal open={showDetailModal && !!selectedPedido} onClose={() => setShowDetailModal(false)} className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+        {selectedPedido && (
+          <>
             <div className="p-4 border-b flex justify-between items-center">
               <h2 className="text-xl font-bold">Pedido #{selectedPedido.numero}</h2>
-              <button onClick={() => setShowDetailModal(false)} className="text-gray-500 hover:text-gray-700">✕</button>
+              <button onClick={() => setShowDetailModal(false)} className="text-gray-500 hover:text-gray-700">X</button>
             </div>
             <div className="p-4 space-y-3">
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div><span className="text-gray-500">Cliente:</span> {selectedPedido.nombreCli}</div>
-                <div><span className="text-gray-500">Teléfono:</span> {selectedPedido.telefonoCli}</div>
+                <div><span className="text-gray-500">Telefono:</span> {selectedPedido.telefonoCli}</div>
+                <div><span className="text-gray-500">Canal:</span> {selectedPedido.canal || '-'}</div>
                 <div><span className="text-gray-500">Tipo:</span> {selectedPedido.tipo}</div>
                 <div><span className="text-gray-500">Estado:</span> {getEstadoBadge(selectedPedido.estado)}</div>
                 <div><span className="text-gray-500">Fecha:</span> {new Date(selectedPedido.fecha).toLocaleDateString('es-CO')}</div>
@@ -341,11 +349,12 @@ export default function PedidosPage() {
               <div className="border-t pt-2">
                 <h3 className="font-medium mb-1">Productos</h3>
                 <div className="text-sm space-y-1">
-                  {selectedPedido.cAguaEnt > 0 && <div>Agua 19L: {selectedPedido.cAguaEnt} × {formatCurrency(selectedPedido.precioAgua)}</div>}
-                  {selectedPedido.cHieloEnt > 0 && <div>Hielo: {selectedPedido.cHieloEnt} × {formatCurrency(selectedPedido.precioHielo)}</div>}
-                  {selectedPedido.cBotellonEnt > 0 && <div>Botellón: {selectedPedido.cBotellonEnt} × {formatCurrency(selectedPedido.precioBotellon)}</div>}
-                  {selectedPedido.cBolsaAguaEnt > 0 && <div>Bolsa Agua: {selectedPedido.cBolsaAguaEnt} × {formatCurrency(selectedPedido.precioBolsaAgua)}</div>}
-                  {selectedPedido.cBolsaHieloEnt > 0 && <div>Bolsa Hielo: {selectedPedido.cBolsaHieloEnt} × {formatCurrency(selectedPedido.precioBolsaHielo)}</div>}
+                  {selectedPedido.cPacaAguaEnt > 0 && <div>Paca Agua: {selectedPedido.cPacaAguaEnt} x {formatCurrency(selectedPedido.precioPacaAgua)}</div>}
+                  {selectedPedido.cPacaHieloEnt > 0 && <div>Paca Hielo: {selectedPedido.cPacaHieloEnt} x {formatCurrency(selectedPedido.precioPacaHielo)}</div>}
+                  {selectedPedido.cBotellonFabEnt > 0 && <div>Botellon Fab: {selectedPedido.cBotellonFabEnt} x {formatCurrency(selectedPedido.precioBotellonFab)}</div>}
+                  {selectedPedido.cBotellonDomEnt > 0 && <div>Botellon Dom: {selectedPedido.cBotellonDomEnt} x {formatCurrency(selectedPedido.precioBotellonDom)}</div>}
+                  {selectedPedido.cBolsaAguaEnt > 0 && <div>Bolsa Agua: {selectedPedido.cBolsaAguaEnt} x {formatCurrency(selectedPedido.precioBolsaAgua)}</div>}
+                  {selectedPedido.cBolsaHieloEnt > 0 && <div>Bolsa Hielo: {selectedPedido.cBolsaHieloEnt} x {formatCurrency(selectedPedido.precioBolsaHielo)}</div>}
                 </div>
               </div>
               <div className="border-t pt-2 grid grid-cols-2 gap-2 text-sm">
@@ -370,9 +379,9 @@ export default function PedidosPage() {
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </Modal>
     </div>
   )
 }
