@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { getNextNumero } from "@/lib/sequence";
 
 function addDays(date: Date, days: number): Date {
   const result = new Date(date);
@@ -26,7 +27,7 @@ export async function generarPedidosRecurrentes(fechaReferencia: Date = new Date
       OR: [
         { ultimaGeneracion: null },
         {
-          frecuencia: "DIARIO",
+          frecuencia: { in: ["DIARIO", "SEMANAL", "QUINCENAL", "MENSUAL"] },
           ultimaGeneracion: { lt: inicioDia },
         },
       ],
@@ -48,10 +49,7 @@ export async function generarPedidosRecurrentes(fechaReferencia: Date = new Date
     if (diasDesdeUltima < dias) continue;
 
     const nuevo = await prisma.$transaction(async (tx) => {
-      const [{ nextval }] = await tx.$queryRaw<{ nextval: bigint }[]>`
-        SELECT nextval('pedido_numero_seq')
-      `;
-      const numero = Number(nextval);
+      const numero = await getNextNumero(tx, { seqName: 'pedido_numero_seq', model: 'pedido' });
 
       const creado = await tx.pedido.create({
         data: {
@@ -77,10 +75,7 @@ export async function generarPedidosRecurrentes(fechaReferencia: Date = new Date
         },
       });
 
-      const [{ nextval: facturaNext }] = await tx.$queryRaw<{ nextval: bigint }[]>`
-        SELECT nextval('factura_numero_seq')
-      `;
-      const facturaNum = Number(facturaNext);
+      const facturaNum = await getNextNumero(tx, { seqName: 'factura_numero_seq', model: 'factura' });
 
       await tx.factura.create({
         data: {

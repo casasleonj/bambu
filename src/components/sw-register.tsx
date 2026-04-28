@@ -4,12 +4,20 @@ import { useEffect } from 'react'
 
 export function ServiceWorkerRegister() {
   useEffect(() => {
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker
-        .register('/sw.js')
-        .then((reg) => console.log('SW registered:', reg.scope))
-        .catch((err) => console.error('SW registration failed:', err))
-    }
+    if (typeof window === 'undefined') return
+    if (!('serviceWorker' in navigator)) return
+
+    navigator.serviceWorker
+      .register('/sw.js')
+      .then((reg) => {
+        if (reg?.scope) {
+          console.log('SW registered:', reg.scope)
+        }
+      })
+      .catch((err) => {
+        if (process.env.NODE_ENV === 'test') return
+        console.error('SW registration failed:', err)
+      })
   }, [])
 
   return null

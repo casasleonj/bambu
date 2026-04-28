@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth } from '@/lib/auth-check'
+import { requireAuth, requireRole } from '@/lib/auth-check'
 import { generarPedidosRecurrentes } from '@/lib/recurrentes'
 
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
+  const roleCheck = await requireRole('ADMIN')
+  if (roleCheck instanceof Response) return roleCheck
 
   try {
     const body = await request.json().catch(() => ({}))

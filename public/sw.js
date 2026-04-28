@@ -1,10 +1,8 @@
-const CACHE_NAME = 'bambu-v1';
+const CACHE_NAME = 'bambu-v3';
+
+// Assets to cache on install
 const STATIC_ASSETS = [
   '/',
-  '/dashboard',
-  '/pedidos',
-  '/clientes',
-  '/precios',
   '/offline',
 ];
 
@@ -30,31 +28,90 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
+// Listen for SKIP_WAITING message from the page
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
+// Helper: determine request type
+function getRequestType(request) {
+  const url = new URL(request.url);
+  
+  if (request.mode === 'navigate') return 'navigate';
+  if (url.pathname.startsWith('/_next/')) return 'static';
+  if (url.pathname.startsWith('/api/')) return 'api';
+  if (request.destination === 'image' || request.destination === 'font' || request.destination === 'style' || request.destination === 'script') {
+    return 'static';
+  }
+  
+  return 'other';
+}
+
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 
-  event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) {
-        return cached;
-      }
-      return fetch(event.request)
-        .then((response) => {
-          if (!response || response.status !== 200 || response.type !== 'basic') {
+  const type = getRequestType(event.request);
+
+  // API requests: always go to network, no cache
+  if (type === 'api') {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
+  // Static assets: cache-first with network fallback
+  if (type === 'static') {
+    event.respondWith(
+      caches.match(event.request).then((cached) => {
+        if (cached) return cached;
+        
+        return fetch(event.request)
+          .then((response) => {
+            if (!response || response.status !== 200 || response.type !== 'basic') {
+              return response;
+            }
+            const responseToCache = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseToCache);
+            });
             return response;
-          }
-          const responseToCache = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
+          })
+          .catch(() => {
+            return new Response('Offline', { status: 503 });
           });
+      })
+    );
+    return;
+  }
+
+  // Navigation requests: network-first with offline fallback
+  if (type === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response && response.status === 200) {
+            const responseToCache = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseToCache);
+            });
+          }
           return response;
         })
         .catch(() => {
-          if (event.request.mode === 'navigate') {
+          return caches.match(event.request).then((cached) => {
+            if (cached) return cached;
             return caches.match('/offline');
-          }
-        });
-    })
+          });
+        })
+    );
+    return;
+  }
+
+  // Other requests: network-first
+  event.respondWith(
+    fetch(event.request)
+      .catch(() => caches.match(event.request))
   );
 });
 

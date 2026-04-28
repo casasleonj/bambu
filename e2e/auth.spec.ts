@@ -5,10 +5,13 @@ test('login page loads', async ({ page }) => {
   await expect(page.locator('button:has-text("Ingresar")')).toBeVisible()
 })
 
-test('login page has test users info', async ({ page }) => {
+test('login page shows app branding', async ({ page }) => {
   await page.goto('/login')
-  await expect(page.locator('text=Usuarios de prueba:')).toBeVisible()
-  await expect(page.locator('text=admin')).toBeVisible()
+  // Security: test credentials are only visible in NODE_ENV=development
+  // In production (including this test env), they must NOT leak
+  await expect(page.locator('h1:has-text("Agua Bambú")')).toBeVisible()
+  await expect(page.locator('input[type="text"]')).toBeVisible()
+  await expect(page.locator('input[type="password"]')).toBeVisible()
 })
 
 test('pedidos page exists', async ({ page }) => {
@@ -16,3 +19,4 @@ test('pedidos page exists', async ({ page }) => {
   const response = await page.goto('/pedidos')
   expect(response?.status()).toBeLessThan(500)
 })
+

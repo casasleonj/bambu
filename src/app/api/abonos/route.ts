@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuth } from '@/lib/auth-check'
+import { requireAuth, requireRole } from '@/lib/auth-check'
 import { AbonoCreateSchema } from '@/lib/validators'
 import { withAdvisoryLock } from '@/lib/locks'
+import { getNextNumero } from '@/lib/sequence'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -29,6 +30,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
+  const roleCheck = await requireRole(['ADMIN', 'CONTADOR'])
+  if (roleCheck instanceof Response) return roleCheck
   try {
     const body = await request.json()
     const parsed = AbonoCreateSchema.safeParse(body)
@@ -48,10 +51,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Calcular siguiente número
-      const [{ nextval }] = await tx.$queryRaw<{ nextval: bigint }[]>`
-        SELECT nextval('abono_numero_seq')
-      `
-      const nextNum = Number(nextval)
+      const nextNum = await getNextNumero(tx, { seqName: 'abono_numero_seq', model: 'abono' })
 
       // Crear abono
       const abono = await tx.abono.create({
@@ -73,11 +73,11 @@ export async function POST(request: NextRequest) {
         },
       })
 
-      if (updatedFactura.saldo < 0) {
+      if (Number(updatedFactura.saldo) < 0) {
         throw new Error('Abono excede saldo de factura')
       }
 
-      const nuevoEstado = updatedFactura.saldo === 0 ? 'PAGADA' : 'EMITIDA'
+      const nuevoEstado = Number(updatedFactura.saldo) === 0 ? 'PAGADA' : 'EMITIDA'
       if (updatedFactura.estado !== nuevoEstado) {
         await tx.factura.update({
           where: { id: facturaId },

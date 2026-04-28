@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 
 interface CierreData {
   numPedidos: number
@@ -9,10 +10,15 @@ interface CierreData {
   cobrado: number
   fiado: number
   efectivo: number
+  transferencia: number
   nequi: number
   daviplata: number
+  bono: number
   aguaVendida: number
   hieloVendido: number
+  botellonVendido: number
+  bolsaAguaVendida: number
+  bolsaHieloVendida: number
   totalGastos: number
   produccion: {
     prodAgua: number
@@ -73,7 +79,7 @@ export default function CierrePage() {
   }
 
   const calcularNetoCaja = () => {
-    const totalCobros = (data?.efectivo || 0) + (data?.nequi || 0) + (data?.daviplata || 0)
+    const totalCobros = (data?.efectivo || 0) + (data?.transferencia || 0) + (data?.nequi || 0) + (data?.daviplata || 0) + (data?.bono || 0)
     return baseDia + totalCobros - (data?.totalGastos || 0) - comisiones
   }
 
@@ -105,10 +111,13 @@ export default function CierrePage() {
         cobrado: data?.cobrado || 0,
         fiado: data?.fiado || 0,
         efectivo: data?.efectivo || 0,
+        transferencia: data?.transferencia || 0,
         nequi: data?.nequi || 0,
         daviplata: data?.daviplata || 0,
+        bono: data?.bono || 0,
         baseDia,
         comisiones,
+        salarios: 0,
         gastos: data?.totalGastos || 0,
         stockIniAgua,
         prodAgua,
@@ -125,13 +134,13 @@ export default function CierrePage() {
       })
       const json = await res.json()
       if (json.success) {
-        alert('Día cerrado correctamente')
+        toast.success('Día cerrado correctamente')
         router.push('/')
       } else {
-        alert('Error al cerrar')
+        toast.error('Error al cerrar')
       }
     } catch (e) {
-      alert('Error al cerrar')
+      toast.error('Error al cerrar')
     } finally {
       setCerrando(false)
     }
@@ -151,12 +160,7 @@ export default function CierrePage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Cierre del Día</h1>
-        <span className="text-gray-500">
-          {new Date().toLocaleDateString('es-CO')}
-        </span>
-      </div>
+      <h1 className="text-2xl font-bold">Cierre del Día</h1>
 
       {/* Preview del día */}
       <div className="bg-white rounded-lg shadow p-4">
@@ -184,10 +188,14 @@ export default function CierrePage() {
       {/* Métodos de pago */}
       <div className="bg-white rounded-lg shadow p-4">
         <h2 className="text-lg font-semibold mb-3">Cobros por Método</h2>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <div>
             <div className="text-sm text-gray-500">Efectivo</div>
             <div className="text-lg font-medium">{formatMoney(data?.efectivo || 0)}</div>
+          </div>
+          <div>
+            <div className="text-sm text-gray-500">Transferencia</div>
+            <div className="text-lg font-medium">{formatMoney(data?.transferencia || 0)}</div>
           </div>
           <div>
             <div className="text-sm text-gray-500">Nequi</div>
@@ -196,6 +204,10 @@ export default function CierrePage() {
           <div>
             <div className="text-sm text-gray-500">Daviplata</div>
             <div className="text-lg font-medium">{formatMoney(data?.daviplata || 0)}</div>
+          </div>
+          <div>
+            <div className="text-sm text-gray-500">Bono</div>
+            <div className="text-lg font-medium">{formatMoney(data?.bono || 0)}</div>
           </div>
         </div>
       </div>
@@ -286,6 +298,10 @@ export default function CierrePage() {
             <span>{formatMoney(data?.efectivo || 0)}</span>
           </div>
           <div className="flex justify-between">
+            <span className="text-gray-600">+ Transferencia</span>
+            <span>{formatMoney(data?.transferencia || 0)}</span>
+          </div>
+          <div className="flex justify-between">
             <span className="text-gray-600">+ Nequi</span>
             <span>{formatMoney(data?.nequi || 0)}</span>
           </div>
@@ -294,8 +310,14 @@ export default function CierrePage() {
             <span>{formatMoney(data?.daviplata || 0)}</span>
           </div>
           <div className="flex justify-between">
+            <span className="text-gray-600">+ Bono</span>
+            <span>{formatMoney(data?.bono || 0)}</span>
+          </div>
+          <div className="flex justify-between">
             <span className="text-gray-600">- Gastos</span>
-            <span className="text-red-600">-{formatMoney(data?.totalGastos || 0)}</span>
+            <span className={data?.totalGastos && data.totalGastos > 0 ? 'text-red-600' : ''}>
+              {data?.totalGastos && data.totalGastos > 0 ? '-' : ''}{formatMoney(data?.totalGastos || 0)}
+            </span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-600">- Comisiones</span>

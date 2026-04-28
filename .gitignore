@@ -40,3 +40,23 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .worktrees/
+
+# databases
+*.db
+*.sqlite
+*.sqlite3
+prisma/dev.db
+prisma/migrations/dev/
+
+# test artifacts
+/playwright-report
+/test-results
+/playwright/.cache
+
+# logs
+*.log
+
+# editor
+.vscode/
+.idea/
+

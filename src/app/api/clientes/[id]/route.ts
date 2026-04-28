@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
+import { ClienteUpdateSchema } from '@/lib/validators'
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
@@ -28,9 +29,13 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   const { id } = await params
   try {
     const body = await request.json()
+    const parsed = ClienteUpdateSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+    }
     const cliente = await prisma.cliente.update({
       where: { id },
-      data: body,
+      data: parsed.data,
     })
     return NextResponse.json({ success: true, cliente })
   } catch (error) {

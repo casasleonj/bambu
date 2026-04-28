@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuth } from '@/lib/auth-check'
+import { requireAuth, requireRole } from '@/lib/auth-check'
 
 export async function GET() {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
+  const roleCheck = await requireRole(['ADMIN', 'CONTADOR'])
+  if (roleCheck instanceof Response) return roleCheck
 
   try {
     const facturas = await prisma.factura.findMany({
@@ -19,7 +21,7 @@ export async function GET() {
       take: 100,
     })
 
-    const totalCartera = facturas.reduce((sum, f) => sum + f.saldo, 0)
+    const totalCartera = facturas.reduce((sum, f) => sum + Number(f.saldo), 0)
 
     return NextResponse.json({ facturas, totalCartera })
   } catch (error) {

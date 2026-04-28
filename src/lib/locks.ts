@@ -8,6 +8,10 @@ const LOCK_IDS = {
   COMPRA: 5,
 } as const;
 
+/**
+ * PostgreSQL advisory lock for critical sections.
+ * Prevents race conditions on sequential number generation.
+ */
 export async function withAdvisoryLock<T>(
   lockName: keyof typeof LOCK_IDS,
   fn: () => Promise<T>

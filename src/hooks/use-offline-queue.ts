@@ -38,19 +38,28 @@ export function useOfflineQueue() {
   }
 
   const syncQueue = async () => {
+    const failed: QueueItem[] = []
     for (const item of queue) {
       try {
-        await fetch(item.endpoint, {
+        const res = await fetch(item.endpoint, {
           method: item.method,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(item.data),
         })
+        if (!res.ok) {
+          failed.push(item)
+        }
       } catch (e) {
         console.error('Sync failed', e)
+        failed.push(item)
       }
     }
-    setQueue([])
-    localStorage.removeItem('syncQueue')
+    setQueue(failed)
+    if (failed.length > 0) {
+      localStorage.setItem('syncQueue', JSON.stringify(failed))
+    } else {
+      localStorage.removeItem('syncQueue')
+    }
   }
 
   return { queue, addToQueue, syncQueue, isOnline }

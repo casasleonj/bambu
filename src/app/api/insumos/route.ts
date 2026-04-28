@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
     })
 
     if (conStock) {
-      insumos = insumos.filter(i => i.stock > 0)
+      insumos = insumos.filter(i => Number(i.stock) > 0)
     }
     if (alertOnly) {
       insumos = insumos.filter(i => i.stock <= i.stockMin)

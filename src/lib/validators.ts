@@ -15,9 +15,19 @@ export const PedidoCreateSchema = z.object({
       metodo: z.enum(['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA', 'BONO']),
       monto: z.coerce.number().positive(),
     })
-  ).min(1),
+  ),
   obs: z.string().max(500).optional(),
   fechaEntrega: z.string().optional(),
+});
+
+export const PedidoUpdateSchema = z.object({
+  estado: z.enum(['PENDIENTE', 'EN_RUTA', 'ENTREGADO', 'CANCELADO', 'ANULADO']).optional(),
+  embarqueId: z.string().optional().nullable(),
+  cAguaEnt: z.coerce.number().int().min(0).optional(),
+  cHieloEnt: z.coerce.number().int().min(0).optional(),
+  cBotellonEnt: z.coerce.number().int().min(0).optional(),
+  cBolsaAguaEnt: z.coerce.number().int().min(0).optional(),
+  cBolsaHieloEnt: z.coerce.number().int().min(0).optional(),
 });
 
 export const ClienteCreateSchema = z.object({
@@ -29,8 +39,8 @@ export const ClienteCreateSchema = z.object({
   barrio: z.string().max(100).optional(),
   direccion: z.string().max(200).optional(),
   frecuencia: z.string().max(20).optional(),
-  cadaNDias: z.coerce.number().int().min(1).optional(),
-  precioAguaPref: z.coerce.number().positive().optional(),
+  cadaNDias: z.coerce.number().int().min(0).optional().transform(v => v === 0 ? undefined : v),
+  precioAguaPref: z.coerce.number().min(0).optional().transform(v => v === 0 ? undefined : v),
   notas: z.string().max(500).optional(),
 });
 
@@ -96,9 +106,13 @@ export const CierreCreateSchema = z.object({
   cobrado: z.coerce.number().min(0),
   fiado: z.coerce.number().min(0),
   efectivo: z.coerce.number().min(0),
+  transferencia: z.coerce.number().min(0),
   nequi: z.coerce.number().min(0),
+  daviplata: z.coerce.number().min(0),
+  bono: z.coerce.number().min(0),
   baseDia: z.coerce.number().min(0),
   comisiones: z.coerce.number().min(0),
+  salarios: z.coerce.number().min(0),
   gastos: z.coerce.number().min(0),
   stockIniAgua: z.coerce.number().int().min(0),
   prodAgua: z.coerce.number().int().min(0),
@@ -120,6 +134,19 @@ export const EmbarqueCreateSchema = z.object({
   obs: z.string().max(500).optional(),
 });
 
+export const EmbarqueUpdateSchema = z.object({
+  estado: z.enum(['ABIERTO', 'CERRADO', 'CANCELADO']).optional(),
+  horaLlegada: z.string().optional(),
+  obs: z.string().max(500).optional(),
+  pedidoIds: z.array(z.string().min(1)).max(100).optional(),
+  pacasAgua: z.coerce.number().int().min(0).optional(),
+  pacasHielo: z.coerce.number().int().min(0).optional(),
+  devueltasAgua: z.coerce.number().int().min(0).optional(),
+  devueltasHielo: z.coerce.number().int().min(0).optional(),
+  rotasAgua: z.coerce.number().int().min(0).optional(),
+  rotasHielo: z.coerce.number().int().min(0).optional(),
+});
+
 export const FacturaCreateSchema = z.object({
   pedidoId: z.string().min(1),
   clienteId: z.string().min(1),
@@ -131,3 +158,20 @@ export const ProveedorCreateSchema = z.object({
   email: z.string().email().optional(),
   direccion: z.string().max(200).optional(),
 });
+
+export const TrabajadorCreateSchema = z.object({
+  nombre: z.string().min(1).max(100),
+  rol: z.enum(['SELLADOR', 'REPARTIDOR', 'ADMIN', 'CONTADOR']),
+  tipoPago: z.enum(['COMISION', 'FIJO']).optional(),
+  usaMoto: z.boolean().optional(),
+  comPacaAgua: z.coerce.number().min(0).optional(),
+  comPacaHielo: z.coerce.number().min(0).optional(),
+  salarioFijo: z.coerce.number().min(0).optional(),
+  telefono: z.string().max(20).optional(),
+});
+
+export const ClienteUpdateSchema = ClienteCreateSchema.partial();
+
+export const ProveedorUpdateSchema = ProveedorCreateSchema.partial();
+
+export const TrabajadorUpdateSchema = TrabajadorCreateSchema.partial();

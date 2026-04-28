@@ -5,7 +5,6 @@ generator client {
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
 }
 
 // ====================
@@ -14,9 +13,10 @@ datasource db {
 
 enum EstadoPedido {
   PENDIENTE
-  EMBARCADO
+  EN_RUTA
   ENTREGADO
   CANCELADO
+  ANULADO
 }
 
 enum MetodoPago {
@@ -25,6 +25,40 @@ enum MetodoPago {
   NEQUI
   DAVIPLATA
   BONO
+}
+
+enum RolUsuario {
+  ADMIN
+  ASISTENTE
+  CONTADOR
+}
+
+enum TipoPagoTrabajador {
+  COMISION
+  FIJO
+  MIXTO
+}
+
+enum EstadoNomina {
+  PENDIENTE
+  PAGADA
+}
+
+enum EstadoEmbarque {
+  ABIERTO
+  CERRADO
+}
+
+enum EstadoFactura {
+  EMITIDA
+  PAGADA
+  ANULADA
+}
+
+enum Turno {
+  MANANA
+  TARDE
+  NOCHE
 }
 
 // ====================
@@ -39,6 +73,20 @@ model User {
   activo    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // Ownership relations
+  clientesCreados      Cliente[]         @relation("ClienteCreador")
+  pedidosCreados      Pedido[]          @relation("PedidoCreador")
+  facturasCreadas     Factura[]         @relation("FacturaCreador")
+  embarquesCreados    Embarque[]        @relation("EmbarqueCreador")
+  gastosCreados       Gasto[]           @relation("GastoCreador")
+  produccionesCreadas Produccion[]      @relation("ProduccionCreador")
+  nominasCreadas      Nomina[]          @relation("NominaCreador")
+  comprasCreadas      CompraInsumo[]    @relation("CompraCreador")
+  insumosCreados      Insumo[]          @relation("InsumoCreador")
+  proveedoresCreados  Proveedor[]      @relation("ProveedorCreador")
+  trabajadoresCreados Trabajador[]      @relation("TrabajadorCreador")
+  rutasCreadas        Ruta[]            @relation("RutaCreador")
 }
 
 // ====================
@@ -47,6 +95,8 @@ model User {
 
 model Ruta {
   id        String   @id @default(cuid())
+  createdById String?
+  createdBy  User?    @relation("RutaCreador", fields: [createdById], references: [id])
   nombre    String   // "Norte", "Centro", "Sur"
   dias      String?  // "LUN,MIE,VIE" - días de entrega
   activo   Boolean  @default(true)
@@ -55,6 +105,9 @@ model Ruta {
   embarques Embarque[]
 
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([createdById])
 }
 
 // ====================
@@ -63,7 +116,9 @@ model Ruta {
 
 model Cliente {
   id            String   @id @default(cuid())
-  
+  createdById  String?
+  createdBy    User?    @relation("ClienteCreador", fields: [createdById], references: [id])
+
   // Datos básicos
   nombre        String
   apellido     String?
@@ -77,7 +132,7 @@ model Cliente {
   nombreNegocio String?
   tipoNegocio   String?
   horaApertura String?
-  precioAguaPref Float?
+  precioAguaPref Decimal? @db.Decimal(10, 2)
 
   // Ubicación - FK a Ruta
   rutaId       String?
@@ -101,14 +156,15 @@ model Cliente {
   notas        String?
   activo      Boolean  @default(true)
 
-  pedidos     Pedido[]
-  facturas    Factura[]
-  abonos      Abono[]
+  pedidos       Pedido[]
+  facturas      Factura[]
+  abonos        Abono[]
 
   createdAt   DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
   @@index([rutaId])
+  @@index([createdById])
 }
 
 // ====================
@@ -117,17 +173,19 @@ model Cliente {
 
 model Trabajador {
   id            String   @id @default(cuid())
+  createdById  String?
+  createdBy    User?    @relation("TrabajadorCreador", fields: [createdById], references: [id])
   nombre        String
-  rol           String   // SELLADOR, REPARTIDOR, ADMIN, CONTADOR
-  tipoPago      String   @default("COMISION")
+  rol           String   // SELLADOR, REPARTIDOR, ADMIN, CONTADOR (keeping as String for flexibility)
+  tipoPago      TipoPagoTrabajador @default(COMISION)
 
   usaMoto       Boolean  @default(false)
-  comPacaAgua   Float    @default(200)
-  comPacaHielo  Float    @default(200)
-  salarioFijo  Float    @default(0)
+  comPacaAgua   Decimal  @default(200) @db.Decimal(10, 2)
+  comPacaHielo  Decimal  @default(200) @db.Decimal(10, 2)
+  salarioFijo   Decimal  @default(0)   @db.Decimal(10, 2)
 
-  deudaReposAgua  Float    @default(0)
-  deudaReposHielo Float   @default(0)
+  deudaReposAgua  Decimal  @default(0) @db.Decimal(10, 2)
+  deudaReposHielo Decimal  @default(0) @db.Decimal(10, 2)
   telefono      String?
   activo       Boolean  @default(true)
 
@@ -137,6 +195,8 @@ model Trabajador {
 
   createdAt  DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([createdById])
 }
 
 // ====================
@@ -145,24 +205,28 @@ model Trabajador {
 
 model Nomina {
   id                String     @id @default(cuid())
+  createdById      String?
+  createdBy        User?      @relation("NominaCreador", fields: [createdById], references: [id])
   trabajadorId      String
   trabajador       Trabajador @relation(fields: [trabajadorId], references: [id])
 
   fechaInicio       DateTime
   fechaFin         DateTime
 
-  comEntregasAgua  Float     @default(0)
-  comEntregasHielo Float    @default(0)
-  totalComisiones Float     @default(0)
+  comEntregasAgua  Decimal   @default(0) @db.Decimal(10, 2)
+  comEntregasHielo Decimal   @default(0) @db.Decimal(10, 2)
+  totalComisiones  Decimal   @default(0) @db.Decimal(10, 2)
 
-  salario        Float     @default(0)
-  total         Float
+  salario          Decimal   @default(0) @db.Decimal(10, 2)
+  total            Decimal   @db.Decimal(10, 2)
 
   estado        String    @default("PENDIENTE")
   fechaPago    DateTime?
 
   createdAt    DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  updatedAt    DateTime @updatedAt
+
+  @@index([createdById])
 }
 
 // ====================
@@ -172,6 +236,8 @@ model Nomina {
 model Pedido {
   id          String    @id @default(cuid())
   numero      Int
+  createdById String?
+  createdBy  User?     @relation("PedidoCreador", fields: [createdById], references: [id])
   clienteId   String
   cliente    Cliente   @relation(fields: [clienteId], references: [id])
   embarqueId String?
@@ -186,28 +252,28 @@ model Pedido {
   // Productos embebidos (no tabla separada)
   cAguaPed       Int     @default(0)
   cAguaEnt       Int     @default(0)
-  precioAgua     Float   @default(0)
+  precioAgua     Decimal @default(0) @db.Decimal(10, 2)
 
   cHieloPed      Int     @default(0)
   cHieloEnt     Int     @default(0)
-  precioHielo   Float   @default(0)
+  precioHielo   Decimal @default(0) @db.Decimal(10, 2)
 
   cBotellonPed   Int     @default(0)
   cBotellonEnt  Int     @default(0)
-  precioBotellon Float   @default(0)
+  precioBotellon Decimal @default(0) @db.Decimal(10, 2)
 
   cBolsaAguaPed  Int     @default(0)
   cBolsaAguaEnt Int     @default(0)
-  precioBolsaAgua Float  @default(0)
+  precioBolsaAgua Decimal @default(0) @db.Decimal(10, 2)
 
   cBolsaHieloPed Int    @default(0)
   cBolsaHieloEnt Int    @default(0)
-  precioBolsaHielo Float @default(0)
+  precioBolsaHielo Decimal @default(0) @db.Decimal(10, 2)
 
   // Totales
-  total        Float    @default(0)
-  totalPagado  Float    @default(0)
-  saldo       Float    @default(0)
+  total        Decimal  @default(0) @db.Decimal(10, 2)
+  totalPagado  Decimal  @default(0) @db.Decimal(10, 2)
+  saldo        Decimal  @default(0) @db.Decimal(10, 2)
 
   repartidor   String?
   obs         String?
@@ -230,6 +296,7 @@ model Pedido {
   @@index([clienteId])
   @@index([fecha])
   @@index([estado])
+  @@index([createdById])
 }
 
 // ====================
@@ -240,7 +307,7 @@ model Pago {
   id        String   @id @default(cuid())
   pedidoId  String
   pedido    Pedido   @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
-  metodo    MetodoPago
+  metodo    String   // MetodoPago enum value
   monto     Decimal  @db.Decimal(10, 2)
   createdAt DateTime @default(now())
 
@@ -253,6 +320,8 @@ model Pago {
 
 model Embarque {
   id            String     @id @default(cuid())
+  createdById  String?
+  createdBy    User?      @relation("EmbarqueCreador", fields: [createdById], references: [id])
   numero        Int
   fecha         DateTime   @default(now())
   trabajadorId String
@@ -276,6 +345,8 @@ model Embarque {
 
   createdAt  DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([createdById])
 }
 
 // ====================
@@ -284,6 +355,8 @@ model Embarque {
 
 model Factura {
   id          String    @id @default(cuid())
+  createdById String?
+  createdBy  User?     @relation("FacturaCreador", fields: [createdById], references: [id])
   numero      String    @unique
   clienteId   String
   cliente    Cliente   @relation(fields: [clienteId], references: [id])
@@ -291,14 +364,14 @@ model Factura {
   pedido     Pedido    @relation(fields: [pedidoId], references: [id])
 
   fecha       DateTime   @default(now())
-  subtotal    Float
-  total      Float
+  subtotal    Decimal  @db.Decimal(10, 2)
+  total       Decimal  @db.Decimal(10, 2)
 
   estado     String    @default("EMITIDA")
   notaCredito String?
 
-  montoPagado Float    @default(0)
-  saldo     Float
+  montoPagado Decimal  @default(0) @db.Decimal(10, 2)
+  saldo       Decimal  @db.Decimal(10, 2)
 
   abonos    Abono[]
 
@@ -308,6 +381,7 @@ model Factura {
   @@index([pedidoId])
   @@index([clienteId])
   @@index([estado])
+  @@index([createdById])
 }
 
 // ====================
@@ -321,7 +395,7 @@ model Abono {
   factura    Factura  @relation(fields: [facturaId], references: [id])
   clienteId  String
   cliente   Cliente  @relation(fields: [clienteId], references: [id])
-  monto     Float
+  monto     Decimal  @db.Decimal(10, 2)
   metodoPago String
   fecha     DateTime @default(now())
 
@@ -334,6 +408,8 @@ model Abono {
 
 model Produccion {
   id             String     @id @default(cuid())
+  createdById    String?
+  createdBy      User?      @relation("ProduccionCreador", fields: [createdById], references: [id])
   fecha          DateTime    @default(now())
   turno          String     // MANANA, TARDE, NOCHE
   trabajadorId  String
@@ -356,13 +432,16 @@ model Produccion {
   stockFinAgua Int        @default(0)
   stockFinHielo Int      @default(0)
 
-  comSelladorAgua Float   @default(0)
-  comSelladorHielo Float  @default(0)
-  comSellTotal   Float    @default(0)
+  comSelladorAgua  Decimal @default(0) @db.Decimal(10, 2)
+  comSelladorHielo Decimal @default(0) @db.Decimal(10, 2)
+  comSellTotal     Decimal @default(0) @db.Decimal(10, 2)
 
   obs         String?
 
   createdAt  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([createdById])
 }
 
 // ====================
@@ -371,6 +450,8 @@ model Produccion {
 
 model Gasto {
   id           String   @id @default(cuid())
+  createdById  String?
+  createdBy    User?    @relation("GastoCreador", fields: [createdById], references: [id])
   fecha        DateTime @default(now())
   categoria   String
   descripcion String
@@ -379,6 +460,9 @@ model Gasto {
   notas       String?
 
   createdAt  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([createdById])
 }
 
 // ====================
@@ -387,6 +471,8 @@ model Gasto {
 
 model Proveedor {
   id         String     @id @default(cuid())
+  createdById String?
+  createdBy  User?      @relation("ProveedorCreador", fields: [createdById], references: [id])
   nombre     String
   telefono   String?
   email     String?
@@ -398,6 +484,8 @@ model Proveedor {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([createdById])
 }
 
 // ====================
@@ -406,11 +494,13 @@ model Proveedor {
 
 model Insumo {
   id          String     @id @default(cuid())
+  createdById String?
+  createdBy  User?      @relation("InsumoCreador", fields: [createdById], references: [id])
   nombre     String
   unidad    String
-  stock     Float      @default(0)
-  stockMin  Float      @default(0)
-  precioUnit Float     @default(0)
+  stock      Decimal    @default(0) @db.Decimal(10, 2)
+  stockMin   Decimal    @default(0) @db.Decimal(10, 2)
+  precioUnit Decimal    @default(0) @db.Decimal(10, 2)
 
   proveedorId String?
   proveedor  Proveedor? @relation(fields: [proveedorId], references: [id])
@@ -419,6 +509,8 @@ model Insumo {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([createdById])
 }
 
 // ====================
@@ -427,16 +519,21 @@ model Insumo {
 
 model CompraInsumo {
   id           String    @id @default(cuid())
+  createdById  String?
+  createdBy    User?      @relation("CompraCreador", fields: [createdById], references: [id])
   numero      String    @unique
   proveedorId String
   proveedor  Proveedor @relation(fields: [proveedorId], references: [id])
   insumoId    String
   insumo     Insumo   @relation(fields: [insumoId], references: [id])
-  cantidad   Float
-  montoTotal Float
+  cantidad   Decimal  @db.Decimal(10, 2)
+  montoTotal Decimal  @db.Decimal(10, 2)
   fecha      DateTime @default(now())
 
   createdAt  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([createdById])
 }
 
 // ====================
@@ -459,7 +556,7 @@ model CierreDia {
   fecha         DateTime @unique
 
   numPedidos   Int     @default(0)
-  totalVentas  Float   @default(0)
+  totalVentas  Decimal @default(0) @db.Decimal(10, 2)
 
   aguaVendida    Int     @default(0)
   hieloVendido  Int     @default(0)
@@ -467,17 +564,18 @@ model CierreDia {
   bolsaAguaVendida Int  @default(0)
   bolsaHieloVendida Int @default(0)
 
-  cobrado       Float   @default(0)
-  fiado         Float   @default(0)
-  efectivo     Float   @default(0)
-  nequi        Float   @default(0)
-  daviplata    Float   @default(0)
-  transferencia Float   @default(0)
+  cobrado       Decimal @default(0) @db.Decimal(10, 2)
+  fiado         Decimal @default(0) @db.Decimal(10, 2)
+  efectivo      Decimal @default(0) @db.Decimal(10, 2)
+  nequi         Decimal @default(0) @db.Decimal(10, 2)
+  daviplata     Decimal @default(0) @db.Decimal(10, 2)
+  transferencia Decimal @default(0) @db.Decimal(10, 2)
+  bono          Decimal @default(0) @db.Decimal(10, 2)
 
-  baseDia      Float    @default(0)
-  comisiones  Float    @default(0)
-  salarios   Float    @default(0)
-  gastos     Float    @default(0)
+  baseDia       Decimal @default(0) @db.Decimal(10, 2)
+  comisiones    Decimal @default(0) @db.Decimal(10, 2)
+  salarios      Decimal @default(0) @db.Decimal(10, 2)
+  gastos        Decimal @default(0) @db.Decimal(10, 2)
 
   stockIniAgua Int      @default(0)
   prodAgua    Int      @default(0)
@@ -486,7 +584,7 @@ model CierreDia {
   prodHielo    Int      @default(0)
   stockFinHielo Int     @default(0)
 
-  netoCaja    Float    @default(0)
+  netoCaja    Decimal  @default(0) @db.Decimal(10, 2)
 
   createdAt   DateTime @default(now())
 }

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 
 interface StockInicial {
   stockIniAgua: number
@@ -18,13 +19,14 @@ interface FormData {
   obs: string
 }
 
-const TRABAJADORES = [
-  { id: '1', nombre: 'Juan Pérez' },
-  { id: '2', nombre: 'María López' },
-  { id: '3', nombre: 'Carlos García' },
-]
-
-const COMISION_POR_UNIDAD = 300
+interface TrabajadorOption {
+  id: string
+  nombre: string
+  comPacaAgua: number
+  comPacaHielo: number
+  tipoPago: string
+  salarioFijo: number
+}
 
 export default function ProduccionPage() {
   const router = useRouter()
@@ -32,6 +34,7 @@ export default function ProduccionPage() {
   const [stockInicial, setStockInicial] = useState<StockInicial>({ stockIniAgua: 0, stockIniHielo: 0 })
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+  const [trabajadores, setTrabajadores] = useState<TrabajadorOption[]>([])
 
   const [formData, setFormData] = useState<FormData>({
     trabajadorId: '',
@@ -43,9 +46,22 @@ export default function ProduccionPage() {
     obs: '',
   })
 
+  const selectedTrabajador = trabajadores.find(t => t.id === formData.trabajadorId)
+
   useEffect(() => {
     fetchStockInicial()
+    fetchTrabajadores()
   }, [])
+
+  const fetchTrabajadores = async () => {
+    try {
+      const res = await fetch('/api/trabajadores')
+      const data = await res.json()
+      setTrabajadores(data.trabajadores || [])
+    } catch (error) {
+      console.error('Error al obtener trabajadores:', error)
+    }
+  }
 
   const fetchStockInicial = async () => {
     try {
@@ -68,11 +84,13 @@ export default function ProduccionPage() {
   const prodHielo = Math.round((formData.conteoAHielo + formData.conteoBHielo) / 2)
   const stockFinAgua = stockInicial.stockIniAgua + prodAgua
   const stockFinHielo = stockInicial.stockIniHielo + prodHielo
-  const comisionTotal = (prodAgua + prodHielo) * COMISION_POR_UNIDAD
+  const comAgua = prodAgua * (selectedTrabajador?.comPacaAgua || 200)
+  const comHielo = prodHielo * (selectedTrabajador?.comPacaHielo || 200)
+  const comisionTotal = comAgua + comHielo
 
   const handleSubmit = async () => {
     if (!formData.trabajadorId) {
-      alert('Selecciona un trabajador')
+      toast.error('Selecciona un trabajador')
       return
     }
 
@@ -84,7 +102,7 @@ export default function ProduccionPage() {
         body: JSON.stringify(formData),
       })
       if (res.ok) {
-        alert('Producción registrada correctamente')
+        toast.success('Producción registrada correctamente')
         router.refresh()
         setStep(1)
         setFormData({
@@ -98,7 +116,7 @@ export default function ProduccionPage() {
         })
       }
     } catch (error) {
-      alert('Error al registrar')
+      toast.error('Error al registrar')
     } finally {
       setSubmitting(false)
     }
@@ -244,7 +262,7 @@ export default function ProduccionPage() {
             className="p-2 border rounded-lg"
           >
             <option value="">Seleccionar...</option>
-            {TRABAJADORES.map((t) => (
+            {trabajadores.map((t) => (
               <option key={t.id} value={t.id}>{t.nombre}</option>
             ))}
           </select>
@@ -283,7 +301,7 @@ export default function ProduccionPage() {
           <span className="text-2xl font-bold text-purple-700 ml-2">${comisionTotal.toLocaleString()}</span>
         </p>
         <p className="text-xs text-center text-purple-500 mt-1">
-          ({(prodAgua + prodHielo)} × ${COMISION_POR_UNIDAD})
+          Agua: {prodAgua} × ${selectedTrabajador?.comPacaAgua || 200} + Hielo: {prodHielo} × ${selectedTrabajador?.comPacaHielo || 200}
         </p>
       </div>
 

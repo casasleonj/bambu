@@ -13,7 +13,8 @@ interface Factura {
   total: number
   saldo: number
   estado: string
-  cliente: {
+  cliente?: {
+    id: string
     nombre: string
     telefono: string
   }
@@ -82,10 +83,7 @@ export default function FacturasPage() {
 
   return (
     <div className="p-4 space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">📋 Facturas</h1>
-        <Button variant="outline" onClick={fetchFacturas}>🔄 Refrescar</Button>
-      </div>
+      <h1 className="text-2xl font-bold">📋 Facturas</h1>
 
       {facturas.length === 0 ? (
         <div className="text-center py-8 text-muted-foreground">
@@ -107,7 +105,7 @@ export default function FacturasPage() {
                 <div className="space-y-1 text-sm">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Cliente:</span>
-                    <span>{(factura as any).cliente?.nombre || 'N/A'}</span>
+                    <span>{(factura.cliente?.nombre || 'N/A')}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Fecha:</span>
@@ -143,13 +141,14 @@ export default function FacturasPage() {
                       >
                         <option value="EFECTIVO">Efectivo</option>
                         <option value="TRANSFERENCIA">Transferencia</option>
-                        <option value="NEQUI">NEQUI</option>
-                        <option value="DAVIPLATA">DAVIPLATA</option>
+                        <option value="NEQUI">Nequi</option>
+                        <option value="DAVIPLATA">Daviplata</option>
+                        <option value="BONO">Bono</option>
                       </select>
                     </div>
                     <div className="flex gap-2">
                       <Button
-                        onClick={() => registrarAbono(factura.id, (factura as any).cliente?.id)}
+                        onClick={() => registrarAbono(factura.id, factura.cliente?.id || '')}
                         disabled={loading}
                       >
                         ✅ Confirmar

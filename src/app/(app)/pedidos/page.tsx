@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { toast } from 'sonner'
 import { formatCurrency } from '@/lib/utils'
 import { PedidoForm } from '@/components/pedido-form'
 
@@ -13,8 +14,22 @@ interface Pedido {
   zonaCli: string
   tipo: string
   estado: string
+  cAguaPed: number
+  cHieloPed: number
+  cBotellonPed: number
+  cBolsaAguaPed: number
+  cBolsaHieloPed: number
   cAguaEnt: number
   cHieloEnt: number
+  cBotellonEnt: number
+  cBolsaAguaEnt: number
+  cBolsaHieloEnt: number
+  precioAgua: number
+  precioHielo: number
+  precioBotellon: number
+  precioBolsaAgua: number
+  precioBolsaHielo: number
+  totalPagado: number
   total: number
   saldo: number
   fecha: string
@@ -37,6 +52,8 @@ export default function PedidosPage() {
   const [filtroEstado, setFiltroEstado] = useState('TODOS')
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
+  const [selectedPedido, setSelectedPedido] = useState<Pedido | null>(null)
+  const [showDetailModal, setShowDetailModal] = useState(false)
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [precios, setPrecios] = useState<Record<string, number>>({})
 
@@ -94,11 +111,11 @@ export default function PedidosPage() {
         fetchPedidos()
       } else {
         const err = await res.json()
-        alert(err.error?.formErrors?.[0] || 'Error creando pedido')
+        toast.error(err.error?.formErrors?.[0] || 'Error creando pedido')
       }
     } catch (error) {
       console.error('Error creating pedido:', error)
-      alert('Error creando pedido')
+      toast.error('Error creando pedido')
     }
   }
 
@@ -127,6 +144,22 @@ export default function PedidosPage() {
         {estado}
       </span>
     )
+  }
+
+  async function cambiarEstado(id: string, nuevoEstado: string) {
+    try {
+      const res = await fetch(`/api/pedidos/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estado: nuevoEstado }),
+      })
+      if (res.ok) {
+        setShowDetailModal(false)
+        fetchPedidos()
+      }
+    } catch (error) {
+      console.error('Error cambiando estado:', error)
+    }
   }
 
   if (loading) {
@@ -228,8 +261,11 @@ export default function PedidosPage() {
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Cliente</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Zona</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Tipo</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Agua</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Ag 19L</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Hielo</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Bot</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">B.Ag</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">B.Hi</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Total</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Estado</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Acciones</th>
@@ -238,7 +274,7 @@ export default function PedidosPage() {
             <tbody className="divide-y divide-gray-100">
               {pedidosFiltrados.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan={12} className="px-4 py-8 text-center text-gray-500">
                     No hay pedidos
                   </td>
                 </tr>
@@ -256,16 +292,27 @@ export default function PedidosPage() {
                         {pedido.tipo}
                       </span>
                     </td>
-                    <td className="px-4 py-3">{pedido.cAguaEnt}</td>
-                    <td className="px-4 py-3">{pedido.cHieloEnt}</td>
+                    <td className="px-4 py-3">{pedido.cAguaPed}</td>
+                    <td className="px-4 py-3">{pedido.cHieloPed}</td>
+                    <td className="px-4 py-3">{pedido.cBotellonPed}</td>
+                    <td className="px-4 py-3">{pedido.cBolsaAguaPed}</td>
+                    <td className="px-4 py-3">{pedido.cBolsaHieloPed}</td>
                     <td className="px-4 py-3 font-semibold text-gray-800">
                       {formatCurrency(pedido.total)}
                     </td>
                     <td className="px-4 py-3">{getEstadoBadge(pedido.estado)}</td>
                     <td className="px-4 py-3">
-                      <button className="text-blue-600 hover:text-blue-800 text-sm">
-                        Ver
-                      </button>
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => {
+                            setSelectedPedido(pedido)
+                            setShowDetailModal(true)
+                          }}
+                          className="text-blue-600 hover:text-blue-800 text-sm"
+                        >
+                          Ver
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -274,6 +321,58 @@ export default function PedidosPage() {
           </table>
         </div>
       </div>
+
+      {showDetailModal && selectedPedido && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-4 border-b flex justify-between items-center">
+              <h2 className="text-xl font-bold">Pedido #{selectedPedido.numero}</h2>
+              <button onClick={() => setShowDetailModal(false)} className="text-gray-500 hover:text-gray-700">✕</button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div><span className="text-gray-500">Cliente:</span> {selectedPedido.nombreCli}</div>
+                <div><span className="text-gray-500">Teléfono:</span> {selectedPedido.telefonoCli}</div>
+                <div><span className="text-gray-500">Tipo:</span> {selectedPedido.tipo}</div>
+                <div><span className="text-gray-500">Estado:</span> {getEstadoBadge(selectedPedido.estado)}</div>
+                <div><span className="text-gray-500">Fecha:</span> {new Date(selectedPedido.fecha).toLocaleDateString('es-CO')}</div>
+                <div><span className="text-gray-500">Total:</span> {formatCurrency(selectedPedido.total)}</div>
+              </div>
+              <div className="border-t pt-2">
+                <h3 className="font-medium mb-1">Productos</h3>
+                <div className="text-sm space-y-1">
+                  {selectedPedido.cAguaEnt > 0 && <div>Agua 19L: {selectedPedido.cAguaEnt} × {formatCurrency(selectedPedido.precioAgua)}</div>}
+                  {selectedPedido.cHieloEnt > 0 && <div>Hielo: {selectedPedido.cHieloEnt} × {formatCurrency(selectedPedido.precioHielo)}</div>}
+                  {selectedPedido.cBotellonEnt > 0 && <div>Botellón: {selectedPedido.cBotellonEnt} × {formatCurrency(selectedPedido.precioBotellon)}</div>}
+                  {selectedPedido.cBolsaAguaEnt > 0 && <div>Bolsa Agua: {selectedPedido.cBolsaAguaEnt} × {formatCurrency(selectedPedido.precioBolsaAgua)}</div>}
+                  {selectedPedido.cBolsaHieloEnt > 0 && <div>Bolsa Hielo: {selectedPedido.cBolsaHieloEnt} × {formatCurrency(selectedPedido.precioBolsaHielo)}</div>}
+                </div>
+              </div>
+              <div className="border-t pt-2 grid grid-cols-2 gap-2 text-sm">
+                <div><span className="text-gray-500">Pagado:</span> {formatCurrency(selectedPedido.totalPagado)}</div>
+                <div><span className="text-gray-500">Saldo:</span> <span className={selectedPedido.saldo > 0 ? 'text-red-600' : 'text-green-600'}>{formatCurrency(selectedPedido.saldo)}</span></div>
+              </div>
+              <div className="border-t pt-3">
+                <h3 className="font-medium mb-2">Cambiar Estado</h3>
+                <div className="flex flex-wrap gap-2">
+                  {selectedPedido.estado !== 'PENDIENTE' && (
+                    <button onClick={() => cambiarEstado(selectedPedido.id, 'PENDIENTE')} className="px-3 py-1 text-xs bg-yellow-100 text-yellow-800 rounded-full hover:bg-yellow-200">Pendiente</button>
+                  )}
+                  {selectedPedido.estado !== 'EN_RUTA' && (
+                    <button onClick={() => cambiarEstado(selectedPedido.id, 'EN_RUTA')} className="px-3 py-1 text-xs bg-blue-100 text-blue-800 rounded-full hover:bg-blue-200">En Ruta</button>
+                  )}
+                  {selectedPedido.estado !== 'ENTREGADO' && (
+                    <button onClick={() => cambiarEstado(selectedPedido.id, 'ENTREGADO')} className="px-3 py-1 text-xs bg-green-100 text-green-800 rounded-full hover:bg-green-200">Entregado</button>
+                  )}
+                  {selectedPedido.estado !== 'CANCELADO' && (
+                    <button onClick={() => cambiarEstado(selectedPedido.id, 'CANCELADO')} className="px-3 py-1 text-xs bg-gray-100 text-gray-800 rounded-full hover:bg-gray-200">Cancelado</button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

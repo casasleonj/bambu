@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuth } from '@/lib/auth-check'
+import { requireAuth, requireRole } from '@/lib/auth-check'
 import { z } from 'zod'
 
 const PrecioCreateSchema = z.object({
@@ -36,6 +36,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
+  const roleCheck = await requireRole('ADMIN')
+  if (roleCheck instanceof Response) return roleCheck
 
   try {
     const body = await request.json()

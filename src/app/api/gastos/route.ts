@@ -1,28 +1,42 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuth } from '@/lib/auth-check'
+import { requireAuth, requireRole } from '@/lib/auth-check'
 import { GastoCreateSchema } from '@/lib/validators'
+import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
   const { searchParams } = new URL(request.url)
   const fecha = searchParams.get('fecha')
+  const pagination = getPaginationParams(searchParams)
 
   try {
-    const gastos = await prisma.gasto.findMany({
-      where: fecha
-        ? {
-            fecha: {
-              gte: new Date(new Date(fecha).setHours(0, 0, 0, 0)),
-              lt: new Date(new Date(fecha).setHours(23, 59, 59, 999)),
-            },
-          }
-        : undefined,
-      orderBy: { fecha: 'desc' },
-    })
+    const where: any = fecha
+      ? {
+          fecha: {
+            gte: new Date(new Date(fecha).setHours(0, 0, 0, 0)),
+            lt: new Date(new Date(fecha).setHours(23, 59, 59, 999)),
+          },
+        }
+      : {}
 
-    return NextResponse.json({ gastos })
+    const prismaPagination = getPrismaPagination(pagination)
+
+    const [gastos, total] = await Promise.all([
+      prisma.gasto.findMany({
+        where,
+        orderBy: { fecha: 'desc' },
+        ...prismaPagination,
+      }),
+      prisma.gasto.count({ where }),
+    ])
+
+    return NextResponse.json(
+      pagination.all
+        ? { gastos, total }
+        : buildPaginationResponse(gastos, total, pagination.page!, pagination.pageSize!)
+    )
   } catch (error) {
     console.error('Error fetching gastos:', error)
     return NextResponse.json({ error: 'Error fetching gastos' }, { status: 500 })
@@ -32,6 +46,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
+  const roleCheck = await requireRole(['ADMIN', 'CONTADOR'])
+  if (roleCheck instanceof Response) return roleCheck
   try {
     const body = await request.json()
     const parsed = GastoCreateSchema.safeParse(body)

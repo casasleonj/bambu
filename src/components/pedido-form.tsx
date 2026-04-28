@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -16,8 +17,29 @@ interface Cliente {
 
 type ProductoId = 'agua19L' | 'hielo' | 'botellonFabrica' | 'botellonDomicilio' | 'bolsaAgua' | 'bolsaHielo'
 
+interface ProductosPedido {
+  agua19L: number
+  hielo: number
+  botellon: number
+  bolsaAgua: number
+  bolsaHielo: number
+}
+
+interface PagoPedido {
+  metodo: string
+  monto: number
+}
+
+interface PedidoFormData {
+  clienteId: string
+  productos: ProductosPedido
+  pagos: PagoPedido[]
+  obs: string
+  total: number
+}
+
 interface PedidoFormProps {
-  onSubmit?: (pedido: any) => void
+  onSubmit?: (pedido: PedidoFormData) => void
   clientes?: Cliente[]
   precios?: Record<string, number>
 }
@@ -67,7 +89,16 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
     if (productoId === 'agua19L' && clienteSeleccionado?.precioAguaPref) {
       return clienteSeleccionado.precioAguaPref
     }
-    return precios[info.precioKey] || 0
+    // Fallback defaults if no prices configured in DB yet
+    const defaults: Record<string, number> = {
+      'AGUA_GALON': 6500,
+      'HIELO_5KG': 8000,
+      'BOTELLON_FABRICA': 7500,
+      'BOTELLON_DOMICILIO': 10000,
+      'BOLSA_AGUA': 2500,
+      'BOLSA_HIELO': 3000,
+    }
+    return precios[info.precioKey] || defaults[info.precioKey] || 0
   }
 
   const calcularTotal = (): number => {
@@ -108,15 +139,11 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!clienteSeleccionado) {
-      alert('Selecciona un cliente')
+      toast.error('Selecciona un cliente')
       return
     }
     if (total <= 0) {
-      alert('El pedido debe tener al menos un producto')
-      return
-    }
-    if (pagos.length === 0 || pagos.every((p) => p.monto <= 0)) {
-      alert('Debe registrar al menos un pago')
+      toast.error('El pedido debe tener al menos un producto')
       return
     }
 

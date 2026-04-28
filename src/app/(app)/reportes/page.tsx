@@ -1,68 +1,31 @@
-'use client'
-
-import { useState, useEffect } from 'react'
+import { prisma } from '@/lib/prisma'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
-interface Stats {
-  pedidos: number
-  ventas: number
-  cobros: number
-  gastos: number
-  facturasPendientes: number
-}
+export default async function ReportesPage() {
+  const [pedidosCount, ventasAgg, facturasPendientes, abonosAgg, gastosAgg] = await Promise.all([
+    prisma.pedido.count({ where: { estado: { not: 'CANCELADO' } } }),
+    prisma.pedido.aggregate({
+      where: { estado: { not: 'CANCELADO' } },
+      _sum: { total: true },
+    }),
+    prisma.factura.count({ where: { saldo: { gt: 0 } } }),
+    prisma.abono.aggregate({ _sum: { monto: true } }),
+    prisma.gasto.aggregate({ _sum: { monto: true } }),
+  ])
 
-export default function ReportesPage() {
-  const [stats, setStats] = useState<Stats>({
-    pedidos: 0, ventas: 0, cobros: 0, gastos: 0, facturasPendientes: 0
-  })
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    fetchStats()
-  }, [])
-
-  const fetchStats = async () => {
-    setLoading(true)
-    try {
-      const [pedidosRes, facturasRes, abonosRes, gastosRes] = await Promise.all([
-        fetch('/api/pedidos?all=true'),
-        fetch('/api/facturas?pendiente=true'),
-        fetch('/api/abonos'),
-        fetch('/api/gastos'),
-      ])
-
-      const pedidos = await pedidosRes.json()
-      const facturas = await facturasRes.json()
-      const abonos = await abonosRes.json()
-      const gastos = await gastosRes.json()
-
-      const pedidosData = pedidos.pedidos || []
-      const abonosData = abonos.abonos || []
-      const gastosData = gastos.gastos || []
-
-      setStats({
-        pedidos: pedidosData.length,
-        ventas: pedidosData.reduce((s: number, p: any) => s + (p.total || 0), 0),
-        cobros: abonosData.reduce((s: number, a: any) => s + (a.monto || 0), 0),
-        gastos: gastosData.reduce((s: number, g: any) => s + (g.monto || 0), 0),
-        facturasPendientes: (facturas.facturas || []).length,
-      })
-    } catch (e) {
-      console.error(e)
-    }
-    setLoading(false)
+  const stats = {
+    pedidos: pedidosCount,
+    ventas: Number(ventasAgg._sum.total ?? 0),
+    cobros: Number(abonosAgg._sum.monto ?? 0),
+    gastos: Number(gastosAgg._sum.monto ?? 0),
+    facturasPendientes,
   }
 
   const balance = stats.cobros - stats.gastos
 
   return (
     <div className="p-4 space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">📊 Reportes</h1>
-        <button className="px-3 py-1 border rounded" onClick={fetchStats}>
-          🔄 Actualizar
-        </button>
-      </div>
+      <h1 className="text-2xl font-bold">Reportes</h1>
 
       <Card className="bg-muted">
         <CardContent className="p-4">

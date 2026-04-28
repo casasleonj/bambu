@@ -2,19 +2,29 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
 import { ClienteCreateSchema } from '@/lib/validators'
+import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
+  const pagination = getPaginationParams(request.nextUrl.searchParams)
   try {
-    const clientes = await prisma.cliente.findMany({
-      where: { activo: true },
-      orderBy: { nombre: 'asc' },
-      include: {
-        _count: { select: { pedidos: true } },
-      },
-    })
-    return NextResponse.json({ clientes })
+    const where = { activo: true }
+    const prismaPagination = getPrismaPagination(pagination)
+    const [clientes, total] = await Promise.all([
+      prisma.cliente.findMany({
+        where,
+        orderBy: { nombre: 'asc' },
+        include: { _count: { select: { pedidos: true } } },
+        ...prismaPagination,
+      }),
+      prisma.cliente.count({ where }),
+    ])
+    return NextResponse.json(
+      pagination.all
+        ? { clientes, total }
+        : buildPaginationResponse(clientes, total, pagination.page!, pagination.pageSize!)
+    )
   } catch (error) {
     return NextResponse.json({ error: 'Error' }, { status: 500 })
   }

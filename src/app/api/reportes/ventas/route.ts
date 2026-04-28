@@ -1,38 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuth } from '@/lib/auth-check'
+import { requireAuth, requireRole } from '@/lib/auth-check'
+import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
+  const roleCheck = await requireRole(['ADMIN', 'CONTADOR'])
+  if (roleCheck instanceof Response) return roleCheck
 
   try {
     const { searchParams } = new URL(request.url)
     const start = searchParams.get('start')
     const end = searchParams.get('end')
+    const pagination = getPaginationParams(searchParams)
 
     const dateFilter = {
       gte: start ? new Date(start) : new Date(new Date().setDate(new Date().getDate() - 30)),
       lte: end ? new Date(end) : new Date(),
     }
 
-    const pedidos = await prisma.pedido.findMany({
-      where: {
-        fecha: dateFilter,
-        estado: { not: 'CANCELADO' },
-      },
-      include: {
-        cliente: true,
-        pagos: true,
-      },
-      orderBy: { fecha: 'desc' },
-    })
+    const where = {
+      fecha: dateFilter,
+      estado: { not: 'CANCELADO' as any },
+    }
+
+    const prismaPagination = getPrismaPagination(pagination)
+
+    const [pedidos, total] = await Promise.all([
+      prisma.pedido.findMany({
+        where,
+        include: { cliente: true, pagos: true },
+        orderBy: { fecha: 'desc' },
+        ...prismaPagination,
+      }),
+      prisma.pedido.count({ where }),
+    ])
 
     const resumen = {
-      totalPedidos: pedidos.length,
-      totalVentas: pedidos.reduce((sum, p) => sum + p.total, 0),
-      totalPagado: pedidos.reduce((sum, p) => sum + (p.totalPagado || 0), 0),
-      totalFiado: pedidos.reduce((sum, p) => sum + (p.saldo > 0 ? p.saldo : 0), 0),
+      totalPedidos: total,
+      totalVentas: pedidos.reduce((sum, p) => sum + Number(p.total), 0),
+      totalPagado: pedidos.reduce((sum, p) => sum + Number(p.totalPagado || 0), 0),
+      totalFiado: pedidos.reduce((sum, p) => sum + (Number(p.saldo) > 0 ? Number(p.saldo) : 0), 0),
       porProducto: {
         agua: pedidos.reduce((sum, p) => sum + p.cAguaPed, 0),
         hielo: pedidos.reduce((sum, p) => sum + p.cHieloPed, 0),
@@ -43,7 +52,6 @@ export async function GET(request: NextRequest) {
       porMetodoPago: {} as Record<string, number>,
     }
 
-    // Aggregate payments by method
     for (const pedido of pedidos) {
       for (const pago of pedido.pagos) {
         const metodo = pago.metodo
@@ -51,7 +59,11 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ pedidos, resumen })
+    return NextResponse.json(
+      pagination.all
+        ? { pedidos, resumen, total }
+        : { ...buildPaginationResponse(pedidos, total, pagination.page!, pagination.pageSize!), resumen }
+    )
   } catch (error) {
     console.error('Error fetching reporte ventas:', error)
     return NextResponse.json({ error: 'Error fetching reporte' }, { status: 500 })

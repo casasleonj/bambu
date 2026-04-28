@@ -4,6 +4,10 @@ import { useState } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 
+// Build-time constant — bundler replaces this at compile time,
+// so server and client always agree. Dead-code eliminated in production.
+const IS_DEV = process.env.NODE_ENV === 'development'
+
 export default function LoginPage() {
   const router = useRouter()
   const [username, setUsername] = useState('')
@@ -102,14 +106,16 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-          <p className="text-xs text-gray-500 mb-2">Usuarios de prueba:</p>
-          <div className="text-xs text-gray-600 space-y-1">
-            <p><strong>admin</strong> / admin123</p>
-            <p><strong>asistente</strong> / asist123</p>
-            <p><strong>contador</strong> / cont123</p>
+        {IS_DEV && (
+          <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+            <p className="text-xs text-gray-500 mb-2">Usuarios de prueba:</p>
+            <div className="text-xs text-gray-600 space-y-1">
+              <p><strong>admin</strong> / admin123</p>
+              <p><strong>asistente</strong> / asist123</p>
+              <p><strong>contador</strong> / cont123</p>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   )

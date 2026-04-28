@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -45,7 +46,7 @@ export default function PreciosPage() {
     if (!precioStr) return
     const precio = parseFloat(precioStr)
     if (isNaN(precio) || precio <= 0) {
-      alert('Ingrese un precio válido')
+      toast.error('Ingrese un precio válido')
       return
     }
 
@@ -59,12 +60,13 @@ export default function PreciosPage() {
       if (res.ok) {
         setPrecios((prev) => ({ ...prev, [productoId]: precio }))
         setNuevosPrecios((prev) => ({ ...prev, [productoId]: '' }))
+        toast.success('Precio guardado')
       } else {
-        alert('Error guardando precio')
+        toast.error('Error guardando precio')
       }
     } catch (error) {
       console.error('Error:', error)
-      alert('Error guardando precio')
+      toast.error('Error guardando precio')
     } finally {
       setSaving(null)
     }
@@ -92,8 +94,9 @@ export default function PreciosPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="text-3xl font-bold text-blue-600">
-                ${(precios[prod.id] || 0).toLocaleString()}
+                <span className="text-sm font-normal text-gray-500">Precio actual:</span> ${(precios[prod.id] || 0).toLocaleString()}
               </div>
+              <div className="text-xs text-gray-400">({prod.id})</div>
               <div className="flex gap-2">
                 <Input
                   type="number"

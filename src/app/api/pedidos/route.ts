@@ -3,11 +3,34 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
 import { PedidoCreateSchema } from '@/lib/validators'
 import { withAdvisoryLock } from '@/lib/locks'
+import { getNextNumero } from '@/lib/sequence'
+import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
+
+async function getPrecios(tx: any, clientePrefAgua?: number | null) {
+  const precios = await tx.precioHistorial.findMany({
+    orderBy: { vigenteDesde: 'desc' },
+    distinct: ['producto'],
+  })
+  const map: Record<string, number> = {}
+  for (const p of precios) {
+    map[p.producto] = Number(p.precio)
+  }
+
+  const configs = await tx.config.findMany()
+  const configMap = Object.fromEntries(configs.map((c: any) => [c.clave, c.valor]))
+
+  return {
+    agua: clientePrefAgua || parseFloat(configMap.PRECIO_AGUA) || map.AGUA_GALON || 12000,
+    hielo: parseFloat(configMap.PRECIO_HIELO) || map.HIELO_5KG || 5000,
+    botellon: parseFloat(configMap.PRECIO_BOTELLON) || map.BOTELLON_FABRICA || 5000,
+    bolsaAgua: parseFloat(configMap.PRECIO_BOLSA_AGUA) || map.BOLSA_AGUA || 3000,
+    bolsaHielo: parseFloat(configMap.PRECIO_BOLSA_HIELO) || map.BOLSA_HIELO || 3000,
+  }
+}
 
 function calculateTotal(
   productos: { agua19L?: number; hielo?: number; botellon?: number; bolsaAgua?: number; bolsaHielo?: number } | undefined,
-  precioAgua: number,
-  precioHielo: number
+  precios: { agua: number; hielo: number; botellon: number; bolsaAgua: number; bolsaHielo: number }
 ): number {
   const cAgua = productos?.agua19L || 0
   const cHielo = productos?.hielo || 0
@@ -16,11 +39,11 @@ function calculateTotal(
   const cBolsaHielo = productos?.bolsaHielo || 0
 
   return (
-    cAgua * precioAgua +
-    cHielo * precioHielo +
-    cBotellon * 5000 +
-    cBolsaAgua * 5000 +
-    cBolsaHielo * 5000
+    cAgua * precios.agua +
+    cHielo * precios.hielo +
+    cBotellon * precios.botellon +
+    cBolsaAgua * precios.bolsaAgua +
+    cBolsaHielo * precios.bolsaHielo
   )
 }
 
@@ -28,25 +51,39 @@ export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
   const { searchParams } = new URL(request.url)
-  const all = searchParams.get('all') === 'true'
+  const pagination = getPaginationParams(searchParams)
 
   try {
-    const pedidos = await prisma.pedido.findMany({
-      where: all
-        ? { estado: { not: 'CANCELADO' } }
-        : {
-            fecha: {
-              gte: new Date(new Date().setHours(0, 0, 0, 0)),
-              lt: new Date(new Date().setHours(23, 59, 59, 999)),
-            },
-          },
-      orderBy: { numero: 'desc' },
-      include: {
-        cliente: true,
-      },
-    })
+    const today = new Date().toISOString().split('T')[0]
+    const startOfDay = new Date(today + 'T00:00:00.000Z')
+    const endOfDay = new Date(today + 'T23:59:59.999Z')
 
-    return NextResponse.json({ pedidos })
+    const where = pagination.all
+      ? { estado: { not: 'CANCELADO' as any } }
+      : {
+          fecha: {
+            gte: startOfDay,
+            lt: endOfDay,
+          },
+        }
+
+    const prismaPagination = getPrismaPagination(pagination)
+
+    const [pedidos, total] = await Promise.all([
+      prisma.pedido.findMany({
+        where,
+        orderBy: { numero: 'desc' },
+        include: { cliente: true },
+        ...prismaPagination,
+      }),
+      prisma.pedido.count({ where }),
+    ])
+
+    return NextResponse.json(
+      pagination.all
+        ? { pedidos, total }
+        : buildPaginationResponse(pedidos, total, pagination.page!, pagination.pageSize!)
+    )
   } catch (error) {
     console.error('Error fetching pedidos:', error)
     return NextResponse.json({ error: 'Error fetching pedidos' }, { status: 500 })
@@ -65,31 +102,19 @@ export async function POST(request: NextRequest) {
     const { clienteId, tipo, productos, obs, fechaEntrega } = parsed.data
 
     const result = await withAdvisoryLock('PEDIDO', () => prisma.$transaction(async (tx) => {
-      // Obtener cliente para precio preferencial
       const cliente = await tx.cliente.findUnique({
         where: { id: clienteId },
       })
 
-      // Obtener config de precios
-      const precioAgua = cliente?.precioAguaPref || 12000
-      const configs = await tx.config.findMany()
-      const configMap = Object.fromEntries(configs.map(c => [c.clave, c.valor]))
-      const precioHielo = parseFloat(configMap.PRECIO_HIELO) || 5000
+      const precios = await getPrecios(tx, cliente?.precioAguaPref ? Number(cliente.precioAguaPref) : null)
 
-      // Calcular total con precios del cliente
-      const total = calculateTotal(productos, precioAgua, precioHielo)
+      const total = calculateTotal(productos, precios)
 
-      // Procesar pagos
       const pagosData = parsed.data.pagos || []
       const totalPagado = pagosData.reduce((sum, p) => sum + p.monto, 0)
 
-      // Obtener siguiente número secuencial
-      const [{ nextval: pedidoNext }] = await tx.$queryRaw<{ nextval: bigint }[]>`
-        SELECT nextval('pedido_numero_seq')
-      `
-      const numero = Number(pedidoNext)
+      const numero = await getNextNumero(tx, { seqName: 'pedido_numero_seq', model: 'pedido' })
 
-      // Crear pedido
       const pedido = await tx.pedido.create({
         data: {
           numero,
@@ -101,11 +126,11 @@ export async function POST(request: NextRequest) {
           cBotellonPed: productos?.botellon || 0,
           cBolsaAguaPed: productos?.bolsaAgua || 0,
           cBolsaHieloPed: productos?.bolsaHielo || 0,
-          precioAgua,
-          precioHielo,
-          precioBotellon: 5000,
-          precioBolsaAgua: 5000,
-          precioBolsaHielo: 5000,
+          precioAgua: precios.agua,
+          precioHielo: precios.hielo,
+          precioBotellon: precios.botellon,
+          precioBolsaAgua: precios.bolsaAgua,
+          precioBolsaHielo: precios.bolsaHielo,
           total,
           saldo: total - totalPagado,
           totalPagado,
@@ -126,10 +151,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Crear factura automáticamente
-      const [{ nextval: facturaNext }] = await tx.$queryRaw<{ nextval: bigint }[]>`
-        SELECT nextval('factura_numero_seq')
-      `
-      const facturaNum = Number(facturaNext)
+      const facturaNum = await getNextNumero(tx, { seqName: 'factura_numero_seq', model: 'factura' })
 
       await tx.factura.create({
         data: {

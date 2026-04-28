@@ -1,17 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuth } from '@/lib/auth-check'
+import { requireAuth, requireRole } from '@/lib/auth-check'
 import { CompraCreateSchema } from '@/lib/validators'
+import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
+  const pagination = getPaginationParams(request.nextUrl.searchParams)
   try {
-    const compras = await prisma.compraInsumo.findMany({
-      orderBy: { fecha: 'desc' },
-      include: { insumo: true, proveedor: true },
-    })
-    return NextResponse.json({ compras })
+    const prismaPagination = getPrismaPagination(pagination)
+    const [compras, total] = await Promise.all([
+      prisma.compraInsumo.findMany({
+        orderBy: { fecha: 'desc' },
+        include: { insumo: true, proveedor: true },
+        ...prismaPagination,
+      }),
+      prisma.compraInsumo.count(),
+    ])
+    return NextResponse.json(
+      pagination.all
+        ? { compras, total }
+        : buildPaginationResponse(compras, total, pagination.page!, pagination.pageSize!)
+    )
   } catch (error) {
     console.error('Error fetching compras:', error)
     return NextResponse.json({ error: 'Error fetching compras' }, { status: 500 })
@@ -21,6 +32,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
+  const roleCheck = await requireRole(['ADMIN', 'CONTADOR'])
+  if (roleCheck instanceof Response) return roleCheck
   try {
     const body = await request.json()
     const parsed = CompraCreateSchema.safeParse(body)
@@ -34,25 +47,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Insumo no encontrado' }, { status: 404 })
     }
 
-    // Crear compra
-    const lastCompra = await prisma.compraInsumo.findFirst({ orderBy: { numero: 'desc' } })
-    const nextNum = lastCompra ? parseInt(lastCompra.numero.replace('COM-', '')) + 1 : 1
+    // Crear compra y actualizar stock atómicamente
+    await prisma.$transaction(async (tx) => {
+      const lastCompra = await tx.compraInsumo.findFirst({ orderBy: { numero: 'desc' } })
+      const nextNum = lastCompra ? parseInt(lastCompra.numero.replace('COM-', '')) + 1 : 1
 
-    await prisma.compraInsumo.create({
-      data: {
-        numero: `COM-${nextNum.toString().padStart(5, '0')}`,
-        insumoId,
-        proveedorId,
-        cantidad,
-        montoTotal,
+      await tx.compraInsumo.create({
+        data: {
+          numero: `COM-${nextNum.toString().padStart(5, '0')}`,
+          insumoId,
+          proveedorId,
+          cantidad,
+          montoTotal,
+        },
+      })
 
-      },
-    })
-
-    // Actualizar stock
-    await prisma.insumo.update({
-      where: { id: insumoId },
-      data: { stock: { increment: cantidad } },
+      await tx.insumo.update({
+        where: { id: insumoId },
+        data: { stock: { increment: cantidad } },
+      })
     })
 
     return NextResponse.json({ success: true })

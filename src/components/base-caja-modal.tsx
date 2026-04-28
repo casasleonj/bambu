@@ -1,8 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { formatCurrency } from '@/lib/utils'
+import { toast } from 'sonner'
 
 interface BaseDia {
   id: string
@@ -11,7 +10,6 @@ interface BaseDia {
 }
 
 export default function BaseCajaModal() {
-  const router = useRouter()
   const [showModal, setShowModal] = useState(false)
   const [baseDia, setBaseDia] = useState('')
   const [loading, setLoading] = useState(true)
@@ -38,7 +36,6 @@ export default function BaseCajaModal() {
         setShowModal(true)
       } else {
         setShowModal(false)
-        router.push('/dashboard')
       }
     } catch (error) {
       console.error('Error checking base:', error)
@@ -50,7 +47,7 @@ export default function BaseCajaModal() {
 
   async function handleSave() {
     if (!baseDia || isNaN(Number(baseDia))) {
-      alert('Ingresa un monto válido')
+      toast.error('Ingresa un monto válido')
       return
     }
 
@@ -66,11 +63,10 @@ export default function BaseCajaModal() {
         localStorage.setItem('baseDiaDate', new Date().toISOString().split('T')[0])
         localStorage.setItem('baseDia', baseDia)
         setShowModal(false)
-        router.push('/dashboard')
       }
     } catch (error) {
       console.error('Error saving base:', error)
-      alert('Error al guardar')
+      toast.error('Error al guardar')
     } finally {
       setSaving(false)
     }
