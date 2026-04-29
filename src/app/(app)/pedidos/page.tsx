@@ -402,7 +402,8 @@ export default function PedidosPage() {
             onChange={(e) => setSearch(e.target.value)}
             className="flex-1 min-w-64 px-4 py-2 border border-gray-300 rounded-lg"
           />
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 flex-wrap items-center">
+            <span className="text-xs text-gray-400 font-medium uppercase tracking-wider">Estado</span>
             {ESTADOS.map((estado) => (
               <button
                 key={estado}
@@ -417,7 +418,8 @@ export default function PedidosPage() {
               </button>
             ))}
           </div>
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 flex-wrap items-center">
+            <span className="text-xs text-gray-400 font-medium uppercase tracking-wider">Tipo</span>
             {TIPOS.map((tipo) => (
               <button
                 key={tipo}
