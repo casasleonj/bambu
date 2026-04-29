@@ -59,13 +59,29 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
     }
-    const { clienteId, productos, obs, fechaEntrega, canal, preciosManuales } = parsed.data
+    const { clienteId: rawClienteId, productos, obs, fechaEntrega, canal, preciosManuales, clienteNuevo } = parsed.data
 
-    const tipo = parsed.data.tipo || 'ENVIO'
     const pagosData = parsed.data.pagos || []
     const totalPagado = pagosData.reduce((sum, p) => sum + p.monto, 0)
+    const canalReal = (canal || 'DOMICILIO') as Canal
+    const tipo = canalReal === 'PUNTO' ? 'PUNTO' : 'ENVIO'
 
     const result = await withAdvisoryLock('PEDIDO', () => prisma.$transaction(async (tx) => {
+      // Crear cliente nuevo si se proporciona
+      let clienteId = rawClienteId
+      if (clienteNuevo) {
+        const nuevo = await tx.cliente.create({
+          data: {
+            nombre: clienteNuevo.nombre,
+            telefono: clienteNuevo.telefono,
+            direccion: clienteNuevo.direccion || '',
+            barrio: clienteNuevo.barrio,
+            frecuencia: 'NINGUNA',
+          },
+        })
+        clienteId = nuevo.id
+      }
+
       // Build items array for pricing engine
       const manualPrices = preciosManuales || {}
       const items: Array<{ codigo: ProductCode; cantidad: number; precioManual?: number }> = [
@@ -80,7 +96,7 @@ export async function POST(request: NextRequest) {
       // Resolve prices using pricing engine
       const preciosResueltos = await resolverPreciosPedido(
         items,
-        (canal || 'DOMICILIO') as Canal,
+        canalReal,
         clienteId,
       )
 
@@ -99,8 +115,9 @@ export async function POST(request: NextRequest) {
         data: {
           numero,
           clienteId,
+          createdById: authResult.user?.id,
           tipo,
-          canal: canal || 'DOMICILIO',
+          canal: canalReal,
           estado: estadoInicial,
           cPacaAguaPed: productos?.pacaAgua || 0,
           cPacaHieloPed: productos?.pacaHielo || 0,
@@ -147,14 +164,14 @@ export async function POST(request: NextRequest) {
         },
       })
 
-      return { pedido }
+      return { pedido, clienteId }
     }))
 
     await logAudit({
       entidad: 'Pedido',
       registroId: result.pedido.id,
       accion: 'CREATE',
-      datos: { numero: result.pedido.numero, tipo: result.pedido.tipo, total: Number(result.pedido.total), clienteId },
+      datos: { numero: result.pedido.numero, tipo: result.pedido.tipo, total: Number(result.pedido.total), clienteId: result.clienteId },
       usuarioId: authResult.user?.id,
     })
 

@@ -17,11 +17,17 @@ export const PedidoCreateSchema = z.object({
       metodo: z.enum(['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA', 'BONO']),
       monto: z.coerce.number().positive(),
     })
-  ),
+  ).optional(),
   obs: z.string().max(500).optional(),
   fechaEntrega: z.string().optional(),
   ventaRapida: z.boolean().optional(),
-  tipo: z.enum(['ENVIO', 'PUNTO', 'RECURRENTE']).optional(),
+  tipo: z.enum(['ENVIO', 'PUNTO']).optional(),
+  clienteNuevo: z.object({
+    nombre: z.string().min(1),
+    telefono: z.string().min(1),
+    direccion: z.string().optional(),
+    barrio: z.string().optional(),
+  }).optional(),
 });
 
 export const ClienteQuickCreateSchema = z.object({

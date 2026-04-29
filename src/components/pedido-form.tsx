@@ -527,9 +527,21 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
             </div>
           ))}
 
-          <Button type="button" variant="outline" size="sm" onClick={agregarPago}>
-            + Agregar pago
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={agregarPago}>
+              + Agregar pago
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setPagos([{ metodo: 'EFECTIVO', monto: total }])}
+              disabled={total <= 0}
+              className="text-green-600 hover:text-green-700"
+            >
+              Pagar completo
+            </Button>
+          </div>
 
           <div className="flex justify-between items-center pt-2 border-t text-sm">
             <span>Total pagado:</span>

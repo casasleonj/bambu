@@ -155,28 +155,10 @@ export default function PedidosPage() {
 
   async function handleCrearPedido(pedidoData: any) {
     try {
-      let clienteId = pedidoData.clienteId
-
-      // Si es nuevo cliente, crear primero
-      if (pedidoData.clienteNuevo) {
-        const clienteRes = await fetch('/api/clientes/quick', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(pedidoData.clienteNuevo),
-        })
-        if (clienteRes.ok) {
-          const { cliente } = await clienteRes.json()
-          clienteId = cliente.id
-        } else {
-          toast.error('Error creando cliente')
-          return
-        }
-      }
-
       const res = await fetch('/api/pedidos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...pedidoData, clienteId }),
+        body: JSON.stringify(pedidoData),
       })
       if (res.ok) {
         setShowModal(false)
@@ -194,32 +176,13 @@ export default function PedidosPage() {
 
   async function handleVentaRapida(data: any) {
     try {
-      let clienteId = data.clienteId || 'CLIENTE_MOSTRADOR'
-
-      // Si quiere envío, crear/buscar cliente primero
-      if (data.clienteNuevo) {
-        const clienteRes = await fetch('/api/clientes/quick', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data.clienteNuevo),
-        })
-        if (clienteRes.ok) {
-          const { cliente } = await clienteRes.json()
-          clienteId = cliente.id
-        } else {
-          toast.error('Error creando cliente')
-          return
-        }
-      }
-
       const pedidoData = {
-        clienteId,
+        clienteId: data.clienteId || 'CLIENTE_MOSTRADOR',
         canal: data.canal,
-        tipo: data.tipo,
-        ventaRapida: true,
         productos: data.productos,
         pagos: data.pagos,
         obs: data.obs,
+        clienteNuevo: data.clienteNuevo,
       }
 
       const res = await fetch('/api/pedidos', {
@@ -231,7 +194,10 @@ export default function PedidosPage() {
       if (res.ok) {
         setShowVentaRapida(false)
         fetchPedidos()
-        toast.success(`Venta cobrada: $${data.total.toLocaleString()}`)
+        const msg = data.pagos.length === 0
+          ? `Venta registrada (pendiente): $${data.total.toLocaleString()}`
+          : `Venta cobrada: $${data.total.toLocaleString()}`
+        toast.success(msg)
       } else {
         const err = await res.json()
         toast.error(err.error?.formErrors?.[0] || 'Error procesando venta')
