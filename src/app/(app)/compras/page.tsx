@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -59,11 +60,25 @@ export default function ComprasPage() {
       setInsumos(iData.insumos || iData.data || [])
     } catch (e) {
       console.error(e)
+      toast.error('Error cargando compras')
     }
   }
 
   const crearCompra = async () => {
-    if (!proveedorId || !insumoId || !cantidad || !montoTotal) return
+    if (!proveedorId || !insumoId || !cantidad || !montoTotal) {
+      toast.error('Completa todos los campos')
+      return
+    }
+    const cantNum = Number(cantidad)
+    const montoNum = Number(montoTotal)
+    if (cantNum <= 0) {
+      toast.error('La cantidad debe ser mayor a 0')
+      return
+    }
+    if (montoNum <= 0) {
+      toast.error('El monto debe ser mayor a 0')
+      return
+    }
     setLoading(true)
     try {
       const res = await fetch('/api/compras', {
@@ -72,8 +87,8 @@ export default function ComprasPage() {
         body: JSON.stringify({
           proveedorId,
           insumoId,
-          cantidad: Number(cantidad),
-          montoTotal: Number(montoTotal),
+          cantidad: cantNum,
+          montoTotal: montoNum,
         }),
       })
       if (res.ok) {
@@ -83,9 +98,13 @@ export default function ComprasPage() {
         setCantidad('')
         setMontoTotal('')
         fetchData()
+        toast.success('Compra registrada')
+      } else {
+        toast.error('Error registrando compra')
       }
     } catch (e) {
       console.error(e)
+      toast.error('Error registrando compra')
     }
     setLoading(false)
   }
@@ -94,10 +113,10 @@ export default function ComprasPage() {
 
   return (
     <div className="p-4 space-y-4">
-      <h1 className="text-2xl font-bold">📦 Compras de Insumos</h1>
+      <h1 className="text-2xl font-bold">Compras de Insumos</h1>
 
       <Button onClick={() => setShowCrear(!showCrear)}>
-        ➕ Nueva Compra
+        Nueva Compra
       </Button>
 
       {showCrear && (
@@ -150,7 +169,7 @@ export default function ComprasPage() {
                 placeholder="0"
               />
             </div>
-            <Button onClick={crearCompra} disabled={loading}>💾 Guardar</Button>
+            <Button onClick={crearCompra} disabled={loading}>{loading ? 'Guardando...' : 'Guardar'}</Button>
           </CardContent>
         </Card>
       )}

@@ -60,6 +60,7 @@ export default function ProduccionPage() {
       setTrabajadores(data.trabajadores || [])
     } catch (error) {
       console.error('Error al obtener trabajadores:', error)
+      toast.error('Error cargando trabajadores')
     }
   }
 
@@ -75,6 +76,7 @@ export default function ProduccionPage() {
       }
     } catch (error) {
       console.error('Error al obtener stock:', error)
+      toast.error('Error cargando stock inicial')
     } finally {
       setLoading(false)
     }
@@ -175,12 +177,13 @@ export default function ProduccionPage() {
       <h2 className="text-xl font-semibold text-gray-800">Registro de Conteos</h2>
       
       <div className="bg-blue-50 p-4 rounded-lg">
-        <h3 className="font-medium text-blue-800 mb-3">🍶 Agua</h3>
+        <h3 className="font-medium text-blue-800 mb-3">Agua</h3>
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm text-gray-600 mb-1">Conteo A</label>
             <input
               type="number"
+              min="0"
               value={formData.conteoAAgua || ''}
               onChange={(e) => setFormData({ ...formData, conteoAAgua: Number(e.target.value) })}
               className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500"
@@ -191,6 +194,7 @@ export default function ProduccionPage() {
             <label className="block text-sm text-gray-600 mb-1">Conteo B</label>
             <input
               type="number"
+              min="0"
               value={formData.conteoBAgua || ''}
               onChange={(e) => setFormData({ ...formData, conteoBAgua: Number(e.target.value) })}
               className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500"
@@ -204,12 +208,13 @@ export default function ProduccionPage() {
       </div>
 
       <div className="bg-cyan-50 p-4 rounded-lg">
-        <h3 className="font-medium text-cyan-800 mb-3">🧊 Hielo</h3>
+        <h3 className="font-medium text-cyan-800 mb-3">Hielo</h3>
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm text-gray-600 mb-1">Conteo A</label>
             <input
               type="number"
+              min="0"
               value={formData.conteoAHielo || ''}
               onChange={(e) => setFormData({ ...formData, conteoAHielo: Number(e.target.value) })}
               className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-cyan-500"
@@ -220,6 +225,7 @@ export default function ProduccionPage() {
             <label className="block text-sm text-gray-600 mb-1">Conteo B</label>
             <input
               type="number"
+              min="0"
               value={formData.conteoBHielo || ''}
               onChange={(e) => setFormData({ ...formData, conteoBHielo: Number(e.target.value) })}
               className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-cyan-500"

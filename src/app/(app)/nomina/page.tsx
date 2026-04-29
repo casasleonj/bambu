@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -22,15 +23,28 @@ interface Nomina {
   }
 }
 
+interface Trabajador {
+  id: string
+  nombre: string
+  rol: string
+}
+
 export default function NominaPage() {
   const [nominas, setNominas] = useState<Nomina[]>([])
-  const [trabajadores, setTrabajadores] = useState<any[]>([])
+  const [trabajadores, setTrabajadores] = useState<Trabajador[]>([])
   const [showCrear, setShowCrear] = useState(false)
   const [trabajadorId, setTrabajadorId] = useState('')
   const [fechaInicio, setFechaInicio] = useState('')
   const [fechaFin, setFechaFin] = useState('')
   const [loading, setLoading] = useState(false)
-  const [detalles, setDetalles] = useState<any>(null)
+  const [detalles, setDetalles] = useState<{
+    entregasAgua: number
+    entregasHielo: number
+    comAgua: number
+    comHielo: number
+    comisionTotal: number
+    salarioFijo: number
+  } | null>(null)
 
   useEffect(() => {
     fetchData()
@@ -48,11 +62,19 @@ export default function NominaPage() {
       setTrabajadores(tData.trabajadores || tData.data || [])
     } catch (e) {
       console.error(e)
+      toast.error('Error cargando nóminas')
     }
   }
 
   const crearNomina = async () => {
-    if (!trabajadorId || !fechaInicio || !fechaFin) return
+    if (!trabajadorId || !fechaInicio || !fechaFin) {
+      toast.error('Completa todos los campos')
+      return
+    }
+    if (fechaFin < fechaInicio) {
+      toast.error('La fecha fin debe ser posterior a la fecha inicio')
+      return
+    }
     setLoading(true)
     try {
       const res = await fetch('/api/nomina', {
@@ -70,9 +92,13 @@ export default function NominaPage() {
         setDetalles(data.detalles)
         setShowCrear(false)
         fetchData()
+        toast.success('Nómina calculada')
+      } else {
+        toast.error(data.error || 'Error calculando nómina')
       }
     } catch (e) {
       console.error(e)
+      toast.error('Error calculando nómina')
     }
     setLoading(false)
   }
@@ -137,7 +163,7 @@ export default function NominaPage() {
               <div>Total Comisiones:</div><div className="font-medium">${detalles.comisionTotal?.toLocaleString()}</div>
               <div>Salario:</div><div className="font-medium">${detalles.salarioFijo?.toLocaleString()}</div>
               <div className="col-span-2 border-t pt-2 text-lg font-bold">
-                TOTAL: ${detalles.comisionTotal?.toLocaleString()}
+                TOTAL: ${(detalles.comisionTotal + detalles.salarioFijo).toLocaleString()}
               </div>
             </div>
           </CardContent>
