@@ -225,7 +225,15 @@ export default function PedidosPage() {
     .filter(p => Number(p.saldo) > 0)
     .reduce((acc, p) => acc + Number(p.saldo), 0)
 
-  function getEstadoBadge(estado: string) {
+  function getEstadoBadge(pedido: Pedido) {
+    // Si hay saldo pendiente → POR COBRAR (sin importar estado o canal)
+    if (Number(pedido.saldo) > 0) {
+      return (
+        <span className="px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+          POR COBRAR
+        </span>
+      )
+    }
     const styles: Record<string, string> = {
       PENDIENTE: 'bg-yellow-100 text-yellow-800',
       EN_RUTA: 'bg-blue-100 text-blue-800',
@@ -234,8 +242,8 @@ export default function PedidosPage() {
       ANULADO: 'bg-red-100 text-red-800',
     }
     return (
-      <span className={`px-2 py-1 rounded-full text-xs font-medium ${styles[estado] || ''}`}>
-        {estado}
+      <span className={`px-2 py-1 rounded-full text-xs font-medium ${styles[pedido.estado] || ''}`}>
+        {pedido.estado}
       </span>
     )
   }
@@ -256,11 +264,6 @@ export default function PedidosPage() {
   // Fiado: saldo pendiente sin importar estado
   function tieneFiado(pedido: Pedido): boolean {
     return Number(pedido.saldo) > 0
-  }
-
-  // Badge especial: punto pendiente con saldo (cliente ya se llevó, no pagó)
-  function esFiadoPuntoPendiente(pedido: Pedido): boolean {
-    return pedido.estado === 'PENDIENTE' && pedido.tipo === 'PUNTO' && Number(pedido.saldo) > 0
   }
 
   const [updatingId, setUpdatingId] = useState<string | null>(null)
@@ -536,14 +539,7 @@ export default function PedidosPage() {
                           <div className="text-xs text-red-500">Pendiente: {formatCurrency(Number(pedido.saldo))}</div>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-center">
-                        <div className="flex flex-col items-center gap-1">
-                          {getEstadoBadge(pedido.estado)}
-                          {esFiadoPuntoPendiente(pedido) && (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-700">FIADO</span>
-                          )}
-                        </div>
-                      </td>
+                      <td className="px-4 py-3 text-center">{getEstadoBadge(pedido)}</td>
                       <td className="px-4 py-3">
                         <div className="flex gap-2 justify-end">
                           <button
@@ -603,11 +599,8 @@ export default function PedidosPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-0.5">
                         <span className="text-xs font-medium text-gray-400">#{pedido.numero}</span>
-                        {getEstadoBadge(pedido.estado)}
+                        {getEstadoBadge(pedido)}
                         {getTipoBadge(pedido.tipo)}
-                        {esFiadoPuntoPendiente(pedido) && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-700">FIADO</span>
-                        )}
                       </div>
                       <h3 className="font-medium text-gray-800 text-sm">{pedido.nombreCli}</h3>
                       <p className="text-xs text-gray-400">{pedido.telefonoCli}</p>
@@ -689,11 +682,8 @@ export default function PedidosPage() {
               <div>
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-sm text-gray-400">#{selectedPedido.numero}</span>
-                  {getEstadoBadge(selectedPedido.estado)}
+                  {getEstadoBadge(selectedPedido)}
                   {getTipoBadge(selectedPedido.tipo)}
-                  {esFiadoPuntoPendiente(selectedPedido) && (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-700">FIADO</span>
-                  )}
                 </div>
                 <h2 className="text-lg font-bold text-gray-800">{selectedPedido.nombreCli}</h2>
                 <p className="text-sm text-gray-500">{selectedPedido.telefonoCli}</p>
