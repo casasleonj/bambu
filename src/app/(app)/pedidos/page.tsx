@@ -219,9 +219,9 @@ export default function PedidosPage() {
     return matchEstado && matchTipo && matchSearch
   })
 
-  const totalVentas = pedidosFiltrados.reduce((acc, p) => acc + Number(p.total || 0), 0)
-  // Fiado solo cuenta pedidos ENTREGADOS con saldo pendiente
-  const totalFiado = pedidosFiltrados
+  // Stats usan pedidos completos (del día), no filtrados
+  const totalVentas = pedidos.reduce((acc, p) => acc + Number(p.total || 0), 0)
+  const totalFiado = pedidos
     .filter(p => p.estado === 'ENTREGADO' && Number(p.saldo) > 0)
     .reduce((acc, p) => acc + Number(p.saldo), 0)
 
@@ -368,7 +368,7 @@ export default function PedidosPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div className="bg-white p-4 rounded-xl shadow">
           <p className="text-sm text-gray-500">Total Pedidos</p>
-          <p className="text-2xl font-bold text-gray-800">{pedidosFiltrados.length}</p>
+          <p className="text-2xl font-bold text-gray-800">{pedidos.length}</p>
         </div>
         <div className="bg-white p-4 rounded-xl shadow">
           <p className="text-sm text-gray-500">Ventas</p>
