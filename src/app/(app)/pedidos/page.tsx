@@ -222,7 +222,7 @@ export default function PedidosPage() {
   // Stats usan pedidos completos (del día), no filtrados
   const totalVentas = pedidos.reduce((acc, p) => acc + Number(p.total || 0), 0)
   const totalFiado = pedidos
-    .filter(p => p.estado === 'ENTREGADO' && Number(p.saldo) > 0)
+    .filter(p => Number(p.saldo) > 0)
     .reduce((acc, p) => acc + Number(p.saldo), 0)
 
   function getEstadoBadge(estado: string) {
@@ -253,9 +253,14 @@ export default function PedidosPage() {
     )
   }
 
-  // Fiado solo se muestra en pedidos ENTREGADOS
+  // Fiado: saldo pendiente sin importar estado
   function tieneFiado(pedido: Pedido): boolean {
-    return pedido.estado === 'ENTREGADO' && Number(pedido.saldo) > 0
+    return Number(pedido.saldo) > 0
+  }
+
+  // Badge especial: punto pendiente con saldo (cliente ya se llevó, no pagó)
+  function esFiadoPuntoPendiente(pedido: Pedido): boolean {
+    return pedido.estado === 'PENDIENTE' && pedido.tipo === 'PUNTO' && Number(pedido.saldo) > 0
   }
 
   const [updatingId, setUpdatingId] = useState<string | null>(null)
@@ -531,7 +536,14 @@ export default function PedidosPage() {
                           <div className="text-xs text-red-500">Pendiente: {formatCurrency(Number(pedido.saldo))}</div>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-center">{getEstadoBadge(pedido.estado)}</td>
+                      <td className="px-4 py-3 text-center">
+                        <div className="flex flex-col items-center gap-1">
+                          {getEstadoBadge(pedido.estado)}
+                          {esFiadoPuntoPendiente(pedido) && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-700">FIADO</span>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-4 py-3">
                         <div className="flex gap-2 justify-end">
                           <button
@@ -593,6 +605,9 @@ export default function PedidosPage() {
                         <span className="text-xs font-medium text-gray-400">#{pedido.numero}</span>
                         {getEstadoBadge(pedido.estado)}
                         {getTipoBadge(pedido.tipo)}
+                        {esFiadoPuntoPendiente(pedido) && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-700">FIADO</span>
+                        )}
                       </div>
                       <h3 className="font-medium text-gray-800 text-sm">{pedido.nombreCli}</h3>
                       <p className="text-xs text-gray-400">{pedido.telefonoCli}</p>
@@ -676,6 +691,9 @@ export default function PedidosPage() {
                   <span className="text-sm text-gray-400">#{selectedPedido.numero}</span>
                   {getEstadoBadge(selectedPedido.estado)}
                   {getTipoBadge(selectedPedido.tipo)}
+                  {esFiadoPuntoPendiente(selectedPedido) && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-700">FIADO</span>
+                  )}
                 </div>
                 <h2 className="text-lg font-bold text-gray-800">{selectedPedido.nombreCli}</h2>
                 <p className="text-sm text-gray-500">{selectedPedido.telefonoCli}</p>
