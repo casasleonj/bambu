@@ -199,7 +199,8 @@ export default function PedidosPage() {
     const matchSearch =
       !search ||
       p.nombreCli.toLowerCase().includes(search.toLowerCase()) ||
-      p.telefonoCli?.includes(search)
+      p.telefonoCli?.includes(search) ||
+      p.numero.toString().includes(search)
     return matchEstado && matchSearch
   })
 
@@ -287,7 +288,7 @@ export default function PedidosPage() {
         <div className="flex flex-wrap gap-4 items-center">
           <input
             type="text"
-            placeholder="Buscar por nombre o telefono..."
+            placeholder="Buscar por nombre, telefono o #pedido..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="flex-1 min-w-64 px-4 py-2 border border-gray-300 rounded-lg"
@@ -297,7 +298,7 @@ export default function PedidosPage() {
               <button
                 key={estado}
                 onClick={() => setFiltroEstado(estado)}
-                className={`px-3 py-1 rounded-full text-sm transition ${
+                className={`px-4 py-2.5 rounded-full text-sm transition ${
                   filtroEstado === estado
                     ? 'bg-blue-600 text-white'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -316,9 +317,10 @@ export default function PedidosPage() {
           <h2 className="text-xl font-bold">Nuevo Pedido</h2>
           <button
             onClick={() => setShowModal(false)}
-            className="text-gray-500 hover:text-gray-700"
+            className="text-gray-500 hover:text-gray-700 p-1 rounded-lg hover:bg-gray-100 transition"
+            aria-label="Cerrar"
           >
-            X
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
         <div className="p-4 overflow-y-auto">
@@ -336,9 +338,10 @@ export default function PedidosPage() {
           <h2 className="text-xl font-bold text-green-800">$ Venta Rapida</h2>
           <button
             onClick={() => setShowVentaRapida(false)}
-            className="text-gray-500 hover:text-gray-700"
+            className="text-gray-500 hover:text-gray-700 p-1 rounded-lg hover:bg-gray-100 transition"
+            aria-label="Cerrar"
           >
-            X
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
         <div className="p-4 overflow-y-auto">
@@ -360,12 +363,12 @@ export default function PedidosPage() {
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Cliente</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Canal</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Tipo</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">P.Ag</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">P.Hi</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">B.Fb</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">B.Dm</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Bl.Ag</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Bl.Hi</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600" title="Paca Agua pedida">P.Ag</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600" title="Paca Hielo pedida">P.Hi</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600" title="Botellón Fábrica pedido">B.Fb</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600" title="Botellón Domicilio pedido">B.Dm</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600" title="Bolsa Agua pedida">Bl.Ag</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600" title="Bolsa Hielo pedida">Bl.Hi</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Total</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Estado</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Acciones</th>
@@ -407,15 +410,24 @@ export default function PedidosPage() {
                     </td>
                     <td className="px-4 py-3">{getEstadoBadge(pedido.estado)}</td>
                     <td className="px-4 py-3">
-                      <button 
-                        onClick={() => {
-                          setSelectedPedido(pedido)
-                          setShowDetailModal(true)
-                        }}
-                        className="text-blue-600 hover:text-blue-800 text-sm"
-                      >
-                        Ver
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => { setSelectedPedido(pedido); setShowDetailModal(true) }}
+                          className="text-blue-600 hover:text-blue-800 text-sm"
+                        >
+                          Ver
+                        </button>
+                        {pedido.estado === 'PENDIENTE' && (
+                          <button onClick={() => cambiarEstado(pedido.id, 'EN_RUTA')} className="text-green-600 hover:text-green-800 text-sm">
+                            Enviar
+                          </button>
+                        )}
+                        {pedido.estado === 'EN_RUTA' && (
+                          <button onClick={() => cambiarEstado(pedido.id, 'ENTREGADO')} className="text-green-600 hover:text-green-800 text-sm">
+                            Entregar
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -470,7 +482,9 @@ export default function PedidosPage() {
           <>
             <div className="p-4 border-b flex justify-between items-center">
               <h2 className="text-xl font-bold">Pedido #{selectedPedido.numero}</h2>
-              <button onClick={() => setShowDetailModal(false)} className="text-gray-500 hover:text-gray-700">X</button>
+              <button onClick={() => setShowDetailModal(false)} className="text-gray-500 hover:text-gray-700 p-1 rounded-lg hover:bg-gray-100 transition" aria-label="Cerrar">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
             </div>
             <div className="p-4 space-y-3">
               <div className="grid grid-cols-2 gap-2 text-sm">

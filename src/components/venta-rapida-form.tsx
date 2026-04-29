@@ -150,16 +150,16 @@ export function VentaRapidaForm({ precios, onSubmit }: VentaRapidaFormProps) {
                 <button
                   type="button"
                   onClick={() => decrement(prod.id)}
-                  className="w-9 h-9 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-lg font-bold transition"
+                  className="w-11 h-11 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-lg font-bold transition"
                   disabled={cant === 0}
                 >
                   -
                 </button>
-                <span className="w-8 text-center font-bold text-lg">{cant}</span>
+                <span className="w-10 text-center font-bold text-lg">{cant}</span>
                 <button
                   type="button"
                   onClick={() => increment(prod.id)}
-                  className="w-9 h-9 rounded-full bg-blue-100 hover:bg-blue-200 text-blue-700 flex items-center justify-center text-lg font-bold transition"
+                  className="w-11 h-11 rounded-full bg-blue-100 hover:bg-blue-200 text-blue-700 flex items-center justify-center text-lg font-bold transition"
                 >
                   +
                 </button>

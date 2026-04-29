@@ -1,7 +1,7 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 
 test.describe('Pedidos', () => {
-  async function login(page, username, password) {
+  async function login(page: Page, username: string, password: string) {
     await page.goto('/login')
     await page.fill('input[placeholder="Ingrese usuario"]', username)
     await page.fill('input[placeholder="Ingrese contraseña"]', password)
@@ -9,7 +9,7 @@ test.describe('Pedidos', () => {
     await page.waitForURL('**/dashboard')
   }
 
-  async function handleBaseCajaModal(page) {
+  async function handleBaseCajaModal(page: Page) {
     const baseCajaBtn = page.locator('button:has-text("Continuar →")')
     if (await baseCajaBtn.count() > 0) {
       await page.fill('input[type="number"]', '50000')
