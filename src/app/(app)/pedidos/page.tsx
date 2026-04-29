@@ -106,7 +106,7 @@ export default function PedidosPage() {
 
   async function fetchPedidos() {
     try {
-      const res = await fetch('/api/pedidos')
+      const res = await fetch('/api/pedidos?all=true')
       const data = await res.json()
       setPedidos(data.pedidos || data.data || [])
     } catch (error) {
