@@ -349,6 +349,7 @@ export default function PedidosPage() {
         <div className="p-4 overflow-y-auto">
           <VentaRapidaForm
             precios={precios}
+            clientes={clientes}
             onSubmit={handleVentaRapida}
           />
         </div>
