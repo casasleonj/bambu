@@ -230,8 +230,11 @@ export default function PedidosPage() {
     .reduce((acc, p) => acc + Number(p.saldo), 0)
 
   function getEstadoBadge(pedido: Pedido) {
-    // Si hay saldo pendiente → POR COBRAR (sin importar estado o canal)
-    if (Number(pedido.saldo) > 0) {
+    // POR COBRAR: punto con saldo, o envío entregado con saldo
+    const esFiadoPunto = pedido.tipo === 'PUNTO' && Number(pedido.saldo) > 0
+    const esFiadoEnvioEntregado = pedido.tipo === 'ENVIO' && pedido.estado === 'ENTREGADO' && Number(pedido.saldo) > 0
+
+    if (esFiadoPunto || esFiadoEnvioEntregado) {
       return (
         <span className="px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
           POR COBRAR
