@@ -91,6 +91,8 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
     setClienteSeleccionado(null)
     setSearchTerm('')
     setMostrarNuevo(false)
+    // Reset payment method when toggling envio
+    if (envio) setMetodoPago('EFECTIVO')
   }
 
   const getPrecioBase = (codigo: string): number => {
@@ -172,37 +174,41 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
     setNuevoCliente(prev => ({ ...prev, nombre: searchTerm }))
   }
 
+  const esFiado = metodoPago === 'FIADO'
+  const requiereCliente = quiereEnvio || esFiado
+
   const handleSubmit = async () => {
     if (total <= 0) {
       toast.error('Agrega al menos un producto')
       return
     }
 
-    // Validación: siempre requiere cliente (buscado o nuevo)
-    if (!clienteSeleccionado && !mostrarNuevo) {
-      toast.error('Busca o crea un cliente para registrar la venta')
-      return
-    }
-    if (mostrarNuevo && (!nuevoCliente.nombre || !nuevoCliente.telefono)) {
-      toast.error('Nombre y celular son obligatorios')
-      return
-    }
-
-    // Validación adicional para envío: requiere dirección
-    if (quiereEnvio) {
-      if (mostrarNuevo && !nuevoCliente.direccion) {
-        toast.error('La dirección es obligatoria para envío')
+    // Validación de cliente: solo si es envío o fiado
+    if (requiereCliente) {
+      if (!clienteSeleccionado && !mostrarNuevo) {
+        toast.error('Busca o crea un cliente para registrar la venta')
         return
       }
-      if (clienteSeleccionado && !clienteSeleccionado.direccion) {
-        toast.error('El cliente seleccionado no tiene dirección. Crea uno nuevo o actualiza el cliente.')
+      if (mostrarNuevo && (!nuevoCliente.nombre || !nuevoCliente.telefono)) {
+        toast.error('Nombre y celular son obligatorios')
         return
+      }
+      // Validación adicional para envío: requiere dirección
+      if (quiereEnvio) {
+        if (mostrarNuevo && !nuevoCliente.direccion) {
+          toast.error('La dirección es obligatoria para envío')
+          return
+        }
+        if (clienteSeleccionado && !clienteSeleccionado.direccion) {
+          toast.error('El cliente seleccionado no tiene dirección. Crea uno nuevo o actualiza el cliente.')
+          return
+        }
       }
     }
 
     setSubmitting(true)
 
-    let clienteId = 'CLIENTE_PUNTO'
+    let clienteId = 'CLIENTE_MOSTRADOR'
     let tipo: 'PUNTO' | 'ENVIO' = 'PUNTO'
     let clienteNuevo: { nombre: string; telefono: string; direccion: string; barrio?: string } | undefined
 
@@ -219,8 +225,8 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
         }
         tipo = 'ENVIO'
       }
-    } else {
-      // Punto: siempre cliente real
+    } else if (requiereCliente) {
+      // Punto fiado: necesita cliente real
       if (clienteSeleccionado) {
         clienteId = clienteSeleccionado.id
       } else if (mostrarNuevo) {
@@ -233,7 +239,6 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
       }
     }
 
-    const esFiado = metodoPago === 'FIADO'
     const data: VentaRapidaData = {
       clienteId,
       clienteNuevo,
@@ -296,10 +301,11 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
         </label>
       </div>
 
-      {/* Cliente search */}
+      {/* Cliente search - solo si es envío o fiado */}
+      {requiereCliente && (
       <div className="space-y-2">
         <label className="text-sm font-medium text-gray-700">
-          {quiereEnvio ? 'Cliente para envío' : 'Cliente (obligatorio)'}
+          {quiereEnvio ? 'Cliente para envío' : 'Cliente (obligatorio para fiado)'}
         </label>
         {!clienteSeleccionado && !mostrarNuevo && (
           <>
@@ -369,6 +375,7 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
           </div>
         )}
       </div>
+      )}
 
       {/* Productos con tiers */}
       <div className="space-y-3">
@@ -519,7 +526,7 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
         <Button
           type="button"
           onClick={handleSubmit}
-          disabled={total <= 0 || submitting || (!clienteSeleccionado && !mostrarNuevo)}
+          disabled={total <= 0 || submitting || (requiereCliente && !clienteSeleccionado && !mostrarNuevo)}
           className={`w-full py-6 text-lg font-bold ${metodoPago === 'FIADO' ? 'bg-yellow-600 hover:bg-yellow-700' : 'bg-green-600 hover:bg-green-700'}`}
           size="lg"
         >

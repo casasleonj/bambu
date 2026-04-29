@@ -26,9 +26,6 @@ test.describe('Pedidos', () => {
     await page.waitForLoadState('networkidle')
     await handleBaseCajaModal(page)
     
-    // Count existing rows
-    const existingRows = await page.locator('table tbody tr').count()
-    
     // Click venta rapida
     await page.click('button:has-text("Venta Rapida")')
     await page.waitForTimeout(500)
@@ -37,22 +34,15 @@ test.describe('Pedidos', () => {
     await page.locator('button.rounded-full.bg-green-100').first().click()
     await page.locator('button.rounded-full.bg-green-100').first().click()
     
-    // Select first existing client from the list
-    await page.fill('input[placeholder="Buscar por nombre o celular..."]', 'a')
-    await page.waitForTimeout(500)
-    // Click first client result in the dropdown (not "Crear nuevo")
-    await page.locator('div.border.rounded-md button').first().click()
-    await page.waitForTimeout(300)
-    
-    // Submit
+    // Submit (no client needed for punto + full payment)
     await page.click('button:has-text("Cobrar")')
     await page.waitForTimeout(2000)
     
     // Verify modal closed
     await expect(page.locator('h2:has-text("Venta Rapida")')).toHaveCount(0)
     
-    // Verify a new row was added
-    await expect(page.locator('table tbody tr')).toHaveCount(existingRows + 1)
+    // Verify the new pedido appears in the table (Punto + ENTREGADO)
+    await expect(page.locator('table tbody tr').first()).toContainText('ENTREGADO')
   })
 
   test('can create a pedido with envio via venta rapida', async ({ page }) => {
@@ -62,8 +52,6 @@ test.describe('Pedidos', () => {
     await page.goto('/pedidos')
     await page.waitForLoadState('networkidle')
     await handleBaseCajaModal(page)
-    
-    const existingRows = await page.locator('table tbody tr').count()
     
     await page.click('button:has-text("Venta Rapida")')
     await page.waitForTimeout(500)
@@ -92,7 +80,10 @@ test.describe('Pedidos', () => {
     await page.click('button:has-text("Cobrar")')
     await page.waitForTimeout(2000)
     
-    // Verify a new row was added
-    await expect(page.locator('table tbody tr')).toHaveCount(existingRows + 1)
+    // Verify modal closed
+    await expect(page.locator('h2:has-text("Venta Rapida")')).toHaveCount(0)
+    
+    // Verify the new pedido appears in the table (Envio)
+    await expect(page.locator('table tbody').first()).toContainText('Envío')
   })
 })

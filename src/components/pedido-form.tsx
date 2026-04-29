@@ -29,6 +29,7 @@ interface PagoPedido {
 
 interface PedidoFormData {
   clienteId: string
+  clienteNuevo?: { nombre: string; telefono: string; direccion: string; barrio?: string }
   canal: string
   productos: {
     pacaAgua: number
@@ -66,6 +67,8 @@ const PRODUCTOS_DOM = getProductosForCanal('DOMICILIO')
 export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoFormProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [clienteSeleccionado, setClienteSeleccionado] = useState<Cliente | null>(null)
+  const [mostrarNuevo, setMostrarNuevo] = useState(false)
+  const [nuevoCliente, setNuevoCliente] = useState({ nombre: '', telefono: '', direccion: '', barrio: '' })
   const [productos, setProductos] = useState<Record<ProductoId, number>>({
     pacaAgua: 0,
     pacaHielo: 0,
@@ -199,19 +202,41 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!clienteSeleccionado) {
-      toast.error('Selecciona un cliente')
-      return
-    }
     if (total <= 0) {
       toast.error('El pedido debe tener al menos un producto')
       return
     }
     if (submitting) return
 
+    // Validación de cliente
+    if (!clienteSeleccionado && !mostrarNuevo) {
+      toast.error('Selecciona un cliente')
+      return
+    }
+    if (mostrarNuevo && (!nuevoCliente.nombre || !nuevoCliente.telefono)) {
+      toast.error('Nombre y celular son obligatorios')
+      return
+    }
+
     setSubmitting(true)
+
+    let clienteId = ''
+    let clienteNuevoData: { nombre: string; telefono: string; direccion: string; barrio?: string } | undefined
+
+    if (clienteSeleccionado) {
+      clienteId = clienteSeleccionado.id
+    } else if (mostrarNuevo) {
+      clienteNuevoData = {
+        nombre: nuevoCliente.nombre,
+        telefono: nuevoCliente.telefono,
+        direccion: nuevoCliente.direccion,
+        barrio: nuevoCliente.barrio || undefined,
+      }
+    }
+
     const pedido: PedidoFormData = {
-      clienteId: clienteSeleccionado.id,
+      clienteId,
+      clienteNuevo: clienteNuevoData,
       canal: CANAL,
       productos: {
         pacaAgua: productos.pacaAgua,
@@ -251,7 +276,7 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
           <CardTitle className="text-lg">Cliente</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {!clienteSeleccionado ? (
+          {!clienteSeleccionado && !mostrarNuevo ? (
             <>
               <div>
                 <Label>Buscar Cliente</Label>
@@ -261,34 +286,60 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
-              {searchTerm && filteredClientes.length > 0 && (
+              {searchTerm && (
                 <div className="border rounded-md max-h-40 overflow-y-auto">
-                  {filteredClientes.map((cliente) => (
+                  {filteredClientes.length > 0 ? (
+                    filteredClientes.map((cliente) => (
+                      <button
+                        key={cliente.id}
+                        type="button"
+                        onClick={() => {
+                          setClienteSeleccionado(cliente)
+                          setSearchTerm('')
+                          resolverPrecios(productos, CANAL, cliente.id)
+                        }}
+                        className="w-full text-left px-3 py-2 hover:bg-accent flex justify-between items-center border-b last:border-b-0"
+                      >
+                        <span>{cliente.nombre}</span>
+                        <span className="text-sm text-muted-foreground">
+                          {cliente.telefono}
+                        </span>
+                      </button>
+                    ))
+                  ) : (
                     <button
-                      key={cliente.id}
                       type="button"
                       onClick={() => {
-                        setClienteSeleccionado(cliente)
-                        setSearchTerm('')
-                        resolverPrecios(productos, CANAL, cliente.id)
+                        setMostrarNuevo(true)
+                        setNuevoCliente(prev => ({ ...prev, nombre: searchTerm }))
                       }}
-                      className="w-full text-left px-3 py-2 hover:bg-accent flex justify-between items-center"
+                      className="w-full text-left px-3 py-2 hover:bg-accent text-primary font-medium"
                     >
-                      <span>{cliente.nombre}</span>
-                      <span className="text-sm text-muted-foreground">
-                        {cliente.telefono}
-                      </span>
+                      + Crear nuevo cliente: "{searchTerm}"
                     </button>
-                  ))}
+                  )}
                 </div>
               )}
             </>
+          ) : mostrarNuevo ? (
+            <div className="space-y-2 border rounded-lg p-3 bg-muted">
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium">Nuevo cliente</span>
+                <button type="button" onClick={() => { setMostrarNuevo(false); setSearchTerm('') }} className="text-xs text-muted-foreground hover:text-foreground">
+                  Cancelar
+                </button>
+              </div>
+              <Input placeholder="Nombre *" value={nuevoCliente.nombre} onChange={e => setNuevoCliente(p => ({ ...p, nombre: e.target.value }))} />
+              <Input placeholder="Celular *" value={nuevoCliente.telefono} onChange={e => setNuevoCliente(p => ({ ...p, telefono: e.target.value }))} />
+              <Input placeholder="Dirección" value={nuevoCliente.direccion} onChange={e => setNuevoCliente(p => ({ ...p, direccion: e.target.value }))} />
+              <Input placeholder="Barrio" value={nuevoCliente.barrio} onChange={e => setNuevoCliente(p => ({ ...p, barrio: e.target.value }))} />
+            </div>
           ) : (
             <div className="flex items-center justify-between p-3 bg-muted rounded-md">
               <div>
-                <p className="font-medium">{clienteSeleccionado.nombre}</p>
+                <p className="font-medium">{clienteSeleccionado?.nombre}</p>
                 <p className="text-sm text-muted-foreground">
-                  {clienteSeleccionado.telefono}
+                  {clienteSeleccionado?.telefono}
                 </p>
               </div>
               <Button

@@ -155,10 +155,28 @@ export default function PedidosPage() {
 
   async function handleCrearPedido(pedidoData: any) {
     try {
+      let clienteId = pedidoData.clienteId
+
+      // Si es nuevo cliente, crear primero
+      if (pedidoData.clienteNuevo) {
+        const clienteRes = await fetch('/api/clientes/quick', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(pedidoData.clienteNuevo),
+        })
+        if (clienteRes.ok) {
+          const { cliente } = await clienteRes.json()
+          clienteId = cliente.id
+        } else {
+          toast.error('Error creando cliente')
+          return
+        }
+      }
+
       const res = await fetch('/api/pedidos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(pedidoData),
+        body: JSON.stringify({ ...pedidoData, clienteId }),
       })
       if (res.ok) {
         setShowModal(false)
@@ -176,7 +194,7 @@ export default function PedidosPage() {
 
   async function handleVentaRapida(data: any) {
     try {
-      let clienteId = data.clienteId || 'CLIENTE_PUNTO'
+      let clienteId = data.clienteId || 'CLIENTE_MOSTRADOR'
 
       // Si quiere envío, crear/buscar cliente primero
       if (data.clienteNuevo) {
