@@ -62,13 +62,17 @@ export default function EmbarquesPage() {
       setPedidos(pedidosData.pedidos || pedidosData.data || [])
     } catch (error) {
       console.error('Error fetching data:', error)
+      toast.error('Error cargando embarques')
     } finally {
       setLoading(false)
     }
   }
 
+  const [submitting, setSubmitting] = useState(false)
+
   async function createEmbarque() {
-    if (!selectedTrabajadorId) return
+    if (!selectedTrabajadorId || submitting) return
+    setSubmitting(true)
     try {
       const res = await fetch('/api/embarques', {
         method: 'POST',
@@ -84,14 +88,21 @@ export default function EmbarquesPage() {
         setSelectedTrabajadorId('')
         setObs('')
         fetchData()
+        toast.success('Embarque creado')
+      } else {
+        toast.error(data.error || 'Error creando embarque')
       }
     } catch (error) {
       console.error('Error creating embarque:', error)
+      toast.error('Error creando embarque')
+    } finally {
+      setSubmitting(false)
     }
   }
 
   async function assignPedidos() {
-    if (!selectedEmbarque) return
+    if (!selectedEmbarque || submitting) return
+    setSubmitting(true)
     try {
       const res = await fetch(`/api/embarques/${selectedEmbarque.id}`, {
         method: 'PUT',
@@ -106,14 +117,21 @@ export default function EmbarquesPage() {
       if (data.success) {
         setShowDetailModal(false)
         fetchData()
+        toast.success('Pedidos asignados')
+      } else {
+        toast.error(data.error || 'Error asignando pedidos')
       }
     } catch (error) {
       console.error('Error assigning pedidos:', error)
+      toast.error('Error asignando pedidos')
+    } finally {
+      setSubmitting(false)
     }
   }
 
   async function cerrarEmbarque() {
-    if (!selectedEmbarque) return
+    if (!selectedEmbarque || submitting) return
+    setSubmitting(true)
     try {
       const res = await fetch(`/api/embarques/${selectedEmbarque.id}`, {
         method: 'PUT',
@@ -127,9 +145,15 @@ export default function EmbarquesPage() {
       if (data.success) {
         setShowDetailModal(false)
         fetchData()
+        toast.success('Embarque cerrado')
+      } else {
+        toast.error(data.error || 'Error cerrando embarque')
       }
     } catch (error) {
       console.error('Error closing embarque:', error)
+      toast.error('Error cerrando embarque')
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -137,15 +161,23 @@ export default function EmbarquesPage() {
     if (!selectedEmbarque) return
     const pedido = pedidos.find((p) => p.id === pedidoId)
     if (!pedido) return
-    const res = await fetch(`/api/pedidos/${pedidoId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ embarqueId: null }),
-    })
-    const data = await res.json()
-    if (data.success) {
-      setSelectedPedidoIds((prev) => prev.filter((id) => id !== pedidoId))
-      fetchData()
+    try {
+      const res = await fetch(`/api/pedidos/${pedidoId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ embarqueId: null }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setSelectedPedidoIds((prev) => prev.filter((id) => id !== pedidoId))
+        fetchData()
+        toast.success('Pedido removido')
+      } else {
+        toast.error('Error removiendo pedido')
+      }
+    } catch (error) {
+      console.error('Error removing pedido:', error)
+      toast.error('Error removiendo pedido')
     }
   }
 
@@ -238,7 +270,13 @@ export default function EmbarquesPage() {
         ))}
         {embarques.length === 0 && (
           <div className="col-span-full text-center py-12 text-gray-500">
-            No hay embarques hoy
+            <p className="mb-2">No hay embarques hoy</p>
+            <button
+              onClick={() => setShowModal(true)}
+              className="text-blue-600 hover:text-blue-800 font-medium text-sm"
+            >
+              + Crear tu primer embarque
+            </button>
           </div>
         )}
       </div>
@@ -284,10 +322,10 @@ export default function EmbarquesPage() {
           </button>
           <button
             onClick={createEmbarque}
-            disabled={!selectedTrabajadorId}
-            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            disabled={!selectedTrabajadorId || submitting}
+            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Crear
+            {submitting ? 'Creando...' : 'Crear'}
           </button>
         </div>
       </Modal>
@@ -342,10 +380,10 @@ export default function EmbarquesPage() {
 
                 <button
                   onClick={assignPedidos}
-                  disabled={selectedPedidoIds.length === 0}
-                  className="w-full mb-3 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  disabled={selectedPedidoIds.length === 0 || submitting}
+                  className="w-full mb-3 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Asignar Pedidos
+                  {submitting ? 'Asignando...' : 'Asignar Pedidos'}
                 </button>
               </>
             )}
@@ -386,6 +424,8 @@ export default function EmbarquesPage() {
                   <button
                     onClick={async () => {
                       if (!confirm('¿Cancelar este embarque? Los pedidos volverán a estar pendientes.')) return
+                      if (submitting) return
+                      setSubmitting(true)
                       try {
                         const res = await fetch(`/api/embarques/${selectedEmbarque.id}`, { method: 'DELETE' })
                         const data = await res.json()
@@ -398,17 +438,21 @@ export default function EmbarquesPage() {
                         }
                       } catch (e) {
                         toast.error('Error al cancelar')
+                      } finally {
+                        setSubmitting(false)
                       }
                     }}
-                    className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                    disabled={submitting}
+                    className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Cancelar
+                    {submitting ? 'Cancelando...' : 'Cancelar'}
                   </button>
                   <button
                     onClick={cerrarEmbarque}
-                    className="flex-1 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+                    disabled={submitting}
+                    className="flex-1 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Cerrar Embarque
+                    {submitting ? 'Cerrando...' : 'Cerrar Embarque'}
                   </button>
                 </>
               )}

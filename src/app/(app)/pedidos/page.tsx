@@ -97,6 +97,7 @@ export default function PedidosPage() {
       setPedidos(data.pedidos || data.data || [])
     } catch (error) {
       console.error('Error fetching pedidos:', error)
+      toast.error('Error cargando pedidos')
     } finally {
       setLoading(false)
     }
@@ -109,6 +110,7 @@ export default function PedidosPage() {
       setClientes(data.clientes || data.data || [])
     } catch (error) {
       console.error('Error fetching clientes:', error)
+      toast.error('Error cargando clientes')
     }
   }
 
@@ -123,6 +125,7 @@ export default function PedidosPage() {
       setPrecios(map)
     } catch (error) {
       console.error('Error fetching precios:', error)
+      toast.error('Error cargando precios')
     }
   }
 
@@ -136,6 +139,7 @@ export default function PedidosPage() {
       if (res.ok) {
         setShowModal(false)
         fetchPedidos()
+        toast.success('Pedido creado exitosamente')
       } else {
         const err = await res.json()
         toast.error(err.error?.formErrors?.[0] || 'Error creando pedido')
@@ -224,7 +228,11 @@ export default function PedidosPage() {
     )
   }
 
+  const [updatingId, setUpdatingId] = useState<string | null>(null)
+
   async function cambiarEstado(id: string, nuevoEstado: string) {
+    if (updatingId) return
+    setUpdatingId(id)
     try {
       const res = await fetch(`/api/pedidos/${id}`, {
         method: 'PUT',
@@ -234,9 +242,15 @@ export default function PedidosPage() {
       if (res.ok) {
         setShowDetailModal(false)
         fetchPedidos()
+        toast.success(`Estado actualizado a ${nuevoEstado}`)
+      } else {
+        toast.error('Error actualizando estado')
       }
     } catch (error) {
       console.error('Error cambiando estado:', error)
+      toast.error('Error actualizando estado')
+    } finally {
+      setUpdatingId(null)
     }
   }
 
@@ -431,7 +445,8 @@ export default function PedidosPage() {
                           {pedido.estado === 'PENDIENTE' && (
                             <button 
                               onClick={() => cambiarEstado(pedido.id, 'EN_RUTA')} 
-                              className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition"
+                              disabled={updatingId === pedido.id}
+                              className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
                               title="Enviar"
                             >
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
@@ -440,7 +455,8 @@ export default function PedidosPage() {
                           {pedido.estado === 'EN_RUTA' && (
                             <button 
                               onClick={() => cambiarEstado(pedido.id, 'ENTREGADO')} 
-                              className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition"
+                              disabled={updatingId === pedido.id}
+                              className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
                               title="Entregar"
                             >
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
@@ -667,10 +683,10 @@ export default function PedidosPage() {
                             cambiarEstado(selectedPedido.id, est)
                           }
                         }}
-                        disabled={est === selectedPedido.estado}
-                        className={`flex-1 py-2 rounded-lg text-xs font-medium transition ${styles[est]} ${est === selectedPedido.estado ? 'cursor-default' : 'hover:opacity-80 cursor-pointer'}`}
+                        disabled={est === selectedPedido.estado || updatingId === selectedPedido.id}
+                        className={`flex-1 py-2 rounded-lg text-xs font-medium transition ${styles[est]} ${est === selectedPedido.estado ? 'cursor-default' : 'hover:opacity-80 cursor-pointer'} disabled:opacity-50 disabled:cursor-not-allowed`}
                       >
-                        {labels[est]}
+                        {updatingId === selectedPedido.id && est !== selectedPedido.estado ? '...' : labels[est]}
                       </button>
                     )
                   })}

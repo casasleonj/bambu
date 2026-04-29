@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { toast } from 'sonner'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { Modal } from '@/components/modal'
 
@@ -133,9 +134,13 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
     setShowModal(true)
   }
 
+  const [saving, setSaving] = useState(false)
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setFormError('')
+    if (saving) return
+    setSaving(true)
     try {
       if (isEdit && selectedCliente) {
         const res = await fetch(`/api/clientes/${selectedCliente.id}`, {
@@ -146,9 +151,11 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
         if (res.ok) {
           fetchClientes()
           setShowModal(false)
+          toast.success('Cliente actualizado')
         } else {
           const data = await res.json().catch(() => ({}))
           setFormError(data.error?.formErrors?.[0] || data.error || 'Error al guardar cliente')
+          toast.error(data.error?.formErrors?.[0] || data.error || 'Error al guardar cliente')
         }
       } else {
         const res = await fetch('/api/clientes', {
@@ -159,14 +166,19 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
         if (res.ok) {
           fetchClientes()
           setShowModal(false)
+          toast.success('Cliente creado exitosamente')
         } else {
           const data = await res.json().catch(() => ({}))
           setFormError(data.error?.formErrors?.[0] || data.error || 'Error al guardar cliente')
+          toast.error(data.error?.formErrors?.[0] || data.error || 'Error al guardar cliente')
         }
       }
     } catch (error) {
       console.error('Error saving cliente:', error)
       setFormError('Error de conexion al guardar')
+      toast.error('Error de conexion al guardar')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -181,6 +193,7 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
       }
     } catch (error) {
       console.error('Error fetching cliente:', error)
+      toast.error('Error cargando cliente')
     }
   }
 
@@ -192,9 +205,13 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
         fetchClientes()
         setShowDetail(false)
         setSelectedCliente(null)
+        toast.success('Cliente desactivado')
+      } else {
+        toast.error('Error desactivando cliente')
       }
     } catch (error) {
       console.error('Error deleting cliente:', error)
+      toast.error('Error desactivando cliente')
     }
   }
 
@@ -243,7 +260,13 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {clientesFiltrados.length === 0 ? (
           <div className="col-span-full bg-white p-8 rounded-xl shadow text-center text-gray-500">
-            No hay clientes
+            <p className="mb-2">No hay clientes</p>
+            <button
+              onClick={openCreateModal}
+              className="text-blue-600 hover:text-blue-800 font-medium text-sm"
+            >
+              + Crear tu primer cliente
+            </button>
           </div>
         ) : (
           clientesFiltrados.map((cliente) => (
@@ -419,9 +442,10 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
             </button>
             <button
               type="submit"
-              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              disabled={saving}
+              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Guardar
+              {saving ? 'Guardando...' : 'Guardar'}
             </button>
           </div>
         </form>

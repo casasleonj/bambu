@@ -247,8 +247,11 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
       total,
     }
 
-    await onSubmit(data)
-    setSubmitting(false)
+    try {
+      await onSubmit(data)
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   function formatTier(t: Tier): string {

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -48,17 +49,26 @@ export default function GastosPage() {
       setGastos(data.gastos || data.data || [])
     } catch (e) {
       console.error(e)
+      toast.error('Error cargando gastos')
     }
   }
 
   const crearGasto = async () => {
-    if (!descripcion || !monto) return
+    if (!descripcion || !monto) {
+      toast.error('Descripción y monto son obligatorios')
+      return
+    }
+    const montoNum = parseFloat(monto)
+    if (isNaN(montoNum) || montoNum <= 0) {
+      toast.error('El monto debe ser mayor a 0')
+      return
+    }
     setLoading(true)
     try {
       const res = await fetch('/api/gastos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ categoria, descripcion, monto, responsable }),
+        body: JSON.stringify({ categoria, descripcion, monto: montoNum, responsable }),
       })
       if (res.ok) {
         setShowCrear(false)
@@ -66,9 +76,13 @@ export default function GastosPage() {
         setMonto('')
         setResponsable('')
         fetchGastos(showAll)
+        toast.success('Gasto registrado')
+      } else {
+        toast.error('Error registrando gasto')
       }
     } catch (e) {
       console.error(e)
+      toast.error('Error registrando gasto')
     }
     setLoading(false)
   }
@@ -122,20 +136,26 @@ export default function GastosPage() {
             </div>
             <div>
               <Label>Monto</Label>
-              <Input type="number" value={monto} onChange={(e) => setMonto(e.target.value)} placeholder="0" />
+              <Input type="number" min="0" value={monto} onChange={(e) => setMonto(e.target.value)} placeholder="0" />
             </div>
             <div>
               <Label>Responsable (opcional)</Label>
               <Input value={responsable} onChange={(e) => setResponsable(e.target.value)} placeholder="Quién paga" />
             </div>
-            <Button onClick={crearGasto} disabled={loading}>💾 Guardar</Button>
+            <Button onClick={crearGasto} disabled={loading}>{loading ? 'Guardando...' : 'Guardar'}</Button>
           </CardContent>
         </Card>
       )}
 
       {gastos.length === 0 ? (
         <div className="text-center py-8 text-muted-foreground">
-          {showAll ? 'No hay gastos registrados' : 'No hay gastos registrados hoy'}
+          <p className="mb-2">{showAll ? 'No hay gastos registrados' : 'No hay gastos registrados hoy'}</p>
+          <button
+            onClick={() => setShowCrear(true)}
+            className="text-blue-600 hover:text-blue-800 font-medium text-sm"
+          >
+            + Registrar tu primer gasto
+          </button>
         </div>
       ) : (
         <div className="space-y-2">

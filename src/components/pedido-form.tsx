@@ -82,6 +82,7 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
   const [observaciones, setObservaciones] = useState('')
   const [tablaPrecios, setTablaPrecios] = useState<Record<string, Tier[]>>({})
   const [preciosEditando, setPreciosEditando] = useState<Record<string, boolean>>({})
+  const [submitting, setSubmitting] = useState(false)
 
   // Fetch price tiers on mount
   useEffect(() => {
@@ -196,7 +197,7 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
     setPagos((prev) => prev.filter((_, i) => i !== idx))
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!clienteSeleccionado) {
       toast.error('Selecciona un cliente')
@@ -206,7 +207,9 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
       toast.error('El pedido debe tener al menos un producto')
       return
     }
+    if (submitting) return
 
+    setSubmitting(true)
     const pedido: PedidoFormData = {
       clienteId: clienteSeleccionado.id,
       canal: CANAL,
@@ -223,7 +226,11 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
       obs: observaciones,
       total,
     }
-    onSubmit?.(pedido)
+    try {
+      await onSubmit?.(pedido)
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   function formatTier(t: Tier): string {
@@ -505,8 +512,8 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
         </CardContent>
       </Card>
 
-      <Button type="submit" className="w-full" size="lg">
-        Crear Pedido (${total.toLocaleString()})
+      <Button type="submit" className="w-full" size="lg" disabled={submitting || total <= 0}>
+        {submitting ? 'Creando...' : `Crear Pedido (${total.toLocaleString()})`}
       </Button>
     </form>
   )
