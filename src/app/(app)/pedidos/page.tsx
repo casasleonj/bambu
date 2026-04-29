@@ -732,6 +732,10 @@ export default function PedidosPage() {
                   <div className="text-xs text-gray-400 mb-0.5">Fecha</div>
                   <div className="font-medium text-gray-700">{new Date(selectedPedido.fecha).toLocaleDateString('es-CO')}</div>
                 </div>
+                <div className="bg-white border rounded-lg p-2.5">
+                  <div className="text-xs text-gray-400 mb-0.5">Hora</div>
+                  <div className="font-medium text-gray-700">{new Date(selectedPedido.fecha).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}</div>
+                </div>
                 {selectedPedido.estado === 'EN_RUTA' && selectedPedido.embarqueId && (
                   <div className="bg-white border rounded-lg p-2.5">
                     <div className="text-xs text-gray-400 mb-0.5">Embarque</div>

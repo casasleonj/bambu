@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
 
     const prismaPagination = getPrismaPagination(pagination)
 
-    const [pedidos, total] = await Promise.all([
+    const [pedidosRaw, total] = await Promise.all([
       prisma.pedido.findMany({
         where,
         orderBy: { numero: 'desc' },
@@ -38,6 +38,15 @@ export async function GET(request: NextRequest) {
       }),
       prisma.pedido.count({ where }),
     ])
+
+    // Aplanar datos del cliente para el frontend
+    const pedidos = pedidosRaw.map(p => ({
+      ...p,
+      nombreCli: p.cliente?.nombre || 'Desconocido',
+      telefonoCli: p.cliente?.telefono || '',
+      zonaCli: p.cliente?.direccion || '',
+      fecha: p.fecha.toISOString(),
+    }))
 
     return NextResponse.json(
       pagination.all
