@@ -35,7 +35,7 @@ test.describe('Flujo completo de usuario', () => {
 
     // 4. Precios
     await page.goto(`${BASE_URL}/precios`)
-    await expect(page.locator('body')).toContainText('Configuración de Precios', { timeout: 10000 })
+    await expect(page.locator('body')).toContainText('Configuracion de Precios', { timeout: 10000 })
 
     // 5. Producción
     await page.goto(`${BASE_URL}/produccion`)

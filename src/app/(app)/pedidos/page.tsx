@@ -19,6 +19,7 @@ interface Pedido {
   tipo: string
   canal: string
   estado: string
+  embarqueId?: string
   cPacaAguaPed: number
   cPacaHieloPed: number
   cBotellonFabPed: number
@@ -43,6 +44,13 @@ interface Pedido {
   fecha: string
 }
 
+interface Embarque {
+  id: string
+  numero: number
+  trabajador: { nombre: string }
+  estado: string
+}
+
 interface Cliente {
   id: string
   nombre: string
@@ -52,7 +60,7 @@ interface Cliente {
 }
 
 const ESTADOS = ['TODOS', 'PENDIENTE', 'EN_RUTA', 'ENTREGADO', 'CANCELADO', 'ANULADO']
-const TIPO_PEDIDO = ['ENVIO', 'MOSTRADOR', 'RECURRENTE']
+const TIPOS = ['TODOS', 'ENVIO', 'PUNTO', 'MOSTRADOR']
 
 export default function PedidosPage() {
   const [pedidos, setPedidos] = useState<Pedido[]>([])
@@ -65,11 +73,17 @@ export default function PedidosPage() {
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [precios, setPrecios] = useState<Record<string, number>>({})
+  const [filtroTipo, setFiltroTipo] = useState('TODOS')
+  const [embarques, setEmbarques] = useState<Embarque[]>([])
+  const [showEmbarqueModal, setShowEmbarqueModal] = useState(false)
+  const [selectedPedidoForEmbarque, setSelectedPedidoForEmbarque] = useState<string | null>(null)
+  const [selectedEmbarqueId, setSelectedEmbarqueId] = useState('')
 
   useEffect(() => {
     fetchPedidos()
     fetchClientes()
     fetchPrecios()
+    fetchEmbarques()
   }, [])
 
   // Auto-refresh para sincronizar entre browsers
@@ -126,6 +140,16 @@ export default function PedidosPage() {
     } catch (error) {
       console.error('Error fetching precios:', error)
       toast.error('Error cargando precios')
+    }
+  }
+
+  async function fetchEmbarques() {
+    try {
+      const res = await fetch('/api/embarques')
+      const data = await res.json()
+      setEmbarques((data.embarques || data.data || []).filter((e: Embarque) => e.estado === 'ABIERTO'))
+    } catch (error) {
+      console.error('Error fetching embarques:', error)
     }
   }
 
@@ -202,16 +226,20 @@ export default function PedidosPage() {
 
   const pedidosFiltrados = pedidos.filter((p) => {
     const matchEstado = filtroEstado === 'TODOS' || p.estado === filtroEstado
+    const matchTipo = filtroTipo === 'TODOS' || p.tipo === filtroTipo
     const matchSearch =
       !search ||
       p.nombreCli.toLowerCase().includes(search.toLowerCase()) ||
       p.telefonoCli?.includes(search) ||
       p.numero.toString().includes(search)
-    return matchEstado && matchSearch
+    return matchEstado && matchTipo && matchSearch
   })
 
   const totalVentas = pedidosFiltrados.reduce((acc, p) => acc + Number(p.total || 0), 0)
-  const totalFiado = pedidosFiltrados.reduce((acc, p) => acc + (Number(p.saldo) > 0 ? Number(p.saldo) : 0), 0)
+  // Fiado solo cuenta pedidos ENTREGADOS con saldo pendiente
+  const totalFiado = pedidosFiltrados
+    .filter(p => p.estado === 'ENTREGADO' && Number(p.saldo) > 0)
+    .reduce((acc, p) => acc + Number(p.saldo), 0)
 
   function getEstadoBadge(estado: string) {
     const styles: Record<string, string> = {
@@ -228,10 +256,38 @@ export default function PedidosPage() {
     )
   }
 
+  function getTipoBadge(tipo: string) {
+    const styles: Record<string, string> = {
+      ENVIO: 'bg-indigo-100 text-indigo-700',
+      PUNTO: 'bg-emerald-100 text-emerald-700',
+      MOSTRADOR: 'bg-gray-100 text-gray-600',
+    }
+    const labels: Record<string, string> = { ENVIO: 'Envío', PUNTO: 'Punto', MOSTRADOR: 'Mostrador' }
+    return (
+      <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${styles[tipo] || 'bg-gray-100 text-gray-500'}`}>
+        {labels[tipo] || tipo}
+      </span>
+    )
+  }
+
+  // Fiado solo se muestra en pedidos ENTREGADOS
+  function tieneFiado(pedido: Pedido): boolean {
+    return pedido.estado === 'ENTREGADO' && Number(pedido.saldo) > 0
+  }
+
   const [updatingId, setUpdatingId] = useState<string | null>(null)
 
   async function cambiarEstado(id: string, nuevoEstado: string) {
     if (updatingId) return
+
+    // If changing to EN_RUTA, ask for embarque assignment first
+    if (nuevoEstado === 'EN_RUTA') {
+      setSelectedPedidoForEmbarque(id)
+      setSelectedEmbarqueId('')
+      setShowEmbarqueModal(true)
+      return
+    }
+
     setUpdatingId(id)
     try {
       const res = await fetch(`/api/pedidos/${id}`, {
@@ -251,6 +307,48 @@ export default function PedidosPage() {
       toast.error('Error actualizando estado')
     } finally {
       setUpdatingId(null)
+    }
+  }
+
+  async function asignarEmbarque() {
+    if (!selectedPedidoForEmbarque) return
+    setUpdatingId(selectedPedidoForEmbarque)
+    try {
+      // First change state to EN_RUTA
+      const resEstado = await fetch(`/api/pedidos/${selectedPedidoForEmbarque}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estado: 'EN_RUTA' }),
+      })
+      if (!resEstado.ok) {
+        toast.error('Error cambiando estado')
+        return
+      }
+
+      // Then assign to embarque if selected
+      if (selectedEmbarqueId) {
+        const resEmbarque = await fetch(`/api/pedidos/${selectedPedidoForEmbarque}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ embarqueId: selectedEmbarqueId }),
+        })
+        if (resEmbarque.ok) {
+          toast.success('Pedido enviado y asignado a embarque')
+        } else {
+          toast.success('Pedido enviado (no asignado a embarque)')
+        }
+      } else {
+        toast.success('Pedido enviado')
+      }
+      fetchPedidos()
+    } catch (error) {
+      console.error('Error asignando embarque:', error)
+      toast.error('Error asignando embarque')
+    } finally {
+      setUpdatingId(null)
+      setShowEmbarqueModal(false)
+      setSelectedPedidoForEmbarque(null)
+      setSelectedEmbarqueId('')
     }
   }
 
@@ -321,6 +419,21 @@ export default function PedidosPage() {
                 }`}
               >
                 {estado}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {TIPOS.map((tipo) => (
+              <button
+                key={tipo}
+                onClick={() => setFiltroTipo(tipo)}
+                className={`px-4 py-2.5 rounded-full text-sm transition ${
+                  filtroTipo === tipo
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {tipo}
               </button>
             ))}
           </div>
@@ -401,14 +514,17 @@ export default function PedidosPage() {
                     { key: 'bolsaAgua', label: '💧', count: pedido.cBolsaAguaPed },
                     { key: 'bolsaHielo', label: '❄️', count: pedido.cBolsaHieloPed },
                   ].filter(p => p.count > 0)
-                  const tieneFiado = Number(pedido.saldo) > 0
+                  const fiado = tieneFiado(pedido)
                   return (
-                    <tr key={pedido.id} className={`hover:bg-gray-50 transition ${tieneFiado ? 'bg-red-50/30' : ''}`}>
+                    <tr key={pedido.id} className={`hover:bg-gray-50 transition ${fiado ? 'bg-red-50/30' : ''}`}>
                       <td className="px-4 py-3 text-sm font-medium text-gray-500">#{pedido.numero}</td>
                       <td className="px-4 py-3">
-                        <div className="font-medium text-gray-800">{pedido.nombreCli}</div>
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className="font-medium text-gray-800">{pedido.nombreCli}</span>
+                          {getTipoBadge(pedido.tipo)}
+                        </div>
                         <div className="text-xs text-gray-400">{pedido.telefonoCli}</div>
-                        {tieneFiado && (
+                        {fiado && (
                           <span className="text-xs text-red-600 font-medium">Fiado: {formatCurrency(Number(pedido.saldo))}</span>
                         )}
                       </td>
@@ -428,7 +544,7 @@ export default function PedidosPage() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="font-semibold text-gray-800">{formatCurrency(Number(pedido.total))}</div>
-                        {tieneFiado && (
+                        {fiado && (
                           <div className="text-xs text-red-500">Pendiente: {formatCurrency(Number(pedido.saldo))}</div>
                         )}
                       </td>
@@ -478,11 +594,11 @@ export default function PedidosPage() {
             <div className="px-4 py-8 text-center text-gray-500">No hay pedidos</div>
           ) : (
             pedidosFiltrados.map((pedido) => {
-              const tieneFiado = Number(pedido.saldo) > 0
+              const fiado = tieneFiado(pedido)
               return (
                 <div 
                   key={pedido.id} 
-                  className={`p-4 hover:bg-gray-50 cursor-pointer transition ${tieneFiado ? 'bg-red-50/30' : ''}`}
+                  className={`p-4 hover:bg-gray-50 cursor-pointer transition ${fiado ? 'bg-red-50/30' : ''}`}
                   onClick={() => {
                     setSelectedPedido(pedido)
                     setShowDetailModal(true)
@@ -493,13 +609,14 @@ export default function PedidosPage() {
                       <div className="flex items-center gap-2 mb-0.5">
                         <span className="text-xs font-medium text-gray-400">#{pedido.numero}</span>
                         {getEstadoBadge(pedido.estado)}
+                        {getTipoBadge(pedido.tipo)}
                       </div>
                       <h3 className="font-medium text-gray-800 text-sm">{pedido.nombreCli}</h3>
                       <p className="text-xs text-gray-400">{pedido.telefonoCli}</p>
                     </div>
                     <div className="text-right ml-2">
                       <p className="font-bold text-gray-800 text-sm">{formatCurrency(Number(pedido.total))}</p>
-                      {tieneFiado && (
+                      {fiado && (
                         <p className="text-xs text-red-500 font-medium">Pendiente</p>
                       )}
                     </div>
@@ -519,6 +636,53 @@ export default function PedidosPage() {
         </div>
       </div>
 
+      {/* Modal Asignar Embarque */}
+      <Modal open={showEmbarqueModal} onClose={() => { setShowEmbarqueModal(false); setSelectedPedidoForEmbarque(null) }} className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6">
+        <h2 className="text-lg font-bold mb-4">Asignar a Embarque</h2>
+        <p className="text-sm text-gray-500 mb-4">Selecciona un embarque abierto para este pedido:</p>
+        {embarques.length === 0 ? (
+          <div className="text-center py-4">
+            <p className="text-sm text-gray-500 mb-2">No hay embarques abiertos</p>
+            <button
+              onClick={() => { setShowEmbarqueModal(false); setSelectedPedidoForEmbarque(null) }}
+              className="text-blue-600 text-sm font-medium hover:text-blue-800"
+            >
+              Enviar sin asignar
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <select
+              value={selectedEmbarqueId}
+              onChange={(e) => setSelectedEmbarqueId(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 text-sm"
+            >
+              <option value="">Sin embarque (enviar solo)</option>
+              {embarques.map((e) => (
+                <option key={e.id} value={e.id}>
+                  #{e.numero} - {e.trabajador.nombre}
+                </option>
+              ))}
+            </select>
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setShowEmbarqueModal(false); setSelectedPedidoForEmbarque(null) }}
+                className="flex-1 px-4 py-2 border rounded-lg text-sm hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={asignarEmbarque}
+                disabled={updatingId === selectedPedidoForEmbarque}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
+              >
+                {updatingId === selectedPedidoForEmbarque ? 'Enviando...' : 'Enviar'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
       <Modal open={showDetailModal && !!selectedPedido} onClose={() => setShowDetailModal(false)} className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
         {selectedPedido && (
           <>
@@ -528,6 +692,7 @@ export default function PedidosPage() {
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-sm text-gray-400">#{selectedPedido.numero}</span>
                   {getEstadoBadge(selectedPedido.estado)}
+                  {getTipoBadge(selectedPedido.tipo)}
                 </div>
                 <h2 className="text-lg font-bold text-gray-800">{selectedPedido.nombreCli}</h2>
                 <p className="text-sm text-gray-500">{selectedPedido.telefonoCli}</p>
@@ -548,13 +713,13 @@ export default function PedidosPage() {
                   <span className="text-gray-500">Pagado:</span>
                   <span className="font-medium text-green-600">{formatCurrency(Number(selectedPedido.totalPagado))}</span>
                 </div>
-                {Number(selectedPedido.saldo) > 0 && (
+                {selectedPedido.estado === 'ENTREGADO' && Number(selectedPedido.saldo) > 0 && (
                   <div className="flex justify-between text-sm mt-1">
                     <span className="text-gray-500">Pendiente:</span>
                     <span className="font-medium text-red-600">{formatCurrency(Number(selectedPedido.saldo))}</span>
                   </div>
                 )}
-                {Number(selectedPedido.saldo) <= 0 && Number(selectedPedido.totalPagado) > 0 && (
+                {selectedPedido.estado === 'ENTREGADO' && Number(selectedPedido.saldo) <= 0 && Number(selectedPedido.totalPagado) > 0 && (
                   <div className="flex justify-between text-sm mt-1">
                     <span className="text-gray-500">Estado:</span>
                     <span className="font-medium text-green-600">Pagado completo</span>
@@ -576,7 +741,12 @@ export default function PedidosPage() {
                   <div className="text-xs text-gray-400 mb-0.5">Fecha</div>
                   <div className="font-medium text-gray-700">{new Date(selectedPedido.fecha).toLocaleDateString('es-CO')}</div>
                 </div>
-
+                {selectedPedido.estado === 'EN_RUTA' && selectedPedido.embarqueId && (
+                  <div className="bg-white border rounded-lg p-2.5">
+                    <div className="text-xs text-gray-400 mb-0.5">Embarque</div>
+                    <div className="font-medium text-gray-700">#{embarques.find(e => e.id === selectedPedido.embarqueId)?.numero || selectedPedido.embarqueId}</div>
+                  </div>
+                )}
               </div>
 
               {/* Productos */}
@@ -665,7 +835,7 @@ export default function PedidosPage() {
               <div>
                 <h3 className="text-sm font-semibold text-gray-700 mb-2">Estado</h3>
                 <div className="flex gap-2">
-                  {['PENDIENTE', 'EN_RUTA', 'ENTREGADO', 'CANCELADO'].map((est) => {
+                  {['PENDIENTE', 'EN_RUTA', 'ENTREGADO', 'CANCELADO', 'ANULADO'].map((est) => {
                     const isActive = selectedPedido.estado === est
                     const isPast = ['PENDIENTE', 'EN_RUTA', 'ENTREGADO'].indexOf(selectedPedido.estado) >= ['PENDIENTE', 'EN_RUTA', 'ENTREGADO'].indexOf(est)
                     const styles: Record<string, string> = {
@@ -673,27 +843,33 @@ export default function PedidosPage() {
                       EN_RUTA: isActive ? 'bg-blue-500 text-white' : isPast ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-400',
                       ENTREGADO: isActive ? 'bg-green-500 text-white' : isPast ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400',
                       CANCELADO: isActive ? 'bg-gray-500 text-white' : 'bg-gray-100 text-gray-400',
+                      ANULADO: isActive ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-400',
                     }
-                    const labels: Record<string, string> = { PENDIENTE: 'Pendiente', EN_RUTA: 'En Ruta', ENTREGADO: 'Entregado', CANCELADO: 'Cancelado' }
+                    const labels: Record<string, string> = { PENDIENTE: 'Pendiente', EN_RUTA: 'En Ruta', ENTREGADO: 'Entregado', CANCELADO: 'Cancelado', ANULADO: 'Anulado' }
+                    // CANCELADO: available from PENDIENTE or EN_RUTA
+                    // ANULADO: available only from ENTREGADO
+                    const canCancel = ['PENDIENTE', 'EN_RUTA'].includes(selectedPedido.estado) && est === 'CANCELADO'
+                    const canAnular = selectedPedido.estado === 'ENTREGADO' && est === 'ANULADO'
+                    const isClickable = (est !== selectedPedido.estado) && (canCancel || canAnular || (['PENDIENTE', 'EN_RUTA', 'ENTREGADO'].includes(est) && !['CANCELADO', 'ANULADO'].includes(selectedPedido.estado)))
                     return (
                       <button
                         key={est}
                         onClick={() => {
-                          if (est !== selectedPedido.estado && est !== 'CANCELADO') {
+                          if (isClickable) {
                             cambiarEstado(selectedPedido.id, est)
                           }
                         }}
-                        disabled={est === selectedPedido.estado || updatingId === selectedPedido.id}
-                        className={`flex-1 py-2 rounded-lg text-xs font-medium transition ${styles[est]} ${est === selectedPedido.estado ? 'cursor-default' : 'hover:opacity-80 cursor-pointer'} disabled:opacity-50 disabled:cursor-not-allowed`}
+                        disabled={!isClickable || updatingId === selectedPedido.id}
+                        className={`flex-1 py-2 rounded-lg text-xs font-medium transition ${styles[est]} ${est === selectedPedido.estado ? 'cursor-default' : isClickable ? 'hover:opacity-80 cursor-pointer' : 'cursor-not-allowed'} disabled:opacity-50`}
                       >
                         {updatingId === selectedPedido.id && est !== selectedPedido.estado ? '...' : labels[est]}
                       </button>
                     )
                   })}
                 </div>
-              </div>
-            </div>
-          </>
+               </div>
+             </div>
+           </>
         )}
       </Modal>
     </div>

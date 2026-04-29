@@ -122,7 +122,7 @@ test.describe('Flujos críticos de negocio', () => {
     // Wait for dashboard to fully load
     await page.waitForLoadState('networkidle')
     await expect(page.locator('body')).toContainText('Ventas por Precio', { timeout: 10000 })
-    await expect(page.locator('body')).toContainText('Acciones Rápidas')
+    await expect(page.locator('body')).toContainText('Acciones Rapidas')
     await expect(page.locator('body')).toContainText('Stock Disponible')
     await expect(page.locator('body')).toContainText('Resumen de Caja')
   })

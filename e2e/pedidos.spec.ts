@@ -33,10 +33,10 @@ test.describe('Pedidos', () => {
     await page.click('button:has-text("Venta Rapida")')
     await page.waitForTimeout(500)
     
-    // Add products
-    const plusButtons = page.locator('div.fixed button.rounded-full.bg-blue-100')
-    await plusButtons.first().click()
-    await plusButtons.first().click()
+    // Add products - increment buttons are green circles with + icon
+    const plusButtons = page.locator('button:has(svg)').filter({ hasText: '' }).first()
+    await page.locator('button.rounded-full.bg-green-100').first().click()
+    await page.locator('button.rounded-full.bg-green-100').first().click()
     
     // Submit
     await page.click('button:has-text("Cobrar")')
@@ -62,15 +62,25 @@ test.describe('Pedidos', () => {
     await page.click('button:has-text("Venta Rapida")')
     await page.waitForTimeout(500)
     
-    // Add product
-    const plusButtons = page.locator('div.fixed button.rounded-full.bg-blue-100')
-    await plusButtons.first().click()
-    
-    // Enable envio
+    // Enable envio first (this resets quantities)
     await page.check('input[type="checkbox"]')
+    await page.waitForTimeout(300)
+    
+    // Add product
+    await page.locator('button.rounded-full.bg-green-100').first().click()
+    
+    // Search for non-existent client to trigger "Crear nuevo"
+    await page.fill('input[placeholder="Buscar por nombre o celular..."]', 'Cliente Unico XYZ')
+    await page.waitForTimeout(500)
+    
+    // Click "Crear nuevo cliente"
+    await page.click('button:has-text("Crear nuevo cliente")')
+    await page.waitForTimeout(300)
+    
+    // Fill new client form
     await page.fill('input[placeholder="Nombre *"]', 'Cliente Test')
     await page.fill('input[placeholder="Celular *"]', '3009998888')
-    await page.fill('input[placeholder*="Dirección"]', 'Calle Test 123')
+    await page.fill('input[placeholder="Dirección *"]', 'Calle Test 123')
     
     // Submit
     await page.click('button:has-text("Cobrar")')
