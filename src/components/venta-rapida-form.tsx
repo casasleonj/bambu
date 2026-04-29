@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { DEFAULT_PRICES, PRODUCTO_INFO, type ProductoId } from '@/lib/prices'
+import { DEFAULT_PRICES, PRODUCTO_INFO, getProductosForCanal, type ProductoId } from '@/lib/prices'
 
 interface Cliente {
   id: string
@@ -31,7 +31,7 @@ interface VentaRapidaData {
   clienteNuevo?: { nombre: string; telefono: string; direccion: string; barrio?: string }
   nombreMostrador?: string
   tipo: 'MOSTRADOR' | 'ENVIO'
-  canal: 'PUNTO'
+  canal: 'PUNTO' | 'DOMICILIO'
   ventaRapida: true
   productos: {
     pacaAgua: number
@@ -54,14 +54,9 @@ const METODOS_PAGO = [
   { id: 'BONO', nombre: 'Bono' },
 ]
 
-const CANAL = 'PUNTO' as const
-
-// Filter products for PUNTO canal
-const PRODUCTOS_PUNTO = (Object.keys(PRODUCTO_INFO) as ProductoId[]).filter(
-  id => PRODUCTO_INFO[id].canal === 'PUNTO' || PRODUCTO_INFO[id].canal === 'AMBOS'
-)
-
 export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaFormProps) {
+  const [quiereEnvio, setQuiereEnvio] = useState(false)
+  const [canal, setCanal] = useState<'PUNTO' | 'DOMICILIO'>('PUNTO')
   const [cantidades, setCantidades] = useState<Record<string, number>>({})
   const [searchTerm, setSearchTerm] = useState('')
   const [clienteSeleccionado, setClienteSeleccionado] = useState<Cliente | null>(null)
@@ -72,23 +67,43 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
   const [preciosResueltos, setPreciosResueltos] = useState<Record<string, number>>({})
   const [tablaPrecios, setTablaPrecios] = useState<Record<string, Tier[]>>({})
 
-  // Fetch price tiers on mount
+  const productosActuales = getProductosForCanal(canal)
+
+  // Fetch price tiers when canal changes
   useEffect(() => {
-    fetch(`/api/precios/tabla?canal=${CANAL}`)
+    fetch(`/api/precios/tabla?canal=${canal}`)
       .then(r => r.json())
       .then(d => { if (d.tabla) setTablaPrecios(d.tabla) })
       .catch(() => {})
-  }, [])
+  }, [canal])
 
-  const getPrecio = (codigo: string) => preciosResueltos[codigo] || precios[codigo] || DEFAULT_PRICES[codigo] || 0
+  // Reset quantities when switching modes
+  const handleToggleEnvio = (envio: boolean) => {
+    setQuiereEnvio(envio)
+    setCanal(envio ? 'DOMICILIO' : 'PUNTO')
+    setCantidades({})
+    setPreciosResueltos({})
+    setClienteSeleccionado(null)
+    setSearchTerm('')
+    setMostrarNuevo(false)
+  }
 
-  const total = PRODUCTOS_PUNTO.reduce((sum, prodId) => {
+  const getPrecio = (codigo: string) => {
+    if (preciosResueltos[codigo]) return preciosResueltos[codigo]
+    if (precios[codigo]) return precios[codigo]
+    // Use first tier from price table as fallback
+    const tiers = tablaPrecios[codigo]
+    if (tiers && tiers.length > 0) return tiers[0].precio
+    return DEFAULT_PRICES[codigo] || 0
+  }
+
+  const total = productosActuales.reduce((sum, prodId) => {
     const cant = cantidades[prodId] || 0
     return sum + cant * getPrecio(PRODUCTO_INFO[prodId].codigo)
   }, 0)
 
-  const resolverPrecios = useCallback(async (prods: Record<string, number>) => {
-    const items = PRODUCTOS_PUNTO
+  const resolverPrecios = useCallback(async (prods: Record<string, number>, canalVal: 'PUNTO' | 'DOMICILIO') => {
+    const items = productosActuales
       .filter(id => (prods[id] || 0) > 0)
       .map(id => ({ codigo: PRODUCTO_INFO[id].codigo, cantidad: prods[id] || 0 }))
 
@@ -101,7 +116,7 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
       const res = await fetch('/api/precios/resolver', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items, canal: CANAL }),
+        body: JSON.stringify({ items, canal: canalVal }),
       })
       if (res.ok) {
         const data = await res.json()
@@ -116,18 +131,18 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
     } catch {
       // fallback to defaults
     }
-  }, [])
+  }, [productosActuales])
 
   const increment = (id: string) => {
     const next = { ...cantidades, [id]: (cantidades[id] || 0) + 1 }
     setCantidades(next)
-    resolverPrecios(next)
+    resolverPrecios(next, canal)
   }
 
   const decrement = (id: string) => {
     const next = { ...cantidades, [id]: Math.max(0, (cantidades[id] || 0) - 1) }
     setCantidades(next)
-    resolverPrecios(next)
+    resolverPrecios(next, canal)
   }
 
   const filteredClientes = searchTerm
@@ -155,6 +170,22 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
       return
     }
 
+    // Validation for envio
+    if (quiereEnvio) {
+      if (!clienteSeleccionado && !mostrarNuevo) {
+        toast.error('Selecciona un cliente o crea uno nuevo para el envío')
+        return
+      }
+      if (mostrarNuevo && (!nuevoCliente.nombre || !nuevoCliente.telefono || !nuevoCliente.direccion)) {
+        toast.error('Completa nombre, celular y dirección para el envío')
+        return
+      }
+      if (clienteSeleccionado && !clienteSeleccionado.direccion) {
+        toast.error('El cliente seleccionado no tiene dirección. Crea uno nuevo o actualiza el cliente.')
+        return
+      }
+    }
+
     setSubmitting(true)
 
     let clienteId = 'CLIENTE_MOSTRADOR'
@@ -162,19 +193,23 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
     let nombreMostrador: string | undefined
     let clienteNuevo: { nombre: string; telefono: string; direccion: string; barrio?: string } | undefined
 
-    if (clienteSeleccionado) {
-      clienteId = clienteSeleccionado.id
-      tipo = 'ENVIO'
-    } else if (mostrarNuevo && nuevoCliente.nombre && nuevoCliente.telefono) {
-      clienteNuevo = {
-        nombre: nuevoCliente.nombre,
-        telefono: nuevoCliente.telefono,
-        direccion: nuevoCliente.direccion,
-        barrio: nuevoCliente.barrio || undefined,
+    if (quiereEnvio) {
+      if (clienteSeleccionado) {
+        clienteId = clienteSeleccionado.id
+        tipo = 'ENVIO'
+      } else if (mostrarNuevo) {
+        clienteNuevo = {
+          nombre: nuevoCliente.nombre,
+          telefono: nuevoCliente.telefono,
+          direccion: nuevoCliente.direccion,
+          barrio: nuevoCliente.barrio || undefined,
+        }
+        tipo = 'ENVIO'
       }
-      tipo = 'ENVIO'
-    } else if (searchTerm.trim()) {
-      nombreMostrador = searchTerm.trim()
+    } else {
+      if (searchTerm.trim()) {
+        nombreMostrador = searchTerm.trim()
+      }
     }
 
     const data: VentaRapidaData = {
@@ -182,7 +217,7 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
       clienteNuevo,
       nombreMostrador,
       tipo,
-      canal: 'PUNTO',
+      canal,
       ventaRapida: true,
       productos: {
         pacaAgua: cantidades.pacaAgua || 0,
@@ -220,13 +255,33 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
 
   return (
     <div className="space-y-4 max-h-[80vh] overflow-y-auto pr-1">
+      {/* Toggle envío */}
+      <div className="bg-gray-50 rounded-lg p-3 border">
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={quiereEnvio}
+            onChange={(e) => handleToggleEnvio(e.target.checked)}
+            className="w-5 h-5 rounded border-gray-300"
+          />
+          <div>
+            <span className="font-medium text-gray-700">¿Quiere envío a domicilio?</span>
+            <p className="text-xs text-gray-400">
+              {quiereEnvio ? 'Precios y productos de envío' : 'Venta en punto de venta'}
+            </p>
+          </div>
+        </label>
+      </div>
+
       {/* Cliente search */}
       <div className="space-y-2">
-        <label className="text-sm font-medium text-gray-700">Cliente</label>
+        <label className="text-sm font-medium text-gray-700">
+          {quiereEnvio ? 'Cliente para envío' : 'Cliente (opcional)'}
+        </label>
         {!clienteSeleccionado && !mostrarNuevo && (
           <>
             <Input
-              placeholder="Buscar por nombre o celular... (vacío = Mostrador)"
+              placeholder={quiereEnvio ? "Buscar por nombre o celular..." : "Buscar o dejar vacío para Mostrador"}
               value={searchTerm}
               onChange={(e) => {
                 setSearchTerm(e.target.value)
@@ -266,6 +321,9 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
             <div>
               <p className="font-medium text-sm">{clienteSeleccionado.nombre}</p>
               <p className="text-xs text-gray-500">{clienteSeleccionado.telefono}</p>
+              {quiereEnvio && clienteSeleccionado.direccion && (
+                <p className="text-xs text-gray-400">{clienteSeleccionado.direccion}</p>
+              )}
             </div>
             <Button type="button" variant="ghost" size="sm" onClick={() => { setClienteSeleccionado(null); setSearchTerm('') }}>
               Cambiar
@@ -292,7 +350,7 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
       {/* Productos con tiers */}
       <div className="space-y-3">
         <h3 className="font-semibold text-gray-700 text-sm">Productos</h3>
-        {PRODUCTOS_PUNTO.map((prodId) => {
+        {productosActuales.map((prodId) => {
           const info = PRODUCTO_INFO[prodId]
           const cant = cantidades[prodId] || 0
           const precio = getPrecio(info.codigo)

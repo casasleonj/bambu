@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { DEFAULT_PRICES, PRODUCTO_INFO, type ProductoId } from '@/lib/prices'
+import { DEFAULT_PRICES, PRODUCTO_INFO, getProductosForCanal, type ProductoId } from '@/lib/prices'
 
 interface Cliente {
   id: string
@@ -60,10 +60,8 @@ const METODOS_PAGO = [
 
 const CANAL = 'DOMICILIO' as const
 
-// Filter products for DOMICILIO canal
-const PRODUCTOS_DOM = (Object.keys(PRODUCTO_INFO) as ProductoId[]).filter(
-  id => PRODUCTO_INFO[id].canal === 'DOMICILIO' || PRODUCTO_INFO[id].canal === 'AMBOS'
-)
+// Filter products for DOMICILIO canal (excludes soloPunto like bolsas)
+const PRODUCTOS_DOM = getProductosForCanal('DOMICILIO')
 
 export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoFormProps) {
   const [searchTerm, setSearchTerm] = useState('')
@@ -142,6 +140,11 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
     const info = PRODUCTO_INFO[productoId]
     if (preciosResueltos[info.codigo] && preciosResueltos[info.codigo] > 0) {
       return preciosResueltos[info.codigo]
+    }
+    // Use first tier from price table as fallback (shows correct DOMICILIO prices)
+    const tiers = tablaPrecios[info.codigo]
+    if (tiers && tiers.length > 0) {
+      return tiers[0].precio
     }
     return precios[info.precioKey] || DEFAULT_PRICES[info.precioKey] || 0
   }
@@ -251,9 +254,9 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
-              {(searchTerm ? filteredClientes.length > 0 : clientes.length > 0) && (
+              {searchTerm && filteredClientes.length > 0 && (
                 <div className="border rounded-md max-h-40 overflow-y-auto">
-                  {(searchTerm ? filteredClientes : clientes.slice(0, 5)).map((cliente) => (
+                  {filteredClientes.map((cliente) => (
                     <button
                       key={cliente.id}
                       type="button"
