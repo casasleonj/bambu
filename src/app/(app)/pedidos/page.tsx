@@ -846,11 +846,15 @@ export default function PedidosPage() {
                       ANULADO: isActive ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-400',
                     }
                     const labels: Record<string, string> = { PENDIENTE: 'Pendiente', EN_RUTA: 'En Ruta', ENTREGADO: 'Entregado', CANCELADO: 'Cancelado', ANULADO: 'Anulado' }
-                    // CANCELADO: available from PENDIENTE or EN_RUTA
-                    // ANULADO: available only from ENTREGADO
-                    const canCancel = ['PENDIENTE', 'EN_RUTA'].includes(selectedPedido.estado) && est === 'CANCELADO'
-                    const canAnular = selectedPedido.estado === 'ENTREGADO' && est === 'ANULADO'
-                    const isClickable = (est !== selectedPedido.estado) && (canCancel || canAnular || (['PENDIENTE', 'EN_RUTA', 'ENTREGADO'].includes(est) && !['CANCELADO', 'ANULADO'].includes(selectedPedido.estado)))
+                    // Transiciones válidas entre estados
+                    const transicionesValidas: Record<string, string[]> = {
+                      PENDIENTE: ['EN_RUTA', 'CANCELADO'],
+                      EN_RUTA: ['ENTREGADO', 'PENDIENTE', 'CANCELADO'],
+                      ENTREGADO: ['ANULADO'],
+                      CANCELADO: [],
+                      ANULADO: [],
+                    }
+                    const isClickable = transicionesValidas[selectedPedido.estado].includes(est)
                     return (
                       <button
                         key={est}
