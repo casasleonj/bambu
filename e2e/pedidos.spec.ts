@@ -34,9 +34,15 @@ test.describe('Pedidos', () => {
     await page.waitForTimeout(500)
     
     // Add products - increment buttons are green circles with + icon
-    const plusButtons = page.locator('button:has(svg)').filter({ hasText: '' }).first()
     await page.locator('button.rounded-full.bg-green-100').first().click()
     await page.locator('button.rounded-full.bg-green-100').first().click()
+    
+    // Select first existing client from the list
+    await page.fill('input[placeholder="Buscar por nombre o celular..."]', 'a')
+    await page.waitForTimeout(500)
+    // Click first client result in the dropdown (not "Crear nuevo")
+    await page.locator('div.border.rounded-md button').first().click()
+    await page.waitForTimeout(300)
     
     // Submit
     await page.click('button:has-text("Cobrar")')

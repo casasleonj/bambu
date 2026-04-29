@@ -61,9 +61,9 @@ export async function POST(request: NextRequest) {
     }
     const { clienteId, productos, obs, fechaEntrega, canal, preciosManuales } = parsed.data
 
-    const isVentaRapida = parsed.data.ventaRapida === true
-    const tipo = parsed.data.tipo || (isVentaRapida ? 'MOSTRADOR' : 'ENVIO')
-    const estadoInicial = (tipo === 'MOSTRADOR') ? 'ENTREGADO' : 'PENDIENTE'
+    const tipo = parsed.data.tipo || 'ENVIO'
+    const pagosData = parsed.data.pagos || []
+    const totalPagado = pagosData.reduce((sum, p) => sum + p.monto, 0)
 
     const result = await withAdvisoryLock('PEDIDO', () => prisma.$transaction(async (tx) => {
       // Build items array for pricing engine
@@ -91,9 +91,7 @@ export async function POST(request: NextRequest) {
       }
 
       const total = preciosResueltos.reduce((sum, pr) => sum + pr.subtotal, 0)
-
-      const pagosData = parsed.data.pagos || []
-      const totalPagado = pagosData.reduce((sum, p) => sum + p.monto, 0)
+      const estadoInicial = totalPagado >= total ? 'ENTREGADO' : 'PENDIENTE'
 
       const numero = await getNextNumero(tx, { seqName: 'pedido_numero_seq', model: 'pedido' })
 
@@ -117,8 +115,8 @@ export async function POST(request: NextRequest) {
           precioBolsaAgua: precioMap['BOLSA_AGUA'] || 0,
           precioBolsaHielo: precioMap['BOLSA_HIELO'] || 0,
           total,
-          saldo: isVentaRapida ? 0 : (total - totalPagado),
-          totalPagado: isVentaRapida ? total : totalPagado,
+          saldo: total - totalPagado,
+          totalPagado: totalPagado,
           obs,
           fechaEntrega: fechaEntrega ? new Date(fechaEntrega) : null,
         },
@@ -145,7 +143,7 @@ export async function POST(request: NextRequest) {
           pedidoId: pedido.id,
           subtotal: total,
           total,
-          saldo: isVentaRapida ? 0 : (total - totalPagado),
+          saldo: total - totalPagado,
         },
       })
 

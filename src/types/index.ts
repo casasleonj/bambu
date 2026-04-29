@@ -1,6 +1,6 @@
 export type Rol = 'ADMIN' | 'ASISTENTE' | 'CONTADOR' | 'REPARTIDOR' | 'SELLADOR'
 export type EstadoPedido = 'PENDIENTE' | 'EN_RUTA' | 'ENTREGADO' | 'CANCELADO' | 'ANULADO'
-export type TipoPedido = 'ENVIO' | 'MOSTRADOR' | 'RECURRENTE'
+export type TipoPedido = 'ENVIO' | 'PUNTO' | 'RECURRENTE'
 export type MetodoPago = 'EFECTIVO' | 'TRANSFERENCIA' | 'NEQUI' | 'DAVIPLATA' | 'BONO'
 export type EstadoEmbarque = 'ABIERTO' | 'CERRADO'
 export type Turno = 'MANANA' | 'TARDE' | 'NOCHE'

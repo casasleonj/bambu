@@ -47,7 +47,7 @@ test.describe('Flujos críticos de negocio', () => {
 
     // Fill form using labels to ensure correct inputs
     await modal.locator('text=Nombre').locator('..').locator('input').fill('Cliente E2E Test')
-    await modal.locator('text=Teléfono').locator('..').locator('input').fill('3119998888')
+    await modal.locator('text=Telefono *').locator('..').locator('input').fill('3119998888')
 
     // Submit
     await modal.locator('button[type="submit"]').click()
@@ -85,9 +85,9 @@ test.describe('Flujos críticos de negocio', () => {
     const modal = page.locator('form').filter({ hasText: 'Cliente' })
 
     // Search and select first client
-    await modal.locator('input[placeholder="Buscar por nombre o teléfono..."]').fill('a')
+    await modal.locator('input[placeholder="Buscar por nombre o telefono..."]').fill('a')
     await page.waitForTimeout(500)
-    const clientBtn = modal.locator('button[type="button"]').first()
+    const clientBtn = modal.locator('div.border.rounded-md button').first()
     await clientBtn.click()
 
     // Add product
@@ -149,9 +149,9 @@ test.describe('Flujos críticos de negocio', () => {
     const modal = page.locator('form').filter({ hasText: 'Cliente' })
 
     // Select client
-    await modal.locator('input[placeholder="Buscar por nombre o teléfono..."]').fill('a')
+    await modal.locator('input[placeholder="Buscar por nombre o telefono..."]').fill('a')
     await page.waitForTimeout(500)
-    await modal.locator('button[type="button"]').first().click()
+    await modal.locator('div.border.rounded-md button').first().click()
 
     // Add product
     await modal.locator('input[type="number"]').first().fill('1')

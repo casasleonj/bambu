@@ -60,7 +60,7 @@ interface Cliente {
 }
 
 const ESTADOS = ['TODOS', 'PENDIENTE', 'EN_RUTA', 'ENTREGADO', 'CANCELADO', 'ANULADO']
-const TIPOS = ['TODOS', 'ENVIO', 'PUNTO', 'MOSTRADOR']
+const TIPOS = ['TODOS', 'ENVIO', 'PUNTO']
 
 export default function PedidosPage() {
   const [pedidos, setPedidos] = useState<Pedido[]>([])
@@ -176,7 +176,7 @@ export default function PedidosPage() {
 
   async function handleVentaRapida(data: any) {
     try {
-      let clienteId = 'CLIENTE_MOSTRADOR'
+      let clienteId = data.clienteId || 'CLIENTE_PUNTO'
 
       // Si quiere envío, crear/buscar cliente primero
       if (data.clienteNuevo) {
@@ -260,9 +260,8 @@ export default function PedidosPage() {
     const styles: Record<string, string> = {
       ENVIO: 'bg-indigo-100 text-indigo-700',
       PUNTO: 'bg-emerald-100 text-emerald-700',
-      MOSTRADOR: 'bg-gray-100 text-gray-600',
     }
-    const labels: Record<string, string> = { ENVIO: 'Envío', PUNTO: 'Punto', MOSTRADOR: 'Mostrador' }
+    const labels: Record<string, string> = { ENVIO: 'Envío', PUNTO: 'Punto' }
     return (
       <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${styles[tipo] || 'bg-gray-100 text-gray-500'}`}>
         {labels[tipo] || tipo}

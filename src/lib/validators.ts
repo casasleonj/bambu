@@ -21,7 +21,7 @@ export const PedidoCreateSchema = z.object({
   obs: z.string().max(500).optional(),
   fechaEntrega: z.string().optional(),
   ventaRapida: z.boolean().optional(),
-  tipo: z.enum(['ENVIO', 'MOSTRADOR', 'RECURRENTE']).optional(),
+  tipo: z.enum(['ENVIO', 'PUNTO', 'RECURRENTE']).optional(),
 });
 
 export const ClienteQuickCreateSchema = z.object({

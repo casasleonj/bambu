@@ -29,8 +29,7 @@ interface VentaRapidaFormProps {
 interface VentaRapidaData {
   clienteId?: string
   clienteNuevo?: { nombre: string; telefono: string; direccion: string; barrio?: string }
-  nombreMostrador?: string
-  tipo: 'MOSTRADOR' | 'ENVIO'
+  tipo: 'PUNTO' | 'ENVIO'
   canal: 'PUNTO' | 'DOMICILIO'
   ventaRapida: true
   preciosManuales?: Record<string, number>
@@ -53,6 +52,7 @@ const METODOS_PAGO = [
   { id: 'NEQUI', nombre: 'Nequi' },
   { id: 'DAVIPLATA', nombre: 'Daviplata' },
   { id: 'BONO', nombre: 'Bono' },
+  { id: 'FIADO', nombre: 'Pagar después' },
 ]
 
 export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaFormProps) {
@@ -178,14 +178,20 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
       return
     }
 
-    // Validation for envio
+    // Validación: siempre requiere cliente (buscado o nuevo)
+    if (!clienteSeleccionado && !mostrarNuevo) {
+      toast.error('Busca o crea un cliente para registrar la venta')
+      return
+    }
+    if (mostrarNuevo && (!nuevoCliente.nombre || !nuevoCliente.telefono)) {
+      toast.error('Nombre y celular son obligatorios')
+      return
+    }
+
+    // Validación adicional para envío: requiere dirección
     if (quiereEnvio) {
-      if (!clienteSeleccionado && !mostrarNuevo) {
-        toast.error('Selecciona un cliente o crea uno nuevo para el envío')
-        return
-      }
-      if (mostrarNuevo && (!nuevoCliente.nombre || !nuevoCliente.telefono || !nuevoCliente.direccion)) {
-        toast.error('Completa nombre, celular y dirección para el envío')
+      if (mostrarNuevo && !nuevoCliente.direccion) {
+        toast.error('La dirección es obligatoria para envío')
         return
       }
       if (clienteSeleccionado && !clienteSeleccionado.direccion) {
@@ -196,9 +202,8 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
 
     setSubmitting(true)
 
-    let clienteId = 'CLIENTE_MOSTRADOR'
-    let tipo: 'MOSTRADOR' | 'ENVIO' = 'MOSTRADOR'
-    let nombreMostrador: string | undefined
+    let clienteId = 'CLIENTE_PUNTO'
+    let tipo: 'PUNTO' | 'ENVIO' = 'PUNTO'
     let clienteNuevo: { nombre: string; telefono: string; direccion: string; barrio?: string } | undefined
 
     if (quiereEnvio) {
@@ -215,15 +220,23 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
         tipo = 'ENVIO'
       }
     } else {
-      if (searchTerm.trim()) {
-        nombreMostrador = searchTerm.trim()
+      // Punto: siempre cliente real
+      if (clienteSeleccionado) {
+        clienteId = clienteSeleccionado.id
+      } else if (mostrarNuevo) {
+        clienteNuevo = {
+          nombre: nuevoCliente.nombre,
+          telefono: nuevoCliente.telefono,
+          direccion: nuevoCliente.direccion,
+          barrio: nuevoCliente.barrio || undefined,
+        }
       }
     }
 
+    const esFiado = metodoPago === 'FIADO'
     const data: VentaRapidaData = {
       clienteId,
       clienteNuevo,
-      nombreMostrador,
       tipo,
       canal,
       ventaRapida: true,
@@ -236,14 +249,12 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
         bolsaAgua: cantidades.bolsaAgua || 0,
         bolsaHielo: cantidades.bolsaHielo || 0,
       },
-      pagos: [{ metodo: metodoPago, monto: total }],
+      pagos: esFiado ? [] : [{ metodo: metodoPago, monto: total }],
       obs: clienteSeleccionado
         ? `Cliente: ${clienteSeleccionado.nombre} - ${clienteSeleccionado.telefono}`
         : mostrarNuevo
           ? `Nuevo: ${nuevoCliente.nombre} - ${nuevoCliente.telefono}`
-          : searchTerm
-            ? `Ref: ${searchTerm}`
-            : '',
+          : '',
       total,
     }
 
@@ -288,12 +299,12 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
       {/* Cliente search */}
       <div className="space-y-2">
         <label className="text-sm font-medium text-gray-700">
-          {quiereEnvio ? 'Cliente para envío' : 'Cliente (opcional)'}
+          {quiereEnvio ? 'Cliente para envío' : 'Cliente (obligatorio)'}
         </label>
         {!clienteSeleccionado && !mostrarNuevo && (
           <>
             <Input
-              placeholder={quiereEnvio ? "Buscar por nombre o celular..." : "Buscar o dejar vacío para Mostrador"}
+              placeholder="Buscar por nombre o celular..."
               value={searchTerm}
               onChange={(e) => {
                 setSearchTerm(e.target.value)
@@ -508,11 +519,11 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
         <Button
           type="button"
           onClick={handleSubmit}
-          disabled={total <= 0 || submitting}
-          className="w-full py-6 text-lg font-bold bg-green-600 hover:bg-green-700"
+          disabled={total <= 0 || submitting || (!clienteSeleccionado && !mostrarNuevo)}
+          className={`w-full py-6 text-lg font-bold ${metodoPago === 'FIADO' ? 'bg-yellow-600 hover:bg-yellow-700' : 'bg-green-600 hover:bg-green-700'}`}
           size="lg"
         >
-          {submitting ? 'Procesando...' : `Cobrar $${total.toLocaleString()}`}
+          {submitting ? 'Procesando...' : metodoPago === 'FIADO' ? `Registrar $${total.toLocaleString()}` : `Cobrar $${total.toLocaleString()}`}
         </Button>
       </div>
     </div>
