@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
 import { PedidoUpdateSchema } from '@/lib/validators'
+import { logAudit } from '@/lib/audit'
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
@@ -53,6 +54,14 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       })
     })
 
+    await logAudit({
+      entidad: 'Pedido',
+      registroId: pedido.id,
+      accion: 'UPDATE',
+      datos: { numero: pedido.numero, estado: pedido.estado },
+      usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+    })
+
     return NextResponse.json({ success: true, pedido })
   } catch (error) {
     if (error instanceof Error && error.message === 'PEDIDO_NOT_FOUND') {
@@ -72,6 +81,15 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       where: { id },
       data: { estado: 'ANULADO' },
     })
+
+    await logAudit({
+      entidad: 'Pedido',
+      registroId: id,
+      accion: 'DELETE',
+      datos: { estado: 'ANULADO' },
+      usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+    })
+
     return NextResponse.json({ success: true })
   } catch (error) {
     return NextResponse.json({ error: 'Error deleting' }, { status: 500 })

@@ -1,11 +1,13 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import dynamic from 'next/dynamic'
 import { toast } from 'sonner'
 import { formatCurrency } from '@/lib/utils'
-import { PedidoForm } from '@/components/pedido-form'
-import { VentaRapidaForm } from '@/components/venta-rapida-form'
 import { Modal } from '@/components/modal'
+
+const PedidoForm = dynamic(() => import('@/components/pedido-form').then(m => m.PedidoForm), { ssr: false })
+const VentaRapidaForm = dynamic(() => import('@/components/venta-rapida-form').then(m => m.VentaRapidaForm), { ssr: false })
 
 
 interface Pedido {

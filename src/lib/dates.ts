@@ -15,6 +15,15 @@ export function getDateRange(start: string, end: string): { startDate: Date; end
   }
 }
 
+export function getYesterdayRange(): { startOfDay: Date; endOfDay: Date } {
+  const now = new Date()
+  now.setDate(now.getDate() - 1)
+  const colombiaDate = now.toLocaleDateString('en-CA', { timeZone: TIMEZONE })
+  const startOfDay = new Date(colombiaDate + 'T00:00:00-05:00')
+  const endOfDay = new Date(colombiaDate + 'T23:59:59.999-05:00')
+  return { startOfDay, endOfDay }
+}
+
 export function getTodayString(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: TIMEZONE })
 }

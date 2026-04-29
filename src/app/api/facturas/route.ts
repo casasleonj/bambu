@@ -4,6 +4,7 @@ import { requireAuth, requireRole } from '@/lib/auth-check'
 import { FacturaCreateSchema } from '@/lib/validators'
 import { getNextNumero } from '@/lib/sequence'
 import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
+import { logAudit } from '@/lib/audit'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -73,6 +74,14 @@ export async function POST(request: NextRequest) {
         total: pedido.total,
         saldo: pedido.total,
       },
+    })
+
+    await logAudit({
+      entidad: 'Factura',
+      registroId: factura.id,
+      accion: 'CREATE',
+      datos: { numero: factura.numero, pedidoId, total: Number(factura.total) },
+      usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     })
 
     return NextResponse.json({ success: true, factura })

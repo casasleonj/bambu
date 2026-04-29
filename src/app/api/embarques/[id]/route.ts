@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
 import { EmbarqueUpdateSchema } from '@/lib/validators'
+import { logAudit } from '@/lib/audit'
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
@@ -61,6 +62,14 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           pedidos: { include: { cliente: true } },
         },
       })
+    })
+
+    await logAudit({
+      entidad: 'Embarque',
+      registroId: embarque.id,
+      accion: 'UPDATE',
+      datos: { numero: embarque.numero, estado: embarque.estado },
+      usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     })
 
     return NextResponse.json({ success: true, embarque })

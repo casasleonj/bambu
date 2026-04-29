@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
 import { ClienteCreateSchema } from '@/lib/validators'
 import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
+import { logAudit } from '@/lib/audit'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -55,6 +56,15 @@ export async function POST(request: NextRequest) {
         notas: parsed.data.notas,
       },
     })
+
+    await logAudit({
+      entidad: 'Cliente',
+      registroId: cliente.id,
+      accion: 'CREATE',
+      datos: { nombre: cliente.nombre, telefono: cliente.telefono },
+      usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+    })
+
     return NextResponse.json({ success: true, cliente })
   } catch (error) {
     return NextResponse.json({ error: 'Error creating cliente' }, { status: 500 })

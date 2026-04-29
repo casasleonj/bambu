@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { formatCurrency } from '@/lib/utils'
-import { getTodayRange } from '@/lib/dates'
+import { getTodayRange, getYesterdayRange } from '@/lib/dates'
 import Link from 'next/link'
 
 interface VentaPorPrecio {
@@ -50,11 +50,15 @@ function buildVentasPorPrecio(pedidos: any[]): VentaPorPrecio[] {
 
 export default async function DashboardPage() {
   const { startOfDay, endOfDay } = getTodayRange()
+  const { startOfDay: yesterdayStart, endOfDay: yesterdayEnd } = getYesterdayRange()
 
   // All queries in parallel
-  const [pedidos, baseDiaConfig, lastCierre, gastosAgg, embarquesAbiertos] = await Promise.all([
+  const [pedidos, pedidosAyer, baseDiaConfig, lastCierre, gastosAgg, embarquesAbiertos, clientesCount, stockAlertas] = await Promise.all([
     prisma.pedido.findMany({
       where: { fecha: { gte: startOfDay, lt: endOfDay } },
+    }),
+    prisma.pedido.findMany({
+      where: { fecha: { gte: yesterdayStart, lt: yesterdayEnd } },
     }),
     prisma.config.findUnique({ where: { clave: 'BASE_DIA' } }),
     prisma.cierreDia.findFirst({ orderBy: { fecha: 'desc' } }),
@@ -65,6 +69,11 @@ export default async function DashboardPage() {
     prisma.embarque.count({
       where: { estado: 'ABIERTO', fecha: { gte: startOfDay, lt: endOfDay } },
     }),
+    prisma.cliente.count({ where: { activo: true } }),
+    prisma.insumo.findMany({
+      where: { stock: { lte: prisma.insumo.fields.stockMin } },
+      take: 5,
+    }),
   ])
 
   const ventas = pedidos.reduce((acc, p) => acc + Number(p.total), 0)
@@ -73,6 +82,21 @@ export default async function DashboardPage() {
   const pedidosEntregados = pedidos.filter(p => p.estado === 'ENTREGADO').length
   const baseDia = baseDiaConfig ? parseFloat(baseDiaConfig.valor) : 0
   const totalGastos = gastosAgg._sum.monto ?? 0
+
+  // Comparisons with yesterday
+  const ventasAyer = pedidosAyer.reduce((acc, p) => acc + Number(p.total), 0)
+  const ventasTrend = ventasAyer > 0 ? ((ventas - ventasAyer) / ventasAyer) * 100 : 0
+  const pedidosTrend = pedidosAyer.length > 0 ? ((pedidos.length - pedidosAyer.length) / pedidosAyer.length) * 100 : 0
+
+  // Hourly distribution for simple bar chart
+  const hourlySales = new Array(12).fill(0)
+  for (const p of pedidos) {
+    const hour = new Date(p.fecha).getHours()
+    if (hour >= 6 && hour <= 17) {
+      hourlySales[hour - 6] += Number(p.total)
+    }
+  }
+  const maxHourly = Math.max(...hourlySales, 1)
 
   const ventasPorPrecio = buildVentasPorPrecio(pedidos)
 
@@ -123,6 +147,11 @@ export default async function DashboardPage() {
               <p className="text-xs text-gray-400 mt-1">
                 {pedidosPendientes} pendientes &bull; {pedidosEntregados} entregados
               </p>
+              {pedidosTrend !== 0 && (
+                <p className={`text-xs mt-1 font-medium ${pedidosTrend > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {pedidosTrend > 0 ? '↑' : '↓'} {Math.abs(pedidosTrend).toFixed(0)}% vs ayer
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -133,6 +162,11 @@ export default async function DashboardPage() {
               <p className="text-sm text-gray-500">Ventas del Dia</p>
               <p className="text-3xl font-bold text-green-600">{formatCurrency(ventas)}</p>
               <p className="text-xs text-gray-400 mt-1">Total vendido</p>
+              {ventasTrend !== 0 && (
+                <p className={`text-xs mt-1 font-medium ${ventasTrend > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {ventasTrend > 0 ? '↑' : '↓'} {Math.abs(ventasTrend).toFixed(0)}% vs ayer
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -157,6 +191,68 @@ export default async function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Alertas */}
+      {(pedidosPendientes > 5 || fiados > 500000 || stockAlertas.length > 0 || embarquesAbiertos > 0) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {pedidosPendientes > 5 && (
+            <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-xl">
+              <div className="flex items-center gap-2">
+                <span className="text-yellow-600 text-lg">⚠️</span>
+                <div>
+                  <p className="text-sm font-medium text-yellow-800">Pedidos pendientes</p>
+                  <p className="text-xs text-yellow-600">{pedidosPendientes} pedidos sin embarcar</p>
+                </div>
+              </div>
+              <Link href="/embarques" className="text-xs text-yellow-700 hover:underline mt-2 inline-block">
+                Ir a embarques →
+              </Link>
+            </div>
+          )}
+          {fiados > 500000 && (
+            <div className="bg-red-50 border border-red-200 p-4 rounded-xl">
+              <div className="flex items-center gap-2">
+                <span className="text-red-600 text-lg">💰</span>
+                <div>
+                  <p className="text-sm font-medium text-red-800">Fiados altos</p>
+                  <p className="text-xs text-red-600">{formatCurrency(fiados)} por cobrar</p>
+                </div>
+              </div>
+              <Link href="/facturas" className="text-xs text-red-700 hover:underline mt-2 inline-block">
+                Ver facturas →
+              </Link>
+            </div>
+          )}
+          {stockAlertas.map((insumo) => (
+            <div key={insumo.id} className="bg-orange-50 border border-orange-200 p-4 rounded-xl">
+              <div className="flex items-center gap-2">
+                <span className="text-orange-600 text-lg">📦</span>
+                <div>
+                  <p className="text-sm font-medium text-orange-800">Stock bajo</p>
+                  <p className="text-xs text-orange-600">{insumo.nombre}: {Number(insumo.stock)} {insumo.unidad}</p>
+                </div>
+              </div>
+              <Link href="/insumos" className="text-xs text-orange-700 hover:underline mt-2 inline-block">
+                Reponer →
+              </Link>
+            </div>
+          ))}
+          {embarquesAbiertos > 0 && (
+            <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl">
+              <div className="flex items-center gap-2">
+                <span className="text-blue-600 text-lg">🚚</span>
+                <div>
+                  <p className="text-sm font-medium text-blue-800">Embarques activos</p>
+                  <p className="text-xs text-blue-600">{embarquesAbiertos} en curso</p>
+                </div>
+              </div>
+              <Link href="/embarques" className="text-xs text-blue-700 hover:underline mt-2 inline-block">
+                Seguimiento →
+              </Link>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Ventas por Precio */}
       <div className="bg-white p-6 rounded-xl shadow-sm">
@@ -226,6 +322,34 @@ export default async function DashboardPage() {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* Ventas por Hora - Simple CSS Bar Chart */}
+      {pedidos.length > 0 && (
+        <div className="bg-white p-6 rounded-xl shadow-sm">
+          <h2 className="text-lg font-semibold text-gray-800 mb-4">Ventas por Hora</h2>
+          <div className="flex items-end gap-2 h-40">
+            {hourlySales.map((amount, i) => {
+              const height = amount > 0 ? Math.max((amount / maxHourly) * 100, 8) : 0
+              const hour = i + 6
+              return (
+                <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                  <div
+                    className="w-full bg-blue-500 rounded-t hover:bg-blue-600 transition-all relative group"
+                    style={{ height: `${height}%` }}
+                  >
+                    {amount > 0 && (
+                      <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition whitespace-nowrap pointer-events-none">
+                        {formatCurrency(amount)}
+                      </div>
+                    )}
+                  </div>
+                  <span className="text-xs text-gray-500">{hour}:00</span>
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
 

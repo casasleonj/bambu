@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/auth-check'
 import { EmbarqueCreateSchema } from '@/lib/validators'
 import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
 import { getTodayRange } from '@/lib/dates'
+import { logAudit } from '@/lib/audit'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -77,6 +78,14 @@ export async function POST(request: NextRequest) {
       })
     })
     
+    await logAudit({
+      entidad: 'Embarque',
+      registroId: embarque.id,
+      accion: 'CREATE',
+      datos: { numero: embarque.numero, trabajadorId: embarque.trabajadorId },
+      usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+    })
+
     return NextResponse.json({ success: true, embarque })
   } catch (error) {
     console.error('Error creating embarque:', error)

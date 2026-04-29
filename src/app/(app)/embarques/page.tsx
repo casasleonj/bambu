@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { toast } from 'sonner'
 import { Modal } from '@/components/modal'
 
 interface Trabajador {
@@ -176,12 +177,34 @@ export default function EmbarquesPage() {
     <div>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-800">Embarques del Día</h1>
-        <button
-          onClick={() => setShowModal(true)}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-        >
-          + Nuevo Embarque
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={async () => {
+              if (!confirm('¿Generar embarques automáticos para todos los pedidos pendientes?')) return
+              try {
+                const res = await fetch('/api/embarques/auto', { method: 'POST' })
+                const data = await res.json()
+                if (data.success) {
+                  toast.success(data.message)
+                  fetchData()
+                } else {
+                  toast.error(data.error || 'Error')
+                }
+              } catch (e) {
+                toast.error('Error al generar embarques')
+              }
+            }}
+            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
+          >
+            Auto-Generar
+          </button>
+          <button
+            onClick={() => setShowModal(true)}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+          >
+            + Nuevo Embarque
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

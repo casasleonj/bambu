@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
 import { ClienteUpdateSchema } from '@/lib/validators'
+import { logAudit } from '@/lib/audit'
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
@@ -37,6 +38,15 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       where: { id },
       data: parsed.data,
     })
+
+    await logAudit({
+      entidad: 'Cliente',
+      registroId: cliente.id,
+      accion: 'UPDATE',
+      datos: { nombre: cliente.nombre },
+      usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+    })
+
     return NextResponse.json({ success: true, cliente })
   } catch (error) {
     return NextResponse.json({ error: 'Error updating' }, { status: 500 })
@@ -52,6 +62,15 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       where: { id },
       data: { activo: false },
     })
+
+    await logAudit({
+      entidad: 'Cliente',
+      registroId: id,
+      accion: 'DELETE',
+      datos: { activo: false },
+      usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+    })
+
     return NextResponse.json({ success: true })
   } catch (error) {
     return NextResponse.json({ error: 'Error deleting' }, { status: 500 })

@@ -7,6 +7,7 @@ import { getNextNumero } from '@/lib/sequence'
 import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
 import { getTodayRange } from '@/lib/dates'
 import { resolverPreciosPedido, type Canal, type ProductCode } from '@/lib/pricing'
+import { logAudit } from '@/lib/audit'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -150,6 +151,14 @@ export async function POST(request: NextRequest) {
 
       return { pedido }
     }))
+
+    await logAudit({
+      entidad: 'Pedido',
+      registroId: result.pedido.id,
+      accion: 'CREATE',
+      datos: { numero: result.pedido.numero, tipo: result.pedido.tipo, total: Number(result.pedido.total), clienteId },
+      usuarioId: authResult.user?.id,
+    })
 
     return NextResponse.json({ success: true, pedido: result.pedido })
   } catch (error) {
