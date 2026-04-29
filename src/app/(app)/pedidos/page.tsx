@@ -59,13 +59,13 @@ interface Cliente {
   preciosEspeciales?: string
 }
 
-const ESTADOS = ['TODOS', 'PENDIENTE', 'EN_RUTA', 'ENTREGADO', 'CANCELADO', 'ANULADO']
-const TIPOS = ['TODOS', 'ENVIO', 'PUNTO']
+const ESTADOS = ['PENDIENTE', 'EN_RUTA', 'ENTREGADO', 'CANCELADO', 'ANULADO']
+const TIPOS = ['ENVIO', 'PUNTO']
 
 export default function PedidosPage() {
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [loading, setLoading] = useState(true)
-  const [filtroEstado, setFiltroEstado] = useState('TODOS')
+  const [filtroEstado, setFiltroEstado] = useState<string[]>([])
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [showVentaRapida, setShowVentaRapida] = useState(false)
@@ -73,7 +73,7 @@ export default function PedidosPage() {
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [precios, setPrecios] = useState<Record<string, number>>({})
-  const [filtroTipo, setFiltroTipo] = useState('TODOS')
+  const [filtroTipo, setFiltroTipo] = useState<string[]>([])
   const [embarques, setEmbarques] = useState<Embarque[]>([])
   const [showEmbarqueModal, setShowEmbarqueModal] = useState(false)
   const [selectedPedidoForEmbarque, setSelectedPedidoForEmbarque] = useState<string | null>(null)
@@ -208,9 +208,13 @@ export default function PedidosPage() {
     }
   }
 
+  function toggleFiltro<T>(current: T[], value: T): T[] {
+    return current.includes(value) ? current.filter(v => v !== value) : [...current, value]
+  }
+
   const pedidosFiltrados = pedidos.filter((p) => {
-    const matchEstado = filtroEstado === 'TODOS' || p.estado === filtroEstado
-    const matchTipo = filtroTipo === 'TODOS' || p.tipo === filtroTipo
+    const matchEstado = filtroEstado.length === 0 || filtroEstado.includes(p.estado)
+    const matchTipo = filtroTipo.length === 0 || filtroTipo.includes(p.tipo)
     const matchSearch =
       !search ||
       p.nombreCli.toLowerCase().includes(search.toLowerCase()) ||
@@ -402,9 +406,9 @@ export default function PedidosPage() {
             {ESTADOS.map((estado) => (
               <button
                 key={estado}
-                onClick={() => setFiltroEstado(estado)}
+                onClick={() => setFiltroEstado(prev => toggleFiltro(prev, estado))}
                 className={`px-4 py-2.5 rounded-full text-sm transition ${
-                  filtroEstado === estado
+                  filtroEstado.includes(estado)
                     ? 'bg-blue-600 text-white'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
@@ -417,9 +421,9 @@ export default function PedidosPage() {
             {TIPOS.map((tipo) => (
               <button
                 key={tipo}
-                onClick={() => setFiltroTipo(tipo)}
+                onClick={() => setFiltroTipo(prev => toggleFiltro(prev, tipo))}
                 className={`px-4 py-2.5 rounded-full text-sm transition ${
-                  filtroTipo === tipo
+                  filtroTipo.includes(tipo)
                     ? 'bg-indigo-600 text-white'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
