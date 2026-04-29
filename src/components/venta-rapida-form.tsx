@@ -142,17 +142,16 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
     }
   }, [productosActuales])
 
-  const increment = (id: string) => {
-    const next = { ...cantidades, [id]: (cantidades[id] || 0) + 1 }
+  const handleCantidadChange = (id: string, value: string) => {
+    const cant = parseInt(value) || 0
+    const next = { ...cantidades, [id]: cant }
     setCantidades(next)
     resolverPrecios(next, canal)
   }
 
-  const decrement = (id: string) => {
-    const next = { ...cantidades, [id]: Math.max(0, (cantidades[id] || 0) - 1) }
-    setCantidades(next)
-    resolverPrecios(next, canal)
-  }
+  const increment = (id: string) => handleCantidadChange(id, String((cantidades[id] || 0) + 1))
+
+  const decrement = (id: string) => handleCantidadChange(id, String(Math.max(0, (cantidades[id] || 0) - 1)))
 
   const filteredClientes = searchTerm
     ? clientes.filter((c) =>
@@ -380,16 +379,23 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
                   <button
                     type="button"
                     onClick={() => decrement(prodId)}
-                    className="w-9 h-9 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 transition"
+                    className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 transition"
                     disabled={cant === 0}
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" /></svg>
                   </button>
-                  <span className="w-8 text-center font-bold text-lg">{cant}</span>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={cant || ''}
+                    onChange={(e) => handleCantidadChange(prodId, e.target.value)}
+                    className="w-16 text-center p-1 h-8 text-sm"
+                    placeholder="0"
+                  />
                   <button
                     type="button"
                     onClick={() => increment(prodId)}
-                    className="w-9 h-9 rounded-full bg-green-100 hover:bg-green-200 text-green-700 flex items-center justify-center transition"
+                    className="w-8 h-8 flex items-center justify-center rounded-full bg-green-100 hover:bg-green-200 text-green-700 transition"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
                   </button>
