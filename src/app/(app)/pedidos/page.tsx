@@ -502,55 +502,177 @@ export default function PedidosPage() {
         </div>
       </div>
 
-      <Modal open={showDetailModal && !!selectedPedido} onClose={() => setShowDetailModal(false)} className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+      <Modal open={showDetailModal && !!selectedPedido} onClose={() => setShowDetailModal(false)} className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
         {selectedPedido && (
           <>
-            <div className="p-4 border-b flex justify-between items-center">
-              <h2 className="text-xl font-bold">Pedido #{selectedPedido.numero}</h2>
-              <button onClick={() => setShowDetailModal(false)} className="text-gray-500 hover:text-gray-700 p-1 rounded-lg hover:bg-gray-100 transition" aria-label="Cerrar">
+            {/* Header */}
+            <div className="p-4 border-b flex justify-between items-start">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-sm text-gray-400">#{selectedPedido.numero}</span>
+                  {getEstadoBadge(selectedPedido.estado)}
+                </div>
+                <h2 className="text-lg font-bold text-gray-800">{selectedPedido.nombreCli}</h2>
+                <p className="text-sm text-gray-500">{selectedPedido.telefonoCli}</p>
+              </div>
+              <button onClick={() => setShowDetailModal(false)} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition" aria-label="Cerrar">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
-            <div className="p-4 space-y-3">
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div><span className="text-gray-500">Cliente:</span> {selectedPedido.nombreCli}</div>
-                <div><span className="text-gray-500">Telefono:</span> {selectedPedido.telefonoCli}</div>
-                <div><span className="text-gray-500">Canal:</span> {selectedPedido.canal || '-'}</div>
-                <div><span className="text-gray-500">Tipo:</span> {selectedPedido.tipo}</div>
-                <div><span className="text-gray-500">Estado:</span> {getEstadoBadge(selectedPedido.estado)}</div>
-                <div><span className="text-gray-500">Fecha:</span> {new Date(selectedPedido.fecha).toLocaleDateString('es-CO')}</div>
-                <div><span className="text-gray-500">Total:</span> {formatCurrency(selectedPedido.total)}</div>
+
+            <div className="p-4 space-y-4">
+              {/* Total Summary Card */}
+              <div className="bg-gray-50 rounded-xl p-4">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-sm text-gray-500">Total Pedido</span>
+                  <span className="text-2xl font-bold text-gray-800">{formatCurrency(Number(selectedPedido.total))}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Pagado:</span>
+                  <span className="font-medium text-green-600">{formatCurrency(Number(selectedPedido.totalPagado))}</span>
+                </div>
+                {Number(selectedPedido.saldo) > 0 && (
+                  <div className="flex justify-between text-sm mt-1">
+                    <span className="text-gray-500">Pendiente:</span>
+                    <span className="font-medium text-red-600">{formatCurrency(Number(selectedPedido.saldo))}</span>
+                  </div>
+                )}
+                {Number(selectedPedido.saldo) <= 0 && Number(selectedPedido.totalPagado) > 0 && (
+                  <div className="flex justify-between text-sm mt-1">
+                    <span className="text-gray-500">Estado:</span>
+                    <span className="font-medium text-green-600">Pagado completo</span>
+                  </div>
+                )}
               </div>
-              <div className="border-t pt-2">
-                <h3 className="font-medium mb-1">Productos</h3>
-                <div className="text-sm space-y-1">
-                  {selectedPedido.cPacaAguaEnt > 0 && <div>Paca Agua: {selectedPedido.cPacaAguaEnt} x {formatCurrency(selectedPedido.precioPacaAgua)}</div>}
-                  {selectedPedido.cPacaHieloEnt > 0 && <div>Paca Hielo: {selectedPedido.cPacaHieloEnt} x {formatCurrency(selectedPedido.precioPacaHielo)}</div>}
-                  {selectedPedido.cBotellonFabEnt > 0 && <div>Botellon Fab: {selectedPedido.cBotellonFabEnt} x {formatCurrency(selectedPedido.precioBotellonFab)}</div>}
-                  {selectedPedido.cBotellonDomEnt > 0 && <div>Botellon Dom: {selectedPedido.cBotellonDomEnt} x {formatCurrency(selectedPedido.precioBotellonDom)}</div>}
-                  {selectedPedido.cBolsaAguaEnt > 0 && <div>Bolsa Agua: {selectedPedido.cBolsaAguaEnt} x {formatCurrency(selectedPedido.precioBolsaAgua)}</div>}
-                  {selectedPedido.cBolsaHieloEnt > 0 && <div>Bolsa Hielo: {selectedPedido.cBolsaHieloEnt} x {formatCurrency(selectedPedido.precioBolsaHielo)}</div>}
+
+              {/* Info Grid */}
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="bg-white border rounded-lg p-2.5">
+                  <div className="text-xs text-gray-400 mb-0.5">Canal</div>
+                  <div className="font-medium text-gray-700">{selectedPedido.canal || 'N/A'}</div>
+                </div>
+                <div className="bg-white border rounded-lg p-2.5">
+                  <div className="text-xs text-gray-400 mb-0.5">Tipo</div>
+                  <div className="font-medium text-gray-700">{selectedPedido.tipo}</div>
+                </div>
+                <div className="bg-white border rounded-lg p-2.5">
+                  <div className="text-xs text-gray-400 mb-0.5">Fecha</div>
+                  <div className="font-medium text-gray-700">{new Date(selectedPedido.fecha).toLocaleDateString('es-CO')}</div>
+                </div>
+
+              </div>
+
+              {/* Productos */}
+              <div>
+                <h3 className="text-sm font-semibold text-gray-700 mb-2">Productos</h3>
+                <div className="space-y-2">
+                  {selectedPedido.cPacaAguaPed > 0 && (
+                    <div className="flex justify-between items-center bg-blue-50 rounded-lg px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <span>🍶</span>
+                        <span className="text-sm font-medium">Paca Agua</span>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-semibold">{selectedPedido.cPacaAguaPed} und</div>
+                        <div className="text-xs text-gray-500">${formatCurrency(Number(selectedPedido.precioPacaAgua))} c/u</div>
+                      </div>
+                    </div>
+                  )}
+                  {selectedPedido.cPacaHieloPed > 0 && (
+                    <div className="flex justify-between items-center bg-cyan-50 rounded-lg px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <span>🧊</span>
+                        <span className="text-sm font-medium">Paca Hielo</span>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-semibold">{selectedPedido.cPacaHieloPed} und</div>
+                        <div className="text-xs text-gray-500">${formatCurrency(Number(selectedPedido.precioPacaHielo))} c/u</div>
+                      </div>
+                    </div>
+                  )}
+                  {selectedPedido.cBotellonFabPed > 0 && (
+                    <div className="flex justify-between items-center bg-indigo-50 rounded-lg px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <span>🏭</span>
+                        <span className="text-sm font-medium">Botellón Fábrica</span>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-semibold">{selectedPedido.cBotellonFabPed} und</div>
+                        <div className="text-xs text-gray-500">${formatCurrency(Number(selectedPedido.precioBotellonFab))} c/u</div>
+                      </div>
+                    </div>
+                  )}
+                  {selectedPedido.cBotellonDomPed > 0 && (
+                    <div className="flex justify-between items-center bg-purple-50 rounded-lg px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <span>🏠</span>
+                        <span className="text-sm font-medium">Botellón Domicilio</span>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-semibold">{selectedPedido.cBotellonDomPed} und</div>
+                        <div className="text-xs text-gray-500">${formatCurrency(Number(selectedPedido.precioBotellonDom))} c/u</div>
+                      </div>
+                    </div>
+                  )}
+                  {selectedPedido.cBolsaAguaPed > 0 && (
+                    <div className="flex justify-between items-center bg-sky-50 rounded-lg px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <span>💧</span>
+                        <span className="text-sm font-medium">Bolsa Agua</span>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-semibold">{selectedPedido.cBolsaAguaPed} und</div>
+                        <div className="text-xs text-gray-500">${formatCurrency(Number(selectedPedido.precioBolsaAgua))} c/u</div>
+                      </div>
+                    </div>
+                  )}
+                  {selectedPedido.cBolsaHieloPed > 0 && (
+                    <div className="flex justify-between items-center bg-teal-50 rounded-lg px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <span>❄️</span>
+                        <span className="text-sm font-medium">Bolsa Hielo</span>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-semibold">{selectedPedido.cBolsaHieloPed} und</div>
+                        <div className="text-xs text-gray-500">${formatCurrency(Number(selectedPedido.precioBolsaHielo))} c/u</div>
+                      </div>
+                    </div>
+                  )}
+                  {selectedPedido.cPacaAguaPed === 0 && selectedPedido.cPacaHieloPed === 0 && selectedPedido.cBotellonFabPed === 0 && selectedPedido.cBotellonDomPed === 0 && selectedPedido.cBolsaAguaPed === 0 && selectedPedido.cBolsaHieloPed === 0 && (
+                    <div className="text-sm text-gray-400 text-center py-2">Sin productos</div>
+                  )}
                 </div>
               </div>
-              <div className="border-t pt-2 grid grid-cols-2 gap-2 text-sm">
-                <div><span className="text-gray-500">Pagado:</span> {formatCurrency(selectedPedido.totalPagado)}</div>
-                <div><span className="text-gray-500">Saldo:</span> <span className={selectedPedido.saldo > 0 ? 'text-red-600' : 'text-green-600'}>{formatCurrency(selectedPedido.saldo)}</span></div>
-              </div>
-              <div className="border-t pt-3">
-                <h3 className="font-medium mb-2">Cambiar Estado</h3>
-                <div className="flex flex-wrap gap-2">
-                  {selectedPedido.estado !== 'PENDIENTE' && (
-                    <button onClick={() => cambiarEstado(selectedPedido.id, 'PENDIENTE')} className="px-3 py-1 text-xs bg-yellow-100 text-yellow-800 rounded-full hover:bg-yellow-200">Pendiente</button>
-                  )}
-                  {selectedPedido.estado !== 'EN_RUTA' && (
-                    <button onClick={() => cambiarEstado(selectedPedido.id, 'EN_RUTA')} className="px-3 py-1 text-xs bg-blue-100 text-blue-800 rounded-full hover:bg-blue-200">En Ruta</button>
-                  )}
-                  {selectedPedido.estado !== 'ENTREGADO' && (
-                    <button onClick={() => cambiarEstado(selectedPedido.id, 'ENTREGADO')} className="px-3 py-1 text-xs bg-green-100 text-green-800 rounded-full hover:bg-green-200">Entregado</button>
-                  )}
-                  {selectedPedido.estado !== 'CANCELADO' && (
-                    <button onClick={() => cambiarEstado(selectedPedido.id, 'CANCELADO')} className="px-3 py-1 text-xs bg-gray-100 text-gray-800 rounded-full hover:bg-gray-200">Cancelado</button>
-                  )}
+
+              {/* Estado Timeline */}
+              <div>
+                <h3 className="text-sm font-semibold text-gray-700 mb-2">Estado</h3>
+                <div className="flex gap-2">
+                  {['PENDIENTE', 'EN_RUTA', 'ENTREGADO', 'CANCELADO'].map((est) => {
+                    const isActive = selectedPedido.estado === est
+                    const isPast = ['PENDIENTE', 'EN_RUTA', 'ENTREGADO'].indexOf(selectedPedido.estado) >= ['PENDIENTE', 'EN_RUTA', 'ENTREGADO'].indexOf(est)
+                    const styles: Record<string, string> = {
+                      PENDIENTE: isActive ? 'bg-yellow-500 text-white' : isPast ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-400',
+                      EN_RUTA: isActive ? 'bg-blue-500 text-white' : isPast ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-400',
+                      ENTREGADO: isActive ? 'bg-green-500 text-white' : isPast ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400',
+                      CANCELADO: isActive ? 'bg-gray-500 text-white' : 'bg-gray-100 text-gray-400',
+                    }
+                    const labels: Record<string, string> = { PENDIENTE: 'Pendiente', EN_RUTA: 'En Ruta', ENTREGADO: 'Entregado', CANCELADO: 'Cancelado' }
+                    return (
+                      <button
+                        key={est}
+                        onClick={() => {
+                          if (est !== selectedPedido.estado && est !== 'CANCELADO') {
+                            cambiarEstado(selectedPedido.id, est)
+                          }
+                        }}
+                        disabled={est === selectedPedido.estado}
+                        className={`flex-1 py-2 rounded-lg text-xs font-medium transition ${styles[est]} ${est === selectedPedido.estado ? 'cursor-default' : 'hover:opacity-80 cursor-pointer'}`}
+                      >
+                        {labels[est]}
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
             </div>
