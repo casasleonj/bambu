@@ -33,6 +33,7 @@ interface VentaRapidaData {
   tipo: 'MOSTRADOR' | 'ENVIO'
   canal: 'PUNTO' | 'DOMICILIO'
   ventaRapida: true
+  preciosManuales?: Record<string, number>
   productos: {
     pacaAgua: number
     pacaHielo: number
@@ -66,6 +67,8 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
   const [submitting, setSubmitting] = useState(false)
   const [preciosResueltos, setPreciosResueltos] = useState<Record<string, number>>({})
   const [tablaPrecios, setTablaPrecios] = useState<Record<string, Tier[]>>({})
+  const [preciosManuales, setPreciosManuales] = useState<Record<string, number>>({})
+  const [preciosEditando, setPreciosEditando] = useState<Record<string, boolean>>({})
 
   const productosActuales = getProductosForCanal(canal)
 
@@ -83,18 +86,24 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
     setCanal(envio ? 'DOMICILIO' : 'PUNTO')
     setCantidades({})
     setPreciosResueltos({})
+    setPreciosManuales({})
+    setPreciosEditando({})
     setClienteSeleccionado(null)
     setSearchTerm('')
     setMostrarNuevo(false)
   }
 
-  const getPrecio = (codigo: string) => {
+  const getPrecioBase = (codigo: string): number => {
     if (preciosResueltos[codigo]) return preciosResueltos[codigo]
     if (precios[codigo]) return precios[codigo]
-    // Use first tier from price table as fallback
     const tiers = tablaPrecios[codigo]
     if (tiers && tiers.length > 0) return tiers[0].precio
     return DEFAULT_PRICES[codigo] || 0
+  }
+
+  const getPrecio = (codigo: string) => {
+    if (preciosManuales[codigo] !== undefined) return preciosManuales[codigo]
+    return getPrecioBase(codigo)
   }
 
   const total = productosActuales.reduce((sum, prodId) => {
@@ -219,6 +228,7 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
       tipo,
       canal,
       ventaRapida: true,
+      preciosManuales: Object.keys(preciosManuales).length > 0 ? preciosManuales : undefined,
       productos: {
         pacaAgua: cantidades.pacaAgua || 0,
         pacaHielo: cantidades.pacaHielo || 0,
@@ -408,7 +418,51 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
               {cant > 0 && (
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-gray-500">Precio unitario:</span>
-                  <span className="font-semibold">${precio.toLocaleString()}</span>
+                  {preciosEditando[info.codigo] ? (
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-gray-400">$</span>
+                      <input
+                        type="number"
+                        min="0"
+                        autoFocus
+                        defaultValue={precio}
+                        onBlur={(e) => {
+                          const val = parseFloat(e.target.value) || 0
+                          const base = getPrecioBase(info.codigo)
+                          if (val !== base) {
+                            setPreciosManuales(prev => ({ ...prev, [info.codigo]: val }))
+                          } else {
+                            setPreciosManuales(prev => {
+                              const next = { ...prev }
+                              delete next[info.codigo]
+                              return next
+                            })
+                          }
+                          setPreciosEditando(prev => ({ ...prev, [info.codigo]: false }))
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            (e.target as HTMLInputElement).blur()
+                          }
+                        }}
+                        className="w-20 border rounded px-2 py-1 text-sm text-right"
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1">
+                      <span className="font-semibold">${precio.toLocaleString()}</span>
+                      <button
+                        type="button"
+                        onClick={() => setPreciosEditando(prev => ({ ...prev, [info.codigo]: true }))}
+                        className="text-gray-400 hover:text-green-600 transition p-0.5"
+                        title="Editar precio"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                        </svg>
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
               {cant > 0 && (
