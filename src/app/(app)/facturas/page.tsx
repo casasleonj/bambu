@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -47,11 +48,20 @@ export default function FacturasPage() {
       setFacturas(data.facturas || data.data || [])
     } catch (e) {
       console.error(e)
+      toast.error('Error cargando facturas')
     }
   }
 
   const registrarAbono = async (facturaId: string, clienteId: string) => {
-    if (!montoAbono) return
+    if (!montoAbono) {
+      toast.error('Ingresa un monto')
+      return
+    }
+    const monto = parseFloat(montoAbono)
+    if (isNaN(monto) || monto <= 0) {
+      toast.error('El monto debe ser mayor a 0')
+      return
+    }
     setLoading(true)
     try {
       const res = await fetch('/api/abonos', {
@@ -60,7 +70,7 @@ export default function FacturasPage() {
         body: JSON.stringify({
           facturaId,
           clienteId,
-          monto: parseFloat(montoAbono),
+          monto,
           metodoPago,
         }),
       })
@@ -68,9 +78,13 @@ export default function FacturasPage() {
         setShowAbono(null)
         setMontoAbono('')
         fetchFacturas()
+        toast.success('Abono registrado')
+      } else {
+        toast.error('Error registrando abono')
       }
     } catch (e) {
       console.error(e)
+      toast.error('Error registrando abono')
     }
     setLoading(false)
   }
@@ -83,11 +97,12 @@ export default function FacturasPage() {
 
   return (
     <div className="p-4 space-y-4">
-      <h1 className="text-2xl font-bold">📋 Facturas</h1>
+      <h1 className="text-2xl font-bold">Facturas</h1>
 
       {facturas.length === 0 ? (
         <div className="text-center py-8 text-muted-foreground">
-          No hay facturas registradas
+          <p className="mb-2">No hay facturas registradas</p>
+          <p className="text-sm">Las facturas se generan automáticamente al crear pedidos con saldo pendiente</p>
         </div>
       ) : (
         <div className="space-y-2">
