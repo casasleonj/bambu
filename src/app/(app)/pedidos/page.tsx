@@ -363,76 +363,93 @@ export default function PedidosPage() {
               <tr>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">#</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Cliente</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Canal</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Tipo</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600" title="Paca Agua pedida">P.Ag</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600" title="Paca Hielo pedida">P.Hi</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600" title="Botellón Fábrica pedido">B.Fb</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600" title="Botellón Domicilio pedido">B.Dm</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600" title="Bolsa Agua pedida">Bl.Ag</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600" title="Bolsa Hielo pedida">Bl.Hi</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Total</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Estado</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Acciones</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Productos</th>
+                <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Total</th>
+                <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">Estado</th>
+                <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {pedidosFiltrados.length === 0 ? (
                 <tr>
-                  <td colSpan={13} className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
                     No hay pedidos
                   </td>
                 </tr>
               ) : (
-                pedidosFiltrados.map((pedido) => (
-                  <tr key={pedido.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3">{pedido.numero}</td>
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-gray-800">{pedido.nombreCli}</div>
-                      <div className="text-sm text-gray-500">{pedido.telefonoCli}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-xs bg-gray-100 px-2 py-1 rounded">
-                        {pedido.canal || '-'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-sm bg-gray-100 px-2 py-1 rounded">
-                        {pedido.tipo}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">{pedido.cPacaAguaPed}</td>
-                    <td className="px-4 py-3">{pedido.cPacaHieloPed}</td>
-                    <td className="px-4 py-3">{pedido.cBotellonFabPed}</td>
-                    <td className="px-4 py-3">{pedido.cBotellonDomPed}</td>
-                    <td className="px-4 py-3">{pedido.cBolsaAguaPed}</td>
-                    <td className="px-4 py-3">{pedido.cBolsaHieloPed}</td>
-                    <td className="px-4 py-3 font-semibold text-gray-800">
-                      {formatCurrency(Number(pedido.total))}
-                    </td>
-                    <td className="px-4 py-3">{getEstadoBadge(pedido.estado)}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => { setSelectedPedido(pedido); setShowDetailModal(true) }}
-                          className="text-blue-600 hover:text-blue-800 text-sm"
-                        >
-                          Ver
-                        </button>
-                        {pedido.estado === 'PENDIENTE' && (
-                          <button onClick={() => cambiarEstado(pedido.id, 'EN_RUTA')} className="text-green-600 hover:text-green-800 text-sm">
-                            Enviar
-                          </button>
+                pedidosFiltrados.map((pedido) => {
+                  const productosList = [
+                    { key: 'pacaAgua', label: '🍶', count: pedido.cPacaAguaPed },
+                    { key: 'pacaHielo', label: '🧊', count: pedido.cPacaHieloPed },
+                    { key: 'botellonFab', label: '🏭', count: pedido.cBotellonFabPed },
+                    { key: 'botellonDom', label: '🏠', count: pedido.cBotellonDomPed },
+                    { key: 'bolsaAgua', label: '💧', count: pedido.cBolsaAguaPed },
+                    { key: 'bolsaHielo', label: '❄️', count: pedido.cBolsaHieloPed },
+                  ].filter(p => p.count > 0)
+                  const tieneFiado = Number(pedido.saldo) > 0
+                  return (
+                    <tr key={pedido.id} className={`hover:bg-gray-50 transition ${tieneFiado ? 'bg-red-50/30' : ''}`}>
+                      <td className="px-4 py-3 text-sm font-medium text-gray-500">#{pedido.numero}</td>
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-gray-800">{pedido.nombreCli}</div>
+                        <div className="text-xs text-gray-400">{pedido.telefonoCli}</div>
+                        {tieneFiado && (
+                          <span className="text-xs text-red-600 font-medium">Fiado: {formatCurrency(Number(pedido.saldo))}</span>
                         )}
-                        {pedido.estado === 'EN_RUTA' && (
-                          <button onClick={() => cambiarEstado(pedido.id, 'ENTREGADO')} className="text-green-600 hover:text-green-800 text-sm">
-                            Entregar
-                          </button>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex gap-1.5 flex-wrap">
+                          {productosList.length === 0 ? (
+                            <span className="text-xs text-gray-400">Sin productos</span>
+                          ) : (
+                            productosList.map(p => (
+                              <span key={p.key} className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 text-xs px-2 py-1 rounded-full font-medium">
+                                <span>{p.label}</span>
+                                <span>{p.count}</span>
+                              </span>
+                            ))
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="font-semibold text-gray-800">{formatCurrency(Number(pedido.total))}</div>
+                        {tieneFiado && (
+                          <div className="text-xs text-red-500">Pendiente: {formatCurrency(Number(pedido.saldo))}</div>
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td className="px-4 py-3 text-center">{getEstadoBadge(pedido.estado)}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex gap-2 justify-end">
+                          <button
+                            onClick={() => { setSelectedPedido(pedido); setShowDetailModal(true) }}
+                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                            title="Ver detalle"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                          </button>
+                          {pedido.estado === 'PENDIENTE' && (
+                            <button 
+                              onClick={() => cambiarEstado(pedido.id, 'EN_RUTA')} 
+                              className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition"
+                              title="Enviar"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
+                            </button>
+                          )}
+                          {pedido.estado === 'EN_RUTA' && (
+                            <button 
+                              onClick={() => cambiarEstado(pedido.id, 'ENTREGADO')} 
+                              className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition"
+                              title="Entregar"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })
               )}
             </tbody>
           </table>
@@ -443,38 +460,44 @@ export default function PedidosPage() {
           {pedidosFiltrados.length === 0 ? (
             <div className="px-4 py-8 text-center text-gray-500">No hay pedidos</div>
           ) : (
-            pedidosFiltrados.map((pedido) => (
-              <div 
-                key={pedido.id} 
-                className="p-4 hover:bg-gray-50 cursor-pointer"
-                onClick={() => {
-                  setSelectedPedido(pedido)
-                  setShowDetailModal(true)
-                }}
-              >
-                <div className="flex justify-between items-start mb-2">
-                  <div>
-                    <span className="text-sm text-gray-500">#{pedido.numero}</span>
-                    <h3 className="font-medium text-gray-800">{pedido.nombreCli}</h3>
-                    <p className="text-sm text-gray-500">{pedido.telefonoCli}</p>
+            pedidosFiltrados.map((pedido) => {
+              const tieneFiado = Number(pedido.saldo) > 0
+              return (
+                <div 
+                  key={pedido.id} 
+                  className={`p-4 hover:bg-gray-50 cursor-pointer transition ${tieneFiado ? 'bg-red-50/30' : ''}`}
+                  onClick={() => {
+                    setSelectedPedido(pedido)
+                    setShowDetailModal(true)
+                  }}
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className="text-xs font-medium text-gray-400">#{pedido.numero}</span>
+                        {getEstadoBadge(pedido.estado)}
+                      </div>
+                      <h3 className="font-medium text-gray-800 text-sm">{pedido.nombreCli}</h3>
+                      <p className="text-xs text-gray-400">{pedido.telefonoCli}</p>
+                    </div>
+                    <div className="text-right ml-2">
+                      <p className="font-bold text-gray-800 text-sm">{formatCurrency(Number(pedido.total))}</p>
+                      {tieneFiado && (
+                        <p className="text-xs text-red-500 font-medium">Pendiente</p>
+                      )}
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="font-bold text-gray-800">{formatCurrency(Number(pedido.total))}</p>
-                    {getEstadoBadge(pedido.estado)}
+                  <div className="flex gap-1.5 flex-wrap mt-2">
+                    {pedido.cPacaAguaPed > 0 && <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 text-xs px-2 py-0.5 rounded-full">🍶 {pedido.cPacaAguaPed}</span>}
+                    {pedido.cPacaHieloPed > 0 && <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 text-xs px-2 py-0.5 rounded-full">🧊 {pedido.cPacaHieloPed}</span>}
+                    {pedido.cBotellonFabPed > 0 && <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 text-xs px-2 py-0.5 rounded-full">🏭 {pedido.cBotellonFabPed}</span>}
+                    {pedido.cBotellonDomPed > 0 && <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 text-xs px-2 py-0.5 rounded-full">🏠 {pedido.cBotellonDomPed}</span>}
+                    {pedido.cBolsaAguaPed > 0 && <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 text-xs px-2 py-0.5 rounded-full">💧 {pedido.cBolsaAguaPed}</span>}
+                    {pedido.cBolsaHieloPed > 0 && <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 text-xs px-2 py-0.5 rounded-full">❄️ {pedido.cBolsaHieloPed}</span>}
                   </div>
                 </div>
-                <div className="flex gap-2 flex-wrap text-xs text-gray-500">
-                  {pedido.canal && <span className="bg-gray-100 px-2 py-0.5 rounded">{pedido.canal}</span>}
-                  <span className="bg-gray-100 px-2 py-0.5 rounded">{pedido.tipo}</span>
-                  {pedido.cPacaAguaPed > 0 && <span>P.Ag:{pedido.cPacaAguaPed}</span>}
-                  {pedido.cPacaHieloPed > 0 && <span>P.Hi:{pedido.cPacaHieloPed}</span>}
-                  {pedido.cBotellonFabPed > 0 && <span>B.Fb:{pedido.cBotellonFabPed}</span>}
-                  {pedido.cBotellonDomPed > 0 && <span>B.Dm:{pedido.cBotellonDomPed}</span>}
-                  {pedido.cBolsaAguaPed > 0 && <span>Bl.Ag:{pedido.cBolsaAguaPed}</span>}
-                  {pedido.cBolsaHieloPed > 0 && <span>Bl.Hi:{pedido.cBolsaHieloPed}</span>}
-                </div>
-              </div>
-            ))
+              )
+            })
           )}
         </div>
       </div>

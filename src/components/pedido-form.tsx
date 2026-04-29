@@ -59,7 +59,8 @@ const METODOS_PAGO = [
 export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoFormProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [clienteSeleccionado, setClienteSeleccionado] = useState<Cliente | null>(null)
-  const [canal, setCanal] = useState<'PUNTO' | 'DOMICILIO'>('DOMICILIO')
+  // Nuevo Pedido siempre es DOMICILIO (Venta Rápida cubre PUNTO/MOSTRADOR)
+  const canal = 'DOMICILIO'
   const [productos, setProductos] = useState<Record<ProductoId, number>>({
     pacaAgua: 0,
     pacaHielo: 0,
@@ -81,6 +82,8 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
         c.telefono.includes(searchTerm)
       )
     : clientes.slice(0, 5)
+
+  const [preciosEditando, setPreciosEditando] = useState<Record<string, boolean>>({})
 
   const resolverPrecios = useCallback(async (
     prods: Record<ProductoId, number>,
@@ -153,11 +156,6 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
     const newProds = { ...productos, [productoId]: cant }
     setProductos(newProds)
     resolverPrecios(newProds, canal, clienteSeleccionado?.id)
-  }
-
-  const handleCanalChange = (newCanal: 'PUNTO' | 'DOMICILIO') => {
-    setCanal(newCanal)
-    resolverPrecios(productos, newCanal, clienteSeleccionado?.id)
   }
 
   const handlePagoChange = (idx: number, field: 'metodo' | 'monto', value: string) => {
@@ -272,76 +270,101 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg">Canal de Venta</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => handleCanalChange('DOMICILIO')}
-              className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition ${
-                canal === 'DOMICILIO'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              Domicilio
-            </button>
-            <button
-              type="button"
-              onClick={() => handleCanalChange('PUNTO')}
-              className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition ${
-                canal === 'PUNTO'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              Punto de Venta
-            </button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-3">
           <CardTitle className="text-lg">Productos</CardTitle>
+          <p className="text-xs text-gray-500">Los precios se resuelven automáticamente. Usa ✏️ para ajustar si es necesario.</p>
         </CardHeader>
         <CardContent className="space-y-3">
-          {/* Column headers */}
-          <div className="flex items-center gap-3 text-xs text-gray-500 font-medium border-b pb-2">
-            <div className="flex-1">Producto</div>
-            <div className="w-20 text-center">Precio</div>
-            <div className="w-20 text-center">Cant.</div>
-          </div>
           {(Object.keys(PRODUCTO_INFO) as ProductoId[]).map((prodId) => {
             const info = PRODUCTO_INFO[prodId]
+            const precioBase = getPrecio(prodId)
+            const precioActual = getEffectivePrice(info.codigo)
+            const estaEditando = preciosEditando[info.codigo]
+            const cantidad = productos[prodId] || 0
             return (
               <div key={prodId} className="flex items-center gap-3">
-                <div className="flex-1">
-                  <div className="font-medium">{info.nombre}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-sm truncate">{info.nombre}</div>
+                  <div className="text-xs text-gray-400">{info.unidad}</div>
                 </div>
-                {/* Price input - editable */}
-                <div className="flex items-center gap-1">
-                  <span className="text-xs text-gray-400">$</span>
-                  <input
+                {/* Price display with optional edit */}
+                <div className="flex items-center gap-1.5">
+                  {estaEditando ? (
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-gray-400">$</span>
+                      <input
+                        type="number"
+                        min="0"
+                        autoFocus
+                        defaultValue={precioActual}
+                        onBlur={(e) => {
+                          const val = parseFloat(e.target.value) || 0
+                          if (val !== precioBase) {
+                            setPreciosManuales(prev => ({ ...prev, [info.codigo]: val }))
+                          } else {
+                            setPreciosManuales(prev => {
+                              const next = { ...prev }
+                              delete next[info.codigo]
+                              return next
+                            })
+                          }
+                          setPreciosEditando(prev => ({ ...prev, [info.codigo]: false }))
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            (e.target as HTMLInputElement).blur()
+                          }
+                        }}
+                        className="w-20 border rounded px-2 py-1 text-sm text-right"
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1">
+                      <span className="text-sm text-gray-600">
+                        ${precioActual.toLocaleString()}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setPreciosEditando(prev => ({ ...prev, [info.codigo]: true }))}
+                        className="text-gray-400 hover:text-blue-600 transition p-0.5"
+                        title="Editar precio"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                        </svg>
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleCantidadChange(prodId, String(Math.max(0, cantidad - 1)))}
+                    className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 transition"
+                    disabled={cantidad <= 0}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" /></svg>
+                  </button>
+                  <Input
                     type="number"
                     min="0"
-                    value={getEffectivePrice(info.codigo)}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value) || 0
-                      setPreciosManuales(prev => ({ ...prev, [info.codigo]: val }))
-                    }}
-                    className="w-20 border rounded px-2 py-1 text-sm text-right"
+                    value={cantidad || ''}
+                    onChange={(e) => handleCantidadChange(prodId, e.target.value)}
+                    className="w-14 text-center p-1 h-8 text-sm"
+                    placeholder="0"
                   />
+                  <button
+                    type="button"
+                    onClick={() => handleCantidadChange(prodId, String(cantidad + 1))}
+                    className="w-8 h-8 flex items-center justify-center rounded-full bg-blue-100 hover:bg-blue-200 text-blue-600 transition"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                  </button>
                 </div>
-                <Input
-                  type="number"
-                  min="0"
-                  value={productos[prodId] || ''}
-                  onChange={(e) => handleCantidadChange(prodId, e.target.value)}
-                  className="w-20"
-                  placeholder="0"
-                />
+                {cantidad > 0 && (
+                  <span className="text-sm font-semibold text-gray-700 w-20 text-right">
+                    ${(cantidad * precioActual).toLocaleString()}
+                  </span>
+                )}
               </div>
             )
           })}
