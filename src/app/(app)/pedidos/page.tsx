@@ -721,10 +721,6 @@ export default function PedidosPage() {
               {/* Info Grid */}
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div className="bg-white border rounded-lg p-2.5">
-                  <div className="text-xs text-gray-400 mb-0.5">Canal</div>
-                  <div className="font-medium text-gray-700">{selectedPedido.canal || 'N/A'}</div>
-                </div>
-                <div className="bg-white border rounded-lg p-2.5">
                   <div className="text-xs text-gray-400 mb-0.5">Tipo</div>
                   <div className="font-medium text-gray-700">{selectedPedido.tipo}</div>
                 </div>
