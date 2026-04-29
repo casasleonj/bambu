@@ -78,3 +78,59 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ error: 'Error updating' }, { status: 500 })
   }
 }
+
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const authResult = await requireAuth()
+  if (authResult instanceof Response) return authResult
+  const { id } = await params
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const embarque = await tx.embarque.findUnique({
+        where: { id },
+        include: { pedidos: true },
+      })
+
+      if (!embarque) {
+        throw new Error('EMBARQUE_NOT_FOUND')
+      }
+
+      if (embarque.estado === 'CERRADO') {
+        throw new Error('EMBARQUE_CERRADO')
+      }
+
+      // Unassign all pedidos and return them to PENDIENTE
+      if (embarque.pedidos.length > 0) {
+        await tx.pedido.updateMany({
+          where: { embarqueId: id },
+          data: { embarqueId: null, estado: 'PENDIENTE' },
+        })
+      }
+
+      // Soft-delete by marking as CANCELADO
+      return tx.embarque.update({
+        where: { id },
+        data: { estado: 'CANCELADO' },
+      })
+    })
+
+    await logAudit({
+      entidad: 'Embarque',
+      registroId: result.id,
+      accion: 'DELETE',
+      datos: { numero: result.numero, estado: 'CANCELADO' },
+      usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+    })
+
+    return NextResponse.json({ success: true, embarque: result })
+  } catch (error) {
+    if (error instanceof Error && error.message === 'EMBARQUE_NOT_FOUND') {
+      return NextResponse.json({ error: 'Embarque no encontrado' }, { status: 404 })
+    }
+    if (error instanceof Error && error.message === 'EMBARQUE_CERRADO') {
+      return NextResponse.json({ error: 'No se puede cancelar un embarque cerrado' }, { status: 400 })
+    }
+    console.error('Error canceling embarque:', error)
+    return NextResponse.json({ error: 'Error al cancelar embarque' }, { status: 500 })
+  }
+}

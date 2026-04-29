@@ -13,9 +13,12 @@ export async function GET(request: NextRequest) {
   try {
     const { startOfDay, endOfDay } = getTodayRange()
 
-    const where = pagination.all ? {} : {
-      fecha: { gte: startOfDay, lt: endOfDay },
-    }
+    const where = pagination.all
+      ? { estado: { not: 'CANCELADO' } }
+      : {
+          fecha: { gte: startOfDay, lt: endOfDay },
+          estado: { not: 'CANCELADO' },
+        }
     const prismaPagination = getPrismaPagination(pagination)
 
     const [embarques, total] = await Promise.all([

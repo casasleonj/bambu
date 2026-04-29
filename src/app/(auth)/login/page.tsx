@@ -1,12 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-
-// Build-time constant — bundler replaces this at compile time,
-// so server and client always agree. Dead-code eliminated in production.
-const IS_DEV = process.env.NODE_ENV === 'development'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -15,6 +11,11 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showDevHint, setShowDevHint] = useState(false)
+
+  useEffect(() => {
+    setShowDevHint(process.env.NODE_ENV === 'development')
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -106,7 +107,7 @@ export default function LoginPage() {
           </button>
         </form>
 
-        {IS_DEV && (
+        {showDevHint && (
           <div className="mt-4 p-3 bg-blue-50 rounded text-sm text-blue-700">
             <p className="font-medium">Modo desarrollo</p>
             <p>Usa las credenciales de prueba configuradas en el seed.</p>

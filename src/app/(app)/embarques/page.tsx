@@ -153,6 +153,7 @@ export default function EmbarquesPage() {
     const styles: Record<string, string> = {
       ABIERTO: 'bg-green-100 text-green-800',
       CERRADO: 'bg-gray-100 text-gray-800',
+      CANCELADO: 'bg-red-100 text-red-800',
     }
     return (
       <span className={`px-2 py-1 rounded-full text-xs font-medium ${styles[estado] || ''}`}>
@@ -381,12 +382,35 @@ export default function EmbarquesPage() {
 
             <div className="flex gap-3">
               {selectedEmbarque.estado === 'ABIERTO' && (
-                <button
-                  onClick={cerrarEmbarque}
-                  className="flex-1 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
-                >
-                  Cerrar Embarque
-                </button>
+                <>
+                  <button
+                    onClick={async () => {
+                      if (!confirm('¿Cancelar este embarque? Los pedidos volverán a estar pendientes.')) return
+                      try {
+                        const res = await fetch(`/api/embarques/${selectedEmbarque.id}`, { method: 'DELETE' })
+                        const data = await res.json()
+                        if (data.success) {
+                          toast.success('Embarque cancelado')
+                          setShowDetailModal(false)
+                          fetchData()
+                        } else {
+                          toast.error(data.error || 'Error')
+                        }
+                      } catch (e) {
+                        toast.error('Error al cancelar')
+                      }
+                    }}
+                    className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={cerrarEmbarque}
+                    className="flex-1 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+                  >
+                    Cerrar Embarque
+                  </button>
+                </>
               )}
               <button
                 onClick={() => setShowDetailModal(false)}

@@ -47,6 +47,7 @@ enum EstadoNomina {
 enum EstadoEmbarque {
   ABIERTO
   CERRADO
+  CANCELADO
 }
 
 enum EstadoFactura {

@@ -135,10 +135,27 @@
 
 ---
 
+## Estado post-sesión 29-abr
+
+Los siguientes items fueron completados en la sesión del 29 de abril. Ver `bambu_demo_multimodelo-20260429-session.md` para detalles:
+
+- ✅ HSTS + CSP tighten
+- ✅ Audit trail (Historial model activado)
+- ✅ CSRF protection
+- ✅ E2E tests (cierre, embarques, producción)
+- ✅ Code splitting con next/dynamic
+- ✅ Embarques automáticos
+- ✅ Dashboard: trends, alerts, hourly chart
+- ✅ CRM recomendaciones predictivas
+- ✅ Offline sync conflict resolution
+- ✅ Login hydration fix
+- ✅ SW dev unregistration
+- ✅ Eliminar worktree feat-8-week-impl
+- ✅ Cancelar embarques (estado CANCELADO)
+
 ## Próximos pasos sugeridos
 
-1. **Agregar HSTS** en headers de next.config.ts
-2. **Implementar code splitting** con `next/dynamic` para modales
-3. **Crear tests E2E** para `/api/cierre` y `/api/embarques`
-4. **Activar modelo Historial** para auditoría de cambios
-5. **Agregar búsqueda por voz** para clientes (rural, manos ocupadas)
+1. **Run `npx prisma db push`** para aplicar enum CANCELADO
+2. **Tests E2E** para cancelar embarque y recomendaciones CRM
+3. **Voice search** para clientes en página de pedidos
+4. **PWA install prompt** para usuarios rurales
