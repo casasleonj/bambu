@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuth } from '@/lib/auth-check'
+import { requireAuth, requireRole, requireOwnership } from '@/lib/auth-check'
 import { EmbarqueUpdateSchema } from '@/lib/validators'
 import { logAudit } from '@/lib/audit'
+import { ROLES } from '@/lib/constants'
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
   const { id } = await params
+  const session = authResult as { user?: { id?: string; role?: string } }
+  const hasAccess = await requireOwnership('embarque', id, { id: session.user?.id || '', role: session.user?.role })
+  if (!hasAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   try {
     const embarque = await prisma.embarque.findUnique({
       where: { id },
@@ -30,6 +34,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
   const { id } = await params
+  const session = authResult as { user?: { id?: string; role?: string } }
+  const hasAccess = await requireOwnership('embarque', id, { id: session.user?.id || '', role: session.user?.role })
+  if (!hasAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   try {
     const body = await request.json()
     const parsed = EmbarqueUpdateSchema.safeParse(body)
@@ -85,6 +92,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
+  const roleCheck = await requireRole([ROLES.ADMIN], authResult)
+  if (roleCheck instanceof Response) return roleCheck
   const { id } = await params
 
   try {

@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuth } from '@/lib/auth-check'
+import { requireAuth, requireRole } from '@/lib/auth-check'
 import { logAudit } from '@/lib/audit'
+import { ROLES } from '@/lib/constants'
 
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
+  const roleCheck = await requireRole([ROLES.ADMIN], authResult)
+  if (roleCheck instanceof Response) return roleCheck
 
   try {
     const result = await prisma.$transaction(async (tx) => {

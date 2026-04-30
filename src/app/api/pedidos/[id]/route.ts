@@ -1,13 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuth } from '@/lib/auth-check'
+import { requireAuth, requireRole, requireOwnership } from '@/lib/auth-check'
 import { PedidoUpdateSchema } from '@/lib/validators'
 import { logAudit } from '@/lib/audit'
+import { ROLES } from '@/lib/constants'
+
+function getUserFromSession(authResult: any) {
+  return { id: authResult.user?.id || '', role: authResult.user?.role }
+}
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
   const { id } = await params
+  const hasAccess = await requireOwnership('pedido', id, getUserFromSession(authResult))
+  if (!hasAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   try {
     const pedido = await prisma.pedido.findUnique({
       where: { id },
@@ -24,6 +31,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
   const { id } = await params
+  const hasAccess = await requireOwnership('pedido', id, getUserFromSession(authResult))
+  if (!hasAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   try {
     const body = await request.json()
     const parsed = PedidoUpdateSchema.safeParse(body)
@@ -75,6 +84,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
+  const roleCheck = await requireRole([ROLES.ADMIN, ROLES.CONTADOR], authResult)
+  if (roleCheck instanceof Response) return roleCheck
   const { id } = await params
   try {
     await prisma.pedido.update({
