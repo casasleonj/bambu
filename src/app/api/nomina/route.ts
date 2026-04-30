@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ nominas })
   } catch (error) {
-    console.error('Error fetching nominas:', error)
+    console.error('Error fetching nominas:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error fetching nominas' }, { status: 500 })
   }
 }
@@ -132,7 +132,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, nomina: result }, { status: 201 })
   } catch (error) {
-    console.error('Error creating nomina:', error)
+    console.error('Error creating nomina:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error creating nomina' }, { status: 500 })
   }
 }

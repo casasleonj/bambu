@@ -24,7 +24,7 @@ export async function GET() {
       barriosSinRuta,
     })
   } catch (error) {
-    console.error('Error en análisis de rutas:', error)
+    console.error('Error en análisis de rutas:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json(
       { error: 'Error al analizar patrones de entrega' },
       { status: 500 }

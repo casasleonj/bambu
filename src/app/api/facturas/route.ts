@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
         : buildPaginationResponse(facturas, total, pagination.page!, pagination.pageSize!)
     )
   } catch (error) {
-    console.error('Error fetching facturas:', error)
+    console.error('Error fetching facturas:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error fetching facturas' }, { status: 500 })
   }
 }
@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, factura }, { status: 201 })
   } catch (error) {
-    console.error('Error creating factura:', error)
+    console.error('Error creating factura:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error creating factura' }, { status: 500 })
   }
 }

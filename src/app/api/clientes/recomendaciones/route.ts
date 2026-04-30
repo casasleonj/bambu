@@ -103,7 +103,7 @@ export async function GET(request: NextRequest) {
       total: recomendaciones.length,
     })
   } catch (error) {
-    console.error('Error generating recommendations:', error)
+    console.error('Error generating recommendations:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json(
       { error: 'Error al generar recomendaciones' },
       { status: 500 }

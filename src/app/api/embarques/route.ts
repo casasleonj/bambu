@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, embarque }, { status: 201 })
   } catch (error) {
-    console.error('Error creating embarque:', error)
+    console.error('Error creating embarque:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error creating embarque' }, { status: 500 })
   }
 }

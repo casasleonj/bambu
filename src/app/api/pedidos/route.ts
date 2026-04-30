@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
         : buildPaginationResponse(pedidos, total, pagination.page!, pagination.pageSize!)
     )
   } catch (error) {
-    console.error('Error fetching pedidos:', error)
+    console.error('Error fetching pedidos:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error fetching pedidos' }, { status: 500 })
   }
 }
@@ -185,7 +185,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, pedido: result.pedido }, { status: 201 })
   } catch (error) {
-    console.error('Error creating pedido:', error)
+    console.error('Error creating pedido:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error creating pedido' }, { status: 500 })
   }
 }

@@ -79,7 +79,7 @@ export async function syncWithServer(): Promise<{ synced: number; failed: number
         }
       }
     } catch (e) {
-      console.error('Sync failed for item', item, e)
+      console.error('Sync failed for item', { id: (item as any).id }, e instanceof Error ? e.message : 'Unknown')
       failed++
     }
   }

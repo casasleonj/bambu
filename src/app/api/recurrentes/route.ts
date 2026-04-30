@@ -52,7 +52,7 @@ export async function GET() {
 
     return NextResponse.json({ success: true, recurrentes })
   } catch (error) {
-    console.error('Error fetching recurrentes:', error)
+    console.error('Error fetching recurrentes:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error al cargar recurrentes' }, { status: 500 })
   }
 }
@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, recurrente }, { status: 201 })
   } catch (error) {
-    console.error('Error creating recurrente:', error)
+    console.error('Error creating recurrente:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error al crear recurrente' }, { status: 500 })
   }
 }
@@ -169,7 +169,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({ success: true, recurrente })
   } catch (error) {
-    console.error('Error updating recurrente:', error)
+    console.error('Error updating recurrente:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error al actualizar' }, { status: 500 })
   }
 }
@@ -198,7 +198,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true, recurrente })
   } catch (error) {
-    console.error('Error deleting recurrente:', error)
+    console.error('Error deleting recurrente:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error al eliminar' }, { status: 500 })
   }
 }

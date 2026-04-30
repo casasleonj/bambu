@@ -84,7 +84,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     return NextResponse.json({ success: true, embarque })
   } catch (error) {
-    console.error('Error updating embarque:', error)
+    console.error('Error updating embarque:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error updating' }, { status: 500 })
   }
 }
@@ -142,7 +142,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     if (error instanceof Error && error.message === 'EMBARQUE_CERRADO') {
       return NextResponse.json({ error: 'No se puede cancelar un embarque cerrado' }, { status: 400 })
     }
-    console.error('Error canceling embarque:', error)
+    console.error('Error canceling embarque:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error al cancelar embarque' }, { status: 500 })
   }
 }

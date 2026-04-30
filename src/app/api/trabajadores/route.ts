@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     })
     return NextResponse.json({ success: true, trabajador }, { status: 201 })
   } catch (error) {
-    console.error('Error creating trabajador:', error)
+    console.error('Error creating trabajador:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error creating trabajador' }, { status: 500 })
   }
 }

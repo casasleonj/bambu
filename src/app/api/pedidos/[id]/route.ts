@@ -76,7 +76,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (error instanceof Error && error.message === 'PEDIDO_NOT_FOUND') {
       return NextResponse.json({ error: 'Pedido no encontrado' }, { status: 404 })
     }
-    console.error('Error updating pedido:', error)
+    console.error('Error updating pedido:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error updating' }, { status: 500 })
   }
 }

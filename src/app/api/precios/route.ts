@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ precios })
   } catch (error) {
-    console.error('Error fetching precios:', error)
+    console.error('Error fetching precios:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error fetching precios' }, { status: 500 })
   }
 }
@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     )
   } catch (error) {
-    console.error('Error updating precio:', error)
+    console.error('Error updating precio:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error actualizando precio' }, { status: 500 })
   }
 }

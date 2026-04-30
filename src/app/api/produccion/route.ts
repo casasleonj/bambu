@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
     })
     return NextResponse.json({ produccion: registros })
   } catch (error) {
-    console.error('Error fetching produccion:', error)
+    console.error('Error fetching produccion:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error' }, { status: 500 })
   }
 }

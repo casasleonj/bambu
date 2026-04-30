@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
         : buildPaginationResponse(rutas, total, pagination.page!, pagination.pageSize!)
     )
   } catch (error) {
-    console.error('Error fetching rutas:', error)
+    console.error('Error fetching rutas:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error al cargar rutas' }, { status: 500 })
   }
 }
@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, ruta }, { status: 201 })
   } catch (error) {
-    console.error('Error creating ruta:', error)
+    console.error('Error creating ruta:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error al crear ruta' }, { status: 500 })
   }
 }
@@ -144,7 +144,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({ success: true, ruta })
   } catch (error) {
-    console.error('Error updating ruta:', error)
+    console.error('Error updating ruta:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error al actualizar ruta' }, { status: 500 })
   }
 }
@@ -176,7 +176,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true, ruta })
   } catch (error) {
-    console.error('Error deleting ruta:', error)
+    console.error('Error deleting ruta:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error al eliminar ruta' }, { status: 500 })
   }
 }

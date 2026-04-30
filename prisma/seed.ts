@@ -3,22 +3,49 @@ import bcrypt from 'bcryptjs'
 
 const prisma = new PrismaClient()
 
+const SALT_ROUNDS = 12
+
+function generateRandomPassword(length = 12): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*'
+  let result = ''
+  for (let i = 0; i < length; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length))
+  }
+  return result
+}
+
 async function main() {
   console.log('🌱 Seeding database...')
 
-  // Users
+  const isDevOrTest = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test'
+
+  // Users — use fixed passwords in dev/test, random in production
+  const defaultPasswords: Record<string, string> = {
+    admin: 'admin123',
+    asistente: 'asist123',
+    contador: 'cont123',
+  }
+
   const users = [
-    { username: 'admin', password: await bcrypt.hash('admin123', 10), rol: RolUsuario.ADMIN },
-    { username: 'asistente', password: await bcrypt.hash('asist123', 10), rol: RolUsuario.ASISTENTE },
-    { username: 'contador', password: await bcrypt.hash('cont123', 10), rol: RolUsuario.CONTADOR },
+    { username: 'admin', password: isDevOrTest ? defaultPasswords.admin : generateRandomPassword(), rol: RolUsuario.ADMIN },
+    { username: 'asistente', password: isDevOrTest ? defaultPasswords.asistente : generateRandomPassword(), rol: RolUsuario.ASISTENTE },
+    { username: 'contador', password: isDevOrTest ? defaultPasswords.contador : generateRandomPassword(), rol: RolUsuario.CONTADOR },
   ]
 
   for (const user of users) {
+    const hashed = await bcrypt.hash(user.password, SALT_ROUNDS)
     await prisma.user.upsert({
       where: { username: user.username },
-      update: {},
-      create: user,
+      update: isDevOrTest ? {} : { password: hashed },
+      create: { ...user, password: hashed },
     })
+  }
+
+  // Log generated passwords in production so admin can copy them
+  if (!isDevOrTest) {
+    console.log('=== PRODUCTION CREDENTIALS (save these now) ===')
+    users.forEach(u => console.log(`${u.username}: ${u.password}`))
+    console.log('================================================')
   }
   console.log('✅ Users seeded')
 
@@ -69,21 +96,16 @@ async function main() {
 
   // Volume prices
   const preciosData = [
-    // Paca Agua - PUNTO
     { codigo: 'PACA_AGUA', canal: 'PUNTO', cantMin: 1, cantMax: 4, precio: 2800 },
     { codigo: 'PACA_AGUA', canal: 'PUNTO', cantMin: 5, cantMax: 9, precio: 2500 },
     { codigo: 'PACA_AGUA', canal: 'PUNTO', cantMin: 10, cantMax: null, precio: 2300 },
-    // Paca Agua - DOMICILIO
     { codigo: 'PACA_AGUA', canal: 'DOMICILIO', cantMin: 1, cantMax: 4, precio: 3000 },
     { codigo: 'PACA_AGUA', canal: 'DOMICILIO', cantMin: 5, cantMax: 9, precio: 2500 },
     { codigo: 'PACA_AGUA', canal: 'DOMICILIO', cantMin: 10, cantMax: null, precio: 2300 },
-    // Paca Hielo - same price always
     { codigo: 'PACA_HIELO', canal: 'PUNTO', cantMin: 1, cantMax: null, precio: 2500 },
     { codigo: 'PACA_HIELO', canal: 'DOMICILIO', cantMin: 1, cantMax: null, precio: 2500 },
-    // Botellon
     { codigo: 'BOTELLON_FAB', canal: 'PUNTO', cantMin: 1, cantMax: null, precio: 7500 },
     { codigo: 'BOTELLON_DOM', canal: 'DOMICILIO', cantMin: 1, cantMax: null, precio: 10000 },
-    // Bolsas
     { codigo: 'BOLSA_AGUA', canal: 'PUNTO', cantMin: 1, cantMax: null, precio: 300 },
     { codigo: 'BOLSA_AGUA', canal: 'DOMICILIO', cantMin: 1, cantMax: null, precio: 300 },
     { codigo: 'BOLSA_HIELO', canal: 'PUNTO', cantMin: 1, cantMax: null, precio: 500 },
@@ -135,7 +157,7 @@ async function main() {
 
 main()
   .catch((e) => {
-    console.error(e)
+    console.error('Seed error:', e instanceof Error ? e.message : 'Unknown')
     process.exit(1)
   })
   .finally(async () => {

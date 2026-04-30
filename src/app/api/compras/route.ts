@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
         : buildPaginationResponse(compras, total, pagination.page!, pagination.pageSize!)
     )
   } catch (error) {
-    console.error('Error fetching compras:', error)
+    console.error('Error fetching compras:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error fetching compras' }, { status: 500 })
   }
 }
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true }, { status: 201 })
   } catch (error) {
-    console.error('Error creating compra:', error)
+    console.error('Error creating compra:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error creating compra' }, { status: 500 })
   }
 }

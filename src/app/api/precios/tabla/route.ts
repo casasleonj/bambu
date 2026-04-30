@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
     const tabla = await getPriceTable(canal)
     return NextResponse.json({ tabla, canal })
   } catch (error) {
-    console.error('Error fetching price table:', error)
+    console.error('Error fetching price table:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error fetching price table' }, { status: 500 })
   }
 }

@@ -22,7 +22,7 @@ export async function GET() {
     const preview = await previewGeneracionRecurrentes()
     return NextResponse.json({ success: true, preview })
   } catch (error) {
-    console.error('Error preview recurrentes:', error)
+    console.error('Error preview recurrentes:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error al generar preview' }, { status: 500 })
   }
 }
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
       saltadosIds: resultado.saltados,
     }, { status: 201 })
   } catch (error) {
-    console.error('Error generando recurrentes:', error)
+    console.error('Error generando recurrentes:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error generando pedidos recurrentes' }, { status: 500 })
   }
 }

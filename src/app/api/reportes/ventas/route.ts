@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
         : { ...buildPaginationResponse(pedidos, total, pagination.page!, pagination.pageSize!), resumen }
     )
   } catch (error) {
-    console.error('Error fetching reporte ventas:', error)
+    console.error('Error fetching reporte ventas:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error fetching reporte' }, { status: 500 })
   }
 }

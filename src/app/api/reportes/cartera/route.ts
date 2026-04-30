@@ -25,7 +25,7 @@ export async function GET() {
 
     return NextResponse.json({ facturas, totalCartera })
   } catch (error) {
-    console.error('Error fetching cartera:', error)
+    console.error('Error fetching cartera:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error fetching cartera' }, { status: 500 })
   }
 }

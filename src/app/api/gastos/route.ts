@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
         : buildPaginationResponse(gastos, total, pagination.page!, pagination.pageSize!)
     )
   } catch (error) {
-    console.error('Error fetching gastos:', error)
+    console.error('Error fetching gastos:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error fetching gastos' }, { status: 500 })
   }
 }
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, gasto }, { status: 201 })
   } catch (error) {
-    console.error('Error creating gasto:', error)
+    console.error('Error creating gasto:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error creating gasto' }, { status: 500 })
   }
 }

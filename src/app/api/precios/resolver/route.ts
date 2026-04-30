@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
     const result = await resolverPrecio(parsed.data.codigo as ProductCode, parsed.data.cantidad || 1, canal as Canal, clienteOverrides)
     return NextResponse.json(result)
   } catch (error) {
-    console.error('Error resolving price:', error)
+    console.error('Error resolving price:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error resolving price' }, { status: 500 })
   }
 }

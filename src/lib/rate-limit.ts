@@ -35,7 +35,7 @@ async function getRedisClient() {
     redisClient = client
     return client
   } catch (err) {
-    console.error('Failed to connect to Redis, falling back to memory:', err)
+    console.error('Failed to connect to Redis, falling back to memory')
     redisClient = null
     return null
   }

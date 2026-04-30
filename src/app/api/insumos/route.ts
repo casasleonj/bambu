@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ insumos })
   } catch (error) {
-    console.error('Error fetching insumos:', error)
+    console.error('Error fetching insumos:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error fetching insumos' }, { status: 500 })
   }
 }
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, insumo }, { status: 201 })
   } catch (error) {
-    console.error('Error creating insumo:', error)
+    console.error('Error creating insumo:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error creating insumo' }, { status: 500 })
   }
 }

@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ cliente }, { status: 201 })
   } catch (error) {
-    console.error('Error creating quick client:', error)
+    console.error('Error creating quick client:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error creating client' }, { status: 500 })
   }
 }

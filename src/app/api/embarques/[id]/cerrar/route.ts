@@ -367,7 +367,7 @@ export async function POST(
     if (error instanceof Error && error.message === 'EMBARQUE_YA_CERRADO') {
       return NextResponse.json({ error: 'El embarque ya está cerrado' }, { status: 400 })
     }
-    console.error('Error cerrando embarque:', error)
+    console.error('Error cerrando embarque:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error al cerrar embarque' }, { status: 500 })
   }
 }

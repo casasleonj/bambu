@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ abonos })
   } catch (error) {
-    console.error('Error fetching abonos:', error)
+    console.error('Error fetching abonos:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json({ error: 'Error fetching abonos' }, { status: 500 })
   }
 }
@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, abono: result.abono }, { status: 201 })
   } catch (error) {
-    console.error('Error creating abono:', error)
+    console.error('Error creating abono:', error instanceof Error ? error.message : 'Unknown')
     if (error instanceof Error && error.message === 'FACTURA_NOT_FOUND') {
       return NextResponse.json({ error: 'Factura no encontrada' }, { status: 404 })
     }

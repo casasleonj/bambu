@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, ...result })
   } catch (error) {
-    console.error('Error auto-generating embarques:', error)
+    console.error('Error auto-generating embarques:', error instanceof Error ? error.message : 'Unknown')
     return NextResponse.json(
       { error: 'Error al generar embarques automáticos' },
       { status: 500 }
