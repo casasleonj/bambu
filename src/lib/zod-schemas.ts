@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-export const CanalSchema = z.enum(['DOMICILIO', 'PUNTO_VENTA', 'MAYORISTA', 'INTERNO'])
+export const CanalSchema = z.enum(['DOMICILIO', 'PUNTO'])
 
 export const FechaRangoSchema = z.object({
   start: z.string().datetime().optional().or(z.string().date()),

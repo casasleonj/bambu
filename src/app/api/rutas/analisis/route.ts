@@ -25,13 +25,6 @@ export async function GET(request: Request) {
     if (!validation.success) {
       return NextResponse.json({ error: 'Parámetros inválidos', details: validation.error.flatten() }, { status: 400 })
     }
-    const url = new URL(request.url)
-    const validation = AnalisisSchema.safeParse(
-      Object.fromEntries(url.searchParams.entries())
-    )
-    if (!validation.success) {
-      return NextResponse.json({ error: 'Parámetros inválidos', details: validation.error.flatten() }, { status: 400 })
-    }
     const [analisis, repartidores, barriosSinRuta] = await Promise.all([
       analizarPatronesEntrega(),
       obtenerRepartidoresActivos(),

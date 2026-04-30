@@ -22,11 +22,6 @@ export async function POST(request: NextRequest) {
     if (!validation.success) {
       return NextResponse.json({ error: 'Parámetros inválidos', details: validation.error.flatten() }, { status: 400 })
     }
-    const body = await request.json()
-    const validation = EmbarqueAutoSchema.safeParse(body)
-    if (!validation.success) {
-      return NextResponse.json({ error: 'Parámetros inválidos', details: validation.error.flatten() }, { status: 400 })
-    }
     const result = await prisma.$transaction(async (tx) => {
       // 1. Find all PENDIENTE pedidos without embarque
       const pedidosPendientes = await tx.pedido.findMany({

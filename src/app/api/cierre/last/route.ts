@@ -20,11 +20,6 @@ export async function GET(request: Request) {
     }
     const cierre = await prisma.cierreDia.findFirst({
       orderBy: { fecha: 'desc' },
-      include: validation.data.includeDetails ? {
-        detalles: true,
-        gastos: true,
-        compras: true,
-      } : undefined,
     })
     return NextResponse.json({ cierre })
   } catch (error) {

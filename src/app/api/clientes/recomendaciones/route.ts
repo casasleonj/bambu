@@ -14,12 +14,6 @@ export async function GET(request: NextRequest) {
     if (!validation.success) {
       return NextResponse.json({ error: 'Parámetros inválidos', details: validation.error.flatten() }, { status: 400 })
     }
-    const validation = ClienteRecomendacionesSchema.safeParse(
-      Object.fromEntries(request.nextUrl.searchParams.entries())
-    )
-    if (!validation.success) {
-      return NextResponse.json({ error: 'Parámetros inválidos', details: validation.error.flatten() }, { status: 400 })
-    }
     const clientes = await prisma.cliente.findMany({
       where: { activo: true },
       include: {
