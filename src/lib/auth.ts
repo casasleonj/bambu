@@ -5,6 +5,8 @@ import { prisma } from './prisma'
 import type { JWT } from 'next-auth/jwt'
 import type { Session, User } from 'next-auth'
 
+const DUMMY_HASH = '$2b$12$3efHSCLxFTFy3/JJefgSmeHE/A.YexA51FcSccHtb8u0UvLR7mTWm'
+
 const authOptions: NextAuthConfig = {
   providers: [
     CredentialsProvider({
@@ -18,31 +20,35 @@ const authOptions: NextAuthConfig = {
           return null
         }
 
+        let dbUser: { id: string; username: string; password: string; rol: string; activo: boolean } | null = null
+        let hashToCompare = DUMMY_HASH
+
         try {
-          const user = await prisma.user.findUnique({
+          dbUser = await prisma.user.findUnique({
             where: { username: credentials.username as string },
           })
 
-          if (!user || !user.activo) {
-            return null
-          }
-
-          const valid = await bcrypt.compare(
-            credentials.password as string,
-            user.password
-          )
-
-          if (valid) {
-            return {
-              id: user.id,
-              name: user.username,
-              role: user.rol,
-            }
+          if (dbUser && dbUser.activo) {
+            hashToCompare = dbUser.password
           }
         } catch (error) {
           console.error('Auth error:', error instanceof Error ? error.message : 'Unknown error')
         }
 
+        const valid = await bcrypt.compare(
+          credentials.password as string,
+          hashToCompare
+        )
+
+        if (dbUser && dbUser.activo && valid) {
+          return {
+            id: dbUser.id,
+            name: dbUser.username,
+            role: dbUser.rol,
+          }
+        }
+
+        await new Promise(r => setTimeout(r, 50 + Math.random() * 50))
         return null
       },
     }),

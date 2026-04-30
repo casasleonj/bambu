@@ -30,7 +30,7 @@ async function getRedisClient() {
     // Dynamic import avoids bundling redis in edge runtime
     const { createClient } = await import('redis')
     const client = createClient({ url: redisUrl })
-    client.on('error', (err: Error) => console.error('Redis error:', err))
+    client.on('error', (err: Error) => console.error('Redis error:', err.message))
     await client.connect()
     redisClient = client
     return client
@@ -111,7 +111,7 @@ export async function checkRateLimit(
       }
     }
     // Real error (Redis down etc): log and fail-open but loudly
-    console.error('Rate limiter error:', rej)
+    console.error('Rate limiter internal error, failing open')
     return {
       allowed: true,
       limit: cfg.points,
