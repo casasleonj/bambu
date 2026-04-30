@@ -4,6 +4,7 @@ import { requireAuth, requireRole } from '@/lib/auth-check'
 import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
 import { z } from 'zod'
 import { logAudit } from '@/lib/audit'
+import { ROLES } from '@/lib/constants'
 
 const RutaCreateSchema = z.object({
   nombre: z.string().min(1).max(100),
@@ -54,6 +55,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
+  const roleCheck = await requireRole([ROLES.ADMIN], authResult)
+  if (roleCheck instanceof Response) return roleCheck
 
   try {
     const body = await request.json()
@@ -99,14 +102,15 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
+  const roleCheck = await requireRole([ROLES.ADMIN], authResult)
+  if (roleCheck instanceof Response) return roleCheck
 
   try {
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
-
-    if (!id) {
-      return NextResponse.json({ error: 'ID requerido' }, { status: 400 })
-    }
+    if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 })
+    const parsedId = z.string().uuid().safeParse(id)
+    if (!parsedId.success) return NextResponse.json({ error: 'ID formato inválido' }, { status: 400 })
 
     const body = await request.json()
     const parsed = RutaUpdateSchema.safeParse(body)

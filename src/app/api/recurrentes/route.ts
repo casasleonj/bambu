@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuth } from '@/lib/auth-check'
+import { requireAuth, requireRole } from '@/lib/auth-check'
 import { z } from 'zod'
 import { logAudit } from '@/lib/audit'
 import { withAdvisoryLock } from '@/lib/locks'
+import { ROLES } from '@/lib/constants'
 
 const RecurrenteCreateSchema = z.object({
   clienteId: z.string().min(1),
@@ -59,6 +60,8 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
+  const roleCheck = await requireRole([ROLES.ADMIN, ROLES.CONTADOR], authResult)
+  if (roleCheck instanceof Response) return roleCheck
 
   try {
     const body = await request.json()
@@ -119,6 +122,8 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
+  const roleCheck = await requireRole([ROLES.ADMIN, ROLES.CONTADOR], authResult)
+  if (roleCheck instanceof Response) return roleCheck
 
   try {
     const { searchParams } = new URL(request.url)
