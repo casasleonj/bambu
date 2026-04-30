@@ -5,12 +5,33 @@ import {
   obtenerRepartidoresActivos,
   obtenerBarriosSinRuta,
 } from '@/lib/route-analysis'
+import { z } from 'zod'
 
-export async function GET() {
+const AnalisisSchema = z.object({
+  desde: z.string().date().optional(),
+  hasta: z.string().date().optional(),
+  minEntregas: z.coerce.number().int().positive().optional(),
+})
+
+export async function GET(request: Request) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
 
   try {
+    const url = new URL(request.url)
+    const validation = AnalisisSchema.safeParse(
+      Object.fromEntries(url.searchParams.entries())
+    )
+    if (!validation.success) {
+      return NextResponse.json({ error: 'Parámetros inválidos', details: validation.error.flatten() }, { status: 400 })
+    }
+    const url = new URL(request.url)
+    const validation = AnalisisSchema.safeParse(
+      Object.fromEntries(url.searchParams.entries())
+    )
+    if (!validation.success) {
+      return NextResponse.json({ error: 'Parámetros inválidos', details: validation.error.flatten() }, { status: 400 })
+    }
     const [analisis, repartidores, barriosSinRuta] = await Promise.all([
       analizarPatronesEntrega(),
       obtenerRepartidoresActivos(),

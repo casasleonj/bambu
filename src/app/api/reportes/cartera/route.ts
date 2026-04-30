@@ -1,24 +1,41 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
+import { z } from 'zod'
 
-export async function GET() {
+const CarteraSchema = z.object({
+  minSaldo: z.coerce.number().nonnegative().optional(),
+  limit: z.coerce.number().int().positive().max(500).optional().default(100),
+  sortBy: z.enum(['saldo', 'fecha', 'cliente']).optional().default('saldo'),
+})
+
+export async function GET(request: Request) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
   const roleCheck = await requireRole(['ADMIN', 'CONTADOR'], authResult)
   if (roleCheck instanceof Response) return roleCheck
 
   try {
+    const url = new URL(request.url)
+    const validation = CarteraSchema.safeParse(
+      Object.fromEntries(url.searchParams.entries())
+    )
+    if (!validation.success) {
+      return NextResponse.json({ error: 'Parámetros inválidos', details: validation.error.flatten() }, { status: 400 })
+    }
+
+    const { minSaldo, limit, sortBy } = validation.data
+
     const facturas = await prisma.factura.findMany({
       where: {
-        saldo: { gt: 0 },
+        saldo: { gt: minSaldo ?? 0 },
       },
       include: {
         cliente: true,
         pedido: true,
       },
-      orderBy: { saldo: 'desc' },
-      take: 100,
+      orderBy: { [sortBy]: 'desc' },
+      take: limit,
     })
 
     const totalCartera = facturas.reduce((sum, f) => sum + Number(f.saldo), 0)

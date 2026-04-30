@@ -1,12 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
+import { ClienteRecomendacionesSchema } from '@/lib/zod-schemas'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
 
   try {
+    const validation = ClienteRecomendacionesSchema.safeParse(
+      Object.fromEntries(request.nextUrl.searchParams.entries())
+    )
+    if (!validation.success) {
+      return NextResponse.json({ error: 'Parámetros inválidos', details: validation.error.flatten() }, { status: 400 })
+    }
+    const validation = ClienteRecomendacionesSchema.safeParse(
+      Object.fromEntries(request.nextUrl.searchParams.entries())
+    )
+    if (!validation.success) {
+      return NextResponse.json({ error: 'Parámetros inválidos', details: validation.error.flatten() }, { status: 400 })
+    }
     const clientes = await prisma.cliente.findMany({
       where: { activo: true },
       include: {

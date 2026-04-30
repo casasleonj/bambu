@@ -3,6 +3,12 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
+import { z } from 'zod'
+
+const EmbarqueAutoSchema = z.object({
+  rutaId: z.string().uuid().optional(),
+  limit: z.coerce.number().int().positive().max(50).optional(),
+})
 
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth()
@@ -11,6 +17,16 @@ export async function POST(request: NextRequest) {
   if (roleCheck instanceof Response) return roleCheck
 
   try {
+    const body = await request.json()
+    const validation = EmbarqueAutoSchema.safeParse(body)
+    if (!validation.success) {
+      return NextResponse.json({ error: 'Parámetros inválidos', details: validation.error.flatten() }, { status: 400 })
+    }
+    const body = await request.json()
+    const validation = EmbarqueAutoSchema.safeParse(body)
+    if (!validation.success) {
+      return NextResponse.json({ error: 'Parámetros inválidos', details: validation.error.flatten() }, { status: 400 })
+    }
     const result = await prisma.$transaction(async (tx) => {
       // 1. Find all PENDIENTE pedidos without embarque
       const pedidosPendientes = await tx.pedido.findMany({

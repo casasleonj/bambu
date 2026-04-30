@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
+import { z } from 'zod'
+
+const ReporteVentasSchema = z.object({
+  start: z.string().datetime().optional().or(z.string().date()),
+  end: z.string().datetime().optional().or(z.string().date()),
+  page: z.coerce.number().int().positive().optional(),
+  pageSize: z.coerce.number().int().min(1).max(100).optional(),
+  all: z.coerce.boolean().optional(),
+})
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -10,10 +19,14 @@ export async function GET(request: NextRequest) {
   if (roleCheck instanceof Response) return roleCheck
 
   try {
-    const { searchParams } = new URL(request.url)
-    const start = searchParams.get('start')
-    const end = searchParams.get('end')
-    const pagination = getPaginationParams(searchParams)
+    const validation = ReporteVentasSchema.safeParse(
+      Object.fromEntries(request.nextUrl.searchParams.entries())
+    )
+    if (!validation.success) {
+      return NextResponse.json({ error: 'Parámetros inválidos', details: validation.error.flatten() }, { status: 400 })
+    }
+
+    const { start, end, page, pageSize, all } = validation.data
 
     const dateFilter = {
       gte: start ? new Date(start) : new Date(new Date().setDate(new Date().getDate() - 30)),
@@ -25,6 +38,7 @@ export async function GET(request: NextRequest) {
       estado: { not: 'CANCELADO' as any },
     }
 
+    const pagination = all ? { all: true } : { page: page ?? 1, pageSize: pageSize ?? 10 }
     const prismaPagination = getPrismaPagination(pagination)
 
     const [pedidos, total] = await Promise.all([
