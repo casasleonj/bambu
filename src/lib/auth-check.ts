@@ -12,10 +12,11 @@ export async function requireAuth() {
 /**
  * Check if the current user has one of the allowed roles.
  * Accepts either a single role string or an array of allowed roles.
+ * Optionally accepts an existing session to avoid calling auth() twice.
  * Returns the session if authorized, or a 403 Response if not.
  */
-export async function requireRole(role: string | string[]) {
-  const session = await auth();
+export async function requireRole(role: string | string[], existingSession?: any) {
+  const session = existingSession || await auth();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

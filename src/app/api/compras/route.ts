@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { CompraCreateSchema } from '@/lib/validators'
 import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
+import { withAdvisoryLock } from '@/lib/locks'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -32,7 +33,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
-  const roleCheck = await requireRole(['ADMIN', 'CONTADOR'])
+  const roleCheck = await requireRole(['ADMIN', 'CONTADOR'], authResult)
   if (roleCheck instanceof Response) return roleCheck
   try {
     const body = await request.json()
@@ -47,8 +48,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Insumo no encontrado' }, { status: 404 })
     }
 
-    // Crear compra y actualizar stock atómicamente
-    await prisma.$transaction(async (tx) => {
+    // Crear compra y actualizar stock atómicamente (advisory lock previene race conditions)
+    await withAdvisoryLock('COMPRA', async (tx) => {
       const lastCompra = await tx.compraInsumo.findFirst({ orderBy: { numero: 'desc' } })
       const nextNum = lastCompra ? parseInt(lastCompra.numero.replace('COM-', '')) + 1 : 1
 
@@ -68,7 +69,7 @@ export async function POST(request: NextRequest) {
       })
     })
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true }, { status: 201 })
   } catch (error) {
     console.error('Error creating compra:', error)
     return NextResponse.json({ error: 'Error creating compra' }, { status: 500 })

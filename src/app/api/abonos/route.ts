@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
-  const roleCheck = await requireRole(['ADMIN', 'CONTADOR'])
+  const roleCheck = await requireRole(['ADMIN', 'CONTADOR'], authResult)
   if (roleCheck instanceof Response) return roleCheck
   try {
     const body = await request.json()
@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     }
     const { facturaId, clienteId, monto, metodoPago } = parsed.data
 
-    const result = await withAdvisoryLock('ABONO', () => prisma.$transaction(async (tx) => {
+    const result = await withAdvisoryLock('ABONO', async (tx) => {
       // Verificar que la factura existe
       const factura = await tx.factura.findUnique({
         where: { id: facturaId },
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Calcular siguiente número
-      const nextNum = await getNextNumero(tx, { seqName: 'abono_numero_seq', model: 'abono' })
+      const nextNum = await getNextNumero(tx, { model: 'abono', field: 'numero' })
 
       // Crear abono
       const abono = await tx.abono.create({
@@ -86,9 +86,9 @@ export async function POST(request: NextRequest) {
       }
 
       return { abono }
-    }))
+    })
 
-    return NextResponse.json({ success: true, abono: result.abono })
+    return NextResponse.json({ success: true, abono: result.abono }, { status: 201 })
   } catch (error) {
     console.error('Error creating abono:', error)
     if (error instanceof Error && error.message === 'FACTURA_NOT_FOUND') {

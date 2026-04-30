@@ -1,10 +1,12 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { toast } from 'sonner'
 import { formatCurrency } from '@/lib/utils'
 import { Modal } from '@/components/modal'
+import { EmptyState } from '@/components/empty-state'
 
 const PedidoForm = dynamic(() => import('@/components/pedido-form').then(m => m.PedidoForm), { ssr: false })
 const VentaRapidaForm = dynamic(() => import('@/components/venta-rapida-form').then(m => m.VentaRapidaForm), { ssr: false })
@@ -49,6 +51,8 @@ interface Embarque {
   numero: number
   trabajador: { nombre: string }
   estado: string
+  ruta?: { nombre: string } | null
+  totalPacas?: number
 }
 
 interface Cliente {
@@ -63,59 +67,62 @@ const ESTADOS = ['PENDIENTE', 'EN_RUTA', 'ENTREGADO', 'CANCELADO', 'ANULADO']
 const TIPOS = ['ENVIO', 'PUNTO']
 
 export default function PedidosPage() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [loading, setLoading] = useState(true)
-  const [filtroEstado, setFiltroEstado] = useState<string[]>([])
-  const [search, setSearch] = useState('')
+  const [fetchError, setFetchError] = useState<string | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [showVentaRapida, setShowVentaRapida] = useState(false)
   const [selectedPedido, setSelectedPedido] = useState<Pedido | null>(null)
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [precios, setPrecios] = useState<Record<string, number>>({})
-  const [filtroTipo, setFiltroTipo] = useState<string[]>([])
   const [embarques, setEmbarques] = useState<Embarque[]>([])
   const [showEmbarqueModal, setShowEmbarqueModal] = useState(false)
   const [selectedPedidoForEmbarque, setSelectedPedidoForEmbarque] = useState<string | null>(null)
   const [selectedEmbarqueId, setSelectedEmbarqueId] = useState('')
 
-  useEffect(() => {
-    fetchPedidos()
-    fetchClientes()
-    fetchPrecios()
-    fetchEmbarques()
-  }, [])
+  // URL-based filters
+  const filtroEstado = searchParams.getAll('estado')
+  const filtroTipo = searchParams.getAll('tipo')
+  const search = searchParams.get('search') || ''
 
-  // Auto-refresh para sincronizar entre browsers
-  useEffect(() => {
-    const interval = setInterval(() => {
-      fetchPedidos()
-    }, 15000)
-    return () => clearInterval(interval)
-  }, [])
-
-  useEffect(() => {
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        fetchPedidos()
-      }
+  const updateFilter = useCallback((key: string, value: string) => {
+    const params = new URLSearchParams(searchParams.toString())
+    const current = params.getAll(key)
+    params.delete(key)
+    if (current.includes(value)) {
+      current.filter(v => v !== value).forEach(v => params.append(key, v))
+    } else {
+      params.append(key, value)
     }
-    document.addEventListener('visibilitychange', handleVisibility)
-    return () => document.removeEventListener('visibilitychange', handleVisibility)
-  }, [])
+    router.push(`?${params.toString()}`, { scroll: false })
+  }, [searchParams, router])
 
-  async function fetchPedidos() {
+  const updateSearch = useCallback((value: string) => {
+    const params = new URLSearchParams(searchParams.toString())
+    if (value) params.set('search', value)
+    else params.delete('search')
+    router.push(`?${params.toString()}`, { scroll: false })
+  }, [searchParams, router])
+
+  const [searchInput, setSearchInput] = useState(search)
+
+  const fetchPedidos = useCallback(async () => {
     try {
+      setFetchError(null)
       const res = await fetch('/api/pedidos?all=true')
       const data = await res.json()
       setPedidos(data.pedidos || data.data || [])
     } catch (error) {
       console.error('Error fetching pedidos:', error)
+      setFetchError('No se pudieron cargar los pedidos')
       toast.error('Error cargando pedidos')
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   async function fetchClientes() {
     try {
@@ -152,6 +159,48 @@ export default function PedidosPage() {
       console.error('Error fetching embarques:', error)
     }
   }
+
+  useEffect(() => {
+    setSearchInput(search)
+  }, [search])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (searchInput !== search) {
+        updateSearch(searchInput)
+      }
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [searchInput, search, updateSearch])
+
+  useEffect(() => {
+    fetchPedidos()
+    fetchClientes()
+    fetchPrecios()
+    fetchEmbarques()
+  }, [fetchPedidos])
+
+  // Auto-refresh para sincronizar entre browsers
+  useEffect(() => {
+    let isFetching = false
+    const interval = setInterval(() => {
+      if (!isFetching) {
+        isFetching = true
+        fetchPedidos().finally(() => { isFetching = false })
+      }
+    }, 15000)
+    return () => clearInterval(interval)
+  }, [fetchPedidos])
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        fetchPedidos()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [fetchPedidos])
 
   async function handleCrearPedido(pedidoData: any) {
     try {
@@ -208,11 +257,7 @@ export default function PedidosPage() {
     }
   }
 
-  function toggleFiltro<T>(current: T[], value: T): T[] {
-    return current.includes(value) ? current.filter(v => v !== value) : [...current, value]
-  }
-
-  const pedidosFiltrados = pedidos.filter((p) => {
+  const pedidosFiltrados = useMemo(() => pedidos.filter((p) => {
     const matchEstado = filtroEstado.length === 0 || filtroEstado.includes(p.estado)
     const matchTipo = filtroTipo.length === 0 || filtroTipo.includes(p.tipo)
     const matchSearch =
@@ -221,13 +266,13 @@ export default function PedidosPage() {
       p.telefonoCli?.includes(search) ||
       p.numero.toString().includes(search)
     return matchEstado && matchTipo && matchSearch
-  })
+  }), [pedidos, filtroEstado, filtroTipo, search])
 
   // Stats usan pedidos completos (del día), no filtrados
-  const totalVentas = pedidos.reduce((acc, p) => acc + Number(p.total || 0), 0)
-  const totalFiado = pedidos
+  const totalVentas = useMemo(() => pedidos.reduce((acc, p) => acc + Number(p.total || 0), 0), [pedidos])
+  const totalFiado = useMemo(() => pedidos
     .filter(p => Number(p.saldo) > 0)
-    .reduce((acc, p) => acc + Number(p.saldo), 0)
+    .reduce((acc, p) => acc + Number(p.saldo), 0), [pedidos])
 
   function getEstadoBadge(pedido: Pedido) {
     // POR COBRAR: punto con saldo, o envío entregado con saldo
@@ -268,9 +313,11 @@ export default function PedidosPage() {
     )
   }
 
-  // Fiado: saldo pendiente sin importar estado
+  // Fiado: solo cuando el producto ya se entregó pero no se pagó
   function tieneFiado(pedido: Pedido): boolean {
-    return Number(pedido.saldo) > 0
+    // PUNTO: cuenta como fiado si se entregó y tiene saldo
+    // ENVIO: solo cuenta como fiado si ya se entregó
+    return pedido.estado === 'ENTREGADO' && Number(pedido.saldo) > 0
   }
 
   const [updatingId, setUpdatingId] = useState<string | null>(null)
@@ -350,6 +397,23 @@ export default function PedidosPage() {
     }
   }
 
+  if (fetchError) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <svg className="w-12 h-12 text-red-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+        </svg>
+        <h3 className="text-lg font-medium text-gray-900">{fetchError}</h3>
+        <button
+          onClick={() => { setLoading(true); fetchPedidos(); fetchClientes(); fetchPrecios(); fetchEmbarques(); }}
+          className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
+        >
+          Reintentar
+        </button>
+      </div>
+    )
+  }
+
   if (loading) {
     return (
       <div className="flex justify-center py-20">
@@ -401,8 +465,8 @@ export default function PedidosPage() {
           <input
             type="text"
             placeholder="Buscar por nombre, telefono o #pedido..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             className="flex-1 min-w-64 px-4 py-2 border border-gray-300 rounded-lg"
           />
           <div className="flex gap-2 flex-wrap items-center">
@@ -410,7 +474,7 @@ export default function PedidosPage() {
             {ESTADOS.map((estado) => (
               <button
                 key={estado}
-                onClick={() => setFiltroEstado(prev => toggleFiltro(prev, estado))}
+                onClick={() => updateFilter('estado', estado)}
                 className={`px-4 py-2.5 rounded-full text-sm transition ${
                   filtroEstado.includes(estado)
                     ? 'bg-blue-600 text-white'
@@ -426,7 +490,7 @@ export default function PedidosPage() {
             {TIPOS.map((tipo) => (
               <button
                 key={tipo}
-                onClick={() => setFiltroTipo(prev => toggleFiltro(prev, tipo))}
+                onClick={() => updateFilter('tipo', tipo)}
                 className={`px-4 py-2.5 rounded-full text-sm transition ${
                   filtroTipo.includes(tipo)
                     ? 'bg-indigo-600 text-white'
@@ -500,8 +564,14 @@ export default function PedidosPage() {
             <tbody className="divide-y divide-gray-100">
               {pedidosFiltrados.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
-                    No hay pedidos
+                  <td colSpan={6}>
+                    <EmptyState
+                      icon={<svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>}
+                      title="No hay pedidos"
+                      description="Crea tu primer pedido para comenzar"
+                      actionLabel="+ Crear Pedido"
+                      onAction={() => setShowModal(true)}
+                    />
                   </td>
                 </tr>
               ) : (
@@ -555,6 +625,7 @@ export default function PedidosPage() {
                             onClick={() => { setSelectedPedido(pedido); setShowDetailModal(true) }}
                             className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition"
                             title="Ver detalle"
+                            aria-label="Ver detalle"
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                           </button>
@@ -564,6 +635,7 @@ export default function PedidosPage() {
                               disabled={updatingId === pedido.id}
                               className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
                               title="Enviar"
+                              aria-label="Enviar"
                             >
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
                             </button>
@@ -574,6 +646,7 @@ export default function PedidosPage() {
                               disabled={updatingId === pedido.id}
                               className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
                               title="Entregar"
+                              aria-label="Entregar"
                             >
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                             </button>
@@ -591,7 +664,13 @@ export default function PedidosPage() {
         {/* Mobile cards - visible only on mobile */}
         <div className="md:hidden divide-y divide-gray-100">
           {pedidosFiltrados.length === 0 ? (
-            <div className="px-4 py-8 text-center text-gray-500">No hay pedidos</div>
+            <EmptyState
+              icon={<svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>}
+              title="No hay pedidos"
+              description="Crea tu primer pedido para comenzar"
+              actionLabel="+ Crear Pedido"
+              onAction={() => setShowModal(true)}
+            />
           ) : (
             pedidosFiltrados.map((pedido) => {
               const fiado = tieneFiado(pedido)
@@ -637,7 +716,7 @@ export default function PedidosPage() {
       </div>
 
       {/* Modal Asignar Embarque */}
-      <Modal open={showEmbarqueModal} onClose={() => { setShowEmbarqueModal(false); setSelectedPedidoForEmbarque(null) }} className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6">
+      <Modal open={showEmbarqueModal} onClose={() => { setShowEmbarqueModal(false); setSelectedPedidoForEmbarque(null) }} className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
         <h2 className="text-lg font-bold mb-4">Asignar a Embarque</h2>
         <p className="text-sm text-gray-500 mb-4">Selecciona un embarque abierto para este pedido:</p>
         {embarques.length === 0 ? (
@@ -652,18 +731,44 @@ export default function PedidosPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            <select
-              value={selectedEmbarqueId}
-              onChange={(e) => setSelectedEmbarqueId(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2 text-sm"
-            >
-              <option value="">Sin embarque (enviar solo)</option>
-              {embarques.map((e) => (
-                <option key={e.id} value={e.id}>
-                  #{e.numero} - {e.trabajador.nombre}
-                </option>
-              ))}
-            </select>
+            <div className="max-h-48 overflow-y-auto border rounded-lg">
+              {embarques
+                .filter((e) => e.estado === 'ABIERTO')
+                .map((e) => {
+                  const capacidad = e.totalPacas || 0
+                  const capacidadLabel = capacidad >= 70 ? '⛔ Excedido' : capacidad >= 65 ? '🔴 Máximo' : capacidad >= 60 ? '🟠 Pesado' : '🟢 Ideal'
+                  const isSelected = selectedEmbarqueId === e.id
+                  return (
+                    <button
+                      key={e.id}
+                      onClick={() => setSelectedEmbarqueId(e.id)}
+                      className={`w-full text-left p-3 border-b last:border-b-0 transition ${
+                        isSelected ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <span className="font-medium">#{e.numero}</span>
+                          <span className="text-gray-600 ml-2">{e.trabajador.nombre}</span>
+                          {e.ruta && <span className="text-blue-600 text-xs ml-2">{e.ruta.nombre}</span>}
+                        </div>
+                        <span className="text-xs">{capacidadLabel} ({capacidad})</span>
+                      </div>
+                    </button>
+                  )
+                })}
+            </div>
+            {selectedEmbarqueId && (() => {
+              const e = embarques.find((em) => em.id === selectedEmbarqueId)
+              if (!e) return null
+              const pedidoPacas = selectedPedidoForEmbarque ? pedidos.find((p) => p.id === selectedPedidoForEmbarque) : null
+              const pedidoPacaCount = pedidoPacas ? (pedidoPacas.cPacaAguaPed || 0) + (pedidoPacas.cPacaHieloPed || 0) + (pedidoPacas.cBotellonFabPed || 0) + (pedidoPacas.cBotellonDomPed || 0) + (pedidoPacas.cBolsaAguaPed || 0) + (pedidoPacas.cBolsaHieloPed || 0) : 0
+              const totalProyectado = (e.totalPacas || 0) + pedidoPacaCount
+              if (totalProyectado >= 70) {
+                return <p className="text-xs text-red-600">⚠️ Este pedido excederá la capacidad (70 pacas)</p>
+              }
+              return null
+            })()}
             <div className="flex gap-2">
               <button
                 onClick={() => { setShowEmbarqueModal(false); setSelectedPedidoForEmbarque(null) }}

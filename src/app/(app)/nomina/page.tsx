@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { EmptyState } from '@/components/empty-state'
 
 interface Nomina {
   id: string
@@ -36,7 +37,7 @@ export default function NominaPage() {
   const [trabajadorId, setTrabajadorId] = useState('')
   const [fechaInicio, setFechaInicio] = useState('')
   const [fechaFin, setFechaFin] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
   const [detalles, setDetalles] = useState<{
     entregasAgua: number
     entregasHielo: number
@@ -75,7 +76,7 @@ export default function NominaPage() {
       toast.error('La fecha fin debe ser posterior a la fecha inicio')
       return
     }
-    setLoading(true)
+    setSubmitting(true)
     try {
       const res = await fetch('/api/nomina', {
         method: 'POST',
@@ -100,7 +101,7 @@ export default function NominaPage() {
       console.error(e)
       toast.error('Error calculando nómina')
     }
-    setLoading(false)
+    setSubmitting(false)
   }
 
   const estados = {
@@ -145,7 +146,7 @@ export default function NominaPage() {
               <Label>Fecha Fin</Label>
               <Input type="date" value={fechaFin} onChange={(e) => setFechaFin(e.target.value)} />
             </div>
-            <Button onClick={crearNomina} disabled={loading}>
+            <Button onClick={crearNomina} disabled={submitting}>
               📊 Calcular Automático
             </Button>
           </CardContent>
@@ -171,9 +172,11 @@ export default function NominaPage() {
       )}
 
       {nominas.length === 0 ? (
-        <div className="text-center py-8 text-muted-foreground">
-          No hay nóminas registradas
-        </div>
+        <EmptyState
+          icon={<svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>}
+          title="No hay nóminas registradas"
+          description="Registra las nóminas de tu equipo"
+        />
       ) : (
         <div className="space-y-2">
           {nominas.map((nom) => (

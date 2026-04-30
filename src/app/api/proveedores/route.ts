@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
         direccion: parsed.data.direccion,
       },
     })
-    return NextResponse.json({ success: true, proveedor })
+    return NextResponse.json({ success: true, proveedor }, { status: 201 })
   } catch (error) {
     return NextResponse.json({ error: 'Error creating proveedor' }, { status: 500 })
   }

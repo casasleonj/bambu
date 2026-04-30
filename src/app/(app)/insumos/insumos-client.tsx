@@ -1,11 +1,13 @@
 'use client'
 
 import { useState } from 'react'
+import { toast } from 'sonner'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { EmptyState } from '@/components/empty-state'
 
 interface Insumo {
   id: string
@@ -37,7 +39,7 @@ export default function InsumosClient({ initialInsumos, initialProveedores }: In
   const [stockMin, setStockMin] = useState('')
   const [precioUnit, setPrecioUnit] = useState('')
   const [proveedorId, setProveedorId] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
 
   const fetchData = async () => {
     try {
@@ -51,12 +53,13 @@ export default function InsumosClient({ initialInsumos, initialProveedores }: In
       setProveedores(pData.proveedores || [])
     } catch (e) {
       console.error(e)
+      toast.error('Error cargando insumos')
     }
   }
 
   const crearInsumo = async () => {
     if (!nombre) return
-    setLoading(true)
+    setSubmitting(true)
     try {
       await fetch('/api/insumos', {
         method: 'POST',
@@ -69,7 +72,7 @@ export default function InsumosClient({ initialInsumos, initialProveedores }: In
     } catch (e) {
       console.error(e)
     }
-    setLoading(false)
+    setSubmitting(false)
   }
 
   const alertas = insumos.filter(i => i.stock <= i.stockMin)
@@ -150,13 +153,17 @@ export default function InsumosClient({ initialInsumos, initialProveedores }: In
                 {proveedores.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
               </select>
             </div>
-            <Button onClick={crearInsumo} disabled={loading}>💾 Guardar</Button>
+            <Button onClick={crearInsumo} disabled={submitting}>💾 Guardar</Button>
           </CardContent>
         </Card>
       )}
 
       {insumos.length === 0 ? (
-        <div className="text-center py-8 text-muted-foreground">No hay insumos registrados</div>
+        <EmptyState
+          icon={<svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>}
+          title="No hay insumos registrados"
+          description="Registra los insumos que usas en tu operación"
+        />
       ) : (
         <div className="space-y-2">
           {insumos.map(insumo => (

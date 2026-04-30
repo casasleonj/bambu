@@ -13,7 +13,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       where: { id },
       include: {
         trabajador: true,
-        pedidos: { include: { cliente: true } },
+        ruta: true,
+        pedidos: {
+          include: { cliente: true, pagos: true },
+        },
       },
     })
     if (!embarque) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -122,7 +125,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     })
 
-    return NextResponse.json({ success: true, embarque: result })
+    return NextResponse.json({ success: true })
   } catch (error) {
     if (error instanceof Error && error.message === 'EMBARQUE_NOT_FOUND') {
       return NextResponse.json({ error: 'Embarque no encontrado' }, { status: 404 })

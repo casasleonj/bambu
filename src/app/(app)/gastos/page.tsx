@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { EmptyState } from '@/components/empty-state'
 
 interface Gasto {
   id: string
@@ -34,7 +35,7 @@ export default function GastosPage() {
   const [descripcion, setDescripcion] = useState('')
   const [monto, setMonto] = useState('')
   const [responsable, setResponsable] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
     fetchGastos(showAll)
@@ -63,7 +64,7 @@ export default function GastosPage() {
       toast.error('El monto debe ser mayor a 0')
       return
     }
-    setLoading(true)
+    setSubmitting(true)
     try {
       const res = await fetch('/api/gastos', {
         method: 'POST',
@@ -84,10 +85,10 @@ export default function GastosPage() {
       console.error(e)
       toast.error('Error registrando gasto')
     }
-    setLoading(false)
+    setSubmitting(false)
   }
 
-  const totalGastos = gastos.reduce((sum, g) => sum + g.monto, 0)
+  const totalGastos = gastos.reduce((sum, g) => sum + Number(g.monto), 0)
 
   const cats = {
     ARRIENDO: '🏠',
@@ -142,21 +143,19 @@ export default function GastosPage() {
               <Label>Responsable (opcional)</Label>
               <Input value={responsable} onChange={(e) => setResponsable(e.target.value)} placeholder="Quién paga" />
             </div>
-            <Button onClick={crearGasto} disabled={loading}>{loading ? 'Guardando...' : 'Guardar'}</Button>
+            <Button onClick={crearGasto} disabled={submitting}>{submitting ? 'Guardando...' : 'Guardar'}</Button>
           </CardContent>
         </Card>
       )}
 
       {gastos.length === 0 ? (
-        <div className="text-center py-8 text-muted-foreground">
-          <p className="mb-2">{showAll ? 'No hay gastos registrados' : 'No hay gastos registrados hoy'}</p>
-          <button
-            onClick={() => setShowCrear(true)}
-            className="text-blue-600 hover:text-blue-800 font-medium text-sm"
-          >
-            + Registrar tu primer gasto
-          </button>
-        </div>
+        <EmptyState
+          icon={<svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>}
+          title={showAll ? 'No hay gastos registrados' : 'No hay gastos registrados hoy'}
+          description="Registra los gastos de operación"
+          actionLabel="+ Registrar Gasto"
+          onAction={() => setShowCrear(true)}
+        />
       ) : (
         <div className="space-y-2">
           <div className="flex justify-between p-3 bg-muted rounded-lg font-bold">
@@ -175,7 +174,7 @@ export default function GastosPage() {
                     )}
                   </div>
                   <div className="text-right">
-                    <div className="font-medium">${gasto.monto.toLocaleString()}</div>
+                    <div className="font-medium">${Number(gasto.monto).toLocaleString()}</div>
                     <div className="text-xs text-muted-foreground">{new Date(gasto.fecha).toLocaleDateString()}</div>
                   </div>
                 </div>

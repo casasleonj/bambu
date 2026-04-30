@@ -48,14 +48,19 @@ export async function POST(request: NextRequest) {
 
       // 4. Create embarques for each group
       const embarquesCreados = []
-      let repartidorIdx = 0
 
       for (const [key, pedidosGrupo] of grupos) {
         const ruta = key !== 'SIN_RUTA'
           ? await tx.ruta.findUnique({ where: { id: key } })
           : null
 
-        const repartidor = repartidores[repartidorIdx % repartidores.length]
+        // Use route's repartidor if available, otherwise round-robin
+        let repartidor = repartidores.find(r => r.id === ruta?.repartidorId)
+        if (!repartidor) {
+          // Fallback to round-robin based on hash of key for consistency
+          const hash = key.split('').reduce((a, b) => a + b.charCodeAt(0), 0)
+          repartidor = repartidores[hash % repartidores.length]
+        }
         if (!repartidor) break
 
         const lastEmbarque = await tx.embarque.findFirst({
@@ -89,8 +94,6 @@ export async function POST(request: NextRequest) {
           pedidosCount: pedidosGrupo.length,
           rutaNombre: ruta?.nombre || pedidosGrupo[0].cliente?.barrio || 'Sin ruta',
         })
-
-        repartidorIdx++
       }
 
       return {

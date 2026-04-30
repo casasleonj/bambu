@@ -56,7 +56,7 @@ export async function GET() {
         botellonVendido,
         bolsaAguaVendida,
         bolsaHieloVendida,
-        totalGastos: gastos._sum.monto || 0,
+        totalGastos: Number(gastos._sum.monto) || 0,
         produccion,
       },
     })
@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
       },
     })
     
-    return NextResponse.json({ success: true, cierre })
+    return NextResponse.json({ success: true, cierre }, { status: 201 })
   } catch (error) {
     return NextResponse.json({ error: 'Error' }, { status: 500 })
   }

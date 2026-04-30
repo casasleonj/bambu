@@ -45,8 +45,8 @@ test.describe('Embarques', () => {
     // Select a worker (first option)
     await page.locator('select').first().selectOption({ index: 1 })
     
-    // Create
-    await page.click('button:has-text("Crear")')
+    // Create (target modal button, not the "+ Crear Embarque" trigger)
+    await page.locator('[role="dialog"] button:has-text("Crear")').click()
     await page.waitForTimeout(1000)
     
     // Verify modal closed

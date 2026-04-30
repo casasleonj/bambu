@@ -266,8 +266,8 @@ test.describe('Dia completo de usuario', () => {
     const body = await page.locator('body').innerText()
     expect(body.includes('PENDIENTE') || body.includes('No hay pedidos')).toBeTruthy()
 
-    // Click TODOS to reset
-    await page.click('button:has-text("TODOS")')
+    // Click PENDIENTE again to reset (toggle filter off)
+    await page.click('button:has-text("PENDIENTE")')
     await page.waitForTimeout(500)
   })
 
@@ -317,8 +317,8 @@ test.describe('Dia completo de usuario', () => {
     await page.click('button:has-text("+ Nuevo Embarque")')
     await page.waitForTimeout(800)
 
-    // Select trabajador (wait for options to load)
-    const trabSelect = page.locator('label:has-text("Trabajador")').locator('..').locator('select')
+    // Select repartidor (wait for options to load)
+    const trabSelect = page.locator('label:has-text("Repartidor")').locator('..').locator('select')
     await trabSelect.waitFor({ state: 'visible', timeout: 5000 })
     await page.waitForTimeout(500) // wait for options to populate
     const optCount = await trabSelect.locator('option').count()
@@ -332,7 +332,7 @@ test.describe('Dia completo de usuario', () => {
       await obsTextarea.fill('Embarque de prueba E2E')
     }
 
-    await page.click('button:has-text("Crear")')
+    await page.locator('[role="dialog"] button:has-text("Crear")').click()
     await page.waitForTimeout(2000)
 
     await page.reload()

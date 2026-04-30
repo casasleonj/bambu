@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { EmptyState } from '@/components/empty-state'
 
 interface Factura {
   id: string
@@ -35,7 +36,7 @@ export default function FacturasPage() {
   const [showAbono, setShowAbono] = useState<string | null>(null)
   const [montoAbono, setMontoAbono] = useState('')
   const [metodoPago, setMetodoPago] = useState('EFECTIVO')
-  const [loading, setLoading] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
     fetchFacturas()
@@ -62,7 +63,7 @@ export default function FacturasPage() {
       toast.error('El monto debe ser mayor a 0')
       return
     }
-    setLoading(true)
+    setSubmitting(true)
     try {
       const res = await fetch('/api/abonos', {
         method: 'POST',
@@ -86,7 +87,7 @@ export default function FacturasPage() {
       console.error(e)
       toast.error('Error registrando abono')
     }
-    setLoading(false)
+    setSubmitting(false)
   }
 
   const getEstadoColor = (estado: string) => {
@@ -100,10 +101,11 @@ export default function FacturasPage() {
       <h1 className="text-2xl font-bold">Facturas</h1>
 
       {facturas.length === 0 ? (
-        <div className="text-center py-8 text-muted-foreground">
-          <p className="mb-2">No hay facturas registradas</p>
-          <p className="text-sm">Las facturas se generan automáticamente al crear pedidos con saldo pendiente</p>
-        </div>
+        <EmptyState
+          icon={<svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>}
+          title="No hay facturas registradas"
+          description="Las facturas se generan automáticamente al crear pedidos con saldo pendiente"
+        />
       ) : (
         <div className="space-y-2">
           {facturas.map((factura) => (
@@ -164,7 +166,7 @@ export default function FacturasPage() {
                     <div className="flex gap-2">
                       <Button
                         onClick={() => registrarAbono(factura.id, factura.cliente?.id || '')}
-                        disabled={loading}
+                        disabled={submitting}
                       >
                         ✅ Confirmar
                       </Button>

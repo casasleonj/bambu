@@ -148,6 +148,7 @@ export const ConfigCreateSchema = z.object({
 
 export const EmbarqueCreateSchema = z.object({
   trabajadorId: z.string().min(1),
+  rutaId: z.string().optional(),
   horaSalida: z.string().optional(),
   obs: z.string().max(500).optional(),
 });

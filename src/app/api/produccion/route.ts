@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
       },
       include: { trabajador: true },
     })
-    return NextResponse.json({ success: true, produccion })
+    return NextResponse.json({ success: true, produccion }, { status: 201 })
   } catch (error) {
     return NextResponse.json({ error: 'Error' }, { status: 500 })
   }

@@ -53,7 +53,10 @@ export default async function DashboardPage() {
   const { startOfDay: yesterdayStart, endOfDay: yesterdayEnd } = getYesterdayRange()
 
   // All queries in parallel
-  const [pedidos, pedidosAyer, baseDiaConfig, lastCierre, gastosAgg, embarquesAbiertos, clientesCount, stockAlertas] = await Promise.all([
+  const [pedidos, pedidosAyer, baseDiaConfig, lastCierre, gastosAgg, embarquesAbiertos, clientesCount, stockAlertas,
+    // Cuentas por cobrar totales (no solo hoy)
+    cuentasPorCobrarAgg
+  ] = await Promise.all([
     prisma.pedido.findMany({
       where: { fecha: { gte: startOfDay, lt: endOfDay } },
     }),
@@ -74,14 +77,25 @@ export default async function DashboardPage() {
       where: { stock: { lte: prisma.insumo.fields.stockMin } },
       take: 5,
     }),
+    // Total fiados acumulados (todos los tiempos)
+    prisma.pedido.aggregate({
+      where: {
+        saldo: { gt: 0 },
+        estado: { in: ['ENTREGADO', 'EN_RUTA'] },
+      },
+      _sum: { saldo: true },
+      _count: true,
+    }),
   ])
 
   const ventas = pedidos.reduce((acc, p) => acc + Number(p.total), 0)
-  const fiados = pedidos.filter(p => Number(p.saldo) > 0).reduce((acc, p) => acc + Number(p.saldo), 0)
+  const fiadosHoy = pedidos.filter(p => Number(p.saldo) > 0).reduce((acc, p) => acc + Number(p.saldo), 0)
+  const fiadosTotal = Number(cuentasPorCobrarAgg._sum.saldo) || 0
+  const clientesConFiado = cuentasPorCobrarAgg._count
   const pedidosPendientes = pedidos.filter(p => p.estado === 'PENDIENTE').length
   const pedidosEntregados = pedidos.filter(p => p.estado === 'ENTREGADO').length
   const baseDia = baseDiaConfig ? parseFloat(baseDiaConfig.valor) : 0
-  const totalGastos = gastosAgg._sum.monto ?? 0
+  const totalGastos = Number(gastosAgg._sum.monto) || 0
 
   // Comparisons with yesterday
   const ventasAyer = pedidosAyer.reduce((acc, p) => acc + Number(p.total), 0)
@@ -175,8 +189,8 @@ export default async function DashboardPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500">Cuentas por Cobrar</p>
-              <p className="text-3xl font-bold text-red-600">{formatCurrency(fiados)}</p>
-              <p className="text-xs text-gray-400 mt-1">Saldo pendiente</p>
+              <p className="text-3xl font-bold text-red-600">{formatCurrency(fiadosTotal)}</p>
+              <p className="text-xs text-gray-400 mt-1">{clientesConFiado} clientes deben</p>
             </div>
           </div>
         </div>
@@ -193,7 +207,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* Alertas */}
-      {(pedidosPendientes > 5 || fiados > 500000 || stockAlertas.length > 0 || embarquesAbiertos > 0) && (
+      {(pedidosPendientes > 5 || fiadosTotal > 500000 || stockAlertas.length > 0 || embarquesAbiertos > 0) && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {pedidosPendientes > 5 && (
             <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-xl">
@@ -209,17 +223,17 @@ export default async function DashboardPage() {
               </Link>
             </div>
           )}
-          {fiados > 500000 && (
+          {fiadosTotal > 500000 && (
             <div className="bg-red-50 border border-red-200 p-4 rounded-xl">
               <div className="flex items-center gap-2">
                 <span className="text-red-600 text-lg">💰</span>
                 <div>
-                  <p className="text-sm font-medium text-red-800">Fiados altos</p>
-                  <p className="text-xs text-red-600">{formatCurrency(fiados)} por cobrar</p>
+                  <p className="text-sm font-medium text-red-800">Fiados acumulados</p>
+                  <p className="text-xs text-red-600">{formatCurrency(fiadosTotal)} por cobrar ({clientesConFiado} clientes)</p>
                 </div>
               </div>
-              <Link href="/facturas" className="text-xs text-red-700 hover:underline mt-2 inline-block">
-                Ver facturas →
+              <Link href="/clientes" className="text-xs text-red-700 hover:underline mt-2 inline-block">
+                Ver clientes →
               </Link>
             </div>
           )}
@@ -410,7 +424,7 @@ export default async function DashboardPage() {
             </div>
             <div className="flex justify-between items-center py-2 border-b border-gray-100">
               <span className="text-gray-600">+ Ventas cobradas</span>
-              <span className="font-medium text-green-600">{formatCurrency(ventas - fiados)}</span>
+              <span className="font-medium text-green-600">{formatCurrency(ventas - fiadosHoy)}</span>
             </div>
             <div className="flex justify-between items-center py-2 border-b border-gray-100">
               <span className="text-gray-600">- Gastos</span>
@@ -419,14 +433,14 @@ export default async function DashboardPage() {
             <div className="flex justify-between items-center py-3 bg-gray-50 rounded-lg px-3 mt-2">
               <span className="font-semibold text-gray-800">= Efectivo esperado</span>
               <span className="font-bold text-lg text-green-600">
-                {formatCurrency(baseDia + (ventas - fiados) - totalGastos)}
+                {formatCurrency(baseDia + (ventas - fiadosHoy) - totalGastos)}
               </span>
             </div>
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
             <div className="bg-yellow-50 p-3 rounded-lg text-center">
-              <p className="text-gray-500">Fiados</p>
-              <p className="font-bold text-yellow-600">{formatCurrency(fiados)}</p>
+              <p className="text-gray-500">Fiados hoy</p>
+              <p className="font-bold text-yellow-600">{formatCurrency(fiadosHoy)}</p>
             </div>
             <div className="bg-blue-50 p-3 rounded-lg text-center">
               <p className="text-gray-500">Total ventas</p>

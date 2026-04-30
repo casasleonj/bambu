@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
-  const roleCheck = await requireRole(['ADMIN', 'CONTADOR'])
+  const roleCheck = await requireRole(['ADMIN', 'CONTADOR'], authResult)
   if (roleCheck instanceof Response) return roleCheck
   try {
     const body = await request.json()
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    return NextResponse.json({ success: true, gasto })
+    return NextResponse.json({ success: true, gasto }, { status: 201 })
   } catch (error) {
     console.error('Error creating gasto:', error)
     return NextResponse.json({ error: 'Error creating gasto' }, { status: 500 })

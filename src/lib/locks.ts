@@ -10,19 +10,19 @@ const LOCK_IDS = {
 
 /**
  * PostgreSQL advisory lock for critical sections.
+ * Uses pg_advisory_xact_lock which is automatically released at transaction end.
+ * The lock is acquired inside the transaction, ensuring the same connection is used.
  * Prevents race conditions on sequential number generation.
  */
 export async function withAdvisoryLock<T>(
   lockName: keyof typeof LOCK_IDS,
-  fn: () => Promise<T>
+  fn: (tx: any) => Promise<T>
 ): Promise<T> {
   const lockId = LOCK_IDS[lockName];
-  await prisma.$queryRaw`SELECT pg_advisory_lock(${lockId})::text`;
-  try {
-    return await fn();
-  } finally {
-    await prisma.$queryRaw`SELECT pg_advisory_unlock(${lockId})::text`;
-  }
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(${lockId})::text`;
+    return await fn(tx);
+  });
 }
 
 export { LOCK_IDS };

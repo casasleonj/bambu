@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     })
 
-    return NextResponse.json({ success: true, cliente })
+    return NextResponse.json({ success: true, cliente }, { status: 201 })
   } catch (error) {
     return NextResponse.json({ error: 'Error creating cliente' }, { status: 500 })
   }

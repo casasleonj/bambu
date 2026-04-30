@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient, RolUsuario } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 
 const prisma = new PrismaClient()
@@ -8,9 +8,9 @@ async function main() {
 
   // Users
   const users = [
-    { username: 'admin', password: await bcrypt.hash('admin123', 10), rol: 'ADMIN' },
-    { username: 'asistente', password: await bcrypt.hash('asist123', 10), rol: 'ASISTENTE' },
-    { username: 'contador', password: await bcrypt.hash('cont123', 10), rol: 'CONTADOR' },
+    { username: 'admin', password: await bcrypt.hash('admin123', 10), rol: RolUsuario.ADMIN },
+    { username: 'asistente', password: await bcrypt.hash('asist123', 10), rol: RolUsuario.ASISTENTE },
+    { username: 'contador', password: await bcrypt.hash('cont123', 10), rol: RolUsuario.CONTADOR },
   ]
 
   for (const user of users) {
@@ -100,6 +100,21 @@ async function main() {
     })
   }
   console.log('✅ Volume prices seeded')
+
+  // Trabajador repartidor para embarques
+  await prisma.trabajador.upsert({
+    where: { id: 'TRABAJADOR_TEST' },
+    update: {},
+    create: {
+      id: 'TRABAJADOR_TEST',
+      nombre: 'Repartidor Test',
+      rol: 'REPARTIDOR',
+      tipoPago: 'COMISION',
+      telefono: '3111111111',
+      activo: true,
+    },
+  })
+  console.log('✅ Trabajador repartidor seeded')
 
   // Cliente genérico para ventas rápidas de mostrador
   await prisma.cliente.upsert({

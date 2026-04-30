@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
       create: { clave, valor },
     })
 
-    return NextResponse.json({ success: true, config })
+    return NextResponse.json({ success: true, config }, { status: 201 })
   } catch (error) {
     return NextResponse.json({ error: 'Error' }, { status: 500 })
   }

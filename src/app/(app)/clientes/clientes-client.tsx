@@ -30,6 +30,7 @@ interface Pedido {
   id: string
   numero: number
   total: number
+  saldo: number
   estado: string
   fecha: string
 }
@@ -79,6 +80,7 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
       setClientes(data.clientes || [])
     } catch (error) {
       console.error('Error fetching clientes:', error)
+      toast.error('Error cargando clientes')
     } finally {
       setLoading(false)
     }
@@ -469,8 +471,26 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
               </button>
             </div>
 
+            {/* Fiado badge in header */}
+            {selectedCliente.pedidos && selectedCliente.pedidos.some((p) => Number(p.saldo) > 0) && (
+              <div className="px-4 py-2 bg-red-50 border-b border-red-200">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-red-700 font-medium">
+                    💰 Cuenta por cobrar
+                  </span>
+                  <span className="text-lg font-bold text-red-600">
+                    {formatCurrency(
+                      selectedCliente.pedidos
+                        .filter((p) => Number(p.saldo) > 0)
+                        .reduce((acc, p) => acc + Number(p.saldo), 0)
+                    )}
+                  </span>
+                </div>
+              </div>
+            )}
+
             <div className="flex border-b">
-              {['info', 'pedidos', 'facturas'].map((tab) => (
+              {['info', 'pedidos', 'facturas', 'cuentas'].map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
@@ -480,7 +500,12 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
                       : 'text-gray-500 hover:text-gray-700'
                   }`}
                 >
-                  {tab}
+                  {tab === 'cuentas' ? 'Cuentas' : tab}
+                  {tab === 'cuentas' && selectedCliente.pedidos?.some((p) => Number(p.saldo) > 0) && (
+                    <span className="ml-1.5 px-1.5 py-0.5 bg-red-100 text-red-700 text-[10px] rounded-full">
+                      {selectedCliente.pedidos.filter((p) => Number(p.saldo) > 0).length}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
@@ -587,6 +612,49 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
                       ))}
                     </div>
                   )}
+                </div>
+              )}
+
+              {activeTab === 'cuentas' && (
+                <div>
+                  {(() => {
+                    const pedidosConFiado = selectedCliente.pedidos?.filter((p) => Number(p.saldo) > 0) || []
+                    const totalFiado = pedidosConFiado.reduce((acc, p) => acc + Number(p.saldo), 0)
+
+                    if (pedidosConFiado.length === 0) {
+                      return <p className="text-gray-500 text-center py-8">Sin cuentas por cobrar</p>
+                    }
+
+                    return (
+                      <div className="space-y-3">
+                        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                          <p className="text-sm text-red-600">Total por cobrar</p>
+                          <p className="text-2xl font-bold text-red-700">{formatCurrency(totalFiado)}</p>
+                          <p className="text-xs text-red-500">{pedidosConFiado.length} pedidos pendientes de pago</p>
+                        </div>
+                        <div className="space-y-2">
+                          {pedidosConFiado.map((pedido) => (
+                            <div
+                              key={pedido.id}
+                              className="flex justify-between items-center p-3 bg-gray-50 rounded-lg"
+                            >
+                              <div>
+                                <p className="font-medium">#{pedido.numero}</p>
+                                <p className="text-sm text-gray-500">{formatDate(pedido.fecha)}</p>
+                                <p className="text-xs text-gray-400">{pedido.estado}</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="font-medium">{formatCurrency(pedido.total)}</p>
+                                <p className="text-sm text-red-600 font-medium">
+                                  Saldo: {formatCurrency(Number(pedido.saldo))}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })()}
                 </div>
               )}
             </div>

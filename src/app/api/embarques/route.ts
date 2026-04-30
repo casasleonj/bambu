@@ -5,6 +5,9 @@ import { EmbarqueCreateSchema } from '@/lib/validators'
 import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
 import { getTodayRange } from '@/lib/dates'
 import { logAudit } from '@/lib/audit'
+import { calcularPacasEmbarque } from '@/lib/embarque-capacidad'
+import { withAdvisoryLock } from '@/lib/locks'
+import { EstadoEmbarque } from '@prisma/client'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -14,22 +17,39 @@ export async function GET(request: NextRequest) {
     const { startOfDay, endOfDay } = getTodayRange()
 
     const where = pagination.all
-      ? { estado: { not: 'CANCELADO' } }
+      ? { estado: { not: EstadoEmbarque.CANCELADO } }
       : {
           fecha: { gte: startOfDay, lt: endOfDay },
-          estado: { not: 'CANCELADO' },
+          estado: { not: EstadoEmbarque.CANCELADO },
         }
     const prismaPagination = getPrismaPagination(pagination)
 
-    const [embarques, total] = await Promise.all([
+    const [embarquesRaw, total] = await Promise.all([
       prisma.embarque.findMany({
         where,
-        include: { trabajador: true, pedidos: true },
+        include: {
+          trabajador: { select: { id: true, nombre: true } },
+          ruta: { select: { id: true, nombre: true } },
+          pedidos: {
+            select: {
+              id: true, numero: true, estado: true, canal: true, total: true, saldo: true,
+              cPacaAguaPed: true, cPacaHieloPed: true, cBotellonFabPed: true, cBotellonDomPed: true,
+              cBolsaAguaPed: true, cBolsaHieloPed: true,
+              cliente: { select: { id: true, nombre: true, barrio: true } },
+            },
+          },
+        },
         orderBy: { numero: 'desc' },
         ...prismaPagination,
       }),
       prisma.embarque.count({ where }),
     ])
+
+    // Add capacity calculation
+    const embarques = embarquesRaw.map((e) => ({
+      ...e,
+      totalPacas: calcularPacasEmbarque(e.pedidos),
+    }))
 
     return NextResponse.json(
       pagination.all
@@ -60,25 +80,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Trabajador no encontrado' }, { status: 400 })
     }
     
-    // Crear embarque con número secuencial atómico
-    const embarque = await prisma.$transaction(async (tx) => {
-      const lastEmbarque = await tx.embarque.findFirst({
-        orderBy: { numero: 'desc' },
-      })
-      const nextNum = (lastEmbarque?.numero || 0) + 1
-      
-      return tx.embarque.create({
-        data: {
-          numero: nextNum,
-          trabajadorId: parsed.data.trabajadorId,
-          horaSalida: parsed.data.horaSalida ? new Date(parsed.data.horaSalida) : null,
-          estado: 'ABIERTO',
-          obs: parsed.data.obs,
-        },
-        include: {
-          trabajador: true,
-        },
-      })
+    const embarque = await prisma.embarque.create({
+      data: {
+        trabajadorId: parsed.data.trabajadorId,
+        rutaId: parsed.data.rutaId || null,
+        horaSalida: parsed.data.horaSalida ? new Date(parsed.data.horaSalida) : null,
+        estado: EstadoEmbarque.ABIERTO,
+        obs: parsed.data.obs,
+      },
+      include: {
+        trabajador: true,
+        ruta: true,
+      },
     })
     
     await logAudit({
@@ -89,7 +102,7 @@ export async function POST(request: NextRequest) {
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     })
 
-    return NextResponse.json({ success: true, embarque })
+    return NextResponse.json({ success: true, embarque }, { status: 201 })
   } catch (error) {
     console.error('Error creating embarque:', error)
     return NextResponse.json({ error: 'Error creating embarque' }, { status: 500 })

@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
-  const roleCheck = await requireRole(['ADMIN', 'CONTADOR'])
+  const roleCheck = await requireRole(['ADMIN', 'CONTADOR'], authResult)
   if (roleCheck instanceof Response) return roleCheck
   try {
     const body = await request.json()
@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
       return nomina
     })
 
-    return NextResponse.json({ success: true, nomina: result })
+    return NextResponse.json({ success: true, nomina: result }, { status: 201 })
   } catch (error) {
     console.error('Error creating nomina:', error)
     return NextResponse.json({ error: 'Error creating nomina' }, { status: 500 })

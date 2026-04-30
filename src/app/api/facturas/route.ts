@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
-  const roleCheck = await requireRole(['ADMIN', 'CONTADOR'])
+  const roleCheck = await requireRole(['ADMIN', 'CONTADOR'], authResult)
   if (roleCheck instanceof Response) return roleCheck
   try {
     const body = await request.json()
@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     })
 
-    return NextResponse.json({ success: true, factura })
+    return NextResponse.json({ success: true, factura }, { status: 201 })
   } catch (error) {
     console.error('Error creating factura:', error)
     return NextResponse.json({ error: 'Error creating factura' }, { status: 500 })

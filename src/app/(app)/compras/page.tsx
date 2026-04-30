@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { EmptyState } from '@/components/empty-state'
 
 interface Proveedor {
   id: string
@@ -39,7 +40,7 @@ export default function ComprasPage() {
   const [insumoId, setInsumoId] = useState('')
   const [cantidad, setCantidad] = useState('')
   const [montoTotal, setMontoTotal] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
     fetchData()
@@ -79,7 +80,7 @@ export default function ComprasPage() {
       toast.error('El monto debe ser mayor a 0')
       return
     }
-    setLoading(true)
+    setSubmitting(true)
     try {
       const res = await fetch('/api/compras', {
         method: 'POST',
@@ -106,7 +107,7 @@ export default function ComprasPage() {
       console.error(e)
       toast.error('Error registrando compra')
     }
-    setLoading(false)
+    setSubmitting(false)
   }
 
   const totalCompras = compras.reduce((sum, c) => sum + c.montoTotal, 0)
@@ -169,15 +170,17 @@ export default function ComprasPage() {
                 placeholder="0"
               />
             </div>
-            <Button onClick={crearCompra} disabled={loading}>{loading ? 'Guardando...' : 'Guardar'}</Button>
+            <Button onClick={crearCompra} disabled={submitting}>{submitting ? 'Guardando...' : 'Guardar'}</Button>
           </CardContent>
         </Card>
       )}
 
       {compras.length === 0 ? (
-        <div className="text-center py-8 text-muted-foreground">
-          No hay compras registradas
-        </div>
+        <EmptyState
+          icon={<svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" /></svg>}
+          title="No hay compras registradas"
+          description="Registra las compras de insumos y materiales"
+        />
       ) : (
         <div className="space-y-2">
           <div className="flex justify-between p-3 bg-muted rounded-lg font-bold">

@@ -1,8 +1,17 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Modal } from '@/components/modal'
+import { EmptyState } from '@/components/empty-state'
+import { getCapacidadInfo } from '@/lib/embarque-capacidad'
+
+interface Ruta {
+  id: string
+  nombre: string
+  repartidorId?: string | null
+}
 
 interface Trabajador {
   id: string
@@ -12,8 +21,13 @@ interface Trabajador {
 interface Pedido {
   id: string
   numero: number
-  nombreCli: string
-  zonaCli: string
+  cliente?: { nombre: string; barrio: string | null }
+  cPacaAguaPed: number
+  cPacaHieloPed: number
+  cBotellonFabPed: number
+  cBotellonDomPed: number
+  cBolsaAguaPed: number
+  cBolsaHieloPed: number
 }
 
 interface Embarque {
@@ -27,12 +41,16 @@ interface Embarque {
     id: string
     nombre: string
   }
+  ruta?: Ruta | null
   pedidos: Pedido[]
+  totalPacas?: number
 }
 
 export default function EmbarquesPage() {
+  const router = useRouter()
   const [embarques, setEmbarques] = useState<Embarque[]>([])
   const [trabajadores, setTrabajadores] = useState<Trabajador[]>([])
+  const [rutas, setRutas] = useState<Ruta[]>([])
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
@@ -40,7 +58,9 @@ export default function EmbarquesPage() {
   const [selectedEmbarque, setSelectedEmbarque] = useState<Embarque | null>(null)
   const [selectedPedidoIds, setSelectedPedidoIds] = useState<string[]>([])
   const [selectedTrabajadorId, setSelectedTrabajadorId] = useState('')
+  const [selectedRutaId, setSelectedRutaId] = useState('')
   const [obs, setObs] = useState('')
+  const [fetchError, setFetchError] = useState<string | null>(null)
 
   useEffect(() => {
     fetchData()
@@ -48,20 +68,25 @@ export default function EmbarquesPage() {
 
   async function fetchData() {
     try {
-      const [embarquesData, trabajadoresData] = await Promise.all([
+      setFetchError(null)
+      const [embarquesRes, trabajadoresRes, rutasRes] = await Promise.all([
         fetch('/api/embarques'),
-        fetch('/api/trabajadores'),
+        fetch('/api/trabajadores?rol=REPARTIDOR&activo=true'),
+        fetch('/api/rutas?all=true'),
       ])
       const pedidosData = await fetch('/api/pedidos?all=true').then((r) => r.json())
 
-      const embarques = await embarquesData.json()
-      const trabajadores = await trabajadoresData.json()
+      const embarquesJson = await embarquesRes.json()
+      const trabajadoresJson = await trabajadoresRes.json()
+      const rutasJson = await rutasRes.json()
 
-      setEmbarques(embarques.embarques || embarques.data || [])
-      setTrabajadores(trabajadores.trabajadores || trabajadores.data || [])
+      setEmbarques(embarquesJson.embarques || embarquesJson.data || [])
+      setTrabajadores(trabajadoresJson.trabajadores || [])
+      setRutas(rutasJson.rutas || [])
       setPedidos(pedidosData.pedidos || pedidosData.data || [])
     } catch (error) {
       console.error('Error fetching data:', error)
+      setFetchError('No se pudieron cargar los embarques')
       toast.error('Error cargando embarques')
     } finally {
       setLoading(false)
@@ -79,6 +104,7 @@ export default function EmbarquesPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           trabajadorId: selectedTrabajadorId,
+          rutaId: selectedRutaId || undefined,
           obs,
         }),
       })
@@ -86,6 +112,7 @@ export default function EmbarquesPage() {
       if (data.success) {
         setShowModal(false)
         setSelectedTrabajadorId('')
+        setSelectedRutaId('')
         setObs('')
         fetchData()
         toast.success('Embarque creado')
@@ -159,8 +186,6 @@ export default function EmbarquesPage() {
 
   async function eliminarPedido(pedidoId: string) {
     if (!selectedEmbarque) return
-    const pedido = pedidos.find((p) => p.id === pedidoId)
-    if (!pedido) return
     try {
       const res = await fetch(`/api/pedidos/${pedidoId}`, {
         method: 'PUT',
@@ -197,6 +222,32 @@ export default function EmbarquesPage() {
   const disponiblesParaAsignar = pedidos.filter(
     (p) => !embarques.some((e) => e.pedidos?.some((ep) => ep.id === p.id))
   )
+
+  // Calculate capacity for selected embarque + new selections
+  function calcularCapacidadProyectada(embarque: Embarque, nuevosPedidoIds: string[]): number {
+    const pacasActuales = embarque.totalPacas || 0
+    const pacasNuevas = pedidos
+      .filter((p) => nuevosPedidoIds.includes(p.id))
+      .reduce((sum, p) => sum + (p.cPacaAguaPed || 0) + (p.cPacaHieloPed || 0) + (p.cBotellonFabPed || 0) + (p.cBotellonDomPed || 0) + (p.cBolsaAguaPed || 0) + (p.cBolsaHieloPed || 0), 0)
+    return pacasActuales + pacasNuevas
+  }
+
+  if (fetchError) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <svg className="w-12 h-12 text-red-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+        </svg>
+        <h3 className="text-lg font-medium text-gray-900">{fetchError}</h3>
+        <button
+          onClick={() => { setLoading(true); fetchData(); }}
+          className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
+        >
+          Reintentar
+        </button>
+      </div>
+    )
+  }
 
   if (loading) {
     return (
@@ -240,57 +291,89 @@ export default function EmbarquesPage() {
         </div>
       </div>
 
+      {/* Leyenda de capacidad */}
+      <div className="flex gap-4 mb-4 text-xs text-gray-600">
+        <span>🟢 ≤50 Ideal</span>
+        <span>🟠 60 Pesado</span>
+        <span>🔴 65 Máximo</span>
+        <span>⛔ 70+ Excedido</span>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {embarques.map((embarque) => (
-          <div
-            key={embarque.id}
-            className="bg-white p-4 rounded-xl shadow hover:shadow-md transition cursor-pointer"
-            onClick={() => {
-              setSelectedEmbarque(embarque)
-              setShowDetailModal(true)
-            }}
-          >
-            <div className="flex justify-between items-start mb-3">
-              <div>
-                <p className="text-lg font-bold text-gray-800">#{embarque.numero}</p>
-                <p className="text-sm text-gray-500">{embarque.trabajador.nombre}</p>
+        {embarques.map((embarque) => {
+          const capacidad = getCapacidadInfo(embarque.totalPacas || 0)
+          return (
+            <div
+              key={embarque.id}
+              className="bg-white p-4 rounded-xl shadow hover:shadow-md transition cursor-pointer border"
+              onClick={() => {
+                setSelectedEmbarque(embarque)
+                setShowDetailModal(true)
+              }}
+            >
+              <div className="flex justify-between items-start mb-3">
+                <div>
+                  <p className="text-lg font-bold text-gray-800">#{embarque.numero}</p>
+                  <p className="text-sm text-gray-500">{embarque.trabajador.nombre}</p>
+                  {embarque.ruta && (
+                    <p className="text-xs text-blue-600 font-medium">{embarque.ruta.nombre}</p>
+                  )}
+                </div>
+                {getEstadoBadge(embarque.estado)}
               </div>
-              {getEstadoBadge(embarque.estado)}
-            </div>
-            <div className="text-sm text-gray-600">
-              <p>{embarque.pedidos?.length || 0} pedidos asignados</p>
-              {embarque.horaSalida && (
-                <p>Salida: {new Date(embarque.horaSalida).toLocaleTimeString()}</p>
+
+              {/* Capacidad */}
+              <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border mb-3 ${capacidad.color}`}>
+                <span className="text-lg">{capacidad.icon}</span>
+                <div>
+                  <p className="text-sm font-medium">{capacidad.label}</p>
+                  <p className="text-xs">{capacidad.total} pacas</p>
+                </div>
+              </div>
+
+              <div className="text-sm text-gray-600">
+                <p>{embarque.pedidos?.length || 0} pedidos asignados</p>
+                {embarque.horaSalida && (
+                  <p>Salida: {new Date(embarque.horaSalida).toLocaleTimeString()}</p>
+                )}
+              </div>
+              {embarque.obs && (
+                <p className="mt-2 text-xs text-gray-500 truncate">{embarque.obs}</p>
               )}
             </div>
-            {embarque.obs && (
-              <p className="mt-2 text-xs text-gray-500 truncate">{embarque.obs}</p>
-            )}
-          </div>
-        ))}
+          )
+        })}
         {embarques.length === 0 && (
-          <div className="col-span-full text-center py-12 text-gray-500">
-            <p className="mb-2">No hay embarques hoy</p>
-            <button
-              onClick={() => setShowModal(true)}
-              className="text-blue-600 hover:text-blue-800 font-medium text-sm"
-            >
-              + Crear tu primer embarque
-            </button>
+          <div className="col-span-full">
+            <EmptyState
+              icon={<svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m0 0a2 2 0 104 0m0 0a2 2 0 104 0" /></svg>}
+              title="No hay embarques hoy"
+              description="Crea tu primer embarque para comenzar"
+              actionLabel="+ Crear Embarque"
+              onAction={() => setShowModal(true)}
+            />
           </div>
         )}
       </div>
 
+      {/* Modal Crear */}
       <Modal open={showModal} onClose={() => setShowModal(false)} className="bg-white rounded-xl p-6 w-full max-w-md">
         <h2 className="text-xl font-bold mb-4">Nuevo Embarque</h2>
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Trabajador
+              Repartidor
             </label>
             <select
               value={selectedTrabajadorId}
-              onChange={(e) => setSelectedTrabajadorId(e.target.value)}
+              onChange={(e) => {
+                setSelectedTrabajadorId(e.target.value)
+                // Auto-suggest route based on repartidor
+                const repartidorRuta = rutas.find(r => r.repartidorId === e.target.value)
+                if (repartidorRuta) {
+                  setSelectedRutaId(repartidorRuta.id)
+                }
+              }}
               className="w-full p-2 border rounded-lg"
             >
               <option value="">Seleccionar...</option>
@@ -301,6 +384,30 @@ export default function EmbarquesPage() {
               ))}
             </select>
           </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Ruta (opcional)
+            </label>
+            <select
+              value={selectedRutaId}
+              onChange={(e) => setSelectedRutaId(e.target.value)}
+              className="w-full p-2 border rounded-lg"
+            >
+              <option value="">Sin ruta</option>
+              {rutas.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.nombre}
+                </option>
+              ))}
+            </select>
+            {selectedTrabajadorId && !selectedRutaId && (
+              <p className="text-xs text-yellow-600 mt-1">
+                Sin ruta asignada. Los pedidos no se agruparán por territorio.
+              </p>
+            )}
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Observaciones
@@ -330,6 +437,7 @@ export default function EmbarquesPage() {
         </div>
       </Modal>
 
+      {/* Modal Detalle */}
       <Modal open={showDetailModal && !!selectedEmbarque} onClose={() => setShowDetailModal(false)} className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
         {selectedEmbarque && (
           <>
@@ -337,9 +445,34 @@ export default function EmbarquesPage() {
               <div>
                 <h2 className="text-xl font-bold">Embarque #{selectedEmbarque.numero}</h2>
                 <p className="text-gray-500">{selectedEmbarque.trabajador.nombre}</p>
+                {selectedEmbarque.ruta && (
+                  <p className="text-sm text-blue-600">{selectedEmbarque.ruta.nombre}</p>
+                )}
               </div>
               {getEstadoBadge(selectedEmbarque.estado)}
             </div>
+
+            {/* Capacidad actual */}
+            {(() => {
+              const capacidadActual = getCapacidadInfo(selectedEmbarque.totalPacas || 0)
+              const proyectada = calcularCapacidadProyectada(selectedEmbarque, selectedPedidoIds)
+              const capacidadProyectada = getCapacidadInfo(proyectada)
+              return (
+                <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border mb-4 ${capacidadActual.color}`}>
+                  <span className="text-lg">{capacidadActual.icon}</span>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">
+                      {capacidadActual.label}: {capacidadActual.total} pacas
+                      {selectedPedidoIds.length > 0 && (
+                        <span className="text-gray-600">
+                          {' '}→ {proyectada} pacas ({capacidadProyectada.label})
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              )
+            })()}
 
             {selectedEmbarque.estado === 'ABIERTO' && (
               <>
@@ -365,8 +498,11 @@ export default function EmbarquesPage() {
                           }}
                           className="mr-2"
                         />
-                        <span>
-                          #{pedido.numero} - {pedido.nombreCli} ({pedido.zonaCli})
+                        <span className="text-sm">
+                          #{pedido.numero} - {pedido.cliente?.nombre || 'Sin cliente'} ({pedido.cliente?.barrio || 'Sin zona'})
+                          <span className="text-gray-500 ml-1">
+                            {(pedido.cPacaAguaPed || 0) + (pedido.cPacaHieloPed || 0) + (pedido.cBotellonFabPed || 0) + (pedido.cBotellonDomPed || 0) + (pedido.cBolsaAguaPed || 0) + (pedido.cBolsaHieloPed || 0)} pacas
+                          </span>
                         </span>
                       </label>
                     ))}
@@ -376,6 +512,11 @@ export default function EmbarquesPage() {
                       </p>
                     )}
                   </div>
+                  {calcularCapacidadProyectada(selectedEmbarque, selectedPedidoIds) >= 70 && (
+                    <p className="text-xs text-red-600 mt-1">
+                      ⚠️ Excederá capacidad máxima (70 pacas)
+                    </p>
+                  )}
                 </div>
 
                 <button
@@ -396,8 +537,16 @@ export default function EmbarquesPage() {
                     key={pedido.id}
                     className="flex justify-between items-center p-2"
                   >
-                    <span>
-                      #{pedido.numero} - {pedido.nombreCli} ({pedido.zonaCli})
+                    <span className="text-sm">
+                      #{pedido.numero} - {pedido.cliente?.nombre || 'Sin cliente'} ({pedido.cliente?.barrio || 'Sin zona'})
+                      <span className="block text-xs text-gray-500">
+                        {pedido.cPacaAguaPed > 0 && `🍶 ${pedido.cPacaAguaPed} `}
+                        {pedido.cPacaHieloPed > 0 && `🧊 ${pedido.cPacaHieloPed} `}
+                        {pedido.cBotellonFabPed > 0 && `🏭 ${pedido.cBotellonFabPed} `}
+                        {pedido.cBotellonDomPed > 0 && `🏠 ${pedido.cBotellonDomPed} `}
+                        {pedido.cBolsaAguaPed > 0 && `💧 ${pedido.cBolsaAguaPed} `}
+                        {pedido.cBolsaHieloPed > 0 && `❄️ ${pedido.cBolsaHieloPed} `}
+                      </span>
                     </span>
                     {selectedEmbarque.estado === 'ABIERTO' && (
                       <button
@@ -448,11 +597,14 @@ export default function EmbarquesPage() {
                     {submitting ? 'Cancelando...' : 'Cancelar'}
                   </button>
                   <button
-                    onClick={cerrarEmbarque}
+                    onClick={() => {
+                      setShowDetailModal(false)
+                      router.push(`/embarques/${selectedEmbarque.id}/cerrar`)
+                    }}
                     disabled={submitting}
                     className="flex-1 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {submitting ? 'Cerrando...' : 'Cerrar Embarque'}
+                    Cerrar Embarque
                   </button>
                 </>
               )}

@@ -11,17 +11,19 @@ export async function GET(request: NextRequest) {
   const alertOnly = searchParams.get('alertas') === 'true'
 
   try {
-    let insumos = await prisma.insumo.findMany({
+    const where: any = {}
+    if (conStock) {
+      where.stock = { gt: 0 }
+    }
+    if (alertOnly) {
+      where.stock = { ...where.stock, lte: prisma.insumo.fields.stockMin }
+    }
+
+    const insumos = await prisma.insumo.findMany({
+      where,
       include: { proveedor: true },
       orderBy: { nombre: 'asc' },
     })
-
-    if (conStock) {
-      insumos = insumos.filter(i => Number(i.stock) > 0)
-    }
-    if (alertOnly) {
-      insumos = insumos.filter(i => i.stock <= i.stockMin)
-    }
 
     return NextResponse.json({ insumos })
   } catch (error) {
@@ -52,7 +54,7 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    return NextResponse.json({ success: true, insumo })
+    return NextResponse.json({ success: true, insumo }, { status: 201 })
   } catch (error) {
     console.error('Error creating insumo:', error)
     return NextResponse.json({ error: 'Error creating insumo' }, { status: 500 })

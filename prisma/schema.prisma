@@ -70,7 +70,7 @@ model User {
   id        String   @id @default(cuid())
   username  String   @unique
   password  String
-  rol       String   @default("ASISTENTE")
+  rol       RolUsuario @default(ASISTENTE)
   activo    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -102,6 +102,16 @@ model Ruta {
   dias      String?  // "LUN,MIE,VIE" - días de entrega
   activo   Boolean  @default(true)
 
+  // Repartidor principal y respaldo
+  repartidorId String?
+  repartidor   Trabajador? @relation("RutaRepartidor", fields: [repartidorId], references: [id])
+  repartidorRespaldoId String?
+  repartidorRespaldo   Trabajador? @relation("RutaRespaldo", fields: [repartidorRespaldoId], references: [id])
+
+  // Horario de atención
+  horarioInicio String?  // "06:00"
+  horarioFin    String?  // "14:00"
+
   clientes  Cliente[]
   embarques Embarque[]
 
@@ -109,6 +119,8 @@ model Ruta {
   updatedAt DateTime @updatedAt
 
   @@index([createdById])
+  @@index([repartidorId])
+  @@index([repartidorRespaldoId])
 }
 
 // ====================
@@ -166,6 +178,8 @@ model Cliente {
 
   @@index([rutaId])
   @@index([createdById])
+  @@index([telefono])
+  @@index([activo])
 }
 
 // ====================
@@ -194,10 +208,15 @@ model Trabajador {
   producciones Produccion[]
   nominas     Nomina[]
 
+  // Rutas asignadas
+  rutasAsignadas    Ruta[] @relation("RutaRepartidor")
+  rutasRespaldo     Ruta[] @relation("RutaRespaldo")
+
   createdAt  DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([createdById])
+  @@index([rol, activo])
 }
 
 // ====================
@@ -221,13 +240,15 @@ model Nomina {
   salario          Decimal   @default(0) @db.Decimal(10, 2)
   total            Decimal   @db.Decimal(10, 2)
 
-  estado        String    @default("PENDIENTE")
+  estado        EstadoNomina @default(PENDIENTE)
   fechaPago    DateTime?
 
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   @@index([createdById])
+  @@index([trabajadorId])
+  @@index([estado])
 }
 
 // ====================
@@ -236,7 +257,7 @@ model Nomina {
 
 model Pedido {
   id          String    @id @default(cuid())
-  numero      Int
+  numero      Int       @default(autoincrement())
   createdById String?
   createdBy  User?     @relation("PedidoCreador", fields: [createdById], references: [id])
   clienteId   String
@@ -293,6 +314,7 @@ model Pedido {
   esRecurrente     Boolean   @default(false)
   frecuencia       String?   // DIARIO, SEMANAL, QUINCENAL, MENSUAL
   ultimaGeneracion DateTime?
+  saltarFechas     String[]  // Fechas a omitir: ["2026-05-05", "2026-05-12"]
 
   factura    Factura?
   pagos      Pago[]
@@ -301,9 +323,12 @@ model Pedido {
   updatedAt DateTime @updatedAt
 
   @@index([clienteId])
+  @@index([embarqueId])
   @@index([fecha])
   @@index([estado])
   @@index([createdById])
+  @@index([esRecurrente])
+  @@index([idOrigen])
 }
 
 // ====================
@@ -314,7 +339,7 @@ model Pago {
   id        String   @id @default(cuid())
   pedidoId  String
   pedido    Pedido   @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
-  metodo    String   // MetodoPago enum value
+  metodo    MetodoPago
   monto     Decimal  @db.Decimal(10, 2)
   createdAt DateTime @default(now())
 
@@ -329,7 +354,7 @@ model Embarque {
   id            String     @id @default(cuid())
   createdById  String?
   createdBy    User?      @relation("EmbarqueCreador", fields: [createdById], references: [id])
-  numero        Int
+  numero        Int       @default(autoincrement())
   fecha         DateTime   @default(now())
   trabajadorId String
   trabajador   Trabajador @relation(fields: [trabajadorId], references: [id])
@@ -337,7 +362,7 @@ model Embarque {
   ruta         Ruta?     @relation(fields: [rutaId], references: [id])
   horaSalida    DateTime?
   horaLlegada   DateTime?
-  estado      String     @default("ABIERTO")
+  estado      EstadoEmbarque @default(ABIERTO)
 
   pacasAgua    Int       @default(0)
   pacasHielo  Int       @default(0)
@@ -354,6 +379,10 @@ model Embarque {
   updatedAt DateTime @updatedAt
 
   @@index([createdById])
+  @@index([trabajadorId])
+  @@index([rutaId])
+  @@index([fecha])
+  @@index([estado])
 }
 
 // ====================
@@ -374,7 +403,7 @@ model Factura {
   subtotal    Decimal  @db.Decimal(10, 2)
   total       Decimal  @db.Decimal(10, 2)
 
-  estado     String    @default("EMITIDA")
+  estado     EstadoFactura @default(EMITIDA)
   notaCredito String?
 
   montoPagado Decimal  @default(0) @db.Decimal(10, 2)
@@ -385,10 +414,11 @@ model Factura {
   createdAt  DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([pedidoId])
   @@index([clienteId])
   @@index([estado])
   @@index([createdById])
+  @@index([saldo])
+  @@index([fecha])
 }
 
 // ====================
@@ -407,6 +437,10 @@ model Abono {
   fecha     DateTime @default(now())
 
   createdAt DateTime @default(now())
+
+  @@index([facturaId])
+  @@index([clienteId])
+  @@index([fecha])
 }
 
 // ====================
@@ -418,7 +452,7 @@ model Produccion {
   createdById    String?
   createdBy      User?      @relation("ProduccionCreador", fields: [createdById], references: [id])
   fecha          DateTime    @default(now())
-  turno          String     // MANANA, TARDE, NOCHE
+  turno          Turno      // MANANA, TARDE, NOCHE
   trabajadorId  String
   trabajador   Trabajador  @relation(fields: [trabajadorId], references: [id])
 
@@ -449,6 +483,7 @@ model Produccion {
   updatedAt DateTime @updatedAt
 
   @@index([createdById])
+  @@index([fecha])
 }
 
 // ====================
@@ -462,7 +497,7 @@ model Gasto {
   fecha        DateTime @default(now())
   categoria   String
   descripcion String
-  monto       Float
+  monto       Decimal  @default(0) @db.Decimal(10, 2)
   responsable String?
   notas       String?
 
@@ -470,6 +505,7 @@ model Gasto {
   updatedAt DateTime @updatedAt
 
   @@index([createdById])
+  @@index([fecha])
 }
 
 // ====================
@@ -541,6 +577,9 @@ model CompraInsumo {
   updatedAt DateTime @updatedAt
 
   @@index([createdById])
+  @@index([fecha])
+  @@index([insumoId])
+  @@index([proveedorId])
 }
 
 // ====================
@@ -651,6 +690,10 @@ model Historial {
   datos     String   // JSON
   usuarioId String?
   fecha     DateTime @default(now())
+
+  @@index([entidad])
+  @@index([fecha])
+  @@index([usuarioId])
 }
 
 // ====================

@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
     const canalReal = (canal || 'DOMICILIO') as Canal
     const tipo = canalReal === 'PUNTO' ? 'PUNTO' : 'ENVIO'
 
-    const result = await withAdvisoryLock('PEDIDO', () => prisma.$transaction(async (tx) => {
+    const result = await withAdvisoryLock('PEDIDO', async (tx) => {
       // Crear cliente nuevo si se proporciona
       let clienteId = rawClienteId
       if (clienteNuevo) {
@@ -118,11 +118,8 @@ export async function POST(request: NextRequest) {
       const total = preciosResueltos.reduce((sum, pr) => sum + pr.subtotal, 0)
       const estadoInicial = totalPagado >= total ? 'ENTREGADO' : 'PENDIENTE'
 
-      const numero = await getNextNumero(tx, { seqName: 'pedido_numero_seq', model: 'pedido' })
-
       const pedido = await tx.pedido.create({
         data: {
-          numero,
           clienteId,
           createdById: authResult.user?.id,
           tipo,
@@ -160,7 +157,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Crear factura automaticamente
-      const facturaNum = await getNextNumero(tx, { seqName: 'factura_numero_seq', model: 'factura' })
+      const facturaNum = await getNextNumero(tx, { model: 'factura', field: 'numero' })
 
       await tx.factura.create({
         data: {
@@ -174,7 +171,7 @@ export async function POST(request: NextRequest) {
       })
 
       return { pedido, clienteId }
-    }))
+    })
 
     await logAudit({
       entidad: 'Pedido',
@@ -184,7 +181,7 @@ export async function POST(request: NextRequest) {
       usuarioId: authResult.user?.id,
     })
 
-    return NextResponse.json({ success: true, pedido: result.pedido })
+    return NextResponse.json({ success: true, pedido: result.pedido }, { status: 201 })
   } catch (error) {
     console.error('Error creating pedido:', error)
     return NextResponse.json({ error: 'Error creating pedido' }, { status: 500 })

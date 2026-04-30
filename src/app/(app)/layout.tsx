@@ -26,6 +26,8 @@ const icons: Record<string, React.ReactNode> = {
   boxes: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>,
   'chart-line': <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" /></svg>,
   tag: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" /></svg>,
+  map: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0121 18.382V7.618a1 1 0 01-.553-.894L15 7m0 13V7" /></svg>,
+  repeat: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>,
 }
 
 function NavIcon({ name }: { name: string }) {
@@ -40,6 +42,8 @@ const navSections = [
       { href: '/pedidos', label: 'Pedidos', icon: 'package' },
       { href: '/clientes', label: 'Clientes', icon: 'users' },
       { href: '/embarques', label: 'Embarques', icon: 'truck' },
+      { href: '/rutas', label: 'Rutas', icon: 'map' },
+      { href: '/recurrentes', label: 'Recurrentes', icon: 'repeat' },
       { href: '/produccion', label: 'Producción', icon: 'factory' },
     ]
   },
@@ -148,6 +152,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
                     <Link
                       key={item.href}
                       href={item.href}
+                      aria-current={isActive ? 'page' : undefined}
                       className={`flex items-center gap-3 py-3 rounded-lg transition ${
                         isActive
                           ? 'bg-blue-50 text-blue-600 font-semibold border-l-4 border-blue-500 pl-3 pr-4'
