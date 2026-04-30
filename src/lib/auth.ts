@@ -40,7 +40,7 @@ const authOptions: NextAuthConfig = {
             }
           }
         } catch (error) {
-          console.error('Auth error:', error)
+          console.error('Auth error:', error instanceof Error ? error.message : 'Unknown error')
         }
 
         return null
@@ -74,7 +74,7 @@ const authOptions: NextAuthConfig = {
           token.role = dbUser.rol
           token.lastVerified = Date.now()
         } catch (error) {
-          console.error('JWT refresh error:', error)
+          console.error('JWT refresh error:', error instanceof Error ? error.message : 'Unknown error')
         }
       }
 
@@ -96,7 +96,7 @@ const authOptions: NextAuthConfig = {
     maxAge: 30 * 60, // 30 minutes (was 4 hours — reduces stolen-token window)
     updateAge: 5 * 60, // refresh JWT every 5 minutes of activity
   },
-  trustHost: true,
+  trustHost: process.env.AUTH_TRUST_HOST === 'true',
 }
 
 const { handlers, signIn, signOut, auth } = NextAuth(authOptions)

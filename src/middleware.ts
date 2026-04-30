@@ -83,10 +83,19 @@ export default auth(async (req) => {
       )
     }
 
-    // CSRF protection for state-changing API routes
-    if (req.nextUrl.pathname.startsWith('/api/')) {
+    // CSRF protection + auth enforcement for API routes
+    if (req.nextUrl.pathname.startsWith('/api/') && !isApiAuth) {
       const csrfError = validateCsrf(req)
       if (csrfError) return csrfError
+
+      // Require authentication for state-changing API requests
+      // GET requests are handled per-route (some are intentionally public, e.g. /api/config/BASE_DIA)
+      const method = req.method
+      if (method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE') {
+        if (!isLoggedIn) {
+          return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+        }
+      }
     }
 
     // Auth enforcement for protected pages

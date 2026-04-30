@@ -1,5 +1,7 @@
 import { auth } from "./auth";
 import { NextResponse } from "next/server";
+import { prisma } from "./prisma";
+import { PRIVILEGED_ROLES, type Role } from "./constants";
 
 export async function requireAuth() {
   const session = await auth();
@@ -15,7 +17,7 @@ export async function requireAuth() {
  * Optionally accepts an existing session to avoid calling auth() twice.
  * Returns the session if authorized, or a 403 Response if not.
  */
-export async function requireRole(role: string | string[], existingSession?: any) {
+export async function requireRole(role: Role | Role[], existingSession?: any) {
   const session = existingSession || await auth();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -24,9 +26,43 @@ export async function requireRole(role: string | string[], existingSession?: any
   const userRole = (session.user as { role?: string } | undefined)?.role;
   const allowed = Array.isArray(role) ? role : [role];
 
-  if (!userRole || !allowed.includes(userRole)) {
+  if (!userRole || !allowed.includes(userRole as Role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   return session;
+}
+
+/**
+ * Verify that the user has permission to access a specific resource.
+ * ADMIN and CONTADOR can access all resources.
+ * REPARTIDOR can only access their own embarques and associated pedidos.
+ * ASISTENTE has limited access (no ownership checks pass by default).
+ */
+export async function requireOwnership(
+  entity: 'embarque' | 'pedido',
+  resourceId: string,
+  user: { id: string; role?: string }
+): Promise<boolean> {
+  // Privileged roles can access everything
+  if (PRIVILEGED_ROLES.includes(user.role as Role)) return true;
+
+  if (entity === 'embarque') {
+    const embarque = await prisma.embarque.findUnique({
+      where: { id: resourceId },
+      select: { trabajadorId: true },
+    });
+    return embarque?.trabajadorId === user.id;
+  }
+
+  if (entity === 'pedido') {
+    // A repartidor can see a pedido if it's assigned to one of their embarques
+    const pedido = await prisma.pedido.findUnique({
+      where: { id: resourceId },
+      select: { embarque: { select: { trabajadorId: true } } },
+    });
+    return pedido?.embarque?.trabajadorId === user.id;
+  }
+
+  return false;
 }
