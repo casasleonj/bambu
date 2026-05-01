@@ -261,9 +261,10 @@ No elimina físicamente. Marca como `ANULADO`.
 - [x] Frontend: usar endpoint atómico, eliminar dos llamadas
 - [x] Cerrar modal detalle antes de abrir embarque (o usar z-index portal)
 - [x] Eliminar "Enviar sin asignar"
-- [ ] Validación: preciosManuales >= 0
-- [ ] Proteger doble clic en Confirmar Envío
-- [ ] Mostrar saldo en tabla de pedidos
-- [ ] Botón "Pagar completo" limpia pagos anteriores
-- [ ] Confirmación antes de cerrar embarque
-- [ ] Acciones rápidas en cards mobile
+- [x] Validación: preciosManuales >= 0
+- [x] Proteger doble clic en Confirmar Envío
+- [x] Mostrar saldo en tabla de pedidos
+- [x] Botón "Pagar completo" limpia pagos anteriores
+- [x] Confirmación antes de cerrar embarque
+- [x] Acciones rápidas en cards mobile
+- [x] Search empty states (diferenciar "sin resultados" vs "sin pedidos")
