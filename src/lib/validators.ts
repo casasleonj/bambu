@@ -15,7 +15,7 @@ export const PedidoCreateSchema = z.object({
   pagos: z.array(
     z.object({
       metodo: z.enum(['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA', 'BONO']),
-      monto: z.coerce.number().positive(),
+      monto: z.coerce.number().min(0),
     })
   ).optional(),
   obs: z.string().max(500).optional(),

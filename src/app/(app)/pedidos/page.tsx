@@ -232,6 +232,8 @@ export default function PedidosPage() {
         pagos: data.pagos,
         obs: data.obs,
         clienteNuevo: data.clienteNuevo,
+        ventaRapida: true,
+        tipo: data.tipo,
       }
 
       const res = await fetch('/api/pedidos', {
@@ -275,29 +277,58 @@ export default function PedidosPage() {
     .reduce((acc, p) => acc + Number(p.saldo), 0), [pedidos])
 
   function getEstadoBadge(pedido: Pedido) {
-    // POR COBRAR: punto con saldo, o envío entregado con saldo
-    const esFiadoPunto = pedido.tipo === 'PUNTO' && Number(pedido.saldo) > 0
-    const esFiadoEnvioEntregado = pedido.tipo === 'ENVIO' && pedido.estado === 'ENTREGADO' && Number(pedido.saldo) > 0
+    // Badge de ENTREGA (estado logístico del pedido)
+    if (pedido.estado === 'PENDIENTE') {
+      return (
+        <span className="px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+          PENDIENTE
+        </span>
+      )
+    }
+    if (pedido.estado === 'EN_RUTA') {
+      return (
+        <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+          EN RUTA
+        </span>
+      )
+    }
 
-    if (esFiadoPunto || esFiadoEnvioEntregado) {
+    // Badge de PAGO (solo para pedidos ya entregados)
+    if (pedido.estado === 'ENTREGADO') {
+      const saldo = Number(pedido.saldo)
+      const totalPagado = Number(pedido.totalPagado)
+
+      if (saldo === 0) {
+        return (
+          <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+            PAGADO
+          </span>
+        )
+      }
+      if (totalPagado > 0 && saldo > 0) {
+        return (
+          <span className="px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+            PAGO PARCIAL
+          </span>
+        )
+      }
       return (
         <span className="px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
           POR COBRAR
         </span>
       )
     }
-    const styles: Record<string, string> = {
-      PENDIENTE: 'bg-yellow-100 text-yellow-800',
-      EN_RUTA: 'bg-blue-100 text-blue-800',
-      ENTREGADO: 'bg-green-100 text-green-800',
-      CANCELADO: 'bg-gray-100 text-gray-800',
-      ANULADO: 'bg-red-100 text-red-800',
+
+    // Estados terminales
+    if (pedido.estado === 'CANCELADO' || pedido.estado === 'ANULADO') {
+      return (
+        <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+          {pedido.estado}
+        </span>
+      )
     }
-    return (
-      <span className={`px-2 py-1 rounded-full text-xs font-medium ${styles[pedido.estado] || ''}`}>
-        {pedido.estado}
-      </span>
-    )
+
+    return null
   }
 
   function getTipoBadge(tipo: string) {

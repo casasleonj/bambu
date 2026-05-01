@@ -163,18 +163,16 @@ test.describe('Flujos críticos de negocio', () => {
       await pagoInputs.nth(i).fill('0')
     }
 
-    let alertMsg: string | null = null
-    page.on('dialog', async (dialog: any) => {
-      alertMsg = dialog.message()
-      await dialog.accept()
-    })
+    // Intercept API response to verify actual success
+    const [apiResponse] = await Promise.all([
+      page.waitForResponse(resp => resp.url().includes('/api/pedidos') && resp.request().method() === 'POST'),
+      modal.locator('button:has-text("Crear Pedido")').click(),
+    ])
 
-    await modal.locator('button:has-text("Crear Pedido")').click()
-    await page.waitForTimeout(1000)
+    expect(apiResponse.status()).toBe(201)
 
-    // Should NOT show "debe registrar al menos un pago"
-    if (alertMsg) {
-      expect(alertMsg as string).not.toContain('pago')
-    }
+    // Verify pedido appears in list (PENDIENTE state for non-ventaRapida order)
+    await page.waitForTimeout(500)
+    await expect(page.getByText('PENDIENTE').first()).toBeVisible()
   })
 })

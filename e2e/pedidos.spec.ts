@@ -41,8 +41,8 @@ test.describe('Pedidos', () => {
     // Verify modal closed
     await expect(page.locator('h2:has-text("Venta Rapida")')).toHaveCount(0)
     
-    // Verify the new pedido appears in the table (Punto + ENTREGADO)
-    await expect(page.locator('table tbody tr').first()).toContainText('ENTREGADO')
+    // Verify the new pedido appears in the table (Punto + PAGADO badge for fully-paid venta)
+    await expect(page.locator('table tbody tr').first()).toContainText('PAGADO')
   })
 
   test('can create a pedido with envio via venta rapida', async ({ page }) => {

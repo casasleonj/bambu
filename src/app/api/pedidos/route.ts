@@ -118,7 +118,11 @@ export async function POST(request: NextRequest) {
       }
 
       const total = preciosResueltos.reduce((sum, pr) => sum + pr.subtotal, 0)
-      const estadoInicial = totalPagado >= total ? 'ENTREGADO' : 'PENDIENTE'
+
+      // Estado de ENTREGA, no de pago.
+      // ventaRapida = producto ya se entregó (punto o envío inmediato)
+      // Pedido normal = aún no se entrega, progresa por embarque
+      const estadoInicial = parsed.data.ventaRapida ? 'ENTREGADO' : 'PENDIENTE'
 
       const pedido = await tx.pedido.create({
         data: {
