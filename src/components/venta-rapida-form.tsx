@@ -186,7 +186,10 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
     // Validación de cliente: solo si es envío o fiado
     if (requiereCliente) {
       if (!clienteSeleccionado && !mostrarNuevo) {
-        toast.error('Busca o crea un cliente para registrar la venta')
+        toast.error(esFiado
+          ? 'Selecciona un cliente para registrar fiado'
+          : 'Busca o crea un cliente para registrar la venta'
+        )
         return
       }
       if (mostrarNuevo && (!nuevoCliente.nombre || !nuevoCliente.telefono)) {
@@ -303,8 +306,9 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
 
       {/* Cliente search - solo si es envío o fiado */}
       {requiereCliente && (
-      <div className="space-y-2">
-        <label className="text-sm font-medium text-gray-700">
+      <div className={`space-y-2 ${esFiado ? 'bg-yellow-50 border border-yellow-200 rounded-lg p-3' : ''}`}>
+        <label className={`text-sm font-medium flex items-center gap-1 ${esFiado ? 'text-yellow-700' : 'text-gray-700'}`}>
+          {esFiado && <span>⚠️</span>}
           {quiereEnvio ? 'Cliente para envío' : 'Cliente (obligatorio para fiado)'}
         </label>
         {!clienteSeleccionado && !mostrarNuevo && (
@@ -516,6 +520,23 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
           ))}
         </select>
       </div>
+
+      {/* Banner FIADO */}
+      {esFiado && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+          <div className="flex items-start gap-2">
+            <span className="text-yellow-600 text-lg">💡</span>
+            <div>
+              <p className="text-sm font-medium text-yellow-800">
+                Esta venta quedará por cobrar (FIADO)
+              </p>
+              <p className="text-xs text-yellow-600">
+                Debes seleccionar un cliente para registrar el fiado
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Total y botón cobrar */}
       <div className="border-t pt-4 space-y-2">
