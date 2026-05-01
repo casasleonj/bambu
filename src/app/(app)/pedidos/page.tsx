@@ -356,8 +356,9 @@ export default function PedidosPage() {
   async function cambiarEstado(id: string, nuevoEstado: string) {
     if (updatingId) return
 
-    // If changing to EN_RUTA, ask for embarque assignment first
+    // If changing to EN_RUTA, close detail modal first, then open embarque modal
     if (nuevoEstado === 'EN_RUTA') {
+      setShowDetailModal(false)
       setSelectedPedidoForEmbarque(id)
       setSelectedEmbarqueId('')
       setShowEmbarqueModal(true)
@@ -387,36 +388,22 @@ export default function PedidosPage() {
   }
 
   async function asignarEmbarque() {
-    if (!selectedPedidoForEmbarque) return
+    if (!selectedPedidoForEmbarque || !selectedEmbarqueId) return
     setUpdatingId(selectedPedidoForEmbarque)
     try {
-      // First change state to EN_RUTA
-      const resEstado = await fetch(`/api/pedidos/${selectedPedidoForEmbarque}`, {
-        method: 'PUT',
+      // Atomic: change state + assign embarque in one API call
+      const res = await fetch(`/api/pedidos/${selectedPedidoForEmbarque}/enviar`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ estado: 'EN_RUTA' }),
+        body: JSON.stringify({ embarqueId: selectedEmbarqueId }),
       })
-      if (!resEstado.ok) {
-        toast.error('Error cambiando estado')
-        return
-      }
-
-      // Then assign to embarque if selected
-      if (selectedEmbarqueId) {
-        const resEmbarque = await fetch(`/api/pedidos/${selectedPedidoForEmbarque}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ embarqueId: selectedEmbarqueId }),
-        })
-        if (resEmbarque.ok) {
-          toast.success('Pedido enviado y asignado a embarque')
-        } else {
-          toast.success('Pedido enviado (no asignado a embarque)')
-        }
+      if (res.ok) {
+        toast.success('Pedido enviado y asignado a embarque')
+        fetchPedidos()
       } else {
-        toast.success('Pedido enviado')
+        const err = await res.json()
+        toast.error(err.error || 'Error al enviar pedido')
       }
-      fetchPedidos()
     } catch (error) {
       console.error('Error asignando embarque:', error)
       toast.error('Error asignando embarque')
@@ -750,15 +737,10 @@ export default function PedidosPage() {
       <Modal open={showEmbarqueModal} onClose={() => { setShowEmbarqueModal(false); setSelectedPedidoForEmbarque(null) }} className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
         <h2 className="text-lg font-bold mb-4">Asignar a Embarque</h2>
         <p className="text-sm text-gray-500 mb-4">Selecciona un embarque abierto para este pedido:</p>
-        {embarques.length === 0 ? (
+        {embarques.filter((e) => e.estado === 'ABIERTO').length === 0 ? (
           <div className="text-center py-4">
             <p className="text-sm text-gray-500 mb-2">No hay embarques abiertos</p>
-            <button
-              onClick={() => { setShowEmbarqueModal(false); setSelectedPedidoForEmbarque(null) }}
-              className="text-blue-600 text-sm font-medium hover:text-blue-800"
-            >
-              Enviar sin asignar
-            </button>
+            <p className="text-xs text-gray-400">Crea un embarque primero para poder enviar este pedido</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -800,6 +782,9 @@ export default function PedidosPage() {
               }
               return null
             })()}
+            {!selectedEmbarqueId && (
+              <p className="text-xs text-amber-600">Selecciona un embarque para continuar</p>
+            )}
             <div className="flex gap-2">
               <button
                 onClick={() => { setShowEmbarqueModal(false); setSelectedPedidoForEmbarque(null) }}
@@ -809,10 +794,10 @@ export default function PedidosPage() {
               </button>
               <button
                 onClick={asignarEmbarque}
-                disabled={updatingId === selectedPedidoForEmbarque}
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
+                disabled={updatingId === selectedPedidoForEmbarque || !selectedEmbarqueId}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {updatingId === selectedPedidoForEmbarque ? 'Enviando...' : 'Enviar'}
+                {updatingId === selectedPedidoForEmbarque ? 'Enviando...' : 'Confirmar Envío'}
               </button>
             </div>
           </div>
