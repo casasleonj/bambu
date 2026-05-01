@@ -177,6 +177,8 @@ export async function PUT(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
+  const roleCheck = await requireRole(['ADMIN', 'CONTADOR'], authResult)
+  if (roleCheck instanceof Response) return roleCheck
 
   try {
     const { searchParams } = new URL(request.url)

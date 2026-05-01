@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuth } from '@/lib/auth-check'
+import { requireAuth, requireRole } from '@/lib/auth-check'
 import { ClienteUpdateSchema } from '@/lib/validators'
 import { logAudit } from '@/lib/audit'
 
@@ -56,6 +56,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
+  const roleCheck = await requireRole(['ADMIN', 'CONTADOR'], authResult)
+  if (roleCheck instanceof Response) return roleCheck
   const { id } = await params
   try {
     await prisma.cliente.update({

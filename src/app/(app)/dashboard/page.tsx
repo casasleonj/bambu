@@ -10,7 +10,30 @@ interface VentaPorPrecio {
   subtotal: number
 }
 
-function buildVentasPorPrecio(pedidos: any[]): VentaPorPrecio[] {
+interface PedidoRaw {
+  cPacaAguaPed: number
+  cPacaHieloPed: number
+  cBotellonFabPed: number
+  cBotellonDomPed: number
+  cBolsaAguaPed: number
+  cBolsaHieloPed: number
+  cPacaAguaEnt: number
+  cPacaHieloEnt: number
+  cBotellonFabEnt: number
+  cBotellonDomEnt: number
+  precioPacaAgua: unknown
+  precioPacaHielo: unknown
+  precioBotellonFab: unknown
+  precioBotellonDom: unknown
+  precioBolsaAgua: unknown
+  precioBolsaHielo: unknown
+  total: unknown
+  saldo: unknown
+  estado: string
+  fecha: Date | string
+}
+
+function buildVentasPorPrecio(pedidos: PedidoRaw[]): VentaPorPrecio[] {
   const ventasPorPrecio: VentaPorPrecio[] = []
   if (pedidos.length === 0) return ventasPorPrecio
 
@@ -55,7 +78,9 @@ export default async function DashboardPage() {
   // All queries in parallel
   const [pedidos, pedidosAyer, baseDiaConfig, lastCierre, gastosAgg, embarquesAbiertos, clientesCount, stockAlertas,
     // Cuentas por cobrar totales (no solo hoy)
-    cuentasPorCobrarAgg
+    cuentasPorCobrarAgg,
+    // Producción de hoy
+    produccionHoy
   ] = await Promise.all([
     prisma.pedido.findMany({
       where: { fecha: { gte: startOfDay, lt: endOfDay } },
@@ -85,6 +110,16 @@ export default async function DashboardPage() {
       },
       _sum: { saldo: true },
       _count: true,
+    }),
+    // Producción de hoy
+    prisma.produccion.aggregate({
+      where: { fecha: { gte: startOfDay, lt: endOfDay } },
+      _sum: {
+        conteoAAgua: true,
+        conteoBAgua: true,
+        conteoAHielo: true,
+        conteoBHielo: true,
+      },
     }),
   ])
 
@@ -119,6 +154,10 @@ export default async function DashboardPage() {
   const hieloVendido = pedidos.filter(p => p.estado === 'ENTREGADO').reduce((acc, p) => acc + (p.cPacaHieloEnt || 0), 0)
   const botellonVendido = pedidos.filter(p => p.estado === 'ENTREGADO').reduce((acc, p) => acc + (p.cBotellonFabEnt || 0) + (p.cBotellonDomEnt || 0), 0)
 
+  // Today's production
+  const prodAguaHoy = (produccionHoy?._sum?.conteoAAgua || 0) + (produccionHoy?._sum?.conteoBAgua || 0)
+  const prodHieloHoy = (produccionHoy?._sum?.conteoAHielo || 0) + (produccionHoy?._sum?.conteoBHielo || 0)
+
   let stockIniAgua = lastCierre?.stockFinAgua || 0
   let stockIniHielo = lastCierre?.stockFinHielo || 0
   let stockIniBotellon = 0
@@ -133,8 +172,8 @@ export default async function DashboardPage() {
     stockIniBotellon = parseInt(configMap.STOCK_INI_BOTELLON) || 0
   }
 
-  const stockAgua = Math.max(0, stockIniAgua - aguaVendida)
-  const stockHielo = Math.max(0, stockIniHielo - hieloVendido)
+  const stockAgua = Math.max(0, stockIniAgua + prodAguaHoy - aguaVendida)
+  const stockHielo = Math.max(0, stockIniHielo + prodHieloHoy - hieloVendido)
   const stockBotellon = Math.max(0, stockIniBotellon - botellonVendido)
 
   const fechaHoy = new Date().toLocaleDateString('es-CO', {

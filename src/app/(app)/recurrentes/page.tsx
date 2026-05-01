@@ -81,7 +81,6 @@ export default function RecurrentesPage() {
         setDecisiones(defaults)
       }
     } catch (error) {
-      console.error('Error:', error)
       setFetchError('No se pudieron cargar los datos')
       toast.error('Error cargando datos')
     } finally {
@@ -118,7 +117,6 @@ export default function RecurrentesPage() {
         toast.error(data.error || 'Error al generar')
       }
     } catch (error) {
-      console.error('Error:', error)
       toast.error('Error de conexión')
     } finally {
       setGenerating(false)
@@ -142,7 +140,22 @@ export default function RecurrentesPage() {
         toast.error(data.error || 'Error')
       }
     } catch (error) {
-      console.error('Error:', error)
+      toast.error('Error de conexión')
+    }
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm('Eliminar este recurrente?')) return
+    try {
+      const res = await fetch(`/api/recurrentes?id=${id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (data.success) {
+        toast.success('Recurrente eliminado')
+        fetchData()
+      } else {
+        toast.error(data.error || 'Error')
+      }
+    } catch (error) {
       toast.error('Error de conexión')
     }
   }
@@ -303,21 +316,7 @@ export default function RecurrentesPage() {
                 Editar
               </button>
               <button
-                onClick={async () => {
-                  if (!confirm('Eliminar este recurrente?')) return
-                  try {
-                    const res = await fetch(`/api/recurrentes?id=${r.id}`, { method: 'DELETE' })
-                    const data = await res.json()
-                    if (data.success) {
-                      toast.success('Recurrente eliminado')
-                      fetchData()
-                    } else {
-                      toast.error(data.error || 'Error')
-                    }
-                  } catch (e) {
-                    toast.error('Error de conexión')
-                  }
-                }}
+                onClick={() => handleDelete(r.id)}
                 className="px-3 py-1.5 text-red-600 hover:bg-red-50 rounded text-sm"
               >
                 Eliminar

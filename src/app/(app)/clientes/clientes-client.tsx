@@ -55,6 +55,7 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [showDetail, setShowDetail] = useState(false)
+  const [detailLoading, setDetailLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('info')
   const [isEdit, setIsEdit] = useState(false)
   const [formError, setFormError] = useState('')
@@ -79,7 +80,6 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
       const data = await res.json()
       setClientes(data.clientes || [])
     } catch (error) {
-      console.error('Error fetching clientes:', error)
       toast.error('Error cargando clientes')
     } finally {
       setLoading(false)
@@ -176,7 +176,6 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
         }
       }
     } catch (error) {
-      console.error('Error saving cliente:', error)
       setFormError('Error de conexion al guardar')
       toast.error('Error de conexion al guardar')
     } finally {
@@ -185,6 +184,7 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
   }
 
   async function viewCliente(id: string) {
+    setDetailLoading(true)
     try {
       const res = await fetch(`/api/clientes/${id}`)
       const data = await res.json()
@@ -194,8 +194,9 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
         setActiveTab('info')
       }
     } catch (error) {
-      console.error('Error fetching cliente:', error)
       toast.error('Error cargando cliente')
+    } finally {
+      setDetailLoading(false)
     }
   }
 
@@ -212,7 +213,6 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
         toast.error('Error desactivando cliente')
       }
     } catch (error) {
-      console.error('Error deleting cliente:', error)
       toast.error('Error desactivando cliente')
     }
   }
@@ -454,7 +454,11 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
       </Modal>
 
       <Modal open={showDetail && !!selectedCliente} onClose={() => setShowDetail(false)} className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-        {selectedCliente && (
+        {detailLoading ? (
+          <div className="flex items-center justify-center py-20">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          </div>
+        ) : selectedCliente && (
           <>
             <div className="p-4 border-b flex justify-between items-center">
               <div>
