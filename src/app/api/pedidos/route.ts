@@ -9,8 +9,6 @@ import { getTodayRange } from '@/lib/dates'
 import { resolverPreciosPedido, type Canal, type ProductCode } from '@/lib/pricing'
 import { logAudit } from '@/lib/audit'
 
-import { EstadoPedido } from '@prisma/client'
-
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
@@ -21,7 +19,7 @@ export async function GET(request: NextRequest) {
     const { startOfDay, endOfDay } = getTodayRange()
 
     const where = pagination.all
-      ? { estado: { not: EstadoPedido.CANCELADO } }
+      ? {}
       : {
           fecha: {
             gte: startOfDay,

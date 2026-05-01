@@ -18,6 +18,15 @@ const ProductoEntregadoSchema = z.object({
   cBolsaHieloEnt: z.number().int().min(0).default(0),
 })
 
+const PreciosRealesSchema = z.object({
+  pacaAgua: z.number().min(0).default(0),
+  pacaHielo: z.number().min(0).default(0),
+  botellonFab: z.number().min(0).default(0),
+  botellonDom: z.number().min(0).default(0),
+  bolsaAgua: z.number().min(0).default(0),
+  bolsaHielo: z.number().min(0).default(0),
+})
+
 const PagoSchema = z.object({
   metodo: z.string(),
   monto: z.number().min(0),
@@ -27,6 +36,7 @@ const PedidoCuadreSchema = z.object({
   pedidoId: z.string().min(1),
   entregado: z.enum(['COMPLETO', 'PARCIAL', 'NO_ENTREGADO']),
   productosEntregados: ProductoEntregadoSchema,
+  preciosReales: PreciosRealesSchema.optional(),
   pagado: z.enum(['COMPLETO', 'PARCIAL', 'NO_PAGADO']),
   pagos: z.array(PagoSchema).default([]),
   nuevoEmbarqueId: z.string().optional(),
@@ -124,23 +134,25 @@ export async function POST(
           continue
         }
 
-        // Se entregó algo → calcular totales reales
-        const totalEntregadoAgua = Number(pedido.precioPacaAgua) * entProd.cPacaAguaEnt
-        const totalEntregadoHielo = Number(pedido.precioPacaHielo) * entProd.cPacaHieloEnt
-        const totalEntregadoBotFab = Number(pedido.precioBotellonFab) * entProd.cBotellonFabEnt
-        const totalEntregadoBotDom = Number(pedido.precioBotellonDom) * entProd.cBotellonDomEnt
-        const totalEntregadoBolAgua = Number(pedido.precioBolsaAgua) * entProd.cBolsaAguaEnt
-        const totalEntregadoBolHielo = Number(pedido.precioBolsaHielo) * entProd.cBolsaHieloEnt
+        // Se entregó algo → calcular totales con precios reales
+        const precios = cuadre.preciosReales || {
+          pacaAgua: Number(pedido.precioPacaAgua),
+          pacaHielo: Number(pedido.precioPacaHielo),
+          botellonFab: Number(pedido.precioBotellonFab),
+          botellonDom: Number(pedido.precioBotellonDom),
+          bolsaAgua: Number(pedido.precioBolsaAgua),
+          bolsaHielo: Number(pedido.precioBolsaHielo),
+        }
 
         const totalReal =
-          totalEntregadoAgua +
-          totalEntregadoHielo +
-          totalEntregadoBotFab +
-          totalEntregadoBotDom +
-          totalEntregadoBolAgua +
-          totalEntregadoBolHielo
+          precios.pacaAgua * entProd.cPacaAguaEnt +
+          precios.pacaHielo * entProd.cPacaHieloEnt +
+          precios.botellonFab * entProd.cBotellonFabEnt +
+          precios.botellonDom * entProd.cBotellonDomEnt +
+          precios.bolsaAgua * entProd.cBolsaAguaEnt +
+          precios.bolsaHielo * entProd.cBolsaHieloEnt
 
-        // Update pedido with delivered quantities
+        // Update pedido with delivered quantities and real prices
         await tx.pedido.update({
           where: { id: pedido.id },
           data: {
@@ -150,6 +162,12 @@ export async function POST(
             cBotellonDomEnt: entProd.cBotellonDomEnt,
             cBolsaAguaEnt: entProd.cBolsaAguaEnt,
             cBolsaHieloEnt: entProd.cBolsaHieloEnt,
+            precioPacaAgua: precios.pacaAgua,
+            precioPacaHielo: precios.pacaHielo,
+            precioBotellonFab: precios.botellonFab,
+            precioBotellonDom: precios.botellonDom,
+            precioBolsaAgua: precios.bolsaAgua,
+            precioBolsaHielo: precios.bolsaHielo,
             total: totalReal,
             estado: 'ENTREGADO',
             totalPagado: montoPagado,
@@ -205,12 +223,12 @@ export async function POST(
                 cBotellonDomPed: faltanteBotDom,
                 cBolsaAguaPed: faltanteBolAgua,
                 cBolsaHieloPed: faltanteBolHielo,
-                precioPacaAgua: pedido.precioPacaAgua,
-                precioPacaHielo: pedido.precioPacaHielo,
-                precioBotellonFab: pedido.precioBotellonFab,
-                precioBotellonDom: pedido.precioBotellonDom,
-                precioBolsaAgua: pedido.precioBolsaAgua,
-                precioBolsaHielo: pedido.precioBolsaHielo,
+                precioPacaAgua: precios.pacaAgua,
+                precioPacaHielo: precios.pacaHielo,
+                precioBotellonFab: precios.botellonFab,
+                precioBotellonDom: precios.botellonDom,
+                precioBolsaAgua: precios.bolsaAgua,
+                precioBolsaHielo: precios.bolsaHielo,
                 total: 0,
                 totalPagado: 0,
                 saldo: 0,
@@ -219,14 +237,14 @@ export async function POST(
               },
             })
 
-            // Calculate total for child
+            // Calculate total for child using real prices
             const totalHijo =
-              Number(pedido.precioPacaAgua) * faltanteAgua +
-              Number(pedido.precioPacaHielo) * faltanteHielo +
-              Number(pedido.precioBotellonFab) * faltanteBotFab +
-              Number(pedido.precioBotellonDom) * faltanteBotDom +
-              Number(pedido.precioBolsaAgua) * faltanteBolAgua +
-              Number(pedido.precioBolsaHielo) * faltanteBolHielo
+              precios.pacaAgua * faltanteAgua +
+              precios.pacaHielo * faltanteHielo +
+              precios.botellonFab * faltanteBotFab +
+              precios.botellonDom * faltanteBotDom +
+              precios.bolsaAgua * faltanteBolAgua +
+              precios.bolsaHielo * faltanteBolHielo
 
             await tx.pedido.update({
               where: { id: hijo.id },

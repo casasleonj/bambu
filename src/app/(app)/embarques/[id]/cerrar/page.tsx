@@ -64,6 +64,14 @@ interface CuadrePedido {
     cBolsaAguaEnt: number
     cBolsaHieloEnt: number
   }
+  preciosReales: {
+    pacaAgua: number
+    pacaHielo: number
+    botellonFab: number
+    botellonDom: number
+    bolsaAgua: number
+    bolsaHielo: number
+  }
   pagado: 'COMPLETO' | 'PARCIAL' | 'NO_PAGADO'
   pagos: PagoItem[]
   nuevoEmbarqueId?: string
@@ -150,6 +158,14 @@ export default function CerrarEmbarquePage() {
                 cBolsaAguaEnt: p.cBolsaAguaPed,
                 cBolsaHieloEnt: p.cBolsaHieloPed,
               },
+              preciosReales: {
+                pacaAgua: p.precioPacaAgua,
+                pacaHielo: p.precioPacaHielo,
+                botellonFab: p.precioBotellonFab,
+                botellonDom: p.precioBotellonDom,
+                bolsaAgua: p.precioBolsaAgua,
+                bolsaHielo: p.precioBolsaHielo,
+              },
               pagado: p.totalPagado >= p.total ? 'COMPLETO' : p.totalPagado > 0 ? 'PARCIAL' : 'NO_PAGADO',
               pagos: p.totalPagado > 0 ? [{ metodo: 'EFECTIVO', monto: p.totalPagado }] : [],
             }
@@ -230,14 +246,32 @@ export default function CerrarEmbarquePage() {
 
   function calcularTotalEntregado(pedido: Pedido, cuadre: CuadrePedido): number {
     const prod = cuadre.productosEntregados
+    const precios = cuadre.preciosReales
     return (
-      prod.cPacaAguaEnt * pedido.precioPacaAgua +
-      prod.cPacaHieloEnt * pedido.precioPacaHielo +
-      prod.cBotellonFabEnt * pedido.precioBotellonFab +
-      prod.cBotellonDomEnt * pedido.precioBotellonDom +
-      prod.cBolsaAguaEnt * pedido.precioBolsaAgua +
-      prod.cBolsaHieloEnt * pedido.precioBolsaHielo
+      prod.cPacaAguaEnt * precios.pacaAgua +
+      prod.cPacaHieloEnt * precios.pacaHielo +
+      prod.cBotellonFabEnt * precios.botellonFab +
+      prod.cBotellonDomEnt * precios.botellonDom +
+      prod.cBolsaAguaEnt * precios.bolsaAgua +
+      prod.cBolsaHieloEnt * precios.bolsaHielo
     )
+  }
+
+  function updatePrecioReal(
+    pedidoId: string,
+    field: keyof CuadrePedido['preciosReales'],
+    value: number
+  ) {
+    setCuadres((prev) => ({
+      ...prev,
+      [pedidoId]: {
+        ...prev[pedidoId],
+        preciosReales: {
+          ...prev[pedidoId].preciosReales,
+          [field]: value,
+        },
+      },
+    }))
   }
 
   function agregarVentaLibre() {
@@ -503,69 +537,64 @@ export default function CerrarEmbarquePage() {
                 </div>
               )}
 
-              {/* Productos entregados (solo si parcial) */}
-              {cuadre.entregado === 'PARCIAL' && (
-                <div className="grid grid-cols-3 gap-2 mb-3">
-                  {pedido.cPacaAguaPed > 0 && (
-                    <div>
-                      <label className="text-xs text-gray-500">Paca Agua</label>
-                      <input type="number" min={0} max={pedido.cPacaAguaPed}
-                        value={cuadre.productosEntregados.cPacaAguaEnt}
-                        onChange={(e) => updateProductoEntregado(pedido.id, 'cPacaAguaEnt', parseInt(e.target.value) || 0)}
-                        className="w-full px-2 py-1 border rounded text-sm" />
-                      <span className="text-xs text-gray-400">/ {pedido.cPacaAguaPed}</span>
-                    </div>
-                  )}
-                  {pedido.cPacaHieloPed > 0 && (
-                    <div>
-                      <label className="text-xs text-gray-500">Paca Hielo</label>
-                      <input type="number" min={0} max={pedido.cPacaHieloPed}
-                        value={cuadre.productosEntregados.cPacaHieloEnt}
-                        onChange={(e) => updateProductoEntregado(pedido.id, 'cPacaHieloEnt', parseInt(e.target.value) || 0)}
-                        className="w-full px-2 py-1 border rounded text-sm" />
-                      <span className="text-xs text-gray-400">/ {pedido.cPacaHieloPed}</span>
-                    </div>
-                  )}
-                  {pedido.cBotellonFabPed > 0 && (
-                    <div>
-                      <label className="text-xs text-gray-500">Bot. Fab</label>
-                      <input type="number" min={0} max={pedido.cBotellonFabPed}
-                        value={cuadre.productosEntregados.cBotellonFabEnt}
-                        onChange={(e) => updateProductoEntregado(pedido.id, 'cBotellonFabEnt', parseInt(e.target.value) || 0)}
-                        className="w-full px-2 py-1 border rounded text-sm" />
-                      <span className="text-xs text-gray-400">/ {pedido.cBotellonFabPed}</span>
-                    </div>
-                  )}
-                  {pedido.cBotellonDomPed > 0 && (
-                    <div>
-                      <label className="text-xs text-gray-500">Bot. Dom</label>
-                      <input type="number" min={0} max={pedido.cBotellonDomPed}
-                        value={cuadre.productosEntregados.cBotellonDomEnt}
-                        onChange={(e) => updateProductoEntregado(pedido.id, 'cBotellonDomEnt', parseInt(e.target.value) || 0)}
-                        className="w-full px-2 py-1 border rounded text-sm" />
-                      <span className="text-xs text-gray-400">/ {pedido.cBotellonDomPed}</span>
-                    </div>
-                  )}
-                  {pedido.cBolsaAguaPed > 0 && (
-                    <div>
-                      <label className="text-xs text-gray-500">Bolsa Agua</label>
-                      <input type="number" min={0} max={pedido.cBolsaAguaPed}
-                        value={cuadre.productosEntregados.cBolsaAguaEnt}
-                        onChange={(e) => updateProductoEntregado(pedido.id, 'cBolsaAguaEnt', parseInt(e.target.value) || 0)}
-                        className="w-full px-2 py-1 border rounded text-sm" />
-                      <span className="text-xs text-gray-400">/ {pedido.cBolsaAguaPed}</span>
-                    </div>
-                  )}
-                  {pedido.cBolsaHieloPed > 0 && (
-                    <div>
-                      <label className="text-xs text-gray-500">Bolsa Hielo</label>
-                      <input type="number" min={0} max={pedido.cBolsaHieloPed}
-                        value={cuadre.productosEntregados.cBolsaHieloEnt}
-                        onChange={(e) => updateProductoEntregado(pedido.id, 'cBolsaHieloEnt', parseInt(e.target.value) || 0)}
-                        className="w-full px-2 py-1 border rounded text-sm" />
-                      <span className="text-xs text-gray-400">/ {pedido.cBolsaHieloPed}</span>
-                    </div>
-                  )}
+              {/* Productos entregados + precios reales */}
+              {cuadre.entregado !== 'NO_ENTREGADO' && (
+                <div className="mb-3">
+                  <label className="text-sm font-medium text-gray-700 mb-1 block">Productos entregados y precios reales</label>
+                  <div className="overflow-x-auto border rounded-lg">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 text-gray-500">
+                        <tr>
+                          <th className="px-2 py-2 text-left text-xs font-medium">Producto</th>
+                          <th className="px-2 py-2 text-center text-xs font-medium">Pedido</th>
+                          <th className="px-2 py-2 text-center text-xs font-medium">Entregó</th>
+                          <th className="px-2 py-2 text-center text-xs font-medium">Precio</th>
+                          <th className="px-2 py-2 text-right text-xs font-medium">Subtotal</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {[
+                          { key: 'cPacaAguaEnt' as const, precioKey: 'pacaAgua' as const, emoji: '🍶', label: 'Paca Agua', pedido: pedido.cPacaAguaPed },
+                          { key: 'cPacaHieloEnt' as const, precioKey: 'pacaHielo' as const, emoji: '🧊', label: 'Paca Hielo', pedido: pedido.cPacaHieloPed },
+                          { key: 'cBotellonFabEnt' as const, precioKey: 'botellonFab' as const, emoji: '🏭', label: 'Bot. Fab', pedido: pedido.cBotellonFabPed },
+                          { key: 'cBotellonDomEnt' as const, precioKey: 'botellonDom' as const, emoji: '🏠', label: 'Bot. Dom', pedido: pedido.cBotellonDomPed },
+                          { key: 'cBolsaAguaEnt' as const, precioKey: 'bolsaAgua' as const, emoji: '💧', label: 'Bol. Agua', pedido: pedido.cBolsaAguaPed },
+                          { key: 'cBolsaHieloEnt' as const, precioKey: 'bolsaHielo' as const, emoji: '❄️', label: 'Bol. Hielo', pedido: pedido.cBolsaHieloPed },
+                        ].map((prod) => {
+                          const cant = cuadre.productosEntregados[prod.key]
+                          const precio = cuadre.preciosReales[prod.precioKey]
+                          const subtotal = cant * precio
+                          return (
+                            <tr key={prod.key} className="hover:bg-gray-50">
+                              <td className="px-2 py-1.5">
+                                <span className="text-xs">{prod.emoji}</span>
+                                <span className="ml-1 text-xs font-medium">{prod.label}</span>
+                              </td>
+                              <td className="px-2 py-1.5 text-center text-xs text-gray-400">{prod.pedido}</td>
+                              <td className="px-2 py-1.5">
+                                <input type="number" min={0}
+                                  value={cant}
+                                  onChange={(e) => updateProductoEntregado(pedido.id, prod.key, parseInt(e.target.value) || 0)}
+                                  className="w-14 text-center px-1 py-0.5 border rounded text-sm" />
+                              </td>
+                              <td className="px-2 py-1.5">
+                                <div className="flex items-center gap-0.5">
+                                  <span className="text-xs text-gray-400">$</span>
+                                  <input type="number" min={0}
+                                    value={precio || ''}
+                                    onChange={(e) => updatePrecioReal(pedido.id, prod.precioKey, parseFloat(e.target.value) || 0)}
+                                    className="w-16 text-right px-1 py-0.5 border rounded text-sm" />
+                                </div>
+                              </td>
+                              <td className="px-2 py-1.5 text-right text-xs font-medium">
+                                {subtotal > 0 ? `$${subtotal.toLocaleString()}` : '-'}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
 
