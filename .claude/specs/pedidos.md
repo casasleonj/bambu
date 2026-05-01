@@ -257,10 +257,10 @@ No elimina físicamente. Marca como `ANULADO`.
 - [x] Separar estado de entrega vs pago en badges
 - [x] Permitir pedidos sin pagos (fiado)
 - [x] Estado inicial por ventaRapida, no por pago
-- [ ] Crear endpoint atómico `POST /api/pedidos/[id]/enviar`
-- [ ] Frontend: usar endpoint atómico, eliminar dos llamadas
-- [ ] Cerrar modal detalle antes de abrir embarque (o usar z-index portal)
-- [ ] Eliminar "Enviar sin asignar"
+- [x] Crear endpoint atómico `POST /api/pedidos/[id]/enviar`
+- [x] Frontend: usar endpoint atómico, eliminar dos llamadas
+- [x] Cerrar modal detalle antes de abrir embarque (o usar z-index portal)
+- [x] Eliminar "Enviar sin asignar"
 - [ ] Validación: preciosManuales >= 0
 - [ ] Proteger doble clic en Confirmar Envío
 - [ ] Mostrar saldo en tabla de pedidos

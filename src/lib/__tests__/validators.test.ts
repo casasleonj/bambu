@@ -17,17 +17,17 @@ describe('PedidoCreateSchema', () => {
     expect(result.success).toBe(false)
   })
 
-  it('fails without pagos', () => {
+  it('allows empty pagos (fiado orders)', () => {
     const result = PedidoCreateSchema.safeParse({
       clienteId: 'test-cliente-id',
     })
-    expect(result.success).toBe(false)
+    expect(result.success).toBe(true)
   })
 
   it('fails with negative product quantity', () => {
     const result = PedidoCreateSchema.safeParse({
       clienteId: 'test-cliente-id',
-      productos: { agua19L: -1 },
+      productos: { pacaAgua: -1 },
       pagos: [{ metodo: 'EFECTIVO', monto: 100 }],
     })
     expect(result.success).toBe(false)

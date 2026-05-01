@@ -575,6 +575,7 @@ export default function PedidosPage() {
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Cliente</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Productos</th>
                 <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Total</th>
+                <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Saldo</th>
                 <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">Estado</th>
                 <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Acciones</th>
               </tr>
@@ -582,7 +583,7 @@ export default function PedidosPage() {
             <tbody className="divide-y divide-gray-100">
               {pedidosFiltrados.length === 0 ? (
                 <tr>
-                  <td colSpan={6}>
+                  <td colSpan={7}>
                     <EmptyState
                       icon={<svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>}
                       title="No hay pedidos"
@@ -632,8 +633,12 @@ export default function PedidosPage() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="font-semibold text-gray-800">{formatCurrency(Number(pedido.total))}</div>
-                        {fiado && (
-                          <div className="text-xs text-red-500">Pendiente: {formatCurrency(Number(pedido.saldo))}</div>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {Number(pedido.saldo) > 0 ? (
+                          <span className="text-sm font-semibold text-red-600">{formatCurrency(Number(pedido.saldo))}</span>
+                        ) : (
+                          <span className="text-xs text-green-600 font-medium">✓</span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-center">{getEstadoBadge(pedido)}</td>
@@ -713,8 +718,10 @@ export default function PedidosPage() {
                     </div>
                     <div className="text-right ml-2">
                       <p className="font-bold text-gray-800 text-sm">{formatCurrency(Number(pedido.total))}</p>
-                      {fiado && (
-                        <p className="text-xs text-red-500 font-medium">Pendiente</p>
+                      {Number(pedido.saldo) > 0 ? (
+                        <p className="text-xs text-red-500 font-medium">Debe: {formatCurrency(Number(pedido.saldo))}</p>
+                      ) : (
+                        <p className="text-xs text-green-600 font-medium">Pagado</p>
                       )}
                     </div>
                   </div>
@@ -725,6 +732,36 @@ export default function PedidosPage() {
                     {pedido.cBotellonDomPed > 0 && <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 text-xs px-2 py-0.5 rounded-full">🏠 {pedido.cBotellonDomPed}</span>}
                     {pedido.cBolsaAguaPed > 0 && <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 text-xs px-2 py-0.5 rounded-full">💧 {pedido.cBolsaAguaPed}</span>}
                     {pedido.cBolsaHieloPed > 0 && <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 text-xs px-2 py-0.5 rounded-full">❄️ {pedido.cBolsaHieloPed}</span>}
+                  </div>
+                  {/* Quick actions on mobile */}
+                  <div className="flex gap-2 mt-3 pt-3 border-t border-gray-100">
+                    {pedido.estado === 'PENDIENTE' && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); cambiarEstado(pedido.id, 'EN_RUTA') }}
+                        disabled={updatingId === pedido.id}
+                        className="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium disabled:opacity-50"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
+                        Enviar
+                      </button>
+                    )}
+                    {pedido.estado === 'EN_RUTA' && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); cambiarEstado(pedido.id, 'ENTREGADO') }}
+                        disabled={updatingId === pedido.id}
+                        className="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                        Entregar
+                      </button>
+                    )}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setSelectedPedido(pedido); setShowDetailModal(true) }}
+                      className="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                      Detalle
+                    </button>
                   </div>
                 </div>
               )
