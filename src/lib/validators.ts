@@ -11,7 +11,7 @@ export const PedidoCreateSchema = z.object({
     bolsaAgua: z.coerce.number().int().min(0).optional(),
     bolsaHielo: z.coerce.number().int().min(0).optional(),
   }).optional(),
-  preciosManuales: z.record(z.string(), z.number()).optional(),
+  preciosManuales: z.record(z.string(), z.number().min(0, 'Precio manual no puede ser negativo')).optional(),
   pagos: z.array(
     z.object({
       metodo: z.enum(['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA', 'BONO']),

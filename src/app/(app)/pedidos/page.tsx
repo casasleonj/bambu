@@ -586,9 +586,9 @@ export default function PedidosPage() {
                   <td colSpan={7}>
                     <EmptyState
                       icon={<svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>}
-                      title="No hay pedidos"
-                      description="Crea tu primer pedido para comenzar"
-                      actionLabel="+ Crear Pedido"
+                      title={search || filtroEstado.length > 0 || filtroTipo.length > 0 ? "No hay resultados" : "No hay pedidos"}
+                      description={search || filtroEstado.length > 0 || filtroTipo.length > 0 ? "Ajusta los filtros o búsqueda para ver más pedidos" : "Crea tu primer pedido para comenzar"}
+                      actionLabel={search || filtroEstado.length > 0 || filtroTipo.length > 0 ? undefined : "+ Crear Pedido"}
                       onAction={() => setShowModal(true)}
                     />
                   </td>
@@ -689,9 +689,9 @@ export default function PedidosPage() {
           {pedidosFiltrados.length === 0 ? (
             <EmptyState
               icon={<svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>}
-              title="No hay pedidos"
-              description="Crea tu primer pedido para comenzar"
-              actionLabel="+ Crear Pedido"
+              title={search || filtroEstado.length > 0 || filtroTipo.length > 0 ? "No hay resultados" : "No hay pedidos"}
+              description={search || filtroEstado.length > 0 || filtroTipo.length > 0 ? "Ajusta los filtros o búsqueda para ver más pedidos" : "Crea tu primer pedido para comenzar"}
+              actionLabel={search || filtroEstado.length > 0 || filtroTipo.length > 0 ? undefined : "+ Crear Pedido"}
               onAction={() => setShowModal(true)}
             />
           ) : (

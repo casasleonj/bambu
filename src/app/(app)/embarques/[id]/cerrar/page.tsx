@@ -105,6 +105,7 @@ export default function CerrarEmbarquePage() {
   const [rotasAgua, setRotasAgua] = useState(0)
   const [rotasHielo, setRotasHielo] = useState(0)
   const [obsGeneral, setObsGeneral] = useState('')
+  const [showConfirmModal, setShowConfirmModal] = useState(false)
 
   useEffect(() => {
     async function fetchData() {
@@ -345,6 +346,17 @@ export default function CerrarEmbarquePage() {
       toast.error('Error de conexión')
     } finally {
       setSubmitting(false)
+      setShowConfirmModal(false)
+    }
+  }
+
+  function openConfirmModal() {
+    const noEntregados = Object.values(cuadres).filter(c => c.entregado === 'NO_ENTREGADO').length
+    const parciales = Object.values(cuadres).filter(c => c.entregado === 'PARCIAL').length
+    if (noEntregados > 0 || parciales > 0) {
+      setShowConfirmModal(true)
+    } else {
+      handleCerrar()
     }
   }
 
@@ -800,13 +812,46 @@ export default function CerrarEmbarquePage() {
           Cancelar
         </button>
         <button
-          onClick={handleCerrar}
+          onClick={openConfirmModal}
           disabled={submitting}
           className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium disabled:opacity-50"
         >
           {submitting ? 'Cerrando...' : 'Cerrar Ruta y Generar Reporte'}
         </button>
       </div>
+
+      {/* Confirmation Modal */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+            <h3 className="text-lg font-bold mb-2">Confirmar cierre de ruta</h3>
+            <div className="text-sm text-gray-600 mb-4 space-y-1">
+              {Object.values(cuadres).filter(c => c.entregado === 'NO_ENTREGADO').length > 0 && (
+                <p className="text-red-600">⚠️ {Object.values(cuadres).filter(c => c.entregado === 'NO_ENTREGADO').length} pedido(s) NO entregado(s) volverán a PENDIENTE</p>
+              )}
+              {Object.values(cuadres).filter(c => c.entregado === 'PARCIAL').length > 0 && (
+                <p className="text-yellow-600">⚠️ {Object.values(cuadres).filter(c => c.entregado === 'PARCIAL').length} pedido(s) con entrega PARCIAL</p>
+              )}
+              <p className="text-gray-500 mt-2">¿Estás seguro de continuar?</p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowConfirmModal(false)}
+                className="flex-1 px-4 py-2 border rounded-lg text-sm hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleCerrar}
+                disabled={submitting}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
+              >
+                {submitting ? 'Cerrando...' : 'Confirmar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

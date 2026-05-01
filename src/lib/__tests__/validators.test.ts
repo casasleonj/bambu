@@ -43,6 +43,24 @@ describe('PedidoCreateSchema', () => {
     })
     expect(result.success).toBe(true)
   })
+
+  it('fails with negative preciosManuales', () => {
+    const result = PedidoCreateSchema.safeParse({
+      clienteId: 'test-cliente-id',
+      preciosManuales: { pacaAgua: -5000 },
+      pagos: [{ metodo: 'EFECTIVO', monto: 100 }],
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('accepts zero or positive preciosManuales', () => {
+    const result = PedidoCreateSchema.safeParse({
+      clienteId: 'test-cliente-id',
+      preciosManuales: { pacaAgua: 0, pacaHielo: 8000 },
+      pagos: [{ metodo: 'EFECTIVO', monto: 100 }],
+    })
+    expect(result.success).toBe(true)
+  })
 })
 
 describe('ClienteCreateSchema', () => {
