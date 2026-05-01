@@ -81,16 +81,13 @@ Returns single client with related pedidos and facturas.
 
 ## Known Issues
 
-1. **console.error in error handlers** — Lines 82, 197, 215 in `clientes-client.tsx`. Should be sanitized in production.
-2. **No loading state on detail fetch** — `viewCliente()` has no loading indicator while fetching client details.
-3. **No role checks on delete** — Any authenticated user can deactivate a client.
+1. ~~**console.error in error handlers**~~ — FIXED: Removed all console.error calls.
+2. ~~**No loading state on detail fetch**~~ — FIXED: Added `detailLoading` state with spinner.
+3. ~~**No role checks on delete**~~ — FIXED: DELETE now requires ADMIN or CONTADOR role.
 4. **Search is local state only** — Unlike pedidos, search doesn't use URL params (no shareable filtered URLs).
 5. **Delete uses `confirm()`** — Should use a proper confirmation modal for consistency.
 
 ## Implementation TODO
 
-- [ ] Sanitize console.error in production
-- [ ] Add loading state to detail modal fetch
-- [ ] Add role check to DELETE endpoint
 - [ ] Migrate search to URL params
 - [ ] Replace confirm() with confirmation modal for delete

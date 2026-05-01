@@ -76,16 +76,14 @@ Deletes a recurring pattern. **Should require ADMIN role**.
 
 ## Known Issues
 
-1. **console.error in error handlers** — Line 84 in `recurrentes/page.tsx`. Should be sanitized.
+1. ~~**console.error in error handlers**~~ — FIXED: Removed all console.error calls.
 2. **No EmptyState when preview is empty** — Only shows when `recurrentes.length === 0`, not when preview has no items for today.
-3. **No role checks on delete** — Any authenticated user can delete a recurrente.
+3. ~~**No role checks on delete**~~ — FIXED: DELETE now requires ADMIN or CONTADOR role.
 4. **No loading state on generation** — `generating` state exists but no visual feedback on individual items.
 5. **Delete uses `confirm()`** — Should use a proper confirmation modal.
 
 ## Implementation TODO
 
-- [ ] Sanitize console.error in production
 - [ ] Add EmptyState for empty preview
-- [ ] Add role check to DELETE endpoint
 - [ ] Add loading state per item during generation
 - [ ] Replace confirm() with confirmation modal

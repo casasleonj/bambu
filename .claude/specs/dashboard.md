@@ -56,16 +56,14 @@ pedidosTrend = ((pedidos.length - pedidosAyer.length) / pedidosAyer.length) * 10
 
 ## Known Issues
 
-1. **Uses `any` type** — `buildVentasPorPrecio(pedidos: any[])` should be typed properly.
-2. **Stock doesn't include today's production** — Only subtracts sold, doesn't add `Produccion` records from today.
+1. ~~**Uses `any` type**~~ — FIXED: `buildVentasPorPrecio` now uses `PedidoRaw` interface.
+2. ~~**Stock doesn't include today's production**~~ — FIXED: Stock now adds `produccionHoy` aggregates.
 3. **No error boundary** — If one query fails, entire dashboard fails (500 error).
 4. **`clientesConFiado` is `_count` not unique clients** — Should be `_count` of distinct clients with saldo > 0.
 5. **Hourly chart assumes 6am-5pm** — Hardcoded range, may not fit all business hours.
 
 ## Implementation TODO
 
-- [ ] Type `pedidos` parameter in `buildVentasPorPrecio`
-- [ ] Add today's production to stock calculation
 - [ ] Add error boundary / graceful degradation
 - [ ] Fix `clientesConFiado` to count distinct clients
 - [ ] Make hourly chart range configurable
