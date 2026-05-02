@@ -1,8 +1,9 @@
 import { formatZodError } from '@/lib/utils'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
 import { ProveedorUpdateSchema } from '@/lib/validators'
+import { apiSuccess, apiError } from '@/lib/api-response'
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
@@ -12,15 +13,15 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const body = await request.json()
     const parsed = ProveedorUpdateSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
+      return apiError('Datos invalidos', 400, { formErrors: [formatZodError(parsed.error)] })
     }
     const proveedor = await prisma.proveedor.update({
       where: { id },
       data: parsed.data,
     })
-    return NextResponse.json({ success: true, proveedor })
+    return apiSuccess({ proveedor })
   } catch (error) {
-    return NextResponse.json({ error: 'Error updating' }, { status: 500 })
+    return apiError('Error actualizando proveedor')
   }
 }
 
@@ -33,8 +34,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       where: { id },
       data: { activo: false },
     })
-    return NextResponse.json({ success: true })
+    return apiSuccess({})
   } catch (error) {
-    return NextResponse.json({ error: 'Error deleting' }, { status: 500 })
+    return apiError('Error eliminando proveedor')
   }
 }

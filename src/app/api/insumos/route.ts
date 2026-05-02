@@ -1,8 +1,9 @@
 import { formatZodError } from '@/lib/utils'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
 import { InsumoCreateSchema } from '@/lib/validators'
+import { apiSuccess, apiError } from '@/lib/api-response'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -12,12 +13,13 @@ export async function GET(request: NextRequest) {
   const alertOnly = searchParams.get('alertas') === 'true'
 
   try {
-    const where: any = {}
+    const where: Record<string, unknown> = {}
     if (conStock) {
       where.stock = { gt: 0 }
     }
     if (alertOnly) {
-      where.stock = { ...where.stock, lte: prisma.insumo.fields.stockMin }
+      const currentStock = where.stock as Record<string, unknown> | undefined
+      where.stock = { ...currentStock, lte: prisma.insumo.fields.stockMin }
     }
 
     const insumos = await prisma.insumo.findMany({
@@ -26,10 +28,10 @@ export async function GET(request: NextRequest) {
       orderBy: { nombre: 'asc' },
     })
 
-    return NextResponse.json({ insumos })
+    return apiSuccess({ insumos })
   } catch (error) {
     console.error('Error fetching insumos:', error instanceof Error ? error.message : 'Unknown')
-    return NextResponse.json({ error: 'Error fetching insumos' }, { status: 500 })
+    return apiError('Error cargando insumos')
   }
 }
 
@@ -40,7 +42,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const parsed = InsumoCreateSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
+      return apiError('Datos invalidos', 400, { formErrors: [formatZodError(parsed.error)] })
     }
     const { nombre, unidad, stock, stockMin, precioUnit, proveedorId } = parsed.data
 
@@ -55,9 +57,9 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    return NextResponse.json({ success: true, insumo }, { status: 201 })
+    return apiSuccess({ insumo }, 201)
   } catch (error) {
     console.error('Error creating insumo:', error instanceof Error ? error.message : 'Unknown')
-    return NextResponse.json({ error: 'Error creating insumo' }, { status: 500 })
+    return apiError('Error creando insumo')
   }
 }

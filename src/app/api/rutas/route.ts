@@ -1,11 +1,12 @@
 import { formatZodError } from '@/lib/utils'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
 import { z } from 'zod'
 import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
+import { apiSuccess, apiError } from '@/lib/api-response'
 
 const RutaCreateSchema = z.object({
   nombre: z.string().min(1).max(100),
@@ -42,14 +43,14 @@ export async function GET(request: NextRequest) {
       prisma.ruta.count({ where }),
     ])
 
-    return NextResponse.json(
+    return apiSuccess(
       pagination.all
         ? { rutas, total }
         : buildPaginationResponse(rutas, total, pagination.page!, pagination.pageSize!)
     )
   } catch (error) {
     console.error('Error fetching rutas:', error instanceof Error ? error.message : 'Unknown')
-    return NextResponse.json({ error: 'Error al cargar rutas' }, { status: 500 })
+    return apiError('Error cargando rutas')
   }
 }
 
@@ -64,7 +65,7 @@ export async function POST(request: NextRequest) {
     const parsed = RutaCreateSchema.safeParse(body)
 
     if (!parsed.success) {
-      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
+      return apiError('Datos invalidos', 400, { formErrors: [formatZodError(parsed.error)] })
     }
 
     const { nombre, dias, repartidorId, repartidorRespaldoId, horarioInicio, horarioFin } = parsed.data
@@ -93,10 +94,10 @@ export async function POST(request: NextRequest) {
       usuarioId: (authResult.user as { id: string }).id,
     })
 
-    return NextResponse.json({ success: true, ruta }, { status: 201 })
+    return apiSuccess({ ruta }, 201)
   } catch (error) {
     console.error('Error creating ruta:', error instanceof Error ? error.message : 'Unknown')
-    return NextResponse.json({ error: 'Error al crear ruta' }, { status: 500 })
+    return apiError('Error creando ruta')
   }
 }
 
@@ -109,15 +110,15 @@ export async function PUT(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
-    if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 })
+    if (!id) return apiError('ID requerido', 400)
     const parsedId = z.string().min(1).safeParse(id)
-    if (!parsedId.success) return NextResponse.json({ error: 'ID formato inválido' }, { status: 400 })
+    if (!parsedId.success) return apiError('ID formato invalido', 400)
 
     const body = await request.json()
     const parsed = RutaUpdateSchema.safeParse(body)
 
     if (!parsed.success) {
-      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
+      return apiError('Datos invalidos', 400, { formErrors: [formatZodError(parsed.error)] })
     }
 
     const ruta = await prisma.ruta.update({
@@ -143,10 +144,10 @@ export async function PUT(request: NextRequest) {
       usuarioId: (authResult.user as { id: string }).id,
     })
 
-    return NextResponse.json({ success: true, ruta })
+    return apiSuccess({ ruta })
   } catch (error) {
     console.error('Error updating ruta:', error instanceof Error ? error.message : 'Unknown')
-    return NextResponse.json({ error: 'Error al actualizar ruta' }, { status: 500 })
+    return apiError('Error actualizando ruta')
   }
 }
 
@@ -159,7 +160,7 @@ export async function DELETE(request: NextRequest) {
     const id = searchParams.get('id')
 
     if (!id) {
-      return NextResponse.json({ error: 'ID requerido' }, { status: 400 })
+      return apiError('ID requerido', 400)
     }
 
     const ruta = await prisma.ruta.update({
@@ -175,9 +176,9 @@ export async function DELETE(request: NextRequest) {
       usuarioId: (authResult.user as { id: string }).id,
     })
 
-    return NextResponse.json({ success: true, ruta })
+    return apiSuccess({ ruta })
   } catch (error) {
     console.error('Error deleting ruta:', error instanceof Error ? error.message : 'Unknown')
-    return NextResponse.json({ error: 'Error al eliminar ruta' }, { status: 500 })
+    return apiError('Error eliminando ruta')
   }
 }

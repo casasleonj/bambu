@@ -1,5 +1,5 @@
 import { formatZodError } from '@/lib/utils'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { EmbarqueCreateSchema } from '@/lib/validators'
@@ -10,6 +10,7 @@ import { calcularPacasEmbarque } from '@/lib/embarque-capacidad'
 import { withAdvisoryLock } from '@/lib/locks'
 import { EstadoEmbarque } from '@prisma/client'
 import { ROLES } from '@/lib/constants'
+import { apiSuccess, apiError } from '@/lib/api-response'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -47,19 +48,18 @@ export async function GET(request: NextRequest) {
       prisma.embarque.count({ where }),
     ])
 
-    // Add capacity calculation
     const embarques = embarquesRaw.map((e) => ({
       ...e,
       totalPacas: calcularPacasEmbarque(e.pedidos),
     }))
 
-    return NextResponse.json(
+    return apiSuccess(
       pagination.all
         ? { embarques, total }
         : buildPaginationResponse(embarques, total, pagination.page!, pagination.pageSize!)
     )
   } catch (error) {
-    return NextResponse.json({ error: 'Error' }, { status: 500 })
+    return apiError('Error cargando embarques')
   }
 }
 
@@ -72,12 +72,12 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const parsed = EmbarqueCreateSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
+      return apiError('Datos invalidos', 400, { formErrors: [formatZodError(parsed.error)] })
     }
 
     const totalPacas = (parsed.data.pacasAgua || 0) + (parsed.data.pacasHielo || 0)
     if (totalPacas > 70) {
-      return NextResponse.json({ error: `Capacidad excedida: ${totalPacas} pacas. Máximo 70.` }, { status: 400 })
+      return apiError(`Capacidad excedida: ${totalPacas} pacas. Maximo 70.`, 400)
     }
     
     const trabajador = await prisma.trabajador.findUnique({
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
     })
     
     if (!trabajador) {
-      return NextResponse.json({ error: 'Trabajador no encontrado' }, { status: 400 })
+      return apiError('Trabajador no encontrado', 400)
     }
     
     const embarque = await prisma.embarque.create({
@@ -116,9 +116,9 @@ export async function POST(request: NextRequest) {
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     })
 
-    return NextResponse.json({ success: true, embarque }, { status: 201 })
+    return apiSuccess({ embarque }, 201)
   } catch (error) {
     console.error('Error creating embarque:', error instanceof Error ? error.message : 'Unknown')
-    return NextResponse.json({ error: 'Error creating embarque' }, { status: 500 })
+    return apiError('Error creando embarque')
   }
 }

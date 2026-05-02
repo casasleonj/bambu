@@ -49,6 +49,7 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
   const [editingId, setEditingId] = useState<string | null>(null)
   const [formError, setFormError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [fetchError, setFetchError] = useState<string | null>(null)
   const [formData, setFormData] = useState({
     nombre: '',
     rol: 'SELLADOR',
@@ -61,12 +62,15 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
   })
 
   async function fetchTrabajadores() {
+    setFetchError(null)
     try {
       const res = await fetch('/api/trabajadores')
+      if (!res.ok) throw new Error('Error al cargar trabajadores')
       const data = await res.json()
       setTrabajadores(data.trabajadores || [])
     } catch (error) {
       console.error('Error fetching trabajadores:', error)
+      setFetchError('No se pudieron cargar los trabajadores')
       toast.error('Error cargando trabajadores')
     }
   }
@@ -189,6 +193,18 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
         />
       </div>
 
+      {fetchError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 flex items-center justify-between">
+          <p className="text-red-700 text-sm">{fetchError}</p>
+          <button
+            onClick={fetchTrabajadores}
+            className="px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium"
+          >
+            Reintentar
+          </button>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {trabajadoresFiltrados.length === 0 ? (
           <div className="col-span-full">
@@ -293,8 +309,9 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
         )}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Nombre *</label>
+            <label htmlFor="trabajador-nombre" className="block text-sm font-medium mb-1">Nombre *</label>
             <input
+              id="trabajador-nombre"
               type="text"
               required
               value={formData.nombre}
@@ -305,8 +322,9 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Rol *</label>
+              <label htmlFor="trabajador-rol" className="block text-sm font-medium mb-1">Rol *</label>
               <select
+                id="trabajador-rol"
                 required
                 value={formData.rol}
                 onChange={(e) => setFormData({ ...formData, rol: e.target.value })}
@@ -320,8 +338,9 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Tipo de pago</label>
+              <label htmlFor="trabajador-tipoPago" className="block text-sm font-medium mb-1">Tipo de pago</label>
               <select
+                id="trabajador-tipoPago"
                 value={formData.tipoPago}
                 onChange={(e) => setFormData({ ...formData, tipoPago: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg"
@@ -350,8 +369,9 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Com. paca agua</label>
+              <label htmlFor="trabajador-comPacaAgua" className="block text-sm font-medium mb-1">Com. paca agua</label>
               <input
+                id="trabajador-comPacaAgua"
                 type="number"
                 min={0}
                 value={formData.comPacaAgua}
@@ -362,8 +382,9 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Com. paca hielo</label>
+              <label htmlFor="trabajador-comPacaHielo" className="block text-sm font-medium mb-1">Com. paca hielo</label>
               <input
+                id="trabajador-comPacaHielo"
                 type="number"
                 min={0}
                 value={formData.comPacaHielo}
@@ -377,8 +398,9 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Salario fijo</label>
+              <label htmlFor="trabajador-salarioFijo" className="block text-sm font-medium mb-1">Salario fijo</label>
               <input
+                id="trabajador-salarioFijo"
                 type="number"
                 min={0}
                 value={formData.salarioFijo}
@@ -389,8 +411,9 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Telefono</label>
+              <label htmlFor="trabajador-telefono" className="block text-sm font-medium mb-1">Telefono</label>
               <input
+                id="trabajador-telefono"
                 type="text"
                 value={formData.telefono}
                 onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}

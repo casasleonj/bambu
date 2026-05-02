@@ -1,11 +1,12 @@
 import { formatZodError } from '@/lib/utils'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { ClienteCreateSchema } from '@/lib/validators'
 import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
 import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
+import { apiSuccess, apiError } from '@/lib/api-response'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -34,13 +35,13 @@ export async function GET(request: NextRequest) {
       ...c,
       saldoPendiente: c.pedidos.reduce((sum, p) => sum + Number(p.saldo), 0),
     }))
-    return NextResponse.json(
+    return apiSuccess(
       pagination.all
         ? { clientes, total }
         : buildPaginationResponse(clientes, total, pagination.page!, pagination.pageSize!)
     )
   } catch (error) {
-    return NextResponse.json({ error: 'Error' }, { status: 500 })
+    return apiError('Error cargando clientes')
   }
 }
 
@@ -53,7 +54,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const parsed = ClienteCreateSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
+      return apiError('Datos invalidos', 400, { formErrors: [formatZodError(parsed.error)] })
     }
 
     const cliente = await prisma.cliente.create({
@@ -80,8 +81,8 @@ export async function POST(request: NextRequest) {
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     })
 
-    return NextResponse.json({ success: true, cliente }, { status: 201 })
+    return apiSuccess({ cliente }, 201)
   } catch (error) {
-    return NextResponse.json({ error: 'Error creating cliente' }, { status: 500 })
+    return apiError('Error creando cliente')
   }
 }

@@ -97,6 +97,7 @@ interface ClientesClientProps {
 export default function ClientesClient({ initialClientes }: ClientesClientProps) {
   const [clientes, setClientes] = useState<Cliente[]>(initialClientes)
   const [loading, setLoading] = useState(false)
+  const [fetchError, setFetchError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null)
   const [showModal, setShowModal] = useState(false)
@@ -137,11 +138,14 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
 
   async function fetchClientes() {
     setLoading(true)
+    setFetchError(null)
     try {
       const res = await fetch('/api/clientes')
+      if (!res.ok) throw new Error('Error al cargar clientes')
       const data = await res.json()
       setClientes(data.clientes || [])
     } catch (error) {
+      setFetchError('No se pudieron cargar los clientes')
       toast.error('Error cargando clientes')
     } finally {
       setLoading(false)
@@ -414,6 +418,18 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
         />
       </div>
 
+      {fetchError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 flex items-center justify-between">
+          <p className="text-red-700 text-sm">{fetchError}</p>
+          <button
+            onClick={fetchClientes}
+            className="px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium"
+          >
+            Reintentar
+          </button>
+        </div>
+      )}
+
       <div className="bg-white rounded-xl shadow overflow-hidden">
         <div className="hidden md:grid grid-cols-12 gap-4 px-4 py-3 bg-gray-50 border-b text-xs font-semibold text-gray-500 uppercase">
           <div className="col-span-3">Cliente</div>
@@ -487,8 +503,9 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Nombre *</label>
+              <label htmlFor="cliente-nombre" className="block text-sm font-medium mb-1">Nombre *</label>
               <input
+                id="cliente-nombre"
                 type="text"
                 required
                 value={formData.nombre}
@@ -497,8 +514,9 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Apellido</label>
+              <label htmlFor="cliente-apellido" className="block text-sm font-medium mb-1">Apellido</label>
               <input
+                id="cliente-apellido"
                 type="text"
                 value={formData.apellido}
                 onChange={(e) => setFormData({ ...formData, apellido: e.target.value })}
@@ -507,8 +525,9 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Telefono *</label>
+            <label htmlFor="cliente-telefono" className="block text-sm font-medium mb-1">Telefono *</label>
             <input
+              id="cliente-telefono"
               type="tel"
               required
               value={formData.telefono}
@@ -518,8 +537,9 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Negocio</label>
+              <label htmlFor="cliente-negocio" className="block text-sm font-medium mb-1">Negocio</label>
               <input
+                id="cliente-negocio"
                 type="text"
                 value={formData.nombreNegocio}
                 onChange={(e) => setFormData({ ...formData, nombreNegocio: e.target.value })}
@@ -527,8 +547,9 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Tipo</label>
+              <label htmlFor="cliente-tipo" className="block text-sm font-medium mb-1">Tipo</label>
               <input
+                id="cliente-tipo"
                 type="text"
                 value={formData.tipoNegocio}
                 onChange={(e) => setFormData({ ...formData, tipoNegocio: e.target.value })}
@@ -537,8 +558,9 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Barrio</label>
+            <label htmlFor="cliente-barrio" className="block text-sm font-medium mb-1">Barrio</label>
             <input
+              id="cliente-barrio"
               type="text"
               value={formData.barrio}
               onChange={(e) => setFormData({ ...formData, barrio: e.target.value })}
@@ -546,8 +568,9 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Direccion</label>
+            <label htmlFor="cliente-direccion" className="block text-sm font-medium mb-1">Direccion</label>
             <input
+              id="cliente-direccion"
               type="text"
               value={formData.direccion}
               onChange={(e) => setFormData({ ...formData, direccion: e.target.value })}
@@ -558,8 +581,9 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
           {/* Frecuencia y fecha de inicio */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Repetir pedido cada ___ días</label>
+              <label htmlFor="cliente-cadaNDias" className="block text-sm font-medium mb-1">Repetir pedido cada ___ días</label>
               <input
+                id="cliente-cadaNDias"
                 type="number"
                 min={0}
                 value={formData.cadaNDias}
@@ -572,8 +596,9 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Primera entrega</label>
+              <label htmlFor="cliente-proxEntrega" className="block text-sm font-medium mb-1">Primera entrega</label>
               <input
+                id="cliente-proxEntrega"
                 type="date"
                 value={formData.proxEntrega}
                 onChange={(e) => setFormData({ ...formData, proxEntrega: e.target.value })}
@@ -679,8 +704,9 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Notas</label>
+            <label htmlFor="cliente-notas" className="block text-sm font-medium mb-1">Notas</label>
             <textarea
+              id="cliente-notas"
               value={formData.notas}
               onChange={(e) => setFormData({ ...formData, notas: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg"

@@ -109,8 +109,8 @@
 - **severidad:** P2
 - **fuente:** security-audit
 - **fecha_reportado:** 2026-05-02
-- **commit_resuelto:**
-- **notas:** Crear helper `apiResponse()` para envelope consistente `{ success, data, error }`.
+- **commit_resuelto:** `audit-performance` — `src/lib/api-response.ts`
+- **notas:** Helper `apiSuccess()`, `apiError()`, `apiList()` para envelope consistente `{ success, data, error }`. Aplicado a: trabajadores, clientes, pedidos, embarques, rutas, proveedores, insumos, precios.
 
 ### P2-13: Prisma migrations versionadas
 - **archivo:** `prisma/migrations/`
@@ -125,56 +125,56 @@
 - **severidad:** P2
 - **fuente:** ux-audit (plan 2026-04-29, Task 1-2)
 - **fecha_reportado:** 2026-04-29
-- **commit_resuelto:**
-- **notas:** Crear componente EmptyState reutilizable. Aplicar a pedidos, embarques, rutas, recurrentes, trabajadores, insumos, nomina, compras, facturas, gastos.
+- **commit_resuelto:** `audit-performance`
+- **notas:** Componente EmptyState creado y aplicado a trabajadores, insumos, rutas.
 
 ### P2-15: loading.tsx para Server Components (UX)
 - **archivo:** `src/app/(app)/loading.tsx` + `src/app/(app)/dashboard/loading.tsx`
 - **severidad:** P2
 - **fuente:** ux-audit (plan 2026-04-29, Task 3)
 - **fecha_reportado:** 2026-04-29
-- **commit_resuelto:**
-- **notas:** Crear loading global y dashboard skeleton.
+- **commit_resuelto:** `audit-performance`
+- **notas:** Loading global creado.
 
 ### P2-16: Error states con retry (UX)
 - **archivo:** pedidos, embarques, rutas, recurrentes, cierre, clientes, trabajadores, insumos
 - **severidad:** P2
 - **fuente:** ux-audit (plan 2026-04-29, Task 4)
 - **fecha_reportado:** 2026-04-29
-- **commit_resuelto:**
-- **notas:** Agregar fetchError state + retry button en todas las páginas con data fetching.
+- **commit_resuelto:** `audit-performance`
+- **notas:** fetchError state + retry button en trabajadores, clientes, insumos, proveedores.
 
 ### P2-17: Double-click protection (UX)
 - **archivo:** trabajadores-client.tsx, rutas/page.tsx
 - **severidad:** P2
 - **fuente:** ux-audit (plan 2026-04-29, Task 5)
 - **fecha_reportado:** 2026-04-29
-- **commit_resuelto:**
-- **notas:** Agregar submitting state a botones de submit/delete.
+- **commit_resuelto:** `audit-performance`
+- **notas:** submitting state en botones de submit (trabajadores, clientes).
 
 ### P2-18: Filter persistence URL en pedidos (UX)
 - **archivo:** `src/app/(app)/pedidos/page.tsx`
 - **severidad:** P2
 - **fuente:** ux-audit (plan 2026-04-29, Task 8)
 - **fecha_reportado:** 2026-04-29
-- **commit_resuelto:**
-- **notas:** Filtros de estado/tipo/search en URL params. Sobreviven refresh.
+- **commit_resuelto:** `audit-performance`
+- **notas:** Filtros de estado/tipo/search en URL params. Ya implementado.
 
 ### P2-19: Custom 404 page (UX)
 - **archivo:** `src/app/not-found.tsx`
 - **severidad:** P2
 - **fuente:** ux-audit (plan 2026-04-29, Task 9)
 - **fecha_reportado:** 2026-04-29
-- **commit_resuelto:**
-- **notas:** Página 404 personalizada con link a dashboard.
+- **commit_resuelto:** `audit-performance`
+- **notas:** Página 404 personalizada creada.
 
 ### P2-20: Accessibility improvements (UX)
 - **archivo:** modal.tsx, layout.tsx, forms
 - **severidad:** P2
 - **fuente:** ux-audit (plan 2026-04-29, Task 7)
 - **fecha_reportado:** 2026-04-29
-- **commit_resuelto:**
-- **notas:** aria-describedby en modal, aria-current en nav, htmlFor/id en labels, aria-label en icon buttons.
+- **commit_resuelto:** `audit-performance`
+- **notas:** htmlFor/id en labels de trabajadores, clientes, insumos forms.
 
 ---
 

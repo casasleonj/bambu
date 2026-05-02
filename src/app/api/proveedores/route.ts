@@ -1,8 +1,9 @@
 import { formatZodError } from '@/lib/utils'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
 import { ProveedorCreateSchema } from '@/lib/validators'
+import { apiSuccess, apiError } from '@/lib/api-response'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -12,9 +13,9 @@ export async function GET(request: NextRequest) {
       where: { activo: true },
       orderBy: { nombre: 'asc' },
     })
-    return NextResponse.json({ proveedores })
+    return apiSuccess({ proveedores })
   } catch (error) {
-    return NextResponse.json({ error: 'Error fetching proveedores' }, { status: 500 })
+    return apiError('Error cargando proveedores')
   }
 }
 
@@ -25,7 +26,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const parsed = ProveedorCreateSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
+      return apiError('Datos invalidos', 400, { formErrors: [formatZodError(parsed.error)] })
     }
     const proveedor = await prisma.proveedor.create({
       data: {
@@ -35,8 +36,8 @@ export async function POST(request: NextRequest) {
         direccion: parsed.data.direccion,
       },
     })
-    return NextResponse.json({ success: true, proveedor }, { status: 201 })
+    return apiSuccess({ proveedor }, 201)
   } catch (error) {
-    return NextResponse.json({ error: 'Error creating proveedor' }, { status: 500 })
+    return apiError('Error creando proveedor')
   }
 }

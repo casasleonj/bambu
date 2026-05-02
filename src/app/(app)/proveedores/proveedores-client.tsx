@@ -131,8 +131,14 @@ export default function ProveedoresClient({
         </div>
 
         {error && (
-          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
-            {error}
+          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300 flex items-center justify-between">
+            <span>{error}</span>
+            <button
+              onClick={fetchProveedores}
+              className="ml-4 inline-flex items-center justify-center rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-red-700"
+            >
+              Reintentar
+            </button>
           </div>
         )}
 

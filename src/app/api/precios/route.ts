@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { z } from 'zod'
+import { apiSuccess, apiError } from '@/lib/api-response'
 
 const PrecioHistorialSchema = z.object({
   producto: z.enum([
@@ -25,16 +26,15 @@ export async function GET(request: NextRequest) {
   if (authResult instanceof Response) return authResult
 
   try {
-    // Get latest price for each product (legacy PrecioHistorial)
     const precios = await prisma.precioHistorial.findMany({
       orderBy: { vigenteDesde: 'desc' },
       distinct: ['producto'],
     })
 
-    return NextResponse.json({ precios })
+    return apiSuccess({ precios })
   } catch (error) {
     console.error('Error fetching precios:', error instanceof Error ? error.message : 'Unknown')
-    return NextResponse.json({ error: 'Error fetching precios' }, { status: 500 })
+    return apiError('Error cargando precios')
   }
 }
 
@@ -47,7 +47,6 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
 
-    // Handle PrecioVolumen update
     const volumenParsed = PrecioVolumenSchema.safeParse(body)
     if (volumenParsed.success) {
       const { precioVolumenId, precio } = volumenParsed.data
@@ -55,10 +54,9 @@ export async function POST(request: NextRequest) {
         where: { id: precioVolumenId },
         data: { precio },
       })
-      return NextResponse.json({ success: true })
+      return apiSuccess({})
     }
 
-    // Handle legacy PrecioHistorial create
     const historialParsed = PrecioHistorialSchema.safeParse(body)
     if (historialParsed.success) {
       const { producto, precio } = historialParsed.data
@@ -69,15 +67,12 @@ export async function POST(request: NextRequest) {
           creadoPor: authResult.user?.email || 'unknown',
         },
       })
-      return NextResponse.json({ success: true, precio: record }, { status: 201 })
+      return apiSuccess({ precio: record }, 201)
     }
 
-    return NextResponse.json(
-      { error: 'Datos invalidos. Envie {precioVolumenId, precio} o {producto, precio}.' },
-      { status: 400 }
-    )
+    return apiError('Datos invalidos. Envie {precioVolumenId, precio} o {producto, precio}.', 400)
   } catch (error) {
     console.error('Error updating precio:', error instanceof Error ? error.message : 'Unknown')
-    return NextResponse.json({ error: 'Error actualizando precio' }, { status: 500 })
+    return apiError('Error actualizando precio')
   }
 }

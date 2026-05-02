@@ -1,5 +1,5 @@
 import { formatZodError } from '@/lib/utils'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { PedidoCreateSchema } from '@/lib/validators'
@@ -10,6 +10,7 @@ import { getTodayRange } from '@/lib/dates'
 import { resolverPreciosPedido, type Canal, type ProductCode } from '@/lib/pricing'
 import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
+import { apiSuccess, apiError } from '@/lib/api-response'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -50,14 +51,14 @@ export async function GET(request: NextRequest) {
       fecha: p.fecha.toISOString(),
     }))
 
-    return NextResponse.json(
+    return apiSuccess(
       pagination.all
         ? { pedidos, total }
         : buildPaginationResponse(pedidos, total, pagination.page!, pagination.pageSize!)
     )
   } catch (error) {
     console.error('Error fetching pedidos:', error instanceof Error ? error.message : 'Unknown')
-    return NextResponse.json({ error: 'Error fetching pedidos' }, { status: 500 })
+    return apiError('Error cargando pedidos')
   }
 }
 
@@ -70,7 +71,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const parsed = PedidoCreateSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
+      return apiError('Datos invalidos', 400, { formErrors: [formatZodError(parsed.error)] })
     }
     const { clienteId: rawClienteId, productos, obs, fechaEntrega, canal, preciosManuales, clienteNuevo } = parsed.data
 
@@ -190,9 +191,9 @@ export async function POST(request: NextRequest) {
       usuarioId: authResult.user?.id,
     })
 
-    return NextResponse.json({ success: true, pedido: result.pedido }, { status: 201 })
+    return apiSuccess({ pedido: result.pedido }, 201)
   } catch (error) {
     console.error('Error creating pedido:', error instanceof Error ? error.message : 'Unknown')
-    return NextResponse.json({ error: 'Error creating pedido' }, { status: 500 })
+    return apiError('Error creando pedido')
   }
 }

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { TrabajadorCreateSchema } from '@/lib/validators'
+import { apiSuccess, apiError, apiList } from '@/lib/api-response'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -11,6 +12,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const rol = searchParams.get('rol')
     const activo = searchParams.get('activo')
+    const all = searchParams.get('all')
 
     const where: Record<string, unknown> = {}
     if (rol) where.rol = rol
@@ -20,9 +22,9 @@ export async function GET(request: NextRequest) {
       where,
       orderBy: { nombre: 'asc' },
     })
-    return NextResponse.json({ trabajadores })
+    return all === 'true' ? apiSuccess({ trabajadores }) : apiList(trabajadores)
   } catch (error) {
-    return NextResponse.json({ error: 'Error' }, { status: 500 })
+    return apiError('Error cargando trabajadores')
   }
 }
 
@@ -35,7 +37,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const parsed = TrabajadorCreateSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
+      return apiError('Datos invalidos', 400, { formErrors: [formatZodError(parsed.error)] })
     }
 
     const trabajador = await prisma.trabajador.create({
@@ -50,9 +52,9 @@ export async function POST(request: NextRequest) {
         telefono: parsed.data.telefono,
       },
     })
-    return NextResponse.json({ success: true, trabajador }, { status: 201 })
+    return apiSuccess({ trabajador }, 201)
   } catch (error) {
     console.error('Error creating trabajador:', error instanceof Error ? error.message : 'Unknown')
-    return NextResponse.json({ error: 'Error creating trabajador' }, { status: 500 })
+    return apiError('Error creando trabajador')
   }
 }

@@ -40,19 +40,23 @@ export default function InsumosClient({ initialInsumos, initialProveedores }: In
   const [precioUnit, setPrecioUnit] = useState('')
   const [proveedorId, setProveedorId] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [fetchError, setFetchError] = useState<string | null>(null)
 
   const fetchData = async () => {
+    setFetchError(null)
     try {
       const [iRes, pRes] = await Promise.all([
         fetch('/api/insumos'),
         fetch('/api/proveedores'),
       ])
+      if (!iRes.ok || !pRes.ok) throw new Error('Error al cargar datos')
       const iData = await iRes.json()
       const pData = await pRes.json()
       setInsumos(iData.insumos || [])
       setProveedores(pData.proveedores || [])
     } catch (e) {
       console.error(e)
+      setFetchError('No se pudieron cargar los insumos')
       toast.error('Error cargando insumos')
     }
   }
@@ -102,6 +106,18 @@ export default function InsumosClient({ initialInsumos, initialProveedores }: In
         </div>
       )}
 
+      {fetchError && (
+        <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
+          <p className="text-red-700 text-sm">{fetchError}</p>
+          <button
+            onClick={fetchData}
+            className="px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium"
+          >
+            Reintentar
+          </button>
+        </div>
+      )}
+
       <div className="grid grid-cols-3 gap-4">
         <Card className="bg-muted">
           <CardContent className="p-4 text-center">
@@ -135,20 +151,20 @@ export default function InsumosClient({ initialInsumos, initialProveedores }: In
             <CardTitle>Crear Insumo</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div><Label>Nombre</Label><Input value={nombre} onChange={e => setNombre(e.target.value)} /></div>
-            <div><Label>Unidad</Label>
-              <select className="w-full h-10 rounded-md border bg-background px-3" value={unidad} onChange={e => setUnidad(e.target.value)}>
+            <div><Label htmlFor="insumo-nombre">Nombre</Label><Input id="insumo-nombre" value={nombre} onChange={e => setNombre(e.target.value)} /></div>
+            <div><Label htmlFor="insumo-unidad">Unidad</Label>
+              <select id="insumo-unidad" className="w-full h-10 rounded-md border bg-background px-3" value={unidad} onChange={e => setUnidad(e.target.value)}>
                 <option value="UNIDAD">Unidad</option>
                 <option value="KG">Kilogramo</option>
                 <option value="LITRO">Litro</option>
                 <option value="BOLSA">Bolsa</option>
               </select>
             </div>
-            <div><Label>Stock Inicial</Label><Input type="number" value={stock} onChange={e => setStock(e.target.value)} /></div>
-            <div><Label>Stock Minimo</Label><Input type="number" value={stockMin} onChange={e => setStockMin(e.target.value)} /></div>
-            <div><Label>Precio Unitario</Label><Input type="number" value={precioUnit} onChange={e => setPrecioUnit(e.target.value)} /></div>
-            <div><Label>Proveedor</Label>
-              <select className="w-full h-10 rounded-md border bg-background px-3" value={proveedorId} onChange={e => setProveedorId(e.target.value)}>
+            <div><Label htmlFor="insumo-stock">Stock Inicial</Label><Input id="insumo-stock" type="number" value={stock} onChange={e => setStock(e.target.value)} /></div>
+            <div><Label htmlFor="insumo-stockMin">Stock Minimo</Label><Input id="insumo-stockMin" type="number" value={stockMin} onChange={e => setStockMin(e.target.value)} /></div>
+            <div><Label htmlFor="insumo-precioUnit">Precio Unitario</Label><Input id="insumo-precioUnit" type="number" value={precioUnit} onChange={e => setPrecioUnit(e.target.value)} /></div>
+            <div><Label htmlFor="insumo-proveedor">Proveedor</Label>
+              <select id="insumo-proveedor" className="w-full h-10 rounded-md border bg-background px-3" value={proveedorId} onChange={e => setProveedorId(e.target.value)}>
                 <option value="">Seleccionar...</option>
                 {proveedores.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
               </select>
