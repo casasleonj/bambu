@@ -37,8 +37,12 @@ export default function FacturasPage() {
   const [montoAbono, setMontoAbono] = useState('')
   const [metodoPago, setMetodoPago] = useState('EFECTIVO')
   const [submitting, setSubmitting] = useState(false)
+  const [search, setSearch] = useState('')
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const searchParam = params.get('search')
+    if (searchParam) setSearch(searchParam)
     fetchFacturas()
   }, [])
 
@@ -52,6 +56,15 @@ export default function FacturasPage() {
       toast.error('Error cargando facturas')
     }
   }
+
+  const facturasFiltradas = facturas.filter((f) => {
+    if (!search) return true
+    const term = search.toLowerCase()
+    return (
+      f.numero.toLowerCase().includes(term) ||
+      f.cliente?.nombre.toLowerCase().includes(term)
+    )
+  })
 
   const registrarAbono = async (facturaId: string, clienteId: string) => {
     if (!montoAbono) {
@@ -98,17 +111,29 @@ export default function FacturasPage() {
 
   return (
     <div className="p-4 space-y-4">
-      <h1 className="text-2xl font-bold">Facturas</h1>
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-bold">Facturas</h1>
+      </div>
 
-      {facturas.length === 0 ? (
+      <div className="bg-white p-4 rounded-xl shadow">
+        <Input
+          type="text"
+          placeholder="Buscar por numero o cliente..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="max-w-md"
+        />
+      </div>
+
+      {facturasFiltradas.length === 0 ? (
         <EmptyState
           icon={<svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>}
-          title="No hay facturas registradas"
-          description="Las facturas se generan automáticamente al crear pedidos con saldo pendiente"
+          title={search ? 'No se encontraron facturas' : 'No hay facturas registradas'}
+          description={search ? `No hay resultados para "${search}"` : 'Las facturas se generan automaticamente al crear pedidos con saldo pendiente'}
         />
       ) : (
         <div className="space-y-2">
-          {facturas.map((factura) => (
+          {facturasFiltradas.map((factura) => (
             <Card key={factura.id}>
               <CardHeader className="py-3">
                 <div className="flex justify-between items-center">
@@ -150,7 +175,7 @@ export default function FacturasPage() {
                       placeholder="Monto a pagar"
                     />
                     <div>
-                      <Label>Método de pago</Label>
+                      <Label>Metodo de pago</Label>
                       <select
                         className="w-full h-10 rounded-md border border-input bg-background px-3 py-2"
                         value={metodoPago}
@@ -168,10 +193,10 @@ export default function FacturasPage() {
                         onClick={() => registrarAbono(factura.id, factura.cliente?.id || '')}
                         disabled={submitting}
                       >
-                        ✅ Confirmar
+                        Confirmar
                       </Button>
                       <Button variant="outline" onClick={() => setShowAbono(null)}>
-                        ❌ Cancelar
+                        Cancelar
                       </Button>
                     </div>
                   </div>
@@ -180,7 +205,7 @@ export default function FacturasPage() {
                     className="mt-3 w-full"
                     onClick={() => setShowAbono(factura.id)}
                   >
-                    💰 Registrar Abono
+                    Registrar Abono
                   </Button>
                 ) : null}
               </CardContent>

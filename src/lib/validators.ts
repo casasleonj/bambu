@@ -151,6 +151,12 @@ export const EmbarqueCreateSchema = z.object({
   rutaId: z.string().optional(),
   horaSalida: z.string().optional(),
   obs: z.string().max(500).optional(),
+  pacasAgua: z.coerce.number().int().min(0).default(0),
+  pacasHielo: z.coerce.number().int().min(0).default(0),
+  devueltasAgua: z.coerce.number().int().min(0).default(0),
+  devueltasHielo: z.coerce.number().int().min(0).default(0),
+  rotasAgua: z.coerce.number().int().min(0).default(0),
+  rotasHielo: z.coerce.number().int().min(0).default(0),
 });
 
 export const EmbarqueUpdateSchema = z.object({

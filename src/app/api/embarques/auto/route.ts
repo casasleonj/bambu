@@ -6,7 +6,7 @@ import { ROLES } from '@/lib/constants'
 import { z } from 'zod'
 
 const EmbarqueAutoSchema = z.object({
-  rutaId: z.string().uuid().optional(),
+  rutaId: z.string().min(1).optional(),
   limit: z.coerce.number().int().positive().max(50).optional(),
 })
 

@@ -22,8 +22,35 @@ export interface PrecioResuelto {
 }
 
 /**
+ * Parse preciosEspeciales JSON into a per-channel map.
+ * Supports new format: {"DOMICILIO":{"PACA_AGUA":6000},"PUNTO":{...}}
+ * And legacy format: {"PACA_AGUA":6000} → applied to both channels.
+ */
+export function parsePreciosEspeciales(
+  json: string | null | undefined,
+): Record<Canal, Record<string, number>> {
+  const empty: Record<Canal, Record<string, number>> = { DOMICILIO: {}, PUNTO: {} }
+  if (!json) return empty
+
+  try {
+    const parsed = JSON.parse(json)
+    // New format: has DOMICILIO or PUNTO keys
+    if (parsed.DOMICILIO || parsed.PUNTO) {
+      return {
+        DOMICILIO: parsed.DOMICILIO || {},
+        PUNTO: parsed.PUNTO || {},
+      }
+    }
+    // Legacy format: flat {PACA_AGUA: 6000} → apply to both
+    return { DOMICILIO: { ...parsed }, PUNTO: { ...parsed } }
+  } catch {
+    return empty
+  }
+}
+
+/**
  * Resolve the price for a single product.
- * Priority: precioManual > clienteOverrides > PrecioVolumen tier > 0
+ * Priority: precioManual > clienteOverrides (by canal) > PrecioVolumen tier > 0
  */
 export async function resolverPrecio(
   codigo: ProductCode,
@@ -36,8 +63,15 @@ export async function resolverPrecio(
     return { precio: precioManual, origen: 'manual' }
   }
 
-  if (clienteOverrides && clienteOverrides[codigo] && clienteOverrides[codigo] > 0) {
-    return { precio: clienteOverrides[codigo], origen: 'cliente' }
+  // Try channel-specific override first
+  if (clienteOverrides) {
+    const parsed = parsePreciosEspeciales(
+      typeof clienteOverrides === 'string' ? clienteOverrides : JSON.stringify(clienteOverrides),
+    )
+    const channelOverride = parsed[canal]?.[codigo]
+    if (channelOverride && channelOverride > 0) {
+      return { precio: channelOverride, origen: 'cliente' }
+    }
   }
 
   // Look up volume pricing from DB

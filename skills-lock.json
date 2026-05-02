@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "n8n-cli": {
+      "source": "n8n-io/n8n",
+      "sourceType": "github",
+      "skillPath": "packages/@n8n/cli/skills/n8n-cli/SKILL.md",
+      "computedHash": "ac5aa9079498c3a8346811a3c279d1677b5974d3a10ecd0ae6ee38180a222622"
+    }
+  }
+}

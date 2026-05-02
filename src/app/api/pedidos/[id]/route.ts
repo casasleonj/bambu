@@ -1,3 +1,4 @@
+import { formatZodError } from '@/lib/utils'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole, requireOwnership } from '@/lib/auth-check'
@@ -37,7 +38,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const body = await request.json()
     const parsed = PedidoUpdateSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
     }
 
     const pedido = await prisma.$transaction(async (tx) => {
@@ -55,6 +56,31 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         if (parsed.data.cBotellonDomEnt === undefined) updateData.cBotellonDomEnt = current.cBotellonDomPed
         if (parsed.data.cBolsaAguaEnt === undefined) updateData.cBolsaAguaEnt = current.cBolsaAguaPed
         if (parsed.data.cBolsaHieloEnt === undefined) updateData.cBolsaHieloEnt = current.cBolsaHieloPed
+      }
+
+      // Al cancelar, revertir pagos y ajustar saldos
+      if (parsed.data.estado === 'CANCELADO') {
+        const current = await tx.pedido.findUnique({ where: { id }, include: { pagos: true, factura: true } })
+        if (!current) {
+          throw new Error('PEDIDO_NOT_FOUND')
+        }
+
+        // Revertir pagos: eliminarlos
+        if (current.pagos.length > 0) {
+          await tx.pago.deleteMany({ where: { pedidoId: id } })
+        }
+
+        // Anular factura asociada si existe
+        if (current.factura) {
+          await tx.factura.update({
+            where: { id: current.factura.id },
+            data: { estado: 'ANULADA', saldo: 0 },
+          })
+        }
+
+        // Resetear totales del pedido
+        updateData.totalPagado = 0
+        updateData.saldo = 0
       }
 
       return tx.pedido.update({

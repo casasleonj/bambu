@@ -238,10 +238,15 @@ test.describe('Dia completo de usuario', () => {
     await aguaInput.fill('3')
     await page.waitForTimeout(300)
 
-    // Add payment
-    const pagoInput = form.locator('input[placeholder="Monto"]').first()
-    if (await pagoInput.isVisible()) {
+    // Add payment - click chip then enter amount
+    const efectivoChip = form.locator('button:has-text("Efectivo")')
+    if (await efectivoChip.isVisible()) {
+      await efectivoChip.click()
+      await page.waitForTimeout(300)
+      const pagoInput = form.locator('input[type="number"]').last()
       await pagoInput.fill('21000')
+      await pagoInput.blur()
+      await page.waitForTimeout(300)
     }
 
     await form.locator('button:has-text("Crear Pedido")').click()

@@ -1,16 +1,13 @@
+import { formatZodError } from '@/lib/utils'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuth, requireRole, requireOwnership } from '@/lib/auth-check'
+import { requireAuth } from '@/lib/auth-check'
 import { z } from 'zod'
 import { logAudit } from '@/lib/audit'
-import { ROLES } from '@/lib/constants'
-
-function getUserFromSession(authResult: any) {
-  return { id: authResult.user?.id || '', role: authResult.user?.role }
-}
+import { calcularPacasEmbarque } from '@/lib/embarque-capacidad'
 
 const EnviarPedidoSchema = z.object({
-  embarqueId: z.string().uuid(),
+  embarqueId: z.string().min(1),
 })
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -18,20 +15,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (authResult instanceof Response) return authResult
 
   const { id } = await params
-  const hasAccess = await requireOwnership('pedido', id, getUserFromSession(authResult))
-  if (!hasAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   try {
     const body = await request.json()
     const parsed = EnviarPedidoSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
     }
 
     const { embarqueId } = parsed.data
 
     const pedido = await prisma.$transaction(async (tx) => {
-      // 1. Verify pedido exists and is PENDIENTE
       const current = await tx.pedido.findUnique({ where: { id } })
       if (!current) {
         throw new Error('PEDIDO_NOT_FOUND')
@@ -43,8 +37,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         throw new Error('PEDIDO_YA_ASIGNADO')
       }
 
-      // 2. Verify embarque exists and is ABIERTO
-      const embarque = await tx.embarque.findUnique({ where: { id: embarqueId } })
+      const embarque = await tx.embarque.findUnique({
+        where: { id: embarqueId },
+        include: { pedidos: true },
+      })
       if (!embarque) {
         throw new Error('EMBARQUE_NOT_FOUND')
       }
@@ -52,7 +48,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         throw new Error('EMBARQUE_NOT_OPEN')
       }
 
-      // 3. Atomic update: both fields in one operation
+      const pacasActuales = calcularPacasEmbarque(embarque.pedidos)
+      const pacasPedido =
+        (current.cPacaAguaPed || 0) +
+        (current.cPacaHieloPed || 0) +
+        (current.cBotellonFabPed || 0) +
+        (current.cBotellonDomPed || 0) +
+        (current.cBolsaAguaPed || 0) +
+        (current.cBolsaHieloPed || 0)
+
+      if (pacasActuales + pacasPedido > 70) {
+        throw new Error('EMBARQUE_CAPACIDAD_EXCEDIDA')
+      }
+
       return tx.pedido.update({
         where: { id },
         data: {
@@ -79,6 +87,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         PEDIDO_YA_ASIGNADO: ['El pedido ya está asignado a un embarque', 400],
         EMBARQUE_NOT_FOUND: ['Embarque no encontrado', 404],
         EMBARQUE_NOT_OPEN: ['El embarque no está abierto', 400],
+        EMBARQUE_CAPACIDAD_EXCEDIDA: ['El embarque no tiene capacidad suficiente (máx 70 pacas)', 400],
       }
       const [msg, status] = messages[error.message] || [error.message, 500]
       return NextResponse.json({ error: msg }, { status })

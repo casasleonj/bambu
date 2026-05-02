@@ -1,3 +1,4 @@
+import { formatZodError } from '@/lib/utils'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
@@ -12,15 +13,26 @@ export async function GET(request: NextRequest) {
   try {
     const where = { activo: true }
     const prismaPagination = getPrismaPagination(pagination)
-    const [clientes, total] = await Promise.all([
+    const [clientesRaw, total] = await Promise.all([
       prisma.cliente.findMany({
         where,
         orderBy: { nombre: 'asc' },
-        include: { _count: { select: { pedidos: true } } },
+        include: {
+          _count: { select: { pedidos: true } },
+          pedidos: {
+            where: { saldo: { gt: 0 } },
+            select: { saldo: true },
+          },
+        },
         ...prismaPagination,
       }),
       prisma.cliente.count({ where }),
     ])
+
+    const clientes = clientesRaw.map(c => ({
+      ...c,
+      saldoPendiente: c.pedidos.reduce((sum, p) => sum + Number(p.saldo), 0),
+    }))
     return NextResponse.json(
       pagination.all
         ? { clientes, total }
@@ -38,7 +50,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const parsed = ClienteCreateSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
     }
 
     const cliente = await prisma.cliente.create({

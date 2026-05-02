@@ -1,3 +1,4 @@
+import { formatZodError } from '@/lib/utils'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-check'
 import { resolverPrecio, type Canal, type ProductCode } from '@/lib/pricing'
@@ -27,7 +28,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const parsed = PrecioResolverSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
     }
 
     const { canal, clienteId } = parsed.data

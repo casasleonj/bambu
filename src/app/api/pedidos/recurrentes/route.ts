@@ -1,3 +1,4 @@
+import { formatZodError } from '@/lib/utils'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { previewGeneracionRecurrentes, generarPedidosRecurrentes, type DecisionGeneracion } from '@/lib/recurrentes'
@@ -37,7 +38,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}))
     const parsed = GenerarRecurrentesSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
     }
 
     const decisiones: DecisionGeneracion[] = parsed.data.decisiones

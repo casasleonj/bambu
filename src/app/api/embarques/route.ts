@@ -1,3 +1,4 @@
+import { formatZodError } from '@/lib/utils'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
@@ -71,10 +72,14 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const parsed = EmbarqueCreateSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
+    }
+
+    const totalPacas = (parsed.data.pacasAgua || 0) + (parsed.data.pacasHielo || 0)
+    if (totalPacas > 70) {
+      return NextResponse.json({ error: `Capacidad excedida: ${totalPacas} pacas. Máximo 70.` }, { status: 400 })
     }
     
-    // Obtener trabajador
     const trabajador = await prisma.trabajador.findUnique({
       where: { id: parsed.data.trabajadorId },
     })
@@ -90,6 +95,12 @@ export async function POST(request: NextRequest) {
         horaSalida: parsed.data.horaSalida ? new Date(parsed.data.horaSalida) : null,
         estado: EstadoEmbarque.ABIERTO,
         obs: parsed.data.obs,
+        pacasAgua: parsed.data.pacasAgua || 0,
+        pacasHielo: parsed.data.pacasHielo || 0,
+        devueltasAgua: parsed.data.devueltasAgua || 0,
+        devueltasHielo: parsed.data.devueltasHielo || 0,
+        rotasAgua: parsed.data.rotasAgua || 0,
+        rotasHielo: parsed.data.rotasHielo || 0,
       },
       include: {
         trabajador: true,
@@ -101,7 +112,7 @@ export async function POST(request: NextRequest) {
       entidad: 'Embarque',
       registroId: embarque.id,
       accion: 'CREATE',
-      datos: { numero: embarque.numero, trabajadorId: embarque.trabajadorId },
+      datos: { numero: embarque.numero, trabajadorId: embarque.trabajadorId, pacasAgua: embarque.pacasAgua, pacasHielo: embarque.pacasHielo },
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     })
 

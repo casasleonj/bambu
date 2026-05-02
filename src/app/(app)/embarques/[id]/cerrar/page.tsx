@@ -40,6 +40,8 @@ interface Embarque {
   ruta?: { nombre: string } | null
   pedidos: Pedido[]
   totalPacas?: number
+  pacasAgua: number
+  pacasHielo: number
 }
 
 interface EmbarqueAbierto {
@@ -408,6 +410,12 @@ export default function CerrarEmbarquePage() {
 
   const capacidad = getCapacidadInfo(embarque.totalPacas || 0)
 
+  // Calculate load info
+  const totalCargaInicial = (embarque.pacasAgua || 0) + (embarque.pacasHielo || 0)
+  const totalAsignado = embarque.pedidos.reduce((sum, p) =>
+    sum + p.cPacaAguaPed + p.cPacaHieloPed + p.cBotellonFabPed + p.cBotellonDomPed + p.cBolsaAguaPed + p.cBolsaHieloPed, 0)
+  const totalLibre = totalCargaInicial - totalAsignado
+
   // Calculate summary
   let totalCobrado = 0
   let totalEntregado = 0
@@ -443,6 +451,32 @@ export default function CerrarEmbarquePage() {
           <span className="text-gray-600 ml-2">({capacidad.total} pacas)</span>
         </div>
       </div>
+
+      {/* Load Info */}
+      {totalCargaInicial > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border p-4">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Carga del Embarque</h3>
+          <div className="grid grid-cols-3 gap-4">
+            <div className="text-center p-3 bg-blue-50 rounded-lg">
+              <p className="text-2xl font-bold text-blue-700">{totalCargaInicial}</p>
+              <p className="text-xs text-blue-600">Carga inicial</p>
+            </div>
+            <div className="text-center p-3 bg-amber-50 rounded-lg">
+              <p className="text-2xl font-bold text-amber-700">{totalAsignado}</p>
+              <p className="text-xs text-amber-600">Asignado a pedidos</p>
+            </div>
+            <div className="text-center p-3 bg-green-50 rounded-lg">
+              <p className="text-2xl font-bold text-green-700">{totalLibre}</p>
+              <p className="text-xs text-green-600">Libre para venta</p>
+            </div>
+          </div>
+          {embarque.pacasAgua > 0 && embarque.pacasHielo > 0 && (
+            <p className="text-xs text-gray-500 mt-2 text-center">
+              Agua: {embarque.pacasAgua} | Hielo: {embarque.pacasHielo}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Pedidos */}
       <div className="space-y-4">

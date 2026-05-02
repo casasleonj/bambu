@@ -1,3 +1,4 @@
+import { formatZodError } from '@/lib/utils'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
@@ -39,7 +40,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const parsed = InsumoCreateSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
     }
     const { nombre, unidad, stock, stockMin, precioUnit, proveedorId } = parsed.data
 

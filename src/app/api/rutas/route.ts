@@ -1,3 +1,4 @@
+import { formatZodError } from '@/lib/utils'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
@@ -63,7 +64,7 @@ export async function POST(request: NextRequest) {
     const parsed = RutaCreateSchema.safeParse(body)
 
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
     }
 
     const { nombre, dias, repartidorId, repartidorRespaldoId, horarioInicio, horarioFin } = parsed.data
@@ -109,14 +110,14 @@ export async function PUT(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
     if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 })
-    const parsedId = z.string().uuid().safeParse(id)
+    const parsedId = z.string().min(1).safeParse(id)
     if (!parsedId.success) return NextResponse.json({ error: 'ID formato inválido' }, { status: 400 })
 
     const body = await request.json()
     const parsed = RutaUpdateSchema.safeParse(body)
 
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
     }
 
     const ruta = await prisma.ruta.update({

@@ -2,6 +2,8 @@
 
 import { useEffect, useCallback, useRef } from 'react'
 
+let modalOpenCount = 0
+
 interface ModalProps {
   open: boolean
   onClose: () => void
@@ -17,7 +19,6 @@ export function Modal({ open, onClose, children, className, title, description }
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (e.key === 'Escape') onClose()
-    // Focus trap: Tab cycling
     if (e.key === 'Tab' && contentRef.current) {
       const focusable = contentRef.current.querySelectorAll<HTMLElement>(
         'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
@@ -35,14 +36,11 @@ export function Modal({ open, onClose, children, className, title, description }
     }
   }, [onClose])
 
-  // Focus first element when opening
   useEffect(() => {
     if (!open) return
+    modalOpenCount++
     document.addEventListener('keydown', handleKeyDown)
-    // Lock body scroll
-    const originalOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    // Focus first focusable element after a short delay
     const timer = setTimeout(() => {
       if (contentRef.current) {
         const focusable = contentRef.current.querySelector<HTMLElement>(
@@ -53,7 +51,11 @@ export function Modal({ open, onClose, children, className, title, description }
     }, 50)
     return () => {
       document.removeEventListener('keydown', handleKeyDown)
-      document.body.style.overflow = originalOverflow
+      modalOpenCount--
+      if (modalOpenCount <= 0) {
+        document.body.style.overflow = ''
+        modalOpenCount = 0
+      }
       clearTimeout(timer)
     }
   }, [open, handleKeyDown])

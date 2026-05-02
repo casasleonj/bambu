@@ -94,9 +94,13 @@ test.describe('Flujos críticos de negocio', () => {
     const aguaInput = modal.locator('input[type="number"]').first()
     await aguaInput.fill('2')
 
-    // Set payment
-    const pagoInput = modal.locator('input[placeholder="Monto"]').first()
+    // Set payment - click chip first, then enter amount
+    await modal.locator('button:has-text("Efectivo")').click()
+    await page.waitForTimeout(300)
+    const pagoInput = modal.locator('input[type="number"]').last()
     await pagoInput.fill('13000')
+    await pagoInput.blur()
+    await page.waitForTimeout(300)
 
     // Submit
     let alertMsg = null
@@ -156,12 +160,7 @@ test.describe('Flujos críticos de negocio', () => {
     // Add product
     await modal.locator('input[type="number"]').first().fill('1')
 
-    // Zero out payment
-    const pagoInputs = modal.locator('input[placeholder="Monto"]')
-    const count = await pagoInputs.count()
-    for (let i = 0; i < count; i++) {
-      await pagoInputs.nth(i).fill('0')
-    }
+    // No payment added - pedido agendado sin pago es permitido
 
     // Intercept API response to verify actual success
     const [apiResponse] = await Promise.all([

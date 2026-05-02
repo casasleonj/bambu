@@ -1,3 +1,4 @@
+import { formatZodError } from '@/lib/utils'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
@@ -67,7 +68,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const parsed = RecurrenteCreateSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
     }
 
     const { clienteId, tipo, canal, frecuencia, productos, obs } = parsed.data
@@ -133,7 +134,7 @@ export async function PUT(request: NextRequest) {
     const body = await request.json()
     const parsed = RecurrenteUpdateSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
     }
 
     const data: Record<string, unknown> = {}

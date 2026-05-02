@@ -52,12 +52,20 @@ interface PedidoFormProps {
 }
 
 const METODOS_PAGO = [
-  { id: 'EFECTIVO', nombre: 'Efectivo' },
-  { id: 'TRANSFERENCIA', nombre: 'Transferencia' },
-  { id: 'NEQUI', nombre: 'Nequi' },
-  { id: 'DAVIPLATA', nombre: 'Daviplata' },
-  { id: 'BONO', nombre: 'Bono' },
+  { id: 'EFECTIVO', nombre: 'Efectivo', emoji: '💵' },
+  { id: 'TRANSFERENCIA', nombre: 'Transferencia', emoji: '🏦' },
+  { id: 'NEQUI', nombre: 'Nequi', emoji: '📱' },
+  { id: 'DAVIPLATA', nombre: 'Daviplata', emoji: '📲' },
+  { id: 'BONO', nombre: 'Bono', emoji: '🎫' },
 ]
+
+const METODO_PAGO_ICONS: Record<string, string> = {
+  EFECTIVO: '💵',
+  TRANSFERENCIA: '🏦',
+  NEQUI: '📱',
+  DAVIPLATA: '📲',
+  BONO: '🎫',
+}
 
 const CANAL = 'DOMICILIO' as const
 
@@ -79,9 +87,9 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
   })
   const [preciosResueltos, setPreciosResueltos] = useState<Record<string, number>>({})
   const [preciosManuales, setPreciosManuales] = useState<Record<string, number>>({})
-  const [pagos, setPagos] = useState<{ metodo: string; monto: number }[]>([
-    { metodo: 'EFECTIVO', monto: 0 },
-  ])
+  const [pagos, setPagos] = useState<{ metodo: string; monto: number }[]>([])
+  const [modoPagoActivo, setModoPagoActivo] = useState<string | null>(null)
+  const [montoInput, setMontoInput] = useState('')
   const [observaciones, setObservaciones] = useState('')
   const [tablaPrecios, setTablaPrecios] = useState<Record<string, Tier[]>>({})
   const [preciosEditando, setPreciosEditando] = useState<Record<string, boolean>>({})
@@ -171,7 +179,6 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
 
   const totalPagado = pagos.reduce((sum, p) => sum + (p.monto || 0), 0)
   const total = calcularTotal()
-  const saldoPendiente = total - totalPagado
 
   const handleCantidadChange = (productoId: ProductoId, value: string) => {
     const cant = parseInt(value) || 0
@@ -180,24 +187,39 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
     resolverPrecios(newProds, CANAL, clienteSeleccionado?.id)
   }
 
-  const handlePagoChange = (idx: number, field: 'metodo' | 'monto', value: string) => {
-    setPagos((prev) => {
-      const nuevos = [...prev]
-      if (field === 'monto') {
-        nuevos[idx].monto = parseFloat(value) || 0
-      } else {
-        nuevos[idx].metodo = value
-      }
-      return nuevos
-    })
+  const metodosUsados = new Set(pagos.map(p => p.metodo))
+
+  const seleccionarChip = (metodoId: string) => {
+    if (metodosUsados.has(metodoId)) return
+    setModoPagoActivo(metodoId)
+    setMontoInput('')
   }
 
-  const agregarPago = () => {
-    setPagos((prev) => [...prev, { metodo: 'EFECTIVO', monto: 0 }])
+  const confirmarMonto = () => {
+    if (!modoPagoActivo) return
+    const monto = parseFloat(montoInput) || 0
+    if (monto <= 0) {
+      setModoPagoActivo(null)
+      setMontoInput('')
+      return
+    }
+    setPagos(prev => [...prev, { metodo: modoPagoActivo, monto }])
+    setModoPagoActivo(null)
+    setMontoInput('')
+  }
+
+  const cancelarMonto = () => {
+    setModoPagoActivo(null)
+    setMontoInput('')
   }
 
   const eliminarPago = (idx: number) => {
-    setPagos((prev) => prev.filter((_, i) => i !== idx))
+    setPagos(prev => prev.filter((_, i) => i !== idx))
+  }
+
+  const pagarCompleto = () => {
+    if (total <= 0) return
+    setPagos([{ metodo: 'EFECTIVO', monto: total }])
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -234,6 +256,20 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
       }
     }
 
+    // Cap payments to total (change is handled by cashier, not recorded)
+    const totalPagadoActual = pagos.reduce((sum, p) => sum + (p.monto || 0), 0)
+    const pagosNormalizados = (() => {
+      const pagosValidos = pagos.filter((p) => p.monto > 0)
+      if (totalPagadoActual <= total) return pagosValidos
+      let remaining = total
+      return pagosValidos.map(p => {
+        if (remaining <= 0) return null
+        const monto = Math.min(p.monto, remaining)
+        remaining -= monto
+        return { metodo: p.metodo, monto }
+      }).filter((p): p is { metodo: string; monto: number } => p !== null)
+    })()
+
     const pedido: PedidoFormData = {
       clienteId,
       clienteNuevo: clienteNuevoData,
@@ -247,7 +283,7 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
         bolsaHielo: productos.bolsaHielo,
       },
       preciosManuales,
-      pagos: pagos.filter((p) => p.monto > 0),
+      pagos: pagosNormalizados,
       obs: observaciones,
       total,
     }
@@ -493,70 +529,120 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
           <CardTitle className="text-lg">Pagos</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {pagos.map((pago, idx) => (
-            <div key={idx} className="flex items-center gap-2">
-              <select
-                value={pago.metodo}
-                onChange={(e) => handlePagoChange(idx, 'metodo', e.target.value)}
-                className="border rounded px-2 py-1 text-sm"
-              >
-                {METODOS_PAGO.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.nombre}
-                  </option>
-                ))}
-              </select>
-              <Input
-                type="number"
-                min="0"
-                value={pago.monto || ''}
-                onChange={(e) => handlePagoChange(idx, 'monto', e.target.value)}
-                className="w-28"
-                placeholder="Monto"
-              />
-              {pagos.length > 1 && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => eliminarPago(idx)}
-                >
-                  X
-                </Button>
-              )}
-            </div>
-          ))}
-
-          <div className="flex items-center gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={agregarPago}>
-              + Agregar pago
-            </Button>
-            <Button
+          <div className="flex justify-between items-center">
+            <label className="text-sm font-medium text-gray-700">Método de pago</label>
+            <button
               type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setPagos([{ metodo: 'EFECTIVO', monto: total }])}
+              onClick={pagarCompleto}
               disabled={total <= 0}
-              className="text-green-600 hover:text-green-700"
+              className="text-xs text-green-600 hover:text-green-700 disabled:text-gray-300 disabled:cursor-not-allowed px-2 py-1 rounded hover:bg-green-50 transition"
             >
               Pagar completo
-            </Button>
+            </button>
           </div>
 
-          <div className="flex justify-between items-center pt-2 border-t text-sm">
-            <span>Total pagado:</span>
-            <span className="font-bold text-green-600">${totalPagado.toLocaleString()}</span>
-          </div>
-          {saldoPendiente > 0 && (
-            <div className="flex justify-between items-center text-sm text-red-600">
-              <span>Saldo pendiente:</span>
-              <span className="font-bold">${saldoPendiente.toLocaleString()}</span>
+          {modoPagoActivo ? (
+            <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg p-2">
+              <span className="text-lg">{METODO_PAGO_ICONS[modoPagoActivo]}</span>
+              <span className="text-sm font-medium text-gray-700">
+                {METODOS_PAGO.find(m => m.id === modoPagoActivo)?.nombre}
+              </span>
+              <div className="flex-1 flex items-center gap-1 ml-2">
+                <span className="text-xs text-gray-400">$</span>
+                <input
+                  type="number"
+                  min="0"
+                  autoFocus
+                  value={montoInput}
+                  onChange={(e) => setMontoInput(e.target.value)}
+                  onBlur={confirmarMonto}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') confirmarMonto()
+                    else if (e.key === 'Escape') cancelarMonto()
+                  }}
+                  className="flex-1 border border-blue-300 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  placeholder="0"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={cancelarMonto}
+                className="text-gray-400 hover:text-red-500 p-1 transition"
+                title="Cancelar"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {METODOS_PAGO.map(m => {
+                const usado = metodosUsados.has(m.id)
+                const pagoExistente = pagos.find(p => p.metodo === m.id)
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => seleccionarChip(m.id)}
+                    disabled={usado}
+                    className={`flex items-center gap-1 px-3 py-1.5 rounded-full border text-sm transition ${
+                      usado
+                        ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                        : 'bg-white hover:bg-gray-50 cursor-pointer'
+                    }`}
+                  >
+                    <span>{m.emoji}</span>
+                    <span>{m.nombre}</span>
+                    {usado && pagoExistente && (
+                      <span className="text-xs ml-1">✅ ${pagoExistente.monto.toLocaleString()}</span>
+                    )}
+                  </button>
+                )
+              })}
             </div>
           )}
-          {saldoPendiente < 0 && (
-            <div className="flex justify-between items-center text-sm text-blue-600">
-              <span>Cambio / Sobrepago:</span>
-              <span className="font-bold">${Math.abs(saldoPendiente).toLocaleString()}</span>
+
+          {pagos.length > 0 && (
+            <div className="space-y-1.5">
+              {pagos.map((pago, idx) => (
+                <div key={idx} className="flex items-center justify-between bg-white border rounded-lg px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">{METODO_PAGO_ICONS[pago.metodo] || '💳'}</span>
+                    <span className="text-sm text-gray-600">
+                      {METODOS_PAGO.find(m => m.id === pago.metodo)?.nombre}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-sm">${pago.monto.toLocaleString()}</span>
+                    <button
+                      type="button"
+                      onClick={() => eliminarPago(idx)}
+                      className="text-gray-400 hover:text-red-500 p-0.5 transition"
+                      title="Eliminar pago"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {total > 0 && (
+            <div className="space-y-1 pt-2 border-t">
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-gray-500">Total pagado:</span>
+                <span className="font-bold text-green-600">${totalPagado.toLocaleString()}</span>
+              </div>
+              {totalPagado > total && (
+                <div className="flex justify-between items-center text-sm text-blue-600">
+                  <span>Cambio:</span>
+                  <span className="font-bold">${(totalPagado - total).toLocaleString()}</span>
+                </div>
+              )}
             </div>
           )}
         </CardContent>

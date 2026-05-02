@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { toast } from 'sonner'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { Modal } from '@/components/modal'
@@ -17,13 +17,17 @@ interface Cliente {
   direccion?: string
   frecuencia: string
   cadaNDias?: number
+  proxEntrega?: string
   preciosEspeciales?: string
   notas?: string
   ultEntrega?: string
   activo: boolean
+  saldoPendiente?: number
   _count?: { pedidos: number }
   pedidos?: Pedido[]
   facturas?: Factura[]
+  frecuenciaSugerida?: { dias: number; label: string } | null
+  productosSugeridos?: Array<{ codigo: string; nombre: string; frecuencia: number; cantidadPromedio: number }>
 }
 
 interface Pedido {
@@ -31,18 +35,60 @@ interface Pedido {
   numero: number
   total: number
   saldo: number
+  totalPagado: number
   estado: string
   fecha: string
+  cPacaAguaPed: number
+  cPacaHieloPed: number
+  cBotellonFabPed: number
+  cBotellonDomPed: number
+  cBolsaAguaPed: number
+  cBolsaHieloPed: number
+  cPacaAguaEnt: number
+  cPacaHieloEnt: number
+  cBotellonFabEnt: number
+  cBotellonDomEnt: number
+  cBolsaAguaEnt: number
+  cBolsaHieloEnt: number
+  precioPacaAgua: number
+  precioPacaHielo: number
+  precioBotellonFab: number
+  precioBotellonDom: number
+  precioBolsaAgua: number
+  precioBolsaHielo: number
+  pagos?: Array<{ metodo: string; monto: number }>
 }
 
 interface Factura {
   id: string
   numero: string
   total: number
+  saldo: number
+  montoPagado: number
+  estado: string
   fecha: string
+  abonos?: Array<{ monto: number; metodoPago: string; fecha: string }>
 }
 
-const freqOptions = ['NINGUNA', 'DIARIO', 'SEMANAL', 'QUINCENAL', 'MENSUAL', 'CADA_N_DIAS']
+type Canal = 'DOMICILIO' | 'PUNTO'
+
+const PRODUCTOS_PRECIO = [
+  { codigo: 'PACA_AGUA', nombre: 'Paca Agua', emoji: '🍶', unidad: 'paca' },
+  { codigo: 'PACA_HIELO', nombre: 'Paca Hielo', emoji: '🧊', unidad: 'paca' },
+  { codigo: 'BOTELLON_FAB', nombre: 'Botellón Fábrica', emoji: '🏭', unidad: 'und' },
+  { codigo: 'BOTELLON_DOM', nombre: 'Botellón Domicilio', emoji: '🏠', unidad: 'und' },
+  { codigo: 'BOLSA_AGUA', nombre: 'Bolsa Agua', emoji: '💧', unidad: 'bolsa' },
+  { codigo: 'BOLSA_HIELO', nombre: 'Bolsa Hielo', emoji: '❄️', unidad: 'bolsa' },
+] as const
+
+const PRODUCTO_NOMBRES: Record<string, string> = {
+  cPacaAguaPed: 'Paca Agua',
+  cPacaHieloPed: 'Paca Hielo',
+  cBotellonFabPed: 'Botellón Fábrica',
+  cBotellonDomPed: 'Botellón Domicilio',
+  cBolsaAguaPed: 'Bolsa Agua',
+  cBolsaHieloPed: 'Bolsa Hielo',
+}
 
 interface ClientesClientProps {
   initialClientes: Cliente[]
@@ -67,10 +113,26 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
     tipoNegocio: '',
     barrio: '',
     direccion: '',
-    frecuencia: 'NINGUNA',
-    cadaNDias: 0,
+    cadaNDias: '' as number | '',
+    proxEntrega: '',
     preciosEspeciales: '',
     notas: '',
+  })
+
+  const [expandedPedido, setExpandedPedido] = useState<string | null>(null)
+  const [expandedFactura, setExpandedFactura] = useState<string | null>(null)
+  const [pedidoDetail, setPedidoDetail] = useState<Pedido | null>(null)
+  const [facturaDetail, setFacturaDetail] = useState<Factura | null>(null)
+
+  // Precios especiales por canal
+  const [canalActivo, setCanalActivo] = useState<Canal>('DOMICILIO')
+  const [preciosEspecialesMap, setPreciosEspecialesMap] = useState<Record<Canal, Record<string, number | undefined>>>({
+    DOMICILIO: {},
+    PUNTO: {},
+  })
+  const [preciosBase, setPreciosBase] = useState<Record<Canal, Record<string, number>>>({
+    DOMICILIO: {},
+    PUNTO: {},
   })
 
   async function fetchClientes() {
@@ -84,6 +146,56 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
     } finally {
       setLoading(false)
     }
+  }
+
+  const loadPreciosBase = useCallback(async () => {
+    for (const canal of ['DOMICILIO', 'PUNTO'] as Canal[]) {
+      try {
+        const res = await fetch(`/api/precios/tabla?canal=${canal}`)
+        const data = await res.json()
+        const tabla = data.tabla || {}
+        const baseMap: Record<string, number> = {}
+        for (const prod of PRODUCTOS_PRECIO) {
+          const tiers = tabla[prod.codigo] || []
+          if (tiers.length > 0) {
+            const baseTier = tiers.reduce((min: any, t: any) => t.cantMin < min.cantMin ? t : min, tiers[0])
+            baseMap[prod.codigo] = Number(baseTier.precio)
+          }
+        }
+        setPreciosBase(prev => ({ ...prev, [canal]: baseMap }))
+      } catch { /* ignore */ }
+    }
+  }, [])
+
+  function parsePreciosEspeciales(json: string | undefined): Record<Canal, Record<string, number | undefined>> {
+    const empty: Record<Canal, Record<string, number | undefined>> = { DOMICILIO: {}, PUNTO: {} }
+    if (!json) return empty
+    try {
+      const parsed = JSON.parse(json)
+      if (parsed.DOMICILIO || parsed.PUNTO) {
+        return {
+          DOMICILIO: parsed.DOMICILIO || {},
+          PUNTO: parsed.PUNTO || {},
+        }
+      }
+      return { DOMICILIO: { ...parsed }, PUNTO: { ...parsed } }
+    } catch {
+      return empty
+    }
+  }
+
+  function buildPreciosJson(): string {
+    const result: Record<Canal, Record<string, number>> = { DOMICILIO: {}, PUNTO: {} }
+    for (const canal of ['DOMICILIO', 'PUNTO'] as Canal[]) {
+      for (const prod of PRODUCTOS_PRECIO) {
+        const val = preciosEspecialesMap[canal][prod.codigo]
+        if (val !== undefined && val > 0 && val !== preciosBase[canal][prod.codigo]) {
+          result[canal][prod.codigo] = val
+        }
+      }
+    }
+    const hasAny = Object.values(result.DOMICILIO).length > 0 || Object.values(result.PUNTO).length > 0
+    return hasAny ? JSON.stringify(result) : ''
   }
 
   const clientesFiltrados = clientes.filter((c) => {
@@ -107,18 +219,22 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
       tipoNegocio: '',
       barrio: '',
       direccion: '',
-      frecuencia: 'NINGUNA',
-      cadaNDias: 0,
+      cadaNDias: '',
+      proxEntrega: '',
       preciosEspeciales: '',
       notas: '',
     })
+    setPreciosEspecialesMap({ DOMICILIO: {}, PUNTO: {} })
+    setCanalActivo('DOMICILIO')
     setFormError('')
     setIsEdit(false)
     setShowModal(true)
+    loadPreciosBase()
   }
 
   function openEditModal() {
     if (!selectedCliente) return
+    setShowDetail(false)
     setFormData({
       nombre: selectedCliente.nombre,
       apellido: selectedCliente.apellido || '',
@@ -127,13 +243,16 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
       tipoNegocio: selectedCliente.tipoNegocio || '',
       barrio: selectedCliente.barrio || '',
       direccion: selectedCliente.direccion || '',
-      frecuencia: selectedCliente.frecuencia,
-      cadaNDias: selectedCliente.cadaNDias || 0,
+      cadaNDias: selectedCliente.cadaNDias || '',
+      proxEntrega: selectedCliente.proxEntrega ? new Date(selectedCliente.proxEntrega).toISOString().split('T')[0] : '',
       preciosEspeciales: selectedCliente.preciosEspeciales || '',
       notas: selectedCliente.notas || '',
     })
+    setPreciosEspecialesMap(parsePreciosEspeciales(selectedCliente.preciosEspeciales))
+    setCanalActivo('DOMICILIO')
     setIsEdit(true)
     setShowModal(true)
+    loadPreciosBase()
   }
 
   const [saving, setSaving] = useState(false)
@@ -144,11 +263,20 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
     if (saving) return
     setSaving(true)
     try {
+      const preciosJson = buildPreciosJson()
+      const cadaNDiasNum = formData.cadaNDias === '' ? 0 : formData.cadaNDias
+      const body = {
+        ...formData,
+        cadaNDias: cadaNDiasNum,
+        frecuencia: cadaNDiasNum > 0 ? 'CADA_N_DIAS' : 'NINGUNA',
+        proxEntrega: formData.proxEntrega || undefined,
+        preciosEspeciales: preciosJson || undefined,
+      }
       if (isEdit && selectedCliente) {
         const res = await fetch(`/api/clientes/${selectedCliente.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formData),
+          body: JSON.stringify(body),
         })
         if (res.ok) {
           fetchClientes()
@@ -163,7 +291,7 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
         const res = await fetch('/api/clientes', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formData),
+          body: JSON.stringify(body),
         })
         if (res.ok) {
           fetchClientes()
@@ -185,6 +313,10 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
 
   async function viewCliente(id: string) {
     setDetailLoading(true)
+    setExpandedPedido(null)
+    setExpandedFactura(null)
+    setPedidoDetail(null)
+    setFacturaDetail(null)
     try {
       const res = await fetch(`/api/clientes/${id}`)
       const data = await res.json()
@@ -217,16 +349,39 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
     }
   }
 
-  function formatPreciosEspeciales(json: string | undefined): string {
-    if (!json) return '-'
-    try {
-      const parsed = JSON.parse(json)
-      return Object.entries(parsed)
-        .map(([k, v]) => `${k}: $${Number(v).toLocaleString()}`)
-        .join(', ')
-    } catch {
-      return '-'
+  async function viewPedidoDetail(pedido: Pedido) {
+    if (expandedPedido === pedido.id) {
+      setExpandedPedido(null)
+      setPedidoDetail(null)
+      return
     }
+    setExpandedPedido(pedido.id)
+    setExpandedFactura(null)
+    setFacturaDetail(null)
+    setPedidoDetail(pedido)
+  }
+
+  async function viewFacturaDetail(factura: Factura) {
+    if (expandedFactura === factura.id) {
+      setExpandedFactura(null)
+      setFacturaDetail(null)
+      return
+    }
+    setExpandedFactura(factura.id)
+    setExpandedPedido(null)
+    setPedidoDetail(null)
+    setFacturaDetail(factura)
+  }
+
+  function renderPedidoProductos(p: Pedido) {
+    const items: string[] = []
+    if (p.cPacaAguaPed > 0) items.push(`${p.cPacaAguaPed} Paca Agua`)
+    if (p.cPacaHieloPed > 0) items.push(`${p.cPacaHieloPed} Paca Hielo`)
+    if (p.cBotellonFabPed > 0) items.push(`${p.cBotellonFabPed} Botellón Fab`)
+    if (p.cBotellonDomPed > 0) items.push(`${p.cBotellonDomPed} Botellón Dom`)
+    if (p.cBolsaAguaPed > 0) items.push(`${p.cBolsaAguaPed} Bolsa Agua`)
+    if (p.cBolsaHieloPed > 0) items.push(`${p.cBolsaHieloPed} Bolsa Hielo`)
+    return items.join(', ')
   }
 
   if (loading) {
@@ -259,9 +414,18 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
         />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="bg-white rounded-xl shadow overflow-hidden">
+        <div className="hidden md:grid grid-cols-12 gap-4 px-4 py-3 bg-gray-50 border-b text-xs font-semibold text-gray-500 uppercase">
+          <div className="col-span-3">Cliente</div>
+          <div className="col-span-2">Telefono</div>
+          <div className="col-span-2">Barrio</div>
+          <div className="col-span-2">Frecuencia</div>
+          <div className="col-span-2 text-right">Saldo Pendiente</div>
+          <div className="col-span-1 text-center">Pedidos</div>
+        </div>
+
         {clientesFiltrados.length === 0 ? (
-          <div className="col-span-full bg-white p-8 rounded-xl shadow text-center text-gray-500">
+          <div className="p-8 text-center text-gray-500">
             <p className="mb-2">No hay clientes</p>
             <button
               onClick={openCreateModal}
@@ -271,40 +435,43 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
             </button>
           </div>
         ) : (
-          clientesFiltrados.map((cliente) => (
-            <div
-              key={cliente.id}
-              className="bg-white p-4 rounded-xl shadow hover:shadow-md transition cursor-pointer"
-              onClick={() => viewCliente(cliente.id)}
-            >
-              <div className="flex justify-between items-start mb-2">
-                <div>
+          <div className="divide-y">
+            {clientesFiltrados.map((cliente) => (
+              <div
+                key={cliente.id}
+                className="grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-4 px-4 py-3 hover:bg-blue-50 cursor-pointer transition"
+                onClick={() => viewCliente(cliente.id)}
+              >
+                <div className="md:col-span-3">
                   <p className="font-semibold text-gray-800">
                     {cliente.nombre} {cliente.apellido}
                   </p>
-                  <p className="text-sm text-gray-500">{cliente.clienteId}</p>
+                  {cliente.nombreNegocio && (
+                    <p className="text-xs text-gray-500">{cliente.nombreNegocio}</p>
+                  )}
                 </div>
-                <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                  {cliente._count?.pedidos || 0} pedidos
-                </span>
+                <div className="md:col-span-2 text-sm text-gray-600">{cliente.telefono}</div>
+                <div className="md:col-span-2 text-sm text-gray-600">{cliente.barrio || '-'}</div>
+                <div className="md:col-span-2 text-sm">
+                  {cliente.cadaNDias && cliente.cadaNDias > 0 ? (
+                    <span className="text-green-600 font-medium">Cada {cliente.cadaNDias} días</span>
+                  ) : (
+                    <span className="text-gray-400">Sin frecuencia</span>
+                  )}
+                </div>
+                <div className="md:col-span-2 text-right">
+                  {cliente.saldoPendiente && cliente.saldoPendiente > 0 ? (
+                    <span className="text-red-600 font-bold">{formatCurrency(cliente.saldoPendiente)}</span>
+                  ) : (
+                    <span className="text-green-600 text-sm">Al día</span>
+                  )}
+                </div>
+                <div className="md:col-span-1 text-center text-sm text-gray-500">
+                  {cliente._count?.pedidos || 0}
+                </div>
               </div>
-              {cliente.nombreNegocio && (
-                <p className="text-sm text-gray-600 mb-1">{cliente.nombreNegocio}</p>
-              )}
-              <div className="text-sm text-gray-500 mb-1">{cliente.telefono}</div>
-              <div className="flex justify-between text-sm">
-                <span>{cliente.barrio || '-'}</span>
-                <span className={cliente.frecuencia !== 'NINGUNA' ? 'text-green-600' : 'text-gray-400'}>
-                  {cliente.frecuencia}
-                </span>
-              </div>
-              {cliente.ultEntrega && (
-                <p className="text-xs text-gray-400 mt-2">
-                  Ultima: {formatDate(cliente.ultEntrega)}
-                </p>
-              )}
-            </div>
-          ))
+            ))}
+          </div>
         )}
       </div>
 
@@ -387,44 +554,130 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
               className="w-full px-3 py-2 border border-gray-300 rounded-lg"
             />
           </div>
+
+          {/* Frecuencia y fecha de inicio */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Frecuencia</label>
-              <select
-                value={formData.frecuencia}
-                onChange={(e) => setFormData({ ...formData, frecuencia: e.target.value })}
+              <label className="block text-sm font-medium mb-1">Repetir pedido cada ___ días</label>
+              <input
+                type="number"
+                min={0}
+                value={formData.cadaNDias}
+                onChange={(e) => {
+                  const val = e.target.value === '' ? '' : parseInt(e.target.value)
+                  setFormData({ ...formData, cadaNDias: isNaN(val as number) ? '' : val })
+                }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-              >
-                {freqOptions.map((f) => (
-                  <option key={f} value={f}>
-                    {f}
-                  </option>
-                ))}
-              </select>
+                placeholder="0 o vacio"
+              />
             </div>
-            {formData.frecuencia === 'CADA_N_DIAS' && (
-              <div>
-                <label className="block text-sm font-medium mb-1">Cada N dias</label>
-                <input
-                  type="number"
-                  value={formData.cadaNDias}
-                  onChange={(e) => setFormData({ ...formData, cadaNDias: parseInt(e.target.value) })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                />
-              </div>
-            )}
+            <div>
+              <label className="block text-sm font-medium mb-1">Primera entrega</label>
+              <input
+                type="date"
+                value={formData.proxEntrega}
+                onChange={(e) => setFormData({ ...formData, proxEntrega: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
           </div>
+
+          {/* Precios Especiales por Canal */}
           <div>
-            <label className="block text-sm font-medium mb-1">Precios Especiales (JSON)</label>
-            <input
-              type="text"
-              value={formData.preciosEspeciales}
-              onChange={(e) => setFormData({ ...formData, preciosEspeciales: e.target.value })}
-              placeholder='{"PACA_AGUA": 2600, "BOTELLON_DOM": 9000}'
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-            />
-            <p className="text-xs text-gray-400 mt-1">Formato: {`{"PACA_AGUA": 2600, "BOTELLON_DOM": 9000}`}</p>
+            <label className="block text-sm font-medium mb-2">Precios Especiales</label>
+
+            {/* Resumen de precios configurados (visible siempre) */}
+            {(() => {
+              const allOverrides: Array<{ canal: Canal; codigo: string; nombre: string; emoji: string; precio: number }> = []
+              for (const canal of ['DOMICILIO', 'PUNTO'] as Canal[]) {
+                for (const prod of PRODUCTOS_PRECIO) {
+                  const val = preciosEspecialesMap[canal][prod.codigo]
+                  if (val !== undefined && val > 0 && val !== preciosBase[canal][prod.codigo]) {
+                    allOverrides.push({ canal, codigo: prod.codigo, nombre: prod.nombre, emoji: prod.emoji, precio: val })
+                  }
+                }
+              }
+              if (allOverrides.length === 0) return null
+              return (
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  {allOverrides.map((item) => (
+                    <span
+                      key={`${item.canal}-${item.codigo}`}
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${
+                        item.canal === 'DOMICILIO'
+                          ? 'bg-blue-50 border-blue-200 text-blue-700'
+                          : 'bg-purple-50 border-purple-200 text-purple-700'
+                      }`}
+                    >
+                      <span>{item.emoji}</span>
+                      <span>{item.nombre}</span>
+                      <span className="font-bold">${item.precio.toLocaleString()}</span>
+                    </span>
+                  ))}
+                </div>
+              )
+            })()}
+
+            <div className="flex gap-2 mb-3">
+              {(['DOMICILIO', 'PUNTO'] as Canal[]).map((canal) => (
+                <button
+                  key={canal}
+                  type="button"
+                  onClick={() => setCanalActivo(canal)}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-lg transition ${
+                    canalActivo === canal
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {canal}
+                </button>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {PRODUCTOS_PRECIO.map((prod) => {
+                const base = preciosBase[canalActivo][prod.codigo]
+                const especial = preciosEspecialesMap[canalActivo][prod.codigo]
+                const hasOverride = especial !== undefined && especial > 0 && especial !== base
+                return (
+                  <div
+                    key={prod.codigo}
+                    className={`rounded-lg p-2.5 border transition ${
+                      hasOverride
+                        ? 'border-blue-300 bg-blue-50'
+                        : 'border-gray-200 bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className="text-base">{prod.emoji}</span>
+                      <span className="text-xs font-medium text-gray-700 truncate">{prod.nombre}</span>
+                    </div>
+                    {base > 0 && (
+                      <p className="text-[10px] text-gray-400 mb-1">Base: {formatCurrency(base)}</p>
+                    )}
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-gray-400">$</span>
+                      <input
+                        type="number"
+                        min="0"
+                        value={especial ?? ''}
+                        onChange={(e) => {
+                          const val = e.target.value === '' ? undefined : parseFloat(e.target.value)
+                          setPreciosEspecialesMap(prev => ({
+                            ...prev,
+                            [canalActivo]: { ...prev[canalActivo], [prod.codigo]: val },
+                          }))
+                        }}
+                        placeholder="Precio especial"
+                        className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           </div>
+
           <div>
             <label className="block text-sm font-medium mb-1">Notas</label>
             <textarea
@@ -475,20 +728,36 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
               </button>
             </div>
 
-            {/* Fiado badge in header */}
-            {selectedCliente.pedidos && selectedCliente.pedidos.some((p) => Number(p.saldo) > 0) && (
+            {selectedCliente.saldoPendiente && selectedCliente.saldoPendiente > 0 && (
               <div className="px-4 py-2 bg-red-50 border-b border-red-200">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-red-700 font-medium">
                     💰 Cuenta por cobrar
                   </span>
                   <span className="text-lg font-bold text-red-600">
-                    {formatCurrency(
-                      selectedCliente.pedidos
-                        .filter((p) => Number(p.saldo) > 0)
-                        .reduce((acc, p) => acc + Number(p.saldo), 0)
-                    )}
+                    {formatCurrency(selectedCliente.saldoPendiente)}
                   </span>
+                </div>
+              </div>
+            )}
+
+            {/* Consumo sugerido */}
+            {(selectedCliente.frecuenciaSugerida || selectedCliente.productosSugeridos) && (
+              <div className="px-4 py-3 bg-blue-50 border-b border-blue-200">
+                <p className="text-xs font-semibold text-blue-700 uppercase mb-2">Patrón de consumo (guía)</p>
+                <div className="flex flex-wrap gap-4 text-sm">
+                  {selectedCliente.frecuenciaSugerida && (
+                    <span className="text-blue-800">
+                      📅 Compra {selectedCliente.frecuenciaSugerida.label.toLowerCase()}
+                    </span>
+                  )}
+                  {selectedCliente.productosSugeridos && selectedCliente.productosSugeridos.length > 0 && (
+                    <span className="text-blue-800">
+                      📦 Suele pedir: {selectedCliente.productosSugeridos.map(p =>
+                        `${p.cantidadPromedio} ${p.nombre} (${p.frecuencia}%)`
+                      ).join(', ')}
+                    </span>
+                  )}
                 </div>
               </div>
             )}
@@ -536,14 +805,26 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
                     </div>
                     <div>
                       <p className="text-sm text-gray-500">Frecuencia</p>
-                      <p className="font-medium">{selectedCliente.frecuencia}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500">Precios Especiales</p>
                       <p className="font-medium">
-                        {formatPreciosEspeciales(selectedCliente.preciosEspeciales)}
+                        {selectedCliente.cadaNDias && selectedCliente.cadaNDias > 0
+                          ? `Cada ${selectedCliente.cadaNDias} días`
+                          : 'Sin frecuencia'}
                       </p>
                     </div>
+                    {selectedCliente.proxEntrega && (
+                      <div>
+                        <p className="text-sm text-gray-500">Próxima entrega</p>
+                        <p className="font-medium text-blue-600">
+                          {new Date(selectedCliente.proxEntrega).toLocaleDateString('es-CO')}
+                        </p>
+                      </div>
+                    )}
+                    {selectedCliente.frecuenciaSugerida && (
+                      <div>
+                        <p className="text-sm text-gray-500">Frecuencia real (promedio)</p>
+                        <p className="font-medium text-blue-600">{selectedCliente.frecuenciaSugerida.label}</p>
+                      </div>
+                    )}
                   </div>
                   {selectedCliente.direccion && (
                     <div>
@@ -557,6 +838,45 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
                       <p className="font-medium">{selectedCliente.notas}</p>
                     </div>
                   )}
+
+                  {/* Precios Especiales en detalle */}
+                  <div>
+                    <p className="text-sm text-gray-500 mb-2">Precios Especiales</p>
+                    {(() => {
+                      const parsed = parsePreciosEspeciales(selectedCliente.preciosEspeciales)
+                      const hasAny = Object.values(parsed.DOMICILIO).some(v => v !== undefined) || Object.values(parsed.PUNTO).some(v => v !== undefined)
+                      if (!hasAny) return <p className="text-gray-400 text-sm">Sin precios especiales</p>
+                      return (
+                        <div className="space-y-3">
+                          {(['DOMICILIO', 'PUNTO'] as Canal[]).map((canal) => {
+                            const items = Object.entries(parsed[canal]).filter(([_, v]) => v !== undefined)
+                            if (items.length === 0) return null
+                            return (
+                              <div key={canal}>
+                                <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{canal}</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {items.map(([codigo, precio]) => {
+                                    const info = PRODUCTOS_PRECIO.find(p => p.codigo === codigo)
+                                    if (!info) return null
+                                    return (
+                                      <span
+                                        key={codigo}
+                                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-sm"
+                                      >
+                                        <span>{info.emoji}</span>
+                                        <span className="text-gray-600">{info.nombre}</span>
+                                        <span className="font-semibold text-blue-700">{formatCurrency(Number(precio))}</span>
+                                      </span>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )
+                    })()}
+                  </div>
                 </div>
               )}
 
@@ -567,28 +887,86 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
                   ) : (
                     <div className="space-y-2">
                       {selectedCliente.pedidos?.map((pedido) => (
-                        <div
-                          key={pedido.id}
-                          className="flex justify-between items-center p-3 bg-gray-50 rounded-lg"
-                        >
-                          <div>
-                            <p className="font-medium">#{pedido.numero}</p>
-                            <p className="text-sm text-gray-500">{formatDate(pedido.fecha)}</p>
+                        <div key={pedido.id}>
+                          <div
+                            className="flex justify-between items-center p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100"
+                            onClick={() => viewPedidoDetail(pedido)}
+                          >
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium">#{pedido.numero}</p>
+                                <a
+                                  href={`/pedidos?search=${pedido.numero}`}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                                >
+                                  → Ver en pedidos
+                                </a>
+                              </div>
+                              <p className="text-sm text-gray-500">{formatDate(pedido.fecha)}</p>
+                              <p className="text-xs text-gray-400">{renderPedidoProductos(pedido)}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-medium">{formatCurrency(pedido.total)}</p>
+                              <span
+                                className={`text-xs px-2 py-1 rounded ${
+                                  pedido.estado === 'ENTREGADO'
+                                    ? 'bg-green-100 text-green-800'
+                                    : pedido.estado === 'PENDIENTE'
+                                    ? 'bg-yellow-100 text-yellow-800'
+                                    : 'bg-gray-100 text-gray-800'
+                                }`}
+                              >
+                                {pedido.estado}
+                              </span>
+                            </div>
                           </div>
-                          <div className="text-right">
-                            <p className="font-medium">{formatCurrency(pedido.total)}</p>
-                            <span
-                              className={`text-xs px-2 py-1 rounded ${
-                                pedido.estado === 'ENTREGADO'
-                                  ? 'bg-green-100 text-green-800'
-                                  : pedido.estado === 'PENDIENTE'
-                                  ? 'bg-yellow-100 text-yellow-800'
-                                  : 'bg-gray-100 text-gray-800'
-                              }`}
-                            >
-                              {pedido.estado}
-                            </span>
-                          </div>
+                          {expandedPedido === pedido.id && pedidoDetail && (
+                            <div className="ml-4 mt-1 p-3 bg-white border border-gray-200 rounded-lg text-sm">
+                              <p className="font-semibold mb-2">Detalle del Pedido #{pedido.numero}</p>
+                              <div className="grid grid-cols-2 gap-2 mb-3">
+                                {Object.entries(PRODUCTO_NOMBRES).map(([key, label]) => {
+                                  const ped = (pedidoDetail as any)[key] || 0
+                                  const ent = (pedidoDetail as any)[key.replace('Ped', 'Ent')] || 0
+                                  const precio = (pedidoDetail as any)[key.replace('Ped', '').replace('c', 'precio')] || 0
+                                  if (ped === 0) return null
+                                  return (
+                                    <div key={key} className="flex justify-between">
+                                      <span>{label}</span>
+                                      <span>{ped} × ${Number(precio).toLocaleString()} = ${formatCurrency(ped * Number(precio))}</span>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                              <div className="border-t pt-2 space-y-1">
+                                <div className="flex justify-between font-semibold">
+                                  <span>Total</span>
+                                  <span>{formatCurrency(pedidoDetail.total)}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span>Pagado</span>
+                                  <span className="text-green-600">{formatCurrency(pedidoDetail.totalPagado)}</span>
+                                </div>
+                                {Number(pedidoDetail.saldo) > 0 && (
+                                  <div className="flex justify-between">
+                                    <span>Saldo</span>
+                                    <span className="text-red-600 font-bold">{formatCurrency(pedidoDetail.saldo)}</span>
+                                  </div>
+                                )}
+                              </div>
+                              {pedidoDetail.pagos && pedidoDetail.pagos.length > 0 && (
+                                <div className="border-t mt-2 pt-2">
+                                  <p className="font-semibold mb-1">Pagos:</p>
+                                  {pedidoDetail.pagos.map((pago, i) => (
+                                    <div key={i} className="flex justify-between text-gray-600">
+                                      <span>{pago.metodo}</span>
+                                      <span>{formatCurrency(pago.monto)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -603,15 +981,71 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
                   ) : (
                     <div className="space-y-2">
                       {selectedCliente.facturas?.map((factura) => (
-                        <div
-                          key={factura.id}
-                          className="flex justify-between items-center p-3 bg-gray-50 rounded-lg"
-                        >
-                          <div>
-                            <p className="font-medium">#{factura.numero}</p>
-                            <p className="text-sm text-gray-500">{formatDate(factura.fecha)}</p>
+                        <div key={factura.id}>
+                          <div
+                            className="flex justify-between items-center p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100"
+                            onClick={() => viewFacturaDetail(factura)}
+                          >
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium">#{factura.numero}</p>
+                                <a
+                                  href={`/facturas?search=${factura.numero}`}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                                >
+                                  → Ver en facturas
+                                </a>
+                              </div>
+                              <p className="text-sm text-gray-500">{formatDate(factura.fecha)}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-medium">{formatCurrency(factura.total)}</p>
+                              <span
+                                className={`text-xs px-2 py-1 rounded ${
+                                  factura.estado === 'PAGADA'
+                                    ? 'bg-green-100 text-green-800'
+                                    : factura.estado === 'ANULADA'
+                                    ? 'bg-gray-100 text-gray-800'
+                                    : 'bg-yellow-100 text-yellow-800'
+                                }`}
+                              >
+                                {factura.estado}
+                              </span>
+                            </div>
                           </div>
-                          <p className="font-medium">{formatCurrency(factura.total)}</p>
+                          {expandedFactura === factura.id && (
+                            <div className="ml-4 mt-1 p-3 bg-white border border-gray-200 rounded-lg text-sm">
+                              <p className="font-semibold mb-2">Detalle Factura #{factura.numero}</p>
+                              <div className="space-y-1">
+                                <div className="flex justify-between">
+                                  <span>Subtotal</span>
+                                  <span>{formatCurrency(factura.total)}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span>Pagado</span>
+                                  <span className="text-green-600">{formatCurrency(factura.montoPagado)}</span>
+                                </div>
+                                {Number(factura.saldo) > 0 && (
+                                  <div className="flex justify-between">
+                                    <span>Saldo</span>
+                                    <span className="text-red-600 font-bold">{formatCurrency(factura.saldo)}</span>
+                                  </div>
+                                )}
+                              </div>
+                              {factura.abonos && factura.abonos.length > 0 && (
+                                <div className="border-t mt-2 pt-2">
+                                  <p className="font-semibold mb-1">Abonos:</p>
+                                  {factura.abonos.map((abono, i) => (
+                                    <div key={i} className="flex justify-between text-gray-600">
+                                      <span>{abono.metodoPago} - {formatDate(abono.fecha)}</span>
+                                      <span>{formatCurrency(abono.monto)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -622,7 +1056,7 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
               {activeTab === 'cuentas' && (
                 <div>
                   {(() => {
-                    const pedidosConFiado = selectedCliente.pedidos?.filter((p) => Number(p.saldo) > 0) || []
+                    const pedidosConFiado = selectedCliente.pedidos?.filter((p) => Number(p.saldo) > 0 && p.estado !== 'CANCELADO' && p.estado !== 'ANULADO') || []
                     const totalFiado = pedidosConFiado.reduce((acc, p) => acc + Number(p.saldo), 0)
 
                     if (pedidosConFiado.length === 0) {
@@ -638,21 +1072,75 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
                         </div>
                         <div className="space-y-2">
                           {pedidosConFiado.map((pedido) => (
-                            <div
-                              key={pedido.id}
-                              className="flex justify-between items-center p-3 bg-gray-50 rounded-lg"
-                            >
-                              <div>
-                                <p className="font-medium">#{pedido.numero}</p>
-                                <p className="text-sm text-gray-500">{formatDate(pedido.fecha)}</p>
-                                <p className="text-xs text-gray-400">{pedido.estado}</p>
+                            <div key={pedido.id}>
+                              <div
+                                className="flex justify-between items-center p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100"
+                                onClick={() => viewPedidoDetail(pedido)}
+                              >
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <p className="font-medium">#{pedido.numero}</p>
+                                    <a
+                                      href={`/pedidos?search=${pedido.numero}`}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                                    >
+                                      → Ver en pedidos
+                                    </a>
+                                  </div>
+                                  <p className="text-sm text-gray-500">{formatDate(pedido.fecha)}</p>
+                                  <p className="text-xs text-gray-400">{pedido.estado}</p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="font-medium">{formatCurrency(pedido.total)}</p>
+                                  <p className="text-sm text-red-600 font-medium">
+                                    Saldo: {formatCurrency(Number(pedido.saldo))}
+                                  </p>
+                                </div>
                               </div>
-                              <div className="text-right">
-                                <p className="font-medium">{formatCurrency(pedido.total)}</p>
-                                <p className="text-sm text-red-600 font-medium">
-                                  Saldo: {formatCurrency(Number(pedido.saldo))}
-                                </p>
-                              </div>
+                              {expandedPedido === pedido.id && pedidoDetail && (
+                                <div className="ml-4 mt-1 p-3 bg-white border border-gray-200 rounded-lg text-sm">
+                                  <p className="font-semibold mb-2">Detalle del Pedido #{pedido.numero}</p>
+                                  <div className="grid grid-cols-2 gap-2 mb-3">
+                                    {Object.entries(PRODUCTO_NOMBRES).map(([key, label]) => {
+                                      const ped = (pedidoDetail as any)[key] || 0
+                                      const precio = (pedidoDetail as any)[key.replace('Ped', '').replace('c', 'precio')] || 0
+                                      if (ped === 0) return null
+                                      return (
+                                        <div key={key} className="flex justify-between">
+                                          <span>{label}</span>
+                                          <span>{ped} × ${Number(precio).toLocaleString()}</span>
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                  <div className="border-t pt-2 space-y-1">
+                                    <div className="flex justify-between font-semibold">
+                                      <span>Total</span>
+                                      <span>{formatCurrency(pedidoDetail.total)}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span>Pagado</span>
+                                      <span className="text-green-600">{formatCurrency(pedidoDetail.totalPagado)}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span>Saldo</span>
+                                      <span className="text-red-600 font-bold">{formatCurrency(pedidoDetail.saldo)}</span>
+                                    </div>
+                                  </div>
+                                  {pedidoDetail.pagos && pedidoDetail.pagos.length > 0 && (
+                                    <div className="border-t mt-2 pt-2">
+                                      <p className="font-semibold mb-1">Pagos:</p>
+                                      {pedidoDetail.pagos.map((pago, i) => (
+                                        <div key={i} className="flex justify-between text-gray-600">
+                                          <span>{pago.metodo}</span>
+                                          <span>{formatCurrency(pago.monto)}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>

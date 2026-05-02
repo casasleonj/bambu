@@ -47,13 +47,20 @@ interface VentaRapidaData {
 }
 
 const METODOS_PAGO = [
-  { id: 'EFECTIVO', nombre: 'Efectivo' },
-  { id: 'TRANSFERENCIA', nombre: 'Transferencia' },
-  { id: 'NEQUI', nombre: 'Nequi' },
-  { id: 'DAVIPLATA', nombre: 'Daviplata' },
-  { id: 'BONO', nombre: 'Bono' },
-  { id: 'FIADO', nombre: 'Pagar después' },
+  { id: 'EFECTIVO', nombre: 'Efectivo', emoji: '💵' },
+  { id: 'TRANSFERENCIA', nombre: 'Transferencia', emoji: '🏦' },
+  { id: 'NEQUI', nombre: 'Nequi', emoji: '📱' },
+  { id: 'DAVIPLATA', nombre: 'Daviplata', emoji: '📲' },
+  { id: 'BONO', nombre: 'Bono', emoji: '🎫' },
 ]
+
+const METODO_PAGO_ICONS: Record<string, string> = {
+  EFECTIVO: '💵',
+  TRANSFERENCIA: '🏦',
+  NEQUI: '📱',
+  DAVIPLATA: '📲',
+  BONO: '🎫',
+}
 
 export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaFormProps) {
   const [quiereEnvio, setQuiereEnvio] = useState(false)
@@ -63,7 +70,9 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
   const [clienteSeleccionado, setClienteSeleccionado] = useState<Cliente | null>(null)
   const [mostrarNuevo, setMostrarNuevo] = useState(false)
   const [nuevoCliente, setNuevoCliente] = useState({ nombre: '', telefono: '', direccion: '', barrio: '' })
-  const [metodoPago, setMetodoPago] = useState('EFECTIVO')
+  const [pagos, setPagos] = useState<{ metodo: string; monto: number }[]>([])
+  const [modoPagoActivo, setModoPagoActivo] = useState<string | null>(null)
+  const [montoInput, setMontoInput] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [preciosResueltos, setPreciosResueltos] = useState<Record<string, number>>({})
   const [tablaPrecios, setTablaPrecios] = useState<Record<string, Tier[]>>({})
@@ -80,19 +89,35 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
       .catch(() => {})
   }, [canal])
 
-  // Reset quantities when switching modes
+  // Preserve compatible products when switching modes
   const handleToggleEnvio = (envio: boolean) => {
+    const nuevoCanal = envio ? 'DOMICILIO' : 'PUNTO'
+    const productosNuevoCanal = getProductosForCanal(nuevoCanal)
+    const productosViejoCanal = getProductosForCanal(canal)
+
+    const nuevasCantidades: Record<string, number> = {}
+    let eliminados = 0
+    for (const id of productosNuevoCanal) {
+      if (cantidades[id] > 0) {
+        nuevasCantidades[id] = cantidades[id]
+      }
+    }
+    for (const id of productosViejoCanal) {
+      if (cantidades[id] > 0 && !productosNuevoCanal.includes(id)) {
+        eliminados++
+      }
+    }
+
+    setCantidades(nuevasCantidades)
     setQuiereEnvio(envio)
-    setCanal(envio ? 'DOMICILIO' : 'PUNTO')
-    setCantidades({})
+    setCanal(nuevoCanal)
     setPreciosResueltos({})
     setPreciosManuales({})
     setPreciosEditando({})
-    setClienteSeleccionado(null)
-    setSearchTerm('')
-    setMostrarNuevo(false)
-    // Reset payment method when toggling envio
-    if (envio) setMetodoPago('EFECTIVO')
+
+    if (eliminados > 0) {
+      toast.info(`${eliminados} producto(s) no disponible(s) para ${nuevoCanal === 'DOMICILIO' ? 'envío' : 'punto'}`)
+    }
   }
 
   const getPrecioBase = (codigo: string): number => {
@@ -174,8 +199,44 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
     setNuevoCliente(prev => ({ ...prev, nombre: searchTerm }))
   }
 
-  const esFiado = metodoPago === 'FIADO'
-  const requiereCliente = quiereEnvio || esFiado
+  const totalPagado = pagos.reduce((sum, p) => sum + (p.monto || 0), 0)
+  const saldoPendiente = total - totalPagado
+  const requiereCliente = quiereEnvio || saldoPendiente > 0
+
+  const metodosUsados = new Set(pagos.map(p => p.metodo))
+
+  const seleccionarChip = (metodoId: string) => {
+    if (metodosUsados.has(metodoId)) return
+    setModoPagoActivo(metodoId)
+    setMontoInput('')
+  }
+
+  const confirmarMonto = () => {
+    if (!modoPagoActivo) return
+    const monto = parseFloat(montoInput) || 0
+    if (monto <= 0) {
+      setModoPagoActivo(null)
+      setMontoInput('')
+      return
+    }
+    setPagos(prev => [...prev, { metodo: modoPagoActivo, monto }])
+    setModoPagoActivo(null)
+    setMontoInput('')
+  }
+
+  const cancelarMonto = () => {
+    setModoPagoActivo(null)
+    setMontoInput('')
+  }
+
+  const eliminarPago = (idx: number) => {
+    setPagos(prev => prev.filter((_, i) => i !== idx))
+  }
+
+  const pagarCompleto = () => {
+    if (total <= 0) return
+    setPagos([{ metodo: 'EFECTIVO', monto: total }])
+  }
 
   const handleSubmit = async () => {
     if (total <= 0) {
@@ -183,11 +244,11 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
       return
     }
 
-    // Validación de cliente: solo si es envío o fiado
+    // Validación de cliente: si es envío o hay saldo pendiente
     if (requiereCliente) {
       if (!clienteSeleccionado && !mostrarNuevo) {
-        toast.error(esFiado
-          ? 'Selecciona un cliente para registrar fiado'
+        toast.error(saldoPendiente > 0
+          ? 'Selecciona un cliente para registrar el saldo pendiente'
           : 'Busca o crea un cliente para registrar la venta'
         )
         return
@@ -228,19 +289,29 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
         }
         tipo = 'ENVIO'
       }
-    } else if (requiereCliente) {
-      // Punto fiado: necesita cliente real
-      if (clienteSeleccionado) {
-        clienteId = clienteSeleccionado.id
-      } else if (mostrarNuevo) {
-        clienteNuevo = {
-          nombre: nuevoCliente.nombre,
-          telefono: nuevoCliente.telefono,
-          direccion: nuevoCliente.direccion,
-          barrio: nuevoCliente.barrio || undefined,
-        }
+    } else if (clienteSeleccionado) {
+      clienteId = clienteSeleccionado.id
+    } else if (mostrarNuevo) {
+      clienteNuevo = {
+        nombre: nuevoCliente.nombre,
+        telefono: nuevoCliente.telefono,
+        direccion: nuevoCliente.direccion,
+        barrio: nuevoCliente.barrio || undefined,
       }
     }
+
+    // Cap payments to total (change is handled by cashier, not recorded)
+    const pagosNormalizados = (() => {
+      const pagosValidos = pagos.filter((p) => p.monto > 0)
+      if (totalPagado <= total) return pagosValidos
+      let remaining = total
+      return pagosValidos.map(p => {
+        if (remaining <= 0) return null
+        const monto = Math.min(p.monto, remaining)
+        remaining -= monto
+        return { metodo: p.metodo, monto }
+      }).filter((p): p is { metodo: string; monto: number } => p !== null)
+    })()
 
     const data: VentaRapidaData = {
       clienteId,
@@ -257,7 +328,7 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
         bolsaAgua: cantidades.bolsaAgua || 0,
         bolsaHielo: cantidades.bolsaHielo || 0,
       },
-      pagos: esFiado ? [] : [{ metodo: metodoPago, monto: total }],
+      pagos: pagosNormalizados,
       obs: clienteSeleccionado
         ? `Cliente: ${clienteSeleccionado.nombre} - ${clienteSeleccionado.telefono}`
         : mostrarNuevo
@@ -304,12 +375,12 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
         </label>
       </div>
 
-      {/* Cliente search - solo si es envío o fiado */}
+      {/* Cliente search - si es envío o hay saldo pendiente */}
       {requiereCliente && (
-      <div className={`space-y-2 ${esFiado ? 'bg-yellow-50 border border-yellow-200 rounded-lg p-3' : ''}`}>
-        <label className={`text-sm font-medium flex items-center gap-1 ${esFiado ? 'text-yellow-700' : 'text-gray-700'}`}>
-          {esFiado && <span>⚠️</span>}
-          {quiereEnvio ? 'Cliente para envío' : 'Cliente (obligatorio para fiado)'}
+      <div className={`space-y-2 ${saldoPendiente > 0 && !quiereEnvio ? 'bg-yellow-50 border border-yellow-200 rounded-lg p-3' : ''}`}>
+        <label className="text-sm font-medium flex items-center gap-1">
+          {saldoPendiente > 0 && !quiereEnvio && <span className="text-yellow-600">⚠️</span>}
+          {quiereEnvio ? 'Cliente para envío' : 'Cliente (obligatorio por saldo pendiente)'}
         </label>
         {!clienteSeleccionado && !mostrarNuevo && (
           <>
@@ -507,31 +578,165 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
         })}
       </div>
 
-      {/* Método de pago */}
-      <div>
-        <label className="text-sm text-gray-500 mb-1 block">Método de pago</label>
-        <select
-          value={metodoPago}
-          onChange={(e) => setMetodoPago(e.target.value)}
-          className="w-full border rounded-lg px-3 py-2 text-sm"
-        >
-          {METODOS_PAGO.map(m => (
-            <option key={m.id} value={m.id}>{m.nombre}</option>
-          ))}
-        </select>
+      {/* Pagos con chips */}
+      <div className="space-y-3">
+        <div className="flex justify-between items-center">
+          <label className="text-sm font-medium text-gray-700">Pagos</label>
+          <button
+            type="button"
+            onClick={pagarCompleto}
+            disabled={total <= 0}
+            className="text-xs text-green-600 hover:text-green-700 disabled:text-gray-300 disabled:cursor-not-allowed px-2 py-1 rounded hover:bg-green-50 transition"
+          >
+            Pagar completo
+          </button>
+        </div>
+
+        {/* Modo edición: chip seleccionado con input de monto */}
+        {modoPagoActivo ? (
+          <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg p-2">
+            <span className="text-lg">{METODO_PAGO_ICONS[modoPagoActivo]}</span>
+            <span className="text-sm font-medium text-gray-700">
+              {METODOS_PAGO.find(m => m.id === modoPagoActivo)?.nombre}
+            </span>
+            <div className="flex-1 flex items-center gap-1 ml-2">
+              <span className="text-xs text-gray-400">$</span>
+              <input
+                type="number"
+                min="0"
+                autoFocus
+                value={montoInput}
+                onChange={(e) => setMontoInput(e.target.value)}
+                onBlur={confirmarMonto}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    confirmarMonto()
+                  } else if (e.key === 'Escape') {
+                    cancelarMonto()
+                  }
+                }}
+                className="flex-1 border border-blue-300 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-400"
+                placeholder="0"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={cancelarMonto}
+              className="text-gray-400 hover:text-red-500 p-1 transition"
+              title="Cancelar"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        ) : (
+          /* Chips de métodos de pago */
+          <div className="flex flex-wrap gap-2">
+            {METODOS_PAGO.map(m => {
+              const usado = metodosUsados.has(m.id)
+              const pagoExistente = pagos.find(p => p.metodo === m.id)
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => seleccionarChip(m.id)}
+                  disabled={usado}
+                  className={`flex items-center gap-1 px-3 py-1.5 rounded-full border text-sm transition ${
+                    usado
+                      ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                      : 'bg-white hover:bg-gray-50 cursor-pointer'
+                  }`}
+                >
+                  <span>{m.emoji}</span>
+                  <span>{m.nombre}</span>
+                  {usado && pagoExistente && (
+                    <span className="text-xs ml-1">✅ ${pagoExistente.monto.toLocaleString()}</span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        )}
+
+        {/* Lista de pagos confirmados */}
+        {pagos.length > 0 && (
+          <div className="space-y-1.5">
+            {pagos.map((pago, idx) => (
+              <div key={idx} className="flex items-center justify-between bg-white border rounded-lg px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">{METODO_PAGO_ICONS[pago.metodo] || '💳'}</span>
+                  <span className="text-sm text-gray-600">
+                    {METODOS_PAGO.find(m => m.id === pago.metodo)?.nombre}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-sm">${pago.monto.toLocaleString()}</span>
+                  <button
+                    type="button"
+                    onClick={() => eliminarPago(idx)}
+                    className="text-gray-400 hover:text-red-500 p-0.5 transition"
+                    title="Eliminar pago"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Resumen de pagos */}
+        {total > 0 && (
+          <div className="space-y-1 pt-2 border-t">
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-gray-500">Total pagado:</span>
+              <span className="font-bold text-green-600">${totalPagado.toLocaleString()}</span>
+            </div>
+            {saldoPendiente > 0 && (
+              <div className="flex justify-between items-center text-sm text-red-600">
+                <span>Saldo pendiente:</span>
+                <span className="font-bold">${saldoPendiente.toLocaleString()}</span>
+              </div>
+            )}
+            {saldoPendiente < 0 && (
+              <div className="flex justify-between items-center text-sm text-blue-600">
+                <span>Cambio:</span>
+                <span className="font-bold">${Math.abs(saldoPendiente).toLocaleString()}</span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Banner FIADO */}
-      {esFiado && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+      {/* Banners: falta cliente para fiado o envío */}
+      {saldoPendiente > 0 && !clienteSeleccionado && !mostrarNuevo && (
+        <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-3">
           <div className="flex items-start gap-2">
-            <span className="text-yellow-600 text-lg">💡</span>
+            <span className="text-yellow-600 text-lg">⚠️</span>
             <div>
               <p className="text-sm font-medium text-yellow-800">
-                Esta venta quedará por cobrar (FIADO)
+                Saldo pendiente: ${saldoPendiente.toLocaleString()}
               </p>
-              <p className="text-xs text-yellow-600">
-                Debes seleccionar un cliente para registrar el fiado
+              <p className="text-xs text-yellow-700">
+                Selecciona un cliente para registrar el fiado
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+      {quiereEnvio && !clienteSeleccionado && !mostrarNuevo && (
+        <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-3">
+          <div className="flex items-start gap-2">
+            <span className="text-yellow-600 text-lg">⚠️</span>
+            <div>
+              <p className="text-sm font-medium text-yellow-800">
+                Envío a domicilio requiere cliente
+              </p>
+              <p className="text-xs text-yellow-700">
+                Busca o crea un cliente para registrar el envío
               </p>
             </div>
           </div>
@@ -548,10 +753,17 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
           type="button"
           onClick={handleSubmit}
           disabled={total <= 0 || submitting || (requiereCliente && !clienteSeleccionado && !mostrarNuevo)}
-          className={`w-full py-6 text-lg font-bold ${metodoPago === 'FIADO' ? 'bg-yellow-600 hover:bg-yellow-700' : 'bg-green-600 hover:bg-green-700'}`}
+          className={`w-full py-6 text-lg font-bold transition ${
+            requiereCliente && !clienteSeleccionado && !mostrarNuevo
+              ? 'bg-yellow-500 hover:bg-yellow-600 text-white'
+              : 'bg-green-600 hover:bg-green-700'
+          }`}
           size="lg"
         >
-          {submitting ? 'Procesando...' : metodoPago === 'FIADO' ? `Registrar $${total.toLocaleString()}` : `Cobrar $${total.toLocaleString()}`}
+          {submitting ? 'Procesando...' : requiereCliente && !clienteSeleccionado && !mostrarNuevo
+            ? 'Seleccionar cliente'
+            : `Cobrar $${total.toLocaleString()}`
+          }
         </Button>
       </div>
     </div>

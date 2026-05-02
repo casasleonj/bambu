@@ -1,7 +1,9 @@
+import { formatZodError } from '@/lib/utils'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { CierreCreateSchema } from '@/lib/validators'
+import { EstadoPedido } from '@prisma/client'
 
 export async function GET() {
   const authResult = await requireAuth()
@@ -11,7 +13,10 @@ export async function GET() {
     const startOfDay = new Date(today + 'T00:00:00.000Z')
 
     const pedidos = await prisma.pedido.findMany({
-      where: { fecha: { gte: startOfDay } },
+      where: {
+        fecha: { gte: startOfDay },
+        estado: { not: EstadoPedido.CANCELADO },
+      },
       include: { pagos: true },
     })
 
@@ -74,7 +79,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const parsed = CierreCreateSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
     }
     
     const cierre = await prisma.cierreDia.create({

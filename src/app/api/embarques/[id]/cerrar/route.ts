@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole, requireOwnership } from '@/lib/auth-check'
 import { logAudit } from '@/lib/audit'
+import { formatZodError } from '@/lib/utils'
 import { z } from 'zod'
 import { getNextNumero } from '@/lib/sequence'
 import { resolverPrecio } from '@/lib/pricing'
@@ -81,7 +82,7 @@ export async function POST(
     const body = await request.json()
     const parsed = CerrarEmbarqueSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
     }
 
     const { pedidos: pedidosCuadre, ventasLibres, devueltasAgua, devueltasHielo, rotasAgua, rotasHielo, obs } = parsed.data
@@ -341,12 +342,20 @@ export async function POST(
         ventasLibresCreadas.push({ id: nuevaVenta.id, numero: nuevaVenta.numero })
       }
 
-      // 4. Close embarque
+      // 4. Calculate pacas loaded from pedidos + ventas libres
+      const totalPacasAgua = embarque.pedidos.reduce((sum, p) => sum + p.cPacaAguaPed, 0) +
+        ventasLibres.reduce((sum, v) => sum + v.cPacaAgua, 0)
+      const totalPacasHielo = embarque.pedidos.reduce((sum, p) => sum + p.cPacaHieloPed, 0) +
+        ventasLibres.reduce((sum, v) => sum + v.cPacaHielo, 0)
+
+      // 5. Close embarque
       const embarqueCerrado = await tx.embarque.update({
         where: { id },
         data: {
           estado: 'CERRADO',
           horaLlegada: new Date(),
+          pacasAgua: totalPacasAgua,
+          pacasHielo: totalPacasHielo,
           devueltasAgua,
           devueltasHielo,
           rotasAgua,

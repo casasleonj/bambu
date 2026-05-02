@@ -1,3 +1,4 @@
+import { formatZodError } from '@/lib/utils'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
@@ -12,13 +13,76 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const cliente = await prisma.cliente.findUnique({
       where: { id },
       include: {
-        pedidos: { orderBy: { fecha: 'desc' }, take: 10 },
-        facturas: { orderBy: { fecha: 'desc' } },
+        pedidos: { orderBy: { fecha: 'desc' }, take: 20 },
+        facturas: { orderBy: { fecha: 'desc' }, take: 20 },
         _count: { select: { pedidos: true } },
       },
     })
     if (!cliente) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    return NextResponse.json({ cliente })
+
+    // Calculate consumption pattern from last 10 delivered orders
+    const pedidosEntregados = cliente.pedidos.filter(p => p.estado === 'ENTREGADO').slice(0, 10)
+    let frecuenciaSugerida: { dias: number; label: string } | null = null
+    let productosSugeridos: Array<{ codigo: string; nombre: string; frecuencia: number; cantidadPromedio: number }> = []
+
+    if (pedidosEntregados.length >= 2) {
+      // Calculate average days between orders
+      const fechas = pedidosEntregados.map(p => new Date(p.fecha).getTime()).sort((a, b) => a - b)
+      let totalDias = 0
+      let count = 0
+      for (let i = 1; i < fechas.length; i++) {
+        const diff = (fechas[i] - fechas[i - 1]) / (1000 * 60 * 60 * 24)
+        if (diff > 0 && diff < 90) { // ignore gaps > 90 days
+          totalDias += diff
+          count++
+        }
+      }
+      if (count > 0) {
+        const avgDias = Math.round(totalDias / count)
+        frecuenciaSugerida = {
+          dias: avgDias,
+          label: avgDias === 1 ? 'Diario' : `Cada ${avgDias} días`,
+        }
+      }
+
+      // Calculate product frequency and average quantity
+      const productStats: Record<string, { count: number; totalQty: number }> = {}
+      const productNames: Record<string, string> = {
+        cPacaAguaPed: 'Paca de Agua',
+        cPacaHieloPed: 'Paca de Hielo',
+        cBotellonFabPed: 'Botellón Fábrica',
+        cBotellonDomPed: 'Botellón Domicilio',
+        cBolsaAguaPed: 'Bolsa Agua',
+        cBolsaHieloPed: 'Bolsa Hielo',
+      }
+
+      for (const p of pedidosEntregados) {
+        for (const [key, name] of Object.entries(productNames)) {
+          const qty = (p as unknown as Record<string, number>)[key] || 0
+          if (qty > 0) {
+            if (!productStats[key]) productStats[key] = { count: 0, totalQty: 0 }
+            productStats[key].count++
+            productStats[key].totalQty += qty
+          }
+        }
+      }
+
+      productosSugeridos = Object.entries(productStats)
+        .map(([key, stats]) => ({
+          codigo: key,
+          nombre: productNames[key],
+          frecuencia: Math.round((stats.count / pedidosEntregados.length) * 100),
+          cantidadPromedio: Math.round(stats.totalQty / stats.count),
+        }))
+        .filter(p => p.frecuencia >= 30) // only show products bought in >= 30% of orders
+        .sort((a, b) => b.frecuencia - a.frecuencia)
+    }
+
+    const serialized = JSON.parse(JSON.stringify(cliente))
+    serialized.frecuenciaSugerida = frecuenciaSugerida
+    serialized.productosSugeridos = productosSugeridos
+
+    return NextResponse.json({ cliente: serialized })
   } catch (error) {
     return NextResponse.json({ error: 'Error' }, { status: 500 })
   }
@@ -32,7 +96,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const body = await request.json()
     const parsed = ClienteUpdateSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
     }
     const cliente = await prisma.cliente.update({
       where: { id },

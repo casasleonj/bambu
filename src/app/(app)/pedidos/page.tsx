@@ -774,17 +774,30 @@ export default function PedidosPage() {
       <Modal open={showEmbarqueModal} onClose={() => { setShowEmbarqueModal(false); setSelectedPedidoForEmbarque(null) }} className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
         <h2 className="text-lg font-bold mb-4">Asignar a Embarque</h2>
         <p className="text-sm text-gray-500 mb-4">Selecciona un embarque abierto para este pedido:</p>
-        {embarques.filter((e) => e.estado === 'ABIERTO').length === 0 ? (
-          <div className="text-center py-4">
-            <p className="text-sm text-gray-500 mb-2">No hay embarques abiertos</p>
-            <p className="text-xs text-gray-400">Crea un embarque primero para poder enviar este pedido</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <div className="max-h-48 overflow-y-auto border rounded-lg">
-              {embarques
-                .filter((e) => e.estado === 'ABIERTO')
-                .map((e) => {
+        {(() => {
+          const pedidoPacas = selectedPedidoForEmbarque ? pedidos.find((p) => p.id === selectedPedidoForEmbarque) : null
+          const pedidoPacaCount = pedidoPacas ? (pedidoPacas.cPacaAguaPed || 0) + (pedidoPacas.cPacaHieloPed || 0) + (pedidoPacas.cBotellonFabPed || 0) + (pedidoPacas.cBotellonDomPed || 0) + (pedidoPacas.cBolsaAguaPed || 0) + (pedidoPacas.cBolsaHieloPed || 0) : 0
+          const embarquesDisponibles = embarques.filter((e) => e.estado === 'ABIERTO' && (e.totalPacas || 0) + pedidoPacaCount <= 70)
+          const embarquesLlenos = embarques.filter((e) => e.estado === 'ABIERTO' && (e.totalPacas || 0) + pedidoPacaCount > 70)
+
+          if (embarquesDisponibles.length === 0 && embarquesLlenos.length === 0) {
+            return (
+              <div className="text-center py-4">
+                <p className="text-sm text-gray-500 mb-2">No hay embarques abiertos</p>
+                <p className="text-xs text-gray-400">Crea un embarque primero para poder enviar este pedido</p>
+              </div>
+            )
+          }
+
+          return (
+            <div className="space-y-3">
+              {embarquesDisponibles.length === 0 && embarquesLlenos.length > 0 && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                  Todos los embarques abiertos están llenos (70 pacas). Crea un nuevo embarque.
+                </div>
+              )}
+              <div className="max-h-48 overflow-y-auto border rounded-lg">
+                {embarquesDisponibles.map((e) => {
                   const capacidad = e.totalPacas || 0
                   const capacidadLabel = capacidad >= 70 ? '⛔ Excedido' : capacidad >= 65 ? '🔴 Máximo' : capacidad >= 60 ? '🟠 Pesado' : '🟢 Ideal'
                   const isSelected = selectedEmbarqueId === e.id
@@ -807,38 +820,37 @@ export default function PedidosPage() {
                     </button>
                   )
                 })}
+              </div>
+              {selectedEmbarqueId && (() => {
+                const e = embarques.find((em) => em.id === selectedEmbarqueId)
+                if (!e) return null
+                const totalProyectado = (e.totalPacas || 0) + pedidoPacaCount
+                if (totalProyectado >= 70) {
+                  return <p className="text-xs text-red-600">⚠️ Este pedido excederá la capacidad (70 pacas)</p>
+                }
+                return null
+              })()}
+              {!selectedEmbarqueId && embarquesDisponibles.length > 0 && (
+                <p className="text-xs text-amber-600">Selecciona un embarque para continuar</p>
+              )}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { setShowEmbarqueModal(false); setSelectedPedidoForEmbarque(null) }}
+                  className="flex-1 px-4 py-2 border rounded-lg text-sm hover:bg-gray-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={asignarEmbarque}
+                  disabled={updatingId === selectedPedidoForEmbarque || !selectedEmbarqueId}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {updatingId === selectedPedidoForEmbarque ? 'Enviando...' : 'Confirmar Envío'}
+                </button>
+              </div>
             </div>
-            {selectedEmbarqueId && (() => {
-              const e = embarques.find((em) => em.id === selectedEmbarqueId)
-              if (!e) return null
-              const pedidoPacas = selectedPedidoForEmbarque ? pedidos.find((p) => p.id === selectedPedidoForEmbarque) : null
-              const pedidoPacaCount = pedidoPacas ? (pedidoPacas.cPacaAguaPed || 0) + (pedidoPacas.cPacaHieloPed || 0) + (pedidoPacas.cBotellonFabPed || 0) + (pedidoPacas.cBotellonDomPed || 0) + (pedidoPacas.cBolsaAguaPed || 0) + (pedidoPacas.cBolsaHieloPed || 0) : 0
-              const totalProyectado = (e.totalPacas || 0) + pedidoPacaCount
-              if (totalProyectado >= 70) {
-                return <p className="text-xs text-red-600">⚠️ Este pedido excederá la capacidad (70 pacas)</p>
-              }
-              return null
-            })()}
-            {!selectedEmbarqueId && (
-              <p className="text-xs text-amber-600">Selecciona un embarque para continuar</p>
-            )}
-            <div className="flex gap-2">
-              <button
-                onClick={() => { setShowEmbarqueModal(false); setSelectedPedidoForEmbarque(null) }}
-                className="flex-1 px-4 py-2 border rounded-lg text-sm hover:bg-gray-50"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={asignarEmbarque}
-                disabled={updatingId === selectedPedidoForEmbarque || !selectedEmbarqueId}
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {updatingId === selectedPedidoForEmbarque ? 'Enviando...' : 'Confirmar Envío'}
-              </button>
-            </div>
-          </div>
-        )}
+          )
+        })()}
       </Modal>
 
       <Modal open={showDetailModal && !!selectedPedido} onClose={() => setShowDetailModal(false)} className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
