@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
+import { useBaseCaja } from '@/hooks/use-base-caja'
 
 interface BaseDia {
   id: string
@@ -9,13 +10,10 @@ interface BaseDia {
   valor: string
 }
 
-interface BaseCajaModalProps {
-  onSave?: (val: string) => void
-}
-
-export default function BaseCajaModal({ onSave }: BaseCajaModalProps) {
+export default function BaseCajaModal() {
+  const { setBaseDia: persistBaseDia } = useBaseCaja()
   const [showModal, setShowModal] = useState(false)
-  const [baseDia, setBaseDia] = useState('')
+  const [baseDiaInput, setBaseDiaInput] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -29,7 +27,7 @@ export default function BaseCajaModal({ onSave }: BaseCajaModalProps) {
       const data = await res.json()
       
       if (data.config) {
-        setBaseDia(data.config.valor)
+        setBaseDiaInput(data.config.valor)
       }
       
       // Verificar si es el mismo día
@@ -50,7 +48,7 @@ export default function BaseCajaModal({ onSave }: BaseCajaModalProps) {
   }
 
   async function handleSave() {
-    if (!baseDia || isNaN(Number(baseDia))) {
+    if (!baseDiaInput || isNaN(Number(baseDiaInput))) {
       toast.error('Ingresa un monto válido')
       return
     }
@@ -60,13 +58,13 @@ export default function BaseCajaModal({ onSave }: BaseCajaModalProps) {
       const res = await fetch('/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clave: 'BASE_DIA', valor: baseDia }),
+        body: JSON.stringify({ clave: 'BASE_DIA', valor: baseDiaInput }),
       })
-      
+
       if (res.ok) {
         localStorage.setItem('baseDiaDate', new Date().toISOString().split('T')[0])
-        localStorage.setItem('baseDia', baseDia)
-        onSave?.(baseDia)
+        localStorage.setItem('baseDia', baseDiaInput)
+        persistBaseDia(baseDiaInput)
         setShowModal(false)
       }
     } catch (error) {
@@ -107,8 +105,8 @@ export default function BaseCajaModal({ onSave }: BaseCajaModalProps) {
               </span>
               <input
                 type="number"
-                value={baseDia}
-                onChange={(e) => setBaseDia(e.target.value)}
+                value={baseDiaInput}
+                onChange={(e) => setBaseDiaInput(e.target.value)}
                 className="w-full pl-8 pr-4 py-4 text-2xl border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none"
                 placeholder="50000"
                 autoFocus
@@ -126,7 +124,7 @@ export default function BaseCajaModal({ onSave }: BaseCajaModalProps) {
 
         <button
           onClick={handleSave}
-          disabled={saving || !baseDia}
+          disabled={saving || !baseDiaInput}
           className="w-full mt-6 py-4 bg-blue-600 text-white font-bold text-lg rounded-xl hover:bg-blue-700 transition disabled:opacity-50"
         >
           {saving ? 'Guardando...' : 'Continuar →'}
