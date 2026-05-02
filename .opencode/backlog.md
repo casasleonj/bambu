@@ -13,7 +13,7 @@
 - **severidad:** P0
 - **fuente:** stress-test (item 3)
 - **fecha_reportado:** 2026-05-01
-- **commit_resuelto:**
+- **commit_resuelto:** `5b1c8d7` (2026-05-02)
 - **notas:** Al cancelar pedido con pagos, crear NotaCredito automática. No borrar pagos. El cierre diario resta NC de totalVentas.
 
 ### P0-2: Bloquear cierre si hay embarques abiertos
@@ -21,7 +21,7 @@
 - **severidad:** P0
 - **fuente:** stress-test (item 6 + flujo empalme)
 - **fecha_reportado:** 2026-05-02
-- **commit_resuelto:**
+- **commit_resuelto:** `5b1c8d7` (2026-05-02)
 - **notas:** POST rechaza 400 si hay embarques ABIERTO. GET devuelve status INCOMPLETO + lista de embarques pendientes. El cierre solo refleja post-empalme.
 
 ### P0-3: CSP eliminar 'unsafe-eval'
@@ -29,7 +29,7 @@
 - **severidad:** P0
 - **fuente:** security-audit
 - **fecha_reportado:** 2026-05-02
-- **commit_resuelto:**
+- **commit_resuelto:** `5b1c8d7` (2026-05-02)
 - **notas:** No hay uso de eval/Function/new Function en el código. Eliminar 'unsafe-eval' del script-src reduce XSS surface.
 
 ### P0-4: Filtro ANULADO en cierre GET
@@ -37,7 +37,7 @@
 - **severidad:** P0
 - **fuente:** security-audit
 - **fecha_reportado:** 2026-05-02
-- **commit_resuelto:**
+- **commit_resuelto:** `5b1c8d7` (2026-05-02)
 - **notas:** Cierre GET filtra CANCELADO pero no ANULADO. Cambiar a `estado: { notIn: [CANCELADO, ANULADO] }`.
 
 ---
@@ -49,7 +49,7 @@
 - **severidad:** P1
 - **fuente:** security-audit
 - **fecha_reportado:** 2026-05-02
-- **commit_resuelto:**
+- **commit_resuelto:** `5b1c8d7` (2026-05-02)
 - **notas:** Solo ADMIN/ASISTENTE pueden crear pedidos. REPARTIDOR no debería crear.
 
 ### P1-6: requireRole en POST /api/clientes
@@ -57,7 +57,7 @@
 - **severidad:** P1
 - **fuente:** security-audit
 - **fecha_reportado:** 2026-05-02
-- **commit_resuelto:**
+- **commit_resuelto:** `5b1c8d7` (2026-05-02)
 - **notas:** Solo ADMIN/ASISTENTE pueden crear clientes.
 
 ### P1-7: requireRole en POST /api/produccion
@@ -65,7 +65,7 @@
 - **severidad:** P1
 - **fuente:** security-audit
 - **fecha_reportado:** 2026-05-02
-- **commit_resuelto:**
+- **commit_resuelto:** `5b1c8d7` (2026-05-02)
 - **notas:** Solo ADMIN puede registrar producción.
 
 ### P1-8: ASISTENTE no puede ver /nomina
@@ -73,7 +73,7 @@
 - **severidad:** P1
 - **fuente:** stress-test (item 10)
 - **fecha_reportado:** 2026-05-01
-- **commit_resuelto:**
+- **commit_resuelto:** `5b1c8d7` (2026-05-02)
 - **notas:** Agregar `/nomina` a `ADMIN_PAGE_ROUTES`.
 
 ### P1-9: Validar recurrente único por cliente+frecuencia
@@ -81,7 +81,7 @@
 - **severidad:** P1
 - **fuente:** stress-test (item 4)
 - **fecha_reportado:** 2026-05-01
-- **commit_resuelto:**
+- **commit_resuelto:** `5b1c8d7` (2026-05-02)
 - **notas:** Al crear recurrente, verificar que no exista otro con mismo clienteId + frecuencia.
 
 ### P1-10: Eliminar `as any` en reportes/ventas
@@ -89,7 +89,7 @@
 - **severidad:** P1
 - **fuente:** security-audit
 - **fecha_reportado:** 2026-05-02
-- **commit_resuelto:**
+- **commit_resuelto:** `5b1c8d7` (2026-05-02)
 - **notas:** Usar `EstadoPedido.CANCELADO` en vez de `'CANCELADO' as any`.
 
 ---
@@ -101,7 +101,7 @@
 - **severidad:** P2
 - **fuente:** security-audit
 - **fecha_reportado:** 2026-05-02
-- **commit_resuelto:**
+- **commit_resuelto:** `5b1c8d7` (2026-05-02)
 - **notas:** Verificar que un repartidor no pueda ver embarques de otros con requireOwnership.
 
 ### P2-12: Standardizar API responses
