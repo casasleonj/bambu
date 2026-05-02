@@ -58,16 +58,29 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         if (parsed.data.cBolsaHieloEnt === undefined) updateData.cBolsaHieloEnt = current.cBolsaHieloPed
       }
 
-      // Al cancelar, revertir pagos y ajustar saldos
+      // Al cancelar, crear nota de crédito y ajustar saldos
       if (parsed.data.estado === 'CANCELADO') {
         const current = await tx.pedido.findUnique({ where: { id }, include: { pagos: true, factura: true } })
         if (!current) {
           throw new Error('PEDIDO_NOT_FOUND')
         }
 
-        // Revertir pagos: eliminarlos
-        if (current.pagos.length > 0) {
-          await tx.pago.deleteMany({ where: { pedidoId: id } })
+        const totalPagado = current.pagos.reduce((sum, p) => sum + Number(p.monto), 0)
+
+        // Crear nota de crédito si hay pagos registrados
+        if (totalPagado > 0) {
+          const nextNum = await tx.notaCredito.count() + 1
+          const ncNumero = `NC-${nextNum.toString().padStart(5, '0')}`
+          await tx.notaCredito.create({
+            data: {
+              numero: ncNumero,
+              pedidoId: id,
+              facturaId: current.factura?.id || null,
+              monto: totalPagado,
+              motivo: 'CANCELADO',
+              creadoPor: authResult.user?.id || null,
+            },
+          })
         }
 
         // Anular factura asociada si existe

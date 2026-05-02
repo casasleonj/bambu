@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
 import { z } from 'zod'
+import { EstadoPedido } from '@prisma/client'
 
 const ReporteVentasSchema = z.object({
   start: z.string().datetime().optional().or(z.string().date()),
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest) {
 
     const where = {
       fecha: dateFilter,
-      estado: { not: 'CANCELADO' as any },
+      estado: { not: EstadoPedido.CANCELADO },
     }
 
     const pagination = all ? { all: true } : { page: page ?? 1, pageSize: pageSize ?? 10 }

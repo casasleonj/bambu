@@ -73,6 +73,22 @@ export async function POST(request: NextRequest) {
 
     const { clienteId, tipo, canal, frecuencia, productos, obs } = parsed.data
 
+    // Verificar que no exista otro recurrente con mismo cliente + frecuencia
+    const existente = await prisma.pedido.findFirst({
+      where: {
+        clienteId,
+        esRecurrente: true,
+        frecuencia,
+        estado: { notIn: ['CANCELADO', 'ANULADO'] },
+      },
+    })
+    if (existente) {
+      return NextResponse.json(
+        { error: `El cliente ya tiene un pedido recurrente con frecuencia ${frecuencia}` },
+        { status: 409 }
+      )
+    }
+
     // Crear recurrente con número secuencial atómico (comparte secuencia con Pedidos)
     const recurrente = await withAdvisoryLock('PEDIDO', async (tx) => {
       const lastPedido = await tx.pedido.findFirst({ orderBy: { numero: 'desc' } })

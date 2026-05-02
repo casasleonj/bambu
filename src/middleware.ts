@@ -26,6 +26,7 @@ const ADMIN_PAGE_ROUTES = [
   '/cierre',
   '/reportes',
   '/precios',
+  '/nomina',
 ]
 
 /**
