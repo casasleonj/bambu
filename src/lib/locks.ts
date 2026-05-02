@@ -6,6 +6,7 @@ const LOCK_IDS = {
   EMBARQUE: 3,
   ABONO: 4,
   COMPRA: 5,
+  FACTURA_NUM: 6,
 } as const;
 
 /**

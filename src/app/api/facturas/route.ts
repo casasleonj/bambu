@@ -6,6 +6,8 @@ import { FacturaCreateSchema } from '@/lib/validators'
 import { getNextNumero } from '@/lib/sequence'
 import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
 import { logAudit } from '@/lib/audit'
+import { withAdvisoryLock } from '@/lib/locks'
+import type { Factura } from '@prisma/client'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -52,29 +54,34 @@ export async function POST(request: NextRequest) {
     }
     const { pedidoId, clienteId } = parsed.data
 
-    // Verificar que el pedido existe
-    const pedido = await prisma.pedido.findUnique({
-      where: { id: pedidoId },
-      include: { cliente: true },
-    })
+    const factura = await withAdvisoryLock<Factura>('FACTURA_NUM', async (tx) => {
+      // Verificar que el pedido existe y no tiene factura ya
+      const pedido = await tx.pedido.findUnique({
+        where: { id: pedidoId },
+        include: { cliente: true, factura: true },
+      })
 
-    if (!pedido) {
-      return NextResponse.json({ error: 'Pedido no encontrado' }, { status: 404 })
-    }
+      if (!pedido) {
+        throw new Error('Pedido no encontrado')
+      }
 
-    // Calcular siguiente número
-    const nextNum = await getNextNumero(prisma, { model: 'factura', field: 'numero' })
+      if (pedido.factura) {
+        throw new Error('El pedido ya tiene una factura')
+      }
 
-    // Crear factura
-    const factura = await prisma.factura.create({
-      data: {
-        numero: `FAC-${nextNum.toString().padStart(5, '0')}`,
-        clienteId,
-        pedidoId,
-        subtotal: pedido.total,
-        total: pedido.total,
-        saldo: pedido.total,
-      },
+      // Calcular siguiente número (dentro del lock para evitar duplicados)
+      const nextNum = await getNextNumero(tx, { model: 'factura', field: 'numero' })
+
+      return tx.factura.create({
+        data: {
+          numero: `FAC-${nextNum.toString().padStart(5, '0')}`,
+          clienteId,
+          pedidoId,
+          subtotal: pedido.total,
+          total: pedido.total,
+          saldo: pedido.total,
+        },
+      })
     })
 
     await logAudit({
@@ -87,7 +94,14 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, factura }, { status: 201 })
   } catch (error) {
-    console.error('Error creating factura:', error instanceof Error ? error.message : 'Unknown')
+    const message = error instanceof Error ? error.message : 'Unknown'
+    if (message === 'Pedido no encontrado') {
+      return NextResponse.json({ error: 'Pedido no encontrado' }, { status: 404 })
+    }
+    if (message === 'El pedido ya tiene una factura') {
+      return NextResponse.json({ error: 'El pedido ya tiene una factura' }, { status: 409 })
+    }
+    console.error('Error creating factura:', message)
     return NextResponse.json({ error: 'Error creating factura' }, { status: 500 })
   }
 }

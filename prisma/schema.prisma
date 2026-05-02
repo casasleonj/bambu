@@ -180,6 +180,9 @@ model Cliente {
   @@index([createdById])
   @@index([telefono])
   @@index([activo])
+  @@index([barrio])
+  @@index([frecuencia])
+  @@index([proxEntrega])
 }
 
 // ====================
@@ -329,6 +332,12 @@ model Pedido {
   @@index([createdById])
   @@index([esRecurrente])
   @@index([idOrigen])
+  @@index([fecha, estado])
+  @@index([clienteId, estado])
+  @@index([estado, fecha])
+  @@index([embarqueId, estado])
+  @@index([canal, estado])
+  @@index([fechaEntrega])
 }
 
 // ====================
@@ -419,6 +428,7 @@ model Factura {
   @@index([createdById])
   @@index([saldo])
   @@index([fecha])
+  @@index([pedidoId])
 }
 
 // ====================
@@ -441,6 +451,7 @@ model Abono {
   @@index([facturaId])
   @@index([clienteId])
   @@index([fecha])
+  @@index([facturaId, fecha])
 }
 
 // ====================
@@ -484,6 +495,8 @@ model Produccion {
 
   @@index([createdById])
   @@index([fecha])
+  @@index([trabajadorId, fecha])
+  @@index([turno, fecha])
 }
 
 // ====================
@@ -506,6 +519,7 @@ model Gasto {
 
   @@index([createdById])
   @@index([fecha])
+  @@index([categoria, fecha])
 }
 
 // ====================
@@ -622,6 +636,7 @@ model PrecioVolumen {
   
   @@index([productoId])
   @@index([canal])
+  @@index([productoId, canal, activo])
   @@unique([productoId, canal, cantMin])
 }
 
@@ -694,6 +709,8 @@ model Historial {
   @@index([entidad])
   @@index([fecha])
   @@index([usuarioId])
+  @@index([entidad, registroId])
+  @@index([entidad, fecha])
 }
 
 // ====================
