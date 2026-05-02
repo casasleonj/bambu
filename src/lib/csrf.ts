@@ -33,8 +33,24 @@ export function validateCsrf(req: NextRequest): NextResponse | null {
     ...(process.env.ALLOWED_ORIGINS?.split(',') || []),
   ]
 
-  const validOrigin = origin && allowedOrigins.some(o => origin.startsWith(o))
-  const validReferer = referer && allowedOrigins.some(o => referer.startsWith(o))
+  const validOrigin = origin && allowedOrigins.some(o => {
+    try {
+      const originUrl = new URL(origin)
+      const allowedUrl = new URL(o.startsWith('http') ? o : `https://${o}`)
+      return originUrl.protocol === allowedUrl.protocol && originUrl.hostname === allowedUrl.hostname
+    } catch {
+      return false
+    }
+  })
+  const validReferer = referer && allowedOrigins.some(o => {
+    try {
+      const refererUrl = new URL(referer)
+      const allowedUrl = new URL(o.startsWith('http') ? o : `https://${o}`)
+      return refererUrl.protocol === allowedUrl.protocol && refererUrl.hostname === allowedUrl.hostname
+    } catch {
+      return false
+    }
+  })
 
   if (!validOrigin && !validReferer) {
     return NextResponse.json(

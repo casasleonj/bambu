@@ -103,11 +103,12 @@ export async function POST(request: NextRequest) {
         { codigo: 'BOLSA_HIELO', cantidad: productos?.bolsaHielo || 0, precioManual: manualPrices['BOLSA_HIELO'] },
       ]
 
-      // Resolve prices using pricing engine
+      // Resolve prices using pricing engine (inside transaction for consistency)
       const preciosResueltos = await resolverPreciosPedido(
         items,
         canalReal,
         clienteId,
+        tx,
       )
 
       // Build price map from resolved prices

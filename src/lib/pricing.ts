@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import type { PrismaClient } from '@prisma/client'
 
 // Product codes matching the Producto.codigo values in the database
 export const PRODUCT_CODES = [
@@ -58,6 +59,7 @@ export async function resolverPrecio(
   canal: Canal,
   clienteOverrides?: Record<string, number> | null,
   precioManual?: number | null,
+  db?: PrismaClient,
 ): Promise<{ precio: number; origen: PrecioResuelto['origen'] }> {
   if (precioManual && precioManual > 0) {
     return { precio: precioManual, origen: 'manual' }
@@ -74,8 +76,10 @@ export async function resolverPrecio(
     }
   }
 
+  const client = db || prisma
+
   // Look up volume pricing from DB
-  const tier = await prisma.precioVolumen.findFirst({
+  const tier = await client.precioVolumen.findFirst({
     where: {
       producto: { codigo },
       canal,
@@ -98,17 +102,20 @@ export async function resolverPrecio(
 
 /**
  * Resolve prices for all products in a pedido.
+ * Uses a SINGLE batch query for all volume tiers instead of N sequential queries.
  * Returns a map of product code -> resolved price info.
  */
 export async function resolverPreciosPedido(
   items: Array<{ codigo: ProductCode; cantidad: number; precioManual?: number }>,
   canal: Canal,
   clienteId?: string,
+  db?: PrismaClient,
 ): Promise<PrecioResuelto[]> {
   // Get client overrides if clienteId provided
   let clienteOverrides: Record<string, number> | null = null
   if (clienteId) {
-    const cliente = await prisma.cliente.findUnique({
+    const client = db || prisma
+    const cliente = await client.cliente.findUnique({
       where: { id: clienteId },
       select: { preciosEspeciales: true },
     })
@@ -119,16 +126,82 @@ export async function resolverPreciosPedido(
     }
   }
 
+  // Batch load all relevant volume tiers in ONE query
+  const activeCodes = items.filter(i => i.cantidad > 0).map(i => i.codigo)
+  const maxCantidades: Record<string, number> = {}
+  for (const item of items) {
+    if (item.cantidad > 0) {
+      maxCantidades[item.codigo] = Math.max(maxCantidades[item.codigo] || 0, item.cantidad)
+    }
+  }
+
+  let tiersByCode: Record<string, Array<{ cantMin: number; cantMax: number | null; precio: number }>> = {}
+  if (activeCodes.length > 0) {
+    const client = db || prisma
+    const allTiers = await client.precioVolumen.findMany({
+      where: {
+        producto: { codigo: { in: activeCodes } },
+        canal,
+        activo: true,
+      },
+      include: { producto: true },
+      orderBy: [{ producto: { codigo: 'asc' } }, { cantMin: 'asc' }],
+    })
+
+    for (const tier of allTiers) {
+      const code = tier.producto.codigo
+      if (!tiersByCode[code]) tiersByCode[code] = []
+      tiersByCode[code].push({
+        cantMin: tier.cantMin,
+        cantMax: tier.cantMax,
+        precio: Number(tier.precio),
+      })
+    }
+  }
+
+  // Resolve each item using pre-loaded tiers (no more DB calls)
   const results: PrecioResuelto[] = []
   for (const item of items) {
     if (item.cantidad <= 0) continue
-    const { precio, origen } = await resolverPrecio(
-      item.codigo,
-      item.cantidad,
-      canal,
-      clienteOverrides,
-      item.precioManual,
-    )
+
+    let precio = 0
+    let origen: PrecioResuelto['origen'] = 'base'
+
+    // 1. Manual price
+    if (item.precioManual && item.precioManual > 0) {
+      precio = item.precioManual
+      origen = 'manual'
+    }
+    // 2. Client override
+    else if (clienteOverrides) {
+      const parsed = parsePreciosEspeciales(
+        typeof clienteOverrides === 'string' ? clienteOverrides : JSON.stringify(clienteOverrides),
+      )
+      const channelOverride = parsed[canal]?.[item.codigo]
+      if (channelOverride && channelOverride > 0) {
+        precio = channelOverride
+        origen = 'cliente'
+      }
+    }
+
+    // 3. Volume tier (only if not already resolved)
+    if (precio === 0 && tiersByCode[item.codigo]) {
+      const tiers = tiersByCode[item.codigo]
+      // Find best matching tier (highest cantMin <= cantidad)
+      let bestTier: { cantMin: number; cantMax: number | null; precio: number } | null = null
+      for (const t of tiers) {
+        if (t.cantMin <= item.cantidad && (t.cantMax === null || t.cantMax >= item.cantidad)) {
+          if (!bestTier || t.cantMin > bestTier.cantMin) {
+            bestTier = t
+          }
+        }
+      }
+      if (bestTier) {
+        precio = bestTier.precio
+        origen = 'volumen'
+      }
+    }
+
     results.push({
       codigo: item.codigo,
       precio,
