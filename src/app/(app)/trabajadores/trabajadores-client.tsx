@@ -66,7 +66,7 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
   async function fetchTrabajadores() {
     setFetchError(null)
     try {
-      const res = await fetch('/api/trabajadores')
+      const res = await fetch('/api/trabajadores?activo=true')
       if (!res.ok) throw new Error('Error al cargar trabajadores')
       const data = await res.json()
       setTrabajadores(data.trabajadores || [])
@@ -167,11 +167,16 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
     if (!confirm('Desactivar este trabajador?')) return
     try {
       const res = await fetch(`/api/trabajadores/${id}`, { method: 'DELETE' })
+      const data = await res.json()
       if (res.ok) {
         fetchTrabajadores()
+        toast.success('Trabajador desactivado')
+      } else {
+        toast.error(data.error || 'Error al desactivar trabajador')
       }
     } catch (error) {
       console.error('Error deleting trabajador:', error)
+      toast.error('Error de conexion al desactivar')
     }
   }
 
@@ -210,7 +215,7 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {trabajadoresFiltrados.length === 0 ? (
+        {trabajadores.length === 0 ? (
           <div className="col-span-full">
             <EmptyState
               icon={<svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>}
@@ -219,6 +224,16 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
               actionLabel="+ Crear Trabajador"
               onAction={() => setShowModal(true)}
             />
+          </div>
+        ) : trabajadoresFiltrados.length === 0 ? (
+          <div className="col-span-full text-center py-12 text-gray-500">
+            <p className="text-lg font-medium">No se encontraron resultados para "{search}"</p>
+            <button
+              onClick={() => setSearch('')}
+              className="mt-2 text-sm text-blue-600 hover:underline"
+            >
+              Limpiar busqueda
+            </button>
           </div>
         ) : (
           trabajadoresFiltrados.map((t) => (
@@ -389,7 +404,10 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
                 min={100}
                 max={2000}
                 value={formData.capacidadKg}
-                onChange={(e) => setFormData({ ...formData, capacidadKg: parseInt(e.target.value) || 500 })}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value)
+                  setFormData({ ...formData, capacidadKg: isNaN(v) ? 500 : v })
+                }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg"
               />
               <p className="text-xs text-gray-500 mt-1">Peso máximo que puede cargar la motocarga</p>
@@ -405,7 +423,7 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
                 min={0}
                 value={formData.comPacaAgua}
                 onChange={(e) =>
-                  setFormData({ ...formData, comPacaAgua: parseFloat(e.target.value) })
+                  setFormData({ ...formData, comPacaAgua: parseFloat(e.target.value) || 0 })
                 }
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg"
               />
@@ -418,7 +436,7 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
                 min={0}
                 value={formData.comPacaHielo}
                 onChange={(e) =>
-                  setFormData({ ...formData, comPacaHielo: parseFloat(e.target.value) })
+                  setFormData({ ...formData, comPacaHielo: parseFloat(e.target.value) || 0 })
                 }
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg"
               />
@@ -434,7 +452,7 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
                 min={0}
                 value={formData.salarioFijo}
                 onChange={(e) =>
-                  setFormData({ ...formData, salarioFijo: parseFloat(e.target.value) })
+                  setFormData({ ...formData, salarioFijo: parseFloat(e.target.value) || 0 })
                 }
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg"
               />

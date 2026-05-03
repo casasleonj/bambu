@@ -16,7 +16,11 @@ export async function GET(request: NextRequest) {
 
     const where: Record<string, unknown> = {}
     if (rol) where.rol = rol
-    if (activo !== null) where.activo = activo === 'true'
+    if (activo === null) {
+      where.activo = true
+    } else {
+      where.activo = activo === 'true'
+    }
 
     const trabajadores = await prisma.trabajador.findMany({
       where,
@@ -46,6 +50,7 @@ export async function POST(request: NextRequest) {
         rol: parsed.data.rol,
         tipoPago: parsed.data.tipoPago || 'COMISION',
         usaMoto: parsed.data.usaMoto || false,
+        capacidadKg: parsed.data.capacidadKg || 500,
         comPacaAgua: parsed.data.comPacaAgua || 200,
         comPacaHielo: parsed.data.comPacaHielo || 200,
         salarioFijo: parsed.data.salarioFijo || 0,

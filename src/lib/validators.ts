@@ -184,19 +184,30 @@ export const ProveedorCreateSchema = z.object({
   direccion: z.string().max(200).optional(),
 });
 
-export const TrabajadorCreateSchema = z.object({
+const TrabajadorBaseSchema = z.object({
   nombre: z.string().min(1).max(100),
   rol: z.enum(['SELLADOR', 'REPARTIDOR', 'ADMIN', 'CONTADOR']),
-  tipoPago: z.enum(['COMISION', 'FIJO']).optional(),
+  tipoPago: z.enum(['COMISION', 'FIJO', 'MIXTO']).optional(),
   usaMoto: z.boolean().optional(),
+  capacidadKg: z.coerce.number().int().min(0).max(5000).optional(),
   comPacaAgua: z.coerce.number().min(0).optional(),
   comPacaHielo: z.coerce.number().min(0).optional(),
   salarioFijo: z.coerce.number().min(0).optional(),
   telefono: z.string().max(20).optional(),
-});
+})
+
+export const TrabajadorCreateSchema = TrabajadorBaseSchema.refine((data) => {
+  if (data.usaMoto && (!data.capacidadKg || data.capacidadKg <= 0)) {
+    return {
+      message: 'Capacidad es requerida cuando usa moto',
+      path: ['capacidadKg'],
+    }
+  }
+  return true
+})
+
+export const TrabajadorUpdateSchema = TrabajadorBaseSchema.partial()
 
 export const ClienteUpdateSchema = ClienteCreateSchema.partial();
 
 export const ProveedorUpdateSchema = ProveedorCreateSchema.partial();
-
-export const TrabajadorUpdateSchema = TrabajadorCreateSchema.partial();

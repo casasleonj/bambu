@@ -189,11 +189,11 @@ export default function CerrarEmbarquePage() {
 
         setClientes(clientesData.clientes || [])
         
-        // Filter out current embarque from open embarques
+        // Filter out current embarque and only show ABIERTO embarques
         const allEmbarques = embarquesData.embarques || []
         setEmbarquesAbiertos(
           allEmbarques
-            .filter((e: EmbarqueAbierto) => e.id !== embarqueId)
+            .filter((e: EmbarqueAbierto & { estado?: string }) => e.id !== embarqueId && e.estado === 'ABIERTO')
             .slice(0, 10)
         )
       } catch (error) {

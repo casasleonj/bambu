@@ -45,6 +45,13 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
     const { pedidoIds, obs, estado, horaLlegada, ...rest } = parsed.data
 
+    if (estado === 'CERRADO') {
+      return NextResponse.json(
+        { error: 'Use el flujo de cierre de ruta para cerrar embarques' },
+        { status: 400 }
+      )
+    }
+
     const embarque = await prisma.$transaction(async (tx) => {
       const updateData: Record<string, unknown> = { ...rest }
       if (obs !== undefined) updateData.obs = obs
@@ -52,14 +59,17 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       if (horaLlegada) updateData.horaLlegada = new Date(horaLlegada)
 
       if (pedidoIds && Array.isArray(pedidoIds)) {
-        // Unassign current pedidos
-        await tx.pedido.updateMany({
+        // Get current assigned pedido IDs to preserve them
+        const currentPedidos = await tx.pedido.findMany({
           where: { embarqueId: id },
-          data: { embarqueId: null },
+          select: { id: true },
         })
-        // Assign new pedidos atomically
+        const currentIds = currentPedidos.map(p => p.id)
+        const allIds = [...new Set([...currentIds, ...pedidoIds])]
+
+        // Assign all pedidos (existing + new) atomically
         await tx.pedido.updateMany({
-          where: { id: { in: pedidoIds } },
+          where: { id: { in: allIds }, embarqueId: { not: id } },
           data: { embarqueId: id },
         })
       }

@@ -34,6 +34,24 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   if (roleCheck instanceof Response) return roleCheck
   const { id } = await params
   try {
+    const trabajador = await prisma.trabajador.findUnique({ where: { id } })
+    if (!trabajador) {
+      return apiError('Trabajador no encontrado', 404)
+    }
+    if (!trabajador.activo) {
+      return apiError('El trabajador ya esta desactivado', 409)
+    }
+
+    const embarquesAbiertos = await prisma.embarque.count({
+      where: { trabajadorId: id, estado: 'ABIERTO' },
+    })
+    if (embarquesAbiertos > 0) {
+      return apiError(
+        `No se puede desactivar: tiene ${embarquesAbiertos} embarque(s) abierto(s). Cierrellos primero.`,
+        400
+      )
+    }
+
     await prisma.trabajador.update({
       where: { id },
       data: { activo: false },

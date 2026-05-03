@@ -168,34 +168,6 @@ export default function EmbarquesPage() {
     }
   }
 
-  async function cerrarEmbarque() {
-    if (!selectedEmbarque || submitting) return
-    setSubmitting(true)
-    try {
-      const res = await fetch(`/api/embarques/${selectedEmbarque.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          estado: 'CERRADO',
-          horaLlegada: new Date().toISOString(),
-        }),
-      })
-      const data = await res.json()
-      if (data.success) {
-        setShowDetailModal(false)
-        fetchData()
-        toast.success('Embarque cerrado')
-      } else {
-        toast.error(data.error || 'Error cerrando embarque')
-      }
-    } catch (error) {
-      console.error('Error closing embarque:', error)
-      toast.error('Error cerrando embarque')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
   async function eliminarPedido(pedidoId: string) {
     if (!selectedEmbarque) return
     try {
@@ -333,6 +305,7 @@ export default function EmbarquesPage() {
               className="bg-white p-4 rounded-xl shadow hover:shadow-md transition cursor-pointer border"
               onClick={() => {
                 setSelectedEmbarque(embarque)
+                setSelectedPedidoIds([])
                 setShowDetailModal(true)
               }}
             >
@@ -649,7 +622,7 @@ export default function EmbarquesPage() {
                 onClick={() => setShowDetailModal(false)}
                 className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50"
               >
-                Cerrar
+                Volver
               </button>
             </div>
           </>
