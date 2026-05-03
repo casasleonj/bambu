@@ -36,28 +36,40 @@ export function Modal({ open, onClose, children, className, title, description }
     }
   }, [onClose])
 
+  const wasOpen = useRef(false)
+
+  useEffect(() => {
+    if (!open) {
+      wasOpen.current = false
+      return
+    }
+    if (!wasOpen.current) {
+      wasOpen.current = true
+      modalOpenCount++
+      document.body.style.overflow = 'hidden'
+      const timer = setTimeout(() => {
+        if (contentRef.current) {
+          const focusable = contentRef.current.querySelector<HTMLElement>(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+          )
+          focusable?.focus()
+        }
+      }, 50)
+      return () => {
+        modalOpenCount--
+        if (modalOpenCount <= 0) {
+          document.body.style.overflow = ''
+          modalOpenCount = 0
+        }
+        clearTimeout(timer)
+      }
+    }
+  }, [open])
+
   useEffect(() => {
     if (!open) return
-    modalOpenCount++
     document.addEventListener('keydown', handleKeyDown)
-    document.body.style.overflow = 'hidden'
-    const timer = setTimeout(() => {
-      if (contentRef.current) {
-        const focusable = contentRef.current.querySelector<HTMLElement>(
-          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-        )
-        focusable?.focus()
-      }
-    }, 50)
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown)
-      modalOpenCount--
-      if (modalOpenCount <= 0) {
-        document.body.style.overflow = ''
-        modalOpenCount = 0
-      }
-      clearTimeout(timer)
-    }
+    return () => document.removeEventListener('keydown', handleKeyDown)
   }, [open, handleKeyDown])
 
   if (!open) return null
