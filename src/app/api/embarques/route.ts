@@ -6,7 +6,7 @@ import { EmbarqueCreateSchema } from '@/lib/validators'
 import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
 import { getTodayRange } from '@/lib/dates'
 import { logAudit } from '@/lib/audit'
-import { calcularPacasEmbarque } from '@/lib/embarque-capacidad'
+import { calcularPacasEmbarque, calcularPesoEmbarque, getCapacidadInfo } from '@/lib/embarque-capacidad'
 import { withAdvisoryLock } from '@/lib/locks'
 import { EstadoEmbarque } from '@prisma/client'
 import { ROLES } from '@/lib/constants'
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
       prisma.embarque.findMany({
         where,
         include: {
-          trabajador: { select: { id: true, nombre: true } },
+          trabajador: { select: { id: true, nombre: true, capacidadKg: true } },
           ruta: { select: { id: true, nombre: true } },
           pedidos: {
             select: {
@@ -48,10 +48,19 @@ export async function GET(request: NextRequest) {
       prisma.embarque.count({ where }),
     ])
 
-    const embarques = embarquesRaw.map((e) => ({
-      ...e,
-      totalPacas: calcularPacasEmbarque(e.pedidos),
-    }))
+    const embarques = embarquesRaw.map((e) => {
+      const totalPacas = calcularPacasEmbarque(e.pedidos)
+      const pesoKg = calcularPesoEmbarque(e.pedidos)
+      const capacidadKg = e.trabajador.capacidadKg || 500
+      const capacidadInfo = getCapacidadInfo(totalPacas, pesoKg, capacidadKg)
+      return {
+        ...e,
+        totalPacas,
+        pesoKg,
+        capacidadKg,
+        capacidadInfo,
+      }
+    })
 
     return apiSuccess(
       pagination.all
@@ -75,17 +84,26 @@ export async function POST(request: NextRequest) {
       return apiError('Datos invalidos', 400, { formErrors: [formatZodError(parsed.error)] })
     }
 
-    const totalPacas = (parsed.data.pacasAgua || 0) + (parsed.data.pacasHielo || 0)
-    if (totalPacas > 70) {
-      return apiError(`Capacidad excedida: ${totalPacas} pacas. Maximo 70.`, 400)
-    }
-    
     const trabajador = await prisma.trabajador.findUnique({
       where: { id: parsed.data.trabajadorId },
+      select: { id: true, nombre: true, capacidadKg: true },
     })
     
     if (!trabajador) {
       return apiError('Trabajador no encontrado', 400)
+    }
+    
+    const capacidadKg = trabajador.capacidadKg || 500
+    const pesoEstimado = calcularPesoEmbarque([{
+      cPacaAguaPed: parsed.data.pacasAgua || 0,
+      cPacaHieloPed: parsed.data.pacasHielo || 0,
+    }])
+    
+    if (pesoEstimado > capacidadKg) {
+      return apiError(
+        `Capacidad excedida: ${pesoEstimado.toFixed(1)}kg. Maximo ${capacidadKg}kg.`,
+        400
+      )
     }
     
     const embarque = await prisma.embarque.create({

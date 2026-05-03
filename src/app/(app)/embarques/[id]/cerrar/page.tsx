@@ -40,6 +40,18 @@ interface Embarque {
   ruta?: { nombre: string } | null
   pedidos: Pedido[]
   totalPacas?: number
+  pesoKg?: number
+  capacidadKg?: number
+  capacidadInfo?: {
+    nivel: string
+    label: string
+    color: string
+    icon: string
+    porcentaje: number
+    pesoKg: number
+    capacidadKg: number
+    total: number
+  }
   pacasAgua: number
   pacasHielo: number
 }
@@ -408,13 +420,20 @@ export default function CerrarEmbarquePage() {
     return <div className="text-center py-12 text-gray-500">Embarque no encontrado</div>
   }
 
-  const capacidad = getCapacidadInfo(embarque.totalPacas || 0)
+  const capacidad = embarque.capacidadInfo || getCapacidadInfo(
+    embarque.totalPacas || 0,
+    embarque.pesoKg || 0,
+    embarque.capacidadKg || 500
+  )
 
   // Calculate load info
   const totalCargaInicial = (embarque.pacasAgua || 0) + (embarque.pacasHielo || 0)
   const totalAsignado = embarque.pedidos.reduce((sum, p) =>
     sum + p.cPacaAguaPed + p.cPacaHieloPed + p.cBotellonFabPed + p.cBotellonDomPed + p.cBolsaAguaPed + p.cBolsaHieloPed, 0)
   const totalLibre = totalCargaInicial - totalAsignado
+
+  const capacidadKg = embarque.capacidadKg || 500
+  const pesoKg = embarque.pesoKg || capacidad.pesoKg || 0
 
   // Calculate summary
   let totalCobrado = 0
@@ -448,7 +467,7 @@ export default function CerrarEmbarquePage() {
         <div className={`px-4 py-2 rounded-lg border ${capacidad.color}`}>
           <span className="text-lg mr-2">{capacidad.icon}</span>
           <span className="font-medium">{capacidad.label}</span>
-          <span className="text-gray-600 ml-2">({capacidad.total} pacas)</span>
+          <span className="text-gray-600 ml-2">({pesoKg.toFixed(1)}kg / {capacidadKg}kg)</span>
         </div>
       </div>
 

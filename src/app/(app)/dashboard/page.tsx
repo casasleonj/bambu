@@ -137,15 +137,13 @@ export default async function DashboardPage() {
   const ventasTrend = ventasAyer > 0 ? ((ventas - ventasAyer) / ventasAyer) * 100 : 0
   const pedidosTrend = pedidosAyer.length > 0 ? ((pedidos.length - pedidosAyer.length) / pedidosAyer.length) * 100 : 0
 
-  // Hourly distribution for simple bar chart
-  const hourlySales = new Array(12).fill(0)
+  // Hourly distribution for simple bar chart (pedidos count, 24h)
+  const hourlyPedidos = new Array(24).fill(0)
   for (const p of pedidos) {
     const hour = new Date(p.fecha).getHours()
-    if (hour >= 6 && hour <= 17) {
-      hourlySales[hour - 6] += Number(p.total)
-    }
+    hourlyPedidos[hour]++
   }
-  const maxHourly = Math.max(...hourlySales, 1)
+  const maxHourly = Math.max(...hourlyPedidos, 1)
 
   const ventasPorPrecio = buildVentasPorPrecio(pedidos)
 
@@ -378,33 +376,36 @@ export default async function DashboardPage() {
         </div>
       )}
 
-      {/* Ventas por Hora - Simple CSS Bar Chart */}
-      {pedidos.length > 0 && (
-        <div className="bg-white p-6 rounded-xl shadow-sm">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4">Ventas por Hora</h2>
-          <div className="flex items-end gap-2 h-40">
-            {hourlySales.map((amount, i) => {
-              const height = amount > 0 ? Math.max((amount / maxHourly) * 100, 8) : 0
-              const hour = i + 6
+      {/* Pedidos por Hora - Simple CSS Bar Chart */}
+      <div className="bg-white p-6 rounded-xl shadow-sm">
+        <h2 className="text-lg font-semibold text-gray-800 mb-4">Pedidos por Hora</h2>
+        {pedidos.length === 0 ? (
+          <div className="text-center py-8 text-gray-400">
+            <p>No hay pedidos registrados hoy</p>
+          </div>
+        ) : (
+          <div className="flex items-end gap-1 h-40">
+            {hourlyPedidos.map((count, i) => {
+              const height = count > 0 ? Math.max((count / maxHourly) * 100, 8) : 0
               return (
                 <div key={i} className="flex-1 flex flex-col items-center gap-1">
                   <div
                     className="w-full bg-blue-500 rounded-t hover:bg-blue-600 transition-all relative group"
                     style={{ height: `${height}%` }}
                   >
-                    {amount > 0 && (
+                    {count > 0 && (
                       <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition whitespace-nowrap pointer-events-none">
-                        {formatCurrency(amount)}
+                        {count} pedido{count !== 1 ? 's' : ''}
                       </div>
                     )}
                   </div>
-                  <span className="text-xs text-gray-500">{hour}:00</span>
+                  <span className="text-[10px] text-gray-500">{String(i).padStart(2, '0')}</span>
                 </div>
               )
             })}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Acciones Rapidas */}
       <div className="bg-white p-6 rounded-xl shadow-sm">

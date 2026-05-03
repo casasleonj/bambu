@@ -44,6 +44,18 @@ interface Embarque {
   ruta?: Ruta | null
   pedidos: Pedido[]
   totalPacas?: number
+  pesoKg?: number
+  capacidadKg?: number
+  capacidadInfo?: {
+    nivel: string
+    label: string
+    color: string
+    icon: string
+    porcentaje: number
+    total: number
+    pesoKg: number
+    capacidadKg: number
+  }
 }
 
 export default function EmbarquesPage() {
@@ -224,12 +236,25 @@ export default function EmbarquesPage() {
   )
 
   // Calculate capacity for selected embarque + new selections
-  function calcularCapacidadProyectada(embarque: Embarque, nuevosPedidoIds: string[]): number {
+  function calcularCapacidadProyectada(embarque: Embarque, nuevosPedidoIds: string[]): { totalPacas: number; pesoKg: number } {
     const pacasActuales = embarque.totalPacas || 0
-    const pacasNuevas = pedidos
-      .filter((p) => nuevosPedidoIds.includes(p.id))
-      .reduce((sum, p) => sum + (p.cPacaAguaPed || 0) + (p.cPacaHieloPed || 0) + (p.cBotellonFabPed || 0) + (p.cBotellonDomPed || 0) + (p.cBolsaAguaPed || 0) + (p.cBolsaHieloPed || 0), 0)
-    return pacasActuales + pacasNuevas
+    const pesoActual = embarque.pesoKg || 0
+    const nuevosPedidos = pedidos.filter((p) => nuevosPedidoIds.includes(p.id))
+    const pacasNuevas = nuevosPedidos.reduce(
+      (sum, p) => sum + (p.cPacaAguaPed || 0) + (p.cPacaHieloPed || 0) + (p.cBotellonFabPed || 0) + (p.cBotellonDomPed || 0) + (p.cBolsaAguaPed || 0) + (p.cBolsaHieloPed || 0), 0
+    )
+    const pesoNuevo = nuevosPedidos.reduce(
+      (sum, p) =>
+        sum +
+        (p.cPacaAguaPed || 0) * 10.0 +
+        (p.cPacaHieloPed || 0) * 11.0 +
+        (p.cBotellonFabPed || 0) * 20.0 +
+        (p.cBotellonDomPed || 0) * 20.0 +
+        (p.cBolsaAguaPed || 0) * 0.25 +
+        (p.cBolsaHieloPed || 0) * 0.55,
+      0
+    )
+    return { totalPacas: pacasActuales + pacasNuevas, pesoKg: pesoActual + pesoNuevo }
   }
 
   if (fetchError) {
@@ -293,15 +318,15 @@ export default function EmbarquesPage() {
 
       {/* Leyenda de capacidad */}
       <div className="flex gap-4 mb-4 text-xs text-gray-600">
-        <span>🟢 ≤50 Ideal</span>
-        <span>🟠 60 Pesado</span>
-        <span>🔴 65 Máximo</span>
-        <span>⛔ 70+ Excedido</span>
+        <span>🟢 ≤75% Ideal</span>
+        <span>🟡 75-87% Pesado</span>
+        <span>🔴 87-100% Máximo</span>
+        <span>⛔ {'>'}100% Excedido</span>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {embarques.map((embarque) => {
-          const capacidad = getCapacidadInfo(embarque.totalPacas || 0)
+          const cap = embarque.capacidadInfo || getCapacidadInfo(embarque.totalPacas || 0, embarque.pesoKg || 0, embarque.capacidadKg || 500)
           return (
             <div
               key={embarque.id}
@@ -323,11 +348,11 @@ export default function EmbarquesPage() {
               </div>
 
               {/* Capacidad */}
-              <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border mb-3 ${capacidad.color}`}>
-                <span className="text-lg">{capacidad.icon}</span>
+              <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border mb-3 ${cap.color}`}>
+                <span className="text-lg">{cap.icon}</span>
                 <div>
-                  <p className="text-sm font-medium">{capacidad.label}</p>
-                  <p className="text-xs">{capacidad.total} pacas</p>
+                  <p className="text-sm font-medium">{cap.label}</p>
+                  <p className="text-xs">{cap.total} pacas · {cap.pesoKg.toFixed(1)}kg / {cap.capacidadKg}kg</p>
                 </div>
               </div>
 
@@ -454,18 +479,23 @@ export default function EmbarquesPage() {
 
             {/* Capacidad actual */}
             {(() => {
-              const capacidadActual = getCapacidadInfo(selectedEmbarque.totalPacas || 0)
+              const capacidadKg = selectedEmbarque.capacidadKg || 500
+              const capacidadActual = getCapacidadInfo(
+                selectedEmbarque.totalPacas || 0,
+                selectedEmbarque.pesoKg || 0,
+                capacidadKg
+              )
               const proyectada = calcularCapacidadProyectada(selectedEmbarque, selectedPedidoIds)
-              const capacidadProyectada = getCapacidadInfo(proyectada)
+              const capacidadProyectada = getCapacidadInfo(proyectada.totalPacas, proyectada.pesoKg, capacidadKg)
               return (
                 <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border mb-4 ${capacidadActual.color}`}>
                   <span className="text-lg">{capacidadActual.icon}</span>
                   <div className="flex-1">
                     <p className="text-sm font-medium">
-                      {capacidadActual.label}: {capacidadActual.total} pacas
+                      {capacidadActual.label}: {capacidadActual.pesoKg.toFixed(1)}kg / {capacidadKg}kg ({capacidadActual.porcentaje.toFixed(0)}%)
                       {selectedPedidoIds.length > 0 && (
                         <span className="text-gray-600">
-                          {' '}→ {proyectada} pacas ({capacidadProyectada.label})
+                          {' '}→ {capacidadProyectada.pesoKg.toFixed(1)}kg ({capacidadProyectada.label})
                         </span>
                       )}
                     </p>
@@ -512,11 +542,18 @@ export default function EmbarquesPage() {
                       </p>
                     )}
                   </div>
-                  {calcularCapacidadProyectada(selectedEmbarque, selectedPedidoIds) >= 70 && (
-                    <p className="text-xs text-red-600 mt-1">
-                      ⚠️ Excederá capacidad máxima (70 pacas)
-                    </p>
-                  )}
+                  {(() => {
+                    const proyectada = calcularCapacidadProyectada(selectedEmbarque, selectedPedidoIds)
+                    const capacidadKg = selectedEmbarque.capacidadKg || 500
+                    if (proyectada.pesoKg > capacidadKg) {
+                      return (
+                        <p className="text-xs text-red-600 mt-1">
+                          ⚠️ Excederá capacidad máxima ({capacidadKg}kg)
+                        </p>
+                      )
+                    }
+                    return null
+                  })()}
                 </div>
 
                 <button

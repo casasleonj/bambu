@@ -12,6 +12,7 @@ interface Trabajador {
   rol: string
   tipoPago: string
   usaMoto: boolean
+  capacidadKg: number
   comPacaAgua: number
   comPacaHielo: number
   salarioFijo: number
@@ -55,6 +56,7 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
     rol: 'SELLADOR',
     tipoPago: 'COMISION',
     usaMoto: false,
+    capacidadKg: 500,
     comPacaAgua: 200,
     comPacaHielo: 200,
     salarioFijo: 0,
@@ -91,6 +93,7 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
       rol: 'SELLADOR',
       tipoPago: 'COMISION',
       usaMoto: false,
+      capacidadKg: 500,
       comPacaAgua: 200,
       comPacaHielo: 200,
       salarioFijo: 0,
@@ -108,6 +111,7 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
       rol: trabajador.rol,
       tipoPago: trabajador.tipoPago,
       usaMoto: trabajador.usaMoto,
+      capacidadKg: trabajador.capacidadKg,
       comPacaAgua: trabajador.comPacaAgua,
       comPacaHielo: trabajador.comPacaHielo,
       salarioFijo: trabajador.salarioFijo,
@@ -262,6 +266,15 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
                   </span>
                 </div>
 
+                {t.usaMoto && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Capacidad moto</span>
+                    <span className="font-medium text-gray-700">
+                      {t.capacidadKg} kg
+                    </span>
+                  </div>
+                )}
+
                 {t.telefono && (
                   <div className="flex justify-between">
                     <span className="text-gray-500">Telefono</span>
@@ -366,6 +379,22 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
               Usa moto
             </label>
           </div>
+
+          {formData.usaMoto && (
+            <div>
+              <label htmlFor="trabajador-capacidadKg" className="block text-sm font-medium mb-1">Capacidad moto (kg)</label>
+              <input
+                id="trabajador-capacidadKg"
+                type="number"
+                min={100}
+                max={2000}
+                value={formData.capacidadKg}
+                onChange={(e) => setFormData({ ...formData, capacidadKg: parseInt(e.target.value) || 500 })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              />
+              <p className="text-xs text-gray-500 mt-1">Peso máximo que puede cargar la motocarga</p>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <div>

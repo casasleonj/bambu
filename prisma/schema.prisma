@@ -198,6 +198,7 @@ model Trabajador {
   tipoPago      TipoPagoTrabajador @default(COMISION)
 
   usaMoto       Boolean  @default(false)
+  capacidadKg   Int      @default(500) // Capacidad del motocarga en KG
   comPacaAgua   Decimal  @default(200) @db.Decimal(10, 2)
   comPacaHielo  Decimal  @default(200) @db.Decimal(10, 2)
   salarioFijo   Decimal  @default(0)   @db.Decimal(10, 2)
