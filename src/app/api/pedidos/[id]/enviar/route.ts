@@ -1,7 +1,8 @@
 import { formatZodError } from '@/lib/utils'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuth } from '@/lib/auth-check'
+import { requireAuth, requireRole, requireOwnership } from '@/lib/auth-check'
+import { ROLES } from '@/lib/constants'
 import { z } from 'zod'
 import { logAudit } from '@/lib/audit'
 import { calcularPacasEmbarque } from '@/lib/embarque-capacidad'
@@ -14,6 +15,9 @@ const EnviarPedidoSchema = z.object({
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
+
+  const roleCheck = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE, ROLES.REPARTIDOR], authResult)
+  if (roleCheck instanceof Response) return roleCheck
 
   const { id } = await params
 

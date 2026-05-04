@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
+import { withAdvisoryLock } from '@/lib/locks'
 import { z } from 'zod'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
@@ -24,7 +25,7 @@ export async function POST(request: NextRequest) {
     if (!validation.success) {
       return apiError('Parámetros inválidos', 400)
     }
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await withAdvisoryLock('EMBARQUE', async (tx: any) => {
       // 1. Find all PENDIENTE pedidos without embarque
       const pedidosPendientes = await tx.pedido.findMany({
         where: {
@@ -71,7 +72,7 @@ export async function POST(request: NextRequest) {
           : null
 
         // Use route's repartidor if available, otherwise round-robin
-        let repartidor = repartidores.find(r => r.id === ruta?.repartidorId)
+        let repartidor = repartidores.find((r: { id: string }) => r.id === ruta?.repartidorId)
         if (!repartidor) {
           // Fallback to round-robin based on hash of key for consistency
           const hash = key.split('').reduce((a, b) => a + b.charCodeAt(0), 0)
@@ -97,7 +98,7 @@ export async function POST(request: NextRequest) {
         // Assign pedidos to embarque
         await tx.pedido.updateMany({
           where: {
-            id: { in: pedidosGrupo.map(p => p.id) },
+            id: { in: pedidosGrupo.map((p: { id: string }) => p.id) },
           },
           data: {
             embarqueId: embarque.id,

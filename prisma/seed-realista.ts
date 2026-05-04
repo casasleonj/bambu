@@ -61,6 +61,11 @@ function generateDireccion(): string {
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 async function main() {
+  if (process.env.NODE_ENV === 'production') {
+    console.error('❌ seed-realista.ts: NO ejecutar en producción (borra toda la base de datos)')
+    process.exit(1)
+  }
+
   console.log('🌱 Seeding realistic data (1 week, ~250 pedidos/day)...')
 
   // Limpiar BDD
@@ -89,7 +94,7 @@ async function main() {
   console.log('✅ Database cleaned')
 
   // ─── Users ───────────────────────────────────────────────────────────────
-  const isProd = process.env.NODE_ENV === 'production'
+  const isProd = (process.env.NODE_ENV as string) === 'production'
 
   function getPassword(username: string): string {
     if (isProd) return crypto.randomUUID()

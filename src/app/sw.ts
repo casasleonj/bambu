@@ -2,7 +2,7 @@
 
 import { precacheAndRoute, cleanupOutdatedCaches, createHandlerBoundToURL } from 'workbox-precaching'
 import { registerRoute, NavigationRoute } from 'workbox-routing'
-import { NetworkFirst, CacheFirst, StaleWhileRevalidate } from 'workbox-strategies'
+import { NetworkOnly, CacheFirst, StaleWhileRevalidate } from 'workbox-strategies'
 import { ExpirationPlugin } from 'workbox-expiration'
 import { CacheableResponsePlugin } from 'workbox-cacheable-response'
 
@@ -14,19 +14,10 @@ precacheAndRoute(self.__WB_MANIFEST)
 
 cleanupOutdatedCaches()
 
-// API: network-first, never serve stale financial data
+// API: network-only — NEVER cache financial data
 registerRoute(
   ({ url }) => url.pathname.startsWith('/api/'),
-  new NetworkFirst({
-    cacheName: `api-cache-${CACHE_VERSION}`,
-    plugins: [
-      new CacheableResponsePlugin({ statuses: [0, 200] }),
-      new ExpirationPlugin({
-        maxEntries: 50,
-        maxAgeSeconds: 24 * 60 * 60,
-      }),
-    ],
-  })
+  new NetworkOnly()
 )
 
 // Images: cache-first, long-lived
@@ -54,7 +45,7 @@ registerRoute(
 
 // Navigation: network-first with offline fallback
 const offlineHandler = createHandlerBoundToURL('/offline')
-const navigationStrategy = new NetworkFirst({
+const navigationStrategy = new StaleWhileRevalidate({
   cacheName: `pages-cache-${CACHE_VERSION}`,
   plugins: [
     new ExpirationPlugin({
@@ -64,7 +55,7 @@ const navigationStrategy = new NetworkFirst({
   ],
 })
 const navigationRoute = new NavigationRoute(navigationStrategy, {
-  allowlist: [/^(?!\/api\/)/],
+  allowlist: [/^(?!\/api\/|_next)/],
 })
 
 registerRoute(navigationRoute)
@@ -75,7 +66,6 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
       const currentCaches = [
-        `api-cache-${CACHE_VERSION}`,
         `images-cache-${CACHE_VERSION}`,
         `static-cache-${CACHE_VERSION}`,
         `pages-cache-${CACHE_VERSION}`,
