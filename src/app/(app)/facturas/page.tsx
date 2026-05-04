@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EmptyState } from '@/components/empty-state'
+import { DateRangeFilter } from '@/components/date-range-filter'
 
 interface Factura {
   id: string
@@ -38,6 +39,7 @@ export default function FacturasPage() {
   const [metodoPago, setMetodoPago] = useState('EFECTIVO')
   const [submitting, setSubmitting] = useState(false)
   const [search, setSearch] = useState('')
+  const [dateRange, setDateRange] = useState<{ desde: string | null; hasta: string | null }>({ desde: null, hasta: null })
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -48,7 +50,12 @@ export default function FacturasPage() {
 
   const fetchFacturas = async () => {
     try {
-      const res = await fetch('/api/facturas')
+      const params = new URLSearchParams()
+      if (dateRange.desde && dateRange.hasta) {
+        params.set('desde', dateRange.desde)
+        params.set('hasta', dateRange.hasta)
+      }
+      const res = await fetch(`/api/facturas?${params.toString()}`)
       const data = await res.json()
       setFacturas(data.facturas || data.data || [])
     } catch (e) {
@@ -115,7 +122,8 @@ export default function FacturasPage() {
         <h1 className="text-2xl font-bold">Facturas</h1>
       </div>
 
-      <div className="bg-white p-4 rounded-xl shadow">
+      <div className="bg-white p-4 rounded-xl shadow space-y-3">
+        <DateRangeFilter onDateChange={(desde, hasta) => { setDateRange({ desde, hasta }); setTimeout(fetchFacturas, 0) }} />
         <Input
           type="text"
           placeholder="Buscar por numero o cliente..."

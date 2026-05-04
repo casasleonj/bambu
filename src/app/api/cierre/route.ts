@@ -5,17 +5,19 @@ import { requireAuth, requireRole } from '@/lib/auth-check'
 import { CierreCreateSchema } from '@/lib/validators'
 import { EstadoPedido, EstadoEmbarque } from '@prisma/client'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
   try {
-    const today = new Date().toISOString().split('T')[0]
-    const startOfDay = new Date(today + 'T00:00:00.000Z')
+    const fechaParam = request.nextUrl.searchParams.get('fecha')
+    const fechaStr = fechaParam || new Date().toISOString().split('T')[0]
+    const startOfDay = new Date(fechaStr + 'T00:00:00.000Z')
+    const endOfDay = new Date(fechaStr + 'T23:59:59.999Z')
 
     // Check for open embarques
     const embarquesAbiertos = await prisma.embarque.findMany({
       where: {
-        fecha: { gte: startOfDay },
+        fecha: { gte: startOfDay, lt: endOfDay },
         estado: EstadoEmbarque.ABIERTO,
       },
       select: { id: true, numero: true, trabajador: { select: { nombre: true } } },
@@ -23,24 +25,23 @@ export async function GET() {
 
     const pedidos = await prisma.pedido.findMany({
       where: {
-        fecha: { gte: startOfDay },
+        fecha: { gte: startOfDay, lt: endOfDay },
         estado: { notIn: [EstadoPedido.CANCELADO, EstadoPedido.ANULADO] },
       },
       include: { pagos: true },
     })
 
     const produccion = await prisma.produccion.findFirst({
-      where: { fecha: { gte: startOfDay } },
+      where: { fecha: { gte: startOfDay, lt: endOfDay } },
     })
 
     const gastos = await prisma.gasto.aggregate({
-      where: { fecha: { gte: startOfDay } },
+      where: { fecha: { gte: startOfDay, lt: endOfDay } },
       _sum: { monto: true },
     })
 
-    // Subtract notas de crédito from totals
     const notasCredito = await prisma.notaCredito.findMany({
-      where: { fecha: { gte: startOfDay } },
+      where: { fecha: { gte: startOfDay, lt: endOfDay } },
     })
     const totalNC = notasCredito.reduce((sum, nc) => sum + Number(nc.monto), 0)
 

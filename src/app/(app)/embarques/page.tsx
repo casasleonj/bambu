@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Modal } from '@/components/modal'
 import { EmptyState } from '@/components/empty-state'
+import { DateRangeFilter } from '@/components/date-range-filter'
 import { getCapacidadInfo } from '@/lib/embarque-capacidad'
 
 interface Ruta {
@@ -73,6 +74,7 @@ export default function EmbarquesPage() {
   const [selectedRutaId, setSelectedRutaId] = useState('')
   const [obs, setObs] = useState('')
   const [fetchError, setFetchError] = useState<string | null>(null)
+  const [dateRange, setDateRange] = useState<{ desde: string | null; hasta: string | null }>({ desde: null, hasta: null })
 
   useEffect(() => {
     fetchData()
@@ -81,8 +83,13 @@ export default function EmbarquesPage() {
   async function fetchData() {
     try {
       setFetchError(null)
+      const params = new URLSearchParams()
+      if (dateRange.desde && dateRange.hasta) {
+        params.set('desde', dateRange.desde)
+        params.set('hasta', dateRange.hasta)
+      }
       const [embarquesRes, trabajadoresRes, rutasRes] = await Promise.all([
-        fetch('/api/embarques'),
+        fetch(`/api/embarques?${params.toString()}`),
         fetch('/api/trabajadores?rol=REPARTIDOR&activo=true'),
         fetch('/api/rutas?all=true'),
       ])
@@ -286,6 +293,11 @@ export default function EmbarquesPage() {
             + Nuevo Embarque
           </button>
         </div>
+      </div>
+
+      {/* Filtro por fecha */}
+      <div className="bg-white p-4 rounded-xl shadow mb-4">
+        <DateRangeFilter onDateChange={(desde, hasta) => { setDateRange({ desde, hasta }); setTimeout(fetchData, 0) }} />
       </div>
 
       {/* Leyenda de capacidad */}

@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { GastoCreateSchema } from '@/lib/validators'
 import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
+import { getDateRange } from '@/lib/dates'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -13,14 +14,25 @@ export async function GET(request: NextRequest) {
   const pagination = getPaginationParams(searchParams)
 
   try {
-    const where: any = fecha
-      ? {
-          fecha: {
-            gte: new Date(new Date(fecha).setHours(0, 0, 0, 0)),
-            lt: new Date(new Date(fecha).setHours(23, 59, 59, 999)),
-          },
-        }
-      : {}
+    const desde = searchParams.get('desde')
+    const hasta = searchParams.get('hasta')
+    const fecha = searchParams.get('fecha')
+    const all = searchParams.get('all')
+
+    let where: Record<string, unknown> = {}
+    if (all === 'true') {
+      where = {}
+    } else if (desde && hasta) {
+      const { startDate, endDate } = getDateRange(desde, hasta)
+      where = { fecha: { gte: startDate, lt: endDate } }
+    } else if (fecha) {
+      where = {
+        fecha: {
+          gte: new Date(new Date(fecha).setHours(0, 0, 0, 0)),
+          lt: new Date(new Date(fecha).setHours(23, 59, 59, 999)),
+        },
+      }
+    }
 
     const prismaPagination = getPrismaPagination(pagination)
 

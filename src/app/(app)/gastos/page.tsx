@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EmptyState } from '@/components/empty-state'
+import { DateRangeFilter } from '@/components/date-range-filter'
 
 interface Gasto {
   id: string
@@ -30,7 +31,7 @@ const categorias = [
 export default function GastosPage() {
   const [gastos, setGastos] = useState<Gasto[]>([])
   const [showCrear, setShowCrear] = useState(false)
-  const [showAll, setShowAll] = useState(false)
+  const [dateRange, setDateRange] = useState<{ desde: string | null; hasta: string | null }>({ desde: null, hasta: null })
   const [categoria, setCategoria] = useState('OTRO')
   const [descripcion, setDescripcion] = useState('')
   const [monto, setMonto] = useState('')
@@ -38,14 +39,20 @@ export default function GastosPage() {
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
-    fetchGastos(showAll)
-  }, [showAll])
+    fetchGastos()
+  }, [dateRange])
 
-  const fetchGastos = async (all = false) => {
+  const fetchGastos = async () => {
     try {
-      const today = new Date().toISOString().split('T')[0]
-      const url = all ? '/api/gastos?all=true' : `/api/gastos?fecha=${today}`
-      const res = await fetch(url)
+      const params = new URLSearchParams()
+      if (dateRange.desde && dateRange.hasta) {
+        params.set('desde', dateRange.desde)
+        params.set('hasta', dateRange.hasta)
+      } else {
+        const today = new Date().toISOString().split('T')[0]
+        params.set('fecha', today)
+      }
+      const res = await fetch(`/api/gastos?${params.toString()}`)
       const data = await res.json()
       setGastos(data.gastos || data.data || [])
     } catch (e) {
@@ -76,7 +83,7 @@ export default function GastosPage() {
         setDescripcion('')
         setMonto('')
         setResponsable('')
-        fetchGastos(showAll)
+        fetchGastos()
         toast.success('Gasto registrado')
       } else {
         toast.error('Error registrando gasto')
@@ -104,12 +111,13 @@ export default function GastosPage() {
     <div className="p-4 space-y-4">
       <h1 className="text-2xl font-bold">📝 Gastos</h1>
 
+      <div className="bg-white p-4 rounded-xl shadow space-y-3">
+        <DateRangeFilter onDateChange={(desde, hasta) => { setDateRange({ desde, hasta }); setTimeout(fetchGastos, 0) }} />
+      </div>
+
       <div className="flex gap-2">
         <Button onClick={() => setShowCrear(!showCrear)}>
           Nuevo Gasto
-        </Button>
-        <Button variant="outline" onClick={() => setShowAll(!showAll)}>
-          {showAll ? 'Solo Hoy' : 'Ver Todos'}
         </Button>
       </div>
 
@@ -151,7 +159,7 @@ export default function GastosPage() {
       {gastos.length === 0 ? (
         <EmptyState
           icon={<svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>}
-          title={showAll ? 'No hay gastos registrados' : 'No hay gastos registrados hoy'}
+          title={dateRange.desde && dateRange.hasta ? 'No hay gastos en el rango seleccionado' : 'No hay gastos registrados hoy'}
           description="Registra los gastos de operación"
           actionLabel="+ Registrar Gasto"
           onAction={() => setShowCrear(true)}

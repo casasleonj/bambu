@@ -196,15 +196,10 @@ const TrabajadorBaseSchema = z.object({
   telefono: z.string().max(20).optional(),
 })
 
-export const TrabajadorCreateSchema = TrabajadorBaseSchema.refine((data) => {
-  if (data.usaMoto && (!data.capacidadKg || data.capacidadKg <= 0)) {
-    return {
-      message: 'Capacidad es requerida cuando usa moto',
-      path: ['capacidadKg'],
-    }
-  }
-  return true
-})
+export const TrabajadorCreateSchema = TrabajadorBaseSchema.refine(
+  (data) => !(data.usaMoto && (!data.capacidadKg || data.capacidadKg <= 0)),
+  { message: 'Capacidad es requerida cuando usa moto', path: ['capacidadKg'] }
+)
 
 export const TrabajadorUpdateSchema = TrabajadorBaseSchema.partial()
 

@@ -6,7 +6,7 @@ import { PedidoCreateSchema } from '@/lib/validators'
 import { withAdvisoryLock } from '@/lib/locks'
 import { getNextNumero } from '@/lib/sequence'
 import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
-import { getTodayRange } from '@/lib/dates'
+import { getTodayRange, getDateRange } from '@/lib/dates'
 import { resolverPreciosPedido, type Canal, type ProductCode } from '@/lib/pricing'
 import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
@@ -19,16 +19,20 @@ export async function GET(request: NextRequest) {
   const pagination = getPaginationParams(searchParams)
 
   try {
-    const { startOfDay, endOfDay } = getTodayRange()
+    const desde = searchParams.get('desde')
+    const hasta = searchParams.get('hasta')
+    const all = searchParams.get('all')
 
-    const where = pagination.all
-      ? {}
-      : {
-          fecha: {
-            gte: startOfDay,
-            lt: endOfDay,
-          },
-        }
+    let where: Record<string, unknown> = {}
+    if (all === 'true') {
+      where = {}
+    } else if (desde && hasta) {
+      const { startDate, endDate } = getDateRange(desde, hasta)
+      where = { fecha: { gte: startDate, lt: endDate } }
+    } else {
+      const { startOfDay, endOfDay } = getTodayRange()
+      where = { fecha: { gte: startOfDay, lt: endOfDay } }
+    }
 
     const prismaPagination = getPrismaPagination(pagination)
 

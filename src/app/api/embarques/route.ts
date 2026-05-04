@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { EmbarqueCreateSchema } from '@/lib/validators'
 import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
-import { getTodayRange } from '@/lib/dates'
+import { getTodayRange, getDateRange } from '@/lib/dates'
 import { logAudit } from '@/lib/audit'
 import { calcularPacasEmbarque, calcularPesoEmbarque, getCapacidadInfo } from '@/lib/embarque-capacidad'
 import { withAdvisoryLock } from '@/lib/locks'
@@ -17,14 +17,20 @@ export async function GET(request: NextRequest) {
   if (authResult instanceof Response) return authResult
   const pagination = getPaginationParams(request.nextUrl.searchParams)
   try {
-    const { startOfDay, endOfDay } = getTodayRange()
+    const desde = request.nextUrl.searchParams.get('desde')
+    const hasta = request.nextUrl.searchParams.get('hasta')
+    const all = request.nextUrl.searchParams.get('all')
 
-    const where = pagination.all
-      ? { estado: { not: EstadoEmbarque.CANCELADO } }
-      : {
-          fecha: { gte: startOfDay, lt: endOfDay },
-          estado: { not: EstadoEmbarque.CANCELADO },
-        }
+    let where: Record<string, unknown> = {}
+    if (all === 'true') {
+      where = { estado: { not: EstadoEmbarque.CANCELADO } }
+    } else if (desde && hasta) {
+      const { startDate, endDate } = getDateRange(desde, hasta)
+      where = { fecha: { gte: startDate, lt: endDate }, estado: { not: EstadoEmbarque.CANCELADO } }
+    } else {
+      const { startOfDay, endOfDay } = getTodayRange()
+      where = { fecha: { gte: startOfDay, lt: endOfDay }, estado: { not: EstadoEmbarque.CANCELADO } }
+    }
     const prismaPagination = getPrismaPagination(pagination)
 
     const [embarquesRaw, total] = await Promise.all([

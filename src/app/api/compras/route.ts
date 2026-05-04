@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { CompraCreateSchema } from '@/lib/validators'
 import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
+import { getDateRange } from '@/lib/dates'
 import { withAdvisoryLock } from '@/lib/locks'
 
 export async function GET(request: NextRequest) {
@@ -11,14 +12,28 @@ export async function GET(request: NextRequest) {
   if (authResult instanceof Response) return authResult
   const pagination = getPaginationParams(request.nextUrl.searchParams)
   try {
+    const desde = request.nextUrl.searchParams.get('desde')
+    const hasta = request.nextUrl.searchParams.get('hasta')
+    const all = request.nextUrl.searchParams.get('all')
+
+    let where: Record<string, unknown> = {}
+    if (desde && hasta) {
+      const { startDate, endDate } = getDateRange(desde, hasta)
+      where = { fecha: { gte: startDate, lt: endDate } }
+    }
+    if (all === 'true') {
+      where = {}
+    }
+
     const prismaPagination = getPrismaPagination(pagination)
     const [compras, total] = await Promise.all([
       prisma.compraInsumo.findMany({
+        where,
         orderBy: { fecha: 'desc' },
         include: { insumo: true, proveedor: true },
         ...prismaPagination,
       }),
-      prisma.compraInsumo.count(),
+      prisma.compraInsumo.count({ where }),
     ])
     return NextResponse.json(
       pagination.all

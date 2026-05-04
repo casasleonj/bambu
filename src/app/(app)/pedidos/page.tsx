@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { formatCurrency } from '@/lib/utils'
 import { Modal } from '@/components/modal'
 import { EmptyState } from '@/components/empty-state'
+import { DateRangeFilter } from '@/components/date-range-filter'
 
 const PedidoForm = dynamic(() => import('@/components/pedido-form').then(m => m.PedidoForm), { ssr: false })
 const VentaRapidaForm = dynamic(() => import('@/components/venta-rapida-form').then(m => m.VentaRapidaForm), { ssr: false })
@@ -82,6 +83,7 @@ export default function PedidosPage() {
   const [showEmbarqueModal, setShowEmbarqueModal] = useState(false)
   const [selectedPedidoForEmbarque, setSelectedPedidoForEmbarque] = useState<string | null>(null)
   const [selectedEmbarqueId, setSelectedEmbarqueId] = useState('')
+  const [dateRange, setDateRange] = useState<{ desde: string | null; hasta: string | null }>({ desde: null, hasta: null })
 
   // URL-based filters
   const filtroEstado = searchParams.getAll('estado')
@@ -112,7 +114,14 @@ export default function PedidosPage() {
   const fetchPedidos = useCallback(async () => {
     try {
       setFetchError(null)
-      const res = await fetch('/api/pedidos?all=true')
+      const params = new URLSearchParams()
+      if (dateRange.desde && dateRange.hasta) {
+        params.set('desde', dateRange.desde)
+        params.set('hasta', dateRange.hasta)
+      } else {
+        params.set('all', 'true')
+      }
+      const res = await fetch(`/api/pedidos?${params.toString()}`)
       const data = await res.json()
       setPedidos(data.pedidos || data.data || [])
     } catch (error) {
@@ -122,7 +131,7 @@ export default function PedidosPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [dateRange])
 
   async function fetchClientes() {
     try {
@@ -480,6 +489,7 @@ export default function PedidosPage() {
       {/* Filtros */}
       <div className="bg-white p-4 rounded-xl shadow mb-6">
         <div className="flex flex-wrap gap-4 items-center">
+          <DateRangeFilter onDateChange={(desde, hasta) => setDateRange({ desde, hasta })} />
           <input
             type="text"
             placeholder="Buscar por nombre, telefono o #pedido..."
