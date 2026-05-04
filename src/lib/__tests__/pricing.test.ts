@@ -214,11 +214,6 @@ describe('resolverPrecio', () => {
 // ─── resolverPreciosPedido ───────────────────────────────────────────
 
 describe('resolverPreciosPedido', () => {
-  const items = [
-    { codigo: 'PACA_AGUA' as const, cantidad: 10 },
-    { codigo: 'PACA_HIELO' as const, cantidad: 5 },
-  ]
-
   it('returns empty array for empty items', async () => {
     const result = await resolverPreciosPedido([], 'PUNTO')
     expect(result).toEqual([])

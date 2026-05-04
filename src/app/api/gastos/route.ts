@@ -13,7 +13,6 @@ export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
   const { searchParams } = new URL(request.url)
-  const fecha = searchParams.get('fecha')
   const pagination = getPaginationParams(searchParams)
 
   try {

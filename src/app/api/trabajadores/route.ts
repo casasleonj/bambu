@@ -1,5 +1,5 @@
 import { formatZodError } from '@/lib/utils'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { TrabajadorCreateSchema } from '@/lib/validators'

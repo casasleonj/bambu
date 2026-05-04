@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
+import { logBulkAudit } from '@/lib/audit'
 
 const DecisionSchema = z.object({
   recurrenteId: z.string().min(1),
@@ -51,6 +52,18 @@ export async function POST(request: NextRequest) {
     }
 
     const resultado = await generarPedidosRecurrentes(decisiones, fecha)
+
+    if (resultado.generados.length > 0) {
+      logBulkAudit(
+        resultado.generados.map(g => ({
+          entidad: 'Pedido',
+          registroId: g.id,
+          accion: 'CREATE' as const,
+          datos: { numero: g.numero, tipo: g.tipo, generadoDesde: 'recurrentes' },
+          usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+        }))
+      ).catch(() => {})
+    }
 
     return apiSuccess({
       generados: resultado.generados.length,

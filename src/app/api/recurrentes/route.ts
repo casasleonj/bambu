@@ -1,5 +1,5 @@
 import { formatZodError } from '@/lib/utils'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { z } from 'zod'
@@ -7,6 +7,7 @@ import { logAudit } from '@/lib/audit'
 import { withAdvisoryLock } from '@/lib/locks'
 import { ROLES } from '@/lib/constants'
 import { logger } from '@/lib/logger'
+import { apiSuccess, apiError } from '@/lib/api-response'
 
 const RecurrenteCreateSchema = z.object({
   clienteId: z.string().min(1),
@@ -52,10 +53,10 @@ export async function GET() {
       orderBy: { createdAt: 'desc' },
     })
 
-    return NextResponse.json({ success: true, recurrentes })
+    return apiSuccess({ recurrentes })
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching recurrentes:')
-    return NextResponse.json({ error: 'Error al cargar recurrentes' }, { status: 500 })
+    return apiError('Error al cargar recurrentes', 500)
   }
 }
 
@@ -69,7 +70,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const parsed = RecurrenteCreateSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
+      return apiError(formatZodError(parsed.error), 400)
     }
 
     const { clienteId, tipo, canal, frecuencia, productos, obs } = parsed.data
@@ -84,10 +85,7 @@ export async function POST(request: NextRequest) {
       },
     })
     if (existente) {
-      return NextResponse.json(
-        { error: `El cliente ya tiene un pedido recurrente con frecuencia ${frecuencia}` },
-        { status: 409 }
-      )
+      return apiError(`El cliente ya tiene un pedido recurrente con frecuencia ${frecuencia}`, 409)
     }
 
     // Crear recurrente con número secuencial atómico (comparte secuencia con Pedidos)
@@ -130,10 +128,10 @@ export async function POST(request: NextRequest) {
       usuarioId: (authResult.user as { id: string }).id,
     })
 
-    return NextResponse.json({ success: true, recurrente }, { status: 201 })
+    return apiSuccess({ recurrente }, 201)
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error creating recurrente:')
-    return NextResponse.json({ error: 'Error al crear recurrente' }, { status: 500 })
+    return apiError('Error al crear recurrente', 500)
   }
 }
 
@@ -146,12 +144,12 @@ export async function PUT(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
-    if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 })
+    if (!id) return apiError('ID requerido', 400)
 
     const body = await request.json()
     const parsed = RecurrenteUpdateSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
+      return apiError(formatZodError(parsed.error), 400)
     }
 
     const data: Record<string, unknown> = {}
@@ -185,10 +183,10 @@ export async function PUT(request: NextRequest) {
       usuarioId: (authResult.user as { id: string }).id,
     })
 
-    return NextResponse.json({ success: true, recurrente })
+    return apiSuccess({ recurrente })
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error updating recurrente:')
-    return NextResponse.json({ error: 'Error al actualizar' }, { status: 500 })
+    return apiError('Error al actualizar', 500)
   }
 }
 
@@ -201,7 +199,7 @@ export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
-    if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 })
+    if (!id) return apiError('ID requerido', 400)
 
     const recurrente = await prisma.pedido.update({
       where: { id },
@@ -216,9 +214,9 @@ export async function DELETE(request: NextRequest) {
       usuarioId: (authResult.user as { id: string }).id,
     })
 
-    return NextResponse.json({ success: true, recurrente })
+    return apiSuccess({ recurrente })
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error deleting recurrente:')
-    return NextResponse.json({ error: 'Error al eliminar' }, { status: 500 })
+    return apiError('Error al eliminar', 500)
   }
 }

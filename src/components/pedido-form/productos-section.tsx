@@ -24,13 +24,10 @@ interface ProductosSectionProps {
 
 export function ProductosSection({
   productos,
-  preciosResueltos,
-  preciosManuales,
   setPreciosManuales,
   preciosEditando,
   setPreciosEditando,
   tablaPrecios,
-  precios,
   onCantidadChange,
   total,
   getPrecio,

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole, requireOwnership } from '@/lib/auth-check'
 import { logAudit } from '@/lib/audit'
@@ -6,10 +6,10 @@ import { formatZodError } from '@/lib/utils'
 import { z } from 'zod'
 import { getNextNumero } from '@/lib/sequence'
 import { resolverPrecio } from '@/lib/pricing'
-import type { ProductCode } from '@/lib/pricing'
 import { MetodoPago } from '@prisma/client'
 import { ROLES } from '@/lib/constants'
 import { logger } from '@/lib/logger'
+import { apiSuccess, apiError } from '@/lib/api-response'
 
 const ProductoEntregadoSchema = z.object({
   cPacaAguaEnt: z.number().int().min(0).default(0),
@@ -77,13 +77,13 @@ export async function POST(
   const { id } = await params
   const session = authResult as { user?: { id?: string; role?: string } }
   const hasAccess = await requireOwnership('embarque', id, { id: session.user?.id || '', role: session.user?.role })
-  if (!hasAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    if (!hasAccess) return apiError('Forbidden', 403)
 
   try {
     const body = await request.json()
     const parsed = CerrarEmbarqueSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
+      return apiError(formatZodError(parsed.error), 400)
     }
 
     const { pedidos: pedidosCuadre, ventasLibres, devueltasAgua, devueltasHielo, rotasAgua, rotasHielo, obs } = parsed.data
@@ -387,15 +387,15 @@ export async function POST(
       usuarioId: (authResult.user as { id: string }).id,
     })
 
-    return NextResponse.json({ success: true, ...result })
+    return apiSuccess(result)
   } catch (error) {
     if (error instanceof Error && error.message === 'EMBARQUE_NOT_FOUND') {
-      return NextResponse.json({ error: 'Embarque no encontrado' }, { status: 404 })
+      return apiError('Embarque no encontrado', 404)
     }
     if (error instanceof Error && error.message === 'EMBARQUE_YA_CERRADO') {
-      return NextResponse.json({ error: 'El embarque ya está cerrado' }, { status: 400 })
+      return apiError('El embarque ya está cerrado', 400)
     }
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error cerrando embarque:')
-    return NextResponse.json({ error: 'Error al cerrar embarque' }, { status: 500 })
+    return apiError('Error al cerrar embarque', 500)
   }
 }

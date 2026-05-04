@@ -76,7 +76,7 @@ export default async function DashboardPage() {
   const { startOfDay: yesterdayStart, endOfDay: yesterdayEnd } = getYesterdayRange()
 
   // All queries in parallel
-  const [pedidos, pedidosAyer, baseDiaConfig, lastCierre, gastosAgg, embarquesAbiertos, clientesCount, stockAlertas,
+  const [pedidos, pedidosAyer, baseDiaConfig, lastCierre, gastosAgg, embarquesAbiertos, _clientesCount, stockAlertas,
     // Cuentas por cobrar totales (no solo hoy)
     cuentasPorCobrarAgg,
     // Producción de hoy

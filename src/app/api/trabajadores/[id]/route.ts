@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { TrabajadorUpdateSchema } from '@/lib/validators'
 import { apiSuccess, apiError } from '@/lib/api-response'
+import { logAudit } from '@/lib/audit'
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
@@ -21,13 +22,22 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       where: { id },
       data: parsed.data,
     })
+
+    logAudit({
+      entidad: 'Trabajador',
+      registroId: trabajador.id,
+      accion: 'UPDATE',
+      datos: { nombre: trabajador.nombre, rol: trabajador.rol },
+      usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+    }).catch(() => {})
+
     return apiSuccess({ trabajador })
   } catch (error) {
     return apiError('Error actualizando trabajador')
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
   const roleCheck = await requireRole('ADMIN')
@@ -56,6 +66,15 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       where: { id },
       data: { activo: false },
     })
+
+    logAudit({
+      entidad: 'Trabajador',
+      registroId: trabajador.id,
+      accion: 'DELETE',
+      datos: { nombre: trabajador.nombre, rol: trabajador.rol },
+      usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+    }).catch(() => {})
+
     return apiSuccess({})
   } catch (error) {
     return apiError('Error eliminando trabajador')

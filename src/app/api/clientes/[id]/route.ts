@@ -6,7 +6,7 @@ import { ClienteUpdateSchema } from '@/lib/validators'
 import { logAudit } from '@/lib/audit'
 import { apiSuccess, apiError } from '@/lib/api-response'
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
   const { id } = await params
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
 
       for (const p of pedidosEntregados) {
-        for (const [key, name] of Object.entries(productNames)) {
+        for (const [key, _name] of Object.entries(productNames)) {
           const qty = (p as unknown as Record<string, number>)[key] || 0
           if (qty > 0) {
             if (!productStats[key]) productStats[key] = { count: 0, totalQty: 0 }
@@ -118,7 +118,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
   const roleCheck = await requireRole(['ADMIN', 'CONTADOR'], authResult)

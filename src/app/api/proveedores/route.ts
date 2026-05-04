@@ -6,7 +6,7 @@ import { ProveedorCreateSchema } from '@/lib/validators'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
   try {

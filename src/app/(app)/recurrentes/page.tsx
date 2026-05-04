@@ -123,27 +123,6 @@ export default function RecurrentesPage() {
     }
   }
 
-  async function handleSkip(recurrenteId: string, fecha: string) {
-    try {
-      const res = await fetch(`/api/recurrentes?id=${recurrenteId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          saltarFechas: [...(recurrentes.find(r => r.id === recurrenteId)?.saltarFechas || []), fecha],
-        }),
-      })
-      const data = await res.json()
-      if (data.success) {
-        toast.success('Fecha agregada a saltos')
-        fetchData()
-      } else {
-        toast.error(data.error || 'Error')
-      }
-    } catch (error) {
-      toast.error('Error de conexión')
-    }
-  }
-
   async function handleDelete(id: string) {
     if (!confirm('Eliminar este recurrente?')) return
     try {

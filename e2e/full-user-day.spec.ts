@@ -354,7 +354,7 @@ test.describe('Dia completo de usuario', () => {
     await nav(page, '/gastos')
 
     // Create gasto via API with browser session cookies
-    const result = await page.evaluate(async () => {
+    await page.evaluate(async () => {
       const res = await fetch('/api/gastos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -606,7 +606,6 @@ test.describe('Dia completo de usuario', () => {
     await nav(page, '/cierre')
 
     // The "Cerrar Dia" button should NOT be visible for non-admin
-    const cerrarBtn = page.locator('button:has-text("Cerrar Día")')
     // Wait a moment for page to fully render
     await page.waitForTimeout(2000)
 

@@ -41,7 +41,6 @@ export function ProductGrid({
   tablaPrecios,
   preciosEditando,
   setPreciosEditando,
-  preciosManuales,
   setPreciosManuales,
 }: ProductGridProps) {
   const productosActuales = getProductosForCanal(canal)

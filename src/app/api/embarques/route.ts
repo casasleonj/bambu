@@ -7,7 +7,6 @@ import { getPaginationParams, getPrismaPagination, buildPaginationResponse } fro
 import { getTodayRange, getDateRange } from '@/lib/dates'
 import { logAudit } from '@/lib/audit'
 import { calcularPacasEmbarque, calcularPesoEmbarque, getCapacidadInfo } from '@/lib/embarque-capacidad'
-import { withAdvisoryLock } from '@/lib/locks'
 import { EstadoEmbarque } from '@prisma/client'
 import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'

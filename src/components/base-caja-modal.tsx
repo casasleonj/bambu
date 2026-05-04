@@ -4,12 +4,6 @@ import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import { useBaseCaja } from '@/hooks/use-base-caja'
 
-interface BaseDia {
-  id: string
-  clave: string
-  valor: string
-}
-
 export default function BaseCajaModal() {
   const { setBaseDia: persistBaseDia } = useBaseCaja()
   const [showModal, setShowModal] = useState(false)

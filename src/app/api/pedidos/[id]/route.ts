@@ -1,31 +1,32 @@
 import { formatZodError } from '@/lib/utils'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole, requireOwnership } from '@/lib/auth-check'
 import { PedidoUpdateSchema } from '@/lib/validators'
 import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
 import { logger } from '@/lib/logger'
+import { apiSuccess, apiError } from '@/lib/api-response'
 
 function getUserFromSession(authResult: any) {
   return { id: authResult.user?.id || '', role: authResult.user?.role }
 }
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
   const { id } = await params
   const hasAccess = await requireOwnership('pedido', id, getUserFromSession(authResult))
-  if (!hasAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!hasAccess) return apiError('Forbidden', 403)
   try {
     const pedido = await prisma.pedido.findUnique({
       where: { id },
       include: { cliente: true, embarque: true },
     })
-    if (!pedido) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    return NextResponse.json({ pedido })
+    if (!pedido) return apiError('Not found', 404)
+    return apiSuccess({ pedido })
   } catch (error) {
-    return NextResponse.json({ error: 'Error' }, { status: 500 })
+    return apiError('Error', 500)
   }
 }
 
@@ -34,12 +35,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   if (authResult instanceof Response) return authResult
   const { id } = await params
   const hasAccess = await requireOwnership('pedido', id, getUserFromSession(authResult))
-  if (!hasAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!hasAccess) return apiError('Forbidden', 403)
   try {
     const body = await request.json()
     const parsed = PedidoUpdateSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
+      return apiError(formatZodError(parsed.error), 400)
     }
 
     const pedido = await prisma.$transaction(async (tx) => {
@@ -111,17 +112,17 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     })
 
-    return NextResponse.json({ success: true, pedido })
+    return apiSuccess({ pedido })
   } catch (error) {
     if (error instanceof Error && error.message === 'PEDIDO_NOT_FOUND') {
-      return NextResponse.json({ error: 'Pedido no encontrado' }, { status: 404 })
+      return apiError('Pedido no encontrado', 404)
     }
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error updating pedido:')
-    return NextResponse.json({ error: 'Error updating' }, { status: 500 })
+    return apiError('Error updating', 500)
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
   const roleCheck = await requireRole([ROLES.ADMIN, ROLES.CONTADOR], authResult)
@@ -141,8 +142,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     })
 
-    return NextResponse.json({ success: true })
+    return apiSuccess({})
   } catch (error) {
-    return NextResponse.json({ error: 'Error deleting' }, { status: 500 })
+    return apiError('Error deleting', 500)
   }
 }

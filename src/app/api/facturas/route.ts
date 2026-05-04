@@ -1,5 +1,5 @@
 import { formatZodError } from '@/lib/utils'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { FacturaCreateSchema } from '@/lib/validators'
@@ -10,6 +10,7 @@ import { logAudit } from '@/lib/audit'
 import { withAdvisoryLock } from '@/lib/locks'
 import type { Factura } from '@prisma/client'
 import { logger } from '@/lib/logger'
+import { apiSuccess, apiError } from '@/lib/api-response'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -43,14 +44,14 @@ export async function GET(request: NextRequest) {
       prisma.factura.count({ where }),
     ])
 
-    return NextResponse.json(
+    return apiSuccess(
       pagination.all
         ? { facturas, total }
         : buildPaginationResponse(facturas, total, pagination.page!, pagination.pageSize!)
     )
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching facturas:')
-    return NextResponse.json({ error: 'Error fetching facturas' }, { status: 500 })
+    return apiError('Error fetching facturas', 500)
   }
 }
 
@@ -63,7 +64,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const parsed = FacturaCreateSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
+      return apiError(formatZodError(parsed.error), 400)
     }
     const { pedidoId, clienteId } = parsed.data
 
@@ -105,16 +106,16 @@ export async function POST(request: NextRequest) {
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     })
 
-    return NextResponse.json({ success: true, factura }, { status: 201 })
+    return apiSuccess({ factura }, 201)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown'
     if (message === 'Pedido no encontrado') {
-      return NextResponse.json({ error: 'Pedido no encontrado' }, { status: 404 })
+      return apiError('Pedido no encontrado', 404)
     }
     if (message === 'El pedido ya tiene una factura') {
-      return NextResponse.json({ error: 'El pedido ya tiene una factura' }, { status: 409 })
+      return apiError('El pedido ya tiene una factura', 409)
     }
     logger.error({ err: message }, 'Error creating factura:')
-    return NextResponse.json({ error: 'Error creating factura' }, { status: 500 })
+    return apiError('Error creating factura', 500)
   }
 }

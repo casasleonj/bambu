@@ -1,5 +1,4 @@
 import { NextRequest } from 'next/server'
-import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'

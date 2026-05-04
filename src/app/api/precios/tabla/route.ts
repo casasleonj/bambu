@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { requireAuth } from '@/lib/auth-check'
-import { getPriceTable, type Canal } from '@/lib/pricing'
+import { getPriceTable } from '@/lib/pricing'
 import { CanalSchema } from '@/lib/zod-schemas'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'

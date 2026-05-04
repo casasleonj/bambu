@@ -1,8 +1,8 @@
-import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
+import { apiSuccess, apiError } from '@/lib/api-response'
 
 const CarteraSchema = z.object({
   minSaldo: z.coerce.number().nonnegative().optional(),
@@ -22,7 +22,7 @@ export async function GET(request: Request) {
       Object.fromEntries(url.searchParams.entries())
     )
     if (!validation.success) {
-      return NextResponse.json({ error: 'Parámetros inválidos', details: validation.error.flatten() }, { status: 400 })
+      return apiError('Parámetros inválidos', 400, validation.error.flatten())
     }
 
     const { minSaldo, limit, sortBy } = validation.data
@@ -41,9 +41,9 @@ export async function GET(request: Request) {
 
     const totalCartera = facturas.reduce((sum, f) => sum + Number(f.saldo), 0)
 
-    return NextResponse.json({ facturas, totalCartera })
+    return apiSuccess({ facturas, totalCartera })
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching cartera:')
-    return NextResponse.json({ error: 'Error fetching cartera' }, { status: 500 })
+    return apiError('Error fetching cartera', 500)
   }
 }

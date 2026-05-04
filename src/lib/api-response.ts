@@ -1,10 +1,5 @@
 import { NextResponse } from 'next/server'
 
-interface ApiSuccessResponse<T = unknown> {
-  success: true
-  data: T
-}
-
 interface ApiListResponse<T = unknown> {
   success: true
   data: T[]

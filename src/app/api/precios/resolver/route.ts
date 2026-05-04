@@ -1,10 +1,11 @@
 import { formatZodError } from '@/lib/utils'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { requireAuth } from '@/lib/auth-check'
 import { resolverPrecio, type Canal, type ProductCode } from '@/lib/pricing'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
+import { apiSuccess, apiError } from '@/lib/api-response'
 
 const PrecioResolverItemSchema = z.object({
   codigo: z.string().min(1),
@@ -29,7 +30,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const parsed = PrecioResolverSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
+      return apiError(formatZodError(parsed.error), 400)
     }
 
     const { canal, clienteId } = parsed.data
@@ -51,14 +52,14 @@ export async function POST(request: NextRequest) {
         const result = await resolverPrecio(item.codigo as ProductCode, item.cantidad || 1, canal as Canal, clienteOverrides)
         precios[item.codigo] = result
       }
-      return NextResponse.json({ precios })
+      return apiSuccess({ precios })
     }
 
     // Single mode
     const result = await resolverPrecio(parsed.data.codigo as ProductCode, parsed.data.cantidad || 1, canal as Canal, clienteOverrides)
-    return NextResponse.json(result)
+    return apiSuccess(result)
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error resolving price:')
-    return NextResponse.json({ error: 'Error resolving price' }, { status: 500 })
+    return apiError('Error resolving price', 500)
   }
 }

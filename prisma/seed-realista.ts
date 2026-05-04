@@ -1,4 +1,4 @@
-import { PrismaClient, RolUsuario, EstadoPedido, EstadoEmbarque, EstadoFactura, EstadoNomina, TipoPagoTrabajador, Turno, MetodoPago } from '@prisma/client'
+import { PrismaClient, RolUsuario, EstadoPedido, EstadoEmbarque, EstadoFactura, TipoPagoTrabajador, Turno, MetodoPago } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 
 const prisma = new PrismaClient()
@@ -32,10 +32,6 @@ function pickWeighted<T>(items: T[], weights: number[]): T {
     if (r <= 0) return items[i]
   }
   return items[items.length - 1]
-}
-
-function generateNombre(): string {
-  return `${rand(NOMBRES_H)} ${rand(NOMBRES_M)} ${rand(APELLIDOS)} ${rand(APELLIDOS)}`.replace(/\s+/g, ' ').trim()
 }
 
 function generateClienteNombre(): { nombre: string; apellido: string } {

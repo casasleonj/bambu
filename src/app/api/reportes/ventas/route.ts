@@ -1,10 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
-import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
+import { getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
 import { z } from 'zod'
 import { EstadoPedido } from '@prisma/client'
 import { logger } from '@/lib/logger'
+import { apiSuccess, apiError } from '@/lib/api-response'
 
 const ReporteVentasSchema = z.object({
   start: z.string().datetime().optional().or(z.string().date()),
@@ -25,7 +26,7 @@ export async function GET(request: NextRequest) {
       Object.fromEntries(request.nextUrl.searchParams.entries())
     )
     if (!validation.success) {
-      return NextResponse.json({ error: 'Parámetros inválidos', details: validation.error.flatten() }, { status: 400 })
+      return apiError('Parámetros inválidos', 400, validation.error.flatten())
     }
 
     const { start, end, page, pageSize, all } = validation.data
@@ -76,13 +77,13 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json(
+    return apiSuccess(
       pagination.all
         ? { pedidos, resumen, total }
         : { ...buildPaginationResponse(pedidos, total, pagination.page!, pagination.pageSize!), resumen }
     )
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching reporte ventas:')
-    return NextResponse.json({ error: 'Error fetching reporte' }, { status: 500 })
+    return apiError('Error fetching reporte', 500)
   }
 }

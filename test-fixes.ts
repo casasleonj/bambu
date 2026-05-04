@@ -1,4 +1,4 @@
-import { PrismaClient, EstadoPedido, EstadoFactura } from '@prisma/client'
+import { PrismaClient, EstadoPedido } from '@prisma/client'
 
 const prisma = new PrismaClient()
 
@@ -112,11 +112,6 @@ async function testCancelarPedidoRevertsPagos() {
 
 async function testEmbarquePacas() {
   console.log('\n🧪 Test: Embarque calcula pacasAgua/pacasHielo al cerrar')
-
-  const embarque = await prisma.embarque.findFirst({
-    where: { estado: EstadoPedido.CANCELADO as any },
-    include: { pedidos: true },
-  })
 
   const embarqueAbierto = await prisma.embarque.findFirst({
     where: { estado: 'ABIERTO' },

@@ -23,7 +23,7 @@ const PrecioVolumenSchema = z.object({
   precio: z.coerce.number().positive(),
 })
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
 
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
     const volumenParsed = PrecioVolumenSchema.safeParse(body)
     if (volumenParsed.success) {
       const { precioVolumenId, precio } = volumenParsed.data
-      const updated = await prisma.precioVolumen.update({
+      await prisma.precioVolumen.update({
         where: { id: precioVolumenId },
         data: { precio },
       })

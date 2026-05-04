@@ -33,7 +33,7 @@ interface Abono {
 
 export default function FacturasPage() {
   const [facturas, setFacturas] = useState<Factura[]>([])
-  const [abonos, setAbonos] = useState<Abono[]>([])
+  const [_abonos, _setAbonos] = useState<Abono[]>([])
   const [showAbono, setShowAbono] = useState<string | null>(null)
   const [montoAbono, setMontoAbono] = useState('')
   const [metodoPago, setMetodoPago] = useState('EFECTIVO')

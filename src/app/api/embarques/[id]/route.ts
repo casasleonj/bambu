@@ -1,19 +1,20 @@
 import { formatZodError } from '@/lib/utils'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole, requireOwnership } from '@/lib/auth-check'
 import { EmbarqueUpdateSchema } from '@/lib/validators'
 import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
 import { logger } from '@/lib/logger'
+import { apiSuccess, apiError } from '@/lib/api-response'
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
   const { id } = await params
   const session = authResult as { user?: { id?: string; role?: string } }
   const hasAccess = await requireOwnership('embarque', id, { id: session.user?.id || '', role: session.user?.role })
-  if (!hasAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    if (!hasAccess) return apiError('Forbidden', 403)
   try {
     const embarque = await prisma.embarque.findUnique({
       where: { id },
@@ -25,10 +26,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         },
       },
     })
-    if (!embarque) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    return NextResponse.json({ embarque })
+    if (!embarque) return apiError('Not found', 404)
+    return apiSuccess({ embarque })
   } catch (error) {
-    return NextResponse.json({ error: 'Error' }, { status: 500 })
+    return apiError('Error', 500)
   }
 }
 
@@ -42,15 +43,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const body = await request.json()
     const parsed = EmbarqueUpdateSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
+      return apiError(formatZodError(parsed.error), 400)
     }
     const { pedidoIds, obs, estado, horaLlegada, ...rest } = parsed.data
 
     if (estado === 'CERRADO') {
-      return NextResponse.json(
-        { error: 'Use el flujo de cierre de ruta para cerrar embarques' },
-        { status: 400 }
-      )
+      return apiError('Use el flujo de cierre de ruta para cerrar embarques', 400)
     }
 
     const embarque = await prisma.$transaction(async (tx) => {
@@ -93,14 +91,14 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     })
 
-    return NextResponse.json({ success: true, embarque })
+    return apiSuccess({ embarque })
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error updating embarque:')
-    return NextResponse.json({ error: 'Error updating' }, { status: 500 })
+    return apiError('Error updating', 500)
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
   const roleCheck = await requireRole([ROLES.ADMIN], authResult)
@@ -145,15 +143,15 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     })
 
-    return NextResponse.json({ success: true })
+    return apiSuccess({})
   } catch (error) {
     if (error instanceof Error && error.message === 'EMBARQUE_NOT_FOUND') {
-      return NextResponse.json({ error: 'Embarque no encontrado' }, { status: 404 })
+      return apiError('Embarque no encontrado', 404)
     }
     if (error instanceof Error && error.message === 'EMBARQUE_CERRADO') {
-      return NextResponse.json({ error: 'No se puede cancelar un embarque cerrado' }, { status: 400 })
+      return apiError('No se puede cancelar un embarque cerrado', 400)
     }
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error canceling embarque:')
-    return NextResponse.json({ error: 'Error al cancelar embarque' }, { status: 500 })
+    return apiError('Error al cancelar embarque', 500)
   }
 }

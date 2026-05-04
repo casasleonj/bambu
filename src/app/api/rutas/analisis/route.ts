@@ -1,4 +1,3 @@
-import { NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-check'
 import {
   analizarPatronesEntrega,
@@ -7,6 +6,7 @@ import {
 } from '@/lib/route-analysis'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
+import { apiSuccess, apiError } from '@/lib/api-response'
 
 const AnalisisSchema = z.object({
   desde: z.string().date().optional(),
@@ -24,7 +24,7 @@ export async function GET(request: Request) {
       Object.fromEntries(url.searchParams.entries())
     )
     if (!validation.success) {
-      return NextResponse.json({ error: 'Parámetros inválidos', details: validation.error.flatten() }, { status: 400 })
+      return apiError('Parámetros inválidos', 400, validation.error.flatten())
     }
     const [analisis, repartidores, barriosSinRuta] = await Promise.all([
       analizarPatronesEntrega(),
@@ -32,17 +32,13 @@ export async function GET(request: Request) {
       obtenerBarriosSinRuta(),
     ])
 
-    return NextResponse.json({
-      success: true,
+    return apiSuccess({
       ...analisis,
       repartidores,
       barriosSinRuta,
     })
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error en análisis de rutas:')
-    return NextResponse.json(
-      { error: 'Error al analizar patrones de entrega' },
-      { status: 500 }
-    )
+    return apiError('Error al analizar patrones de entrega', 500)
   }
 }

@@ -1,8 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { syncWithServer, isOnline } from '@/lib/db/sync'
-import { offlineDb } from '@/lib/db/offline'
 
 const SYNC_INTERVAL_MS = 30000
 
@@ -10,7 +9,6 @@ export function ConnectivityIndicator() {
   const [online, setOnline] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [mounted, setMounted] = useState(false)
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     setMounted(true)

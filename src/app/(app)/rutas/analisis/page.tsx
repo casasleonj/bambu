@@ -43,7 +43,7 @@ export default function RutasAnalisisPage() {
   const [barrios, setBarrios] = useState<BarrioAnalysis[]>([])
   const [conflictos, setConflictos] = useState<RutaConflict[]>([])
   const [sugerencias, setSugerencias] = useState<Sugerencia[]>([])
-  const [repartidores, setRepartidores] = useState<Array<{ id: string; nombre: string }>>([])
+  const [_repartidores, setRepartidores] = useState<Array<{ id: string; nombre: string }>>([])
   const [barriosSinRuta, setBarriosSinRuta] = useState<string[]>([])
 
   async function cargarAnalisis() {

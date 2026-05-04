@@ -1,12 +1,13 @@
 import { formatZodError } from '@/lib/utils'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuth, requireRole, requireOwnership } from '@/lib/auth-check'
+import { requireAuth, requireRole } from '@/lib/auth-check'
 import { ROLES } from '@/lib/constants'
 import { z } from 'zod'
 import { logAudit } from '@/lib/audit'
 import { calcularPacasEmbarque } from '@/lib/embarque-capacidad'
 import { logger } from '@/lib/logger'
+import { apiSuccess, apiError } from '@/lib/api-response'
 
 const EnviarPedidoSchema = z.object({
   embarqueId: z.string().min(1),
@@ -25,7 +26,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const body = await request.json()
     const parsed = EnviarPedidoSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
+      return apiError(formatZodError(parsed.error), 400)
     }
 
     const { embarqueId } = parsed.data
@@ -83,7 +84,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     })
 
-    return NextResponse.json({ success: true, pedido }, { status: 201 })
+    return apiSuccess({ pedido }, 201)
   } catch (error) {
     if (error instanceof Error) {
       const messages: Record<string, [string, number]> = {
@@ -95,9 +96,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         EMBARQUE_CAPACIDAD_EXCEDIDA: ['El embarque no tiene capacidad suficiente (máx 70 pacas)', 400],
       }
       const [msg, status] = messages[error.message] || ['Error enviando pedido', 500]
-      return NextResponse.json({ error: msg }, { status })
+      return apiError(msg, status)
     }
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error enviando pedido:')
-    return NextResponse.json({ error: 'Error enviando pedido' }, { status: 500 })
+    return apiError('Error enviando pedido', 500)
   }
 }

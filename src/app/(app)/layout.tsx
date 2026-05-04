@@ -1,7 +1,6 @@
 import { Providers } from '@/components/providers'
 import { Toaster } from 'sonner'
 import BaseCajaModal from '@/components/base-caja-modal'
-import { ConnectivityIndicator } from '@/components/connectivity-indicator'
 import { UpdateNotification } from '@/components/update-notification'
 import { AppShell } from './app-shell'
 

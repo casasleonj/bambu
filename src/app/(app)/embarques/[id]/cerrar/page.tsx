@@ -258,7 +258,7 @@ export default function CerrarEmbarquePage() {
     })
   }
 
-  function calcularTotalEntregado(pedido: Pedido, cuadre: CuadrePedido): number {
+  function calcularTotalEntregado(_pedido: Pedido, cuadre: CuadrePedido): number {
     const prod = cuadre.productosEntregados
     const precios = cuadre.preciosReales
     return (

@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { signOut } from 'next-auth/react'
 import { ConnectivityIndicator } from '@/components/connectivity-indicator'
 import { useBaseCaja } from '@/hooks/use-base-caja'

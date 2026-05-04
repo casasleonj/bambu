@@ -1,4 +1,4 @@
-import { PrismaClient, EstadoPedido, EstadoEmbarque, EstadoFactura, MetodoPago } from '@prisma/client'
+import { PrismaClient, EstadoPedido, EstadoEmbarque, EstadoFactura } from '@prisma/client'
 
 const prisma = new PrismaClient()
 
@@ -212,7 +212,6 @@ async function checkEmbarqueCapacity() {
 
   for (const e of embarques) {
     const aguaPedidos = e.pedidos.reduce((sum, p) => sum + p.cPacaAguaPed, 0)
-    const hieloPedidos = e.pedidos.reduce((sum, p) => sum + p.cPacaHieloPed, 0)
 
     // Devoluciones > pacas cargadas
     if (e.devueltasAgua > e.pacasAgua) {
@@ -319,7 +318,6 @@ async function checkCierreDiaConsistency() {
 
     const totalVentasReal = pedidosDia.reduce((sum, p) => sum + Number(p.total), 0)
     const cobradoReal = pedidosDia.reduce((sum, p) => sum + Number(p.totalPagado), 0)
-    const fiadoReal = pedidosDia.reduce((sum, p) => sum + Number(p.saldo), 0)
 
     if (Math.abs(Number(cierre.totalVentas) - totalVentasReal) > 0.01) {
       addResult(
