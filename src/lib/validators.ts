@@ -53,10 +53,15 @@ export const ClienteCreateSchema = z.object({
   apellido: z.string().max(100).optional(),
   telefono: z.string().min(1).max(20),
   nombreNegocio: z.string().max(100).optional(),
-  tipoNegocio: z.string().max(50).optional(),
+  tipoNegocio: z.enum([
+    'Tienda', 'Restaurante', 'Café', 'Hotel', 'Bar',
+    'Ferretería', 'Panadería', 'Carnicería', 'Frutería', 'Peluquería',
+    'Farmacia', 'Papelería', 'Lavandería', 'Taller', 'Consultorio',
+    'Gimnasio', 'Salón de eventos', 'Guardería', 'Veterinaria', 'Estación de servicio',
+  ]).optional(),
   barrio: z.string().max(100).optional(),
   direccion: z.string().max(200).optional(),
-  frecuencia: z.string().max(20).optional(),
+  frecuencia: z.enum(['DIARIO', 'SEMANAL', 'QUINCENAL', 'MENSUAL', 'NINGUNA']).optional(),
   cadaNDias: z.coerce.number().int().min(0).optional().transform(v => v === 0 ? undefined : v),
   preciosEspeciales: z.string().optional(),
   notas: z.string().max(500).optional(),
@@ -70,7 +75,7 @@ export const AbonoCreateSchema = z.object({
 });
 
 export const GastoCreateSchema = z.object({
-  categoria: z.string().min(1).max(100),
+  categoria: z.enum(['ARRIENDO', 'SERVICIOS', 'INSUMOS', 'MANTENIMIENTO', 'TRANSPORTE', 'NOMINA', 'OTRO']),
   descripcion: z.string().min(1).max(200),
   monto: z.coerce.number().positive(),
   responsable: z.string().max(100).optional(),
@@ -80,7 +85,7 @@ export const GastoCreateSchema = z.object({
 
 export const InsumoCreateSchema = z.object({
   nombre: z.string().min(1).max(100),
-  unidad: z.string().min(1).max(20).optional(),
+  unidad: z.enum(['UNIDAD', 'LITRO', 'KG', 'PACA', 'BOLSA', 'CAJA', 'MTS', 'GALON']).optional(),
   stock: z.coerce.number().min(0).optional(),
   stockMin: z.coerce.number().min(0).optional(),
   precioUnit: z.coerce.number().min(0).optional(),
@@ -110,7 +115,7 @@ export const NominaCreateSchema = z.object({
   trabajadorId: z.string().min(1),
   fechaInicio: z.string(),
   fechaFin: z.string(),
-  tipoCalculo: z.string().optional(),
+  tipoCalculo: z.enum(['AUTO', 'MANUAL']).optional(),
   comEntregasAgua: z.coerce.number().min(0).optional(),
   comEntregasHielo: z.coerce.number().min(0).optional(),
   totalComisiones: z.coerce.number().min(0).optional(),

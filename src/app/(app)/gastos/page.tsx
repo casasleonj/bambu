@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -37,6 +37,11 @@ export default function GastosPage() {
   const [monto, setMonto] = useState('')
   const [responsable, setResponsable] = useState('')
   const [submitting, setSubmitting] = useState(false)
+
+  const handleDateChange = useCallback((desde: string | null, hasta: string | null) => {
+    setDateRange({ desde, hasta })
+    setTimeout(fetchGastos, 0)
+  }, [])
 
   useEffect(() => {
     fetchGastos()
@@ -112,7 +117,7 @@ export default function GastosPage() {
       <h1 className="text-2xl font-bold">📝 Gastos</h1>
 
       <div className="bg-white p-4 rounded-xl shadow space-y-3">
-        <DateRangeFilter onDateChange={(desde, hasta) => { setDateRange({ desde, hasta }); setTimeout(fetchGastos, 0) }} />
+        <DateRangeFilter onDateChange={handleDateChange} />
       </div>
 
       <div className="flex gap-2">

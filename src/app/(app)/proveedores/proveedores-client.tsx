@@ -43,7 +43,7 @@ export default function ProveedoresClient({
       const res = await fetch("/api/proveedores");
       if (!res.ok) throw new Error("Error al cargar proveedores");
       const data = await res.json();
-      setProveedores(Array.isArray(data) ? data : []);
+      setProveedores(Array.isArray(data) ? data : data.proveedores || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error desconocido");
     } finally {

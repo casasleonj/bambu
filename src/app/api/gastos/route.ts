@@ -30,8 +30,8 @@ export async function GET(request: NextRequest) {
     } else if (fecha) {
       where = {
         fecha: {
-          gte: new Date(new Date(fecha).setHours(0, 0, 0, 0)),
-          lt: new Date(new Date(fecha).setHours(23, 59, 59, 999)),
+          gte: new Date(`${fecha}T00:00:00.000Z`),
+          lt: new Date(`${fecha}T23:59:59.999Z`),
         },
       }
     }
