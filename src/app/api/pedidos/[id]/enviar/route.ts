@@ -89,7 +89,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         EMBARQUE_NOT_OPEN: ['El embarque no está abierto', 400],
         EMBARQUE_CAPACIDAD_EXCEDIDA: ['El embarque no tiene capacidad suficiente (máx 70 pacas)', 400],
       }
-      const [msg, status] = messages[error.message] || [error.message, 500]
+      const [msg, status] = messages[error.message] || ['Error enviando pedido', 500]
       return NextResponse.json({ error: msg }, { status })
     }
     console.error('Error enviando pedido:', error instanceof Error ? error.message : 'Unknown')

@@ -1,7 +1,7 @@
 import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuth } from '@/lib/auth-check'
+import { requireAuth, requireRole } from '@/lib/auth-check'
 import { ProveedorUpdateSchema } from '@/lib/validators'
 import { apiSuccess, apiError } from '@/lib/api-response'
 
@@ -28,6 +28,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
+  const roleCheck = await requireRole(['ADMIN', 'CONTADOR'])
+  if (roleCheck instanceof Response) return roleCheck
   const { id } = await params
   try {
     await prisma.proveedor.update({

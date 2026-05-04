@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { CierreCreateSchema } from '@/lib/validators'
+import { withAdvisoryLock } from '@/lib/locks'
 import { EstadoPedido, EstadoEmbarque } from '@prisma/client'
 
 export async function GET(request: NextRequest) {
@@ -121,34 +122,49 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
     }
 
-    const cierre = await prisma.cierreDia.create({
-      data: {
-        fecha: new Date(),
-        numPedidos: parsed.data.numPedidos,
-        totalVentas: parsed.data.totalVentas,
-        cobrado: parsed.data.cobrado,
-        fiado: parsed.data.fiado,
-        efectivo: parsed.data.efectivo,
-        transferencia: parsed.data.transferencia,
-        nequi: parsed.data.nequi,
-        daviplata: parsed.data.daviplata,
-        bono: parsed.data.bono,
-        baseDia: parsed.data.baseDia,
-        comisiones: parsed.data.comisiones,
-        salarios: parsed.data.salarios,
-        gastos: parsed.data.gastos,
-        stockIniAgua: parsed.data.stockIniAgua,
-        prodAgua: parsed.data.prodAgua,
-        stockFinAgua: parsed.data.stockFinAgua,
-        stockIniHielo: parsed.data.stockIniHielo,
-        prodHielo: parsed.data.prodHielo,
-        stockFinHielo: parsed.data.stockFinHielo,
-        netoCaja: parsed.data.netoCaja,
-      },
+    const cierre = await withAdvisoryLock('CIERRE', async () => {
+      // Double-check no cierre exists for today under lock
+      const existing = await prisma.cierreDia.findFirst({
+        where: {
+          fecha: { gte: startOfDay },
+        },
+      })
+      if (existing) {
+        throw new Error('CIERRE_YA_EXISTE')
+      }
+
+      return prisma.cierreDia.create({
+        data: {
+          fecha: new Date(),
+          numPedidos: parsed.data.numPedidos,
+          totalVentas: parsed.data.totalVentas,
+          cobrado: parsed.data.cobrado,
+          fiado: parsed.data.fiado,
+          efectivo: parsed.data.efectivo,
+          transferencia: parsed.data.transferencia,
+          nequi: parsed.data.nequi,
+          daviplata: parsed.data.daviplata,
+          bono: parsed.data.bono,
+          baseDia: parsed.data.baseDia,
+          comisiones: parsed.data.comisiones,
+          salarios: parsed.data.salarios,
+          gastos: parsed.data.gastos,
+          stockIniAgua: parsed.data.stockIniAgua,
+          prodAgua: parsed.data.prodAgua,
+          stockFinAgua: parsed.data.stockFinAgua,
+          stockIniHielo: parsed.data.stockIniHielo,
+          prodHielo: parsed.data.prodHielo,
+          stockFinHielo: parsed.data.stockFinHielo,
+          netoCaja: parsed.data.netoCaja,
+        },
+      })
     })
 
     return NextResponse.json({ success: true, cierre }, { status: 201 })
   } catch (error) {
+    if (error instanceof Error && error.message === 'CIERRE_YA_EXISTE') {
+      return NextResponse.json({ error: 'Ya existe un cierre para hoy' }, { status: 409 })
+    }
     return NextResponse.json({ error: 'Error' }, { status: 500 })
   }
 }

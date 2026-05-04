@@ -7,6 +7,7 @@ const LOCK_IDS = {
   ABONO: 4,
   COMPRA: 5,
   FACTURA_NUM: 6,
+  CIERRE: 7,
 } as const;
 
 /**
