@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { z } from 'zod'
+import { logger } from '@/lib/logger'
 
 const CarteraSchema = z.object({
   minSaldo: z.coerce.number().nonnegative().optional(),
@@ -42,7 +43,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ facturas, totalCartera })
   } catch (error) {
-    console.error('Error fetching cartera:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching cartera:')
     return NextResponse.json({ error: 'Error fetching cartera' }, { status: 500 })
   }
 }

@@ -5,6 +5,7 @@ import { requireAuth } from '@/lib/auth-check'
 import { InsumoCreateSchema } from '@/lib/validators'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
+import { logger } from '@/lib/logger'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -31,7 +32,7 @@ export async function GET(request: NextRequest) {
 
     return apiSuccess({ insumos })
   } catch (error) {
-    console.error('Error fetching insumos:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching insumos:')
     return apiError('Error cargando insumos')
   }
 }
@@ -68,7 +69,7 @@ export async function POST(request: NextRequest) {
 
     return apiSuccess({ insumo }, 201)
   } catch (error) {
-    console.error('Error creating insumo:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error creating insumo:')
     return apiError('Error creando insumo')
   }
 }

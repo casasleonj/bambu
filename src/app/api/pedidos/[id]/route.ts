@@ -5,6 +5,7 @@ import { requireAuth, requireRole, requireOwnership } from '@/lib/auth-check'
 import { PedidoUpdateSchema } from '@/lib/validators'
 import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
+import { logger } from '@/lib/logger'
 
 function getUserFromSession(authResult: any) {
   return { id: authResult.user?.id || '', role: authResult.user?.role }
@@ -115,7 +116,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (error instanceof Error && error.message === 'PEDIDO_NOT_FOUND') {
       return NextResponse.json({ error: 'Pedido no encontrado' }, { status: 404 })
     }
-    console.error('Error updating pedido:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error updating pedido:')
     return NextResponse.json({ error: 'Error updating' }, { status: 500 })
   }
 }

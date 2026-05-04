@@ -9,6 +9,7 @@ import { resolverPrecio } from '@/lib/pricing'
 import type { ProductCode } from '@/lib/pricing'
 import { MetodoPago } from '@prisma/client'
 import { ROLES } from '@/lib/constants'
+import { logger } from '@/lib/logger'
 
 const ProductoEntregadoSchema = z.object({
   cPacaAguaEnt: z.number().int().min(0).default(0),
@@ -394,7 +395,7 @@ export async function POST(
     if (error instanceof Error && error.message === 'EMBARQUE_YA_CERRADO') {
       return NextResponse.json({ error: 'El embarque ya está cerrado' }, { status: 400 })
     }
-    console.error('Error cerrando embarque:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error cerrando embarque:')
     return NextResponse.json({ error: 'Error al cerrar embarque' }, { status: 500 })
   }
 }

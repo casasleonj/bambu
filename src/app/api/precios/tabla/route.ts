@@ -3,6 +3,7 @@ import { requireAuth } from '@/lib/auth-check'
 import { getPriceTable, type Canal } from '@/lib/pricing'
 import { CanalSchema } from '@/lib/zod-schemas'
 import { apiSuccess, apiError } from '@/lib/api-response'
+import { logger } from '@/lib/logger'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest) {
     const tabla = await getPriceTable(canalValidation.data)
     return apiSuccess({ tabla, canal: canalValidation.data })
   } catch (error) {
-    console.error('Error fetching price table:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching price table:')
     return apiError('Error fetching price table', 500)
   }
 }

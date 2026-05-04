@@ -1,4 +1,5 @@
 import { offlineDb } from './offline'
+import { logger } from '@/lib/logger'
 
 export async function syncWithServer(): Promise<{ synced: number; failed: number; conflicts: number }> {
   const queue = await offlineDb.syncQueue.orderBy('createdAt').toArray()
@@ -79,7 +80,7 @@ export async function syncWithServer(): Promise<{ synced: number; failed: number
         }
       }
     } catch (e) {
-      console.error('Sync failed for item', { id: (item as any).id }, e instanceof Error ? e.message : 'Unknown')
+      logger.error({ err: e instanceof Error ? e.message : 'Unknown', id: (item as any).id }, 'Sync failed for item')
       failed++
     }
   }

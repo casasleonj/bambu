@@ -5,6 +5,7 @@ import { requireAuth, requireRole } from '@/lib/auth-check'
 import { TrabajadorCreateSchema } from '@/lib/validators'
 import { apiSuccess, apiError, apiList } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
+import { logger } from '@/lib/logger'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -68,7 +69,7 @@ export async function POST(request: NextRequest) {
 
     return apiSuccess({ trabajador }, 201)
   } catch (error) {
-    console.error('Error creating trabajador:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error creating trabajador:')
     return apiError('Error creando trabajador')
   }
 }

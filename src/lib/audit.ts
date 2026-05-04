@@ -1,4 +1,5 @@
 import { prisma } from './prisma'
+import { logger } from './logger'
 
 export interface AuditEntry {
   entidad: string
@@ -20,8 +21,7 @@ export async function logAudit(entry: AuditEntry) {
       },
     })
   } catch (e) {
-    // Audit logging should never break the main transaction
-    console.error('[AUDIT] Failed to log:', e)
+    logger.error({ err: e }, '[AUDIT] Failed to log')
   }
 }
 
@@ -37,6 +37,6 @@ export async function logBulkAudit(entries: AuditEntry[]) {
       })),
     })
   } catch (e) {
-    console.error('[AUDIT] Failed to log bulk:', e)
+    logger.error({ err: e }, '[AUDIT] Failed to log bulk')
   }
 }

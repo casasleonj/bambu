@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
+import { logger } from '@/lib/logger'
 
 const RutaCreateSchema = z.object({
   nombre: z.string().min(1).max(100),
@@ -49,7 +50,7 @@ export async function GET(request: NextRequest) {
         : buildPaginationResponse(rutas, total, pagination.page!, pagination.pageSize!)
     )
   } catch (error) {
-    console.error('Error fetching rutas:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching rutas:')
     return apiError('Error cargando rutas')
   }
 }
@@ -96,7 +97,7 @@ export async function POST(request: NextRequest) {
 
     return apiSuccess({ ruta }, 201)
   } catch (error) {
-    console.error('Error creating ruta:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error creating ruta:')
     return apiError('Error creando ruta')
   }
 }
@@ -146,7 +147,7 @@ export async function PUT(request: NextRequest) {
 
     return apiSuccess({ ruta })
   } catch (error) {
-    console.error('Error updating ruta:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error updating ruta:')
     return apiError('Error actualizando ruta')
   }
 }
@@ -178,7 +179,7 @@ export async function DELETE(request: NextRequest) {
 
     return apiSuccess({ ruta })
   } catch (error) {
-    console.error('Error deleting ruta:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error deleting ruta:')
     return apiError('Error eliminando ruta')
   }
 }

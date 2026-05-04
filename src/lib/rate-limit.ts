@@ -1,4 +1,5 @@
 import { RateLimiterMemory, RateLimiterRedis, RateLimiterRes, IRateLimiterStoreOptions } from 'rate-limiter-flexible'
+import { logger } from './logger'
 
 // Configuration:
 // - Local/dev: uses in-memory limiter (per-process, fine for single instance)
@@ -30,12 +31,12 @@ async function getRedisClient() {
     // Dynamic import avoids bundling redis in edge runtime
     const { createClient } = await import('redis')
     const client = createClient({ url: redisUrl })
-    client.on('error', (err: Error) => console.error('Redis error:', err.message))
+    client.on('error', (err: Error) => logger.error({ err }, 'Redis error'))
     await client.connect()
     redisClient = client
     return client
   } catch (err) {
-    console.error('Failed to connect to Redis, falling back to memory')
+    logger.error({ err }, 'Failed to connect to Redis, falling back to memory')
     redisClient = null
     return null
   }
@@ -113,7 +114,7 @@ export async function checkRateLimit(
     // Internal error (Redis crash, memory corruption, etc.).
     // Circuit breaker: allow requests but at 10% capacity to prevent total lockout
     // while limiting damage. Log loudly for alerts.
-    console.error('[RATE-LIMIT] Internal error — circuit breaker engaged with 10% capacity')
+    logger.error('[RATE-LIMIT] Internal error — circuit breaker engaged with 10% capacity')
     return {
       allowed: true,
       limit: Math.max(1, Math.floor(cfg.points * 0.1)),

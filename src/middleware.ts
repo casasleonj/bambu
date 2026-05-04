@@ -29,6 +29,10 @@ const ADMIN_PAGE_ROUTES = [
   '/nomina',
 ]
 
+function generateNonce(): string {
+  return Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString('base64')
+}
+
 /**
  * Get the real client IP. Only trust x-forwarded-for if we're behind a known proxy
  * (Vercel sets x-real-ip; standalone Node uses req.ip).
@@ -71,10 +75,14 @@ export default auth(async (req) => {
     const type = classifyRequest(req.nextUrl.pathname)
     const limit = await checkRateLimit(`${ip}:${type}`, type)
 
+    const nonce = generateNonce()
+    req.headers.set('x-nonce', nonce)
+
     const response = NextResponse.next()
     response.headers.set('X-RateLimit-Limit', String(limit.limit))
     response.headers.set('X-RateLimit-Remaining', String(limit.remaining))
     response.headers.set('X-RateLimit-Reset', limit.resetTime.toISOString())
+    response.headers.set('Content-Security-Policy', `default-src 'self'; script-src 'self' 'nonce-${nonce}'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`)
 
     if (!limit.allowed) {
       response.headers.set('Retry-After', String(limit.retryAfter))
@@ -140,7 +148,11 @@ export default auth(async (req) => {
     }
   }
 
-  return NextResponse.next()
+  const nonce = generateNonce()
+  req.headers.set('x-nonce', nonce)
+  const response = NextResponse.next()
+  response.headers.set('Content-Security-Policy', `default-src 'self'; script-src 'self' 'nonce-${nonce}'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`)
+  return response
 })
 
 export const config = {

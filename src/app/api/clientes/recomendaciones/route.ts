@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
 import { ClienteRecomendacionesSchema } from '@/lib/zod-schemas'
 import { apiSuccess, apiError } from '@/lib/api-response'
+import { logger } from '@/lib/logger'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -110,7 +111,7 @@ export async function GET(request: NextRequest) {
       total: recomendaciones.length,
     })
   } catch (error) {
-    console.error('Error generating recommendations:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error generating recommendations:')
     return apiError('Error al generar recomendaciones', 500)
   }
 }

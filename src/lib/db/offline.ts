@@ -1,4 +1,5 @@
 import Dexie, { type Table } from 'dexie'
+import { logger } from '@/lib/logger'
 
 export interface OfflinePedido {
   id?: number
@@ -192,7 +193,7 @@ export async function processSyncQueue(
         errors++
       }
     } catch (e) {
-      console.error('[SYNC] Error processing queue item:', e)
+      logger.error({ err: e }, '[SYNC] Error processing queue item:')
       errors++
     }
   }

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { ClienteQuickCreateSchema } from '@/lib/validators'
 import { requireAuth } from '@/lib/auth-check'
+import { logger } from '@/lib/logger'
 
 export async function POST(request: NextRequest) {
   const authError = await requireAuth()
@@ -39,7 +40,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ cliente }, { status: 201 })
   } catch (error) {
-    console.error('Error creating quick client:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error creating quick client:')
     return NextResponse.json({ error: 'Error creating client' }, { status: 500 })
   }
 }

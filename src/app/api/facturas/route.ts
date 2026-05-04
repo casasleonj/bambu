@@ -9,6 +9,7 @@ import { getDateRange } from '@/lib/dates'
 import { logAudit } from '@/lib/audit'
 import { withAdvisoryLock } from '@/lib/locks'
 import type { Factura } from '@prisma/client'
+import { logger } from '@/lib/logger'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -48,7 +49,7 @@ export async function GET(request: NextRequest) {
         : buildPaginationResponse(facturas, total, pagination.page!, pagination.pageSize!)
     )
   } catch (error) {
-    console.error('Error fetching facturas:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching facturas:')
     return NextResponse.json({ error: 'Error fetching facturas' }, { status: 500 })
   }
 }
@@ -113,7 +114,7 @@ export async function POST(request: NextRequest) {
     if (message === 'El pedido ya tiene una factura') {
       return NextResponse.json({ error: 'El pedido ya tiene una factura' }, { status: 409 })
     }
-    console.error('Error creating factura:', message)
+    logger.error({ err: message }, 'Error creating factura:')
     return NextResponse.json({ error: 'Error creating factura' }, { status: 500 })
   }
 }

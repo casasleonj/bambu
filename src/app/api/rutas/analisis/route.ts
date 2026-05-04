@@ -6,6 +6,7 @@ import {
   obtenerBarriosSinRuta,
 } from '@/lib/route-analysis'
 import { z } from 'zod'
+import { logger } from '@/lib/logger'
 
 const AnalisisSchema = z.object({
   desde: z.string().date().optional(),
@@ -38,7 +39,7 @@ export async function GET(request: Request) {
       barriosSinRuta,
     })
   } catch (error) {
-    console.error('Error en análisis de rutas:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error en análisis de rutas:')
     return NextResponse.json(
       { error: 'Error al analizar patrones de entrega' },
       { status: 500 }

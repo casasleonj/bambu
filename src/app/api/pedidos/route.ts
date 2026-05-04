@@ -11,6 +11,7 @@ import { resolverPreciosPedido, type Canal, type ProductCode } from '@/lib/prici
 import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
+import { logger } from '@/lib/logger'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -61,7 +62,7 @@ export async function GET(request: NextRequest) {
         : buildPaginationResponse(pedidos, total, pagination.page!, pagination.pageSize!)
     )
   } catch (error) {
-    console.error('Error fetching pedidos:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching pedidos:')
     return apiError('Error cargando pedidos')
   }
 }
@@ -197,7 +198,7 @@ export async function POST(request: NextRequest) {
 
     return apiSuccess({ pedido: result.pedido }, 201)
   } catch (error) {
-    console.error('Error creating pedido:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error creating pedido:')
     return apiError('Error creando pedido')
   }
 }

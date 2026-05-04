@@ -6,6 +6,7 @@ import { ProduccionCreateSchema } from '@/lib/validators'
 import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
+import { logger } from '@/lib/logger'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -40,7 +41,7 @@ export async function GET(request: NextRequest) {
     })
     return apiSuccess({ produccion: registros })
   } catch (error) {
-    console.error('Error fetching produccion:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching produccion:')
     return apiError('Error', 500)
   }
 }

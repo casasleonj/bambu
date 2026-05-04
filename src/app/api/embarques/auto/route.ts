@@ -5,6 +5,7 @@ import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
 import { z } from 'zod'
 import { apiSuccess, apiError } from '@/lib/api-response'
+import { logger } from '@/lib/logger'
 
 const EmbarqueAutoSchema = z.object({
   rutaId: z.string().min(1).optional(),
@@ -128,7 +129,7 @@ export async function POST(request: NextRequest) {
 
     return apiSuccess(result)
   } catch (error) {
-    console.error('Error auto-generating embarques:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error auto-generating embarques:')
     return apiError('Error al generar embarques automáticos', 500)
   }
 }

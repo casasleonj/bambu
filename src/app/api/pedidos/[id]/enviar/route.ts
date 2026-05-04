@@ -5,6 +5,7 @@ import { requireAuth } from '@/lib/auth-check'
 import { z } from 'zod'
 import { logAudit } from '@/lib/audit'
 import { calcularPacasEmbarque } from '@/lib/embarque-capacidad'
+import { logger } from '@/lib/logger'
 
 const EnviarPedidoSchema = z.object({
   embarqueId: z.string().min(1),
@@ -92,7 +93,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const [msg, status] = messages[error.message] || ['Error enviando pedido', 500]
       return NextResponse.json({ error: msg }, { status })
     }
-    console.error('Error enviando pedido:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error enviando pedido:')
     return NextResponse.json({ error: 'Error enviando pedido' }, { status: 500 })
   }
 }

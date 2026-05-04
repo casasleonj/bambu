@@ -4,6 +4,7 @@ import { requireAuth, requireRole } from '@/lib/auth-check'
 import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
 import { z } from 'zod'
 import { EstadoPedido } from '@prisma/client'
+import { logger } from '@/lib/logger'
 
 const ReporteVentasSchema = z.object({
   start: z.string().datetime().optional().or(z.string().date()),
@@ -81,7 +82,7 @@ export async function GET(request: NextRequest) {
         : { ...buildPaginationResponse(pedidos, total, pagination.page!, pagination.pageSize!), resumen }
     )
   } catch (error) {
-    console.error('Error fetching reporte ventas:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching reporte ventas:')
     return NextResponse.json({ error: 'Error fetching reporte' }, { status: 500 })
   }
 }

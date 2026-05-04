@@ -1,1 +1,1 @@
-{"nodes": [{"id": "home_cristof_documents_bambu_demo_multimodelo_src_lib_constants_ts", "label": "constants.ts", "file_type": "code", "source_file": "/home/cristof/Documents/bambu_demo_multimodelo/src/lib/constants.ts", "source_location": "L1"}], "edges": [], "raw_calls": []}
+{"nodes": [{"id": "constants_lib", "label": "Application Constants", "file_type": "code", "source_file": "src/lib/constants.ts", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null}], "edges": [], "hyperedges": []}

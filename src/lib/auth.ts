@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs'
 import { prisma } from './prisma'
 import type { JWT } from 'next-auth/jwt'
 import type { Session, User } from 'next-auth'
+import { logger } from '@/lib/logger'
 
 const DUMMY_HASH = '$2b$12$3efHSCLxFTFy3/JJefgSmeHE/A.YexA51FcSccHtb8u0UvLR7mTWm'
 
@@ -32,7 +33,7 @@ const authOptions: NextAuthConfig = {
             hashToCompare = dbUser.password
           }
         } catch (error) {
-          console.error('Auth error:', error instanceof Error ? error.message : 'Unknown error')
+          logger.error({ err: error instanceof Error ? error.message : 'Unknown error' }, 'Auth error:')
         }
 
         const valid = await bcrypt.compare(
@@ -80,7 +81,7 @@ const authOptions: NextAuthConfig = {
           token.role = dbUser.rol
           token.lastVerified = Date.now()
         } catch (error) {
-          console.error('JWT refresh error:', error instanceof Error ? error.message : 'Unknown error')
+          logger.error({ err: error instanceof Error ? error.message : 'Unknown error' }, 'JWT refresh error:')
         }
       }
 

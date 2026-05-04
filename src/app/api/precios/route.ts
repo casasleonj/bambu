@@ -4,6 +4,7 @@ import { requireAuth, requireRole } from '@/lib/auth-check'
 import { z } from 'zod'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
+import { logger } from '@/lib/logger'
 
 const PrecioHistorialSchema = z.object({
   producto: z.enum([
@@ -34,7 +35,7 @@ export async function GET(request: NextRequest) {
 
     return apiSuccess({ precios })
   } catch (error) {
-    console.error('Error fetching precios:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching precios:')
     return apiError('Error cargando precios')
   }
 }
@@ -87,7 +88,7 @@ export async function POST(request: NextRequest) {
 
     return apiError('Datos invalidos. Envie {precioVolumenId, precio} o {producto, precio}.', 400)
   } catch (error) {
-    console.error('Error updating precio:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error updating precio:')
     return apiError('Error actualizando precio')
   }
 }

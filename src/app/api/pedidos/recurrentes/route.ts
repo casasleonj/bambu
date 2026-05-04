@@ -5,6 +5,7 @@ import { previewGeneracionRecurrentes, generarPedidosRecurrentes, type DecisionG
 import { z } from 'zod'
 import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
+import { logger } from '@/lib/logger'
 
 const DecisionSchema = z.object({
   recurrenteId: z.string().min(1),
@@ -24,7 +25,7 @@ export async function GET() {
     const preview = await previewGeneracionRecurrentes()
     return apiSuccess({ preview })
   } catch (error) {
-    console.error('Error preview recurrentes:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error preview recurrentes:')
     return apiError('Error al generar preview', 500)
   }
 }
@@ -58,7 +59,7 @@ export async function POST(request: NextRequest) {
       saltadosIds: resultado.saltados,
     }, 201)
   } catch (error) {
-    console.error('Error generando recurrentes:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error generando recurrentes:')
     return apiError('Error generando pedidos recurrentes', 500)
   }
 }

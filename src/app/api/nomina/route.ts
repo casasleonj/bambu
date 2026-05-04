@@ -6,6 +6,7 @@ import { NominaCreateSchema } from '@/lib/validators'
 import { getNextNumero } from '@/lib/sequence'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
+import { logger } from '@/lib/logger'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -24,7 +25,7 @@ export async function GET(request: NextRequest) {
 
     return apiSuccess({ nominas })
   } catch (error) {
-    console.error('Error fetching nominas:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching nominas:')
     return apiError('Error fetching nominas', 500)
   }
 }
@@ -151,7 +152,7 @@ export async function POST(request: NextRequest) {
 
     return apiSuccess({ nomina: result }, 201)
   } catch (error) {
-    console.error('Error creating nomina:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error creating nomina:')
     return apiError('Error creating nomina', 500)
   }
 }

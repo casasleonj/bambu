@@ -5,6 +5,7 @@ import { requireAuth, requireRole, requireOwnership } from '@/lib/auth-check'
 import { EmbarqueUpdateSchema } from '@/lib/validators'
 import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
+import { logger } from '@/lib/logger'
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
@@ -94,7 +95,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     return NextResponse.json({ success: true, embarque })
   } catch (error) {
-    console.error('Error updating embarque:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error updating embarque:')
     return NextResponse.json({ error: 'Error updating' }, { status: 500 })
   }
 }
@@ -152,7 +153,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     if (error instanceof Error && error.message === 'EMBARQUE_CERRADO') {
       return NextResponse.json({ error: 'No se puede cancelar un embarque cerrado' }, { status: 400 })
     }
-    console.error('Error canceling embarque:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error canceling embarque:')
     return NextResponse.json({ error: 'Error al cancelar embarque' }, { status: 500 })
   }
 }

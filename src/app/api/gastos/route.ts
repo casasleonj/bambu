@@ -7,6 +7,7 @@ import { getPaginationParams, getPrismaPagination, buildPaginationResponse } fro
 import { getDateRange } from '@/lib/dates'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
+import { logger } from '@/lib/logger'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -53,7 +54,7 @@ export async function GET(request: NextRequest) {
         : buildPaginationResponse(gastos, total, pagination.page!, pagination.pageSize!)
     )
   } catch (error) {
-    console.error('Error fetching gastos:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching gastos:')
     return apiError('Error fetching gastos', 500)
   }
 }
@@ -92,7 +93,7 @@ export async function POST(request: NextRequest) {
 
     return apiSuccess({ gasto }, 201)
   } catch (error) {
-    console.error('Error creating gasto:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error creating gasto:')
     return apiError('Error creating gasto', 500)
   }
 }

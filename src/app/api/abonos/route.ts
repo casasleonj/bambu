@@ -7,6 +7,7 @@ import { withAdvisoryLock } from '@/lib/locks'
 import { getNextNumero } from '@/lib/sequence'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
+import { logger } from '@/lib/logger'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -25,7 +26,7 @@ export async function GET(request: NextRequest) {
 
     return apiSuccess({ abonos })
   } catch (error) {
-    console.error('Error fetching abonos:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching abonos:')
     return apiError('Error fetching abonos', 500)
   }
 }
@@ -110,7 +111,7 @@ export async function POST(request: NextRequest) {
 
     return apiSuccess({ abono: result.abono }, 201)
   } catch (error) {
-    console.error('Error creating abono:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error creating abono:')
     if (error instanceof Error && error.message === 'FACTURA_NOT_FOUND') {
       return apiError('Factura no encontrada', 404)
     }

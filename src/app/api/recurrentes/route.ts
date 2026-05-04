@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { logAudit } from '@/lib/audit'
 import { withAdvisoryLock } from '@/lib/locks'
 import { ROLES } from '@/lib/constants'
+import { logger } from '@/lib/logger'
 
 const RecurrenteCreateSchema = z.object({
   clienteId: z.string().min(1),
@@ -53,7 +54,7 @@ export async function GET() {
 
     return NextResponse.json({ success: true, recurrentes })
   } catch (error) {
-    console.error('Error fetching recurrentes:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching recurrentes:')
     return NextResponse.json({ error: 'Error al cargar recurrentes' }, { status: 500 })
   }
 }
@@ -131,7 +132,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, recurrente }, { status: 201 })
   } catch (error) {
-    console.error('Error creating recurrente:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error creating recurrente:')
     return NextResponse.json({ error: 'Error al crear recurrente' }, { status: 500 })
   }
 }
@@ -186,7 +187,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({ success: true, recurrente })
   } catch (error) {
-    console.error('Error updating recurrente:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error updating recurrente:')
     return NextResponse.json({ error: 'Error al actualizar' }, { status: 500 })
   }
 }
@@ -217,7 +218,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true, recurrente })
   } catch (error) {
-    console.error('Error deleting recurrente:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error deleting recurrente:')
     return NextResponse.json({ error: 'Error al eliminar' }, { status: 500 })
   }
 }

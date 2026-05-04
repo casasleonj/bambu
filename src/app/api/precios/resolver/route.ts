@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/auth-check'
 import { resolverPrecio, type Canal, type ProductCode } from '@/lib/pricing'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
+import { logger } from '@/lib/logger'
 
 const PrecioResolverItemSchema = z.object({
   codigo: z.string().min(1),
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest) {
     const result = await resolverPrecio(parsed.data.codigo as ProductCode, parsed.data.cantidad || 1, canal as Canal, clienteOverrides)
     return NextResponse.json(result)
   } catch (error) {
-    console.error('Error resolving price:', error instanceof Error ? error.message : 'Unknown')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error resolving price:')
     return NextResponse.json({ error: 'Error resolving price' }, { status: 500 })
   }
 }
