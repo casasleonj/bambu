@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
 import { z } from 'zod'
+import { apiSuccess, apiError } from '@/lib/api-response'
 
 const EmbarqueAutoSchema = z.object({
   rutaId: z.string().min(1).optional(),
@@ -20,7 +21,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const validation = EmbarqueAutoSchema.safeParse(body)
     if (!validation.success) {
-      return NextResponse.json({ error: 'Parámetros inválidos', details: validation.error.flatten() }, { status: 400 })
+      return apiError('Parámetros inválidos', 400)
     }
     const result = await prisma.$transaction(async (tx) => {
       // 1. Find all PENDIENTE pedidos without embarque
@@ -125,12 +126,9 @@ export async function POST(request: NextRequest) {
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     })
 
-    return NextResponse.json({ success: true, ...result })
+    return apiSuccess(result)
   } catch (error) {
     console.error('Error auto-generating embarques:', error instanceof Error ? error.message : 'Unknown')
-    return NextResponse.json(
-      { error: 'Error al generar embarques automáticos' },
-      { status: 500 }
-    )
+    return apiError('Error al generar embarques automáticos', 500)
   }
 }

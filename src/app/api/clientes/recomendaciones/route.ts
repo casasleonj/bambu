@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
 import { ClienteRecomendacionesSchema } from '@/lib/zod-schemas'
+import { apiSuccess, apiError } from '@/lib/api-response'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -12,7 +13,7 @@ export async function GET(request: NextRequest) {
       Object.fromEntries(request.nextUrl.searchParams.entries())
     )
     if (!validation.success) {
-      return NextResponse.json({ error: 'Parámetros inválidos', details: validation.error.flatten() }, { status: 400 })
+      return apiError('Parámetros inválidos', 400)
     }
     const clientes = await prisma.cliente.findMany({
       where: { activo: true },
@@ -104,16 +105,12 @@ export async function GET(request: NextRequest) {
       return (b.diasRetraso || 0) - (a.diasRetraso || 0)
     })
 
-    return NextResponse.json({
-      success: true,
+    return apiSuccess({
       recomendaciones: recomendaciones.slice(0, 20),
       total: recomendaciones.length,
     })
   } catch (error) {
     console.error('Error generating recommendations:', error instanceof Error ? error.message : 'Unknown')
-    return NextResponse.json(
-      { error: 'Error al generar recomendaciones' },
-      { status: 500 }
-    )
+    return apiError('Error al generar recomendaciones', 500)
   }
 }

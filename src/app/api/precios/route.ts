@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { z } from 'zod'
 import { apiSuccess, apiError } from '@/lib/api-response'
+import { logAudit } from '@/lib/audit'
 
 const PrecioHistorialSchema = z.object({
   producto: z.enum([
@@ -50,10 +51,17 @@ export async function POST(request: NextRequest) {
     const volumenParsed = PrecioVolumenSchema.safeParse(body)
     if (volumenParsed.success) {
       const { precioVolumenId, precio } = volumenParsed.data
-      await prisma.precioVolumen.update({
+      const updated = await prisma.precioVolumen.update({
         where: { id: precioVolumenId },
         data: { precio },
       })
+      logAudit({
+        entidad: 'PrecioVolumen',
+        registroId: precioVolumenId,
+        accion: 'UPDATE',
+        datos: { precioVolumenId, precio },
+        usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+      }).catch(() => {})
       return apiSuccess({})
     }
 
@@ -67,6 +75,13 @@ export async function POST(request: NextRequest) {
           creadoPor: authResult.user?.email || 'unknown',
         },
       })
+      logAudit({
+        entidad: 'PrecioVolumen',
+        registroId: record.id,
+        accion: 'CREATE',
+        datos: { codigo: record.producto, precio: record.precio },
+        usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+      }).catch(() => {})
       return apiSuccess({ precio: record }, 201)
     }
 

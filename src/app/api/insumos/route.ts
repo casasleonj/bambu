@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
 import { InsumoCreateSchema } from '@/lib/validators'
 import { apiSuccess, apiError } from '@/lib/api-response'
+import { logAudit } from '@/lib/audit'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -56,6 +57,14 @@ export async function POST(request: NextRequest) {
         proveedorId: proveedorId || null,
       },
     })
+
+    logAudit({
+      entidad: 'Insumo',
+      registroId: insumo.id,
+      accion: 'CREATE',
+      datos: { nombre, unidad },
+      usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+    }).catch(() => {})
 
     return apiSuccess({ insumo }, 201)
   } catch (error) {

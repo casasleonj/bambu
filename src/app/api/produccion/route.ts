@@ -1,9 +1,11 @@
 import { formatZodError } from '@/lib/utils'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { ProduccionCreateSchema } from '@/lib/validators'
 import { ROLES } from '@/lib/constants'
+import { apiSuccess, apiError } from '@/lib/api-response'
+import { logAudit } from '@/lib/audit'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -36,10 +38,10 @@ export async function GET(request: NextRequest) {
       orderBy: { turno: 'asc' },
       include: { trabajador: true },
     })
-    return NextResponse.json({ produccion: registros })
+    return apiSuccess({ produccion: registros })
   } catch (error) {
     console.error('Error fetching produccion:', error instanceof Error ? error.message : 'Unknown')
-    return NextResponse.json({ error: 'Error' }, { status: 500 })
+    return apiError('Error', 500)
   }
 }
 
@@ -52,7 +54,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const parsed = ProduccionCreateSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
+      return apiError(formatZodError(parsed.error), 400)
     }
     
     const prodAgua = Math.round((parsed.data.conteoAAgua + parsed.data.conteoBAgua) / 2)
@@ -78,8 +80,16 @@ export async function POST(request: NextRequest) {
       },
       include: { trabajador: true },
     })
-    return NextResponse.json({ success: true, produccion }, { status: 201 })
+    logAudit({
+      entidad: 'Produccion',
+      registroId: produccion.id,
+      accion: 'CREATE',
+      datos: { fecha: produccion.fecha, tipo: produccion.turno },
+      usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+    }).catch(() => {})
+
+    return apiSuccess({ produccion }, 201)
   } catch (error) {
-    return NextResponse.json({ error: 'Error' }, { status: 500 })
+    return apiError('Error', 500)
   }
 }

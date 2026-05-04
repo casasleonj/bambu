@@ -6,6 +6,8 @@ import { CompraCreateSchema } from '@/lib/validators'
 import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
 import { getDateRange } from '@/lib/dates'
 import { withAdvisoryLock } from '@/lib/locks'
+import { apiSuccess, apiError } from '@/lib/api-response'
+import { logAudit } from '@/lib/audit'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -35,14 +37,14 @@ export async function GET(request: NextRequest) {
       }),
       prisma.compraInsumo.count({ where }),
     ])
-    return NextResponse.json(
+    return apiSuccess(
       pagination.all
         ? { compras, total }
         : buildPaginationResponse(compras, total, pagination.page!, pagination.pageSize!)
     )
   } catch (error) {
     console.error('Error fetching compras:', error instanceof Error ? error.message : 'Unknown')
-    return NextResponse.json({ error: 'Error fetching compras' }, { status: 500 })
+    return apiError('Error fetching compras', 500)
   }
 }
 
@@ -55,21 +57,21 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const parsed = CompraCreateSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
+      return apiError(formatZodError(parsed.error), 400)
     }
     const { insumoId, proveedorId, cantidad, montoTotal } = parsed.data
 
     const insumo = await prisma.insumo.findUnique({ where: { id: insumoId } })
     if (!insumo) {
-      return NextResponse.json({ error: 'Insumo no encontrado' }, { status: 404 })
+      return apiError('Insumo no encontrado', 404)
     }
 
     // Crear compra y actualizar stock atómicamente (advisory lock previene race conditions)
-    await withAdvisoryLock('COMPRA', async (tx) => {
+    const compra = await withAdvisoryLock('COMPRA', async (tx) => {
       const lastCompra = await tx.compraInsumo.findFirst({ orderBy: { numero: 'desc' } })
       const nextNum = lastCompra ? parseInt(lastCompra.numero.replace('COM-', '')) + 1 : 1
 
-      await tx.compraInsumo.create({
+      const nuevaCompra = await tx.compraInsumo.create({
         data: {
           numero: `COM-${nextNum.toString().padStart(5, '0')}`,
           insumoId,
@@ -83,11 +85,21 @@ export async function POST(request: NextRequest) {
         where: { id: insumoId },
         data: { stock: { increment: cantidad } },
       })
+
+      return nuevaCompra
     })
 
-    return NextResponse.json({ success: true }, { status: 201 })
+    logAudit({
+      entidad: 'CompraInsumo',
+      registroId: compra.id,
+      accion: 'CREATE',
+      datos: { insumoId, proveedorId, cantidad, monto: montoTotal },
+      usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+    }).catch(() => {})
+
+    return apiSuccess({}, 201)
   } catch (error) {
     console.error('Error creating compra:', error instanceof Error ? error.message : 'Unknown')
-    return NextResponse.json({ error: 'Error creating compra' }, { status: 500 })
+    return apiError('Error creating compra', 500)
   }
 }

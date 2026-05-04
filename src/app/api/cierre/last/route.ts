@@ -1,7 +1,7 @@
-import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
 import { z } from 'zod'
+import { apiSuccess, apiError } from '@/lib/api-response'
 
 const CierreLastSchema = z.object({
   includeDetails: z.coerce.boolean().optional(),
@@ -16,13 +16,13 @@ export async function GET(request: Request) {
       Object.fromEntries(url.searchParams.entries())
     )
     if (!validation.success) {
-      return NextResponse.json({ error: 'Parámetros inválidos' }, { status: 400 })
+      return apiError('Parámetros inválidos', 400)
     }
     const cierre = await prisma.cierreDia.findFirst({
       orderBy: { fecha: 'desc' },
     })
-    return NextResponse.json({ cierre })
+    return apiSuccess({ cierre })
   } catch (error) {
-    return NextResponse.json({ error: 'Error' }, { status: 500 })
+    return apiError('Error', 500)
   }
 }

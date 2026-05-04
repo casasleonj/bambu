@@ -1,14 +1,27 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 
 export function ServiceWorkerRegister() {
+  const [updateAvailable, setUpdateAvailable] = useState(false)
+  const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null)
+
+  const handleUpdate = useCallback(() => {
+    if (waitingWorker) {
+      waitingWorker.postMessage({ type: 'SKIP_WAITING' })
+      waitingWorker.addEventListener('statechange', (e) => {
+        if ((e.target as ServiceWorker).state === 'activated') {
+          window.location.reload()
+        }
+      })
+    }
+  }, [waitingWorker])
+
   useEffect(() => {
     if (typeof window === 'undefined') return
     if (!('serviceWorker' in navigator)) return
 
     // Development: unregister any existing SW to avoid stale cache
-    // when switching branches or worktrees (feat-8-week-impl -> main)
     if (process.env.NODE_ENV === 'development') {
       navigator.serviceWorker.getRegistrations().then((regs) => {
         for (const reg of regs) {
@@ -17,7 +30,6 @@ export function ServiceWorkerRegister() {
           })
         }
       })
-      // Also clear caches to remove stale assets from other branches
       if ('caches' in window) {
         caches.keys().then((names) => {
           for (const name of names) {
@@ -30,19 +42,52 @@ export function ServiceWorkerRegister() {
       return
     }
 
-    // Production: register normally
-    navigator.serviceWorker
-      .register('/sw.js')
-      .then((reg) => {
-        if (reg?.scope) {
-          console.log('SW registered:', reg.scope)
-        }
+    // Production: register with update handling
+    navigator.serviceWorker.register('/sw.js').then((reg) => {
+      // Check if there's already a waiting worker
+      if (reg.waiting) {
+        setUpdateAvailable(true)
+        setWaitingWorker(reg.waiting)
+      }
+
+      reg.addEventListener('updatefound', () => {
+        const newWorker = reg.installing
+        if (!newWorker) return
+
+        newWorker.addEventListener('statechange', () => {
+          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            setUpdateAvailable(true)
+            setWaitingWorker(newWorker)
+          }
+        })
       })
-      .catch((err) => {
-        if (process.env.NODE_ENV === 'test') return
-        console.error('SW registration failed:', err)
-      })
+    }).catch((err) => {
+      if (process.env.NODE_ENV === 'test') return
+      console.error('SW registration failed:', err)
+    })
+
+    // Handle SW updates via skipWaiting message
+    let refreshing = false
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (refreshing) return
+      refreshing = true
+      window.location.reload()
+    })
   }, [])
 
-  return null
+  return (
+    <>
+      {updateAvailable && (
+        <div className="fixed bottom-4 right-4 z-50 bg-blue-600 text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3">
+          <span className="text-sm">Nueva versión disponible</span>
+          <button
+            onClick={handleUpdate}
+            className="bg-white text-blue-600 px-3 py-1 rounded text-sm font-medium"
+          >
+            Actualizar
+          </button>
+        </div>
+      )}
+    </>
+  )
 }

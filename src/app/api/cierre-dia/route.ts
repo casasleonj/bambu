@@ -1,8 +1,10 @@
 import { formatZodError } from '@/lib/utils'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { z } from 'zod'
+import { apiSuccess, apiError } from '@/lib/api-response'
+import { logAudit } from '@/lib/audit'
 
 const CierreDiaSchema = z.object({
   fecha: z.string().datetime().optional(),
@@ -46,9 +48,9 @@ export async function GET(request: NextRequest) {
       take: 30,
     })
 
-    return NextResponse.json(cierres)
+    return apiSuccess({ cierres })
   } catch (error) {
-    return NextResponse.json({ error: 'Error' }, { status: 500 })
+    return apiError('Error', 500)
   }
 }
 
@@ -61,7 +63,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const parsed = CierreDiaSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
+      return apiError(formatZodError(parsed.error), 400)
     }
 
     const { fecha, ...rest } = parsed.data
@@ -72,8 +74,16 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    return NextResponse.json(cierre, { status: 201 })
+    logAudit({
+      entidad: 'CierreDia',
+      registroId: cierre.id,
+      accion: 'CREATE',
+      datos: { fecha: cierre.fecha, totalVentas: cierre.totalVentas },
+      usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+    }).catch(() => {})
+
+    return apiSuccess({ cierre }, 201)
   } catch (error) {
-    return NextResponse.json({ error: 'Error' }, { status: 500 })
+    return apiError('Error', 500)
   }
 }

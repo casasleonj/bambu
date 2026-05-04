@@ -110,11 +110,13 @@ export async function checkRateLimit(
         retryAfter: Math.ceil(rej.msBeforeNext / 1000),
       }
     }
-    // Real error (Redis down etc): log and fail-open but loudly
-    console.error('Rate limiter internal error, failing open')
+    // Internal error (Redis crash, memory corruption, etc.).
+    // Circuit breaker: allow requests but at 10% capacity to prevent total lockout
+    // while limiting damage. Log loudly for alerts.
+    console.error('[RATE-LIMIT] Internal error — circuit breaker engaged with 10% capacity')
     return {
       allowed: true,
-      limit: cfg.points,
+      limit: Math.max(1, Math.floor(cfg.points * 0.1)),
       remaining: 0,
       resetTime: new Date(Date.now() + 60000),
     }

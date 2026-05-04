@@ -1,8 +1,10 @@
 import { formatZodError } from '@/lib/utils'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { ConfigCreateSchema } from '@/lib/validators'
+import { apiSuccess, apiError } from '@/lib/api-response'
+import { logAudit } from '@/lib/audit'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -15,9 +17,9 @@ export async function GET(request: NextRequest) {
     if (clave) {
       const config = await prisma.config.findUnique({ where: { clave } })
       if (!config) {
-        return NextResponse.json({ error: 'Not found' }, { status: 404 })
+        return apiError('Not found', 404)
       }
-      return NextResponse.json({ config })
+      return apiSuccess({ config })
     }
     
     if (keysParam) {
@@ -27,13 +29,13 @@ export async function GET(request: NextRequest) {
       })
       const result: Record<string, string> = {}
       configs.forEach(c => { result[c.clave] = c.valor })
-      return NextResponse.json(result)
+      return apiSuccess(result)
     }
     
     const configs = await prisma.config.findMany()
-    return NextResponse.json({ configs })
+    return apiSuccess({ configs })
   } catch (error) {
-    return NextResponse.json({ error: 'Error' }, { status: 500 })
+    return apiError('Error', 500)
   }
 }
 
@@ -46,18 +48,27 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const parsed = ConfigCreateSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
+      return apiError(formatZodError(parsed.error), 400)
     }
     const { clave, valor } = parsed.data
 
+    const existing = await prisma.config.findUnique({ where: { clave } })
     const config = await prisma.config.upsert({
       where: { clave },
       update: { valor },
       create: { clave, valor },
     })
 
-    return NextResponse.json({ success: true, config }, { status: 201 })
+    logAudit({
+      entidad: 'Config',
+      registroId: config.id,
+      accion: existing ? 'UPDATE' : 'CREATE',
+      datos: { clave, valor },
+      usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+    }).catch(() => {})
+
+    return apiSuccess({ config }, 201)
   } catch (error) {
-    return NextResponse.json({ error: 'Error' }, { status: 500 })
+    return apiError('Error', 500)
   }
 }

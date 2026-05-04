@@ -1,10 +1,12 @@
 import { formatZodError } from '@/lib/utils'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { CierreCreateSchema } from '@/lib/validators'
 import { withAdvisoryLock } from '@/lib/locks'
 import { EstadoPedido, EstadoEmbarque } from '@prisma/client'
+import { apiSuccess, apiError } from '@/lib/api-response'
+import { logAudit } from '@/lib/audit'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -64,7 +66,7 @@ export async function GET(request: NextRequest) {
 
     const status = embarquesAbiertos.length > 0 ? 'INCOMPLETO' : 'COMPLETO'
 
-    return NextResponse.json({
+    return apiSuccess({
       status,
       embarquesPendientes: embarquesAbiertos.map(e => ({ id: e.id, numero: e.numero, repartidor: e.trabajador?.nombre })),
       cierre: {
@@ -88,7 +90,7 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error) {
-    return NextResponse.json({ error: 'Error' }, { status: 500 })
+    return apiError('Error', 500)
   }
 }
 
@@ -110,16 +112,16 @@ export async function POST(request: NextRequest) {
     })
 
     if (embarquesAbiertos > 0) {
-      return NextResponse.json(
-        { error: `No se puede cerrar el día: ${embarquesAbiertos} embarque(s) pendiente(s) de empalme` },
-        { status: 400 }
+      return apiError(
+        `No se puede cerrar el día: ${embarquesAbiertos} embarque(s) pendiente(s) de empalme`,
+        400
       )
     }
 
     const body = await request.json()
     const parsed = CierreCreateSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
+      return apiError(formatZodError(parsed.error), 400)
     }
 
     const cierre = await withAdvisoryLock('CIERRE', async () => {
@@ -160,11 +162,19 @@ export async function POST(request: NextRequest) {
       })
     })
 
-    return NextResponse.json({ success: true, cierre }, { status: 201 })
+    logAudit({
+      entidad: 'CierreDia',
+      registroId: cierre.id,
+      accion: 'CREATE',
+      datos: { fecha: cierre.fecha, totalVentas: cierre.totalVentas },
+      usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+    }).catch(() => {})
+
+    return apiSuccess({ cierre }, 201)
   } catch (error) {
     if (error instanceof Error && error.message === 'CIERRE_YA_EXISTE') {
-      return NextResponse.json({ error: 'Ya existe un cierre para hoy' }, { status: 409 })
+      return apiError('Ya existe un cierre para hoy', 409)
     }
-    return NextResponse.json({ error: 'Error' }, { status: 500 })
+    return apiError('Error', 500)
   }
 }

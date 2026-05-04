@@ -1,10 +1,12 @@
 import { formatZodError } from '@/lib/utils'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { AbonoCreateSchema } from '@/lib/validators'
 import { withAdvisoryLock } from '@/lib/locks'
 import { getNextNumero } from '@/lib/sequence'
+import { apiSuccess, apiError } from '@/lib/api-response'
+import { logAudit } from '@/lib/audit'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -21,10 +23,10 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    return NextResponse.json({ abonos })
+    return apiSuccess({ abonos })
   } catch (error) {
     console.error('Error fetching abonos:', error instanceof Error ? error.message : 'Unknown')
-    return NextResponse.json({ error: 'Error fetching abonos' }, { status: 500 })
+    return apiError('Error fetching abonos', 500)
   }
 }
 
@@ -37,7 +39,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const parsed = AbonoCreateSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
+      return apiError(formatZodError(parsed.error), 400)
     }
     const { facturaId, clienteId, monto, metodoPago } = parsed.data
 
@@ -98,15 +100,23 @@ export async function POST(request: NextRequest) {
       return { abono }
     })
 
-    return NextResponse.json({ success: true, abono: result.abono }, { status: 201 })
+    logAudit({
+      entidad: 'Abono',
+      registroId: result.abono.id,
+      accion: 'CREATE',
+      datos: { monto, facturaId },
+      usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+    }).catch(() => {})
+
+    return apiSuccess({ abono: result.abono }, 201)
   } catch (error) {
     console.error('Error creating abono:', error instanceof Error ? error.message : 'Unknown')
     if (error instanceof Error && error.message === 'FACTURA_NOT_FOUND') {
-      return NextResponse.json({ error: 'Factura no encontrada' }, { status: 404 })
+      return apiError('Factura no encontrada', 404)
     }
     if (error instanceof Error && error.message === 'Abono excede saldo de factura') {
-      return NextResponse.json({ error: error.message }, { status: 400 })
+      return apiError(error.message, 400)
     }
-    return NextResponse.json({ error: 'Error creating abono' }, { status: 500 })
+    return apiError('Error creating abono', 500)
   }
 }

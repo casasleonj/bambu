@@ -1,9 +1,10 @@
 import { formatZodError } from '@/lib/utils'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { previewGeneracionRecurrentes, generarPedidosRecurrentes, type DecisionGeneracion } from '@/lib/recurrentes'
 import { z } from 'zod'
 import { ROLES } from '@/lib/constants'
+import { apiSuccess, apiError } from '@/lib/api-response'
 
 const DecisionSchema = z.object({
   recurrenteId: z.string().min(1),
@@ -21,10 +22,10 @@ export async function GET() {
 
   try {
     const preview = await previewGeneracionRecurrentes()
-    return NextResponse.json({ success: true, preview })
+    return apiSuccess({ preview })
   } catch (error) {
     console.error('Error preview recurrentes:', error instanceof Error ? error.message : 'Unknown')
-    return NextResponse.json({ error: 'Error al generar preview' }, { status: 500 })
+    return apiError('Error al generar preview', 500)
   }
 }
 
@@ -38,27 +39,26 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}))
     const parsed = GenerarRecurrentesSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
+      return apiError(formatZodError(parsed.error), 400)
     }
 
     const decisiones: DecisionGeneracion[] = parsed.data.decisiones
     const fecha = parsed.data.fecha ? new Date(parsed.data.fecha) : new Date()
 
     if (decisiones.length === 0) {
-      return NextResponse.json({ error: 'No se proporcionaron decisiones' }, { status: 400 })
+      return apiError('No se proporcionaron decisiones', 400)
     }
 
     const resultado = await generarPedidosRecurrentes(decisiones, fecha)
 
-    return NextResponse.json({
-      success: true,
+    return apiSuccess({
       generados: resultado.generados.length,
       saltados: resultado.saltados.length,
       pedidos: resultado.generados,
       saltadosIds: resultado.saltados,
-    }, { status: 201 })
+    }, 201)
   } catch (error) {
     console.error('Error generando recurrentes:', error instanceof Error ? error.message : 'Unknown')
-    return NextResponse.json({ error: 'Error generando pedidos recurrentes' }, { status: 500 })
+    return apiError('Error generando pedidos recurrentes', 500)
   }
 }

@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { TrabajadorCreateSchema } from '@/lib/validators'
 import { apiSuccess, apiError, apiList } from '@/lib/api-response'
+import { logAudit } from '@/lib/audit'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -57,6 +58,14 @@ export async function POST(request: NextRequest) {
         telefono: parsed.data.telefono,
       },
     })
+    logAudit({
+      entidad: 'Trabajador',
+      registroId: trabajador.id,
+      accion: 'CREATE',
+      datos: { nombre: parsed.data.nombre, rol: parsed.data.rol },
+      usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+    }).catch(() => {})
+
     return apiSuccess({ trabajador }, 201)
   } catch (error) {
     console.error('Error creating trabajador:', error instanceof Error ? error.message : 'Unknown')

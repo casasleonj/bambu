@@ -4,6 +4,8 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { NominaCreateSchema } from '@/lib/validators'
 import { getNextNumero } from '@/lib/sequence'
+import { apiSuccess, apiError } from '@/lib/api-response'
+import { logAudit } from '@/lib/audit'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -20,10 +22,10 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    return NextResponse.json({ nominas })
+    return apiSuccess({ nominas })
   } catch (error) {
     console.error('Error fetching nominas:', error instanceof Error ? error.message : 'Unknown')
-    return NextResponse.json({ error: 'Error fetching nominas' }, { status: 500 })
+    return apiError('Error fetching nominas', 500)
   }
 }
 
@@ -36,7 +38,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const parsed = NominaCreateSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
+      return apiError(formatZodError(parsed.error), 400)
     }
     const { trabajadorId, fechaInicio, fechaFin, tipoCalculo } = parsed.data
 
@@ -100,7 +102,15 @@ export async function POST(request: NextRequest) {
         return { nomina, entregasAgua, entregasHielo, comAgua, comHielo, totalComisiones }
       })
 
-      return NextResponse.json({
+      logAudit({
+        entidad: 'Nomina',
+        registroId: result.nomina.id,
+        accion: 'CREATE',
+        datos: { trabajadorId, tipoCalculo, total: result.nomina.total },
+        usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+      }).catch(() => {})
+
+      return apiSuccess({
         nomina: result.nomina,
         detalles: {
           entregasAgua: result.entregasAgua,
@@ -131,9 +141,17 @@ export async function POST(request: NextRequest) {
       return nomina
     })
 
-    return NextResponse.json({ success: true, nomina: result }, { status: 201 })
+    logAudit({
+      entidad: 'Nomina',
+      registroId: result.id,
+      accion: 'CREATE',
+      datos: { trabajadorId, tipoCalculo: 'MANUAL', total: result.total },
+      usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+    }).catch(() => {})
+
+    return apiSuccess({ nomina: result }, 201)
   } catch (error) {
     console.error('Error creating nomina:', error instanceof Error ? error.message : 'Unknown')
-    return NextResponse.json({ error: 'Error creating nomina' }, { status: 500 })
+    return apiError('Error creating nomina', 500)
   }
 }

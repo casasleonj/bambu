@@ -1,10 +1,12 @@
 import { formatZodError } from '@/lib/utils'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { GastoCreateSchema } from '@/lib/validators'
 import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
 import { getDateRange } from '@/lib/dates'
+import { apiSuccess, apiError } from '@/lib/api-response'
+import { logAudit } from '@/lib/audit'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -45,14 +47,14 @@ export async function GET(request: NextRequest) {
       prisma.gasto.count({ where }),
     ])
 
-    return NextResponse.json(
+    return apiSuccess(
       pagination.all
         ? { gastos, total }
         : buildPaginationResponse(gastos, total, pagination.page!, pagination.pageSize!)
     )
   } catch (error) {
     console.error('Error fetching gastos:', error instanceof Error ? error.message : 'Unknown')
-    return NextResponse.json({ error: 'Error fetching gastos' }, { status: 500 })
+    return apiError('Error fetching gastos', 500)
   }
 }
 
@@ -65,7 +67,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const parsed = GastoCreateSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
+      return apiError(formatZodError(parsed.error), 400)
     }
     const { categoria, descripcion, monto, responsable, notas, fecha } = parsed.data
 
@@ -80,9 +82,17 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    return NextResponse.json({ success: true, gasto }, { status: 201 })
+    logAudit({
+      entidad: 'Gasto',
+      registroId: gasto.id,
+      accion: 'CREATE',
+      datos: { categoria, descripcion, monto },
+      usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+    }).catch(() => {})
+
+    return apiSuccess({ gasto }, 201)
   } catch (error) {
     console.error('Error creating gasto:', error instanceof Error ? error.message : 'Unknown')
-    return NextResponse.json({ error: 'Error creating gasto' }, { status: 500 })
+    return apiError('Error creating gasto', 500)
   }
 }

@@ -1,9 +1,10 @@
 import { formatZodError } from '@/lib/utils'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { ClienteUpdateSchema } from '@/lib/validators'
 import { logAudit } from '@/lib/audit'
+import { apiSuccess, apiError } from '@/lib/api-response'
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
@@ -18,7 +19,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         _count: { select: { pedidos: true } },
       },
     })
-    if (!cliente) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    if (!cliente) return apiError('Not found', 404)
 
     // Calculate consumption pattern from last 10 delivered orders
     const pedidosEntregados = cliente.pedidos.filter(p => p.estado === 'ENTREGADO').slice(0, 10)
@@ -82,9 +83,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     serialized.frecuenciaSugerida = frecuenciaSugerida
     serialized.productosSugeridos = productosSugeridos
 
-    return NextResponse.json({ cliente: serialized })
+    return apiSuccess({ cliente: serialized })
   } catch (error) {
-    return NextResponse.json({ error: 'Error' }, { status: 500 })
+    return apiError('Error', 500)
   }
 }
 
@@ -96,7 +97,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const body = await request.json()
     const parsed = ClienteUpdateSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 })
+      return apiError(formatZodError(parsed.error), 400)
     }
     const cliente = await prisma.cliente.update({
       where: { id },
@@ -111,9 +112,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     })
 
-    return NextResponse.json({ success: true, cliente })
+    return apiSuccess({ cliente })
   } catch (error) {
-    return NextResponse.json({ error: 'Error updating' }, { status: 500 })
+    return apiError('Error updating', 500)
   }
 }
 
@@ -137,8 +138,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     })
 
-    return NextResponse.json({ success: true })
+    return apiSuccess({})
   } catch (error) {
-    return NextResponse.json({ error: 'Error deleting' }, { status: 500 })
+    return apiError('Error deleting', 500)
   }
 }

@@ -89,12 +89,26 @@ async function main() {
   console.log('✅ Database cleaned')
 
   // ─── Users ───────────────────────────────────────────────────────────────
+  const isProd = process.env.NODE_ENV === 'production'
+
+  function getPassword(username: string): string {
+    if (isProd) return crypto.randomUUID()
+    const devPasswords: Record<string, string> = {
+      admin: 'admin123',
+      asistente1: 'asist123',
+      asistente2: 'asist123',
+      contador: 'cont123',
+      auxiliar: 'aux123',
+    }
+    return devPasswords[username] || crypto.randomUUID()
+  }
+
   const usersData = [
-    { username: 'admin', password: 'admin123', rol: RolUsuario.ADMIN },
-    { username: 'asistente1', password: 'asist123', rol: RolUsuario.ASISTENTE },
-    { username: 'asistente2', password: 'asist123', rol: RolUsuario.ASISTENTE },
-    { username: 'contador', password: 'cont123', rol: RolUsuario.CONTADOR },
-    { username: 'auxiliar', password: 'aux123', rol: RolUsuario.ASISTENTE },
+    { username: 'admin', password: getPassword('admin'), rol: RolUsuario.ADMIN },
+    { username: 'asistente1', password: getPassword('asistente1'), rol: RolUsuario.ASISTENTE },
+    { username: 'asistente2', password: getPassword('asistente2'), rol: RolUsuario.ASISTENTE },
+    { username: 'contador', password: getPassword('contador'), rol: RolUsuario.CONTADOR },
+    { username: 'auxiliar', password: getPassword('auxiliar'), rol: RolUsuario.ASISTENTE },
   ]
 
   const users = []

@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
 import { ProveedorCreateSchema } from '@/lib/validators'
 import { apiSuccess, apiError } from '@/lib/api-response'
+import { logAudit } from '@/lib/audit'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -36,6 +37,14 @@ export async function POST(request: NextRequest) {
         direccion: parsed.data.direccion,
       },
     })
+    logAudit({
+      entidad: 'Proveedor',
+      registroId: proveedor.id,
+      accion: 'CREATE',
+      datos: { nombre: parsed.data.nombre },
+      usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+    }).catch(() => {})
+
     return apiSuccess({ proveedor }, 201)
   } catch (error) {
     return apiError('Error creando proveedor')
