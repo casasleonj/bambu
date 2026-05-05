@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { toast } from 'sonner'
@@ -56,13 +56,17 @@ export function PedidosClient() {
 
   const [searchInput, setSearchInput] = useState(search)
 
+  const dateRangeRef = useRef(dateRange)
+  dateRangeRef.current = dateRange
+
   const fetchPedidos = useCallback(async () => {
     try {
       setFetchError(null)
+      const dr = dateRangeRef.current
       const params = new URLSearchParams()
-      if (dateRange.desde && dateRange.hasta) {
-        params.set('desde', dateRange.desde)
-        params.set('hasta', dateRange.hasta)
+      if (dr.desde && dr.hasta) {
+        params.set('desde', dr.desde)
+        params.set('hasta', dr.hasta)
       } else {
         params.set('all', 'true')
       }
@@ -76,7 +80,7 @@ export function PedidosClient() {
     } finally {
       setLoading(false)
     }
-  }, [dateRange])
+  }, [])
 
   async function fetchClientes() {
     try {
@@ -129,10 +133,15 @@ export function PedidosClient() {
 
   useEffect(() => {
     fetchPedidos()
-    fetchClientes()
-    fetchPrecios()
-    fetchEmbarques()
-  }, [fetchPedidos])
+    Promise.all([fetchClientes(), fetchPrecios(), fetchEmbarques()])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Refetch pedidos when dateRange changes
+  useEffect(() => {
+    if (dateRange.desde || dateRange.hasta) {
+      fetchPedidos()
+    }
+  }, [dateRange.desde, dateRange.hasta, fetchPedidos])
 
   useEffect(() => {
     let isFetching = false
@@ -141,7 +150,7 @@ export function PedidosClient() {
         isFetching = true
         fetchPedidos().finally(() => { isFetching = false })
       }
-    }, 15000)
+      }, 60000) // Poll every 60s instead of 15s — 6 users don't need aggressive polling
     return () => clearInterval(interval)
   }, [fetchPedidos])
 
