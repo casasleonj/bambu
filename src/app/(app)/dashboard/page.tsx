@@ -9,8 +9,9 @@ export default async function DashboardPage() {
   const { startOfDay, endOfDay } = getTodayRange()
   const { startOfDay: yesterdayStart, endOfDay: yesterdayEnd } = getYesterdayRange()
 
-  const [pedidos, pedidosAyer, baseDiaConfig, lastCierre, gastosAgg, embarquesAbiertos, _clientesCount, stockAlertas,
-    cuentasPorCobrarAgg, produccionHoy
+  const [
+    pedidos, pedidosAyer, baseDiaConfig, lastCierre, gastosAgg, embarquesAbiertos, _clientesCount, stockAlertas,
+    cuentasPorCobrarAgg, produccionHoy, configsStock
   ] = await Promise.all([
     prisma.pedido.findMany({ where: { fecha: { gte: startOfDay, lt: endOfDay } } }),
     prisma.pedido.findMany({ where: { fecha: { gte: yesterdayStart, lt: yesterdayEnd } } }),
@@ -22,6 +23,7 @@ export default async function DashboardPage() {
     prisma.insumo.findMany({ where: { stock: { lte: prisma.insumo.fields.stockMin } }, take: 5 }),
     prisma.pedido.aggregate({ where: { saldo: { gt: 0 }, estado: { in: ['ENTREGADO', 'EN_RUTA'] } }, _sum: { saldo: true }, _count: true }),
     prisma.produccion.aggregate({ where: { fecha: { gte: startOfDay, lt: endOfDay } }, _sum: { conteoAAgua: true, conteoBAgua: true, conteoAHielo: true, conteoBHielo: true } }),
+    prisma.config.findMany({ where: { clave: { in: ['STOCK_INI_AGUA', 'STOCK_INI_HIELO', 'STOCK_INI_BOTELLON'] } } }),
   ])
 
   const ventas = pedidos.reduce((acc, p) => acc + Number(p.total), 0)
@@ -58,10 +60,7 @@ export default async function DashboardPage() {
   let stockIniBotellon = 0
 
   if (stockIniAgua === 0 && stockIniHielo === 0) {
-    const configs = await prisma.config.findMany({
-      where: { clave: { in: ['STOCK_INI_AGUA', 'STOCK_INI_HIELO', 'STOCK_INI_BOTELLON'] } },
-    })
-    const configMap = Object.fromEntries(configs.map(c => [c.clave, c.valor]))
+    const configMap = Object.fromEntries(configsStock.map(c => [c.clave, c.valor]))
     stockIniAgua = parseInt(configMap.STOCK_INI_AGUA) || 0
     stockIniHielo = parseInt(configMap.STOCK_INI_HIELO) || 0
     stockIniBotellon = parseInt(configMap.STOCK_INI_BOTELLON) || 0

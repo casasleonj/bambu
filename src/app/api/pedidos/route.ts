@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
       where = { fecha: { gte: startOfDay, lt: endOfDay } }
     }
 
-    const prismaPagination = getPrismaPagination(pagination)
+    const prismaPagination = all === 'true' ? { take: 200 } : getPrismaPagination(pagination)
 
     const [pedidosRaw, total] = await Promise.all([
       prisma.pedido.findMany({
