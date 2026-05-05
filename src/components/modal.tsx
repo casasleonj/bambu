@@ -89,6 +89,8 @@ export function Modal({ open, onClose, children, className, title, description }
         className={className || 'bg-white rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto mx-auto mt-10 md:mt-0'}
         onClick={(e) => e.stopPropagation()}
       >
+        {title && <h2 id="modal-title" className="sr-only">{title}</h2>}
+        {description && <p id="modal-description" className="sr-only">{description}</p>}
         {children}
       </div>
     </div>

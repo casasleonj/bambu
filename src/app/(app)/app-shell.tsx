@@ -105,6 +105,8 @@ function Sidebar({ sidebarOpen }: { sidebarOpen: boolean }) {
 
   return (
     <aside
+      aria-label="Navegación principal"
+      inert={sidebarOpen ? undefined : true}
       className={`fixed top-14 left-0 h-[calc(100vh-3.5rem)] bg-white shadow-lg transition-all duration-300 z-40 flex flex-col ${
         sidebarOpen ? 'w-64' : 'w-0 overflow-hidden'
       }`}

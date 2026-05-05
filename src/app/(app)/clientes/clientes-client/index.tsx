@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import { toast } from 'sonner'
+import { useConfirm } from '@/components/confirm-modal'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { Modal } from '@/components/modal'
 import type { Cliente, Pedido, Factura, Canal, ClientesClientProps, FormData } from './types'
@@ -11,6 +12,7 @@ import { ClienteForm } from './cliente-form'
 
 export default function ClientesClient({ initialClientes }: ClientesClientProps) {
   const [clientes, setClientes] = useState<Cliente[]>(initialClientes)
+  const { confirm, modal } = useConfirm()
   const [loading, setLoading] = useState(false)
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -251,7 +253,8 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Desactivar este cliente?')) return
+    const ok = await confirm('Desactivar este cliente?')
+    if (!ok) return
     try {
       const res = await fetch(`/api/clientes/${id}`, { method: 'DELETE' })
       if (res.ok) {
@@ -814,6 +817,7 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
           </>
         )}
       </Modal>
+      {modal}
     </div>
   )
 }

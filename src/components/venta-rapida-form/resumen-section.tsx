@@ -6,14 +6,12 @@ interface ResumenSectionProps {
   total: number
   submitting: boolean
   requiereClienteSinResolver: boolean
-  onSubmit: () => Promise<void>
 }
 
 export function ResumenSection({
   total,
   submitting,
   requiereClienteSinResolver,
-  onSubmit,
 }: ResumenSectionProps) {
   return (
     <div className="border-t pt-4 space-y-2">
@@ -22,8 +20,7 @@ export function ResumenSection({
         <span className="text-xl font-bold text-gray-800">${total.toLocaleString()}</span>
       </div>
       <Button
-        type="button"
-        onClick={onSubmit}
+        type="submit"
         disabled={total <= 0 || submitting || requiereClienteSinResolver}
         className={`w-full py-6 text-lg font-bold transition ${
           requiereClienteSinResolver

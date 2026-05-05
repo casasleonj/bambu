@@ -3,12 +3,14 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
+import { useConfirm } from '@/components/confirm-modal'
 import { EmptyState } from '@/components/empty-state'
 import type { Ruta } from './types'
 
 export default function RutasPage() {
   const router = useRouter()
   const [rutas, setRutas] = useState<Ruta[]>([])
+  const { confirm, modal } = useConfirm()
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -35,7 +37,8 @@ export default function RutasPage() {
   }, [])
 
   async function handleDelete(id: string) {
-    if (!confirm('Eliminar esta ruta?')) return
+    const ok = await confirm('Eliminar esta ruta?')
+    if (!ok) return
     setDeletingId(id)
     try {
       const res = await fetch(`/api/rutas?id=${id}`, { method: 'DELETE' })
@@ -210,6 +213,7 @@ export default function RutasPage() {
           description={search ? undefined : 'Usa el análisis para crear la primera'}
         />
       )}
+      {modal}
     </div>
   )
 }

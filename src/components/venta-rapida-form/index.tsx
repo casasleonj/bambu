@@ -185,7 +185,8 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
     setPagos([{ metodo: 'EFECTIVO', monto: total }])
   }
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault()
     if (total <= 0) {
       toast.error('Agrega al menos un producto')
       return
@@ -291,7 +292,7 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
   const requiereClienteSinResolver = requiereCliente && !clienteSeleccionado && !mostrarNuevo
 
   return (
-    <div className="space-y-4 max-h-[80vh] overflow-y-auto pr-1">
+    <form onSubmit={handleSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto pr-1">
       {/* Toggle envío */}
       <div className="bg-gray-50 rounded-lg p-3 border">
         <label className="flex items-center gap-3 cursor-pointer">
@@ -364,8 +365,7 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
         total={total}
         submitting={submitting}
         requiereClienteSinResolver={requiereClienteSinResolver}
-        onSubmit={handleSubmit}
       />
-    </div>
+    </form>
   )
 }

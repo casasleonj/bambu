@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
+import { useConfirm } from '@/components/confirm-modal'
 import { formatDate } from '@/lib/utils'
 import { EmptyState } from '@/components/empty-state'
 import type { Recurrente, PreviewItem } from './types'
@@ -15,6 +16,7 @@ export default function RecurrentesClient() {
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
   const [decisiones, setDecisiones] = useState<Record<string, string>>({})
+  const { confirm, modal } = useConfirm()
 
   async function fetchData() {
     setLoading(true)
@@ -64,7 +66,8 @@ export default function RecurrentesClient() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Eliminar este recurrente?')) return
+    const ok = await confirm('Eliminar este recurrente?')
+    if (!ok) return
     try {
       const res = await fetch(`/api/recurrentes?id=${id}`, { method: 'DELETE' })
       const data = await res.json()
@@ -180,6 +183,7 @@ export default function RecurrentesClient() {
           onAction={() => router.push('/recurrentes/nuevo')}
         />
       )}
+      {modal}
     </div>
   )
 }

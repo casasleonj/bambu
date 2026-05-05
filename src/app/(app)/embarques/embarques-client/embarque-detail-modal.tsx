@@ -1,6 +1,9 @@
+'use client'
+
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
+import { useConfirm } from '@/components/confirm-modal'
 import { Modal } from '@/components/modal'
 import { getCapacidadInfo } from '@/lib/embarque-capacidad'
 import type { Embarque, Pedido } from './types'
@@ -44,6 +47,7 @@ export function EmbarqueDetailModal({
   onChanged: () => void
 }) {
   const router = useRouter()
+  const { confirm, modal } = useConfirm()
   const [selectedPedidoIds, setSelectedPedidoIds] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
 
@@ -115,7 +119,8 @@ export function EmbarqueDetailModal({
   }
 
   async function cancelEmbarque() {
-    if (!confirm('¿Cancelar este embarque? Los pedidos volverán a estar pendientes.')) return
+    const ok = await confirm('¿Cancelar este embarque? Los pedidos volverán a estar pendientes.')
+    if (!ok) return
     if (submitting) return
     setSubmitting(true)
     try {
@@ -283,6 +288,7 @@ export function EmbarqueDetailModal({
           Volver
         </button>
       </div>
+      {modal}
     </Modal>
   )
 }

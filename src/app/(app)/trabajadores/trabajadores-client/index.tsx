@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { toast } from 'sonner'
+import { useConfirm } from '@/components/confirm-modal'
 import { EmptyState } from '@/components/empty-state'
 import type { Trabajador, TrabajadorFormData, TrabajadoresClientProps } from './types'
 import { TrabajadorCard } from './trabajador-card'
@@ -21,6 +22,7 @@ const EMPTY_FORM: TrabajadorFormData = {
 
 export default function TrabajadoresClient({ initialTrabajadores }: TrabajadoresClientProps) {
   const [trabajadores, setTrabajadores] = useState<Trabajador[]>(initialTrabajadores)
+  const { confirm, modal } = useConfirm()
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [isEdit, setIsEdit] = useState(false)
@@ -76,7 +78,8 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Desactivar este trabajador?')) return
+    const ok = await confirm('Desactivar este trabajador?')
+    if (!ok) return
     try {
       const res = await fetch(`/api/trabajadores/${id}`, { method: 'DELETE' })
       const data = await res.json()
@@ -166,6 +169,7 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
         editingId={editingId}
         initialData={formData}
       />
+      {modal}
     </div>
   )
 }

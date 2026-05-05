@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useConfirm } from "@/components/confirm-modal";
 import type { Proveedor, ProveedorForm, ProveedoresClientProps } from "./types";
 import { ProveedorCard } from "./proveedor-card";
 import { ProveedorFormModal } from "./proveedor-form-modal";
@@ -9,6 +10,7 @@ const EMPTY_FORM: ProveedorForm = { nombre: "", telefono: "", email: "", direcci
 
 export default function ProveedoresClient({ initialProveedores }: ProveedoresClientProps) {
   const [proveedores, setProveedores] = useState<Proveedor[]>(initialProveedores);
+  const { confirm, modal } = useConfirm();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -48,7 +50,8 @@ export default function ProveedoresClient({ initialProveedores }: ProveedoresCli
   }
 
   async function handleDeactivate(id: string) {
-    if (!confirm("Estas seguro de que deseas desactivar este proveedor?")) return;
+    const ok = await confirm("Estas seguro de que deseas desactivar este proveedor?")
+    if (!ok) return;
     try {
       const res = await fetch(`/api/proveedores/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Error al desactivar el proveedor");
@@ -99,6 +102,7 @@ export default function ProveedoresClient({ initialProveedores }: ProveedoresCli
 
       <ProveedorFormModal open={modalOpen} onClose={closeModal} onSaved={fetchProveedores}
         editingId={editingId} initialData={form} />
+      {modal}
     </div>
   );
 }

@@ -61,7 +61,7 @@ export function ConnectivityIndicator() {
   const label = syncing ? 'Sync' : online ? 'Online' : 'Offline'
 
   return (
-    <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full ${bg} transition-colors duration-300`}>
+    <div role="status" aria-label={`Estado de conexión: ${label}`} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full ${bg} transition-colors duration-300`}>
       <span className={`w-2 h-2 rounded-full ${dot} shadow-[0_0_6px_currentColor] transition-colors duration-300`} />
       <span className={`text-xs font-semibold tracking-wide ${text} transition-colors duration-300`}>
         {label}

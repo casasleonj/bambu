@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
+import { useConfirm } from '@/components/confirm-modal'
 import { EmptyState } from '@/components/empty-state'
 import { DateRangeFilter } from '@/components/date-range-filter'
 import type { Embarque, Trabajador, Ruta, Pedido } from './types'
@@ -20,6 +21,7 @@ export default function EmbarquesClient() {
   const [selectedEmbarque, setSelectedEmbarque] = useState<Embarque | null>(null)
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [dateRange, setDateRange] = useState<{ desde: string | null; hasta: string | null }>({ desde: null, hasta: null })
+  const { confirm, modal } = useConfirm()
 
   const fetchData = useCallback(async () => {
     try {
@@ -70,7 +72,8 @@ export default function EmbarquesClient() {
   }
 
   const handleAutoGenerate = async () => {
-    if (!confirm('¿Generar embarques automáticos para todos los pedidos pendientes?')) return
+    const ok = await confirm('¿Generar embarques automáticos para todos los pedidos pendientes?')
+    if (!ok) return
     try {
       const res = await fetch('/api/embarques/auto', { method: 'POST' })
       const data = await res.json()
@@ -187,6 +190,7 @@ export default function EmbarquesClient() {
         getEstadoBadge={getEstadoBadge}
         onChanged={fetchData}
       />
+      {modal}
     </div>
   )
 }
