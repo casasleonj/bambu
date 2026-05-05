@@ -70,7 +70,7 @@ export default function CierreClient() {
   }
 
   const handleCerrar = async () => {
-    if (!confirm('Confirmar cierre del dia?')) return
+    if (!confirm('¿Confirmar cierre del día?')) return
     setCerrando(true)
     try {
       const cierreData = {
@@ -83,7 +83,7 @@ export default function CierreClient() {
       }
       const res = await fetch('/api/cierre', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cierreData) })
       const json = await res.json()
-      if (json.success) { toast.success('Dia cerrado correctamente'); router.push('/') }
+      if (json.success) { toast.success('Día cerrado correctamente'); router.push('/') }
       else toast.error('Error al cerrar')
     } catch {
       toast.error('Error al cerrar')
@@ -100,10 +100,10 @@ export default function CierreClient() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Cierre del Dia</h1>
+      <h1 className="text-2xl font-bold">Cierre del Día</h1>
 
       <div className="bg-white rounded-lg shadow p-4">
-        <h2 className="text-lg font-semibold mb-3">Resumen del Dia</h2>
+        <h2 className="text-lg font-semibold mb-3">Resumen del Día</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div><div className="text-sm text-gray-500">Pedidos</div><div className="text-xl font-bold">{data?.numPedidos || 0}</div></div>
           <div><div className="text-sm text-gray-500">Ventas</div><div className="text-xl font-bold">{formatMoney(data?.totalVentas || 0)}</div></div>
@@ -180,7 +180,7 @@ export default function CierreClient() {
       {isAdmin && (
         <button onClick={handleCerrar} disabled={cerrando}
           className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50">
-          {cerrando ? 'Cerrando...' : 'Cerrar Dia'}
+          {cerrando ? 'Cerrando...' : 'Cerrar Día'}
         </button>
       )}
     </div>

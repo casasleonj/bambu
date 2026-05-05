@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -24,10 +24,9 @@ export default function FacturasPage() {
     const params = new URLSearchParams(window.location.search)
     const searchParam = params.get('search')
     if (searchParam) setSearch(searchParam)
-    fetchFacturas()
   }, [])
 
-  const fetchFacturas = async () => {
+  const fetchFacturas = useCallback(async () => {
     try {
       const params = new URLSearchParams()
       if (dateRange.desde && dateRange.hasta) {
@@ -41,7 +40,9 @@ export default function FacturasPage() {
       console.error(e)
       toast.error('Error cargando facturas')
     }
-  }
+  }, [dateRange])
+
+  useEffect(() => { fetchFacturas() }, [fetchFacturas])
 
   const facturasFiltradas = facturas.filter((f) => {
     if (!search) return true
@@ -95,6 +96,10 @@ export default function FacturasPage() {
     return 'text-red-600'
   }
 
+  const handleDateChange = useCallback((desde: string | null, hasta: string | null) => {
+    setDateRange({ desde, hasta })
+  }, [])
+
   return (
     <div className="p-4 space-y-4">
       <div className="flex justify-between items-center">
@@ -102,7 +107,7 @@ export default function FacturasPage() {
       </div>
 
       <div className="bg-white p-4 rounded-xl shadow space-y-3">
-        <DateRangeFilter onDateChange={(desde, hasta) => { setDateRange({ desde, hasta }); setTimeout(fetchFacturas, 0) }} />
+        <DateRangeFilter onDateChange={handleDateChange} />
         <Input
           type="text"
           placeholder="Buscar por numero o cliente..."

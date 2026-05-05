@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
 import { EmptyState } from '@/components/empty-state'
 import { DateRangeFilter } from '@/components/date-range-filter'
@@ -21,7 +21,7 @@ export default function EmbarquesClient() {
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [dateRange, setDateRange] = useState<{ desde: string | null; hasta: string | null }>({ desde: null, hasta: null })
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setFetchError(null)
       const params = new URLSearchParams()
@@ -50,11 +50,11 @@ export default function EmbarquesClient() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [dateRange])
 
   useEffect(() => {
     fetchData()
-  }, [])
+  }, [fetchData])
 
   const getEstadoBadge = (estado: string) => {
     const styles: Record<string, string> = {
@@ -85,10 +85,9 @@ export default function EmbarquesClient() {
     }
   }
 
-  const handleDateChange = (desde: string | null, hasta: string | null) => {
+  const handleDateChange = useCallback((desde: string | null, hasta: string | null) => {
     setDateRange({ desde, hasta })
-    setTimeout(fetchData, 0)
-  }
+  }, [])
 
   if (fetchError) {
     return (
