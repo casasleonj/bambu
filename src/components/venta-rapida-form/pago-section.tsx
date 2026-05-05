@@ -1,20 +1,6 @@
 'use client'
 
-const METODOS_PAGO = [
-  { id: 'EFECTIVO', nombre: 'Efectivo', emoji: '💵' },
-  { id: 'TRANSFERENCIA', nombre: 'Transferencia', emoji: '🏦' },
-  { id: 'NEQUI', nombre: 'Nequi', emoji: '📱' },
-  { id: 'DAVIPLATA', nombre: 'Daviplata', emoji: '📲' },
-  { id: 'BONO', nombre: 'Bono', emoji: '🎫' },
-]
-
-const METODO_PAGO_ICONS: Record<string, string> = {
-  EFECTIVO: '💵',
-  TRANSFERENCIA: '🏦',
-  NEQUI: '📱',
-  DAVIPLATA: '📲',
-  BONO: '🎫',
-}
+import { METODOS_PAGO, METODO_PAGO_ICONS } from '@/lib/metodos-pago'
 
 interface PagoSectionProps {
   pagos: { metodo: string; monto: number }[]

@@ -1,4 +1,4 @@
-export const METODOS_PAGO = ['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA', 'BONO']
+export { METODOS_PAGO_IDS as METODOS_PAGO } from '@/lib/metodos-pago'
 
 export interface Cliente {
   id: string
