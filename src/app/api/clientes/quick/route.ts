@@ -11,7 +11,7 @@ import { ROLES } from '@/lib/constants'
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
-  const roleCheck = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE, ROLES.CONTADOR], authResult)
+  const roleCheck = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE, ROLES.CONTADOR, ROLES.REPARTIDOR], authResult)
   if (roleCheck instanceof Response) return roleCheck
 
   try {
