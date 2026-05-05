@@ -82,8 +82,7 @@ export default auth(async (req) => {
     response.headers.set('X-RateLimit-Limit', String(limit.limit))
     response.headers.set('X-RateLimit-Remaining', String(limit.remaining))
     response.headers.set('X-RateLimit-Reset', limit.resetTime.toISOString())
-    response.headers.set('Content-Security-Policy', `default-src 'self'; script-src 'self' 'nonce-${nonce}'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`)
-
+    response.headers.set('Content-Security-Policy', `default-src 'self'; script-src 'self' 'nonce-${nonce}'${process.env.NODE_ENV === 'development' ? " 'unsafe-eval'" : ''}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`)
     if (!limit.allowed) {
       response.headers.set('Retry-After', String(limit.retryAfter))
       return NextResponse.json(
