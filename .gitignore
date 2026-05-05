@@ -64,3 +64,4 @@ prisma/migrations/dev/
 
 # graphify
 graphify-out/
+backups/
