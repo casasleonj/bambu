@@ -3,31 +3,10 @@
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
+import type { RutaFormData, RutaFormProps } from './ruta-form-types'
+import { DIAS_SEMANA } from './ruta-form-types'
 
-interface RutaFormData {
-  nombre: string
-  dias: string
-  repartidorId: string
-  repartidorRespaldoId: string
-  horarioInicio: string
-  horarioFin: string
-}
-
-interface RutaFormProps {
-  initialData?: RutaFormData
-  rutaId?: string
-  onSuccess?: () => void
-}
-
-const DIAS_SEMANA = [
-  { key: 'LUN', label: 'Lun' },
-  { key: 'MAR', label: 'Mar' },
-  { key: 'MIE', label: 'Mié' },
-  { key: 'JUE', label: 'Jue' },
-  { key: 'VIE', label: 'Vie' },
-  { key: 'SAB', label: 'Sáb' },
-  { key: 'DOM', label: 'Dom' },
-]
+export { type RutaFormData, type RutaFormProps } from './ruta-form-types'
 
 export default function RutaForm({ initialData, rutaId, onSuccess }: RutaFormProps) {
   const router = useRouter()
