@@ -59,6 +59,10 @@ export function PedidosClient() {
   const dateRangeRef = useRef(dateRange)
   dateRangeRef.current = dateRange
 
+  const handleDateChange = useCallback((desde: string | null, hasta: string | null) => {
+    setDateRange({ desde, hasta })
+  }, [])
+
   const fetchPedidos = useCallback(async () => {
     try {
       setFetchError(null)
@@ -446,9 +450,8 @@ export function PedidosClient() {
         filtroEstado={filtroEstado}
         filtroTipo={filtroTipo}
         onUpdateFilter={updateFilter}
-        onDateChange={(desde, hasta) => setDateRange({ desde, hasta })}
+        onDateChange={handleDateChange}
       />
-
       {/* Modal Nuevo Pedido */}
       <Modal open={showModal} onClose={() => setShowModal(false)} className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-hidden flex flex-col">
         <div className="p-4 border-b flex justify-between items-center">
