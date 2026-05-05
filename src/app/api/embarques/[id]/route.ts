@@ -39,6 +39,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   const roleCheck = await requireRole([ROLES.ADMIN, ROLES.REPARTIDOR], authResult)
   if (roleCheck instanceof Response) return roleCheck
   const { id } = await params
+  const session = authResult as { user?: { id?: string; role?: string } }
+  const hasAccess = await requireOwnership('embarque', id, { id: session.user?.id || '', role: session.user?.role })
+  if (!hasAccess) return apiError('Forbidden', 403)
   try {
     const body = await request.json()
     const parsed = EmbarqueUpdateSchema.safeParse(body)

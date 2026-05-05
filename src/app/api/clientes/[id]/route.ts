@@ -5,6 +5,7 @@ import { requireAuth, requireRole } from '@/lib/auth-check'
 import { ClienteUpdateSchema } from '@/lib/validators'
 import { logAudit } from '@/lib/audit'
 import { apiSuccess, apiError } from '@/lib/api-response'
+import { ROLES } from '@/lib/constants'
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
@@ -92,6 +93,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
+  const roleCheck = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE], authResult)
+  if (roleCheck instanceof Response) return roleCheck
   const { id } = await params
   try {
     const body = await request.json()

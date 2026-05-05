@@ -1,10 +1,11 @@
 import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuth } from '@/lib/auth-check'
+import { requireAuth, requireRole } from '@/lib/auth-check'
 import { ProveedorCreateSchema } from '@/lib/validators'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
+import { ROLES } from '@/lib/constants'
 
 export async function GET(_request: NextRequest) {
   const authResult = await requireAuth()
@@ -23,6 +24,8 @@ export async function GET(_request: NextRequest) {
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
+  const roleCheck = await requireRole([ROLES.ADMIN, ROLES.CONTADOR], authResult)
+  if (roleCheck instanceof Response) return roleCheck
   try {
     const body = await request.json()
     const parsed = ProveedorCreateSchema.safeParse(body)

@@ -124,6 +124,10 @@ export async function POST(request: NextRequest) {
       return apiError(formatZodError(parsed.error), 400)
     }
 
+    // Calculate netoCaja server-side — never trust client for financial totals
+    const cobros = parsed.data.efectivo + parsed.data.transferencia + parsed.data.nequi + parsed.data.daviplata + parsed.data.bono
+    const netoCaja = parsed.data.baseDia + cobros - parsed.data.gastos - parsed.data.comisiones - parsed.data.salarios
+
     const cierre = await withAdvisoryLock('CIERRE', async () => {
       // Double-check no cierre exists for today under lock
       const existing = await prisma.cierreDia.findFirst({
@@ -157,7 +161,7 @@ export async function POST(request: NextRequest) {
           stockIniHielo: parsed.data.stockIniHielo,
           prodHielo: parsed.data.prodHielo,
           stockFinHielo: parsed.data.stockFinHielo,
-          netoCaja: parsed.data.netoCaja,
+          netoCaja,
         },
       })
     })

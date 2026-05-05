@@ -1,15 +1,18 @@
 import { formatZodError } from '@/lib/utils'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { ClienteQuickCreateSchema } from '@/lib/validators'
-import { requireAuth } from '@/lib/auth-check'
+import { requireAuth, requireRole } from '@/lib/auth-check'
 import { logger } from '@/lib/logger'
 import { logAudit } from '@/lib/audit'
 import { apiSuccess, apiError } from '@/lib/api-response'
+import { ROLES } from '@/lib/constants'
 
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth()
-  if (authResult instanceof NextResponse) return authResult
+  if (authResult instanceof Response) return authResult
+  const roleCheck = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE, ROLES.CONTADOR], authResult)
+  if (roleCheck instanceof Response) return roleCheck
 
   try {
     const body = await request.json()
@@ -21,9 +24,9 @@ export async function POST(request: NextRequest) {
 
     const { nombre, telefono, direccion, barrio } = parsed.data
 
-    // Buscar cliente existente por celular
     const existing = await prisma.cliente.findFirst({
       where: { telefono },
+      select: { id: true, nombre: true, telefono: true },
     })
 
     if (existing) {
