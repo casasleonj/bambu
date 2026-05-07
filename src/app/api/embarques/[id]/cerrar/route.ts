@@ -5,7 +5,7 @@ import { logAudit } from '@/lib/audit'
 import { formatZodError } from '@/lib/utils'
 import { z } from 'zod'
 import { getNextNumero } from '@/lib/sequence'
-import { resolverPrecio } from '@/lib/pricing'
+import { resolverPrecio, resolverPreciosPedido, type ProductCode, type Canal } from '@/lib/pricing'
 import { MetodoPago } from '@prisma/client'
 import { ROLES } from '@/lib/constants'
 import { logger } from '@/lib/logger'
@@ -137,13 +137,32 @@ export async function POST(
         }
 
         // Se entregó algo → calcular totales con precios reales
-        const precios = cuadre.preciosReales || {
-          pacaAgua: Number(pedido.precioPacaAgua),
-          pacaHielo: Number(pedido.precioPacaHielo),
-          botellonFab: Number(pedido.precioBotellonFab),
-          botellonDom: Number(pedido.precioBotellonDom),
-          bolsaAgua: Number(pedido.precioBolsaAgua),
-          bolsaHielo: Number(pedido.precioBolsaHielo),
+        // Si el frontend envió preciosReales (ej: descuentos), usarlos.
+        // Si no, resolver contra el pricing engine con precios vigentes + overrides del cliente.
+        let precios: { pacaAgua: number; pacaHielo: number; botellonFab: number; botellonDom: number; bolsaAgua: number; bolsaHielo: number }
+
+        if (cuadre.preciosReales) {
+          precios = cuadre.preciosReales
+        } else {
+          const items: Array<{ codigo: ProductCode; cantidad: number }> = [
+            { codigo: 'PACA_AGUA', cantidad: entProd.cPacaAguaEnt },
+            { codigo: 'PACA_HIELO', cantidad: entProd.cPacaHieloEnt },
+            { codigo: 'BOTELLON_FAB', cantidad: entProd.cBotellonFabEnt },
+            { codigo: 'BOTELLON_DOM', cantidad: entProd.cBotellonDomEnt },
+            { codigo: 'BOLSA_AGUA', cantidad: entProd.cBolsaAguaEnt },
+            { codigo: 'BOLSA_HIELO', cantidad: entProd.cBolsaHieloEnt },
+          ]
+          const resueltos = await resolverPreciosPedido(items, pedido.canal as Canal, pedido.clienteId, tx)
+          const priceMap: Record<string, number> = {}
+          for (const pr of resueltos) priceMap[pr.codigo] = pr.precio
+          precios = {
+            pacaAgua: priceMap['PACA_AGUA'] || 0,
+            pacaHielo: priceMap['PACA_HIELO'] || 0,
+            botellonFab: priceMap['BOTELLON_FAB'] || 0,
+            botellonDom: priceMap['BOTELLON_DOM'] || 0,
+            bolsaAgua: priceMap['BOLSA_AGUA'] || 0,
+            bolsaHielo: priceMap['BOLSA_HIELO'] || 0,
+          }
         }
 
         const totalReal =
@@ -374,7 +393,7 @@ export async function POST(
       }
     })
 
-    await logAudit({
+    logAudit({
       entidad: 'Embarque',
       registroId: id,
       accion: 'UPDATE',

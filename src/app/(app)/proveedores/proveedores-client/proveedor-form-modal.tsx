@@ -57,7 +57,7 @@ export function ProveedorFormModal({
             placeholder="Nombre del proveedor" />
         </div>
         <div>
-          <label htmlFor="telefono" className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Telefono</label>
+          <label htmlFor="telefono" className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Teléfono</label>
           <input id="telefono" type="text" value={form.telefono}
             onChange={(e) => setForm((prev) => ({ ...prev, telefono: e.target.value }))}
             className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm text-zinc-900 outline-none transition focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50 dark:focus:border-zinc-50 dark:focus:ring-zinc-50/10"
@@ -71,7 +71,7 @@ export function ProveedorFormModal({
             placeholder="proveedor@ejemplo.com" />
         </div>
         <div>
-          <label htmlFor="direccion" className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Direccion</label>
+          <label htmlFor="direccion" className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Dirección</label>
           <input id="direccion" type="text" value={form.direccion}
             onChange={(e) => setForm((prev) => ({ ...prev, direccion: e.target.value }))}
             className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm text-zinc-900 outline-none transition focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50 dark:focus:border-zinc-50 dark:focus:ring-zinc-50/10"

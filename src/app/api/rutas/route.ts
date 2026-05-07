@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    await logAudit({
+    logAudit({
       entidad: 'Ruta',
       registroId: ruta.id,
       accion: 'CREATE',
@@ -137,7 +137,7 @@ export async function PUT(request: NextRequest) {
       },
     })
 
-    await logAudit({
+    logAudit({
       entidad: 'Ruta',
       registroId: ruta.id,
       accion: 'UPDATE',
@@ -169,7 +169,7 @@ export async function DELETE(request: NextRequest) {
       data: { activo: false },
     })
 
-    await logAudit({
+    logAudit({
       entidad: 'Ruta',
       registroId: ruta.id,
       accion: 'DELETE',

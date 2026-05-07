@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
       })
     })
 
-    await logAudit({
+    logAudit({
       entidad: 'Recurrente',
       registroId: recurrente.id,
       accion: 'CREATE',
@@ -175,7 +175,7 @@ export async function PUT(request: NextRequest) {
       },
     })
 
-    await logAudit({
+    logAudit({
       entidad: 'Recurrente',
       registroId: recurrente.id,
       accion: 'UPDATE',
@@ -206,7 +206,7 @@ export async function DELETE(request: NextRequest) {
       data: { esRecurrente: false },
     })
 
-    await logAudit({
+    logAudit({
       entidad: 'Recurrente',
       registroId: recurrente.id,
       accion: 'DELETE',

@@ -107,7 +107,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       data: parsed.data,
     })
 
-    await logAudit({
+    logAudit({
       entidad: 'Cliente',
       registroId: cliente.id,
       accion: 'UPDATE',
@@ -133,7 +133,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
       data: { activo: false },
     })
 
-    await logAudit({
+    logAudit({
       entidad: 'Cliente',
       registroId: id,
       accion: 'DELETE',

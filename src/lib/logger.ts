@@ -1,4 +1,5 @@
 import pino from 'pino'
+import { getRequestId } from './request-id'
 
 const isProd = process.env.NODE_ENV === 'production'
 
@@ -15,5 +16,8 @@ export const logger = pino({
   redact: {
     paths: ['password', 'token', 'secret', 'authorization', 'cookie'],
     censor: '***',
+  },
+  mixin() {
+    return { requestId: getRequestId() }
   },
 })

@@ -71,7 +71,7 @@ export function ClienteForm({
           </div>
         </div>
         <div>
-          <label htmlFor="cliente-telefono" className="block text-sm font-medium mb-1">Telefono *</label>
+          <label htmlFor="cliente-telefono" className="block text-sm font-medium mb-1">Teléfono *</label>
           <input
             id="cliente-telefono"
             type="tel"
@@ -114,7 +114,7 @@ export function ClienteForm({
           />
         </div>
         <div>
-          <label htmlFor="cliente-direccion" className="block text-sm font-medium mb-1">Direccion</label>
+          <label htmlFor="cliente-direccion" className="block text-sm font-medium mb-1">Dirección</label>
           <input
             id="cliente-direccion"
             type="text"
@@ -137,7 +137,7 @@ export function ClienteForm({
                 onFormDataChange({ ...formData, cadaNDias: isNaN(val as number) ? '' : val })
               }}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-              placeholder="0 o vacio"
+              placeholder="0 o vacío"
             />
           </div>
           <div>

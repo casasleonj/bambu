@@ -59,7 +59,7 @@ export async function resolverPrecio(
   canal: Canal,
   clienteOverrides?: Record<string, number> | null,
   precioManual?: number | null,
-  db?: PrismaClient,
+  db?: PrismaClient | Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$extends'>,
 ): Promise<{ precio: number; origen: PrecioResuelto['origen'] }> {
   if (precioManual && precioManual > 0) {
     return { precio: precioManual, origen: 'manual' }
@@ -109,7 +109,7 @@ export async function resolverPreciosPedido(
   items: Array<{ codigo: ProductCode; cantidad: number; precioManual?: number }>,
   canal: Canal,
   clienteId?: string,
-  db?: PrismaClient,
+  db?: PrismaClient | Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$extends'>,
 ): Promise<PrecioResuelto[]> {
   // Get client overrides if clienteId provided
   let clienteOverrides: Record<string, number> | null = null

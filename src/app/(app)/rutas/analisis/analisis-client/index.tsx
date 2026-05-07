@@ -27,7 +27,7 @@ export default function RutasAnalisisClient() {
         toast.error(data.error || 'Error al cargar analisis')
       }
     } catch {
-      toast.error('Error de conexion')
+      toast.error('Error de conexión')
     } finally {
       setLoading(false)
     }
@@ -50,7 +50,7 @@ export default function RutasAnalisisClient() {
         toast.error(data.error || 'Error al crear ruta')
       }
     } catch {
-      toast.error('Error de conexion')
+      toast.error('Error de conexión')
     }
   }
 

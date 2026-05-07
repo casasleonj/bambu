@@ -277,7 +277,7 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
       obs: clienteSeleccionado
         ? `Cliente: ${clienteSeleccionado.nombre} - ${clienteSeleccionado.telefono}`
         : mostrarNuevo
-          ? `Nuevo: ${nuevoCliente.nombre} - ${nuevoCliente.telefono}`
+          ? `Cliente nuevo: ${nuevoCliente.nombre} - ${nuevoCliente.telefono}`
           : '',
       total,
     }

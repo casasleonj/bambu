@@ -85,10 +85,11 @@ export default function RutaForm({ initialData, rutaId, onSuccess }: RutaFormPro
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label htmlFor="ruta-nombre" className="block text-sm font-medium text-gray-700 mb-1">
           Nombre de la ruta
         </label>
         <input
+          id="ruta-nombre"
           type="text"
           required
           value={formData.nombre}
@@ -99,9 +100,10 @@ export default function RutaForm({ initialData, rutaId, onSuccess }: RutaFormPro
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+      <fieldset>
+        <legend className="block text-sm font-medium text-gray-700 mb-2">
           Días de entrega
-        </label>
+        </legend>
         <div className="flex gap-2 flex-wrap">
           {DIAS_SEMANA.map((dia) => {
             const isSelected = formData.dias?.includes(dia.key)
@@ -110,6 +112,7 @@ export default function RutaForm({ initialData, rutaId, onSuccess }: RutaFormPro
                 key={dia.key}
                 type="button"
                 onClick={() => toggleDia(dia.key)}
+                aria-pressed={isSelected}
                 className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
                   isSelected
                     ? 'bg-blue-600 text-white'
@@ -121,14 +124,16 @@ export default function RutaForm({ initialData, rutaId, onSuccess }: RutaFormPro
             )
           })}
         </div>
+      </fieldset>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="ruta-repartidor" className="block text-sm font-medium text-gray-700 mb-1">
             Repartidor principal
           </label>
           <select
+            id="ruta-repartidor"
             value={formData.repartidorId}
             onChange={(e) =>
               setFormData({ ...formData, repartidorId: e.target.value })
@@ -145,10 +150,11 @@ export default function RutaForm({ initialData, rutaId, onSuccess }: RutaFormPro
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="ruta-respaldo" className="block text-sm font-medium text-gray-700 mb-1">
             Repartidor de respaldo
           </label>
           <select
+            id="ruta-respaldo"
             value={formData.repartidorRespaldoId}
             onChange={(e) =>
               setFormData({ ...formData, repartidorRespaldoId: e.target.value })
@@ -167,10 +173,11 @@ export default function RutaForm({ initialData, rutaId, onSuccess }: RutaFormPro
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="ruta-hora-inicio" className="block text-sm font-medium text-gray-700 mb-1">
             Hora inicio
           </label>
           <input
+            id="ruta-hora-inicio"
             type="time"
             value={formData.horarioInicio}
             onChange={(e) =>
@@ -180,10 +187,11 @@ export default function RutaForm({ initialData, rutaId, onSuccess }: RutaFormPro
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="ruta-hora-fin" className="block text-sm font-medium text-gray-700 mb-1">
             Hora fin
           </label>
           <input
+            id="ruta-hora-fin"
             type="time"
             value={formData.horarioFin}
             onChange={(e) =>

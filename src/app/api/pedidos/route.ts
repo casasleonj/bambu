@@ -171,24 +171,26 @@ export async function POST(request: NextRequest) {
         })
       }
 
-      // Crear factura automaticamente
-      const facturaNum = await getNextNumero(tx, { model: 'factura', field: 'numero' })
+      // Crear factura solo si no es punto de venta pagado completo
+      if (tipo !== 'PUNTO' || totalPagado < total) {
+        const facturaNum = await getNextNumero(tx, { model: 'factura', field: 'numero' })
 
-      await tx.factura.create({
-        data: {
-          numero: `FAC-${facturaNum.toString().padStart(5, '0')}`,
-          clienteId,
-          pedidoId: pedido.id,
-          subtotal: total,
-          total,
-          saldo: total - totalPagado,
-        },
-      })
+        await tx.factura.create({
+          data: {
+            numero: `FAC-${facturaNum.toString().padStart(5, '0')}`,
+            clienteId,
+            pedidoId: pedido.id,
+            subtotal: total,
+            total,
+            saldo: total - totalPagado,
+          },
+        })
+      }
 
       return { pedido, clienteId }
     })
 
-    await logAudit({
+    logAudit({
       entidad: 'Pedido',
       registroId: result.pedido.id,
       accion: 'CREATE',

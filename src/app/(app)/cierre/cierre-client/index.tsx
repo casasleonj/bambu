@@ -3,12 +3,15 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
+import { useConfirm } from '@/components/confirm-modal'
 import type { CierreData } from './types'
 
 export default function CierreClient() {
   const router = useRouter()
+  const { confirm, modal } = useConfirm()
   const [data, setData] = useState<CierreData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState<string | null>(null)
   const [cerrando, setCerrando] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
   const [stockIniAgua, setStockIniAgua] = useState(0)
@@ -32,6 +35,7 @@ export default function CierreClient() {
   }, [])
 
   const fetchCierre = async () => {
+    setFetchError(null)
     try {
       const res = await fetch('/api/cierre')
       const json = await res.json()
@@ -47,6 +51,7 @@ export default function CierreClient() {
         }
       }
     } catch {
+      setFetchError('No se pudieron cargar los datos del cierre')
       toast.error('Error cargando datos del cierre')
     } finally {
       setLoading(false)
@@ -70,7 +75,8 @@ export default function CierreClient() {
   }
 
   const handleCerrar = async () => {
-    if (!confirm('¿Confirmar cierre del día?')) return
+    const ok = await confirm('¿Confirmar cierre del día?')
+    if (!ok) return
     setCerrando(true)
     try {
       const cierreData = {
@@ -100,7 +106,20 @@ export default function CierreClient() {
 
   return (
     <div className="space-y-6">
+      {modal}
       <h1 className="text-2xl font-bold">Cierre del Día</h1>
+
+      {fetchError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center justify-between">
+          <p className="text-red-700 text-sm">{fetchError}</p>
+          <button
+            onClick={() => { setLoading(true); fetchCierre() }}
+            className="px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium"
+          >
+            Reintentar
+          </button>
+        </div>
+      )}
 
       <div className="bg-white rounded-lg shadow p-4">
         <h2 className="text-lg font-semibold mb-3">Resumen del Día</h2>

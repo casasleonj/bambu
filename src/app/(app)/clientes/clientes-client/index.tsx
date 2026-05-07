@@ -224,8 +224,8 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
         }
       }
     } catch (error) {
-      setFormError('Error de conexion al guardar')
-      toast.error('Error de conexion al guardar')
+      setFormError('Error de conexión al guardar')
+      toast.error('Error de conexión al guardar')
     } finally {
       setSaving(false)
     }
@@ -439,7 +439,7 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <p className="text-sm text-gray-500">Telefono</p>
+                      <p className="text-sm text-gray-500">Teléfono</p>
                       <p className="font-medium">{selectedCliente.telefono}</p>
                     </div>
                     <div>
@@ -479,7 +479,7 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
                   </div>
                   {selectedCliente.direccion && (
                     <div>
-                      <p className="text-sm text-gray-500">Direccion</p>
+                      <p className="text-sm text-gray-500">Dirección</p>
                       <p className="font-medium">{selectedCliente.direccion}</p>
                     </div>
                   )}

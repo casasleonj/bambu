@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    await logAudit({
+    logAudit({
       entidad: 'Cliente',
       registroId: cliente.id,
       accion: 'CREATE',

@@ -61,7 +61,7 @@ export default function RecurrentesClient() {
       const data = await res.json()
       if (data.success) { toast.success(`${data.generados} generados, ${data.saltados} saltados`); fetchData() }
       else toast.error(data.error || 'Error al generar')
-    } catch { toast.error('Error de conexion') }
+    } catch { toast.error('Error de conexión') }
     finally { setGenerating(false) }
   }
 
@@ -73,7 +73,7 @@ export default function RecurrentesClient() {
       const data = await res.json()
       if (data.success) { toast.success('Recurrente eliminado'); fetchData() }
       else toast.error(data.error || 'Error')
-    } catch { toast.error('Error de conexion') }
+    } catch { toast.error('Error de conexión') }
   }
 
   if (fetchError) {

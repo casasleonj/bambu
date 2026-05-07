@@ -55,7 +55,7 @@ export function TrabajadorFormModal({
         }
       }
     } catch {
-      setFormError('Error de conexion al guardar')
+      setFormError('Error de conexión al guardar')
     } finally {
       setSubmitting(false)
     }
@@ -184,7 +184,7 @@ export function TrabajadorFormModal({
             />
           </div>
           <div>
-            <label htmlFor="trabajador-telefono" className="block text-sm font-medium mb-1">Telefono</label>
+            <label htmlFor="trabajador-telefono" className="block text-sm font-medium mb-1">Teléfono</label>
             <input
               id="trabajador-telefono"
               type="text"

@@ -49,7 +49,7 @@ export function ClienteTable({
       <div className="bg-white rounded-xl shadow overflow-hidden">
         <div className="hidden md:grid grid-cols-12 gap-4 px-4 py-3 bg-gray-50 border-b text-xs font-semibold text-gray-500 uppercase">
           <div className="col-span-3">Cliente</div>
-          <div className="col-span-2">Telefono</div>
+          <div className="col-span-2">Teléfono</div>
           <div className="col-span-2">Barrio</div>
           <div className="col-span-2">Frecuencia</div>
           <div className="col-span-2 text-right">Saldo Pendiente</div>

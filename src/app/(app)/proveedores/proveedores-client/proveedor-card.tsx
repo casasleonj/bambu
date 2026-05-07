@@ -23,7 +23,7 @@ export function ProveedorCard({
       <div className="flex-1 space-y-2 text-sm text-zinc-600 dark:text-zinc-400">
         {proveedor.telefono && (
           <div className="flex items-center gap-2">
-            <span className="font-medium text-zinc-500 dark:text-zinc-500">Telefono:</span>
+            <span className="font-medium text-zinc-500 dark:text-zinc-500">Teléfono:</span>
             <span>{proveedor.telefono}</span>
           </div>
         )}
@@ -35,7 +35,7 @@ export function ProveedorCard({
         )}
         {proveedor.direccion && (
           <div className="flex items-start gap-2">
-            <span className="font-medium text-zinc-500 dark:text-zinc-500">Direccion:</span>
+            <span className="font-medium text-zinc-500 dark:text-zinc-500">Dirección:</span>
             <span>{proveedor.direccion}</span>
           </div>
         )}

@@ -76,7 +76,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       })
     })
 
-    await logAudit({
+    logAudit({
       entidad: 'Pedido',
       registroId: pedido.id,
       accion: 'UPDATE',

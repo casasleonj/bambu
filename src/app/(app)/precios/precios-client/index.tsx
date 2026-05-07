@@ -49,7 +49,7 @@ export default function PreciosClient({ productos }: PreciosClientProps) {
         toast.error(data.error || 'Error actualizando precio')
       }
     } catch {
-      toast.error('Error de conexion')
+      toast.error('Error de conexión')
     } finally {
       setSaving(false)
     }

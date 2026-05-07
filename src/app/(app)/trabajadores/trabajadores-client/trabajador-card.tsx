@@ -64,7 +64,7 @@ export function TrabajadorCard({
 
         {trabajador.telefono && (
           <div className="flex justify-between">
-            <span className="text-gray-500">Telefono</span>
+            <span className="text-gray-500">Teléfono</span>
             <span className="font-medium text-gray-700">{trabajador.telefono}</span>
           </div>
         )}

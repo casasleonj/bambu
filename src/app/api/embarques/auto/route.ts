@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    await logAudit({
+    logAudit({
       entidad: 'Embarque',
       registroId: 'AUTO',
       accion: 'CREATE',

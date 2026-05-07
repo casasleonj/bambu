@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
       })
     })
 
-    await logAudit({
+    logAudit({
       entidad: 'Factura',
       registroId: factura.id,
       accion: 'CREATE',

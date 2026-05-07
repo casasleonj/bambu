@@ -1,8 +1,8 @@
 # Agua Bambú v2 — Backlog Técnico
 
-**Última actualización:** 2026-05-02  
+**Última actualización:** 2026-05-06  
 **Rama activa:** `audit-performance`  
-**Fuentes:** Stress Test (REPORT.md), Security Audit (2026-05-02), UX Audit Plan
+**Fuentes:** Stress Test (REPORT.md), API/DB/UX/Perf Audits (2026-05-04)
 
 ---
 
@@ -117,8 +117,8 @@
 - **severidad:** P2
 - **fuente:** security-audit
 - **fecha_reportado:** 2026-05-02
-- **commit_resuelto:**
-- **notas:** Crear baseline migration, dejar de usar `db push`.
+- **commit_resuelto:** `0f696ac` (2026-05-04)
+- **notas:** Baseline migration creada en `prisma/migrations/0_init/`. Ya no se usa `db push`.
 
 ### P2-14: Empty states consistentes (UX)
 - **archivo:** `src/components/empty-state.tsx` + páginas
@@ -141,8 +141,8 @@
 - **severidad:** P2
 - **fuente:** ux-audit (plan 2026-04-29, Task 4)
 - **fecha_reportado:** 2026-04-29
-- **commit_resuelto:** `audit-performance`
-- **notas:** fetchError state + retry button en trabajadores, clientes, insumos, proveedores.
+- **commit_resuelto:** `audit-performance` (2026-05-02) + `cierre-client` (2026-05-06)
+- **notas:** fetchError state + retry button en 9/10 páginas. Solo reportes (SC con error boundary) no aplica.
 
 ### P2-17: Double-click protection (UX)
 - **archivo:** trabajadores-client.tsx, rutas/page.tsx
@@ -213,9 +213,108 @@
 
 ---
 
+## P3 — Bajo (resueltos 2026-05-06)
+
+### P3-21: Audit: 5 endpoints sin requireRole + 1 sin requireOwnership
+- **archivo:** `clientes/[id]`, `proveedores/[id]`, `proveedores`, `insumos`, `clientes/quick`, `embarques/[id]`
+- **severidad:** 🔴 CRÍTICA → P3
+- **fuente:** API_AUDIT_REPORT.md (2026-05-04)
+- **fecha_resuelto:** 2026-05-04
+- **commit_resuelto:** `f3e2878`
+- **notas:** requireRole en 5 write endpoints, requireOwnership en PUT embarques, netoCaja server-side, clientes/quick info leak sanitzado.
+
+### P3-22: Audit: UX criticals
+- **archivo:** múltiples
+- **severidad:** 🔴 CRÍTICA → P3
+- **fuente:** UX_AUDIT_REPORT.md (2026-05-04)
+- **fecha_resuelto:** 2026-05-05
+- **commit_resuelto:** `de9469b`
+- **notas:** SW duplicado eliminado, VentaRapidaForm envuelto en `<form>`, sidebar inert, login a11y (autocomplete + labels), Modal title/description, 7/8 confirm()→useConfirm (el 8vo en cierre-client 2026-05-06), aria-labels.
+
+### P3-23: Audit: Performance quick wins
+- **archivo:** `dashboard/page.tsx`, `layout.tsx`, `pedidos/route.ts`, `package.json`
+- **severidad:** P3
+- **fuente:** PERFORMANCE_AUDIT_REPORT.md (2026-05-04)
+- **fecha_resuelto:** 2026-05-05
+- **commit_resuelto:** `29d8214`
+- **notas:** Dashboard query #11 a Promise.all, ?all=true limit 200, uuid/workbox-* eliminados, BaseCajaModal lazy-loaded (2026-05-06).
+
+### P3-24: Dashboard caching
+- **archivo:** `dashboard/page.tsx:6`
+- **severidad:** P3
+- **fuente:** PERFORMANCE_AUDIT_REPORT.md (2026-05-04)
+- **fecha_resuelto:** 2026-05-06
+- **notas:** `force-dynamic` → `revalidate = 60`. Visitas repetidas al dashboard cargan en <100ms con ISR.
+
+### P3-25: Factura innecesaria para PUNTO pagado completo
+- **archivo:** `api/pedidos/route.ts:175`
+- **severidad:** P3
+- **fuente:** stress-test (item 8)
+- **fecha_resuelto:** 2026-05-06
+- **notas:** Solo se crea factura si `tipo !== 'PUNTO' || totalPagado < total`. Punto de venta contado no genera factura.
+
+### P3-26: Health check endpoint
+- **archivo:** `api/health/route.ts`
+- **severidad:** P3
+- **fuente:** API_AUDIT_REPORT.md (2026-05-04)
+- **fecha_resuelto:** 2026-05-06
+- **notas:** `GET /api/health` verifica DB con `SELECT 1`. Retorna `{ status: "ok", timestamp }` o 503.
+
+### P3-27: Correlation ID en requests
+- **archivo:** `proxy.ts`, `lib/request-id.ts`, `lib/logger.ts`
+- **severidad:** P3
+- **fuente:** API_AUDIT_REPORT.md (2026-05-04)
+- **fecha_resuelto:** 2026-05-06
+- **notas:** `X-Request-Id` en todas las responses. `AsyncLocalStorage` para propagar a API routes y pino logger via `mixin()`.
+
+### P3-28: DB roles no-superuser
+- **archivo:** `docker-compose.yml`, `schema.prisma`, `.env`, `docker-entrypoint-initdb.d/01-roles.sql`
+- **severidad:** 🔴 CRÍTICA → P3
+- **fuente:** DB_AUDIT_REPORT.md (2026-05-04)
+- **fecha_resuelto:** 2026-05-06
+- **notas:** Roles `app_write`/`app_read` creados con permisos mínimos. `DATABASE_URL` usa `app_write`, `DIRECT_URL` usa `bambu` solo para migrations. Init script para DB nueva + `scripts/setup-roles.sql` para DB existente.
+
+### P3-29: OpenAPI/Swagger documentation
+- **archivo:** `api/openapi.json/route.ts`
+- **severidad:** P3
+- **fuente:** API_AUDIT_REPORT.md (2026-05-04)
+- **fecha_resuelto:** 2026-05-06
+- **notas:** Spec OpenAPI 3.1 completa: 34 paths, 61 endpoints, 32 schemas. Accesible en `GET /api/openapi.json`.
+
+### P3-30: Precios reales al cerrar embarque
+- **archivo:** `api/embarques/[id]/cerrar/route.ts`, `lib/pricing.ts`
+- **severidad:** P3
+- **fuente:** stress-test (item 11)
+- **fecha_resuelto:** 2026-05-06
+- **notas:** Al cerrar embarque sin `preciosReales`, resuelve contra `PrecioVolumen` vigente + `preciosEspeciales` del cliente via `resolverPreciosPedido()`. Pricing engine acepta transaction client.
+
+### P3-31: app-shell.tsx → Server Component
+- **archivo:** `app-shell.tsx` (195L → 14L), nuevos `header.tsx`, `sidebar.tsx`, `nav-data.tsx`
+- **severidad:** P3
+- **fuente:** PERFORMANCE_AUDIT_REPORT.md (2026-05-04)
+- **fecha_resuelto:** 2026-05-06
+- **notas:** Layout externo es SC. Header/Sidebar son CCs finos que usan zustand store para sidebarOpen. JS del shell en cada página reducido ~80%.
+
+### P3-32: logAudit fire-and-forget
+- **archivo:** 12 rutas API
+- **severidad:** P3
+- **fuente:** API_AUDIT_REPORT.md (2026-05-04)
+- **fecha_resuelto:** 2026-05-06
+- **notas:** 19 `await logAudit(...)` → `logAudit(...)`. Eliminados ~2-5ms de latencia por POST/PUT. logAudit ya tiene try/catch interno.
+
+### P3-33: Typos y accesibilidad
+- **archivo:** 15 archivos
+- **severidad:** P3
+- **fuente:** UX_AUDIT_REPORT.md (2026-05-04)
+- **fecha_resuelto:** 2026-05-06
+- **notas:** 22 typos corregidos (Teléfono, Dirección, vacío, conexión). RutaForm: 6 htmlFor/id pares + fieldset/legend + aria-pressed. EmptyState: role="status" aria-live. prefers-reduced-motion + :focus-visible global.
+
+---
+
 ## Cambios de Estado
 
 | Fecha | Item | De | A | Notas |
 |-------|------|----|---|-------|
+| 2026-05-06 | 22 items resueltos | PENDIENTE | ✅ | Ver P3-21 a P3-33 + bugs reales corregidos |
 | 2026-05-02 | Item 6 (cPacaAguaEnt vs cPacaAguaPed) | BUG | NO ES BUG | Flujo empalme: cPacaAguaEnt es correcto |
 | 2026-05-02 | Item 6 → nuevo requerimiento | — | P0-2 | Bloquear cierre si embarques abiertos |

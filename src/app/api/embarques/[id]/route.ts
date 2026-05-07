@@ -86,7 +86,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       })
     })
 
-    await logAudit({
+    logAudit({
       entidad: 'Embarque',
       registroId: embarque.id,
       accion: 'UPDATE',
@@ -138,7 +138,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
       })
     })
 
-    await logAudit({
+    logAudit({
       entidad: 'Embarque',
       registroId: result.id,
       accion: 'DELETE',

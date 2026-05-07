@@ -2,6 +2,7 @@ import { auth } from '@/lib/auth'
 import { NextResponse } from 'next/server'
 import { checkRateLimit, classifyRequest } from '@/lib/rate-limit'
 import { validateCsrf } from '@/lib/csrf'
+import { runWithRequestContext } from '@/lib/request-id'
 
 const PROTECTED_PAGE_ROUTES = [
   '/dashboard',
@@ -33,6 +34,10 @@ function generateNonce(): string {
   return Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString('base64')
 }
 
+function generateRequestId(): string {
+  return crypto.randomUUID()
+}
+
 /**
  * Get the real client IP. Only trust x-forwarded-for if we're behind a known proxy
  * (Vercel sets x-real-ip; standalone Node uses req.ip).
@@ -55,71 +60,97 @@ function getClientIp(req: Request): string {
 }
 
 export default auth(async (req) => {
-  const isLoggedIn = !!req.auth
-  const isAuthPage = req.nextUrl.pathname === '/login'
-  const isApiAuth = req.nextUrl.pathname.startsWith('/api/auth')
-  const isStaticAsset = req.nextUrl.pathname.startsWith('/_next/') ||
-    req.nextUrl.pathname.startsWith('/static/')
+  const requestId = generateRequestId()
+  req.headers.set('x-request-id', requestId)
 
-  // Endpoints de auth que SÍ necesitan rate limit estricto (brute force login)
-  const isAuthCredentialEndpoint =
-    req.nextUrl.pathname.startsWith('/api/auth/callback/') ||
-    req.nextUrl.pathname.startsWith('/api/auth/signin/')
+  return runWithRequestContext(requestId, async () => {
+    const isLoggedIn = !!req.auth
+    const isAuthPage = req.nextUrl.pathname === '/login'
+    const isApiAuth = req.nextUrl.pathname.startsWith('/api/auth')
+    const isStaticAsset = req.nextUrl.pathname.startsWith('/_next/') ||
+      req.nextUrl.pathname.startsWith('/static/')
 
-  // Endpoints de auth benignos (session, csrf, providers) que NextAuth llama frecuentemente
-  const isAuthMetadata = isApiAuth && !isAuthCredentialEndpoint
+    // Endpoints de auth que SÍ necesitan rate limit estricto (brute force login)
+    const isAuthCredentialEndpoint =
+      req.nextUrl.pathname.startsWith('/api/auth/callback/') ||
+      req.nextUrl.pathname.startsWith('/api/auth/signin/')
 
-  // Rate limit everything EXCEPT: static assets, auth metadata endpoints
-  if (!isStaticAsset && !isAuthMetadata) {
-    const ip = getClientIp(req)
-    const type = classifyRequest(req.nextUrl.pathname)
-    const limit = await checkRateLimit(`${ip}:${type}`, type)
+    // Endpoints de auth benignos (session, csrf, providers) que NextAuth llama frecuentemente
+    const isAuthMetadata = isApiAuth && !isAuthCredentialEndpoint
 
-    const nonce = generateNonce()
-    req.headers.set('x-nonce', nonce)
+    // Rate limit everything EXCEPT: static assets, auth metadata endpoints
+    if (!isStaticAsset && !isAuthMetadata) {
+      const ip = getClientIp(req)
+      const type = classifyRequest(req.nextUrl.pathname)
+      const limit = await checkRateLimit(`${ip}:${type}`, type)
 
-    const response = NextResponse.next()
-    response.headers.set('X-RateLimit-Limit', String(limit.limit))
-    response.headers.set('X-RateLimit-Remaining', String(limit.remaining))
-    response.headers.set('X-RateLimit-Reset', limit.resetTime.toISOString())
-    response.headers.set('Content-Security-Policy', `default-src 'self'; script-src 'self' 'nonce-${nonce}'${process.env.NODE_ENV === 'development' ? " 'unsafe-eval'" : ''}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`)
-    if (!limit.allowed) {
-      response.headers.set('Retry-After', String(limit.retryAfter))
-      return NextResponse.json(
-        { error: 'Rate limit exceeded' },
-        { status: 429, headers: response.headers }
-      )
-    }
+      const nonce = generateNonce()
+      req.headers.set('x-nonce', nonce)
 
-    // CSRF protection + auth enforcement for API routes
-    if (req.nextUrl.pathname.startsWith('/api/') && !isApiAuth) {
-      const csrfError = validateCsrf(req)
-      if (csrfError) return csrfError
+      const response = NextResponse.next()
+      response.headers.set('X-Request-Id', requestId)
+      response.headers.set('X-RateLimit-Limit', String(limit.limit))
+      response.headers.set('X-RateLimit-Remaining', String(limit.remaining))
+      response.headers.set('X-RateLimit-Reset', limit.resetTime.toISOString())
+      response.headers.set('Content-Security-Policy', `default-src 'self'; script-src 'self' 'nonce-${nonce}'${process.env.NODE_ENV === 'development' ? " 'unsafe-eval'" : ''}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`)
+      if (!limit.allowed) {
+        response.headers.set('Retry-After', String(limit.retryAfter))
+        response.headers.set('X-Request-Id', requestId)
+        return NextResponse.json(
+          { error: 'Rate limit exceeded' },
+          { status: 429, headers: response.headers }
+        )
+      }
 
-      // Require authentication for state-changing API requests
-      // GET requests are handled per-route (some are intentionally public, e.g. /api/config/BASE_DIA)
-      const method = req.method
-      if (method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE') {
-        if (!isLoggedIn) {
-          return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      // CSRF protection + auth enforcement for API routes
+      if (req.nextUrl.pathname.startsWith('/api/') && !isApiAuth) {
+        const csrfError = validateCsrf(req)
+        if (csrfError) return csrfError
+
+        // Require authentication for state-changing API requests
+        // GET requests are handled per-route (some are intentionally public, e.g. /api/config/BASE_DIA)
+        const method = req.method
+        if (method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE') {
+          if (!isLoggedIn) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+          }
         }
       }
+
+      // Auth enforcement for protected pages
+      const isProtectedPage = PROTECTED_PAGE_ROUTES.some(route =>
+        req.nextUrl.pathname.startsWith(route)
+      )
+
+      if (isProtectedPage && !isLoggedIn) {
+        return NextResponse.redirect(new URL('/login', req.url))
+      }
+
+      if (isAuthPage && isLoggedIn) {
+        return NextResponse.redirect(new URL('/dashboard', req.url))
+      }
+
+      // Role-based access control for admin pages
+      if (ADMIN_PAGE_ROUTES.some(route => req.nextUrl.pathname.startsWith(route))) {
+        const userRole = (req.auth?.user as { role?: string } | undefined)?.role
+        if (userRole !== 'ADMIN' && userRole !== 'CONTADOR') {
+          return NextResponse.redirect(new URL('/dashboard', req.nextUrl))
+        }
+      }
+
+      return response
     }
 
-    // Auth enforcement for protected pages
+    // Static assets + auth metadata: skip rate limit, still enforce auth redirects
     const isProtectedPage = PROTECTED_PAGE_ROUTES.some(route =>
       req.nextUrl.pathname.startsWith(route)
     )
 
-    if (isProtectedPage && !isLoggedIn) {
+    if (isProtectedPage && !isLoggedIn && !isApiAuth) {
       return NextResponse.redirect(new URL('/login', req.url))
     }
 
-    if (isAuthPage && isLoggedIn) {
-      return NextResponse.redirect(new URL('/dashboard', req.url))
-    }
-
-    // Role-based access control for admin pages
+    // Role-based access control for admin pages (static assets path)
     if (ADMIN_PAGE_ROUTES.some(route => req.nextUrl.pathname.startsWith(route))) {
       const userRole = (req.auth?.user as { role?: string } | undefined)?.role
       if (userRole !== 'ADMIN' && userRole !== 'CONTADOR') {
@@ -127,31 +158,13 @@ export default auth(async (req) => {
       }
     }
 
+    const nonce = generateNonce()
+    req.headers.set('x-nonce', nonce)
+    const response = NextResponse.next()
+    response.headers.set('X-Request-Id', requestId)
+    response.headers.set('Content-Security-Policy', `default-src 'self'; script-src 'self' 'nonce-${nonce}'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`)
     return response
-  }
-
-  // Static assets + auth metadata: skip rate limit, still enforce auth redirects
-  const isProtectedPage = PROTECTED_PAGE_ROUTES.some(route =>
-    req.nextUrl.pathname.startsWith(route)
-  )
-
-  if (isProtectedPage && !isLoggedIn && !isApiAuth) {
-    return NextResponse.redirect(new URL('/login', req.url))
-  }
-
-  // Role-based access control for admin pages (static assets path)
-  if (ADMIN_PAGE_ROUTES.some(route => req.nextUrl.pathname.startsWith(route))) {
-    const userRole = (req.auth?.user as { role?: string } | undefined)?.role
-    if (userRole !== 'ADMIN' && userRole !== 'CONTADOR') {
-      return NextResponse.redirect(new URL('/dashboard', req.nextUrl))
-    }
-  }
-
-  const nonce = generateNonce()
-  req.headers.set('x-nonce', nonce)
-  const response = NextResponse.next()
-  response.headers.set('Content-Security-Policy', `default-src 'self'; script-src 'self' 'nonce-${nonce}'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`)
-  return response
+  })
 })
 
 export const config = {

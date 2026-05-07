@@ -3,7 +3,7 @@ import { getTodayRange, getYesterdayRange } from '@/lib/dates'
 import { buildVentasPorPrecio } from './dashboard-client/types'
 import { DashboardClient } from './dashboard-client'
 
-export const dynamic = 'force-dynamic'
+export const revalidate = 60
 
 export default async function DashboardPage() {
   const { startOfDay, endOfDay } = getTodayRange()
