@@ -67,6 +67,11 @@ export default function EmbarquesClient() {
     }
   }, [embarques])
 
+  const handleEmbarqueUpdated = (updatedEmbarque: Embarque) => {
+    setSelectedEmbarque(updatedEmbarque)
+    setEmbarques(prev => prev.map(e => e.id === updatedEmbarque.id ? updatedEmbarque : e))
+  }
+
   const getEstadoBadge = (estado: string) => {
     const styles: Record<string, string> = {
       ABIERTO: 'bg-green-100 text-green-800',
@@ -198,6 +203,7 @@ export default function EmbarquesClient() {
         embarques={embarques}
         getEstadoBadge={getEstadoBadge}
         onChanged={fetchData}
+        onEmbarqueUpdated={handleEmbarqueUpdated}
       />
       {modal}
     </div>

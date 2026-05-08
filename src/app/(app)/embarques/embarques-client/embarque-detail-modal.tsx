@@ -37,6 +37,7 @@ export function EmbarqueDetailModal({
   embarques,
   getEstadoBadge,
   onChanged,
+  onEmbarqueUpdated,
 }: {
   open: boolean
   onClose: () => void
@@ -45,6 +46,7 @@ export function EmbarqueDetailModal({
   embarques: Embarque[]
   getEstadoBadge: (estado: string) => React.ReactNode
   onChanged: () => void
+  onEmbarqueUpdated?: (embarque: Embarque) => void
 }) {
   const router = useRouter()
   const { confirm, modal } = useConfirm()
@@ -83,6 +85,9 @@ export function EmbarqueDetailModal({
       })
       const data = await res.json()
       if (data.success) {
+        if (data.embarque) {
+          onEmbarqueUpdated?.(data.embarque)
+        }
         setSelectedPedidoIds([])
         onChanged()
         toast.success('Pedidos asignados')
