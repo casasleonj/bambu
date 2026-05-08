@@ -15,6 +15,7 @@ export function EmbarqueCard({
     <div
       className="bg-white p-4 rounded-xl shadow hover:shadow-md transition cursor-pointer border"
       onClick={onClick}
+      data-testid="embarque-card"
     >
       <div className="flex justify-between items-start mb-3">
         <div>

@@ -58,7 +58,7 @@ test.describe('Embarques', () => {
     await page.waitForLoadState('networkidle')
     await handleBaseCajaModal(page)
     
-    const cards = page.locator('.bg-white.p-4.rounded-xl.shadow')
+    const cards = page.locator('[data-testid="embarque-card"]')
     if (await cards.count() > 0) {
       await cards.first().click()
       await page.waitForTimeout(500)
@@ -85,7 +85,7 @@ test.describe('Embarques', () => {
     await page.waitForTimeout(1000)
     
     // Open embarque detail
-    await page.locator('.bg-white.p-4.rounded-xl.shadow').first().click()
+    await page.locator('[data-testid="embarque-card"]').first().click()
     await page.waitForTimeout(500)
     
     // Should show "Pedidos Asignados" section
@@ -108,7 +108,7 @@ test.describe('Embarques', () => {
     await page.waitForTimeout(1000)
     
     // Open embarque detail
-    await page.locator('.bg-white.p-4.rounded-xl.shadow').first().click()
+    await page.locator('[data-testid="embarque-card"]').first().click()
     await page.waitForTimeout(500)
     
     // Click "Cerrar Embarque" button
@@ -147,7 +147,7 @@ test.describe('Embarques', () => {
     await page.waitForTimeout(1000)
     
     // Open embarque detail
-    await page.locator('.bg-white.p-4.rounded-xl.shadow').first().click()
+    await page.locator('[data-testid="embarque-card"]').first().click()
     await page.waitForTimeout(500)
     
     const cerrarBtn = page.locator('button:has-text("Cerrar Embarque")')
@@ -188,7 +188,7 @@ test.describe('Embarques', () => {
     await page.waitForTimeout(1000)
     
     // Open and close embarque
-    await page.locator('.bg-white.p-4.rounded-xl.shadow').first().click()
+    await page.locator('[data-testid="embarque-card"]').first().click()
     await page.waitForTimeout(500)
     
     const cerrarBtn = page.locator('button:has-text("Cerrar Embarque")')
