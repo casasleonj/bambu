@@ -132,7 +132,7 @@ export default function InsumosClient({ initialInsumos, initialProveedores }: In
             <CardTitle>Crear Insumo</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div><Label htmlFor="insumo-nombre">Nombre</Label><Input id="insumo-nombre" value={nombre} onChange={e => setNombre(e.target.value)} /></div>
+            <div><Label htmlFor="insumo-nombre">Nombre <span className="text-red-500">*</span></Label><Input id="insumo-nombre" required value={nombre} onChange={e => setNombre(e.target.value)} /></div>
             <div><Label htmlFor="insumo-unidad">Unidad</Label>
               <select id="insumo-unidad" className="w-full h-10 rounded-md border bg-background px-3" value={unidad} onChange={e => setUnidad(e.target.value)}>
                 <option value="UNIDAD">Unidad</option>
@@ -141,16 +141,16 @@ export default function InsumosClient({ initialInsumos, initialProveedores }: In
                 <option value="BOLSA">Bolsa</option>
               </select>
             </div>
-            <div><Label htmlFor="insumo-stock">Stock Inicial</Label><Input id="insumo-stock" type="number" value={stock} onChange={e => setStock(e.target.value)} /></div>
-            <div><Label htmlFor="insumo-stockMin">Stock Minimo</Label><Input id="insumo-stockMin" type="number" value={stockMin} onChange={e => setStockMin(e.target.value)} /></div>
-            <div><Label htmlFor="insumo-precioUnit">Precio Unitario</Label><Input id="insumo-precioUnit" type="number" value={precioUnit} onChange={e => setPrecioUnit(e.target.value)} /></div>
+            <div><Label htmlFor="insumo-stock">Stock Inicial</Label><Input id="insumo-stock" type="number" min="0" value={stock} onChange={e => setStock(e.target.value)} /></div>
+            <div><Label htmlFor="insumo-stockMin">Stock Minimo</Label><Input id="insumo-stockMin" type="number" min="0" value={stockMin} onChange={e => setStockMin(e.target.value)} /></div>
+            <div><Label htmlFor="insumo-precioUnit">Precio Unitario</Label><Input id="insumo-precioUnit" type="number" min="0" value={precioUnit} onChange={e => setPrecioUnit(e.target.value)} /></div>
             <div><Label htmlFor="insumo-proveedor">Proveedor</Label>
               <select id="insumo-proveedor" className="w-full h-10 rounded-md border bg-background px-3" value={proveedorId} onChange={e => setProveedorId(e.target.value)}>
                 <option value="">Seleccionar...</option>
                 {proveedores.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
               </select>
             </div>
-            <Button onClick={crearInsumo} disabled={submitting}>💾 Guardar</Button>
+            <Button onClick={crearInsumo} disabled={submitting || !nombre.trim()}>💾 Guardar</Button>
           </CardContent>
         </Card>
       )}

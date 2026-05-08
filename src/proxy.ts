@@ -2,7 +2,10 @@ import { auth } from '@/lib/auth'
 import { NextResponse } from 'next/server'
 import { checkRateLimit, classifyRequest } from '@/lib/rate-limit'
 import { validateCsrf } from '@/lib/csrf'
-import { runWithRequestContext } from '@/lib/request-id'
+import { runWithRequestContext, getRequestId } from '@/lib/request-id'
+import { setRequestIdProvider } from '@/lib/logger'
+
+setRequestIdProvider(getRequestId)
 
 const PROTECTED_PAGE_ROUTES = [
   '/dashboard',

@@ -152,8 +152,8 @@ export function ClienteForm({
           </div>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium mb-2">Precios Especiales</label>
+        <fieldset>
+          <legend className="block text-sm font-medium mb-2">Precios Especiales</legend>
 
           {(() => {
             const allOverrides: Array<{ canal: Canal; codigo: string; nombre: string; emoji: string; precio: number }> = []
@@ -241,7 +241,7 @@ export function ClienteForm({
               )
             })}
           </div>
-        </div>
+        </fieldset>
 
         <div>
           <label htmlFor="cliente-notas" className="block text-sm font-medium mb-1">Notas</label>

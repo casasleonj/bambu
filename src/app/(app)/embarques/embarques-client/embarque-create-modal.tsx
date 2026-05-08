@@ -122,6 +122,9 @@ export function EmbarqueCreateModal({
           />
         </div>
       </div>
+      {!selectedTrabajadorId && (
+        <p className="text-sm text-amber-600 mt-2">Selecciona un repartidor para habilitar el registro</p>
+      )}
       <div className="flex gap-3 mt-6">
         <button
           onClick={handleClose}

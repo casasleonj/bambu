@@ -135,7 +135,7 @@ export default function RecurrentesClient() {
                           : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                       }`}
                     >
-                      {sug.label}<span className="block text-xs font-normal opacity-90">{sug.descripcion}</span>
+                      {sug.label} <span className="block text-xs font-normal opacity-90">{sug.descripcion}</span>
                     </button>
                   ))}
                 </div>

@@ -1,7 +1,12 @@
 import pino from 'pino'
-import { getRequestId } from './request-id'
 
 const isProd = process.env.NODE_ENV === 'production'
+
+let _getRequestId: () => string = () => 'unknown'
+
+export function setRequestIdProvider(fn: () => string) {
+  _getRequestId = fn
+}
 
 export const logger = pino({
   level: isProd ? 'info' : 'debug',
@@ -18,6 +23,6 @@ export const logger = pino({
     censor: '***',
   },
   mixin() {
-    return { requestId: getRequestId() }
+    return { requestId: _getRequestId() }
   },
 })

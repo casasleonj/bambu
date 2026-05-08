@@ -163,29 +163,22 @@ function MobileCard({
           <button
             onClick={(e) => { e.stopPropagation(); onCambiarEstado(pedido.id, 'EN_RUTA') }}
             disabled={updatingId === pedido.id}
-            className="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium disabled:opacity-50"
+            className="flex-1 flex items-center justify-center px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium disabled:opacity-50"
+            aria-label="Enviar pedido"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
-            Enviar
           </button>
         )}
         {pedido.estado === 'EN_RUTA' && (
           <button
             onClick={(e) => { e.stopPropagation(); onCambiarEstado(pedido.id, 'ENTREGADO') }}
             disabled={updatingId === pedido.id}
-            className="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50"
+            className="flex-1 flex items-center justify-center px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50"
+            aria-label="Marcar entregado"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-            Entregar
           </button>
         )}
-        <button
-          onClick={(e) => { e.stopPropagation(); onDetail(pedido) }}
-          className="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-          Detalle
-        </button>
       </div>
     </div>
   )

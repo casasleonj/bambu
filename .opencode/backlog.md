@@ -1,8 +1,8 @@
 # Agua Bambú v2 — Backlog Técnico
 
-**Última actualización:** 2026-05-06  
-**Rama activa:** `audit-performance`  
-**Fuentes:** Stress Test (REPORT.md), API/DB/UX/Perf Audits (2026-05-04)
+**Última actualización:** 2026-05-07  
+**Rama activa:** `main`  
+**Fuentes:** Stress Test (REPORT.md), API/DB/UX/Perf Audits (2026-05-04), UX Manual Audit (2026-05-07)
 
 ---
 
@@ -311,10 +311,64 @@
 
 ---
 
+## P4 — UX Audit 2026-05-07
+
+### P4-34: Build break: request-id rompe bundle cliente
+- **archivo:** `src/lib/logger.ts`, `src/lib/request-id.ts`, `src/proxy.ts`
+- **severidad:** 🔴 CRÍTICA → P4
+- **fuente:** dev server error (2026-05-07)
+- **fecha_resuelto:** 2026-05-07
+- **notas:** `node:async_hooks` no puede bundlear para cliente. Eliminado static import de `request-id` en `logger.ts`. Usa pattern `setRequestIdProvider(getRequestId)` en `proxy.ts` para wire-up.
+
+### P4-35: Recurrentes: texto de botones concatenado sin espacios
+- **archivo:** `src/app/(app)/recurrentes/recurrentes-client/index.tsx:138`
+- **severidad:** 🔴 CRÍTICA → P4
+- **fuente:** UX manual audit (2026-05-07)
+- **fecha_resuelto:** 2026-05-07
+- **notas:** `{sug.label}<span>` → `{sug.label} <span>`. El textContent del botón concatenaba label+descripcion sin espacio. Agregado espacio.
+
+### P4-36: Pedidos: ruido extremo de botones (200 "Detalle" + 98 "Enviar" + 44 "Entregar")
+- **archivo:** `src/app/(app)/pedidos/pedidos-client/pedido-table.tsx:161-191`
+- **severidad:** 🔴 CRÍTICA → P4
+- **fuente:** UX manual audit (2026-05-07)
+- **fecha_resuelto:** 2026-05-07
+- **notas:** Botón "Detalle" redundante en MobileCard (wrapper ya tiene onClick). Eliminado. Botones "Enviar"/"Entregar" → icon-only con aria-label. Reducción de ~342 textos repetidos a 11.
+
+### P4-37: UX: Campos numéricos sin min=0 (17 inputs)
+- **archivo:** `cierre-client`, `compras-client`, `insumos-client`, `base-caja-modal`, `precios-client`, `volume-price-card`, `facturas-client`
+- **severidad:** P1
+- **fuente:** UX manual audit (2026-05-07)
+- **fecha_resuelto:** 2026-05-07
+- **notas:** Agregado `min="0"` a todos los inputs numéricos de montos, cantidades, stock, precios. Previene valores negativos por error (WCAG 3.3.2).
+
+### P4-38: UX: Campos requeridos sin indicador visual
+- **archivo:** `gastos-client`, `compras-client`, `insumos-client`, `nomina-client`, `ruta-form`
+- **severidad:** P1
+- **fuente:** UX manual audit (2026-05-07)
+- **fecha_resuelto:** 2026-05-07
+- **notas:** Agregado `<span className="text-red-500">*</span>` en labels de campos requeridos, `required` en inputs, `htmlFor` en labels. Baymard/NN Group: asterisco es el símbolo universal de campo obligatorio.
+
+### P4-39: UX: Submit habilitado sin validación (disabled-until-filled)
+- **archivo:** `compras-client`, `insumos-client`, `gastos-client`, `nomina-client`, `embarque-create-modal`
+- **severidad:** P1
+- **fuente:** UX manual audit (2026-05-07)
+- **fecha_resuelto:** 2026-05-07
+- **notas:** Submit pasa de `disabled={submitting}` a `disabled={submitting || !campoRequerido}`. Embarque-create agrega helper text "Selecciona un repartidor para habilitar".
+
+### P4-40: UX: Label "Precios Especiales" sin asociación accesible
+- **archivo:** `src/app/(app)/clientes/clientes-client/cliente-form.tsx:155-244`
+- **severidad:** P1
+- **fuente:** UX manual audit (2026-05-07)
+- **fecha_resuelto:** 2026-05-07
+- **notas:** `<label>` sin `for` + sin input asociado → `<fieldset>` + `<legend>`. Patrón semántico correcto para grupo de campos (WCAG 1.3.1).
+
+---
+
 ## Cambios de Estado
 
 | Fecha | Item | De | A | Notas |
 |-------|------|----|---|-------|
+| 2026-05-07 | 7 items (P4-34 a P4-40) | PENDIENTE | ✅ | UX manual audit: 2 P0 + 4 P1 resueltos |
 | 2026-05-06 | 22 items resueltos | PENDIENTE | ✅ | Ver P3-21 a P3-33 + bugs reales corregidos |
 | 2026-05-02 | Item 6 (cPacaAguaEnt vs cPacaAguaPed) | BUG | NO ES BUG | Flujo empalme: cPacaAguaEnt es correcto |
 | 2026-05-02 | Item 6 → nuevo requerimiento | — | P0-2 | Bloquear cierre si embarques abiertos |

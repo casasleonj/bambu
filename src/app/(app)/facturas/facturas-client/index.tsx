@@ -162,6 +162,7 @@ export default function FacturasPage() {
                     <Label>Monto del abono</Label>
                     <Input
                       type="number"
+                      min="0"
                       value={montoAbono}
                       onChange={(e) => setMontoAbono(e.target.value)}
                       placeholder="Monto a pagar"

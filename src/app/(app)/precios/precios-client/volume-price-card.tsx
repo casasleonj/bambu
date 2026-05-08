@@ -100,6 +100,7 @@ export function VolumePriceCard({
                           <div className="flex items-center gap-1 justify-center">
                             <Input
                               type="number"
+                              min="0"
                               value={editValue}
                               onChange={(e) => setEditValue(e.target.value)}
                               className="w-24 text-right"

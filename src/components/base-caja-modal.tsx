@@ -99,6 +99,7 @@ export default function BaseCajaModal() {
               </span>
               <input
                 type="number"
+                min="0"
                 value={baseDiaInput}
                 onChange={(e) => setBaseDiaInput(e.target.value)}
                 className="w-full pl-8 pr-4 py-4 text-2xl border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none"

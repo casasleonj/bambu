@@ -103,8 +103,10 @@ export default function NominaPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             <div>
-              <Label>Trabajador</Label>
+              <Label htmlFor="nomina-trabajador">Trabajador <span className="text-red-500">*</span></Label>
               <select
+                id="nomina-trabajador"
+                required
                 className="w-full h-10 rounded-md border border-input bg-background px-3 py-2"
                 value={trabajadorId}
                 onChange={(e) => setTrabajadorId(e.target.value)}
@@ -125,7 +127,7 @@ export default function NominaPage() {
               <Label>Fecha Fin</Label>
               <Input type="date" value={fechaFin} onChange={(e) => setFechaFin(e.target.value)} />
             </div>
-            <Button onClick={crearNomina} disabled={submitting}>
+            <Button onClick={crearNomina} disabled={submitting || !trabajadorId}>
               📊 Calcular Automático
             </Button>
           </CardContent>

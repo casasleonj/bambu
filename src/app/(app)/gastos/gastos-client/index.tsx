@@ -128,18 +128,18 @@ export default function GastosPage() {
               </select>
             </div>
             <div>
-              <Label>Descripción</Label>
-              <Input value={descripcion} onChange={(e) => setDescripcion(e.target.value)} placeholder="Detalle del gasto" />
+              <Label htmlFor="gasto-descripcion">Descripción <span className="text-red-500">*</span></Label>
+              <Input id="gasto-descripcion" required value={descripcion} onChange={(e) => setDescripcion(e.target.value)} placeholder="Detalle del gasto" />
             </div>
             <div>
-              <Label>Monto</Label>
-              <Input type="number" min="0" value={monto} onChange={(e) => setMonto(e.target.value)} placeholder="0" />
+              <Label htmlFor="gasto-monto">Monto <span className="text-red-500">*</span></Label>
+              <Input id="gasto-monto" type="number" min="0" required value={monto} onChange={(e) => setMonto(e.target.value)} placeholder="0" />
             </div>
             <div>
               <Label>Responsable (opcional)</Label>
               <Input value={responsable} onChange={(e) => setResponsable(e.target.value)} placeholder="Quién paga" />
             </div>
-            <Button onClick={crearGasto} disabled={submitting}>{submitting ? 'Guardando...' : 'Guardar'}</Button>
+            <Button onClick={crearGasto} disabled={submitting || !descripcion.trim() || !monto}>{submitting ? 'Guardando...' : 'Guardar'}</Button>
           </CardContent>
         </Card>
       )}

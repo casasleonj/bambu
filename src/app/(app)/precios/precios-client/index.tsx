@@ -114,6 +114,7 @@ export default function PreciosClient({ productos }: PreciosClientProps) {
                           {editingId === precio.id ? (
                             <Input
                               type="number"
+                              min="0"
                               value={editValue}
                               onChange={(e) => setEditValue(e.target.value)}
                               className="w-32 ml-auto text-right"

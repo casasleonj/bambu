@@ -149,9 +149,9 @@ export default function CierreClient() {
           <span className="text-gray-400">- {data?.aguaVendida || 0}</span><span className="font-bold">= {stockFinAgua}</span>
         </div>
         <div className="mt-2 grid grid-cols-3 gap-2 text-sm">
-          <input type="number" placeholder="Stock Inicial" value={stockIniAgua} onChange={(e) => setStockIniAgua(Number(e.target.value))} className="border rounded px-2 py-1" />
-          <input type="number" placeholder="Produccion" value={prodAgua} onChange={(e) => setProdAgua(Number(e.target.value))} className="border rounded px-2 py-1" />
-          <input type="number" placeholder="Stock Final" value={stockFinAgua} onChange={(e) => setStockFinAgua(Number(e.target.value))} className="border rounded px-2 py-1" />
+          <input type="number" min="0" placeholder="Stock Inicial" value={stockIniAgua} onChange={(e) => setStockIniAgua(Number(e.target.value))} className="border rounded px-2 py-1" />
+          <input type="number" min="0" placeholder="Produccion" value={prodAgua} onChange={(e) => setProdAgua(Number(e.target.value))} className="border rounded px-2 py-1" />
+          <input type="number" min="0" placeholder="Stock Final" value={stockFinAgua} onChange={(e) => setStockFinAgua(Number(e.target.value))} className="border rounded px-2 py-1" />
         </div>
       </div>
 
@@ -162,9 +162,9 @@ export default function CierreClient() {
           <span className="text-gray-400">- {data?.hieloVendido || 0}</span><span className="font-bold">= {stockFinHielo}</span>
         </div>
         <div className="mt-2 grid grid-cols-3 gap-2 text-sm">
-          <input type="number" placeholder="Stock Inicial" value={stockIniHielo} onChange={(e) => setStockIniHielo(Number(e.target.value))} className="border rounded px-2 py-1" />
-          <input type="number" placeholder="Produccion" value={prodHielo} onChange={(e) => setProdHielo(Number(e.target.value))} className="border rounded px-2 py-1" />
-          <input type="number" placeholder="Stock Final" value={stockFinHielo} onChange={(e) => setStockFinHielo(Number(e.target.value))} className="border rounded px-2 py-1" />
+          <input type="number" min="0" placeholder="Stock Inicial" value={stockIniHielo} onChange={(e) => setStockIniHielo(Number(e.target.value))} className="border rounded px-2 py-1" />
+          <input type="number" min="0" placeholder="Produccion" value={prodHielo} onChange={(e) => setProdHielo(Number(e.target.value))} className="border rounded px-2 py-1" />
+          <input type="number" min="0" placeholder="Stock Final" value={stockFinHielo} onChange={(e) => setStockFinHielo(Number(e.target.value))} className="border rounded px-2 py-1" />
         </div>
       </div>
 
@@ -172,7 +172,7 @@ export default function CierreClient() {
         <h2 className="text-lg font-semibold mb-3">Resumen de Caja</h2>
         <div className="space-y-2">
           <div className="flex justify-between"><span className="text-gray-600">Base</span>
-            <input type="number" value={baseDia} onChange={(e) => setBaseDia(Number(e.target.value))} className="border rounded px-2 py-1 w-32 text-right" />
+            <input type="number" min="0" value={baseDia} onChange={(e) => setBaseDia(Number(e.target.value))} className="border rounded px-2 py-1 w-32 text-right" />
           </div>
           <div className="flex justify-between"><span className="text-gray-600">+ Efectivo</span><span>{formatMoney(data?.efectivo || 0)}</span></div>
           <div className="flex justify-between"><span className="text-gray-600">+ Transferencia</span><span>{formatMoney(data?.transferencia || 0)}</span></div>
@@ -183,7 +183,7 @@ export default function CierreClient() {
             <span className={data?.totalGastos && data.totalGastos > 0 ? 'text-red-600' : ''}>{data?.totalGastos && data.totalGastos > 0 ? '-' : ''}{formatMoney(data?.totalGastos || 0)}</span>
           </div>
           <div className="flex justify-between"><span className="text-gray-600">- Comisiones</span>
-            <input type="number" value={comisiones} onChange={(e) => setComisiones(Number(e.target.value))} className="border rounded px-2 py-1 w-32 text-right" />
+            <input type="number" min="0" value={comisiones} onChange={(e) => setComisiones(Number(e.target.value))} className="border rounded px-2 py-1 w-32 text-right" />
           </div>
           <div className="border-t pt-2 flex justify-between text-lg font-bold"><span>Neto Caja</span><span className="text-green-600">{formatMoney(calcularNetoCaja())}</span></div>
         </div>

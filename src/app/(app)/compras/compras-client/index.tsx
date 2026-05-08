@@ -105,8 +105,10 @@ export default function ComprasPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             <div>
-              <Label>Proveedor</Label>
+              <Label htmlFor="compra-proveedor">Proveedor <span className="text-red-500">*</span></Label>
               <select
+                id="compra-proveedor"
+                required
                 className="w-full h-10 rounded-md border border-input bg-background px-3 py-2"
                 value={proveedorId}
                 onChange={(e) => setProveedorId(e.target.value)}
@@ -118,8 +120,10 @@ export default function ComprasPage() {
               </select>
             </div>
             <div>
-              <Label>Insumo</Label>
+              <Label htmlFor="compra-insumo">Insumo <span className="text-red-500">*</span></Label>
               <select
+                id="compra-insumo"
+                required
                 className="w-full h-10 rounded-md border border-input bg-background px-3 py-2"
                 value={insumoId}
                 onChange={(e) => setInsumoId(e.target.value)}
@@ -131,24 +135,30 @@ export default function ComprasPage() {
               </select>
             </div>
             <div>
-              <Label>Cantidad</Label>
+              <Label htmlFor="compra-cantidad">Cantidad <span className="text-red-500">*</span></Label>
               <Input
+                id="compra-cantidad"
                 type="number"
+                min="0"
+                required
                 value={cantidad}
                 onChange={(e) => setCantidad(e.target.value)}
                 placeholder="0"
               />
             </div>
             <div>
-              <Label>Monto Total</Label>
+              <Label htmlFor="compra-monto">Monto Total <span className="text-red-500">*</span></Label>
               <Input
+                id="compra-monto"
                 type="number"
+                min="0"
+                required
                 value={montoTotal}
                 onChange={(e) => setMontoTotal(e.target.value)}
                 placeholder="0"
               />
             </div>
-            <Button onClick={crearCompra} disabled={submitting}>{submitting ? 'Guardando...' : 'Guardar'}</Button>
+            <Button onClick={crearCompra} disabled={submitting || !proveedorId || !insumoId || !cantidad || !montoTotal}>{submitting ? 'Guardando...' : 'Guardar'}</Button>
           </CardContent>
         </Card>
       )}

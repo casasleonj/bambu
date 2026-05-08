@@ -86,7 +86,7 @@ export default function RutaForm({ initialData, rutaId, onSuccess }: RutaFormPro
     <form onSubmit={handleSubmit} className="space-y-6">
       <div>
         <label htmlFor="ruta-nombre" className="block text-sm font-medium text-gray-700 mb-1">
-          Nombre de la ruta
+          Nombre de la ruta <span className="text-red-500">*</span>
         </label>
         <input
           id="ruta-nombre"
