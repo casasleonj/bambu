@@ -83,7 +83,7 @@ export function EmbarqueDetailModal({
       })
       const data = await res.json()
       if (data.success) {
-        onClose()
+        setSelectedPedidoIds([])
         onChanged()
         toast.success('Pedidos asignados')
       } else {

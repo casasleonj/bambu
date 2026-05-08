@@ -58,6 +58,15 @@ export default function EmbarquesClient() {
     fetchData()
   }, [fetchData])
 
+  useEffect(() => {
+    if (showDetailModal && selectedEmbarque) {
+      const updated = embarques.find(e => e.id === selectedEmbarque.id)
+      if (updated && updated !== selectedEmbarque) {
+        setSelectedEmbarque(updated)
+      }
+    }
+  }, [embarques])
+
   const getEstadoBadge = (estado: string) => {
     const styles: Record<string, string> = {
       ABIERTO: 'bg-green-100 text-green-800',
