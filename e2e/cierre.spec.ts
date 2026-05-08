@@ -51,10 +51,9 @@ test.describe('Cierre', () => {
     await page.waitForLoadState('networkidle')
     await handleBaseCajaModal(page)
     
-    // Fill stock inputs
+    // Fill stock inputs for Agua
     await page.locator('input[placeholder="Stock Inicial"]').first().fill('100')
-    await page.locator('input[placeholder="Producción"]').first().fill('50')
-    await page.locator('input[placeholder="Stock Final"]').first().fill('120')
+    await page.locator('input[placeholder="Stock Final"]').first().fill('150')
     
     await expect(page.locator('text=Neto Caja')).toBeVisible()
   })

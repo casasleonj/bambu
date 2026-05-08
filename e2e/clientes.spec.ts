@@ -44,7 +44,7 @@ test.describe('Clientes', () => {
     const modal = page.locator('div.bg-white.rounded-xl').filter({ hasText: 'Nuevo Cliente' })
     
     await modal.locator('text=Nombre').locator('..').locator('input').fill('Cliente E2E Test')
-    await modal.locator('text=Telefono *').locator('..').locator('input').fill('3119998888')
+    await modal.locator('text=Teléfono *').locator('..').locator('input').fill('3119998888')
     
     await modal.locator('button[type="submit"]').click()
     await page.waitForTimeout(1500)

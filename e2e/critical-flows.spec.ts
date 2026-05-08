@@ -47,7 +47,7 @@ test.describe('Flujos críticos de negocio', () => {
 
     // Fill form using labels to ensure correct inputs
     await modal.locator('text=Nombre').locator('..').locator('input').fill('Cliente E2E Test')
-    await modal.locator('text=Telefono *').locator('..').locator('input').fill('3119998888')
+    await modal.locator('text=Teléfono *').locator('..').locator('input').fill('3119998888')
 
     // Submit
     await modal.locator('button[type="submit"]').click()

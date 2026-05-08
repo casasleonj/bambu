@@ -63,8 +63,8 @@ test.describe('Embarques', () => {
       await cards.first().click()
       await page.waitForTimeout(500)
       
-      await expect(page.getByRole('button', { name: 'Cerrar', exact: true })).toBeVisible()
-      await page.getByRole('button', { name: 'Cerrar', exact: true }).click()
+      await expect(page.getByRole('button', { name: 'Volver' })).toBeVisible()
+      await page.getByRole('button', { name: 'Volver' }).click()
       await page.waitForTimeout(300)
     }
   })
