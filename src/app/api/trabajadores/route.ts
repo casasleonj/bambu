@@ -3,7 +3,7 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { TrabajadorCreateSchema } from '@/lib/validators'
-import { apiSuccess, apiError, apiList } from '@/lib/api-response'
+import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
 
@@ -14,7 +14,6 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const rol = searchParams.get('rol')
     const activo = searchParams.get('activo')
-    const all = searchParams.get('all')
 
     const where: Record<string, unknown> = {}
     if (rol) where.rol = rol
@@ -28,7 +27,7 @@ export async function GET(request: NextRequest) {
       where,
       orderBy: { nombre: 'asc' },
     })
-    return all === 'true' ? apiSuccess({ trabajadores }) : apiList(trabajadores)
+    return apiSuccess({ trabajadores })
   } catch (error) {
     return apiError('Error cargando trabajadores')
   }
