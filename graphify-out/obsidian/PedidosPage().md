@@ -1,17 +1,18 @@
 ---
 source_file: "src/app/(app)/pedidos/page.tsx"
 type: "code"
-community: "Pedidos Page"
-location: "L24"
+community: "Community 7"
+location: "L3"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Pedidos_Page
+  - community/Community_7
 ---
 
 # PedidosPage()
 
 ## Connections
-- [[page.tsx_5]] - `contains` [EXTRACTED]
+- [[GET()]] - `calls` [INFERRED]
+- [[page.tsx_7]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Pedidos_Page
+#graphify/code #graphify/EXTRACTED #community/Community_7

@@ -29,6 +29,13 @@
       "input_tokens": 0,
       "output_tokens": 0,
       "files": 42
+    },
+    {
+      "date": "2026-05-07T16:43:51.293460+00:00",
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "files": 653,
+      "note": "Rebuild from existing extraction (no LLM tokens used)"
     }
   ],
   "total_input_tokens": 0,

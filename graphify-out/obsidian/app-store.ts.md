@@ -1,17 +1,14 @@
 ---
 source_file: "src/stores/app-store.ts"
 type: "code"
-community: "App Core Architecture"
+community: "Community 115"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/App_Core_Architecture
+  - community/Community_115
 ---
 
 # app-store.ts
 
-## Connections
-- [[srcmiddleware.ts]] - `imports_from` [EXTRACTED]
-
-#graphify/code #graphify/EXTRACTED #community/App_Core_Architecture
+#graphify/code #graphify/EXTRACTED #community/Community_115

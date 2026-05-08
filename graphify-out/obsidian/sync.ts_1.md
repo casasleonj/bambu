@@ -1,18 +1,20 @@
 ---
-source_file: ""
-type: ""
-community: "Offline-First Architecture"
+source_file: "src/lib/db/sync.ts"
+type: "code"
+community: "Community 13"
+location: "L1"
 tags:
-  - graphify/document
+  - graphify/code
   - graphify/EXTRACTED
-  - community/Offline-First_Architecture
+  - community/Community_13
 ---
 
 # sync.ts
 
 ## Connections
-- [[browser online event]] - `LISTENS` [EXTRACTED]
-- [[dynamic import]] - `USES` [EXTRACTED]
-- [[offline.ts_1]] - `IMPORTS` [EXTRACTED]
+- [[unnamed_116]] - `imports_from` [EXTRACTED]
+- [[unnamed_82]] - `imports_from` [EXTRACTED]
+- [[isOnline()]] - `contains` [EXTRACTED]
+- [[syncWithServer()]] - `contains` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Offline-First_Architecture
+#graphify/code #graphify/EXTRACTED #community/Community_13

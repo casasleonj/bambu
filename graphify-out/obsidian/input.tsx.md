@@ -1,14 +1,14 @@
 ---
 source_file: "src/components/ui/input.tsx"
 type: "code"
-community: "UI Input"
+community: "Community 107"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/UI_Input
+  - community/Community_107
 ---
 
 # input.tsx
 
-#graphify/code #graphify/EXTRACTED #community/UI_Input
+#graphify/code #graphify/EXTRACTED #community/Community_107

@@ -1,19 +1,18 @@
 ---
-source_file: "src/app/(app)/facturas/page.tsx"
+source_file: "/home/cristof/Documents/bambu_demo_multimodelo/src/app/(app)/rutas/page.tsx"
 type: "code"
-community: "Facturas Page"
+community: "Community 18"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Facturas_Page
+  - community/Community_18
 ---
 
 # page.tsx
 
 ## Connections
-- [[fetchFacturas()]] - `contains` [EXTRACTED]
-- [[getEstadoColor()]] - `contains` [EXTRACTED]
-- [[registrarAbono()]] - `contains` [EXTRACTED]
+- [[fetchRutas()]] - `contains` [EXTRACTED]
+- [[handleDelete()_1]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Facturas_Page
+#graphify/code #graphify/EXTRACTED #community/Community_18

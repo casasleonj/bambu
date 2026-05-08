@@ -1,18 +1,18 @@
 ---
-source_file: "src/app/(app)/gastos/page.tsx"
+source_file: "/home/cristof/Documents/bambu_demo_multimodelo/src/app/(app)/dashboard/page.tsx"
 type: "code"
-community: "Gastos Page"
+community: "Community 16"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Gastos_Page
+  - community/Community_16
 ---
 
 # page.tsx
 
 ## Connections
-- [[crearGasto()]] - `contains` [EXTRACTED]
-- [[fetchGastos()]] - `contains` [EXTRACTED]
+- [[buildVentasPorPrecio()]] - `contains` [EXTRACTED]
+- [[formatCurrency()]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Gastos_Page
+#graphify/code #graphify/EXTRACTED #community/Community_16

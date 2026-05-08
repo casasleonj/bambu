@@ -1,17 +1,17 @@
 ---
-source_file: "src/app/api/search/route.ts"
+source_file: "/home/cristof/Documents/bambu_demo_multimodelo/src/app/api/precios/resolver/route.ts"
 type: "code"
-community: "API Route Handlers"
+community: "Community 1"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/API_Route_Handlers
+  - community/Community_1
 ---
 
 # route.ts
 
 ## Connections
-- [[GET()]] - `contains` [EXTRACTED]
+- [[POST()]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/API_Route_Handlers
+#graphify/code #graphify/EXTRACTED #community/Community_1

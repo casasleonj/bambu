@@ -1,12 +1,12 @@
 ---
 source_file: "src/lib/db/offline.ts"
 type: "code"
-community: "Offline Sync Implementation"
-location: "L19"
+community: "Community 13"
+location: "L48"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Offline_Sync_Implementation
+  - community/Community_13
 ---
 
 # BambuOfflineDB
@@ -14,5 +14,6 @@ tags:
 ## Connections
 - [[.constructor()]] - `method` [EXTRACTED]
 - [[offline.ts]] - `contains` [EXTRACTED]
+- [[offline.ts_1]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Offline_Sync_Implementation
+#graphify/code #graphify/EXTRACTED #community/Community_13

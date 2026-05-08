@@ -1,12 +1,12 @@
 ---
 source_file: "src/hooks/use-online-status.ts"
 type: "code"
-community: "Offline Banner"
+community: "Community 37"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Offline_Banner
+  - community/Community_37
 ---
 
 # use-online-status.ts
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[useOnlineStatus()]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Offline_Banner
+#graphify/code #graphify/EXTRACTED #community/Community_37

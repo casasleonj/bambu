@@ -1,18 +1,18 @@
 ---
-source_file: "src/app/(app)/insumos/page.tsx"
+source_file: "src/app/(app)/insumos/insumos-client.tsx"
 type: "code"
-community: "Insumos & Nomina Pages"
-location: "L50"
+community: "Community 17"
+location: "L64"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Insumos_&_Nomina_Pages
+  - community/Community_17
 ---
 
 # crearInsumo()
 
 ## Connections
-- [[fetchData()]] - `calls` [EXTRACTED]
-- [[page.tsx_9]] - `contains` [EXTRACTED]
+- [[fetchData()_1]] - `calls` [EXTRACTED]
+- [[insumos-client.tsx]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Insumos_&_Nomina_Pages
+#graphify/code #graphify/EXTRACTED #community/Community_17

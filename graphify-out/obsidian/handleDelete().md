@@ -1,18 +1,18 @@
 ---
-source_file: "src/app/(app)/clientes/page.tsx"
+source_file: "src/app/(app)/clientes/clientes-client.tsx"
 type: "code"
-community: "Clientes & Produccion Pages"
-location: "L175"
+community: "Community 4"
+location: "L339"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Clientes_&_Produccion_Pages
+  - community/Community_4
 ---
 
 # handleDelete()
 
 ## Connections
+- [[clientes-client.tsx]] - `contains` [EXTRACTED]
 - [[fetchClientes()]] - `calls` [EXTRACTED]
-- [[page.tsx_7]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Clientes_&_Produccion_Pages
+#graphify/code #graphify/EXTRACTED #community/Community_4

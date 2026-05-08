@@ -1,12 +1,12 @@
 ---
 source_file: "src/components/ui/tabs.tsx"
 type: "code"
-community: "UI Tabs Component"
+community: "Community 0"
 location: "L13"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/UI_Tabs_Component
+  - community/Community_0
 ---
 
 # TabsContent()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[tabs.tsx]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/UI_Tabs_Component
+#graphify/code #graphify/EXTRACTED #community/Community_0

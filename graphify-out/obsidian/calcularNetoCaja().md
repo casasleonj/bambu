@@ -1,12 +1,12 @@
 ---
-source_file: "src/app/(app)/cierre/page.tsx"
+source_file: "/home/cristof/Documents/bambu_demo_multimodelo/src/app/(app)/cierre/page.tsx"
 type: "code"
-community: "Cierre Page Logic"
-location: "L75"
+community: "Community 25"
+location: "L82"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Cierre_Page_Logic
+  - community/Community_25
 ---
 
 # calcularNetoCaja()
@@ -15,4 +15,4 @@ tags:
 - [[handleCerrar()]] - `calls` [EXTRACTED]
 - [[page.tsx_3]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Cierre_Page_Logic
+#graphify/code #graphify/EXTRACTED #community/Community_25

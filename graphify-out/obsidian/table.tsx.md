@@ -1,12 +1,12 @@
 ---
 source_file: "src/components/ui/table.tsx"
 type: "code"
-community: "UI Table Component"
+community: "Community 38"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/UI_Table_Component
+  - community/Community_38
 ---
 
 # table.tsx
@@ -16,4 +16,4 @@ tags:
 - [[TableCell()]] - `contains` [EXTRACTED]
 - [[TableHeader()]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/UI_Table_Component
+#graphify/code #graphify/EXTRACTED #community/Community_38

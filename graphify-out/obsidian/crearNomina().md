@@ -1,12 +1,12 @@
 ---
-source_file: "src/app/(app)/nomina/page.tsx"
+source_file: "/home/cristof/Documents/bambu_demo_multimodelo/src/app/(app)/nomina/page.tsx"
 type: "code"
-community: "Insumos & Nomina Pages"
-location: "L54"
+community: "Community 18"
+location: "L70"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Insumos_&_Nomina_Pages
+  - community/Community_18
 ---
 
 # crearNomina()
@@ -15,4 +15,4 @@ tags:
 - [[fetchData()]] - `calls` [EXTRACTED]
 - [[page.tsx_1]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Insumos_&_Nomina_Pages
+#graphify/code #graphify/EXTRACTED #community/Community_18

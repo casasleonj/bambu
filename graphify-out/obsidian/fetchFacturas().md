@@ -1,18 +1,18 @@
 ---
 source_file: "src/app/(app)/facturas/page.tsx"
 type: "code"
-community: "Facturas Page"
-location: "L42"
+community: "Community 7"
+location: "L51"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Facturas_Page
+  - community/Community_7
 ---
 
 # fetchFacturas()
 
 ## Connections
-- [[page.tsx_10]] - `contains` [EXTRACTED]
+- [[page.tsx_16]] - `contains` [EXTRACTED]
 - [[registrarAbono()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Facturas_Page
+#graphify/code #graphify/EXTRACTED #community/Community_7

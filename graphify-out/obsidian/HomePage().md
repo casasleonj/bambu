@@ -1,12 +1,12 @@
 ---
-source_file: "src/app/(app)/page.tsx"
+source_file: "/home/cristof/Documents/bambu_demo_multimodelo/src/app/(app)/page.tsx"
 type: "code"
-community: "Home Page"
+community: "Community 68"
 location: "L4"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Home_Page
+  - community/Community_68
 ---
 
 # HomePage()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[page.tsx]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Home_Page
+#graphify/code #graphify/EXTRACTED #community/Community_68

@@ -1,7 +1,7 @@
-# Graph Report - .  (2026-05-06)
+# Graph Report - .  (2026-05-07)
 
 ## Corpus Check
-- 656 files · ~246,043 words
+- 653 files · ~243,942 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -257,11 +257,11 @@
 
 ### Community 0 - "Community 0"
 Cohesion: 0.02
-Nodes (75): BaseCajaModal(), button, card, confirm_modal, useConfirm(), connectivity_indicator, date_range_filter, dynamic (+67 more)
+Nodes (75): BaseCajaModal(), , , , useConfirm(), , ,  (+67 more)
 
 ### Community 1 - "Community 1"
 Cohesion: 0.07
-Nodes (49): api_response, apiError(), apiList(), apiSuccess(), API response interfaces (ApiSuccessResponse, ApiListResponse, ApiErrorResponse), audit, logAudit(), auth_check (+41 more)
+Nodes (49): , apiError(), apiList(), apiSuccess(), API response interfaces (ApiSuccessResponse, ApiListResponse, ApiErrorResponse), , logAudit(),  (+41 more)
 
 ### Community 2 - "Community 2"
 Cohesion: 0.04
@@ -273,7 +273,7 @@ Nodes (49): Abonos API Route, Advisory Lock System, API Response Library, Audit 
 
 ### Community 4 - "Community 4"
 Cohesion: 0.05
-Nodes (26): base_caja_modal, buildPreciosJson(), fetchClientes(), handleDelete(), handleSubmit(), openEditModal(), parsePreciosEspeciales(), headers (+18 more)
+Nodes (26): , buildPreciosJson(), fetchClientes(), handleDelete(), handleSubmit(), openEditModal(), parsePreciosEspeciales(),  (+18 more)
 
 ### Community 5 - "Community 5"
 Cohesion: 0.09
@@ -281,7 +281,7 @@ Nodes (33): withAdvisoryLock - PostgreSQL advisory lock wrapper, LOCK_IDS - lock
 
 ### Community 6 - "Community 6"
 Cohesion: 0.12
-Nodes (23): logBulkAudit(), bcryptjs, credentials, jwt, next_auth, checkRateLimit(), classifyRequest(), getLimiter() (+15 more)
+Nodes (23): logBulkAudit(), , , , , checkRateLimit(), classifyRequest(), getLimiter() (+15 more)
 
 ### Community 7 - "Community 7"
 Cohesion: 0.08
@@ -293,7 +293,7 @@ Nodes (27): Abono updates factura.saldo and pedido.saldo, Agent Guide - Project 
 
 ### Community 9 - "Community 9"
 Cohesion: 0.09
-Nodes (5): dismissBaseCaja(), ensureTestData(), login(), nav(), test
+Nodes (5): dismissBaseCaja(), ensureTestData(), login(), nav(), 
 
 ### Community 10 - "Community 10"
 Cohesion: 0.22
@@ -309,11 +309,11 @@ Nodes (10): DEFAULT_PRICES - fallback price table, getProductosForCanal(), PRODU
 
 ### Community 13 - "Community 13"
 Cohesion: 0.14
-Nodes (16): dexie, BambuOfflineDB, BambuOfflineDB - Dexie IndexedDB database, getConflicts(), OfflineCliente interface - local client schema, OfflinePedido interface - local order schema, processSyncQueue(), queueClienteOffline - queue client for offline sync (+8 more)
+Nodes (16): , BambuOfflineDB, BambuOfflineDB - Dexie IndexedDB database, getConflicts(), OfflineCliente interface - local client schema, OfflinePedido interface - local order schema, processSyncQueue(), queueClienteOffline - queue client for offline sync (+8 more)
 
 ### Community 14 - "Community 14"
 Cohesion: 0.13
-Nodes (9): decrement(), getPrecio(), getPrecioBase(), handleCantidadChange(), increment(), src_components_venta_rapida_form_cliente_select, src_components_venta_rapida_form_pago_section, src_components_venta_rapida_form_product_grid (+1 more)
+Nodes (9): decrement(), getPrecio(), getPrecioBase(), handleCantidadChange(), increment(), , ,  (+1 more)
 
 ### Community 15 - "Community 15"
 Cohesion: 0.15
@@ -321,7 +321,7 @@ Nodes (2): getEffectivePrice(), getPrecio()
 
 ### Community 16 - "Community 16"
 Cohesion: 0.18
-Nodes (7): link, buildVentasPorPrecio(), DashboardPage(), formatCurrency(), src_app_app_dashboard_dashboard_client, src_app_app_dashboard_dashboard_client_types, buildVentasPorPrecio()
+Nodes (7): , buildVentasPorPrecio(), DashboardPage(), formatCurrency(), , , buildVentasPorPrecio()
 
 ### Community 17 - "Community 17"
 Cohesion: 0.25
@@ -333,7 +333,7 @@ Nodes (7): crearCompra(), crearNomina(), fetchData(), fetchRutas(), handleDelete
 
 ### Community 19 - "Community 19"
 Cohesion: 0.22
-Nodes (5): fetchProveedores(), handleDeactivate(), src_app_app_proveedores_proveedores_client_proveedor_card, src_app_app_proveedores_proveedores_client_proveedor_form_modal, src_app_app_proveedores_proveedores_client_types
+Nodes (5): fetchProveedores(), handleDeactivate(), , , 
 
 ### Community 20 - "Community 20"
 Cohesion: 0.29
@@ -349,7 +349,7 @@ Nodes (6): buildPaginationResponse(), getPaginationParams(), getPrismaPagination
 
 ### Community 23 - "Community 23"
 Cohesion: 0.29
-Nodes (4): auth, csrf, getClientIp(), rate_limit
+Nodes (4): , , getClientIp(), 
 
 ### Community 24 - "Community 24"
 Cohesion: 0.6
@@ -369,7 +369,7 @@ Nodes (6): Anti-Enumeration Auth, 5 Write Endpoints Missing requireRole, Embarqu
 
 ### Community 28 - "Community 28"
 Cohesion: 0.5
-Nodes (3): calcularCapacidadProyectada(), EmbarquesPage(), src_app_app_embarques_embarques_client
+Nodes (3): calcularCapacidadProyectada(), EmbarquesPage(), 
 
 ### Community 29 - "Community 29"
 Cohesion: 0.4
@@ -385,7 +385,7 @@ Nodes (5): CLIENTE_MOSTRADOR - generic client for anonymous quick sales, Venta R
 
 ### Community 32 - "Community 32"
 Cohesion: 0.4
-Nodes (1): src_app_app_embarques_id_cerrar_cerrar_client_types
+Nodes (1): 
 
 ### Community 33 - "Community 33"
 Cohesion: 0.4
@@ -401,7 +401,7 @@ Nodes (2): crearGasto(), fetchGastos()
 
 ### Community 36 - "Community 36"
 Cohesion: 0.5
-Nodes (2): ConnectivityIndicator(), sync
+Nodes (2): ConnectivityIndicator(), 
 
 ### Community 37 - "Community 37"
 Cohesion: 0.5
@@ -433,7 +433,7 @@ Nodes (1): hasVolumeTiers()
 
 ### Community 44 - "Community 44"
 Cohesion: 0.5
-Nodes (4): Dashboard 11 Queries, force-dynamic Disables Cache, isr_dashboard_proposal, No Pagination List APIs
+Nodes (4): Dashboard 11 Queries, force-dynamic Disables Cache, , No Pagination List APIs
 
 ### Community 45 - "Community 45"
 Cohesion: 0.67
@@ -489,7 +489,7 @@ Nodes (3): P0: Abono does not update Pedido.saldo, P0: Day close includes CANCEL
 
 ### Community 58 - "Community 58"
 Cohesion: 0.67
-Nodes (1): src_app_app_cierre_cierre_client
+Nodes (1): 
 
 ### Community 59 - "Community 59"
 Cohesion: 0.67
@@ -505,19 +505,19 @@ Nodes (3): 8 confirm() Uses, Modal Title Not Rendered, VentaRapida No Form Tag
 
 ### Community 62 - "Community 62"
 Cohesion: 0.67
-Nodes (1): src_app_app_rutas_analisis_analisis_client
+Nodes (1): 
 
 ### Community 63 - "Community 63"
 Cohesion: 0.67
-Nodes (1): src_app_app_recurrentes_recurrentes_client
+Nodes (1): 
 
 ### Community 64 - "Community 64"
 Cohesion: 0.67
-Nodes (1): src_app_app_recurrentes_nuevo_nuevo_client
+Nodes (1): 
 
 ### Community 65 - "Community 65"
 Cohesion: 0.67
-Nodes (1): src_app_app_produccion_produccion_client
+Nodes (1): 
 
 ### Community 66 - "Community 66"
 Cohesion: 0.67
@@ -625,15 +625,15 @@ Nodes (2): Factura_pedidoId Duplicate Index, 64 Unused Indexes
 
 ### Community 92 - "Community 92"
 Cohesion: 1.0
-Nodes (1): next_dev_types_routes_d_ts
+Nodes (1): 
 
 ### Community 93 - "Community 93"
 Cohesion: 1.0
-Nodes (1): pino
+Nodes (1): 
 
 ### Community 94 - "Community 94"
 Cohesion: 1.0
-Nodes (2): DB_AUDIT_REPORT.md, PERFORMANCE_AUDIT_REPORT.md
+Nodes (2): , 
 
 ### Community 95 - "Community 95"
 Cohesion: 1.0
@@ -1188,11 +1188,11 @@ Nodes (0):
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 91`** (2 nodes): `Factura_pedidoId Duplicate Index`, `64 Unused Indexes`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 92`** (2 nodes): `next_dev_types_routes_d_ts`, `next-env.d.ts`
+- **Thin community `Community 92`** (2 nodes): ``, `next-env.d.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 93`** (2 nodes): `pino`, `logger.ts`
+- **Thin community `Community 93`** (2 nodes): ``, `logger.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 94`** (2 nodes): `DB_AUDIT_REPORT.md`, `PERFORMANCE_AUDIT_REPORT.md`
+- **Thin community `Community 94`** (2 nodes): ``, ``
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 95`** (2 nodes): `NavIcon()`, `sidebar.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
@@ -1451,10 +1451,10 @@ _Questions this graph is uniquely positioned to answer:_
 - **What is the exact relationship between `Service Worker Register (PWA)` and `Date Range Filter Component`?**
   _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
 - **Why does `GET()` connect `Community 1` to `Community 0`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 10`, `Community 43`, `Community 20`, `Community 22`, `Community 23`, `Community 26`, `Community 30`?**
-  _High betweenness centrality (0.089) - this node is a cross-community bridge._
+  _High betweenness centrality (0.074) - this node is a cross-community bridge._
 - **Why does `POST()` connect `Community 1` to `Community 9`, `Community 5`, `Community 6`, `Community 7`?**
-  _High betweenness centrality (0.050) - this node is a cross-community bridge._
-- **Why does `PedidosClient()` connect `Community 0` to `Community 1`?**
-  _High betweenness centrality (0.029) - this node is a cross-community bridge._
+  _High betweenness centrality (0.043) - this node is a cross-community bridge._
+- **Why does `ensureTestData()` connect `Community 9` to `Community 1`?**
+  _High betweenness centrality (0.025) - this node is a cross-community bridge._
 - **Are the 26 inferred relationships involving `GET()` (e.g. with `RootLayout()` and `hasVolumeTiers()`) actually correct?**
   _`GET()` has 26 INFERRED edges - model-reasoned connections that need verification._

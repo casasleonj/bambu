@@ -1,14 +1,14 @@
 ---
 source_file: "src/components/ui/badge.tsx"
 type: "code"
-community: "UI Badge"
+community: "Community 106"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/UI_Badge
+  - community/Community_106
 ---
 
 # badge.tsx
 
-#graphify/code #graphify/EXTRACTED #community/UI_Badge
+#graphify/code #graphify/EXTRACTED #community/Community_106

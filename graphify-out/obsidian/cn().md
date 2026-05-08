@@ -1,12 +1,12 @@
 ---
-source_file: "src/lib/utils.ts"
+source_file: "/home/cristof/Documents/bambu_demo_multimodelo/src/lib/utils.ts"
 type: "code"
-community: "Utils Library"
-location: "L4"
+community: "Community 39"
+location: "L5"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Utils_Library
+  - community/Community_39
 ---
 
 # cn()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[utils.ts]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Utils_Library
+#graphify/code #graphify/EXTRACTED #community/Community_39

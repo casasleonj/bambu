@@ -1,12 +1,12 @@
 ---
 source_file: "src/components/embarque-card.tsx"
 type: "code"
-community: "Embarque Card"
+community: "Community 78"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Embarque_Card
+  - community/Community_78
 ---
 
 # embarque-card.tsx
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[EmbarqueCard()]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Embarque_Card
+#graphify/code #graphify/EXTRACTED #community/Community_78

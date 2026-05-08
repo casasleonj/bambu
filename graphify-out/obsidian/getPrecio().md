@@ -1,18 +1,18 @@
 ---
-source_file: "src/components/pedido-form.tsx"
+source_file: "/home/cristof/Documents/bambu_demo_multimodelo/src/components/venta-rapida-form.tsx"
 type: "code"
-community: "PedidoForm Component"
-location: "L75"
+community: "Community 12"
+location: "L131"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/PedidoForm_Component
+  - community/Community_12
 ---
 
 # getPrecio()
 
 ## Connections
-- [[handleSubmit()_1]] - `calls` [EXTRACTED]
-- [[pedido-form.tsx]] - `contains` [EXTRACTED]
+- [[getPrecioBase()]] - `calls` [EXTRACTED]
+- [[venta-rapida-form.tsx]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/PedidoForm_Component
+#graphify/code #graphify/EXTRACTED #community/Community_12

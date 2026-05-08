@@ -1,17 +1,17 @@
 ---
-source_file: "src/app/(app)/clientes/page.tsx"
+source_file: "src/app/(app)/clientes/clientes-client.tsx"
 type: "code"
-community: "Clientes & Produccion Pages"
-location: "L161"
+community: "Community 4"
+location: "L318"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Clientes_&_Produccion_Pages
+  - community/Community_4
 ---
 
 # viewCliente()
 
 ## Connections
-- [[page.tsx_7]] - `contains` [EXTRACTED]
+- [[clientes-client.tsx]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Clientes_&_Produccion_Pages
+#graphify/code #graphify/EXTRACTED #community/Community_4

@@ -1,17 +1,17 @@
 ---
-source_file: "src/app/offline/page.tsx"
+source_file: "/home/cristof/Documents/bambu_demo_multimodelo/src/app/(app)/rutas/[id]/page.tsx"
 type: "code"
-community: "Offline Page"
+community: "Community 34"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Offline_Page
+  - community/Community_34
 ---
 
 # page.tsx
 
 ## Connections
-- [[OfflinePage()]] - `contains` [EXTRACTED]
+- [[EditarRutaPage()]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Offline_Page
+#graphify/code #graphify/EXTRACTED #community/Community_34

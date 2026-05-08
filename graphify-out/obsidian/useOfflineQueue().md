@@ -1,12 +1,12 @@
 ---
-source_file: "src/hooks/use-offline-queue.ts"
+source_file: "/home/cristof/Documents/bambu_demo_multimodelo/src/hooks/use-offline-queue.ts"
 type: "code"
-community: "Offline Queue Hook"
+community: "Community 83"
 location: "L14"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Offline_Queue_Hook
+  - community/Community_83
 ---
 
 # useOfflineQueue()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[use-offline-queue.ts]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Offline_Queue_Hook
+#graphify/code #graphify/EXTRACTED #community/Community_83

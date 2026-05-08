@@ -1,17 +1,17 @@
 ---
-source_file: "src/app/(app)/dashboard/page.tsx"
+source_file: "/home/cristof/Documents/bambu_demo_multimodelo/src/app/(app)/precios/page.tsx"
 type: "code"
-community: "Dashboard Page"
+community: "Community 72"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Dashboard_Page
+  - community/Community_72
 ---
 
 # page.tsx
 
 ## Connections
-- [[fetchDashboardData()]] - `contains` [EXTRACTED]
+- [[PreciosPage()]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Dashboard_Page
+#graphify/code #graphify/EXTRACTED #community/Community_72

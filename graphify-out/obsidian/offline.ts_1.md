@@ -1,21 +1,24 @@
 ---
-source_file: ""
-type: ""
-community: "Offline-First Architecture"
+source_file: "src/lib/db/offline.ts"
+type: "code"
+community: "Community 13"
+location: "L1"
 tags:
-  - graphify/document
+  - graphify/code
   - graphify/EXTRACTED
-  - community/Offline-First_Architecture
+  - community/Community_13
 ---
 
 # offline.ts
 
 ## Connections
-- [[Dexie]] - `USES` [EXTRACTED]
-- [[OfflineCliente]] - `DEFINES` [EXTRACTED]
-- [[OfflinePedido]] - `DEFINES` [EXTRACTED]
-- [[offline-first storage]] - `IMPLEMENTS` [EXTRACTED]
-- [[sync queue]] - `IMPLEMENTS` [EXTRACTED]
-- [[sync.ts_1]] - `IMPORTS` [EXTRACTED]
+- [[unnamed_115]] - `imports_from` [EXTRACTED]
+- [[unnamed_82]] - `imports_from` [EXTRACTED]
+- [[BambuOfflineDB]] - `contains` [EXTRACTED]
+- [[getConflicts()]] - `contains` [EXTRACTED]
+- [[processSyncQueue()]] - `contains` [EXTRACTED]
+- [[queueClienteOffline()]] - `contains` [EXTRACTED]
+- [[queuePedidoOffline()]] - `contains` [EXTRACTED]
+- [[resolveConflict()]] - `contains` [EXTRACTED]
 
-#graphify/document #graphify/EXTRACTED #community/Offline-First_Architecture
+#graphify/code #graphify/EXTRACTED #community/Community_13

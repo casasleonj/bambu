@@ -1,18 +1,18 @@
 ---
-source_file: "src/app/(app)/produccion/page.tsx"
+source_file: "/home/cristof/Documents/bambu_demo_multimodelo/src/app/(app)/rutas/analisis/page.tsx"
 type: "code"
-community: "Clientes & Produccion Pages"
+community: "Community 54"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Clientes_&_Produccion_Pages
+  - community/Community_54
 ---
 
 # page.tsx
 
 ## Connections
-- [[fetchStockInicial()]] - `contains` [EXTRACTED]
-- [[handleSubmit()]] - `contains` [EXTRACTED]
+- [[cargarAnalisis()]] - `contains` [EXTRACTED]
+- [[crearRutaDesdeSugerencia()]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Clientes_&_Produccion_Pages
+#graphify/code #graphify/EXTRACTED #community/Community_54

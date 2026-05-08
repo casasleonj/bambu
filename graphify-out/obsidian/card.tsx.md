@@ -1,14 +1,14 @@
 ---
 source_file: "src/components/ui/card.tsx"
 type: "code"
-community: "UI Card"
+community: "Community 108"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/UI_Card
+  - community/Community_108
 ---
 
 # card.tsx
 
-#graphify/code #graphify/EXTRACTED #community/UI_Card
+#graphify/code #graphify/EXTRACTED #community/Community_108

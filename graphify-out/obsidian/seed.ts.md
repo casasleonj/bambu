@@ -1,17 +1,18 @@
 ---
-source_file: "prisma/seed.ts"
+source_file: "/home/cristof/Documents/bambu_demo_multimodelo/prisma/seed.ts"
 type: "code"
-community: "Prisma Seed Scripts"
+community: "Community 55"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Prisma_Seed_Scripts
+  - community/Community_55
 ---
 
 # seed.ts
 
 ## Connections
-- [[main()]] - `contains` [EXTRACTED]
+- [[generateRandomPassword()]] - `contains` [EXTRACTED]
+- [[main()_2]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Prisma_Seed_Scripts
+#graphify/code #graphify/EXTRACTED #community/Community_55

@@ -1,12 +1,12 @@
 ---
 source_file: "src/components/cliente-form.tsx"
 type: "code"
-community: "Cliente Form"
+community: "Community 81"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Cliente_Form
+  - community/Community_81
 ---
 
 # cliente-form.tsx
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[ClienteForm()]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Cliente_Form
+#graphify/code #graphify/EXTRACTED #community/Community_81

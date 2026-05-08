@@ -1,19 +1,22 @@
 ---
-source_file: "src/lib/db/offline.ts"
+source_file: "/home/cristof/Documents/bambu_demo_multimodelo/src/lib/db/offline.ts"
 type: "code"
-community: "Offline Sync Implementation"
+community: "Community 13"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Offline_Sync_Implementation
+  - community/Community_13
 ---
 
 # offline.ts
 
 ## Connections
 - [[BambuOfflineDB]] - `contains` [EXTRACTED]
-- [[queuePedido()]] - `contains` [EXTRACTED]
-- [[syncPedidos()]] - `contains` [EXTRACTED]
+- [[getConflicts()]] - `contains` [EXTRACTED]
+- [[processSyncQueue()]] - `contains` [EXTRACTED]
+- [[queueClienteOffline()]] - `contains` [EXTRACTED]
+- [[queuePedidoOffline()]] - `contains` [EXTRACTED]
+- [[resolveConflict()]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Offline_Sync_Implementation
+#graphify/code #graphify/EXTRACTED #community/Community_13

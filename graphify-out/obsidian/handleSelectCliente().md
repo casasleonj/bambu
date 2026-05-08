@@ -1,17 +1,17 @@
 ---
-source_file: "src/components/pedido-form.tsx"
+source_file: "/home/cristof/Documents/bambu_demo_multimodelo/src/components/venta-rapida-form.tsx"
 type: "code"
-community: "PedidoForm Component"
-location: "L117"
+community: "Community 12"
+location: "L190"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/PedidoForm_Component
+  - community/Community_12
 ---
 
 # handleSelectCliente()
 
 ## Connections
-- [[pedido-form.tsx]] - `contains` [EXTRACTED]
+- [[venta-rapida-form.tsx]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/PedidoForm_Component
+#graphify/code #graphify/EXTRACTED #community/Community_12

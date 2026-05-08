@@ -1,14 +1,14 @@
 ---
 source_file: "src/components/ui/dialog.tsx"
 type: "code"
-community: "UI Dialog"
+community: "Community 111"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/UI_Dialog
+  - community/Community_111
 ---
 
 # dialog.tsx
 
-#graphify/code #graphify/EXTRACTED #community/UI_Dialog
+#graphify/code #graphify/EXTRACTED #community/Community_111

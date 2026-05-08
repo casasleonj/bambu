@@ -1,17 +1,17 @@
 ---
 source_file: "src/app/offline/page.tsx"
 type: "code"
-community: "Offline Page"
+community: "Community 77"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Offline_Page
+  - community/Community_77
 ---
 
 # OfflinePage()
 
 ## Connections
-- [[page.tsx_12]] - `contains` [EXTRACTED]
+- [[page.tsx_23]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Offline_Page
+#graphify/code #graphify/EXTRACTED #community/Community_77

@@ -1,17 +1,18 @@
 ---
-source_file: "src/lib/utils.ts"
+source_file: "src/app/(app)/dashboard/page.tsx"
 type: "code"
-community: "Utils Library"
-location: "L8"
+community: "Community 16"
+location: "L269"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Utils_Library
+  - community/Community_16
 ---
 
 # formatCurrency()
 
 ## Connections
-- [[utils.ts]] - `contains` [EXTRACTED]
+- [[page.tsx_8]] - `contains` [EXTRACTED]
+- [[page.tsx_26]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Utils_Library
+#graphify/code #graphify/EXTRACTED #community/Community_16

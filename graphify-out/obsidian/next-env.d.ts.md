@@ -1,14 +1,17 @@
 ---
 source_file: "next-env.d.ts"
 type: "code"
-community: "Next Env Types"
+community: "Community 92"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Next_Env_Types
+  - community/Community_92
 ---
 
 # next-env.d.ts
 
-#graphify/code #graphify/EXTRACTED #community/Next_Env_Types
+## Connections
+- [[unnamed_1]] - `imports_from` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Community_92

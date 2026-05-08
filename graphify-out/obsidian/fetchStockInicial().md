@@ -1,17 +1,17 @@
 ---
-source_file: "src/app/(app)/produccion/page.tsx"
+source_file: "/home/cristof/Documents/bambu_demo_multimodelo/src/app/(app)/produccion/page.tsx"
 type: "code"
-community: "Clientes & Produccion Pages"
-location: "L50"
+community: "Community 29"
+location: "L67"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Clientes_&_Produccion_Pages
+  - community/Community_29
 ---
 
 # fetchStockInicial()
 
 ## Connections
-- [[page.tsx_11]] - `contains` [EXTRACTED]
+- [[page.tsx_19]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Clientes_&_Produccion_Pages
+#graphify/code #graphify/EXTRACTED #community/Community_29

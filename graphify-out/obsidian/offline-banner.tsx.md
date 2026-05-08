@@ -1,12 +1,12 @@
 ---
 source_file: "src/components/offline-banner.tsx"
 type: "code"
-community: "Offline Banner"
+community: "Community 37"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Offline_Banner
+  - community/Community_37
 ---
 
 # offline-banner.tsx
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[OfflineBanner()]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Offline_Banner
+#graphify/code #graphify/EXTRACTED #community/Community_37

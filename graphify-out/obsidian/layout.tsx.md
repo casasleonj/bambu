@@ -1,12 +1,12 @@
 ---
-source_file: "src/app/layout.tsx"
+source_file: "/home/cristof/Documents/bambu_demo_multimodelo/src/app/layout.tsx"
 type: "code"
-community: "Root Layout"
+community: "Community 4"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/Root_Layout
+  - community/Community_4
 ---
 
 # layout.tsx
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[RootLayout()]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/Root_Layout
+#graphify/code #graphify/EXTRACTED #community/Community_4
