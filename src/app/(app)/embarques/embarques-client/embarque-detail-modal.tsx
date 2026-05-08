@@ -78,8 +78,6 @@ export function EmbarqueDetailModal({
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          obs: embarque!.obs,
-          estado: embarque!.estado,
           pedidoIds: selectedPedidoIds,
         }),
       })

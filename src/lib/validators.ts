@@ -165,16 +165,16 @@ export const EmbarqueCreateSchema = z.object({
 });
 
 export const EmbarqueUpdateSchema = z.object({
-  estado: z.enum(['ABIERTO', 'CERRADO', 'CANCELADO']).optional(),
-  horaLlegada: z.string().optional(),
-  obs: z.string().max(500).optional(),
-  pedidoIds: z.array(z.string().min(1)).max(100).optional(),
-  pacasAgua: z.coerce.number().int().min(0).optional(),
-  pacasHielo: z.coerce.number().int().min(0).optional(),
-  devueltasAgua: z.coerce.number().int().min(0).optional(),
-  devueltasHielo: z.coerce.number().int().min(0).optional(),
-  rotasAgua: z.coerce.number().int().min(0).optional(),
-  rotasHielo: z.coerce.number().int().min(0).optional(),
+  estado: z.enum(['ABIERTO', 'CERRADO', 'CANCELADO']).nullable().optional(),
+  horaLlegada: z.string().nullable().optional(),
+  obs: z.string().max(500).nullable().optional(),
+  pedidoIds: z.array(z.string().min(1)).max(100).nullable().optional(),
+  pacasAgua: z.coerce.number().int().min(0).nullable().optional(),
+  pacasHielo: z.coerce.number().int().min(0).nullable().optional(),
+  devueltasAgua: z.coerce.number().int().min(0).nullable().optional(),
+  devueltasHielo: z.coerce.number().int().min(0).nullable().optional(),
+  rotasAgua: z.coerce.number().int().min(0).nullable().optional(),
+  rotasHielo: z.coerce.number().int().min(0).nullable().optional(),
 });
 
 export const FacturaCreateSchema = z.object({
