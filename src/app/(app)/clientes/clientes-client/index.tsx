@@ -204,8 +204,8 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
           toast.success('Cliente actualizado')
         } else {
           const data = await res.json().catch(() => ({}))
-          setFormError(data.error?.formErrors?.[0] || data.error || 'Error al guardar cliente')
-          toast.error(data.error?.formErrors?.[0] || data.error || 'Error al guardar cliente')
+          setFormError(data.error?.formErrors?.[0] || data.error?.message || 'Error al guardar cliente')
+          toast.error(data.error?.formErrors?.[0] || data.error?.message || 'Error al guardar cliente')
         }
       } else {
         const res = await fetch('/api/clientes', {
@@ -219,8 +219,8 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
           toast.success('Cliente creado exitosamente')
         } else {
           const data = await res.json().catch(() => ({}))
-          setFormError(data.error?.formErrors?.[0] || data.error || 'Error al guardar cliente')
-          toast.error(data.error?.formErrors?.[0] || data.error || 'Error al guardar cliente')
+          setFormError(data.error?.formErrors?.[0] || data.error?.message || 'Error al guardar cliente')
+          toast.error(data.error?.formErrors?.[0] || data.error?.message || 'Error al guardar cliente')
         }
       }
     } catch (error) {

@@ -43,7 +43,7 @@ export function EmbarqueCreateModal({
         onCreated()
         toast.success('Embarque creado')
       } else {
-        toast.error(data.error || 'Error creando embarque')
+        toast.error(data.error?.message || 'Error creando embarque')
       }
     } catch {
       toast.error('Error creando embarque')

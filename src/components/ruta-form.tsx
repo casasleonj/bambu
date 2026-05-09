@@ -72,7 +72,7 @@ export default function RutaForm({ initialData, rutaId, onSuccess }: RutaFormPro
           router.push('/rutas')
         }
       } else {
-        toast.error(data.error || 'Error al guardar')
+        toast.error(data.error?.message || 'Error al guardar')
       }
     } catch (error) {
       console.error('Error:', error)

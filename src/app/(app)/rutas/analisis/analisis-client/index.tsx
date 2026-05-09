@@ -24,7 +24,7 @@ export default function RutasAnalisisClient() {
         setSugerencias(data.sugerencias || [])
         setBarriosSinRuta(data.barriosSinRuta || [])
       } else {
-        toast.error(data.error || 'Error al cargar analisis')
+        toast.error(data.error?.message || 'Error al cargar analisis')
       }
     } catch {
       toast.error('Error de conexión')
@@ -47,7 +47,7 @@ export default function RutasAnalisisClient() {
         toast.success(`Ruta ${nombre} creada`)
         router.push('/rutas')
       } else {
-        toast.error(data.error || 'Error al crear ruta')
+        toast.error(data.error?.message || 'Error al crear ruta')
       }
     } catch {
       toast.error('Error de conexión')

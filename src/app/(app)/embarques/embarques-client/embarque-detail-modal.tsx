@@ -92,7 +92,7 @@ export function EmbarqueDetailModal({
         onChanged()
         toast.success('Pedidos asignados')
       } else {
-        toast.error(data.error || 'Error asignando pedidos')
+        toast.error(data.error?.message || 'Error asignando pedidos')
       }
     } catch {
       toast.error('Error asignando pedidos')
@@ -134,7 +134,7 @@ export function EmbarqueDetailModal({
         onClose()
         onChanged()
       } else {
-        toast.error(data.error || 'Error')
+        toast.error(data.error?.message || 'Error')
       }
     } catch {
       toast.error('Error al cancelar')

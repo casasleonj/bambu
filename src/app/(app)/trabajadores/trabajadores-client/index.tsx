@@ -87,7 +87,7 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
         fetchTrabajadores()
         toast.success('Trabajador desactivado')
       } else {
-        toast.error(data.error || 'Error al desactivar trabajador')
+        toast.error(data.error?.message || 'Error al desactivar trabajador')
       }
     } catch {
       toast.error('Error de conexión al desactivar')

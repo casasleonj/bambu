@@ -74,7 +74,7 @@ export default function NominaPage() {
         fetchData()
         toast.success('Nómina calculada')
       } else {
-        toast.error(data.error || 'Error calculando nómina')
+        toast.error(data.error?.message || 'Error calculando nómina')
       }
     } catch (e) {
       console.error(e)

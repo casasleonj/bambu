@@ -47,7 +47,7 @@ export default function RutasPage() {
         toast.success('Ruta eliminada')
         fetchRutas()
       } else {
-        toast.error(data.error || 'Error al eliminar')
+        toast.error(data.error?.message || 'Error al eliminar')
       }
     } catch (error) {
       console.error('Error:', error)

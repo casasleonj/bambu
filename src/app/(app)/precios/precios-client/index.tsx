@@ -46,7 +46,7 @@ export default function PreciosClient({ productos }: PreciosClientProps) {
         cancelEdit()
       } else {
         const data = await res.json().catch(() => ({}))
-        toast.error(data.error || 'Error actualizando precio')
+          toast.error(data.error?.message || 'Error actualizando precio')
       }
     } catch {
       toast.error('Error de conexión')

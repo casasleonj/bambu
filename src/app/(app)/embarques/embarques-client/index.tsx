@@ -95,7 +95,7 @@ export default function EmbarquesClient() {
         toast.success(data.message)
         fetchData()
       } else {
-        toast.error(data.error || 'Error')
+        toast.error(data.error?.message || 'Error')
       }
     } catch {
       toast.error('Error al generar embarques')

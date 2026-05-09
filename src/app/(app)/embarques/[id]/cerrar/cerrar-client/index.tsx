@@ -223,7 +223,7 @@ export default function CerrarEmbarqueClient() {
         toast.success('Embarque cerrado correctamente')
         router.push('/embarques')
       } else {
-        toast.error(data.error || 'Error al cerrar')
+        toast.error(data.error?.message || 'Error al cerrar')
       }
     } catch {
       toast.error('Error de conexión')

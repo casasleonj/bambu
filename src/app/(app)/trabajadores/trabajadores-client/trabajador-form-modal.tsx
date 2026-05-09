@@ -38,7 +38,7 @@ export function TrabajadorFormModal({
           onClose()
         } else {
           const data = await res.json().catch(() => ({}))
-          setFormError(data.error?.formErrors?.[0] || data.error || 'Error al actualizar trabajador')
+          setFormError(data.error?.formErrors?.[0] || data.error?.message || 'Error al actualizar trabajador')
         }
       } else {
         const res = await fetch('/api/trabajadores', {
@@ -51,7 +51,7 @@ export function TrabajadorFormModal({
           onClose()
         } else {
           const data = await res.json().catch(() => ({}))
-          setFormError(data.error?.formErrors?.[0] || data.error || 'Error al crear trabajador')
+          setFormError(data.error?.formErrors?.[0] || data.error?.message || 'Error al crear trabajador')
         }
       }
     } catch {

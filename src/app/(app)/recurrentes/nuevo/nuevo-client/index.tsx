@@ -55,7 +55,7 @@ export default function NuevoRecurrenteClient() {
       })
       const data = await res.json()
       if (data.success) { toast.success('Recurrente creado'); router.push('/recurrentes') }
-      else toast.error(data.error || 'Error al crear')
+      else toast.error(data.error?.message || 'Error al crear')
     } catch { toast.error('Error de conexión') }
     finally { setSubmitting(false) }
   }
