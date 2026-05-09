@@ -62,6 +62,10 @@ export async function POST(request: NextRequest) {
         },
       })
 
+      if (repartidores.length === 0) {
+        throw new Error('NO_REPARTIDORES')
+      }
+
       // 4. Create embarques for each group
       const embarquesCreados = []
 
@@ -129,6 +133,9 @@ export async function POST(request: NextRequest) {
 
     return apiSuccess(result)
   } catch (error) {
+    if (error instanceof Error && error.message === 'NO_REPARTIDORES') {
+      return apiError('No hay repartidores activos para generar embarques', 400)
+    }
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error auto-generating embarques:')
     return apiError('Error al generar embarques automáticos', 500)
   }

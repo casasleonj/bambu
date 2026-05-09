@@ -5,7 +5,7 @@ import { requireAuth, requireRole } from '@/lib/auth-check'
 import { ROLES } from '@/lib/constants'
 import { z } from 'zod'
 import { logAudit } from '@/lib/audit'
-import { calcularPacasEmbarque } from '@/lib/embarque-capacidad'
+import { calcularPesoEmbarque } from '@/lib/embarque-capacidad'
 import { logger } from '@/lib/logger'
 import { apiSuccess, apiError } from '@/lib/api-response'
 
@@ -54,16 +54,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         throw new Error('EMBARQUE_NOT_OPEN')
       }
 
-      const pacasActuales = calcularPacasEmbarque(embarque.pedidos)
-      const pacasPedido =
-        (current.cPacaAguaPed || 0) +
-        (current.cPacaHieloPed || 0) +
-        (current.cBotellonFabPed || 0) +
-        (current.cBotellonDomPed || 0) +
-        (current.cBolsaAguaPed || 0) +
-        (current.cBolsaHieloPed || 0)
+      const pesoActual = calcularPesoEmbarque(embarque.pedidos)
 
-      if (pacasActuales + pacasPedido > 70) {
+      const embarqueData = await tx.trabajador.findUnique({
+        where: { id: embarque.trabajadorId },
+        select: { capacidadKg: true },
+      })
+
+      const pesoPedido =
+        (current.cPacaAguaPed || 0) * 10.0 +
+        (current.cPacaHieloPed || 0) * 11.0 +
+        (current.cBotellonFabPed || 0) * 20.0 +
+        (current.cBotellonDomPed || 0) * 20.0 +
+        (current.cBolsaAguaPed || 0) * 0.25 +
+        (current.cBolsaHieloPed || 0) * 0.55
+
+      const capacidadKg = embarqueData?.capacidadKg || 500
+      if (pesoActual + pesoPedido > capacidadKg) {
         throw new Error('EMBARQUE_CAPACIDAD_EXCEDIDA')
       }
 
@@ -93,7 +100,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         PEDIDO_YA_ASIGNADO: ['El pedido ya está asignado a un embarque', 400],
         EMBARQUE_NOT_FOUND: ['Embarque no encontrado', 404],
         EMBARQUE_NOT_OPEN: ['El embarque no está abierto', 400],
-        EMBARQUE_CAPACIDAD_EXCEDIDA: ['El embarque no tiene capacidad suficiente (máx 70 pacas)', 400],
+        EMBARQUE_CAPACIDAD_EXCEDIDA: ['El embarque excede la capacidad de carga', 400],
       }
       const [msg, status] = messages[error.message] || ['Error enviando pedido', 500]
       return apiError(msg, status)

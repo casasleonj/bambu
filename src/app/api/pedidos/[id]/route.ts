@@ -98,6 +98,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         updateData.saldo = 0
       }
 
+      // Al desasignar de embarque (sin cambiar estado explicitamente), volver a PENDIENTE
+      if (parsed.data.embarqueId === null && parsed.data.estado === undefined) {
+        updateData.estado = 'PENDIENTE'
+      }
+
       return tx.pedido.update({
         where: { id },
         data: updateData,

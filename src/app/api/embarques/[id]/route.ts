@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole, requireOwnership } from '@/lib/auth-check'
 import { EmbarqueUpdateSchema } from '@/lib/validators'
 import { logAudit } from '@/lib/audit'
+import { withAdvisoryLock } from '@/lib/locks'
 import { ROLES } from '@/lib/constants'
 import { logger } from '@/lib/logger'
 import { apiSuccess, apiError } from '@/lib/api-response'
@@ -109,7 +110,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
   const { id } = await params
 
   try {
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await withAdvisoryLock('EMBARQUE', async (tx: any) => {
       const embarque = await tx.embarque.findUnique({
         where: { id },
         include: { pedidos: true },
