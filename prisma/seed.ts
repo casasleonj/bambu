@@ -24,12 +24,14 @@ async function main() {
     admin: 'admin123',
     asistente: 'asist123',
     contador: 'cont123',
+    repartidor: 'rep123',
   }
 
   const users = [
     { username: 'admin', password: isDevOrTest ? defaultPasswords.admin : generateRandomPassword(), rol: RolUsuario.ADMIN },
     { username: 'asistente', password: isDevOrTest ? defaultPasswords.asistente : generateRandomPassword(), rol: RolUsuario.ASISTENTE },
     { username: 'contador', password: isDevOrTest ? defaultPasswords.contador : generateRandomPassword(), rol: RolUsuario.CONTADOR },
+    { username: 'repartidor', password: isDevOrTest ? defaultPasswords.repartidor : generateRandomPassword(), rol: RolUsuario.REPARTIDOR },
   ]
 
   for (const user of users) {
@@ -124,9 +126,10 @@ async function main() {
   console.log('✅ Volume prices seeded')
 
   // Trabajador repartidor para embarques
+  const repUser = await prisma.user.findUnique({ where: { username: 'repartidor' } })
   await prisma.trabajador.upsert({
     where: { id: 'TRABAJADOR_TEST' },
-    update: {},
+    update: { userId: repUser?.id || null },
     create: {
       id: 'TRABAJADOR_TEST',
       nombre: 'Repartidor Test',
@@ -134,6 +137,7 @@ async function main() {
       tipoPago: 'COMISION',
       telefono: '3111111111',
       activo: true,
+      userId: repUser?.id || null,
     },
   })
   console.log('✅ Trabajador repartidor seeded')

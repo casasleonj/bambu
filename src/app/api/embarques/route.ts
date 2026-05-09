@@ -16,14 +16,29 @@ export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
   const pagination = getPaginationParams(request.nextUrl.searchParams)
+  const session = authResult as { user?: { id?: string; role?: string } }
   try {
     const desde = request.nextUrl.searchParams.get('desde')
     const hasta = request.nextUrl.searchParams.get('hasta')
     const all = request.nextUrl.searchParams.get('all')
 
     let where: Record<string, unknown> = {}
+
+    // REPARTIDOR: only see their own embarques
+    if (session.user?.role === 'REPARTIDOR') {
+      const trabajador = await prisma.trabajador.findFirst({
+        where: { userId: session.user.id },
+        select: { id: true },
+      })
+      if (trabajador) {
+        where = { trabajadorId: trabajador.id }
+      } else {
+        return apiSuccess({ embarques: [], total: 0 })
+      }
+    }
+
     if (all === 'true') {
-      where = { estado: { not: EstadoEmbarque.CANCELADO } }
+      if (session.user?.role !== 'REPARTIDOR') where = { estado: { not: EstadoEmbarque.CANCELADO } }
     } else if (desde && hasta) {
       const { startDate, endDate } = getDateRange(desde, hasta)
       where = { fecha: { gte: startDate, lt: endDate }, estado: { not: EstadoEmbarque.CANCELADO } }

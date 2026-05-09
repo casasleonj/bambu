@@ -48,20 +48,21 @@ export async function requireOwnership(
   if (PRIVILEGED_ROLES.includes(user.role as Role)) return true;
 
   if (entity === 'embarque') {
+    // Find the trabajador linked to this user, then check if it matches the embarque's trabajador
     const embarque = await prisma.embarque.findUnique({
       where: { id: resourceId },
-      select: { trabajadorId: true },
+      select: { trabajador: { select: { userId: true } } },
     });
-    return embarque?.trabajadorId === user.id;
+    return embarque?.trabajador?.userId === user.id;
   }
 
   if (entity === 'pedido') {
     // A repartidor can see a pedido if it's assigned to one of their embarques
     const pedido = await prisma.pedido.findUnique({
       where: { id: resourceId },
-      select: { embarque: { select: { trabajadorId: true } } },
+      select: { embarque: { select: { trabajador: { select: { userId: true } } } } },
     });
-    return pedido?.embarque?.trabajadorId === user.id;
+    return pedido?.embarque?.trabajador?.userId === user.id;
   }
 
   return false;
