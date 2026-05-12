@@ -9,7 +9,14 @@ export default async function ClientesPage() {
       _count: { select: { pedidos: true } },
       pedidos: {
         where: { saldo: { gt: 0 } },
-        select: { saldo: true },
+        include: {
+          factura: {
+            include: {
+              abonos: true,
+            },
+          },
+          pagos: true,
+        },
       },
     },
   })

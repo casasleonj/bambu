@@ -9,6 +9,10 @@ import type { Cliente, Pedido, Factura, Canal, ClientesClientProps, FormData } f
 import { PRODUCTOS_PRECIO, PRODUCTO_NOMBRES } from './types'
 import { ClienteTable } from './cliente-table'
 import { ClienteForm } from './cliente-form'
+import { calcularAlertasCliente } from '@/app/(app)/pedidos/pedidos-client/alertas-utils'
+import { GuiaAlertaModal } from '@/components/guia-alerta-modal'
+import type { AlertaTipo } from '@/lib/alertas-config'
+import { getBadgeColor, ignorarAlerta } from '@/lib/alertas-config'
 
 export default function ClientesClient({ initialClientes }: ClientesClientProps) {
   const [clientes, setClientes] = useState<Cliente[]>(initialClientes)
@@ -41,6 +45,9 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
   const [expandedFactura, setExpandedFactura] = useState<string | null>(null)
   const [pedidoDetail, setPedidoDetail] = useState<Pedido | null>(null)
   const [_facturaDetail, setFacturaDetail] = useState<Factura | null>(null)
+
+  const [guiaTipo, setGuiaTipo] = useState<AlertaTipo | null>(null)
+  const [guiaOpen, setGuiaOpen] = useState(false)
 
   const [canalActivo, setCanalActivo] = useState<Canal>('DOMICILIO')
   const [preciosEspecialesMap, setPreciosEspecialesMap] = useState<Record<Canal, Record<string, number | undefined>>>({
@@ -413,8 +420,37 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
               </div>
             )}
 
+            {/* Alertas del cliente */}
+            {(() => {
+              const alertas = calcularAlertasCliente(selectedCliente, selectedCliente.pedidos || [])
+              const altas = alertas.filter((a) => a.severidad === 'ALTA')
+              if (alertas.length === 0) return null
+              return (
+                <div className={`px-4 py-3 border-b ${altas.length > 0 ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'}`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className={`text-sm font-bold ${altas.length > 0 ? 'text-red-700' : 'text-amber-700'}`}>
+                      🚨 {alertas.length} alerta{alertas.length !== 1 ? 's' : ''} activa{alertas.length !== 1 ? 's' : ''} {altas.length > 0 && `(${altas.length} crítica${altas.length !== 1 ? 's' : ''})`}
+                    </span>
+                    <button
+                      onClick={() => setActiveTab('alertas')}
+                      className={`text-xs font-medium underline ${altas.length > 0 ? 'text-red-600' : 'text-amber-600'}`}
+                    >
+                      Ver todas →
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {altas.slice(0, 3).map((a, i) => (
+                      <span key={i} className="inline-flex items-center gap-1 px-2 py-1 rounded bg-red-100 text-red-700 text-xs font-medium border border-red-200">
+                        🔴 {a.detalle}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )
+            })()}
+
             <div className="flex border-b">
-              {['info', 'pedidos', 'facturas', 'cuentas'].map((tab) => (
+              {['info', 'pedidos', 'facturas', 'cuentas', 'alertas'].map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
@@ -424,12 +460,20 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
                       : 'text-gray-500 hover:text-gray-700'
                   }`}
                 >
-                  {tab === 'cuentas' ? 'Cuentas' : tab}
+                  {tab === 'cuentas' ? 'Cuentas' : tab === 'alertas' ? 'Alertas' : tab}
                   {tab === 'cuentas' && selectedCliente.pedidos?.some((p) => Number(p.saldo) > 0) && (
                     <span className="ml-1.5 px-1.5 py-0.5 bg-red-100 text-red-700 text-[10px] rounded-full">
                       {selectedCliente.pedidos.filter((p) => Number(p.saldo) > 0).length}
                     </span>
                   )}
+                  {tab === 'alertas' && (() => {
+                    const count = calcularAlertasCliente(selectedCliente, selectedCliente.pedidos || []).length
+                    return count > 0 ? (
+                      <span className="ml-1.5 px-1.5 py-0.5 bg-red-100 text-red-700 text-[10px] rounded-full">
+                        {count}
+                      </span>
+                    ) : null
+                  })()}
                 </button>
               ))}
             </div>
@@ -788,6 +832,17 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
                                       ))}
                                     </div>
                                   )}
+                                  {pedidoDetail.factura?.abonos && pedidoDetail.factura.abonos.length > 0 && (
+                                    <div className="border-t mt-2 pt-2">
+                                      <p className="font-semibold mb-1">Abonos (contable):</p>
+                                      {pedidoDetail.factura.abonos.map((abono, i) => (
+                                        <div key={i} className="flex justify-between text-gray-600">
+                                          <span>{abono.metodoPago} - {formatDate(abono.fecha)}</span>
+                                          <span>{formatCurrency(abono.monto)}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
                               )}
                             </div>
@@ -795,6 +850,59 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
                         </div>
                       </div>
                     )
+                  })()}
+                </div>
+              )}
+
+              {activeTab === 'alertas' && (
+                <div className="space-y-3">
+                  {(() => {
+                    const alertas = calcularAlertasCliente(selectedCliente, selectedCliente.pedidos || [])
+                    if (alertas.length === 0) {
+                      return (
+                        <div className="text-center py-8">
+                          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          </div>
+                          <p className="text-gray-500 font-medium">Sin alertas activas</p>
+                          <p className="text-sm text-gray-400 mt-1">Este cliente no tiene comportamientos inusuales detectados.</p>
+                        </div>
+                      )
+                    }
+                    return alertas.map((alerta, idx) => (
+                      <div key={idx} className="bg-white border rounded-lg p-4 hover:shadow-sm transition">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border uppercase ${getBadgeColor(alerta.severidad)}`}>
+                                {alerta.severidad}
+                              </span>
+                              <span className="text-sm font-semibold text-gray-800">{alerta.tipo.replace(/_/g, ' ')}</span>
+                            </div>
+                            <p className="text-sm text-gray-600">{alerta.detalle}</p>
+                            <p className="text-xs text-gray-400 mt-1">{new Date(alerta.fecha).toLocaleDateString('es-CO')}</p>
+                          </div>
+                          <div className="flex flex-col gap-2 shrink-0">
+                            <button
+                              onClick={() => { setGuiaTipo(alerta.tipo); setGuiaOpen(true) }}
+                              className="text-xs text-blue-600 hover:bg-blue-50 px-2 py-1 rounded transition"
+                            >
+                              ℹ️ Ver guía
+                            </button>
+                            {alerta.severidad !== 'ALTA' && (
+                              <button
+                                onClick={() => { ignorarAlerta(selectedCliente.id, alerta.tipo); toast.success('Alerta ignorada 24h'); setActiveTab('info'); setActiveTab('alertas') }}
+                                className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded transition"
+                              >
+                                Ignorar 24h
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))
                   })()}
                 </div>
               )}
@@ -817,6 +925,12 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
           </>
         )}
       </Modal>
+      <GuiaAlertaModal
+        tipo={guiaTipo}
+        open={guiaOpen}
+        onClose={() => setGuiaOpen(false)}
+        contexto={selectedCliente ? { clienteId: selectedCliente.id } : undefined}
+      />
       {modal}
     </div>
   )
