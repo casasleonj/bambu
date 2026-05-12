@@ -106,6 +106,7 @@ export interface Abono {
   numero: string
   facturaId: string
   clienteId: string
+  pedidoId?: string
   monto: number
   metodoPago: string
   fecha: string

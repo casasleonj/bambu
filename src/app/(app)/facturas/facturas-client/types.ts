@@ -18,4 +18,5 @@ export interface Abono {
   monto: number
   metodoPago: string
   fecha: string
+  pedidoId?: string
 }

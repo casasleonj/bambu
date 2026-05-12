@@ -60,7 +60,7 @@ export interface Factura {
   montoPagado: number
   estado: string
   fecha: string
-  abonos?: Array<{ monto: number; metodoPago: string; fecha: string }>
+  abonos?: Array<{ monto: number; metodoPago: string; fecha: string; pedidoId?: string }>
 }
 
 export type Canal = 'DOMICILIO' | 'PUNTO'
