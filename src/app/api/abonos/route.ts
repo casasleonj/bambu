@@ -14,10 +14,15 @@ export async function GET(request: NextRequest) {
   if (authResult instanceof Response) return authResult
   const { searchParams } = new URL(request.url)
   const facturaId = searchParams.get('facturaId')
+  const clienteId = searchParams.get('clienteId')
 
   try {
+    const where: Record<string, unknown> = {}
+    if (facturaId) where.facturaId = facturaId
+    if (clienteId) where.clienteId = clienteId
+
     const abonos = await prisma.abono.findMany({
-      where: facturaId ? { facturaId } : undefined,
+      where: Object.keys(where).length > 0 ? where : undefined,
       orderBy: { fecha: 'desc' },
       include: {
         cliente: true,
@@ -42,7 +47,7 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) {
       return apiError(formatZodError(parsed.error), 400)
     }
-    const { facturaId, clienteId, monto, metodoPago } = parsed.data
+    const { facturaId, clienteId, pedidoId, monto, metodoPago } = parsed.data
 
     const result = await withAdvisoryLock('ABONO', async (tx) => {
       // Verificar que la factura existe
@@ -63,6 +68,7 @@ export async function POST(request: NextRequest) {
           numero: `ABO-${nextNum.toString().padStart(5, '0')}`,
           facturaId,
           clienteId,
+          pedidoId,
           monto,
           metodoPago,
         },
