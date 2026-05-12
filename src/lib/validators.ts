@@ -1,16 +1,32 @@
 import { z } from "zod";
 
+// ====================
+// NUEVOS ENUMS
+// ====================
+
+export const OrigenPedidoSchema = z.enum(['PEDIDO', 'VENTA_RAPIDA', 'VENTA_LIBRE'])
+export const EstadoEntregaSchema = z.enum(['PENDIENTE', 'EN_RUTA', 'ENTREGADO', 'NO_ENTREGADO', 'CANCELADO', 'ANULADO'])
+export const EstadoPagoSchema = z.enum(['PENDIENTE', 'PARCIAL', 'PAGADO', 'ANTICIPADO', 'VENCIDO'])
+
+// ====================
+// PEDIDO ITEM (nuevo)
+// ====================
+
+export const PedidoItemSchema = z.object({
+  producto: z.enum(['PACA_AGUA', 'PACA_HIELO', 'BOTELLON', 'BOLSA_AGUA', 'BOLSA_HIELO']),
+  cantidad: z.coerce.number().int().min(0),
+  precioManual: z.number().min(0).optional(),
+})
+
+// ====================
+// CREAR PEDIDO (actualizado)
+// ====================
+
 export const PedidoCreateSchema = z.object({
   clienteId: z.string().min(1),
   canal: z.enum(['PUNTO', 'DOMICILIO']).optional().default('DOMICILIO'),
-  productos: z.object({
-    pacaAgua: z.coerce.number().int().min(0).optional(),
-    pacaHielo: z.coerce.number().int().min(0).optional(),
-    botellonFab: z.coerce.number().int().min(0).optional(),
-    botellonDom: z.coerce.number().int().min(0).optional(),
-    bolsaAgua: z.coerce.number().int().min(0).optional(),
-    bolsaHielo: z.coerce.number().int().min(0).optional(),
-  }).optional(),
+  origen: OrigenPedidoSchema.optional().default('PEDIDO'),
+  items: z.array(PedidoItemSchema).min(1, 'Agrega al menos un producto'),
   preciosManuales: z.record(z.string(), z.number().min(0, 'Precio manual no puede ser negativo')).optional(),
   pagos: z.array(
     z.object({
@@ -20,8 +36,16 @@ export const PedidoCreateSchema = z.object({
   ).optional(),
   obs: z.string().max(500).optional(),
   fechaEntrega: z.string().optional(),
+  // LEGACY (mantener durante transición)
   ventaRapida: z.boolean().optional(),
   tipo: z.enum(['ENVIO', 'PUNTO']).optional(),
+  productos: z.object({
+    pacaAgua: z.coerce.number().int().min(0).optional(),
+    pacaHielo: z.coerce.number().int().min(0).optional(),
+    botellon: z.coerce.number().int().min(0).optional(),
+    bolsaAgua: z.coerce.number().int().min(0).optional(),
+    bolsaHielo: z.coerce.number().int().min(0).optional(),
+  }).optional(),
   clienteNuevo: z.object({
     nombre: z.string().min(1),
     telefono: z.string().min(1),
@@ -30,15 +54,63 @@ export const PedidoCreateSchema = z.object({
   }).optional(),
 });
 
-export const ClienteQuickCreateSchema = z.object({
-  nombre: z.string().min(2, 'Nombre requerido'),
-  telefono: z.string().min(7, 'Celular requerido'),
-  direccion: z.string().min(3, 'Dirección requerida'),
-  barrio: z.string().optional(),
+// ====================
+// ENTREGA (nuevo)
+// ====================
+
+export const EntregaSchema = z.object({
+  pedidoId: z.string().min(1),
+  tipo: z.enum(['COMPLETO', 'PARCIAL', 'NO_ENTREGADO']),
+  itemsEntregados: z.array(z.object({
+    producto: z.string(),
+    cantidad: z.number().int().min(0),
+  })).optional(),
+  pagos: z.array(z.object({
+    metodo: z.string(),
+    monto: z.number().min(0),
+  })).optional(),
+  nuevoEmbarqueId: z.string().optional(),
+  fotoEntrega: z.string().optional(),
+  gpsLat: z.number().optional(),
+  gpsLng: z.number().optional(),
+  codigoVisita: z.string().optional(),
 })
 
+// ====================
+// VENTA LIBRE (nuevo)
+// ====================
+
+export const VentaLibreSchema = z.object({
+  clienteId: z.string().min(1),
+  items: z.array(PedidoItemSchema).min(1),
+  pagos: z.array(z.object({
+    metodo: z.enum(['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA', 'BONO']),
+    monto: z.coerce.number().min(0),
+  })).optional(),
+  embarqueId: z.string().min(1),
+  obs: z.string().optional(),
+  fotoEntrega: z.string().min(1, 'Foto de entrega obligatoria'),
+  gpsLat: z.number(),
+  gpsLng: z.number(),
+  offlineId: z.string(),
+})
+
+// ====================
+// ANULAR (nuevo)
+// ====================
+
+export const AnularSchema = z.object({
+  motivo: z.enum(['DEVOLUCION', 'ERROR', 'FRAUDE', 'OTRO']),
+  devolverStock: z.boolean().default(false),
+})
+
+// ====================
+// ACTUALIZAR PEDIDO (actualizado)
+// ====================
+
 export const PedidoUpdateSchema = z.object({
-  estado: z.enum(['PENDIENTE', 'EN_RUTA', 'ENTREGADO', 'CANCELADO', 'ANULADO']).optional(),
+  // LEGACY
+  estado: z.enum(['PENDIENTE', 'EN_RUTA', 'ENTREGADO', 'NO_ENTREGADO', 'CANCELADO', 'ANULADO']).optional(),
   embarqueId: z.string().optional().nullable(),
   cPacaAguaEnt: z.coerce.number().int().min(0).optional(),
   cPacaHieloEnt: z.coerce.number().int().min(0).optional(),
@@ -46,19 +118,38 @@ export const PedidoUpdateSchema = z.object({
   cBotellonDomEnt: z.coerce.number().int().min(0).optional(),
   cBolsaAguaEnt: z.coerce.number().int().min(0).optional(),
   cBolsaHieloEnt: z.coerce.number().int().min(0).optional(),
-});
+  // NUEVOS
+  estadoEntrega: EstadoEntregaSchema.optional(),
+  estadoPago: EstadoPagoSchema.optional(),
+  promesaPagoFecha: z.string().optional(),
+  items: z.array(PedidoItemSchema).optional(),
+})
+
+// ====================
+// CLIENTE
+// ====================
+
+export const ClienteQuickCreateSchema = z.object({
+  nombre: z.string().min(2, 'Nombre requerido'),
+  telefono: z.string().min(7, 'Celular requerido'),
+  direccion: z.string().min(3, 'Dirección requerida'),
+  barrio: z.string().optional(),
+})
 
 export const ClienteCreateSchema = z.object({
   nombre: z.string().min(1).max(100),
   apellido: z.string().max(100).optional(),
   telefono: z.string().min(1).max(20),
   nombreNegocio: z.string().max(100).optional(),
-  tipoNegocio: z.enum([
-    'Tienda', 'Restaurante', 'Café', 'Hotel', 'Bar',
-    'Ferretería', 'Panadería', 'Carnicería', 'Frutería', 'Peluquería',
-    'Farmacia', 'Papelería', 'Lavandería', 'Taller', 'Consultorio',
-    'Gimnasio', 'Salón de eventos', 'Guardería', 'Veterinaria', 'Estación de servicio',
-  ]).optional(),
+  tipoNegocio: z.preprocess(
+    (val) => (val === '' ? undefined : val),
+    z.enum([
+      'Tienda', 'Restaurante', 'Café', 'Hotel', 'Bar',
+      'Ferretería', 'Panadería', 'Carnicería', 'Frutería', 'Peluquería',
+      'Farmacia', 'Papelería', 'Lavandería', 'Taller', 'Consultorio',
+      'Gimnasio', 'Salón de eventos', 'Guardería', 'Veterinaria', 'Estación de servicio',
+    ]).optional()
+  ),
   barrio: z.string().max(100).optional(),
   direccion: z.string().max(200).optional(),
   frecuencia: z.enum(['DIARIO', 'SEMANAL', 'QUINCENAL', 'MENSUAL', 'NINGUNA']).optional(),
@@ -67,9 +158,16 @@ export const ClienteCreateSchema = z.object({
   notas: z.string().max(500).optional(),
 });
 
+export const ClienteUpdateSchema = ClienteCreateSchema.partial();
+
+// ====================
+// ABONO / GASTO / INSUMO / COMPRA / PRODUCCION / NOMINA / CIERRE
+// ====================
+
 export const AbonoCreateSchema = z.object({
   facturaId: z.string().min(1),
   clienteId: z.string().min(1),
+  pedidoId: z.string().min(1).optional(),
   monto: z.coerce.number().positive(),
   metodoPago: z.enum(["EFECTIVO", "TRANSFERENCIA", "NEQUI", "DAVIPLATA", "BONO"]),
 });
@@ -151,6 +249,10 @@ export const ConfigCreateSchema = z.object({
   valor: z.string().min(1),
 });
 
+// ====================
+// EMBARQUE
+// ====================
+
 export const EmbarqueCreateSchema = z.object({
   trabajadorId: z.string().min(1),
   rutaId: z.string().optional(),
@@ -177,6 +279,10 @@ export const EmbarqueUpdateSchema = z.object({
   rotasHielo: z.coerce.number().int().min(0).nullable().optional(),
 });
 
+// ====================
+// FACTURA / PROVEEDOR / TRABAJADOR
+// ====================
+
 export const FacturaCreateSchema = z.object({
   pedidoId: z.string().min(1),
   clienteId: z.string().min(1),
@@ -188,6 +294,8 @@ export const ProveedorCreateSchema = z.object({
   email: z.string().email().optional(),
   direccion: z.string().max(200).optional(),
 });
+
+export const ProveedorUpdateSchema = ProveedorCreateSchema.partial();
 
 const TrabajadorBaseSchema = z.object({
   nombre: z.string().min(1).max(100),
@@ -208,6 +316,12 @@ export const TrabajadorCreateSchema = TrabajadorBaseSchema.refine(
 
 export const TrabajadorUpdateSchema = TrabajadorBaseSchema.partial()
 
-export const ClienteUpdateSchema = ClienteCreateSchema.partial();
+// ====================
+// PAGAR FIADO
+// ====================
 
-export const ProveedorUpdateSchema = ProveedorCreateSchema.partial();
+export const PagarFiadoSchema = z.object({
+  clienteId: z.string().min(1),
+  monto: z.coerce.number().positive('El monto debe ser mayor a 0'),
+  metodo: z.enum(['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA', 'BONO']),
+})
