@@ -1,0 +1,139 @@
+import { NextRequest } from 'next/server'
+import { prisma } from '@/lib/prisma'
+import { requireAuth } from '@/lib/auth-check'
+import { PagarFiadoSchema } from '@/lib/validators'
+import { calcularEstadoPago } from '@/lib/pedido-utils'
+import { withAdvisoryLock } from '@/lib/locks'
+import { getNextNumero } from '@/lib/sequence'
+import { logAudit } from '@/lib/audit'
+import { apiSuccess, apiError } from '@/lib/api-response'
+import { logger } from '@/lib/logger'
+
+export async function POST(request: NextRequest) {
+  const authResult = await requireAuth()
+  if (authResult instanceof Response) return authResult
+
+  try {
+    const body = await request.json()
+    const parsed = PagarFiadoSchema.safeParse(body)
+    if (!parsed.success) {
+      return apiError('Datos inválidos', 400)
+    }
+
+    const { clienteId, monto, metodo } = parsed.data
+
+    const resultado = await withAdvisoryLock('ABONO', async (tx) => {
+      // 1. Buscar pedidos fiados del cliente, ordenados por fecha ASC (FIFO)
+      const pedidosFiados = await tx.pedido.findMany({
+        where: {
+          clienteId,
+          saldo: { gt: 0 },
+          estadoEntrega: { not: 'ANULADO' },
+        },
+        orderBy: { fecha: 'asc' },
+        include: { factura: true },
+      })
+
+      if (pedidosFiados.length === 0) {
+        throw new Error('SIN_DEUDA')
+      }
+
+      let montoRestante = monto
+      const pagosAplicados: Array<{
+        pedidoId: string
+        numero: number
+        montoAplicado: number
+        saldoRestante: number
+      }> = []
+
+      // 2. Aplicar monto FIFO
+      for (const pedido of pedidosFiados) {
+        if (montoRestante <= 0) break
+
+        const saldoPedido = Number(pedido.saldo)
+        const montoAplicar = Math.min(montoRestante, saldoPedido)
+
+        // Crear pago
+        await tx.pago.create({
+          data: {
+            pedidoId: pedido.id,
+            metodo,
+            monto: montoAplicar,
+          },
+        })
+
+        const nuevoTotalPagado = Number(pedido.totalPagado) + montoAplicar
+        const nuevoSaldo = saldoPedido - montoAplicar
+        const nuevoEstadoPago = calcularEstadoPago(Number(pedido.total), nuevoTotalPagado)
+
+        // Actualizar pedido
+        await tx.pedido.update({
+          where: { id: pedido.id },
+          data: {
+            totalPagado: nuevoTotalPagado,
+            saldo: nuevoSaldo,
+            estadoPago: nuevoEstadoPago,
+          },
+        })
+
+        // Actualizar factura si saldo llega a 0
+        if (nuevoSaldo <= 0 && pedido.factura) {
+          await tx.factura.update({
+            where: { id: pedido.factura.id },
+            data: { estado: 'PAGADA', saldo: 0 },
+          })
+        }
+
+        // Crear abono contable si existe factura
+        if (pedido.factura) {
+          const nextNum = await getNextNumero(tx, { model: 'abono', field: 'numero' })
+          await tx.abono.create({
+            data: {
+              numero: `ABO-${nextNum.toString().padStart(5, '0')}`,
+              facturaId: pedido.factura.id,
+              clienteId,
+              pedidoId: pedido.id,
+              monto: montoAplicar,
+              metodoPago: metodo,
+            },
+          })
+        }
+
+        pagosAplicados.push({
+          pedidoId: pedido.id,
+          numero: pedido.numero,
+          montoAplicado: montoAplicar,
+          saldoRestante: nuevoSaldo,
+          abonoCreado: !!pedido.factura,
+        })
+
+        montoRestante -= montoAplicar
+      }
+
+      return { pagosAplicados, montoRestante }
+    })
+
+    logAudit({
+      entidad: 'Pedido',
+      registroId: clienteId,
+      accion: 'UPDATE',
+      datos: { monto, metodo, pagosAplicados: resultado.pagosAplicados },
+      usuarioId: authResult.user?.id,
+    })
+
+    return apiSuccess({
+      pagosAplicados: resultado.pagosAplicados,
+      montoAplicado: monto - resultado.montoRestante,
+      montoSobrante: resultado.montoRestante,
+      mensaje: resultado.montoRestante > 0
+        ? `Pagado $${(monto - resultado.montoRestante).toLocaleString()}. Sobrante: $${resultado.montoRestante.toLocaleString()}`
+        : `Pagado completo $${monto.toLocaleString()}`,
+    })
+  } catch (error) {
+    if (error instanceof Error && error.message === 'SIN_DEUDA') {
+      return apiError('El cliente no tiene deudas pendientes', 400)
+    }
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error pagando fiado')
+    return apiError('Error procesando el pago', 500)
+  }
+}
