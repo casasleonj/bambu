@@ -16,8 +16,32 @@ enum EstadoPedido {
   PENDIENTE
   EN_RUTA
   ENTREGADO
+  NO_ENTREGADO
   CANCELADO
   ANULADO
+}
+
+enum EstadoEntrega {
+  PENDIENTE
+  EN_RUTA
+  ENTREGADO
+  NO_ENTREGADO
+  CANCELADO
+  ANULADO
+}
+
+enum EstadoPago {
+  PENDIENTE
+  PARCIAL
+  PAGADO
+  ANTICIPADO
+  VENCIDO
+}
+
+enum OrigenPedido {
+  PEDIDO
+  VENTA_RAPIDA
+  VENTA_LIBRE
 }
 
 enum MetodoPago {
@@ -77,10 +101,8 @@ model User {
   createdAt DateTime @db.Timestamptz() @default(now())
   updatedAt DateTime @db.Timestamptz() @updatedAt
 
-  // Trabajador profile (1:1 for REPARTIDOR role)
   trabajador  Trabajador?
 
-  // Ownership relations
   clientesCreados      Cliente[]         @relation("ClienteCreador")
   pedidosCreados      Pedido[]          @relation("PedidoCreador")
   facturasCreadas     Factura[]         @relation("FacturaCreador")
@@ -96,26 +118,24 @@ model User {
 }
 
 // ====================
-// RUTA (Inteligencia real - rutas con días de entrega)
+// RUTA
 // ====================
 
 model Ruta {
   id        String   @id @default(cuid())
   createdById String?
   createdBy  User?    @relation("RutaCreador", fields: [createdById], references: [id])
-  nombre    String   // "Norte", "Centro", "Sur"
-  dias      String?  // "LUN,MIE,VIE" - días de entrega
+  nombre    String
+  dias      String?
   activo   Boolean  @default(true)
 
-  // Repartidor principal y respaldo
   repartidorId String?
   repartidor   Trabajador? @relation("RutaRepartidor", fields: [repartidorId], references: [id])
   repartidorRespaldoId String?
   repartidorRespaldo   Trabajador? @relation("RutaRespaldo", fields: [repartidorRespaldoId], references: [id])
 
-  // Horario de atención
-  horarioInicio String?  // "06:00"
-  horarioFin    String?  // "14:00"
+  horarioInicio String?
+  horarioFin    String?
 
   clientes  Cliente[]
   embarques Embarque[]
@@ -129,7 +149,7 @@ model Ruta {
 }
 
 // ====================
-// CLIENTE (todo integrado - sin sobre-ingeniería)
+// CLIENTE
 // ====================
 
 model Cliente {
@@ -137,7 +157,6 @@ model Cliente {
   createdById  String?
   createdBy    User?    @relation("ClienteCreador", fields: [createdById], references: [id])
 
-  // Datos básicos
   nombre        String
   apellido     String?
   telefono      String
@@ -146,30 +165,32 @@ model Cliente {
   referencia  String?
   linkUbicacion String?
 
-  // Datos del negocio
   nombreNegocio String?
   tipoNegocio   String?
   horaApertura String?
-  preciosEspeciales String?  // JSON: {"PACA_AGUA": 2600, "BOTELLON_DOM": 9000}
+  preciosEspeciales String?
 
-  // Ubicación - FK a Ruta
   rutaId       String?
   ruta        Ruta?   @relation(fields: [rutaId], references: [id])
 
-  // Frecuencia de pedidos
-  frecuencia   String   @default("NINGUNA") // NINGUNA, DIARIA, SEMANAL, QUINCENAL, MENSUAL
+  frecuencia   String   @default("NINGUNA")
   cadaNDias    Int?
 
-  // Control de entregas
   ultEntrega   DateTime? @db.Timestamptz()
   proxEntrega DateTime? @db.Timestamptz()
 
-  // Preferencias de productos
   habAgua      Boolean @default(true)
   habHielo     Boolean @default(true)
   habBotellon  Boolean @default(true)
   habBolsaAgua Boolean @default(true)
   habBolsaHielo Boolean @default(true)
+
+  // NUEVOS — control y verificación
+  verificado     Boolean   @default(false)
+  verificadoEn   DateTime? @db.Timestamptz()
+  creadoPorRol   RolUsuario @default(ASISTENTE)
+  bloqueado      Boolean   @default(false)
+  reclamaciones  Int       @default(0)
 
   notas        String?
   activo      Boolean  @default(true)
@@ -188,6 +209,8 @@ model Cliente {
   @@index([barrio])
   @@index([frecuencia])
   @@index([proxEntrega])
+  @@index([verificado])
+  @@index([bloqueado])
 }
 
 // ====================
@@ -201,11 +224,11 @@ model Trabajador {
   userId       String?  @unique
   user         User?    @relation(fields: [userId], references: [id])
   nombre        String
-  rol           String   // SELLADOR, REPARTIDOR, ADMIN, CONTADOR (keeping as String for flexibility)
+  rol           String
   tipoPago      TipoPagoTrabajador @default(COMISION)
 
   usaMoto       Boolean  @default(false)
-  capacidadKg   Int      @default(500) // Capacidad del motocarga en KG
+  capacidadKg   Int      @default(500)
   comPacaAgua   Decimal  @default(200) @db.Decimal(10, 2)
   comPacaHielo  Decimal  @default(200) @db.Decimal(10, 2)
   salarioFijo   Decimal  @default(0)   @db.Decimal(10, 2)
@@ -218,8 +241,9 @@ model Trabajador {
   embarques    Embarque[]
   producciones Produccion[]
   nominas     Nomina[]
+  gpsTracks    GpsTrack[]
+  descuentos   DescuentoRepartidor[]
 
-  // Rutas asignadas
   rutasAsignadas    Ruta[] @relation("RutaRepartidor")
   rutasRespaldo     Ruta[] @relation("RutaRespaldo")
 
@@ -248,6 +272,12 @@ model Nomina {
   comEntregasHielo Decimal   @default(0) @db.Decimal(10, 2)
   totalComisiones  Decimal   @default(0) @db.Decimal(10, 2)
 
+  // NUEVOS — comisiones por origen
+  comVentaLibreAgua   Decimal @default(0) @db.Decimal(10, 2)
+  comVentaLibreHielo  Decimal @default(0) @db.Decimal(10, 2)
+  comPedidoAgua       Decimal @default(0) @db.Decimal(10, 2)
+  comPedidoHielo      Decimal @default(0) @db.Decimal(10, 2)
+
   salario          Decimal   @default(0) @db.Decimal(10, 2)
   total            Decimal   @db.Decimal(10, 2)
 
@@ -263,7 +293,7 @@ model Nomina {
 }
 
 // ====================
-// PEDIDO (productos embebidos, pagos en tabla Pago)
+// PEDIDO (con legacy + nuevos campos)
 // ====================
 
 model Pedido {
@@ -277,14 +307,29 @@ model Pedido {
   embarque   Embarque? @relation(fields: [embarqueId], references: [id])
 
   tipo        String    @default("ENVIO")
-  estado      EstadoPedido @default(PENDIENTE)
+  canal       String    @default("DOMICILIO")
 
   fechaEntrega DateTime? @db.Timestamptz()
   fecha       DateTime @db.Timestamptz()  @default(now())
 
-  canal       String    @default("DOMICILIO") // PUNTO, DOMICILIO
+  // NUEVOS — estado desacoplado
+  origen        OrigenPedido     @default(PEDIDO)
+  estadoEntrega EstadoEntrega    @default(PENDIENTE)
+  estadoPago    EstadoPago       @default(PENDIENTE)
 
-  // Productos
+  // NUEVOS — control y trazabilidad
+  promesaPagoFecha  DateTime?   @db.Timestamptz()
+  fotoEntrega       String?
+  gpsLat            Decimal?    @db.Decimal(10, 6)
+  gpsLng            Decimal?    @db.Decimal(10, 6)
+  offlineId         String?     @unique
+  disputaAbierta    Boolean     @default(false)
+  codigoVisita      String?
+
+  // LEGACY — se mantiene para compatibilidad
+  estado      EstadoPedido     @default(PENDIENTE)
+
+  // Productos embebidos (DEPRECATED — leer desde items[])
   cPacaAguaPed      Int     @default(0)
   cPacaAguaEnt      Int     @default(0)
   precioPacaAgua    Decimal @default(0) @db.Decimal(10, 2)
@@ -323,13 +368,17 @@ model Pedido {
   pedidoHijo  Pedido[] @relation("PedidoHijo")
 
   esRecurrente     Boolean   @default(false)
-  frecuencia       String?   // DIARIO, SEMANAL, QUINCENAL, MENSUAL
+  frecuencia       String?
   ultimaGeneracion DateTime? @db.Timestamptz()
-  saltarFechas     String[]  // Fechas a omitir: ["2026-05-05", "2026-05-12"]
+  saltarFechas     String[]
+
+  // Relaciones nuevas
+  items         PedidoItem[]
 
   factura    Factura?
   pagos      Pago[]
   notasCredito NotaCredito[]
+  abonos     Abono[]
 
   createdAt  DateTime @db.Timestamptz() @default(now())
   updatedAt DateTime @db.Timestamptz() @updatedAt
@@ -347,10 +396,36 @@ model Pedido {
   @@index([embarqueId, estado])
   @@index([canal, estado])
   @@index([fechaEntrega])
+  // NUEVOS índices
+  @@index([origen])
+  @@index([estadoEntrega])
+  @@index([estadoPago])
+  @@index([offlineId])
+  @@index([clienteId, estadoEntrega, estadoPago])
+  @@index([promesaPagoFecha])
 }
 
 // ====================
-// PAGO (múltiples métodos de pago por pedido)
+// PEDIDO ITEM (nueva tabla normalizada)
+// ====================
+
+model PedidoItem {
+  id          String   @id @default(cuid())
+  pedidoId    String
+  pedido      Pedido   @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+
+  producto    String   // PACA_AGUA, PACA_HIELO, BOTELLON, BOLSA_AGUA, BOLSA_HIELO
+  cantPedido  Int      @default(0)
+  cantEntrega Int      @default(0)
+  precio      Decimal  @default(0) @db.Decimal(10, 2)
+  subtotal    Decimal  @default(0) @db.Decimal(10, 2)
+
+  @@index([pedidoId])
+  @@index([producto])
+}
+
+// ====================
+// PAGO
 // ====================
 
 model Pago {
@@ -389,9 +464,13 @@ model Embarque {
   rotasAgua    Int       @default(0)
   rotasHielo   Int       @default(0)
 
+  // NUEVO — código de visita del día
+  codigoVisita  String?
+
   obs         String?
 
   pedidos     Pedido[]
+  gpsTracks   GpsTrack[]
 
   createdAt  DateTime @db.Timestamptz() @default(now())
   updatedAt DateTime @db.Timestamptz() @updatedAt
@@ -401,6 +480,47 @@ model Embarque {
   @@index([rutaId])
   @@index([fecha])
   @@index([estado])
+}
+
+// ====================
+// GPS TRACK (nueva)
+// ====================
+
+model GpsTrack {
+  id            String   @id @default(cuid())
+  embarqueId    String
+  trabajadorId  String
+  lat           Decimal  @db.Decimal(10, 6)
+  lng           Decimal  @db.Decimal(10, 6)
+  timestamp     DateTime @db.Timestamptz()
+  synced        Boolean  @default(false)
+
+  embarque      Embarque   @relation(fields: [embarqueId], references: [id])
+  trabajador    Trabajador @relation(fields: [trabajadorId], references: [id])
+
+  @@index([embarqueId])
+  @@index([trabajadorId, timestamp])
+}
+
+// ====================
+// DESCUENTO REPARTIDOR (nueva)
+// ====================
+
+model DescuentoRepartidor {
+  id                String   @id @default(cuid())
+  embarqueId        String
+  trabajadorId      String
+  monto             Decimal  @db.Decimal(10, 2)
+  motivo            String
+  justificado       Boolean  @default(false)
+  aplicadoEnNomina  Boolean  @default(false)
+  fecha             DateTime @db.Timestamptz() @default(now())
+
+  trabajador        Trabajador @relation(fields: [trabajadorId], references: [id])
+
+  @@index([trabajadorId])
+  @@index([embarqueId])
+  @@index([aplicadoEnNomina])
 }
 
 // ====================
@@ -441,7 +561,6 @@ model Factura {
 
 // ====================
 // CHECK CONSTRAINTS via raw SQL migration
-// Migración standalone: prisma/migrations/20260505000000_add_check_constraints/migration.sql
 // ====================
 // -- Pedido: totalPagado no puede exceder total, saldo no negativo
 // ALTER TABLE "Pedido" ADD CONSTRAINT chk_pedido_saldo CHECK ("saldo" >= 0);
@@ -486,21 +605,24 @@ model Factura {
 
 model Abono {
   id          String   @id @default(cuid())
-  numero      String  @unique
+  numero      String   @unique
   facturaId   String
-  factura    Factura  @relation(fields: [facturaId], references: [id])
-  clienteId  String
-  cliente   Cliente  @relation(fields: [clienteId], references: [id])
-  monto     Decimal  @db.Decimal(10, 2)
-  metodoPago String
-  fecha     DateTime @db.Timestamptz() @default(now())
+  factura     Factura  @relation(fields: [facturaId], references: [id])
+  clienteId   String
+  cliente     Cliente  @relation(fields: [clienteId], references: [id])
+  pedidoId    String?
+  pedido      Pedido?  @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
+  monto       Decimal  @db.Decimal(10, 2)
+  metodoPago  String
+  fecha       DateTime @db.Timestamptz() @default(now())
 
-  createdAt DateTime @db.Timestamptz() @default(now())
+  createdAt   DateTime @db.Timestamptz() @default(now())
 
   @@index([facturaId])
   @@index([clienteId])
   @@index([fecha])
   @@index([facturaId, fecha])
+  @@index([pedidoId])
 }
 
 // ====================
@@ -512,7 +634,7 @@ model Produccion {
   createdById    String?
   createdBy      User?      @relation("ProduccionCreador", fields: [createdById], references: [id])
   fecha          DateTime @db.Timestamptz()    @default(now())
-  turno          Turno      // MANANA, TARDE, NOCHE
+  turno          Turno
   trabajadorId  String
   trabajador   Trabajador  @relation(fields: [trabajadorId], references: [id])
 
@@ -646,47 +768,47 @@ model CompraInsumo {
 }
 
 // ====================
-// PRODUCTO (catalogo de productos)
+// PRODUCTO
 // ====================
 
 model Producto {
-  id          String   @id @default(cuid())
-  codigo      String   @unique
-  nombre      String
-  descripcion String?
-  unidad      String
-  contenido   String?
-  activo      Boolean  @default(true)
-  
-  precios     PrecioVolumen[]
-  
-  createdAt   DateTime @db.Timestamptz() @default(now())
-  updatedAt   DateTime @db.Timestamptz() @updatedAt
+  id                  String   @id @default(cuid())
+  codigo              String   @unique
+  nombre              String
+  descripcion         String?
+  unidad              String
+  contenido           String?
+  activo              Boolean  @default(true)
+  aplicaDomicilio     Boolean  @default(false)
+  sobreCostoDomicilio Decimal  @default(0) @db.Decimal(10, 2)
+
+  precios             PrecioVolumen[]
+
+  createdAt           DateTime @db.Timestamptz() @default(now())
+  updatedAt           DateTime @db.Timestamptz() @updatedAt
 }
 
 // ====================
-// PRECIO_VOLUMEN (precios por volumen y canal)
+// PRECIO_VOLUMEN
 // ====================
 
 model PrecioVolumen {
   id          String   @id @default(cuid())
   productoId  String
   producto    Producto @relation(fields: [productoId], references: [id])
-  
-  canal       String   // PUNTO, DOMICILIO
+
   cantMin     Int      @default(1)
-  cantMax     Int?     // null = unlimited (10+)
+  cantMax     Int?
   precio      Decimal  @db.Decimal(10, 2)
-  
+
   activo      Boolean  @default(true)
-  
+
   createdAt   DateTime @db.Timestamptz() @default(now())
   updatedAt   DateTime @db.Timestamptz() @updatedAt
-  
+
   @@index([productoId])
-  @@index([canal])
-  @@index([productoId, canal, activo])
-  @@unique([productoId, canal, cantMin])
+  @@index([productoId, activo])
+  @@unique([productoId, cantMin])
 }
 
 // ====================
@@ -710,6 +832,15 @@ model CierreDia {
 
   numPedidos   Int     @default(0)
   totalVentas  Decimal @default(0) @db.Decimal(10, 2)
+
+  // Por origen (nuevos)
+  totalVentaRapida  Decimal @default(0) @db.Decimal(10, 2)
+  totalPedido       Decimal @default(0) @db.Decimal(10, 2)
+  totalVentaLibre   Decimal @default(0) @db.Decimal(10, 2)
+
+  fiadoVentaRapida  Decimal @default(0) @db.Decimal(10, 2)
+  fiadoPedido       Decimal @default(0) @db.Decimal(10, 2)
+  fiadoVentaLibre   Decimal @default(0) @db.Decimal(10, 2)
 
   aguaVendida    Int     @default(0)
   hieloVendido  Int     @default(0)
@@ -754,7 +885,7 @@ model NotaCredito {
   facturaId   String?
   factura     Factura? @relation(fields: [facturaId], references: [id])
   monto       Decimal  @db.Decimal(10, 2)
-  motivo      String   // CANCELADO, DEVOLUCION, ERROR
+  motivo      String
   fecha       DateTime @db.Timestamptz() @default(now())
   creadoPor   String?
 
@@ -773,8 +904,8 @@ model Historial {
   id         String   @id @default(cuid())
   entidad    String
   registroId String
-  accion    String   // CREATE, UPDATE, DELETE
-  datos     String   // JSON
+  accion    String
+  datos     String
   usuarioId String?
   fecha     DateTime @db.Timestamptz() @default(now())
 
@@ -791,7 +922,7 @@ model Historial {
 
 model PrecioHistorial {
   id            String   @id @default(cuid())
-  producto      String   // AGUA_GALON, HIELO_5KG, BOTELLON_FABRICA, BOTELLON_DOMICILIO, BOLSA_AGUA, BOLSA_HIELO
+  producto      String
   precio        Decimal  @db.Decimal(10, 2)
   vigenteDesde  DateTime @db.Timestamptz() @default(now())
   creadoPor     String
