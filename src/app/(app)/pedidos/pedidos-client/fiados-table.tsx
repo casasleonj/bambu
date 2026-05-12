@@ -111,13 +111,13 @@ export function FiadosTable({ pedidos, onPedidosChange }: FiadosTableProps) {
         let resumenHtml = `<div class="space-y-1">`
         pagosAplicados.forEach((p: any) => {
           const estado = p.saldoRestante <= 0 ? '✅ Pagado completo' : `⏳ Saldo restante: $${p.saldoRestante.toLocaleString()}`
-          resumenHtml += `<div class="text-sm">Pedido #${p.numero}: <b>$${p.montoAplicado.toLocaleString()}</b> <span class="text-xs text-gray-500">${estado}</span></div>`
+          resumenHtml += `<div class="text-sm">Pedido <a href="/pedidos?search=${p.numero}" class="text-blue-600 hover:underline font-medium">#${p.numero}</a>: <b>$${p.montoAplicado.toLocaleString()}</b> <span class="text-xs text-gray-500">${estado}</span></div>`
         })
         if (montoSobrante > 0) {
           resumenHtml += `<div class="text-sm text-blue-600">💰 Sobrante: $${montoSobrante.toLocaleString()}</div>`
         }
         if (abonosCreados > 0) {
-          resumenHtml += `<div class="text-sm text-green-600">📄 ${abonosCreados} abono(s) generado(s) en factura(s)</div>`
+          resumenHtml += `<div class="text-sm text-green-600">📄 ${abonosCreados} abono(s) generado(s) en <a href="/facturas" class="text-green-700 hover:underline font-medium">factura(s)</a></div>`
         }
         resumenHtml += `</div>`
 

@@ -730,9 +730,19 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
                                 <div className="border-t mt-2 pt-2">
                                   <p className="font-semibold mb-1">Abonos:</p>
                                   {factura.abonos.map((abono, i) => (
-                                    <div key={i} className="flex justify-between text-gray-600">
+                                    <div key={i} className="flex justify-between items-center text-gray-600">
                                       <span>{abono.metodoPago} - {formatDate(abono.fecha)}</span>
-                                      <span>{formatCurrency(abono.monto)}</span>
+                                      <div className="flex items-center gap-2">
+                                        <span>{formatCurrency(abono.monto)}</span>
+                                        {abono.pedidoId && (
+                                          <a
+                                            href={`/pedidos?search=${factura.pedidoId}`}
+                                            className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                                          >
+                                            → Pedido
+                                          </a>
+                                        )}
+                                      </div>
                                     </div>
                                   ))}
                                 </div>
@@ -825,9 +835,17 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
                                     <div className="border-t mt-2 pt-2">
                                       <p className="font-semibold mb-1">Pagos:</p>
                                       {pedidoDetail.pagos.map((pago, i) => (
-                                        <div key={i} className="flex justify-between text-gray-600">
+                                        <div key={i} className="flex justify-between items-center text-gray-600">
                                           <span>{pago.metodo}</span>
-                                          <span>{formatCurrency(pago.monto)}</span>
+                                          <div className="flex items-center gap-2">
+                                            <span>{formatCurrency(pago.monto)}</span>
+                                            <a
+                                              href={`/pedidos?search=${pedidoDetail.numero}`}
+                                              className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                                            >
+                                              → Pedido
+                                            </a>
+                                          </div>
                                         </div>
                                       ))}
                                     </div>
@@ -836,9 +854,17 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
                                     <div className="border-t mt-2 pt-2">
                                       <p className="font-semibold mb-1">Abonos (contable):</p>
                                       {pedidoDetail.factura.abonos.map((abono, i) => (
-                                        <div key={i} className="flex justify-between text-gray-600">
+                                        <div key={i} className="flex justify-between items-center text-gray-600">
                                           <span>{abono.metodoPago} - {formatDate(abono.fecha)}</span>
-                                          <span>{formatCurrency(abono.monto)}</span>
+                                          <div className="flex items-center gap-2">
+                                            <span>{formatCurrency(abono.monto)}</span>
+                                            <a
+                                              href={`/facturas?search=${pedidoDetail.factura.numero}`}
+                                              className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                                            >
+                                              → Factura
+                                            </a>
+                                          </div>
                                         </div>
                                       ))}
                                     </div>
