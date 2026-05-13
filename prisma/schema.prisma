@@ -88,6 +88,13 @@ enum Turno {
   NOCHE
 }
 
+enum CasoStatus {
+  ABIERTO
+  EN_PROCESO
+  RESUELTO
+  CERRADO
+}
+
 // ====================
 // USUARIOS
 // ====================
@@ -115,6 +122,10 @@ model User {
   proveedoresCreados  Proveedor[]      @relation("ProveedorCreador")
   trabajadoresCreados Trabajador[]      @relation("TrabajadorCreador")
   rutasCreadas        Ruta[]            @relation("RutaCreador")
+
+  casosCreados        Caso[]            @relation("CasoCreador")
+  casosAsignados      Caso[]            @relation("CasoAsignado")
+  eventosCaso         CasoEvento[]      @relation("CasoEventoUser")
 }
 
 // ====================
@@ -198,6 +209,7 @@ model Cliente {
   pedidos       Pedido[]
   facturas      Factura[]
   abonos        Abono[]
+  casos         Caso[]        @relation("CasoCliente")
 
   createdAt   DateTime @db.Timestamptz() @default(now())
   updatedAt  DateTime @db.Timestamptz() @updatedAt
@@ -231,6 +243,7 @@ model Trabajador {
   capacidadKg   Int      @default(500)
   comPacaAgua   Decimal  @default(200) @db.Decimal(10, 2)
   comPacaHielo  Decimal  @default(200) @db.Decimal(10, 2)
+  comBotellon   Decimal  @default(200) @db.Decimal(10, 2)
   salarioFijo   Decimal  @default(0)   @db.Decimal(10, 2)
 
   deudaReposAgua  Decimal  @default(0) @db.Decimal(10, 2)
@@ -270,6 +283,7 @@ model Nomina {
 
   comEntregasAgua  Decimal   @default(0) @db.Decimal(10, 2)
   comEntregasHielo Decimal   @default(0) @db.Decimal(10, 2)
+  comEntregasBotellon Decimal @default(0) @db.Decimal(10, 2)
   totalComisiones  Decimal   @default(0) @db.Decimal(10, 2)
 
   // NUEVOS — comisiones por origen
@@ -379,6 +393,7 @@ model Pedido {
   pagos      Pago[]
   notasCredito NotaCredito[]
   abonos     Abono[]
+  casos      Caso[]    @relation("CasoPedido")
 
   createdAt  DateTime @db.Timestamptz() @default(now())
   updatedAt DateTime @db.Timestamptz() @updatedAt
@@ -546,6 +561,13 @@ model Factura {
   montoPagado Decimal  @default(0) @db.Decimal(10, 2)
   saldo       Decimal  @db.Decimal(10, 2)
 
+  // Snapshot de datos de empresa al momento de emisión (inmutable)
+  empresaNombre    String?   @default("Agua Bambu SAS")
+  empresaNit       String?   @default("900.123.456-7")
+  empresaDireccion String?   @default("")
+  empresaTelefono  String?   @default("")
+  empresaEmail     String?   @default("")
+
   abonos    Abono[]
   notasCredito NotaCredito[]
 
@@ -655,9 +677,22 @@ model Produccion {
   stockFinAgua Int        @default(0)
   stockFinHielo Int      @default(0)
 
+  stockFinFisicoAgua    Int        @default(0)
+  stockFinFisicoHielo   Int        @default(0)
+  filtradasAgua         Int        @default(0)
+  filtradasHielo        Int        @default(0)
+  rotasAgua             Int        @default(0)
+  rotasHielo            Int        @default(0)
+  consumoInternoAgua    Int        @default(0)
+  consumoInternoHielo   Int        @default(0)
+
   comSelladorAgua  Decimal @default(0) @db.Decimal(10, 2)
   comSelladorHielo Decimal @default(0) @db.Decimal(10, 2)
   comSellTotal     Decimal @default(0) @db.Decimal(10, 2)
+
+  comRepartidorAgua  Decimal @default(0) @db.Decimal(10, 2)
+  comRepartidorHielo Decimal @default(0) @db.Decimal(10, 2)
+  comRepartTotal     Decimal @default(0) @db.Decimal(10, 2)
 
   obs         String?
 
@@ -870,6 +905,9 @@ model CierreDia {
 
   netoCaja    Decimal  @default(0) @db.Decimal(10, 2)
 
+  cerradoPor  String?
+  reporte     Json?
+
   createdAt   DateTime @db.Timestamptz() @default(now())
 }
 
@@ -928,4 +966,61 @@ model PrecioHistorial {
   creadoPor     String
 
   createdAt     DateTime @db.Timestamptz() @default(now())
+}
+
+// ====================
+// CASOS (Alert Resolution Workflow)
+// ====================
+
+model Caso {
+  id              String      @id @default(cuid())
+  alertaTipo      String
+  severidad       String
+  titulo          String
+  descripcion     String?     @db.Text
+
+  // Polimórfico: link al negocio
+  clienteId       String?
+  cliente         Cliente?    @relation("CasoCliente", fields: [clienteId], references: [id], onDelete: SetNull)
+  pedidoId        String?
+  pedido          Pedido?     @relation("CasoPedido", fields: [pedidoId], references: [id], onDelete: SetNull)
+
+  // Workflow
+  status          CasoStatus  @default(ABIERTO)
+  asignadoAId     String?
+  asignadoA       User?       @relation("CasoAsignado", fields: [asignadoAId], references: [id], onDelete: SetNull)
+  creadoPorId     String
+  creadoPor       User        @relation("CasoCreador", fields: [creadoPorId], references: [id])
+
+  // Resolución
+  notasResolucion String?     @db.Text
+  resueltoEn      DateTime?   @db.Timestamptz()
+  cerradoEn       DateTime?   @db.Timestamptz()
+
+  createdAt       DateTime    @db.Timestamptz() @default(now())
+  updatedAt       DateTime    @db.Timestamptz() @updatedAt
+
+  eventos         CasoEvento[]
+
+  @@index([status])
+  @@index([asignadoAId])
+  @@index([clienteId])
+  @@index([alertaTipo])
+  @@index([createdAt])
+}
+
+model CasoEvento {
+  id          String      @id @default(cuid())
+  casoId      String
+  caso        Caso        @relation(fields: [casoId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User        @relation("CasoEventoUser", fields: [userId], references: [id])
+  accion      String
+  valorPre    String?
+  valorPost   String?
+  comentario  String?     @db.Text
+  createdAt   DateTime    @db.Timestamptz() @default(now())
+
+  @@index([casoId])
+  @@index([createdAt])
 }
