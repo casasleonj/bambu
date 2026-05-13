@@ -1,25 +1,30 @@
 import Dexie, { type Table } from 'dexie'
 import { logger } from '@/lib/logger'
 
+export interface OfflinePedidoItem {
+  producto: 'PACA_AGUA' | 'PACA_HIELO' | 'BOTELLON' | 'BOLSA_AGUA' | 'BOLSA_HIELO'
+  cantidad: number
+  precioManual?: number
+}
+
 export interface OfflinePedido {
   id?: number
   localId: string
   numero?: number
   clienteId: string
-  cAguaPed: number
-  cHieloPed: number
-  cBotellonPed: number
-  cBolsaAguaPed: number
-  cBolsaHieloPed: number
-  precioAgua?: number
-  precioHielo?: number
-  precioBotellon?: number
-  precioBolsaAgua?: number
-  precioBolsaHielo?: number
+  items: OfflinePedidoItem[]
+  origen: 'PEDIDO' | 'VENTA_RAPIDA' | 'VENTA_LIBRE'
+  canal?: 'PUNTO' | 'DOMICILIO'
+  embarqueId?: string
+  pagos: { metodo: 'EFECTIVO' | 'TRANSFERENCIA' | 'NEQUI' | 'DAVIPLATA' | 'BONO'; monto: number }[]
   total: number
-  pagos: { metodo: string; monto: number }[]
   estado: string
   syncStatus: 'pending' | 'synced' | 'conflict'
+  fotoEntrega?: string
+  gpsLat?: number
+  gpsLng?: number
+  obs?: string
+  fechaEntrega?: string
   createdAt: Date
   updatedAt: Date
 }
@@ -52,8 +57,8 @@ class BambuOfflineDB extends Dexie {
 
   constructor() {
     super('BambuOfflineDB')
-    this.version(2).stores({
-      pedidos: '++id, localId, numero, clienteId, syncStatus, createdAt',
+    this.version(3).stores({
+      pedidos: '++id, localId, numero, clienteId, syncStatus, createdAt, origen, embarqueId',
       clientes: '++id, localId, nombre, syncStatus, createdAt',
       syncQueue: '++id, table, operation, createdAt',
     })

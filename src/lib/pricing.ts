@@ -5,8 +5,7 @@ import type { PrismaClient } from '@prisma/client'
 export const PRODUCT_CODES = [
   'PACA_AGUA',
   'PACA_HIELO',
-  'BOTELLON_FAB',
-  'BOTELLON_DOM',
+  'BOTELLON',
   'BOLSA_AGUA',
   'BOLSA_HIELO',
 ] as const
@@ -52,6 +51,7 @@ export function parsePreciosEspeciales(
 /**
  * Resolve the price for a single product.
  * Priority: precioManual > clienteOverrides (by canal) > PrecioVolumen tier > 0
+ * If DOMICILIO and producto.aplicaDomicilio, adds sobreCostoDomicilio.
  */
 export async function resolverPrecio(
   codigo: ProductCode,
@@ -78,11 +78,10 @@ export async function resolverPrecio(
 
   const client = db || prisma
 
-  // Look up volume pricing from DB
+  // Look up volume pricing from DB (no canal filter)
   const tier = await client.precioVolumen.findFirst({
     where: {
       producto: { codigo },
-      canal,
       cantMin: { lte: cantidad },
       activo: true,
       OR: [
@@ -93,8 +92,24 @@ export async function resolverPrecio(
     orderBy: { cantMin: 'desc' },
   })
 
+  let precio = 0
   if (tier) {
-    return { precio: Number(tier.precio), origen: 'volumen' }
+    precio = Number(tier.precio)
+  }
+
+  // Apply domicilio surcharge
+  if (canal === 'DOMICILIO' && precio > 0) {
+    const producto = await client.producto.findUnique({
+      where: { codigo },
+      select: { aplicaDomicilio: true, sobreCostoDomicilio: true },
+    })
+    if (producto?.aplicaDomicilio) {
+      precio += Number(producto.sobreCostoDomicilio)
+    }
+  }
+
+  if (tier) {
+    return { precio, origen: 'volumen' }
   }
 
   return { precio: 0, origen: 'base' }
@@ -102,7 +117,7 @@ export async function resolverPrecio(
 
 /**
  * Resolve prices for all products in a pedido.
- * Uses a SINGLE batch query for all volume tiers instead of N sequential queries.
+ * Uses a SINGLE batch query for all volume tiers + products.
  * Returns a map of product code -> resolved price info.
  */
 export async function resolverPreciosPedido(
@@ -126,7 +141,7 @@ export async function resolverPreciosPedido(
     }
   }
 
-  // Batch load all relevant volume tiers in ONE query
+  // Batch load all relevant volume tiers + product configs in ONE query each
   const activeCodes = items.filter(i => i.cantidad > 0).map(i => i.codigo)
   const maxCantidades: Record<string, number> = {}
   for (const item of items) {
@@ -136,17 +151,24 @@ export async function resolverPreciosPedido(
   }
 
   let tiersByCode: Record<string, Array<{ cantMin: number; cantMax: number | null; precio: number }>> = {}
+  let productosByCode: Record<string, { aplicaDomicilio: boolean; sobreCostoDomicilio: number }> = {}
+
   if (activeCodes.length > 0) {
     const client = db || prisma
-    const allTiers = await client.precioVolumen.findMany({
-      where: {
-        producto: { codigo: { in: activeCodes } },
-        canal,
-        activo: true,
-      },
-      include: { producto: true },
-      orderBy: [{ producto: { codigo: 'asc' } }, { cantMin: 'asc' }],
-    })
+    const [allTiers, allProductos] = await Promise.all([
+      client.precioVolumen.findMany({
+        where: {
+          producto: { codigo: { in: activeCodes } },
+          activo: true,
+        },
+        include: { producto: true },
+        orderBy: [{ producto: { codigo: 'asc' } }, { cantMin: 'asc' }],
+      }),
+      client.producto.findMany({
+        where: { codigo: { in: activeCodes } },
+        select: { codigo: true, aplicaDomicilio: true, sobreCostoDomicilio: true },
+      }),
+    ])
 
     for (const tier of allTiers) {
       const code = tier.producto.codigo
@@ -156,6 +178,13 @@ export async function resolverPreciosPedido(
         cantMax: tier.cantMax,
         precio: Number(tier.precio),
       })
+    }
+
+    for (const prod of allProductos) {
+      productosByCode[prod.codigo] = {
+        aplicaDomicilio: prod.aplicaDomicilio,
+        sobreCostoDomicilio: Number(prod.sobreCostoDomicilio),
+      }
     }
   }
 
@@ -202,6 +231,14 @@ export async function resolverPreciosPedido(
       }
     }
 
+    // 4. Apply domicilio surcharge
+    if (canal === 'DOMICILIO' && precio > 0) {
+      const prodConfig = productosByCode[item.codigo]
+      if (prodConfig?.aplicaDomicilio) {
+        precio += prodConfig.sobreCostoDomicilio
+      }
+    }
+
     results.push({
       codigo: item.codigo,
       precio,
@@ -216,11 +253,11 @@ export async function resolverPreciosPedido(
 
 /**
  * Get the default price table for display (e.g., in PedidoForm).
- * Returns all active prices grouped by product and channel.
+ * Returns all active prices grouped by product.
  */
-export async function getPriceTable(canal: Canal): Promise<Record<ProductCode, Array<{ cantMin: number; cantMax: number | null; precio: number }>>> {
+export async function getPriceTable(): Promise<Record<ProductCode, Array<{ cantMin: number; cantMax: number | null; precio: number }>>> {
   const precios = await prisma.precioVolumen.findMany({
-    where: { canal, activo: true },
+    where: { activo: true },
     include: { producto: true },
     orderBy: [{ producto: { codigo: 'asc' } }, { cantMin: 'asc' }],
   })

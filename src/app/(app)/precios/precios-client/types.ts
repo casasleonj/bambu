@@ -1,7 +1,6 @@
 export interface PrecioVolumen {
   id: string
   productoId: string
-  canal: string
   cantMin: number
   cantMax: number | null
   precio: string | number
@@ -15,6 +14,8 @@ export interface Producto {
   descripcion: string | null
   unidad: string
   contenido: string | null
+  aplicaDomicilio: boolean
+  sobreCostoDomicilio: string | number
   precios: PrecioVolumen[]
 }
 
@@ -38,12 +39,5 @@ export function tierLabel(cantMin: number, cantMax: number | null): string {
 }
 
 export function hasVolumeTiers(precios: PrecioVolumen[]): boolean {
-  const canalCounts = new Map<string, number>()
-  for (const p of precios) {
-    canalCounts.set(p.canal, (canalCounts.get(p.canal) || 0) + 1)
-  }
-  for (const count of canalCounts.values()) {
-    if (count > 1) return true
-  }
-  return false
+  return precios.length > 1
 }

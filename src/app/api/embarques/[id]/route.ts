@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole, requireOwnership } from '@/lib/auth-check'
 import { EmbarqueUpdateSchema } from '@/lib/validators'
 import { logAudit } from '@/lib/audit'
+import { calcularPacasEmbarque, calcularPesoEmbarque, getCapacidadInfo } from '@/lib/embarque-capacidad'
 import { withAdvisoryLock } from '@/lib/locks'
 import { ROLES } from '@/lib/constants'
 import { logger } from '@/lib/logger'
@@ -62,18 +63,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       if (horaLlegada) updateData.horaLlegada = new Date(horaLlegada)
 
       if (pedidoIds && Array.isArray(pedidoIds)) {
-        // Get current assigned pedido IDs to preserve them
-        const currentPedidos = await tx.pedido.findMany({
-          where: { embarqueId: id },
-          select: { id: true },
-        })
-        const currentIds = currentPedidos.map(p => p.id)
-        const allIds = [...new Set([...currentIds, ...pedidoIds])]
-
-        // Assign all pedidos (existing + new) atomically
         await tx.pedido.updateMany({
-          where: { id: { in: allIds }, embarqueId: { not: id } },
-          data: { embarqueId: id },
+          where: { id: { in: pedidoIds }, embarqueId: null },
+          data: { embarqueId: id, estado: 'EN_RUTA' },
         })
       }
 
@@ -82,20 +74,34 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         data: updateData,
         include: {
           trabajador: true,
+          ruta: { select: { id: true, nombre: true } },
           pedidos: { include: { cliente: true } },
         },
       })
     })
 
+    const totalPacas = calcularPacasEmbarque(embarque.pedidos)
+    const pesoKg = calcularPesoEmbarque(embarque.pedidos)
+    const capacidadKg = embarque.trabajador.capacidadKg || 500
+    const capacidadInfo = getCapacidadInfo(totalPacas, pesoKg, capacidadKg)
+
+    const serialized = JSON.parse(JSON.stringify({
+      ...embarque,
+      totalPacas,
+      pesoKg,
+      capacidadKg,
+      capacidadInfo,
+    }))
+
     logAudit({
       entidad: 'Embarque',
-      registroId: embarque.id,
+      registroId: serialized.id,
       accion: 'UPDATE',
-      datos: { numero: embarque.numero, estado: embarque.estado },
+      datos: { numero: serialized.numero, estado: serialized.estado },
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     })
 
-    return apiSuccess({ embarque })
+    return apiSuccess({ embarque: serialized })
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error updating embarque:')
     return apiError('Error updating', 500)

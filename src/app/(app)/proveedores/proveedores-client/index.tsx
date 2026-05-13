@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import { useConfirm } from "@/components/confirm-modal";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { EmptyState } from "@/components/empty-state";
 import type { Proveedor, ProveedorForm, ProveedoresClientProps } from "./types";
-import { ProveedorCard } from "./proveedor-card";
 import { ProveedorFormModal } from "./proveedor-form-modal";
 
 const EMPTY_FORM: ProveedorForm = { nombre: "", telefono: "", email: "", direccion: "" };
@@ -50,7 +52,7 @@ export default function ProveedoresClient({ initialProveedores }: ProveedoresCli
   }
 
   async function handleDeactivate(id: string) {
-    const ok = await confirm("Estas seguro de que deseas desactivar este proveedor?")
+    const ok = await confirm("¿Estas seguro de que deseas desactivar este proveedor?");
     if (!ok) return;
     try {
       const res = await fetch(`/api/proveedores/${id}`, { method: "DELETE" });
@@ -62,43 +64,78 @@ export default function ProveedoresClient({ initialProveedores }: ProveedoresCli
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 px-6 py-10 dark:bg-zinc-950">
-      <div className="mx-auto max-w-6xl">
-        <div className="mb-8 flex items-center justify-between">
-          <h1 className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">Proveedores</h1>
-          <button onClick={openCreate}
-            className="inline-flex items-center justify-center rounded-xl bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200">
-            Nuevo proveedor
-          </button>
+    <div className="p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Proveedores</h1>
+          <p className="text-sm text-muted-foreground mt-1">Gestiona tus proveedores de insumos</p>
         </div>
-
-        {error && (
-          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300 flex items-center justify-between">
-            <span>{error}</span>
-            <button onClick={fetchProveedores}
-              className="ml-4 inline-flex items-center justify-center rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-red-700">
-              Reintentar
-            </button>
-          </div>
-        )}
-
-        {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
-          </div>
-        ) : proveedores.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-300 bg-white py-20 text-center shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-            <p className="text-lg font-medium text-zinc-700 dark:text-zinc-300">No hay proveedores registrados</p>
-            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Haz clic en "Nuevo proveedor" para agregar uno.</p>
-          </div>
-        ) : (
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {proveedores.map((p) => (
-              <ProveedorCard key={p.id} proveedor={p} onEdit={openEdit} onDeactivate={handleDeactivate} />
-            ))}
-          </div>
-        )}
+        <Button onClick={openCreate}>+ Nuevo proveedor</Button>
       </div>
+
+      {error && (
+        <Card className="border-red-300 bg-red-50/50">
+          <CardContent className="p-4 flex items-center justify-between">
+            <span className="text-red-700 text-sm">{error}</span>
+            <Button size="sm" variant="destructive" onClick={fetchProveedores}>Reintentar</Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
+        </div>
+      ) : proveedores.length === 0 ? (
+        <EmptyState
+          icon={<svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>}
+          title="No hay proveedores registrados"
+          description="Haz clic en &quot;Nuevo proveedor&quot; para agregar uno"
+        />
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {proveedores.map((p) => (
+            <Card key={p.id} className={p.activo === false ? 'opacity-60' : ''}>
+              <CardContent className="p-6">
+                <div className="mb-4 flex items-start justify-between">
+                  <h2 className="text-lg font-semibold">{p.nombre}</h2>
+                  {p.activo === false && (
+                    <span className="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-700">
+                      Inactivo
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex-1 space-y-2 text-sm text-muted-foreground">
+                  {p.telefono && (
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-foreground">Teléfono:</span>
+                      <span>{p.telefono}</span>
+                    </div>
+                  )}
+                  {p.email && (
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-foreground">Email:</span>
+                      <span className="break-all">{p.email}</span>
+                    </div>
+                  )}
+                  {p.direccion && (
+                    <div className="flex items-start gap-2">
+                      <span className="font-medium text-foreground">Dirección:</span>
+                      <span>{p.direccion}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-6 flex items-center gap-3">
+                  <Button variant="outline" size="sm" className="flex-1" onClick={() => openEdit(p)}>Editar</Button>
+                  <Button variant="destructive" size="sm" className="flex-1" onClick={() => handleDeactivate(p.id)}>Desactivar</Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       <ProveedorFormModal open={modalOpen} onClose={closeModal} onSaved={fetchProveedores}
         editingId={editingId} initialData={form} />

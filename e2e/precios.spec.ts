@@ -10,10 +10,12 @@ test.describe('Precios', () => {
   }
 
   async function handleBaseCajaModal(page: Page) {
-    const baseCajaBtn = page.locator('button:has-text("Continuar →")')
-    if (await baseCajaBtn.count() > 0) {
-      await page.fill('input[type="number"]', '50000')
-      await baseCajaBtn.click()
+    // Wait a bit for modal to appear if it's going to
+    await page.waitForTimeout(500)
+    const modalInput = page.locator('input[placeholder="50000"]')
+    if (await modalInput.isVisible().catch(() => false)) {
+      await modalInput.fill('50000')
+      await page.locator('button:has-text("Continuar →")').click()
       await page.waitForTimeout(500)
     }
   }
@@ -28,7 +30,7 @@ test.describe('Precios', () => {
     await page.waitForTimeout(2000)
     await handleBaseCajaModal(page)
 
-    await expect(page.locator('h1:has-text("Configuracion de Precios")')).toBeVisible()
+    await expect(page.locator('h1:has-text("Configuración de Precios")')).toBeVisible()
     // Price tables should be visible (either volume cards or unitario table)
     await expect(page.locator('table').first()).toBeVisible({ timeout: 5000 })
   })

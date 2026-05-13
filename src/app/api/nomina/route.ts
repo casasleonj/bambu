@@ -72,17 +72,20 @@ export async function POST(request: NextRequest) {
 
         let entregasAgua = 0
         let entregasHielo = 0
+        let entregasBotellon = 0
 
         for (const emp of embarques) {
           for (const ped of emp.pedidos) {
             entregasAgua += ped.cPacaAguaEnt
             entregasHielo += ped.cPacaHieloEnt
+            entregasBotellon += (ped.cBotellonFabEnt || 0) + (ped.cBotellonDomEnt || 0)
           }
         }
 
         const comAgua = entregasAgua * Number(trabajador.comPacaAgua || configMap.COM_REPARTIDOR || 200)
         const comHielo = entregasHielo * Number(trabajador.comPacaHielo || configMap.COM_REPARTIDOR || 200)
-        const totalComisiones = comAgua + comHielo
+        const comBotellon = entregasBotellon * Number(trabajador.comBotellon || 200)
+        const totalComisiones = comAgua + comHielo + comBotellon
         const total = totalComisiones + Number(trabajador.salarioFijo || 0)
 
         const nomina = await tx.nomina.create({
@@ -92,6 +95,7 @@ export async function POST(request: NextRequest) {
             fechaFin: fin,
             comEntregasAgua: comAgua,
             comEntregasHielo: comHielo,
+            comEntregasBotellon: comBotellon,
             totalComisiones,
             salario: Number(trabajador.salarioFijo || 0),
             total,
@@ -99,7 +103,7 @@ export async function POST(request: NextRequest) {
           },
         })
 
-        return { nomina, entregasAgua, entregasHielo, comAgua, comHielo, totalComisiones }
+        return { nomina, entregasAgua, entregasHielo, entregasBotellon, comAgua, comHielo, comBotellon, totalComisiones }
       })
 
       logAudit({
@@ -115,8 +119,10 @@ export async function POST(request: NextRequest) {
         detalles: {
           entregasAgua: result.entregasAgua,
           entregasHielo: result.entregasHielo,
+          entregasBotellon: result.entregasBotellon,
           comAgua: result.comAgua,
           comHielo: result.comHielo,
+          comBotellon: result.comBotellon,
           comisionTotal: result.totalComisiones,
           salariFijo: result.nomina.salario,
         },
@@ -132,6 +138,7 @@ export async function POST(request: NextRequest) {
           fechaFin: fin,
           comEntregasAgua: parsed.data.comEntregasAgua || 0,
           comEntregasHielo: parsed.data.comEntregasHielo || 0,
+          comEntregasBotellon: parsed.data.comEntregasBotellon || 0,
           totalComisiones: parsed.data.totalComisiones || 0,
           salario: parsed.data.salario || 0,
           total: parsed.data.total || 0,

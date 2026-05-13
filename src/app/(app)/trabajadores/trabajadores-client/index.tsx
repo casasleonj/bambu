@@ -16,6 +16,7 @@ const EMPTY_FORM: TrabajadorFormData = {
   capacidadKg: 500,
   comPacaAgua: 200,
   comPacaHielo: 200,
+  comBotellon: 200,
   salarioFijo: 0,
   telefono: '',
 }
@@ -67,9 +68,10 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
       tipoPago: trabajador.tipoPago,
       usaMoto: trabajador.usaMoto,
       capacidadKg: trabajador.capacidadKg,
-      comPacaAgua: trabajador.comPacaAgua,
-      comPacaHielo: trabajador.comPacaHielo,
-      salarioFijo: trabajador.salarioFijo,
+      comPacaAgua: trabajador.comPacaAgua ?? 200,
+      comPacaHielo: trabajador.comPacaHielo ?? 200,
+      comBotellon: trabajador.comBotellon ?? 200,
+      salarioFijo: trabajador.salarioFijo ?? 0,
       telefono: trabajador.telefono || '',
     })
     setIsEdit(true)

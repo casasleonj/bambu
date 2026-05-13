@@ -1,13 +1,27 @@
+export interface PedidoItem {
+  producto: string
+  cantPedido: number
+  cantEntrega: number
+  precio: number
+  subtotal: number
+}
+
 export interface Pedido {
   id: string
   numero: number
+  clienteId: string
   nombreCli: string
   telefonoCli: string
   zonaCli: string
   tipo: string
   canal: string
   estado: string
+  origen: string
+  estadoEntrega: string
+  estadoPago: string
   embarqueId?: string
+  items: PedidoItem[]
+  // Legacy fields (still present during transition)
   cPacaAguaPed: number
   cPacaHieloPed: number
   cBotellonFabPed: number
@@ -30,6 +44,21 @@ export interface Pedido {
   total: number
   saldo: number
   fecha: string
+  disputaAbierta?: boolean
+  promesaPagoFecha?: string
+  factura?: {
+    id: string
+    numero: string
+    estado: string
+    abonos?: Array<{
+      id: string
+      numero: string
+      monto: number
+      metodoPago: string
+      fecha: string
+      pedidoId?: string
+    }>
+  }
 }
 
 export interface Embarque {
@@ -49,5 +78,7 @@ export interface Cliente {
   preciosEspeciales?: string
 }
 
-export const ESTADOS = ['PENDIENTE', 'EN_RUTA', 'ENTREGADO', 'CANCELADO', 'ANULADO']
 export const TIPOS = ['ENVIO', 'PUNTO']
+export const ORIGENES = ['PEDIDO', 'VENTA_RAPIDA', 'VENTA_LIBRE']
+export const ESTADOS_ENTREGA = ['PENDIENTE', 'EN_RUTA', 'ENTREGADO', 'NO_ENTREGADO', 'CANCELADO', 'ANULADO']
+export const ESTADOS_PAGO = ['PENDIENTE', 'PARCIAL', 'PAGADO', 'ANTICIPADO', 'VENCIDO']

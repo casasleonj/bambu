@@ -69,10 +69,21 @@ test.describe('Embarques', () => {
     }
   })
 
-  test('asignar pedidos a embarque', async ({ page }) => {
+  test('asignar pedidos a embarque', async ({ page, request }) => {
     await login(page, 'admin', 'admin123')
     await handleBaseCajaModal(page)
     
+    // Create a pedido via API for the test
+    const pedidoRes = await request.post('/api/pedidos', {
+      data: {
+        clienteId: 'CLIENTE_MOSTRADOR',
+        canal: 'DOMICILIO',
+        productos: { pacaAgua: 2, pacaHielo: 1 },
+      },
+    })
+    const pedidoJson = await pedidoRes.json()
+    const pedidoNum = pedidoJson.pedido?.numero || pedidoJson.data?.numero
+
     // Create embarque
     await page.goto('/embarques')
     await page.waitForLoadState('networkidle')
@@ -88,8 +99,23 @@ test.describe('Embarques', () => {
     await page.locator('[data-testid="embarque-card"]').first().click()
     await page.waitForTimeout(500)
     
-    // Should show "Pedidos Asignados" section
+    // Should show the pedido in the available list and check it
     await expect(page.locator('text=Pedidos Asignados').first()).toBeVisible()
+    
+    // Find the checkbox label containing the pedido number
+    const pedidoLabel = page.locator(`label:has-text("#${pedidoNum}")`)
+    if (await pedidoLabel.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await pedidoLabel.click()
+      await page.waitForTimeout(300)
+      
+      // Click "Asignar Pedidos"
+      await page.click('button:has-text("Asignar Pedidos")')
+      await page.waitForTimeout(1000)
+      
+      // Verify the pedido now appears in "Pedidos Asignados" section
+      const pedidosAsignados = page.locator('text=Pedidos Asignados').locator('..')
+      await expect(pedidosAsignados).toContainText(`#${pedidoNum}`)
+    }
   })
 
   test('cerrar embarque con entregas completas', async ({ page }) => {

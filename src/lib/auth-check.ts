@@ -1,12 +1,12 @@
 import { auth } from "./auth";
-import { NextResponse } from "next/server";
 import { prisma } from "./prisma";
 import { PRIVILEGED_ROLES, type Role } from "./constants";
+import { apiError } from "./api-response";
 
 export async function requireAuth() {
   const session = await auth();
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return apiError("No autorizado", 401);
   }
   return session;
 }
@@ -20,14 +20,14 @@ export async function requireAuth() {
 export async function requireRole(role: Role | Role[], existingSession?: any) {
   const session = existingSession || await auth();
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return apiError("No autorizado", 401);
   }
 
   const userRole = (session.user as { role?: string } | undefined)?.role;
   const allowed = Array.isArray(role) ? role : [role];
 
   if (!userRole || !allowed.includes(userRole as Role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    return apiError("No tiene permisos para esta acción", 403);
   }
 
   return session;

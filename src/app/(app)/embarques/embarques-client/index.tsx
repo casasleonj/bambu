@@ -4,6 +4,9 @@ import { useState, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
 import { useConfirm } from '@/components/confirm-modal'
 import { EmptyState } from '@/components/empty-state'
+import { ErrorState } from '@/components/error-state'
+import { SkeletonPage } from '@/components/skeleton'
+import { Tooltip, InfoBanner } from '@/components/tooltip'
 import { DateRangeFilter } from '@/components/date-range-filter'
 import type { Embarque, Trabajador, Ruta, Pedido } from './types'
 import { EmbarqueCard } from './embarque-card'
@@ -32,11 +35,11 @@ export default function EmbarquesClient() {
         params.set('hasta', dateRange.hasta)
       }
       const [embarquesRes, trabajadoresRes, rutasRes] = await Promise.all([
-        fetch(`/api/embarques?${params.toString()}`),
-        fetch('/api/trabajadores?rol=REPARTIDOR&activo=true'),
-        fetch('/api/rutas?all=true'),
+        fetch(`/api/embarques?${params.toString()}`, { credentials: 'include' }),
+        fetch('/api/trabajadores?rol=REPARTIDOR&activo=true', { credentials: 'include' }),
+        fetch('/api/rutas?all=true', { credentials: 'include' }),
       ])
-      const pedidosData = await fetch('/api/pedidos?all=true').then((r) => r.json())
+      const pedidosData = await fetch('/api/pedidos?all=true', { credentials: 'include' }).then((r) => r.json())
 
       const embarquesJson = await embarquesRes.json()
       const trabajadoresJson = await trabajadoresRes.json()
@@ -65,7 +68,7 @@ export default function EmbarquesClient() {
         setSelectedEmbarque(updated)
       }
     }
-  }, [embarques])
+  }, [embarques, showDetailModal, selectedEmbarque])
 
   const handleEmbarqueUpdated = (updatedEmbarque: Embarque) => {
     setSelectedEmbarque(updatedEmbarque)
@@ -86,19 +89,31 @@ export default function EmbarquesClient() {
   }
 
   const handleAutoGenerate = async () => {
-    const ok = await confirm('¿Generar embarques automáticos para todos los pedidos pendientes?')
+    const ok = await confirm({
+      title: 'Generar embarques automáticos',
+      message: '¿Crear embarques automáticos para todos los pedidos pendientes?',
+      description: 'El sistema agrupará los pedidos pendientes por zona y creará embarques optimizados.',
+      consequences: [
+        'Se crearán nuevos embarques si hay pedidos pendientes',
+        'Los pedidos se asignarán automáticamente a rutas',
+        'No afectará pedidos ya en embarques existentes',
+      ],
+      variant: 'warning',
+      confirmLabel: 'Sí, generar',
+      cancelLabel: 'Cancelar',
+    })
     if (!ok) return
     try {
-      const res = await fetch('/api/embarques/auto', { method: 'POST' })
+      const res = await fetch('/api/embarques/auto', { method: 'POST', credentials: 'include' })
       const data = await res.json()
       if (data.success) {
         toast.success(data.message)
         fetchData()
       } else {
-        toast.error(data.error?.message || 'Error')
+        toast.error(data.error?.message || 'Error al generar embarques')
       }
     } catch {
-      toast.error('Error al generar embarques')
+      toast.error('Error de conexión al generar embarques')
     }
   }
 
@@ -108,27 +123,17 @@ export default function EmbarquesClient() {
 
   if (fetchError) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-center">
-        <svg className="w-12 h-12 text-red-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-        </svg>
-        <h3 className="text-lg font-medium text-gray-900">{fetchError}</h3>
-        <button
-          onClick={() => { setLoading(true); fetchData(); }}
-          className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
-        >
-          Reintentar
-        </button>
-      </div>
+      <ErrorState
+        title="No se pudieron cargar los embarques"
+        message={fetchError}
+        errorCode="FETCH_EMBARQUES_ERROR"
+        onRetry={() => { setLoading(true); fetchData(); }}
+      />
     )
   }
 
   if (loading) {
-    return (
-      <div className="flex justify-center py-20">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    )
+    return <SkeletonPage hasStats={false} hasFilters cardCount={3} />
   }
 
   return (
@@ -136,18 +141,22 @@ export default function EmbarquesClient() {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-800">Embarques del Día</h1>
         <div className="flex gap-2">
-          <button
-            onClick={handleAutoGenerate}
-            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
-          >
-            Auto-Generar
-          </button>
-          <button
-            onClick={() => setShowModal(true)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-          >
-            + Nuevo Embarque
-          </button>
+          <Tooltip content="Agrupa automáticamente los pedidos pendientes en embarques optimizados por zona" title="Auto-Generar" position="bottom">
+            <button
+              onClick={handleAutoGenerate}
+              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
+            >
+              Auto-Generar
+            </button>
+          </Tooltip>
+          <Tooltip content="Crea un embarque manual seleccionando repartidor y ruta" title="Nuevo Embarque" position="bottom">
+            <button
+              onClick={() => setShowModal(true)}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+            >
+              + Nuevo Embarque
+            </button>
+          </Tooltip>
         </div>
       </div>
 
@@ -155,12 +164,15 @@ export default function EmbarquesClient() {
         <DateRangeFilter onDateChange={handleDateChange} />
       </div>
 
-      <div className="flex gap-4 mb-4 text-xs text-gray-600">
-        <span>🟢 ≤75% Ideal</span>
-        <span>🟡 75-87% Pesado</span>
-        <span>🔴 87-100% Máximo</span>
-        <span>⛔ {'>'}100% Excedido</span>
-      </div>
+      <InfoBanner type="info" className="mb-4">
+        <p><strong>Capacidad máxima:</strong> 70 pacas por embarque. Los colores indican el nivel de carga:</p>
+        <div className="flex flex-wrap gap-3 mt-2">
+          <span className="text-xs">🟢 ≤75% Ideal</span>
+          <span className="text-xs">🟡 75-87% Pesado</span>
+          <span className="text-xs">🔴 87-100% Máximo</span>
+          <span className="text-xs">⛔ {'>'}100% Excedido</span>
+        </div>
+      </InfoBanner>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {embarques.map((embarque) => (
@@ -179,9 +191,15 @@ export default function EmbarquesClient() {
             <EmptyState
               icon={<svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m0 0a2 2 0 104 0m0 0a2 2 0 104 0" /></svg>}
               title="No hay embarques hoy"
-              description="Crea tu primer embarque para comenzar"
+              description="Los embarques agrupan pedidos por zona para optimizar las rutas de entrega"
               actionLabel="+ Crear Embarque"
               onAction={() => setShowModal(true)}
+              guidedSteps={[
+                { label: 'Crear un embarque', description: 'Selecciona repartidor y ruta', onClick: () => setShowModal(true) },
+                { label: 'Asignar pedidos', description: 'Los pedidos pendientes se muestran automáticamente' },
+                { label: 'Enviar repartidor', description: 'El repartidor recibe la ruta en su app' },
+                { label: 'Cerrar embarque', description: 'Registra las entregas y cobros al finalizar' },
+              ]}
             />
           </div>
         )}

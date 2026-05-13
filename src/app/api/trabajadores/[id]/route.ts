@@ -33,7 +33,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     return apiSuccess({ trabajador })
   } catch (error) {
-    return apiError('Error actualizando trabajador')
+    const msg = error instanceof Error ? error.message : 'Unknown'
+    console.error('PUT trabajador error:', msg)
+    return apiError(`Error actualizando trabajador: ${msg}`)
   }
 }
 

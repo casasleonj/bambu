@@ -6,6 +6,7 @@ import { formatZodError } from '@/lib/utils'
 import { z } from 'zod'
 import { getNextNumero } from '@/lib/sequence'
 import { resolverPrecio, resolverPreciosPedido, type ProductCode, type Canal } from '@/lib/pricing'
+import { calcularEstadoPago } from '@/lib/pedido-utils'
 import { MetodoPago } from '@prisma/client'
 import { ROLES } from '@/lib/constants'
 import { logger } from '@/lib/logger'
@@ -63,6 +64,8 @@ const CerrarEmbarqueSchema = z.object({
   devueltasHielo: z.number().int().min(0).default(0),
   rotasAgua: z.number().int().min(0).default(0),
   rotasHielo: z.number().int().min(0).default(0),
+  discrepancia: z.number().min(0).default(0),
+  justificacionDiscrepancia: z.string().optional(),
   obs: z.string().optional(),
 })
 
@@ -86,13 +89,13 @@ export async function POST(
       return apiError(formatZodError(parsed.error), 400)
     }
 
-    const { pedidos: pedidosCuadre, ventasLibres, devueltasAgua, devueltasHielo, rotasAgua, rotasHielo, obs } = parsed.data
+    const { pedidos: pedidosCuadre, ventasLibres, devueltasAgua, devueltasHielo, rotasAgua, rotasHielo, justificacionDiscrepancia, obs } = parsed.data
 
     const result = await prisma.$transaction(async (tx) => {
       // 1. Verify embarque exists and is ABIERTO
       const embarque = await tx.embarque.findUnique({
         where: { id },
-        include: { pedidos: { include: { cliente: true, pagos: true } } },
+        include: { pedidos: { include: { cliente: true, pagos: true, items: true, factura: true } }, trabajador: true },
       })
       if (!embarque) throw new Error('EMBARQUE_NOT_FOUND')
       if (embarque.estado !== 'ABIERTO') throw new Error('EMBARQUE_YA_CERRADO')
@@ -110,9 +113,9 @@ export async function POST(
         const montoPagado = cuadre.pagos.reduce((sum, p) => sum + p.monto, 0)
 
         if (cuadre.entregado === 'NO_ENTREGADO') {
-          // No se entregó nada → volver a PENDIENTE, quitar de embarque
-          const updateData: Record<string, unknown> = {
-            estado: 'PENDIENTE',
+          const updateData: any = {
+            estadoEntrega: 'NO_ENTREGADO',
+            estado: 'NO_ENTREGADO',
             embarqueId: null,
             cPacaAguaEnt: 0,
             cPacaHieloEnt: 0,
@@ -122,23 +125,27 @@ export async function POST(
             cBolsaHieloEnt: 0,
           }
           
-          // Reasignar a otro embarque si se especificó
           if (cuadre.nuevoEmbarqueId) {
+            updateData.estadoEntrega = 'EN_RUTA'
             updateData.estado = 'EN_RUTA'
             updateData.embarqueId = cuadre.nuevoEmbarqueId
           }
           
-          await tx.pedido.update({
-            where: { id: pedido.id },
-            data: updateData,
-          })
-          pedidosActualizados.push({ id: pedido.id, estado: cuadre.nuevoEmbarqueId ? 'EN_RUTA' : 'PENDIENTE' })
+          await tx.pedido.update({ where: { id: pedido.id }, data: updateData })
+          
+          // Resetear items
+          for (const item of pedido.items) {
+            await tx.pedidoItem.updateMany({
+              where: { pedidoId: pedido.id, producto: item.producto },
+              data: { cantEntrega: 0 },
+            })
+          }
+          
+          pedidosActualizados.push({ id: pedido.id, estado: updateData.estadoEntrega })
           continue
         }
 
-        // Se entregó algo → calcular totales con precios reales
-        // Si el frontend envió preciosReales (ej: descuentos), usarlos.
-        // Si no, resolver contra el pricing engine con precios vigentes + overrides del cliente.
+        // Calcular precios reales
         let precios: { pacaAgua: number; pacaHielo: number; botellonFab: number; botellonDom: number; bolsaAgua: number; bolsaHielo: number }
 
         if (cuadre.preciosReales) {
@@ -147,8 +154,7 @@ export async function POST(
           const items: Array<{ codigo: ProductCode; cantidad: number }> = [
             { codigo: 'PACA_AGUA', cantidad: entProd.cPacaAguaEnt },
             { codigo: 'PACA_HIELO', cantidad: entProd.cPacaHieloEnt },
-            { codigo: 'BOTELLON_FAB', cantidad: entProd.cBotellonFabEnt },
-            { codigo: 'BOTELLON_DOM', cantidad: entProd.cBotellonDomEnt },
+            { codigo: 'BOTELLON', cantidad: entProd.cBotellonFabEnt + entProd.cBotellonDomEnt },
             { codigo: 'BOLSA_AGUA', cantidad: entProd.cBolsaAguaEnt },
             { codigo: 'BOLSA_HIELO', cantidad: entProd.cBolsaHieloEnt },
           ]
@@ -158,8 +164,8 @@ export async function POST(
           precios = {
             pacaAgua: priceMap['PACA_AGUA'] || 0,
             pacaHielo: priceMap['PACA_HIELO'] || 0,
-            botellonFab: priceMap['BOTELLON_FAB'] || 0,
-            botellonDom: priceMap['BOTELLON_DOM'] || 0,
+            botellonFab: pedido.canal === 'PUNTO' ? (priceMap['BOTELLON'] || 0) : 0,
+            botellonDom: pedido.canal === 'DOMICILIO' ? (priceMap['BOTELLON'] || 0) : 0,
             bolsaAgua: priceMap['BOLSA_AGUA'] || 0,
             bolsaHielo: priceMap['BOLSA_HIELO'] || 0,
           }
@@ -173,10 +179,15 @@ export async function POST(
           precios.bolsaAgua * entProd.cBolsaAguaEnt +
           precios.bolsaHielo * entProd.cBolsaHieloEnt
 
-        // Update pedido with delivered quantities and real prices
+        const estadoPago = calcularEstadoPago(totalReal, montoPagado)
+
+        // Actualizar pedido
         await tx.pedido.update({
           where: { id: pedido.id },
           data: {
+            estadoEntrega: 'ENTREGADO',
+            estado: 'ENTREGADO',
+            estadoPago,
             cPacaAguaEnt: entProd.cPacaAguaEnt,
             cPacaHieloEnt: entProd.cPacaHieloEnt,
             cBotellonFabEnt: entProd.cBotellonFabEnt,
@@ -190,28 +201,53 @@ export async function POST(
             precioBolsaAgua: precios.bolsaAgua,
             precioBolsaHielo: precios.bolsaHielo,
             total: totalReal,
-            estado: 'ENTREGADO',
             totalPagado: montoPagado,
             saldo: totalReal - montoPagado,
           },
         })
+        
+        // Actualizar PedidoItem
+        const itemUpdates = [
+          { producto: 'PACA_AGUA', cantidad: entProd.cPacaAguaEnt },
+          { producto: 'PACA_HIELO', cantidad: entProd.cPacaHieloEnt },
+          { producto: 'BOTELLON_FAB', cantidad: entProd.cBotellonFabEnt },
+          { producto: 'BOTELLON_DOM', cantidad: entProd.cBotellonDomEnt },
+          { producto: 'BOLSA_AGUA', cantidad: entProd.cBolsaAguaEnt },
+          { producto: 'BOLSA_HIELO', cantidad: entProd.cBolsaHieloEnt },
+        ]
+        
+        for (const itemUpd of itemUpdates) {
+          await tx.pedidoItem.updateMany({
+            where: { pedidoId: pedido.id, producto: itemUpd.producto },
+            data: { cantEntrega: itemUpd.cantidad },
+          })
+        }
+        
         pedidosActualizados.push({ id: pedido.id, estado: 'ENTREGADO' })
 
-        // Register payments (multiple)
+        // Registrar pagos
         for (const pago of cuadre.pagos) {
           if (pago.monto > 0) {
             await tx.pago.create({
-              data: {
-                pedidoId: pedido.id,
-                metodo: pago.metodo as MetodoPago,
-                monto: pago.monto,
-              },
+              data: { pedidoId: pedido.id, metodo: pago.metodo as MetodoPago, monto: pago.monto },
             })
             pagosRegistrados.push({ pedidoId: pedido.id, monto: pago.monto })
           }
         }
 
-        // If partial delivery, create child pedido with remaining
+        // Actualizar factura
+        if (pedido.factura) {
+          await tx.factura.update({
+            where: { id: pedido.factura.id },
+            data: {
+              total: totalReal,
+              saldo: totalReal - montoPagado,
+              estado: montoPagado >= totalReal ? 'PAGADA' : 'EMITIDA',
+            },
+          })
+        }
+
+        // Si PARCIAL, crear hijo
         if (cuadre.entregado === 'PARCIAL') {
           const faltanteAgua = pedido.cPacaAguaPed - entProd.cPacaAguaEnt
           const faltanteHielo = pedido.cPacaHieloPed - entProd.cPacaHieloEnt
@@ -221,44 +257,11 @@ export async function POST(
           const faltanteBolHielo = pedido.cBolsaHieloPed - entProd.cBolsaHieloEnt
 
           const hayFaltante =
-            faltanteAgua > 0 ||
-            faltanteHielo > 0 ||
-            faltanteBotFab > 0 ||
-            faltanteBotDom > 0 ||
-            faltanteBolAgua > 0 ||
-            faltanteBolHielo > 0
+            faltanteAgua > 0 || faltanteHielo > 0 || faltanteBotFab > 0 ||
+            faltanteBotDom > 0 || faltanteBolAgua > 0 || faltanteBolHielo > 0
 
           if (hayFaltante) {
             const numeroHijo = await getNextNumero(tx, { model: 'pedido' })
-            const hijo = await tx.pedido.create({
-              data: {
-                numero: numeroHijo,
-                clienteId: pedido.clienteId,
-                tipo: pedido.tipo,
-                canal: pedido.canal,
-                estado: 'PENDIENTE',
-                idOrigen: pedido.id,
-                cPacaAguaPed: faltanteAgua,
-                cPacaHieloPed: faltanteHielo,
-                cBotellonFabPed: faltanteBotFab,
-                cBotellonDomPed: faltanteBotDom,
-                cBolsaAguaPed: faltanteBolAgua,
-                cBolsaHieloPed: faltanteBolHielo,
-                precioPacaAgua: precios.pacaAgua,
-                precioPacaHielo: precios.pacaHielo,
-                precioBotellonFab: precios.botellonFab,
-                precioBotellonDom: precios.botellonDom,
-                precioBolsaAgua: precios.bolsaAgua,
-                precioBolsaHielo: precios.bolsaHielo,
-                total: 0,
-                totalPagado: 0,
-                saldo: 0,
-                obs: `Faltante de pedido #${pedido.numero}`,
-                createdById: (authResult.user as { id: string }).id,
-              },
-            })
-
-            // Calculate total for child using real prices
             const totalHijo =
               precios.pacaAgua * faltanteAgua +
               precios.pacaHielo * faltanteHielo +
@@ -267,9 +270,33 @@ export async function POST(
               precios.bolsaAgua * faltanteBolAgua +
               precios.bolsaHielo * faltanteBolHielo
 
-            await tx.pedido.update({
-              where: { id: hijo.id },
-              data: { total: totalHijo, saldo: totalHijo },
+            const hijo = await tx.pedido.create({
+              data: {
+                numero: numeroHijo,
+                clienteId: pedido.clienteId,
+                tipo: pedido.tipo,
+                canal: pedido.canal,
+                origen: pedido.origen,
+                estadoEntrega: 'PENDIENTE',
+                estadoPago: 'PENDIENTE',
+                estado: 'PENDIENTE',
+                idOrigen: pedido.id,
+                total: totalHijo,
+                saldo: totalHijo,
+                totalPagado: 0,
+                obs: `Faltante de pedido #${pedido.numero}`,
+                createdById: (authResult.user as { id: string }).id,
+                items: {
+                  create: [
+                    ...(faltanteAgua > 0 ? [{ producto: 'PACA_AGUA', cantPedido: faltanteAgua, cantEntrega: 0, precio: precios.pacaAgua, subtotal: precios.pacaAgua * faltanteAgua }] : []),
+                    ...(faltanteHielo > 0 ? [{ producto: 'PACA_HIELO', cantPedido: faltanteHielo, cantEntrega: 0, precio: precios.pacaHielo, subtotal: precios.pacaHielo * faltanteHielo }] : []),
+                    ...(faltanteBotFab > 0 ? [{ producto: 'BOTELLON_FAB', cantPedido: faltanteBotFab, cantEntrega: 0, precio: precios.botellonFab, subtotal: precios.botellonFab * faltanteBotFab }] : []),
+                    ...(faltanteBotDom > 0 ? [{ producto: 'BOTELLON_DOM', cantPedido: faltanteBotDom, cantEntrega: 0, precio: precios.botellonDom, subtotal: precios.botellonDom * faltanteBotDom }] : []),
+                    ...(faltanteBolAgua > 0 ? [{ producto: 'BOLSA_AGUA', cantPedido: faltanteBolAgua, cantEntrega: 0, precio: precios.bolsaAgua, subtotal: precios.bolsaAgua * faltanteBolAgua }] : []),
+                    ...(faltanteBolHielo > 0 ? [{ producto: 'BOLSA_HIELO', cantPedido: faltanteBolHielo, cantEntrega: 0, precio: precios.bolsaHielo, subtotal: precios.bolsaHielo * faltanteBolHielo }] : []),
+                  ],
+                },
+              },
             })
 
             pedidosHijosCreados.push({ id: hijo.id, numero: hijo.numero })
@@ -277,29 +304,20 @@ export async function POST(
         }
       }
 
-      // 3. Create ventas libres
+      // 3. Crear ventas libres
       const ventasLibresCreadas: Array<{ id: string; numero: number }> = []
       for (const venta of ventasLibres) {
-        if (
-          venta.cPacaAgua +
-            venta.cPacaHielo +
-            venta.cBotellonFab +
-            venta.cBotellonDom +
-            venta.cBolsaAgua +
-            venta.cBolsaHielo ===
-          0
-        )
-          continue
+        const totalItems = venta.cPacaAgua + venta.cPacaHielo + venta.cBotellonFab + venta.cBotellonDom + venta.cBolsaAgua + venta.cBolsaHielo
+        if (totalItems === 0) continue
 
         const totalPagado = venta.pagos.reduce((sum, p) => sum + p.monto, 0)
         const numeroVenta = await getNextNumero(tx, { model: 'pedido' })
 
-        // Resolve prices from pricing engine (ventas libres use DOMICILIO canal)
-        const [precioAgua, precioHielo, precioBotFab, precioBotDom, precioBolAgua, precioBolHielo] = await Promise.all([
+        const botellonCant = venta.cBotellonFab + venta.cBotellonDom
+        const [precioAgua, precioHielo, precioBot, precioBolAgua, precioBolHielo] = await Promise.all([
           resolverPrecio('PACA_AGUA', venta.cPacaAgua, 'DOMICILIO', null, null),
           resolverPrecio('PACA_HIELO', venta.cPacaHielo, 'DOMICILIO', null, null),
-          resolverPrecio('BOTELLON_FAB', venta.cBotellonFab, 'DOMICILIO', null, null),
-          resolverPrecio('BOTELLON_DOM', venta.cBotellonDom, 'DOMICILIO', null, null),
+          resolverPrecio('BOTELLON', botellonCant, 'DOMICILIO', null, null),
           resolverPrecio('BOLSA_AGUA', venta.cBolsaAgua, 'DOMICILIO', null, null),
           resolverPrecio('BOLSA_HIELO', venta.cBolsaHielo, 'DOMICILIO', null, null),
         ])
@@ -307,10 +325,11 @@ export async function POST(
         const totalVenta =
           (venta.cPacaAgua * precioAgua.precio) +
           (venta.cPacaHielo * precioHielo.precio) +
-          (venta.cBotellonFab * precioBotFab.precio) +
-          (venta.cBotellonDom * precioBotDom.precio) +
+          (botellonCant * precioBot.precio) +
           (venta.cBolsaAgua * precioBolAgua.precio) +
           (venta.cBolsaHielo * precioBolHielo.precio)
+
+        const estadoPago = calcularEstadoPago(totalVenta, totalPagado)
 
         const nuevaVenta = await tx.pedido.create({
           data: {
@@ -318,12 +337,15 @@ export async function POST(
             clienteId: venta.clienteId,
             tipo: 'ENVIO',
             canal: 'DOMICILIO',
+            origen: 'VENTA_LIBRE',
+            estadoEntrega: 'ENTREGADO',
+            estadoPago,
             estado: 'ENTREGADO',
             embarqueId: embarque.id,
             precioPacaAgua: precioAgua.precio,
             precioPacaHielo: precioHielo.precio,
-            precioBotellonFab: precioBotFab.precio,
-            precioBotellonDom: precioBotDom.precio,
+            precioBotellonFab: 0,
+            precioBotellonDom: precioBot.precio,
             precioBolsaAgua: precioBolAgua.precio,
             precioBolsaHielo: precioBolHielo.precio,
             cPacaAguaPed: venta.cPacaAgua,
@@ -343,32 +365,73 @@ export async function POST(
             saldo: totalVenta - totalPagado,
             obs: venta.obs || 'Venta libre en ruta',
             createdById: (authResult.user as { id: string }).id,
+            items: {
+              create: [
+                ...(venta.cPacaAgua > 0 ? [{ producto: 'PACA_AGUA', cantPedido: venta.cPacaAgua, cantEntrega: venta.cPacaAgua, precio: precioAgua.precio, subtotal: precioAgua.precio * venta.cPacaAgua }] : []),
+                ...(venta.cPacaHielo > 0 ? [{ producto: 'PACA_HIELO', cantPedido: venta.cPacaHielo, cantEntrega: venta.cPacaHielo, precio: precioHielo.precio, subtotal: precioHielo.precio * venta.cPacaHielo }] : []),
+                ...(botellonCant > 0 ? [{ producto: 'BOTELLON', cantPedido: botellonCant, cantEntrega: botellonCant, precio: precioBot.precio, subtotal: precioBot.precio * botellonCant }] : []),
+                ...(venta.cBolsaAgua > 0 ? [{ producto: 'BOLSA_AGUA', cantPedido: venta.cBolsaAgua, cantEntrega: venta.cBolsaAgua, precio: precioBolAgua.precio, subtotal: precioBolAgua.precio * venta.cBolsaAgua }] : []),
+                ...(venta.cBolsaHielo > 0 ? [{ producto: 'BOLSA_HIELO', cantPedido: venta.cBolsaHielo, cantEntrega: venta.cBolsaHielo, precio: precioBolHielo.precio, subtotal: precioBolHielo.precio * venta.cBolsaHielo }] : []),
+              ],
+            },
           },
         })
 
-        // Register payments
         for (const pago of venta.pagos) {
           if (pago.monto > 0) {
             await tx.pago.create({
-              data: {
-                pedidoId: nuevaVenta.id,
-                metodo: pago.metodo as MetodoPago,
-                monto: pago.monto,
-              },
+              data: { pedidoId: nuevaVenta.id, metodo: pago.metodo as MetodoPago, monto: pago.monto },
             })
           }
         }
 
+        // SIEMPRE crear factura
+        const facturaNum = await getNextNumero(tx, { model: 'factura', field: 'numero' })
+        const facturaClienteId = venta.clienteId === 'CONSUMIDOR_FINAL' ? 'CONSUMIDOR_FINAL' : venta.clienteId
+        await tx.factura.create({
+          data: {
+            numero: `FAC-${facturaNum.toString().padStart(5, '0')}`,
+            clienteId: facturaClienteId,
+            pedidoId: nuevaVenta.id,
+            subtotal: totalVenta,
+            total: totalVenta,
+            saldo: totalVenta - totalPagado,
+            estado: totalPagado >= totalVenta ? 'PAGADA' : 'EMITIDA',
+          },
+        })
+
         ventasLibresCreadas.push({ id: nuevaVenta.id, numero: nuevaVenta.numero })
       }
 
-      // 4. Calculate pacas loaded from pedidos + ventas libres
+      // 4. Calcular pacas cargadas vs entregadas para conciliación
       const totalPacasAgua = embarque.pedidos.reduce((sum, p) => sum + p.cPacaAguaPed, 0) +
         ventasLibres.reduce((sum, v) => sum + v.cPacaAgua, 0)
       const totalPacasHielo = embarque.pedidos.reduce((sum, p) => sum + p.cPacaHieloPed, 0) +
         ventasLibres.reduce((sum, v) => sum + v.cPacaHielo, 0)
 
-      // 5. Close embarque
+      const totalEntregadoAgua = embarque.pedidos.reduce((sum, p) => sum + p.cPacaAguaEnt, 0)
+      const totalEntregadoHielo = embarque.pedidos.reduce((sum, p) => sum + p.cPacaHieloEnt, 0)
+
+      // 5. Calcular discrepancia
+      const discrepancyAgua = totalPacasAgua - totalEntregadoAgua - devueltasAgua - rotasAgua
+      const discrepancyHielo = totalPacasHielo - totalEntregadoHielo - devueltasHielo - rotasHielo
+      const totalDiscrepancy = discrepancyAgua + discrepancyHielo
+
+      // 6. Si hay discrepancia no justificada, crear descuento
+      let descuento = null
+      if (totalDiscrepancy > 0 && !justificacionDiscrepancia) {
+        descuento = await tx.descuentoRepartidor.create({
+          data: {
+            embarqueId: id,
+            trabajadorId: embarque.trabajadorId,
+            monto: totalDiscrepancy * 2500, // precio promedio aproximado
+            motivo: `Discrepancia conciliación: ${discrepancyAgua} agua, ${discrepancyHielo} hielo`,
+            justificado: false,
+          },
+        })
+      }
+
+      // 7. Close embarque
       const embarqueCerrado = await tx.embarque.update({
         where: { id },
         data: {
@@ -390,6 +453,13 @@ export async function POST(
         pedidosHijosCreados,
         ventasLibresCreadas,
         pagosRegistrados,
+        conciliacion: {
+          discrepancyAgua,
+          discrepancyHielo,
+          totalDiscrepancy,
+          justificacionDiscrepancia: justificacionDiscrepancia || null,
+        },
+        descuento,
       }
     })
 
@@ -402,6 +472,7 @@ export async function POST(
         pedidosProcesados: result.pedidosActualizados.length,
         hijosCreados: result.pedidosHijosCreados.length,
         ventasLibres: result.ventasLibresCreadas.length,
+        discrepancia: result.conciliacion.totalDiscrepancy,
       },
       usuarioId: (authResult.user as { id: string }).id,
     })

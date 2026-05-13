@@ -7,6 +7,7 @@ export interface Trabajador {
   capacidadKg: number
   comPacaAgua: number
   comPacaHielo: number
+  comBotellon: number
   salarioFijo: number
   deudaReposAgua: number
   deudaReposHielo: number
@@ -23,12 +24,13 @@ export interface TrabajadorFormData {
   capacidadKg: number
   comPacaAgua: number
   comPacaHielo: number
+  comBotellon: number
   salarioFijo: number
   telefono: string
 }
 
 export const rolOptions = ['SELLADOR', 'REPARTIDOR', 'ADMIN', 'CONTADOR']
-export const tipoPagoOptions = ['COMISION', 'FIJO']
+export const tipoPagoOptions = ['COMISION', 'FIJO', 'MIXTO']
 
 export const rolLabels: Record<string, string> = {
   SELLADOR: 'Sellador',
@@ -40,6 +42,7 @@ export const rolLabels: Record<string, string> = {
 export const tipoPagoLabels: Record<string, string> = {
   COMISION: 'Comision',
   FIJO: 'Fijo',
+  MIXTO: 'Mixto',
 }
 
 export interface TrabajadoresClientProps {

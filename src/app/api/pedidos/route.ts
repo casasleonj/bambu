@@ -8,10 +8,12 @@ import { getNextNumero } from '@/lib/sequence'
 import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
 import { getTodayRange, getDateRange } from '@/lib/dates'
 import { resolverPreciosPedido, type Canal, type ProductCode } from '@/lib/pricing'
+import { calcularEstadoPago, puedeCrearPedido } from '@/lib/pedido-utils'
 import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
+import { OrigenPedido, EstadoEntrega } from '@prisma/client'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -37,7 +39,7 @@ export async function GET(request: NextRequest) {
         where = {
           OR: [
             { embarque: { trabajadorId: trabajador.id } },
-            { embarqueId: null, estado: 'PENDIENTE' },
+            { embarqueId: null, estadoEntrega: 'PENDIENTE' },
           ],
         }
       } else {
@@ -46,7 +48,6 @@ export async function GET(request: NextRequest) {
     }
 
     if (all === 'true') {
-      // Keep the REPARTIDOR filter if set, otherwise empty filter
       if (session.user?.role !== 'REPARTIDOR') where = {}
     } else if (desde && hasta) {
       const { startDate, endDate } = getDateRange(desde, hasta)
@@ -62,13 +63,12 @@ export async function GET(request: NextRequest) {
       prisma.pedido.findMany({
         where,
         orderBy: { numero: 'desc' },
-        include: { cliente: true },
+        include: { cliente: true, items: true, factura: { include: { abonos: true } } },
         ...prismaPagination,
       }),
       prisma.pedido.count({ where }),
     ])
 
-    // Aplanar datos del cliente para el frontend
     const pedidos = pedidosRaw.map(p => ({
       ...p,
       nombreCli: p.cliente?.nombre || 'Desconocido',
@@ -93,21 +93,38 @@ export async function POST(request: NextRequest) {
   if (authResult instanceof Response) return authResult
   const roleCheck = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE], authResult)
   if (roleCheck instanceof Response) return roleCheck
+
   try {
     const body = await request.json()
     const parsed = PedidoCreateSchema.safeParse(body)
     if (!parsed.success) {
       return apiError('Datos invalidos', 400, { formErrors: [formatZodError(parsed.error)] })
     }
-    const { clienteId: rawClienteId, productos, obs, fechaEntrega, canal, preciosManuales, clienteNuevo } = parsed.data
+
+    const {
+      clienteId: rawClienteId,
+      items: itemsInput,
+      productos: productosLegacy,
+      obs,
+      fechaEntrega,
+      canal,
+      preciosManuales,
+      clienteNuevo,
+      origen: origenInput,
+      ventaRapida,
+    } = parsed.data
 
     const pagosData = parsed.data.pagos || []
     const totalPagado = pagosData.reduce((sum, p) => sum + p.monto, 0)
     const canalReal = (canal || 'DOMICILIO') as Canal
     const tipo = canalReal === 'PUNTO' ? 'PUNTO' : 'ENVIO'
 
+    // Determinar origen
+    let origen: OrigenPedido = origenInput || 'PEDIDO'
+    if (ventaRapida) origen = 'VENTA_RAPIDA'
+
     const result = await withAdvisoryLock('PEDIDO', async (tx) => {
-      // Crear cliente nuevo si se proporciona
+      // 1. Crear cliente nuevo si se proporciona
       let clienteId = rawClienteId
       if (clienteNuevo) {
         const nuevo = await tx.cliente.create({
@@ -117,31 +134,63 @@ export async function POST(request: NextRequest) {
             direccion: clienteNuevo.direccion || '',
             barrio: clienteNuevo.barrio,
             frecuencia: 'NINGUNA',
+            creadoPorRol: authResult.user?.role as any || 'ASISTENTE',
           },
         })
         clienteId = nuevo.id
       }
 
-      // Build items array for pricing engine
-      const manualPrices = preciosManuales || {}
-      const items: Array<{ codigo: ProductCode; cantidad: number; precioManual?: number }> = [
-        { codigo: 'PACA_AGUA', cantidad: productos?.pacaAgua || 0, precioManual: manualPrices['PACA_AGUA'] },
-        { codigo: 'PACA_HIELO', cantidad: productos?.pacaHielo || 0, precioManual: manualPrices['PACA_HIELO'] },
-        { codigo: 'BOTELLON_FAB', cantidad: productos?.botellonFab || 0, precioManual: manualPrices['BOTELLON_FAB'] },
-        { codigo: 'BOTELLON_DOM', cantidad: productos?.botellonDom || 0, precioManual: manualPrices['BOTELLON_DOM'] },
-        { codigo: 'BOLSA_AGUA', cantidad: productos?.bolsaAgua || 0, precioManual: manualPrices['BOLSA_AGUA'] },
-        { codigo: 'BOLSA_HIELO', cantidad: productos?.bolsaHielo || 0, precioManual: manualPrices['BOLSA_HIELO'] },
-      ]
+      // 2. Validar cliente existe
+      const cliente = await tx.cliente.findUnique({ where: { id: clienteId } })
+      if (!cliente) {
+        throw new Error('CLIENTE_NOT_FOUND')
+      }
 
-      // Resolve prices using pricing engine (inside transaction for consistency)
-      const preciosResueltos = await resolverPreciosPedido(
-        items,
-        canalReal,
-        clienteId,
-        tx,
-      )
+      // 3. Validar que cliente NO está bloqueado y NO tiene deuda activa
+      const pedidosPendientes = await tx.pedido.findMany({
+        where: {
+          clienteId,
+          estadoEntrega: 'ENTREGADO',
+          estadoPago: { not: 'PAGADO' },
+          estado: { not: 'ANULADO' },
+        },
+        select: { id: true, numero: true, saldo: true },
+      })
 
-      // Build price map from resolved prices
+      const errorDeuda = puedeCrearPedido(cliente, pedidosPendientes)
+      if (errorDeuda) {
+        throw new Error(`CLIENTE_DEBE: ${errorDeuda}`)
+      }
+
+      // 4. Construir items para pricing engine
+      // Priorizar items array nuevo, fallback a productos legacy
+      let itemsParaPrecios: Array<{ codigo: ProductCode; cantidad: number; precioManual?: number }> = []
+
+      if (itemsInput && itemsInput.length > 0) {
+        itemsParaPrecios = itemsInput
+          .filter(i => i.cantidad > 0)
+          .map(i => ({
+            codigo: i.producto as ProductCode,
+            cantidad: i.cantidad,
+            precioManual: i.precioManual,
+          }))
+      } else if (productosLegacy) {
+        const manualPrices = preciosManuales || {}
+        itemsParaPrecios = [
+          { codigo: 'PACA_AGUA', cantidad: productosLegacy.pacaAgua || 0, precioManual: manualPrices['PACA_AGUA'] },
+          { codigo: 'PACA_HIELO', cantidad: productosLegacy.pacaHielo || 0, precioManual: manualPrices['PACA_HIELO'] },
+          { codigo: 'BOTELLON', cantidad: productosLegacy.botellon || 0, precioManual: manualPrices['BOTELLON'] },
+          { codigo: 'BOLSA_AGUA', cantidad: productosLegacy.bolsaAgua || 0, precioManual: manualPrices['BOLSA_AGUA'] },
+          { codigo: 'BOLSA_HIELO', cantidad: productosLegacy.bolsaHielo || 0, precioManual: manualPrices['BOLSA_HIELO'] },
+        ]
+      }
+
+      if (itemsParaPrecios.length === 0 || itemsParaPrecios.every(i => i.cantidad === 0)) {
+        throw new Error('SIN_PRODUCTOS')
+      }
+
+      // 5. Resolver precios
+      const preciosResueltos = await resolverPreciosPedido(itemsParaPrecios, canalReal, clienteId, tx)
       const precioMap: Record<string, number> = {}
       for (const pr of preciosResueltos) {
         precioMap[pr.codigo] = pr.precio
@@ -149,39 +198,63 @@ export async function POST(request: NextRequest) {
 
       const total = preciosResueltos.reduce((sum, pr) => sum + pr.subtotal, 0)
 
-      // Estado de ENTREGA, no de pago.
-      // ventaRapida = producto ya se entregó (punto o envío inmediato)
-      // Pedido normal = aún no se entrega, progresa por embarque
-      const estadoInicial = parsed.data.ventaRapida ? 'ENTREGADO' : 'PENDIENTE'
+      // 6. Determinar estados iniciales
+      let estadoEntrega: EstadoEntrega = 'PENDIENTE'
+      if (origen === 'VENTA_RAPIDA') {
+        estadoEntrega = 'ENTREGADO'
+      }
 
+      const estadoPago = calcularEstadoPago(total, totalPagado)
+
+      // 7. Crear PedidoItem records
+      const pedidoItemsData = itemsParaPrecios
+        .filter(i => i.cantidad > 0)
+        .map(i => ({
+          producto: i.codigo,
+          cantPedido: i.cantidad,
+          cantEntrega: estadoEntrega === 'ENTREGADO' ? i.cantidad : 0,
+          precio: precioMap[i.codigo] || 0,
+          subtotal: (precioMap[i.codigo] || 0) * i.cantidad,
+        }))
+
+      // 8. Crear pedido con legacy + nuevos campos
       const pedido = await tx.pedido.create({
         data: {
           clienteId,
           createdById: authResult.user?.id,
           tipo,
           canal: canalReal,
-          estado: estadoInicial,
-          cPacaAguaPed: productos?.pacaAgua || 0,
-          cPacaHieloPed: productos?.pacaHielo || 0,
-          cBotellonFabPed: productos?.botellonFab || 0,
-          cBotellonDomPed: productos?.botellonDom || 0,
-          cBolsaAguaPed: productos?.bolsaAgua || 0,
-          cBolsaHieloPed: productos?.bolsaHielo || 0,
-          precioPacaAgua: precioMap['PACA_AGUA'] || 0,
-          precioPacaHielo: precioMap['PACA_HIELO'] || 0,
-          precioBotellonFab: precioMap['BOTELLON_FAB'] || 0,
-          precioBotellonDom: precioMap['BOTELLON_DOM'] || 0,
-          precioBolsaAgua: precioMap['BOLSA_AGUA'] || 0,
-          precioBolsaHielo: precioMap['BOLSA_HIELO'] || 0,
+          origen,
+          estadoEntrega,
+          estadoPago,
+          estado: estadoEntrega, // legacy
           total,
           saldo: total - totalPagado,
-          totalPagado: totalPagado,
+          totalPagado,
           obs,
           fechaEntrega: fechaEntrega ? new Date(fechaEntrega) : null,
+          // Legacy fields
+          cPacaAguaPed: itemsParaPrecios.find(i => i.codigo === 'PACA_AGUA')?.cantidad || 0,
+          cPacaHieloPed: itemsParaPrecios.find(i => i.codigo === 'PACA_HIELO')?.cantidad || 0,
+          cBotellonFabPed: canalReal === 'PUNTO' ? (itemsParaPrecios.find(i => i.codigo === 'BOTELLON')?.cantidad || 0) : 0,
+          cBotellonDomPed: canalReal === 'DOMICILIO' ? (itemsParaPrecios.find(i => i.codigo === 'BOTELLON')?.cantidad || 0) : 0,
+          cBolsaAguaPed: itemsParaPrecios.find(i => i.codigo === 'BOLSA_AGUA')?.cantidad || 0,
+          cBolsaHieloPed: itemsParaPrecios.find(i => i.codigo === 'BOLSA_HIELO')?.cantidad || 0,
+          precioPacaAgua: precioMap['PACA_AGUA'] || 0,
+          precioPacaHielo: precioMap['PACA_HIELO'] || 0,
+          precioBotellonFab: canalReal === 'PUNTO' ? (precioMap['BOTELLON'] || 0) : 0,
+          precioBotellonDom: canalReal === 'DOMICILIO' ? (precioMap['BOTELLON'] || 0) : 0,
+          precioBolsaAgua: precioMap['BOLSA_AGUA'] || 0,
+          precioBolsaHielo: precioMap['BOLSA_HIELO'] || 0,
+          // PedidoItems
+          items: {
+            create: pedidoItemsData,
+          },
         },
+        include: { items: true },
       })
 
-      // Crear pagos
+      // 9. Crear pagos
       for (const pago of pagosData) {
         await tx.pago.create({
           data: {
@@ -192,21 +265,21 @@ export async function POST(request: NextRequest) {
         })
       }
 
-      // Crear factura solo si no es punto de venta pagado completo
-      if (tipo !== 'PUNTO' || totalPagado < total) {
-        const facturaNum = await getNextNumero(tx, { model: 'factura', field: 'numero' })
+      // 10. SIEMPRE crear factura (incluso punto pagado completo)
+      const facturaNum = await getNextNumero(tx, { model: 'factura', field: 'numero' })
+      const facturaClienteId = clienteId === 'CONSUMIDOR_FINAL' ? 'CONSUMIDOR_FINAL' : clienteId
 
-        await tx.factura.create({
-          data: {
-            numero: `FAC-${facturaNum.toString().padStart(5, '0')}`,
-            clienteId,
-            pedidoId: pedido.id,
-            subtotal: total,
-            total,
-            saldo: total - totalPagado,
-          },
-        })
-      }
+      await tx.factura.create({
+        data: {
+          numero: `FAC-${facturaNum.toString().padStart(5, '0')}`,
+          clienteId: facturaClienteId,
+          pedidoId: pedido.id,
+          subtotal: total,
+          total,
+          saldo: total - totalPagado,
+          estado: totalPagado >= total ? 'PAGADA' : 'EMITIDA',
+        },
+      })
 
       return { pedido, clienteId }
     })
@@ -215,12 +288,17 @@ export async function POST(request: NextRequest) {
       entidad: 'Pedido',
       registroId: result.pedido.id,
       accion: 'CREATE',
-      datos: { numero: result.pedido.numero, tipo: result.pedido.tipo, total: Number(result.pedido.total), clienteId: result.clienteId },
+      datos: { numero: result.pedido.numero, origen, tipo: result.pedido.tipo, total: Number(result.pedido.total), clienteId: result.clienteId },
       usuarioId: authResult.user?.id,
     })
 
     return apiSuccess({ pedido: result.pedido }, 201)
   } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === 'CLIENTE_NOT_FOUND') return apiError('Cliente no encontrado', 404)
+      if (error.message.startsWith('CLIENTE_DEBE:')) return apiError(error.message.replace('CLIENTE_DEBE: ', ''), 400)
+      if (error.message === 'SIN_PRODUCTOS') return apiError('Agrega al menos un producto', 400)
+    }
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error creating pedido:')
     return apiError('Error creando pedido')
   }

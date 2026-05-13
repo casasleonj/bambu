@@ -1,0 +1,53 @@
+@media print {
+  /* Ocultar todo por defecto */
+  body > * {
+    display: none !important;
+  }
+
+  /* Mostrar solo el contenedor de la factura */
+  .factura-print-container,
+  .factura-print-container * {
+    display: block !important;
+    visibility: visible !important;
+  }
+
+  /* Ocultar botones de acción */
+  .no-print {
+    display: none !important;
+  }
+
+  /* Asegurar que el contenedor ocupe toda la página */
+  .factura-print-container {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 20px !important;
+    background: white !important;
+    z-index: 9999 !important;
+  }
+
+  .factura-content {
+    border: none !important;
+    padding: 0 !important;
+    max-width: none !important;
+    margin: 0 !important;
+  }
+
+  /* Tablas: mantener filas juntas */
+  table, tr, td, th {
+    page-break-inside: avoid !important;
+  }
+
+  /* Colores para impresión */
+  .factura-content {
+    color: #000 !important;
+  }
+
+  /* Ajustar márgenes de página */
+  @page {
+    margin: 1.5cm;
+    size: letter;
+  }
+}

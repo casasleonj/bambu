@@ -33,9 +33,9 @@ export default function CerrarEmbarqueClient() {
     async function fetchData() {
       try {
         const [embarqueRes, clientesRes, embarquesRes] = await Promise.all([
-          fetch(`/api/embarques/${embarqueId}`),
-          fetch('/api/clientes?all=true'),
-          fetch('/api/embarques'),
+          fetch(`/api/embarques/${embarqueId}`, { credentials: 'include' }),
+          fetch('/api/clientes?all=true', { credentials: 'include' }),
+          fetch('/api/embarques', { credentials: 'include' }),
         ])
         const embarqueData = await embarqueRes.json()
         const clientesData = await clientesRes.json()
@@ -215,6 +215,7 @@ export default function CerrarEmbarqueClient() {
       const res = await fetch(`/api/embarques/${embarqueId}/cerrar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(payload),
       })
 

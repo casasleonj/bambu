@@ -25,9 +25,17 @@ export function DashboardClient({ data }: { data: DashboardData }) {
     embarquesAbiertos,
     stockAlertas,
     fechaHoy,
+    alertasRiesgo,
+    casosActivos,
   } = data
 
   const fiadosHoy = data.fiadosHoy
+  const totalAlertasRiesgo =
+    alertasRiesgo.disputasAbiertas +
+    alertasRiesgo.clientesBloqueados +
+    alertasRiesgo.clientesConflictivos +
+    alertasRiesgo.promesasProximasVencer +
+    alertasRiesgo.clientesNoVerificados
 
   return (
     <div className="space-y-6">
@@ -89,6 +97,118 @@ export function DashboardClient({ data }: { data: DashboardData }) {
           </div>
         </div>
       </div>
+
+      {/* Alertas de Riesgo */}
+      {totalAlertasRiesgo > 0 && (
+        <div>
+          <h2 className="text-lg font-semibold text-red-800 mb-3">Alertas de Riesgo</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+            {alertasRiesgo.disputasAbiertas > 0 && (
+              <div className="bg-red-50 border border-red-200 p-4 rounded-xl">
+                <div className="flex items-center gap-2">
+                  <span className="text-red-600 text-lg">⚖️</span>
+                  <div>
+                    <p className="text-sm font-medium text-red-800">Disputas abiertas</p>
+                    <p className="text-xs text-red-600">{alertasRiesgo.disputasAbiertas} sin resolver</p>
+                  </div>
+                </div>
+                <Link href="/pedidos" className="text-xs text-red-700 hover:underline mt-2 inline-block">Ver pedidos →</Link>
+              </div>
+            )}
+            {alertasRiesgo.clientesBloqueados > 0 && (
+              <div className="bg-red-50 border border-red-200 p-4 rounded-xl">
+                <div className="flex items-center gap-2">
+                  <span className="text-red-600 text-lg">🔒</span>
+                  <div>
+                    <p className="text-sm font-medium text-red-800">Clientes bloqueados</p>
+                    <p className="text-xs text-red-600">{alertasRiesgo.clientesBloqueados} bloqueados</p>
+                  </div>
+                </div>
+                <Link href="/clientes" className="text-xs text-red-700 hover:underline mt-2 inline-block">Ver clientes →</Link>
+              </div>
+            )}
+            {alertasRiesgo.clientesConflictivos > 0 && (
+              <div className="bg-orange-50 border border-orange-200 p-4 rounded-xl">
+                <div className="flex items-center gap-2">
+                  <span className="text-orange-600 text-lg">😤</span>
+                  <div>
+                    <p className="text-sm font-medium text-orange-800">Clientes conflictivos</p>
+                    <p className="text-xs text-orange-600">{alertasRiesgo.clientesConflictivos} con 3+ reclamaciones</p>
+                  </div>
+                </div>
+                <Link href="/clientes" className="text-xs text-orange-700 hover:underline mt-2 inline-block">Ver clientes →</Link>
+              </div>
+            )}
+            {alertasRiesgo.promesasProximasVencer > 0 && (
+              <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl">
+                <div className="flex items-center gap-2">
+                  <span className="text-amber-600 text-lg">⏰</span>
+                  <div>
+                    <p className="text-sm font-medium text-amber-800">Promesas por vencer</p>
+                    <p className="text-xs text-amber-600">{alertasRiesgo.promesasProximasVencer} en 2 días</p>
+                  </div>
+                </div>
+                <Link href="/pedidos?tab=fiados" className="text-xs text-amber-700 hover:underline mt-2 inline-block">Ver fiados →</Link>
+              </div>
+            )}
+            {alertasRiesgo.clientesNoVerificados > 0 && (
+              <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-xl">
+                <div className="flex items-center gap-2">
+                  <span className="text-yellow-600 text-lg">❓</span>
+                  <div>
+                    <p className="text-sm font-medium text-yellow-800">Sin verificar</p>
+                    <p className="text-xs text-yellow-600">{alertasRiesgo.clientesNoVerificados} +30 días</p>
+                  </div>
+                </div>
+                <Link href="/clientes" className="text-xs text-yellow-700 hover:underline mt-2 inline-block">Ver clientes →</Link>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Casos Activos */}
+      {casosActivos.total > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-semibold text-gray-800">Casos Activos</h2>
+            <Link href="/casos" className="text-sm text-blue-600 hover:underline">Ver todos →</Link>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="bg-red-50 border border-red-200 p-4 rounded-xl">
+              <div className="flex items-center gap-2">
+                <span className="text-red-600 text-lg">🛡️</span>
+                <div>
+                  <p className="text-sm font-medium text-red-800">Total abiertos</p>
+                  <p className="text-2xl font-bold text-red-600">{casosActivos.total}</p>
+                </div>
+              </div>
+            </div>
+            {casosActivos.criticos > 0 && (
+              <div className="bg-red-50 border border-red-200 p-4 rounded-xl">
+                <div className="flex items-center gap-2">
+                  <span className="text-red-600 text-lg">🔴</span>
+                  <div>
+                    <p className="text-sm font-medium text-red-800">Críticos</p>
+                    <p className="text-2xl font-bold text-red-600">{casosActivos.criticos}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+            {casosActivos.sinResolver48h > 0 && (
+              <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl">
+                <div className="flex items-center gap-2">
+                  <span className="text-amber-600 text-lg">⏰</span>
+                  <div>
+                    <p className="text-sm font-medium text-amber-800">Sin resolver +48h</p>
+                    <p className="text-2xl font-bold text-amber-600">{casosActivos.sinResolver48h}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {(pedidosPendientes > 5 || fiadosTotal > 500000 || stockAlertas.length > 0 || embarquesAbiertos > 0) && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -199,23 +319,41 @@ export function DashboardClient({ data }: { data: DashboardData }) {
         {pedidos.length === 0 ? (
           <div className="text-center py-8 text-gray-400"><p>No hay pedidos registrados hoy</p></div>
         ) : (
-          <div className="flex items-end gap-1 h-40">
-            {hourlyPedidos.map((count, i) => {
-              const height = count > 0 ? Math.max((count / maxHourly) * 100, 8) : 0
-              return (
-                <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                  <div className="w-full bg-blue-500 rounded-t hover:bg-blue-600 transition-all relative group" style={{ height: `${height}%` }}>
+          <>
+            <div className="flex items-end gap-[2px] h-40">
+              {hourlyPedidos.map((count, i) => {
+                const heightPct = count > 0 ? Math.max((count / maxHourly) * 100, 8) : 0
+
+  return (
+                  <div key={i} className="flex-1 h-full flex flex-col justify-end items-center">
                     {count > 0 && (
-                      <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition whitespace-nowrap pointer-events-none">
-                        {count} pedido{count !== 1 ? 's' : ''}
-                      </div>
+                      <span className="text-[10px] font-semibold text-gray-700 leading-none mb-0.5">{count}</span>
                     )}
+                    <div
+                      className={`w-full rounded-t transition-all ${count > 0 ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-200'}`}
+                      style={{
+                        height: count > 0 ? `${heightPct}%` : '2px',
+                        minHeight: count > 0 ? '8px' : '2px',
+                      }}
+                    />
+                    <span className="text-[10px] text-gray-500 mt-1">{String(i).padStart(2, '0')}</span>
                   </div>
-                  <span className="text-[10px] text-gray-500">{String(i).padStart(2, '0')}</span>
-                </div>
-              )
-            })}
-          </div>
+                )
+              })}
+            </div>
+            <div className="mt-4 pt-4 border-t border-gray-100">
+              <p className="text-xs font-medium text-gray-500 mb-2">Resumen</p>
+              <div className="flex flex-wrap gap-x-4 gap-y-1">
+                {hourlyPedidos.map((count, i) =>
+                  count > 0 ? (
+                    <span key={i} className="text-xs text-gray-600">
+                      <span className="font-semibold">{String(i).padStart(2, '0')}:00</span> — {count} pedido{count !== 1 ? 's' : ''}
+                    </span>
+                  ) : null
+                )}
+              </div>
+            </div>
+          </>
         )}
       </div>
 

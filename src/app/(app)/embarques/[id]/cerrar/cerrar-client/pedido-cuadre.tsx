@@ -1,5 +1,6 @@
 import type { Pedido, PagoItem, CuadrePedido, EmbarqueAbierto } from './types'
 import { METODOS_PAGO, calcularTotalEntregado, calcularMontoPagado } from './types'
+import { getProductoIconConfig } from '@/lib/producto-iconos'
 
 interface PedidoCuadreProps {
   pedido: Pedido
@@ -13,13 +14,22 @@ interface PedidoCuadreProps {
   onUpdatePago: (pedidoId: string, index: number, field: keyof PagoItem, value: string | number) => void
 }
 
+const CODIGO_MAP: Record<string, string> = {
+  cPacaAguaEnt: 'PACA_AGUA',
+  cPacaHieloEnt: 'PACA_HIELO',
+  cBotellonFabEnt: 'BOTELLON_FAB',
+  cBotellonDomEnt: 'BOTELLON_DOM',
+  cBolsaAguaEnt: 'BOLSA_AGUA',
+  cBolsaHieloEnt: 'BOLSA_HIELO',
+}
+
 const PRODUCTOS = [
-  { key: 'cPacaAguaEnt' as const, precioKey: 'pacaAgua' as const, emoji: '🍶', label: 'Paca Agua' },
-  { key: 'cPacaHieloEnt' as const, precioKey: 'pacaHielo' as const, emoji: '🧊', label: 'Paca Hielo' },
-  { key: 'cBotellonFabEnt' as const, precioKey: 'botellonFab' as const, emoji: '🏭', label: 'Bot. Fab' },
-  { key: 'cBotellonDomEnt' as const, precioKey: 'botellonDom' as const, emoji: '🏠', label: 'Bot. Dom' },
-  { key: 'cBolsaAguaEnt' as const, precioKey: 'bolsaAgua' as const, emoji: '💧', label: 'Bol. Agua' },
-  { key: 'cBolsaHieloEnt' as const, precioKey: 'bolsaHielo' as const, emoji: '❄️', label: 'Bol. Hielo' },
+  { key: 'cPacaAguaEnt' as const, precioKey: 'pacaAgua' as const, label: 'Paca Agua' },
+  { key: 'cPacaHieloEnt' as const, precioKey: 'pacaHielo' as const, label: 'Paca Hielo' },
+  { key: 'cBotellonFabEnt' as const, precioKey: 'botellonFab' as const, label: 'Bot. Fab' },
+  { key: 'cBotellonDomEnt' as const, precioKey: 'botellonDom' as const, label: 'Bot. Dom' },
+  { key: 'cBolsaAguaEnt' as const, precioKey: 'bolsaAgua' as const, label: 'Bol. Agua' },
+  { key: 'cBolsaHieloEnt' as const, precioKey: 'bolsaHielo' as const, label: 'Bol. Hielo' },
 ]
 
 const PEDIDO_KEYS: Record<string, keyof Pedido> = {
@@ -153,10 +163,12 @@ export function PedidoCuadre({
                   const pedidoKey = PEDIDO_KEYS[prod.key]
                   const pedidoCant = pedido[pedidoKey] as number
                   const subtotal = cant * precio
+                  const iconCfg = getProductoIconConfig(CODIGO_MAP[prod.key])
+                  const Icon = iconCfg.Icon
                   return (
                     <tr key={prod.key} className="hover:bg-gray-50">
                       <td className="px-2 py-1.5">
-                        <span className="text-xs">{prod.emoji}</span>
+                        <Icon size={16} className="inline-block align-text-bottom" />
                         <span className="ml-1 text-xs font-medium">{prod.label}</span>
                       </td>
                       <td className="px-2 py-1.5 text-center text-xs text-gray-400">{pedidoCant}</td>

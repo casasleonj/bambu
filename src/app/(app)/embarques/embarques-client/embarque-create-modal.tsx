@@ -28,6 +28,7 @@ export function EmbarqueCreateModal({
       const res = await fetch('/api/embarques', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           trabajadorId: selectedTrabajadorId,
           rutaId: selectedRutaId || undefined,

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Modal } from '@/components/modal'
 import type { TrabajadorFormData } from './types'
 import { rolOptions, rolLabels, tipoPagoOptions, tipoPagoLabels } from './types'
@@ -21,6 +21,11 @@ export function TrabajadorFormModal({
   const [formData, setFormData] = useState<TrabajadorFormData>(initialData)
   const [formError, setFormError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    setFormData(initialData)
+    setFormError('')
+  }, [initialData, open])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -146,43 +151,71 @@ export function TrabajadorFormModal({
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label htmlFor="trabajador-comPacaAgua" className="block text-sm font-medium mb-1">Com. paca agua</label>
-            <input
-              id="trabajador-comPacaAgua"
-              type="number"
-              min={0}
-              value={formData.comPacaAgua}
-              onChange={(e) => setFormData({ ...formData, comPacaAgua: parseFloat(e.target.value) || 0 })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-            />
+        {(formData.tipoPago === 'COMISION' || formData.tipoPago === 'MIXTO') && (
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label htmlFor="trabajador-comPacaAgua" className="block text-sm font-medium mb-1">Com. paca agua</label>
+              <input
+                id="trabajador-comPacaAgua"
+                type="number"
+                min={0}
+                value={formData.comPacaAgua}
+                onChange={(e) => setFormData({ ...formData, comPacaAgua: parseFloat(e.target.value) || 0 })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+            <div>
+              <label htmlFor="trabajador-comPacaHielo" className="block text-sm font-medium mb-1">Com. paca hielo</label>
+              <input
+                id="trabajador-comPacaHielo"
+                type="number"
+                min={0}
+                value={formData.comPacaHielo}
+                onChange={(e) => setFormData({ ...formData, comPacaHielo: parseFloat(e.target.value) || 0 })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+            <div>
+              <label htmlFor="trabajador-comBotellon" className="block text-sm font-medium mb-1">Com. botellón</label>
+              <input
+                id="trabajador-comBotellon"
+                type="number"
+                min={0}
+                value={formData.comBotellon}
+                onChange={(e) => setFormData({ ...formData, comBotellon: parseFloat(e.target.value) || 0 })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
           </div>
-          <div>
-            <label htmlFor="trabajador-comPacaHielo" className="block text-sm font-medium mb-1">Com. paca hielo</label>
-            <input
-              id="trabajador-comPacaHielo"
-              type="number"
-              min={0}
-              value={formData.comPacaHielo}
-              onChange={(e) => setFormData({ ...formData, comPacaHielo: parseFloat(e.target.value) || 0 })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-            />
-          </div>
-        </div>
+        )}
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label htmlFor="trabajador-salarioFijo" className="block text-sm font-medium mb-1">Salario fijo</label>
-            <input
-              id="trabajador-salarioFijo"
-              type="number"
-              min={0}
-              value={formData.salarioFijo}
-              onChange={(e) => setFormData({ ...formData, salarioFijo: parseFloat(e.target.value) || 0 })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-            />
+        {(formData.tipoPago === 'FIJO' || formData.tipoPago === 'MIXTO') && (
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="trabajador-salarioFijo" className="block text-sm font-medium mb-1">Salario fijo</label>
+              <input
+                id="trabajador-salarioFijo"
+                type="number"
+                min={0}
+                value={formData.salarioFijo}
+                onChange={(e) => setFormData({ ...formData, salarioFijo: parseFloat(e.target.value) || 0 })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+            <div>
+              <label htmlFor="trabajador-telefono" className="block text-sm font-medium mb-1">Teléfono</label>
+              <input
+                id="trabajador-telefono"
+                type="text"
+                value={formData.telefono}
+                onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
           </div>
+        )}
+
+        {formData.tipoPago === 'COMISION' && (
           <div>
             <label htmlFor="trabajador-telefono" className="block text-sm font-medium mb-1">Teléfono</label>
             <input
@@ -193,7 +226,7 @@ export function TrabajadorFormModal({
               className="w-full px-3 py-2 border border-gray-300 rounded-lg"
             />
           </div>
-        </div>
+        )}
 
         <div className="flex gap-3 pt-4">
           <button

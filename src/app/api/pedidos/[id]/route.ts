@@ -21,7 +21,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   try {
     const pedido = await prisma.pedido.findUnique({
       where: { id },
-      include: { cliente: true, embarque: true },
+      include: { cliente: true, embarque: true, items: true, pagos: true },
     })
     if (!pedido) return apiError('Not found', 404)
     return apiSuccess({ pedido })
@@ -45,6 +45,57 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     const pedido = await prisma.$transaction(async (tx) => {
       const updateData: Record<string, unknown> = { ...parsed.data }
+
+      // Si se envían items, sincronizar PedidoItem y legacy fields
+      if (parsed.data.items && parsed.data.items.length > 0) {
+        const current = await tx.pedido.findUnique({
+          where: { id },
+          include: { items: true },
+        })
+        if (!current) {
+          throw new Error('PEDIDO_NOT_FOUND')
+        }
+
+        // Borrar items existentes
+        await tx.pedidoItem.deleteMany({ where: { pedidoId: id } })
+
+        // Crear nuevos items usando precios legacy actuales del pedido
+        const precioMap: Record<string, number> = {
+          PACA_AGUA: Number(current.precioPacaAgua || 0),
+          PACA_HIELO: Number(current.precioPacaHielo || 0),
+          BOTELLON: Number(current.precioBotellonFab || current.precioBotellonDom || 0),
+          BOLSA_AGUA: Number(current.precioBolsaAgua || 0),
+          BOLSA_HIELO: Number(current.precioBolsaHielo || 0),
+        }
+
+        const newItems = parsed.data.items
+          .filter(i => i.cantidad > 0)
+          .map(i => ({
+            producto: i.producto,
+            cantPedido: i.cantidad,
+            cantEntrega: updateData.estado === 'ENTREGADO' ? i.cantidad : 0,
+            precio: i.precioManual ?? precioMap[i.producto] ?? 0,
+            subtotal: (i.precioManual ?? precioMap[i.producto] ?? 0) * i.cantidad,
+          }))
+
+        await tx.pedidoItem.createMany({
+          data: newItems.map(i => ({ ...i, pedidoId: id })),
+        })
+
+        // Actualizar legacy fields
+        const botellonCant = parsed.data.items.find(i => i.producto === 'BOTELLON')?.cantidad || 0
+        updateData.cPacaAguaPed = parsed.data.items.find(i => i.producto === 'PACA_AGUA')?.cantidad || 0
+        updateData.cPacaHieloPed = parsed.data.items.find(i => i.producto === 'PACA_HIELO')?.cantidad || 0
+        updateData.cBotellonFabPed = current.canal === 'PUNTO' ? botellonCant : 0
+        updateData.cBotellonDomPed = current.canal === 'DOMICILIO' ? botellonCant : 0
+        updateData.cBolsaAguaPed = parsed.data.items.find(i => i.producto === 'BOLSA_AGUA')?.cantidad || 0
+        updateData.cBolsaHieloPed = parsed.data.items.find(i => i.producto === 'BOLSA_HIELO')?.cantidad || 0
+
+        // Recalcular total
+        const nuevoTotal = newItems.reduce((sum, i) => sum + i.subtotal, 0)
+        updateData.total = nuevoTotal
+        updateData.saldo = nuevoTotal - Number(current.totalPagado || 0)
+      }
 
       // Al marcar como ENTREGADO, copiar cantidades pedidas a entregadas si no se especificaron
       if (parsed.data.estado === 'ENTREGADO') {
@@ -102,6 +153,14 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       if (parsed.data.embarqueId === null && parsed.data.estado === undefined) {
         updateData.estado = 'PENDIENTE'
       }
+
+      // Sincronizar estadoEntrega con estado legacy para mantener consistencia
+      if (updateData.estado) {
+        updateData.estadoEntrega = updateData.estado
+      }
+
+      // Quitar 'items' porque es relación, no campo escalar
+      delete updateData.items
 
       return tx.pedido.update({
         where: { id },

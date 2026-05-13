@@ -7,7 +7,7 @@ export default async function PreciosPage() {
     include: {
       precios: {
         where: { activo: true },
-        orderBy: [{ canal: 'asc' }, { cantMin: 'asc' }],
+        orderBy: { cantMin: 'asc' },
       },
     },
     orderBy: { codigo: 'asc' },

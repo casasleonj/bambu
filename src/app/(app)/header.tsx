@@ -1,11 +1,22 @@
 'use client'
 
+import { useSession } from 'next-auth/react'
 import { ConnectivityIndicator } from '@/components/connectivity-indicator'
 import { useAppStore } from '@/stores/app-store'
+
+const ROL_LABELS: Record<string, { label: string; color: string }> = {
+  ADMIN: { label: 'Admin', color: 'bg-yellow-400 text-yellow-900' },
+  ASISTENTE: { label: 'Asistente', color: 'bg-green-300 text-green-900' },
+  CONTADOR: { label: 'Contador', color: 'bg-purple-300 text-purple-900' },
+  REPARTIDOR: { label: 'Repartidor', color: 'bg-orange-300 text-orange-900' },
+}
 
 export function Header() {
   const sidebarOpen = useAppStore(s => s.sidebarOpen)
   const toggleSidebar = useAppStore(s => s.toggleSidebar)
+  const { data: session } = useSession()
+  const userRole = (session?.user as { role?: string } | undefined)?.role
+  const rolInfo = userRole ? (ROL_LABELS[userRole] || { label: userRole, color: 'bg-gray-400 text-gray-900' }) : null
 
   const fechaStr = new Date().toLocaleDateString('es-CO', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
 
@@ -25,6 +36,11 @@ export function Header() {
         <h1 className="text-xl font-bold">Agua Bambú</h1>
       </div>
       <div className="flex items-center gap-3">
+        {rolInfo && (
+          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${rolInfo.color}`}>
+            {rolInfo.label}
+          </span>
+        )}
         <ConnectivityIndicator />
         <div className="flex items-center gap-1.5 bg-blue-700/40 px-3 py-1.5 rounded-lg">
           <svg className="w-3.5 h-3.5 text-blue-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">

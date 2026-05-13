@@ -2,15 +2,20 @@
 
 import { useState, useEffect } from 'react'
 
+function getTodayKey() {
+  return new Date().toISOString().split('T')[0]
+}
+
 export function useBaseCaja() {
   const [baseDia, setBaseDiaState] = useState<string | null>(null)
 
   useEffect(() => {
-    const saved = localStorage.getItem('baseDia')
+    const todayKey = getTodayKey()
+    const saved = localStorage.getItem(`baseDia_${todayKey}`)
     if (saved) setBaseDiaState(saved)
 
     const handler = (e: StorageEvent) => {
-      if (e.key === 'baseDia') {
+      if (e.key === `baseDia_${todayKey}`) {
         setBaseDiaState(e.newValue)
       }
     }
@@ -19,10 +24,17 @@ export function useBaseCaja() {
   }, [])
 
   const setBaseDia = (val: string) => {
-    localStorage.setItem('baseDia', val)
+    const todayKey = getTodayKey()
+    localStorage.setItem(`baseDia_${todayKey}`, val)
     setBaseDiaState(val)
-    window.dispatchEvent(new StorageEvent('storage', { key: 'baseDia', newValue: val }))
+    window.dispatchEvent(new StorageEvent('storage', { key: `baseDia_${todayKey}`, newValue: val }))
   }
 
-  return { baseDia, setBaseDia }
+  const clearBaseDia = () => {
+    const todayKey = getTodayKey()
+    localStorage.removeItem(`baseDia_${todayKey}`)
+    setBaseDiaState(null)
+  }
+
+  return { baseDia, setBaseDia, clearBaseDia }
 }

@@ -54,6 +54,7 @@ export async function POST(request: NextRequest) {
         capacidadKg: parsed.data.capacidadKg || 500,
         comPacaAgua: parsed.data.comPacaAgua || 200,
         comPacaHielo: parsed.data.comPacaHielo || 200,
+        comBotellon: parsed.data.comBotellon || 200,
         salarioFijo: parsed.data.salarioFijo || 0,
         telefono: parsed.data.telefono,
       },

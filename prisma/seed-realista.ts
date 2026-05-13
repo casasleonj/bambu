@@ -15,10 +15,10 @@ const TIPOS_NEGOCIO = ['Tienda', 'Restaurante', 'Café', 'Hotel', 'Bar', 'Ferret
 const CATEGORIAS_GASTO = ['Combustible', 'Mantenimiento moto', 'Mantenimiento planta', 'Insumos limpieza', 'Gas', 'Electricidad', 'Agua', 'Teléfono/Internet', 'Papelería', 'Viáticos', 'Almuerzo personal', 'Peajes', 'Parqueaderos', 'Repuestos', 'Uniformes', 'Herramientas', 'Bolsas plásticas', 'Tapas', 'Etiquetas', 'Cloro']
 const OBS_PEDIDOS = ['', '', '', '', '', '', '', '', '', 'Entregar antes de las 9am', 'Llamar al llegar', 'No hay timbre, tocar puerta', 'Dejar en portería', 'Cuidado con el perro', 'Subir al 3er piso', 'Casa esquina', 'Portón verde', 'Al lado de la tienda', 'Detrás de la iglesia', 'Frente al parque']
 
-const PRODUCTOS = ['PACA_AGUA', 'PACA_HIELO', 'BOTELLON_FAB', 'BOTELLON_DOM', 'BOLSA_AGUA', 'BOLSA_HIELO'] as const
+const PRODUCTOS = ['PACA_AGUA', 'PACA_HIELO', 'BOTELLON', 'BOLSA_AGUA', 'BOLSA_HIELO'] as const
 
-const PRECIOS_PUNTO: Record<string, number> = { PACA_AGUA: 3000, PACA_HIELO: 2500, BOTELLON_FAB: 7500, BOTELLON_DOM: 0, BOLSA_AGUA: 300, BOLSA_HIELO: 500 }
-const PRECIOS_DOMICILIO: Record<string, number> = { PACA_AGUA: 3000, PACA_HIELO: 2500, BOTELLON_FAB: 0, BOTELLON_DOM: 10000, BOLSA_AGUA: 300, BOLSA_HIELO: 500 }
+const PRECIOS_PUNTO: Record<string, number> = { PACA_AGUA: 3000, PACA_HIELO: 2500, BOTELLON: 7500, BOLSA_AGUA: 300, BOLSA_HIELO: 500 }
+const PRECIOS_DOMICILIO: Record<string, number> = { PACA_AGUA: 3000, PACA_HIELO: 2500, BOTELLON: 10000, BOLSA_AGUA: 300, BOLSA_HIELO: 500 }
 
 function rand<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length)] }
 function randInt(min: number, max: number): number { return Math.floor(Math.random() * (max - min + 1)) + min }
@@ -126,12 +126,11 @@ async function main() {
 
   // ─── Products + Volume Prices ────────────────────────────────────────────
   const productosData = [
-    { codigo: 'PACA_AGUA', nombre: 'Paca de Agua (40u 300ml)', unidad: 'paca', contenido: '40 bolsas x 300ml' },
-    { codigo: 'PACA_HIELO', nombre: 'Paca de Hielo (20u 600ml)', unidad: 'paca', contenido: '20 bolsas x 600ml' },
-    { codigo: 'BOTELLON_FAB', nombre: 'Botellón Fábrica 20LT', unidad: 'unidad', contenido: '20 litros' },
-    { codigo: 'BOTELLON_DOM', nombre: 'Botellón Domicilio 20LT', unidad: 'unidad', contenido: '20 litros' },
-    { codigo: 'BOLSA_AGUA', nombre: 'Bolsa de Agua 300ml', unidad: 'unidad', contenido: '300ml' },
-    { codigo: 'BOLSA_HIELO', nombre: 'Bolsa de Hielo 600ml', unidad: 'unidad', contenido: '600ml' },
+    { codigo: 'PACA_AGUA', nombre: 'Paca de Agua (40u 300ml)', unidad: 'paca', contenido: '40 bolsas x 300ml', aplicaDomicilio: true, sobreCostoDomicilio: 0 },
+    { codigo: 'PACA_HIELO', nombre: 'Paca de Hielo (20u 600ml)', unidad: 'paca', contenido: '20 bolsas x 600ml', aplicaDomicilio: true, sobreCostoDomicilio: 0 },
+    { codigo: 'BOTELLON', nombre: 'Botellón 20LT', unidad: 'unidad', contenido: '20 litros', aplicaDomicilio: true, sobreCostoDomicilio: 2500 },
+    { codigo: 'BOLSA_AGUA', nombre: 'Bolsa de Agua 300ml', unidad: 'unidad', contenido: '300ml', aplicaDomicilio: true, sobreCostoDomicilio: 0 },
+    { codigo: 'BOLSA_HIELO', nombre: 'Bolsa de Hielo 600ml', unidad: 'unidad', contenido: '600ml', aplicaDomicilio: true, sobreCostoDomicilio: 0 },
   ]
 
   const productos: Record<string, any> = {}
@@ -141,25 +140,18 @@ async function main() {
   }
 
   const preciosVolumen = [
-    { codigo: 'PACA_AGUA', canal: 'PUNTO', cantMin: 1, cantMax: 4, precio: 2800 },
-    { codigo: 'PACA_AGUA', canal: 'PUNTO', cantMin: 5, cantMax: 9, precio: 2500 },
-    { codigo: 'PACA_AGUA', canal: 'PUNTO', cantMin: 10, cantMax: null, precio: 2300 },
-    { codigo: 'PACA_AGUA', canal: 'DOMICILIO', cantMin: 1, cantMax: 4, precio: 3000 },
-    { codigo: 'PACA_AGUA', canal: 'DOMICILIO', cantMin: 5, cantMax: 9, precio: 2500 },
-    { codigo: 'PACA_AGUA', canal: 'DOMICILIO', cantMin: 10, cantMax: null, precio: 2300 },
-    { codigo: 'PACA_HIELO', canal: 'PUNTO', cantMin: 1, cantMax: null, precio: 2500 },
-    { codigo: 'PACA_HIELO', canal: 'DOMICILIO', cantMin: 1, cantMax: null, precio: 2500 },
-    { codigo: 'BOTELLON_FAB', canal: 'PUNTO', cantMin: 1, cantMax: null, precio: 7500 },
-    { codigo: 'BOTELLON_DOM', canal: 'DOMICILIO', cantMin: 1, cantMax: null, precio: 10000 },
-    { codigo: 'BOLSA_AGUA', canal: 'PUNTO', cantMin: 1, cantMax: null, precio: 300 },
-    { codigo: 'BOLSA_AGUA', canal: 'DOMICILIO', cantMin: 1, cantMax: null, precio: 300 },
-    { codigo: 'BOLSA_HIELO', canal: 'PUNTO', cantMin: 1, cantMax: null, precio: 500 },
-    { codigo: 'BOLSA_HIELO', canal: 'DOMICILIO', cantMin: 1, cantMax: null, precio: 500 },
+    { codigo: 'PACA_AGUA', cantMin: 1, cantMax: 4, precio: 2800 },
+    { codigo: 'PACA_AGUA', cantMin: 5, cantMax: 9, precio: 2500 },
+    { codigo: 'PACA_AGUA', cantMin: 10, cantMax: null, precio: 2300 },
+    { codigo: 'PACA_HIELO', cantMin: 1, cantMax: null, precio: 2500 },
+    { codigo: 'BOTELLON', cantMin: 1, cantMax: null, precio: 7500 },
+    { codigo: 'BOLSA_AGUA', cantMin: 1, cantMax: null, precio: 300 },
+    { codigo: 'BOLSA_HIELO', cantMin: 1, cantMax: null, precio: 500 },
   ]
 
   for (const p of preciosVolumen) {
     await prisma.precioVolumen.create({
-      data: { productoId: productos[p.codigo].id, canal: p.canal, cantMin: p.cantMin, cantMax: p.cantMax, precio: p.precio },
+      data: { productoId: productos[p.codigo].id, cantMin: p.cantMin, cantMax: p.cantMax, precio: p.precio },
     })
   }
   console.log('✅ Products and volume prices created')
@@ -169,8 +161,7 @@ async function main() {
     data: [
       { producto: 'AGUA_GALON', precio: 6500, creadoPor: 'admin' },
       { producto: 'HIELO_5KG', precio: 8000, creadoPor: 'admin' },
-      { producto: 'BOTELLON_FABRICA', precio: 7500, creadoPor: 'admin' },
-      { producto: 'BOTELLON_DOMICILIO', precio: 10000, creadoPor: 'admin' },
+      { producto: 'BOTELLON', precio: 7500, creadoPor: 'admin' },
       { producto: 'BOLSA_AGUA', precio: 2500, creadoPor: 'admin' },
       { producto: 'BOLSA_HIELO', precio: 3000, creadoPor: 'admin' },
     ],
@@ -223,6 +214,7 @@ async function main() {
         telefono: generateTelefono(),
         comPacaAgua: 200,
         comPacaHielo: 200,
+        comBotellon: 200,
         salarioFijo: t.tipoPago === TipoPagoTrabajador.FIJO ? 1200000 : t.tipoPago === TipoPagoTrabajador.MIXTO ? 600000 : 0,
         createdById: users[0].id,
       },
@@ -523,10 +515,7 @@ async function main() {
       let total = 0
 
       for (const prod of PRODUCTOS) {
-        if (canal === 'PUNTO' && prod === 'BOTELLON_DOM') continue
-        if (canal === 'DOMICILIO' && (prod === 'BOTELLON_FAB' || prod === 'BOLSA_AGUA' || prod === 'BOLSA_HIELO')) continue
-
-        const prob = prod === 'PACA_AGUA' ? 0.8 : prod === 'PACA_HIELO' ? 0.6 : prod === 'BOTELLON_DOM' ? 0.4 : prod === 'BOTELLON_FAB' ? 0.2 : 0.15
+        const prob = prod === 'PACA_AGUA' ? 0.8 : prod === 'PACA_HIELO' ? 0.6 : prod === 'BOTELLON' ? 0.4 : 0.15
         if (Math.random() < prob) {
           const cant = prod.includes('BOLSA') ? randInt(5, 40) : randInt(1, 8)
           productosPedido[prod] = cant
@@ -608,10 +597,13 @@ async function main() {
       // Entregados: cantidad entregada = cantidad pedida (o menos si hay devolución)
       const cPacaAguaPed = productosPedido['PACA_AGUA'] || 0
       const cPacaHieloPed = productosPedido['PACA_HIELO'] || 0
-      const cBotellonFabPed = productosPedido['BOTELLON_FAB'] || 0
-      const cBotellonDomPed = productosPedido['BOTELLON_DOM'] || 0
+      const cBotellonPed = productosPedido['BOTELLON'] || 0
       const cBolsaAguaPed = productosPedido['BOLSA_AGUA'] || 0
       const cBolsaHieloPed = productosPedido['BOLSA_HIELO'] || 0
+
+      // Legacy mapping: BOTELLON se divide según canal para compatibilidad
+      const cBotellonFabPed = canal === 'PUNTO' ? cBotellonPed : 0
+      const cBotellonDomPed = canal === 'DOMICILIO' ? cBotellonPed : 0
 
       let cPacaAguaEnt = cPacaAguaPed
       let cPacaHieloEnt = cPacaHieloPed
@@ -644,8 +636,8 @@ async function main() {
           cBolsaHieloPed, cBolsaHieloEnt,
           precioPacaAgua: precios['PACA_AGUA'] || 0,
           precioPacaHielo: precios['PACA_HIELO'] || 0,
-          precioBotellonFab: precios['BOTELLON_FAB'] || 0,
-          precioBotellonDom: precios['BOTELLON_DOM'] || 0,
+          precioBotellonFab: canal === 'PUNTO' ? (precios['BOTELLON'] || 0) : 0,
+          precioBotellonDom: canal === 'DOMICILIO' ? (precios['BOTELLON'] || 0) : 0,
           precioBolsaAgua: precios['BOLSA_AGUA'] || 0,
           precioBolsaHielo: precios['BOLSA_HIELO'] || 0,
           total,

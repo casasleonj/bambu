@@ -70,13 +70,22 @@ test.describe('Flujos críticos de negocio', () => {
     expect(bodyText).toContain('Cliente E2E Test')
   })
 
-  test('Crear un pedido con pago', async ({ page }) => {
+  test('Crear un pedido con pago via items array', async ({ page }) => {
     await login(page)
     await handleBaseCajaModal(page)
 
     await page.goto(`${BASE_URL}/pedidos`)
     await page.waitForLoadState('networkidle')
     await handleBaseCajaModal(page)
+
+    // Intercept API request to verify items array
+    let requestBody: any = null
+    await page.route('/api/pedidos', async (route) => {
+      if (route.request().method() === 'POST') {
+        requestBody = await route.request().postDataJSON()
+      }
+      await route.continue()
+    })
 
     // Open create modal
     await page.click('button:has-text("+ Nuevo Pedido")')
@@ -117,6 +126,14 @@ test.describe('Flujos críticos de negocio', () => {
 
     // Verify we're back on pedidos list
     await expect(page.locator('body')).toContainText('Pedidos')
+
+    // Verify API received items array
+    expect(requestBody).not.toBeNull()
+    expect(requestBody.items).toBeDefined()
+    expect(Array.isArray(requestBody.items)).toBe(true)
+    expect(requestBody.items.length).toBeGreaterThan(0)
+    expect(requestBody.items[0]).toHaveProperty('producto')
+    expect(requestBody.items[0]).toHaveProperty('cantidad')
   })
 
   test('Dashboard muestra secciones principales', async ({ page }) => {
@@ -139,13 +156,22 @@ test.describe('Flujos críticos de negocio', () => {
     await expect(page.locator('text=Precios')).toBeVisible()
   })
 
-  test('Pedido agendado sin pago es permitido', async ({ page }) => {
+  test('Pedido agendado sin pago es permitido via items array', async ({ page }) => {
     await login(page)
     await handleBaseCajaModal(page)
 
     await page.goto(`${BASE_URL}/pedidos`)
     await page.waitForLoadState('networkidle')
     await handleBaseCajaModal(page)
+
+    // Intercept to verify items array
+    let requestBody: any = null
+    await page.route('/api/pedidos', async (route) => {
+      if (route.request().method() === 'POST') {
+        requestBody = await route.request().postDataJSON()
+      }
+      await route.continue()
+    })
 
     await page.click('button:has-text("+ Nuevo Pedido")')
     await page.waitForTimeout(800)
@@ -173,5 +199,10 @@ test.describe('Flujos críticos de negocio', () => {
     // Verify pedido appears in list (PENDIENTE state for non-ventaRapida order)
     await page.waitForTimeout(500)
     await expect(page.getByText('PENDIENTE').first()).toBeVisible()
+
+    // Verify API used items array
+    expect(requestBody).not.toBeNull()
+    expect(requestBody.items).toBeDefined()
+    expect(Array.isArray(requestBody.items)).toBe(true)
   })
 })

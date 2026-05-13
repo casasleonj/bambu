@@ -6,20 +6,20 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
 
-const PrecioHistorialSchema = z.object({
-  producto: z.enum([
-    'AGUA_GALON',
-    'HIELO_5KG',
-    'BOTELLON_FABRICA',
-    'BOTELLON_DOMICILIO',
-    'BOLSA_AGUA',
-    'BOLSA_HIELO',
-  ]),
+const PrecioVolumenCreateSchema = z.object({
+  productoId: z.string().min(1),
+  cantMin: z.coerce.number().int().min(1),
+  cantMax: z.coerce.number().int().min(1).nullable().optional(),
   precio: z.coerce.number().positive(),
 })
 
-const PrecioVolumenSchema = z.object({
+const PrecioVolumenUpdateSchema = z.object({
   precioVolumenId: z.string().min(1),
+  precio: z.coerce.number().positive(),
+})
+
+const PrecioHistorialSchema = z.object({
+  producto: z.string().min(1),
   precio: z.coerce.number().positive(),
 })
 
@@ -49,9 +49,27 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
 
-    const volumenParsed = PrecioVolumenSchema.safeParse(body)
-    if (volumenParsed.success) {
-      const { precioVolumenId, precio } = volumenParsed.data
+    // Create new volume tier
+    const createParsed = PrecioVolumenCreateSchema.safeParse(body)
+    if (createParsed.success) {
+      const { productoId, cantMin, cantMax, precio } = createParsed.data
+      const tier = await prisma.precioVolumen.create({
+        data: { productoId, cantMin, cantMax: cantMax ?? null, precio },
+      })
+      logAudit({
+        entidad: 'PrecioVolumen',
+        registroId: tier.id,
+        accion: 'CREATE',
+        datos: { productoId, cantMin, cantMax, precio },
+        usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+      }).catch(() => {})
+      return apiSuccess({ tier }, 201)
+    }
+
+    // Update existing volume tier price
+    const updateParsed = PrecioVolumenUpdateSchema.safeParse(body)
+    if (updateParsed.success) {
+      const { precioVolumenId, precio } = updateParsed.data
       await prisma.precioVolumen.update({
         where: { id: precioVolumenId },
         data: { precio },
@@ -60,12 +78,13 @@ export async function POST(request: NextRequest) {
         entidad: 'PrecioVolumen',
         registroId: precioVolumenId,
         accion: 'UPDATE',
-        datos: { precioVolumenId, precio },
+        datos: { precio },
         usuarioId: (authResult.user as { id?: string } | undefined)?.id,
       }).catch(() => {})
       return apiSuccess({})
     }
 
+    // Create price history entry
     const historialParsed = PrecioHistorialSchema.safeParse(body)
     if (historialParsed.success) {
       const { producto, precio } = historialParsed.data
@@ -86,7 +105,7 @@ export async function POST(request: NextRequest) {
       return apiSuccess({ precio: record }, 201)
     }
 
-    return apiError('Datos invalidos. Envie {precioVolumenId, precio} o {producto, precio}.', 400)
+    return apiError('Datos invalidos. Envie {productoId, cantMin, cantMax, precio} o {precioVolumenId, precio} o {producto, precio}.', 400)
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error updating precio:')
     return apiError('Error actualizando precio')

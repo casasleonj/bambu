@@ -1,5 +1,4 @@
 import { NextRequest } from 'next/server'
-import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
 import { PagarFiadoSchema } from '@/lib/validators'
 import { calcularEstadoPago } from '@/lib/pedido-utils'
@@ -42,8 +41,11 @@ export async function POST(request: NextRequest) {
       const pagosAplicados: Array<{
         pedidoId: string
         numero: number
+        facturaId?: string
+        facturaNumero?: string
         montoAplicado: number
         saldoRestante: number
+        abonoCreado?: boolean
       }> = []
 
       // 2. Aplicar monto FIFO
@@ -76,12 +78,23 @@ export async function POST(request: NextRequest) {
           },
         })
 
-        // Actualizar factura si saldo llega a 0
-        if (nuevoSaldo <= 0 && pedido.factura) {
+        // Actualizar factura con el abono (siempre, no solo cuando saldo llega a 0)
+        if (pedido.factura) {
           await tx.factura.update({
             where: { id: pedido.factura.id },
-            data: { estado: 'PAGADA', saldo: 0 },
+            data: {
+              saldo: { decrement: montoAplicar },
+              montoPagado: { increment: montoAplicar },
+            },
           })
+
+          // Marcar como PAGADA si saldo llega a 0
+          if (nuevoSaldo <= 0) {
+            await tx.factura.update({
+              where: { id: pedido.factura.id },
+              data: { estado: 'PAGADA' },
+            })
+          }
         }
 
         // Crear abono contable si existe factura
@@ -102,6 +115,8 @@ export async function POST(request: NextRequest) {
         pagosAplicados.push({
           pedidoId: pedido.id,
           numero: pedido.numero,
+          facturaId: pedido.factura?.id,
+          facturaNumero: pedido.factura?.numero,
           montoAplicado: montoAplicar,
           saldoRestante: nuevoSaldo,
           abonoCreado: !!pedido.factura,

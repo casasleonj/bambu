@@ -2,6 +2,7 @@
 
 import type { Canal, FormData } from './types'
 import { PRODUCTOS_PRECIO } from './types'
+import { getProductoIconConfig } from '@/lib/producto-iconos'
 import { formatCurrency } from '@/lib/utils'
 import { Modal } from '@/components/modal'
 
@@ -156,32 +157,36 @@ export function ClienteForm({
           <legend className="block text-sm font-medium mb-2">Precios Especiales</legend>
 
           {(() => {
-            const allOverrides: Array<{ canal: Canal; codigo: string; nombre: string; emoji: string; precio: number }> = []
+            const allOverrides: Array<{ canal: Canal; codigo: string; nombre: string; precio: number }> = []
             for (const canal of ['DOMICILIO', 'PUNTO'] as Canal[]) {
               for (const prod of PRODUCTOS_PRECIO) {
                 const val = preciosEspecialesMap[canal][prod.codigo]
                 if (val !== undefined && val > 0 && val !== preciosBase[canal][prod.codigo]) {
-                  allOverrides.push({ canal, codigo: prod.codigo, nombre: prod.nombre, emoji: prod.emoji, precio: val })
+                  allOverrides.push({ canal, codigo: prod.codigo, nombre: prod.nombre, precio: val })
                 }
               }
             }
             if (allOverrides.length === 0) return null
             return (
               <div className="flex flex-wrap gap-1.5 mb-3">
-                {allOverrides.map((item) => (
-                  <span
-                    key={`${item.canal}-${item.codigo}`}
-                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${
-                      item.canal === 'DOMICILIO'
-                        ? 'bg-blue-50 border-blue-200 text-blue-700'
-                        : 'bg-purple-50 border-purple-200 text-purple-700'
-                    }`}
-                  >
-                    <span>{item.emoji}</span>
-                    <span>{item.nombre}</span>
-                    <span className="font-bold">${item.precio.toLocaleString()}</span>
-                  </span>
-                ))}
+                {allOverrides.map((item) => {
+                  const iconCfg = getProductoIconConfig(item.codigo)
+                  const Icon = iconCfg.Icon
+                  return (
+                    <span
+                      key={`${item.canal}-${item.codigo}`}
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${
+                        item.canal === 'DOMICILIO'
+                          ? 'bg-blue-50 border-blue-200 text-blue-700'
+                          : 'bg-purple-50 border-purple-200 text-purple-700'
+                      }`}
+                    >
+                      <Icon size={14} />
+                      <span>{item.nombre}</span>
+                      <span className="font-bold">${item.precio.toLocaleString()}</span>
+                    </span>
+                  )
+                })}
               </div>
             )
           })()}
@@ -207,6 +212,8 @@ export function ClienteForm({
               const base = preciosBase[canalActivo][prod.codigo]
               const especial = preciosEspecialesMap[canalActivo][prod.codigo]
               const hasOverride = especial !== undefined && especial > 0 && especial !== base
+              const iconCfg = getProductoIconConfig(prod.codigo)
+              const Icon = iconCfg.Icon
               return (
                 <div
                   key={prod.codigo}
@@ -217,7 +224,7 @@ export function ClienteForm({
                   }`}
                 >
                   <div className="flex items-center gap-1.5 mb-1">
-                    <span className="text-base">{prod.emoji}</span>
+                    <Icon size={16} />
                     <span className="text-xs font-medium text-gray-700 truncate">{prod.nombre}</span>
                   </div>
                   {base > 0 && (

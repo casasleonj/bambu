@@ -5,6 +5,7 @@ describe('PedidoCreateSchema', () => {
   it('validates minimum valid pedido', () => {
     const result = PedidoCreateSchema.safeParse({
       clienteId: 'test-cliente-id',
+      items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 100 }],
     })
     expect(result.success).toBe(true)
@@ -12,6 +13,7 @@ describe('PedidoCreateSchema', () => {
 
   it('fails without clienteId', () => {
     const result = PedidoCreateSchema.safeParse({
+      items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 100 }],
     })
     expect(result.success).toBe(false)
@@ -20,6 +22,7 @@ describe('PedidoCreateSchema', () => {
   it('allows empty pagos (fiado orders)', () => {
     const result = PedidoCreateSchema.safeParse({
       clienteId: 'test-cliente-id',
+      items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
     })
     expect(result.success).toBe(true)
   })
@@ -27,7 +30,7 @@ describe('PedidoCreateSchema', () => {
   it('fails with negative product quantity', () => {
     const result = PedidoCreateSchema.safeParse({
       clienteId: 'test-cliente-id',
-      productos: { pacaAgua: -1 },
+      items: [{ producto: 'PACA_AGUA', cantidad: -1 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 100 }],
     })
     expect(result.success).toBe(false)
@@ -36,6 +39,7 @@ describe('PedidoCreateSchema', () => {
   it('accepts multiple pagos', () => {
     const result = PedidoCreateSchema.safeParse({
       clienteId: 'test-cliente-id',
+      items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [
         { metodo: 'EFECTIVO', monto: 50 },
         { metodo: 'NEQUI', monto: 50 },
@@ -47,6 +51,7 @@ describe('PedidoCreateSchema', () => {
   it('fails with negative preciosManuales', () => {
     const result = PedidoCreateSchema.safeParse({
       clienteId: 'test-cliente-id',
+      items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       preciosManuales: { pacaAgua: -5000 },
       pagos: [{ metodo: 'EFECTIVO', monto: 100 }],
     })
@@ -56,6 +61,7 @@ describe('PedidoCreateSchema', () => {
   it('accepts zero or positive preciosManuales', () => {
     const result = PedidoCreateSchema.safeParse({
       clienteId: 'test-cliente-id',
+      items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       preciosManuales: { pacaAgua: 0, pacaHielo: 8000 },
       pagos: [{ metodo: 'EFECTIVO', monto: 100 }],
     })

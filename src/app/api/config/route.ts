@@ -42,15 +42,23 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
-  const roleCheck = await requireRole('ADMIN')
-  if (roleCheck instanceof Response) return roleCheck
+
+  const body = await request.json()
+  const parsed = ConfigCreateSchema.safeParse(body)
+  if (!parsed.success) {
+    return apiError(formatZodError(parsed.error), 400)
+  }
+  const { clave } = parsed.data
+
+  // BASE_DIA keys can be set by any authenticated user
+  const isBaseDia = clave.startsWith('BASE_DIA')
+  if (!isBaseDia) {
+    const roleCheck = await requireRole(['ADMIN', 'CONTADOR'], authResult)
+    if (roleCheck instanceof Response) return roleCheck
+  }
+
   try {
-    const body = await request.json()
-    const parsed = ConfigCreateSchema.safeParse(body)
-    if (!parsed.success) {
-      return apiError(formatZodError(parsed.error), 400)
-    }
-    const { clave, valor } = parsed.data
+    const { valor } = parsed.data
 
     const existing = await prisma.config.findUnique({ where: { clave } })
     const config = await prisma.config.upsert({

@@ -69,61 +69,72 @@ export default function InsumosClient({ initialInsumos, initialProveedores }: In
 
   return (
     <div className="p-4 space-y-4">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">📦 Insumos</h1>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Insumos</h1>
+          <p className="text-sm text-muted-foreground mt-1">Gestiona los insumos de tu operación</p>
+        </div>
         <Link href="/proveedores" className="text-sm text-blue-600 hover:underline">
           Gestionar proveedores →
         </Link>
       </div>
 
       {alertas.length > 0 && (
-        <div className="p-3 bg-red-100 border border-red-300 rounded-md">
-          <div className="font-medium text-red-800">⚠️ Alertas de Stock</div>
-          {alertas.map(a => (
-            <div key={a.id} className="text-sm text-red-700">
-              {a.nombre}: {a.stock}/{a.stockMin} {a.unidad}
+        <Card className="border-red-300 bg-red-50/50">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+              <span className="font-medium text-red-800">Alertas de Stock ({alertas.length})</span>
             </div>
-          ))}
-        </div>
+            <div className="space-y-1">
+              {alertas.map(a => (
+                <div key={a.id} className="text-sm text-red-700">
+                  <span className="font-medium">{a.nombre}</span>: {a.stock} / {a.stockMin} min {a.unidad}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {fetchError && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
-          <p className="text-red-700 text-sm">{fetchError}</p>
-          <button
-            onClick={fetchData}
-            className="px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium"
-          >
-            Reintentar
-          </button>
-        </div>
+        <Card className="border-red-300 bg-red-50/50">
+          <CardContent className="p-4 flex items-center justify-between">
+            <p className="text-red-700 text-sm">{fetchError}</p>
+            <Button size="sm" variant="destructive" onClick={fetchData}>Reintentar</Button>
+          </CardContent>
+        </Card>
       )}
 
-      <div className="grid grid-cols-3 gap-4">
-        <Card className="bg-muted">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card>
           <CardContent className="p-4 text-center">
             <div className="text-2xl font-bold">{insumos.length}</div>
             <div className="text-sm text-muted-foreground">Insumos</div>
           </CardContent>
         </Card>
         {Object.entries(stockByUnit).map(([unit, total]) => (
-          <Card key={unit} className="bg-muted">
+          <Card key={unit}>
             <CardContent className="p-4 text-center">
               <div className="text-2xl font-bold">{total.toLocaleString()}</div>
               <div className="text-sm text-muted-foreground">{unit}</div>
             </CardContent>
           </Card>
         ))}
-        <Card className="bg-muted">
-          <CardContent className="p-4 text-center">
-            <div className="text-2xl font-bold">{alertas.length}</div>
-            <div className="text-sm text-muted-foreground">Alertas</div>
-          </CardContent>
-        </Card>
+        {alertas.length > 0 && (
+          <Card className="border-amber-300 bg-amber-50/50">
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold text-amber-600">{alertas.length}</div>
+              <div className="text-sm text-muted-foreground">Alertas</div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
-      <Button onClick={() => setShowCrear(!showCrear)}>
-        ➕ Nuevo Insumo
+      <Button onClick={() => setShowCrear(!showCrear)} variant={showCrear ? 'secondary' : 'default'}>
+        {showCrear ? 'Cancelar' : '+ Nuevo Insumo'}
       </Button>
 
       {showCrear && (
@@ -131,26 +142,46 @@ export default function InsumosClient({ initialInsumos, initialProveedores }: In
           <CardHeader>
             <CardTitle>Crear Insumo</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <div><Label htmlFor="insumo-nombre">Nombre <span className="text-red-500">*</span></Label><Input id="insumo-nombre" required value={nombre} onChange={e => setNombre(e.target.value)} /></div>
-            <div><Label htmlFor="insumo-unidad">Unidad</Label>
-              <select id="insumo-unidad" className="w-full h-10 rounded-md border bg-background px-3" value={unidad} onChange={e => setUnidad(e.target.value)}>
+          <CardContent className="space-y-4">
+            <div>
+              <Label htmlFor="insumo-nombre">Nombre <span className="text-red-500">*</span></Label>
+              <Input id="insumo-nombre" required value={nombre} onChange={e => setNombre(e.target.value)} className="mt-1" />
+            </div>
+            <div>
+              <Label htmlFor="insumo-unidad">Unidad</Label>
+              <select id="insumo-unidad" className="w-full h-10 rounded-md border bg-background px-3 mt-1" value={unidad} onChange={e => setUnidad(e.target.value)}>
                 <option value="UNIDAD">Unidad</option>
                 <option value="KG">Kilogramo</option>
                 <option value="LITRO">Litro</option>
                 <option value="BOLSA">Bolsa</option>
               </select>
             </div>
-            <div><Label htmlFor="insumo-stock">Stock Inicial</Label><Input id="insumo-stock" type="number" min="0" value={stock} onChange={e => setStock(e.target.value)} /></div>
-            <div><Label htmlFor="insumo-stockMin">Stock Minimo</Label><Input id="insumo-stockMin" type="number" min="0" value={stockMin} onChange={e => setStockMin(e.target.value)} /></div>
-            <div><Label htmlFor="insumo-precioUnit">Precio Unitario</Label><Input id="insumo-precioUnit" type="number" min="0" value={precioUnit} onChange={e => setPrecioUnit(e.target.value)} /></div>
-            <div><Label htmlFor="insumo-proveedor">Proveedor</Label>
-              <select id="insumo-proveedor" className="w-full h-10 rounded-md border bg-background px-3" value={proveedorId} onChange={e => setProveedorId(e.target.value)}>
-                <option value="">Seleccionar...</option>
-                {proveedores.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-              </select>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="insumo-stock">Stock Inicial</Label>
+                <Input id="insumo-stock" type="number" min="0" value={stock} onChange={e => setStock(e.target.value)} className="mt-1" />
+              </div>
+              <div>
+                <Label htmlFor="insumo-stockMin">Stock Mínimo</Label>
+                <Input id="insumo-stockMin" type="number" min="0" value={stockMin} onChange={e => setStockMin(e.target.value)} className="mt-1" />
+              </div>
             </div>
-            <Button onClick={crearInsumo} disabled={submitting || !nombre.trim()}>💾 Guardar</Button>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="insumo-precioUnit">Precio Unitario</Label>
+                <Input id="insumo-precioUnit" type="number" min="0" value={precioUnit} onChange={e => setPrecioUnit(e.target.value)} className="mt-1" />
+              </div>
+              <div>
+                <Label htmlFor="insumo-proveedor">Proveedor</Label>
+                <select id="insumo-proveedor" className="w-full h-10 rounded-md border bg-background px-3 mt-1" value={proveedorId} onChange={e => setProveedorId(e.target.value)}>
+                  <option value="">Seleccionar...</option>
+                  {proveedores.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                </select>
+              </div>
+            </div>
+            <Button onClick={crearInsumo} disabled={submitting || !nombre.trim()}>
+              {submitting ? 'Guardando...' : 'Guardar'}
+            </Button>
           </CardContent>
         </Card>
       )}
@@ -164,7 +195,7 @@ export default function InsumosClient({ initialInsumos, initialProveedores }: In
       ) : (
         <div className="space-y-2">
           {insumos.map(insumo => (
-            <Card key={insumo.id} className={insumo.stock <= insumo.stockMin ? 'border-red-300' : ''}>
+            <Card key={insumo.id} className={insumo.stock <= insumo.stockMin ? 'border-red-300 bg-red-50/30' : ''}>
               <CardContent className="py-3">
                 <div className="flex justify-between items-center">
                   <div>

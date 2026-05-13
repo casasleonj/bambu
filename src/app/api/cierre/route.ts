@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { CierreCreateSchema } from '@/lib/validators'
 import { withAdvisoryLock } from '@/lib/locks'
-import { EstadoPedido, EstadoEmbarque } from '@prisma/client'
+import { EstadoPedido, EstadoEmbarque, EstadoEntrega, EstadoFactura, MetodoPago } from '@prisma/client'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 
@@ -15,12 +15,13 @@ export async function GET(request: NextRequest) {
     const fechaParam = request.nextUrl.searchParams.get('fecha')
     const fechaStr = fechaParam || new Date().toISOString().split('T')[0]
     const startOfDay = new Date(fechaStr + 'T00:00:00.000Z')
-    const endOfDay = new Date(fechaStr + 'T23:59:59.999Z')
+    const nextDay = new Date(startOfDay)
+    nextDay.setDate(nextDay.getDate() + 1)
 
     // Check for open embarques
     const embarquesAbiertos = await prisma.embarque.findMany({
       where: {
-        fecha: { gte: startOfDay, lt: endOfDay },
+        fecha: { gte: startOfDay, lt: nextDay },
         estado: EstadoEmbarque.ABIERTO,
       },
       select: { id: true, numero: true, trabajador: { select: { nombre: true } } },
@@ -28,23 +29,23 @@ export async function GET(request: NextRequest) {
 
     const pedidos = await prisma.pedido.findMany({
       where: {
-        fecha: { gte: startOfDay, lt: endOfDay },
+        fecha: { gte: startOfDay, lt: nextDay },
         estado: { notIn: [EstadoPedido.CANCELADO, EstadoPedido.ANULADO] },
       },
       include: { pagos: true },
     })
 
     const produccion = await prisma.produccion.findFirst({
-      where: { fecha: { gte: startOfDay, lt: endOfDay } },
+      where: { fecha: { gte: startOfDay, lt: nextDay } },
     })
 
     const gastos = await prisma.gasto.aggregate({
-      where: { fecha: { gte: startOfDay, lt: endOfDay } },
+      where: { fecha: { gte: startOfDay, lt: nextDay } },
       _sum: { monto: true },
     })
 
     const notasCredito = await prisma.notaCredito.findMany({
-      where: { fecha: { gte: startOfDay, lt: endOfDay } },
+      where: { fecha: { gte: startOfDay, lt: nextDay } },
     })
     const totalNC = notasCredito.reduce((sum, nc) => sum + Number(nc.monto), 0)
 
@@ -52,11 +53,11 @@ export async function GET(request: NextRequest) {
     const cobrado = pedidos.reduce((acc, p) => acc + Number(p.totalPagado), 0)
     const fiado = pedidos.reduce((acc, p) => acc + Number(p.saldo), 0)
 
-    const efectivo = pedidos.flatMap(p => p.pagos).filter(p => p.metodo === 'EFECTIVO').reduce((acc, p) => acc + Number(p.monto), 0)
-    const transferencia = pedidos.flatMap(p => p.pagos).filter(p => p.metodo === 'TRANSFERENCIA').reduce((acc, p) => acc + Number(p.monto), 0)
-    const nequi = pedidos.flatMap(p => p.pagos).filter(p => p.metodo === 'NEQUI').reduce((acc, p) => acc + Number(p.monto), 0)
-    const daviplata = pedidos.flatMap(p => p.pagos).filter(p => p.metodo === 'DAVIPLATA').reduce((acc, p) => acc + Number(p.monto), 0)
-    const bono = pedidos.flatMap(p => p.pagos).filter(p => p.metodo === 'BONO').reduce((acc, p) => acc + Number(p.monto), 0)
+    const efectivo = pedidos.flatMap(p => p.pagos).filter(p => p.metodo === MetodoPago.EFECTIVO).reduce((acc, p) => acc + Number(p.monto), 0)
+    const transferencia = pedidos.flatMap(p => p.pagos).filter(p => p.metodo === MetodoPago.TRANSFERENCIA).reduce((acc, p) => acc + Number(p.monto), 0)
+    const nequi = pedidos.flatMap(p => p.pagos).filter(p => p.metodo === MetodoPago.NEQUI).reduce((acc, p) => acc + Number(p.monto), 0)
+    const daviplata = pedidos.flatMap(p => p.pagos).filter(p => p.metodo === MetodoPago.DAVIPLATA).reduce((acc, p) => acc + Number(p.monto), 0)
+    const bono = pedidos.flatMap(p => p.pagos).filter(p => p.metodo === MetodoPago.BONO).reduce((acc, p) => acc + Number(p.monto), 0)
 
     const aguaVendida = pedidos.reduce((acc, p) => acc + p.cPacaAguaEnt, 0)
     const hieloVendido = pedidos.reduce((acc, p) => acc + p.cPacaHieloEnt, 0)
@@ -64,75 +65,235 @@ export async function GET(request: NextRequest) {
     const bolsaAguaVendida = pedidos.reduce((acc, p) => acc + p.cBolsaAguaEnt, 0)
     const bolsaHieloVendida = pedidos.reduce((acc, p) => acc + p.cBolsaHieloEnt, 0)
 
+    // Abonos del día (recaudación de cartera)
+    const abonos = await prisma.abono.findMany({
+      where: { fecha: { gte: startOfDay, lt: nextDay } },
+      include: {
+        factura: { select: { numero: true, cliente: { select: { nombre: true } } } },
+        pedido: { select: { id: true } },
+      },
+    })
+    const cobroCartera = abonos.reduce((sum, a) => sum + Number(a.monto), 0)
+    const cobroVentasHoy = efectivo + transferencia + nequi + daviplata + bono
+
+    // Facturas del día
+    const facturas = await prisma.factura.findMany({
+      where: { fecha: { gte: startOfDay, lt: nextDay } },
+      include: { cliente: { select: { nombre: true } } },
+    })
+    const facturasPagadas = facturas.filter(f => f.estado === EstadoFactura.PAGADA)
+    const facturasPorCobrar = facturas.filter(f => f.estado === EstadoFactura.EMITIDA)
+    const facturasAnuladas = facturas.filter(f => f.estado === EstadoFactura.ANULADA)
+
+    // Gastos desglosados por categoría
+    const gastosDetalle = await prisma.gasto.groupBy({
+      by: ['categoria'],
+      where: { fecha: { gte: startOfDay, lt: nextDay } },
+      _sum: { monto: true },
+      _count: { id: true },
+    })
+
+    // Embarques detallados (todos, no solo abiertos)
+    const embarquesDetalle = await prisma.embarque.findMany({
+      where: { fecha: { gte: startOfDay, lt: nextDay } },
+      include: {
+        trabajador: { select: { nombre: true } },
+        ruta: { select: { nombre: true } },
+      },
+    })
+
+    // Pedidos perdidos
+    const pedidosCancelados = await prisma.pedido.findMany({
+      where: { fecha: { gte: startOfDay, lt: nextDay }, estado: EstadoPedido.CANCELADO },
+    })
+    const pedidosNoEntregados = await prisma.pedido.findMany({
+      where: { fecha: { gte: startOfDay, lt: nextDay }, estadoEntrega: EstadoEntrega.NO_ENTREGADO },
+    })
+    const pedidosAnulados = await prisma.pedido.findMany({
+      where: { fecha: { gte: startOfDay, lt: nextDay }, estado: EstadoPedido.ANULADO },
+    })
+
+    // Clientes nuevos
+    const clientesNuevos = await prisma.cliente.count({
+      where: { createdAt: { gte: startOfDay, lt: nextDay } },
+    })
+
+    // Ventas por origen
+    const ventasPorOrigenRaw = await prisma.pedido.groupBy({
+      by: ['origen'],
+      where: { fecha: { gte: startOfDay, lt: nextDay }, estado: { notIn: [EstadoPedido.CANCELADO, EstadoPedido.ANULADO] } },
+      _sum: { total: true },
+      _count: { id: true },
+    })
+    const ventasPorOrigen = ventasPorOrigenRaw.map(v => ({
+      origen: v.origen,
+      total: Number(v._sum.total) || 0,
+      count: v._count.id,
+    }))
+
+    // Descuentos a repartidores
+    const descuentos = await prisma.descuentoRepartidor.findMany({
+      where: { fecha: { gte: startOfDay, lt: nextDay } },
+      include: { trabajador: { select: { nombre: true } } },
+    })
+
     const status = embarquesAbiertos.length > 0 ? 'INCOMPLETO' : 'COMPLETO'
 
     return apiSuccess({
       status,
       embarquesPendientes: embarquesAbiertos.map(e => ({ id: e.id, numero: e.numero, repartidor: e.trabajador?.nombre })),
       cierre: {
+        // Financiero
         numPedidos: pedidos.length,
         totalVentas,
         cobrado,
+        cobroVentasHoy,
+        cobroCartera,
         fiado,
+        totalNotasCredito: totalNC,
+
+        // Métodos de pago
         efectivo,
         transferencia,
         nequi,
         daviplata,
         bono,
+
+        // Ventas por origen
+        ventasPorOrigen,
+
+        // Facturas
+        facturasEmitidas: facturas.length,
+        facturasPagadasCount: facturasPagadas.length,
+        facturasPagadasTotal: facturasPagadas.reduce((s, f) => s + Number(f.total), 0),
+        facturasPorCobrarCount: facturasPorCobrar.length,
+        facturasPorCobrarTotal: facturasPorCobrar.reduce((s, f) => s + Number(f.saldo), 0),
+        facturasAnuladasCount: facturasAnuladas.length,
+        facturas: facturas.map(f => ({
+          numero: f.numero,
+          cliente: f.cliente?.nombre,
+          total: Number(f.total),
+          saldo: Number(f.saldo),
+          estado: f.estado,
+        })),
+
+        // Gastos
+        totalGastos: Number(gastos._sum.monto) || 0,
+        gastosPorCategoria: gastosDetalle.map(g => ({
+          categoria: g.categoria,
+          total: Number(g._sum.monto) || 0,
+          cantidad: g._count.id,
+        })),
+
+        // Embarques
+        embarques: embarquesDetalle.map(e => ({
+          numero: e.numero,
+          repartidor: e.trabajador?.nombre,
+          ruta: e.ruta?.nombre,
+          pacasAgua: e.pacasAgua,
+          pacasHielo: e.pacasHielo,
+          devueltasAgua: e.devueltasAgua,
+          devueltasHielo: e.devueltasHielo,
+          rotasAgua: e.rotasAgua,
+          rotasHielo: e.rotasHielo,
+          estado: e.estado,
+        })),
+
+        // Pedidos perdidos
+        pedidosCanceladosCount: pedidosCancelados.length,
+        pedidosCanceladosTotal: pedidosCancelados.reduce((s, p) => s + Number(p.total), 0),
+        pedidosNoEntregadosCount: pedidosNoEntregados.length,
+        pedidosNoEntregadosTotal: pedidosNoEntregados.reduce((s, p) => s + Number(p.total), 0),
+        pedidosAnuladosCount: pedidosAnulados.length,
+        pedidosAnuladosTotal: pedidosAnulados.reduce((s, p) => s + Number(p.total), 0),
+
+        // Clientes
+        clientesNuevos,
+
+        // Descuentos
+        descuentosRepartidorTotal: descuentos.reduce((s, d) => s + Number(d.monto), 0),
+        descuentosRepartidorCount: descuentos.length,
+        descuentos: descuentos.map(d => ({
+          monto: Number(d.monto),
+          motivo: d.motivo,
+          repartidor: d.trabajador?.nombre,
+        })),
+
+        // Stock
         aguaVendida,
         hieloVendido,
         botellonVendido,
         bolsaAguaVendida,
         bolsaHieloVendida,
-        totalGastos: Number(gastos._sum.monto) || 0,
-        totalNotasCredito: totalNC,
-        produccion,
+        produccion: produccion ? {
+          ...produccion,
+          stockIniAgua: produccion.stockIniAgua,
+          stockIniHielo: produccion.stockIniHielo,
+          prodAgua: produccion.prodAgua,
+          prodHielo: produccion.prodHielo,
+          stockFinAgua: produccion.stockFinAgua,
+          stockFinHielo: produccion.stockFinHielo,
+          comSelladorAgua: Number(produccion.comSelladorAgua),
+          comSelladorHielo: Number(produccion.comSelladorHielo),
+          comSellTotal: Number(produccion.comSellTotal),
+          comRepartidorAgua: Number(produccion.comRepartidorAgua),
+          comRepartidorHielo: Number(produccion.comRepartidorHielo),
+          comRepartTotal: Number(produccion.comRepartTotal),
+        } : null,
+
+        // Fecha
+        fecha: fechaStr,
       },
     })
   } catch (error) {
-    return apiError('Error', 500)
+    console.error('[cierre] GET failed:', error)
+    return apiError('Error interno del servidor', 500)
   }
 }
 
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
-  const roleCheck = await requireRole('ADMIN')
+  const roleCheck = await requireRole(['ADMIN', 'ASISTENTE'], authResult)
   if (roleCheck instanceof Response) return roleCheck
   try {
-    const today = new Date().toISOString().split('T')[0]
-    const startOfDay = new Date(today + 'T00:00:00.000Z')
-
-    // Block if there are open embarques
-    const embarquesAbiertos = await prisma.embarque.count({
-      where: {
-        fecha: { gte: startOfDay },
-        estado: EstadoEmbarque.ABIERTO,
-      },
-    })
-
-    if (embarquesAbiertos > 0) {
-      return apiError(
-        `No se puede cerrar el día: ${embarquesAbiertos} embarque(s) pendiente(s) de empalme`,
-        400
-      )
-    }
-
     const body = await request.json()
     const parsed = CierreCreateSchema.safeParse(body)
     if (!parsed.success) {
       return apiError(formatZodError(parsed.error), 400)
     }
 
+    const fechaStr = parsed.data.fecha || new Date().toISOString().split('T')[0]
+    const startOfDay = new Date(fechaStr + 'T00:00:00.000Z')
+    const nextDay = new Date(startOfDay)
+    nextDay.setDate(nextDay.getDate() + 1)
+
+    // Block if there are open embarques
+    const embarquesAbiertos = await prisma.embarque.count({
+      where: {
+        fecha: { gte: startOfDay, lt: nextDay },
+        estado: EstadoEmbarque.ABIERTO,
+      },
+    })
+
+    if (embarquesAbiertos > 0) {
+      return apiError(
+        `No se puede cerrar el día ${fechaStr}: ${embarquesAbiertos} embarque(s) pendiente(s) de empalme`,
+        400
+      )
+    }
+
     // Calculate netoCaja server-side — never trust client for financial totals
     const cobros = parsed.data.efectivo + parsed.data.transferencia + parsed.data.nequi + parsed.data.daviplata + parsed.data.bono
     const netoCaja = parsed.data.baseDia + cobros - parsed.data.gastos - parsed.data.comisiones - parsed.data.salarios
 
+    const userId = (authResult.user as { id?: string } | undefined)?.id
+
     const cierre = await withAdvisoryLock('CIERRE', async () => {
-      // Double-check no cierre exists for today under lock
+      // Double-check no cierre exists for this date under lock
       const existing = await prisma.cierreDia.findFirst({
         where: {
-          fecha: { gte: startOfDay },
+          fecha: { gte: startOfDay, lt: nextDay },
         },
       })
       if (existing) {
@@ -141,7 +302,7 @@ export async function POST(request: NextRequest) {
 
       return prisma.cierreDia.create({
         data: {
-          fecha: new Date(),
+          fecha: startOfDay,
           numPedidos: parsed.data.numPedidos,
           totalVentas: parsed.data.totalVentas,
           cobrado: parsed.data.cobrado,
@@ -162,6 +323,7 @@ export async function POST(request: NextRequest) {
           prodHielo: parsed.data.prodHielo,
           stockFinHielo: parsed.data.stockFinHielo,
           netoCaja,
+          cerradoPor: userId,
         },
       })
     })
@@ -170,15 +332,15 @@ export async function POST(request: NextRequest) {
       entidad: 'CierreDia',
       registroId: cierre.id,
       accion: 'CREATE',
-      datos: { fecha: cierre.fecha, totalVentas: cierre.totalVentas },
-      usuarioId: (authResult.user as { id?: string } | undefined)?.id,
-    }).catch(() => {})
+      datos: { fecha: cierre.fecha, totalVentas: cierre.totalVentas, cerradoPor: userId },
+      usuarioId: userId,
+    }).catch((e) => console.error('[cierre] Audit log failed:', e))
 
     return apiSuccess({ cierre }, 201)
   } catch (error) {
     if (error instanceof Error && error.message === 'CIERRE_YA_EXISTE') {
-      return apiError('Ya existe un cierre para hoy', 409)
+      return apiError('Ya existe un cierre para esta fecha', 409)
     }
-    return apiError('Error', 500)
+    return apiError('Error interno del servidor', 500)
   }
 }

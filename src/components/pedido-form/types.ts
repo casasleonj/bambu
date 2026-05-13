@@ -17,18 +17,17 @@ export interface PagoPedido {
   monto: number
 }
 
+export interface PedidoItemInput {
+  producto: 'PACA_AGUA' | 'PACA_HIELO' | 'BOTELLON' | 'BOLSA_AGUA' | 'BOLSA_HIELO'
+  cantidad: number
+  precioManual?: number
+}
+
 export interface PedidoFormData {
   clienteId: string
   clienteNuevo?: { nombre: string; telefono: string; direccion: string; barrio?: string }
   canal: string
-  productos: {
-    pacaAgua: number
-    pacaHielo: number
-    botellonFab: number
-    botellonDom: number
-    bolsaAgua: number
-    bolsaHielo: number
-  }
+  items: PedidoItemInput[]
   preciosManuales: Record<string, number>
   pagos: PagoPedido[]
   obs: string

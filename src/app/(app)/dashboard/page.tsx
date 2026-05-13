@@ -2,16 +2,23 @@ import { prisma } from '@/lib/prisma'
 import { getTodayRange, getYesterdayRange } from '@/lib/dates'
 import { buildVentasPorPrecio } from './dashboard-client/types'
 import { DashboardClient } from './dashboard-client'
+import { auth } from '@/lib/auth'
+import { redirect } from 'next/navigation'
 
 export const revalidate = 60
 
 export default async function DashboardPage() {
+  const session = await auth()
+  if (!session?.user?.id) redirect('/login')
+
   const { startOfDay, endOfDay } = getTodayRange()
   const { startOfDay: yesterdayStart, endOfDay: yesterdayEnd } = getYesterdayRange()
 
   const [
     pedidos, pedidosAyer, baseDiaConfig, lastCierre, gastosAgg, embarquesAbiertos, _clientesCount, stockAlertas,
-    cuentasPorCobrarAgg, produccionHoy, configsStock
+    cuentasPorCobrarAgg, produccionHoy, configsStock,
+    disputasAbiertas, clientesBloqueados, clientesConflictivos, promesasProximasVencer, clientesNoVerificados,
+    casosAbiertos, casosCriticos, casosSinResolver48h
   ] = await Promise.all([
     prisma.pedido.findMany({ where: { fecha: { gte: startOfDay, lt: endOfDay } } }),
     prisma.pedido.findMany({ where: { fecha: { gte: yesterdayStart, lt: yesterdayEnd } } }),
@@ -24,6 +31,27 @@ export default async function DashboardPage() {
     prisma.pedido.aggregate({ where: { saldo: { gt: 0 }, estado: { in: ['ENTREGADO', 'EN_RUTA'] } }, _sum: { saldo: true }, _count: true }),
     prisma.produccion.aggregate({ where: { fecha: { gte: startOfDay, lt: endOfDay } }, _sum: { conteoAAgua: true, conteoBAgua: true, conteoAHielo: true, conteoBHielo: true } }),
     prisma.config.findMany({ where: { clave: { in: ['STOCK_INI_AGUA', 'STOCK_INI_HIELO', 'STOCK_INI_BOTELLON'] } } }),
+    // Alertas de riesgo
+    prisma.pedido.count({ where: { disputaAbierta: true } }),
+    prisma.cliente.count({ where: { bloqueado: true, activo: true } }),
+    prisma.cliente.count({ where: { reclamaciones: { gte: 3 }, activo: true } }),
+    prisma.pedido.count({
+      where: {
+        promesaPagoFecha: { gte: new Date(), lte: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000) },
+        estadoPago: { not: 'PAGADO' },
+      },
+    }),
+    prisma.cliente.count({
+      where: {
+        verificado: false,
+        activo: true,
+        createdAt: { lt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+      },
+    }),
+    // Casos activos
+    prisma.caso.count({ where: { status: { in: ['ABIERTO', 'EN_PROCESO'] } } }),
+    prisma.caso.count({ where: { status: { in: ['ABIERTO', 'EN_PROCESO'] }, severidad: 'ALTA' } }),
+    prisma.caso.count({ where: { status: { in: ['ABIERTO', 'EN_PROCESO'] }, createdAt: { lt: new Date(Date.now() - 48 * 60 * 60 * 1000) } } }),
   ])
 
   const ventas = pedidos.reduce((acc, p) => acc + Number(p.total), 0)
@@ -41,7 +69,10 @@ export default async function DashboardPage() {
 
   const hourlyPedidos = new Array(24).fill(0)
   for (const p of pedidos) {
-    const hour = new Date(p.fecha).getHours()
+    const hour = parseInt(
+      new Date(p.fecha).toLocaleString('en-US', { timeZone: 'America/Bogota', hour: 'numeric', hour12: false }),
+      10
+    )
     hourlyPedidos[hour]++
   }
   const maxHourly = Math.max(...hourlyPedidos, 1)
@@ -83,6 +114,18 @@ export default async function DashboardPage() {
     embarquesAbiertos,
     stockAlertas: stockAlertas.map(s => ({ id: s.id, nombre: s.nombre, stock: Number(s.stock), unidad: s.unidad })),
     fechaHoy,
+    alertasRiesgo: {
+      disputasAbiertas,
+      clientesBloqueados,
+      clientesConflictivos,
+      promesasProximasVencer,
+      clientesNoVerificados,
+    },
+    casosActivos: {
+      total: casosAbiertos,
+      criticos: casosCriticos,
+      sinResolver48h: casosSinResolver48h,
+    },
   }))
 
   return <DashboardClient data={data} />

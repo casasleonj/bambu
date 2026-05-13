@@ -12,6 +12,29 @@ import type { Factura } from '@prisma/client'
 import { logger } from '@/lib/logger'
 import { apiSuccess, apiError } from '@/lib/api-response'
 
+async function getEmpresaSnapshot(): Promise<{
+  empresaNombre: string
+  empresaNit: string
+  empresaDireccion: string
+  empresaTelefono: string
+  empresaEmail: string
+}> {
+  const configs = await prisma.config.findMany({
+    where: {
+      clave: { in: ['empresa_nombre', 'empresa_nit', 'empresa_direccion', 'empresa_telefono', 'empresa_email'] },
+    },
+  })
+  const map: Record<string, string> = {}
+  configs.forEach(c => { map[c.clave] = c.valor })
+  return {
+    empresaNombre: map.empresa_nombre || 'Agua Bambu SAS',
+    empresaNit: map.empresa_nit || '900.123.456-7',
+    empresaDireccion: map.empresa_direccion || '',
+    empresaTelefono: map.empresa_telefono || '',
+    empresaEmail: map.empresa_email || '',
+  }
+}
+
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
@@ -38,7 +61,7 @@ export async function GET(request: NextRequest) {
       prisma.factura.findMany({
         where,
         orderBy: { fecha: 'desc' },
-        include: { cliente: true, abonos: true },
+        include: { cliente: true, abonos: true, pedido: true },
         ...prismaPagination,
       }),
       prisma.factura.count({ where }),
@@ -68,8 +91,9 @@ export async function POST(request: NextRequest) {
     }
     const { pedidoId, clienteId } = parsed.data
 
+    const empresaSnapshot = await getEmpresaSnapshot()
+
     const factura = await withAdvisoryLock<Factura>('FACTURA_NUM', async (tx) => {
-      // Verificar que el pedido existe y no tiene factura ya
       const pedido = await tx.pedido.findUnique({
         where: { id: pedidoId },
         include: { cliente: true, factura: true },
@@ -83,7 +107,6 @@ export async function POST(request: NextRequest) {
         throw new Error('El pedido ya tiene una factura')
       }
 
-      // Calcular siguiente número (dentro del lock para evitar duplicados)
       const nextNum = await getNextNumero(tx, { model: 'factura', field: 'numero' })
 
       return tx.factura.create({
@@ -94,6 +117,7 @@ export async function POST(request: NextRequest) {
           subtotal: pedido.total,
           total: pedido.total,
           saldo: pedido.total,
+          ...empresaSnapshot,
         },
       })
     })

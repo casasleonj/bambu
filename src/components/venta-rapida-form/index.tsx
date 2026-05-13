@@ -7,7 +7,7 @@ import { ProductGrid } from './product-grid'
 import { PagoSection } from './pago-section'
 import { ResumenSection } from './resumen-section'
 import { DEFAULT_PRICES, PRODUCTO_INFO, getProductosForCanal } from '@/lib/prices'
-import type { Cliente, Tier, VentaRapidaFormProps, VentaRapidaData } from './types'
+import type { Cliente, Tier, VentaRapidaFormProps, VentaRapidaData, VentaRapidaItem } from './types'
 
 export type { VentaRapidaFormProps, VentaRapidaData, Cliente }
 
@@ -31,11 +31,11 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
   const productosActuales = getProductosForCanal(canal)
 
   useEffect(() => {
-    fetch(`/api/precios/tabla?canal=${canal}`)
+    fetch(`/api/precios/tabla`)
       .then(r => r.json())
       .then(d => { if (d.tabla) setTablaPrecios(d.tabla) })
       .catch(() => {})
-  }, [canal])
+  }, [])
 
   const handleToggleEnvio = (envio: boolean) => {
     const nuevoCanal = envio ? 'DOMICILIO' : 'PUNTO'
@@ -218,7 +218,7 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
 
     setSubmitting(true)
 
-    let clienteId = 'CLIENTE_MOSTRADOR'
+    let clienteId = 'CONSUMIDOR_FINAL'
     let tipo: 'PUNTO' | 'ENVIO' = 'PUNTO'
     let clienteNuevo: { nombre: string; telefono: string; direccion: string; barrio?: string } | undefined
 
@@ -258,6 +258,17 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
       }).filter((p): p is { metodo: string; monto: number } => p !== null)
     })()
 
+    const items: VentaRapidaItem[] = productosActuales
+      .filter(id => (cantidades[id] || 0) > 0)
+      .map(id => {
+        const codigo = PRODUCTO_INFO[id].codigo as VentaRapidaItem['producto']
+        return {
+          producto: codigo,
+          cantidad: cantidades[id] || 0,
+          precioManual: preciosManuales[codigo],
+        }
+      })
+
     const data: VentaRapidaData = {
       clienteId,
       clienteNuevo,
@@ -265,14 +276,7 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
       canal,
       ventaRapida: true,
       preciosManuales: Object.keys(preciosManuales).length > 0 ? preciosManuales : undefined,
-      productos: {
-        pacaAgua: cantidades.pacaAgua || 0,
-        pacaHielo: cantidades.pacaHielo || 0,
-        botellonFab: cantidades.botellonFab || 0,
-        botellonDom: cantidades.botellonDom || 0,
-        bolsaAgua: cantidades.bolsaAgua || 0,
-        bolsaHielo: cantidades.bolsaHielo || 0,
-      },
+      items,
       pagos: pagosNormalizados,
       obs: clienteSeleccionado
         ? `Cliente: ${clienteSeleccionado.nombre} - ${clienteSeleccionado.telefono}`

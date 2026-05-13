@@ -28,7 +28,6 @@ const authOptions: NextAuthConfig = {
           dbUser = await prisma.user.findUnique({
             where: { username: credentials.username as string },
           })
-
           if (dbUser && dbUser.activo) {
             hashToCompare = dbUser.password
           }
@@ -68,7 +67,7 @@ const authOptions: NextAuthConfig = {
       // Protects against: role demotion, account deactivation with stale JWT
       const FIVE_MIN = 5 * 60 * 1000
       const lastVerified = (token.lastVerified as number) || 0
-      if (trigger === 'update' || Date.now() - lastVerified > FIVE_MIN) {
+      if ((trigger === 'update' || Date.now() - lastVerified > FIVE_MIN) && token.sub) {
         try {
           const dbUser = await prisma.user.findUnique({
             where: { id: token.sub as string },

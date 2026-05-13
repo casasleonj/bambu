@@ -18,6 +18,12 @@ export interface VentaRapidaFormProps {
   onSubmit: (data: VentaRapidaData) => void | Promise<void>
 }
 
+export interface VentaRapidaItem {
+  producto: 'PACA_AGUA' | 'PACA_HIELO' | 'BOTELLON' | 'BOLSA_AGUA' | 'BOLSA_HIELO'
+  cantidad: number
+  precioManual?: number
+}
+
 export interface VentaRapidaData {
   clienteId?: string
   clienteNuevo?: { nombre: string; telefono: string; direccion: string; barrio?: string }
@@ -25,14 +31,7 @@ export interface VentaRapidaData {
   canal: 'PUNTO' | 'DOMICILIO'
   ventaRapida: true
   preciosManuales?: Record<string, number>
-  productos: {
-    pacaAgua: number
-    pacaHielo: number
-    botellonFab: number
-    botellonDom: number
-    bolsaAgua: number
-    bolsaHielo: number
-  }
+  items: VentaRapidaItem[]
   pagos: { metodo: string; monto: number }[]
   obs: string
   total: number

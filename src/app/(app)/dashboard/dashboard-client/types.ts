@@ -55,6 +55,18 @@ export interface DashboardData {
   embarquesAbiertos: number
   stockAlertas: Array<{ id: string; nombre: string; stock: unknown; unidad: string }>
   fechaHoy: string
+  alertasRiesgo: {
+    disputasAbiertas: number
+    clientesBloqueados: number
+    clientesConflictivos: number
+    promesasProximasVencer: number
+    clientesNoVerificados: number
+  }
+  casosActivos: {
+    total: number
+    criticos: number
+    sinResolver48h: number
+  }
 }
 
 export function buildVentasPorPrecio(pedidos: PedidoRaw[]): VentaPorPrecio[] {

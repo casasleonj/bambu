@@ -13,21 +13,35 @@ export async function syncWithServer(): Promise<{ synced: number; failed: number
         const pedido = await offlineDb.pedidos.where('localId').equals(item.localId).first()
         if (!pedido) continue
 
-        const res = await fetch('/api/pedidos', {
+        const isVentaLibre = pedido.origen === 'VENTA_LIBRE'
+        const endpoint = isVentaLibre ? '/api/pedidos/venta-libre' : '/api/pedidos'
+
+        const body = isVentaLibre
+          ? {
+              clienteId: pedido.clienteId,
+              items: pedido.items,
+              pagos: pedido.pagos,
+              embarqueId: pedido.embarqueId,
+              obs: pedido.obs,
+              fotoEntrega: pedido.fotoEntrega,
+              gpsLat: pedido.gpsLat,
+              gpsLng: pedido.gpsLng,
+              offlineId: pedido.localId,
+            }
+          : {
+              clienteId: pedido.clienteId,
+              items: pedido.items,
+              pagos: pedido.pagos,
+              canal: pedido.canal || 'DOMICILIO',
+              origen: pedido.origen || 'PEDIDO',
+              obs: pedido.obs,
+              fechaEntrega: pedido.fechaEntrega,
+            }
+
+        const res = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            clienteId: pedido.clienteId,
-            productos: {
-              agua19L: pedido.cAguaPed,
-              hielo: pedido.cHieloPed,
-              botellon: pedido.cBotellonPed,
-              bolsaAgua: pedido.cBolsaAguaPed,
-              bolsaHielo: pedido.cBolsaHieloPed,
-            },
-            pagos: pedido.pagos,
-            obs: '',
-          }),
+          body: JSON.stringify(body),
         })
 
         if (res.ok) {

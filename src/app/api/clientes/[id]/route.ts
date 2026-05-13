@@ -15,7 +15,11 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     const cliente = await prisma.cliente.findUnique({
       where: { id },
       include: {
-        pedidos: { orderBy: { fecha: 'desc' }, take: 20 },
+        pedidos: {
+          orderBy: { fecha: 'desc' },
+          take: 20,
+          include: { items: true },
+        },
         facturas: { orderBy: { fecha: 'desc' }, take: 20 },
         _count: { select: { pedidos: true } },
       },

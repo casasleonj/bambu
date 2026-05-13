@@ -7,6 +7,8 @@ import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
+import { getVentasDelDia } from '@/lib/ventas'
+import { calcComSellador, calcComRepartidor } from '@/lib/comisiones'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -57,26 +59,79 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) {
       return apiError(formatZodError(parsed.error), 400)
     }
-    
+
     const prodAgua = Math.round((parsed.data.conteoAAgua + parsed.data.conteoBAgua) / 2)
     const prodHielo = Math.round((parsed.data.conteoAHielo + parsed.data.conteoBHielo) / 2)
-    
+
     const ultimoCierre = await prisma.cierreDia.findFirst({
       orderBy: { fecha: 'desc' },
     })
-    
+
+    const stockIniAgua = ultimoCierre?.stockFinAgua || 0
+    const stockIniHielo = ultimoCierre?.stockFinHielo || 0
+
+    const ventas = await getVentasDelDia()
+
+    const stockFinAgua = Math.max(0, stockIniAgua + prodAgua - ventas.aguaVendida)
+    const stockFinHielo = Math.max(0, stockIniHielo + prodHielo - ventas.hieloVendido)
+
+    const trabajador = await prisma.trabajador.findUnique({
+      where: { id: parsed.data.trabajadorId },
+      select: { comPacaAgua: true, comPacaHielo: true },
+    })
+
+    const comSell = trabajador
+      ? calcComSellador(prodAgua, prodHielo, trabajador)
+      : { comAgua: 0, comHielo: 0, total: 0 }
+
+    const embarquesHoy = await prisma.embarque.findMany({
+      where: {
+        fecha: {
+          gte: new Date(new Date().setHours(0, 0, 0, 0)),
+          lt: new Date(new Date().setHours(23, 59, 59, 999)),
+        },
+        estado: { notIn: ['CANCELADO'] },
+      },
+      select: {
+        trabajador: {
+          select: { comPacaAgua: true, comPacaHielo: true },
+        },
+      },
+    })
+
+    const repartidores = embarquesHoy.map((e) => e.trabajador)
+    const comRepart = calcComRepartidor(ventas.aguaVendida, ventas.hieloVendido, repartidores)
+
     const produccion = await prisma.produccion.create({
       data: {
         turno: parsed.data.turno,
         trabajadorId: parsed.data.trabajadorId,
-        stockIniAgua: ultimoCierre?.stockFinAgua || 0,
-        stockIniHielo: ultimoCierre?.stockFinHielo || 0,
+        stockIniAgua,
+        stockIniHielo,
         conteoAAgua: parsed.data.conteoAAgua,
         conteoBAgua: parsed.data.conteoBAgua,
         conteoAHielo: parsed.data.conteoAHielo,
         conteoBHielo: parsed.data.conteoBHielo,
         prodAgua,
         prodHielo,
+        ventasAgua: ventas.aguaVendida,
+        ventasHielo: ventas.hieloVendido,
+        stockFinAgua,
+        stockFinHielo,
+        stockFinFisicoAgua: parsed.data.stockFinFisicoAgua,
+        stockFinFisicoHielo: parsed.data.stockFinFisicoHielo,
+        filtradasAgua: parsed.data.filtradasAgua,
+        filtradasHielo: parsed.data.filtradasHielo,
+        rotasAgua: parsed.data.rotasAgua,
+        rotasHielo: parsed.data.rotasHielo,
+        consumoInternoAgua: parsed.data.consumoInternoAgua,
+        consumoInternoHielo: parsed.data.consumoInternoHielo,
+        comSelladorAgua: comSell.comAgua,
+        comSelladorHielo: comSell.comHielo,
+        comSellTotal: comSell.total,
+        comRepartidorAgua: comRepart.comAgua,
+        comRepartidorHielo: comRepart.comHielo,
+        comRepartTotal: comRepart.total,
         obs: parsed.data.obs,
       },
       include: { trabajador: true },

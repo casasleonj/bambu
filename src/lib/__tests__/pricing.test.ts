@@ -9,6 +9,10 @@ vi.mock('@/lib/prisma', () => ({
     cliente: {
       findUnique: vi.fn(),
     },
+    producto: {
+      findUnique: vi.fn(),
+      findMany: vi.fn(),
+    },
   },
 }))
 
@@ -22,6 +26,8 @@ import {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.mocked(prisma.producto.findMany).mockResolvedValue([])
+  vi.mocked(prisma.producto.findUnique).mockResolvedValue({ aplicaDomicilio: false, sobreCostoDomicilio: 0 } as any)
 })
 
 // ─── parsePreciosEspeciales ──────────────────────────────────────────
@@ -59,9 +65,9 @@ describe('parsePreciosEspeciales', () => {
   })
 
   it('parses new format with only DOMICILIO', () => {
-    const json = JSON.stringify({ DOMICILIO: { BOTELLON_DOM: 12000 } })
+    const json = JSON.stringify({ DOMICILIO: { BOTELLON: 12000 } })
     expect(parsePreciosEspeciales(json)).toEqual({
-      DOMICILIO: { BOTELLON_DOM: 12000 },
+      DOMICILIO: { BOTELLON: 12000 },
       PUNTO: {},
     })
   })
@@ -138,8 +144,8 @@ describe('resolverPrecio', () => {
   })
 
   it('handles clienteOverrides as JSON string', async () => {
-    const overrides = JSON.stringify({ PUNTO: { BOTELLON_FAB: 15000 } })
-    const result = await resolverPrecio('BOTELLON_FAB', 5, 'PUNTO', overrides as any)
+    const overrides = JSON.stringify({ PUNTO: { BOTELLON: 15000 } })
+    const result = await resolverPrecio('BOTELLON', 5, 'PUNTO', overrides as any)
     expect(result).toEqual({ precio: 15000, origen: 'cliente' })
   })
 
@@ -153,7 +159,6 @@ describe('resolverPrecio', () => {
       expect.objectContaining({
         where: expect.objectContaining({
           producto: { codigo: 'PACA_AGUA' },
-          canal: 'PUNTO',
           cantMin: { lte: 10 },
           activo: true,
         }),
@@ -203,6 +208,7 @@ describe('resolverPrecio', () => {
   it('uses custom db client when provided', async () => {
     const mockDb = {
       precioVolumen: { findFirst: vi.fn().mockResolvedValue({ precio: 3200 } as any) },
+      producto: { findUnique: vi.fn().mockResolvedValue({ aplicaDomicilio: false, sobreCostoDomicilio: 0 } as any) },
     } as any
     const result = await resolverPrecio('PACA_HIELO', 5, 'DOMICILIO', null, null, mockDb)
     expect(result).toEqual({ precio: 3200, origen: 'volumen' })
@@ -426,7 +432,7 @@ describe('resolverPreciosPedido', () => {
       [
         { codigo: 'PACA_AGUA' as const, cantidad: 10, precioManual: 6000 },
         { codigo: 'PACA_HIELO' as const, cantidad: 5 },
-        { codigo: 'BOTELLON_FAB' as const, cantidad: 2 },
+        { codigo: 'BOTELLON' as const, cantidad: 2 },
       ],
       'PUNTO',
     )
@@ -438,7 +444,7 @@ describe('resolverPreciosPedido', () => {
     const hi = result.find(r => r.codigo === 'PACA_HIELO')!
     expect(hi).toMatchObject({ precio: 8000, origen: 'volumen' })
 
-    const bf = result.find(r => r.codigo === 'BOTELLON_FAB')!
+    const bf = result.find(r => r.codigo === 'BOTELLON')!
     expect(bf).toMatchObject({ precio: 0, origen: 'base' })
   })
 
@@ -481,6 +487,11 @@ describe('resolverPreciosPedido', () => {
           { producto: { codigo: 'PACA_AGUA' }, cantMin: 1, cantMax: 50, precio: 3000 },
         ] as any),
       },
+      producto: {
+        findMany: vi.fn().mockResolvedValue([
+          { codigo: 'PACA_AGUA', aplicaDomicilio: false, sobreCostoDomicilio: 0 },
+        ] as any),
+      },
     } as any
 
     const result = await resolverPreciosPedido(
@@ -502,11 +513,11 @@ describe('resolverPreciosPedido', () => {
 
   it('calculates subtotal correctly', async () => {
     vi.mocked(prisma.precioVolumen.findMany).mockResolvedValue([
-      { producto: { codigo: 'BOTELLON_FAB' }, cantMin: 1, cantMax: 100, precio: 12000 },
+      { producto: { codigo: 'BOTELLON' }, cantMin: 1, cantMax: 100, precio: 12000 },
     ] as any)
 
     const result = await resolverPreciosPedido(
-      [{ codigo: 'BOTELLON_FAB' as const, cantidad: 3 }],
+      [{ codigo: 'BOTELLON' as const, cantidad: 3 }],
       'PUNTO',
     )
     expect(result[0].subtotal).toBe(36000)
@@ -518,7 +529,7 @@ describe('resolverPreciosPedido', () => {
 describe('getPriceTable', () => {
   it('returns empty object when no prices exist', async () => {
     vi.mocked(prisma.precioVolumen.findMany).mockResolvedValue([])
-    const table = await getPriceTable('PUNTO')
+    const table = await getPriceTable()
     expect(table).toEqual({})
   })
 
@@ -529,7 +540,7 @@ describe('getPriceTable', () => {
       { producto: { codigo: 'PACA_HIELO' }, cantMin: 1, cantMax: 30, precio: 8000 },
     ] as any)
 
-    const table = await getPriceTable('PUNTO')
+    const table = await getPriceTable()
     expect(Object.keys(table)).toHaveLength(2)
     expect(table['PACA_AGUA']).toHaveLength(2)
     expect(table['PACA_HIELO']).toHaveLength(1)
@@ -537,21 +548,21 @@ describe('getPriceTable', () => {
 
   it('passes canal to query', async () => {
     vi.mocked(prisma.precioVolumen.findMany).mockResolvedValue([])
-    await getPriceTable('DOMICILIO')
+    await getPriceTable()
     expect(prisma.precioVolumen.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { canal: 'DOMICILIO', activo: true },
+        where: { activo: true },
       }),
     )
   })
 
   it('converts Decimal precio to Number', async () => {
     vi.mocked(prisma.precioVolumen.findMany).mockResolvedValue([
-      { producto: { codigo: 'BOTELLON_DOM' }, cantMin: 1, cantMax: null, precio: 12000 },
+      { producto: { codigo: 'BOTELLON' }, cantMin: 1, cantMax: null, precio: 12000 },
     ] as any)
 
-    const table = await getPriceTable('DOMICILIO')
-    expect(typeof table['BOTELLON_DOM'][0].precio).toBe('number')
-    expect(table['BOTELLON_DOM'][0].precio).toBe(12000)
+    const table = await getPriceTable()
+    expect(typeof table['BOTELLON'][0].precio).toBe('number')
+    expect(table['BOTELLON'][0].precio).toBe(12000)
   })
 })

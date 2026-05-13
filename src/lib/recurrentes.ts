@@ -145,8 +145,7 @@ export async function previewGeneracionRecurrentes(
     const items: Array<{ codigo: ProductCode; cantidad: number }> = [
       { codigo: 'PACA_AGUA', cantidad: cantidadBase.cPacaAgua },
       { codigo: 'PACA_HIELO', cantidad: cantidadBase.cPacaHielo },
-      { codigo: 'BOTELLON_FAB', cantidad: cantidadBase.cBotellonFab },
-      { codigo: 'BOTELLON_DOM', cantidad: cantidadBase.cBotellonDom },
+      { codigo: 'BOTELLON', cantidad: cantidadBase.cBotellonFab + cantidadBase.cBotellonDom },
       { codigo: 'BOLSA_AGUA', cantidad: cantidadBase.cBolsaAgua },
       { codigo: 'BOLSA_HIELO', cantidad: cantidadBase.cBolsaHielo },
     ];
@@ -304,8 +303,7 @@ export async function generarPedidosRecurrentes(
     const items: Array<{ codigo: ProductCode; cantidad: number }> = [
       { codigo: 'PACA_AGUA', cantidad: cantidades.cPacaAgua },
       { codigo: 'PACA_HIELO', cantidad: cantidades.cPacaHielo },
-      { codigo: 'BOTELLON_FAB', cantidad: cantidades.cBotellonFab },
-      { codigo: 'BOTELLON_DOM', cantidad: cantidades.cBotellonDom },
+      { codigo: 'BOTELLON', cantidad: cantidades.cBotellonFab + cantidades.cBotellonDom },
       { codigo: 'BOLSA_AGUA', cantidad: cantidades.cBolsaAgua },
       { codigo: 'BOLSA_HIELO', cantidad: cantidades.cBolsaHielo },
     ];
@@ -338,8 +336,8 @@ export async function generarPedidosRecurrentes(
           cBolsaHieloPed: cantidades.cBolsaHielo,
           precioPacaAgua: precioMap['PACA_AGUA'] || 0,
           precioPacaHielo: precioMap['PACA_HIELO'] || 0,
-          precioBotellonFab: precioMap['BOTELLON_FAB'] || 0,
-          precioBotellonDom: precioMap['BOTELLON_DOM'] || 0,
+          precioBotellonFab: (rec.canal || 'DOMICILIO') === 'PUNTO' ? (precioMap['BOTELLON'] || 0) : 0,
+          precioBotellonDom: (rec.canal || 'DOMICILIO') === 'DOMICILIO' ? (precioMap['BOTELLON'] || 0) : 0,
           precioBolsaAgua: precioMap['BOLSA_AGUA'] || 0,
           precioBolsaHielo: precioMap['BOLSA_HIELO'] || 0,
           total,

@@ -2,6 +2,7 @@
 
 import { Input } from '@/components/ui/input'
 import { PRODUCTO_INFO, getProductosForCanal } from '@/lib/prices'
+import { getProductoIconConfig } from '@/lib/producto-iconos'
 import type { Tier } from './types'
 
 interface ProductGridProps {
@@ -54,11 +55,12 @@ export function ProductGrid({
         const precio = getPrecio(info.codigo)
         const tiers = tablaPrecios[info.codigo] || []
         const activeTier = getActiveTier(info.codigo, cant, tablaPrecios)
+        const Icon = getProductoIconConfig(info.codigo).Icon
         return (
           <div key={prodId} className="border rounded-lg p-3 bg-white">
             <div className="flex items-center justify-between mb-1.5">
               <div className="flex items-center gap-2">
-                <span className="text-lg">{info.emoji}</span>
+                <Icon size={24} />
                 <div>
                   <span className="font-medium text-sm">{info.nombre}</span>
                   <span className="text-xs text-gray-400 ml-1">({info.unidad})</span>

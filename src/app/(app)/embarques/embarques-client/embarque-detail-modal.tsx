@@ -60,7 +60,7 @@ export function EmbarqueDetailModal({
   if (!embarque) return null
 
   const disponiblesParaAsignar = pedidos.filter(
-    (p) => !embarques.some((e) => e.pedidos?.some((ep) => ep.id === p.id))
+    (p) => p.estado === 'PENDIENTE' && !embarques.some((e) => e.pedidos?.some((ep) => ep.id === p.id))
   )
 
   const capacidadKg = embarque.capacidadKg || 500
@@ -79,6 +79,7 @@ export function EmbarqueDetailModal({
       const res = await fetch(`/api/embarques/${embarque!.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           pedidoIds: selectedPedidoIds,
         }),
@@ -106,6 +107,7 @@ export function EmbarqueDetailModal({
       const res = await fetch(`/api/pedidos/${pedidoId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ embarqueId: null }),
       })
       const data = await res.json()
@@ -127,7 +129,7 @@ export function EmbarqueDetailModal({
     if (submitting) return
     setSubmitting(true)
     try {
-      const res = await fetch(`/api/embarques/${embarque!.id}`, { method: 'DELETE' })
+      const res = await fetch(`/api/embarques/${embarque!.id}`, { method: 'DELETE', credentials: 'include' })
       const data = await res.json()
       if (data.success) {
         toast.success('Embarque cancelado')

@@ -2,6 +2,10 @@ import { prisma } from '@/lib/prisma'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ReportesFilter } from './reportes-filter'
 
+function formatCOP(value: number): string {
+  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(value)
+}
+
 export default async function ReportesPage({ searchParams }: { searchParams: Promise<{ start?: string; end?: string }> }) {
   const params = await searchParams
 
@@ -33,31 +37,35 @@ export default async function ReportesPage({ searchParams }: { searchParams: Pro
   }
 
   const balance = stats.cobros - stats.gastos
+  const pendiente = stats.ventas - stats.cobros
 
   return (
     <div className="p-4 space-y-4">
-      <h1 className="text-2xl font-bold">Reportes</h1>
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">Reportes</h1>
+        <p className="text-sm text-muted-foreground mt-1">Resumen de ventas, cobros y gastos</p>
+      </div>
 
       <ReportesFilter start={start} end={end} />
 
-      <Card className="bg-muted">
-        <CardContent className="p-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-            <div>
+      <Card>
+        <CardContent className="p-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            <div className="text-center">
               <div className="text-3xl font-bold">{stats.pedidos}</div>
-              <div className="text-sm text-muted-foreground">Pedidos</div>
+              <div className="text-sm text-muted-foreground mt-1">Pedidos</div>
             </div>
-            <div>
-              <div className="text-3xl font-bold">${stats.ventas.toLocaleString()}</div>
-              <div className="text-sm text-muted-foreground">Ventas</div>
+            <div className="text-center">
+              <div className="text-3xl font-bold">{formatCOP(stats.ventas)}</div>
+              <div className="text-sm text-muted-foreground mt-1">Ventas</div>
             </div>
-            <div>
-              <div className="text-3xl font-bold text-green-600">${stats.cobros.toLocaleString()}</div>
-              <div className="text-sm text-muted-foreground">Cobros</div>
+            <div className="text-center">
+              <div className="text-3xl font-bold text-green-600">{formatCOP(stats.cobros)}</div>
+              <div className="text-sm text-muted-foreground mt-1">Cobros</div>
             </div>
-            <div>
-              <div className="text-3xl font-bold text-red-600">${stats.gastos.toLocaleString()}</div>
-              <div className="text-sm text-muted-foreground">Gastos</div>
+            <div className="text-center">
+              <div className="text-3xl font-bold text-red-600">{formatCOP(stats.gastos)}</div>
+              <div className="text-sm text-muted-foreground mt-1">Gastos</div>
             </div>
           </div>
         </CardContent>
@@ -68,35 +76,35 @@ export default async function ReportesPage({ searchParams }: { searchParams: Pro
           <CardTitle>Balance {start === end ? `del ${start}` : `${start} a ${end}`}</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <span>Ingresos (Cobros)</span>
-              <span className="font-medium text-green-600">+${stats.cobros.toLocaleString()}</span>
+          <div className="space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-muted-foreground">Ingresos (Cobros)</span>
+              <span className="font-medium text-green-600">+{formatCOP(stats.cobros)}</span>
             </div>
-            <div className="flex justify-between">
-              <span>Egresos (Gastos)</span>
-              <span className="font-medium text-red-600">-${stats.gastos.toLocaleString()}</span>
+            <div className="flex justify-between items-center">
+              <span className="text-muted-foreground">Egresos (Gastos)</span>
+              <span className="font-medium text-red-600">-{formatCOP(stats.gastos)}</span>
             </div>
-            <div className="flex justify-between border-t pt-2 text-lg font-bold">
+            <div className="flex justify-between items-center border-t pt-3 text-lg font-bold">
               <span>Balance Neto</span>
               <span className={balance >= 0 ? 'text-green-600' : 'text-red-600'}>
-                ${balance.toLocaleString()}
+                {formatCOP(balance)}
               </span>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card>
           <CardHeader>
             <CardTitle>Pendientes</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-yellow-600">
+            <div className="text-3xl font-bold text-amber-600">
               {stats.facturasPendientes}
             </div>
-            <div className="text-sm text-muted-foreground">Facturas por cobrar</div>
+            <div className="text-sm text-muted-foreground mt-1">Facturas por cobrar</div>
           </CardContent>
         </Card>
         <Card>
@@ -104,19 +112,19 @@ export default async function ReportesPage({ searchParams }: { searchParams: Pro
             <CardTitle>Ventas vs Cobros</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-1 text-sm">
-              <div className="flex justify-between">
-                <span>Ventas:</span>
-                <span>${stats.ventas.toLocaleString()}</span>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">Ventas:</span>
+                <span className="font-medium">{formatCOP(stats.ventas)}</span>
               </div>
-              <div className="flex justify-between">
-                <span>Cobrado:</span>
-                <span className="text-green-600">${stats.cobros.toLocaleString()}</span>
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">Cobrado:</span>
+                <span className="font-medium text-green-600">{formatCOP(stats.cobros)}</span>
               </div>
-              <div className="flex justify-between">
-                <span>Pendiente:</span>
-                <span className="text-yellow-600">
-                  ${(stats.ventas - stats.cobros).toLocaleString()}
+              <div className="flex justify-between items-center border-t pt-2">
+                <span className="text-muted-foreground">Pendiente:</span>
+                <span className={`font-semibold ${pendiente > 0 ? 'text-amber-600' : pendiente < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                  {formatCOP(pendiente)}
                 </span>
               </div>
             </div>

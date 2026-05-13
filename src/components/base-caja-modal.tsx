@@ -17,22 +17,37 @@ export default function BaseCajaModal() {
 
   async function checkBaseDia() {
     try {
-      const res = await fetch('/api/config?clave=BASE_DIA')
-      const data = await res.json()
-      
-      if (data.config) {
-        setBaseDiaInput(data.config.valor)
-      }
-      
-      // Verificar si es el mismo día
       const today = new Date().toISOString().split('T')[0]
-      const lastBaseDate = localStorage.getItem('baseDiaDate')
-      
-      if (lastBaseDate !== today) {
-        setShowModal(true)
-      } else {
-        setShowModal(false)
+
+      // 1. Check if today was already closed
+      const cierreRes = await fetch('/api/cierre/last')
+      if (cierreRes.ok) {
+        const cierreData = await cierreRes.json()
+        if (cierreData.cierre) {
+          const cierreDate = new Date(cierreData.cierre.fecha).toISOString().split('T')[0]
+          if (cierreDate === today) {
+            setShowModal(false)
+            setLoading(false)
+            return
+          }
+        }
       }
+
+      // 2. Check if base was already set for today
+      const configRes = await fetch(`/api/config?clave=BASE_DIA_${today}`)
+      if (configRes.ok) {
+        const configData = await configRes.json()
+        if (configData.config) {
+          setBaseDiaInput(configData.config.valor)
+          persistBaseDia(configData.config.valor)
+          setShowModal(false)
+          setLoading(false)
+          return
+        }
+      }
+
+      // 3. No cierre and no base for today — show modal
+      setShowModal(true)
     } catch (error) {
       console.error('Error checking base:', error)
       setShowModal(true)
@@ -49,17 +64,19 @@ export default function BaseCajaModal() {
 
     setSaving(true)
     try {
+      const today = new Date().toISOString().split('T')[0]
       const res = await fetch('/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clave: 'BASE_DIA', valor: baseDiaInput }),
+        body: JSON.stringify({ clave: `BASE_DIA_${today}`, valor: baseDiaInput }),
       })
 
       if (res.ok) {
-        localStorage.setItem('baseDiaDate', new Date().toISOString().split('T')[0])
-        localStorage.setItem('baseDia', baseDiaInput)
         persistBaseDia(baseDiaInput)
+        toast.success('Base de caja registrada')
         setShowModal(false)
+      } else {
+        toast.error('Error al guardar la base')
       }
     } catch (error) {
       console.error('Error saving base:', error)
@@ -84,7 +101,7 @@ export default function BaseCajaModal() {
           <div className="text-6xl mb-4">💰</div>
           <h2 className="text-2xl font-bold text-gray-800">Base de Caja</h2>
           <p className="text-gray-500 mt-2">
-            Ingresa el dinero disponible en caja al iniciar el día
+            Contá el dinero físico en caja para iniciar el día
           </p>
         </div>
 
@@ -112,7 +129,7 @@ export default function BaseCajaModal() {
           <div className="bg-blue-50 p-4 rounded-xl">
             <p className="text-sm text-blue-800">
               <strong>💡 Tip:</strong> Este monto se usará para calcular el cierre de caja al final del día.
-              Incluye el dinero inicial + lo que haya en la caja registradora.
+              Contá billetes y monedas físicamente.
             </p>
           </div>
         </div>

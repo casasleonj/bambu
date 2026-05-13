@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DEFAULT_PRICES, PRODUCTO_INFO, getProductosForCanal, type ProductoId } from '@/lib/prices'
-import type { Cliente, Tier, PedidoFormData, PedidoFormProps } from './types'
+import type { Cliente, Tier, PedidoFormData, PedidoFormProps, PedidoItemInput } from './types'
 import { ClienteSection } from './cliente-section'
 import { ProductosSection } from './productos-section'
 import { PagoSection } from './pago-section'
@@ -25,8 +25,7 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
   const [productos, setProductos] = useState<Record<ProductoId, number>>({
     pacaAgua: 0,
     pacaHielo: 0,
-    botellonFab: 0,
-    botellonDom: 0,
+    botellon: 0,
     bolsaAgua: 0,
     bolsaHielo: 0,
   })
@@ -41,7 +40,7 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
-    fetch(`/api/precios/tabla?canal=${CANAL}`)
+    fetch(`/api/precios/tabla`)
       .then(r => r.json())
       .then(d => { if (d.tabla) setTablaPrecios(d.tabla) })
       .catch(() => {})
@@ -204,18 +203,22 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
       }).filter((p): p is { metodo: string; monto: number } => p !== null)
     })()
 
+    const items: PedidoFormData['items'] = PRODUCTOS_DOM
+      .filter(id => productos[id] > 0)
+      .map(id => {
+        const info = PRODUCTO_INFO[id]
+        return {
+          producto: info.codigo as PedidoItemInput['producto'],
+          cantidad: productos[id],
+          precioManual: preciosManuales[info.codigo],
+        }
+      })
+
     const pedido: PedidoFormData = {
       clienteId,
       clienteNuevo: clienteNuevoData,
       canal: CANAL,
-      productos: {
-        pacaAgua: productos.pacaAgua,
-        pacaHielo: productos.pacaHielo,
-        botellonFab: productos.botellonFab,
-        botellonDom: productos.botellonDom,
-        bolsaAgua: productos.bolsaAgua,
-        bolsaHielo: productos.bolsaHielo,
-      },
+      items,
       preciosManuales,
       pagos: pagosNormalizados,
       obs: observaciones,

@@ -78,6 +78,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         where: { id },
         data: {
           estado: 'EN_RUTA',
+          estadoEntrega: 'EN_RUTA',
           embarqueId,
         },
       })
