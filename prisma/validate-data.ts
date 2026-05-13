@@ -373,7 +373,7 @@ async function checkPedidoCanceladoConPagos() {
 
 async function checkClienteDeudaVsFiado() {
   const clientes = await prisma.cliente.findMany({
-    include: { facturas: { where: { estado: EstadoFactura.EMITIDA }, select: { saldo: true } } },
+    include: { facturas: { where: { estado: { in: [EstadoFactura.EMITIDA, EstadoFactura.PARCIAL] } }, select: { saldo: true } } },
   })
 
   let clientesConDeuda = 0

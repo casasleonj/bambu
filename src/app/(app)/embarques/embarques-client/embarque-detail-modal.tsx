@@ -29,6 +29,75 @@ function calcularCapacidadProyectada(embarque: Embarque, pedidos: Pedido[], nuev
   return { totalPacas: pacasActuales + pacasNuevas, pesoKg: pesoActual + pesoNuevo }
 }
 
+function pacasCount(p: Pedido) {
+  return (p.cPacaAguaPed || 0) + (p.cPacaHieloPed || 0) + (p.cBotellonFabPed || 0) + (p.cBotellonDomPed || 0) + (p.cBolsaAguaPed || 0) + (p.cBolsaHieloPed || 0)
+}
+
+function PedidoRow({ pedido, label }: { pedido: Pedido; label?: string }) {
+  return (
+    <div className="flex justify-between items-center p-2 hover:bg-gray-50">
+      <span className="text-sm">
+        #{pedido.numero} - {pedido.cliente?.nombre || 'Sin cliente'} ({pedido.cliente?.barrio || 'Sin zona'})
+        {label && (
+          <span className="ml-2 px-1.5 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">{label}</span>
+        )}
+        <span className="block text-xs text-gray-500">
+          {pedido.cPacaAguaPed > 0 && `🍶 ${pedido.cPacaAguaPed} `}
+          {pedido.cPacaHieloPed > 0 && `🧊 ${pedido.cPacaHieloPed} `}
+          {pedido.cBotellonFabPed > 0 && `🏭 ${pedido.cBotellonFabPed} `}
+          {pedido.cBotellonDomPed > 0 && `🏠 ${pedido.cBotellonDomPed} `}
+          {pedido.cBolsaAguaPed > 0 && `💧 ${pedido.cBolsaAguaPed} `}
+          {pedido.cBolsaHieloPed > 0 && `❄️ ${pedido.cBolsaHieloPed} `}
+        </span>
+      </span>
+    </div>
+  )
+}
+
+function SummaryRow({ pedidos }: { pedidos: Pedido[] }) {
+  const normales = pedidos.filter((p) => p.origen !== 'VENTA_LIBRE')
+  const libres = pedidos.filter((p) => p.origen === 'VENTA_LIBRE')
+  const totalPacas = pedidos.reduce((s, p) => s + pacasCount(p), 0)
+
+  return (
+    <div className="border rounded-lg p-3 bg-gray-50">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+        <span className="font-medium text-gray-800">{pedidos.length} pedidos</span>
+        <span className="text-gray-500">{totalPacas} pacas</span>
+        {normales.length > 0 && (
+          <span className="text-green-700">
+            {normales.length} pedidos programados
+          </span>
+        )}
+        {libres.length > 0 && (
+          <span className="text-purple-700">
+            {libres.length} ventas libres
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function PedidoListGrouped({ pedidos }: { pedidos: Pedido[] }) {
+  const normales = pedidos.filter((p) => p.origen !== 'VENTA_LIBRE')
+  const libres = pedidos.filter((p) => p.origen === 'VENTA_LIBRE')
+
+  return (
+    <div className="border rounded-lg divide-y mt-2 max-h-60 overflow-y-auto">
+      {normales.map((pedido) => (
+        <PedidoRow key={pedido.id} pedido={pedido} />
+      ))}
+      {libres.map((pedido) => (
+        <PedidoRow key={pedido.id} pedido={pedido} label="Venta libre" />
+      ))}
+      {pedidos.length === 0 && (
+        <p className="p-2 text-gray-500 text-sm">Sin pedidos asignados</p>
+      )}
+    </div>
+  )
+}
+
 export function EmbarqueDetailModal({
   open,
   onClose,
@@ -52,6 +121,7 @@ export function EmbarqueDetailModal({
   const { confirm, modal } = useConfirm()
   const [selectedPedidoIds, setSelectedPedidoIds] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
+  const [showClosedPedidos, setShowClosedPedidos] = useState(false)
 
   useEffect(() => {
     setSelectedPedidoIds([])
@@ -229,39 +299,50 @@ export function EmbarqueDetailModal({
 
       <div className="mb-4">
         <h3 className="font-medium text-gray-700 mb-2">Pedidos Asignados</h3>
-        <div className="border rounded-lg divide-y">
-          {embarque.pedidos?.map((pedido) => (
-            <div
-              key={pedido.id}
-              className="flex justify-between items-center p-2"
+
+        {embarque.estado === 'CERRADO' ? (
+          <>
+            <SummaryRow pedidos={embarque.pedidos || []} />
+            <button
+              onClick={() => setShowClosedPedidos(!showClosedPedidos)}
+              className="w-full mt-2 px-3 py-2 text-sm text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 transition font-medium"
             >
-              <span className="text-sm">
-                #{pedido.numero} - {pedido.cliente?.nombre || 'Sin cliente'} ({pedido.cliente?.barrio || 'Sin zona'})
-                <span className="block text-xs text-gray-500">
-                  {pedido.cPacaAguaPed > 0 && `🍶 ${pedido.cPacaAguaPed} `}
-                  {pedido.cPacaHieloPed > 0 && `🧊 ${pedido.cPacaHieloPed} `}
-                  {pedido.cBotellonFabPed > 0 && `🏭 ${pedido.cBotellonFabPed} `}
-                  {pedido.cBotellonDomPed > 0 && `🏠 ${pedido.cBotellonDomPed} `}
-                  {pedido.cBolsaAguaPed > 0 && `💧 ${pedido.cBolsaAguaPed} `}
-                  {pedido.cBolsaHieloPed > 0 && `❄️ ${pedido.cBolsaHieloPed} `}
+              {showClosedPedidos ? 'Ocultar detalle ▲' : 'Ver detalle ▼'}
+            </button>
+            {showClosedPedidos && (
+              <PedidoListGrouped pedidos={embarque.pedidos || []} />
+            )}
+          </>
+        ) : (
+          <div className="border rounded-lg divide-y">
+            {embarque.pedidos?.map((pedido) => (
+              <div key={pedido.id} className="flex justify-between items-center p-2">
+                <span className="text-sm">
+                  #{pedido.numero} - {pedido.cliente?.nombre || 'Sin cliente'} ({pedido.cliente?.barrio || 'Sin zona'})
+                  <span className="block text-xs text-gray-500">
+                    {pedido.cPacaAguaPed > 0 && `🍶 ${pedido.cPacaAguaPed} `}
+                    {pedido.cPacaHieloPed > 0 && `🧊 ${pedido.cPacaHieloPed} `}
+                    {pedido.cBotellonFabPed > 0 && `🏭 ${pedido.cBotellonFabPed} `}
+                    {pedido.cBotellonDomPed > 0 && `🏠 ${pedido.cBotellonDomPed} `}
+                    {pedido.cBolsaAguaPed > 0 && `💧 ${pedido.cBolsaAguaPed} `}
+                    {pedido.cBolsaHieloPed > 0 && `❄️ ${pedido.cBolsaHieloPed} `}
+                  </span>
                 </span>
-              </span>
-              {embarque.estado === 'ABIERTO' && (
-                <button
-                  onClick={() => eliminarPedido(pedido.id)}
-                  className="text-red-600 hover:text-red-700 text-sm"
-                >
-                  Quitar
-                </button>
-              )}
-            </div>
-          ))}
-          {(!embarque.pedidos || embarque.pedidos.length === 0) && (
-            <p className="p-2 text-gray-500 text-sm">
-              Sin pedidos asignados
-            </p>
-          )}
-        </div>
+                {embarque.estado === 'ABIERTO' && (
+                  <button
+                    onClick={() => eliminarPedido(pedido.id)}
+                    className="text-red-600 hover:text-red-700 text-sm"
+                  >
+                    Quitar
+                  </button>
+                )}
+              </div>
+            ))}
+            {(!embarque.pedidos || embarque.pedidos.length === 0) && (
+              <p className="p-2 text-gray-500 text-sm">Sin pedidos asignados</p>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex gap-3">

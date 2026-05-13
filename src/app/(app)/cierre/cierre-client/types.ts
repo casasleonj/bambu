@@ -63,6 +63,8 @@ export interface CierreData {
   facturasPagadasTotal: number
   facturasPorCobrarCount: number
   facturasPorCobrarTotal: number
+  facturasParcialCount: number
+  facturasParcialTotal: number
   facturasAnuladasCount: number
   facturas: FacturaResumen[]
 

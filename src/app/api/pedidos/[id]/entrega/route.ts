@@ -166,12 +166,19 @@ export async function POST(
 
       // Actualizar factura
       if (pedido.factura) {
-        await tx.factura.update({
+        const updatedFactura = await tx.factura.update({
           where: { id: pedido.factura.id },
           data: {
             total: totalReal,
             saldo,
-            estado: saldo <= 0 ? 'PAGADA' : 'EMITIDA',
+          },
+        })
+        const facturaSaldo = Number(updatedFactura.saldo)
+        const facturaMontoPagado = Number(updatedFactura.montoPagado)
+        await tx.factura.update({
+          where: { id: pedido.factura.id },
+          data: {
+            estado: facturaSaldo <= 0 ? 'PAGADA' : (facturaMontoPagado > 0 ? 'PARCIAL' : 'EMITIDA'),
           },
         })
       }

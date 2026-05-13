@@ -143,12 +143,7 @@ export const ClienteCreateSchema = z.object({
   nombreNegocio: z.string().max(100).optional(),
   tipoNegocio: z.preprocess(
     (val) => (val === '' ? undefined : val),
-    z.enum([
-      'Tienda', 'Restaurante', 'Café', 'Hotel', 'Bar',
-      'Ferretería', 'Panadería', 'Carnicería', 'Frutería', 'Peluquería',
-      'Farmacia', 'Papelería', 'Lavandería', 'Taller', 'Consultorio',
-      'Gimnasio', 'Salón de eventos', 'Guardería', 'Veterinaria', 'Estación de servicio',
-    ]).optional()
+    z.string().max(100).optional()
   ),
   barrio: z.string().max(100).optional(),
   direccion: z.string().max(200).optional(),

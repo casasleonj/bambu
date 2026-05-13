@@ -87,7 +87,9 @@ export async function POST(request: NextRequest) {
         throw new Error('Abono excede saldo de factura')
       }
 
-      const nuevoEstado = Number(updatedFactura.saldo) === 0 ? 'PAGADA' : 'EMITIDA'
+      const saldoActual = Number(updatedFactura.saldo)
+      const montoPagadoActual = Number(updatedFactura.montoPagado)
+      const nuevoEstado = saldoActual <= 0 ? 'PAGADA' : (montoPagadoActual > 0 ? 'PARCIAL' : 'EMITIDA')
       if (updatedFactura.estado !== nuevoEstado) {
         await tx.factura.update({
           where: { id: facturaId },

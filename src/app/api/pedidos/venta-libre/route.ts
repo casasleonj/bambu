@@ -183,7 +183,7 @@ export async function POST(request: NextRequest) {
           subtotal: total,
           total,
           saldo: total - totalPagado,
-          estado: totalPagado >= total ? 'PAGADA' : 'EMITIDA',
+          estado: totalPagado >= total ? 'PAGADA' : (totalPagado > 0 ? 'PARCIAL' : 'EMITIDA'),
         },
       })
 

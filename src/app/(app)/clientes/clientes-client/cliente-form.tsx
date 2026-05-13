@@ -166,20 +166,39 @@ export function ClienteForm({
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Tipo de negocio</label>
                 <select
-                  value={TIPOS_NEGOCIO.includes(formData.tipoNegocio) ? formData.tipoNegocio : ''}
-                  onChange={(e) => onFormDataChange({ ...formData, tipoNegocio: e.target.value })}
+                  value={TIPOS_NEGOCIO.includes(formData.tipoNegocio) || formData.tipoNegocio === '' ? formData.tipoNegocio : 'Otro'}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    if (val === 'Otro') {
+                      onFormDataChange({ ...formData, tipoNegocio: '' })
+                    } else {
+                      onFormDataChange({ ...formData, tipoNegocio: val })
+                    }
+                  }}
                   className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition bg-white"
                 >
                   <option value="">Seleccionar tipo...</option>
                   {TIPOS_NEGOCIO.map((tipo) => (
                     <option key={tipo} value={tipo}>{tipo}</option>
                   ))}
+                  <option value="Otro">Otro</option>
                 </select>
-                {formData.tipoNegocio && !TIPOS_NEGOCIO.includes(formData.tipoNegocio) && (
-                  <p className="text-xs text-amber-600 mt-1">
-                    Valor anterior "{formData.tipoNegocio}" no está en la lista. Selecciona uno de la lista o déjalo en blanco.
-                  </p>
-                )}
+                {(() => {
+                  const isOtro = formData.tipoNegocio !== '' && !TIPOS_NEGOCIO.includes(formData.tipoNegocio)
+                  if (!isOtro) return null
+                  return (
+                    <div className="mt-2">
+                      <input
+                        type="text"
+                        value={formData.tipoNegocio}
+                        onChange={(e) => onFormDataChange({ ...formData, tipoNegocio: e.target.value })}
+                        className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                        placeholder="¿Qué tipo de negocio es?"
+                        autoFocus
+                      />
+                    </div>
+                  )
+                })()}
               </div>
             </div>
           </div>

@@ -1,4 +1,15 @@
-import type { Embarque } from './types'
+import type { Embarque, Pedido } from './types'
+
+function ClosedPedidosSummary({ pedidos }: { pedidos: Pedido[] }) {
+  const normales = pedidos.filter((p) => p.origen !== 'VENTA_LIBRE')
+  const libres = pedidos.filter((p) => p.origen === 'VENTA_LIBRE')
+
+  const parts: string[] = []
+  if (normales.length > 0) parts.push(`${normales.length} entregados`)
+  if (libres.length > 0) parts.push(`${libres.length} libres`)
+
+  return <p>{pedidos.length} pedidos{parts.length > 0 ? ` (${parts.join(', ')})` : ''}</p>
+}
 
 export function EmbarqueCard({
   embarque,
@@ -39,7 +50,11 @@ export function EmbarqueCard({
       )}
 
       <div className="text-sm text-gray-600">
-        <p>{embarque.pedidos?.length || 0} pedidos asignados</p>
+        {embarque.estado === 'CERRADO' ? (
+          <ClosedPedidosSummary pedidos={embarque.pedidos || []} />
+        ) : (
+          <p>{embarque.pedidos?.length || 0} pedidos asignados</p>
+        )}
         {embarque.horaSalida && (
           <p>Salida: {new Date(embarque.horaSalida).toLocaleTimeString()}</p>
         )}

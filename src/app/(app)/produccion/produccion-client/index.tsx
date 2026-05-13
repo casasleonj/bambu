@@ -294,7 +294,7 @@ export default function ProduccionClient() {
                 <p className="text-gray-500 text-sm mt-1">Esto es lo que quedó en la bodega al cerrar el día anterior.</p>
               </div>
               <InfoBanner type="tip">
-                Este número viene del <strong>cierre del día anterior</strong>. Si no coincide con lo que ves físicamente, anota la diferencia y reportala en el paso 4.
+                Este número viene del <strong>cierre del día anterior</strong>. Si no coincide con lo que ves físicamente, registrá el stock físico real en el Paso 3 y explicá la diferencia en el Paso 4.
               </InfoBanner>
               <div className="grid grid-cols-2 gap-6">
                 <div className="bg-blue-50 border border-blue-100 p-8 rounded-2xl text-center">
@@ -596,18 +596,6 @@ export default function ProduccionClient() {
                 </div>
               </div>
 
-              {/* Observaciones */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Observaciones</label>
-                <textarea
-                  value={formData.obs}
-                  onChange={(e) => setFormData({ ...formData, obs: e.target.value })}
-                  className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                  rows={2}
-                  placeholder="Observaciones opcionales..."
-                />
-              </div>
-
               <div className="flex gap-3">
                 <button
                   onClick={() => setStep(2)}
@@ -663,6 +651,28 @@ export default function ProduccionClient() {
                 {conciliation.status === 'ok' && (
                   <p className="text-sm text-green-600 mt-2">Las cuentas dan exacto. Lo que entró = lo que salió + lo que quedó.</p>
                 )}
+              </div>
+
+              {/* Reportar diferencia (Paso 4) */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {conciliation.status !== 'ok' ? 'Explicar diferencia' : 'Observaciones'}
+                </label>
+                <textarea
+                  value={formData.obs}
+                  onChange={(e) => setFormData({ ...formData, obs: e.target.value })}
+                  className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                    conciliation.status === 'danger' ? 'border-red-300 focus:ring-red-500' :
+                    conciliation.status === 'warning' ? 'border-amber-300 focus:ring-amber-500' :
+                    ''
+                  }`}
+                  rows={conciliation.status !== 'ok' ? 3 : 2}
+                  placeholder={
+                    conciliation.status !== 'ok'
+                      ? 'Explicá la causa de la diferencia (roturas, filtraciones, error de conteo, consumo...)'
+                      : 'Observaciones opcionales...'
+                  }
+                />
               </div>
 
               {/* Balance unificado agua + hielo */}
@@ -767,16 +777,16 @@ export default function ProduccionClient() {
                       )}
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
-                          <span className="text-gray-600">💧 {stockInicial.ventasAgua} vend.</span>
-                          <span className="font-semibold">${comRepartAgua.toLocaleString()}</span>
+                          <span className="text-gray-600">💧 {stockInicial.ventasAgua} × ${avgComPacaAgua.toLocaleString()}</span>
+                          <span className="font-semibold">= ${comRepartAgua.toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-gray-600">🧊 {stockInicial.ventasHielo} vend.</span>
-                          <span className="font-semibold">${comRepartHielo.toLocaleString()}</span>
+                          <span className="text-gray-600">🧊 {stockInicial.ventasHielo} × ${avgComPacaHielo.toLocaleString()}</span>
+                          <span className="font-semibold">= ${comRepartHielo.toLocaleString()}</span>
                         </div>
                         <div className="border-t pt-2 flex justify-between font-bold text-indigo-700 text-lg">
                           <span>Total</span>
-                          <span>${comRepartTotal.toLocaleString()}</span>
+                          <span>= ${comRepartTotal.toLocaleString()}</span>
                         </div>
                       </div>
                     </div>

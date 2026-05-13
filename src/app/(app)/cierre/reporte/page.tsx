@@ -99,7 +99,7 @@ export default function ReportePage() {
       {data.facturasEmitidas > 0 && (
         <section className="mb-6">
           <h3 className="text-lg font-bold border-b pb-1 mb-3">Facturas del Día</h3>
-          <p className="text-sm mb-2">Emitidas: {data.facturasEmitidas} | Pagadas: {data.facturasPagadasCount} ({formatMoney(data.facturasPagadasTotal)}) | Por Cobrar: {data.facturasPorCobrarCount} ({formatMoney(data.facturasPorCobrarTotal)}) | Anuladas: {data.facturasAnuladasCount}</p>
+          <p className="text-sm mb-2">Emitidas: {data.facturasEmitidas} | Pagadas: {data.facturasPagadasCount} ({formatMoney(data.facturasPagadasTotal)}) | Parciales: {data.facturasParcialCount || 0} ({formatMoney(data.facturasParcialTotal || 0)}) | Por Cobrar: {data.facturasPorCobrarCount} ({formatMoney(data.facturasPorCobrarTotal)}) | Anuladas: {data.facturasAnuladasCount}</p>
           {data.facturas && data.facturas.length > 0 && (
             <table className="w-full text-sm">
               <thead><tr className="border-b"><th className="text-left py-1">Nº</th><th className="text-left py-1">Cliente</th><th className="text-right py-1">Total</th><th className="text-right py-1">Saldo</th><th className="text-right py-1">Estado</th></tr></thead>

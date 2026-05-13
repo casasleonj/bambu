@@ -675,7 +675,7 @@ async function main() {
           total: estado === EstadoPedido.CANCELADO ? 0 : total,
           saldo,
           montoPagado: totalPagado,
-          estado: estado === EstadoPedido.CANCELADO ? EstadoFactura.ANULADA : saldo === 0 ? EstadoFactura.PAGADA : EstadoFactura.EMITIDA,
+          estado: estado === EstadoPedido.CANCELADO ? EstadoFactura.ANULADA : saldo === 0 ? EstadoFactura.PAGADA : (totalPagado > 0 ? EstadoFactura.PARCIAL : EstadoFactura.EMITIDA),
         },
       })
 
@@ -705,7 +705,7 @@ async function main() {
   // ─── Abonos sobre facturas con saldo ─────────────────────────────────────
   console.log('💰 Creating abonos...')
   const facturasConSaldo = await prisma.factura.findMany({
-    where: { saldo: { gt: 0 }, estado: EstadoFactura.EMITIDA },
+    where: { saldo: { gt: 0 }, estado: { in: [EstadoFactura.EMITIDA, EstadoFactura.PARCIAL] } },
     include: { cliente: true },
   })
 
@@ -732,11 +732,14 @@ async function main() {
 
     // Update factura saldo and montoPagado to match abonos
     // montoPagado already includes the original pedido payment, so we add abonos on top
-    const nuevoEstado = saldoRestante <= 0 ? EstadoFactura.PAGADA : EstadoFactura.EMITIDA
+    const abonosMonto = Number(factura.saldo) - saldoRestante
+    const montoPagadoTotal = Number(factura.montoPagado) + abonosMonto
+    const nuevoEstado = saldoRestante <= 0 ? EstadoFactura.PAGADA : (montoPagadoTotal > 0 ? EstadoFactura.PARCIAL : EstadoFactura.EMITIDA)
     await prisma.factura.update({
       where: { id: factura.id },
       data: {
         saldo: Math.max(0, saldoRestante),
+        montoPagado: montoPagadoTotal,
         estado: nuevoEstado,
       },
     })

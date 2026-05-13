@@ -13,6 +13,8 @@ export interface Pedido {
   id: string
   numero: number
   estado: string
+  estadoEntrega?: string
+  origen?: string
   cliente?: { nombre: string; barrio: string | null }
   cPacaAguaPed: number
   cPacaHieloPed: number

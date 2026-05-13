@@ -242,7 +242,7 @@ export async function POST(
             data: {
               total: totalReal,
               saldo: totalReal - montoPagado,
-              estado: montoPagado >= totalReal ? 'PAGADA' : 'EMITIDA',
+              estado: montoPagado >= totalReal ? 'PAGADA' : (montoPagado > 0 ? 'PARCIAL' : 'EMITIDA'),
             },
           })
         }

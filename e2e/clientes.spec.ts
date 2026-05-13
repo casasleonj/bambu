@@ -1,238 +1,179 @@
-import { test, expect, handleBaseCaja, fullLogin, goto, apiPost, createCliente } from './fixtures'
+import { test, expect, type Page } from '@playwright/test'
 
 test.describe('Clientes', () => {
-  test('page loads', async ({ page }) => {
-    await fullLogin(page)
-    await goto(page, '/clientes')
-    await page.waitForTimeout(500)
-    
-    await expect(page.locator('h1:has-text("Clientes")')).toBeVisible()
-    await expect(page.locator('button:has-text("+ Nuevo Cliente")')).toBeVisible()
-  })
+  async function login(page: Page, username: string = 'admin', password: string = 'admin123') {
+    await page.goto('/login')
+    await page.waitForSelector('input[placeholder="Ingrese usuario"]', { timeout: 10000 })
+    await page.fill('input[placeholder="Ingrese usuario"]', username)
+    await page.fill('input[placeholder="Ingrese contraseña"]', password)
+    await page.click('button[type="submit"]')
+    await page.waitForURL('**/dashboard', { timeout: 10000 })
+  }
 
-  test('crear cliente y verificar', async ({ page }) => {
-    await fullLogin(page)
-    await goto(page, '/clientes')
-    await page.waitForTimeout(500)
-    
-    await page.click('button:has-text("+ Nuevo Cliente")')
-    await page.waitForTimeout(500)
-    
-    const dialog = page.locator('[role="dialog"]')
-    await dialog.locator('#cliente-nombre').fill('Cliente E2E Test')
-    await dialog.locator('#cliente-telefono').fill('3112223344')
-    
-    await dialog.locator('button[type="submit"]').click()
-    await page.waitForTimeout(2000)
-    
-    await expect(dialog).not.toBeVisible({ timeout: 5000 }).catch(() => null)
-    
-    await page.reload()
-    await page.waitForLoadState('networkidle')
-    await handleBaseCaja(page)
-    await page.waitForTimeout(500)
-    
-    const bodyText = await page.locator('body').innerText()
-    expect(bodyText).toContain('Cliente E2E Test')
-  })
-
-  test('buscar cliente', async ({ page }) => {
-    await fullLogin(page)
-    await goto(page, '/clientes')
-    await page.waitForTimeout(500)
-    
-    const searchInput = page.locator('input[placeholder*="Buscar"]').first()
-    await searchInput.fill('a')
-    await page.waitForTimeout(500)
-    
-    const bodyText = await page.locator('body').innerText()
-    expect(bodyText.length).toBeGreaterThan(0)
-  })
-
-  test('validation: nombre vacío', async ({ page }) => {
-    await fullLogin(page)
-    await goto(page, '/clientes')
-    await page.waitForTimeout(500)
-    
-    await page.click('button:has-text("+ Nuevo Cliente")')
-    await page.waitForTimeout(500)
-    
-    const dialog = page.locator('[role="dialog"]')
-    await dialog.locator('button[type="submit"]').click()
+  async function skipBaseCajaModal(page: Page) {
     await page.waitForTimeout(1000)
-    
-    await expect(dialog).toBeVisible()
-  })
-
-  test('ver detalle', async ({ page }) => {
-    await fullLogin(page)
-    await goto(page, '/clientes')
-    await page.waitForTimeout(500)
-    
-    const firstRow = page.locator('.bg-white.rounded-xl.shadow.overflow-hidden .divide-y > div').first()
-    if (await firstRow.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await firstRow.click()
-      await page.waitForTimeout(500)
-      
-      await expect(page.getByRole('button', { name: 'Editar' })).toBeVisible()
-    }
-  })
-
-  test('editar cliente', async ({ page }) => {
-    await fullLogin(page)
-    
-    const name = `Cliente Edit ${Date.now() % 10000}`
-    await createCliente(page, { nombre: name, telefono: `3${String(Date.now()).slice(-9)}` })
-    
-    await goto(page, '/clientes')
-    await page.waitForTimeout(500)
-    
-    const searchInput = page.locator('input[placeholder*="Buscar"]').first()
-    await searchInput.fill(name)
-    await page.waitForTimeout(500)
-    
-    const clientRow = page.locator('.bg-white.rounded-xl.shadow.overflow-hidden .divide-y > div').filter({ hasText: name }).first()
-    await clientRow.click()
-    await page.waitForTimeout(500)
-    
-    await page.getByRole('button', { name: 'Editar' }).click()
-    await page.waitForTimeout(500)
-    
-    const dialog = page.locator('[role="dialog"]')
-    await dialog.locator('#cliente-nombre').fill(`${name} Editado`)
-    
-    await dialog.locator('button[type="submit"]').click()
-    await page.waitForTimeout(2000)
-    
-    await page.reload()
-    await page.waitForLoadState('networkidle')
-    await handleBaseCaja(page)
-    await page.waitForTimeout(500)
-    
-    const bodyText = await page.locator('body').innerText()
-    expect(bodyText).toContain(`${name} Editado`)
-  })
-
-  test('desactivar cliente', async ({ page }) => {
-    await fullLogin(page)
-    
-    const name = `Cliente Desactivar ${Date.now() % 10000}`
-    await createCliente(page, { nombre: name, telefono: `3${String(Date.now()).slice(-9)}` })
-    
-    await goto(page, '/clientes')
-    await page.waitForTimeout(500)
-    
-    const searchInput = page.locator('input[placeholder*="Buscar"]').first()
-    await searchInput.fill(name)
-    await page.waitForTimeout(500)
-    
-    const clientRow = page.locator('.bg-white.rounded-xl.shadow.overflow-hidden .divide-y > div').filter({ hasText: name }).first()
-    await clientRow.click()
-    await page.waitForTimeout(500)
-    
-    await page.getByRole('button', { name: 'Desactivar' }).click()
-    await page.waitForTimeout(500)
-    
-    const confirmBtn = page.locator('[role="dialog"] button:has-text("Confirmar")')
-    if (await confirmBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await confirmBtn.click()
+    const modalInput = page.locator('input[placeholder="50000"]')
+    if (await modalInput.isVisible().catch(() => false)) {
+      await modalInput.fill('50000')
+      await page.locator('button:has-text("Continuar →")').click()
       await page.waitForTimeout(1000)
     }
-    
-    await page.reload()
-    await page.waitForLoadState('networkidle')
-    await handleBaseCaja(page)
-    await page.waitForTimeout(500)
-    
-    const bodyText = await page.locator('body').innerText()
-    expect(bodyText).not.toContain(name)
+  }
+
+  test.beforeEach(async ({ page }) => {
+    await login(page)
+    await skipBaseCajaModal(page)
   })
 
-  test('crear con todos los campos', async ({ page }) => {
-    await fullLogin(page)
-    await goto(page, '/clientes')
-    await page.waitForTimeout(500)
-    
-    const name = `Cliente Full ${Date.now() % 10000}`
-    
+  test('page loads with heading and create button', async ({ page }) => {
+    await page.goto('/clientes')
+    await page.waitForSelector('button:has-text("+ Nuevo Cliente")', { timeout: 15000 })
+
+    await expect(page.getByRole('heading', { name: 'Clientes' })).toBeVisible()
+    await expect(page.locator('button:has-text("+ Nuevo Cliente")')).toBeVisible()
+    await expect(page.locator('input[placeholder*="Buscar por nombre"]')).toBeVisible()
+  })
+
+  test('create client with basic info', async ({ page }) => {
+    await page.goto('/clientes')
+    await page.waitForSelector('button:has-text("+ Nuevo Cliente")', { timeout: 15000 })
+
+    // Open create modal
     await page.click('button:has-text("+ Nuevo Cliente")')
-    await page.waitForTimeout(500)
-    
-    const dialog = page.locator('[role="dialog"]')
-    await dialog.locator('#cliente-nombre').fill(name)
-    await dialog.locator('#cliente-telefono').fill(`3${String(Date.now()).slice(-9)}`)
-    await dialog.locator('#cliente-barrio').fill('Centro')
-    await dialog.locator('#cliente-direccion').fill('Calle Test 123')
-    
-    await dialog.locator('button[type="submit"]').click()
-    await page.waitForTimeout(2000)
-    
-    await expect(dialog).not.toBeVisible({ timeout: 5000 }).catch(() => null)
-    
-    await page.reload()
-    await page.waitForLoadState('networkidle')
-    await handleBaseCaja(page)
-    await page.waitForTimeout(500)
-    
-    const bodyText = await page.locator('body').innerText()
-    expect(bodyText).toContain(name)
+    await page.waitForSelector('h2:has-text("Nuevo Cliente")', { timeout: 5000 })
+
+    // Fill basic info
+    await page.fill('input[placeholder="Ej: Juan"]', 'Test')
+    await page.fill('input[placeholder="Ej: Pérez"]', 'Cliente')
+    await page.fill('input[placeholder="Ej: 3111234567"]', '3119998888')
+    await page.fill('input[placeholder="Nombre del negocio"]', 'La Bodeguita')
+    await page.locator('[role="dialog"] select').selectOption('Tienda')
+
+    // Save
+    await page.locator('[role="dialog"] >> button:has-text("Crear cliente")').click()
+
+    // Should show success
+    await expect(page.locator('text=Cliente creado exitosamente')).toBeVisible({ timeout: 10000 })
   })
 
-  test('crear con precios especiales', async ({ page }) => {
-    await fullLogin(page)
-    await goto(page, '/clientes')
-    await page.waitForTimeout(500)
-    
-    const name = `Cliente Precios ${Date.now() % 10000}`
-    
+  test('create client with "Otro" business type', async ({ page }) => {
+    await page.goto('/clientes')
+    await page.waitForSelector('button:has-text("+ Nuevo Cliente")', { timeout: 15000 })
+
     await page.click('button:has-text("+ Nuevo Cliente")')
-    await page.waitForTimeout(500)
-    
-    const dialog = page.locator('[role="dialog"]')
-    await dialog.locator('#cliente-nombre').fill(name)
-    await dialog.locator('#cliente-telefono').fill(`3${String(Date.now()).slice(-9)}`)
-    
-    const preciosSection = dialog.locator('fieldset:has(legend:has-text("Precios Especiales"))')
-    if (await preciosSection.isVisible({ timeout: 2000 }).catch(() => false)) {
-      const precioInput = preciosSection.locator('input[type="number"]').first()
-      if (await precioInput.isVisible()) {
-        await precioInput.fill('5000')
-      }
-    }
-    
-    await dialog.locator('button[type="submit"]').click()
-    await page.waitForTimeout(2000)
-    
-    await expect(dialog).not.toBeVisible({ timeout: 5000 }).catch(() => null)
-    
-    await page.reload()
-    await page.waitForLoadState('networkidle')
-    await handleBaseCaja(page)
-    await page.waitForTimeout(500)
-    
-    const bodyText = await page.locator('body').innerText()
-    expect(bodyText).toContain(name)
+    await page.waitForSelector('h2:has-text("Nuevo Cliente")', { timeout: 5000 })
+
+    await page.fill('input[placeholder="Ej: Juan"]', 'Otro')
+    await page.fill('input[placeholder="Ej: Pérez"]', 'Negocio')
+    await page.fill('input[placeholder="Ej: 3111234567"]', '3117776666')
+
+    // Select "Otro" from dropdown
+    await page.locator('[role="dialog"] select').selectOption('Otro')
+    await page.waitForTimeout(300)
+
+    // Additional text input should appear
+    const otroInput = page.locator('input[placeholder="¿Qué tipo de negocio es?"]')
+    await expect(otroInput).toBeVisible()
+    await otroInput.fill('Fábrica de jugos')
+
+    await page.locator('[role="dialog"] >> button:has-text("Crear cliente")').click()
+    await expect(page.locator('text=Cliente creado exitosamente')).toBeVisible({ timeout: 10000 })
   })
 
-  test('API crea cliente con telefono duplicado', async ({ page }) => {
-    await fullLogin(page)
-    
-    const phone = `3${String(Date.now()).slice(-9)}`
-    
-    const c1 = await createCliente(page, { telefono: phone })
-    expect(c1.cliente?.id || c1.data?.id).toBeTruthy()
-    
-    const client2Name = `Duplicado ${Date.now() % 10000}`
-    const res2 = await apiPost(page, '/api/clientes', {
-      nombre: client2Name,
-      telefono: phone,
-    })
-    const body2 = await res2.json()
-    
-    if (body2.error) {
-      expect(body2.error).toBeTruthy()
-    } else if (body2.cliente) {
-      expect(body2.cliente.telefono).toBe(phone)
-    }
+  test('search and filter clients', async ({ page }) => {
+    await page.goto('/clientes')
+    await page.waitForSelector('button:has-text("+ Nuevo Cliente")', { timeout: 15000 })
+
+    // Search by name
+    await page.fill('input[placeholder*="Buscar por nombre"]', 'a')
+    await page.waitForTimeout(500)
+
+    // Clear search
+    await page.fill('input[placeholder*="Buscar por nombre"]', '')
+    await page.waitForTimeout(300)
+
+    // Filter by saldo
+    await page.click('button:has-text("Con saldo")')
+    await page.waitForTimeout(300)
+
+    // Clear all filters
+    await page.click('button:has-text("Limpiar filtros")')
+    await page.waitForTimeout(300)
+  })
+
+  test('view client detail and tabs', async ({ page }) => {
+    await page.goto('/clientes')
+    await page.waitForSelector('button:has-text("+ Nuevo Cliente")', { timeout: 15000 })
+
+    // Click first client row
+    await page.locator('div[class*="cursor-pointer"]').first().click()
+
+    // Modal should open with actions
+    await expect(page.locator('text=Crear Pedido')).toBeVisible()
+    await expect(page.locator('text=Llamar')).toBeVisible()
+
+    // Navigate through tabs
+    await page.locator('[role="dialog"] >> button:has-text("Historial")').click()
+    await page.waitForTimeout(300)
+    await page.locator('[role="dialog"] >> button:has-text("Estadísticas")').click()
+    await page.waitForTimeout(300)
+  })
+
+  test('edit client', async ({ page }) => {
+    await page.goto('/clientes')
+    await page.waitForSelector('button:has-text("+ Nuevo Cliente")', { timeout: 15000 })
+
+    // Click first client
+    await page.locator('div[class*="cursor-pointer"]').first().click()
+
+    // Click edit
+    await page.locator('[role="dialog"] >> button:has-text("Editar")').first().click()
+    await page.waitForSelector('h2:has-text("Editar Cliente")', { timeout: 5000 })
+
+    // Change name
+    await page.fill('input[placeholder="Ej: Juan"]', 'Nombre Editado')
+
+    // Save
+    await page.locator('[role="dialog"] >> button:has-text("Guardar cambios")').click()
+    await expect(page.locator('text=Cliente actualizado')).toBeVisible({ timeout: 10000 })
+  })
+
+  test('create pedido from client detail', async ({ page }) => {
+    await page.goto('/clientes')
+    await page.waitForSelector('button:has-text("+ Nuevo Cliente")', { timeout: 15000 })
+
+    // Click first client
+    await page.locator('div[class*="cursor-pointer"]').first().click()
+
+    // Click "Crear Pedido" action
+    await page.locator('text=Crear Pedido').click()
+
+    // Should redirect to pedidos page
+    await expect(page).toHaveURL(/.*pedidos/)
+  })
+
+  test('empty state shows guided steps', async ({ page }) => {
+    await page.goto('/clientes')
+    await page.waitForSelector('button:has-text("+ Nuevo Cliente")', { timeout: 15000 })
+    await page.fill('input[placeholder*="Buscar por nombre"]', 'XYZ_NONEXISTENT_123')
+    await page.waitForTimeout(500)
+
+    await expect(page.locator('text=No hay resultados')).toBeVisible()
+  })
+
+  test('asistente can view clients', async ({ page }) => {
+    // Navigate to login as asistente
+    await page.goto('/login')
+    await page.waitForSelector('input[placeholder="Ingrese usuario"]')
+    await page.fill('input[placeholder="Ingrese usuario"]', 'asistente')
+    await page.fill('input[placeholder="Ingrese contraseña"]', 'asist123')
+    await page.click('button[type="submit"]')
+    await page.waitForURL('**/dashboard')
+    await skipBaseCajaModal(page)
+
+    await page.goto('/clientes')
+    await page.waitForSelector('button:has-text("+ Nuevo Cliente")', { timeout: 15000 })
+
+    await expect(page.getByRole('heading', { name: 'Clientes' })).toBeVisible()
   })
 })

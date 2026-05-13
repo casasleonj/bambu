@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
           ruta: { select: { id: true, nombre: true } },
           pedidos: {
             select: {
-              id: true, numero: true, estado: true, canal: true, total: true, saldo: true,
+              id: true, numero: true, estado: true, estadoEntrega: true, origen: true, canal: true, total: true, saldo: true,
               cPacaAguaPed: true, cPacaHieloPed: true, cBotellonFabPed: true, cBotellonDomPed: true,
               cBolsaAguaPed: true, cBolsaHieloPed: true,
               cliente: { select: { id: true, nombre: true, barrio: true } },

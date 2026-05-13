@@ -82,6 +82,7 @@ export async function GET(request: NextRequest) {
       include: { cliente: { select: { nombre: true } } },
     })
     const facturasPagadas = facturas.filter(f => f.estado === EstadoFactura.PAGADA)
+    const facturasParcial = facturas.filter(f => f.estado === EstadoFactura.PARCIAL)
     const facturasPorCobrar = facturas.filter(f => f.estado === EstadoFactura.EMITIDA)
     const facturasAnuladas = facturas.filter(f => f.estado === EstadoFactura.ANULADA)
 
@@ -168,6 +169,8 @@ export async function GET(request: NextRequest) {
         facturasPagadasTotal: facturasPagadas.reduce((s, f) => s + Number(f.total), 0),
         facturasPorCobrarCount: facturasPorCobrar.length,
         facturasPorCobrarTotal: facturasPorCobrar.reduce((s, f) => s + Number(f.saldo), 0),
+        facturasParcialCount: facturasParcial.length,
+        facturasParcialTotal: facturasParcial.reduce((s, f) => s + Number(f.saldo), 0),
         facturasAnuladasCount: facturasAnuladas.length,
         facturas: facturas.map(f => ({
           numero: f.numero,

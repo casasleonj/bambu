@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
 
         // Actualizar factura con el abono (siempre, no solo cuando saldo llega a 0)
         if (pedido.factura) {
-          await tx.factura.update({
+          const updatedFactura = await tx.factura.update({
             where: { id: pedido.factura.id },
             data: {
               saldo: { decrement: montoAplicar },
@@ -88,13 +88,14 @@ export async function POST(request: NextRequest) {
             },
           })
 
-          // Marcar como PAGADA si saldo llega a 0
-          if (nuevoSaldo <= 0) {
-            await tx.factura.update({
-              where: { id: pedido.factura.id },
-              data: { estado: 'PAGADA' },
-            })
-          }
+          const facturaSaldo = Number(updatedFactura.saldo)
+          const facturaMontoPagado = Number(updatedFactura.montoPagado)
+          await tx.factura.update({
+            where: { id: pedido.factura.id },
+            data: {
+              estado: facturaSaldo <= 0 ? 'PAGADA' : (facturaMontoPagado > 0 ? 'PARCIAL' : 'EMITIDA'),
+            },
+          })
         }
 
         // Crear abono contable si existe factura

@@ -322,10 +322,11 @@ export default function CierreClient() {
         <Card>
           <CardHeader className="pb-3"><CardTitle className="text-lg">Facturas del Día</CardTitle></CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
               <div><div className="text-sm text-muted-foreground">Emitidas</div><div className="text-xl font-bold">{data.facturasEmitidas}</div></div>
               <div><div className="text-sm text-muted-foreground">Pagadas</div><div className="text-xl font-bold text-green-600">{data.facturasPagadasCount}</div><div className="text-xs text-muted-foreground">{formatMoney(data.facturasPagadasTotal)}</div></div>
-              <div><div className="text-sm text-muted-foreground">Por Cobrar</div><div className="text-xl font-bold text-orange-600">{data.facturasPorCobrarCount}</div><div className="text-xs text-muted-foreground">{formatMoney(data.facturasPorCobrarTotal)}</div></div>
+              <div><div className="text-sm text-muted-foreground">Parciales</div><div className="text-xl font-bold text-orange-600">{data.facturasParcialCount || 0}</div><div className="text-xs text-muted-foreground">{formatMoney(data.facturasParcialTotal || 0)}</div></div>
+              <div><div className="text-sm text-muted-foreground">Por Cobrar</div><div className="text-xl font-bold text-yellow-600">{data.facturasPorCobrarCount}</div><div className="text-xs text-muted-foreground">{formatMoney(data.facturasPorCobrarTotal)}</div></div>
               <div><div className="text-sm text-muted-foreground">Anuladas</div><div className="text-xl font-bold text-red-600">{data.facturasAnuladasCount}</div></div>
             </div>
             {data.facturas && data.facturas.length > 0 && (
@@ -339,7 +340,7 @@ export default function CierreClient() {
                         <td className="py-1.5">{f.cliente || '—'}</td>
                         <td className="py-1.5 text-right">{formatMoney(f.total)}</td>
                         <td className="py-1.5 text-right">{formatMoney(f.saldo)}</td>
-                        <td className="py-1.5 text-right"><span className={`px-2 py-0.5 rounded-full text-xs ${f.estado === 'PAGADA' ? 'bg-green-100 text-green-800' : f.estado === 'ANULADA' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}`}>{f.estado}</span></td>
+                        <td className="py-1.5 text-right"><span className={`px-2 py-0.5 rounded-full text-xs ${f.estado === 'PAGADA' ? 'bg-green-100 text-green-800' : f.estado === 'PARCIAL' ? 'bg-orange-100 text-orange-800' : f.estado === 'ANULADA' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}`}>{f.estado === 'PARCIAL' ? 'Abono' : f.estado}</span></td>
                       </tr>
                     ))}
                   </tbody>
