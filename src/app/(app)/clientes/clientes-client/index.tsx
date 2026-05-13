@@ -1,16 +1,20 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { toast } from 'sonner'
 import { useConfirm } from '@/components/confirm-modal'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { formatCurrency } from '@/lib/utils'
 import { Modal } from '@/components/modal'
-import type { Cliente, Pedido, Factura, Canal, ClientesClientProps, FormData } from './types'
-import { PRODUCTOS_PRECIO, PRODUCTO_NOMBRES } from './types'
+import type { Cliente, Canal, ClientesClientProps, FormData } from './types'
+import { PRODUCTOS_PRECIO } from './types'
+import { getProductoIconConfig } from '@/lib/producto-iconos'
 import { ClienteTable } from './cliente-table'
 import { ClienteForm } from './cliente-form'
+import { ClienteHistorial } from './cliente-historial'
+import { ClienteStats } from './cliente-stats'
 import { calcularAlertasCliente } from '@/app/(app)/pedidos/pedidos-client/alertas-utils'
 import { GuiaAlertaModal } from '@/components/guia-alerta-modal'
+import { CasoGuiaModal } from '@/components/caso-guia-modal'
 import type { AlertaTipo } from '@/lib/alertas-config'
 import { getBadgeColor, ignorarAlerta } from '@/lib/alertas-config'
 
@@ -41,13 +45,23 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
     notas: '',
   })
 
-  const [expandedPedido, setExpandedPedido] = useState<string | null>(null)
-  const [expandedFactura, setExpandedFactura] = useState<string | null>(null)
-  const [pedidoDetail, setPedidoDetail] = useState<Pedido | null>(null)
-  const [_facturaDetail, setFacturaDetail] = useState<Factura | null>(null)
-
   const [guiaTipo, setGuiaTipo] = useState<AlertaTipo | null>(null)
   const [guiaOpen, setGuiaOpen] = useState(false)
+  const [casoCreado, setCasoCreado] = useState<any>(null)
+  const [usuarios, setUsuarios] = useState<Array<{ id: string; username: string; rol: string }>>([])
+
+  useEffect(() => {
+    fetch('/api/trabajadores')
+      .then(r => r.json())
+      .then(d => {
+        if (d.success) {
+          const users = d.trabajadores
+            .filter((t: any) => t.userId)
+            .map((t: any) => ({ id: t.userId, username: t.nombre, rol: t.rol }))
+          setUsuarios(users)
+        }
+      })
+  }, [])
 
   const [canalActivo, setCanalActivo] = useState<Canal>('DOMICILIO')
   const [preciosEspecialesMap, setPreciosEspecialesMap] = useState<Record<Canal, Record<string, number | undefined>>>({
@@ -240,10 +254,6 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
 
   async function viewCliente(id: string) {
     setDetailLoading(true)
-    setExpandedPedido(null)
-    setExpandedFactura(null)
-    setPedidoDetail(null)
-    setFacturaDetail(null)
     try {
       const res = await fetch(`/api/clientes/${id}`)
       const data = await res.json()
@@ -275,41 +285,6 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
     } catch (error) {
       toast.error('Error desactivando cliente')
     }
-  }
-
-  async function viewPedidoDetail(pedido: Pedido) {
-    if (expandedPedido === pedido.id) {
-      setExpandedPedido(null)
-      setPedidoDetail(null)
-      return
-    }
-    setExpandedPedido(pedido.id)
-    setExpandedFactura(null)
-    setFacturaDetail(null)
-    setPedidoDetail(pedido)
-  }
-
-  async function viewFacturaDetail(factura: Factura) {
-    if (expandedFactura === factura.id) {
-      setExpandedFactura(null)
-      setFacturaDetail(null)
-      return
-    }
-    setExpandedFactura(factura.id)
-    setExpandedPedido(null)
-    setPedidoDetail(null)
-    setFacturaDetail(factura)
-  }
-
-  function renderPedidoProductos(p: Pedido) {
-    const items: string[] = []
-    if (p.cPacaAguaPed > 0) items.push(`${p.cPacaAguaPed} Paca Agua`)
-    if (p.cPacaHieloPed > 0) items.push(`${p.cPacaHieloPed} Paca Hielo`)
-    if (p.cBotellonFabPed > 0) items.push(`${p.cBotellonFabPed} Botellón Fab`)
-    if (p.cBotellonDomPed > 0) items.push(`${p.cBotellonDomPed} Botellón Dom`)
-    if (p.cBolsaAguaPed > 0) items.push(`${p.cBolsaAguaPed} Bolsa Agua`)
-    if (p.cBolsaHieloPed > 0) items.push(`${p.cBolsaHieloPed} Bolsa Hielo`)
-    return items.join(', ')
   }
 
   const handlePrecioEspecialChange = useCallback((canal: Canal, codigo: string, valor: number | undefined) => {
@@ -450,7 +425,7 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
             })()}
 
             <div className="flex border-b">
-              {['info', 'pedidos', 'facturas', 'cuentas', 'alertas'].map((tab) => (
+              {['info', 'historial', 'stats', 'alertas'].map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
@@ -460,12 +435,7 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
                       : 'text-gray-500 hover:text-gray-700'
                   }`}
                 >
-                  {tab === 'cuentas' ? 'Cuentas' : tab === 'alertas' ? 'Alertas' : tab}
-                  {tab === 'cuentas' && selectedCliente.pedidos?.some((p) => Number(p.saldo) > 0) && (
-                    <span className="ml-1.5 px-1.5 py-0.5 bg-red-100 text-red-700 text-[10px] rounded-full">
-                      {selectedCliente.pedidos.filter((p) => Number(p.saldo) > 0).length}
-                    </span>
-                  )}
+                  {tab === 'stats' ? 'Estadísticas' : tab === 'alertas' ? 'Alertas' : tab === 'historial' ? 'Historial' : 'Información'}
                   {tab === 'alertas' && (() => {
                     const count = calcularAlertasCliente(selectedCliente, selectedCliente.pedidos || []).length
                     return count > 0 ? (
@@ -549,20 +519,22 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
                               <div key={canal}>
                                 <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{canal}</p>
                                 <div className="flex flex-wrap gap-2">
-                                  {items.map(([codigo, precio]) => {
-                                    const info = PRODUCTOS_PRECIO.find(p => p.codigo === codigo)
-                                    if (!info) return null
-                                    return (
-                                      <span
-                                        key={codigo}
-                                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-sm"
-                                      >
-                                        <span>{info.emoji}</span>
-                                        <span className="text-gray-600">{info.nombre}</span>
-                                        <span className="font-semibold text-blue-700">{formatCurrency(Number(precio))}</span>
-                                      </span>
-                                    )
-                                  })}
+                                   {items.map(([codigo, precio]) => {
+                                     const info = PRODUCTOS_PRECIO.find(p => p.codigo === codigo)
+                                     if (!info) return null
+                                     const iconCfg = getProductoIconConfig(codigo)
+                                     const Icon = iconCfg.Icon
+                                     return (
+                                       <span
+                                         key={codigo}
+                                         className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-sm"
+                                       >
+                                         <Icon size={16} />
+                                         <span className="text-gray-600">{info.nombre}</span>
+                                         <span className="font-semibold text-blue-700">{formatCurrency(Number(precio))}</span>
+                                       </span>
+                                     )
+                                   })}
                                 </div>
                               </div>
                             )
@@ -574,311 +546,8 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
                 </div>
               )}
 
-              {activeTab === 'pedidos' && (
-                <div>
-                  {selectedCliente.pedidos?.length === 0 ? (
-                    <p className="text-gray-500 text-center py-8">Sin pedidos</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {selectedCliente.pedidos?.map((pedido) => (
-                        <div key={pedido.id}>
-                          <div
-                            className="flex justify-between items-center p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100"
-                            onClick={() => viewPedidoDetail(pedido)}
-                          >
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <p className="font-medium">#{pedido.numero}</p>
-                                <a
-                                  href={`/pedidos?search=${pedido.numero}`}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-                                >
-                                  → Ver en pedidos
-                                </a>
-                              </div>
-                              <p className="text-sm text-gray-500">{formatDate(pedido.fecha)}</p>
-                              <p className="text-xs text-gray-400">{renderPedidoProductos(pedido)}</p>
-                            </div>
-                            <div className="text-right">
-                              <p className="font-medium">{formatCurrency(pedido.total)}</p>
-                              <span
-                                className={`text-xs px-2 py-1 rounded ${
-                                  pedido.estado === 'ENTREGADO'
-                                    ? 'bg-green-100 text-green-800'
-                                    : pedido.estado === 'PENDIENTE'
-                                    ? 'bg-yellow-100 text-yellow-800'
-                                    : 'bg-gray-100 text-gray-800'
-                                }`}
-                              >
-                                {pedido.estado}
-                              </span>
-                            </div>
-                          </div>
-                          {expandedPedido === pedido.id && pedidoDetail && (
-                            <div className="ml-4 mt-1 p-3 bg-white border border-gray-200 rounded-lg text-sm">
-                              <p className="font-semibold mb-2">Detalle del Pedido #{pedido.numero}</p>
-                              <div className="grid grid-cols-2 gap-2 mb-3">
-                                {Object.entries(PRODUCTO_NOMBRES).map(([key, label]) => {
-                                  const ped = (pedidoDetail as any)[key] || 0
-                                  const precio = (pedidoDetail as any)[key.replace('Ped', '').replace('c', 'precio')] || 0
-                                  if (ped === 0) return null
-                                  return (
-                                    <div key={key} className="flex justify-between">
-                                      <span>{label}</span>
-                                      <span>{ped} × ${Number(precio).toLocaleString()} = ${formatCurrency(ped * Number(precio))}</span>
-                                    </div>
-                                  )
-                                })}
-                              </div>
-                              <div className="border-t pt-2 space-y-1">
-                                <div className="flex justify-between font-semibold">
-                                  <span>Total</span>
-                                  <span>{formatCurrency(pedidoDetail.total)}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span>Pagado</span>
-                                  <span className="text-green-600">{formatCurrency(pedidoDetail.totalPagado)}</span>
-                                </div>
-                                {Number(pedidoDetail.saldo) > 0 && (
-                                  <div className="flex justify-between">
-                                    <span>Saldo</span>
-                                    <span className="text-red-600 font-bold">{formatCurrency(pedidoDetail.saldo)}</span>
-                                  </div>
-                                )}
-                              </div>
-                              {pedidoDetail.pagos && pedidoDetail.pagos.length > 0 && (
-                                <div className="border-t mt-2 pt-2">
-                                  <p className="font-semibold mb-1">Pagos:</p>
-                                  {pedidoDetail.pagos.map((pago, i) => (
-                                    <div key={i} className="flex justify-between text-gray-600">
-                                      <span>{pago.metodo}</span>
-                                      <span>{formatCurrency(pago.monto)}</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {activeTab === 'facturas' && (
-                <div>
-                  {selectedCliente.facturas?.length === 0 ? (
-                    <p className="text-gray-500 text-center py-8">Sin facturas</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {selectedCliente.facturas?.map((factura) => (
-                        <div key={factura.id}>
-                          <div
-                            className="flex justify-between items-center p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100"
-                            onClick={() => viewFacturaDetail(factura)}
-                          >
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <p className="font-medium">#{factura.numero}</p>
-                                <a
-                                  href={`/facturas?search=${factura.numero}`}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-                                >
-                                  → Ver en facturas
-                                </a>
-                              </div>
-                              <p className="text-sm text-gray-500">{formatDate(factura.fecha)}</p>
-                            </div>
-                            <div className="text-right">
-                              <p className="font-medium">{formatCurrency(factura.total)}</p>
-                              <span
-                                className={`text-xs px-2 py-1 rounded ${
-                                  factura.estado === 'PAGADA'
-                                    ? 'bg-green-100 text-green-800'
-                                    : factura.estado === 'ANULADA'
-                                    ? 'bg-gray-100 text-gray-800'
-                                    : 'bg-yellow-100 text-yellow-800'
-                                }`}
-                              >
-                                {factura.estado}
-                              </span>
-                            </div>
-                          </div>
-                          {expandedFactura === factura.id && (
-                            <div className="ml-4 mt-1 p-3 bg-white border border-gray-200 rounded-lg text-sm">
-                              <p className="font-semibold mb-2">Detalle Factura #{factura.numero}</p>
-                              <div className="space-y-1">
-                                <div className="flex justify-between">
-                                  <span>Subtotal</span>
-                                  <span>{formatCurrency(factura.total)}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span>Pagado</span>
-                                  <span className="text-green-600">{formatCurrency(factura.montoPagado)}</span>
-                                </div>
-                                {Number(factura.saldo) > 0 && (
-                                  <div className="flex justify-between">
-                                    <span>Saldo</span>
-                                    <span className="text-red-600 font-bold">{formatCurrency(factura.saldo)}</span>
-                                  </div>
-                                )}
-                              </div>
-                              {factura.abonos && factura.abonos.length > 0 && (
-                                <div className="border-t mt-2 pt-2">
-                                  <p className="font-semibold mb-1">Abonos:</p>
-                                  {factura.abonos.map((abono, i) => (
-                                    <div key={i} className="flex justify-between items-center text-gray-600">
-                                      <span>{abono.metodoPago} - {formatDate(abono.fecha)}</span>
-                                      <div className="flex items-center gap-2">
-                                        <span>{formatCurrency(abono.monto)}</span>
-                                        {abono.pedidoId && (
-                                          <a
-                                            href={`/pedidos?search=${factura.pedidoId}`}
-                                            className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-                                          >
-                                            → Pedido
-                                          </a>
-                                        )}
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {activeTab === 'cuentas' && (
-                <div>
-                  {(() => {
-                    const pedidosConFiado = selectedCliente.pedidos?.filter((p) => Number(p.saldo) > 0 && p.estado !== 'CANCELADO' && p.estado !== 'ANULADO') || []
-                    const totalFiado = pedidosConFiado.reduce((acc, p) => acc + Number(p.saldo), 0)
-
-                    if (pedidosConFiado.length === 0) {
-                      return <p className="text-gray-500 text-center py-8">Sin cuentas por cobrar</p>
-                    }
-
-                    return (
-                      <div className="space-y-3">
-                        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                          <p className="text-sm text-red-600">Total por cobrar</p>
-                          <p className="text-2xl font-bold text-red-700">{formatCurrency(totalFiado)}</p>
-                          <p className="text-xs text-red-500">{pedidosConFiado.length} pedidos pendientes de pago</p>
-                        </div>
-                        <div className="space-y-2">
-                          {pedidosConFiado.map((pedido) => (
-                            <div key={pedido.id}>
-                              <div
-                                className="flex justify-between items-center p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100"
-                                onClick={() => viewPedidoDetail(pedido)}
-                              >
-                                <div>
-                                  <div className="flex items-center gap-2">
-                                    <p className="font-medium">#{pedido.numero}</p>
-                                    <a
-                                      href={`/pedidos?search=${pedido.numero}`}
-                                      onClick={(e) => e.stopPropagation()}
-                                      className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-                                    >
-                                      → Ver en pedidos
-                                    </a>
-                                  </div>
-                                  <p className="text-sm text-gray-500">{formatDate(pedido.fecha)}</p>
-                                  <p className="text-xs text-gray-400">{pedido.estado}</p>
-                                </div>
-                                <div className="text-right">
-                                  <p className="font-medium">{formatCurrency(pedido.total)}</p>
-                                  <p className="text-sm text-red-600 font-medium">
-                                    Saldo: {formatCurrency(Number(pedido.saldo))}
-                                  </p>
-                                </div>
-                              </div>
-                              {expandedPedido === pedido.id && pedidoDetail && (
-                                <div className="ml-4 mt-1 p-3 bg-white border border-gray-200 rounded-lg text-sm">
-                                  <p className="font-semibold mb-2">Detalle del Pedido #{pedido.numero}</p>
-                                  <div className="grid grid-cols-2 gap-2 mb-3">
-                                    {Object.entries(PRODUCTO_NOMBRES).map(([key, label]) => {
-                                      const ped = (pedidoDetail as any)[key] || 0
-                                      const precio = (pedidoDetail as any)[key.replace('Ped', '').replace('c', 'precio')] || 0
-                                      if (ped === 0) return null
-                                      return (
-                                        <div key={key} className="flex justify-between">
-                                          <span>{label}</span>
-                                          <span>{ped} × ${Number(precio).toLocaleString()}</span>
-                                        </div>
-                                      )
-                                    })}
-                                  </div>
-                                  <div className="border-t pt-2 space-y-1">
-                                    <div className="flex justify-between font-semibold">
-                                      <span>Total</span>
-                                      <span>{formatCurrency(pedidoDetail.total)}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                      <span>Pagado</span>
-                                      <span className="text-green-600">{formatCurrency(pedidoDetail.totalPagado)}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                      <span>Saldo</span>
-                                      <span className="text-red-600 font-bold">{formatCurrency(pedidoDetail.saldo)}</span>
-                                    </div>
-                                  </div>
-                                  {pedidoDetail.pagos && pedidoDetail.pagos.length > 0 && (
-                                    <div className="border-t mt-2 pt-2">
-                                      <p className="font-semibold mb-1">Pagos:</p>
-                                      {pedidoDetail.pagos.map((pago, i) => (
-                                        <div key={i} className="flex justify-between items-center text-gray-600">
-                                          <span>{pago.metodo}</span>
-                                          <div className="flex items-center gap-2">
-                                            <span>{formatCurrency(pago.monto)}</span>
-                                            <a
-                                              href={`/pedidos?search=${pedidoDetail.numero}`}
-                                              className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-                                            >
-                                              → Pedido
-                                            </a>
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-                                  {pedidoDetail.factura?.abonos && pedidoDetail.factura.abonos.length > 0 && (
-                                    <div className="border-t mt-2 pt-2">
-                                      <p className="font-semibold mb-1">Abonos (contable):</p>
-                                      {pedidoDetail.factura.abonos.map((abono, i) => (
-                                        <div key={i} className="flex justify-between items-center text-gray-600">
-                                          <span>{abono.metodoPago} - {formatDate(abono.fecha)}</span>
-                                          <div className="flex items-center gap-2">
-                                            <span>{formatCurrency(abono.monto)}</span>
-                                            <a
-                                              href={`/facturas?search=${pedidoDetail.factura.numero}`}
-                                              className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-                                            >
-                                              → Factura
-                                            </a>
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )
-                  })()}
-                </div>
-              )}
+              {activeTab === 'historial' && <ClienteHistorial clienteId={selectedCliente.id} />}
+              {activeTab === 'stats' && <ClienteStats clienteId={selectedCliente.id} />}
 
               {activeTab === 'alertas' && (
                 <div className="space-y-3">
@@ -916,6 +585,37 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
                               className="text-xs text-blue-600 hover:bg-blue-50 px-2 py-1 rounded transition"
                             >
                               ℹ️ Ver guía
+                            </button>
+                            <button
+                              onClick={async () => {
+                                try {
+                                  const res = await fetch('/api/casos', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                      alertaTipo: alerta.tipo,
+                                      severidad: alerta.severidad,
+                                      titulo: alerta.tipo.replace(/_/g, ' '),
+                                      descripcion: alerta.detalle,
+                                      clienteId: selectedCliente.id,
+                                      pedidoId: alerta.pedidoId || null,
+                                    }),
+                                  })
+                                  const data = await res.json()
+                                  if (data.success) {
+                                    setCasoCreado({
+                                      ...data.caso,
+                                      cliente: { id: selectedCliente.id, nombre: selectedCliente.nombre, telefono: selectedCliente.telefono },
+                                      pedido: alerta.pedidoId ? { id: alerta.pedidoId, numero: 0, total: '0' } : null,
+                                    })
+                                  }
+                                } catch {
+                                  toast.error('Error creando caso')
+                                }
+                              }}
+                              className="text-xs text-green-600 hover:bg-green-50 px-2 py-1 rounded transition"
+                            >
+                              Crear caso
                             </button>
                             {alerta.severidad !== 'ALTA' && (
                               <button
@@ -957,6 +657,18 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
         onClose={() => setGuiaOpen(false)}
         contexto={selectedCliente ? { clienteId: selectedCliente.id } : undefined}
       />
+      {casoCreado && (
+        <CasoGuiaModal
+          caso={casoCreado}
+          contextData={{
+            clienteVerificado: selectedCliente?.verificado,
+            pedidoDisputa: selectedCliente?.pedidos?.some((p: any) => p.disputaAbierta),
+            clienteConSaldo: selectedCliente?.pedidos?.some((p: any) => Number(p.saldo) > 0),
+          }}
+          usuarios={usuarios}
+          onClose={() => setCasoCreado(null)}
+        />
+      )}
       {modal}
     </div>
   )

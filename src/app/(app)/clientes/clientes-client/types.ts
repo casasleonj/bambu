@@ -15,12 +15,25 @@ export interface Cliente {
   notas?: string
   ultEntrega?: string
   activo: boolean
+  verificado?: boolean
+  bloqueado?: boolean
+  reclamaciones?: number
+  creadoPorRol?: string
+  createdAt?: string
   saldoPendiente?: number
   _count?: { pedidos: number }
   pedidos?: Pedido[]
   facturas?: Factura[]
   frecuenciaSugerida?: { dias: number; label: string } | null
   productosSugeridos?: Array<{ codigo: string; nombre: string; frecuencia: number; cantidadPromedio: number }>
+}
+
+export interface PedidoItem {
+  producto: string
+  cantPedido: number
+  cantEntrega: number
+  precio: number
+  subtotal: number
 }
 
 export interface Pedido {
@@ -30,7 +43,12 @@ export interface Pedido {
   saldo: number
   totalPagado: number
   estado: string
+  estadoEntrega: string
+  estadoPago: string
   fecha: string
+  disputaAbierta?: boolean
+  promesaPagoFecha?: string
+  items?: PedidoItem[]
   cPacaAguaPed: number
   cPacaHieloPed: number
   cBotellonFabPed: number
@@ -50,6 +68,11 @@ export interface Pedido {
   precioBolsaAgua: number
   precioBolsaHielo: number
   pagos?: Array<{ metodo: string; monto: number }>
+  factura?: {
+    id: string
+    numero: string
+    abonos?: Array<{ monto: number; metodoPago: string; fecha: string; pedidoId?: string }>
+  }
 }
 
 export interface Factura {
@@ -66,12 +89,12 @@ export interface Factura {
 export type Canal = 'DOMICILIO' | 'PUNTO'
 
 export const PRODUCTOS_PRECIO = [
-  { codigo: 'PACA_AGUA', nombre: 'Paca Agua', emoji: '🍶', unidad: 'paca' },
-  { codigo: 'PACA_HIELO', nombre: 'Paca Hielo', emoji: '🧊', unidad: 'paca' },
-  { codigo: 'BOTELLON_FAB', nombre: 'Botellón Fábrica', emoji: '🏭', unidad: 'und' },
-  { codigo: 'BOTELLON_DOM', nombre: 'Botellón Domicilio', emoji: '🏠', unidad: 'und' },
-  { codigo: 'BOLSA_AGUA', nombre: 'Bolsa Agua', emoji: '💧', unidad: 'bolsa' },
-  { codigo: 'BOLSA_HIELO', nombre: 'Bolsa Hielo', emoji: '❄️', unidad: 'bolsa' },
+  { codigo: 'PACA_AGUA', nombre: 'Paca Agua', unidad: 'paca' },
+  { codigo: 'PACA_HIELO', nombre: 'Paca Hielo', unidad: 'paca' },
+  { codigo: 'BOTELLON_FAB', nombre: 'Botellón Fábrica', unidad: 'und' },
+  { codigo: 'BOTELLON_DOM', nombre: 'Botellón Domicilio', unidad: 'und' },
+  { codigo: 'BOLSA_AGUA', nombre: 'Bolsa Agua', unidad: 'bolsa' },
+  { codigo: 'BOLSA_HIELO', nombre: 'Bolsa Hielo', unidad: 'bolsa' },
 ] as const
 
 export const PRODUCTO_NOMBRES: Record<string, string> = {
@@ -99,4 +122,62 @@ export interface FormData {
   proxEntrega: string
   preciosEspeciales: string
   notas: string
+}
+
+export type TimelineEventType =
+  | 'PEDIDO'
+  | 'PAGO'
+  | 'FACTURA'
+  | 'ABONO'
+  | 'CASO'
+  | 'NOTA_CREDITO'
+  | 'AUDITORIA'
+
+export type TimelineFilter = 'TODOS' | TimelineEventType
+
+export interface TimelineEvent {
+  id: string
+  tipo: TimelineEventType
+  fecha: string
+  titulo: string
+  descripcion?: string
+  monto?: number
+  estado?: string
+  metodo?: string
+  numero?: string | number
+  link?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface ProductoFavorito {
+  nombre: string
+  cantidadTotal: number
+  totalVendido: number
+}
+
+export interface EvolucionMensual {
+  mes: string
+  total: number
+  pedidos: number
+}
+
+export interface MetodoPagoStats {
+  metodo: string
+  count: number
+  total: number
+}
+
+export interface ClienteStats {
+  totalComprado: number
+  totalPagado: number
+  totalFiado: number
+  cantidadPedidos: number
+  cantidadPedidosUltimos30: number
+  cantidadPedidosUltimos90: number
+  promedioPorPedido: number
+  frecuenciaRealDias: number | null
+  productosFavoritos: ProductoFavorito[]
+  evolucionMensual: EvolucionMensual[]
+  metodosPago: MetodoPagoStats[]
+  diasPromedioPago: number | null
 }
