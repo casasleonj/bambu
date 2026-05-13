@@ -5,6 +5,9 @@ import { toast } from 'sonner'
 import { useConfirm } from '@/components/confirm-modal'
 import { formatCurrency } from '@/lib/utils'
 import { Modal } from '@/components/modal'
+import { ErrorState } from '@/components/error-state'
+import { SkeletonPage } from '@/components/skeleton'
+import { Tooltip, InfoBanner } from '@/components/tooltip'
 import type { Cliente, Canal, ClientesClientProps, FormData } from './types'
 import { PRODUCTOS_PRECIO } from './types'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
@@ -294,11 +297,18 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
     }))
   }, [])
 
-  if (loading) {
+  if (loading && clientes.length === 0) {
+    return <SkeletonPage hasStats={false} hasFilters cardCount={5} />
+  }
+
+  if (fetchError && clientes.length === 0) {
     return (
-      <div className="flex justify-center py-20">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
+      <ErrorState
+        title="No se pudieron cargar los clientes"
+        message={fetchError}
+        errorCode="FETCH_CLIENTES_ERROR"
+        onRetry={fetchClientes}
+      />
     )
   }
 

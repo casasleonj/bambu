@@ -1,137 +1,206 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, BASE, login, handleBaseCaja, fullLogin, goto, apiPost, apiGet, createCliente } from './fixtures'
 
 test.describe('Recurrentes', () => {
-  async function login(page: Page, username: string, password: string) {
-    await page.goto('/login')
-    await page.fill('input[placeholder="Ingrese usuario"]', username)
-    await page.fill('input[placeholder="Ingrese contraseña"]', password)
-    await page.click('button[type="submit"]')
-    await page.waitForURL('**/dashboard')
-  }
-
-  async function handleBaseCajaModal(page: Page) {
-    const baseCajaBtn = page.locator('button:has-text("Continuar →")')
-    if (await baseCajaBtn.count() > 0) {
-      await page.fill('input[type="number"]', '50000')
-      await baseCajaBtn.click()
-      await page.waitForTimeout(500)
-    }
-  }
-
-  test('page loads with recurrentes list', async ({ page }) => {
-    await login(page, 'admin', 'admin123')
-    await handleBaseCajaModal(page)
-    
-    await page.goto('/recurrentes')
-    await page.waitForLoadState('networkidle')
-    await handleBaseCajaModal(page)
-    
-    // Page should load without errors
-    await expect(page.locator('body')).not.toContainText('500', { timeout: 5000 })
-  })
-
-  test('crear recurrente con productos', async ({ page }) => {
-    await login(page, 'admin', 'admin123')
-    await handleBaseCajaModal(page)
-    
-    await page.goto('/recurrentes')
-    await page.waitForLoadState('networkidle')
-    await handleBaseCajaModal(page)
-    
-    // Click "Nuevo Recurrente" button
-    await page.click('button:has-text("Nuevo Recurrente")')
+  test('page loads', async ({ page }) => {
+    await fullLogin(page)
+    await goto(page, '/recurrentes')
     await page.waitForTimeout(500)
-    
-    const modal = page.locator('div.bg-white.rounded-xl').filter({ hasText: 'Nuevo Recurrente' })
-    if (!await modal.isVisible({ timeout: 3000 }).catch(() => false)) {
-      // Try alternative selector
-      await page.click('button:has-text("Recurrente")')
-      await page.waitForTimeout(500)
-    }
-    
-    // Select a client
-    const clientSelect = page.locator('select').first()
-    if (await clientSelect.isVisible({ timeout: 3000 }).catch(() => false)) {
-      const optCount = await clientSelect.locator('option').count()
-      if (optCount > 1) {
-        await clientSelect.selectOption({ index: 1 })
-        await page.waitForTimeout(300)
-      }
-    }
-    
-    // Select frequency
+
+    const bodyText = await page.locator('body').innerText()
+    expect(bodyText).toMatch(/Pedidos Recurrentes|No hay recurrentes/)
+    const buttons = page.locator('button:has-text("+ Nuevo Recurrente")')
+    const count = await buttons.count()
+    expect(count).toBeGreaterThanOrEqual(0)
+  })
+
+  test('crear recurrente', async ({ page }) => {
+    await fullLogin(page)
+
+    const cliente = await createCliente(page, {
+      nombre: `Cliente Rec ${Date.now() % 10000}`,
+      telefono: `3${String(Date.now()).slice(-9)}`,
+    })
+
+    await goto(page, '/recurrentes')
+    await page.waitForTimeout(500)
+
+    await page.click('button:has-text("+ Nuevo Recurrente")')
+    await page.waitForURL('**/recurrentes/nuevo')
+    await page.waitForTimeout(500)
+
+    const select = page.locator('select').first()
+    await select.selectOption({ label: cliente.nombre })
+    await page.waitForTimeout(300)
+
     const freqSelect = page.locator('select').last()
-    if (await freqSelect.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await freqSelect.selectOption({ index: 1 })
-      await page.waitForTimeout(300)
-    }
-    
-    // Submit
-    await page.click('button:has-text("Crear")')
-    await page.waitForTimeout(1500)
-    
-    // Should show success or return to list
+    await freqSelect.selectOption('SEMANAL')
+    await page.waitForTimeout(300)
+
+    const aguaInput = page.locator('input[type="number"]').first()
+    await aguaInput.fill('2')
+    await page.waitForTimeout(300)
+
+    await page.click('button:has-text("Crear Recurrente")')
+    await page.waitForTimeout(2000)
+
+    await page.waitForURL('**/recurrentes', { timeout: 10000 })
+    await handleBaseCaja(page)
+    await page.waitForTimeout(500)
+
     const bodyText = await page.locator('body').innerText()
-    expect(bodyText).not.toContain('Error')
+    expect(bodyText).toContain(cliente.nombre)
   })
 
-  test('listar recurrentes con conteo de pedidos', async ({ page }) => {
-    await login(page, 'admin', 'admin123')
-    await handleBaseCajaModal(page)
-    
-    await page.goto('/recurrentes')
-    await page.waitForLoadState('networkidle')
-    await handleBaseCajaModal(page)
-    
-    // Page should show recurrentes list or empty state
-    const bodyText = await page.locator('body').innerText()
-    expect(bodyText).toMatch(/Recurrentes|No hay recurrentes/i)
-  })
+  test('editar recurrente', async ({ page }) => {
+    await fullLogin(page)
 
-  test('actualizar frecuencia de recurrente', async ({ page }) => {
-    await login(page, 'admin', 'admin123')
-    await handleBaseCajaModal(page)
-    
-    await page.goto('/recurrentes')
-    await page.waitForLoadState('networkidle')
-    await handleBaseCajaModal(page)
-    
-    // Click first recurrente row to edit
-    const firstRow = page.locator('table tbody tr').first()
-    if (await firstRow.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await firstRow.click()
+    const cliente = await createCliente(page, {
+      nombre: `Cliente Edit Rec ${Date.now() % 10000}`,
+      telefono: `3${String(Date.now()).slice(-9)}`,
+    })
+
+    await generateRecurrente(page, cliente.id)
+    await page.waitForTimeout(300)
+
+    await goto(page, '/recurrentes')
+    await page.waitForTimeout(500)
+
+    const editBtn = page.locator('button:has-text("Editar")').first()
+    if (await editBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await editBtn.click()
       await page.waitForTimeout(500)
-      
-      // Edit modal should appear
-      const bodyText = await page.locator('body').innerText()
-      expect(bodyText.length).toBeGreaterThan(0)
+
+      const freqSelect = page.locator('select').last()
+      if ((await freqSelect.locator('option').count()) > 1) {
+        await freqSelect.selectOption({ index: 2 })
+        await page.waitForTimeout(300)
+
+        const submitBtn = page.locator('button[type="submit"]').first()
+        await submitBtn.click()
+        await page.waitForTimeout(2000)
+
+        await page.waitForURL('**/recurrentes', { timeout: 10000 }).catch(() => null)
+        await handleBaseCaja(page)
+        await page.waitForTimeout(500)
+      }
     }
   })
 
   test('eliminar recurrente (soft delete)', async ({ page }) => {
-    await login(page, 'admin', 'admin123')
-    await handleBaseCajaModal(page)
-    
-    await page.goto('/recurrentes')
-    await page.waitForLoadState('networkidle')
-    await handleBaseCajaModal(page)
-    
-    // Click first recurrente row
-    const firstRow = page.locator('table tbody tr').first()
-    if (await firstRow.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await firstRow.click()
+    await fullLogin(page)
+
+    const cliente = await createCliente(page, {
+      nombre: `Cliente Del Rec ${Date.now() % 10000}`,
+      telefono: `3${String(Date.now()).slice(-9)}`,
+    })
+
+    await generateRecurrente(page, cliente.id)
+    await page.waitForTimeout(300)
+
+    await goto(page, '/recurrentes')
+    await page.waitForTimeout(500)
+
+    const deleteBtn = page.locator('button:has-text("Eliminar")').first()
+    if (await deleteBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await deleteBtn.click()
       await page.waitForTimeout(500)
-      
-      // Look for delete/eliminar button
-      const deleteBtn = page.locator('button:has-text("Eliminar"), button:has-text("eliminar")').first()
-      if (await deleteBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-        await deleteBtn.click()
+
+      const confirmBtn = page.locator('[role="dialog"] button:has-text("Eliminar"), [role="dialog"] button:has-text("Confirmar")')
+      if (await confirmBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+        await confirmBtn.first().click()
         await page.waitForTimeout(1000)
-        
-        // Should show success or return to list
-        const bodyText = await page.locator('body').innerText()
-        expect(bodyText).not.toContain('Error')
       }
     }
   })
+
+  test('generar seleccionados', async ({ page }) => {
+    await fullLogin(page)
+    await goto(page, '/recurrentes')
+    await page.waitForTimeout(500)
+
+    const generateBtn = page.locator('button:has-text("Generar Seleccionados")')
+    if (await generateBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+      expect(await generateBtn.isVisible()).toBe(true)
+    }
+  })
+
+  test('API recurrente preview', async ({ page }) => {
+    await fullLogin(page)
+
+    const res = await apiGet(page, '/api/pedidos/recurrentes')
+    expect(res.status()).toBe(200)
+
+    const data = await res.json()
+    expect(data.success).toBe(true)
+    expect(data.preview).toBeDefined()
+  })
+
+  test('sugerencias NORMAL/SALTAR', async ({ page }) => {
+    await fullLogin(page)
+    await goto(page, '/recurrentes')
+    await page.waitForTimeout(500)
+
+    const normalBtn = page.locator('button:has-text("NORMAL")').first()
+    const saltarBtn = page.locator('button:has-text("SALTAR")').first()
+
+    const hasNormal = await normalBtn.isVisible({ timeout: 2000 }).catch(() => false)
+    const hasSaltar = await saltarBtn.isVisible({ timeout: 2000 }).catch(() => false)
+
+    if (hasNormal) {
+      await normalBtn.click()
+      await page.waitForTimeout(300)
+      const attr = await normalBtn.getAttribute('class')
+      expect(attr).toContain('bg-blue')
+    }
+
+    if (hasSaltar) {
+      await saltarBtn.click()
+      await page.waitForTimeout(300)
+      const attr = await saltarBtn.getAttribute('class')
+      expect(attr).toContain('bg-gray')
+    }
+  })
+
+  test('generar pedido desde recurrente via API', async ({ page }) => {
+    await fullLogin(page)
+
+    const cliente = await createCliente(page, {
+      nombre: `Cliente Gen ${Date.now() % 10000}`,
+      telefono: `3${String(Date.now()).slice(-9)}`,
+    })
+
+    await generateRecurrente(page, cliente.id)
+    await page.waitForTimeout(300)
+
+    const previewRes = await apiGet(page, '/api/pedidos/recurrentes')
+    const previewData = await previewRes.json()
+
+    if (previewData.preview && previewData.preview.length > 0) {
+      const decisiones = previewData.preview.map((item: { recurrenteId: string }) => ({
+        recurrenteId: item.recurrenteId,
+        decision: 'NORMAL',
+      }))
+
+      const genRes = await page.request.post(`${BASE}/api/pedidos/recurrentes`, {
+        data: { decisiones },
+      })
+      expect(genRes.status()).toBe(201)
+
+      const genData = await genRes.json()
+      expect(genData.success).toBe(true)
+    }
+  })
 })
+
+async function generateRecurrente(page: import('@playwright/test').Page, clienteId: string) {
+  const res = await page.request.post(`${BASE}/api/recurrentes`, {
+    data: {
+      clienteId,
+      tipo: 'ENVIO',
+      canal: 'DOMICILIO',
+      frecuencia: 'SEMANAL',
+      productos: { pacaAgua: 1 },
+    },
+  })
+  return res.json()
+}

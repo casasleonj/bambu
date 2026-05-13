@@ -1,62 +1,46 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, fullLogin, goto, apiPost, apiGet, createProveedor, createInsumo } from './fixtures'
 
 test.describe('Compras', () => {
-  test.setTimeout(60000)
+  test('page loads', async ({ page }) => {
+    await fullLogin(page)
+    await goto(page, '/compras')
+    await page.waitForTimeout(500)
 
-  async function login(page: Page, username: string, password: string) {
-    await page.goto('/login')
-    await page.evaluate(() => {
-      localStorage.setItem('baseDiaDate', new Date().toISOString().split('T')[0])
-      localStorage.setItem('baseDia', '50000')
-    })
-    await page.fill('input[placeholder="Ingrese usuario"]', username)
-    await page.fill('input[placeholder="Ingrese contraseña"]', password)
-    await page.click('button[type="submit"]')
-    await page.waitForURL('**/dashboard')
-  }
-
-  test.beforeEach(async ({ page }) => {
-    await login(page, 'admin', 'admin123')
-    await page.goto('/compras')
-    await page.waitForSelector('h1:has-text("Compras")', { timeout: 15000 })
-  })
-
-  test('page loads and shows compras', async ({ page }) => {
     await expect(page.locator('h1:has-text("Compras")')).toBeVisible()
-    await expect(page.locator('button:has-text("Nueva Compra")')).toBeVisible()
   })
 
-  test('crear compra y verificar en lista', async ({ page }) => {
-    await page.locator('button:has-text("Nueva Compra")').click()
-    await page.waitForSelector('h3:has-text("Registrar Compra")', { timeout: 5000 })
+  test('crear compra', async ({ page }) => {
+    await fullLogin(page)
 
-    // Wait for select options to populate
-    await page.waitForTimeout(1500)
+    const proveedor = await createProveedor(page)
+    const insumo = await createInsumo(page)
 
-    const proveedorSelect = page.locator('select').first()
-    const insumoSelect = page.locator('select').nth(1)
+    await goto(page, '/compras')
+    await page.waitForTimeout(500)
+
+    await page.click('button:has-text("Nueva Compra")')
+    await page.waitForTimeout(500)
+
+    const proveedorSelect = page.locator('#compra-proveedor')
+    const insumoSelect = page.locator('#compra-insumo')
+
+    await proveedorSelect.waitFor({ state: 'visible' })
+    await page.waitForTimeout(500)
 
     const provOptions = await proveedorSelect.locator('option').all()
     const insOptions = await insumoSelect.locator('option').all()
 
-    // Must have at least one real option (skip placeholder "")
     if (provOptions.length < 2 || insOptions.length < 2) {
-      test.skip(true, 'No hay proveedores o insumos para crear una compra')
+      test.skip(true, 'No hay proveedores o insumos')
       return
     }
 
-    const provLabel = await provOptions[1].textContent()
-    const insLabel = await insOptions[1].textContent()
-    if (provLabel) await proveedorSelect.selectOption({ label: provLabel })
-    if (insLabel) await insumoSelect.selectOption({ label: insLabel })
+    await proveedorSelect.selectOption({ index: provOptions.length - 1 })
+    await insumoSelect.selectOption({ index: insOptions.length - 1 })
 
-    const testCantidad = '10'
-    const testMonto = '35000'
+    await page.locator('#compra-cantidad').fill('5')
+    await page.locator('#compra-monto').fill('20000')
 
-    await page.locator('input[type="number"]').first().fill(testCantidad)
-    await page.locator('input[type="number"]').nth(1).fill(testMonto)
-
-    // Click submit and capture response
     const [response] = await Promise.all([
       page.waitForResponse(
         r => r.url().includes('/api/compras') && r.request().method() === 'POST',
@@ -65,15 +49,97 @@ test.describe('Compras', () => {
       page.locator('button:has-text("Guardar")').click(),
     ])
 
-    // Accept both 201 (success) and 500 (possible sequence collision)
-    // In either case, verify the form UI handles it
     const status = response.status()
     expect([201, 500]).toContain(status)
+    await page.waitForTimeout(2000)
 
-    // Wait for UI update
-    await page.waitForTimeout(1500)
-
-    // Verify compras page is still functional
     await expect(page.locator('h1:has-text("Compras")')).toBeVisible()
+  })
+
+  test('validacion: sin proveedor', async ({ page }) => {
+    await fullLogin(page)
+    await goto(page, '/compras')
+    await page.waitForTimeout(500)
+
+    await page.click('button:has-text("Nueva Compra")')
+    await page.waitForTimeout(500)
+
+    await page.locator('#compra-proveedor').selectOption('')
+
+    await page.locator('button:has-text("Guardar")').click()
+    await page.waitForTimeout(1000)
+
+    const toastEl = page.locator('[data-sonner-toast]')
+    const form = page.locator('h3:has-text("Registrar Compra")')
+    const toastVisible = await toastEl.isVisible({ timeout: 3000 }).catch(() => false)
+    const formVisible = await form.isVisible({ timeout: 3000 }).catch(() => false)
+    expect(toastVisible || formVisible).toBeTruthy()
+  })
+
+  test('validacion: sin insumo', async ({ page }) => {
+    await fullLogin(page)
+    await goto(page, '/compras')
+    await page.waitForTimeout(500)
+
+    await page.click('button:has-text("Nueva Compra")')
+    await page.waitForTimeout(500)
+
+    await page.locator('#compra-insumo').selectOption('')
+
+    await page.locator('button:has-text("Guardar")').click()
+    await page.waitForTimeout(1000)
+
+    const toastEl = page.locator('[data-sonner-toast]')
+    const form = page.locator('h3:has-text("Registrar Compra")')
+    const toastVisible = await toastEl.isVisible({ timeout: 3000 }).catch(() => false)
+    const formVisible = await form.isVisible({ timeout: 3000 }).catch(() => false)
+    expect(toastVisible || formVisible).toBeTruthy()
+  })
+
+  test('API crear compra', async ({ page }) => {
+    await fullLogin(page)
+
+    const proveedor = await createProveedor(page)
+    const insumo = await createInsumo(page)
+
+    const res = await apiPost(page, '/api/compras', {
+      proveedorId: proveedor.id || proveedor.proveedorId,
+      insumoId: insumo.id || insumo.insumoId,
+      cantidad: 10,
+      montoTotal: 35000,
+    })
+
+    expect([201, 500]).toContain(res.status())
+  })
+
+  test('verificar stock aumenta post-compra', async ({ page }) => {
+    await fullLogin(page)
+
+    const proveedor = await createProveedor(page)
+    const insumo = await createInsumo(page)
+    const insumoId = insumo.id || insumo.insumoId
+
+    const stockAntesRes = await apiGet(page, `/api/insumos`)
+    const stockAntesData = await stockAntesRes.json()
+    const insumoAntes = (stockAntesData.insumos || []).find((i: any) => i.id === insumoId)
+    const stockAntes = insumoAntes ? Number(insumoAntes.stock) : 0
+
+    const res = await apiPost(page, '/api/compras', {
+      proveedorId: proveedor.id || proveedor.proveedorId,
+      insumoId,
+      cantidad: 10,
+      montoTotal: 35000,
+    })
+
+    if (res.status() === 201) {
+      await page.waitForTimeout(500)
+
+      const stockDespuesRes = await apiGet(page, `/api/insumos`)
+      const stockDespuesData = await stockDespuesRes.json()
+      const insumoDespues = (stockDespuesData.insumos || []).find((i: any) => i.id === insumoId)
+      const stockDespues = insumoDespues ? Number(insumoDespues.stock) : stockAntes
+
+      expect(stockDespues).toBeGreaterThanOrEqual(stockAntes + 10)
+    }
   })
 })

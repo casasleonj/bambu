@@ -1,94 +1,110 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, fullLogin, goto, apiPost, apiGet, createTrabajador } from './fixtures'
 
-test.describe('Nómina', () => {
-  async function login(page: Page, username: string, password: string) {
-    await page.goto('/login')
-    await page.fill('input[placeholder="Ingrese usuario"]', username)
-    await page.fill('input[placeholder="Ingrese contraseña"]', password)
-    await page.click('button[type="submit"]')
-    await page.waitForURL('**/dashboard')
-  }
-
-  async function handleBaseCajaModal(page: Page) {
-    const baseCajaBtn = page.locator('button:has-text("Continuar →")')
-    if (await baseCajaBtn.count() > 0) {
-      await page.fill('input[type="number"]', '50000')
-      await baseCajaBtn.click()
-      await page.waitForTimeout(500)
-    }
-  }
-
-  test.beforeEach(async ({ page }) => {
-    await login(page, 'admin', 'admin123')
-  })
-
-  test('page loads with heading', async ({ page }) => {
-    await handleBaseCajaModal(page)
-    await page.goto('/nomina')
-    await page.waitForTimeout(2000)
-    await handleBaseCajaModal(page)
+test.describe('Nomina', () => {
+  test('page loads', async ({ page }) => {
+    await fullLogin(page)
+    await goto(page, '/nomina')
+    await page.waitForTimeout(500)
 
     await expect(page.locator('h1:has-text("Nómina")')).toBeVisible()
   })
 
-  test('can open nueva nomina form', async ({ page }) => {
-    await handleBaseCajaModal(page)
-    await page.goto('/nomina')
-    await page.waitForTimeout(2000)
-    await handleBaseCajaModal(page)
+  test('crear nomina con calculo automatico', async ({ page }) => {
+    await fullLogin(page)
 
-    // Click the button to open the create form
+    const trabajador = await createTrabajador(page)
+    expect(trabajador.id).toBeTruthy()
+
+    await goto(page, '/nomina')
+    await page.waitForTimeout(500)
+
     await page.click('button:has-text("Nueva Nómina")')
     await page.waitForTimeout(500)
 
-    // Form should be visible with Calcular Nómina title
-    await expect(page.locator('text=Calcular Nómina')).toBeVisible()
+    await expect(page.locator('h3:has-text("Calcular Nómina")')).toBeVisible()
 
-    // The select for trabajador should be visible
-    const select = page.locator('select').first()
-    await expect(select).toBeVisible()
-
-    // The AUTO calculation button should be visible
-    await expect(page.locator('button:has-text("Calcular Automático")')).toBeVisible()
-  })
-
-  test('create payroll with AUTO calculation', async ({ page }) => {
-    await handleBaseCajaModal(page)
-    await page.goto('/nomina')
-    await page.waitForTimeout(2000)
-    await handleBaseCajaModal(page)
-
-    // Open create form
-    await page.click('button:has-text("Nueva Nómina")')
-    await page.waitForTimeout(500)
-
-    // Select first trabajador from the dropdown
-    const select = page.locator('select').first()
+    const select = page.locator('#nomina-trabajador')
     await select.waitFor({ state: 'visible' })
+    await page.waitForTimeout(500)
+
     const options = select.locator('option')
     const optionCount = await options.count()
     if (optionCount > 1) {
-      await select.selectOption({ index: 1 })
-      await page.waitForTimeout(300)
+      await select.selectOption({ index: optionCount - 1 })
 
-      // Set date range (current month)
       const fechaInicio = page.locator('input[type="date"]').first()
       const fechaFin = page.locator('input[type="date"]').nth(1)
       await fechaInicio.fill('2026-05-01')
       await fechaFin.fill('2026-05-31')
 
-      // Click calcular
       await page.click('button:has-text("Calcular Automático")')
       await page.waitForTimeout(2000)
 
-      // Either success (details card or new nomina card appears) or error toast
-      // Success: the form should close or details card should appear
       const hasResult = await page.locator('text=TOTAL:').count()
       const hasNomina = await page.locator('text=Período').count()
       expect(hasResult + hasNomina).toBeGreaterThan(0)
     } else {
-      // No workers available - form should still be visible
-      await expect(page.locator('text=Calcular Nómina')).toBeVisible()
+      await expect(page.locator('h3:has-text("Calcular Nómina")')).toBeVisible()
+    }
+  })
+
+  test('API crear nomina', async ({ page }) => {
+    await fullLogin(page)
+
+    const trabajador = await createTrabajador(page)
+
+    const res = await apiPost(page, '/api/nomina', {
+      trabajadorId: trabajador.id,
+      fechaInicio: '2026-05-01',
+      fechaFin: '2026-05-31',
+      tipoCalculo: 'AUTO',
+    })
+
+    expect(res.status()).toBe(200)
+  })
+
+  test('API crear nomina manual', async ({ page }) => {
+    await fullLogin(page)
+
+    const trabajador = await createTrabajador(page)
+
+    const res = await apiPost(page, '/api/nomina', {
+      trabajadorId: trabajador.id,
+      fechaInicio: '2026-05-01',
+      fechaFin: '2026-05-15',
+      tipoCalculo: 'MANUAL',
+      comEntregasAgua: 5000,
+      comEntregasHielo: 3000,
+      comEntregasBotellon: 2000,
+      totalComisiones: 10000,
+      salario: 0,
+      total: 10000,
+    })
+
+    expect(res.status()).toBe(201)
+  })
+
+  test('validacion: sin trabajador', async ({ page }) => {
+    await fullLogin(page)
+    await goto(page, '/nomina')
+    await page.waitForTimeout(500)
+
+    await page.click('button:has-text("Nueva Nómina")')
+    await page.waitForTimeout(500)
+
+    const calcularBtn = page.locator('button:has-text("Calcular Automático")')
+    const isDisabled = await calcularBtn.isDisabled()
+
+    if (isDisabled) {
+      expect(isDisabled).toBeTruthy()
+    } else {
+      await calcularBtn.click()
+      await page.waitForTimeout(1000)
+
+      const toastEl = page.locator('[data-sonner-toast]')
+      if (await toastEl.isVisible({ timeout: 3000 }).catch(() => false)) {
+        await expect(toastEl).toContainText(/error|Error|campo/i)
+      }
     }
   })
 })
