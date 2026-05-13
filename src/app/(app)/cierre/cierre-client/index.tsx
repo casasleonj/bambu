@@ -333,8 +333,8 @@ export default function CierreClient() {
               <table className="w-full text-sm">
                 <thead><tr className="border-b"><th className="text-left py-2">Nº</th><th className="text-left py-2">Repartidor</th><th className="text-left py-2">Ruta</th><th className="text-right py-2">Agua</th><th className="text-right py-2">Hielo</th><th className="text-right py-2">Dev. Agua</th><th className="text-right py-2">Dev. Hielo</th><th className="text-right py-2">Rotas</th><th className="text-right py-2">Estado</th></tr></thead>
                 <tbody>
-                  {data.embarques.map(e => (
-                    <tr key={e.numero} className="border-b">
+                  {data.embarques.map((e, i) => (
+                    <tr key={e.numero + '-' + i} className="border-b">
                       <td className="py-1.5">{e.numero}</td>
                       <td className="py-1.5">{e.repartidor || '—'}</td>
                       <td className="py-1.5">{e.ruta || '—'}</td>

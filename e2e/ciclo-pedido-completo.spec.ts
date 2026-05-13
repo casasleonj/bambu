@@ -15,7 +15,7 @@ test.describe('Ciclo Completo Pedido', () => {
       clienteId: cliente.id,
       canal: 'DOMICILIO',
       ventaRapida: false,
-      productos: { pacaAgua: 2, pacaHielo: 0 },
+      items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 2000 }],
     })
     const pedidoJson = await pedidoRes.json()
@@ -116,17 +116,17 @@ test.describe('Ciclo Completo Pedido', () => {
     const [p1, p2, p3] = await Promise.all([
       apiPost(page, '/api/pedidos', {
         clienteId: cliente1.id, canal: 'DOMICILIO', ventaRapida: false,
-        productos: { pacaAgua: 1, pacaHielo: 0 },
+        items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
         pagos: [{ metodo: 'EFECTIVO', monto: 5000 }],
       }),
       apiPost(page, '/api/pedidos', {
         clienteId: cliente2.id, canal: 'DOMICILIO', ventaRapida: false,
-        productos: { pacaAgua: 1, pacaHielo: 0 },
+        items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
         pagos: [{ metodo: 'EFECTIVO', monto: 5000 }],
       }),
       apiPost(page, '/api/pedidos', {
         clienteId: cliente3.id, canal: 'DOMICILIO', ventaRapida: false,
-        productos: { pacaAgua: 1, pacaHielo: 0 },
+        items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
         pagos: [{ metodo: 'EFECTIVO', monto: 5000 }],
       }),
     ])
@@ -180,7 +180,7 @@ test.describe('Ciclo Completo Pedido', () => {
       clienteId: cliente.id,
       canal: 'DOMICILIO',
       ventaRapida: false,
-      productos: { pacaAgua: 3, pacaHielo: 0 },
+      items: [{ producto: 'PACA_AGUA', cantidad: 3 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 5000 }],
     })
     const pedidoJson = await pedidoRes.json()

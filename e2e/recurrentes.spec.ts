@@ -199,7 +199,7 @@ async function generateRecurrente(page: import('@playwright/test').Page, cliente
       tipo: 'ENVIO',
       canal: 'DOMICILIO',
       frecuencia: 'SEMANAL',
-      productos: { pacaAgua: 1 },
+      items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
     },
   })
   return res.json()

@@ -45,7 +45,7 @@ test.describe('Ciclo de Producción', () => {
       clienteId: 'CONSUMIDOR_FINAL',
       canal: 'PUNTO',
       ventaRapida: true,
-      productos: { pacaAgua: 2, pacaHielo: 0 },
+      items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 50000 }],
     })
     expect(ventaRes.status()).toBe(201)

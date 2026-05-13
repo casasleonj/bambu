@@ -70,7 +70,7 @@ test.describe('Facturas', () => {
       clienteId: 'CLI_VERIFICADO',
       canal: 'PUNTO',
       ventaRapida: true,
-      productos: { pacaAgua: 2 },
+      items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 1000 }],
     })
     const pData = await p.json()

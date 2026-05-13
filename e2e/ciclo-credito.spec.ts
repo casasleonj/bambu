@@ -15,7 +15,7 @@ test.describe('Ciclo de Crédito', () => {
       clienteId: cliente.id,
       canal: 'PUNTO',
       ventaRapida: true,
-      productos: { pacaAgua: 2, pacaHielo: 0 },
+      items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 1000 }],
     })
     const pedidoJson = await pedidoRes.json()
@@ -92,12 +92,12 @@ test.describe('Ciclo de Crédito', () => {
     const [p1, p2] = await Promise.all([
       apiPost(page, '/api/pedidos', {
         clienteId: cliente.id, canal: 'PUNTO', ventaRapida: true,
-        productos: { pacaAgua: 1, pacaHielo: 0 },
+        items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
         pagos: [{ metodo: 'EFECTIVO', monto: 500 }],
       }),
       apiPost(page, '/api/pedidos', {
         clienteId: cliente.id, canal: 'PUNTO', ventaRapida: true,
-        productos: { pacaAgua: 2, pacaHielo: 0 },
+        items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
         pagos: [{ metodo: 'EFECTIVO', monto: 500 }],
       }),
     ])
@@ -135,7 +135,7 @@ test.describe('Ciclo de Crédito', () => {
       clienteId: cliente.id,
       canal: 'PUNTO',
       ventaRapida: true,
-      productos: { pacaAgua: 1, pacaHielo: 0 },
+      items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 0 }],
     })
     const pedidoJson = await pedidoRes.json()
@@ -165,7 +165,7 @@ test.describe('Ciclo de Crédito', () => {
       clienteId: cliente.id,
       canal: 'PUNTO',
       ventaRapida: true,
-      productos: { pacaAgua: 1, pacaHielo: 0 },
+      items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 50000 }],
     })
     const pedidoJson = await pedidoRes.json()
@@ -201,7 +201,7 @@ test.describe('Ciclo de Crédito', () => {
       clienteId: cliente.id,
       canal: 'PUNTO',
       ventaRapida: true,
-      productos: { pacaAgua: 3, pacaHielo: 0 },
+      items: [{ producto: 'PACA_AGUA', cantidad: 3 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 1000 }],
     })
     const pedidoJson = await pedidoRes.json()

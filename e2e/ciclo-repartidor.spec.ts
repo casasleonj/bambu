@@ -19,7 +19,7 @@ test.describe('Ciclo Repartidor', () => {
       clienteId: cliente.id,
       canal: 'DOMICILIO',
       ventaRapida: false,
-      productos: { pacaAgua: 2, pacaHielo: 0 },
+      items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 5000 }],
     })
     const pedidoJson = await pedidoRes.json()

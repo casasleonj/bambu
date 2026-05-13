@@ -44,7 +44,7 @@ test.describe('Pedidos', () => {
       clienteId: 'CONSUMIDOR_FINAL',
       canal: 'PUNTO',
       ventaRapida: true,
-      productos: { pacaAgua: 1 },
+      items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 3000 }],
     })
     expect(res.status()).toBe(201)
@@ -91,7 +91,7 @@ test.describe('Pedidos', () => {
       clienteId: 'CLI_VERIFICADO',
       canal: 'DOMICILIO',
       ventaRapida: false,
-      productos: { pacaAgua: 2, pacaHielo: 1 },
+      items: [{ producto: 'PACA_AGUA', cantidad: 2 }, { producto: 'PACA_HIELO', cantidad: 1 }],
     })
     expect(res.status()).toBe(201)
   })
@@ -128,7 +128,7 @@ test.describe('Pedidos', () => {
       clienteId: 'CLI_VERIFICADO',
       canal: 'PUNTO',
       ventaRapida: true,
-      productos: { pacaAgua: 3 },
+      items: [{ producto: 'PACA_AGUA', cantidad: 3 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 2000 }],
     })
     const pData = await p.json()
@@ -150,7 +150,7 @@ test.describe('Pedidos', () => {
       clienteId: 'CONSUMIDOR_FINAL',
       canal: 'PUNTO',
       ventaRapida: true,
-      productos: { pacaAgua: 1 },
+      items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 3000 }],
     })
     const data = await res.json()

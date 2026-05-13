@@ -445,14 +445,14 @@ test.describe('6. Concurrencia', () => {
         clienteId: 'CONSUMIDOR_FINAL',
         canal: 'PUNTO',
         ventaRapida: true,
-        productos: { pacaAgua: 1 },
+        items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
         pagos: [{ metodo: 'EFECTIVO', monto: 2800 }],
       }),
       apiPost(p2, '/api/pedidos', {
         clienteId: 'CONSUMIDOR_FINAL',
         canal: 'PUNTO',
         ventaRapida: true,
-        productos: { pacaAgua: 1 },
+        items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
         pagos: [{ metodo: 'EFECTIVO', monto: 2800 }],
       }),
     ])

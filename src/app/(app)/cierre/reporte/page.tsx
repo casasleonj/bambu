@@ -128,8 +128,8 @@ export default function ReportePage() {
           <table className="w-full text-sm">
             <thead><tr className="border-b"><th className="text-left py-1">Nº</th><th className="text-left py-1">Repartidor</th><th className="text-left py-1">Ruta</th><th className="text-right py-1">Agua</th><th className="text-right py-1">Hielo</th><th className="text-right py-1">Dev. Agua</th><th className="text-right py-1">Dev. Hielo</th><th className="text-right py-1">Estado</th></tr></thead>
             <tbody>
-              {data.embarques.map(e => (
-                <tr key={e.numero}><td className="py-1">{e.numero}</td><td className="py-1">{e.repartidor || '—'}</td><td className="py-1">{e.ruta || '—'}</td><td className="text-right">{e.pacasAgua}</td><td className="text-right">{e.pacasHielo}</td><td className="text-right">{e.devueltasAgua}</td><td className="text-right">{e.devueltasHielo}</td><td className="text-right">{e.estado}</td></tr>
+              {data.embarques.map((e, i) => (
+                <tr key={e.numero + '-' + i}><td className="py-1">{e.numero}</td><td className="py-1">{e.repartidor || '—'}</td><td className="py-1">{e.ruta || '—'}</td><td className="text-right">{e.pacasAgua}</td><td className="text-right">{e.pacasHielo}</td><td className="text-right">{e.devueltasAgua}</td><td className="text-right">{e.devueltasHielo}</td><td className="text-right">{e.estado}</td></tr>
               ))}
             </tbody>
           </table>
