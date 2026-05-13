@@ -9,6 +9,13 @@ import { Modal } from '@/components/modal'
 import { FeedbackField } from '@/components/feedback-field'
 import { Tooltip, InfoBanner } from '@/components/tooltip'
 
+const TIPOS_NEGOCIO: string[] = [
+  'Tienda', 'Restaurante', 'Café', 'Hotel', 'Bar',
+  'Ferretería', 'Panadería', 'Carnicería', 'Frutería', 'Peluquería',
+  'Farmacia', 'Papelería', 'Lavandería', 'Taller', 'Consultorio',
+  'Gimnasio', 'Salón de eventos', 'Guardería', 'Veterinaria', 'Estación de servicio',
+]
+
 interface ClienteFormProps {
   open: boolean
   onClose: () => void
@@ -157,14 +164,22 @@ export function ClienteForm({
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Tipo</label>
-                <input
-                  type="text"
-                  value={formData.tipoNegocio}
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Tipo de negocio</label>
+                <select
+                  value={TIPOS_NEGOCIO.includes(formData.tipoNegocio) ? formData.tipoNegocio : ''}
                   onChange={(e) => onFormDataChange({ ...formData, tipoNegocio: e.target.value })}
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
-                  placeholder="Ej: Tienda, Restaurante"
-                />
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition bg-white"
+                >
+                  <option value="">Seleccionar tipo...</option>
+                  {TIPOS_NEGOCIO.map((tipo) => (
+                    <option key={tipo} value={tipo}>{tipo}</option>
+                  ))}
+                </select>
+                {formData.tipoNegocio && !TIPOS_NEGOCIO.includes(formData.tipoNegocio) && (
+                  <p className="text-xs text-amber-600 mt-1">
+                    Valor anterior "{formData.tipoNegocio}" no está en la lista. Selecciona uno de la lista o déjalo en blanco.
+                  </p>
+                )}
               </div>
             </div>
           </div>

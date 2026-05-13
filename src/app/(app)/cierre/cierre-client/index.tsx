@@ -22,6 +22,8 @@ export default function CierreClient() {
   const { data: session } = useSession()
   const { confirm, modal } = useConfirm()
   const [data, setData] = useState<CierreData | null>(null)
+  const [statusCierre, setStatusCierre] = useState<'COMPLETO' | 'INCOMPLETO' | null>(null)
+  const [embarquesPendientes, setEmbarquesPendientes] = useState<{ id: string; numero: number; repartidor?: string }[]>([])
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [cerrando, setCerrando] = useState(false)
@@ -85,6 +87,8 @@ export default function CierreClient() {
       const json = await res.json()
       if (json.cierre) {
         setData(json.cierre)
+        setStatusCierre(json.status || 'COMPLETO')
+        setEmbarquesPendientes(json.embarquesPendientes || [])
         if (json.cierre.produccion) {
           setProdAgua(json.cierre.produccion.prodAgua || 0)
           setProdHielo(json.cierre.produccion.prodHielo || 0)
@@ -92,6 +96,13 @@ export default function CierreClient() {
           setStockIniHielo(json.cierre.produccion.stockIniHielo || 0)
           setStockFinAgua(json.cierre.produccion.stockFinAgua || 0)
           setStockFinHielo(json.cierre.produccion.stockFinHielo || 0)
+          // Pre-llenar comisiones desde producción si no hay valor manual
+          const comSell = Number(json.cierre.produccion.comSellTotal) || 0
+          const comRepart = Number(json.cierre.produccion.comRepartTotal) || 0
+          const comisionesCalculadas = comSell + comRepart
+          if (comisionesCalculadas > 0) {
+            setComisiones(prev => prev === 0 ? comisionesCalculadas : prev)
+          }
         }
       }
     } catch {
@@ -119,6 +130,19 @@ export default function CierreClient() {
   }
 
   const handleCerrar = async () => {
+    // Validaciones previas (prevención de errores)
+    if (statusCierre === 'INCOMPLETO') {
+      toast.error(`No se puede cerrar: ${embarquesPendientes.length} embarque(s) abierto(s). Ciérralos primero.`)
+      return
+    }
+    if (baseDia === 0) {
+      toast.error('No se puede cerrar: la base de caja es 0. Verifica el monto.')
+      return
+    }
+    if (arqueoData.totalContado === 0) {
+      toast.error('No se puede cerrar: debes contar el efectivo físico antes de cerrar.')
+      return
+    }
     const ok = await confirm('¿Confirmar cierre del día? Esta acción es irreversible.')
     if (!ok) return
     setCerrando(true)
@@ -209,10 +233,32 @@ export default function CierreClient() {
   return (
     <div className="p-4 space-y-4">
       {modal}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Cierre del Día</h1>
-        <p className="text-sm text-muted-foreground mt-1">{fecha} — Resumen y cierre de operaciones</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Cierre del Día</h1>
+          <p className="text-sm text-muted-foreground mt-1">{fecha} — Resumen y cierre de operaciones</p>
+        </div>
+        {statusCierre && (
+          <div className={`px-3 py-1.5 rounded-full text-sm font-semibold ${statusCierre === 'COMPLETO' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+            {statusCierre === 'COMPLETO' ? '✅ Listo para cerrar' : `❌ Pendiente: ${embarquesPendientes.length} embarque(s) abierto(s)`}
+          </div>
+        )}
       </div>
+
+      {/* Embarques pendientes */}
+      {statusCierre === 'INCOMPLETO' && embarquesPendientes.length > 0 && (
+        <Card className="border-red-300 bg-red-50/50">
+          <CardHeader className="pb-2"><CardTitle className="text-base text-red-800">Embarques Abiertos — Cierre Bloqueado</CardTitle></CardHeader>
+          <CardContent>
+            <ul className="space-y-1 text-sm text-red-700">
+              {embarquesPendientes.map(e => (
+                <li key={e.id}>Embarque #{e.numero} — {e.repartidor || 'Sin repartidor'}</li>
+              ))}
+            </ul>
+            <p className="text-sm text-red-600 mt-2 font-medium">Cierra todos los embarques antes de cerrar el día.</p>
+          </CardContent>
+        </Card>
+      )}
 
       {fetchError && (
         <Card className="border-red-300 bg-red-50/50">
@@ -483,10 +529,35 @@ export default function CierreClient() {
         </Card>
       )}
 
+      {/* Checklist de requisitos */}
+      <Card>
+        <CardHeader className="pb-2"><CardTitle className="text-base">Requisitos para Cerrar</CardTitle></CardHeader>
+        <CardContent>
+          <ul className="space-y-2 text-sm">
+            <li className="flex items-center gap-2">
+              <span className={baseDia > 0 ? 'text-green-600' : 'text-red-600'}>{baseDia > 0 ? '✅' : '❌'}</span>
+              <span className={baseDia > 0 ? '' : 'text-red-600'}>Base de caja ingresada {baseDia > 0 ? `($${baseDia.toLocaleString()})` : '(falta)'}</span>
+            </li>
+            <li className="flex items-center gap-2">
+              <span className={statusCierre === 'COMPLETO' ? 'text-green-600' : 'text-red-600'}>{statusCierre === 'COMPLETO' ? '✅' : '❌'}</span>
+              <span className={statusCierre === 'COMPLETO' ? '' : 'text-red-600'}>Todos los embarques cerrados {statusCierre === 'INCOMPLETO' ? `(${embarquesPendientes.length} pendiente(s))` : ''}</span>
+            </li>
+            <li className="flex items-center gap-2">
+              <span className={arqueoData.totalContado > 0 ? 'text-green-600' : 'text-red-600'}>{arqueoData.totalContado > 0 ? '✅' : '❌'}</span>
+              <span className={arqueoData.totalContado > 0 ? '' : 'text-red-600'}>Efectivo físico contado {arqueoData.totalContado > 0 ? `($${arqueoData.totalContado.toLocaleString()})` : '(falta)'}</span>
+            </li>
+          </ul>
+        </CardContent>
+      </Card>
+
       {/* Acciones */}
       <div className="space-y-2">
         {canClose ? (
-          <Button onClick={handleCerrar} disabled={cerrando} className="w-full py-6 text-lg">
+          <Button
+            onClick={handleCerrar}
+            disabled={cerrando || statusCierre === 'INCOMPLETO' || baseDia === 0 || arqueoData.totalContado === 0}
+            className="w-full py-6 text-lg"
+          >
             {cerrando ? 'Cerrando...' : 'Cerrar Día'}
           </Button>
         ) : (

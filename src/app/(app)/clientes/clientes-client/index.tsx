@@ -212,7 +212,7 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
       const body = {
         ...formData,
         cadaNDias: cadaNDiasNum,
-        frecuencia: cadaNDiasNum > 0 ? 'CADA_N_DIAS' : 'NINGUNA',
+        frecuencia: 'NINGUNA',
         proxEntrega: formData.proxEntrega || undefined,
         preciosEspeciales: preciosJson || undefined,
       }

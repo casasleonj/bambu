@@ -165,8 +165,15 @@ export function PedidosClient() {
     return () => clearTimeout(timer)
   }, [searchInput, search, updateSearch])
 
-  // Carga inicial
+  // Carga inicial — default a hoy si no hay filtro de fecha
   useEffect(() => {
+    if (!desdeUrl && !hastaUrl) {
+      const hoy = getFechaOffset(0)
+      const params = new URLSearchParams(searchParams.toString())
+      params.set('desde', hoy)
+      params.set('hasta', hoy)
+      router.replace(`?${params.toString()}`, { scroll: false })
+    }
     fetchPedidos()
     Promise.all([fetchClientes(), fetchPrecios(), fetchEmbarques()])
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -212,7 +219,7 @@ export function PedidosClient() {
         toast.success(msg)
       } else {
         const err = await res.json()
-        toast.error(err.error?.formErrors?.[0] || 'Error creando pedido')
+        toast.error(err.error?.message || err.error?.formErrors?.[0] || 'Error creando pedido')
       }
     } catch (error) {
       console.error('Error creating pedido:', error)
@@ -414,7 +421,7 @@ export function PedidosClient() {
         toast.success(`Estado actualizado a ${nuevoEstado}`)
       } else {
         const errData = await res.json().catch(() => ({}))
-        toast.error(errData.error || 'Error actualizando estado')
+        toast.error(errData.error?.message || errData.error || 'Error actualizando estado')
       }
     } catch (error) {
       console.error('Error cambiando estado:', error)
@@ -621,6 +628,7 @@ export function PedidosClient() {
         </div>
         <div className="p-4 overflow-y-auto flex-1">
           <PedidoFormUnified
+            key={`pedido-form-${showVentaRapida ? 'punto' : 'domicilio'}-${showModal || showVentaRapida}`}
             contexto={showVentaRapida ? 'PUNTO' : 'DOMICILIO'}
             precios={precios}
             clientes={clientes}

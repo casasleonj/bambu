@@ -140,10 +140,23 @@ export async function POST(request: NextRequest) {
         clienteId = nuevo.id
       }
 
-      // 2. Validar cliente existe
-      const cliente = await tx.cliente.findUnique({ where: { id: clienteId } })
+      // 2. Validar cliente existe (auto-crear CONSUMIDOR_FINAL si falta)
+      let cliente = await tx.cliente.findUnique({ where: { id: clienteId } })
       if (!cliente) {
-        throw new Error('CLIENTE_NOT_FOUND')
+        if (clienteId === 'CONSUMIDOR_FINAL') {
+          cliente = await tx.cliente.create({
+            data: {
+              id: 'CONSUMIDOR_FINAL',
+              nombre: 'Consumidor Final',
+              telefono: '',
+              direccion: '',
+              frecuencia: 'NINGUNA',
+              creadoPorRol: authResult.user?.role as any || 'ASISTENTE',
+            },
+          })
+        } else {
+          throw new Error('CLIENTE_NOT_FOUND')
+        }
       }
 
       // 3. Validar que cliente NO está bloqueado y NO tiene deuda activa

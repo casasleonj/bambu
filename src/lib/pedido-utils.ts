@@ -121,6 +121,9 @@ export function puedeCrearPedido(
   },
   pedidosPendientes: Array<{ id: string; numero: number; saldo: number }>
 ): string | null {
+  // Ventas anónimas (CONSUMIDOR_FINAL) nunca se bloquean por deudas previas
+  if (cliente.id === 'CONSUMIDOR_FINAL') return null
+
   if (cliente.bloqueado) {
     return 'Cliente bloqueado por deuda vencida. Pague primero.'
   }

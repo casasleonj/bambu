@@ -206,7 +206,7 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit }: Ped
       ventaRapida: canal === 'PUNTO',
     }
 
-    onSubmit(data)
+    await onSubmit(data)
     setSubmitting(false)
   }
 

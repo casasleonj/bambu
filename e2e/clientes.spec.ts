@@ -220,7 +220,7 @@ test.describe('Clientes', () => {
     const phone = `3${String(Date.now()).slice(-9)}`
     
     const c1 = await createCliente(page, { telefono: phone })
-    expect(c1.id || c1.clienteId).toBeTruthy()
+    expect(c1.cliente?.id || c1.data?.id).toBeTruthy()
     
     const client2Name = `Duplicado ${Date.now() % 10000}`
     const res2 = await apiPost(page, '/api/clientes', {

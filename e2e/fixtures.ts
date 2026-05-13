@@ -52,7 +52,8 @@ export async function fullLogin(page: Page, user = 'admin', pass = 'admin123') {
 
 export async function goto(page: Page, path: string) {
   await page.goto(`${BASE}${path}`)
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('domcontentloaded')
+  await page.waitForTimeout(500)
   await handleBaseCaja(page)
 }
 

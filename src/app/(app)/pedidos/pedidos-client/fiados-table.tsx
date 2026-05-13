@@ -27,7 +27,7 @@ export function FiadosTable({ pedidos, onPedidosChange }: FiadosTableProps) {
   const [minDeuda, setMinDeuda] = useState('')
   const [maxDeuda, setMaxDeuda] = useState('')
   const [diasFiado, setDiasFiado] = useState<'todos' | '0-7' | '8-30' | '30+' | string>('todos')
-  const [periodo, setPeriodo] = useState<PeriodoFiltro>('todos')
+  const [periodo, setPeriodo] = useState<PeriodoFiltro>('hoy')
   const [pagandoClienteId, setPagandoClienteId] = useState<string | null>(null)
   const [montoPago, setMontoPago] = useState('')
   const [metodoPago, setMetodoPago] = useState('EFECTIVO')
