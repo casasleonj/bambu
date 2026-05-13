@@ -286,6 +286,7 @@ export async function POST(request: NextRequest) {
     // Calculate netoCaja server-side — never trust client for financial totals
     const cobros = parsed.data.efectivo + parsed.data.transferencia + parsed.data.nequi + parsed.data.daviplata + parsed.data.bono
     const netoCaja = parsed.data.baseDia + cobros - parsed.data.gastos - parsed.data.comisiones - parsed.data.salarios
+    const reporteSnapshot = parsed.data.reporte ? JSON.parse(parsed.data.reporte) : null
 
     const userId = (authResult.user as { id?: string } | undefined)?.id
 
@@ -324,6 +325,7 @@ export async function POST(request: NextRequest) {
           stockFinHielo: parsed.data.stockFinHielo,
           netoCaja,
           cerradoPor: userId,
+          reporte: reporteSnapshot,
         },
       })
     })
