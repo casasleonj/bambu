@@ -206,6 +206,14 @@ export const ProduccionCreateSchema = z.object({
   conteoBAgua: z.coerce.number().int().min(0),
   conteoAHielo: z.coerce.number().int().min(0),
   conteoBHielo: z.coerce.number().int().min(0),
+  stockFinFisicoAgua: z.coerce.number().int().min(0).default(0),
+  stockFinFisicoHielo: z.coerce.number().int().min(0).default(0),
+  filtradasAgua: z.coerce.number().int().min(0).default(0),
+  filtradasHielo: z.coerce.number().int().min(0).default(0),
+  rotasAgua: z.coerce.number().int().min(0).default(0),
+  rotasHielo: z.coerce.number().int().min(0).default(0),
+  consumoInternoAgua: z.coerce.number().int().min(0).default(0),
+  consumoInternoHielo: z.coerce.number().int().min(0).default(0),
   obs: z.string().max(500).optional(),
 });
 
@@ -216,12 +224,14 @@ export const NominaCreateSchema = z.object({
   tipoCalculo: z.enum(['AUTO', 'MANUAL']).optional(),
   comEntregasAgua: z.coerce.number().min(0).optional(),
   comEntregasHielo: z.coerce.number().min(0).optional(),
+  comEntregasBotellon: z.coerce.number().min(0).optional(),
   totalComisiones: z.coerce.number().min(0).optional(),
   salario: z.coerce.number().min(0).optional(),
   total: z.coerce.number().positive().optional(),
 });
 
 export const CierreCreateSchema = z.object({
+  fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   numPedidos: z.coerce.number().int().min(0),
   totalVentas: z.coerce.number().min(0),
   cobrado: z.coerce.number().min(0),
@@ -242,11 +252,12 @@ export const CierreCreateSchema = z.object({
   prodHielo: z.coerce.number().int().min(0),
   stockFinHielo: z.coerce.number().int().min(0),
   netoCaja: z.coerce.number().min(0),
+  reporte: z.string().optional(),
 });
 
 export const ConfigCreateSchema = z.object({
   clave: z.string().min(1).max(100),
-  valor: z.string().min(1),
+  valor: z.string(),
 });
 
 // ====================
@@ -305,6 +316,7 @@ const TrabajadorBaseSchema = z.object({
   capacidadKg: z.coerce.number().int().min(0).max(5000).optional(),
   comPacaAgua: z.coerce.number().min(0).optional(),
   comPacaHielo: z.coerce.number().min(0).optional(),
+  comBotellon: z.coerce.number().min(0).optional(),
   salarioFijo: z.coerce.number().min(0).optional(),
   telefono: z.string().max(20).optional(),
 })
