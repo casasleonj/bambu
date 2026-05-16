@@ -18,42 +18,76 @@ export const icons: Record<string, React.ReactNode> = {
   map: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0121 18.382V7.618a1 1 0 01-.553-.894L15 7m0 13V7" /></svg>,
   repeat: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>,
   settings: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>,
+  user: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>,
 }
 
-export const navSections = [
+export interface NavSubItem {
+  href: string
+  label: string
+  icon: string
+}
+
+export interface NavItem {
+  href: string
+  label: string
+  icon: string
+  subItems?: NavSubItem[]
+}
+
+export interface NavSection {
+  title: string
+  items: NavItem[]
+}
+
+export const navSections: NavSection[] = [
   {
-    title: 'Operación',
+    title: 'Ventas',
     items: [
       { href: '/dashboard', label: 'Dashboard', icon: 'home' },
-      { href: '/pedidos', label: 'Pedidos', icon: 'package' },
-      { href: '/casos', label: 'Casos', icon: 'shield' },
       { href: '/clientes', label: 'Clientes', icon: 'users' },
-      { href: '/embarques', label: 'Embarques', icon: 'truck' },
-      { href: '/repartidor', label: 'Mi Ruta', icon: 'truck' },
-      { href: '/rutas', label: 'Rutas', icon: 'map' },
-      { href: '/recurrentes', label: 'Recurrentes', icon: 'repeat' },
+      { href: '/pedidos', label: 'Pedidos', icon: 'package', subItems: [
+        { href: '/pedidos', label: 'Únicos', icon: 'package' },
+        { href: '/recurrentes', label: 'Recurrentes', icon: 'repeat' }
+      ]},
+      { href: '/productos', label: 'Productos', icon: 'tag' },
+      { href: '/casos', label: 'Incidencias', icon: 'shield' },
+    ]
+  },
+  {
+    title: 'Operaciones',
+    items: [
       { href: '/produccion', label: 'Producción', icon: 'factory' },
+      { href: '/insumos', label: 'Insumos', icon: 'boxes' },
+      { href: '/embarques', label: 'Embarques', icon: 'truck' },
+      { href: '/rutas', label: 'Distribución', icon: 'truck', subItems: [
+        { href: '/rutas', label: 'Planificación', icon: 'map' },
+        { href: '/repartidor', label: 'Ejecución', icon: 'truck' }
+      ]},
     ]
   },
   {
     title: 'Finanzas',
     items: [
-      { href: '/facturas', label: 'Facturas', icon: 'receipt' },
-      { href: '/gastos', label: 'Gastos', icon: 'wallet' },
+      { href: '/facturacion', label: 'Facturación', icon: 'receipt', subItems: [
+        { href: '/facturas', label: 'Facturas', icon: 'receipt' },
+        { href: '/cierre', label: 'Cierre de Caja', icon: 'chart-bar' }
+      ]},
+      { href: '/gastos', label: 'Gastos', icon: 'wallet', subItems: [
+        { href: '/gastos', label: 'Gastos', icon: 'wallet' },
+        { href: '/compras', label: 'Compras', icon: 'shopping-cart' }
+      ]},
       { href: '/nomina', label: 'Nómina', icon: 'users-round' },
-      { href: '/cierre', label: 'Cierre', icon: 'chart-bar' },
-      { href: '/compras', label: 'Compras', icon: 'shopping-cart' },
+      { href: '/reportes', label: 'Reportes', icon: 'chart-line' },
     ]
   },
   {
-    title: 'Administración',
+    title: 'Admin',
     items: [
       { href: '/trabajadores', label: 'Trabajadores', icon: 'hard-hat' },
       { href: '/proveedores', label: 'Proveedores', icon: 'building' },
-      { href: '/insumos', label: 'Insumos', icon: 'boxes' },
-      { href: '/reportes', label: 'Reportes', icon: 'chart-line' },
-      { href: '/precios', label: 'Precios', icon: 'tag' },
+      { href: '/admin/usuarios', label: 'Usuarios', icon: 'users' },
       { href: '/configuracion', label: 'Configuración', icon: 'settings' },
+      { href: '/mi-perfil', label: 'Mi Perfil', icon: 'user' },
     ]
   },
 ]

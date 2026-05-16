@@ -1,175 +1,45 @@
-import { auth } from '@/lib/auth'
 import { NextResponse } from 'next/server'
-import { checkRateLimit, classifyRequest } from '@/lib/rate-limit'
-import { validateCsrf } from '@/lib/csrf'
-import { runWithRequestContext, getRequestId } from '@/lib/request-id'
-import { setRequestIdProvider } from '@/lib/logger'
+import type { NextRequest } from 'next/server'
 
-setRequestIdProvider(getRequestId)
+const PUBLIC_PATHS = ['/login', '/offline', '/_next', '/favicon.ico', '/sw.js']
+const AUTH_PATHS = ['/api/auth']
 
-const PROTECTED_PAGE_ROUTES = [
-  '/dashboard',
-  '/pedidos',
-  '/clientes',
-  '/embarques',
-  '/produccion',
-  '/cierre',
-  '/facturas',
-  '/gastos',
-  '/nomina',
-  '/trabajadores',
-  '/proveedores',
-  '/compras',
-  '/insumos',
-  '/reportes',
-  '/precios',
-]
-
-const ADMIN_PAGE_ROUTES = [
-  '/trabajadores',
-  '/cierre',
-  '/reportes',
-  '/precios',
-  '/nomina',
-]
-
-function generateNonce(): string {
-  return Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString('base64')
+function isPublicPath(pathname: string): boolean {
+  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) return true
+  if (AUTH_PATHS.some((p) => pathname.startsWith(p))) return true
+  // Static assets
+  if (pathname.match(/\.(ico|png|jpg|jpeg|svg|css|js|woff|woff2)$/)) return true
+  return false
 }
 
-function generateRequestId(): string {
-  return crypto.randomUUID()
+function getSessionCookie(request: NextRequest): string | undefined {
+  return (
+    request.cookies.get('next-auth.session-token')?.value ??
+    request.cookies.get('__Secure-next-auth.session-token')?.value ??
+    request.cookies.get('authjs.session-token')?.value
+  )
 }
 
-/**
- * Get the real client IP. Only trust x-forwarded-for if we're behind a known proxy
- * (Vercel sets x-real-ip; standalone Node uses req.ip).
- * Using unvalidated x-forwarded-for allows rate-limit bypass via header spoofing.
- */
-function getClientIp(req: Request): string {
-  // Vercel-specific: x-real-ip is set by Vercel's edge and cannot be spoofed
-  const realIp = req.headers.get('x-real-ip')
-  if (realIp) return realIp
+export async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl
 
-  // Fallback: only use last entry in x-forwarded-for (rightmost = closest trusted proxy)
-  const forwarded = req.headers.get('x-forwarded-for')
-  if (forwarded) {
-    const parts = forwarded.split(',').map(s => s.trim()).filter(Boolean)
-    // Use the RIGHTMOST IP (the last proxy before our server), not the leftmost (client-controlled)
-    return parts[parts.length - 1] || 'unknown'
+  if (isPublicPath(pathname)) {
+    return NextResponse.next()
   }
 
-  return 'unknown'
+  const sessionToken = getSessionCookie(request)
+
+  if (!sessionToken) {
+    const loginUrl = new URL('/login', request.url)
+    loginUrl.searchParams.set('callbackUrl', pathname)
+    return NextResponse.redirect(loginUrl)
+  }
+
+  return NextResponse.next()
 }
 
-export default auth(async (req) => {
-  const requestId = generateRequestId()
-  req.headers.set('x-request-id', requestId)
-
-  return runWithRequestContext(requestId, async () => {
-    const isLoggedIn = !!req.auth
-    const isAuthPage = req.nextUrl.pathname === '/login'
-    const isApiAuth = req.nextUrl.pathname.startsWith('/api/auth')
-    const isStaticAsset = req.nextUrl.pathname.startsWith('/_next/') ||
-      req.nextUrl.pathname.startsWith('/static/')
-
-    // Endpoints de auth que SÍ necesitan rate limit estricto (brute force login)
-    const isAuthCredentialEndpoint =
-      req.nextUrl.pathname.startsWith('/api/auth/callback/') ||
-      req.nextUrl.pathname.startsWith('/api/auth/signin/')
-
-    // Endpoints de auth benignos (session, csrf, providers) que NextAuth llama frecuentemente
-    const isAuthMetadata = isApiAuth && !isAuthCredentialEndpoint
-
-    // Rate limit everything EXCEPT: static assets, auth metadata endpoints
-    if (!isStaticAsset && !isAuthMetadata) {
-      const ip = getClientIp(req)
-      const type = classifyRequest(req.nextUrl.pathname)
-      const limit = await checkRateLimit(`${ip}:${type}`, type)
-
-      const nonce = generateNonce()
-      req.headers.set('x-nonce', nonce)
-
-      const response = NextResponse.next()
-      response.headers.set('X-Request-Id', requestId)
-      response.headers.set('X-RateLimit-Limit', String(limit.limit))
-      response.headers.set('X-RateLimit-Remaining', String(limit.remaining))
-      response.headers.set('X-RateLimit-Reset', limit.resetTime.toISOString())
-      response.headers.set('Content-Security-Policy', `default-src 'self'; script-src 'self' 'nonce-${nonce}'${process.env.NODE_ENV === 'development' ? " 'unsafe-eval'" : ''}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`)
-      if (!limit.allowed) {
-        response.headers.set('Retry-After', String(limit.retryAfter))
-        response.headers.set('X-Request-Id', requestId)
-        return NextResponse.json(
-          { error: 'Rate limit exceeded' },
-          { status: 429, headers: response.headers }
-        )
-      }
-
-      // CSRF protection + auth enforcement for API routes
-      if (req.nextUrl.pathname.startsWith('/api/') && !isApiAuth) {
-        const csrfError = validateCsrf(req)
-        if (csrfError) return csrfError
-
-        // Require authentication for state-changing API requests
-        // GET requests are handled per-route (some are intentionally public, e.g. /api/config/BASE_DIA)
-        const method = req.method
-        if (method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE') {
-          if (!isLoggedIn) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-          }
-        }
-      }
-
-      // Auth enforcement for protected pages
-      const isProtectedPage = PROTECTED_PAGE_ROUTES.some(route =>
-        req.nextUrl.pathname.startsWith(route)
-      )
-
-      if (isProtectedPage && !isLoggedIn) {
-        return NextResponse.redirect(new URL('/login', req.url))
-      }
-
-      if (isAuthPage && isLoggedIn) {
-        return NextResponse.redirect(new URL('/dashboard', req.url))
-      }
-
-      // Role-based access control for admin pages
-      if (ADMIN_PAGE_ROUTES.some(route => req.nextUrl.pathname.startsWith(route))) {
-        const userRole = (req.auth?.user as { role?: string } | undefined)?.role
-        if (userRole !== 'ADMIN' && userRole !== 'CONTADOR') {
-          return NextResponse.redirect(new URL('/dashboard', req.nextUrl))
-        }
-      }
-
-      return response
-    }
-
-    // Static assets + auth metadata: skip rate limit, still enforce auth redirects
-    const isProtectedPage = PROTECTED_PAGE_ROUTES.some(route =>
-      req.nextUrl.pathname.startsWith(route)
-    )
-
-    if (isProtectedPage && !isLoggedIn && !isApiAuth) {
-      return NextResponse.redirect(new URL('/login', req.url))
-    }
-
-    // Role-based access control for admin pages (static assets path)
-    if (ADMIN_PAGE_ROUTES.some(route => req.nextUrl.pathname.startsWith(route))) {
-      const userRole = (req.auth?.user as { role?: string } | undefined)?.role
-      if (userRole !== 'ADMIN' && userRole !== 'CONTADOR') {
-        return NextResponse.redirect(new URL('/dashboard', req.nextUrl))
-      }
-    }
-
-    const nonce = generateNonce()
-    req.headers.set('x-nonce', nonce)
-    const response = NextResponse.next()
-    response.headers.set('X-Request-Id', requestId)
-    response.headers.set('Content-Security-Policy', `default-src 'self'; script-src 'self' 'nonce-${nonce}'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`)
-    return response
-  })
-})
-
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|public).*)'],
+  matcher: [
+    '/((?!api|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|sw\\.js|.*\\.(?:svg|png|jpg|jpeg|gif|webp|css|js|woff|woff2)$).*)',
+  ],
 }

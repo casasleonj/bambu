@@ -5,17 +5,107 @@ import { usePathname } from 'next/navigation'
 import { signOut } from 'next-auth/react'
 import { useBaseCaja } from '@/hooks/use-base-caja'
 import { useAppStore } from '@/stores/app-store'
+import { formatCurrency } from '@/lib/utils'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger, useCollapsible } from '@/components/ui/collapsible'
 import { icons, navSections } from './nav-data'
 
 function NavIcon({ name }: { name: string }) {
   return <>{icons[name] || null}</>
 }
 
-export function Sidebar() {
+function ChevronIcon() {
+  const { open } = useCollapsible()
+  return (
+    <svg 
+      className={`w-4 h-4 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} 
+      fill="none" 
+      stroke="currentColor" 
+      viewBox="0 0 24 24"
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+    </svg>
+  )
+}
+
+interface NavItem {
+  href: string
+  label: string
+  icon: string
+  subItems?: { href: string; label: string; icon: string }[]
+}
+
+function SidebarMenuItem({ item }: { item: NavItem }) {
   const pathname = usePathname()
-  const { baseDia } = useBaseCaja()
+  const hasSubItems = item.subItems && item.subItems.length > 0
+  
+  // Check if this item or any of its subitems is active
+  const isItemActive = pathname === item.href
+  const isSubItemActive = item.subItems?.some(sub => pathname === sub.href)
+  const isActive = isItemActive || isSubItemActive
+  const defaultOpen = isSubItemActive || isItemActive
+
+  if (hasSubItems) {
+    return (
+      <Collapsible defaultOpen={defaultOpen}>
+        <CollapsibleTrigger
+          className={`flex items-center justify-between w-full gap-3 py-2.5 px-4 rounded-lg transition text-sm ${
+            isActive
+              ? 'text-blue-600 font-semibold bg-blue-50'
+              : 'text-gray-700 hover:bg-gray-50'
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            <NavIcon name={item.icon} />
+            <span>{item.label}</span>
+          </div>
+          <ChevronIcon />
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="ml-4 pl-4 border-l border-gray-200 space-y-1 mt-1">
+            {item.subItems!.map((subItem) => {
+              const isSubActive = pathname === subItem.href
+              return (
+                <Link
+                  key={subItem.href}
+                  href={subItem.href}
+                  aria-current={isSubActive ? 'page' : undefined}
+                  className={`flex items-center gap-3 py-2 px-3 rounded-lg transition text-sm ${
+                    isSubActive
+                      ? 'bg-blue-50 text-blue-600 font-medium'
+                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                  }`}
+                >
+                  <NavIcon name={subItem.icon} />
+                  <span>{subItem.label}</span>
+                </Link>
+              )
+            })}
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    )
+  }
+
+  return (
+    <Link
+      href={item.href}
+      aria-current={isActive ? 'page' : undefined}
+      className={`flex items-center gap-3 py-2.5 px-4 rounded-lg transition text-sm ${
+        isActive
+          ? 'bg-blue-50 text-blue-600 font-semibold border-l-4 border-blue-500 pl-3'
+          : 'text-gray-700 hover:bg-gray-50'
+      }`}
+    >
+      <NavIcon name={item.icon} />
+      <span>{item.label}</span>
+    </Link>
+  )
+}
+
+export function Sidebar() {
   const sidebarOpen = useAppStore(s => s.sidebarOpen)
   const setSidebarOpen = useAppStore(s => s.toggleSidebar)
+  const { baseDia } = useBaseCaja()
 
   return (
     <>
@@ -37,7 +127,7 @@ export function Sidebar() {
           <div className="flex items-center justify-between">
             <span className="text-xs text-gray-500">Caja base</span>
             <span className="text-sm font-semibold text-gray-800">
-              {baseDia ? `$${Number(baseDia).toLocaleString()}` : '—'}
+              {baseDia ? formatCurrency(Number(baseDia)) : '—'}
             </span>
           </div>
         </div>
@@ -49,24 +139,9 @@ export function Sidebar() {
                 {section.title}
               </h3>
               <div className="space-y-1 px-2">
-                {section.items.map((item) => {
-                  const isActive = pathname === item.href
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      aria-current={isActive ? 'page' : undefined}
-                      className={`flex items-center gap-3 py-3 rounded-lg transition ${
-                        isActive
-                          ? 'bg-blue-50 text-blue-600 font-semibold border-l-4 border-blue-500 pl-3 pr-4'
-                          : 'text-gray-700 hover:bg-gray-50 px-4'
-                      }`}
-                    >
-                      <NavIcon name={item.icon} />
-                      <span>{item.label}</span>
-                    </Link>
-                  )
-                })}
+                {section.items.map((item) => (
+                  <SidebarMenuItem key={item.href} item={item} />
+                ))}
               </div>
             </div>
           ))}
@@ -92,8 +167,8 @@ export function Sidebar() {
 export function MainContent({ children }: { children: React.ReactNode }) {
   const sidebarOpen = useAppStore(s => s.sidebarOpen)
   return (
-    <main className={`pt-14 transition-all duration-300 ${sidebarOpen ? 'md:ml-64' : 'md:ml-0'}`}>
-      <div className="p-6">{children}</div>
+    <main className={`pt-14 print:pt-0 transition-all duration-300 ${sidebarOpen ? 'md:ml-64 print:ml-0' : 'md:ml-0'}`}>
+      <div className="p-6 print:p-0">{children}</div>
     </main>
   )
 }

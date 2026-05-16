@@ -21,7 +21,7 @@ const authOptions: NextAuthConfig = {
           return null
         }
 
-        let dbUser: { id: string; username: string; password: string; rol: string; activo: boolean } | null = null
+        let dbUser: { id: string; username: string; password: string; rol: string; activo: boolean; nombre: string; apellido: string; mustChangePassword: boolean } | null = null
         let hashToCompare = DUMMY_HASH
 
         try {
@@ -41,10 +41,14 @@ const authOptions: NextAuthConfig = {
         )
 
         if (dbUser && dbUser.activo && valid) {
+          const displayName = dbUser.nombre || dbUser.apellido
+            ? `${dbUser.nombre} ${dbUser.apellido}`.trim()
+            : dbUser.username
           return {
             id: dbUser.id,
-            name: dbUser.username,
+            name: displayName,
             role: dbUser.rol,
+            mustChangePassword: dbUser.mustChangePassword,
           }
         }
 
@@ -59,6 +63,8 @@ const authOptions: NextAuthConfig = {
       if (user) {
         token.sub = user.id
         token.role = (user as User & { role?: string }).role
+        token.displayName = (user as User & { name?: string }).name
+        token.mustChangePassword = (user as User & { mustChangePassword?: boolean }).mustChangePassword
         token.lastVerified = Date.now()
         return token
       }
@@ -71,13 +77,18 @@ const authOptions: NextAuthConfig = {
         try {
           const dbUser = await prisma.user.findUnique({
             where: { id: token.sub as string },
-            select: { rol: true, activo: true },
+            select: { rol: true, activo: true, nombre: true, apellido: true, username: true, mustChangePassword: true },
           })
           if (!dbUser || !dbUser.activo) {
             // Invalidate token by returning empty — forces re-login
             return { ...token, role: undefined, sub: undefined }
           }
           token.role = dbUser.rol
+          token.mustChangePassword = dbUser.mustChangePassword
+          const displayName = dbUser.nombre || dbUser.apellido
+            ? `${dbUser.nombre} ${dbUser.apellido}`.trim()
+            : dbUser.username
+          token.displayName = displayName
           token.lastVerified = Date.now()
         } catch (error) {
           logger.error({ err: error instanceof Error ? error.message : 'Unknown error' }, 'JWT refresh error:')
@@ -88,8 +99,10 @@ const authOptions: NextAuthConfig = {
     },
     async session({ session, token }: { session: Session; token: JWT }) {
       if (session.user && token.sub) {
-        ;(session.user as Session['user'] & { id?: string; role?: string }).id = token.sub as string
-        ;(session.user as Session['user'] & { id?: string; role?: string }).role = token.role as string | undefined
+        ;(session.user as Session['user'] & { id?: string; role?: string; name?: string; mustChangePassword?: boolean }).id = token.sub as string
+        ;(session.user as Session['user'] & { id?: string; role?: string; name?: string; mustChangePassword?: boolean }).role = token.role as string | undefined
+        ;(session.user as Session['user'] & { id?: string; role?: string; name?: string; mustChangePassword?: boolean }).name = token.displayName as string | undefined
+        ;(session.user as Session['user'] & { id?: string; role?: string; name?: string; mustChangePassword?: boolean }).mustChangePassword = token.mustChangePassword as boolean | undefined
       }
       return session
     },
