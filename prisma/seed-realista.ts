@@ -646,12 +646,31 @@ async function main() {
           embarqueId,
           obs: rand(OBS_PEDIDOS),
           repartidor: canal === 'DOMICILIO' ? (embarqueId ? repartidores.find(r => r.id === embarques.find(e => e.id === embarqueId)?.trabajadorId)?.nombre : null) : null,
-          esRecurrente,
-          frecuencia: esRecurrente ? rand(['DIARIO', 'SEMANAL', 'QUINCENAL']) : null,
-          ultimaGeneracion: esRecurrente ? diasAtras(randInt(1, 5)) : null,
           createdById: rand(users).id,
         },
       })
+
+      // Create PlantillaRecurrente for recurrent clients
+      if (esRecurrente) {
+        const prods: Record<string, number> = {}
+        for (const prod of PRODUCTOS) {
+          if ((productosPedido[prod] || 0) > 0) prods[prod] = productosPedido[prod]
+        }
+        const proxGen = new Date(fecha)
+        proxGen.setDate(proxGen.getDate() + 1)
+        await prisma.plantillaRecurrente.create({
+          data: {
+            clienteId: cliente.id,
+            activo: true,
+            cadaNDias: 7,
+            canal,
+            productos: JSON.stringify(prods),
+            ultimaGeneracion: diasAtras(randInt(3, 6)),
+            proxGeneracion: proxGen,
+            createdById: rand(users).id,
+          },
+        })
+      }
 
       // Crear pagos
       for (const pago of pagosData) {

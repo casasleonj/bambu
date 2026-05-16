@@ -93,6 +93,12 @@ vercel --prod
 - Advisory locks (`pg_advisory_lock`) for sequence generation
 - `Decimal` fields for all monetary values (precision matters)
 
+### Proxy (formerly Middleware)
+- Next.js 16 deprecated `middleware.ts` and renamed it to `proxy.ts`.
+- `src/proxy.ts` runs on the Node.js runtime before routes are rendered.
+- It redirects unauthenticated requests to `/login` (with `callbackUrl`), preserving the original path for post-login redirect.
+- It does NOT duplicate rate limiting — that remains inside API routes via `rate-limiter-flexible`.
+
 ### Rate Limiting
 - `rate-limiter-flexible` with Redis support (falls back to in-memory in dev)
 - Auth limit: 10 req/15min in production, 1000 req/min in development
@@ -116,7 +122,7 @@ vercel --prod
 | `docker-compose.yml` | Local PostgreSQL |
 | `prisma/schema.prisma` | PostgreSQL schema (dev + prod) |
 | `prisma/seed.ts` | Initial data seeding |
-| `src/middleware.ts` | Auth + rate limiting |
+| `src/proxy.ts` | Auth redirect + route protection (replaces deprecated middleware.ts) |
 | `src/lib/rate-limit.ts` | Rate limiter (Redis + fallback) |
 | `src/lib/sequence.ts` | PostgreSQL sequence generator |
 | `src/lib/locks.ts` | Advisory locks |

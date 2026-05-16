@@ -28,10 +28,10 @@ async function main() {
   }
 
   const users = [
-    { username: 'admin', password: isDevOrTest ? defaultPasswords.admin : generateRandomPassword(), rol: RolUsuario.ADMIN },
-    { username: 'asistente', password: isDevOrTest ? defaultPasswords.asistente : generateRandomPassword(), rol: RolUsuario.ASISTENTE },
-    { username: 'contador', password: isDevOrTest ? defaultPasswords.contador : generateRandomPassword(), rol: RolUsuario.CONTADOR },
-    { username: 'repartidor', password: isDevOrTest ? defaultPasswords.repartidor : generateRandomPassword(), rol: RolUsuario.REPARTIDOR },
+    { username: 'admin', password: isDevOrTest ? defaultPasswords.admin : generateRandomPassword(), rol: RolUsuario.ADMIN, nombre: 'Administrador', apellido: 'Sistema', mustChangePassword: false },
+    { username: 'asistente', password: isDevOrTest ? defaultPasswords.asistente : generateRandomPassword(), rol: RolUsuario.ASISTENTE, nombre: 'Asistente', apellido: '', mustChangePassword: false },
+    { username: 'contador', password: isDevOrTest ? defaultPasswords.contador : generateRandomPassword(), rol: RolUsuario.CONTADOR, nombre: 'Contador', apellido: '', mustChangePassword: false },
+    { username: 'repartidor', password: isDevOrTest ? defaultPasswords.repartidor : generateRandomPassword(), rol: RolUsuario.REPARTIDOR, nombre: 'Repartidor', apellido: '', mustChangePassword: false },
   ]
 
   for (const user of users) {
