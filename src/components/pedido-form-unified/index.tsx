@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
 import { DEFAULT_PRICES, PRODUCTO_INFO, getProductosForCanal } from '@/lib/prices'
@@ -10,12 +10,35 @@ import type { Cliente, Tier } from './types'
 
 // ==================== TYPES ====================
 
+export interface PedidoInicialCliente {
+  id: string
+  nombre: string
+  telefono: string
+  direccion?: string | null
+  barrio?: string | null
+}
+
+export interface PedidoInicialItem {
+  producto: string
+  cantidad: number
+  precioManual?: number
+}
+
+export interface PedidoInicial {
+  id: string
+  canal: 'PUNTO' | 'DOMICILIO'
+  cliente?: PedidoInicialCliente | null
+  items: PedidoInicialItem[]
+  obs?: string | null
+}
+
 export interface PedidoFormUnifiedProps {
   contexto: 'PUNTO' | 'DOMICILIO'
   precios: Record<string, number>
   clientes: Cliente[]
   onSubmit: (data: PedidoUnifiedData) => void
   onClose?: () => void
+  pedidoInicial?: PedidoInicial
 }
 
 export interface PedidoUnifiedData {
@@ -25,19 +48,22 @@ export interface PedidoUnifiedData {
   preciosManuales: Record<string, number>
   pagos: Array<{ metodo: string; monto: number }>
   obs?: string
-  clienteNuevo?: { nombre: string; telefono: string; direccion: string; barrio?: string }
+  clienteNuevo?: { nombre: string; apellido?: string; telefono: string; direccion: string; barrio?: string }
+  actualizarCliente?: { direccion: string; barrio: string }
   ventaRapida: boolean
+  isEdit?: boolean
+  pedidoId?: string
 }
 
 // ==================== COMPONENTE ====================
 
-export function PedidoFormUnified({ contexto, precios, clientes, onSubmit }: PedidoFormUnifiedProps) {
+export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedidoInicial }: PedidoFormUnifiedProps) {
   const [canal, setCanal] = useState<'PUNTO' | 'DOMICILIO'>(contexto)
   const [cantidades, setCantidades] = useState<Record<string, number>>({})
   const [searchTerm, setSearchTerm] = useState('')
   const [clienteSeleccionado, setClienteSeleccionado] = useState<Cliente | null>(null)
   const [mostrarNuevo, setMostrarNuevo] = useState(false)
-  const [nuevoCliente, setNuevoCliente] = useState({ nombre: '', telefono: '', direccion: '', barrio: '' })
+  const [nuevoCliente, setNuevoCliente] = useState({ nombre: '', apellido: '', telefono: '', direccion: '', barrio: '' })
   const [pagos, setPagos] = useState<{ metodo: string; monto: number }[]>([])
   const [modoPagoActivo, setModoPagoActivo] = useState<string | null>(null)
   const [montoInput, setMontoInput] = useState('')
@@ -46,6 +72,16 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit }: Ped
   const [tablaPrecios, setTablaPrecios] = useState<Record<string, Tier[]>>({})
   const [preciosManuales, setPreciosManuales] = useState<Record<string, number>>({})
   const [observaciones, setObservaciones] = useState('')
+  const [editDireccion, setEditDireccion] = useState('')
+  const [editBarrio, setEditBarrio] = useState('')
+  const resolverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    if (clienteSeleccionado) {
+      setEditDireccion(clienteSeleccionado.direccion || '')
+      setEditBarrio(clienteSeleccionado.barrio || '')
+    }
+  }, [clienteSeleccionado])
 
   const productosActuales = getProductosForCanal(canal)
 
@@ -55,6 +91,27 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit }: Ped
       .then(d => { if (d.tabla) setTablaPrecios(d.tabla) })
       .catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (!pedidoInicial) return
+    setCanal(pedidoInicial.canal)
+    setObservaciones(pedidoInicial.obs || '')
+    if (pedidoInicial.cliente) {
+      setClienteSeleccionado(pedidoInicial.cliente as Cliente)
+    }
+    const items = pedidoInicial.items
+    const cantidadesIniciales: Record<string, number> = {}
+    const manuales: Record<string, number> = {}
+    for (const item of items) {
+      const prodId = Object.keys(PRODUCTO_INFO).find(k => PRODUCTO_INFO[k].codigo === item.producto)
+      if (prodId) {
+        cantidadesIniciales[prodId] = item.cantidad
+        if (item.precioManual) manuales[PRODUCTO_INFO[prodId].codigo] = item.precioManual
+      }
+    }
+    setCantidades(cantidadesIniciales)
+    setPreciosManuales(manuales)
+  }, [pedidoInicial])
 
   const getPrecioBase = (codigo: string): number => {
     if (preciosResueltos[codigo]) return preciosResueltos[codigo]
@@ -117,7 +174,12 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit }: Ped
     const cant = parseInt(value) || 0
     const next = { ...cantidades, [id]: cant }
     setCantidades(next)
-    resolverPrecios(next, canal)
+    if (resolverTimeoutRef.current) {
+      clearTimeout(resolverTimeoutRef.current)
+    }
+    resolverTimeoutRef.current = setTimeout(() => {
+      resolverPrecios(next, canal)
+    }, 400)
   }
 
   const increment = (id: string) => handleCantidadChange(id, String((cantidades[id] || 0) + 1))
@@ -175,16 +237,26 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit }: Ped
       toast.error('Nombre y teléfono son obligatorios')
       return
     }
+    if (canal === 'DOMICILIO') {
+      if (clienteSeleccionado && (!editDireccion || !editBarrio)) {
+        toast.error('Dirección y barrio son obligatorios para envío a domicilio')
+        return
+      }
+      if (mostrarNuevo && (!nuevoCliente.direccion || !nuevoCliente.barrio)) {
+        toast.error('Dirección y barrio son obligatorios para envío a domicilio')
+        return
+      }
+    }
 
     setSubmitting(true)
 
     let clienteId = 'CONSUMIDOR_FINAL'
-    let clienteNuevoData: { nombre: string; telefono: string; direccion: string; barrio?: string } | undefined
+    let clienteNuevoData: { nombre: string; apellido?: string; telefono: string; direccion: string; barrio?: string } | undefined
 
     if (clienteSeleccionado) {
       clienteId = clienteSeleccionado.id
     } else if (mostrarNuevo) {
-      clienteNuevoData = { nombre: nuevoCliente.nombre, telefono: nuevoCliente.telefono, direccion: nuevoCliente.direccion, barrio: nuevoCliente.barrio || undefined }
+      clienteNuevoData = { nombre: nuevoCliente.nombre, apellido: nuevoCliente.apellido || undefined, telefono: nuevoCliente.telefono, direccion: nuevoCliente.direccion, barrio: nuevoCliente.barrio || undefined }
     }
 
     const items = productosActuales
@@ -195,6 +267,11 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit }: Ped
         precioManual: preciosManuales[PRODUCTO_INFO[id].codigo],
       }))
 
+    const actualizarCliente = clienteSeleccionado && canal === 'DOMICILIO' && (
+      editDireccion !== (clienteSeleccionado.direccion || '') ||
+      editBarrio !== (clienteSeleccionado.barrio || '')
+    ) ? { direccion: editDireccion, barrio: editBarrio } : undefined
+
     const data: PedidoUnifiedData = {
       clienteId,
       canal,
@@ -203,7 +280,10 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit }: Ped
       pagos: pagos.filter(p => p.monto > 0),
       obs: observaciones || undefined,
       clienteNuevo: clienteNuevoData,
+      actualizarCliente,
       ventaRapida: canal === 'PUNTO',
+      isEdit: !!pedidoInicial?.id,
+      pedidoId: pedidoInicial?.id,
     }
 
     await onSubmit(data)
@@ -240,14 +320,34 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit }: Ped
         <div className="bg-white border rounded-xl p-4">
           <h3 className="font-semibold text-gray-700 text-sm mb-3">{canal === 'DOMICILIO' ? 'Cliente *' : 'Cliente (opcional)'}</h3>
           {clienteSeleccionado ? (
-            <div className="flex items-center justify-between bg-blue-50 rounded-lg px-3 py-2">
-              <div>
-                <span className="font-medium text-sm">{clienteSeleccionado.nombre}</span>
-                <span className="text-xs text-gray-500 ml-2">{clienteSeleccionado.telefono}</span>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between bg-blue-50 rounded-lg px-3 py-2">
+                <div>
+                  <span className="font-medium text-sm">{clienteSeleccionado.nombre}</span>
+                  <span className="text-xs text-gray-500 ml-2">{clienteSeleccionado.telefono}</span>
+                </div>
+                <button type="button" onClick={() => setClienteSeleccionado(null)} className="text-gray-400 hover:text-red-500">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
               </div>
-              <button type="button" onClick={() => setClienteSeleccionado(null)} className="text-gray-400 hover:text-red-500">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
+              {canal === 'DOMICILIO' && (
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    placeholder="Dirección *"
+                    value={editDireccion}
+                    onChange={(e) => setEditDireccion(e.target.value)}
+                    className="col-span-2 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Barrio *"
+                    value={editBarrio}
+                    onChange={(e) => setEditBarrio(e.target.value)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  />
+                </div>
+              )}
             </div>
           ) : (
             <div className="space-y-2">
@@ -274,6 +374,7 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit }: Ped
               {mostrarNuevo && (
                 <div className="grid grid-cols-2 gap-2">
                   <input placeholder="Nombre *" value={nuevoCliente.nombre} onChange={e => setNuevoCliente(p => ({ ...p, nombre: e.target.value }))} className="px-3 py-2 border rounded-lg text-sm" />
+                  <input placeholder="Apellido" value={nuevoCliente.apellido} onChange={e => setNuevoCliente(p => ({ ...p, apellido: e.target.value }))} className="px-3 py-2 border rounded-lg text-sm" />
                   <input placeholder="Teléfono *" value={nuevoCliente.telefono} onChange={e => setNuevoCliente(p => ({ ...p, telefono: e.target.value }))} className="px-3 py-2 border rounded-lg text-sm" />
                   <input placeholder="Dirección" value={nuevoCliente.direccion} onChange={e => setNuevoCliente(p => ({ ...p, direccion: e.target.value }))} className="px-3 py-2 border rounded-lg text-sm col-span-2" />
                   <input placeholder="Barrio" value={nuevoCliente.barrio} onChange={e => setNuevoCliente(p => ({ ...p, barrio: e.target.value }))} className="px-3 py-2 border rounded-lg text-sm col-span-2" />
@@ -476,7 +577,7 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit }: Ped
               : 'bg-blue-600 hover:bg-blue-700'
           } disabled:opacity-50 disabled:cursor-not-allowed`}
         >
-          {submitting ? 'Procesando...' : canal === 'PUNTO' ? `💰 Cobrar $${total.toLocaleString()}` : `📦 Crear Pedido $${total.toLocaleString()}`}
+          {submitting ? 'Procesando...' : pedidoInicial?.id ? `📝 Actualizar Pedido $${total.toLocaleString()}` : canal === 'PUNTO' ? `💰 Cobrar $${total.toLocaleString()}` : `📦 Crear Pedido $${total.toLocaleString()}`}
         </button>
       </div>
     </form>

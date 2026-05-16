@@ -18,8 +18,6 @@ export const PRODUCTO_ICONOS: Record<string, ProductoIconConfig> = {
   PACA_AGUA: { label: 'Paca Agua', Icon: PacaAguaIcon },
   PACA_HIELO: { label: 'Paca Hielo', Icon: PacaHieloIcon },
   BOTELLON: { label: 'Botellón', Icon: BotellonIcon },
-  BOTELLON_FAB: { label: 'Botellón Fábrica', Icon: BotellonIcon },
-  BOTELLON_DOM: { label: 'Botellón Domicilio', Icon: BotellonIcon },
 }
 
 function FallbackIcon({ size = 24, className }: { size?: number; className?: string }) {

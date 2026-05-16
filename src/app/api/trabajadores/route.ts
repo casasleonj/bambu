@@ -2,7 +2,7 @@ import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
-import { TrabajadorCreateSchema } from '@/lib/validators'
+import { TrabajadorCreateSchema, normalizeTrabajador } from '@/lib/validators'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
@@ -45,18 +45,24 @@ export async function POST(request: NextRequest) {
       return apiError('Datos invalidos', 400, { formErrors: [formatZodError(parsed.error)] })
     }
 
+    const raw = parsed.data
+    const data = normalizeTrabajador(raw)
+
     const trabajador = await prisma.trabajador.create({
       data: {
-        nombre: parsed.data.nombre,
-        rol: parsed.data.rol,
-        tipoPago: parsed.data.tipoPago || 'COMISION',
-        usaMoto: parsed.data.usaMoto || false,
-        capacidadKg: parsed.data.capacidadKg || 500,
-        comPacaAgua: parsed.data.comPacaAgua || 200,
-        comPacaHielo: parsed.data.comPacaHielo || 200,
-        comBotellon: parsed.data.comBotellon || 200,
-        salarioFijo: parsed.data.salarioFijo || 0,
-        telefono: parsed.data.telefono,
+        nombre: data.nombre,
+        rol: data.rol,
+        tipoPago: data.tipoPago ?? 'FIJO',
+        usaMoto: data.usaMoto ?? false,
+        capacidadKg: data.capacidadKg ?? 500,
+        comPacaAgua: data.comPacaAgua ?? 0,
+        comPacaHielo: data.comPacaHielo ?? 0,
+        comBotellon: data.comBotellon ?? 0,
+        comRepartAgua: data.comRepartAgua ?? 0,
+        comRepartHielo: data.comRepartHielo ?? 0,
+        comRepartBotellon: data.comRepartBotellon ?? 0,
+        salarioFijo: data.salarioFijo ?? 0,
+        telefono: data.telefono,
       },
     })
     logAudit({

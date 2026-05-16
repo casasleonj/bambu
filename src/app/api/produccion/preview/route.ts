@@ -31,18 +31,42 @@ export async function GET(request: NextRequest) {
               nombre: true,
               comPacaAgua: true,
               comPacaHielo: true,
+              comRepartAgua: true,
+              comRepartHielo: true,
             },
           },
         },
       }),
     ])
 
-    const repartidores = embarques.map((e) => ({
-      id: e.trabajador.id,
-      nombre: e.trabajador.nombre,
-      comPacaAgua: Number(e.trabajador.comPacaAgua),
-      comPacaHielo: Number(e.trabajador.comPacaHielo),
-    }))
+    // Agrupar entregas por repartidor (pacas asignadas - devueltas - rotas)
+    const repMap = new Map<string, {
+      id: string
+      nombre: string
+      comRepartAgua: number
+      comRepartHielo: number
+      entregasAgua: number
+      entregasHielo: number
+    }>()
+    for (const e of embarques) {
+      const entregasAgua = Math.max(0, e.pacasAgua - e.devueltasAgua - e.rotasAgua)
+      const entregasHielo = Math.max(0, e.pacasHielo - e.devueltasHielo - e.rotasHielo)
+      const existing = repMap.get(e.trabajador.id)
+      if (existing) {
+        existing.entregasAgua += entregasAgua
+        existing.entregasHielo += entregasHielo
+      } else {
+        repMap.set(e.trabajador.id, {
+          id: e.trabajador.id,
+          nombre: e.trabajador.nombre,
+          comRepartAgua: Number(e.trabajador.comRepartAgua || e.trabajador.comPacaAgua),
+          comRepartHielo: Number(e.trabajador.comRepartHielo || e.trabajador.comPacaHielo),
+          entregasAgua,
+          entregasHielo,
+        })
+      }
+    }
+    const repartidores = Array.from(repMap.values())
 
     return apiSuccess({
       stockIniAgua: ultimoCierre?.stockFinAgua || 0,

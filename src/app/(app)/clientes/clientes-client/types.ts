@@ -1,3 +1,9 @@
+export interface ContactoAlternativo {
+  nombre: string
+  telefono: string
+  relacion?: string
+}
+
 export interface Cliente {
   id: string
   clienteId: string
@@ -7,7 +13,9 @@ export interface Cliente {
   nombreNegocio?: string
   tipoNegocio?: string
   barrio?: string
+  linkUbicacion?: string
   direccion?: string
+  contactos?: ContactoAlternativo[]
   frecuencia: string
   cadaNDias?: number
   proxEntrega?: string
@@ -26,6 +34,19 @@ export interface Cliente {
   facturas?: Factura[]
   frecuenciaSugerida?: { dias: number; label: string } | null
   productosSugeridos?: Array<{ codigo: string; nombre: string; frecuencia: number; cantidadPromedio: number }>
+  horaPreferida?: string | null
+  plantillaRecurrente?: {
+    id: string
+    activo: boolean
+    cadaNDias: number
+    horaPreferida: string | null
+    productos: string
+    ultimaGeneracion: string | null
+    proxGeneracion: string | null
+    tipo: string
+    canal: string
+    notas: string | null
+  } | null
 }
 
 export interface PedidoItem {
@@ -91,8 +112,7 @@ export type Canal = 'DOMICILIO' | 'PUNTO'
 export const PRODUCTOS_PRECIO = [
   { codigo: 'PACA_AGUA', nombre: 'Paca Agua', unidad: 'paca' },
   { codigo: 'PACA_HIELO', nombre: 'Paca Hielo', unidad: 'paca' },
-  { codigo: 'BOTELLON_FAB', nombre: 'Botellón Fábrica', unidad: 'und' },
-  { codigo: 'BOTELLON_DOM', nombre: 'Botellón Domicilio', unidad: 'und' },
+  { codigo: 'BOTELLON', nombre: 'Botellón 20LT', unidad: 'und' },
   { codigo: 'BOLSA_AGUA', nombre: 'Bolsa Agua', unidad: 'bolsa' },
   { codigo: 'BOLSA_HIELO', nombre: 'Bolsa Hielo', unidad: 'bolsa' },
 ] as const
@@ -108,6 +128,7 @@ export const PRODUCTO_NOMBRES: Record<string, string> = {
 
 export interface ClientesClientProps {
   initialClientes: Cliente[]
+  openClienteId?: string
 }
 
 export interface FormData {
@@ -118,10 +139,11 @@ export interface FormData {
   tipoNegocio: string
   barrio: string
   direccion: string
-  cadaNDias: number | ''
-  proxEntrega: string
+  linkUbicacion: string
+  contactos: ContactoAlternativo[]
   preciosEspeciales: string
   notas: string
+  horaPreferida: string
 }
 
 export type TimelineEventType =

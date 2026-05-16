@@ -19,6 +19,7 @@ import { calcularAlertas } from './alertas-utils'
 import type { Pedido, Embarque, Cliente } from './types'
 
 const PedidoFormUnified = dynamic(() => import('@/components/pedido-form-unified').then(m => m.PedidoFormUnified), { ssr: false })
+import type { PedidoInicial, PedidoUnifiedData } from '@/components/pedido-form-unified'
 
 export function PedidosClient() {
   const router = useRouter()
@@ -36,9 +37,14 @@ export function PedidosClient() {
   const [embarques, setEmbarques] = useState<Embarque[]>([])
   const [showEmbarqueModal, setShowEmbarqueModal] = useState(false)
   const [selectedPedidoForEmbarque, setSelectedPedidoForEmbarque] = useState<string | null>(null)
+  const [pedidoEditando, setPedidoEditando] = useState<Pedido | null>(null)
   const [selectedEmbarqueId, setSelectedEmbarqueId] = useState('')
-  const [activeTab, setActiveTab] = useState<'hoy' | 'fiados' | 'alertas'>('hoy')
+  const tabFromUrl = searchParams.get('tab')
+  const initialTab = tabFromUrl === 'fiados' || tabFromUrl === 'alertas' ? tabFromUrl : 'hoy'
+  const [activeTab, setActiveTab] = useState<'hoy' | 'fiados' | 'alertas'>(initialTab)
   const [fabOpen, setFabOpen] = useState(false)
+  const [modalKey, setModalKey] = useState(0)
+  const [pedidoInicial, setPedidoInicial] = useState<PedidoInicial | undefined>(undefined)
 
   // Fechas desde URL (fuente de verdad)
   const desdeUrl = searchParams.get('desde')
@@ -116,14 +122,17 @@ export function PedidosClient() {
     }
   }, [])
 
-  async function fetchClientes() {
+  async function fetchClientes(): Promise<Cliente[]> {
     try {
       const res = await fetch('/api/clientes?all=true', { credentials: 'include' })
       const data = await res.json()
-      setClientes(data.clientes || data.data || [])
+      const list = data.clientes || data.data || []
+      setClientes(list)
+      return list
     } catch (error) {
       console.error('Error fetching clientes:', error)
       toast.error('Error cargando clientes')
+      return []
     }
   }
 
@@ -167,26 +176,65 @@ export function PedidosClient() {
 
   // Carga inicial — default a hoy si no hay filtro de fecha
   useEffect(() => {
-    if (!desdeUrl && !hastaUrl) {
-      const hoy = getFechaOffset(0)
-      const params = new URLSearchParams(searchParams.toString())
-      params.set('desde', hoy)
-      params.set('hasta', hoy)
-      router.replace(`?${params.toString()}`, { scroll: false })
-    }
-    fetchPedidos()
-    Promise.all([fetchClientes(), fetchPrecios(), fetchEmbarques()])
+    (async () => {
+      if (!desdeUrl && !hastaUrl) {
+        const hoy = getFechaOffset(0)
+        const params = new URLSearchParams(searchParams.toString())
+        params.set('desde', hoy)
+        params.set('hasta', hoy)
+        router.replace(`?${params.toString()}`, { scroll: false })
+      }
+      await fetchPedidos()
+      const [clientesList] = await Promise.all([fetchClientes(), fetchPrecios(), fetchEmbarques()])
+
+      const clienteId = searchParams.get('cliente')
+      if (clienteId) {
+        const cliente = clientesList.find((c: Cliente) => c.id === clienteId)
+        if (cliente) {
+          setPedidoInicial({
+            id: '',
+            canal: 'DOMICILIO',
+            cliente: {
+              id: cliente.id,
+              nombre: cliente.nombre,
+              telefono: cliente.telefono,
+              direccion: cliente.direccion || null,
+              barrio: cliente.barrio || null,
+            },
+            items: [],
+          })
+          setShowModal(true)
+          setModalKey(k => k + 1)
+        }
+        const params = new URLSearchParams(searchParams.toString())
+        params.delete('cliente')
+        router.replace(`?${params.toString()}`, { scroll: false })
+      }
+    })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
     let isFetching = false
+    const getPollInterval = () => {
+      const conn = (navigator as any).connection
+      if (!conn) return 60000
+      const et = conn.effectiveType // '4g' | '3g' | '2g' | 'slow-2g'
+      if (et === '4g') return 60000
+      if (et === '3g') return 120000
+      // 2g or slow-2g: disable polling, rely on visibilitychange + manual refresh
+      return 0
+    }
+
+    const intervalMs = getPollInterval()
+    if (intervalMs === 0) return // No polling on slow connections
+
     const interval = setInterval(() => {
       if (!isFetching) {
         isFetching = true
         fetchPedidos().finally(() => { isFetching = false })
       }
-      }, 60000) // Poll every 60s instead of 15s — 6 users don't need aggressive polling
+    }, intervalMs)
     return () => clearInterval(interval)
   }, [fetchPedidos])
 
@@ -200,30 +248,58 @@ export function PedidosClient() {
     return () => document.removeEventListener('visibilitychange', handleVisibility)
   }, [fetchPedidos])
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async function handlePedidoSubmit(data: any) {
+  // Sync activeTab with URL query param
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString())
+    const currentTab = params.get('tab')
+    if (activeTab === 'hoy') {
+      if (currentTab) {
+        params.delete('tab')
+        router.replace(`?${params.toString()}`, { scroll: false })
+      }
+    } else if (currentTab !== activeTab) {
+      params.set('tab', activeTab)
+      router.replace(`?${params.toString()}`, { scroll: false })
+    }
+  }, [activeTab, searchParams, router])
+
+  async function handlePedidoSubmit(data: PedidoUnifiedData) {
     try {
-      const res = await fetch('/api/pedidos', {
-        method: 'POST',
+      const isEdit = data.isEdit && data.pedidoId
+      const url = isEdit ? `/api/pedidos/${data.pedidoId}` : '/api/pedidos'
+      const method = isEdit ? 'PUT' : 'POST'
+
+      const body = isEdit
+        ? { items: data.items, obs: data.obs, actualizarCliente: data.actualizarCliente }
+        : data
+
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify(data),
+        body: JSON.stringify(body),
       })
       if (res.ok) {
         setShowModal(false)
         setShowVentaRapida(false)
+        setPedidoInicial(undefined)
+        setPedidoEditando(null)
+        setShowDetailModal(false)
         fetchPedidos()
-        const msg = data.ventaRapida
-          ? (data.pagos?.length === 0 ? `Venta registrada (pendiente)` : `Venta cobrada`)
-          : 'Pedido creado exitosamente'
+        fetchClientes()
+        const msg = isEdit
+          ? 'Pedido actualizado'
+          : data.ventaRapida
+            ? (data.pagos?.length === 0 ? 'Venta registrada (pendiente)' : 'Venta cobrada')
+            : 'Pedido creado exitosamente'
         toast.success(msg)
       } else {
         const err = await res.json()
-        toast.error(err.error?.message || err.error?.formErrors?.[0] || 'Error creando pedido')
+        toast.error(err.error?.message || err.error?.formErrors?.[0] || 'Error al guardar')
       }
     } catch (error) {
-      console.error('Error creating pedido:', error)
-      toast.error('Error creando pedido')
+      console.error('Error saving pedido:', error)
+      toast.error('Error al guardar')
     }
   }
 
@@ -316,6 +392,9 @@ export function PedidosClient() {
   }
 
   function getAlertasPedido(pedido: Pedido): Array<{ tipo: string; label: string; severidad: string }> {
+    // Ventas rápidas anónimas no generan alertas (son transacciones de mostrador, no pedidos con cliente)
+    if (pedido.origen === 'VENTA_RAPIDA' && pedido.clienteId === 'CONSUMIDOR_FINAL') return []
+
     const alertas: Array<{ tipo: string; label: string; severidad: string }> = []
     const hoy = new Date().toISOString().slice(0, 10)
     const pedidoFecha = pedido.fecha?.slice(0, 10)
@@ -613,13 +692,19 @@ export function PedidosClient() {
       {activeTab === 'alertas' && <AlertasTable pedidos={pedidos} />}
 
       {/* Modal Formulario Unificado */}
-      <Modal open={showModal || showVentaRapida} onClose={() => { setShowModal(false); setShowVentaRapida(false) }} className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[95vh] overflow-hidden flex flex-col">
+      <Modal open={showModal || showVentaRapida} onClose={() => { setShowModal(false); setShowVentaRapida(false); setPedidoInicial(undefined) }} className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[95vh] overflow-hidden flex flex-col">
         <div className={`p-4 border-b flex justify-between items-center ${showVentaRapida ? 'bg-green-50' : 'bg-blue-50'}`}>
-          <h2 className={`text-xl font-bold ${showVentaRapida ? 'text-green-800' : 'text-blue-800'}`}>
-            {showVentaRapida ? '💰 Venta Rápida' : '📦 Nuevo Pedido'}
-          </h2>
+          <div>
+            <h2 className={`text-xl font-bold ${showVentaRapida ? 'text-green-800' : 'text-blue-800'}`}>
+              {showVentaRapida ? '💰 Venta Rápida' : '📦 Nuevo Pedido'}
+            </h2>
+            <InfoBanner type="info" className="mt-2 text-xs">
+              <strong>Venta Rápida</strong> = cliente conocido, paga en el momento.
+              <strong> Venta Libre</strong> = consumidor final sin registro (mostrador).
+            </InfoBanner>
+          </div>
           <button
-            onClick={() => { setShowModal(false); setShowVentaRapida(false) }}
+            onClick={() => { setShowModal(false); setShowVentaRapida(false); setPedidoInicial(undefined) }}
             className="text-gray-500 hover:text-gray-700 p-1 rounded-lg hover:bg-gray-100 transition"
             aria-label="Cerrar"
           >
@@ -628,12 +713,13 @@ export function PedidosClient() {
         </div>
         <div className="p-4 overflow-y-auto flex-1">
           <PedidoFormUnified
-            key={`pedido-form-${showVentaRapida ? 'punto' : 'domicilio'}-${showModal || showVentaRapida}`}
+            key={modalKey}
             contexto={showVentaRapida ? 'PUNTO' : 'DOMICILIO'}
             precios={precios}
             clientes={clientes}
             onSubmit={handlePedidoSubmit}
-            onClose={() => { setShowModal(false); setShowVentaRapida(false) }}
+            onClose={() => { setShowModal(false); setShowVentaRapida(false); setPedidoInicial(undefined) }}
+            pedidoInicial={pedidoInicial}
           />
         </div>
       </Modal>
@@ -792,16 +878,14 @@ export function PedidosClient() {
                     const ITEM_BG: Record<string, string> = {
                       PACA_AGUA: 'bg-blue-50',
                       PACA_HIELO: 'bg-cyan-50',
-                      BOTELLON_FAB: 'bg-indigo-50',
-                      BOTELLON_DOM: 'bg-purple-50',
+                      BOTELLON: 'bg-indigo-50',
                       BOLSA_AGUA: 'bg-sky-50',
                       BOLSA_HIELO: 'bg-teal-50',
                     }
                     const legacyMap: Record<string, { cant: number; precio: number }> = {
                       PACA_AGUA: { cant: selectedPedido.cPacaAguaPed, precio: Number(selectedPedido.precioPacaAgua) },
                       PACA_HIELO: { cant: selectedPedido.cPacaHieloPed, precio: Number(selectedPedido.precioPacaHielo) },
-                      BOTELLON_FAB: { cant: selectedPedido.cBotellonFabPed, precio: Number(selectedPedido.precioBotellonFab) },
-                      BOTELLON_DOM: { cant: selectedPedido.cBotellonDomPed, precio: Number(selectedPedido.precioBotellonDom) },
+                      BOTELLON: { cant: (selectedPedido.cBotellonFabPed || 0) + (selectedPedido.cBotellonDomPed || 0), precio: Number(selectedPedido.precioBotellonFab) || Number(selectedPedido.precioBotellonDom) || 0 },
                       BOLSA_AGUA: { cant: selectedPedido.cBolsaAguaPed, precio: Number(selectedPedido.precioBolsaAgua) },
                       BOLSA_HIELO: { cant: selectedPedido.cBolsaHieloPed, precio: Number(selectedPedido.precioBolsaHielo) },
                     }
@@ -897,6 +981,15 @@ export function PedidosClient() {
                   {selectedPedido.estadoEntrega === 'PENDIENTE' && (
                     <>
                       <button
+                        onClick={() => {
+                          setPedidoEditando(selectedPedido)
+                          setShowDetailModal(false)
+                        }}
+                        className="flex-1 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition"
+                      >
+                        ✏️ Editar
+                      </button>
+                      <button
                         onClick={() => cambiarEstado(selectedPedido.id, 'EN_RUTA')}
                         disabled={updatingId === selectedPedido.id}
                         className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition disabled:opacity-50"
@@ -917,7 +1010,7 @@ export function PedidosClient() {
                       <button
                         onClick={() => cambiarEstado(selectedPedido.id, 'ENTREGADO')}
                         disabled={updatingId === selectedPedido.id}
-                        className="flex-1 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition disabled:opacity-50"
+                        className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition disabled:opacity-50"
                       >
                         {updatingId === selectedPedido.id ? 'Entregando...' : '✅ Marcar Entregado'}
                       </button>
@@ -998,6 +1091,59 @@ export function PedidosClient() {
         )}
       </Modal>
 
+      {/* Modal Editar Pedido */}
+      {pedidoEditando && (() => {
+        const itemsArray = pedidoEditando.items && pedidoEditando.items.length > 0
+          ? pedidoEditando.items.map((i: any) => ({
+              producto: i.producto,
+              cantidad: i.cantPedido,
+              precioManual: i.precioManual || undefined,
+            }))
+          : [
+              ...(pedidoEditando.cPacaAguaPed ? [{ producto: 'PACA_AGUA' as const, cantidad: pedidoEditando.cPacaAguaPed }] : []),
+              ...(pedidoEditando.cPacaHieloPed ? [{ producto: 'PACA_HIELO' as const, cantidad: pedidoEditando.cPacaHieloPed }] : []),
+              ...(pedidoEditando.cBotellonFabPed || pedidoEditando.cBotellonDomPed ? [{ producto: 'BOTELLON' as const, cantidad: pedidoEditando.cBotellonFabPed || pedidoEditando.cBotellonDomPed }] : []),
+              ...(pedidoEditando.cBolsaAguaPed ? [{ producto: 'BOLSA_AGUA' as const, cantidad: pedidoEditando.cBolsaAguaPed }] : []),
+              ...(pedidoEditando.cBolsaHieloPed ? [{ producto: 'BOLSA_HIELO' as const, cantidad: pedidoEditando.cBolsaHieloPed }] : []),
+            ]
+
+        return (
+          <Modal open={!!pedidoEditando} onClose={() => setPedidoEditando(null)} className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[95vh] overflow-hidden flex flex-col">
+            <div className="p-4 border-b flex justify-between items-center bg-amber-50">
+              <h2 className="text-xl font-bold text-amber-800">
+                ✏️ Editar Pedido #{pedidoEditando.numero}
+              </h2>
+              <button
+                onClick={() => setPedidoEditando(null)}
+                className="text-gray-500 hover:text-gray-700 p-1 rounded-lg hover:bg-gray-100 transition"
+                aria-label="Cerrar"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1">
+              <PedidoFormUnified
+                key={`edit-${pedidoEditando.id}`}
+                contexto={pedidoEditando.canal as 'PUNTO' | 'DOMICILIO'}
+                precios={precios}
+                clientes={clientes}
+                onSubmit={handlePedidoSubmit}
+                onClose={() => setPedidoEditando(null)}
+                pedidoInicial={{
+                  id: pedidoEditando.id,
+                  canal: pedidoEditando.canal as 'PUNTO' | 'DOMICILIO',
+                  cliente: pedidoEditando.clienteId !== 'CONSUMIDOR_FINAL'
+                    ? { id: pedidoEditando.clienteId, nombre: pedidoEditando.nombreCli, telefono: pedidoEditando.telefonoCli, direccion: pedidoEditando.zonaCli, barrio: pedidoEditando.barrioCli }
+                    : null,
+                  items: itemsArray,
+                  obs: pedidoEditando.obs,
+                }}
+              />
+            </div>
+          </Modal>
+        )
+      })()}
+
       {/* Confirm Modal */}
       {confirmModal}
 
@@ -1012,7 +1158,7 @@ export function PedidosClient() {
           <div className="flex flex-col items-end gap-2 mb-2">
             <Tooltip content="Crea un pedido con cliente, dirección y envío a domicilio" title="Pedido con Envío" position="left">
               <button
-                onClick={() => { setFabOpen(false); setShowModal(true) }}
+                onClick={() => { setFabOpen(false); setShowModal(true); setModalKey(k => k + 1) }}
                 className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 transition text-sm font-medium"
               >
                 <span>📦</span>
@@ -1021,8 +1167,8 @@ export function PedidosClient() {
             </Tooltip>
             <Tooltip content="Venta inmediata en punto de venta sin registro de cliente" title="Venta Rápida" position="left">
               <button
-                onClick={() => { setFabOpen(false); setShowVentaRapida(true) }}
-                className="flex items-center gap-2 px-4 py-2.5 bg-green-600 text-white rounded-full shadow-lg hover:bg-green-700 transition text-sm font-medium"
+                onClick={() => { setFabOpen(false); setShowVentaRapida(true); setModalKey(k => k + 1) }}
+                className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 transition text-sm font-medium"
               >
                 <span>💰</span>
                 <span>Venta Rápida</span>
@@ -1034,7 +1180,7 @@ export function PedidosClient() {
         <button
           onClick={() => setFabOpen((v) => !v)}
           className={`w-14 h-14 flex items-center justify-center rounded-full shadow-xl transition-all duration-200 ${
-            fabOpen ? 'bg-gray-700 rotate-45' : 'bg-green-600 hover:bg-green-700'
+            fabOpen ? 'bg-gray-700 rotate-45' : 'bg-blue-600 hover:bg-blue-700'
           } text-white`}
           aria-label="Acciones rápidas"
         >

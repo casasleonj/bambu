@@ -22,10 +22,16 @@ export async function POST(request: NextRequest) {
       return apiError(formatZodError(parsed.error), 400)
     }
 
-    const { nombre, telefono, direccion, barrio } = parsed.data
+    const { nombre, apellido, telefono, direccion, barrio } = parsed.data
 
     const existing = await prisma.cliente.findFirst({
-      where: { telefono },
+      where: {
+        activo: true,
+        OR: [
+          { telefono },
+          { contactos: { path: ['[*].telefono'], equals: telefono } },
+        ],
+      },
       select: { id: true, nombre: true, telefono: true },
     })
 
@@ -37,6 +43,7 @@ export async function POST(request: NextRequest) {
     const cliente = await prisma.cliente.create({
       data: {
         nombre,
+        apellido,
         telefono,
         direccion,
         barrio: barrio || '',

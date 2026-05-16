@@ -93,7 +93,7 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
     if (tiers && tiers.length > 0) {
       return tiers[0].precio
     }
-    return precios[info.precioKey] || DEFAULT_PRICES[info.precioKey] || 0
+    return precios[info.codigo] || DEFAULT_PRICES[info.codigo] || 0
   }
 
   function getEffectivePrice(codigo: string): number {

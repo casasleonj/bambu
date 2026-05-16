@@ -4,6 +4,7 @@ import InsumosClient from './insumos-client'
 export default async function InsumosPage() {
   const [insumosRaw, proveedoresRaw] = await Promise.all([
     prisma.insumo.findMany({
+      where: { activo: true },
       include: { proveedor: true },
       orderBy: { nombre: 'asc' },
     }),

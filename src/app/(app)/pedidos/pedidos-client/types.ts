@@ -13,6 +13,7 @@ export interface Pedido {
   nombreCli: string
   telefonoCli: string
   zonaCli: string
+  barrioCli: string
   tipo: string
   canal: string
   estado: string
@@ -44,6 +45,8 @@ export interface Pedido {
   total: number
   saldo: number
   fecha: string
+  horaPreferida?: string | null
+  obs?: string | null
   disputaAbierta?: boolean
   promesaPagoFecha?: string
   factura?: {
@@ -75,10 +78,11 @@ export interface Cliente {
   nombre: string
   telefono: string
   direccion?: string
+  barrio?: string
   preciosEspeciales?: string
 }
 
 export const TIPOS = ['ENVIO', 'PUNTO']
-export const ORIGENES = ['PEDIDO', 'VENTA_RAPIDA', 'VENTA_LIBRE']
+export const ORIGENES = ['PEDIDO', 'VENTA_RAPIDA', 'VENTA_LIBRE', 'RECURRENTE']
 export const ESTADOS_ENTREGA = ['PENDIENTE', 'EN_RUTA', 'ENTREGADO', 'NO_ENTREGADO', 'CANCELADO', 'ANULADO']
 export const ESTADOS_PAGO = ['PENDIENTE', 'PARCIAL', 'PAGADO', 'ANTICIPADO', 'VENCIDO']

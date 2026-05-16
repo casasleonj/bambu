@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
+import { formatCurrency } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -43,7 +44,8 @@ export default function ComprasPage() {
     }
   }
 
-  const crearCompra = async () => {
+  const crearCompra = async (e?: React.FormEvent) => {
+    e?.preventDefault()
     if (!proveedorId || !insumoId || !cantidad || !montoTotal) {
       toast.error('Completa todos los campos')
       return
@@ -103,63 +105,65 @@ export default function ComprasPage() {
           <CardHeader>
             <CardTitle>Registrar Compra</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <div>
-              <Label htmlFor="compra-proveedor">Proveedor <span className="text-red-500">*</span></Label>
-              <select
-                id="compra-proveedor"
-                required
-                className="w-full h-10 rounded-md border border-input bg-background px-3 py-2"
-                value={proveedorId}
-                onChange={(e) => setProveedorId(e.target.value)}
-              >
-                <option value="">Seleccionar...</option>
-                {proveedores.map((p) => (
-                  <option key={p.id} value={p.id}>{p.nombre}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <Label htmlFor="compra-insumo">Insumo <span className="text-red-500">*</span></Label>
-              <select
-                id="compra-insumo"
-                required
-                className="w-full h-10 rounded-md border border-input bg-background px-3 py-2"
-                value={insumoId}
-                onChange={(e) => setInsumoId(e.target.value)}
-              >
-                <option value="">Seleccionar...</option>
-                {insumos.map((i) => (
-                  <option key={i.id} value={i.id}>{i.nombre} ({i.unidad})</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <Label htmlFor="compra-cantidad">Cantidad <span className="text-red-500">*</span></Label>
-              <Input
-                id="compra-cantidad"
-                type="number"
-                min="0"
-                required
-                value={cantidad}
-                onChange={(e) => setCantidad(e.target.value)}
-                placeholder="0"
-              />
-            </div>
-            <div>
-              <Label htmlFor="compra-monto">Monto Total <span className="text-red-500">*</span></Label>
-              <Input
-                id="compra-monto"
-                type="number"
-                min="0"
-                required
-                value={montoTotal}
-                onChange={(e) => setMontoTotal(e.target.value)}
-                placeholder="0"
-              />
-            </div>
-            <Button onClick={crearCompra} disabled={submitting || !proveedorId || !insumoId || !cantidad || !montoTotal}>{submitting ? 'Guardando...' : 'Guardar'}</Button>
-          </CardContent>
+          <form onSubmit={crearCompra}>
+            <CardContent className="space-y-3">
+              <div>
+                <Label htmlFor="compra-proveedor">Proveedor <span className="text-red-500">*</span></Label>
+                <select
+                  id="compra-proveedor"
+                  required
+                  className="w-full h-10 rounded-md border border-input bg-background px-3 py-2"
+                  value={proveedorId}
+                  onChange={(e) => setProveedorId(e.target.value)}
+                >
+                  <option value="">Seleccionar...</option>
+                  {proveedores.map((p) => (
+                    <option key={p.id} value={p.id}>{p.nombre}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label htmlFor="compra-insumo">Insumo <span className="text-red-500">*</span></Label>
+                <select
+                  id="compra-insumo"
+                  required
+                  className="w-full h-10 rounded-md border border-input bg-background px-3 py-2"
+                  value={insumoId}
+                  onChange={(e) => setInsumoId(e.target.value)}
+                >
+                  <option value="">Seleccionar...</option>
+                  {insumos.map((i) => (
+                    <option key={i.id} value={i.id}>{i.nombre} ({i.unidad})</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label htmlFor="compra-cantidad">Cantidad <span className="text-red-500">*</span></Label>
+                <Input
+                  id="compra-cantidad"
+                  type="number"
+                  min="0"
+                  required
+                  value={cantidad}
+                  onChange={(e) => setCantidad(e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+              <div>
+                <Label htmlFor="compra-monto">Monto Total <span className="text-red-500">*</span></Label>
+                <Input
+                  id="compra-monto"
+                  type="number"
+                  min="0"
+                  required
+                  value={montoTotal}
+                  onChange={(e) => setMontoTotal(e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+              <Button type="submit" disabled={submitting || !proveedorId || !insumoId || !cantidad || !montoTotal}>{submitting ? 'Guardando...' : 'Guardar'}</Button>
+            </CardContent>
+          </form>
         </Card>
       )}
 
@@ -173,7 +177,7 @@ export default function ComprasPage() {
         <div className="space-y-2">
           <div className="flex justify-between p-3 bg-muted rounded-lg font-bold">
             <span>Total Compras:</span>
-            <span>${totalCompras.toLocaleString()}</span>
+            <span>{formatCurrency(totalCompras)}</span>
           </div>
           {compras.map((compra) => (
             <Card key={compra.id}>
@@ -189,7 +193,7 @@ export default function ComprasPage() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="font-medium">${compra.montoTotal.toLocaleString()}</div>
+                    <div className="font-medium">{formatCurrency(compra.montoTotal)}</div>
                     <div className="text-xs text-muted-foreground">
                       {new Date(compra.fecha).toLocaleDateString()}
                     </div>

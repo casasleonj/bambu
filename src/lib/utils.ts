@@ -19,6 +19,11 @@ export function formatDate(date: Date | string): string {
   }).format(new Date(date))
 }
 
+export function formatLocalDate(dateStr: string): string {
+  const [y, m, d] = dateStr.split('T')[0].split('-').map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString('es-CO')
+}
+
 export function formatZodError(error: ZodError): string {
   const flat = error.flatten()
   const fieldErrors = Object.values(flat.fieldErrors).flat().filter(Boolean)

@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
+import Link from 'next/link'
 import { toast } from 'sonner'
 import { useConfirm } from '@/components/confirm-modal'
-import { formatCurrency } from '@/lib/utils'
-import { Modal } from '@/components/modal'
+import { formatCurrency, formatLocalDate } from '@/lib/utils'
 import { ErrorState } from '@/components/error-state'
 import { SkeletonPage } from '@/components/skeleton'
 import { Tooltip } from '@/components/tooltip'
@@ -21,7 +21,7 @@ import { CasoGuiaModal } from '@/components/caso-guia-modal'
 import type { AlertaTipo } from '@/lib/alertas-config'
 import { getBadgeColor, ignorarAlerta } from '@/lib/alertas-config'
 
-export default function ClientesClient({ initialClientes }: ClientesClientProps) {
+export default function ClientesClient({ initialClientes, openClienteId }: ClientesClientProps) {
   const [clientes, setClientes] = useState<Cliente[]>(initialClientes)
   const { confirm, modal } = useConfirm()
   const [loading, setLoading] = useState(false)
@@ -33,7 +33,9 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
   const [detailLoading, setDetailLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('info')
   const [isEdit, setIsEdit] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
   const [formError, setFormError] = useState('')
+  const [alertasKey, setAlertasKey] = useState(0)
   const [formData, setFormData] = useState<FormData>({
     nombre: '',
     apellido: '',
@@ -42,16 +44,29 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
     tipoNegocio: '',
     barrio: '',
     direccion: '',
-    cadaNDias: '' as number | '',
-    proxEntrega: '',
+    linkUbicacion: '',
+    contactos: [],
     preciosEspeciales: '',
     notas: '',
+    horaPreferida: '',
   })
 
+  const [sortBy, setSortBy] = useState<'nombre' | 'createdAt'>('createdAt')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [guiaTipo, setGuiaTipo] = useState<AlertaTipo | null>(null)
   const [guiaOpen, setGuiaOpen] = useState(false)
   const [casoCreado, setCasoCreado] = useState<any>(null)
   const [usuarios, setUsuarios] = useState<Array<{ id: string; username: string; rol: string }>>([])
+  const [userRole, setUserRole] = useState<string | null>(null)
+
+  const puedeDesactivar = userRole === 'ADMIN' || userRole === 'CONTADOR'
+
+  const alertas = useMemo(() => {
+    if (!selectedCliente) return []
+    return calcularAlertasCliente(selectedCliente, selectedCliente.pedidos || [])
+  }, [selectedCliente])
+
+  const alertasAltas = useMemo(() => alertas.filter((a) => a.severidad === 'ALTA'), [alertas])
 
   useEffect(() => {
     fetch('/api/trabajadores')
@@ -64,7 +79,33 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
           setUsuarios(users)
         }
       })
+    fetch('/api/auth/profile')
+      .then(r => r.json())
+      .then(d => {
+        if (d.success && d.user) setUserRole(d.user.rol)
+      })
   }, [])
+
+  useEffect(() => {
+    if (!openClienteId || clientes.length === 0) return
+    const cliente = clientes.find(c => c.id === openClienteId || c.clienteId === openClienteId)
+    if (cliente) {
+      setSelectedCliente(cliente)
+      setShowDetail(true)
+      setActiveTab('info')
+    }
+  }, [openClienteId, clientes])
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape' && showDetail) {
+        setShowDetail(false)
+        setIsEditing(false)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [showDetail])
 
   const [canalActivo, setCanalActivo] = useState<Canal>('DOMICILIO')
   const [preciosEspecialesMap, setPreciosEspecialesMap] = useState<Record<Canal, Record<string, number | undefined>>>({
@@ -80,10 +121,10 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
     setLoading(true)
     setFetchError(null)
     try {
-      const res = await fetch('/api/clientes')
+      const res = await fetch('/api/clientes?all=true')
       if (!res.ok) throw new Error('Error al cargar clientes')
       const data = await res.json()
-      setClientes(data.clientes || [])
+      setClientes(data.clientes || data.data || [])
     } catch (error) {
       setFetchError('No se pudieron cargar los clientes')
       toast.error('Error cargando clientes')
@@ -150,8 +191,19 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
       c.telefono.includes(term) ||
       c.nombreNegocio?.toLowerCase().includes(term) ||
       c.barrio?.toLowerCase().includes(term) ||
-      c.clienteId.toLowerCase().includes(term)
+      c.clienteId.toLowerCase().includes(term) ||
+      c.contactos?.some(ct =>
+        ct.nombre.toLowerCase().includes(term) ||
+        ct.telefono.includes(term) ||
+        ct.relacion?.toLowerCase().includes(term)
+      )
     )
+  }).sort((a, b) => {
+    const dir = sortDir === 'asc' ? 1 : -1
+    if (sortBy === 'createdAt') {
+      return dir * (new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime())
+    }
+    return dir * a.nombre.localeCompare(b.nombre)
   })
 
   function openCreateModal() {
@@ -163,10 +215,11 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
       tipoNegocio: '',
       barrio: '',
       direccion: '',
-      cadaNDias: '',
-      proxEntrega: '',
+      linkUbicacion: '',
+      contactos: [],
       preciosEspeciales: '',
       notas: '',
+      horaPreferida: '',
     })
     setPreciosEspecialesMap({ DOMICILIO: {}, PUNTO: {} })
     setCanalActivo('DOMICILIO')
@@ -178,7 +231,6 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
 
   function openEditModal() {
     if (!selectedCliente) return
-    setShowDetail(false)
     setFormData({
       nombre: selectedCliente.nombre,
       apellido: selectedCliente.apellido || '',
@@ -187,16 +239,23 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
       tipoNegocio: selectedCliente.tipoNegocio || '',
       barrio: selectedCliente.barrio || '',
       direccion: selectedCliente.direccion || '',
-      cadaNDias: selectedCliente.cadaNDias || '',
-      proxEntrega: selectedCliente.proxEntrega ? new Date(selectedCliente.proxEntrega).toISOString().split('T')[0] : '',
+      linkUbicacion: selectedCliente.linkUbicacion || '',
+      contactos: (selectedCliente.contactos as any[]) || [],
       preciosEspeciales: selectedCliente.preciosEspeciales || '',
       notas: selectedCliente.notas || '',
+      horaPreferida: selectedCliente.horaPreferida || '',
     })
     setPreciosEspecialesMap(parsePreciosEspeciales(selectedCliente.preciosEspeciales))
     setCanalActivo('DOMICILIO')
     setIsEdit(true)
-    setShowModal(true)
+    setIsEditing(true)
     loadPreciosBase()
+  }
+
+  function cancelEdit() {
+    setIsEditing(false)
+    setIsEdit(false)
+    setFormError('')
   }
 
   const [saving, setSaving] = useState(false)
@@ -205,16 +264,30 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
     e.preventDefault()
     setFormError('')
     if (saving) return
+
+    // Validación local antes de enviar
+    if (!formData.nombre.trim()) {
+      setFormError('El nombre es obligatorio')
+      return
+    }
+    if (!formData.telefono.trim()) {
+      setFormError('El teléfono es obligatorio')
+      return
+    }
+    if (!/^[0-9]+$/.test(formData.telefono) || formData.telefono.length < 7) {
+      setFormError('Teléfono inválido: solo números, mínimo 7 dígitos')
+      return
+    }
+
     setSaving(true)
     try {
       const preciosJson = buildPreciosJson()
-      const cadaNDiasNum = formData.cadaNDias === '' ? 0 : formData.cadaNDias
       const body = {
         ...formData,
-        cadaNDias: cadaNDiasNum,
-        frecuencia: 'NINGUNA',
-        proxEntrega: formData.proxEntrega || undefined,
         preciosEspeciales: preciosJson || undefined,
+        horaPreferida: formData.horaPreferida || null,
+        linkUbicacion: formData.linkUbicacion || null,
+        contactos: formData.contactos.filter(c => c.nombre.trim() && c.telefono.trim()),
       }
       if (isEdit && selectedCliente) {
         const res = await fetch(`/api/clientes/${selectedCliente.id}`, {
@@ -224,7 +297,13 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
         })
         if (res.ok) {
           fetchClientes()
-          setShowModal(false)
+          if (isEditing) {
+            setIsEditing(false)
+            setIsEdit(false)
+            viewCliente(selectedCliente.id)
+          } else {
+            setShowModal(false)
+          }
           toast.success('Cliente actualizado')
         } else {
           const data = await res.json().catch(() => ({}))
@@ -332,6 +411,10 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
         onRetry={fetchClientes}
         onCreateClick={openCreateModal}
         onViewCliente={viewCliente}
+        sortBy={sortBy}
+        sortDir={sortDir}
+        onSortChange={(by, dir) => { setSortBy(by); setSortDir(dir) }}
+        selectedClienteId={selectedCliente?.id}
       />
 
       <ClienteForm
@@ -348,22 +431,82 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
         preciosEspecialesMap={preciosEspecialesMap}
         onPrecioEspecialChange={handlePrecioEspecialChange}
         preciosBase={preciosBase}
+        plantillaRecurrente={selectedCliente?.plantillaRecurrente}
       />
 
-      <Modal open={showDetail && !!selectedCliente} onClose={() => setShowDetail(false)} className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-        {detailLoading ? (
-          <div className="p-6 space-y-4">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-full bg-gray-200 animate-pulse" />
-              <div className="space-y-2 flex-1">
-                <div className="h-5 bg-gray-200 rounded w-48 animate-pulse" />
-                <div className="h-3 bg-gray-200 rounded w-24 animate-pulse" />
-              </div>
+      {/* Side Panel for Client Detail */}
+      {showDetail && selectedCliente && (
+        <>
+          {/* Overlay — solo en mobile, desktop permite clic en lista lateral */}
+          <div
+            className="fixed inset-0 bg-black/30 z-40 md:hidden"
+            onClick={() => { setShowDetail(false); setIsEditing(false); }}
+          />
+          {/* Panel */}
+          <div className="fixed inset-y-0 right-0 w-full md:w-[480px] bg-white shadow-xl z-50 flex flex-col overflow-hidden pointer-events-auto">
+            {/* Panel header - mobile grip handle + back button */}
+            <div className="md:hidden flex items-center justify-between px-4 py-2 bg-gray-50 border-b">
+              <button
+                onClick={() => { setShowDetail(false); setIsEditing(false); }}
+                className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                Volver
+              </button>
+              <div className="w-10 h-1 rounded-full bg-gray-300" />
+              <div className="w-16" />
             </div>
-            <div className="h-32 bg-gray-200 rounded-xl animate-pulse" />
-            <div className="h-48 bg-gray-200 rounded-xl animate-pulse" />
-          </div>
-        ) : selectedCliente && (
+
+            {detailLoading ? (
+              <div className="p-6 space-y-4">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-full bg-gray-200 animate-pulse" />
+                  <div className="space-y-2 flex-1">
+                    <div className="h-5 bg-gray-200 rounded w-48 animate-pulse" />
+                    <div className="h-3 bg-gray-200 rounded w-24 animate-pulse" />
+                  </div>
+                </div>
+                <div className="h-32 bg-gray-200 rounded-xl animate-pulse" />
+                <div className="h-48 bg-gray-200 rounded-xl animate-pulse" />
+              </div>
+            ) : isEditing ? (
+              /* Edit mode within panel */
+              <div className="flex flex-col h-full">
+                <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+                  <h2 className="text-lg font-bold text-gray-800">Editar Cliente</h2>
+                  <button onClick={cancelEdit} className="text-gray-400 hover:text-gray-600 p-1">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                <ClienteForm
+                  inline
+                  formId="cliente-form-inline"
+                  isEdit={true}
+                  formData={formData}
+                  onFormDataChange={setFormData}
+                  formError={formError}
+                  saving={saving}
+                  onSubmit={handleSubmit}
+                  canalActivo={canalActivo}
+                  onCanalActivoChange={setCanalActivo}
+                  preciosEspecialesMap={preciosEspecialesMap}
+                  onPrecioEspecialChange={handlePrecioEspecialChange}
+                  preciosBase={preciosBase}
+                  plantillaRecurrente={selectedCliente?.plantillaRecurrente}
+                />
+                <div className="p-4 border-t border-gray-100 bg-gray-50 flex gap-3">
+                  <button type="button" onClick={cancelEdit} className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium">Cancelar</button>
+                  <button type="submit" form="cliente-form-inline" disabled={saving}
+                    className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+                    {saving ? 'Guardando...' : 'Guardar'}
+                  </button>
+                </div>
+              </div>
+            ) : (
           <>
             {/* Header with avatar, name, and quick actions */}
             <div className="p-4 border-b border-gray-100">
@@ -400,7 +543,7 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
               {/* Quick action bar */}
               <div className="flex gap-2 mt-3">
                 <Tooltip content="Crear un pedido para este cliente" position="bottom">
-                  <a
+                  <Link
                     href={`/pedidos?cliente=${selectedCliente.id}`}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-xs font-medium hover:bg-blue-100 transition"
                   >
@@ -408,7 +551,7 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                     </svg>
                     Crear Pedido
-                  </a>
+                  </Link>
                 </Tooltip>
                 <Tooltip content="Llamar al cliente" position="bottom">
                   <a
@@ -434,6 +577,33 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
                 </Tooltip>
               </div>
             </div>
+
+            {/* Recurring orders banner */}
+            {selectedCliente.plantillaRecurrente?.activo && (
+              <Link
+                href={`/recurrentes/${selectedCliente.plantillaRecurrente.id}`}
+                className="block px-4 py-3 bg-indigo-50 border-b border-indigo-100 cursor-pointer hover:bg-indigo-100 transition"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    <div>
+                      <p className="text-sm font-semibold text-indigo-800">
+                        Pedidos recurrentes activos — cada {selectedCliente.plantillaRecurrente.cadaNDias} días
+                      </p>
+                      {selectedCliente.plantillaRecurrente.proxGeneracion && (
+                        <p className="text-xs text-indigo-600">
+                          Próxima generación: {formatLocalDate(selectedCliente.plantillaRecurrente.proxGeneracion)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <span className="text-xs font-medium text-indigo-600 hover:underline">Gestionar →</span>
+                </div>
+              </Link>
+            )}
 
             {/* Status banners */}
             {selectedCliente.saldoPendiente && selectedCliente.saldoPendiente > 0 && (
@@ -484,44 +654,39 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
             )}
 
             {/* Alertas del cliente */}
-            {(() => {
-              const alertas = calcularAlertasCliente(selectedCliente, selectedCliente.pedidos || [])
-              const altas = alertas.filter((a) => a.severidad === 'ALTA')
-              if (alertas.length === 0) return null
-              return (
-                <div className={`px-4 py-3 border-b ${altas.length > 0 ? 'bg-red-50 border-red-100' : 'bg-amber-50 border-amber-100'}`}>
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <svg className={`w-4 h-4 ${altas.length > 0 ? 'text-red-500' : 'text-amber-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                      </svg>
-                      <span className={`text-sm font-bold ${altas.length > 0 ? 'text-red-700' : 'text-amber-700'}`}>
-                        {alertas.length} alerta{alertas.length !== 1 ? 's' : ''} activa{alertas.length !== 1 ? 's' : ''}
-                        {altas.length > 0 && ` (${altas.length} crítica${altas.length !== 1 ? 's' : ''})`}
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => setActiveTab('alertas')}
-                      className={`text-xs font-medium underline ${altas.length > 0 ? 'text-red-600' : 'text-amber-600'}`}
-                    >
-                      Ver todas →
-                    </button>
+            {alertas.length > 0 && (
+              <div className={`px-4 py-3 border-b ${alertasAltas.length > 0 ? 'bg-red-50 border-red-100' : 'bg-amber-50 border-amber-100'}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <svg className={`w-4 h-4 ${alertasAltas.length > 0 ? 'text-red-500' : 'text-amber-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                    </svg>
+                    <span className={`text-sm font-bold ${alertasAltas.length > 0 ? 'text-red-700' : 'text-amber-700'}`}>
+                      {alertas.length} alerta{alertas.length !== 1 ? 's' : ''} activa{alertas.length !== 1 ? 's' : ''}
+                      {alertasAltas.length > 0 && ` (${alertasAltas.length} crítica${alertasAltas.length !== 1 ? 's' : ''})`}
+                    </span>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    {altas.slice(0, 3).map((a, i) => (
-                      <span key={i} className="inline-flex items-center gap-1 px-2 py-1 rounded bg-red-100 text-red-700 text-xs font-medium border border-red-200">
-                        {a.detalle}
-                      </span>
-                    ))}
-                  </div>
+                  <button
+                    onClick={() => setActiveTab('alertas')}
+                    className={`text-xs font-medium underline ${alertasAltas.length > 0 ? 'text-red-600' : 'text-amber-600'}`}
+                  >
+                    Ver todas →
+                  </button>
                 </div>
-              )
-            })()}
+                <div className="flex flex-wrap gap-2">
+                  {alertasAltas.slice(0, 3).map((a, i) => (
+                    <span key={i} className="inline-flex items-center gap-1 px-2 py-1 rounded bg-red-100 text-red-700 text-xs font-medium border border-red-200">
+                      {a.detalle}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Tabs */}
-            <div className="flex border-b border-gray-100">
+            <div className="flex border-b border-gray-100 overflow-x-auto">
               {[
-                { key: 'info', label: 'Información', icon: (
+                { key: 'info', label: 'Info', icon: (
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
@@ -531,7 +696,7 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 )},
-                { key: 'stats', label: 'Estadísticas', icon: (
+                { key: 'stats', label: 'Stats', icon: (
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                   </svg>
@@ -545,22 +710,19 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
                 <button
                   key={tab.key}
                   onClick={() => setActiveTab(tab.key)}
-                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-3 text-xs sm:text-sm font-medium transition ${
+                  className={`flex items-center justify-center gap-1 px-3 py-2.5 text-xs font-medium whitespace-nowrap transition min-w-0 ${
                     activeTab === tab.key
                       ? 'border-b-2 border-blue-600 text-blue-600'
                       : 'text-gray-500 hover:text-gray-700'
                   }`}
                 >
                   {tab.icon}
-                  <span className="hidden sm:inline">{tab.label}</span>
-                  {tab.key === 'alertas' && (() => {
-                    const count = calcularAlertasCliente(selectedCliente, selectedCliente.pedidos || []).length
-                    return count > 0 ? (
-                      <span className="ml-0.5 px-1.5 py-0.5 bg-red-100 text-red-700 text-[10px] rounded-full font-bold">
-                        {count}
-                      </span>
-                    ) : null
-                  })()}
+                  <span>{tab.label}</span>
+                  {tab.key === 'alertas' && alertas.length > 0 && (
+                    <span className="px-1.5 py-0.5 bg-red-100 text-red-700 text-[10px] rounded-full font-bold">
+                      {alertas.length}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
@@ -578,16 +740,27 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
                       Contacto
                     </h3>
                     <div className="bg-gray-50 rounded-xl p-4 space-y-3">
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
                           <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
                           </svg>
                           <span className="text-sm text-gray-500">Teléfono</span>
                         </div>
-                        <a href={`tel:${selectedCliente.telefono}`} className="font-medium text-blue-600 hover:underline">
-                          {selectedCliente.telefono}
-                        </a>
+                        <div className="flex items-center gap-2">
+                          <a href={`tel:${selectedCliente.telefono}`} className="font-medium text-blue-600 hover:underline">
+                            {selectedCliente.telefono}
+                          </a>
+                          <button
+                            onClick={() => { navigator.clipboard.writeText(selectedCliente.telefono); toast.success('Teléfono copiado') }}
+                            className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded transition"
+                            aria-label="Copiar teléfono"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                            </svg>
+                          </button>
+                        </div>
                       </div>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -597,17 +770,102 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
                           </svg>
                           <span className="text-sm text-gray-500">Zona</span>
                         </div>
-                        <span className="font-medium">{selectedCliente.barrio || '-'}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{selectedCliente.barrio || '-'}</span>
+                          {selectedCliente.linkUbicacion && (
+                            <span className="text-blue-500 text-xs" title="Tiene ubicación en mapa">📍</span>
+                          )}
+                        </div>
                       </div>
-                      {selectedCliente.direccion && (
+                      {selectedCliente.linkUbicacion && (
                         <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" />
+                              <circle cx="12" cy="9" r="2.5" />
+                            </svg>
+                            <span className="text-sm text-gray-500">Mapa</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <a
+                              href={selectedCliente.linkUbicacion}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-xs font-medium hover:bg-blue-100 transition"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                              </svg>
+                              Abrir en Maps
+                            </a>
+                            <button
+                              onClick={() => { navigator.clipboard.writeText(selectedCliente.linkUbicacion || ''); toast.success('Link copiado') }}
+                              className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded transition"
+                              aria-label="Copiar link"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {selectedCliente.direccion && (
+                        <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2">
                             <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
                             </svg>
                             <span className="text-sm text-gray-500">Dirección</span>
                           </div>
-                          <span className="font-medium text-right max-w-[60%]">{selectedCliente.direccion}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-right max-w-[60%]">{selectedCliente.direccion}</span>
+                            <button
+                              onClick={() => { navigator.clipboard.writeText(selectedCliente.direccion || ''); toast.success('Dirección copiada') }}
+                              className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded transition shrink-0"
+                              aria-label="Copiar dirección"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {selectedCliente.contactos && selectedCliente.contactos.length > 0 && (
+                        <div className="pt-3 border-t border-gray-200">
+                          <p className="text-xs font-semibold text-gray-400 uppercase mb-2">Contactos adicionales</p>
+                          <div className="space-y-2">
+                            {(selectedCliente.contactos as any[]).map((contacto, idx) => (
+                              <div key={idx} className="flex items-center justify-between gap-2 bg-white rounded-lg p-2 border border-gray-100">
+                                <div className="min-w-0">
+                                  <p className="text-sm font-medium text-gray-700 truncate">{contacto.nombre}</p>
+                                  {contacto.relacion && <p className="text-xs text-gray-400">{contacto.relacion}</p>}
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <a
+                                    href={`tel:${contacto.telefono}`}
+                                    className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
+                                    aria-label={`Llamar a ${contacto.nombre}`}
+                                  >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                                    </svg>
+                                  </a>
+                                  <button
+                                    onClick={() => { navigator.clipboard.writeText(contacto.telefono); toast.success('Teléfono copiado') }}
+                                    className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded transition"
+                                    aria-label="Copiar teléfono"
+                                  >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                    </svg>
+                                  </button>
+                                  <span className="text-xs text-gray-500 font-mono ml-1">{contacto.telefono}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -633,17 +891,25 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-gray-500">Frecuencia</span>
                         <span className="font-medium">
-                          {selectedCliente.cadaNDias && selectedCliente.cadaNDias > 0
-                            ? <span className="text-green-600">Cada {selectedCliente.cadaNDias} días</span>
-                            : <span className="text-gray-400">Sin frecuencia</span>
-                          }
+                          {selectedCliente.plantillaRecurrente?.activo ? (
+                            <span className="text-indigo-600 flex items-center gap-1">
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                              </svg>
+                              Cada {selectedCliente.plantillaRecurrente.cadaNDias} días
+                            </span>
+                          ) : selectedCliente.cadaNDias && selectedCliente.cadaNDias > 0 ? (
+                            <span className="text-green-600">Cada {selectedCliente.cadaNDias} días</span>
+                          ) : (
+                            <span className="text-gray-400">Sin frecuencia</span>
+                          )}
                         </span>
                       </div>
                       {selectedCliente.proxEntrega && (
                         <div className="flex items-center justify-between">
                           <span className="text-sm text-gray-500">Próxima entrega</span>
                           <span className="font-medium text-blue-600">
-                            {new Date(selectedCliente.proxEntrega).toLocaleDateString('es-CO')}
+                            {formatLocalDate(selectedCliente.proxEntrega)}
                           </span>
                         </div>
                       )}
@@ -722,23 +988,19 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
               {activeTab === 'stats' && <ClienteStats clienteId={selectedCliente.id} />}
 
               {activeTab === 'alertas' && (
-                <div className="space-y-3">
-                  {(() => {
-                    const alertas = calcularAlertasCliente(selectedCliente, selectedCliente.pedidos || [])
-                    if (alertas.length === 0) {
-                      return (
-                        <div className="text-center py-8">
-                          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                          </div>
-                          <p className="text-gray-500 font-medium">Sin alertas activas</p>
-                          <p className="text-sm text-gray-400 mt-1">Este cliente no tiene comportamientos inusuales detectados.</p>
-                        </div>
-                      )
-                    }
-                    return alertas.map((alerta, idx) => (
+                <div key={alertasKey} className="space-y-3">
+                  {alertas.length === 0 ? (
+                    <div className="text-center py-8">
+                      <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </div>
+                      <p className="text-gray-500 font-medium">Sin alertas activas</p>
+                      <p className="text-sm text-gray-400 mt-1">Este cliente no tiene comportamientos inusuales detectados.</p>
+                    </div>
+                  ) : (
+                    alertas.map((alerta, idx) => (
                       <div key={idx} className="bg-white border rounded-xl p-4 hover:shadow-sm transition">
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex-1 min-w-0">
@@ -794,7 +1056,7 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
                             </button>
                             {alerta.severidad !== 'ALTA' && (
                               <button
-                                onClick={() => { ignorarAlerta(selectedCliente.id, alerta.tipo); toast.success('Alerta ignorada 24h'); setActiveTab('info'); setActiveTab('alertas') }}
+                                onClick={() => { ignorarAlerta(selectedCliente.id, alerta.tipo); toast.success('Alerta ignorada 24h'); setAlertasKey(k => k + 1) }}
                                 className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded transition"
                               >
                                 Ignorar 24h
@@ -804,20 +1066,14 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
                         </div>
                       </div>
                     ))
-                  })()}
+                  )}
                 </div>
               )}
             </div>
 
             {/* Footer actions */}
-            <div className="p-4 border-t border-gray-100 bg-gray-50">
-              <div className="flex gap-2">
-                <button
-                  onClick={openEditModal}
-                  className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium transition shadow-sm"
-                >
-                  Editar Cliente
-                </button>
+            <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-2">
+              {puedeDesactivar && (
                 <Tooltip content="Desactivar cliente (no se podrán crear pedidos)" position="top">
                   <button
                     onClick={() => handleDelete(selectedCliente.id)}
@@ -828,11 +1084,13 @@ export default function ClientesClient({ initialClientes }: ClientesClientProps)
                     </svg>
                   </button>
                 </Tooltip>
-              </div>
+              )}
             </div>
           </>
-        )}
-      </Modal>
+            )}
+          </div>
+        </>
+      )}
       <GuiaAlertaModal
         tipo={guiaTipo}
         open={guiaOpen}

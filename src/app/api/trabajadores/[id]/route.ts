@@ -2,7 +2,7 @@ import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
-import { TrabajadorUpdateSchema } from '@/lib/validators'
+import { TrabajadorUpdateSchema, normalizeTrabajador } from '@/lib/validators'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 
@@ -18,9 +18,16 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (!parsed.success) {
       return apiError('Datos invalidos', 400, { formErrors: [formatZodError(parsed.error)] })
     }
+    const raw = parsed.data
+    const data = normalizeTrabajador(raw)
     const trabajador = await prisma.trabajador.update({
       where: { id },
-      data: parsed.data,
+      data: {
+        ...data,
+        comRepartAgua: data.comRepartAgua ?? 0,
+        comRepartHielo: data.comRepartHielo ?? 0,
+        comRepartBotellon: data.comRepartBotellon ?? 0,
+      },
     })
 
     logAudit({

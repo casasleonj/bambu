@@ -48,9 +48,14 @@ export const PedidoCreateSchema = z.object({
   }).optional(),
   clienteNuevo: z.object({
     nombre: z.string().min(1),
+    apellido: z.string().optional(),
     telefono: z.string().min(1),
     direccion: z.string().optional(),
     barrio: z.string().optional(),
+  }).optional(),
+  actualizarCliente: z.object({
+    direccion: z.string().min(1),
+    barrio: z.string().min(1),
   }).optional(),
 });
 
@@ -122,6 +127,11 @@ export const PedidoUpdateSchema = z.object({
   estadoEntrega: EstadoEntregaSchema.optional(),
   estadoPago: EstadoPagoSchema.optional(),
   promesaPagoFecha: z.string().optional(),
+  obs: z.string().max(500).optional().nullable(),
+  actualizarCliente: z.object({
+    direccion: z.string().min(1),
+    barrio: z.string().min(1),
+  }).optional(),
   items: z.array(PedidoItemSchema).optional(),
 })
 
@@ -131,9 +141,16 @@ export const PedidoUpdateSchema = z.object({
 
 export const ClienteQuickCreateSchema = z.object({
   nombre: z.string().min(2, 'Nombre requerido'),
+  apellido: z.string().optional(),
   telefono: z.string().min(7, 'Celular requerido'),
   direccion: z.string().min(3, 'Dirección requerida'),
   barrio: z.string().optional(),
+})
+
+export const ContactoAlternativoSchema = z.object({
+  nombre: z.string().min(1, 'Nombre requerido'),
+  telefono: z.string().min(7, 'Teléfono inválido'),
+  relacion: z.string().optional(),
 })
 
 export const ClienteCreateSchema = z.object({
@@ -147,10 +164,11 @@ export const ClienteCreateSchema = z.object({
   ),
   barrio: z.string().max(100).optional(),
   direccion: z.string().max(200).optional(),
-  frecuencia: z.enum(['DIARIO', 'SEMANAL', 'QUINCENAL', 'MENSUAL', 'NINGUNA']).optional(),
-  cadaNDias: z.coerce.number().int().min(0).optional().transform(v => v === 0 ? undefined : v),
+  linkUbicacion: z.string().url().optional().nullable(),
+  contactos: z.array(ContactoAlternativoSchema).optional().default([]),
   preciosEspeciales: z.string().optional(),
   notas: z.string().max(500).optional(),
+  horaPreferida: z.string().regex(/^\d{2}:\d{2}$/, 'Formato HH:mm').optional().nullable(),
 });
 
 export const ClienteUpdateSchema = ClienteCreateSchema.partial();
@@ -182,8 +200,10 @@ export const InsumoCreateSchema = z.object({
   stock: z.coerce.number().min(0).optional(),
   stockMin: z.coerce.number().min(0).optional(),
   precioUnit: z.coerce.number().min(0).optional(),
-  proveedorId: z.string().min(1).optional(),
+  proveedorId: z.string().min(1).nullish(),
 });
+
+export const InsumoUpdateSchema = InsumoCreateSchema.partial();
 
 export const CompraCreateSchema = z.object({
   proveedorId: z.string().min(1),
@@ -214,8 +234,8 @@ export const ProduccionCreateSchema = z.object({
 
 export const NominaCreateSchema = z.object({
   trabajadorId: z.string().min(1),
-  fechaInicio: z.string(),
-  fechaFin: z.string(),
+  fechaInicio: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato inválido, use YYYY-MM-DD'),
+  fechaFin: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato inválido, use YYYY-MM-DD'),
   tipoCalculo: z.enum(['AUTO', 'MANUAL']).optional(),
   comEntregasAgua: z.coerce.number().min(0).optional(),
   comEntregasHielo: z.coerce.number().min(0).optional(),
@@ -223,6 +243,9 @@ export const NominaCreateSchema = z.object({
   totalComisiones: z.coerce.number().min(0).optional(),
   salario: z.coerce.number().min(0).optional(),
   total: z.coerce.number().positive().optional(),
+}).refine((data) => data.fechaFin >= data.fechaInicio, {
+  message: 'La fecha fin debe ser posterior o igual a la fecha inicio',
+  path: ['fechaFin'],
 });
 
 export const CierreCreateSchema = z.object({
@@ -294,16 +317,27 @@ export const FacturaCreateSchema = z.object({
   clienteId: z.string().min(1),
 });
 
+export const ResumenFacturasQuerySchema = z.object({
+  clienteId: z.string().min(1),
+  desde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato inválido, use YYYY-MM-DD'),
+  hasta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato inválido, use YYYY-MM-DD'),
+}).refine((data) => data.hasta >= data.desde, {
+  message: 'La fecha hasta debe ser posterior o igual a la fecha desde',
+  path: ['hasta'],
+});
+
 export const ProveedorCreateSchema = z.object({
   nombre: z.string().min(1).max(100),
   telefono: z.string().max(20).optional(),
   email: z.string().email().optional(),
   direccion: z.string().max(200).optional(),
+  tipoProducto: z.string().max(100).optional(),
+  observaciones: z.string().max(500).optional(),
 });
 
 export const ProveedorUpdateSchema = ProveedorCreateSchema.partial();
 
-const TrabajadorBaseSchema = z.object({
+const TrabajadorBaseObject = z.object({
   nombre: z.string().min(1).max(100),
   rol: z.enum(['SELLADOR', 'REPARTIDOR', 'ADMIN', 'CONTADOR']),
   tipoPago: z.enum(['COMISION', 'FIJO', 'MIXTO']).optional(),
@@ -312,16 +346,32 @@ const TrabajadorBaseSchema = z.object({
   comPacaAgua: z.coerce.number().min(0).optional(),
   comPacaHielo: z.coerce.number().min(0).optional(),
   comBotellon: z.coerce.number().min(0).optional(),
+  comRepartAgua: z.coerce.number().min(0).optional(),
+  comRepartHielo: z.coerce.number().min(0).optional(),
+  comRepartBotellon: z.coerce.number().min(0).optional(),
   salarioFijo: z.coerce.number().min(0).optional(),
   telefono: z.string().max(20).optional(),
 })
 
-export const TrabajadorCreateSchema = TrabajadorBaseSchema.refine(
+export function normalizeTrabajador<T extends { usaMoto?: boolean | null; tipoPago?: string; comPacaAgua?: number; comPacaHielo?: number; comBotellon?: number; comRepartAgua?: number; comRepartHielo?: number; comRepartBotellon?: number }>(data: T): T {
+  if (!data.usaMoto) {
+    return {
+      ...data,
+      tipoPago: 'FIJO',
+      comRepartAgua: 0,
+      comRepartHielo: 0,
+      comRepartBotellon: 0,
+    }
+  }
+  return data
+}
+
+export const TrabajadorCreateSchema = TrabajadorBaseObject.refine(
   (data) => !(data.usaMoto && (!data.capacidadKg || data.capacidadKg <= 0)),
   { message: 'Capacidad es requerida cuando usa moto', path: ['capacidadKg'] }
 )
 
-export const TrabajadorUpdateSchema = TrabajadorBaseSchema.partial()
+export const TrabajadorUpdateSchema = TrabajadorBaseObject.partial()
 
 // ====================
 // PAGAR FIADO
@@ -331,4 +381,56 @@ export const PagarFiadoSchema = z.object({
   clienteId: z.string().min(1),
   monto: z.coerce.number().positive('El monto debe ser mayor a 0'),
   metodo: z.enum(['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA', 'BONO']),
+})
+
+// ====================
+// USUARIOS / PERFIL
+// ====================
+
+export const ProfileUpdateSchema = z.object({
+  username: z.string().min(3, 'Usuario debe tener al menos 3 caracteres').max(50).optional(),
+  nombre: z.string().min(1, 'Nombre requerido').max(100).optional(),
+  apellido: z.string().max(100).optional(),
+  currentPassword: z.string().optional(),
+  newPassword: z.string().min(6, 'Contraseña debe tener al menos 6 caracteres').optional(),
+  confirmNewPassword: z.string().optional(),
+}).refine(
+  (data) => {
+    if (data.newPassword || data.confirmNewPassword) {
+      return !!data.currentPassword
+    }
+    return true
+  },
+  { message: 'Contraseña actual requerida para cambiar contraseña', path: ['currentPassword'] }
+).refine(
+  (data) => {
+    if (data.newPassword && data.confirmNewPassword) {
+      return data.newPassword === data.confirmNewPassword
+    }
+    return true
+  },
+  { message: 'Las contraseñas nuevas no coinciden', path: ['confirmNewPassword'] }
+).refine(
+  (data) => {
+    if (data.newPassword && !data.confirmNewPassword) return false
+    return true
+  },
+  { message: 'Confirma la nueva contraseña', path: ['confirmNewPassword'] }
+)
+
+export const UserCreateSchema = z.object({
+  username: z.string().min(3, 'Usuario debe tener al menos 3 caracteres').max(50),
+  password: z.string().min(6, 'Contraseña debe tener al menos 6 caracteres'),
+  rol: z.enum(['ADMIN', 'ASISTENTE', 'CONTADOR', 'REPARTIDOR', 'SELLADOR']),
+  nombre: z.string().min(1, 'Nombre requerido').max(100),
+  apellido: z.string().max(100),
+})
+
+export const UserUpdateSchema = z.object({
+  username: z.string().min(3, 'Usuario debe tener al menos 3 caracteres').max(50).optional(),
+  rol: z.enum(['ADMIN', 'ASISTENTE', 'CONTADOR', 'REPARTIDOR', 'SELLADOR']).optional(),
+  activo: z.boolean().optional(),
+  password: z.string().min(6, 'Contraseña debe tener al menos 6 caracteres').optional(),
+  nombre: z.string().min(1, 'Nombre requerido').max(100).optional(),
+  apellido: z.string().max(100).optional(),
 })

@@ -31,7 +31,7 @@ export interface Pedido {
 export interface Embarque {
   id: string
   numero: number
-  trabajador: { nombre: string }
+  trabajador: { nombre: string; comPacaAgua?: number; comPacaHielo?: number; comBotellon?: number; comRepartAgua?: number; comRepartHielo?: number; comRepartBotellon?: number }
   ruta?: { nombre: string } | null
   pedidos: Pedido[]
   totalPacas?: number

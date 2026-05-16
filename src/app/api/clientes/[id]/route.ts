@@ -22,12 +22,13 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         },
         facturas: { orderBy: { fecha: 'desc' }, take: 20 },
         _count: { select: { pedidos: true } },
+        plantillaRecurrente: true,
       },
     })
     if (!cliente) return apiError('Not found', 404)
 
     // Calculate consumption pattern from last 10 delivered orders
-    const pedidosEntregados = cliente.pedidos.filter(p => p.estado === 'ENTREGADO').slice(0, 10)
+    const pedidosEntregados = cliente.pedidos.filter(p => p.estado === 'ENTREGADO' || p.estadoEntrega === 'ENTREGADO').slice(0, 10)
     let frecuenciaSugerida: { dias: number; label: string } | null = null
     let productosSugeridos: Array<{ codigo: string; nombre: string; frecuencia: number; cantidadPromedio: number }> = []
 

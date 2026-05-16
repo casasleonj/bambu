@@ -7,7 +7,7 @@ import { Modal } from '@/components/modal'
 import { offlineDb, queuePedidoOffline } from '@/lib/db/offline'
 import { syncWithServer, isOnline } from '@/lib/db/sync'
 import { logger } from '@/lib/logger'
-import { PRODUCTO_INFO } from '@/lib/prices'
+import { PRODUCTO_INFO, DEFAULT_PRICES } from '@/lib/prices'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
 
 interface RepartidorClientProps {
@@ -132,13 +132,7 @@ export function RepartidorClient({ trabajador, embarque }: RepartidorClientProps
   const calcularTotal = () => {
     return Object.entries(cantidades).reduce((sum, [prod, cant]) => {
       if (cant <= 0) return sum
-      const precio = PRODUCTO_INFO[Object.keys(PRODUCTO_INFO).find(k => PRODUCTO_INFO[k].codigo === prod) as string]?.precioKey
-        ? (() => {
-            // Use default price for quick calc; server resolves actual price
-            const map: Record<string, number> = { PACA_AGUA: 6500, PACA_HIELO: 8000, BOTELLON_FAB: 7500, BOTELLON_DOM: 10000, BOLSA_AGUA: 2500, BOLSA_HIELO: 3000 }
-            return map[prod] || 0
-          })()
-        : 0
+      const precio = DEFAULT_PRICES[prod] || 0
       return sum + cant * precio
     }, 0)
   }
@@ -249,8 +243,8 @@ export function RepartidorClient({ trabajador, embarque }: RepartidorClientProps
     const legacy: { producto: string; cantPedido: number }[] = []
     if (pedido.cPacaAguaPed > 0) legacy.push({ producto: 'PACA_AGUA', cantPedido: pedido.cPacaAguaPed })
     if (pedido.cPacaHieloPed > 0) legacy.push({ producto: 'PACA_HIELO', cantPedido: pedido.cPacaHieloPed })
-    if (pedido.cBotellonFabPed > 0) legacy.push({ producto: 'BOTELLON_FAB', cantPedido: pedido.cBotellonFabPed })
-    if (pedido.cBotellonDomPed > 0) legacy.push({ producto: 'BOTELLON_DOM', cantPedido: pedido.cBotellonDomPed })
+    const botellonTotal = (pedido.cBotellonFabPed || 0) + (pedido.cBotellonDomPed || 0)
+    if (botellonTotal > 0) legacy.push({ producto: 'BOTELLON', cantPedido: botellonTotal })
     if (pedido.cBolsaAguaPed > 0) legacy.push({ producto: 'BOLSA_AGUA', cantPedido: pedido.cBolsaAguaPed })
     if (pedido.cBolsaHieloPed > 0) legacy.push({ producto: 'BOLSA_HIELO', cantPedido: pedido.cBolsaHieloPed })
     return legacy

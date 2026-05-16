@@ -26,7 +26,7 @@ export interface VentaRapidaItem {
 
 export interface VentaRapidaData {
   clienteId?: string
-  clienteNuevo?: { nombre: string; telefono: string; direccion: string; barrio?: string }
+  clienteNuevo?: { nombre: string; apellido?: string; telefono: string; direccion: string; barrio?: string }
   tipo: 'PUNTO' | 'ENVIO'
   canal: 'PUNTO' | 'DOMICILIO'
   ventaRapida: true

@@ -71,9 +71,10 @@ export async function GET(request: NextRequest) {
 
     const pedidos = pedidosRaw.map(p => ({
       ...p,
-      nombreCli: p.cliente?.nombre || 'Desconocido',
+      nombreCli: p.clienteId === 'CONSUMIDOR_FINAL' ? 'Consumidor Final' : (p.cliente?.nombre || 'Desconocido'),
       telefonoCli: p.cliente?.telefono || '',
       zonaCli: p.cliente?.direccion || '',
+      barrioCli: p.cliente?.barrio || '',
       fecha: p.fecha.toISOString(),
     }))
 
@@ -110,6 +111,7 @@ export async function POST(request: NextRequest) {
       canal,
       preciosManuales,
       clienteNuevo,
+      actualizarCliente,
       origen: origenInput,
       ventaRapida,
     } = parsed.data
@@ -124,20 +126,33 @@ export async function POST(request: NextRequest) {
     if (ventaRapida) origen = 'VENTA_RAPIDA'
 
     const result = await withAdvisoryLock('PEDIDO', async (tx) => {
-      // 1. Crear cliente nuevo si se proporciona
       let clienteId = rawClienteId
+
+      // 1. Crear cliente nuevo o reusar existente por teléfono
       if (clienteNuevo) {
-        const nuevo = await tx.cliente.create({
-          data: {
-            nombre: clienteNuevo.nombre,
-            telefono: clienteNuevo.telefono,
-            direccion: clienteNuevo.direccion || '',
-            barrio: clienteNuevo.barrio,
-            frecuencia: 'NINGUNA',
-            creadoPorRol: authResult.user?.role as any || 'ASISTENTE',
-          },
-        })
-        clienteId = nuevo.id
+        const existente = clienteNuevo.telefono
+          ? await tx.cliente.findFirst({
+              where: { telefono: clienteNuevo.telefono },
+              select: { id: true },
+            })
+          : null
+
+        if (existente) {
+          clienteId = existente.id
+        } else {
+          const nuevo = await tx.cliente.create({
+            data: {
+              nombre: clienteNuevo.nombre,
+              apellido: clienteNuevo.apellido,
+              telefono: clienteNuevo.telefono,
+              direccion: clienteNuevo.direccion || '',
+              barrio: clienteNuevo.barrio,
+              frecuencia: 'NINGUNA',
+              creadoPorRol: authResult.user?.role as any || 'ASISTENTE',
+            },
+          })
+          clienteId = nuevo.id
+        }
       }
 
       // 2. Validar cliente existe (auto-crear CONSUMIDOR_FINAL si falta)
@@ -159,20 +174,30 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // 3. Validar que cliente NO está bloqueado y NO tiene deuda activa
+      // 2b. Verificar si el cliente puede crear nuevos pedidos
       const pedidosPendientes = await tx.pedido.findMany({
         where: {
-          clienteId,
-          estadoEntrega: 'ENTREGADO',
-          estadoPago: { not: 'PAGADO' },
-          estado: { not: 'ANULADO' },
+          clienteId: cliente.id,
+          estadoEntrega: { notIn: ['ANULADO', 'CANCELADO'] },
+          estadoPago: { notIn: ['PAGADO', 'ANTICIPADO'] },
         },
+        orderBy: { numero: 'asc' },
         select: { id: true, numero: true, saldo: true },
       })
-
       const errorDeuda = puedeCrearPedido(cliente, pedidosPendientes)
       if (errorDeuda) {
         throw new Error(`CLIENTE_DEBE: ${errorDeuda}`)
+      }
+
+      // 3. Actualizar dirección/barrio del cliente existente si se editó en el form
+      if (actualizarCliente && clienteId !== 'CONSUMIDOR_FINAL') {
+        await tx.cliente.update({
+          where: { id: clienteId },
+          data: {
+            direccion: actualizarCliente.direccion,
+            barrio: actualizarCliente.barrio,
+          },
+        })
       }
 
       // 4. Construir items para pricing engine

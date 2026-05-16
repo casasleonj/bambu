@@ -24,8 +24,14 @@ export interface PedidoRaw {
   precioBolsaHielo: unknown
   total: unknown
   saldo: unknown
-  estado: string
+  estadoEntrega: string
   fecha: Date | string
+}
+
+export interface FranjaHoraria {
+  label: string
+  range: [number, number]
+  count: number
 }
 
 export interface DashboardData {
@@ -41,8 +47,8 @@ export interface DashboardData {
   ventasAyer: number
   ventasTrend: number
   pedidosTrend: number
-  hourlyPedidos: number[]
-  maxHourly: number
+  franjas: FranjaHoraria[]
+  maxFranja: number
   ventasPorPrecio: VentaPorPrecio[]
   aguaVendida: number
   hieloVendido: number

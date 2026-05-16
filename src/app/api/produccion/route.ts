@@ -8,7 +8,7 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
 import { getVentasDelDia } from '@/lib/ventas'
-import { calcComSellador, calcComRepartidor } from '@/lib/comisiones'
+import { calcComSellador } from '@/lib/comisiones'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
 
     const trabajador = await prisma.trabajador.findUnique({
       where: { id: parsed.data.trabajadorId },
-      select: { comPacaAgua: true, comPacaHielo: true },
+      select: { comPacaAgua: true, comPacaHielo: true, comRepartAgua: true, comRepartHielo: true },
     })
 
     const comSell = trabajador
@@ -93,14 +93,28 @@ export async function POST(request: NextRequest) {
         estado: { notIn: ['CANCELADO'] },
       },
       select: {
+        pacasAgua: true,
+        pacasHielo: true,
+        devueltasAgua: true,
+        devueltasHielo: true,
+        rotasAgua: true,
+        rotasHielo: true,
         trabajador: {
-          select: { comPacaAgua: true, comPacaHielo: true },
+          select: { comPacaAgua: true, comPacaHielo: true, comRepartAgua: true, comRepartHielo: true, usaMoto: true },
         },
       },
     })
 
-    const repartidores = embarquesHoy.map((e) => e.trabajador)
-    const comRepart = calcComRepartidor(ventas.aguaVendida, ventas.hieloVendido, repartidores)
+    let comRepartAgua = 0
+    let comRepartHielo = 0
+    for (const e of embarquesHoy) {
+      if (!e.trabajador.usaMoto) continue
+      const entregasAgua = Math.max(0, e.pacasAgua - e.devueltasAgua - e.rotasAgua)
+      const entregasHielo = Math.max(0, e.pacasHielo - e.devueltasHielo - e.rotasHielo)
+      comRepartAgua += entregasAgua * Number(e.trabajador.comRepartAgua || e.trabajador.comPacaAgua)
+      comRepartHielo += entregasHielo * Number(e.trabajador.comRepartHielo || e.trabajador.comPacaHielo)
+    }
+    const comRepartTotal = comRepartAgua + comRepartHielo
 
     const produccion = await prisma.produccion.create({
       data: {
@@ -129,9 +143,9 @@ export async function POST(request: NextRequest) {
         comSelladorAgua: comSell.comAgua,
         comSelladorHielo: comSell.comHielo,
         comSellTotal: comSell.total,
-        comRepartidorAgua: comRepart.comAgua,
-        comRepartidorHielo: comRepart.comHielo,
-        comRepartTotal: comRepart.total,
+        comRepartidorAgua: comRepartAgua,
+        comRepartidorHielo: comRepartHielo,
+        comRepartTotal: comRepartTotal,
         obs: parsed.data.obs,
       },
       include: { trabajador: true },

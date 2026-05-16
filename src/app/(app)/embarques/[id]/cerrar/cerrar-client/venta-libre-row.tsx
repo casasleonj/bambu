@@ -1,5 +1,6 @@
 import type { VentaLibre, PagoItem, Cliente } from './types'
 import { METODOS_PAGO, calcularMontoPagado } from './types'
+import { formatCurrency } from '@/lib/utils'
 
 const PRODUCTOS_VENTA = [
   { key: 'cPacaAgua', label: 'Paca Agua' },
@@ -108,7 +109,7 @@ export function VentaLibreRow({
         </button>
       </div>
       <div className="text-sm text-gray-600">
-        Total pagado: ${totalPagado.toLocaleString()}
+        Total pagado: {formatCurrency(totalPagado)}
       </div>
     </div>
   )

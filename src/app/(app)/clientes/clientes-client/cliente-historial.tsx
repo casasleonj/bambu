@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import Link from 'next/link'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import type { TimelineEvent, TimelineFilter } from './types'
 
@@ -150,13 +151,13 @@ export function ClienteHistorial({ clienteId }: ClienteHistorialProps) {
                       <span className="text-xs text-gray-500">{evt.metodo}</span>
                     )}
                     {evt.link && (
-                      <a
+                      <Link
                         href={evt.link}
                         className="text-xs text-blue-600 hover:underline"
                         onClick={(e) => e.stopPropagation()}
                       >
                         Ver →
-                      </a>
+                      </Link>
                     )}
                   </div>
                 </div>

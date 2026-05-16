@@ -31,10 +31,20 @@ export default function LoginPage() {
     if (result?.error) {
       setError('Usuario o contraseña incorrectos')
       setLoading(false)
-    } else {
-      router.push('/dashboard')
-      router.refresh()
+      return
     }
+
+    const sessionRes = await fetch('/api/auth/session')
+    const session = await sessionRes.json()
+    const role = session?.user?.role
+
+    const destination =
+      role === 'REPARTIDOR' ? '/repartidor' :
+      role === 'CONTADOR' ? '/reportes' :
+      '/dashboard'
+
+    router.push(destination)
+    router.refresh()
   }
 
   return (

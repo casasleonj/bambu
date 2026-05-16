@@ -303,7 +303,7 @@ export function CasoDetail({ caso, usuarios, onClose, onStatusChange }: CasoDeta
           <button
             onClick={() => handleStatusChange('RESUELTO')}
             disabled={loading}
-            className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
           >
             Resolver
           </button>

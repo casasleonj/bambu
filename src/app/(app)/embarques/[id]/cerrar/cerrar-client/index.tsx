@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { toast } from 'sonner'
+import { formatCurrency } from '@/lib/utils'
 import { getCapacidadInfo } from '@/lib/embarque-capacidad'
 import type { Cliente, PagoItem, Embarque, EmbarqueAbierto, CuadrePedido, VentaLibre } from './types'
 import { calcularMontoPagado, calcularTotalEntregado } from './types'
@@ -55,6 +56,11 @@ export default function CerrarEmbarqueClient() {
             totalPagado: Number(p.totalPagado || 0),
             saldo: Number(p.saldo || 0),
           }))
+          if (emb.trabajador) {
+            emb.trabajador.comPacaAgua = Number(emb.trabajador.comPacaAgua || 0)
+            emb.trabajador.comPacaHielo = Number(emb.trabajador.comPacaHielo || 0)
+            emb.trabajador.comBotellon = Number(emb.trabajador.comBotellon || 0)
+          }
           setEmbarque(emb)
 
           const initialCuadres: Record<string, CuadrePedido> = {}
@@ -277,6 +283,12 @@ export default function CerrarEmbarqueClient() {
   let totalEntregado = 0
   let pedidosNoEntregados = 0
   let pedidosParciales = 0
+  let totalAguaEnt = 0
+  let totalHieloEnt = 0
+  let totalBotFabEnt = 0
+  let totalBotDomEnt = 0
+  let totalBolAguaEnt = 0
+  let totalBolHieloEnt = 0
 
   for (const pedido of embarque.pedidos) {
     const cuadre = cuadres[pedido.id]
@@ -285,7 +297,33 @@ export default function CerrarEmbarqueClient() {
     if (cuadre.entregado === 'PARCIAL') pedidosParciales++
     totalCobrado += calcularMontoPagado(cuadre.pagos)
     totalEntregado += calcularTotalEntregado(cuadre)
+    if (cuadre.entregado === 'NO_ENTREGADO') continue
+    const p = cuadre.productosEntregados
+    totalAguaEnt += p.cPacaAguaEnt
+    totalHieloEnt += p.cPacaHieloEnt
+    totalBotFabEnt += p.cBotellonFabEnt
+    totalBotDomEnt += p.cBotellonDomEnt
+    totalBolAguaEnt += p.cBolsaAguaEnt
+    totalBolHieloEnt += p.cBolsaHieloEnt
   }
+
+  for (const venta of ventasLibres) {
+    if (!venta.clienteId) continue
+    totalAguaEnt += venta.cPacaAgua
+    totalHieloEnt += venta.cPacaHielo
+    totalBotFabEnt += venta.cBotellonFab
+    totalBotDomEnt += venta.cBotellonDom
+    totalBolAguaEnt += venta.cBolsaAgua
+    totalBolHieloEnt += venta.cBolsaHielo
+  }
+
+  const totalBotellones = totalBotFabEnt + totalBotDomEnt
+  const totalBolsas = totalBolAguaEnt + totalBolHieloEnt
+
+  const comAgua = totalAguaEnt * Number(embarque.trabajador.comRepartAgua || embarque.trabajador.comPacaAgua || 0)
+  const comHielo = totalHieloEnt * Number(embarque.trabajador.comRepartHielo || embarque.trabajador.comPacaHielo || 0)
+  const comBotellon = totalBotellones * Number(embarque.trabajador.comRepartBotellon || embarque.trabajador.comBotellon || 0)
+  const totalComision = comAgua + comHielo + comBotellon
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -441,11 +479,11 @@ export default function CerrarEmbarqueClient() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
           <div>
             <p className="text-gray-600">Total Cobrado</p>
-            <p className="text-xl font-bold text-green-600">${totalCobrado.toLocaleString()}</p>
+            <p className="text-xl font-bold text-green-600">{formatCurrency(totalCobrado)}</p>
           </div>
           <div>
             <p className="text-gray-600">Total Entregado</p>
-            <p className="text-xl font-bold text-blue-600">${totalEntregado.toLocaleString()}</p>
+            <p className="text-xl font-bold text-blue-600">{formatCurrency(totalEntregado)}</p>
           </div>
           <div>
             <p className="text-gray-600">No Entregados</p>
@@ -456,7 +494,19 @@ export default function CerrarEmbarqueClient() {
             <p className="text-xl font-bold text-yellow-600">{pedidosParciales}</p>
           </div>
         </div>
-        <div className="mt-3 pt-3 border-t border-blue-200 text-sm text-blue-800">
+        <div className="mt-3 pt-3 border-t border-blue-200 text-sm text-blue-800 space-y-1">
+          <p className="font-medium text-blue-900">Productos entregados</p>
+          <div className="flex flex-wrap gap-x-4 text-xs">
+            {totalAguaEnt > 0 && <span>🚛 Agua: {totalAguaEnt}</span>}
+            {totalHieloEnt > 0 && <span>🧊 Hielo: {totalHieloEnt}</span>}
+            {totalBotellones > 0 && <span>🫗 Botellones: {totalBotellones}</span>}
+            {totalBolsas > 0 && <span>💧 Bolsas: {totalBolsas}</span>}
+          </div>
+          {totalComision > 0 && (
+            <p className="pt-1 font-semibold text-amber-700">
+              Comisión estimada: {formatCurrency(totalComision)}
+            </p>
+          )}
           <p>Devueltas: {devueltasAgua + devueltasHielo} pacas | Filtradas: {rotasAgua + rotasHielo} pacas</p>
           <p>Ventas libres: {ventasLibres.filter((v) => v.clienteId).length}</p>
         </div>

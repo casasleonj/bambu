@@ -37,6 +37,8 @@ export interface RepartidorOption {
   nombre: string
   comPacaAgua: number
   comPacaHielo: number
+  entregasAgua: number
+  entregasHielo: number
 }
 
 export interface PreviewData {

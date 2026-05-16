@@ -10,10 +10,11 @@ describe('LOCK_IDS', () => {
     expect(LOCK_IDS).toHaveProperty('COMPRA')
     expect(LOCK_IDS).toHaveProperty('FACTURA_NUM')
     expect(LOCK_IDS).toHaveProperty('CIERRE')
+    expect(LOCK_IDS).toHaveProperty('NC')
   })
 
-  it('has exactly 7 entries', () => {
-    expect(Object.keys(LOCK_IDS)).toHaveLength(7)
+  it('has exactly 8 entries', () => {
+    expect(Object.keys(LOCK_IDS)).toHaveLength(8)
   })
 
   it('all values are unique', () => {
@@ -30,9 +31,9 @@ describe('LOCK_IDS', () => {
     }
   })
 
-  it('has sequential values from 1 to 7', () => {
+  it('has sequential values from 1 to 8', () => {
     const values = Object.values(LOCK_IDS).sort((a, b) => a - b)
-    expect(values).toEqual([1, 2, 3, 4, 5, 6, 7])
+    expect(values).toEqual([1, 2, 3, 4, 5, 6, 7, 8])
   })
 
   it('PEDIDO lock has ID 1', () => {
@@ -41,6 +42,10 @@ describe('LOCK_IDS', () => {
 
   it('CIERRE lock has ID 7', () => {
     expect(LOCK_IDS.CIERRE).toBe(7)
+  })
+
+  it('NC lock has ID 8', () => {
+    expect(LOCK_IDS.NC).toBe(8)
   })
 
   it('all keys are valid input for withAdvisoryLock type', () => {

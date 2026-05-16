@@ -24,6 +24,7 @@ export default function EmbarquesClient() {
   const [selectedEmbarque, setSelectedEmbarque] = useState<Embarque | null>(null)
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [dateRange, setDateRange] = useState<{ desde: string | null; hasta: string | null }>({ desde: null, hasta: null })
+  const [filtroEstado, setFiltroEstado] = useState('')
   const { confirm, modal } = useConfirm()
 
   const fetchData = useCallback(async () => {
@@ -34,6 +35,7 @@ export default function EmbarquesClient() {
         params.set('desde', dateRange.desde)
         params.set('hasta', dateRange.hasta)
       }
+      if (filtroEstado) params.set('estado', filtroEstado)
       const [embarquesRes, trabajadoresRes, rutasRes] = await Promise.all([
         fetch(`/api/embarques?${params.toString()}`, { credentials: 'include' }),
         fetch('/api/trabajadores?rol=REPARTIDOR&activo=true', { credentials: 'include' }),
@@ -55,7 +57,7 @@ export default function EmbarquesClient() {
     } finally {
       setLoading(false)
     }
-  }, [dateRange])
+  }, [dateRange, filtroEstado])
 
   useEffect(() => {
     fetchData()
@@ -162,6 +164,25 @@ export default function EmbarquesClient() {
 
       <div className="bg-white p-4 rounded-xl shadow mb-4">
         <DateRangeFilter onDateChange={handleDateChange} />
+        <div className="flex gap-2 mt-3">
+          {[
+            { key: '', label: 'Todos' },
+            { key: 'ABIERTO', label: 'Abiertos' },
+            { key: 'CERRADO', label: 'Cerrados' },
+          ].map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setFiltroEstado(key)}
+              className={`px-4 py-1.5 rounded-full text-sm font-medium transition ${
+                filtroEstado === key
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <InfoBanner type="info" className="mb-4">

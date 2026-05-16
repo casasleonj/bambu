@@ -275,8 +275,9 @@ function legacyItems(p: PedidoPedidos) {
   const items: Array<{ producto: string; cantPedido: number; precio: number }> = []
   if (p.cPacaAguaPed > 0) items.push({ producto: 'PACA_AGUA', cantPedido: p.cPacaAguaPed, precio: p.precioPacaAgua })
   if (p.cPacaHieloPed > 0) items.push({ producto: 'PACA_HIELO', cantPedido: p.cPacaHieloPed, precio: p.precioPacaHielo })
-  if (p.cBotellonFabPed > 0) items.push({ producto: 'BOTELLON_FAB', cantPedido: p.cBotellonFabPed, precio: p.precioBotellonFab })
-  if (p.cBotellonDomPed > 0) items.push({ producto: 'BOTELLON_DOM', cantPedido: p.cBotellonDomPed, precio: p.precioBotellonDom })
+  const botellonTotal = (p.cBotellonFabPed || 0) + (p.cBotellonDomPed || 0)
+  const botellonPrecio = Number(p.precioBotellonFab) || Number(p.precioBotellonDom) || 0
+  if (botellonTotal > 0) items.push({ producto: 'BOTELLON', cantPedido: botellonTotal, precio: botellonPrecio })
   if (p.cBolsaAguaPed > 0) items.push({ producto: 'BOLSA_AGUA', cantPedido: p.cBolsaAguaPed, precio: p.precioBolsaAgua })
   if (p.cBolsaHieloPed > 0) items.push({ producto: 'BOLSA_HIELO', cantPedido: p.cBolsaHieloPed, precio: p.precioBolsaHielo })
   return items

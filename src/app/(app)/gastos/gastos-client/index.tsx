@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
+import { formatCurrency } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -49,8 +50,9 @@ export default function GastosPage() {
     }
   }
 
-  const crearGasto = async () => {
-    if (!descripcion || !monto) {
+  const crearGasto = async (e?: React.FormEvent) => {
+    e?.preventDefault()
+    if (!descripcion.trim() || !monto) {
       toast.error('Descripción y monto son obligatorios')
       return
     }
@@ -114,33 +116,36 @@ export default function GastosPage() {
           <CardHeader>
             <CardTitle>Registrar Gasto</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <div>
-              <Label>Categoría</Label>
-              <select
-                className="w-full h-10 rounded-md border border-input bg-background px-3 py-2"
-                value={categoria}
-                onChange={(e) => setCategoria(e.target.value)}
-              >
-                {categorias.map((c) => (
-                  <option key={c} value={c}>{cats[c as keyof typeof cats]} {c}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <Label htmlFor="gasto-descripcion">Descripción <span className="text-red-500">*</span></Label>
-              <Input id="gasto-descripcion" required value={descripcion} onChange={(e) => setDescripcion(e.target.value)} placeholder="Detalle del gasto" />
-            </div>
-            <div>
-              <Label htmlFor="gasto-monto">Monto <span className="text-red-500">*</span></Label>
-              <Input id="gasto-monto" type="number" min="0" required value={monto} onChange={(e) => setMonto(e.target.value)} placeholder="0" />
-            </div>
-            <div>
-              <Label>Responsable (opcional)</Label>
-              <Input value={responsable} onChange={(e) => setResponsable(e.target.value)} placeholder="Quién paga" />
-            </div>
-            <Button onClick={crearGasto} disabled={submitting || !descripcion.trim() || !monto}>{submitting ? 'Guardando...' : 'Guardar'}</Button>
-          </CardContent>
+          <form onSubmit={crearGasto}>
+            <CardContent className="space-y-3">
+              <div>
+                <Label htmlFor="gasto-categoria">Categoría</Label>
+                <select
+                  id="gasto-categoria"
+                  className="w-full h-10 rounded-md border border-input bg-background px-3 py-2"
+                  value={categoria}
+                  onChange={(e) => setCategoria(e.target.value)}
+                >
+                  {categorias.map((c) => (
+                    <option key={c} value={c}>{cats[c as keyof typeof cats]} {c}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label htmlFor="gasto-descripcion">Descripción <span className="text-red-500">*</span></Label>
+                <Input id="gasto-descripcion" required value={descripcion} onChange={(e) => setDescripcion(e.target.value)} placeholder="Detalle del gasto" />
+              </div>
+              <div>
+                <Label htmlFor="gasto-monto">Monto <span className="text-red-500">*</span></Label>
+                <Input id="gasto-monto" type="number" min="0" required value={monto} onChange={(e) => setMonto(e.target.value)} placeholder="0" />
+              </div>
+              <div>
+                <Label htmlFor="gasto-responsable">Responsable (opcional)</Label>
+                <Input id="gasto-responsable" value={responsable} onChange={(e) => setResponsable(e.target.value)} placeholder="Quién paga" />
+              </div>
+              <Button type="submit" disabled={submitting || !descripcion.trim() || !monto}>{submitting ? 'Guardando...' : 'Guardar'}</Button>
+            </CardContent>
+          </form>
         </Card>
       )}
 
@@ -156,7 +161,7 @@ export default function GastosPage() {
         <div className="space-y-2">
           <div className="flex justify-between p-3 bg-muted rounded-lg font-bold">
             <span>Total Gastos:</span>
-            <span>${totalGastos.toLocaleString()}</span>
+            <span>{formatCurrency(totalGastos)}</span>
           </div>
           {gastos.map((gasto) => (
             <Card key={gasto.id}>
@@ -170,7 +175,7 @@ export default function GastosPage() {
                     )}
                   </div>
                   <div className="text-right">
-                    <div className="font-medium">${Number(gasto.monto).toLocaleString()}</div>
+                    <div className="font-medium">{formatCurrency(Number(gasto.monto))}</div>
                     <div className="text-xs text-muted-foreground">{new Date(gasto.fecha).toLocaleDateString()}</div>
                   </div>
                 </div>

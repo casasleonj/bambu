@@ -33,18 +33,13 @@ export async function POST(request: NextRequest) {
       return apiError('Datos invalidos', 400, { formErrors: [formatZodError(parsed.error)] })
     }
     const proveedor = await prisma.proveedor.create({
-      data: {
-        nombre: parsed.data.nombre,
-        telefono: parsed.data.telefono,
-        email: parsed.data.email,
-        direccion: parsed.data.direccion,
-      },
+      data: parsed.data,
     })
     logAudit({
       entidad: 'Proveedor',
       registroId: proveedor.id,
       accion: 'CREATE',
-      datos: { nombre: parsed.data.nombre },
+      datos: { nombre: parsed.data.nombre, tipoProducto: parsed.data.tipoProducto },
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     }).catch(() => {})
 

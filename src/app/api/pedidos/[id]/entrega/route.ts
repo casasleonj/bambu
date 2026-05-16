@@ -52,6 +52,28 @@ export async function POST(
         }
 
         if (nuevoEmbarqueId) {
+          const nuevoEmbarque = await tx.embarque.findUnique({
+            where: { id: nuevoEmbarqueId },
+            select: { estado: true, trabajador: { select: { capacidadKg: true } } },
+          })
+          if (!nuevoEmbarque) throw new Error('EMBARQUE_NO_ENCONTRADO')
+          if (nuevoEmbarque.estado !== 'ABIERTO') throw new Error('EMBARQUE_NO_ABIERTO')
+
+          // Validar capacidad básica (peso estimado del pedido vs capacidad restante)
+          const pesoPedido = pedido.items.reduce((sum, item) => {
+            const pesoPorUnidad =
+              item.producto === 'PACA_AGUA' ? 10 :
+              item.producto === 'PACA_HIELO' ? 11 :
+              item.producto === 'BOTELLON' ? 20 :
+              item.producto === 'BOLSA_AGUA' ? 0.25 :
+              item.producto === 'BOLSA_HIELO' ? 0.55 : 0
+            return sum + (Number(item.cantPedido) * pesoPorUnidad)
+          }, 0)
+          const capacidadMoto = Number(nuevoEmbarque.trabajador?.capacidadKg || 500)
+          if (pesoPedido > capacidadMoto) {
+            throw new Error('CAPACIDAD_EXCEDIDA')
+          }
+
           updateData.estadoEntrega = 'EN_RUTA'
           updateData.estado = 'EN_RUTA'
           updateData.embarqueId = nuevoEmbarqueId
@@ -201,6 +223,15 @@ export async function POST(
     }
     if (error instanceof Error && error.message === 'TRANSICION_INVALIDA') {
       return apiError('Transición de estado no permitida', 400)
+    }
+    if (error instanceof Error && error.message === 'EMBARQUE_NO_ENCONTRADO') {
+      return apiError('Embarque no encontrado', 404)
+    }
+    if (error instanceof Error && error.message === 'EMBARQUE_NO_ABIERTO') {
+      return apiError('El embarque no está abierto', 400)
+    }
+    if (error instanceof Error && error.message === 'CAPACIDAD_EXCEDIDA') {
+      return apiError('El pedido excede la capacidad de la moto', 400)
     }
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error registrando entrega:')
     return apiError('Error registrando entrega')

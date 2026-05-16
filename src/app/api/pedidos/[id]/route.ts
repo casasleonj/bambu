@@ -7,6 +7,8 @@ import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
 import { logger } from '@/lib/logger'
 import { apiSuccess, apiError } from '@/lib/api-response'
+import { withAdvisoryLock } from '@/lib/locks'
+import { getNextNumero } from '@/lib/sequence'
 
 function getUserFromSession(authResult: any) {
   return { id: authResult.user?.id || '', role: authResult.user?.role }
@@ -43,7 +45,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return apiError(formatZodError(parsed.error), 400)
     }
 
-    const pedido = await prisma.$transaction(async (tx) => {
+    const pedido = await withAdvisoryLock('PEDIDO', async (tx) => {
       const updateData: Record<string, unknown> = { ...parsed.data }
 
       // Si se envían items, sincronizar PedidoItem y legacy fields
@@ -118,11 +120,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           throw new Error('PEDIDO_NOT_FOUND')
         }
 
-        const totalPagado = current.pagos.reduce((sum, p) => sum + Number(p.monto), 0)
+        const totalPagado = current.pagos.reduce((sum: number, p: { monto: number }) => sum + Number(p.monto), 0)
 
         // Crear nota de crédito si hay pagos registrados
         if (totalPagado > 0) {
-          const nextNum = await tx.notaCredito.count() + 1
+          const nextNum = await getNextNumero(tx, { model: 'notaCredito' })
           const ncNumero = `NC-${nextNum.toString().padStart(5, '0')}`
           await tx.notaCredito.create({
             data: {
@@ -154,6 +156,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         updateData.estado = 'PENDIENTE'
       }
 
+      // Actualizar observaciones si se enviaron
+      if (parsed.data.obs !== undefined) {
+        updateData.obs = parsed.data.obs
+      }
+
       // Sincronizar estadoEntrega con estado legacy para mantener consistencia
       if (updateData.estado) {
         updateData.estadoEntrega = updateData.estado
@@ -161,6 +168,23 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
       // Quitar 'items' porque es relación, no campo escalar
       delete updateData.items
+
+      // Actualizar dirección/barrio del cliente si se editó
+      if (parsed.data.actualizarCliente) {
+        const pedidoActual = await tx.pedido.findUnique({
+          where: { id },
+          select: { clienteId: true },
+        })
+        if (pedidoActual && pedidoActual.clienteId !== 'CONSUMIDOR_FINAL') {
+          await tx.cliente.update({
+            where: { id: pedidoActual.clienteId },
+            data: {
+              direccion: parsed.data.actualizarCliente.direccion,
+              barrio: parsed.data.actualizarCliente.barrio,
+            },
+          })
+        }
+      }
 
       return tx.pedido.update({
         where: { id },

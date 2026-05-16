@@ -21,22 +21,38 @@ export function TrabajadorFormModal({
   const [formData, setFormData] = useState<TrabajadorFormData>(initialData)
   const [formError, setFormError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [tarifaDiferencia, setTarifaDiferencia] = useState(false)
 
   useEffect(() => {
     setFormData(initialData)
     setFormError('')
-  }, [initialData, open])
+    if (initialData.rol === 'REPARTIDOR' && initialData.usaMoto && isEdit) {
+      setTarifaDiferencia(
+        initialData.comRepartAgua !== initialData.comPacaAgua ||
+        initialData.comRepartHielo !== initialData.comPacaHielo ||
+        initialData.comRepartBotellon !== initialData.comBotellon
+      )
+    } else {
+      setTarifaDiferencia(false)
+    }
+  }, [initialData, open, isEdit])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setFormError('')
     setSubmitting(true)
     try {
+      const dataToSend = { ...formData }
+      if (formData.rol === 'REPARTIDOR' && formData.usaMoto && !tarifaDiferencia) {
+        dataToSend.comRepartAgua = formData.comPacaAgua
+        dataToSend.comRepartHielo = formData.comPacaHielo
+        dataToSend.comRepartBotellon = formData.comBotellon
+      }
       if (isEdit && editingId) {
         const res = await fetch(`/api/trabajadores/${editingId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formData),
+          body: JSON.stringify(dataToSend),
         })
         if (res.ok) {
           onSaved()
@@ -49,7 +65,7 @@ export function TrabajadorFormModal({
         const res = await fetch('/api/trabajadores', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formData),
+          body: JSON.stringify(dataToSend),
         })
         if (res.ok) {
           onSaved()
@@ -124,12 +140,17 @@ export function TrabajadorFormModal({
             id="usaMoto"
             type="checkbox"
             checked={formData.usaMoto}
-            onChange={(e) => setFormData({ ...formData, usaMoto: e.target.checked })}
+            onChange={(e) => {
+              setFormData({ ...formData, usaMoto: e.target.checked })
+            }}
             className="h-4 w-4 text-blue-600 border-gray-300 rounded"
           />
           <label htmlFor="usaMoto" className="text-sm font-medium text-gray-700">
             Usa moto
           </label>
+          {!formData.usaMoto && (
+            <span className="text-xs text-gray-500 italic">Sin moto → no comisiona reparto</span>
+          )}
         </div>
 
         {formData.usaMoto && (
@@ -151,40 +172,137 @@ export function TrabajadorFormModal({
           </div>
         )}
 
-        {(formData.tipoPago === 'COMISION' || formData.tipoPago === 'MIXTO') && (
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label htmlFor="trabajador-comPacaAgua" className="block text-sm font-medium mb-1">Com. paca agua</label>
-              <input
-                id="trabajador-comPacaAgua"
-                type="number"
-                min={0}
-                value={formData.comPacaAgua}
-                onChange={(e) => setFormData({ ...formData, comPacaAgua: parseFloat(e.target.value) || 0 })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-              />
+        {(formData.rol === 'SELLADOR' || formData.rol === 'REPARTIDOR') && (formData.tipoPago === 'COMISION' || formData.tipoPago === 'MIXTO') && (
+          <div className="border rounded-lg p-3 bg-gray-50 space-y-3">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              {formData.rol === 'REPARTIDOR' ? 'Comisiones' : 'Comisiones producción'}
+            </p>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label htmlFor="trabajador-comPacaAgua" className="block text-sm font-medium mb-1">Com. paca agua</label>
+                <input
+                  id="trabajador-comPacaAgua"
+                  type="number"
+                  min={0}
+                  value={formData.comPacaAgua}
+                  onChange={(e) => setFormData({ ...formData, comPacaAgua: parseFloat(e.target.value) || 0 })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                />
+              </div>
+              <div>
+                <label htmlFor="trabajador-comPacaHielo" className="block text-sm font-medium mb-1">Com. paca hielo</label>
+                <input
+                  id="trabajador-comPacaHielo"
+                  type="number"
+                  min={0}
+                  value={formData.comPacaHielo}
+                  onChange={(e) => setFormData({ ...formData, comPacaHielo: parseFloat(e.target.value) || 0 })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                />
+              </div>
+              <div>
+                <label htmlFor="trabajador-comBotellon" className="block text-sm font-medium mb-1">Com. botellón</label>
+                <input
+                  id="trabajador-comBotellon"
+                  type="number"
+                  min={0}
+                  value={formData.comBotellon}
+                  onChange={(e) => setFormData({ ...formData, comBotellon: parseFloat(e.target.value) || 0 })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                />
+              </div>
             </div>
-            <div>
-              <label htmlFor="trabajador-comPacaHielo" className="block text-sm font-medium mb-1">Com. paca hielo</label>
-              <input
-                id="trabajador-comPacaHielo"
-                type="number"
-                min={0}
-                value={formData.comPacaHielo}
-                onChange={(e) => setFormData({ ...formData, comPacaHielo: parseFloat(e.target.value) || 0 })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-              />
-            </div>
-            <div>
-              <label htmlFor="trabajador-comBotellon" className="block text-sm font-medium mb-1">Com. botellón</label>
-              <input
-                id="trabajador-comBotellon"
-                type="number"
-                min={0}
-                value={formData.comBotellon}
-                onChange={(e) => setFormData({ ...formData, comBotellon: parseFloat(e.target.value) || 0 })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-              />
+
+            {formData.rol === 'REPARTIDOR' && formData.usaMoto && (
+              <div className="space-y-3 pt-2 border-t border-gray-200">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={tarifaDiferencia}
+                    onChange={(e) => setTarifaDiferencia(e.target.checked)}
+                    className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                  />
+                  <span className="text-xs font-medium text-gray-600">Tarifa diferencia (editar tarifa de reparto separadamente)</span>
+                </label>
+                {tarifaDiferencia && (
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <label htmlFor="trabajador-comRepartAgua" className="block text-sm font-medium mb-1">Com. reparto agua</label>
+                      <input
+                        id="trabajador-comRepartAgua"
+                        type="number"
+                        min={0}
+                        value={formData.comRepartAgua}
+                        onChange={(e) => setFormData({ ...formData, comRepartAgua: parseFloat(e.target.value) || 0 })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="trabajador-comRepartHielo" className="block text-sm font-medium mb-1">Com. reparto hielo</label>
+                      <input
+                        id="trabajador-comRepartHielo"
+                        type="number"
+                        min={0}
+                        value={formData.comRepartHielo}
+                        onChange={(e) => setFormData({ ...formData, comRepartHielo: parseFloat(e.target.value) || 0 })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="trabajador-comRepartBotellon" className="block text-sm font-medium mb-1">Com. reparto botellón</label>
+                      <input
+                        id="trabajador-comRepartBotellon"
+                        type="number"
+                        min={0}
+                        value={formData.comRepartBotellon}
+                        onChange={(e) => setFormData({ ...formData, comRepartBotellon: parseFloat(e.target.value) || 0 })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {formData.rol === 'SELLADOR' && formData.usaMoto && (formData.tipoPago === 'COMISION' || formData.tipoPago === 'MIXTO') && (
+          <div className="border rounded-lg p-3 bg-blue-50 space-y-3">
+            <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Comisiones reparto</p>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label htmlFor="trabajador-comRepartAgua" className="block text-sm font-medium mb-1">Com. reparto agua</label>
+                <input
+                  id="trabajador-comRepartAgua"
+                  type="number"
+                  min={0}
+                  value={formData.comRepartAgua}
+                  onChange={(e) => setFormData({ ...formData, comRepartAgua: parseFloat(e.target.value) || 0 })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                />
+              </div>
+              <div>
+                <label htmlFor="trabajador-comRepartHielo" className="block text-sm font-medium mb-1">Com. reparto hielo</label>
+                <input
+                  id="trabajador-comRepartHielo"
+                  type="number"
+                  min={0}
+                  value={formData.comRepartHielo}
+                  onChange={(e) => setFormData({ ...formData, comRepartHielo: parseFloat(e.target.value) || 0 })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                />
+              </div>
+              <div>
+                <label htmlFor="trabajador-comRepartBotellon" className="block text-sm font-medium mb-1">Com. reparto botellón</label>
+                <input
+                  id="trabajador-comRepartBotellon"
+                  type="number"
+                  min={0}
+                  value={formData.comRepartBotellon}
+                  onChange={(e) => setFormData({ ...formData, comRepartBotellon: parseFloat(e.target.value) || 0 })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                />
+              </div>
             </div>
           </div>
         )}
@@ -206,7 +324,7 @@ export function TrabajadorFormModal({
               <label htmlFor="trabajador-telefono" className="block text-sm font-medium mb-1">Teléfono</label>
               <input
                 id="trabajador-telefono"
-                type="text"
+                type="tel"
                 value={formData.telefono}
                 onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg"
@@ -220,7 +338,7 @@ export function TrabajadorFormModal({
             <label htmlFor="trabajador-telefono" className="block text-sm font-medium mb-1">Teléfono</label>
             <input
               id="trabajador-telefono"
-              type="text"
+              type="tel"
               value={formData.telefono}
               onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg"

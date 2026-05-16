@@ -9,14 +9,13 @@ export const DEFAULT_PRICES: Record<string, number> = {
 export const PRODUCTO_INFO: Record<string, {
   nombre: string
   unidad: string
-  precioKey: string
   codigo: string
 }> = {
-  pacaAgua:    { nombre: 'Paca de Agua (40u 300ml)', unidad: 'pacas', precioKey: 'PACA_AGUA', codigo: 'PACA_AGUA' },
-  pacaHielo:   { nombre: 'Paca de Hielo (20u 600ml)', unidad: 'pacas', precioKey: 'PACA_HIELO', codigo: 'PACA_HIELO' },
-  botellon:    { nombre: 'Botellón 20LT', unidad: 'und', precioKey: 'BOTELLON', codigo: 'BOTELLON' },
-  bolsaAgua:   { nombre: 'Bolsa de Agua 300ml', unidad: 'bolsas', precioKey: 'BOLSA_AGUA', codigo: 'BOLSA_AGUA' },
-  bolsaHielo:  { nombre: 'Bolsa de Hielo 600ml', unidad: 'bolsas', precioKey: 'BOLSA_HIELO', codigo: 'BOLSA_HIELO' },
+  pacaAgua:    { nombre: 'Paca de Agua (40u 300ml)', unidad: 'pacas', codigo: 'PACA_AGUA' },
+  pacaHielo:   { nombre: 'Paca de Hielo (20u 600ml)', unidad: 'pacas', codigo: 'PACA_HIELO' },
+  botellon:    { nombre: 'Botellón 20LT', unidad: 'und', codigo: 'BOTELLON' },
+  bolsaAgua:   { nombre: 'Bolsa de Agua 300ml', unidad: 'bolsas', codigo: 'BOLSA_AGUA' },
+  bolsaHielo:  { nombre: 'Bolsa de Hielo 600ml', unidad: 'bolsas', codigo: 'BOLSA_HIELO' },
 }
 
 export type ProductoId = keyof typeof PRODUCTO_INFO

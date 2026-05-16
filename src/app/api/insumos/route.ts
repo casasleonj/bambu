@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
   const alertOnly = searchParams.get('alertas') === 'true'
 
   try {
-    const where: Record<string, unknown> = {}
+    const where: Record<string, unknown> = { activo: true }
     if (conStock) {
       where.stock = { gt: 0 }
     }

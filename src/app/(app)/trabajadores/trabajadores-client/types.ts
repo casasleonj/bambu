@@ -8,6 +8,9 @@ export interface Trabajador {
   comPacaAgua: number
   comPacaHielo: number
   comBotellon: number
+  comRepartAgua: number
+  comRepartHielo: number
+  comRepartBotellon: number
   salarioFijo: number
   deudaReposAgua: number
   deudaReposHielo: number
@@ -25,6 +28,9 @@ export interface TrabajadorFormData {
   comPacaAgua: number
   comPacaHielo: number
   comBotellon: number
+  comRepartAgua: number
+  comRepartHielo: number
+  comRepartBotellon: number
   salarioFijo: number
   telefono: string
 }

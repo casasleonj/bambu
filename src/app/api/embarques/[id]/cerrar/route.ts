@@ -403,14 +403,17 @@ export async function POST(
         ventasLibresCreadas.push({ id: nuevaVenta.id, numero: nuevaVenta.numero })
       }
 
-      // 4. Calcular pacas cargadas vs entregadas para conciliación
-      const totalPacasAgua = embarque.pedidos.reduce((sum, p) => sum + p.cPacaAguaPed, 0) +
+      // 4. Re-leer pedidos actualizados para conciliación precisa
+      const pedidosActualesTx = await tx.pedido.findMany({
+        where: { embarqueId: id },
+      })
+      const totalPacasAgua = pedidosActualesTx.reduce((sum, p) => sum + p.cPacaAguaPed, 0) +
         ventasLibres.reduce((sum, v) => sum + v.cPacaAgua, 0)
-      const totalPacasHielo = embarque.pedidos.reduce((sum, p) => sum + p.cPacaHieloPed, 0) +
+      const totalPacasHielo = pedidosActualesTx.reduce((sum, p) => sum + p.cPacaHieloPed, 0) +
         ventasLibres.reduce((sum, v) => sum + v.cPacaHielo, 0)
 
-      const totalEntregadoAgua = embarque.pedidos.reduce((sum, p) => sum + p.cPacaAguaEnt, 0)
-      const totalEntregadoHielo = embarque.pedidos.reduce((sum, p) => sum + p.cPacaHieloEnt, 0)
+      const totalEntregadoAgua = pedidosActualesTx.reduce((sum, p) => sum + p.cPacaAguaEnt, 0)
+      const totalEntregadoHielo = pedidosActualesTx.reduce((sum, p) => sum + p.cPacaHieloEnt, 0)
 
       // 5. Calcular discrepancia
       const discrepancyAgua = totalPacasAgua - totalEntregadoAgua - devueltasAgua - rotasAgua

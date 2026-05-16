@@ -5,7 +5,8 @@ export interface Insumo {
   stock: number
   stockMin: number
   precioUnit: number
-  proveedor: { nombre: string } | null
+  proveedor: { id: string; nombre: string } | null
+  activo: boolean
 }
 
 export interface Proveedor {

@@ -17,6 +17,9 @@ const EMPTY_FORM: TrabajadorFormData = {
   comPacaAgua: 200,
   comPacaHielo: 200,
   comBotellon: 200,
+  comRepartAgua: 0,
+  comRepartHielo: 0,
+  comRepartBotellon: 0,
   salarioFijo: 0,
   telefono: '',
 }
@@ -71,6 +74,9 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
       comPacaAgua: trabajador.comPacaAgua ?? 200,
       comPacaHielo: trabajador.comPacaHielo ?? 200,
       comBotellon: trabajador.comBotellon ?? 200,
+      comRepartAgua: trabajador.comRepartAgua ?? 0,
+      comRepartHielo: trabajador.comRepartHielo ?? 0,
+      comRepartBotellon: trabajador.comRepartBotellon ?? 0,
       salarioFijo: trabajador.salarioFijo ?? 0,
       telefono: trabajador.telefono || '',
     })

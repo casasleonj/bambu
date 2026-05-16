@@ -3,10 +3,11 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
+import { formatCurrency } from '@/lib/utils'
 import { useConfirm } from '@/components/confirm-modal'
 import { Modal } from '@/components/modal'
 import { getCapacidadInfo } from '@/lib/embarque-capacidad'
-import type { Embarque, Pedido } from './types'
+import type { Embarque, Pedido, Trabajador } from './types'
 
 function calcularCapacidadProyectada(embarque: Embarque, pedidos: Pedido[], nuevosPedidoIds: string[]): { totalPacas: number; pesoKg: number } {
   const pacasActuales = embarque.totalPacas || 0
@@ -54,27 +55,47 @@ function PedidoRow({ pedido, label }: { pedido: Pedido; label?: string }) {
   )
 }
 
-function SummaryRow({ pedidos }: { pedidos: Pedido[] }) {
+function SummaryRow({ pedidos, trabajador }: { pedidos: Pedido[]; trabajador: Trabajador }) {
   const normales = pedidos.filter((p) => p.origen !== 'VENTA_LIBRE')
   const libres = pedidos.filter((p) => p.origen === 'VENTA_LIBRE')
   const totalPacas = pedidos.reduce((s, p) => s + pacasCount(p), 0)
 
+  const totalAgua = pedidos.reduce((s, p) => s + (p.cPacaAguaEnt || p.cPacaAguaPed || 0), 0)
+  const totalHielo = pedidos.reduce((s, p) => s + (p.cPacaHieloEnt || p.cPacaHieloPed || 0), 0)
+  const totalBotFab = pedidos.reduce((s, p) => s + (p.cBotellonFabEnt || p.cBotellonFabPed || 0), 0)
+  const totalBotDom = pedidos.reduce((s, p) => s + (p.cBotellonDomEnt || p.cBotellonDomPed || 0), 0)
+  const totalBolAgua = pedidos.reduce((s, p) => s + (p.cBolsaAguaEnt || p.cBolsaAguaPed || 0), 0)
+  const totalBolHielo = pedidos.reduce((s, p) => s + (p.cBolsaHieloEnt || p.cBolsaHieloPed || 0), 0)
+
+  const comAgua = totalAgua * Number(trabajador.comPacaAgua || 0)
+  const comHielo = totalHielo * Number(trabajador.comPacaHielo || 0)
+  const comBotellon = (totalBotFab + totalBotDom) * Number(trabajador.comBotellon || 0)
+  const totalComision = comAgua + comHielo + comBotellon
+
   return (
-    <div className="border rounded-lg p-3 bg-gray-50">
+    <div className="border rounded-lg p-3 bg-gray-50 space-y-2">
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
         <span className="font-medium text-gray-800">{pedidos.length} pedidos</span>
         <span className="text-gray-500">{totalPacas} pacas</span>
         {normales.length > 0 && (
-          <span className="text-green-700">
-            {normales.length} pedidos programados
-          </span>
+          <span className="text-green-700">{normales.length} pedidos programados</span>
         )}
         {libres.length > 0 && (
-          <span className="text-purple-700">
-            {libres.length} ventas libres
-          </span>
+          <span className="text-purple-700">{libres.length} ventas libres</span>
         )}
       </div>
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
+        {totalAgua > 0 && <span>🚛 Agua: {totalAgua}</span>}
+        {totalHielo > 0 && <span>🧊 Hielo: {totalHielo}</span>}
+        {totalBotFab + totalBotDom > 0 && <span>🫗 Botellones: {totalBotFab + totalBotDom}</span>}
+        {totalBolAgua > 0 && <span>💧 Bolsas agua: {totalBolAgua}</span>}
+        {totalBolHielo > 0 && <span>❄️ Bolsas hielo: {totalBolHielo}</span>}
+      </div>
+      {totalComision > 0 && (
+        <div className="text-xs font-semibold text-amber-700 bg-amber-50 px-2 py-1 rounded">
+          Comisión: {formatCurrency(totalComision)}
+        </div>
+      )}
     </div>
   )
 }
@@ -302,7 +323,7 @@ export function EmbarqueDetailModal({
 
         {embarque.estado === 'CERRADO' ? (
           <>
-            <SummaryRow pedidos={embarque.pedidos || []} />
+            <SummaryRow pedidos={embarque.pedidos || []} trabajador={embarque.trabajador} />
             <button
               onClick={() => setShowClosedPedidos(!showClosedPedidos)}
               className="w-full mt-2 px-3 py-2 text-sm text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 transition font-medium"

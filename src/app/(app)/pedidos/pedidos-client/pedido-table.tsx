@@ -14,8 +14,8 @@ function getItemsFromPedido(pedido: Pedido) {
   const legacy: { producto: string; cantPedido: number }[] = []
   if (pedido.cPacaAguaPed > 0) legacy.push({ producto: 'PACA_AGUA', cantPedido: pedido.cPacaAguaPed })
   if (pedido.cPacaHieloPed > 0) legacy.push({ producto: 'PACA_HIELO', cantPedido: pedido.cPacaHieloPed })
-  if (pedido.cBotellonFabPed > 0) legacy.push({ producto: 'BOTELLON_FAB', cantPedido: pedido.cBotellonFabPed })
-  if (pedido.cBotellonDomPed > 0) legacy.push({ producto: 'BOTELLON_DOM', cantPedido: pedido.cBotellonDomPed })
+  const botellonTotal = (pedido.cBotellonFabPed || 0) + (pedido.cBotellonDomPed || 0)
+  if (botellonTotal > 0) legacy.push({ producto: 'BOTELLON', cantPedido: botellonTotal })
   if (pedido.cBolsaAguaPed > 0) legacy.push({ producto: 'BOLSA_AGUA', cantPedido: pedido.cBolsaAguaPed })
   if (pedido.cBolsaHieloPed > 0) legacy.push({ producto: 'BOLSA_HIELO', cantPedido: pedido.cBolsaHieloPed })
   return legacy
@@ -59,7 +59,17 @@ function DesktopRow({
   }
 
   return (
-    <tr key={pedido.id} className={`hover:bg-gray-50 transition ${fiado ? 'bg-red-50/30' : ''}`}>
+    <tr
+      key={pedido.id}
+      tabIndex={0}
+      className={`hover:bg-gray-50 transition outline-none focus:ring-2 focus:ring-inset focus:ring-blue-400 ${fiado ? 'bg-red-50/30' : ''}`}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onDetail(pedido)
+        }
+      }}
+    >
       <td className="px-4 py-3 text-sm font-medium text-gray-500">#{pedido.numero}</td>
       <td className="px-4 py-3">
         <div className="flex items-center gap-2 mb-0.5 flex-wrap">
@@ -72,6 +82,9 @@ function DesktopRow({
           ))}
         </div>
         <div className="text-xs text-gray-400">{pedido.telefonoCli}</div>
+        {pedido.horaPreferida && (
+          <span className="text-xs text-amber-600 font-medium">{pedido.horaPreferida}</span>
+        )}
         {fiado && (
           <span className="text-xs text-red-600 font-medium">Fiado: {formatCurrency(Number(pedido.saldo))}</span>
         )}
@@ -172,8 +185,16 @@ function MobileCard({
   return (
     <div
       key={pedido.id}
-      className={`p-4 hover:bg-gray-50 cursor-pointer transition ${fiado ? 'bg-red-50/30' : ''}`}
+      tabIndex={0}
+      role="button"
+      className={`p-4 hover:bg-gray-50 cursor-pointer transition outline-none focus:ring-2 focus:ring-inset focus:ring-blue-400 ${fiado ? 'bg-red-50/30' : ''}`}
       onClick={() => onDetail(pedido)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onDetail(pedido)
+        }
+      }}
     >
       <div className="flex justify-between items-start mb-2">
         <div className="flex-1 min-w-0">
@@ -181,13 +202,17 @@ function MobileCard({
             <span className="text-xs font-medium text-gray-400">#{pedido.numero}</span>
             {renderOrigenBadge(pedido.origen)}
             {alertas.map((a) => (
-              <span key={a.tipo} className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${alertaBadgeClass(a.severidad)}`} title={a.label}>
-                ⚠️ {a.label}
+              <span key={a.tipo} className={`px-1.5 py-0.5 rounded text-[10px] font-medium inline-flex items-center gap-1 ${alertaBadgeClass(a.severidad)}`} title={a.label}>
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
+                {a.label}
               </span>
             ))}
           </div>
           <h3 className="font-medium text-gray-800 text-sm">{pedido.nombreCli}</h3>
           <p className="text-xs text-gray-400">{pedido.telefonoCli}</p>
+          {pedido.horaPreferida && (
+            <p className="text-xs text-amber-600 font-medium">{pedido.horaPreferida}</p>
+          )}
           <div className="flex gap-1 mt-1">
             {renderEstadoEntregaBadge(pedido.estadoEntrega)}
             {renderEstadoPagoBadge(pedido.estadoPago)}
@@ -222,7 +247,7 @@ function MobileCard({
           <button
             onClick={(e) => { e.stopPropagation(); onCambiarEstado(pedido.id, 'EN_RUTA') }}
             disabled={updatingId === pedido.id}
-            className="flex-1 flex items-center justify-center px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium disabled:opacity-50"
+            className="flex-1 flex items-center justify-center px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50"
             aria-label="Enviar pedido"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
@@ -243,6 +268,30 @@ function MobileCard({
   )
 }
 
+function splitPinned(pedidos: Pedido[]) {
+  const pinned = pedidos.filter(p => p.horaPreferida)
+  const unpinned = pedidos.filter(p => !p.horaPreferida)
+  return { pinned, unpinned }
+}
+
+function PinnedDivider({ label }: { label: string }) {
+  return (
+    <tr className="bg-amber-50">
+      <td colSpan={7} className="px-4 py-2 text-xs font-semibold text-amber-700 uppercase tracking-wider">
+        {label}
+      </td>
+    </tr>
+  )
+}
+
+function MobileSectionHeader({ label }: { label: string }) {
+  return (
+    <div className="bg-amber-50 px-4 py-2 text-xs font-semibold text-amber-700 uppercase tracking-wider">
+      {label}
+    </div>
+  )
+}
+
 export function PedidoTable({
   pedidos,
   updatingId,
@@ -257,9 +306,43 @@ export function PedidoTable({
   onCreateClick,
 }: PedidoTableProps) {
   const rowProps = { updatingId, renderOrigenBadge, renderEstadoEntregaBadge, renderEstadoPagoBadge, getAlertasPedido, tieneFiado, onDetail, onCambiarEstado }
+  const { pinned, unpinned } = splitPinned(pedidos)
+
+  function renderPinnedRows() {
+    if (pinned.length === 0) return null
+    return (
+      <>
+        <PinnedDivider label={`Con horario preferido (${pinned.length})`} />
+        {pinned.map((pedido) => (
+          <DesktopRow key={pedido.id} pedido={pedido} {...rowProps} />
+        ))}
+        <PinnedDivider label={`Sin horario (${unpinned.length})`} />
+      </>
+    )
+  }
+
+  function renderMobileSections() {
+    const sections: Array<{ label: string; items: Pedido[] }> = []
+    if (pinned.length > 0) sections.push({ label: `Con horario preferido (${pinned.length})`, items: pinned })
+    sections.push({ label: `Sin horario (${pedidos.length - pinned.length})`, items: unpinned })
+    return sections
+  }
+
+  function handleTableKeyDown(e: React.KeyboardEvent) {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+    const focusable = Array.from(
+      e.currentTarget.querySelectorAll<HTMLElement>('[tabindex="0"]')
+    )
+    if (focusable.length === 0) return
+    const idx = focusable.indexOf(document.activeElement as HTMLElement)
+    if (idx < 0) return
+    e.preventDefault()
+    const next = e.key === 'ArrowDown' ? focusable[idx + 1] : focusable[idx - 1]
+    next?.focus()
+  }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" onKeyDown={handleTableKeyDown}>
       {/* Header descriptivo */}
       <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl">
         <div className="flex items-start gap-3">
@@ -307,9 +390,12 @@ export function PedidoTable({
                 </td>
               </tr>
             ) : (
-              pedidos.map((pedido) => (
-                <DesktopRow key={pedido.id} pedido={pedido} {...rowProps} />
-              ))
+              <>
+                {renderPinnedRows()}
+                {unpinned.map((pedido) => (
+                  <DesktopRow key={pedido.id} pedido={pedido} {...rowProps} />
+                ))}
+              </>
             )}
           </tbody>
         </table>
@@ -325,8 +411,13 @@ export function PedidoTable({
             onAction={onCreateClick}
           />
         ) : (
-          pedidos.map((pedido) => (
-            <MobileCard key={pedido.id} pedido={pedido} {...rowProps} />
+          renderMobileSections().map((section) => (
+            <div key={section.label}>
+              <MobileSectionHeader label={section.label} />
+              {section.items.map((pedido) => (
+                <MobileCard key={pedido.id} pedido={pedido} {...rowProps} />
+              ))}
+            </div>
           ))
         )}
       </div>

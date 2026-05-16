@@ -21,8 +21,9 @@ export async function GET(request: NextRequest) {
     const desde = request.nextUrl.searchParams.get('desde')
     const hasta = request.nextUrl.searchParams.get('hasta')
     const all = request.nextUrl.searchParams.get('all')
+    const estado = request.nextUrl.searchParams.get('estado')
 
-    let where: Record<string, unknown> = {}
+    const where: Record<string, unknown> = {}
 
     // REPARTIDOR: only see their own embarques
     if (session.user?.role === 'REPARTIDOR') {
@@ -31,20 +32,26 @@ export async function GET(request: NextRequest) {
         select: { id: true },
       })
       if (trabajador) {
-        where = { trabajadorId: trabajador.id }
+        where.trabajadorId = trabajador.id
       } else {
         return apiSuccess({ embarques: [], total: 0 })
       }
     }
 
-    if (all === 'true') {
-      if (session.user?.role !== 'REPARTIDOR') where = { estado: { not: EstadoEmbarque.CANCELADO } }
-    } else if (desde && hasta) {
-      const { startDate, endDate } = getDateRange(desde, hasta)
-      where = { fecha: { gte: startDate, lt: endDate }, estado: { not: EstadoEmbarque.CANCELADO } }
+    if (estado) {
+      where.estado = estado
     } else {
-      const { startOfDay, endOfDay } = getTodayRange()
-      where = { fecha: { gte: startOfDay, lt: endOfDay }, estado: { not: EstadoEmbarque.CANCELADO } }
+      where.estado = { not: EstadoEmbarque.CANCELADO }
+    }
+
+    if (!(all === 'true')) {
+      if (desde && hasta) {
+        const { startDate, endDate } = getDateRange(desde, hasta)
+        where.fecha = { gte: startDate, lt: endDate }
+      } else {
+        const { startOfDay, endOfDay } = getTodayRange()
+        where.fecha = { gte: startOfDay, lt: endOfDay }
+      }
     }
     const prismaPagination = getPrismaPagination(pagination)
 
@@ -52,15 +59,19 @@ export async function GET(request: NextRequest) {
       prisma.embarque.findMany({
         where,
         include: {
-          trabajador: { select: { id: true, nombre: true, capacidadKg: true } },
           ruta: { select: { id: true, nombre: true } },
           pedidos: {
             select: {
               id: true, numero: true, estado: true, estadoEntrega: true, origen: true, canal: true, total: true, saldo: true,
               cPacaAguaPed: true, cPacaHieloPed: true, cBotellonFabPed: true, cBotellonDomPed: true,
               cBolsaAguaPed: true, cBolsaHieloPed: true,
+              cPacaAguaEnt: true, cPacaHieloEnt: true, cBotellonFabEnt: true, cBotellonDomEnt: true,
+              cBolsaAguaEnt: true, cBolsaHieloEnt: true,
               cliente: { select: { id: true, nombre: true, barrio: true } },
             },
+          },
+          trabajador: {
+            select: { id: true, nombre: true, capacidadKg: true, comPacaAgua: true, comPacaHielo: true, comBotellon: true, comRepartAgua: true, comRepartHielo: true, comRepartBotellon: true },
           },
         },
         orderBy: { numero: 'desc' },

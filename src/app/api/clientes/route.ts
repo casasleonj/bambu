@@ -13,7 +13,20 @@ export async function GET(request: NextRequest) {
   if (authResult instanceof Response) return authResult
   const pagination = getPaginationParams(request.nextUrl.searchParams)
   try {
-    const where = { activo: true }
+    const search = request.nextUrl.searchParams.get('search')
+    const where: any = { activo: true }
+
+    if (search) {
+      where.OR = [
+        { nombre: { contains: search, mode: 'insensitive' } },
+        { telefono: { contains: search } },
+        { direccion: { contains: search, mode: 'insensitive' } },
+        { barrio: { contains: search, mode: 'insensitive' } },
+        { contactos: { path: ['[*].telefono'], contains: search } },
+        { contactos: { path: ['[*].nombre'], contains: search, mode: 'insensitive' } },
+      ]
+    }
+
     const prismaPagination = getPrismaPagination(pagination)
     const [clientesRaw, total] = await Promise.all([
       prisma.cliente.findMany({
@@ -57,6 +70,26 @@ export async function POST(request: NextRequest) {
       return apiError('Datos invalidos', 400, { formErrors: [formatZodError(parsed.error)] })
     }
 
+    const duplicadoTelefono = await prisma.cliente.findFirst({
+      where: {
+        activo: true,
+        OR: [
+          { telefono: parsed.data.telefono },
+          { contactos: { path: ['[*].telefono'], equals: parsed.data.telefono } },
+        ],
+      },
+      select: { id: true, nombre: true, telefono: true },
+    })
+
+    if (duplicadoTelefono) {
+      return apiError('Ya existe un cliente con ese teléfono', 409, {
+        formErrors: [`El teléfono ya está registrado en "${duplicadoTelefono.nombre}"`],
+      })
+    }
+
+    const contactos = parsed.data.contactos ?? []
+    const contactosSinDuplicados = contactos.filter(c => c.telefono !== parsed.data.telefono)
+
     const cliente = await prisma.cliente.create({
       data: {
         nombre: parsed.data.nombre,
@@ -66,10 +99,11 @@ export async function POST(request: NextRequest) {
         tipoNegocio: parsed.data.tipoNegocio,
         barrio: parsed.data.barrio,
         direccion: parsed.data.direccion,
-        frecuencia: parsed.data.frecuencia || 'NINGUNA',
-        cadaNDias: parsed.data.cadaNDias,
+        linkUbicacion: parsed.data.linkUbicacion ?? null,
+        contactos: contactosSinDuplicados.length > 0 ? contactosSinDuplicados : undefined,
         preciosEspeciales: parsed.data.preciosEspeciales,
         notas: parsed.data.notas,
+        horaPreferida: parsed.data.horaPreferida ?? null,
       },
     })
 

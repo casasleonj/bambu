@@ -15,8 +15,8 @@ interface ClienteSelectProps {
   setClienteSeleccionado: (c: Cliente | null) => void
   mostrarNuevo: boolean
   setMostrarNuevo: (v: boolean) => void
-  nuevoCliente: { nombre: string; telefono: string; direccion: string; barrio: string }
-  setNuevoCliente: React.Dispatch<React.SetStateAction<{ nombre: string; telefono: string; direccion: string; barrio: string }>>
+  nuevoCliente: { nombre: string; apellido: string; telefono: string; direccion: string; barrio: string }
+  setNuevoCliente: React.Dispatch<React.SetStateAction<{ nombre: string; apellido: string; telefono: string; direccion: string; barrio: string }>>
   onSelectCliente: (cliente: Cliente) => void
   onCreateNuevo: () => void
 }
@@ -108,6 +108,7 @@ export function ClienteSelect({
               </button>
             </div>
             <Input placeholder="Nombre *" value={nuevoCliente.nombre} onChange={e => setNuevoCliente(p => ({ ...p, nombre: e.target.value }))} />
+            <Input placeholder="Apellido" value={nuevoCliente.apellido} onChange={e => setNuevoCliente(p => ({ ...p, apellido: e.target.value }))} />
             <Input placeholder="Celular *" value={nuevoCliente.telefono} onChange={e => setNuevoCliente(p => ({ ...p, telefono: e.target.value }))} />
             <Input placeholder="Dirección *" value={nuevoCliente.direccion} onChange={e => setNuevoCliente(p => ({ ...p, direccion: e.target.value }))} />
             <Input placeholder="Barrio" value={nuevoCliente.barrio} onChange={e => setNuevoCliente(p => ({ ...p, barrio: e.target.value }))} />

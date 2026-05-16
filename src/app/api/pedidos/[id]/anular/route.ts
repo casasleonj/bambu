@@ -1,12 +1,13 @@
 import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
-import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { AnularSchema } from '@/lib/validators'
 import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
+import { withAdvisoryLock } from '@/lib/locks'
+import { getNextNumero } from '@/lib/sequence'
 
 export async function POST(
   request: NextRequest,
@@ -14,7 +15,7 @@ export async function POST(
 ) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
-  const roleCheck = await requireRole([ROLES.ADMIN], authResult)
+  const roleCheck = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE], authResult)
   if (roleCheck instanceof Response) return roleCheck
   const { id } = await params
 
@@ -27,10 +28,10 @@ export async function POST(
 
     const { motivo, devolverStock } = parsed.data
 
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await withAdvisoryLock('NC', async (tx) => {
       const pedido = await tx.pedido.findUnique({
         where: { id },
-        include: { items: true, factura: true, pedidoHijo: true },
+        include: { items: true, factura: true },
       })
       if (!pedido) throw new Error('PEDIDO_NOT_FOUND')
       if (pedido.estado === 'ANULADO') throw new Error('YA_ANULADO')
@@ -49,20 +50,7 @@ export async function POST(
         },
       })
 
-      // 2. Anular hijos recursivamente
-      for (const hijo of pedido.pedidoHijo) {
-        await tx.pedido.update({
-          where: { id: hijo.id },
-          data: {
-            estado: 'ANULADO',
-            estadoEntrega: 'ANULADO',
-            estadoPago: 'PAGADO',
-            saldo: 0,
-          },
-        })
-      }
-
-      // 3. Anular factura
+      // 2. Anular factura
       if (pedido.factura) {
         await tx.factura.update({
           where: { id: pedido.factura.id },
@@ -74,7 +62,7 @@ export async function POST(
       }
 
       // 4. Crear nota de crédito
-      const nextNum = await tx.notaCredito.count() + 1
+      const nextNum = await getNextNumero(tx, { model: 'notaCredito' })
       const ncNumero = `NC-${nextNum.toString().padStart(5, '0')}`
       await tx.notaCredito.create({
         data: {
@@ -95,7 +83,7 @@ export async function POST(
       return {
         pedido: { id, estado: 'ANULADO', estadoEntrega: 'ANULADO' },
         notaCredito: ncNumero,
-        hijosAnulados: pedido.pedidoHijo.length,
+        hijosAnulados: 0,
         stockMessage,
       }
     })

@@ -3,5 +3,7 @@ import { redirect } from 'next/navigation'
 
 export default async function RootPage() {
   const session = await auth()
-  redirect(session?.user?.id ? '/dashboard' : '/login')
+  if (!session?.user?.id) redirect('/login')
+  if (session.user.mustChangePassword) redirect('/cambiar-contrasena')
+  redirect('/dashboard')
 }

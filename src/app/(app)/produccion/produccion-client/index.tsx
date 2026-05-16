@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
+import { formatCurrency } from '@/lib/utils'
+import { useConfirm } from '@/components/confirm-modal'
 import { SkeletonPage } from '@/components/skeleton'
 import { InfoBanner } from '@/components/tooltip'
 import type { StockInicial, FormData, TrabajadorOption, PreviewData, RepartidorOption } from './types'
@@ -36,6 +38,7 @@ interface ConciliationResult {
 
 export default function ProduccionClient() {
   const router = useRouter()
+  const { confirm, modal } = useConfirm()
   const [step, setStep] = useState(1)
   const [stockInicial, setStockInicial] = useState<StockInicial>({
     stockIniAgua: 0,
@@ -100,14 +103,8 @@ export default function ProduccionClient() {
   const comHielo = prodHielo * (selectedTrabajador?.comPacaHielo || 200)
   const comisionTotal = comAgua + comHielo
 
-  const avgComPacaAgua = repartidores.length > 0
-    ? repartidores.reduce((s, r) => s + r.comPacaAgua, 0) / repartidores.length
-    : 0
-  const avgComPacaHielo = repartidores.length > 0
-    ? repartidores.reduce((s, r) => s + r.comPacaHielo, 0) / repartidores.length
-    : 0
-  const comRepartAgua = stockInicial.ventasAgua * avgComPacaAgua
-  const comRepartHielo = stockInicial.ventasHielo * avgComPacaHielo
+  const comRepartAgua = repartidores.reduce((s, r) => s + r.entregasAgua * r.comPacaAgua, 0)
+  const comRepartHielo = repartidores.reduce((s, r) => s + r.entregasHielo * r.comPacaHielo, 0)
   const comRepartTotal = comRepartAgua + comRepartHielo
 
   const conciliation: ConciliationResult = (() => {
@@ -128,6 +125,21 @@ export default function ProduccionClient() {
     if (!formData.trabajadorId) {
       toast.error('Selecciona un trabajador')
       return
+    }
+    if (!formData.conteoAAgua && !formData.conteoAHielo) {
+      toast.error('Ingresá los conteos de producción')
+      return
+    }
+    if (!formData.stockFinFisicoAgua && !formData.stockFinFisicoHielo) {
+      toast.error('Ingresá el stock físico contado')
+      return
+    }
+    if (conciliation.status !== 'ok') {
+      const msg = conciliation.status === 'danger'
+        ? `Hay sobrantes de stock. ${conciliation.message}. ¿Estás seguro de guardar?`
+        : `${conciliation.message}. ¿Estás seguro de guardar?`
+      const ok = await confirm(msg)
+      if (!ok) return
     }
     setSubmitting(true)
     try {
@@ -403,6 +415,18 @@ export default function ProduccionClient() {
                   </div>
                 </div>
               </div>
+
+              {/* Alerta si conteos A y B difieren mucho */}
+              {formData.conteoAAgua > 0 && formData.conteoBAgua > 0 && Math.abs(formData.conteoAAgua - formData.conteoBAgua) > 5 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-700">
+                  ⚠️ Diferencia de <strong>{Math.abs(formData.conteoAAgua - formData.conteoBAgua)} pacas</strong> en conteos de agua (A={formData.conteoAAgua}, B={formData.conteoBAgua}). Considerá hacer un tercer conteo.
+                </div>
+              )}
+              {formData.conteoAHielo > 0 && formData.conteoBHielo > 0 && Math.abs(formData.conteoAHielo - formData.conteoBHielo) > 5 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-700">
+                  ⚠️ Diferencia de <strong>{Math.abs(formData.conteoAHielo - formData.conteoBHielo)} pacas</strong> en conteos de hielo (A={formData.conteoAHielo}, B={formData.conteoBHielo}). Considerá hacer un tercer conteo.
+                </div>
+              )}
 
               <div className="flex gap-3">
                 <button
@@ -743,6 +767,31 @@ export default function ProduccionClient() {
                 </div>
               </div>
 
+              {/* Diagnóstico de diferencia */}
+              {conciliation.status !== 'ok' && (
+                <div className={`p-4 rounded-lg text-sm border ${
+                  conciliation.status === 'danger' ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'
+                }`}>
+                  <p className={`font-semibold mb-2 ${
+                    conciliation.status === 'danger' ? 'text-red-700' : 'text-amber-700'
+                  }`}>🔍 Posibles causas de la diferencia:</p>
+                  <ul className="list-disc pl-5 space-y-1">
+                    {diferenciaAgua > 0 && (
+                      <li className="text-red-700">Faltan {diferenciaAgua} paca(s) de agua → ¿faltan ventas por registrar? ¿el sellador reportó producción de más?</li>
+                    )}
+                    {diferenciaAgua < 0 && (
+                      <li className="text-red-700">Sobran {Math.abs(diferenciaAgua)} paca(s) de agua → ¿ventas anotadas de más? ¿producción mal contada por el sellador?</li>
+                    )}
+                    {diferenciaHielo > 0 && (
+                      <li className="text-red-700">Faltan {diferenciaHielo} paca(s) de hielo → ¿faltan ventas por registrar? ¿el sellador reportó producción de más?</li>
+                    )}
+                    {diferenciaHielo < 0 && (
+                      <li className="text-red-700">Sobran {Math.abs(diferenciaHielo)} paca(s) de hielo → ¿ventas anotadas de más? ¿producción mal contada por el sellador?</li>
+                    )}
+                  </ul>
+                </div>
+              )}
+
               {/* Comisiones */}
               <div className="border rounded-xl overflow-hidden">
                 <div className="bg-gray-50 px-5 py-3 border-b">
@@ -752,43 +801,69 @@ export default function ProduccionClient() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="bg-purple-50 rounded-xl p-4 border border-purple-100">
                       <p className="text-sm font-semibold text-purple-700 mb-3">👤 {selectedTrabajador?.nombre || 'Sellador'}</p>
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">💧 {prodAgua} × ${selectedTrabajador?.comPacaAgua || 200}</span>
-                          <span className="font-semibold">${comAgua.toLocaleString()}</span>
+                      {selectedTrabajador?.tipoPago === 'FIJO' ? (
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-600">💰 Salario fijo</span>
+                            <span className="text-2xl font-bold text-purple-700">{formatCurrency(Number(selectedTrabajador.salarioFijo))}</span>
+                          </div>
+                          <p className="text-xs text-gray-400 mt-2">No aplica comisión por producción (pago fijo por turno)</p>
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">🧊 {prodHielo} × ${selectedTrabajador?.comPacaHielo || 200}</span>
-                          <span className="font-semibold">${comHielo.toLocaleString()}</span>
+                      ) : (
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">💧 {prodAgua} × ${selectedTrabajador?.comPacaAgua || 200}</span>
+                            <span className="font-semibold">{formatCurrency(comAgua)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">🧊 {prodHielo} × ${selectedTrabajador?.comPacaHielo || 200}</span>
+                            <span className="font-semibold">{formatCurrency(comHielo)}</span>
+                          </div>
+                          {selectedTrabajador?.tipoPago === 'MIXTO' && (
+                            <div className="flex justify-between text-purple-600">
+                              <span>➕ Salario base</span>
+                              <span className="font-semibold">{formatCurrency(Number(selectedTrabajador.salarioFijo))}</span>
+                            </div>
+                          )}
+                          <div className="border-t pt-2 flex justify-between font-bold text-purple-700 text-lg">
+                            <span>Total</span>
+                            <span>{formatCurrency(comisionTotal + (selectedTrabajador?.tipoPago === 'MIXTO' ? Number(selectedTrabajador.salarioFijo) : 0))}</span>
+                          </div>
                         </div>
-                        <div className="border-t pt-2 flex justify-between font-bold text-purple-700 text-lg">
-                          <span>Total</span>
-                          <span>${comisionTotal.toLocaleString()}</span>
-                        </div>
-                      </div>
+                      )}
                     </div>
 
                     <div className="bg-indigo-50 rounded-xl p-4 border border-indigo-100">
                       <p className="text-sm font-semibold text-indigo-700 mb-1">🚚 Repartidor(es)</p>
                       {repartidores.length > 0 ? (
-                        <p className="text-xs text-gray-500 mb-3">{repartidores.map((r) => r.nombre).join(', ')}</p>
+                        <div className="space-y-3 text-sm">
+                          {repartidores.map((r) => {
+                            const comAgua = r.entregasAgua * r.comPacaAgua
+                            const comHielo = r.entregasHielo * r.comPacaHielo
+                            return (
+                              <div key={r.id} className="bg-white/60 rounded-lg p-2.5">
+                                <p className="font-semibold text-indigo-700 text-xs mb-1">{r.nombre} <span className="font-normal text-gray-400">(rate {formatCurrency(r.comPacaAgua)}/{formatCurrency(r.comPacaHielo)})</span></p>
+                                <div className="space-y-1">
+                                  <div className="flex justify-between text-xs">
+                                    <span className="text-gray-600">💧 {r.entregasAgua} × {formatCurrency(r.comPacaAgua)}</span>
+                                    <span className="font-semibold">{formatCurrency(comAgua)}</span>
+                                  </div>
+                                  <div className="flex justify-between text-xs">
+                                    <span className="text-gray-600">🧊 {r.entregasHielo} × {formatCurrency(r.comPacaHielo)}</span>
+                                    <span className="font-semibold">{formatCurrency(comHielo)}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          })}
+                          <div className="border-t pt-2 flex justify-between font-bold text-indigo-700 text-base">
+                            <span>Total</span>
+                            <span>= {formatCurrency(comRepartTotal)}</span>
+                          </div>
+                        </div>
                       ) : (
-                        <p className="text-xs text-gray-400 mb-3">Sin embarques hoy</p>
+                        <p className="text-xs text-gray-400">Sin embarques hoy</p>
                       )}
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">💧 {stockInicial.ventasAgua} × ${avgComPacaAgua.toLocaleString()}</span>
-                          <span className="font-semibold">= ${comRepartAgua.toLocaleString()}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">🧊 {stockInicial.ventasHielo} × ${avgComPacaHielo.toLocaleString()}</span>
-                          <span className="font-semibold">= ${comRepartHielo.toLocaleString()}</span>
-                        </div>
-                        <div className="border-t pt-2 flex justify-between font-bold text-indigo-700 text-lg">
-                          <span>Total</span>
-                          <span>= ${comRepartTotal.toLocaleString()}</span>
-                        </div>
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -804,7 +879,7 @@ export default function ProduccionClient() {
                 <button
                   onClick={handleSubmit}
                   disabled={submitting}
-                  className="flex-1 bg-green-600 text-white py-3 rounded-xl font-semibold hover:bg-green-700 transition-colors disabled:opacity-50 text-lg"
+                  className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 text-lg"
                 >
                   {submitting ? 'Guardando...' : '✓ Confirmar y Guardar'}
                 </button>
@@ -821,6 +896,7 @@ export default function ProduccionClient() {
         {/* Mobile/Tablet: Balance card at bottom of each step */}
         <div className="lg:hidden mt-6">{renderBalanceCard()}</div>
       </div>
+      {modal}
     </div>
   )
 }

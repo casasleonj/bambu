@@ -1,6 +1,7 @@
 import type { Pedido, PagoItem, CuadrePedido, EmbarqueAbierto } from './types'
 import { METODOS_PAGO, calcularTotalEntregado, calcularMontoPagado } from './types'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
+import { formatCurrency } from '@/lib/utils'
 
 interface PedidoCuadreProps {
   pedido: Pedido
@@ -71,7 +72,7 @@ export function PedidoCuadre({
             {pedido.cBotellonDomPed > 0 && `${pedido.cBotellonDomPed} bot.dom `}
             {pedido.cBolsaAguaPed > 0 && `${pedido.cBolsaAguaPed} bol.agua `}
             {pedido.cBolsaHieloPed > 0 && `${pedido.cBolsaHieloPed} bol.hielo `}
-            = ${pedido.total.toLocaleString()}
+            = {formatCurrency(pedido.total)}
           </div>
         </div>
       </div>
@@ -192,7 +193,7 @@ export function PedidoCuadre({
                         </div>
                       </td>
                       <td className="px-2 py-1.5 text-right text-xs font-medium">
-                        {subtotal > 0 ? `$${subtotal.toLocaleString()}` : '-'}
+                        {subtotal > 0 ? formatCurrency(subtotal) : '-'}
                       </td>
                     </tr>
                   )
@@ -243,9 +244,9 @@ export function PedidoCuadre({
             </button>
           </div>
           <div className="mt-2 text-sm text-gray-600 bg-gray-50 p-2 rounded">
-            Total entregado: ${totalReal.toLocaleString()} |
-            Cobrado: ${montoPagado.toLocaleString()} |
-            Saldo: ${(totalReal - montoPagado).toLocaleString()}
+            Total entregado: {formatCurrency(totalReal)} |
+            Cobrado: {formatCurrency(montoPagado)} |
+            Saldo: {formatCurrency(totalReal - montoPagado)}
           </div>
         </div>
       )}

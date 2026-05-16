@@ -1,7 +1,12 @@
 import { prisma } from '@/lib/prisma'
 import ClientesClient from './clientes-client'
 
-export default async function ClientesPage() {
+export default async function ClientesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ openCliente?: string }>
+}) {
+  const resolvedSearchParams = await searchParams
   const clientes = await prisma.cliente.findMany({
     where: { activo: true },
     orderBy: { nombre: 'asc' },
@@ -35,5 +40,5 @@ export default async function ClientesPage() {
     })
   )
 
-  return <ClientesClient initialClientes={serialized} />
+  return <ClientesClient initialClientes={serialized} openClienteId={resolvedSearchParams.openCliente} />
 }

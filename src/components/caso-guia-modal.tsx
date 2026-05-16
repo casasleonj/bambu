@@ -256,7 +256,7 @@ export function CasoGuiaModal({ caso, contextData, usuarios, onClose, onStatusCh
     }
 
     if (accionId === 'ver_precios' || accionId === 'ver_tabla_precios') {
-      window.location.href = '/precios'
+      window.location.href = '/productos'
       return
     }
 

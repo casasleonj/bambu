@@ -1,13 +1,14 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import type { Canal, FormData } from './types'
 import { PRODUCTOS_PRECIO } from './types'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, formatLocalDate } from '@/lib/utils'
 import { Modal } from '@/components/modal'
 import { FeedbackField } from '@/components/feedback-field'
-import { Tooltip, InfoBanner } from '@/components/tooltip'
+import { InfoBanner } from '@/components/tooltip'
 
 const TIPOS_NEGOCIO: string[] = [
   'Tienda', 'Restaurante', 'Café', 'Hotel', 'Bar',
@@ -16,9 +17,22 @@ const TIPOS_NEGOCIO: string[] = [
   'Gimnasio', 'Salón de eventos', 'Guardería', 'Veterinaria', 'Estación de servicio',
 ]
 
+interface PlantillaInfo {
+  id: string
+  activo: boolean
+  cadaNDias: number
+  horaPreferida: string | null
+  productos: string
+  ultimaGeneracion: string | null
+  proxGeneracion: string | null
+  tipo: string
+  canal: string
+  notas: string | null
+}
+
 interface ClienteFormProps {
-  open: boolean
-  onClose: () => void
+  open?: boolean
+  onClose?: () => void
   isEdit: boolean
   formData: FormData
   onFormDataChange: (data: FormData) => void
@@ -30,12 +44,15 @@ interface ClienteFormProps {
   preciosEspecialesMap: Record<Canal, Record<string, number | undefined>>
   onPrecioEspecialChange: (canal: Canal, codigo: string, valor: number | undefined) => void
   preciosBase: Record<Canal, Record<string, number>>
+  plantillaRecurrente?: PlantillaInfo | null
+  inline?: boolean
+  formId?: string
 }
 
 export function ClienteForm({
   open,
   onClose,
-  isEdit,
+  isEdit: _isEdit,
   formData,
   onFormDataChange,
   formError,
@@ -46,57 +63,70 @@ export function ClienteForm({
   preciosEspecialesMap,
   onPrecioEspecialChange,
   preciosBase,
+  plantillaRecurrente,
+  inline,
+  formId = 'cliente-form',
 }: ClienteFormProps) {
-  const [activeSection, setActiveSection] = useState<'basico' | 'ubicacion' | 'frecuencia' | 'precios'>('basico')
+  const [activeSection, setActiveSection] = useState<'basico' | 'ubicacion' | 'contactos' | 'frecuencia' | 'precios'>('basico')
 
   const sections = [
-    { key: 'basico', label: 'Básico', icon: '👤', description: 'Nombre y contacto' },
-    { key: 'ubicacion', label: 'Ubicación', icon: '📍', description: 'Barrio y dirección' },
-    { key: 'frecuencia', label: 'Frecuencia', icon: '📅', description: 'Periodicidad de compra' },
-    { key: 'precios', label: 'Precios', icon: '💰', description: 'Precios especiales' },
+    { key: 'basico', label: 'Básico', icon: <svg className="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>, description: 'Nombre y contacto' },
+    { key: 'ubicacion', label: 'Ubicación', icon: <svg className="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>, description: 'Barrio y dirección' },
+    { key: 'contactos', label: 'Contactos', icon: <svg className="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-2.83-2.83A4.99 4.99 0 0017 13V9a4 4 0 00-8 0v4c0 1.1-.9 2-2 2a3 3 0 00-2.83 2.83A4.99 4.99 0 007 20h5m0 0v2h2v-2m-2-2h2m-6-4h.01M12 12h.01" /></svg>, description: 'Personas de contacto' },
+    { key: 'frecuencia', label: 'Recurrentes', icon: <svg className="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>, description: 'Plantilla recurrente' },
+    { key: 'precios', label: 'Precios', icon: <svg className="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>, description: 'Precios especiales' },
   ] as const
 
-  return (
-    <Modal open={open} onClose={onClose} className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
-      {/* Header */}
-      <div className="p-4 border-b border-gray-100">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xl font-bold text-gray-900">
-            {isEdit ? 'Editar Cliente' : 'Nuevo Cliente'}
-          </h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg p-1 transition"
-            aria-label="Cerrar"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+  const tabs = (
+    <div className="flex gap-1" role="tablist" aria-label="Secciones del formulario">
+      {sections.map((section) => (
+        <button
+          key={section.key}
+          role="tab"
+          aria-selected={activeSection === section.key}
+          aria-label={section.description}
+          onClick={() => setActiveSection(section.key)}
+          className={`flex-1 px-2 py-2 rounded-lg text-xs font-medium transition text-center ${
+            activeSection === section.key
+              ? 'bg-blue-50 text-blue-700 border border-blue-200'
+              : 'text-gray-500 hover:bg-gray-50'
+          }`}
+        >
+          <span className="block mb-0.5">{section.icon}</span>
+          <span className="hidden sm:inline">{section.label}</span>
+        </button>
+      ))}
+    </div>
+  )
 
-        {/* Section navigation */}
-        <div className="flex gap-1">
-          {sections.map((section) => (
+  const body = (
+    <>
+      {!inline && (
+        <div className="p-4 border-b border-gray-100">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-xl font-bold text-gray-900">Nuevo Cliente</h2>
             <button
-              key={section.key}
-              onClick={() => setActiveSection(section.key)}
-              className={`flex-1 px-2 py-2 rounded-lg text-xs font-medium transition text-center ${
-                activeSection === section.key
-                  ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                  : 'text-gray-500 hover:bg-gray-50'
-              }`}
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg p-1 transition"
+              aria-label="Cerrar"
             >
-              <span className="block text-base mb-0.5">{section.icon}</span>
-              <span className="hidden sm:inline">{section.label}</span>
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
             </button>
-          ))}
+          </div>
+          {tabs}
         </div>
-      </div>
+      )}
+      {inline && (
+        <div className="px-4 pt-2 pb-1 border-b border-gray-100">
+          {tabs}
+        </div>
+      )}
 
       {/* Form error */}
       {formError && (
-        <div className="mx-4 mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-start gap-2">
+        <div className={`${inline ? 'px-4 pt-3' : 'mx-4 mt-4'} p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-start gap-2`}>
           <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
@@ -104,7 +134,7 @@ export function ClienteForm({
         </div>
       )}
 
-      <form id="cliente-form" onSubmit={onSubmit} className="flex-1 overflow-y-auto p-4 space-y-5">
+      <form id={formId} onSubmit={onSubmit} className="flex-1 overflow-y-auto p-4 space-y-5">
         {/* Section 1: Basic Info */}
         {activeSection === 'basico' && (
           <div className="space-y-4">
@@ -201,6 +231,17 @@ export function ClienteForm({
                 })()}
               </div>
             </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Horario preferido</label>
+              <input
+                type="time"
+                value={formData.horaPreferida}
+                onChange={(e) => onFormDataChange({ ...formData, horaPreferida: e.target.value })}
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+              />
+              <p className="text-xs text-gray-400 mt-1">Horario de atención del negocio. Los pedidos con horario aparecen primero.</p>
+            </div>
           </div>
         )}
 
@@ -232,58 +273,149 @@ export function ClienteForm({
                 placeholder="Calle, número, apartamento, referencias..."
               />
             </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Link de Google Maps</label>
+              <input
+                type="url"
+                value={formData.linkUbicacion}
+                onChange={(e) => onFormDataChange({ ...formData, linkUbicacion: e.target.value })}
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                placeholder="https://maps.google.com/?q=..."
+              />
+              <p className="text-xs text-gray-400 mt-1">Opcional. Pega el enlace de Google Maps de la ubicación del cliente.</p>
+            </div>
           </div>
         )}
 
-        {/* Section 3: Frequency */}
-        {activeSection === 'frecuencia' && (
+        {/* Section 3: Contactos */}
+        {activeSection === 'contactos' && (
           <div className="space-y-4">
             <InfoBanner type="tip">
-              Configura la frecuencia para que el sistema te recuerde cuándo este cliente debería volver a comprar.
+              Agrega personas de contacto adicionales para el mismo negocio. Útil cuando esposo y esposa tienen teléfonos distintos.
             </InfoBanner>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Repetir cada
-                  <Tooltip content="Días entre cada compra. Déjalo en 0 si no es recurrente." position="top">
-                    <span className="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-gray-200 text-gray-500 text-[10px] font-bold cursor-help">?</span>
-                  </Tooltip>
-                </label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    min={0}
-                    value={formData.cadaNDias}
-                    onChange={(e) => {
-                      const val = e.target.value === '' ? '' : parseInt(e.target.value)
-                      onFormDataChange({ ...formData, cadaNDias: isNaN(val as number) ? '' : val })
-                    }}
-                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
-                    placeholder="0"
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">días</span>
+            {/* Existing contacts list */}
+            {formData.contactos.length > 0 && (
+              <div className="space-y-2">
+                {formData.contactos.map((contacto, idx) => (
+                  <div key={idx} className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                    <div className="flex-1 grid grid-cols-3 gap-2">
+                      <input
+                        type="text"
+                        value={contacto.nombre}
+                        onChange={(e) => {
+                          const updated = [...formData.contactos]
+                          updated[idx] = { ...updated[idx], nombre: e.target.value }
+                          onFormDataChange({ ...formData, contactos: updated })
+                        }}
+                        className="px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                        placeholder="Nombre"
+                      />
+                      <input
+                        type="tel"
+                        value={contacto.telefono}
+                        onChange={(e) => {
+                          const updated = [...formData.contactos]
+                          updated[idx] = { ...updated[idx], telefono: e.target.value }
+                          onFormDataChange({ ...formData, contactos: updated })
+                        }}
+                        className="px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                        placeholder="Teléfono"
+                      />
+                      <input
+                        type="text"
+                        value={contacto.relacion || ''}
+                        onChange={(e) => {
+                          const updated = [...formData.contactos]
+                          updated[idx] = { ...updated[idx], relacion: e.target.value }
+                          onFormDataChange({ ...formData, contactos: updated })
+                        }}
+                        className="px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                        placeholder="Relación (ej: esposa)"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const updated = formData.contactos.filter((_, i) => i !== idx)
+                        onFormDataChange({ ...formData, contactos: updated })
+                      }}
+                      className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition shrink-0"
+                      aria-label="Eliminar contacto"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Add contact button */}
+            <button
+              type="button"
+              onClick={() => {
+                onFormDataChange({
+                  ...formData,
+                  contactos: [...formData.contactos, { nombre: '', telefono: '', relacion: '' }],
+                })
+              }}
+              className="w-full py-2.5 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:text-blue-600 hover:border-blue-300 transition flex items-center justify-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+              Agregar contacto
+            </button>
+          </div>
+        )}
+
+        {/* Section 4: Frequency */}
+        {activeSection === 'frecuencia' && (
+          <div className="space-y-4">
+            {plantillaRecurrente?.activo ? (
+              <InfoBanner type="info">
+                La frecuencia está controlada por <strong>pedidos recurrentes</strong>. Edita la plantilla para cambiarla.
+              </InfoBanner>
+            ) : (
+              <InfoBanner type="tip">
+                Configura la frecuencia desde <strong>Pedidos Recurrentes</strong> para automatizar las entregas de este cliente.
+              </InfoBanner>
+            )}
+
+            {plantillaRecurrente?.activo ? (
+              <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-xs rounded font-semibold">Plantilla Recurrente Activa</span>
+                  <Link href={`/recurrentes/${plantillaRecurrente.id}`}
+                    className="text-xs text-indigo-600 hover:text-indigo-800 font-medium underline">
+                    Gestionar →
+                  </Link>
+                </div>
+                <div className="text-sm text-indigo-900 space-y-1">
+                  <p><span className="font-medium">Cada:</span> {plantillaRecurrente.cadaNDias} días</p>
+                  {plantillaRecurrente.horaPreferida && <p><span className="font-medium">Horario:</span> {plantillaRecurrente.horaPreferida}</p>}
+                  {plantillaRecurrente.proxGeneracion && <p><span className="font-medium">Próxima generación:</span> {formatLocalDate(plantillaRecurrente.proxGeneracion)}</p>}
+                  {(() => {
+                    try {
+                      const prods = JSON.parse(plantillaRecurrente.productos)
+                      const entries = Object.entries(prods).filter(([_, v]) => (v as number) > 0)
+                      if (entries.length > 0) {
+                        return <p><span className="font-medium">Productos:</span> {entries.map(([k, v]) => `${k}=${v}`).join(', ')}</p>
+                      }
+                    } catch {}
+                    return null
+                  })()}
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Primera entrega</label>
-                <input
-                  type="date"
-                  value={formData.proxEntrega}
-                  onChange={(e) => onFormDataChange({ ...formData, proxEntrega: e.target.value })}
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
-                />
-              </div>
-            </div>
-
-            {formData.cadaNDias && formData.cadaNDias > 0 && (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                <p className="text-sm text-green-700">
-                  Este cliente compra cada <strong>{formData.cadaNDias} días</strong>.
-                  {formData.proxEntrega && (
-                    <> La próxima entrega sugerida es el <strong>{new Date(formData.proxEntrega).toLocaleDateString('es-CO')}</strong>.</>
-                  )}
-                </p>
+            ) : (
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center">
+                <p className="text-sm text-gray-500">Sin plantilla recurrente activa.</p>
+                <Link href="/recurrentes" className="text-xs text-blue-600 hover:underline font-medium mt-1 inline-block">
+                  Ir a Pedidos Recurrentes →
+                </Link>
               </div>
             )}
 
@@ -337,7 +469,7 @@ export function ClienteForm({
                         >
                           <Icon size={14} />
                           <span>{item.nombre}</span>
-                          <span className="font-bold">${item.precio.toLocaleString()}</span>
+                          <span className="font-bold">{formatCurrency(item.precio)}</span>
                           <span className="text-[10px] opacity-70">({item.canal === 'DOMICILIO' ? 'Dom' : 'Punto'})</span>
                         </span>
                       )
@@ -411,26 +543,36 @@ export function ClienteForm({
         )}
       </form>
 
-      {/* Footer */}
-      <div className="p-4 border-t border-gray-100 bg-gray-50">
-        <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-white text-sm font-medium transition"
-          >
-            Cancelar
-          </button>
-          <button
-            type="submit"
-            form="cliente-form"
-            disabled={saving}
-            className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium transition shadow-sm"
-          >
-            {saving ? 'Guardando...' : isEdit ? 'Guardar cambios' : 'Crear cliente'}
-          </button>
+      {!inline && (
+        <div className="p-4 border-t border-gray-100 bg-gray-50">
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-white text-sm font-medium transition"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              form={formId}
+              disabled={saving}
+              className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium transition shadow-sm"
+            >
+              {saving ? 'Guardando...' : 'Crear cliente'}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
+    </>
+  )
+
+  if (inline) {
+    return <div className="flex flex-col h-full">{body}</div>
+  }
+  return (
+    <Modal open={open!} onClose={onClose!} className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+      {body}
     </Modal>
   )
 }

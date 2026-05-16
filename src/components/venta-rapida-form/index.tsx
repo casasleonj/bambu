@@ -18,7 +18,7 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
   const [searchTerm, setSearchTerm] = useState('')
   const [clienteSeleccionado, setClienteSeleccionado] = useState<Cliente | null>(null)
   const [mostrarNuevo, setMostrarNuevo] = useState(false)
-  const [nuevoCliente, setNuevoCliente] = useState({ nombre: '', telefono: '', direccion: '', barrio: '' })
+  const [nuevoCliente, setNuevoCliente] = useState({ nombre: '', apellido: '', telefono: '', direccion: '', barrio: '' })
   const [pagos, setPagos] = useState<{ metodo: string; monto: number }[]>([])
   const [modoPagoActivo, setModoPagoActivo] = useState<string | null>(null)
   const [montoInput, setMontoInput] = useState('')
@@ -220,7 +220,7 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
 
     let clienteId = 'CONSUMIDOR_FINAL'
     let tipo: 'PUNTO' | 'ENVIO' = 'PUNTO'
-    let clienteNuevo: { nombre: string; telefono: string; direccion: string; barrio?: string } | undefined
+    let clienteNuevo: { nombre: string; apellido?: string; telefono: string; direccion: string; barrio?: string } | undefined
 
     if (quiereEnvio) {
       if (clienteSeleccionado) {
@@ -229,6 +229,7 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
       } else if (mostrarNuevo) {
         clienteNuevo = {
           nombre: nuevoCliente.nombre,
+          apellido: nuevoCliente.apellido || undefined,
           telefono: nuevoCliente.telefono,
           direccion: nuevoCliente.direccion,
           barrio: nuevoCliente.barrio || undefined,

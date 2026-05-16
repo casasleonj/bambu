@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import React, { useState, useMemo } from 'react'
 import { formatCurrency } from '@/lib/utils'
 import { toast } from 'sonner'
 import { filtrarPorPeriodo, PERIODOS, type PeriodoFiltro } from './date-utils'
@@ -41,7 +41,7 @@ export function FiadosTable({ pedidos, onPedidosChange }: FiadosTableProps) {
     const clientesMap = new Map<string, FiadoRow>()
 
     pedidosFiltrados
-      .filter((p) => Number(p.saldo) > 0 && p.estadoEntrega !== 'ANULADO')
+      .filter((p) => Number(p.saldo) > 0 && p.estadoEntrega !== 'ANULADO' && p.clienteId !== 'CONSUMIDOR_FINAL')
       .forEach((p) => {
         const existing = clientesMap.get(p.clienteId)
         if (existing) {
@@ -109,11 +109,11 @@ export function FiadosTable({ pedidos, onPedidosChange }: FiadosTableProps) {
 
         let resumenHtml = `<div class="space-y-1">`
         pagosAplicados.forEach((p: any) => {
-          const estado = p.saldoRestante <= 0 ? '✅ Pagado completo' : `⏳ Saldo restante: $${p.saldoRestante.toLocaleString()}`
-          resumenHtml += `<div class="text-sm">Pedido <a href="/pedidos?openPedido=${p.pedidoId}" class="text-blue-600 hover:underline font-medium">#${p.numero}</a>: <b>$${p.montoAplicado.toLocaleString()}</b> <span class="text-xs text-gray-500">${estado}</span></div>`
+          const estado = p.saldoRestante <= 0 ? '✅ Pagado completo' : `⏳ Saldo restante: ${formatCurrency(p.saldoRestante)}`
+          resumenHtml += `<div class="text-sm">Pedido <a href="/pedidos?openPedido=${p.pedidoId}" class="text-blue-600 hover:underline font-medium">#${p.numero}</a>: <b>${formatCurrency(p.montoAplicado)}</b> <span class="text-xs text-gray-500">${estado}</span></div>`
         })
         if (montoSobrante > 0) {
-          resumenHtml += `<div class="text-sm text-blue-600">💰 Sobrante: $${montoSobrante.toLocaleString()}</div>`
+          resumenHtml += `<div class="text-sm text-blue-600">💰 Sobrante: ${formatCurrency(montoSobrante)}</div>`
         }
         const facturaIds = [...new Set(pagosAplicados.filter((p: any) => p.facturaId).map((p: any) => p.facturaId))]
         if (facturaIds.length > 0) {
@@ -249,8 +249,8 @@ export function FiadosTable({ pedidos, onPedidosChange }: FiadosTableProps) {
               </thead>
               <tbody className="divide-y divide-gray-100">
               {filtrados.map((row) => (
-                <>
-                  <tr key={row.clienteId} className="hover:bg-gray-50 transition">
+                <React.Fragment key={row.clienteId}>
+                  <tr className="hover:bg-gray-50 transition">
                     <td className="px-4 py-3">
                       <div className="font-medium text-gray-800">{row.nombreCli}</div>
                       <div className="text-xs text-gray-400">{row.telefonoCli}</div>
@@ -276,7 +276,7 @@ export function FiadosTable({ pedidos, onPedidosChange }: FiadosTableProps) {
                         </button>
                         <button
                           onClick={() => setPagandoClienteId(row.clienteId)}
-                          className="text-sm bg-green-600 text-white hover:bg-green-700 px-3 py-1.5 rounded-lg transition"
+                          className="text-sm bg-blue-600 text-white hover:bg-blue-700 px-3 py-1.5 rounded-lg transition"
                         >
                           Pagar
                         </button>
@@ -342,7 +342,7 @@ export function FiadosTable({ pedidos, onPedidosChange }: FiadosTableProps) {
                             <button
                               onClick={() => handlePagar(row.clienteId)}
                               disabled={submitting}
-                              className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50"
+                              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
                             >
                               {submitting ? 'Procesando...' : 'Confirmar pago'}
                             </button>
@@ -354,7 +354,7 @@ export function FiadosTable({ pedidos, onPedidosChange }: FiadosTableProps) {
                       </td>
                     </tr>
                   )}
-                </>
+                </React.Fragment>
               ))}
             </tbody>
           </table>
@@ -385,7 +385,7 @@ export function FiadosTable({ pedidos, onPedidosChange }: FiadosTableProps) {
                 </button>
                 <button
                   onClick={() => setPagandoClienteId(row.clienteId)}
-                  className="flex-1 text-sm bg-green-600 text-white py-2 rounded-lg"
+                  className="flex-1 text-sm bg-blue-600 text-white py-2 rounded-lg"
                 >
                   Pagar
                 </button>
@@ -430,7 +430,7 @@ export function FiadosTable({ pedidos, onPedidosChange }: FiadosTableProps) {
                     <button
                       onClick={() => handlePagar(row.clienteId)}
                       disabled={submitting}
-                      className="flex-1 py-2 bg-green-600 text-white rounded-lg text-sm disabled:opacity-50"
+                      className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm disabled:opacity-50"
                     >
                       {submitting ? '...' : 'Pagar'}
                     </button>

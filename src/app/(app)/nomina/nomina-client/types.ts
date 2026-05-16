@@ -1,9 +1,14 @@
 export interface Nomina {
   id: string
+  trabajadorId: string
   fechaInicio: string
   fechaFin: string
+  entregasAgua: number
+  entregasHielo: number
+  entregasBotellon: number
   comEntregasAgua: number
   comEntregasHielo: number
+  comEntregasBotellon: number
   totalComisiones: number
   salario: number
   total: number
