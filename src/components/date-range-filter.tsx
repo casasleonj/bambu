@@ -8,6 +8,32 @@ interface DateRangeFilterProps {
   syncWithUrl?: boolean
 }
 
+const DAY_NAMES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
+
+function formatDateISO(date: Date): string {
+  return date.toLocaleDateString('en-CA') // YYYY-MM-DD
+}
+
+function getDayLabel(date: Date): string {
+  return DAY_NAMES[date.getDay()]
+}
+
+function getNextBusinessDay(date: Date): Date {
+  const tomorrow = new Date(date)
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  // Skip Sunday
+  while (tomorrow.getDay() === 0) {
+    tomorrow.setDate(tomorrow.getDate() + 1)
+  }
+  return tomorrow
+}
+
+const SHORTCUTS = [
+  { label: 'Hoy', getDate: () => new Date() },
+  { label: 'Mañana', getDate: () => getNextBusinessDay(new Date()) },
+  { label: 'Esta semana', getDate: () => { const d = new Date(); d.setDate(d.getDate() + (6 - d.getDay())); return d } },
+]
+
 export function DateRangeFilter({ onDateChange, syncWithUrl = true }: DateRangeFilterProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -37,6 +63,13 @@ export function DateRangeFilter({ onDateChange, syncWithUrl = true }: DateRangeF
   function handleHastaChange(value: string) {
     setHasta(value)
     updateUrl(desde, value)
+  }
+
+  function handleShortcut(target: Date) {
+    const iso = formatDateISO(target)
+    setDesde(iso)
+    setHasta(iso)
+    updateUrl(iso, iso)
   }
 
   function handleClear() {
@@ -71,6 +104,27 @@ export function DateRangeFilter({ onDateChange, syncWithUrl = true }: DateRangeF
           onChange={(e) => handleHastaChange(e.target.value)}
           className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm"
         />
+      </div>
+      <div className="flex gap-1">
+        {SHORTCUTS.map((s) => {
+          const target = s.getDate()
+          const label = s.label === 'Mañana'
+            ? `Mañana (${getDayLabel(target)})`
+            : s.label
+          return (
+            <button
+              key={s.label}
+              onClick={() => handleShortcut(target)}
+              className={`px-2 py-1 text-xs font-medium rounded-lg transition ${
+                desde === formatDateISO(target) && hasta === formatDateISO(target)
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {label}
+            </button>
+          )
+        })}
       </div>
       {hasFilter && (
         <button

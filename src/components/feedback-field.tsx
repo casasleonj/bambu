@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, useId } from 'react'
 
 export interface ValidationRule {
   test: (value: string) => boolean
@@ -47,6 +47,10 @@ export function FeedbackField({
   inputClassName = '',
   icon,
 }: FeedbackFieldProps) {
+  const fieldId = useId()
+  const errorId = `${fieldId}-error`
+  const helpId = `${fieldId}-help`
+
   const [errors, setErrors] = useState<Array<{ message: string; type: string }>>([])
   const [warnings, setWarnings] = useState<Array<{ message: string; type: string }>>([])
   const [infos, setInfos] = useState<Array<{ message: string; type: string }>>([])
@@ -143,7 +147,7 @@ export function FeedbackField({
           disabled={disabled}
           autoFocus={autoFocus}
           aria-invalid={hasError}
-          aria-describedby={hasError ? `${label}-error` : helpText ? `${label}-help` : undefined}
+          aria-describedby={hasError ? errorId : helpText ? helpId : undefined}
           className={`w-full px-3 py-2.5 border rounded-lg text-sm transition-all duration-200 outline-none focus:ring-2 focus:ring-opacity-50 disabled:bg-gray-50 disabled:text-gray-400 ${icon ? 'pl-10' : ''} ${borderColor} ${inputClassName}`}
         />
 
@@ -163,9 +167,9 @@ export function FeedbackField({
       </div>
 
       {/* Messages */}
-      <div className="mt-1.5 space-y-1">
+      <div className="mt-1.5 space-y-1" aria-live="polite">
         {errors.map((e, i) => (
-          <p key={`err-${i}`} id={`${label}-error`} className="text-xs text-red-600 flex items-center gap-1">
+          <p key={`err-${i}`} id={errorId} className="text-xs text-red-600 flex items-center gap-1">
             <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
@@ -189,7 +193,7 @@ export function FeedbackField({
           </p>
         ))}
         {helpText && !hasError && !hasWarning && (
-          <p id={`${label}-help`} className="text-xs text-gray-400">{helpText}</p>
+          <p id={helpId} className="text-xs text-gray-400">{helpText}</p>
         )}
       </div>
     </div>

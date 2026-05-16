@@ -6,6 +6,7 @@ interface ConfirmOptions {
   title?: string
   message: string
   description?: string
+  details?: React.ReactNode
   consequences?: string[]
   confirmLabel?: string
   cancelLabel?: string
@@ -102,6 +103,12 @@ export function useConfirm() {
 
           {pending.options.description && (
             <p className="text-xs text-gray-500 mb-4">{pending.options.description}</p>
+          )}
+
+          {pending.options.details && (
+            <div className="w-full bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4 text-left">
+              {pending.options.details}
+            </div>
           )}
 
           {/* Consequences list */}
