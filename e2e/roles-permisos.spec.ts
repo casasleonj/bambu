@@ -3,7 +3,7 @@ import { test, expect, BASE, fullLogin, goto, apiPost, apiGet, apiDelete, create
 const PROTECTED_PAGES = [
   '/dashboard', '/pedidos', '/clientes', '/embarques', '/produccion',
   '/cierre', '/facturas', '/gastos', '/nomina', '/trabajadores',
-  '/proveedores', '/compras', '/insumos', '/reportes', '/precios',
+  '/proveedores', '/compras', '/insumos', '/reportes', '/productos',
   '/rutas', '/recurrentes', '/casos', '/configuracion', '/repartidor',
 ]
 
@@ -157,7 +157,7 @@ test.describe('3. ASISTENTE — acceso limitado', () => {
   })
 
   const allowedPages = ['/dashboard', '/pedidos', '/clientes', '/facturas', '/embarques', '/gastos', '/produccion']
-  const forbiddenPages = ['/trabajadores', '/cierre', '/reportes', '/precios', '/nomina', '/configuracion']
+  const forbiddenPages = ['/trabajadores', '/cierre', '/reportes', '/productos', '/nomina', '/configuracion']
 
   test('Accede a páginas permitidas sin redirect', async ({ page }) => {
     for (const path of allowedPages) {
@@ -259,7 +259,7 @@ test.describe('4. CONTADOR — acceso financiero', () => {
   })
 
   test('Accede a páginas administrativas', async ({ page }) => {
-    const adminPages = ['/trabajadores', '/cierre', '/reportes', '/precios', '/nomina', '/configuracion']
+    const adminPages = ['/trabajadores', '/cierre', '/reportes', '/productos', '/nomina', '/configuracion']
     for (const path of adminPages) {
       await goto(page, path)
       await page.waitForTimeout(500)

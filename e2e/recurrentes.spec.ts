@@ -1,4 +1,4 @@
-import { test, expect, BASE, login, handleBaseCaja, fullLogin, goto, apiPost, apiGet, createCliente } from './fixtures'
+import { test, expect, BASE, handleBaseCaja, fullLogin, goto, apiGet, createCliente } from './fixtures'
 
 test.describe('Recurrentes', () => {
   test('page loads', async ({ page }) => {

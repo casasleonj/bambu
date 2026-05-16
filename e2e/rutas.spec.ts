@@ -1,4 +1,4 @@
-import { test, expect, BASE, login, handleBaseCaja, fullLogin, goto, apiPost, apiGet } from './fixtures'
+import { test, expect, handleBaseCaja, fullLogin, goto, apiPost, apiGet } from './fixtures'
 
 test.describe('Rutas', () => {
   test('page loads', async ({ page }) => {
@@ -189,11 +189,11 @@ test.describe('Rutas', () => {
     const searchInput = page.locator('input[placeholder="Buscar ruta o repartidor..."]')
     expect(await searchInput.isVisible()).toBe(true)
 
-    const initialCards = page.locator('.grid > div').count()
+    const initialCards = await page.locator('.grid > div').count()
     await searchInput.fill('ZZZZNOTHINGZ')
     await page.waitForTimeout(500)
 
-    const filteredCards = page.locator('.grid > div').count()
+    const filteredCards = await page.locator('.grid > div').count()
     expect(filteredCards).toBeLessThanOrEqual(initialCards)
   })
 

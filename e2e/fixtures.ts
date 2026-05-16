@@ -1,4 +1,4 @@
-import { test, expect, type Page, type APIRequestContext } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 
 export const BASE = 'http://localhost:3000'
 
@@ -90,14 +90,20 @@ export async function createCliente(page: Page, data?: Partial<{
 }
 
 export async function createTrabajador(page: Page, data?: Partial<{
-  nombre: string; rol: string; tipoPago: string
+  nombre: string; rol: string; tipoPago: string; usaMoto: boolean
 }>) {
+  const wantsComision = data?.tipoPago === 'COMISION' || data?.tipoPago === 'MIXTO'
   const res = await apiPost(page, '/api/trabajadores', {
     nombre: data?.nombre || `Repartidor Test ${Date.now() % 10000}`,
     rol: data?.rol || 'REPARTIDOR',
     tipoPago: data?.tipoPago || 'COMISION',
-    comPacaAgua: 500,
-    comPacaHielo: 300,
+    usaMoto: data?.usaMoto ?? wantsComision,
+    comPacaAgua: wantsComision ? 500 : 0,
+    comPacaHielo: wantsComision ? 300 : 0,
+    comBotellon: wantsComision ? 200 : 0,
+    comRepartAgua: (data?.usaMoto ?? wantsComision) ? 500 : 0,
+    comRepartHielo: (data?.usaMoto ?? wantsComision) ? 300 : 0,
+    comRepartBotellon: (data?.usaMoto ?? wantsComision) ? 200 : 0,
   })
   return res.json()
 }

@@ -74,7 +74,6 @@ test.describe('Proveedores', () => {
   test('editar proveedor', async ({ page }) => {
     await fullLogin(page)
 
-    const originalName = `Prov Edit ${Date.now() % 10000}`
     const proveedor = await createProveedor(page)
     expect(proveedor.id).toBeTruthy()
 

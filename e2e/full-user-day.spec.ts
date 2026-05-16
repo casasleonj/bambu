@@ -203,10 +203,10 @@ test.describe('Dia completo de usuario', () => {
   // ═══════════════════════════════════════════
   test('5. Ver configuracion de precios', async ({ page }) => {
     await login(page)
-    await nav(page, '/precios')
+    await nav(page, '/productos')
 
-    // New precios page shows volume pricing table
-    await expect(page.locator('body')).toContainText('Precios', { timeout: 5000 })
+    // New productos page shows volume pricing table
+    await expect(page.locator('body')).toContainText('Productos', { timeout: 5000 })
     // Should show product names from the catalog
     await expect(page.locator('body')).toContainText('Paca de Agua', { timeout: 5000 })
     await expect(page.locator('body')).toContainText('Paca de Hielo', { timeout: 5000 })
@@ -573,7 +573,7 @@ test.describe('Dia completo de usuario', () => {
       { path: '/proveedores', text: 'Proveedores' },
       { path: '/insumos', text: 'Insumos' },
       { path: '/compras', text: 'Compras' },
-      { path: '/precios', text: 'Precios' },
+      { path: '/productos', text: 'Productos' },
       { path: '/reportes', text: 'Reportes' },
     ]
 

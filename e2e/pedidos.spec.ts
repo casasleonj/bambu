@@ -1,4 +1,4 @@
-import { test, expect, BASE, fullLogin, goto, apiPost, apiGet, createTrabajador, createCliente, createPedido } from './fixtures'
+import { test, expect, fullLogin, goto, apiPost, createTrabajador, createCliente, createPedido } from './fixtures'
 
 test.describe('Pedidos', () => {
 

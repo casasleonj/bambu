@@ -34,7 +34,7 @@ test.describe('Flujo completo de usuario', () => {
     await expect(page.locator('body')).toContainText('Pedidos', { timeout: 10000 })
 
     // 4. Precios
-    await page.goto(`${BASE_URL}/precios`)
+    await page.goto(`${BASE_URL}/productos`)
     await expect(page.locator('body')).toContainText('Configuracion de Precios', { timeout: 10000 })
 
     // 5. Producción
@@ -76,7 +76,7 @@ test.describe('Flujo completo de usuario', () => {
     await page.waitForLoadState('networkidle', { timeout: 15000 })
 
     // Navegar por páginas clave
-    const pages = ['/pedidos', '/clientes', '/facturas', '/cierre', '/precios']
+    const pages = ['/pedidos', '/clientes', '/facturas', '/cierre', '/productos']
     for (const path of pages) {
       await page.goto(`${BASE_URL}${path}`)
       await page.waitForLoadState('networkidle', { timeout: 10000 })

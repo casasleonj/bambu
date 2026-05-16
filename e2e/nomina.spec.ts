@@ -1,4 +1,4 @@
-import { test, expect, fullLogin, goto, apiPost, apiGet, createTrabajador } from './fixtures'
+import { test, expect, fullLogin, goto, apiPost, createTrabajador } from './fixtures'
 
 test.describe('Nomina', () => {
   test('page loads', async ({ page }) => {

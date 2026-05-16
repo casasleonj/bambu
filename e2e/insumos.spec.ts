@@ -1,4 +1,4 @@
-import { test, expect, fullLogin, goto, apiPost, apiGet, createProveedor, createInsumo } from './fixtures'
+import { test, expect, fullLogin, goto, apiPost, apiGet, createProveedor } from './fixtures'
 
 test.describe('Insumos', () => {
   test('page loads', async ({ page }) => {

@@ -12,8 +12,8 @@ test.describe('Compras', () => {
   test('crear compra', async ({ page }) => {
     await fullLogin(page)
 
-    const proveedor = await createProveedor(page)
-    const insumo = await createInsumo(page)
+    await createProveedor(page)
+    await createInsumo(page)
 
     await goto(page, '/compras')
     await page.waitForTimeout(500)

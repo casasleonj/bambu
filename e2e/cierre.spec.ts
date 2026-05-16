@@ -1,4 +1,4 @@
-import { test, expect, BASE, login, handleBaseCaja, fullLogin, goto, apiPost, apiGet } from './fixtures'
+import { test, expect, login, handleBaseCaja, fullLogin, goto, apiPost, apiGet } from './fixtures'
 
 test.describe('Cierre', () => {
 
@@ -200,5 +200,56 @@ test.describe('Cierre', () => {
     const cierreBody = await cierreRes.json()
     const blocked = cierreRes.status() === 400 || (cierreBody?.error && cierreBody.error.includes('embarque'))
     expect(blocked).toBeTruthy()
+  })
+
+  test('post-cierre: ventas nocturnas aparecen despues del cierre', async ({ page }) => {
+    await fullLogin(page)
+    const today = new Date().toISOString().split('T')[0]
+    // 1. Cerrar el día
+    const cierreRes = await apiPost(page, '/api/cierre', {
+      fecha: today,
+      numPedidos: 1,
+      totalVentas: 10000,
+      cobrado: 10000,
+      fiado: 0,
+      efectivo: 10000,
+      transferencia: 0,
+      nequi: 0,
+      daviplata: 0,
+      bono: 0,
+      baseDia: 50000,
+      comisiones: 0,
+      salarios: 0,
+      gastos: 0,
+      stockIniAgua: 0,
+      prodAgua: 0,
+      stockFinAgua: 0,
+      stockIniHielo: 0,
+      prodHielo: 0,
+      stockFinHielo: 0,
+      netoCaja: 60000,
+    })
+    if (cierreRes.status() === 409) {
+      test.skip()
+      return
+    }
+    expect(cierreRes.status()).toBe(201)
+
+    // 2. Crear un pedido post-cierre
+    const pedidoRes = await apiPost(page, '/api/pedidos', {
+      clienteId: 'CONSUMIDOR_FINAL',
+      canal: 'PUNTO',
+      origen: 'VENTA_RAPIDA',
+      items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
+      pagos: [{ metodo: 'EFECTIVO', monto: 5000 }],
+    })
+    expect(pedidoRes.status()).toBe(201)
+
+    // 3. Ir a /cierre y verificar post-cierre
+    await goto(page, '/cierre')
+    await page.waitForTimeout(1000)
+    await expect(page.locator('text=Día cerrado')).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('text=Ventas Nocturnas')).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('text=Total entregado incluyendo nocturnas')).toBeVisible({ timeout: 5000 })
   })
 })
