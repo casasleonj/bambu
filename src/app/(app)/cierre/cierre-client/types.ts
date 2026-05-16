@@ -97,8 +97,60 @@ export interface CierreData {
   botellonVendido: number
   bolsaAguaVendida: number
   bolsaHieloVendida: number
-  produccion: any
+  produccion: {
+    stockIniAgua: number
+    stockIniHielo: number
+    prodAgua: number
+    prodHielo: number
+    stockFinAgua: number
+    stockFinHielo: number
+    comSelladorAgua: number
+    comSelladorHielo: number
+    comSellTotal: number
+    comRepartidorAgua: number
+    comRepartidorHielo: number
+    comRepartTotal: number
+  } | null
+
+  // Cierre
+  netoCaja: number
 
   // Fecha
   fecha: string
+
+  // Arqueo (si el día ya fue cerrado)
+  arqueo?: Record<string, number> | null
+  totalContado?: number | null
+  diferenciaArqueo?: number | null
+
+  // Cierre metadata
+  horaCierre?: string | null
+
+  // Post-cierre transactions
+  postCierre?: {
+    pedidos: {
+      id: string
+      numero: number
+      cliente?: string
+      total: number
+      totalPagado: number
+      saldo: number
+      estadoEntrega: string
+      origen: string
+      pagos: { metodo: string; monto: number }[]
+    }[]
+    embarques: {
+      numero: number
+      repartidor?: string
+      ruta?: string
+      pacasAgua: number
+      pacasHielo: number
+      estado: string
+    }[]
+    gastos: {
+      categoria: string
+      descripcion: string
+      monto: number
+    }[]
+  } | null
 }

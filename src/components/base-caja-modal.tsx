@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
 import { useBaseCaja } from '@/hooks/use-base-caja'
 
 export default function BaseCajaModal() {
@@ -18,6 +19,7 @@ export default function BaseCajaModal() {
   async function checkBaseDia() {
     try {
       const today = new Date().toISOString().split('T')[0]
+      const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
 
       // 1. Check if today was already closed
       const cierreRes = await fetch('/api/cierre/last')
@@ -28,6 +30,13 @@ export default function BaseCajaModal() {
           if (cierreDate === today) {
             setShowModal(false)
             setLoading(false)
+            return
+          }
+          // 1.5 If last cierre is not yesterday, there are unclosed days → redirect
+          if (cierreDate !== yesterday) {
+            const nextUnclosed = new Date(cierreData.cierre.fecha)
+            nextUnclosed.setDate(nextUnclosed.getDate() + 1)
+            window.location.href = `/cierre?fecha=${nextUnclosed.toISOString().split('T')[0]}`
             return
           }
         }
@@ -134,13 +143,14 @@ export default function BaseCajaModal() {
           </div>
         </div>
 
-        <button
+        <Button
           onClick={handleSave}
           disabled={saving || !baseDiaInput}
-          className="w-full mt-6 py-4 bg-blue-600 text-white font-bold text-lg rounded-xl hover:bg-blue-700 transition disabled:opacity-50"
+          className="w-full mt-6 py-4 text-lg"
+          size="lg"
         >
           {saving ? 'Guardando...' : 'Continuar →'}
-        </button>
+        </Button>
       </div>
     </div>
   )

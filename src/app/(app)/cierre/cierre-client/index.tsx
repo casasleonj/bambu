@@ -1,23 +1,25 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { toast } from 'sonner'
 import { useConfirm } from '@/components/confirm-modal'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import ArqueoCaja, { type ArqueoData } from '@/components/arqueo-caja'
+import { cn, formatCurrency } from '@/lib/utils'
+import { CheckCircle2, AlertTriangle, Receipt, Droplets, Snowflake, ArrowRight, Check } from 'lucide-react'
+import ArqueoCaja, { type ArqueoData, DENOMINACIONES } from '@/components/arqueo-caja'
+import CierreHeader from '@/components/cierre/cierre-header'
+import CierreKpiGrid from '@/components/cierre/cierre-kpi-grid'
+import CierreSection from '@/components/cierre/cierre-section'
+import CierreStockBlock from '@/components/cierre/cierre-stock-block'
+import CierreValidationList from '@/components/cierre/cierre-validation-list'
 import type { CierreData } from './types'
 
-const ORIGEN_LABELS: Record<string, string> = {
-  PEDIDO: 'Pedido',
-  VENTA_RAPIDA: 'Venta Rápida',
-  VENTA_LIBRE: 'Venta Libre',
-}
+const formatMoney = (val: number) => formatCurrency(val)
 
-export default function CierreClient() {
+export default function CierreClient({ initialFecha }: { initialFecha: string | null }) {
   const router = useRouter()
   const { data: session } = useSession()
   const { confirm, modal } = useConfirm()
@@ -28,7 +30,11 @@ export default function CierreClient() {
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [cerrando, setCerrando] = useState(false)
   const [yaCerrado, setYaCerrado] = useState(false)
-  const [fecha, setFecha] = useState('')
+  const [lastCierreDate, setLastCierreDate] = useState<string | null>(null)
+  const [fecha, setFecha] = useState(() => {
+    const today = new Date().toISOString().split('T')[0]
+    return initialFecha ?? today
+  })
   const [stockIniAgua, setStockIniAgua] = useState(0)
   const [stockIniHielo, setStockIniHielo] = useState(0)
   const [prodAgua, setProdAgua] = useState(0)
@@ -43,47 +49,45 @@ export default function CierreClient() {
     totalContado: 0,
     diferencia: 0,
   })
+  const arqueoRef = useRef(arqueoData)
+  useEffect(() => { arqueoRef.current = arqueoData }, [arqueoData])
+  const [netoEnArqueo, setNetoEnArqueo] = useState(0)
+  const abortControllerRef = useRef<AbortController | null>(null)
 
   const userRole = (session?.user as { role?: string } | undefined)?.role
   const canClose = userRole === 'ADMIN' || userRole === 'ASISTENTE'
 
-  const formatMoney = (val: number) => `$${val.toLocaleString()}`
 
-  useEffect(() => {
-    const today = new Date().toISOString().split('T')[0]
-    setFecha(today)
-    fetchCierre(today)
-    loadBaseDia(today)
-    checkLastCierre(today)
-  }, [])
-
-  const loadBaseDia = async (dateStr: string) => {
+  const loadBaseDia = useCallback(async (dateStr: string, signal: AbortSignal) => {
     try {
-      const res = await fetch(`/api/config?clave=BASE_DIA_${dateStr}`)
+      const res = await fetch(`/api/config?clave=BASE_DIA_${dateStr}`, { signal })
       if (res.ok) {
         const data = await res.json()
         if (data.config) setBaseDia(Number(data.config.valor))
       }
     } catch { /* ignore */ }
-  }
+  }, [])
 
-  const checkLastCierre = async (dateStr: string) => {
+  const checkLastCierre = useCallback(async (dateStr: string, signal: AbortSignal) => {
     try {
-      const res = await fetch('/api/cierre/last')
+      const res = await fetch('/api/cierre/last', { signal })
       if (res.ok) {
         const json = await res.json()
         if (json.cierre) {
           const cierreDate = new Date(json.cierre.fecha).toISOString().split('T')[0]
           if (cierreDate === dateStr) setYaCerrado(true)
+          setLastCierreDate(cierreDate)
+        } else {
+          setLastCierreDate(null)
         }
       }
     } catch { /* ignore */ }
-  }
+  }, [])
 
-  const fetchCierre = async (dateStr: string) => {
+  const fetchCierre = useCallback(async (dateStr: string, signal: AbortSignal) => {
     setFetchError(null)
     try {
-      const res = await fetch(`/api/cierre?fecha=${dateStr}`)
+      const res = await fetch(`/api/cierre?fecha=${dateStr}`, { signal })
       const json = await res.json()
       if (json.cierre) {
         setData(json.cierre)
@@ -96,7 +100,6 @@ export default function CierreClient() {
           setStockIniHielo(json.cierre.produccion.stockIniHielo || 0)
           setStockFinAgua(json.cierre.produccion.stockFinAgua || 0)
           setStockFinHielo(json.cierre.produccion.stockFinHielo || 0)
-          // Pre-llenar comisiones desde producción si no hay valor manual
           const comSell = Number(json.cierre.produccion.comSellTotal) || 0
           const comRepart = Number(json.cierre.produccion.comRepartTotal) || 0
           const comisionesCalculadas = comSell + comRepart
@@ -106,31 +109,52 @@ export default function CierreClient() {
         }
       }
     } catch {
+      if (signal.aborted) return
       setFetchError('No se pudieron cargar los datos del cierre')
       toast.error('Error cargando datos del cierre')
     } finally {
       setLoading(false)
     }
+  }, [])
+
+  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newFecha = e.target.value
+    setFecha(newFecha)
+    setLoading(true)
+    setYaCerrado(false)
+    if (abortControllerRef.current) abortControllerRef.current.abort()
+    const ctrl = new AbortController()
+    abortControllerRef.current = ctrl
+    fetchCierre(newFecha, ctrl.signal)
+    loadBaseDia(newFecha, ctrl.signal)
+    checkLastCierre(newFecha, ctrl.signal)
   }
 
-  const calcularNetoCaja = () => {
+  const calcularNetoCaja = useCallback(() => {
     const totalCobros = (data?.efectivo || 0) + (data?.transferencia || 0) + (data?.nequi || 0) + (data?.daviplata || 0) + (data?.bono || 0)
     return baseDia + totalCobros - (data?.totalGastos || 0) - comisiones - salarios
-  }
+  }, [data, baseDia, comisiones, salarios])
 
-  const tieneAlertas = () => {
-    if (!data) return []
-    const alertas: string[] = []
-    if (data.fiado > 0) alertas.push(`Hay $${data.fiado.toLocaleString()} en pedidos fiados`)
-    const aguaCalc = stockIniAgua + prodAgua - data.aguaVendida
-    const hieloCalc = stockIniHielo + prodHielo - data.hieloVendido
-    if (aguaCalc !== stockFinAgua) alertas.push(`Diferencia agua: esperado ${aguaCalc}, registrado ${stockFinAgua}`)
-    if (hieloCalc !== stockFinHielo) alertas.push(`Diferencia hielo: esperado ${hieloCalc}, registrado ${stockFinHielo}`)
-    return alertas
-  }
+  const handleArqueoChange = useCallback((d: { arqueo: ArqueoData; totalContado: number; diferencia: number }) => {
+    setArqueoData(d)
+    setNetoEnArqueo(calcularNetoCaja())
+  }, [calcularNetoCaja])
 
-  const handleCerrar = async () => {
-    // Validaciones previas (prevención de errores)
+  useEffect(() => {
+    const targetDate = initialFecha || fecha
+    if (abortControllerRef.current) abortControllerRef.current.abort()
+    const ctrl = new AbortController()
+    abortControllerRef.current = ctrl
+    /* eslint-disable react-hooks/set-state-in-effect */
+    fetchCierre(targetDate, ctrl.signal)
+    loadBaseDia(targetDate, ctrl.signal)
+    checkLastCierre(targetDate, ctrl.signal)
+    /* eslint-enable react-hooks/set-state-in-effect */
+    return () => ctrl.abort()
+  }, [initialFecha, fecha, fetchCierre, loadBaseDia, checkLastCierre])
+
+  const handleCerrar = async (e?: React.FormEvent) => {
+    e?.preventDefault()
     if (statusCierre === 'INCOMPLETO') {
       toast.error(`No se puede cerrar: ${embarquesPendientes.length} embarque(s) abierto(s). Ciérralos primero.`)
       return
@@ -143,7 +167,38 @@ export default function CierreClient() {
       toast.error('No se puede cerrar: debes contar el efectivo físico antes de cerrar.')
       return
     }
-    const ok = await confirm('¿Confirmar cierre del día? Esta acción es irreversible.')
+    const neto = calcularNetoCaja()
+    const ok = await confirm({
+      message: '¿Confirmar cierre del día?',
+      description: 'Esta acción es irreversible. Verifica que todos los datos sean correctos antes de continuar.',
+      variant: 'destructive',
+      requireTyping: 'CERRAR',
+      confirmLabel: 'Cerrar Día',
+      details: (
+        <div className="space-y-1 text-sm">
+          <div className="flex justify-between"><span className="text-muted-foreground">Ventas</span><span className="font-medium">{formatMoney(data?.totalVentas || 0)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Base</span><span className="font-medium">{formatMoney(baseDia)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Gastos</span><span className="font-medium text-red-600">-{formatMoney(data?.totalGastos || 0)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Comisiones</span><span className="font-medium text-red-600">-{formatMoney(comisiones)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Salarios</span><span className="font-medium text-red-600">-{formatMoney(salarios)}</span></div>
+          <div className="border-t pt-1 mt-1 flex justify-between font-bold text-base">
+            <span>Neto Caja</span>
+            <span>{formatMoney(neto)}</span>
+          </div>
+          <div className="flex justify-between text-xs">
+            <span className="text-muted-foreground">Contado físico</span>
+            <span className={arqueoData.diferencia === 0 ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
+              {formatMoney(arqueoData.totalContado)} {arqueoData.diferencia === 0 ? '(Cuadrado)' : arqueoData.diferencia > 0 ? `(Sobrante ${formatMoney(arqueoData.diferencia)})` : `(Faltante ${formatMoney(Math.abs(arqueoData.diferencia))})`}
+            </span>
+          </div>
+        </div>
+      ),
+      consequences: [
+        'No podrás editar pedidos, gastos ni embarques de este día',
+        'No podrás modificar el arqueo de caja',
+        'El reporte quedará almacenado como evidencia permanente',
+      ],
+    })
     if (!ok) return
     setCerrando(true)
     try {
@@ -208,366 +263,489 @@ export default function CierreClient() {
     return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" /></div>
   }
 
-  const alertas = tieneAlertas()
   const netoTeorico = calcularNetoCaja()
 
-  if (yaCerrado) {
+  if (yaCerrado && data) {
+    const post = data.postCierre
+    const hasPost = post && (post.pedidos.length > 0 || post.embarques.length > 0 || post.gastos.length > 0)
+    const postVentas = post?.pedidos.reduce((s, p) => s + p.total, 0) || 0
+    const postCobrado = post?.pedidos.reduce((s, p) => s + p.totalPagado, 0) || 0
+    const postGastos = post?.gastos.reduce((s, g) => s + g.monto, 0) || 0
+    const horaCierreLabel = data.horaCierre
+      ? new Date(data.horaCierre).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })
+      : null
+
     return (
-      <div className="p-4 space-y-4">
+      <div className="p-4 max-w-5xl mx-auto space-y-6 pb-32">
+        {modal}
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Cierre del Día</h1>
           <p className="text-sm text-muted-foreground mt-1">Resumen y cierre de operaciones del día</p>
         </div>
-        <Card className="border-green-300 bg-green-50/50">
-          <CardContent className="p-6 text-center">
-            <div className="text-4xl mb-3">✅</div>
-            <h2 className="text-xl font-bold text-green-800">Día ya cerrado</h2>
-            <p className="text-green-700 mt-1">El cierre para hoy ya fue registrado. No se puede volver a cerrar.</p>
-            <Button onClick={() => router.push('/')} className="mt-4">Volver al Dashboard</Button>
-          </CardContent>
-        </Card>
+
+        <div className="bg-green-50 border border-green-300 rounded-xl p-6">
+          <div className="flex items-center gap-3 mb-2">
+            <CheckCircle2 className="w-8 h-8 text-green-600" />
+            <div>
+              <h2 className="text-xl font-bold text-green-800">Día cerrado</h2>
+              {horaCierreLabel && (
+                <p className="text-sm text-green-700">Cierre registrado a las {horaCierreLabel}</p>
+              )}
+            </div>
+          </div>
+          <p className="text-green-700 text-sm">El cierre para este día ya fue registrado. No se puede volver a cerrar.</p>
+        </div>
+
+        {/* Resumen del cierre */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+            <div className="text-xs text-emerald-700 font-medium">Total Ventas</div>
+            <div className="text-xl font-bold text-emerald-900">{formatMoney(data.totalVentas)}</div>
+          </div>
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+            <div className="text-xs text-blue-700 font-medium">Total Cobrado</div>
+            <div className="text-xl font-bold text-blue-900">{formatMoney(data.cobrado)}</div>
+          </div>
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+            <div className="text-xs text-red-700 font-medium">Total Gastos</div>
+            <div className="text-xl font-bold text-red-900">{formatMoney(data.totalGastos)}</div>
+          </div>
+          <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
+            <div className="text-xs text-purple-700 font-medium">Neto Caja</div>
+            <div className="text-xl font-bold text-purple-900">{formatMoney(Number(data.netoCaja || 0))}</div>
+          </div>
+        </div>
+
+        {/* Arqueo */}
+        {data.totalContado != null && (
+          <div className="bg-white rounded-xl border p-6">
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Arqueo de Caja</h3>
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div>
+                <div className="text-xs text-muted-foreground">Esperado</div>
+                <div className="text-lg font-bold">{formatMoney(Number(data.netoCaja || 0))}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Contado</div>
+                <div className="text-lg font-bold">{formatMoney(data.totalContado)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Diferencia</div>
+                <div className={`text-lg font-bold ${(data.diferenciaArqueo || 0) === 0 ? 'text-green-600' : (data.diferenciaArqueo || 0) > 0 ? 'text-blue-600' : 'text-red-600'}`}>
+                  {(data.diferenciaArqueo || 0) >= 0 ? '+' : ''}{formatMoney(Math.abs(data.diferenciaArqueo || 0))}
+                  {(data.diferenciaArqueo || 0) === 0 ? ' (Cuadrado)' : (data.diferenciaArqueo || 0) > 0 ? ' (Sobrante)' : ' (Faltante)'}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Post-cierre */}
+        {hasPost && (
+          <div className="bg-amber-50 border border-amber-300 rounded-xl p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <AlertTriangle className="w-5 h-5 text-amber-600" />
+              <h3 className="text-lg font-bold text-amber-800">Ventas Nocturnas (post-cierre)</h3>
+            </div>
+            <p className="text-sm text-amber-700 mb-4">
+              Se registraron transacciones después del cierre. Este dinero se entregó junto con el cierre.
+            </p>
+
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="bg-white rounded-lg p-3 border border-amber-200">
+                <div className="text-xs text-amber-700">Ventas post-cierre</div>
+                <div className="text-lg font-bold text-amber-900">{formatMoney(postVentas)}</div>
+              </div>
+              <div className="bg-white rounded-lg p-3 border border-amber-200">
+                <div className="text-xs text-amber-700">Cobrado post-cierre</div>
+                <div className="text-lg font-bold text-amber-900">{formatMoney(postCobrado)}</div>
+              </div>
+              <div className="bg-white rounded-lg p-3 border border-amber-200">
+                <div className="text-xs text-amber-700">Gastos post-cierre</div>
+                <div className="text-lg font-bold text-amber-900">{formatMoney(postGastos)}</div>
+              </div>
+            </div>
+
+            {post!.pedidos.length > 0 && (
+              <div className="mb-3">
+                <h4 className="text-sm font-semibold text-amber-800 mb-2">Pedidos</h4>
+                <div className="space-y-1">
+                  {post!.pedidos.map(p => (
+                    <div key={p.id} className="flex justify-between text-sm bg-white rounded p-2 border border-amber-200">
+                      <span>#{p.numero} {p.cliente || '—'} <span className="text-xs text-muted-foreground">({p.origen})</span></span>
+                      <span className="font-medium">{formatMoney(p.total)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {post!.gastos.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-amber-800 mb-2">Gastos</h4>
+                <div className="space-y-1">
+                  {post!.gastos.map((g, i) => (
+                    <div key={i} className="flex justify-between text-sm bg-white rounded p-2 border border-amber-200">
+                      <span>{g.categoria}: {g.descripcion}</span>
+                      <span className="font-medium">{formatMoney(g.monto)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="mt-4 pt-3 border-t border-amber-300">
+              <div className="flex justify-between text-base font-bold text-amber-900">
+                <span>Total entregado incluyendo nocturnas</span>
+                <span>{formatMoney(Number(data.netoCaja || 0) + postCobrado - postGastos)}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="flex gap-3">
+          <Button variant="outline" onClick={() => window.open(`/cierre/reporte?fecha=${fecha}`, '_blank', 'noopener,noreferrer')} className="flex-1">
+            Ver Reporte para Imprimir
+          </Button>
+          <Button onClick={() => router.push('/')} className="flex-1">Volver al Dashboard</Button>
+        </div>
       </div>
     )
   }
 
+  const todayStr = new Date().toISOString().split('T')[0]
+  const isBackDate = fecha < todayStr && !yaCerrado
+
+  // Validation items
+  const validationItems = [
+    {
+      label: 'Embarques cerrados',
+      ok: statusCierre === 'COMPLETO',
+      detail: statusCierre === 'INCOMPLETO'
+        ? `${embarquesPendientes.length} embarque(s) abierto(s) — ciérralos en la página de Embarques`
+        : 'Todos los embarques del día están cerrados',
+    },
+    {
+      label: 'Base de caja registrada',
+      ok: baseDia > 0,
+      detail: baseDia > 0 ? `Base: ${formatCurrency(baseDia)}` : 'Ingresa la base de caja en la sección 2',
+    },
+    {
+      label: 'Efectivo físico contado',
+      ok: arqueoData.totalContado > 0,
+      detail: arqueoData.totalContado > 0
+        ? `Contado: ${formatCurrency(arqueoData.totalContado)} — ${arqueoData.diferencia === 0 ? 'Cuadrado' : arqueoData.diferencia > 0 ? `Sobrante ${formatCurrency(arqueoData.diferencia)}` : `Faltante ${formatCurrency(Math.abs(arqueoData.diferencia))}`}`
+        : 'Cuenta el efectivo en la sección 3',
+    },
+    {
+      label: 'Stock cuadrado',
+      ok: stockIniAgua + prodAgua - (data?.aguaVendida || 0) === stockFinAgua && stockIniHielo + prodHielo - (data?.hieloVendido || 0) === stockFinHielo,
+      optional: true,
+      detail: (() => {
+        const diffAgua = stockIniAgua + prodAgua - (data?.aguaVendida || 0) - stockFinAgua
+        const diffHielo = stockIniHielo + prodHielo - (data?.hieloVendido || 0) - stockFinHielo
+        if (diffAgua === 0 && diffHielo === 0) return 'Stock de agua e hielo cuadrado'
+        const parts: string[] = []
+        if (diffAgua !== 0) parts.push(`Agua: ${diffAgua > 0 ? '+' : ''}${diffAgua}`)
+        if (diffHielo !== 0) parts.push(`Hielo: ${diffHielo > 0 ? '+' : ''}${diffHielo}`)
+        return parts.join(' | ')
+      })(),
+    },
+  ]
+
+  // Next step hint
+  const getNextStep = () => {
+    if (baseDia === 0) return { label: 'Ingresa la base de caja', section: 2 }
+    if (arqueoData.totalContado === 0) return { label: 'Cuenta el efectivo físico', section: 3 }
+    if (statusCierre === 'INCOMPLETO') return { label: 'Cierra los embarques pendientes', section: 1 }
+    return { label: 'Listo para cerrar el día', section: 4 }
+  }
+
+  const nextStep = getNextStep()
+  const allReady = baseDia > 0 && arqueoData.totalContado > 0 && statusCierre === 'COMPLETO'
+
   return (
-    <div className="p-4 space-y-4">
+    <div className="p-4 max-w-5xl mx-auto space-y-6 pb-32">
       {modal}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Cierre del Día</h1>
-          <p className="text-sm text-muted-foreground mt-1">{fecha} — Resumen y cierre de operaciones</p>
-        </div>
-        {statusCierre && (
-          <div className={`px-3 py-1.5 rounded-full text-sm font-semibold ${statusCierre === 'COMPLETO' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-            {statusCierre === 'COMPLETO' ? '✅ Listo para cerrar' : `❌ Pendiente: ${embarquesPendientes.length} embarque(s) abierto(s)`}
+
+      {/* Backdate warning */}
+      {isBackDate && lastCierreDate && (
+        <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 flex items-start gap-3">
+          <AlertTriangle className="w-6 h-6 text-amber-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-semibold text-amber-900">Cerrando día atrasado</p>
+            <p className="text-sm text-amber-800 mt-1">
+              Último cierre: <strong>{lastCierreDate}</strong>. Completá los datos y cerrá este día para poder iniciar el siguiente.
+            </p>
           </div>
-        )}
+        </div>
+      )}
+
+      {/* Fetch error */}
+      {fetchError && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center justify-between">
+          <p className="text-red-700 text-sm">{fetchError}</p>
+          <Button size="sm" variant="destructive" onClick={() => { setLoading(true); const ctrl = new AbortController(); abortControllerRef.current = ctrl; fetchCierre(fecha, ctrl.signal) }}>Reintentar</Button>
+        </div>
+      )}
+
+      {/* Date selector */}
+      <div className="flex items-center justify-end gap-2">
+        <label className="text-sm text-muted-foreground">Fecha:</label>
+        <input
+          type="date"
+          max={todayStr}
+          value={fecha}
+          onChange={handleDateChange}
+          className="border rounded-md px-3 py-1.5 text-sm bg-white"
+        />
       </div>
 
-      {/* Embarques pendientes */}
-      {statusCierre === 'INCOMPLETO' && embarquesPendientes.length > 0 && (
-        <Card className="border-red-300 bg-red-50/50">
-          <CardHeader className="pb-2"><CardTitle className="text-base text-red-800">Embarques Abiertos — Cierre Bloqueado</CardTitle></CardHeader>
-          <CardContent>
-            <ul className="space-y-1 text-sm text-red-700">
-              {embarquesPendientes.map(e => (
-                <li key={e.id}>Embarque #{e.numero} — {e.repartidor || 'Sin repartidor'}</li>
-              ))}
-            </ul>
-            <p className="text-sm text-red-600 mt-2 font-medium">Cierra todos los embarques antes de cerrar el día.</p>
-          </CardContent>
-        </Card>
-      )}
+      {/* Hero Header */}
+      <CierreHeader
+        fecha={fecha}
+        totalVentas={data?.totalVentas || 0}
+        status={statusCierre}
+        embarquesPendientes={embarquesPendientes.length}
+      />
 
-      {fetchError && (
-        <Card className="border-red-300 bg-red-50/50">
-          <CardContent className="p-4 flex items-center justify-between">
-            <p className="text-red-700 text-sm">{fetchError}</p>
-            <Button size="sm" variant="destructive" onClick={() => { setLoading(true); fetchCierre(fecha) }}>Reintentar</Button>
-          </CardContent>
-        </Card>
-      )}
+      {/* Section 1: Resumen Financiero */}
+      <CierreSection
+        number={1}
+        title="Resumen Financiero"
+        description="Revisa que los números del día cuadren. Los datos vienen del sistema."
+        status="completo"
+      >
+        <CierreKpiGrid data={data} netoTeorico={netoTeorico} />
+      </CierreSection>
 
-      {/* Resumen Financiero */}
-      <Card>
-        <CardHeader className="pb-3"><CardTitle className="text-lg">Resumen Financiero</CardTitle></CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
-            <div><div className="text-sm text-muted-foreground">Pedidos</div><div className="text-xl font-bold">{data?.numPedidos || 0}</div></div>
-            <div><div className="text-sm text-muted-foreground">Ventas</div><div className="text-xl font-bold">{formatMoney(data?.totalVentas || 0)}</div></div>
-            <div><div className="text-sm text-muted-foreground">CobroVentasHoy</div><div className="text-xl font-bold text-green-600">{formatMoney(data?.cobroVentasHoy || 0)}</div></div>
-            <div><div className="text-sm text-muted-foreground">Recaudo Cartera</div><div className="text-xl font-bold text-blue-600">{formatMoney(data?.cobroCartera || 0)}</div></div>
-            <div><div className="text-sm text-muted-foreground">Cobrado Total</div><div className="text-xl font-bold">{formatMoney(data?.cobrado || 0)}</div></div>
-            <div><div className="text-sm text-muted-foreground">Fiado</div><div className="text-xl font-bold text-orange-600">{formatMoney(data?.fiado || 0)}</div></div>
-            <div><div className="text-sm text-muted-foreground">Notas Crédito</div><div className="text-xl font-bold text-red-600">{formatMoney(data?.totalNotasCredito || 0)}</div></div>
+      {/* Section 2: Stock y Base de Caja */}
+      <CierreSection
+        number={2}
+        title="Stock y Base de Caja"
+        description="Confirma los valores que faltan por registrar. La base es el efectivo con que iniciaste el día."
+      >
+        <div className="space-y-4">
+          {/* Base, Comisiones, Salarios */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label htmlFor="cierre-baseDia" className="text-xs text-muted-foreground">Base de Caja</label>
+              <Input id="cierre-baseDia" type="number" min="0" value={baseDia} onChange={(e) => setBaseDia(Math.max(0, Number(e.target.value)))} className="mt-1" />
+              {baseDia <= 0 && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Requerido para cerrar</p>}
+            </div>
+            <div>
+              <label htmlFor="cierre-comisiones" className="text-xs text-muted-foreground">Comisiones</label>
+              <Input id="cierre-comisiones" type="number" min="0" value={comisiones} onChange={(e) => setComisiones(Math.max(0, Number(e.target.value)))} className="mt-1" />
+            </div>
+            <div>
+              <label htmlFor="cierre-salarios" className="text-xs text-muted-foreground">Salarios</label>
+              <Input id="cierre-salarios" type="number" min="0" value={salarios} onChange={(e) => setSalarios(Math.max(0, Number(e.target.value)))} className="mt-1" />
+            </div>
           </div>
-        </CardContent>
-      </Card>
 
-      {/* Métodos de Pago */}
-      <Card>
-        <CardHeader className="pb-3"><CardTitle className="text-lg">Cobros por Método</CardTitle></CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <div><div className="text-sm text-muted-foreground">Efectivo</div><div className="text-lg font-medium">{formatMoney(data?.efectivo || 0)}</div></div>
-            <div><div className="text-sm text-muted-foreground">Transferencia</div><div className="text-lg font-medium">{formatMoney(data?.transferencia || 0)}</div></div>
-            <div><div className="text-sm text-muted-foreground">Nequi</div><div className="text-lg font-medium">{formatMoney(data?.nequi || 0)}</div></div>
-            <div><div className="text-sm text-muted-foreground">Daviplata</div><div className="text-lg font-medium">{formatMoney(data?.daviplata || 0)}</div></div>
-            <div><div className="text-sm text-muted-foreground">Bono</div><div className="text-lg font-medium">{formatMoney(data?.bono || 0)}</div></div>
+          {/* Stock blocks */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <CierreStockBlock
+              label="Stock Agua"
+              icon={<Droplets className="w-5 h-5 text-blue-500" />}
+              ini={stockIniAgua}
+              prod={prodAgua}
+              vend={data?.aguaVendida || 0}
+              fin={stockFinAgua}
+              onIniChange={setStockIniAgua}
+              onProdChange={setProdAgua}
+              onFinChange={setStockFinAgua}
+            />
+            <CierreStockBlock
+              label="Stock Hielo"
+              icon={<Snowflake className="w-5 h-5 text-cyan-500" />}
+              ini={stockIniHielo}
+              prod={prodHielo}
+              vend={data?.hieloVendido || 0}
+              fin={stockFinHielo}
+              onIniChange={setStockIniHielo}
+              onProdChange={setProdHielo}
+              onFinChange={setStockFinHielo}
+            />
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </CierreSection>
 
-      {/* Ventas por Origen */}
-      {data?.ventasPorOrigen && data.ventasPorOrigen.length > 0 && (
-        <Card>
-          <CardHeader className="pb-3"><CardTitle className="text-lg">Ventas por Origen</CardTitle></CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {data.ventasPorOrigen.map(v => (
-                <div key={v.origen} className="border rounded-lg p-4">
-                  <div className="text-sm text-muted-foreground">{ORIGEN_LABELS[v.origen] || v.origen}</div>
-                  <div className="text-xl font-bold mt-1">{formatMoney(v.total)}</div>
-                  <div className="text-sm text-muted-foreground">{v.count} pedidos</div>
+      {/* Section 3: Arqueo de Caja */}
+      <CierreSection
+        number={3}
+        title="Arqueo de Caja"
+        description="Cuenta el efectivo físico y compara con lo que dice el sistema."
+      >
+        <ArqueoCaja netoTeorico={netoTeorico} onChange={handleArqueoChange} onClose={() => {
+          const latest = arqueoRef.current
+          if (latest.totalContado > 0) {
+            toast.success(`Conteo guardado: ${formatCurrency(latest.totalContado)}`, {
+              description: latest.diferencia === 0
+                ? 'Cuadrado'
+                : latest.diferencia > 0
+                  ? `Sobrante: ${formatCurrency(latest.diferencia)}`
+                  : `Faltante: ${formatCurrency(Math.abs(latest.diferencia))}`,
+            })
+          }
+        }} />
+        {arqueoData.totalContado > 0 && (
+          <div className="bg-white border rounded-xl shadow-sm p-6 mt-4">
+            {/* Header: Expected / Counted / Difference */}
+            <div className="flex items-center justify-center gap-2 mb-5">
+              <Receipt className="w-6 h-6 text-muted-foreground" />
+              <h4 className="text-base font-bold">Conteo de Efectivo</h4>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4 text-center mb-5">
+              <div>
+                <div className="text-xs text-muted-foreground mb-1">Esperado</div>
+                <div className="text-lg font-bold tabular-nums">{formatCurrency(netoEnArqueo)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground mb-1">Contado</div>
+                <div className="text-lg font-bold tabular-nums">{formatCurrency(arqueoData.totalContado)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground mb-1">Diferencia</div>
+                <div className={`text-lg font-bold tabular-nums ${arqueoData.diferencia === 0 ? 'text-green-600' : arqueoData.diferencia > 0 ? 'text-blue-600' : 'text-red-600'}`}>
+                  {arqueoData.diferencia >= 0 ? '+' : ''}{formatCurrency(arqueoData.diferencia)}
                 </div>
-              ))}
+              </div>
             </div>
-          </CardContent>
-        </Card>
-      )}
 
-      {/* Facturas */}
-      {data?.facturasEmitidas !== undefined && data.facturasEmitidas > 0 && (
-        <Card>
-          <CardHeader className="pb-3"><CardTitle className="text-lg">Facturas del Día</CardTitle></CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
-              <div><div className="text-sm text-muted-foreground">Emitidas</div><div className="text-xl font-bold">{data.facturasEmitidas}</div></div>
-              <div><div className="text-sm text-muted-foreground">Pagadas</div><div className="text-xl font-bold text-green-600">{data.facturasPagadasCount}</div><div className="text-xs text-muted-foreground">{formatMoney(data.facturasPagadasTotal)}</div></div>
-              <div><div className="text-sm text-muted-foreground">Parciales</div><div className="text-xl font-bold text-orange-600">{data.facturasParcialCount || 0}</div><div className="text-xs text-muted-foreground">{formatMoney(data.facturasParcialTotal || 0)}</div></div>
-              <div><div className="text-sm text-muted-foreground">Por Cobrar</div><div className="text-xl font-bold text-yellow-600">{data.facturasPorCobrarCount}</div><div className="text-xs text-muted-foreground">{formatMoney(data.facturasPorCobrarTotal)}</div></div>
-              <div><div className="text-sm text-muted-foreground">Anuladas</div><div className="text-xl font-bold text-red-600">{data.facturasAnuladasCount}</div></div>
+            {/* Difference banner */}
+            <div className={`mb-5 p-3 rounded-lg text-center font-semibold text-sm ${
+              arqueoData.diferencia === 0 ? 'bg-green-50 text-green-700 border border-green-200' :
+              arqueoData.diferencia > 0 ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+              'bg-red-50 text-red-700 border border-red-200'
+            }`}>
+              {arqueoData.diferencia === 0 ? 'Cuadrado — Todo coincide' :
+                arqueoData.diferencia > 0 ? `Sobrante de ${formatCurrency(arqueoData.diferencia)}` :
+                `Faltante de ${formatCurrency(Math.abs(arqueoData.diferencia))}`}
             </div>
-            {data.facturas && data.facturas.length > 0 && (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead><tr className="border-b"><th className="text-left py-2">Nº</th><th className="text-left py-2">Cliente</th><th className="text-right py-2">Total</th><th className="text-right py-2">Saldo</th><th className="text-right py-2">Estado</th></tr></thead>
-                  <tbody>
-                    {data.facturas.map(f => (
-                      <tr key={f.numero} className="border-b">
-                        <td className="py-1.5">{f.numero}</td>
-                        <td className="py-1.5">{f.cliente || '—'}</td>
-                        <td className="py-1.5 text-right">{formatMoney(f.total)}</td>
-                        <td className="py-1.5 text-right">{formatMoney(f.saldo)}</td>
-                        <td className="py-1.5 text-right"><span className={`px-2 py-0.5 rounded-full text-xs ${f.estado === 'PAGADA' ? 'bg-green-100 text-green-800' : f.estado === 'PARCIAL' ? 'bg-orange-100 text-orange-800' : f.estado === 'ANULADA' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}`}>{f.estado === 'PARCIAL' ? 'Abono' : f.estado}</span></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+
+            {/* Billetes */}
+            {DENOMINACIONES.some(d => d.tipo === 'BILLETE' && (arqueoData.arqueo[d.valor] || 0) > 0) && (
+              <div className="mb-4">
+                <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 border-b pb-1">Billetes</div>
+                <div className="space-y-1">
+                  {DENOMINACIONES.filter(d => d.tipo === 'BILLETE' && (arqueoData.arqueo[d.valor] || 0) > 0).map(d => (
+                    <div key={d.valor} className="flex items-center justify-between text-sm py-1">
+                      <span className="w-24 font-medium">{d.label}</span>
+                      <span className="w-8 text-center text-muted-foreground">×</span>
+                      <span className="w-12 text-right tabular-nums font-bold">{arqueoData.arqueo[d.valor]}</span>
+                      <span className="w-8 text-center text-muted-foreground">=</span>
+                      <span className="w-32 text-right tabular-nums font-medium">{formatCurrency((arqueoData.arqueo[d.valor] || 0) * d.valor)}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
-          </CardContent>
-        </Card>
-      )}
 
-      {/* Gastos */}
-      {data?.totalGastos && data.totalGastos > 0 && (
-        <Card>
-          <CardHeader className="pb-3"><CardTitle className="text-lg">Gastos del Día — {formatMoney(data.totalGastos)}</CardTitle></CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {data.gastosPorCategoria?.map(g => (
-                <div key={g.categoria} className="flex justify-between items-center py-1 border-b last:border-0">
-                  <div>
-                    <span className="font-medium">{g.categoria}</span>
-                    <span className="text-sm text-muted-foreground ml-2">({g.cantidad})</span>
-                  </div>
-                  <span className="font-medium">{formatMoney(g.total)}</span>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Embarques */}
-      {data?.embarques && data.embarques.length > 0 && (
-        <Card>
-          <CardHeader className="pb-3"><CardTitle className="text-lg">Embarques del Día ({data.embarques.length})</CardTitle></CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead><tr className="border-b"><th className="text-left py-2">Nº</th><th className="text-left py-2">Repartidor</th><th className="text-left py-2">Ruta</th><th className="text-right py-2">Agua</th><th className="text-right py-2">Hielo</th><th className="text-right py-2">Dev. Agua</th><th className="text-right py-2">Dev. Hielo</th><th className="text-right py-2">Rotas</th><th className="text-right py-2">Estado</th></tr></thead>
-                <tbody>
-                  {data.embarques.map((e, i) => (
-                    <tr key={e.numero + '-' + i} className="border-b">
-                      <td className="py-1.5">{e.numero}</td>
-                      <td className="py-1.5">{e.repartidor || '—'}</td>
-                      <td className="py-1.5">{e.ruta || '—'}</td>
-                      <td className="py-1.5 text-right">{e.pacasAgua}</td>
-                      <td className="py-1.5 text-right">{e.pacasHielo}</td>
-                      <td className="py-1.5 text-right">{e.devueltasAgua}</td>
-                      <td className="py-1.5 text-right">{e.devueltasHielo}</td>
-                      <td className="py-1.5 text-right">{e.rotasAgua + e.rotasHielo}</td>
-                      <td className="py-1.5 text-right"><span className={`px-2 py-0.5 rounded-full text-xs ${e.estado === 'CERRADO' ? 'bg-green-100 text-green-800' : e.estado === 'ABIERTO' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}`}>{e.estado}</span></td>
-                    </tr>
+            {/* Monedas */}
+            {DENOMINACIONES.some(d => d.tipo === 'MONEDA' && (arqueoData.arqueo[d.valor] || 0) > 0) && (
+              <div className="mb-4">
+                <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 border-b pb-1">Monedas</div>
+                <div className="space-y-1">
+                  {DENOMINACIONES.filter(d => d.tipo === 'MONEDA' && (arqueoData.arqueo[d.valor] || 0) > 0).map(d => (
+                    <div key={d.valor} className="flex items-center justify-between text-sm py-1">
+                      <span className="w-24 font-medium">{d.label}</span>
+                      <span className="w-8 text-center text-muted-foreground">×</span>
+                      <span className="w-12 text-right tabular-nums font-bold">{arqueoData.arqueo[d.valor]}</span>
+                      <span className="w-8 text-center text-muted-foreground">=</span>
+                      <span className="w-32 text-right tabular-nums font-medium">{formatCurrency((arqueoData.arqueo[d.valor] || 0) * d.valor)}</span>
+                    </div>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Stock Agua */}
-      <Card>
-        <CardHeader className="pb-3"><CardTitle className="text-lg">Stock: Agua</CardTitle></CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between text-lg mb-3">
-            <span className="text-muted-foreground">{stockIniAgua}</span>
-            <span className="text-muted-foreground">+ {prodAgua}</span>
-            <span className="text-muted-foreground">- {data?.aguaVendida || 0}</span>
-            <span className="font-bold">= {stockFinAgua}</span>
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div><label className="text-xs text-muted-foreground">Stock Inicial</label><Input type="number" min="0" value={stockIniAgua} onChange={(e) => setStockIniAgua(Number(e.target.value))} className="mt-1" /></div>
-            <div><label className="text-xs text-muted-foreground">Producción</label><Input type="number" min="0" value={prodAgua} onChange={(e) => setProdAgua(Number(e.target.value))} className="mt-1" /></div>
-            <div><label className="text-xs text-muted-foreground">Stock Final</label><Input type="number" min="0" value={stockFinAgua} onChange={(e) => setStockFinAgua(Number(e.target.value))} className="mt-1" /></div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Stock Hielo */}
-      <Card>
-        <CardHeader className="pb-3"><CardTitle className="text-lg">Stock: Hielo</CardTitle></CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between text-lg mb-3">
-            <span className="text-muted-foreground">{stockIniHielo}</span>
-            <span className="text-muted-foreground">+ {prodHielo}</span>
-            <span className="text-muted-foreground">- {data?.hieloVendido || 0}</span>
-            <span className="font-bold">= {stockFinHielo}</span>
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div><label className="text-xs text-muted-foreground">Stock Inicial</label><Input type="number" min="0" value={stockIniHielo} onChange={(e) => setStockIniHielo(Number(e.target.value))} className="mt-1" /></div>
-            <div><label className="text-xs text-muted-foreground">Producción</label><Input type="number" min="0" value={prodHielo} onChange={(e) => setProdHielo(Number(e.target.value))} className="mt-1" /></div>
-            <div><label className="text-xs text-muted-foreground">Stock Final</label><Input type="number" min="0" value={stockFinHielo} onChange={(e) => setStockFinHielo(Number(e.target.value))} className="mt-1" /></div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Pedidos Perdidos */}
-      {(data?.pedidosCanceladosCount || data?.pedidosNoEntregadosCount || data?.pedidosAnuladosCount) && (
-        <Card>
-          <CardHeader className="pb-3"><CardTitle className="text-lg">Pedidos Perdidos</CardTitle></CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="border rounded-lg p-4">
-                <div className="text-sm text-muted-foreground">Cancelados</div>
-                <div className="text-xl font-bold text-red-600">{data?.pedidosCanceladosCount || 0}</div>
-                <div className="text-sm text-muted-foreground">{formatMoney(data?.pedidosCanceladosTotal || 0)}</div>
-              </div>
-              <div className="border rounded-lg p-4">
-                <div className="text-sm text-muted-foreground">No Entregados</div>
-                <div className="text-xl font-bold text-orange-600">{data?.pedidosNoEntregadosCount || 0}</div>
-                <div className="text-sm text-muted-foreground">{formatMoney(data?.pedidosNoEntregadosTotal || 0)}</div>
-              </div>
-              <div className="border rounded-lg p-4">
-                <div className="text-sm text-muted-foreground">Anulados</div>
-                <div className="text-xl font-bold text-red-600">{data?.pedidosAnuladosCount || 0}</div>
-                <div className="text-sm text-muted-foreground">{formatMoney(data?.pedidosAnuladosTotal || 0)}</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Clientes Nuevos */}
-      {data?.clientesNuevos !== undefined && data.clientesNuevos > 0 && (
-        <Card>
-          <CardHeader className="pb-3"><CardTitle className="text-lg">Clientes Nuevos</CardTitle></CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-green-600">{data.clientesNuevos}</div>
-            <div className="text-sm text-muted-foreground">registrados hoy</div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Descuentos Repartidor */}
-      {data?.descuentosRepartidorCount && data.descuentosRepartidorCount > 0 && (
-        <Card>
-          <CardHeader className="pb-3"><CardTitle className="text-lg">Descuentos a Repartidores — {formatMoney(data.descuentosRepartidorTotal)}</CardTitle></CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {data.descuentos.map((d, i) => (
-                <div key={i} className="flex justify-between items-center py-1 border-b last:border-0">
-                  <div>
-                    <span className="font-medium">{d.repartidor || '—'}</span>
-                    <span className="text-sm text-muted-foreground ml-2">({d.motivo})</span>
-                  </div>
-                  <span className="font-medium text-red-600">-{formatMoney(d.monto)}</span>
                 </div>
-              ))}
+              </div>
+            )}
+
+            {/* Total */}
+            <div className="border-t-2 border-gray-200 pt-3 mt-4">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-base">Total Contado</span>
+                <span className="text-xl font-bold tabular-nums">{formatCurrency(arqueoData.totalContado)}</span>
+              </div>
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Resumen de Caja */}
-      <Card>
-        <CardHeader className="pb-3"><CardTitle className="text-lg">Resumen de Caja</CardTitle></CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            <div className="flex justify-between items-center"><span className="text-muted-foreground">Base</span><Input type="number" min="0" value={baseDia} onChange={(e) => setBaseDia(Number(e.target.value))} className="w-32 text-right h-8" /></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">+ Efectivo</span><span>{formatMoney(data?.efectivo || 0)}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">+ Transferencia</span><span>{formatMoney(data?.transferencia || 0)}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">+ Nequi</span><span>{formatMoney(data?.nequi || 0)}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">+ Daviplata</span><span>{formatMoney(data?.daviplata || 0)}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">+ Bono</span><span>{formatMoney(data?.bono || 0)}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">- Gastos</span><span className={data?.totalGastos && data.totalGastos > 0 ? 'text-red-600' : ''}>{formatMoney(data?.totalGastos || 0)}</span></div>
-            <div className="flex justify-between items-center"><span className="text-muted-foreground">- Comisiones</span><Input type="number" min="0" value={comisiones} onChange={(e) => setComisiones(Number(e.target.value))} className="w-32 text-right h-8" /></div>
-            <div className="flex justify-between items-center"><span className="text-muted-foreground">- Salarios</span><Input type="number" min="0" value={salarios} onChange={(e) => setSalarios(Number(e.target.value))} className="w-32 text-right h-8" /></div>
-            <div className="border-t pt-2 flex justify-between text-lg font-bold"><span>Neto Teórico</span><span className="text-green-600">{formatMoney(netoTeorico)}</span></div>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Arqueo Físico */}
-      <Card>
-        <CardHeader className="pb-3"><CardTitle className="text-lg">Arqueo Físico de Caja</CardTitle></CardHeader>
-        <CardContent>
-          <ArqueoCaja netoTeorico={netoTeorico} onChange={setArqueoData} />
-        </CardContent>
-      </Card>
-
-      {/* Alertas */}
-      {alertas.length > 0 && (
-        <Card className="border-amber-300 bg-amber-50/50">
-          <CardContent className="p-4">
-            <h2 className="text-lg font-semibold text-amber-800 mb-2">Alertas</h2>
-            <ul className="space-y-1">{alertas.map((a, i) => (<li key={i} className="text-amber-700 text-sm">⚠️ {a}</li>))}</ul>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Checklist de requisitos */}
-      <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-base">Requisitos para Cerrar</CardTitle></CardHeader>
-        <CardContent>
-          <ul className="space-y-2 text-sm">
-            <li className="flex items-center gap-2">
-              <span className={baseDia > 0 ? 'text-green-600' : 'text-red-600'}>{baseDia > 0 ? '✅' : '❌'}</span>
-              <span className={baseDia > 0 ? '' : 'text-red-600'}>Base de caja ingresada {baseDia > 0 ? `($${baseDia.toLocaleString()})` : '(falta)'}</span>
-            </li>
-            <li className="flex items-center gap-2">
-              <span className={statusCierre === 'COMPLETO' ? 'text-green-600' : 'text-red-600'}>{statusCierre === 'COMPLETO' ? '✅' : '❌'}</span>
-              <span className={statusCierre === 'COMPLETO' ? '' : 'text-red-600'}>Todos los embarques cerrados {statusCierre === 'INCOMPLETO' ? `(${embarquesPendientes.length} pendiente(s))` : ''}</span>
-            </li>
-            <li className="flex items-center gap-2">
-              <span className={arqueoData.totalContado > 0 ? 'text-green-600' : 'text-red-600'}>{arqueoData.totalContado > 0 ? '✅' : '❌'}</span>
-              <span className={arqueoData.totalContado > 0 ? '' : 'text-red-600'}>Efectivo físico contado {arqueoData.totalContado > 0 ? `($${arqueoData.totalContado.toLocaleString()})` : '(falta)'}</span>
-            </li>
-          </ul>
-        </CardContent>
-      </Card>
-
-      {/* Acciones */}
-      <div className="space-y-2">
-        {canClose ? (
-          <Button
-            onClick={handleCerrar}
-            disabled={cerrando || statusCierre === 'INCOMPLETO' || baseDia === 0 || arqueoData.totalContado === 0}
-            className="w-full py-6 text-lg"
-          >
-            {cerrando ? 'Cerrando...' : 'Cerrar Día'}
-          </Button>
-        ) : (
-          <Card className="bg-muted"><CardContent className="p-4 text-center text-sm text-muted-foreground">Solo los administradores y asistentes pueden cerrar el día</CardContent></Card>
         )}
-        <Button variant="outline" onClick={() => window.open(`/cierre/reporte?fecha=${fecha}`, '_blank')} className="w-full">
-          Ver Reporte para Imprimir
-        </Button>
+      </CierreSection>
+
+      {/* Section 4: Cerrar Día */}
+      <CierreSection
+        number={4}
+        title="Cerrar el Día"
+        description="Al cerrar, bloqueas el día permanentemente. No podrás editar pedidos ni embarques."
+      >
+        <div className="space-y-4">
+          {/* Validation checklist */}
+          <CierreValidationList items={validationItems} />
+
+          {/* Quick action for open embarques */}
+          {statusCierre === 'INCOMPLETO' && embarquesPendientes.length > 0 && (
+            <div className="flex items-center justify-between bg-red-50 border border-red-200 rounded-lg p-3">
+              <span className="text-sm text-red-700">{embarquesPendientes.length} embarque(s) abierto(s)</span>
+              <Button type="button" size="sm" variant="outline" className="border-red-300 text-red-700 hover:bg-red-100" onClick={() => router.push('/embarques')}>
+                Ir a Embarques →
+              </Button>
+            </div>
+          )}
+
+          {/* Consequences */}
+          <div className="bg-gray-50 rounded-lg p-4">
+            <h4 className="text-sm font-semibold mb-2">Al cerrar el día:</h4>
+            <ul className="space-y-1 text-sm text-muted-foreground">
+              <li>• No podrás editar pedidos, gastos ni embarques de este día</li>
+              <li>• No podrás modificar el arqueo de caja</li>
+              <li>• El reporte quedará almacenado como evidencia permanente</li>
+            </ul>
+          </div>
+
+          {/* Action buttons */}
+          {canClose ? (
+            <form onSubmit={handleCerrar} className="space-y-2">
+              <Button
+                type="submit"
+                disabled={cerrando || statusCierre === 'INCOMPLETO' || baseDia === 0 || arqueoData.totalContado === 0}
+                className="w-full py-6 text-lg"
+              >
+                {cerrando ? 'Cerrando...' : 'Cerrar Día'}
+              </Button>
+              <Button type="button" variant="outline" onClick={() => window.open(`/cierre/reporte?fecha=${fecha}`, '_blank', 'noopener,noreferrer')} className="w-full">
+                Ver Reporte para Imprimir
+              </Button>
+            </form>
+          ) : (
+            <div className="bg-muted rounded-lg p-4 text-center text-sm text-muted-foreground">Solo los administradores y asistentes pueden cerrar el día</div>
+          )}
+        </div>
+      </CierreSection>
+
+      {/* Sticky Footer - Next Step */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg p-3 z-50">
+        <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className={cn(
+              'w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold',
+              allReady ? 'bg-green-500' : 'bg-blue-500'
+            )}>
+              {allReady ? <Check className="w-4 h-4" /> : <ArrowRight className="w-4 h-4" />}
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">Próximo paso</div>
+              <div className="text-sm font-semibold">{nextStep.label}</div>
+            </div>
+          </div>
+          {allReady && (
+            <Button onClick={() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })} size="sm">
+              Ir a Cerrar
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   )
 }
+
+

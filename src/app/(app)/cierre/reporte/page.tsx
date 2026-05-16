@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { Button } from '@/components/ui/button'
+import { formatCurrency } from '@/lib/utils'
+import { DENOMINACIONES } from '@/components/arqueo-caja'
 import type { CierreData } from '../cierre-client/types'
 
 const ORIGEN_LABELS: Record<string, string> = {
@@ -10,7 +13,7 @@ const ORIGEN_LABELS: Record<string, string> = {
   VENTA_LIBRE: 'Venta Libre',
 }
 
-const formatMoney = (val: number) => `$${val.toLocaleString()}`
+const formatMoney = (val: number) => formatCurrency(val)
 
 export default function ReportePage() {
   const searchParams = useSearchParams()
@@ -34,24 +37,26 @@ export default function ReportePage() {
   if (error) return <div className="p-8 text-center text-red-600">{error}</div>
   if (!data) return <div className="p-8 text-center text-muted-foreground">Sin datos</div>
 
-  const netoTeorico = (data.efectivo || 0) + (data.transferencia || 0) + (data.nequi || 0) + (data.daviplata || 0) + (data.bono || 0) - (data.totalGastos || 0)
+  const netoTeorico = data.netoCaja != null
+    ? data.netoCaja
+    : (data.efectivo || 0) + (data.transferencia || 0) + (data.nequi || 0) + (data.daviplata || 0) + (data.bono || 0) - (data.totalGastos || 0)
 
   const prod = data.produccion
 
   return (
     <div className="max-w-4xl mx-auto p-8 print:p-4">
       <div className="no-print flex justify-end mb-4">
-        <button
-          onClick={() => window.print()}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-        >
+        <Button onClick={() => window.print()}>
           Imprimir / Guardar como PDF
-        </button>
+        </Button>
       </div>
 
       <div className="text-center border-b pb-4 mb-6">
         <h1 className="text-2xl font-bold">Agua Bambú SAS</h1>
         <h2 className="text-lg font-semibold mt-1">Cierre del Día — {fecha}</h2>
+        {data.horaCierre && (
+          <p className="text-sm text-muted-foreground">Cierre registrado a las {new Date(data.horaCierre).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}</p>
+        )}
         <p className="text-sm text-muted-foreground">Generado el {new Date().toLocaleString('es-CO')}</p>
       </div>
 
@@ -164,9 +169,45 @@ export default function ReportePage() {
       {data.descuentosRepartidorCount > 0 && (
         <section className="mb-6">
           <h3 className="text-lg font-bold border-b pb-1 mb-3">Descuentos Repartidor — {formatMoney(data.descuentosRepartidorTotal)}</h3>
-          {data.descuentos.map((d, i) => (
+          {(data.descuentos ?? []).map((d, i) => (
             <div key={i} className="flex justify-between py-1 text-sm"><span>{d.repartidor || '—'} ({d.motivo})</span><span>-{formatMoney(d.monto)}</span></div>
           ))}
+        </section>
+      )}
+
+      {data.totalContado != null && (
+        <section className="mb-6">
+          <h3 className="text-lg font-bold border-b pb-1 mb-3">Arqueo de Caja</h3>
+          <table className="w-full text-sm mb-3">
+            <tbody>
+              <tr><td className="py-1 font-medium">Esperado (Neto Teórico)</td><td className="text-right">{formatMoney(netoTeorico)}</td></tr>
+              <tr><td className="py-1 font-medium">Contado (Efectivo Físico)</td><td className="text-right font-bold">{formatMoney(data.totalContado)}</td></tr>
+              <tr>
+                <td className="py-1 font-medium">Diferencia</td>
+                <td className={`text-right font-bold ${(data.diferenciaArqueo || 0) === 0 ? 'text-green-700' : (data.diferenciaArqueo || 0) > 0 ? 'text-blue-700' : 'text-red-700'}`}>
+                  {(data.diferenciaArqueo || 0) >= 0 ? '+' : ''}{formatMoney(Math.abs(data.diferenciaArqueo || 0))}
+                  {(data.diferenciaArqueo || 0) === 0 ? ' (Cuadrado)' : (data.diferenciaArqueo || 0) > 0 ? ' (Sobrante)' : ' (Faltante)'}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          {data.arqueo && Object.keys(data.arqueo).some(k => (data.arqueo![k] || 0) > 0) && (
+            <table className="w-full text-sm border-t pt-2">
+              <thead>
+                <tr className="border-b"><th className="text-left py-1">Denominación</th><th className="text-right py-1">Cantidad</th><th className="text-right py-1">Subtotal</th></tr>
+              </thead>
+              <tbody>
+                {DENOMINACIONES.filter(d => (data.arqueo![String(d.valor)] || 0) > 0).map(d => (
+                  <tr key={d.valor}>
+                    <td className="py-1">{d.label}</td>
+                    <td className="text-right">{data.arqueo![String(d.valor)]}</td>
+                    <td className="text-right">{formatMoney((data.arqueo![String(d.valor)] || 0) * d.valor)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </section>
       )}
 
@@ -178,6 +219,54 @@ export default function ReportePage() {
           </tbody>
         </table>
       </section>
+
+      {data.postCierre && (data.postCierre.pedidos.length > 0 || data.postCierre.gastos.length > 0) && (
+        <section className="mb-6 bg-amber-50 border border-amber-300 rounded-lg p-4">
+          <h3 className="text-lg font-bold border-b border-amber-300 pb-1 mb-3 text-amber-800">Ventas Nocturnas (post-cierre)</h3>
+          <p className="text-sm text-amber-700 mb-3">
+            Transacciones registradas después del cierre a las {data.horaCierre ? new Date(data.horaCierre).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '—'}.
+            Este dinero se entregó junto con el cierre.
+          </p>
+
+          {data.postCierre.pedidos.length > 0 && (
+            <table className="w-full text-sm mb-3">
+              <thead>
+                <tr className="border-b border-amber-300"><th className="text-left py-1">Pedido</th><th className="text-right py-1">Total</th><th className="text-right py-1">Cobrado</th></tr>
+              </thead>
+              <tbody>
+                {data.postCierre.pedidos.map(p => (
+                  <tr key={p.id}>
+                    <td className="py-1">#{p.numero} {p.cliente || '—'}</td>
+                    <td className="text-right">{formatMoney(p.total)}</td>
+                    <td className="text-right">{formatMoney(p.totalPagado)}</td>
+                  </tr>
+                ))}
+                <tr className="border-t border-amber-300 font-bold">
+                  <td className="py-1">Total post-cierre</td>
+                  <td className="text-right">{formatMoney(data.postCierre.pedidos.reduce((s, p) => s + p.total, 0))}</td>
+                  <td className="text-right">{formatMoney(data.postCierre.pedidos.reduce((s, p) => s + p.totalPagado, 0))}</td>
+                </tr>
+              </tbody>
+            </table>
+          )}
+
+          {data.postCierre.gastos.length > 0 && (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-amber-300"><th className="text-left py-1">Gasto</th><th className="text-right py-1">Monto</th></tr>
+              </thead>
+              <tbody>
+                {data.postCierre.gastos.map((g, i) => (
+                  <tr key={i}>
+                    <td className="py-1">{g.categoria}: {g.descripcion}</td>
+                    <td className="text-right">{formatMoney(g.monto)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+      )}
 
       <div className="mt-16 pt-8 border-t">
         <div className="grid grid-cols-2 gap-8">

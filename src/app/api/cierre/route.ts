@@ -140,6 +140,61 @@ export async function GET(request: NextRequest) {
 
     const status = embarquesAbiertos.length > 0 ? 'INCOMPLETO' : 'COMPLETO'
 
+    // Check for existing cierre to include stored arqueo and post-cierre data
+    const cierreExistente = await prisma.cierreDia.findFirst({
+      where: { fecha: { gte: startOfDay, lt: nextDay } },
+      select: { reporte: true, horaCierre: true, netoCaja: true },
+    })
+    const reporteGuardado = cierreExistente?.reporte ? (typeof cierreExistente.reporte === 'string' ? JSON.parse(cierreExistente.reporte) : cierreExistente.reporte) : null
+
+    // Post-cierre: transactions created after the day was closed
+    let postCierre = null
+    if (cierreExistente?.horaCierre) {
+      const hc = cierreExistente.horaCierre
+      const [pedidosPost, embarquesPost, gastosPost] = await Promise.all([
+        prisma.pedido.findMany({
+          where: {
+            fecha: { gte: hc, lt: nextDay },
+            estado: { notIn: [EstadoPedido.CANCELADO, EstadoPedido.ANULADO] },
+          },
+          include: { pagos: true, cliente: { select: { nombre: true } } },
+        }),
+        prisma.embarque.findMany({
+          where: { fecha: { gte: hc, lt: nextDay }, estado: { not: EstadoEmbarque.CANCELADO } },
+          include: { trabajador: { select: { nombre: true } }, ruta: { select: { nombre: true } } },
+        }),
+        prisma.gasto.findMany({
+          where: { fecha: { gte: hc, lt: nextDay } },
+        }),
+      ])
+      postCierre = {
+        pedidos: pedidosPost.map(p => ({
+          id: p.id,
+          numero: p.numero,
+          cliente: p.cliente?.nombre,
+          total: Number(p.total),
+          totalPagado: Number(p.totalPagado),
+          saldo: Number(p.saldo),
+          estadoEntrega: p.estadoEntrega,
+          origen: p.origen,
+          pagos: p.pagos.map(pg => ({ metodo: pg.metodo, monto: Number(pg.monto) })),
+        })),
+        embarques: embarquesPost.map(e => ({
+          numero: e.numero,
+          repartidor: e.trabajador?.nombre,
+          ruta: e.ruta?.nombre,
+          pacasAgua: e.pacasAgua,
+          pacasHielo: e.pacasHielo,
+          estado: e.estado,
+        })),
+        gastos: gastosPost.map(g => ({
+          categoria: g.categoria,
+          descripcion: g.descripcion,
+          monto: Number(g.monto),
+        })),
+      }
+    }
+
     return apiSuccess({
       status,
       embarquesPendientes: embarquesAbiertos.map(e => ({ id: e.id, numero: e.numero, repartidor: e.trabajador?.nombre })),
@@ -222,6 +277,9 @@ export async function GET(request: NextRequest) {
           repartidor: d.trabajador?.nombre,
         })),
 
+        // Cierre
+        netoCaja: cierreExistente ? Number(cierreExistente.netoCaja || 0) : null,
+
         // Stock
         aguaVendida,
         hieloVendido,
@@ -246,6 +304,17 @@ export async function GET(request: NextRequest) {
 
         // Fecha
         fecha: fechaStr,
+
+        // Arqueo (from stored reporte if day already closed)
+        arqueo: reporteGuardado?.arqueo ?? null,
+        totalContado: reporteGuardado?.totalContado ?? null,
+        diferenciaArqueo: reporteGuardado?.diferencia ?? null,
+
+        // Cierre metadata
+        horaCierre: cierreExistente?.horaCierre?.toISOString() ?? null,
+
+        // Post-cierre transactions
+        postCierre,
       },
     })
   } catch (error) {
@@ -267,6 +336,23 @@ export async function POST(request: NextRequest) {
     }
 
     const fechaStr = parsed.data.fecha || new Date().toISOString().split('T')[0]
+
+    // 0. Validar secuencia de cierres: no se puede cerrar un día si hay días anteriores sin cerrar
+    const lastCierre = await prisma.cierreDia.findFirst({
+      orderBy: { fecha: 'desc' },
+    })
+    if (lastCierre) {
+      const lastDate = new Date(lastCierre.fecha)
+      const reqDate = new Date(fechaStr)
+      const diffMs = reqDate.getTime() - lastDate.getTime()
+      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+      if (diffDays <= 0) {
+        return apiError('No se puede cerrar un día anterior o igual al último cierre registrado', 400)
+      }
+      if (diffDays > 1) {
+        return apiError(`Hay ${diffDays - 1} día(s) sin cerrar entre el último cierre (${lastDate.toISOString().split('T')[0]}) y esta fecha. Cerralos primero.`, 400)
+      }
+    }
     const startOfDay = new Date(fechaStr + 'T00:00:00.000Z')
     const nextDay = new Date(startOfDay)
     nextDay.setDate(nextDay.getDate() + 1)
@@ -328,6 +414,7 @@ export async function POST(request: NextRequest) {
           stockFinHielo: parsed.data.stockFinHielo,
           netoCaja,
           cerradoPor: userId,
+          horaCierre: new Date(),
           reporte: reporteSnapshot,
         },
       })
