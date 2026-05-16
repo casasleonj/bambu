@@ -65,3 +65,16 @@ prisma/migrations/dev/
 # graphify
 graphify-out/
 backups/
+
+# agent harness (local-only)
+.opencode/
+
+# agent ephemeral planning docs
+docs/superpowers/plans/
+
+# one-off migration scripts (already executed)
+create-table.ts
+fix-perms.ts
+recreate-table.ts
+prisma/migrate-recurrentes.ts
+scripts/crear-factura-demo.ts
