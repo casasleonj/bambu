@@ -42,6 +42,7 @@ enum OrigenPedido {
   PEDIDO
   VENTA_RAPIDA
   VENTA_LIBRE
+  RECURRENTE
 }
 
 enum MetodoPago {
@@ -57,6 +58,7 @@ enum RolUsuario {
   ASISTENTE
   CONTADOR
   REPARTIDOR
+  SELLADOR
 }
 
 enum TipoPagoTrabajador {
@@ -68,6 +70,7 @@ enum TipoPagoTrabajador {
 enum EstadoNomina {
   PENDIENTE
   PAGADA
+  ANULADA
 }
 
 enum EstadoEmbarque {
@@ -104,8 +107,11 @@ model User {
   id        String   @id @default(cuid())
   username  String   @unique
   password  String
+  nombre    String   @default("")
+  apellido  String   @default("")
   rol       RolUsuario @default(ASISTENTE)
   activo    Boolean  @default(true)
+  mustChangePassword Boolean @default(false)
   createdAt DateTime @db.Timestamptz() @default(now())
   updatedAt DateTime @db.Timestamptz() @updatedAt
 
@@ -121,8 +127,9 @@ model User {
   comprasCreadas      CompraInsumo[]    @relation("CompraCreador")
   insumosCreados      Insumo[]          @relation("InsumoCreador")
   proveedoresCreados  Proveedor[]      @relation("ProveedorCreador")
-  trabajadoresCreados Trabajador[]      @relation("TrabajadorCreador")
+   trabajadoresCreados Trabajador[]      @relation("TrabajadorCreador")
   rutasCreadas        Ruta[]            @relation("RutaCreador")
+  plantillasCreadas   PlantillaRecurrente[] @relation("PlantillaCreador")
 
   casosCreados        Caso[]            @relation("CasoCreador")
   casosAsignados      Caso[]            @relation("CasoAsignado")
@@ -176,6 +183,7 @@ model Cliente {
   barrio       String?
   referencia  String?
   linkUbicacion String?
+  contactos     Json?
 
   nombreNegocio String?
   tipoNegocio   String?
@@ -204,6 +212,9 @@ model Cliente {
   bloqueado      Boolean   @default(false)
   reclamaciones  Int       @default(0)
 
+  horaPreferida  String?
+  plantillaRecurrente PlantillaRecurrente?
+
   notas        String?
   activo      Boolean  @default(true)
 
@@ -227,6 +238,34 @@ model Cliente {
 }
 
 // ====================
+// PLANTILLA RECURRENTE
+// ====================
+
+model PlantillaRecurrente {
+  id              String   @id @default(cuid())
+  clienteId       String   @unique
+  cliente         Cliente  @relation(fields: [clienteId], references: [id])
+  activo          Boolean  @default(true)
+  cadaNDias       Int      @default(7)
+  tipo            String   @default("ENVIO")
+  canal           String   @default("DOMICILIO")
+  horaPreferida   String?
+  productos       String   // JSON: {"PACA_AGUA":2,"PACA_HIELO":0,...}
+  ultimaGeneracion DateTime? @db.Timestamptz()
+  proxGeneracion  DateTime? @db.Timestamptz()
+  saltos          String[]
+  pausaHasta      DateTime? @db.Timestamptz()
+  notas           String?
+  createdById     String?
+  createdBy       User?    @relation("PlantillaCreador", fields: [createdById], references: [id])
+  createdAt       DateTime @default(now()) @db.Timestamptz()
+  updatedAt       DateTime @updatedAt @db.Timestamptz()
+
+  @@index([activo, proxGeneracion])
+  @@index([clienteId])
+}
+
+// ====================
 // TRABAJADOR
 // ====================
 
@@ -245,6 +284,11 @@ model Trabajador {
   comPacaAgua   Decimal  @default(200) @db.Decimal(10, 2)
   comPacaHielo  Decimal  @default(200) @db.Decimal(10, 2)
   comBotellon   Decimal  @default(200) @db.Decimal(10, 2)
+
+  comRepartAgua    Decimal  @default(0) @db.Decimal(10, 2)
+  comRepartHielo   Decimal  @default(0) @db.Decimal(10, 2)
+  comRepartBotellon Decimal  @default(0) @db.Decimal(10, 2)
+
   salarioFijo   Decimal  @default(0)   @db.Decimal(10, 2)
 
   deudaReposAgua  Decimal  @default(0) @db.Decimal(10, 2)
@@ -281,6 +325,10 @@ model Nomina {
 
   fechaInicio       DateTime @db.Timestamptz()
   fechaFin         DateTime @db.Timestamptz()
+
+  entregasAgua     Int       @default(0)
+  entregasHielo    Int       @default(0)
+  entregasBotellon Int       @default(0)
 
   comEntregasAgua  Decimal   @default(0) @db.Decimal(10, 2)
   comEntregasHielo Decimal   @default(0) @db.Decimal(10, 2)
@@ -376,16 +424,10 @@ model Pedido {
 
   repartidor   String?
   obs         String?
+  horaPreferida String?
 
-  // Auto-relación / Recurrencia
+  // Referencia polimórfica: PlantillaRecurrente.id o null
   idOrigen     String?
-  pedidoOrigen Pedido?  @relation("PedidoHijo", fields: [idOrigen], references: [id])
-  pedidoHijo  Pedido[] @relation("PedidoHijo")
-
-  esRecurrente     Boolean   @default(false)
-  frecuencia       String?
-  ultimaGeneracion DateTime? @db.Timestamptz()
-  saltarFechas     String[]
 
   // Relaciones nuevas
   items         PedidoItem[]
@@ -404,7 +446,6 @@ model Pedido {
   @@index([fecha])
   @@index([estado])
   @@index([createdById])
-  @@index([esRecurrente])
   @@index([idOrigen])
   @@index([fecha, estado])
   @@index([clienteId, estado])
@@ -737,11 +778,13 @@ model Proveedor {
   id         String     @id @default(cuid())
   createdById String?
   createdBy  User?      @relation("ProveedorCreador", fields: [createdById], references: [id])
-  nombre     String
-  telefono   String?
-  email     String?
-  direccion String?
-  activo    Boolean   @default(true)
+  nombre        String
+  telefono      String?
+  email         String?
+  direccion     String?
+  tipoProducto  String?   @db.VarChar(100)
+  observaciones String?   @db.Text
+  activo        Boolean   @default(true)
 
   insumos   Insumo[]
   compras   CompraInsumo[]
@@ -765,6 +808,7 @@ model Insumo {
   stock      Decimal    @default(0) @db.Decimal(10, 2)
   stockMin   Decimal    @default(0) @db.Decimal(10, 2)
   precioUnit Decimal    @default(0) @db.Decimal(10, 2)
+  activo     Boolean    @default(true)
 
   proveedorId String?
   proveedor  Proveedor? @relation(fields: [proveedorId], references: [id])
@@ -907,6 +951,7 @@ model CierreDia {
   netoCaja    Decimal  @default(0) @db.Decimal(10, 2)
 
   cerradoPor  String?
+  horaCierre  DateTime? @db.Timestamptz()
   reporte     Json?
 
   createdAt   DateTime @db.Timestamptz() @default(now())
