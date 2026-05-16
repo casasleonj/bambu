@@ -1,0 +1,105 @@
+@media print {
+  /* Ocultar elementos de la app (header, KPIs, botones, etc.) */
+  .print\:hidden {
+    display: none !important;
+  }
+
+  /* Ocultar columna de desfase en impresión */
+  .print\:no-desfase {
+    display: none !important;
+  }
+
+  /* Reset: fondo blanco, sin sombras, sin redondeo */
+  .print\:shadow-none {
+    box-shadow: none !important;
+  }
+
+  .print\:rounded-none {
+    border-radius: 0 !important;
+  }
+
+  .print\:border-0 {
+    border: none !important;
+  }
+
+  /* Padding del documento */
+  .print\:p-4 {
+    padding: 1rem !important;
+  }
+
+  /* Bordes para impresión */
+  .print\:border-gray-400 {
+    border-color: #6b7280 !important;
+  }
+
+  .print\:border-gray-600 {
+    border-color: #4b5563 !important;
+  }
+
+  .print\:border-gray-200 {
+    border-color: #e5e7eb !important;
+  }
+
+  /* Fondos */
+  .print\:bg-white {
+    background-color: white !important;
+  }
+
+  .print\:bg-gray-50 {
+    background-color: #f9fafb !important;
+  }
+
+  /* Logo */
+  .print\:h-20 {
+    height: 5rem !important;
+  }
+
+  /* Evitar cortes de página en elementos clave */
+  .print\:break-inside-avoid {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Header del documento: no separar del contenido */
+  .doc-header {
+    page-break-after: avoid !important;
+  }
+
+  /* Totales: no separar entre páginas */
+  .doc-totales {
+    page-break-inside: avoid !important;
+  }
+
+  /* Firma: no separar entre páginas */
+  .doc-firma {
+    page-break-inside: avoid !important;
+  }
+
+  /* Nota legal: no separar */
+  .doc-nota {
+    page-break-inside: avoid !important;
+  }
+
+  /* Links: sin color azul ni subrayado en impresión */
+  a[href] {
+    color: inherit !important;
+    text-decoration: none !important;
+  }
+
+  /* Asegurar que colores específicos se impriman (logo, estados) */
+  .print-color-exact {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Configuración de página */
+  @page {
+    margin: 0.5cm;
+    size: auto;
+  }
+
+  /* Body sin fondo gris */
+  body {
+    background: white !important;
+  }
+}

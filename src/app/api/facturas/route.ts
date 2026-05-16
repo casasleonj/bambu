@@ -107,6 +107,10 @@ export async function POST(request: NextRequest) {
         throw new Error('El pedido ya tiene una factura')
       }
 
+      if (pedido.clienteId !== clienteId) {
+        throw new Error('CLIENTE_NO_COINCIDE')
+      }
+
       const nextNum = await getNextNumero(tx, { model: 'factura', field: 'numero' })
 
       return tx.factura.create({
@@ -138,6 +142,9 @@ export async function POST(request: NextRequest) {
     }
     if (message === 'El pedido ya tiene una factura') {
       return apiError('El pedido ya tiene una factura', 409)
+    }
+    if (message === 'CLIENTE_NO_COINCIDE') {
+      return apiError('El cliente del body no coincide con el cliente del pedido', 400)
     }
     logger.error({ err: message }, 'Error creating factura:')
     return apiError('Error creating factura', 500)

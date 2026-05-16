@@ -16,6 +16,7 @@ export interface Factura {
   cliente?: {
     id: string
     nombre: string
+    apellido?: string
     telefono: string
     direccion?: string
     barrio?: string
