@@ -2,43 +2,94 @@ import { prisma } from "@/lib/prisma";
 import { getNextNumero } from "@/lib/sequence";
 import { resolverPreciosPedido, type Canal, type ProductCode } from "@/lib/pricing";
 
-function addDays(date: Date, days: number): Date {
-  const result = new Date(date);
-  result.setDate(result.getDate() + days);
-  return result;
+type ProductosMap = {
+  PACA_AGUA: number
+  PACA_HIELO: number
+  BOTELLON: number
+  BOLSA_AGUA: number
+  BOLSA_HIELO: number
 }
 
-function getFrecuenciaDias(frecuencia: string | null): number | null {
-  switch (frecuencia) {
-    case "DIARIO": return 1;
-    case "SEMANAL": return 7;
-    case "QUINCENAL": return 15;
-    case "MENSUAL": return 30;
-    default: return null;
+function parseProductos(json: string): ProductosMap {
+  try {
+    const raw = JSON.parse(json)
+    return {
+      PACA_AGUA: Math.max(0, raw.PACA_AGUA ?? 0),
+      PACA_HIELO: Math.max(0, raw.PACA_HIELO ?? 0),
+      BOTELLON: Math.max(0, raw.BOTELLON ?? 0),
+      BOLSA_AGUA: Math.max(0, raw.BOLSA_AGUA ?? 0),
+      BOLSA_HIELO: Math.max(0, raw.BOLSA_HIELO ?? 0),
+    }
+  } catch {
+    return { PACA_AGUA: 0, PACA_HIELO: 0, BOTELLON: 0, BOLSA_AGUA: 0, BOLSA_HIELO: 0 }
   }
 }
 
 function formatDateISO(date: Date): string {
-  return date.toISOString().split('T')[0]
+  // Use LOCAL date components to avoid UTC midnight shift in negative TZ
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
-function estaEnSaltarFechas(saltarFechas: string[], fecha: Date): boolean {
-  const fechaStr = formatDateISO(fecha)
-  return saltarFechas.includes(fechaStr)
+function addDays(date: Date, days: number): Date {
+  const result = new Date(date)
+  result.setDate(result.getDate() + days)
+  return result
+}
+
+export function calcularProxGeneracion(desde: Date, cadaNDias: number): Date {
+  const result = new Date(desde)
+  result.setDate(result.getDate() + cadaNDias)
+  result.setHours(0, 0, 0, 0)
+
+  // Sunday rule: shift to Monday for all frequencies
+  if (result.getDay() === 0) {
+    result.setDate(result.getDate() + 1)
+    result.setHours(0, 0, 0, 0)
+  }
+
+  return result
+}
+
+function productosToCantidades(p: ProductosMap, canal: string) {
+  return {
+    cPacaAgua: p.PACA_AGUA,
+    cPacaHielo: p.PACA_HIELO,
+    cBotellonFab: canal === 'PUNTO' ? p.BOTELLON : 0,
+    cBotellonDom: canal === 'DOMICILIO' ? p.BOTELLON : 0,
+    cBolsaAgua: p.BOLSA_AGUA,
+    cBolsaHielo: p.BOLSA_HIELO,
+  }
+}
+
+export function sanitizarSaltos(saltos: string[]): string[] {
+  const treintaDiasAtras = formatDateISO(new Date(Date.now() - 30 * 86400000))
+  const filtrados = saltos.filter(s => s >= treintaDiasAtras)
+  return filtrados.slice(-365)
+}
+
+function estaEnSaltos(saltos: string[], fecha: Date): boolean {
+  return saltos.includes(formatDateISO(fecha))
 }
 
 export interface PreviewRecurrente {
   recurrenteId: string
   clienteId: string
   clienteNombre: string
-  frecuencia: string
+  cadaNDias: number
   ultimaGeneracion: Date | null
   proximaFecha: Date
+  horaPreferida: string | null
+  clienteBloqueado: boolean
+  esDomingo: boolean
   pedidosPendientes: Array<{
     id: string
     numero: number
     total: number
     saldo: number
+    totalPagado: number
     cPacaAguaPed: number
     cPacaHieloPed: number
     cBotellonFabPed: number
@@ -60,158 +111,201 @@ export interface PreviewRecurrente {
     descripcion: string
     totalPacas: number
     totalValor: number
+    disabled?: boolean
+    disabledReason?: string
   }>
-  saltarFechas: string[]
-  debeGenerar: boolean
+  saltos: string[]
+  cumpleMinimo: boolean
 }
 
 export async function previewGeneracionRecurrentes(
   fechaReferencia: Date = new Date()
 ): Promise<PreviewRecurrente[]> {
-  const inicioDia = new Date(fechaReferencia);
-  inicioDia.setHours(0, 0, 0, 0);
+  const inicioDia = new Date(fechaReferencia)
+  inicioDia.setHours(0, 0, 0, 0)
 
-  const recurrentes = await prisma.pedido.findMany({
+  const lookaheadEnd = addDays(inicioDia, 2)
+
+  const plantillas = await prisma.plantillaRecurrente.findMany({
     where: {
-      esRecurrente: true,
-      OR: [
-        { ultimaGeneracion: null },
-        {
-          frecuencia: { in: ["DIARIO", "SEMANAL", "QUINCENAL", "MENSUAL"] },
-          ultimaGeneracion: { lt: addDays(inicioDia, 1) },
-        },
-      ],
+      activo: true,
+      proxGeneracion: { lte: lookaheadEnd },
     },
     include: { cliente: true },
-  });
+  })
 
-  const previews: PreviewRecurrente[] = [];
+  // Batch fetch all pending orders for all clients in a single query
+  const clienteIds = plantillas.map(pt => pt.clienteId)
+  const pedidosPendientesTodos = await prisma.pedido.findMany({
+    where: {
+      clienteId: { in: clienteIds },
+      estadoEntrega: 'PENDIENTE',
+      origen: { not: 'RECURRENTE' },
+    },
+    select: {
+      id: true,
+      numero: true,
+      total: true,
+      saldo: true,
+      totalPagado: true,
+      clienteId: true,
+      cPacaAguaPed: true,
+      cPacaHieloPed: true,
+      cBotellonFabPed: true,
+      cBotellonDomPed: true,
+      cBolsaAguaPed: true,
+      cBolsaHieloPed: true,
+    },
+  })
 
-  for (const rec of recurrentes) {
-    const dias = getFrecuenciaDias(rec.frecuencia);
-    if (!dias) continue;
+  const pedidosPorCliente = new Map<string, typeof pedidosPendientesTodos>()
+  for (const p of pedidosPendientesTodos) {
+    const list = pedidosPorCliente.get(p.clienteId) || []
+    list.push(p)
+    pedidosPorCliente.set(p.clienteId, list)
+  }
 
-    const ultima = rec.ultimaGeneracion || rec.fecha;
-    const diasDesdeUltima = Math.floor(
-      (inicioDia.getTime() - new Date(ultima).getTime()) / (1000 * 60 * 60 * 24)
-    );
+  const previews: PreviewRecurrente[] = []
 
-    // Skip if not due yet
-    if (diasDesdeUltima < dias) continue;
+  for (const pt of plantillas) {
+    // A4: Blocked/inactive clients are visible in preview but with restricted options
+    const clienteBloqueado = pt.cliente.bloqueado || !pt.cliente.activo
 
-    // Skip if in saltarFechas
-    if (estaEnSaltarFechas(rec.saltarFechas || [], inicioDia)) continue;
+    const prox = pt.proxGeneracion!
+    const fechaGen = new Date(prox)
 
-    // Find pending orders for this client
-    const pedidosPendientesRaw = await prisma.pedido.findMany({
-      where: {
-        clienteId: rec.clienteId,
-        estado: 'PENDIENTE',
-        esRecurrente: false,
-        id: { not: rec.id },
-      },
-      select: {
-        id: true,
-        numero: true,
-        total: true,
-        saldo: true,
-        cPacaAguaPed: true,
-        cPacaHieloPed: true,
-        cBotellonFabPed: true,
-        cBotellonDomPed: true,
-        cBolsaAguaPed: true,
-        cBolsaHieloPed: true,
-      },
-    });
+    // A3: Sunday rule — show in preview with badge, don't skip
+    const esDomingo = fechaGen.getDay() === 0
 
-    const pedidosPendientes = pedidosPendientesRaw.map((p) => ({
+    const saltosSanitizados = sanitizarSaltos(pt.saltos || [])
+    if (estaEnSaltos(saltosSanitizados, fechaGen)) continue
+
+    const productos = parseProductos(pt.productos)
+    const cantidadBase = productosToCantidades(productos, pt.canal)
+
+    const pedidosPendientesRaw = pedidosPorCliente.get(pt.clienteId) || []
+    const pedidosPendientes = pedidosPendientesRaw.map(p => ({
       ...p,
       total: Number(p.total),
       saldo: Number(p.saldo),
-    }));
+      totalPagado: Number(p.totalPagado),
+    }))
 
-    const cantidadBase = {
-      cPacaAgua: rec.cPacaAguaPed,
-      cPacaHielo: rec.cPacaHieloPed,
-      cBotellonFab: rec.cBotellonFabPed,
-      cBotellonDom: rec.cBotellonDomPed,
-      cBolsaAgua: rec.cBolsaAguaPed,
-      cBolsaHielo: rec.cBolsaHieloPed,
-    };
+    // A5: Renamed hasPagosPendientes → tieneAbonos (clearer semantics)
+    const tieneAbonos = pedidosPendientes.some(p => Number(p.totalPagado) > 0)
 
-    const totalPacasBase = Object.values(cantidadBase).reduce((a, b) => a + b, 0);
+    const totalPacasBase = Object.values(cantidadBase).reduce((a, b) => a + b, 0)
 
-    // Get fresh prices for base
     const items: Array<{ codigo: ProductCode; cantidad: number }> = [
       { codigo: 'PACA_AGUA', cantidad: cantidadBase.cPacaAgua },
       { codigo: 'PACA_HIELO', cantidad: cantidadBase.cPacaHielo },
       { codigo: 'BOTELLON', cantidad: cantidadBase.cBotellonFab + cantidadBase.cBotellonDom },
       { codigo: 'BOLSA_AGUA', cantidad: cantidadBase.cBolsaAgua },
       { codigo: 'BOLSA_HIELO', cantidad: cantidadBase.cBolsaHielo },
-    ];
-    const preciosBase = await resolverPreciosPedido(items, (rec.canal || 'DOMICILIO') as Canal, rec.clienteId);
-    const valorBase = preciosBase.reduce((sum, p) => sum + p.subtotal, 0);
+    ]
+    const preciosBase = await resolverPreciosPedido(items, pt.canal as Canal, pt.clienteId)
+    const valorBase = preciosBase.reduce((sum, p) => sum + p.subtotal, 0)
 
-    const sugerencias: PreviewRecurrente['sugerencias'] = [];
+    const sugerencias: PreviewRecurrente['sugerencias'] = []
 
-    // Option 1: Normal
-    sugerencias.push({
-      tipo: 'NORMAL',
-      label: 'Generar normal',
-      descripcion: `${totalPacasBase} pacas - $${Math.round(valorBase).toLocaleString()}`,
-      totalPacas: totalPacasBase,
-      totalValor: valorBase,
-    });
-
-    // Option 2: Con pendientes (if any)
-    if (pedidosPendientes.length > 0) {
-      const pacasPendientes = pedidosPendientes.reduce((sum, p) =>
-        sum + p.cPacaAguaPed + p.cPacaHieloPed + p.cBotellonFabPed + p.cBotellonDomPed + p.cBolsaAguaPed + p.cBolsaHieloPed, 0
-      );
-      const totalPacasConPendientes = totalPacasBase + pacasPendientes;
+    if (clienteBloqueado) {
+      // A4: Blocked client — only SALTAR option, don't advance date automatically
       sugerencias.push({
-        tipo: 'CON_PENDIENTES',
-        label: 'Incluir pendientes',
-        descripcion: `${totalPacasConPendientes} pacas (${totalPacasBase} + ${pacasPendientes} pendientes)`,
-        totalPacas: totalPacasConPendientes,
-        totalValor: valorBase + pedidosPendientes.reduce((sum, p) => sum + Number(p.total), 0),
-      });
-
-      // Option 3: Solo pendientes
+        tipo: 'SALTAR',
+        label: 'Cliente bloqueado',
+        descripcion: pt.cliente.bloqueado ? 'Cliente bloqueado por deuda' : 'Cliente inactivo',
+        totalPacas: 0,
+        totalValor: 0,
+        disabled: false,
+        disabledReason: undefined,
+      })
+    } else if (esDomingo) {
+      // A3: Sunday — show with badge, only SALTAR option
+      const lunes = addDays(fechaGen, 1)
       sugerencias.push({
-        tipo: 'SOLO_PENDIENTES',
-        label: 'Solo pendientes',
-        descripcion: `Saltar recurrente, enviar solo ${pacasPendientes} pacas pendientes`,
-        totalPacas: pacasPendientes,
-        totalValor: pedidosPendientes.reduce((sum, p) => sum + Number(p.total), 0),
-      });
+        tipo: 'SALTAR',
+        label: 'Domingo → Lunes',
+        descripcion: `Cae en domingo. Se pospondrá al ${formatDateISO(lunes)}`,
+        totalPacas: 0,
+        totalValor: 0,
+        disabled: false,
+        disabledReason: undefined,
+      })
+    } else {
+      // Normal flow
+      const cumpleMinimo = totalPacasBase >= 3
+      sugerencias.push({
+        tipo: 'NORMAL',
+        label: 'Generar normal',
+        descripcion: `${totalPacasBase} pacas - $${Math.round(valorBase).toLocaleString()}`,
+        totalPacas: totalPacasBase,
+        totalValor: valorBase,
+        disabled: !cumpleMinimo,
+        disabledReason: !cumpleMinimo ? 'Mínimo 3 productos por entrega' : undefined,
+      })
+
+      if (pedidosPendientes.length > 0) {
+        const pacasPendientes = pedidosPendientes.reduce((sum, p) =>
+          sum + p.cPacaAguaPed + p.cPacaHieloPed + p.cBotellonFabPed + p.cBotellonDomPed + p.cBolsaAguaPed + p.cBolsaHieloPed, 0
+        )
+        const totalPacasConPendientes = totalPacasBase + pacasPendientes
+        const totalPagadoPendientes = pedidosPendientes.reduce((sum, p) => sum + Number(p.totalPagado), 0)
+        const saldoPendientes = pedidosPendientes.reduce((sum, p) => sum + Number(p.saldo), 0)
+
+        const disabled = tieneAbonos
+        const disabledReason = disabled ? 'Hay pedidos con abonos. Pague primero.' : undefined
+
+        const pagadoLabel = totalPagadoPendientes > 0 ? `, $${Math.round(totalPagadoPendientes).toLocaleString()} ya pagado` : ''
+
+        sugerencias.push({
+          tipo: 'CON_PENDIENTES',
+          label: 'Incluir pendientes',
+          descripcion: `${totalPacasConPendientes} pacas (${totalPacasBase} + ${pacasPendientes} pendientes${pagadoLabel})`,
+          totalPacas: totalPacasConPendientes,
+          totalValor: valorBase + saldoPendientes,
+          disabled,
+          disabledReason,
+        })
+
+        sugerencias.push({
+          tipo: 'SOLO_PENDIENTES',
+          label: 'Solo pendientes',
+          descripcion: `Saltar recurrente, enviar solo ${pacasPendientes} pacas pendientes${pagadoLabel}`,
+          totalPacas: pacasPendientes,
+          totalValor: saldoPendientes,
+          disabled,
+          disabledReason,
+        })
+      }
+
+      sugerencias.push({
+        tipo: 'SALTAR',
+        label: 'Saltar esta vez',
+        descripcion: 'No generar pedido esta fecha',
+        totalPacas: 0,
+        totalValor: 0,
+      })
     }
 
-    // Option 4: Saltar
-    sugerencias.push({
-      tipo: 'SALTAR',
-      label: 'Saltar esta vez',
-      descripcion: 'No generar pedido esta fecha',
-      totalPacas: 0,
-      totalValor: 0,
-    });
-
     previews.push({
-      recurrenteId: rec.id,
-      clienteId: rec.clienteId,
-      clienteNombre: rec.cliente.nombre,
-      frecuencia: rec.frecuencia || 'SEMANAL',
-      ultimaGeneracion: rec.ultimaGeneracion,
-      proximaFecha: inicioDia,
+      recurrenteId: pt.id,
+      clienteId: pt.clienteId,
+      clienteNombre: pt.cliente.nombre,
+      cadaNDias: pt.cadaNDias,
+      ultimaGeneracion: pt.ultimaGeneracion,
+      proximaFecha: fechaGen,
+      horaPreferida: pt.horaPreferida,
+      clienteBloqueado,
+      esDomingo,
       pedidosPendientes,
       cantidadBase,
       sugerencias,
-      saltarFechas: rec.saltarFechas || [],
-      debeGenerar: true,
-    });
+      saltos: saltosSanitizados,
+      cumpleMinimo: totalPacasBase >= 3,
+    })
   }
 
-  return previews;
+  return previews
 }
 
 export interface DecisionGeneracion {
@@ -223,111 +317,142 @@ export async function generarPedidosRecurrentes(
   decisiones: DecisionGeneracion[],
   fechaReferencia: Date = new Date()
 ) {
-  const inicioDia = new Date(fechaReferencia);
-  inicioDia.setHours(0, 0, 0, 0);
+  const inicioDia = new Date(fechaReferencia)
+  inicioDia.setHours(0, 0, 0, 0)
 
-  const generados: Array<{ id: string; numero: number; tipo: string }> = [];
-  const saltados: string[] = [];
+  const generados: Array<{ id: string; numero: number; tipo: string }> = []
+  const saltados: string[] = []
 
   for (const decision of decisiones) {
-    if (decision.decision === 'SALTAR') {
-      // Add today to saltarFechas
-      await prisma.pedido.update({
-        where: { id: decision.recurrenteId },
-        data: {
-          saltarFechas: { push: formatDateISO(inicioDia) },
-          ultimaGeneracion: inicioDia,
-        },
-      });
-      saltados.push(decision.recurrenteId);
-      continue;
-    }
-
-    const rec = await prisma.pedido.findUnique({
+    const pt = await prisma.plantillaRecurrente.findUnique({
       where: { id: decision.recurrenteId },
       include: { cliente: true },
-    });
-    if (!rec || !rec.esRecurrente) continue;
+    })
+    if (!pt || !pt.activo) continue
 
-    // Resolve quantities based on decision
-    let cantidades = {
-      cPacaAgua: rec.cPacaAguaPed,
-      cPacaHielo: rec.cPacaHieloPed,
-      cBotellonFab: rec.cBotellonFabPed,
-      cBotellonDom: rec.cBotellonDomPed,
-      cBolsaAgua: rec.cBolsaAguaPed,
-      cBolsaHielo: rec.cBolsaHieloPed,
-    };
-
-    // If SOLO_PENDIENTES, don't add recurrent quantities
-    if (decision.decision === 'SOLO_PENDIENTES') {
-      cantidades = { cPacaAgua: 0, cPacaHielo: 0, cBotellonFab: 0, cBotellonDom: 0, cBolsaAgua: 0, cBolsaHielo: 0 };
+    // Auto-fix Sunday: if proxGeneracion lands on Sunday, shift to Monday
+    let prox = pt.proxGeneracion!
+    if (prox.getDay() === 0) {
+      const lunes = calcularProxGeneracion(prox, 1)
+      await prisma.plantillaRecurrente.update({
+        where: { id: pt.id },
+        data: { proxGeneracion: lunes },
+      })
+      saltados.push(pt.id)
+      continue
     }
 
-    // Get pending orders
+    if (pt.cliente.bloqueado || !pt.cliente.activo) {
+      await prisma.plantillaRecurrente.update({
+        where: { id: pt.id },
+        data: {
+          ultimaGeneracion: prox,
+          proxGeneracion: calcularProxGeneracion(prox, pt.cadaNDias),
+        },
+      })
+      continue
+    }
+
+    if (decision.decision === 'SALTAR') {
+      const saltosActualizados = sanitizarSaltos([
+        ...(pt.saltos || []),
+        formatDateISO(prox),
+      ])
+      await prisma.plantillaRecurrente.update({
+        where: { id: pt.id },
+        data: {
+          saltos: saltosActualizados,
+          ultimaGeneracion: prox,
+          proxGeneracion: calcularProxGeneracion(prox, pt.cadaNDias),
+        },
+      })
+      saltados.push(pt.id)
+      continue
+    }
+
+    const productos = parseProductos(pt.productos)
+    let cantidades = productosToCantidades(productos, pt.canal)
+
+    if (decision.decision === 'SOLO_PENDIENTES') {
+      cantidades = { cPacaAgua: 0, cPacaHielo: 0, cBotellonFab: 0, cBotellonDom: 0, cBolsaAgua: 0, cBolsaHielo: 0 }
+    }
+
     const pedidosPendientes = decision.decision === 'CON_PENDIENTES' || decision.decision === 'SOLO_PENDIENTES'
       ? await prisma.pedido.findMany({
           where: {
-            clienteId: rec.clienteId,
-            estado: 'PENDIENTE',
-            esRecurrente: false,
-            id: { not: rec.id },
+            clienteId: pt.clienteId,
+            estadoEntrega: 'PENDIENTE',
+            origen: { not: 'RECURRENTE' },
           },
         })
-      : [];
+      : []
 
-    // If CON_PENDIENTES or SOLO_PENDIENTES, add pending quantities
+    // Block CON_PENDIENTES/SOLO_PENDIENTES if any pending order has payments
+    if ((decision.decision === 'CON_PENDIENTES' || decision.decision === 'SOLO_PENDIENTES') && pedidosPendientes.some(p => Number(p.totalPagado) > 0)) {
+      await prisma.plantillaRecurrente.update({
+        where: { id: pt.id },
+        data: {
+          ultimaGeneracion: prox,
+          proxGeneracion: calcularProxGeneracion(prox, pt.cadaNDias),
+        },
+      })
+      saltados.push(pt.id)
+      continue
+    }
+
     if (decision.decision === 'CON_PENDIENTES' || decision.decision === 'SOLO_PENDIENTES') {
       for (const p of pedidosPendientes) {
-        cantidades.cPacaAgua += p.cPacaAguaPed;
-        cantidades.cPacaHielo += p.cPacaHieloPed;
-        cantidades.cBotellonFab += p.cBotellonFabPed;
-        cantidades.cBotellonDom += p.cBotellonDomPed;
-        cantidades.cBolsaAgua += p.cBolsaAguaPed;
-        cantidades.cBolsaHielo += p.cBolsaHieloPed;
+        cantidades.cPacaAgua += p.cPacaAguaPed
+        cantidades.cPacaHielo += p.cPacaHieloPed
+        cantidades.cBotellonFab += p.cBotellonFabPed
+        cantidades.cBotellonDom += p.cBotellonDomPed
+        cantidades.cBolsaAgua += p.cBolsaAguaPed
+        cantidades.cBolsaHielo += p.cBolsaHieloPed
       }
     }
 
-    // Skip if no quantities
-    const totalPacas = Object.values(cantidades).reduce((a, b) => a + b, 0);
-    if (totalPacas === 0) {
-      // Still update ultimaGeneracion so we don't suggest again tomorrow
-      await prisma.pedido.update({
-        where: { id: rec.id },
-        data: { ultimaGeneracion: inicioDia },
-      });
-      continue;
+    const totalPacas = Object.values(cantidades).reduce((a, b) => a + b, 0)
+    if (totalPacas < 3) {
+      await prisma.plantillaRecurrente.update({
+        where: { id: pt.id },
+        data: {
+          ultimaGeneracion: pt.proxGeneracion,
+          proxGeneracion: calcularProxGeneracion(pt.proxGeneracion!, pt.cadaNDias),
+        },
+      })
+      continue
     }
 
-    // Resolve fresh prices
     const items: Array<{ codigo: ProductCode; cantidad: number }> = [
       { codigo: 'PACA_AGUA', cantidad: cantidades.cPacaAgua },
       { codigo: 'PACA_HIELO', cantidad: cantidades.cPacaHielo },
       { codigo: 'BOTELLON', cantidad: cantidades.cBotellonFab + cantidades.cBotellonDom },
       { codigo: 'BOLSA_AGUA', cantidad: cantidades.cBolsaAgua },
       { codigo: 'BOLSA_HIELO', cantidad: cantidades.cBolsaHielo },
-    ];
+    ]
 
     const preciosResueltos = await resolverPreciosPedido(
       items,
-      (rec.canal || 'DOMICILIO') as Canal,
-      rec.clienteId,
-    );
+      pt.canal as Canal,
+      pt.clienteId,
+    )
 
-    const precioMap: Record<string, number> = {};
+    const precioMap: Record<string, number> = {}
     for (const pr of preciosResueltos) {
-      precioMap[pr.codigo] = pr.precio;
+      precioMap[pr.codigo] = pr.precio
     }
 
-    const total = preciosResueltos.reduce((sum, pr) => sum + pr.subtotal, 0);
+    const total = preciosResueltos.reduce((sum, pr) => sum + pr.subtotal, 0)
 
     const nuevo = await prisma.$transaction(async (tx) => {
       const creado = await tx.pedido.create({
         data: {
-          clienteId: rec.clienteId,
-          tipo: rec.tipo,
-          canal: rec.canal || 'DOMICILIO',
-          estado: "PENDIENTE",
+          clienteId: pt.clienteId,
+          tipo: pt.tipo,
+          canal: pt.canal,
+          origen: 'RECURRENTE',
+          estadoEntrega: 'PENDIENTE',
+          estadoPago: 'PENDIENTE',
           cPacaAguaPed: cantidades.cPacaAgua,
           cPacaHieloPed: cantidades.cPacaHielo,
           cBotellonFabPed: cantidades.cBotellonFab,
@@ -336,46 +461,78 @@ export async function generarPedidosRecurrentes(
           cBolsaHieloPed: cantidades.cBolsaHielo,
           precioPacaAgua: precioMap['PACA_AGUA'] || 0,
           precioPacaHielo: precioMap['PACA_HIELO'] || 0,
-          precioBotellonFab: (rec.canal || 'DOMICILIO') === 'PUNTO' ? (precioMap['BOTELLON'] || 0) : 0,
-          precioBotellonDom: (rec.canal || 'DOMICILIO') === 'DOMICILIO' ? (precioMap['BOTELLON'] || 0) : 0,
+          precioBotellonFab: pt.canal === 'PUNTO' ? (precioMap['BOTELLON'] || 0) : 0,
+          precioBotellonDom: pt.canal === 'DOMICILIO' ? (precioMap['BOTELLON'] || 0) : 0,
           precioBolsaAgua: precioMap['BOLSA_AGUA'] || 0,
           precioBolsaHielo: precioMap['BOLSA_HIELO'] || 0,
           total,
           saldo: total,
           totalPagado: 0,
-          idOrigen: rec.id,
-          esRecurrente: false,
+          idOrigen: pt.id,
+          horaPreferida: pt.horaPreferida,
+          items: {
+            create: items
+              .filter(item => item.cantidad > 0)
+              .map(item => ({
+                producto: item.codigo,
+                cantPedido: item.cantidad,
+                cantEntrega: 0,
+                precio: precioMap[item.codigo] || 0,
+                subtotal: (precioMap[item.codigo] || 0) * item.cantidad,
+              }))
+          },
         },
-      });
+      })
 
-      const facturaNum = await getNextNumero(tx, { model: 'factura', field: 'numero' });
+      const facturaNum = await getNextNumero(tx, { model: 'factura', field: 'numero' })
 
       await tx.factura.create({
         data: {
           numero: `FAC-${facturaNum.toString().padStart(5, "0")}`,
-          clienteId: rec.clienteId,
+          clienteId: pt.clienteId,
           pedidoId: creado.id,
           subtotal: total,
           total,
           saldo: total,
         },
-      });
+      })
 
-      // Update template's last generation
-      await tx.pedido.update({
-        where: { id: rec.id },
-        data: { ultimaGeneracion: inicioDia },
-      });
+      await tx.plantillaRecurrente.update({
+        where: { id: pt.id },
+        data: {
+          ultimaGeneracion: prox,
+          proxGeneracion: calcularProxGeneracion(prox, pt.cadaNDias),
+        },
+      })
 
-      // If we included pending orders, they should be linked/updated
-      // For now, just mark them as having been handled (they remain PENDIENTE until delivered)
-      // In the future, we might want to cancel them and roll into this new order
+      if (decision.decision === 'CON_PENDIENTES' || decision.decision === 'SOLO_PENDIENTES') {
+        for (const p of pedidosPendientes) {
+          await tx.pedido.update({
+            where: { id: p.id },
+            data: {
+              estadoEntrega: 'CANCELADO',
+              estado: 'CANCELADO',
+            },
+          })
 
-      return creado;
-    });
+          const ncNumero = await getNextNumero(tx, { model: 'notaCredito', field: 'numero' })
 
-    generados.push({ id: nuevo.id, numero: nuevo.numero, tipo: decision.decision });
+          await tx.notaCredito.create({
+            data: {
+              numero: `NC-${ncNumero.toString().padStart(5, '0')}`,
+              pedidoId: p.id,
+              monto: p.saldo,
+              motivo: `Consolidado en pedido recurrente #${creado.numero}`,
+            },
+          })
+        }
+      }
+
+      return creado
+    })
+
+    generados.push({ id: nuevo.id, numero: nuevo.numero, tipo: decision.decision })
   }
 
-  return { generados, saltados };
+  return { generados, saltados }
 }

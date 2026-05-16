@@ -1,25 +1,26 @@
 export interface Recurrente {
   id: string
-  numero: number
   cliente: { id: string; nombre: string; telefono: string }
-  frecuencia: string
-  cPacaAguaPed: number
-  cPacaHieloPed: number
-  cBotellonFabPed: number
-  cBotellonDomPed: number
-  cBolsaAguaPed: number
-  cBolsaHieloPed: number
+  cadaNDias: number
+  tipo: string
+  canal: string
+  horaPreferida: string | null
+  productos: Record<string, number>
   ultimaGeneracion: string | null
-  saltarFechas: string[]
-  obs: string | null
-  _count: { pedidoHijo: number }
+  proxGeneracion: string | null
+  saltos: string[]
+  pausaHasta: string | null
+  notas: string | null
 }
 
 export interface PreviewItem {
   recurrenteId: string
   clienteNombre: string
-  frecuencia: string
+  cadaNDias: number
   proximaFecha: string
+  horaPreferida: string | null
+  clienteBloqueado: boolean
+  esDomingo: boolean
   pedidosPendientes: Array<{
     id: string
     numero: number
@@ -37,6 +38,9 @@ export interface PreviewItem {
     descripcion: string
     totalPacas: number
     totalValor: number
+    disabled?: boolean
+    disabledReason?: string
   }>
-  saltarFechas: string[]
+  saltos: string[]
+  cumpleMinimo: boolean
 }

@@ -2,9 +2,9 @@ import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
+import { sanitizarSaltos, calcularProxGeneracion } from '@/lib/recurrentes'
 import { z } from 'zod'
 import { logAudit } from '@/lib/audit'
-import { withAdvisoryLock } from '@/lib/locks'
 import { ROLES } from '@/lib/constants'
 import { logger } from '@/lib/logger'
 import { apiSuccess, apiError } from '@/lib/api-response'
@@ -13,45 +13,63 @@ const RecurrenteCreateSchema = z.object({
   clienteId: z.string().min(1),
   tipo: z.enum(['ENVIO', 'PUNTO']).default('ENVIO'),
   canal: z.enum(['PUNTO', 'DOMICILIO']).default('DOMICILIO'),
-  frecuencia: z.enum(['DIARIO', 'SEMANAL', 'QUINCENAL', 'MENSUAL']),
+  cadaNDias: z.coerce.number().int().min(1).default(7),
+  proxGeneracion: z.string().datetime().optional(),
+  horaPreferida: z.string().regex(/^\d{2}:\d{2}$/, 'Formato HH:mm').optional().nullable(),
   productos: z.object({
     pacaAgua: z.coerce.number().int().min(0).optional(),
     pacaHielo: z.coerce.number().int().min(0).optional(),
-    botellonFab: z.coerce.number().int().min(0).optional(),
-    botellonDom: z.coerce.number().int().min(0).optional(),
+    botellon: z.coerce.number().int().min(0).optional(),
     bolsaAgua: z.coerce.number().int().min(0).optional(),
     bolsaHielo: z.coerce.number().int().min(0).optional(),
   }).optional(),
-  obs: z.string().max(500).optional(),
+  notas: z.string().max(500).optional(),
 })
 
 const RecurrenteUpdateSchema = z.object({
-  frecuencia: z.enum(['DIARIO', 'SEMANAL', 'QUINCENAL', 'MENSUAL']).optional(),
+  cadaNDias: z.coerce.number().int().min(1).optional(),
+  tipo: z.enum(['ENVIO', 'PUNTO']).optional(),
+  canal: z.enum(['PUNTO', 'DOMICILIO']).optional(),
+  horaPreferida: z.string().regex(/^\d{2}:\d{2}$/, 'Formato HH:mm').optional().nullable(),
   productos: z.object({
     pacaAgua: z.coerce.number().int().min(0).optional(),
     pacaHielo: z.coerce.number().int().min(0).optional(),
-    botellonFab: z.coerce.number().int().min(0).optional(),
-    botellonDom: z.coerce.number().int().min(0).optional(),
+    botellon: z.coerce.number().int().min(0).optional(),
     bolsaAgua: z.coerce.number().int().min(0).optional(),
     bolsaHielo: z.coerce.number().int().min(0).optional(),
   }).optional(),
-  saltarFechas: z.array(z.string()).optional(),
-  obs: z.string().max(500).optional(),
+  saltos: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).optional(),
+  notas: z.string().max(500).optional().nullable(),
+  activo: z.boolean().optional(),
 })
+
+function productosToJson(p: Record<string, number | undefined>): string {
+  return JSON.stringify({
+    PACA_AGUA: p.pacaAgua ?? 0,
+    PACA_HIELO: p.pacaHielo ?? 0,
+    BOTELLON: p.botellon ?? 0,
+    BOLSA_AGUA: p.bolsaAgua ?? 0,
+    BOLSA_HIELO: p.bolsaHielo ?? 0,
+  })
+}
 
 export async function GET() {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
 
   try {
-    const recurrentes = await prisma.pedido.findMany({
-      where: { esRecurrente: true },
+    const plantillas = await prisma.plantillaRecurrente.findMany({
+      where: { activo: true },
       include: {
         cliente: { select: { id: true, nombre: true, telefono: true } },
-        _count: { select: { pedidoHijo: true } },
       },
       orderBy: { createdAt: 'desc' },
     })
+
+    const recurrentes = plantillas.map(pt => ({
+      ...pt,
+      productos: JSON.parse(pt.productos),
+    }))
 
     return apiSuccess({ recurrentes })
   } catch (error) {
@@ -73,65 +91,53 @@ export async function POST(request: NextRequest) {
       return apiError(formatZodError(parsed.error), 400)
     }
 
-    const { clienteId, tipo, canal, frecuencia, productos, obs } = parsed.data
+    const { clienteId, tipo, canal, cadaNDias, proxGeneracion: proxGeneracionInput, horaPreferida, productos, notas } = parsed.data
 
-    // Verificar que no exista otro recurrente con mismo cliente + frecuencia
-    const existente = await prisma.pedido.findFirst({
-      where: {
-        clienteId,
-        esRecurrente: true,
-        frecuencia,
-        estado: { notIn: ['CANCELADO', 'ANULADO'] },
-      },
+    const existente = await prisma.plantillaRecurrente.findUnique({
+      where: { clienteId },
     })
     if (existente) {
-      return apiError(`El cliente ya tiene un pedido recurrente con frecuencia ${frecuencia}`, 409)
+      return apiError('El cliente ya tiene una plantilla recurrente', 409)
     }
 
-    // Crear recurrente con número secuencial atómico (comparte secuencia con Pedidos)
-    const recurrente = await withAdvisoryLock('PEDIDO', async (tx) => {
-      const lastPedido = await tx.pedido.findFirst({ orderBy: { numero: 'desc' } })
-      const numero = (lastPedido?.numero || 0) + 1
+    const proxGeneracion = proxGeneracionInput
+      ? new Date(proxGeneracionInput)
+      : calcularProxGeneracion(new Date(), cadaNDias)
 
-      return tx.pedido.create({
-        data: {
-          numero,
-          clienteId,
-          tipo,
-          canal,
-          estado: 'PENDIENTE',
-          esRecurrente: true,
-          frecuencia,
-          cPacaAguaPed: productos?.pacaAgua || 0,
-          cPacaHieloPed: productos?.pacaHielo || 0,
-          cBotellonFabPed: productos?.botellonFab || 0,
-          cBotellonDomPed: productos?.botellonDom || 0,
-          cBolsaAguaPed: productos?.bolsaAgua || 0,
-          cBolsaHieloPed: productos?.bolsaHielo || 0,
-          total: 0,
-          totalPagado: 0,
-          saldo: 0,
-          obs,
-          createdById: (authResult.user as { id: string }).id,
-        },
-        include: {
-          cliente: { select: { id: true, nombre: true, telefono: true } },
-        },
-      })
+    const plantilla = await prisma.plantillaRecurrente.create({
+      data: {
+        clienteId,
+        tipo,
+        canal,
+        cadaNDias,
+        horaPreferida: horaPreferida ?? null,
+        productos: productosToJson(productos ?? {}),
+        proxGeneracion,
+        notas: notas ?? null,
+        createdById: (authResult.user as { id: string }).id,
+      },
+      include: {
+        cliente: { select: { id: true, nombre: true, telefono: true } },
+      },
     })
 
     logAudit({
-      entidad: 'Recurrente',
-      registroId: recurrente.id,
+      entidad: 'PlantillaRecurrente',
+      registroId: plantilla.id,
       accion: 'CREATE',
-      datos: { clienteId, frecuencia },
+      datos: { clienteId, cadaNDias },
       usuarioId: (authResult.user as { id: string }).id,
     })
 
-    return apiSuccess({ recurrente }, 201)
+    return apiSuccess({
+      recurrente: { ...plantilla, productos: JSON.parse(plantilla.productos) },
+    }, 201)
   } catch (error) {
-    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error creating recurrente:')
-    return apiError('Error al crear recurrente', 500)
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002') {
+      return apiError('El cliente ya tiene una plantilla recurrente', 409)
+    }
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error creating plantilla recurrente:')
+    return apiError('Error al crear plantilla recurrente', 500)
   }
 }
 
@@ -152,22 +158,27 @@ export async function PUT(request: NextRequest) {
       return apiError(formatZodError(parsed.error), 400)
     }
 
+    const existente = await prisma.plantillaRecurrente.findUnique({ where: { id } })
+    if (!existente) return apiError('Plantilla no encontrada', 404)
+
     const data: Record<string, unknown> = {}
-    if (parsed.data.frecuencia) data.frecuencia = parsed.data.frecuencia
-    if (parsed.data.obs !== undefined) data.obs = parsed.data.obs
-    if (parsed.data.saltarFechas) data.saltarFechas = parsed.data.saltarFechas
+    if (parsed.data.cadaNDias !== undefined) {
+      data.cadaNDias = parsed.data.cadaNDias
+      const base = existente.ultimaGeneracion ? new Date(existente.ultimaGeneracion) : new Date()
+      data.proxGeneracion = calcularProxGeneracion(base, parsed.data.cadaNDias)
+    }
+    if (parsed.data.tipo) data.tipo = parsed.data.tipo
+    if (parsed.data.canal) data.canal = parsed.data.canal
+    if (parsed.data.horaPreferida !== undefined) data.horaPreferida = parsed.data.horaPreferida
+    if (parsed.data.notas !== undefined) data.notas = parsed.data.notas
+    if (parsed.data.activo !== undefined) data.activo = parsed.data.activo
+    if (parsed.data.saltos) data.saltos = sanitizarSaltos(parsed.data.saltos)
 
     if (parsed.data.productos) {
-      const p = parsed.data.productos
-      if (p.pacaAgua !== undefined) data.cPacaAguaPed = p.pacaAgua
-      if (p.pacaHielo !== undefined) data.cPacaHieloPed = p.pacaHielo
-      if (p.botellonFab !== undefined) data.cBotellonFabPed = p.botellonFab
-      if (p.botellonDom !== undefined) data.cBotellonDomPed = p.botellonDom
-      if (p.bolsaAgua !== undefined) data.cBolsaAguaPed = p.bolsaAgua
-      if (p.bolsaHielo !== undefined) data.cBolsaHieloPed = p.bolsaHielo
+      data.productos = productosToJson(parsed.data.productos)
     }
 
-    const recurrente = await prisma.pedido.update({
+    const plantilla = await prisma.plantillaRecurrente.update({
       where: { id },
       data,
       include: {
@@ -176,16 +187,18 @@ export async function PUT(request: NextRequest) {
     })
 
     logAudit({
-      entidad: 'Recurrente',
-      registroId: recurrente.id,
+      entidad: 'PlantillaRecurrente',
+      registroId: plantilla.id,
       accion: 'UPDATE',
-      datos: { frecuencia: parsed.data.frecuencia },
+      datos: { cadaNDias: parsed.data.cadaNDias },
       usuarioId: (authResult.user as { id: string }).id,
     })
 
-    return apiSuccess({ recurrente })
+    return apiSuccess({
+      recurrente: { ...plantilla, productos: JSON.parse(plantilla.productos) },
+    })
   } catch (error) {
-    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error updating recurrente:')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error updating plantilla recurrente:')
     return apiError('Error al actualizar', 500)
   }
 }
@@ -201,22 +214,22 @@ export async function DELETE(request: NextRequest) {
     const id = searchParams.get('id')
     if (!id) return apiError('ID requerido', 400)
 
-    const recurrente = await prisma.pedido.update({
+    const plantilla = await prisma.plantillaRecurrente.update({
       where: { id },
-      data: { esRecurrente: false },
+      data: { activo: false },
     })
 
     logAudit({
-      entidad: 'Recurrente',
-      registroId: recurrente.id,
+      entidad: 'PlantillaRecurrente',
+      registroId: plantilla.id,
       accion: 'DELETE',
       datos: {},
       usuarioId: (authResult.user as { id: string }).id,
     })
 
-    return apiSuccess({ recurrente })
+    return apiSuccess({ recurrente: plantilla })
   } catch (error) {
-    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error deleting recurrente:')
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error deleting plantilla recurrente:')
     return apiError('Error al eliminar', 500)
   }
 }

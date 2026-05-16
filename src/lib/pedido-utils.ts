@@ -89,6 +89,7 @@ export function getBadgeOrigen(origen: OrigenPedido): BadgeInfo {
     PEDIDO: { label: 'Pedido', className: 'border border-blue-300 text-blue-700 bg-transparent' },
     VENTA_RAPIDA: { label: 'Venta Rápida', className: 'border border-emerald-300 text-emerald-700 bg-transparent' },
     VENTA_LIBRE: { label: 'Venta Libre', className: 'border border-purple-300 text-purple-700 bg-transparent' },
+    RECURRENTE: { label: 'Recurrente', className: 'border border-orange-300 text-orange-700 bg-transparent' },
   }
   return map[origen]
 }

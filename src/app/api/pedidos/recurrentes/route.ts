@@ -1,5 +1,6 @@
 import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
+import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { previewGeneracionRecurrentes, generarPedidosRecurrentes, type DecisionGeneracion } from '@/lib/recurrentes'
 import { z } from 'zod'
@@ -49,6 +50,49 @@ export async function POST(request: NextRequest) {
 
     if (decisiones.length === 0) {
       return apiError('No se proporcionaron decisiones', 400)
+    }
+
+    // Race-guard: validate proxGeneracion hasn't shifted since preview
+    const plantillasActuales = await prisma.plantillaRecurrente.findMany({
+      where: { id: { in: decisiones.map(d => d.recurrenteId) } },
+      include: {
+        cliente: { select: { id: true, activo: true, bloqueado: true } },
+      },
+    })
+    const cambiadas = plantillasActuales.filter(pt => !pt.proxGeneracion || pt.proxGeneracion > fecha)
+    if (cambiadas.length > 0) {
+      return apiError('Algunas plantillas ya fueron generadas o modificadas. Recarga el preview.', 409)
+    }
+
+    // A7: Check for inactive/blocked clients
+    const inactivas = plantillasActuales.filter(pt => !pt.cliente.activo || pt.cliente.bloqueado)
+    if (inactivas.length > 0) {
+      const nombres = inactivas.map(pt => pt.clienteId).join(', ')
+      return apiError(`Clientes inactivos o bloqueados: ${nombres}`, 400)
+    }
+
+    // A6: Pre-check CON_PENDIENTES/SOLO_PENDIENTES for abonos
+    const withPendingDecisions = decisiones.filter(d => d.decision === 'CON_PENDIENTES' || d.decision === 'SOLO_PENDIENTES')
+    if (withPendingDecisions.length > 0) {
+      const clienteIds = withPendingDecisions.map(d => {
+        const pt = plantillasActuales.find(p => p.id === d.recurrenteId)
+        return pt?.clienteId
+      }).filter(Boolean) as string[]
+
+      if (clienteIds.length > 0) {
+        const pedidosConAbonos = await prisma.pedido.findMany({
+          where: {
+            clienteId: { in: clienteIds },
+            estadoEntrega: 'PENDIENTE',
+            origen: { not: 'RECURRENTE' },
+            totalPagado: { gt: 0 },
+          },
+          select: { clienteId: true, numero: true },
+        })
+        if (pedidosConAbonos.length > 0) {
+          return apiError('Hay pedidos pendientes con abonos. No se puede usar CON_PENDIENTES o SOLO_PENDIENTES.', 400)
+        }
+      }
     }
 
     const resultado = await generarPedidosRecurrentes(decisiones, fecha)

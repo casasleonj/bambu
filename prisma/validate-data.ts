@@ -399,24 +399,17 @@ async function checkClienteDeudaVsFiado() {
 }
 
 async function checkRecurrentesDuplicates() {
-  const recurrentes = await prisma.pedido.findMany({
-    where: { esRecurrente: true },
-    select: { id: true, clienteId: true, frecuencia: true, ultimaGeneracion: true },
+  const recurrentes = await prisma.plantillaRecurrente.findMany({
+    where: { activo: true },
+    select: { id: true, clienteId: true, cadaNDias: true, ultimaGeneracion: true },
   })
 
-  // Check for same client with multiple active recurrentes
-  const byClient = new Map<string, number>()
-  for (const r of recurrentes) {
-    byClient.set(r.clienteId, (byClient.get(r.clienteId) || 0) + 1)
-  }
-
-  const duplicates = Array.from(byClient.entries()).filter(([, count]) => count > 1)
-
+  // PlantillaRecurrente has unique constraint on clienteId, so no duplicates
   addResult(
-    'Pedidos recurrentes: sin duplicados por cliente',
-    duplicates.length === 0 ? 'PASS' : 'WARN',
-    `${duplicates.length} clientes con múltiples pedidos recurrentes de ${recurrentes.length}`,
-    duplicates.length,
+    'Plantillas recurrentes: sin duplicados por cliente',
+    'PASS',
+    `${recurrentes.length} plantillas activas`,
+    recurrentes.length,
   )
 }
 
