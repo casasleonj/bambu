@@ -1,3 +1,4 @@
+// @tests api/nomina
 import { test, expect, fullLogin, goto, apiPost, createTrabajador } from './fixtures'
 
 test.describe('Nomina', () => {

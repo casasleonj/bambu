@@ -1,3 +1,4 @@
+// @tests api/pedido, api/recurrente
 import { test, expect, BASE, handleBaseCaja, fullLogin, goto, apiGet, createCliente } from './fixtures'
 
 test.describe('Recurrentes', () => {

@@ -1,3 +1,4 @@
+// @tests api/proveedor
 import { test, expect, fullLogin, goto, apiPost, createProveedor } from './fixtures'
 
 test.describe('Proveedores', () => {

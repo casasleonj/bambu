@@ -1,3 +1,4 @@
+// @tests api/cliente, api/compra, api/gasto, api/insumo, api/proveedor, api/trabajador
 import { test, expect, Page } from '@playwright/test'
 
 const BASE = 'http://localhost:3000'

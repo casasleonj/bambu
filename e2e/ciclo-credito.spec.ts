@@ -1,3 +1,4 @@
+// @tests api/abono, api/factura, api/pedido
 import { test, expect, fullLogin, apiPost, apiGet, createCliente } from './fixtures'
 
 test.describe('Ciclo de Crédito', () => {

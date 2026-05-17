@@ -1,3 +1,4 @@
+// @tests api/abono, api/caso, api/cierre-dia, api/cliente, api/config, api/embarque, api/factura, api/nomina, api/pedido, api/ruta
 import { test, expect, BASE, fullLogin, goto, apiPost, apiGet, apiDelete, createCliente, createTrabajador, createPedido, createEmbarque, getFirstTrabajador, getFirstFacturaConSaldo } from './fixtures'
 
 const PROTECTED_PAGES = [

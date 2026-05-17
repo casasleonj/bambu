@@ -1,3 +1,4 @@
+// @tests api/produccion, api/produccion/preview
 import { test, expect, fullLogin, goto, apiGet } from './fixtures'
 
 test.describe('Produccion', () => {

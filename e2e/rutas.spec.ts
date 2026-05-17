@@ -1,3 +1,4 @@
+// @tests api/ruta
 import { test, expect, handleBaseCaja, fullLogin, goto, apiPost, apiGet } from './fixtures'
 
 test.describe('Rutas', () => {

@@ -1,3 +1,4 @@
+// @tests api/embarque, api/pedido
 import { test, expect, fullLogin, goto, apiPost, createTrabajador, createCliente, createPedido } from './fixtures'
 
 test.describe('Pedidos', () => {

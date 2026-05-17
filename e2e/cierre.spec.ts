@@ -1,3 +1,4 @@
+// @tests api/cierre, api/cierre-dia, api/embarque, api/pedido, api/trabajador
 import { test, expect, login, handleBaseCaja, fullLogin, goto, apiPost, apiGet } from './fixtures'
 
 test.describe('Cierre', () => {

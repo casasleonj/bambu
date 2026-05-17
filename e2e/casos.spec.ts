@@ -1,3 +1,4 @@
+// @tests api/casos, api/casos/[id], api/casos/[id]/eventos
 import { test, expect, BASE, fullLogin, goto, apiPost, apiGet, createCliente } from './fixtures'
 
 test.describe('Casos', () => {

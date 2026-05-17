@@ -1,3 +1,4 @@
+// @tests api/cliente, api/cliente/quick
 import { test, expect, fullLogin, goto, apiPost, createCliente } from './fixtures'
 
 test.describe('Clientes', () => {

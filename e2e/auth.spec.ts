@@ -1,3 +1,4 @@
+// @tests api/auth
 import { test, expect } from '@playwright/test'
 
 test('login page loads', async ({ page }) => {

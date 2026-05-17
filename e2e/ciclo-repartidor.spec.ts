@@ -1,3 +1,4 @@
+// @tests api/cierre, api/embarque, api/pedido
 import { test, expect, BASE, fullLogin, goto, apiPost, createCliente, createTrabajador, createEmbarque, login } from './fixtures'
 
 test.describe('Ciclo Repartidor', () => {

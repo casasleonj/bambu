@@ -1,3 +1,4 @@
+// @tests api/pedido, api/abono
 import { test, expect } from '@playwright/test'
 import { prisma } from '../src/lib/prisma'
 

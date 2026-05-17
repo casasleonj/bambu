@@ -1,3 +1,4 @@
+// @tests api/compra, api/insumo
 import { test, expect, fullLogin, goto, apiPost, apiGet, createProveedor, createInsumo } from './fixtures'
 
 test.describe('Compras', () => {
