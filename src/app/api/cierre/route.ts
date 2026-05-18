@@ -6,7 +6,7 @@ import { CierreCreateSchema } from '@/lib/validators'
 import { EstadoPedido, EstadoEmbarque, EstadoEntrega, EstadoFactura, MetodoPago } from '@prisma/client'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
-import { startOfDayInBogota, endOfDayInBogota } from '@/lib/date-helpers'
+import { startOfDayInBogota, endOfDayInBogota, nowInBogota } from '@/lib/date-helpers'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -536,7 +536,7 @@ export async function POST(request: NextRequest) {
             bolsaHieloVendida: pedidos.reduce((acc, p) => acc + p.cBolsaHieloEnt, 0),
             netoCaja,
             cerradoPor: userId,
-            horaCierre: new Date(),
+            horaCierre: nowInBogota(),
             reporte: reporteData as Prisma.InputJsonValue,
           },
         })

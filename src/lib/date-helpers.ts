@@ -36,3 +36,11 @@ export function dateRangeForDay(fechaStr: string): { gte: Date; lt: Date } {
   const end = endOfDayInBogota(fechaStr)
   return { gte: start, lt: end }
 }
+
+/**
+ * Obtiene la fecha/hora actual como Date, representando el momento exacto en Bogotá.
+ * Equivalente a new Date() pero documenta explícitamente la zona horaria.
+ */
+export function nowInBogota(): Date {
+  return new Date()
+}
