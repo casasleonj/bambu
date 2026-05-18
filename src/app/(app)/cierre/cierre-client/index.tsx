@@ -238,6 +238,16 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
       if (res.status === 201 && json.cierre) {
         toast.success('Día cerrado correctamente')
         router.push('/')
+      } else if (res.status === 409) {
+        toast.error('Ya existe un cierre para esta fecha')
+        router.refresh()
+      } else if (res.status === 400 && json.error?.includes('embarque')) {
+        toast.error(json.error, {
+          description: 'Cierra los embarques pendientes antes de cerrar el día',
+          action: { label: 'Ir a Embarques', onClick: () => router.push('/embarques') },
+        })
+      } else if (res.status === 400 && json.error?.includes('día(s) sin cerrar')) {
+        toast.error(json.error)
       } else {
         toast.error(json.error || 'Error al cerrar')
       }
