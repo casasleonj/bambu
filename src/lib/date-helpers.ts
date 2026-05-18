@@ -3,8 +3,6 @@
  * NUNCA usar new Date('YYYY-MM-DD') directamente — siempre usar estos helpers.
  */
 
-const TIMEZONE = 'America/Bogota'
-
 /**
  * Convierte un string YYYY-MM-DD a Date representando el inicio del día en Bogotá.
  * El Date resultante está en UTC pero representa 00:00:00-05:00.

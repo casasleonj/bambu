@@ -3,7 +3,6 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { CierreCreateSchema } from '@/lib/validators'
-import { withAdvisoryLock } from '@/lib/locks'
 import { EstadoPedido, EstadoEmbarque, EstadoEntrega, EstadoFactura, MetodoPago } from '@prisma/client'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
@@ -368,116 +367,186 @@ export async function GET(request: NextRequest) {
   }
 }
 
+import { Prisma } from '@prisma/client'
+
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
   const roleCheck = await requireRole(['ADMIN', 'ASISTENTE'], authResult)
   if (roleCheck instanceof Response) return roleCheck
+
+  let body: unknown
   try {
-    const body = await request.json()
-    const parsed = CierreCreateSchema.safeParse(body)
-    if (!parsed.success) {
-      return apiError(formatZodError(parsed.error), 400)
-    }
+    body = await request.json()
+  } catch {
+    return apiError('JSON inválido', 400)
+  }
 
-    const fechaStr = parsed.data.fecha || new Date().toISOString().split('T')[0]
+  const parsed = CierreCreateSchema.safeParse(body)
+  if (!parsed.success) {
+    return apiError(formatZodError(parsed.error), 400)
+  }
 
-    // 0. Validar secuencia de cierres: no se puede cerrar un día si hay días anteriores sin cerrar
-    const lastCierre = await prisma.cierreDia.findFirst({
-      orderBy: { fecha: 'desc' },
-    })
-    if (lastCierre) {
-      const lastDate = new Date(lastCierre.fecha)
-      const reqDate = new Date(fechaStr)
-      const diffMs = reqDate.getTime() - lastDate.getTime()
-      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-      if (diffDays <= 0) {
+  const fechaStr = parsed.data.fecha || new Date().toISOString().split('T')[0]
+  const startOfDay = startOfDayInBogota(fechaStr)
+  const nextDay = endOfDayInBogota(fechaStr)
+
+  const userId = (authResult.user as { id?: string } | undefined)?.id
+
+  const MAX_RETRIES = 3
+  let lastError: Error | null = null
+
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      const cierre = await prisma.$transaction(async (tx) => {
+        // 1. Advisory lock
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(7)::text`
+
+        // 2. Validate sequence inside lock
+        const lastCierre = await tx.cierreDia.findFirst({ orderBy: { fecha: 'desc' } })
+        if (lastCierre) {
+          const lastDate = new Date(lastCierre.fecha)
+          const reqDate = new Date(startOfDay)
+          const diffDays = Math.floor((reqDate.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24))
+          if (diffDays <= 0) {
+            throw new Error('CIERRE_DUPLICADO')
+          }
+          if (diffDays > 1) {
+            throw new Error('CIERRE_HUECO')
+          }
+        }
+
+        // 3. Double-check no cierre exists for this date
+        const existing = await tx.cierreDia.findUnique({ where: { fecha: startOfDay } })
+        if (existing) {
+          throw new Error('CIERRE_YA_EXISTE')
+        }
+
+        // 4. Verify no open embarques
+        const embarquesAbiertos = await tx.embarque.count({
+          where: { fecha: { gte: startOfDay, lt: nextDay }, estado: EstadoEmbarque.ABIERTO },
+        })
+        if (embarquesAbiertos > 0) {
+          throw new Error('EMBARQUES_ABIERTOS')
+        }
+
+        // 5. Recalculate ALL totals server-side
+        const [pedidos, gastosAgg, abonos, notasCredito] = await Promise.all([
+          tx.pedido.findMany({
+            where: { fecha: { gte: startOfDay, lt: nextDay }, estado: { notIn: [EstadoPedido.CANCELADO, EstadoPedido.ANULADO] } },
+            include: { pagos: true },
+          }),
+          tx.gasto.aggregate({ where: { fecha: { gte: startOfDay, lt: nextDay } }, _sum: { monto: true } }),
+          tx.abono.findMany({ where: { fecha: { gte: startOfDay, lt: nextDay } } }),
+          tx.notaCredito.findMany({ where: { fecha: { gte: startOfDay, lt: nextDay } } }),
+        ])
+
+        const totalNC = notasCredito.reduce((sum, nc) => sum + Number(nc.monto), 0)
+        const totalVentas = pedidos.reduce((acc, p) => acc + Number(p.total), 0) - totalNC
+        const cobrado = pedidos.reduce((acc, p) => acc + Number(p.totalPagado), 0)
+        const fiado = pedidos.reduce((acc, p) => acc + Number(p.saldo), 0)
+        const efectivo = pedidos.flatMap(p => p.pagos).filter(p => p.metodo === MetodoPago.EFECTIVO).reduce((acc, p) => acc + Number(p.monto), 0)
+        const transferencia = pedidos.flatMap(p => p.pagos).filter(p => p.metodo === MetodoPago.TRANSFERENCIA).reduce((acc, p) => acc + Number(p.monto), 0)
+        const nequi = pedidos.flatMap(p => p.pagos).filter(p => p.metodo === MetodoPago.NEQUI).reduce((acc, p) => acc + Number(p.monto), 0)
+        const daviplata = pedidos.flatMap(p => p.pagos).filter(p => p.metodo === MetodoPago.DAVIPLATA).reduce((acc, p) => acc + Number(p.monto), 0)
+        const bono = pedidos.flatMap(p => p.pagos).filter(p => p.metodo === MetodoPago.BONO).reduce((acc, p) => acc + Number(p.monto), 0)
+        const cobroVentasHoy = efectivo + transferencia + nequi + daviplata + bono
+        const cobroCartera = abonos.reduce((sum, a) => sum + Number(a.monto), 0)
+        const gastosTotal = Number(gastosAgg._sum.monto) || 0
+
+        // 6. Calculate netoCaja server-side
+        const netoCaja = Number(parsed.data.baseDia) + cobroVentasHoy + cobroCartera - gastosTotal - Number(parsed.data.comisiones) - Number(parsed.data.salarios)
+
+        // 7. Parse and enrich reporte snapshot
+        let reporteData: Record<string, unknown> = {}
+        if (parsed.data.reporte) {
+          try {
+            reporteData = JSON.parse(parsed.data.reporte) as Record<string, unknown>
+          } catch { /* ignore invalid JSON */ }
+        }
+        reporteData._version = '2.0'
+        reporteData.cobroVentasHoy = cobroVentasHoy
+        reporteData.cobroCartera = cobroCartera
+        reporteData.totalVentas = totalVentas
+        reporteData.totalNotasCredito = totalNC
+
+        // 8. Create cierre
+        return tx.cierreDia.create({
+          data: {
+            fecha: startOfDay,
+            numPedidos: pedidos.length,
+            totalVentas,
+            cobrado,
+            fiado,
+            efectivo,
+            transferencia,
+            nequi,
+            daviplata,
+            bono,
+            baseDia: parsed.data.baseDia,
+            comisiones: parsed.data.comisiones,
+            salarios: parsed.data.salarios,
+            gastos: gastosTotal,
+            stockIniAgua: parsed.data.stockIniAgua,
+            prodAgua: parsed.data.prodAgua,
+            stockFinAgua: parsed.data.stockFinAgua,
+            stockIniHielo: parsed.data.stockIniHielo,
+            prodHielo: parsed.data.prodHielo,
+            stockFinHielo: parsed.data.stockFinHielo,
+            aguaVendida: pedidos.reduce((acc, p) => acc + p.cPacaAguaEnt, 0),
+            hieloVendido: pedidos.reduce((acc, p) => acc + p.cPacaHieloEnt, 0),
+            botellonVendido: pedidos.reduce((acc, p) => acc + p.cBotellonFabEnt + p.cBotellonDomEnt, 0),
+            bolsaAguaVendida: pedidos.reduce((acc, p) => acc + p.cBolsaAguaEnt, 0),
+            bolsaHieloVendida: pedidos.reduce((acc, p) => acc + p.cBolsaHieloEnt, 0),
+            netoCaja,
+            cerradoPor: userId,
+            horaCierre: new Date(),
+            reporte: reporteData as Prisma.InputJsonValue,
+          },
+        })
+      }, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        maxWait: 5000,
+        timeout: 15000,
+      })
+
+      // 9. Audit log (outside transaction)
+      logAudit({
+        entidad: 'CierreDia',
+        registroId: cierre.id,
+        accion: 'CREATE',
+        datos: { fecha: cierre.fecha, totalVentas: cierre.totalVentas, cerradoPor: userId },
+        usuarioId: userId,
+      }).catch((e) => console.error('[cierre] Audit log failed:', e))
+
+      return apiSuccess({ cierre }, 201)
+
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error))
+
+      // P2034 = write conflict, retry
+      if (lastError.message.includes('P2034')) {
+        if (attempt < MAX_RETRIES - 1) continue
+      }
+
+      // Known business errors
+      if (lastError.message === 'CIERRE_DUPLICADO') {
         return apiError('No se puede cerrar un día anterior o igual al último cierre registrado', 400)
       }
-      if (diffDays > 1) {
-        return apiError(`Hay ${diffDays - 1} día(s) sin cerrar entre el último cierre (${lastDate.toISOString().split('T')[0]}) y esta fecha. Cerralos primero.`, 400)
+      if (lastError.message === 'CIERRE_HUECO') {
+        return apiError('Hay días sin cerrar entre el último cierre y esta fecha. Ciérralos primero.', 400)
       }
-    }
-    const startOfDay = new Date(fechaStr + 'T00:00:00.000Z')
-    const nextDay = new Date(startOfDay)
-    nextDay.setDate(nextDay.getDate() + 1)
-
-    // Block if there are open embarques
-    const embarquesAbiertos = await prisma.embarque.count({
-      where: {
-        fecha: { gte: startOfDay, lt: nextDay },
-        estado: EstadoEmbarque.ABIERTO,
-      },
-    })
-
-    if (embarquesAbiertos > 0) {
-      return apiError(
-        `No se puede cerrar el día ${fechaStr}: ${embarquesAbiertos} embarque(s) pendiente(s) de empalme`,
-        400
-      )
-    }
-
-    // Calculate netoCaja server-side — never trust client for financial totals
-    const cobros = parsed.data.efectivo + parsed.data.transferencia + parsed.data.nequi + parsed.data.daviplata + parsed.data.bono
-    const netoCaja = parsed.data.baseDia + cobros - parsed.data.gastos - parsed.data.comisiones - parsed.data.salarios
-    const reporteSnapshot = parsed.data.reporte ? JSON.parse(parsed.data.reporte) : null
-
-    const userId = (authResult.user as { id?: string } | undefined)?.id
-
-    const cierre = await withAdvisoryLock('CIERRE', async () => {
-      // Double-check no cierre exists for this date under lock
-      const existing = await prisma.cierreDia.findFirst({
-        where: {
-          fecha: { gte: startOfDay, lt: nextDay },
-        },
-      })
-      if (existing) {
-        throw new Error('CIERRE_YA_EXISTE')
+      if (lastError.message === 'CIERRE_YA_EXISTE') {
+        return apiError('Ya existe un cierre para esta fecha', 409)
+      }
+      if (lastError.message === 'EMBARQUES_ABIERTOS') {
+        return apiError('Hay embarques abiertos que deben cerrarse primero', 400)
       }
 
-      return prisma.cierreDia.create({
-        data: {
-          fecha: startOfDay,
-          numPedidos: parsed.data.numPedidos,
-          totalVentas: parsed.data.totalVentas,
-          cobrado: parsed.data.cobrado,
-          fiado: parsed.data.fiado,
-          efectivo: parsed.data.efectivo,
-          transferencia: parsed.data.transferencia,
-          nequi: parsed.data.nequi,
-          daviplata: parsed.data.daviplata,
-          bono: parsed.data.bono,
-          baseDia: parsed.data.baseDia,
-          comisiones: parsed.data.comisiones,
-          salarios: parsed.data.salarios,
-          gastos: parsed.data.gastos,
-          stockIniAgua: parsed.data.stockIniAgua,
-          prodAgua: parsed.data.prodAgua,
-          stockFinAgua: parsed.data.stockFinAgua,
-          stockIniHielo: parsed.data.stockIniHielo,
-          prodHielo: parsed.data.prodHielo,
-          stockFinHielo: parsed.data.stockFinHielo,
-          netoCaja,
-          cerradoPor: userId,
-          horaCierre: new Date(),
-          reporte: reporteSnapshot,
-        },
-      })
-    })
-
-    logAudit({
-      entidad: 'CierreDia',
-      registroId: cierre.id,
-      accion: 'CREATE',
-      datos: { fecha: cierre.fecha, totalVentas: cierre.totalVentas, cerradoPor: userId },
-      usuarioId: userId,
-    }).catch((e) => console.error('[cierre] Audit log failed:', e))
-
-    return apiSuccess({ cierre }, 201)
-  } catch (error) {
-    if (error instanceof Error && error.message === 'CIERRE_YA_EXISTE') {
-      return apiError('Ya existe un cierre para esta fecha', 409)
+      break
     }
-    return apiError('Error interno del servidor', 500)
   }
+
+  console.error('[cierre] POST failed after retries:', lastError)
+  return apiError('Error interno del servidor', 500)
 }
