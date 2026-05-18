@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { formatCurrency } from '@/lib/utils'
@@ -16,6 +16,14 @@ const ORIGEN_LABELS: Record<string, string> = {
 const formatMoney = (val: number) => formatCurrency(val)
 
 export default function ReportePage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" /></div>}>
+      <ReporteContent />
+    </Suspense>
+  )
+}
+
+function ReporteContent() {
   const searchParams = useSearchParams()
   const fecha = searchParams.get('fecha') || new Date().toISOString().split('T')[0]
   const [data, setData] = useState<CierreData | null>(null)
@@ -24,7 +32,10 @@ export default function ReportePage() {
 
   useEffect(() => {
     fetch(`/api/cierre?fecha=${fecha}`)
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.json()
+      })
       .then(json => {
         if (json.cierre) setData(json.cierre)
         else setError('No se encontraron datos')
@@ -39,7 +50,7 @@ export default function ReportePage() {
 
   const netoTeorico = data.netoCaja != null
     ? data.netoCaja
-    : (data.efectivo || 0) + (data.transferencia || 0) + (data.nequi || 0) + (data.daviplata || 0) + (data.bono || 0) - (data.totalGastos || 0)
+    : (data.efectivo || 0) + (data.transferencia || 0) + (data.nequi || 0) + (data.daviplata || 0) + (data.bono || 0) + (data.cobroCartera || 0) - (data.totalGastos || 0)
 
   const prod = data.produccion
 
