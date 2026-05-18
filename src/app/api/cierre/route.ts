@@ -7,6 +7,7 @@ import { withAdvisoryLock } from '@/lib/locks'
 import { EstadoPedido, EstadoEmbarque, EstadoEntrega, EstadoFactura, MetodoPago } from '@prisma/client'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
+import { startOfDayInBogota, endOfDayInBogota } from '@/lib/date-helpers'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -14,190 +15,232 @@ export async function GET(request: NextRequest) {
   try {
     const fechaParam = request.nextUrl.searchParams.get('fecha')
     const fechaStr = fechaParam || new Date().toISOString().split('T')[0]
-    const startOfDay = new Date(fechaStr + 'T00:00:00.000Z')
-    const nextDay = new Date(startOfDay)
-    nextDay.setDate(nextDay.getDate() + 1)
+    const startOfDay = startOfDayInBogota(fechaStr)
+    const endOfDay = endOfDayInBogota(fechaStr)
+    const dateRange = { gte: startOfDay, lt: endOfDay }
 
-    // Check for open embarques
-    const embarquesAbiertos = await prisma.embarque.findMany({
-      where: {
-        fecha: { gte: startOfDay, lt: nextDay },
-        estado: EstadoEmbarque.ABIERTO,
-      },
-      select: { id: true, numero: true, trabajador: { select: { nombre: true } } },
+    // 1. Check for existing cierre FIRST
+    const cierreExistente = await prisma.cierreDia.findUnique({
+      where: { fecha: startOfDay },
     })
 
-    const pedidos = await prisma.pedido.findMany({
-      where: {
-        fecha: { gte: startOfDay, lt: nextDay },
-        estado: { notIn: [EstadoPedido.CANCELADO, EstadoPedido.ANULADO] },
-      },
-      include: { pagos: true },
-    })
+    if (cierreExistente?.reporte) {
+      const reporteGuardado =
+        typeof cierreExistente.reporte === 'string'
+          ? JSON.parse(cierreExistente.reporte)
+          : cierreExistente.reporte
 
-    const produccion = await prisma.produccion.findFirst({
-      where: { fecha: { gte: startOfDay, lt: nextDay } },
-    })
+      // Post-cierre: transactions after horaCierre
+      let postCierre = null
+      if (cierreExistente.horaCierre) {
+        const hc = cierreExistente.horaCierre
+        const [pedidosPost, embarquesPost, gastosPost] = await Promise.all([
+          prisma.pedido.findMany({
+            where: {
+              fecha: { gte: hc, lt: endOfDay },
+              estado: { notIn: [EstadoPedido.CANCELADO, EstadoPedido.ANULADO] },
+            },
+            include: { pagos: true, cliente: { select: { nombre: true } } },
+          }),
+          prisma.embarque.findMany({
+            where: {
+              fecha: { gte: hc, lt: endOfDay },
+              estado: { not: EstadoEmbarque.CANCELADO },
+            },
+            include: {
+              trabajador: { select: { nombre: true } },
+              ruta: { select: { nombre: true } },
+            },
+          }),
+          prisma.gasto.findMany({
+            where: { fecha: { gte: hc, lt: endOfDay } },
+          }),
+        ])
+        postCierre = {
+          pedidos: pedidosPost.map(p => ({
+            id: p.id,
+            numero: p.numero,
+            cliente: p.cliente?.nombre,
+            total: Number(p.total),
+            totalPagado: Number(p.totalPagado),
+            saldo: Number(p.saldo),
+            estadoEntrega: p.estadoEntrega,
+            origen: p.origen,
+            pagos: p.pagos.map(pg => ({ metodo: pg.metodo, monto: Number(pg.monto) })),
+          })),
+          embarques: embarquesPost.map(e => ({
+            numero: e.numero,
+            repartidor: e.trabajador?.nombre,
+            ruta: e.ruta?.nombre,
+            pacasAgua: e.pacasAgua,
+            pacasHielo: e.pacasHielo,
+            estado: e.estado,
+          })),
+          gastos: gastosPost.map(g => ({
+            categoria: g.categoria,
+            descripcion: g.descripcion,
+            monto: Number(g.monto),
+          })),
+        }
+      }
 
-    const gastos = await prisma.gasto.aggregate({
-      where: { fecha: { gte: startOfDay, lt: nextDay } },
-      _sum: { monto: true },
-    })
+      return apiSuccess({
+        status: 'CERRADO',
+        embarquesPendientes: [],
+        cierre: {
+          ...reporteGuardado,
+          fecha: fechaStr,
+          postCierre,
+          horaCierre: cierreExistente.horaCierre?.toISOString() ?? null,
+          netoCaja: Number(cierreExistente.netoCaja || 0),
+        },
+      })
+    }
 
-    const notasCredito = await prisma.notaCredito.findMany({
-      where: { fecha: { gte: startOfDay, lt: nextDay } },
-    })
+    // 2. Not found — calculate inside $transaction for consistency
+    const [
+      embarquesAbiertos,
+      pedidos,
+      produccion,
+      gastosAgg,
+      notasCredito,
+      abonos,
+      facturas,
+      gastosDetalle,
+      embarquesDetalle,
+      pedidosCancelados,
+      pedidosNoEntregados,
+      pedidosAnulados,
+      clientesNuevos,
+      ventasPorOrigenRaw,
+      descuentos,
+    ] = await prisma.$transaction([
+      prisma.embarque.findMany({
+        where: { fecha: dateRange, estado: EstadoEmbarque.ABIERTO },
+        select: { id: true, numero: true, trabajador: { select: { nombre: true } } },
+      }),
+      prisma.pedido.findMany({
+        where: {
+          fecha: dateRange,
+          estado: { notIn: [EstadoPedido.CANCELADO, EstadoPedido.ANULADO] },
+        },
+        include: { pagos: true },
+      }),
+      prisma.produccion.findFirst({ where: { fecha: dateRange } }),
+      prisma.gasto.aggregate({
+        where: { fecha: dateRange },
+        _sum: { monto: true },
+      }),
+      prisma.notaCredito.findMany({ where: { fecha: dateRange } }),
+      prisma.abono.findMany({
+        where: { fecha: dateRange },
+        include: {
+          factura: { select: { numero: true, cliente: { select: { nombre: true } } } },
+          pedido: { select: { id: true } },
+        },
+      }),
+      prisma.factura.findMany({
+        where: { fecha: dateRange },
+        include: { cliente: { select: { nombre: true } } },
+      }),
+      prisma.gasto.groupBy({
+        by: ['categoria'],
+        where: { fecha: dateRange },
+        orderBy: { categoria: 'asc' },
+        _sum: { monto: true },
+        _count: true,
+      }),
+      prisma.embarque.findMany({
+        where: { fecha: dateRange },
+        include: {
+          trabajador: { select: { nombre: true } },
+          ruta: { select: { nombre: true } },
+        },
+      }),
+      prisma.pedido.findMany({
+        where: { fecha: dateRange, estado: EstadoPedido.CANCELADO },
+      }),
+      prisma.pedido.findMany({
+        where: { fecha: dateRange, estadoEntrega: EstadoEntrega.NO_ENTREGADO },
+      }),
+      prisma.pedido.findMany({
+        where: { fecha: dateRange, estado: EstadoPedido.ANULADO },
+      }),
+      prisma.cliente.count({ where: { createdAt: dateRange } }),
+      prisma.pedido.groupBy({
+        by: ['origen'],
+        where: {
+          fecha: dateRange,
+          estado: { notIn: [EstadoPedido.CANCELADO, EstadoPedido.ANULADO] },
+        },
+        orderBy: { origen: 'asc' },
+        _sum: { total: true },
+        _count: true,
+      }),
+      prisma.descuentoRepartidor.findMany({
+        where: { fecha: dateRange },
+        include: { trabajador: { select: { nombre: true } } },
+      }),
+    ])
+
     const totalNC = notasCredito.reduce((sum, nc) => sum + Number(nc.monto), 0)
-
     const totalVentas = pedidos.reduce((acc, p) => acc + Number(p.total), 0) - totalNC
     const cobrado = pedidos.reduce((acc, p) => acc + Number(p.totalPagado), 0)
     const fiado = pedidos.reduce((acc, p) => acc + Number(p.saldo), 0)
 
-    const efectivo = pedidos.flatMap(p => p.pagos).filter(p => p.metodo === MetodoPago.EFECTIVO).reduce((acc, p) => acc + Number(p.monto), 0)
-    const transferencia = pedidos.flatMap(p => p.pagos).filter(p => p.metodo === MetodoPago.TRANSFERENCIA).reduce((acc, p) => acc + Number(p.monto), 0)
-    const nequi = pedidos.flatMap(p => p.pagos).filter(p => p.metodo === MetodoPago.NEQUI).reduce((acc, p) => acc + Number(p.monto), 0)
-    const daviplata = pedidos.flatMap(p => p.pagos).filter(p => p.metodo === MetodoPago.DAVIPLATA).reduce((acc, p) => acc + Number(p.monto), 0)
-    const bono = pedidos.flatMap(p => p.pagos).filter(p => p.metodo === MetodoPago.BONO).reduce((acc, p) => acc + Number(p.monto), 0)
+    const efectivo = pedidos
+      .flatMap(p => p.pagos)
+      .filter(p => p.metodo === MetodoPago.EFECTIVO)
+      .reduce((acc, p) => acc + Number(p.monto), 0)
+    const transferencia = pedidos
+      .flatMap(p => p.pagos)
+      .filter(p => p.metodo === MetodoPago.TRANSFERENCIA)
+      .reduce((acc, p) => acc + Number(p.monto), 0)
+    const nequi = pedidos
+      .flatMap(p => p.pagos)
+      .filter(p => p.metodo === MetodoPago.NEQUI)
+      .reduce((acc, p) => acc + Number(p.monto), 0)
+    const daviplata = pedidos
+      .flatMap(p => p.pagos)
+      .filter(p => p.metodo === MetodoPago.DAVIPLATA)
+      .reduce((acc, p) => acc + Number(p.monto), 0)
+    const bono = pedidos
+      .flatMap(p => p.pagos)
+      .filter(p => p.metodo === MetodoPago.BONO)
+      .reduce((acc, p) => acc + Number(p.monto), 0)
 
     const aguaVendida = pedidos.reduce((acc, p) => acc + p.cPacaAguaEnt, 0)
     const hieloVendido = pedidos.reduce((acc, p) => acc + p.cPacaHieloEnt, 0)
-    const botellonVendido = pedidos.reduce((acc, p) => acc + p.cBotellonFabEnt + p.cBotellonDomEnt, 0)
+    const botellonVendido = pedidos.reduce(
+      (acc, p) => acc + p.cBotellonFabEnt + p.cBotellonDomEnt,
+      0
+    )
     const bolsaAguaVendida = pedidos.reduce((acc, p) => acc + p.cBolsaAguaEnt, 0)
     const bolsaHieloVendida = pedidos.reduce((acc, p) => acc + p.cBolsaHieloEnt, 0)
 
-    // Abonos del día (recaudación de cartera)
-    const abonos = await prisma.abono.findMany({
-      where: { fecha: { gte: startOfDay, lt: nextDay } },
-      include: {
-        factura: { select: { numero: true, cliente: { select: { nombre: true } } } },
-        pedido: { select: { id: true } },
-      },
-    })
     const cobroCartera = abonos.reduce((sum, a) => sum + Number(a.monto), 0)
     const cobroVentasHoy = efectivo + transferencia + nequi + daviplata + bono
 
-    // Facturas del día
-    const facturas = await prisma.factura.findMany({
-      where: { fecha: { gte: startOfDay, lt: nextDay } },
-      include: { cliente: { select: { nombre: true } } },
-    })
     const facturasPagadas = facturas.filter(f => f.estado === EstadoFactura.PAGADA)
     const facturasParcial = facturas.filter(f => f.estado === EstadoFactura.PARCIAL)
     const facturasPorCobrar = facturas.filter(f => f.estado === EstadoFactura.EMITIDA)
     const facturasAnuladas = facturas.filter(f => f.estado === EstadoFactura.ANULADA)
 
-    // Gastos desglosados por categoría
-    const gastosDetalle = await prisma.gasto.groupBy({
-      by: ['categoria'],
-      where: { fecha: { gte: startOfDay, lt: nextDay } },
-      _sum: { monto: true },
-      _count: { id: true },
-    })
-
-    // Embarques detallados (todos, no solo abiertos)
-    const embarquesDetalle = await prisma.embarque.findMany({
-      where: { fecha: { gte: startOfDay, lt: nextDay } },
-      include: {
-        trabajador: { select: { nombre: true } },
-        ruta: { select: { nombre: true } },
-      },
-    })
-
-    // Pedidos perdidos
-    const pedidosCancelados = await prisma.pedido.findMany({
-      where: { fecha: { gte: startOfDay, lt: nextDay }, estado: EstadoPedido.CANCELADO },
-    })
-    const pedidosNoEntregados = await prisma.pedido.findMany({
-      where: { fecha: { gte: startOfDay, lt: nextDay }, estadoEntrega: EstadoEntrega.NO_ENTREGADO },
-    })
-    const pedidosAnulados = await prisma.pedido.findMany({
-      where: { fecha: { gte: startOfDay, lt: nextDay }, estado: EstadoPedido.ANULADO },
-    })
-
-    // Clientes nuevos
-    const clientesNuevos = await prisma.cliente.count({
-      where: { createdAt: { gte: startOfDay, lt: nextDay } },
-    })
-
-    // Ventas por origen
-    const ventasPorOrigenRaw = await prisma.pedido.groupBy({
-      by: ['origen'],
-      where: { fecha: { gte: startOfDay, lt: nextDay }, estado: { notIn: [EstadoPedido.CANCELADO, EstadoPedido.ANULADO] } },
-      _sum: { total: true },
-      _count: { id: true },
-    })
     const ventasPorOrigen = ventasPorOrigenRaw.map(v => ({
       origen: v.origen,
-      total: Number(v._sum.total) || 0,
-      count: v._count.id,
+      total: Number(v._sum?.total) || 0,
+      count: v._count,
     }))
-
-    // Descuentos a repartidores
-    const descuentos = await prisma.descuentoRepartidor.findMany({
-      where: { fecha: { gte: startOfDay, lt: nextDay } },
-      include: { trabajador: { select: { nombre: true } } },
-    })
 
     const status = embarquesAbiertos.length > 0 ? 'INCOMPLETO' : 'COMPLETO'
 
-    // Check for existing cierre to include stored arqueo and post-cierre data
-    const cierreExistente = await prisma.cierreDia.findFirst({
-      where: { fecha: { gte: startOfDay, lt: nextDay } },
-      select: { reporte: true, horaCierre: true, netoCaja: true },
-    })
-    const reporteGuardado = cierreExistente?.reporte ? (typeof cierreExistente.reporte === 'string' ? JSON.parse(cierreExistente.reporte) : cierreExistente.reporte) : null
-
-    // Post-cierre: transactions created after the day was closed
-    let postCierre = null
-    if (cierreExistente?.horaCierre) {
-      const hc = cierreExistente.horaCierre
-      const [pedidosPost, embarquesPost, gastosPost] = await Promise.all([
-        prisma.pedido.findMany({
-          where: {
-            fecha: { gte: hc, lt: nextDay },
-            estado: { notIn: [EstadoPedido.CANCELADO, EstadoPedido.ANULADO] },
-          },
-          include: { pagos: true, cliente: { select: { nombre: true } } },
-        }),
-        prisma.embarque.findMany({
-          where: { fecha: { gte: hc, lt: nextDay }, estado: { not: EstadoEmbarque.CANCELADO } },
-          include: { trabajador: { select: { nombre: true } }, ruta: { select: { nombre: true } } },
-        }),
-        prisma.gasto.findMany({
-          where: { fecha: { gte: hc, lt: nextDay } },
-        }),
-      ])
-      postCierre = {
-        pedidos: pedidosPost.map(p => ({
-          id: p.id,
-          numero: p.numero,
-          cliente: p.cliente?.nombre,
-          total: Number(p.total),
-          totalPagado: Number(p.totalPagado),
-          saldo: Number(p.saldo),
-          estadoEntrega: p.estadoEntrega,
-          origen: p.origen,
-          pagos: p.pagos.map(pg => ({ metodo: pg.metodo, monto: Number(pg.monto) })),
-        })),
-        embarques: embarquesPost.map(e => ({
-          numero: e.numero,
-          repartidor: e.trabajador?.nombre,
-          ruta: e.ruta?.nombre,
-          pacasAgua: e.pacasAgua,
-          pacasHielo: e.pacasHielo,
-          estado: e.estado,
-        })),
-        gastos: gastosPost.map(g => ({
-          categoria: g.categoria,
-          descripcion: g.descripcion,
-          monto: Number(g.monto),
-        })),
-      }
-    }
-
     return apiSuccess({
       status,
-      embarquesPendientes: embarquesAbiertos.map(e => ({ id: e.id, numero: e.numero, repartidor: e.trabajador?.nombre })),
+      embarquesPendientes: embarquesAbiertos.map(e => ({
+        id: e.id,
+        numero: e.numero,
+        repartidor: e.trabajador?.nombre,
+      })),
       cierre: {
         // Financiero
         numPedidos: pedidos.length,
@@ -236,11 +279,11 @@ export async function GET(request: NextRequest) {
         })),
 
         // Gastos
-        totalGastos: Number(gastos._sum.monto) || 0,
+        totalGastos: Number(gastosAgg._sum.monto) || 0,
         gastosPorCategoria: gastosDetalle.map(g => ({
           categoria: g.categoria,
-          total: Number(g._sum.monto) || 0,
-          cantidad: g._count.id,
+          total: Number(g._sum?.monto) || 0,
+          cantidad: g._count,
         })),
 
         // Embarques
@@ -278,7 +321,7 @@ export async function GET(request: NextRequest) {
         })),
 
         // Cierre
-        netoCaja: cierreExistente ? Number(cierreExistente.netoCaja || 0) : null,
+        netoCaja: null,
 
         // Stock
         aguaVendida,
@@ -286,35 +329,37 @@ export async function GET(request: NextRequest) {
         botellonVendido,
         bolsaAguaVendida,
         bolsaHieloVendida,
-        produccion: produccion ? {
-          ...produccion,
-          stockIniAgua: produccion.stockIniAgua,
-          stockIniHielo: produccion.stockIniHielo,
-          prodAgua: produccion.prodAgua,
-          prodHielo: produccion.prodHielo,
-          stockFinAgua: produccion.stockFinAgua,
-          stockFinHielo: produccion.stockFinHielo,
-          comSelladorAgua: Number(produccion.comSelladorAgua),
-          comSelladorHielo: Number(produccion.comSelladorHielo),
-          comSellTotal: Number(produccion.comSellTotal),
-          comRepartidorAgua: Number(produccion.comRepartidorAgua),
-          comRepartidorHielo: Number(produccion.comRepartidorHielo),
-          comRepartTotal: Number(produccion.comRepartTotal),
-        } : null,
+        produccion: produccion
+          ? {
+              ...produccion,
+              stockIniAgua: produccion.stockIniAgua,
+              stockIniHielo: produccion.stockIniHielo,
+              prodAgua: produccion.prodAgua,
+              prodHielo: produccion.prodHielo,
+              stockFinAgua: produccion.stockFinAgua,
+              stockFinHielo: produccion.stockFinHielo,
+              comSelladorAgua: Number(produccion.comSelladorAgua),
+              comSelladorHielo: Number(produccion.comSelladorHielo),
+              comSellTotal: Number(produccion.comSellTotal),
+              comRepartidorAgua: Number(produccion.comRepartidorAgua),
+              comRepartidorHielo: Number(produccion.comRepartidorHielo),
+              comRepartTotal: Number(produccion.comRepartTotal),
+            }
+          : null,
 
         // Fecha
         fecha: fechaStr,
 
-        // Arqueo (from stored reporte if day already closed)
-        arqueo: reporteGuardado?.arqueo ?? null,
-        totalContado: reporteGuardado?.totalContado ?? null,
-        diferenciaArqueo: reporteGuardado?.diferencia ?? null,
+        // Arqueo
+        arqueo: null,
+        totalContado: null,
+        diferenciaArqueo: null,
 
         // Cierre metadata
-        horaCierre: cierreExistente?.horaCierre?.toISOString() ?? null,
+        horaCierre: null,
 
         // Post-cierre transactions
-        postCierre,
+        postCierre: null,
       },
     })
   } catch (error) {
