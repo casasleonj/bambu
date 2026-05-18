@@ -29,6 +29,42 @@ export async function GET(request: NextRequest) {
           ? JSON.parse(cierreExistente.reporte)
           : cierreExistente.reporte
 
+      // Apply defaults for v1.0 snapshots that may be missing new fields
+      const reporte = {
+        cobroVentasHoy: 0,
+        cobroCartera: 0,
+        totalNotasCredito: 0,
+        ventasPorOrigen: [],
+        facturasEmitidas: 0,
+        facturasPagadasCount: 0,
+        facturasPagadasTotal: 0,
+        facturasPorCobrarCount: 0,
+        facturasPorCobrarTotal: 0,
+        facturasParcialCount: 0,
+        facturasParcialTotal: 0,
+        facturasAnuladasCount: 0,
+        facturas: [],
+        totalGastos: 0,
+        gastosPorCategoria: [],
+        embarques: [],
+        pedidosCanceladosCount: 0,
+        pedidosCanceladosTotal: 0,
+        pedidosNoEntregadosCount: 0,
+        pedidosNoEntregadosTotal: 0,
+        pedidosAnuladosCount: 0,
+        pedidosAnuladosTotal: 0,
+        clientesNuevos: 0,
+        descuentosRepartidorTotal: 0,
+        descuentosRepartidorCount: 0,
+        descuentos: [],
+        trabajadores: [],
+        arqueo: null,
+        totalContado: null,
+        diferenciaArqueo: null,
+        _version: '1.0',
+        ...reporteGuardado,
+      }
+
       // Post-cierre: transactions after horaCierre
       let postCierre = null
       if (cierreExistente.horaCierre) {
@@ -87,7 +123,7 @@ export async function GET(request: NextRequest) {
         status: 'CERRADO',
         embarquesPendientes: [],
         cierre: {
-          ...reporteGuardado,
+          ...reporte,
           fecha: fechaStr,
           postCierre,
           horaCierre: cierreExistente.horaCierre?.toISOString() ?? null,
