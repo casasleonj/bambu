@@ -31,6 +31,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
   const [cerrando, setCerrando] = useState(false)
   const [yaCerrado, setYaCerrado] = useState(false)
   const [lastCierreDate, setLastCierreDate] = useState<string | null>(null)
+  const [hasGap, setHasGap] = useState(false)
   const [fecha, setFecha] = useState(() => {
     const today = new Date().toISOString().split('T')[0]
     return initialFecha ?? today
@@ -51,6 +52,18 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
   })
   const arqueoRef = useRef(arqueoData)
   useEffect(() => { arqueoRef.current = arqueoData }, [arqueoData])
+
+  // Check for gap days between last cierre and selected fecha
+  useEffect(() => {
+    if (!lastCierreDate || !fecha) {
+      setHasGap(false)
+      return
+    }
+    const last = new Date(lastCierreDate + 'T00:00:00-05:00')
+    const selected = new Date(fecha + 'T00:00:00-05:00')
+    const diffDays = Math.floor((selected.getTime() - last.getTime()) / (1000 * 60 * 60 * 24))
+    setHasGap(diffDays > 1)
+  }, [lastCierreDate, fecha])
   const [netoEnArqueo, setNetoEnArqueo] = useState(0)
   const abortControllerRef = useRef<AbortController | null>(null)
 
@@ -467,8 +480,21 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
     <div className="p-4 max-w-5xl mx-auto space-y-6 pb-32">
       {modal}
 
+      {/* Gap warning */}
+      {hasGap && lastCierreDate && (
+        <div className="bg-red-50 border border-red-300 rounded-xl p-4 flex items-start gap-3">
+          <AlertTriangle className="w-6 h-6 text-red-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-semibold text-red-900">Días sin cerrar</p>
+            <p className="text-sm text-red-800 mt-1">
+              Hay días sin cerrar entre el último cierre (<strong>{lastCierreDate}</strong>) y la fecha seleccionada (<strong>{fecha}</strong>). Debes cerrar los días intermedios primero.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Backdate warning */}
-      {isBackDate && lastCierreDate && (
+      {isBackDate && lastCierreDate && !hasGap && (
         <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 flex items-start gap-3">
           <AlertTriangle className="w-6 h-6 text-amber-600 shrink-0 mt-0.5" />
           <div>
