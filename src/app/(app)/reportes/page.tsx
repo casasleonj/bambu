@@ -17,27 +17,31 @@ export default async function ReportesPage({ searchParams }: { searchParams: Pro
 
   const dateRange = { gte: startDate, lte: endDate }
 
-  const [pedidosCount, ventasAgg, facturasPendientes, abonosAgg, gastosAgg] = await Promise.all([
+  const [pedidosCount, ventasAgg, facturasPendientes, pagosAgg, gastosAgg] = await Promise.all([
     prisma.pedido.count({ where: { estado: { not: 'CANCELADO' }, fecha: dateRange } }),
     prisma.pedido.aggregate({
       where: { estado: { not: 'CANCELADO' }, fecha: dateRange },
       _sum: { total: true },
     }),
     prisma.factura.count({ where: { saldo: { gt: 0 }, fecha: dateRange } }),
-    prisma.abono.aggregate({ where: { fecha: dateRange }, _sum: { monto: true } }),
+    // Pagos hechos a pedidos del período (no abonos a facturas antiguas)
+    prisma.pago.aggregate({
+      where: { pedido: { fecha: dateRange } },
+      _sum: { monto: true },
+    }),
     prisma.gasto.aggregate({ where: { fecha: dateRange }, _sum: { monto: true } }),
   ])
 
   const stats = {
     pedidos: pedidosCount,
     ventas: Number(ventasAgg._sum.total ?? 0),
-    cobros: Number(abonosAgg._sum.monto ?? 0),
+    cobros: Number(pagosAgg._sum.monto ?? 0), // Solo pagos a pedidos del período
     gastos: Number(gastosAgg._sum.monto ?? 0),
     facturasPendientes,
   }
 
   const balance = stats.cobros - stats.gastos
-  const pendiente = stats.ventas - stats.cobros
+  const pendiente = stats.ventas - stats.cobros // Ahora sí refleja lo faltante del período
 
   return (
     <div className="p-4 space-y-4">
