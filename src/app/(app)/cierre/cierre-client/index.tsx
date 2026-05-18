@@ -204,22 +204,11 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
     try {
       const cierreData = {
         fecha,
-        numPedidos: data?.numPedidos || 0,
-        totalVentas: data?.totalVentas || 0,
-        cobrado: data?.cobrado || 0,
-        fiado: data?.fiado || 0,
-        efectivo: data?.efectivo || 0,
-        transferencia: data?.transferencia || 0,
-        nequi: data?.nequi || 0,
-        daviplata: data?.daviplata || 0,
-        bono: data?.bono || 0,
         baseDia,
         comisiones,
         salarios,
-        gastos: data?.totalGastos || 0,
         stockIniAgua, prodAgua, stockFinAgua,
         stockIniHielo, prodHielo, stockFinHielo,
-        netoCaja: calcularNetoCaja(),
         reporte: JSON.stringify({
           cobroVentasHoy: data?.cobroVentasHoy,
           cobroCartera: data?.cobroCartera,
