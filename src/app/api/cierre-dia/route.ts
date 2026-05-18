@@ -5,6 +5,7 @@ import { requireAuth, requireRole } from '@/lib/auth-check'
 import { z } from 'zod'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
+import { startOfDayInBogota, endOfDayInBogota } from '@/lib/date-helpers'
 
 const CierreDiaSchema = z.object({
   fecha: z.string().datetime().optional(),
@@ -41,7 +42,12 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const fecha = searchParams.get('fecha')
 
-    const where = fecha ? { fecha: new Date(fecha) } : {}
+    let where: { fecha?: { gte: Date; lte: Date } } = {}
+    if (fecha) {
+      const start = startOfDayInBogota(fecha)
+      const end = endOfDayInBogota(fecha)
+      where = { fecha: { gte: start, lte: end } }
+    }
     const cierres = await prisma.cierreDia.findMany({
       where,
       orderBy: { fecha: 'desc' },
