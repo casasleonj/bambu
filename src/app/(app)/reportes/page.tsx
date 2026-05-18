@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ReportesFilter } from './reportes-filter'
+import { startOfDayInBogota, endOfDayInBogota } from '@/lib/date-helpers'
 
 function formatCOP(value: number): string {
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(value)
@@ -12,18 +13,22 @@ export default async function ReportesPage({ searchParams }: { searchParams: Pro
   const today = new Date().toISOString().split('T')[0]
   const start = params.start || today
   const end = params.end || start
-  const startDate = new Date(start + 'T00:00:00-05:00')
-  const endDate = new Date(end + 'T23:59:59.999-05:00')
+  const startDate = startOfDayInBogota(start)
+  const endDate = endOfDayInBogota(end)
 
   const dateRange = { gte: startDate, lte: endDate }
 
-  const [pedidosCount, ventasAgg, facturasPendientes, pagosAgg, gastosAgg] = await Promise.all([
+  const [pedidosCount, ventasAgg, facturasPendientes, facturasSaldoAgg, pagosAgg, gastosAgg] = await Promise.all([
     prisma.pedido.count({ where: { estado: { not: 'CANCELADO' }, fecha: dateRange } }),
     prisma.pedido.aggregate({
       where: { estado: { not: 'CANCELADO' }, fecha: dateRange },
       _sum: { total: true },
     }),
     prisma.factura.count({ where: { saldo: { gt: 0 }, fecha: dateRange } }),
+    prisma.factura.aggregate({
+      where: { saldo: { gt: 0 }, fecha: dateRange },
+      _sum: { saldo: true },
+    }),
     // Pagos hechos a pedidos del período (no abonos a facturas antiguas)
     prisma.pago.aggregate({
       where: { pedido: { fecha: dateRange } },
@@ -38,6 +43,7 @@ export default async function ReportesPage({ searchParams }: { searchParams: Pro
     cobros: Number(pagosAgg._sum.monto ?? 0), // Solo pagos a pedidos del período
     gastos: Number(gastosAgg._sum.monto ?? 0),
     facturasPendientes,
+    facturasPendientesTotal: Number(facturasSaldoAgg._sum.saldo ?? 0),
   }
 
   const balance = stats.cobros - stats.gastos
@@ -106,9 +112,9 @@ export default async function ReportesPage({ searchParams }: { searchParams: Pro
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-amber-600">
-              {stats.facturasPendientes}
+              {formatCOP(stats.facturasPendientesTotal)}
             </div>
-            <div className="text-sm text-muted-foreground mt-1">Facturas por cobrar</div>
+            <div className="text-sm text-muted-foreground mt-1">{stats.facturasPendientes} factura(s) por cobrar</div>
           </CardContent>
         </Card>
         <Card>
