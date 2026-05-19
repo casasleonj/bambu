@@ -111,10 +111,9 @@ test.describe('Clientes', () => {
     const res = await apiDelete(page, `/api/clientes/${id}`)
     const body = await res.json()
     expect(body.success).toBe(true)
-    // Soft delete: verify client is marked inactive
+    // Soft delete: GET returns 404 for inactive clients
     const res2 = await apiGet(page, `/api/clientes/${id}`)
-    const getBody = await res2.json()
-    expect(getBody.cliente.activo).toBe(false)
+    expect(res2.status()).toBe(404)
   })
 
   test('links sin 404 desde detalle', async ({ page }) => {
@@ -141,19 +140,17 @@ test.describe('Clientes', () => {
     expect(body.success).toBe(true)
   })
 
-  test('cliente inactivo retorna datos con activo=false', async ({ page }) => {
+  test('cliente inactivo retorna 404 en GET y PUT', async ({ page }) => {
     await fullLogin(page)
     const c = await createCliente(page)
     const id = c.cliente.id
     await apiDelete(page, `/api/clientes/${id}`)
+    // GET returns 404
     const resGet = await apiGet(page, `/api/clientes/${id}`)
-    const getBody = await resGet.json()
-    expect(getBody.cliente.activo).toBe(false)
-    // PUT still works on soft-deleted clients
+    expect(resGet.status()).toBe(404)
+    // PUT returns 404
     const resPut = await apiPut(page, `/api/clientes/${id}`, { nombre: 'Reactivado' })
-    const putBody = await resPut.json()
-    expect(putBody.success).toBe(true)
-    expect(putBody.cliente.nombre).toBe('Reactivado')
+    expect(resPut.status()).toBe(404)
   })
 
   test('precios especiales via API', async ({ page }) => {
@@ -203,13 +200,15 @@ test.describe('Clientes', () => {
     await expect(page.getByRole('heading', { name: 'Cliente Open Test' })).toBeVisible()
   })
 
-  test('API response incluye id', async ({ page }) => {
+  test('API response incluye id y clienteId', async ({ page }) => {
     await fullLogin(page)
     const c = await createCliente(page)
     expect(c.cliente.id).toBeTruthy()
+    expect(c.cliente.clienteId).toBeTruthy()
     const res = await apiGet(page, `/api/clientes/${c.cliente.id}`)
     const body = await res.json()
     expect(body.cliente.id).toBeTruthy()
+    expect(body.cliente.clienteId).toBeTruthy()
   })
 
   test('crear cliente con datos completos via API', async ({ page }) => {
