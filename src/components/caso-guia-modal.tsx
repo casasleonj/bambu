@@ -241,7 +241,7 @@ export function CasoGuiaModal({ caso, contextData, usuarios, onClose, onStatusCh
     }
 
     if (accionId === 'ver_reclamaciones') {
-      window.location.href = `/clientes?search=${caso.clienteId}`
+      window.location.href = `/clientes?openCliente=${caso.clienteId}`
       return
     }
 
@@ -281,7 +281,7 @@ export function CasoGuiaModal({ caso, contextData, usuarios, onClose, onStatusCh
     }
 
     if (accionId === 'ver_historial' || accionId === 'ver_historial_cliente' || accionId === 'ver_cliente') {
-      window.location.href = `/clientes?search=${caso.clienteId}`
+      window.location.href = `/clientes?openCliente=${caso.clienteId}`
       return
     }
 
@@ -292,7 +292,7 @@ export function CasoGuiaModal({ caso, contextData, usuarios, onClose, onStatusCh
 
     if (accionId === 'editar_direccion') {
       showToast('info', 'Edita la dirección en el detalle del cliente')
-      window.location.href = `/clientes?search=${caso.clienteId}`
+      window.location.href = `/clientes?openCliente=${caso.clienteId}`
       return
     }
 

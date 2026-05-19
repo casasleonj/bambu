@@ -46,6 +46,7 @@ export async function GET(request: NextRequest) {
 
     const clientes = clientesRaw.map(c => ({
       ...c,
+      clienteId: c.id,
       saldoPendiente: c.pedidos.reduce((sum, p) => sum + Number(p.saldo), 0),
     }))
     return apiSuccess(

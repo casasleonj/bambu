@@ -86,6 +86,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     }
 
     const serialized = JSON.parse(JSON.stringify(cliente))
+    serialized.clienteId = serialized.id
     serialized.frecuenciaSugerida = frecuenciaSugerida
     serialized.productosSugeridos = productosSugeridos
 

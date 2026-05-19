@@ -59,6 +59,8 @@ export default function ClientesClient({ initialClientes, openClienteId }: Clien
   const [usuarios, setUsuarios] = useState<Array<{ id: string; username: string; rol: string }>>([])
   const [userRole, setUserRole] = useState<string | null>(null)
 
+  const [preciosLoaded, setPreciosLoaded] = useState(false)
+
   const puedeDesactivar = userRole === 'ADMIN' || userRole === 'CONTADOR'
 
   const alertas = useMemo(() => {
@@ -187,11 +189,11 @@ export default function ClientesClient({ initialClientes, openClienteId }: Clien
     const term = search.toLowerCase()
     return (
       c.nombre.toLowerCase().includes(term) ||
-      c.apellido?.toLowerCase().includes(term) ||
+      (c.apellido ?? '').toLowerCase().includes(term) ||
       c.telefono.includes(term) ||
       c.nombreNegocio?.toLowerCase().includes(term) ||
       c.barrio?.toLowerCase().includes(term) ||
-      c.clienteId.toLowerCase().includes(term) ||
+      (c.clienteId ?? '').toLowerCase().includes(term) ||
       c.contactos?.some(ct =>
         ct.nombre.toLowerCase().includes(term) ||
         ct.telefono.includes(term) ||
@@ -206,7 +208,7 @@ export default function ClientesClient({ initialClientes, openClienteId }: Clien
     return dir * a.nombre.localeCompare(b.nombre)
   })
 
-  function openCreateModal() {
+  async function openCreateModal() {
     setFormData({
       nombre: '',
       apellido: '',
@@ -225,11 +227,13 @@ export default function ClientesClient({ initialClientes, openClienteId }: Clien
     setCanalActivo('DOMICILIO')
     setFormError('')
     setIsEdit(false)
+    setPreciosLoaded(false)
     setShowModal(true)
-    loadPreciosBase()
+    await loadPreciosBase()
+    setPreciosLoaded(true)
   }
 
-  function openEditModal() {
+  async function openEditModal() {
     if (!selectedCliente) return
     setFormData({
       nombre: selectedCliente.nombre,
@@ -249,7 +253,9 @@ export default function ClientesClient({ initialClientes, openClienteId }: Clien
     setCanalActivo('DOMICILIO')
     setIsEdit(true)
     setIsEditing(true)
-    loadPreciosBase()
+    setPreciosLoaded(false)
+    await loadPreciosBase()
+    setPreciosLoaded(true)
   }
 
   function cancelEdit() {
@@ -500,9 +506,9 @@ export default function ClientesClient({ initialClientes, openClienteId }: Clien
                 />
                 <div className="p-4 border-t border-gray-100 bg-gray-50 flex gap-3">
                   <button type="button" onClick={cancelEdit} className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium">Cancelar</button>
-                  <button type="submit" form="cliente-form-inline" disabled={saving}
+                  <button type="submit" form="cliente-form-inline" disabled={saving || (isEdit && !preciosLoaded)}
                     className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
-                    {saving ? 'Guardando...' : 'Guardar'}
+                    {saving ? 'Guardando...' : !preciosLoaded && isEdit ? 'Cargando precios...' : 'Guardar'}
                   </button>
                 </div>
               </div>
