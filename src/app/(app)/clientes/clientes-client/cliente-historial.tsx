@@ -53,8 +53,9 @@ export function ClienteHistorial({ clienteId }: ClienteHistorialProps) {
       } else if (!signal?.aborted) {
         setError(data.error?.message || 'Error cargando historial')
       }
-    } catch (err: any) {
-      if (err.name !== 'AbortError' && !signal?.aborted) {
+    } catch (err: unknown) {
+      const isAbort = err instanceof Error && err.name === 'AbortError'
+      if (!isAbort && !signal?.aborted) {
         setError('Error de conexión')
       }
     } finally {

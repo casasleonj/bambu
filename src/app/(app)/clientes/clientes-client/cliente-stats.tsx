@@ -18,8 +18,15 @@ export function ClienteStats({ clienteId }: ClienteStatsProps) {
     setLoading(true)
     fetch(`/api/clientes/${clienteId}/stats`, { signal: controller.signal })
       .then(r => r.json())
-      .then(data => { if (data.success && !controller.signal.aborted) setStats(data.stats); else if (!controller.signal.aborted) setError(data.error?.message || 'Error') })
-      .catch(err => { if (err.name !== 'AbortError' && !controller.signal.aborted) setError('Error de conexión') })
+      .then(data => {
+        if (!controller.signal.aborted) {
+          if (data.success) setStats(data.stats)
+          else setError(data.error?.message || 'Error')
+        }
+      })
+      .catch(err => {
+        if (err.name !== 'AbortError' && !controller.signal.aborted) setError('Error de conexión')
+      })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [clienteId])
