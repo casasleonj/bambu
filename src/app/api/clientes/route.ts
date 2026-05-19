@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     })
 
-    return apiSuccess({ cliente }, 201)
+    return apiSuccess({ cliente: { ...cliente, clienteId: cliente.id } }, 201)
   } catch (error) {
     return apiError('Error creando cliente')
   }

@@ -1,3 +1,4 @@
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library'
 import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
@@ -138,6 +139,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     return apiSuccess({ cliente })
   } catch (error) {
+    if (error instanceof PrismaClientKnownRequestError && error.code === 'P2025') {
+      return apiError('Not found', 404)
+    }
     return apiError('Error updating', 500)
   }
 }
@@ -166,6 +170,9 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
 
     return apiSuccess({})
   } catch (error) {
+    if (error instanceof PrismaClientKnownRequestError && error.code === 'P2025') {
+      return apiError('Not found', 404)
+    }
     return apiError('Error deleting', 500)
   }
 }
