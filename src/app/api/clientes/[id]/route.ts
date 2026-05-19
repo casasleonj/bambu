@@ -13,7 +13,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const { id } = await params
   try {
     const cliente = await prisma.cliente.findUnique({
-      where: { id },
+      where: { id, activo: true },
       include: {
         pedidos: {
           orderBy: { fecha: 'desc' },
@@ -108,9 +108,24 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (!parsed.success) {
       return apiError(formatZodError(parsed.error), 400)
     }
+    const data = parsed.data
+
+    if (data.contactos) {
+      const cleaned = data.contactos.filter((c: { nombre?: string; telefono?: string }) => c.nombre?.trim() && c.telefono?.trim())
+      const seen = new Set<string>()
+      data.contactos = cleaned.filter((c: { telefono: string }) => {
+        if (seen.has(c.telefono)) return false
+        seen.add(c.telefono)
+        return true
+      })
+      if (data.telefono) {
+        data.contactos = data.contactos.filter((c: { telefono: string }) => c.telefono !== data.telefono)
+      }
+    }
+
     const cliente = await prisma.cliente.update({
-      where: { id },
-      data: parsed.data,
+      where: { id, activo: true },
+      data,
     })
 
     logAudit({

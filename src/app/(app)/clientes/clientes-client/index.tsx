@@ -81,11 +81,13 @@ export default function ClientesClient({ initialClientes, openClienteId }: Clien
           setUsuarios(users)
         }
       })
+      .catch(() => {})
     fetch('/api/auth/profile')
       .then(r => r.json())
       .then(d => {
         if (d.success && d.user) setUserRole(d.user.rol)
       })
+      .catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -150,7 +152,7 @@ export default function ClientesClient({ initialClientes, openClienteId }: Clien
           }
         }
         setPreciosBase(prev => ({ ...prev, [canal]: baseMap }))
-      } catch { /* ignore */ }
+      } catch (err) { console.warn('[loadPreciosBase] failed', err) }
     }
   }, [])
 
@@ -1007,7 +1009,7 @@ export default function ClientesClient({ initialClientes, openClienteId }: Clien
                     </div>
                   ) : (
                     alertas.map((alerta, idx) => (
-                      <div key={idx} className="bg-white border rounded-xl p-4 hover:shadow-sm transition">
+                      <div key={`${alerta.tipo}-${idx}`} className="bg-white border rounded-xl p-4 hover:shadow-sm transition">
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1.5">
