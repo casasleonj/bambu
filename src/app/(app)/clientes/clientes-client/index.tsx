@@ -59,6 +59,8 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
   const [usuarios, setUsuarios] = useState<Array<{ id: string; username: string; rol: string }>>([])
   const [userRole, setUserRole] = useState<string | null>(null)
 
+  const [preciosLoaded, setPreciosLoaded] = useState(false)
+
   const puedeDesactivar = userRole === 'ADMIN' || userRole === 'CONTADOR'
 
   const alertas = useMemo(() => {
@@ -79,11 +81,13 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
           setUsuarios(users)
         }
       })
+      .catch(err => console.warn('[init] trabajadores fetch failed', err))
     fetch('/api/auth/profile')
       .then(r => r.json())
       .then(d => {
         if (d.success && d.user) setUserRole(d.user.rol)
       })
+      .catch(err => console.warn('[init] profile fetch failed', err))
   }, [])
 
   useEffect(() => {
@@ -148,7 +152,7 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
           }
         }
         setPreciosBase(prev => ({ ...prev, [canal]: baseMap }))
-      } catch { /* ignore */ }
+      } catch (err) { console.warn('[loadPreciosBase] failed', err) }
     }
   }, [])
 
@@ -187,11 +191,11 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
     const term = search.toLowerCase()
     return (
       c.nombre.toLowerCase().includes(term) ||
-      c.apellido?.toLowerCase().includes(term) ||
+      (c.apellido ?? '').toLowerCase().includes(term) ||
       c.telefono.includes(term) ||
       c.nombreNegocio?.toLowerCase().includes(term) ||
       c.barrio?.toLowerCase().includes(term) ||
-      c.clienteId.toLowerCase().includes(term) ||
+      (c.clienteId ?? '').toLowerCase().includes(term) ||
       c.contactos?.some(ct =>
         ct.nombre.toLowerCase().includes(term) ||
         ct.telefono.includes(term) ||
@@ -206,7 +210,7 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
     return dir * a.nombre.localeCompare(b.nombre)
   }), [clientes, search, sortBy, sortDir])
 
-  function openCreateModal() {
+  async function openCreateModal() {
     setFormData({
       nombre: '',
       apellido: '',
@@ -225,11 +229,14 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
     setCanalActivo('DOMICILIO')
     setFormError('')
     setIsEdit(false)
+    setIsEditing(false)
+    setPreciosLoaded(false)
     setShowModal(true)
-    loadPreciosBase()
+    await loadPreciosBase()
+    setPreciosLoaded(true)
   }
 
-  function openEditModal() {
+  async function openEditModal() {
     if (!selectedCliente) return
     setFormData({
       nombre: selectedCliente.nombre,
@@ -249,7 +256,9 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
     setCanalActivo('DOMICILIO')
     setIsEdit(true)
     setIsEditing(true)
-    loadPreciosBase()
+    setPreciosLoaded(false)
+    await loadPreciosBase()
+    setPreciosLoaded(true)
   }
 
   function cancelEdit() {
@@ -379,7 +388,7 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
   const handlePrecioEspecialChange = useCallback((canal: Canal, codigo: string, valor: number | undefined) => {
     setPreciosEspecialesMap(prev => ({
       ...prev,
-      [canal]: { ...prev[canal], [codigo]: valor },
+      [canal]: { ...prev[canal], [codigo]: Number.isFinite(valor as number) ? valor : undefined },
     }))
   }, [])
 
@@ -508,9 +517,9 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
                 />
                 <div className="p-4 border-t border-gray-100 bg-gray-50 flex gap-3">
                   <button type="button" onClick={cancelEdit} className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium">Cancelar</button>
-                  <button type="submit" form="cliente-form-inline" disabled={saving}
+                  <button type="submit" form="cliente-form-inline" disabled={saving || (isEdit && !preciosLoaded)}
                     className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
-                    {saving ? 'Guardando...' : 'Guardar'}
+                    {saving ? 'Guardando...' : !preciosLoaded && isEdit ? 'Cargando precios...' : 'Guardar'}
                   </button>
                 </div>
               </div>
@@ -630,7 +639,7 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
               </div>
             )}
 
-            {(selectedCliente.frecuenciaSugerida || selectedCliente.productosSugeridos) && (
+            {(selectedCliente.frecuenciaSugerida || (selectedCliente.productosSugeridos && selectedCliente.productosSugeridos.length > 0)) && (
               <div className="px-4 py-3 bg-blue-50 border-b border-blue-100">
                 <p className="text-xs font-semibold text-blue-700 uppercase mb-2 flex items-center gap-1">
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1009,7 +1018,7 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
                     </div>
                   ) : (
                     alertas.map((alerta, idx) => (
-                      <div key={idx} className="bg-white border rounded-xl p-4 hover:shadow-sm transition">
+                      <div key={`${alerta.tipo}-${idx}`} className="bg-white border rounded-xl p-4 hover:shadow-sm transition">
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1.5">

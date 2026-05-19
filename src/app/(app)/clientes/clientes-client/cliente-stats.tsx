@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { formatCurrency } from '@/lib/utils'
 import type { ClienteStats } from './types'
 
@@ -17,17 +17,31 @@ export function ClienteStats({ clienteId }: ClienteStatsProps) {
     const controller = new AbortController()
     setLoading(true)
     fetch(`/api/clientes/${clienteId}/stats`, { signal: controller.signal })
-      .then(r => {
-        if (!r.ok) throw new Error('Error al cargar estadísticas')
-        return r.json()
-      })
+      .then(r => r.json())
       .then(data => {
-        if (data.success && !controller.signal.aborted) setStats(data.stats)
-        else if (!controller.signal.aborted) setError(data.error?.message || 'Error')
+        if (!controller.signal.aborted) {
+          if (data.success) setStats(data.stats)
+          else setError(data.error?.message || 'Error')
+        }
       })
-      .catch(err => { if (err.name !== 'AbortError' && !controller.signal.aborted) setError('Error de conexión') })
+      .catch(err => {
+        if (err.name !== 'AbortError' && !controller.signal.aborted) setError('Error de conexión')
+      })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
+  }, [clienteId])
+
+  const refetch = useCallback(() => {
+    setError('')
+    setLoading(true)
+    fetch(`/api/clientes/${clienteId}/stats`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) { setStats(data.stats); setError('') }
+        else setError(data.error?.message || 'Error')
+      })
+      .catch(() => setError('Error de conexión'))
+      .finally(() => setLoading(false))
   }, [clienteId])
 
   if (loading) {
@@ -39,7 +53,17 @@ export function ClienteStats({ clienteId }: ClienteStatsProps) {
   }
 
   if (error) {
-    return <div className="text-center py-8 text-red-600 text-sm">{error}</div>
+    return (
+      <div className="text-center py-8">
+        <p className="text-red-600 text-sm mb-2">{error}</p>
+        <button
+          onClick={refetch}
+          className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition"
+        >
+          Reintentar
+        </button>
+      </div>
+    )
   }
 
   if (!stats) {

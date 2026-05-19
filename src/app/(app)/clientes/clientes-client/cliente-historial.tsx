@@ -45,7 +45,6 @@ export function ClienteHistorial({ clienteId }: ClienteHistorialProps) {
     try {
       const url = `/api/clientes/${clienteId}/historial?meses=${meses}&page=${nextPage}&pageSize=20`
       const res = await fetch(url, signal ? { signal } : undefined)
-      if (!res.ok) throw new Error('Error al cargar historial')
       const data = await res.json()
       if (data.success && !signal?.aborted) {
         setEvents(prev => append ? [...prev, ...data.events] : data.events)
@@ -54,24 +53,23 @@ export function ClienteHistorial({ clienteId }: ClienteHistorialProps) {
       } else if (!signal?.aborted) {
         setError(data.error?.message || 'Error cargando historial')
       }
-    } catch (err: any) {
-      if (err.name !== 'AbortError' && !signal?.aborted) {
+    } catch (err: unknown) {
+      const isAbort = err instanceof Error && err.name === 'AbortError'
+      if (!isAbort && !signal?.aborted) {
         setError('Error de conexión')
       }
     } finally {
-      if (!signal?.aborted) setLoading(false)
+      if (!signal?.aborted) {
+        setLoading(false)
+      }
     }
   }, [clienteId, meses])
 
   useEffect(() => {
-    const controller = new AbortController()
-    fetchEvents(1, false, controller.signal)
-    return () => controller.abort()
+    fetchEvents(1, false)
   }, [fetchEvents])
 
-  const filtrados = useMemo(() => filtro === 'TODOS'
-    ? events
-    : events.filter(e => e.tipo === filtro), [events, filtro])
+  const filtrados = useMemo(() => filtro === 'TODOS' ? events : events.filter(e => e.tipo === filtro), [events, filtro])
 
   return (
     <div className="space-y-4">
@@ -103,8 +101,9 @@ export function ClienteHistorial({ clienteId }: ClienteHistorialProps) {
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3">
-          {error}
+        <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3 flex items-center justify-between">
+          <span>{error}</span>
+          <button onClick={() => fetchEvents(1, false)} className="px-3 py-1.5 bg-red-600 text-white rounded text-sm hover:bg-red-700 transition">Reintentar</button>
         </div>
       )}
 

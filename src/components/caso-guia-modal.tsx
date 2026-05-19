@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import { Modal } from '@/components/modal'
 import { getGuiaAlerta, getBadgeColor, type AlertaTipo } from '@/lib/alertas-config'
 
@@ -104,6 +105,7 @@ function getAcciones(tipo: AlertaTipo) {
 }
 
 export function CasoGuiaModal({ caso, contextData, usuarios, onClose, onStatusChange }: CasoGuiaModalProps) {
+  const router = useRouter()
   const [checkedSteps, setCheckedSteps] = useState<boolean[]>([])
   const [notas, setNotas] = useState('')
   const [asignadoAId, setAsignadoAId] = useState('')
@@ -211,7 +213,7 @@ export function CasoGuiaModal({ caso, contextData, usuarios, onClose, onStatusCh
 
     // Acciones que redirigen
     if (accionId === 'registrar_pago') {
-      window.location.href = '/pedidos?tab=fiados'
+      router.push('/pedidos?tab=fiados')
       return
     }
 
@@ -221,95 +223,93 @@ export function CasoGuiaModal({ caso, contextData, usuarios, onClose, onStatusCh
     }
 
     if (accionId === 'ver_pedidos_hoy' && caso.clienteId) {
-      window.location.href = `/pedidos?search=${caso.clienteId}`
+      router.push(`/pedidos?search=${caso.clienteId}`)
       return
     }
 
     if (accionId === 'ver_pedido' && caso.pedidoId) {
-      window.location.href = `/pedidos?search=${caso.pedidoId}`
+      router.push(`/pedidos?search=${caso.pedidoId}`)
       return
     }
 
     if (accionId === 'ver_cuentas') {
-      window.location.href = '/pedidos?tab=fiados'
       return
     }
 
     if (accionId === 'ver_facturas') {
-      window.location.href = '/facturas'
+      router.push('/facturas')
       return
     }
 
     if (accionId === 'ver_reclamaciones') {
-      window.location.href = `/clientes?search=${caso.clienteId}`
+      router.push(`/clientes?openCliente=${caso.clienteId}`)
       return
     }
 
     if (accionId === 'ver_embarques') {
-      window.location.href = '/embarques'
+      router.push('/embarques')
       return
     }
 
     if (accionId === 'ver_repartidor') {
-      window.location.href = '/trabajadores'
+      router.push('/trabajadores')
       return
     }
 
     if (accionId === 'ver_precios' || accionId === 'ver_tabla_precios') {
-      window.location.href = '/productos'
+      router.push('/productos')
       return
     }
 
     if (accionId === 'ver_foto' && caso.pedidoId) {
-      window.location.href = `/pedidos?search=${caso.pedidoId}`
+      router.push(`/pedidos?search=${caso.pedidoId}`)
       return
     }
 
     if (accionId === 'ver_descuento') {
-      window.location.href = '/nomina'
+      router.push('/nomina')
       return
     }
 
     if (accionId === 'ver_notas_credito') {
-      window.location.href = '/facturas'
+      router.push('/facturas')
       return
     }
 
     if (accionId === 'ver_gps') {
-      window.location.href = '/rutas'
+      router.push('/rutas')
       return
     }
 
     if (accionId === 'ver_historial' || accionId === 'ver_historial_cliente' || accionId === 'ver_cliente') {
-      window.location.href = `/clientes?search=${caso.clienteId}`
+      router.push(`/clientes?openCliente=${caso.clienteId}`)
       return
     }
 
     if (accionId === 'ir_cobrar') {
-      window.location.href = '/pedidos?tab=fiados'
       return
     }
 
     if (accionId === 'editar_direccion') {
       showToast('info', 'Edita la dirección en el detalle del cliente')
-      window.location.href = `/clientes?search=${caso.clienteId}`
+      router.push(`/clientes?openCliente=${caso.clienteId}`)
       return
     }
 
     if (accionId === 'justificar_descuento') {
-      window.location.href = '/nomina'
+      router.push('/nomina')
       return
     }
 
     if (accionId === 'registrar_reposicion') {
       showToast('info', 'Registra la reposición en el detalle del trabajador')
-      window.location.href = '/trabajadores'
+      router.push('/trabajadores')
       return
     }
 
     if (accionId === 'extender_plazo' && caso.pedidoId) {
       showToast('info', 'Extiende el plazo en el detalle del pedido')
-      window.location.href = `/pedidos?search=${caso.pedidoId}`
+      router.push(`/pedidos?search=${caso.pedidoId}`)
       return
     }
 
@@ -370,7 +370,7 @@ export function CasoGuiaModal({ caso, contextData, usuarios, onClose, onStatusCh
   }
 
   const handleGoToCase = () => {
-    window.location.href = `/casos`
+    router.push(`/casos`)
   }
 
   const canResolve = status === 'ABIERTO' || status === 'EN_PROCESO'

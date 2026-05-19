@@ -1,3 +1,4 @@
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library'
 import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
@@ -13,7 +14,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const { id } = await params
   try {
     const cliente = await prisma.cliente.findUnique({
-      where: { id },
+      where: { id, activo: true },
       include: {
         pedidos: {
           orderBy: { fecha: 'desc' },
@@ -86,6 +87,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     }
 
     const serialized = JSON.parse(JSON.stringify(cliente))
+    serialized.clienteId = serialized.id
     serialized.frecuenciaSugerida = frecuenciaSugerida
     serialized.productosSugeridos = productosSugeridos
 
@@ -107,9 +109,24 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (!parsed.success) {
       return apiError(formatZodError(parsed.error), 400)
     }
+    const data = parsed.data
+
+    if (data.contactos) {
+      const cleaned = data.contactos.filter((c: { nombre?: string; telefono?: string }) => c.nombre?.trim() && c.telefono?.trim())
+      const seen = new Set<string>()
+      data.contactos = cleaned.filter((c: { telefono: string }) => {
+        if (seen.has(c.telefono)) return false
+        seen.add(c.telefono)
+        return true
+      })
+      if (data.telefono) {
+        data.contactos = data.contactos.filter((c: { telefono: string }) => c.telefono !== data.telefono)
+      }
+    }
+
     const cliente = await prisma.cliente.update({
-      where: { id },
-      data: parsed.data,
+      where: { id, activo: true },
+      data,
     })
 
     logAudit({
@@ -122,6 +139,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     return apiSuccess({ cliente })
   } catch (error) {
+    if (error instanceof PrismaClientKnownRequestError && error.code === 'P2025') {
+      return apiError('Not found', 404)
+    }
     return apiError('Error updating', 500)
   }
 }
@@ -133,10 +153,12 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
   if (roleCheck instanceof Response) return roleCheck
   const { id } = await params
   try {
-    await prisma.cliente.update({
-      where: { id },
+    const cliente = await prisma.cliente.update({
+      where: { id, activo: true },
       data: { activo: false },
     })
+
+    if (!cliente) return apiError('Not found', 404)
 
     logAudit({
       entidad: 'Cliente',
@@ -148,6 +170,9 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
 
     return apiSuccess({})
   } catch (error) {
+    if (error instanceof PrismaClientKnownRequestError && error.code === 'P2025') {
+      return apiError('Not found', 404)
+    }
     return apiError('Error deleting', 500)
   }
 }

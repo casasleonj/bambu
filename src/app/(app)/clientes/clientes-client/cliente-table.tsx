@@ -20,7 +20,6 @@ interface ClienteTableProps {
   sortDir: 'asc' | 'desc'
   onSortChange: (by: 'nombre' | 'createdAt', dir: 'asc' | 'desc') => void
   selectedClienteId?: string | null
-  totalClientes?: number
 }
 
 export const ClienteTable = React.memo(function ClienteTable({
@@ -35,7 +34,6 @@ export const ClienteTable = React.memo(function ClienteTable({
   sortDir,
   onSortChange,
   selectedClienteId,
-  totalClientes,
 }: ClienteTableProps) {
   const [filterSaldo, setFilterSaldo] = useState(false)
   const [filterFrecuencia, setFilterFrecuencia] = useState(false)
@@ -165,7 +163,7 @@ export const ClienteTable = React.memo(function ClienteTable({
       {clientes.length > 0 && (
         <div className="flex items-center justify-between mb-3">
           <p className="text-sm text-gray-500">
-            {clientesFiltrados.length}{totalClientes && totalClientes > clientes.length ? ` de ${totalClientes}` : ` de ${clientes.length}`} clientes
+            {clientesFiltrados.length} de {clientes.length} clientes
             {hasActiveFilters && ' (filtrados)'}
           </p>
           <div className="flex items-center gap-1 text-xs text-gray-500">
@@ -245,10 +243,6 @@ export const ClienteTable = React.memo(function ClienteTable({
         ) : (
           <div className="divide-y divide-gray-50">
             {clientesFiltrados.map((cliente) => {
-              const alertas = cliente.pedidos ? calcularAlertasCliente(cliente, cliente.pedidos) : []
-              const hasAlertas = alertas.length > 0
-              const alertasAltas = alertas.filter((a: any) => a.severidad === 'ALTA')
-
               return (
                 <div
                   key={cliente.id}
@@ -257,9 +251,7 @@ export const ClienteTable = React.memo(function ClienteTable({
                       ? 'bg-blue-50 border-l-4 border-blue-500'
                       : cliente.saldoPendiente && cliente.saldoPendiente > 0
                         ? 'bg-red-50/30 hover:bg-red-50/60'
-                        : hasAlertas
-                          ? 'bg-amber-50/30 hover:bg-amber-50/60'
-                          : 'hover:bg-blue-50/50'
+                        : 'hover:bg-blue-50/50'
                   }`}
                   onClick={() => onViewCliente(cliente.id)}
                 >
@@ -326,9 +318,7 @@ export const ClienteTable = React.memo(function ClienteTable({
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white ${
                         cliente.saldoPendiente && cliente.saldoPendiente > 0
                           ? 'bg-red-500'
-                          : hasAlertas
-                            ? 'bg-amber-500'
-                            : 'bg-blue-500'
+                          : 'bg-blue-500'
                       }`}>
                         {cliente.nombre.charAt(0).toUpperCase()}
                       </div>
@@ -361,11 +351,6 @@ export const ClienteTable = React.memo(function ClienteTable({
                       {cliente.saldoPendiente && cliente.saldoPendiente > 0 && (
                         <span className="px-1.5 py-0.5 bg-red-100 text-red-700 text-[10px] font-medium rounded">
                           Saldo: {formatCurrency(cliente.saldoPendiente)}
-                        </span>
-                      )}
-                      {alertasAltas.length > 0 && (
-                        <span className="px-1.5 py-0.5 bg-red-100 text-red-700 text-[10px] font-medium rounded">
-                          {alertasAltas.length} alerta{alertasAltas.length > 1 ? 's' : ''}
                         </span>
                       )}
                       {cliente.plantillaRecurrente?.activo && (
@@ -444,16 +429,6 @@ export const ClienteTable = React.memo(function ClienteTable({
                   <div className="md:col-span-1 text-center">
                     <div className="flex items-center justify-center gap-1.5">
                       <span className="text-sm text-gray-500">{cliente._count?.pedidos || 0}</span>
-                      {alertasAltas.length > 0 && (
-                        <Tooltip content={`${alertasAltas.length} alerta(s) crítica(s)`} position="top">
-                          <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                        </Tooltip>
-                      )}
-                      {hasAlertas && alertasAltas.length === 0 && (
-                        <Tooltip content={`${alertas.length} alerta(s) de baja prioridad`} position="top">
-                          <span className="w-2 h-2 rounded-full bg-amber-400" />
-                        </Tooltip>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -466,30 +441,4 @@ export const ClienteTable = React.memo(function ClienteTable({
   )
 })
 
-// Helper function to calculate alerts (simplified version for table)
-function calcularAlertasCliente(cliente: Cliente, pedidos: any[]) {
-  const alertas: any[] = []
-  const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
 
-  // Check for pending balance
-  if (cliente.saldoPendiente && cliente.saldoPendiente > 0) {
-    alertas.push({ severidad: 'ALTA', tipo: 'SALDO_PENDIENTE', detalle: 'Saldo pendiente' })
-  }
-
-  // Check for multiple orders today
-  const pedidosHoy = pedidos.filter((p: any) => {
-    const fechaLocal = p.fecha ? new Date(p.fecha).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }) : ''
-    return fechaLocal === hoy
-  })
-  if (pedidosHoy.length >= 2) {
-    alertas.push({ severidad: 'MEDIA', tipo: 'MULTIPLES_PEDIDOS', detalle: `${pedidosHoy.length} pedidos hoy` })
-  }
-
-  // Check for expired payment
-  const pedidosVencidos = pedidos.filter((p: any) => p.estadoPago === 'VENCIDO')
-  if (pedidosVencidos.length > 0) {
-    alertas.push({ severidad: 'ALTA', tipo: 'PAGO_VENCIDO', detalle: 'Pago vencido' })
-  }
-
-  return alertas
-}

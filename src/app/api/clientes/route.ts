@@ -46,6 +46,7 @@ export async function GET(request: NextRequest) {
 
     const clientes = clientesRaw.map(c => ({
       ...c,
+      clienteId: c.id,
       saldoPendiente: c.pedidos.reduce((sum, p) => sum + Number(p.saldo), 0),
     }))
     return apiSuccess(
@@ -115,7 +116,7 @@ export async function POST(request: NextRequest) {
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     })
 
-    return apiSuccess({ cliente }, 201)
+    return apiSuccess({ cliente: { ...cliente, clienteId: cliente.id } }, 201)
   } catch (error) {
     return apiError('Error creando cliente')
   }
