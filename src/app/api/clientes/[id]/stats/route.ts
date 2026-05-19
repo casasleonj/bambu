@@ -15,15 +15,17 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     hace30.setDate(hace30.getDate() - 30)
     const hace90 = new Date(ahora)
     hace90.setDate(hace90.getDate() - 90)
+    const twoYearsAgo = new Date()
+    twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2)
 
     const [pedidos, abonosCliente] = await Promise.all([
       prisma.pedido.findMany({
-        where: { clienteId: id, estadoEntrega: { not: 'ANULADO' } },
+        where: { clienteId: id, estadoEntrega: { not: 'ANULADO' }, fecha: { gte: twoYearsAgo } },
         orderBy: { fecha: 'desc' },
         include: { items: true, pagos: true },
       }),
       prisma.abono.findMany({
-        where: { clienteId: id },
+        where: { clienteId: id, fecha: { gte: twoYearsAgo } },
         orderBy: { fecha: 'desc' },
       }),
     ])

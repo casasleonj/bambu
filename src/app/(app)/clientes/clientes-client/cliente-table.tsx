@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import type { Cliente } from './types'
@@ -22,7 +22,7 @@ interface ClienteTableProps {
   selectedClienteId?: string | null
 }
 
-export function ClienteTable({
+export const ClienteTable = React.memo(function ClienteTable({
   clientes,
   search,
   onSearchChange,
@@ -51,11 +51,11 @@ export function ClienteTable({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [quickActionsRow])
 
-  const clientesFiltrados = clientes.filter((c) => {
+  const clientesFiltrados = useMemo(() => clientes.filter((c) => {
     if (filterSaldo && !(c.saldoPendiente && c.saldoPendiente > 0)) return false
     if (filterFrecuencia && !c.plantillaRecurrente?.activo) return false
     return true
-  })
+  }), [clientes, filterSaldo, filterFrecuencia])
 
   const hasActiveFilters = filterSaldo || filterFrecuencia || search
 
@@ -439,6 +439,6 @@ export function ClienteTable({
       </div>
     </>
   )
-}
+})
 
 

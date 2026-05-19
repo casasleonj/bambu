@@ -32,6 +32,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       prisma.pedido.findMany({
         where: { clienteId: id, ...(fechaFilter ? { fecha: fechaFilter } : {}) },
         orderBy: { fecha: 'desc' },
+        take: 200,
         include: {
           items: true,
           pagos: true,
@@ -42,11 +43,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       prisma.factura.findMany({
         where: { clienteId: id, ...(fechaFilter ? { fecha: fechaFilter } : {}) },
         orderBy: { fecha: 'desc' },
+        take: 200,
         include: { abonos: true },
       }),
       prisma.caso.findMany({
         where: { clienteId: id, ...(fechaFilter ? { createdAt: fechaFilter } : {}) },
         orderBy: { createdAt: 'desc' },
+        take: 200,
         include: {
           eventos: {
             orderBy: { createdAt: 'desc' },
@@ -60,11 +63,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           ...(fechaFilter ? { fecha: fechaFilter } : {}),
         },
         orderBy: { fecha: 'desc' },
+        take: 200,
         include: { pedido: { select: { numero: true } }, factura: { select: { numero: true } } },
       }),
       prisma.historial.findMany({
         where: { entidad: 'Cliente', registroId: id, ...(fechaFilter ? { fecha: fechaFilter } : {}) },
         orderBy: { fecha: 'desc' },
+        take: 200,
       }),
     ])
 

@@ -185,7 +185,7 @@ export default function ClientesClient({ initialClientes, openClienteId }: Clien
     return hasAny ? JSON.stringify(result) : ''
   }
 
-  const clientesFiltrados = clientes.filter((c) => {
+  const clientesFiltrados = useMemo(() => clientes.filter((c) => {
     const term = search.toLowerCase()
     return (
       c.nombre.toLowerCase().includes(term) ||
@@ -206,7 +206,7 @@ export default function ClientesClient({ initialClientes, openClienteId }: Clien
       return dir * (new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime())
     }
     return dir * a.nombre.localeCompare(b.nombre)
-  })
+  }), [clientes, search, sortBy, sortDir])
 
   async function openCreateModal() {
     setFormData({
