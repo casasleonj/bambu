@@ -229,6 +229,7 @@ export default function ClientesClient({ initialClientes, openClienteId }: Clien
     setCanalActivo('DOMICILIO')
     setFormError('')
     setIsEdit(false)
+    setIsEditing(false)
     setPreciosLoaded(false)
     setShowModal(true)
     await loadPreciosBase()
@@ -380,7 +381,7 @@ export default function ClientesClient({ initialClientes, openClienteId }: Clien
   const handlePrecioEspecialChange = useCallback((canal: Canal, codigo: string, valor: number | undefined) => {
     setPreciosEspecialesMap(prev => ({
       ...prev,
-      [canal]: { ...prev[canal], [codigo]: valor },
+      [canal]: { ...prev[canal], [codigo]: Number.isFinite(valor as number) ? valor : undefined },
     }))
   }, [])
 
@@ -630,7 +631,7 @@ export default function ClientesClient({ initialClientes, openClienteId }: Clien
               </div>
             )}
 
-            {(selectedCliente.frecuenciaSugerida || selectedCliente.productosSugeridos) && (
+            {(selectedCliente.frecuenciaSugerida || (selectedCliente.productosSugeridos && selectedCliente.productosSugeridos.length > 0)) && (
               <div className="px-4 py-3 bg-blue-50 border-b border-blue-100">
                 <p className="text-xs font-semibold text-blue-700 uppercase mb-2 flex items-center gap-1">
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

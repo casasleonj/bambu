@@ -101,8 +101,9 @@ export function ClienteHistorial({ clienteId }: ClienteHistorialProps) {
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3">
-          {error}
+        <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3 flex items-center justify-between">
+          <span>{error}</span>
+          <button onClick={() => fetchEvents(1, false)} className="px-3 py-1.5 bg-red-600 text-white rounded text-sm hover:bg-red-700 transition">Reintentar</button>
         </div>
       )}
 

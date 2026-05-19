@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { formatCurrency } from '@/lib/utils'
 import type { ClienteStats } from './types'
 
@@ -31,6 +31,19 @@ export function ClienteStats({ clienteId }: ClienteStatsProps) {
     return () => controller.abort()
   }, [clienteId])
 
+  const refetch = useCallback(() => {
+    setError('')
+    setLoading(true)
+    fetch(`/api/clientes/${clienteId}/stats`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) { setStats(data.stats); setError('') }
+        else setError(data.error?.message || 'Error')
+      })
+      .catch(() => setError('Error de conexión'))
+      .finally(() => setLoading(false))
+  }, [clienteId])
+
   if (loading) {
     return (
       <div className="flex justify-center py-12">
@@ -40,7 +53,17 @@ export function ClienteStats({ clienteId }: ClienteStatsProps) {
   }
 
   if (error) {
-    return <div className="text-center py-8 text-red-600 text-sm">{error}</div>
+    return (
+      <div className="text-center py-8">
+        <p className="text-red-600 text-sm mb-2">{error}</p>
+        <button
+          onClick={refetch}
+          className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition"
+        >
+          Reintentar
+        </button>
+      </div>
+    )
   }
 
   if (!stats) {
