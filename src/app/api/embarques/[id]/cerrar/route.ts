@@ -423,11 +423,12 @@ export async function POST(
       // 6. Si hay discrepancia no justificada, crear descuento
       let descuento = null
       if (totalDiscrepancy > 0 && !justificacionDiscrepancia) {
+        const precioPaca = await resolverPrecio('PACA_AGUA', 1, 'DOMICILIO', null, null, tx)
         descuento = await tx.descuentoRepartidor.create({
           data: {
             embarqueId: id,
             trabajadorId: embarque.trabajadorId,
-            monto: totalDiscrepancy * 2500, // precio promedio aproximado
+            monto: totalDiscrepancy * precioPaca.precio,
             motivo: `Discrepancia conciliación: ${discrepancyAgua} agua, ${discrepancyHielo} hielo`,
             justificado: false,
           },

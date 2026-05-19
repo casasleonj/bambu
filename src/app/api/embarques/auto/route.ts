@@ -3,6 +3,7 @@ import { requireAuth, requireRole } from '@/lib/auth-check'
 import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
 import { withAdvisoryLock } from '@/lib/locks'
+import { getNextNumero } from '@/lib/sequence'
 import { z } from 'zod'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
@@ -83,10 +84,7 @@ export async function POST(request: NextRequest) {
         }
         if (!repartidor) break
 
-        const lastEmbarque = await tx.embarque.findFirst({
-          orderBy: { numero: 'desc' },
-        })
-        const nextNum = (lastEmbarque?.numero || 0) + 1
+        const nextNum = await getNextNumero(tx, { model: 'embarque' })
 
         const embarque = await tx.embarque.create({
           data: {

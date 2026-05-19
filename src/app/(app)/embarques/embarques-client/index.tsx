@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
 import { useConfirm } from '@/components/confirm-modal'
 import { EmptyState } from '@/components/empty-state'
@@ -13,12 +13,19 @@ import { EmbarqueCard } from './embarque-card'
 import { EmbarqueCreateModal } from './embarque-create-modal'
 import { EmbarqueDetailModal } from './embarque-detail-modal'
 
-export default function EmbarquesClient() {
-  const [embarques, setEmbarques] = useState<Embarque[]>([])
-  const [trabajadores, setTrabajadores] = useState<Trabajador[]>([])
-  const [rutas, setRutas] = useState<Ruta[]>([])
-  const [pedidos, setPedidos] = useState<Pedido[]>([])
-  const [loading, setLoading] = useState(true)
+interface InitialData {
+  embarques: Embarque[]
+  trabajadores: Trabajador[]
+  rutas: Ruta[]
+  pedidos: Pedido[]
+}
+
+export default function EmbarquesClient({ initialData }: { initialData?: InitialData }) {
+  const [embarques, setEmbarques] = useState<Embarque[]>(initialData?.embarques || [])
+  const [trabajadores, setTrabajadores] = useState<Trabajador[]>(initialData?.trabajadores || [])
+  const [rutas, setRutas] = useState<Ruta[]>(initialData?.rutas || [])
+  const [pedidos, setPedidos] = useState<Pedido[]>(initialData?.pedidos || [])
+  const [loading, setLoading] = useState(!initialData)
   const [showModal, setShowModal] = useState(false)
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [selectedEmbarque, setSelectedEmbarque] = useState<Embarque | null>(null)
@@ -26,6 +33,7 @@ export default function EmbarquesClient() {
   const [dateRange, setDateRange] = useState<{ desde: string | null; hasta: string | null }>({ desde: null, hasta: null })
   const [filtroEstado, setFiltroEstado] = useState('')
   const { confirm, modal } = useConfirm()
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const fetchData = useCallback(async () => {
     try {
@@ -36,16 +44,17 @@ export default function EmbarquesClient() {
         params.set('hasta', dateRange.hasta)
       }
       if (filtroEstado) params.set('estado', filtroEstado)
-      const [embarquesRes, trabajadoresRes, rutasRes] = await Promise.all([
+      const [embarquesRes, trabajadoresRes, rutasRes, pedidosRes] = await Promise.all([
         fetch(`/api/embarques?${params.toString()}`, { credentials: 'include' }),
         fetch('/api/trabajadores?rol=REPARTIDOR&activo=true', { credentials: 'include' }),
         fetch('/api/rutas?all=true', { credentials: 'include' }),
+        fetch('/api/pedidos?all=true', { credentials: 'include' }),
       ])
-      const pedidosData = await fetch('/api/pedidos?all=true', { credentials: 'include' }).then((r) => r.json())
 
       const embarquesJson = await embarquesRes.json()
       const trabajadoresJson = await trabajadoresRes.json()
       const rutasJson = await rutasRes.json()
+      const pedidosData = await pedidosRes.json()
 
       setEmbarques(embarquesJson.embarques || embarquesJson.data || [])
       setTrabajadores(trabajadoresJson.trabajadores || [])
@@ -120,7 +129,10 @@ export default function EmbarquesClient() {
   }
 
   const handleDateChange = useCallback((desde: string | null, hasta: string | null) => {
-    setDateRange({ desde, hasta })
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      setDateRange({ desde, hasta })
+    }, 300)
   }, [])
 
   if (fetchError) {

@@ -85,7 +85,9 @@ export default function CerrarEmbarqueClient() {
                 bolsaHielo: p.precioBolsaHielo,
               },
               pagado: p.totalPagado >= p.total ? 'COMPLETO' : p.totalPagado > 0 ? 'PARCIAL' : 'NO_PAGADO',
-              pagos: p.totalPagado > 0 ? [{ metodo: 'EFECTIVO', monto: p.totalPagado }] : [],
+              pagos: p.pagos && p.pagos.length > 0
+                ? p.pagos.map((pago: { metodo: string; monto: unknown }) => ({ metodo: pago.metodo, monto: Number(pago.monto) }))
+                : (p.totalPagado > 0 ? [{ metodo: 'EFECTIVO', monto: p.totalPagado }] : []),
             }
           }
           setCuadres(initialCuadres)
@@ -241,13 +243,7 @@ export default function CerrarEmbarqueClient() {
   }
 
   function openConfirmModal() {
-    const noEntregados = Object.values(cuadres).filter((c) => c.entregado === 'NO_ENTREGADO').length
-    const parciales = Object.values(cuadres).filter((c) => c.entregado === 'PARCIAL').length
-    if (noEntregados > 0 || parciales > 0) {
-      setShowConfirmModal(true)
-    } else {
-      handleCerrar()
-    }
+    setShowConfirmModal(true)
   }
 
   function removeVentaLibre(index: number) {

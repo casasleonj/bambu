@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { formatCurrency } from '@/lib/utils'
 import { useConfirm } from '@/components/confirm-modal'
 import { Modal } from '@/components/modal'
-import { getCapacidadInfo } from '@/lib/embarque-capacidad'
+import { getCapacidadInfo, PESOS_KG } from '@/lib/embarque-capacidad'
 import type { Embarque, Pedido, Trabajador } from './types'
 
 function calcularCapacidadProyectada(embarque: Embarque, pedidos: Pedido[], nuevosPedidoIds: string[]): { totalPacas: number; pesoKg: number } {
@@ -19,12 +19,12 @@ function calcularCapacidadProyectada(embarque: Embarque, pedidos: Pedido[], nuev
   const pesoNuevo = nuevosPedidos.reduce(
     (sum, p) =>
       sum +
-      (p.cPacaAguaPed || 0) * 10.0 +
-      (p.cPacaHieloPed || 0) * 11.0 +
-      (p.cBotellonFabPed || 0) * 20.0 +
-      (p.cBotellonDomPed || 0) * 20.0 +
-      (p.cBolsaAguaPed || 0) * 0.25 +
-      (p.cBolsaHieloPed || 0) * 0.55,
+      (p.cPacaAguaPed || 0) * PESOS_KG.cPacaAguaPed +
+      (p.cPacaHieloPed || 0) * PESOS_KG.cPacaHieloPed +
+      (p.cBotellonFabPed || 0) * PESOS_KG.cBotellonFabPed +
+      (p.cBotellonDomPed || 0) * PESOS_KG.cBotellonDomPed +
+      (p.cBolsaAguaPed || 0) * PESOS_KG.cBolsaAguaPed +
+      (p.cBolsaHieloPed || 0) * PESOS_KG.cBolsaHieloPed,
     0
   )
   return { totalPacas: pacasActuales + pacasNuevas, pesoKg: pesoActual + pesoNuevo }

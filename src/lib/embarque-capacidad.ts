@@ -7,7 +7,7 @@
  * - Bolsa agua: 10.0 / 40 ≈ 0.25 kg
  * - Bolsa hielo: 11.0 / 20 ≈ 0.55 kg
  */
-const PESOS_KG = {
+export const PESOS_KG = {
   cPacaAguaPed: 10.0,
   cPacaHieloPed: 11.0,
   cBotellonFabPed: 20.0,
