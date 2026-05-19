@@ -14,15 +14,20 @@ export function ClienteStats({ clienteId }: ClienteStatsProps) {
   const [error, setError] = useState('')
 
   useEffect(() => {
+    const controller = new AbortController()
     setLoading(true)
-    fetch(`/api/clientes/${clienteId}/stats`)
-      .then(r => r.json())
-      .then(data => {
-        if (data.success) setStats(data.stats)
-        else setError(data.error?.message || 'Error')
+    fetch(`/api/clientes/${clienteId}/stats`, { signal: controller.signal })
+      .then(r => {
+        if (!r.ok) throw new Error('Error al cargar estadísticas')
+        return r.json()
       })
-      .catch(() => setError('Error de conexión'))
-      .finally(() => setLoading(false))
+      .then(data => {
+        if (data.success && !controller.signal.aborted) setStats(data.stats)
+        else if (!controller.signal.aborted) setError(data.error?.message || 'Error')
+      })
+      .catch(err => { if (err.name !== 'AbortError' && !controller.signal.aborted) setError('Error de conexión') })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false) })
+    return () => controller.abort()
   }, [clienteId])
 
   if (loading) {

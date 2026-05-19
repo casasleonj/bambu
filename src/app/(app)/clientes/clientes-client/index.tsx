@@ -21,7 +21,7 @@ import { CasoGuiaModal } from '@/components/caso-guia-modal'
 import type { AlertaTipo } from '@/lib/alertas-config'
 import { getBadgeColor, ignorarAlerta } from '@/lib/alertas-config'
 
-export default function ClientesClient({ initialClientes, openClienteId }: ClientesClientProps) {
+export default function ClientesClient({ initialClientes, openClienteId, totalClientes }: ClientesClientProps) {
   const [clientes, setClientes] = useState<Cliente[]>(initialClientes)
   const { confirm, modal } = useConfirm()
   const [loading, setLoading] = useState(false)
@@ -183,7 +183,7 @@ export default function ClientesClient({ initialClientes, openClienteId }: Clien
     return hasAny ? JSON.stringify(result) : ''
   }
 
-  const clientesFiltrados = clientes.filter((c) => {
+  const clientesFiltrados = useMemo(() => clientes.filter((c) => {
     const term = search.toLowerCase()
     return (
       c.nombre.toLowerCase().includes(term) ||
@@ -204,7 +204,7 @@ export default function ClientesClient({ initialClientes, openClienteId }: Clien
       return dir * (new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime())
     }
     return dir * a.nombre.localeCompare(b.nombre)
-  })
+  }), [clientes, search, sortBy, sortDir])
 
   function openCreateModal() {
     setFormData({
@@ -274,8 +274,11 @@ export default function ClientesClient({ initialClientes, openClienteId }: Clien
       setFormError('El teléfono es obligatorio')
       return
     }
-    if (!/^[0-9]+$/.test(formData.telefono) || formData.telefono.length < 7) {
-      setFormError('Teléfono inválido: solo números, mínimo 7 dígitos')
+    // Normalizar teléfono: quitar espacios, guiones, paréntesis
+    const telefonoLimpio = formData.telefono.replace(/\s|-|\(|\)/g, '').trim()
+    // Validar formato colombiano: celular 3xx (10 dígitos) o fijo 60x (10-11 dígitos), opcional +57
+    if (!/^(?:\+?57)?\d{10,11}$/.test(telefonoLimpio)) {
+      setFormError('Teléfono inválido. Celular: 3xxXXXXXXX (10 dígitos). Fijo: 60xXXXXXXX (10-11 dígitos)')
       return
     }
 
@@ -296,11 +299,11 @@ export default function ClientesClient({ initialClientes, openClienteId }: Clien
           body: JSON.stringify(body),
         })
         if (res.ok) {
-          fetchClientes()
+          await fetchClientes()
           if (isEditing) {
             setIsEditing(false)
             setIsEdit(false)
-            viewCliente(selectedCliente.id)
+            await viewCliente(selectedCliente.id)
           } else {
             setShowModal(false)
           }
@@ -317,7 +320,7 @@ export default function ClientesClient({ initialClientes, openClienteId }: Clien
           body: JSON.stringify(body),
         })
         if (res.ok) {
-          fetchClientes()
+          await fetchClientes()
           setShowModal(false)
           toast.success('Cliente creado exitosamente')
         } else {
@@ -338,6 +341,10 @@ export default function ClientesClient({ initialClientes, openClienteId }: Clien
     setDetailLoading(true)
     try {
       const res = await fetch(`/api/clientes/${id}`)
+      if (!res.ok) {
+        toast.error('Cliente no encontrado')
+        return
+      }
       const data = await res.json()
       if (data.cliente) {
         setSelectedCliente(data.cliente)
@@ -357,7 +364,7 @@ export default function ClientesClient({ initialClientes, openClienteId }: Clien
     try {
       const res = await fetch(`/api/clientes/${id}`, { method: 'DELETE' })
       if (res.ok) {
-        fetchClientes()
+        await fetchClientes()
         setShowDetail(false)
         setSelectedCliente(null)
         toast.success('Cliente desactivado')
@@ -415,6 +422,7 @@ export default function ClientesClient({ initialClientes, openClienteId }: Clien
         sortDir={sortDir}
         onSortChange={(by, dir) => { setSortBy(by); setSortDir(dir) }}
         selectedClienteId={selectedCliente?.id}
+        totalClientes={totalClientes}
       />
 
       <ClienteForm

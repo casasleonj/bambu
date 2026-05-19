@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import type { Cliente } from './types'
@@ -20,9 +20,10 @@ interface ClienteTableProps {
   sortDir: 'asc' | 'desc'
   onSortChange: (by: 'nombre' | 'createdAt', dir: 'asc' | 'desc') => void
   selectedClienteId?: string | null
+  totalClientes?: number
 }
 
-export function ClienteTable({
+export const ClienteTable = React.memo(function ClienteTable({
   clientes,
   search,
   onSearchChange,
@@ -34,6 +35,7 @@ export function ClienteTable({
   sortDir,
   onSortChange,
   selectedClienteId,
+  totalClientes,
 }: ClienteTableProps) {
   const [filterSaldo, setFilterSaldo] = useState(false)
   const [filterFrecuencia, setFilterFrecuencia] = useState(false)
@@ -51,11 +53,11 @@ export function ClienteTable({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [quickActionsRow])
 
-  const clientesFiltrados = clientes.filter((c) => {
+  const clientesFiltrados = useMemo(() => clientes.filter((c) => {
     if (filterSaldo && !(c.saldoPendiente && c.saldoPendiente > 0)) return false
     if (filterFrecuencia && !c.plantillaRecurrente?.activo) return false
     return true
-  })
+  }), [clientes, filterSaldo, filterFrecuencia])
 
   const hasActiveFilters = filterSaldo || filterFrecuencia || search
 
@@ -163,7 +165,7 @@ export function ClienteTable({
       {clientes.length > 0 && (
         <div className="flex items-center justify-between mb-3">
           <p className="text-sm text-gray-500">
-            {clientesFiltrados.length} de {clientes.length} clientes
+            {clientesFiltrados.length}{totalClientes && totalClientes > clientes.length ? ` de ${totalClientes}` : ` de ${clientes.length}`} clientes
             {hasActiveFilters && ' (filtrados)'}
           </p>
           <div className="flex items-center gap-1 text-xs text-gray-500">
@@ -462,12 +464,12 @@ export function ClienteTable({
       </div>
     </>
   )
-}
+})
 
 // Helper function to calculate alerts (simplified version for table)
 function calcularAlertasCliente(cliente: Cliente, pedidos: any[]) {
   const alertas: any[] = []
-  const hoy = new Date().toISOString().slice(0, 10)
+  const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
 
   // Check for pending balance
   if (cliente.saldoPendiente && cliente.saldoPendiente > 0) {
@@ -475,7 +477,10 @@ function calcularAlertasCliente(cliente: Cliente, pedidos: any[]) {
   }
 
   // Check for multiple orders today
-  const pedidosHoy = pedidos.filter((p: any) => p.fecha?.slice(0, 10) === hoy)
+  const pedidosHoy = pedidos.filter((p: any) => {
+    const fechaLocal = p.fecha ? new Date(p.fecha).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }) : ''
+    return fechaLocal === hoy
+  })
   if (pedidosHoy.length >= 2) {
     alertas.push({ severidad: 'MEDIA', tipo: 'MULTIPLES_PEDIDOS', detalle: `${pedidosHoy.length} pedidos hoy` })
   }

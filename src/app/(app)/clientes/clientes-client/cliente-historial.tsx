@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import type { TimelineEvent, TimelineFilter } from './types'
@@ -39,34 +39,39 @@ export function ClienteHistorial({ clienteId }: ClienteHistorialProps) {
   const [hasMore, setHasMore] = useState(false)
   const [error, setError] = useState('')
 
-  const fetchEvents = useCallback(async (nextPage = 1, append = false) => {
+  const fetchEvents = useCallback(async (nextPage = 1, append = false, signal?: AbortSignal) => {
     setLoading(true)
     setError('')
     try {
       const url = `/api/clientes/${clienteId}/historial?meses=${meses}&page=${nextPage}&pageSize=20`
-      const res = await fetch(url)
+      const res = await fetch(url, signal ? { signal } : undefined)
+      if (!res.ok) throw new Error('Error al cargar historial')
       const data = await res.json()
-      if (data.success) {
+      if (data.success && !signal?.aborted) {
         setEvents(prev => append ? [...prev, ...data.events] : data.events)
         setHasMore(data.hasMore)
         setPage(nextPage)
-      } else {
+      } else if (!signal?.aborted) {
         setError(data.error?.message || 'Error cargando historial')
       }
-    } catch {
-      setError('Error de conexión')
+    } catch (err: any) {
+      if (err.name !== 'AbortError' && !signal?.aborted) {
+        setError('Error de conexión')
+      }
     } finally {
-      setLoading(false)
+      if (!signal?.aborted) setLoading(false)
     }
   }, [clienteId, meses])
 
   useEffect(() => {
-    fetchEvents(1, false)
+    const controller = new AbortController()
+    fetchEvents(1, false, controller.signal)
+    return () => controller.abort()
   }, [fetchEvents])
 
-  const filtrados = filtro === 'TODOS'
+  const filtrados = useMemo(() => filtro === 'TODOS'
     ? events
-    : events.filter(e => e.tipo === filtro)
+    : events.filter(e => e.tipo === filtro), [events, filtro])
 
   return (
     <div className="space-y-4">

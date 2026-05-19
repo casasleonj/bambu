@@ -11,6 +11,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
   try {
     const ahora = new Date()
+    const twoYearsAgo = new Date(ahora)
+    twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2)
     const hace30 = new Date(ahora)
     hace30.setDate(hace30.getDate() - 30)
     const hace90 = new Date(ahora)
@@ -18,12 +20,12 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
     const [pedidos, abonosCliente] = await Promise.all([
       prisma.pedido.findMany({
-        where: { clienteId: id, estadoEntrega: { not: 'ANULADO' } },
+        where: { clienteId: id, estadoEntrega: { not: 'ANULADO' }, fecha: { gte: twoYearsAgo } },
         orderBy: { fecha: 'desc' },
         include: { items: true, pagos: true },
       }),
       prisma.abono.findMany({
-        where: { clienteId: id },
+        where: { clienteId: id, fecha: { gte: twoYearsAgo } },
         orderBy: { fecha: 'desc' },
       }),
     ])
