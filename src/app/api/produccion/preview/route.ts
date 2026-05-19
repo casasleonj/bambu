@@ -16,13 +16,13 @@ export async function GET(request: NextRequest) {
     const endOfDay = new Date(startOfDay)
     endOfDay.setDate(endOfDay.getDate() + 1)
 
-    const [ultimoCierre, ventas, embarques] = await Promise.all([
+    const [ultimoCierre, ventas, embarquesCerrados, embarquesDelDia] = await Promise.all([
       prisma.cierreDia.findFirst({ orderBy: { fecha: 'desc' } }),
       getVentasDelDia(fecha),
       prisma.embarque.findMany({
         where: {
           fecha: { gte: startOfDay, lt: endOfDay },
-          estado: { notIn: ['CANCELADO'] },
+          estado: 'CERRADO',
         },
         include: {
           trabajador: {
@@ -37,6 +37,13 @@ export async function GET(request: NextRequest) {
           },
         },
       }),
+      prisma.embarque.findMany({
+        where: {
+          fecha: { gte: startOfDay, lt: endOfDay },
+          estado: 'ABIERTO',
+        },
+        select: { id: true },
+      }),
     ])
 
     // Agrupar entregas por repartidor (pacas asignadas - devueltas - rotas)
@@ -48,7 +55,7 @@ export async function GET(request: NextRequest) {
       entregasAgua: number
       entregasHielo: number
     }>()
-    for (const e of embarques) {
+    for (const e of embarquesCerrados) {
       const entregasAgua = Math.max(0, e.pacasAgua - e.devueltasAgua - e.rotasAgua)
       const entregasHielo = Math.max(0, e.pacasHielo - e.devueltasHielo - e.rotasHielo)
       const existing = repMap.get(e.trabajador.id)
@@ -74,7 +81,7 @@ export async function GET(request: NextRequest) {
       ventasAgua: ventas.aguaVendida,
       ventasHielo: ventas.hieloVendido,
       repartidores,
-      embarquesAbiertos: embarques.some((e) => e.estado === 'ABIERTO'),
+      embarquesAbiertos: embarquesDelDia.length > 0,
     })
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching produccion preview:')

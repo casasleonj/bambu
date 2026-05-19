@@ -44,8 +44,8 @@ export async function skipBaseCaja(page: Page) {
 }
 
 export async function fullLogin(page: Page, user = 'admin', pass = 'admin123') {
+  await skipBaseCaja(page)
   await login(page, user, pass)
-  await handleBaseCaja(page)
 }
 
 // ─── Navigation ──────────────────────────────────────────────────────────────
@@ -169,6 +169,31 @@ export async function getFirstFacturaConSaldo(page: Page) {
   const res = await apiGet(page, '/api/facturas')
   const body = await res.json()
   return body.facturas?.find((f: any) => Number(f.saldo) > 0)
+}
+
+// ─── Produccion Helpers ──────────────────────────────────────────────────────
+
+export async function createSellador(page: Page, data?: Partial<{
+  nombre: string; tipoPago: string
+}>) {
+  const wantsComision = data?.tipoPago !== 'FIJO'
+  const res = await apiPost(page, '/api/trabajadores', {
+    nombre: data?.nombre || `Sellador Test ${Date.now() % 10000}`,
+    rol: 'SELLADOR',
+    tipoPago: data?.tipoPago || 'COMISION',
+    usaMoto: false,
+    comPacaAgua: wantsComision ? 500 : 0,
+    comPacaHielo: wantsComision ? 300 : 0,
+    comBotellon: wantsComision ? 200 : 0,
+    salarioFijo: data?.tipoPago === 'FIJO' || data?.tipoPago === 'MIXTO' ? 50000 : 0,
+  })
+  return res.json()
+}
+
+export async function getSellador(page: Page) {
+  const res = await apiGet(page, '/api/trabajadores?rol=SELLADOR&activo=true')
+  const body = await res.json()
+  return body.trabajadores?.[0]
 }
 
 // ─── Re-export for convenience ───────────────────────────────────────────────

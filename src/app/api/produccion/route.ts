@@ -63,6 +63,20 @@ export async function POST(request: NextRequest) {
     const prodAgua = Math.round((parsed.data.conteoAAgua + parsed.data.conteoBAgua) / 2)
     const prodHielo = Math.round((parsed.data.conteoAHielo + parsed.data.conteoBHielo) / 2)
 
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    const existing = await prisma.produccion.findFirst({
+      where: {
+        trabajadorId: parsed.data.trabajadorId,
+        fecha: { gte: today, lt: new Date(today.getTime() + 86400000) },
+        turno: parsed.data.turno,
+      },
+    })
+    if (existing) {
+      return apiError(`Ya existe producción registrada para este trabajador en el turno ${parsed.data.turno} de hoy`, 409)
+    }
+
     const ultimoCierre = await prisma.cierreDia.findFirst({
       orderBy: { fecha: 'desc' },
     })
@@ -72,13 +86,21 @@ export async function POST(request: NextRequest) {
 
     const ventas = await getVentasDelDia()
 
-    const stockFinAgua = Math.max(0, stockIniAgua + prodAgua - ventas.aguaVendida)
-    const stockFinHielo = Math.max(0, stockIniHielo + prodHielo - ventas.hieloVendido)
+    const stockFinAgua = stockIniAgua + prodAgua - ventas.aguaVendida
+    const stockFinHielo = stockIniHielo + prodHielo - ventas.hieloVendido
 
     const trabajador = await prisma.trabajador.findUnique({
       where: { id: parsed.data.trabajadorId },
-      select: { comPacaAgua: true, comPacaHielo: true, comRepartAgua: true, comRepartHielo: true },
+      select: { comPacaAgua: true, comPacaHielo: true, comRepartAgua: true, comRepartHielo: true, rol: true },
     })
+
+    if (!trabajador) {
+      return apiError('Trabajador no encontrado', 400)
+    }
+
+    if (trabajador.rol !== 'SELLADOR') {
+      return apiError('El trabajador seleccionado no tiene rol de SELLADOR', 400)
+    }
 
     const comSell = trabajador
       ? calcComSellador(prodAgua, prodHielo, trabajador)
@@ -87,10 +109,10 @@ export async function POST(request: NextRequest) {
     const embarquesHoy = await prisma.embarque.findMany({
       where: {
         fecha: {
-          gte: new Date(new Date().setHours(0, 0, 0, 0)),
-          lt: new Date(new Date().setHours(23, 59, 59, 999)),
+          gte: today,
+          lt: new Date(today.getTime() + 86400000),
         },
-        estado: { notIn: ['CANCELADO'] },
+        estado: 'CERRADO',
       },
       select: {
         pacasAgua: true,
@@ -160,6 +182,10 @@ export async function POST(request: NextRequest) {
 
     return apiSuccess({ produccion }, 201)
   } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'P2002') {
+      return apiError('Ya existe producción registrada para este trabajador y turno hoy', 409)
+    }
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error creating produccion:')
     return apiError('Error', 500)
   }
 }

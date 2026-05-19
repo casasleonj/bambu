@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { formatCurrency } from '@/lib/utils'
@@ -49,25 +49,37 @@ export default function ProduccionClient() {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [trabajadores, setTrabajadores] = useState<TrabajadorOption[]>([])
+  const [loadingTrabajadores, setLoadingTrabajadores] = useState(true)
   const [repartidores, setRepartidores] = useState<RepartidorOption[]>([])
   const [embarquesAbiertos, setEmbarquesAbiertos] = useState(false)
   const [formData, setFormData] = useState<FormData>(EMPTY_FORM)
 
   const selectedTrabajador = trabajadores.find((t) => t.id === formData.trabajadorId)
 
-  const fetchTrabajadores = async () => {
+  const fetchTrabajadores = async (signal?: AbortSignal) => {
     try {
-      const res = await fetch('/api/trabajadores?rol=SELLADOR&activo=true')
+      const res = await fetch('/api/trabajadores?rol=SELLADOR&activo=true', { signal })
+      if (res.status === 401 || res.status === 403) {
+        router.push(`/login?callbackUrl=${encodeURIComponent('/produccion')}`)
+        return
+      }
       const data = await res.json()
       setTrabajadores(data.trabajadores || [])
     } catch {
+      if (signal?.aborted) return
       toast.error('Error cargando trabajadores')
+    } finally {
+      setLoadingTrabajadores(false)
     }
   }
 
-  const fetchPreview = async () => {
+  const fetchPreview = async (signal?: AbortSignal) => {
     try {
-      const res = await fetch('/api/produccion/preview')
+      const res = await fetch('/api/produccion/preview', { signal })
+      if (res.status === 401 || res.status === 403) {
+        router.push(`/login?callbackUrl=${encodeURIComponent('/produccion')}`)
+        return
+      }
       const data = await res.json()
       const preview: PreviewData = data
       setStockInicial({
@@ -79,6 +91,7 @@ export default function ProduccionClient() {
       setRepartidores(preview.repartidores || [])
       setEmbarquesAbiertos(preview.embarquesAbiertos)
     } catch {
+      if (signal?.aborted) return
       toast.error('Error cargando datos del día')
     } finally {
       setLoading(false)
@@ -86,28 +99,30 @@ export default function ProduccionClient() {
   }
 
   useEffect(() => {
-    fetchPreview()
-    fetchTrabajadores()
+    const controller = new AbortController()
+    fetchPreview(controller.signal)
+    fetchTrabajadores(controller.signal)
+    return () => controller.abort()
   }, [])
 
-  const prodAgua = Math.round((formData.conteoAAgua + formData.conteoBAgua) / 2)
-  const prodHielo = Math.round((formData.conteoAHielo + formData.conteoBHielo) / 2)
-  const stockFinEsperadoAgua = Math.max(0, stockInicial.stockIniAgua + prodAgua - stockInicial.ventasAgua)
-  const stockFinEsperadoHielo = Math.max(0, stockInicial.stockIniHielo + prodHielo - stockInicial.ventasHielo)
-  const perdidasAgua = formData.rotasAgua + formData.filtradasAgua + formData.consumoInternoAgua
-  const perdidasHielo = formData.rotasHielo + formData.filtradasHielo + formData.consumoInternoHielo
-  const diferenciaAgua = stockFinEsperadoAgua - formData.stockFinFisicoAgua - perdidasAgua
-  const diferenciaHielo = stockFinEsperadoHielo - formData.stockFinFisicoHielo - perdidasHielo
+  const prodAgua = useMemo(() => Math.round((formData.conteoAAgua + formData.conteoBAgua) / 2), [formData.conteoAAgua, formData.conteoBAgua])
+  const prodHielo = useMemo(() => Math.round((formData.conteoAHielo + formData.conteoBHielo) / 2), [formData.conteoAHielo, formData.conteoBHielo])
+  const stockFinEsperadoAgua = useMemo(() => stockInicial.stockIniAgua + prodAgua - stockInicial.ventasAgua, [stockInicial.stockIniAgua, prodAgua, stockInicial.ventasAgua])
+  const stockFinEsperadoHielo = useMemo(() => stockInicial.stockIniHielo + prodHielo - stockInicial.ventasHielo, [stockInicial.stockIniHielo, prodHielo, stockInicial.ventasHielo])
+  const perdidasAgua = useMemo(() => formData.rotasAgua + formData.filtradasAgua + formData.consumoInternoAgua, [formData.rotasAgua, formData.filtradasAgua, formData.consumoInternoAgua])
+  const perdidasHielo = useMemo(() => formData.rotasHielo + formData.filtradasHielo + formData.consumoInternoHielo, [formData.rotasHielo, formData.filtradasHielo, formData.consumoInternoHielo])
+  const diferenciaAgua = useMemo(() => stockFinEsperadoAgua - formData.stockFinFisicoAgua - perdidasAgua, [stockFinEsperadoAgua, formData.stockFinFisicoAgua, perdidasAgua])
+  const diferenciaHielo = useMemo(() => stockFinEsperadoHielo - formData.stockFinFisicoHielo - perdidasHielo, [stockFinEsperadoHielo, formData.stockFinFisicoHielo, perdidasHielo])
 
-  const comAgua = prodAgua * (selectedTrabajador?.comPacaAgua || 200)
-  const comHielo = prodHielo * (selectedTrabajador?.comPacaHielo || 200)
-  const comisionTotal = comAgua + comHielo
+  const comAgua = useMemo(() => prodAgua * (selectedTrabajador?.comPacaAgua || 200), [prodAgua, selectedTrabajador?.comPacaAgua])
+  const comHielo = useMemo(() => prodHielo * (selectedTrabajador?.comPacaHielo || 200), [prodHielo, selectedTrabajador?.comPacaHielo])
+  const comisionTotal = useMemo(() => comAgua + comHielo, [comAgua, comHielo])
 
-  const comRepartAgua = repartidores.reduce((s, r) => s + r.entregasAgua * r.comPacaAgua, 0)
-  const comRepartHielo = repartidores.reduce((s, r) => s + r.entregasHielo * r.comPacaHielo, 0)
-  const comRepartTotal = comRepartAgua + comRepartHielo
+  const comRepartAgua = useMemo(() => repartidores.reduce((s, r) => s + r.entregasAgua * r.comPacaAgua, 0), [repartidores])
+  const comRepartHielo = useMemo(() => repartidores.reduce((s, r) => s + r.entregasHielo * r.comPacaHielo, 0), [repartidores])
+  const comRepartTotal = useMemo(() => comRepartAgua + comRepartHielo, [comRepartAgua, comRepartHielo])
 
-  const conciliation: ConciliationResult = (() => {
+  const conciliation: ConciliationResult = useMemo(() => {
     const totalDiff = Math.abs(diferenciaAgua) + Math.abs(diferenciaHielo)
     if (totalDiff === 0) {
       return { status: 'ok', message: 'Todo cuadra', diferenciaAgua, diferenciaHielo }
@@ -119,18 +134,18 @@ export default function ProduccionClient() {
     if (diferenciaHielo < 0) issues.push(`Sobran ${Math.abs(diferenciaHielo)} paca(s) de hielo`)
     const hasSobrantes = diferenciaAgua < 0 || diferenciaHielo < 0
     return { status: hasSobrantes ? 'danger' : 'warning', message: issues.join('. '), diferenciaAgua, diferenciaHielo }
-  })()
+  }, [diferenciaAgua, diferenciaHielo])
 
   const handleSubmit = async () => {
     if (!formData.trabajadorId) {
       toast.error('Selecciona un trabajador')
       return
     }
-    if (!formData.conteoAAgua && !formData.conteoAHielo) {
+    if (formData.conteoAAgua === 0 && formData.conteoAHielo === 0) {
       toast.error('Ingresá los conteos de producción')
       return
     }
-    if (!formData.stockFinFisicoAgua && !formData.stockFinFisicoHielo) {
+    if (formData.stockFinFisicoAgua === 0 && formData.stockFinFisicoHielo === 0) {
       toast.error('Ingresá el stock físico contado')
       return
     }
@@ -148,11 +163,15 @@ export default function ProduccionClient() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       })
+      if (res.status === 401 || res.status === 403) {
+        router.push(`/login?callbackUrl=${encodeURIComponent('/produccion')}`)
+        return
+      }
       if (res.ok) {
         toast.success('Producción registrada correctamente')
         router.refresh()
         setStep(1)
-        setFormData(EMPTY_FORM)
+        setFormData({ ...EMPTY_FORM })
       } else {
         const err = await res.json()
         toast.error(err.error || 'Error al registrar')
@@ -248,7 +267,7 @@ export default function ProduccionClient() {
             </div>
           </>
         )}
-        {(formData.stockFinFisicoAgua > 0 || formData.stockFinFisicoHielo > 0) && (
+        {(formData.stockFinFisicoAgua >= 0 || formData.stockFinFisicoHielo >= 0) && (
           <div className="border-t pt-2 flex items-center justify-between font-semibold">
             <span className="text-gray-800">Vs. Físico</span>
             <span className={`w-10 text-right font-bold ${diferenciaAgua === 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -466,13 +485,18 @@ export default function ProduccionClient() {
                       value={formData.trabajadorId}
                       onChange={(e) => setFormData({ ...formData, trabajadorId: e.target.value })}
                       className="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                      disabled={loadingTrabajadores}
                     >
                       <option value="">Seleccionar...</option>
-                      {trabajadores.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.nombre}
-                        </option>
-                      ))}
+                      {loadingTrabajadores ? (
+                        <option value="" disabled>Cargando...</option>
+                      ) : (
+                        trabajadores.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.nombre}
+                          </option>
+                        ))
+                      )}
                     </select>
                   </div>
                   <div>
@@ -598,6 +622,7 @@ export default function ProduccionClient() {
                             onChange={(e) => setFormData({ ...formData, [keyA]: Number(e.target.value) })}
                             className="p-2 border rounded-lg text-center"
                             placeholder="0"
+                            data-testid={`perdidas-${keyA}`}
                           />
                           <input
                             type="number"
@@ -606,6 +631,7 @@ export default function ProduccionClient() {
                             onChange={(e) => setFormData({ ...formData, [keyH]: Number(e.target.value) })}
                             className="p-2 border rounded-lg text-center"
                             placeholder="0"
+                            data-testid={`perdidas-${keyH}`}
                           />
                         </div>
                       ))}
