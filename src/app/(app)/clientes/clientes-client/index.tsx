@@ -81,13 +81,13 @@ export default function ClientesClient({ initialClientes, openClienteId }: Clien
           setUsuarios(users)
         }
       })
-      .catch(() => {})
+      .catch(err => console.warn('[init] trabajadores fetch failed', err))
     fetch('/api/auth/profile')
       .then(r => r.json())
       .then(d => {
         if (d.success && d.user) setUserRole(d.user.rol)
       })
-      .catch(() => {})
+      .catch(err => console.warn('[init] profile fetch failed', err))
   }, [])
 
   useEffect(() => {

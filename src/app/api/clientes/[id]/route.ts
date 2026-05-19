@@ -149,10 +149,12 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
   if (roleCheck instanceof Response) return roleCheck
   const { id } = await params
   try {
-    await prisma.cliente.update({
-      where: { id },
+    const cliente = await prisma.cliente.update({
+      where: { id, activo: true },
       data: { activo: false },
     })
+
+    if (!cliente) return apiError('Not found', 404)
 
     logAudit({
       entidad: 'Cliente',
