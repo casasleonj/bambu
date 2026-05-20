@@ -21,7 +21,6 @@ const formatMoney = (val: number) => formatCurrency(val)
 
 export default function CierreClient({ initialFecha }: { initialFecha: string | null }) {
   const router = useRouter()
-  const { data: session } = useSession()
   const { confirm, modal } = useConfirm()
   const [data, setData] = useState<CierreData | null>(null)
   const [statusCierre, setStatusCierre] = useState<'COMPLETO' | 'INCOMPLETO' | null>(null)
@@ -53,7 +52,9 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
   useEffect(() => { arqueoRef.current = arqueoData }, [arqueoData])
   const [netoEnArqueo, setNetoEnArqueo] = useState(0)
   const abortControllerRef = useRef<AbortController | null>(null)
+  const fetchedDateRef = useRef<string | null>(null)
 
+  const { data: session } = useSession()
   const userRole = (session?.user as { role?: string } | undefined)?.role
   const canClose = userRole === 'ADMIN' || userRole === 'ASISTENTE'
 
@@ -141,17 +142,18 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
   }, [calcularNetoCaja])
 
   useEffect(() => {
-    const targetDate = initialFecha || fecha
+    if (fetchedDateRef.current === fecha) return
+    fetchedDateRef.current = fecha
     if (abortControllerRef.current) abortControllerRef.current.abort()
     const ctrl = new AbortController()
     abortControllerRef.current = ctrl
     /* eslint-disable react-hooks/set-state-in-effect */
-    fetchCierre(targetDate, ctrl.signal)
-    loadBaseDia(targetDate, ctrl.signal)
-    checkLastCierre(targetDate, ctrl.signal)
+    fetchCierre(fecha, ctrl.signal)
+    loadBaseDia(fecha, ctrl.signal)
+    checkLastCierre(fecha, ctrl.signal)
     /* eslint-enable react-hooks/set-state-in-effect */
     return () => ctrl.abort()
-  }, [initialFecha, fecha, fetchCierre, loadBaseDia, checkLastCierre])
+  }, [fecha, fetchCierre, loadBaseDia, checkLastCierre])
 
   const handleCerrar = async (e?: React.FormEvent) => {
     e?.preventDefault()

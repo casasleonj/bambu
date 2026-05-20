@@ -4,6 +4,9 @@ const prisma = new PrismaClient()
 
 async function clean() {
   const tables = [
+    'Abono',
+    'CierreDia',
+    'Produccion',
     'Pago',
     'Factura',
     'PedidoItem',
@@ -19,6 +22,18 @@ async function clean() {
     'PrecioHistorial',
     'PrecioVolumen',
     'Producto',
+    'Ruta',
+    'RutaDia',
+    'PlantillaRecurrente',
+    'Insumo',
+    'Proveedor',
+    'Compra',
+    'Gasto',
+    'Nomina',
+    'Caso',
+    'CasoEvento',
+    'ProductoConfig',
+    'Precio',
   ]
   
   for (const table of tables) {

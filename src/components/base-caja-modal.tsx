@@ -36,7 +36,11 @@ export default function BaseCajaModal() {
           if (cierreDate !== yesterday) {
             const nextUnclosed = new Date(cierreData.cierre.fecha)
             nextUnclosed.setDate(nextUnclosed.getDate() + 1)
-            window.location.href = `/cierre?fecha=${nextUnclosed.toISOString().split('T')[0]}`
+            const targetUrl = `/cierre?fecha=${nextUnclosed.toISOString().split('T')[0]}`
+            const currentPath = window.location.pathname + window.location.search
+            if (currentPath !== targetUrl) {
+              window.location.href = targetUrl
+            }
             return
           }
         }

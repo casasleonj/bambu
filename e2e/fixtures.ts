@@ -1,6 +1,24 @@
 import { test, expect, type Page } from '@playwright/test'
+import { execSync } from 'child_process'
+import { resolve } from 'path'
 
 export const BASE = 'http://localhost:3000'
+
+// ─── Test Database Reset ─────────────────────────────────────────────────────
+
+export function resetTestDatabase() {
+  const root = resolve(__dirname, '..')
+  execSync('npx tsx prisma/clean.ts', { cwd: root, stdio: 'ignore' })
+  execSync('npx tsx prisma/seed-test.ts', { cwd: root, stdio: 'ignore' })
+}
+
+// ─── Database Cleanup ────────────────────────────────────────────────────────
+
+export function resetDatabase() {
+  const root = resolve(__dirname, '..')
+  execSync('npx tsx prisma/clean.ts', { cwd: root, stdio: 'ignore' })
+  execSync('npx tsx prisma/seed.ts', { cwd: root, stdio: 'ignore' })
+}
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
@@ -27,7 +45,9 @@ export async function handleBaseCaja(page: Page) {
   await page.waitForTimeout(300)
   const btn = page.locator('button:has-text("Continuar")')
   if (await btn.count() > 0) {
-    await page.fill('input[type="number"]', '100000')
+    const input = page.locator('.fixed input[type="number"]')
+    await input.fill('100000')
+    await page.waitForTimeout(100)
     await btn.first().click()
     await page.waitForTimeout(600)
   }
@@ -46,6 +66,97 @@ export async function skipBaseCaja(page: Page) {
 export async function fullLogin(page: Page, user = 'admin', pass = 'admin123') {
   await skipBaseCaja(page)
   await login(page, user, pass)
+}
+
+export async function loginAs(page: Page, role: 'admin' | 'asistente' | 'contador' | 'repartidor') {
+  const credentials = {
+    admin: { user: 'admin', pass: 'admin123' },
+    asistente: { user: 'asistente', pass: 'asist123' },
+    contador: { user: 'contador', pass: 'cont123' },
+    repartidor: { user: 'repartidor', pass: 'rep123' },
+  }
+  const { user, pass } = credentials[role]
+  await skipBaseCaja(page)
+  await login(page, user, pass)
+}
+
+// ─── UI Helpers ──────────────────────────────────────────────────────────────
+
+export async function waitForToast(page: Page, text: string, type: 'success' | 'error' = 'success') {
+  const toast = page.locator('[data-sonner-toast]').filter({ hasText: text })
+  await expect(toast).toBeVisible({ timeout: 10000 })
+  if (type === 'error') {
+    await expect(toast).toHaveAttribute('data-type', 'error')
+  }
+}
+
+export async function clickButton(page: Page, text: string) {
+  await page.locator(`button:has-text("${text}")`).first().click()
+}
+
+export async function fillInput(page: Page, selector: string, value: string) {
+  const input = page.locator(selector).first()
+  await input.clear()
+  await input.fill(value)
+}
+
+export async function selectOption(page: Page, selector: string, value: string) {
+  await page.locator(selector).first().selectOption(value)
+}
+
+export async function getText(page: Page, selector: string): Promise<string> {
+  return page.locator(selector).first().textContent() as Promise<string>
+}
+
+export async function isDisabled(page: Page, selector: string): Promise<boolean> {
+  return page.locator(selector).first().isDisabled()
+}
+
+export async function isVisible(page: Page, selector: string): Promise<boolean> {
+  return page.locator(selector).first().isVisible()
+}
+
+export async function countElements(page: Page, selector: string): Promise<number> {
+  return page.locator(selector).count()
+}
+
+// ─── Mobile Viewport ─────────────────────────────────────────────────────────
+
+export async function setMobileViewport(page: Page) {
+  await page.setViewportSize({ width: 375, height: 667 })
+}
+
+export async function checkTouchTargets(page: Page, minSize = 44) {
+  const buttons = page.locator('button, [role="button"], a, input[type="submit"]')
+  const count = await buttons.count()
+  const failures: string[] = []
+  for (let i = 0; i < Math.min(count, 20); i++) {
+    const box = await buttons.nth(i).boundingBox()
+    if (box) {
+      if (box.width < minSize || box.height < minSize) {
+        failures.push(`Button ${i}: ${box.width}x${box.height} (min: ${minSize}x${minSize})`)
+      }
+    }
+  }
+  if (failures.length > 0) {
+    throw new Error(`Touch targets too small:\n${failures.join('\n')}`)
+  }
+}
+
+export async function checkHorizontalOverflow(page: Page) {
+  const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth)
+  const clientWidth = await page.evaluate(() => document.documentElement.clientWidth)
+  if (scrollWidth > clientWidth + 2) {
+    throw new Error(`Horizontal overflow: scrollWidth=${scrollWidth}, clientWidth=${clientWidth}`)
+  }
+}
+
+// ─── Date Helpers ────────────────────────────────────────────────────────────
+
+export function getUniqueFutureDate(offsetDays: number = 0): string {
+  const date = new Date()
+  date.setDate(date.getDate() + 1 + offsetDays)
+  return date.toISOString().split('T')[0]
 }
 
 // ─── Navigation ──────────────────────────────────────────────────────────────
@@ -73,6 +184,15 @@ export async function apiPut(page: Page, path: string, data: any) {
 
 export async function apiDelete(page: Page, path: string) {
   return page.request.delete(`${BASE}${path}`)
+}
+
+export async function closeAllEmbarques(page: Page) {
+  const res = await apiGet(page, '/api/embarques?estado=ABIERTO&all=true')
+  const body = await res.json()
+  const embarques = body.embarques || []
+  for (const embarque of embarques) {
+    await apiPost(page, `/api/embarques/${embarque.id}/cerrar`, {})
+  }
 }
 
 // ─── Entity Creators (via API) ───────────────────────────────────────────────
