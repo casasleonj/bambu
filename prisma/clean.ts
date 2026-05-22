@@ -23,23 +23,19 @@ async function clean() {
     'PrecioVolumen',
     'Producto',
     'Ruta',
-    'RutaDia',
     'PlantillaRecurrente',
     'Insumo',
     'Proveedor',
-    'Compra',
     'Gasto',
     'Nomina',
     'Caso',
     'CasoEvento',
-    'ProductoConfig',
-    'Precio',
   ]
   
   for (const table of tables) {
     try {
-      await prisma.$executeRawUnsafe(`TRUNCATE TABLE "${table}" RESTART IDENTITY CASCADE`)
-      console.log(`Truncated ${table}`)
+      await prisma.$executeRawUnsafe(`DELETE FROM "${table}"`)
+      console.log(`Cleaned ${table}`)
     } catch (e) {
       console.log(`Skipped ${table}: ${e instanceof Error ? e.message : 'unknown'}`)
     }
