@@ -188,6 +188,7 @@ model Cliente {
 
   nombreNegocio String?
   tipoNegocio   String?
+  fuente        String?
   horaApertura String?
   preciosEspeciales String?
 

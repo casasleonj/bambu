@@ -149,6 +149,7 @@ export async function POST(request: NextRequest) {
               barrio: clienteNuevo.barrio,
               nombreNegocio: clienteNuevo.nombreNegocio || null,
               tipoNegocio: clienteNuevo.tipoNegocio || null,
+              fuente: clienteNuevo.fuente || null,
               frecuencia: 'NINGUNA',
               creadoPorRol: authResult.user?.role as any || 'ASISTENTE',
             },

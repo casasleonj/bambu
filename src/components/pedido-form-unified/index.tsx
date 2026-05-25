@@ -16,6 +16,10 @@ const TIPOS_NEGOCIO: string[] = [
   'Gimnasio', 'Salón de eventos', 'Guardería', 'Veterinaria', 'Estación de servicio',
 ]
 
+const FUENTES: string[] = [
+  'Página web', 'Instagram', 'Facebook', 'Referido', 'WhatsApp',
+]
+
 // ==================== TYPES ====================
 
 export interface PedidoInicialCliente {
@@ -56,7 +60,7 @@ export interface PedidoUnifiedData {
   preciosManuales: Record<string, number>
   pagos: Array<{ metodo: string; monto: number }>
   obs?: string
-  clienteNuevo?: { nombre: string; apellido?: string; telefono: string; direccion: string; barrio?: string; nombreNegocio?: string; tipoNegocio?: string }
+  clienteNuevo?: { nombre: string; apellido?: string; telefono: string; direccion: string; barrio?: string; nombreNegocio?: string; tipoNegocio?: string; fuente?: string }
   actualizarCliente?: { direccion: string; barrio: string }
   ventaRapida: boolean
   isEdit?: boolean
@@ -71,7 +75,7 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
   const [searchTerm, setSearchTerm] = useState('')
   const [clienteSeleccionado, setClienteSeleccionado] = useState<Cliente | null>(null)
   const [mostrarNuevo, setMostrarNuevo] = useState(false)
-  const [nuevoCliente, setNuevoCliente] = useState({ nombre: '', apellido: '', telefono: '', direccion: '', barrio: '', nombreNegocio: '', tipoNegocio: '' })
+  const [nuevoCliente, setNuevoCliente] = useState({ nombre: '', apellido: '', telefono: '', direccion: '', barrio: '', nombreNegocio: '', tipoNegocio: '', fuente: '' })
   const [pagos, setPagos] = useState<{ metodo: string; monto: number }[]>([])
   const [modoPagoActivo, setModoPagoActivo] = useState<string | null>(null)
   const [montoInput, setMontoInput] = useState('')
@@ -288,12 +292,12 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
     setSubmitting(true)
 
     let clienteId = 'CONSUMIDOR_FINAL'
-    let clienteNuevoData: { nombre: string; apellido?: string; telefono: string; direccion: string; barrio?: string; nombreNegocio?: string; tipoNegocio?: string } | undefined
+    let clienteNuevoData: { nombre: string; apellido?: string; telefono: string; direccion: string; barrio?: string; nombreNegocio?: string; tipoNegocio?: string; fuente?: string } | undefined
 
     if (clienteSeleccionado) {
       clienteId = clienteSeleccionado.id
     } else if (mostrarNuevo) {
-      clienteNuevoData = { nombre: nuevoCliente.nombre, apellido: nuevoCliente.apellido || undefined, telefono: nuevoCliente.telefono, direccion: nuevoCliente.direccion, barrio: nuevoCliente.barrio || undefined, nombreNegocio: nuevoCliente.nombreNegocio || undefined, tipoNegocio: nuevoCliente.tipoNegocio || undefined }
+      clienteNuevoData = { nombre: nuevoCliente.nombre, apellido: nuevoCliente.apellido || undefined, telefono: nuevoCliente.telefono, direccion: nuevoCliente.direccion, barrio: nuevoCliente.barrio || undefined, nombreNegocio: nuevoCliente.nombreNegocio || undefined, tipoNegocio: nuevoCliente.tipoNegocio || undefined, fuente: nuevoCliente.fuente || undefined }
     }
 
     const items = productosActuales
@@ -449,6 +453,9 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
                     <input placeholder={canal === 'DOMICILIO' ? 'Barrio *' : 'Barrio'} value={nuevoCliente.barrio} onChange={e => setNuevoCliente(p => ({ ...p, barrio: e.target.value }))} className="px-3 py-2 border rounded-lg text-sm col-span-2" />
                     <input placeholder="Negocio" value={nuevoCliente.nombreNegocio} onChange={e => setNuevoCliente(p => ({ ...p, nombreNegocio: e.target.value }))} className="px-3 py-2 border rounded-lg text-sm" />
                     <TipoNegocioSelect options={TIPOS_NEGOCIO} value={nuevoCliente.tipoNegocio} onChange={(val) => setNuevoCliente(p => ({ ...p, tipoNegocio: val }))} placeholder="Tipo de negocio..." />
+                    <div className="col-span-2">
+                      <TipoNegocioSelect options={FUENTES} value={nuevoCliente.fuente} onChange={(val) => setNuevoCliente(p => ({ ...p, fuente: val }))} placeholder="¿Cómo nos conoció?" apiUrl="/api/clientes/fuentes" />
+                    </div>
                   </div>
                 </div>
               )}

@@ -54,6 +54,7 @@ export const PedidoCreateSchema = z.object({
     barrio: z.string().optional(),
     nombreNegocio: z.string().optional(),
     tipoNegocio: z.string().optional(),
+    fuente: z.string().optional(),
   }).optional(),
   actualizarCliente: z.object({
     direccion: z.string().min(1),
@@ -161,6 +162,10 @@ export const ClienteCreateSchema = z.object({
   telefono: z.string().min(1).max(20),
   nombreNegocio: z.string().max(100).optional(),
   tipoNegocio: z.preprocess(
+    (val) => (val === '' ? undefined : val),
+    z.string().max(100).optional()
+  ),
+  fuente: z.preprocess(
     (val) => (val === '' ? undefined : val),
     z.string().max(100).optional()
   ),

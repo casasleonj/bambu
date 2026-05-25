@@ -99,6 +99,7 @@ export async function POST(request: NextRequest) {
         telefono: parsed.data.telefono,
         nombreNegocio: parsed.data.nombreNegocio,
         tipoNegocio: parsed.data.tipoNegocio,
+        fuente: parsed.data.fuente,
         barrio: parsed.data.barrio,
         direccion: parsed.data.direccion,
         linkUbicacion: parsed.data.linkUbicacion ?? null,

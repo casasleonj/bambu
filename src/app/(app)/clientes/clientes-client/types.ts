@@ -12,6 +12,7 @@ export interface Cliente {
   telefono: string
   nombreNegocio?: string
   tipoNegocio?: string
+  fuente?: string
   barrio?: string
   linkUbicacion?: string
   direccion?: string
@@ -138,6 +139,7 @@ export interface FormData {
   telefono: string
   nombreNegocio: string
   tipoNegocio: string
+  fuente: string
   barrio: string
   direccion: string
   linkUbicacion: string

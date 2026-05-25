@@ -7,6 +7,7 @@ interface TipoNegocioSelectProps {
   value: string
   onChange: (value: string) => void
   placeholder?: string
+  apiUrl?: string
 }
 
 export function TipoNegocioSelect({
@@ -14,6 +15,7 @@ export function TipoNegocioSelect({
   value,
   onChange,
   placeholder = 'Buscar tipo de negocio...',
+  apiUrl = '/api/clientes/tipos-negocio',
 }: TipoNegocioSelectProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -27,7 +29,7 @@ export function TipoNegocioSelect({
   const skipFocusRef = useRef(false)
 
   useEffect(() => {
-    fetch('/api/clientes/tipos-negocio')
+    fetch(apiUrl)
       .then(r => r.json())
       .then(data => {
         if (data.success && data.tipos) {
@@ -36,7 +38,7 @@ export function TipoNegocioSelect({
         }
       })
       .catch(() => {})
-  }, [options])
+  }, [options, apiUrl])
 
   const filteredOptions = query === ''
     ? allOptions

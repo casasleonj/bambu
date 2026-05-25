@@ -18,6 +18,10 @@ const TIPOS_NEGOCIO: string[] = [
   'Carnicería', 'Lavandería', 'Taller',
 ]
 
+const FUENTES: string[] = [
+  'Página web', 'Instagram', 'Facebook', 'Referido', 'WhatsApp',
+]
+
 interface PlantillaInfo {
   id: string
   activo: boolean
@@ -222,6 +226,17 @@ export function ClienteForm({
                   placeholder="Buscar tipo de negocio..."
                 />
               </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">¿Cómo nos conoció?</label>
+              <TipoNegocioSelect
+                options={FUENTES}
+                value={formData.fuente}
+                onChange={(val) => onFormDataChange({ ...formData, fuente: val })}
+                placeholder="Buscar fuente..."
+                apiUrl="/api/clientes/fuentes"
+              />
             </div>
 
             <div>
