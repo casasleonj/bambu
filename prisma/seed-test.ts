@@ -81,9 +81,11 @@ async function main() {
 
   // 4. Productos
   const productos = [
-    { nombre: 'Paca Agua', codigo: 'PACA_AGUA', unidad: 'PACA', activo: true, aplicaDomicilio: true },
-    { nombre: 'Paca Hielo', codigo: 'PACA_HIELO', unidad: 'PACA', activo: true, aplicaDomicilio: true },
-    { nombre: 'Botellón', codigo: 'BOTELLON', unidad: 'UND', activo: true, aplicaDomicilio: true },
+    { nombre: 'Paca de Agua (40u 300ml)', codigo: 'PACA_AGUA', unidad: 'paca', contenido: '40 bolsas x 300ml', activo: true, aplicaDomicilio: true, sobreCostoDomicilio: 0 },
+    { nombre: 'Paca de Hielo (20u 600ml)', codigo: 'PACA_HIELO', unidad: 'paca', contenido: '20 bolsas x 600ml', activo: true, aplicaDomicilio: true, sobreCostoDomicilio: 0 },
+    { nombre: 'Botellón 20LT', codigo: 'BOTELLON', unidad: 'unidad', contenido: '20 litros', activo: true, aplicaDomicilio: true, sobreCostoDomicilio: 2500 },
+    { nombre: 'Bolsa de Agua 300ml', codigo: 'BOLSA_AGUA', unidad: 'unidad', contenido: '300ml', activo: true, aplicaDomicilio: true, sobreCostoDomicilio: 0 },
+    { nombre: 'Bolsa de Hielo 600ml', codigo: 'BOLSA_HIELO', unidad: 'unidad', contenido: '600ml', activo: true, aplicaDomicilio: true, sobreCostoDomicilio: 0 },
   ]
   for (const p of productos) {
     await prisma.producto.upsert({ where: { codigo: p.codigo }, update: {}, create: p })
@@ -111,6 +113,8 @@ async function main() {
       { producto: 'PACA_AGUA', precio: 2800, vigenteDesde: new Date(), creadoPor: adminUser?.id || '' },
       { producto: 'PACA_HIELO', precio: 2000, vigenteDesde: new Date(), creadoPor: adminUser?.id || '' },
       { producto: 'BOTELLON', precio: 6500, vigenteDesde: new Date(), creadoPor: adminUser?.id || '' },
+      { producto: 'BOLSA_AGUA', precio: 300, vigenteDesde: new Date(), creadoPor: adminUser?.id || '' },
+      { producto: 'BOLSA_HIELO', precio: 500, vigenteDesde: new Date(), creadoPor: adminUser?.id || '' },
     ],
     skipDuplicates: true,
   })
@@ -123,6 +127,8 @@ async function main() {
     { codigo: 'PACA_AGUA', cantMin: 10, cantMax: null, precio: 2300 },
     { codigo: 'PACA_HIELO', cantMin: 1, cantMax: null, precio: 2000 },
     { codigo: 'BOTELLON', cantMin: 1, cantMax: null, precio: 6500 },
+    { codigo: 'BOLSA_AGUA', cantMin: 1, cantMax: null, precio: 300 },
+    { codigo: 'BOLSA_HIELO', cantMin: 1, cantMax: null, precio: 500 },
   ]
   for (const p of preciosVolumen) {
     const producto = await prisma.producto.findUnique({ where: { codigo: p.codigo } })
