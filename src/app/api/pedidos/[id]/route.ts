@@ -9,6 +9,7 @@ import { logger } from '@/lib/logger'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { withAdvisoryLock } from '@/lib/locks'
 import { getNextNumero } from '@/lib/sequence'
+import { calcularEstadoPago } from '@/lib/pedido-utils'
 
 function getUserFromSession(authResult: any) {
   return { id: authResult.user?.id || '', role: authResult.user?.role }
@@ -97,6 +98,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         const nuevoTotal = newItems.reduce((sum, i) => sum + i.subtotal, 0)
         updateData.total = nuevoTotal
         updateData.saldo = nuevoTotal - Number(current.totalPagado || 0)
+        updateData.estadoPago = calcularEstadoPago(nuevoTotal, Number(current.totalPagado || 0))
       }
 
       // Al marcar como ENTREGADO, copiar cantidades pedidas a entregadas si no se especificaron
@@ -111,6 +113,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         if (parsed.data.cBotellonDomEnt === undefined) updateData.cBotellonDomEnt = current.cBotellonDomPed
         if (parsed.data.cBolsaAguaEnt === undefined) updateData.cBolsaAguaEnt = current.cBolsaAguaPed
         if (parsed.data.cBolsaHieloEnt === undefined) updateData.cBolsaHieloEnt = current.cBolsaHieloPed
+        updateData.estadoPago = calcularEstadoPago(Number(current.total), Number(current.totalPagado || 0))
       }
 
       // Al cancelar, crear nota de crédito y ajustar saldos

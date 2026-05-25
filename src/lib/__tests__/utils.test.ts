@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { z } from 'zod'
 import { cn, formatCurrency, formatDate, formatZodError } from '@/lib/utils'
+import { calcularEstadoPago, calcularSaldo } from '@/lib/pedido-utils'
 
 describe('cn', () => {
   it('merges simple class strings', () => {
@@ -194,5 +195,40 @@ describe('formatZodError', () => {
     if (!result.success) {
       expect(typeof formatZodError(result.error)).toBe('string')
     }
+  })
+})
+
+describe('calcularEstadoPago', () => {
+  it('retorna PAGADO cuando totalPagado >= total', () => {
+    expect(calcularEstadoPago(100, 100)).toBe('PAGADO')
+    expect(calcularEstadoPago(100, 150)).toBe('PAGADO')
+    expect(calcularEstadoPago(8400, 8400)).toBe('PAGADO')
+  })
+
+  it('retorna PARCIAL cuando 0 < totalPagado < total', () => {
+    expect(calcularEstadoPago(100, 50)).toBe('PARCIAL')
+    expect(calcularEstadoPago(100, 1)).toBe('PARCIAL')
+    expect(calcularEstadoPago(8400, 5000)).toBe('PARCIAL')
+  })
+
+  it('retorna PENDIENTE cuando totalPagado es 0', () => {
+    expect(calcularEstadoPago(100, 0)).toBe('PENDIENTE')
+    expect(calcularEstadoPago(0, 0)).toBe('PENDIENTE')
+  })
+})
+
+describe('calcularSaldo', () => {
+  it('retorna 0 cuando totalPagado >= total', () => {
+    expect(calcularSaldo(100, 100)).toBe(0)
+    expect(calcularSaldo(100, 150)).toBe(0)
+  })
+
+  it('retorna diferencia cuando totalPagado < total', () => {
+    expect(calcularSaldo(100, 50)).toBe(50)
+    expect(calcularSaldo(8400, 5000)).toBe(3400)
+  })
+
+  it('retorna total cuando no hay pagos', () => {
+    expect(calcularSaldo(100, 0)).toBe(100)
   })
 })
