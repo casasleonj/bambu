@@ -45,7 +45,7 @@ export async function POST(
         data: {
           estado: 'ANULADO',
           estadoEntrega: 'ANULADO',
-          estadoPago: 'PAGADO',
+          estadoPago: 'ANULADO',
           saldo: 0,
         },
       })

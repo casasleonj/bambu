@@ -26,6 +26,7 @@ export interface Cliente {
   verificado?: boolean
   bloqueado?: boolean
   reclamaciones?: number
+  limitePedidosFiados?: number
   creadoPorRol?: string
   createdAt?: string
   saldoPendiente?: number
@@ -34,7 +35,7 @@ export interface Cliente {
   facturas?: Factura[]
   frecuenciaSugerida?: { dias: number; label: string } | null
   productosSugeridos?: Array<{ codigo: string; nombre: string; frecuencia: number; cantidadPromedio: number }>
-  horaPreferida?: string | null
+  horaApertura?: string | null
   plantillaRecurrente?: {
     id: string
     activo: boolean
@@ -143,7 +144,8 @@ export interface FormData {
   contactos: ContactoAlternativo[]
   preciosEspeciales: string
   notas: string
-  horaPreferida: string
+  horaApertura: string
+  limitePedidosFiados?: number
 }
 
 export type TimelineEventType =

@@ -75,15 +75,44 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
   const [editDireccion, setEditDireccion] = useState('')
   const [editBarrio, setEditBarrio] = useState('')
   const resolverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [productosConfig, setProductosConfig] = useState<Array<{ codigo: string; aplicaDomicilio: boolean }>>([])
+  const [fiadosStatus, setFiadosStatus] = useState<{ count: number; limite: number; nivel: 'ok' | 'cerca' | 'limite' } | null>(null)
 
   useEffect(() => {
     if (clienteSeleccionado) {
       setEditDireccion(clienteSeleccionado.direccion || '')
       setEditBarrio(clienteSeleccionado.barrio || '')
+      // Fetch fiados status
+      fetch(`/api/pedidos?all=true&cliente=${clienteSeleccionado.id}`)
+        .then(r => r.json())
+        .then(d => {
+          const pedidos = d.pedidos || d.data || []
+          const pendientes = pedidos.filter((p: any) =>
+            !['ANULADO', 'CANCELADO'].includes(p.estadoEntrega) &&
+            !['PAGADO', 'ANTICIPADO', 'ANULADO'].includes(p.estadoPago)
+          )
+          const limite = (clienteSeleccionado as any).limitePedidosFiados ?? 3
+          const count = pendientes.length
+          const porcentaje = limite > 0 ? (count / limite) * 100 : 100
+          let nivel: 'ok' | 'cerca' | 'limite' = 'ok'
+          if (count >= limite) nivel = 'limite'
+          else if (porcentaje >= 60) nivel = 'cerca'
+          setFiadosStatus({ count, limite, nivel })
+        })
+        .catch(() => setFiadosStatus(null))
+    } else {
+      setFiadosStatus(null)
     }
   }, [clienteSeleccionado])
 
-  const productosActuales = getProductosForCanal(canal)
+  useEffect(() => {
+    fetch(`/api/productos/configs`)
+      .then(r => r.json())
+      .then(d => { if (d.success && d.productos) setProductosConfig(d.productos) })
+      .catch(() => {})
+  }, [])
+
+  const productosActuales = getProductosForCanal(canal, productosConfig)
 
   useEffect(() => {
     fetch(`/api/precios/tabla`)
@@ -215,7 +244,7 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
 
   const handleToggleCanal = (nuevoCanal: 'PUNTO' | 'DOMICILIO') => {
     if (nuevoCanal === canal) return
-    const productosNuevoCanal = getProductosForCanal(nuevoCanal)
+    const productosNuevoCanal = getProductosForCanal(nuevoCanal, productosConfig)
     const nuevasCantidades: Record<string, number> = {}
     for (const id of productosNuevoCanal) {
       if (cantidades[id] > 0) nuevasCantidades[id] = cantidades[id]
@@ -330,6 +359,24 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
               </div>
+
+              {/* Banner de fiados */}
+              {fiadosStatus && fiadosStatus.nivel !== 'ok' && (
+                <div className={`px-3 py-2 rounded-lg text-xs flex items-center gap-2 ${
+                  fiadosStatus.nivel === 'limite'
+                    ? 'bg-red-50 border border-red-200 text-red-700'
+                    : 'bg-amber-50 border border-amber-200 text-amber-700'
+                }`}>
+                  <span>{fiadosStatus.nivel === 'limite' ? '🔒' : '⚠️'}</span>
+                  <span>
+                    {fiadosStatus.nivel === 'limite'
+                      ? `Cliente tiene ${fiadosStatus.count}/${fiadosStatus.limite} pedidos fiados (límite alcanzado). Debe pagar antes de crear otro.`
+                      : `Cliente tiene ${fiadosStatus.count}/${fiadosStatus.limite} pedidos fiados. Al crear este pedido, quedará al límite.`
+                    }
+                  </span>
+                </div>
+              )}
+
               {canal === 'DOMICILIO' && (
                 <div className="grid grid-cols-2 gap-2">
                   <input
@@ -368,16 +415,31 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
                   ))}
                 </div>
               )}
-              {searchTerm && filteredClientes.length === 0 && (
-                <button type="button" onClick={handleCrearNuevo} className="text-sm text-blue-600 hover:text-blue-700">+ Crear nuevo cliente "{searchTerm}"</button>
+              {searchTerm && (
+                <button type="button" onClick={handleCrearNuevo} className="text-sm text-blue-600 hover:text-blue-700">+ Crear cliente nuevo en vez de estos</button>
               )}
               {mostrarNuevo && (
-                <div className="grid grid-cols-2 gap-2">
-                  <input placeholder="Nombre *" value={nuevoCliente.nombre} onChange={e => setNuevoCliente(p => ({ ...p, nombre: e.target.value }))} className="px-3 py-2 border rounded-lg text-sm" />
-                  <input placeholder="Apellido" value={nuevoCliente.apellido} onChange={e => setNuevoCliente(p => ({ ...p, apellido: e.target.value }))} className="px-3 py-2 border rounded-lg text-sm" />
-                  <input placeholder="Teléfono *" value={nuevoCliente.telefono} onChange={e => setNuevoCliente(p => ({ ...p, telefono: e.target.value }))} className="px-3 py-2 border rounded-lg text-sm" />
-                  <input placeholder="Dirección" value={nuevoCliente.direccion} onChange={e => setNuevoCliente(p => ({ ...p, direccion: e.target.value }))} className="px-3 py-2 border rounded-lg text-sm col-span-2" />
-                  <input placeholder="Barrio" value={nuevoCliente.barrio} onChange={e => setNuevoCliente(p => ({ ...p, barrio: e.target.value }))} className="px-3 py-2 border rounded-lg text-sm col-span-2" />
+                <div
+                  onKeyDown={(e) => { if (e.key === 'Escape') setMostrarNuevo(false) }}
+                  className="space-y-2"
+                >
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-gray-500">Nuevo cliente</span>
+                    <button
+                      type="button"
+                      onClick={() => setMostrarNuevo(false)}
+                      className="lg:hidden text-xs text-gray-400 hover:text-gray-600"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input placeholder="Nombre *" value={nuevoCliente.nombre} onChange={e => setNuevoCliente(p => ({ ...p, nombre: e.target.value }))} className="px-3 py-2 border rounded-lg text-sm" />
+                    <input placeholder="Apellido" value={nuevoCliente.apellido} onChange={e => setNuevoCliente(p => ({ ...p, apellido: e.target.value }))} className="px-3 py-2 border rounded-lg text-sm" />
+                    <input placeholder="Teléfono *" value={nuevoCliente.telefono} onChange={e => setNuevoCliente(p => ({ ...p, telefono: e.target.value }))} className="px-3 py-2 border rounded-lg text-sm" />
+                    <input placeholder={canal === 'DOMICILIO' ? 'Dirección *' : 'Dirección'} value={nuevoCliente.direccion} onChange={e => setNuevoCliente(p => ({ ...p, direccion: e.target.value }))} className="px-3 py-2 border rounded-lg text-sm col-span-2" />
+                    <input placeholder={canal === 'DOMICILIO' ? 'Barrio *' : 'Barrio'} value={nuevoCliente.barrio} onChange={e => setNuevoCliente(p => ({ ...p, barrio: e.target.value }))} className="px-3 py-2 border rounded-lg text-sm col-span-2" />
+                  </div>
                 </div>
               )}
             </div>

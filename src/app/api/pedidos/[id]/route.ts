@@ -151,6 +151,45 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         updateData.saldo = 0
       }
 
+      // Al anular, crear nota de crédito y ajustar saldos
+      if (parsed.data.estado === 'ANULADO') {
+        const current = await tx.pedido.findUnique({ where: { id }, include: { pagos: true, factura: true } })
+        if (!current) {
+          throw new Error('PEDIDO_NOT_FOUND')
+        }
+
+        const totalPagado = current.pagos.reduce((sum: number, p: { monto: number }) => sum + Number(p.monto), 0)
+
+        // Crear nota de crédito si hay pagos registrados
+        if (totalPagado > 0) {
+          const nextNum = await getNextNumero(tx, { model: 'notaCredito' })
+          const ncNumero = `NC-${nextNum.toString().padStart(5, '0')}`
+          await tx.notaCredito.create({
+            data: {
+              numero: ncNumero,
+              pedidoId: id,
+              facturaId: current.factura?.id || null,
+              monto: totalPagado,
+              motivo: 'ANULADO',
+              creadoPor: authResult.user?.id || null,
+            },
+          })
+        }
+
+        // Anular factura asociada si existe
+        if (current.factura) {
+          await tx.factura.update({
+            where: { id: current.factura.id },
+            data: { estado: 'ANULADA', saldo: 0 },
+          })
+        }
+
+        // Resetear totales y estadoPago del pedido
+        updateData.estadoPago = 'ANULADO'
+        updateData.totalPagado = 0
+        updateData.saldo = 0
+      }
+
       // Al desasignar de embarque (sin cambiar estado explicitamente), volver a PENDIENTE
       if (parsed.data.embarqueId === null && parsed.data.estado === undefined) {
         updateData.estado = 'PENDIENTE'
@@ -217,21 +256,40 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
   if (roleCheck instanceof Response) return roleCheck
   const { id } = await params
   try {
+    const pedido = await prisma.pedido.findUnique({
+      where: { id },
+      include: { factura: true },
+    })
+    if (!pedido) return apiError('Pedido no encontrado', 404)
+
     await prisma.pedido.update({
       where: { id },
-      data: { estado: 'ANULADO' },
+      data: {
+        estado: 'ANULADO',
+        estadoEntrega: 'ANULADO',
+        estadoPago: 'ANULADO',
+        saldo: 0,
+      },
     })
+
+    if (pedido.factura) {
+      await prisma.factura.update({
+        where: { id: pedido.factura.id },
+        data: { estado: 'ANULADA', saldo: 0 },
+      })
+    }
 
     logAudit({
       entidad: 'Pedido',
       registroId: id,
       accion: 'DELETE',
-      datos: { estado: 'ANULADO' },
+      datos: { estado: 'ANULADO', estadoEntrega: 'ANULADO', estadoPago: 'ANULADO', saldo: 0 },
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     })
 
     return apiSuccess({})
   } catch (error) {
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error deleting pedido:')
     return apiError('Error deleting', 500)
   }
 }

@@ -15,8 +15,6 @@ export type { PedidoFormData, PedidoFormProps } from './types'
 
 const CANAL = 'DOMICILIO' as const
 
-const PRODUCTOS_DOM = getProductosForCanal('DOMICILIO')
-
 export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoFormProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [clienteSeleccionado, setClienteSeleccionado] = useState<Cliente | null>(null)
@@ -38,6 +36,7 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
   const [tablaPrecios, setTablaPrecios] = useState<Record<string, Tier[]>>({})
   const [preciosEditando, setPreciosEditando] = useState<Record<string, boolean>>({})
   const [submitting, setSubmitting] = useState(false)
+  const [productosConfig, setProductosConfig] = useState<Array<{ codigo: string; aplicaDomicilio: boolean }>>([])
 
   useEffect(() => {
     fetch(`/api/precios/tabla`)
@@ -46,12 +45,21 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
       .catch(() => {})
   }, [])
 
+  useEffect(() => {
+    fetch(`/api/productos/configs`)
+      .then(r => r.json())
+      .then(d => { if (d.success && d.productos) setProductosConfig(d.productos) })
+      .catch(() => {})
+  }, [])
+
+  const productosVisibles = getProductosForCanal(CANAL, productosConfig)
+
   const resolverPrecios = useCallback(async (
     prods: Record<ProductoId, number>,
     canalVal: string,
     clienteId?: string,
   ) => {
-    const items = PRODUCTOS_DOM
+    const items = productosVisibles
       .filter(id => prods[id] > 0)
       .map(id => ({
         codigo: PRODUCTO_INFO[id].codigo,
@@ -99,12 +107,12 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
   function getEffectivePrice(codigo: string): number {
     if (preciosManuales[codigo] !== undefined) return preciosManuales[codigo]
     if (preciosResueltos[codigo]) return preciosResueltos[codigo]
-    const pid = PRODUCTOS_DOM.find(id => PRODUCTO_INFO[id].codigo === codigo)
+    const pid = productosVisibles.find(id => PRODUCTO_INFO[id].codigo === codigo)
     return pid ? getPrecio(pid) : 0
   }
 
   const calcularTotal = (): number => {
-    return PRODUCTOS_DOM.reduce((total, prodId) => {
+    return productosVisibles.reduce((total, prodId) => {
       const cant = productos[prodId] || 0
       if (cant <= 0) return total
       const info = PRODUCTO_INFO[prodId]
@@ -203,7 +211,7 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
       }).filter((p): p is { metodo: string; monto: number } => p !== null)
     })()
 
-    const items: PedidoFormData['items'] = PRODUCTOS_DOM
+    const items: PedidoFormData['items'] = productosVisibles
       .filter(id => productos[id] > 0)
       .map(id => {
         const info = PRODUCTO_INFO[id]
@@ -272,7 +280,7 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
         getEffectivePrice={getEffectivePrice}
         formatTier={formatTier}
         getActiveTier={getActiveTier}
-        productosVisibles={PRODUCTOS_DOM}
+        productosVisibles={productosVisibles}
       />
 
       <PagoSection

@@ -27,8 +27,16 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
   const [tablaPrecios, setTablaPrecios] = useState<Record<string, Tier[]>>({})
   const [preciosManuales, setPreciosManuales] = useState<Record<string, number>>({})
   const [preciosEditando, setPreciosEditando] = useState<Record<string, boolean>>({})
+  const [productosConfig, setProductosConfig] = useState<Array<{ codigo: string; aplicaDomicilio: boolean }>>([])
 
-  const productosActuales = getProductosForCanal(canal)
+  useEffect(() => {
+    fetch(`/api/productos/configs`)
+      .then(r => r.json())
+      .then(d => { if (d.success && d.productos) setProductosConfig(d.productos) })
+      .catch(() => {})
+  }, [])
+
+  const productosActuales = getProductosForCanal(canal, productosConfig)
 
   useEffect(() => {
     fetch(`/api/precios/tabla`)
@@ -39,8 +47,8 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
 
   const handleToggleEnvio = (envio: boolean) => {
     const nuevoCanal = envio ? 'DOMICILIO' : 'PUNTO'
-    const productosNuevoCanal = getProductosForCanal(nuevoCanal)
-    const productosViejoCanal = getProductosForCanal(canal)
+    const productosNuevoCanal = getProductosForCanal(nuevoCanal, productosConfig)
+    const productosViejoCanal = getProductosForCanal(canal, productosConfig)
 
     const nuevasCantidades: Record<string, number> = {}
     let eliminados = 0
@@ -334,7 +342,7 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
       />
 
       <ProductGrid
-        canal={canal}
+        productosVisibles={productosActuales}
         cantidades={cantidades}
         handleCantidadChange={handleCantidadChange}
         increment={increment}

@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
     const plantillasActuales = await prisma.plantillaRecurrente.findMany({
       where: { id: { in: decisiones.map(d => d.recurrenteId) } },
       include: {
-        cliente: { select: { id: true, activo: true, bloqueado: true } },
+        cliente: { select: { id: true, nombre: true, activo: true, bloqueado: true, limitePedidosFiados: true } },
       },
     })
     const cambiadas = plantillasActuales.filter(pt => !pt.proxGeneracion || pt.proxGeneracion > fecha)
@@ -69,6 +69,42 @@ export async function POST(request: NextRequest) {
     if (inactivas.length > 0) {
       const nombres = inactivas.map(pt => pt.clienteId).join(', ')
       return apiError(`Clientes inactivos o bloqueados: ${nombres}`, 400)
+    }
+
+    // A8: Check fiado limit for all clients
+    const limiteConfig = await prisma.config.findUnique({ where: { clave: 'LIMITE_PEDIDOS_FIADOS_DEFAULT' } })
+    const limiteGlobal = limiteConfig ? parseInt(limiteConfig.valor, 10) || 3 : 3
+
+    const limitesPorCliente = new Map<string, number>()
+    for (const pt of plantillasActuales) {
+      const limite = pt.cliente.limitePedidosFiados ?? limiteGlobal
+      limitesPorCliente.set(pt.clienteId, limite)
+    }
+
+    const pedidosPendientesTodos = await prisma.pedido.findMany({
+      where: {
+        clienteId: { in: Array.from(limitesPorCliente.keys()) },
+        estadoEntrega: { notIn: ['ANULADO', 'CANCELADO'] },
+        estadoPago: { notIn: ['PAGADO', 'ANTICIPADO', 'ANULADO'] },
+      },
+      select: { clienteId: true, id: true, numero: true, saldo: true },
+    })
+
+    const pendientesPorCliente = new Map<string, number>()
+    for (const p of pedidosPendientesTodos) {
+      pendientesPorCliente.set(p.clienteId, (pendientesPorCliente.get(p.clienteId) || 0) + 1)
+    }
+
+    const clientesEnLimite: string[] = []
+    for (const pt of plantillasActuales) {
+      const limite = limitesPorCliente.get(pt.clienteId) || 3
+      const count = pendientesPorCliente.get(pt.clienteId) || 0
+      if (count >= limite) {
+        clientesEnLimite.push(`${pt.cliente.nombre} (${count}/${limite})`)
+      }
+    }
+    if (clientesEnLimite.length > 0) {
+      return apiError(`Clientes con límite de fiados alcanzado: ${clientesEnLimite.join(', ')}`, 400)
     }
 
     // A6: Pre-check CON_PENDIENTES/SOLO_PENDIENTES for abonos

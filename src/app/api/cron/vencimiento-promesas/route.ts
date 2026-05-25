@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     const pedidosVencidos = await prisma.pedido.findMany({
       where: {
         promesaPagoFecha: { lt: ahora },
-        estadoPago: { notIn: ['PAGADO', 'ANTICIPADO', 'VENCIDO'] },
+        estadoPago: { notIn: ['PAGADO', 'ANTICIPADO', 'VENCIDO', 'ANULADO'] },
         estadoEntrega: { not: 'ANULADO' },
       },
       select: {

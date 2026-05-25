@@ -1,4 +1,5 @@
 import { prisma } from './prisma'
+import { getTodayRange, getDateRange } from './dates'
 
 export interface VentasDelDia {
   aguaVendida: number
@@ -6,10 +7,12 @@ export interface VentasDelDia {
 }
 
 export async function getVentasDelDia(fecha?: Date): Promise<VentasDelDia> {
-  const start = fecha ? new Date(fecha) : new Date()
-  start.setHours(0, 0, 0, 0)
-  const end = new Date(start)
-  end.setDate(end.getDate() + 1)
+  const range = fecha
+    ? getDateRange(fecha.toISOString().slice(0, 10), fecha.toISOString().slice(0, 10))
+    : getTodayRange()
+
+  const start = 'startDate' in range ? range.startDate : range.startOfDay
+  const end = 'endDate' in range ? range.endDate : range.endOfDay
 
   const pedidos = await prisma.pedido.findMany({
     where: {

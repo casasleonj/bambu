@@ -6,7 +6,7 @@ import { z } from "zod";
 
 export const OrigenPedidoSchema = z.enum(['PEDIDO', 'VENTA_RAPIDA', 'VENTA_LIBRE'])
 export const EstadoEntregaSchema = z.enum(['PENDIENTE', 'EN_RUTA', 'ENTREGADO', 'NO_ENTREGADO', 'CANCELADO', 'ANULADO'])
-export const EstadoPagoSchema = z.enum(['PENDIENTE', 'PARCIAL', 'PAGADO', 'ANTICIPADO', 'VENCIDO'])
+export const EstadoPagoSchema = z.enum(['PENDIENTE', 'PARCIAL', 'PAGADO', 'ANTICIPADO', 'VENCIDO', 'ANULADO'])
 
 // ====================
 // PEDIDO ITEM (nuevo)
@@ -105,7 +105,7 @@ export const VentaLibreSchema = z.object({
 // ====================
 
 export const AnularSchema = z.object({
-  motivo: z.enum(['DEVOLUCION', 'ERROR', 'FRAUDE', 'OTRO']),
+  motivo: z.string().min(1, 'El motivo es obligatorio'),
   devolverStock: z.boolean().default(false),
 })
 
@@ -168,7 +168,8 @@ export const ClienteCreateSchema = z.object({
   contactos: z.array(ContactoAlternativoSchema).optional().default([]),
   preciosEspeciales: z.string().optional(),
   notas: z.string().max(500).optional(),
-  horaPreferida: z.string().regex(/^\d{2}:\d{2}$/, 'Formato HH:mm').optional().nullable(),
+  horaApertura: z.string().regex(/^\d{2}:\d{2}$/, 'Formato HH:mm').optional().nullable(),
+  limitePedidosFiados: z.coerce.number().int().min(1).max(20).optional(),
 });
 
 export const ClienteUpdateSchema = ClienteCreateSchema.partial();

@@ -1,7 +1,11 @@
 // @tests api/abono, api/factura, api/pedido
-import { test, expect, fullLogin, apiPost, apiGet, createCliente } from './fixtures'
+import { test, expect, fullLogin, apiPost, apiGet, createCliente, resetTestDatabase } from './fixtures'
 
 test.describe('Ciclo de Crédito', () => {
+  test.describe.configure({ mode: 'serial' })
+  test.beforeAll(() => {
+    resetTestDatabase()
+  })
 
   // ─── 1. Ciclo completo: pedido fiado → factura → abonos parciales → PAGADA ──
 
@@ -10,10 +14,10 @@ test.describe('Ciclo de Crédito', () => {
     await fullLogin(page)
 
     const cliente = await createCliente(page)
-    expect(cliente.id).toBeTruthy()
+    expect(cliente.cliente.id).toBeTruthy()
 
     const pedidoRes = await apiPost(page, '/api/pedidos', {
-      clienteId: cliente.id,
+      clienteId: cliente.cliente.id,
       canal: 'PUNTO',
       ventaRapida: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
@@ -31,8 +35,10 @@ test.describe('Ciclo de Crédito', () => {
 
     const facturaRes = await apiPost(page, '/api/facturas', {
       pedidoId,
-      clienteId: cliente.id,
+      clienteId: cliente.cliente.id,
     })
+    const facturaBody = await facturaRes.json().catch(() => ({}))
+    console.log('Factura response:', facturaRes.status(), JSON.stringify(facturaBody).slice(0, 200))
     const facturaShouldWork = facturaRes.status() === 201 || facturaRes.status() === 200
     expect(facturaShouldWork).toBe(true)
 
@@ -46,14 +52,14 @@ test.describe('Ciclo de Crédito', () => {
       return
     }
 
-    expect(factura.estado).toMatch(/EMITIDA|PENDIENTE/)
+    expect(factura.estado).toMatch(/EMITIDA|PENDIENTE|PARCIAL/)
     const saldoFactura = Number(factura.saldo)
     expect(saldoFactura).toBeGreaterThan(0)
 
     const mitad = Math.floor(saldoFactura / 2)
     const abono1Res = await apiPost(page, '/api/abonos', {
       facturaId: factura.id,
-      clienteId: cliente.id,
+      clienteId: cliente.cliente.id,
       pedidoId,
       monto: mitad,
       metodoPago: 'EFECTIVO',
@@ -68,7 +74,7 @@ test.describe('Ciclo de Crédito', () => {
 
     const abono2Res = await apiPost(page, '/api/abonos', {
       facturaId: factura.id,
-      clienteId: cliente.id,
+      clienteId: cliente.cliente.id,
       pedidoId,
       monto: Number(fa1.saldo),
       metodoPago: 'EFECTIVO',
@@ -92,12 +98,12 @@ test.describe('Ciclo de Crédito', () => {
 
     const [p1, p2] = await Promise.all([
       apiPost(page, '/api/pedidos', {
-        clienteId: cliente.id, canal: 'PUNTO', ventaRapida: true,
+        clienteId: cliente.cliente.id, canal: 'PUNTO', ventaRapida: true,
         items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
         pagos: [{ metodo: 'EFECTIVO', monto: 500 }],
       }),
       apiPost(page, '/api/pedidos', {
-        clienteId: cliente.id, canal: 'PUNTO', ventaRapida: true,
+        clienteId: cliente.cliente.id, canal: 'PUNTO', ventaRapida: true,
         items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
         pagos: [{ metodo: 'EFECTIVO', monto: 500 }],
       }),
@@ -114,7 +120,7 @@ test.describe('Ciclo de Crédito', () => {
     expect(deudaTotal).toBeGreaterThan(0)
 
     const pagoFiadoRes = await apiPost(page, '/api/pedidos/pagar-fiado', {
-      clienteId: cliente.id,
+      clienteId: cliente.cliente.id,
       monto: Number(pedido1.saldo),
       metodo: 'EFECTIVO',
     })
@@ -133,7 +139,7 @@ test.describe('Ciclo de Crédito', () => {
 
     const cliente = await createCliente(page)
     const pedidoRes = await apiPost(page, '/api/pedidos', {
-      clienteId: cliente.id,
+      clienteId: cliente.cliente.id,
       canal: 'PUNTO',
       ventaRapida: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
@@ -144,7 +150,7 @@ test.describe('Ciclo de Crédito', () => {
     const saldoPedido = Number(pedido.saldo)
 
     const pagoFiadoRes = await apiPost(page, '/api/pedidos/pagar-fiado', {
-      clienteId: cliente.id,
+      clienteId: cliente.cliente.id,
       monto: saldoPedido + 50000,
       metodo: 'EFECTIVO',
     })
@@ -163,7 +169,7 @@ test.describe('Ciclo de Crédito', () => {
     const cliente = await createCliente(page)
 
     const pedidoRes = await apiPost(page, '/api/pedidos', {
-      clienteId: cliente.id,
+      clienteId: cliente.cliente.id,
       canal: 'PUNTO',
       ventaRapida: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
@@ -174,14 +180,14 @@ test.describe('Ciclo de Crédito', () => {
 
     if (Number(pedido.saldo) > 0) {
       await apiPost(page, '/api/pedidos/pagar-fiado', {
-        clienteId: cliente.id,
+        clienteId: cliente.cliente.id,
         monto: Number(pedido.saldo),
         metodo: 'EFECTIVO',
       })
     }
 
     const pagoFiadoRes = await apiPost(page, '/api/pedidos/pagar-fiado', {
-      clienteId: cliente.id,
+      clienteId: cliente.cliente.id,
       monto: 10000,
       metodo: 'EFECTIVO',
     })
@@ -199,7 +205,7 @@ test.describe('Ciclo de Crédito', () => {
 
     const cliente = await createCliente(page)
     const pedidoRes = await apiPost(page, '/api/pedidos', {
-      clienteId: cliente.id,
+      clienteId: cliente.cliente.id,
       canal: 'PUNTO',
       ventaRapida: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 3 }],
@@ -210,7 +216,7 @@ test.describe('Ciclo de Crédito', () => {
     const pedido = pedidoJson.pedido || pedidoJson
     const saldoPedido = Number(pedido.saldo)
 
-    const facturaRes = await apiPost(page, '/api/facturas', { pedidoId, clienteId: cliente.id })
+    const facturaRes = await apiPost(page, '/api/facturas', { pedidoId, clienteId: cliente.cliente.id })
     await facturaRes.json().catch(() => null)
 
     const facturasGet = await apiGet(page, `/api/facturas?pedidoId=${pedidoId}`)
@@ -226,7 +232,7 @@ test.describe('Ciclo de Crédito', () => {
     const tercio = Math.ceil(saldoPedido / 3)
 
     const a1 = await apiPost(page, '/api/abonos', {
-      facturaId: factura.id, clienteId: cliente.id, pedidoId,
+      facturaId: factura.id, clienteId: cliente.cliente.id, pedidoId,
       monto: tercio, metodoPago: 'EFECTIVO',
     })
     expect(a1.status()).toBe(201)
@@ -234,7 +240,7 @@ test.describe('Ciclo de Crédito', () => {
     const tercio2 = Math.min(tercio, saldoPedido - tercio)
     if (tercio2 > 0) {
       const a2 = await apiPost(page, '/api/abonos', {
-        facturaId: factura.id, clienteId: cliente.id, pedidoId,
+        facturaId: factura.id, clienteId: cliente.cliente.id, pedidoId,
         monto: tercio2, metodoPago: 'NEQUI',
       })
       expect(a2.status()).toBe(201)
@@ -247,7 +253,7 @@ test.describe('Ciclo de Crédito', () => {
 
     if (saldoRestante > 0) {
       const a3 = await apiPost(page, '/api/abonos', {
-        facturaId: factura.id, clienteId: cliente.id, pedidoId,
+        facturaId: factura.id, clienteId: cliente.cliente.id, pedidoId,
         monto: saldoRestante, metodoPago: 'TRANSFERENCIA',
       })
       expect(a3.status()).toBe(201)

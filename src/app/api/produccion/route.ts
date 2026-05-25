@@ -9,6 +9,7 @@ import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
 import { getVentasDelDia } from '@/lib/ventas'
 import { calcComSellador } from '@/lib/comisiones'
+import { getTodayRange, getDateRange } from '@/lib/dates'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -17,24 +18,15 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const fecha = searchParams.get('fecha')
 
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const tomorrow = new Date(today)
-    tomorrow.setDate(tomorrow.getDate() + 1)
-
     const where = fecha
-      ? {
-          fecha: {
-            gte: new Date(`${fecha}T00:00:00`),
-            lt: new Date(`${fecha}T23:59:59.999`),
-          },
-        }
-      : {
-          fecha: {
-            gte: today,
-            lt: tomorrow,
-          },
-        }
+      ? (() => {
+          const { startDate, endDate } = getDateRange(fecha, fecha)
+          return { fecha: { gte: startDate, lt: endDate } }
+        })()
+      : (() => {
+          const { startOfDay, endOfDay } = getTodayRange()
+          return { fecha: { gte: startOfDay, lt: endOfDay } }
+        })()
 
     const registros = await prisma.produccion.findMany({
       where,
@@ -63,13 +55,12 @@ export async function POST(request: NextRequest) {
     const prodAgua = Math.round((parsed.data.conteoAAgua + parsed.data.conteoBAgua) / 2)
     const prodHielo = Math.round((parsed.data.conteoAHielo + parsed.data.conteoBHielo) / 2)
 
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+    const { startOfDay, endOfDay } = getTodayRange()
 
     const existing = await prisma.produccion.findFirst({
       where: {
         trabajadorId: parsed.data.trabajadorId,
-        fecha: { gte: today, lt: new Date(today.getTime() + 86400000) },
+        fecha: { gte: startOfDay, lt: endOfDay },
         turno: parsed.data.turno,
       },
     })
@@ -109,8 +100,8 @@ export async function POST(request: NextRequest) {
     const embarquesHoy = await prisma.embarque.findMany({
       where: {
         fecha: {
-          gte: today,
-          lt: new Date(today.getTime() + 86400000),
+          gte: startOfDay,
+          lt: endOfDay,
         },
         estado: 'CERRADO',
       },

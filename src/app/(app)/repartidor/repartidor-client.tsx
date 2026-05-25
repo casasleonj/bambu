@@ -7,7 +7,7 @@ import { Modal } from '@/components/modal'
 import { offlineDb, queuePedidoOffline } from '@/lib/db/offline'
 import { syncWithServer, isOnline } from '@/lib/db/sync'
 import { logger } from '@/lib/logger'
-import { PRODUCTO_INFO, DEFAULT_PRICES } from '@/lib/prices'
+import { PRODUCTO_INFO, DEFAULT_PRICES, getProductosForCanal } from '@/lib/prices'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
 
 interface RepartidorClientProps {
@@ -59,6 +59,17 @@ export function RepartidorClient({ trabajador, embarque }: RepartidorClientProps
   const [fotoBase64, setFotoBase64] = useState<string | null>(null)
   const [obs, setObs] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [productosConfig, setProductosConfig] = useState<Array<{ codigo: string; aplicaDomicilio: boolean }>>([])
+
+  useEffect(() => {
+    fetch(`/api/productos/configs`)
+      .then(r => r.json())
+      .then(d => { if (d.success && d.productos) setProductosConfig(d.productos) })
+      .catch(() => {})
+  }, [])
+
+  const productosDomicilioIds = getProductosForCanal('DOMICILIO', productosConfig)
+  const productosDomicilio = new Set(productosDomicilioIds.map(id => PRODUCTO_INFO[id].codigo))
 
   useEffect(() => {
     const handleOnline = () => setOnline(true)
@@ -372,7 +383,7 @@ export function RepartidorClient({ trabajador, embarque }: RepartidorClientProps
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${pedido.estadoEntrega === 'ENTREGADO' ? 'bg-green-100 text-green-700' : pedido.estadoEntrega === 'EN_RUTA' ? 'bg-sky-100 text-sky-700' : 'bg-yellow-100 text-yellow-700'}`}>
                       {pedido.estadoEntrega.replace('_', ' ')}
                     </span>
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${pedido.estadoPago === 'PAGADO' ? 'bg-green-100 text-green-700' : pedido.estadoPago === 'PARCIAL' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${pedido.estadoPago === 'PAGADO' ? 'bg-green-100 text-green-700' : pedido.estadoPago === 'PARCIAL' ? 'bg-amber-100 text-amber-700' : pedido.estadoPago === 'ANULADO' ? 'bg-gray-100 text-gray-500' : 'bg-red-100 text-red-700'}`}>
                       {pedido.estadoPago}
                     </span>
                   </div>
@@ -397,6 +408,7 @@ export function RepartidorClient({ trabajador, embarque }: RepartidorClientProps
             <h3 className="text-sm font-semibold text-gray-700 mb-2">Productos</h3>
             <div className="space-y-2">
               {Object.entries(PRODUCTO_INFO)
+                .filter(([, info]) => productosDomicilio.has(info.codigo))
                 .map(([id, info]) => {
                   const iconCfg = getProductoIconConfig(info.codigo)
                   const Icon = iconCfg.Icon

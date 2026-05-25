@@ -5,6 +5,7 @@ import { formatCurrency } from '@/lib/utils'
 import { toast } from 'sonner'
 import { filtrarPorPeriodo, PERIODOS, type PeriodoFiltro } from './date-utils'
 import type { Pedido } from './types'
+import { getEstadoFiados } from '@/lib/pedido-utils'
 
 interface FiadoRow {
   clienteId: string
@@ -259,7 +260,19 @@ export function FiadosTable({ pedidos, onPedidosChange }: FiadosTableProps) {
                       <span className="font-bold text-red-600">{formatCurrency(row.deudaTotal)}</span>
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <span className="text-sm font-medium text-gray-600">{row.pedidosFiados.length}</span>
+                      {(() => {
+                        const estado = getEstadoFiados(row.pedidosFiados, 3)
+                        const badgeColor = estado.nivel === 'limite'
+                          ? 'bg-red-100 text-red-700 border-red-200'
+                          : estado.nivel === 'cerca'
+                            ? 'bg-amber-100 text-amber-700 border-amber-200'
+                            : 'bg-gray-100 text-gray-600 border-gray-200'
+                        return (
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${badgeColor}`}>
+                            {estado.count}/{estado.limite}
+                          </span>
+                        )
+                      })()}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span className={`text-sm font-medium ${row.diasFiado > 30 ? 'text-red-600' : row.diasFiado > 7 ? 'text-amber-600' : 'text-green-600'}`}>
@@ -371,6 +384,15 @@ export function FiadosTable({ pedidos, onPedidosChange }: FiadosTableProps) {
                 </div>
                 <div className="text-right">
                   <p className="font-bold text-red-600">{formatCurrency(row.deudaTotal)}</p>
+                  {(() => {
+                    const estado = getEstadoFiados(row.pedidosFiados, 3)
+                    const badgeColor = estado.nivel === 'limite'
+                      ? 'text-red-600'
+                      : estado.nivel === 'cerca'
+                        ? 'text-amber-600'
+                        : 'text-gray-500'
+                    return <p className={`text-xs ${badgeColor}`}>{estado.count}/{estado.limite} fiados</p>
+                  })()}
                   <p className={`text-xs ${row.diasFiado > 30 ? 'text-red-600' : row.diasFiado > 7 ? 'text-amber-600' : 'text-green-600'}`}>
                     {row.diasFiado} días
                   </p>

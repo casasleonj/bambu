@@ -179,12 +179,22 @@ export async function POST(request: NextRequest) {
         where: {
           clienteId: cliente.id,
           estadoEntrega: { notIn: ['ANULADO', 'CANCELADO'] },
-          estadoPago: { notIn: ['PAGADO', 'ANTICIPADO'] },
+          estadoPago: { notIn: ['PAGADO', 'ANTICIPADO', 'ANULADO'] },
         },
         orderBy: { numero: 'asc' },
         select: { id: true, numero: true, saldo: true },
       })
-      const errorDeuda = puedeCrearPedido(cliente, pedidosPendientes)
+
+      // Determinar limite de fiados: cliente override → Config global → fallback 3
+      let limiteFiados = cliente.limitePedidosFiados ?? 3
+      if (cliente.limitePedidosFiados == null) {
+        const configLimite = await tx.config.findUnique({ where: { clave: 'LIMITE_PEDIDOS_FIADOS_DEFAULT' } })
+        if (configLimite) {
+          limiteFiados = parseInt(configLimite.valor, 10) || 3
+        }
+      }
+
+      const errorDeuda = puedeCrearPedido(cliente, pedidosPendientes, limiteFiados)
       if (errorDeuda) {
         throw new Error(`CLIENTE_DEBE: ${errorDeuda}`)
       }

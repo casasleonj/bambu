@@ -14,11 +14,12 @@ export const TRANSICIONES_ENTREGA: Record<EstadoEntrega, EstadoEntrega[]> = {
 }
 
 export const TRANSICIONES_PAGO: Record<EstadoPago, EstadoPago[]> = {
-  PENDIENTE: ['PARCIAL', 'PAGADO', 'ANTICIPADO'],
-  PARCIAL: ['PAGADO', 'ANTICIPADO'],
-  PAGADO: [],
-  ANTICIPADO: ['PAGADO'],
-  VENCIDO: ['PAGADO', 'PARCIAL'],
+  PENDIENTE: ['PARCIAL', 'PAGADO', 'ANTICIPADO', 'ANULADO'],
+  PARCIAL: ['PAGADO', 'ANTICIPADO', 'ANULADO'],
+  PAGADO: ['ANULADO'],
+  ANTICIPADO: ['PAGADO', 'ANULADO'],
+  VENCIDO: ['PAGADO', 'PARCIAL', 'ANULADO'],
+  ANULADO: [],
 }
 
 export function puedeTransicionarEntrega(
@@ -80,6 +81,7 @@ export function getBadgePago(estado: EstadoPago): BadgeInfo {
     PAGADO: { label: 'Pagado', className: 'bg-emerald-100 text-emerald-800 border border-emerald-200' },
     ANTICIPADO: { label: 'Anticipado', className: 'bg-indigo-100 text-indigo-800 border border-indigo-200' },
     VENCIDO: { label: 'Vencido', className: 'bg-rose-100 text-rose-800 border border-rose-200' },
+    ANULADO: { label: 'Anulado', className: 'bg-gray-100 text-gray-500 border border-gray-300' },
   }
   return map[estado]
 }
@@ -120,7 +122,8 @@ export function puedeCrearPedido(
     bloqueado: boolean
     id: string
   },
-  pedidosPendientes: Array<{ id: string; numero: number; saldo: number }>
+  pedidosPendientes: Array<{ id: string; numero: number; saldo: number }>,
+  limite: number = 3
 ): string | null {
   // Ventas anónimas (CONSUMIDOR_FINAL) nunca se bloquean por deudas previas
   if (cliente.id === 'CONSUMIDOR_FINAL') return null
@@ -129,12 +132,26 @@ export function puedeCrearPedido(
     return 'Cliente bloqueado por deuda vencida. Pague primero.'
   }
 
-  const deuda = pedidosPendientes[0]
-  if (deuda) {
-    return `Cliente tiene pedido #${deuda.numero} sin pagar. Saldo: $${deuda.saldo.toLocaleString('es-CO')}`
+  if (pedidosPendientes.length >= limite) {
+    return `Cliente tiene ${pedidosPendientes.length} pedidos fiados (límite: ${limite}). Pague primero para crear más.`
   }
 
   return null
+}
+
+/**
+ * Retorna el estado de fiados de un cliente para mostrar en UI
+ */
+export function getEstadoFiados(
+  pedidosPendientes: Array<{ id: string; numero: number; saldo: number }>,
+  limite: number = 3
+): { count: number; limite: number; porcentaje: number; nivel: 'ok' | 'cerca' | 'limite' } {
+  const count = pedidosPendientes.length
+  const porcentaje = limite > 0 ? (count / limite) * 100 : 100
+  let nivel: 'ok' | 'cerca' | 'limite' = 'ok'
+  if (count >= limite) nivel = 'limite'
+  else if (porcentaje >= 60) nivel = 'cerca'
+  return { count, limite, porcentaje, nivel }
 }
 
 /**
@@ -191,7 +208,7 @@ export function legacyToNewState(
     else if (totalPagado > 0) estadoPago = 'PARCIAL'
     else estadoPago = 'PENDIENTE'
   } else if (estadoEntrega === 'CANCELADO' || estadoEntrega === 'ANULADO') {
-    estadoPago = 'PAGADO'
+    estadoPago = 'ANULADO'
   }
 
   return { estadoEntrega, estadoPago }

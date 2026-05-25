@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { EstadoPago } from '@prisma/client'
 import { getTodayRange, getYesterdayRange } from '@/lib/dates'
 import { buildVentasPorPrecio } from './dashboard-client/types'
 import { DashboardClient } from './dashboard-client'
@@ -39,7 +40,7 @@ export default async function DashboardPage() {
     prisma.pedido.count({
       where: {
         promesaPagoFecha: { gte: new Date(), lte: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000) },
-        estadoPago: { not: 'PAGADO' },
+        estadoPago: { notIn: [EstadoPago.PAGADO, EstadoPago.ANULADO] },
       },
     }),
     prisma.cliente.count({

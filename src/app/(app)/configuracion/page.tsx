@@ -16,6 +16,7 @@ export default async function ConfiguracionPage() {
     DIAS_ALERTA_NO_VERIFICADO: configMap.DIAS_ALERTA_NO_VERIFICADO || '30',
     DIAS_VENCIMIENTO_PROMESA: configMap.DIAS_VENCIMIENTO_PROMESA || '2',
     MAX_PEDIDOS_DIA_ALERTA: configMap.MAX_PEDIDOS_DIA_ALERTA || '2',
+    LIMITE_PEDIDOS_FIADOS_DEFAULT: configMap.LIMITE_PEDIDOS_FIADOS_DEFAULT || '3',
   }
 
   return <ConfiguracionClient initialData={initialData} />

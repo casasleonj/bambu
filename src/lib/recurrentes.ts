@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getNextNumero } from "@/lib/sequence";
 import { resolverPreciosPedido, type Canal, type ProductCode } from "@/lib/pricing";
+import { getDateRange } from "@/lib/dates";
 
 type ProductosMap = {
   PACA_AGUA: number
@@ -26,11 +27,7 @@ function parseProductos(json: string): ProductosMap {
 }
 
 function formatDateISO(date: Date): string {
-  // Use LOCAL date components to avoid UTC midnight shift in negative TZ
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
+  return date.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
 }
 
 function addDays(date: Date, days: number): Date {
@@ -42,15 +39,16 @@ function addDays(date: Date, days: number): Date {
 export function calcularProxGeneracion(desde: Date, cadaNDias: number): Date {
   const result = new Date(desde)
   result.setDate(result.getDate() + cadaNDias)
-  result.setHours(0, 0, 0, 0)
+
+  const bogotaDate = new Date(result.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }) + 'T00:00:00-05:00')
+  bogotaDate.setHours(0, 0, 0, 0)
 
   // Sunday rule: shift to Monday for all frequencies
-  if (result.getDay() === 0) {
-    result.setDate(result.getDate() + 1)
-    result.setHours(0, 0, 0, 0)
+  if (bogotaDate.getDay() === 0) {
+    bogotaDate.setDate(bogotaDate.getDate() + 1)
   }
 
-  return result
+  return bogotaDate
 }
 
 function productosToCantidades(p: ProductosMap, canal: string) {
@@ -121,10 +119,13 @@ export interface PreviewRecurrente {
 export async function previewGeneracionRecurrentes(
   fechaReferencia: Date = new Date()
 ): Promise<PreviewRecurrente[]> {
-  const inicioDia = new Date(fechaReferencia)
-  inicioDia.setHours(0, 0, 0, 0)
+  const { endDate } = getDateRange(
+    fechaReferencia.toISOString().slice(0, 10),
+    fechaReferencia.toISOString().slice(0, 10)
+  )
 
-  const lookaheadEnd = addDays(inicioDia, 2)
+  const lookaheadEnd = new Date(endDate)
+  lookaheadEnd.setDate(lookaheadEnd.getDate() + 2)
 
   const plantillas = await prisma.plantillaRecurrente.findMany({
     where: {
@@ -315,11 +316,8 @@ export interface DecisionGeneracion {
 
 export async function generarPedidosRecurrentes(
   decisiones: DecisionGeneracion[],
-  fechaReferencia: Date = new Date()
+  _fechaReferencia: Date = new Date()
 ) {
-  const inicioDia = new Date(fechaReferencia)
-  inicioDia.setHours(0, 0, 0, 0)
-
   const generados: Array<{ id: string; numero: number; tipo: string }> = []
   const saltados: string[] = []
 
@@ -343,6 +341,35 @@ export async function generarPedidosRecurrentes(
     }
 
     if (pt.cliente.bloqueado || !pt.cliente.activo) {
+      await prisma.plantillaRecurrente.update({
+        where: { id: pt.id },
+        data: {
+          ultimaGeneracion: prox,
+          proxGeneracion: calcularProxGeneracion(prox, pt.cadaNDias),
+        },
+      })
+      continue
+    }
+
+    // Verificar limite de fiados
+    if (pt.cliente.limitePedidosFiados == null) {
+      const configLimite = await prisma.config.findUnique({ where: { clave: 'LIMITE_PEDIDOS_FIADOS_DEFAULT' } })
+      if (configLimite) {
+        const parsed = parseInt(configLimite.valor, 10)
+        if (!isNaN(parsed)) pt.cliente.limitePedidosFiados = parsed
+      }
+    }
+    const limite = pt.cliente.limitePedidosFiados ?? 3
+
+    const pedidosPendientesCount = await prisma.pedido.count({
+      where: {
+        clienteId: pt.clienteId,
+        estadoEntrega: { notIn: ['ANULADO', 'CANCELADO'] },
+        estadoPago: { notIn: ['PAGADO', 'ANTICIPADO', 'ANULADO'] },
+      },
+    })
+
+    if (pedidosPendientesCount >= limite) {
       await prisma.plantillaRecurrente.update({
         where: { id: pt.id },
         data: {

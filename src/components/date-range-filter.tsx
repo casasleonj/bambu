@@ -11,7 +11,7 @@ interface DateRangeFilterProps {
 const DAY_NAMES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
 
 function formatDateISO(date: Date): string {
-  return date.toLocaleDateString('en-CA') // YYYY-MM-DD
+  return date.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
 }
 
 function getDayLabel(date: Date): string {

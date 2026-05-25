@@ -38,7 +38,7 @@ const SEVERIDAD_ORDER = { ALTA: 3, MEDIA: 2, BAJA: 1 }
 
 export function calcularAlertas(pedidos: PedidoPedidos[], clienteIdIgnorar?: string): AlertaRow[] {
   const clientesMap = new Map<string, AlertaRow>()
-  const hoy = new Date().toISOString().slice(0, 10)
+  const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
 
   // Promedio por cliente (excluyendo anulados/cancelados)
   const promedioPorCliente = new Map<string, number>()
@@ -74,12 +74,18 @@ export function calcularAlertas(pedidos: PedidoPedidos[], clienteIdIgnorar?: str
 
   pedidos.forEach((p) => {
     const alertas: AlertaItem[] = []
+    const fechaColombia = p.fecha
+      ? new Date(p.fecha).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+      : ''
 
     // 1. 2do+ pedido hoy
-    if (p.fecha?.slice(0, 10) === hoy) {
-      const pedidosHoy = pedidos.filter(
-        (p2) => p2.clienteId === p.clienteId && p2.fecha?.slice(0, 10) === hoy
-      )
+    if (fechaColombia === hoy) {
+      const pedidosHoy = pedidos.filter((p2) => {
+        const fecha2 = p2.fecha
+          ? new Date(p2.fecha).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+          : ''
+        return p2.clienteId === p.clienteId && fecha2 === hoy
+      })
       if (pedidosHoy.length >= 3) {
         alertas.push({
           tipo: '3RO_PEDIDO',
@@ -169,7 +175,7 @@ export function calcularAlertas(pedidos: PedidoPedidos[], clienteIdIgnorar?: str
     }
 
     // 9. Promesa próxima a vencer
-    if (p.promesaPagoFecha && p.estadoPago !== 'PAGADO' && p.estadoPago !== 'ANTICIPADO') {
+    if (p.promesaPagoFecha && p.estadoPago !== 'PAGADO' && p.estadoPago !== 'ANTICIPADO' && p.estadoPago !== 'ANULADO') {
       const promesa = new Date(p.promesaPagoFecha)
       const diffMs = promesa.getTime() - Date.now()
       const diffDias = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
@@ -297,10 +303,15 @@ export function calcularAlertasCliente(
   pedidos: PedidoBase[]
 ): AlertaItem[] {
   const alertas: AlertaItem[] = []
-  const hoy = new Date().toISOString().slice(0, 10)
+  const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
 
   // 2DO / 3RO / MULTIPLES_RAPIDO
-  const pedidosHoy = pedidos.filter((p) => p.fecha?.slice(0, 10) === hoy)
+  const pedidosHoy = pedidos.filter((p) => {
+    const fechaColombia = p.fecha
+      ? new Date(p.fecha).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+      : ''
+    return fechaColombia === hoy
+  })
   if (pedidosHoy.length >= 3) {
     alertas.push({ tipo: '3RO_PEDIDO', severidad: 'MEDIA', detalle: `${pedidosHoy.length} pedidos hoy`, fecha: hoy })
   } else if (pedidosHoy.length === 2) {
@@ -335,7 +346,7 @@ export function calcularAlertasCliente(
     if (p.disputaAbierta) {
       alertas.push({ tipo: 'DISPUTA_ABIERTA', severidad: 'ALTA', detalle: `Pedido #${p.numero} con disputa`, fecha: p.fecha, pedidoId: p.id })
     }
-    if (p.promesaPagoFecha && p.estadoPago !== 'PAGADO' && p.estadoPago !== 'ANTICIPADO') {
+    if (p.promesaPagoFecha && p.estadoPago !== 'PAGADO' && p.estadoPago !== 'ANTICIPADO' && p.estadoPago !== 'ANULADO') {
       const promesa = new Date(p.promesaPagoFecha)
       const diffDias = Math.ceil((promesa.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
       if (diffDias <= 2 && diffDias >= -1) {

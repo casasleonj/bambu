@@ -13,7 +13,10 @@ export default async function ClientesPage({
     include: {
       _count: { select: { pedidos: true } },
       pedidos: {
-        where: { saldo: { gt: 0 } },
+        where: {
+          saldo: { gt: 0 },
+          estadoEntrega: { in: ['ENTREGADO', 'EN_RUTA', 'PENDIENTE', 'NO_ENTREGADO'] },
+        },
         include: {
           factura: {
             include: {

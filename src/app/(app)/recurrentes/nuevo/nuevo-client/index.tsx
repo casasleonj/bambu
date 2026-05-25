@@ -85,13 +85,15 @@ export default function NuevoRecurrenteClient() {
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [highlightedIndex, setHighlightedIndex] = useState(-1)
 
+  const hoy = formatDateInput(new Date())
+
   const [submitting, setSubmitting] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [formData, setFormData] = useState<NuevoRecurrenteForm>({
-    clienteId: '', cadaNDias: 7,
+    clienteId: '', cadaNDias: 1,
     canal: 'DOMICILIO', tipo: 'ENVIO',
     horaPreferida: '',
-    proxGeneracion: calcularProxGeneracionDefault(7),
+    proxGeneracion: hoy,
     pacaAgua: 0, pacaHielo: 0, botellon: 0, bolsaAgua: 0, bolsaHielo: 0,
     notas: '',
   })
@@ -218,10 +220,10 @@ export default function NuevoRecurrenteClient() {
     abortRef.current = ctrl
     setSearching(true)
     try {
-      const res = await fetch(`/api/clientes?all=true&search=${encodeURIComponent(term)}`, { signal: ctrl.signal })
+      const res = await fetch(`/api/clientes?all=true&search=${encodeURIComponent(term)}`, { signal: ctrl.signal, credentials: 'include' })
       const data = await res.json()
       if (ctrl.signal.aborted) return
-      setSearchResults(data.clientes || [])
+      setSearchResults(data.clientes || data.data || [])
       setDropdownOpen(true)
       setHighlightedIndex(-1)
     } catch (err) {
@@ -348,8 +350,6 @@ export default function NuevoRecurrenteClient() {
     finally { setSubmitting(false) }
   }
 
-  const hoy = formatDateInput(new Date())
-
   function proxGeneracionEsDomingo(): boolean {
     if (!formData.proxGeneracion) return false
     const d = new Date(formData.proxGeneracion + 'T00:00:00')
@@ -395,6 +395,7 @@ export default function NuevoRecurrenteClient() {
         <SectionCard
           title="Cliente"
           icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>}
+          className="overflow-visible"
         >
           {selectedCliente ? (
             <div className="animate-fade-in-up">
@@ -421,7 +422,7 @@ export default function NuevoRecurrenteClient() {
               )}
             </div>
           ) : (
-            <div ref={dropdownRef} className="relative">
+            <div ref={dropdownRef} className="relative z-20">
               <div className="relative">
                 <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                 <input
@@ -444,7 +445,7 @@ export default function NuevoRecurrenteClient() {
               </div>
 
               {searching && searchResults.length === 0 && (
-                <div className="absolute z-10 w-full mt-1 bg-white border rounded-xl shadow-lg overflow-hidden">
+                <div className="absolute z-50 w-full mt-1 bg-white border rounded-xl shadow-lg overflow-hidden">
                   {Array.from({ length: 3 }).map((_, i) => (
                     <div key={i} className="px-3 py-2.5 flex items-center gap-3 border-b last:border-b-0">
                       <div className="w-6 h-6 rounded-full bg-gray-100 animate-pulse" />
@@ -458,7 +459,7 @@ export default function NuevoRecurrenteClient() {
               )}
 
               {dropdownOpen && !searching && (
-                <div id="cliente-results" role="listbox" className="absolute z-10 w-full mt-1 bg-white border rounded-xl shadow-lg max-h-56 overflow-y-auto">
+                <div id="cliente-results" role="listbox" className="absolute z-50 w-full mt-1 bg-white border rounded-xl shadow-lg max-h-56 overflow-y-auto">
                   {searchResults.length > 0 ? (
                     searchResults.map((c, idx) => (
                       <button

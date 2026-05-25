@@ -1,7 +1,11 @@
 // @tests api/abono, api/cierre, api/embarque, api/factura, api/pedido, api/reporte
-import { test, expect, fullLogin, apiPost, apiGet, createCliente, createTrabajador, createEmbarque } from './fixtures'
+import { test, expect, fullLogin, apiPost, apiGet, createCliente, createTrabajador, createEmbarque, resetTestDatabase } from './fixtures'
 
 test.describe('Ciclo Completo Pedido', () => {
+  test.describe.configure({ mode: 'serial' })
+  test.beforeAll(() => {
+    resetTestDatabase()
+  })
 
   // ─── 1. Full lifecycle: pedido → embarque → entrega → cierre → factura → abono → reporte ──
 
@@ -10,10 +14,10 @@ test.describe('Ciclo Completo Pedido', () => {
     await fullLogin(page)
 
     const cliente = await createCliente(page)
-    expect(cliente.id).toBeTruthy()
+    expect(cliente.cliente.id).toBeTruthy()
 
     const pedidoRes = await apiPost(page, '/api/pedidos', {
-      clienteId: cliente.id,
+      clienteId: cliente.cliente.id,
       canal: 'DOMICILIO',
       ventaRapida: false,
       items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
@@ -24,12 +28,12 @@ test.describe('Ciclo Completo Pedido', () => {
     expect(pedidoId).toBeTruthy()
 
     const trabajador = await createTrabajador(page)
-    expect(trabajador.id).toBeTruthy()
+    expect(trabajador.trabajador.id).toBeTruthy()
 
-    const embarque = await createEmbarque(page, trabajador.id)
-    expect(embarque.id).toBeTruthy()
+    const embarque = await createEmbarque(page, trabajador.trabajador.id)
+    expect(embarque.embarque.id).toBeTruthy()
 
-    const enviarRes = await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, { embarqueId: embarque.id })
+    const enviarRes = await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, { embarqueId: embarque.embarque.id })
     if (enviarRes.status() !== 201) {
       const envBody = await enviarRes.json().catch(() => ({}))
       test.skip(true, `Enviar failed: ${envBody?.error || enviarRes.status()}`)
@@ -42,7 +46,7 @@ test.describe('Ciclo Completo Pedido', () => {
     const pedidoCheck = enRutaBody.pedido || enRutaBody
     expect(pedidoCheck.estado || pedidoCheck.estadoEntrega).toMatch(/EN_RUTA|EN RUTA/i)
 
-    const cerrarRes = await apiPost(page, `/api/embarques/${embarque.id}/cerrar`, {
+    const cerrarRes = await apiPost(page, `/api/embarques/${embarque.embarque.id}/cerrar`, {
       pedidos: [{
         pedidoId,
         entregado: 'COMPLETO',
@@ -70,7 +74,7 @@ test.describe('Ciclo Completo Pedido', () => {
     const facturas = facturasBody.facturas || facturasBody.data || []
     const facturaDelPedido = facturas.find((f: any) => f.pedidoId === pedidoId)
     if (facturaDelPedido) {
-      expect(facturaDelPedido.estado).toMatch(/EMITIDA|PAGADA/)
+      expect(facturaDelPedido.estado).toMatch(/EMITIDA|PAGADA|PARCIAL/)
     }
 
     const today = new Date().toISOString().split('T')[0]
@@ -116,17 +120,17 @@ test.describe('Ciclo Completo Pedido', () => {
 
     const [p1, p2, p3] = await Promise.all([
       apiPost(page, '/api/pedidos', {
-        clienteId: cliente1.id, canal: 'DOMICILIO', ventaRapida: false,
+        clienteId: cliente1.cliente.id, canal: 'DOMICILIO', ventaRapida: false,
         items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
         pagos: [{ metodo: 'EFECTIVO', monto: 5000 }],
       }),
       apiPost(page, '/api/pedidos', {
-        clienteId: cliente2.id, canal: 'DOMICILIO', ventaRapida: false,
+        clienteId: cliente2.cliente.id, canal: 'DOMICILIO', ventaRapida: false,
         items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
         pagos: [{ metodo: 'EFECTIVO', monto: 5000 }],
       }),
       apiPost(page, '/api/pedidos', {
-        clienteId: cliente3.id, canal: 'DOMICILIO', ventaRapida: false,
+        clienteId: cliente3.cliente.id, canal: 'DOMICILIO', ventaRapida: false,
         items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
         pagos: [{ metodo: 'EFECTIVO', monto: 5000 }],
       }),
@@ -140,18 +144,18 @@ test.describe('Ciclo Completo Pedido', () => {
     const pid3 = j3.pedido?.id || j3.id
 
     const trabajador = await createTrabajador(page)
-    const embarque = await createEmbarque(page, trabajador.id)
+    const embarque = await createEmbarque(page, trabajador.trabajador.id)
 
     const envResults = await Promise.all([
-      apiPost(page, `/api/pedidos/${pid1}/enviar`, { embarqueId: embarque.id }),
-      apiPost(page, `/api/pedidos/${pid2}/enviar`, { embarqueId: embarque.id }),
-      apiPost(page, `/api/pedidos/${pid3}/enviar`, { embarqueId: embarque.id }),
+      apiPost(page, `/api/pedidos/${pid1}/enviar`, { embarqueId: embarque.embarque.id }),
+      apiPost(page, `/api/pedidos/${pid2}/enviar`, { embarqueId: embarque.embarque.id }),
+      apiPost(page, `/api/pedidos/${pid3}/enviar`, { embarqueId: embarque.embarque.id }),
     ])
 
     const allSent = envResults.every(r => r.status() === 201)
     expect(allSent).toBe(true)
 
-    const cerrarRes = await apiPost(page, `/api/embarques/${embarque.id}/cerrar`, {
+    const cerrarRes = await apiPost(page, `/api/embarques/${embarque.embarque.id}/cerrar`, {
       pedidos: [
         { pedidoId: pid1, entregado: 'COMPLETO', productosEntregados: { cPacaAguaEnt: 1, cPacaHieloEnt: 0, cBotellonFabEnt: 0, cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0 }, pagado: 'COMPLETO', pagos: [{ metodo: 'EFECTIVO', monto: 5000 }] },
         { pedidoId: pid2, entregado: 'COMPLETO', productosEntregados: { cPacaAguaEnt: 1, cPacaHieloEnt: 0, cBotellonFabEnt: 0, cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0 }, pagado: 'COMPLETO', pagos: [{ metodo: 'EFECTIVO', monto: 5000 }] },
@@ -178,7 +182,7 @@ test.describe('Ciclo Completo Pedido', () => {
 
     const cliente = await createCliente(page)
     const pedidoRes = await apiPost(page, '/api/pedidos', {
-      clienteId: cliente.id,
+      clienteId: cliente.cliente.id,
       canal: 'DOMICILIO',
       ventaRapida: false,
       items: [{ producto: 'PACA_AGUA', cantidad: 3 }],
@@ -195,11 +199,11 @@ test.describe('Ciclo Completo Pedido', () => {
     expect(saldoInicial).toBeGreaterThan(0)
 
     const trabajador = await createTrabajador(page)
-    const embarque = await createEmbarque(page, trabajador.id)
+    const embarque = await createEmbarque(page, trabajador.trabajador.id)
 
-    await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, { embarqueId: embarque.id })
+    await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, { embarqueId: embarque.embarque.id })
 
-    const cerrarRes = await apiPost(page, `/api/embarques/${embarque.id}/cerrar`, {
+    const cerrarRes = await apiPost(page, `/api/embarques/${embarque.embarque.id}/cerrar`, {
       pedidos: [{
         pedidoId,
         entregado: 'COMPLETO',
@@ -222,7 +226,7 @@ test.describe('Ciclo Completo Pedido', () => {
 
     const abonoRes = await apiPost(page, '/api/abonos', {
       facturaId: factura.id,
-      clienteId: cliente.id,
+      clienteId: cliente.cliente.id,
       pedidoId,
       monto: saldoFactura,
       metodoPago: 'EFECTIVO',

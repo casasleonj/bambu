@@ -1,12 +1,12 @@
 'use client'
 
 import { Input } from '@/components/ui/input'
-import { PRODUCTO_INFO, getProductosForCanal } from '@/lib/prices'
+import { PRODUCTO_INFO } from '@/lib/prices'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
 import type { Tier } from './types'
 
 interface ProductGridProps {
-  canal: 'PUNTO' | 'DOMICILIO'
+  productosVisibles: string[]
   cantidades: Record<string, number>
   handleCantidadChange: (id: string, value: string) => void
   increment: (id: string) => void
@@ -32,7 +32,7 @@ function getActiveTier(codigo: string, cant: number, tablaPrecios: Record<string
 }
 
 export function ProductGrid({
-  canal,
+  productosVisibles,
   cantidades,
   handleCantidadChange,
   increment,
@@ -44,12 +44,10 @@ export function ProductGrid({
   setPreciosEditando,
   setPreciosManuales,
 }: ProductGridProps) {
-  const productosActuales = getProductosForCanal(canal)
-
   return (
     <div className="space-y-3">
       <h3 className="font-semibold text-gray-700 text-sm">Productos</h3>
-      {productosActuales.map((prodId) => {
+      {productosVisibles.map((prodId) => {
         const info = PRODUCTO_INFO[prodId]
         const cant = cantidades[prodId] || 0
         const precio = getPrecio(info.codigo)

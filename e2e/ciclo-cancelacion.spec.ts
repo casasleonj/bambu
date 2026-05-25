@@ -1,7 +1,11 @@
 // @tests api/factura, api/pedido
-import { test, expect, fullLogin, apiPost, apiGet, createCliente } from './fixtures'
+import { test, expect, fullLogin, apiPost, apiGet, createCliente, resetTestDatabase } from './fixtures'
 
 test.describe('Ciclo de Cancelación', () => {
+  test.describe.configure({ mode: 'serial' })
+  test.beforeAll(() => {
+    resetTestDatabase()
+  })
 
   // ─── 1. Anular pedido entregado → nota de crédito → factura ANULADA ─────────
 
@@ -10,10 +14,10 @@ test.describe('Ciclo de Cancelación', () => {
     await fullLogin(page)
 
     const cliente = await createCliente(page)
-    expect(cliente.id).toBeTruthy()
+    expect(cliente.cliente.id).toBeTruthy()
 
     const pedidoRes = await apiPost(page, '/api/pedidos', {
-      clienteId: cliente.id,
+      clienteId: cliente.cliente.id,
       canal: 'PUNTO',
       ventaRapida: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
@@ -25,7 +29,7 @@ test.describe('Ciclo de Cancelación', () => {
 
     const facturaRes = await apiPost(page, '/api/facturas', {
       pedidoId,
-      clienteId: cliente.id,
+      clienteId: cliente.cliente.id,
     })
     const facturaJson = await facturaRes.json()
     const facturaId = facturaJson.factura?.id
@@ -63,7 +67,7 @@ test.describe('Ciclo de Cancelación', () => {
 
     const cliente = await createCliente(page)
     const pedidoRes = await apiPost(page, '/api/pedidos', {
-      clienteId: cliente.id,
+      clienteId: cliente.cliente.id,
       canal: 'DOMICILIO',
       ventaRapida: false,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
@@ -91,7 +95,7 @@ test.describe('Ciclo de Cancelación', () => {
 
     const cliente = await createCliente(page)
     const pedidoRes = await apiPost(page, '/api/pedidos', {
-      clienteId: cliente.id,
+      clienteId: cliente.cliente.id,
       canal: 'PUNTO',
       ventaRapida: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
@@ -128,7 +132,7 @@ test.describe('Ciclo de Cancelación', () => {
 
     const cliente = await createCliente(page)
     const pedidoRes = await apiPost(page, '/api/pedidos', {
-      clienteId: cliente.id,
+      clienteId: cliente.cliente.id,
       canal: 'PUNTO',
       ventaRapida: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 3 }],

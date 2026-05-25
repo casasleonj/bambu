@@ -14,6 +14,7 @@ interface PedidoFiltersProps {
   filtroEstadoPago: string[]
   onUpdateFilter: (key: string, value: string) => void
   onDateChange?: (desde: string | null, hasta: string | null) => void
+  hideDateFilter?: boolean
 }
 
 const FILTERS_KEY = 'pedidos-filters-expanded'
@@ -45,6 +46,7 @@ export function PedidoFilters({
   filtroEstadoPago,
   onUpdateFilter,
   onDateChange,
+  hideDateFilter = false,
 }: PedidoFiltersProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -75,9 +77,11 @@ export function PedidoFilters({
     <div className="bg-white p-4 rounded-xl shadow mb-6">
       {/* Fila superior compacta — siempre visible */}
       <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
-        <div className="shrink-0">
-          <DateRangeFilter onDateChange={onDateChange} />
-        </div>
+        {!hideDateFilter && (
+          <div className="shrink-0">
+            <DateRangeFilter onDateChange={onDateChange} />
+          </div>
+        )}
         <input
           type="text"
           placeholder="Buscar por nombre, teléfono o #pedido..."

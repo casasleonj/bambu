@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { toast } from 'sonner'
@@ -11,12 +11,14 @@ import { ErrorState } from '@/components/error-state'
 import { SkeletonPage } from '@/components/skeleton'
 import { Tooltip, InfoBanner } from '@/components/tooltip'
 import { useConfirm } from '@/components/confirm-modal'
+import { SmartDateFilter } from '@/components/smart-date-filter'
 import { PedidoFilters } from './pedido-filters'
 import { PedidoTable } from './pedido-table'
 import { FiadosTable } from './fiados-table'
 import { AlertasTable } from './alertas-table'
 import { calcularAlertas } from './alertas-utils'
 import type { Pedido, Embarque, Cliente } from './types'
+import { getPresetDate } from '@/lib/dates'
 
 const PedidoFormUnified = dynamic(() => import('@/components/pedido-form-unified').then(m => m.PedidoFormUnified), { ssr: false })
 import type { PedidoInicial, PedidoUnifiedData } from '@/components/pedido-form-unified'
@@ -45,27 +47,12 @@ export function PedidosClient() {
   const [fabOpen, setFabOpen] = useState(false)
   const [modalKey, setModalKey] = useState(0)
   const [pedidoInicial, setPedidoInicial] = useState<PedidoInicial | undefined>(undefined)
+  const anularMotivoRef = useRef<string>('')
+  const anularDevolverStockRef = useRef<boolean>(false)
 
   // Fechas desde URL (fuente de verdad)
   const desdeUrl = searchParams.get('desde')
   const hastaUrl = searchParams.get('hasta')
-
-  // Navegar a una fecha específica actualizando la URL
-  const navigateToDate = useCallback((offset: number) => {
-    const fecha = getFechaOffset(offset)
-    const params = new URLSearchParams(searchParams.toString())
-    params.set('desde', fecha)
-    params.set('hasta', fecha)
-    router.push(`?${params.toString()}`, { scroll: false })
-  }, [searchParams, router])
-
-  // Limpiar filtro de fecha (ver todos)
-  const verTodos = useCallback(() => {
-    const params = new URLSearchParams(searchParams.toString())
-    params.delete('desde')
-    params.delete('hasta')
-    router.push(`?${params.toString()}`, { scroll: false })
-  }, [searchParams, router])
 
   const filtroTipo = searchParams.getAll('tipo')
   const filtroOrigen = searchParams.getAll('origen')
@@ -178,11 +165,13 @@ export function PedidosClient() {
   useEffect(() => {
     (async () => {
       if (!desdeUrl && !hastaUrl) {
-        const hoy = getFechaOffset(0)
-        const params = new URLSearchParams(searchParams.toString())
-        params.set('desde', hoy)
-        params.set('hasta', hoy)
-        router.replace(`?${params.toString()}`, { scroll: false })
+        const hoy = getPresetDate('hoy')
+        if (hoy) {
+          const params = new URLSearchParams(searchParams.toString())
+          params.set('desde', hoy.desde)
+          params.set('hasta', hoy.hasta)
+          router.replace(`?${params.toString()}`, { scroll: false })
+        }
       }
       await fetchPedidos()
       const [clientesList] = await Promise.all([fetchClientes(), fetchPrecios(), fetchEmbarques()])
@@ -313,7 +302,10 @@ export function PedidosClient() {
       p.nombreCli.toLowerCase().includes(search.toLowerCase()) ||
       p.telefonoCli?.includes(search) ||
       p.numero.toString().includes(search)
-    const matchFecha = !desdeUrl || !hastaUrl || (p.fecha >= desdeUrl && p.fecha <= hastaUrl + 'T23:59:59')
+    const fechaColombia = p.fecha
+      ? new Date(p.fecha).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+      : ''
+    const matchFecha = !desdeUrl || !hastaUrl || (fechaColombia >= desdeUrl && fechaColombia <= hastaUrl)
     return matchTipo && matchOrigen && matchEstadoEntrega && matchEstadoPago && matchSearch && matchFecha
   }), [pedidos, filtroTipo, filtroOrigen, filtroEstadoEntrega, filtroEstadoPago, search, desdeUrl, hastaUrl])
 
@@ -366,6 +358,7 @@ export function PedidosClient() {
       PAGADO: 'bg-green-100 text-green-800',
       ANTICIPADO: 'bg-teal-100 text-teal-800',
       VENCIDO: 'bg-rose-100 text-rose-800',
+      ANULADO: 'bg-gray-100 text-gray-500',
     }
     return (
       <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${styles[estado] || 'bg-gray-100 text-gray-500'}`}>
@@ -471,13 +464,30 @@ export function PedidosClient() {
     }
 
     if (nuevoEstado === 'ANULADO') {
+      anularMotivoRef.current = ''
+      anularDevolverStockRef.current = false
       const ok = await confirm({
         title: 'Anular pedido entregado',
         message: '¿Estás seguro de anular este pedido?',
         description: 'Esta acción es irreversible y afectará el historial de ventas.',
+        details: (
+          <div className="space-y-3 w-full">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Motivo de anulación *</label>
+              <input
+                type="text"
+                placeholder="Ej: error en facturación, cliente devolvió..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-red-500 focus:ring-2 focus:ring-red-200 outline-none transition"
+                onChange={(e) => { anularMotivoRef.current = e.target.value }}
+                autoFocus
+              />
+            </div>
+          </div>
+        ),
         consequences: [
           'Se creará una nota de crédito',
-          'El saldo se marcará como perdido',
+          'Se anulará la factura asociada',
+          'El saldo se marcará como cero',
           'Afectará los reportes de ventas',
         ],
         variant: 'destructive',
@@ -485,15 +495,28 @@ export function PedidosClient() {
         cancelLabel: 'No, mantener',
       })
       if (!ok) return
+      if (!anularMotivoRef.current.trim()) {
+        toast.error('Debes indicar el motivo de anulación')
+        return
+      }
     }
 
     setUpdatingId(id)
     try {
-      const res = await fetch(`/api/pedidos/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ estado: nuevoEstado }),
-      })
+      let res: Response
+      if (nuevoEstado === 'ANULADO') {
+        res = await fetch(`/api/pedidos/${id}/anular`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ motivo: anularMotivoRef.current.trim(), devolverStock: anularDevolverStockRef.current }),
+        })
+      } else {
+        res = await fetch(`/api/pedidos/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ estado: nuevoEstado }),
+        })
+      }
       if (res.ok) {
         setShowDetailModal(false)
         fetchPedidos()
@@ -584,41 +607,13 @@ export function PedidosClient() {
           <h1 className="text-2xl font-bold text-gray-800">
             {activeTab === 'fiados' ? 'Fiados' : activeTab === 'alertas' ? 'Alertas' : getTituloFecha(desdeUrl, hastaUrl)}
           </h1>
-          {activeTab === 'hoy' && (
-            <div className="flex items-center gap-2 text-sm">
-              <button
-                onClick={() => verTodos()}
-                className={`px-3 py-1.5 rounded-lg transition ${!desdeUrl && !hastaUrl ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-100'}`}
-              >
-                Todos
-              </button>
-              <button
-                onClick={() => navigateToDate(-1)}
-                className={`px-3 py-1.5 rounded-lg transition ${desdeUrl === getFechaOffset(-1) ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-100'}`}
-              >
-                ← Ayer
-              </button>
-              <button
-                onClick={() => navigateToDate(0)}
-                className={`px-3 py-1.5 rounded-lg transition ${desdeUrl === getFechaOffset(0) ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-100'}`}
-              >
-                Hoy
-              </button>
-              <button
-                onClick={() => navigateToDate(1)}
-                className={`px-3 py-1.5 rounded-lg transition ${desdeUrl === getFechaOffset(1) ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-100'}`}
-              >
-                Mañana →
-              </button>
-            </div>
-          )}
         </div>
 
         {/* Tabs */}
         <div className="flex border-b border-gray-200">
           {[
             { key: 'hoy', label: 'Pedidos', count: pedidosFiltrados.length },
-            { key: 'fiados', label: 'Fiados', count: pedidos.filter((p) => Number(p.saldo) > 0).length },
+            { key: 'fiados', label: 'Fiados', count: pedidos.filter((p) => Number(p.saldo) > 0 && p.estadoEntrega !== 'ANULADO' && p.clienteId !== 'CONSUMIDOR_FINAL').length },
             { key: 'alertas', label: 'Alertas', count: alertasCount },
           ].map((tab) => (
             <button
@@ -661,15 +656,19 @@ export function PedidosClient() {
 
       {/* Filtros - solo en Hoy (fuente de verdad URL) */}
       {activeTab === 'hoy' && (
-        <PedidoFilters
-          searchInput={searchInput}
-          onSearchChange={setSearchInput}
-          filtroTipo={filtroTipo}
-          filtroOrigen={filtroOrigen}
-          filtroEstadoEntrega={filtroEstadoEntrega}
-          filtroEstadoPago={filtroEstadoPago}
-          onUpdateFilter={updateFilter}
-        />
+        <div className="bg-white p-4 rounded-xl shadow mb-6 space-y-4">
+          <SmartDateFilter />
+          <PedidoFilters
+            searchInput={searchInput}
+            onSearchChange={setSearchInput}
+            filtroTipo={filtroTipo}
+            filtroOrigen={filtroOrigen}
+            filtroEstadoEntrega={filtroEstadoEntrega}
+            filtroEstadoPago={filtroEstadoPago}
+            onUpdateFilter={updateFilter}
+            hideDateFilter={true}
+          />
+        </div>
       )}
 
       {/* Contenido por tab */}
@@ -1193,27 +1192,23 @@ export function PedidosClient() {
   )
 }
 
-function getFechaOffset(dias: number): string {
-  const d = new Date()
-  d.setDate(d.getDate() + dias)
-  return d.toISOString().split('T')[0]
-}
-
 function getTituloFecha(desde: string | null, hasta: string | null): string {
-  const hoy = getFechaOffset(0)
-  const ayer = getFechaOffset(-1)
-  const manana = getFechaOffset(1)
+  const presets = {
+    hoy: getPresetDate('hoy'),
+    ayer: getPresetDate('ayer'),
+    manana: getPresetDate('manana'),
+  }
 
   if (!desde && !hasta) return 'Pedidos'
-  if (desde === hoy && hasta === hoy) return 'Pedidos de Hoy'
-  if (desde === ayer && hasta === ayer) return 'Pedidos de Ayer'
-  if (desde === manana && hasta === manana) return 'Pedidos de Mañana'
+  if (presets.hoy && desde === presets.hoy.desde && hasta === presets.hoy.hasta) return 'Pedidos de Hoy'
+  if (presets.ayer && desde === presets.ayer.desde && hasta === presets.ayer.hasta) return 'Pedidos de Ayer'
+  if (presets.manana && desde === presets.manana.desde && hasta === presets.manana.hasta) return 'Pedidos de Mañana'
   if (desde && hasta) {
     if (desde === hasta) {
-      const fecha = new Date(desde + 'T00:00:00')
+      const fecha = new Date(desde + 'T00:00:00-05:00')
       return `Pedidos del ${fecha.toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'short' })}`
     }
-    return `Pedidos: ${new Date(desde + 'T00:00:00').toLocaleDateString('es-CO')} → ${new Date(hasta + 'T00:00:00').toLocaleDateString('es-CO')}`
+    return `Pedidos: ${new Date(desde + 'T00:00:00-05:00').toLocaleDateString('es-CO')} → ${new Date(hasta + 'T00:00:00-05:00').toLocaleDateString('es-CO')}`
   }
   return 'Pedidos'
 }

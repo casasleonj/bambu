@@ -19,11 +19,9 @@ export async function GET(request: NextRequest) {
     if (search) {
       where.OR = [
         { nombre: { contains: search, mode: 'insensitive' } },
-        { telefono: { contains: search } },
+        { telefono: { contains: search, mode: 'insensitive' } },
         { direccion: { contains: search, mode: 'insensitive' } },
         { barrio: { contains: search, mode: 'insensitive' } },
-        { contactos: { path: ['[*].telefono'], contains: search } },
-        { contactos: { path: ['[*].nombre'], contains: search, mode: 'insensitive' } },
       ]
     }
 
@@ -35,7 +33,10 @@ export async function GET(request: NextRequest) {
         include: {
           _count: { select: { pedidos: true } },
           pedidos: {
-            where: { saldo: { gt: 0 } },
+            where: {
+              saldo: { gt: 0 },
+              estadoEntrega: { in: ['ENTREGADO', 'EN_RUTA', 'PENDIENTE', 'NO_ENTREGADO'] },
+            },
             select: { saldo: true },
           },
         },
@@ -104,7 +105,7 @@ export async function POST(request: NextRequest) {
         contactos: contactosSinDuplicados.length > 0 ? contactosSinDuplicados : undefined,
         preciosEspeciales: parsed.data.preciosEspeciales,
         notas: parsed.data.notas,
-        horaPreferida: parsed.data.horaPreferida ?? null,
+        horaApertura: parsed.data.horaApertura ?? null,
       },
     })
 

@@ -48,7 +48,8 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
     contactos: [],
     preciosEspeciales: '',
     notas: '',
-    horaPreferida: '',
+    horaApertura: '',
+    limitePedidosFiados: undefined,
   })
 
   const [sortBy, setSortBy] = useState<'nombre' | 'createdAt'>('createdAt')
@@ -223,7 +224,8 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
       contactos: [],
       preciosEspeciales: '',
       notas: '',
-      horaPreferida: '',
+      horaApertura: '',
+      limitePedidosFiados: undefined,
     })
     setPreciosEspecialesMap({ DOMICILIO: {}, PUNTO: {} })
     setCanalActivo('DOMICILIO')
@@ -250,7 +252,8 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
       contactos: (selectedCliente.contactos as any[]) || [],
       preciosEspeciales: selectedCliente.preciosEspeciales || '',
       notas: selectedCliente.notas || '',
-      horaPreferida: selectedCliente.horaPreferida || '',
+      horaApertura: selectedCliente.horaApertura || '',
+      limitePedidosFiados: selectedCliente.limitePedidosFiados || undefined,
     })
     setPreciosEspecialesMap(parsePreciosEspeciales(selectedCliente.preciosEspeciales))
     setCanalActivo('DOMICILIO')
@@ -297,7 +300,7 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
       const body = {
         ...formData,
         preciosEspeciales: preciosJson || undefined,
-        horaPreferida: formData.horaPreferida || null,
+        horaApertura: formData.horaApertura || null,
         linkUbicacion: formData.linkUbicacion || null,
         contactos: formData.contactos.filter(c => c.nombre.trim() && c.telefono.trim()),
       }

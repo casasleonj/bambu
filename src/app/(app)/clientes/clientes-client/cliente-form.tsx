@@ -68,10 +68,25 @@ export function ClienteForm({
   formId = 'cliente-form',
 }: ClienteFormProps) {
   const [activeSection, setActiveSection] = useState<'basico' | 'ubicacion' | 'contactos' | 'frecuencia' | 'precios'>('basico')
+  const [productosConfig, setProductosConfig] = useState<Array<{ codigo: string; aplicaDomicilio: boolean }>>([])
+
+  useEffect(() => {
+    fetch(`/api/productos/configs`)
+      .then(r => r.json())
+      .then(d => { if (d.success && d.productos) setProductosConfig(d.productos) })
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (open) setActiveSection('basico')
   }, [open])
+
+  const productosFiltrados = canalActivo === 'DOMICILIO'
+    ? PRODUCTOS_PRECIO.filter(prod => {
+        const cfg = productosConfig.find(c => c.codigo === prod.codigo)
+        return cfg ? cfg.aplicaDomicilio : true
+      })
+    : PRODUCTOS_PRECIO
 
   const sections = [
     { key: 'basico', label: 'Básico', icon: <svg className="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>, description: 'Nombre y contacto' },
@@ -237,14 +252,28 @@ export function ClienteForm({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Horario preferido</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Hora de apertura</label>
               <input
                 type="time"
-                value={formData.horaPreferida}
-                onChange={(e) => onFormDataChange({ ...formData, horaPreferida: e.target.value })}
+                value={formData.horaApertura}
+                onChange={(e) => onFormDataChange({ ...formData, horaApertura: e.target.value })}
                 className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
               />
-              <p className="text-xs text-gray-400 mt-1">Horario de atención del negocio. Los pedidos con horario aparecen primero.</p>
+              <p className="text-xs text-gray-400 mt-1">Hora a la que abre el negocio. Ayuda al repartidor a planificar la ruta.</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Límite de pedidos fiados</label>
+              <input
+                type="number"
+                min={1}
+                max={20}
+                value={formData.limitePedidosFiados || ''}
+                onChange={(e) => onFormDataChange({ ...formData, limitePedidosFiados: e.target.value ? parseInt(e.target.value) : undefined })}
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                placeholder="3 (default)"
+              />
+              <p className="text-xs text-gray-400 mt-1">Máximo de pedidos con saldo pendiente antes de bloquear nuevos pedidos. Deja vacío para usar el límite global.</p>
             </div>
           </div>
         )}
@@ -447,7 +476,7 @@ export function ClienteForm({
             {(() => {
               const allOverrides: Array<{ canal: Canal; codigo: string; nombre: string; precio: number }> = []
               for (const canal of ['DOMICILIO', 'PUNTO'] as Canal[]) {
-                for (const prod of PRODUCTOS_PRECIO) {
+                for (const prod of productosFiltrados) {
                   const val = preciosEspecialesMap[canal][prod.codigo]
                   if (val !== undefined && val > 0 && val !== preciosBase[canal][prod.codigo]) {
                     allOverrides.push({ canal, codigo: prod.codigo, nombre: prod.nombre, precio: val })
@@ -503,7 +532,7 @@ export function ClienteForm({
 
             {/* Price grid */}
             <div className="grid grid-cols-2 gap-2">
-              {PRODUCTOS_PRECIO.map((prod) => {
+              {productosFiltrados.map((prod) => {
                 const base = preciosBase[canalActivo][prod.codigo]
                 const especial = preciosEspecialesMap[canalActivo][prod.codigo]
                 const hasOverride = especial !== undefined && especial > 0 && especial !== base

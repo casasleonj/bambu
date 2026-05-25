@@ -1,21 +1,23 @@
+const TIMEZONE = 'America/Bogota'
+
 export function getFechaOffset(dias: number): string {
   const d = new Date()
   d.setDate(d.getDate() + dias)
-  return d.toISOString().split('T')[0]
+  return d.toLocaleDateString('en-CA', { timeZone: TIMEZONE })
 }
 
 export function getInicioSemana(): string {
   const d = new Date()
-  const day = d.getDay()
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1) // Lunes
+  const dayOfWeek = d.getDay()
+  const diff = d.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1)
   d.setDate(diff)
-  return d.toISOString().split('T')[0]
+  return d.toLocaleDateString('en-CA', { timeZone: TIMEZONE })
 }
 
 export function getInicioMes(): string {
   const d = new Date()
   d.setDate(1)
-  return d.toISOString().split('T')[0]
+  return d.toLocaleDateString('en-CA', { timeZone: TIMEZONE })
 }
 
 export type PeriodoFiltro = 'todos' | 'hoy' | 'ayer' | 'semana' | 'mes'
@@ -40,7 +42,9 @@ export function filtrarPorPeriodo<T extends { fecha: string }>(
   const inicioMes = getInicioMes()
 
   return items.filter((item) => {
-    const fecha = item.fecha.slice(0, 10)
+    const fecha = item.fecha
+      ? new Date(item.fecha).toLocaleDateString('en-CA', { timeZone: TIMEZONE })
+      : ''
     switch (periodo) {
       case 'hoy':
         return fecha === hoy

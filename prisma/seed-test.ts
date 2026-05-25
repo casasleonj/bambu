@@ -116,11 +116,31 @@ async function main() {
   })
   console.log('✅ Precios seeded')
 
+  // 6b. Precios por volumen (required for pricing engine)
+  const preciosVolumen = [
+    { codigo: 'PACA_AGUA', cantMin: 1, cantMax: 4, precio: 2800 },
+    { codigo: 'PACA_AGUA', cantMin: 5, cantMax: 9, precio: 2500 },
+    { codigo: 'PACA_AGUA', cantMin: 10, cantMax: null, precio: 2300 },
+    { codigo: 'PACA_HIELO', cantMin: 1, cantMax: null, precio: 2000 },
+    { codigo: 'BOTELLON', cantMin: 1, cantMax: null, precio: 6500 },
+  ]
+  for (const p of preciosVolumen) {
+    const producto = await prisma.producto.findUnique({ where: { codigo: p.codigo } })
+    if (!producto) continue
+    await prisma.precioVolumen.upsert({
+      where: { productoId_cantMin: { productoId: producto.id, cantMin: p.cantMin } },
+      update: { precio: p.precio, cantMax: p.cantMax },
+      create: { productoId: producto.id, cantMin: p.cantMin, cantMax: p.cantMax, precio: p.precio },
+    })
+  }
+  console.log('✅ Precios volumen seeded')
+
   // 7. Configs
   const configs = [
     { clave: 'BASE_DIA', valor: '100000' },
     { clave: 'empresa_nombre', valor: 'Agua Bambu SAS' },
     { clave: 'empresa_nit', valor: '900.123.456-7' },
+    { clave: 'LIMITE_PEDIDOS_FIADOS_DEFAULT', valor: '3' },
   ]
   for (const cfg of configs) {
     await prisma.config.upsert({ where: { clave: cfg.clave }, update: {}, create: cfg })
