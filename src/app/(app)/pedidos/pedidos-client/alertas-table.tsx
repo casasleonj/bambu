@@ -274,8 +274,8 @@ export function AlertasTable({ pedidos }: AlertasTableProps) {
               </thead>
               <tbody className="divide-y divide-gray-100">
               {filtrados.map((row) => (
-                <>
-                  <tr key={row.clienteId} className="hover:bg-gray-50 transition">
+                <React.Fragment key={row.clienteId}>
+                  <tr className="hover:bg-gray-50 transition">
                     <td className="px-4 py-3">
                       <div className="font-medium text-gray-800">{row.nombreCli}</div>
                       <div className="text-xs text-gray-400">{row.telefonoCli}</div>
@@ -347,7 +347,7 @@ export function AlertasTable({ pedidos }: AlertasTableProps) {
                       </td>
                     </tr>
                   )}
-                </>
+                </React.Fragment>
               ))}
             </tbody>
           </table>
