@@ -80,28 +80,42 @@ export function calcularAlertas(pedidos: PedidoPedidos[], clienteIdIgnorar?: str
 
     // 1. 2do+ pedido hoy
     if (fechaColombia === hoy) {
-      const pedidosHoy = pedidos.filter((p2) => {
-        const fecha2 = p2.fecha
-          ? new Date(p2.fecha).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
-          : ''
-        return p2.clienteId === p.clienteId && fecha2 === hoy
-      })
-      if (pedidosHoy.length >= 3) {
-        alertas.push({
-          tipo: '3RO_PEDIDO',
-          severidad: 'MEDIA',
-          detalle: `${pedidosHoy.length} pedidos hoy`,
-          fecha: p.fecha,
-          pedidoId: p.id,
+      const pedidosHoy = pedidos
+        .filter((p2) => {
+          const fecha2 = p2.fecha
+            ? new Date(p2.fecha).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+            : ''
+          return p2.clienteId === p.clienteId && fecha2 === hoy
         })
-      } else if (pedidosHoy.length === 2) {
-        alertas.push({
-          tipo: '2DO_PEDIDO',
-          severidad: 'BAJA',
-          detalle: '2do pedido hoy',
-          fecha: p.fecha,
-          pedidoId: p.id,
-        })
+        .sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())
+      const orden = pedidosHoy.findIndex(p2 => p2.id === p.id) + 1
+
+      if (pedidosHoy.length >= 2) {
+        if (orden >= 3) {
+          alertas.push({
+            tipo: '3RO_PEDIDO',
+            severidad: 'MEDIA',
+            detalle: `${pedidosHoy.length} pedidos hoy`,
+            fecha: p.fecha,
+            pedidoId: p.id,
+          })
+        } else if (orden === 2) {
+          alertas.push({
+            tipo: '2DO_PEDIDO',
+            severidad: 'BAJA',
+            detalle: '2do pedido hoy',
+            fecha: p.fecha,
+            pedidoId: p.id,
+          })
+        } else if (orden === 1) {
+          alertas.push({
+            tipo: '1ER_PEDIDO',
+            severidad: 'BAJA',
+            detalle: '1er pedido hoy',
+            fecha: p.fecha,
+            pedidoId: p.id,
+          })
+        }
       }
 
       // 18. Múltiples pedidos muy seguidos (< 1h)
@@ -306,12 +320,17 @@ export function calcularAlertasCliente(
   const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
 
   // 2DO / 3RO / MULTIPLES_RAPIDO
-  const pedidosHoy = pedidos.filter((p) => {
-    const fechaColombia = p.fecha
-      ? new Date(p.fecha).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
-      : ''
-    return fechaColombia === hoy
-  })
+  const pedidosHoy = pedidos
+    .filter((p) => {
+      const fechaColombia = p.fecha
+        ? new Date(p.fecha).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+        : ''
+      return fechaColombia === hoy
+    })
+    .sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())
+  if (pedidosHoy.length >= 2) {
+    alertas.push({ tipo: '1ER_PEDIDO', severidad: 'BAJA', detalle: '1er pedido hoy', fecha: hoy })
+  }
   if (pedidosHoy.length >= 3) {
     alertas.push({ tipo: '3RO_PEDIDO', severidad: 'MEDIA', detalle: `${pedidosHoy.length} pedidos hoy`, fecha: hoy })
   } else if (pedidosHoy.length === 2) {

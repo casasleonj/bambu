@@ -394,13 +394,19 @@ export function PedidosClient() {
 
     // 2do / 3ro pedido hoy
     if (pedidoFecha === hoy) {
-      const pedidosHoyCliente = pedidos.filter(
-        p => p.clienteId === pedido.clienteId && p.fecha?.slice(0, 10) === hoy
-      )
-      if (pedidosHoyCliente.length >= 3) {
-        alertas.push({ tipo: '3RO_PEDIDO', label: '3ro+ pedido hoy', severidad: 'MEDIA' })
-      } else if (pedidosHoyCliente.length === 2) {
-        alertas.push({ tipo: '2DO_PEDIDO', label: '2do pedido hoy', severidad: 'BAJA' })
+      const pedidosHoyCliente = pedidos
+        .filter(p => p.clienteId === pedido.clienteId && p.fecha?.slice(0, 10) === hoy)
+        .sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())
+      const orden = pedidosHoyCliente.findIndex(p => p.id === pedido.id) + 1
+
+      if (pedidosHoyCliente.length >= 2) {
+        if (orden >= 3) {
+          alertas.push({ tipo: '3RO_PEDIDO', label: '3ro+ pedido hoy', severidad: 'MEDIA' })
+        } else if (orden === 2) {
+          alertas.push({ tipo: '2DO_PEDIDO', label: '2do pedido hoy', severidad: 'BAJA' })
+        } else if (orden === 1) {
+          alertas.push({ tipo: '1ER_PEDIDO', label: '1er pedido hoy', severidad: 'BAJA' })
+        }
       }
     }
 

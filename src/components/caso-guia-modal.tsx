@@ -39,6 +39,7 @@ interface CasoGuiaModalProps {
 }
 
 const TIPO_LABELS: Record<string, string> = {
+  '1ER_PEDIDO': '1er pedido hoy',
   '2DO_PEDIDO': '2do pedido hoy',
   '3RO_PEDIDO': '3ro+ pedido hoy',
   MONTO_ANOMALO: 'Monto anómalo',

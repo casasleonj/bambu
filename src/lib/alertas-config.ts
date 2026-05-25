@@ -1,6 +1,7 @@
 export type SeveridadAlerta = 'BAJA' | 'MEDIA' | 'ALTA'
 
 export type AlertaTipo =
+  | '1ER_PEDIDO'
   | '2DO_PEDIDO'
   | '3RO_PEDIDO'
   | 'MONTO_ANOMALO'
@@ -53,6 +54,20 @@ export interface GuiaAlerta {
 }
 
 export const GUIA_ALERTAS: Record<AlertaTipo, GuiaAlerta> = {
+  '1ER_PEDIDO': {
+    tipo: '1ER_PEDIDO',
+    nombre: '1er pedido hoy',
+    severidad: 'BAJA',
+    icono: '🔵',
+    definicion: 'Primer pedido del cliente en el día. Se muestra como referencia cuando hay 2+ pedidos hoy, para identificar visualmente el orden cronológico.',
+    comoSeAplica: 'Si un cliente tiene 2 o más pedidos hoy, el primero (más antiguo) recibe esta etiqueta. Si solo hay 1 pedido, no se muestra.',
+    ejemplos: ['Tienda La Esquina pidió a las 8:00am. A las 2:00pm volvió a pedir. El pedido de las 8:00am muestra "1er pedido hoy" y el de las 2:00pm muestra "2do pedido hoy".'],
+    soluciones: ['Verificar que el segundo pedido sea legítimo.', 'Llamar al cliente si el segundo pedido es sospechoso.'],
+    acciones: [
+      { label: 'Ver pedidos de hoy', accion: 'ver_pedidos_hoy', variant: 'primary' },
+      { label: 'Ver historial cliente', accion: 'ver_cliente', variant: 'secondary' },
+    ],
+  },
   '2DO_PEDIDO': {
     tipo: '2DO_PEDIDO',
     nombre: '2do pedido hoy',
