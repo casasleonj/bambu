@@ -10,7 +10,7 @@ import { Modal } from '@/components/modal'
 import { FeedbackField } from '@/components/feedback-field'
 import { InfoBanner } from '@/components/tooltip'
 
-import { TipoNegocioSelect } from './tipo-negocio-select'
+import { TipoNegocioSelect } from '@/components/tipo-negocio-select'
 
 const TIPOS_NEGOCIO: string[] = [
   'Tienda', 'Restaurante', 'Café', 'Hotel', 'Bar',

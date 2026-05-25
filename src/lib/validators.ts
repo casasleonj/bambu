@@ -52,6 +52,8 @@ export const PedidoCreateSchema = z.object({
     telefono: z.string().min(1),
     direccion: z.string().optional(),
     barrio: z.string().optional(),
+    nombreNegocio: z.string().optional(),
+    tipoNegocio: z.string().optional(),
   }).optional(),
   actualizarCliente: z.object({
     direccion: z.string().min(1),
