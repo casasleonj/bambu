@@ -1,51 +1,18 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { signIn } from 'next-auth/react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, useActionState } from 'react'
+import { authenticate } from '@/lib/auth-actions'
 
 export default function LoginPage() {
-  const router = useRouter()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
   const [showDevHint, setShowDevHint] = useState(false)
+  const [errorMessage, formAction, isPending] = useActionState(authenticate, undefined)
 
   useEffect(() => {
     setShowDevHint(process.env.NODE_ENV === 'development')
   }, [])
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setLoading(true)
-    setError('')
-
-    const result = await signIn('credentials', {
-      username,
-      password,
-      redirect: false,
-    })
-
-    if (result?.error) {
-      setError('Usuario o contraseña incorrectos')
-      setLoading(false)
-      return
-    }
-
-    const sessionRes = await fetch('/api/auth/session')
-    const session = await sessionRes.json()
-    const role = session?.user?.role
-
-    const destination =
-      role === 'REPARTIDOR' ? '/repartidor' :
-      role === 'CONTADOR' ? '/reportes' :
-      '/dashboard'
-
-    router.push(destination)
-    router.refresh()
-  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100">
@@ -55,7 +22,10 @@ export default function LoginPage() {
           <p className="text-gray-500 mt-2">Sistema de Gestión</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form action={formAction} className="space-y-6">
+          <input type="hidden" name="username" value={username} />
+          <input type="hidden" name="password" value={password} />
+
           <div>
             <label htmlFor="login-username" className="block text-sm font-medium text-gray-700 mb-2">
               Usuario
@@ -87,7 +57,7 @@ export default function LoginPage() {
                 className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
                 placeholder="Ingrese contraseña"
                 required
-                aria-describedby={error ? 'login-error' : undefined}
+                aria-describedby={errorMessage || showDevHint ? 'login-error' : undefined}
               />
               <button
                 type="button"
@@ -109,27 +79,20 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {error && (
+          {(errorMessage || (showDevHint && process.env.NODE_ENV === 'development')) && (
             <div id="login-error" className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm" role="alert">
-              {error}
+              {errorMessage || 'Modo desarrollo — usa las credenciales del seed.'}
             </div>
           )}
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={isPending}
             className="w-full py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
           >
-            {loading ? 'Ingresando...' : 'Ingresar'}
+            {isPending ? 'Ingresando...' : 'Ingresar'}
           </button>
         </form>
-
-        {showDevHint && (
-          <div className="mt-4 p-3 bg-blue-50 rounded text-sm text-blue-700">
-            <p className="font-medium">Modo desarrollo</p>
-            <p>Usa las credenciales de prueba configuradas en el seed.</p>
-          </div>
-        )}
       </div>
     </div>
   )

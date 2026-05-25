@@ -78,3 +78,7 @@ fix-perms.ts
 recreate-table.ts
 prisma/migrate-recurrentes.ts
 scripts/crear-factura-demo.ts
+
+# SSH keys
+hermes
+hermes.pub
