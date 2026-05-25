@@ -10,11 +10,12 @@ import { Modal } from '@/components/modal'
 import { FeedbackField } from '@/components/feedback-field'
 import { InfoBanner } from '@/components/tooltip'
 
+import { TipoNegocioSelect } from './tipo-negocio-select'
+
 const TIPOS_NEGOCIO: string[] = [
   'Tienda', 'Restaurante', 'Café', 'Hotel', 'Bar',
-  'Ferretería', 'Panadería', 'Carnicería', 'Frutería', 'Peluquería',
-  'Farmacia', 'Papelería', 'Lavandería', 'Taller', 'Consultorio',
-  'Gimnasio', 'Salón de eventos', 'Guardería', 'Veterinaria', 'Estación de servicio',
+  'Panadería', 'Farmacia', 'Peluquería', 'Frutería',
+  'Carnicería', 'Lavandería', 'Taller',
 ]
 
 interface PlantillaInfo {
@@ -214,40 +215,12 @@ export function ClienteForm({
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Tipo de negocio</label>
-                <select
-                  value={TIPOS_NEGOCIO.includes(formData.tipoNegocio) || formData.tipoNegocio === '' ? formData.tipoNegocio : 'Otro'}
-                  onChange={(e) => {
-                    const val = e.target.value
-                    if (val === 'Otro') {
-                      onFormDataChange({ ...formData, tipoNegocio: '' })
-                    } else {
-                      onFormDataChange({ ...formData, tipoNegocio: val })
-                    }
-                  }}
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition bg-white"
-                >
-                  <option value="">Seleccionar tipo...</option>
-                  {TIPOS_NEGOCIO.map((tipo) => (
-                    <option key={tipo} value={tipo}>{tipo}</option>
-                  ))}
-                  <option value="Otro">Otro</option>
-                </select>
-                {(() => {
-                  const isOtro = formData.tipoNegocio !== '' && !TIPOS_NEGOCIO.includes(formData.tipoNegocio)
-                  if (!isOtro) return null
-                  return (
-                    <div className="mt-2">
-                      <input
-                        type="text"
-                        value={formData.tipoNegocio}
-                        onChange={(e) => onFormDataChange({ ...formData, tipoNegocio: e.target.value })}
-                        className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
-                        placeholder="¿Qué tipo de negocio es?"
-                        autoFocus
-                      />
-                    </div>
-                  )
-                })()}
+                <TipoNegocioSelect
+                  options={TIPOS_NEGOCIO}
+                  value={formData.tipoNegocio}
+                  onChange={(val) => onFormDataChange({ ...formData, tipoNegocio: val })}
+                  placeholder="Buscar tipo de negocio..."
+                />
               </div>
             </div>
 
