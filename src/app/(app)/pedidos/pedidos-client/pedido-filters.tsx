@@ -3,11 +3,15 @@
 import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { DateRangeFilter } from '@/components/date-range-filter'
+import { ClienteSearch, type ClienteSearchOption } from '@/components/cliente-search'
 import { TIPOS, ORIGENES, ESTADOS_ENTREGA, ESTADOS_PAGO } from './types'
 
 interface PedidoFiltersProps {
   searchInput: string
   onSearchChange: (value: string) => void
+  clientes: ClienteSearchOption[]
+  selectedClienteId: string | null
+  onClienteSelect: (clienteId: string | null) => void
   filtroTipo: string[]
   filtroOrigen: string[]
   filtroEstadoEntrega: string[]
@@ -40,6 +44,9 @@ function formatLabel(value: string) {
 export function PedidoFilters({
   searchInput,
   onSearchChange,
+  clientes,
+  selectedClienteId,
+  onClienteSelect,
   filtroTipo,
   filtroOrigen,
   filtroEstadoEntrega,
@@ -82,9 +89,17 @@ export function PedidoFilters({
             <DateRangeFilter onDateChange={onDateChange} />
           </div>
         )}
+        <div className="flex-1 min-w-0">
+          <ClienteSearch
+            clientes={clientes}
+            selectedId={selectedClienteId}
+            onChange={onClienteSelect}
+            placeholder="Buscar cliente por nombre, teléfono o barrio..."
+          />
+        </div>
         <input
           type="text"
-          placeholder="Buscar por nombre, teléfono o #pedido..."
+          placeholder="Filtrar por #pedido o palabra clave..."
           value={searchInput}
           onChange={(e) => onSearchChange(e.target.value)}
           className="flex-1 min-w-0 px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"

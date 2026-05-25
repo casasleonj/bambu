@@ -59,6 +59,7 @@ export function PedidosClient() {
   const filtroEstadoEntrega = searchParams.getAll('estadoEntrega')
   const filtroEstadoPago = searchParams.getAll('estadoPago')
   const search = searchParams.get('search') || ''
+  const clienteIdFromUrl = searchParams.get('clienteId')
   const openPedidoParam = searchParams.get('openPedido')
 
   // Auto-open pedido from URL param
@@ -89,6 +90,13 @@ export function PedidosClient() {
     const params = new URLSearchParams(searchParams.toString())
     if (value) params.set('search', value)
     else params.delete('search')
+    router.push(`?${params.toString()}`, { scroll: false })
+  }, [searchParams, router])
+
+  const updateClienteId = useCallback((value: string | null) => {
+    const params = new URLSearchParams(searchParams.toString())
+    if (value) params.set('clienteId', value)
+    else params.delete('clienteId')
     router.push(`?${params.toString()}`, { scroll: false })
   }, [searchParams, router])
 
@@ -297,6 +305,7 @@ export function PedidosClient() {
     const matchOrigen = filtroOrigen.length === 0 || filtroOrigen.includes(p.origen)
     const matchEstadoEntrega = filtroEstadoEntrega.length === 0 || filtroEstadoEntrega.includes(p.estadoEntrega)
     const matchEstadoPago = filtroEstadoPago.length === 0 || filtroEstadoPago.includes(p.estadoPago)
+    const matchCliente = !clienteIdFromUrl || p.clienteId === clienteIdFromUrl
     const matchSearch =
       !search ||
       p.nombreCli.toLowerCase().includes(search.toLowerCase()) ||
@@ -306,8 +315,8 @@ export function PedidosClient() {
       ? new Date(p.fecha).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
       : ''
     const matchFecha = !desdeUrl || !hastaUrl || (fechaColombia >= desdeUrl && fechaColombia <= hastaUrl)
-    return matchTipo && matchOrigen && matchEstadoEntrega && matchEstadoPago && matchSearch && matchFecha
-  }), [pedidos, filtroTipo, filtroOrigen, filtroEstadoEntrega, filtroEstadoPago, search, desdeUrl, hastaUrl])
+    return matchTipo && matchOrigen && matchEstadoEntrega && matchEstadoPago && matchCliente && matchSearch && matchFecha
+  }), [pedidos, filtroTipo, filtroOrigen, filtroEstadoEntrega, filtroEstadoPago, clienteIdFromUrl, search, desdeUrl, hastaUrl])
 
   const totalVentas = useMemo(() => pedidosFiltrados.reduce((acc, p) => acc + Number(p.total || 0), 0), [pedidosFiltrados])
   const totalFiado = useMemo(() => pedidosFiltrados
@@ -315,7 +324,7 @@ export function PedidosClient() {
     .reduce((acc, p) => acc + Number(p.saldo), 0), [pedidosFiltrados])
   const alertasCount = useMemo(() => calcularAlertas(pedidos).length, [pedidos])
 
-  const hasActiveFilters = !!(search || filtroTipo.length > 0 || filtroOrigen.length > 0 || filtroEstadoEntrega.length > 0 || filtroEstadoPago.length > 0 || desdeUrl || hastaUrl)
+  const hasActiveFilters = !!(search || clienteIdFromUrl || filtroTipo.length > 0 || filtroOrigen.length > 0 || filtroEstadoEntrega.length > 0 || filtroEstadoPago.length > 0 || desdeUrl || hastaUrl)
 
   function getOrigenBadge(origen: string) {
     const styles: Record<string, string> = {
@@ -667,6 +676,9 @@ export function PedidosClient() {
           <PedidoFilters
             searchInput={searchInput}
             onSearchChange={setSearchInput}
+            clientes={clientes.map(c => ({ ...c, direccion: c.direccion ?? null, barrio: c.barrio ?? null }))}
+            selectedClienteId={clienteIdFromUrl}
+            onClienteSelect={updateClienteId}
             filtroTipo={filtroTipo}
             filtroOrigen={filtroOrigen}
             filtroEstadoEntrega={filtroEstadoEntrega}
@@ -674,6 +686,29 @@ export function PedidosClient() {
             onUpdateFilter={updateFilter}
             hideDateFilter={true}
           />
+          {clienteIdFromUrl && (() => {
+            const cliente = clientes.find(c => c.id === clienteIdFromUrl)
+            if (!cliente) return null
+            const countCliente = pedidosFiltrados.length
+            return (
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex justify-between items-center">
+                <div>
+                  <p className="text-sm font-medium text-blue-900">
+                    <span className="font-bold">{cliente.nombre}</span> — {countCliente} pedido{countCliente !== 1 ? 's' : ''}
+                  </p>
+                  <p className="text-xs text-blue-700 mt-0.5">
+                    {cliente.telefono}{cliente.barrio && ` · ${cliente.barrio}`}
+                  </p>
+                </div>
+                <button
+                  onClick={() => updateClienteId(null)}
+                  className="text-blue-600 hover:text-blue-800 text-sm font-medium px-3 py-1.5 rounded-lg hover:bg-blue-100 transition"
+                >
+                  Limpiar
+                </button>
+              </div>
+            )
+          })()}
         </div>
       )}
 
