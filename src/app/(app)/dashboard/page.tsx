@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { EstadoPago } from '@prisma/client'
-import { getTodayRange, getYesterdayRange } from '@/lib/dates'
+import { getTodayRange, getYesterdayRange, getTodayString } from '@/lib/dates'
 import { buildVentasPorPrecio } from './dashboard-client/types'
 import { DashboardClient } from './dashboard-client'
 import { auth } from '@/lib/auth'
@@ -16,7 +16,7 @@ export default async function DashboardPage() {
   const { startOfDay: yesterdayStart, endOfDay: yesterdayEnd } = getYesterdayRange()
 
   const [
-    pedidos, pedidosAyer, baseDiaConfig, lastCierre, gastosAgg, embarquesAbiertos, _clientesCount, stockAlertas,
+    pedidos, pedidosAyer, baseDiaConfig, baseDiaGlobal, lastCierre, gastosAgg, embarquesAbiertos, _clientesCount, stockAlertas,
     cuentasPorCobrarAgg, produccionHoy, configsStock,
     disputasAbiertas, clientesBloqueados, clientesConflictivos, promesasProximasVencer, clientesNoVerificados,
     casosAbiertos, casosCriticos, casosSinResolver48h,
@@ -24,6 +24,7 @@ export default async function DashboardPage() {
   ] = await Promise.all([
     prisma.pedido.findMany({ where: { fecha: { gte: startOfDay, lt: endOfDay } } }),
     prisma.pedido.findMany({ where: { fecha: { gte: yesterdayStart, lt: yesterdayEnd } } }),
+    prisma.config.findUnique({ where: { clave: `BASE_DIA_${getTodayString()}` } }),
     prisma.config.findUnique({ where: { clave: 'BASE_DIA' } }),
     prisma.cierreDia.findFirst({ orderBy: { fecha: 'desc' } }),
     prisma.gasto.aggregate({ where: { fecha: { gte: startOfDay, lt: endOfDay } }, _sum: { monto: true } }),
@@ -75,7 +76,7 @@ export default async function DashboardPage() {
   const fiadosTotal = Number(cuentasPorCobrarAgg._sum.saldo) || 0
   const pedidosPendientes = pedidos.filter(p => p.estadoEntrega === 'PENDIENTE').length
   const pedidosEntregados = pedidos.filter(p => p.estadoEntrega === 'ENTREGADO').length
-  const baseDia = baseDiaConfig ? parseFloat(baseDiaConfig.valor) : 0
+  const baseDia = baseDiaConfig ? parseFloat(baseDiaConfig.valor) : (baseDiaGlobal ? parseFloat(baseDiaGlobal.valor) : 0)
   const totalGastos = Number(gastosAgg._sum.monto) || 0
 
   const ventasAyer = pedidosAyer.reduce((acc, p) => acc + Number(p.total), 0)

@@ -1,10 +1,14 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import { formatCurrency } from '@/lib/utils'
 import Link from 'next/link'
 import type { DashboardData } from './types'
+import { useBaseCaja } from '@/hooks/use-base-caja'
 
 export function DashboardClient({ data }: { data: DashboardData }) {
+  const { baseDia: baseDiaLocal } = useBaseCaja()
+  const baseDia = baseDiaLocal ? Number(baseDiaLocal) : data.baseDia
   const {
     pedidos,
     ventas,
@@ -12,7 +16,6 @@ export function DashboardClient({ data }: { data: DashboardData }) {
     clientesConFiado,
     pedidosPendientes,
     pedidosEntregados,
-    baseDia,
     totalGastos,
     ventasTrend,
     pedidosTrend,
@@ -30,6 +33,27 @@ export function DashboardClient({ data }: { data: DashboardData }) {
   } = data
 
   const fiadosHoy = data.fiadosHoy
+
+  function RefreshBadge() {
+    const [minutes, setMinutes] = useState(0)
+    useEffect(() => {
+      const interval = setInterval(() => setMinutes(m => m + 1), 60000)
+      return () => clearInterval(interval)
+    }, [])
+    const label = minutes === 0 ? 'Actualizado ahora' : minutes === 1 ? 'Actualizado hace 1 min' : `Actualizado hace ${minutes} min`
+    return (
+      <button
+        onClick={() => window.location.reload()}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border rounded-lg hover:bg-gray-50 transition cursor-pointer"
+        aria-label="Actualizar dashboard"
+        title="Click para actualizar"
+      >
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+        {label}
+      </button>
+    )
+  }
+
   const totalAlertasRiesgo =
     alertasRiesgo.disputasAbiertas +
     alertasRiesgo.clientesBloqueados +
@@ -74,20 +98,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
           <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
           <p className="text-gray-500 capitalize">{fechaHoy}</p>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-50 text-green-700 text-xs font-medium">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-            En vivo
-          </span>
-          <button
-            onClick={() => window.location.reload()}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border rounded-lg hover:bg-gray-50 transition"
-            aria-label="Actualizar dashboard"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-            Actualizar
-          </button>
-        </div>
+        <RefreshBadge />
       </div>
 
       {/* KPIs */}
