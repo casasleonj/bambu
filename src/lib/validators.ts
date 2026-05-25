@@ -253,28 +253,18 @@ export const NominaCreateSchema = z.object({
 
 export const CierreCreateSchema = z.object({
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  numPedidos: z.coerce.number().int().min(0),
-  totalVentas: z.coerce.number().min(0),
-  cobrado: z.coerce.number().min(0),
-  fiado: z.coerce.number().min(0),
-  efectivo: z.coerce.number().min(0),
-  transferencia: z.coerce.number().min(0),
-  nequi: z.coerce.number().min(0),
-  daviplata: z.coerce.number().min(0),
-  bono: z.coerce.number().min(0),
+  // Client only sends data the server CANNOT calculate:
   baseDia: z.coerce.number().min(0),
-  comisiones: z.coerce.number().min(0),
-  salarios: z.coerce.number().min(0),
-  gastos: z.coerce.number().min(0),
   stockIniAgua: z.coerce.number().int().min(0),
   prodAgua: z.coerce.number().int().min(0),
   stockFinAgua: z.coerce.number().int().min(0),
   stockIniHielo: z.coerce.number().int().min(0),
   prodHielo: z.coerce.number().int().min(0),
   stockFinHielo: z.coerce.number().int().min(0),
-  netoCaja: z.coerce.number().min(0),
+  comisiones: z.coerce.number().min(0),
+  salarios: z.coerce.number().min(0),
   reporte: z.string().optional(),
-});
+}).strict() // Reject extra fields like netoCaja, totalVentas, etc.
 
 export const ConfigCreateSchema = z.object({
   clave: z.string().min(1).max(100),

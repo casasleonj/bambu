@@ -73,26 +73,15 @@ test.describe('Cierre', () => {
     const fecha = getUniqueFutureDate()
     const res = await apiPost(page, '/api/cierre', {
       fecha,
-      numPedidos: 5,
-      totalVentas: 50000,
-      cobrado: 45000,
-      fiado: 5000,
-      efectivo: 30000,
-      transferencia: 10000,
-      nequi: 3000,
-      daviplata: 1500,
-      bono: 500,
       baseDia: 100000,
       comisiones: 8000,
       salarios: 0,
-      gastos: 5000,
       stockIniAgua: 200,
       prodAgua: 150,
       stockFinAgua: 180,
       stockIniHielo: 100,
       prodHielo: 80,
       stockFinHielo: 90,
-      netoCaja: 132000,
     })
     if (res.status() === 409) {
       test.skip()
@@ -106,26 +95,15 @@ test.describe('Cierre', () => {
     const fecha = getUniqueFutureDate()
     const data = {
       fecha,
-      numPedidos: 0,
-      totalVentas: 0,
-      cobrado: 0,
-      fiado: 0,
-      efectivo: 0,
-      transferencia: 0,
-      nequi: 0,
-      daviplata: 0,
-      bono: 0,
       baseDia: 100000,
       comisiones: 0,
       salarios: 0,
-      gastos: 0,
       stockIniAgua: 0,
       prodAgua: 0,
       stockFinAgua: 0,
       stockIniHielo: 0,
       prodHielo: 0,
       stockFinHielo: 0,
-      netoCaja: 100000,
     }
     const res1 = await apiPost(page, '/api/cierre', data)
     if (res1.status() === 409) {
@@ -191,26 +169,15 @@ test.describe('Cierre', () => {
     const today = new Date().toISOString().split('T')[0]
     const cierreRes = await apiPost(page, '/api/cierre', {
       fecha: today,
-      numPedidos: 0,
-      totalVentas: 0,
-      cobrado: 0,
-      fiado: 0,
-      efectivo: 0,
-      transferencia: 0,
-      nequi: 0,
-      daviplata: 0,
-      bono: 0,
       baseDia: 100000,
       comisiones: 0,
       salarios: 0,
-      gastos: 0,
       stockIniAgua: 0,
       prodAgua: 0,
       stockFinAgua: 0,
       stockIniHielo: 0,
       prodHielo: 0,
       stockFinHielo: 0,
-      netoCaja: 100000,
     })
     const cierreBody = await cierreRes.json()
     const blocked = cierreRes.status() === 400 || (cierreBody?.error && cierreBody.error.includes('embarque'))
@@ -223,26 +190,15 @@ test.describe('Cierre', () => {
     // 1. Cerrar el día
     const cierreRes = await apiPost(page, '/api/cierre', {
       fecha,
-      numPedidos: 1,
-      totalVentas: 10000,
-      cobrado: 10000,
-      fiado: 0,
-      efectivo: 10000,
-      transferencia: 0,
-      nequi: 0,
-      daviplata: 0,
-      bono: 0,
       baseDia: 50000,
       comisiones: 0,
       salarios: 0,
-      gastos: 0,
       stockIniAgua: 0,
       prodAgua: 0,
       stockFinAgua: 0,
       stockIniHielo: 0,
       prodHielo: 0,
       stockFinHielo: 0,
-      netoCaja: 60000,
     })
     if (cierreRes.status() === 409) {
       test.skip()

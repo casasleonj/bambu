@@ -9,6 +9,10 @@ export function ReportesFilter({ start, end }: { start: string; end: string }) {
   const [endDate, setEndDate] = useState(end)
 
   function apply() {
+    if (startDate > endDate) {
+      alert('La fecha de inicio no puede ser posterior a la fecha final')
+      return
+    }
     router.push(`/reportes?start=${startDate}&end=${endDate}`)
   }
 

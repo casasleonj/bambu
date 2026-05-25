@@ -31,6 +31,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
   const [cerrando, setCerrando] = useState(false)
   const [yaCerrado, setYaCerrado] = useState(false)
   const [lastCierreDate, setLastCierreDate] = useState<string | null>(null)
+  const [hasGap, setHasGap] = useState(false)
   const [fecha, setFecha] = useState(() => {
     const today = getTodayString()
     return initialFecha ?? today
@@ -51,6 +52,18 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
   })
   const arqueoRef = useRef(arqueoData)
   useEffect(() => { arqueoRef.current = arqueoData }, [arqueoData])
+
+  // Check for gap days between last cierre and selected fecha
+  useEffect(() => {
+    if (!lastCierreDate || !fecha) {
+      setHasGap(false)
+      return
+    }
+    const last = new Date(lastCierreDate + 'T00:00:00-05:00')
+    const selected = new Date(fecha + 'T00:00:00-05:00')
+    const diffDays = Math.floor((selected.getTime() - last.getTime()) / (1000 * 60 * 60 * 24))
+    setHasGap(diffDays > 1)
+  }, [lastCierreDate, fecha])
   const [netoEnArqueo, setNetoEnArqueo] = useState(0)
   const abortControllerRef = useRef<AbortController | null>(null)
   const fetchedDateRef = useRef<string | null>(null)
@@ -207,22 +220,11 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
     try {
       const cierreData = {
         fecha,
-        numPedidos: data?.numPedidos || 0,
-        totalVentas: data?.totalVentas || 0,
-        cobrado: data?.cobrado || 0,
-        fiado: data?.fiado || 0,
-        efectivo: data?.efectivo || 0,
-        transferencia: data?.transferencia || 0,
-        nequi: data?.nequi || 0,
-        daviplata: data?.daviplata || 0,
-        bono: data?.bono || 0,
         baseDia,
         comisiones,
         salarios,
-        gastos: data?.totalGastos || 0,
         stockIniAgua, prodAgua, stockFinAgua,
         stockIniHielo, prodHielo, stockFinHielo,
-        netoCaja: calcularNetoCaja(),
         reporte: JSON.stringify({
           cobroVentasHoy: data?.cobroVentasHoy,
           cobroCartera: data?.cobroCartera,
@@ -252,6 +254,16 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
       if (res.status === 201 && json.cierre) {
         toast.success('Día cerrado correctamente')
         router.push('/')
+      } else if (res.status === 409) {
+        toast.error('Ya existe un cierre para esta fecha')
+        router.refresh()
+      } else if (res.status === 400 && json.error?.includes('embarque')) {
+        toast.error(json.error, {
+          description: 'Cierra los embarques pendientes antes de cerrar el día',
+          action: { label: 'Ir a Embarques', onClick: () => router.push('/embarques') },
+        })
+      } else if (res.status === 400 && json.error?.includes('día(s) sin cerrar')) {
+        toast.error(json.error)
       } else {
         toast.error(json.error || 'Error al cerrar')
       }
@@ -471,8 +483,21 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
     <div className="p-4 max-w-5xl mx-auto space-y-6 pb-32">
       {modal}
 
+      {/* Gap warning */}
+      {hasGap && lastCierreDate && (
+        <div className="bg-red-50 border border-red-300 rounded-xl p-4 flex items-start gap-3">
+          <AlertTriangle className="w-6 h-6 text-red-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-semibold text-red-900">Días sin cerrar</p>
+            <p className="text-sm text-red-800 mt-1">
+              Hay días sin cerrar entre el último cierre (<strong>{lastCierreDate}</strong>) y la fecha seleccionada (<strong>{fecha}</strong>). Debes cerrar los días intermedios primero.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Backdate warning */}
-      {isBackDate && lastCierreDate && (
+      {isBackDate && lastCierreDate && !hasGap && (
         <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 flex items-start gap-3">
           <AlertTriangle className="w-6 h-6 text-amber-600 shrink-0 mt-0.5" />
           <div>
