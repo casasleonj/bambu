@@ -8,6 +8,7 @@ import { useConfirm } from '@/components/confirm-modal'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn, formatCurrency } from '@/lib/utils'
+import { getTodayString } from '@/lib/dates'
 import { CheckCircle2, AlertTriangle, Receipt, Droplets, Snowflake, ArrowRight, Check } from 'lucide-react'
 import ArqueoCaja, { type ArqueoData, DENOMINACIONES } from '@/components/arqueo-caja'
 import CierreHeader from '@/components/cierre/cierre-header'
@@ -31,7 +32,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
   const [yaCerrado, setYaCerrado] = useState(false)
   const [lastCierreDate, setLastCierreDate] = useState<string | null>(null)
   const [fecha, setFecha] = useState(() => {
-    const today = new Date().toISOString().split('T')[0]
+    const today = getTodayString()
     return initialFecha ?? today
   })
   const [stockIniAgua, setStockIniAgua] = useState(0)
@@ -75,7 +76,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
       if (res.ok) {
         const json = await res.json()
         if (json.cierre) {
-          const cierreDate = new Date(json.cierre.fecha).toISOString().split('T')[0]
+          const cierreDate = new Date(json.cierre.fecha).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
           if (cierreDate === dateStr) setYaCerrado(true)
           setLastCierreDate(cierreDate)
         } else {
@@ -415,7 +416,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
     )
   }
 
-  const todayStr = new Date().toISOString().split('T')[0]
+  const todayStr = getTodayString()
   const isBackDate = fecha < todayStr && !yaCerrado
 
   // Validation items

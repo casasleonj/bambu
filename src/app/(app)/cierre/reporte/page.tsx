@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { formatCurrency } from '@/lib/utils'
 import { DENOMINACIONES } from '@/components/arqueo-caja'
 import type { CierreData } from '../cierre-client/types'
+import { getTodayString } from '@/lib/dates'
 
 const ORIGEN_LABELS: Record<string, string> = {
   PEDIDO: 'Pedido',
@@ -17,7 +18,7 @@ const formatMoney = (val: number) => formatCurrency(val)
 
 export default function ReportePage() {
   const searchParams = useSearchParams()
-  const fecha = searchParams.get('fecha') || new Date().toISOString().split('T')[0]
+  const fecha = searchParams.get('fecha') || getTodayString()
   const [data, setData] = useState<CierreData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

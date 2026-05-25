@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { useBaseCaja } from '@/hooks/use-base-caja'
+import { getTodayString } from '@/lib/dates'
 
 export default function BaseCajaModal() {
   const { setBaseDia: persistBaseDia } = useBaseCaja()
@@ -18,15 +19,17 @@ export default function BaseCajaModal() {
 
   async function checkBaseDia() {
     try {
-      const today = new Date().toISOString().split('T')[0]
-      const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
+      const today = getTodayString()
+      const yesterdayDate = new Date()
+      yesterdayDate.setDate(yesterdayDate.getDate() - 1)
+      const yesterday = yesterdayDate.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
 
       // 1. Check if today was already closed
       const cierreRes = await fetch('/api/cierre/last')
       if (cierreRes.ok) {
         const cierreData = await cierreRes.json()
         if (cierreData.cierre) {
-          const cierreDate = new Date(cierreData.cierre.fecha).toISOString().split('T')[0]
+          const cierreDate = new Date(cierreData.cierre.fecha).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
           if (cierreDate === today) {
             setShowModal(false)
             setLoading(false)
@@ -36,7 +39,7 @@ export default function BaseCajaModal() {
           if (cierreDate !== yesterday) {
             const nextUnclosed = new Date(cierreData.cierre.fecha)
             nextUnclosed.setDate(nextUnclosed.getDate() + 1)
-            const targetUrl = `/cierre?fecha=${nextUnclosed.toISOString().split('T')[0]}`
+            const targetUrl = `/cierre?fecha=${nextUnclosed.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })}`
             const currentPath = window.location.pathname + window.location.search
             if (currentPath !== targetUrl) {
               window.location.href = targetUrl
@@ -77,7 +80,7 @@ export default function BaseCajaModal() {
 
     setSaving(true)
     try {
-      const today = new Date().toISOString().split('T')[0]
+      const today = getTodayString()
       const res = await fetch('/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

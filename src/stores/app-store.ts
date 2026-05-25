@@ -15,7 +15,7 @@ export const useAppStore = create<AppState>()(
     (set) => ({
       sidebarOpen: true,
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
-      currentDate: new Date().toISOString().split('T')[0],
+      currentDate: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }),
       setCurrentDate: (date) => set({ currentDate: date }),
       isOnline: true,
       setIsOnline: (online) => set({ isOnline: online }),

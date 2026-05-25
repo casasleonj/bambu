@@ -84,7 +84,8 @@ test.describe('Ciclo de Cancelación', () => {
 
     expect(anularRes.status()).toBe(400)
     const errBody = await anularRes.json()
-    expect(errBody.error).toMatch(/ENTREGADO|entregado|SOLO_ENTREGADO/i)
+    const errorMsg = typeof errBody.error === 'string' ? errBody.error : (errBody.error?.message || errBody.message || '')
+    expect(errorMsg).toMatch(/ENTREGADO|entregado|SOLO_ENTREGADO/i)
   })
 
   // ─── 3. Anular pedido ya anulado ────────────────────────────────────────────
@@ -121,7 +122,8 @@ test.describe('Ciclo de Cancelación', () => {
 
     expect(anular2.status()).toBe(400)
     const errBody = await anular2.json()
-    expect(errBody.error).toMatch(/YA_ANULADO|anulado/i)
+    const errorMsg = typeof errBody.error === 'string' ? errBody.error : (errBody.error?.message || errBody.message || '')
+    expect(errorMsg).toMatch(/YA_ANULADO|anulado/i)
   })
 
   // ─── 4. Pedido con hijos ────────────────────────────────────────────────────

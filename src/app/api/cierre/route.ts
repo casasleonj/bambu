@@ -7,14 +7,15 @@ import { withAdvisoryLock } from '@/lib/locks'
 import { EstadoPedido, EstadoEmbarque, EstadoEntrega, EstadoFactura, MetodoPago } from '@prisma/client'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
+import { getTodayString } from '@/lib/dates'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
   try {
     const fechaParam = request.nextUrl.searchParams.get('fecha')
-    const fechaStr = fechaParam || new Date().toISOString().split('T')[0]
-    const startOfDay = new Date(fechaStr + 'T00:00:00.000Z')
+    const fechaStr = fechaParam || getTodayString()
+    const startOfDay = new Date(fechaStr + 'T00:00:00-05:00')
     const nextDay = new Date(startOfDay)
     nextDay.setDate(nextDay.getDate() + 1)
 
@@ -335,7 +336,7 @@ export async function POST(request: NextRequest) {
       return apiError(formatZodError(parsed.error), 400)
     }
 
-    const fechaStr = parsed.data.fecha || new Date().toISOString().split('T')[0]
+    const fechaStr = parsed.data.fecha || getTodayString()
 
     // 0. Validar secuencia de cierres: no se puede cerrar un día si hay días anteriores sin cerrar
     const lastCierre = await prisma.cierreDia.findFirst({
@@ -343,17 +344,17 @@ export async function POST(request: NextRequest) {
     })
     if (lastCierre) {
       const lastDate = new Date(lastCierre.fecha)
-      const reqDate = new Date(fechaStr)
+      const reqDate = new Date(fechaStr + 'T00:00:00-05:00')
       const diffMs = reqDate.getTime() - lastDate.getTime()
       const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
       if (diffDays <= 0) {
         return apiError('No se puede cerrar un día anterior o igual al último cierre registrado', 400)
       }
       if (diffDays > 1) {
-        return apiError(`Hay ${diffDays - 1} día(s) sin cerrar entre el último cierre (${lastDate.toISOString().split('T')[0]}) y esta fecha. Cerralos primero.`, 400)
+        return apiError(`Hay ${diffDays - 1} día(s) sin cerrar entre el último cierre (${lastDate.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })}) y esta fecha. Cerralos primero.`, 400)
       }
     }
-    const startOfDay = new Date(fechaStr + 'T00:00:00.000Z')
+    const startOfDay = new Date(fechaStr + 'T00:00:00-05:00')
     const nextDay = new Date(startOfDay)
     nextDay.setDate(nextDay.getDate() + 1)
 

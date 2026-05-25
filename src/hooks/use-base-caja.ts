@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { getTodayString } from '@/lib/dates'
 
 function getTodayKey() {
-  return new Date().toISOString().split('T')[0]
+  return getTodayString()
 }
 
 export function useBaseCaja() {

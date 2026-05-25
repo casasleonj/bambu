@@ -33,14 +33,22 @@ test.describe('Ciclo de Crédito', () => {
     const saldoInicial = Number(pedido.saldo)
     expect(saldoInicial).toBeGreaterThan(0)
 
+    // ventaRapida=true ya crea factura automáticamente, intentar crear o usar existente
     const facturaRes = await apiPost(page, '/api/facturas', {
       pedidoId,
       clienteId: cliente.cliente.id,
     })
     const facturaBody = await facturaRes.json().catch(() => ({}))
-    console.log('Factura response:', facturaRes.status(), JSON.stringify(facturaBody).slice(0, 200))
-    const facturaShouldWork = facturaRes.status() === 201 || facturaRes.status() === 200
-    expect(facturaShouldWork).toBe(true)
+    if (facturaRes.status() !== 201 && facturaRes.status() !== 200) {
+      // Factura ya existe, obtenerla
+      const facturasGet = await apiGet(page, `/api/facturas?pedidoId=${pedidoId}`)
+      const facturasBody = await facturasGet.json()
+      const facturas = facturasBody.facturas || facturasBody.data || []
+      const facturaExistente = facturas.find((f: any) => f.pedidoId === pedidoId)
+      if (!facturaExistente) {
+        throw new Error('No se encontró factura para el pedido')
+      }
+    }
 
     const facturasGet = await apiGet(page, `/api/facturas?pedidoId=${pedidoId}`)
     const facturasBody = await facturasGet.json()
@@ -194,7 +202,8 @@ test.describe('Ciclo de Crédito', () => {
     expect(pagoFiadoRes.status()).toBe(400)
 
     const body = await pagoFiadoRes.json()
-    expect(body.error).toMatch(/deuda|debe|debe/i)
+    const errorMsg = typeof body.error === 'string' ? body.error : (body.error?.message || body.message || '')
+    expect(errorMsg).toMatch(/deuda|debe|debe/i)
   })
 
   // ─── 5. Multi-metodo abono ──────────────────────────────────────────────────
