@@ -89,6 +89,8 @@ export default function NuevoRecurrenteClient() {
 
   const [submitting, setSubmitting] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const [cadaNDiasDisplay, setCadaNDiasDisplay] = useState("1")
+
   const [formData, setFormData] = useState<NuevoRecurrenteForm>({
     clienteId: '', cadaNDias: 1,
     canal: 'DOMICILIO', tipo: 'ENVIO',
@@ -286,10 +288,20 @@ export default function NuevoRecurrenteClient() {
     setHasPlantilla(false)
   }
 
-  function updateCadaNDias(val: number) {
-    const newVal = Math.max(1, val || 1)
-    setFormData(prev => ({ ...prev, cadaNDias: newVal }))
-    setFieldErrors(prev => ({ ...prev, cadaNDias: '' }))
+  function updateCadaNDias(val: string) {
+    setCadaNDiasDisplay(val)
+    const parsed = parseInt(val)
+    if (!isNaN(parsed) && parsed >= 1) {
+      setFormData(prev => ({ ...prev, cadaNDias: parsed }))
+      setFieldErrors(prev => ({ ...prev, cadaNDias: '' }))
+    }
+  }
+
+  function blurCadaNDias() {
+    const parsed = parseInt(cadaNDiasDisplay)
+    const normalized = Math.max(1, parsed || 1)
+    setCadaNDiasDisplay(String(normalized))
+    setFormData(prev => ({ ...prev, cadaNDias: normalized }))
   }
 
   function updateField<K extends keyof NuevoRecurrenteForm>(key: K, value: NuevoRecurrenteForm[K]) {
@@ -504,8 +516,9 @@ export default function NuevoRecurrenteClient() {
                 <label htmlFor="cada-n-dias" className="block text-sm font-medium text-gray-700 mb-1.5">Cada cuántos días <span className="text-red-500">*</span></label>
                 <div className="relative">
                   <input id="cada-n-dias" type="number" min={1} required
-                    value={formData.cadaNDias}
-                    onChange={(e) => updateCadaNDias(parseInt(e.target.value))}
+                    value={cadaNDiasDisplay}
+                    onChange={(e) => updateCadaNDias(e.target.value)}
+                    onBlur={blurCadaNDias}
                     className={cn(inputBase, fieldErrors.cadaNDias ? inputError : inputNormal)} />
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 font-medium">días</span>
                 </div>

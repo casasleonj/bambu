@@ -74,6 +74,7 @@ export function EditarRecurrenteClient({ plantilla }: { plantilla: PlantillaSeri
   const [productosError, setProductosError] = useState('')
 
   const [cadaNDias, setCadaNDias] = useState(plantilla.cadaNDias)
+  const [cadaNDiasDisplay, setCadaNDiasDisplay] = useState(String(plantilla.cadaNDias))
   const [tipo, setTipo] = useState<FormTipo>(plantilla.tipo as FormTipo)
   const [canal, setCanal] = useState<FormCanal>(plantilla.canal as FormCanal)
   const [horaPreferida, setHoraPreferida] = useState(plantilla.horaPreferida || '')
@@ -279,8 +280,20 @@ export function EditarRecurrenteClient({ plantilla }: { plantilla: PlantillaSeri
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Cada cuántos días <span className="text-red-500">*</span></label>
                 <div className="relative">
-                  <input type="number" min={1} required value={cadaNDias}
-                    onChange={(e) => setCadaNDias(Math.max(1, parseInt(e.target.value) || 1))}
+                  <input type="number" min={1} required value={cadaNDiasDisplay}
+                    onChange={(e) => {
+                      setCadaNDiasDisplay(e.target.value)
+                      const parsed = parseInt(e.target.value)
+                      if (!isNaN(parsed) && parsed >= 1) {
+                        setCadaNDias(parsed)
+                      }
+                    }}
+                    onBlur={() => {
+                      const parsed = parseInt(cadaNDiasDisplay)
+                      const normalized = Math.max(1, parsed || 1)
+                      setCadaNDiasDisplay(String(normalized))
+                      setCadaNDias(normalized)
+                    }}
                     className={cn(inputBase, inputNormal)} />
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 font-medium">días</span>
                 </div>
