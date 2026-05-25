@@ -62,7 +62,8 @@ function DesktopRow({
     <tr
       key={pedido.id}
       tabIndex={0}
-      className={`hover:bg-gray-50 transition outline-none focus:ring-2 focus:ring-inset focus:ring-blue-400 ${fiado ? 'bg-red-50/30' : ''}`}
+      className={`hover:bg-gray-50 transition outline-none focus:ring-2 focus:ring-inset focus:ring-blue-400 cursor-pointer ${fiado ? 'bg-red-50/30' : ''}`}
+      onClick={() => onDetail(pedido)}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
@@ -124,7 +125,7 @@ function DesktopRow({
       <td className="px-4 py-3">
         <div className="flex gap-2 justify-end">
           <button
-            onClick={() => onDetail(pedido)}
+            onClick={(e) => { e.stopPropagation(); onDetail(pedido) }}
             className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition"
             title="Ver detalle"
             aria-label="Ver detalle"
@@ -133,7 +134,7 @@ function DesktopRow({
           </button>
           {pedido.estadoEntrega === 'PENDIENTE' && (
             <button
-              onClick={() => onCambiarEstado(pedido.id, 'EN_RUTA')}
+              onClick={(e) => { e.stopPropagation(); onCambiarEstado(pedido.id, 'EN_RUTA') }}
               disabled={updatingId === pedido.id}
               className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
               title="Enviar"
@@ -144,7 +145,7 @@ function DesktopRow({
           )}
           {pedido.estadoEntrega === 'EN_RUTA' && (
             <button
-              onClick={() => onCambiarEstado(pedido.id, 'ENTREGADO')}
+              onClick={(e) => { e.stopPropagation(); onCambiarEstado(pedido.id, 'ENTREGADO') }}
               disabled={updatingId === pedido.id}
               className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
               title="Entregar"
