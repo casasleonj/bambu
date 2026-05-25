@@ -14,7 +14,11 @@ export async function GET(request: NextRequest) {
   const pagination = getPaginationParams(request.nextUrl.searchParams)
   try {
     const search = request.nextUrl.searchParams.get('search')
-    const where: any = { activo: true }
+    const isAdmin = (authResult.user as { role?: string } | undefined)?.role === 'ADMIN'
+    const where: any = {
+      activo: true,
+      ...(isAdmin ? {} : { id: { not: 'CONSUMIDOR_FINAL' } }),
+    }
 
     if (search) {
       where.OR = [

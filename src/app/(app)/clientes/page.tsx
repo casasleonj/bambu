@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { auth } from '@/lib/auth'
 import ClientesClient from './clientes-client'
 
 export default async function ClientesPage({
@@ -7,8 +8,13 @@ export default async function ClientesPage({
   searchParams: Promise<{ openCliente?: string }>
 }) {
   const resolvedSearchParams = await searchParams
+  const session = await auth()
+  const isAdmin = session?.user?.role === 'ADMIN'
   const clientes = await prisma.cliente.findMany({
-    where: { activo: true },
+    where: {
+      activo: true,
+      ...(isAdmin ? {} : { id: { not: 'CONSUMIDOR_FINAL' } }),
+    },
     orderBy: { nombre: 'asc' },
     include: {
       _count: { select: { pedidos: true } },
