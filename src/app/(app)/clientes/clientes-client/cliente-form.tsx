@@ -574,7 +574,7 @@ export function ClienteForm({
   )
 
   if (inline) {
-    return <div className="flex flex-col h-full">{body}</div>
+    return <div className="flex flex-col h-full min-h-0">{body}</div>
   }
   return (
     <Modal open={open!} onClose={onClose!} className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">

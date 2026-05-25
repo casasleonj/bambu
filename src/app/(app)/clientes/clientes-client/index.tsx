@@ -493,7 +493,7 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
               </div>
             ) : isEditing ? (
               /* Edit mode within panel */
-              <div className="flex flex-col h-full">
+              <div className="flex flex-col h-full min-h-0">
                 <div className="p-4 border-b border-gray-100 flex items-center justify-between">
                   <h2 className="text-lg font-bold text-gray-800">Editar Cliente</h2>
                   <button onClick={cancelEdit} className="text-gray-400 hover:text-gray-600 p-1">
