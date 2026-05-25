@@ -53,7 +53,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       if (parsed.data.items && parsed.data.items.length > 0) {
         const current = await tx.pedido.findUnique({
           where: { id },
-          include: { items: true },
+          include: { items: true, factura: true },
         })
         if (!current) {
           throw new Error('PEDIDO_NOT_FOUND')
@@ -99,6 +99,20 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         updateData.total = nuevoTotal
         updateData.saldo = nuevoTotal - Number(current.totalPagado || 0)
         updateData.estadoPago = calcularEstadoPago(nuevoTotal, Number(current.totalPagado || 0))
+
+        // Actualizar factura asociada si existe
+        if (current.factura) {
+          const facturaMontoPagado = Number(current.factura.montoPagado || 0)
+          const nuevoSaldoFactura = nuevoTotal - facturaMontoPagado
+          await tx.factura.update({
+            where: { id: current.factura.id },
+            data: {
+              total: nuevoTotal,
+              saldo: Math.max(0, nuevoSaldoFactura),
+              estado: nuevoSaldoFactura <= 0 ? 'PAGADA' : (facturaMontoPagado > 0 ? 'PARCIAL' : 'EMITIDA'),
+            },
+          })
+        }
       }
 
       // Al marcar como ENTREGADO, copiar cantidades pedidas a entregadas si no se especificaron
