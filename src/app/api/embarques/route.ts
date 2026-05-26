@@ -97,6 +97,13 @@ export async function GET(request: NextRequest) {
       }
     })
 
+    const stock = request.nextUrl.searchParams.get('stock')
+    if (stock === 'true') {
+      const { getStockDisponible } = await import('@/lib/stock')
+      const stockDisponible = await getStockDisponible()
+      return apiSuccess({ embarques, total, stock: stockDisponible })
+    }
+
     return apiSuccess({ embarques, total })
   } catch (error) {
     return apiError('Error cargando embarques')
