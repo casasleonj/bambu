@@ -255,6 +255,7 @@ export function EmbarqueCreateModal({
                     min={0}
                     value={carga[key] || 0}
                     onChange={(e) => setCarga(prev => ({ ...prev, [key]: Math.max(0, parseInt(e.target.value) || 0) }))}
+                    onFocus={(e) => e.target.select()}
                     className={`w-20 p-1 border rounded text-center ${excedeStock ? 'border-red-400 bg-red-50' : ''}`}
                   />
                   <span className="text-xs text-gray-500 w-16">{peso.toFixed(1)}kg</span>
@@ -279,9 +280,6 @@ export function EmbarqueCreateModal({
           </div>
         )}
 
-        {hayStockInsuficiente && (
-          <p className="text-xs text-red-600">⚠️ No hay suficiente stock para algunos productos</p>
-        )}
         {hayStockInsuficiente && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 space-y-3">
             <div className="flex items-center gap-2">
@@ -353,6 +351,7 @@ export function EmbarqueCreateModal({
               min={0}
               value={baseDinero}
               onChange={(e) => setBaseDinero(parseInt(e.target.value) || 0)}
+              onFocus={(e) => e.target.select()}
               className="w-full p-2 border rounded-lg"
               placeholder="$0"
             />
