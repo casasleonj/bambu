@@ -12,6 +12,10 @@ export interface StockSnapshot {
 
 export const PRODUCTOS_DOMICILIO = ['PACA_AGUA', 'PACA_HIELO', 'BOTELLON', 'BOLSA_AGUA', 'BOLSA_HIELO'] as const
 
+export const PRODUCTOS_CON_STOCK = ['PACA_AGUA', 'PACA_HIELO'] as const
+
+export const PRODUCTOS_SIN_STOCK_TRACKING = ['BOTELLON', 'BOLSA_AGUA', 'BOLSA_HIELO'] as const
+
 export function emptyStock(): StockSnapshot {
   return { PACA_AGUA: 0, PACA_HIELO: 0, BOTELLON: 0, BOLSA_AGUA: 0, BOLSA_HIELO: 0 }
 }
@@ -112,4 +116,34 @@ export async function validarStock(carga: StockSnapshot): Promise<{ ok: boolean;
     return { ok: false, faltante }
   }
   return { ok: true }
+}
+
+export interface StockEvaluation {
+  ok: boolean
+  deficit: StockSnapshot
+  totalDeficit: number
+  hasDeficit: boolean
+  disponible: StockSnapshot
+}
+
+export async function evaluarStock(carga: StockSnapshot): Promise<StockEvaluation> {
+  const disponible = await getStockDisponible()
+  const deficit: StockSnapshot = emptyStock()
+  let totalDeficit = 0
+
+  for (const producto of PRODUCTOS_CON_STOCK) {
+    const key = producto as keyof StockSnapshot
+    if (carga[key] > disponible[key]) {
+      deficit[key] = carga[key] - disponible[key]
+      totalDeficit += deficit[key]
+    }
+  }
+
+  return {
+    ok: totalDeficit === 0,
+    deficit,
+    totalDeficit,
+    hasDeficit: totalDeficit > 0,
+    disponible,
+  }
 }
