@@ -2,6 +2,7 @@ import type { Pedido, PagoItem, CuadrePedido, EmbarqueAbierto } from './types'
 import { METODOS_PAGO, calcularTotalEntregado, calcularMontoPagado } from './types'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
 import { formatCurrency } from '@/lib/utils'
+import { useProductosDomicilio } from '@/hooks/use-productos-domicilio'
 
 interface PedidoCuadreProps {
   pedido: Pedido
@@ -18,20 +19,11 @@ interface PedidoCuadreProps {
 const CODIGO_MAP: Record<string, string> = {
   cPacaAguaEnt: 'PACA_AGUA',
   cPacaHieloEnt: 'PACA_HIELO',
-  cBotellonFabEnt: 'BOTELLON_FAB',
-  cBotellonDomEnt: 'BOTELLON_DOM',
+  cBotellonFabEnt: 'BOTELLON',
+  cBotellonDomEnt: 'BOTELLON',
   cBolsaAguaEnt: 'BOLSA_AGUA',
   cBolsaHieloEnt: 'BOLSA_HIELO',
 }
-
-const PRODUCTOS = [
-  { key: 'cPacaAguaEnt' as const, precioKey: 'pacaAgua' as const, label: 'Paca Agua' },
-  { key: 'cPacaHieloEnt' as const, precioKey: 'pacaHielo' as const, label: 'Paca Hielo' },
-  { key: 'cBotellonFabEnt' as const, precioKey: 'botellonFab' as const, label: 'Bot. Fab' },
-  { key: 'cBotellonDomEnt' as const, precioKey: 'botellonDom' as const, label: 'Bot. Dom' },
-  { key: 'cBolsaAguaEnt' as const, precioKey: 'bolsaAgua' as const, label: 'Bol. Agua' },
-  { key: 'cBolsaHieloEnt' as const, precioKey: 'bolsaHielo' as const, label: 'Bol. Hielo' },
-]
 
 const PEDIDO_KEYS: Record<string, keyof Pedido> = {
   cPacaAguaEnt: 'cPacaAguaPed',
@@ -41,6 +33,22 @@ const PEDIDO_KEYS: Record<string, keyof Pedido> = {
   cBolsaAguaEnt: 'cBolsaAguaPed',
   cBolsaHieloEnt: 'cBolsaHieloPed',
 }
+
+interface ProductoCampo {
+  key: keyof CuadrePedido['productosEntregados']
+  precioKey: keyof CuadrePedido['preciosReales']
+  label: string
+  codigo: string
+}
+
+const ALL_PRODUCTOS: ProductoCampo[] = [
+  { key: 'cPacaAguaEnt', precioKey: 'pacaAgua', label: 'Paca Agua', codigo: 'PACA_AGUA' },
+  { key: 'cPacaHieloEnt', precioKey: 'pacaHielo', label: 'Paca Hielo', codigo: 'PACA_HIELO' },
+  { key: 'cBotellonFabEnt', precioKey: 'botellonFab', label: 'Bot. Fab', codigo: 'BOTELLON' },
+  { key: 'cBotellonDomEnt', precioKey: 'botellonDom', label: 'Bot. Dom', codigo: 'BOTELLON' },
+  { key: 'cBolsaAguaEnt', precioKey: 'bolsaAgua', label: 'Bol. Agua', codigo: 'BOLSA_AGUA' },
+  { key: 'cBolsaHieloEnt', precioKey: 'bolsaHielo', label: 'Bol. Hielo', codigo: 'BOLSA_HIELO' },
+]
 
 export function PedidoCuadre({
   pedido,
@@ -53,6 +61,11 @@ export function PedidoCuadre({
   onEliminarPago,
   onUpdatePago,
 }: PedidoCuadreProps) {
+  const { productos: productosDomicilio } = useProductosDomicilio()
+  const domicilioCodes = new Set(productosDomicilio.map(p => p.codigo))
+
+  const PRODUCTOS = ALL_PRODUCTOS.filter(p => domicilioCodes.has(p.codigo))
+
   const totalReal = calcularTotalEntregado(cuadre)
   const montoPagado = calcularMontoPagado(cuadre.pagos)
 

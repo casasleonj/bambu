@@ -1,15 +1,22 @@
+import { useProductosDomicilio } from '@/hooks/use-productos-domicilio'
 import type { VentaLibre, PagoItem, Cliente } from './types'
 import { METODOS_PAGO, calcularMontoPagado } from './types'
 import { formatCurrency } from '@/lib/utils'
 
-const PRODUCTOS_VENTA = [
-  { key: 'cPacaAgua', label: 'Paca Agua' },
-  { key: 'cPacaHielo', label: 'Paca Hielo' },
-  { key: 'cBotellonFab', label: 'Bot. Fab' },
-  { key: 'cBotellonDom', label: 'Bot. Dom' },
-  { key: 'cBolsaAgua', label: 'Bolsa Agua' },
-  { key: 'cBolsaHielo', label: 'Bolsa Hielo' },
-] as const
+interface ProductoVentaCampo {
+  key: string
+  label: string
+  codigo: string
+}
+
+const ALL_PRODUCTOS_VENTA: ProductoVentaCampo[] = [
+  { key: 'cPacaAgua', label: 'Paca Agua', codigo: 'PACA_AGUA' },
+  { key: 'cPacaHielo', label: 'Paca Hielo', codigo: 'PACA_HIELO' },
+  { key: 'cBotellonFab', label: 'Bot. Fab', codigo: 'BOTELLON' },
+  { key: 'cBotellonDom', label: 'Bot. Dom', codigo: 'BOTELLON' },
+  { key: 'cBolsaAgua', label: 'Bolsa Agua', codigo: 'BOLSA_AGUA' },
+  { key: 'cBolsaHielo', label: 'Bolsa Hielo', codigo: 'BOLSA_HIELO' },
+]
 
 interface VentaLibreRowProps {
   venta: VentaLibre
@@ -32,6 +39,10 @@ export function VentaLibreRow({
   onUpdatePago,
   onRemove,
 }: VentaLibreRowProps) {
+  const { productos: productosDomicilio } = useProductosDomicilio()
+  const domicilioCodes = new Set(productosDomicilio.map(p => p.codigo))
+  const PRODUCTOS_VENTA = ALL_PRODUCTOS_VENTA.filter(p => domicilioCodes.has(p.codigo))
+
   const totalPagado = calcularMontoPagado(venta.pagos)
 
   return (

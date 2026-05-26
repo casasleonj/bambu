@@ -5,19 +5,12 @@ import { useRouter, useParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { formatCurrency } from '@/lib/utils'
 import { getCapacidadInfo, calcularPesoDesdeCarga, type CargaSnapshot, emptyStock, type StockSnapshot } from '@/lib/embarque-capacidad'
+import { useProductosDomicilio, getProductoEmoji } from '@/hooks/use-productos-domicilio'
 import type { Cliente, PagoItem, Embarque, EmbarqueAbierto, CuadrePedido, VentaLibre, ProductoRetorno, GastoItem } from './types'
 import { calcularMontoPagado, calcularTotalEntregado } from './types'
 import { PedidoCuadre } from './pedido-cuadre'
 import { VentaLibreRow } from './venta-libre-row'
 import { ConfirmModal } from './confirm-modal'
-
-const PRODUCTOS = [
-  { key: 'PACA_AGUA', label: 'Paca Agua', emoji: '🚛' },
-  { key: 'PACA_HIELO', label: 'Paca Hielo', emoji: '🧊' },
-  { key: 'BOTELLON', label: 'Botellón', emoji: '🫗' },
-  { key: 'BOLSA_AGUA', label: 'Bolsa Agua', emoji: '💧' },
-  { key: 'BOLSA_HIELO', label: 'Bolsa Hielo', emoji: '❄️' },
-] as const
 
 const GASTO_CATEGORIAS = ['Gasolina', 'Alimentación', 'Peajes', 'Parqueadero', 'Mantenimiento', 'Otros']
 
@@ -25,6 +18,13 @@ export default function CerrarEmbarqueClient() {
   const router = useRouter()
   const params = useParams()
   const embarqueId = params.id as string
+
+  const { productos: productosDomicilio } = useProductosDomicilio()
+  const PRODUCTOS = productosDomicilio.map(p => ({
+    key: p.codigo,
+    label: p.nombre,
+    emoji: getProductoEmoji(p.codigo),
+  }))
 
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)

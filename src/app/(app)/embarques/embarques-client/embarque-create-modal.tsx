@@ -184,7 +184,11 @@ export function EmbarqueCreateModal({
           />
         </div>
 
-        {stockDisponible && (
+        {loadingProductos && (
+          <p className="text-xs text-gray-400">Cargando productos...</p>
+        )}
+
+        {stockDisponible && !loadingProductos && (
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
             <h3 className="text-sm font-semibold text-blue-800 mb-2">📦 Stock disponible hoy</h3>
             <div className="grid grid-cols-3 gap-2 text-xs">
