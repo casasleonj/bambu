@@ -1,5 +1,23 @@
 import type { Embarque, Pedido } from './types'
 
+function getDeficitBadge(embarque: Embarque): React.ReactNode {
+  if (!embarque.stockSnapshot) return null
+  try {
+    const snapshot = typeof embarque.stockSnapshot === 'string'
+      ? JSON.parse(embarque.stockSnapshot)
+      : embarque.stockSnapshot
+    if (snapshot.overrideRequerido) {
+      return (
+        <div className="flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium mb-3 w-fit">
+          <span>⚠️</span>
+          <span>Déficit: {snapshot.totalDeficit} u.</span>
+        </div>
+      )
+    }
+  } catch {}
+  return null
+}
+
 function ClosedPedidosSummary({ pedidos }: { pedidos: Pedido[] }) {
   const normales = pedidos.filter((p) => p.origen !== 'VENTA_LIBRE')
   const libres = pedidos.filter((p) => p.origen === 'VENTA_LIBRE')
@@ -51,6 +69,8 @@ export function EmbarqueCard({
           </div>
         </div>
       )}
+
+      {getDeficitBadge(embarque)}
 
       <div className="text-sm text-gray-600">
         {embarque.estado === 'CERRADO' ? (

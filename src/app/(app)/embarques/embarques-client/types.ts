@@ -73,4 +73,5 @@ export interface Embarque {
     pesoKg: number
     capacidadKg: number
   }
+  stockSnapshot?: unknown
 }
