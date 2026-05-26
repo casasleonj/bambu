@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { DateRangeFilter } from '@/components/date-range-filter'
-import { ClienteSearch, type ClienteSearchOption } from '@/components/cliente-search'
+import { PedidosSearch, type ClienteSearchOption } from '@/components/pedidos-search'
 import { TIPOS, ORIGENES, ESTADOS_ENTREGA, ESTADOS_PAGO } from './types'
 
 interface PedidoFiltersProps {
@@ -90,20 +90,15 @@ export function PedidoFilters({
           </div>
         )}
         <div className="flex-1 min-w-0">
-          <ClienteSearch
+          <PedidosSearch
             clientes={clientes}
-            selectedId={selectedClienteId}
-            onChange={onClienteSelect}
-            placeholder="Buscar cliente por nombre, teléfono o barrio..."
+            selectedClienteId={selectedClienteId}
+            onClienteSelect={onClienteSelect}
+            searchInput={searchInput}
+            onSearchChange={onSearchChange}
+            placeholder="Buscar por cliente, #pedido o teléfono..."
           />
         </div>
-        <input
-          type="text"
-          placeholder="Filtrar por #pedido o palabra clave..."
-          value={searchInput}
-          onChange={(e) => onSearchChange(e.target.value)}
-          className="flex-1 min-w-0 px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        />
         <button
           onClick={() => setExpanded((v) => !v)}
           className="shrink-0 inline-flex items-center justify-center gap-2 px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition"

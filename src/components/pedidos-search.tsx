@@ -10,33 +10,39 @@ export interface ClienteSearchOption {
   barrio: string | null
 }
 
-interface ClienteSearchProps {
+interface PedidosSearchProps {
   clientes: ClienteSearchOption[]
-  selectedId: string | null
-  onChange: (clienteId: string | null) => void
+  selectedClienteId: string | null
+  onClienteSelect: (clienteId: string | null) => void
+  searchInput: string
+  onSearchChange: (value: string) => void
   placeholder?: string
 }
 
-export function ClienteSearch({
+export function PedidosSearch({
   clientes,
-  selectedId,
-  onChange,
-  placeholder = 'Buscar cliente...',
-}: ClienteSearchProps) {
+  selectedClienteId,
+  onClienteSelect,
+  searchInput,
+  onSearchChange,
+  placeholder = 'Buscar por cliente, #pedido o teléfono...',
+}: PedidosSearchProps) {
   const [open, setOpen] = useState(false)
-  const [query, setQuery] = useState('')
   const [highlightedIndex, setHighlightedIndex] = useState(-1)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
   const selectedCliente = useMemo(() => {
-    if (!selectedId) return null
-    return clientes.find(c => c.id === selectedId) ?? null
-  }, [selectedId, clientes])
+    if (!selectedClienteId) return null
+    return clientes.find(c => c.id === selectedClienteId) ?? null
+  }, [selectedClienteId, clientes])
 
-  const filtered = useMemo(() => {
-    const q = query.toLowerCase()
+  const hasLetters = useMemo(() => /[a-zA-ZáéíóúÁÉÍÓÚñÑ]/.test(searchInput), [searchInput])
+
+  const filteredClientes = useMemo(() => {
+    if (!searchInput || !hasLetters) return []
+    const q = searchInput.toLowerCase()
     return clientes
       .filter(
         c =>
@@ -46,24 +52,37 @@ export function ClienteSearch({
           (c.direccion || '').toLowerCase().includes(q)
       )
       .slice(0, 8)
-  }, [clientes, query])
+  }, [clientes, searchInput, hasLetters])
+
+  const showDropdown = open && !selectedCliente && hasLetters && filteredClientes.length > 0
 
   const handleSelect = useCallback(
     (id: string) => {
-      onChange(id)
+      onClienteSelect(id)
       setOpen(false)
-      setQuery('')
       setHighlightedIndex(-1)
       inputRef.current?.blur()
     },
-    [onChange]
+    [onClienteSelect]
   )
 
   const handleClear = useCallback(() => {
-    onChange(null)
-    setQuery('')
+    onClienteSelect(null)
+    onSearchChange('')
     inputRef.current?.focus()
-  }, [onChange])
+  }, [onClienteSelect, onSearchChange])
+
+  const handleInputChange = useCallback(
+    (value: string) => {
+      if (selectedCliente) {
+        onClienteSelect(null)
+      }
+      onSearchChange(value)
+      setOpen(true)
+      setHighlightedIndex(-1)
+    },
+    [selectedCliente, onClienteSelect, onSearchChange]
+  )
 
   useEffect(() => {
     if (!open) return
@@ -80,22 +99,25 @@ export function ClienteSearch({
     (e: React.KeyboardEvent) => {
       if (e.key === 'ArrowDown') {
         e.preventDefault()
-        setOpen(true)
-        setHighlightedIndex(prev => Math.min(prev + 1, filtered.length - 1))
+        if (showDropdown) {
+          setHighlightedIndex(prev => Math.min(prev + 1, filteredClientes.length - 1))
+        }
       } else if (e.key === 'ArrowUp') {
         e.preventDefault()
-        setHighlightedIndex(prev => Math.max(prev - 1, -1))
+        if (showDropdown) {
+          setHighlightedIndex(prev => Math.max(prev - 1, -1))
+        }
       } else if (e.key === 'Enter') {
         e.preventDefault()
-        if (highlightedIndex >= 0 && highlightedIndex < filtered.length) {
-          handleSelect(filtered[highlightedIndex].id)
+        if (showDropdown && highlightedIndex >= 0 && highlightedIndex < filteredClientes.length) {
+          handleSelect(filteredClientes[highlightedIndex].id)
         }
       } else if (e.key === 'Escape') {
         setOpen(false)
         inputRef.current?.blur()
       }
     },
-    [filtered, highlightedIndex, handleSelect]
+    [showDropdown, filteredClientes, highlightedIndex, handleSelect]
   )
 
   useEffect(() => {
@@ -110,15 +132,10 @@ export function ClienteSearch({
         <input
           ref={inputRef}
           type="text"
-          value={selectedCliente ? selectedCliente.nombre : query}
-          onChange={e => {
-            if (selectedCliente) onChange(null)
-            setQuery(e.target.value)
-            setOpen(true)
-            setHighlightedIndex(-1)
-          }}
+          value={selectedCliente ? selectedCliente.nombre : searchInput}
+          onChange={e => handleInputChange(e.target.value)}
           onFocus={() => {
-            if (!selectedCliente) setOpen(true)
+            if (!selectedCliente && searchInput) setOpen(true)
           }}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
@@ -137,39 +154,31 @@ export function ClienteSearch({
         )}
       </div>
 
-      {open && !selectedCliente && (
+      {showDropdown && (
         <div
           ref={listRef}
           className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-80 overflow-y-auto"
         >
-          {filtered.length === 0 ? (
-            <div className="px-3 py-2 text-sm text-gray-500 text-center">
-              {query ? 'Sin resultados' : 'Escribe para buscar...'}
-            </div>
-          ) : (
-            <>
-              {filtered.map((c, i) => (
-                <button
-                  key={c.id}
-                  data-hl={i}
-                  onClick={() => handleSelect(c.id)}
-                  onMouseEnter={() => setHighlightedIndex(i)}
-                  className={`w-full text-left px-3 py-2 transition border-b last:border-b-0 ${
-                    i === highlightedIndex ? 'bg-blue-50' : 'hover:bg-gray-50'
-                  }`}
-                >
-                  <p className="text-sm font-medium text-gray-900">
-                    {c.nombre}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {c.telefono}
-                    {c.barrio && ` · ${c.barrio}`}
-                    {c.direccion && ` · ${c.direccion}`}
-                  </p>
-                </button>
-              ))}
-            </>
-          )}
+          {filteredClientes.map((c, i) => (
+            <button
+              key={c.id}
+              data-hl={i}
+              onClick={() => handleSelect(c.id)}
+              onMouseEnter={() => setHighlightedIndex(i)}
+              className={`w-full text-left px-3 py-2 transition border-b last:border-b-0 ${
+                i === highlightedIndex ? 'bg-blue-50' : 'hover:bg-gray-50'
+              }`}
+            >
+              <p className="text-sm font-medium text-gray-900">
+                {c.nombre}
+              </p>
+              <p className="text-xs text-gray-500">
+                {c.telefono}
+                {c.barrio && ` · ${c.barrio}`}
+                {c.direccion && ` · ${c.direccion}`}
+              </p>
+            </button>
+          ))}
         </div>
       )}
     </div>
