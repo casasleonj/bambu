@@ -37,6 +37,7 @@ export function EmbarqueCreateModal({
   })
   const [stockDisponible, setStockDisponible] = useState<StockDisponible | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const { productos: productosDomicilio, loading: loadingProductos } = useProductosDomicilio()
 
   useEffect(() => {
     if (open) {
@@ -48,6 +49,12 @@ export function EmbarqueCreateModal({
         .catch(() => {})
     }
   }, [open])
+
+  const PRODUCTOS = productosDomicilio.map(p => ({
+    key: p.codigo,
+    label: p.nombre,
+    emoji: getProductoEmoji(p.codigo),
+  }))
 
   const selectedTrabajador = trabajadores.find(t => t.id === selectedTrabajadorId)
   const capacidadKg = selectedTrabajador?.capacidadKg || 500
