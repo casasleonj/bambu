@@ -133,14 +133,19 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      const stockCheck = await validarStock(carga)
-      if (!stockCheck.ok) {
-        const faltante = stockCheck.faltante!
-        const mensajes: string[] = []
-        for (const [prod, cant] of Object.entries(faltante)) {
-          if (cant > 0) mensajes.push(`${prod}: faltan ${cant}`)
+      const { evaluarStock } = await import('@/lib/stock')
+      const stockEval = await evaluarStock(carga)
+
+      const MAX_OVERRIDE_PCT = 0.5
+
+      if (stockEval.hasDeficit) {
+        for (const key of ['PACA_AGUA', 'PACA_HIELO'] as const) {
+          const disponible = stockEval.disponible[key]
+          const maxAllowed = Math.floor(disponible * (1 + MAX_OVERRIDE_PCT))
+          if (carga[key] > maxAllowed) {
+            throw new Error(`STOCK_OVERRIDE_EXCEEDED: ${key} excede límite de override (${maxAllowed} máximo con 50% sobre disponible ${disponible})`)
+          }
         }
-        throw new Error(`STOCK_INSUFFICIENT: ${mensajes.join(', ')}`)
       }
 
       const totalUnidades = parsed.data.carga.reduce((s, item) => s + item.cargadas, 0)
@@ -152,7 +157,18 @@ export async function POST(request: NextRequest) {
       const numeroDia = await getNextNumeroDia(tx, parsed.data.trabajadorId, new Date())
 
       const { getStockDisponible } = await import('@/lib/stock')
-      const stockSnapshot = await getStockDisponible()
+      const disponible = await getStockDisponible()
+
+      const stockSnapshotData: Record<string, unknown> = {
+        fecha: new Date().toISOString(),
+        disponible,
+        cargado: carga,
+        deficit: stockEval.deficit,
+        totalDeficit: stockEval.totalDeficit,
+        overrideRequerido: stockEval.hasDeficit,
+        overrideAutorizadoPor: stockEval.hasDeficit ? (authResult as { user?: { id?: string } }).user?.id : null,
+        overrideTimestamp: stockEval.hasDeficit ? new Date().toISOString() : null,
+      }
 
       const embarque = await tx.embarque.create({
         data: {
@@ -164,10 +180,7 @@ export async function POST(request: NextRequest) {
           obs: parsed.data.obs,
           numeroDia,
           baseDinero: parsed.data.baseDinero,
-          stockSnapshot: JSON.stringify({
-            fecha: new Date().toISOString(),
-            productos: stockSnapshot,
-          }),
+          stockSnapshot: JSON.stringify(stockSnapshotData),
           productos: {
             create: parsed.data.carga.map(item => ({
               producto: item.producto,
@@ -204,6 +217,9 @@ export async function POST(request: NextRequest) {
     }
     if (message.startsWith('MAX_UNITS_EXCEEDED')) {
       return apiError('Máximo 70 unidades por embarque', 400)
+    }
+    if (message.startsWith('STOCK_OVERRIDE_EXCEEDED')) {
+      return apiError(message.replace('STOCK_OVERRIDE_EXCEEDED: ', ''), 400)
     }
     logger.error({ err: message }, 'Error creating embarque:')
     return apiError('Error creando embarque')
