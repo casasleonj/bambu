@@ -3,10 +3,12 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { EmbarqueCreateSchema } from '@/lib/validators'
-import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
-import { getTodayRange, getDateRange } from '@/lib/dates'
+import { getTodayRange } from '@/lib/dates'
 import { logAudit } from '@/lib/audit'
-import { calcularPacasEmbarque, calcularPesoEmbarque, getCapacidadInfo } from '@/lib/embarque-capacidad'
+import { calcularPesoDesdeCarga, getCapacidadInfo, type CargaSnapshot } from '@/lib/embarque-capacidad'
+import { getNextNumeroDia } from '@/lib/sequence'
+import { withAdvisoryLock } from '@/lib/locks'
+import { validarStock, emptyStock } from '@/lib/stock'
 import { EstadoEmbarque } from '@prisma/client'
 import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
@@ -15,7 +17,6 @@ import { logger } from '@/lib/logger'
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
-  const pagination = getPaginationParams(request.nextUrl.searchParams)
   const session = authResult as { user?: { id?: string; role?: string } }
   try {
     const desde = request.nextUrl.searchParams.get('desde')
@@ -25,7 +26,6 @@ export async function GET(request: NextRequest) {
 
     const where: Record<string, unknown> = {}
 
-    // REPARTIDOR: only see their own embarques
     if (session.user?.role === 'REPARTIDOR') {
       const trabajador = await prisma.trabajador.findFirst({
         where: { userId: session.user.id },
@@ -46,43 +46,46 @@ export async function GET(request: NextRequest) {
 
     if (!(all === 'true')) {
       if (desde && hasta) {
-        const { startDate, endDate } = getDateRange(desde, hasta)
+        const { startDate, endDate } = (() => {
+          const s = new Date(desde)
+          const e = new Date(hasta)
+          e.setDate(e.getDate() + 1)
+          return { startDate: s, endDate: e }
+        })()
         where.fecha = { gte: startDate, lt: endDate }
       } else {
         const { startOfDay, endOfDay } = getTodayRange()
         where.fecha = { gte: startOfDay, lt: endOfDay }
       }
     }
-    const prismaPagination = getPrismaPagination(pagination)
 
     const [embarquesRaw, total] = await Promise.all([
       prisma.embarque.findMany({
         where,
         include: {
           ruta: { select: { id: true, nombre: true } },
-          pedidos: {
-            select: {
-              id: true, numero: true, estado: true, estadoEntrega: true, origen: true, canal: true, total: true, saldo: true,
-              cPacaAguaPed: true, cPacaHieloPed: true, cBotellonFabPed: true, cBotellonDomPed: true,
-              cBolsaAguaPed: true, cBolsaHieloPed: true,
-              cPacaAguaEnt: true, cPacaHieloEnt: true, cBotellonFabEnt: true, cBotellonDomEnt: true,
-              cBolsaAguaEnt: true, cBolsaHieloEnt: true,
-              cliente: { select: { id: true, nombre: true, barrio: true } },
-            },
-          },
+          productos: true,
           trabajador: {
             select: { id: true, nombre: true, capacidadKg: true, comPacaAgua: true, comPacaHielo: true, comBotellon: true, comRepartAgua: true, comRepartHielo: true, comRepartBotellon: true },
           },
         },
-        orderBy: { numero: 'desc' },
-        ...prismaPagination,
+        orderBy: [{ fecha: 'desc' }, { numero: 'desc' }],
       }),
       prisma.embarque.count({ where }),
     ])
 
     const embarques = embarquesRaw.map((e) => {
-      const totalPacas = calcularPacasEmbarque(e.pedidos)
-      const pesoKg = calcularPesoEmbarque(e.pedidos)
+      const carga: CargaSnapshot = emptyStock() as CargaSnapshot
+      for (const prod of e.productos) {
+        const key = prod.producto as keyof typeof carga
+        if (key in carga) carga[key] = prod.cargadas
+      }
+      if (e.productos.length === 0) {
+        carga.PACA_AGUA = e.pacasAgua
+        carga.PACA_HIELO = e.pacasHielo
+      }
+      const totalPacas = Object.values(carga).reduce((s, v) => s + v, 0)
+      const pesoKg = calcularPesoDesdeCarga(carga)
       const capacidadKg = e.trabajador.capacidadKg || 500
       const capacidadInfo = getCapacidadInfo(totalPacas, pesoKg, capacidadKg)
       return {
@@ -94,11 +97,7 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    return apiSuccess(
-      pagination.all
-        ? { embarques, total }
-        : buildPaginationResponse(embarques, total, pagination.page!, pagination.pageSize!)
-    )
+    return apiSuccess({ embarques, total })
   } catch (error) {
     return apiError('Error cargando embarques')
   }
@@ -116,59 +115,133 @@ export async function POST(request: NextRequest) {
       return apiError('Datos invalidos', 400, { formErrors: [formatZodError(parsed.error)] })
     }
 
-    const trabajador = await prisma.trabajador.findUnique({
-      where: { id: parsed.data.trabajadorId },
-      select: { id: true, nombre: true, capacidadKg: true },
-    })
-    
-    if (!trabajador) {
-      return apiError('Trabajador no encontrado', 400)
-    }
-    
-    const capacidadKg = trabajador.capacidadKg || 500
-    const pesoEstimado = calcularPesoEmbarque([{
-      cPacaAguaPed: parsed.data.pacasAgua || 0,
-      cPacaHieloPed: parsed.data.pacasHielo || 0,
-    }])
-    
-    if (pesoEstimado > capacidadKg) {
-      return apiError(
-        `Capacidad excedida: ${pesoEstimado.toFixed(1)}kg. Maximo ${capacidadKg}kg.`,
-        400
-      )
-    }
-    
-    const embarque = await prisma.embarque.create({
-      data: {
-        trabajadorId: parsed.data.trabajadorId,
-        rutaId: parsed.data.rutaId || null,
-        horaSalida: parsed.data.horaSalida ? new Date(parsed.data.horaSalida) : null,
-        estado: EstadoEmbarque.ABIERTO,
-        obs: parsed.data.obs,
-        pacasAgua: parsed.data.pacasAgua || 0,
-        pacasHielo: parsed.data.pacasHielo || 0,
-        devueltasAgua: parsed.data.devueltasAgua || 0,
-        devueltasHielo: parsed.data.devueltasHielo || 0,
-        rotasAgua: parsed.data.rotasAgua || 0,
-        rotasHielo: parsed.data.rotasHielo || 0,
-      },
-      include: {
-        trabajador: true,
-        ruta: true,
-      },
-    })
-    
-    logAudit({
-      entidad: 'Embarque',
-      registroId: embarque.id,
-      accion: 'CREATE',
-      datos: { numero: embarque.numero, trabajadorId: embarque.trabajadorId, pacasAgua: embarque.pacasAgua, pacasHielo: embarque.pacasHielo },
-      usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+    const result = await withAdvisoryLock('EMBARQUE', async (tx) => {
+      const trabajador = await tx.trabajador.findUnique({
+        where: { id: parsed.data.trabajadorId },
+        select: { id: true, nombre: true, capacidadKg: true },
+      })
+
+      if (!trabajador) {
+        throw new Error('TRABAJADOR_NOT_FOUND')
+      }
+
+      const carga: CargaSnapshot = emptyStock() as CargaSnapshot
+      for (const item of parsed.data.carga) {
+        const key = item.producto as keyof typeof carga
+        if (key in carga) {
+          carga[key] = item.cargadas
+        }
+      }
+
+      const stockCheck = await validarStock(carga)
+      if (!stockCheck.ok) {
+        const faltante = stockCheck.faltante!
+        const mensajes: string[] = []
+        for (const [prod, cant] of Object.entries(faltante)) {
+          if (cant > 0) mensajes.push(`${prod}: faltan ${cant}`)
+        }
+        throw new Error(`STOCK_INSUFFICIENT: ${mensajes.join(', ')}`)
+      }
+
+      const totalUnidades = parsed.data.carga.reduce((s, item) => s + item.cargadas, 0)
+      if (totalUnidades > 70) {
+        throw new Error(`MAX_UNITS_EXCEEDED: ${totalUnidades} unidades exceden el máximo de 70`)
+      }
+
+      getTodayRange()
+      const numeroDia = await getNextNumeroDia(tx, parsed.data.trabajadorId, new Date())
+
+      const { getStockDisponible } = await import('@/lib/stock')
+      const stockSnapshot = await getStockDisponible()
+
+      const embarque = await tx.embarque.create({
+        data: {
+          trabajadorId: parsed.data.trabajadorId,
+          rutaId: parsed.data.rutaId || null,
+          tipoMoto: parsed.data.tipoMoto || null,
+          horaSalida: parsed.data.horaSalida ? new Date(parsed.data.horaSalida) : null,
+          estado: EstadoEmbarque.ABIERTO,
+          obs: parsed.data.obs,
+          numeroDia,
+          baseDinero: parsed.data.baseDinero,
+          stockSnapshot: JSON.stringify({
+            fecha: new Date().toISOString(),
+            productos: stockSnapshot,
+          }),
+          productos: {
+            create: parsed.data.carga.map(item => ({
+              producto: item.producto,
+              cargadas: item.cargadas,
+            })),
+          },
+        },
+        include: {
+          trabajador: true,
+          ruta: true,
+          productos: true,
+        },
+      })
+
+      return embarque
     })
 
-    return apiSuccess({ embarque }, 201)
+    logAudit({
+      entidad: 'Embarque',
+      registroId: result.id,
+      accion: 'CREATE',
+      datos: { numero: result.numero, numeroDia: result.numeroDia, trabajadorId: result.trabajadorId },
+      usuarioId: (authResult as { user?: { id?: string } }).user?.id,
+    })
+
+    return apiSuccess({ embarque: result }, 201)
   } catch (error) {
-    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error creating embarque:')
+    const message = error instanceof Error ? error.message : 'Unknown'
+    if (message === 'TRABAJADOR_NOT_FOUND') {
+      return apiError('Trabajador no encontrado', 400)
+    }
+    if (message.startsWith('STOCK_INSUFFICIENT')) {
+      return apiError(message.replace('STOCK_INSUFFICIENT: ', 'Stock insuficiente: '), 400)
+    }
+    if (message.startsWith('MAX_UNITS_EXCEEDED')) {
+      return apiError('Máximo 70 unidades por embarque', 400)
+    }
+    logger.error({ err: message }, 'Error creating embarque:')
     return apiError('Error creando embarque')
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  const authResult = await requireAuth()
+  if (authResult instanceof Response) return authResult
+  const roleCheck = await requireRole([ROLES.ADMIN], authResult)
+  if (roleCheck instanceof Response) return roleCheck
+  try {
+    const { searchParams } = new URL(request.url)
+    const id = searchParams.get('id')
+    if (!id) return apiError('ID requerido', 400)
+
+    const embarque = await prisma.embarque.findUnique({
+      where: { id },
+      include: { pedidos: true },
+    })
+
+    if (!embarque) return apiError('Embarque no encontrado', 404)
+    if (embarque.estado !== EstadoEmbarque.ABIERTO) {
+      return apiError('Solo se pueden cancelar embarques abiertos', 400)
+    }
+
+    await prisma.pedido.updateMany({
+      where: { embarqueId: id },
+      data: { embarqueId: null, estado: 'PENDIENTE', estadoEntrega: 'PENDIENTE' },
+    })
+
+    await prisma.embarque.update({
+      where: { id },
+      data: { estado: EstadoEmbarque.CANCELADO },
+    })
+
+    return apiSuccess({ message: 'Embarque cancelado' })
+  } catch (error) {
+    return apiError('Error cancelando embarque')
   }
 }

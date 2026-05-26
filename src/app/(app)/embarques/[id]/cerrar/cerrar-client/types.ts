@@ -31,9 +31,11 @@ export interface Pedido {
 export interface Embarque {
   id: string
   numero: number
+  numeroDia: number
   trabajador: { nombre: string; comPacaAgua?: number; comPacaHielo?: number; comBotellon?: number; comRepartAgua?: number; comRepartHielo?: number; comRepartBotellon?: number }
   ruta?: { nombre: string } | null
   pedidos: Pedido[]
+  productos?: Array<{ producto: string; cargadas: number; devueltas: number; cambios: number; rotas: number }>
   totalPacas?: number
   pesoKg?: number
   capacidadKg?: number
@@ -49,6 +51,20 @@ export interface Embarque {
   }
   pacasAgua: number
   pacasHielo: number
+  baseDinero: number
+  horaSalida?: string
+}
+
+export interface ProductoRetorno {
+  devueltas: number
+  cambios: number
+  rotas: number
+}
+
+export interface GastoItem {
+  categoria: string
+  monto: number
+  nota: string
 }
 
 export interface EmbarqueAbierto {

@@ -59,6 +59,24 @@ export function calcularPesoEmbarque(pedidos: Array<{
   }, 0)
 }
 
+export type StockSnapshot = {
+  PACA_AGUA: number
+  PACA_HIELO: number
+  BOTELLON: number
+  BOLSA_AGUA: number
+  BOLSA_HIELO: number
+}
+
+export function emptyStock(): StockSnapshot {
+  return {
+    PACA_AGUA: 0,
+    PACA_HIELO: 0,
+    BOTELLON: 0,
+    BOLSA_AGUA: 0,
+    BOLSA_HIELO: 0,
+  }
+}
+
 export interface CargaSnapshot {
   PACA_AGUA: number
   PACA_HIELO: number

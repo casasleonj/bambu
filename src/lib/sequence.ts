@@ -3,13 +3,6 @@ interface TxLike {
   [model: string]: any
 }
 
-/**
- * Get next sequential number using PostgreSQL sequences.
- * Falls back to MAX(field) + 1 for string fields like "FAC-00002".
- *
- * IMPORTANT: When using fallback (no seqName), caller MUST wrap in
- * `withAdvisoryLock` or use Serializable transaction to prevent race conditions.
- */
 export async function getNextNumero(
   tx: TxLike,
   options: {
@@ -25,8 +18,6 @@ export async function getNextNumero(
     return Number(rows[0].nextval)
   }
 
-  // Fallback for string-based sequences (e.g. "FAC-00002")
-  // MUST be called within withAdvisoryLock or Serializable transaction
   const model = (tx as any)[options.model]
   const field = options.field || 'numero'
   const result = await model.aggregate({
@@ -43,11 +34,28 @@ export async function getNextNumero(
   return num + 1
 }
 
-/**
- * Format number with preserved padding from template.
- * "FAC-00002" + 1 → "FAC-00003"
- * "FAC-2" + 1 → "FAC-3"
- */
+export async function getNextNumeroDia(
+  tx: TxLike,
+  trabajadorId: string,
+  fecha: Date
+): Promise<number> {
+  const startOfDay = new Date(fecha)
+  startOfDay.setHours(0, 0, 0, 0)
+  const endOfDay = new Date(fecha)
+  endOfDay.setHours(23, 59, 59, 999)
+
+  const embarqueModel = (tx as any).embarque
+  const result = await embarqueModel.aggregate({
+    _max: { numeroDia: true },
+    where: {
+      trabajadorId,
+      fecha: { gte: startOfDay, lt: endOfDay },
+    },
+  })
+
+  return (result._max?.numeroDia || 0) + 1
+}
+
 export function formatWithPadding(template: string, nextNum: number): string {
   const match = template.match(/(\d+)/)
   if (!match) return `${nextNum}`

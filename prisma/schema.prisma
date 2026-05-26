@@ -76,6 +76,7 @@ enum EstadoNomina {
 
 enum EstadoEmbarque {
   ABIERTO
+  EN_RUTA
   CERRADO
   CANCELADO
 }
@@ -507,6 +508,7 @@ model Embarque {
   createdById  String?
   createdBy    User?      @relation("EmbarqueCreador", fields: [createdById], references: [id])
   numero        Int       @default(autoincrement())
+  numeroDia     Int       @default(0)
   fecha         DateTime @db.Timestamptz()   @default(now())
   trabajadorId String
   trabajador   Trabajador @relation(fields: [trabajadorId], references: [id])
@@ -516,12 +518,23 @@ model Embarque {
   horaLlegada   DateTime? @db.Timestamptz()
   estado      EstadoEmbarque @default(ABIERTO)
 
+  // Legacy — se mantiene para compatibilidad
   pacasAgua    Int       @default(0)
   pacasHielo  Int       @default(0)
   devueltasAgua Int      @default(0)
   devueltasHielo Int     @default(0)
   rotasAgua    Int       @default(0)
   rotasHielo   Int       @default(0)
+
+  // Tipo de motocarga
+  tipoMoto      String?
+
+  // Dinero
+  baseDinero    Decimal   @default(0) @db.Decimal(10, 2)
+  dineroEntregado Decimal @default(0) @db.Decimal(10, 2)
+
+  // Snapshot de stock al crear
+  stockSnapshot Json?
 
   // NUEVO — código de visita del día
   codigoVisita  String?
@@ -530,6 +543,8 @@ model Embarque {
 
   pedidos     Pedido[]
   gpsTracks   GpsTrack[]
+  productos   EmbarqueProducto[]
+  gastos      Gasto[]
 
   createdAt  DateTime @db.Timestamptz() @default(now())
   updatedAt DateTime @db.Timestamptz() @updatedAt
@@ -539,6 +554,26 @@ model Embarque {
   @@index([rutaId])
   @@index([fecha])
   @@index([estado])
+  @@index([trabajadorId, fecha, numeroDia])
+}
+
+// ====================
+// EMBARQUE PRODUCTO (conciliación por producto)
+// ====================
+
+model EmbarqueProducto {
+  id          String   @id @default(cuid())
+  embarqueId  String
+  embarque    Embarque @relation(fields: [embarqueId], references: [id], onDelete: Cascade)
+
+  producto    String   // PACA_AGUA, PACA_HIELO, BOTELLON, BOLSA_AGUA, BOLSA_HIELO
+  cargadas    Int      @default(0)
+  devueltas   Int      @default(0)
+  cambios     Int      @default(0)
+  rotas       Int      @default(0)
+
+  @@unique([embarqueId, producto])
+  @@index([embarqueId])
 }
 
 // ====================
@@ -764,6 +799,8 @@ model Gasto {
   monto       Decimal  @default(0) @db.Decimal(10, 2)
   responsable String?
   notas       String?
+  embarqueId  String?
+  embarque    Embarque? @relation(fields: [embarqueId], references: [id])
 
   createdAt  DateTime @db.Timestamptz() @default(now())
   updatedAt DateTime @db.Timestamptz() @updatedAt
@@ -771,6 +808,7 @@ model Gasto {
   @@index([createdById])
   @@index([fecha])
   @@index([categoria, fecha])
+  @@index([embarqueId])
 }
 
 // ====================

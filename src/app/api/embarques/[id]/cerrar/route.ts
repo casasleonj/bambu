@@ -3,71 +3,15 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole, requireOwnership } from '@/lib/auth-check'
 import { logAudit } from '@/lib/audit'
 import { formatZodError } from '@/lib/utils'
-import { z } from 'zod'
 import { getNextNumero } from '@/lib/sequence'
 import { resolverPrecio, resolverPreciosPedido, type ProductCode, type Canal } from '@/lib/pricing'
 import { calcularEstadoPago } from '@/lib/pedido-utils'
-import { MetodoPago } from '@prisma/client'
+import { MetodoPago, EstadoEmbarque } from '@prisma/client'
 import { ROLES } from '@/lib/constants'
 import { logger } from '@/lib/logger'
 import { apiSuccess, apiError } from '@/lib/api-response'
-
-const ProductoEntregadoSchema = z.object({
-  cPacaAguaEnt: z.number().int().min(0).default(0),
-  cPacaHieloEnt: z.number().int().min(0).default(0),
-  cBotellonFabEnt: z.number().int().min(0).default(0),
-  cBotellonDomEnt: z.number().int().min(0).default(0),
-  cBolsaAguaEnt: z.number().int().min(0).default(0),
-  cBolsaHieloEnt: z.number().int().min(0).default(0),
-})
-
-const PreciosRealesSchema = z.object({
-  pacaAgua: z.number().min(0).default(0),
-  pacaHielo: z.number().min(0).default(0),
-  botellonFab: z.number().min(0).default(0),
-  botellonDom: z.number().min(0).default(0),
-  bolsaAgua: z.number().min(0).default(0),
-  bolsaHielo: z.number().min(0).default(0),
-})
-
-const PagoSchema = z.object({
-  metodo: z.string(),
-  monto: z.number().min(0),
-})
-
-const PedidoCuadreSchema = z.object({
-  pedidoId: z.string().min(1),
-  entregado: z.enum(['COMPLETO', 'PARCIAL', 'NO_ENTREGADO']),
-  productosEntregados: ProductoEntregadoSchema,
-  preciosReales: PreciosRealesSchema.optional(),
-  pagado: z.enum(['COMPLETO', 'PARCIAL', 'NO_PAGADO']),
-  pagos: z.array(PagoSchema).default([]),
-  nuevoEmbarqueId: z.string().optional(),
-})
-
-const VentaLibreSchema = z.object({
-  clienteId: z.string().min(1),
-  cPacaAgua: z.number().int().min(0).default(0),
-  cPacaHielo: z.number().int().min(0).default(0),
-  cBotellonFab: z.number().int().min(0).default(0),
-  cBotellonDom: z.number().int().min(0).default(0),
-  cBolsaAgua: z.number().int().min(0).default(0),
-  cBolsaHielo: z.number().int().min(0).default(0),
-  pagos: z.array(PagoSchema).default([]),
-  obs: z.string().optional(),
-})
-
-const CerrarEmbarqueSchema = z.object({
-  pedidos: z.array(PedidoCuadreSchema),
-  ventasLibres: z.array(VentaLibreSchema).optional().default([]),
-  devueltasAgua: z.number().int().min(0).default(0),
-  devueltasHielo: z.number().int().min(0).default(0),
-  rotasAgua: z.number().int().min(0).default(0),
-  rotasHielo: z.number().int().min(0).default(0),
-  discrepancia: z.number().min(0).default(0),
-  justificacionDiscrepancia: z.string().optional(),
-  obs: z.string().optional(),
-})
+import { emptyStock, type StockSnapshot } from '@/lib/stock'
+import { CerrarEmbarqueSchema } from '@/lib/validators'
 
 export async function POST(
   request: NextRequest,
@@ -89,16 +33,16 @@ export async function POST(
       return apiError(formatZodError(parsed.error), 400)
     }
 
-    const { pedidos: pedidosCuadre, ventasLibres, devueltasAgua, devueltasHielo, rotasAgua, rotasHielo, justificacionDiscrepancia, obs } = parsed.data
+    const { pedidos: pedidosCuadre, ventasLibres, productos: productosRetorno, gastos: gastosData, dineroEntregado, justificacionDiscrepancia, obs } = parsed.data
 
     const result = await prisma.$transaction(async (tx) => {
       // 1. Verify embarque exists and is ABIERTO
       const embarque = await tx.embarque.findUnique({
         where: { id },
-        include: { pedidos: { include: { cliente: true, pagos: true, items: true, factura: true } }, trabajador: true },
+        include: { pedidos: { include: { cliente: true, pagos: true, items: true, factura: true } }, trabajador: true, productos: true },
       })
       if (!embarque) throw new Error('EMBARQUE_NOT_FOUND')
-      if (embarque.estado !== 'ABIERTO') throw new Error('EMBARQUE_YA_CERRADO')
+      if (embarque.estado !== EstadoEmbarque.ABIERTO && embarque.estado !== EstadoEmbarque.EN_RUTA) throw new Error('EMBARQUE_YA_CERRADO')
 
       const pedidosHijosCreados: Array<{ id: string; numero: number }> = []
       const pedidosActualizados: Array<{ id: string; estado: string }> = []
@@ -407,46 +351,120 @@ export async function POST(
       const pedidosActualesTx = await tx.pedido.findMany({
         where: { embarqueId: id },
       })
-      const totalPacasAgua = pedidosActualesTx.reduce((sum, p) => sum + p.cPacaAguaPed, 0) +
-        ventasLibres.reduce((sum, v) => sum + v.cPacaAgua, 0)
-      const totalPacasHielo = pedidosActualesTx.reduce((sum, p) => sum + p.cPacaHieloPed, 0) +
-        ventasLibres.reduce((sum, v) => sum + v.cPacaHielo, 0)
 
-      const totalEntregadoAgua = pedidosActualesTx.reduce((sum, p) => sum + p.cPacaAguaEnt, 0)
-      const totalEntregadoHielo = pedidosActualesTx.reduce((sum, p) => sum + p.cPacaHieloEnt, 0)
+      const totalCargado: StockSnapshot = emptyStock()
+      for (const prod of embarque.productos) {
+        const key = prod.producto as keyof StockSnapshot
+        if (key in totalCargado) totalCargado[key] = prod.cargadas
+      }
+      if (embarque.productos.length === 0) {
+        totalCargado.PACA_AGUA = embarque.pacasAgua
+        totalCargado.PACA_HIELO = embarque.pacasHielo
+      }
 
-      // 5. Calcular discrepancia
-      const discrepancyAgua = totalPacasAgua - totalEntregadoAgua - devueltasAgua - rotasAgua
-      const discrepancyHielo = totalPacasHielo - totalEntregadoHielo - devueltasHielo - rotasHielo
-      const totalDiscrepancy = discrepancyAgua + discrepancyHielo
+      const totalEntregado: StockSnapshot = emptyStock()
+      for (const p of pedidosActualesTx) {
+        totalEntregado.PACA_AGUA += p.cPacaAguaEnt || 0
+        totalEntregado.PACA_HIELO += p.cPacaHieloEnt || 0
+        totalEntregado.BOTELLON += (p.cBotellonFabEnt || 0) + (p.cBotellonDomEnt || 0)
+        totalEntregado.BOLSA_AGUA += p.cBolsaAguaEnt || 0
+        totalEntregado.BOLSA_HIELO += p.cBolsaHieloEnt || 0
+      }
+      for (const v of ventasLibres) {
+        totalEntregado.PACA_AGUA += v.cPacaAgua || 0
+        totalEntregado.PACA_HIELO += v.cPacaHielo || 0
+        totalEntregado.BOTELLON += (v.cBotellonFab || 0) + (v.cBotellonDom || 0)
+        totalEntregado.BOLSA_AGUA += v.cBolsaAgua || 0
+        totalEntregado.BOLSA_HIELO += v.cBolsaHielo || 0
+      }
 
-      // 6. Si hay discrepancia no justificada, crear descuento
+      // 5. Calcular discrepancia por producto
+      const retornoMap: Record<string, { devueltas: number; cambios: number; rotas: number }> = {}
+      for (const pr of productosRetorno) {
+        retornoMap[pr.producto] = { devueltas: pr.devueltas, cambios: pr.cambios, rotas: pr.rotas }
+      }
+
+      const discrepancias: Record<string, number> = {}
+      let totalDiscrepancy = 0
+      const productosKeys = ['PACA_AGUA', 'PACA_HIELO', 'BOTELLON', 'BOLSA_AGUA', 'BOLSA_HIELO'] as const
+      for (const key of productosKeys) {
+        const ret = retornoMap[key] || { devueltas: 0, cambios: 0, rotas: 0 }
+        const disc = totalCargado[key] - totalEntregado[key] - ret.devueltas - ret.rotas
+        discrepancias[key] = disc
+        if (disc > 0) totalDiscrepancy += disc
+      }
+
+      // 6. Si hay discrepancia no justificada, crear descuento valuado por producto
       let descuento = null
       if (totalDiscrepancy > 0 && !justificacionDiscrepancia) {
-        const precioPaca = await resolverPrecio('PACA_AGUA', 1, 'DOMICILIO', null, null, tx)
+        const precioAgua = await resolverPrecio('PACA_AGUA', 1, 'DOMICILIO', null, null, tx)
+        let montoTotal = 0
+        const motivos: string[] = []
+        for (const key of productosKeys) {
+          if (discrepancias[key] > 0) {
+            const precio = key === 'PACA_AGUA' ? precioAgua.precio : precioAgua.precio
+            montoTotal += discrepancias[key] * Number(precio)
+            motivos.push(`${discrepancias[key]} ${key}`)
+          }
+        }
         descuento = await tx.descuentoRepartidor.create({
           data: {
             embarqueId: id,
             trabajadorId: embarque.trabajadorId,
-            monto: totalDiscrepancy * precioPaca.precio,
-            motivo: `Discrepancia conciliación: ${discrepancyAgua} agua, ${discrepancyHielo} hielo`,
+            monto: montoTotal,
+            motivo: `Discrepancia conciliación: ${motivos.join(', ')}`,
             justificado: false,
           },
         })
       }
 
-      // 7. Close embarque
+      // 7. Crear gastos del embarque
+      const gastosCreados = []
+      for (const gastoData of gastosData) {
+        const gasto = await tx.gasto.create({
+          data: {
+            categoria: gastoData.categoria,
+            descripcion: gastoData.nota || gastoData.categoria,
+            monto: gastoData.monto,
+            responsable: embarque.trabajadorId,
+            notas: gastoData.nota,
+            embarqueId: id,
+            createdById: (authResult.user as { id: string }).id,
+          },
+        })
+        gastosCreados.push(gasto)
+      }
+
+      // 8. Actualizar EmbarqueProducto con retornos
+      for (const pr of productosRetorno) {
+        const existing = await tx.embarqueProducto.findUnique({
+          where: { embarqueId_producto: { embarqueId: id, producto: pr.producto } },
+        })
+        if (existing) {
+          await tx.embarqueProducto.update({
+            where: { id: existing.id },
+            data: { devueltas: pr.devueltas, cambios: pr.cambios, rotas: pr.rotas },
+          })
+        } else {
+          await tx.embarqueProducto.create({
+            data: {
+              embarqueId: id,
+              producto: pr.producto,
+              devueltas: pr.devueltas,
+              cambios: pr.cambios,
+              rotas: pr.rotas,
+            },
+          })
+        }
+      }
+
+      // 9. Close embarque
       const embarqueCerrado = await tx.embarque.update({
         where: { id },
         data: {
-          estado: 'CERRADO',
+          estado: EstadoEmbarque.CERRADO,
           horaLlegada: new Date(),
-          pacasAgua: totalPacasAgua,
-          pacasHielo: totalPacasHielo,
-          devueltasAgua,
-          devueltasHielo,
-          rotasAgua,
-          rotasHielo,
+          dineroEntregado,
           obs: obs || embarque.obs,
         },
       })
@@ -457,9 +475,11 @@ export async function POST(
         pedidosHijosCreados,
         ventasLibresCreadas,
         pagosRegistrados,
+        gastosCreados,
         conciliacion: {
-          discrepancyAgua,
-          discrepancyHielo,
+          totalCargado,
+          totalEntregado,
+          discrepancias,
           totalDiscrepancy,
           justificacionDiscrepancia: justificacionDiscrepancia || null,
         },
@@ -476,7 +496,9 @@ export async function POST(
         pedidosProcesados: result.pedidosActualizados.length,
         hijosCreados: result.pedidosHijosCreados.length,
         ventasLibres: result.ventasLibresCreadas.length,
+        gastos: result.gastosCreados.length,
         discrepancia: result.conciliacion.totalDiscrepancy,
+        dineroEntregado,
       },
       usuarioId: (authResult.user as { id: string }).id,
     })

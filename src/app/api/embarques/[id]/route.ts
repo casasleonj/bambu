@@ -26,6 +26,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         pedidos: {
           include: { cliente: true, pagos: true },
         },
+        productos: true,
       },
     })
     if (!embarque) return apiError('Not found', 404)

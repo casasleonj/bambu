@@ -7,12 +7,21 @@ export interface Ruta {
 export interface Trabajador {
   id: string
   nombre: string
+  capacidadKg?: number
   comPacaAgua?: number
   comPacaHielo?: number
   comBotellon?: number
   comRepartAgua?: number
   comRepartHielo?: number
   comRepartBotellon?: number
+}
+
+export interface EmbarqueProducto {
+  producto: string
+  cargadas: number
+  devueltas: number
+  cambios: number
+  rotas: number
 }
 
 export interface Pedido {
@@ -39,13 +48,18 @@ export interface Pedido {
 export interface Embarque {
   id: string
   numero: number
+  numeroDia: number
   fecha: string
   horaSalida: string | null
+  horaLlegada: string | null
   estado: string
+  tipoMoto: string | null
+  baseDinero: number
   obs: string | null
   trabajador: Trabajador
   ruta?: Ruta | null
   pedidos: Pedido[]
+  productos: EmbarqueProducto[]
   totalPacas?: number
   pesoKg?: number
   capacidadKg?: number

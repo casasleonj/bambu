@@ -461,7 +461,7 @@ export async function POST(request: NextRequest) {
 
         // 4. Verify no open embarques
         const embarquesAbiertos = await tx.embarque.count({
-          where: { fecha: { gte: startOfDay, lt: nextDay }, estado: EstadoEmbarque.ABIERTO },
+          where: { fecha: { gte: startOfDay, lt: nextDay }, estado: { in: [EstadoEmbarque.ABIERTO, EstadoEmbarque.EN_RUTA] } },
         })
         if (embarquesAbiertos > 0) {
           throw new Error('EMBARQUES_ABIERTOS')

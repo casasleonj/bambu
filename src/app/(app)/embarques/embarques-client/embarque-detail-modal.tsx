@@ -19,12 +19,12 @@ function calcularCapacidadProyectada(embarque: Embarque, pedidos: Pedido[], nuev
   const pesoNuevo = nuevosPedidos.reduce(
     (sum, p) =>
       sum +
-      (p.cPacaAguaPed || 0) * PESOS_KG.cPacaAguaPed +
-      (p.cPacaHieloPed || 0) * PESOS_KG.cPacaHieloPed +
-      (p.cBotellonFabPed || 0) * PESOS_KG.cBotellonFabPed +
-      (p.cBotellonDomPed || 0) * PESOS_KG.cBotellonDomPed +
-      (p.cBolsaAguaPed || 0) * PESOS_KG.cBolsaAguaPed +
-      (p.cBolsaHieloPed || 0) * PESOS_KG.cBolsaHieloPed,
+      (p.cPacaAguaPed || 0) * PESOS_KG.PACA_AGUA +
+      (p.cPacaHieloPed || 0) * PESOS_KG.PACA_HIELO +
+      (p.cBotellonFabPed || 0) * PESOS_KG.BOTELLON +
+      (p.cBotellonDomPed || 0) * PESOS_KG.BOTELLON +
+      (p.cBolsaAguaPed || 0) * PESOS_KG.BOLSA_AGUA +
+      (p.cBolsaHieloPed || 0) * PESOS_KG.BOLSA_HIELO,
     0
   )
   return { totalPacas: pacasActuales + pacasNuevas, pesoKg: pesoActual + pesoNuevo }
@@ -236,6 +236,28 @@ export function EmbarqueDetailModal({
     }
   }
 
+  async function enviarEnRuta() {
+    const ok = await confirm('¿Enviar este embarque en ruta? Se registrará la hora de salida.')
+    if (!ok) return
+    if (submitting) return
+    setSubmitting(true)
+    try {
+      const res = await fetch(`/api/embarques/${embarque!.id}/enviar`, { method: 'POST', credentials: 'include' })
+      const data = await res.json()
+      if (data.success) {
+        toast.success('Embarque enviado en ruta')
+        onChanged()
+        if (data.embarque) onEmbarqueUpdated?.(data.embarque)
+      } else {
+        toast.error(data.error?.message || 'Error enviando embarque')
+      }
+    } catch {
+      toast.error('Error enviando embarque')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   return (
     <Modal open={open} onClose={onClose} className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
       <div className="flex justify-between items-start mb-4">
@@ -377,6 +399,13 @@ export function EmbarqueDetailModal({
               {submitting ? 'Cancelando...' : 'Cancelar'}
             </button>
             <button
+              onClick={enviarEnRuta}
+              disabled={submitting}
+              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {submitting ? 'Enviando...' : 'Enviar en Ruta →'}
+            </button>
+            <button
               onClick={() => {
                 onClose()
                 router.push(`/embarques/${embarque.id}/cerrar`)
@@ -385,6 +414,20 @@ export function EmbarqueDetailModal({
               className="flex-1 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Cerrar Embarque
+            </button>
+          </>
+        )}
+        {embarque.estado === 'EN_RUTA' && (
+          <>
+            <button
+              onClick={() => {
+                onClose()
+                router.push(`/embarques/${embarque.id}/cerrar`)
+              }}
+              disabled={submitting}
+              className="flex-1 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Cerrar y Cuadrar
             </button>
           </>
         )}

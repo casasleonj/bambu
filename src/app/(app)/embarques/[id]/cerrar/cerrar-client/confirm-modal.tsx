@@ -5,9 +5,18 @@ interface ConfirmModalProps {
   submitting: boolean
   onClose: () => void
   onConfirm: () => void
+  resumen?: {
+    totalCobrado: number
+    totalFiado: number
+    totalGastos: number
+    noEntregados: number
+    parciales: number
+    faltante: number
+    discrepancia: number
+  }
 }
 
-export function ConfirmModal({ cuadres, submitting, onClose, onConfirm }: ConfirmModalProps) {
+export function ConfirmModal({ cuadres, submitting, onClose, onConfirm, resumen: _resumen }: ConfirmModalProps) {
   const noEntregados = Object.values(cuadres).filter((c) => c.entregado === 'NO_ENTREGADO').length
   const parciales = Object.values(cuadres).filter((c) => c.entregado === 'PARCIAL').length
 

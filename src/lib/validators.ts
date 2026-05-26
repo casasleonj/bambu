@@ -200,6 +200,7 @@ export const GastoCreateSchema = z.object({
   responsable: z.string().max(100).optional(),
   notas: z.string().max(500).optional(),
   fecha: z.string().optional(),
+  embarqueId: z.string().optional(),
 });
 
 export const InsumoCreateSchema = z.object({
@@ -280,21 +281,23 @@ export const ConfigCreateSchema = z.object({
 // EMBARQUE
 // ====================
 
+export const EmbarqueProductoSchema = z.object({
+  producto: z.enum(['PACA_AGUA', 'PACA_HIELO', 'BOTELLON', 'BOLSA_AGUA', 'BOLSA_HIELO']),
+  cargadas: z.coerce.number().int().min(0).default(0),
+})
+
 export const EmbarqueCreateSchema = z.object({
   trabajadorId: z.string().min(1),
   rutaId: z.string().optional(),
+  tipoMoto: z.string().optional(),
   horaSalida: z.string().optional(),
+  baseDinero: z.coerce.number().min(0).default(0),
   obs: z.string().max(500).optional(),
-  pacasAgua: z.coerce.number().int().min(0).default(0),
-  pacasHielo: z.coerce.number().int().min(0).default(0),
-  devueltasAgua: z.coerce.number().int().min(0).default(0),
-  devueltasHielo: z.coerce.number().int().min(0).default(0),
-  rotasAgua: z.coerce.number().int().min(0).default(0),
-  rotasHielo: z.coerce.number().int().min(0).default(0),
-});
+  carga: z.array(EmbarqueProductoSchema).min(1, 'Agrega al menos un producto'),
+})
 
 export const EmbarqueUpdateSchema = z.object({
-  estado: z.enum(['ABIERTO', 'CERRADO', 'CANCELADO']).nullable().optional(),
+  estado: z.enum(['ABIERTO', 'EN_RUTA', 'CERRADO', 'CANCELADO']).nullable().optional(),
   horaLlegada: z.string().nullable().optional(),
   obs: z.string().max(500).nullable().optional(),
   pedidoIds: z.array(z.string().min(1)).max(100).nullable().optional(),
@@ -304,7 +307,66 @@ export const EmbarqueUpdateSchema = z.object({
   devueltasHielo: z.coerce.number().int().min(0).nullable().optional(),
   rotasAgua: z.coerce.number().int().min(0).nullable().optional(),
   rotasHielo: z.coerce.number().int().min(0).nullable().optional(),
-});
+})
+
+export const GastoEmbarqueSchema = z.object({
+  categoria: z.string().min(1),
+  monto: z.coerce.number().positive(),
+  nota: z.string().max(500).optional(),
+})
+
+export const CerrarEmbarqueSchema = z.object({
+  pedidos: z.array(z.object({
+    pedidoId: z.string().min(1),
+    entregado: z.enum(['COMPLETO', 'PARCIAL', 'NO_ENTREGADO']),
+    productosEntregados: z.object({
+      cPacaAguaEnt: z.number().int().min(0).default(0),
+      cPacaHieloEnt: z.number().int().min(0).default(0),
+      cBotellonFabEnt: z.number().int().min(0).default(0),
+      cBotellonDomEnt: z.number().int().min(0).default(0),
+      cBolsaAguaEnt: z.number().int().min(0).default(0),
+      cBolsaHieloEnt: z.number().int().min(0).default(0),
+    }),
+    preciosReales: z.object({
+      pacaAgua: z.number().min(0).default(0),
+      pacaHielo: z.number().min(0).default(0),
+      botellonFab: z.number().min(0).default(0),
+      botellonDom: z.number().min(0).default(0),
+      bolsaAgua: z.number().min(0).default(0),
+      bolsaHielo: z.number().min(0).default(0),
+    }).optional(),
+    pagado: z.enum(['COMPLETO', 'PARCIAL', 'NO_PAGADO']),
+    pagos: z.array(z.object({
+      metodo: z.string(),
+      monto: z.number().min(0),
+    })).default([]),
+    nuevoEmbarqueId: z.string().optional(),
+  })),
+  ventasLibres: z.array(z.object({
+    clienteId: z.string().min(1),
+    cPacaAgua: z.number().int().min(0).default(0),
+    cPacaHielo: z.number().int().min(0).default(0),
+    cBotellonFab: z.number().int().min(0).default(0),
+    cBotellonDom: z.number().int().min(0).default(0),
+    cBolsaAgua: z.number().int().min(0).default(0),
+    cBolsaHielo: z.number().int().min(0).default(0),
+    pagos: z.array(z.object({
+      metodo: z.string(),
+      monto: z.number().min(0),
+    })).default([]),
+    obs: z.string().optional(),
+  })).optional().default([]),
+  productos: z.array(z.object({
+    producto: z.enum(['PACA_AGUA', 'PACA_HIELO', 'BOTELLON', 'BOLSA_AGUA', 'BOLSA_HIELO']),
+    devueltas: z.coerce.number().int().min(0).default(0),
+    cambios: z.coerce.number().int().min(0).default(0),
+    rotas: z.coerce.number().int().min(0).default(0),
+  })),
+  gastos: z.array(GastoEmbarqueSchema).optional().default([]),
+  dineroEntregado: z.coerce.number().min(0).default(0),
+  justificacionDiscrepancia: z.string().optional(),
+  obs: z.string().optional(),
+})
 
 // ====================
 // FACTURA / PROVEEDOR / TRABAJADOR

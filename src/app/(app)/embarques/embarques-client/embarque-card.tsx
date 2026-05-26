@@ -30,10 +30,13 @@ export function EmbarqueCard({
     >
       <div className="flex justify-between items-start mb-3">
         <div>
-          <p className="text-lg font-bold text-gray-800">#{embarque.numero}</p>
+          <p className="text-lg font-bold text-gray-800">#{embarque.numeroDia}</p>
           <p className="text-sm text-gray-500">{embarque.trabajador.nombre}</p>
           {embarque.ruta && (
             <p className="text-xs text-blue-600 font-medium">{embarque.ruta.nombre}</p>
+          )}
+          {embarque.tipoMoto && (
+            <p className="text-xs text-gray-400">{embarque.tipoMoto}</p>
           )}
         </div>
         {getEstadoBadge(embarque.estado)}
@@ -44,7 +47,7 @@ export function EmbarqueCard({
           <span className="text-lg">{cap.icon}</span>
           <div>
             <p className="text-sm font-medium">{cap.label}</p>
-            <p className="text-xs">{cap.total} pacas · {cap.pesoKg.toFixed(1)}kg / {cap.capacidadKg}kg</p>
+            <p className="text-xs">{cap.total} u. · {cap.pesoKg.toFixed(1)}kg / {cap.capacidadKg}kg</p>
           </div>
         </div>
       )}
@@ -57,6 +60,9 @@ export function EmbarqueCard({
         )}
         {embarque.horaSalida && (
           <p>Salida: {new Date(embarque.horaSalida).toLocaleTimeString()}</p>
+        )}
+        {embarque.baseDinero > 0 && (
+          <p className="text-xs text-amber-600">Base: ${embarque.baseDinero.toLocaleString()}</p>
         )}
       </div>
       {embarque.obs && (

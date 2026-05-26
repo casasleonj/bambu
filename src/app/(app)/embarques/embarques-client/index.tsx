@@ -89,12 +89,13 @@ export default function EmbarquesClient({ initialData }: { initialData?: Initial
   const getEstadoBadge = (estado: string) => {
     const styles: Record<string, string> = {
       ABIERTO: 'bg-green-100 text-green-800',
+      EN_RUTA: 'bg-blue-100 text-blue-800',
       CERRADO: 'bg-gray-100 text-gray-800',
       CANCELADO: 'bg-red-100 text-red-800',
     }
     return (
       <span className={`px-2 py-1 rounded-full text-xs font-medium ${styles[estado] || ''}`}>
-        {estado}
+        {estado === 'EN_RUTA' ? 'En Ruta' : estado}
       </span>
     )
   }
@@ -180,6 +181,7 @@ export default function EmbarquesClient({ initialData }: { initialData?: Initial
           {[
             { key: '', label: 'Todos' },
             { key: 'ABIERTO', label: 'Abiertos' },
+            { key: 'EN_RUTA', label: 'En Ruta' },
             { key: 'CERRADO', label: 'Cerrados' },
           ].map(({ key, label }) => (
             <button
