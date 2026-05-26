@@ -36,6 +36,8 @@ export function EmbarqueCreateModal({
     PACA_AGUA: 0, PACA_HIELO: 0, BOTELLON: 0, BOLSA_AGUA: 0, BOLSA_HIELO: 0,
   })
   const [stockDisponible, setStockDisponible] = useState<StockDisponible | null>(null)
+  const [confirmOverride, setConfirmOverride] = useState(false)
+  const [overrideMotivo, setOverrideMotivo] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const { productos: productosDomicilio, loading: loadingProductos } = useProductosDomicilio()
 
@@ -76,6 +78,34 @@ export function EmbarqueCreateModal({
   const hayStockInsuficiente = stockDisponible
     ? Object.entries(carga).some(([key, val]) => val > (stockDisponible as unknown as Record<string, number>)[key])
     : false
+
+  const stockStatus = stockDisponible ? (() => {
+    const sd = stockDisponible as unknown as Record<string, number>
+    const totalDisponible = (sd.PACA_AGUA || 0) + (sd.PACA_HIELO || 0)
+    const totalCargado = (carga.PACA_AGUA || 0) + (carga.PACA_HIELO || 0)
+
+    if (totalDisponible === 0) return { nivel: 'sin-stock' as const, label: 'Sin stock registrado', color: 'text-gray-500' }
+    if (totalCargado === 0) return { nivel: 'ideal' as const, label: 'Sin carga', color: 'text-gray-500' }
+
+    const pct = (totalCargado / totalDisponible) * 100
+    if (pct <= 80) return { nivel: 'suficiente' as const, label: 'Stock suficiente', color: 'text-green-600' }
+    if (pct <= 100) return { nivel: 'ajustado' as const, label: 'Stock ajustado', color: 'text-yellow-600' }
+    return { nivel: 'insuficiente' as const, label: 'Stock insuficiente', color: 'text-red-600' }
+  })() : null
+
+  const productosConDeficit = stockDisponible
+    ? PRODUCTOS.filter(({ key }) => {
+        const val = carga[key] || 0
+        const max = (stockDisponible as unknown as Record<string, number>)[key] || 0
+        return val > max && max > 0
+      })
+    : []
+
+  const requiereMotivo = productosConDeficit.some(({ key }) => {
+    const val = carga[key] || 0
+    const max = (stockDisponible as unknown as Record<string, number>)[key] || 0
+    return val - max > 10
+  })
 
   async function createEmbarque() {
     if (!selectedTrabajadorId || submitting) return
@@ -126,6 +156,8 @@ export function EmbarqueCreateModal({
     setBaseDinero(0)
     setHoraSalida('')
     setCarga({ PACA_AGUA: 0, PACA_HIELO: 0, BOTELLON: 0, BOLSA_AGUA: 0, BOLSA_HIELO: 0 })
+    setConfirmOverride(false)
+    setOverrideMotivo('')
   }
 
   const handleClose = () => {
@@ -190,7 +222,14 @@ export function EmbarqueCreateModal({
 
         {stockDisponible && !loadingProductos && (
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-            <h3 className="text-sm font-semibold text-blue-800 mb-2">📦 Stock disponible hoy</h3>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold text-blue-800">📦 Stock disponible hoy</h3>
+              {stockStatus && (
+                <span className={`text-xs font-medium ${stockStatus.color}`}>
+                  {stockStatus.label}
+                </span>
+              )}
+            </div>
             <div className="grid grid-cols-3 gap-2 text-xs">
               {PRODUCTOS.map(({ key, label, emoji }) => (
                 <span key={key} className="text-blue-700">
@@ -243,6 +282,53 @@ export function EmbarqueCreateModal({
         {hayStockInsuficiente && (
           <p className="text-xs text-red-600">⚠️ No hay suficiente stock para algunos productos</p>
         )}
+        {hayStockInsuficiente && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">⚠️</span>
+              <h3 className="text-sm font-semibold text-red-800">Stock insuficiente</h3>
+            </div>
+            <div className="space-y-1 text-xs text-red-700">
+              {productosConDeficit.map(({ key, label, emoji }) => {
+                const val = carga[key] || 0
+                const max = (stockDisponible as unknown as Record<string, number>)[key] || 0
+                return (
+                  <p key={key}>
+                    {emoji} {label}: Stock {max} → Pedís {val} (faltan {val - max})
+                  </p>
+                )
+              })}
+            </div>
+            <p className="text-xs text-red-600">
+              Stock comprometido hoy: {totalUnidades} unidades
+            </p>
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={confirmOverride}
+                onChange={(e) => setConfirmOverride(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span className="text-sm text-red-800">
+                Confirmo que hay stock físico en zona de embarque
+              </span>
+            </label>
+            {requiereMotivo && (
+              <div>
+                <label className="text-xs text-red-700 font-medium">
+                  Motivo (déficit &gt; 10 unidades):
+                </label>
+                <textarea
+                  value={overrideMotivo}
+                  onChange={(e) => setOverrideMotivo(e.target.value)}
+                  placeholder="Ej: Producción entregó 15 pacas extras esta mañana"
+                  className="w-full mt-1 px-2 py-1 border border-red-300 rounded text-sm"
+                  rows={2}
+                />
+              </div>
+            )}
+          </div>
+        )}
         {excedeUnidades && (
           <p className="text-xs text-red-600 font-medium">⛔ Máximo {MAX_UNIDADES} unidades ({totalUnidades})</p>
         )}
@@ -288,7 +374,7 @@ export function EmbarqueCreateModal({
         <button onClick={handleClose} className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50">Cancelar</button>
         <button
           onClick={createEmbarque}
-          disabled={!selectedTrabajadorId || submitting || excedeUnidades}
+          disabled={!selectedTrabajadorId || submitting || excedeUnidades || (hayStockInsuficiente && !confirmOverride)}
           className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {submitting ? 'Creando...' : 'Crear'}
