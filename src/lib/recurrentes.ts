@@ -95,6 +95,31 @@ export interface PreviewRecurrente {
     cBolsaAguaPed: number
     cBolsaHieloPed: number
   }>
+  pedidosConDeuda: Array<{
+    id: string
+    numero: number
+    total: number
+    saldo: number
+    totalPagado: number
+    cPacaAguaPed: number
+    cPacaHieloPed: number
+    cBotellonFabPed: number
+    cBotellonDomPed: number
+    cBolsaAguaPed: number
+    cBolsaHieloPed: number
+  }>
+  pedidosPagados: Array<{
+    id: string
+    numero: number
+    total: number
+    totalPagado: number
+    cPacaAguaPed: number
+    cPacaHieloPed: number
+    cBotellonFabPed: number
+    cBotellonDomPed: number
+    cBolsaAguaPed: number
+    cBolsaHieloPed: number
+  }>
   cantidadBase: {
     cPacaAgua: number
     cPacaHielo: number
@@ -104,7 +129,7 @@ export interface PreviewRecurrente {
     cBolsaHielo: number
   }
   sugerencias: Array<{
-    tipo: 'NORMAL' | 'CON_PENDIENTES' | 'SOLO_PENDIENTES' | 'SALTAR'
+    tipo: 'NORMAL' | 'CON_PENDIENTES' | 'SOLO_PENDIENTES' | 'APLICAR_CREDITO' | 'SALTAR'
     label: string
     descripcion: string
     totalPacas: number
@@ -192,8 +217,12 @@ export async function previewGeneracionRecurrentes(
       totalPagado: Number(p.totalPagado),
     }))
 
-    // A5: Renamed hasPagosPendientes → tieneAbonos (clearer semantics)
-    const tieneAbonos = pedidosPendientes.some(p => Number(p.totalPagado) > 0)
+    // Separar pedidos pendientes en con deuda vs pagados
+    const pedidosConDeuda = pedidosPendientes.filter(p => Number(p.saldo) > 0)
+    const pedidosPagados = pedidosPendientes.filter(p => Number(p.saldo) === 0 && Number(p.totalPagado) > 0)
+
+    const totalDeuda = pedidosConDeuda.reduce((sum, p) => sum + Number(p.saldo), 0)
+    const totalCredito = pedidosPagados.reduce((sum, p) => sum + Number(p.totalPagado), 0)
 
     const totalPacasBase = Object.values(cantidadBase).reduce((a, b) => a + b, 0)
 
@@ -221,7 +250,7 @@ export async function previewGeneracionRecurrentes(
         disabledReason: undefined,
       })
     } else if (esDomingo) {
-      // A3: Sunday — show with badge, only SALTAR option
+      // A3: Sunday — show in preview with badge, only SALTAR option
       const lunes = addDays(fechaGen, 1)
       sugerencias.push({
         tipo: 'SALTAR',
@@ -253,8 +282,11 @@ export async function previewGeneracionRecurrentes(
         const totalPagadoPendientes = pedidosPendientes.reduce((sum, p) => sum + Number(p.totalPagado), 0)
         const saldoPendientes = pedidosPendientes.reduce((sum, p) => sum + Number(p.saldo), 0)
 
-        const disabled = tieneAbonos
-        const disabledReason = disabled ? 'Hay pedidos con abonos. Pague primero.' : undefined
+        // Bloquear CON_PENDIENTES/SOLO_PENDIENTES solo si hay DEUDA real
+        const disabled = pedidosConDeuda.length > 0
+        const disabledReason = disabled
+          ? `Pendientes con deuda: $${Math.round(totalDeuda).toLocaleString()}`
+          : undefined
 
         const pagadoLabel = totalPagadoPendientes > 0 ? `, $${Math.round(totalPagadoPendientes).toLocaleString()} ya pagado` : ''
 
@@ -277,6 +309,18 @@ export async function previewGeneracionRecurrentes(
           disabled,
           disabledReason,
         })
+
+        // APLICAR_CREDITO: solo si hay pedidos pagados y NO hay deuda
+        if (pedidosPagados.length > 0 && pedidosConDeuda.length === 0) {
+          sugerencias.push({
+            tipo: 'APLICAR_CREDITO',
+            label: 'Aplicar crédito',
+            descripcion: `${totalPacasBase} pacas - $${Math.round(valorBase - totalCredito).toLocaleString()} (descuento $${Math.round(totalCredito).toLocaleString()})`,
+            totalPacas: totalPacasBase,
+            totalValor: valorBase - totalCredito,
+            disabled: false,
+          })
+        }
       }
 
       sugerencias.push({
@@ -299,6 +343,8 @@ export async function previewGeneracionRecurrentes(
       clienteBloqueado,
       esDomingo,
       pedidosPendientes,
+      pedidosConDeuda,
+      pedidosPagados,
       cantidadBase,
       sugerencias,
       saltos: saltosSanitizados,
@@ -309,9 +355,10 @@ export async function previewGeneracionRecurrentes(
   return previews
 }
 
+
 export interface DecisionGeneracion {
   recurrenteId: string
-  decision: 'NORMAL' | 'CON_PENDIENTES' | 'SOLO_PENDIENTES' | 'SALTAR'
+  decision: 'NORMAL' | 'CON_PENDIENTES' | 'SOLO_PENDIENTES' | 'APLICAR_CREDITO' | 'SALTAR'
 }
 
 export async function generarPedidosRecurrentes(
@@ -400,11 +447,11 @@ export async function generarPedidosRecurrentes(
     const productos = parseProductos(pt.productos)
     let cantidades = productosToCantidades(productos, pt.canal)
 
-    if (decision.decision === 'SOLO_PENDIENTES') {
+    if (decision.decision === 'SOLO_PENDIENTES' || decision.decision === 'APLICAR_CREDITO') {
       cantidades = { cPacaAgua: 0, cPacaHielo: 0, cBotellonFab: 0, cBotellonDom: 0, cBolsaAgua: 0, cBolsaHielo: 0 }
     }
 
-    const pedidosPendientes = decision.decision === 'CON_PENDIENTES' || decision.decision === 'SOLO_PENDIENTES'
+    const pedidosPendientes = decision.decision === 'CON_PENDIENTES' || decision.decision === 'SOLO_PENDIENTES' || decision.decision === 'APLICAR_CREDITO'
       ? await prisma.pedido.findMany({
           where: {
             clienteId: pt.clienteId,
@@ -414,8 +461,25 @@ export async function generarPedidosRecurrentes(
         })
       : []
 
-    // Block CON_PENDIENTES/SOLO_PENDIENTES if any pending order has payments
-    if ((decision.decision === 'CON_PENDIENTES' || decision.decision === 'SOLO_PENDIENTES') && pedidosPendientes.some(p => Number(p.totalPagado) > 0)) {
+    // Separar pedidos con deuda vs pagados
+    const pedidosConDeuda = pedidosPendientes.filter(p => Number(p.saldo) > 0)
+    const pedidosPagados = pedidosPendientes.filter(p => Number(p.saldo) === 0 && Number(p.totalPagado) > 0)
+
+    // Block CON_PENDIENTES/SOLO_PENDIENTES if any pending order has debt
+    if ((decision.decision === 'CON_PENDIENTES' || decision.decision === 'SOLO_PENDIENTES') && pedidosConDeuda.length > 0) {
+      await prisma.plantillaRecurrente.update({
+        where: { id: pt.id },
+        data: {
+          ultimaGeneracion: prox,
+          proxGeneracion: calcularProxGeneracion(prox, pt.cadaNDias),
+        },
+      })
+      saltados.push(pt.id)
+      continue
+    }
+
+    // Block APLICAR_CREDITO if there is debt or no paid orders
+    if (decision.decision === 'APLICAR_CREDITO' && (pedidosConDeuda.length > 0 || pedidosPagados.length === 0)) {
       await prisma.plantillaRecurrente.update({
         where: { id: pt.id },
         data: {
@@ -429,6 +493,18 @@ export async function generarPedidosRecurrentes(
 
     if (decision.decision === 'CON_PENDIENTES' || decision.decision === 'SOLO_PENDIENTES') {
       for (const p of pedidosPendientes) {
+        cantidades.cPacaAgua += p.cPacaAguaPed
+        cantidades.cPacaHielo += p.cPacaHieloPed
+        cantidades.cBotellonFab += p.cBotellonFabPed
+        cantidades.cBotellonDom += p.cBotellonDomPed
+        cantidades.cBolsaAgua += p.cBolsaAguaPed
+        cantidades.cBolsaHielo += p.cBolsaHieloPed
+      }
+    }
+
+    // APLICAR_CREDITO: sumar solo los pedidos pagados (no todos los pendientes)
+    if (decision.decision === 'APLICAR_CREDITO') {
+      for (const p of pedidosPagados) {
         cantidades.cPacaAgua += p.cPacaAguaPed
         cantidades.cPacaHielo += p.cPacaHieloPed
         cantidades.cBotellonFab += p.cBotellonFabPed
@@ -471,6 +547,11 @@ export async function generarPedidosRecurrentes(
 
     const total = preciosResueltos.reduce((sum, pr) => sum + pr.subtotal, 0)
 
+    // Calcular crédito total si es APLICAR_CREDITO
+    const totalCredito = decision.decision === 'APLICAR_CREDITO'
+      ? pedidosPagados.reduce((sum, p) => sum + Number(p.totalPagado), 0)
+      : 0
+
     const nuevo = await prisma.$transaction(async (tx) => {
       const creado = await tx.pedido.create({
         data: {
@@ -493,8 +574,11 @@ export async function generarPedidosRecurrentes(
           precioBolsaAgua: precioMap['BOLSA_AGUA'] || 0,
           precioBolsaHielo: precioMap['BOLSA_HIELO'] || 0,
           total,
-          saldo: total,
-          totalPagado: 0,
+          saldo: total - totalCredito,
+          totalPagado: totalCredito,
+          obs: totalCredito > 0
+            ? `Crédito de $${totalCredito.toLocaleString()} aplicado de pedidos: ${pedidosPagados.map(p => '#' + p.numero).join(', ')}`
+            : undefined,
           idOrigen: pt.id,
           horaPreferida: pt.horaPreferida,
           items: {
@@ -520,7 +604,7 @@ export async function generarPedidosRecurrentes(
           pedidoId: creado.id,
           subtotal: total,
           total,
-          saldo: total,
+          saldo: total - totalCredito,
         },
       })
 
@@ -552,6 +636,31 @@ export async function generarPedidosRecurrentes(
               motivo: `Consolidado en pedido recurrente #${creado.numero}`,
             },
           })
+        }
+      }
+
+      // APLICAR_CREDITO: marcar pedidos pagados como ENTREGADO (no CANCELADO)
+      if (decision.decision === 'APLICAR_CREDITO') {
+        for (const p of pedidosPagados) {
+          await tx.pedido.update({
+            where: { id: p.id },
+            data: {
+              estadoEntrega: 'ENTREGADO',
+              estado: 'ENTREGADO',
+              fechaEntrega: new Date(),
+            },
+          })
+
+          // Actualizar items del pedido viejo: cantEntrega = cantPedido
+          const itemsViejo = await tx.pedidoItem.findMany({
+            where: { pedidoId: p.id },
+          })
+          for (const item of itemsViejo) {
+            await tx.pedidoItem.update({
+              where: { id: item.id },
+              data: { cantEntrega: item.cantPedido },
+            })
+          }
         }
       }
 

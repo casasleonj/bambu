@@ -179,7 +179,9 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
       toast.error('No se puede cerrar: la base de caja es 0. Verifica el monto.')
       return
     }
-    if (arqueoData.totalContado === 0) {
+    // Use ref to avoid race condition with React state batching
+    const currentArqueo = arqueoRef.current
+    if (currentArqueo.totalContado === 0) {
       toast.error('No se puede cerrar: debes contar el efectivo físico antes de cerrar.')
       return
     }
@@ -203,8 +205,8 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
           </div>
           <div className="flex justify-between text-xs">
             <span className="text-muted-foreground">Contado físico</span>
-            <span className={arqueoData.diferencia === 0 ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
-              {formatMoney(arqueoData.totalContado)} {arqueoData.diferencia === 0 ? '(Cuadrado)' : arqueoData.diferencia > 0 ? `(Sobrante ${formatMoney(arqueoData.diferencia)})` : `(Faltante ${formatMoney(Math.abs(arqueoData.diferencia))})`}
+            <span className={currentArqueo.diferencia === 0 ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
+              {formatMoney(currentArqueo.totalContado)} {currentArqueo.diferencia === 0 ? '(Cuadrado)' : currentArqueo.diferencia > 0 ? `(Sobrante ${formatMoney(currentArqueo.diferencia)})` : `(Faltante ${formatMoney(Math.abs(currentArqueo.diferencia))})`}
             </span>
           </div>
         </div>
@@ -240,9 +242,9 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
           pedidosAnuladosTotal: data?.pedidosAnuladosTotal,
           clientesNuevos: data?.clientesNuevos,
           descuentos: data?.descuentos,
-          arqueo: arqueoData.arqueo,
-          totalContado: arqueoData.totalContado,
-          diferencia: arqueoData.diferencia,
+          arqueo: currentArqueo.arqueo,
+          totalContado: currentArqueo.totalContado,
+          diferencia: currentArqueo.diferencia,
         }),
       }
       const res = await fetch('/api/cierre', {
@@ -735,7 +737,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
             <form onSubmit={handleCerrar} className="space-y-2">
               <Button
                 type="submit"
-                disabled={cerrando || statusCierre === 'INCOMPLETO' || baseDia === 0 || arqueoData.totalContado === 0}
+                disabled={cerrando || statusCierre === 'INCOMPLETO' || baseDia === 0 || arqueoRef.current.totalContado === 0}
                 className="w-full py-6 text-lg"
               >
                 {cerrando ? 'Cerrando...' : 'Cerrar Día'}

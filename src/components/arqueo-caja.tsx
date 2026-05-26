@@ -165,7 +165,11 @@ export default function ArqueoCajaModal({ netoTeorico, onChange, onClose }: Prop
             >
               Reiniciar
             </button>
-            <button onClick={() => { onClose?.(); setOpen(false) }} className="p-2 hover:bg-gray-100 rounded-lg" aria-label="Cerrar arqueo">
+            <button onClick={() => {
+              onChange({ arqueo: cantidades, totalContado, diferencia })
+              onClose?.()
+              setOpen(false)
+            }} className="p-2 hover:bg-gray-100 rounded-lg" aria-label="Cerrar arqueo">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
@@ -348,7 +352,12 @@ export default function ArqueoCajaModal({ netoTeorico, onChange, onClose }: Prop
         {/* Footer */}
         <div className="shrink-0 bg-white border-t px-6 py-4 flex justify-end">
           <button
-            onClick={() => { onClose?.(); setOpen(false) }}
+            onClick={() => {
+              // Emit final data explicitly before closing to avoid race condition
+              onChange({ arqueo: cantidades, totalContado, diferencia })
+              onClose?.()
+              setOpen(false)
+            }}
             className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-semibold text-base transition shadow-lg"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

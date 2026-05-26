@@ -32,8 +32,32 @@ export interface PreviewItem {
     cBolsaAguaPed: number
     cBolsaHieloPed: number
   }>
+  pedidosConDeuda: Array<{
+    id: string
+    numero: number
+    total: number
+    saldo: number
+    cPacaAguaPed: number
+    cPacaHieloPed: number
+    cBotellonFabPed: number
+    cBotellonDomPed: number
+    cBolsaAguaPed: number
+    cBolsaHieloPed: number
+  }>
+  pedidosPagados: Array<{
+    id: string
+    numero: number
+    total: number
+    totalPagado: number
+    cPacaAguaPed: number
+    cPacaHieloPed: number
+    cBotellonFabPed: number
+    cBotellonDomPed: number
+    cBolsaAguaPed: number
+    cBolsaHieloPed: number
+  }>
   sugerencias: Array<{
-    tipo: 'NORMAL' | 'CON_PENDIENTES' | 'SOLO_PENDIENTES' | 'SALTAR'
+    tipo: 'NORMAL' | 'CON_PENDIENTES' | 'SOLO_PENDIENTES' | 'APLICAR_CREDITO' | 'SALTAR'
     label: string
     descripcion: string
     totalPacas: number

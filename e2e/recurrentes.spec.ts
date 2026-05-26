@@ -1,7 +1,13 @@
 // @tests api/pedido, api/recurrente
-import { test, expect, BASE, handleBaseCaja, fullLogin, goto, apiGet, createCliente } from './fixtures'
+import { test, expect, BASE, handleBaseCaja, fullLogin, goto, apiGet, apiPost, apiPut, createCliente, createPedido, resetTestDatabase } from './fixtures'
 
 test.describe('Recurrentes', () => {
+  test.describe.configure({ mode: 'serial' })
+
+  test.beforeAll(() => {
+    resetTestDatabase()
+  })
+
   test('page loads', async ({ page }) => {
     await fullLogin(page)
     await goto(page, '/recurrentes')
@@ -9,7 +15,7 @@ test.describe('Recurrentes', () => {
 
     const bodyText = await page.locator('body').innerText()
     expect(bodyText).toMatch(/Pedidos Recurrentes|No hay recurrentes/)
-    const buttons = page.locator('button:has-text("+ Nuevo Recurrente")')
+    const buttons = page.locator('button:has-text("+ Nueva Plantilla")')
     const count = await buttons.count()
     expect(count).toBeGreaterThanOrEqual(0)
   })
@@ -17,31 +23,39 @@ test.describe('Recurrentes', () => {
   test('crear recurrente', async ({ page }) => {
     await fullLogin(page)
 
-    const cliente = await createCliente(page, {
+    const clienteRes = await createCliente(page, {
       nombre: `Cliente Rec ${Date.now() % 10000}`,
       telefono: `3${String(Date.now()).slice(-9)}`,
     })
+    const cliente = clienteRes.cliente || clienteRes
 
     await goto(page, '/recurrentes')
     await page.waitForTimeout(500)
 
-    await page.click('button:has-text("+ Nuevo Recurrente")')
+    await page.click('button:has-text("+ Nueva Plantilla")')
     await page.waitForURL('**/recurrentes/nuevo')
     await page.waitForTimeout(500)
 
-    const select = page.locator('select').first()
-    await select.selectOption({ label: cliente.nombre })
+    // Buscar cliente por nombre
+    const searchInput = page.locator('input[placeholder*="Buscar"]').first()
+    await searchInput.fill(cliente.nombre)
+    await page.waitForTimeout(800)
+
+    // Seleccionar cliente de resultados
+    const clienteOption = page.locator(`text=${cliente.nombre}`).first()
+    if (await clienteOption.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await clienteOption.click()
+    }
     await page.waitForTimeout(300)
 
-    const freqSelect = page.locator('select').last()
-    await freqSelect.selectOption('SEMANAL')
-    await page.waitForTimeout(300)
+    // Agregar producto: 3 pacas de agua (mínimo 3 productos por entrega)
+    const aguaSpin = page.locator('[aria-label="Cantidad de Paca Agua"]').first()
+    if (await aguaSpin.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await aguaSpin.fill('3')
+      await page.waitForTimeout(300)
+    }
 
-    const aguaInput = page.locator('input[type="number"]').first()
-    await aguaInput.fill('2')
-    await page.waitForTimeout(300)
-
-    await page.click('button:has-text("Crear Recurrente")')
+    await page.click('button:has-text("Crear Plantilla")')
     await page.waitForTimeout(2000)
 
     await page.waitForURL('**/recurrentes', { timeout: 10000 })
@@ -191,6 +205,85 @@ test.describe('Recurrentes', () => {
       expect(genData.success).toBe(true)
     }
   })
+
+  test('aplicar crédito de pedido pagado al recurrente', async ({ page }) => {
+    await fullLogin(page)
+
+    // 1. Crear cliente
+    const clienteRes = await createCliente(page, {
+      nombre: `Cliente Credito ${Date.now() % 10000}`,
+      telefono: `3${String(Date.now()).slice(-9)}`,
+    })
+    const cliente = clienteRes.cliente || clienteRes
+    expect(cliente.id).toBeDefined()
+
+    // 2. Crear pedido extra de 4 pacas con pago COMPLETO (debe pagar todo para que saldo = 0)
+    const pedidoExtraData = await createPedido(page, {
+      clienteId: cliente.id,
+      canal: 'DOMICILIO',
+      pacaAgua: 4,
+      pagoMetodo: 'EFECTIVO',
+      pagoMonto: 11200, // Pago completo: 4 pacas × $2,800
+    })
+    expect(pedidoExtraData.pedido).toBeDefined()
+
+    // El pedido se creó como ENTREGADO por ventaRapida. Necesitamos que esté PENDIENTE
+    // pero con totalPagado > 0 y saldo = 0. Actualizamos el estado vía API directa.
+    await apiPut(page, `/api/pedidos/${pedidoExtraData.pedido.id}`, {
+      estadoEntrega: 'PENDIENTE',
+      estado: 'PENDIENTE',
+    })
+
+    // 3. Crear plantilla recurrente
+    await generateRecurrente(page, cliente.id)
+    await page.waitForTimeout(300)
+
+    // 4. Verificar preview muestra opción "Aplicar crédito"
+    const previewRes = await apiGet(page, '/api/pedidos/recurrentes')
+    const previewData = await previewRes.json()
+    expect(previewData.success).toBe(true)
+
+    const item = previewData.preview.find((p: any) => p.clienteId === cliente.id)
+    expect(item).toBeDefined()
+
+    // Verificar que hay pedidos pagados y NO hay deuda
+    expect(item.pedidosPagados.length).toBeGreaterThan(0)
+    expect(item.pedidosConDeuda.length).toBe(0)
+
+    // Verificar que la sugerencia APLICAR_CREDITO existe
+    const creditoSug = item.sugerencias.find((s: any) => s.tipo === 'APLICAR_CREDITO')
+    expect(creditoSug).toBeDefined()
+    expect(creditoSug.disabled).toBeFalsy()
+
+    // 5. Generar con APLICAR_CREDITO vía API
+    const genRes = await page.request.post(`${BASE}/api/pedidos/recurrentes`, {
+      data: {
+        decisiones: [{
+          recurrenteId: item.recurrenteId,
+          decision: 'APLICAR_CREDITO',
+        }],
+      },
+    })
+    const genData = await genRes.json()
+    expect(genRes.status()).toBe(201)
+    expect(genData.success).toBe(true)
+    expect(genData.generados).toBe(1)
+
+    // 6. Verificar que se creó pedido con saldo correcto
+    const pedidosRes = await apiGet(page, `/api/pedidos?clienteId=${cliente.id}`)
+    const pedidosData = await pedidosRes.json()
+    expect(pedidosData.success).toBe(true)
+
+    const pedidoRecurrente = pedidosData.data?.find((p: any) => p.origen === 'RECURRENTE')
+    expect(pedidoRecurrente).toBeDefined()
+    expect(Number(pedidoRecurrente.total)).toBeGreaterThan(0)
+    expect(Number(pedidoRecurrente.totalPagado)).toBe(11200)
+    expect(Number(pedidoRecurrente.saldo)).toBe(Number(pedidoRecurrente.total) - 11200)
+
+    // 7. Verificar pedido viejo marcado como ENTREGADO
+    const pedidoViejo = pedidosData.data?.find((p: any) => p.numero === pedidoExtraData.pedido.numero)
+    expect(pedidoViejo.estadoEntrega).toBe('ENTREGADO')
+  })
 })
 
 async function generateRecurrente(page: import('@playwright/test').Page, clienteId: string) {
@@ -199,8 +292,9 @@ async function generateRecurrente(page: import('@playwright/test').Page, cliente
       clienteId,
       tipo: 'ENVIO',
       canal: 'DOMICILIO',
-      frecuencia: 'SEMANAL',
-      items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
+      cadaNDias: 1,
+      proxGeneracion: new Date().toISOString(),
+      productos: { pacaAgua: 5 }, // 5 pacas para superar el crédito de 4 pacas
     },
   })
   return res.json()

@@ -11,7 +11,7 @@ import { logBulkAudit } from '@/lib/audit'
 
 const DecisionSchema = z.object({
   recurrenteId: z.string().min(1),
-  decision: z.enum(['NORMAL', 'CON_PENDIENTES', 'SOLO_PENDIENTES', 'SALTAR']),
+  decision: z.enum(['NORMAL', 'CON_PENDIENTES', 'SOLO_PENDIENTES', 'APLICAR_CREDITO', 'SALTAR']),
 })
 
 const GenerarRecurrentesSchema = z.object({
@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
       return apiError(`Clientes con límite de fiados alcanzado: ${clientesEnLimite.join(', ')}`, 400)
     }
 
-    // A6: Pre-check CON_PENDIENTES/SOLO_PENDIENTES for abonos
+    // A6: Pre-check CON_PENDIENTES/SOLO_PENDIENTES for debt
     const withPendingDecisions = decisiones.filter(d => d.decision === 'CON_PENDIENTES' || d.decision === 'SOLO_PENDIENTES')
     if (withPendingDecisions.length > 0) {
       const clienteIds = withPendingDecisions.map(d => {
@@ -116,17 +116,57 @@ export async function POST(request: NextRequest) {
       }).filter(Boolean) as string[]
 
       if (clienteIds.length > 0) {
-        const pedidosConAbonos = await prisma.pedido.findMany({
+        const pedidosConDeuda = await prisma.pedido.findMany({
           where: {
             clienteId: { in: clienteIds },
             estadoEntrega: 'PENDIENTE',
             origen: { not: 'RECURRENTE' },
+            saldo: { gt: 0 },
+          },
+          select: { clienteId: true, numero: true },
+        })
+        if (pedidosConDeuda.length > 0) {
+          return apiError('Hay pedidos pendientes con deuda. No se puede usar CON_PENDIENTES o SOLO_PENDIENTES.', 400)
+        }
+      }
+    }
+
+    // Pre-check APLICAR_CREDITO: no debe haber deuda y debe haber pedidos pagados
+    const withCreditDecisions = decisiones.filter(d => d.decision === 'APLICAR_CREDITO')
+    if (withCreditDecisions.length > 0) {
+      const clienteIds = withCreditDecisions.map(d => {
+        const pt = plantillasActuales.find(p => p.id === d.recurrenteId)
+        return pt?.clienteId
+      }).filter(Boolean) as string[]
+
+      if (clienteIds.length > 0) {
+        // Verificar que no haya deuda
+        const pedidosConDeuda = await prisma.pedido.findMany({
+          where: {
+            clienteId: { in: clienteIds },
+            estadoEntrega: 'PENDIENTE',
+            origen: { not: 'RECURRENTE' },
+            saldo: { gt: 0 },
+          },
+          select: { clienteId: true, numero: true },
+        })
+        if (pedidosConDeuda.length > 0) {
+          return apiError('Hay pedidos pendientes con deuda. Pague primero para usar Aplicar crédito.', 400)
+        }
+
+        // Verificar que haya pedidos pagados
+        const pedidosPagados = await prisma.pedido.findMany({
+          where: {
+            clienteId: { in: clienteIds },
+            estadoEntrega: 'PENDIENTE',
+            origen: { not: 'RECURRENTE' },
+            saldo: 0,
             totalPagado: { gt: 0 },
           },
           select: { clienteId: true, numero: true },
         })
-        if (pedidosConAbonos.length > 0) {
-          return apiError('Hay pedidos pendientes con abonos. No se puede usar CON_PENDIENTES o SOLO_PENDIENTES.', 400)
+        if (pedidosPagados.length === 0) {
+          return apiError('No hay pedidos pagados para aplicar crédito.', 400)
         }
       }
     }

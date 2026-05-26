@@ -173,11 +173,25 @@ export default function RecurrentesClient() {
                     {item.pedidosPendientes.length > 0 && <span className="text-xs text-red-600">({item.pedidosPendientes.length} pendientes)</span>}
                   </div>
                 </div>
-                {item.pedidosPendientes.length > 0 && (
-                  <div className="text-sm text-gray-600 mb-2 bg-red-50 p-2 rounded">
-                    Pedidos pendientes:{' '}
-                    {item.pedidosPendientes.map((p) => (
-                      <span key={p.id} className="ml-2">#{p.numero} ({(p.cPacaAguaPed || 0) + (p.cPacaHieloPed || 0) + (p.cBotellonFabPed || 0) + (p.cBotellonDomPed || 0) + (p.cBolsaAguaPed || 0) + (p.cBolsaHieloPed || 0)} pacas)</span>
+                {item.pedidosConDeuda?.length > 0 && (
+                  <div className="text-sm mb-2 bg-red-50 border border-red-200 p-2 rounded">
+                    <p className="font-semibold text-red-700 mb-1">💰 Pendientes con deuda:</p>
+                    {item.pedidosConDeuda.map((p) => (
+                      <div key={p.id} className="text-red-600 ml-1">
+                        #{p.numero} ({(p.cPacaAguaPed || 0) + (p.cPacaHieloPed || 0) + (p.cBotellonFabPed || 0) + (p.cBotellonDomPed || 0) + (p.cBolsaAguaPed || 0) + (p.cBolsaHieloPed || 0)} pacas)
+                        <span className="font-bold"> — Debe: ${Math.round(p.saldo).toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {item.pedidosPagados?.length > 0 && (
+                  <div className="text-sm mb-2 bg-green-50 border border-green-200 p-2 rounded">
+                    <p className="font-semibold text-green-700 mb-1">📦 Pagados, por entregar:</p>
+                    {item.pedidosPagados.map((p) => (
+                      <div key={p.id} className="text-green-600 ml-1">
+                        #{p.numero} ({(p.cPacaAguaPed || 0) + (p.cPacaHieloPed || 0) + (p.cBotellonFabPed || 0) + (p.cBotellonDomPed || 0) + (p.cBolsaAguaPed || 0) + (p.cBolsaHieloPed || 0)} pacas)
+                        <span> — ✅ Pagado: ${Math.round(p.totalPagado).toLocaleString()}</span>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -192,7 +206,10 @@ export default function RecurrentesClient() {
                           sug.disabled
                             ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                             : decisiones[item.recurrenteId] === sug.tipo
-                              ? sug.tipo === 'SALTAR' ? 'bg-gray-600 text-white' : 'bg-blue-600 text-white'
+                              ? sug.tipo === 'SALTAR' ? 'bg-gray-600 text-white'
+                                : sug.tipo === 'APLICAR_CREDITO' ? 'bg-green-600 text-white'
+                                : 'bg-blue-600 text-white'
+                              : sug.tipo === 'APLICAR_CREDITO' ? 'bg-green-100 text-green-700 hover:bg-green-200'
                               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                         }`}
                       >

@@ -42,14 +42,21 @@ export async function loginAlt(page: Page, user: string, pass: string) {
 // ─── Base Caja ───────────────────────────────────────────────────────────────
 
 export async function handleBaseCaja(page: Page) {
-  await page.waitForTimeout(300)
-  const btn = page.locator('button:has-text("Continuar")')
-  if (await btn.count() > 0) {
-    const input = page.locator('.fixed input[type="number"]')
-    await input.fill('100000')
-    await page.waitForTimeout(100)
-    await btn.first().click()
-    await page.waitForTimeout(600)
+  // Poll for modal to appear (it may take time due to async API calls in base-caja-modal)
+  for (let i = 0; i < 10; i++) {
+    await page.waitForTimeout(300)
+    const btn = page.locator('button:has-text("Continuar")')
+    const count = await btn.count()
+    if (count > 0) {
+      const input = page.locator('.fixed input[type="number"]')
+      if (await input.count() > 0) {
+        await input.fill('100000')
+        await page.waitForTimeout(100)
+        await btn.first().click()
+        await page.waitForTimeout(600)
+      }
+      return
+    }
   }
 }
 
