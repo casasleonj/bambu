@@ -31,6 +31,26 @@ async function main() {
   console.log('✅ Admin user seeded')
 
   // ====================
+  // Additional users (dev/test only)
+  // ====================
+  if (isDevOrTest) {
+    const otherUsers = [
+      { username: 'asistente', password: 'asist123', rol: RolUsuario.ASISTENTE, nombre: 'Asistente', apellido: 'General' },
+      { username: 'contador', password: 'cont123', rol: RolUsuario.CONTADOR, nombre: 'Contador', apellido: 'Principal' },
+      { username: 'repartidor', password: 'rep123', rol: RolUsuario.REPARTIDOR, nombre: 'Repartidor', apellido: 'Movil' },
+    ]
+    for (const u of otherUsers) {
+      const hashed = await bcrypt.hash(u.password, SALT_ROUNDS)
+      await prisma.user.upsert({
+        where: { username: u.username },
+        update: {},
+        create: { ...u, password: hashed, mustChangePassword: false },
+      })
+    }
+    console.log('✅ Additional users seeded')
+  }
+
+  // ====================
   // Configs de empresa
   // ====================
   const configs = [

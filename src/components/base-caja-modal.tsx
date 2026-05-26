@@ -1,86 +1,111 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { useBaseCaja } from '@/hooks/use-base-caja'
-import { getTodayString } from '@/lib/dates'
+import { todayInBogota, startOfDayInBogota } from '@/lib/date-helpers'
 
 export default function BaseCajaModal() {
+  const router = useRouter()
+  const { data: session } = useSession()
   const { setBaseDia: persistBaseDia } = useBaseCaja()
   const [showModal, setShowModal] = useState(false)
   const [baseDiaInput, setBaseDiaInput] = useState('')
-  const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [status, setStatus] = useState<'checking' | 'ready' | 'error'>('checking')
 
   useEffect(() => {
+    // Wait for session to be available before checking
+    if (session === undefined) return
     checkBaseDia()
-  }, [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session])
 
   async function checkBaseDia() {
-    try {
-      const today = getTodayString()
-      const yesterdayDate = new Date()
-      yesterdayDate.setDate(yesterdayDate.getDate() - 1)
-      const yesterday = yesterdayDate.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+    setStatus('checking')
+    // Fix #6: Only ADMIN and ASISTENTE should see base caja modal
+    const userRole = (session?.user as { role?: string } | undefined)?.role
+    if (userRole !== 'ADMIN' && userRole !== 'ASISTENTE') {
+      setStatus('ready')
+      return
+    }
 
-      // 1. Check if today was already closed
-      const cierreRes = await fetch('/api/cierre/last')
+    try {
+      const today = todayInBogota()
+
+      // Fix #5: Parallel API calls instead of sequential
+      const [cierreRes, configRes] = await Promise.all([
+        fetch('/api/cierre/last'),
+        fetch(`/api/config?clave=BASE_DIA_${today}`),
+      ])
+
+      // Fix #2: Use timezone helpers consistently
       if (cierreRes.ok) {
         const cierreData = await cierreRes.json()
         if (cierreData.cierre) {
           const cierreDate = new Date(cierreData.cierre.fecha).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+
+          // Today already closed — no modal needed
           if (cierreDate === today) {
-            setShowModal(false)
-            setLoading(false)
+            setStatus('ready')
             return
           }
-          // 1.5 If last cierre is not yesterday, there are unclosed days → redirect
+
+          // Fix #2: Calculate yesterday using Bogota timezone
+          const yesterdayDate = new Date(startOfDayInBogota(today))
+          yesterdayDate.setDate(yesterdayDate.getDate() - 1)
+          const yesterday = yesterdayDate.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+
+          // Gap detected — redirect to first unclosed day
           if (cierreDate !== yesterday) {
             const nextUnclosed = new Date(cierreData.cierre.fecha)
             nextUnclosed.setDate(nextUnclosed.getDate() + 1)
-            const targetUrl = `/cierre?fecha=${nextUnclosed.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })}`
+            const targetDate = nextUnclosed.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+            const targetUrl = `/cierre?fecha=${targetDate}`
             const currentPath = window.location.pathname + window.location.search
             if (currentPath !== targetUrl) {
-              window.location.href = targetUrl
+              // Fix #4: Use Next.js router for SPA navigation
+              router.push(targetUrl)
             }
             return
           }
         }
       }
 
-      // 2. Check if base was already set for today
-      const configRes = await fetch(`/api/config?clave=BASE_DIA_${today}`)
+      // Check if base was already set for today
       if (configRes.ok) {
         const configData = await configRes.json()
         if (configData.config) {
           setBaseDiaInput(configData.config.valor)
           persistBaseDia(configData.config.valor)
-          setShowModal(false)
-          setLoading(false)
+          setStatus('ready')
           return
         }
       }
 
-      // 3. No cierre and no base for today — show modal
+      // No cierre and no base for today — show modal
       setShowModal(true)
     } catch (error) {
-      console.error('Error checking base:', error)
-      setShowModal(true)
-    } finally {
-      setLoading(false)
+      // Fix #3: Don't show modal on error — just log and let user proceed
+      console.error('[base-caja] Error checking base:', error)
+      toast.error('No se pudo verificar el estado de caja')
+      setStatus('error')
     }
   }
 
-  async function handleSave() {
-    if (!baseDiaInput || isNaN(Number(baseDiaInput))) {
+  async function handleSave(e?: React.FormEvent) {
+    e?.preventDefault()
+    if (!baseDiaInput || isNaN(Number(baseDiaInput)) || Number(baseDiaInput) < 0) {
       toast.error('Ingresa un monto válido')
       return
     }
 
     setSaving(true)
     try {
-      const today = getTodayString()
+      const today = todayInBogota()
       const res = await fetch('/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -95,14 +120,15 @@ export default function BaseCajaModal() {
         toast.error('Error al guardar la base')
       }
     } catch (error) {
-      console.error('Error saving base:', error)
+      console.error('[base-caja] Error saving base:', error)
       toast.error('Error al guardar')
     } finally {
       setSaving(false)
     }
   }
 
-  if (loading) {
+  // Fix #1: Never render anything until verification is complete
+  if (status === 'checking') {
     return null
   }
 
@@ -110,6 +136,7 @@ export default function BaseCajaModal() {
     return null
   }
 
+  // Fix #10: Wrap in <form> so Enter key works
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 mx-4">
@@ -121,9 +148,9 @@ export default function BaseCajaModal() {
           </p>
         </div>
 
-        <div className="space-y-4">
+        <form onSubmit={handleSave} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="base-dia-input" className="block text-sm font-medium text-gray-700 mb-2">
               Monto en caja
             </label>
             <div className="relative">
@@ -131,6 +158,7 @@ export default function BaseCajaModal() {
                 $
               </span>
               <input
+                id="base-dia-input"
                 type="number"
                 min="0"
                 value={baseDiaInput}
@@ -148,16 +176,16 @@ export default function BaseCajaModal() {
               Contá billetes y monedas físicamente.
             </p>
           </div>
-        </div>
 
-        <Button
-          onClick={handleSave}
-          disabled={saving || !baseDiaInput}
-          className="w-full mt-6 py-4 text-lg"
-          size="lg"
-        >
-          {saving ? 'Guardando...' : 'Continuar →'}
-        </Button>
+          <Button
+            type="submit"
+            disabled={saving || !baseDiaInput}
+            className="w-full mt-6 py-4 text-lg"
+            size="lg"
+          >
+            {saving ? 'Guardando...' : 'Continuar →'}
+          </Button>
+        </form>
       </div>
     </div>
   )
