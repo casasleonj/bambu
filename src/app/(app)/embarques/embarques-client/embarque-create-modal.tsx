@@ -2,15 +2,8 @@ import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import { Modal } from '@/components/modal'
 import { PESOS_KG, calcularPesoDesdeCarga, getCapacidadInfo, type CargaSnapshot } from '@/lib/embarque-capacidad'
+import { useProductosDomicilio, getProductoEmoji } from '@/hooks/use-productos-domicilio'
 import type { Trabajador, Ruta } from './types'
-
-const PRODUCTOS = [
-  { key: 'PACA_AGUA', label: 'Paca Agua', emoji: '🚛' },
-  { key: 'PACA_HIELO', label: 'Paca Hielo', emoji: '🧊' },
-  { key: 'BOTELLON', label: 'Botellón 20LT', emoji: '🫗' },
-  { key: 'BOLSA_AGUA', label: 'Bolsa Agua', emoji: '💧' },
-  { key: 'BOLSA_HIELO', label: 'Bolsa Hielo', emoji: '❄️' },
-] as const
 
 interface StockDisponible {
   PACA_AGUA: number
