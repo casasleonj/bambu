@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
 import { DEFAULT_PRICES, PRODUCTO_INFO, getProductosForCanal } from '@/lib/prices'
@@ -96,7 +96,10 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
   useEffect(() => { cantidadesRef.current = cantidades }, [cantidades])
   useEffect(() => { canalRef.current = canal }, [canal])
 
-  const productosActuales = getProductosForCanal(canal, productosConfig)
+  const productosActuales = useMemo(
+    () => getProductosForCanal(canal, productosConfig),
+    [canal, productosConfig]
+  )
 
   useEffect(() => {
     fetch(`/api/productos/configs`)
@@ -151,7 +154,7 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
       allProducts[id] = cantidadesRef.current[id] || 1
     }
     resolverPrecios(allProducts, canalRef.current, clienteSeleccionado.id)
-  }, [productosConfig, clienteSeleccionado?.id])
+  }, [productosConfig, clienteSeleccionado?.id, productosActuales])
 
   useEffect(() => {
     if (clienteSeleccionado) {
@@ -187,7 +190,7 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
       setPreciosResueltos({})
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clienteSeleccionado])
+  }, [clienteSeleccionado, productosActuales])
 
   useEffect(() => {
     if (!pedidoInicial) return
