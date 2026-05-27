@@ -144,11 +144,14 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
 
   useEffect(() => {
     if (productosConfig.length === 0) return
-    const hasCantidades = Object.values(cantidadesRef.current).some(v => v > 0)
-    if (hasCantidades && clienteSeleccionado?.id) {
-      resolverPrecios(cantidadesRef.current, canalRef.current, clienteSeleccionado.id)
+    if (!clienteSeleccionado?.id) return
+
+    const allProducts: Record<string, number> = {}
+    for (const id of productosActuales) {
+      allProducts[id] = cantidadesRef.current[id] || 1
     }
-  }, [productosConfig, resolverPrecios, clienteSeleccionado?.id])
+    resolverPrecios(allProducts, canalRef.current, clienteSeleccionado.id)
+  }, [productosConfig, resolverPrecios, clienteSeleccionado?.id, productosActuales])
 
   useEffect(() => {
     if (clienteSeleccionado) {
@@ -181,6 +184,7 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
       return () => clearTimeout(timer)
     } else {
       setFiadosStatus(null)
+      setPreciosResueltos({})
     }
   }, [clienteSeleccionado, resolverPrecios, productosActuales])
 
