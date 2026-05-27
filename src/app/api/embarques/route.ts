@@ -100,8 +100,8 @@ export async function GET(request: NextRequest) {
     const stock = request.nextUrl.searchParams.get('stock')
     if (stock === 'true') {
       const { getStockDisponible } = await import('@/lib/stock')
-      const stockDisponible = await getStockDisponible()
-      return apiSuccess({ embarques, total, stock: stockDisponible })
+      const stockResult = await getStockDisponible()
+      return apiSuccess({ embarques, total, stock: stockResult.stock, tieneStockEstimado: stockResult.tieneEstimado })
     }
 
     return apiSuccess({ embarques, total })
@@ -164,7 +164,8 @@ export async function POST(request: NextRequest) {
       const numeroDia = await getNextNumeroDia(tx, parsed.data.trabajadorId, new Date())
 
       const { getStockDisponible } = await import('@/lib/stock')
-      const disponible = await getStockDisponible()
+      const stockResult = await getStockDisponible()
+      const disponible = stockResult.stock
 
       const stockSnapshotData: Record<string, unknown> = {
         fecha: new Date().toISOString(),

@@ -36,6 +36,7 @@ export function EmbarqueCreateModal({
     PACA_AGUA: 0, PACA_HIELO: 0, BOTELLON: 0, BOLSA_AGUA: 0, BOLSA_HIELO: 0,
   })
   const [stockDisponible, setStockDisponible] = useState<StockDisponible | null>(null)
+  const [tieneStockEstimado, setTieneStockEstimado] = useState(false)
   const [confirmOverride, setConfirmOverride] = useState(false)
   const [overrideMotivo, setOverrideMotivo] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -47,6 +48,7 @@ export function EmbarqueCreateModal({
         .then(r => r.json())
         .then(data => {
           if (data.stock) setStockDisponible(data.stock)
+          if (data.tieneStockEstimado) setTieneStockEstimado(data.tieneStockEstimado)
         })
         .catch(() => {})
     }
@@ -236,6 +238,21 @@ export function EmbarqueCreateModal({
                   {emoji} {label}: {(stockDisponible as unknown as Record<string, number>)[key] || 0}
                 </span>
               ))}
+            </div>
+          </div>
+        )}
+
+        {tieneStockEstimado && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">📋</span>
+              <div>
+                <p className="text-sm font-semibold text-amber-800">Stock estimado activo</p>
+                <p className="text-xs text-amber-700">
+                  Se está usando stock estimado porque el stock registrado es bajo.
+                  Registre producción real al final del turno para comisiones correctas.
+                </p>
+              </div>
             </div>
           </div>
         )}

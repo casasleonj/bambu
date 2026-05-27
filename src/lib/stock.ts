@@ -20,6 +20,43 @@ export function emptyStock(): StockSnapshot {
   return { PACA_AGUA: 0, PACA_HIELO: 0, BOTELLON: 0, BOLSA_AGUA: 0, BOLSA_HIELO: 0 }
 }
 
+export interface StockEstimado {
+  agua: number
+  hielo: number
+  fecha: string
+}
+
+export async function getStockEstimadoHoy(): Promise<StockEstimado | null> {
+  const config = await prisma.config.findUnique({
+    where: { clave: 'stock_estimado_hoy' },
+  })
+  if (!config) return null
+
+  try {
+    const data = JSON.parse(config.valor) as StockEstimado
+    const today = new Date().toISOString().split('T')[0]
+    if (data.fecha !== today) return null
+    return data
+  } catch {
+    return null
+  }
+}
+
+export async function setStockEstimadoHoy(agua: number, hielo: number): Promise<void> {
+  const today = new Date().toISOString().split('T')[0]
+  await prisma.config.upsert({
+    where: { clave: 'stock_estimado_hoy' },
+    update: { valor: JSON.stringify({ agua, hielo, fecha: today }) },
+    create: { clave: 'stock_estimado_hoy', valor: JSON.stringify({ agua, hielo, fecha: today }) },
+  })
+}
+
+export async function clearStockEstimadoHoy(): Promise<void> {
+  await prisma.config.deleteMany({
+    where: { clave: 'stock_estimado_hoy' },
+  })
+}
+
 export function stockFromRecord(rec: Record<string, number>): StockSnapshot {
   return {
     PACA_AGUA: rec['PACA_AGUA'] || 0,
@@ -30,16 +67,23 @@ export function stockFromRecord(rec: Record<string, number>): StockSnapshot {
   }
 }
 
-export async function getStockDisponible(): Promise<StockSnapshot> {
+export interface StockDisponibleResult {
+  stock: StockSnapshot
+  tieneEstimado: boolean
+}
+
+export async function getStockDisponible(): Promise<StockDisponibleResult> {
   const { startOfDay, endOfDay } = getTodayRange()
 
   const ultimoCierre = await prisma.cierreDia.findFirst({
     orderBy: { fecha: 'desc' },
   })
 
+  const stockEstimado = await getStockEstimadoHoy()
+
   const stockBase: StockSnapshot = {
-    PACA_AGUA: ultimoCierre?.stockFinAgua || 0,
-    PACA_HIELO: ultimoCierre?.stockFinHielo || 0,
+    PACA_AGUA: Math.max(ultimoCierre?.stockFinAgua || 0, stockEstimado?.agua || 0),
+    PACA_HIELO: Math.max(ultimoCierre?.stockFinHielo || 0, stockEstimado?.hielo || 0),
     BOTELLON: 0,
     BOLSA_AGUA: 0,
     BOLSA_HIELO: 0,
@@ -96,11 +140,15 @@ export async function getStockDisponible(): Promise<StockSnapshot> {
     }
   }
 
-  return stockBase
+  return {
+    stock: stockBase,
+    tieneEstimado: stockEstimado !== null,
+  }
 }
 
 export async function validarStock(carga: StockSnapshot): Promise<{ ok: boolean; faltante?: StockSnapshot }> {
-  const disponible = await getStockDisponible()
+  const stockResult = await getStockDisponible()
+  const disponible = stockResult.stock
   const faltante: StockSnapshot = emptyStock()
   let hayFaltante = false
 
@@ -127,7 +175,8 @@ export interface StockEvaluation {
 }
 
 export async function evaluarStock(carga: StockSnapshot): Promise<StockEvaluation> {
-  const disponible = await getStockDisponible()
+  const stockResult = await getStockDisponible()
+  const disponible = stockResult.stock
   const deficit: StockSnapshot = emptyStock()
   let totalDeficit = 0
 
