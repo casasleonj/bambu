@@ -37,10 +37,6 @@ export function EmbarqueCreateModal({
   })
   const [stockDisponible, setStockDisponible] = useState<StockDisponible | null>(null)
   const [tieneStockEstimado, setTieneStockEstimado] = useState(false)
-  const [estimadoAgua, setEstimadoAgua] = useState(0)
-  const [estimadoHielo, setEstimadoHielo] = useState(0)
-  const [mostrarFormEstimado, setMostrarFormEstimado] = useState(false)
-  const [guardandoEstimado, setGuardandoEstimado] = useState(false)
   const [confirmOverride, setConfirmOverride] = useState(false)
   const [overrideMotivo, setOverrideMotivo] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -48,6 +44,11 @@ export function EmbarqueCreateModal({
 
   useEffect(() => {
     if (open) {
+      const now = new Date()
+      const hours = now.getHours().toString().padStart(2, '0')
+      const minutes = now.getMinutes().toString().padStart(2, '0')
+      setHoraSalida(`${hours}:${minutes}`)
+
       fetch('/api/embarques?all=true&stock=true', { credentials: 'include' })
         .then(r => r.json())
         .then(data => {
@@ -113,49 +114,21 @@ export function EmbarqueCreateModal({
     return val - max > 10
   })
 
-  async function guardarStockEstimado() {
-    if (estimadoAgua === 0 && estimadoHielo === 0) {
-      toast.error('Ingrese al menos un valor mayor a 0')
-      return
-    }
-    setGuardandoEstimado(true)
-    try {
-      const res = await fetch('/api/stock-estimado', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ agua: estimadoAgua, hielo: estimadoHielo }),
-      })
-      const data = await res.json()
-      if (data.success) {
-        setTieneStockEstimado(true)
-        setMostrarFormEstimado(false)
-        toast.success('Stock estimado actualizado')
-        // Refetch stock
-        fetch('/api/embarques?all=true&stock=true', { credentials: 'include' })
-          .then(r => r.json())
-          .then(d => {
-            if (d.stock) setStockDisponible(d.stock)
-          })
-          .catch(() => {})
-      } else {
-        toast.error(data.error?.message || 'Error guardando stock estimado')
-      }
-    } catch {
-      toast.error('Error de conexión')
-    } finally {
-      setGuardandoEstimado(false)
-    }
-  }
-
   async function createEmbarque() {
     if (!selectedTrabajadorId || submitting) return
+    if (!horaSalida) {
+      toast.error('Hora de salida requerida')
+      return
+    }
     const cargaArr = Object.entries(carga)
       .filter(([, v]) => v > 0)
       .map(([producto, cargadas]) => ({ producto, cargadas }))
     if (cargaArr.length === 0) {
       toast.error('Agrega al menos un producto a la carga')
       return
+    }
+    if (baseDinero === 0) {
+      toast.warning('Base dinero: $0 — ¿Seguro que no necesita cambio?')
     }
     setSubmitting(true)
     try {
@@ -167,7 +140,7 @@ export function EmbarqueCreateModal({
           trabajadorId: selectedTrabajadorId,
           rutaId: selectedRutaId || undefined,
           tipoMoto: tipoMoto || undefined,
-          horaSalida: horaSalida || undefined,
+          horaSalida,
           baseDinero,
           obs,
           carga: cargaArr,
@@ -296,57 +269,6 @@ export function EmbarqueCreateModal({
           </div>
         )}
 
-        {!tieneStockEstimado && stockDisponible && (
-          <div>
-            <button
-              onClick={() => setMostrarFormEstimado(!mostrarFormEstimado)}
-              className="text-xs text-amber-600 hover:text-amber-800 font-medium"
-            >
-              {mostrarFormEstimado ? '✕ Cancelar' : '+ Estimar stock del día'}
-            </button>
-            {mostrarFormEstimado && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-2 space-y-2">
-                <p className="text-xs text-amber-700">
-                  Ingrese el stock físico estimado en zona de embarque. Esto permite crear embarques mientras se registra producción real.
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-xs text-amber-800">Pacas Agua estimadas</label>
-                    <input
-                      type="number"
-                      min={0}
-                      value={estimadoAgua}
-                      onChange={(e) => setEstimadoAgua(parseInt(e.target.value) || 0)}
-                      onFocus={(e) => e.target.select()}
-                      className="w-full px-2 py-1 border border-amber-300 rounded text-sm"
-                      placeholder="0"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-amber-800">Pacas Hielo estimadas</label>
-                    <input
-                      type="number"
-                      min={0}
-                      value={estimadoHielo}
-                      onChange={(e) => setEstimadoHielo(parseInt(e.target.value) || 0)}
-                      onFocus={(e) => e.target.select()}
-                      className="w-full px-2 py-1 border border-amber-300 rounded text-sm"
-                      placeholder="0"
-                    />
-                  </div>
-                </div>
-                <button
-                  onClick={guardarStockEstimado}
-                  disabled={guardandoEstimado}
-                  className="w-full px-3 py-1.5 bg-amber-600 text-white rounded text-sm hover:bg-amber-700 disabled:opacity-50"
-                >
-                  {guardandoEstimado ? 'Guardando...' : 'Guardar stock estimado'}
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
         <div>
           <h3 className="text-sm font-semibold text-gray-700 mb-2">Carga del Motocarga</h3>
           <div className="space-y-2">
@@ -387,7 +309,7 @@ export function EmbarqueCreateModal({
           </div>
         )}
 
-        {hayStockInsuficiente && (
+        {!tieneStockEstimado && hayStockInsuficiente && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 space-y-3">
             <div className="flex items-center gap-2">
               <span className="text-lg">⚠️</span>
@@ -443,7 +365,7 @@ export function EmbarqueCreateModal({
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Hora de salida</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Hora de salida *</label>
             <input
               type="time"
               value={horaSalida}
@@ -462,6 +384,9 @@ export function EmbarqueCreateModal({
               className="w-full p-2 border rounded-lg"
               placeholder="$0"
             />
+            {baseDinero === 0 && (
+              <p className="text-xs text-amber-600 mt-1">️ Sin base de dinero</p>
+            )}
           </div>
         </div>
 
@@ -480,7 +405,7 @@ export function EmbarqueCreateModal({
         <button onClick={handleClose} className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50">Cancelar</button>
         <button
           onClick={createEmbarque}
-          disabled={!selectedTrabajadorId || submitting || excedeUnidades || (hayStockInsuficiente && !confirmOverride)}
+          disabled={!selectedTrabajadorId || submitting || excedeUnidades || (!tieneStockEstimado && hayStockInsuficiente && !confirmOverride)}
           className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {submitting ? 'Creando...' : 'Crear'}
