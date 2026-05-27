@@ -760,7 +760,7 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
         {/* Botón Submit */}
         <button
           type="submit"
-          disabled={submitting || total <= 0}
+          disabled={submitting || total <= 0 || fiadosStatus?.nivel === 'limite'}
           className={`w-full py-3 rounded-xl text-white font-bold text-lg shadow-lg transition ${
             canal === 'PUNTO'
               ? 'bg-green-600 hover:bg-green-700'

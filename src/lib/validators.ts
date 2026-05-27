@@ -180,6 +180,8 @@ export const ClienteCreateSchema = z.object({
   notas: z.string().max(500).optional(),
   horaApertura: z.string().regex(/^\d{2}:\d{2}$/, 'Formato HH:mm').optional().nullable(),
   limitePedidosFiados: z.coerce.number().int().min(1).max(20).optional(),
+  verificado: z.boolean().optional(),
+  bloqueado: z.boolean().optional(),
 });
 
 export const ClienteUpdateSchema = ClienteCreateSchema.partial();
@@ -302,14 +304,23 @@ export const EmbarqueCreateSchema = z.object({
 export const EmbarqueUpdateSchema = z.object({
   estado: z.enum(['ABIERTO', 'EN_RUTA', 'CERRADO', 'CANCELADO']).nullable().optional(),
   horaLlegada: z.string().nullable().optional(),
+  horaSalida: z.string().nullable().optional(),
   obs: z.string().max(500).nullable().optional(),
   pedidoIds: z.array(z.string().min(1)).max(100).nullable().optional(),
+  // Legacy fields
   pacasAgua: z.coerce.number().int().min(0).nullable().optional(),
   pacasHielo: z.coerce.number().int().min(0).nullable().optional(),
   devueltasAgua: z.coerce.number().int().min(0).nullable().optional(),
   devueltasHielo: z.coerce.number().int().min(0).nullable().optional(),
   rotasAgua: z.coerce.number().int().min(0).nullable().optional(),
   rotasHielo: z.coerce.number().int().min(0).nullable().optional(),
+  // Editable fields (ABIERTO only)
+  trabajadorId: z.string().min(1).nullable().optional(),
+  rutaId: z.string().nullable().optional(),
+  tipoMoto: z.string().nullable().optional(),
+  baseDinero: z.coerce.number().min(0).nullable().optional(),
+  // Carga (productos) — replaces existing EmbarqueProducto records
+  carga: z.array(EmbarqueProductoSchema).nullable().optional(),
 })
 
 export const GastoEmbarqueSchema = z.object({

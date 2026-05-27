@@ -398,14 +398,7 @@ export async function generarPedidosRecurrentes(
       continue
     }
 
-    // Verificar limite de fiados
-    if (pt.cliente.limitePedidosFiados == null) {
-      const configLimite = await prisma.config.findUnique({ where: { clave: 'LIMITE_PEDIDOS_FIADOS_DEFAULT' } })
-      if (configLimite) {
-        const parsed = parseInt(configLimite.valor, 10)
-        if (!isNaN(parsed)) pt.cliente.limitePedidosFiados = parsed
-      }
-    }
+    // Verificar limite de fiados (se re-verifica dentro de la transacción para evitar race conditions)
     const limite = pt.cliente.limitePedidosFiados ?? 3
 
     const pedidosPendientesCount = await prisma.pedido.count({
@@ -553,6 +546,36 @@ export async function generarPedidosRecurrentes(
       : 0
 
     const nuevo = await prisma.$transaction(async (tx) => {
+      // Re-verificar limite de fiados dentro de la transacción para evitar race conditions
+      const pedidosPendientesTx = await tx.pedido.findMany({
+        where: {
+          clienteId: pt.clienteId,
+          estadoEntrega: { notIn: ['ANULADO', 'CANCELADO'] },
+          estadoPago: { notIn: ['PAGADO', 'ANTICIPADO', 'ANULADO'] },
+        },
+        select: { id: true, numero: true, saldo: true },
+      })
+
+      let limiteTx = pt.cliente.limitePedidosFiados ?? 3
+      if (pt.cliente.limitePedidosFiados == null) {
+        const configLimite = await tx.config.findUnique({ where: { clave: 'LIMITE_PEDIDOS_FIADOS_DEFAULT' } })
+        if (configLimite) {
+          const parsed = parseInt(configLimite.valor, 10)
+          if (!isNaN(parsed)) limiteTx = parsed
+        }
+      }
+
+      if (pedidosPendientesTx.length >= limiteTx) {
+        await tx.plantillaRecurrente.update({
+          where: { id: pt.id },
+          data: {
+            ultimaGeneracion: prox,
+            proxGeneracion: calcularProxGeneracion(prox, pt.cadaNDias),
+          },
+        })
+        return null
+      }
+
       const creado = await tx.pedido.create({
         data: {
           clienteId: pt.clienteId,
@@ -666,6 +689,8 @@ export async function generarPedidosRecurrentes(
 
       return creado
     })
+
+    if (!nuevo) continue
 
     generados.push({ id: nuevo.id, numero: nuevo.numero, tipo: decision.decision })
   }

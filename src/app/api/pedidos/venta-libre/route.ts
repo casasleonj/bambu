@@ -5,7 +5,7 @@ import { VentaLibreSchema } from '@/lib/validators'
 import { withAdvisoryLock } from '@/lib/locks'
 import { getNextNumero } from '@/lib/sequence'
 import { resolverPreciosPedido, type Canal } from '@/lib/pricing'
-import { calcularEstadoPago, puedeFiar } from '@/lib/pedido-utils'
+import { calcularEstadoPago, puedeFiar, puedeCrearPedido } from '@/lib/pedido-utils'
 import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
@@ -98,6 +98,32 @@ export async function POST(request: NextRequest) {
       }
 
       const estadoPago = calcularEstadoPago(total, totalPagado)
+
+      // 6b. Verificar límite de fiados si el pedido va a quedar con saldo
+      if (!esAnonimo && cliente && puedeFiar(cliente, esAnonimo) && totalPagado < total) {
+        const pedidosPendientes = await tx.pedido.findMany({
+          where: {
+            clienteId: cliente.id,
+            estadoEntrega: { notIn: ['ANULADO', 'CANCELADO'] },
+            estadoPago: { notIn: ['PAGADO', 'ANTICIPADO', 'ANULADO'] },
+          },
+          orderBy: { numero: 'asc' },
+          select: { id: true, numero: true, saldo: true },
+        })
+
+        let limiteFiados = cliente.limitePedidosFiados ?? 3
+        if (cliente.limitePedidosFiados == null) {
+          const configLimite = await tx.config.findUnique({ where: { clave: 'LIMITE_PEDIDOS_FIADOS_DEFAULT' } })
+          if (configLimite) {
+            limiteFiados = parseInt(configLimite.valor, 10) || 3
+          }
+        }
+
+        const errorDeuda = puedeCrearPedido(cliente, pedidosPendientes, limiteFiados)
+        if (errorDeuda) {
+          throw new Error(`CLIENTE_DEBE: ${errorDeuda}`)
+        }
+      }
 
       // 7. Verificar offlineId no duplicado
       if (offlineId) {
@@ -205,6 +231,7 @@ export async function POST(request: NextRequest) {
       if (error.message === 'EMBARQUE_NO_PERTENECE') return apiError('No tienes acceso a este embarque', 403)
       if (error.message === 'CLIENTE_NOT_FOUND') return apiError('Cliente no encontrado', 404)
       if (error.message === 'PAGO_COMPLETO_OBLIGATORIO') return apiError('Cliente no verificado/anónimo debe pagar completo', 400)
+      if (error.message.startsWith('CLIENTE_DEBE:')) return apiError(error.message.replace('CLIENTE_DEBE: ', ''), 400)
     }
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error creando venta libre:')
     return apiError('Error creando venta libre')

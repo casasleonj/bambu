@@ -146,6 +146,53 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   }
 }
 
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const authResult = await requireAuth()
+  if (authResult instanceof Response) return authResult
+  const roleCheck = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE], authResult)
+  if (roleCheck instanceof Response) return roleCheck
+  const { id } = await params
+  try {
+    const body = await request.json()
+    const { verificado, bloqueado } = body
+
+    if (verificado === undefined && bloqueado === undefined) {
+      return apiError('Debe enviar verificado o bloqueado', 400)
+    }
+
+    const updateData: Record<string, unknown> = {}
+    if (verificado !== undefined) {
+      updateData.verificado = verificado
+      if (verificado === true) {
+        updateData.verificadoEn = new Date()
+      }
+    }
+    if (bloqueado !== undefined) {
+      updateData.bloqueado = bloqueado
+    }
+
+    const cliente = await prisma.cliente.update({
+      where: { id, activo: true },
+      data: updateData,
+    })
+
+    logAudit({
+      entidad: 'Cliente',
+      registroId: cliente.id,
+      accion: 'UPDATE',
+      datos: { verificado: cliente.verificado, bloqueado: cliente.bloqueado },
+      usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+    })
+
+    return apiSuccess({ cliente })
+  } catch (error) {
+    if (error instanceof PrismaClientKnownRequestError && error.code === 'P2025') {
+      return apiError('Not found', 404)
+    }
+    return apiError('Error updating', 500)
+  }
+}
+
 export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult

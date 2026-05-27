@@ -391,6 +391,48 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
     }
   }
 
+  async function toggleVerificado(id: string, verificado: boolean) {
+    try {
+      const res = await fetch(`/api/clientes/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ verificado }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        toast.success(verificado ? 'Cliente verificado' : 'Marcado como no verificado')
+        await viewCliente(id)
+        await fetchClientes()
+      } else {
+        toast.error(data.error?.message || 'Error actualizando cliente')
+      }
+    } catch {
+      toast.error('Error de conexión')
+    }
+  }
+
+  async function toggleBloqueado(id: string, bloqueado: boolean) {
+    const ok = await confirm(bloqueado ? 'Bloquear fiados para este cliente?' : 'Desbloquear fiados para este cliente?')
+    if (!ok) return
+    try {
+      const res = await fetch(`/api/clientes/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bloqueado }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        toast.success(bloqueado ? 'Cliente bloqueado' : 'Cliente desbloqueado')
+        await viewCliente(id)
+        await fetchClientes()
+      } else {
+        toast.error(data.error?.message || 'Error actualizando cliente')
+      }
+    } catch {
+      toast.error('Error de conexión')
+    }
+  }
+
   const handlePrecioEspecialChange = useCallback((canal: Canal, codigo: string, valor: number | undefined) => {
     setPreciosEspecialesMap(prev => ({
       ...prev,
@@ -564,7 +606,7 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
               </div>
 
               {/* Quick action bar */}
-              <div className="flex gap-2 mt-3">
+              <div className="flex gap-2 mt-3 flex-wrap">
                 <Tooltip content="Crear un pedido para este cliente" position="bottom">
                   <Link
                     href={`/pedidos?cliente=${selectedCliente.id}`}
@@ -598,6 +640,49 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
                     Editar
                   </button>
                 </Tooltip>
+                {selectedCliente.verificado ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-1.5 bg-green-50 text-green-700 rounded-lg text-xs font-medium border border-green-200">
+                    <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+                    Verificado
+                  </span>
+                ) : (
+                  <Tooltip content="Marcar cliente como verificado" position="bottom">
+                    <button
+                      onClick={() => toggleVerificado(selectedCliente.id, true)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-700 rounded-lg text-xs font-medium hover:bg-amber-100 transition border border-amber-200"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Verificar
+                    </button>
+                  </Tooltip>
+                )}
+                {selectedCliente.bloqueado ? (
+                  <Tooltip content="Desbloquear fiados para este cliente" position="bottom">
+                    <button
+                      onClick={() => toggleBloqueado(selectedCliente.id, false)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-700 rounded-lg text-xs font-medium hover:bg-red-100 transition border border-red-200"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                      </svg>
+                      Desbloquear
+                    </button>
+                  </Tooltip>
+                ) : (
+                  <Tooltip content="Bloquear fiados para este cliente" position="bottom">
+                    <button
+                      onClick={() => toggleBloqueado(selectedCliente.id, true)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-orange-50 text-orange-700 rounded-lg text-xs font-medium hover:bg-orange-100 transition"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                      </svg>
+                      Bloquear
+                    </button>
+                  </Tooltip>
+                )}
               </div>
             </div>
 
