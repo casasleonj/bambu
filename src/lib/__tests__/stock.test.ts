@@ -194,3 +194,24 @@ describe('getStockDisponible with estimated stock', () => {
     expect(result.tieneEstimado).toBe(false)
   })
 })
+
+describe('evaluarStock with estimated stock', () => {
+  it('reports deficit even when estimated stock is active', async () => {
+    mockPrisma.cierreDia.findFirst.mockResolvedValue({
+      stockFinAgua: 5,
+      stockFinHielo: 3,
+    })
+    const today = new Date().toISOString().split('T')[0]
+    mockPrisma.config.findUnique.mockResolvedValue({
+      clave: 'stock_estimado_hoy',
+      valor: JSON.stringify({ agua: 50, hielo: 30, fecha: today }),
+    })
+    const carga = emptyStock()
+    carga.PACA_AGUA = 60
+
+    const result = await evaluarStock(carga)
+
+    expect(result.hasDeficit).toBe(true)
+    expect(result.deficit.PACA_AGUA).toBe(10)
+  })
+})
