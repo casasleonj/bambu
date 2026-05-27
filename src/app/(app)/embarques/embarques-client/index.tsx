@@ -32,6 +32,13 @@ export default function EmbarquesClient({ initialData }: { initialData?: Initial
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [dateRange, setDateRange] = useState<{ desde: string | null; hasta: string | null }>({ desde: null, hasta: null })
   const [filtroEstado, setFiltroEstado] = useState('')
+  const [stockEstimado, setStockEstimado] = useState<{ agua: number; hielo: number } | null>(null)
+  const [mostrarFormEstimado, setMostrarFormEstimado] = useState(false)
+  const [estimadoAgua, setEstimadoAgua] = useState(0)
+  const [estimadoHielo, setEstimadoHielo] = useState(0)
+  const [guardandoEstimado, setGuardandoEstimado] = useState(false)
+  const [bannerDismissed, setBannerDismissed] = useState(false)
+  const [stockBajo, setStockBajo] = useState(false)
   const { confirm, modal } = useConfirm()
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -55,11 +62,21 @@ export default function EmbarquesClient({ initialData }: { initialData?: Initial
       const trabajadoresJson = await trabajadoresRes.json()
       const rutasJson = await rutasRes.json()
       const pedidosData = await pedidosRes.json()
+      const stockJson = await fetch('/api/stock-estimado', { credentials: 'include' }).then(r => r.json())
+      const stockData = await fetch('/api/embarques?all=true&stock=true', { credentials: 'include' }).then(r => r.json())
 
       setEmbarques(embarquesJson.embarques || embarquesJson.data || [])
       setTrabajadores(trabajadoresJson.trabajadores || [])
       setRutas(rutasJson.rutas || [])
       setPedidos(pedidosData.pedidos || pedidosData.data || [])
+      if (stockJson.data?.estimado) {
+        setStockEstimado(stockJson.data.estimado)
+        setBannerDismissed(false)
+      }
+      if (stockData.stock) {
+        const totalStock = (stockData.stock.PACA_AGUA || 0) + (stockData.stock.PACA_HIELO || 0)
+        setStockBajo(totalStock < 50)
+      }
     } catch {
       setFetchError('No se pudieron cargar los embarques')
       toast.error('Error cargando embarques')
@@ -198,6 +215,155 @@ export default function EmbarquesClient({ initialData }: { initialData?: Initial
           ))}
         </div>
       </div>
+
+      {!bannerDismissed && (stockEstimado || stockBajo) && (stockEstimado ? (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">📋</span>
+              <div>
+                <p className="text-sm font-semibold text-amber-800">Stock estimado activo</p>
+                <p className="text-xs text-amber-700">
+                  Agua: {stockEstimado.agua} pacas · Hielo: {stockEstimado.hielo} pacas
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => { setMostrarFormEstimado(true); setEstimadoAgua(stockEstimado.agua); setEstimadoHielo(stockEstimado.hielo) }}
+                className="text-xs text-amber-600 hover:text-amber-800 font-medium"
+              >
+                Editar
+              </button>
+              <button
+                onClick={async () => {
+                  await fetch('/api/stock-estimado', { method: 'DELETE', credentials: 'include' })
+                  setStockEstimado(null)
+                  toast.success('Stock estimado eliminado')
+                }}
+                className="text-xs text-red-600 hover:text-red-800 font-medium"
+              >
+                Eliminar
+              </button>
+              <button
+                onClick={() => setBannerDismissed(true)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+          {mostrarFormEstimado && (
+            <div className="mt-3 pt-3 border-t border-amber-200 grid grid-cols-3 gap-2 items-end">
+              <div>
+                <label className="text-xs text-amber-800">Pacas Agua</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={estimadoAgua}
+                  onChange={(e) => setEstimadoAgua(parseInt(e.target.value) || 0)}
+                  className="w-full px-2 py-1 border border-amber-300 rounded text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-amber-800">Pacas Hielo</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={estimadoHielo}
+                  onChange={(e) => setEstimadoHielo(parseInt(e.target.value) || 0)}
+                  className="w-full px-2 py-1 border border-amber-300 rounded text-sm"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    setGuardandoEstimado(true)
+                    await fetch('/api/stock-estimado', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      credentials: 'include',
+                      body: JSON.stringify({ agua: estimadoAgua, hielo: estimadoHielo }),
+                    })
+                    setStockEstimado({ agua: estimadoAgua, hielo: estimadoHielo })
+                    setMostrarFormEstimado(false)
+                    setGuardandoEstimado(false)
+                    toast.success('Stock estimado actualizado')
+                  }}
+                  disabled={guardandoEstimado}
+                  className="px-3 py-1 bg-amber-600 text-white rounded text-sm hover:bg-amber-700 disabled:opacity-50"
+                >
+                  Guardar
+                </button>
+                <button
+                  onClick={() => setMostrarFormEstimado(false)}
+                  className="px-3 py-1 border rounded text-sm"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">⚠️</span>
+              <div>
+                <p className="text-sm font-semibold text-amber-800">Stock registrado bajo</p>
+                <p className="text-xs text-amber-700">¿Cuántas pacas hay físicamente en zona de embarque?</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setBannerDismissed(true)}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="grid grid-cols-3 gap-2 mt-3 items-end">
+            <div>
+              <label className="text-xs text-amber-700">Pacas Agua</label>
+              <input
+                type="number"
+                min={0}
+                value={estimadoAgua}
+                onChange={(e) => setEstimadoAgua(parseInt(e.target.value) || 0)}
+                className="w-full px-2 py-1 border border-amber-300 rounded text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-amber-700">Pacas Hielo</label>
+              <input
+                type="number"
+                min={0}
+                value={estimadoHielo}
+                onChange={(e) => setEstimadoHielo(parseInt(e.target.value) || 0)}
+                className="w-full px-2 py-1 border border-amber-300 rounded text-sm"
+              />
+            </div>
+            <button
+              onClick={async () => {
+                setGuardandoEstimado(true)
+                await fetch('/api/stock-estimado', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  credentials: 'include',
+                  body: JSON.stringify({ agua: estimadoAgua, hielo: estimadoHielo }),
+                })
+                setStockEstimado({ agua: estimadoAgua, hielo: estimadoHielo })
+                setGuardandoEstimado(false)
+                toast.success('Stock estimado guardado')
+              }}
+              disabled={guardandoEstimado}
+              className="px-3 py-1 bg-amber-600 text-white rounded text-sm hover:bg-amber-700 disabled:opacity-50"
+            >
+              Guardar
+            </button>
+          </div>
+        </div>
+      ))}
 
       <InfoBanner type="info" className="mb-4">
         <p><strong>Capacidad máxima:</strong> 70 pacas por embarque. Los colores indican el nivel de carga:</p>
