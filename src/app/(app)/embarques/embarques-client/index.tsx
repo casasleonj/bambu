@@ -42,9 +42,9 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
   const [filtroEstado, setFiltroEstado] = useState('')
   const [stockEstimado, setStockEstimado] = useState<{ agua: number; hielo: number } | null>(null)
   const [showStockModal, setShowStockModal] = useState(false)
-  const [estimadoAgua, setEstimadoAgua] = useState(0)
-  const [estimadoHielo, setEstimadoHielo] = useState(0)
-  const [estimadoBotellon, setEstimadoBotellon] = useState(0)
+  const [estimadoAgua, setEstimadoAgua] = useState("")
+  const [estimadoHielo, setEstimadoHielo] = useState("")
+  const [estimadoBotellon, setEstimadoBotellon] = useState("")
   const [guardandoEstimado, setGuardandoEstimado] = useState(false)
   const [bannerDismissed, setBannerDismissed] = useState(false)
   const [stockBajo, setStockBajo] = useState(false)
@@ -163,9 +163,9 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
   }, [])
 
   const openStockModal = () => {
-    setEstimadoAgua(stockEstimado?.agua || 0)
-    setEstimadoHielo(stockEstimado?.hielo || 0)
-    setEstimadoBotellon((stockEstimado as any)?.botellon || 0)
+    setEstimadoAgua(stockEstimado?.agua ? String(stockEstimado.agua) : "")
+    setEstimadoHielo(stockEstimado?.hielo ? String(stockEstimado.hielo) : "")
+    setEstimadoBotellon((stockEstimado as any)?.botellon ? String((stockEstimado as any).botellon) : "")
     setShowStockModal(true)
   }
 
@@ -176,11 +176,19 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ agua: estimadoAgua, hielo: estimadoHielo, botellon: estimadoBotellon }),
+        body: JSON.stringify({
+          agua: Number(estimadoAgua) || 0,
+          hielo: Number(estimadoHielo) || 0,
+          botellon: Number(estimadoBotellon) || 0,
+        }),
       })
       const data = await res.json()
       if (data.success) {
-        setStockEstimado({ agua: estimadoAgua, hielo: estimadoHielo, botellon: estimadoBotellon } as any)
+        setStockEstimado({
+          agua: Number(estimadoAgua) || 0,
+          hielo: Number(estimadoHielo) || 0,
+          botellon: Number(estimadoBotellon) || 0,
+        } as any)
         setBannerDismissed(false)
         setShowStockModal(false)
         toast.success('Stock estimado actualizado')
@@ -306,7 +314,7 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
               {isAdmin && (
                 <>
                   <button
-                    onClick={() => { setEstimadoAgua(stockEstimado.agua); setEstimadoHielo(stockEstimado.hielo); setShowStockModal(true) }}
+                    onClick={() => { setEstimadoAgua(String(stockEstimado.agua)); setEstimadoHielo(String(stockEstimado.hielo)); setEstimadoBotellon((stockEstimado as any).botellon ? String((stockEstimado as any).botellon) : ""); setShowStockModal(true) }}
                     className="text-xs text-amber-600 hover:text-amber-800 font-medium"
                   >
                     Editar
@@ -353,7 +361,8 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
                   type="number"
                   min={0}
                   value={estimadoAgua}
-                  onChange={(e) => setEstimadoAgua(parseInt(e.target.value) || 0)}
+                  onChange={(e) => setEstimadoAgua(e.target.value)}
+                  placeholder="0"
                   className="w-full px-2 py-1 border border-amber-300 rounded text-sm"
                 />
               </div>
@@ -363,7 +372,8 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
                   type="number"
                   min={0}
                   value={estimadoHielo}
-                  onChange={(e) => setEstimadoHielo(parseInt(e.target.value) || 0)}
+                  onChange={(e) => setEstimadoHielo(e.target.value)}
+                  placeholder="0"
                   className="w-full px-2 py-1 border border-amber-300 rounded text-sm"
                 />
               </div>
@@ -373,7 +383,8 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
                   type="number"
                   min={0}
                   value={estimadoBotellon}
-                  onChange={(e) => setEstimadoBotellon(parseInt(e.target.value) || 0)}
+                  onChange={(e) => setEstimadoBotellon(e.target.value)}
+                  placeholder="0"
                   className="w-full px-2 py-1 border border-amber-300 rounded text-sm"
                 />
               </div>
@@ -473,7 +484,8 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
                 type="number"
                 min={0}
                 value={estimadoAgua}
-                onChange={(e) => setEstimadoAgua(parseInt(e.target.value) || 0)}
+                onChange={(e) => setEstimadoAgua(e.target.value)}
+                placeholder="0"
                 className="w-full px-3 py-2 border rounded-lg"
               />
             </div>
@@ -483,7 +495,8 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
                 type="number"
                 min={0}
                 value={estimadoHielo}
-                onChange={(e) => setEstimadoHielo(parseInt(e.target.value) || 0)}
+                onChange={(e) => setEstimadoHielo(e.target.value)}
+                placeholder="0"
                 className="w-full px-3 py-2 border rounded-lg"
               />
             </div>
@@ -493,7 +506,8 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
                 type="number"
                 min={0}
                 value={estimadoBotellon}
-                onChange={(e) => setEstimadoBotellon(parseInt(e.target.value) || 0)}
+                onChange={(e) => setEstimadoBotellon(e.target.value)}
+                placeholder="0"
                 className="w-full px-3 py-2 border rounded-lg"
               />
             </div>
