@@ -15,7 +15,10 @@ export const EstadoPagoSchema = z.enum(['PENDIENTE', 'PARCIAL', 'PAGADO', 'ANTIC
 export const PedidoItemSchema = z.object({
   producto: z.enum(['PACA_AGUA', 'PACA_HIELO', 'BOTELLON', 'BOLSA_AGUA', 'BOLSA_HIELO']),
   cantidad: z.coerce.number().int().min(0),
-  precioManual: z.number().min(0).optional(),
+  precioManual: z.number().min(0).optional().refine(
+    val => val === undefined || val > 0,
+    { message: 'Precio manual debe ser mayor a 0' }
+  ),
 })
 
 // ====================

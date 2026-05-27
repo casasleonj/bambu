@@ -479,6 +479,7 @@ model PedidoItem {
   cantEntrega Int      @default(0)
   precio      Decimal  @default(0) @db.Decimal(10, 2)
   subtotal    Decimal  @default(0) @db.Decimal(10, 2)
+  precioOrigen String @default("base") // manual, cliente, volumen, base
 
   @@index([pedidoId])
   @@index([producto])

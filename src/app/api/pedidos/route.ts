@@ -75,6 +75,8 @@ export async function GET(request: NextRequest) {
       telefonoCli: p.cliente?.telefono || '',
       zonaCli: p.cliente?.direccion || '',
       barrioCli: p.cliente?.barrio || '',
+      nombreNegocioCli: p.cliente?.nombreNegocio || null,
+      horaAperturaCli: p.cliente?.horaApertura || null,
       fecha: p.fecha.toISOString(),
     }))
 
@@ -260,13 +262,17 @@ export async function POST(request: NextRequest) {
       // 7. Crear PedidoItem records
       const pedidoItemsData = itemsParaPrecios
         .filter(i => i.cantidad > 0)
-        .map(i => ({
-          producto: i.codigo,
-          cantPedido: i.cantidad,
-          cantEntrega: estadoEntrega === 'ENTREGADO' ? i.cantidad : 0,
-          precio: precioMap[i.codigo] || 0,
-          subtotal: (precioMap[i.codigo] || 0) * i.cantidad,
-        }))
+        .map(i => {
+          const resuelto = preciosResueltos.find(pr => pr.codigo === i.codigo)
+          return {
+            producto: i.codigo,
+            cantPedido: i.cantidad,
+            cantEntrega: estadoEntrega === 'ENTREGADO' ? i.cantidad : 0,
+            precio: precioMap[i.codigo] || 0,
+            subtotal: (precioMap[i.codigo] || 0) * i.cantidad,
+            precioOrigen: resuelto?.origen || 'base',
+          }
+        })
 
       // 8. Crear pedido con legacy + nuevos campos
       const pedido = await tx.pedido.create({

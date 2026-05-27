@@ -946,6 +946,9 @@ export function PedidosClient() {
                           <div className="flex items-center gap-2">
                             <Icon size={20} />
                             <span className="text-sm font-medium">{meta.label}</span>
+                            {(item as any).precioOrigen === 'manual' && (
+                              <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-medium">manual</span>
+                            )}
                           </div>
                           <div className="text-right">
                             <div className="text-sm font-semibold">{item.cantPedido} und</div>
@@ -1137,14 +1140,14 @@ export function PedidosClient() {
           ? pedidoEditando.items.map((i: any) => ({
               producto: i.producto,
               cantidad: i.cantPedido,
-              precioManual: i.precioManual || undefined,
+              precioManual: i.precioOrigen === 'manual' ? Number(i.precio) : undefined,
             }))
           : [
-              ...(pedidoEditando.cPacaAguaPed ? [{ producto: 'PACA_AGUA' as const, cantidad: pedidoEditando.cPacaAguaPed }] : []),
-              ...(pedidoEditando.cPacaHieloPed ? [{ producto: 'PACA_HIELO' as const, cantidad: pedidoEditando.cPacaHieloPed }] : []),
-              ...(pedidoEditando.cBotellonFabPed || pedidoEditando.cBotellonDomPed ? [{ producto: 'BOTELLON' as const, cantidad: pedidoEditando.cBotellonFabPed || pedidoEditando.cBotellonDomPed }] : []),
-              ...(pedidoEditando.cBolsaAguaPed ? [{ producto: 'BOLSA_AGUA' as const, cantidad: pedidoEditando.cBolsaAguaPed }] : []),
-              ...(pedidoEditando.cBolsaHieloPed ? [{ producto: 'BOLSA_HIELO' as const, cantidad: pedidoEditando.cBolsaHieloPed }] : []),
+              ...(pedidoEditando.cPacaAguaPed ? [{ producto: 'PACA_AGUA' as const, cantidad: pedidoEditando.cPacaAguaPed, precioManual: Number(pedidoEditando.precioPacaAgua) || undefined }] : []),
+              ...(pedidoEditando.cPacaHieloPed ? [{ producto: 'PACA_HIELO' as const, cantidad: pedidoEditando.cPacaHieloPed, precioManual: Number(pedidoEditando.precioPacaHielo) || undefined }] : []),
+              ...(pedidoEditando.cBotellonFabPed || pedidoEditando.cBotellonDomPed ? [{ producto: 'BOTELLON' as const, cantidad: pedidoEditando.cBotellonFabPed || pedidoEditando.cBotellonDomPed, precioManual: (Number(pedidoEditando.precioBotellonFab) || Number(pedidoEditando.precioBotellonDom)) || undefined }] : []),
+              ...(pedidoEditando.cBolsaAguaPed ? [{ producto: 'BOLSA_AGUA' as const, cantidad: pedidoEditando.cBolsaAguaPed, precioManual: Number(pedidoEditando.precioBolsaAgua) || undefined }] : []),
+              ...(pedidoEditando.cBolsaHieloPed ? [{ producto: 'BOLSA_HIELO' as const, cantidad: pedidoEditando.cBolsaHieloPed, precioManual: Number(pedidoEditando.precioBolsaHielo) || undefined }] : []),
             ]
 
         return (

@@ -4,6 +4,7 @@ export interface PedidoItem {
   cantEntrega: number
   precio: number
   subtotal: number
+  precioOrigen?: string
 }
 
 export interface Pedido {
@@ -47,6 +48,8 @@ export interface Pedido {
   fecha: string
   horaPreferida?: string | null
   obs?: string | null
+  nombreNegocioCli?: string | null
+  horaAperturaCli?: string | null
   disputaAbierta?: boolean
   promesaPagoFecha?: string
   factura?: {

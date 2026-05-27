@@ -89,12 +89,64 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
   const resolverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [productosConfig, setProductosConfig] = useState<Array<{ codigo: string; aplicaDomicilio: boolean }>>([])
   const [fiadosStatus, setFiadosStatus] = useState<{ count: number; limite: number; nivel: 'ok' | 'cerca' | 'limite' } | null>(null)
+  const [precioBajoConfirmado, setPrecioBajoConfirmado] = useState<Record<string, boolean>>({})
+  const cantidadesRef = useRef(cantidades)
+  const canalRef = useRef(canal)
+
+  useEffect(() => { cantidadesRef.current = cantidades }, [cantidades])
+  useEffect(() => { canalRef.current = canal }, [canal])
+
+  const productosActuales = getProductosForCanal(canal, productosConfig)
+
+  useEffect(() => {
+    fetch(`/api/productos/configs`)
+      .then(r => r.json())
+      .then(d => { if (d.success && d.productos) setProductosConfig(d.productos) })
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    fetch(`/api/precios/tabla`)
+      .then(r => r.json())
+      .then(d => { if (d.tabla) setTablaPrecios(d.tabla) })
+      .catch(() => {})
+  }, [])
+
+  const resolverPrecios = useCallback(async (prods: Record<string, number>, canalVal: 'PUNTO' | 'DOMICILIO', clienteId?: string) => {
+    const items = productosActuales
+      .filter(id => (prods[id] || 0) > 0)
+      .map(id => ({ codigo: PRODUCTO_INFO[id].codigo, cantidad: prods[id] || 0 }))
+
+    if (items.length === 0) {
+      setPreciosResueltos({})
+      return
+    }
+    try {
+      const res = await fetch('/api/precios/resolver', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items, canal: canalVal, clienteId: clienteId || clienteSeleccionado?.id }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.precios) {
+          const nuevos: Record<string, number> = {}
+          for (const [codigo, info] of Object.entries(data.precios)) {
+            nuevos[codigo] = (info as any).precio
+          }
+          setPreciosResueltos(nuevos)
+        }
+      }
+    } catch { /* fallback */ }
+  }, [productosActuales, clienteSeleccionado?.id])
 
   useEffect(() => {
     if (clienteSeleccionado) {
       setEditDireccion(clienteSeleccionado.direccion || '')
       setEditBarrio(clienteSeleccionado.barrio || '')
-      // Fetch fiados status
+      const timer = setTimeout(() => {
+        resolverPrecios(cantidadesRef.current, canalRef.current, clienteSeleccionado.id)
+      }, 100)
       fetch(`/api/pedidos?all=true&cliente=${clienteSeleccionado.id}`)
         .then(r => r.json())
         .then(d => {
@@ -112,26 +164,11 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
           setFiadosStatus({ count, limite, nivel })
         })
         .catch(() => setFiadosStatus(null))
+      return () => clearTimeout(timer)
     } else {
       setFiadosStatus(null)
     }
-  }, [clienteSeleccionado])
-
-  useEffect(() => {
-    fetch(`/api/productos/configs`)
-      .then(r => r.json())
-      .then(d => { if (d.success && d.productos) setProductosConfig(d.productos) })
-      .catch(() => {})
-  }, [])
-
-  const productosActuales = getProductosForCanal(canal, productosConfig)
-
-  useEffect(() => {
-    fetch(`/api/precios/tabla`)
-      .then(r => r.json())
-      .then(d => { if (d.tabla) setTablaPrecios(d.tabla) })
-      .catch(() => {})
-  }, [])
+  }, [clienteSeleccionado, resolverPrecios])
 
   useEffect(() => {
     if (!pedidoInicial) return
@@ -152,7 +189,12 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
     }
     setCantidades(cantidadesIniciales)
     setPreciosManuales(manuales)
-  }, [pedidoInicial])
+    if (pedidoInicial.cliente) {
+      setTimeout(() => {
+        resolverPrecios(cantidadesIniciales, pedidoInicial.canal, pedidoInicial.cliente?.id)
+      }, 200)
+    }
+  }, [pedidoInicial, resolverPrecios])
 
   const getPrecioBase = (codigo: string): number => {
     if (preciosResueltos[codigo]) return preciosResueltos[codigo]
@@ -182,34 +224,6 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
   const totalPagado = pagos.reduce((sum, p) => sum + (p.monto || 0), 0)
   const saldoPendiente = total - totalPagado
   const requiereCliente = canal === 'DOMICILIO' || saldoPendiente > 0
-
-  const resolverPrecios = useCallback(async (prods: Record<string, number>, canalVal: 'PUNTO' | 'DOMICILIO') => {
-    const items = productosActuales
-      .filter(id => (prods[id] || 0) > 0)
-      .map(id => ({ codigo: PRODUCTO_INFO[id].codigo, cantidad: prods[id] || 0 }))
-
-    if (items.length === 0) {
-      setPreciosResueltos({})
-      return
-    }
-    try {
-      const res = await fetch('/api/precios/resolver', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items, canal: canalVal }),
-      })
-      if (res.ok) {
-        const data = await res.json()
-        if (data.precios) {
-          const nuevos: Record<string, number> = {}
-          for (const [codigo, info] of Object.entries(data.precios)) {
-            nuevos[codigo] = (info as any).precio
-          }
-          setPreciosResueltos(nuevos)
-        }
-      }
-    } catch { /* fallback */ }
-  }, [productosActuales])
 
   const handleCantidadChange = (id: string, value: string) => {
     const cant = parseInt(value) || 0
@@ -263,8 +277,35 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
     }
     setCantidades(nuevasCantidades)
     setCanal(nuevoCanal)
-    setPreciosResueltos({})
-    setPreciosManuales({})
+    if (!pedidoInicial?.id) {
+      setPreciosResueltos({})
+      setPreciosManuales({})
+    }
+    setTimeout(() => resolverPrecios(nuevasCantidades, nuevoCanal), 100)
+  }
+
+  const setPrecioManual = (codigo: string, valor: number) => {
+    if (valor <= 0 || valor === getPrecioBase(codigo)) {
+      setPreciosManuales(prev => {
+        const next = { ...prev }
+        delete next[codigo]
+        return next
+      })
+      setPrecioBajoConfirmado(prev => {
+        const next = { ...prev }
+        delete next[codigo]
+        return next
+      })
+    } else {
+      setPreciosManuales(prev => ({ ...prev, [codigo]: valor }))
+      if (valor >= getPrecioBase(codigo) * 0.5) {
+        setPrecioBajoConfirmado(prev => {
+          const next = { ...prev }
+          delete next[codigo]
+          return next
+        })
+      }
+    }
   }
 
   const handleSubmit = async (e?: React.FormEvent) => {
@@ -481,7 +522,16 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
                       <Icon size={24} />
                       <span className="font-medium text-sm">{info.nombre}</span>
                     </div>
-                    <span className="text-xs text-gray-500">${precio.toLocaleString()}</span>
+                    <div className="flex items-center gap-1">
+                      {preciosManuales[info.codigo] !== undefined && preciosManuales[info.codigo] > 0 ? (
+                        <>
+                          <span className="text-[9px] text-gray-400 line-through">${getPrecioBase(info.codigo).toLocaleString()}</span>
+                          <span className="text-xs font-bold text-amber-600">${preciosManuales[info.codigo].toLocaleString()}</span>
+                        </>
+                      ) : (
+                        <span className="text-xs text-gray-500">${precio.toLocaleString()}</span>
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1">
@@ -495,6 +545,44 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
                     </div>
                     {cant > 0 && <span className="text-sm font-bold">${(cant * precio).toLocaleString()}</span>}
                   </div>
+                  {cant > 0 && (
+                    <div className="mt-1.5 flex items-center gap-1">
+                      <span className="text-[10px] text-gray-400">Precio:</span>
+                      <input
+                        type="number"
+                        min="0"
+                        value={preciosManuales[info.codigo] ?? ''}
+                        onChange={(e) => setPrecioManual(info.codigo, parseFloat(e.target.value) || 0)}
+                        placeholder={`${getPrecioBase(info.codigo)}`}
+                        className="w-16 text-xs border border-gray-300 rounded px-1 py-0.5 text-right focus:ring-1 focus:ring-amber-400 focus:border-amber-400"
+                      />
+                      {preciosManuales[info.codigo] !== undefined && preciosManuales[info.codigo] > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setPrecioManual(info.codigo, 0)}
+                          className="text-[10px] text-gray-400 hover:text-red-500"
+                          title="Restaurar precio base"
+                        >
+                          ↺
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {cant > 0 && preciosManuales[info.codigo] !== undefined &&
+                    preciosManuales[info.codigo] > 0 &&
+                    preciosManuales[info.codigo] < getPrecioBase(info.codigo) * 0.5 &&
+                    !precioBajoConfirmado[info.codigo] && (
+                    <div className="mt-1.5 bg-amber-50 border border-amber-200 rounded px-2 py-1 text-[10px] text-amber-700 flex items-center justify-between">
+                      <span>⚠️ {Math.round((1 - preciosManuales[info.codigo] / getPrecioBase(info.codigo)) * 100)}% bajo</span>
+                      <button
+                        type="button"
+                        onClick={() => setPrecioBajoConfirmado(prev => ({ ...prev, [info.codigo]: true }))}
+                        className="text-amber-800 font-medium underline"
+                      >
+                        Confirmar
+                      </button>
+                    </div>
+                  )}
                   {tiers.length > 0 && cant > 0 && (
                     <div className="flex flex-wrap gap-1 mt-2">
                       {tiers.map((t, i) => (

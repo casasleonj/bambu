@@ -75,6 +75,9 @@ function DesktopRow({
       <td className="px-4 py-3">
         <div className="flex items-center gap-2 mb-0.5 flex-wrap">
           <span className="font-medium text-gray-800">{pedido.nombreCli}</span>
+          {pedido.nombreNegocioCli && (
+            <span className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">{pedido.nombreNegocioCli}</span>
+          )}
           {renderOrigenBadge(pedido.origen)}
           {alertas.map((a) => (
             <span key={a.tipo} className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${alertaBadgeClass(a.severidad)}`} title={a.label}>
@@ -85,6 +88,9 @@ function DesktopRow({
         <div className="text-xs text-gray-400">{pedido.telefonoCli}</div>
         {pedido.horaPreferida && (
           <span className="text-xs text-amber-600 font-medium">{pedido.horaPreferida}</span>
+        )}
+        {pedido.horaAperturaCli && (
+          <span className="text-xs text-gray-500">🕐 {pedido.horaAperturaCli}</span>
         )}
         {fiado && (
           <span className="text-xs text-red-600 font-medium">Fiado: {formatCurrency(Number(pedido.saldo))}</span>
@@ -210,7 +216,13 @@ function MobileCard({
             ))}
           </div>
           <h3 className="font-medium text-gray-800 text-sm">{pedido.nombreCli}</h3>
+          {pedido.nombreNegocioCli && (
+            <p className="text-xs text-gray-500">{pedido.nombreNegocioCli}</p>
+          )}
           <p className="text-xs text-gray-400">{pedido.telefonoCli}</p>
+          {pedido.horaAperturaCli && (
+            <p className="text-xs text-gray-500">🕐 {pedido.horaAperturaCli}</p>
+          )}
           {pedido.horaPreferida && (
             <p className="text-xs text-amber-600 font-medium">{pedido.horaPreferida}</p>
           )}

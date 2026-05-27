@@ -62,6 +62,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         // Borrar items existentes
         await tx.pedidoItem.deleteMany({ where: { pedidoId: id } })
 
+        // Leer origenes existentes para preservar los que no cambian
+        const origenesExistentes: Record<string, string> = {}
+        for (const item of current.items) {
+          origenesExistentes[item.producto] = (item as any).precioOrigen || 'base'
+        }
+
         // Crear nuevos items usando precios legacy actuales del pedido
         const precioMap: Record<string, number> = {
           PACA_AGUA: Number(current.precioPacaAgua || 0),
@@ -73,13 +79,18 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
         const newItems = parsed.data.items
           .filter(i => i.cantidad > 0)
-          .map(i => ({
-            producto: i.producto,
-            cantPedido: i.cantidad,
-            cantEntrega: updateData.estado === 'ENTREGADO' ? i.cantidad : 0,
-            precio: i.precioManual ?? precioMap[i.producto] ?? 0,
-            subtotal: (i.precioManual ?? precioMap[i.producto] ?? 0) * i.cantidad,
-          }))
+          .map(i => {
+            const precioUsar = i.precioManual ?? precioMap[i.producto] ?? 0
+            const origen = i.precioManual ? 'manual' : (origenesExistentes[i.producto] || 'base')
+            return {
+              producto: i.producto,
+              cantPedido: i.cantidad,
+              cantEntrega: updateData.estado === 'ENTREGADO' ? i.cantidad : 0,
+              precio: precioUsar,
+              subtotal: precioUsar * i.cantidad,
+              precioOrigen: origen,
+            }
+          })
 
         await tx.pedidoItem.createMany({
           data: newItems.map(i => ({ ...i, pedidoId: id })),

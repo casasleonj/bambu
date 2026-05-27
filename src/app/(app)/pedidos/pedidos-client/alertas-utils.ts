@@ -211,6 +211,8 @@ export function calcularAlertas(pedidos: PedidoPedidos[], clienteIdIgnorar?: str
     const items = p.items && p.items.length > 0 ? p.items : legacyItems(p)
     items.forEach((item) => {
       if (item.cantPedido > 0 && item.precio > 0) {
+        if ((item as any).precioOrigen === 'manual') return
+
         const ultPrecioMap = ultimoPrecioPorClienteProducto.get(p.clienteId)
         const ultPrecio = ultPrecioMap?.get(item.producto)
         if (ultPrecio && ultPrecio > 0) {
