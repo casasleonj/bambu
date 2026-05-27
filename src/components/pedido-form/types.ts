@@ -1,9 +1,11 @@
 export interface Cliente {
   id: string
   nombre: string
+  apellido?: string
   telefono: string
   direccion?: string
   preciosEspeciales?: string
+  nombreNegocio?: string
 }
 
 export interface Tier {

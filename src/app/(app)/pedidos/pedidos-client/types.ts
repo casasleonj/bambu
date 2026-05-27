@@ -12,6 +12,7 @@ export interface Pedido {
   numero: number
   clienteId: string
   nombreCli: string
+  apellidoCli?: string | null
   telefonoCli: string
   zonaCli: string
   barrioCli: string

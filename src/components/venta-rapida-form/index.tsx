@@ -138,6 +138,8 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
   const filteredClientes = searchTerm
     ? clientes.filter((c) =>
         c.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (c.apellido || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (c.nombreNegocio || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         c.telefono.includes(searchTerm)
       )
     : []

@@ -72,6 +72,7 @@ export async function GET(request: NextRequest) {
     const pedidos = pedidosRaw.map(p => ({
       ...p,
       nombreCli: p.clienteId === 'CONSUMIDOR_FINAL' ? 'Consumidor Final' : (p.cliente?.nombre || 'Desconocido'),
+      apellidoCli: p.cliente?.apellido || null,
       telefonoCli: p.cliente?.telefono || '',
       zonaCli: p.cliente?.direccion || '',
       barrioCli: p.cliente?.barrio || '',

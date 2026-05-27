@@ -281,7 +281,7 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
   const pagarCompleto = () => { if (total > 0) setPagos([{ metodo: 'EFECTIVO', monto: total }]) }
 
   const filteredClientes = searchTerm
-    ? clientes.filter((c) => c.nombre.toLowerCase().includes(searchTerm.toLowerCase()) || c.telefono.includes(searchTerm))
+    ? clientes.filter((c) => c.nombre.toLowerCase().includes(searchTerm.toLowerCase()) || c.telefono.includes(searchTerm) || (c.apellido || '').toLowerCase().includes(searchTerm.toLowerCase()) || (c.nombreNegocio || '').toLowerCase().includes(searchTerm.toLowerCase()))
     : []
 
   const handleSelectCliente = (cliente: Cliente) => { setClienteSeleccionado(cliente); setSearchTerm(''); setMostrarNuevo(false) }
@@ -424,7 +424,7 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
             <div className="space-y-2">
               <div className="flex items-center justify-between bg-blue-50 rounded-lg px-3 py-2">
                 <div>
-                  <span className="font-medium text-sm">{clienteSeleccionado.nombre}</span>
+                  <span className="font-medium text-sm">{clienteSeleccionado.nombre}{clienteSeleccionado.apellido ? ` ${clienteSeleccionado.apellido}` : ''}{clienteSeleccionado.nombreNegocio ? ` — ${clienteSeleccionado.nombreNegocio}` : ''}</span>
                   <span className="text-xs text-gray-500 ml-2">{clienteSeleccionado.telefono}</span>
                 </div>
                 <button type="button" onClick={() => setClienteSeleccionado(null)} className="text-gray-400 hover:text-red-500">
@@ -481,7 +481,8 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
                 <div className="border rounded-lg max-h-40 overflow-y-auto">
                   {filteredClientes.map(c => (
                     <button key={c.id} type="button" onClick={() => handleSelectCliente(c)} className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b last:border-b-0 text-sm">
-                      <span className="font-medium">{c.nombre}</span>
+                      <span className="font-medium">{c.nombre}{c.apellido ? ` ${c.apellido}` : ''}</span>
+                      {c.nombreNegocio && <span className="text-gray-500 ml-1">— {c.nombreNegocio}</span>}
                       <span className="text-gray-400 ml-2">{c.telefono}</span>
                     </button>
                   ))}

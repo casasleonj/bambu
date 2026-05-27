@@ -5,9 +5,11 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 export interface ClienteSearchOption {
   id: string
   nombre: string
+  apellido?: string
   telefono: string
   direccion: string | null
   barrio: string | null
+  nombreNegocio?: string
 }
 
 interface PedidosSearchProps {
@@ -47,9 +49,11 @@ export function PedidosSearch({
       .filter(
         c =>
           c.nombre.toLowerCase().includes(q) ||
+          (c.apellido || '').toLowerCase().includes(q) ||
           c.telefono.includes(q) ||
           (c.barrio || '').toLowerCase().includes(q) ||
-          (c.direccion || '').toLowerCase().includes(q)
+          (c.direccion || '').toLowerCase().includes(q) ||
+          (c.nombreNegocio || '').toLowerCase().includes(q)
       )
       .slice(0, 8)
   }, [clientes, searchInput, hasLetters])
@@ -170,7 +174,8 @@ export function PedidosSearch({
               }`}
             >
               <p className="text-sm font-medium text-gray-900">
-                {c.nombre}
+                {c.nombre}{c.apellido ? ` ${c.apellido}` : ''}
+                {c.nombreNegocio && <span className="text-gray-500 font-normal ml-1">— {c.nombreNegocio}</span>}
               </p>
               <p className="text-xs text-gray-500">
                 {c.telefono}

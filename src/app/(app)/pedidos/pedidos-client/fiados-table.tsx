@@ -10,6 +10,8 @@ import { getEstadoFiados } from '@/lib/pedido-utils'
 interface FiadoRow {
   clienteId: string
   nombreCli: string
+  apellidoCli?: string | null
+  nombreNegocioCli?: string | null
   telefonoCli: string
   deudaTotal: number
   pedidosFiados: Pedido[]
@@ -55,6 +57,8 @@ export function FiadosTable({ pedidos, onPedidosChange }: FiadosTableProps) {
           clientesMap.set(p.clienteId, {
             clienteId: p.clienteId,
             nombreCli: p.nombreCli,
+            apellidoCli: p.apellidoCli,
+            nombreNegocioCli: p.nombreNegocioCli,
             telefonoCli: p.telefonoCli,
             deudaTotal: Number(p.saldo),
             pedidosFiados: [p],
@@ -79,6 +83,8 @@ export function FiadosTable({ pedidos, onPedidosChange }: FiadosTableProps) {
   const filtrados = fiadoRows.filter((row) => {
     const matchSearch = !searchTerm ||
       row.nombreCli.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (row.apellidoCli || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (row.nombreNegocioCli || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       row.telefonoCli?.includes(searchTerm)
     const matchMin = !minDeuda || row.deudaTotal >= Number(minDeuda)
     const matchMax = !maxDeuda || row.deudaTotal <= Number(maxDeuda)
@@ -253,7 +259,10 @@ export function FiadosTable({ pedidos, onPedidosChange }: FiadosTableProps) {
                 <React.Fragment key={row.clienteId}>
                   <tr className="hover:bg-gray-50 transition">
                     <td className="px-4 py-3">
-                      <div className="font-medium text-gray-800">{row.nombreCli}</div>
+                      <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                        <span className="font-medium text-gray-800">{row.nombreCli}{row.apellidoCli ? ` ${row.apellidoCli}` : ''}</span>
+                        {row.nombreNegocioCli && <span className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">{row.nombreNegocioCli}</span>}
+                      </div>
                       <div className="text-xs text-gray-400">{row.telefonoCli}</div>
                     </td>
                     <td className="px-4 py-3 text-right">
@@ -379,7 +388,10 @@ export function FiadosTable({ pedidos, onPedidosChange }: FiadosTableProps) {
             <div key={row.clienteId} className="p-4">
               <div className="flex justify-between items-start mb-2">
                 <div>
-                  <h3 className="font-medium text-gray-800">{row.nombreCli}</h3>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-medium text-gray-800">{row.nombreCli}{row.apellidoCli ? ` ${row.apellidoCli}` : ''}</h3>
+                    {row.nombreNegocioCli && <span className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">{row.nombreNegocioCli}</span>}
+                  </div>
                   <p className="text-xs text-gray-400">{row.telefonoCli}</p>
                 </div>
                 <div className="text-right">
