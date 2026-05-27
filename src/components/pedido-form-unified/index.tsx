@@ -151,7 +151,7 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
       allProducts[id] = cantidadesRef.current[id] || 1
     }
     resolverPrecios(allProducts, canalRef.current, clienteSeleccionado.id)
-  }, [productosConfig, resolverPrecios, clienteSeleccionado?.id, productosActuales])
+  }, [productosConfig, clienteSeleccionado?.id, productosActuales])
 
   useEffect(() => {
     if (clienteSeleccionado) {
@@ -186,7 +186,8 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
       setFiadosStatus(null)
       setPreciosResueltos({})
     }
-  }, [clienteSeleccionado, resolverPrecios, productosActuales])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clienteSeleccionado, productosActuales])
 
   useEffect(() => {
     if (!pedidoInicial) return
