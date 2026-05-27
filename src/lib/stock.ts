@@ -23,6 +23,7 @@ export function emptyStock(): StockSnapshot {
 export interface StockEstimado {
   agua: number
   hielo: number
+  botellon: number
   fecha: string
 }
 
@@ -42,12 +43,12 @@ export async function getStockEstimadoHoy(): Promise<StockEstimado | null> {
   }
 }
 
-export async function setStockEstimadoHoy(agua: number, hielo: number): Promise<void> {
+export async function setStockEstimadoHoy(agua: number, hielo: number, botellon: number): Promise<void> {
   const today = new Date().toISOString().split('T')[0]
   await prisma.config.upsert({
     where: { clave: 'stock_estimado_hoy' },
-    update: { valor: JSON.stringify({ agua, hielo, fecha: today }) },
-    create: { clave: 'stock_estimado_hoy', valor: JSON.stringify({ agua, hielo, fecha: today }) },
+    update: { valor: JSON.stringify({ agua, hielo, botellon, fecha: today }) },
+    create: { clave: 'stock_estimado_hoy', valor: JSON.stringify({ agua, hielo, botellon, fecha: today }) },
   })
 }
 
@@ -84,7 +85,7 @@ export async function getStockDisponible(): Promise<StockDisponibleResult> {
   const stockBase: StockSnapshot = {
     PACA_AGUA: Math.max(ultimoCierre?.stockFinAgua || 0, stockEstimado?.agua || 0),
     PACA_HIELO: Math.max(ultimoCierre?.stockFinHielo || 0, stockEstimado?.hielo || 0),
-    BOTELLON: 0,
+    BOTELLON: stockEstimado?.botellon || 0,
     BOLSA_AGUA: 0,
     BOLSA_HIELO: 0,
   }
@@ -180,7 +181,7 @@ export async function evaluarStock(carga: StockSnapshot): Promise<StockEvaluatio
   const deficit: StockSnapshot = emptyStock()
   let totalDeficit = 0
 
-  for (const producto of PRODUCTOS_CON_STOCK) {
+  for (const producto of PRODUCTOS_DOMICILIO) {
     const key = producto as keyof StockSnapshot
     if (carga[key] > disponible[key]) {
       deficit[key] = carga[key] - disponible[key]
