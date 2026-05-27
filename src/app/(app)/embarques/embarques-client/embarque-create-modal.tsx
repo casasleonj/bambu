@@ -37,6 +37,10 @@ export function EmbarqueCreateModal({
   })
   const [stockDisponible, setStockDisponible] = useState<StockDisponible | null>(null)
   const [tieneStockEstimado, setTieneStockEstimado] = useState(false)
+  const [estimadoAgua, setEstimadoAgua] = useState(0)
+  const [estimadoHielo, setEstimadoHielo] = useState(0)
+  const [mostrarFormEstimado, setMostrarFormEstimado] = useState(false)
+  const [guardandoEstimado, setGuardandoEstimado] = useState(false)
   const [confirmOverride, setConfirmOverride] = useState(false)
   const [overrideMotivo, setOverrideMotivo] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -108,6 +112,41 @@ export function EmbarqueCreateModal({
     const max = (stockDisponible as unknown as Record<string, number>)[key] || 0
     return val - max > 10
   })
+
+  async function guardarStockEstimado() {
+    if (estimadoAgua === 0 && estimadoHielo === 0) {
+      toast.error('Ingrese al menos un valor mayor a 0')
+      return
+    }
+    setGuardandoEstimado(true)
+    try {
+      const res = await fetch('/api/stock-estimado', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ agua: estimadoAgua, hielo: estimadoHielo }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setTieneStockEstimado(true)
+        setMostrarFormEstimado(false)
+        toast.success('Stock estimado actualizado')
+        // Refetch stock
+        fetch('/api/embarques?all=true&stock=true', { credentials: 'include' })
+          .then(r => r.json())
+          .then(d => {
+            if (d.stock) setStockDisponible(d.stock)
+          })
+          .catch(() => {})
+      } else {
+        toast.error(data.error?.message || 'Error guardando stock estimado')
+      }
+    } catch {
+      toast.error('Error de conexión')
+    } finally {
+      setGuardandoEstimado(false)
+    }
+  }
 
   async function createEmbarque() {
     if (!selectedTrabajadorId || submitting) return
@@ -254,6 +293,57 @@ export function EmbarqueCreateModal({
                 </p>
               </div>
             </div>
+          </div>
+        )}
+
+        {!tieneStockEstimado && stockDisponible && (
+          <div>
+            <button
+              onClick={() => setMostrarFormEstimado(!mostrarFormEstimado)}
+              className="text-xs text-amber-600 hover:text-amber-800 font-medium"
+            >
+              {mostrarFormEstimado ? '✕ Cancelar' : '+ Estimar stock del día'}
+            </button>
+            {mostrarFormEstimado && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-2 space-y-2">
+                <p className="text-xs text-amber-700">
+                  Ingrese el stock físico estimado en zona de embarque. Esto permite crear embarques mientras se registra producción real.
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-amber-800">Pacas Agua estimadas</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={estimadoAgua}
+                      onChange={(e) => setEstimadoAgua(parseInt(e.target.value) || 0)}
+                      onFocus={(e) => e.target.select()}
+                      className="w-full px-2 py-1 border border-amber-300 rounded text-sm"
+                      placeholder="0"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-amber-800">Pacas Hielo estimadas</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={estimadoHielo}
+                      onChange={(e) => setEstimadoHielo(parseInt(e.target.value) || 0)}
+                      onFocus={(e) => e.target.select()}
+                      className="w-full px-2 py-1 border border-amber-300 rounded text-sm"
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+                <button
+                  onClick={guardarStockEstimado}
+                  disabled={guardandoEstimado}
+                  className="w-full px-3 py-1.5 bg-amber-600 text-white rounded text-sm hover:bg-amber-700 disabled:opacity-50"
+                >
+                  {guardandoEstimado ? 'Guardando...' : 'Guardar stock estimado'}
+                </button>
+              </div>
+            )}
           </div>
         )}
 
