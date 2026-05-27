@@ -155,7 +155,11 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
       setEditDireccion(clienteSeleccionado.direccion || '')
       setEditBarrio(clienteSeleccionado.barrio || '')
       const timer = setTimeout(() => {
-        resolverPrecios(cantidadesRef.current, canalRef.current, clienteSeleccionado.id)
+        const allProducts: Record<string, number> = {}
+        for (const id of productosActuales) {
+          allProducts[id] = cantidadesRef.current[id] || 1
+        }
+        resolverPrecios(allProducts, canalRef.current, clienteSeleccionado.id)
       }, 100)
       fetch(`/api/pedidos?all=true&cliente=${clienteSeleccionado.id}`)
         .then(r => r.json())
@@ -178,7 +182,7 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
     } else {
       setFiadosStatus(null)
     }
-  }, [clienteSeleccionado, resolverPrecios])
+  }, [clienteSeleccionado, resolverPrecios, productosActuales])
 
   useEffect(() => {
     if (!pedidoInicial) return
