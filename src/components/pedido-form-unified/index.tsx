@@ -106,6 +106,14 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
   }, [])
 
   useEffect(() => {
+    if (productosConfig.length === 0) return
+    const hasCantidades = Object.values(cantidadesRef.current).some(v => v > 0)
+    if (hasCantidades) {
+      resolverPrecios(cantidadesRef.current, canalRef.current, clienteSeleccionado?.id)
+    }
+  }, [productosConfig])
+
+  useEffect(() => {
     fetch(`/api/precios/tabla`)
       .then(r => r.json())
       .then(d => { if (d.tabla) setTablaPrecios(d.tabla) })
@@ -137,7 +145,9 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
           setPreciosResueltos(nuevos)
         }
       }
-    } catch { /* fallback */ }
+    } catch (error) {
+      console.error('Error resolviendo precios:', error)
+    }
   }, [productosActuales, clienteSeleccionado?.id])
 
   useEffect(() => {
@@ -233,7 +243,7 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
       clearTimeout(resolverTimeoutRef.current)
     }
     resolverTimeoutRef.current = setTimeout(() => {
-      resolverPrecios(next, canal)
+      resolverPrecios(next, canalRef.current, clienteSeleccionado?.id)
     }, 400)
   }
 
