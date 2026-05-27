@@ -290,7 +290,7 @@ export const EmbarqueCreateSchema = z.object({
   trabajadorId: z.string().min(1),
   rutaId: z.string().optional(),
   tipoMoto: z.string().optional(),
-  horaSalida: z.string().optional(),
+  horaSalida: z.string().min(1, 'Hora de salida requerida'),
   baseDinero: z.coerce.number().min(0).default(0),
   obs: z.string().max(500).optional(),
   carga: z.array(EmbarqueProductoSchema).min(1, 'Agrega al menos un producto'),

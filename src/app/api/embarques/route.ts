@@ -140,17 +140,26 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      const { evaluarStock } = await import('@/lib/stock')
+      const { getStockDisponible, evaluarStock } = await import('@/lib/stock')
+      const stockResult = await getStockDisponible()
       const stockEval = await evaluarStock(carga)
 
       const MAX_OVERRIDE_PCT = 0.5
+      const HARD_CAP_SIN_ESTIMADO = 30
 
       if (stockEval.hasDeficit) {
         for (const key of ['PACA_AGUA', 'PACA_HIELO'] as const) {
           const disponible = stockEval.disponible[key]
-          const maxAllowed = Math.floor(disponible * (1 + MAX_OVERRIDE_PCT))
+          let maxAllowed: number
+          if (stockResult.tieneEstimado) {
+            continue
+          } else if (disponible > 0) {
+            maxAllowed = Math.floor(disponible * (1 + MAX_OVERRIDE_PCT))
+          } else {
+            maxAllowed = HARD_CAP_SIN_ESTIMADO
+          }
           if (carga[key] > maxAllowed) {
-            throw new Error(`STOCK_OVERRIDE_EXCEEDED: ${key} excede límite de override (${maxAllowed} máximo con 50% sobre disponible ${disponible})`)
+            throw new Error(`STOCK_OVERRIDE_EXCEEDED: ${key} excede límite (${maxAllowed} máximo)`)
           }
         }
       }
@@ -163,8 +172,6 @@ export async function POST(request: NextRequest) {
       getTodayRange()
       const numeroDia = await getNextNumeroDia(tx, parsed.data.trabajadorId, new Date())
 
-      const { getStockDisponible } = await import('@/lib/stock')
-      const stockResult = await getStockDisponible()
       const disponible = stockResult.stock
 
       const stockSnapshotData: Record<string, unknown> = {
