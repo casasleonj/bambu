@@ -131,6 +131,7 @@ export const PRODUCTO_NOMBRES: Record<string, string> = {
 export interface ClientesClientProps {
   initialClientes: Cliente[]
   openClienteId?: string
+  totalClientes?: number
 }
 
 export interface FormData {

@@ -20,6 +20,7 @@ interface ClienteTableProps {
   sortDir: 'asc' | 'desc'
   onSortChange: (by: 'nombre' | 'createdAt', dir: 'asc' | 'desc') => void
   selectedClienteId?: string | null
+  totalClientes?: number
 }
 
 export const ClienteTable = React.memo(function ClienteTable({
