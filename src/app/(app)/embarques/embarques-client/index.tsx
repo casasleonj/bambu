@@ -249,7 +249,7 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
               >
                 <span className="text-sm">📋</span>
                 <span className="text-sm font-medium hidden sm:inline">
-                  {stockEstimado ? `Stock: ${stockEstimado.agua}/${stockEstimado.hielo}` : 'Stock Estimado'}
+                  {stockEstimado ? `Stock: ${stockEstimado.agua}/${stockEstimado.hielo}/${(stockEstimado as any).botellon || 0}` : 'Stock Estimado'}
                 </span>
               </button>
             </Tooltip>
