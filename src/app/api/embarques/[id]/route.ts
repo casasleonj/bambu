@@ -4,11 +4,15 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole, requireOwnership } from '@/lib/auth-check'
 import { EmbarqueUpdateSchema } from '@/lib/validators'
 import { logAudit } from '@/lib/audit'
-import { calcularPacasEmbarque, calcularPesoEmbarque, getCapacidadInfo } from '@/lib/embarque-capacidad'
+import { calcularPacasEmbarque, calcularPesoEmbarque, calcularPesoDesdeCarga, getCapacidadInfo, type CargaSnapshot } from '@/lib/embarque-capacidad'
 import { withAdvisoryLock } from '@/lib/locks'
+import { emptyStock } from '@/lib/stock'
 import { ROLES } from '@/lib/constants'
 import { logger } from '@/lib/logger'
 import { apiSuccess, apiError } from '@/lib/api-response'
+
+// Fields that can only be edited when embarque is ABIERTO
+const ABIERTO_ONLY_FIELDS = ['trabajadorId', 'rutaId', 'horaSalida', 'baseDinero', 'tipoMoto', 'carga'] as const
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
@@ -51,18 +55,116 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (!parsed.success) {
       return apiError(formatZodError(parsed.error), 400)
     }
-    const { pedidoIds, obs, estado, horaLlegada, ...rest } = parsed.data
 
+    const { pedidoIds, obs, estado, horaLlegada, horaSalida, trabajadorId, rutaId, tipoMoto, baseDinero, carga, ...rest } = parsed.data
+
+    // Fetch current embarque to check state
+    const currentEmbarque = await prisma.embarque.findUnique({
+      where: { id },
+      include: { trabajador: true, productos: true },
+    })
+    if (!currentEmbarque) return apiError('Embarque no encontrado', 404)
+
+    // Enforce field restrictions by state
+    if (currentEmbarque.estado !== 'ABIERTO') {
+      const forbiddenFields = ABIERTO_ONLY_FIELDS.filter((field) => parsed.data[field] !== undefined)
+      if (forbiddenFields.length > 0) {
+        return apiError(`No se pueden editar estos campos en estado ${currentEmbarque.estado}: ${forbiddenFields.join(', ')}`, 400)
+      }
+    }
+
+    // Prevent closing via PUT — must use cierre flow
     if (estado === 'CERRADO') {
       return apiError('Use el flujo de cierre de ruta para cerrar embarques', 400)
     }
 
+    // Validate carga if it's being updated (only for ABIERTO)
+    if (carga && currentEmbarque.estado === 'ABIERTO' && carga.length > 0) {
+      const cargaSnapshot: CargaSnapshot = emptyStock() as CargaSnapshot
+      for (const item of carga) {
+        const key = item.producto as keyof typeof cargaSnapshot
+        if (key in cargaSnapshot) {
+          cargaSnapshot[key] = item.cargadas
+        }
+      }
+
+      const totalUnidades = Object.values(cargaSnapshot).reduce((s, v) => s + v, 0)
+      if (totalUnidades > 70) {
+        return apiError(`Máximo 70 unidades por embarque (${totalUnidades})`, 400)
+      }
+
+      // Check weight capacity with current or new trabajador
+      const targetTrabajadorId = trabajadorId || currentEmbarque.trabajadorId
+      const targetTrabajador = targetTrabajadorId === currentEmbarque.trabajadorId
+        ? currentEmbarque.trabajador
+        : await prisma.trabajador.findUnique({ where: { id: targetTrabajadorId } })
+      const capacidadKg = targetTrabajador?.capacidadKg || 500
+      const pesoKg = calcularPesoDesdeCarga(cargaSnapshot)
+      if (pesoKg > capacidadKg * 1.1) {
+        return apiError(`Peso excede capacidad del repartidor (${pesoKg.toFixed(0)}kg > ${capacidadKg}kg)`, 400)
+      }
+
+      // Stock validation
+      const { getStockDisponible, evaluarStock } = await import('@/lib/stock')
+      const stockResult = await getStockDisponible()
+      const stockEval = await evaluarStock(cargaSnapshot)
+
+      if (stockEval.hasDeficit && !stockResult.tieneEstimado) {
+        const MAX_OVERRIDE_PCT = 0.5
+        const HARD_CAP_SIN_ESTIMADO = 30
+        for (const key of ['PACA_AGUA', 'PACA_HIELO'] as const) {
+          const disponible = stockEval.disponible[key]
+          const maxAllowed = disponible > 0
+            ? Math.floor(disponible * (1 + MAX_OVERRIDE_PCT))
+            : HARD_CAP_SIN_ESTIMADO
+          if (cargaSnapshot[key] > maxAllowed) {
+            return apiError(`${key} excede límite de stock (${maxAllowed} máximo)`, 400)
+          }
+        }
+      }
+    }
+
+    // Validate trabajadorId if changing
+    if (trabajadorId && trabajadorId !== currentEmbarque.trabajadorId) {
+      const newTrabajador = await prisma.trabajador.findUnique({
+        where: { id: trabajadorId },
+        select: { id: true, nombre: true, capacidadKg: true, usaMoto: true },
+      })
+      if (!newTrabajador) {
+        return apiError('Trabajador no encontrado', 400)
+      }
+      if (!newTrabajador.usaMoto) {
+        return apiError('Este trabajador no tiene moto asignada', 400)
+      }
+    }
+
     const embarque = await prisma.$transaction(async (tx) => {
+      // Handle carga update — replace all EmbarqueProducto records
+      if (carga && currentEmbarque.estado === 'ABIERTO') {
+        await tx.embarqueProducto.deleteMany({ where: { embarqueId: id } })
+        if (carga.length > 0) {
+          await tx.embarqueProducto.createMany({
+            data: carga.map(item => ({
+              embarqueId: id,
+              producto: item.producto,
+              cargadas: item.cargadas,
+            })),
+          })
+        }
+      }
+
+      // Build update data
       const updateData: Record<string, unknown> = { ...rest }
       if (obs !== undefined) updateData.obs = obs
       if (estado) updateData.estado = estado
       if (horaLlegada) updateData.horaLlegada = new Date(horaLlegada)
+      if (horaSalida) updateData.horaSalida = new Date(horaSalida)
+      if (trabajadorId) updateData.trabajadorId = trabajadorId
+      if (rutaId !== undefined) updateData.rutaId = rutaId
+      if (tipoMoto !== undefined) updateData.tipoMoto = tipoMoto
+      if (baseDinero !== undefined) updateData.baseDinero = baseDinero
 
+      // Assign pedidos if provided
       if (pedidoIds && Array.isArray(pedidoIds)) {
         await tx.pedido.updateMany({
           where: { id: { in: pedidoIds }, embarqueId: null },
@@ -77,6 +179,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           trabajador: true,
           ruta: { select: { id: true, nombre: true } },
           pedidos: { include: { cliente: true } },
+          productos: true,
         },
       })
     })

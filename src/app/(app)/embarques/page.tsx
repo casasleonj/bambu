@@ -25,7 +25,7 @@ export default async function EmbarquesPage() {
       },
     }),
     prisma.trabajador.findMany({
-      where: { rol: 'REPARTIDOR', activo: true },
+      where: { rol: 'REPARTIDOR', activo: true, usaMoto: true },
     }),
     prisma.ruta.findMany(),
     isAdmin
@@ -75,5 +75,5 @@ export default async function EmbarquesPage() {
     pedidos,
   }))
 
-  return <EmbarquesClient initialData={initialData} />
+  return <EmbarquesClient initialData={initialData} isAdmin={isAdmin} />
 }

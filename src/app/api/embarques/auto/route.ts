@@ -60,6 +60,7 @@ export async function POST(request: NextRequest) {
         where: {
           rol: 'REPARTIDOR',
           activo: true,
+          usaMoto: true,
         },
       })
 

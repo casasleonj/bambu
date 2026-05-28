@@ -125,11 +125,15 @@ export async function POST(request: NextRequest) {
     const result = await withAdvisoryLock('EMBARQUE', async (tx) => {
       const trabajador = await tx.trabajador.findUnique({
         where: { id: parsed.data.trabajadorId },
-        select: { id: true, nombre: true, capacidadKg: true },
+        select: { id: true, nombre: true, capacidadKg: true, usaMoto: true },
       })
 
       if (!trabajador) {
         throw new Error('TRABAJADOR_NOT_FOUND')
+      }
+
+      if (!trabajador.usaMoto) {
+        throw new Error('TRABAJADOR_SIN_MOTO')
       }
 
       const carga: CargaSnapshot = emptyStock() as CargaSnapshot
@@ -226,6 +230,9 @@ export async function POST(request: NextRequest) {
     const message = error instanceof Error ? error.message : 'Unknown'
     if (message === 'TRABAJADOR_NOT_FOUND') {
       return apiError('Trabajador no encontrado', 400)
+    }
+    if (message === 'TRABAJADOR_SIN_MOTO') {
+      return apiError('Este trabajador no tiene moto asignada', 400)
     }
     if (message.startsWith('STOCK_INSUFFICIENT')) {
       return apiError(message.replace('STOCK_INSUFFICIENT: ', 'Stock insuficiente: '), 400)
