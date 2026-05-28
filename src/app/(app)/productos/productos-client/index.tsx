@@ -24,6 +24,11 @@ export default function ProductosClient({ productos: initialProductos }: Precios
   const [modalCantMax, setModalCantMax] = useState('')
   const [modalPrecio, setModalPrecio] = useState('')
 
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [historyProducto, setHistoryProducto] = useState<string>('')
+  const [historyData, setHistoryData] = useState<Array<{ id: string; producto: string; precio: number; vigenteDesde: string; creadoPor: string }>>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+
   function startEdit(precio: PrecioVolumen) {
     const currentPrice = Number(precio.precio)
     setEditingId(precio.id)
@@ -66,16 +71,19 @@ export default function ProductosClient({ productos: initialProductos }: Precios
     }
   }
 
-  async function deleteTier(precioId: string) {
-    const ok = await confirm('¿Eliminar este rango de volumen?')
+  async function deleteTier(precio: PrecioVolumen) {
+    const label = precio.cantMax === null ? `${precio.cantMin}+` : `${precio.cantMin}-${precio.cantMax}`
+    const ok = await confirm(
+      `¿Eliminar el rango ${label}? Los pedidos existentes mantendran su precio actual.`
+    )
     if (!ok) return
     try {
-      const res = await fetch(`/api/precios/${precioId}`, { method: 'DELETE' })
+      const res = await fetch(`/api/precios/${precio.id}`, { method: 'DELETE' })
       if (res.ok) {
         toast.success('Rango eliminado')
         setProductos(prev => prev.map(p => ({
           ...p,
-          precios: p.precios.filter(pr => pr.id !== precioId)
+          precios: p.precios.filter(pr => pr.id !== precio.id)
         })))
       } else {
         const data = await res.json().catch(() => ({}))
@@ -122,6 +130,23 @@ export default function ProductosClient({ productos: initialProductos }: Precios
       }
     } catch {
       toast.error('Error de conexión')
+    }
+  }
+
+  async function openHistory(productoCodigo: string) {
+    setHistoryProducto(productoCodigo)
+    setHistoryOpen(true)
+    setHistoryLoading(true)
+    try {
+      const res = await fetch(`/api/precios/historial?producto=${encodeURIComponent(productoCodigo)}`)
+      if (res.ok) {
+        const data = await res.json()
+        setHistoryData(data.historial || [])
+      }
+    } catch {
+      toast.error('Error cargando historial')
+    } finally {
+      setHistoryLoading(false)
     }
   }
 
@@ -174,9 +199,14 @@ export default function ProductosClient({ productos: initialProductos }: Precios
                       )}
                     </CardTitle>
                   </div>
-                  <Button size="sm" variant="outline" data-testid={`add-range-btn-${producto.id}`} onClick={() => { setModalProductoId(producto.id); setModalOpen(true) }}>
-                    + Agregar rango
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" data-testid={`history-btn-${producto.id}`} onClick={() => openHistory(producto.codigo)}>
+                      📋 Historial
+                    </Button>
+                    <Button size="sm" variant="outline" data-testid={`add-range-btn-${producto.id}`} onClick={() => { setModalProductoId(producto.id); setModalOpen(true) }}>
+                      + Agregar rango
+                    </Button>
+                  </div>
                 </div>
                 <div className="flex items-center gap-4 mt-2 flex-wrap">
                   <label className="flex items-center gap-2 text-sm cursor-pointer">
@@ -247,12 +277,12 @@ export default function ProductosClient({ productos: initialProductos }: Precios
                       </thead>
                       <tbody>
                         {producto.precios.map((precio) => (
-                          <tr key={precio.id} className="border-b last:border-b-0 hover:bg-muted/50">
+                          <tr key={precio.id} className="border-b last:border-b-0 hover:bg-muted/50" data-precio-id={precio.id}>
                             <td className="py-2.5 px-3">{precio.cantMin}</td>
                             <td className="py-2.5 px-3 text-muted-foreground">{precio.cantMax ?? '—'}</td>
                             <td className="py-2.5 px-3 text-right">
                               {editingId === precio.id ? (
-                                <div className="flex items-center gap-1 justify-end" data-testid={`price-edit-row-${precio.id}`}>
+                                <div className="flex items-center gap-1 justify-end" data-testid={`price-edit-row-${precio.id}`} data-precio-id={precio.id}>
                                   <Input
                                     type="number"
                                     min="0"
@@ -266,13 +296,14 @@ export default function ProductosClient({ productos: initialProductos }: Precios
                                     }}
                                     autoFocus
                                   />
-                                  <Button size="sm" data-testid={`price-save-${precio.id}`} onClick={() => savePrice(precio.id)} disabled={saving}>OK</Button>
+                                  <Button size="sm" data-testid={`price-save-${precio.id}`} data-precio-id={precio.id} onClick={() => savePrice(precio.id)} disabled={saving}>OK</Button>
                                   <Button size="sm" variant="outline" data-testid={`price-cancel-${precio.id}`} onClick={cancelEdit} disabled={saving}>X</Button>
                                 </div>
                               ) : (
                                 <button
                                   type="button"
                                   data-testid={`price-display-${precio.id}`}
+                                  data-precio-id={precio.id}
                                   className="font-semibold text-blue-600 hover:underline cursor-pointer"
                                   onClick={() => startEdit(precio)}
                                   title="Clic para editar"
@@ -282,7 +313,7 @@ export default function ProductosClient({ productos: initialProductos }: Precios
                               )}
                             </td>
                             <td className="py-2.5 px-3 text-right">
-                              <Button size="sm" variant="ghost" data-testid={`tier-delete-${precio.id}`} onClick={() => deleteTier(precio.id)} className="text-red-600 hover:text-red-700 hover:bg-red-50">
+                              <Button size="sm" variant="ghost" data-testid={`tier-delete-${precio.id}`} onClick={() => deleteTier(precio)} className="text-red-600 hover:text-red-700 hover:bg-red-50">
                                 Eliminar
                               </Button>
                             </td>
@@ -340,6 +371,43 @@ export default function ProductosClient({ productos: initialProductos }: Precios
           </div>
         </div>
       </Modal>
+
+      {/* Historial de precios modal */}
+      <Modal open={historyOpen} onClose={() => setHistoryOpen(false)} title={`Historial de precios — ${historyProducto}`}>
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold">Historial de cambios</h3>
+          {historyLoading ? (
+            <div className="text-center text-sm text-muted-foreground py-8">Cargando...</div>
+          ) : historyData.length === 0 ? (
+            <div className="text-center text-sm text-muted-foreground py-8">No hay registros de historial para este producto</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left py-2 px-3 font-medium text-muted-foreground">Fecha</th>
+                    <th className="text-right py-2 px-3 font-medium text-muted-foreground">Precio</th>
+                    <th className="text-left py-2 px-3 font-medium text-muted-foreground">Creado por</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {historyData.map((entry) => (
+                    <tr key={entry.id} className="border-b last:border-b-0">
+                      <td className="py-2 px-3 text-xs">{new Date(entry.vigenteDesde).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+                      <td className="py-2 px-3 text-right font-medium">${Number(entry.precio).toLocaleString('es-CO')}</td>
+                      <td className="py-2 px-3 text-xs text-muted-foreground">{entry.creadoPor}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <div className="flex justify-end pt-2">
+            <Button variant="outline" onClick={() => setHistoryOpen(false)}>Cerrar</Button>
+          </div>
+        </div>
+      </Modal>
+
       {modal}
     </div>
   )

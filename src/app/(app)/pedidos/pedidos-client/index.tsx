@@ -34,6 +34,7 @@ export function PedidosClient() {
   const [showVentaRapida, setShowVentaRapida] = useState(false)
   const [selectedPedido, setSelectedPedido] = useState<Pedido | null>(null)
   const [showDetailModal, setShowDetailModal] = useState(false)
+  const [preciosActuales, setPreciosActuales] = useState<Record<string, { precio: number; origen: string }>>({})
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [precios, setPrecios] = useState<Record<string, number>>({})
   const [embarques, setEmbarques] = useState<Embarque[]>([])
@@ -575,9 +576,36 @@ export function PedidosClient() {
     }
   }
 
-  function handleDetail(pedido: Pedido) {
+  async function handleDetail(pedido: Pedido) {
     setSelectedPedido(pedido)
     setShowDetailModal(true)
+
+    // Fetch current prices for comparison
+    const items = pedido.items && pedido.items.length > 0
+      ? pedido.items.filter(i => i.cantPedido > 0).map(i => ({ codigo: i.producto, cantidad: i.cantPedido }))
+      : [
+          ...(pedido.cPacaAguaPed > 0 ? [{ codigo: 'PACA_AGUA', cantidad: pedido.cPacaAguaPed }] : []),
+          ...(pedido.cPacaHieloPed > 0 ? [{ codigo: 'PACA_HIELO', cantidad: pedido.cPacaHieloPed }] : []),
+          ...((pedido.cBotellonFabPed || 0) + (pedido.cBotellonDomPed || 0) > 0 ? [{ codigo: 'BOTELLON', cantidad: (pedido.cBotellonFabPed || 0) + (pedido.cBotellonDomPed || 0) }] : []),
+          ...(pedido.cBolsaAguaPed > 0 ? [{ codigo: 'BOLSA_AGUA', cantidad: pedido.cBolsaAguaPed }] : []),
+          ...(pedido.cBolsaHieloPed > 0 ? [{ codigo: 'BOLSA_HIELO', cantidad: pedido.cBolsaHieloPed }] : []),
+        ]
+
+    if (items.length > 0) {
+      try {
+        const res = await fetch('/api/precios/resolver', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items, canal: pedido.canal }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          setPreciosActuales(data.precios || {})
+        }
+      } catch {
+        setPreciosActuales({})
+      }
+    }
   }
 
   if (fetchError) {
@@ -941,18 +969,34 @@ export function PedidosClient() {
                       const meta = getProductoIconConfig(item.producto)
                       const Icon = meta.Icon
                       const bg = ITEM_BG[item.producto] || 'bg-gray-50'
+                      const snapshotPrice = Number(item.precio)
+                      const currentData = preciosActuales[item.producto]
+                      const currentPrice = currentData?.precio ?? 0
+                      const diff = currentPrice > 0 && snapshotPrice > 0
+                        ? ((currentPrice - snapshotPrice) / snapshotPrice) * 100
+                        : 0
+                      const showDiff = Math.abs(diff) > 5 && currentPrice > 0
+
                       return (
                         <div key={item.producto} className={`flex justify-between items-center ${bg} rounded-lg px-3 py-2`}>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <Icon size={20} />
                             <span className="text-sm font-medium">{meta.label}</span>
                             {(item as any).precioOrigen === 'manual' && (
                               <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-medium">manual</span>
                             )}
+                            {showDiff && (
+                              <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${diff > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                {diff > 0 ? '↑' : '↓'} {Math.abs(diff).toFixed(0)}%
+                              </span>
+                            )}
                           </div>
                           <div className="text-right">
                             <div className="text-sm font-semibold">{item.cantPedido} und</div>
-                            <div className="text-xs text-gray-500">${formatCurrency(Number(item.precio))} c/u</div>
+                            <div className="text-xs text-gray-500">${formatCurrency(snapshotPrice)} c/u</div>
+                            {showDiff && (
+                              <div className="text-[10px] text-gray-400">Actual: ${formatCurrency(currentPrice)}</div>
+                            )}
                           </div>
                         </div>
                       )

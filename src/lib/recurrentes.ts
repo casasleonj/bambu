@@ -538,8 +538,10 @@ export async function generarPedidosRecurrentes(
     )
 
     const precioMap: Record<string, number> = {}
+    const precioOrigenMap: Record<string, string> = {}
     for (const pr of preciosResueltos) {
       precioMap[pr.codigo] = pr.precio
+      precioOrigenMap[pr.codigo] = pr.origen
     }
 
     const total = preciosResueltos.reduce((sum, pr) => sum + pr.subtotal, 0)
@@ -621,6 +623,7 @@ export async function generarPedidosRecurrentes(
                 cantEntrega: 0,
                 precio: precioMap[item.codigo] || 0,
                 subtotal: (precioMap[item.codigo] || 0) * item.cantidad,
+                precioOrigen: precioOrigenMap[item.codigo] || 'base',
               }))
           },
         },

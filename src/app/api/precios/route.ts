@@ -53,6 +53,31 @@ export async function POST(request: NextRequest) {
     const createParsed = PrecioVolumenCreateSchema.safeParse(body)
     if (createParsed.success) {
       const { productoId, cantMin, cantMax, precio } = createParsed.data
+
+      // Validate cantMax >= cantMin
+      if (cantMax !== undefined && cantMax !== null && cantMax < cantMin) {
+        return apiError('La cantidad maxima debe ser mayor o igual a la cantidad minima', 400)
+      }
+
+      // Check for overlapping ranges
+      const overlapping = await prisma.precioVolumen.findFirst({
+        where: {
+          productoId,
+          activo: true,
+          OR: [
+            { cantMax: null },
+            { cantMax: { gte: cantMin } },
+          ],
+          cantMin: { lte: cantMax ?? cantMin },
+        },
+      })
+      if (overlapping) {
+        const existingLabel = overlapping.cantMax
+          ? `${overlapping.cantMin}-${overlapping.cantMax}`
+          : `${overlapping.cantMin}+`
+        return apiError(`El rango se solapa con el existente (${existingLabel}). Elimina o ajusta el rango existente primero.`, 409)
+      }
+
       const tier = await prisma.precioVolumen.create({
         data: { productoId, cantMin, cantMax: cantMax ?? null, precio },
       })
@@ -70,15 +95,48 @@ export async function POST(request: NextRequest) {
     const updateParsed = PrecioVolumenUpdateSchema.safeParse(body)
     if (updateParsed.success) {
       const { precioVolumenId, precio } = updateParsed.data
+
+      logger.debug({ precioVolumenId }, 'DEBUG: Intentando buscar PrecioVolumen por ID')
+
+      // Fetch existing tier for history
+      let existing = await prisma.precioVolumen.findUnique({
+        where: { id: precioVolumenId },
+        include: { producto: true },
+      })
+
+      // Fallback: si findUnique no encuentra, intentar con findFirst (patron comunitario validado)
+      if (!existing) {
+        logger.debug({ precioVolumenId }, 'DEBUG: findUnique retorno null, intentando findFirst')
+        existing = await prisma.precioVolumen.findFirst({
+          where: { id: precioVolumenId },
+          include: { producto: true },
+        })
+      }
+
+      if (!existing) {
+        logger.error({ precioVolumenId }, 'DEBUG: findFirst tampoco encontro el registro')
+        return apiError('Rango de precio no encontrado', 404)
+      }
+
       await prisma.precioVolumen.update({
         where: { id: precioVolumenId },
         data: { precio },
       })
+
+      // Auto-create price history entry
+      await prisma.precioHistorial.create({
+        data: {
+          producto: existing.producto.codigo,
+          precio,
+          creadoPor: authResult.user?.email || 'unknown',
+        },
+      }).catch(() => {})
+
       logAudit({
         entidad: 'PrecioVolumen',
         registroId: precioVolumenId,
         accion: 'UPDATE',
-        datos: { precio },
+        datos: { precioAnterior: Number(existing.precio), precioNuevo: precio },
         usuarioId: (authResult.user as { id?: string } | undefined)?.id,
       }).catch(() => {})
       return apiSuccess({})
