@@ -26,6 +26,7 @@ export async function GET(request: NextRequest) {
     const desde = searchParams.get('desde')
     const hasta = searchParams.get('hasta')
     const all = searchParams.get('all')
+    const clienteFilter = searchParams.get('cliente')
 
     let where: Record<string, unknown> = {}
 
@@ -55,6 +56,11 @@ export async function GET(request: NextRequest) {
     } else {
       const { startOfDay, endOfDay } = getTodayRange()
       where = { fecha: { gte: startOfDay, lt: endOfDay } }
+    }
+
+    // Filtrar por cliente si se pasa el parámetro
+    if (clienteFilter) {
+      where.clienteId = clienteFilter
     }
 
     const prismaPagination = all === 'true' ? { take: 200 } : getPrismaPagination(pagination)
