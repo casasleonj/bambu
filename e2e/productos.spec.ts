@@ -22,12 +22,13 @@ test.describe('Productos', () => {
     await goto(page, '/productos')
     await page.waitForTimeout(1000)
 
-    const editBtn = page.locator('button:has-text("Editar")').first()
-    if (await editBtn.count() === 0) {
+    // Use the correct selector: price display button with title="Clic para editar"
+    const priceDisplay = page.locator('[title="Clic para editar"]').first()
+    if (await priceDisplay.count() === 0) {
       test.skip()
       return
     }
-    await editBtn.click()
+    await priceDisplay.click()
     await page.waitForTimeout(300)
 
     const priceInput = page.locator('input[type="number"]').first()
@@ -267,6 +268,6 @@ test.describe('Productos', () => {
 
     const bodyText = await page.locator('body').innerText()
     const hasPreciosEspeciales = bodyText.includes('Precio Especial') || bodyText.includes('precios especiales')
-    expect(hasPreciosEspeciales || true).toBe(true)
+    expect(hasPreciosEspeciales).toBe(true)
   })
 })

@@ -78,7 +78,8 @@ export default function ProductosClient({ productos: initialProductos }: Precios
           precios: p.precios.filter(pr => pr.id !== precioId)
         })))
       } else {
-        toast.error('Error eliminando rango')
+        const data = await res.json().catch(() => ({}))
+        toast.error(data.error?.message || 'Error eliminando rango')
       }
     } catch {
       toast.error('Error de conexión')
@@ -116,7 +117,8 @@ export default function ProductosClient({ productos: initialProductos }: Precios
         setModalCantMax('')
         setModalPrecio('')
       } else {
-        toast.error('Error agregando rango')
+        const data = await res.json().catch(() => ({}))
+        toast.error(data.error?.message || 'Error agregando rango')
       }
     } catch {
       toast.error('Error de conexión')
@@ -137,7 +139,8 @@ export default function ProductosClient({ productos: initialProductos }: Precios
           ...data,
         } : p))
       } else {
-        toast.error('Error actualizando configuración')
+        const data = await res.json().catch(() => ({}))
+        toast.error(data.error?.message || 'Error actualizando configuración')
       }
     } catch {
       toast.error('Error de conexión')
@@ -160,7 +163,7 @@ export default function ProductosClient({ productos: initialProductos }: Precios
       ) : (
         <div className="space-y-4">
           {productos.map((producto) => (
-            <Card key={producto.id}>
+            <Card key={producto.id} data-testid={`producto-card-${producto.codigo}`}>
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <div>
@@ -171,7 +174,7 @@ export default function ProductosClient({ productos: initialProductos }: Precios
                       )}
                     </CardTitle>
                   </div>
-                  <Button size="sm" variant="outline" onClick={() => { setModalProductoId(producto.id); setModalOpen(true) }}>
+                  <Button size="sm" variant="outline" data-testid={`add-range-btn-${producto.id}`} onClick={() => { setModalProductoId(producto.id); setModalOpen(true) }}>
                     + Agregar rango
                   </Button>
                 </div>
@@ -179,6 +182,7 @@ export default function ProductosClient({ productos: initialProductos }: Precios
                   <label className="flex items-center gap-2 text-sm cursor-pointer">
                     <input
                       type="checkbox"
+                      data-testid={`domicilio-toggle-${producto.id}`}
                       checked={producto.aplicaDomicilio}
                       onChange={(e) => updateProductoConfig(producto.id, { aplicaDomicilio: e.target.checked })}
                       className="rounded border-gray-300"
@@ -193,8 +197,14 @@ export default function ProductosClient({ productos: initialProductos }: Precios
                         <Input
                           type="number"
                           min="0"
+                          data-testid={`sobrecosto-input-${producto.id}`}
                           defaultValue={Number(producto.sobreCostoDomicilio)}
-                          onBlur={(e) => updateProductoConfig(producto.id, { sobreCostoDomicilio: parseFloat(e.target.value) || 0 })}
+                          onBlur={(e) => {
+                            const val = parseFloat(e.target.value)
+                            if (!isNaN(val) && val >= 0) {
+                              updateProductoConfig(producto.id, { sobreCostoDomicilio: val })
+                            }
+                          }}
                           className="w-28 text-right h-8 text-sm pl-6"
                         />
                       </div>
@@ -204,13 +214,19 @@ export default function ProductosClient({ productos: initialProductos }: Precios
                     <span className="text-muted-foreground">Precio base:</span>
                     <div className="relative">
                       <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-                      <Input
-                        type="number"
-                        min="0"
-                        defaultValue={Number(producto.precioBase)}
-                        onBlur={(e) => updateProductoConfig(producto.id, { precioBase: parseFloat(e.target.value) || 0 })}
-                        className="w-28 text-right h-8 text-sm pl-6"
-                      />
+                        <Input
+                          type="number"
+                          min="0"
+                          data-testid={`precio-base-input-${producto.id}`}
+                          defaultValue={Number(producto.precioBase)}
+                          onBlur={(e) => {
+                            const val = parseFloat(e.target.value)
+                            if (!isNaN(val) && val >= 0) {
+                              updateProductoConfig(producto.id, { precioBase: val })
+                            }
+                          }}
+                          className="w-28 text-right h-8 text-sm pl-6"
+                        />
                     </div>
                   </div>
                 </div>
@@ -236,10 +252,11 @@ export default function ProductosClient({ productos: initialProductos }: Precios
                             <td className="py-2.5 px-3 text-muted-foreground">{precio.cantMax ?? '—'}</td>
                             <td className="py-2.5 px-3 text-right">
                               {editingId === precio.id ? (
-                                <div className="flex items-center gap-1 justify-end">
+                                <div className="flex items-center gap-1 justify-end" data-testid={`price-edit-row-${precio.id}`}>
                                   <Input
                                     type="number"
                                     min="0"
+                                    data-testid={`price-input-${precio.id}`}
                                     value={editValue}
                                     onChange={(e) => setEditValue(e.target.value)}
                                     className="w-28 text-right h-8 text-sm"
@@ -249,12 +266,13 @@ export default function ProductosClient({ productos: initialProductos }: Precios
                                     }}
                                     autoFocus
                                   />
-                                  <Button size="sm" onClick={() => savePrice(precio.id)} disabled={saving}>OK</Button>
-                                  <Button size="sm" variant="outline" onClick={cancelEdit} disabled={saving}>X</Button>
+                                  <Button size="sm" data-testid={`price-save-${precio.id}`} onClick={() => savePrice(precio.id)} disabled={saving}>OK</Button>
+                                  <Button size="sm" variant="outline" data-testid={`price-cancel-${precio.id}`} onClick={cancelEdit} disabled={saving}>X</Button>
                                 </div>
                               ) : (
                                 <button
                                   type="button"
+                                  data-testid={`price-display-${precio.id}`}
                                   className="font-semibold text-blue-600 hover:underline cursor-pointer"
                                   onClick={() => startEdit(precio)}
                                   title="Clic para editar"
@@ -264,7 +282,7 @@ export default function ProductosClient({ productos: initialProductos }: Precios
                               )}
                             </td>
                             <td className="py-2.5 px-3 text-right">
-                              <Button size="sm" variant="ghost" onClick={() => deleteTier(precio.id)} className="text-red-600 hover:text-red-700 hover:bg-red-50">
+                              <Button size="sm" variant="ghost" data-testid={`tier-delete-${precio.id}`} onClick={() => deleteTier(precio.id)} className="text-red-600 hover:text-red-700 hover:bg-red-50">
                                 Eliminar
                               </Button>
                             </td>
@@ -284,7 +302,7 @@ export default function ProductosClient({ productos: initialProductos }: Precios
                     const diff = Math.abs(base - tier1) / base
                     if (diff > 0.3) {
                       return (
-                        <div className="mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg flex items-start gap-2">
+                        <div data-testid={`discrepancy-warning-${producto.id}`} className="mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg flex items-start gap-2">
                           <svg className="w-4 h-4 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
                           <span>Precio base ({formatCOP(base)}) difiere {Math.round(diff * 100)}% del primer rango ({formatCOP(tier1)})</span>
                         </div>
@@ -305,20 +323,20 @@ export default function ProductosClient({ productos: initialProductos }: Precios
           <div className="space-y-3">
             <div>
               <label className="text-sm text-muted-foreground">Cantidad mínima</label>
-              <Input type="number" min="1" value={modalCantMin} onChange={(e) => setModalCantMin(e.target.value)} />
+              <Input type="number" min="1" data-testid="modal-cant-min" value={modalCantMin} onChange={(e) => setModalCantMin(e.target.value)} />
             </div>
             <div>
               <label className="text-sm text-muted-foreground">Cantidad máxima (opcional)</label>
-              <Input type="number" min="1" value={modalCantMax} onChange={(e) => setModalCantMax(e.target.value)} placeholder="Sin límite" />
+              <Input type="number" min="1" data-testid="modal-cant-max" value={modalCantMax} onChange={(e) => setModalCantMax(e.target.value)} placeholder="Sin límite" />
             </div>
             <div>
               <label className="text-sm text-muted-foreground">Precio unitario</label>
-              <Input type="number" min="0" value={modalPrecio} onChange={(e) => setModalPrecio(e.target.value)} />
+              <Input type="number" min="0" data-testid="modal-precio" value={modalPrecio} onChange={(e) => setModalPrecio(e.target.value)} />
             </div>
           </div>
           <div className="flex gap-2 justify-end pt-2">
             <Button variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
-            <Button onClick={addTier}>Guardar</Button>
+            <Button data-testid="modal-save" onClick={addTier}>Guardar</Button>
           </div>
         </div>
       </Modal>
