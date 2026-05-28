@@ -2,6 +2,8 @@
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 
+import { matchCliente } from '@/lib/cliente-search'
+
 export interface ClienteOption {
   id: string
   nombre: string
@@ -59,14 +61,8 @@ export function UnifiedSearch({
 
   const filteredClientes = useMemo(() => {
     if (!query) return clientes.slice(0, 5)
-    const q = query.toLowerCase()
     return clientes
-      .filter(
-        c =>
-          c.nombre.toLowerCase().includes(q) ||
-          (c.apellido || '').toLowerCase().includes(q) ||
-          c.telefono.includes(q)
-      )
+      .filter(c => matchCliente(c, query))
       .slice(0, 5)
   }, [clientes, query])
 

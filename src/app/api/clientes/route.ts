@@ -23,9 +23,11 @@ export async function GET(request: NextRequest) {
     if (search) {
       where.OR = [
         { nombre: { contains: search, mode: 'insensitive' } },
+        { apellido: { contains: search, mode: 'insensitive' } },
         { telefono: { contains: search, mode: 'insensitive' } },
         { direccion: { contains: search, mode: 'insensitive' } },
         { barrio: { contains: search, mode: 'insensitive' } },
+        { nombreNegocio: { contains: search, mode: 'insensitive' } },
       ]
     }
 

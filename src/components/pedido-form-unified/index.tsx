@@ -7,6 +7,7 @@ import { DEFAULT_PRICES, PRODUCTO_INFO, getProductosForCanal } from '@/lib/price
 import { METODOS_PAGO, METODO_PAGO_ICONS } from '@/lib/metodos-pago'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
 import { TipoNegocioSelect } from '@/components/tipo-negocio-select'
+import { matchCliente } from '@/lib/cliente-search'
 import type { Cliente, Tier } from './types'
 
 const TIPOS_NEGOCIO: string[] = [
@@ -284,7 +285,7 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
   const pagarCompleto = () => { if (total > 0) setPagos([{ metodo: 'EFECTIVO', monto: total }]) }
 
   const filteredClientes = searchTerm
-    ? clientes.filter((c) => c.nombre.toLowerCase().includes(searchTerm.toLowerCase()) || c.telefono.includes(searchTerm) || (c.apellido || '').toLowerCase().includes(searchTerm.toLowerCase()) || (c.nombreNegocio || '').toLowerCase().includes(searchTerm.toLowerCase()))
+    ? clientes.filter((c) => matchCliente(c, searchTerm))
     : []
 
   const handleSelectCliente = (cliente: Cliente) => { setClienteSeleccionado(cliente); setSearchTerm(''); setMostrarNuevo(false) }

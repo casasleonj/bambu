@@ -2,6 +2,8 @@
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 
+import { matchCliente } from '@/lib/cliente-search'
+
 export interface ClienteSearchOption {
   id: string
   nombre: string
@@ -44,17 +46,8 @@ export function PedidosSearch({
 
   const filteredClientes = useMemo(() => {
     if (!searchInput || !hasLetters) return []
-    const q = searchInput.toLowerCase()
     return clientes
-      .filter(
-        c =>
-          c.nombre.toLowerCase().includes(q) ||
-          (c.apellido || '').toLowerCase().includes(q) ||
-          c.telefono.includes(q) ||
-          (c.barrio || '').toLowerCase().includes(q) ||
-          (c.direccion || '').toLowerCase().includes(q) ||
-          (c.nombreNegocio || '').toLowerCase().includes(q)
-      )
+      .filter(c => matchCliente(c, searchInput))
       .slice(0, 8)
   }, [clientes, searchInput, hasLetters])
 

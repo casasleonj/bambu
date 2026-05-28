@@ -7,6 +7,7 @@ import { ProductGrid } from './product-grid'
 import { PagoSection } from './pago-section'
 import { ResumenSection } from './resumen-section'
 import { DEFAULT_PRICES, PRODUCTO_INFO, getProductosForCanal } from '@/lib/prices'
+import { matchCliente } from '@/lib/cliente-search'
 import type { Cliente, Tier, VentaRapidaFormProps, VentaRapidaData, VentaRapidaItem } from './types'
 
 export type { VentaRapidaFormProps, VentaRapidaData, Cliente }
@@ -136,12 +137,7 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
   const decrement = (id: string) => handleCantidadChange(id, String(Math.max(0, (cantidades[id] || 0) - 1)))
 
   const filteredClientes = searchTerm
-    ? clientes.filter((c) =>
-        c.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (c.apellido || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (c.nombreNegocio || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.telefono.includes(searchTerm)
-      )
+    ? clientes.filter((c) => matchCliente(c, searchTerm))
     : []
 
   const handleSelectCliente = (cliente: Cliente) => {

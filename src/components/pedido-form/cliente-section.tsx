@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { matchCliente } from '@/lib/cliente-search'
 import type { Cliente } from './types'
 
 interface ClienteSectionProps {
@@ -32,12 +33,7 @@ export function ClienteSection({
   onClienteSelected,
 }: ClienteSectionProps) {
   const filteredClientes = searchTerm
-    ? clientes.filter((c) =>
-        c.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (c.apellido || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (c.nombreNegocio || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.telefono.includes(searchTerm)
-      )
+    ? clientes.filter((c) => matchCliente(c, searchTerm))
     : clientes.slice(0, 5)
 
   return (
