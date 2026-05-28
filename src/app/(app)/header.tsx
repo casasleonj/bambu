@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useSession, signOut } from 'next-auth/react'
 import Link from 'next/link'
+import { purgeSWCache } from '@/components/sw-register'
 import { ConnectivityIndicator } from '@/components/connectivity-indicator'
 import { useAppStore } from '@/stores/app-store'
 
@@ -99,7 +100,10 @@ export function Header() {
               </Link>
               <hr className="border-gray-100" />
               <button
-                onClick={() => signOut({ callbackUrl: '/login' })}
+                onClick={async () => {
+                  await purgeSWCache()
+                  signOut({ callbackUrl: '/login' })
+                }}
                 className="flex items-center gap-2 w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

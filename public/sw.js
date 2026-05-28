@@ -28,10 +28,17 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Listen for SKIP_WAITING message from the page
+// Listen for SKIP_WAITING and PURGE_CACHE messages from the page
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
+  }
+  if (event.data && event.data.type === 'PURGE_CACHE') {
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((name) => caches.delete(name))
+      );
+    });
   }
 });
 
@@ -85,20 +92,12 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Navigation requests: network-first with offline fallback
+  // Navigation requests: network-first with offline fallback (DO NOT cache authenticated HTML)
   if (type === 'navigate') {
     event.respondWith(
       fetch(event.request)
-        .then((response) => {
-          if (response && response.status === 200) {
-            const responseToCache = response.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, responseToCache);
-            });
-          }
-          return response;
-        })
         .catch(() => {
+          // Network failed — serve cached page if available, else offline page
           return caches.match(event.request).then((cached) => {
             if (cached) return cached;
             return caches.match('/offline');

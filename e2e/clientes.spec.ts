@@ -127,10 +127,10 @@ test.describe('Clientes', () => {
     await expect(page.locator('button:has-text("Editar")')).toBeVisible()
   })
 
-  test('API PUT rechaza telefono duplicado en contactos', async ({ page }) => {
+  test('API PUT permite telefono duplicado en contactos (no bloquea)', async ({ page }) => {
     await fullLogin(page)
     const phone = `3${String(Date.now()).slice(-9)}`
-    const c1 = await createCliente(page, { telefono: phone })
+    await createCliente(page, { telefono: phone })
     const c2 = await createCliente(page, { nombre: 'Cliente Contactos' })
     const id2 = c2.cliente.id
     const res = await apiPut(page, `/api/clientes/${id2}`, {

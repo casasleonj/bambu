@@ -153,7 +153,7 @@ export async function validarStock(carga: StockSnapshot): Promise<{ ok: boolean;
   const faltante: StockSnapshot = emptyStock()
   let hayFaltante = false
 
-  for (const producto of PRODUCTOS_DOMICILIO) {
+  for (const producto of PRODUCTOS_CON_STOCK) {
     const key = producto as keyof StockSnapshot
     if (carga[key] > disponible[key]) {
       faltante[key] = carga[key] - disponible[key]
@@ -181,7 +181,7 @@ export async function evaluarStock(carga: StockSnapshot): Promise<StockEvaluatio
   const deficit: StockSnapshot = emptyStock()
   let totalDeficit = 0
 
-  for (const producto of PRODUCTOS_DOMICILIO) {
+  for (const producto of PRODUCTOS_CON_STOCK) {
     const key = producto as keyof StockSnapshot
     if (carga[key] > disponible[key]) {
       deficit[key] = carga[key] - disponible[key]

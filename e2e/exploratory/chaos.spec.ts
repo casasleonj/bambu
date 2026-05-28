@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { BASE, resetTestDatabase, loginAs, waitForToast, getUniqueFutureDate } from '../fixtures'
+import { BASE, resetTestDatabase, loginAs } from '../fixtures'
 
 test.describe('Exploratorio Destructivo', () => {
   test.beforeEach(() => {
@@ -15,10 +15,10 @@ test.describe('Exploratorio Destructivo', () => {
       await page.locator('button:has-text("Nuevo Cliente"), button:has-text("Crear Cliente"), a:has-text("Nuevo")').first().click()
 
       const nombre = `Cliente Doble Submit ${Date.now()}`
-      await page.fill('input[placeholder*="nombre"], input[name="nombre"], #nombre').first().fill(nombre)
-      await page.fill('input[placeholder*="teléfono"], input[name="telefono"], #telefono').first().fill(`3${String(Date.now()).slice(-9)}`)
-      await page.fill('input[placeholder*="dirección"], input[name="direccion"], #direccion').first().fill('Calle 100 #15-20')
-      await page.fill('input[placeholder*="barrio"], input[name="barrio"], #barrio').first().fill('Chapinero')
+      await page.locator('input[placeholder*="nombre"], input[name="nombre"], #nombre').first().fill(nombre)
+      await page.locator('input[placeholder*="teléfono"], input[name="telefono"], #telefono').first().fill(`3${String(Date.now()).slice(-9)}`)
+      await page.locator('input[placeholder*="dirección"], input[name="direccion"], #direccion').first().fill('Calle 100 #15-20')
+      await page.locator('input[placeholder*="barrio"], input[name="barrio"], #barrio').first().fill('Chapinero')
 
       const submitBtn = page.locator('button[type="submit"], button:has-text("Guardar"), button:has-text("Crear")').first()
       await submitBtn.click()

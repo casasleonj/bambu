@@ -38,7 +38,7 @@ test.describe('Ciclo de Crédito', () => {
       pedidoId,
       clienteId: cliente.cliente.id,
     })
-    const facturaBody = await facturaRes.json().catch(() => ({}))
+    await facturaRes.json().catch(() => ({}))
     if (facturaRes.status() !== 201 && facturaRes.status() !== 200) {
       // Factura ya existe, obtenerla
       const facturasGet = await apiGet(page, `/api/facturas?pedidoId=${pedidoId}`)

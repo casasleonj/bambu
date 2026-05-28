@@ -1,5 +1,5 @@
 // @tests embarques module - comprehensive E2E coverage
-import { test, expect, fullLogin, goto, apiPost, apiGet, apiPut, apiDelete, createTrabajador, createCliente, createPedido, skipBaseCaja, login, BASE } from './fixtures'
+import { test, expect, fullLogin, apiPost, apiGet, apiPut, apiDelete, createTrabajador, createCliente, skipBaseCaja, login, BASE } from './fixtures'
 
 /** Login that skips base caja modal to avoid redirect to /cierre */
 async function embarquesLogin(page: any) {
@@ -503,7 +503,7 @@ test.describe('Embarques — Validaciones y Edge Cases', () => {
     await fullLogin(page)
     // Assuming no active repartidores exist (fresh state)
     const res = await apiPost(page, '/api/embarques/auto', {})
-    const data = await res.json()
+    await res.json()
     // Should either succeed or return a business error, never 500
     expect(res.status()).toBeLessThan(500)
   })

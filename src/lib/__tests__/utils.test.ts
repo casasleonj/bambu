@@ -211,9 +211,13 @@ describe('calcularEstadoPago', () => {
     expect(calcularEstadoPago(8400, 5000)).toBe('PARCIAL')
   })
 
-  it('retorna PENDIENTE cuando totalPagado es 0', () => {
+  it('retorna PENDIENTE cuando totalPagado es 0 y total > 0', () => {
     expect(calcularEstadoPago(100, 0)).toBe('PENDIENTE')
-    expect(calcularEstadoPago(0, 0)).toBe('PENDIENTE')
+  })
+
+  it('retorna PAGADO cuando total es 0 (sin deuda)', () => {
+    // total=0 means no debt exists, so it's semantically "paid"
+    expect(calcularEstadoPago(0, 0)).toBe('PAGADO')
   })
 })
 

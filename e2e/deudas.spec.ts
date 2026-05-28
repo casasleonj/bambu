@@ -10,7 +10,6 @@ import {
   createTrabajador,
   createCliente,
   createEmbarque,
-  createPedido,
   resetTestDatabase,
   waitForToast,
 } from './fixtures'
@@ -260,8 +259,6 @@ test.describe('Deudas UI', () => {
   test('sidebar muestra sub-menu Deudas bajo Trabajadores', async ({ page }) => {
     await goto(page, '/dashboard')
 
-    // Open sidebar if needed
-    const sidebarToggle = page.locator('button[aria-label="Abrir menu"], button:has(svg), .sidebar-toggle')
     // Just navigate directly to verify the nav item exists
     await goto(page, '/deudas')
     await expect(page.getByRole('heading', { name: 'Deudas Pendientes' })).toBeVisible()
@@ -337,7 +334,7 @@ test.describe('Deudas UI', () => {
     const tid = trabajador.trabajador.id
 
     // Create debt via API
-    const res = await createDeuda(page, {
+    await createDeuda(page, {
       trabajadorId: tid,
       tipo: 'PRESTAMO',
       monto: 80000,
@@ -403,7 +400,7 @@ test.describe('Deudas UI', () => {
       monto: 40000,
       descripcion: 'Pendiente',
     })
-    const body1 = await res1.json()
+    await res1.json()
 
     // Create and pay off another
     const res2 = await createDeuda(page, {

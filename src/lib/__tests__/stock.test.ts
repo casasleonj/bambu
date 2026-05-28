@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { evaluarStock, emptyStock, getStockDisponible, getStockEstimadoHoy, setStockEstimadoHoy, clearStockEstimadoHoy } from '@/lib/stock'
+import { evaluarStock, emptyStock, getStockDisponible, getStockEstimadoHoy } from '@/lib/stock'
 import { prisma } from '@/lib/prisma'
 
 vi.mock('@/lib/prisma', () => ({

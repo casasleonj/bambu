@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { Modal } from '@/components/modal'
-import { FeedbackField } from '@/components/feedback-field'
 import { InfoBanner } from '@/components/tooltip'
 import { TipoNegocioSelect } from '@/components/tipo-negocio-select'
 

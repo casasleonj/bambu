@@ -2,6 +2,25 @@
 
 import { useEffect, useState, useCallback } from 'react'
 
+/**
+ * Purge all service worker caches and notify the SW to clean up.
+ * Call this before signOut to prevent stale authenticated HTML from
+ * being served to the next user on the same device.
+ */
+export async function purgeSWCache(): Promise<void> {
+  if (typeof window === 'undefined') return
+  if (!('caches' in window)) return
+
+  // Delete all cache entries
+  const names = await caches.keys()
+  await Promise.all(names.map((name) => caches.delete(name)))
+
+  // Tell the service worker to skip waiting (activates new version without stale cache)
+  if (navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({ type: 'PURGE_CACHE' })
+  }
+}
+
 export function ServiceWorkerRegister() {
   const [updateAvailable, setUpdateAvailable] = useState(false)
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null)

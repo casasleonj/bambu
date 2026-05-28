@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { signOut } from 'next-auth/react'
+import { purgeSWCache } from '@/components/sw-register'
 import { useBaseCaja } from '@/hooks/use-base-caja'
 import { useAppStore } from '@/stores/app-store'
 import { formatCurrency } from '@/lib/utils'
@@ -149,7 +150,10 @@ export function Sidebar() {
 
         <div className="p-4 border-t">
           <button
-            onClick={() => signOut({ callbackUrl: '/login' })}
+            onClick={async () => {
+              await purgeSWCache()
+              signOut({ callbackUrl: '/login' })
+            }}
             className="flex items-center gap-3 px-4 py-3 rounded-lg text-red-600 hover:bg-red-50 transition w-full"
             aria-label="Cerrar sesión"
           >
