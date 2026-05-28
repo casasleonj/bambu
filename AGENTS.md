@@ -1,3 +1,9 @@
+# PROTOCOLO OBLIGATORIO
+
+ANTES de escribir cualquier codigo, DEBES ejecutar las 3 iteraciones del protocolo de investigacion.
+Lee el archivo `.opencode/prompts/protocolo.txt` para los detalles completos.
+NUNCA saltes directo a codigo. NUNCA implementes sin aprobacion tras cada Ronda 2.
+
 <!-- BEGIN:nextjs-agent-rules -->
 # This is NOT the Next.js you know
 

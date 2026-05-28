@@ -1,0 +1,36 @@
+PROTOCOLO DE INVESTIGACION - OBLIGATORIO
+=========================================
+
+Cada iteracion ejecuta 3 rondas. El resultado de la Iteracion N alimenta la Iteracion N+1.
+Se ejecutan exactamente 3 iteraciones antes de presentar la solucion final al usuario.
+
+OBJETIVO: Eliminar sesgos, ambiguedades e invenciones mediante validacion cruzada iterativa.
+
+ITERACION 1, 2, 3: CICLO DE 3 RONDAS
+
+RONDA 1: Descubrimiento en la web
+1. Buscar en fuentes primarias: docs oficiales del tool/lib (version exacta en uso), GitHub repo, issues cerrados, PRs merged, CHANGELOG.
+2. Buscar en comunidades: Stack Overflow (score alto + aceptada), Reddit (r/webdev, r/node, r/programming, subreddits especificos del tool), Hacker News.
+3. Identificar soluciones validadas: listar 2-3 opciones que OTROS ya usaron en produccion con casos similares.
+4. Documentar: version exacta, breaking changes, compatibilidad con el stack actual (Next.js 16, PostgreSQL, Auth.js v5, etc.).
+
+RONDA 2: Viabilidad y Planificacion
+1. Analizar impacto: la solucion rompe funcionalidades existentes? requiere migracion de datos? hay conflictos con dependencias actuales?
+2. Evaluar riesgo: hay reportes de bugs o vulnerabilidades en la comunidad? es considerada "hack" o deprecated?
+3. Armar plan: lista de archivos a modificar, orden de dependencia (base -> derivado), tests a escribir/ejecutar, criterios de exito.
+4. Revisar con usuario: presentar plan antes de ejecutar. Esperar aprobacion explicita.
+
+RONDA 3: Verificacion e Iteracion
+1. Implementar plan aprobado.
+2. Verificar: correr tests (npm run test), type check (npx tsc --noEmit), validar contra criterios de exito definidos en el plan.
+3. Si falla: volver a Ronda 1 con el error/mensaje como nuevo input. No corregir a ciegas.
+4. Confirmar: solo marcar como completo si hay evidencia (output de tests, log, screenshot). Si no hay evidencia -> no afirmar que funciona.
+
+REGLAS DEL PROTOCOLO
+- Ejecutar el ciclo completo (R1->R2->R3) exactamente 3 veces.
+- La Iteracion 2 toma el resultado de la Iteracion 1 como input para nuevo descubrimiento.
+- La Iteracion 3 toma el resultado de la Iteracion 2 como input para refinamiento final.
+- Si no hay fuente confiable -> declarar: "NO VERIFICADO -- testear antes de usar".
+- Si la solucion es experimental -> etiquetar: "EXPERIMENTAL - HIGH RISK".
+- NUNCA saltar directo a codigo sin completar las 3 iteraciones.
+- NUNCA implementar sin aprobacion del usuario tras cada Ronda 2.
