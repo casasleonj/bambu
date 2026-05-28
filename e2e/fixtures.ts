@@ -27,7 +27,8 @@ export async function login(page: Page, user: string, pass: string) {
   await page.fill('input[placeholder="Ingrese usuario"]', user)
   await page.fill('input[placeholder="Ingrese contraseña"]', pass)
   await page.click('button[type="submit"]')
-  await page.waitForURL('**/dashboard', { timeout: 15000 })
+  // Wait for navigation away from login page (any role-specific page)
+  await page.waitForURL(/.*\/(dashboard|repartidor|reportes)/, { timeout: 15000 })
 }
 
 export async function loginAlt(page: Page, user: string, pass: string) {
@@ -189,6 +190,10 @@ export async function apiPut(page: Page, path: string, data: any) {
   return page.request.put(`${BASE}${path}`, { data })
 }
 
+export async function apiPatch(page: Page, path: string, data: any) {
+  return page.request.patch(`${BASE}${path}`, { data })
+}
+
 export async function apiDelete(page: Page, path: string) {
   return page.request.delete(`${BASE}${path}`)
 }
@@ -214,6 +219,62 @@ export async function createCliente(page: Page, data?: Partial<{
     barrio: data?.barrio || 'Centro',
   })
   return res.json()
+}
+
+export async function createClienteFull(page: Page, data: {
+  nombre: string
+  telefono: string
+  apellido?: string
+  nombreNegocio?: string
+  tipoNegocio?: string
+  fuente?: string
+  barrio?: string
+  direccion?: string
+  linkUbicacion?: string
+  contactos?: Array<{ nombre: string; telefono: string; relacion?: string }>
+  preciosEspeciales?: string
+  notas?: string
+  horaApertura?: string
+}) {
+  const res = await apiPost(page, '/api/clientes', data)
+  return res.json()
+}
+
+export async function createNegocio(page: Page, data: {
+  clienteId: string
+  nombre: string
+  tipoNegocio?: string
+  direccion?: string
+  barrio?: string
+  rutaId?: string | null
+  habAgua?: boolean
+  habHielo?: boolean
+}) {
+  const res = await apiPost(page, '/api/negocios', {
+    clienteId: data.clienteId,
+    nombre: data.nombre,
+    tipoNegocio: data.tipoNegocio,
+    direccion: data.direccion,
+    barrio: data.barrio,
+    rutaId: data.rutaId ?? null,
+    habAgua: data.habAgua ?? true,
+    habHielo: data.habHielo ?? true,
+  })
+  return res.json()
+}
+
+export async function setupClienteWithPedidos(page: Page, count: number = 3) {
+  const c = await createCliente(page)
+  for (let i = 0; i < count; i++) {
+    await apiPost(page, '/api/pedidos', {
+      clienteId: c.cliente.id,
+      canal: 'DOMICILIO',
+      ventaRapida: true,
+      items: [{ producto: 'PACA_AGUA', cantidad: i + 1 }],
+      pagos: [{ metodo: 'EFECTIVO', monto: 5000 * (i + 1) }],
+    })
+  }
+  return c
 }
 
 export async function createTrabajador(page: Page, data?: Partial<{
