@@ -613,7 +613,7 @@ test.describe('Negocios API', () => {
     const c = await createCliente(page)
     const negRes = await apiPost(page, '/api/negocios', {
       clienteId: c.cliente.id,
-      nombre: 'Con Pedidos',
+      nombre: 'Negocio Test Eliminar',
     })
     expect(negRes.status()).toBe(200)
     const negBody = await negRes.json()
