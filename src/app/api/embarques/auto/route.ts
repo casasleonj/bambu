@@ -40,6 +40,13 @@ export async function POST(request: NextRequest) {
               nombre: true,
             },
           },
+          negocio: {
+            select: {
+              rutaId: true,
+              barrio: true,
+              nombre: true,
+            },
+          },
         },
       })
 
@@ -47,10 +54,13 @@ export async function POST(request: NextRequest) {
         return { created: 0, message: 'No hay pedidos pendientes para embarcar' }
       }
 
-      // 2. Group by ruta (or barrio as fallback)
+      // 2. Group by ruta (negocio.rutaId > cliente.rutaId > negocio.barrio > cliente.barrio)
       const grupos = new Map<string, typeof pedidosPendientes>()
       for (const pedido of pedidosPendientes) {
-        const key = pedido.cliente?.rutaId || pedido.cliente?.barrio || 'SIN_RUTA'
+        // NEGOCIO COMPATIBILITY: negocio fields take priority, fallback to cliente
+        const rutaKey = pedido.negocio?.rutaId ?? pedido.cliente?.rutaId
+        const barrioKey = pedido.negocio?.barrio ?? pedido.cliente?.barrio
+        const key = rutaKey || barrioKey || 'SIN_RUTA'
         if (!grupos.has(key)) grupos.set(key, [])
         grupos.get(key)!.push(pedido)
       }
@@ -111,7 +121,7 @@ export async function POST(request: NextRequest) {
         embarquesCreados.push({
           embarque,
           pedidosCount: pedidosGrupo.length,
-          rutaNombre: ruta?.nombre || pedidosGrupo[0].cliente?.barrio || 'Sin ruta',
+          rutaNombre: ruta?.nombre || pedidosGrupo[0].negocio?.nombre || pedidosGrupo[0].cliente?.barrio || 'Sin ruta',
         })
       }
 

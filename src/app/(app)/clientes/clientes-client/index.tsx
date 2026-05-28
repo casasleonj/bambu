@@ -15,6 +15,7 @@ import { ClienteTable } from './cliente-table'
 import { ClienteForm } from './cliente-form'
 import { ClienteHistorial } from './cliente-historial'
 import { ClienteStats } from './cliente-stats'
+import { NegocioForm } from '@/components/negocio-form'
 import { calcularAlertasCliente } from '@/app/(app)/pedidos/pedidos-client/alertas-utils'
 import { GuiaAlertaModal } from '@/components/guia-alerta-modal'
 import { CasoGuiaModal } from '@/components/caso-guia-modal'
@@ -61,6 +62,11 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
   const [usuarios, setUsuarios] = useState<Array<{ id: string; username: string; rol: string }>>([])
   const [userRole, setUserRole] = useState<string | null>(null)
 
+  // Negocios state
+  const [negocios, setNegocios] = useState<Array<{ id: string; nombre: string; tipoNegocio: string | null; direccion: string | null; barrio: string | null; ruta: { id: string; nombre: string } | null }>>([])
+  const [negocioFormOpen, setNegocioFormOpen] = useState(false)
+  const [negocioEditData, setNegocioEditData] = useState<{ id: string; nombre: string; tipoNegocio: string | null; direccion: string | null; barrio: string | null; referencia: string | null; linkUbicacion: string | null; horaApertura: string | null; rutaId: string | null } | null>(null)
+
   const [preciosLoaded, setPreciosLoaded] = useState(false)
 
   const puedeDesactivar = userRole === 'ADMIN' || userRole === 'CONTADOR'
@@ -101,6 +107,21 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
       setActiveTab('info')
     }
   }, [openClienteId, clientes])
+
+  // Fetch negocios when a client is selected
+  useEffect(() => {
+    if (!selectedCliente) {
+      setNegocios([])
+      return
+    }
+    fetch(`/api/negocios?clienteId=${selectedCliente.id}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.success) setNegocios(d.data)
+        else setNegocios([])
+      })
+      .catch(() => setNegocios([]))
+  }, [selectedCliente])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -981,47 +1002,86 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
 
                   {/* Business section */}
                   <div>
-                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                      </svg>
-                      Negocio
-                    </h3>
-                    <div className="bg-gray-50 rounded-xl p-4 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-gray-500">Nombre</span>
-                        <span className="font-medium">{selectedCliente.nombreNegocio || '-'}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-gray-500">Tipo</span>
-                        <span className="font-medium">{selectedCliente.tipoNegocio || '-'}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-gray-500">Frecuencia</span>
-                        <span className="font-medium">
-                          {selectedCliente.plantillaRecurrente?.activo ? (
-                            <span className="text-indigo-600 flex items-center gap-1">
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                              </svg>
-                              Cada {selectedCliente.plantillaRecurrente.cadaNDias} días
-                            </span>
-                          ) : selectedCliente.cadaNDias && selectedCliente.cadaNDias > 0 ? (
-                            <span className="text-green-600">Cada {selectedCliente.cadaNDias} días</span>
-                          ) : (
-                            <span className="text-gray-400">Sin frecuencia</span>
-                          )}
-                        </span>
-                      </div>
-                      {selectedCliente.proxEntrega && (
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-gray-500">Próxima entrega</span>
-                          <span className="font-medium text-blue-600">
-                            {formatLocalDate(selectedCliente.proxEntrega)}
-                          </span>
-                        </div>
-                      )}
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                        </svg>
+                        Negocios
+                      </h3>
+                      <button
+                        onClick={() => { setNegocioEditData(null); setNegocioFormOpen(true) }}
+                        className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                      >
+                        + Agregar
+                      </button>
                     </div>
+
+                    {negocios.length > 0 ? (
+                      <div className="space-y-2">
+                        {negocios.map((neg) => (
+                          <div key={neg.id} className="bg-gray-50 rounded-xl p-3 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="font-medium text-sm">{neg.nombre}</span>
+                              <button
+                                onClick={() => {
+                                  setNegocioEditData({
+                                    id: neg.id,
+                                    nombre: neg.nombre,
+                                    tipoNegocio: neg.tipoNegocio,
+                                    direccion: neg.direccion,
+                                    barrio: neg.barrio,
+                                    referencia: null,
+                                    linkUbicacion: null,
+                                    horaApertura: null,
+                                    rutaId: neg.ruta?.id || null,
+                                  })
+                                  setNegocioFormOpen(true)
+                                }}
+                                className="text-xs text-gray-400 hover:text-blue-600"
+                              >
+                                Editar
+                              </button>
+                            </div>
+                            {neg.tipoNegocio && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs text-gray-500">Tipo</span>
+                                <span className="text-xs font-medium">{neg.tipoNegocio}</span>
+                              </div>
+                            )}
+                            {neg.direccion && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs text-gray-500">Dirección</span>
+                                <span className="text-xs font-medium max-w-[60%] text-right truncate">{neg.direccion}</span>
+                              </div>
+                            )}
+                            {neg.barrio && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs text-gray-500">Barrio</span>
+                                <span className="text-xs font-medium">{neg.barrio}</span>
+                              </div>
+                            )}
+                            {neg.ruta && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs text-gray-500">Ruta</span>
+                                <span className="text-xs font-medium text-blue-600">{neg.ruta.nombre}</span>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="bg-gray-50 rounded-xl p-4 text-center">
+                        <p className="text-sm text-gray-500">
+                          {selectedCliente.nombreNegocio
+                            ? `Negocio legacy: "${selectedCliente.nombreNegocio}"`
+                            : 'Sin negocios registrados'}
+                        </p>
+                        <p className="text-xs text-gray-400 mt-1">
+                          Agrega un negocio para gestionar pedidos por separado
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   {/* Special prices section */}
@@ -1218,6 +1278,24 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
         />
       )}
       {modal}
+
+      {/* Negocio Form Modal */}
+      {selectedCliente && (
+        <NegocioForm
+          open={negocioFormOpen}
+          onClose={() => { setNegocioFormOpen(false); setNegocioEditData(null) }}
+          clienteId={selectedCliente.id}
+          editData={negocioEditData}
+          onSuccess={() => {
+            // Refresh negocios list
+            fetch(`/api/negocios?clienteId=${selectedCliente.id}`)
+              .then(r => r.json())
+              .then(d => { if (d.success) setNegocios(d.data) })
+              .catch(() => {})
+            toast.success(negocioEditData ? 'Negocio actualizado' : 'Negocio creado')
+          }}
+        />
+      )}
     </div>
   )
 }

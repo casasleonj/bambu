@@ -19,6 +19,7 @@ export async function syncWithServer(): Promise<{ synced: number; failed: number
         const body = isVentaLibre
           ? {
               clienteId: pedido.clienteId,
+              negocioId: pedido.negocioId,
               items: pedido.items,
               pagos: pedido.pagos,
               embarqueId: pedido.embarqueId,
@@ -30,6 +31,7 @@ export async function syncWithServer(): Promise<{ synced: number; failed: number
             }
           : {
               clienteId: pedido.clienteId,
+              negocioId: pedido.negocioId,
               items: pedido.items,
               pagos: pedido.pagos,
               canal: pedido.canal || 'DOMICILIO',

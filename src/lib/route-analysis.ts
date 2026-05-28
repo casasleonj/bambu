@@ -54,6 +54,12 @@ export async function analizarPatronesEntrega(): Promise<{
           rutaId: true,
         },
       },
+      negocio: {
+        select: {
+          barrio: true,
+          rutaId: true,
+        },
+      },
     },
     orderBy: { fecha: 'desc' },
     take: 5000, // Limitar para performance
@@ -73,12 +79,13 @@ export async function analizarPatronesEntrega(): Promise<{
   > = {}
 
   for (const pedido of pedidos) {
-    const barrio = pedido.cliente?.barrio?.trim() || 'SIN_BARRIO'
+    // NEGOCIO COMPATIBILITY: negocio fields take priority
+    const barrio = (pedido.negocio?.barrio ?? pedido.cliente?.barrio)?.trim() || 'SIN_BARRIO'
     if (!barrioStats[barrio]) {
       barrioStats[barrio] = {
         entregas: 0,
         repartidores: {},
-        rutaId: pedido.cliente?.rutaId || undefined,
+        rutaId: (pedido.negocio?.rutaId ?? pedido.cliente?.rutaId) || undefined,
       }
     }
 
@@ -205,19 +212,31 @@ export async function obtenerRepartidoresActivos() {
 }
 
 export async function obtenerBarriosSinRuta() {
+  // Check both cliente.rutaId and negocio.rutaId
   const clientes = await prisma.cliente.findMany({
     where: {
       activo: true,
-      rutaId: null,
       barrio: { not: null },
     },
     select: {
       barrio: true,
+      rutaId: true,
+      negocios: {
+        select: {
+          barrio: true,
+          rutaId: true,
+        },
+      },
     },
-    distinct: ['barrio'],
   })
 
-  return clientes
-    .map((c) => c.barrio?.trim())
-    .filter(Boolean) as string[]
+  const barriosSinRuta = new Set<string>()
+  for (const c of clientes) {
+    const hasRoute = c.rutaId || c.negocios.some(n => n.rutaId)
+    if (!hasRoute && c.barrio) {
+      barriosSinRuta.add(c.barrio.trim())
+    }
+  }
+
+  return [...barriosSinRuta].filter(Boolean)
 }

@@ -123,19 +123,18 @@ export default function ProductosClient({ productos: initialProductos }: Precios
     }
   }
 
-  async function updateProductoConfig(productoId: string, aplicaDomicilio: boolean, sobreCostoDomicilio: number) {
+  async function updateProductoConfig(productoId: string, data: { aplicaDomicilio?: boolean; sobreCostoDomicilio?: number; precioBase?: number }) {
     try {
       const res = await fetch('/api/productos', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productoId, aplicaDomicilio, sobreCostoDomicilio }),
+        body: JSON.stringify({ productoId, ...data }),
       })
       if (res.ok) {
         toast.success('Configuración actualizada')
         setProductos(prev => prev.map(p => p.id === productoId ? {
           ...p,
-          aplicaDomicilio,
-          sobreCostoDomicilio,
+          ...data,
         } : p))
       } else {
         toast.error('Error actualizando configuración')
@@ -176,12 +175,12 @@ export default function ProductosClient({ productos: initialProductos }: Precios
                     + Agregar rango
                   </Button>
                 </div>
-                <div className="flex items-center gap-4 mt-2">
+                <div className="flex items-center gap-4 mt-2 flex-wrap">
                   <label className="flex items-center gap-2 text-sm cursor-pointer">
                     <input
                       type="checkbox"
                       checked={producto.aplicaDomicilio}
-                      onChange={(e) => updateProductoConfig(producto.id, e.target.checked, Number(producto.sobreCostoDomicilio))}
+                      onChange={(e) => updateProductoConfig(producto.id, { aplicaDomicilio: e.target.checked })}
                       className="rounded border-gray-300"
                     />
                     Aplica para domicilio
@@ -195,12 +194,25 @@ export default function ProductosClient({ productos: initialProductos }: Precios
                           type="number"
                           min="0"
                           defaultValue={Number(producto.sobreCostoDomicilio)}
-                          onBlur={(e) => updateProductoConfig(producto.id, true, parseFloat(e.target.value) || 0)}
+                          onBlur={(e) => updateProductoConfig(producto.id, { sobreCostoDomicilio: parseFloat(e.target.value) || 0 })}
                           className="w-28 text-right h-8 text-sm pl-6"
                         />
                       </div>
                     </div>
                   )}
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-muted-foreground">Precio base:</span>
+                    <div className="relative">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                      <Input
+                        type="number"
+                        min="0"
+                        defaultValue={Number(producto.precioBase)}
+                        onBlur={(e) => updateProductoConfig(producto.id, { precioBase: parseFloat(e.target.value) || 0 })}
+                        className="w-28 text-right h-8 text-sm pl-6"
+                      />
+                    </div>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent>
@@ -262,6 +274,25 @@ export default function ProductosClient({ productos: initialProductos }: Precios
                     </table>
                   </div>
                 )}
+
+                {/* Discrepancy warning: precioBase vs first tier */}
+                {(() => {
+                  const primerTier = producto.precios[0]
+                  const base = Number(producto.precioBase)
+                  const tier1 = primerTier ? Number(primerTier.precio) : null
+                  if (base > 0 && tier1 && tier1 > 0) {
+                    const diff = Math.abs(base - tier1) / base
+                    if (diff > 0.3) {
+                      return (
+                        <div className="mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg flex items-start gap-2">
+                          <svg className="w-4 h-4 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
+                          <span>Precio base ({formatCOP(base)}) difiere {Math.round(diff * 100)}% del primer rango ({formatCOP(tier1)})</span>
+                        </div>
+                      )
+                    }
+                  }
+                  return null
+                })()}
               </CardContent>
             </Card>
           ))}

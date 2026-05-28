@@ -22,7 +22,7 @@ async function main() {
 
   // 2. Trabajadores
   const repartidorUser = await prisma.user.findUnique({ where: { username: 'repartidor' } })
-  const asistenteUser = await prisma.user.findUnique({ where: { username: 'asistente' } })
+  // // const asistenteUser = await prisma.user.findUnique({ where: { username: 'asistente' } })
   const trabajadores = [
     {
       nombre: 'Carlos Andrés Vargas',
@@ -80,12 +80,20 @@ async function main() {
   console.log('✅ Clientes seeded')
 
   // 4. Productos
+  const PRECIO_BASE: Record<string, number> = {
+    PACA_AGUA: 6500,
+    PACA_HIELO: 8000,
+    BOTELLON: 7500,
+    BOLSA_AGUA: 2500,
+    BOLSA_HIELO: 3000,
+  }
+
   const productos = [
-    { nombre: 'Paca de Agua (40u 300ml)', codigo: 'PACA_AGUA', unidad: 'paca', contenido: '40 bolsas x 300ml', activo: true, aplicaDomicilio: true, sobreCostoDomicilio: 0 },
-    { nombre: 'Paca de Hielo (20u 600ml)', codigo: 'PACA_HIELO', unidad: 'paca', contenido: '20 bolsas x 600ml', activo: true, aplicaDomicilio: true, sobreCostoDomicilio: 0 },
-    { nombre: 'Botellón 20LT', codigo: 'BOTELLON', unidad: 'unidad', contenido: '20 litros', activo: true, aplicaDomicilio: true, sobreCostoDomicilio: 2500 },
-    { nombre: 'Bolsa de Agua 300ml', codigo: 'BOLSA_AGUA', unidad: 'unidad', contenido: '300ml', activo: true, aplicaDomicilio: true, sobreCostoDomicilio: 0 },
-    { nombre: 'Bolsa de Hielo 600ml', codigo: 'BOLSA_HIELO', unidad: 'unidad', contenido: '600ml', activo: true, aplicaDomicilio: true, sobreCostoDomicilio: 0 },
+    { nombre: 'Paca de Agua (40u 300ml)', codigo: 'PACA_AGUA', unidad: 'paca', contenido: '40 bolsas x 300ml', activo: true, aplicaDomicilio: true, sobreCostoDomicilio: 0, precioBase: PRECIO_BASE['PACA_AGUA'] },
+    { nombre: 'Paca de Hielo (20u 600ml)', codigo: 'PACA_HIELO', unidad: 'paca', contenido: '20 bolsas x 600ml', activo: true, aplicaDomicilio: true, sobreCostoDomicilio: 0, precioBase: PRECIO_BASE['PACA_HIELO'] },
+    { nombre: 'Botellón 20LT', codigo: 'BOTELLON', unidad: 'unidad', contenido: '20 litros', activo: true, aplicaDomicilio: true, sobreCostoDomicilio: 2500, precioBase: PRECIO_BASE['BOTELLON'] },
+    { nombre: 'Bolsa de Agua 300ml', codigo: 'BOLSA_AGUA', unidad: 'unidad', contenido: '300ml', activo: true, aplicaDomicilio: true, sobreCostoDomicilio: 0, precioBase: PRECIO_BASE['BOLSA_AGUA'] },
+    { nombre: 'Bolsa de Hielo 600ml', codigo: 'BOLSA_HIELO', unidad: 'unidad', contenido: '600ml', activo: true, aplicaDomicilio: true, sobreCostoDomicilio: 0, precioBase: PRECIO_BASE['BOLSA_HIELO'] },
   ]
   for (const p of productos) {
     await prisma.producto.upsert({ where: { codigo: p.codigo }, update: {}, create: p })

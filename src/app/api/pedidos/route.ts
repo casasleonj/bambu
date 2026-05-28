@@ -69,23 +69,38 @@ export async function GET(request: NextRequest) {
       prisma.pedido.findMany({
         where,
         orderBy: { numero: 'desc' },
-        include: { cliente: true, items: true, factura: { include: { abonos: true } } },
+        include: {
+          cliente: { include: { ruta: { select: { nombre: true } } } },
+          negocio: { include: { ruta: { select: { nombre: true } } } },
+          items: true,
+          factura: { include: { abonos: true } },
+        },
         ...prismaPagination,
       }),
       prisma.pedido.count({ where }),
     ])
 
-    const pedidos = pedidosRaw.map(p => ({
-      ...p,
-      nombreCli: p.clienteId === 'CONSUMIDOR_FINAL' ? 'Consumidor Final' : (p.cliente?.nombre || 'Desconocido'),
-      apellidoCli: p.cliente?.apellido || null,
-      telefonoCli: p.cliente?.telefono || '',
-      zonaCli: p.cliente?.direccion || '',
-      barrioCli: p.cliente?.barrio || '',
-      nombreNegocioCli: p.cliente?.nombreNegocio || null,
-      horaAperturaCli: p.cliente?.horaApertura || null,
-      fecha: p.fecha.toISOString(),
-    }))
+    const pedidos = pedidosRaw.map(p => {
+      // NEGOCIO COMPATIBILITY: use negocio fields if available, fallback to cliente
+      const nombreNegocio = p.negocio?.nombre || p.cliente?.nombreNegocio || null
+      const direccion = p.negocio?.direccion ?? p.cliente?.direccion
+      const barrio = p.negocio?.barrio ?? p.cliente?.barrio
+      const horaApertura = p.negocio?.horaApertura ?? p.cliente?.horaApertura
+      const rutaNombre = p.negocio?.ruta?.nombre || p.cliente?.ruta?.nombre
+
+      return {
+        ...p,
+        nombreCli: p.clienteId === 'CONSUMIDOR_FINAL' ? 'Consumidor Final' : (p.cliente?.nombre || 'Desconocido'),
+        apellidoCli: p.cliente?.apellido || null,
+        telefonoCli: p.cliente?.telefono || '',
+        zonaCli: direccion || '',
+        barrioCli: barrio || '',
+        nombreNegocioCli: nombreNegocio,
+        horaAperturaCli: horaApertura || null,
+        rutaNombre,
+        fecha: p.fecha.toISOString(),
+      }
+    })
 
     return apiSuccess(
       pagination.all
@@ -113,6 +128,7 @@ export async function POST(request: NextRequest) {
 
     const {
       clienteId: rawClienteId,
+      negocioId,
       items: itemsInput,
       productos: productosLegacy,
       obs,
@@ -250,7 +266,7 @@ export async function POST(request: NextRequest) {
       }
 
       // 5. Resolver precios
-      const preciosResueltos = await resolverPreciosPedido(itemsParaPrecios, canalReal, clienteId, tx)
+      const preciosResueltos = await resolverPreciosPedido(itemsParaPrecios, canalReal, clienteId, negocioId, tx)
       const precioMap: Record<string, number> = {}
       for (const pr of preciosResueltos) {
         precioMap[pr.codigo] = pr.precio
@@ -285,6 +301,7 @@ export async function POST(request: NextRequest) {
       const pedido = await tx.pedido.create({
         data: {
           clienteId,
+          negocioId: negocioId || null,
           createdById: authResult.user?.id,
           tipo,
           canal: canalReal,

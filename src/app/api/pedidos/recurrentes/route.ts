@@ -65,9 +65,9 @@ export async function POST(request: NextRequest) {
     }
 
     // A7: Check for inactive/blocked clients
-    const inactivas = plantillasActuales.filter(pt => !pt.cliente.activo || pt.cliente.bloqueado)
+    const inactivas = plantillasActuales.filter(pt => !pt.cliente?.activo || pt.cliente?.bloqueado)
     if (inactivas.length > 0) {
-      const nombres = inactivas.map(pt => pt.clienteId).join(', ')
+      const nombres = inactivas.map(pt => pt.clienteId || pt.negocioId || 'unknown').join(', ')
       return apiError(`Clientes inactivos o bloqueados: ${nombres}`, 400)
     }
 
@@ -77,8 +77,10 @@ export async function POST(request: NextRequest) {
 
     const limitesPorCliente = new Map<string, number>()
     for (const pt of plantillasActuales) {
-      const limite = pt.cliente.limitePedidosFiados ?? limiteGlobal
-      limitesPorCliente.set(pt.clienteId, limite)
+      const clienteId = pt.clienteId
+      if (!clienteId) continue
+      const limite = pt.cliente?.limitePedidosFiados ?? limiteGlobal
+      limitesPorCliente.set(clienteId, limite)
     }
 
     const pedidosPendientesTodos = await prisma.pedido.findMany({
@@ -97,10 +99,11 @@ export async function POST(request: NextRequest) {
 
     const clientesEnLimite: string[] = []
     for (const pt of plantillasActuales) {
+      if (!pt.clienteId) continue
       const limite = limitesPorCliente.get(pt.clienteId) || 3
       const count = pendientesPorCliente.get(pt.clienteId) || 0
       if (count >= limite) {
-        clientesEnLimite.push(`${pt.cliente.nombre} (${count}/${limite})`)
+        clientesEnLimite.push(`${pt.cliente?.nombre || 'unknown'} (${count}/${limite})`)
       }
     }
     if (clientesEnLimite.length > 0) {

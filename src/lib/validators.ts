@@ -27,6 +27,7 @@ export const PedidoItemSchema = z.object({
 
 export const PedidoCreateSchema = z.object({
   clienteId: z.string().min(1),
+  negocioId: z.string().min(1).optional(),
   canal: z.enum(['PUNTO', 'DOMICILIO']).optional().default('DOMICILIO'),
   origen: OrigenPedidoSchema.optional().default('PEDIDO'),
   items: z.array(PedidoItemSchema).min(1, 'Agrega al menos un producto'),
@@ -507,4 +508,28 @@ export const UserUpdateSchema = z.object({
   password: z.string().min(6, 'Contraseña debe tener al menos 6 caracteres').optional(),
   nombre: z.string().min(1, 'Nombre requerido').max(100).optional(),
   apellido: z.string().max(100).optional(),
+})
+
+// ====================
+// DEUDAS TRABAJADOR
+// ====================
+
+export const DeudaTipoSchema = z.enum(['PRESTAMO', 'DEFICIT_EFECTIVO', 'OTRO'])
+
+export const DeudaCreateSchema = z.object({
+  trabajadorId: z.string().min(1),
+  tipo: DeudaTipoSchema,
+  monto: z.coerce.number().positive('El monto debe ser mayor a 0'),
+  descripcion: z.string().min(1, 'La descripcion es obligatoria').max(500),
+  embarqueId: z.string().optional(),
+})
+
+export const DeudaUpdateSchema = z.object({
+  montoPendiente: z.coerce.number().min(0).optional(),
+  descripcion: z.string().min(1).max(500).optional(),
+})
+
+export const AbonoDeudaSchema = z.object({
+  monto: z.coerce.number().positive('El monto debe ser mayor a 0'),
+  nota: z.string().max(500).optional(),
 })

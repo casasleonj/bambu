@@ -16,6 +16,7 @@ export interface Producto {
   contenido: string | null
   aplicaDomicilio: boolean
   sobreCostoDomicilio: string | number
+  precioBase: string | number
   precios: PrecioVolumen[]
 }
 

@@ -161,7 +161,7 @@ export async function previewGeneracionRecurrentes(
   })
 
   // Batch fetch all pending orders for all clients in a single query
-  const clienteIds = plantillas.map(pt => pt.clienteId)
+  const clienteIds = plantillas.map(pt => pt.clienteId).filter((id): id is string => id !== null)
   const pedidosPendientesTodos = await prisma.pedido.findMany({
     where: {
       clienteId: { in: clienteIds },
@@ -194,6 +194,9 @@ export async function previewGeneracionRecurrentes(
   const previews: PreviewRecurrente[] = []
 
   for (const pt of plantillas) {
+    // Skip templates without cliente (migrated to negocio-only)
+    if (!pt.clienteId || !pt.cliente) continue
+
     // A4: Blocked/inactive clients are visible in preview but with restricted options
     const clienteBloqueado = pt.cliente.bloqueado || !pt.cliente.activo
 
@@ -374,6 +377,7 @@ export async function generarPedidosRecurrentes(
       include: { cliente: true },
     })
     if (!pt || !pt.activo) continue
+    if (!pt.clienteId || !pt.cliente) continue // Skip templates migrated to negocio-only
 
     // Auto-fix Sunday: if proxGeneracion lands on Sunday, shift to Monday
     let prox = pt.proxGeneracion!
@@ -546,18 +550,22 @@ export async function generarPedidosRecurrentes(
       : 0
 
     const nuevo = await prisma.$transaction(async (tx) => {
+      // Re-check clienteId within transaction (TypeScript narrowing)
+      const clienteId = pt.clienteId
+      if (!clienteId) return null
+
       // Re-verificar limite de fiados dentro de la transacción para evitar race conditions
       const pedidosPendientesTx = await tx.pedido.findMany({
         where: {
-          clienteId: pt.clienteId,
+          clienteId,
           estadoEntrega: { notIn: ['ANULADO', 'CANCELADO'] },
           estadoPago: { notIn: ['PAGADO', 'ANTICIPADO', 'ANULADO'] },
         },
         select: { id: true, numero: true, saldo: true },
       })
 
-      let limiteTx = pt.cliente.limitePedidosFiados ?? 3
-      if (pt.cliente.limitePedidosFiados == null) {
+      let limiteTx = pt.cliente!.limitePedidosFiados ?? 3
+      if (pt.cliente!.limitePedidosFiados == null) {
         const configLimite = await tx.config.findUnique({ where: { clave: 'LIMITE_PEDIDOS_FIADOS_DEFAULT' } })
         if (configLimite) {
           const parsed = parseInt(configLimite.valor, 10)
@@ -578,7 +586,7 @@ export async function generarPedidosRecurrentes(
 
       const creado = await tx.pedido.create({
         data: {
-          clienteId: pt.clienteId,
+          clienteId,
           tipo: pt.tipo,
           canal: pt.canal,
           origen: 'RECURRENTE',
@@ -623,7 +631,7 @@ export async function generarPedidosRecurrentes(
       await tx.factura.create({
         data: {
           numero: `FAC-${facturaNum.toString().padStart(5, "0")}`,
-          clienteId: pt.clienteId,
+          clienteId,
           pedidoId: creado.id,
           subtotal: total,
           total,

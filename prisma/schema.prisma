@@ -131,11 +131,14 @@ model User {
   proveedoresCreados  Proveedor[]      @relation("ProveedorCreador")
    trabajadoresCreados Trabajador[]      @relation("TrabajadorCreador")
   rutasCreadas        Ruta[]            @relation("RutaCreador")
+  negociosCreados     Negocio[]         @relation("NegocioCreador")
   plantillasCreadas   PlantillaRecurrente[] @relation("PlantillaCreador")
 
   casosCreados        Caso[]            @relation("CasoCreador")
   casosAsignados      Caso[]            @relation("CasoAsignado")
   eventosCaso         CasoEvento[]      @relation("CasoEventoUser")
+
+  deudasCreadas       DeudaTrabajador[] @relation("DeudaCreador")
 }
 
 // ====================
@@ -159,6 +162,7 @@ model Ruta {
   horarioFin    String?
 
   clientes  Cliente[]
+  negocios  Negocio[]     @relation("RutaNegocio")
   embarques Embarque[]
 
   createdAt DateTime @db.Timestamptz() @default(now())
@@ -216,6 +220,11 @@ model Cliente {
   reclamaciones  Int       @default(0)
   limitePedidosFiados Int? @default(3)
 
+  // NEGOCIOS — un cliente puede ser dueño de varios negocios
+  negocios          Negocio[]
+  negocioDefaultId  String?  @unique
+  negocioDefault    Negocio? @relation("NegocioDefault", fields: [negocioDefaultId], references: [id])
+
   plantillaRecurrente PlantillaRecurrente?
 
   notas        String?
@@ -241,13 +250,70 @@ model Cliente {
 }
 
 // ====================
+// NEGOCIO (sucursales de un cliente)
+// ====================
+
+model Negocio {
+  id              String   @id @default(cuid())
+  createdById     String?
+  createdBy       User?    @relation("NegocioCreador", fields: [createdById], references: [id])
+
+  clienteId       String
+  cliente         Cliente  @relation(fields: [clienteId], references: [id])
+
+  nombre          String
+  tipoNegocio     String?
+  direccion       String?       // si null, fallback a cliente.direccion
+  barrio          String?       // si null, fallback a cliente.barrio
+  referencia      String?
+  linkUbicacion   String?
+  horaApertura    String?
+
+  rutaId          String?
+  ruta            Ruta?    @relation("RutaNegocio", fields: [rutaId], references: [id])
+
+  preciosEspeciales String?     // si null, fallback a cliente.preciosEspeciales
+
+  habAgua         Boolean  @default(true)
+  habHielo        Boolean  @default(true)
+  habBotellon     Boolean  @default(true)
+  habBolsaAgua    Boolean  @default(true)
+  habBolsaHielo   Boolean  @default(true)
+
+  frecuencia      String?
+  cadaNDias       Int?
+
+  plantillaRecurrente PlantillaRecurrente?
+
+  pedidos         Pedido[]
+  facturas        Factura[]
+  abonos          Abono[]
+  casos           Caso[]        @relation("CasoNegocio")
+  // Relation for Cliente.negocioDefault
+  clienteDefault  Cliente?      @relation("NegocioDefault")
+  activo          Boolean  @default(true)
+
+  createdAt       DateTime @db.Timestamptz() @default(now())
+  updatedAt       DateTime @db.Timestamptz() @updatedAt
+
+  @@index([clienteId])
+  @@index([rutaId])
+  @@index([activo])
+  @@index([barrio])
+}
+
+// ====================
 // PLANTILLA RECURRENTE
 // ====================
 
 model PlantillaRecurrente {
   id              String   @id @default(cuid())
-  clienteId       String   @unique
-  cliente         Cliente  @relation(fields: [clienteId], references: [id])
+  // NUEVO: relación principal a Negocio
+  negocioId       String?  @unique
+  negocio         Negocio? @relation(fields: [negocioId], references: [id])
+  // LEGACY: mantener para compatibilidad durante migración
+  clienteId       String?  @unique
+  cliente         Cliente? @relation(fields: [clienteId], references: [id])
   activo          Boolean  @default(true)
   cadaNDias       Int      @default(7)
   tipo            String   @default("ENVIO")
@@ -266,6 +332,7 @@ model PlantillaRecurrente {
 
   @@index([activo, proxGeneracion])
   @@index([clienteId])
+  @@index([negocioId])
 }
 
 // ====================
@@ -304,6 +371,7 @@ model Trabajador {
   nominas     Nomina[]
   gpsTracks    GpsTrack[]
   descuentos   DescuentoRepartidor[]
+  deudas       DeudaTrabajador[]
 
   rutasAsignadas    Ruta[] @relation("RutaRepartidor")
   rutasRespaldo     Ruta[] @relation("RutaRespaldo")
@@ -347,11 +415,18 @@ model Nomina {
   salario          Decimal   @default(0) @db.Decimal(10, 2)
   total            Decimal   @db.Decimal(10, 2)
 
+  // Deducciones aplicadas
+  totalDescuentos     Decimal   @default(0) @db.Decimal(10, 2)
+  descuentoDeudas     Decimal   @default(0) @db.Decimal(10, 2)
+
   estado        EstadoNomina @default(PENDIENTE)
   fechaPago    DateTime? @db.Timestamptz()
 
   createdAt    DateTime @db.Timestamptz() @default(now())
   updatedAt    DateTime @db.Timestamptz() @updatedAt
+
+  descuentosAplicados DescuentoRepartidor[] @relation("NominaDescuentos")
+  deduccionesDeudas   DeduccionDeuda[]
 
   @@index([createdById])
   @@index([trabajadorId])
@@ -369,6 +444,8 @@ model Pedido {
   createdBy  User?     @relation("PedidoCreador", fields: [createdById], references: [id])
   clienteId   String
   cliente    Cliente   @relation(fields: [clienteId], references: [id])
+  negocioId  String?
+  negocio    Negocio?  @relation(fields: [negocioId], references: [id])
   embarqueId String?
   embarque   Embarque? @relation(fields: [embarqueId], references: [id])
 
@@ -445,6 +522,7 @@ model Pedido {
   updatedAt DateTime @db.Timestamptz() @updatedAt
 
   @@index([clienteId])
+  @@index([negocioId])
   @@index([embarqueId])
   @@index([fecha])
   @@index([estado])
@@ -609,13 +687,16 @@ model DescuentoRepartidor {
   motivo            String
   justificado       Boolean  @default(false)
   aplicadoEnNomina  Boolean  @default(false)
+  nominaId          String?
   fecha             DateTime @db.Timestamptz() @default(now())
 
   trabajador        Trabajador @relation(fields: [trabajadorId], references: [id])
+  nomina            Nomina?    @relation("NominaDescuentos", fields: [nominaId], references: [id])
 
   @@index([trabajadorId])
   @@index([embarqueId])
   @@index([aplicadoEnNomina])
+  @@index([nominaId])
 }
 
 // ====================
@@ -629,6 +710,8 @@ model Factura {
   numero      String    @unique
   clienteId   String
   cliente    Cliente   @relation(fields: [clienteId], references: [id])
+  negocioId  String?
+  negocio    Negocio?  @relation(fields: [negocioId], references: [id])
   pedidoId    String    @unique
   pedido     Pedido    @relation(fields: [pedidoId], references: [id])
 
@@ -655,6 +738,7 @@ model Factura {
   updatedAt DateTime @db.Timestamptz() @updatedAt
 
   @@index([clienteId])
+  @@index([negocioId])
   @@index([estado])
   @@index([createdById])
   @@index([saldo])
@@ -712,6 +796,8 @@ model Abono {
   factura     Factura  @relation(fields: [facturaId], references: [id])
   clienteId   String
   cliente     Cliente  @relation(fields: [clienteId], references: [id])
+  negocioId   String?
+  negocio     Negocio? @relation(fields: [negocioId], references: [id])
   pedidoId    String?
   pedido      Pedido?  @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
   monto       Decimal  @db.Decimal(10, 2)
@@ -722,6 +808,7 @@ model Abono {
 
   @@index([facturaId])
   @@index([clienteId])
+  @@index([negocioId])
   @@index([fecha])
   @@index([facturaId, fecha])
   @@index([pedidoId])
@@ -903,6 +990,7 @@ model Producto {
   activo              Boolean  @default(true)
   aplicaDomicilio     Boolean  @default(false)
   sobreCostoDomicilio Decimal  @default(0) @db.Decimal(10, 2)
+  precioBase          Decimal  @default(0) @db.Decimal(10, 2)
 
   precios             PrecioVolumen[]
 
@@ -1070,6 +1158,8 @@ model Caso {
   // Polimórfico: link al negocio
   clienteId       String?
   cliente         Cliente?    @relation("CasoCliente", fields: [clienteId], references: [id], onDelete: SetNull)
+  negocioId       String?
+  negocio         Negocio?    @relation("CasoNegocio", fields: [negocioId], references: [id], onDelete: SetNull)
   pedidoId        String?
   pedido          Pedido?     @relation("CasoPedido", fields: [pedidoId], references: [id], onDelete: SetNull)
 
@@ -1093,6 +1183,7 @@ model Caso {
   @@index([status])
   @@index([asignadoAId])
   @@index([clienteId])
+  @@index([negocioId])
   @@index([alertaTipo])
   @@index([createdAt])
 }
@@ -1111,4 +1202,65 @@ model CasoEvento {
 
   @@index([casoId])
   @@index([createdAt])
+}
+
+// ====================
+// DEUDA TRABAJADOR (prestamos, deficits)
+// ====================
+
+model DeudaTrabajador {
+  id             String   @id @default(cuid())
+  createdById    String?
+  createdBy      User?       @relation("DeudaCreador", fields: [createdById], references: [id])
+  trabajadorId   String
+  trabajador     Trabajador  @relation(fields: [trabajadorId], references: [id])
+
+  tipo           String   // PRESTAMO, DEFICIT_EFECTIVO, OTRO
+  montoOriginal  Decimal  @db.Decimal(10, 2)
+  montoPendiente Decimal  @db.Decimal(10, 2)
+
+  embarqueId     String?
+  descripcion    String   @db.Text
+  fecha          DateTime @db.Timestamptz() @default(now())
+
+  deducciones    DeduccionDeuda[]
+  abonos         AbonoDeuda[]
+  createdAt      DateTime @db.Timestamptz() @default(now())
+  updatedAt      DateTime @db.Timestamptz() @updatedAt
+
+  @@index([trabajadorId])
+  @@index([trabajadorId, montoPendiente])
+}
+
+// ====================
+// ABONO DEUDA (pagos parciales a deuda)
+// ====================
+
+model AbonoDeuda {
+  id       String   @id @default(cuid())
+  deudaId  String
+  deuda    DeudaTrabajador @relation(fields: [deudaId], references: [id], onDelete: Cascade)
+  monto    Decimal  @db.Decimal(10, 2)
+  fecha    DateTime @db.Timestamptz() @default(now())
+  nota     String?  @db.Text
+
+  @@index([deudaId])
+}
+
+// ====================
+// DEDUCCION DEUDA (trazabilidad nomina -> deuda)
+// ====================
+
+model DeduccionDeuda {
+  id        String   @id @default(cuid())
+  nominaId  String
+  nomina    Nomina   @relation(fields: [nominaId], references: [id])
+  deudaId   String
+  deuda     DeudaTrabajador @relation(fields: [deudaId], references: [id])
+  monto     Decimal  @db.Decimal(10, 2)
+  createdAt DateTime @db.Timestamptz() @default(now())
+
+  @@unique([nominaId, deudaId])
+  @@index([nominaId])
+  @@index([deudaId])
 }

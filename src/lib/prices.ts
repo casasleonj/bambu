@@ -1,3 +1,8 @@
+/**
+ * @deprecated Use producto.precioBase from the database instead.
+ * This is kept as a client-side safety net only. Server-side pricing
+ * now falls back to precioBase when no volume tiers exist.
+ */
 export const DEFAULT_PRICES: Record<string, number> = {
   PACA_AGUA: 6500,
   PACA_HIELO: 8000,

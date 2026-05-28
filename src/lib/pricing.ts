@@ -97,12 +97,14 @@ export async function resolverPrecio(
     precio = Number(tier.precio)
   }
 
+  // Fetch product config for surcharge and base price fallback
+  const producto = await client.producto.findUnique({
+    where: { codigo },
+    select: { aplicaDomicilio: true, sobreCostoDomicilio: true, precioBase: true },
+  })
+
   // Apply domicilio surcharge
   if (canal === 'DOMICILIO' && precio > 0) {
-    const producto = await client.producto.findUnique({
-      where: { codigo },
-      select: { aplicaDomicilio: true, sobreCostoDomicilio: true },
-    })
     if (producto?.aplicaDomicilio) {
       precio += Number(producto.sobreCostoDomicilio)
     }
@@ -112,6 +114,12 @@ export async function resolverPrecio(
     return { precio, origen: 'volumen' }
   }
 
+  // Fallback to producto.precioBase if no tier matched
+  const basePrice = Number(producto?.precioBase) || 0
+  if (basePrice > 0) {
+    return { precio: basePrice, origen: 'base' }
+  }
+
   return { precio: 0, origen: 'base' }
 }
 
@@ -119,25 +127,46 @@ export async function resolverPrecio(
  * Resolve prices for all products in a pedido.
  * Uses a SINGLE batch query for all volume tiers + products.
  * Returns a map of product code -> resolved price info.
+ *
+ * NUEVO: Supports negocioId — checks negocio.preciosEspeciales first,
+ * then falls back to cliente.preciosEspeciales for backward compatibility.
  */
 export async function resolverPreciosPedido(
   items: Array<{ codigo: ProductCode; cantidad: number; precioManual?: number }>,
   canal: Canal,
   clienteId?: string,
+  negocioId?: string | null,
   db?: PrismaClient | Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$extends'>,
 ): Promise<PrecioResuelto[]> {
-  // Get client overrides if clienteId provided
+  // Get client/negocio overrides — negocio takes priority
   let clienteOverrides: Record<string, number> | null = null
   if (clienteId) {
     const client = db || prisma
-    const cliente = await client.cliente.findUnique({
-      where: { id: clienteId },
-      select: { preciosEspeciales: true },
-    })
-    if (cliente?.preciosEspeciales) {
-      try {
-        clienteOverrides = JSON.parse(cliente.preciosEspeciales)
-      } catch { /* invalid JSON, ignore */ }
+
+    // Try negocio first
+    if (negocioId) {
+      const negocio = await client.negocio.findUnique({
+        where: { id: negocioId },
+        select: { preciosEspeciales: true },
+      })
+      if (negocio?.preciosEspeciales) {
+        try {
+          clienteOverrides = JSON.parse(negocio.preciosEspeciales)
+        } catch { /* invalid JSON, fall through to cliente */ }
+      }
+    }
+
+    // Fallback to cliente if negocio had no overrides
+    if (!clienteOverrides) {
+      const cliente = await client.cliente.findUnique({
+        where: { id: clienteId },
+        select: { preciosEspeciales: true },
+      })
+      if (cliente?.preciosEspeciales) {
+        try {
+          clienteOverrides = JSON.parse(cliente.preciosEspeciales)
+        } catch { /* invalid JSON, ignore */ }
+      }
     }
   }
 
@@ -151,7 +180,7 @@ export async function resolverPreciosPedido(
   }
 
   let tiersByCode: Record<string, Array<{ cantMin: number; cantMax: number | null; precio: number }>> = {}
-  let productosByCode: Record<string, { aplicaDomicilio: boolean; sobreCostoDomicilio: number }> = {}
+  let productosByCode: Record<string, { aplicaDomicilio: boolean; sobreCostoDomicilio: number; precioBase: number }> = {}
 
   if (activeCodes.length > 0) {
     const client = db || prisma
@@ -166,7 +195,7 @@ export async function resolverPreciosPedido(
       }),
       client.producto.findMany({
         where: { codigo: { in: activeCodes } },
-        select: { codigo: true, aplicaDomicilio: true, sobreCostoDomicilio: true },
+        select: { codigo: true, aplicaDomicilio: true, sobreCostoDomicilio: true, precioBase: true },
       }),
     ])
 
@@ -184,6 +213,7 @@ export async function resolverPreciosPedido(
       productosByCode[prod.codigo] = {
         aplicaDomicilio: prod.aplicaDomicilio,
         sobreCostoDomicilio: Number(prod.sobreCostoDomicilio),
+        precioBase: Number(prod.precioBase),
       }
     }
   }
@@ -228,6 +258,15 @@ export async function resolverPreciosPedido(
       if (bestTier) {
         precio = bestTier.precio
         origen = 'volumen'
+      }
+    }
+
+    // 3.5 Fallback to producto.precioBase if no tier matched
+    if (precio === 0) {
+      const prodConfig = productosByCode[item.codigo]
+      if (prodConfig?.precioBase && prodConfig.precioBase > 0) {
+        precio = prodConfig.precioBase
+        origen = 'base'
       }
     }
 

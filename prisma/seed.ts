@@ -97,12 +97,20 @@ async function main() {
   // ====================
   // Productos
   // ====================
+  const PRECIO_BASE: Record<string, number> = {
+    PACA_AGUA: 6500,
+    PACA_HIELO: 8000,
+    BOTELLON: 7500,
+    BOLSA_AGUA: 2500,
+    BOLSA_HIELO: 3000,
+  }
+
   const productosData = [
-    { codigo: 'PACA_AGUA', nombre: 'Paca de Agua (40u 300ml)', unidad: 'paca', contenido: '40 bolsas x 300ml', aplicaDomicilio: true, sobreCostoDomicilio: 0 },
-    { codigo: 'PACA_HIELO', nombre: 'Paca de Hielo (20u 600ml)', unidad: 'paca', contenido: '20 bolsas x 600ml', aplicaDomicilio: true, sobreCostoDomicilio: 0 },
-    { codigo: 'BOTELLON', nombre: 'Botellón 20LT', unidad: 'unidad', contenido: '20 litros', aplicaDomicilio: true, sobreCostoDomicilio: 2500 },
-    { codigo: 'BOLSA_AGUA', nombre: 'Bolsa de Agua 300ml', unidad: 'unidad', contenido: '300ml', aplicaDomicilio: true, sobreCostoDomicilio: 0 },
-    { codigo: 'BOLSA_HIELO', nombre: 'Bolsa de Hielo 600ml', unidad: 'unidad', contenido: '600ml', aplicaDomicilio: true, sobreCostoDomicilio: 0 },
+    { codigo: 'PACA_AGUA', nombre: 'Paca de Agua (40u 300ml)', unidad: 'paca', contenido: '40 bolsas x 300ml', aplicaDomicilio: true, sobreCostoDomicilio: 0, precioBase: PRECIO_BASE['PACA_AGUA'] },
+    { codigo: 'PACA_HIELO', nombre: 'Paca de Hielo (20u 600ml)', unidad: 'paca', contenido: '20 bolsas x 600ml', aplicaDomicilio: true, sobreCostoDomicilio: 0, precioBase: PRECIO_BASE['PACA_HIELO'] },
+    { codigo: 'BOTELLON', nombre: 'Botellón 20LT', unidad: 'unidad', contenido: '20 litros', aplicaDomicilio: true, sobreCostoDomicilio: 2500, precioBase: PRECIO_BASE['BOTELLON'] },
+    { codigo: 'BOLSA_AGUA', nombre: 'Bolsa de Agua 300ml', unidad: 'unidad', contenido: '300ml', aplicaDomicilio: true, sobreCostoDomicilio: 0, precioBase: PRECIO_BASE['BOLSA_AGUA'] },
+    { codigo: 'BOLSA_HIELO', nombre: 'Bolsa de Hielo 600ml', unidad: 'unidad', contenido: '600ml', aplicaDomicilio: true, sobreCostoDomicilio: 0, precioBase: PRECIO_BASE['BOLSA_HIELO'] },
   ]
 
   for (const prod of productosData) {

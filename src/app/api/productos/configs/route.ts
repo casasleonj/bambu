@@ -16,6 +16,7 @@ export async function GET(_request: NextRequest) {
         nombre: true,
         aplicaDomicilio: true,
         sobreCostoDomicilio: true,
+        precioBase: true,
       },
       orderBy: { codigo: 'asc' },
     })

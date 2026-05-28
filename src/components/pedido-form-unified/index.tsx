@@ -8,6 +8,7 @@ import { METODOS_PAGO, METODO_PAGO_ICONS } from '@/lib/metodos-pago'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
 import { TipoNegocioSelect } from '@/components/tipo-negocio-select'
 import { matchCliente } from '@/lib/cliente-search'
+import { NegocioSelector } from '@/components/negocio-selector'
 import type { Cliente, Tier } from './types'
 
 const TIPOS_NEGOCIO: string[] = [
@@ -56,6 +57,7 @@ export interface PedidoFormUnifiedProps {
 
 export interface PedidoUnifiedData {
   clienteId?: string
+  negocioId?: string
   canal: 'PUNTO' | 'DOMICILIO'
   items: Array<{ producto: string; cantidad: number; precioManual?: number }>
   preciosManuales: Record<string, number>
@@ -75,6 +77,7 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
   const [cantidades, setCantidades] = useState<Record<string, number>>({})
   const [searchTerm, setSearchTerm] = useState('')
   const [clienteSeleccionado, setClienteSeleccionado] = useState<Cliente | null>(null)
+  const [negocioSeleccionado, setNegocioSeleccionado] = useState<string | null>(null)
   const [mostrarNuevo, setMostrarNuevo] = useState(false)
   const [nuevoCliente, setNuevoCliente] = useState({ nombre: '', apellido: '', telefono: '', direccion: '', barrio: '', nombreNegocio: '', tipoNegocio: '', fuente: '' })
   const [pagos, setPagos] = useState<{ metodo: string; monto: number }[]>([])
@@ -288,7 +291,7 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
     ? clientes.filter((c) => matchCliente(c, searchTerm))
     : []
 
-  const handleSelectCliente = (cliente: Cliente) => { setClienteSeleccionado(cliente); setSearchTerm(''); setMostrarNuevo(false) }
+  const handleSelectCliente = (cliente: Cliente) => { setClienteSeleccionado(cliente); setNegocioSeleccionado(null); setSearchTerm(''); setMostrarNuevo(false) }
   const handleCrearNuevo = () => { setMostrarNuevo(true); setClienteSeleccionado(null); setNuevoCliente(prev => ({ ...prev, nombre: searchTerm })) }
 
   const handleToggleCanal = (nuevoCanal: 'PUNTO' | 'DOMICILIO') => {
@@ -379,6 +382,7 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
 
     const data: PedidoUnifiedData = {
       clienteId,
+      negocioId: negocioSeleccionado || undefined,
       canal,
       items,
       preciosManuales,
@@ -452,6 +456,13 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
                   </span>
                 </div>
               )}
+
+              {/* NEGOCIO SELECTOR */}
+              <NegocioSelector
+                clienteId={clienteSeleccionado.id}
+                selectedNegocioId={negocioSeleccionado}
+                onNegocioSelected={setNegocioSeleccionado}
+              />
 
               {canal === 'DOMICILIO' && (
                 <div className="grid grid-cols-2 gap-2">

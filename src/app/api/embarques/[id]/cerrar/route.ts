@@ -102,7 +102,7 @@ export async function POST(
             { codigo: 'BOLSA_AGUA', cantidad: entProd.cBolsaAguaEnt },
             { codigo: 'BOLSA_HIELO', cantidad: entProd.cBolsaHieloEnt },
           ]
-          const resueltos = await resolverPreciosPedido(items, pedido.canal as Canal, pedido.clienteId, tx)
+          const resueltos = await resolverPreciosPedido(items, pedido.canal as Canal, pedido.clienteId, pedido.negocioId, tx)
           const priceMap: Record<string, number> = {}
           for (const pr of resueltos) priceMap[pr.codigo] = pr.precio
           precios = {

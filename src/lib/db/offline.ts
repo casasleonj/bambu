@@ -12,6 +12,7 @@ export interface OfflinePedido {
   localId: string
   numero?: number
   clienteId: string
+  negocioId?: string
   items: OfflinePedidoItem[]
   origen: 'PEDIDO' | 'VENTA_RAPIDA' | 'VENTA_LIBRE'
   canal?: 'PUNTO' | 'DOMICILIO'

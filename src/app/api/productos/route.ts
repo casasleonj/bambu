@@ -32,6 +32,7 @@ export async function GET(_request: NextRequest) {
 const ProductoUpdateSchema = z.object({
   aplicaDomicilio: z.boolean().optional(),
   sobreCostoDomicilio: z.coerce.number().min(0).optional(),
+  precioBase: z.coerce.number().min(0).optional(),
 })
 
 export async function PUT(request: NextRequest) {

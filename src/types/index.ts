@@ -29,15 +29,41 @@ export interface Cliente {
   ultEntrega?: string
   proxEntrega?: string
   activo: boolean
-  _count?: { pedidos: number }
+  negocioDefaultId?: string
+  _count?: { pedidos: number; negocios?: number }
   pedidos?: Pedido[]
   facturas?: Factura[]
+  negocios?: Negocio[]
+}
+
+export interface Negocio {
+  id: string
+  clienteId: string
+  nombre: string
+  tipoNegocio?: string
+  direccion?: string
+  barrio?: string
+  referencia?: string
+  linkUbicacion?: string
+  horaApertura?: string
+  rutaId?: string
+  preciosEspeciales?: string
+  habAgua: boolean
+  habHielo: boolean
+  habBotellon: boolean
+  habBolsaAgua: boolean
+  habBolsaHielo: boolean
+  frecuencia?: string
+  cadaNDias?: number
+  activo: boolean
+  ruta?: { nombre: string }
 }
 
 export interface Pedido {
   id: string
   numero: number
   clienteId: string
+  negocioId?: string
   tipo: TipoPedido
   estado: EstadoPedido
   cAguaPed: number
@@ -70,6 +96,7 @@ export interface Pedido {
     barrio?: string
     precioAguaPref?: number
   }
+  negocio?: Negocio
   pagos?: Pago[]
 }
 
