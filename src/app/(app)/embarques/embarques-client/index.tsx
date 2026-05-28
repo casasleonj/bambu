@@ -13,6 +13,7 @@ import type { Embarque, Trabajador, Ruta, Pedido } from './types'
 import { EmbarqueCard } from './embarque-card'
 import { EmbarqueFormModal } from './embarque-form-modal'
 import { EmbarqueDetailModal } from './embarque-detail-modal'
+import { StatsTab } from './stats-tab'
 
 interface InitialData {
   embarques: Embarque[]
@@ -40,6 +41,7 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [dateRange, setDateRange] = useState<{ desde: string | null; hasta: string | null }>({ desde: null, hasta: null })
   const [filtroEstado, setFiltroEstado] = useState('')
+  const [activeTab, setActiveTab] = useState<'embarques' | 'stats'>('embarques')
   const [stockEstimado, setStockEstimado] = useState<{ agua: number; hielo: number } | null>(null)
   const [showStockModal, setShowStockModal] = useState(false)
   const [estimadoAgua, setEstimadoAgua] = useState("")
@@ -297,6 +299,32 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
         </div>
       </div>
 
+      {/* Tabs: Embarques / Estadísticas */}
+      <div className="flex border-b border-gray-200 mb-4">
+        <button
+          onClick={() => setActiveTab('embarques')}
+          className={`px-5 py-2.5 text-sm font-medium border-b-2 transition ${
+            activeTab === 'embarques'
+              ? 'border-blue-600 text-blue-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+          }`}
+        >
+          📦 Embarques
+        </button>
+        <button
+          onClick={() => setActiveTab('stats')}
+          className={`px-5 py-2.5 text-sm font-medium border-b-2 transition ${
+            activeTab === 'stats'
+              ? 'border-blue-600 text-blue-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+          }`}
+        >
+          📊 Estadísticas
+        </button>
+      </div>
+
+      {activeTab === 'embarques' ? (
+      <>
       {/* Stock estimado banner — only shows if already set or stock is low */}
       {!bannerDismissed && (stockEstimado || stockBajo) && (stockEstimado ? (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
@@ -440,6 +468,10 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
           </div>
         )}
       </div>
+      </>
+      ) : (
+        <StatsTab dateRange={dateRange} />
+      )}
 
       <EmbarqueFormModal
         open={showFormModal}
