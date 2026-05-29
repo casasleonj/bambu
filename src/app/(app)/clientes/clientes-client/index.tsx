@@ -1017,9 +1017,9 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
                       </button>
                     </div>
 
-                    {negocios.length > 0 ? (
+                    {(negocios ?? []).length > 0 ? (
                       <div className="space-y-2">
-                        {negocios.map((neg) => (
+                        {(negocios ?? []).map((neg) => (
                           <div key={neg.id} className="bg-gray-50 rounded-xl p-3 space-y-2">
                             <div className="flex items-center justify-between">
                               <span className="font-medium text-sm">{neg.nombre}</span>

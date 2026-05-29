@@ -5,7 +5,7 @@ import { requireAuth, requireRole } from '@/lib/auth-check'
 import { z } from 'zod'
 import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
-import { apiSuccess, apiError } from '@/lib/api-response'
+import { apiSuccess, apiList, apiError } from '@/lib/api-response'
 
 const NegocioCreateSchema = z.object({
   clienteId: z.string().min(1),
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
       orderBy: { nombre: 'asc' },
     })
 
-    return apiSuccess(negocios)
+    return apiList(negocios)
   } catch (error) {
     return apiError('Error al obtener negocios', 500)
   }
