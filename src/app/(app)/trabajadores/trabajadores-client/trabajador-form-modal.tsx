@@ -112,7 +112,17 @@ export function TrabajadorFormModal({
               id="trabajador-rol"
               required
               value={formData.rol}
-              onChange={(e) => setFormData({ ...formData, rol: e.target.value })}
+              onChange={(e) => {
+                const newRol = e.target.value
+                const isAdminOrContador = newRol === 'ADMIN' || newRol === 'CONTADOR'
+                setFormData({
+                  ...formData,
+                  rol: newRol,
+                  tipoPago: isAdminOrContador ? 'FIJO' : formData.tipoPago,
+                  usaMoto: isAdminOrContador ? false : formData.usaMoto,
+                  capacidadKg: isAdminOrContador ? 0 : formData.capacidadKg,
+                })
+              }}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg"
             >
               {rolOptions.map((r) => (
@@ -126,12 +136,20 @@ export function TrabajadorFormModal({
               id="trabajador-tipoPago"
               value={formData.tipoPago}
               onChange={(e) => setFormData({ ...formData, tipoPago: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              disabled={formData.rol === 'ADMIN' || formData.rol === 'CONTADOR'}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg disabled:bg-gray-100 disabled:cursor-not-allowed"
             >
-              {tipoPagoOptions.map((tp) => (
-                <option key={tp} value={tp}>{tipoPagoLabels[tp]}</option>
-              ))}
+              {(formData.rol === 'ADMIN' || formData.rol === 'CONTADOR') ? (
+                <option value="FIJO">Fijo</option>
+              ) : (
+                tipoPagoOptions.map((tp) => (
+                  <option key={tp} value={tp}>{tipoPagoLabels[tp]}</option>
+                ))
+              )}
             </select>
+            {(formData.rol === 'ADMIN' || formData.rol === 'CONTADOR') && (
+              <p className="text-xs text-gray-500 mt-1">Solo salario fijo para este rol</p>
+            )}
           </div>
         </div>
 
@@ -141,7 +159,13 @@ export function TrabajadorFormModal({
             type="checkbox"
             checked={formData.usaMoto}
             onChange={(e) => {
-              setFormData({ ...formData, usaMoto: e.target.checked })
+              const checked = e.target.checked
+              setFormData({
+                ...formData,
+                usaMoto: checked,
+                capacidadKg: checked ? (formData.capacidadKg || 500) : 0,
+                tipoPago: checked ? formData.tipoPago : 'FIJO',
+              })
             }}
             className="h-4 w-4 text-blue-600 border-gray-300 rounded"
           />
@@ -161,10 +185,24 @@ export function TrabajadorFormModal({
               type="number"
               min={100}
               max={2000}
-              value={formData.capacidadKg}
+              value={formData.capacidadKg || ''}
               onChange={(e) => {
-                const v = parseInt(e.target.value)
-                setFormData({ ...formData, capacidadKg: isNaN(v) ? 500 : v })
+                const raw = e.target.value
+                if (raw === '') {
+                  setFormData({ ...formData, capacidadKg: 0 })
+                } else {
+                  const v = parseInt(raw)
+                  if (!isNaN(v)) {
+                    setFormData({ ...formData, capacidadKg: v })
+                  }
+                }
+              }}
+              onBlur={() => {
+                if (formData.capacidadKg === 0) {
+                  setFormData({ ...formData, capacidadKg: 500 })
+                } else {
+                  setFormData({ ...formData, capacidadKg: Math.min(2000, Math.max(100, formData.capacidadKg)) })
+                }
               }}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg"
             />
