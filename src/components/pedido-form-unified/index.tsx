@@ -9,6 +9,7 @@ import { getProductoIconConfig } from '@/lib/producto-iconos'
 import { TipoNegocioSelect } from '@/components/tipo-negocio-select'
 import { matchCliente } from '@/lib/cliente-search'
 import { NegocioSelector } from '@/components/negocio-selector'
+import { usePriceSync } from '@/hooks/use-price-sync'
 import type { Cliente, Tier } from './types'
 
 const FUENTES: string[] = [
@@ -133,7 +134,7 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
         if (data.precios) {
           const nuevos: Record<string, number> = {}
           for (const [codigo, info] of Object.entries(data.precios)) {
-            nuevos[codigo] = (info as any).precio
+            nuevos[codigo] = (info as { precio: number }).precio
           }
           setPreciosResueltos(nuevos)
         }
@@ -142,6 +143,25 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
       console.error('Error resolviendo precios:', error)
     }
   }, [productosActuales, clienteSeleccionado?.id])
+
+  // Price sync: detectar cambios de precios via polling
+  const handlePriceRefresh = useCallback(async () => {
+    try {
+      const res = await fetch('/api/precios/tabla')
+      const data = await res.json()
+      if (data.tabla) {
+        setTablaPrecios(data.tabla)
+        // Re-resolver precios si hay cantidades cargadas
+        if (Object.values(cantidadesRef.current).some(c => c > 0)) {
+          resolverPrecios(cantidadesRef.current, canalRef.current, clienteSeleccionado?.id)
+        }
+      }
+    } catch (error) {
+      console.error('Error refreshing prices:', error)
+    }
+  }, [resolverPrecios, clienteSeleccionado?.id])
+
+  const { stale: preciosStale, refresh: refreshPrecios } = usePriceSync(handlePriceRefresh)
 
   useEffect(() => {
     if (productosConfig.length === 0) return
@@ -431,6 +451,25 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
           </div>
         )}
 
+        {/* Banner de precios desactualizados */}
+        {preciosStale && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm text-amber-800">
+              <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <span className="font-medium">Precios actualizados disponibles</span>
+            </div>
+            <button
+              type="button"
+              onClick={refreshPrecios}
+              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium rounded-md transition"
+            >
+              Actualizar
+            </button>
+          </div>
+        )}
+
         {/* Cliente */}
         <div className="bg-white border rounded-xl p-4">
           <h3 className="font-semibold text-gray-700 text-sm mb-3">{canal === 'DOMICILIO' ? 'Cliente *' : 'Cliente (opcional)'}</h3>
@@ -466,6 +505,8 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
               {/* NEGOCIO SELECTOR */}
               <NegocioSelector
                 clienteId={clienteSeleccionado.id}
+                clienteNombre={clienteSeleccionado.nombre}
+                clienteNombreNegocio={(clienteSeleccionado as any).nombreNegocio}
                 clienteDireccion={clienteSeleccionado.direccion}
                 clienteBarrio={clienteSeleccionado.barrio}
                 selectedNegocioId={negocioSeleccionado}

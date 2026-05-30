@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { toast } from 'sonner'
 import { useConfirm } from '@/components/confirm-modal'
 import { Button } from '@/components/ui/button'
@@ -75,6 +75,21 @@ export default function ProductosClient({ productos: initialProductos }: Precios
   const [historyData, setHistoryData] = useState<Array<{ id: string; producto: string; precio: number; vigenteDesde: string; creadoPor: string }>>([])
   const [historyLoading, setHistoryLoading] = useState(false)
 
+  // Modal de impacto de precios
+  const [impactoOpen, setImpactoOpen] = useState(false)
+  const [impactoLoading, setImpactoLoading] = useState(false)
+  const [impactoData, setImpactoData] = useState<{
+    productoNombre: string
+    productoCodigo: string
+    precioActual: number
+    precioNuevo: number
+    cambioPorcentaje: number
+    clientesAfectados: Array<{ id: string; nombre: string; precioEspecial: number; desviacion: number }>
+    pedidosPendientes: number
+    rangosExistentes: Array<{ cantMin: number; cantMax: number | null; precio: number }>
+  } | null>(null)
+  const impactoConfirmCallback = useRef<(() => Promise<void>) | null>(null)
+
   function startEdit(precio: PrecioVolumen) {
     const currentPrice = Number(precio.precio)
     setEditingId(precio.id)
@@ -92,6 +107,40 @@ export default function ProductosClient({ productos: initialProductos }: Precios
       toast.error('Ingrese un precio valido mayor a 0')
       return
     }
+
+    // Buscar el producto que contiene este precio
+    const producto = productos.find(p => p.precios.some(pr => pr.id === precioId))
+    if (!producto) {
+      toast.error('Producto no encontrado')
+      return
+    }
+
+    // Verificar impacto antes de guardar
+    setImpactoLoading(true)
+    try {
+      const res = await fetch(`/api/precios/impacto?productoId=${producto.id}&precioNuevo=${newPrice}`)
+      if (res.ok) {
+        const result = await res.json()
+        if (result.impacto) {
+          setImpactoData(result.impacto)
+          setImpactoOpen(true)
+          impactoConfirmCallback.current = async () => {
+            await doSavePrice(precioId, newPrice)
+          }
+          return
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching impact:', error)
+    } finally {
+      setImpactoLoading(false)
+    }
+
+    // Si no hay impacto o error, guardar directamente
+    await doSavePrice(precioId, newPrice)
+  }
+
+  async function doSavePrice(precioId: string, newPrice: number) {
     setSaving(true)
     try {
       const res = await fetch('/api/precios', {
@@ -211,6 +260,34 @@ export default function ProductosClient({ productos: initialProductos }: Precios
   }
 
   async function updateProductoConfig(productoId: string, data: { aplicaDomicilio?: boolean; sobreCostoDomicilio?: number; precioBase?: number }) {
+    // Si se cambia precioBase, verificar impacto antes de guardar
+    if (data.precioBase !== undefined) {
+      setImpactoLoading(true)
+      try {
+        const res = await fetch(`/api/precios/impacto?productoId=${productoId}&precioNuevo=${data.precioBase}`)
+        if (res.ok) {
+          const result = await res.json()
+          if (result.impacto) {
+            setImpactoData(result.impacto)
+            setImpactoOpen(true)
+            impactoConfirmCallback.current = async () => {
+              await doUpdateProductoConfig(productoId, data)
+            }
+            return
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching impact:', error)
+      } finally {
+        setImpactoLoading(false)
+      }
+    }
+
+    // Si no es precioBase o no hay impacto, guardar directamente
+    await doUpdateProductoConfig(productoId, data)
+  }
+
+  async function doUpdateProductoConfig(productoId: string, data: { aplicaDomicilio?: boolean; sobreCostoDomicilio?: number; precioBase?: number }) {
     try {
       const res = await fetch('/api/productos', {
         method: 'PUT',
@@ -540,6 +617,121 @@ export default function ProductosClient({ productos: initialProductos }: Precios
           <div className="flex justify-end pt-2">
             <Button variant="outline" onClick={() => setHistoryOpen(false)}>Cerrar</Button>
           </div>
+        </div>
+      </Modal>
+
+      {/* Modal de impacto de precios */}
+      <Modal open={impactoOpen} onClose={() => setImpactoOpen(false)} title={`Impacto de cambio de precio — ${impactoData?.productoNombre || ''}`}>
+        <div className="space-y-4">
+          {impactoLoading ? (
+            <div className="text-center text-sm text-muted-foreground py-8">Analizando impacto...</div>
+          ) : impactoData ? (
+            <>
+              {/* Resumen del cambio */}
+              <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Precio actual:</span>
+                  <span className="font-semibold">{formatCOP(impactoData.precioActual)}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Precio nuevo:</span>
+                  <span className="font-semibold text-blue-600">{formatCOP(impactoData.precioNuevo)}</span>
+                </div>
+                <div className="flex justify-between items-center pt-2 border-t">
+                  <span className="text-sm font-medium">Cambio:</span>
+                  <span className={`font-bold ${impactoData.cambioPorcentaje > 0 ? 'text-red-600' : impactoData.cambioPorcentaje < 0 ? 'text-green-600' : 'text-muted-foreground'}`}>
+                    {impactoData.cambioPorcentaje > 0 ? '+' : ''}{impactoData.cambioPorcentaje}%
+                  </span>
+                </div>
+              </div>
+
+              {/* Clientes afectados */}
+              {impactoData.clientesAfectados.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-sm font-semibold flex items-center gap-2">
+                    <svg className="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                    Clientes con precios especiales ({impactoData.clientesAfectados.length})
+                  </h4>
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 max-h-40 overflow-y-auto">
+                    <ul className="space-y-1.5 text-xs">
+                      {impactoData.clientesAfectados.map(cliente => (
+                        <li key={cliente.id} className="flex justify-between items-center">
+                          <span className="font-medium">{cliente.nombre}</span>
+                          <div className="text-right">
+                            <span className="text-muted-foreground">{formatCOP(cliente.precioEspecial)}</span>
+                            <span className={`ml-2 font-semibold ${Math.abs(cliente.desviacion) > 20 ? 'text-red-600' : 'text-amber-600'}`}>
+                              ({cliente.desviacion > 0 ? '+' : ''}{cliente.desviacion}%)
+                            </span>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Estos clientes tienen precios especiales configurados. El cambio no los afecta automáticamente, pero puede generar desviaciones.
+                  </p>
+                </div>
+              )}
+
+              {/* Pedidos pendientes */}
+              {impactoData.pedidosPendientes > 0 && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <div className="flex items-start gap-2">
+                    <svg className="w-4 h-4 text-blue-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div className="text-xs">
+                      <p className="font-medium text-blue-900">
+                        {impactoData.pedidosPendientes} pedido(s) pendiente(s) con este producto
+                      </p>
+                      <p className="text-blue-700 mt-1">
+                        Los pedidos existentes mantendrán su precio actual. Solo los nuevos pedidos usarán el precio actualizado.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Rangos existentes */}
+              {impactoData.rangosExistentes.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-sm font-semibold">Rangos de volumen actuales</h4>
+                  <div className="bg-muted/30 rounded-lg p-3">
+                    <div className="flex flex-wrap gap-2">
+                      {impactoData.rangosExistentes.map((rango, idx) => (
+                        <span key={idx} className="inline-flex items-center gap-1 text-xs bg-white border rounded px-2 py-1">
+                          <span className="font-medium">
+                            {rango.cantMax ? `${rango.cantMin}-${rango.cantMax}` : `${rango.cantMin}+`}
+                          </span>
+                          <span className="text-muted-foreground">→</span>
+                          <span className="font-semibold text-blue-600">{formatCOP(rango.precio)}</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Acciones */}
+              <div className="flex gap-2 justify-end pt-4 border-t">
+                <Button variant="outline" onClick={() => setImpactoOpen(false)}>Cancelar</Button>
+                <Button
+                  onClick={async () => {
+                    if (impactoConfirmCallback.current) {
+                      await impactoConfirmCallback.current()
+                    }
+                    setImpactoOpen(false)
+                    setImpactoData(null)
+                    impactoConfirmCallback.current = null
+                  }}
+                >
+                  Confirmar cambio
+                </Button>
+              </div>
+            </>
+          ) : null}
         </div>
       </Modal>
 

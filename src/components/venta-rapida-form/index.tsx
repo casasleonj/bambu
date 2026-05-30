@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
 import { ClienteSelect } from './cliente-select'
 import { ProductGrid } from './product-grid'
@@ -8,6 +8,7 @@ import { PagoSection } from './pago-section'
 import { ResumenSection } from './resumen-section'
 import { DEFAULT_PRICES, PRODUCTO_INFO, getProductosForCanal } from '@/lib/prices'
 import { matchCliente } from '@/lib/cliente-search'
+import { usePriceSync } from '@/hooks/use-price-sync'
 import type { Cliente, Tier, VentaRapidaFormProps, VentaRapidaData, VentaRapidaItem } from './types'
 
 export type { VentaRapidaFormProps, VentaRapidaData, Cliente }
@@ -45,6 +46,15 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
       .then(d => { if (d.tabla) setTablaPrecios(d.tabla) })
       .catch(() => {})
   }, [])
+
+  // Refs para acceder a valores actuales en el callback
+  const cantidadesRef = useRef(cantidades)
+  const canalRef = useRef(canal)
+  const clienteIdRef = useRef(clienteSeleccionado?.id)
+
+  useEffect(() => { cantidadesRef.current = cantidades }, [cantidades])
+  useEffect(() => { canalRef.current = canal }, [canal])
+  useEffect(() => { clienteIdRef.current = clienteSeleccionado?.id }, [clienteSeleccionado?.id])
 
   const handleToggleEnvio = (envio: boolean) => {
     const nuevoCanal = envio ? 'DOMICILIO' : 'PUNTO'
@@ -115,7 +125,7 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
         if (data.precios) {
           const nuevos: Record<string, number> = {}
           for (const [codigo, info] of Object.entries(data.precios)) {
-            nuevos[codigo] = (info as any).precio
+            nuevos[codigo] = (info as { precio: number }).precio
           }
           setPreciosResueltos(nuevos)
         }
@@ -124,6 +134,25 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
       // fallback to defaults
     }
   }, [productosActuales, clienteSeleccionado?.id])
+
+  // Price sync: detectar cambios de precios via polling
+  const handlePriceRefresh = useCallback(async () => {
+    try {
+      const res = await fetch('/api/precios/tabla')
+      const data = await res.json()
+      if (data.tabla) {
+        setTablaPrecios(data.tabla)
+        // Re-resolver precios si hay cantidades cargadas
+        if (Object.values(cantidadesRef.current).some(c => c > 0)) {
+          resolverPrecios(cantidadesRef.current, canalRef.current, clienteIdRef.current)
+        }
+      }
+    } catch (error) {
+      console.error('Error refreshing prices:', error)
+    }
+  }, [resolverPrecios])
+
+  const { stale: preciosStale, refresh: refreshPrecios } = usePriceSync(handlePriceRefresh)
 
   // Re-resolver precios cuando cambia la selección de cliente
   useEffect(() => {
@@ -331,6 +360,25 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
           </div>
         </label>
       </div>
+
+      {/* Banner de precios desactualizados */}
+      {preciosStale && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm text-amber-800">
+            <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <span className="font-medium">Precios actualizados disponibles</span>
+          </div>
+          <button
+            type="button"
+            onClick={refreshPrecios}
+            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium rounded-md transition"
+          >
+            Actualizar
+          </button>
+        </div>
+      )}
 
       <ClienteSelect
         requiereCliente={requiereCliente}
