@@ -18,10 +18,12 @@ export interface Producto {
   sobreCostoDomicilio: string | number
   precioBase: string | number
   precios: PrecioVolumen[]
+  preciosInactivos?: PrecioVolumen[]
 }
 
 export interface PreciosClientProps {
   productos: Producto[]
+  isAdmin?: boolean
 }
 
 export function formatCOP(value: number): string {

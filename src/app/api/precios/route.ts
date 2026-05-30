@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
         return apiError('La cantidad maxima debe ser mayor o igual a la cantidad minima', 400)
       }
 
-      // Check for exact cantMin collision (unique constraint)
+      // Check for exact cantMin collision (unique constraint) - active tiers
       const exactMatch = await prisma.precioVolumen.findFirst({
         where: { productoId, cantMin, activo: true },
       })
@@ -67,7 +67,19 @@ export async function POST(request: NextRequest) {
         const existingLabel = exactMatch.cantMax
           ? `${exactMatch.cantMin}-${exactMatch.cantMax}`
           : `${exactMatch.cantMin}+`
-        return apiError(`Ya existe un rango que empieza en ${cantMin} (${existingLabel}). Edita ese rango o usa un valor diferente.`, 409)
+        return apiError(`Ya existe un rango activo que empieza en ${cantMin} (${existingLabel}). Edita ese rango o usa un valor diferente.`, 409)
+      }
+
+      // Check inactive tiers with same cantMin (they still block the unique constraint)
+      const inactiveMatch = await prisma.precioVolumen.findFirst({
+        where: { productoId, cantMin, activo: false },
+      })
+      if (inactiveMatch) {
+        return apiError(
+          `Ya existe un rango eliminado que empieza en ${cantMin}. ` +
+          `Los rangos eliminados bloquean ese valor. Restaura el rango desde la lista de eliminados o usa un valor diferente.`,
+          409
+        )
       }
 
       // Check for overlapping ranges
@@ -196,8 +208,9 @@ export async function POST(request: NextRequest) {
       return apiError('El precio excede el rango permitido', 400)
     }
 
-    // En desarrollo, incluir el mensaje real para debugging
+    // En desarrollo, incluir el mensaje real para debugging (sin stack trace)
     const isDev = process.env.NODE_ENV !== 'production'
-    return apiError(isDev ? `Error en operacion de precios: ${message}` : 'Error en operacion de precios', 500)
+    const cleanMessage = message.split('\n')[0].trim()
+    return apiError(isDev ? `Error en operacion de precios: ${cleanMessage}` : 'Error en operacion de precios', 500)
   }
 }

@@ -4,7 +4,7 @@ import { logger } from './logger'
 export interface AuditEntry {
   entidad: string
   registroId: string
-  accion: 'CREATE' | 'UPDATE' | 'DELETE'
+  accion: 'CREATE' | 'UPDATE' | 'DELETE' | 'RESTORE'
   datos: Record<string, unknown>
   usuarioId?: string | null
 }

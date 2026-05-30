@@ -57,7 +57,7 @@ function cantMinExists(tiers: PrecioVolumen[], cantMin: number): boolean {
   return tiers.some(t => t.cantMin === cantMin)
 }
 
-export default function ProductosClient({ productos: initialProductos }: PreciosClientProps) {
+export default function ProductosClient({ productos: initialProductos, isAdmin = false }: PreciosClientProps) {
   const { confirm, modal } = useConfirm()
   const [productos, setProductos] = useState(initialProductos)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -183,6 +183,38 @@ export default function ProductosClient({ productos: initialProductos }: Precios
       } else {
         const data = await res.json().catch(() => ({}))
         toast.error(extractErrorMessage(data, 'Error eliminando rango'))
+      }
+    } catch {
+      toast.error('Error de conexión')
+    }
+  }
+
+  async function restoreTier(precio: PrecioVolumen) {
+    const label = precio.cantMax === null ? `${precio.cantMin}+` : `${precio.cantMin}-${precio.cantMax}`
+    const ok = await confirm(
+      `¿Restaurar el rango ${label}? Volvera a estar disponible para nuevos pedidos.`
+    )
+    if (!ok) return
+    try {
+      const res = await fetch(`/api/precios/${precio.id}/restore`, { method: 'PATCH' })
+      if (res.ok) {
+        const data = await res.json()
+        toast.success('Rango restaurado')
+        // Move from inactive to active
+        setProductos(prev => prev.map(p => {
+          if (p.id === precio.productoId) {
+            const restoredTier = data.tier
+            return {
+              ...p,
+              precios: [...p.precios, restoredTier].sort((a, b) => a.cantMin - b.cantMin),
+              preciosInactivos: (p.preciosInactivos || []).filter(pr => pr.id !== precio.id),
+            }
+          }
+          return p
+        }))
+      } else {
+        const data = await res.json().catch(() => ({}))
+        toast.error(extractErrorMessage(data, 'Error restaurando rango'))
       }
     } catch {
       toast.error('Error de conexión')
@@ -499,6 +531,44 @@ export default function ProductosClient({ productos: initialProductos }: Precios
                     </div>
                   )
                 })()}
+
+                {/* Inactive tiers (ADMIN only) */}
+                {isAdmin && producto.preciosInactivos && producto.preciosInactivos.length > 0 && (
+                  <div className="mt-4 border-t pt-4">
+                    <details className="group">
+                      <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground flex items-center gap-2">
+                        <svg className="w-3.5 h-3.5 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                        Rangos eliminados ({producto.preciosInactivos.length})
+                      </summary>
+                      <div className="mt-2 overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b">
+                              <th className="text-left py-2 px-3 font-medium text-muted-foreground">Cantidad mínima</th>
+                              <th className="text-left py-2 px-3 font-medium text-muted-foreground">Cantidad máxima</th>
+                              <th className="text-right py-2 px-3 font-medium text-muted-foreground">Precio</th>
+                              <th className="w-[100px] py-2 px-3"></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {producto.preciosInactivos.map((precio) => (
+                              <tr key={precio.id} className="border-b last:border-b-0 bg-muted/30">
+                                <td className="py-2.5 px-3 text-muted-foreground">{precio.cantMin}</td>
+                                <td className="py-2.5 px-3 text-muted-foreground">{precio.cantMax ?? '—'}</td>
+                                <td className="py-2.5 px-3 text-right text-muted-foreground">{formatCOP(Number(precio.precio))}</td>
+                                <td className="py-2.5 px-3 text-right">
+                                  <Button size="sm" variant="outline" data-testid={`tier-restore-${precio.id}`} onClick={() => restoreTier(precio)} className="text-green-700 hover:text-green-800 hover:bg-green-50 border-green-200">
+                                    Restaurar
+                                  </Button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </details>
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}
