@@ -5,7 +5,6 @@ export interface Cliente {
   telefono: string
   direccion?: string
   barrio?: string
-  nombreNegocio?: string
 }
 
 export interface Tier {

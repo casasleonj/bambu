@@ -12,12 +12,6 @@ import { InfoBanner } from '@/components/tooltip'
 
 import { TipoNegocioSelect } from '@/components/tipo-negocio-select'
 
-const TIPOS_NEGOCIO: string[] = [
-  'Tienda', 'Restaurante', 'Café', 'Hotel', 'Bar',
-  'Panadería', 'Farmacia', 'Peluquería', 'Frutería',
-  'Carnicería', 'Lavandería', 'Taller',
-]
-
 const FUENTES: string[] = [
   'Página web', 'Instagram', 'Facebook', 'Referido', 'WhatsApp',
 ]
@@ -206,28 +200,6 @@ export function ClienteForm({
               ]}
             />
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Negocio</label>
-                <input
-                  type="text"
-                  value={formData.nombreNegocio}
-                  onChange={(e) => onFormDataChange({ ...formData, nombreNegocio: e.target.value })}
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
-                  placeholder="Nombre del negocio"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Tipo de negocio</label>
-                <TipoNegocioSelect
-                  options={TIPOS_NEGOCIO}
-                  value={formData.tipoNegocio}
-                  onChange={(val) => onFormDataChange({ ...formData, tipoNegocio: val })}
-                  placeholder="Buscar tipo de negocio..."
-                />
-              </div>
-            </div>
-
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">¿Cómo nos conoció?</label>
               <TipoNegocioSelect
@@ -237,17 +209,6 @@ export function ClienteForm({
                 placeholder="Buscar fuente..."
                 apiUrl="/api/clientes/fuentes"
               />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Hora de apertura</label>
-              <input
-                type="time"
-                value={formData.horaApertura}
-                onChange={(e) => onFormDataChange({ ...formData, horaApertura: e.target.value })}
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
-              />
-              <p className="text-xs text-gray-400 mt-1">Hora a la que abre el negocio. Ayuda al repartidor a planificar la ruta.</p>
             </div>
 
             <div>

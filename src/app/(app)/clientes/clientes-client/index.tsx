@@ -41,8 +41,6 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
     nombre: '',
     apellido: '',
     telefono: '',
-    nombreNegocio: '',
-    tipoNegocio: '',
     fuente: '',
     barrio: '',
     direccion: '',
@@ -50,7 +48,6 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
     contactos: [],
     preciosEspeciales: '',
     notas: '',
-    horaApertura: '',
     limitePedidosFiados: undefined,
   })
 
@@ -63,7 +60,7 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
   const [userRole, setUserRole] = useState<string | null>(null)
 
   // Negocios state
-  const [negocios, setNegocios] = useState<Array<{ id: string; nombre: string; tipoNegocio: string | null; direccion: string | null; barrio: string | null; ruta: { id: string; nombre: string } | null }>>([])
+  const [negocios, setNegocios] = useState<Array<{ id: string; nombre: string; tipoNegocio: string | null; direccion: string | null; barrio: string | null; referencia: string | null; linkUbicacion: string | null; horaApertura: string | null; ruta: { id: string; nombre: string } | null }>>([])
   const [negocioFormOpen, setNegocioFormOpen] = useState(false)
   const [negocioEditData, setNegocioEditData] = useState<{ id: string; nombre: string; tipoNegocio: string | null; direccion: string | null; barrio: string | null; referencia: string | null; linkUbicacion: string | null; horaApertura: string | null; rutaId: string | null } | null>(null)
 
@@ -217,12 +214,21 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
       (c.apellido ?? '').toLowerCase().includes(term) ||
       c.telefono.includes(term) ||
       c.nombreNegocio?.toLowerCase().includes(term) ||
+      c.tipoNegocio?.toLowerCase().includes(term) ||
       c.barrio?.toLowerCase().includes(term) ||
-      (c.clienteId ?? '').toLowerCase().includes(term) ||
+      c.direccion?.toLowerCase().includes(term) ||
+      c.notas?.toLowerCase().includes(term) ||
       c.contactos?.some(ct =>
         ct.nombre.toLowerCase().includes(term) ||
         ct.telefono.includes(term) ||
         ct.relacion?.toLowerCase().includes(term)
+      ) ||
+      (c as any).negocios?.some((neg: any) =>
+        neg.nombre?.toLowerCase().includes(term) ||
+        neg.direccion?.toLowerCase().includes(term) ||
+        neg.barrio?.toLowerCase().includes(term) ||
+        neg.tipoNegocio?.toLowerCase().includes(term) ||
+        neg.referencia?.toLowerCase().includes(term)
       )
     )
   }).sort((a, b) => {
@@ -238,8 +244,6 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
       nombre: '',
       apellido: '',
       telefono: '',
-      nombreNegocio: '',
-      tipoNegocio: '',
       fuente: '',
       barrio: '',
       direccion: '',
@@ -247,7 +251,6 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
       contactos: [],
       preciosEspeciales: '',
       notas: '',
-      horaApertura: '',
       limitePedidosFiados: undefined,
     })
     setPreciosEspecialesMap({ DOMICILIO: {}, PUNTO: {} })
@@ -267,8 +270,6 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
       nombre: selectedCliente.nombre,
       apellido: selectedCliente.apellido || '',
       telefono: selectedCliente.telefono,
-      nombreNegocio: selectedCliente.nombreNegocio || '',
-      tipoNegocio: selectedCliente.tipoNegocio || '',
       fuente: selectedCliente.fuente || '',
       barrio: selectedCliente.barrio || '',
       direccion: selectedCliente.direccion || '',
@@ -276,7 +277,6 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
       contactos: (selectedCliente.contactos as any[]) || [],
       preciosEspeciales: selectedCliente.preciosEspeciales || '',
       notas: selectedCliente.notas || '',
-      horaApertura: selectedCliente.horaApertura || '',
       limitePedidosFiados: selectedCliente.limitePedidosFiados || undefined,
     })
     setPreciosEspecialesMap(parsePreciosEspeciales(selectedCliente.preciosEspeciales))
@@ -324,7 +324,6 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
       const body = {
         ...formData,
         preciosEspeciales: preciosJson || undefined,
-        horaApertura: formData.horaApertura || null,
         linkUbicacion: formData.linkUbicacion || null,
         contactos: formData.contactos.filter(c => c.nombre.trim() && c.telefono.trim()),
       }
@@ -358,7 +357,32 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
         if (res.ok) {
           await fetchClientes()
           setShowModal(false)
-          toast.success('Cliente creado exitosamente')
+          // Get the newly created client to pre-fill negocio form
+          const createdData = await res.json().catch(() => ({}))
+          const newCliente = createdData.cliente || null
+          toast.success('Cliente creado exitosamente', {
+            action: {
+              label: 'Agregar negocio',
+              onClick: () => {
+                setNegocioEditData(null)
+                setNegocioFormOpen(true)
+                if (newCliente) {
+                  setTimeout(() => {
+                    const dirInput = document.querySelector<HTMLTextAreaElement>('textarea[placeholder="Calle, número, referencias..."]')
+                    const barrioInput = document.querySelector<HTMLInputElement>('input[placeholder="Ej: Centro"]')
+                    if (dirInput && newCliente.direccion && !dirInput.value) {
+                      dirInput.value = newCliente.direccion
+                      dirInput.dispatchEvent(new Event('input', { bubbles: true }))
+                    }
+                    if (barrioInput && newCliente.barrio && !barrioInput.value) {
+                      barrioInput.value = newCliente.barrio
+                      barrioInput.dispatchEvent(new Event('input', { bubbles: true }))
+                    }
+                  }, 100)
+                }
+              },
+            },
+          })
         } else {
           const data = await res.json().catch(() => ({}))
           setFormError(data.error?.formErrors?.[0] || data.error?.message || 'Error al guardar cliente')
@@ -609,9 +633,13 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
                     <h2 className="text-lg font-bold text-gray-800">
                       {selectedCliente.nombre} {selectedCliente.apellido}
                     </h2>
-                    <p className="text-xs text-gray-500">{selectedCliente.clienteId}</p>
                     {selectedCliente.nombreNegocio && (
-                      <p className="text-xs text-gray-500">{selectedCliente.nombreNegocio}</p>
+                      <p className="text-xs text-gray-500 flex items-center gap-1">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                        </svg>
+                        {selectedCliente.nombreNegocio}
+                      </p>
                     )}
                   </div>
                 </div>
@@ -1031,9 +1059,9 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
                                     tipoNegocio: neg.tipoNegocio,
                                     direccion: neg.direccion,
                                     barrio: neg.barrio,
-                                    referencia: null,
-                                    linkUbicacion: null,
-                                    horaApertura: null,
+                                    referencia: neg.referencia || null,
+                                    linkUbicacion: neg.linkUbicacion || null,
+                                    horaApertura: neg.horaApertura || null,
                                     rutaId: neg.ruta?.id || null,
                                   })
                                   setNegocioFormOpen(true)
@@ -1070,13 +1098,45 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
                           </div>
                         ))}
                       </div>
+                    ) : selectedCliente.nombreNegocio ? (
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                        <div className="flex items-start gap-3">
+                          <svg className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <div className="flex-1">
+                            <p className="text-sm text-amber-800">
+                              Este cliente tiene un negocio registrado: <strong>"{selectedCliente.nombreNegocio}"</strong>
+                            </p>
+                            <p className="text-xs text-amber-600 mt-1">
+                              Crea un negocio formal para gestionar pedidos, rutas y precios por separado.
+                            </p>
+                            <button
+                              onClick={() => {
+                                setNegocioEditData(null)
+                                setNegocioFormOpen(true)
+                                // Pre-fill the form with the legacy business name
+                                setTimeout(() => {
+                                  const nameInput = document.querySelector<HTMLInputElement>('input[placeholder="Ej: Restaurante El Sabor"]')
+                                  if (nameInput && !nameInput.value) {
+                                    nameInput.value = selectedCliente.nombreNegocio || ''
+                                    nameInput.dispatchEvent(new Event('input', { bubbles: true }))
+                                  }
+                                }, 100)
+                              }}
+                              className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-medium hover:bg-amber-700 transition"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                              </svg>
+                              Crear negocio formal
+                            </button>
+                          </div>
+                        </div>
+                      </div>
                     ) : (
                       <div className="bg-gray-50 rounded-xl p-4 text-center">
-                        <p className="text-sm text-gray-500">
-                          {selectedCliente.nombreNegocio
-                            ? `Negocio legacy: "${selectedCliente.nombreNegocio}"`
-                            : 'Sin negocios registrados'}
-                        </p>
+                        <p className="text-sm text-gray-500">Sin negocios registrados</p>
                         <p className="text-xs text-gray-400 mt-1">
                           Agrega un negocio para gestionar pedidos por separado
                         </p>

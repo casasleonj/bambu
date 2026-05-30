@@ -66,7 +66,7 @@ export function ClienteSection({
                       }}
                       className="w-full text-left px-3 py-2 hover:bg-accent flex justify-between items-center border-b last:border-b-0"
                     >
-                      <span>{cliente.nombre}{cliente.apellido ? ` ${cliente.apellido}` : ''}{cliente.nombreNegocio ? ` — ${cliente.nombreNegocio}` : ''}</span>
+                      <span>{cliente.nombre}{cliente.apellido ? ` ${cliente.apellido}` : ''}</span>
                       <span className="text-sm text-muted-foreground">
                         {cliente.telefono}
                       </span>
@@ -103,7 +103,7 @@ export function ClienteSection({
         ) : (
           <div className="flex items-center justify-between p-3 bg-muted rounded-md">
             <div>
-              <p className="font-medium">{clienteSeleccionado?.nombre}{clienteSeleccionado?.apellido ? ` ${clienteSeleccionado.apellido}` : ''}{clienteSeleccionado?.nombreNegocio ? ` — ${clienteSeleccionado.nombreNegocio}` : ''}</p>
+              <p className="font-medium">{clienteSeleccionado?.nombre}{clienteSeleccionado?.apellido ? ` ${clienteSeleccionado.apellido}` : ''}</p>
               <p className="text-sm text-muted-foreground">
                 {clienteSeleccionado?.telefono}
               </p>

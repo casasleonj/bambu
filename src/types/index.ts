@@ -13,8 +13,6 @@ export interface Cliente {
   nombre: string
   apellido?: string
   telefono: string
-  nombreNegocio?: string
-  tipoNegocio?: string
   barrio?: string
   direccion?: string
   frecuencia: string

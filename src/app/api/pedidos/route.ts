@@ -172,8 +172,6 @@ export async function POST(request: NextRequest) {
               telefono: clienteNuevo.telefono,
               direccion: clienteNuevo.direccion || '',
               barrio: clienteNuevo.barrio,
-              nombreNegocio: clienteNuevo.nombreNegocio || null,
-              tipoNegocio: clienteNuevo.tipoNegocio || null,
               fuente: clienteNuevo.fuente || null,
               frecuencia: 'NINGUNA',
               creadoPorRol: authResult.user?.role as any || 'ASISTENTE',

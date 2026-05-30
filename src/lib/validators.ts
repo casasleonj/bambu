@@ -56,8 +56,6 @@ export const PedidoCreateSchema = z.object({
     telefono: z.string().min(1),
     direccion: z.string().optional(),
     barrio: z.string().optional(),
-    nombreNegocio: z.string().optional(),
-    tipoNegocio: z.string().optional(),
     fuente: z.string().optional(),
   }).optional(),
   actualizarCliente: z.object({
@@ -164,11 +162,6 @@ export const ClienteCreateSchema = z.object({
   nombre: z.string().min(1).max(100),
   apellido: z.string().max(100).optional(),
   telefono: z.string().min(1).max(20),
-  nombreNegocio: z.string().max(100).optional(),
-  tipoNegocio: z.preprocess(
-    (val) => (val === '' ? undefined : val),
-    z.string().max(100).optional()
-  ),
   fuente: z.preprocess(
     (val) => (val === '' ? undefined : val),
     z.string().max(100).optional()
@@ -179,7 +172,6 @@ export const ClienteCreateSchema = z.object({
   contactos: z.array(ContactoAlternativoSchema).optional().default([]),
   preciosEspeciales: z.string().optional(),
   notas: z.string().max(500).optional(),
-  horaApertura: z.string().regex(/^\d{2}:\d{2}$/, 'Formato HH:mm').optional().nullable(),
   limitePedidosFiados: z.coerce.number().int().min(1).max(20).optional(),
   verificado: z.boolean().optional(),
   bloqueado: z.boolean().optional(),
@@ -428,11 +420,16 @@ const TrabajadorBaseObject = z.object({
   telefono: z.string().max(20).optional(),
 })
 
-export function normalizeTrabajador<T extends { usaMoto?: boolean | null; tipoPago?: string; comPacaAgua?: number; comPacaHielo?: number; comBotellon?: number; comRepartAgua?: number; comRepartHielo?: number; comRepartBotellon?: number }>(data: T): T {
-  if (!data.usaMoto) {
+export function normalizeTrabajador<T extends { usaMoto?: boolean | null; tipoPago?: string; rol?: string; comPacaAgua?: number; comPacaHielo?: number; comBotellon?: number; comRepartAgua?: number; comRepartHielo?: number; comRepartBotellon?: number; capacidadKg?: number }>(data: T): T {
+  const isAdminOrContador = data.rol === 'ADMIN' || data.rol === 'CONTADOR'
+  const noMoto = !data.usaMoto || isAdminOrContador
+
+  if (noMoto) {
     return {
       ...data,
       tipoPago: 'FIJO',
+      capacidadKg: 0,
+      usaMoto: false,
       comRepartAgua: 0,
       comRepartHielo: 0,
       comRepartBotellon: 0,

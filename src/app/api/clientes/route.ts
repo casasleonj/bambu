@@ -20,6 +20,91 @@ export async function GET(request: NextRequest) {
       ...(isAdmin ? {} : { id: { not: 'CONSUMIDOR_FINAL' } }),
     }
 
+    // Use pg_trgm search for queries with 2+ characters (better relevance)
+    // Fall back to Prisma contains for single-char queries
+    if (search && search.trim().length >= 2) {
+      // Use raw SQL with pg_trgm word_similarity for better relevance
+      const isAdmin = (authResult.user as { role?: string } | undefined)?.role === 'ADMIN'
+      const adminFilter = isAdmin ? '' : 'AND c.id != \'CONSUMIDOR_FINAL\''
+
+      const clientesRaw = await prisma.$queryRaw`
+        SELECT DISTINCT ON (c.id)
+          c.id, c.nombre, c.apellido, c.telefono, c.direccion, c.barrio,
+          c."nombreNegocio", c."tipoNegocio", c.notas, c.fuente, c.frecuencia,
+          c."cadaNDias", c."ultEntrega", c."proxEntrega", c."habAgua", c."habHielo",
+          c."habBotellon", c."habBolsaAgua", c."habBolsaHielo", c.verificado,
+          c."verificadoEn", c."creadoPorRol", c.bloqueado, c.reclamaciones,
+          c."limitePedidosFiados", c."negocioDefaultId", c.notas, c.activo,
+          c."createdAt", c."updatedAt", c."createdById", c."rutaId", c.referencia,
+          c."linkUbicacion", c.contactos, c."preciosEspeciales",
+          GREATEST(
+            word_similarity(${search}, c.nombre),
+            word_similarity(${search}, COALESCE(c.apellido, '')),
+            word_similarity(${search}, COALESCE(c."nombreNegocio", '')),
+            word_similarity(${search}, COALESCE(c.barrio, '')),
+            word_similarity(${search}, COALESCE(c.direccion, ''))
+          ) as similarity_score
+        FROM "Cliente" c
+        WHERE c.activo = true
+          ${adminFilter}
+          AND (
+            c.nombre <% ${search} OR
+            COALESCE(c.apellido, '') <% ${search} OR
+            COALESCE(c."nombreNegocio", '') <% ${search} OR
+            COALESCE(c.barrio, '') <% ${search} OR
+            COALESCE(c.direccion, '') <% ${search} OR
+            c.nombre ILIKE '%' || ${search} || '%' OR
+            COALESCE(c.apellido, '') ILIKE '%' || ${search} || '%' OR
+            COALESCE(c."nombreNegocio", '') ILIKE '%' || ${search} || '%' OR
+            COALESCE(c.barrio, '') ILIKE '%' || ${search} || '%' OR
+            COALESCE(c.direccion, '') ILIKE '%' || ${search} || '%'
+          )
+        ORDER BY c.id, similarity_score DESC
+        LIMIT 100
+      ` as any[]
+
+      // Enrich with negocios and counts
+      const clienteIds = clientesRaw.map((c: any) => c.id)
+      const [negociosMap, countsMap] = await Promise.all([
+        prisma.negocio.findMany({
+          where: { clienteId: { in: clienteIds }, activo: true },
+          select: { id: true, nombre: true, tipoNegocio: true, direccion: true, barrio: true, referencia: true, clienteId: true },
+        }).then(negs => {
+          const map = new Map<string, any[]>()
+          for (const n of negs) {
+            const existing = map.get(n.clienteId) || []
+            existing.push(n)
+            map.set(n.clienteId, existing)
+          }
+          return map
+        }),
+        prisma.pedido.findMany({
+          where: {
+            clienteId: { in: clienteIds },
+            saldo: { gt: 0 },
+            estadoEntrega: { in: ['ENTREGADO', 'EN_RUTA', 'PENDIENTE', 'NO_ENTREGADO'] },
+          },
+          select: { clienteId: true, saldo: true },
+        }).then(pedidos => {
+          const map = new Map<string, number>()
+          for (const p of pedidos) {
+            map.set(p.clienteId, (map.get(p.clienteId) || 0) + Number(p.saldo))
+          }
+          return map
+        }),
+      ])
+
+      const clientes = clientesRaw.map((c: any) => ({
+        ...c,
+        clienteId: c.id,
+        saldoPendiente: countsMap.get(c.id) || 0,
+        negocios: negociosMap.get(c.id) || [],
+        _count: { pedidos: 0 }, // simplified
+      }))
+
+      return apiSuccess({ clientes, total: clientes.length })
+    }
+
     if (search) {
       where.OR = [
         { nombre: { contains: search, mode: 'insensitive' } },
@@ -28,6 +113,13 @@ export async function GET(request: NextRequest) {
         { direccion: { contains: search, mode: 'insensitive' } },
         { barrio: { contains: search, mode: 'insensitive' } },
         { nombreNegocio: { contains: search, mode: 'insensitive' } },
+        { tipoNegocio: { contains: search, mode: 'insensitive' } },
+        { notas: { contains: search, mode: 'insensitive' } },
+        { negocios: { some: { nombre: { contains: search, mode: 'insensitive' } } } },
+        { negocios: { some: { direccion: { contains: search, mode: 'insensitive' } } } },
+        { negocios: { some: { barrio: { contains: search, mode: 'insensitive' } } } },
+        { negocios: { some: { tipoNegocio: { contains: search, mode: 'insensitive' } } } },
+        { negocios: { some: { referencia: { contains: search, mode: 'insensitive' } } } },
       ]
     }
 
@@ -44,6 +136,16 @@ export async function GET(request: NextRequest) {
               estadoEntrega: { in: ['ENTREGADO', 'EN_RUTA', 'PENDIENTE', 'NO_ENTREGADO'] },
             },
             select: { saldo: true },
+          },
+          negocios: {
+            select: {
+              id: true,
+              nombre: true,
+              tipoNegocio: true,
+              direccion: true,
+              barrio: true,
+              referencia: true,
+            },
           },
         },
         ...prismaPagination,
@@ -103,8 +205,6 @@ export async function POST(request: NextRequest) {
         nombre: parsed.data.nombre,
         apellido: parsed.data.apellido,
         telefono: parsed.data.telefono,
-        nombreNegocio: parsed.data.nombreNegocio,
-        tipoNegocio: parsed.data.tipoNegocio,
         fuente: parsed.data.fuente,
         barrio: parsed.data.barrio,
         direccion: parsed.data.direccion,
@@ -112,7 +212,6 @@ export async function POST(request: NextRequest) {
         contactos: contactosSinDuplicados.length > 0 ? contactosSinDuplicados : undefined,
         preciosEspeciales: parsed.data.preciosEspeciales,
         notas: parsed.data.notas,
-        horaApertura: parsed.data.horaApertura ?? null,
       },
     })
 

@@ -5,7 +5,6 @@ export interface Cliente {
   telefono: string
   direccion?: string
   preciosEspeciales?: string
-  nombreNegocio?: string
 }
 
 export interface Tier {

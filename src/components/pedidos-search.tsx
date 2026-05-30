@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 
-import { matchCliente } from '@/lib/cliente-search'
+import { matchCliente, scoreCliente, meetsMinSearchLength, MIN_SEARCH_CHARS } from '@/lib/cliente-search'
 
 export interface ClienteSearchOption {
   id: string
@@ -12,6 +12,17 @@ export interface ClienteSearchOption {
   direccion: string | null
   barrio: string | null
   nombreNegocio?: string
+  tipoNegocio?: string | null
+  notas?: string | null
+  fuente?: string | null
+  contactos?: Array<{ nombre: string; telefono: string; relacion?: string }>
+  negocios?: Array<{
+    nombre: string
+    tipoNegocio?: string | null
+    direccion?: string | null
+    barrio?: string | null
+    referencia?: string | null
+  }>
 }
 
 interface PedidosSearchProps {
@@ -43,15 +54,20 @@ export function PedidosSearch({
   }, [selectedClienteId, clientes])
 
   const hasLetters = useMemo(() => /[a-zA-ZáéíóúÁÉÍÓÚñÑ]/.test(searchInput), [searchInput])
+  const meetsMinLength = useMemo(() => meetsMinSearchLength(searchInput), [searchInput])
 
+  // Filter and score clientes, then sort by relevance
   const filteredClientes = useMemo(() => {
-    if (!searchInput || !hasLetters) return []
+    if (!searchInput || !hasLetters || !meetsMinLength) return []
     return clientes
       .filter(c => matchCliente(c, searchInput))
+      .map(c => ({ ...c, _score: scoreCliente(c, searchInput) }))
+      .sort((a, b) => b._score - a._score)
       .slice(0, 8)
-  }, [clientes, searchInput, hasLetters])
+  }, [clientes, searchInput, hasLetters, meetsMinLength])
 
-  const showDropdown = open && !selectedCliente && hasLetters && filteredClientes.length > 0
+  const showDropdown = open && !selectedCliente && hasLetters && meetsMinLength && filteredClientes.length > 0
+  const showMinLengthHint = open && !selectedCliente && hasLetters && !meetsMinLength && searchInput.trim().length > 0
 
   const handleSelect = useCallback(
     (id: string) => {
@@ -168,7 +184,6 @@ export function PedidosSearch({
             >
               <p className="text-sm font-medium text-gray-900">
                 {c.nombre}{c.apellido ? ` ${c.apellido}` : ''}
-                {c.nombreNegocio && <span className="text-gray-500 font-normal ml-1">— {c.nombreNegocio}</span>}
               </p>
               <p className="text-xs text-gray-500">
                 {c.telefono}
@@ -177,6 +192,14 @@ export function PedidosSearch({
               </p>
             </button>
           ))}
+        </div>
+      )}
+
+      {showMinLengthHint && (
+        <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2">
+          <p className="text-xs text-gray-500 text-center">
+            Escribe al menos {MIN_SEARCH_CHARS} caracteres para buscar...
+          </p>
         </div>
       )}
     </div>

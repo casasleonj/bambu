@@ -66,7 +66,7 @@ export function ClienteSelect({
                       onClick={() => onSelectCliente(cliente)}
                       className="w-full text-left px-3 py-2.5 hover:bg-green-50 flex justify-between items-center border-b last:border-b-0"
                     >
-                      <span className="font-medium text-sm">{cliente.nombre}{cliente.apellido ? ` ${cliente.apellido}` : ''}{cliente.nombreNegocio ? ` — ${cliente.nombreNegocio}` : ''}</span>
+                      <span className="font-medium text-sm">{cliente.nombre}{cliente.apellido ? ` ${cliente.apellido}` : ''}</span>
                       <span className="text-xs text-gray-400">{cliente.telefono}</span>
                     </button>
                   ))
@@ -87,7 +87,7 @@ export function ClienteSelect({
         {clienteSeleccionado && (
           <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-100">
             <div>
-              <p className="font-medium text-sm">{clienteSeleccionado.nombre}{clienteSeleccionado.apellido ? ` ${clienteSeleccionado.apellido}` : ''}{clienteSeleccionado.nombreNegocio ? ` — ${clienteSeleccionado.nombreNegocio}` : ''}</p>
+              <p className="font-medium text-sm">{clienteSeleccionado.nombre}{clienteSeleccionado.apellido ? ` ${clienteSeleccionado.apellido}` : ''}</p>
               <p className="text-xs text-gray-500">{clienteSeleccionado.telefono}</p>
               {quiereEnvio && clienteSeleccionado.direccion && (
                 <p className="text-xs text-gray-400">{clienteSeleccionado.direccion}</p>

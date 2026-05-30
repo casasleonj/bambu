@@ -94,7 +94,7 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
     return sum + cant * getPrecio(PRODUCTO_INFO[prodId].codigo)
   }, 0)
 
-  const resolverPrecios = useCallback(async (prods: Record<string, number>, canalVal: 'PUNTO' | 'DOMICILIO') => {
+  const resolverPrecios = useCallback(async (prods: Record<string, number>, canalVal: 'PUNTO' | 'DOMICILIO', cid?: string) => {
     const items = productosActuales
       .filter(id => (prods[id] || 0) > 0)
       .map(id => ({ codigo: PRODUCTO_INFO[id].codigo, cantidad: prods[id] || 0 }))
@@ -108,7 +108,7 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
       const res = await fetch('/api/precios/resolver', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items, canal: canalVal }),
+        body: JSON.stringify({ items, canal: canalVal, clienteId: cid }),
       })
       if (res.ok) {
         const data = await res.json()
@@ -123,13 +123,23 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
     } catch {
       // fallback to defaults
     }
-  }, [productosActuales])
+  }, [productosActuales, clienteSeleccionado?.id])
+
+  // Re-resolver precios cuando cambia la selección de cliente
+  useEffect(() => {
+    if (!clienteSeleccionado?.id) return
+    const allProducts: Record<string, number> = {}
+    for (const id of productosActuales) {
+      allProducts[id] = cantidades[id] || 1
+    }
+    resolverPrecios(allProducts, canal, clienteSeleccionado.id)
+  }, [clienteSeleccionado?.id, productosActuales])
 
   const handleCantidadChange = (id: string, value: string) => {
     const cant = parseInt(value) || 0
     const next = { ...cantidades, [id]: cant }
     setCantidades(next)
-    resolverPrecios(next, canal)
+    resolverPrecios(next, canal, clienteSeleccionado?.id)
   }
 
   const increment = (id: string) => handleCantidadChange(id, String((cantidades[id] || 0) + 1))

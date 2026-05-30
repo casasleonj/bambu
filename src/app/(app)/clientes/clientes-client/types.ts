@@ -138,8 +138,6 @@ export interface FormData {
   nombre: string
   apellido: string
   telefono: string
-  nombreNegocio: string
-  tipoNegocio: string
   fuente: string
   barrio: string
   direccion: string
@@ -147,7 +145,6 @@ export interface FormData {
   contactos: ContactoAlternativo[]
   preciosEspeciales: string
   notas: string
-  horaApertura: string
   limitePedidosFiados?: number
 }
 
