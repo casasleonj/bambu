@@ -241,12 +241,12 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
     }
     setCantidades(cantidadesIniciales)
     setPreciosManuales(manuales)
-    if (pedidoInicial.cliente) {
-      setTimeout(() => {
-        resolverPrecios(cantidadesIniciales, pedidoInicial.canal, pedidoInicial.cliente?.id)
-      }, 200)
-    }
-  }, [pedidoInicial, resolverPrecios])
+    // Price resolution is handled by the useEffect at line 191
+    // which triggers when clienteSeleccionado changes.
+    // No need to call resolverPrecios here — it would be redundant
+    // and causes a re-initialization loop when resolverPrecios reference changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pedidoInicial])
 
   const getPrecioBase = (codigo: string): number => {
     if (preciosResueltos[codigo]) return preciosResueltos[codigo]
@@ -480,7 +480,21 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
                   <span className="font-medium text-sm">{clienteSeleccionado.nombre}{clienteSeleccionado.apellido ? ` ${clienteSeleccionado.apellido}` : ''}</span>
                   <span className="text-xs text-gray-500 ml-2">{clienteSeleccionado.telefono}</span>
                 </div>
-                <button type="button" onClick={() => setClienteSeleccionado(null)} className="text-gray-400 hover:text-red-500">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setClienteSeleccionado(null)
+                    setSearchTerm('')
+                    setNegocioSeleccionado(null)
+                    setNegocioData(null)
+                    setFiadosStatus(null)
+                    setPreciosResueltos({})
+                    setEditDireccion('')
+                    setEditBarrio('')
+                  }}
+                  className="p-1 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition"
+                  title="Quitar cliente"
+                >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
               </div>

@@ -781,7 +781,7 @@ export function PedidosClient() {
         </div>
         <div className="p-4 overflow-y-auto flex-1">
           <PedidoFormUnified
-            key={modalKey}
+            key={`${pedidoInicial?.id || 'new'}-${modalKey}`}
             contexto={showVentaRapida ? 'PUNTO' : 'DOMICILIO'}
             precios={precios}
             clientes={clientes}
