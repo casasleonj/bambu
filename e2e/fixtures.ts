@@ -278,7 +278,7 @@ export async function setupClienteWithPedidos(page: Page, count: number = 3) {
 }
 
 export async function createTrabajador(page: Page, data?: Partial<{
-  nombre: string; rol: string; tipoPago: string; usaMoto: boolean
+  nombre: string; rol: string; tipoPago: string; usaMoto: boolean; capacidadKg: number
 }>) {
   const wantsComision = data?.tipoPago === 'COMISION' || data?.tipoPago === 'MIXTO'
   const res = await apiPost(page, '/api/trabajadores', {
@@ -286,6 +286,7 @@ export async function createTrabajador(page: Page, data?: Partial<{
     rol: data?.rol || 'REPARTIDOR',
     tipoPago: data?.tipoPago || 'COMISION',
     usaMoto: data?.usaMoto ?? wantsComision,
+    capacidadKg: data?.capacidadKg ?? (wantsComision ? 500 : 0),
     comPacaAgua: wantsComision ? 500 : 0,
     comPacaHielo: wantsComision ? 300 : 0,
     comBotellon: wantsComision ? 200 : 0,
@@ -293,7 +294,8 @@ export async function createTrabajador(page: Page, data?: Partial<{
     comRepartHielo: (data?.usaMoto ?? wantsComision) ? 300 : 0,
     comRepartBotellon: (data?.usaMoto ?? wantsComision) ? 200 : 0,
   })
-  return res.json()
+  const json = await res.json()
+  return json.trabajador ?? json.data ?? json
 }
 
 export async function createPedido(page: Page, data?: Partial<{

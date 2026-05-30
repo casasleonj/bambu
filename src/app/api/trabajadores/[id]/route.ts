@@ -61,12 +61,12 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
       return apiError('El trabajador ya esta desactivado', 409)
     }
 
-    const embarquesAbiertos = await prisma.embarque.count({
-      where: { trabajadorId: id, estado: 'ABIERTO' },
+    const embarquesActivos = await prisma.embarque.count({
+      where: { trabajadorId: id, estado: { in: ['ABIERTO', 'EN_RUTA'] } },
     })
-    if (embarquesAbiertos > 0) {
+    if (embarquesActivos > 0) {
       return apiError(
-        `No se puede desactivar: tiene ${embarquesAbiertos} embarque(s) abierto(s). Cierrellos primero.`,
+        `No se puede desactivar: tiene ${embarquesActivos} embarque(s) activo(s) (abierto o en ruta). Cierrellos primero.`,
         400
       )
     }

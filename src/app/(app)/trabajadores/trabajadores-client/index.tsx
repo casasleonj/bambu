@@ -52,7 +52,7 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
     return (
       t.nombre.toLowerCase().includes(term) ||
       t.rol.toLowerCase().includes(term) ||
-      t.telefono?.toLowerCase().includes(term) ||
+      (t.telefono?.toLowerCase() ?? '').includes(term) ||
       t.tipoPago.toLowerCase().includes(term)
     )
   })
@@ -144,7 +144,7 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
               title="No hay trabajadores"
               description="Registra los trabajadores de tu equipo"
               actionLabel="+ Crear Trabajador"
-              onAction={() => setShowModal(true)}
+              onAction={openCreateModal}
             />
           </div>
         ) : trabajadoresFiltrados.length === 0 ? (

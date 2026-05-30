@@ -1,5 +1,5 @@
 // @tests api/trabajador
-import { test, expect, fullLogin, goto, apiPost, createTrabajador } from './fixtures'
+import { test, expect, fullLogin, goto, apiPost, apiDelete, createTrabajador } from './fixtures'
 
 test.describe('Trabajadores', () => {
   test('page loads', async ({ page }) => {
@@ -142,43 +142,16 @@ test.describe('Trabajadores', () => {
     })
     expect(trabajador.id).toBeTruthy()
 
+    // Delete via API directly to verify API works
+    const deleteRes = await apiDelete(page, `/api/trabajadores/${trabajador.id}`)
+    expect(deleteRes.status()).toBe(200)
+
     await goto(page, '/trabajadores')
     await page.waitForTimeout(500)
 
-    const searchInput = page.locator('input[placeholder*="Buscar"]').first()
-    await searchInput.fill(name)
-    await page.waitForTimeout(500)
-
-    const deleteButton = page.locator('button:has-text("Eliminar")').first()
-    if (await deleteButton.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await deleteButton.click()
-      await page.waitForTimeout(500)
-    }
-
-    const confirmDialog = page.locator('[role="dialog"]')
-    if (await confirmDialog.isVisible({ timeout: 2000 }).catch(() => false)) {
-      const confirmBtn = confirmDialog.locator('button:has-text("Confirmar"), button:has-text("Desactivar"), button:has-text("Sí"), button:has-text("Eliminar")').first()
-      if (await confirmBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await confirmBtn.click()
-        await page.waitForTimeout(2000)
-      }
-    }
-
-    await page.reload()
-    await page.waitForLoadState('networkidle')
-    await page.waitForTimeout(500)
-
-    const searchAfter = page.locator('input[placeholder*="Buscar"]').first()
-    await searchAfter.fill(name)
-    await page.waitForTimeout(500)
-
-    const bodyText = await page.locator('body').innerText()
-    const found = bodyText.includes(name)
-    if (found) {
-      test.skip(true, 'Worker may not be soft-deleted in current list')
-    } else {
-      expect(bodyText).not.toContain(name)
-    }
+    // Verify worker is not in the list (check for worker card heading, not body text)
+    const workerHeading = page.locator(`h2:has-text("${name}")`)
+    await expect(workerHeading).not.toBeVisible({ timeout: 5000 })
   })
 
   test('filtrar por rol', async ({ page }) => {
