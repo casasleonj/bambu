@@ -2,8 +2,11 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { redirect } from 'next/navigation'
 import { RepartidorClient } from './repartidor-client'
+import { requirePagePermission } from '@/lib/auth-guard'
 
 export default async function RepartidorPage() {
+  await requirePagePermission('view:repartidor')
+
   const session = await auth()
   if (!session?.user?.id) redirect('/login')
 

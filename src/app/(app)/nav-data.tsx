@@ -1,3 +1,5 @@
+import type { Permission } from '@/lib/permissions'
+
 export const icons: Record<string, React.ReactNode> = {
   home: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>,
   package: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>,
@@ -25,12 +27,14 @@ export interface NavSubItem {
   href: string
   label: string
   icon: string
+  requiredPermission?: Permission
 }
 
 export interface NavItem {
   href: string
   label: string
   icon: string
+  requiredPermission?: Permission
   subItems?: NavSubItem[]
 }
 
@@ -43,51 +47,51 @@ export const navSections: NavSection[] = [
   {
     title: 'Ventas',
     items: [
-      { href: '/dashboard', label: 'Dashboard', icon: 'home' },
-      { href: '/clientes', label: 'Clientes', icon: 'users' },
-      { href: '/pedidos', label: 'Pedidos', icon: 'package', subItems: [
-        { href: '/pedidos', label: 'Únicos', icon: 'package' },
-        { href: '/recurrentes', label: 'Recurrentes', icon: 'repeat' }
+      { href: '/dashboard', label: 'Dashboard', icon: 'home', requiredPermission: 'view:dashboard' },
+      { href: '/clientes', label: 'Clientes', icon: 'users', requiredPermission: 'view:clientes' },
+      { href: '/pedidos', label: 'Pedidos', icon: 'package', requiredPermission: 'view:pedidos', subItems: [
+        { href: '/pedidos', label: 'Únicos', icon: 'package', requiredPermission: 'view:pedidos' },
+        { href: '/recurrentes', label: 'Recurrentes', icon: 'repeat', requiredPermission: 'view:recurrentes' }
       ]},
-      { href: '/productos', label: 'Productos', icon: 'tag' },
-      { href: '/casos', label: 'Incidencias', icon: 'shield' },
+      { href: '/productos', label: 'Productos', icon: 'tag', requiredPermission: 'view:productos' },
+      { href: '/casos', label: 'Incidencias', icon: 'shield', requiredPermission: 'view:casos' },
     ]
   },
   {
     title: 'Operaciones',
     items: [
-      { href: '/produccion', label: 'Producción', icon: 'factory' },
-      { href: '/insumos', label: 'Insumos', icon: 'boxes' },
-      { href: '/embarques', label: 'Embarques', icon: 'truck' },
-      { href: '/rutas', label: 'Distribución', icon: 'truck', subItems: [
-        { href: '/rutas', label: 'Planificación', icon: 'map' },
-        { href: '/repartidor', label: 'Ejecución', icon: 'truck' }
+      { href: '/produccion', label: 'Producción', icon: 'factory', requiredPermission: 'view:produccion' },
+      { href: '/insumos', label: 'Insumos', icon: 'boxes', requiredPermission: 'view:insumos' },
+      { href: '/embarques', label: 'Embarques', icon: 'truck', requiredPermission: 'view:embarques' },
+      { href: '/rutas', label: 'Distribución', icon: 'truck', requiredPermission: 'view:rutas', subItems: [
+        { href: '/rutas', label: 'Planificación', icon: 'map', requiredPermission: 'view:rutas' },
+        { href: '/repartidor', label: 'Ejecución', icon: 'truck', requiredPermission: 'view:repartidor' }
       ]},
     ]
   },
   {
     title: 'Finanzas',
     items: [
-      { href: '/facturacion', label: 'Facturación', icon: 'receipt', subItems: [
-        { href: '/facturas', label: 'Facturas', icon: 'receipt' },
-        { href: '/cierre', label: 'Cierre de Caja', icon: 'chart-bar' }
+      { href: '/facturacion', label: 'Facturación', icon: 'receipt', requiredPermission: 'view:facturas', subItems: [
+        { href: '/facturas', label: 'Facturas', icon: 'receipt', requiredPermission: 'view:facturas' },
+        { href: '/cierre', label: 'Cierre de Caja', icon: 'chart-bar', requiredPermission: 'view:cierre' }
       ]},
-      { href: '/gastos', label: 'Gastos', icon: 'wallet', subItems: [
-        { href: '/gastos', label: 'Gastos', icon: 'wallet' },
-        { href: '/compras', label: 'Compras', icon: 'shopping-cart' }
+      { href: '/gastos', label: 'Gastos', icon: 'wallet', requiredPermission: 'view:gastos', subItems: [
+        { href: '/gastos', label: 'Gastos', icon: 'wallet', requiredPermission: 'view:gastos' },
+        { href: '/compras', label: 'Compras', icon: 'shopping-cart', requiredPermission: 'view:compras' }
       ]},
-      { href: '/nomina', label: 'Nómina', icon: 'users-round' },
-      { href: '/reportes', label: 'Reportes', icon: 'chart-line' },
+      { href: '/nomina', label: 'Nómina', icon: 'users-round', requiredPermission: 'view:nomina' },
+      { href: '/reportes', label: 'Reportes', icon: 'chart-line', requiredPermission: 'view:reportes' },
     ]
   },
   {
     title: 'Admin',
     items: [
-      { href: '/trabajadores', label: 'Trabajadores', icon: 'hard-hat' },
-      { href: '/proveedores', label: 'Proveedores', icon: 'building' },
-      { href: '/admin/usuarios', label: 'Usuarios', icon: 'users' },
-      { href: '/configuracion', label: 'Configuración', icon: 'settings' },
-      { href: '/mi-perfil', label: 'Mi Perfil', icon: 'user' },
+      { href: '/trabajadores', label: 'Trabajadores', icon: 'hard-hat', requiredPermission: 'view:trabajadores' },
+      { href: '/proveedores', label: 'Proveedores', icon: 'building', requiredPermission: 'view:proveedores' },
+      { href: '/admin/usuarios', label: 'Usuarios', icon: 'users', requiredPermission: 'view:usuarios' },
+      { href: '/configuracion', label: 'Configuración', icon: 'settings', requiredPermission: 'view:configuracion' },
+      { href: '/mi-perfil', label: 'Mi Perfil', icon: 'user', requiredPermission: 'view:mi-perfil' },
     ]
   },
 ]

@@ -2,13 +2,16 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import { signOut } from 'next-auth/react'
 import { purgeSWCache } from '@/components/sw-register'
 import { useBaseCaja } from '@/hooks/use-base-caja'
 import { useAppStore } from '@/stores/app-store'
 import { formatCurrency } from '@/lib/utils'
+import { getUserPermissions, type Permission } from '@/lib/permissions'
+import type { Role } from '@/lib/constants'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger, useCollapsible } from '@/components/ui/collapsible'
-import { icons, navSections } from './nav-data'
+import { icons, navSections, type NavItem, type NavSubItem } from './nav-data'
 
 function NavIcon({ name }: { name: string }) {
   return <>{icons[name] || null}</>
@@ -28,11 +31,27 @@ function ChevronIcon() {
   )
 }
 
-interface NavItem {
-  href: string
-  label: string
-  icon: string
-  subItems?: { href: string; label: string; icon: string }[]
+function hasPermission(requiredPermission: Permission | undefined, permissions: Permission[]): boolean {
+  if (!requiredPermission) return true
+  return permissions.includes(requiredPermission)
+}
+
+function filterSubItems(subItems: NavSubItem[] | undefined, permissions: Permission[]): NavSubItem[] {
+  if (!subItems) return []
+  return subItems.filter(sub => hasPermission(sub.requiredPermission, permissions))
+}
+
+function filterItems(items: NavItem[], permissions: Permission[]): NavItem[] {
+  const result: NavItem[] = []
+  for (const item of items) {
+    const visibleSubItems = filterSubItems(item.subItems, permissions)
+    // Show item if it has permission OR any of its subItems are visible
+    if (!hasPermission(item.requiredPermission, permissions) && visibleSubItems.length === 0) {
+      continue
+    }
+    result.push({ ...item, subItems: visibleSubItems.length > 0 ? visibleSubItems : item.subItems })
+  }
+  return result
 }
 
 function SidebarMenuItem({ item }: { item: NavItem }) {
@@ -107,6 +126,9 @@ export function Sidebar() {
   const sidebarOpen = useAppStore(s => s.sidebarOpen)
   const setSidebarOpen = useAppStore(s => s.toggleSidebar)
   const { baseDia } = useBaseCaja()
+  const { data: session } = useSession()
+  const userRole = (session?.user as { role?: Role } | undefined)?.role
+  const permissions = getUserPermissions(userRole)
 
   return (
     <>
@@ -134,18 +156,23 @@ export function Sidebar() {
         </div>
 
         <nav className="flex-1 overflow-y-auto py-2">
-          {navSections.map((section) => (
-            <div key={section.title} className="mb-2">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-2">
-                {section.title}
-              </h3>
-              <div className="space-y-1 px-2">
-                {section.items.map((item) => (
-                  <SidebarMenuItem key={item.href} item={item} />
-                ))}
+          {navSections.map((section) => {
+            const visibleItems = filterItems(section.items, permissions)
+            if (visibleItems.length === 0) return null
+
+            return (
+              <div key={section.title} className="mb-2">
+                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-2">
+                  {section.title}
+                </h3>
+                <div className="space-y-1 px-2">
+                  {visibleItems.map((item) => (
+                    <SidebarMenuItem key={item.href} item={item} />
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </nav>
 
         <div className="p-4 border-t">

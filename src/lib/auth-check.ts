@@ -2,6 +2,7 @@ import { auth } from "./auth";
 import { prisma } from "./prisma";
 import { PRIVILEGED_ROLES, type Role } from "./constants";
 import { apiError } from "./api-response";
+import { userCan, type Permission } from "./permissions";
 
 export async function requireAuth() {
   const session = await auth();
@@ -28,6 +29,27 @@ export async function requireRole(role: Role | Role[], existingSession?: any) {
 
   if (!userRole || !allowed.includes(userRole as Role)) {
     return apiError("No tiene permisos para esta acción", 403);
+  }
+
+  return session;
+}
+
+/**
+ * Check if the current user has a specific permission.
+ * Uses the centralized permission matrix from permissions.ts.
+ * Optionally accepts an existing session to avoid calling auth() twice.
+ * Returns the session if authorized, or a 403 Response if not.
+ */
+export async function requirePermission(permission: Permission, existingSession?: any) {
+  const session = existingSession || await auth();
+  if (!session) {
+    return apiError("No autorizado", 401);
+  }
+
+  const userRole = (session.user as { role?: Role } | undefined)?.role;
+
+  if (!userCan(userRole, permission)) {
+    return apiError("No tiene permisos para esta acci\u00f3n", 403);
   }
 
   return session;

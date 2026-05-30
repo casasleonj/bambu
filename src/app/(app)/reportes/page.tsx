@@ -2,12 +2,15 @@ import { prisma } from '@/lib/prisma'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ReportesFilter } from './reportes-filter'
 import { startOfDayInBogota, endOfDayInBogota } from '@/lib/date-helpers'
+import { requirePagePermission } from '@/lib/auth-guard'
 
 function formatCOP(value: number): string {
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(value)
 }
 
 export default async function ReportesPage({ searchParams }: { searchParams: Promise<{ start?: string; end?: string }> }) {
+  await requirePagePermission('view:reportes')
+
   const params = await searchParams
 
   const today = new Date().toISOString().split('T')[0]
