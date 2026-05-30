@@ -6,6 +6,16 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
 
+/** Format currency for API messages (COP) */
+function formatCOP(value: number): string {
+  return new Intl.NumberFormat('es-CO', {
+    style: 'currency',
+    currency: 'COP',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value)
+}
+
 const PrecioVolumenCreateSchema = z.object({
   productoId: z.string().min(1),
   cantMin: z.coerce.number().int().min(1),
@@ -53,6 +63,7 @@ export async function POST(request: NextRequest) {
     const createParsed = PrecioVolumenCreateSchema.safeParse(body)
     if (createParsed.success) {
       const { productoId, cantMin, cantMax, precio } = createParsed.data
+      const force = body.force === true
 
       // Validate cantMax >= cantMin
       if (cantMax !== undefined && cantMax !== null && cantMax < cantMin) {
@@ -75,11 +86,37 @@ export async function POST(request: NextRequest) {
         where: { productoId, cantMin, activo: false },
       })
       if (inactiveMatch) {
-        return apiError(
-          `Ya existe un rango eliminado que empieza en ${cantMin}. ` +
-          `Los rangos eliminados bloquean ese valor. Restaura el rango desde la lista de eliminados o usa un valor diferente.`,
-          409
-        )
+        if (force) {
+          // Force mode: permanently delete the inactive tier, then create the new one
+          await prisma.precioVolumen.delete({ where: { id: inactiveMatch.id } })
+          logAudit({
+            entidad: 'PrecioVolumen',
+            registroId: inactiveMatch.id,
+            accion: 'DELETE',
+            datos: {
+              productoId: inactiveMatch.productoId,
+              cantMin: inactiveMatch.cantMin,
+              cantMax: inactiveMatch.cantMax,
+              precio: Number(inactiveMatch.precio),
+              reason: 'replaced_by_new_tier',
+              newTierCantMin: cantMin,
+              newTierPrecio: precio,
+            },
+            usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+          }).catch(() => {})
+        } else {
+          // No force: return structured 409 so client can prompt user
+          const inactiveLabel = inactiveMatch.cantMax
+            ? `${inactiveMatch.cantMin}-${inactiveMatch.cantMax}`
+            : `${inactiveMatch.cantMin}+`
+          return apiError(
+            `Hay un rango eliminado con cantMin=${cantMin} (${inactiveLabel}, ${formatCOP(Number(inactiveMatch.precio))}). ¿Deseas eliminarlo permanentemente y crear el nuevo?`,
+            409,
+            {
+              code: 'INACTIVE_TIER_BLOCKING',
+            }
+          )
+        }
       }
 
       // Check for overlapping ranges

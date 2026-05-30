@@ -13,6 +13,7 @@ interface ApiErrorResponse {
   success: false
   error: {
     message: string
+    code?: string
     formErrors?: string[]
     fieldErrors?: Record<string, string[]>
   }
@@ -54,7 +55,7 @@ export function apiList<T>(
 export function apiError(
   message: string,
   status = 500,
-  details?: { formErrors?: string[]; fieldErrors?: Record<string, string[]> }
+  details?: { code?: string; formErrors?: string[]; fieldErrors?: Record<string, string[]> }
 ): NextResponse<ApiErrorResponse> {
   return NextResponse.json(
     { success: false, error: { message, ...details } },

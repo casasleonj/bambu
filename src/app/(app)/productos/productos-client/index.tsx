@@ -247,16 +247,20 @@ export default function ProductosClient({ productos: initialProductos, isAdmin =
       return
     }
 
+    await doAddTier(modalProductoId, cantMin, cantMax, precio)
+  }
+
+  async function doAddTier(productoId: string, cantMin: number, cantMax: number | null, precio: number, force = false) {
     try {
       const res = await fetch('/api/precios', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productoId: modalProductoId, cantMin, cantMax, precio }),
+        body: JSON.stringify({ productoId, cantMin, cantMax, precio, force }),
       })
       if (res.ok) {
         const data = await res.json()
         toast.success('Rango agregado')
-        setProductos(prev => prev.map(p => p.id === modalProductoId ? {
+        setProductos(prev => prev.map(p => p.id === productoId ? {
           ...p,
           precios: [...p.precios, data.tier]
         } : p))
@@ -267,6 +271,16 @@ export default function ProductosClient({ productos: initialProductos, isAdmin =
         setModalPrecio('')
       } else {
         const data = await res.json().catch(() => ({}))
+
+        // Handle inactive tier blocking: prompt user to force delete
+        if (res.status === 409 && data.error?.code === 'INACTIVE_TIER_BLOCKING') {
+          const ok = await confirm(data.error.message || '¿Deseas eliminar el rango eliminado permanentemente y crear el nuevo?')
+          if (ok) {
+            await doAddTier(productoId, cantMin, cantMax, precio, true)
+          }
+          return
+        }
+
         toast.error(extractErrorMessage(data, 'Error agregando rango'))
       }
     } catch {
