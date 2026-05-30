@@ -11,13 +11,6 @@ import { matchCliente } from '@/lib/cliente-search'
 import { NegocioSelector } from '@/components/negocio-selector'
 import type { Cliente, Tier } from './types'
 
-const TIPOS_NEGOCIO: string[] = [
-  'Tienda', 'Restaurante', 'Café', 'Hotel', 'Bar',
-  'Ferretería', 'Panadería', 'Carnicería', 'Frutería', 'Peluquería',
-  'Farmacia', 'Papelería', 'Lavandería', 'Taller', 'Consultorio',
-  'Gimnasio', 'Salón de eventos', 'Guardería', 'Veterinaria', 'Estación de servicio',
-]
-
 const FUENTES: string[] = [
   'Página web', 'Instagram', 'Facebook', 'Referido', 'WhatsApp',
 ]
@@ -63,7 +56,7 @@ export interface PedidoUnifiedData {
   preciosManuales: Record<string, number>
   pagos: Array<{ metodo: string; monto: number }>
   obs?: string
-  clienteNuevo?: { nombre: string; apellido?: string; telefono: string; direccion: string; barrio?: string; nombreNegocio?: string; tipoNegocio?: string; fuente?: string }
+  clienteNuevo?: { nombre: string; apellido?: string; telefono: string; direccion: string; barrio?: string; fuente?: string }
   actualizarCliente?: { direccion: string; barrio: string }
   ventaRapida: boolean
   isEdit?: boolean
@@ -78,8 +71,9 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
   const [searchTerm, setSearchTerm] = useState('')
   const [clienteSeleccionado, setClienteSeleccionado] = useState<Cliente | null>(null)
   const [negocioSeleccionado, setNegocioSeleccionado] = useState<string | null>(null)
+  const [negocioData, setNegocioData] = useState<{ direccion: string | null; barrio: string | null } | null>(null)
   const [mostrarNuevo, setMostrarNuevo] = useState(false)
-  const [nuevoCliente, setNuevoCliente] = useState({ nombre: '', apellido: '', telefono: '', direccion: '', barrio: '', nombreNegocio: '', tipoNegocio: '', fuente: '' })
+  const [nuevoCliente, setNuevoCliente] = useState({ nombre: '', apellido: '', telefono: '', direccion: '', barrio: '', fuente: '' })
   const [pagos, setPagos] = useState<{ metodo: string; monto: number }[]>([])
   const [modoPagoActivo, setModoPagoActivo] = useState<string | null>(null)
   const [montoInput, setMontoInput] = useState('')
@@ -160,10 +154,22 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
     resolverPrecios(allProducts, canalRef.current, clienteSeleccionado.id)
   }, [productosConfig, clienteSeleccionado?.id, productosActuales])
 
+  // Sync direccion/barrio when negocio selection changes
   useEffect(() => {
-    if (clienteSeleccionado) {
+    if (!clienteSeleccionado) return
+    if (negocioData) {
+      // Use negocio's address if it has one, otherwise fall back to client's
+      setEditDireccion(negocioData.direccion || clienteSeleccionado.direccion || '')
+      setEditBarrio(negocioData.barrio || clienteSeleccionado.barrio || '')
+    } else {
+      // No negocio selected — use client's address
       setEditDireccion(clienteSeleccionado.direccion || '')
       setEditBarrio(clienteSeleccionado.barrio || '')
+    }
+  }, [negocioData, clienteSeleccionado])
+
+  useEffect(() => {
+    if (clienteSeleccionado) {
       const timer = setTimeout(() => {
         const allProducts: Record<string, number> = {}
         for (const id of productosActuales) {
@@ -359,12 +365,12 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
     setSubmitting(true)
 
     let clienteId = 'CONSUMIDOR_FINAL'
-    let clienteNuevoData: { nombre: string; apellido?: string; telefono: string; direccion: string; barrio?: string; nombreNegocio?: string; tipoNegocio?: string; fuente?: string } | undefined
+    let clienteNuevoData: { nombre: string; apellido?: string; telefono: string; direccion: string; barrio?: string; fuente?: string } | undefined
 
     if (clienteSeleccionado) {
       clienteId = clienteSeleccionado.id
     } else if (mostrarNuevo) {
-      clienteNuevoData = { nombre: nuevoCliente.nombre, apellido: nuevoCliente.apellido || undefined, telefono: nuevoCliente.telefono, direccion: nuevoCliente.direccion, barrio: nuevoCliente.barrio || undefined, nombreNegocio: nuevoCliente.nombreNegocio || undefined, tipoNegocio: nuevoCliente.tipoNegocio || undefined, fuente: nuevoCliente.fuente || undefined }
+      clienteNuevoData = { nombre: nuevoCliente.nombre, apellido: nuevoCliente.apellido || undefined, telefono: nuevoCliente.telefono, direccion: nuevoCliente.direccion, barrio: nuevoCliente.barrio || undefined, fuente: nuevoCliente.fuente || undefined }
     }
 
     const items = productosActuales
@@ -432,7 +438,7 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
             <div className="space-y-2">
               <div className="flex items-center justify-between bg-blue-50 rounded-lg px-3 py-2">
                 <div>
-                  <span className="font-medium text-sm">{clienteSeleccionado.nombre}{clienteSeleccionado.apellido ? ` ${clienteSeleccionado.apellido}` : ''}{clienteSeleccionado.nombreNegocio ? ` — ${clienteSeleccionado.nombreNegocio}` : ''}</span>
+                  <span className="font-medium text-sm">{clienteSeleccionado.nombre}{clienteSeleccionado.apellido ? ` ${clienteSeleccionado.apellido}` : ''}</span>
                   <span className="text-xs text-gray-500 ml-2">{clienteSeleccionado.telefono}</span>
                 </div>
                 <button type="button" onClick={() => setClienteSeleccionado(null)} className="text-gray-400 hover:text-red-500">
@@ -460,26 +466,43 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
               {/* NEGOCIO SELECTOR */}
               <NegocioSelector
                 clienteId={clienteSeleccionado.id}
+                clienteDireccion={clienteSeleccionado.direccion}
+                clienteBarrio={clienteSeleccionado.barrio}
                 selectedNegocioId={negocioSeleccionado}
-                onNegocioSelected={setNegocioSeleccionado}
+                onNegocioSelected={(id, data) => { setNegocioSeleccionado(id); setNegocioData(data) }}
               />
 
               {canal === 'DOMICILIO' && (
-                <div className="grid grid-cols-2 gap-2">
-                  <input
-                    type="text"
-                    placeholder="Dirección *"
-                    value={editDireccion}
-                    onChange={(e) => setEditDireccion(e.target.value)}
-                    className="col-span-2 px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Barrio *"
-                    value={editBarrio}
-                    onChange={(e) => setEditBarrio(e.target.value)}
-                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                  />
+                <div className="space-y-2">
+                  {/* Destination indicator */}
+                  <div className={`px-3 py-2 rounded-lg text-xs flex items-center gap-2 ${
+                    negocioSeleccionado
+                      ? 'bg-purple-50 border border-purple-200 text-purple-700'
+                      : 'bg-gray-50 border border-gray-200 text-gray-600'
+                  }`}>
+                    <span>{negocioSeleccionado ? '🏪' : '🏠'}</span>
+                    <span className="font-medium">
+                      {negocioSeleccionado
+                        ? `Envío a sucursal`
+                        : 'Envío a domicilio del cliente'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      placeholder="Dirección *"
+                      value={editDireccion}
+                      onChange={(e) => setEditDireccion(e.target.value)}
+                      className="col-span-2 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Barrio *"
+                      value={editBarrio}
+                      onChange={(e) => setEditBarrio(e.target.value)}
+                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                  </div>
                 </div>
               )}
             </div>
@@ -497,7 +520,6 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
                   {filteredClientes.map(c => (
                     <button key={c.id} type="button" onClick={() => handleSelectCliente(c)} className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b last:border-b-0 text-sm">
                       <span className="font-medium">{c.nombre}{c.apellido ? ` ${c.apellido}` : ''}</span>
-                      {c.nombreNegocio && <span className="text-gray-500 ml-1">— {c.nombreNegocio}</span>}
                       <span className="text-gray-400 ml-2">{c.telefono}</span>
                     </button>
                   ))}
@@ -527,8 +549,6 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
                     <input placeholder="Teléfono *" value={nuevoCliente.telefono} onChange={e => setNuevoCliente(p => ({ ...p, telefono: e.target.value }))} className="px-3 py-2 border rounded-lg text-sm" />
                     <input placeholder={canal === 'DOMICILIO' ? 'Dirección *' : 'Dirección'} value={nuevoCliente.direccion} onChange={e => setNuevoCliente(p => ({ ...p, direccion: e.target.value }))} className="px-3 py-2 border rounded-lg text-sm col-span-2" />
                     <input placeholder={canal === 'DOMICILIO' ? 'Barrio *' : 'Barrio'} value={nuevoCliente.barrio} onChange={e => setNuevoCliente(p => ({ ...p, barrio: e.target.value }))} className="px-3 py-2 border rounded-lg text-sm col-span-2" />
-                    <input placeholder="Negocio" value={nuevoCliente.nombreNegocio} onChange={e => setNuevoCliente(p => ({ ...p, nombreNegocio: e.target.value }))} className="px-3 py-2 border rounded-lg text-sm" />
-                    <TipoNegocioSelect options={TIPOS_NEGOCIO} value={nuevoCliente.tipoNegocio} onChange={(val) => setNuevoCliente(p => ({ ...p, tipoNegocio: val }))} placeholder="Tipo de negocio..." />
                     <div className="col-span-2">
                       <TipoNegocioSelect options={FUENTES} value={nuevoCliente.fuente} onChange={(val) => setNuevoCliente(p => ({ ...p, fuente: val }))} placeholder="¿Cómo nos conoció?" apiUrl="/api/clientes/fuentes" />
                     </div>

@@ -15,12 +15,16 @@ export interface NegocioOption {
 
 interface NegocioSelectorProps {
   clienteId: string
+  clienteDireccion?: string | null
+  clienteBarrio?: string | null
   selectedNegocioId: string | null
-  onNegocioSelected: (negocioId: string | null) => void
+  onNegocioSelected: (negocioId: string | null, negocioData: { direccion: string | null; barrio: string | null } | null) => void
 }
 
 export function NegocioSelector({
   clienteId,
+  clienteDireccion,
+  clienteBarrio,
   selectedNegocioId,
   onNegocioSelected,
 }: NegocioSelectorProps) {
@@ -77,7 +81,7 @@ export function NegocioSelector({
             {/* Option: no specific negocio (use client default) */}
             <button
               type="button"
-              onClick={() => onNegocioSelected(null)}
+              onClick={() => onNegocioSelected(null, null)}
               className={`w-full text-left px-3 py-2.5 rounded-lg border transition ${
                 selectedNegocioId === null
                   ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500'
@@ -90,6 +94,16 @@ export function NegocioSelector({
                   Cliente (sin negocio específico)
                 </span>
               </div>
+              {(clienteDireccion || clienteBarrio) && (
+                <div className="text-xs text-gray-500 mt-1">
+                  {clienteDireccion && <span>{clienteDireccion}</span>}
+                  {clienteBarrio && (
+                    <span className="ml-1">
+                      {clienteDireccion ? '—' : ''} {clienteBarrio}
+                    </span>
+                  )}
+                </div>
+              )}
             </button>
 
             {/* Business options */}
@@ -97,7 +111,7 @@ export function NegocioSelector({
               <button
                 key={negocio.id}
                 type="button"
-                onClick={() => onNegocioSelected(negocio.id)}
+                onClick={() => onNegocioSelected(negocio.id, { direccion: negocio.direccion, barrio: negocio.barrio })}
                 className={`w-full text-left px-3 py-2.5 rounded-lg border transition ${
                   selectedNegocioId === negocio.id
                     ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500'
