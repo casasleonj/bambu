@@ -200,8 +200,9 @@ export function EmbarqueFormModal({
       } else {
         toast.error(data.error?.message || (isEdit ? 'Error actualizando embarque' : 'Error creando embarque'))
       }
-    } catch {
-      toast.error(isEdit ? 'Error actualizando embarque' : 'Error creando embarque')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : (isEdit ? 'Error actualizando embarque' : 'Error creando embarque')
+      toast.error(msg)
     } finally {
       setSubmitting(false)
     }

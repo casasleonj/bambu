@@ -148,6 +148,14 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
       const data = await res.json()
       if (data.success) {
         toast.success(data.message)
+        if (data.gruposSinAsignar && data.gruposSinAsignar.length > 0) {
+          for (const grupo of data.gruposSinAsignar) {
+            toast.warning(
+              `${grupo.pedidosCount} pedidos de "${grupo.ruta}" no asignados — no hay repartidores disponibles`,
+              { duration: 8000 }
+            )
+          }
+        }
         fetchData()
       } else {
         toast.error(data.error?.message || 'Error al generar embarques')

@@ -189,12 +189,16 @@ export async function POST(request: NextRequest) {
         overrideTimestamp: stockEval.hasDeficit ? new Date().toISOString() : null,
       }
 
+      const horaSalidaDate = parsed.data.horaSalida
+        ? new Date(`${new Date().toISOString().split('T')[0]}T${parsed.data.horaSalida}:00`)
+        : null
+
       const embarque = await tx.embarque.create({
         data: {
           trabajadorId: parsed.data.trabajadorId,
           rutaId: parsed.data.rutaId || null,
           tipoMoto: parsed.data.tipoMoto || null,
-          horaSalida: parsed.data.horaSalida ? new Date(parsed.data.horaSalida) : null,
+          horaSalida: horaSalidaDate,
           estado: EstadoEmbarque.ABIERTO,
           obs: parsed.data.obs,
           numeroDia,
@@ -244,7 +248,7 @@ export async function POST(request: NextRequest) {
       return apiError(message.replace('STOCK_OVERRIDE_EXCEEDED: ', ''), 400)
     }
     logger.error({ err: message }, 'Error creating embarque:')
-    return apiError('Error creando embarque')
+    return apiError(`Error creando embarque: ${message}`, 500)
   }
 }
 

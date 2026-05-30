@@ -138,6 +138,30 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
+    // Validate pedido assignment — check total units don't exceed 70
+    if (pedidoIds && Array.isArray(pedidoIds) && pedidoIds.length > 0) {
+      const pedidosActuales = await prisma.pedido.findMany({
+        where: { embarqueId: id },
+      })
+      const unidadesActuales = pedidosActuales.reduce((s, p) =>
+        s + (p.cPacaAguaPed || 0) + (p.cPacaHieloPed || 0) +
+            (p.cBotellonFabPed || 0) + (p.cBotellonDomPed || 0) +
+            (p.cBolsaAguaPed || 0) + (p.cBolsaHieloPed || 0), 0)
+
+      const nuevosPedidos = await prisma.pedido.findMany({
+        where: { id: { in: pedidoIds } },
+      })
+      const unidadesNuevas = nuevosPedidos.reduce((s, p) =>
+        s + (p.cPacaAguaPed || 0) + (p.cPacaHieloPed || 0) +
+            (p.cBotellonFabPed || 0) + (p.cBotellonDomPed || 0) +
+            (p.cBolsaAguaPed || 0) + (p.cBolsaHieloPed || 0), 0)
+
+      const totalUnidades = unidadesActuales + unidadesNuevas
+      if (totalUnidades > 70) {
+        return apiError(`Excede máximo de 70 unidades: ${totalUnidades} unidades (${unidadesActuales} asignadas + ${unidadesNuevas} nuevas)`, 400)
+      }
+    }
+
     const embarque = await prisma.$transaction(async (tx) => {
       // Handle carga update — replace all EmbarqueProducto records
       if (carga && currentEmbarque.estado === 'ABIERTO') {
@@ -208,7 +232,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     return apiSuccess({ embarque: serialized })
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error updating embarque:')
-    return apiError('Error updating', 500)
+    return apiError(`Error actualizando embarque: ${error instanceof Error ? error.message : 'desconocido'}`, 500)
   }
 }
 

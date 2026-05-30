@@ -165,6 +165,28 @@ export function EmbarqueDetailModal({
   const proyectada = calcularCapacidadProyectada(embarque, pedidos, selectedPedidoIds)
   const capacidadProyectada = getCapacidadInfo(proyectada.totalPacas, proyectada.pesoKg, capacidadKg)
 
+  // Unidades comprometidas en pedidos asignados (no venta libre)
+  const pedidosAsignados = embarque.pedidos?.filter((p) => p.origen !== 'VENTA_LIBRE') || []
+  const unidadesComprometidas = pedidosAsignados.reduce((s, p) =>
+    s + (p.cPacaAguaPed || 0) + (p.cPacaHieloPed || 0) +
+        (p.cBotellonFabPed || 0) + (p.cBotellonDomPed || 0) +
+        (p.cBolsaAguaPed || 0) + (p.cBolsaHieloPed || 0), 0)
+
+  // Unidades nuevas que se asignarían con la selección actual
+  const unidadesSeleccionadas = selectedPedidoIds.reduce((s, id) => {
+    const p = pedidos.find((p) => p.id === id)
+    return s + (p ? (p.cPacaAguaPed || 0) + (p.cPacaHieloPed || 0) +
+        (p.cBotellonFabPed || 0) + (p.cBotellonDomPed || 0) +
+        (p.cBolsaAguaPed || 0) + (p.cBolsaHieloPed || 0) : 0)
+  }, 0)
+
+  // Disponible para venta libre = carga - (pedidos asignados + seleccionados)
+  const unidadesDisponible = Math.max(0, (embarque.totalPacas || 0) - unidadesComprometidas - unidadesSeleccionadas)
+
+  // Flags para UI
+  const excedeUnidades = capacidadProyectada.total > 70
+  const excedePeso = capacidadProyectada.pesoKg > capacidadKg
+
   async function assignPedidos() {
     if (submitting) return
     setSubmitting(true)
@@ -188,8 +210,9 @@ export function EmbarqueDetailModal({
       } else {
         toast.error(data.error?.message || 'Error asignando pedidos')
       }
-    } catch {
-      toast.error('Error asignando pedidos')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Error asignando pedidos'
+      toast.error(msg)
     } finally {
       setSubmitting(false)
     }
@@ -211,8 +234,9 @@ export function EmbarqueDetailModal({
       } else {
         toast.error('Error removiendo pedido')
       }
-    } catch {
-      toast.error('Error removiendo pedido')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Error removiendo pedido'
+      toast.error(msg)
     }
   }
 
@@ -231,8 +255,9 @@ export function EmbarqueDetailModal({
       } else {
         toast.error(data.error?.message || 'Error')
       }
-    } catch {
-      toast.error('Error al cancelar')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Error al cancelar'
+      toast.error(msg)
     } finally {
       setSubmitting(false)
     }
@@ -253,8 +278,9 @@ export function EmbarqueDetailModal({
       } else {
         toast.error(data.error?.message || 'Error enviando embarque')
       }
-    } catch {
-      toast.error('Error enviando embarque')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Error enviando embarque'
+      toast.error(msg)
     } finally {
       setSubmitting(false)
     }
@@ -273,7 +299,7 @@ export function EmbarqueDetailModal({
         {getEstadoBadge(embarque.estado)}
       </div>
 
-      <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border mb-4 ${capacidadActual.color}`}>
+      <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border mb-2 ${capacidadActual.color}`}>
         <span className="text-lg">{capacidadActual.icon}</span>
         <div className="flex-1">
           <p className="text-sm font-medium">
@@ -286,6 +312,31 @@ export function EmbarqueDetailModal({
           </p>
         </div>
       </div>
+
+      {embarque.estado === 'ABIERTO' && (
+        <div className="mb-4 p-3 bg-gray-50 rounded-lg border text-sm space-y-1">
+          <div className="flex justify-between">
+            <span className="text-gray-600">Carga:</span>
+            <span className="font-medium">{embarque.totalPacas || 0} unidades</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-600">Pedidos asignados:</span>
+            <span className="font-medium">{pedidosAsignados.length} ({unidadesComprometidas} unidades)</span>
+          </div>
+          {selectedPedidoIds.length > 0 && (
+            <div className="flex justify-between">
+              <span className="text-gray-600">Seleccionados:</span>
+              <span className="font-medium text-blue-600">+{unidadesSeleccionadas} unidades</span>
+            </div>
+          )}
+          <div className="flex justify-between border-t pt-1">
+            <span className="text-gray-600">Disponible para venta libre:</span>
+            <span className={`font-bold ${unidadesDisponible === 0 ? 'text-red-600' : 'text-green-600'}`}>
+              {unidadesDisponible} unidades
+            </span>
+          </div>
+        </div>
+      )}
 
       {embarque.estado === 'ABIERTO' && (
         <>
@@ -325,16 +376,21 @@ export function EmbarqueDetailModal({
                 </p>
               )}
             </div>
-            {proyectada.pesoKg > capacidadKg && (
-              <p className="text-xs text-red-600 mt-1">
-                ⚠️ Excederá capacidad máxima ({capacidadKg}kg)
+            {excedeUnidades && (
+              <p className="text-xs text-red-600 mt-1 font-medium">
+                 ⛔ Excede máximo de 70 unidades ({capacidadProyectada.total})
+              </p>
+            )}
+            {excedePeso && !excedeUnidades && (
+              <p className="text-xs text-yellow-600 mt-1">
+                ⚠️ Excede peso recomendado ({capacidadKg}kg) — proceder con precaución
               </p>
             )}
           </div>
 
           <button
             onClick={assignPedidos}
-            disabled={selectedPedidoIds.length === 0 || submitting}
+            disabled={selectedPedidoIds.length === 0 || submitting || excedeUnidades}
             className="w-full mb-3 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {submitting ? 'Asignando...' : 'Asignar Pedidos'}

@@ -31,6 +31,22 @@ export async function POST(
       return apiError('Solo se pueden enviar embarques abiertos', 400)
     }
 
+    // Verificar que el repartidor no tenga otro embarque EN_RUTA
+    const embarqueEnRuta = await prisma.embarque.findFirst({
+      where: {
+        trabajadorId: embarque.trabajadorId,
+        estado: EstadoEmbarque.EN_RUTA,
+        id: { not: id },
+      },
+    })
+
+    if (embarqueEnRuta) {
+      return apiError(
+        `El repartidor "${embarque.trabajador.nombre}" ya tiene el embarque #${embarqueEnRuta.numero} en ruta. Ciérralo antes de enviar otro.`,
+        400
+      )
+    }
+
     const updated = await prisma.embarque.update({
       where: { id },
       data: {
