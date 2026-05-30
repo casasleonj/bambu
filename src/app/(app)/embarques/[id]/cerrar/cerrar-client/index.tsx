@@ -28,6 +28,7 @@ export default function CerrarEmbarqueClient() {
 
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
   const [embarque, setEmbarque] = useState<Embarque | null>(null)
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [embarquesAbiertos, setEmbarquesAbiertos] = useState<EmbarqueAbierto[]>([])
@@ -44,14 +45,17 @@ export default function CerrarEmbarqueClient() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const [embarqueRes, clientesRes, embarquesRes] = await Promise.all([
+        const [embarqueRes, clientesRes, embarquesRes, profileRes] = await Promise.all([
           fetch(`/api/embarques/${embarqueId}`, { credentials: 'include' }),
           fetch('/api/clientes?all=true', { credentials: 'include' }),
           fetch('/api/embarques', { credentials: 'include' }),
+          fetch('/api/auth/profile', { credentials: 'include' }),
         ])
         const embarqueData = await embarqueRes.json()
         const clientesData = await clientesRes.json()
         const embarquesData = await embarquesRes.json()
+        const profileData = await profileRes.json()
+        setIsAdmin(profileData.user?.rol === 'ADMIN')
 
         if (embarqueData.embarque) {
           const emb = embarqueData.embarque
@@ -539,6 +543,7 @@ export default function CerrarEmbarqueClient() {
                   pedido={pedido}
                   cuadre={cuadre}
                   embarquesAbiertos={embarquesAbiertos}
+                  isAdmin={isAdmin}
                   onUpdateCuadre={updateCuadre}
                   onUpdateProductoEntregado={updateProductoEntregado}
                   onUpdatePrecioReal={updatePrecioReal}

@@ -4,7 +4,7 @@ import { requireAuth, requireRole, requireOwnership } from '@/lib/auth-check'
 import { logAudit } from '@/lib/audit'
 import { formatZodError } from '@/lib/utils'
 import { getNextNumero } from '@/lib/sequence'
-import { resolverPrecio, resolverPreciosPedido, type ProductCode, type Canal } from '@/lib/pricing'
+import { resolverPrecio } from '@/lib/pricing'
 import { calcularEstadoPago } from '@/lib/pedido-utils'
 import { MetodoPago, EstadoEmbarque } from '@prisma/client'
 import { ROLES } from '@/lib/constants'
@@ -89,30 +89,27 @@ export async function POST(
           continue
         }
 
-        // Calcular precios reales
-        let precios: { pacaAgua: number; pacaHielo: number; botellonFab: number; botellonDom: number; bolsaAgua: number; bolsaHielo: number }
+        // ── PRECIOS: Congelados al crear el pedido, solo override explícito ───
+        // Por defecto: usar precios originales del pedido (congelados al crear)
+        // Esto protege contra cambios silenciosos si un admin modificó la tabla de precios
+        // entre la creación del pedido y el cierre del embarque.
+        const preciosOriginales = {
+          pacaAgua: Number(pedido.precioPacaAgua),
+          pacaHielo: Number(pedido.precioPacaHielo),
+          botellonFab: Number(pedido.precioBotellonFab),
+          botellonDom: Number(pedido.precioBotellonDom),
+          bolsaAgua: Number(pedido.precioBolsaAgua),
+          bolsaHielo: Number(pedido.precioBolsaHielo),
+        }
+
+        let precios: typeof preciosOriginales
 
         if (cuadre.preciosReales) {
+          // Override explícito: el usuario envió precios diferentes (solo ADMIN debería poder)
           precios = cuadre.preciosReales
         } else {
-          const items: Array<{ codigo: ProductCode; cantidad: number }> = [
-            { codigo: 'PACA_AGUA', cantidad: entProd.cPacaAguaEnt },
-            { codigo: 'PACA_HIELO', cantidad: entProd.cPacaHieloEnt },
-            { codigo: 'BOTELLON', cantidad: entProd.cBotellonFabEnt + entProd.cBotellonDomEnt },
-            { codigo: 'BOLSA_AGUA', cantidad: entProd.cBolsaAguaEnt },
-            { codigo: 'BOLSA_HIELO', cantidad: entProd.cBolsaHieloEnt },
-          ]
-          const resueltos = await resolverPreciosPedido(items, pedido.canal as Canal, pedido.clienteId, pedido.negocioId, tx)
-          const priceMap: Record<string, number> = {}
-          for (const pr of resueltos) priceMap[pr.codigo] = pr.precio
-          precios = {
-            pacaAgua: priceMap['PACA_AGUA'] || 0,
-            pacaHielo: priceMap['PACA_HIELO'] || 0,
-            botellonFab: pedido.canal === 'PUNTO' ? (priceMap['BOTELLON'] || 0) : 0,
-            botellonDom: pedido.canal === 'DOMICILIO' ? (priceMap['BOTELLON'] || 0) : 0,
-            bolsaAgua: priceMap['BOLSA_AGUA'] || 0,
-            bolsaHielo: priceMap['BOLSA_HIELO'] || 0,
-          }
+          // Sin override: usar precios originales congelados
+          precios = preciosOriginales
         }
 
         const totalReal =
@@ -150,7 +147,17 @@ export async function POST(
           },
         })
         
-        // Actualizar PedidoItem
+        // Actualizar PedidoItem: cantEntrega + precio (sincronizar con Pedido.precio*)
+        // Mapping de producto → key de precio
+        const precioKeyMap: Record<string, keyof typeof precios> = {
+          PACA_AGUA: 'pacaAgua',
+          PACA_HIELO: 'pacaHielo',
+          BOTELLON_FAB: 'botellonFab',
+          BOTELLON_DOM: 'botellonDom',
+          BOLSA_AGUA: 'bolsaAgua',
+          BOLSA_HIELO: 'bolsaHielo',
+        }
+
         const itemUpdates = [
           { producto: 'PACA_AGUA', cantidad: entProd.cPacaAguaEnt },
           { producto: 'PACA_HIELO', cantidad: entProd.cPacaHieloEnt },
@@ -159,14 +166,39 @@ export async function POST(
           { producto: 'BOLSA_AGUA', cantidad: entProd.cBolsaAguaEnt },
           { producto: 'BOLSA_HIELO', cantidad: entProd.cBolsaHieloEnt },
         ]
-        
+
         for (const itemUpd of itemUpdates) {
           await tx.pedidoItem.updateMany({
             where: { pedidoId: pedido.id, producto: itemUpd.producto },
-            data: { cantEntrega: itemUpd.cantidad },
+            data: {
+              cantEntrega: itemUpd.cantidad,
+              precio: precios[precioKeyMap[itemUpd.producto]] || 0,
+            },
           })
         }
         
+        // Log en Historial si los precios de cierre difieren de los originales
+        const totalOriginal = Number(pedido.total)
+        const deltaTotal = totalReal - totalOriginal
+        if (cuadre.preciosReales && Math.abs(deltaTotal) > 0) {
+          await tx.historial.create({
+            data: {
+              entidad: 'Pedido',
+              registroId: pedido.id,
+              accion: 'PRECIO_CIERRE',
+              datos: JSON.stringify({
+                pedidoNumero: pedido.numero,
+                precioOriginal: totalOriginal,
+                precioCierre: totalReal,
+                delta: deltaTotal,
+                deltaPct: totalOriginal > 0 ? ((deltaTotal / totalOriginal) * 100).toFixed(1) : '0',
+                usuario: authResult.user?.email || 'unknown',
+              }),
+              usuarioId: (authResult.user as { id: string }).id,
+            },
+          })
+        }
+
         pedidosActualizados.push({ id: pedido.id, estado: 'ENTREGADO' })
 
         // Registrar pagos

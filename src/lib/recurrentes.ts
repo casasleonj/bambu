@@ -157,7 +157,7 @@ export async function previewGeneracionRecurrentes(
       activo: true,
       proxGeneracion: { lte: lookaheadEnd },
     },
-    include: { cliente: true },
+    include: { cliente: true, negocio: { include: { cliente: true } } },
   })
 
   // Batch fetch all pending orders for all clients in a single query
@@ -194,11 +194,14 @@ export async function previewGeneracionRecurrentes(
   const previews: PreviewRecurrente[] = []
 
   for (const pt of plantillas) {
-    // Skip templates without cliente (migrated to negocio-only)
-    if (!pt.clienteId || !pt.cliente) continue
-
+    // Support negocio-only templates (migrated from clienteId)
+    if (!pt.clienteId && !pt.negocioId) continue
+    const effectiveClienteId: string = pt.clienteId ?? pt.negocio?.clienteId ?? ''
+    if (!effectiveClienteId) continue
+    // For blocked/inactive check, resolve the actual cliente
+    const clienteForCheck = pt.cliente ?? pt.negocio?.cliente
     // A4: Blocked/inactive clients are visible in preview but with restricted options
-    const clienteBloqueado = pt.cliente.bloqueado || !pt.cliente.activo
+    const clienteBloqueado = clienteForCheck?.bloqueado || !clienteForCheck?.activo
 
     const prox = pt.proxGeneracion!
     const fechaGen = new Date(prox)
@@ -212,7 +215,7 @@ export async function previewGeneracionRecurrentes(
     const productos = parseProductos(pt.productos)
     const cantidadBase = productosToCantidades(productos, pt.canal)
 
-    const pedidosPendientesRaw = pedidosPorCliente.get(pt.clienteId) || []
+    const pedidosPendientesRaw = pedidosPorCliente.get(effectiveClienteId) || []
     const pedidosPendientes = pedidosPendientesRaw.map(p => ({
       ...p,
       total: Number(p.total),
@@ -236,7 +239,7 @@ export async function previewGeneracionRecurrentes(
       { codigo: 'BOLSA_AGUA', cantidad: cantidadBase.cBolsaAgua },
       { codigo: 'BOLSA_HIELO', cantidad: cantidadBase.cBolsaHielo },
     ]
-    const preciosBase = await resolverPreciosPedido(items, pt.canal as Canal, pt.clienteId)
+    const preciosBase = await resolverPreciosPedido(items, pt.canal as Canal, effectiveClienteId, pt.negocioId)
     const valorBase = preciosBase.reduce((sum, p) => sum + p.subtotal, 0)
 
     const sugerencias: PreviewRecurrente['sugerencias'] = []
@@ -246,7 +249,7 @@ export async function previewGeneracionRecurrentes(
       sugerencias.push({
         tipo: 'SALTAR',
         label: 'Cliente bloqueado',
-        descripcion: pt.cliente.bloqueado ? 'Cliente bloqueado por deuda' : 'Cliente inactivo',
+        descripcion: clienteForCheck?.bloqueado ? 'Cliente bloqueado por deuda' : 'Cliente inactivo',
         totalPacas: 0,
         totalValor: 0,
         disabled: false,
@@ -337,8 +340,8 @@ export async function previewGeneracionRecurrentes(
 
     previews.push({
       recurrenteId: pt.id,
-      clienteId: pt.clienteId,
-      clienteNombre: pt.cliente.nombre,
+      clienteId: effectiveClienteId,
+      clienteNombre: clienteForCheck?.nombre ?? 'Sin nombre',
       cadaNDias: pt.cadaNDias,
       ultimaGeneracion: pt.ultimaGeneracion,
       proximaFecha: fechaGen,
@@ -374,10 +377,15 @@ export async function generarPedidosRecurrentes(
   for (const decision of decisiones) {
     const pt = await prisma.plantillaRecurrente.findUnique({
       where: { id: decision.recurrenteId },
-      include: { cliente: true },
+      include: { cliente: true, negocio: { include: { cliente: true } } },
     })
     if (!pt || !pt.activo) continue
-    if (!pt.clienteId || !pt.cliente) continue // Skip templates migrated to negocio-only
+    // Support negocio-only templates (migrated from clienteId)
+    if (!pt.clienteId && !pt.negocioId) continue
+    const effectiveClienteId: string = pt.clienteId ?? pt.negocio?.clienteId ?? ''
+    if (!effectiveClienteId) continue
+    const clienteForCheck = pt.cliente ?? pt.negocio?.cliente
+    if (!clienteForCheck) continue
 
     // Auto-fix Sunday: if proxGeneracion lands on Sunday, shift to Monday
     let prox = pt.proxGeneracion!
@@ -391,7 +399,7 @@ export async function generarPedidosRecurrentes(
       continue
     }
 
-    if (pt.cliente.bloqueado || !pt.cliente.activo) {
+    if (clienteForCheck.bloqueado || !clienteForCheck.activo) {
       await prisma.plantillaRecurrente.update({
         where: { id: pt.id },
         data: {
@@ -403,11 +411,11 @@ export async function generarPedidosRecurrentes(
     }
 
     // Verificar limite de fiados (se re-verifica dentro de la transacción para evitar race conditions)
-    const limite = pt.cliente.limitePedidosFiados ?? 3
+    const limite = clienteForCheck.limitePedidosFiados ?? 3
 
     const pedidosPendientesCount = await prisma.pedido.count({
       where: {
-        clienteId: pt.clienteId,
+        clienteId: effectiveClienteId,
         estadoEntrega: { notIn: ['ANULADO', 'CANCELADO'] },
         estadoPago: { notIn: ['PAGADO', 'ANTICIPADO', 'ANULADO'] },
       },
@@ -451,7 +459,7 @@ export async function generarPedidosRecurrentes(
     const pedidosPendientes = decision.decision === 'CON_PENDIENTES' || decision.decision === 'SOLO_PENDIENTES' || decision.decision === 'APLICAR_CREDITO'
       ? await prisma.pedido.findMany({
           where: {
-            clienteId: pt.clienteId,
+        clienteId: effectiveClienteId,
             estadoEntrega: 'PENDIENTE',
             origen: { not: 'RECURRENTE' },
           },
@@ -534,7 +542,8 @@ export async function generarPedidosRecurrentes(
     const preciosResueltos = await resolverPreciosPedido(
       items,
       pt.canal as Canal,
-      pt.clienteId,
+      effectiveClienteId,
+      pt.negocioId,
     )
 
     const precioMap: Record<string, number> = {}
@@ -553,7 +562,7 @@ export async function generarPedidosRecurrentes(
 
     const nuevo = await prisma.$transaction(async (tx) => {
       // Re-check clienteId within transaction (TypeScript narrowing)
-      const clienteId = pt.clienteId
+      const clienteId = effectiveClienteId
       if (!clienteId) return null
 
       // Re-verificar limite de fiados dentro de la transacción para evitar race conditions
@@ -566,8 +575,8 @@ export async function generarPedidosRecurrentes(
         select: { id: true, numero: true, saldo: true },
       })
 
-      let limiteTx = pt.cliente!.limitePedidosFiados ?? 3
-      if (pt.cliente!.limitePedidosFiados == null) {
+      let limiteTx = clienteForCheck.limitePedidosFiados ?? 3
+      if (clienteForCheck.limitePedidosFiados == null) {
         const configLimite = await tx.config.findUnique({ where: { clave: 'LIMITE_PEDIDOS_FIADOS_DEFAULT' } })
         if (configLimite) {
           const parsed = parseInt(configLimite.valor, 10)
@@ -589,6 +598,7 @@ export async function generarPedidosRecurrentes(
       const creado = await tx.pedido.create({
         data: {
           clienteId,
+          negocioId: pt.negocioId,
           tipo: pt.tipo,
           canal: pt.canal,
           origen: 'RECURRENTE',

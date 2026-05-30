@@ -8,6 +8,7 @@ interface PedidoCuadreProps {
   pedido: Pedido
   cuadre: CuadrePedido
   embarquesAbiertos: EmbarqueAbierto[]
+  isAdmin: boolean
   onUpdateCuadre: (pedidoId: string, updates: Partial<CuadrePedido>) => void
   onUpdateProductoEntregado: (pedidoId: string, field: keyof CuadrePedido['productosEntregados'], value: number) => void
   onUpdatePrecioReal: (pedidoId: string, field: keyof CuadrePedido['preciosReales'], value: number) => void
@@ -54,6 +55,7 @@ export function PedidoCuadre({
   pedido,
   cuadre,
   embarquesAbiertos,
+  isAdmin,
   onUpdateCuadre,
   onUpdateProductoEntregado,
   onUpdatePrecioReal,
@@ -156,9 +158,16 @@ export function PedidoCuadre({
       {/* Productos entregados + precios reales */}
       {cuadre.entregado !== 'NO_ENTREGADO' && (
         <div className="mb-3">
-          <label className="text-sm font-medium text-gray-700 mb-1 block">
-            Productos entregados y precios reales
-          </label>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-sm font-medium text-gray-700">
+              Productos entregados y precios
+            </label>
+            {!isAdmin && (
+              <span className="text-xs text-gray-400">
+                🔒 Precios congelados — solo ADMIN puede editar
+              </span>
+            )}
+          </div>
           <div className="overflow-x-auto border rounded-lg">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-gray-500">
@@ -177,6 +186,13 @@ export function PedidoCuadre({
                   const pedidoKey = PEDIDO_KEYS[prod.key]
                   const pedidoCant = pedido[pedidoKey] as number
                   const subtotal = cant * precio
+
+                  // Precio original del pedido (congelado)
+                  const precioOriginalKey = (`precio${prod.precioKey.charAt(0).toUpperCase() + prod.precioKey.slice(1)}`) as keyof Pedido
+                  const precioOriginal = Number(pedido[precioOriginalKey] || 0)
+                  const diff = precio - precioOriginal
+                  const diffPct = precioOriginal > 0 ? ((diff / precioOriginal) * 100).toFixed(0) : '0'
+
                   const iconCfg = getProductoIconConfig(CODIGO_MAP[prod.key])
                   const Icon = iconCfg.Icon
                   return (
@@ -195,14 +211,24 @@ export function PedidoCuadre({
                         />
                       </td>
                       <td className="px-2 py-1.5">
-                        <div className="flex items-center gap-0.5">
-                          <span className="text-xs text-gray-400">$</span>
-                          <input
-                            type="number" min={0}
-                            value={precio || ''}
-                            onChange={(e) => onUpdatePrecioReal(pedido.id, prod.precioKey, parseFloat(e.target.value) || 0)}
-                            className="w-16 text-right px-1 py-0.5 border rounded text-sm"
-                          />
+                        <div className="flex flex-col items-center gap-0.5">
+                          <div className="flex items-center gap-0.5">
+                            <span className="text-xs text-gray-400">$</span>
+                            <input
+                              type="number" min={0}
+                              value={precio || ''}
+                              onChange={(e) => onUpdatePrecioReal(pedido.id, prod.precioKey, parseFloat(e.target.value) || 0)}
+                              disabled={!isAdmin}
+                              className={`w-16 text-right px-1 py-0.5 border rounded text-sm ${
+                                !isAdmin ? 'bg-gray-100 cursor-not-allowed' : ''
+                              } ${diff !== 0 ? 'border-amber-400 bg-amber-50' : ''}`}
+                            />
+                          </div>
+                          {diff !== 0 && (
+                            <span className={`text-xs ${diff > 0 ? 'text-red-500' : 'text-green-500'}`}>
+                              {diff > 0 ? '↑' : '↓'} {diffPct}% (orig. {formatCurrency(precioOriginal)})
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className="px-2 py-1.5 text-right text-xs font-medium">
@@ -214,6 +240,23 @@ export function PedidoCuadre({
               </tbody>
             </table>
           </div>
+
+          {/* Advertencia si el total difiere >5% del original */}
+          {(() => {
+            const totalOriginal = Number(pedido.total)
+            const diff = totalReal - totalOriginal
+            const diffPct = totalOriginal > 0 ? Math.abs((diff / totalOriginal) * 100) : 0
+            if (diffPct > 5) {
+              return (
+                <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-700">
+                  ⚠️ El total ({formatCurrency(totalReal)}) difiere {diffPct.toFixed(0)}% del original ({formatCurrency(totalOriginal)}).
+                  {diff < 0 ? ' El cliente pagará menos.' : ' El cliente pagará más.'}
+                  {!isAdmin && ' Contacta a un administrador para ajustar los precios.'}
+                </div>
+              )
+            }
+            return null
+          })()}
         </div>
       )}
 

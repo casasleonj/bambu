@@ -68,7 +68,17 @@ export async function PUT(request: NextRequest) {
 
     return apiSuccess({ producto })
   } catch (error) {
-    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error updating producto:')
-    return apiError('Error actualizando producto')
+    const message = error instanceof Error ? error.message : 'Unknown'
+    logger.error({ err: message }, 'Error updating producto:')
+
+    if (message.includes('Record to update not found') || message.includes('P2025')) {
+      return apiError('Producto no encontrado', 404)
+    }
+    if (message.includes('Decimal') || message.includes('overflow')) {
+      return apiError('El valor excede el rango permitido', 400)
+    }
+
+    const isDev = process.env.NODE_ENV !== 'production'
+    return apiError(isDev ? `Error actualizando producto: ${message}` : 'Error actualizando producto', 500)
   }
 }

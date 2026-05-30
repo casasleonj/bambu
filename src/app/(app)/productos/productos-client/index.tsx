@@ -9,7 +9,53 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EmptyState } from '@/components/empty-state'
 import { Modal } from '@/components/modal'
 import type { PrecioVolumen, PreciosClientProps } from './types'
-import { formatCOP } from './types'
+import { formatCOP, tierLabel } from './types'
+
+/** Extrae el primer mensaje de error de fieldErrors (Record<string, string[]>) */
+function firstFieldError(fieldErrors?: Record<string, string[]>): string | undefined {
+  if (!fieldErrors) return undefined
+  const entries = Object.entries(fieldErrors)
+  for (const [, messages] of entries) {
+    if (messages.length > 0) return messages[0]
+  }
+  return undefined
+}
+
+/** Construye un mensaje de error legible desde la respuesta del API */
+function extractErrorMessage(data: { error?: { message?: string; formErrors?: string[]; fieldErrors?: Record<string, string[]> } }, fallback: string): string {
+  return data.error?.message
+    || data.error?.formErrors?.[0]
+    || firstFieldError(data.error?.fieldErrors)
+    || fallback
+}
+
+/** Calcula huecos (gaps) entre rangos ordenados. Retorna array de {desde, hasta} */
+function calculateGaps(tiers: { cantMin: number; cantMax: number | null }[]): { desde: number; hasta: number }[] {
+  if (tiers.length === 0) return []
+  const sorted = [...tiers].sort((a, b) => a.cantMin - b.cantMin)
+  const gaps: { desde: number; hasta: number }[] = []
+
+  // Gap antes del primer tier (si cantMin > 1)
+  if (sorted[0].cantMin > 1) {
+    gaps.push({ desde: 1, hasta: sorted[0].cantMin - 1 })
+  }
+
+  // Gaps entre tiers
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const current = sorted[i]
+    const next = sorted[i + 1]
+    if (current.cantMax !== null && current.cantMax + 1 < next.cantMin) {
+      gaps.push({ desde: current.cantMax + 1, hasta: next.cantMin - 1 })
+    }
+  }
+
+  return gaps
+}
+
+/** Valida si un cantMin ya existe en los tiers del producto */
+function cantMinExists(tiers: PrecioVolumen[], cantMin: number): boolean {
+  return tiers.some(t => t.cantMin === cantMin)
+}
 
 export default function ProductosClient({ productos: initialProductos }: PreciosClientProps) {
   const { confirm, modal } = useConfirm()
@@ -62,7 +108,7 @@ export default function ProductosClient({ productos: initialProductos }: Precios
         cancelEdit()
       } else {
         const data = await res.json().catch(() => ({}))
-        toast.error(data.error?.message || 'Error actualizando precio')
+        toast.error(extractErrorMessage(data, 'Error actualizando precio'))
       }
     } catch {
       toast.error('Error de conexión')
@@ -87,7 +133,7 @@ export default function ProductosClient({ productos: initialProductos }: Precios
         })))
       } else {
         const data = await res.json().catch(() => ({}))
-        toast.error(data.error?.message || 'Error eliminando rango')
+        toast.error(extractErrorMessage(data, 'Error eliminando rango'))
       }
     } catch {
       toast.error('Error de conexión')
@@ -106,6 +152,20 @@ export default function ProductosClient({ productos: initialProductos }: Precios
       toast.error('Valores inválidos')
       return
     }
+
+    // Validación cliente: cantMin duplicado
+    const producto = productos.find(p => p.id === modalProductoId)
+    if (producto && cantMinExists(producto.precios, cantMin)) {
+      toast.error(`Ya existe un rango que empieza en ${cantMin} para este producto. Usa un valor diferente o edita el rango existente.`)
+      return
+    }
+
+    // Validación cliente: cantMax < cantMin
+    if (cantMax !== null && cantMax < cantMin) {
+      toast.error('La cantidad máxima debe ser mayor o igual a la cantidad mínima')
+      return
+    }
+
     try {
       const res = await fetch('/api/precios', {
         method: 'POST',
@@ -126,7 +186,7 @@ export default function ProductosClient({ productos: initialProductos }: Precios
         setModalPrecio('')
       } else {
         const data = await res.json().catch(() => ({}))
-        toast.error(data.error?.message || 'Error agregando rango')
+        toast.error(extractErrorMessage(data, 'Error agregando rango'))
       }
     } catch {
       toast.error('Error de conexión')
@@ -165,7 +225,7 @@ export default function ProductosClient({ productos: initialProductos }: Precios
         } : p))
       } else {
         const data = await res.json().catch(() => ({}))
-        toast.error(data.error?.message || 'Error actualizando configuración')
+        toast.error(extractErrorMessage(data, 'Error actualizando configuración'))
       }
     } catch {
       toast.error('Error de conexión')
@@ -241,7 +301,10 @@ export default function ProductosClient({ productos: initialProductos }: Precios
                     </div>
                   )}
                   <div className="flex items-center gap-2 text-sm">
-                    <span className="text-muted-foreground">Precio base:</span>
+                    <span className="text-muted-foreground" title="Se usa cuando la cantidad no entra en ningún rango de volumen">
+                      Precio base:
+                      <svg className="w-3.5 h-3.5 inline ml-0.5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    </span>
                     <div className="relative">
                       <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
                         <Input
@@ -342,6 +405,23 @@ export default function ProductosClient({ productos: initialProductos }: Precios
                   }
                   return null
                 })()}
+
+                {/* Gap warning: cantidades sin rango */}
+                {(() => {
+                  if (producto.precios.length === 0) return null
+                  const gaps = calculateGaps(producto.precios)
+                  if (gaps.length === 0) return null
+                  const base = Number(producto.precioBase)
+                  return (
+                    <div data-testid={`gap-warning-${producto.id}`} className="mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg flex items-start gap-2">
+                      <svg className="w-4 h-4 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
+                      <span>
+                        Cantidades sin rango: {gaps.map(g => g.desde === g.hasta ? `${g.desde}` : `${g.desde}-${g.hasta}`).join(', ')}.
+                        Usarán precio base ({base > 0 ? formatCOP(base) : 'no configurado'}).
+                      </span>
+                    </div>
+                  )
+                })()}
               </CardContent>
             </Card>
           ))}
@@ -351,10 +431,65 @@ export default function ProductosClient({ productos: initialProductos }: Precios
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Agregar rango de volumen">
         <div className="space-y-4">
           <h3 className="text-lg font-semibold">Agregar rango de volumen</h3>
+
+          {/* Rangos existentes del producto seleccionado */}
+          {(() => {
+            const producto = productos.find(p => p.id === modalProductoId)
+            if (!producto || producto.precios.length === 0) return null
+            return (
+              <div className="bg-muted/50 rounded-lg p-3">
+                <p className="text-xs font-medium text-muted-foreground mb-2">Rangos actuales para {producto.nombre}:</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {producto.precios
+                    .sort((a, b) => a.cantMin - b.cantMin)
+                    .map(t => (
+                      <span key={t.id} className="inline-flex items-center gap-1 text-xs bg-white border rounded px-2 py-0.5">
+                        <span className="font-medium">{tierLabel(t.cantMin, t.cantMax)}</span>
+                        <span className="text-muted-foreground">→</span>
+                        <span className="font-semibold text-blue-600">{formatCOP(Number(t.precio))}</span>
+                      </span>
+                    ))}
+                </div>
+              </div>
+            )
+          })()}
+
+          {/* Advertencia de huecos */}
+          {(() => {
+            const producto = productos.find(p => p.id === modalProductoId)
+            if (!producto) return null
+            const gaps = calculateGaps(producto.precios)
+            if (gaps.length === 0) return null
+            return (
+              <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg flex items-start gap-2">
+                <svg className="w-4 h-4 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
+                <span>
+                  Huecos sin rango: {gaps.map(g => g.desde === g.hasta ? `${g.desde}` : `${g.desde}-${g.hasta}`).join(', ')}.
+                  Estas cantidades usarán el precio base ({formatCOP(Number(producto.precioBase)) || 'no configurado'}).
+                </span>
+              </div>
+            )
+          })()}
+
           <div className="space-y-3">
             <div>
-              <label className="text-sm text-muted-foreground">Cantidad mínima</label>
+              <label className="text-sm text-muted-foreground">
+                Cantidad mínima
+                <span className="ml-1 text-xs text-amber-600">(debe ser única por producto)</span>
+              </label>
               <Input type="number" min="1" data-testid="modal-cant-min" value={modalCantMin} onChange={(e) => setModalCantMin(e.target.value)} />
+              {(() => {
+                const producto = productos.find(p => p.id === modalProductoId)
+                const cantMin = parseInt(modalCantMin)
+                if (producto && !isNaN(cantMin) && cantMinExists(producto.precios, cantMin)) {
+                  return (
+                    <p className="text-xs text-red-600 mt-1">
+                      ⚠ Ya existe un rango que empieza en {cantMin}. Usa un valor diferente.
+                    </p>
+                  )
+                }
+                return null
+              })()}
             </div>
             <div>
               <label className="text-sm text-muted-foreground">Cantidad máxima (opcional)</label>

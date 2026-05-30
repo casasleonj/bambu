@@ -59,6 +59,17 @@ export async function POST(request: NextRequest) {
         return apiError('La cantidad maxima debe ser mayor o igual a la cantidad minima', 400)
       }
 
+      // Check for exact cantMin collision (unique constraint)
+      const exactMatch = await prisma.precioVolumen.findFirst({
+        where: { productoId, cantMin, activo: true },
+      })
+      if (exactMatch) {
+        const existingLabel = exactMatch.cantMax
+          ? `${exactMatch.cantMin}-${exactMatch.cantMax}`
+          : `${exactMatch.cantMin}+`
+        return apiError(`Ya existe un rango que empieza en ${cantMin} (${existingLabel}). Edita ese rango o usa un valor diferente.`, 409)
+      }
+
       // Check for overlapping ranges
       const overlapping = await prisma.precioVolumen.findFirst({
         where: {
@@ -165,7 +176,28 @@ export async function POST(request: NextRequest) {
 
     return apiError('Datos invalidos. Envie {productoId, cantMin, cantMax, precio} o {precioVolumenId, precio} o {producto, precio}.', 400)
   } catch (error) {
-    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error updating precio:')
-    return apiError('Error actualizando precio')
+    const message = error instanceof Error ? error.message : 'Unknown'
+    logger.error({ err: message }, 'Error in precios API:')
+
+    // Detectar errores de Prisma/DB comunes y dar mensajes utiles
+    if (message.includes('Record to update not found') || message.includes('P2025')) {
+      return apiError('Rango de precio no encontrado', 404)
+    }
+    if (message.includes('unique constraint') || message.includes('P2002')) {
+      // Intentar extraer cantMin del body para mensaje mas claro
+      let cantMinInfo = ''
+      try {
+        const body = JSON.parse((error as { cause?: { body?: string } })?.cause?.body || '{}')
+        if (body.cantMin) cantMinInfo = ` (cantidad minima: ${body.cantMin})`
+      } catch { /* ignore */ }
+      return apiError(`Ya existe un rango con esa cantidad minima${cantMinInfo}. Edita el rango existente o usa un valor diferente.`, 409)
+    }
+    if (message.includes('Decimal') || message.includes('overflow')) {
+      return apiError('El precio excede el rango permitido', 400)
+    }
+
+    // En desarrollo, incluir el mensaje real para debugging
+    const isDev = process.env.NODE_ENV !== 'production'
+    return apiError(isDev ? `Error en operacion de precios: ${message}` : 'Error en operacion de precios', 500)
   }
 }

@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 
-import { matchCliente } from '@/lib/cliente-search'
+import { matchCliente, meetsMinSearchLength, MIN_SEARCH_CHARS } from '@/lib/cliente-search'
 
 export interface ClienteOption {
   id: string
@@ -59,15 +59,17 @@ export function UnifiedSearch({
     return ''
   }, [selection, clientes, facturas])
 
+  const meetsMinLength = useMemo(() => meetsMinSearchLength(query), [query])
+
   const filteredClientes = useMemo(() => {
-    if (!query) return clientes.slice(0, 5)
+    if (!meetsMinLength) return clientes.slice(0, 5)
     return clientes
       .filter(c => matchCliente(c, query))
       .slice(0, 5)
-  }, [clientes, query])
+  }, [clientes, query, meetsMinLength])
 
   const filteredFacturas = useMemo(() => {
-    if (!query) return facturas.slice(0, 5)
+    if (!meetsMinLength) return facturas.slice(0, 5)
     const q = query.toLowerCase()
     return facturas
       .filter(
@@ -76,9 +78,10 @@ export function UnifiedSearch({
           (f.clienteNombre || '').toLowerCase().includes(q)
       )
       .slice(0, 5)
-  }, [facturas, query])
+  }, [facturas, query, meetsMinLength])
 
   const totalResults = filteredClientes.length + filteredFacturas.length
+  const showMinLengthHint = !meetsMinLength && query.trim().length > 0
 
   const handleSelectCliente = useCallback(
     (id: string) => {
@@ -188,7 +191,11 @@ export function UnifiedSearch({
           ref={listRef}
           className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-80 overflow-y-auto"
         >
-          {totalResults === 0 ? (
+          {showMinLengthHint ? (
+            <div className="px-3 py-2 text-xs text-gray-500 text-center">
+              Escribe al menos {MIN_SEARCH_CHARS} caracteres para buscar...
+            </div>
+          ) : totalResults === 0 ? (
             <div className="px-3 py-2 text-sm text-gray-500 text-center">
               {query ? 'Sin resultados' : 'Escribe para buscar...'}
             </div>
