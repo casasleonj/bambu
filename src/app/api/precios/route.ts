@@ -140,12 +140,19 @@ export async function POST(request: NextRequest) {
 
       const tier = await prisma.precioVolumen.create({
         data: { productoId, cantMin, cantMax: cantMax ?? null, precio },
+        include: { producto: true },
       })
       logAudit({
         entidad: 'PrecioVolumen',
         registroId: tier.id,
         accion: 'CREATE',
-        datos: { productoId, cantMin, cantMax, precio },
+        datos: {
+          productoId,
+          productoCodigo: tier.producto.codigo,
+          cantMin,
+          cantMax: cantMax ?? null,
+          precio,
+        },
         usuarioId: (authResult.user as { id?: string } | undefined)?.id,
       }).catch(() => {})
       return apiSuccess({ tier }, 201)
@@ -196,7 +203,14 @@ export async function POST(request: NextRequest) {
         entidad: 'PrecioVolumen',
         registroId: precioVolumenId,
         accion: 'UPDATE',
-        datos: { precioAnterior: Number(existing.precio), precioNuevo: precio },
+        datos: {
+          productoId: existing.productoId,
+          productoCodigo: existing.producto.codigo,
+          cantMin: existing.cantMin,
+          cantMax: existing.cantMax,
+          precioAnterior: Number(existing.precio),
+          precioNuevo: precio,
+        },
         usuarioId: (authResult.user as { id?: string } | undefined)?.id,
       }).catch(() => {})
       return apiSuccess({})

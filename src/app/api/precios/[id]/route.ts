@@ -13,6 +13,17 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
 
   try {
     const { id } = await params
+
+    // Fetch tier data before soft-deleting for complete audit log
+    const existing = await prisma.precioVolumen.findUnique({
+      where: { id },
+      include: { producto: true },
+    })
+
+    if (!existing) {
+      return apiError('Rango de precio no encontrado', 404)
+    }
+
     await prisma.precioVolumen.update({
       where: { id },
       data: { activo: false },
@@ -22,7 +33,14 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
       entidad: 'PrecioVolumen',
       registroId: id,
       accion: 'DELETE',
-      datos: { id },
+      datos: {
+        id,
+        productoId: existing.productoId,
+        productoCodigo: existing.producto.codigo,
+        cantMin: existing.cantMin,
+        cantMax: existing.cantMax,
+        precio: Number(existing.precio),
+      },
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     }).catch(() => {})
 

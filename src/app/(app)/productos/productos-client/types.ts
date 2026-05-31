@@ -18,7 +18,20 @@ export interface Producto {
   sobreCostoDomicilio: string | number
   precioBase: string | number
   precios: PrecioVolumen[]
-  preciosInactivos?: PrecioVolumen[]
+}
+
+export type HistorialEntryType = 'price_change' | 'tier_create' | 'tier_update' | 'tier_delete' | 'tier_restore'
+
+export interface HistorialEntry {
+  id: string
+  fecha: string
+  tipo: HistorialEntryType
+  mensaje: string
+  usuario: string
+  tierId?: string
+  tierExiste?: boolean
+  precioAnterior?: number
+  precioNuevo?: number
 }
 
 export interface PreciosClientProps {

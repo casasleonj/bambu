@@ -18,32 +18,7 @@ export default async function ProductosPage() {
     orderBy: { codigo: 'asc' },
   })
 
-  // Fetch inactive tiers only for ADMIN
-  let inactiveByProducto: Record<string, Array<{ id: string; productoId: string; cantMin: number; cantMax: number | null; precio: string; activo: boolean }>> = {}
-  if (isAdmin) {
-    const inactiveTiers = await prisma.precioVolumen.findMany({
-      where: { activo: false },
-      orderBy: [{ productoId: 'asc' }, { cantMin: 'asc' }],
-    })
-    inactiveByProducto = {}
-    for (const tier of inactiveTiers) {
-      if (!inactiveByProducto[tier.productoId]) inactiveByProducto[tier.productoId] = []
-      inactiveByProducto[tier.productoId].push({
-        id: tier.id,
-        productoId: tier.productoId,
-        cantMin: tier.cantMin,
-        cantMax: tier.cantMax,
-        precio: tier.precio.toString(),
-        activo: tier.activo,
-      })
-    }
-  }
-
-  // Attach inactive tiers to each producto (only if admin)
-  const data = JSON.parse(JSON.stringify(productos.map(p => ({
-    ...p,
-    preciosInactivos: isAdmin ? (inactiveByProducto[p.id] || []) : [],
-  }))))
+  const data = JSON.parse(JSON.stringify(productos))
 
   return <ProductosClient productos={data} isAdmin={isAdmin} />
 }

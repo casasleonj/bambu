@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EmptyState } from '@/components/empty-state'
 import { Modal } from '@/components/modal'
-import type { PrecioVolumen, PreciosClientProps } from './types'
+import type { PrecioVolumen, PreciosClientProps, HistorialEntry } from './types'
 import { formatCOP, tierLabel } from './types'
 
 /** Extrae el primer mensaje de error de fieldErrors (Record<string, string[]>) */
@@ -72,7 +72,7 @@ export default function ProductosClient({ productos: initialProductos, isAdmin =
 
   const [historyOpen, setHistoryOpen] = useState(false)
   const [historyProducto, setHistoryProducto] = useState<string>('')
-  const [historyData, setHistoryData] = useState<Array<{ id: string; producto: string; precio: number; vigenteDesde: string; creadoPor: string }>>([])
+  const [historyData, setHistoryData] = useState<HistorialEntry[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
 
   // Modal de impacto de precios
@@ -189,29 +189,22 @@ export default function ProductosClient({ productos: initialProductos, isAdmin =
     }
   }
 
-  async function restoreTier(precio: PrecioVolumen) {
-    const label = precio.cantMax === null ? `${precio.cantMin}+` : `${precio.cantMin}-${precio.cantMax}`
+  async function restoreTierFromHistory(tierId: string) {
     const ok = await confirm(
-      `¿Restaurar el rango ${label}? Volvera a estar disponible para nuevos pedidos.`
+      `¿Restaurar este rango? Volvera a estar disponible para nuevos pedidos.`
     )
     if (!ok) return
     try {
-      const res = await fetch(`/api/precios/${precio.id}/restore`, { method: 'PATCH' })
+      const res = await fetch(`/api/precios/${tierId}/restore`, { method: 'PATCH' })
       if (res.ok) {
-        const data = await res.json()
         toast.success('Rango restaurado')
-        // Move from inactive to active
-        setProductos(prev => prev.map(p => {
-          if (p.id === precio.productoId) {
-            const restoredTier = data.tier
-            return {
-              ...p,
-              precios: [...p.precios, restoredTier].sort((a, b) => a.cantMin - b.cantMin),
-              preciosInactivos: (p.preciosInactivos || []).filter(pr => pr.id !== precio.id),
-            }
-          }
-          return p
-        }))
+        // Refresh history to reflect the change
+        const producto = productos.find(p => p.id === historyProducto)
+        if (producto) {
+          await openHistory(producto.id, producto.codigo)
+        }
+        // Refresh productos to get the restored tier
+        window.location.reload()
       } else {
         const data = await res.json().catch(() => ({}))
         toast.error(extractErrorMessage(data, 'Error restaurando rango'))
@@ -288,12 +281,12 @@ export default function ProductosClient({ productos: initialProductos, isAdmin =
     }
   }
 
-  async function openHistory(productoCodigo: string) {
+  async function openHistory(productoId: string, productoCodigo: string) {
     setHistoryProducto(productoCodigo)
     setHistoryOpen(true)
     setHistoryLoading(true)
     try {
-      const res = await fetch(`/api/precios/historial?producto=${encodeURIComponent(productoCodigo)}`)
+      const res = await fetch(`/api/precios/historial?productoId=${encodeURIComponent(productoId)}`)
       if (res.ok) {
         const data = await res.json()
         setHistoryData(data.historial || [])
@@ -383,7 +376,7 @@ export default function ProductosClient({ productos: initialProductos, isAdmin =
                     </CardTitle>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Button size="sm" variant="outline" data-testid={`history-btn-${producto.id}`} onClick={() => openHistory(producto.codigo)}>
+                    <Button size="sm" variant="outline" data-testid={`history-btn-${producto.id}`} onClick={() => openHistory(producto.id, producto.codigo)}>
                       📋 Historial
                     </Button>
                     <Button size="sm" variant="outline" data-testid={`add-range-btn-${producto.id}`} onClick={() => { setModalProductoId(producto.id); setModalOpen(true) }}>
@@ -545,44 +538,6 @@ export default function ProductosClient({ productos: initialProductos, isAdmin =
                     </div>
                   )
                 })()}
-
-                {/* Inactive tiers (ADMIN only) */}
-                {isAdmin && producto.preciosInactivos && producto.preciosInactivos.length > 0 && (
-                  <div className="mt-4 border-t pt-4">
-                    <details className="group">
-                      <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground flex items-center gap-2">
-                        <svg className="w-3.5 h-3.5 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                        Rangos eliminados ({producto.preciosInactivos.length})
-                      </summary>
-                      <div className="mt-2 overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="border-b">
-                              <th className="text-left py-2 px-3 font-medium text-muted-foreground">Cantidad mínima</th>
-                              <th className="text-left py-2 px-3 font-medium text-muted-foreground">Cantidad máxima</th>
-                              <th className="text-right py-2 px-3 font-medium text-muted-foreground">Precio</th>
-                              <th className="w-[100px] py-2 px-3"></th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {producto.preciosInactivos.map((precio) => (
-                              <tr key={precio.id} className="border-b last:border-b-0 bg-muted/30">
-                                <td className="py-2.5 px-3 text-muted-foreground">{precio.cantMin}</td>
-                                <td className="py-2.5 px-3 text-muted-foreground">{precio.cantMax ?? '—'}</td>
-                                <td className="py-2.5 px-3 text-right text-muted-foreground">{formatCOP(Number(precio.precio))}</td>
-                                <td className="py-2.5 px-3 text-right">
-                                  <Button size="sm" variant="outline" data-testid={`tier-restore-${precio.id}`} onClick={() => restoreTier(precio)} className="text-green-700 hover:text-green-800 hover:bg-green-50 border-green-200">
-                                    Restaurar
-                                  </Button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </details>
-                  </div>
-                )}
               </CardContent>
             </Card>
           ))}
@@ -668,7 +623,7 @@ export default function ProductosClient({ productos: initialProductos, isAdmin =
         </div>
       </Modal>
 
-      {/* Historial de precios modal */}
+      {/* Historial de precios modal - Unified timeline */}
       <Modal open={historyOpen} onClose={() => setHistoryOpen(false)} title={`Historial de precios — ${historyProducto}`}>
         <div className="space-y-4">
           <h3 className="text-lg font-semibold">Historial de cambios</h3>
@@ -677,25 +632,45 @@ export default function ProductosClient({ productos: initialProductos, isAdmin =
           ) : historyData.length === 0 ? (
             <div className="text-center text-sm text-muted-foreground py-8">No hay registros de historial para este producto</div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-2 px-3 font-medium text-muted-foreground">Fecha</th>
-                    <th className="text-right py-2 px-3 font-medium text-muted-foreground">Precio</th>
-                    <th className="text-left py-2 px-3 font-medium text-muted-foreground">Creado por</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {historyData.map((entry) => (
-                    <tr key={entry.id} className="border-b last:border-b-0">
-                      <td className="py-2 px-3 text-xs">{new Date(entry.vigenteDesde).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
-                      <td className="py-2 px-3 text-right font-medium">${Number(entry.precio).toLocaleString('es-CO')}</td>
-                      <td className="py-2 px-3 text-xs text-muted-foreground">{entry.creadoPor}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+              {historyData.map((entry) => {
+                const iconMap: Record<string, { icon: string; color: string }> = {
+                  price_change: { icon: '💲', color: 'text-gray-600' },
+                  tier_create: { icon: '🟢', color: 'text-green-600' },
+                  tier_update: { icon: '🔵', color: 'text-blue-600' },
+                  tier_delete: { icon: '🔴', color: 'text-red-600' },
+                  tier_restore: { icon: '🟡', color: 'text-yellow-600' },
+                }
+                const { icon, color } = iconMap[entry.tipo] || { icon: '⚪', color: 'text-muted-foreground' }
+
+                return (
+                  <div
+                    key={entry.id}
+                    className="flex items-start gap-3 p-3 rounded-lg border bg-card"
+                    data-testid={`history-entry-${entry.id}`}
+                  >
+                    <span className={`text-lg shrink-0 mt-0.5`} title={entry.tipo}>{icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm font-medium ${color}`}>{entry.mensaje}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {new Date(entry.fecha).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        {' · '}{entry.usuario}
+                      </p>
+                      {/* Restore button for DELETE entries (ADMIN only, tier still exists) */}
+                      {entry.tipo === 'tier_delete' && entry.tierExiste && isAdmin && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="mt-2 text-green-700 hover:text-green-800 hover:bg-green-50 border-green-200"
+                          onClick={() => restoreTierFromHistory(entry.tierId!)}
+                        >
+                          Restaurar
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           )}
           <div className="flex justify-end pt-2">
