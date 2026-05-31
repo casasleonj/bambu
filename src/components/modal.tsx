@@ -1,8 +1,25 @@
 'use client'
 
-import { useEffect, useCallback, useRef } from 'react'
+import { useEffect, useCallback, useRef, useId } from 'react'
 
-let modalOpenCount = 0
+// Modal stack registry — tracks all open modals/overlays.
+// Only the topmost layer responds to Escape key.
+const modalStack: string[] = []
+
+export function pushModal(id: string): void {
+  if (!modalStack.includes(id)) {
+    modalStack.push(id)
+  }
+}
+
+export function removeModal(id: string): void {
+  const idx = modalStack.indexOf(id)
+  if (idx !== -1) modalStack.splice(idx, 1)
+}
+
+export function isTopModal(id: string): boolean {
+  return modalStack.length > 0 && modalStack[modalStack.length - 1] === id
+}
 
 interface ModalProps {
   open: boolean
@@ -14,11 +31,16 @@ interface ModalProps {
 }
 
 export function Modal({ open, onClose, children, className, title, description }: ModalProps) {
+  const id = useId()
   const overlayRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (e.key === 'Escape') onClose()
+    if (e.key === 'Escape') {
+      if (!isTopModal(id)) return
+      e.stopPropagation()
+      onClose()
+    }
     if (e.key === 'Tab' && contentRef.current) {
       const focusable = contentRef.current.querySelectorAll<HTMLElement>(
         'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
@@ -34,18 +56,24 @@ export function Modal({ open, onClose, children, className, title, description }
         first.focus()
       }
     }
-  }, [onClose])
+  }, [onClose, id])
 
   const wasOpen = useRef(false)
 
   useEffect(() => {
     if (!open) {
-      wasOpen.current = false
+      if (wasOpen.current) {
+        wasOpen.current = false
+        removeModal(id)
+        if (modalStack.length === 0) {
+          document.body.style.overflow = ''
+        }
+      }
       return
     }
     if (!wasOpen.current) {
       wasOpen.current = true
-      modalOpenCount++
+      pushModal(id)
       document.body.style.overflow = 'hidden'
       const timer = setTimeout(() => {
         if (contentRef.current) {
@@ -56,21 +84,20 @@ export function Modal({ open, onClose, children, className, title, description }
         }
       }, 50)
       return () => {
-        modalOpenCount--
-        if (modalOpenCount <= 0) {
+        removeModal(id)
+        if (modalStack.length === 0) {
           document.body.style.overflow = ''
-          modalOpenCount = 0
         }
         clearTimeout(timer)
       }
     }
-  }, [open])
+  }, [open, id])
 
   useEffect(() => {
     if (!open) return
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [open, handleKeyDown])
+  }, [open, handleKeyDown, id])
 
   if (!open) return null
 

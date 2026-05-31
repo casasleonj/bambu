@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback } from 'react'
+import { useEscapeGuard } from '@/hooks/use-escape-guard'
 
 interface ConfirmOptions {
   title?: string
@@ -42,6 +43,9 @@ export function useConfirm() {
     setPending(null)
     setTypedText('')
   }, [pending])
+
+  // Register in modal stack so Escape only fires on topmost layer
+  useEscapeGuard(!!pending, handleCancel)
 
   const isConfirmDisabled = pending?.options.requireTyping
     ? typedText !== pending.options.requireTyping
