@@ -3,6 +3,10 @@ import {
   calcularPacasEmbarque,
   calcularPesoEmbarque,
   getCapacidadInfo,
+  calcularPesoDesdeCarga,
+  totalUnidadesCarga,
+  emptyStock,
+  PESOS_KG,
 } from '@/lib/embarque-capacidad'
 
 // ─── calcularPacasEmbarque ───────────────────────────────────────────
@@ -270,5 +274,129 @@ describe('getCapacidadInfo', () => {
     expect(info.total).toBe(15)
     expect(info.pesoKg).toBe(120)
     expect(info.capacidadKg).toBe(capacidad)
+  })
+})
+
+// ─── calcularPesoDesdeCarga ──────────────────────────────────────────
+
+describe('calcularPesoDesdeCarga', () => {
+  it('returns 0 for empty carga', () => {
+    const carga = { PACA_AGUA: 0, PACA_HIELO: 0, BOTELLON: 0, BOLSA_AGUA: 0, BOLSA_HIELO: 0 }
+    expect(calcularPesoDesdeCarga(carga)).toBe(0)
+  })
+
+  it('calculates weight for PACA_AGUA (10 kg each)', () => {
+    const carga = { PACA_AGUA: 3, PACA_HIELO: 0, BOTELLON: 0, BOLSA_AGUA: 0, BOLSA_HIELO: 0 }
+    expect(calcularPesoDesdeCarga(carga)).toBe(30)
+  })
+
+  it('calculates weight for PACA_HIELO (11 kg each)', () => {
+    const carga = { PACA_AGUA: 0, PACA_HIELO: 2, BOTELLON: 0, BOLSA_AGUA: 0, BOLSA_HIELO: 0 }
+    expect(calcularPesoDesdeCarga(carga)).toBe(22)
+  })
+
+  it('calculates weight for BOTELLON (20 kg each)', () => {
+    const carga = { PACA_AGUA: 0, PACA_HIELO: 0, BOTELLON: 4, BOLSA_AGUA: 0, BOLSA_HIELO: 0 }
+    expect(calcularPesoDesdeCarga(carga)).toBe(80)
+  })
+
+  it('calculates weight for BOLSA_AGUA (0.25 kg each)', () => {
+    const carga = { PACA_AGUA: 0, PACA_HIELO: 0, BOTELLON: 0, BOLSA_AGUA: 20, BOLSA_HIELO: 0 }
+    expect(calcularPesoDesdeCarga(carga)).toBe(5)
+  })
+
+  it('calculates weight for BOLSA_HIELO (0.55 kg each)', () => {
+    const carga = { PACA_AGUA: 0, PACA_HIELO: 0, BOTELLON: 0, BOLSA_AGUA: 0, BOLSA_HIELO: 10 }
+    expect(calcularPesoDesdeCarga(carga)).toBe(5.5)
+  })
+
+  it('sums weight across all product types', () => {
+    const carga = { PACA_AGUA: 5, PACA_HIELO: 3, BOTELLON: 2, BOLSA_AGUA: 10, BOLSA_HIELO: 5 }
+    const expected = 5 * 10 + 3 * 11 + 2 * 20 + 10 * 0.25 + 5 * 0.55
+    expect(calcularPesoDesdeCarga(carga)).toBe(expected)
+  })
+
+  it('handles zero values correctly', () => {
+    const carga = { PACA_AGUA: 0, PACA_HIELO: 0, BOTELLON: 0, BOLSA_AGUA: 0, BOLSA_HIELO: 0 }
+    expect(calcularPesoDesdeCarga(carga)).toBe(0)
+  })
+})
+
+// ─── totalUnidadesCarga ──────────────────────────────────────────────
+
+describe('totalUnidadesCarga', () => {
+  it('returns 0 for empty carga', () => {
+    const carga = { PACA_AGUA: 0, PACA_HIELO: 0, BOTELLON: 0, BOLSA_AGUA: 0, BOLSA_HIELO: 0 }
+    expect(totalUnidadesCarga(carga)).toBe(0)
+  })
+
+  it('sums all product units', () => {
+    const carga = { PACA_AGUA: 5, PACA_HIELO: 3, BOTELLON: 2, BOLSA_AGUA: 10, BOLSA_HIELO: 5 }
+    expect(totalUnidadesCarga(carga)).toBe(25)
+  })
+
+  it('handles single product type', () => {
+    const carga = { PACA_AGUA: 10, PACA_HIELO: 0, BOTELLON: 0, BOLSA_AGUA: 0, BOLSA_HIELO: 0 }
+    expect(totalUnidadesCarga(carga)).toBe(10)
+  })
+
+  it('handles max capacity (70 units)', () => {
+    const carga = { PACA_AGUA: 35, PACA_HIELO: 35, BOTELLON: 0, BOLSA_AGUA: 0, BOLSA_HIELO: 0 }
+    expect(totalUnidadesCarga(carga)).toBe(70)
+  })
+
+  it('handles exceeding max capacity', () => {
+    const carga = { PACA_AGUA: 40, PACA_HIELO: 40, BOTELLON: 0, BOLSA_AGUA: 0, BOLSA_HIELO: 0 }
+    expect(totalUnidadesCarga(carga)).toBe(80)
+  })
+})
+
+// ─── emptyStock ──────────────────────────────────────────────────────
+
+describe('emptyStock', () => {
+  it('returns correct shape with all zeros', () => {
+    const stock = emptyStock()
+    expect(stock).toEqual({
+      PACA_AGUA: 0,
+      PACA_HIELO: 0,
+      BOTELLON: 0,
+      BOLSA_AGUA: 0,
+      BOLSA_HIELO: 0,
+    })
+  })
+
+  it('returns a new object each call (no shared state)', () => {
+    const s1 = emptyStock()
+    const s2 = emptyStock()
+    s1.PACA_AGUA = 100
+    expect(s2.PACA_AGUA).toBe(0)
+  })
+})
+
+// ─── PESOS_KG constants ──────────────────────────────────────────────
+
+describe('PESOS_KG constants', () => {
+  it('has all product keys', () => {
+    expect(Object.keys(PESOS_KG)).toEqual(['PACA_AGUA', 'PACA_HIELO', 'BOTELLON', 'BOLSA_AGUA', 'BOLSA_HIELO'])
+  })
+
+  it('has correct weight for PACA_AGUA', () => {
+    expect(PESOS_KG.PACA_AGUA).toBe(10.0)
+  })
+
+  it('has correct weight for PACA_HIELO', () => {
+    expect(PESOS_KG.PACA_HIELO).toBe(11.0)
+  })
+
+  it('has correct weight for BOTELLON', () => {
+    expect(PESOS_KG.BOTELLON).toBe(20.0)
+  })
+
+  it('has correct weight for BOLSA_AGUA', () => {
+    expect(PESOS_KG.BOLSA_AGUA).toBe(0.25)
+  })
+
+  it('has correct weight for BOLSA_HIELO', () => {
+    expect(PESOS_KG.BOLSA_HIELO).toBe(0.55)
   })
 })

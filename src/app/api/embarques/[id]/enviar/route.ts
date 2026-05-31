@@ -13,7 +13,7 @@ export async function POST(
 ) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
-  const roleCheck = await requireRole([ROLES.ADMIN, ROLES.REPARTIDOR], authResult)
+  const roleCheck = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE], authResult)
   if (roleCheck instanceof Response) return roleCheck
   const { id } = await params
   const session = authResult as { user?: { id?: string; role?: string } }
@@ -29,6 +29,15 @@ export async function POST(
     if (!embarque) return apiError('Embarque no encontrado', 404)
     if (embarque.estado !== EstadoEmbarque.ABIERTO) {
       return apiError('Solo se pueden enviar embarques abiertos', 400)
+    }
+
+    // FIX #8 modificado: embarques vacíos solo ADMIN/ASISTENTE
+    const pedidosCount = await prisma.pedido.count({
+      where: { embarqueId: id },
+    })
+    const userRole = (authResult as { user?: { role?: string } }).user?.role
+    if (pedidosCount === 0 && userRole === 'REPARTIDOR') {
+      return apiError('Solo ADMIN o ASISTENTE pueden enviar embarques sin pedidos', 403)
     }
 
     // Verificar que el repartidor no tenga otro embarque EN_RUTA

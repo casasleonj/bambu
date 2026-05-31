@@ -57,7 +57,9 @@ test.describe('2. ADMIN — acceso total', () => {
   })
 
   test('Crea embarque (API) → 200', async ({ page }) => {
-    const trabajador = await getFirstTrabajador(page)
+    const res = await apiGet(page, '/api/trabajadores?rol=REPARTIDOR&activo=true&usaMoto=true')
+    const body = await res.json()
+    const trabajador = body.trabajadores?.[0]
     if (!trabajador) { test.skip(); return }
     const embarque = await createEmbarque(page, trabajador.id)
     expect(embarque.embarque).toBeDefined()
@@ -195,12 +197,18 @@ test.describe('3. ASISTENTE — acceso limitado', () => {
     expect(pedido.pedido).toBeDefined()
   })
 
-  test('NO puede crear embarque (API) → 403', async ({ page }) => {
-    const trabajador = await getFirstTrabajador(page)
+  test('SÍ puede crear embarque (API) → 201', async ({ page }) => {
+    const res = await apiGet(page, '/api/trabajadores?rol=REPARTIDOR&activo=true&usaMoto=true')
+    const body = await res.json()
+    const trabajador = body.trabajadores?.[0]
     if (!trabajador) { test.skip(); return }
 
-    const res = await apiPost(page, '/api/embarques', { trabajadorId: trabajador.id })
-    expect(res.status()).toBe(403)
+    const embarqueRes = await apiPost(page, '/api/embarques', {
+      trabajadorId: trabajador.id,
+      horaSalida: '08:00',
+      carga: [{ producto: 'PACA_AGUA', cargadas: 1 }],
+    })
+    expect(embarqueRes.status()).toBe(201)
   })
 
   test('NO puede cerrar día (API) → 403', async ({ page }) => {

@@ -628,6 +628,7 @@ model Embarque {
   createdAt  DateTime @db.Timestamptz() @default(now())
   updatedAt DateTime @db.Timestamptz() @updatedAt
 
+  @@unique([trabajadorId, fecha, numeroDia], name: "embarque_trabajador_fecha_numeroDia_unique")
   @@index([createdById])
   @@index([trabajadorId])
   @@index([rutaId])

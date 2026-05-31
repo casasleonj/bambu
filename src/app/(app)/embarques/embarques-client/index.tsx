@@ -64,7 +64,7 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
       if (filtroEstado) params.set('estado', filtroEstado)
       const [embarquesRes, trabajadoresRes, rutasRes, pedidosRes] = await Promise.all([
         fetch(`/api/embarques?${params.toString()}`, { credentials: 'include' }),
-        fetch('/api/trabajadores?rol=REPARTIDOR&activo=true', { credentials: 'include' }),
+        fetch('/api/trabajadores?rol=REPARTIDOR&activo=true&usaMoto=true', { credentials: 'include' }),
         fetch('/api/rutas?all=true', { credentials: 'include' }),
         fetch('/api/pedidos?all=true', { credentials: 'include' }),
       ])
@@ -213,6 +213,14 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
   }
 
   const handleDeleteStock = async () => {
+    const ok = await confirm({
+      title: 'Eliminar stock estimado',
+      message: '¿Eliminar el stock estimado? Esto puede afectar la creación de embarques.',
+      variant: 'warning',
+      confirmLabel: 'Eliminar',
+      cancelLabel: 'Cancelar',
+    })
+    if (!ok) return
     try {
       const res = await fetch('/api/stock-estimado', { method: 'DELETE', credentials: 'include' })
       const data = await res.json()

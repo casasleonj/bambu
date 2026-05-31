@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const rol = searchParams.get('rol')
     const activo = searchParams.get('activo')
+    const usaMoto = searchParams.get('usaMoto')
 
     const where: Record<string, unknown> = {}
     if (rol) where.rol = rol
@@ -21,6 +22,9 @@ export async function GET(request: NextRequest) {
       where.activo = true
     } else {
       where.activo = activo === 'true'
+    }
+    if (usaMoto !== null) {
+      where.usaMoto = usaMoto === 'true'
     }
 
     const trabajadores = await prisma.trabajador.findMany({

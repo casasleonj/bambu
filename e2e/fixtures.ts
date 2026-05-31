@@ -280,11 +280,12 @@ export async function setupClienteWithPedidos(page: Page, count: number = 3) {
 export async function createTrabajador(page: Page, data?: Partial<{
   nombre: string; rol: string; tipoPago: string; usaMoto: boolean; capacidadKg: number
 }>) {
-  const wantsComision = data?.tipoPago === 'COMISION' || data?.tipoPago === 'MIXTO'
+  const tipoPago = data?.tipoPago || 'COMISION'
+  const wantsComision = tipoPago === 'COMISION' || tipoPago === 'MIXTO'
   const res = await apiPost(page, '/api/trabajadores', {
     nombre: data?.nombre || `Repartidor Test ${Date.now() % 10000}`,
     rol: data?.rol || 'REPARTIDOR',
-    tipoPago: data?.tipoPago || 'COMISION',
+    tipoPago,
     usaMoto: data?.usaMoto ?? wantsComision,
     capacidadKg: data?.capacidadKg ?? (wantsComision ? 500 : 0),
     comPacaAgua: wantsComision ? 500 : 0,
@@ -294,8 +295,7 @@ export async function createTrabajador(page: Page, data?: Partial<{
     comRepartHielo: (data?.usaMoto ?? wantsComision) ? 300 : 0,
     comRepartBotellon: (data?.usaMoto ?? wantsComision) ? 200 : 0,
   })
-  const json = await res.json()
-  return json.trabajador ?? json.data ?? json
+  return res.json()
 }
 
 export async function createPedido(page: Page, data?: Partial<{
@@ -318,7 +318,11 @@ export async function createPedido(page: Page, data?: Partial<{
 }
 
 export async function createEmbarque(page: Page, trabajadorId: string) {
-  const res = await apiPost(page, '/api/embarques', { trabajadorId })
+  const res = await apiPost(page, '/api/embarques', {
+    trabajadorId,
+    horaSalida: '08:00',
+    carga: [{ producto: 'PACA_AGUA', cargadas: 1 }],
+  })
   return res.json()
 }
 

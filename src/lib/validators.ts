@@ -292,6 +292,7 @@ export const EmbarqueCreateSchema = z.object({
   baseDinero: z.coerce.number().min(0).default(0),
   obs: z.string().max(500).optional(),
   carga: z.array(EmbarqueProductoSchema).min(1, 'Agrega al menos un producto'),
+  overrideMotivo: z.string().max(500).optional(),
 })
 
 export const EmbarqueUpdateSchema = z.object({
@@ -368,7 +369,7 @@ export const CerrarEmbarqueSchema = z.object({
     devueltas: z.coerce.number().int().min(0).default(0),
     cambios: z.coerce.number().int().min(0).default(0),
     rotas: z.coerce.number().int().min(0).default(0),
-  })),
+  })).min(1, 'Agrega al menos un producto en conciliación'),
   gastos: z.array(GastoEmbarqueSchema).optional().default([]),
   dineroEntregado: z.coerce.number().min(0).default(0),
   justificacionDiscrepancia: z.string().optional(),

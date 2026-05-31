@@ -210,6 +210,15 @@ export async function POST(request: NextRequest) {
           const totalUnidadesChunk = chunk.reduce((s, p) => s + unidadesPedido(p), 0)
           const totalPesoChunk = chunk.reduce((s, p) => s + pesoPedido(p), 0)
 
+          // FIX #7: Calculate carga from pedidos to create EmbarqueProducto records
+          const cargaFromPedidos = {
+            PACA_AGUA: chunk.reduce((s, p) => s + (p.cPacaAguaPed || 0), 0),
+            PACA_HIELO: chunk.reduce((s, p) => s + (p.cPacaHieloPed || 0), 0),
+            BOTELLON: chunk.reduce((s, p) => s + (p.cBotellonFabPed || 0) + (p.cBotellonDomPed || 0), 0),
+            BOLSA_AGUA: chunk.reduce((s, p) => s + (p.cBolsaAguaPed || 0), 0),
+            BOLSA_HIELO: chunk.reduce((s, p) => s + (p.cBolsaHieloPed || 0), 0),
+          }
+
           const embarque = await tx.embarque.create({
             data: {
               numero: nextNum,
@@ -217,6 +226,11 @@ export async function POST(request: NextRequest) {
               rutaId: ruta?.id || null,
               estado: 'ABIERTO',
               obs: `Auto-generado: ${chunk.length} pedidos, ${totalUnidadesChunk} unidades, ${totalPesoChunk.toFixed(0)}kg`,
+              productos: {
+                create: Object.entries(cargaFromPedidos)
+                  .filter(([, cargadas]) => cargadas > 0)
+                  .map(([producto, cargadas]) => ({ producto, cargadas })),
+              },
             },
           })
 

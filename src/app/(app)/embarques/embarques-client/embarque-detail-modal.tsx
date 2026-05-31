@@ -264,7 +264,12 @@ export function EmbarqueDetailModal({
   }
 
   async function enviarEnRuta() {
-    const ok = await confirm('¿Enviar este embarque en ruta? Se registrará la hora de salida.')
+    if (!embarque) return
+    const tienePedidos = embarque.pedidos?.length > 0
+    const msg = tienePedidos
+      ? '¿Enviar este embarque en ruta? Se registrará la hora de salida.'
+      : 'Este embarque no tiene pedidos. ¿Enviar en ruta para venta libre? Podrás asignar pedidos después.'
+    const ok = await confirm(msg)
     if (!ok) return
     if (submitting) return
     setSubmitting(true)

@@ -189,6 +189,7 @@ export function EmbarqueFormModal({
           baseDinero,
           obs,
           carga: cargaArr,
+          overrideMotivo: overrideMotivo || undefined,
         }),
       })
       const data = await res.json()

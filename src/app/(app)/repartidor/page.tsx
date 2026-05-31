@@ -31,9 +31,9 @@ export default async function RepartidorPage() {
     )
   }
 
-  // Find open embarque
+  // Find open or en-ruta embarque (repartidor needs access during route)
   const embarque = await prisma.embarque.findFirst({
-    where: { trabajadorId: trabajador.id, estado: 'ABIERTO' },
+    where: { trabajadorId: trabajador.id, estado: { in: ['ABIERTO', 'EN_RUTA'] } },
     include: {
       ruta: { select: { nombre: true } },
       pedidos: {

@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuth, requireRole } from '@/lib/auth-check'
+import { requireAuth, requireRole, requireOwnership } from '@/lib/auth-check'
 import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
 import { EstadoEmbarque } from '@prisma/client'
@@ -20,10 +20,14 @@ export async function POST(
 ) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
-  const roleCheck = await requireRole([ROLES.ADMIN, ROLES.REPARTIDOR], authResult)
+  const roleCheck = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE], authResult)
   if (roleCheck instanceof Response) return roleCheck
   const { id } = await params
   const session = authResult as { user?: { id?: string; role?: string } }
+
+  // FIX #22: Verify ownership before allowing gasto creation
+  const hasAccess = await requireOwnership('embarque', id, { id: session.user?.id || '', role: session.user?.role })
+  if (!hasAccess) return apiError('Forbidden', 403)
 
   try {
     const embarque = await prisma.embarque.findUnique({
@@ -74,7 +78,7 @@ export async function DELETE(
 ) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
-  const roleCheck = await requireRole([ROLES.ADMIN], authResult)
+  const roleCheck = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE], authResult)
   if (roleCheck instanceof Response) return roleCheck
   const { id } = await params
 

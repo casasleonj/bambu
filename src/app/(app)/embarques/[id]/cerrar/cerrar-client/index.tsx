@@ -51,6 +51,14 @@ export default function CerrarEmbarqueClient() {
           fetch('/api/embarques', { credentials: 'include' }),
           fetch('/api/auth/profile', { credentials: 'include' }),
         ])
+
+        // FIX #13: Handle 404 — embarque not found
+        if (embarqueRes.status === 404) {
+          toast.error('Embarque no encontrado')
+          router.push('/embarques')
+          return
+        }
+
         const embarqueData = await embarqueRes.json()
         const clientesData = await clientesRes.json()
         const embarquesData = await embarquesRes.json()

@@ -158,8 +158,9 @@ export interface TendenciaDiaria {
 export function calcularKpiGeneral(
   embarques: EmbarqueStatsInput[],
 ): KpiGeneral {
-  const cerrados = embarques.filter((e) => e.estado === 'CERRADO')
-  const stats = cerrados.map(calcularStatsEmbarque)
+  // FIX #24: Include CERRADO and EN_RUTA (EN_RUTA may have partial data)
+  const activos = embarques.filter((e) => e.estado === 'CERRADO' || e.estado === 'EN_RUTA')
+  const stats = activos.map(calcularStatsEmbarque)
 
   const duraciones = stats
     .map((s) => s.duracionMin)
@@ -185,7 +186,7 @@ export function calcularKpiGeneral(
   const totalNoEntregados = stats.reduce((s, st) => s + st.noEntregados, 0)
 
   return {
-    totalEmbarques: cerrados.length,
+    totalEmbarques: activos.length,
     duracionPromedioMin:
       duraciones.length > 0
         ? Math.round(duraciones.reduce((a, b) => a + b, 0) / duraciones.length)
@@ -228,10 +229,11 @@ export function calcularKpiGeneral(
 export function calcularStatsPorTrabajador(
   embarques: EmbarqueStatsInput[],
 ): StatsPorTrabajador[] {
-  const cerrados = embarques.filter((e) => e.estado === 'CERRADO')
+  // FIX #24: Include CERRADO and EN_RUTA
+  const activos = embarques.filter((e) => e.estado === 'CERRADO' || e.estado === 'EN_RUTA')
   const porTrabajador = new Map<string, EmbarqueStatsInput[]>()
 
-  for (const e of cerrados) {
+  for (const e of activos) {
     const arr = porTrabajador.get(e.trabajadorId) || []
     arr.push(e)
     porTrabajador.set(e.trabajadorId, arr)
@@ -295,10 +297,11 @@ export function calcularStatsPorTrabajador(
 export function calcularStatsPorRuta(
   embarques: EmbarqueStatsInput[],
 ): StatsPorRuta[] {
-  const cerrados = embarques.filter((e) => e.estado === 'CERRADO')
+  // FIX #24: Include CERRADO and EN_RUTA
+  const activos = embarques.filter((e) => e.estado === 'CERRADO' || e.estado === 'EN_RUTA')
   const porRuta = new Map<string | null, EmbarqueStatsInput[]>()
 
-  for (const e of cerrados) {
+  for (const e of activos) {
     const key = e.rutaId
     const arr = porRuta.get(key) || []
     arr.push(e)
@@ -358,10 +361,11 @@ export function calcularStatsPorRuta(
 export function calcularTendenciaDiaria(
   embarques: EmbarqueStatsInput[],
 ): TendenciaDiaria[] {
-  const cerrados = embarques.filter((e) => e.estado === 'CERRADO')
+  // FIX #24: Include CERRADO and EN_RUTA
+  const activos = embarques.filter((e) => e.estado === 'CERRADO' || e.estado === 'EN_RUTA')
   const porDia = new Map<string, EmbarqueStatsInput[]>()
 
-  for (const e of cerrados) {
+  for (const e of activos) {
     const dia = new Date(e.fecha).toISOString().split('T')[0]
     const arr = porDia.get(dia) || []
     arr.push(e)

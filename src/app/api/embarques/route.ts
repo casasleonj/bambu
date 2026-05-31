@@ -113,7 +113,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
-  const roleCheck = await requireRole([ROLES.ADMIN, ROLES.REPARTIDOR], authResult)
+  const roleCheck = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE], authResult)
   if (roleCheck instanceof Response) return roleCheck
   try {
     const body = await request.json()
@@ -187,6 +187,7 @@ export async function POST(request: NextRequest) {
         overrideRequerido: stockEval.hasDeficit,
         overrideAutorizadoPor: stockEval.hasDeficit ? (authResult as { user?: { id?: string } }).user?.id : null,
         overrideTimestamp: stockEval.hasDeficit ? new Date().toISOString() : null,
+        overrideMotivo: parsed.data.overrideMotivo || null,
       }
 
       const horaSalidaDate = parsed.data.horaSalida
@@ -246,6 +247,9 @@ export async function POST(request: NextRequest) {
     }
     if (message.startsWith('STOCK_OVERRIDE_EXCEEDED')) {
       return apiError(message.replace('STOCK_OVERRIDE_EXCEEDED: ', ''), 400)
+    }
+    if (message.includes('P2002') || message.includes('unique constraint')) {
+      return apiError('Ya existe un embarque con ese número para este repartidor hoy. Intenta de nuevo.', 409)
     }
     logger.error({ err: message }, 'Error creating embarque:')
     return apiError(`Error creando embarque: ${message}`, 500)

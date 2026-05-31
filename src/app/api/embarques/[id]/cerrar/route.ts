@@ -19,7 +19,7 @@ export async function POST(
 ) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
-  const roleCheck = await requireRole([ROLES.ADMIN, ROLES.REPARTIDOR], authResult)
+  const roleCheck = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE], authResult)
   if (roleCheck instanceof Response) return roleCheck
   const { id } = await params
   const session = authResult as { user?: { id?: string; role?: string } }
@@ -70,6 +70,17 @@ export async function POST(
           }
           
           if (cuadre.nuevoEmbarqueId) {
+            // FIX #9: Validate nuevoEmbarqueId exists and is open/en-ruta
+            const nuevoEmbarque = await tx.embarque.findUnique({
+              where: { id: cuadre.nuevoEmbarqueId },
+              select: { id: true, estado: true, numero: true },
+            })
+            if (!nuevoEmbarque) {
+              throw new Error(`EMBARQUE_DESTINO_NOT_FOUND: Embarque destino ${cuadre.nuevoEmbarqueId} no existe`)
+            }
+            if (nuevoEmbarque.estado !== EstadoEmbarque.ABIERTO && nuevoEmbarque.estado !== EstadoEmbarque.EN_RUTA) {
+              throw new Error(`EMBARQUE_DESTINO_NO_DISPONIBLE: Embarque destino #${nuevoEmbarque.numero} está ${nuevoEmbarque.estado}`)
+            }
             updateData.estadoEntrega = 'EN_RUTA'
             updateData.estado = 'EN_RUTA'
             updateData.embarqueId = cuadre.nuevoEmbarqueId
@@ -104,11 +115,12 @@ export async function POST(
 
         let precios: typeof preciosOriginales
 
-        if (cuadre.preciosReales) {
-          // Override explícito: el usuario envió precios diferentes (solo ADMIN debería poder)
+        // FIX #2: Solo ADMIN puede override precios. REPARTIDOR usa precios originales.
+        if (cuadre.preciosReales && session.user?.role === 'ADMIN') {
+          // Override explícito: el usuario envió precios diferentes
           precios = cuadre.preciosReales
         } else {
-          // Sin override: usar precios originales congelados
+          // Sin override o usuario no es ADMIN: usar precios originales congelados
           precios = preciosOriginales
         }
 
@@ -197,6 +209,12 @@ export async function POST(
               usuarioId: (authResult.user as { id: string }).id,
             },
           })
+        }
+
+        // FIX #12: Validate pagos don't exceed totalReal (1% tolerance for rounding)
+        const montoPagadoTotal = cuadre.pagos.reduce((sum, p) => sum + p.monto, 0)
+        if (montoPagadoTotal > totalReal * 1.01) {
+          throw new Error(`PAGOS_EXCEDIDOS: Pagos ($${montoPagadoTotal}) exceden total real ($${totalReal}) para pedido #${pedido.numero}`)
         }
 
         pedidosActualizados.push({ id: pedido.id, estado: 'ENTREGADO' })
@@ -429,12 +447,18 @@ export async function POST(
       // 6. Si hay discrepancia no justificada, crear descuento valuado por producto
       let descuento = null
       if (totalDiscrepancy > 0 && !justificacionDiscrepancia) {
-        const precioAgua = await resolverPrecio('PACA_AGUA', 1, 'DOMICILIO', null, null, tx)
+        // FIX #1: Resolver precio individual por producto (antes todos usaban precio PACA_AGUA)
+        const precioMap: Record<string, number> = {}
+        for (const key of productosKeys) {
+          const precioResult = await resolverPrecio(key, 1, 'DOMICILIO', null, null, tx)
+          precioMap[key] = precioResult.precio
+        }
+
         let montoTotal = 0
         const motivos: string[] = []
         for (const key of productosKeys) {
           if (discrepancias[key] > 0) {
-            const precio = key === 'PACA_AGUA' ? precioAgua.precio : precioAgua.precio
+            const precio = precioMap[key] ?? precioMap['PACA_AGUA']
             montoTotal += discrepancias[key] * Number(precio)
             motivos.push(`${discrepancias[key]} ${key}`)
           }
@@ -542,6 +566,15 @@ export async function POST(
     }
     if (error instanceof Error && error.message === 'EMBARQUE_YA_CERRADO') {
       return apiError('El embarque ya está cerrado', 400)
+    }
+    if (error instanceof Error && error.message.startsWith('PAGOS_EXCEDIDOS')) {
+      return apiError(error.message.replace('PAGOS_EXCEDIDOS: ', ''), 400)
+    }
+    if (error instanceof Error && error.message.startsWith('EMBARQUE_DESTINO_NOT_FOUND')) {
+      return apiError(error.message.replace('EMBARQUE_DESTINO_NOT_FOUND: ', ''), 404)
+    }
+    if (error instanceof Error && error.message.startsWith('EMBARQUE_DESTINO_NO_DISPONIBLE')) {
+      return apiError(error.message.replace('EMBARQUE_DESTINO_NO_DISPONIBLE: ', ''), 400)
     }
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error cerrando embarque:')
     return apiError('Error al cerrar embarque', 500)

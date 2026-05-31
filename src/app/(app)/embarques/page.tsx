@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
 import EmbarquesClient from './embarques-client'
-import { calcularPacasEmbarque, calcularPesoEmbarque, getCapacidadInfo } from '@/lib/embarque-capacidad'
+import { calcularPacasEmbarque, calcularPesoEmbarque, getCapacidadInfo, PESOS_KG } from '@/lib/embarque-capacidad'
 
 export default async function EmbarquesPage() {
   const authResult = await requireAuth()
@@ -51,11 +51,11 @@ export default async function EmbarquesPage() {
       const totalPacas = e.productos?.reduce((sum, p) => sum + p.cargadas, 0) ?? calcularPacasEmbarque(e.pedidos)
       const pesoKg = e.productos
         ? (
-            (e.productos.find(p => p.producto === 'PACA_AGUA')?.cargadas || 0) * 10.0 +
-            (e.productos.find(p => p.producto === 'PACA_HIELO')?.cargadas || 0) * 11.0 +
-            (e.productos.find(p => p.producto === 'BOTELLON')?.cargadas || 0) * 20.0 +
-            (e.productos.find(p => p.producto === 'BOLSA_AGUA')?.cargadas || 0) * 0.25 +
-            (e.productos.find(p => p.producto === 'BOLSA_HIELO')?.cargadas || 0) * 0.55
+            (e.productos.find(p => p.producto === 'PACA_AGUA')?.cargadas || 0) * PESOS_KG.PACA_AGUA +
+            (e.productos.find(p => p.producto === 'PACA_HIELO')?.cargadas || 0) * PESOS_KG.PACA_HIELO +
+            (e.productos.find(p => p.producto === 'BOTELLON')?.cargadas || 0) * PESOS_KG.BOTELLON +
+            (e.productos.find(p => p.producto === 'BOLSA_AGUA')?.cargadas || 0) * PESOS_KG.BOLSA_AGUA +
+            (e.productos.find(p => p.producto === 'BOLSA_HIELO')?.cargadas || 0) * PESOS_KG.BOLSA_HIELO
           )
         : calcularPesoEmbarque(e.pedidos)
       const capacidadKg = e.trabajador.capacidadKg || 500

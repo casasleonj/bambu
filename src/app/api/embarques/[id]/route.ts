@@ -43,7 +43,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
-  const roleCheck = await requireRole([ROLES.ADMIN, ROLES.REPARTIDOR], authResult)
+  const roleCheck = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE], authResult)
   if (roleCheck instanceof Response) return roleCheck
   const { id } = await params
   const session = authResult as { user?: { id?: string; role?: string } }
@@ -162,7 +162,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
-    const embarque = await prisma.$transaction(async (tx) => {
+    const embarque = await withAdvisoryLock('EMBARQUE', async (tx) => {
       // Handle carga update — replace all EmbarqueProducto records
       if (carga && currentEmbarque.estado === 'ABIERTO') {
         await tx.embarqueProducto.deleteMany({ where: { embarqueId: id } })
@@ -239,7 +239,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
-  const roleCheck = await requireRole([ROLES.ADMIN], authResult)
+  const roleCheck = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE], authResult)
   if (roleCheck instanceof Response) return roleCheck
   const { id } = await params
 
@@ -262,7 +262,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
       if (embarque.pedidos.length > 0) {
         await tx.pedido.updateMany({
           where: { embarqueId: id },
-          data: { embarqueId: null, estado: 'PENDIENTE' },
+          data: { embarqueId: null, estado: 'PENDIENTE', estadoEntrega: 'PENDIENTE' },
         })
       }
 

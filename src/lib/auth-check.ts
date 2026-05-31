@@ -69,6 +69,9 @@ export async function requireOwnership(
   // Privileged roles can access everything
   if (PRIVILEGED_ROLES.includes(user.role as Role)) return true;
 
+  // ASISTENTE puede gestionar todos los embarques (rol operativo)
+  if (user.role === 'ASISTENTE' && entity === 'embarque') return true;
+
   if (entity === 'embarque') {
     // Find the trabajador linked to this user, then check if it matches the embarque's trabajador
     const embarque = await prisma.embarque.findUnique({
