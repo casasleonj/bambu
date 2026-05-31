@@ -2,17 +2,16 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { logger } from '@/lib/logger'
 import { apiSuccess, apiError } from '@/lib/api-response'
+import { requireCronSecret } from '@/lib/cron-auth'
 
 /**
  * POST /api/cron/alerta-no-verificados
  * Runs daily at 6am. Finds unverified clients older than threshold days (default 30).
- * Protected by CRON_SECRET header.
+ * Protected by CRON_SECRET via x-cron-secret header.
  */
 export async function POST(request: NextRequest) {
-  const secret = request.headers.get('x-cron-secret')
-  if (secret !== process.env.CRON_SECRET) {
-    return apiError('Unauthorized', 401)
-  }
+  const authError = requireCronSecret(request)
+  if (authError) return authError
 
   try {
     // Leer umbral de Config, default 30 días

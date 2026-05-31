@@ -5,6 +5,7 @@ import { requireAuth, requireRole } from '@/lib/auth-check'
 import { ConfigCreateSchema } from '@/lib/validators'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
+import { validateConfigValue } from '@/lib/config-validation'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -48,7 +49,13 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) {
     return apiError(formatZodError(parsed.error), 400)
   }
-  const { clave } = parsed.data
+  const { clave, valor } = parsed.data
+
+  // Server-side semantic validation per key
+  const validationError = validateConfigValue(clave, valor)
+  if (validationError) {
+    return apiError(validationError, 400)
+  }
 
   // BASE_DIA keys can be set by any authenticated user
   const isBaseDia = clave.startsWith('BASE_DIA')

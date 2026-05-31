@@ -2,14 +2,17 @@ import { NextRequest } from 'next/server'
 import { previewGeneracionRecurrentes, generarPedidosRecurrentes } from '@/lib/recurrentes'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
+import { requireCronSecret } from '@/lib/cron-auth'
 
-export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization')
-  const cronSecret = process.env.CRON_SECRET
-
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return apiError('No autorizado', 401)
-  }
+/**
+ * POST /api/cron/generar-recurrentes
+ * Runs daily at 6am. Generates pedidos from recurrent templates.
+ * Protected by CRON_SECRET via x-cron-secret header.
+ * Uses POST (not GET) because it creates resources — prevents accidental caching/prefetch.
+ */
+export async function POST(request: NextRequest) {
+  const authError = requireCronSecret(request)
+  if (authError) return authError
 
   try {
     const preview = await previewGeneracionRecurrentes()

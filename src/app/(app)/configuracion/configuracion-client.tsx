@@ -142,6 +142,7 @@ export default function ConfiguracionClient({ initialData }: ConfiguracionClient
   const clearTimersRef = useRef<Record<string, NodeJS.Timeout>>({})
   const dataRef = useRef(data)
   const savedDataRef = useRef(savedData)
+  const isMountedRef = useRef(true)
 
   useEffect(() => { dataRef.current = data }, [data])
   useEffect(() => { savedDataRef.current = savedData }, [savedData])
@@ -187,17 +188,22 @@ export default function ConfiguracionClient({ initialData }: ConfiguracionClient
     setSectionState(prev => ({ ...prev, [sectionId]: 'saving' }))
 
     try {
-      const promises = section.fields.map(field =>
-        fetch('/api/config', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ clave: field.key, valor: currentData[field.key] }),
-        })
-      )
-      const results = await Promise.all(promises)
-      const failed = results.filter(r => !r.ok)
+      // Atomic save: send all section entries in a single transaction
+      const entries = section.fields.map(field => ({
+        clave: field.key,
+        valor: currentData[field.key],
+      }))
 
-      if (failed.length === 0) {
+      const response = await fetch('/api/config/section', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entries }),
+      })
+
+      // Guard against state updates after unmount
+      if (!isMountedRef.current) return
+
+      if (response.ok) {
         setSavedData(prev => {
           const next = { ...prev }
           section.fields.forEach(field => { next[field.key] = currentData[field.key] })
@@ -205,7 +211,11 @@ export default function ConfiguracionClient({ initialData }: ConfiguracionClient
         })
         setSectionState(prev => ({ ...prev, [sectionId]: 'saved' }))
         setLastSavedAt(new Date())
-        localStorage.setItem('configLastSaved', Date.now().toString())
+        try {
+          localStorage.setItem('configLastSaved', Date.now().toString())
+        } catch {
+          // localStorage may be unavailable (incognito, full storage)
+        }
 
         // Auto-clear saved state after delay
         if (clearTimersRef.current[sectionId]) clearTimeout(clearTimersRef.current[sectionId])
@@ -213,17 +223,13 @@ export default function ConfiguracionClient({ initialData }: ConfiguracionClient
           setSectionState(prev => ({ ...prev, [sectionId]: 'idle' }))
         }, SAVE_CLEAR_MS)
       } else {
-        const errors = await Promise.all(failed.map(async (r) => {
-          const idx = results.indexOf(r)
-          const body = await r.json().catch(() => ({}))
-          return `${section.fields[idx]?.label}: ${body.error?.message || r.statusText}`
-        }))
+        const body = await response.json().catch(() => ({}))
         setSectionState(prev => ({ ...prev, [sectionId]: 'error' }))
-        toast.error(errors[0])
+        toast.error(body.error?.message || 'Error guardando configuración')
       }
     } catch (e) {
       setSectionState(prev => ({ ...prev, [sectionId]: 'error' }))
-      toast.error('Error guardando configuración')
+      toast.error('Error de red guardando configuración')
     }
   }
 
@@ -272,11 +278,15 @@ export default function ConfiguracionClient({ initialData }: ConfiguracionClient
 
   // Load last saved timestamp from localStorage
   useEffect(() => {
-    const ts = localStorage.getItem('configLastSaved')
-    if (ts) setLastSavedAt(new Date(Number(ts)))
+    try {
+      const ts = localStorage.getItem('configLastSaved')
+      if (ts) setLastSavedAt(new Date(Number(ts)))
+    } catch {
+      // localStorage may be unavailable
+    }
   }, [])
 
-  // Ctrl+S force save
+  // Ctrl+S force save — stable listener (uses refs internally, no re-registration)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
@@ -286,7 +296,7 @@ export default function ConfiguracionClient({ initialData }: ConfiguracionClient
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [data, activeTab])
+  }, [])
 
   // beforeunload protection
   useEffect(() => {
@@ -303,6 +313,7 @@ export default function ConfiguracionClient({ initialData }: ConfiguracionClient
   // Cleanup timers on unmount
   useEffect(() => {
     return () => {
+      isMountedRef.current = false
       Object.values(timersRef.current).forEach(t => clearTimeout(t))
       Object.values(clearTimersRef.current).forEach(t => clearTimeout(t))
     }

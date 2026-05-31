@@ -2,17 +2,16 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { logger } from '@/lib/logger'
 import { apiSuccess, apiError } from '@/lib/api-response'
+import { requireCronSecret } from '@/lib/cron-auth'
 
 /**
  * POST /api/cron/vencimiento-promesas
  * Runs daily at 6am. Checks for pedidos with expired payment promises.
- * Protected by CRON_SECRET header.
+ * Protected by CRON_SECRET via x-cron-secret header.
  */
 export async function POST(request: NextRequest) {
-  const secret = request.headers.get('x-cron-secret')
-  if (secret !== process.env.CRON_SECRET) {
-    return apiError('Unauthorized', 401)
-  }
+  const authError = requireCronSecret(request)
+  if (authError) return authError
 
   try {
     const ahora = new Date()
