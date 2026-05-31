@@ -23,7 +23,7 @@ import type { AlertaTipo } from '@/lib/alertas-config'
 import { getBadgeColor, ignorarAlerta } from '@/lib/alertas-config'
 import { useEscapeGuard } from '@/hooks/use-escape-guard'
 
-export default function ClientesClient({ initialClientes, openClienteId, totalClientes }: ClientesClientProps) {
+export default function ClientesClient({ initialClientes, openClienteId, totalClientes, filtroActivo }: ClientesClientProps) {
   const [clientes, setClientes] = useState<Cliente[]>(initialClientes)
   const { confirm, modal } = useConfirm()
   const [loading, setLoading] = useState(false)
@@ -138,11 +138,15 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
     PUNTO: {},
   })
 
-  async function fetchClientes() {
+  const fetchClientes = useCallback(async () => {
     setLoading(true)
     setFetchError(null)
     try {
-      const res = await fetch('/api/clientes?all=true')
+      const params = new URLSearchParams('all=true')
+      if (filtroActivo === 'bloqueado') params.set('bloqueado', 'true')
+      else if (filtroActivo === 'reclamaciones') params.set('reclamaciones', 'gte3')
+      else if (filtroActivo === 'noVerificado') params.set('noVerificado', 'true')
+      const res = await fetch(`/api/clientes?${params.toString()}`)
       if (!res.ok) throw new Error('Error al cargar clientes')
       const data = await res.json()
       setClientes(data.clientes || data.data || [])
@@ -152,7 +156,12 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
     } finally {
       setLoading(false)
     }
-  }
+  }, [filtroActivo])
+
+  // Refetch cuando cambia el filtro de riesgo (vino del dashboard o se quito)
+  useEffect(() => {
+    fetchClientes()
+  }, [fetchClientes])
 
   const loadPreciosBase = useCallback(async () => {
     for (const canal of ['DOMICILIO', 'PUNTO'] as Canal[]) {
@@ -522,6 +531,7 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
         onSortChange={(by, dir) => { setSortBy(by); setSortDir(dir) }}
         selectedClienteId={selectedCliente?.id}
         totalClientes={totalClientes}
+        filtroActivo={filtroActivo}
       />
 
       <ClienteForm

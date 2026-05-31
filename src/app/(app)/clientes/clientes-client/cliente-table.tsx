@@ -2,8 +2,9 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import Link from 'next/link'
+import { useRouter, usePathname } from 'next/navigation'
 import { toast } from 'sonner'
-import type { Cliente } from './types'
+import type { Cliente, FiltroRiesgo } from './types'
 import { formatCurrency } from '@/lib/utils'
 import { EmptyState, EmptySearch } from '@/components/empty-state'
 import { Tooltip } from '@/components/tooltip'
@@ -21,6 +22,7 @@ interface ClienteTableProps {
   onSortChange: (by: 'nombre' | 'createdAt', dir: 'asc' | 'desc') => void
   selectedClienteId?: string | null
   totalClientes?: number
+  filtroActivo?: FiltroRiesgo
 }
 
 export const ClienteTable = React.memo(function ClienteTable({
@@ -35,7 +37,10 @@ export const ClienteTable = React.memo(function ClienteTable({
   sortDir,
   onSortChange,
   selectedClienteId,
+  filtroActivo,
 }: ClienteTableProps) {
+  const router = useRouter()
+  const pathname = usePathname()
   const [filterSaldo, setFilterSaldo] = useState(false)
   const [filterFrecuencia, setFilterFrecuencia] = useState(false)
   const [quickActionsRow, setQuickActionsRow] = useState<string | null>(null)
@@ -58,12 +63,34 @@ export const ClienteTable = React.memo(function ClienteTable({
     return true
   }), [clientes, filterSaldo, filterFrecuencia])
 
-  const hasActiveFilters = filterSaldo || filterFrecuencia || search
+  const hasActiveFilters = filterSaldo || filterFrecuencia || search || filtroActivo
 
   const clearFilters = () => {
     setFilterSaldo(false)
     setFilterFrecuencia(false)
     onSearchChange('')
+    if (filtroActivo) {
+      const params = new URLSearchParams(window.location.search)
+      params.delete('bloqueado')
+      params.delete('reclamaciones')
+      params.delete('noVerificado')
+      router.push(`${pathname}?${params.toString()}`)
+      router.refresh()
+    }
+  }
+
+  const toggleFiltroRiesgo = (filtro: FiltroRiesgo) => {
+    const params = new URLSearchParams(window.location.search)
+    params.delete('bloqueado')
+    params.delete('reclamaciones')
+    params.delete('noVerificado')
+    if (filtroActivo !== filtro) {
+      if (filtro === 'bloqueado') params.set('bloqueado', 'true')
+      else if (filtro === 'reclamaciones') params.set('reclamaciones', 'gte3')
+      else if (filtro === 'noVerificado') params.set('noVerificado', 'true')
+    }
+    router.push(`${pathname}?${params.toString()}`)
+    router.refresh()
   }
 
   return (
@@ -128,6 +155,50 @@ export const ClienteTable = React.memo(function ClienteTable({
             </button>
           </Tooltip>
 
+          {/* Filtros de riesgo (vienen del dashboard) */}
+          {filtroActivo === 'bloqueado' && (
+            <Tooltip content="Filtro activo: clientes bloqueados — click para quitar" position="bottom">
+              <button
+                onClick={() => toggleFiltroRiesgo('bloqueado')}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border bg-red-50 border-red-200 text-red-700"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+                Bloqueados
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+              </button>
+            </Tooltip>
+          )}
+          {filtroActivo === 'reclamaciones' && (
+            <Tooltip content="Filtro activo: clientes con 3+ reclamaciones — click para quitar" position="bottom">
+              <button
+                onClick={() => toggleFiltroRiesgo('reclamaciones')}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border bg-orange-50 border-orange-200 text-orange-700"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                Conflictivos (3+)
+                <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
+              </button>
+            </Tooltip>
+          )}
+          {filtroActivo === 'noVerificado' && (
+            <Tooltip content="Filtro activo: clientes sin verificar — click para quitar" position="bottom">
+              <button
+                onClick={() => toggleFiltroRiesgo('noVerificado')}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border bg-yellow-50 border-yellow-200 text-yellow-700"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Sin verificar
+                <span className="w-1.5 h-1.5 rounded-full bg-yellow-500" />
+              </button>
+            </Tooltip>
+          )}
+
           {hasActiveFilters && (
             <button
               onClick={clearFilters}
@@ -166,6 +237,9 @@ export const ClienteTable = React.memo(function ClienteTable({
           <p className="text-sm text-gray-500">
             {clientesFiltrados.length} de {clientes.length} clientes
             {hasActiveFilters && ' (filtrados)'}
+            {filtroActivo === 'bloqueado' && ' — bloqueados'}
+            {filtroActivo === 'reclamaciones' && ' — con 3+ reclamaciones'}
+            {filtroActivo === 'noVerificado' && ' — sin verificar'}
           </p>
           <div className="flex items-center gap-1 text-xs text-gray-500">
             <span className="hidden sm:inline">Ordenar:</span>

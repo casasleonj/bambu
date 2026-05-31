@@ -2,19 +2,44 @@ import { prisma } from '@/lib/prisma'
 import { auth } from '@/lib/auth'
 import ClientesClient from './clientes-client'
 
+export type ClientesSearchParams = {
+  openCliente?: string
+  bloqueado?: string
+  reclamaciones?: string
+  noVerificado?: string
+}
+
+export type FiltroRiesgo = 'bloqueado' | 'reclamaciones' | 'noVerificado' | null
+
 export default async function ClientesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ openCliente?: string }>
+  searchParams: Promise<ClientesSearchParams>
 }) {
   const resolvedSearchParams = await searchParams
   const session = await auth()
   const isAdmin = session?.user?.role === 'ADMIN'
+
+  // Determinar filtro de riesgo activo
+  let filtroActivo: FiltroRiesgo = null
+  const where: Record<string, unknown> = {
+    activo: true,
+    ...(isAdmin ? {} : { id: { not: 'CONSUMIDOR_FINAL' } }),
+  }
+
+  if (resolvedSearchParams.bloqueado === 'true') {
+    filtroActivo = 'bloqueado'
+    ;(where as Record<string, unknown>).bloqueado = true
+  } else if (resolvedSearchParams.reclamaciones === 'gte3') {
+    filtroActivo = 'reclamaciones'
+    ;(where as Record<string, unknown>).reclamaciones = { gte: 3 }
+  } else if (resolvedSearchParams.noVerificado === 'true') {
+    filtroActivo = 'noVerificado'
+    ;(where as Record<string, unknown>).verificado = false
+  }
+
   const clientes = await prisma.cliente.findMany({
-    where: {
-      activo: true,
-      ...(isAdmin ? {} : { id: { not: 'CONSUMIDOR_FINAL' } }),
-    },
+    where,
     orderBy: { nombre: 'asc' },
     include: {
       _count: { select: { pedidos: true } },
@@ -60,5 +85,5 @@ export default async function ClientesPage({
     })
   )
 
-  return <ClientesClient initialClientes={serialized} openClienteId={resolvedSearchParams.openCliente} />
+  return <ClientesClient initialClientes={serialized} openClienteId={resolvedSearchParams.openCliente} filtroActivo={filtroActivo} />
 }

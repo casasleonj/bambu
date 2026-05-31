@@ -14,10 +14,24 @@ export async function GET(request: NextRequest) {
   const pagination = getPaginationParams(request.nextUrl.searchParams)
   try {
     const search = request.nextUrl.searchParams.get('search')
+    const bloqueado = request.nextUrl.searchParams.get('bloqueado')
+    const reclamaciones = request.nextUrl.searchParams.get('reclamaciones')
+    const noVerificado = request.nextUrl.searchParams.get('noVerificado')
     const isAdmin = (authResult.user as { role?: string } | undefined)?.role === 'ADMIN'
     const where: any = {
       activo: true,
       ...(isAdmin ? {} : { id: { not: 'CONSUMIDOR_FINAL' } }),
+    }
+
+    // Filtros de riesgo (vienen del dashboard)
+    if (bloqueado === 'true') {
+      where.bloqueado = true
+    }
+    if (reclamaciones === 'gte3') {
+      where.reclamaciones = { gte: 3 }
+    }
+    if (noVerificado === 'true') {
+      where.verificado = false
     }
 
     // Use pg_trgm search for queries with 2+ characters (better relevance)

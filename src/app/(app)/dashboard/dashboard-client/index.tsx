@@ -167,7 +167,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                     <p className="text-xs text-red-600">{alertasRiesgo.clientesBloqueados} bloqueados</p>
                   </div>
                 </div>
-                <Link href="/clientes" className="text-xs text-red-700 hover:underline mt-2 inline-block">Ver clientes →</Link>
+                <Link href="/clientes?bloqueado=true" className="text-xs text-red-700 hover:underline mt-2 inline-block">Ver clientes →</Link>
               </div>
             )}
             {alertasRiesgo.clientesConflictivos > 0 && (
@@ -179,7 +179,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                     <p className="text-xs text-orange-600">{alertasRiesgo.clientesConflictivos} con 3+ reclamaciones</p>
                   </div>
                 </div>
-                <Link href="/clientes" className="text-xs text-orange-700 hover:underline mt-2 inline-block">Ver clientes →</Link>
+                <Link href="/clientes?reclamaciones=gte3" className="text-xs text-orange-700 hover:underline mt-2 inline-block">Ver clientes →</Link>
               </div>
             )}
             {alertasRiesgo.promesasProximasVencer > 0 && (
@@ -203,7 +203,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                     <p className="text-xs text-yellow-600">{alertasRiesgo.clientesNoVerificados} +30 días</p>
                   </div>
                 </div>
-                <Link href="/clientes" className="text-xs text-yellow-700 hover:underline mt-2 inline-block">Ver clientes →</Link>
+                <Link href="/clientes?noVerificado=true" className="text-xs text-yellow-700 hover:underline mt-2 inline-block">Ver clientes →</Link>
               </div>
             )}
           </div>

@@ -136,10 +136,13 @@ export const PRODUCTO_NOMBRES: Record<string, string> = {
   cBolsaHieloPed: 'Bolsa Hielo',
 }
 
+export type FiltroRiesgo = 'bloqueado' | 'reclamaciones' | 'noVerificado' | null
+
 export interface ClientesClientProps {
   initialClientes: Cliente[]
   openClienteId?: string
   totalClientes?: number
+  filtroActivo?: FiltroRiesgo
 }
 
 export interface FormData {
