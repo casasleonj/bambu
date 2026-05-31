@@ -34,6 +34,14 @@ export interface Cliente {
   _count?: { pedidos: number }
   pedidos?: Pedido[]
   facturas?: Factura[]
+  negocios?: Array<{
+    id: string
+    nombre: string
+    tipoNegocio?: string | null
+    direccion?: string | null
+    barrio?: string | null
+    referencia?: string | null
+  }>
   frecuenciaSugerida?: { dias: number; label: string } | null
   productosSugeridos?: Array<{ codigo: string; nombre: string; frecuencia: number; cantidadPromedio: number }>
   horaApertura?: string | null

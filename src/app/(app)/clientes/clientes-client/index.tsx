@@ -220,7 +220,7 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
         ct.telefono.includes(term) ||
         ct.relacion?.toLowerCase().includes(term)
       ) ||
-      (c as any).negocios?.some((neg: any) =>
+      c.negocios?.some(neg =>
         neg.nombre?.toLowerCase().includes(term) ||
         neg.direccion?.toLowerCase().includes(term) ||
         neg.barrio?.toLowerCase().includes(term) ||

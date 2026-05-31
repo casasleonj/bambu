@@ -32,6 +32,17 @@ export default async function ClientesPage({
           pagos: true,
         },
       },
+      negocios: {
+        where: { activo: true },
+        select: {
+          id: true,
+          nombre: true,
+          tipoNegocio: true,
+          direccion: true,
+          barrio: true,
+          referencia: true,
+        },
+      },
     },
   })
 
