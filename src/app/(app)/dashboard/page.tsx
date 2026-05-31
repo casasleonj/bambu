@@ -31,8 +31,8 @@ export default async function DashboardPage() {
     prisma.embarque.count({ where: { estado: 'ABIERTO' } }),
     prisma.cliente.count({ where: { activo: true } }),
     prisma.insumo.findMany({ where: { stock: { lte: prisma.insumo.fields.stockMin } }, take: 5 }),
-    prisma.pedido.aggregate({ where: { saldo: { gt: 0 }, estadoEntrega: { in: ['ENTREGADO', 'EN_RUTA'] } }, _sum: { saldo: true } }),
-    prisma.produccion.aggregate({ where: { fecha: { gte: startOfDay, lt: endOfDay } }, _sum: { conteoAAgua: true, conteoBAgua: true, conteoAHielo: true, conteoBHielo: true } }),
+    prisma.pedido.aggregate({ where: { saldo: { gt: 0 }, estadoEntrega: 'ENTREGADO' }, _sum: { saldo: true } }),
+    prisma.produccion.aggregate({ where: { fecha: { gte: startOfDay, lt: endOfDay } }, _sum: { conteoAAgua: true, conteoBAgua: true, conteoAHielo: true, conteoBHielo: true, rotasAgua: true, rotasHielo: true, filtradasAgua: true, filtradasHielo: true, consumoInternoAgua: true, consumoInternoHielo: true } }),
     prisma.config.findMany({ where: { clave: { in: ['STOCK_INI_AGUA', 'STOCK_INI_HIELO', 'STOCK_INI_BOTELLON'] } } }),
     // Alertas de riesgo
     prisma.pedido.count({ where: { disputaAbierta: true } }),
@@ -62,24 +62,31 @@ export default async function DashboardPage() {
         pedidos: {
           some: {
             saldo: { gt: 0 },
-            estadoEntrega: { in: ['ENTREGADO', 'EN_RUTA'] },
+            estadoEntrega: 'ENTREGADO',
           },
         },
       },
     }),
   ])
 
-  const ventas = pedidos.reduce((acc, p) => acc + Number(p.total), 0)
+  const pedidosValidos = pedidos.filter(
+    p => p.estadoEntrega !== 'ANULADO' && p.estadoEntrega !== 'CANCELADO'
+  )
+  const ventas = pedidosValidos.reduce((acc, p) => acc + Number(p.total), 0)
   const fiadosHoy = pedidos
-    .filter(p => Number(p.saldo) > 0 && ['ENTREGADO', 'EN_RUTA'].includes(p.estadoEntrega))
+    .filter(p => Number(p.saldo) > 0 && p.estadoEntrega === 'ENTREGADO')
     .reduce((acc, p) => acc + Number(p.saldo), 0)
   const fiadosTotal = Number(cuentasPorCobrarAgg._sum.saldo) || 0
   const pedidosPendientes = pedidos.filter(p => p.estadoEntrega === 'PENDIENTE').length
   const pedidosEntregados = pedidos.filter(p => p.estadoEntrega === 'ENTREGADO').length
-  const baseDia = baseDiaConfig ? parseFloat(baseDiaConfig.valor) : (baseDiaGlobal ? parseFloat(baseDiaGlobal.valor) : 0)
+  const baseDiaRaw = baseDiaConfig ? parseFloat(baseDiaConfig.valor) : (baseDiaGlobal ? parseFloat(baseDiaGlobal.valor) : 0)
+  const baseDia = isNaN(baseDiaRaw) ? 0 : baseDiaRaw
   const totalGastos = Number(gastosAgg._sum.monto) || 0
 
-  const ventasAyer = pedidosAyer.reduce((acc, p) => acc + Number(p.total), 0)
+  const pedidosAyerValidos = pedidosAyer.filter(
+    p => p.estadoEntrega !== 'ANULADO' && p.estadoEntrega !== 'CANCELADO'
+  )
+  const ventasAyer = pedidosAyerValidos.reduce((acc, p) => acc + Number(p.total), 0)
   const ventasTrend = ventasAyer > 0 ? ((ventas - ventasAyer) / ventasAyer) * 100 : 0
   const pedidosTrend = pedidosAyer.length > 0 ? ((pedidos.length - pedidosAyer.length) / pedidosAyer.length) * 100 : 0
 
@@ -90,7 +97,7 @@ export default async function DashboardPage() {
     { label: 'Tarde', range: [12, 17], count: 0 },
     { label: 'Noche', range: [18, 23], count: 0 },
   ]
-  for (const p of pedidos) {
+  for (const p of pedidosValidos) {
     const hour = parseInt(
       new Date(p.fecha).toLocaleString('en-US', { timeZone: 'America/Bogota', hour: 'numeric', hour12: false }),
       10
@@ -100,7 +107,7 @@ export default async function DashboardPage() {
   }
   const maxFranja = Math.max(...franjas.map(f => f.count), 1)
 
-  const ventasPorPrecio = buildVentasPorPrecio(pedidos)
+  const ventasPorPrecio = buildVentasPorPrecio(pedidosValidos)
 
   const aguaVendida = pedidos.filter(p => p.estadoEntrega === 'ENTREGADO').reduce((acc, p) => acc + (p.cPacaAguaEnt || 0), 0)
   const hieloVendido = pedidos.filter(p => p.estadoEntrega === 'ENTREGADO').reduce((acc, p) => acc + (p.cPacaHieloEnt || 0), 0)
@@ -108,6 +115,8 @@ export default async function DashboardPage() {
 
   const prodAguaHoy = (produccionHoy?._sum?.conteoAAgua || 0) + (produccionHoy?._sum?.conteoBAgua || 0)
   const prodHieloHoy = (produccionHoy?._sum?.conteoAHielo || 0) + (produccionHoy?._sum?.conteoBHielo || 0)
+  const perdidasAgua = (produccionHoy?._sum?.rotasAgua || 0) + (produccionHoy?._sum?.filtradasAgua || 0) + (produccionHoy?._sum?.consumoInternoAgua || 0)
+  const perdidasHielo = (produccionHoy?._sum?.rotasHielo || 0) + (produccionHoy?._sum?.filtradasHielo || 0) + (produccionHoy?._sum?.consumoInternoHielo || 0)
 
   let stockIniAgua = lastCierre?.stockFinAgua || 0
   let stockIniHielo = lastCierre?.stockFinHielo || 0
@@ -121,8 +130,8 @@ export default async function DashboardPage() {
     stockIniBotellon = parseInt(configMap.STOCK_INI_BOTELLON) || 0
   }
 
-  const stockAgua = Math.max(0, stockIniAgua + prodAguaHoy - aguaVendida)
-  const stockHielo = Math.max(0, stockIniHielo + prodHieloHoy - hieloVendido)
+  const stockAgua = Math.max(0, stockIniAgua + prodAguaHoy - aguaVendida - perdidasAgua)
+  const stockHielo = Math.max(0, stockIniHielo + prodHieloHoy - hieloVendido - perdidasHielo)
   const stockBotellon = Math.max(0, stockIniBotellon - botellonVendido)
 
   const fechaHoy = new Date().toLocaleDateString('es-CO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })

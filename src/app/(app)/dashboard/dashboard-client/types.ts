@@ -16,6 +16,8 @@ export interface PedidoRaw {
   cPacaHieloEnt: number
   cBotellonFabEnt: number
   cBotellonDomEnt: number
+  cBolsaAguaEnt: number
+  cBolsaHieloEnt: number
   precioPacaAgua: unknown
   precioPacaHielo: unknown
   precioBotellonFab: unknown
@@ -89,18 +91,19 @@ export function buildVentasPorPrecio(pedidos: PedidoRaw[]): VentaPorPrecio[] {
   }
 
   for (const p of pedidos) {
-    if (p.cPacaAguaPed > 0 && Number(p.precioPacaAgua) > 0)
-      buckets['Paca Agua'][Number(p.precioPacaAgua)] = (buckets['Paca Agua'][Number(p.precioPacaAgua)] || 0) + p.cPacaAguaPed
-    if (p.cPacaHieloPed > 0 && Number(p.precioPacaHielo) > 0)
-      buckets['Paca Hielo'][Number(p.precioPacaHielo)] = (buckets['Paca Hielo'][Number(p.precioPacaHielo)] || 0) + p.cPacaHieloPed
-    if (p.cBotellonFabPed > 0 && Number(p.precioBotellonFab) > 0)
-      buckets['Botellon Fab'][Number(p.precioBotellonFab)] = (buckets['Botellon Fab'][Number(p.precioBotellonFab)] || 0) + p.cBotellonFabPed
-    if (p.cBotellonDomPed > 0 && Number(p.precioBotellonDom) > 0)
-      buckets['Botellon Dom'][Number(p.precioBotellonDom)] = (buckets['Botellon Dom'][Number(p.precioBotellonDom)] || 0) + p.cBotellonDomPed
-    if (p.cBolsaAguaPed > 0 && Number(p.precioBolsaAgua) > 0)
-      buckets['Bolsa Agua'][Number(p.precioBolsaAgua)] = (buckets['Bolsa Agua'][Number(p.precioBolsaAgua)] || 0) + p.cBolsaAguaPed
-    if (p.cBolsaHieloPed > 0 && Number(p.precioBolsaHielo) > 0)
-      buckets['Bolsa Hielo'][Number(p.precioBolsaHielo)] = (buckets['Bolsa Hielo'][Number(p.precioBolsaHielo)] || 0) + p.cBolsaHieloPed
+    if (p.estadoEntrega === 'ANULADO' || p.estadoEntrega === 'CANCELADO') continue
+    if (p.cPacaAguaEnt > 0 && Number(p.precioPacaAgua) > 0)
+      buckets['Paca Agua'][Number(p.precioPacaAgua)] = (buckets['Paca Agua'][Number(p.precioPacaAgua)] || 0) + p.cPacaAguaEnt
+    if (p.cPacaHieloEnt > 0 && Number(p.precioPacaHielo) > 0)
+      buckets['Paca Hielo'][Number(p.precioPacaHielo)] = (buckets['Paca Hielo'][Number(p.precioPacaHielo)] || 0) + p.cPacaHieloEnt
+    if (p.cBotellonFabEnt > 0 && Number(p.precioBotellonFab) > 0)
+      buckets['Botellon Fab'][Number(p.precioBotellonFab)] = (buckets['Botellon Fab'][Number(p.precioBotellonFab)] || 0) + p.cBotellonFabEnt
+    if (p.cBotellonDomEnt > 0 && Number(p.precioBotellonDom) > 0)
+      buckets['Botellon Dom'][Number(p.precioBotellonDom)] = (buckets['Botellon Dom'][Number(p.precioBotellonDom)] || 0) + p.cBotellonDomEnt
+    if (p.cBolsaAguaEnt > 0 && Number(p.precioBolsaAgua) > 0)
+      buckets['Bolsa Agua'][Number(p.precioBolsaAgua)] = (buckets['Bolsa Agua'][Number(p.precioBolsaAgua)] || 0) + p.cBolsaAguaEnt
+    if (p.cBolsaHieloEnt > 0 && Number(p.precioBolsaHielo) > 0)
+      buckets['Bolsa Hielo'][Number(p.precioBolsaHielo)] = (buckets['Bolsa Hielo'][Number(p.precioBolsaHielo)] || 0) + p.cBolsaHieloEnt
   }
 
   for (const [producto, precios] of Object.entries(buckets)) {
