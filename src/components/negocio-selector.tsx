@@ -15,6 +15,8 @@ export interface NegocioOption {
 
 interface NegocioSelectorProps {
   clienteId: string
+  clienteNombre: string
+  clienteNombreNegocio?: string | null
   clienteDireccion?: string | null
   clienteBarrio?: string | null
   selectedNegocioId: string | null
@@ -23,6 +25,8 @@ interface NegocioSelectorProps {
 
 export function NegocioSelector({
   clienteId,
+  clienteNombre,
+  clienteNombreNegocio,
   clienteDireccion,
   clienteBarrio,
   selectedNegocioId,
@@ -60,10 +64,12 @@ export function NegocioSelector({
       .finally(() => setLoading(false))
   }, [clienteId])
 
-  // If no negocios or loading, don't show selector
-  if (loading || negocios.length === 0) {
-    return null
-  }
+  // Show selector if there are formal negocios OR if there's a legacy nombreNegocio
+  const hasLegacyNegocio = !!clienteNombreNegocio
+  const hasFormalNegocios = negocios.length > 0
+
+  if (loading) return null
+  if (!hasFormalNegocios && !hasLegacyNegocio) return null
 
   return (
     <Card>
@@ -91,7 +97,8 @@ export function NegocioSelector({
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">
                   {selectedNegocioId === null && '✓ '}
-                  Cliente (sin negocio específico)
+                  🏠 {clienteNombreNegocio || clienteNombre}
+                  {!clienteNombreNegocio && <span className="text-xs text-gray-400 ml-1">— domicilio principal</span>}
                 </span>
               </div>
               {(clienteDireccion || clienteBarrio) && (
