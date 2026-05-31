@@ -42,7 +42,6 @@ export interface PedidoInicial {
 
 export interface PedidoFormUnifiedProps {
   contexto: 'PUNTO' | 'DOMICILIO'
-  precios: Record<string, number>
   clientes: Cliente[]
   onSubmit: (data: PedidoUnifiedData) => void
   onClose?: () => void
@@ -66,7 +65,7 @@ export interface PedidoUnifiedData {
 
 // ==================== COMPONENTE ====================
 
-export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedidoInicial }: PedidoFormUnifiedProps) {
+export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial }: PedidoFormUnifiedProps) {
   const [canal, setCanal] = useState<'PUNTO' | 'DOMICILIO'>(contexto)
   const [cantidades, setCantidades] = useState<Record<string, number>>({})
   const [searchTerm, setSearchTerm] = useState('')
@@ -86,7 +85,7 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
   const [editDireccion, setEditDireccion] = useState('')
   const [editBarrio, setEditBarrio] = useState('')
   const resolverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [productosConfig, setProductosConfig] = useState<Array<{ codigo: string; aplicaDomicilio: boolean }>>([])
+  const [productosConfig, setProductosConfig] = useState<Array<{ codigo: string; aplicaDomicilio: boolean; sobreCostoDomicilio: number }>>([])
   const [fiadosStatus, setFiadosStatus] = useState<{ count: number; limite: number; nivel: 'ok' | 'cerca' | 'limite' } | null>(null)
   const [precioBajoConfirmado, setPrecioBajoConfirmado] = useState<Record<string, boolean>>({})
   const cantidadesRef = useRef(cantidades)
@@ -250,10 +249,15 @@ export function PedidoFormUnified({ contexto, precios, clientes, onSubmit, pedid
 
   const getPrecioBase = (codigo: string): number => {
     if (preciosResueltos[codigo]) return preciosResueltos[codigo]
-    if (precios[codigo]) return precios[codigo]
     const tiers = tablaPrecios[codigo]
-    if (tiers && tiers.length > 0) return tiers[0].precio
-    return DEFAULT_PRICES[codigo] || 0
+    let precio = tiers && tiers.length > 0 ? tiers[0].precio : (DEFAULT_PRICES[codigo] || 0)
+    if (canal === 'DOMICILIO') {
+      const prod = productosConfig.find(p => p.codigo === codigo)
+      if (prod?.aplicaDomicilio) {
+        precio += Number(prod.sobreCostoDomicilio)
+      }
+    }
+    return precio
   }
 
   const getPrecio = (codigo: string) => {

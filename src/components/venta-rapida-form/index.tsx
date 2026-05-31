@@ -13,7 +13,7 @@ import type { Cliente, Tier, VentaRapidaFormProps, VentaRapidaData, VentaRapidaI
 
 export type { VentaRapidaFormProps, VentaRapidaData, Cliente }
 
-export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaFormProps) {
+export function VentaRapidaForm({ clientes, onSubmit }: VentaRapidaFormProps) {
   const [quiereEnvio, setQuiereEnvio] = useState(false)
   const [canal, setCanal] = useState<'PUNTO' | 'DOMICILIO'>('PUNTO')
   const [cantidades, setCantidades] = useState<Record<string, number>>({})
@@ -29,7 +29,7 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
   const [tablaPrecios, setTablaPrecios] = useState<Record<string, Tier[]>>({})
   const [preciosManuales, setPreciosManuales] = useState<Record<string, number>>({})
   const [preciosEditando, setPreciosEditando] = useState<Record<string, boolean>>({})
-  const [productosConfig, setProductosConfig] = useState<Array<{ codigo: string; aplicaDomicilio: boolean }>>([])
+  const [productosConfig, setProductosConfig] = useState<Array<{ codigo: string; aplicaDomicilio: boolean; sobreCostoDomicilio: number }>>([])
 
   useEffect(() => {
     fetch(`/api/productos/configs`)
@@ -88,10 +88,15 @@ export function VentaRapidaForm({ precios, clientes, onSubmit }: VentaRapidaForm
 
   const getPrecioBase = (codigo: string): number => {
     if (preciosResueltos[codigo]) return preciosResueltos[codigo]
-    if (precios[codigo]) return precios[codigo]
     const tiers = tablaPrecios[codigo]
-    if (tiers && tiers.length > 0) return tiers[0].precio
-    return DEFAULT_PRICES[codigo] || 0
+    let precio = tiers && tiers.length > 0 ? tiers[0].precio : (DEFAULT_PRICES[codigo] || 0)
+    if (canal === 'DOMICILIO') {
+      const prod = productosConfig.find(p => p.codigo === codigo)
+      if (prod?.aplicaDomicilio) {
+        precio += Number(prod.sobreCostoDomicilio)
+      }
+    }
+    return precio
   }
 
   const getPrecio = (codigo: string) => {

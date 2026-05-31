@@ -36,7 +36,6 @@ export function PedidosClient() {
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [preciosActuales, setPreciosActuales] = useState<Record<string, { precio: number; origen: string }>>({})
   const [clientes, setClientes] = useState<Cliente[]>([])
-  const [precios, setPrecios] = useState<Record<string, number>>({})
   const [embarques, setEmbarques] = useState<Embarque[]>([])
   const [showEmbarqueModal, setShowEmbarqueModal] = useState(false)
   const [selectedPedidoForEmbarque, setSelectedPedidoForEmbarque] = useState<string | null>(null)
@@ -132,21 +131,6 @@ export function PedidosClient() {
     }
   }
 
-  async function fetchPrecios() {
-    try {
-      const res = await fetch('/api/precios', { credentials: 'include' })
-      const data = await res.json()
-      const map: Record<string, number> = {}
-      for (const p of data.precios || data.data || []) {
-        map[p.producto] = Number(p.precio)
-      }
-      setPrecios(map)
-    } catch (error) {
-      console.error('Error fetching precios:', error)
-      toast.error('Error cargando precios')
-    }
-  }
-
   async function fetchEmbarques() {
     try {
       const res = await fetch('/api/embarques', { credentials: 'include' })
@@ -183,7 +167,7 @@ export function PedidosClient() {
         }
       }
       await fetchPedidos()
-      const [clientesList] = await Promise.all([fetchClientes(), fetchPrecios(), fetchEmbarques()])
+      const [clientesList] = await Promise.all([fetchClientes(), fetchEmbarques()])
 
       const clienteId = searchParams.get('cliente')
       if (clienteId) {
@@ -614,7 +598,7 @@ export function PedidosClient() {
         title="No se pudieron cargar los pedidos"
         message={fetchError}
         errorCode="FETCH_PEDIDOS_ERROR"
-        onRetry={() => { setLoading(true); fetchPedidos(); fetchClientes(); fetchPrecios(); fetchEmbarques(); }}
+        onRetry={() => { setLoading(true); fetchPedidos(); fetchClientes(); fetchEmbarques(); }}
         recoveryActions={[
           {
             label: 'Verificar conexión',
@@ -783,7 +767,6 @@ export function PedidosClient() {
           <PedidoFormUnified
             key={`${pedidoInicial?.id || 'new'}-${modalKey}`}
             contexto={showVentaRapida ? 'PUNTO' : 'DOMICILIO'}
-            precios={precios}
             clientes={clientes}
             onSubmit={handlePedidoSubmit}
             onClose={() => { setShowModal(false); setShowVentaRapida(false); setPedidoInicial(undefined) }}
@@ -1212,7 +1195,6 @@ export function PedidosClient() {
               <PedidoFormUnified
                 key={`edit-${pedidoEditando.id}`}
                 contexto={pedidoEditando.canal as 'PUNTO' | 'DOMICILIO'}
-                precios={precios}
                 clientes={clientes}
                 onSubmit={handlePedidoSubmit}
                 onClose={() => setPedidoEditando(null)}

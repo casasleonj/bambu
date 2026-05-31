@@ -197,7 +197,7 @@ test.describe('Precios Especiales en Pedidos', () => {
       }
 
       // 7. Add product again and verify volume tier price is shown
-      // After removing client, price falls back to volume tier (1-4 units: $2,800)
+      // After removing client, price falls back to volume tier (1-3 units: $2,800)
       // 2 units x $2,800 = $5,600
       await plusBtn.click()
       await page.waitForTimeout(500)

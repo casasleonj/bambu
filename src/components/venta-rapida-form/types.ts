@@ -14,7 +14,6 @@ export interface Tier {
 }
 
 export interface VentaRapidaFormProps {
-  precios: Record<string, number>
   clientes: Cliente[]
   onSubmit: (data: VentaRapidaData) => void | Promise<void>
 }
