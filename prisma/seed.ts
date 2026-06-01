@@ -18,7 +18,7 @@ async function main() {
 
   await prisma.user.upsert({
     where: { username: 'admin' },
-    update: isDevOrTest ? {} : { password: hashedAdmin },
+    update: { password: hashedAdmin },
     create: {
       username: 'admin',
       password: hashedAdmin,
@@ -43,7 +43,7 @@ async function main() {
       const hashed = await bcrypt.hash(u.password, SALT_ROUNDS)
       await prisma.user.upsert({
         where: { username: u.username },
-        update: {},
+        update: { password: hashed },
         create: { ...u, password: hashed, mustChangePassword: false },
       })
     }
@@ -76,6 +76,27 @@ async function main() {
     })
   }
   console.log('✅ Configs seeded')
+
+  // ====================
+  // Trabajadores de prueba
+  // ====================
+  if (isDevOrTest) {
+    const trabajadoresData = [
+      { nombre: 'Juan Pérez', telefono: '3111234567', rol: 'REPARTIDOR', usaMoto: true, capacidadKg: 500 },
+      { nombre: 'María González', telefono: '3129876543', rol: 'REPARTIDOR', usaMoto: true, capacidadKg: 450 },
+      { nombre: 'Pedro Ramírez', telefono: '3134567890', rol: 'SELLADOR', usaMoto: false, capacidadKg: 0 },
+    ]
+    for (const t of trabajadoresData) {
+      // No hay unique key en Trabajador, usar findFirst + create/update
+      const existing = await prisma.trabajador.findFirst({ where: { telefono: t.telefono } })
+      if (existing) {
+        await prisma.trabajador.update({ where: { id: existing.id }, data: t })
+      } else {
+        await prisma.trabajador.create({ data: t })
+      }
+    }
+    console.log('✅ Workers seeded')
+  }
 
   // ====================
   // Precios Historial

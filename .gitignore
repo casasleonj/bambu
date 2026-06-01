@@ -82,3 +82,7 @@ scripts/crear-factura-demo.ts
 # SSH keys
 hermes
 hermes.pub
+
+# Serwist (generated service worker)
+public/sw*
+public/swe-worker*
