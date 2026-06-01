@@ -460,7 +460,6 @@ test.describe('Casos', () => {
     })
     const pedidoData = await pedidoRes.json()
     const pedidoId = pedidoData.pedido?.id || pedidoData.id
-    const pedidoNumero = pedidoData.pedido?.numero || pedidoData.numero
 
     const casoRes = await apiPost(page, '/api/casos', {
       alertaTipo: 'DESCUENTO_NO_JUSTIFICADO',
@@ -764,7 +763,6 @@ test.describe('Casos', () => {
       telefono: `3${String(Date.now()).slice(-9)}`,
     })
     const clienteId = clienteRes.cliente?.id || clienteRes.id
-    const clienteNombre = clienteRes.cliente?.nombre || clienteRes.nombre
 
     const createRes = await apiPost(page, '/api/casos', {
       alertaTipo: 'MONTO_ANOMALO',

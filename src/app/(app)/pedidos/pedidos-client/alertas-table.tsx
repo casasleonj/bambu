@@ -142,19 +142,21 @@ export function AlertasTable({ pedidos }: AlertasTableProps) {
 
   return (
     <div className="space-y-4">
-      {/* Header explicativo */}
-      <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl">
-        <div className="flex items-start gap-3">
-          <div className="text-2xl shrink-0">🛡️</div>
-          <div>
-            <h2 className="text-lg font-bold text-amber-900">Sistema de Alertas</h2>
-            <p className="text-sm text-amber-700 mt-1">
-              Detectamos automáticamente comportamientos inusuales: pedidos múltiples, montos anómalos,
-              fiados frecuentes, pagos vencidos, disputas abiertas y más. Haz clic en ℹ️ para ver la guía de cada alerta.
-            </p>
+      {/* Header explicativo — solo se muestra cuando hay alertas activas */}
+      {filtrados.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl">
+          <div className="flex items-start gap-3">
+            <div className="text-2xl shrink-0">🛡️</div>
+            <div>
+              <h2 className="text-lg font-bold text-amber-900">Sistema de Alertas</h2>
+              <p className="text-sm text-amber-700 mt-1">
+                Detectamos automáticamente comportamientos inusuales: pedidos múltiples, montos anómalos,
+                fiados frecuentes, pagos vencidos, disputas abiertas y más. Haz clic en ℹ️ para ver la guía de cada alerta.
+              </p>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Reglas activas (collapsable) */}
       <div className="bg-white rounded-xl shadow overflow-hidden">

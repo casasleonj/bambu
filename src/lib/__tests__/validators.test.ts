@@ -576,8 +576,8 @@ describe('CerrarEmbarqueSchema', () => {
     expect(result.success).toBe(true)
     if (result.success) {
       const pe = result.data.pedidos[0].productosEntregados
-      expect(pe.cPacaHieloEnt).toBe(0)
-      expect(pe.cBotellonFabEnt).toBe(0)
+      expect(pe?.cPacaHieloEnt).toBe(0)
+      expect(pe?.cBotellonFabEnt).toBe(0)
     }
   })
 })

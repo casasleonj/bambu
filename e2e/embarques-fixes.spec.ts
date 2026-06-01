@@ -1,6 +1,6 @@
 // @tests embarques module - tests for critical fixes applied
 // Covers: Fix #1, #2, #5, #7, #8, #9, #12, #16, #17, #21, #22, #24, #25
-import { test, expect, fullLogin, apiPost, apiGet, apiPut, apiDelete, createTrabajador, createCliente, skipBaseCaja, login, BASE } from './fixtures'
+import { test, expect, fullLogin, apiPost, apiGet, apiDelete, createTrabajador, createCliente, skipBaseCaja, login, BASE } from './fixtures'
 
 async function embarquesLogin(page: any) {
   await skipBaseCaja(page)
@@ -51,6 +51,9 @@ test.describe('Embarques — Fix #1: Discrepancia valora productos individualmen
     if (!pedidoId) { test.skip(); return }
 
     await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, { embarqueId })
+
+    // Send embarque to EN_RUTA before closing
+    await apiPost(page, `/api/embarques/${embarqueId}/enviar`, {})
 
     // Close: deliver only 2 PACA_AGUA (should have discrepancy)
     // Loaded: 5 PACA_AGUA + 3 BOTELLON = 8 units
@@ -208,6 +211,9 @@ test.describe('Embarques — Fix #2: REPARTIDOR no puede override precios', () =
     if (!embarqueId) { test.skip(); return }
 
     await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, { embarqueId })
+
+    // Send embarque to EN_RUTA before closing
+    await apiPost(page, `/api/embarques/${embarqueId}/enviar`, {})
 
     // Get original price
     const getPedidoRes = await apiGet(page, `/api/pedidos/${pedidoId}`)
@@ -398,6 +404,9 @@ test.describe('Embarques — Fix #9: nuevoEmbarqueId validado', () => {
 
     await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, { embarqueId })
 
+    // Send embarque to EN_RUTA before closing
+    await apiPost(page, `/api/embarques/${embarqueId}/enviar`, {})
+
     // Close with non-existent nuevoEmbarqueId
     const closeRes = await apiPost(page, `/api/embarques/${embarqueId}/cerrar`, {
       pedidos: [{
@@ -447,7 +456,8 @@ test.describe('Embarques — Fix #9: nuevoEmbarqueId validado', () => {
 
     if (!embarque1Id || !embarque2Id) { test.skip(); return }
 
-    // Close embarque 2 first
+    // Send embarque 2 to EN_RUTA and close it first
+    await apiPost(page, `/api/embarques/${embarque2Id}/enviar`, {})
     await apiPost(page, `/api/embarques/${embarque2Id}/cerrar`, {
       pedidos: [], ventasLibres: [],
       productos: [
@@ -469,6 +479,9 @@ test.describe('Embarques — Fix #9: nuevoEmbarqueId validado', () => {
     if (!pedidoId) { test.skip(); return }
 
     await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, { embarqueId: embarque1Id })
+
+    // Send embarque 1 to EN_RUTA before closing
+    await apiPost(page, `/api/embarques/${embarque1Id}/enviar`, {})
 
     // Close embarque 1 with nuevoEmbarqueId = closed embarque 2
     const closeRes = await apiPost(page, `/api/embarques/${embarque1Id}/cerrar`, {
@@ -524,6 +537,9 @@ test.describe('Embarques — Fix #12: Pagos sin validacion de monto maximo', () 
     if (!embarqueId) { test.skip(); return }
 
     await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, { embarqueId })
+
+    // Send embarque to EN_RUTA before closing
+    await apiPost(page, `/api/embarques/${embarqueId}/enviar`, {})
 
     // Get original price to calculate reasonable total
     const getPedidoRes = await apiGet(page, `/api/pedidos/${pedidoId}`)
@@ -612,6 +628,8 @@ test.describe('Embarques — Fix #22: Gastos ownership check', () => {
     await page.fill('input[placeholder="Ingrese contraseña"]', 'rep123')
     await page.click('button[type="submit"]')
     await page.waitForURL('**/repartidor', { timeout: 15000 })
+    // Wait for session cookie to propagate to request context
+    await page.waitForTimeout(500)
 
     // Try to add gasto to another repartidor's embarque
     const gastoRes = await apiPost(page, `/api/embarques/${embarqueId}/gastos`, {
