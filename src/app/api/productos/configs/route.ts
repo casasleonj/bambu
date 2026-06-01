@@ -1,12 +1,14 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuth } from '@/lib/auth-check'
+import { requireAuth, requirePermission } from '@/lib/auth-check'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 
 export async function GET(_request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
+  const permCheck = await requirePermission('view:productos', authResult)
+  if (permCheck instanceof Response) return permCheck
 
   try {
     const productos = await prisma.producto.findMany({

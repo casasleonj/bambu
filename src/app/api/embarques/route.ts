@@ -1,3 +1,11 @@
+/**
+ * Embarques API Route — Thin Controller.
+ *
+ * Delegates to use cases for business logic.
+ * GET and DELETE still use inline logic for backward compatibility.
+ * POST delegates to CrearEmbarqueUseCase.
+ */
+
 import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
@@ -6,13 +14,58 @@ import { EmbarqueCreateSchema } from '@/lib/validators'
 import { getTodayRange } from '@/lib/dates'
 import { logAudit } from '@/lib/audit'
 import { calcularPesoDesdeCarga, getCapacidadInfo, type CargaSnapshot } from '@/lib/embarque-capacidad'
-import { getNextNumeroDia } from '@/lib/sequence'
-import { withAdvisoryLock } from '@/lib/locks'
 import { emptyStock } from '@/lib/stock'
 import { EstadoEmbarque } from '@prisma/client'
 import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
+
+// DDD imports
+import { PrismaEmbarqueRepository } from '@/modules/embarques/infrastructure/repositories/PrismaEmbarqueRepository'
+import { PrismaEmbarqueProductoRepository } from '@/modules/embarques/infrastructure/repositories/PrismaEmbarqueProductoRepository'
+import { PrismaTransactionManager } from '@/modules/embarques/infrastructure/transactions/PrismaTransactionManager'
+import { StockValidator } from '@/modules/embarques/infrastructure/stock/StockValidator'
+import { CrearEmbarqueUseCase } from '@/modules/embarques/application/use-cases/CrearEmbarqueUseCase'
+import { CancelarEmbarqueUseCase } from '@/modules/embarques/application/use-cases/CancelarEmbarqueUseCase'
+import type { ITrabajadorEmbarqueRepository, TrabajadorEmbarqueData } from '@/modules/embarques/domain'
+
+// Infrastructure dependencies (lazy-instantiated)
+const embarqueRepo = new PrismaEmbarqueRepository()
+const productoRepo = new PrismaEmbarqueProductoRepository()
+const txManager = new PrismaTransactionManager()
+const stockRepo = new StockValidator()
+
+// Worker repo adapter
+const workerRepo: ITrabajadorEmbarqueRepository = {
+  async findById(id: string, tx?: unknown): Promise<TrabajadorEmbarqueData | null> {
+    const client = (tx as typeof prisma) ?? prisma
+    const raw = await client.trabajador.findUnique({
+      where: { id },
+      select: { id: true, nombre: true, telefono: true, usaMoto: true, capacidadKg: true },
+    })
+    if (!raw) return null
+    return {
+      id: raw.id,
+      nombre: raw.nombre,
+      telefono: raw.telefono ?? undefined,
+      usaMoto: raw.usaMoto,
+      capacidadKg: raw.capacidadKg,
+    }
+  },
+  async findRepartidoresDisponibles(_fecha: Date, _tx?: unknown): Promise<TrabajadorEmbarqueData[]> {
+    const raw = await prisma.trabajador.findMany({
+      where: { usaMoto: true, activo: true },
+      select: { id: true, nombre: true, telefono: true, usaMoto: true, capacidadKg: true },
+    })
+    return raw.map((r) => ({
+      id: r.id,
+      nombre: r.nombre,
+      telefono: r.telefono ?? undefined,
+      usaMoto: r.usaMoto,
+      capacidadKg: r.capacidadKg,
+    }))
+  },
+}
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -46,13 +99,10 @@ export async function GET(request: NextRequest) {
 
     if (!(all === 'true')) {
       if (desde && hasta) {
-        const { startDate, endDate } = (() => {
-          const s = new Date(desde)
-          const e = new Date(hasta)
-          e.setDate(e.getDate() + 1)
-          return { startDate: s, endDate: e }
-        })()
-        where.fecha = { gte: startDate, lt: endDate }
+        const s = new Date(desde)
+        const e = new Date(hasta)
+        e.setDate(e.getDate() + 1)
+        where.fecha = { gte: s, lt: e }
       } else {
         const { startOfDay, endOfDay } = getTodayRange()
         where.fecha = { gte: startOfDay, lt: endOfDay }
@@ -65,6 +115,7 @@ export async function GET(request: NextRequest) {
         include: {
           ruta: { select: { id: true, nombre: true } },
           productos: true,
+          _count: { select: { pedidos: true } },
           trabajador: {
             select: { id: true, nombre: true, capacidadKg: true, comPacaAgua: true, comPacaHielo: true, comBotellon: true, comRepartAgua: true, comRepartHielo: true, comRepartBotellon: true },
           },
@@ -115,6 +166,9 @@ export async function POST(request: NextRequest) {
   if (authResult instanceof Response) return authResult
   const roleCheck = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE], authResult)
   if (roleCheck instanceof Response) return roleCheck
+
+  const session = authResult as { user?: { id?: string } }
+
   try {
     const body = await request.json()
     const parsed = EmbarqueCreateSchema.safeParse(body)
@@ -122,104 +176,23 @@ export async function POST(request: NextRequest) {
       return apiError('Datos invalidos', 400, { formErrors: [formatZodError(parsed.error)] })
     }
 
-    const result = await withAdvisoryLock('EMBARQUE', async (tx) => {
-      const trabajador = await tx.trabajador.findUnique({
-        where: { id: parsed.data.trabajadorId },
-        select: { id: true, nombre: true, capacidadKg: true, usaMoto: true },
-      })
+    // Delegate to use case
+    const useCase = new CrearEmbarqueUseCase(embarqueRepo, workerRepo, stockRepo, productoRepo, txManager)
 
-      if (!trabajador) {
-        throw new Error('TRABAJADOR_NOT_FOUND')
-      }
+    const carga: Record<string, number> = {}
+    for (const item of parsed.data.carga) {
+      carga[item.producto] = item.cargadas
+    }
 
-      if (!trabajador.usaMoto) {
-        throw new Error('TRABAJADOR_SIN_MOTO')
-      }
-
-      const carga: CargaSnapshot = emptyStock() as CargaSnapshot
-      for (const item of parsed.data.carga) {
-        const key = item.producto as keyof typeof carga
-        if (key in carga) {
-          carga[key] = item.cargadas
-        }
-      }
-
-      const { getStockDisponible, evaluarStock } = await import('@/lib/stock')
-      const stockResult = await getStockDisponible()
-      const stockEval = await evaluarStock(carga)
-
-      const MAX_OVERRIDE_PCT = 0.5
-      const HARD_CAP_SIN_ESTIMADO = 30
-
-      if (stockEval.hasDeficit) {
-        for (const key of ['PACA_AGUA', 'PACA_HIELO'] as const) {
-          const disponible = stockEval.disponible[key]
-          let maxAllowed: number
-          if (stockResult.tieneEstimado) {
-            continue
-          } else if (disponible > 0) {
-            maxAllowed = Math.floor(disponible * (1 + MAX_OVERRIDE_PCT))
-          } else {
-            maxAllowed = HARD_CAP_SIN_ESTIMADO
-          }
-          if (carga[key] > maxAllowed) {
-            throw new Error(`STOCK_OVERRIDE_EXCEEDED: ${key} excede límite (${maxAllowed} máximo)`)
-          }
-        }
-      }
-
-      const totalUnidades = parsed.data.carga.reduce((s, item) => s + item.cargadas, 0)
-      if (totalUnidades > 70) {
-        throw new Error(`MAX_UNITS_EXCEEDED: ${totalUnidades} unidades exceden el máximo de 70`)
-      }
-
-      getTodayRange()
-      const numeroDia = await getNextNumeroDia(tx, parsed.data.trabajadorId, new Date())
-
-      const disponible = stockResult.stock
-
-      const stockSnapshotData: Record<string, unknown> = {
-        fecha: new Date().toISOString(),
-        disponible,
-        cargado: carga,
-        deficit: stockEval.deficit,
-        totalDeficit: stockEval.totalDeficit,
-        overrideRequerido: stockEval.hasDeficit,
-        overrideAutorizadoPor: stockEval.hasDeficit ? (authResult as { user?: { id?: string } }).user?.id : null,
-        overrideTimestamp: stockEval.hasDeficit ? new Date().toISOString() : null,
-        overrideMotivo: parsed.data.overrideMotivo || null,
-      }
-
-      const horaSalidaDate = parsed.data.horaSalida
-        ? new Date(`${new Date().toISOString().split('T')[0]}T${parsed.data.horaSalida}:00`)
-        : null
-
-      const embarque = await tx.embarque.create({
-        data: {
-          trabajadorId: parsed.data.trabajadorId,
-          rutaId: parsed.data.rutaId || null,
-          tipoMoto: parsed.data.tipoMoto || null,
-          horaSalida: horaSalidaDate,
-          estado: EstadoEmbarque.ABIERTO,
-          obs: parsed.data.obs,
-          numeroDia,
-          baseDinero: parsed.data.baseDinero,
-          stockSnapshot: JSON.stringify(stockSnapshotData),
-          productos: {
-            create: parsed.data.carga.map(item => ({
-              producto: item.producto,
-              cargadas: item.cargadas,
-            })),
-          },
-        },
-        include: {
-          trabajador: true,
-          ruta: true,
-          productos: true,
-        },
-      })
-
-      return embarque
+    const result = await useCase.execute({
+      trabajadorId: parsed.data.trabajadorId,
+      rutaId: parsed.data.rutaId,
+      carga: carga as never,
+      tipoMoto: parsed.data.tipoMoto,
+      baseDinero: parsed.data.baseDinero,
+      obs: parsed.data.obs,
+      createdById: session.user?.id,
+      verificarStock: true,
     })
 
     logAudit({
@@ -227,7 +200,7 @@ export async function POST(request: NextRequest) {
       registroId: result.id,
       accion: 'CREATE',
       datos: { numero: result.numero, numeroDia: result.numeroDia, trabajadorId: result.trabajadorId },
-      usuarioId: (authResult as { user?: { id?: string } }).user?.id,
+      usuarioId: session.user?.id,
     })
 
     return apiSuccess({ embarque: result }, 201)
@@ -236,20 +209,23 @@ export async function POST(request: NextRequest) {
     if (message === 'TRABAJADOR_NOT_FOUND') {
       return apiError('Trabajador no encontrado', 400)
     }
-    if (message === 'TRABAJADOR_SIN_MOTO') {
+    if (message.includes('no tiene moto')) {
       return apiError('Este trabajador no tiene moto asignada', 400)
     }
     if (message.startsWith('STOCK_INSUFFICIENT')) {
       return apiError(message.replace('STOCK_INSUFFICIENT: ', 'Stock insuficiente: '), 400)
     }
-    if (message.startsWith('MAX_UNITS_EXCEEDED')) {
-      return apiError('Máximo 70 unidades por embarque', 400)
+    if (message.includes('70')) {
+      return apiError('Maximo 70 unidades por embarque', 400)
     }
-    if (message.startsWith('STOCK_OVERRIDE_EXCEEDED')) {
-      return apiError(message.replace('STOCK_OVERRIDE_EXCEEDED: ', ''), 400)
+    if (message.includes('peso') || message.includes('capacidad')) {
+      return apiError('La carga excede la capacidad de la moto', 400)
+    }
+    if (message.includes('ya tiene un embarque')) {
+      return apiError('El trabajador ya tiene un embarque abierto hoy', 409)
     }
     if (message.includes('P2002') || message.includes('unique constraint')) {
-      return apiError('Ya existe un embarque con ese número para este repartidor hoy. Intenta de nuevo.', 409)
+      return apiError('Ya existe un embarque con ese numero para este repartidor hoy', 409)
     }
     logger.error({ err: message }, 'Error creating embarque:')
     return apiError(`Error creando embarque: ${message}`, 500)
@@ -261,33 +237,43 @@ export async function DELETE(request: NextRequest) {
   if (authResult instanceof Response) return authResult
   const roleCheck = await requireRole([ROLES.ADMIN], authResult)
   if (roleCheck instanceof Response) return roleCheck
+
   try {
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
     if (!id) return apiError('ID requerido', 400)
 
-    const embarque = await prisma.embarque.findUnique({
-      where: { id },
-      include: { pedidos: true },
-    })
-
-    if (!embarque) return apiError('Embarque no encontrado', 404)
-    if (embarque.estado !== EstadoEmbarque.ABIERTO) {
-      return apiError('Solo se pueden cancelar embarques abiertos', 400)
+    // We need a pedido repo for cancel — inline for now
+    const pedidoRepo = {
+      async findByEmbarqueId(embarqueId: string, tx?: unknown) {
+        const client = (tx as typeof prisma) ?? prisma
+        const raw = await client.pedido.findMany({
+          where: { embarqueId },
+          select: { id: true },
+        })
+        return raw.map((p: { id: string }) => ({ id: p.id, numero: 0, clienteId: '', clienteNombre: '', embarqueId, estadoEntrega: '', estado: '', total: 0, items: [], pagos: [] }))
+      },
+      async reassignToEmbarque(pedidoId: string, nuevoEmbarqueId: string | null, tx?: unknown) {
+        const client = (tx as typeof prisma) ?? prisma
+        await client.pedido.update({
+          where: { id: pedidoId },
+          data: { embarqueId: nuevoEmbarqueId, estado: 'PENDIENTE', estadoEntrega: 'PENDIENTE' },
+        })
+      },
     }
 
-    await prisma.pedido.updateMany({
-      where: { embarqueId: id },
-      data: { embarqueId: null, estado: 'PENDIENTE', estadoEntrega: 'PENDIENTE' },
-    })
-
-    await prisma.embarque.update({
-      where: { id },
-      data: { estado: EstadoEmbarque.CANCELADO },
-    })
+    const cancelUseCase = new CancelarEmbarqueUseCase(embarqueRepo, pedidoRepo as never, txManager)
+    await cancelUseCase.execute({ id })
 
     return apiSuccess({ message: 'Embarque cancelado' })
   } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown'
+    if (message.includes('Solo se pueden cancelar') || message.includes('transicion')) {
+      return apiError('Solo se pueden cancelar embarques abiertos', 400)
+    }
+    if (message === 'EMBARQUE_NOT_FOUND') {
+      return apiError('Embarque no encontrado', 404)
+    }
     return apiError('Error cancelando embarque')
   }
 }

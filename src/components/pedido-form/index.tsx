@@ -1,16 +1,16 @@
 'use client'
 
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { DEFAULT_PRICES, PRODUCTO_INFO, getProductosForCanal, type ProductoId } from '@/lib/prices'
-import type { Cliente, Tier, PedidoFormData, PedidoFormProps, PedidoItemInput } from './types'
+import { PRODUCTO_INFO, type ProductoId } from '@/lib/prices'
+import type { Cliente, PedidoFormData, PedidoFormProps, PedidoItemInput } from './types'
 import { ClienteSection } from './cliente-section'
 import { ProductosSection } from './productos-section'
 import { PagoSection } from './pago-section'
 import { FormSubmit } from './form-submit'
-import { usePriceSync } from '@/hooks/use-price-sync'
+import { useResolverPrecios } from '@/hooks/use-resolver-precios'
 
 export type { PedidoFormData, PedidoFormProps } from './types'
 
@@ -28,133 +28,39 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
     bolsaAgua: 0,
     bolsaHielo: 0,
   })
-  const [preciosResueltos, setPreciosResueltos] = useState<Record<string, number>>({})
   const [preciosManuales, setPreciosManuales] = useState<Record<string, number>>({})
   const [pagos, setPagos] = useState<{ metodo: string; monto: number }[]>([])
   const [modoPagoActivo, setModoPagoActivo] = useState<string | null>(null)
   const [montoInput, setMontoInput] = useState('')
   const [observaciones, setObservaciones] = useState('')
-  const [tablaPrecios, setTablaPrecios] = useState<Record<string, Tier[]>>({})
   const [preciosEditando, setPreciosEditando] = useState<Record<string, boolean>>({})
   const [submitting, setSubmitting] = useState(false)
-  const [productosConfig, setProductosConfig] = useState<Array<{ codigo: string; aplicaDomicilio: boolean }>>([])
 
+  const {
+    tablaPrecios,
+    preciosResueltos,
+    productosVisibles,
+    preciosStale,
+    resolverPrecios,
+    refreshPrecios,
+    updateRefs,
+    getPrecio,
+    getEffectivePrice,
+    calcularTotal,
+    formatTier,
+    getActiveTier,
+  } = useResolverPrecios({ canal: CANAL, preciosBase: precios })
+
+  // Sync refs for price refresh
   useEffect(() => {
-    fetch(`/api/precios/tabla`)
-      .then(r => r.json())
-      .then(d => { if (d.tabla) setTablaPrecios(d.tabla) })
-      .catch(() => {})
-  }, [])
-
-  useEffect(() => {
-    fetch(`/api/productos/configs`)
-      .then(r => r.json())
-      .then(d => { if (d.success && d.productos) setProductosConfig(d.productos) })
-      .catch(() => {})
-  }, [])
-
-  // Refs para acceder a valores actuales en el callback
-  const productosRef = useRef(productos)
-  const clienteIdRef = useRef(clienteSeleccionado?.id)
-
-  useEffect(() => { productosRef.current = productos }, [productos])
-  useEffect(() => { clienteIdRef.current = clienteSeleccionado?.id }, [clienteSeleccionado?.id])
-
-  const productosVisibles = getProductosForCanal(CANAL, productosConfig)
-
-  const resolverPrecios = useCallback(async (
-    prods: Record<ProductoId, number>,
-    canalVal: string,
-    clienteId?: string,
-  ) => {
-    const items = productosVisibles
-      .filter(id => prods[id] > 0)
-      .map(id => ({
-        codigo: PRODUCTO_INFO[id].codigo,
-        cantidad: prods[id],
-      }))
-
-    if (items.length === 0) {
-      setPreciosResueltos({})
-      return
-    }
-
-    try {
-      const res = await fetch('/api/precios/resolver', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items, canal: canalVal, clienteId }),
-      })
-      if (res.ok) {
-        const data = await res.json()
-        if (data.precios) {
-          const nuevos: Record<string, number> = {}
-          for (const [codigo, info] of Object.entries(data.precios)) {
-            nuevos[codigo] = (info as { precio: number }).precio
-          }
-          setPreciosResueltos(nuevos)
-        }
-      }
-    } catch {
-      // fallback
-    }
-  }, [productosVisibles])
-
-  // Price sync: detectar cambios de precios via polling
-  const handlePriceRefresh = useCallback(async () => {
-    try {
-      const res = await fetch('/api/precios/tabla')
-      const data = await res.json()
-      if (data.tabla) {
-        setTablaPrecios(data.tabla)
-        // Re-resolver precios si hay cantidades cargadas
-        if (Object.values(productosRef.current).some(c => c > 0)) {
-          resolverPrecios(productosRef.current, CANAL, clienteIdRef.current)
-        }
-      }
-    } catch (error) {
-      console.error('Error refreshing prices:', error)
-    }
-  }, [resolverPrecios])
-
-  const { stale: preciosStale, refresh: refreshPrecios } = usePriceSync(handlePriceRefresh)
-
-  const getPrecio = (productoId: ProductoId): number => {
-    const info = PRODUCTO_INFO[productoId]
-    if (preciosResueltos[info.codigo] && preciosResueltos[info.codigo] > 0) {
-      return preciosResueltos[info.codigo]
-    }
-    const tiers = tablaPrecios[info.codigo]
-    if (tiers && tiers.length > 0) {
-      return tiers[0].precio
-    }
-    return precios[info.codigo] || DEFAULT_PRICES[info.codigo] || 0
-  }
-
-  function getEffectivePrice(codigo: string): number {
-    if (preciosManuales[codigo] !== undefined) return preciosManuales[codigo]
-    if (preciosResueltos[codigo]) return preciosResueltos[codigo]
-    const pid = productosVisibles.find(id => PRODUCTO_INFO[id].codigo === codigo)
-    return pid ? getPrecio(pid) : 0
-  }
-
-  const calcularTotal = (): number => {
-    return productosVisibles.reduce((total, prodId) => {
-      const cant = productos[prodId] || 0
-      if (cant <= 0) return total
-      const info = PRODUCTO_INFO[prodId]
-      return total + cant * getEffectivePrice(info.codigo)
-    }, 0)
-  }
-
-  const totalPagado = pagos.reduce((sum, p) => sum + (p.monto || 0), 0)
-  const total = calcularTotal()
+    updateRefs(productos, clienteSeleccionado?.id)
+  }, [productos, clienteSeleccionado?.id, updateRefs])
 
   const handleCantidadChange = (productoId: ProductoId, value: string) => {
     const cant = parseInt(value) || 0
     const newProds = { ...productos, [productoId]: cant }
     setProductos(newProds)
-    resolverPrecios(newProds, CANAL, clienteSeleccionado?.id)
+    resolverPrecios(newProds, clienteSeleccionado?.id)
   }
 
   const metodosUsados = new Set(pagos.map(p => p.metodo))
@@ -188,12 +94,14 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
   }
 
   const pagarCompleto = () => {
+    const total = calcularTotal(productos, preciosManuales)
     if (total <= 0) return
     setPagos([{ metodo: 'EFECTIVO', monto: total }])
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    const total = calcularTotal(productos, preciosManuales)
     if (total <= 0) {
       toast.error('El pedido debe tener al menos un producto')
       return
@@ -266,16 +174,8 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
     }
   }
 
-  function formatTier(t: Tier): string {
-    if (t.cantMax) return `${t.cantMin}-${t.cantMax}: $${t.precio.toLocaleString()}`
-    return `${t.cantMin}+: $${t.precio.toLocaleString()}`
-  }
-
-  function getActiveTier(codigo: string, cant: number): Tier | undefined {
-    const tiers = tablaPrecios[codigo]
-    if (!tiers) return undefined
-    return tiers.find(t => cant >= t.cantMin && (t.cantMax === null || cant <= t.cantMax))
-  }
+  const totalPagado = pagos.reduce((sum, p) => sum + (p.monto || 0), 0)
+  const total = calcularTotal(productos, preciosManuales)
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto pr-2">
@@ -308,7 +208,7 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
         nuevoCliente={nuevoCliente}
         setNuevoCliente={setNuevoCliente}
         clientes={clientes}
-        onClienteSelected={(cliente) => resolverPrecios(productos, CANAL, cliente.id)}
+        onClienteSelected={() => resolverPrecios(productos, clienteSeleccionado?.id)}
       />
 
       <ProductosSection
@@ -323,7 +223,7 @@ export function PedidoForm({ onSubmit, clientes = [], precios = {} }: PedidoForm
         onCantidadChange={handleCantidadChange}
         total={total}
         getPrecio={getPrecio}
-        getEffectivePrice={getEffectivePrice}
+        getEffectivePrice={(codigo: string) => getEffectivePrice(codigo, preciosManuales)}
         formatTier={formatTier}
         getActiveTier={getActiveTier}
         productosVisibles={productosVisibles}

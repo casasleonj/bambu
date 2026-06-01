@@ -12,12 +12,14 @@
  */
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuth } from '@/lib/auth-check'
+import { requireAuth, requirePermission } from '@/lib/auth-check'
 import { apiSuccess, apiError } from '@/lib/api-response'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
+  const permCheck = await requirePermission('view:clientes', authResult)
+  if (permCheck instanceof Response) return permCheck
 
   const searchParams = request.nextUrl.searchParams
   const query = searchParams.get('q')

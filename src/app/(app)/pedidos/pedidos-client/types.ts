@@ -68,13 +68,34 @@ export interface Pedido {
   }
 }
 
+export interface EmbarqueProducto {
+  producto: string
+  cargadas: number
+}
+
 export interface Embarque {
   id: string
   numero: number
-  trabajador: { nombre: string }
+  numeroDia: number
+  trabajador: { nombre: string; capacidadKg?: number }
   estado: string
   ruta?: { nombre: string } | null
   totalPacas?: number
+  horaSalida?: string | null
+  tipoMoto?: string | null
+  pedidos?: Array<{ id: string }>
+  productos?: EmbarqueProducto[]
+  _count?: { pedidos: number }
+  capacidadInfo?: {
+    nivel: string
+    label: string
+    color: string
+    icon: string
+    porcentaje: number
+    total: number
+    pesoKg: number
+    capacidadKg: number
+  }
 }
 
 export interface Cliente {

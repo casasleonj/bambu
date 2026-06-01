@@ -50,7 +50,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (!embarque) {
         throw new Error('EMBARQUE_NOT_FOUND')
       }
-      if (embarque.estado !== 'ABIERTO') {
+      if (embarque.estado === 'CERRADO' || embarque.estado === 'CANCELADO') {
         throw new Error('EMBARQUE_NOT_OPEN')
       }
 

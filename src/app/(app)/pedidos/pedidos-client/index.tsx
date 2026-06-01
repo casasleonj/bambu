@@ -19,6 +19,10 @@ import { AlertasTable } from './alertas-table'
 import { calcularAlertas } from './alertas-utils'
 import type { Pedido, Embarque, Cliente } from './types'
 import { getPresetDate } from '@/lib/dates'
+import { usePedidos } from '@/hooks/use-pedidos'
+import { useCrearPedido } from '@/hooks/use-crear-pedido'
+import { useAnularPedido } from '@/hooks/use-anular-pedido'
+import { useAsignarEmbarque } from '@/hooks/use-asignar-embarque'
 
 const PedidoFormUnified = dynamic(() => import('@/components/pedido-form-unified').then(m => m.PedidoFormUnified), { ssr: false })
 import type { PedidoInicial, PedidoUnifiedData } from '@/components/pedido-form-unified'
@@ -27,9 +31,14 @@ export function PedidosClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { confirm, modal: confirmModal } = useConfirm()
-  const [pedidos, setPedidos] = useState<Pedido[]>([])
-  const [loading, setLoading] = useState(true)
-  const [fetchError, setFetchError] = useState<string | null>(null)
+
+  // Use pedidos hook for data fetching
+  const { pedidos: pedidosRaw, loading, error: fetchError, refetch } = usePedidos(
+    {},
+    { autoFetch: false },
+  )
+  const pedidos = pedidosRaw as Pedido[]
+
   const [showModal, setShowModal] = useState(false)
   const [showVentaRapida, setShowVentaRapida] = useState(false)
   const [selectedPedido, setSelectedPedido] = useState<Pedido | null>(null)
@@ -102,20 +111,10 @@ export function PedidosClient() {
 
   const [searchInput, setSearchInput] = useState(search)
 
+  // Wrap refetch to handle initial load
   const fetchPedidos = useCallback(async () => {
-    try {
-      setFetchError(null)
-      const res = await fetch('/api/pedidos?all=true', { credentials: 'include' })
-      const data = await res.json()
-      setPedidos(data.pedidos || data.data || [])
-    } catch (error) {
-      console.error('Error fetching pedidos:', error)
-      setFetchError('No se pudieron cargar los pedidos')
-      toast.error('Error cargando pedidos')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+    await refetch()
+  }, [refetch])
 
   async function fetchClientes(): Promise<Cliente[]> {
     try {
@@ -135,7 +134,7 @@ export function PedidosClient() {
     try {
       const res = await fetch('/api/embarques', { credentials: 'include' })
       const data = await res.json()
-      setEmbarques((data.embarques || data.data || []).filter((e: Embarque) => e.estado === 'ABIERTO'))
+      setEmbarques((data.embarques || data.data || []).filter((e: Embarque) => e.estado === 'ABIERTO' || e.estado === 'EN_RUTA'))
     } catch (error) {
       console.error('Error fetching embarques:', error)
     }
@@ -245,39 +244,63 @@ export function PedidosClient() {
     }
   }, [activeTab, searchParams, router])
 
+  const { create: crearPedido } = useCrearPedido({
+    onSuccess: () => {
+      setShowModal(false)
+      setShowVentaRapida(false)
+      setPedidoInicial(undefined)
+      setPedidoEditando(null)
+      setShowDetailModal(false)
+      fetchPedidos()
+      fetchClientes()
+    },
+  })
+
+  const { anular: anularPedido } = useAnularPedido({
+    onSuccess: () => {
+      fetchPedidos()
+    },
+  })
+
+  const { asignar: asignarEmbarque } = useAsignarEmbarque({
+    onSuccess: () => {
+      fetchPedidos()
+      fetchEmbarques()
+    },
+  })
+
   async function handlePedidoSubmit(data: PedidoUnifiedData) {
     try {
       const isEdit = data.isEdit && data.pedidoId
-      const url = isEdit ? `/api/pedidos/${data.pedidoId}` : '/api/pedidos'
-      const method = isEdit ? 'PUT' : 'POST'
-
-      const body = isEdit
-        ? { items: data.items, obs: data.obs, actualizarCliente: data.actualizarCliente }
-        : data
-
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(body),
-      })
-      if (res.ok) {
-        setShowModal(false)
-        setShowVentaRapida(false)
-        setPedidoInicial(undefined)
-        setPedidoEditando(null)
-        setShowDetailModal(false)
-        fetchPedidos()
-        fetchClientes()
-        const msg = isEdit
-          ? 'Pedido actualizado'
-          : data.ventaRapida
-            ? (data.pagos?.length === 0 ? 'Venta registrada (pendiente)' : 'Venta cobrada')
-            : 'Pedido creado exitosamente'
-        toast.success(msg)
+      if (isEdit) {
+        // Edit uses PUT endpoint directly (not yet migrated to hook)
+        const res = await fetch(`/api/pedidos/${data.pedidoId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ items: data.items, obs: data.obs, actualizarCliente: data.actualizarCliente }),
+        })
+        if (res.ok) {
+          setShowModal(false)
+          setShowVentaRapida(false)
+          setPedidoInicial(undefined)
+          setPedidoEditando(null)
+          setShowDetailModal(false)
+          fetchPedidos()
+          fetchClientes()
+          toast.success('Pedido actualizado')
+        } else {
+          const err = await res.json()
+          toast.error(err.error?.message || err.error?.formErrors?.[0] || 'Error al guardar')
+        }
       } else {
-        const err = await res.json()
-        toast.error(err.error?.message || err.error?.formErrors?.[0] || 'Error al guardar')
+        // Create uses the hook
+        const result = await crearPedido(data as any)
+        if (!result) return
+        const msg = data.ventaRapida
+          ? (data.pagos?.length === 0 ? 'Venta registrada (pendiente)' : 'Venta cobrada')
+          : 'Pedido creado exitosamente'
+        toast.success(msg)
       }
     } catch (error) {
       console.error('Error saving pedido:', error)
@@ -503,27 +526,28 @@ export function PedidosClient() {
 
     setUpdatingId(id)
     try {
-      let res: Response
+      let success = false
       if (nuevoEstado === 'ANULADO') {
-        res = await fetch(`/api/pedidos/${id}/anular`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ motivo: anularMotivoRef.current.trim(), devolverStock: anularDevolverStockRef.current }),
+        success = await anularPedido({
+          pedidoId: id,
+          motivo: anularMotivoRef.current.trim(),
+          devolverStock: anularDevolverStockRef.current,
         })
       } else {
-        res = await fetch(`/api/pedidos/${id}`, {
+        // Other state transitions still use PUT directly (not yet migrated)
+        const res = await fetch(`/api/pedidos/${id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ estado: nuevoEstado }),
         })
+        success = res.ok
       }
-      if (res.ok) {
+      if (success) {
         setShowDetailModal(false)
         fetchPedidos()
         toast.success(`Estado actualizado a ${nuevoEstado}`)
       } else {
-        const errData = await res.json().catch(() => ({}))
-        toast.error(errData.error?.message || errData.error || 'Error actualizando estado')
+        toast.error('Error actualizando estado')
       }
     } catch (error) {
       console.error('Error cambiando estado:', error)
@@ -533,21 +557,13 @@ export function PedidosClient() {
     }
   }
 
-  async function asignarEmbarque() {
+  async function handleAsignarEmbarque() {
     if (!selectedPedidoForEmbarque || !selectedEmbarqueId) return
     setUpdatingId(selectedPedidoForEmbarque)
     try {
-      const res = await fetch(`/api/pedidos/${selectedPedidoForEmbarque}/enviar`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ embarqueId: selectedEmbarqueId }),
-      })
-      if (res.ok) {
+      const success = await asignarEmbarque(selectedPedidoForEmbarque, selectedEmbarqueId)
+      if (success) {
         toast.success('Pedido enviado y asignado a embarque')
-        fetchPedidos()
-      } else {
-        const err = await res.json()
-        toast.error(err.error || 'Error al enviar pedido')
       }
     } catch (error) {
       console.error('Error asignando embarque:', error)
@@ -598,7 +614,7 @@ export function PedidosClient() {
         title="No se pudieron cargar los pedidos"
         message={fetchError}
         errorCode="FETCH_PEDIDOS_ERROR"
-        onRetry={() => { setLoading(true); fetchPedidos(); fetchClientes(); fetchEmbarques(); }}
+        onRetry={() => { fetchPedidos(); fetchClientes(); fetchEmbarques(); }}
         recoveryActions={[
           {
             label: 'Verificar conexión',
@@ -776,77 +792,164 @@ export function PedidosClient() {
       </Modal>
 
       {/* Modal Asignar Embarque */}
-      <Modal open={showEmbarqueModal} onClose={() => { setShowEmbarqueModal(false); setSelectedPedidoForEmbarque(null) }} className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+      <Modal open={showEmbarqueModal} onClose={() => { setShowEmbarqueModal(false); setSelectedPedidoForEmbarque(null); setSelectedEmbarqueId('') }} className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
         <h2 className="text-lg font-bold mb-4">Asignar a Embarque</h2>
-        <p className="text-sm text-gray-500 mb-4">Selecciona un embarque abierto para este pedido:</p>
+        <p className="text-sm text-gray-500 mb-2">Selecciona un embarque abierto o en ruta para este pedido:</p>
         {(() => {
           const pedidoPacas = selectedPedidoForEmbarque ? pedidos.find((p) => p.id === selectedPedidoForEmbarque) : null
           const pedidoPacaCount = pedidoPacas ? (pedidoPacas.cPacaAguaPed || 0) + (pedidoPacas.cPacaHieloPed || 0) + (pedidoPacas.cBotellonFabPed || 0) + (pedidoPacas.cBotellonDomPed || 0) + (pedidoPacas.cBolsaAguaPed || 0) + (pedidoPacas.cBolsaHieloPed || 0) : 0
-          const embarquesDisponibles = embarques.filter((e) => e.estado === 'ABIERTO' && (e.totalPacas || 0) + pedidoPacaCount <= 70)
-          const embarquesLlenos = embarques.filter((e) => e.estado === 'ABIERTO' && (e.totalPacas || 0) + pedidoPacaCount > 70)
+          const embarquesDisponibles = embarques.filter((e) => (e.estado === 'ABIERTO' || e.estado === 'EN_RUTA') && (e.totalPacas || 0) + pedidoPacaCount <= 70)
+          const embarquesLlenos = embarques.filter((e) => (e.estado === 'ABIERTO' || e.estado === 'EN_RUTA') && (e.totalPacas || 0) + pedidoPacaCount > 70)
+
+          const sortFn = (a: Embarque, b: Embarque) => {
+            if (a.estado === 'EN_RUTA' && b.estado !== 'EN_RUTA') return -1
+            if (a.estado !== 'EN_RUTA' && b.estado === 'EN_RUTA') return 1
+            const ha = a.horaSalida ? new Date(a.horaSalida).getTime() : Infinity
+            const hb = b.horaSalida ? new Date(b.horaSalida).getTime() : Infinity
+            return ha - hb
+          }
+          const embarquesOrdenados = [...embarquesDisponibles].sort(sortFn)
 
           if (embarquesDisponibles.length === 0 && embarquesLlenos.length === 0) {
             return (
               <div className="text-center py-4">
-                <p className="text-sm text-gray-500 mb-2">No hay embarques abiertos</p>
+                <p className="text-sm text-gray-500 mb-2">No hay embarques abiertos o en ruta</p>
                 <p className="text-xs text-gray-400">Crea un embarque primero para poder enviar este pedido</p>
               </div>
             )
           }
 
+          const embarquesLlenosOrdenados = [...embarquesLlenos].sort(sortFn)
+
+          const renderCard = (e: Embarque, isFull: boolean) => {
+            const isSelected = selectedEmbarqueId === e.id
+            const horaStr = e.horaSalida
+              ? new Date(e.horaSalida).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })
+              : 'Sin hora'
+            const displayNumero = e.numeroDia > 0 ? e.numeroDia : e.numero
+            return (
+              <button
+                key={e.id}
+                role="listitem"
+                onClick={() => { if (!isFull) setSelectedEmbarqueId(e.id) }}
+                aria-pressed={!isFull ? isSelected : undefined}
+                disabled={isFull}
+                className={`w-full text-left rounded-xl border-2 transition p-4 ${
+                  isFull
+                    ? 'bg-gray-50 border-gray-200 opacity-60 cursor-not-allowed'
+                    : isSelected
+                      ? 'bg-blue-50 border-blue-500 shadow-sm'
+                      : 'bg-white border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <div className="flex justify-between items-start mb-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-lg font-bold text-gray-800">Embarque #{displayNumero}</span>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                      e.estado === 'EN_RUTA' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {e.estado === 'EN_RUTA' ? 'En Ruta' : 'Abierto'}
+                    </span>
+                    {isFull && (
+                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+                        Sin cupo
+                      </span>
+                    )}
+                  </div>
+                  {e.capacidadInfo && (
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${e.capacidadInfo.color}`}>
+                      <span aria-hidden="true">{e.capacidadInfo.icon}</span> {e.capacidadInfo.label}
+                    </span>
+                  )}
+                </div>
+                <div className="text-sm text-gray-600 space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span><span aria-hidden="true">🕒</span> {horaStr}</span>
+                    {e.tipoMoto && <span><span aria-hidden="true">· 🛵</span> {e.tipoMoto}</span>}
+                    <span><span aria-hidden="true">· 👤</span> {e.trabajador.nombre}</span>
+                  </div>
+                  {e.ruta && <div className="text-blue-600 text-xs"><span aria-hidden="true">📍</span> {e.ruta.nombre}</div>}
+                  {/* Carga inicial: iconos de productos */}
+                  {e.productos && e.productos.length > 0 && e.productos.some(p => p.cargadas > 0) && (
+                    <div className="flex items-center gap-3 text-xs text-gray-600">
+                      <span className="text-gray-400">Carga:</span>
+                      {e.productos
+                        .filter(p => p.cargadas > 0)
+                        .map(p => {
+                          const meta = getProductoIconConfig(p.producto)
+                          const Icon = meta.Icon
+                          return (
+                            <span key={p.producto} className="inline-flex items-center gap-1">
+                              <Icon size={14} />
+                              <span className="font-medium">{p.cargadas}</span>
+                            </span>
+                          )
+                        })}
+                    </div>
+                  )}
+                  {/* Pedidos asignados + capacidad */}
+                  <div className="text-xs text-gray-500">
+                    <span aria-hidden="true">📦</span> {e._count?.pedidos || 0} pedidos asignados · Capacidad: {e.totalPacas || 0}/70 unidades
+                  </div>
+                </div>
+                {e.capacidadInfo && (
+                  <div className="mt-2 w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        e.capacidadInfo.nivel === 'ideal' ? 'bg-green-500' :
+                        e.capacidadInfo.nivel === 'pesado' ? 'bg-yellow-500' :
+                        e.capacidadInfo.nivel === 'maximo' ? 'bg-orange-500' : 'bg-red-500'
+                      }`}
+                      style={{ width: `${Math.min(e.capacidadInfo.porcentaje, 100)}%` }}
+                    />
+                  </div>
+                )}
+              </button>
+            )
+          }
+
           return (
             <div className="space-y-3">
+              <p className="text-xs text-gray-400">
+                {embarquesDisponibles.length} con cupo · {embarquesLlenos.length} sin cupo
+              </p>
               {embarquesDisponibles.length === 0 && embarquesLlenos.length > 0 && (
                 <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                  Todos los embarques abiertos están llenos (70 pacas). Crea un nuevo embarque.
+                  Todos los embarques están llenos (70 pacas). Crea un nuevo embarque.
                 </div>
               )}
-              <div className="max-h-48 overflow-y-auto border rounded-lg">
-                {embarquesDisponibles.map((e) => {
-                  const capacidad = e.totalPacas || 0
-                  const capacidadLabel = capacidad >= 70 ? '⛔ Excedido' : capacidad >= 65 ? '🔴 Máximo' : capacidad >= 60 ? '🟠 Pesado' : '🟢 Ideal'
-                  const isSelected = selectedEmbarqueId === e.id
-                  return (
-                    <button
-                      key={e.id}
-                      onClick={() => setSelectedEmbarqueId(e.id)}
-                      className={`w-full text-left p-3 border-b last:border-b-0 transition ${
-                        isSelected ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50'
-                      }`}
-                    >
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <span className="font-medium">#{e.numero}</span>
-                          <span className="text-gray-600 ml-2">{e.trabajador.nombre}</span>
-                          {e.ruta && <span className="text-blue-600 text-xs ml-2">{e.ruta.nombre}</span>}
-                        </div>
-                        <span className="text-xs">{capacidadLabel} ({capacidad})</span>
-                      </div>
-                    </button>
-                  )
-                })}
+              <div role="list" className="max-h-72 overflow-y-auto space-y-2 pr-1">
+                {embarquesOrdenados.map((e) => renderCard(e, false))}
+                {embarquesLlenosOrdenados.length > 0 && (
+                  <div className="pt-2 border-t border-gray-200">
+                    <p className="text-xs text-gray-500 mb-2 px-1">Embarques sin cupo:</p>
+                    <div className="space-y-2">
+                      {embarquesLlenosOrdenados.map((e) => renderCard(e, true))}
+                    </div>
+                  </div>
+                )}
               </div>
               {selectedEmbarqueId && (() => {
                 const e = embarques.find((em) => em.id === selectedEmbarqueId)
                 if (!e) return null
                 const totalProyectado = (e.totalPacas || 0) + pedidoPacaCount
                 if (totalProyectado >= 70) {
-                  return <p className="text-xs text-red-600">⚠️ Este pedido excederá la capacidad (70 pacas)</p>
+                  return <p className="text-xs text-red-600"><span aria-hidden="true">⚠️</span> Este pedido excederá la capacidad (70 pacas)</p>
                 }
                 return null
               })()}
               {!selectedEmbarqueId && embarquesDisponibles.length > 0 && (
                 <p className="text-xs text-amber-600">Selecciona un embarque para continuar</p>
               )}
-              <div className="flex gap-2">
+              <div className="flex gap-2 pt-2">
                 <button
-                  onClick={() => { setShowEmbarqueModal(false); setSelectedPedidoForEmbarque(null) }}
+                  onClick={() => { setShowEmbarqueModal(false); setSelectedPedidoForEmbarque(null); setSelectedEmbarqueId('') }}
                   className="flex-1 px-4 py-2 border rounded-lg text-sm hover:bg-gray-50"
                 >
                   Cancelar
                 </button>
                 <button
-                  onClick={asignarEmbarque}
+                  onClick={handleAsignarEmbarque}
                   disabled={updatingId === selectedPedidoForEmbarque || !selectedEmbarqueId}
                   className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
@@ -917,7 +1020,7 @@ export function PedidosClient() {
                 {selectedPedido.estadoEntrega === 'EN_RUTA' && selectedPedido.embarqueId && (
                   <div className="bg-white border rounded-lg p-2.5">
                     <div className="text-xs text-gray-400 mb-0.5">Embarque</div>
-                    <div className="font-medium text-gray-700">#{embarques.find(e => e.id === selectedPedido.embarqueId)?.numero || selectedPedido.embarqueId}</div>
+                    <div className="font-medium text-gray-700">#{embarques.find(e => e.id === selectedPedido.embarqueId)?.numeroDia || selectedPedido.embarqueId}</div>
                   </div>
                 )}
               </div>
