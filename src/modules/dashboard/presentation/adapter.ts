@@ -1,0 +1,59 @@
+/**
+ * Dashboard Data Adapter.
+ *
+ * Maps the new DDD DashboardData shape to the legacy flat shape
+ * expected by DashboardClient. This allows incremental migration
+ * without changing the client component.
+ */
+
+import type { DashboardData as DDDData } from '@/modules/dashboard/domain'
+import type { DashboardData as LegacyData } from '@/app/(app)/dashboard/dashboard-client/types'
+
+export function toLegacyDashboardData(ddd: DDDData): LegacyData {
+  return {
+    // Legacy pedidos array — empty since client doesn't actually iterate it
+    // The client uses pre-aggregated fields instead
+    pedidos: [],
+
+    // KPIs
+    ventas: ddd.kpis.ventasHoy,
+    fiadosHoy: ddd.kpis.fiadosHoy,
+    fiadosTotal: ddd.kpis.fiadosTotal,
+    clientesConFiado: ddd.kpis.clientesConFiado,
+    pedidosPendientes: ddd.kpis.pedidosPendientes,
+    pedidosEntregados: ddd.kpis.pedidosEntregados,
+    baseDia: ddd.kpis.baseDia,
+    totalGastos: ddd.kpis.totalGastos,
+    ventasAyer: ddd.kpis.ventasAyer,
+    ventasTrend: ddd.kpis.ventasTrend,
+    pedidosTrend: ddd.kpis.pedidosTrend,
+    embarquesAbiertos: ddd.kpis.embarquesAbiertos,
+
+    // Time bands
+    franjas: ddd.franjasHorarias,
+    maxFranja: ddd.maxFranja,
+
+    // Sales by price
+    ventasPorPrecio: ddd.ventasPorPrecio,
+
+    // Product quantities sold
+    aguaVendida: ddd.produccion.aguaProducida - ddd.produccion.perdidasAgua,
+    hieloVendido: ddd.produccion.hieloProducido - ddd.produccion.perdidasHielo,
+    botellonVendido: 0,
+
+    // Production
+    prodAguaHoy: ddd.produccion.aguaProducida,
+    prodHieloHoy: ddd.produccion.hieloProducido,
+
+    // Stock
+    stockAgua: ddd.stock.agua,
+    stockHielo: ddd.stock.hielo,
+    stockBotellon: ddd.stock.botellon,
+
+    // Alerts
+    stockAlertas: ddd.stockAlertas,
+    fechaHoy: ddd.fechaHoy,
+    alertasRiesgo: ddd.alertasRiesgo,
+    casosActivos: ddd.casosActivos,
+  }
+}

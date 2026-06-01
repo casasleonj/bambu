@@ -4,7 +4,8 @@
     "lib": [
       "dom",
       "dom.iterable",
-      "esnext"
+      "esnext",
+      "webworker"
     ],
     "allowJs": true,
     "skipLibCheck": true,
@@ -25,6 +26,9 @@
         "name": "next"
       }
     ],
+    "types": [
+      "@serwist/next/typings"
+    ],
     "paths": {
       "@/*": [
         "./src/*"
@@ -42,7 +46,9 @@
   ],
   "exclude": [
     "node_modules",
-    "src/app/sw.ts",
+    "public/sw.js",
+    "public/sw*.js",
+    "public/swe-worker*",
     "vitest.config.ts",
     "playwright.config.ts"
   ]

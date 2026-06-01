@@ -1,0 +1,1 @@
+export { toLegacyDashboardData } from './adapter'
