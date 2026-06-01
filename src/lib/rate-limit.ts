@@ -1,4 +1,4 @@
-import { RateLimiterMemory, RateLimiterRedis, RateLimiterRes, IRateLimiterStoreOptions } from 'rate-limiter-flexible'
+import { RateLimiterMemory, RateLimiterRedis, RateLimiterRes } from 'rate-limiter-flexible'
 import { logger } from './logger'
 
 // Configuration:
@@ -11,10 +11,10 @@ const redisUrl = process.env.REDIS_URL
 
 const LIMITS = {
   auth: isDev
-    ? { points: 1000, duration: 60 }
-    : { points: 10, duration: 15 * 60 }, // 10 per 15 min in prod (stricter brute-force)
-  api: { points: 300, duration: 60 },
-  page: { points: 600, duration: 60 },
+    ? { points: 1000, duration: 60, blockDuration: 0 }
+    : { points: 10, duration: 15 * 60, blockDuration: 30 * 60 }, // 10 per 15 min, block 30 min after exhaustion
+  api: { points: 300, duration: 60, blockDuration: 0 },
+  page: { points: 600, duration: 60, blockDuration: 0 },
 } as const
 
 export type RateLimitType = keyof typeof LIMITS
@@ -23,17 +23,27 @@ type AnyLimiter = RateLimiterMemory | RateLimiterRedis
 const limiters = new Map<string, AnyLimiter>()
 
 // Lazy Redis client — only imported when REDIS_URL is set
-let redisClient: unknown = null
+// Using a minimal interface that matches what rate-limiter-flexible needs
+type RedisStoreClient = {
+  on: (event: string, listener: (err: Error) => void) => void
+  connect: () => Promise<void>
+}
+let redisClient: RedisStoreClient | null = null
 async function getRedisClient() {
   if (redisClient !== null) return redisClient
   if (!redisUrl) return null
   try {
     // Dynamic import avoids bundling redis in edge runtime
     const { createClient } = await import('redis')
-    const client = createClient({ url: redisUrl })
+    const client = createClient({
+      url: redisUrl,
+      // Disable offline queue per rate-limiter-flexible docs:
+      // prevents request storms when Redis reconnects after downtime
+      disableOfflineQueue: true,
+    })
     client.on('error', (err: Error) => logger.error({ err }, 'Redis error'))
     await client.connect()
-    redisClient = client
+    redisClient = client as unknown as RedisStoreClient
     return client
   } catch (err) {
     logger.error({ err }, 'Failed to connect to Redis, falling back to memory')
@@ -52,16 +62,26 @@ async function getLimiter(type: RateLimitType): Promise<AnyLimiter> {
   if (redisUrl) {
     const client = await getRedisClient()
     if (client) {
-      const opts: IRateLimiterStoreOptions = {
+      const opts = {
         storeClient: client,
         keyPrefix: `rl_${type}`,
         points: cfg.points,
         duration: cfg.duration,
+        blockDuration: cfg.blockDuration,
+        // useRedisPackage: true — required for redis v5+ package
+        // (auto-detection fails because constructor name is "Class" not "Commander")
+        useRedisPackage: true,
+        // insuranceLimiter: memory fallback when Redis is unreachable
+        insuranceLimiter: new RateLimiterMemory({
+          keyPrefix: `rl_${type}_backup`,
+          points: cfg.points,
+          duration: cfg.duration,
+        }),
         // Fail-open on Redis errors (network hiccup shouldn't block legit traffic)
-        // but still records the failure for observability
-        inMemoryBlockOnConsumed: cfg.points + 1,
-        inMemoryBlockDuration: 60,
-      }
+        // Block in memory once points are fully consumed to avoid extra Redis round-trips
+        inMemoryBlockOnConsumed: cfg.points,
+        inMemoryBlockDuration: cfg.blockDuration || 60,
+      } as const
       const limiter = new RateLimiterRedis(opts)
       limiters.set(type, limiter)
       return limiter

@@ -93,6 +93,7 @@ const ROUTE_PERMISSION_MAP: Record<string, Permission> = {
   '/reportes': 'view:reportes',
   '/trabajadores': 'view:trabajadores',
   '/proveedores': 'view:proveedores',
+  '/admin': 'view:usuarios',
   '/admin/usuarios': 'view:usuarios',
   '/configuracion': 'view:configuracion',
   '/mi-perfil': 'view:mi-perfil',

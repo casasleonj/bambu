@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useSession, signOut } from 'next-auth/react'
 import Link from 'next/link'
-import { purgeSWCache } from '@/components/sw-register'
+import { purgeSWCache } from '@/lib/purge-sw-cache'
 import { ConnectivityIndicator } from '@/components/connectivity-indicator'
 import { useAppStore } from '@/stores/app-store'
 

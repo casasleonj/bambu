@@ -5,9 +5,6 @@ import { prisma } from './prisma'
 import type { JWT } from 'next-auth/jwt'
 import type { Session, User } from 'next-auth'
 import { logger } from '@/lib/logger'
-import { isRouteAllowed, getRedirectForRole } from '@/lib/permissions'
-import { NextResponse } from 'next/server'
-import type { Role } from '@/lib/constants'
 
 const DUMMY_HASH = '$2b$12$3efHSCLxFTFy3/JJefgSmeHE/A.YexA51FcSccHtb8u0UvLR7mTWm'
 
@@ -109,37 +106,11 @@ const authOptions: NextAuthConfig = {
       }
       return session
     },
-    async authorized({ auth, request }) {
-      const { pathname } = request.nextUrl
-
-      // Public paths — always allow
-      const PUBLIC_PATHS = ['/login', '/offline', '/_next', '/favicon.ico', '/sw.js']
-      const AUTH_PATHS = ['/api/auth']
-      if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) return true
-      if (AUTH_PATHS.some((p) => pathname.startsWith(p))) return true
-      if (pathname.match(/\.(ico|png|jpg|jpeg|svg|css|js|woff|woff2)$/)) return true
-
-      // Unauthenticated — redirect to login
-      if (!auth) {
-        const loginUrl = new URL('/login', request.url)
-        loginUrl.searchParams.set('callbackUrl', pathname)
-        return NextResponse.redirect(loginUrl)
-      }
-
-      const role = auth.user?.role as Role | undefined
-      const mustChangePassword = (auth.user as { mustChangePassword?: boolean } | undefined)?.mustChangePassword
-
-      // Force password change — only allow /cambiar-contrasena
-      if (mustChangePassword && !pathname.startsWith('/cambiar-contrasena')) {
-        return NextResponse.redirect(new URL('/cambiar-contrasena', request.url))
-      }
-
-      // Role-based access check
-      if (!isRouteAllowed(pathname, role)) {
-        return NextResponse.redirect(new URL(getRedirectForRole(role), request.url))
-      }
-
-      return true
+    async authorized({ auth }) {
+      // This callback is invoked when using `export { auth as proxy }` pattern.
+      // Currently we use auth() wrapper in proxy.ts, so this serves as a fallback.
+      // All auth logic (redirects, role checks, mustChangePassword) lives in proxy.ts.
+      return !!auth?.user
     },
   },
   pages: {
