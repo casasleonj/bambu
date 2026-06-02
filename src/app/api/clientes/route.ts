@@ -194,6 +194,19 @@ export async function POST(request: NextRequest) {
       return apiError('Datos invalidos', 400, { formErrors: [formatZodError(parsed.error)] })
     }
 
+    // Offline-first: dedup — si ya hay un cliente con este offlineId, devolver el existente
+    if (parsed.data.offlineId) {
+      const existente = await prisma.cliente.findUnique({
+        where: { offlineId: parsed.data.offlineId },
+      })
+      if (existente) {
+        return apiSuccess(
+          { deduped: true, cliente: { ...existente, clienteId: existente.id } },
+          200
+        )
+      }
+    }
+
     const duplicadoTelefono = await prisma.cliente.findFirst({
       where: {
         activo: true,
@@ -226,6 +239,7 @@ export async function POST(request: NextRequest) {
         contactos: contactosSinDuplicados.length > 0 ? contactosSinDuplicados : undefined,
         preciosEspeciales: parsed.data.preciosEspeciales,
         notas: parsed.data.notas,
+        offlineId: parsed.data.offlineId ?? null, // dedup offline-first
       },
     })
 

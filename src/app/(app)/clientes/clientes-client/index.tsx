@@ -13,6 +13,7 @@ import { PRODUCTOS_PRECIO } from './types'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
 import { ClienteTable } from './cliente-table'
 import { ClienteForm } from './cliente-form'
+import { fetchResilient } from '@/lib/fetch-resilient'
 import { ClienteHistorial } from './cliente-historial'
 import { ClienteStats } from './cliente-stats'
 import { NegocioForm } from '@/components/negocio-form'
@@ -334,6 +335,8 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
         contactos: formData.contactos.filter(c => c.nombre.trim() && c.telefono.trim()),
       }
       if (isEdit && selectedCliente) {
+        // PUT no tiene server-side dedup todavía (admin-only, no field use);
+        // se usa fetch directo. Offline-failure muestra toast.error normal.
         const res = await fetch(`/api/clientes/${selectedCliente.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -355,45 +358,60 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
           toast.error(data.error?.formErrors?.[0] || data.error?.message || 'Error al guardar cliente')
         }
       } else {
-        const res = await fetch('/api/clientes', {
+        // POST: usa fetchResilient para offline-first (repartidor field use).
+        // Si la red falla durante la creación, encola automáticamente.
+        const offlineId = crypto.randomUUID()
+        const result = await fetchResilient<{
+          success: boolean
+          deduped?: boolean
+          cliente?: { id: string; nombre: string; telefono: string; direccion?: string; barrio?: string; [key: string]: unknown }
+          error?: { message?: string; formErrors?: string[] }
+        }>('/api/clientes', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
+          body: { ...body, offlineId },
+          localEndpoint: 'crear-cliente',
         })
-        if (res.ok) {
-          await fetchClientes()
+
+        if (result.status === 'offline') {
+          toast.info('Sin conexión. Cliente guardado, se creará al recuperar la red.')
           setShowModal(false)
-          // Get the newly created client to pre-fill negocio form
-          const createdData = await res.json().catch(() => ({}))
-          const newCliente = createdData.cliente || null
-          toast.success('Cliente creado exitosamente', {
-            action: {
-              label: 'Agregar negocio',
-              onClick: () => {
-                setNegocioEditData(null)
-                setNegocioFormOpen(true)
-                if (newCliente) {
-                  setTimeout(() => {
-                    const dirInput = document.querySelector<HTMLTextAreaElement>('textarea[placeholder="Calle, número, referencias..."]')
-                    const barrioInput = document.querySelector<HTMLInputElement>('input[placeholder="Ej: Centro"]')
-                    if (dirInput && newCliente.direccion && !dirInput.value) {
-                      dirInput.value = newCliente.direccion
-                      dirInput.dispatchEvent(new Event('input', { bubbles: true }))
-                    }
-                    if (barrioInput && newCliente.barrio && !barrioInput.value) {
-                      barrioInput.value = newCliente.barrio
-                      barrioInput.dispatchEvent(new Event('input', { bubbles: true }))
-                    }
-                  }, 100)
-                }
-              },
-            },
-          })
-        } else {
-          const data = await res.json().catch(() => ({}))
-          setFormError(data.error?.formErrors?.[0] || data.error?.message || 'Error al guardar cliente')
-          toast.error(data.error?.formErrors?.[0] || data.error?.message || 'Error al guardar cliente')
+          return
         }
+
+        if (result.status === 'error') {
+          setFormError(result.error || 'Error al guardar cliente')
+          toast.error(result.error || 'Error al guardar cliente')
+          return
+        }
+
+        // status === 'ok' (puede ser deduped o freshly created)
+        const data = result.data
+        await fetchClientes()
+        setShowModal(false)
+        const newCliente = data.cliente || null
+        toast.success(data.deduped ? 'Cliente ya estaba creado' : 'Cliente creado exitosamente', {
+          action: {
+            label: 'Agregar negocio',
+            onClick: () => {
+              setNegocioEditData(null)
+              setNegocioFormOpen(true)
+              if (newCliente) {
+                setTimeout(() => {
+                  const dirInput = document.querySelector<HTMLTextAreaElement>('textarea[placeholder="Calle, número, referencias..."]')
+                  const barrioInput = document.querySelector<HTMLInputElement>('input[placeholder="Ej: Centro"]')
+                  if (dirInput && newCliente.direccion && !dirInput.value) {
+                    dirInput.value = newCliente.direccion as string
+                    dirInput.dispatchEvent(new Event('input', { bubbles: true }))
+                  }
+                  if (barrioInput && newCliente.barrio && !barrioInput.value) {
+                    barrioInput.value = newCliente.barrio as string
+                    barrioInput.dispatchEvent(new Event('input', { bubbles: true }))
+                  }
+                }, 100)
+              }
+            },
+          },
+        })
       }
     } catch (error) {
       setFormError('Error de conexión al guardar')

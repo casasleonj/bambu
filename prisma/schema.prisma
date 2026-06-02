@@ -230,6 +230,10 @@ model Cliente {
   notas        String?
   activo      Boolean  @default(true)
 
+  // Offline-first dedup: si la request llega con un offlineId ya existente,
+  // el server devuelve el cliente creado en lugar de duplicar.
+  offlineId    String?  @unique
+
   pedidos       Pedido[]
   facturas      Factura[]
   abonos        Abono[]
@@ -247,6 +251,7 @@ model Cliente {
   @@index([proxEntrega])
   @@index([verificado])
   @@index([bloqueado])
+  @@index([offlineId])
 }
 
 // ====================

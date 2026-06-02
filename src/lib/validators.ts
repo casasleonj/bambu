@@ -183,6 +183,9 @@ export const ClienteCreateSchema = z.object({
   limitePedidosFiados: z.coerce.number().int().min(1).max(20).optional(),
   verificado: z.boolean().optional(),
   bloqueado: z.boolean().optional(),
+  // Offline-first: dedup key. Si el mismo offlineId llega de nuevo, el server
+  // devuelve el cliente creado en lugar de duplicar.
+  offlineId: z.string().optional(),
 });
 
 export const ClienteUpdateSchema = ClienteCreateSchema.partial();
