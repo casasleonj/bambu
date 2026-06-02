@@ -114,10 +114,14 @@ export async function POST(request: NextRequest) {
     try {
       const produccion = await prisma.$transaction(
         async (tx) => {
-          // FIX 1.1: advisory lock para serializar inserciones concurrentes
+          // FIX 1.1: advisory lock para serializar inserciones concurrentes.
+          // Usamos ReadCommitted (default) porque el lock ya serializa.
+          // Serializable + advisory lock juntos causan P2034 innecesarios.
           await tx.$queryRaw`SELECT pg_advisory_xact_lock(${PROD_ADVISORY_LOCK_KEY}::int)::text`
 
-          // Re-validar duplicado dentro del lock (defense in depth)
+          // Re-validar duplicado dentro del lock (defense in depth).
+          // Como el lock se libera al hacer COMMIT, los requests posteriores
+          // verán el registro creado.
           const existing = await tx.produccion.findFirst({
             where: {
               trabajadorId: parsed.data.trabajadorId,
@@ -225,7 +229,8 @@ export async function POST(request: NextRequest) {
           })
         },
         {
-          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          // ReadCommitted es suficiente: el advisory lock serializa.
+          isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
           maxWait: 5000,
           timeout: 15000,
         },
@@ -285,6 +290,26 @@ export async function POST(request: NextRequest) {
 
       break
     }
+  }
+
+  // FIX 1.1 fallback: si llegamos aquí tras retries y existe un duplicado,
+  // es una race condition. Devolvemos 409 en vez de 500.
+  try {
+    const dup = await prisma.produccion.findFirst({
+      where: {
+        trabajadorId: parsed.data.trabajadorId,
+        fecha: { gte: startOfDay, lt: endOfDay },
+        turno: parsed.data.turno,
+      },
+    })
+    if (dup) {
+      return apiError(
+        `Ya existe producción registrada para este trabajador en el turno ${parsed.data.turno} de hoy`,
+        409,
+      )
+    }
+  } catch {
+    // ignore - fall through to 500
   }
 
   logger.error(
