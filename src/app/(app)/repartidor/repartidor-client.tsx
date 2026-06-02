@@ -9,6 +9,7 @@ import { syncWithServer, isOnline } from '@/lib/db/sync'
 import { logger } from '@/lib/logger'
 import { PRODUCTO_INFO, DEFAULT_PRICES, getProductosForCanal } from '@/lib/prices'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
+import { fetchResilient } from '@/lib/fetch-resilient'
 
 interface RepartidorClientProps {
   trabajador: { id: string; nombre: string }
@@ -176,31 +177,44 @@ export function RepartidorClient({ trabajador, embarque }: RepartidorClientProps
 
     try {
       if (online) {
-        // Online: hit API directly
-        const res = await fetch('/api/pedidos/venta-libre', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            clienteId,
-            items,
-            pagos,
-            embarqueId: embarque.id,
-            obs,
-            fotoEntrega: fotoBase64,
-            gpsLat: gpsPos.lat,
-            gpsLng: gpsPos.lng,
-            offlineId: crypto.randomUUID(),
-          }),
-        })
-        if (res.ok) {
+        // Online: usa fetchResilient para manejar fallos transitorios de red.
+        // Si la red cae durante la request, encola automáticamente y retorna status='offline'.
+        const result = await fetchResilient<{ success: boolean; error?: { message?: string } }>(
+          '/api/pedidos/venta-libre',
+          {
+            method: 'POST',
+            body: {
+              clienteId,
+              items,
+              pagos,
+              embarqueId: embarque.id,
+              obs,
+              fotoEntrega: fotoBase64,
+              gpsLat: gpsPos.lat,
+              gpsLng: gpsPos.lng,
+              offlineId: crypto.randomUUID(),
+            },
+            localEndpoint: 'venta-libre',
+          }
+        )
+
+        if (result.status === 'ok') {
           toast.success('Venta libre registrada')
           setShowVentaLibre(false)
           resetForm()
-        } else {
-          const err = await res.json()
-          toast.error(err.error || 'Error registrando venta')
+          return
         }
+
+        if (result.status === 'offline') {
+          toast.info('Sin conexión. Venta encolada, se enviará al recuperar la red.')
+          setShowVentaLibre(false)
+          resetForm()
+          return
+        }
+
+        // status === 'error'
+        toast.error(result.error || 'Error registrando venta')
+        return
       } else {
         // Offline: queue in Dexie
         await queuePedidoOffline({

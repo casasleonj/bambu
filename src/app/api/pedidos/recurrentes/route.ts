@@ -17,6 +17,9 @@ const DecisionSchema = z.object({
 const GenerarRecurrentesSchema = z.object({
   decisiones: z.array(DecisionSchema).min(1),
   fecha: z.string().datetime().optional(),
+  // Offline-first: dedup por batchId. Si los pedidos ya fueron creados con este
+  // offlineId, se devuelve el set existente en vez de duplicar.
+  offlineId: z.string().optional(),
 })
 
 export async function GET() {
@@ -47,9 +50,27 @@ export async function POST(request: NextRequest) {
 
     const decisiones: DecisionGeneracion[] = parsed.data.decisiones
     const fecha = parsed.data.fecha ? new Date(parsed.data.fecha) : new Date()
+    const { offlineId } = parsed.data
 
     if (decisiones.length === 0) {
       return apiError('No se proporcionaron decisiones', 400)
+    }
+
+    // Offline-first: dedup — si ya hay pedidos con este offlineId (como recurrenteBatchId), devolver el set existente
+    if (offlineId) {
+      const pedidosExistentes = await prisma.pedido.findMany({
+        where: { recurrenteBatchId: offlineId },
+        select: { id: true, numero: true, tipo: true },
+      })
+      if (pedidosExistentes.length > 0) {
+        return apiSuccess({
+          deduped: true,
+          generados: pedidosExistentes.length,
+          saltados: 0,
+          pedidos: pedidosExistentes,
+          saltadosIds: [],
+        }, 200)
+      }
     }
 
     // Race-guard: validate proxGeneracion hasn't shifted since preview
@@ -174,7 +195,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const resultado = await generarPedidosRecurrentes(decisiones, fecha)
+    const resultado = await generarPedidosRecurrentes(decisiones, fecha, { recurrenteBatchId: offlineId })
 
     if (resultado.generados.length > 0) {
       logBulkAudit(

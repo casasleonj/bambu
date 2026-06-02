@@ -7,6 +7,7 @@ import { getNextNumero } from '@/lib/sequence'
 import { logAudit } from '@/lib/audit'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
+import { prisma } from '@/lib/prisma'
 
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth()
@@ -19,7 +20,40 @@ export async function POST(request: NextRequest) {
       return apiError('Datos inválidos', 400)
     }
 
-    const { clienteId, monto, metodo } = parsed.data
+    const { clienteId, monto, metodo, offlineId } = parsed.data
+
+    // Offline-first: dedup — si ya existen Pagos con este offlineId, devolver el estado actual
+    if (offlineId) {
+      const pagosPrevios = await prisma.pago.findMany({
+        where: { offlineId },
+        orderBy: { createdAt: 'asc' },
+      })
+      if (pagosPrevios.length > 0) {
+        // Reconstruir el resumen desde los pagos ya aplicados
+        const montoAplicadoPrevio = pagosPrevios.reduce((sum, p) => sum + Number(p.monto), 0)
+        const pedidosInvolucrados = await prisma.pedido.findMany({
+          where: { id: { in: pagosPrevios.map(p => p.pedidoId) } },
+          select: { id: true, numero: true, saldo: true, factura: { select: { id: true, numero: true } } },
+        })
+        return apiSuccess({
+          deduped: true,
+          pagosAplicados: pedidosInvolucrados.map(p => ({
+            pedidoId: p.id,
+            numero: p.numero,
+            facturaId: p.factura?.id,
+            facturaNumero: p.factura?.numero,
+            montoAplicado: pagosPrevios.find(pg => pg.pedidoId === p.id)
+              ? Number(pagosPrevios.find(pg => pg.pedidoId === p.id)!.monto)
+              : 0,
+            saldoRestante: Number(p.saldo),
+            abonoCreado: !!p.factura,
+          })),
+          montoAplicado: montoAplicadoPrevio,
+          montoSobrante: Math.max(0, monto - montoAplicadoPrevio),
+          mensaje: 'Pago ya aplicado previamente (dedup offline)',
+        })
+      }
+    }
 
     const resultado = await withAdvisoryLock('ABONO', async (tx) => {
       // 1. Buscar pedidos fiados del cliente, ordenados por fecha ASC (FIFO)
@@ -61,6 +95,7 @@ export async function POST(request: NextRequest) {
             pedidoId: pedido.id,
             metodo,
             monto: montoAplicar,
+            offlineId: offlineId || null, // dedup offline-first
           },
         })
 

@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { filtrarPorPeriodo, PERIODOS, type PeriodoFiltro } from './date-utils'
 import type { Pedido } from './types'
 import { getEstadoFiados } from '@/lib/pedido-utils'
+import { fetchResilient } from '@/lib/fetch-resilient'
 
 interface FiadoRow {
   clienteId: string
@@ -102,49 +103,70 @@ export function FiadosTable({ pedidos, onPedidosChange }: FiadosTableProps) {
     }
     setSubmitting(true)
     try {
-      const res = await fetch('/api/pedidos/pagar-fiado', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clienteId, monto: Number(montoPago), metodo: metodoPago }),
-      })
-      const data = await res.json()
-      if (res.ok) {
-        // Construir resumen visual de pagos aplicados
-        const pagosAplicados = data.pagosAplicados || []
-        const montoSobrante = data.montoSobrante || 0
-        const montoAplicado = data.montoAplicado || Number(montoPago)
-
-        let resumenHtml = `<div class="space-y-1">`
-        pagosAplicados.forEach((p: any) => {
-          const estado = p.saldoRestante <= 0 ? '✅ Pagado completo' : `⏳ Saldo restante: ${formatCurrency(p.saldoRestante)}`
-          resumenHtml += `<div class="text-sm">Pedido <a href="/pedidos?openPedido=${p.pedidoId}" class="text-blue-600 hover:underline font-medium">#${p.numero}</a>: <b>${formatCurrency(p.montoAplicado)}</b> <span class="text-xs text-gray-500">${estado}</span></div>`
-        })
-        if (montoSobrante > 0) {
-          resumenHtml += `<div class="text-sm text-blue-600">💰 Sobrante: ${formatCurrency(montoSobrante)}</div>`
+      const result = await fetchResilient<{
+        success: boolean
+        pagosAplicados: Array<{ pedidoId: string; numero: number; montoAplicado: number; saldoRestante: number; facturaId?: string; facturaNumero?: string }>
+        montoAplicado: number
+        montoSobrante: number
+        deduped?: boolean
+      }>(
+        '/api/pedidos/pagar-fiado',
+        {
+          method: 'POST',
+          body: {
+            clienteId,
+            monto: Number(montoPago),
+            metodo: metodoPago,
+            offlineId: crypto.randomUUID(),
+          },
+          localEndpoint: 'pagar-fiado',
         }
-        const facturaIds = [...new Set(pagosAplicados.filter((p: any) => p.facturaId).map((p: any) => p.facturaId))]
-        if (facturaIds.length > 0) {
-          resumenHtml += `<div class="text-sm text-green-600">📄 ${facturaIds.length} abono(s) generado(s) en <a href="/facturas?openFactura=${facturaIds[0]}" class="text-green-700 hover:underline font-medium">factura(s)</a></div>`
-        }
-        resumenHtml += `</div>`
+      )
 
-        toast.success(
-          <div className="space-y-2">
-            <div className="font-semibold">💰 Pago aplicado: ${formatCurrency(montoAplicado)}</div>
-            <div dangerouslySetInnerHTML={{ __html: resumenHtml }} />
-          </div>,
-          { duration: 6000 }
-        )
-
+      if (result.status === 'offline') {
+        toast.info('Sin conexión. Pago guardado, se aplicará al recuperar la red.')
         setPagandoClienteId(null)
         setMontoPago('')
-        // Refetch pedidos sin recargar la página
-        onPedidosChange?.()
-      } else {
-        toast.error(data.error || 'Error registrando pago')
+        return
       }
-    } catch (error) {
-      toast.error('Error registrando pago')
+
+      if (result.status === 'error') {
+        toast.error(result.error || 'Error registrando pago')
+        return
+      }
+
+      // status === 'ok' — proceder con el resumen
+      const data = result.data
+      const pagosAplicados = data.pagosAplicados || []
+      const montoSobrante = data.montoSobrante || 0
+      const montoAplicado = data.montoAplicado || Number(montoPago)
+
+      let resumenHtml = `<div class="space-y-1">`
+      pagosAplicados.forEach((p: any) => {
+        const estado = p.saldoRestante <= 0 ? '✅ Pagado completo' : `⏳ Saldo restante: ${formatCurrency(p.saldoRestante)}`
+        resumenHtml += `<div class="text-sm">Pedido <a href="/pedidos?openPedido=${p.pedidoId}" class="text-blue-600 hover:underline font-medium">#${p.numero}</a>: <b>${formatCurrency(p.montoAplicado)}</b> <span class="text-xs text-gray-500">${estado}</span></div>`
+      })
+      if (montoSobrante > 0) {
+        resumenHtml += `<div class="text-sm text-blue-600">💰 Sobrante: ${formatCurrency(montoSobrante)}</div>`
+      }
+      const facturaIds = [...new Set(pagosAplicados.filter((p: any) => p.facturaId).map((p: any) => p.facturaId))]
+      if (facturaIds.length > 0) {
+        resumenHtml += `<div class="text-sm text-green-600">📄 ${facturaIds.length} abono(s) generado(s) en <a href="/facturas?openFactura=${facturaIds[0]}" class="text-green-700 hover:underline font-medium">factura(s)</a></div>`
+      }
+      resumenHtml += `</div>`
+
+      toast.success(
+        <div className="space-y-2">
+          <div className="font-semibold">💰 Pago aplicado: ${formatCurrency(montoAplicado)}</div>
+          <div dangerouslySetInnerHTML={{ __html: resumenHtml }} />
+        </div>,
+        { duration: 6000 }
+      )
+
+      setPagandoClienteId(null)
+      setMontoPago('')
+      // Refetch pedidos sin recargar la página
+      onPedidosChange?.()
     } finally {
       setSubmitting(false)
     }

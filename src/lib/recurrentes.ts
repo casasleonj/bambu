@@ -369,7 +369,8 @@ export interface DecisionGeneracion {
 
 export async function generarPedidosRecurrentes(
   decisiones: DecisionGeneracion[],
-  _fechaReferencia: Date = new Date()
+  _fechaReferencia: Date = new Date(),
+  options?: { recurrenteBatchId?: string }
 ) {
   const generados: Array<{ id: string; numero: number; tipo: string }> = []
   const saltados: string[] = []
@@ -604,6 +605,7 @@ export async function generarPedidosRecurrentes(
           origen: 'RECURRENTE',
           estadoEntrega: 'PENDIENTE',
           estadoPago: 'PENDIENTE',
+          recurrenteBatchId: options?.recurrenteBatchId ?? null,
           cPacaAguaPed: cantidades.cPacaAgua,
           cPacaHieloPed: cantidades.cPacaHielo,
           cBotellonFabPed: cantidades.cBotellonFab,

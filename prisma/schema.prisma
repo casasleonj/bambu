@@ -466,6 +466,7 @@ model Pedido {
   gpsLat            Decimal?    @db.Decimal(10, 6)
   gpsLng            Decimal?    @db.Decimal(10, 6)
   offlineId         String?     @unique
+  recurrenteBatchId String?     // batch id compartido por todos los pedidos de un batch de recurrentes
   disputaAbierta    Boolean     @default(false)
   codigoVisita      String?
 
@@ -539,6 +540,7 @@ model Pedido {
   @@index([estadoEntrega])
   @@index([estadoPago])
   @@index([offlineId])
+  @@index([recurrenteBatchId])
   @@index([clienteId, estadoEntrega, estadoPago])
   @@index([promesaPagoFecha])
 }
@@ -573,9 +575,11 @@ model Pago {
   pedido    Pedido   @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
   metodo    MetodoPago
   monto     Decimal  @db.Decimal(10, 2)
+  offlineId String?  // batch id para dedup offline-first (pagos del mismo batch comparten offlineId)
   createdAt DateTime @db.Timestamptz() @default(now())
 
   @@index([pedidoId])
+  @@index([offlineId])
 }
 
 // ====================

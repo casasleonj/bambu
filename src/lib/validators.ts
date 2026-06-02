@@ -462,6 +462,8 @@ export const PagarFiadoSchema = z.object({
   clienteId: z.string().min(1),
   monto: z.coerce.number().positive('El monto debe ser mayor a 0'),
   metodo: z.enum(['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA', 'BONO']),
+  // Offline-first: dedup por batchId (compartido por todos los Pagos del batch)
+  offlineId: z.string().optional(),
 })
 
 // ====================
