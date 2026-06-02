@@ -622,6 +622,11 @@ model Embarque {
   // NUEVO — código de visita del día
   codigoVisita  String?
 
+  // Offline-first dedup: cada acción (update, cancel) escribe su offlineId aquí.
+  // Si una request con el mismo offlineId llega de nuevo, el server detecta que
+  // la acción ya fue aplicada y devuelve el estado actual sin re-aplicar.
+  offlineId     String?
+
   obs         String?
 
   pedidos     Pedido[]
@@ -639,6 +644,7 @@ model Embarque {
   @@index([fecha])
   @@index([estado])
   @@index([trabajadorId, fecha, numeroDia])
+  @@index([offlineId])
 }
 
 // ====================

@@ -56,7 +56,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return apiError(formatZodError(parsed.error), 400)
     }
 
-    const { pedidoIds, obs, estado, horaLlegada, horaSalida, trabajadorId, rutaId, tipoMoto, baseDinero, carga, ...rest } = parsed.data
+    const { pedidoIds, obs, estado, horaLlegada, horaSalida, trabajadorId, rutaId, tipoMoto, baseDinero, carga, offlineId, ...rest } = parsed.data
 
     // Fetch current embarque to check state
     const currentEmbarque = await prisma.embarque.findUnique({
@@ -64,6 +64,21 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       include: { trabajador: true, productos: true },
     })
     if (!currentEmbarque) return apiError('Embarque no encontrado', 404)
+
+    // Offline-first: dedup — si el mismo offlineId ya está en el embarque, la
+    // acción ya fue aplicada. Devolvemos el estado actual sin re-aplicar.
+    if (offlineId && currentEmbarque.offlineId === offlineId) {
+      return apiSuccess({
+        deduped: true,
+        embarque: JSON.parse(JSON.stringify({
+          ...currentEmbarque,
+          totalPacas: 0,
+          pesoKg: 0,
+          capacidadKg: currentEmbarque.trabajador.capacidadKg || 500,
+          capacidadInfo: { excedeUnidades: false, excedePeso: false },
+        })),
+      })
+    }
 
     // Enforce field restrictions by state
     if (currentEmbarque.estado !== 'ABIERTO') {
@@ -187,6 +202,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       if (rutaId !== undefined) updateData.rutaId = rutaId
       if (tipoMoto !== undefined) updateData.tipoMoto = tipoMoto
       if (baseDinero !== undefined) updateData.baseDinero = baseDinero
+      // Persistir offlineId para dedup en retries (offline-first)
+      if (offlineId) updateData.offlineId = offlineId
 
       // Assign pedidos if provided
       if (pedidoIds && Array.isArray(pedidoIds)) {
@@ -236,12 +253,23 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   }
 }
 
-export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
   const roleCheck = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE], authResult)
   if (roleCheck instanceof Response) return roleCheck
   const { id } = await params
+
+  // Offline-first: leer offlineId del body (opcional, para dedup)
+  let offlineId: string | undefined
+  try {
+    const body = await request.json().catch(() => ({}))
+    if (body && typeof body === 'object' && 'offlineId' in body) {
+      offlineId = (body as { offlineId?: string }).offlineId
+    }
+  } catch {
+    // body vacío es válido
+  }
 
   try {
     const result = await withAdvisoryLock('EMBARQUE', async (tx: any) => {
@@ -258,6 +286,12 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
         throw new Error('EMBARQUE_CERRADO')
       }
 
+      // Offline-first: dedup — si el embarque ya está CANCELADO, devolver OK
+      // (idempotente, no se re-asignan pedidos a PENDIENTE).
+      if (embarque.estado === 'CANCELADO') {
+        return { deduped: true as const, embarque }
+      }
+
       // Unassign all pedidos and return them to PENDIENTE
       if (embarque.pedidos.length > 0) {
         await tx.pedido.updateMany({
@@ -269,7 +303,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
       // Soft-delete by marking as CANCELADO
       return tx.embarque.update({
         where: { id },
-        data: { estado: 'CANCELADO' },
+        data: { estado: 'CANCELADO', offlineId: offlineId || embarque.offlineId },
       })
     })
 
@@ -277,10 +311,13 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
       entidad: 'Embarque',
       registroId: result.id,
       accion: 'DELETE',
-      datos: { numero: result.numero, estado: 'CANCELADO' },
+      datos: { numero: result.numero, estado: 'CANCELADO', deduped: 'deduped' in result ? result.deduped : false },
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     })
 
+    if ('deduped' in result && result.deduped) {
+      return apiSuccess({ deduped: true, embarque: result.embarque })
+    }
     return apiSuccess({})
   } catch (error) {
     if (error instanceof Error && error.message === 'EMBARQUE_NOT_FOUND') {

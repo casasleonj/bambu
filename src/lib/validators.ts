@@ -229,7 +229,8 @@ export const CompraCreateSchema = z.object({
 });
 
 export const ProduccionCreateSchema = z.object({
-  fecha: z.string().datetime().optional(),
+  // NOTA: la fecha la determina el servidor (medianoche Bogotá del día actual).
+  // No se acepta fecha del cliente para evitar inconsistencias con la TZ.
   turno: z.enum(["MANANA", "TARDE", "NOCHE"]),
   trabajadorId: z.string().min(1),
   conteoAAgua: z.coerce.number().int().min(0),
@@ -245,7 +246,7 @@ export const ProduccionCreateSchema = z.object({
   consumoInternoAgua: z.coerce.number().int().min(0).default(0),
   consumoInternoHielo: z.coerce.number().int().min(0).default(0),
   obs: z.string().max(500).optional(),
-});
+}).strict();
 
 export const NominaCreateSchema = z.object({
   trabajadorId: z.string().min(1),
@@ -323,6 +324,9 @@ export const EmbarqueUpdateSchema = z.object({
   baseDinero: z.coerce.number().min(0).nullish(),
   // Carga (productos) — replaces existing EmbarqueProducto records
   carga: z.array(EmbarqueProductoSchema).nullish(),
+  // Offline-first: dedup key. If same offlineId arrives again, server detects
+  // action was already applied and returns current state.
+  offlineId: z.string().optional(),
 })
 
 export const GastoEmbarqueSchema = z.object({

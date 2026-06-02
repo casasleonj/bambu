@@ -7,6 +7,7 @@ import { formatCurrency } from '@/lib/utils'
 import { useConfirm } from '@/components/confirm-modal'
 import { Modal } from '@/components/modal'
 import { getCapacidadInfo, PESOS_KG } from '@/lib/embarque-capacidad'
+import { fetchResilient } from '@/lib/fetch-resilient'
 import type { Embarque, Pedido, Trabajador } from './types'
 
 function calcularCapacidadProyectada(embarque: Embarque, pedidos: Pedido[], nuevosPedidoIds: string[]): { totalPacas: number; pesoKg: number } {
@@ -191,28 +192,37 @@ export function EmbarqueDetailModal({
     if (submitting) return
     setSubmitting(true)
     try {
-      const res = await fetch(`/api/embarques/${embarque!.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          pedidoIds: selectedPedidoIds,
-        }),
-      })
-      const data = await res.json()
-      if (data.success) {
-        if (data.embarque) {
-          onEmbarqueUpdated?.(data.embarque)
+      const result = await fetchResilient<{ success: boolean; embarque?: Embarque; error?: { message?: string } }>(
+        `/api/embarques/${embarque!.id}`,
+        {
+          method: 'PUT',
+          body: {
+            pedidoIds: selectedPedidoIds,
+            offlineId: crypto.randomUUID(),
+          },
+          localEndpoint: 'asignar-pedidos-embarque',
         }
+      )
+
+      if (result.status === 'offline') {
+        toast.info('Sin conexión. Asignación guardada, se enviará al recuperar la red.')
         setSelectedPedidoIds([])
-        onChanged()
-        toast.success('Pedidos asignados')
-      } else {
-        toast.error(data.error?.message || 'Error asignando pedidos')
+        return
       }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Error asignando pedidos'
-      toast.error(msg)
+
+      if (result.status === 'error') {
+        toast.error(result.error || 'Error asignando pedidos')
+        return
+      }
+
+      // status === 'ok'
+      const data = result.data
+      if (data.embarque) {
+        onEmbarqueUpdated?.(data.embarque)
+      }
+      setSelectedPedidoIds([])
+      onChanged()
+      toast.success('Pedidos asignados')
     } finally {
       setSubmitting(false)
     }
@@ -246,18 +256,31 @@ export function EmbarqueDetailModal({
     if (submitting) return
     setSubmitting(true)
     try {
-      const res = await fetch(`/api/embarques/${embarque!.id}`, { method: 'DELETE', credentials: 'include' })
-      const data = await res.json()
-      if (data.success) {
-        toast.success('Embarque cancelado')
+      const result = await fetchResilient<{ success: boolean; deduped?: boolean; error?: { message?: string } }>(
+        `/api/embarques/${embarque!.id}`,
+        {
+          method: 'DELETE',
+          body: { offlineId: crypto.randomUUID() },
+          localEndpoint: 'cancelar-embarque',
+        }
+      )
+
+      if (result.status === 'offline') {
+        toast.info('Sin conexión. Cancelación guardada, se aplicará al recuperar la red.')
         onClose()
         onChanged()
-      } else {
-        toast.error(data.error?.message || 'Error')
+        return
       }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Error al cancelar'
-      toast.error(msg)
+
+      if (result.status === 'error') {
+        toast.error(result.error || 'Error al cancelar')
+        return
+      }
+
+      // status === 'ok' (puede ser deduped o no)
+      toast.success('Embarque cancelado')
+      onClose()
+      onChanged()
     } finally {
       setSubmitting(false)
     }
