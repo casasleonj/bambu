@@ -40,6 +40,8 @@ export const PedidoCreateSchema = z.object({
   ).optional(),
   obs: z.string().max(500).optional(),
   fechaEntrega: z.string().optional(),
+  // Offline-first: id generado por el cliente para dedup si se encola
+  offlineId: z.string().optional(),
   // LEGACY (mantener durante transición)
   ventaRapida: z.boolean().optional(),
   tipo: z.enum(['ENVIO', 'PUNTO']).optional(),
@@ -84,6 +86,8 @@ export const EntregaSchema = z.object({
   gpsLat: z.number().optional(),
   gpsLng: z.number().optional(),
   codigoVisita: z.string().optional(),
+  // Offline-first: dedup si la request se encola y se reintenta
+  offlineId: z.string().optional(),
 })
 
 // ====================
@@ -112,6 +116,8 @@ export const VentaLibreSchema = z.object({
 export const AnularSchema = z.object({
   motivo: z.string().min(1, 'El motivo es obligatorio'),
   devolverStock: z.boolean().default(false),
+  // Offline-first: dedup si la request se encola y se reintenta
+  offlineId: z.string().optional(),
 })
 
 // ====================
@@ -138,6 +144,8 @@ export const PedidoUpdateSchema = z.object({
     barrio: z.string().min(1),
   }).optional(),
   items: z.array(PedidoItemSchema).optional(),
+  // Offline-first: dedup si la request se encola y se reintenta
+  offlineId: z.string().optional(),
 })
 
 // ====================

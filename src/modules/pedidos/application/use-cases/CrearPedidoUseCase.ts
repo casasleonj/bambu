@@ -153,7 +153,7 @@ export class CrearPedidoUseCase {
       })
 
       // 7. Persist
-      const saved = await this.pedidoRepo.save(pedido, tx)
+      const saved = await this.pedidoRepo.save(pedido, tx, { offlineId: input.offlineId })
 
       // 8. Persist pagos
       if (pagosNormalizados.length > 0) {

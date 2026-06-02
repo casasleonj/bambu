@@ -22,7 +22,19 @@ export async function POST(
       return apiError(formatZodError(parsed.error), 400)
     }
 
-    const { tipo, itemsEntregados, pagos, fotoEntrega, gpsLat, gpsLng, codigoVisita } = parsed.data
+    const { tipo, itemsEntregados, pagos, fotoEntrega, gpsLat, gpsLng, codigoVisita, offlineId } = parsed.data
+
+    // Offline-first: dedup — si el pedido ya está ENTREGADO, retornar OK
+    {
+      const { prisma } = await import('@/lib/prisma')
+      const pedidoActual = await prisma.pedido.findUnique({
+        where: { id },
+        select: { estadoEntrega: true },
+      })
+      if (pedidoActual?.estadoEntrega === 'ENTREGADO') {
+        return apiSuccess({ deduped: true, pedido: { id, estadoEntrega: 'ENTREGADO' } }, 200)
+      }
+    }
 
     // Build items for delivery
     const entregas = (itemsEntregados || []).map((ie: { producto: string; cantidad: number }) => ({
@@ -44,6 +56,7 @@ export async function POST(
       gpsLat,
       gpsLng,
       codigoVisita,
+      offlineId,
     })
 
     logAudit({

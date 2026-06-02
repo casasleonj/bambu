@@ -51,10 +51,21 @@ export interface SyncQueueItem {
   createdAt: Date
 }
 
+export interface OfflineRequest {
+  id?: number
+  url: string
+  method: 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+  body: string
+  offlineId: string
+  localEndpoint: string
+  createdAt: Date
+}
+
 class BambuOfflineDB extends Dexie {
   pedidos!: Table<OfflinePedido, number>
   clientes!: Table<OfflineCliente, number>
   syncQueue!: Table<SyncQueueItem, number>
+  requestQueue!: Table<OfflineRequest, number>
 
   constructor() {
     super('BambuOfflineDB')
@@ -62,6 +73,14 @@ class BambuOfflineDB extends Dexie {
       pedidos: '++id, localId, numero, clienteId, syncStatus, createdAt, origen, embarqueId',
       clientes: '++id, localId, nombre, syncStatus, createdAt',
       syncQueue: '++id, table, operation, createdAt',
+    })
+    // v4: añade requestQueue para que fetchResilient() reencole requests crudas
+    // (POST/PUT/PATCH/DELETE a /api/pedidos/*, /api/precios/resolver, etc.)
+    this.version(4).stores({
+      pedidos: '++id, localId, numero, clienteId, syncStatus, createdAt, origen, embarqueId',
+      clientes: '++id, localId, nombre, syncStatus, createdAt',
+      syncQueue: '++id, table, operation, createdAt',
+      requestQueue: '++id, offlineId, localEndpoint, createdAt',
     })
   }
 }

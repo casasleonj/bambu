@@ -29,6 +29,8 @@ export interface CrearPedidoInput {
   }
   createdById?: string
   createdByRole?: string
+  // Offline-first: id generado por el cliente para dedup al reenviar
+  offlineId?: string
 }
 
 export interface ActualizarPedidoInput {
@@ -40,6 +42,7 @@ export interface ActualizarPedidoInput {
     direccion?: string
     barrio?: string
   }
+  offlineId?: string
 }
 
 export interface EntregarPedidoInput {
@@ -50,11 +53,13 @@ export interface EntregarPedidoInput {
   gpsLat?: number
   gpsLng?: number
   codigoVisita?: string
+  offlineId?: string
 }
 
 export interface AnularPedidoInput {
   pedidoId: string
   motivo?: string
+  offlineId?: string
 }
 
 export interface CancelarPedidoInput {

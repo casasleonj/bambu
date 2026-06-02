@@ -11,6 +11,8 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 
 const EnviarPedidoSchema = z.object({
   embarqueId: z.string().min(1),
+  // Offline-first: dedup si la request se encola y se reintenta
+  offlineId: z.string().optional(),
 })
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -30,6 +32,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     const { embarqueId } = parsed.data
+
+    // Offline-first: dedup — si el pedido ya está en este embarque, retornar OK
+    {
+      const current = await prisma.pedido.findUnique({
+        where: { id },
+        select: { embarqueId: true, estadoEntrega: true },
+      })
+      if (current?.embarqueId === embarqueId && current.estadoEntrega === 'EN_RUTA') {
+        return apiSuccess({ deduped: true, pedido: { id, embarqueId, estadoEntrega: 'EN_RUTA' } }, 200)
+      }
+    }
 
     const pedido = await prisma.$transaction(async (tx) => {
       const current = await tx.pedido.findUnique({ where: { id } })

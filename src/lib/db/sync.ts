@@ -3,9 +3,50 @@ import { logger } from '@/lib/logger'
 
 export async function syncWithServer(): Promise<{ synced: number; failed: number; conflicts: number }> {
   const queue = await offlineDb.syncQueue.orderBy('createdAt').toArray()
+  const requestQueue = await offlineDb.requestQueue.orderBy('createdAt').toArray()
   let synced = 0
   let failed = 0
   let conflicts = 0
+
+  // 1) Replay de requests crudas encoladas por fetchResilient()
+  for (const req of requestQueue) {
+    try {
+      const res = await fetch(req.url, {
+        method: req.method,
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: req.body,
+      })
+      if (res.ok) {
+        await offlineDb.requestQueue.delete(req.id!)
+        synced++
+        logger.info(
+          { localId: req.offlineId, endpoint: req.localEndpoint },
+          'Sync: request reencolada completada'
+        )
+      } else if (res.status === 409) {
+        // Conflicto (ej: dedup por offlineId encuentra existente) = OK
+        await offlineDb.requestQueue.delete(req.id!)
+        conflicts++
+        logger.warn(
+          { localId: req.offlineId, endpoint: req.localEndpoint, status: 409 },
+          'Sync: conflict resuelto por server (dedup)'
+        )
+      } else {
+        failed++
+        logger.warn(
+          { localId: req.offlineId, endpoint: req.localEndpoint, status: res.status },
+          'Sync: server respondió con error, se mantiene en cola'
+        )
+      }
+    } catch (e) {
+      logger.error(
+        { err: e instanceof Error ? e.message : 'Unknown', id: req.id },
+        'Sync: request reencolada falló de red, se mantiene'
+      )
+      failed++
+    }
+  }
 
   for (const item of queue) {
     try {

@@ -140,9 +140,19 @@ export async function POST(request: NextRequest) {
       actualizarCliente,
       origen,
       ventaRapida,
+      offlineId,
     } = parsed.data
 
     const pagosData = parsed.data.pagos || []
+
+    // Offline-first: dedup por offlineId (idempotencia al reenviar)
+    if (offlineId) {
+      const { prisma } = await import('@/lib/prisma')
+      const existente = await prisma.pedido.findUnique({ where: { offlineId } })
+      if (existente) {
+        return apiSuccess({ pedido: existente, deduped: true }, 200)
+      }
+    }
 
     // Normalize items (support both new items[] and legacy productos{})
     const itemsInput = items && items.length > 0
@@ -178,6 +188,7 @@ export async function POST(request: NextRequest) {
       obs,
       fechaEntrega: fechaEntrega ? new Date(fechaEntrega) : undefined,
       ventaRapida,
+      offlineId,
       clienteNuevo: clienteNuevo ? {
         nombre: clienteNuevo.nombre,
         apellido: clienteNuevo.apellido,

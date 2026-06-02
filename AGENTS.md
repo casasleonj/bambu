@@ -16,22 +16,31 @@ This version has breaking changes — APIs, conventions, and file structure may 
 ERP system for water & ice delivery business. 6 concurrent users, rural 2G/3G connectivity.
 
 ## Tech Stack
-- Next.js 16 (App Router)
-- NextAuth v5 (Auth.js)
-- Prisma ORM + **PostgreSQL** (dev and production)
-- Tailwind CSS v4 + shadcn/ui
-- Dexie (offline-first IndexedDB)
-- Zustand (client state)
-- Sonner (toasts)
-- Playwright (E2E tests)
-- Vitest (unit tests)
-- ESLint v9 (flat config)
+- Next.js 16.2.4 (App Router)
+- React 19.2.4
+- TypeScript 5.9.3
+- NextAuth 5.0.0-beta.31 (Auth.js, JWT strategy)
+- Prisma 6.19.3 + **PostgreSQL** (dev and production)
+- Tailwind CSS 4.2.4
+- Dexie 4.4.2 (offline-first IndexedDB)
+- Zustand 5.0.12 (client state)
+- Sonner 2.0.7 (toasts)
+- Playwright 1.59.1 (E2E tests)
+- Vitest 3.2.4 (unit tests)
+- ESLint 9.39.4 (flat config)
+- Redis 5.12.1 + rate-limiter-flexible 11.0.1 (distributed rate limiting)
+- Sentry 10.55.0 (error tracking)
+- Pino 10.3.1 (structured logging)
+- Zod 4.3.6 (validation)
+- Serwist 9.5.7 (PWA service worker)
+
+**ALL dependency versions are pinned (no `^` or `~`).**
 
 ## Database
 
 **ONE schema, ONE provider: PostgreSQL everywhere.**
 
-- Local dev: PostgreSQL 16 Alpine via Docker Compose on port **5433** (`docker compose up -d`)
+- Local dev: PostgreSQL 17.10 Alpine via Docker Compose on port **5433** (`docker compose up -d`)
 - Production: Supabase PostgreSQL
 - There is NO SQLite schema. Do NOT create one.
 - Monetary fields use `Decimal @db.Decimal(10, 2)` — cast with `Number(value)` in application code.
@@ -98,7 +107,7 @@ vercel --prod
 
 ### PostgreSQL Only
 - Single `prisma/schema.prisma` with `provider = "postgresql"`
-- Dev: Docker Compose PostgreSQL 16 Alpine (`docker compose up -d`)
+- Dev: Docker Compose PostgreSQL 17.10 Alpine (`docker compose up -d`)
 - Prod: Supabase. Same schema, same provider, zero drift.
 - Advisory locks (`pg_advisory_lock`) for sequence generation
 - `Decimal` fields for all monetary values (precision matters)
@@ -106,14 +115,19 @@ vercel --prod
 ### Proxy (formerly Middleware)
 - Next.js 16 deprecated `middleware.ts` and renamed it to `proxy.ts`.
 - `src/proxy.ts` runs on the Node.js runtime before routes are rendered.
-- It redirects unauthenticated requests to `/login` (with `callbackUrl`), preserving the original path for post-login redirect.
-- It does NOT duplicate rate limiting — that remains inside API routes via `rate-limiter-flexible`.
+- It handles **both** auth redirect (page routes) **and** rate limiting (API routes).
+- API routes (`/api/*`): rate limited via `checkRateLimit()` from `src/lib/rate-limit.ts`. Health checks and cron jobs are excluded.
+- Page routes: redirects unauthenticated requests to `/login` (with `callbackUrl`).
+- Rate limiting uses Redis v5 with `useRedisPackage: true`, `disableOfflineQueue: true`, and `insuranceLimiter` (memory fallback).
 
 ### Rate Limiting
-- `rate-limiter-flexible` with Redis support (falls back to in-memory in dev)
-- Auth limit: 10 req/15min in production, 1000 req/min in development
-- API limit: 300 req/min
-- Page limit: 600 req/min
+- Implemented in `src/proxy.ts` (not in individual route handlers).
+- `rate-limiter-flexible` with Redis support (falls back to in-memory in dev).
+- Auth limit: 10 req/15min in production, 1000 req/min in development.
+- API limit: 300 req/min.
+- Page limit: 600 req/min.
+- Excluded paths: `/api/health`, `/api/cron/*`.
+- Key config: `useRedisPackage: true` (required for redis v5), `disableOfflineQueue: true`, `insuranceLimiter` (memory fallback), `inMemoryBlockOnConsumed` (7x faster after limit reached).
 
 ### Service Worker (PWA)
 - `public/sw.js`: Network-first for navigation, cache-first for static assets
@@ -126,22 +140,39 @@ vercel --prod
 - Post-login redirect by role: `ADMIN`/`ASISTENTE` → `/dashboard`, `REPARTIDOR` → `/repartidor`, `CONTADOR` → `/reportes`
 
 ### Server Components
-- `(app)/dashboard/page.tsx`, `(app)/reportes/page.tsx`, and `(app)/repartidor/page.tsx` are async Server Components (direct Prisma queries)
+- `(app)/dashboard/page.tsx`, `(app)/reportes/page.tsx`, and `(app)/repartidor/page.tsx` are async Server Components
+- Dashboard uses DDD module pattern: `src/modules/dashboard/` with domain/application/infrastructure/presentation layers
 - `clientes`, `trabajadores`, `proveedores`, `insumos` use split pattern: SC page + Client Component
 - SC pages pass serialized data via `JSON.parse(JSON.stringify(data))` to handle Prisma Decimal/Date types
+
+### DDD Module Structure (Pilot: Dashboard)
+- `src/modules/dashboard/` — First bounded context, serves as migration template
+  - `domain/` — Entities, Value Objects, Domain Services (pure logic, no Prisma)
+  - `application/` — Use cases (orchestrate repositories + domain services)
+  - `infrastructure/` — Repositories (Prisma wrappers, return domain types)
+  - `presentation/` — Adapter layer (DDD shape → legacy client shape)
+  - `index.ts` — Composition root, exports `fetchDashboardData()`
+- `src/shared/` — Cross-domain primitives
+  - `domain/` — Money, DateRange, ProductCode (immutable value objects)
+  - `infrastructure/` — Prisma client re-export
+- `src/lib/dashboard-domain.ts` — Backward-compatible re-exports for existing code
+- New bounded contexts should follow this same structure
 
 ## File Reference
 
 | File | Purpose |
 |------|---------|
-| `docker-compose.yml` | Local PostgreSQL (port 5433) |
+| `docker-compose.yml` | Local PostgreSQL (port 5433) + Redis 8 |
 | `prisma/schema.prisma` | PostgreSQL schema (dev + prod) |
 | `prisma/seed.ts` | Initial data seeding |
-| `src/proxy.ts` | Auth redirect + route protection (replaces deprecated middleware.ts) |
-| `src/lib/rate-limit.ts` | Rate limiter (Redis + fallback) |
+| `src/proxy.ts` | Auth redirect + rate limiting (replaces deprecated middleware.ts) |
+| `src/lib/rate-limit.ts` | Rate limiter config (Redis + memory fallback) |
 | `src/lib/sequence.ts` | PostgreSQL sequence generator |
 | `src/lib/locks.ts` | Advisory locks |
 | `src/lib/auth.ts` | NextAuth v5 configuration (JWT strategy) |
+| `src/lib/dashboard-domain.ts` | Backward-compat re-exports for DDD dashboard |
+| `src/modules/dashboard/` | DDD pilot — domain/application/infrastructure/presentation |
+| `src/shared/` | Cross-domain value objects (Money, DateRange, ProductCode) |
 | `public/sw.js` | Manual service worker (PWA) |
 
 ## Post-Deployment Checklist
@@ -161,6 +192,8 @@ vercel --prod
 2. **Next.js workspace inference**: With multiple `package-lock.json` files, Next.js may pick wrong root. `outputFileTracingRoot` set in `next.config.ts`.
 3. **Serwist dependency**: `@serwist/next` is installed but not configured. The PWA uses the manual `public/sw.js` instead.
 4. **Auth adapter**: `@auth/prisma-adapter` is installed but auth uses JWT strategy (not database sessions).
+5. **Redis v5 + rate-limiter-flexible**: Requires `useRedisPackage: true` (auto-detection fails because redis v5 constructor name is "Class", not "Commander").
+6. **Docker Compose**: Redis 8 service added to `docker-compose.yml` on port 6379.
 
 ---
 

@@ -3,12 +3,14 @@
  *
  * Handles price resolution for pedido items via API.
  * Encapsulates fetching price table, product configs, and resolving prices.
+ * Offline-first: la resolución de precios encola en sync si la red falla.
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { DEFAULT_PRICES, PRODUCTO_INFO, getProductosForCanal, type ProductoId } from '@/lib/prices'
 import type { Tier } from '@/components/pedido-form/types'
 import { usePriceSync } from '@/hooks/use-price-sync'
+import { fetchResilient } from '@/lib/fetch-resilient'
 
 export interface UseResolverPreciosOptions {
   canal: 'PUNTO' | 'DOMICILIO'
@@ -59,21 +61,18 @@ export function useResolverPrecios(options: UseResolverPreciosOptions) {
     }
 
     try {
-      const res = await fetch('/api/precios/resolver', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items, canal, clienteId }),
-      })
-      if (res.ok) {
-        const data = await res.json()
-        if (data.precios) {
-          const nuevos: Record<string, number> = {}
-          for (const [codigo, info] of Object.entries(data.precios)) {
-            nuevos[codigo] = (info as { precio: number }).precio
-          }
-          setPreciosResueltos(nuevos)
+      const result = await fetchResilient<{ precios?: Record<string, { precio: number }> }>(
+        '/api/precios/resolver',
+        { method: 'POST', body: { items, canal, clienteId }, localEndpoint: 'resolver-precios' }
+      )
+      if (result.status === 'ok' && result.data.precios) {
+        const nuevos: Record<string, number> = {}
+        for (const [codigo, info] of Object.entries(result.data.precios)) {
+          nuevos[codigo] = info.precio
         }
+        setPreciosResueltos(nuevos)
       }
+      // status === 'offline' o 'error' → fallback a precios cacheados (silently)
     } catch {
       // fallback
     }

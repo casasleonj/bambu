@@ -25,9 +25,21 @@ export async function POST(
       return apiError(formatZodError(parsed.error), 400)
     }
 
-    const { motivo } = parsed.data
+    const { motivo, offlineId } = parsed.data
 
-    const result = await anularPedidoUseCase.execute({ pedidoId: id, motivo })
+    // Offline-first: dedup — si el pedido ya está anulado, retornar OK (idempotente)
+    {
+      const { prisma } = await import('@/lib/prisma')
+      const pedidoActual = await prisma.pedido.findUnique({
+        where: { id },
+        select: { estadoEntrega: true },
+      })
+      if (pedidoActual?.estadoEntrega === 'ANULADO') {
+        return apiSuccess({ deduped: true, pedido: { id, motivo, estadoEntrega: 'ANULADO' } }, 200)
+      }
+    }
+
+    const result = await anularPedidoUseCase.execute({ pedidoId: id, motivo, offlineId })
 
     logAudit({
       entidad: 'Pedido',

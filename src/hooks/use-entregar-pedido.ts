@@ -3,10 +3,12 @@
  *
  * Handles pedido delivery via API.
  * Replaces direct fetch('/api/pedidos/[id]/entrega', { method: 'POST' }) calls.
+ * Offline-first: si la red falla, encola y notifica.
  */
 
 import { useState, useCallback } from 'react'
 import { toast } from 'sonner'
+import { fetchResilient } from '@/lib/fetch-resilient'
 
 export interface EntregarPedidoPayload {
   pedidoId: string
@@ -32,37 +34,39 @@ export interface UseEntregarPedidoOptions {
 
 export function useEntregarPedido(options?: UseEntregarPedidoOptions) {
   const [submitting, setSubmitting] = useState(false)
+  const [pendingOffline, setPendingOffline] = useState<string[]>([])
 
   const entregar = useCallback(async (payload: EntregarPedidoPayload): Promise<EntregarPedidoResult | null> => {
     setSubmitting(true)
     try {
-      const res = await fetch(`/api/pedidos/${payload.pedidoId}/entrega`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload),
-      })
-      const data = await res.json()
+      const result = await fetchResilient<{ success: boolean; pedido: unknown; hijo?: unknown; error?: { message?: string } }>(
+        `/api/pedidos/${payload.pedidoId}/entrega`,
+        {
+          method: 'POST',
+          body: { ...payload, offlineId: crypto.randomUUID() },
+          localEndpoint: 'entregar-pedido',
+        }
+      )
 
-      if (res.ok && data.success) {
-        const result = { pedido: data.pedido, hijo: data.hijo } as EntregarPedidoResult
-        options?.onSuccess?.(result)
-        return result
+      if (result.status === 'ok') {
+        const ok = { pedido: result.data.pedido, hijo: result.data.hijo } as EntregarPedidoResult
+        options?.onSuccess?.(ok)
+        return ok
       }
 
-      const errorMsg = data.error?.message || 'Error registrando entrega'
-      options?.onError?.(errorMsg)
-      toast.error(errorMsg)
-      return null
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Error registrando entrega'
-      options?.onError?.(errorMsg)
-      toast.error(errorMsg)
+      if (result.status === 'offline') {
+        setPendingOffline(prev => [...prev, result.localId])
+        toast.info('Sin conexión. Entrega guardada, se enviará al recuperar la red.')
+        return null
+      }
+
+      options?.onError?.(result.error)
+      toast.error(result.error)
       return null
     } finally {
       setSubmitting(false)
     }
   }, [options])
 
-  return { entregar, submitting }
+  return { entregar, submitting, pendingOffline }
 }
