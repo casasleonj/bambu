@@ -131,6 +131,7 @@ export async function getDashboardData(
     kpis,
     stock,
     produccion: produccionHoy,
+    vendidos,
     ventasPorPrecio,
     franjasHorarias: franjas,
     maxFranja,

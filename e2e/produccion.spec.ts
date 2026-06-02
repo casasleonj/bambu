@@ -449,4 +449,153 @@ test.describe('Producción — E2E Exhaustivo', () => {
     expect(body).toHaveProperty('produccion')
     expect(Array.isArray(body.produccion)).toBe(true)
   })
+
+  // ─── 18. FIX 1.5: obs obligatorio cuando hay diferencia (server-side) ──────
+
+  test('FIX 1.5: POST con diferencia y obs vacío debe rechazarse con 400', async ({ page }) => {
+    await fullLogin(page)
+
+    // Asegurar sellador disponible
+    let sellador = await getSellador(page)
+    if (!sellador) {
+      await createSellador(page)
+      const res = await apiGet(page, '/api/trabajadores?rol=SELLADOR&activo=true')
+      const body = await res.json()
+      sellador = body.trabajadores?.[0]
+    }
+    if (!sellador) test.skip(true, 'No sellador available')
+
+    // Stock físico muy diferente al esperado (creamos diferencia forzada)
+    // conteos A=100, B=100, stock físico=50 (esperado ≈ 100) → diferencia ≈ 50
+    const res = await apiPost(page, '/api/produccion', {
+      turno: 'MANANA',
+      trabajadorId: sellador!.id,
+      conteoAAgua: 100,
+      conteoBAgua: 100,
+      conteoAHielo: 0,
+      conteoBHielo: 0,
+      stockFinFisicoAgua: 50, // ← diferencia intencional
+      stockFinFisicoHielo: 0,
+      // obs intencionalmente ausente
+    })
+
+    expect(res.status()).toBe(400)
+    const errBody = await res.json()
+    expect(errBody.error).toMatch(/diferencia|observaciones/i)
+  })
+
+  test('FIX 1.5: POST con diferencia y obs presente debe aceptarse', async ({ page }) => {
+    await fullLogin(page)
+
+    let sellador = await getSellador(page)
+    if (!sellador) {
+      await createSellador(page)
+      const res = await apiGet(page, '/api/trabajadores?rol=SELLADOR&activo=true')
+      const body = await res.json()
+      sellador = body.trabajadores?.[0]
+    }
+    if (!sellador) test.skip(true, 'No sellador available')
+
+    const res = await apiPost(page, '/api/produccion', {
+      turno: 'TARDE',
+      trabajadorId: sellador!.id,
+      conteoAAgua: 100,
+      conteoBAgua: 100,
+      conteoAHielo: 0,
+      conteoBHielo: 0,
+      stockFinFisicoAgua: 50,
+      stockFinFisicoHielo: 0,
+      obs: 'Se rompieron 50 pacas durante el turno',
+    })
+
+    expect([200, 201]).toContain(res.status())
+  })
+
+  // ─── 19. FIX 1.1: race condition — concurrent POSTs ──────────────────────
+
+  test('FIX 1.1: dos POSTs concurrentes mismo sellador+turno → solo uno gana', async ({ page }) => {
+    await fullLogin(page)
+
+    let sellador = await getSellador(page)
+    if (!sellador) {
+      await createSellador(page)
+      const res = await apiGet(page, '/api/trabajadores?rol=SELLADOR&activo=true')
+      const body = await res.json()
+      sellador = body.trabajadores?.[0]
+    }
+    if (!sellador) test.skip(true, 'No sellador available')
+
+    const payload = {
+      turno: 'NOCHE',
+      trabajadorId: sellador!.id,
+      conteoAAgua: 60,
+      conteoBAgua: 60,
+      conteoAHielo: 30,
+      conteoBHielo: 30,
+      stockFinFisicoAgua: 60,
+      stockFinFisicoHielo: 30,
+    }
+
+    // Disparar 5 requests en paralelo
+    const responses = await Promise.all(
+      Array.from({ length: 5 }, () => apiPost(page, '/api/produccion', payload)),
+    )
+
+    const statuses = await Promise.all(responses.map((r) => r.status()))
+    const successCount = statuses.filter((s) => s === 201).length
+    const conflictCount = statuses.filter((s) => s === 409).length
+
+    // Solo 1 debe ganar, los demás deben ser 409
+    expect(successCount).toBe(1)
+    expect(conflictCount).toBe(4)
+    // Ningún 500
+    expect(statuses.filter((s) => s >= 500)).toHaveLength(0)
+  })
+
+  // ─── 20. FIX 1.6: fecha truncada a medianoche Bogotá ──────────────────────
+
+  test('FIX 1.6: registro creado tiene fecha en 00:00:00 (medianoche Bogotá)', async ({ page }) => {
+    await fullLogin(page)
+
+    let sellador = await getSellador(page)
+    if (!sellador) {
+      await createSellador(page)
+      const res = await apiGet(page, '/api/trabajadores?rol=SELLADOR&activo=true')
+      const body = await res.json()
+      sellador = body.trabajadores?.[0]
+    }
+    if (!sellador) test.skip(true, 'No sellador available')
+
+    const today = new Date().toISOString().split('T')[0]
+    const getRes = await apiGet(page, `/api/produccion?fecha=${today}`)
+    const getBody = await getRes.json()
+    const existing = (getBody.produccion || []).filter(
+      (p: any) => p.trabajadorId === sellador!.id && p.turno === 'NOCHE',
+    )
+    if (existing.length > 0) test.skip(true, 'Ya existe produccion NOCHE para este sellador hoy')
+
+    const res = await apiPost(page, '/api/produccion', {
+      turno: 'NOCHE',
+      trabajadorId: sellador!.id,
+      conteoAAgua: 40,
+      conteoBAgua: 40,
+      conteoAHielo: 20,
+      conteoBHielo: 20,
+      stockFinFisicoAgua: 40,
+      stockFinFisicoHielo: 20,
+    })
+
+    expect([200, 201]).toContain(res.status())
+
+    // Verificar que la fecha guardada es medianoche
+    const verifyRes = await apiGet(page, `/api/produccion?fecha=${today}`)
+    const verifyBody = await verifyRes.json()
+    const nuevo = (verifyBody.produccion || []).find(
+      (p: any) => p.trabajadorId === sellador!.id && p.turno === 'NOCHE',
+    )
+    if (nuevo) {
+      // La fecha debe ser YYYY-MM-DDT05:00:00.000Z (= 00:00 Bogotá)
+      expect(nuevo.fecha).toMatch(/T05:00:00\.000Z$/)
+    }
+  })
 })

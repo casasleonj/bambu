@@ -77,6 +77,12 @@ export interface ProduccionDiaria {
   perdidasHielo: number
 }
 
+export interface VendidosHoy {
+  agua: number
+  hielo: number
+  botellon: number
+}
+
 // ── Computed KPIs ───────────────────────────────────────────────────────
 
 export interface DashboardKPIs {
@@ -101,6 +107,7 @@ export interface DashboardData {
   kpis: DashboardKPIs
   stock: StockSnapshot
   produccion: ProduccionDiaria
+  vendidos: VendidosHoy
   ventasPorPrecio: VentaPorPrecio[]
   franjasHorarias: FranjaHoraria[]
   maxFranja: number

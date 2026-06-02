@@ -36,10 +36,10 @@ export function toLegacyDashboardData(ddd: DDDData): LegacyData {
     // Sales by price
     ventasPorPrecio: ddd.ventasPorPrecio,
 
-    // Product quantities sold
-    aguaVendida: ddd.produccion.aguaProducida - ddd.produccion.perdidasAgua,
-    hieloVendido: ddd.produccion.hieloProducido - ddd.produccion.perdidasHielo,
-    botellonVendido: 0,
+    // Product quantities sold (de pedidos ENTREGADOS, no de producción)
+    aguaVendida: ddd.vendidos.agua,
+    hieloVendido: ddd.vendidos.hielo,
+    botellonVendido: ddd.vendidos.botellon,
 
     // Production
     prodAguaHoy: ddd.produccion.aguaProducida,

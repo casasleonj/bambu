@@ -4,21 +4,22 @@ import { requireAuth } from '@/lib/auth-check'
 import { getVentasDelDia } from '@/lib/ventas'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
+import { startOfDayInBogota, endOfDayInBogota, todayInBogota } from '@/lib/date-helpers'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
   try {
+    // FIX 1.6: usar TZ Bogotá explícita para que el rango del día
+    // coincida con el guardado en Produccion.fecha
     const fechaParam = request.nextUrl.searchParams.get('fecha')
-    const fecha = fechaParam ? new Date(fechaParam) : new Date()
-    const startOfDay = new Date(fecha)
-    startOfDay.setHours(0, 0, 0, 0)
-    const endOfDay = new Date(startOfDay)
-    endOfDay.setDate(endOfDay.getDate() + 1)
+    const fechaStr = fechaParam ? fechaParam.split('T')[0] : todayInBogota()
+    const startOfDay = startOfDayInBogota(fechaStr)
+    const endOfDay = endOfDayInBogota(fechaStr)
 
     const [ultimoCierre, ventas, embarquesCerrados, embarquesDelDia] = await Promise.all([
       prisma.cierreDia.findFirst({ orderBy: { fecha: 'desc' } }),
-      getVentasDelDia(fecha),
+      getVentasDelDia(new Date(`${fechaStr}T12:00:00-05:00`)),
       prisma.embarque.findMany({
         where: {
           fecha: { gte: startOfDay, lt: endOfDay },

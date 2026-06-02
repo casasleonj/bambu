@@ -13,13 +13,13 @@ export interface ProduccionRepository {
 
 export class PrismaProduccionRepository implements ProduccionRepository {
   async aggregateByDateRange(start: Date, end: Date): Promise<ProduccionDiaria> {
+    // FIX 1.2: usa los campos almacenados prodAgua/prodHielo (promedio de A y B)
+    // en lugar de sumar los conteos por separado (que duplicaba la producción).
     const result = await prisma.produccion.aggregate({
       where: { fecha: { gte: start, lt: end } },
       _sum: {
-        conteoAAgua: true,
-        conteoBAgua: true,
-        conteoAHielo: true,
-        conteoBHielo: true,
+        prodAgua: true,
+        prodHielo: true,
         rotasAgua: true,
         rotasHielo: true,
         filtradasAgua: true,
@@ -29,8 +29,8 @@ export class PrismaProduccionRepository implements ProduccionRepository {
       },
     })
 
-    const aguaProducida = (result._sum?.conteoAAgua || 0) + (result._sum?.conteoBAgua || 0)
-    const hieloProducido = (result._sum?.conteoAHielo || 0) + (result._sum?.conteoBHielo || 0)
+    const aguaProducida = result._sum?.prodAgua || 0
+    const hieloProducido = result._sum?.prodHielo || 0
     const perdidasAgua =
       (result._sum?.rotasAgua || 0) +
       (result._sum?.filtradasAgua || 0) +
