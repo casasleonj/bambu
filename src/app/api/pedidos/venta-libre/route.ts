@@ -11,6 +11,7 @@ import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 import { uploadBase64Foto, isBase64Image } from '@/lib/storage'
+import { getConfigBool } from '@/lib/config'
 import { OrigenPedido, EstadoEntrega } from '@prisma/client'
 
 export async function POST(request: NextRequest) {
@@ -27,6 +28,18 @@ export async function POST(request: NextRequest) {
     }
 
     const { clienteId, items, pagos, embarqueId, obs, fotoEntrega, gpsLat, gpsLng, offlineId } = parsed.data
+
+    // BLOQUEAR_PRECIOS_REPARTIDOR — REPARTIDOR cannot set precioManual on any item.
+    // Check `!== undefined` (not `> 0`) so any override is rejected. The schema
+    // also rejects precioManual=0 with a validation error, but the route's own
+    // defense must not depend on the schema's specifics.
+    const bloquearPrecios = await getConfigBool('BLOQUEAR_PRECIOS_REPARTIDOR', false)
+    if (bloquearPrecios && authResult.user?.role === 'REPARTIDOR') {
+      const hasPrecioManual = items.some(i => i.precioManual !== undefined)
+      if (hasPrecioManual) {
+        return apiError('Los repartidores no pueden modificar precios', 403)
+      }
+    }
     const pagosData = pagos || []
     const totalPagado = pagosData.reduce((sum, p) => sum + p.monto, 0)
 
@@ -199,6 +212,23 @@ export async function POST(request: NextRequest) {
 
       // 10. SIEMPRE crear factura (Consumidor Final si anónimo)
       const facturaClienteId = esAnonimo ? 'CONSUMIDOR_FINAL' : clienteFinalId
+
+      // FIX C-13: además del lock 'PEDIDO' (que ya cubre esta operación),
+      // adquirir también 'FACTURA_NUM' específicamente alrededor de la
+      // generación del número de factura. Esto previene race condition con
+      // POST /api/facturas (que usa 'FACTURA_NUM' como lock principal) cuando
+      // ambos corren en paralelo:
+      //   - venta-libre A (bajo PEDIDO) genera factura #1500
+      //   - /api/facturas B (bajo FACTURA_NUM) genera factura #1500 también
+      // Sin este lock adicional, getNextNumero (count+1) en src/lib/sequence.ts:23
+      // NO es atómico entre transacciones con locks DIFERENTES — solo entre
+      // transacciones con el MISMO lock. La unique constraint en Factura.numero
+      // (schema.prisma:728) eventualmente lo cacha, pero el 500 resultante es
+      // confuso para el operador.
+      // pg_advisory_xact_lock es re-entrante en la misma tx, así que adquirir
+      // FACTURA_NUM dentro del lock PEDIDO no causa deadlock.
+      const { LOCK_IDS } = await import('@/lib/locks')
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(${LOCK_IDS.FACTURA_NUM})::text`
       const facturaNum = await getNextNumero(tx, { model: 'factura', field: 'numero' })
 
       await tx.factura.create({
