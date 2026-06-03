@@ -5,12 +5,27 @@ import { requireAuth, requireRole } from '@/lib/auth-check'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
+import { randomInt } from 'node:crypto'
 
-function generatePassword(length = 8): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+// FIX C-11: usar randomInt criptográficamente seguro en vez de Math.random.
+// Math.random() es predecible matemáticamente: un atacante que conozca
+// la semilla o suficientes outputs puede predecir futuras contraseñas.
+// crypto.randomInt usa CSPRNG del sistema (urandom/BCryptGenRandom) y es
+// seguro para generación de secretos.
+const CHARSET =
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+
+function generatePassword(length = 12): string {
+  // Generar un buffer de índices aleatorios y mapear al charset
+  const buf = new Uint32Array(length)
+  // require('node:crypto').randomFillSync no está tipado en algunas versiones;
+  // randomInt sí lo está, y su uso repetido es eficiente.
+  for (let i = 0; i < length; i++) {
+    buf[i] = randomInt(0, CHARSET.length)
+  }
   let result = ''
   for (let i = 0; i < length; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length))
+    result += CHARSET.charAt(buf[i])
   }
   return result
 }
@@ -35,7 +50,7 @@ export async function PATCH(_request: NextRequest, { params }: { params: Promise
     })
     if (!user) return apiError('Usuario no encontrado', 404)
 
-    const plainPassword = generatePassword(8)
+    const plainPassword = generatePassword(12)
     const hashed = await bcrypt.hash(plainPassword, 12)
 
     await prisma.user.update({
