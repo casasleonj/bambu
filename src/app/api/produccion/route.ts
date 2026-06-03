@@ -12,6 +12,7 @@ import { getVentasDelDia } from '@/lib/ventas'
 import { calcComSellador } from '@/lib/comisiones'
 import { getTodayRange, getDateRange } from '@/lib/dates'
 import { startOfDayInBogota, todayInBogota } from '@/lib/date-helpers'
+import { captureApiError, addApiBreadcrumb } from '@/lib/sentry-helpers'
 
 // FIX 1.1: advisory lock key dedicado a producción. Cierre usa 7.
 const PROD_ADVISORY_LOCK_KEY = 8
@@ -38,7 +39,7 @@ export async function GET(request: NextRequest) {
     const registros = await prisma.produccion.findMany({
       where,
       orderBy: { turno: 'asc' },
-      include: { trabajador: true },
+      include: { trabajador: true, items: true },
     })
     return apiSuccess({ produccion: registros })
   } catch (error) {
@@ -54,6 +55,13 @@ export async function POST(request: NextRequest) {
   if (roleCheck instanceof Response) return roleCheck
 
   const userId = (authResult.user as { id?: string } | undefined)?.id
+  const userRol = (authResult.user as { rol?: string } | undefined)?.rol
+  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+    ?? request.headers.get('x-real-ip')
+    ?? null
+  const userAgent = request.headers.get('user-agent') ?? null
+
+  addApiBreadcrumb('produccion.POST start', { userId, hasBody: true })
 
   let body: unknown
   try {
@@ -61,14 +69,18 @@ export async function POST(request: NextRequest) {
   } catch {
     return apiError('JSON inválido', 400)
   }
-
+  
   const parsed = ProduccionCreateSchema.safeParse(body)
   if (!parsed.success) {
     return apiError(formatZodError(parsed.error), 400)
   }
 
-  const prodAgua = Math.round((parsed.data.conteoAAgua + parsed.data.conteoBAgua) / 2)
-  const prodHielo = Math.round((parsed.data.conteoAHielo + parsed.data.conteoBHielo) / 2)
+  // Parsear items: separar por producto
+  const itemAgua = parsed.data.items.find(i => i.producto === 'PACA_AGUA')!
+  const itemHielo = parsed.data.items.find(i => i.producto === 'PACA_HIELO')!
+
+  const prodAgua = Math.round((itemAgua.conteoA + itemAgua.conteoB) / 2)
+  const prodHielo = Math.round((itemHielo.conteoA + itemHielo.conteoB) / 2)
 
   // FIX 1.6: fecha truncada a medianoche Bogotá para que
   // @@unique([trabajadorId, fecha, turno]) funcione como "1 por día"
@@ -86,18 +98,12 @@ export async function POST(request: NextRequest) {
   const stockIniHielo = ultimoCierre?.stockFinHielo || 0
 
   // FIX 1.5: validar server-side que obs esté presente si hay diferencia
-  const perdidasAgua =
-    (parsed.data.rotasAgua || 0) +
-    (parsed.data.filtradasAgua || 0) +
-    (parsed.data.consumoInternoAgua || 0)
-  const perdidasHielo =
-    (parsed.data.rotasHielo || 0) +
-    (parsed.data.filtradasHielo || 0) +
-    (parsed.data.consumoInternoHielo || 0)
+  const perdidasAgua = itemAgua.rotas + itemAgua.filtradas + itemAgua.consumoInterno
+  const perdidasHielo = itemHielo.rotas + itemHielo.filtradas + itemHielo.consumoInterno
   const stockFinEsperadoAgua = stockIniAgua + prodAgua - ventas.aguaVendida
   const stockFinEsperadoHielo = stockIniHielo + prodHielo - ventas.hieloVendido
-  const diferenciaAgua = stockFinEsperadoAgua - parsed.data.stockFinFisicoAgua - perdidasAgua
-  const diferenciaHielo = stockFinEsperadoHielo - parsed.data.stockFinFisicoHielo - perdidasHielo
+  const diferenciaAgua = stockFinEsperadoAgua - itemAgua.stockFinFisico - perdidasAgua
+  const diferenciaHielo = stockFinEsperadoHielo - itemHielo.stockFinFisico - perdidasHielo
   const hayDiferencia = diferenciaAgua !== 0 || diferenciaHielo !== 0
   const obsTrim = (parsed.data.obs || '').trim()
 
@@ -188,8 +194,9 @@ export async function POST(request: NextRequest) {
           }
           const comRepartTotal = comRepartAgua + comRepartHielo
 
-          const stockFinAgua = stockIniAgua + prodAgua - ventas.aguaVendida
-          const stockFinHielo = stockIniHielo + prodHielo - ventas.hieloVendido
+          // Stock fin esperado por item
+          const stockFinEsperadoAgua = stockIniAgua + prodAgua - ventas.aguaVendida
+          const stockFinEsperadoHielo = stockIniHielo + prodHielo - ventas.hieloVendido
 
           return tx.produccion.create({
             data: {
@@ -197,35 +204,46 @@ export async function POST(request: NextRequest) {
               turno: parsed.data.turno,
               trabajadorId: parsed.data.trabajadorId,
               createdById: userId, // FIX 1.4
-              stockIniAgua,
-              stockIniHielo,
-              conteoAAgua: parsed.data.conteoAAgua,
-              conteoBAgua: parsed.data.conteoBAgua,
-              conteoAHielo: parsed.data.conteoAHielo,
-              conteoBHielo: parsed.data.conteoBHielo,
-              prodAgua,
-              prodHielo,
-              ventasAgua: ventas.aguaVendida,
-              ventasHielo: ventas.hieloVendido,
-              stockFinAgua,
-              stockFinHielo,
-              stockFinFisicoAgua: parsed.data.stockFinFisicoAgua,
-              stockFinFisicoHielo: parsed.data.stockFinFisicoHielo,
-              filtradasAgua: parsed.data.filtradasAgua,
-              filtradasHielo: parsed.data.filtradasHielo,
-              rotasAgua: parsed.data.rotasAgua,
-              rotasHielo: parsed.data.rotasHielo,
-              consumoInternoAgua: parsed.data.consumoInternoAgua,
-              consumoInternoHielo: parsed.data.consumoInternoHielo,
-              comSelladorAgua: comSell.comAgua,
-              comSelladorHielo: comSell.comHielo,
               comSellTotal: comSell.total,
-              comRepartidorAgua: comRepartAgua,
-              comRepartidorHielo: comRepartHielo,
               comRepartTotal: comRepartTotal,
               obs: obsTrim || null,
+              // Bloque 2: crear 2 ProduccionItem (PACA_AGUA, PACA_HIELO)
+              items: {
+                create: [
+                  {
+                    producto: 'PACA_AGUA',
+                    conteoA: itemAgua.conteoA,
+                    conteoB: itemAgua.conteoB,
+                    producido: prodAgua,
+                    stockIni: stockIniAgua,
+                    ventas: ventas.aguaVendida,
+                    stockFinEsperado: stockFinEsperadoAgua,
+                    stockFinFisico: itemAgua.stockFinFisico,
+                    diferencia: diferenciaAgua,
+                    filtradas: itemAgua.filtradas,
+                    rotas: itemAgua.rotas,
+                    consumoInterno: itemAgua.consumoInterno,
+                    comSellador: comSell.comAgua,
+                  },
+                  {
+                    producto: 'PACA_HIELO',
+                    conteoA: itemHielo.conteoA,
+                    conteoB: itemHielo.conteoB,
+                    producido: prodHielo,
+                    stockIni: stockIniHielo,
+                    ventas: ventas.hieloVendido,
+                    stockFinEsperado: stockFinEsperadoHielo,
+                    stockFinFisico: itemHielo.stockFinFisico,
+                    diferencia: diferenciaHielo,
+                    filtradas: itemHielo.filtradas,
+                    rotas: itemHielo.rotas,
+                    consumoInterno: itemHielo.consumoInterno,
+                    comSellador: comSell.comHielo,
+                  },
+                ],
+              },
             },
-            include: { trabajador: true },
+            include: { trabajador: true, items: true },
           })
         },
         {
@@ -244,13 +262,21 @@ export async function POST(request: NextRequest) {
         datos: {
           fecha: produccion.fecha,
           turno: produccion.turno,
-          prodAgua: produccion.prodAgua,
-          prodHielo: produccion.prodHielo,
+          prodAgua,
+          prodHielo,
           diferenciaAgua,
           diferenciaHielo,
           obs: produccion.obs,
+          items: produccion.items.map(i => ({
+            producto: i.producto,
+            producido: i.producido,
+            stockFinFisico: i.stockFinFisico,
+            diferencia: i.diferencia,
+          })),
         },
         usuarioId: userId,
+        ip,
+        userAgent,
       }).catch(() => {})
 
       return apiSuccess({ produccion }, 201)
@@ -316,5 +342,12 @@ export async function POST(request: NextRequest) {
     { err: lastError?.message || 'Unknown' },
     'Error creating produccion after retries:',
   )
+  // Capturar a Sentry con contexto de producción
+  captureApiError(lastError ?? new Error('Unknown produccion POST error'), {
+    endpoint: 'produccion.POST',
+    rol: userRol,
+    userId: userId ?? undefined,
+    extra: { turno: parsed.data.turno, attempt: MAX_RETRIES },
+  })
   return apiError('Error al registrar la producción', 500)
 }

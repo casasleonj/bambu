@@ -1,5 +1,5 @@
 // @tests E2E Producción — Suite exhaustiva
-import { test, expect, fullLogin, goto, apiPost, apiGet, createSellador, getSellador } from './fixtures'
+import { test, expect, fullLogin, goto, apiPost, apiGet, apiPut, createSellador, getSellador } from './fixtures'
 import type { Page } from '@playwright/test'
 
 test.describe('Producción — E2E Exhaustivo', () => {
@@ -626,5 +626,104 @@ test.describe('Producción — E2E Exhaustivo', () => {
       // La fecha debe ser YYYY-MM-DDT05:00:00.000Z (= 00:00 Bogotá -05:00)
       expect(nuevo.fecha).toMatch(/T05:00:00\.000Z$/)
     }
+  })
+
+  // ─── 21. PUT /api/produccion/[id] (Bloque 4) ────────────────────────────────
+
+  test('PUT corregir conteos del mismo día → 200, valores actualizados', async ({ page }) => {
+    await fullLogin(page)
+
+    const sellador = await createSellador(page)
+    const selladorId = sellador?.trabajador?.id || sellador?.id
+    if (!selladorId) test.skip(true, 'No se pudo crear sellador')
+
+    // Crear Produccion
+    const createRes = await apiPost(page, '/api/produccion', {
+      turno: 'TARDE',
+      trabajadorId: selladorId,
+      obs: 'Creación original para test PUT',
+      items: [
+        { producto: 'PACA_AGUA', stockIni: 0, conteoA: 50, conteoB: 50, stockFinFisico: 50 },
+        { producto: 'PACA_HIELO', stockIni: 0, conteoA: 25, conteoB: 25, stockFinFisico: 25 },
+      ],
+    })
+    expect([200, 201]).toContain(createRes.status())
+    const createBody = await createRes.json()
+    const produccionId = createBody.produccion?.id
+    expect(produccionId).toBeDefined()
+
+    // Corregir conteos via PUT
+    const putRes = await apiPut(page, `/api/produccion/${produccionId}`, {
+      items: [
+        { producto: 'PACA_AGUA', conteoA: 60, conteoB: 60 }, // prod cambia 50→60
+        { producto: 'PACA_HIELO', conteoA: 30, conteoB: 30 }, // prod cambia 25→30
+      ],
+    })
+    expect(putRes.status()).toBe(200)
+    const putBody = await putRes.json()
+    expect(putBody.produccion).toBeDefined()
+    const aguaItem = putBody.produccion.items.find((i: any) => i.producto === 'PACA_AGUA')
+    expect(aguaItem.producido).toBe(60) // (60+60)/2
+    const hieloItem = putBody.produccion.items.find((i: any) => i.producto === 'PACA_HIELO')
+    expect(hieloItem.producido).toBe(30)
+  })
+
+  test('PUT con diferencia y obs vacío → 400 (FIX 1.5)', async ({ page }) => {
+    await fullLogin(page)
+
+    const sellador = await createSellador(page)
+    const selladorId = sellador?.trabajador?.id || sellador?.id
+    if (!selladorId) test.skip(true, 'No se pudo crear sellador')
+
+    // Crear Produccion con obs
+    const createRes = await apiPost(page, '/api/produccion', {
+      turno: 'MANANA',
+      trabajadorId: selladorId,
+      obs: 'Creación con obs',
+      items: [
+        { producto: 'PACA_AGUA', stockIni: 0, conteoA: 50, conteoB: 50, stockFinFisico: 50 },
+        { producto: 'PACA_HIELO', stockIni: 0, conteoA: 25, conteoB: 25, stockFinFisico: 25 },
+      ],
+    })
+    const createBody = await createRes.json()
+    const produccionId = createBody.produccion?.id
+
+    // PUT con diferencia intencional (stockFinFisico distinto) y obs='' → debe fallar
+    const putRes = await apiPut(page, `/api/produccion/${produccionId}`, {
+      items: [
+        { producto: 'PACA_AGUA', stockFinFisico: 0 }, // diff != 0
+        { producto: 'PACA_HIELO' },
+      ],
+      obs: '', // borrando obs → falla FIX 1.5
+    })
+    expect(putRes.status()).toBe(400)
+    const errBody = await putRes.json()
+    const message = errBody?.error?.message || errBody?.message || JSON.stringify(errBody)
+    expect(message).toMatch(/diferencia|observaciones/i)
+  })
+
+  test('PUT en id inexistente → 404', async ({ page }) => {
+    await fullLogin(page)
+    const putRes = await apiPut(page, '/api/produccion/id_que_no_existe_999', {
+      obs: 'cualquier cosa',
+    })
+    expect(putRes.status()).toBe(404)
+  })
+
+  test('PUT sin items ni obs → 400 (Zod refine)', async ({ page }) => {
+    await fullLogin(page)
+    const putRes = await apiPut(page, '/api/produccion/cualquierid', {})
+    expect(putRes.status()).toBe(400)
+  })
+
+  test('PUT con items pero producto inválido → 400 (Zod strict)', async ({ page }) => {
+    await fullLogin(page)
+    const putRes = await apiPut(page, '/api/produccion/cualquierid', {
+      items: [
+        { producto: 'BOTELLON', conteoA: 5 }, // producto no permitido
+        { producto: 'PACA_HIELO' },
+      ],
+    })
+    expect(putRes.status()).toBe(400)
   })
 })

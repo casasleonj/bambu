@@ -251,8 +251,44 @@ export const ProduccionCreateSchema = z.object({
   // resto (producido, stockIni, ventas, stockFinEsperado, diferencia).
   items: z.array(ProduccionItemCreateSchema).length(2),
   obs: z.string().max(500).optional(),
+  // Offline-first: si la request se encola offline y se reintenta, el server
+  // detecta el duplicado via offlineId y devuelve la Produccion existente.
+  offlineId: z.string().min(1).max(64).optional(),
 }).strict().refine(
   (data) => {
+    const productos = data.items.map(i => i.producto).sort()
+    return JSON.stringify(productos) === JSON.stringify(['PACA_AGUA', 'PACA_HIELO'])
+  },
+  { message: 'items debe contener exactamente PACA_AGUA y PACA_HIELO' },
+);
+
+/**
+ * Schema para PUT /api/produccion/[id] — correcciones del mismo día.
+ * Todos los campos opcionales; el handler valida que al menos uno esté presente.
+ * trabajadorId NO se puede cambiar (la Produccion ya está asociada).
+ * Los items[] siguen siendo exactamente 2 (PACA_AGUA + PACA_HIELO).
+ */
+export const ProduccionItemUpdateSchema = z.object({
+  producto: z.enum(['PACA_AGUA', 'PACA_HIELO']),
+  conteoA: z.coerce.number().int().min(0).optional(),
+  conteoB: z.coerce.number().int().min(0).optional(),
+  stockFinFisico: z.coerce.number().int().min(0).optional(),
+  filtradas: z.coerce.number().int().min(0).optional(),
+  rotas: z.coerce.number().int().min(0).optional(),
+  consumoInterno: z.coerce.number().int().min(0).optional(),
+}).strict();
+
+export const ProduccionUpdateSchema = z.object({
+  items: z.array(ProduccionItemUpdateSchema).length(2).optional(),
+  obs: z.string().max(500).optional(),
+  // El cliente puede pasar obs='' explícitamente para "borrar" la observación.
+  // Si no se envía obs, no se modifica.
+}).strict().refine(
+  (data) => data.items !== undefined || data.obs !== undefined,
+  { message: 'Debe enviar al menos un campo (items u obs)' },
+).refine(
+  (data) => {
+    if (!data.items) return true
     const productos = data.items.map(i => i.producto).sort()
     return JSON.stringify(productos) === JSON.stringify(['PACA_AGUA', 'PACA_HIELO'])
   },
