@@ -48,7 +48,7 @@ export function toLegacyDashboardData(ddd: DDDData): LegacyData {
     // Stock
     stockAgua: ddd.stock.agua,
     stockHielo: ddd.stock.hielo,
-    stockBotellon: ddd.stock.botellon,
+    // stockBotellon eliminado — botellones son passthrough.
 
     // Alerts
     stockAlertas: ddd.stockAlertas,

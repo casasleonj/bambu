@@ -3,6 +3,10 @@
  *
  * Pure business logic for stock calculations.
  * No Prisma, no side effects — just math.
+ *
+ * NOTA: Botellones son passthrough (sin ciclo de stock). No se trackean
+ * aquí. Se cuentan como ventas en VendidosHoy.botellon, pero no afectan
+ * el inventario.
  */
 
 import type { ProduccionDiaria, StockSnapshot } from './types'
@@ -10,18 +14,15 @@ import type { ProduccionDiaria, StockSnapshot } from './types'
 export interface StockInput {
   stockIniAgua: number
   stockIniHielo: number
-  stockIniBotellon: number
   produccion: ProduccionDiaria
   aguaVendida: number
   hieloVendido: number
-  botellonVendido: number
 }
 
 export function calcularStock(input: StockInput): StockSnapshot {
   return {
     agua: Math.max(0, input.stockIniAgua + input.produccion.aguaProducida - input.aguaVendida - input.produccion.perdidasAgua),
     hielo: Math.max(0, input.stockIniHielo + input.produccion.hieloProducido - input.hieloVendido - input.produccion.perdidasHielo),
-    botellon: Math.max(0, input.stockIniBotellon - input.botellonVendido),
   }
 }
 
@@ -30,12 +31,11 @@ export function determinarStockInicial(
   stockFinHieloCierre: number | null,
   tieneCierrePrevio: boolean,
   configs: Record<string, string>,
-): { stockIniAgua: number; stockIniHielo: number; stockIniBotellon: number } {
+): { stockIniAgua: number; stockIniHielo: number } {
   if (tieneCierrePrevio) {
     return {
       stockIniAgua: stockFinAguaCierre ?? 0,
       stockIniHielo: stockFinHieloCierre ?? 0,
-      stockIniBotellon: 0,
     }
   }
 
@@ -43,6 +43,5 @@ export function determinarStockInicial(
   return {
     stockIniAgua: parseInt(configs.STOCK_INI_AGUA) || 0,
     stockIniHielo: parseInt(configs.STOCK_INI_HIELO) || 0,
-    stockIniBotellon: parseInt(configs.STOCK_INI_BOTELLON) || 0,
   }
 }

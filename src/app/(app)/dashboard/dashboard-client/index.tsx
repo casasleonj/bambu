@@ -1,10 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { formatCurrency } from '@/lib/utils'
 import Link from 'next/link'
 import type { DashboardData } from './types'
 import { useBaseCaja } from '@/hooks/use-base-caja'
+import { MoneyDisplay } from '@/components/money-display'
 
 function RefreshBadge() {
   const [minutes, setMinutes] = useState(0)
@@ -26,7 +26,7 @@ function RefreshBadge() {
   )
 }
 
-export function DashboardClient({ data }: { data: DashboardData }) {
+export function DashboardClient({ data, userRole }: { data: DashboardData; userRole?: string | null }) {
   const { baseDia: baseDiaLocal } = useBaseCaja()
   const baseDia = baseDiaLocal ? Number(baseDiaLocal) : data.baseDia
   const {
@@ -44,7 +44,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
     ventasPorPrecio,
     stockAgua,
     stockHielo,
-    stockBotellon,
+    // stockBotellon eliminado — botellones son passthrough (sin ciclo de stock).
     embarquesAbiertos,
     stockAlertas,
     fechaHoy,
@@ -116,7 +116,9 @@ export function DashboardClient({ data }: { data: DashboardData }) {
 
         <div className="bg-white p-5 rounded-xl shadow-sm border-l-4 border-green-500">
           <p className="text-sm text-gray-500">Ventas del Día</p>
-          <p className="text-3xl font-bold text-green-600">{formatCurrency(ventas)}</p>
+          <p className="text-3xl font-bold text-green-600">
+            <MoneyDisplay value={ventas} userRole={userRole} />
+          </p>
           <p className="text-xs text-gray-400 mt-1">Total vendido</p>
           <p className={`text-xs mt-1 font-medium ${trendClass(ventasTrend)}`}>
             {trendArrow(ventasTrend)} {Math.abs(ventasTrend).toFixed(0)}% vs ayer
@@ -125,13 +127,17 @@ export function DashboardClient({ data }: { data: DashboardData }) {
 
         <div className="bg-white p-5 rounded-xl shadow-sm border-l-4 border-emerald-500">
           <p className="text-sm text-gray-500">Efectivo Cobrado</p>
-          <p className="text-3xl font-bold text-emerald-600">{formatCurrency(ventas - fiadosHoy)}</p>
+          <p className="text-3xl font-bold text-emerald-600">
+            <MoneyDisplay value={ventas - fiadosHoy} userRole={userRole} />
+          </p>
           <p className="text-xs text-gray-400 mt-1">Ventas - fiados hoy</p>
         </div>
 
         <div className="bg-white p-5 rounded-xl shadow-sm border-l-4 border-orange-500">
           <p className="text-sm text-gray-500">Gastos del Día</p>
-          <p className="text-3xl font-bold text-orange-600">{formatCurrency(totalGastos)}</p>
+          <p className="text-3xl font-bold text-orange-600">
+            <MoneyDisplay value={totalGastos} userRole={userRole} />
+          </p>
           <p className="text-xs text-gray-400 mt-1">Total gastado</p>
         </div>
       </div>
@@ -286,14 +292,14 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                 {ventasPorPrecio.map((item, index) => (
                   <tr key={index} className="hover:bg-gray-50">
                     <td className="px-4 py-3"><span className="font-medium text-gray-800">{item.producto}</span></td>
-                    <td className="px-4 py-3 text-center"><span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-semibold">{formatCurrency(item.precio)}</span></td>
+                    <td className="px-4 py-3 text-center"><span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-semibold"><MoneyDisplay value={item.precio} userRole={userRole} /></span></td>
                     <td className="px-4 py-3 text-center"><span className="text-2xl font-bold text-gray-800">{item.cantidad}</span><span className="text-sm text-gray-400 ml-1">und</span></td>
-                    <td className="px-4 py-3 text-right"><span className="font-semibold text-green-600">{formatCurrency(item.subtotal)}</span></td>
+                    <td className="px-4 py-3 text-right"><span className="font-semibold text-green-600"><MoneyDisplay value={item.subtotal} userRole={userRole} /></span></td>
                   </tr>
                 ))}
               </tbody>
               <tfoot className="bg-gray-50">
-                <tr><td colSpan={3} className="px-4 py-3 text-right font-bold text-gray-800">TOTAL:</td><td className="px-4 py-3 text-right font-bold text-green-600 text-lg">{formatCurrency(ventas)}</td></tr>
+                <tr><td colSpan={3} className="px-4 py-3 text-right font-bold text-gray-800">TOTAL:</td><td className="px-4 py-3 text-right font-bold text-green-600 text-lg"><MoneyDisplay value={ventas} userRole={userRole} /></td></tr>
               </tfoot>
             </table>
           </div>
@@ -312,7 +318,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
               <div key={producto} className="bg-white p-4 rounded-xl shadow-sm">
                 <p className="text-sm text-gray-500">{producto}</p>
                 <p className="text-2xl font-bold text-blue-600">{totalCantidad}</p>
-                <p className="text-sm text-gray-400">{formatCurrency(totalSubtotal)}</p>
+                <p className="text-sm text-gray-400"><MoneyDisplay value={totalSubtotal} userRole={userRole} /></p>
               </div>
             )
           })}
@@ -372,7 +378,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
         {/* Stock */}
         <div className="bg-white p-5 rounded-xl shadow-sm">
           <h2 className="text-lg font-semibold text-gray-800 mb-4">Inventario</h2>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <div className="bg-blue-50 p-4 rounded-xl text-center">
               <p className="text-sm text-gray-500 mb-1">Agua</p>
               <p className="text-3xl font-bold text-blue-600">{stockAgua}</p>
@@ -383,11 +389,6 @@ export function DashboardClient({ data }: { data: DashboardData }) {
               <p className="text-3xl font-bold text-cyan-600">{stockHielo}</p>
               <p className="text-xs text-gray-400">pacas</p>
             </div>
-            <div className="bg-purple-50 p-4 rounded-xl text-center">
-              <p className="text-sm text-gray-500 mb-1">Botellón</p>
-              <p className="text-3xl font-bold text-purple-600">{stockBotellon}</p>
-              <p className="text-xs text-gray-400">und</p>
-            </div>
           </div>
           <p className="text-xs text-gray-400 mt-3 text-center">Stock inicial + Producción - Ventas entregadas</p>
           <Link href="/produccion" className="block mt-3 text-center text-sm text-blue-600 hover:underline">Registrar producción</Link>
@@ -397,14 +398,14 @@ export function DashboardClient({ data }: { data: DashboardData }) {
         <div className="bg-white p-5 rounded-xl shadow-sm">
           <h2 className="text-lg font-semibold text-gray-800 mb-4">Resumen de Caja</h2>
           <div className="space-y-3">
-            <div className="flex justify-between items-center py-2 border-b border-gray-100"><span className="text-gray-600">Base del día</span><span className="font-medium">{formatCurrency(baseDia)}</span></div>
-            <div className="flex justify-between items-center py-2 border-b border-gray-100"><span className="text-gray-600">+ Ventas cobradas</span><span className="font-medium text-green-600">{formatCurrency(ventas - fiadosHoy)}</span></div>
-            <div className="flex justify-between items-center py-2 border-b border-gray-100"><span className="text-gray-600">- Gastos</span><span className="font-medium text-red-600">{formatCurrency(totalGastos)}</span></div>
-            <div className="flex justify-between items-center py-3 bg-gray-50 rounded-lg px-3 mt-2"><span className="font-semibold text-gray-800">= Efectivo esperado</span><span className="font-bold text-lg text-green-600">{formatCurrency(baseDia + (ventas - fiadosHoy) - totalGastos)}</span></div>
+            <div className="flex justify-between items-center py-2 border-b border-gray-100"><span className="text-gray-600">Base del día</span><span className="font-medium"><MoneyDisplay value={baseDia} userRole={userRole} /></span></div>
+            <div className="flex justify-between items-center py-2 border-b border-gray-100"><span className="text-gray-600">+ Ventas cobradas</span><span className="font-medium text-green-600"><MoneyDisplay value={ventas - fiadosHoy} userRole={userRole} /></span></div>
+            <div className="flex justify-between items-center py-2 border-b border-gray-100"><span className="text-gray-600">- Gastos</span><span className="font-medium text-red-600"><MoneyDisplay value={totalGastos} userRole={userRole} /></span></div>
+            <div className="flex justify-between items-center py-3 bg-gray-50 rounded-lg px-3 mt-2"><span className="font-semibold text-gray-800">= Efectivo esperado</span><span className="font-bold text-lg text-green-600"><MoneyDisplay value={baseDia + (ventas - fiadosHoy) - totalGastos} userRole={userRole} /></span></div>
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
-            <div className="bg-yellow-50 p-3 rounded-lg text-center"><p className="text-gray-500">Fiados hoy</p><p className="font-bold text-yellow-600">{formatCurrency(fiadosHoy)}</p></div>
-            <div className="bg-blue-50 p-3 rounded-lg text-center"><p className="text-gray-500">Total ventas</p><p className="font-bold text-blue-600">{formatCurrency(ventas)}</p></div>
+            <div className="bg-yellow-50 p-3 rounded-lg text-center"><p className="text-gray-500">Fiados hoy</p><p className="font-bold text-yellow-600"><MoneyDisplay value={fiadosHoy} userRole={userRole} /></p></div>
+            <div className="bg-blue-50 p-3 rounded-lg text-center"><p className="text-gray-500">Total ventas</p><p className="font-bold text-blue-600"><MoneyDisplay value={ventas} userRole={userRole} /></p></div>
           </div>
           <Link href="/cierre" className="block mt-4 text-center text-sm text-blue-600 hover:underline">Ver cierre completo</Link>
         </div>
@@ -415,7 +416,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-gray-600">Cuentas por cobrar</span>
-              <span className="text-xl font-bold text-red-600">{formatCurrency(fiadosTotal)}</span>
+              <span className="text-xl font-bold text-red-600"><MoneyDisplay value={fiadosTotal} userRole={userRole} /></span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-gray-600">Clientes con deuda</span>

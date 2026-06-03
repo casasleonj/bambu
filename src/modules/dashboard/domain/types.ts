@@ -33,7 +33,8 @@ export interface PedidoRaw {
 export interface StockSnapshot {
   agua: number
   hielo: number
-  botellon: number
+  // Botellones NO se trackean: son passthrough. No hay ciclo de stock.
+  // Se cuentan como ventas (VendidosHoy.botellon) pero no como inventario.
 }
 
 export interface FranjaHoraria {

@@ -59,7 +59,7 @@ export interface DashboardData {
   prodHieloHoy: number
   stockAgua: number
   stockHielo: number
-  stockBotellon: number
+  // stockBotellon eliminado — botellones son passthrough (sin ciclo de stock).
   embarquesAbiertos: number
   stockAlertas: Array<{ id: string; nombre: string; stock: unknown; unidad: string }>
   fechaHoy: string

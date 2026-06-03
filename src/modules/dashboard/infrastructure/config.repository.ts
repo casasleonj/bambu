@@ -34,8 +34,9 @@ export class PrismaConfigRepository implements ConfigRepository {
   }
 
   async getStockConfigs(): Promise<Record<string, string>> {
+    // NOTA: STOCK_INI_BOTELLON eliminado — botellones son passthrough.
     const configs = await prisma.config.findMany({
-      where: { clave: { in: ['STOCK_INI_AGUA', 'STOCK_INI_HIELO', 'STOCK_INI_BOTELLON'] } },
+      where: { clave: { in: ['STOCK_INI_AGUA', 'STOCK_INI_HIELO'] } },
     })
     return Object.fromEntries(configs.map(c => [c.clave, c.valor]))
   }

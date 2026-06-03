@@ -95,11 +95,9 @@ export async function getDashboardData(
   const stock = calcularStock({
     stockIniAgua: stockInicial.stockIniAgua,
     stockIniHielo: stockInicial.stockIniHielo,
-    stockIniBotellon: stockInicial.stockIniBotellon,
     produccion: produccionHoy,
     aguaVendida: vendidos.agua,
     hieloVendido: vendidos.hielo,
-    botellonVendido: vendidos.botellon,
   })
 
   // ── KPIs ──────────────────────────────────────────────────────────────
