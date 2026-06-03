@@ -283,7 +283,10 @@ test.describe('Producción — E2E Exhaustivo', () => {
     await page.waitForTimeout(3000)
 
     const bodyText = await page.locator('body').innerText()
-    expect(bodyText).toMatch(/Ya existe producción registrada|409|Error/)
+    // Bloque 5: toast ahora dice "Ya existe producción para este trabajador
+    // y turno hoy" (más específico que el mensaje del server). Aceptar
+    // cualquiera de los mensajes posibles.
+    expect(bodyText).toMatch(/Ya existe producción|registrada|409|Error|trabajador y turno/i)
   })
 
   // ─── 11. Validación de rol sellador (API) ─────────────────────────────────

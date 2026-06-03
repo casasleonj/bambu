@@ -7,6 +7,8 @@ import { formatCurrency } from '@/lib/utils'
 import { useConfirm } from '@/components/confirm-modal'
 import { SkeletonPage } from '@/components/skeleton'
 import { InfoBanner } from '@/components/tooltip'
+import { fetchResilient } from '@/lib/fetch-resilient'
+import { ProduccionPendingBadge } from '@/components/produccion/pending-sync-badge'
 import type { StockInicial, FormData, TrabajadorOption, PreviewData, RepartidorOption } from './types'
 
 const EMPTY_FORM: FormData = {
@@ -160,10 +162,12 @@ export default function ProduccionClient() {
     try {
       // Bloque 2: enviar ProduccionItem[] (2 items: PACA_AGUA + PACA_HIELO)
       // El stockIni viene de `stockInicial` (preview), no del formData
+      // Bloque 5: fetchResilient + offlineId para offline-first.
       const body = {
         trabajadorId: formData.trabajadorId,
         turno: formData.turno,
         obs: formData.obs,
+        offlineId: crypto.randomUUID(),
         items: [
           {
             producto: 'PACA_AGUA',
@@ -187,23 +191,47 @@ export default function ProduccionClient() {
           },
         ],
       }
-      const res = await fetch('/api/produccion', {
+      const result = await fetchResilient<{
+        success: boolean
+        produccion?: unknown
+        deduped?: boolean
+        error?: { message?: string }
+      }>('/api/produccion', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body,
+        localEndpoint: 'produccion',
       })
-      if (res.status === 401 || res.status === 403) {
-        router.push(`/login?callbackUrl=${encodeURIComponent('/produccion')}`)
-        return
-      }
-      if (res.ok) {
-        toast.success('Producción registrada correctamente')
+
+      if (result.status === 'ok') {
+        if (result.data?.deduped) {
+          toast.info('Producción ya estaba registrada (sincronizada)')
+        } else {
+          toast.success('Producción registrada correctamente')
+        }
         router.refresh()
         setStep(1)
         setFormData({ ...EMPTY_FORM })
+        return
+      }
+
+      if (result.status === 'offline') {
+        // Encolada en Dexie. Mostrar feedback claro y reset.
+        toast.info('Sin conexión. Producción guardada, se enviará al recuperar la red.')
+        setStep(1)
+        setFormData({ ...EMPTY_FORM })
+        return
+      }
+
+      // result.status === 'error' — diferenciar 409 vs 5xx vs otros
+      const statusCode = result.statusCode
+      if (statusCode === 409) {
+        toast.error('Ya existe producción para este trabajador y turno hoy. Refrescá la página.')
+      } else if (statusCode === 401 || statusCode === 403) {
+        router.push(`/login?callbackUrl=${encodeURIComponent('/produccion')}`)
+      } else if (statusCode >= 500) {
+        toast.error('Error del servidor. Reintentá en unos segundos.')
       } else {
-        const err = await res.json()
-        toast.error(err.error || 'Error al registrar')
+        toast.error(result.error || 'Error al registrar')
       }
     } catch {
       toast.error('Error al registrar')
@@ -335,9 +363,12 @@ export default function ProduccionClient() {
 
   return (
     <div className="max-w-7xl mx-auto p-4 lg:p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">Registro de Producción</h1>
-        <p className="text-gray-500 mt-1">Control de producción diaria</p>
+      <div className="mb-6 flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">Registro de Producción</h1>
+          <p className="text-gray-500 mt-1">Control de producción diaria</p>
+        </div>
+        <ProduccionPendingBadge />
       </div>
 
       {renderStepper()}

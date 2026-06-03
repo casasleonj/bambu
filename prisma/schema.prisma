@@ -851,6 +851,10 @@ model Produccion {
 
   obs         String?
 
+  // Offline-first dedup: si la request llega con un offlineId ya existente,
+  // el server devuelve la Produccion existente en lugar de duplicar.
+  offlineId   String?  @unique
+
   createdAt  DateTime @db.Timestamptz() @default(now())
   updatedAt DateTime @db.Timestamptz() @updatedAt
 

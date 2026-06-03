@@ -75,6 +75,19 @@ export async function POST(request: NextRequest) {
     return apiError(formatZodError(parsed.error), 400)
   }
 
+  // Offline-first dedup: si llega con un offlineId ya existente, devolvemos
+  // la Produccion existente. Mismo patrón que Pedido.offlineId, Cliente.offlineId.
+  if (parsed.data.offlineId) {
+    const existente = await prisma.produccion.findUnique({
+      where: { offlineId: parsed.data.offlineId },
+      include: { items: true, trabajador: true },
+    })
+    if (existente) {
+      addApiBreadcrumb('produccion.POST dedup hit', { offlineId: parsed.data.offlineId })
+      return apiSuccess({ produccion: existente, deduped: true }, 200)
+    }
+  }
+
   // Parsear items: separar por producto
   const itemAgua = parsed.data.items.find(i => i.producto === 'PACA_AGUA')!
   const itemHielo = parsed.data.items.find(i => i.producto === 'PACA_HIELO')!
@@ -207,6 +220,7 @@ export async function POST(request: NextRequest) {
               comSellTotal: comSell.total,
               comRepartTotal: comRepartTotal,
               obs: obsTrim || null,
+              offlineId: parsed.data.offlineId ?? null, // Bloque 5
               // Bloque 2: crear 2 ProduccionItem (PACA_AGUA, PACA_HIELO)
               items: {
                 create: [
