@@ -60,6 +60,8 @@ enum RolUsuario {
   CONTADOR
   REPARTIDOR
   SELLADOR
+  EMPACADOR
+  ENTUBADOR
 }
 
 enum TipoPagoTrabajador {
@@ -843,50 +845,61 @@ model Produccion {
   trabajadorId  String
   trabajador   Trabajador  @relation(fields: [trabajadorId], references: [id])
 
-  stockIniAgua   Int        @default(0)
-  stockIniHielo Int        @default(0)
-
-  conteoAAgua   Int        @default(0)
-  conteoBAgua  Int        @default(0)
-  conteoAHielo Int        @default(0)
-  conteoBHielo Int        @default(0)
-
-  prodAgua     Int        @default(0)
-  prodHielo   Int        @default(0)
-
-  ventasAgua   Int        @default(0)
-  ventasHielo Int        @default(0)
-
-  stockFinAgua Int        @default(0)
-  stockFinHielo Int      @default(0)
-
-  stockFinFisicoAgua    Int        @default(0)
-  stockFinFisicoHielo   Int        @default(0)
-  filtradasAgua         Int        @default(0)
-  filtradasHielo        Int        @default(0)
-  rotasAgua             Int        @default(0)
-  rotasHielo            Int        @default(0)
-  consumoInternoAgua    Int        @default(0)
-  consumoInternoHielo   Int        @default(0)
-
-  comSelladorAgua  Decimal @default(0) @db.Decimal(10, 2)
-  comSelladorHielo Decimal @default(0) @db.Decimal(10, 2)
+  // Comisiones agregadas (la desagregación por producto está en ProduccionItem)
   comSellTotal     Decimal @default(0) @db.Decimal(10, 2)
-
-  comRepartidorAgua  Decimal @default(0) @db.Decimal(10, 2)
-  comRepartidorHielo Decimal @default(0) @db.Decimal(10, 2)
-  comRepartTotal     Decimal @default(0) @db.Decimal(10, 2)
+  comRepartTotal   Decimal @default(0) @db.Decimal(10, 2)
 
   obs         String?
 
   createdAt  DateTime @db.Timestamptz() @default(now())
   updatedAt DateTime @db.Timestamptz() @updatedAt
 
+  items ProduccionItem[]
+
   @@index([createdById])
   @@index([fecha])
   @@index([trabajadorId, fecha])
   @@index([turno, fecha])
   @@unique([trabajadorId, fecha, turno])
+}
+
+model ProduccionItem {
+  id                String     @id @default(cuid())
+  produccionId      String
+  produccion        Produccion @relation(fields: [produccionId], references: [id], onDelete: Cascade)
+
+  // Producto: solo PACA_AGUA y PACA_HIELO. Botellones y bolsas son
+  // passthrough (no tienen ciclo de stock), por eso no se trackean
+  // como items de producción.
+  producto          String     // 'PACA_AGUA' | 'PACA_HIELO'
+
+  // Conteos del sellador
+  conteoA           Int        @default(0)
+  conteoB           Int        @default(0)
+  producido         Int        @default(0)  // (A+B)/2 redondeado
+
+  // Snapshot al momento del cierre
+  stockIni          Int        @default(0)
+  ventas            Int        @default(0)
+
+  // Resultado
+  stockFinEsperado  Int        @default(0)
+  stockFinFisico    Int        @default(0)
+  diferencia        Int        @default(0)  // stockFinEsperado - stockFinFisico - perdidasTotales
+
+  // Pérdidas
+  filtradas         Int        @default(0)
+  rotas             Int        @default(0)
+  consumoInterno    Int        @default(0)
+
+  // Comisión del sellador por este item
+  comSellador       Decimal    @default(0) @db.Decimal(10, 2)
+
+  createdAt         DateTime   @db.Timestamptz() @default(now())
+  updatedAt         DateTime   @db.Timestamptz() @updatedAt
+
+  @@unique([produccionId, producto])
+  @@index([producto])
 }
 
 // ====================
