@@ -30,8 +30,12 @@ export class AnularPedidoUseCase {
 
       const updated = await this.pedidoRepo.update(pedido, tx)
 
-      // Anular factura
-      await this.facturaRepo.anularByPedidoId(pedido.id.get())
+      // FIX H-21: pasar tx a anularByPedidoId para mantener atomicidad.
+      // Antes: la factura se anulaba en una transacción SEPARADA (auto-commit).
+      // Si el rollback del outer transaction afectaba algo más, la factura
+      // quedaba ANULADA con el pedido aún activo. Ahora la anulación de
+      // factura es parte de la misma transacción.
+      await this.facturaRepo.anularByPedidoId(pedido.id.get(), tx)
 
       // Create nota crédito if there were payments
       if (tuvoPagos) {
