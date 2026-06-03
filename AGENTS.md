@@ -145,6 +145,7 @@ vercel --prod
   - `Pedido.recurrenteBatchId` (indexed, NOT unique) — POST `/api/pedidos/recurrentes` (returns existing set)
   - `Embarque.offlineId` (indexed, NOT unique) — PUT `/api/embarques/[id]`; DELETE is idempotent (status check, not offlineId)
   - `Cliente.offlineId` (@unique) — POST `/api/clientes`
+  - `Produccion.offlineId` (@unique) — POST `/api/produccion` (returns existing Produccion with `deduped: true`)
 - **Dexie schema v4** adds `requestQueue` table: `{ id?, url, method, body, headers, offlineId, localEndpoint, createdAt }`
 - **Sync trigger**: `connectivity-indicator.tsx` listens to `online` event + 30s poll → calls `syncWithServer()` which drains `requestQueue` (raw HTTP replay) AND `syncQueue` (legacy entity-based, kept for backward compat with `pedidos`/`clientes` entities in IndexedDB).
 - **Sync outcomes** (per item in `requestQueue`): 200 → delete + synced++, 409 (conflict, dedup OK) → delete + conflict++, other 4xx/5xx → keep + failed++, network error → keep + failed++.
@@ -200,6 +201,8 @@ vercel --prod
 | `src/shared/` | Cross-domain value objects (Money, DateRange, ProductCode) |
 | `public/sw.js` | Manual service worker (PWA) |
 | `prisma/migrations/20260602_add_offline_id_fields/` | Production migration for offlineId dedup fields |
+| `prisma/migrations/20260602_add_produccion_item/` | ProduccionItem model (Bloque 2: refactor per-product columns to items[]) |
+| `prisma/migrations/20260603_add_produccion_offline_id/` | Produccion.offlineId for offline-first dedup (Bloque 5) |
 
 ## Post-Deployment Checklist
 
@@ -220,6 +223,7 @@ vercel --prod
 4. **Auth adapter**: `@auth/prisma-adapter` is installed but auth uses JWT strategy (not database sessions).
 5. **Redis v5 + rate-limiter-flexible**: Requires `useRedisPackage: true` (auto-detection fails because redis v5 constructor name is "Class", not "Commander").
 6. **Docker Compose**: Redis 8 service added to `docker-compose.yml` on port 6379.
+7. **NEXTAUTH_URL local vs LAN**: En entornos Docker/container, el `.env` puede tener `NEXTAUTH_URL="http://192.168.x.x:3000"` (IP LAN hardcodeada). Si los e2e tests fallan con `TimeoutError: page.waitForURL` después de login (el browser navega a la IP LAN pero las cookies están en localhost), corregir a `NEXTAUTH_URL="http://localhost:3000"`. Playwright `baseURL` debe coincidir. `.env.example` documenta el valor correcto.
 
 ---
 
