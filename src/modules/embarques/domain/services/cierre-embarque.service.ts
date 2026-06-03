@@ -111,11 +111,17 @@ export class CierreEmbarqueService {
 
   /**
    * Reconcilia caja: efectivo esperado vs efectivo real.
+   * efectivoReal = baseDinero + totalVentas - otrosPagos - gastos
+   * La baseDinero es la base inicial de efectivo que el repartidor recibe
+   * al salir a la ruta — DEBE incluirse en el efectivo que retorna.
+   * Bug C-4: la versión anterior ignoraba _baseDinero (parámetro con
+   * underscore indicando "no usado"), lo que subestimaba sistemáticamente
+   * el efectivo esperado por el monto de la base.
    */
   calcularCaja(
     totalVentas: number,
     pagosRecibidos: Array<{ metodo: string; monto: number }>,
-    _baseDinero: number,
+    baseDinero: number,
     gastos: number,
   ): CajaResult {
     const efectivoEsperado = pagosRecibidos
@@ -126,7 +132,10 @@ export class CierreEmbarqueService {
       .filter((p) => p.metodo !== 'EFECTIVO')
       .reduce((sum, p) => sum + p.monto, 0)
 
-    const efectivoReal = totalVentas - otrosPagos - gastos
+    // FIX C-4: incluir baseDinero en efectivoReal.
+    // El repartidor sale con base + cobra ventas - paga gastos.
+    // Si no contamos la base, el sistema cree que le falta dinero.
+    const efectivoReal = baseDinero + totalVentas - otrosPagos - gastos
 
     return {
       efectivoEsperado,
