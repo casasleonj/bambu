@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
-import { requireAuth } from '@/lib/auth-check'
+import { requireAuth as _requireAuth, requireRole } from '@/lib/auth-check'
+import { ROLES } from '@/lib/constants'
 import { PagarFiadoSchema } from '@/lib/validators'
 import { calcularEstadoPago } from '@/lib/pedido-utils'
 import { withAdvisoryLock } from '@/lib/locks'
@@ -10,7 +11,11 @@ import { logger } from '@/lib/logger'
 import { prisma } from '@/lib/prisma'
 
 export async function POST(request: NextRequest) {
-  const authResult = await requireAuth()
+  // FIX C-1: solo ADMIN/ASISTENTE pueden registrar pagos de fiado.
+  // Antes, CUALQUIER usuario autenticado (incluso REPARTIDOR) podía mover
+  // dinero aplicando abonos a cualquier cliente. Riesgo de fraude interno
+  // y robo de caja. Ahora se valida el rol explícitamente.
+  const authResult = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE])
   if (authResult instanceof Response) return authResult
 
   try {

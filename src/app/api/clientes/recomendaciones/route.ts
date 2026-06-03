@@ -1,12 +1,16 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuth } from '@/lib/auth-check'
+import { requireRole } from '@/lib/auth-check'
+import { ROLES } from '@/lib/constants'
 import { ClienteRecomendacionesSchema } from '@/lib/zod-schemas'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 
 export async function GET(request: NextRequest) {
-  const authResult = await requireAuth()
+  // FIX C-8: restringir a roles administrativos. Antes cualquier usuario
+  // autenticado podía ver recomendaciones de todos los clientes (info de
+  // comportamiento de compra cruzada entre clientes).
+  const authResult = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE, ROLES.CONTADOR])
   if (authResult instanceof Response) return authResult
 
   try {
