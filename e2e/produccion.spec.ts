@@ -308,12 +308,22 @@ test.describe('Producción — E2E Exhaustivo', () => {
     const res = await apiPost(page, '/api/produccion', {
       turno: 'NOCHE',
       trabajadorId: repId,
-      conteoAAgua: 50,
-      conteoBAgua: 50,
-      conteoAHielo: 25,
-      conteoBHielo: 25,
-      stockFinFisicoAgua: 50,
-      stockFinFisicoHielo: 25,
+      items: [
+        {
+          producto: 'PACA_AGUA',
+          stockIni: 0,
+          conteoA: 50,
+          conteoB: 50,
+          stockFinFisico: 50,
+        },
+        {
+          producto: 'PACA_HIELO',
+          stockIni: 0,
+          conteoA: 25,
+          conteoB: 25,
+          stockFinFisico: 25,
+        },
+      ],
     })
 
     expect(res.status()).toBe(400)
@@ -464,12 +474,22 @@ test.describe('Producción — E2E Exhaustivo', () => {
     const res = await apiPost(page, '/api/produccion', {
       turno: 'MANANA',
       trabajadorId: selladorId,
-      conteoAAgua: 100,
-      conteoBAgua: 100,
-      conteoAHielo: 0,
-      conteoBHielo: 0,
-      stockFinFisicoAgua: 0, // ← diferencia intencional vs esperado
-      stockFinFisicoHielo: 0,
+      items: [
+        {
+          producto: 'PACA_AGUA',
+          stockIni: 0,
+          conteoA: 100,
+          conteoB: 100,
+          stockFinFisico: 0, // ← diferencia intencional vs esperado
+        },
+        {
+          producto: 'PACA_HIELO',
+          stockIni: 0,
+          conteoA: 0,
+          conteoB: 0,
+          stockFinFisico: 0,
+        },
+      ],
       // obs intencionalmente ausente
     })
 
@@ -490,12 +510,22 @@ test.describe('Producción — E2E Exhaustivo', () => {
     const res = await apiPost(page, '/api/produccion', {
       turno: 'TARDE',
       trabajadorId: selladorId,
-      conteoAAgua: 100,
-      conteoBAgua: 100,
-      conteoAHielo: 0,
-      conteoBHielo: 0,
-      stockFinFisicoAgua: 0,
-      stockFinFisicoHielo: 0,
+      items: [
+        {
+          producto: 'PACA_AGUA',
+          stockIni: 0,
+          conteoA: 100,
+          conteoB: 100,
+          stockFinFisico: 0,
+        },
+        {
+          producto: 'PACA_HIELO',
+          stockIni: 0,
+          conteoA: 0,
+          conteoB: 0,
+          stockFinFisico: 0,
+        },
+      ],
       obs: 'Se consumieron 200 pacas como gasto interno de la planta',
     })
 
@@ -514,12 +544,26 @@ test.describe('Producción — E2E Exhaustivo', () => {
     const payload = {
       turno: 'NOCHE',
       trabajadorId: selladorId,
-      conteoAAgua: 60,
-      conteoBAgua: 60,
-      conteoAHielo: 30,
-      conteoBHielo: 30,
-      stockFinFisicoAgua: 60,
-      stockFinFisicoHielo: 30,
+      // FIX 1.5: obs requerida cuando hay diferencia de stock.
+      // En e2e suite, ya hay pedidos ENTREGADOS de tests anteriores,
+      // por lo que ventas > 0 y diferencia != 0.
+      obs: 'FIX 1.1 race test - diferencia explicada por consumos de tests previos',
+      items: [
+        {
+          producto: 'PACA_AGUA',
+          stockIni: 0,
+          conteoA: 60,
+          conteoB: 60,
+          stockFinFisico: 60,
+        },
+        {
+          producto: 'PACA_HIELO',
+          stockIni: 0,
+          conteoA: 30,
+          conteoB: 30,
+          stockFinFisico: 30,
+        },
+      ],
     }
 
     // Disparar 5 requests en paralelo
@@ -551,12 +595,24 @@ test.describe('Producción — E2E Exhaustivo', () => {
     const res = await apiPost(page, '/api/produccion', {
       turno: 'NOCHE',
       trabajadorId: selladorId,
-      conteoAAgua: 40,
-      conteoBAgua: 40,
-      conteoAHielo: 20,
-      conteoBHielo: 20,
-      stockFinFisicoAgua: 40,
-      stockFinFisicoHielo: 20,
+      // FIX 1.5: obs requerida si hay diferencia
+      obs: 'FIX 1.6 fecha midnight test',
+      items: [
+        {
+          producto: 'PACA_AGUA',
+          stockIni: 0,
+          conteoA: 40,
+          conteoB: 40,
+          stockFinFisico: 40,
+        },
+        {
+          producto: 'PACA_HIELO',
+          stockIni: 0,
+          conteoA: 20,
+          conteoB: 20,
+          stockFinFisico: 20,
+        },
+      ],
     })
 
     expect([200, 201]).toContain(res.status())

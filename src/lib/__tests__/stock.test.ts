@@ -6,6 +6,7 @@ vi.mock('@/lib/prisma', () => ({
   prisma: {
     cierreDia: { findFirst: vi.fn() },
     produccion: { findMany: vi.fn() },
+    produccionItem: { findMany: vi.fn() },
     embarque: { findMany: vi.fn() },
     config: { findUnique: vi.fn(), upsert: vi.fn(), deleteMany: vi.fn() },
   },
@@ -21,6 +22,7 @@ vi.mock('@/lib/dates', () => ({
 const mockPrisma = prisma as unknown as {
   cierreDia: { findFirst: ReturnType<typeof vi.fn> }
   produccion: { findMany: ReturnType<typeof vi.fn> }
+  produccionItem: { findMany: ReturnType<typeof vi.fn> }
   embarque: { findMany: ReturnType<typeof vi.fn> }
   config: { findUnique: ReturnType<typeof vi.fn>; upsert: ReturnType<typeof vi.fn>; deleteMany: ReturnType<typeof vi.fn> }
 }
@@ -29,6 +31,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   mockPrisma.cierreDia.findFirst.mockResolvedValue(null)
   mockPrisma.produccion.findMany.mockResolvedValue([])
+  mockPrisma.produccionItem.findMany.mockResolvedValue([])
   mockPrisma.embarque.findMany.mockResolvedValue([])
   mockPrisma.config.findUnique.mockResolvedValue(null)
   mockPrisma.config.upsert.mockResolvedValue({})

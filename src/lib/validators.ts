@@ -231,25 +231,33 @@ export const CompraCreateSchema = z.object({
   notas: z.string().optional(),
 });
 
+export const ProduccionItemCreateSchema = z.object({
+  producto: z.enum(['PACA_AGUA', 'PACA_HIELO']),
+  stockIni: z.coerce.number().int().min(0).default(0),
+  conteoA: z.coerce.number().int().min(0),
+  conteoB: z.coerce.number().int().min(0),
+  stockFinFisico: z.coerce.number().int().min(0).default(0),
+  filtradas: z.coerce.number().int().min(0).default(0),
+  rotas: z.coerce.number().int().min(0).default(0),
+  consumoInterno: z.coerce.number().int().min(0).default(0),
+}).strict();
+
 export const ProduccionCreateSchema = z.object({
   // NOTA: la fecha la determina el servidor (medianoche Bogotá del día actual).
   // No se acepta fecha del cliente para evitar inconsistencias con la TZ.
   turno: z.enum(["MANANA", "TARDE", "NOCHE"]),
   trabajadorId: z.string().min(1),
-  conteoAAgua: z.coerce.number().int().min(0),
-  conteoBAgua: z.coerce.number().int().min(0),
-  conteoAHielo: z.coerce.number().int().min(0),
-  conteoBHielo: z.coerce.number().int().min(0),
-  stockFinFisicoAgua: z.coerce.number().int().min(0).default(0),
-  stockFinFisicoHielo: z.coerce.number().int().min(0).default(0),
-  filtradasAgua: z.coerce.number().int().min(0).default(0),
-  filtradasHielo: z.coerce.number().int().min(0).default(0),
-  rotasAgua: z.coerce.number().int().min(0).default(0),
-  rotasHielo: z.coerce.number().int().min(0).default(0),
-  consumoInternoAgua: z.coerce.number().int().min(0).default(0),
-  consumoInternoHielo: z.coerce.number().int().min(0).default(0),
+  // Items: exactamente 2 (PACA_AGUA, PACA_HIELO). El server completa el
+  // resto (producido, stockIni, ventas, stockFinEsperado, diferencia).
+  items: z.array(ProduccionItemCreateSchema).length(2),
   obs: z.string().max(500).optional(),
-}).strict();
+}).strict().refine(
+  (data) => {
+    const productos = data.items.map(i => i.producto).sort()
+    return JSON.stringify(productos) === JSON.stringify(['PACA_AGUA', 'PACA_HIELO'])
+  },
+  { message: 'items debe contener exactamente PACA_AGUA y PACA_HIELO' },
+);
 
 export const NominaCreateSchema = z.object({
   trabajadorId: z.string().min(1),

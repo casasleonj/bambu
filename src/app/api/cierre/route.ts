@@ -162,7 +162,10 @@ export async function GET(request: NextRequest) {
         },
         include: { pagos: true },
       }),
-      prisma.produccion.findFirst({ where: { fecha: dateRange } }),
+      prisma.produccion.findFirst({
+        where: { fecha: dateRange },
+        include: { items: true },
+      }),
       prisma.gasto.aggregate({
         where: { fecha: dateRange },
         _sum: { monto: true },
@@ -270,6 +273,39 @@ export async function GET(request: NextRequest) {
 
     const status = embarquesAbiertos.length > 0 ? 'INCOMPLETO' : 'COMPLETO'
 
+    // Transformar ProduccionItem a campos planos para el response (backward compat)
+    const produccionFlat = produccion
+      ? {
+          ...produccion,
+          items: undefined,
+          stockIniAgua:
+            produccion.items.find(i => i.producto === 'PACA_AGUA')?.stockIni ?? 0,
+          stockIniHielo:
+            produccion.items.find(i => i.producto === 'PACA_HIELO')?.stockIni ?? 0,
+          prodAgua: produccion.items.find(i => i.producto === 'PACA_AGUA')?.producido ?? 0,
+          prodHielo:
+            produccion.items.find(i => i.producto === 'PACA_HIELO')?.producido ?? 0,
+          stockFinAgua:
+            produccion.items.find(i => i.producto === 'PACA_AGUA')?.stockFinFisico ?? 0,
+          stockFinHielo:
+            produccion.items.find(i => i.producto === 'PACA_HIELO')?.stockFinFisico ?? 0,
+          comSelladorAgua: Number(
+            produccion.items.find(i => i.producto === 'PACA_AGUA')?.comSellador ?? 0
+          ),
+          comSelladorHielo: Number(
+            produccion.items.find(i => i.producto === 'PACA_HIELO')?.comSellador ?? 0
+          ),
+          comSellTotal: Number(
+            produccion.items.reduce((sum, i) => sum + Number(i.comSellador || 0), 0)
+          ),
+          // Comisiones de repartidor viven en Produccion.comRepartTotal
+          // (son agregación de Pedidos entregados por ese trabajador, no por item)
+          comRepartidorAgua: 0,
+          comRepartidorHielo: 0,
+          comRepartTotal: Number(produccion.comRepartTotal),
+        }
+      : null
+
     return apiSuccess({
       status,
       embarquesPendientes: embarquesAbiertos.map(e => ({
@@ -365,23 +401,7 @@ export async function GET(request: NextRequest) {
         botellonVendido,
         bolsaAguaVendida,
         bolsaHieloVendida,
-        produccion: produccion
-          ? {
-              ...produccion,
-              stockIniAgua: produccion.stockIniAgua,
-              stockIniHielo: produccion.stockIniHielo,
-              prodAgua: produccion.prodAgua,
-              prodHielo: produccion.prodHielo,
-              stockFinAgua: produccion.stockFinAgua,
-              stockFinHielo: produccion.stockFinHielo,
-              comSelladorAgua: Number(produccion.comSelladorAgua),
-              comSelladorHielo: Number(produccion.comSelladorHielo),
-              comSellTotal: Number(produccion.comSellTotal),
-              comRepartidorAgua: Number(produccion.comRepartidorAgua),
-              comRepartidorHielo: Number(produccion.comRepartidorHielo),
-              comRepartTotal: Number(produccion.comRepartTotal),
-            }
-          : null,
+        produccion: produccionFlat,
 
         // Fecha
         fecha: fechaStr,

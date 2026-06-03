@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { calcularStock, determinarStockInicial } from '@/modules/dashboard/domain/stock.service'
-import type { StockInput, ProduccionDiaria, StockSnapshot } from '@/modules/dashboard/domain/types'
+import { calcularStock, determinarStockInicial, type StockInput } from '@/modules/dashboard/domain/stock.service'
+import type { ProduccionDiaria, StockSnapshot } from '@/modules/dashboard/domain/types'
 
 describe('calcularStock (Bloque 3 — passthrough botellones)', () => {
   const produccionVacia: ProduccionDiaria = {

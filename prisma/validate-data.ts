@@ -255,8 +255,9 @@ async function checkProduccionStock() {
   const producciones = await prisma.produccion.findMany({
     select: {
       id: true, fecha: true, turno: true,
-      stockIniAgua: true, prodAgua: true, ventasAgua: true, stockFinAgua: true,
-      stockIniHielo: true, prodHielo: true, ventasHielo: true, stockFinHielo: true,
+      items: {
+        select: { producto: true, stockIni: true, producido: true, stockFinFisico: true },
+      },
     },
   })
 
@@ -264,35 +265,24 @@ async function checkProduccionStock() {
   const samples: any[] = []
 
   for (const p of producciones) {
-    const expectedFinAgua = p.stockIniAgua + p.prodAgua - p.ventasAgua
-    const expectedFinHielo = p.stockIniHielo + p.prodHielo - p.ventasHielo
+    const itemAgua = p.items.find(i => i.producto === 'PACA_AGUA')
+    const itemHielo = p.items.find(i => i.producto === 'PACA_HIELO')
+    if (!itemAgua || !itemHielo) continue
 
-    if (expectedFinAgua !== p.stockFinAgua) {
+    // Sin ventas en ProduccionItem (viven en Pedidos), validamos solo:
+    // stockFinFisico >= 0  y  producido == conteoA + conteoB (no se modela acá, skip)
+    if (itemAgua.stockFinFisico < 0) {
       mismatches++
-      if (samples.length < 5) {
-        samples.push({ fecha: p.fecha, turno: p.turno, tipo: 'agua', esperado: expectedFinAgua, actual: p.stockFinAgua })
-      }
+      samples.push({ fecha: p.fecha, turno: p.turno, error: 'stockFinAgua negativo', valor: itemAgua.stockFinFisico })
     }
-    if (expectedFinHielo !== p.stockFinHielo) {
+    if (itemHielo.stockFinFisico < 0) {
       mismatches++
-      if (samples.length < 5) {
-        samples.push({ fecha: p.fecha, turno: p.turno, tipo: 'hielo', esperado: expectedFinHielo, actual: p.stockFinHielo })
-      }
-    }
-
-    // Stock negativo
-    if (p.stockFinAgua < 0) {
-      mismatches++
-      samples.push({ fecha: p.fecha, turno: p.turno, error: 'stockFinAgua negativo', valor: p.stockFinAgua })
-    }
-    if (p.stockFinHielo < 0) {
-      mismatches++
-      samples.push({ fecha: p.fecha, turno: p.turno, error: 'stockFinHielo negativo', valor: p.stockFinHielo })
+      samples.push({ fecha: p.fecha, turno: p.turno, error: 'stockFinHielo negativo', valor: itemHielo.stockFinFisico })
     }
   }
 
   addResult(
-    'Producción: stockFin = stockIni + prod - ventas (y ≥ 0)',
+    'Producción: stockFinFisico ≥ 0 en cada ProduccionItem',
     mismatches === 0 ? 'PASS' : 'FAIL',
     `${mismatches} inconsistencias en ${producciones.length} producciones`,
     mismatches,

@@ -158,10 +158,39 @@ export default function ProduccionClient() {
     }
     setSubmitting(true)
     try {
+      // Bloque 2: enviar ProduccionItem[] (2 items: PACA_AGUA + PACA_HIELO)
+      // El stockIni viene de `stockInicial` (preview), no del formData
+      const body = {
+        trabajadorId: formData.trabajadorId,
+        turno: formData.turno,
+        obs: formData.obs,
+        items: [
+          {
+            producto: 'PACA_AGUA',
+            stockIni: stockInicial.stockIniAgua,
+            conteoA: formData.conteoAAgua,
+            conteoB: formData.conteoBAgua,
+            stockFinFisico: formData.stockFinFisicoAgua,
+            filtradas: formData.filtradasAgua,
+            rotas: formData.rotasAgua,
+            consumoInterno: formData.consumoInternoAgua,
+          },
+          {
+            producto: 'PACA_HIELO',
+            stockIni: stockInicial.stockIniHielo,
+            conteoA: formData.conteoAHielo,
+            conteoB: formData.conteoBHielo,
+            stockFinFisico: formData.stockFinFisicoHielo,
+            filtradas: formData.filtradasHielo,
+            rotas: formData.rotasHielo,
+            consumoInterno: formData.consumoInternoHielo,
+          },
+        ],
+      }
       const res = await fetch('/api/produccion', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(body),
       })
       if (res.status === 401 || res.status === 403) {
         router.push(`/login?callbackUrl=${encodeURIComponent('/produccion')}`)

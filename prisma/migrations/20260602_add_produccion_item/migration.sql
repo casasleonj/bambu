@@ -184,3 +184,14 @@ BEGIN
     ALTER TABLE "Produccion" DROP COLUMN "comRepartidorHielo";
   END IF;
 END $$;
+
+-- ── 4. GRANTs para roles de la app ───────────────────────────────────
+-- app_write: INSERT/UPDATE/DELETE en ProduccionItem (la app crea/edita)
+-- app_read: SELECT en ProduccionItem (la app lee agregados)
+-- ProduccionItem.id es TEXT (cuid), no hay sequence.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'ProduccionItem') THEN
+    GRANT SELECT, INSERT, UPDATE, DELETE ON "ProduccionItem" TO app_write, app_read;
+  END IF;
+END $$;
