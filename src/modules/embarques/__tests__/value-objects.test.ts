@@ -21,6 +21,16 @@ describe('EmbarqueId', () => {
   it('empty() retorna placeholder explícito (no usar from)', () => {
     const id = EmbarqueId.empty()
     expect(id).toBeDefined()
+    // El placeholder es reconocible y NO es string vacío
+    expect(id.isEmpty()).toBe(true)
+    expect(id.value).toMatch(/^__placeholder_/)
+    expect(id.value).not.toBe('')
+  })
+
+  it('dos empty() retornan IDs diferentes (sin colisión)', () => {
+    const a = EmbarqueId.empty()
+    const b = EmbarqueId.empty()
+    expect(a.equals(b)).toBe(false)
   })
 
   it('dos IDs con mismo valor son iguales', () => {
