@@ -98,7 +98,24 @@ export class CerrarEmbarqueUseCase {
   ) {}
 
   async execute(input: CerrarEmbarqueInput): Promise<CierreResultadoDTO> {
-    return this.txManager.execute(async (tx) => {
+    // FIX F2.2: usar executeWithLock('CIERRE', ...) en vez de execute sin lock.
+    //
+    // Antes: dos cierres concurrentes del mismo embarque (o cierres
+    // paralelos de embarques distintos) podían crear el mismo número
+    // de pedido/factura porque getNextNumero usa `_max + 1` (count + 1),
+    // que NO es atómico entre transacciones paralelas.
+    //
+    // pg_advisory_xact_lock(7) — el id de CIERRE en LOCK_IDS (locks.ts:10)
+    // — serializa TODAS las operaciones de cierre dentro de la misma
+    // conexión PostgreSQL. Se libera automáticamente al hacer commit/rollback.
+    //
+    // Trade-off conocido (aceptable):
+    // - Si dos admins intentan cerrar embarques al MISMO tiempo, uno espera
+    //   al otro. El lock se mantiene solo durante el cierre, no encolar
+    //   requests, pero el segundo sentirá latencia. Aceptable porque los
+    //   cierres son operaciones infrecuentes (1-3 por día típicamente).
+    // - Si la operación falla dentro del lock, el rollback libera el lock.
+    return this.txManager.executeWithLock('CIERRE', async (tx) => {
       const client = this.getTx(tx)
 
       // 1. Verify embarque exists and can be closed
