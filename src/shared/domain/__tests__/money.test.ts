@@ -1,0 +1,65 @@
+// @tests Money value object
+// Hallazgo cubierto: raw cents math en Pedido.registrarPago, posible overflow
+import { describe, it, expect } from 'vitest'
+import { Money } from '@/shared/domain'
+
+describe('Money.fromDecimal', () => {
+  it('convierte 10.50 a 1050 cents', () => {
+    expect(Money.fromDecimal(10.50).cents).toBe(1050)
+  })
+  it('convierte string "$5.000" a 500000 cents', () => {
+    expect(Money.fromDecimal('5000').cents).toBe(500000)
+  })
+  it('maneja NaN como 0', () => {
+    expect(Money.fromDecimal(NaN).cents).toBe(0)
+  })
+  it('redondea correctamente (5000.005 → 500001 cents)', () => {
+    expect(Money.fromDecimal(5000.005).cents).toBe(500001)
+  })
+})
+
+describe('Money.toDecimal', () => {
+  it('convierte 1050 cents a 10.50', () => {
+    expect(Money.fromDecimal(10.50).toDecimal()).toBe(10.5)
+  })
+})
+
+describe('Money.add', () => {
+  it('suma dos Money', () => {
+    const a = Money.fromDecimal(10.50)
+    const b = Money.fromDecimal(5.25)
+    expect(a.add(b).toDecimal()).toBe(15.75)
+  })
+})
+
+describe('Money.subtract', () => {
+  it('resta dos Money', () => {
+    const a = Money.fromDecimal(10.50)
+    const b = Money.fromDecimal(5.25)
+    expect(a.subtract(b).toDecimal()).toBe(5.25)
+  })
+
+  it('permite resultado negativo (deuda)', () => {
+    const a = Money.fromDecimal(5)
+    const b = Money.fromDecimal(10)
+    expect(a.subtract(b).cents).toBe(-500)
+  })
+})
+
+describe('Money.isPositive / isZero', () => {
+  it('isPositive true si > 0', () => {
+    expect(Money.fromDecimal(0.01).isPositive()).toBe(true)
+  })
+  it('isZero true si === 0', () => {
+    expect(new Money(0).isZero()).toBe(true)
+  })
+  it('isPositive false si 0', () => {
+    expect(new Money(0).isPositive()).toBe(false)
+  })
+})
+
+describe('Money.toString', () => {
+  it('formato con símbolo $', () => {
+    expect(Money.fromDecimal(10.50).toString()).toBe('$10.50')
+  })
+})
