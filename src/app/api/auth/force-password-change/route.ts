@@ -15,7 +15,7 @@ export async function PUT(request: NextRequest) {
   try {
     const dbUser = await prisma.user.findUnique({
       where: { id: userId },
-      select: { mustChangePassword: true, username: true },
+      select: { mustChangePassword: true, username: true, password: true },
     })
     if (!dbUser) return apiError('Usuario no encontrado', 404)
     if (!dbUser.mustChangePassword) {
@@ -23,13 +23,29 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { newPassword, confirmNewPassword } = body
+    const { currentPassword, newPassword, confirmNewPassword } = body
+
+    // FIX C-10: requerir contraseña actual para evitar account takeover.
+    // Si un atacante roba la sesión antes de que el dueño legítimo cambie
+    // la contraseña, sin este check podría cambiarla y bloquear al dueño.
+    // El endpoint de "mi perfil" (/api/auth/profile) YA requiere currentPassword;
+    // este era el único flujo de cambio de pass que no lo hacía.
+    if (!currentPassword) {
+      return apiError('Contraseña actual requerida', 400)
+    }
+    const currentValid = await bcrypt.compare(currentPassword, dbUser.password)
+    if (!currentValid) {
+      return apiError('Contraseña actual incorrecta', 401)
+    }
 
     if (!newPassword || !confirmNewPassword) {
       return apiError('Nueva contraseña y confirmación requeridas', 400)
     }
     if (newPassword.length < 6) {
       return apiError('Contraseña debe tener al menos 6 caracteres', 400)
+    }
+    if (newPassword === currentPassword) {
+      return apiError('La nueva contraseña debe ser diferente a la actual', 400)
     }
     if (newPassword !== confirmNewPassword) {
       return apiError('Las contraseñas no coinciden', 400)
