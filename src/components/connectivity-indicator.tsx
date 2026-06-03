@@ -2,13 +2,18 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { syncWithServer, isOnline } from '@/lib/db/sync'
+import { fetchResilient } from '@/lib/fetch-resilient'
+import { offlineDb } from '@/lib/db/offline'
+import { logger } from '@/lib/logger'
 
 const SYNC_INTERVAL_MS = 30000
+const QUEUE_POLL_MS = 5000 // Poll queue size for UI counter (cheap read)
 
 export function ConnectivityIndicator() {
   const [online, setOnline] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const [pendingCount, setPendingCount] = useState(0)
 
   useEffect(() => {
     setMounted(true)
@@ -29,12 +34,36 @@ export function ConnectivityIndicator() {
   const doSync = useCallback(async () => {
     if (!mounted || !isOnline() || syncing) return
     setSyncing(true)
-    await syncWithServer()
-    setSyncing(false)
+    try {
+      const result = await syncWithServer()
+      logger.info({ ...result }, 'Manual sync result')
+    } finally {
+      setSyncing(false)
+      // Update counter after sync
+      const count = await offlineDb.requestQueue.count()
+      setPendingCount(count)
+    }
   }, [mounted, syncing])
 
   // Skip polling when in Playwright test mode (avoids networkidle timeout)
   const isPlaywright = typeof window !== 'undefined' && (window as any).__PLAYWRIGHT_TEST__
+
+  // Poll queue size for the UI counter (one read on mount, then interval)
+  useEffect(() => {
+    if (!mounted) return
+    const updateCount = async () => {
+      try {
+        const count = await offlineDb.requestQueue.count()
+        setPendingCount(count)
+      } catch (e) {
+        logger.error({ err: e instanceof Error ? e.message : 'Unknown' }, 'Failed to count requestQueue')
+      }
+    }
+    void updateCount()
+    if (isPlaywright) return // skip polling in tests
+    const id = setInterval(updateCount, QUEUE_POLL_MS)
+    return () => clearInterval(id)
+  }, [mounted, isPlaywright])
 
   useEffect(() => {
     if (!mounted || isPlaywright) return
@@ -45,6 +74,23 @@ export function ConnectivityIndicator() {
   useEffect(() => {
     if (mounted && online && !isPlaywright) doSync()
   }, [online, isPlaywright]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Expose test helpers on window when running under Playwright.
+  // Permite a los E2E tests inspeccionar y manipular la cola offline
+  // sin tener que reproducir el comportamiento del usuario por la UI.
+  useEffect(() => {
+    if (!isPlaywright || typeof window === 'undefined') return
+    ;(window as any).__bambu = {
+      fetchResilient,
+      syncWithServer,
+      getRequestQueue: () => offlineDb.requestQueue.toArray(),
+      getSyncQueue: () => offlineDb.syncQueue.toArray(),
+      clearQueues: async () => {
+        await offlineDb.requestQueue.clear()
+        await offlineDb.syncQueue.clear()
+      },
+    }
+  }, [isPlaywright])
 
   if (!mounted) {
     return (
@@ -59,19 +105,48 @@ export function ConnectivityIndicator() {
   const dot = online ? 'bg-emerald-400 shadow-emerald-400/60' : 'bg-red-400 shadow-red-400/60'
   const text = online ? 'text-emerald-100' : 'text-red-100'
   const label = syncing ? 'Sync' : online ? 'Online' : 'Offline'
+  const showPending = pendingCount > 0
+  const canSync = online && !syncing && pendingCount > 0
+
+  const handleClick = () => {
+    if (canSync) doSync()
+  }
 
   return (
-    <div role="status" aria-label={`Estado de conexión: ${label}`} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full ${bg} transition-colors duration-300`}>
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={!canSync}
+      aria-label={
+        canSync
+          ? `Sincronizar ${pendingCount} cambio${pendingCount === 1 ? '' : 's'} pendiente${pendingCount === 1 ? '' : 's'}`
+          : `Estado de conexión: ${label}${showPending ? `. ${pendingCount} cambios pendientes.` : ''}`
+      }
+      data-testid="connectivity-indicator"
+      data-pending-count={pendingCount}
+      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full ${bg} transition-colors duration-300 ${
+        canSync ? 'cursor-pointer hover:brightness-110 active:scale-95' : 'cursor-default'
+      }`}
+    >
       <span className={`w-2 h-2 rounded-full ${dot} shadow-[0_0_6px_currentColor] transition-colors duration-300`} />
       <span className={`text-xs font-semibold tracking-wide ${text} transition-colors duration-300`}>
         {label}
       </span>
+      {showPending && (
+        <span
+          data-testid="pending-sync-counter"
+          className="ml-0.5 px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-amber-400 text-amber-950 leading-none"
+          title={`${pendingCount} cambio${pendingCount === 1 ? '' : 's'} pendiente${pendingCount === 1 ? '' : 's'} de sincronizar`}
+        >
+          {pendingCount}
+        </span>
+      )}
       {syncing && (
         <svg className="w-3 h-3 animate-spin text-white/60" viewBox="0 0 24 24" fill="none">
           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
         </svg>
       )}
-    </div>
+    </button>
   )
 }

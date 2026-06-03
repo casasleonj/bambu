@@ -1,9 +1,19 @@
 import { offlineDb } from './offline'
 import { logger } from '@/lib/logger'
 
-export async function syncWithServer(): Promise<{ synced: number; failed: number; conflicts: number }> {
-  const queue = await offlineDb.syncQueue.orderBy('createdAt').toArray()
-  const requestQueue = await offlineDb.requestQueue.orderBy('createdAt').toArray()
+const BATCH_SIZE = 25 // Drain N items per batch to avoid long blocking sync
+
+export interface SyncResult {
+  synced: number
+  failed: number
+  conflicts: number
+  remaining: number
+  drained: boolean // true si la cola quedó vacía
+}
+
+export async function syncWithServer(): Promise<SyncResult> {
+  const queue = await offlineDb.syncQueue.orderBy('createdAt').limit(BATCH_SIZE).toArray()
+  const requestQueue = await offlineDb.requestQueue.orderBy('createdAt').limit(BATCH_SIZE).toArray()
   let synced = 0
   let failed = 0
   let conflicts = 0
@@ -142,7 +152,11 @@ export async function syncWithServer(): Promise<{ synced: number; failed: number
     }
   }
 
-  return { synced, failed, conflicts }
+  // Reportar si quedan items pendientes
+  const remainingRequest = await offlineDb.requestQueue.count()
+  const remainingSync = await offlineDb.syncQueue.count()
+  const remaining = remainingRequest + remainingSync
+  return { synced, failed, conflicts, remaining, drained: remaining === 0 }
 }
 
 export function isOnline(): boolean {

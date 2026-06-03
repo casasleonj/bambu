@@ -33,6 +33,7 @@ export type ResilientResult<T> =
   | { status: 'error'; error: string; statusCode: number }
 
 const DEFAULT_TIMEOUT_MS = 10_000
+const MAX_QUEUE_SIZE = 500 // Backpressure: cap encolado para evitar unbounded growth
 
 function isResilientEnabled(): boolean {
   // Default ON en dev/prod. Override con env var para rollback.
@@ -42,7 +43,17 @@ function isResilientEnabled(): boolean {
   return true // default: ON
 }
 
-async function encolarResilient(req: ResilientRequest): Promise<void> {
+async function encolarResilient(req: ResilientRequest): Promise<{ enqueued: boolean; queueSize: number }> {
+  // Backpressure: si la cola está llena, NO encolamos más.
+  // El cliente debe ver un error y decidir (mostrar warning, reducir ritmo, etc.)
+  const currentSize = await offlineDb.requestQueue.count()
+  if (currentSize >= MAX_QUEUE_SIZE) {
+    logger.warn(
+      { endpoint: req.localEndpoint, queueSize: currentSize, max: MAX_QUEUE_SIZE },
+      'Cola offline llena — request NO encolada (backpressure)'
+    )
+    return { enqueued: false, queueSize: currentSize }
+  }
   await offlineDb.requestQueue.add({
     url: req.url,
     method: req.method,
@@ -52,9 +63,10 @@ async function encolarResilient(req: ResilientRequest): Promise<void> {
     createdAt: new Date(),
   })
   logger.info(
-    { localId: req.offlineId, endpoint: req.localEndpoint, url: req.url },
+    { localId: req.offlineId, endpoint: req.localEndpoint, url: req.url, queueSize: currentSize + 1 },
     'Encolado offline: request reencolada para sync'
   )
+  return { enqueued: true, queueSize: currentSize + 1 }
 }
 
 /**
@@ -68,7 +80,15 @@ export async function fetchResilient<T = unknown>(
   url: string,
   init: { method: 'POST' | 'PUT' | 'PATCH' | 'DELETE'; body?: unknown; localEndpoint: string }
 ): Promise<ResilientResult<T>> {
-  const offlineId = crypto.randomUUID()
+  // Si el body trae offlineId (lo generan los hooks para dedup server-side),
+  // lo extraemos y lo usamos también en la cola. Si no, generamos uno nuevo.
+  // Esto garantiza que la cola y el body usan el MISMO UUID → el server
+  // deduplica correctamente al reenviar.
+  const bodyOfflineId =
+    init.body && typeof init.body === 'object' && 'offlineId' in init.body
+      ? (init.body as { offlineId?: string }).offlineId
+      : undefined
+  const offlineId = bodyOfflineId ?? crypto.randomUUID()
   const method = init.method
 
   if (!isResilientEnabled()) {
@@ -115,13 +135,22 @@ export async function fetchResilient<T = unknown>(
     const isTimeout = err instanceof DOMException && err.name === 'AbortError'
 
     if (isNetworkError || isTimeout) {
-      await encolarResilient({
+      const { enqueued, queueSize } = await encolarResilient({
         url,
         method,
         body: init.body,
         offlineId,
         localEndpoint: init.localEndpoint,
       })
+      if (!enqueued) {
+        // Backpressure: cola llena. Devolver error para que el caller muestre toast.error
+        // y NO simule éxito offline. El usuario debe decidir (reducir ritmo, esperar sync).
+        return {
+          status: 'error',
+          error: `Cola offline llena (${queueSize}/${MAX_QUEUE_SIZE}). Espera a que se sincronicen los cambios pendientes.`,
+          statusCode: 0,
+        }
+      }
       return { status: 'offline', localId: offlineId }
     }
 

@@ -9,10 +9,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 // Mock the offline DB before importing the module under test
 const mockRequestQueueAdd = vi.fn().mockResolvedValue(undefined)
+const mockRequestQueueCount = vi.fn().mockResolvedValue(0)
 vi.mock('@/lib/db/offline', () => ({
   offlineDb: {
     requestQueue: {
       add: (...args: unknown[]) => mockRequestQueueAdd(...args),
+      count: () => mockRequestQueueCount(),
     },
   },
 }))
@@ -40,6 +42,8 @@ describe('fetchResilient', () => {
     mockFetch.mockReset()
     mockRequestQueueAdd.mockReset()
     mockRequestQueueAdd.mockResolvedValue(undefined)
+    mockRequestQueueCount.mockReset()
+    mockRequestQueueCount.mockResolvedValue(0)
   })
 
   afterEach(() => {
@@ -156,5 +160,43 @@ describe('fetchResilient', () => {
     } else {
       throw new Error('Expected both to be offline')
     }
+  })
+
+  it('returns status=error (no enqueue) when queue is full (backpressure)', async () => {
+    // Simular cola llena: count() devuelve MAX_QUEUE_SIZE
+    mockRequestQueueCount.mockResolvedValue(500)
+    mockFetch.mockRejectedValueOnce(new TypeError('fetch failed'))
+
+    const result = await fetchResilient(
+      '/api/pedidos',
+      { method: 'POST', body: { clienteId: 'c1' }, localEndpoint: 'crear-pedido' }
+    )
+
+    // Backpressure: NO se encola, status=error
+    expect(result.status).toBe('error')
+    if (result.status === 'error') {
+      expect(result.error).toMatch(/Cola offline llena/)
+      expect(result.statusCode).toBe(0)
+    }
+    expect(mockRequestQueueAdd).not.toHaveBeenCalled()
+  })
+
+  it('uses body offlineId when present (matches server dedup UUID)', async () => {
+    mockFetch.mockRejectedValueOnce(new TypeError('fetch failed'))
+    const bodyOfflineId = crypto.randomUUID()
+
+    const result = await fetchResilient(
+      '/api/pedidos',
+      { method: 'POST', body: { clienteId: 'c1', offlineId: bodyOfflineId }, localEndpoint: 'crear-pedido' }
+    )
+
+    expect(result.status).toBe('offline')
+    if (result.status === 'offline') {
+      // El localId devuelto debe ser el MISMO que el del body
+      expect(result.localId).toBe(bodyOfflineId)
+    }
+    expect(mockRequestQueueAdd).toHaveBeenCalledTimes(1)
+    const enqueuedArg = mockRequestQueueAdd.mock.calls[0]?.[0] as { offlineId: string }
+    expect(enqueuedArg.offlineId).toBe(bodyOfflineId)
   })
 })

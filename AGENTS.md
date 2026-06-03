@@ -129,6 +129,28 @@ vercel --prod
 - Excluded paths: `/api/health`, `/api/cron/*`.
 - Key config: `useRedisPackage: true` (required for redis v5), `disableOfflineQueue: true`, `insuranceLimiter` (memory fallback), `inMemoryBlockOnConsumed` (7x faster after limit reached).
 
+### Offline-First Architecture
+- Designed for 6 concurrent users on rural 2G/3G connectivity.
+- Mutations never block on the network: enqueue to Dexie, return optimistic response, sync on reconnect.
+- `src/lib/fetch-resilient.ts` — `fetchResilient(url, options)` wrapper:
+  - `AbortController` with 10s timeout
+  - On `TypeError`/`AbortError` (network error/timeout) → enqueue to `requestQueue` in Dexie, return `{ status: 'offline' }`
+  - On 4xx/5xx → return `{ status: 'error' }` (NOT enqueued — logic errors, retrying won't help)
+  - On 2xx → return `{ status: 'ok', data }`
+  - Feature flag: `NEXT_PUBLIC_USE_RESILIENT_FETCH=false` for rollback to direct `fetch`
+- `ResilientResult<T>` — discriminated union: `{ status: 'ok' | 'offline' | 'error', data?, error? }`
+- **Server-side dedup via `offlineId`** (client generates `crypto.randomUUID()`):
+  - `Pedido.offlineId` (@unique) — POST `/api/pedidos`, `/api/pedidos/[id]/anular`, `/entrega`, `/enviar`
+  - `Pago.offlineId` (indexed, NOT unique) — POST `/api/pedidos/pagar-fiado` (rebuilds `pagosAplicados` summary from existing Pagos with same offlineId)
+  - `Pedido.recurrenteBatchId` (indexed, NOT unique) — POST `/api/pedidos/recurrentes` (returns existing set)
+  - `Embarque.offlineId` (indexed, NOT unique) — PUT `/api/embarques/[id]`; DELETE is idempotent (status check, not offlineId)
+  - `Cliente.offlineId` (@unique) — POST `/api/clientes`
+- **Dexie schema v4** adds `requestQueue` table: `{ id?, url, method, body, headers, offlineId, localEndpoint, createdAt }`
+- **Sync trigger**: `connectivity-indicator.tsx` listens to `online` event + 30s poll → calls `syncWithServer()` which drains `requestQueue` (raw HTTP replay) AND `syncQueue` (legacy entity-based, kept for backward compat with `pedidos`/`clientes` entities in IndexedDB).
+- **Sync outcomes** (per item in `requestQueue`): 200 → delete + synced++, 409 (conflict, dedup OK) → delete + conflict++, other 4xx/5xx → keep + failed++, network error → keep + failed++.
+- **Toast contract**: `toast.success` (online result), `toast.info` (offline enqueued), `toast.error` (logic error).
+- **Hooks expose** `pendingOffline: string[]` (offlineIds) and `lastResult: ResilientResult` for UI counters.
+
 ### Service Worker (PWA)
 - `public/sw.js`: Network-first for navigation, cache-first for static assets
 - APIs bypass cache entirely
@@ -171,9 +193,13 @@ vercel --prod
 | `src/lib/locks.ts` | Advisory locks |
 | `src/lib/auth.ts` | NextAuth v5 configuration (JWT strategy) |
 | `src/lib/dashboard-domain.ts` | Backward-compat re-exports for DDD dashboard |
+| `src/lib/fetch-resilient.ts` | Offline-first fetch wrapper (10s timeout + Dexie enqueue) |
+| `src/lib/db/sync.ts` | `syncWithServer()` — drains `requestQueue` + legacy `syncQueue` |
+| `src/lib/db/offline.ts` | Dexie v4 with `requestQueue` table |
 | `src/modules/dashboard/` | DDD pilot — domain/application/infrastructure/presentation |
 | `src/shared/` | Cross-domain value objects (Money, DateRange, ProductCode) |
 | `public/sw.js` | Manual service worker (PWA) |
+| `prisma/migrations/20260602_add_offline_id_fields/` | Production migration for offlineId dedup fields |
 
 ## Post-Deployment Checklist
 
