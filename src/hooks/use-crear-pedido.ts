@@ -55,9 +55,16 @@ export function useCrearPedido(options?: UseCrearPedidoOptions) {
   const create = useCallback(async (payload: CrearPedidoPayload): Promise<CrearPedidoResult | null> => {
     setSubmitting(true)
     try {
+      // Offline-first: generamos offlineId en cliente para que la dedup server-side
+      // (Pedido.offlineId @unique en schema) funcione tanto en el envío online
+      // como en el replay de la cola offline. Si NO se incluye, dos requests
+      // con el mismo payload crean dos pedidos duplicados.
+      // Bug original: este hook NO enviaba offlineId (C-2). Test regresión:
+      // e2e/offline-first/crear-pedido-hook-dedup.spec.ts
+      const offlineId = crypto.randomUUID()
       const result = await fetchResilient<{ success: boolean; pedido: unknown; error?: { message?: string } }>(
         '/api/pedidos',
-        { method: 'POST', body: payload, localEndpoint: 'crear-pedido' }
+        { method: 'POST', body: { ...payload, offlineId }, localEndpoint: 'crear-pedido' }
       )
 
       if (result.status === 'ok') {
