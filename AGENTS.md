@@ -224,6 +224,11 @@ vercel --prod
 5. **Redis v5 + rate-limiter-flexible**: Requires `useRedisPackage: true` (auto-detection fails because redis v5 constructor name is "Class", not "Commander").
 6. **Docker Compose**: Redis 8 service added to `docker-compose.yml` on port 6379.
 7. **NEXTAUTH_URL local vs LAN**: En entornos Docker/container, el `.env` puede tener `NEXTAUTH_URL="http://192.168.x.x:3000"` (IP LAN hardcodeada). Si los e2e tests fallan con `TimeoutError: page.waitForURL` después de login (el browser navega a la IP LAN pero las cookies están en localhost), corregir a `NEXTAUTH_URL="http://localhost:3000"`. Playwright `baseURL` debe coincidir. `.env.example` documenta el valor correcto.
+8. **Test 291 ECONNRESET (Bloque 6)**: La falla reportada como "ECONNRESET" en `produccion.spec.ts:236` (`segundo registro mismo turno retorna 409`) tenía 3 causas encadenadas:
+   - **a) Componente faltante**: `src/components/money-display.tsx` no estaba commiteado pero `dashboard-client/index.tsx` lo importa. Causaba que `/api/trabajadores` devolviera 500 (HTML de error de Next.js), lo que rompía el flujo del test.
+   - **b) `CierreDia` con fechas futuras**: Filas de cierres con fechas > hoy hacían que `base-caja-modal.tsx` (líneas 60-73) redirigiera `/dashboard` a `/cierre?fecha=<next-unclosed>`. Fix: `DELETE FROM "CierreDia" WHERE fecha > NOW();`
+   - **c) NEXTAUTH_URL se revierte**: Ver issue #7.
+   - Tras arreglar (a) y (b), el test pasa consistentemente con `--workers=4` en 19-26s. Verificado en commit `eb37b14`.
 
 ---
 
