@@ -1,13 +1,16 @@
 import { NextRequest } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
-import { requireAuth } from '@/lib/auth-check'
+import { requireAuthWithoutMustChangePassword } from '@/lib/auth-check'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
 
 export async function PUT(request: NextRequest) {
-  const authResult = await requireAuth()
+  // FIX F1.8: este endpoint DEBE ser accesible cuando el usuario aún
+  // no ha cambiado su contraseña (es el endpoint que la cambia). Usar
+  // la variante sin check de mustChangePassword.
+  const authResult = await requireAuthWithoutMustChangePassword()
   if (authResult instanceof Response) return authResult
 
   const userId = (authResult.user as { id: string }).id

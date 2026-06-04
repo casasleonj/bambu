@@ -9,6 +9,42 @@ export async function requireAuth() {
   if (!session) {
     return apiError("No autorizado", 401);
   }
+
+  // FIX F1.8 (H-10): bloquear APIs cuando mustChangePassword es true.
+  // Antes: el proxy.ts (página routes) redirigía a /cambiar-contrasena,
+  // pero las APIs (request a /api/*) NO chequeaban este flag. Un usuario
+  // con sesión cuya contraseña debe cambiarse podía seguir hit-eando
+  // cualquier API con su sesión actual hasta que explícitamente cambiara
+  // la contraseña.
+  //
+  // Ahora: cualquier API que use requireAuth/requireRole/etc. retorna 403
+  // si mustChangePassword es true, forzando al usuario a cambiar la
+  // contraseña antes de poder usar el sistema.
+  //
+  // La UNICA excepción es el propio endpoint de cambio de contraseña
+  // (force-password-change), que NO debe requerir este check.
+  // Para excluir endpoints, usar requireAuthWithoutMustChangePassword().
+  if (session.user?.mustChangePassword) {
+    return apiError(
+      "Debe cambiar su contraseña antes de continuar",
+      403,
+    );
+  }
+
+  return session;
+}
+
+/**
+ * Variante de requireAuth que NO bloquea por mustChangePassword.
+ * Usar solo en endpoints que DEBEN ser accesibles cuando el usuario
+ * aún no ha cambiado su contraseña, ej. /api/auth/force-password-change
+ * y /api/auth/profile (para que pueda cambiar otros datos de su perfil).
+ */
+export async function requireAuthWithoutMustChangePassword() {
+  const session = await auth();
+  if (!session) {
+    return apiError("No autorizado", 401);
+  }
   return session;
 }
 
