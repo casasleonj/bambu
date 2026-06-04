@@ -13,32 +13,36 @@ export interface ProduccionRepository {
 
 export class PrismaProduccionRepository implements ProduccionRepository {
   async aggregateByDateRange(start: Date, end: Date): Promise<ProduccionDiaria> {
-    // FIX 1.2: usa los campos almacenados prodAgua/prodHielo (promedio de A y B)
-    // en lugar de sumar los conteos por separado (que duplicaba la producción).
-    const result = await prisma.produccion.aggregate({
-      where: { fecha: { gte: start, lt: end } },
-      _sum: {
-        prodAgua: true,
-        prodHielo: true,
-        rotasAgua: true,
-        rotasHielo: true,
-        filtradasAgua: true,
-        filtradasHielo: true,
-        consumoInternoAgua: true,
-        consumoInternoHielo: true,
+    // FIX 1.2 + Bloque 2: la desagregación por producto vive en ProduccionItem.
+    // Usamos el campo almacenado `producido` (= promedio de conteoA y conteoB
+    // calculado al cierre) y filtramos por la fecha de la Produccion padre.
+    const items = await prisma.produccionItem.findMany({
+      where: {
+        produccion: { fecha: { gte: start, lt: end } },
+      },
+      select: {
+        producto: true,
+        producido: true,
+        rotas: true,
+        filtradas: true,
+        consumoInterno: true,
       },
     })
 
-    const aguaProducida = result._sum?.prodAgua || 0
-    const hieloProducido = result._sum?.prodHielo || 0
-    const perdidasAgua =
-      (result._sum?.rotasAgua || 0) +
-      (result._sum?.filtradasAgua || 0) +
-      (result._sum?.consumoInternoAgua || 0)
-    const perdidasHielo =
-      (result._sum?.rotasHielo || 0) +
-      (result._sum?.filtradasHielo || 0) +
-      (result._sum?.consumoInternoHielo || 0)
+    let aguaProducida = 0
+    let hieloProducido = 0
+    let perdidasAgua = 0
+    let perdidasHielo = 0
+
+    for (const item of items) {
+      if (item.producto === 'PACA_AGUA') {
+        aguaProducida += item.producido
+        perdidasAgua += item.rotas + item.filtradas + item.consumoInterno
+      } else if (item.producto === 'PACA_HIELO') {
+        hieloProducido += item.producido
+        perdidasHielo += item.rotas + item.filtradas + item.consumoInterno
+      }
+    }
 
     return { aguaProducida, hieloProducido, perdidasAgua, perdidasHielo }
   }

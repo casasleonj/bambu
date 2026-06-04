@@ -90,13 +90,24 @@ export async function getStockDisponible(): Promise<StockDisponibleResult> {
     BOLSA_HIELO: 0,
   }
 
-  const produccionesHoy = await prisma.produccion.findMany({
-    where: { fecha: { gte: startOfDay, lt: endOfDay } },
+  // Bloque 2: la desagregación por producto vive en ProduccionItem.
+  // Sumamos `producido` de cada item (PACA_AGUA / PACA_HIELO) del día.
+  const produccionesHoy = await prisma.produccionItem.findMany({
+    where: {
+      produccion: { fecha: { gte: startOfDay, lt: endOfDay } },
+    },
+    select: {
+      producto: true,
+      producido: true,
+    },
   })
 
-  for (const prod of produccionesHoy) {
-    stockBase.PACA_AGUA += prod.prodAgua
-    stockBase.PACA_HIELO += prod.prodHielo
+  for (const item of produccionesHoy) {
+    if (item.producto === 'PACA_AGUA') {
+      stockBase.PACA_AGUA += item.producido
+    } else if (item.producto === 'PACA_HIELO') {
+      stockBase.PACA_HIELO += item.producido
+    }
   }
 
   const embarquesAbiertos = await prisma.embarque.findMany({
