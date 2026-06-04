@@ -207,9 +207,13 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
       // Assign pedidos if provided
       if (pedidoIds && Array.isArray(pedidoIds)) {
+        // FIX F2.5: actualizar estadoEntrega junto con estado (legacy).
+        // Antes solo se actualizaba estado, dejando estadoEntrega=PENDIENTE
+        // mientras estado=EN_RUTA. Los queries que filtran por
+        // estadoEntrega no encontraban estos pedidos.
         await tx.pedido.updateMany({
           where: { id: { in: pedidoIds }, embarqueId: null },
-          data: { embarqueId: id, estado: 'EN_RUTA' },
+          data: { embarqueId: id, estado: 'EN_RUTA', estadoEntrega: 'EN_RUTA' },
         })
       }
 

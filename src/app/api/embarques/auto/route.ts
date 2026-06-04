@@ -235,6 +235,8 @@ export async function POST(request: NextRequest) {
           })
 
           // Assign pedidos to embarque
+          // FIX F2.5: actualizar estadoEntrega junto con estado (legacy).
+          // Antes solo se seteaba estado=EN_RUTA dejando estadoEntrega=PENDIENTE.
           await tx.pedido.updateMany({
             where: {
               id: { in: chunk.map((p: { id: string }) => p.id) },
@@ -242,6 +244,7 @@ export async function POST(request: NextRequest) {
             data: {
               embarqueId: embarque.id,
               estado: 'EN_RUTA',
+              estadoEntrega: 'EN_RUTA',
             },
           })
 
