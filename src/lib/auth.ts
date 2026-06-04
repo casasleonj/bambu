@@ -98,6 +98,16 @@ const authOptions: NextAuthConfig = {
       return token
     },
     async session({ session, token }: { session: Session; token: JWT }) {
+      // FIX C-9: solo poblar session.user si hay un token.sub válido.
+      // Cuando el usuario es desactivado, el jwt callback (líneas 82-85)
+      // pone sub:undefined. Si propagamos session.user con defaults de
+      // NextAuth, el proxy.ts NO puede detectar la desactivación vía
+      // \`if (!session?.user)\`. Por eso validamos token.sub aquí también.
+      //
+      // Con este cambio, session.user queda con sus defaults de NextAuth
+      // (que NO incluyen un id real) cuando el usuario está desactivado,
+      // y el proxy.ts:59 check \`!session?.user?.id\` correctamente lo
+      // redirige a /login.
       if (session.user && token.sub) {
         ;(session.user as Session['user'] & { id?: string; role?: string; name?: string; mustChangePassword?: boolean }).id = token.sub as string
         ;(session.user as Session['user'] & { id?: string; role?: string; name?: string; mustChangePassword?: boolean }).role = token.role as string | undefined

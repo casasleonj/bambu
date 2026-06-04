@@ -56,7 +56,20 @@ export const proxy = auth(async (request) => {
   // ── Page routes: auth check ─────────────────────────────────────────
   const session = request.auth
 
-  if (!session?.user) {
+  // FIX C-9: validar session?.user?.id en vez de solo session?.user.
+  // NextAuth SIEMPRE popula session.user con defaults (name, email, image)
+  // incluso si no hay un usuario real. Por eso el check anterior
+  // \`if (!session?.user)\` NUNCA era true para un usuario con token.sub=undefined
+  // (usuario desactivado que aún tiene JWT válido).
+  //
+  // El jwt callback (en auth.ts:82-85) pone sub:undefined cuando el usuario
+  // es desactivado, pero la siguiente propagación del session callback
+  // también debe respetarlo: si no hay sub, no poblar session.user.
+  //
+  // Con este fix, un usuario desactivado que aún tenga JWT válido es
+  // redirigido a /login inmediatamente en el siguiente request, sin
+  // esperar al refresh del token (que ocurre cada 5 min).
+  if (!session?.user?.id) {
     const loginUrl = new URL('/login', request.url)
     loginUrl.searchParams.set('callbackUrl', pathname)
     return NextResponse.redirect(loginUrl)
