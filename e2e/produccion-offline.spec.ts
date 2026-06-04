@@ -81,7 +81,10 @@ test.describe('Produccion — offline-first (Bloque 5)', () => {
     })
     expect([200, 201]).toContain(postRes.status())
 
-    const today = new Date().toISOString().split('T')[0]
+    // FIX TZ Bogotá: usar toLocaleDateString para evitar drift de UTC
+    // (Bogotá es UTC-5; a las 19:00+ hora local, new Date().toISOString()
+    // devuelve el día siguiente en UTC, no el día actual en Colombia).
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
     const getRes = await apiGet(page, `/api/produccion?fecha=${today}`)
     expect(getRes.status()).toBe(200)
     const body = await getRes.json()
