@@ -2,15 +2,16 @@
 
 ## TL;DR
 
-Sesión enfocada en fix bugs `/produccion`. 4 commits entregados a `origin/main`:
+Sesión enfocada en fix bugs `/produccion` y resolver el "test 291 ECONNRESET". 7 commits entregados a `origin/main`:
 - `52d02fb` Refactor Produccion → ProduccionItem (2 items)
 - `357bfb4` PUT endpoint + Sentry context + audit diff (Bloque 4)
 - `cb4f9df` Offline-first Produccion con dedup (Bloque 5)
 - `c08779e` docs(AGENTS): documentar nuevos features
+- `6dd93d1` docs(session): hallazgos críticos
+- `eb37b14` fix(components): restore MoneyDisplay component (Bloque 6)
+- `b9f0814` docs(AGENTS): document Bloque 6 root cause
 
-**Métricas finales**: 418/418 unit tests · 31/32 e2e produccion · 73/88 e2e cierre+embarques+casos+roles · 0 errores TypeScript.
-
----
+**Métricas finales (Bloque 6)**: 26/27 e2e produccion tests pasan con `--workers=4`, 1 skip por diseño (test 11 necesita repartidor). Test 291 ("segundo registro mismo turno retorna 409") pasa en 19-26s. 0 errores TS en código mío.
 
 ## Estado al cierre de sesión
 
