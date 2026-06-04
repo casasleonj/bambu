@@ -1,7 +1,64 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getNextNumero } from "@/lib/sequence";
 import { resolverPreciosPedido, type Canal, type ProductCode } from "@/lib/pricing";
 import { getDateRange } from "@/lib/dates";
+import { logger } from "@/lib/logger";
+
+/**
+ * Número de reintentos ante un P2034 (write conflict / deadlock en
+ * Serializable isolation). Patrón alineado con src/app/api/cierre/route.ts.
+ */
+const SERIALIZABLE_MAX_RETRIES = 3
+
+/**
+ * Helper para ejecutar una función dentro de una transacción Serializable
+ * con reintentos automáticos ante P2034 (write conflict).
+ *
+ * Cada llamada se ejecuta como una transacción Serializable independiente
+ * (por plantilla). Esto:
+ * 1. Serializa las operaciones que tocan las mismas filas (LOST UPDATE en
+ *    plantillaRecurrente.ultimaGeneracion/proxGeneracion — bug H-12)
+ * 2. Detecta race en getNextNumero (Pedido.numero unique constraint)
+ * 3. Detecta lost updates en array `saltos` (PostgreSQL SSI tracking)
+ *
+ * Las decisiones se ordenan por recurrenteId ANTES de llamar este helper
+ * (en generarPedidosRecurrentes) para evitar deadlocks cíclicos entre
+ * admin y cron.
+ */
+async function executeSerializableWithRetry<T>(
+  fn: (tx: Prisma.TransactionClient) => Promise<T>,
+  context: string,
+): Promise<T> {
+  let lastError: Error | null = null
+
+  for (let attempt = 0; attempt < SERIALIZABLE_MAX_RETRIES; attempt++) {
+    try {
+      return await prisma.$transaction(fn, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        maxWait: 5000,
+        timeout: 15000,
+      })
+    } catch (err: any) {
+      lastError = err instanceof Error ? err : new Error(String(err))
+      const isSerializableConflict =
+        err?.code === 'P2034' || (typeof err?.message === 'string' && err.message.includes('P2034'))
+      if (isSerializableConflict && attempt < SERIALIZABLE_MAX_RETRIES - 1) {
+        logger.warn(
+          { attempt: attempt + 1, context, err: lastError.message },
+          'Serializable conflict, retrying',
+        )
+        // Backoff exponencial: 50ms, 100ms, 200ms
+        await new Promise((r) => setTimeout(r, 50 * Math.pow(2, attempt)))
+        continue
+      }
+      throw lastError
+    }
+  }
+
+  // Unreachable, pero TypeScript lo exige
+  throw lastError ?? new Error('Serializable retry exhausted')
+}
 
 type ProductosMap = {
   PACA_AGUA: number
@@ -372,220 +429,53 @@ export async function generarPedidosRecurrentes(
   _fechaReferencia: Date = new Date(),
   options?: { recurrenteBatchId?: string }
 ) {
+  // FIX H-12 (F-15): ordenar por recurrenteId antes de iterar.
+  // Garantiza que admin y cron procesen las plantillas en el mismo orden,
+  // eliminando deadlocks cíclicos (A→B vs B→A).
+  const decisionesOrdenadas = [...decisiones].sort((a, b) =>
+    a.recurrenteId.localeCompare(b.recurrenteId),
+  )
+
   const generados: Array<{ id: string; numero: number; tipo: string }> = []
   const saltados: string[] = []
 
-  for (const decision of decisiones) {
-    const pt = await prisma.plantillaRecurrente.findUnique({
-      where: { id: decision.recurrenteId },
-      include: { cliente: true, negocio: { include: { cliente: true } } },
-    })
-    if (!pt || !pt.activo) continue
-    // Support negocio-only templates (migrated from clienteId)
-    if (!pt.clienteId && !pt.negocioId) continue
-    const effectiveClienteId: string = pt.clienteId ?? pt.negocio?.clienteId ?? ''
-    if (!effectiveClienteId) continue
-    const clienteForCheck = pt.cliente ?? pt.negocio?.cliente
-    if (!clienteForCheck) continue
-
-    // Auto-fix Sunday: if proxGeneracion lands on Sunday, shift to Monday
-    let prox = pt.proxGeneracion!
-    if (prox.getDay() === 0) {
-      const lunes = calcularProxGeneracion(prox, 1)
-      await prisma.plantillaRecurrente.update({
-        where: { id: pt.id },
-        data: { proxGeneracion: lunes },
+  for (const decision of decisionesOrdenadas) {
+    // FIX H-12 (F-α a F-14): toda la lógica de una plantilla corre dentro
+    // de una transacción Serializable con retry en P2034. Esto previene:
+    //   - LOST UPDATE en plantillaRecurrente.ultimaGeneracion / proxGeneracion
+    //   - LOST UPDATE en array `saltos` (PostgreSQL SSI tracking detecta el conflicto)
+    //   - Race en getNextNumero (Pedido.numero unique constraint, SSI valida)
+    // El inner $transaction legacy fue removido; ahora la outer tx es la única
+    // necesaria.
+    const result = await executeSerializableWithRetry<
+      { skipped: true } | { skipped: false; creado: { id: string; numero: number } }
+    >(async (tx) => {
+      // 1. findUnique plantilla
+      const pt = await tx.plantillaRecurrente.findUnique({
+        where: { id: decision.recurrenteId },
+        include: { cliente: true, negocio: { include: { cliente: true } } },
       })
-      saltados.push(pt.id)
-      continue
-    }
+      if (!pt || !pt.activo) return { skipped: true }
+      // Support negocio-only templates (migrated from clienteId)
+      if (!pt.clienteId && !pt.negocioId) return { skipped: true }
+      const effectiveClienteId: string = pt.clienteId ?? pt.negocio?.clienteId ?? ''
+      if (!effectiveClienteId) return { skipped: true }
+      const clienteForCheck = pt.cliente ?? pt.negocio?.cliente
+      if (!clienteForCheck) return { skipped: true }
 
-    if (clienteForCheck.bloqueado || !clienteForCheck.activo) {
-      await prisma.plantillaRecurrente.update({
-        where: { id: pt.id },
-        data: {
-          ultimaGeneracion: prox,
-          proxGeneracion: calcularProxGeneracion(prox, pt.cadaNDias),
-        },
-      })
-      continue
-    }
-
-    // Verificar limite de fiados (se re-verifica dentro de la transacción para evitar race conditions)
-    const limite = clienteForCheck.limitePedidosFiados ?? 3
-
-    const pedidosPendientesCount = await prisma.pedido.count({
-      where: {
-        clienteId: effectiveClienteId,
-        estadoEntrega: { notIn: ['ANULADO', 'CANCELADO'] },
-        estadoPago: { notIn: ['PAGADO', 'ANTICIPADO', 'ANULADO'] },
-      },
-    })
-
-    if (pedidosPendientesCount >= limite) {
-      await prisma.plantillaRecurrente.update({
-        where: { id: pt.id },
-        data: {
-          ultimaGeneracion: prox,
-          proxGeneracion: calcularProxGeneracion(prox, pt.cadaNDias),
-        },
-      })
-      continue
-    }
-
-    if (decision.decision === 'SALTAR') {
-      const saltosActualizados = sanitizarSaltos([
-        ...(pt.saltos || []),
-        formatDateISO(prox),
-      ])
-      await prisma.plantillaRecurrente.update({
-        where: { id: pt.id },
-        data: {
-          saltos: saltosActualizados,
-          ultimaGeneracion: prox,
-          proxGeneracion: calcularProxGeneracion(prox, pt.cadaNDias),
-        },
-      })
-      saltados.push(pt.id)
-      continue
-    }
-
-    const productos = parseProductos(pt.productos)
-    let cantidades = productosToCantidades(productos, pt.canal)
-
-    if (decision.decision === 'SOLO_PENDIENTES' || decision.decision === 'APLICAR_CREDITO') {
-      cantidades = { cPacaAgua: 0, cPacaHielo: 0, cBotellonFab: 0, cBotellonDom: 0, cBolsaAgua: 0, cBolsaHielo: 0 }
-    }
-
-    const pedidosPendientes = decision.decision === 'CON_PENDIENTES' || decision.decision === 'SOLO_PENDIENTES' || decision.decision === 'APLICAR_CREDITO'
-      ? await prisma.pedido.findMany({
-          where: {
-        clienteId: effectiveClienteId,
-            estadoEntrega: 'PENDIENTE',
-            origen: { not: 'RECURRENTE' },
-          },
+      // 2. Auto-fix Sunday: if proxGeneracion lands on Sunday, shift to Monday
+      let prox = pt.proxGeneracion!
+      if (prox.getDay() === 0) {
+        const lunes = calcularProxGeneracion(prox, 1)
+        await tx.plantillaRecurrente.update({
+          where: { id: pt.id },
+          data: { proxGeneracion: lunes },
         })
-      : []
-
-    // Separar pedidos con deuda vs pagados
-    const pedidosConDeuda = pedidosPendientes.filter(p => Number(p.saldo) > 0)
-    const pedidosPagados = pedidosPendientes.filter(p => Number(p.saldo) === 0 && Number(p.totalPagado) > 0)
-
-    // Block CON_PENDIENTES/SOLO_PENDIENTES if any pending order has debt
-    if ((decision.decision === 'CON_PENDIENTES' || decision.decision === 'SOLO_PENDIENTES') && pedidosConDeuda.length > 0) {
-      await prisma.plantillaRecurrente.update({
-        where: { id: pt.id },
-        data: {
-          ultimaGeneracion: prox,
-          proxGeneracion: calcularProxGeneracion(prox, pt.cadaNDias),
-        },
-      })
-      saltados.push(pt.id)
-      continue
-    }
-
-    // Block APLICAR_CREDITO if there is debt or no paid orders
-    if (decision.decision === 'APLICAR_CREDITO' && (pedidosConDeuda.length > 0 || pedidosPagados.length === 0)) {
-      await prisma.plantillaRecurrente.update({
-        where: { id: pt.id },
-        data: {
-          ultimaGeneracion: prox,
-          proxGeneracion: calcularProxGeneracion(prox, pt.cadaNDias),
-        },
-      })
-      saltados.push(pt.id)
-      continue
-    }
-
-    if (decision.decision === 'CON_PENDIENTES' || decision.decision === 'SOLO_PENDIENTES') {
-      for (const p of pedidosPendientes) {
-        cantidades.cPacaAgua += p.cPacaAguaPed
-        cantidades.cPacaHielo += p.cPacaHieloPed
-        cantidades.cBotellonFab += p.cBotellonFabPed
-        cantidades.cBotellonDom += p.cBotellonDomPed
-        cantidades.cBolsaAgua += p.cBolsaAguaPed
-        cantidades.cBolsaHielo += p.cBolsaHieloPed
-      }
-    }
-
-    // APLICAR_CREDITO: sumar solo los pedidos pagados (no todos los pendientes)
-    if (decision.decision === 'APLICAR_CREDITO') {
-      for (const p of pedidosPagados) {
-        cantidades.cPacaAgua += p.cPacaAguaPed
-        cantidades.cPacaHielo += p.cPacaHieloPed
-        cantidades.cBotellonFab += p.cBotellonFabPed
-        cantidades.cBotellonDom += p.cBotellonDomPed
-        cantidades.cBolsaAgua += p.cBolsaAguaPed
-        cantidades.cBolsaHielo += p.cBolsaHieloPed
-      }
-    }
-
-    const totalPacas = Object.values(cantidades).reduce((a, b) => a + b, 0)
-    if (totalPacas < 3) {
-      await prisma.plantillaRecurrente.update({
-        where: { id: pt.id },
-        data: {
-          ultimaGeneracion: pt.proxGeneracion,
-          proxGeneracion: calcularProxGeneracion(pt.proxGeneracion!, pt.cadaNDias),
-        },
-      })
-      continue
-    }
-
-    const items: Array<{ codigo: ProductCode; cantidad: number }> = [
-      { codigo: 'PACA_AGUA', cantidad: cantidades.cPacaAgua },
-      { codigo: 'PACA_HIELO', cantidad: cantidades.cPacaHielo },
-      { codigo: 'BOTELLON', cantidad: cantidades.cBotellonFab + cantidades.cBotellonDom },
-      { codigo: 'BOLSA_AGUA', cantidad: cantidades.cBolsaAgua },
-      { codigo: 'BOLSA_HIELO', cantidad: cantidades.cBolsaHielo },
-    ]
-
-    const preciosResueltos = await resolverPreciosPedido(
-      items,
-      pt.canal as Canal,
-      effectiveClienteId,
-      pt.negocioId,
-    )
-
-    const precioMap: Record<string, number> = {}
-    const precioOrigenMap: Record<string, string> = {}
-    for (const pr of preciosResueltos) {
-      precioMap[pr.codigo] = pr.precio
-      precioOrigenMap[pr.codigo] = pr.origen
-    }
-
-    const total = preciosResueltos.reduce((sum, pr) => sum + pr.subtotal, 0)
-
-    // Calcular crédito total si es APLICAR_CREDITO
-    const totalCredito = decision.decision === 'APLICAR_CREDITO'
-      ? pedidosPagados.reduce((sum, p) => sum + Number(p.totalPagado), 0)
-      : 0
-
-    const nuevo = await prisma.$transaction(async (tx) => {
-      // Re-check clienteId within transaction (TypeScript narrowing)
-      const clienteId = effectiveClienteId
-      if (!clienteId) return null
-
-      // Re-verificar limite de fiados dentro de la transacción para evitar race conditions
-      const pedidosPendientesTx = await tx.pedido.findMany({
-        where: {
-          clienteId,
-          estadoEntrega: { notIn: ['ANULADO', 'CANCELADO'] },
-          estadoPago: { notIn: ['PAGADO', 'ANTICIPADO', 'ANULADO'] },
-        },
-        select: { id: true, numero: true, saldo: true },
-      })
-
-      let limiteTx = clienteForCheck.limitePedidosFiados ?? 3
-      if (clienteForCheck.limitePedidosFiados == null) {
-        const configLimite = await tx.config.findUnique({ where: { clave: 'LIMITE_PEDIDOS_FIADOS_DEFAULT' } })
-        if (configLimite) {
-          const parsed = parseInt(configLimite.valor, 10)
-          if (!isNaN(parsed)) limiteTx = parsed
-        }
+        return { skipped: true }
       }
 
-      if (pedidosPendientesTx.length >= limiteTx) {
+      // 3. Cliente bloqueado o inactivo
+      if (clienteForCheck.bloqueado || !clienteForCheck.activo) {
         await tx.plantillaRecurrente.update({
           where: { id: pt.id },
           data: {
@@ -593,12 +483,169 @@ export async function generarPedidosRecurrentes(
             proxGeneracion: calcularProxGeneracion(prox, pt.cadaNDias),
           },
         })
-        return null
+        return { skipped: true }
       }
 
+      // 4. Verificar limite de fiados
+      const limite = clienteForCheck.limitePedidosFiados ?? 3
+
+      const pedidosPendientesCount = await tx.pedido.count({
+        where: {
+          clienteId: effectiveClienteId,
+          estadoEntrega: { notIn: ['ANULADO', 'CANCELADO'] },
+          estadoPago: { notIn: ['PAGADO', 'ANTICIPADO', 'ANULADO'] },
+        },
+      })
+
+      if (pedidosPendientesCount >= limite) {
+        await tx.plantillaRecurrente.update({
+          where: { id: pt.id },
+          data: {
+            ultimaGeneracion: prox,
+            proxGeneracion: calcularProxGeneracion(prox, pt.cadaNDias),
+          },
+        })
+        return { skipped: true }
+      }
+
+      // 5. SALTAR: añadir fecha a saltos y avanzar
+      if (decision.decision === 'SALTAR') {
+        const saltosActualizados = sanitizarSaltos([
+          ...(pt.saltos || []),
+          formatDateISO(prox),
+        ])
+        await tx.plantillaRecurrente.update({
+          where: { id: pt.id },
+          data: {
+            saltos: saltosActualizados,
+            ultimaGeneracion: prox,
+            proxGeneracion: calcularProxGeneracion(prox, pt.cadaNDias),
+          },
+        })
+        return { skipped: true }
+      }
+
+      // 6. Productos y validaciones
+      const productos = parseProductos(pt.productos)
+      let cantidades = productosToCantidades(productos, pt.canal)
+
+      if (decision.decision === 'SOLO_PENDIENTES' || decision.decision === 'APLICAR_CREDITO') {
+        cantidades = { cPacaAgua: 0, cPacaHielo: 0, cBotellonFab: 0, cBotellonDom: 0, cBolsaAgua: 0, cBolsaHielo: 0 }
+      }
+
+      const pedidosPendientes = decision.decision === 'CON_PENDIENTES' || decision.decision === 'SOLO_PENDIENTES' || decision.decision === 'APLICAR_CREDITO'
+        ? await tx.pedido.findMany({
+            where: {
+              clienteId: effectiveClienteId,
+              estadoEntrega: 'PENDIENTE',
+              origen: { not: 'RECURRENTE' },
+            },
+            // FIX F-4: usar `select` para no cargar columnas innecesarias
+            select: {
+              id: true, numero: true, total: true, saldo: true, totalPagado: true,
+              cPacaAguaPed: true, cPacaHieloPed: true, cBotellonFabPed: true,
+              cBotellonDomPed: true, cBolsaAguaPed: true, cBolsaHieloPed: true,
+            },
+          })
+        : []
+
+      const pedidosConDeuda = pedidosPendientes.filter(p => Number(p.saldo) > 0)
+      const pedidosPagados = pedidosPendientes.filter(p => Number(p.saldo) === 0 && Number(p.totalPagado) > 0)
+
+      // Block CON_PENDIENTES/SOLO_PENDIENTES if any pending order has debt
+      if ((decision.decision === 'CON_PENDIENTES' || decision.decision === 'SOLO_PENDIENTES') && pedidosConDeuda.length > 0) {
+        await tx.plantillaRecurrente.update({
+          where: { id: pt.id },
+          data: {
+            ultimaGeneracion: prox,
+            proxGeneracion: calcularProxGeneracion(prox, pt.cadaNDias),
+          },
+        })
+        return { skipped: true }
+      }
+
+      // Block APLICAR_CREDITO if there is debt or no paid orders
+      if (decision.decision === 'APLICAR_CREDITO' && (pedidosConDeuda.length > 0 || pedidosPagados.length === 0)) {
+        await tx.plantillaRecurrente.update({
+          where: { id: pt.id },
+          data: {
+            ultimaGeneracion: prox,
+            proxGeneracion: calcularProxGeneracion(prox, pt.cadaNDias),
+          },
+        })
+        return { skipped: true }
+      }
+
+      if (decision.decision === 'CON_PENDIENTES' || decision.decision === 'SOLO_PENDIENTES') {
+        for (const p of pedidosPendientes) {
+          cantidades.cPacaAgua += p.cPacaAguaPed
+          cantidades.cPacaHielo += p.cPacaHieloPed
+          cantidades.cBotellonFab += p.cBotellonFabPed
+          cantidades.cBotellonDom += p.cBotellonDomPed
+          cantidades.cBolsaAgua += p.cBolsaAguaPed
+          cantidades.cBolsaHielo += p.cBolsaHieloPed
+        }
+      }
+
+      // APLICAR_CREDITO: sumar solo los pedidos pagados
+      if (decision.decision === 'APLICAR_CREDITO') {
+        for (const p of pedidosPagados) {
+          cantidades.cPacaAgua += p.cPacaAguaPed
+          cantidades.cPacaHielo += p.cPacaHieloPed
+          cantidades.cBotellonFab += p.cBotellonFabPed
+          cantidades.cBotellonDom += p.cBotellonDomPed
+          cantidades.cBolsaAgua += p.cBolsaAguaPed
+          cantidades.cBolsaHielo += p.cBolsaHieloPed
+        }
+      }
+
+      const totalPacas = Object.values(cantidades).reduce((a, b) => a + b, 0)
+      if (totalPacas < 3) {
+        await tx.plantillaRecurrente.update({
+          where: { id: pt.id },
+          // FIX F-1: usar `prox` consistente con el resto del flujo
+          data: {
+            ultimaGeneracion: prox,
+            proxGeneracion: calcularProxGeneracion(prox, pt.cadaNDias),
+          },
+        })
+        return { skipped: true }
+      }
+
+      const items: Array<{ codigo: ProductCode; cantidad: number }> = [
+        { codigo: 'PACA_AGUA', cantidad: cantidades.cPacaAgua },
+        { codigo: 'PACA_HIELO', cantidad: cantidades.cPacaHielo },
+        { codigo: 'BOTELLON', cantidad: cantidades.cBotellonFab + cantidades.cBotellonDom },
+        { codigo: 'BOLSA_AGUA', cantidad: cantidades.cBolsaAgua },
+        { codigo: 'BOLSA_HIELO', cantidad: cantidades.cBolsaHielo },
+      ]
+
+      const preciosResueltos = await resolverPreciosPedido(
+        items,
+        pt.canal as Canal,
+        effectiveClienteId,
+        pt.negocioId,
+      )
+
+      const precioMap: Record<string, number> = {}
+      const precioOrigenMap: Record<string, string> = {}
+      for (const pr of preciosResueltos) {
+        precioMap[pr.codigo] = pr.precio
+        precioOrigenMap[pr.codigo] = pr.origen
+      }
+
+      const total = preciosResueltos.reduce((sum, pr) => sum + pr.subtotal, 0)
+
+      // FIX F-9: validar que el crédito no supere el total
+      const totalCreditoSinValidar = decision.decision === 'APLICAR_CREDITO'
+        ? pedidosPagados.reduce((sum, p) => sum + Number(p.totalPagado), 0)
+        : 0
+      const totalCredito = Math.min(totalCreditoSinValidar, total)
+
+      // 7. Crear pedido (dentro de la tx Serializable)
       const creado = await tx.pedido.create({
         data: {
-          clienteId,
+          clienteId: effectiveClienteId,
           negocioId: pt.negocioId,
           tipo: pt.tipo,
           canal: pt.canal,
@@ -641,12 +688,13 @@ export async function generarPedidosRecurrentes(
         },
       })
 
+      // 8. Crear factura
       const facturaNum = await getNextNumero(tx, { model: 'factura', field: 'numero' })
 
       await tx.factura.create({
         data: {
           numero: `FAC-${facturaNum.toString().padStart(5, "0")}`,
-          clienteId,
+          clienteId: effectiveClienteId,
           pedidoId: creado.id,
           subtotal: total,
           total,
@@ -654,6 +702,7 @@ export async function generarPedidosRecurrentes(
         },
       })
 
+      // 9. Update plantilla (avanzar fechas)
       await tx.plantillaRecurrente.update({
         where: { id: pt.id },
         data: {
@@ -662,10 +711,13 @@ export async function generarPedidosRecurrentes(
         },
       })
 
+      // 10. NC para pedidos consolidados
       if (decision.decision === 'CON_PENDIENTES' || decision.decision === 'SOLO_PENDIENTES') {
         for (const p of pedidosPendientes) {
           await tx.pedido.update({
             where: { id: p.id },
+            // FIX F-7: estado legacy se mantiene redundante con estadoEntrega
+            // (issue conocido schema, ver AGENTS.md F5.x)
             data: {
               estadoEntrega: 'CANCELADO',
               estado: 'CANCELADO',
@@ -685,11 +737,12 @@ export async function generarPedidosRecurrentes(
         }
       }
 
-      // APLICAR_CREDITO: marcar pedidos pagados como ENTREGADO (no CANCELADO)
+      // 11. APLICAR_CREDITO: marcar pedidos pagados como ENTREGADO
       if (decision.decision === 'APLICAR_CREDITO') {
         for (const p of pedidosPagados) {
           await tx.pedido.update({
             where: { id: p.id },
+            // FIX F-8: estado legacy redundante (issue F5.x)
             data: {
               estadoEntrega: 'ENTREGADO',
               estado: 'ENTREGADO',
@@ -710,12 +763,14 @@ export async function generarPedidosRecurrentes(
         }
       }
 
-      return creado
-    })
+      return { skipped: false as const, creado }
+    }, `generarPedidosRecurrentes:${decision.recurrenteId}`)
 
-    if (!nuevo) continue
-
-    generados.push({ id: nuevo.id, numero: nuevo.numero, tipo: decision.decision })
+    if (result.skipped) {
+      saltados.push(decision.recurrenteId)
+    } else {
+      generados.push({ id: result.creado.id, numero: result.creado.numero, tipo: decision.decision })
+    }
   }
 
   return { generados, saltados }

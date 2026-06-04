@@ -195,21 +195,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // NOTA (H-12 — trabajo pendiente): esta operación NO está envuelta en
-    // withAdvisoryLock porque `generarPedidosRecurrentes` (en
-    // src/lib/recurrentes.ts:370) hace múltiples queries auto-commit y
-    // no acepta un tx. El dedup existente (offlineId → recurrenteBatchId)
-    // protege el caso de replay offline, pero dos admins con distintos
-    // offlineIds podrían generar pedidos con el mismo `numero` en race.
+    // H-12 RESUELTO: `generarPedidosRecurrentes` (src/lib/recurrentes.ts:370)
+    // ahora corre CADA plantilla dentro de una transacción Serializable
+    // con reintentos en P2034 (write conflict). Esto cierra el LOST UPDATE
+    // en `plantillaRecurrente.ultimaGeneracion`/`proxGeneracion` y el
+    // race en `getNextNumero` (PostgreSQL SSI valida la atomicidad).
     //
-    // FIX PROPUESTO: refactorizar `generarPedidosRecurrentes` para
-    // aceptar tx y usar todas las queries dentro de una transacción bajo
-    // withAdvisoryLock('PEDIDO', ...). Tarea a F4.10 (refactor de use
-    // cases grandes) — estimada 1-2 horas de trabajo + tests.
+    // El dedup por offlineId → recurrenteBatchId (líneas 60-74) protege
+    // el caso de replay offline; el unique constraint en Pedido.numero
+    // (schema.prisma) es la red de seguridad final. Las decisiones se
+    // ordenan por recurrenteId antes de iterar para evitar deadlocks
+    // cíclicos (admin vs cron procesando en órdenes distintos).
     //
-    // Por ahora, el dedup por offlineId y el unique constraint en
-    // Pedido.numero (auto-increment, schema.prisma:449) previenen la
-    // mayoría de los duplicados, pero la latencia es visible.
+    // Patrón alineado con src/app/api/cierre/route.ts:564-585.
     const resultado = await generarPedidosRecurrentes(decisiones, fecha, { recurrenteBatchId: offlineId })
 
     if (resultado.generados.length > 0) {
