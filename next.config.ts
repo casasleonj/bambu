@@ -5,6 +5,15 @@ import { withSerwist } from "@serwist/turbopack";
 const nextConfig: NextConfig = {
   output: 'standalone',
   outputFileTracingRoot: process.cwd(),
+  // Permite que el dev server acepte requests desde la IP LAN (ej. 192.168.1.4)
+  // además de localhost. Sin esto, Next.js 16 bloquea /_next/webpack-hmr y otros
+  // recursos _next/* con "Blocked cross-origin request" cuando se accede desde
+  // otro dispositivo en la red. Solo aplica en `next dev`; en producción se ignora.
+  // Configurar via env: NEXT_PUBLIC_DEV_LAN_ORIGIN="192.168.1.4,192.168.0.20"
+  // (separadas por coma). Si no se define, queda vacío y se usa solo localhost.
+  allowedDevOrigins: process.env.NEXT_PUBLIC_DEV_LAN_ORIGIN
+    ? process.env.NEXT_PUBLIC_DEV_LAN_ORIGIN.split(',').map(s => s.trim()).filter(Boolean)
+    : [],
   images: {
     unoptimized: true,
   },
