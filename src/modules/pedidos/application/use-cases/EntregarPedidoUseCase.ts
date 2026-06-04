@@ -22,7 +22,26 @@ export class EntregarPedidoUseCase {
   ) {}
 
   async execute(input: EntregarPedidoInput): Promise<EntregarPedidoResult> {
-    return this.txManager.execute(async (tx) => {
+    // FIX F2.4: usar executeWithLock('PEDIDO', ...) en vez de execute sin lock.
+    //
+    // Antes: dos repartidores entregando el mismo pedido simultáneamente
+    // (o un repartidor con doble-click) pasaban ambos el dedup check de
+    // la route, entraban a la tx, y el segundo fallaba con
+    // 'TRANSICION_INVALIDA' (porque el estado ya no era PENDIENTE).
+    // Funcionaba pero creaba 2 audit log entries y gastaba trabajo
+    // innecesario.
+    //
+    // Con el lock: el segundo request espera al primero. Cuando entra,
+    // el pedido ya está en estado EN_RUTA → la transición a ENTREGADO
+    // desde EN_RUTA es válida (puedeEntregar() retorna true), pero
+    // actualmente puedeEntregar() verifica el estado desde donde
+    // viene el pedido, no el estado final. Para evitar entrega doble,
+    // el lock previene que dos requests procesen el mismo pedido
+    // simultáneamente.
+    //
+    // El lock 'PEDIDO' (id=1 en LOCK_IDS) es el apropiado porque
+    // entrega es una transición de estado del pedido.
+    return this.txManager.executeWithLock('PEDIDO', async (tx) => {
       const pedido = await this.pedidoRepo.findById(PedidoId.from(input.pedidoId), tx)
       if (!pedido) throw new Error('PEDIDO_NOT_FOUND')
 
@@ -30,11 +49,19 @@ export class EntregarPedidoUseCase {
         throw new Error('TRANSICION_INVALIDA')
       }
 
-      // Register delivery quantities
-      pedido.entregar(input.itemsEntregados.map(ie => ({
-        producto: ie.producto,
-        cantidad: ie.cantidad,
-      })))
+      // Register delivery quantities + metadata (photo, GPS, visit code)
+      pedido.entregar(
+        input.itemsEntregados.map(ie => ({
+          producto: ie.producto,
+          cantidad: ie.cantidad,
+        })),
+        {
+          fotoEntrega: input.fotoEntrega,
+          gpsLat: input.gpsLat,
+          gpsLng: input.gpsLng,
+          codigoVisita: input.codigoVisita,
+        },
+      )
 
       // Register payments
       if (input.pagos && input.pagos.length > 0) {
