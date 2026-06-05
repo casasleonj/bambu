@@ -1,64 +1,8 @@
-import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getNextNumero } from "@/lib/sequence";
 import { resolverPreciosPedido, type Canal, type ProductCode } from "@/lib/pricing";
 import { getDateRange } from "@/lib/dates";
-import { logger } from "@/lib/logger";
-
-/**
- * Número de reintentos ante un P2034 (write conflict / deadlock en
- * Serializable isolation). Patrón alineado con src/app/api/cierre/route.ts.
- */
-const SERIALIZABLE_MAX_RETRIES = 3
-
-/**
- * Helper para ejecutar una función dentro de una transacción Serializable
- * con reintentos automáticos ante P2034 (write conflict).
- *
- * Cada llamada se ejecuta como una transacción Serializable independiente
- * (por plantilla). Esto:
- * 1. Serializa las operaciones que tocan las mismas filas (LOST UPDATE en
- *    plantillaRecurrente.ultimaGeneracion/proxGeneracion — bug H-12)
- * 2. Detecta race en getNextNumero (Pedido.numero unique constraint)
- * 3. Detecta lost updates en array `saltos` (PostgreSQL SSI tracking)
- *
- * Las decisiones se ordenan por recurrenteId ANTES de llamar este helper
- * (en generarPedidosRecurrentes) para evitar deadlocks cíclicos entre
- * admin y cron.
- */
-async function executeSerializableWithRetry<T>(
-  fn: (tx: Prisma.TransactionClient) => Promise<T>,
-  context: string,
-): Promise<T> {
-  let lastError: Error | null = null
-
-  for (let attempt = 0; attempt < SERIALIZABLE_MAX_RETRIES; attempt++) {
-    try {
-      return await prisma.$transaction(fn, {
-        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-        maxWait: 5000,
-        timeout: 15000,
-      })
-    } catch (err: any) {
-      lastError = err instanceof Error ? err : new Error(String(err))
-      const isSerializableConflict =
-        err?.code === 'P2034' || (typeof err?.message === 'string' && err.message.includes('P2034'))
-      if (isSerializableConflict && attempt < SERIALIZABLE_MAX_RETRIES - 1) {
-        logger.warn(
-          { attempt: attempt + 1, context, err: lastError.message },
-          'Serializable conflict, retrying',
-        )
-        // Backoff exponencial: 50ms, 100ms, 200ms
-        await new Promise((r) => setTimeout(r, 50 * Math.pow(2, attempt)))
-        continue
-      }
-      throw lastError
-    }
-  }
-
-  // Unreachable, pero TypeScript lo exige
-  throw lastError ?? new Error('Serializable retry exhausted')
-}
+import { executeSerializableWithRetry } from "@/lib/serializable";
 
 type ProductosMap = {
   PACA_AGUA: number

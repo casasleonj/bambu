@@ -71,7 +71,10 @@ export const PedidoCreateSchema = z.object({
 // ====================
 
 export const EntregaSchema = z.object({
-  pedidoId: z.string().min(1),
+  // pedidoId is intentionally NOT required here — the route uses params.id from
+  // the URL path (/api/pedidos/[id]/entrega). Kept as optional for clients
+  // that still send it (backward compat) but ignored by the server.
+  pedidoId: z.string().optional(),
   tipo: z.enum(['COMPLETO', 'PARCIAL', 'NO_ENTREGADO']),
   itemsEntregados: z.array(z.object({
     producto: z.string(),
@@ -82,7 +85,10 @@ export const EntregaSchema = z.object({
     monto: z.number().min(0),
   })).optional(),
   nuevoEmbarqueId: z.string().optional(),
-  fotoEntrega: z.string().optional(),
+  // fotoEntrega size cap: 15MB covers a 10MB file with ~33% base64 overhead + buffer.
+  // DoS protection: prevents a malicious client from sending 100MB+ payloads that
+  // would crash JSON parsing or bloat the Postgres TEXT column.
+  fotoEntrega: z.string().max(15 * 1024 * 1024, 'Foto demasiado grande (máx 15MB)').optional(),
   gpsLat: z.number().optional(),
   gpsLng: z.number().optional(),
   codigoVisita: z.string().optional(),
@@ -103,7 +109,10 @@ export const VentaLibreSchema = z.object({
   })).optional(),
   embarqueId: z.string().min(1),
   obs: z.string().optional(),
-  fotoEntrega: z.string().min(1, 'Foto de entrega obligatoria'),
+  // fotoEntrega: required for venta-libre + size cap to prevent DoS.
+  fotoEntrega: z.string()
+    .min(1, 'Foto de entrega obligatoria')
+    .max(15 * 1024 * 1024, 'Foto demasiado grande (máx 15MB)'),
   gpsLat: z.number(),
   gpsLng: z.number(),
   offlineId: z.string(),
@@ -158,6 +167,9 @@ export const ClienteQuickCreateSchema = z.object({
   telefono: z.string().min(7, 'Celular requerido'),
   direccion: z.string().min(3, 'Dirección requerida'),
   barrio: z.string().optional(),
+  // Offline-first dedup (F-N5): si la request llega con un offlineId ya
+  // existente, el server devuelve el cliente existente en vez de duplicar.
+  offlineId: z.string().optional(),
 })
 
 export const ContactoAlternativoSchema = z.object({
