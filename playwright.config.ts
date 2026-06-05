@@ -8,15 +8,18 @@ export default defineConfig({
   workers: 4,
   reporter: 'html',
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000',
     trace: 'on-first-retry',
     serviceWorkers: 'block',
   },
 
   webServer: {
     command: 'npm run dev',
-    url: 'http://localhost:3000',
-    reuseExistingServer: true,
+    url: process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000',
+    // Reusar server existente solo cuando se corre en localhost.
+    // Para LAN, Playwright SIEMPRE arranca un webServer nuevo (el server
+    // ya debe estar corriendo manualmente en la IP LAN esperada).
+    reuseExistingServer: !process.env.PLAYWRIGHT_TEST_BASE_URL,
     timeout: 30000,
   },
   projects: [

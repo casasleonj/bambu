@@ -1,7 +1,7 @@
 // @tests api/cron/alerta-no-verificados, api/cron/vencimiento-promesas, api/cron/generar-recurrentes
 import { test, expect, type Page } from '@playwright/test'
 
-const BASE = 'http://localhost:3000'
+const BASE = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000'
 
 async function apiPost(page: Page, path: string, headers?: Record<string, string>) {
   return page.request.post(`${BASE}${path}`, { headers })

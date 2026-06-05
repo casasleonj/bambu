@@ -1,6 +1,6 @@
 // @tests C-6: REPARTIDOR NO debe poder ver /api/cierre/last (info financiera agregada)
 // Hallazgo: el endpoint solo tenía requireAuth, sin rol
-import { test, expect, loginAs, apiGet } from '../fixtures'
+import { test, expect, loginAs, apiGet, BASE } from '../fixtures'
 // `apiGet` is used in tests below
 
 test.describe('Security Fix: Cierre Last requiere rol con acceso financiero', () => {
@@ -15,7 +15,7 @@ test.describe('Security Fix: Cierre Last requiere rol con acceso financiero', ()
   })
 
   test('SELLADOR recibe 403 al intentar ver el último cierre', async ({ page }) => {
-    await page.goto('http://localhost:3000/login')
+    await page.goto(`${BASE}/login`)
     await page.fill('input[placeholder="Ingrese usuario"]', 'sellador')
     await page.fill('input[placeholder="Ingrese contraseña"]', 'sell123')
     await page.click('button[type="submit"]')

@@ -1,7 +1,7 @@
 // @tests api/cliente, api/compra, api/gasto, api/insumo, api/proveedor, api/trabajador
 import { test, expect, Page } from '@playwright/test'
 
-const BASE = 'http://localhost:3000'
+const BASE = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000'
 
 // ─── Helpers ──────────────────────────────────────────────
 

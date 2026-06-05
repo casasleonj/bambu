@@ -2,7 +2,7 @@
 import { test, expect } from '@playwright/test'
 import { prisma } from '../src/lib/prisma'
 
-const BASE = 'http://localhost:3000'
+const BASE = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000'
 
 test.describe('Trazabilidad de pagos de fiados', () => {
   test('pagar fiado crea Pago en pedido y Abono en factura', async ({ page }) => {

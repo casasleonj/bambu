@@ -1,6 +1,6 @@
 // @tests C-1: REPARTIDOR NO debe poder usar /api/pedidos/pagar-fiado
 // Hallazgo: el endpoint solo tenía requireAuth, sin rol/ownership
-import { test, expect, fullLogin, loginAs, apiPost, createCliente, resetTestDatabase } from '../fixtures'
+import { test, expect, fullLogin, loginAs, apiPost, createCliente, resetTestDatabase, BASE } from '../fixtures'
 
 test.describe('Security Fix: Pagar Fiado requiere rol ADMIN/ASISTENTE', () => {
   test.beforeAll(() => {
@@ -24,7 +24,7 @@ test.describe('Security Fix: Pagar Fiado requiere rol ADMIN/ASISTENTE', () => {
 
   test('SELLADOR recibe 403 al intentar pagar fiado', async ({ page }) => {
     // Login custom porque no hay helper
-    await page.goto('http://localhost:3000/login')
+    await page.goto(`${BASE}/login`)
     await page.fill('input[placeholder="Ingrese usuario"]', 'sellador')
     await page.fill('input[placeholder="Ingrese contraseña"]', 'sell123')
     await page.click('button[type="submit"]')

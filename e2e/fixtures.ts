@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test'
 import { execSync } from 'child_process'
 import { resolve } from 'path'
 
-export const BASE = 'http://localhost:3000'
+export const BASE = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000'
 
 // ─── Test Database Reset ─────────────────────────────────────────────────────
 

@@ -1,7 +1,7 @@
 // @tests api/cliente, api/cliente/quick, api/negocios, api/clientes/stats, api/clientes/historial
 import { test, expect, fullLogin, loginAs, goto, apiPost, apiGet, apiPut, apiPatch, apiDelete, createCliente, setupClienteWithPedidos } from './fixtures'
 
-const BASE = 'http://localhost:3000'
+const BASE = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000'
 
 // ─── UI Tests ────────────────────────────────────────────────────────────────
 

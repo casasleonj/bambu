@@ -1,7 +1,7 @@
 // @tests api/auth/profile, api/auth/force-password-change
 import { test, expect, type Page } from '@playwright/test'
 
-const BASE = 'http://localhost:3000'
+const BASE = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000'
 
 async function login(page: Page, user: string, pass: string) {
   await page.goto(`${BASE}/login`)
