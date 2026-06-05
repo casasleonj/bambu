@@ -17,7 +17,7 @@ import './factura-print.css'
 import type { Factura, EmpresaConfig } from './types'
 
 const DEFAULT_EMPRESA: EmpresaConfig = {
-  nombre: 'Agua Bambu SAS',
+  nombre: 'Agua Bambú SAS',
   nit: '900.123.456-7',
   direccion: 'Calle Principal #123, Bogotá',
   telefono: '311 123 4567',

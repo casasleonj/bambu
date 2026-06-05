@@ -1,5 +1,5 @@
 /**
- * Seed: Agua Bambu v2.
+ * Seed: Agua Bambú v2.
  *
  * - 5 users (admin, asis, sell, repar, cont) — mustChangePassword = false
  * - 6 trabajadores (Kevin, Yesid, Jhonnatan, Romel, Edwin, Jose)
@@ -160,7 +160,7 @@ const CONFIGS: Array<{ clave: string; valor: string; descripcion?: string }> = [
   { clave: 'REQUIERE_FOTO_ENTREGA', valor: 'true', descripcion: 'Si true, REPARTIDOR y trabajadores con moto deben tomar foto' },
 
   // Empresa
-  { clave: 'empresa_nombre', valor: 'Agua Bambu' },
+  { clave: 'empresa_nombre', valor: 'Agua Bambú' },
   { clave: 'empresa_nit', valor: '49008664', descripcion: 'Cédula/NIT del propietario' },
   { clave: 'empresa_direccion', valor: 'Vereda Centro, Pueblo Nuevo' },
   { clave: 'empresa_telefono', valor: '300 000 0000' },

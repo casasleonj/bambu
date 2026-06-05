@@ -743,7 +743,7 @@ model Factura {
   saldo       Decimal  @db.Decimal(10, 2)
 
   // Snapshot de datos de empresa al momento de emisión (inmutable)
-  empresaNombre    String?   @default("Agua Bambu SAS")
+  empresaNombre    String?   @default("Agua Bambú SAS")
   empresaNit       String?   @default("900.123.456-7")
   empresaDireccion String?   @default("")
   empresaTelefono  String?   @default("")

@@ -105,7 +105,7 @@ export async function GET(
         }),
       totales: { total, totalPagado, saldo: saldoTotal, count: facturas.length },
       empresa: {
-        nombre: empresaMap.empresa_nombre || 'Agua Bambu SAS',
+        nombre: empresaMap.empresa_nombre || 'Agua Bambú SAS',
         nit: empresaMap.empresa_nit || '900.123.456-7',
         direccion: empresaMap.empresa_direccion || '',
         telefono: empresaMap.empresa_telefono || '',

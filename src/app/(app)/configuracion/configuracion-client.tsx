@@ -64,7 +64,7 @@ const SECTIONS: SectionConfig[] = [
     title: 'Datos de la Empresa',
     icon: '🏢',
     fields: [
-      { key: 'empresa_nombre', label: 'Nombre de la Empresa', type: 'text', placeholder: 'Agua Bambu SAS', required: true },
+      { key: 'empresa_nombre', label: 'Nombre de la Empresa', type: 'text', placeholder: 'Agua Bambú SAS', required: true },
       { key: 'empresa_nit', label: 'NIT', type: 'text', placeholder: '900.123.456-7', required: true },
       { key: 'empresa_direccion', label: 'Dirección', type: 'textarea', placeholder: 'Calle Principal #123, Bogotá', rows: 3 },
       { key: 'empresa_telefono', label: 'Teléfono', type: 'tel', placeholder: '311 123 4567' },

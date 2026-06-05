@@ -27,7 +27,7 @@ async function getEmpresaSnapshot(): Promise<{
   const map: Record<string, string> = {}
   configs.forEach(c => { map[c.clave] = c.valor })
   return {
-    empresaNombre: map.empresa_nombre || 'Agua Bambu SAS',
+    empresaNombre: map.empresa_nombre || 'Agua Bambú SAS',
     empresaNit: map.empresa_nit || '900.123.456-7',
     empresaDireccion: map.empresa_direccion || '',
     empresaTelefono: map.empresa_telefono || '',
