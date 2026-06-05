@@ -20,7 +20,8 @@ import type { IEmbarqueRepository } from '../../domain/repositories/IEmbarqueRep
 import type { IGastoEmbarqueRepository } from '../../domain/repositories/IGastoEmbarqueRepository'
 import type { IEmbarqueProductoRepository } from '../../domain/repositories/IEmbarqueProductoRepository'
 import { EmbarqueTransitionsService } from '../../domain/services/embarque-transitions.service'
-import type { ProductCode } from '../../domain/value-objects/Carga'
+import { CierreEmbarqueService } from '../../domain/services/cierre-embarque.service'
+import { Carga, type ProductCode } from '../../domain/value-objects/Carga'
 import { EstadoEmbarque as EstadoEmbarqueVO } from '../../domain/value-objects/EstadoEmbarque'
 import type { CerrarEmbarqueInput, CierreResultadoDTO } from '../dto'
 import type { ITransactionManager } from '../../infrastructure/transactions/PrismaTransactionManager'
@@ -95,6 +96,10 @@ export class CerrarEmbarqueUseCase {
     private readonly txManager: ITransactionManager,
     private readonly userId?: string,
     private readonly userRole?: string,
+    // FIX F4.10-c: inyectar CierreEmbarqueService para delegar la
+    // conciliación de productos en vez de duplicar la lógica.
+    // Default: nueva instancia (backward compatible con callers existentes).
+    private readonly cierreService: CierreEmbarqueService = new CierreEmbarqueService(),
   ) {}
 
   async execute(input: CerrarEmbarqueInput): Promise<CierreResultadoDTO> {
@@ -630,54 +635,88 @@ export class CerrarEmbarqueUseCase {
     return count
   }
 
+  /**
+   * FIX F4.10-c: adaptador que delega a CierreEmbarqueService en vez
+   * de duplicar la lógica de conciliación. Antes: ~50 líneas inline
+   * con tipos Record<string, number>. Ahora: usa Carga VO + tipos
+   * nombrados del service, que ya tiene tests.
+   *
+   * El service retorna ProductoConciliacion[] con más campos
+   * (cargadas, entregadas, devueltas, cambios, rotas) que el shape
+   * antiguo. Para mantener backward compat con `crearDescuento`
+   * (que solo necesita producto + discrepancia), proyectamos a la
+   * estructura mínima esperada.
+   */
   private conciliarProductos(
     embarque: { productos: Array<{ producto: string; cargadas: number }> },
     pedidosRaw: PedidoRaw[],
     ventasLibres: CerrarEmbarqueInput['ventasLibres'],
     productosRetorno: CerrarEmbarqueInput['productosRetorno'],
   ): { totalDiscrepancia: number; discrepanciasPorProducto: Array<{ producto: string; discrepancia: number }> } {
-    const productosKeys = ['PACA_AGUA', 'PACA_HIELO', 'BOTELLON', 'BOLSA_AGUA', 'BOLSA_HIELO'] as const
-
-    const totalCargado: Record<string, number> = { PACA_AGUA: 0, PACA_HIELO: 0, BOTELLON: 0, BOLSA_AGUA: 0, BOLSA_HIELO: 0 }
+    // 1. Construir Carga VO desde embarque.productos
+    const cargaMap: Record<string, number> = {
+      PACA_AGUA: 0, PACA_HIELO: 0, BOTELLON: 0, BOLSA_AGUA: 0, BOLSA_HIELO: 0,
+    }
     for (const prod of embarque.productos) {
-      if (prod.producto in totalCargado) {
-        totalCargado[prod.producto] = prod.cargadas
+      if (prod.producto in cargaMap) {
+        cargaMap[prod.producto] = prod.cargadas
       }
     }
+    const carga = new Carga({
+      PACA_AGUA: cargaMap.PACA_AGUA,
+      PACA_HIELO: cargaMap.PACA_HIELO,
+      BOTELLON: cargaMap.BOTELLON,
+      BOLSA_AGUA: cargaMap.BOLSA_AGUA,
+      BOLSA_HIELO: cargaMap.BOLSA_HIELO,
+    })
 
-    const totalEntregado: Record<string, number> = { PACA_AGUA: 0, PACA_HIELO: 0, BOTELLON: 0, BOLSA_AGUA: 0, BOLSA_HIELO: 0 }
+    // 2. Agregar entregas: pedidos + ventas libres
+    const productosEntregados: Record<ProductCode, { entregadas: number; devueltas: number; cambios: number; rotas: number }> = {
+      PACA_AGUA: { entregadas: 0, devueltas: 0, cambios: 0, rotas: 0 },
+      PACA_HIELO: { entregadas: 0, devueltas: 0, cambios: 0, rotas: 0 },
+      BOTELLON: { entregadas: 0, devueltas: 0, cambios: 0, rotas: 0 },
+      BOLSA_AGUA: { entregadas: 0, devueltas: 0, cambios: 0, rotas: 0 },
+      BOLSA_HIELO: { entregadas: 0, devueltas: 0, cambios: 0, rotas: 0 },
+    }
+
     for (const p of pedidosRaw) {
-      totalEntregado.PACA_AGUA += p.cPacaAguaEnt || 0
-      totalEntregado.PACA_HIELO += p.cPacaHieloEnt || 0
-      totalEntregado.BOTELLON += (p.cBotellonFabEnt || 0) + (p.cBotellonDomEnt || 0)
-      totalEntregado.BOLSA_AGUA += p.cBolsaAguaEnt || 0
-      totalEntregado.BOLSA_HIELO += p.cBolsaHieloEnt || 0
+      productosEntregados.PACA_AGUA.entregadas += p.cPacaAguaEnt || 0
+      productosEntregados.PACA_HIELO.entregadas += p.cPacaHieloEnt || 0
+      productosEntregados.BOTELLON.entregadas += (p.cBotellonFabEnt || 0) + (p.cBotellonDomEnt || 0)
+      productosEntregados.BOLSA_AGUA.entregadas += p.cBolsaAguaEnt || 0
+      productosEntregados.BOLSA_HIELO.entregadas += p.cBolsaHieloEnt || 0
     }
 
     for (const v of ventasLibres ?? []) {
-      totalEntregado.PACA_AGUA += v.cPacaAgua || 0
-      totalEntregado.PACA_HIELO += v.cPacaHielo || 0
-      totalEntregado.BOTELLON += (v.cBotellonFab || 0) + (v.cBotellonDom || 0)
-      totalEntregado.BOLSA_AGUA += v.cBolsaAgua || 0
-      totalEntregado.BOLSA_HIELO += v.cBolsaHielo || 0
+      productosEntregados.PACA_AGUA.entregadas += v.cPacaAgua || 0
+      productosEntregados.PACA_HIELO.entregadas += v.cPacaHielo || 0
+      productosEntregados.BOTELLON.entregadas += (v.cBotellonFab || 0) + (v.cBotellonDom || 0)
+      productosEntregados.BOLSA_AGUA.entregadas += v.cBolsaAgua || 0
+      productosEntregados.BOLSA_HIELO.entregadas += v.cBolsaHielo || 0
     }
 
-    const retornoMap: Record<string, { devueltas: number; rotas: number }> = {}
+    // 3. Devueltas y rotas desde productosRetorno
     for (const pr of productosRetorno ?? []) {
-      retornoMap[pr.producto] = { devueltas: pr.devueltas, rotas: pr.rotas }
+      if (pr.producto in productosEntregados) {
+        const pe = productosEntregados[pr.producto as ProductCode]
+        pe.devueltas += pr.devueltas
+        pe.rotas += pr.rotas
+        pe.cambios += pr.cambios
+      }
     }
 
-    const discrepanciasPorProducto: Array<{ producto: string; discrepancia: number }> = []
-    let totalDiscrepancia = 0
+    // 4. Delegar al service (lógica de dominio pura, ya testeada)
+    const conciliacion = this.cierreService.conciliarProductos(carga, productosEntregados)
+    const result = this.cierreService.calcularDiscrepancia(conciliacion)
 
-    for (const key of productosKeys) {
-      const ret = retornoMap[key] || { devueltas: 0, rotas: 0 }
-      const disc = (totalCargado[key] || 0) - (totalEntregado[key] || 0) - ret.devueltas - ret.rotas
-      discrepanciasPorProducto.push({ producto: key, discrepancia: disc })
-      if (disc > 0) totalDiscrepancia += disc
+    // 5. Proyectar al shape esperado por el call site
+    return {
+      totalDiscrepancia: result.totalDiscrepancia,
+      discrepanciasPorProducto: result.discrepanciasPorProducto.map((d) => ({
+        producto: d.producto,
+        discrepancia: d.discrepancia,
+      })),
     }
-
-    return { totalDiscrepancia, discrepanciasPorProducto }
   }
 
   private async crearDescuento(
