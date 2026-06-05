@@ -7,6 +7,7 @@ import { getPaginationParams, getPrismaPagination, buildPaginationResponse } fro
 import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
+import { executeSerializableWithRetry } from '@/lib/serializable'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -194,64 +195,92 @@ export async function POST(request: NextRequest) {
       return apiError('Datos invalidos', 400, { formErrors: [formatZodError(parsed.error)] })
     }
 
-    // Offline-first: dedup — si ya hay un cliente con este offlineId, devolver el existente
-    if (parsed.data.offlineId) {
-      const existente = await prisma.cliente.findUnique({
-        where: { offlineId: parsed.data.offlineId },
-      })
-      if (existente) {
-        return apiSuccess(
-          { deduped: true, cliente: { ...existente, clienteId: existente.id } },
-          200
-        )
-      }
-    }
+    // FIX F-N3: dedup por offlineId + dedup por teléfono + create corren
+    // dentro de una transacción Serializable. Antes eran 3 operaciones
+    // auto-commit con race window. Dos requests simultáneos con el
+    // mismo teléfono podían pasar el check y ambos intentar crear.
+    const result = await executeSerializableWithRetry<
+      | { kind: 'existing'; cliente: { id: string; nombre: string; telefono: string; offlineId: string | null; clienteId: string } }
+      | { kind: 'created'; cliente: { id: string; nombre: string; telefono: string; clienteId: string } }
+      | { kind: 'duplicate_phone'; existingNombre: string }
+    >(
+      async (tx) => {
+        // 1. Dedup por offlineId
+        if (parsed.data.offlineId) {
+          const existente = await tx.cliente.findUnique({
+            where: { offlineId: parsed.data.offlineId },
+            select: { id: true, nombre: true, telefono: true, offlineId: true },
+          })
+          if (existente) {
+            return {
+              kind: 'existing' as const,
+              cliente: { ...existente, clienteId: existente.id },
+            }
+          }
+        }
 
-    const duplicadoTelefono = await prisma.cliente.findFirst({
-      where: {
-        activo: true,
-        OR: [
-          { telefono: parsed.data.telefono },
-          { contactos: { path: ['[*].telefono'], equals: parsed.data.telefono } },
-        ],
+        // 2. Dedup por teléfono
+        const duplicadoTelefono = await tx.cliente.findFirst({
+          where: {
+            activo: true,
+            OR: [
+              { telefono: parsed.data.telefono },
+              { contactos: { path: ['[*].telefono'], equals: parsed.data.telefono } },
+            ],
+          },
+          select: { id: true, nombre: true, telefono: true },
+        })
+
+        if (duplicadoTelefono) {
+          return { kind: 'duplicate_phone' as const, existingNombre: duplicadoTelefono.nombre }
+        }
+
+        // 3. Create
+        const contactos = parsed.data.contactos ?? []
+        const contactosSinDuplicados = contactos.filter(c => c.telefono !== parsed.data.telefono)
+
+        const cliente = await tx.cliente.create({
+          data: {
+            nombre: parsed.data.nombre,
+            apellido: parsed.data.apellido,
+            telefono: parsed.data.telefono,
+            fuente: parsed.data.fuente,
+            barrio: parsed.data.barrio,
+            direccion: parsed.data.direccion,
+            linkUbicacion: parsed.data.linkUbicacion ?? null,
+            contactos: contactosSinDuplicados.length > 0 ? contactosSinDuplicados : undefined,
+            preciosEspeciales: parsed.data.preciosEspeciales,
+            notas: parsed.data.notas,
+            offlineId: parsed.data.offlineId ?? null,
+          },
+          select: { id: true, nombre: true, telefono: true },
+        })
+
+        return { kind: 'created' as const, cliente: { ...cliente, clienteId: cliente.id } }
       },
-      select: { id: true, nombre: true, telefono: true },
-    })
+      'clientes:create',
+    )
 
-    if (duplicadoTelefono) {
+    if (result.kind === 'duplicate_phone') {
       return apiError('Ya existe un cliente con ese teléfono', 409, {
-        formErrors: [`El teléfono ya está registrado en "${duplicadoTelefono.nombre}"`],
+        formErrors: [`El teléfono ya está registrado en "${result.existingNombre}"`],
       })
     }
 
-    const contactos = parsed.data.contactos ?? []
-    const contactosSinDuplicados = contactos.filter(c => c.telefono !== parsed.data.telefono)
+    if (result.kind === 'existing') {
+      return apiSuccess({ deduped: true, cliente: result.cliente }, 200)
+    }
 
-    const cliente = await prisma.cliente.create({
-      data: {
-        nombre: parsed.data.nombre,
-        apellido: parsed.data.apellido,
-        telefono: parsed.data.telefono,
-        fuente: parsed.data.fuente,
-        barrio: parsed.data.barrio,
-        direccion: parsed.data.direccion,
-        linkUbicacion: parsed.data.linkUbicacion ?? null,
-        contactos: contactosSinDuplicados.length > 0 ? contactosSinDuplicados : undefined,
-        preciosEspeciales: parsed.data.preciosEspeciales,
-        notas: parsed.data.notas,
-        offlineId: parsed.data.offlineId ?? null, // dedup offline-first
-      },
-    })
-
+    // result.kind === 'created'
     logAudit({
       entidad: 'Cliente',
-      registroId: cliente.id,
+      registroId: result.cliente.id,
       accion: 'CREATE',
-      datos: { nombre: cliente.nombre, telefono: cliente.telefono },
+      datos: { nombre: result.cliente.nombre, telefono: result.cliente.telefono },
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
-    })
+    }).catch(() => {})
 
-    return apiSuccess({ cliente: { ...cliente, clienteId: cliente.id } }, 201)
+    return apiSuccess({ cliente: result.cliente }, 201)
   } catch (error) {
     return apiError('Error creando cliente')
   }
