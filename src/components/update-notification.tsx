@@ -9,14 +9,29 @@ export function UpdateNotification() {
     if (typeof window === 'undefined') return
     if (!('serviceWorker' in navigator)) return
 
+    // En dev no mostramos el toast de actualización ni recargamos la página:
+    // - El plugin de Serwist está desactivado en dev (next.config.ts), por lo
+    //   que no hay un SW nuevo que instalar.
+    // - Defensa en profundidad: si un SW quedó registrado de una sesión
+    //   anterior con NEXTAUTH_URL distinto, evitamos el reload() en cascada.
+    // - `controllerchange` solo importa en producción, donde el usuario SÍ
+    //   debe refrescar para tomar la nueva versión del SW.
+    if (process.env.NODE_ENV !== 'production') return
+
     let refreshing = false
 
-    // Detect when a new service worker is waiting
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (refreshing) return
-      refreshing = true
-      window.location.reload()
-    })
+    // Detect when a new service worker is waiting.
+    // `{ once: true }` evita memory leak en HMR (patrón de Workbox/Chrome docs:
+    // https://developer.chrome.com/docs/workbox/handling-service-worker-updates).
+    navigator.serviceWorker.addEventListener(
+      'controllerchange',
+      () => {
+        if (refreshing) return
+        refreshing = true
+        window.location.reload()
+      },
+      { once: true },
+    )
 
     navigator.serviceWorker.ready.then((registration) => {
       // Check if there's a waiting worker immediately
