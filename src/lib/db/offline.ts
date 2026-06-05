@@ -1,3 +1,4 @@
+import { generateUUID } from '../uuid'
 import Dexie, { type Table } from 'dexie'
 import { logger } from '@/lib/logger'
 
@@ -88,7 +89,7 @@ class BambuOfflineDB extends Dexie {
 export const offlineDb = new BambuOfflineDB()
 
 export async function queuePedidoOffline(data: Omit<OfflinePedido, 'id' | 'localId' | 'syncStatus' | 'createdAt' | 'updatedAt'>) {
-  const localId = crypto.randomUUID()
+  const localId = generateUUID()
   const now = new Date()
   await offlineDb.pedidos.add({
     ...data,
@@ -107,7 +108,7 @@ export async function queuePedidoOffline(data: Omit<OfflinePedido, 'id' | 'local
 }
 
 export async function queueClienteOffline(data: Omit<OfflineCliente, 'id' | 'localId' | 'syncStatus' | 'createdAt' | 'updatedAt'>) {
-  const localId = crypto.randomUUID()
+  const localId = generateUUID()
   const now = new Date()
   await offlineDb.clientes.add({
     ...data,

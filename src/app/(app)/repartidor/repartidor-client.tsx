@@ -1,5 +1,6 @@
 'use client'
 
+import { generateUUID } from '@/lib/uuid'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
 import { formatCurrency } from '@/lib/utils'
@@ -10,6 +11,7 @@ import { logger } from '@/lib/logger'
 import { PRODUCTO_INFO, DEFAULT_PRICES, getProductosForCanal } from '@/lib/prices'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
 import { fetchResilient } from '@/lib/fetch-resilient'
+import { MoneyDisplay } from '@/components/money-display'
 
 interface RepartidorClientProps {
   trabajador: { id: string; nombre: string }
@@ -45,7 +47,7 @@ interface RepartidorClientProps {
 
 const METODOS_PAGO = ['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA', 'BONO'] as const
 
-export function RepartidorClient({ trabajador, embarque }: RepartidorClientProps) {
+export function RepartidorClient({ trabajador, embarque, userRole }: RepartidorClientProps) {
   const [showVentaLibre, setShowVentaLibre] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [pendingCount, setPendingCount] = useState(0)
@@ -192,7 +194,7 @@ export function RepartidorClient({ trabajador, embarque }: RepartidorClientProps
               fotoEntrega: fotoBase64,
               gpsLat: gpsPos.lat,
               gpsLng: gpsPos.lng,
-              offlineId: crypto.randomUUID(),
+              offlineId: generateUUID(),
             },
             localEndpoint: 'venta-libre',
           }
@@ -376,9 +378,9 @@ export function RepartidorClient({ trabajador, embarque }: RepartidorClientProps
                       <p className="text-xs text-gray-400">{pedido.cliente.telefono}</p>
                     </div>
                     <div className="text-right">
-                      <span className="text-sm font-bold text-gray-800">{formatCurrency(Number(pedido.total))}</span>
+                      <span className="text-sm font-bold text-gray-800"><MoneyDisplay value={Number(pedido.total)} userRole={userRole} /></span>
                       {saldo > 0 && (
-                        <p className="text-xs text-red-500 font-medium">Debe: {formatCurrency(saldo)}</p>
+                        <p className="text-xs text-red-500 font-medium">Debe: <MoneyDisplay value={saldo} userRole={userRole} /></p>
                       )}
                     </div>
                   </div>
@@ -452,7 +454,7 @@ export function RepartidorClient({ trabajador, embarque }: RepartidorClientProps
           {/* Total */}
           <div className="flex justify-between items-center bg-gray-100 rounded-lg px-4 py-3">
             <span className="text-sm font-medium text-gray-600">Total</span>
-            <span className="text-xl font-bold text-gray-800">{formatCurrency(total)}</span>
+            <span className="text-xl font-bold text-gray-800"><MoneyDisplay value={total} userRole={userRole} /></span>
           </div>
 
           {/* Pagos */}

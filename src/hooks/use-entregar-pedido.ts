@@ -7,6 +7,7 @@
  */
 
 import { useState, useCallback } from 'react'
+import { generateUUID } from '@/lib/uuid'
 import { toast } from 'sonner'
 import { fetchResilient } from '@/lib/fetch-resilient'
 
@@ -43,7 +44,7 @@ export function useEntregarPedido(options?: UseEntregarPedidoOptions) {
         `/api/pedidos/${payload.pedidoId}/entrega`,
         {
           method: 'POST',
-          body: { ...payload, offlineId: crypto.randomUUID() },
+          body: { ...payload, offlineId: generateUUID() },
           localEndpoint: 'entregar-pedido',
         }
       )

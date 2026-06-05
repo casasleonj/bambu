@@ -6,6 +6,7 @@
  */
 
 import { useState, useCallback } from 'react'
+import { generateUUID } from '@/lib/uuid'
 import { toast } from 'sonner'
 import { fetchResilient } from '@/lib/fetch-resilient'
 
@@ -25,7 +26,7 @@ export function useAsignarEmbarque(options?: UseAsignarEmbarqueOptions) {
         `/api/pedidos/${pedidoId}/enviar`,
         {
           method: 'POST',
-          body: { embarqueId, offlineId: crypto.randomUUID() },
+          body: { embarqueId, offlineId: generateUUID() },
           localEndpoint: 'asignar-embarque',
         }
       )

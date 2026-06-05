@@ -1,5 +1,6 @@
 'use client'
 
+import { generateUUID } from '@/lib/uuid'
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
@@ -167,7 +168,7 @@ export default function ProduccionClient() {
         trabajadorId: formData.trabajadorId,
         turno: formData.turno,
         obs: formData.obs,
-        offlineId: crypto.randomUUID(),
+        offlineId: generateUUID(),
         items: [
           {
             producto: 'PACA_AGUA',

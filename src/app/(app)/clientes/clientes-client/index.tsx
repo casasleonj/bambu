@@ -1,5 +1,6 @@
 'use client'
 
+import { generateUUID } from '@/lib/uuid'
 import { useState, useCallback, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
@@ -360,7 +361,7 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
       } else {
         // POST: usa fetchResilient para offline-first (repartidor field use).
         // Si la red falla durante la creación, encola automáticamente.
-        const offlineId = crypto.randomUUID()
+        const offlineId = generateUUID()
         const result = await fetchResilient<{
           success: boolean
           deduped?: boolean

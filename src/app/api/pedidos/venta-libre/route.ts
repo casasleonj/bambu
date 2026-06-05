@@ -1,3 +1,4 @@
+import { generateUUID } from '@/lib/uuid'
 import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
 import { requireAuth, requireRole } from '@/lib/auth-check'
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
     // Upload base64 foto to Supabase Storage if present
     let fotoUrl = fotoEntrega
     if (fotoEntrega && isBase64Image(fotoEntrega)) {
-      const fileName = `venta-libre/${offlineId || crypto.randomUUID()}.jpg`
+      const fileName = `venta-libre/${offlineId || generateUUID()}.jpg`
       const uploadedUrl = await uploadBase64Foto(fotoEntrega, fileName)
       if (uploadedUrl) fotoUrl = uploadedUrl
     }

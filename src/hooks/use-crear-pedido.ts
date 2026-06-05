@@ -7,6 +7,7 @@
  */
 
 import { useState, useCallback } from 'react'
+import { generateUUID } from '@/lib/uuid'
 import { toast } from 'sonner'
 import { fetchResilient } from '@/lib/fetch-resilient'
 
@@ -61,7 +62,7 @@ export function useCrearPedido(options?: UseCrearPedidoOptions) {
       // con el mismo payload crean dos pedidos duplicados.
       // Bug original: este hook NO enviaba offlineId (C-2). Test regresión:
       // e2e/offline-first/crear-pedido-hook-dedup.spec.ts
-      const offlineId = crypto.randomUUID()
+      const offlineId = generateUUID()
       const result = await fetchResilient<{ success: boolean; pedido: unknown; error?: { message?: string } }>(
         '/api/pedidos',
         { method: 'POST', body: { ...payload, offlineId }, localEndpoint: 'crear-pedido' }

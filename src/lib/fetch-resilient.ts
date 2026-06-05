@@ -17,6 +17,7 @@
  */
 
 import { offlineDb } from './db/offline'
+import { generateUUID } from './uuid'
 import { logger } from './logger'
 
 export interface ResilientRequest {
@@ -88,7 +89,7 @@ export async function fetchResilient<T = unknown>(
     init.body && typeof init.body === 'object' && 'offlineId' in init.body
       ? (init.body as { offlineId?: string }).offlineId
       : undefined
-  const offlineId = bodyOfflineId ?? crypto.randomUUID()
+  const offlineId = bodyOfflineId ?? generateUUID()
   const method = init.method
 
   if (!isResilientEnabled()) {

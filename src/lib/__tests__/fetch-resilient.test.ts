@@ -6,6 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { generateUUID } from '../uuid'
 
 // Mock the offline DB before importing the module under test
 const mockRequestQueueAdd = vi.fn().mockResolvedValue(undefined)
@@ -183,7 +184,7 @@ describe('fetchResilient', () => {
 
   it('uses body offlineId when present (matches server dedup UUID)', async () => {
     mockFetch.mockRejectedValueOnce(new TypeError('fetch failed'))
-    const bodyOfflineId = crypto.randomUUID()
+    const bodyOfflineId = generateUUID()
 
     const result = await fetchResilient(
       '/api/pedidos',

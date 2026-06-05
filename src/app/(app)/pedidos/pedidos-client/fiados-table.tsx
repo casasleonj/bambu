@@ -1,5 +1,6 @@
 'use client'
 
+import { generateUUID } from '@/lib/uuid'
 import React, { useState, useMemo } from 'react'
 import { formatCurrency } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -7,6 +8,7 @@ import { filtrarPorPeriodo, PERIODOS, type PeriodoFiltro } from './date-utils'
 import type { Pedido } from './types'
 import { getEstadoFiados } from '@/lib/pedido-utils'
 import { fetchResilient } from '@/lib/fetch-resilient'
+import { MoneyDisplay } from '@/components/money-display'
 
 interface FiadoRow {
   clienteId: string
@@ -23,9 +25,10 @@ interface FiadoRow {
 interface FiadosTableProps {
   pedidos: Pedido[]
   onPedidosChange?: () => void
+  userRole?: string | null
 }
 
-export function FiadosTable({ pedidos, onPedidosChange }: FiadosTableProps) {
+export function FiadosTable({ pedidos, onPedidosChange, userRole }: FiadosTableProps) {
   const [expandedCliente, setExpandedCliente] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [minDeuda, setMinDeuda] = useState('')
@@ -117,7 +120,7 @@ export function FiadosTable({ pedidos, onPedidosChange }: FiadosTableProps) {
             clienteId,
             monto: Number(montoPago),
             metodo: metodoPago,
-            offlineId: crypto.randomUUID(),
+            offlineId: generateUUID(),
           },
           localEndpoint: 'pagar-fiado',
         }
@@ -288,7 +291,7 @@ export function FiadosTable({ pedidos, onPedidosChange }: FiadosTableProps) {
                       <div className="text-xs text-gray-400">{row.telefonoCli}</div>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <span className="font-bold text-red-600">{formatCurrency(row.deudaTotal)}</span>
+                      <span className="font-bold text-red-600"><MoneyDisplay value={row.deudaTotal} userRole={userRole} /></span>
                     </td>
                     <td className="px-4 py-3 text-center">
                       {(() => {
@@ -338,8 +341,8 @@ export function FiadosTable({ pedidos, onPedidosChange }: FiadosTableProps) {
                                 <span className="text-xs text-gray-400 ml-2">{new Date(p.fecha).toLocaleDateString('es-CO')}</span>
                               </div>
                               <div className="text-right">
-                                <span className="text-sm font-semibold text-red-600">{formatCurrency(Number(p.saldo))}</span>
-                                <span className="text-xs text-gray-400 ml-2">de {formatCurrency(Number(p.total))}</span>
+                                <span className="text-sm font-semibold text-red-600"><MoneyDisplay value={Number(p.saldo)} userRole={userRole} /></span>
+                                <span className="text-xs text-gray-400 ml-2">de <MoneyDisplay value={Number(p.total)} userRole={userRole} /></span>
                               </div>
                             </div>
                           ))}
@@ -417,7 +420,7 @@ export function FiadosTable({ pedidos, onPedidosChange }: FiadosTableProps) {
                   <p className="text-xs text-gray-400">{row.telefonoCli}</p>
                 </div>
                 <div className="text-right">
-                  <p className="font-bold text-red-600">{formatCurrency(row.deudaTotal)}</p>
+                  <p className="font-bold text-red-600"><MoneyDisplay value={row.deudaTotal} userRole={userRole} /></p>
                   {(() => {
                     const estado = getEstadoFiados(row.pedidosFiados, 3)
                     const badgeColor = estado.nivel === 'limite'
@@ -451,7 +454,7 @@ export function FiadosTable({ pedidos, onPedidosChange }: FiadosTableProps) {
                   {row.pedidosFiados.sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime()).map((p) => (
                     <div key={p.id} className="flex justify-between text-sm py-1 border-b last:border-b-0">
                       <span>#{p.numero} - {new Date(p.fecha).toLocaleDateString('es-CO')}</span>
-                      <span className="font-semibold text-red-600">{formatCurrency(Number(p.saldo))}</span>
+                      <span className="font-semibold text-red-600"><MoneyDisplay value={Number(p.saldo)} userRole={userRole} /></span>
                     </div>
                   ))}
                 </div>

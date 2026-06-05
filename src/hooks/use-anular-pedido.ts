@@ -6,6 +6,7 @@
  */
 
 import { useState, useCallback } from 'react'
+import { generateUUID } from '@/lib/uuid'
 import { toast } from 'sonner'
 import { fetchResilient } from '@/lib/fetch-resilient'
 
@@ -31,7 +32,7 @@ export function useAnularPedido(options?: UseAnularPedidoOptions) {
         `/api/pedidos/${payload.pedidoId}/anular`,
         {
           method: 'POST',
-          body: { motivo: payload.motivo, devolverStock: payload.devolverStock, offlineId: crypto.randomUUID() },
+          body: { motivo: payload.motivo, devolverStock: payload.devolverStock, offlineId: generateUUID() },
           localEndpoint: 'anular-pedido',
         }
       )

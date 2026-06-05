@@ -1,13 +1,14 @@
 'use client'
 
+import { generateUUID } from '@/lib/uuid'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { formatCurrency } from '@/lib/utils'
 import { useConfirm } from '@/components/confirm-modal'
 import { Modal } from '@/components/modal'
 import { getCapacidadInfo, PESOS_KG } from '@/lib/embarque-capacidad'
 import { fetchResilient } from '@/lib/fetch-resilient'
+import { MoneyDisplay } from '@/components/money-display'
 import type { Embarque, Pedido, Trabajador } from './types'
 
 function calcularCapacidadProyectada(embarque: Embarque, pedidos: Pedido[], nuevosPedidoIds: string[]): { totalPacas: number; pesoKg: number } {
@@ -56,7 +57,7 @@ function PedidoRow({ pedido, label }: { pedido: Pedido; label?: string }) {
   )
 }
 
-function SummaryRow({ pedidos, trabajador }: { pedidos: Pedido[]; trabajador: Trabajador }) {
+function SummaryRow({ pedidos, trabajador, userRole }: { pedidos: Pedido[]; trabajador: Trabajador; userRole?: string | null }) {
   const normales = pedidos.filter((p) => p.origen !== 'VENTA_LIBRE')
   const libres = pedidos.filter((p) => p.origen === 'VENTA_LIBRE')
   const totalPacas = pedidos.reduce((s, p) => s + pacasCount(p), 0)
@@ -94,7 +95,7 @@ function SummaryRow({ pedidos, trabajador }: { pedidos: Pedido[]; trabajador: Tr
       </div>
       {totalComision > 0 && (
         <div className="text-xs font-semibold text-amber-700 bg-amber-50 px-2 py-1 rounded">
-          Comisión: {formatCurrency(totalComision)}
+          Comisión: <MoneyDisplay value={totalComision} userRole={userRole} />
         </div>
       )}
     </div>
@@ -130,6 +131,7 @@ export function EmbarqueDetailModal({
   onChanged,
   onEmbarqueUpdated,
   onEdit,
+  userRole,
 }: {
   open: boolean
   onClose: () => void
@@ -140,6 +142,7 @@ export function EmbarqueDetailModal({
   onChanged: () => void
   onEmbarqueUpdated?: (embarque: Embarque) => void
   onEdit?: (embarque: Embarque) => void
+  userRole?: string | null
 }) {
   const router = useRouter()
   const { confirm, modal } = useConfirm()
@@ -198,7 +201,7 @@ export function EmbarqueDetailModal({
           method: 'PUT',
           body: {
             pedidoIds: selectedPedidoIds,
-            offlineId: crypto.randomUUID(),
+            offlineId: generateUUID(),
           },
           localEndpoint: 'asignar-pedidos-embarque',
         }
@@ -260,7 +263,7 @@ export function EmbarqueDetailModal({
         `/api/embarques/${embarque!.id}`,
         {
           method: 'DELETE',
-          body: { offlineId: crypto.randomUUID() },
+          body: { offlineId: generateUUID() },
           localEndpoint: 'cancelar-embarque',
         }
       )
@@ -431,7 +434,7 @@ export function EmbarqueDetailModal({
 
         {embarque.estado === 'CERRADO' ? (
           <>
-            <SummaryRow pedidos={embarque.pedidos || []} trabajador={embarque.trabajador} />
+            <SummaryRow pedidos={embarque.pedidos || []} trabajador={embarque.trabajador} userRole={userRole} />
             <button
               onClick={() => setShowClosedPedidos(!showClosedPedidos)}
               className="w-full mt-2 px-3 py-2 text-sm text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 transition font-medium"
