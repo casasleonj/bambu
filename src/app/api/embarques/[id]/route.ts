@@ -58,126 +58,145 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     const { pedidoIds, obs, estado, horaLlegada, horaSalida, trabajadorId, rutaId, tipoMoto, baseDinero, carga, offlineId, ...rest } = parsed.data
 
-    // Fetch current embarque to check state
-    const currentEmbarque = await prisma.embarque.findUnique({
-      where: { id },
-      include: { trabajador: true, productos: true },
-    })
-    if (!currentEmbarque) return apiError('Embarque no encontrado', 404)
-
-    // Offline-first: dedup — si el mismo offlineId ya está en el embarque, la
-    // acción ya fue aplicada. Devolvemos el estado actual sin re-aplicar.
-    if (offlineId && currentEmbarque.offlineId === offlineId) {
-      return apiSuccess({
-        deduped: true,
-        embarque: JSON.parse(JSON.stringify({
-          ...currentEmbarque,
-          totalPacas: 0,
-          pesoKg: 0,
-          capacidadKg: currentEmbarque.trabajador.capacidadKg || 500,
-          capacidadInfo: { excedeUnidades: false, excedePeso: false },
-        })),
-      })
-    }
-
-    // Enforce field restrictions by state
-    if (currentEmbarque.estado !== 'ABIERTO') {
-      const forbiddenFields = ABIERTO_ONLY_FIELDS.filter((field) => parsed.data[field] !== undefined)
-      if (forbiddenFields.length > 0) {
-        return apiError(`No se pueden editar estos campos en estado ${currentEmbarque.estado}: ${forbiddenFields.join(', ')}`, 400)
-      }
-    }
-
-    // Prevent closing via PUT — must use cierre flow
+    // Prevent closing via PUT — must use cierre flow (validación estática, no necesita lock)
     if (estado === 'CERRADO') {
       return apiError('Use el flujo de cierre de ruta para cerrar embarques', 400)
     }
 
-    // Validate carga if it's being updated (only for ABIERTO)
-    if (carga && currentEmbarque.estado === 'ABIERTO' && carga.length > 0) {
-      const cargaSnapshot: CargaSnapshot = emptyStock() as CargaSnapshot
-      for (const item of carga) {
-        const key = item.producto as keyof typeof cargaSnapshot
-        if (key in cargaSnapshot) {
-          cargaSnapshot[key] = item.cargadas
+    // FIX F-N12: TODOS los checks de estado, carga, trabajador, pedidoIds
+    // se movieron DENTRO del lock EMBARQUE. Antes se hacían con
+    // prisma.* (cliente global) FUERA del lock, lo que causaba TOCTOU:
+    //
+    // T0: Admin A lee currentEmbarque (productos=[], pedidos=[]).
+    //     Valida carga de 50 unidades OK (total=50).
+    // T1: Admin B añade 30 pedidos al embarque.
+    // T2: Admin A entra al lock, persiste carga de 50 unidades.
+    // T3: Total real: 80 unidades > 70 → excede límite operativo.
+    //
+    // Ahora: re-leer y re-validar DENTRO del lock usando tx.*. Si los
+    // datos cambiaron entre la lectura externa y la interna, los
+    // checks se ejecutan con datos frescos.
+    //
+    // El dedup por offlineId también se mueve adentro (antes línea 70-81):
+    // si dos requests idénticos llegan, el primero persiste el offlineId,
+    // el segundo lo lee dentro del lock y retorna deduped: true.
+    const embarque = await withAdvisoryLock('EMBARQUE', async (tx) => {
+      // Re-leer current embarque DENTRO del lock
+      const currentEmbarque = await tx.embarque.findUnique({
+        where: { id },
+        include: { trabajador: true, productos: true },
+      })
+      if (!currentEmbarque) throw new Error('EMBARQUE_NOT_FOUND')
+
+      // Offline-first: dedup
+      if (offlineId && currentEmbarque.offlineId === offlineId) {
+        return {
+          deduped: true as const,
+          embarque: {
+            ...currentEmbarque,
+            totalPacas: 0,
+            pesoKg: 0,
+            capacidadKg: currentEmbarque.trabajador.capacidadKg || 500,
+            capacidadInfo: { excedeUnidades: false, excedePeso: false },
+          },
         }
       }
 
-      const totalUnidades = Object.values(cargaSnapshot).reduce((s, v) => s + v, 0)
-      if (totalUnidades > 70) {
-        return apiError(`Máximo 70 unidades por embarque (${totalUnidades})`, 400)
+      // Enforce field restrictions by state
+      if (currentEmbarque.estado !== 'ABIERTO') {
+        const forbiddenFields = ABIERTO_ONLY_FIELDS.filter((field) => parsed.data[field] !== undefined)
+        if (forbiddenFields.length > 0) {
+          throw new Error(`FORBIDDEN_FIELDS:${forbiddenFields.join(',')}:${currentEmbarque.estado}`)
+        }
       }
 
-      // Check weight capacity with current or new trabajador
-      const targetTrabajadorId = trabajadorId || currentEmbarque.trabajadorId
-      const targetTrabajador = targetTrabajadorId === currentEmbarque.trabajadorId
-        ? currentEmbarque.trabajador
-        : await prisma.trabajador.findUnique({ where: { id: targetTrabajadorId } })
-      const capacidadKg = targetTrabajador?.capacidadKg || 500
-      const pesoKg = calcularPesoDesdeCarga(cargaSnapshot)
-      if (pesoKg > capacidadKg * 1.1) {
-        return apiError(`Peso excede capacidad del repartidor (${pesoKg.toFixed(0)}kg > ${capacidadKg}kg)`, 400)
-      }
+      // Validate carga if it's being updated (only for ABIERTO)
+      if (carga && currentEmbarque.estado === 'ABIERTO' && carga.length > 0) {
+        const cargaSnapshot: CargaSnapshot = emptyStock() as CargaSnapshot
+        for (const item of carga) {
+          const key = item.producto as keyof typeof cargaSnapshot
+          if (key in cargaSnapshot) {
+            cargaSnapshot[key] = item.cargadas
+          }
+        }
 
-      // Stock validation
-      const { getStockDisponible, evaluarStock } = await import('@/lib/stock')
-      const stockResult = await getStockDisponible()
-      const stockEval = await evaluarStock(cargaSnapshot)
+        const totalUnidades = Object.values(cargaSnapshot).reduce((s, v) => s + v, 0)
+        if (totalUnidades > 70) {
+          throw new Error(`MAX_UNIDADES:${totalUnidades}`)
+        }
 
-      if (stockEval.hasDeficit && !stockResult.tieneEstimado) {
-        const MAX_OVERRIDE_PCT = 0.5
-        const HARD_CAP_SIN_ESTIMADO = 30
-        for (const key of ['PACA_AGUA', 'PACA_HIELO'] as const) {
-          const disponible = stockEval.disponible[key]
-          const maxAllowed = disponible > 0
-            ? Math.floor(disponible * (1 + MAX_OVERRIDE_PCT))
-            : HARD_CAP_SIN_ESTIMADO
-          if (cargaSnapshot[key] > maxAllowed) {
-            return apiError(`${key} excede límite de stock (${maxAllowed} máximo)`, 400)
+        // Check weight capacity with current or new trabajador
+        const targetTrabajadorId = trabajadorId || currentEmbarque.trabajadorId
+        let targetTrabajador = currentEmbarque.trabajador
+        if (targetTrabajadorId !== currentEmbarque.trabajadorId) {
+          const fetched = await tx.trabajador.findUnique({ where: { id: targetTrabajadorId } })
+          if (!fetched) throw new Error('TRABAJADOR_NOT_FOUND')
+          targetTrabajador = fetched
+        }
+        const capacidadKg = targetTrabajador.capacidadKg || 500
+        const pesoKg = calcularPesoDesdeCarga(cargaSnapshot)
+        if (pesoKg > capacidadKg * 1.1) {
+          throw new Error(`PESO_EXCEDIDO:${pesoKg.toFixed(0)}:${capacidadKg}`)
+        }
+
+        // Stock validation (read-only, no lock needed)
+        const { getStockDisponible, evaluarStock } = await import('@/lib/stock')
+        const stockResult = await getStockDisponible()
+        const stockEval = await evaluarStock(cargaSnapshot)
+
+        if (stockEval.hasDeficit && !stockResult.tieneEstimado) {
+          const MAX_OVERRIDE_PCT = 0.5
+          const HARD_CAP_SIN_ESTIMADO = 30
+          for (const key of ['PACA_AGUA', 'PACA_HIELO'] as const) {
+            const disponible = stockEval.disponible[key]
+            const maxAllowed = disponible > 0
+              ? Math.floor(disponible * (1 + MAX_OVERRIDE_PCT))
+              : HARD_CAP_SIN_ESTIMADO
+            if (cargaSnapshot[key] > maxAllowed) {
+              throw new Error(`STOCK_EXCEDIDO:${key}:${maxAllowed}`)
+            }
           }
         }
       }
-    }
 
-    // Validate trabajadorId if changing
-    if (trabajadorId && trabajadorId !== currentEmbarque.trabajadorId) {
-      const newTrabajador = await prisma.trabajador.findUnique({
-        where: { id: trabajadorId },
-        select: { id: true, nombre: true, capacidadKg: true, usaMoto: true },
-      })
-      if (!newTrabajador) {
-        return apiError('Trabajador no encontrado', 400)
+      // Validate trabajadorId if changing
+      if (trabajadorId && trabajadorId !== currentEmbarque.trabajadorId) {
+        const newTrabajador = await tx.trabajador.findUnique({
+          where: { id: trabajadorId },
+          select: { id: true, nombre: true, capacidadKg: true, usaMoto: true },
+        })
+        if (!newTrabajador) {
+          throw new Error('TRABAJADOR_NOT_FOUND')
+        }
+        if (!newTrabajador.usaMoto) {
+          throw new Error('TRABAJADOR_SIN_MOTO')
+        }
       }
-      if (!newTrabajador.usaMoto) {
-        return apiError('Este trabajador no tiene moto asignada', 400)
+
+      // Validate pedido assignment — check total units don't exceed 70
+      if (pedidoIds && Array.isArray(pedidoIds) && pedidoIds.length > 0) {
+        const pedidosActuales = await tx.pedido.findMany({
+          where: { embarqueId: id },
+        })
+        const unidadesActuales = pedidosActuales.reduce((s: number, p: any) =>
+          s + (p.cPacaAguaPed || 0) + (p.cPacaHieloPed || 0) +
+              (p.cBotellonFabPed || 0) + (p.cBotellonDomPed || 0) +
+              (p.cBolsaAguaPed || 0) + (p.cBolsaHieloPed || 0), 0)
+
+        const nuevosPedidos = await tx.pedido.findMany({
+          where: { id: { in: pedidoIds } },
+        })
+        const unidadesNuevas = nuevosPedidos.reduce((s: number, p: any) =>
+          s + (p.cPacaAguaPed || 0) + (p.cPacaHieloPed || 0) +
+              (p.cBotellonFabPed || 0) + (p.cBotellonDomPed || 0) +
+              (p.cBolsaAguaPed || 0) + (p.cBolsaHieloPed || 0), 0)
+
+        const totalUnidades = unidadesActuales + unidadesNuevas
+        if (totalUnidades > 70) {
+          throw new Error(`MAX_UNIDADES:${totalUnidades}:${unidadesActuales}:${unidadesNuevas}`)
+        }
       }
-    }
 
-    // Validate pedido assignment — check total units don't exceed 70
-    if (pedidoIds && Array.isArray(pedidoIds) && pedidoIds.length > 0) {
-      const pedidosActuales = await prisma.pedido.findMany({
-        where: { embarqueId: id },
-      })
-      const unidadesActuales = pedidosActuales.reduce((s, p) =>
-        s + (p.cPacaAguaPed || 0) + (p.cPacaHieloPed || 0) +
-            (p.cBotellonFabPed || 0) + (p.cBotellonDomPed || 0) +
-            (p.cBolsaAguaPed || 0) + (p.cBolsaHieloPed || 0), 0)
-
-      const nuevosPedidos = await prisma.pedido.findMany({
-        where: { id: { in: pedidoIds } },
-      })
-      const unidadesNuevas = nuevosPedidos.reduce((s, p) =>
-        s + (p.cPacaAguaPed || 0) + (p.cPacaHieloPed || 0) +
-            (p.cBotellonFabPed || 0) + (p.cBotellonDomPed || 0) +
-            (p.cBolsaAguaPed || 0) + (p.cBolsaHieloPed || 0), 0)
-
-      const totalUnidades = unidadesActuales + unidadesNuevas
-      if (totalUnidades > 70) {
-        return apiError(`Excede máximo de 70 unidades: ${totalUnidades} unidades (${unidadesActuales} asignadas + ${unidadesNuevas} nuevas)`, 400)
-      }
-    }
-
-    const embarque = await withAdvisoryLock('EMBARQUE', async (tx) => {
       // Handle carga update — replace all EmbarqueProducto records
       if (carga && currentEmbarque.estado === 'ABIERTO') {
         await tx.embarqueProducto.deleteMany({ where: { embarqueId: id } })
@@ -208,9 +227,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       // Assign pedidos if provided
       if (pedidoIds && Array.isArray(pedidoIds)) {
         // FIX F2.5: actualizar estadoEntrega junto con estado (legacy).
-        // Antes solo se actualizaba estado, dejando estadoEntrega=PENDIENTE
-        // mientras estado=EN_RUTA. Los queries que filtran por
-        // estadoEntrega no encontraban estos pedidos.
         await tx.pedido.updateMany({
           where: { id: { in: pedidoIds }, embarqueId: null },
           data: { embarqueId: id, estado: 'EN_RUTA', estadoEntrega: 'EN_RUTA' },
@@ -229,6 +245,19 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       })
     })
 
+    // Manejar el caso deduped: retorna el embarque pre-construido dentro del lock
+    if ('deduped' in embarque && embarque.deduped) {
+      logAudit({
+        entidad: 'Embarque',
+        registroId: embarque.embarque.id,
+        accion: 'UPDATE',
+        datos: { numero: embarque.embarque.numero, estado: embarque.embarque.estado, deduped: true },
+        usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+      })
+      return apiSuccess({ deduped: true, embarque: embarque.embarque })
+    }
+
+    // Caso normal: el lock retorna un embarque actualizado
     const totalPacas = calcularPacasEmbarque(embarque.pedidos)
     const pesoKg = calcularPesoEmbarque(embarque.pedidos)
     const capacidadKg = embarque.trabajador.capacidadKg || 500
@@ -252,6 +281,26 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     return apiSuccess({ embarque: serialized })
   } catch (error) {
+    // Mapear errores thrown desde dentro del lock a HTTP responses
+    if (error instanceof Error) {
+      const msg = error.message
+      if (msg === 'EMBARQUE_NOT_FOUND') return apiError('Embarque no encontrado', 404)
+      if (msg === 'TRABAJADOR_NOT_FOUND') return apiError('Trabajador no encontrado', 400)
+      if (msg === 'TRABAJADOR_SIN_MOTO') return apiError('Este trabajador no tiene moto asignada', 400)
+      if (msg.startsWith('MAX_UNIDADES:')) return apiError(`Excede máximo de 70 unidades: ${msg.split(':')[1]}`, 400)
+      if (msg.startsWith('PESO_EXCEDIDO:')) {
+        const [, peso, cap] = msg.split(':')
+        return apiError(`Peso excede capacidad del repartidor (${peso}kg > ${cap}kg)`, 400)
+      }
+      if (msg.startsWith('STOCK_EXCEDIDO:')) {
+        const [, key, max] = msg.split(':')
+        return apiError(`${key} excede límite de stock (${max} máximo)`, 400)
+      }
+      if (msg.startsWith('FORBIDDEN_FIELDS:')) {
+        const [, fields, estado] = msg.split(':')
+        return apiError(`No se pueden editar estos campos en estado ${estado}: ${fields}`, 400)
+      }
+    }
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error updating embarque:')
     return apiError(`Error actualizando embarque: ${error instanceof Error ? error.message : 'desconocido'}`, 500)
   }
