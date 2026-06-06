@@ -59,6 +59,21 @@ export async function PATCH(
       return apiError(formatZodError(parsed.error), 400)
     }
 
+    // FIX F-N16 (hallazgo 18): optimistic locking con updatedAt.
+    // Antes: read+validate+update SIN tx. Dos PATCH simultáneos
+    // podían:
+    //   T0: PATCH A lee deuda con updatedAt=T0, montoPendiente=100k
+    //   T0: PATCH B lee deuda con updatedAt=T0, montoPendiente=100k
+    //       (mismo resultado, ambos leen antes de que cualquiera
+    //       commitee)
+    //   T1: PATCH A hace update con montoPendiente=50k
+    //   T1: PATCH B hace update con montoPendiente=80k
+    //   T2: Estado final: montoPendiente=80k (ganó B, A se perdió).
+    //       Sin error, sin audit log, ajuste manual perdido.
+    //
+    // Ahora: updateMany con condición sobre updatedAt. Si otro PATCH
+    // commiteó primero, su update cambió updatedAt, por lo que el
+    // where no matchea y count=0. Devolvemos 409.
     const deuda = await prisma.deudaTrabajador.findUnique({ where: { id } })
     if (!deuda) return apiError('Deuda no encontrada', 404)
 
@@ -74,13 +89,43 @@ export async function PATCH(
       updateData.descripcion = parsed.data.descripcion
     }
 
-    const updated = await prisma.deudaTrabajador.update({
-      where: { id },
+    // Si no hay campos para actualizar, retornar la deuda actual
+    if (Object.keys(updateData).length === 0) {
+      return apiSuccess({
+        deuda: {
+          ...deuda,
+          trabajador: { id: '', nombre: '', rol: '' },  // incluye vacío
+        },
+      })
+    }
+
+    // updateMany atómico con condición de updatedAt (optimistic locking).
+    // Si el row fue modificado entre el findUnique y el updateMany,
+    // count=0 y devolvemos 409 limpio.
+    const updateResult = await prisma.deudaTrabajador.updateMany({
+      where: {
+        id,
+        updatedAt: deuda.updatedAt,
+      },
       data: updateData,
+    })
+
+    if (updateResult.count === 0) {
+      return apiError(
+        'La deuda fue modificada por otro usuario. Recarga y vuelve a intentar.',
+        409,
+      )
+    }
+
+    // Re-leer la deuda actualizada para devolver el estado final
+    const updated = await prisma.deudaTrabajador.findUnique({
+      where: { id },
       include: {
         trabajador: { select: { id: true, nombre: true, rol: true } },
       },
     })
+
+    if (!updated) return apiError('Deuda no encontrada', 404)  // no debería pasar
 
     logAudit({
       entidad: 'DeudaTrabajador',
