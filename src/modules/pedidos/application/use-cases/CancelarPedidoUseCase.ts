@@ -29,8 +29,16 @@ export class CancelarPedidoUseCase {
 
       const updated = await this.pedidoRepo.update(pedido, tx)
 
-      // Anular factura
-      await this.facturaRepo.anularByPedidoId(pedido.id.get())
+      // Anular factura (DENTRO de la tx)
+      // FIX F-N8: pasar `tx` como 2do arg para que la anulación de la
+      // factura sea parte de la MISMA transacción que el update del
+      // pedido y la creación de la NC. Antes, la factura se anulaba
+      // en una tx separada (porque `tx` era undefined y se usaba el
+      // cliente global). Si la tx outer hacía rollback (error de red,
+      // P2034 en Serializable, validación posterior), la factura YA
+      // estaba anulada → estado inconsistente: pedido activo, factura
+      // anulada, NC creada.
+      await this.facturaRepo.anularByPedidoId(pedido.id.get(), tx)
 
       // Create nota crédito if there were payments
       if (tuvoPagos) {
