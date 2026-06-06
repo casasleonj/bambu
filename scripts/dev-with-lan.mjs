@@ -28,7 +28,7 @@
  * Salida: muestra la IP detectada en stderr antes de spawn-ear Next.
  */
 
-import { spawn } from 'node:child_process'
+import { spawn, execSync } from 'node:child_process'
 import { networkInterfaces } from 'node:os'
 
 /**
@@ -100,7 +100,34 @@ const child = spawn('npx', ['next', 'dev', '-H', '0.0.0.0', '-p', '3000'], {
   shell: true,
 })
 
-child.on('exit', (code) => process.exit(code ?? 0))
+child.on('exit', (code) => {
+  if (code === 0 || code === null) {
+    process.exit(code ?? 0)
+    return
+  }
+  // EADDRINUSE (code -98 / errno 98): el puerto ya está ocupado.
+  // Casi siempre es un dev server anterior que no se cerró. Mostramos
+  // el PID del proceso que tiene el puerto y cómo matarlo.
+  try {
+    // ss está disponible en Linux. lsof en macOS/BSD.
+    const ssOut = execSync(`ss -tlnp 'sport = :3000' 2>/dev/null | grep -oP 'pid=\\K[0-9]+' | head -1`, { encoding: 'utf-8' }).trim()
+    if (ssOut) {
+      console.error(`\n\u{1F6A8}  El puerto 3000 ya está en uso por el proceso PID=${ssOut}`)
+      console.error(`   Para liberarlo: kill ${ssOut}`)
+      console.error(`   O si es un dev server anterior: pkill -f "next-server"`)
+    } else {
+      const lsofOut = execSync(`lsof -ti:3000 2>/dev/null`, { encoding: 'utf-8' }).trim()
+      if (lsofOut) {
+        console.error(`\n\u{1F6A8}  El puerto 3000 ya está en uso por el proceso PID=${lsofOut}`)
+        console.error(`   Para liberarlo: kill ${lsofOut}`)
+      }
+    }
+  } catch {
+    // No se pudo detectar el PID, mensaje genérico
+    console.error('\n\u{1F6A8}  Puerto 3000 ocupado. Matá el proceso y volvé a intentar.')
+  }
+  process.exit(code)
+})
 child.on('error', (err) => {
   console.error('Error al spawn-ear next dev:', err)
   process.exit(1)
