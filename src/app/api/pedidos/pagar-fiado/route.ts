@@ -8,7 +8,6 @@ import { getNextNumero } from '@/lib/sequence'
 import { logAudit } from '@/lib/audit'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
-import { prisma } from '@/lib/prisma'
 
 export async function POST(request: NextRequest) {
   // FIX C-1: solo ADMIN/ASISTENTE pueden registrar pagos de fiado.
@@ -27,40 +26,53 @@ export async function POST(request: NextRequest) {
 
     const { clienteId, monto, metodo, offlineId } = parsed.data
 
-    // Offline-first: dedup — si ya existen Pagos con este offlineId, devolver el estado actual
-    if (offlineId) {
-      const pagosPrevios = await prisma.pago.findMany({
-        where: { offlineId },
-        orderBy: { createdAt: 'asc' },
-      })
-      if (pagosPrevios.length > 0) {
-        // Reconstruir el resumen desde los pagos ya aplicados
-        const montoAplicadoPrevio = pagosPrevios.reduce((sum, p) => sum + Number(p.monto), 0)
-        const pedidosInvolucrados = await prisma.pedido.findMany({
-          where: { id: { in: pagosPrevios.map(p => p.pedidoId) } },
-          select: { id: true, numero: true, saldo: true, factura: { select: { id: true, numero: true } } },
-        })
-        return apiSuccess({
-          deduped: true,
-          pagosAplicados: pedidosInvolucrados.map(p => ({
-            pedidoId: p.id,
-            numero: p.numero,
-            facturaId: p.factura?.id,
-            facturaNumero: p.factura?.numero,
-            montoAplicado: pagosPrevios.find(pg => pg.pedidoId === p.id)
-              ? Number(pagosPrevios.find(pg => pg.pedidoId === p.id)!.monto)
-              : 0,
-            saldoRestante: Number(p.saldo),
-            abonoCreado: !!p.factura,
-          })),
-          montoAplicado: montoAplicadoPrevio,
-          montoSobrante: Math.max(0, monto - montoAplicadoPrevio),
-          mensaje: 'Pago ya aplicado previamente (dedup offline)',
-        })
-      }
-    }
-
+    // FIX F-N11: dedup por offlineId DENTRO del lock ABONO.
+    // Antes: el check de pagos previos estaba AQUÍ (líneas 30-61 antes
+    // del fix), FUERA del lock. Dos requests idénticos (mismo offlineId)
+    // llegaban casi simultáneos, ambos pasaban el findMany ([]), ambos
+    // entraban al lock. El lock serializa, pero el segundo request
+    // re-lee pedidos fiados que el primero YA PAGÓ. Aplica más pagos
+    // sobre los pedidos restantes o con saldo > 0 → doble descuento.
+    //
+    // Ahora: el check corre DENTRO del lock. Si los pagos ya existen,
+    // se reconstruye el response y se retorna deduped: true sin hacer
+    // trabajo wasted.
     const resultado = await withAdvisoryLock('ABONO', async (tx) => {
+      // DEDUP DENTRO DEL LOCK
+      if (offlineId) {
+        const pagosPrevios = await tx.pago.findMany({
+          where: { offlineId },
+          orderBy: { createdAt: 'asc' },
+        })
+        if (pagosPrevios.length > 0) {
+          const montoAplicadoPrevio = pagosPrevios.reduce(
+            (sum: number, p: { monto: unknown }) => sum + Number(p.monto),
+            0,
+          )
+          const pedidosInvolucrados = await tx.pedido.findMany({
+            where: { id: { in: pagosPrevios.map((p: { pedidoId: string }) => p.pedidoId) } },
+            select: { id: true, numero: true, saldo: true, factura: { select: { id: true, numero: true } } },
+          })
+          return {
+            deduped: true as const,
+            pagosAplicados: pedidosInvolucrados.map((p: { id: string; numero: number; saldo: unknown; factura: { id: string; numero: string } | null }) => ({
+              pedidoId: p.id,
+              numero: p.numero,
+              facturaId: p.factura?.id,
+              facturaNumero: p.factura?.numero,
+              montoAplicado: pagosPrevios.find((pg: { pedidoId: string }) => pg.pedidoId === p.id)
+                ? Number(pagosPrevios.find((pg: { pedidoId: string }) => pg.pedidoId === p.id)!.monto)
+                : 0,
+              saldoRestante: Number(p.saldo),
+              abonoCreado: !!p.factura,
+            })),
+            montoAplicado: montoAplicadoPrevio,
+            montoSobrante: Math.max(0, monto - montoAplicadoPrevio),
+            mensaje: 'Pago ya aplicado previamente (dedup offline)',
+          }
+        }
+      }
+
       // 1. Buscar pedidos fiados del cliente, ordenados por fecha ASC (FIFO)
       const pedidosFiados = await tx.pedido.findMany({
         where: {
@@ -178,12 +190,23 @@ export async function POST(request: NextRequest) {
     })
 
     return apiSuccess({
-      pagosAplicados: resultado.pagosAplicados,
-      montoAplicado: monto - resultado.montoRestante,
-      montoSobrante: resultado.montoRestante,
-      mensaje: resultado.montoRestante > 0
-        ? `Pagado $${(monto - resultado.montoRestante).toLocaleString()}. Sobrante: $${resultado.montoRestante.toLocaleString()}`
-        : `Pagado completo $${monto.toLocaleString()}`,
+      // Si fue deduped, propagar la respuesta original; si no, la nueva
+      ...(resultado.deduped
+        ? {
+            deduped: true,
+            pagosAplicados: resultado.pagosAplicados,
+            montoAplicado: resultado.montoAplicado,
+            montoSobrante: resultado.montoSobrante,
+            mensaje: resultado.mensaje,
+          }
+        : {
+            pagosAplicados: resultado.pagosAplicados,
+            montoAplicado: monto - resultado.montoRestante,
+            montoSobrante: resultado.montoRestante,
+            mensaje: resultado.montoRestante > 0
+              ? `Pagado $${(monto - resultado.montoRestante).toLocaleString()}. Sobrante: $${resultado.montoRestante.toLocaleString()}`
+              : `Pagado completo $${monto.toLocaleString()}`,
+          }),
     })
   } catch (error) {
     if (error instanceof Error && error.message === 'SIN_DEUDA') {
