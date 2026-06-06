@@ -6,6 +6,8 @@ import { z } from 'zod'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { startOfDayInBogota, endOfDayInBogota } from '@/lib/date-helpers'
+import { withAdvisoryLock } from '@/lib/locks'
+import { logger } from '@/lib/logger'
 
 const CierreDiaSchema = z.object({
   fecha: z.string().datetime().optional(),
@@ -73,11 +75,41 @@ export async function POST(request: NextRequest) {
     }
 
     const { fecha, ...rest } = parsed.data
-    const cierre = await prisma.cierreDia.create({
-      data: {
-        fecha: fecha ? new Date(fecha) : new Date(),
-        ...rest,
-      },
+
+    // FIX F-N15 (hallazgo 17): usar withAdvisoryLock('CIERRE', ...) y
+    // validar previamente la existencia de un cierre para esa fecha.
+    //
+    // Antes: prisma.cierreDia.create directo SIN lock. La unique
+    // constraint en CierreDia.fecha previene el duplicado a nivel
+    // DB, pero causa P2002 → 500 confuso cuando dos admins cierran
+    // el mismo día casi simultáneo. Peor aún: hay inconsistencia
+    // con el endpoint /api/cierre que SÍ usa el lock 'CIERRE' y
+    // re-valida antes de crear.
+    //
+    // Ahora: con lock 'CIERRE' (mismo que /api/cierre), dos admins
+    // se serializan. La validación previa dentro del lock detecta
+    // el duplicado y devuelve 409 limpio.
+    const cierre = await withAdvisoryLock('CIERRE', async (tx) => {
+      // Re-leer y re-validar dentro del lock
+      const targetDate = fecha ? new Date(fecha) : new Date()
+      const start = startOfDayInBogota(targetDate.toISOString())
+      const end = endOfDayInBogota(targetDate.toISOString())
+
+      const existente = await tx.cierreDia.findFirst({
+        where: {
+          fecha: { gte: start, lte: end },
+        },
+      })
+      if (existente) {
+        throw new Error('CIERRE_YA_EXISTE')
+      }
+
+      return tx.cierreDia.create({
+        data: {
+          fecha: targetDate,
+          ...rest,
+        },
+      })
     })
 
     logAudit({
@@ -90,6 +122,17 @@ export async function POST(request: NextRequest) {
 
     return apiSuccess({ cierre }, 201)
   } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === 'CIERRE_YA_EXISTE') {
+        return apiError('Ya existe un cierre para esta fecha', 409)
+      }
+      // Capturar P2002 residual (por si el lock no se adquiere correctamente
+      // en una condición de borde) y mapearlo a 409 limpio
+      if (error.message.includes('Unique constraint') || (error as { code?: string }).code === 'P2002') {
+        return apiError('Ya existe un cierre para esta fecha', 409)
+      }
+      logger.error({ err: error.message }, 'Error creating cierre:')
+    }
     return apiError('Error', 500)
   }
 }
