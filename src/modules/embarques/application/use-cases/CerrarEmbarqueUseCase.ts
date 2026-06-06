@@ -9,7 +9,6 @@
  */
 
 import { prisma } from '@/lib/prisma'
-import { resolverPrecio } from '@/lib/pricing'
 import { logAudit } from '@/lib/audit'
 
 import type { IEmbarqueRepository } from '../../domain/repositories/IEmbarqueRepository'
@@ -19,17 +18,14 @@ import { EmbarqueTransitionsService } from '../../domain/services/embarque-trans
 import { CierreEmbarqueService } from '../../domain/services/cierre-embarque.service'
 import { ProcesarPedidoService } from '../../domain/services/procesar-pedido.service'
 import { CrearVentasLibresService } from '../../domain/services/crear-ventas-libres.service'
+import { CrearDescuentoDiscrepanciaService } from '../../domain/services/crear-descuento-discrepancia.service'
+import { CerrarEmbarqueSideEffectsService } from '../../domain/services/cerrar-embarque-side-effects.service'
 import { Carga, type ProductCode } from '../../domain/value-objects/Carga'
 import { EstadoEmbarque as EstadoEmbarqueVO } from '../../domain/value-objects/EstadoEmbarque'
 import type { CerrarEmbarqueInput, CierreResultadoDTO } from '../dto'
 import type { ITransactionManager } from '../../infrastructure/transactions/PrismaTransactionManager'
 
 type TxOrPrisma = Parameters<Parameters<typeof prisma.$transaction>[0]>[0]
-
-function toNumber(value: number | { toNumber: () => number } | null | undefined): number {
-  if (value === null || value === undefined) return 0
-  return typeof value === 'number' ? value : value.toNumber()
-}
 
 interface PedidoRaw {
   id: string
@@ -89,6 +85,14 @@ export class CerrarEmbarqueUseCase {
     // la creación de ventas libres (~104 líneas inline).
     // Default: nueva instancia (backward compatible con callers existentes).
     private readonly crearVentasLibresService: CrearVentasLibresService = new CrearVentasLibresService(),
+    // FIX F4.10-c: inyectar CrearDescuentoDiscrepanciaService para
+    // delegar la creación de descuentos por discrepancia (~35 líneas).
+    // Default: nueva instancia (backward compatible con callers existentes).
+    private readonly crearDescuentoService: CrearDescuentoDiscrepanciaService = new CrearDescuentoDiscrepanciaService(),
+    // FIX F4.10-d: inyectar CerrarEmbarqueSideEffectsService para
+    // delegar los side effects finales: crearGastos y actualizarProductosRetorno.
+    // Default: nueva instancia (backward compatible con callers existentes).
+    private readonly sideEffectsService: CerrarEmbarqueSideEffectsService = new CerrarEmbarqueSideEffectsService(),
   ) {}
 
   async execute(input: CerrarEmbarqueInput): Promise<CierreResultadoDTO> {
@@ -161,7 +165,7 @@ export class CerrarEmbarqueUseCase {
       // 6. Create descuento for unexplained discrepancies
       let descuentoCreado: { id: string; monto: number } | undefined
       if (totalDiscrepancia > 0 && !input.justificacionDiscrepancia) {
-        descuentoCreado = await this.crearDescuento(
+        descuentoCreado = await this.crearDescuentoService.execute(
           client,
           embarque.trabajadorId,
           input.id,
@@ -169,11 +173,23 @@ export class CerrarEmbarqueUseCase {
         )
       }
 
-      // 7. Create gastos
-      const gastosCount = await this.crearGastos(tx, input.gastos ?? [], input.id, embarque.trabajadorId)
+      // 7. Create gastos (delegate to side effects service)
+      const gastosCount = await this.sideEffectsService.crearGastos(
+        tx,
+        input.gastos ?? [],
+        input.id,
+        embarque.trabajadorId,
+        this.userId,
+        this.gastoRepo,
+      )
 
-      // 8. Update EmbarqueProducto records
-      await this.actualizarProductosRetorno(tx, input.id, input.productosRetorno ?? [])
+      // 8. Update EmbarqueProducto records (delegate to side effects service)
+      await this.sideEffectsService.actualizarProductosRetorno(
+        tx,
+        input.id,
+        input.productosRetorno ?? [],
+        this.productoRepo,
+      )
 
       // 9. Close embarque
       await this.embarqueRepo.update(
@@ -306,87 +322,6 @@ export class CerrarEmbarqueUseCase {
     }
   }
 
-  private async crearDescuento(
-    client: TxOrPrisma,
-    trabajadorId: string,
-    embarqueId: string,
-    discrepancias: Array<{ producto: string; discrepancia: number }>,
-  ): Promise<{ id: string; monto: number }> {
-    const precioMap: Record<string, number> = {}
-    for (const disc of discrepancias) {
-      if (disc.discrepancia > 0) {
-        const precioResult = await resolverPrecio(disc.producto as ProductCode, 1, 'DOMICILIO', null, null, client)
-        precioMap[disc.producto] = precioResult.precio
-      }
-    }
-
-    let montoTotal = 0
-    const motivos: string[] = []
-    for (const disc of discrepancias) {
-      if (disc.discrepancia > 0) {
-        const precio = precioMap[disc.producto] ?? precioMap['PACA_AGUA'] ?? 0
-        montoTotal += disc.discrepancia * precio
-        motivos.push(`${disc.discrepancia} ${disc.producto}`)
-      }
-    }
-
-    const descuento = await client.descuentoRepartidor.create({
-      data: {
-        embarqueId,
-        trabajadorId,
-        monto: montoTotal,
-        motivo: `Discrepancia conciliacion: ${motivos.join(', ')}`,
-        justificado: false,
-      },
-    })
-
-    return { id: descuento.id, monto: toNumber(descuento.monto) }
-  }
-
-  private async crearGastos(
-    tx: unknown,
-    gastos: CerrarEmbarqueInput['gastos'],
-    embarqueId: string,
-    trabajadorId: string,
-  ): Promise<number> {
-    let count = 0
-    for (const gastoData of gastos ?? []) {
-      await this.gastoRepo.create(
-        {
-          embarqueId,
-          categoria: gastoData.categoria,
-          descripcion: gastoData.nota || gastoData.categoria,
-          monto: gastoData.monto,
-          responsable: trabajadorId,
-          notas: gastoData.nota,
-          createdById: this.userId,
-        },
-        tx,
-      )
-      count++
-    }
-    return count
-  }
-
-  private async actualizarProductosRetorno(
-    tx: unknown,
-    embarqueId: string,
-    productosRetorno: CerrarEmbarqueInput['productosRetorno'],
-  ): Promise<void> {
-    for (const pr of productosRetorno ?? []) {
-      await this.productoRepo.upsert(
-        embarqueId,
-        pr.producto as ProductCode,
-        {
-          cargadas: 0,
-          devueltas: pr.devueltas,
-          cambios: pr.cambios,
-          rotas: pr.rotas,
-        },
-        tx,
-      )
-    }
-  }
 
   private getTx(tx: unknown): TxOrPrisma {
     return (tx as TxOrPrisma) ?? prisma
