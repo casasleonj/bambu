@@ -6,6 +6,7 @@ import { NominaCreateSchema } from '@/lib/validators'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
+import { executeSerializableWithRetry } from '@/lib/serializable'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -47,7 +48,34 @@ export async function POST(request: NextRequest) {
     const userId = (authResult.user as { id?: string } | undefined)?.id
 
     if (tipoCalculo === 'AUTO') {
-      const result = await prisma.$transaction(async (tx) => {
+      // FIX F-N13 (hallazgo 14): usar executeSerializableWithRetry
+      // en vez de prisma.$transaction simple.
+      //
+      // Antes: read con findFirst + create dentro de ReadCommitted.
+      // Dos requests AUTO simultáneos para el mismo trabajdor+período
+      // podían ambos leer "no existe nómina" y ambos hacer create,
+      // resultando en DOS nóminas PENDIENTES para el mismo período.
+      // El schema NO tiene @@unique sobre (trabajadorId, fechaInicio,
+      // fechaFin), por lo que la unique constraint DB no previene
+      // el duplicado. Al pagar (vía F-N9), cada nómina crea un
+      // Gasto con el mismo monto → doble egreso de caja.
+      //
+      // Ahora: Serializable con retry en P2034. PostgreSQL SSI
+      // detecta el conflicto cuando la segunda tx intenta crear la
+      // nómina en un período que la primera tx acaba de crear. La
+      // segunda tx recibe P2034 y re-intenta. En el re-intento, el
+      // findFirst encuentra la nómina recién creada y devuelve 409.
+      const result = await executeSerializableWithRetry<{
+        nomina: { id: string; total: unknown; salario: unknown }
+        entregasAgua: number
+        entregasHielo: number
+        entregasBotellon: number
+        comAgua: number
+        comHielo: number
+        comBotellon: number
+        totalComisiones: number
+        totalDescuentos: number
+      }>(async (tx) => {
         // Verificar duplicados
         const existente = await tx.nomina.findFirst({
           where: {
@@ -192,7 +220,7 @@ export async function POST(request: NextRequest) {
           totalComisiones,
           totalDescuentos,
         }
-      })
+      }, 'nomina.POST:AUTO')
 
       logAudit({
         entidad: 'Nomina',
