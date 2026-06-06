@@ -137,4 +137,6 @@ export interface CrearPedidoResult {
 export interface EntregarPedidoResult {
   pedido: PedidoResumenDTO
   hijo?: PedidoResumenDTO
+  // FIX F-N7: indica si la entrega fue dedup'd (pedido ya estaba ENTREGADO)
+  deduped?: boolean
 }

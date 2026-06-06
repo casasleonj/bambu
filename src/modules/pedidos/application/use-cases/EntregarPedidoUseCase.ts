@@ -24,26 +24,31 @@ export class EntregarPedidoUseCase {
   async execute(input: EntregarPedidoInput): Promise<EntregarPedidoResult> {
     // FIX F2.4: usar executeWithLock('PEDIDO', ...) en vez de execute sin lock.
     //
-    // Antes: dos repartidores entregando el mismo pedido simultáneamente
-    // (o un repartidor con doble-click) pasaban ambos el dedup check de
-    // la route, entraban a la tx, y el segundo fallaba con
-    // 'TRANSICION_INVALIDA' (porque el estado ya no era PENDIENTE).
-    // Funcionaba pero creaba 2 audit log entries y gastaba trabajo
-    // innecesario.
+    // FIX F-N7: el dedup check ahora está DENTRO del lock.
+    // Antes el check estaba en la route (fuera del lock). Dos requests
+    // simultáneos podían ambos pasar el check 'estado === ENTREGADO',
+    // entrar al use case, y el segundo recibía 'TRANSICION_INVALIDA'
+    // con un 400 confuso. El trabajo de upload de foto y validación
+    // REQUIERE_FOTO se hacía 2 veces innecesariamente.
     //
-    // Con el lock: el segundo request espera al primero. Cuando entra,
-    // el pedido ya está en estado EN_RUTA → la transición a ENTREGADO
-    // desde EN_RUTA es válida (puedeEntregar() retorna true), pero
-    // actualmente puedeEntregar() verifica el estado desde donde
-    // viene el pedido, no el estado final. Para evitar entrega doble,
-    // el lock previene que dos requests procesen el mismo pedido
-    // simultáneamente.
+    // Ahora: el check corre dentro del lock. Si el pedido ya está
+    // ENTREGADO, devolvemos { deduped: true } con el pedido actual.
+    // El segundo request no hace trabajo wasted.
     //
     // El lock 'PEDIDO' (id=1 en LOCK_IDS) es el apropiado porque
     // entrega es una transición de estado del pedido.
     return this.txManager.executeWithLock('PEDIDO', async (tx) => {
       const pedido = await this.pedidoRepo.findById(PedidoId.from(input.pedidoId), tx)
       if (!pedido) throw new Error('PEDIDO_NOT_FOUND')
+
+      // F-N7: dedup check DENTRO del lock. Si el pedido ya está
+      // ENTREGADO, devolvemos el estado actual sin hacer trabajo.
+      if (pedido.estadoEntrega.get() === 'ENTREGADO') {
+        return {
+          pedido: PedidoDTOMapper.toResumen(pedido),
+          deduped: true,
+        }
+      }
 
       if (!pedido.puedeEntregar()) {
         throw new Error('TRANSICION_INVALIDA')

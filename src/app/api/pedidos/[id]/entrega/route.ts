@@ -54,14 +54,14 @@ export async function POST(
       }
     }
 
-    // Offline-first: dedup — si el pedido ya está ENTREGADO, retornar OK
-    const pedidoActual = await prisma.pedido.findUnique({
-      where: { id },
-      select: { estadoEntrega: true },
-    })
-    if (pedidoActual?.estadoEntrega === 'ENTREGADO') {
-      return apiSuccess({ deduped: true, pedido: { id, estadoEntrega: 'ENTREGADO' } }, 200)
-    }
+    // FIX F-N7: el dedup check ('si ya está ENTREGADO') se movió al
+    // EntregarPedidoUseCase, que corre DENTRO del lock 'PEDIDO'. Antes
+    // este check estaba aquí, pero dos requests simultáneos podían
+    // ambos pasar el check antes de que cualquiera entrara al lock,
+    // causando que el segundo recibiera 400 'TRANSICION_INVALIDA' y
+    // gastara trabajo innecesario (upload de foto, validación
+    // REQUIERE_FOTO). Ahora el check está dentro del lock → el
+    // segundo request ve el estado ENTREGADO y devuelve deduped: true.
 
     // Upload base64 foto to Supabase Storage (same as venta-libre).
     // If upload fails or Supabase is not configured, we fall back to the base64 string
