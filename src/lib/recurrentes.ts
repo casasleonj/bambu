@@ -431,6 +431,28 @@ export async function generarPedidosRecurrentes(
         include: { cliente: true, negocio: { include: { cliente: true } } },
       })
       if (!pt || !pt.activo) return { skipped: true }
+
+      // FIX F-N17 (hallazgo 6 parte 2): dedup admin-vs-cron sin offlineId.
+      // Después de un P2034 retry (causado por SSI detectando conflicto con
+      // otra tx que ya generó esta plantilla), la segunda tx lee el
+      // `ultimaGeneracion` actualizado. Si ya se generó para esta fecha
+      // (`prox`), skip sin crear otro pedido.
+      //
+      // Antes: este check no existía. Después del retry, la segunda tx
+      // creaba OTRO pedido con los mismos datos → doble pedido, doble
+      // factura, doble cobro (uno del admin, otro del cron, o dos admins
+      // con diferentes offlineIds).
+      //
+      // El check es DENTRO de la tx para garantizar que la lectura es
+      // fresca. PostgreSQL SSI + el row lock del Serializable garantizan
+      // que si otra tx committeó la generación, esta tx ve el update.
+      if (pt.ultimaGeneracion && pt.proxGeneracion) {
+        // Si ultimaGeneracion >= prox (la fecha objetivo de esta generación),
+        // significa que otra tx ya generó.
+        if (pt.ultimaGeneracion.getTime() >= pt.proxGeneracion.getTime()) {
+          return { skipped: true }
+        }
+      }
       // Support negocio-only templates (migrated from clienteId)
       if (!pt.clienteId && !pt.negocioId) return { skipped: true }
       const effectiveClienteId: string = pt.clienteId ?? pt.negocio?.clienteId ?? ''
