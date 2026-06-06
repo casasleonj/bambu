@@ -132,6 +132,8 @@ export interface PedidoResumenDTO {
 export interface CrearPedidoResult {
   pedido: PedidoResumenDTO
   clienteId: string
+  // FIX F-N10: indica si la creación fue dedup'd (pedido ya existía por offlineId)
+  deduped?: boolean
 }
 
 export interface EntregarPedidoResult {

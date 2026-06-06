@@ -33,6 +33,20 @@ export class PrismaPedidoRepository implements IPedidoRepository {
     return PedidoMapper.fromPrisma(raw as unknown as Parameters<typeof PedidoMapper.fromPrisma>[0])
   }
 
+  // FIX F-N10: búsqueda por offlineId para dedup offline-first.
+  // El índice Pedido.offlineId @unique garantiza que la búsqueda es O(1).
+  // Usado en CrearPedidoUseCase.execute() para detectar reenvíos
+  // de requests offline antes de hacer trabajo wasted.
+  async findByOfflineId(offlineId: string, tx?: TransactionClient): Promise<Pedido | null> {
+    const client = tx || prisma
+    const raw = await client.pedido.findUnique({
+      where: { offlineId },
+      include: { items: true, pagos: true },
+    })
+    if (!raw) return null
+    return PedidoMapper.fromPrisma(raw as unknown as Parameters<typeof PedidoMapper.fromPrisma>[0])
+  }
+
   async findMany(
     filter?: PedidoFilter,
     options?: { take?: number; skip?: number; orderBy?: 'asc' | 'desc' },

@@ -145,14 +145,15 @@ export async function POST(request: NextRequest) {
 
     const pagosData = parsed.data.pagos || []
 
-    // Offline-first: dedup por offlineId (idempotencia al reenviar)
-    if (offlineId) {
-      const { prisma } = await import('@/lib/prisma')
-      const existente = await prisma.pedido.findUnique({ where: { offlineId } })
-      if (existente) {
-        return apiSuccess({ pedido: existente, deduped: true }, 200)
-      }
-    }
+    // FIX F-N10: el dedup por offlineId se movió al CrearPedidoUseCase
+    // (dentro del lock 'PEDIDO'). Antes este check estaba aquí, pero
+    // dos requests idénticos (mismo offlineId) podían ambos pasar el
+    // check (findUnique retorna null porque el primero no había
+    // commiteado), ambos entrar al use case, y el segundo chocaba con
+    // la unique constraint de Pedido.offlineId → P2002 → 500.
+    //
+    // Ahora: el use case corre el check DENTRO del lock. Si el pedido
+    // ya existe, retorna { deduped: true } sin hacer trabajo.
 
     // Normalize items (support both new items[] and legacy productos{})
     const itemsInput = items && items.length > 0

@@ -41,6 +41,26 @@ export class CrearPedidoUseCase {
 
   async execute(input: CrearPedidoInput): Promise<CrearPedidoResult> {
     return this.txManager.executeWithLock('PEDIDO', async (tx) => {
+      // FIX F-N10: dedup por offlineId DENTRO del lock.
+      // Antes: la route hacía findUnique FUERA del lock (línea 151-153
+      // de pedidos/route.ts antes del fix). Dos requests idénticos
+      // (mismo offlineId) llegaban casi simultáneos, ambos pasaban
+      // el check (findUnique retorna null porque el primero no ha
+      // commiteado), ambos entraban al use case, el segundo chocaba
+      // con la unique constraint de Pedido.offlineId → P2002 → 500.
+      // Ahora: el check corre dentro del lock. El segundo request
+      // ve el pedido ya creado y retorna deduped: true.
+      if (input.offlineId) {
+        const existente = await this.pedidoRepo.findByOfflineId(input.offlineId, tx)
+        if (existente) {
+          return {
+            pedido: PedidoDTOMapper.toResumen(existente),
+            clienteId: existente.clienteId,
+            deduped: true,
+          }
+        }
+      }
+
       // 1. Resolve/create cliente
       let clienteId = input.clienteId
 
