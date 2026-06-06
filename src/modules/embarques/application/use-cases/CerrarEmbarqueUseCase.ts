@@ -10,10 +10,7 @@
 
 import { prisma } from '@/lib/prisma'
 import { resolverPrecio } from '@/lib/pricing'
-import { calcularEstadoPago } from '@/lib/pedido-utils'
-import { getNextNumero } from '@/lib/sequence'
 import { logAudit } from '@/lib/audit'
-import type { MetodoPago } from '@prisma/client'
 
 import type { IEmbarqueRepository } from '../../domain/repositories/IEmbarqueRepository'
 import type { IGastoEmbarqueRepository } from '../../domain/repositories/IGastoEmbarqueRepository'
@@ -21,6 +18,7 @@ import type { IEmbarqueProductoRepository } from '../../domain/repositories/IEmb
 import { EmbarqueTransitionsService } from '../../domain/services/embarque-transitions.service'
 import { CierreEmbarqueService } from '../../domain/services/cierre-embarque.service'
 import { ProcesarPedidoService } from '../../domain/services/procesar-pedido.service'
+import { CrearVentasLibresService } from '../../domain/services/crear-ventas-libres.service'
 import { Carga, type ProductCode } from '../../domain/value-objects/Carga'
 import { EstadoEmbarque as EstadoEmbarqueVO } from '../../domain/value-objects/EstadoEmbarque'
 import type { CerrarEmbarqueInput, CierreResultadoDTO } from '../dto'
@@ -87,6 +85,10 @@ export class CerrarEmbarqueUseCase {
     // en vez de tener ~119 líneas inline en este use case.
     // Default: nueva instancia (backward compatible con callers existentes).
     private readonly procesarPedidoService: ProcesarPedidoService = new ProcesarPedidoService(),
+    // FIX F4.10-b: inyectar CrearVentasLibresService para delegar
+    // la creación de ventas libres (~104 líneas inline).
+    // Default: nueva instancia (backward compatible con callers existentes).
+    private readonly crearVentasLibresService: CrearVentasLibresService = new CrearVentasLibresService(),
   ) {}
 
   async execute(input: CerrarEmbarqueInput): Promise<CierreResultadoDTO> {
@@ -141,7 +143,12 @@ export class CerrarEmbarqueUseCase {
         totalVentas += totalReal
       }
 
-      const ventasLibresCount = await this.crearVentasLibres(client, input.ventasLibres ?? [], input.id)
+      const ventasLibresCount = await this.crearVentasLibresService.execute(
+        client,
+        input.ventasLibres ?? [],
+        input.id,
+        this.userId,
+      )
 
       // 5. Reconcile products
       const { totalDiscrepancia, discrepanciasPorProducto } = this.conciliarProductos(
@@ -227,124 +234,6 @@ export class CerrarEmbarqueUseCase {
   }
 
 
-  private async crearVentasLibres(
-    client: TxOrPrisma,
-    ventas: NonNullable<CerrarEmbarqueInput['ventasLibres']>,
-    embarqueId: string,
-  ): Promise<number> {
-    let count = 0
-
-    for (const venta of ventas) {
-      const totalItems = (venta.cPacaAgua || 0) + (venta.cPacaHielo || 0) + (venta.cBotellonFab || 0) + (venta.cBotellonDom || 0) + (venta.cBolsaAgua || 0) + (venta.cBolsaHielo || 0)
-      if (totalItems === 0) continue
-
-      const totalPagado = venta.pagos.reduce((sum, p) => sum + p.monto, 0)
-      const numeroVenta = await getNextNumero(client, { model: 'pedido' })
-
-      const botellonCant = (venta.cBotellonFab || 0) + (venta.cBotellonDom || 0)
-      const [precioAgua, precioHielo, precioBot, precioBolAgua, precioBolHielo] = await Promise.all([
-        resolverPrecio('PACA_AGUA', venta.cPacaAgua || 0, 'DOMICILIO', null, null, client),
-        resolverPrecio('PACA_HIELO', venta.cPacaHielo || 0, 'DOMICILIO', null, null, client),
-        resolverPrecio('BOTELLON', botellonCant, 'DOMICILIO', null, null, client),
-        resolverPrecio('BOLSA_AGUA', venta.cBolsaAgua || 0, 'DOMICILIO', null, null, client),
-        resolverPrecio('BOLSA_HIELO', venta.cBolsaHielo || 0, 'DOMICILIO', null, null, client),
-      ])
-
-      const totalVenta =
-        (venta.cPacaAgua || 0) * precioAgua.precio +
-        (venta.cPacaHielo || 0) * precioHielo.precio +
-        botellonCant * precioBot.precio +
-        (venta.cBolsaAgua || 0) * precioBolAgua.precio +
-        (venta.cBolsaHielo || 0) * precioBolHielo.precio
-
-      const estadoPago = calcularEstadoPago(totalVenta, totalPagado)
-
-      const nuevaVenta = await client.pedido.create({
-        data: {
-          numero: numeroVenta,
-          clienteId: venta.clienteId,
-          tipo: 'ENVIO',
-          canal: 'DOMICILIO',
-          origen: 'VENTA_LIBRE',
-          estadoEntrega: 'ENTREGADO',
-          estadoPago,
-          estado: 'ENTREGADO',
-          embarqueId,
-          precioPacaAgua: precioAgua.precio,
-          precioPacaHielo: precioHielo.precio,
-          precioBotellonFab: 0,
-          precioBotellonDom: precioBot.precio,
-          precioBolsaAgua: precioBolAgua.precio,
-          precioBolsaHielo: precioBolHielo.precio,
-          cPacaAguaPed: venta.cPacaAgua || 0,
-          cPacaAguaEnt: venta.cPacaAgua || 0,
-          cPacaHieloPed: venta.cPacaHielo || 0,
-          cPacaHieloEnt: venta.cPacaHielo || 0,
-          cBotellonFabPed: venta.cBotellonFab || 0,
-          cBotellonFabEnt: venta.cBotellonFab || 0,
-          cBotellonDomPed: venta.cBotellonDom || 0,
-          cBotellonDomEnt: venta.cBotellonDom || 0,
-          cBolsaAguaPed: venta.cBolsaAgua || 0,
-          cBolsaAguaEnt: venta.cBolsaAgua || 0,
-          cBolsaHieloPed: venta.cBolsaHielo || 0,
-          cBolsaHieloEnt: venta.cBolsaHielo || 0,
-          total: totalVenta,
-          totalPagado: totalPagado,
-          saldo: totalVenta - totalPagado,
-          obs: venta.obs || 'Venta libre en ruta',
-          createdById: this.userId,
-          items: {
-            create: [
-              ...((venta.cPacaAgua || 0) > 0 ? [{ producto: 'PACA_AGUA', cantPedido: venta.cPacaAgua, cantEntrega: venta.cPacaAgua, precio: precioAgua.precio, subtotal: precioAgua.precio * venta.cPacaAgua }] : []),
-              ...((venta.cPacaHielo || 0) > 0 ? [{ producto: 'PACA_HIELO', cantPedido: venta.cPacaHielo, cantEntrega: venta.cPacaHielo, precio: precioHielo.precio, subtotal: precioHielo.precio * venta.cPacaHielo }] : []),
-              ...(botellonCant > 0 ? [{ producto: 'BOTELLON', cantPedido: botellonCant, cantEntrega: botellonCant, precio: precioBot.precio, subtotal: precioBot.precio * botellonCant }] : []),
-              ...((venta.cBolsaAgua || 0) > 0 ? [{ producto: 'BOLSA_AGUA', cantPedido: venta.cBolsaAgua, cantEntrega: venta.cBolsaAgua, precio: precioBolAgua.precio, subtotal: precioBolAgua.precio * venta.cBolsaAgua }] : []),
-              ...((venta.cBolsaHielo || 0) > 0 ? [{ producto: 'BOLSA_HIELO', cantPedido: venta.cBolsaHielo, cantEntrega: venta.cBolsaHielo, precio: precioBolHielo.precio, subtotal: precioBolHielo.precio * venta.cBolsaHielo }] : []),
-            ],
-          },
-        },
-      })
-
-      for (const pago of venta.pagos) {
-        if (pago.monto > 0) {
-          await client.pago.create({
-            data: { pedidoId: nuevaVenta.id, metodo: pago.metodo as MetodoPago, monto: pago.monto },
-          })
-        }
-      }
-
-      const facturaNum = await getNextNumero(client, { model: 'factura', field: 'numero' })
-      const facturaClienteId = venta.clienteId === 'CONSUMIDOR_FINAL' ? 'CONSUMIDOR_FINAL' : venta.clienteId
-      await client.factura.create({
-        data: {
-          numero: `FAC-${facturaNum.toString().padStart(5, '0')}`,
-          clienteId: facturaClienteId,
-          pedidoId: nuevaVenta.id,
-          subtotal: totalVenta,
-          total: totalVenta,
-          saldo: totalVenta - totalPagado,
-          estado: totalPagado >= totalVenta ? 'PAGADA' : 'EMITIDA',
-        },
-      })
-
-      count++
-    }
-
-    return count
-  }
-
-  /**
-   * FIX F4.10-c: adaptador que delega a CierreEmbarqueService en vez
-   * de duplicar la lógica de conciliación. Antes: ~50 líneas inline
-   * con tipos Record<string, number>. Ahora: usa Carga VO + tipos
-   * nombrados del service, que ya tiene tests.
-   *
-   * El service retorna ProductoConciliacion[] con más campos
-   * (cargadas, entregadas, devueltas, cambios, rotas) que el shape
-   * antiguo. Para mantener backward compat con `crearDescuento`
-   * (que solo necesita producto + discrepancia), proyectamos a la
-   * estructura mínima esperada.
-   */
   private conciliarProductos(
     embarque: { productos: Array<{ producto: string; cargadas: number }> },
     pedidosRaw: PedidoRaw[],
