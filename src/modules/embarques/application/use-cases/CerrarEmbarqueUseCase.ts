@@ -13,7 +13,6 @@ import { resolverPrecio } from '@/lib/pricing'
 import { calcularEstadoPago } from '@/lib/pedido-utils'
 import { getNextNumero } from '@/lib/sequence'
 import { logAudit } from '@/lib/audit'
-import { EstadoEmbarque } from '@prisma/client'
 import type { MetodoPago } from '@prisma/client'
 
 import type { IEmbarqueRepository } from '../../domain/repositories/IEmbarqueRepository'
@@ -21,6 +20,7 @@ import type { IGastoEmbarqueRepository } from '../../domain/repositories/IGastoE
 import type { IEmbarqueProductoRepository } from '../../domain/repositories/IEmbarqueProductoRepository'
 import { EmbarqueTransitionsService } from '../../domain/services/embarque-transitions.service'
 import { CierreEmbarqueService } from '../../domain/services/cierre-embarque.service'
+import { ProcesarPedidoService } from '../../domain/services/procesar-pedido.service'
 import { Carga, type ProductCode } from '../../domain/value-objects/Carga'
 import { EstadoEmbarque as EstadoEmbarqueVO } from '../../domain/value-objects/EstadoEmbarque'
 import type { CerrarEmbarqueInput, CierreResultadoDTO } from '../dto'
@@ -68,24 +68,6 @@ interface PedidoRaw {
   factura: { id: string } | null
 }
 
-interface PreciosPedido {
-  pacaAgua: number
-  pacaHielo: number
-  botellonFab: number
-  botellonDom: number
-  bolsaAgua: number
-  bolsaHielo: number
-}
-
-interface ProductosEntregados {
-  cPacaAguaEnt: number
-  cPacaHieloEnt: number
-  cBotellonFabEnt: number
-  cBotellonDomEnt: number
-  cBolsaAguaEnt: number
-  cBolsaHieloEnt: number
-}
-
 export class CerrarEmbarqueUseCase {
   private readonly transitions = new EmbarqueTransitionsService()
 
@@ -100,6 +82,11 @@ export class CerrarEmbarqueUseCase {
     // conciliación de productos en vez de duplicar la lógica.
     // Default: nueva instancia (backward compatible con callers existentes).
     private readonly cierreService: CierreEmbarqueService = new CierreEmbarqueService(),
+    // FIX F4.10-a: inyectar ProcesarPedidoService para delegar el
+    // procesamiento de pedidos individuales (entregado/parcial/no entregado)
+    // en vez de tener ~119 líneas inline en este use case.
+    // Default: nueva instancia (backward compatible con callers existentes).
+    private readonly procesarPedidoService: ProcesarPedidoService = new ProcesarPedidoService(),
   ) {}
 
   async execute(input: CerrarEmbarqueInput): Promise<CierreResultadoDTO> {
@@ -137,15 +124,17 @@ export class CerrarEmbarqueUseCase {
       const pedidosActualizados: Array<{ id: string; estado: string }> = []
       let totalVentas = 0
 
-      // 3. Process each pedido
+      // 3. Process each pedido (delegate to ProcesarPedidoService)
       for (const cuadre of input.pedidos) {
         const pedido = pedidosRaw.find((p) => p.id === cuadre.pedidoId)
         if (!pedido) continue
 
-        const totalReal = await this.procesarPedido(
+        const totalReal = await this.procesarPedidoService.execute(
           client,
-          pedido,
+          pedido as Parameters<typeof this.procesarPedidoService.execute>[1],
           cuadre,
+          this.userRole,
+          this.userId,
           pedidosHijosCreados,
           pedidosActualizados,
         )
@@ -237,297 +226,6 @@ export class CerrarEmbarqueUseCase {
     return raw as unknown as PedidoRaw[]
   }
 
-  private async procesarPedido(
-    client: TxOrPrisma,
-    pedido: PedidoRaw,
-    cuadre: CerrarEmbarqueInput['pedidos'][number],
-    pedidosHijosCreados: Array<{ id: string; numero: number }>,
-    pedidosActualizados: Array<{ id: string; estado: string }>,
-  ): Promise<number> {
-    const entProd = cuadre.productosEntregados ?? {
-      cPacaAguaEnt: 0,
-      cPacaHieloEnt: 0,
-      cBotellonFabEnt: 0,
-      cBotellonDomEnt: 0,
-      cBolsaAguaEnt: 0,
-      cBolsaHieloEnt: 0,
-    }
-    const montoPagado = cuadre.pagos.reduce((sum, p) => sum + p.monto, 0)
-
-    // NO_ENTREGADO case
-    if (cuadre.entregado === 'NO_ENTREGADO') {
-      return this.procesarNoEntregado(client, pedido, cuadre, pedidosActualizados)
-    }
-
-    // Resolve prices (frozen original prices, ADMIN override only)
-    const preciosOriginales: PreciosPedido = {
-      pacaAgua: toNumber(pedido.precioPacaAgua),
-      pacaHielo: toNumber(pedido.precioPacaHielo),
-      botellonFab: toNumber(pedido.precioBotellonFab),
-      botellonDom: toNumber(pedido.precioBotellonDom),
-      bolsaAgua: toNumber(pedido.precioBolsaAgua),
-      bolsaHielo: toNumber(pedido.precioBolsaHielo),
-    }
-
-    const precios: PreciosPedido = (cuadre.preciosReales && this.userRole === 'ADMIN')
-      ? {
-          pacaAgua: cuadre.preciosReales['pacaAgua'] ?? preciosOriginales.pacaAgua,
-          pacaHielo: cuadre.preciosReales['pacaHielo'] ?? preciosOriginales.pacaHielo,
-          botellonFab: cuadre.preciosReales['botellonFab'] ?? preciosOriginales.botellonFab,
-          botellonDom: cuadre.preciosReales['botellonDom'] ?? preciosOriginales.botellonDom,
-          bolsaAgua: cuadre.preciosReales['bolsaAgua'] ?? preciosOriginales.bolsaAgua,
-          bolsaHielo: cuadre.preciosReales['bolsaHielo'] ?? preciosOriginales.bolsaHielo,
-        }
-      : preciosOriginales
-
-    const totalReal =
-      precios.pacaAgua * (entProd.cPacaAguaEnt || 0) +
-      precios.pacaHielo * (entProd.cPacaHieloEnt || 0) +
-      precios.botellonFab * (entProd.cBotellonFabEnt || 0) +
-      precios.botellonDom * (entProd.cBotellonDomEnt || 0) +
-      precios.bolsaAgua * (entProd.cBolsaAguaEnt || 0) +
-      precios.bolsaHielo * (entProd.cBolsaHieloEnt || 0)
-
-    const estadoPago = calcularEstadoPago(totalReal, montoPagado)
-
-    // Update pedido
-    await client.pedido.update({
-      where: { id: pedido.id },
-      data: {
-        estadoEntrega: 'ENTREGADO',
-        estado: 'ENTREGADO',
-        estadoPago,
-        cPacaAguaEnt: entProd.cPacaAguaEnt || 0,
-        cPacaHieloEnt: entProd.cPacaHieloEnt || 0,
-        cBotellonFabEnt: entProd.cBotellonFabEnt || 0,
-        cBotellonDomEnt: entProd.cBotellonDomEnt || 0,
-        cBolsaAguaEnt: entProd.cBolsaAguaEnt || 0,
-        cBolsaHieloEnt: entProd.cBolsaHieloEnt || 0,
-        precioPacaAgua: precios.pacaAgua,
-        precioPacaHielo: precios.pacaHielo,
-        precioBotellonFab: precios.botellonFab,
-        precioBotellonDom: precios.botellonDom,
-        precioBolsaAgua: precios.bolsaAgua,
-        precioBolsaHielo: precios.bolsaHielo,
-        total: totalReal,
-        totalPagado: montoPagado,
-        saldo: totalReal - montoPagado,
-      },
-    })
-
-    // Update PedidoItems
-    await this.updatePedidoItems(client, pedido.id, entProd, precios)
-
-    // Log price changes
-    await this.logPrecioCierre(client, pedido, totalReal)
-
-    // Validate payments (1% tolerance)
-    const montoPagadoTotal = cuadre.pagos.reduce((sum, p) => sum + p.monto, 0)
-    if (montoPagadoTotal > totalReal * 1.01) {
-      throw new Error(`PAGOS_EXCEDIDOS: Pagos ($${montoPagadoTotal}) exceden total real ($${totalReal}) para pedido #${pedido.numero}`)
-    }
-
-    pedidosActualizados.push({ id: pedido.id, estado: 'ENTREGADO' })
-
-    // Register payments
-    for (const pago of cuadre.pagos) {
-      if (pago.monto > 0) {
-        await client.pago.create({
-          data: { pedidoId: pedido.id, metodo: pago.metodo as MetodoPago, monto: pago.monto },
-        })
-      }
-    }
-
-    // Update factura
-    if (pedido.factura) {
-      await client.factura.update({
-        where: { id: pedido.factura.id },
-        data: {
-          total: totalReal,
-          saldo: totalReal - montoPagado,
-          estado: montoPagado >= totalReal ? 'PAGADA' : (montoPagado > 0 ? 'PARCIAL' : 'EMITIDA'),
-        },
-      })
-    }
-
-    // Create child pedido if PARCIAL
-    if (cuadre.entregado === 'PARCIAL') {
-      await this.crearPedidoHijo(client, pedido, entProd, precios, pedidosHijosCreados)
-    }
-
-    return totalReal
-  }
-
-  private async procesarNoEntregado(
-    client: TxOrPrisma,
-    pedido: PedidoRaw,
-    cuadre: CerrarEmbarqueInput['pedidos'][number],
-    pedidosActualizados: Array<{ id: string; estado: string }>,
-  ): Promise<number> {
-    const updateData: Record<string, unknown> = {
-      estadoEntrega: 'NO_ENTREGADO',
-      estado: 'NO_ENTREGADO',
-      embarqueId: null,
-      cPacaAguaEnt: 0,
-      cPacaHieloEnt: 0,
-      cBotellonFabEnt: 0,
-      cBotellonDomEnt: 0,
-      cBolsaAguaEnt: 0,
-      cBolsaHieloEnt: 0,
-    }
-
-    if (cuadre.nuevoEmbarqueId) {
-      const nuevoEmbarque = await client.embarque.findUnique({
-        where: { id: cuadre.nuevoEmbarqueId },
-        select: { id: true, estado: true, numero: true },
-      })
-      if (!nuevoEmbarque) {
-        throw new Error(`EMBARQUE_DESTINO_NOT_FOUND: Embarque destino ${cuadre.nuevoEmbarqueId} no existe`)
-      }
-      if (nuevoEmbarque.estado !== EstadoEmbarque.ABIERTO && nuevoEmbarque.estado !== EstadoEmbarque.EN_RUTA) {
-        throw new Error(`EMBARQUE_DESTINO_NO_DISPONIBLE: Embarque destino #${nuevoEmbarque.numero} esta ${nuevoEmbarque.estado}`)
-      }
-      updateData.estadoEntrega = 'EN_RUTA'
-      updateData.estado = 'EN_RUTA'
-      updateData.embarqueId = cuadre.nuevoEmbarqueId
-    }
-
-    await client.pedido.update({ where: { id: pedido.id }, data: updateData })
-
-    for (const item of pedido.items) {
-      await client.pedidoItem.updateMany({
-        where: { pedidoId: pedido.id, producto: item.producto },
-        data: { cantEntrega: 0 },
-      })
-    }
-
-    pedidosActualizados.push({ id: pedido.id, estado: updateData.estadoEntrega as string })
-    return 0
-  }
-
-  private async updatePedidoItems(
-    client: TxOrPrisma,
-    pedidoId: string,
-    entProd: ProductosEntregados,
-    precios: PreciosPedido,
-  ): Promise<void> {
-    const precioKeyMap: Record<string, keyof PreciosPedido> = {
-      PACA_AGUA: 'pacaAgua',
-      PACA_HIELO: 'pacaHielo',
-      BOTELLON_FAB: 'botellonFab',
-      BOTELLON_DOM: 'botellonDom',
-      BOLSA_AGUA: 'bolsaAgua',
-      BOLSA_HIELO: 'bolsaHielo',
-    }
-
-    const itemUpdates = [
-      { producto: 'PACA_AGUA', cantidad: entProd.cPacaAguaEnt },
-      { producto: 'PACA_HIELO', cantidad: entProd.cPacaHieloEnt },
-      { producto: 'BOTELLON_FAB', cantidad: entProd.cBotellonFabEnt },
-      { producto: 'BOTELLON_DOM', cantidad: entProd.cBotellonDomEnt },
-      { producto: 'BOLSA_AGUA', cantidad: entProd.cBolsaAguaEnt },
-      { producto: 'BOLSA_HIELO', cantidad: entProd.cBolsaHieloEnt },
-    ]
-
-    for (const itemUpd of itemUpdates) {
-      await client.pedidoItem.updateMany({
-        where: { pedidoId, producto: itemUpd.producto },
-        data: {
-          cantEntrega: itemUpd.cantidad,
-          precio: precios[precioKeyMap[itemUpd.producto]] || 0,
-        },
-      })
-    }
-  }
-
-  private async logPrecioCierre(
-    client: TxOrPrisma,
-    pedido: PedidoRaw,
-    totalReal: number,
-  ): Promise<void> {
-    const totalOriginal = toNumber(pedido.total)
-    const deltaTotal = totalReal - totalOriginal
-    if (Math.abs(deltaTotal) > 0.01) {
-      await client.historial.create({
-        data: {
-          entidad: 'Pedido',
-          registroId: pedido.id,
-          accion: 'PRECIO_CIERRE',
-          datos: JSON.stringify({
-            pedidoNumero: pedido.numero,
-            precioOriginal: totalOriginal,
-            precioCierre: totalReal,
-            delta: deltaTotal,
-            deltaPct: totalOriginal > 0 ? ((deltaTotal / totalOriginal) * 100).toFixed(1) : '0',
-            usuario: this.userId || 'unknown',
-          }),
-          usuarioId: this.userId,
-        },
-      })
-    }
-  }
-
-  private async crearPedidoHijo(
-    client: TxOrPrisma,
-    pedido: PedidoRaw,
-    entProd: ProductosEntregados,
-    precios: PreciosPedido,
-    pedidosHijosCreados: Array<{ id: string; numero: number }>,
-  ): Promise<void> {
-    const faltanteAgua = (pedido.cPacaAguaPed || 0) - (entProd.cPacaAguaEnt || 0)
-    const faltanteHielo = (pedido.cPacaHieloPed || 0) - (entProd.cPacaHieloEnt || 0)
-    const faltanteBotFab = (pedido.cBotellonFabPed || 0) - (entProd.cBotellonFabEnt || 0)
-    const faltanteBotDom = (pedido.cBotellonDomPed || 0) - (entProd.cBotellonDomEnt || 0)
-    const faltanteBolAgua = (pedido.cBolsaAguaPed || 0) - (entProd.cBolsaAguaEnt || 0)
-    const faltanteBolHielo = (pedido.cBolsaHieloPed || 0) - (entProd.cBolsaHieloEnt || 0)
-
-    const hayFaltante =
-      faltanteAgua > 0 || faltanteHielo > 0 || faltanteBotFab > 0 ||
-      faltanteBotDom > 0 || faltanteBolAgua > 0 || faltanteBolHielo > 0
-
-    if (hayFaltante) {
-      const numeroHijo = await getNextNumero(client, { model: 'pedido' })
-      const totalHijo =
-        precios.pacaAgua * faltanteAgua +
-        precios.pacaHielo * faltanteHielo +
-        precios.botellonFab * faltanteBotFab +
-        precios.botellonDom * faltanteBotDom +
-        precios.bolsaAgua * faltanteBolAgua +
-        precios.bolsaHielo * faltanteBolHielo
-
-      const hijo = await client.pedido.create({
-        data: {
-          numero: numeroHijo,
-          clienteId: pedido.clienteId,
-          tipo: pedido.tipo,
-          canal: pedido.canal,
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-          origen: pedido.origen as never,
-          estadoEntrega: 'PENDIENTE',
-          estadoPago: 'PENDIENTE',
-          estado: 'PENDIENTE',
-          idOrigen: pedido.id,
-          total: totalHijo,
-          saldo: totalHijo,
-          totalPagado: 0,
-          obs: `Faltante de pedido #${pedido.numero}`,
-          createdById: this.userId,
-          items: {
-            create: [
-              ...(faltanteAgua > 0 ? [{ producto: 'PACA_AGUA', cantPedido: faltanteAgua, cantEntrega: 0, precio: precios.pacaAgua, subtotal: precios.pacaAgua * faltanteAgua }] : []),
-              ...(faltanteHielo > 0 ? [{ producto: 'PACA_HIELO', cantPedido: faltanteHielo, cantEntrega: 0, precio: precios.pacaHielo, subtotal: precios.pacaHielo * faltanteHielo }] : []),
-              ...(faltanteBotFab > 0 ? [{ producto: 'BOTELLON_FAB', cantPedido: faltanteBotFab, cantEntrega: 0, precio: precios.botellonFab, subtotal: precios.botellonFab * faltanteBotFab }] : []),
-              ...(faltanteBotDom > 0 ? [{ producto: 'BOTELLON_DOM', cantPedido: faltanteBotDom, cantEntrega: 0, precio: precios.botellonDom, subtotal: precios.botellonDom * faltanteBotDom }] : []),
-              ...(faltanteBolAgua > 0 ? [{ producto: 'BOLSA_AGUA', cantPedido: faltanteBolAgua, cantEntrega: 0, precio: precios.bolsaAgua, subtotal: precios.bolsaAgua * faltanteBolAgua }] : []),
-              ...(faltanteBolHielo > 0 ? [{ producto: 'BOLSA_HIELO', cantPedido: faltanteBolHielo, cantEntrega: 0, precio: precios.bolsaHielo, subtotal: precios.bolsaHielo * faltanteBolHielo }] : []),
-            ],
-          },
-        },
-      })
-
-      pedidosHijosCreados.push({ id: hijo.id, numero: hijo.numero })
-    }
-  }
 
   private async crearVentasLibres(
     client: TxOrPrisma,
