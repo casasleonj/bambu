@@ -373,6 +373,37 @@ export async function generarPedidosRecurrentes(
   _fechaReferencia: Date = new Date(),
   options?: { recurrenteBatchId?: string }
 ) {
+  // FIX F-N14 (hallazgo 6): dedup por recurrenteBatchId AL INICIO
+  // de la función, NO en la route.
+  //
+  // Antes: la route hacía findUnique({recurrenteBatchId}) FUERA de
+  // esta función (líneas 60-74 de pedidos/recurrentes/route.ts antes
+  // del fix). Dos requests con mismo offlineId llegaban casi
+  // simultáneos, ambos pasaban el findMany ([]), ambos entraban a
+  // esta función, y ambos creaban pedidos con el mismo
+  // recurrenteBatchId → doble pedido, doble factura, doble cobro.
+  //
+  // Ahora: el check corre aquí, ANTES del loop. Si hay pedidos con
+  // este batchId, retornamos el set existente sin iterar. El
+  // segundo request recibe el mismo resultado que el primero
+  // (idempotente).
+  //
+  // Patrón alineado con F-N7 (entrega), F-N10 (pedidos POST),
+  // F-N11 (pagar-fiado): el dedup debe estar donde el side effect
+  // ocurriría, no en la route.
+  if (options?.recurrenteBatchId) {
+    const pedidosExistentes = await prisma.pedido.findMany({
+      where: { recurrenteBatchId: options.recurrenteBatchId },
+      select: { id: true, numero: true, tipo: true },
+    })
+    if (pedidosExistentes.length > 0) {
+      return {
+        generados: pedidosExistentes,
+        saltados: [],
+      }
+    }
+  }
+
   // FIX H-12 (F-15): ordenar por recurrenteId antes de iterar.
   // Garantiza que admin y cron procesen las plantillas en el mismo orden,
   // eliminando deadlocks cíclicos (A→B vs B→A).

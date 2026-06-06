@@ -56,22 +56,13 @@ export async function POST(request: NextRequest) {
       return apiError('No se proporcionaron decisiones', 400)
     }
 
-    // Offline-first: dedup — si ya hay pedidos con este offlineId (como recurrenteBatchId), devolver el set existente
-    if (offlineId) {
-      const pedidosExistentes = await prisma.pedido.findMany({
-        where: { recurrenteBatchId: offlineId },
-        select: { id: true, numero: true, tipo: true },
-      })
-      if (pedidosExistentes.length > 0) {
-        return apiSuccess({
-          deduped: true,
-          generados: pedidosExistentes.length,
-          saltados: 0,
-          pedidos: pedidosExistentes,
-          saltadosIds: [],
-        }, 200)
-      }
-    }
+    // FIX F-N14: el dedup por offlineId (como recurrenteBatchId) se movió
+    // a src/lib/recurrentes.ts:generarPedidosRecurrentes, al inicio de
+    // la función (antes del loop). Antes este check estaba aquí, fuera
+    // de la generación. Dos requests con mismo offlineId podían ambos
+    // pasar el findMany ([]), ambos entrar a la función, y ambos crear
+    // pedidos con el mismo recurrenteBatchId → doble pedido, doble
+    // factura, doble cobro.
 
     // Race-guard: validate proxGeneracion hasn't shifted since preview
     const plantillasActuales = await prisma.plantillaRecurrente.findMany({
@@ -201,16 +192,25 @@ export async function POST(request: NextRequest) {
     // en `plantillaRecurrente.ultimaGeneracion`/`proxGeneracion` y el
     // race en `getNextNumero` (PostgreSQL SSI valida la atomicidad).
     //
-    // El dedup por offlineId → recurrenteBatchId (líneas 60-74) protege
-    // el caso de replay offline; el unique constraint en Pedido.numero
-    // (schema.prisma) es la red de seguridad final. Las decisiones se
-    // ordenan por recurrenteId antes de iterar para evitar deadlocks
-    // cíclicos (admin vs cron procesando en órdenes distintos).
+    // F-N14: el dedup por offlineId → recurrenteBatchId está al INICIO
+    // de la función (src/lib/recurrentes.ts). Las decisiones se ordenan
+    // por recurrenteId antes de iterar para evitar deadlocks cíclicos
+    // (admin vs cron procesando en órdenes distintos).
     //
     // Patrón alineado con src/app/api/cierre/route.ts:564-585.
     const resultado = await generarPedidosRecurrentes(decisiones, fecha, { recurrenteBatchId: offlineId })
 
-    if (resultado.generados.length > 0) {
+    // Detectar dedup: si la función retornó pedidos con el mismo
+    // recurrenteBatchId que pasamos, fue deduped (ya existían).
+    let deduped = false
+    if (offlineId && resultado.generados.length > 0) {
+      const allHaveBatch = await prisma.pedido.count({
+        where: { id: { in: resultado.generados.map(g => g.id) }, recurrenteBatchId: offlineId },
+      })
+      deduped = allHaveBatch === resultado.generados.length
+    }
+
+    if (resultado.generados.length > 0 && !deduped) {
       logBulkAudit(
         resultado.generados.map(g => ({
           entidad: 'Pedido',
@@ -227,7 +227,8 @@ export async function POST(request: NextRequest) {
       saltados: resultado.saltados.length,
       pedidos: resultado.generados,
       saltadosIds: resultado.saltados,
-    }, 201)
+      ...(deduped && { deduped: true }),
+    }, deduped ? 200 : 201)
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error generando recurrentes:')
     return apiError('Error generando pedidos recurrentes', 500)
