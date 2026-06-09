@@ -186,3 +186,33 @@ describe('F-N12: la route sigue trabajando (no rompe flujo normal)', () => {
     expect(deleteMany).toBeLessThan(lockClose)
   })
 })
+
+describe('F-N22: race en asignación de pedidos a embarques distintos', () => {
+  const putStart = source.indexOf('export async function PUT')
+  const deleteStart = source.indexOf('export async function DELETE')
+  const putSource = source.substring(putStart, deleteStart)
+
+  it('FIX: el updateMany de pedidos captura el count de asignaciones', () => {
+    expect(putSource).toMatch(/assignResult\.count\s*<\s*pedidoIds\.length/)
+  })
+
+  it('FIX: si count < length, identifica los pedidos no asignados', () => {
+    expect(putSource).toMatch(/noAsignados/)
+    expect(putSource).toMatch(/filter\(/)
+  })
+
+  it('FIX: throw con código específico PEDIDOS_YA_ASIGNADOS', () => {
+    expect(putSource).toMatch(/PEDIDOS_YA_ASIGNADOS:/)
+  })
+
+  it('FIX: el catch mapea PEDIDOS_YA_ASIGNADOS a 409 con mensaje claro', () => {
+    const catchBlock = putSource.match(/catch[\s\S]+?(?=\n\})/)?.[0] || ''
+    expect(catchBlock).toMatch(/PEDIDOS_YA_ASIGNADOS:/)
+    expect(catchBlock).toMatch(/ya estaban asignados a otro embarque/)
+    expect(catchBlock).toMatch(/409/)
+  })
+
+  it('FIX: hay un comentario F-N22 explicando el fix', () => {
+    expect(putSource).toMatch(/FIX F-N22/)
+  })
+})

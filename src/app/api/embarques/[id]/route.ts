@@ -225,12 +225,42 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       if (offlineId) updateData.offlineId = offlineId
 
       // Assign pedidos if provided
-      if (pedidoIds && Array.isArray(pedidoIds)) {
-        // FIX F2.5: actualizar estadoEntrega junto con estado (legacy).
-        await tx.pedido.updateMany({
+      if (pedidoIds && Array.isArray(pedidoIds) && pedidoIds.length > 0) {
+        // FIX F-N22 (hallazgo 9): race entre embarques distintos.
+        // El lock 'EMBARQUE' se adquiere por embarque individual, no
+        // global. Dos admins editando embarques DIFERENTES (E1 y E2)
+        // podían asignar los mismos pedidos:
+        //   T0: Admin A edita E1 con pedidoIds=[P1,P2,P3]
+        //   T0: Admin B edita E2 con pedidoIds=[P1,P2]
+        //   T1: A entra al lock EMBARQUE(E1), updateMany con where:
+        //       { id: { in: [P1,P2,P3] }, embarqueId: null }.
+        //       Toma P1,P2,P3 si tienen embarqueId=null. Commit.
+        //   T2: B entra al lock EMBARQUE(E2) (diferente ID, no espera).
+        //       updateMany con where: { id: { in: [P1,P2] }, embarqueId: null }.
+        //       Si A ya commiteó, P1,P2 ya no tienen embarqueId=null,
+        //       updateMany count=0, B no recibe error.
+        //   Resultado: asignación inconsistente. A pidió 3 pedidos, solo
+        //   0 se asignaron a E1 (porque P1,P2,P3 ya estaban en E1 de
+        //   la primera tx). B tampoco los tiene.
+        //
+        // Ahora: detectar el race y devolver 409 con los pedidos
+        // que NO se pudieron asignar.
+        const assignResult = await tx.pedido.updateMany({
           where: { id: { in: pedidoIds }, embarqueId: null },
           data: { embarqueId: id, estado: 'EN_RUTA', estadoEntrega: 'EN_RUTA' },
         })
+
+        if (assignResult.count < pedidoIds.length) {
+          // Algunos pedidos ya estaban asignados. Identificarlos.
+          const asignados = await tx.pedido.findMany({
+            where: { id: { in: pedidoIds } },
+            select: { id: true, embarqueId: true },
+          })
+          const noAsignados = asignados
+            .filter((p: { id: string; embarqueId: string | null }) => p.embarqueId !== id)
+            .map((p: { id: string; embarqueId: string | null }) => p.id)
+          throw new Error(`PEDIDOS_YA_ASIGNADOS:${noAsignados.length}:${noAsignados.join(',')}`)
+        }
       }
 
       return tx.embarque.update({
@@ -299,6 +329,13 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       if (msg.startsWith('FORBIDDEN_FIELDS:')) {
         const [, fields, estado] = msg.split(':')
         return apiError(`No se pueden editar estos campos en estado ${estado}: ${fields}`, 400)
+      }
+      if (msg.startsWith('PEDIDOS_YA_ASIGNADOS:')) {
+        const [, count, ids] = msg.split(':')
+        return apiError(
+          `${count} pedido(s) ya estaban asignados a otro embarque: ${ids}. Recarga y vuelve a intentar.`,
+          409
+        )
       }
     }
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error updating embarque:')
