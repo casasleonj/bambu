@@ -20,11 +20,22 @@ export class AnularPedidoUseCase {
     private txManager: ITransactionManager,
   ) {}
 
-  async execute(input: AnularPedidoInput) {
+  async execute(input: AnularPedidoInput): Promise<{ pedido: import('../dto').PedidoResumenDTO; deduped?: boolean }> {
     return this.txManager.executeWithLock('NC', async (tx) => {
       const pedido = await this.pedidoRepo.findById(PedidoId.from(input.pedidoId), tx)
       if (!pedido) throw new Error('PEDIDO_NOT_FOUND')
-      if (pedido.estadoEntrega.get() === 'ANULADO') throw new Error('YA_ANULADO')
+
+      // FIX F-N21 (hallazgo 2): dedup por estado ANULADO DENTRO del
+      // lock. Antes el dedup estaba en la route (fuera del lock),
+      // dos requests idénticos pasaban el check y el segundo recibía
+      // 400 'YA_ANULADO' en vez de un 200 idempotente. Ahora: el
+      // use case retorna { deduped: true } sin hacer trabajo.
+      if (pedido.estadoEntrega.get() === 'ANULADO') {
+        return {
+          pedido: PedidoDTOMapper.toResumen(pedido),
+          deduped: true,
+        }
+      }
 
       const tuvoPagos = pedido.anular()
 

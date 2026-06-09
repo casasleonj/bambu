@@ -27,19 +27,24 @@ export async function POST(
 
     const { motivo, offlineId } = parsed.data
 
-    // Offline-first: dedup — si el pedido ya está anulado, retornar OK (idempotente)
-    {
-      const { prisma } = await import('@/lib/prisma')
-      const pedidoActual = await prisma.pedido.findUnique({
-        where: { id },
-        select: { estadoEntrega: true },
-      })
-      if (pedidoActual?.estadoEntrega === 'ANULADO') {
-        return apiSuccess({ deduped: true, pedido: { id, motivo, estadoEntrega: 'ANULADO' } }, 200)
-      }
-    }
-
+    // FIX F-N21 (hallazgo 2): el dedup por estado ANULADO se movió
+    // al AnularPedidoUseCase (dentro del lock NC). Antes este check
+    // estaba aquí, fuera del lock. Dos requests idénticos pasaban
+    // el check y el segundo recibía 400 'YA_ANULADO' en vez de
+    // 200 idempotente. Ahora el use case retorna { deduped: true }
+    // y la route lo propaga al cliente.
     const result = await anularPedidoUseCase.execute({ pedidoId: id, motivo, offlineId })
+
+    if (result.deduped) {
+      logAudit({
+        entidad: 'Pedido',
+        registroId: id,
+        accion: 'UPDATE',
+        datos: { motivo, estado: result.pedido.estadoEntrega, deduped: true },
+        usuarioId: (authResult as { user?: { id?: string } }).user?.id,
+      }).catch(() => {})
+      return apiSuccess(result, 200)
+    }
 
     logAudit({
       entidad: 'Pedido',
