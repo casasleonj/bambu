@@ -70,78 +70,90 @@ export async function POST(request: NextRequest) {
         return apiError('La cantidad maxima debe ser mayor o igual a la cantidad minima', 400)
       }
 
-      // Check for exact cantMin collision (unique constraint) - active tiers
-      const exactMatch = await prisma.precioVolumen.findFirst({
-        where: { productoId, cantMin, activo: true },
-      })
-      if (exactMatch) {
-        const existingLabel = exactMatch.cantMax
-          ? `${exactMatch.cantMin}-${exactMatch.cantMax}`
-          : `${exactMatch.cantMin}+`
-        return apiError(`Ya existe un rango activo que empieza en ${cantMin} (${existingLabel}). Edita ese rango o usa un valor diferente.`, 409)
-      }
-
-      // Check inactive tiers with same cantMin (they still block the unique constraint)
-      const inactiveMatch = await prisma.precioVolumen.findFirst({
-        where: { productoId, cantMin, activo: false },
-      })
-      if (inactiveMatch) {
-        if (force) {
-          // Force mode: permanently delete the inactive tier, then create the new one
-          await prisma.precioVolumen.delete({ where: { id: inactiveMatch.id } })
-          logAudit({
-            entidad: 'PrecioVolumen',
-            registroId: inactiveMatch.id,
-            accion: 'DELETE',
-            datos: {
-              productoId: inactiveMatch.productoId,
-              cantMin: inactiveMatch.cantMin,
-              cantMax: inactiveMatch.cantMax,
-              precio: Number(inactiveMatch.precio),
-              reason: 'replaced_by_new_tier',
-              newTierCantMin: cantMin,
-              newTierPrecio: precio,
-            },
-            usuarioId: (authResult.user as { id?: string } | undefined)?.id,
-          }).catch(() => {})
-        } else {
-          // No force: return structured 409 so client can prompt user
-          const inactiveLabel = inactiveMatch.cantMax
-            ? `${inactiveMatch.cantMin}-${inactiveMatch.cantMax}`
-            : `${inactiveMatch.cantMin}+`
-          return apiError(
-            `Hay un rango eliminado con cantMin=${cantMin} (${inactiveLabel}, ${formatCOP(Number(inactiveMatch.precio))}). ¿Deseas eliminarlo permanentemente y crear el nuevo?`,
-            409,
-            {
-              code: 'INACTIVE_TIER_BLOCKING',
-            }
-          )
+      // FIX F-N23 (hallazgo 36): todas las validaciones + create
+      // DENTRO de prisma.$transaction. Antes: cada check era un
+      // prisma.* separado FUERA de tx. Dos requests casi simultáneos
+      // podían crear rangos solapados:
+      //   T0: Admin A: check overlap con rango [10-20] → no overlap
+      //   T0: Admin B: check overlap con rango [10-20] → no overlap
+      //       (ninguno ha creado todavía)
+      //   T1: A crea rango [15-25]
+      //   T2: B crea rango [12-22]
+      //   T3: Ambos commits. Rangos solapados en PrecioVolumen.
+      //       La función resolverPrecio debe manejar solapamiento,
+      //       pero es un estado inválido del modelo de negocio.
+      //
+      // Ahora: prisma.$transaction con row lock implícito. Las dos
+      // tx se serializan en el productoId. La segunda ve el rango
+      // recién creado y el check de overlap lo detecta.
+      const tier = await prisma.$transaction(async (tx) => {
+        // Check for exact cantMin collision (unique constraint) - active tiers
+        const exactMatch = await tx.precioVolumen.findFirst({
+          where: { productoId, cantMin, activo: true },
+        })
+        if (exactMatch) {
+          const existingLabel = exactMatch.cantMax
+            ? `${exactMatch.cantMin}-${exactMatch.cantMax}`
+            : `${exactMatch.cantMin}+`
+          throw new Error(`RANGO_DUPLICADO:${existingLabel}`)
         }
-      }
 
-      // Check for overlapping ranges
-      const overlapping = await prisma.precioVolumen.findFirst({
-        where: {
-          productoId,
-          activo: true,
-          OR: [
-            { cantMax: null },
-            { cantMax: { gte: cantMin } },
-          ],
-          cantMin: { lte: cantMax ?? cantMin },
-        },
-      })
-      if (overlapping) {
-        const existingLabel = overlapping.cantMax
-          ? `${overlapping.cantMin}-${overlapping.cantMax}`
-          : `${overlapping.cantMin}+`
-        return apiError(`El rango se solapa con el existente (${existingLabel}). Elimina o ajusta el rango existente primero.`, 409)
-      }
+        // Check inactive tiers with same cantMin
+        const inactiveMatch = await tx.precioVolumen.findFirst({
+          where: { productoId, cantMin, activo: false },
+        })
+        if (inactiveMatch) {
+          if (force) {
+            // Force mode: permanently delete the inactive tier
+            await tx.precioVolumen.delete({ where: { id: inactiveMatch.id } })
+            logAudit({
+              entidad: 'PrecioVolumen',
+              registroId: inactiveMatch.id,
+              accion: 'DELETE',
+              datos: {
+                productoId: inactiveMatch.productoId,
+                cantMin: inactiveMatch.cantMin,
+                cantMax: inactiveMatch.cantMax,
+                precio: Number(inactiveMatch.precio),
+                reason: 'replaced_by_new_tier',
+                newTierCantMin: cantMin,
+                newTierPrecio: precio,
+              },
+              usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+            }).catch(() => {})
+          } else {
+            const inactiveLabel = inactiveMatch.cantMax
+              ? `${inactiveMatch.cantMin}-${inactiveMatch.cantMax}`
+              : `${inactiveMatch.cantMin}+`
+            throw new Error(`INACTIVE_TIER_BLOCKING:${inactiveLabel}:${Number(inactiveMatch.precio)}`)
+          }
+        }
 
-      const tier = await prisma.precioVolumen.create({
-        data: { productoId, cantMin, cantMax: cantMax ?? null, precio },
-        include: { producto: true },
+        // Check for overlapping ranges
+        const overlapping = await tx.precioVolumen.findFirst({
+          where: {
+            productoId,
+            activo: true,
+            OR: [
+              { cantMax: null },
+              { cantMax: { gte: cantMin } },
+            ],
+            cantMin: { lte: cantMax ?? cantMin },
+          },
+        })
+        if (overlapping) {
+          const existingLabel = overlapping.cantMax
+            ? `${overlapping.cantMin}-${overlapping.cantMax}`
+            : `${overlapping.cantMin}+`
+          throw new Error(`RANGO_SOLAPADO:${existingLabel}`)
+        }
+
+        return tx.precioVolumen.create({
+          data: { productoId, cantMin, cantMax: cantMax ?? null, precio },
+          include: { producto: true },
+        })
       })
+
       logAudit({
         entidad: 'PrecioVolumen',
         registroId: tier.id,
@@ -241,6 +253,24 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown'
     logger.error({ err: message }, 'Error in precios API:')
+
+    // FIX F-N23: mapear errores thrown desde la tx
+    if (message.startsWith('RANGO_DUPLICADO:')) {
+      const label = message.split(':')[1]
+      return apiError(`Ya existe un rango activo que empieza en esa cantidad (${label}). Edita ese rango o usa un valor diferente.`, 409)
+    }
+    if (message.startsWith('INACTIVE_TIER_BLOCKING:')) {
+      const [, label, precio] = message.split(':')
+      return apiError(
+        `Hay un rango eliminado con esa cantidad minima (${label}, ${formatCOP(Number(precio))}). ¿Deseas eliminarlo permanentemente y crear el nuevo?`,
+        409,
+        { code: 'INACTIVE_TIER_BLOCKING' }
+      )
+    }
+    if (message.startsWith('RANGO_SOLAPADO:')) {
+      const label = message.split(':')[1]
+      return apiError(`El rango se solapa con el existente (${label}). Elimina o ajusta el rango existente primero.`, 409)
+    }
 
     // Detectar errores de Prisma/DB comunes y dar mensajes utiles
     if (message.includes('Record to update not found') || message.includes('P2025')) {
