@@ -16,49 +16,60 @@ export async function PUT(request: NextRequest) {
   const userId = (authResult.user as { id: string }).id
 
   try {
-    const dbUser = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { mustChangePassword: true, username: true, password: true },
-    })
-    if (!dbUser) return apiError('Usuario no encontrado', 404)
-    if (!dbUser.mustChangePassword) {
-      return apiError('No se requiere cambio de contraseña', 400)
-    }
-
     const body = await request.json()
     const { currentPassword, newPassword, confirmNewPassword } = body
 
-    // FIX C-10: requerir contraseña actual para evitar account takeover.
-    // Si un atacante roba la sesión antes de que el dueño legítimo cambie
-    // la contraseña, sin este check podría cambiarla y bloquear al dueño.
-    // El endpoint de "mi perfil" (/api/auth/profile) YA requiere currentPassword;
-    // este era el único flujo de cambio de pass que no lo hacía.
-    if (!currentPassword) {
-      return apiError('Contraseña actual requerida', 400)
-    }
-    const currentValid = await bcrypt.compare(currentPassword, dbUser.password)
-    if (!currentValid) {
-      return apiError('Contraseña actual incorrecta', 401)
-    }
+    // FIX F-29: read+check+update DENTRO de tx con optimistic lock.
+    // Mismo TOCTOU que F-28b: si el admin (o un atacante con sesión)
+    // resetea el password entre el read y el update, el usuario
+    // puede usar su password actual brevemente. También permite
+    // bypass del check currentPassword si el row cambia.
+    //
+    // Solución: prisma.$transaction con row lock implícito + bcrypt
+    // compare DENTRO de la tx + optimistic lock sobre updatedAt.
+    await prisma.$transaction(async (tx) => {
+      const dbUser = await tx.user.findUnique({
+        where: { id: userId },
+        select: { mustChangePassword: true, password: true, updatedAt: true },
+      })
+      if (!dbUser) throw new Error('FORCE_USER_NOT_FOUND')
+      if (!dbUser.mustChangePassword) {
+        throw new Error('FORCE_NOT_REQUIRED')
+      }
 
-    if (!newPassword || !confirmNewPassword) {
-      return apiError('Nueva contraseña y confirmación requeridas', 400)
-    }
-    if (newPassword.length < 6) {
-      return apiError('Contraseña debe tener al menos 6 caracteres', 400)
-    }
-    if (newPassword === currentPassword) {
-      return apiError('La nueva contraseña debe ser diferente a la actual', 400)
-    }
-    if (newPassword !== confirmNewPassword) {
-      return apiError('Las contraseñas no coinciden', 400)
-    }
+      // FIX C-10: requerir contraseña actual para evitar account takeover.
+      if (!currentPassword) {
+        throw new Error('FORCE_CURRENT_PASSWORD_REQUIRED')
+      }
+      const currentValid = await bcrypt.compare(currentPassword, dbUser.password)
+      if (!currentValid) {
+        throw new Error('FORCE_WRONG_PASSWORD')
+      }
 
-    const hashed = await bcrypt.hash(newPassword, 12)
+      if (!newPassword || !confirmNewPassword) {
+        throw new Error('FORCE_NEW_PASSWORD_REQUIRED')
+      }
+      if (newPassword.length < 6) {
+        throw new Error('FORCE_PASSWORD_TOO_SHORT')
+      }
+      if (newPassword === currentPassword) {
+        throw new Error('FORCE_PASSWORD_SAME')
+      }
+      if (newPassword !== confirmNewPassword) {
+        throw new Error('FORCE_PASSWORD_MISMATCH')
+      }
 
-    await prisma.user.update({
-      where: { id: userId },
-      data: { password: hashed, mustChangePassword: false },
+      const hashed = await bcrypt.hash(newPassword, 12)
+
+      // Optimistic lock: si el row fue modificado por otro request
+      // entre el findUnique y el updateMany, count=0
+      const updateResult = await tx.user.updateMany({
+        where: { id: userId, updatedAt: dbUser.updatedAt },
+        data: { password: hashed, mustChangePassword: false },
+      })
+      if (updateResult.count === 0) {
+        throw new Error('FORCE_MODIFICADO_POR_OTRO_REQUEST')
+      }
     })
 
     logAudit({
@@ -71,6 +82,36 @@ export async function PUT(request: NextRequest) {
 
     return apiSuccess({ message: 'Contraseña actualizada' })
   } catch (error) {
+    // FIX F-29: mapear errores thrown desde la tx
+    if (error instanceof Error) {
+      if (error.message === 'FORCE_USER_NOT_FOUND') {
+        return apiError('Usuario no encontrado', 404)
+      }
+      if (error.message === 'FORCE_NOT_REQUIRED') {
+        return apiError('No se requiere cambio de contraseña', 400)
+      }
+      if (error.message === 'FORCE_CURRENT_PASSWORD_REQUIRED') {
+        return apiError('Contraseña actual requerida', 400)
+      }
+      if (error.message === 'FORCE_WRONG_PASSWORD') {
+        return apiError('Contraseña actual incorrecta', 401)
+      }
+      if (error.message === 'FORCE_NEW_PASSWORD_REQUIRED') {
+        return apiError('Nueva contraseña y confirmación requeridas', 400)
+      }
+      if (error.message === 'FORCE_PASSWORD_TOO_SHORT') {
+        return apiError('Contraseña debe tener al menos 6 caracteres', 400)
+      }
+      if (error.message === 'FORCE_PASSWORD_SAME') {
+        return apiError('La nueva contraseña debe ser diferente a la actual', 400)
+      }
+      if (error.message === 'FORCE_PASSWORD_MISMATCH') {
+        return apiError('Las contraseñas no coinciden', 400)
+      }
+      if (error.message === 'FORCE_MODIFICADO_POR_OTRO_REQUEST') {
+        return apiError('Tu cuenta fue modificada por otro request. Recarga y vuelve a intentar.', 409)
+      }
+    }
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error force password change:')
     return apiError('Error actualizando contraseña')
   }
