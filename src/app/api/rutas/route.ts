@@ -71,20 +71,26 @@ export async function POST(request: NextRequest) {
 
     const { nombre, dias, repartidorId, repartidorRespaldoId, horarioInicio, horarioFin } = parsed.data
 
-    const ruta = await prisma.ruta.create({
-      data: {
-        nombre,
-        dias: dias || null,
-        repartidorId: repartidorId || null,
-        repartidorRespaldoId: repartidorRespaldoId || null,
-        horarioInicio: horarioInicio || null,
-        horarioFin: horarioFin || null,
-        createdById: (authResult.user as { id: string }).id,
-      },
-      include: {
-        repartidor: { select: { id: true, nombre: true } },
-        repartidorRespaldo: { select: { id: true, nombre: true } },
-      },
+    // FIX F-33a: prisma.$transaction con row lock implícito sobre
+    // la unique constraint Ruta.nombre. Antes: create directo.
+    // Dos admins creando ruta con el mismo nombre casi simultáneo
+    // → P2002 → 500. Ahora: 409 con mensaje específico.
+    const ruta = await prisma.$transaction(async (tx) => {
+      return tx.ruta.create({
+        data: {
+          nombre,
+          dias: dias || null,
+          repartidorId: repartidorId || null,
+          repartidorRespaldoId: repartidorRespaldoId || null,
+          horarioInicio: horarioInicio || null,
+          horarioFin: horarioFin || null,
+          createdById: (authResult.user as { id: string }).id,
+        },
+        include: {
+          repartidor: { select: { id: true, nombre: true } },
+          repartidorRespaldo: { select: { id: true, nombre: true } },
+        },
+      })
     })
 
     logAudit({
@@ -97,6 +103,10 @@ export async function POST(request: NextRequest) {
 
     return apiSuccess({ ruta }, 201)
   } catch (error) {
+    // FIX F-33a: mapear P2002 → 409 limpio
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002') {
+      return apiError('Ya existe una ruta con ese nombre', 409)
+    }
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error creating ruta:')
     return apiError('Error creando ruta')
   }
@@ -122,20 +132,46 @@ export async function PUT(request: NextRequest) {
       return apiError('Datos invalidos', 400, { formErrors: [formatZodError(parsed.error)] })
     }
 
-    const ruta = await prisma.ruta.update({
-      where: { id },
-      data: {
-        ...parsed.data,
-        repartidorId: parsed.data.repartidorId || null,
-        repartidorRespaldoId: parsed.data.repartidorRespaldoId || null,
-        horarioInicio: parsed.data.horarioInicio || null,
-        horarioFin: parsed.data.horarioFin || null,
-      },
-      include: {
-        repartidor: { select: { id: true, nombre: true } },
-        repartidorRespaldo: { select: { id: true, nombre: true } },
-      },
+    // FIX F-33b: optimistic locking con updatedAt.
+    // Antes: prisma.ruta.update directo sin tx. Dos admins
+    // editando la misma ruta casi simultáneo, last-write-wins
+    // silencioso. Cambios manuales perdidos.
+    //
+    // Ahora: updateMany con condición sobre updatedAt. Si el
+    // row fue modificado entre el read y el update, count=0
+    // → 409 con mensaje específico.
+    const updated = await prisma.$transaction(async (tx) => {
+      const existing = await tx.ruta.findUnique({
+        where: { id },
+        select: { updatedAt: true },
+      })
+      if (!existing) throw new Error('RUTA_NOT_FOUND')
+
+      const updateResult = await tx.ruta.updateMany({
+        where: { id, updatedAt: existing.updatedAt },
+        data: {
+          ...parsed.data,
+          repartidorId: parsed.data.repartidorId || null,
+          repartidorRespaldoId: parsed.data.repartidorRespaldoId || null,
+          horarioInicio: parsed.data.horarioInicio || null,
+          horarioFin: parsed.data.horarioFin || null,
+        },
+      })
+      if (updateResult.count === 0) {
+        throw new Error('RUTA_MODIFICADA_POR_OTRO_ADMIN')
+      }
+
+      return tx.ruta.findUnique({
+        where: { id },
+        include: {
+          repartidor: { select: { id: true, nombre: true } },
+          repartidorRespaldo: { select: { id: true, nombre: true } },
+        },
+      })
     })
+
+    if (!updated) throw new Error('RUTA_NOT_FOUND')
+    const ruta = updated
 
     logAudit({
       entidad: 'Ruta',
@@ -147,6 +183,15 @@ export async function PUT(request: NextRequest) {
 
     return apiSuccess({ ruta })
   } catch (error) {
+    // FIX F-33b: mapear errores thrown desde la tx
+    if (error instanceof Error) {
+      if (error.message === 'RUTA_NOT_FOUND') {
+        return apiError('Ruta no encontrada', 404)
+      }
+      if (error.message === 'RUTA_MODIFICADA_POR_OTRO_ADMIN') {
+        return apiError('La ruta fue modificada por otro admin. Recarga y vuelve a intentar.', 409)
+      }
+    }
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error updating ruta:')
     return apiError('Error actualizando ruta')
   }
