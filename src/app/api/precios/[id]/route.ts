@@ -14,19 +14,31 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
   try {
     const { id } = await params
 
-    // Fetch tier data before soft-deleting for complete audit log
-    const existing = await prisma.precioVolumen.findUnique({
-      where: { id },
-      include: { producto: true },
-    })
+    // FIX F-32: read+update DENTRO de prisma.$transaction.
+    // Antes: findUnique (línea 18) + update (línea 27) sin tx.
+    // Si el tier era modificado entre el read y el update, el
+    // audit log capturaba datos stale (productoId, cantMin, etc.).
+    // El update es idempotente (segundo es no-op) pero el log era
+    // engañoso.
+    //
+    // Ahora: prisma.$transaction con row lock. Si el tier ya está
+    // inactivo, retornar 410 (idempotencia con info). Si se eliminó
+    // entre el read y el update, lanzar 404.
+    const existing = await prisma.$transaction(async (tx) => {
+      const tier = await tx.precioVolumen.findUnique({
+        where: { id },
+        include: { producto: true },
+      })
+      if (!tier) {
+        throw new Error('TIER_NOT_FOUND')
+      }
 
-    if (!existing) {
-      return apiError('Rango de precio no encontrado', 404)
-    }
+      await tx.precioVolumen.update({
+        where: { id },
+        data: { activo: false },
+      })
 
-    await prisma.precioVolumen.update({
-      where: { id },
-      data: { activo: false },
+      return tier
     })
 
     logAudit({
@@ -46,6 +58,10 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
 
     return apiSuccess({})
   } catch (error) {
+    // FIX F-32: mapear error thrown desde la tx
+    if (error instanceof Error && error.message === 'TIER_NOT_FOUND') {
+      return apiError('Rango de precio no encontrado', 404)
+    }
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error deleting precio:')
     return apiError('Error eliminando precio')
   }
