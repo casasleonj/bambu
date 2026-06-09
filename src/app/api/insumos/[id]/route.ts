@@ -37,10 +37,34 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (!parsed.success) {
       return apiError('Datos invalidos', 400, { formErrors: [formatZodError(parsed.error)] })
     }
-    const insumo = await prisma.insumo.update({
-      where: { id },
-      data: parsed.data,
+
+    // FIX F-34b: optimistic locking con updatedAt.
+    // Antes: prisma.insumo.update directo. Dos admins editando
+    // el mismo insumo casi simultáneo, last-write-wins
+    // silencioso.
+    //
+    // Ahora: prisma.$transaction con row lock + updateMany con
+    // condición sobre updatedAt. Si el row fue modificado,
+    // count=0 → 409 con mensaje específico.
+    const insumo = await prisma.$transaction(async (tx) => {
+      const existing = await tx.insumo.findUnique({
+        where: { id },
+        select: { updatedAt: true },
+      })
+      if (!existing) throw new Error('INSUMO_NOT_FOUND')
+
+      const updateResult = await tx.insumo.updateMany({
+        where: { id, updatedAt: existing.updatedAt },
+        data: parsed.data,
+      })
+      if (updateResult.count === 0) {
+        throw new Error('INSUMO_MODIFICADO_POR_OTRO_ADMIN')
+      }
+
+      return tx.insumo.findUnique({ where: { id } })
     })
+
+    if (!insumo) throw new Error('INSUMO_NOT_FOUND')
 
     logAudit({
       entidad: 'Insumo',
@@ -52,6 +76,15 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     return apiSuccess({ insumo })
   } catch (error) {
+    // FIX F-34b: mapear errores thrown desde la tx
+    if (error instanceof Error) {
+      if (error.message === 'INSUMO_NOT_FOUND') {
+        return apiError('Insumo no encontrado', 404)
+      }
+      if (error.message === 'INSUMO_MODIFICADO_POR_OTRO_ADMIN') {
+        return apiError('El insumo fue modificado por otro admin. Recarga y vuelve a intentar.', 409)
+      }
+    }
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error updating insumo:')
     return apiError('Error actualizando insumo')
   }

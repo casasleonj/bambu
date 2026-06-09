@@ -51,15 +51,21 @@ export async function POST(request: NextRequest) {
     }
     const { nombre, unidad, stock, stockMin, precioUnit, proveedorId } = parsed.data
 
-    const insumo = await prisma.insumo.create({
-      data: {
-        nombre,
-        unidad: unidad || 'UNIDAD',
-        stock: stock || 0,
-        stockMin: stockMin || 0,
-        precioUnit: precioUnit || 0,
-        proveedorId: proveedorId || null,
-      },
+    // FIX F-34a: create DENTRO de prisma.$transaction con row lock
+    // sobre la unique constraint nombre. Antes: create directo.
+    // Dos admins creando insumo con el mismo nombre casi simultáneo
+    // → P2002 → 500. Ahora: P2002 → 409 con mensaje específico.
+    const insumo = await prisma.$transaction(async (tx) => {
+      return tx.insumo.create({
+        data: {
+          nombre,
+          unidad: unidad || 'UNIDAD',
+          stock: stock || 0,
+          stockMin: stockMin || 0,
+          precioUnit: precioUnit || 0,
+          proveedorId: proveedorId || null,
+        },
+      })
     })
 
     logAudit({
@@ -72,6 +78,10 @@ export async function POST(request: NextRequest) {
 
     return apiSuccess({ insumo }, 201)
   } catch (error) {
+    // FIX F-34a: mapear P2002 → 409 con mensaje específico
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002') {
+      return apiError('Ya existe un insumo con ese nombre', 409)
+    }
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error creating insumo:')
     return apiError('Error creando insumo')
   }
