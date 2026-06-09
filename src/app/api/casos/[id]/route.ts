@@ -54,7 +54,7 @@ export async function PATCH(
 
     const existing = await prisma.caso.findUnique({
       where: { id },
-      select: { status: true, asignadoAId: true, notasResolucion: true },
+      select: { status: true, asignadoAId: true, notasResolucion: true, updatedAt: true },
     })
 
     if (!existing) return apiError('Caso no encontrado', 404)
@@ -127,16 +127,49 @@ export async function PATCH(
       return apiError('No hay cambios para aplicar', 400)
     }
 
+    // FIX F-N19 (hallazgo 21): optimistic locking con updatedAt.
+    // Antes: el findUnique se hacía FUERA de tx, y el updateMany
+    // dentro de la tx no verificaba si el row había sido modificado
+    // entre el read y el write. Dos PATCH simultáneos con cambios
+    // a status+asignado podían:
+    //   T0: PATCH A lee existing.status=ABIERTO, existing.asignadoAId=null
+    //   T0: PATCH B lee existing.status=ABIERTO, existing.asignadoAId=null
+    //       (mismo resultado, ambos leen antes de que cualquiera
+    //       commitee)
+    //   T1: PATCH A hace update con status=EN_PROCESO, evento status_change
+    //   T1: PATCH B hace update con asignadoAId=user-X, evento asignado
+    //   T2: Ambos commits. Status final: last-write-wins por campo.
+    //       Eventos: ambos commits crean eventos, con valorPre stale
+    //       ('ABIERTO' cuando el caso ya está EN_PROCESO). Trazabilidad sucia.
+    //
+    // Ahora: updateMany con condición sobre updatedAt. Si otro PATCH
+    // commiteó primero, su update cambió updatedAt, por lo que el
+    // where no matchea y count=0. Devolvemos 409.
     const caso = await prisma.$transaction(async (tx) => {
-      const updated = await tx.caso.update({
-        where: { id },
+      // Atomic update con optimistic lock
+      const updateResult = await tx.caso.updateMany({
+        where: {
+          id,
+          updatedAt: existing.updatedAt,
+        },
         data: updates,
+      })
+
+      if (updateResult.count === 0) {
+        throw new Error('CASO_MODIFICADO_POR_OTRO_USUARIO')
+      }
+
+      // Re-leer el caso con los datos actualizados
+      const updated = await tx.caso.findUnique({
+        where: { id },
         include: {
           cliente: { select: { id: true, nombre: true } },
           pedido: { select: { id: true, numero: true } },
           asignadoA: { select: { id: true, username: true } },
         },
       })
+
+      if (!updated) throw new Error('CASO_NOT_FOUND')  // no debería pasar
 
       if (eventosData.length > 0) {
         await tx.casoEvento.createMany({
@@ -163,6 +196,14 @@ export async function PATCH(
 
     return apiSuccess({ caso })
   } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === 'CASO_MODIFICADO_POR_OTRO_USUARIO') {
+        return apiError('El caso fue modificado por otro usuario. Recarga y vuelve a intentar.', 409)
+      }
+      if (error.message === 'CASO_NOT_FOUND') {
+        return apiError('Caso no encontrado', 404)
+      }
+    }
     return apiError('Error actualizando caso')
   }
 }
