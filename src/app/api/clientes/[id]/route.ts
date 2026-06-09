@@ -124,10 +124,41 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
-    const cliente = await prisma.cliente.update({
+    // FIX F-N20 (hallazgo 26): optimistic locking con updatedAt.
+    // Antes: prisma.cliente.update directo SIN tx ni check de
+    // updatedAt. Dos PUT/PATCH casi simultáneos del mismo cliente
+    // (admin edita teléfono, asistente edita barrio) causaban
+    // last-write-wins silencioso: el segundo pisa al primero
+    // sin warning, posibles pérdidas de datos en campos no tocados
+    // por el request que ganó.
+    //
+    // Ahora: leer updatedAt, updateMany con condición atómica.
+    // Si count=0, devolver 409 con mensaje específico.
+    const existing = await prisma.cliente.findUnique({
       where: { id, activo: true },
+      select: { updatedAt: true },
+    })
+    if (!existing) return apiError('Not found', 404)
+
+    const updateResult = await prisma.cliente.updateMany({
+      where: {
+        id,
+        activo: true,
+        updatedAt: existing.updatedAt,
+      },
       data,
     })
+
+    if (updateResult.count === 0) {
+      return apiError(
+        'El cliente fue modificado por otro usuario. Recarga y vuelve a intentar.',
+        409,
+      )
+    }
+
+    // Re-leer para devolver el estado final
+    const cliente = await prisma.cliente.findUnique({ where: { id } })
+    if (!cliente) return apiError('Not found', 404)
 
     logAudit({
       entidad: 'Cliente',
