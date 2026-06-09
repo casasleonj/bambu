@@ -6,6 +6,7 @@ import { ConfigCreateSchema } from '@/lib/validators'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { validateConfigValue } from '@/lib/config-validation'
+import { revalidateConfigCache } from '@/lib/config'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -67,11 +68,26 @@ export async function POST(request: NextRequest) {
   try {
     const { valor } = parsed.data
 
-    const existing = await prisma.config.findUnique({ where: { clave } })
-    const config = await prisma.config.upsert({
-      where: { clave },
-      update: { valor },
-      create: { clave, valor },
+    // FIX F-N24 (hallazgo 43): envolver el upsert en prisma.$transaction
+    // y revalidar cache SOLO si el commit fue exitoso.
+    //
+    // Antes: el upsert corría FUERA de tx. Si fallaba (P2002 por
+    // unique constraint, error de red, etc.), revalidateConfigCache
+    // se ejecutaba igual, invalidando la cache innecesariamente.
+    // Si la tx externa no se hacía commit, la cache se invalidaba
+    // de todas formas (stale invalidation).
+    //
+    // Ahora: la tx garantiza que el upsert commiteó. Solo entonces
+    // revalidamos la cache. Si la tx hace rollback, la cache no
+    // se invalida.
+    const { config, existing } = await prisma.$transaction(async (tx) => {
+      const existing = await tx.config.findUnique({ where: { clave } })
+      const config = await tx.config.upsert({
+        where: { clave },
+        update: { valor },
+        create: { clave, valor },
+      })
+      return { config, existing }
     })
 
     logAudit({
@@ -81,6 +97,9 @@ export async function POST(request: NextRequest) {
       datos: { clave, valor },
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     }).catch(() => {})
+
+    // Solo revalidar si la tx commiteó exitosamente
+    revalidateConfigCache()
 
     return apiSuccess({ config }, 201)
   } catch (error) {
