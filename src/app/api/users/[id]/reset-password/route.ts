@@ -44,38 +44,69 @@ export async function PATCH(_request: NextRequest, { params }: { params: Promise
   }
 
   try {
-    const user = await prisma.user.findUnique({
-      where: { id },
-      select: { id: true, username: true, rol: true, nombre: true, apellido: true },
-    })
-    if (!user) return apiError('Usuario no encontrado', 404)
+    // FIX F-30: read+update DENTRO de tx con optimistic lock.
+    // Antes: findUnique (línea 47) + update (línea 56) sin tx.
+    // Dos admins reseteando el password del mismo user casi
+    // simultáneo:
+    //   T0: Admin A: findUnique → user existe
+    //   T0: Admin B: findUnique → user existe
+    //   T1: A genera password "abc", hace update, retorna "abc"
+    //   T1: B genera password "xyz", hace update, retorna "xyz"
+    //   T2: La DB tiene "xyz" (last-write-wins). El admin A le dijo
+    //       al usuario "tu nueva contraseña es abc" pero la real
+    //       es "xyz". El usuario no puede entrar con "abc".
+    //
+    // Ahora: prisma.$transaction con row lock + optimistic lock.
+    // Si el row fue modificado entre el findUnique y el updateMany,
+    // count=0 → 409 con mensaje específico.
+    const result = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.findUnique({
+        where: { id },
+        select: { id: true, username: true, rol: true, nombre: true, apellido: true, updatedAt: true },
+      })
+      if (!user) throw new Error('RESET_USER_NOT_FOUND')
 
-    const plainPassword = generatePassword(12)
-    const hashed = await bcrypt.hash(plainPassword, 12)
+      const plainPassword = generatePassword(12)
+      const hashed = await bcrypt.hash(plainPassword, 12)
 
-    await prisma.user.update({
-      where: { id },
-      data: { password: hashed, mustChangePassword: true },
+      const updateResult = await tx.user.updateMany({
+        where: { id, updatedAt: user.updatedAt },
+        data: { password: hashed, mustChangePassword: true },
+      })
+      if (updateResult.count === 0) {
+        throw new Error('RESET_MODIFICADO_POR_OTRO_ADMIN')
+      }
+
+      return { user, plainPassword }
     })
 
     logAudit({
       entidad: 'User',
-      registroId: user.id,
+      registroId: result.user.id,
       accion: 'UPDATE',
       datos: { tipo: 'RESET_PASSWORD' },
       usuarioId: adminId,
     }).catch(() => {})
 
     return apiSuccess({
-      password: plainPassword,
+      password: result.plainPassword,
       user: {
-        id: user.id,
-        username: user.username,
-        nombre: user.nombre,
-        apellido: user.apellido,
+        id: result.user.id,
+        username: result.user.username,
+        nombre: result.user.nombre,
+        apellido: result.user.apellido,
       },
     })
   } catch (error) {
+    // FIX F-30: mapear errores thrown desde la tx
+    if (error instanceof Error) {
+      if (error.message === 'RESET_USER_NOT_FOUND') {
+        return apiError('Usuario no encontrado', 404)
+      }
+      if (error.message === 'RESET_MODIFICADO_POR_OTRO_ADMIN') {
+        return apiError('El usuario fue modificado por otro admin. Recarga y vuelve a intentar.', 409)
+      }
+    }
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error resetting password:')
     return apiError('Error reseteando contraseña')
   }
