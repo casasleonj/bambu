@@ -122,19 +122,39 @@ export async function PUT(request: NextRequest) {
       return apiError('Datos inválidos', 400, { formErrors: [formatZodError(parsed.error)] })
     }
 
-    const existing = await prisma.negocio.findUnique({ where: { id } })
-    if (!existing) {
-      return apiError('Negocio no encontrado', 404)
-    }
+    // FIX F-35b: optimistic locking con updatedAt.
+    // Antes: prisma.negocio.findUnique + update directo sin tx.
+    // Dos admins editando el mismo negocio casi simultáneo,
+    // last-write-wins silencioso. Cambios manuales perdidos.
+    //
+    // Ahora: prisma.$transaction con row lock + updateMany con
+    // condición sobre updatedAt. Si el row fue modificado,
+    // count=0 → 409 con mensaje específico.
+    const result = await prisma.$transaction(async (tx) => {
+      const existing = await tx.negocio.findUnique({
+        where: { id },
+        select: { updatedAt: true },
+      })
+      if (!existing) throw new Error('NEGOCIO_NOT_FOUND')
 
-    const negocio = await prisma.negocio.update({
-      where: { id },
-      data: parsed.data,
-      include: {
-        cliente: { select: { id: true, nombre: true, apellido: true } },
-        ruta: { select: { id: true, nombre: true } },
-      },
+      const updateResult = await tx.negocio.updateMany({
+        where: { id, updatedAt: existing.updatedAt },
+        data: parsed.data,
+      })
+      if (updateResult.count === 0) {
+        throw new Error('NEGOCIO_MODIFICADO_POR_OTRO_ADMIN')
+      }
+
+      return tx.negocio.findUnique({
+        where: { id },
+        include: {
+          cliente: { select: { id: true, nombre: true, apellido: true } },
+          ruta: { select: { id: true, nombre: true } },
+        },
+      })
     })
+
+    if (!result) throw new Error('NEGOCIO_NOT_FOUND')
 
     logAudit({
       entidad: 'Negocio',
@@ -144,8 +164,17 @@ export async function PUT(request: NextRequest) {
       usuarioId: authResult.user?.id,
     })
 
-    return apiSuccess({ negocio, message: 'Negocio actualizado exitosamente' })
+    return apiSuccess({ negocio: result, message: 'Negocio actualizado exitosamente' })
   } catch (error) {
+    // FIX F-35b: mapear errores thrown desde la tx
+    if (error instanceof Error) {
+      if (error.message === 'NEGOCIO_NOT_FOUND') {
+        return apiError('Negocio no encontrado', 404)
+      }
+      if (error.message === 'NEGOCIO_MODIFICADO_POR_OTRO_ADMIN') {
+        return apiError('El negocio fue modificado por otro admin. Recarga y vuelve a intentar.', 409)
+      }
+    }
     return apiError('Error al actualizar negocio', 500)
   }
 }
@@ -162,34 +191,56 @@ export async function DELETE(request: NextRequest) {
     const id = url.pathname.split('/').pop()
     if (!id) return apiError('ID requerido', 400)
 
-    const existing = await prisma.negocio.findUnique({
-      where: { id },
-      include: { _count: { select: { pedidos: true } } },
+    // FIX F-35c: read+check+delete DENTRO de prisma.$transaction.
+    // Antes: findUnique con _count.pedidos + check + delete sin tx.
+    // Si un pedido se crea entre el count y el delete, FK
+    // constraint falla con 500. Raro pero posible.
+    //
+    // Ahora: prisma.$transaction con row lock. Re-leer el count
+    // dentro de la tx. Si hay pedidos, throw NEGOCIO_TIENE_PEDIDOS.
+    // Si no, delete. Atómico.
+    const deleted = await prisma.$transaction(async (tx) => {
+      const existing = await tx.negocio.findUnique({
+        where: { id },
+        include: { _count: { select: { pedidos: true } } },
+      })
+      if (!existing) {
+        throw new Error('NEGOCIO_NOT_FOUND')
+      }
+
+      // Prevent deletion if there are associated pedidos
+      if (existing._count.pedidos > 0) {
+        throw new Error(`NEGOCIO_TIENE_PEDIDOS:${existing._count.pedidos}`)
+      }
+
+      await tx.negocio.delete({ where: { id } })
+
+      return existing
     })
-    if (!existing) {
-      return apiError('Negocio no encontrado', 404)
-    }
-
-    // Prevent deletion if there are associated pedidos
-    if (existing._count.pedidos > 0) {
-      return apiError(
-        `No se puede eliminar: tiene ${existing._count.pedidos} pedido(s) asociado(s)`,
-        400,
-      )
-    }
-
-    await prisma.negocio.delete({ where: { id } })
 
     logAudit({
       entidad: 'Negocio',
       registroId: id,
       accion: 'DELETE',
-      datos: { nombre: existing.nombre },
+      datos: { nombre: deleted.nombre },
       usuarioId: authResult.user?.id,
     })
 
     return apiSuccess({ message: 'Negocio eliminado exitosamente' })
   } catch (error) {
+    // FIX F-35c: mapear errores thrown desde la tx
+    if (error instanceof Error) {
+      if (error.message === 'NEGOCIO_NOT_FOUND') {
+        return apiError('Negocio no encontrado', 404)
+      }
+      if (error.message.startsWith('NEGOCIO_TIENE_PEDIDOS:')) {
+        const count = error.message.split(':')[1]
+        return apiError(
+          `No se puede eliminar: tiene ${count} pedido(s) asociado(s)`,
+          400,
+        )
+      }
+    }
     return apiError('Error al eliminar negocio', 500)
   }
 }
