@@ -93,32 +93,44 @@ export async function POST(request: NextRequest) {
 
     const { clienteId, tipo, canal, cadaNDias, proxGeneracion: proxGeneracionInput, horaPreferida, productos, notas } = parsed.data
 
-    const existente = await prisma.plantillaRecurrente.findUnique({
-      where: { clienteId },
-    })
-    if (existente) {
-      return apiError('El cliente ya tiene una plantilla recurrente', 409)
-    }
-
     const proxGeneracion = proxGeneracionInput
       ? new Date(proxGeneracionInput)
       : calcularProxGeneracion(new Date(), cadaNDias)
 
-    const plantilla = await prisma.plantillaRecurrente.create({
-      data: {
-        clienteId,
-        tipo,
-        canal,
-        cadaNDias,
-        horaPreferida: horaPreferida ?? null,
-        productos: productosToJson(productos ?? {}),
-        proxGeneracion,
-        notas: notas ?? null,
-        createdById: (authResult.user as { id: string }).id,
-      },
-      include: {
-        cliente: { select: { id: true, nombre: true, telefono: true } },
-      },
+    // FIX F-26a: findUnique + create DENTRO de prisma.$transaction.
+    // Antes: el findUnique (línea 96 antes del fix) corría FUERA
+    // de tx. Dos admins creando plantilla para el mismo cliente
+    // casi simultáneo pasaban el check, el segundo recibía P2002
+    // → 409 (gracias al catch existente), pero el flujo wasted
+    // (parsing, validación, etc.) y la UX era confusa.
+    //
+    // Ahora: prisma.$transaction con row lock implícito sobre la
+    // unique constraint clienteId. La segunda tx espera y ve la
+    // fila recién creada → 409 con mensaje específico.
+    const plantilla = await prisma.$transaction(async (tx) => {
+      const existente = await tx.plantillaRecurrente.findUnique({
+        where: { clienteId },
+      })
+      if (existente) {
+        throw new Error('PLANTILLA_YA_EXISTE')
+      }
+
+      return tx.plantillaRecurrente.create({
+        data: {
+          clienteId,
+          tipo,
+          canal,
+          cadaNDias,
+          horaPreferida: horaPreferida ?? null,
+          productos: productosToJson(productos ?? {}),
+          proxGeneracion,
+          notas: notas ?? null,
+          createdById: (authResult.user as { id: string }).id,
+        },
+        include: {
+          cliente: { select: { id: true, nombre: true, telefono: true } },
+        },
+      })
     })
 
     logAudit({
@@ -133,6 +145,10 @@ export async function POST(request: NextRequest) {
       recurrente: { ...plantilla, productos: JSON.parse(plantilla.productos) },
     }, 201)
   } catch (error) {
+    // FIX F-26a: mapear error thrown desde la tx
+    if (error instanceof Error && error.message === 'PLANTILLA_YA_EXISTE') {
+      return apiError('El cliente ya tiene una plantilla recurrente', 409)
+    }
     if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002') {
       return apiError('El cliente ya tiene una plantilla recurrente', 409)
     }
@@ -158,6 +174,23 @@ export async function PUT(request: NextRequest) {
       return apiError(formatZodError(parsed.error), 400)
     }
 
+    // FIX F-26b: optimistic locking con updatedAt.
+    // Antes: findUnique (línea 161) + update (línea 181) sin
+    // verificar updatedAt. Dos PATCH casi simultáneos del mismo
+    // recurrente con cambios a `cadaNDias` (que recalcula
+    // proxGeneracion desde ultimaGeneracion) podían:
+    //   T0: PATCH A lee existente.ultimaGeneracion=T0
+    //   T0: PATCH B lee existente.ultimaGeneracion=T0 (mismo)
+    //   T1: A hace update con cadaNDias=14, proxGeneracion recalculado
+    //       desde ultimaGeneracion=T0
+    //   T1: B hace update con cadaNDias=21, proxGeneracion recalculado
+    //       desde ultimaGeneracion=T0 (stale)
+    //   T2: Last-write-wins. La proxGeneracion calculada por el
+    //       request perdedor queda en la DB.
+    //
+    // Ahora: updateMany con condición sobre updatedAt. Si el row
+    // fue modificado entre el findUnique y el updateMany, count=0.
+    // Devolvemos 409.
     const existente = await prisma.plantillaRecurrente.findUnique({ where: { id } })
     if (!existente) return apiError('Plantilla no encontrada', 404)
 
@@ -178,13 +211,29 @@ export async function PUT(request: NextRequest) {
       data.productos = productosToJson(parsed.data.productos)
     }
 
-    const plantilla = await prisma.plantillaRecurrente.update({
-      where: { id },
+    const updateResult = await prisma.plantillaRecurrente.updateMany({
+      where: {
+        id,
+        updatedAt: existente.updatedAt,
+      },
       data,
+    })
+
+    if (updateResult.count === 0) {
+      return apiError(
+        'La plantilla fue modificada por otro usuario. Recarga y vuelve a intentar.',
+        409,
+      )
+    }
+
+    // Re-leer para devolver el estado final
+    const plantilla = await prisma.plantillaRecurrente.findUnique({
+      where: { id },
       include: {
         cliente: { select: { id: true, nombre: true } },
       },
     })
+    if (!plantilla) return apiError('Plantilla no encontrada', 404)  // no debería pasar
 
     logAudit({
       entidad: 'PlantillaRecurrente',
