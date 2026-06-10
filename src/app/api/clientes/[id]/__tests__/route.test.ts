@@ -21,7 +21,8 @@ describe('F-N20: clientes PUT usa optimistic locking con updatedAt', () => {
   })
 
   it('FIX: el PUT usa updateMany con condición sobre updatedAt', () => {
-    expect(putSource).toMatch(/prisma\.cliente\.updateMany\(\s*\{[\s\S]+?where:\s*\{[\s\S]+?id,[\s\S]+?activo:\s*true,[\s\S]+?updatedAt:\s*existing\.updatedAt/)
+    // Acepta prisma.cliente.updateMany (legacy) o tx.cliente.updateMany (Fase 2+ con $transaction)
+    expect(putSource).toMatch(/(?:prisma|tx)\.cliente\.updateMany\(\s*\{[\s\S]+?where:\s*\{[\s\S]+?id,[\s\S]+?activo:\s*true,[\s\S]+?updatedAt:\s*existing\.updatedAt/)
   })
 
   it('FIX: si count === 0, devuelve 409 con mensaje claro', () => {
@@ -44,8 +45,11 @@ describe('F-N20: el flujo normal sigue funcionando (no rompe)', () => {
     expect(putSource).toMatch(/logAudit\(/)
   })
 
-  it('FIX: el cleanup de contactos sigue funcionando', () => {
-    expect(putSource).toMatch(/data\.contactos\s*=\s*data\.contactos\.filter/)
+  it('FIX: el cleanup de contactos se hace via contactoCliente en Fase 2', () => {
+    // Patrón legacy eliminado (Fase 2: dual-write via tx.contactoCliente)
+    expect(putSource).not.toMatch(/data\.contactos\s*=\s*data\.contactos\.filter/)
+    // Nuevo patrón: dual-write via tx.contactoCliente
+    expect(putSource).toMatch(/tx\.contactoCliente/)
   })
 })
 
