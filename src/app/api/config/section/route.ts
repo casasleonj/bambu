@@ -4,6 +4,7 @@ import { requireAuth, requireRole } from '@/lib/auth-check'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { validateConfigBatch } from '@/lib/config-validation'
+import { revalidateConfigCache } from '@/lib/config'
 
 /**
  * POST /api/config/section
@@ -67,6 +68,8 @@ export async function POST(request: NextRequest) {
       datos: { entries: entries.map(e => e.clave) },
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     }).catch(() => {})
+
+    revalidateConfigCache()
 
     return apiSuccess({ configs }, 200)
   } catch (error) {
