@@ -307,42 +307,52 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
   /**
    * Sincroniza los contactos de un cliente con la nueva tabla ContactoCliente
    * (Fase 3 de la 1FN). Compara los contactos actuales del servidor
-   * con los del form y hace POST/DELETE individuales.
+   * con los del form y hace POST/PATCH/DELETE individuales.
    *
    * Estrategia: diff por teléfono (es la clave única [clienteId, telefono]).
    * - Contactos en form con teléfono nuevo (sin match en server) → POST
    * - Contactos en server con teléfono que ya no está en form → DELETE
-   * - Contactos en ambos con el mismo teléfono → unchanged
-   *   (No hay endpoint PATCH; si cambia nombre/relacion, no se persiste.
-   *    Workaround: borrar + crear con mismo teléfono.)
+   * - Contactos en ambos con el mismo teléfono pero distinto nombre/relacion → PATCH
+   * - Contactos en ambos con el mismo teléfono y mismos campos → unchanged
    *
-   * Devuelve true si la sincronización fue exitosa (o no había nada que
-   * sincronizar). Devuelve false si algún POST/DELETE falló.
+   * Devuelve {ok, errors} donde ok es true si todas las ops fueron exitosas
+   * (o no había nada que sincronizar).
    */
   async function syncContactos(
     clienteId: string,
-    contactosActuales: Array<{ id?: string; telefono: string }>,
+    contactosActuales: Array<{ id?: string; telefono: string; nombre?: string; relacion?: string | null }>,
     contactosForm: Array<{ telefono: string; nombre: string; relacion?: string }>,
   ): Promise<{ ok: boolean; errors: string[] }> {
     const errors: string[] = []
 
     // Normalizar teléfonos para el diff (sin espacios/guiones)
     const norm = (t: string) => t.replace(/\s|-|\(|\)/g, '').trim()
-    const enForm = new Map<string, { nombre: string; relacion?: string }>()
+    const normRel = (r?: string | null) => (r ?? '').trim() || null
+
+    // Map: telefono normalizado → { nombre, relacion, id? }
+    const enForm = new Map<string, { nombre: string; relacion: string | null }>()
     for (const c of contactosForm) {
       if (!c.nombre.trim() || !c.telefono.trim()) continue
       enForm.set(norm(c.telefono), {
         nombre: c.nombre.trim(),
-        relacion: c.relacion?.trim() || undefined,
+        relacion: normRel(c.relacion),
       })
     }
-    const enServer = new Map<string, string>() // telefono → id
+
+    // Map: telefono normalizado → { id, nombre, relacion } del server
+    const enServer = new Map<string, { id: string; nombre: string; relacion: string | null }>()
     for (const c of contactosActuales) {
-      if (c.id && c.telefono) enServer.set(norm(c.telefono), c.id)
+      if (c.id && c.telefono) {
+        enServer.set(norm(c.telefono), {
+          id: c.id,
+          nombre: (c.nombre ?? '').trim(),
+          relacion: normRel(c.relacion ?? null),
+        })
+      }
     }
 
     // DELETE: están en server pero NO en form
-    for (const [tel, id] of enServer) {
+    for (const [tel, { id }] of enServer) {
       if (!enForm.has(tel)) {
         const res = await fetch(`/api/clientes/${clienteId}/contactos/${id}`, {
           method: 'DELETE',
@@ -354,7 +364,7 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
       }
     }
 
-    // POST: están en form pero NO en server
+    // POST: están en form pero NO en server (teléfono nuevo)
     for (const [tel, payload] of enForm) {
       if (!enServer.has(tel)) {
         const res = await fetch(`/api/clientes/${clienteId}/contactos`, {
@@ -363,13 +373,35 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
           body: JSON.stringify({
             nombre: payload.nombre,
             telefono: tel,
-            relacion: payload.relacion,
+            relacion: payload.relacion ?? undefined,
           }),
         })
         if (!res.ok) {
           const data = await res.json().catch(() => ({}))
           errors.push(`POST ${tel}: ${data.error?.message ?? res.status}`)
         }
+      }
+    }
+
+    // PATCH: están en ambos pero cambiaron nombre o relacion
+    for (const [tel, formPayload] of enForm) {
+      const serverEntry = enServer.get(tel)
+      if (!serverEntry) continue // ya manejado en POST
+      const changed =
+        serverEntry.nombre !== formPayload.nombre ||
+        serverEntry.relacion !== formPayload.relacion
+      if (!changed) continue
+      const res = await fetch(`/api/clientes/${clienteId}/contactos/${serverEntry.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nombre: formPayload.nombre,
+          relacion: formPayload.relacion,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        errors.push(`PATCH ${tel}: ${data.error?.message ?? res.status}`)
       }
     }
 

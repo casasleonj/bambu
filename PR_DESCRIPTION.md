@@ -75,7 +75,7 @@ Migración 1FN (Primera Forma Normal) de las 2 violaciones restantes: `Cliente.c
 - `cliente-form.tsx` wireada con `syncContactos()` (diff por teléfono) ✅
 - 19 tests unitarios cubren los endpoints ✅
 
-**Limitación menor**: no hay endpoint PATCH para contactos, así que si el usuario cambia el `nombre` o `relacion` de un contacto existente (mismo teléfono), el cambio NO persiste. Workaround: borrar y re-crear. Es aceptable para v1 porque la identidad del contacto es el teléfono (es el unique key).
+**Sin limitación restante**: el endpoint `PATCH /api/clientes/[id]/contactos/[contactoId]` (commit `2d3fd12`) cubre la actualización de `nombre` y `relacion` manteniendo el mismo teléfono. `syncContactos()` en `cliente-form.tsx` lo usa automáticamente cuando el diff detecta que los campos cambiaron.
 
 ## Para Supabase prod
 

@@ -245,16 +245,18 @@ vercel --prod
    - **c) NEXTAUTH_URL se revierte**: Ver issue #7.
     - Tras arreglar (a) y (b), el test pasa consistentemente con `--workers=4` en 19-26s. Verificado en commit `eb37b14`.
 9. **Errores TS fantasma en `.next/dev/types/validator.ts`** (resuelto): Si `npx tsc --noEmit` reporta errores inexplicables (módulos que sí existen, signatures que coinciden con el código fuente, identificadores que NO aparecen en el archivo), correr `rm -rf .next` y reintentar. Patrón observable: el error apunta a líneas/carácteres inexistentes en el archivo o a identificadores que no están en el código. El dev server (`next dev`) regenera `.next/dev/types/validator.ts` automáticamente y resuelve la inconsistencia. Si el dev server está corriendo, el cache se regenera al toque de archivo; si no está, el `rm -rf .next` fuerza la regeneración al próximo build.
-10. **CRUD de contactos desde la UI** (resuelto por `0d13fb3` + `d3218b3` + `c0bd1b2`): La 1FN storage está cerrada (columnas JSON dropeadas, datos en `ContactoCliente` y `PlantillaProducto`).
-    - Sub-endpoints creados en `d3218b3`:
+10. **CRUD de contactos desde la UI** (resuelto por `0d13fb3` + `2d3fd12` + `d3218b3` + `c0bd1b2`): La 1FN storage está cerrada (columnas JSON dropeadas, datos en `ContactoCliente` y `PlantillaProducto`).
+    - Sub-endpoints creados en `d3218b3` y `2d3fd12`:
       - `POST /api/clientes/[id]/contactos` — crea un contacto. Devuelve 409 si ya existe uno con mismo (clienteId, telefono).
+      - `PATCH /api/clientes/[id]/contactos/[contactoId]` (agregado en `2d3fd12`) — actualiza parcialmente. Todos los campos opcionales pero al menos uno requerido (validado con Zod `.refine()`). Devuelve 409 si el nuevo `telefono` choca con otro contacto del mismo cliente (unique constraint).
       - `DELETE /api/clientes/[id]/contactos/[contactoId]` — borra un contacto. Devuelve 404 si el contacto no pertenece al cliente (no leak info).
-    - UI wireada en `0d13fb3`: `cliente-form.tsx` ahora sincroniza los contactos via `syncContactos()` (diff por teléfono = unique key) después de cada POST/PUT exitoso. La función:
-      - POST nuevos (teléfono no existe en server) → `POST /contactos`
-      - DELETE borrados (teléfono ya no en form) → `DELETE /contactos/[id]`
-      - PATCH cambios (mismo teléfono, distinto nombre/relacion) → NO soportado (no hay endpoint PATCH). Workaround: el usuario debe borrar y re-crear.
+    - UI wireada en `0d13fb3` y extendida en `2d3fd12`: `cliente-form.tsx` ahora sincroniza los contactos via `syncContactos()` (diff por teléfono = unique key) después de cada POST/PUT exitoso. La función:
+      - **POST nuevos** (teléfono no existe en server) → `POST /contactos`
+      - **PATCH cambios** (mismo teléfono, distinto `nombre` o `relacion`) → `PATCH /contactos/[id]`
+      - **DELETE borrados** (teléfono ya no en form) → `DELETE /contactos/[id]`
+      - **Unchanged** (mismo teléfono, mismos campos) → skip
       - Dedup edge: en POST deduped (cliente ya existía), no sincroniza para evitar pisar contactos del cliente original.
-    - Tests unitarios (19) en `c0bd1b2` cubren: estructura de auth/role, validación Zod, manejo de P2002/P2003, cross-cliente protection (no leak info), logAudit, orden auth-before-role.
+    - Tests unitarios (32) en `c0bd1b2` y `2d3fd12` cubren: estructura de auth/role, validación Zod (incluyendo `.refine()` para "al menos un campo"), manejo de P2002/P2003, construcción dinámica del updateData, cross-cliente protection (no leak info), logAudit con `cambios` y `antes` (auditoría completa), orden auth-before-role.
     - Mismo issue aplica a **productos de plantilla desde el form del cliente**: si la UI intenta editarlos, no persiste. (Los productos SÍ persisten via el `PUT /api/recurrentes` cuando se editan desde `/recurrentes/[id]`, pero no desde el form de cliente.)
 
 ---
