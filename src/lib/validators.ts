@@ -189,7 +189,8 @@ export const ClienteCreateSchema = z.object({
   barrio: z.string().max(100).optional(),
   direccion: z.string().max(200).optional(),
   linkUbicacion: z.string().url().optional().nullable(),
-  contactos: z.array(ContactoAlternativoSchema).optional().default([]),
+  // FASE 3 CONTRACT: campo `contactos` eliminado del schema.
+  // Los contactos ahora se manejan via tabla ContactoCliente (relación Prisma).
   preciosEspeciales: z.string().optional(),
   notas: z.string().max(500).optional(),
   limitePedidosFiados: z.coerce.number().int().min(1).max(20).optional(),
