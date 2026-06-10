@@ -35,6 +35,32 @@ El plan original tenía 3 huecos críticos y 2 ambigüedades que, sin resolver, 
 - **Renombrar relaciones en Fase 3:** Sí (`contactosRel` → `contactos`, `productosRel` → `productos`)
 - **Shape durante Fase 2:** GET hidrata al shape legacy (`cliente.contactos = [...]` desde `contactosRel`). UI no se toca hasta Fase 3.
 
+**Archivos de UI que NO necesitan cambio (F4 — sub-documentado en v1):**
+
+Gracias a la hidratación al shape legacy en Fase 2, los siguientes archivos frontend **funcionan tal cual** durante toda la migración. No se tocan en ninguna fase (excepto `cliente-form.tsx:385` y `editar-client/index.tsx:84-88` que se ajustan en Fase 3.6.2):
+
+- `src/lib/cliente-search.ts:100-101` — itera `cliente.contactos` que viene hidratado del GET.
+- `src/components/pedidos-search.tsx:18` — tipo `contactos?: Array<...>`, shape coincide.
+- `src/app/(app)/clientes/clientes-client/index.tsx:51,229,259,285,336,1018,1022` — accede a `cliente.contactos` como array.
+- `src/app/(app)/clientes/clientes-client/cliente-table.tsx:408-410,449-450` — muestra contactos y los busca inline.
+- `src/app/(app)/clientes/clientes-client/cliente-form.tsx:281-344` — CRUD del array en el formulario (excepto línea 385 que se ajusta en Fase 3).
+- `src/app/(app)/clientes/clientes-client/types.ts:19,156` — tipo `contactos: ContactoAlternativo[]`.
+- `src/app/(app)/recurrentes/recurrentes-client/types.ts:8` — tipo `productos: Record<string, number>`, shape coincide con hidratación.
+
+**Estrategia de merge por fase (F7 — sub-documentado en v1):**
+
+Aunque todo el plan vive en la rama `feat/1fn-migration-contactos-plantillaproducto`, **el merge a `main` debe hacerse 3 veces**, una por fase:
+
+1. Merge Fase 1 (EXPAND) → deploy a prod → tag `deploy/1fn-fase1-expand`.
+2. Merge Fase 2 (MIGRATE) → deploy a prod → tag `deploy/1fn-fase2-migrate`. **Drenar al menos 24h** antes de Fase 3.
+3. Merge Fase 3 (CONTRACT) → deploy a prod → tag `deploy/1fn-fase3-contract`.
+
+**Procedimiento de rollback (F2 — faltante en v1):**
+
+- **Fase 1 (EXPAND):** `npx prisma migrate resolve --rolled-back <ts>` + `git revert` del commit. Sin pérdida de datos.
+- **Fase 2 (MIGRATE):** `git revert` del commit de código (NO del commit de migración SQL). Mantener la tabla nueva con datos. Re-activar la lectura desde JSON. La app vuelve a usar el JSON legacy como fuente de verdad. Las escrituras vuelven a ser solo al JSON.
+- **Fase 3 (CONTRACT):** ⚠️ **irreversible**. Si falla el drop de columna, no se puede deshacer sin perder las escrituras nuevas (que ya no van al JSON). Antes de Fase 3, **drenar al menos 24h** y verificar que el dual-write lleva ese tiempo sincronizando sin incidentes.
+
 **Volumen actual en dev (verificado):** 1 cliente con 2 contactos, 0 plantillas. SQL del backfill validado contra DB real con `BEGIN; ... ROLLBACK;`.
 
 **Stack confirmado:** Prisma 6.19.3 soporta `--create-only`. PG 17.10 tiene `gen_random_uuid()` nativo (no requiere `pgcrypto`).
@@ -266,6 +292,15 @@ Archivo `prisma/migrations/${TIMESTAMP}_backfill_contactos_productos/migration.s
 -- Backfill idempotente y paginado.
 -- Re-ejecutable: WHERE NOT EXISTS evita duplicados.
 -- Paginación por id (cuid string) en lotes de 100.
+--
+-- IMPORTANTE (F1 — bug detectado en dry-run):
+-- La condición de salida del loop debe ser ÚNICAMENTE `last_id IS NOT NULL`.
+-- El patrón `inserted > 0 OR last_id IS NOT NULL` causa loop infinito cuando
+-- el último batch real procesa todas sus filas y luego los siguientes loops
+-- hacen 0 inserts pero `last_id` mantiene un valor no-nulo.
+--
+-- Validado con dry-run contra DB local: el patrón original entraba en loop
+-- infinito. El patrón corregido termina en 1 iteración para 120 clientes.
 
 -- ============================================
 -- Backfill Cliente.contactos → ContactoCliente
@@ -276,9 +311,12 @@ DECLARE
   last_id   TEXT := '';
   inserted  INT := 0;
   total     INT := 0;
-  has_more  BOOLEAN := TRUE;
+  iter      INT := 0;
 BEGIN
-  WHILE has_more LOOP
+  LOOP
+    iter := iter + 1;
+    EXIT WHEN iter > 1000;  -- safety: máximo 100k clientes procesados
+
     WITH batch AS (
       SELECT id FROM "Cliente"
       WHERE id > last_id
@@ -304,17 +342,18 @@ BEGIN
           AND cc.telefono = elem->>'telefono'
           AND cc.nombre = elem->>'nombre'
       );
-    
+
     GET DIAGNOSTICS inserted = ROW_COUNT;
     total := total + inserted;
-    
+
+    -- Tomar el último id del batch actual (no el primero del siguiente)
     SELECT id INTO last_id FROM "Cliente" WHERE id > last_id ORDER BY id LIMIT 1;
-    has_more := inserted > 0 OR last_id IS NOT NULL;
-    
-    RAISE NOTICE 'Batch: % filas, total: %', inserted, total;
+    EXIT WHEN last_id IS NULL;  -- ÚNICA condición de salida
+
+    RAISE NOTICE 'Iter %: inserted=%, last_id=%', iter, inserted, last_id;
   END LOOP;
-  
-  RAISE NOTICE 'Backfill contactos completo: % filas insertadas', total;
+
+  RAISE NOTICE 'Backfill contactos completo: % filas insertadas (en % iters)', total, iter;
 END $$;
 
 -- ============================================
@@ -326,9 +365,12 @@ DECLARE
   last_id   TEXT := '';
   inserted  INT := 0;
   total     INT := 0;
-  has_more  BOOLEAN := TRUE;
+  iter      INT := 0;
 BEGIN
-  WHILE has_more LOOP
+  LOOP
+    iter := iter + 1;
+    EXIT WHEN iter > 1000;
+
     WITH batch AS (
       SELECT id FROM "PlantillaRecurrente"
       WHERE id > last_id
@@ -351,17 +393,17 @@ BEGIN
         SELECT 1 FROM "PlantillaProducto" pp
         WHERE pp."plantillaId" = p.id AND pp.producto = kv.key
       );
-    
+
     GET DIAGNOSTICS inserted = ROW_COUNT;
     total := total + inserted;
-    
+
     SELECT id INTO last_id FROM "PlantillaRecurrente" WHERE id > last_id ORDER BY id LIMIT 1;
-    has_more := inserted > 0 OR last_id IS NOT NULL;
-    
-    RAISE NOTICE 'Batch: % filas, total: %', inserted, total;
+    EXIT WHEN last_id IS NULL;
+
+    RAISE NOTICE 'Iter %: inserted=%, last_id=%', iter, inserted, last_id;
   END LOOP;
-  
-  RAISE NOTICE 'Backfill productos completo: % filas insertadas', total;
+
+  RAISE NOTICE 'Backfill productos completo: % filas insertadas (en % iters)', total, iter;
 END $$;
 ```
 
@@ -660,80 +702,28 @@ git commit -m "feat(1fn): use relation-based dedup in POST /api/clientes/quick"
 **Files:**
 - Modify: `src/app/api/clientes/[id]/route.ts:100-178`
 
-- [ ] **Step 1: Reemplazar el bloque legacy de limpieza de `data.contactos`**
+- [ ] **Step 1: Refactorizar el PUT a `prisma.$transaction` con dual-write atómico**
 
-Líneas 114-125. Reemplazar:
+**FALLA DETECTADA (F5 — confusión del plan v1)**: el plan v1 tenía dos Steps duplicados con bloques similares. En el plan v2, consolidado en un solo Step con la versión final.
+
+Reemplazar las líneas 100-178 del PUT actual por:
 
 ```ts
-    if (data.contactos) {
-      const cleaned = data.contactos.filter((c: { nombre?: string; telefono?: string }) => c.nombre?.trim() && c.telefono?.trim())
-      const seen = new Set<string>()
-      data.contactos = cleaned.filter((c: { telefono: string }) => {
-        if (seen.has(c.telefono)) return false
-        seen.add(c.telefono)
-        return true
-      })
-      if (data.telefono) {
-        data.contactos = data.contactos.filter((c: { telefono: string }) => c.telefono !== data.telefono)
-      }
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const authResult = await requireAuth()
+  if (authResult instanceof Response) return authResult
+  const roleCheck = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE], authResult)
+  if (roleCheck instanceof Response) return roleCheck
+  const { id } = await params
+  try {
+    const body = await request.json()
+    const parsed = ClienteUpdateSchema.safeParse(body)
+    if (!parsed.success) {
+      return apiError(formatZodError(parsed.error), 400)
     }
-```
+    const data = parsed.data
 
-Por (insertar **dentro** del bloque de transacción, ANTES del `prisma.cliente.updateMany`):
-
-```ts
-    // Dual-write contactos (Fase 2 MIGRATE) — si llega `contactos` en el body
-    if (data.contactos !== undefined) {
-      const cleaned = data.contactos.filter((c: { nombre?: string; telefono?: string }) => c.nombre?.trim() && c.telefono?.trim())
-      const seen = new Set<string>()
-      const deduped = cleaned.filter((c: { telefono: string }) => {
-        if (seen.has(c.telefono)) return false
-        seen.add(c.telefono)
-        return true
-      })
-      const telefonos = deduped.map((c: { telefono: string }) => c.telefono)
-      
-      // Borrar los que ya no están en la nueva lista
-      await tx.contactoCliente.deleteMany({
-        where: { clienteId: id, telefono: { notIn: telefonos } },
-      })
-      
-      // Upsert cada contacto nuevo/existente
-      for (const c of deduped) {
-        await tx.contactoCliente.upsert({
-          where: { clienteId_telefono: { clienteId: id, telefono: c.telefono } },
-          create: {
-            clienteId: id,
-            nombre: c.nombre,
-            telefono: c.telefono,
-            relacion: c.relacion ?? null,
-          },
-          update: {
-            nombre: c.nombre,
-            relacion: c.relacion ?? null,
-          },
-        })
-      }
-      
-      // Si el teléfono principal cambió, borrar el contacto con ese teléfono
-      if (data.telefono) {
-        await tx.contactoCliente.deleteMany({
-          where: { clienteId: id, telefono: data.telefono },
-        })
-      }
-      
-      // Quitar `contactos` del payload que va a `cliente.updateMany`
-      // (la columna legacy aún existe en Fase 2, pero ya no la tocamos desde la app)
-      delete data.contactos
-    }
-```
-
-- [ ] **Step 2: Refactorizar el PUT para usar `prisma.$transaction`**
-
-El código actual del PUT hace `prisma.cliente.findUnique` y `prisma.cliente.updateMany` **fuera** de una transacción. Para hacer dual-write atómico, refactorizar las líneas 137-150 a una transacción:
-
-```ts
-    // Encontrar updatedAt (lectura fuera de tx para evitar conflicto con la propia tx)
+    // Encontrar updatedAt (lectura fuera de tx)
     const existing = await prisma.cliente.findUnique({
       where: { id, activo: true },
       select: { updatedAt: true },
@@ -782,6 +772,10 @@ El código actual del PUT hace `prisma.cliente.findUnique` y `prisma.cliente.upd
             where: { clienteId: id, telefono: data.telefono },
           })
         }
+
+        // Quitar `contactos` del payload que va a `cliente.updateMany`
+        // (la columna legacy aún existe en Fase 2, pero ya no la tocamos desde la app)
+        delete data.contactos
       }
 
       return tx.cliente.updateMany({
@@ -789,17 +783,43 @@ El código actual del PUT hace `prisma.cliente.findUnique` y `prisma.cliente.upd
         data,
       })
     })
+
+    if (updateResult.count === 0) {
+      return apiError(
+        'El cliente fue modificado por otro usuario. Recarga y vuelve a intentar.',
+        409,
+      )
+    }
+
+    // Re-leer para devolver el estado final
+    const cliente = await prisma.cliente.findUnique({ where: { id } })
+    if (!cliente) return apiError('Not found', 404)
+
+    logAudit({
+      entidad: 'Cliente',
+      registroId: cliente.id,
+      accion: 'UPDATE',
+      datos: { nombre: cliente.nombre },
+      usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+    })
+
+    return apiSuccess({ cliente })
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && (error as { code: string }).code === 'P2025') {
+      return apiError('Not found', 404)
+    }
+    return apiError('Error updating', 500)
+  }
+}
 ```
 
-Notar que `data.contactos` aún se pasa en `data` al `cliente.updateMany` (la columna legacy aún existe en Fase 2).
-
-- [ ] **Step 3: Type-check**
+- [ ] **Step 2: Type-check**
 
 ```bash
 npx tsc --noEmit
 ```
 
-- [ ] **Step 4: Smoke test manual**
+- [ ] **Step 3: Smoke test manual**
 
 PUT al cliente "Test Backfill Doble" creado en Task 2.4 con un contacto nuevo:
 
@@ -822,7 +842,7 @@ SELECT nombre, telefono, relacion FROM "ContactoCliente" WHERE "clienteId" = '<I
 -- Esperado: Hermano (sin cambios) + Madre (nuevo). Esposa borrada.
 ```
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add src/app/api/clientes/[id]/route.ts
@@ -1058,6 +1078,14 @@ Localizar el `findMany` y agregar el include.
 
 - [ ] **Step 12: En la rama de `pg_trgm` (línea 45-79), ajustar el SELECT raw**
 
+**FALLA DETECTADA (F6)**: en plan v1, este step pedía quitar `c.contactos` del SELECT raw sin verificar qué consumidores esperan ese campo. Antes de modificar, ejecutar:
+
+```bash
+grep -n "c\.contactos\|\"contactos\"" src/ -r --include="*.ts" --include="*.tsx"
+```
+
+Confirmar que el único consumidor del SELECT raw (líneas 45-79) es el código de `route.ts` que se está modificando.
+
 Esta rama hace `SELECT c.contactos` desde la columna JSON. Como todavía existe (Fase 2), sigue funcionando. Pero para que la shape devuelta coincida, agregar al SELECT los datos relevantes o hacer un JOIN con `ContactoCliente`:
 
 ```sql
@@ -1237,23 +1265,21 @@ Y quitar todo el bloque `if (data.contactos !== undefined) { ... }` (ahora `data
 
 - [ ] **Step 2: Actualizar el test que verifica el patrón legacy**
 
-En `src/app/api/clientes/[id]/__tests__/route.test.ts:47-49`, el test:
+**FALLA DETECTADA (F3)**: en plan v1 el test verificaba que el patrón legacy **no** existía (`not.toMatch`). Pero el código en Fase 2 ya tenía el patrón dual-write refactorizado a `tx.contactoCliente`. El test correcto debe verificar:
 
-```ts
-  it('FIX: el cleanup de contactos sigue funcionando', () => {
-    expect(putSource).toMatch(/data\.contactos\s*=\s*data\.contactos\.filter/)
-  })
-```
+1. Que el patrón legacy `data.contactos = data.contactos.filter` **no** existe (porque la columna se va a drop).
+2. Que el nuevo patrón `tx.contactoCliente` **sí** existe (porque el dual-write se mantiene hasta Fase 3).
 
-Reemplazar por:
+En `src/app/api/clientes/[id]/__tests__/route.test.ts:47-49`, reemplazar el test:
 
 ```ts
   it('FIX: el cleanup de contactos se hace via contactoCliente en Fase 3', () => {
+    // Patrón legacy eliminado (la columna contactos se va a drop)
     expect(putSource).not.toMatch(/data\.contactos\s*=\s*data\.contactos\.filter/)
+    // Nuevo patrón: dual-write via tx.contactoCliente (aún presente en Fase 2-3)
+    expect(putSource).toMatch(/tx\.contactoCliente/)
   })
 ```
-
-(El test ahora verifica que el patrón legacy **no** existe.)
 
 - [ ] **Step 3: Type-check y tests**
 
@@ -1348,14 +1374,19 @@ npx prisma validate
 
 - [ ] **Step 4: Aplicar la migración (es solo rename de campo Prisma, no debería generar SQL de columna)**
 
+**FALLA DETECTADA (F8)**: el rename `contactosRel` → `contactos` en Prisma es **solo cambio de nombre de campo Prisma, no de columna SQL**. **PERO** el campo `contactos` antes era la columna JSON. Prisma puede confundirse. Verificar:
+
 ```bash
 npx prisma migrate dev --create-only --name rename_rel_to_final
 cat prisma/migrations/<timestamp>_rename_rel_to_final/migration.sql
-# Si está vacío, perfecto: solo cambió el cliente, no la DB.
+# Esperado: archivo VACÍO (Prisma no genera SQL porque no hay cambio de schema a nivel DB)
+# Si Prisma genera DROP COLUMN u otra cosa, REVERTIR (es un bug) y reconsiderar el orden:
+# - Primero droppear la columna JSON (Task 3.7)
+# - Después renombrar la relación
 npx prisma migrate dev
 ```
 
-Si Prisma detecta que el rename afecta la DB, ajustar manualmente para que el SQL sea `ALTER TABLE ... RENAME COLUMN` o nada.
+Si Prisma genera SQL inesperado, ajustar manualmente o revertir el rename y ejecutar primero la Task 3.7.
 
 - [ ] **Step 5: Commit**
 
@@ -1645,12 +1676,17 @@ Agregar al AGENTS.md una nota sobre las nuevas tablas `ContactoCliente` y `Plant
 
 | # | Riesgo | Mitigación |
 |---|--------|-----------|
-| R1 | El backfill paginado puede no completarse si la conexión cae | `WHERE NOT EXISTS` lo hace idempotente; re-ejecutable sin duplicar |
+| R1 | El backfill paginado puede no completarse si la conexión cae | `WHERE NOT EXISTS` lo hace idempotente; re-ejecutable sin duplicar. La condición de salida es `last_id IS NULL` (no `inserted > 0`). |
 | R2 | `prisma generate` no se ejecuta en Vercel con `migrate deploy` | Verificar `package.json` tiene `"postinstall": "prisma generate"` |
-| R3 | El test del PUT verifica patrón legacy | Actualizar el test en Task 3.3 para verificar que el patrón **no** existe |
-| R4 | El SELECT raw de `pg_trgm` lee `c.contactos` | Ajustado en Task 2.9 Step 12 con JOIN a `ContactoCliente` |
-| R5 | Frontend rompe si la shape de respuesta cambia | Decisión: hidratar al shape legacy en Fase 2; UI se actualiza recién en Fase 3.6.2 |
+| R3 | El test del PUT verifica patrón legacy | Actualizar el test en Task 3.3 para verificar AMBOS: patrón legacy NO existe Y `tx.contactoCliente` SÍ existe |
+| R4 | El SELECT raw de `pg_trgm` lee `c.contactos` | Ajustado en Task 2.9 Step 12 con JOIN a `ContactoCliente`. Verificar con grep previo. |
+| R5 | Frontend rompe si la shape de respuesta cambia | Decisión: hidratar al shape legacy en Fase 2; UI se actualiza recién en Fase 3.6.2. Ver "Archivos de UI que NO necesitan cambio" en el contexto. |
 | R6 | El seed crea datos con `JSON.stringify(productos)` | Después de Fase 3, el seed debe cambiar a `plantillaProducto.createMany()` (fuera del scope de este plan) |
+| R7 | Rollback de Fase 2 sin runbook | Procedimiento documentado en "Procedimiento de rollback": `git revert` del commit de código (NO de migración), mantener tabla, re-activar lectura desde JSON. |
+| R8 | Bug de loop infinito en backfill (F1) | Validado con dry-run. Patrón corregido: `EXIT WHEN last_id IS NULL` + `iter > 1000` safety. |
+| R9 | Plan v1 con steps duplicados en Task 2.6 (F5) | Consolidado en Task 2.6 Step 1 (código único). |
+| R10 | Plan v1 sin nota explícita de UI no-touch (F4) | Sección "Archivos de UI que NO necesitan cambio" en el contexto. |
+| R11 | Plan v1 sin estrategia de merge (F7) | Sección "Estrategia de merge por fase": 3 merges con drenado de 24h entre Fase 2 y 3. |
 
 ---
 
