@@ -76,7 +76,6 @@ docs/superpowers/plans/
 create-table.ts
 fix-perms.ts
 recreate-table.ts
-prisma/migrate-recurrentes.ts
 scripts/crear-factura-demo.ts
 
 # SSH keys
