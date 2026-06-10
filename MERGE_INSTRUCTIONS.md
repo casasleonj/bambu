@@ -9,7 +9,7 @@ Hay **4 ramas efímeras** ya pusheadas a `origin`, una por PR. Cada rama represe
 | `merge/1fn-fase1-expand` | 4 | `deploy/1fn-fase1-expand` (`826a36d`) | ✅ tsc + 1062/1062 tests + build |
 | `merge/1fn-fase2-migrate` | 13 | `deploy/1fn-fase2-migrate` (`21c264a`) | ✅ tsc + 1062/1062 tests + build |
 | `merge/1fn-fase3-contract` | 17 | `deploy/1fn-fase3-contract` (`d5b051c`) | ✅ tsc + 1062/1062 tests + build |
-| `merge/1fn-post-fase3` | 29 | `4adcb0d` (HEAD rama completa) | ✅ tsc + 1094/1094 tests + build |
+| `merge/1fn-post-fase3` | 32 | `1094da6` (HEAD rama completa) | ✅ tsc + 1094/1094 tests + build |
 
 ## URLs de PR (abrir en este orden)
 
@@ -59,6 +59,8 @@ https://github.com/casasleonj/bambu/compare/main...merge/1fn-fase3-contract?expa
 ```
 https://github.com/casasleonj/bambu/compare/main...merge/1fn-post-fase3?expand=1
 ```
+
+**IMPORTANTE**: incluye un fix extra (`0b151dd`) que **corrige un bug pre-existente** en `GET /api/clientes/[id]`: el endpoint no incluía `contactos` en su include, así que la UI del detalle del cliente mostraba 0 contactos. La columna legacy `Cliente.contactos Json?` proveía los contactos transparentemente; después de droparla, el GET los perdía. El fix agrega `contactos: { orderBy: { nombre: 'asc' } }` al include. **Sin este fix, mergear PR #3 rompe la UI del detalle del cliente**.
 
 - **Qué hace:** Cierra el gap del CRUD UI. Agrega:
   - `POST /api/clientes/[id]/contactos` — crear contacto
