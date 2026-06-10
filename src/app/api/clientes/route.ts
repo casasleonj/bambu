@@ -225,7 +225,7 @@ export async function POST(request: NextRequest) {
             activo: true,
             OR: [
               { telefono: parsed.data.telefono },
-              { contactos: { path: ['[*].telefono'], equals: parsed.data.telefono } },
+              { contactosRel: { some: { telefono: parsed.data.telefono } } },
             ],
           },
           select: { id: true, nombre: true, telefono: true },
@@ -255,6 +255,18 @@ export async function POST(request: NextRequest) {
           },
           select: { id: true, nombre: true, telefono: true },
         })
+
+        // Dual-write ContactoCliente (Fase 2 MIGRATE)
+        if (contactosSinDuplicados.length > 0) {
+          await tx.contactoCliente.createMany({
+            data: contactosSinDuplicados.map(c => ({
+              clienteId: cliente.id,
+              nombre: c.nombre,
+              telefono: c.telefono,
+              relacion: c.relacion ?? null,
+            })),
+          })
+        }
 
         return { kind: 'created' as const, cliente: { ...cliente, clienteId: cliente.id } }
       },
