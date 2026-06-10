@@ -3,6 +3,7 @@ import { getNextNumero } from "@/lib/sequence";
 import { resolverPreciosPedido, type Canal, type ProductCode } from "@/lib/pricing";
 import { getDateRange } from "@/lib/dates";
 import { executeSerializableWithRetry } from "@/lib/serializable";
+import { hydrateProductos } from "@/lib/cliente-hydrate";
 
 type ProductosMap = {
   PACA_AGUA: number
@@ -12,20 +13,7 @@ type ProductosMap = {
   BOLSA_HIELO: number
 }
 
-function parseProductos(json: string): ProductosMap {
-  try {
-    const raw = JSON.parse(json)
-    return {
-      PACA_AGUA: Math.max(0, raw.PACA_AGUA ?? 0),
-      PACA_HIELO: Math.max(0, raw.PACA_HIELO ?? 0),
-      BOTELLON: Math.max(0, raw.BOTELLON ?? 0),
-      BOLSA_AGUA: Math.max(0, raw.BOLSA_AGUA ?? 0),
-      BOLSA_HIELO: Math.max(0, raw.BOLSA_HIELO ?? 0),
-    }
-  } catch {
-    return { PACA_AGUA: 0, PACA_HIELO: 0, BOTELLON: 0, BOLSA_AGUA: 0, BOLSA_HIELO: 0 }
-  }
-}
+// (parseProductos eliminado en Fase 2: ahora se usa hydrateProductos de @/lib/cliente-hydrate)
 
 function formatDateISO(date: Date): string {
   return date.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
@@ -160,7 +148,7 @@ export async function previewGeneracionRecurrentes(
       activo: true,
       proxGeneracion: { lte: lookaheadEnd },
     },
-    include: { cliente: true, negocio: { include: { cliente: true } } },
+    include: { cliente: true, negocio: { include: { cliente: true } }, productosRel: true },
   })
 
   // Batch fetch all pending orders for all clients in a single query
@@ -215,7 +203,7 @@ export async function previewGeneracionRecurrentes(
     const saltosSanitizados = sanitizarSaltos(pt.saltos || [])
     if (estaEnSaltos(saltosSanitizados, fechaGen)) continue
 
-    const productos = parseProductos(pt.productos)
+      const productos = hydrateProductos(pt.productosRel)
     const cantidadBase = productosToCantidades(productos, pt.canal)
 
     const pedidosPendientesRaw = pedidosPorCliente.get(effectiveClienteId) || []
@@ -430,7 +418,7 @@ export async function generarPedidosRecurrentes(
       // 1. findUnique plantilla
       const pt = await tx.plantillaRecurrente.findUnique({
         where: { id: decision.recurrenteId },
-        include: { cliente: true, negocio: { include: { cliente: true } } },
+        include: { cliente: true, negocio: { include: { cliente: true } }, productosRel: true },
       })
       if (!pt || !pt.activo) return { skipped: true }
 
@@ -525,7 +513,7 @@ export async function generarPedidosRecurrentes(
       }
 
       // 6. Productos y validaciones
-      const productos = parseProductos(pt.productos)
+    const productos = hydrateProductos(pt.productosRel)
       let cantidades = productosToCantidades(productos, pt.canal)
 
       if (decision.decision === 'SOLO_PENDIENTES' || decision.decision === 'APLICAR_CREDITO') {

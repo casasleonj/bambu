@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { sanitizarSaltos, calcularProxGeneracion } from '@/lib/recurrentes'
+import { hydrateProductos } from '@/lib/cliente-hydrate'
 import { z } from 'zod'
 import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
@@ -62,13 +63,14 @@ export async function GET() {
       where: { activo: true },
       include: {
         cliente: { select: { id: true, nombre: true, telefono: true } },
+        productosRel: true,
       },
       orderBy: { createdAt: 'desc' },
     })
 
     const recurrentes = plantillas.map(pt => ({
       ...pt,
-      productos: JSON.parse(pt.productos),
+      productos: hydrateProductos(pt.productosRel),
     }))
 
     return apiSuccess({ recurrentes })
@@ -129,6 +131,7 @@ export async function POST(request: NextRequest) {
         },
         include: {
           cliente: { select: { id: true, nombre: true, telefono: true } },
+          productosRel: true,
         },
       })
 
@@ -158,7 +161,7 @@ export async function POST(request: NextRequest) {
     })
 
     return apiSuccess({
-      recurrente: { ...plantilla, productos: JSON.parse(plantilla.productos) },
+      recurrente: { ...plantilla, productos: hydrateProductos(plantilla.productosRel) },
     }, 201)
   } catch (error) {
     // FIX F-26a: mapear error thrown desde la tx
@@ -266,6 +269,7 @@ export async function PUT(request: NextRequest) {
       where: { id },
       include: {
         cliente: { select: { id: true, nombre: true } },
+        productosRel: true,
       },
     })
     if (!plantilla) return apiError('Plantilla no encontrada', 404)  // no debería pasar
@@ -279,7 +283,7 @@ export async function PUT(request: NextRequest) {
     })
 
     return apiSuccess({
-      recurrente: { ...plantilla, productos: JSON.parse(plantilla.productos) },
+      recurrente: { ...plantilla, productos: hydrateProductos(plantilla.productosRel) },
     })
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error updating plantilla recurrente:')
