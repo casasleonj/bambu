@@ -152,6 +152,21 @@ vercel --prod
 - **Toast contract**: `toast.success` (online result), `toast.info` (offline enqueued), `toast.error` (logic error).
 - **Hooks expose** `pendingOffline: string[]` (offlineIds) and `lastResult: ResilientResult` for UI counters.
 
+### 1FN Normalization — `Cliente.contactos` y `PlantillaRecurrente.productos`
+- **Cerrado en migración `1fn-migration-contactos-plantillaproducto` (3 fases, expand-contract, sin downtime)**.
+- Las dos violaciones de 1FN (arrays/objetos JSON como columna) ahora son tablas relacionales:
+  - **`ContactoCliente`** — `id, clienteId, nombre, telefono, relacion?` con `@@unique([clienteId, telefono])` para upsert dedup, `@@index([clienteId])` y `@@index([telefono])` para búsquedas.
+  - **`PlantillaProducto`** — `id, plantillaId, producto, cantidad` con `@@unique([plantillaId, producto])` y `@@index([plantillaId])`.
+- Ambas con `onDelete: Cascade` (soft-delete del padre no afecta los hijos; solo `DELETE` real).
+- **Shape en la API**:
+  - `cliente.contactos` ahora es directamente `ContactoCliente[]` (Prisma nativo). NO se necesita hidratación para contactos.
+  - `plantilla.productos` ahora es `PlantillaProducto[]` (array). Para consumidores que esperan el shape legacy `{PACA_AGUA: n, ...}`, usar `hydrateProductos()` de `@/lib/cliente-hydrate`.
+- **Búsqueda por teléfono de contacto**: usar `cliente.contactos: { some: { telefono: X } }` en lugar del antiguo `contactos: { path: ['[*].telefono'], equals: X }` (eliminado).
+- **Permisos**: el usuario de runtime (`app_write` en Docker, `postgres` en Supabase) necesita `GRANT` sobre las tablas nuevas. La migración `20260610_grant_permissions_new_tables` los aplica automáticamente.
+- **CRUD de contactos desde la UI**: la 1FN storage está cerrada, pero el plan original no incluyó sub-endpoints para `POST/DELETE /api/clientes/[id]/contactos`. La UI cliente (`cliente-form.tsx`) muestra contactos existentes (GET los hidrata), pero **agregar/editar contactos vía el form no persiste en el backend** — el Zod de Fase 3 removió el campo `contactos` del body. Es trabajo futuro: crear `POST/DELETE /api/clientes/[id]/contactos` y actualizar la UI para usarlos.
+- **Patrón Expand-Contract usado**: tablas additive → backfill idempotente paginado → dual-write → cambiar lecturas con hidratación → drop de columnas legacy. Ver `docs/superpowers/plans/2026-06-10-1fn-migration-contactos-productos.md` para el detalle.
+- **Tags de deploy**: `deploy/1fn-fase1-expand`, `deploy/1fn-fase2-migrate`, `deploy/1fn-fase3-contract`.
+
 ### Service Worker (PWA)
 - `public/sw.js`: Network-first for navigation, cache-first for static assets
 - APIs bypass cache entirely
@@ -230,6 +245,7 @@ vercel --prod
    - **c) NEXTAUTH_URL se revierte**: Ver issue #7.
     - Tras arreglar (a) y (b), el test pasa consistentemente con `--workers=4` en 19-26s. Verificado en commit `eb37b14`.
 9. **Errores TS fantasma en `.next/dev/types/validator.ts`** (resuelto): Si `npx tsc --noEmit` reporta errores inexplicables (módulos que sí existen, signatures que coinciden con el código fuente, identificadores que NO aparecen en el archivo), correr `rm -rf .next` y reintentar. Patrón observable: el error apunta a líneas/carácteres inexistentes en el archivo o a identificadores que no están en el código. El dev server (`next dev`) regenera `.next/dev/types/validator.ts` automáticamente y resuelve la inconsistencia. Si el dev server está corriendo, el cache se regenera al toque de archivo; si no está, el `rm -rf .next` fuerza la regeneración al próximo build.
+10. **CRUD de contactos UI no implementado (post-1FN)**: La 1FN storage está cerrada (columnas JSON dropeadas, datos en `ContactoCliente` y `PlantillaProducto`). Sin embargo, el plan de migración **no incluyó sub-endpoints** para que la UI cliente (`cliente-form.tsx`) pueda persistir cambios en contactos. Síntomas: el form muestra contactos existentes (cargados vía GET), permite editarlos localmente, pero al hacer POST/PUT el body no incluye `contactos` (Zod de Fase 3 lo removió) → los cambios se descartan silenciosamente. **Trabajo futuro**: crear `POST /api/clientes/[id]/contactos` y `DELETE /api/clientes/[id]/contactos/[contactoId]`, y actualizar `cliente-form.tsx` para usar esos endpoints en vez del body de cliente. Mismo issue aplica a productos de plantilla: si la UI cliente intenta editarlos, no persiste. (Los productos SÍ persisten via el `PUT /api/recurrentes` existente cuando se editan desde la página de recurrentes, pero no desde el form del cliente.)
 
 ---
 
