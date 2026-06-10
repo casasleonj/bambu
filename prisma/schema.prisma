@@ -189,15 +189,13 @@ model Cliente {
   telefono      String
   direccion     String?
   barrio        String?
-  referencia    String?
+  referencia  String?
   linkUbicacion String?
-  contactos     Json?
 
-  // NUEVO (Fase 1 EXPAND): relación a tabla normalizada. Coexiste con
-  // `contactos Json?` durante las Fases 2-3; se elimina en Fase 3.
-  contactosRel ContactoCliente[]
+  // FASE 3 CONTRACT: contactos legacy eliminada. Ahora es relación.
+  contactos ContactoCliente[]
 
-  nombreNegocio     String?
+  nombreNegocio String?
   tipoNegocio       String?
   fuente            String?
   horaApertura      String?
@@ -333,13 +331,11 @@ model PlantillaRecurrente {
   activo           Boolean             @default(true)
   cadaNDias        Int                 @default(7)
   tipo             String              @default("ENVIO")
-  canal            String              @default("DOMICILIO")
-  horaPreferida    String?
-  productos        String // JSON: {"PACA_AGUA":2,"PACA_HIELO":0,...}
-  // NUEVO (Fase 1 EXPAND): relación a tabla normalizada. Coexiste con
-  // `productos String` durante las Fases 2-3; se elimina en Fase 3.
-  productosRel     PlantillaProducto[]
-  ultimaGeneracion DateTime?           @db.Timestamptz()
+  canal           String   @default("DOMICILIO")
+  horaPreferida   String?
+  // FASE 3 CONTRACT: productos legacy eliminada. Ahora es relación.
+  productos    PlantillaProducto[]
+  ultimaGeneracion DateTime? @db.Timestamptz()
   proxGeneracion   DateTime?           @db.Timestamptz()
   saltos           String[]
   pausaHasta       DateTime?           @db.Timestamptz()

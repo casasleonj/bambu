@@ -45,11 +45,11 @@ describe('F-N20: el flujo normal sigue funcionando (no rompe)', () => {
     expect(putSource).toMatch(/logAudit\(/)
   })
 
-  it('FIX: el cleanup de contactos se hace via contactoCliente en Fase 2', () => {
-    // Patrón legacy eliminado (Fase 2: dual-write via tx.contactoCliente)
+  it('FIX: el cleanup de contactos se hace via contactoCliente (Fase 3)', () => {
+    // Patrón legacy eliminado (no más data.contactos = data.contactos.filter)
     expect(putSource).not.toMatch(/data\.contactos\s*=\s*data\.contactos\.filter/)
-    // Nuevo patrón: dual-write via tx.contactoCliente
-    expect(putSource).toMatch(/tx\.contactoCliente/)
+    // Fase 3: dual-write también eliminado (no más tx.contactoCliente en este handler)
+    expect(putSource).not.toMatch(/tx\.contactoCliente/)
   })
 })
 

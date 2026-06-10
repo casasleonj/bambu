@@ -673,13 +673,22 @@ async function main() {
         }
         const proxGen = new Date(fecha)
         proxGen.setDate(proxGen.getDate() + 1)
+        const items = Object.entries(prods)
+          .filter(([, cant]) => (cant ?? 0) > 0)
+          .map(([prod, cant]) => ({
+            producto: prod,
+            cantidad: cant!,
+          }))
         await prisma.plantillaRecurrente.create({
           data: {
             clienteId: cliente.id,
             activo: true,
             cadaNDias: 7,
             canal,
-            productos: JSON.stringify(prods),
+            // FASE 3 CONTRACT: productos ahora vive en PlantillaProducto
+            productos: {
+              create: items,
+            },
             ultimaGeneracion: diasAtras(randInt(3, 6)),
             proxGeneracion: proxGen,
             createdById: rand(users).id,

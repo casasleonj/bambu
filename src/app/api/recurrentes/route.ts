@@ -44,15 +44,7 @@ const RecurrenteUpdateSchema = z.object({
   activo: z.boolean().optional(),
 })
 
-function productosToJson(p: Record<string, number | undefined>): string {
-  return JSON.stringify({
-    PACA_AGUA: p.pacaAgua ?? 0,
-    PACA_HIELO: p.pacaHielo ?? 0,
-    BOTELLON: p.botellon ?? 0,
-    BOLSA_AGUA: p.bolsaAgua ?? 0,
-    BOLSA_HIELO: p.bolsaHielo ?? 0,
-  })
-}
+// (productosToJson eliminado en Fase 3: los productos ahora viven en PlantillaProducto)
 
 export async function GET() {
   const authResult = await requireAuth()
@@ -63,14 +55,14 @@ export async function GET() {
       where: { activo: true },
       include: {
         cliente: { select: { id: true, nombre: true, telefono: true } },
-        productosRel: true,
+        productos: true,
       },
       orderBy: { createdAt: 'desc' },
     })
 
     const recurrentes = plantillas.map(pt => ({
       ...pt,
-      productos: hydrateProductos(pt.productosRel),
+      productos: hydrateProductos(pt.productos),
     }))
 
     return apiSuccess({ recurrentes })
@@ -124,18 +116,17 @@ export async function POST(request: NextRequest) {
           canal,
           cadaNDias,
           horaPreferida: horaPreferida ?? null,
-          productos: productosToJson(productos ?? {}),
           proxGeneracion,
           notas: notas ?? null,
           createdById: (authResult.user as { id: string }).id,
         },
         include: {
           cliente: { select: { id: true, nombre: true, telefono: true } },
-          productosRel: true,
+          productos: true,
         },
       })
 
-      // Dual-write PlantillaProducto (Fase 2 MIGRATE)
+      // FASE 3 CONTRACT: productos ahora vive solo en PlantillaProducto
       if (productos && Object.keys(productos).length > 0) {
         const items = Object.entries(productos)
           .filter(([, cant]) => (cant ?? 0) > 0)
@@ -149,7 +140,9 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      return nuevaPlantilla
+      return nuevaPlantilla as typeof nuevaPlantilla & {
+        productos: Array<{ producto: string; cantidad: number }>
+      }
     })
 
     logAudit({
@@ -161,7 +154,7 @@ export async function POST(request: NextRequest) {
     })
 
     return apiSuccess({
-      recurrente: { ...plantilla, productos: hydrateProductos(plantilla.productosRel) },
+      recurrente: { ...plantilla, productos: hydrateProductos(plantilla.productos) },
     }, 201)
   } catch (error) {
     // FIX F-26a: mapear error thrown desde la tx
@@ -227,10 +220,11 @@ export async function PUT(request: NextRequest) {
     if (parsed.data.saltos) data.saltos = sanitizarSaltos(parsed.data.saltos)
 
     if (parsed.data.productos) {
-      data.productos = productosToJson(parsed.data.productos)
+      // FASE 3 CONTRACT: dual-write eliminado. La columna `productos` ya no
+      // existe en la tabla. Los productos se manejan via tabla PlantillaProducto.
 
-      // Dual-write productos (Fase 2 MIGRATE) — fuera del updateMany para
-      // que se ejecute antes de la condición optimistic-lock.
+      // Reemplazar todos los productos de la plantilla (deleteMany + createMany
+      // atómico via transacción).
       const items = Object.entries(parsed.data.productos)
         .filter(([, cant]) => (cant ?? 0) > 0)
         .map(([prod, cant]) => ({
@@ -238,7 +232,6 @@ export async function PUT(request: NextRequest) {
           cantidad: cant!,
         }))
 
-      // Transacción para deleteMany + createMany atómico
       await prisma.$transaction(async (tx) => {
         await tx.plantillaProducto.deleteMany({ where: { plantillaId: id } })
         if (items.length > 0) {
@@ -269,7 +262,7 @@ export async function PUT(request: NextRequest) {
       where: { id },
       include: {
         cliente: { select: { id: true, nombre: true } },
-        productosRel: true,
+        productos: true,
       },
     })
     if (!plantilla) return apiError('Plantilla no encontrada', 404)  // no debería pasar
@@ -283,7 +276,7 @@ export async function PUT(request: NextRequest) {
     })
 
     return apiSuccess({
-      recurrente: { ...plantilla, productos: hydrateProductos(plantilla.productosRel) },
+      recurrente: { ...plantilla, productos: hydrateProductos(plantilla.productos) },
     })
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error updating plantilla recurrente:')

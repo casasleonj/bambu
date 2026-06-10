@@ -8,7 +8,6 @@ import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { executeSerializableWithRetry } from '@/lib/serializable'
-import { hydrateContactos } from '@/lib/cliente-hydrate'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -168,7 +167,7 @@ export async function GET(request: NextRequest) {
               referencia: true,
             },
           },
-          contactosRel: true,  // NUEVO (Fase 2)
+          contactos: true,  // FASE 3: ya es el nombre final
         },
         ...prismaPagination,
       }),
@@ -179,7 +178,6 @@ export async function GET(request: NextRequest) {
       ...c,
       clienteId: c.id,
       saldoPendiente: c.pedidos.reduce((sum, p) => sum + Number(p.saldo), 0),
-      contactos: hydrateContactos(c).contactos,  // shape legacy
     }))
     return apiSuccess(
       pagination.all
@@ -233,7 +231,7 @@ export async function POST(request: NextRequest) {
             activo: true,
             OR: [
               { telefono: parsed.data.telefono },
-              { contactosRel: { some: { telefono: parsed.data.telefono } } },
+              { contactos: { some: { telefono: parsed.data.telefono } } },
             ],
           },
           select: { id: true, nombre: true, telefono: true },
@@ -244,9 +242,6 @@ export async function POST(request: NextRequest) {
         }
 
         // 3. Create
-        const contactos = parsed.data.contactos ?? []
-        const contactosSinDuplicados = contactos.filter(c => c.telefono !== parsed.data.telefono)
-
         const cliente = await tx.cliente.create({
           data: {
             nombre: parsed.data.nombre,
@@ -256,25 +251,12 @@ export async function POST(request: NextRequest) {
             barrio: parsed.data.barrio,
             direccion: parsed.data.direccion,
             linkUbicacion: parsed.data.linkUbicacion ?? null,
-            contactos: contactosSinDuplicados.length > 0 ? contactosSinDuplicados : undefined,
             preciosEspeciales: parsed.data.preciosEspeciales,
             notas: parsed.data.notas,
             offlineId: parsed.data.offlineId ?? null,
           },
           select: { id: true, nombre: true, telefono: true },
         })
-
-        // Dual-write ContactoCliente (Fase 2 MIGRATE)
-        if (contactosSinDuplicados.length > 0) {
-          await tx.contactoCliente.createMany({
-            data: contactosSinDuplicados.map(c => ({
-              clienteId: cliente.id,
-              nombre: c.nombre,
-              telefono: c.telefono,
-              relacion: c.relacion ?? null,
-            })),
-          })
-        }
 
         return { kind: 'created' as const, cliente: { ...cliente, clienteId: cliente.id } }
       },
