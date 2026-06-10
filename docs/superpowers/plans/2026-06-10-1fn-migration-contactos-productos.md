@@ -1702,3 +1702,45 @@ Agregar al AGENTS.md una nota sobre las nuevas tablas `ContactoCliente` y `Plant
 | Conteo `PlantillaProducto` = conteo esperado (0 en dev, N en prod) | Sí |
 | No quedan referencias a las columnas legacy después de Fase 3 | `grep -r "cliente\.contactos[^R]\|plantilla\.productos[^R]" src/` retorna 0 hits relevantes |
 | La 1FN está cerrada: 0 columnas JSON multivaluadas en `Cliente` y `PlantillaRecurrente` | SELECT de information_schema retorna 0 filas |
+
+---
+
+## Notas de ejecución real (post-mortem)
+
+Esta sección documenta las desviaciones, bugs encontrados y decisiones de último momento que surgieron durante la ejecución real del plan, no anticipadas en el diseño.
+
+### Bugs del plan corregidos en runtime
+
+- **F1 (loop infinito) — confirmado y aplicado el fix**: el plan v1 tenía `has_more := inserted > 0 OR last_id IS NOT NULL` en el backfill. El dry-run previo a la ejecución confirmó que esto causa loop infinito (el `OR last_id IS NOT NULL` siempre es true). El fix `EXIT WHEN last_id IS NULL` con `iter > 1000` safety ya estaba en plan v2, pero fue validado en runtime: 121 iters, 0 inserts adicionales, 0 duplicados al re-ejecutar.
+- **F8 (rename conflict) — confirmado y reordenado**: el plan advertía que Prisma no permite renombrar `contactosRel` → `contactos` mientras la columna legacy `contactos` exista. Confirmado en runtime. Reordené las tareas: drop de columnas **primero**, rename **después**. La sección "Orden de tareas" del plan v2 ya contemplaba esta contingencia pero no la numeraba — en la ejecución real fue un swap explícito.
+- **F1 variante (shadow database)**: el dev DB tenía `_prisma_migrations` con duplicados y ordenes aplicados parcialmente. `npx prisma migrate dev` fallaba con shadow database. Solución: generar las migraciones SQL manualmente y marcarlas como aplicadas en `_prisma_migrations` con `INSERT`. Esto fue una **desviación del plan** no anticipada. En Supabase prod esto no debería pasar (historial más limpio), pero en este dev DB fue necesario.
+
+### Gaps del plan descubiertos durante el E2E
+
+- **CRUD de contactos desde la UI no implementado**: el plan se enfocó en storage (1FN), no en API de mutación. La UI `cliente-form.tsx` muestra contactos existentes (GET los hidrata correctamente), pero intentar agregar/editar contactos vía el form **no persiste en el backend** porque el Zod de Fase 3 removió el campo `contactos` del body. Es trabajo futuro documentado en AGENTS.md issue #10. No es bloqueante para el deploy de la 1FN (el storage está correcto), pero bloquea funcionalidad de UI. **Recomendación**: crear PR separado para `POST/DELETE /api/clientes/[id]/contactos` antes de mergear a main.
+- **Permisos GRANT**: en dev el usuario `app_write` (runtime) necesita `GRANT ALL` sobre las tablas nuevas (creadas por `bambu`, el migration user). El plan no lo mencionaba. Agregué la migración `20260610_grant_permissions_new_tables` con los GRANTs. En Supabase prod los GRANTs los gestiona el dashboard.
+
+### Resultados de tests y builds
+
+- **TypeScript**: pasa en cada fase (con ajustes menores: cast temporal en `recurrentes.ts` POST hasta que se aplicó el drop, luego removido).
+- **Unit tests**: 1062/1062 pasan en cada fase. El test del PUT de clientes se actualizó 2 veces (en Fase 2 y Fase 3) para reflejar la presencia/ausencia de `tx.contactoCliente`.
+- **Build de producción**: pasa en cada fase.
+- **E2E manual (curl + dev server)**: crear cliente simple funciona. Crear cliente con contactos (body `contactos: [...]`) **NO** en Fase 3 (esperado: Zod los rechaza). GET con búsqueda `?search=Contacto` falla por pg_trgm no instalado en dev (pre-existente, no relacionado con la migración). GET sin search funciona y devuelve `contactos: []` (shape nativa Prisma) correctamente.
+- **Backfill**: 2 contactos insertados en dev (cuadra con 1 cliente que tenía `contactos` JSON). Idempotencia validada: 2da ejecución = 0 inserts.
+- **Datos preservados**: el cliente "Contactos Test" sigue mostrando sus 2 contactos (Juan, Maria) después de todas las fases, leídos ahora desde `ContactoCliente` en vez de `Cliente.contactos`.
+
+### Commits por fase
+
+| Fase | Commits | Tag |
+|------|---------|-----|
+| 1 (EXPAND) | `cb201b7`, `826a36d` | `deploy/1fn-fase1-expand` |
+| 2 (MIGRATE) | `749bebf`, `ba3aeea`, `66ee1d2`, `b5715a2`, `00c0279`, `20cd281`, `aa043e8`, `3950e47`, `21c264a` | `deploy/1fn-fase2-migrate` |
+| 3 (CONTRACT) | `b3d2bc1`, `63efb13`, `02bc801`, `d5b051c` | `deploy/1fn-fase3-contract` |
+| Post | `9142a33` (GRANT), `8ead273` (AGENTS) | — |
+
+### Recomendación para producción (Supabase)
+
+1. **Verificar GRANTs**: en Supabase prod, los GRANTs los gestiona el dashboard. Confirmar que `authenticated` o el rol que use el runtime tiene `ALL` sobre `ContactoCliente` y `PlantillaProducto`.
+2. **Validar en staging primero**: la migración de drop es irreversible. Hacer backup antes de Fase 3.
+3. **Drenado de 24h entre Fase 2 y 3**: respetar como recomienda F7. Si el dual-write de Fase 2 causa bugs en prod, el rollback es `git revert` del commit de código (no de migración SQL), manteniendo las tablas nuevas con datos.
+4. **Trabajo futuro post-merge**: implementar CRUD de contactos (ver AGENTS.md issue #10).
