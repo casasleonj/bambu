@@ -44,6 +44,11 @@ const authOptions: NextAuthConfig = {
           const displayName = dbUser.nombre || dbUser.apellido
             ? `${dbUser.nombre} ${dbUser.apellido}`.trim()
             : dbUser.username
+          // S-3 fix: log successful login for audit trail
+          logger.info(
+            { userId: dbUser.id, username: dbUser.username, role: dbUser.rol },
+            'Auth: login exitoso',
+          )
           return {
             id: dbUser.id,
             name: displayName,
@@ -51,6 +56,19 @@ const authOptions: NextAuthConfig = {
             mustChangePassword: dbUser.mustChangePassword,
           }
         }
+
+        // S-3 fix: log failed login attempt with username for security audit
+        // (without leaking the password). Helps detect brute force and
+        // account compromise attempts.
+        logger.warn(
+          {
+            username: credentials.username,
+            userExists: dbUser !== null,
+            userActive: dbUser?.activo ?? false,
+            // Don't log the password or hash (security: avoid hash leaks)
+          },
+          'Auth: login fallido',
+        )
 
         await new Promise(r => setTimeout(r, 50 + Math.random() * 50))
         return null
