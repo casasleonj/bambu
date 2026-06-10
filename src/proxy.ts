@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { checkRateLimit, classifyRequest } from '@/lib/rate-limit'
 import { isRouteAllowed, getRedirectForRole } from '@/lib/permissions'
+import { validateCsrf } from '@/lib/csrf'
 import type { Role } from '@/lib/constants'
 
 /**
@@ -10,21 +11,34 @@ import type { Role } from '@/lib/constants'
  * Uses Auth.js auth() wrapper pattern (documented at authjs.dev):
  *   export const proxy = auth((req) => { ... })
  *
- * This provides request.auth directly without calling await auth() again.
+ * This provides request.auth directamente without calling await auth() again.
  *
- * Responsibilities:
- * 1. API routes (/api/*): Apply rate limiting, then pass through.
- *    Route handlers handle their own auth via requireAuth().
+ * Responsabilidades:
+ * 1. API routes (/api/*):
+ *    a) CSRF check (Origin/Referer) on state-changing methods — S-1 fix.
+ *       Auth.js handles CSRF for /api/auth/* only. The other endpoints
+ *       need this defense against CSRF (the validateCsrf() helper in
+ *       src/lib/csrf.ts was previously dead code).
+ *    b) Rate limiting.
+ *    c) Route handlers handle their own auth via requireAuth().
  * 2. Page routes: Auth check + mustChangePassword guard + role-based access.
  */
 export const proxy = auth(async (request) => {
   const pathname = request.nextUrl.pathname
 
-  // ── API routes: rate limiting only ──────────────────────────────────
+  // ── API routes: CSRF + rate limiting ──────────────────────────────────
   if (pathname.startsWith('/api/')) {
-    // Skip rate limiting for health checks and cron jobs
+    // Skip health checks and cron jobs
     if (pathname === '/api/health' || pathname.startsWith('/api/cron/')) {
       return NextResponse.next()
+    }
+
+    // S-1 fix: CSRF check BEFORE rate limiting so failed CSRF
+    // attempts don't consume the rate-limit budget. Auth.js handles
+    // its own CSRF for /api/auth/* endpoints.
+    const csrfResponse = validateCsrf(request)
+    if (csrfResponse) {
+      return csrfResponse
     }
 
     const type = classifyRequest(pathname)
