@@ -69,12 +69,13 @@ Migración 1FN (Primera Forma Normal) de las 2 violaciones restantes: `Cliente.c
 
 ## Gap conocido (trabajo futuro)
 
-⚠️ **El CRUD de contactos desde la UI no quedó implementado**. El form (`cliente-form.tsx`) muestra contactos existentes pero no puede agregar/editar nuevos porque el Zod de Fase 3 removió `contactos` del body. Para hacerlo funcional falta:
-- `POST /api/clientes/[id]/contactos`
-- `DELETE /api/clientes/[id]/contactos/[contactoId]`
-- Actualizar `cliente-form.tsx` para usar esos endpoints
+**Resuelto en commits `d3218b3`, `0d13fb3`, `c0bd1b2`**:
+- `POST /api/clientes/[id]/contactos` ✅
+- `DELETE /api/clientes/[id]/contactos/[contactoId]` ✅
+- `cliente-form.tsx` wireada con `syncContactos()` (diff por teléfono) ✅
+- 19 tests unitarios cubren los endpoints ✅
 
-Esto NO bloquea el merge de la 1FN (el storage es correcto), pero bloquea la funcionalidad de UI. Documentado en `AGENTS.md` issue #10.
+**Limitación menor**: no hay endpoint PATCH para contactos, así que si el usuario cambia el `nombre` o `relacion` de un contacto existente (mismo teléfono), el cambio NO persiste. Workaround: borrar y re-crear. Es aceptable para v1 porque la identidad del contacto es el teléfono (es el unique key).
 
 ## Para Supabase prod
 
