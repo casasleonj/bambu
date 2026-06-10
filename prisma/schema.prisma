@@ -108,39 +108,39 @@ enum CasoStatus {
 // ====================
 
 model User {
-  id        String   @id @default(cuid())
-  username  String   @unique
-  password  String
-  nombre    String   @default("")
-  apellido  String   @default("")
-  rol       RolUsuario @default(ASISTENTE)
-  activo    Boolean  @default(true)
-  mustChangePassword Boolean @default(false)
-  createdAt DateTime @db.Timestamptz() @default(now())
-  updatedAt DateTime @db.Timestamptz() @updatedAt
+  id                 String     @id @default(cuid())
+  username           String     @unique
+  password           String
+  nombre             String     @default("")
+  apellido           String     @default("")
+  rol                RolUsuario @default(ASISTENTE)
+  activo             Boolean    @default(true)
+  mustChangePassword Boolean    @default(false)
+  createdAt          DateTime   @default(now()) @db.Timestamptz()
+  updatedAt          DateTime   @updatedAt @db.Timestamptz()
 
-  trabajador  Trabajador?
+  trabajador Trabajador?
 
-  clientesCreados      Cliente[]         @relation("ClienteCreador")
-  pedidosCreados      Pedido[]          @relation("PedidoCreador")
-  facturasCreadas     Factura[]         @relation("FacturaCreador")
-  embarquesCreados    Embarque[]        @relation("EmbarqueCreador")
-  gastosCreados       Gasto[]           @relation("GastoCreador")
-  produccionesCreadas Produccion[]      @relation("ProduccionCreador")
-  nominasCreadas      Nomina[]          @relation("NominaCreador")
-  comprasCreadas      CompraInsumo[]    @relation("CompraCreador")
-  insumosCreados      Insumo[]          @relation("InsumoCreador")
-  proveedoresCreados  Proveedor[]      @relation("ProveedorCreador")
-   trabajadoresCreados Trabajador[]      @relation("TrabajadorCreador")
-  rutasCreadas        Ruta[]            @relation("RutaCreador")
-  negociosCreados     Negocio[]         @relation("NegocioCreador")
+  clientesCreados     Cliente[]             @relation("ClienteCreador")
+  pedidosCreados      Pedido[]              @relation("PedidoCreador")
+  facturasCreadas     Factura[]             @relation("FacturaCreador")
+  embarquesCreados    Embarque[]            @relation("EmbarqueCreador")
+  gastosCreados       Gasto[]               @relation("GastoCreador")
+  produccionesCreadas Produccion[]          @relation("ProduccionCreador")
+  nominasCreadas      Nomina[]              @relation("NominaCreador")
+  comprasCreadas      CompraInsumo[]        @relation("CompraCreador")
+  insumosCreados      Insumo[]              @relation("InsumoCreador")
+  proveedoresCreados  Proveedor[]           @relation("ProveedorCreador")
+  trabajadoresCreados Trabajador[]          @relation("TrabajadorCreador")
+  rutasCreadas        Ruta[]                @relation("RutaCreador")
+  negociosCreados     Negocio[]             @relation("NegocioCreador")
   plantillasCreadas   PlantillaRecurrente[] @relation("PlantillaCreador")
 
-  casosCreados        Caso[]            @relation("CasoCreador")
-  casosAsignados      Caso[]            @relation("CasoAsignado")
-  eventosCaso         CasoEvento[]      @relation("CasoEventoUser")
+  casosCreados   Caso[]       @relation("CasoCreador")
+  casosAsignados Caso[]       @relation("CasoAsignado")
+  eventosCaso    CasoEvento[] @relation("CasoEventoUser")
 
-  deudasCreadas       DeudaTrabajador[] @relation("DeudaCreador")
+  deudasCreadas DeudaTrabajador[] @relation("DeudaCreador")
 }
 
 // ====================
@@ -148,15 +148,15 @@ model User {
 // ====================
 
 model Ruta {
-  id        String   @id @default(cuid())
+  id          String  @id @default(cuid())
   createdById String?
-  createdBy  User?    @relation("RutaCreador", fields: [createdById], references: [id])
-  nombre    String
-  dias      String?
-  activo   Boolean  @default(true)
+  createdBy   User?   @relation("RutaCreador", fields: [createdById], references: [id])
+  nombre      String
+  dias        String?
+  activo      Boolean @default(true)
 
-  repartidorId String?
-  repartidor   Trabajador? @relation("RutaRepartidor", fields: [repartidorId], references: [id])
+  repartidorId         String?
+  repartidor           Trabajador? @relation("RutaRepartidor", fields: [repartidorId], references: [id])
   repartidorRespaldoId String?
   repartidorRespaldo   Trabajador? @relation("RutaRespaldo", fields: [repartidorRespaldoId], references: [id])
 
@@ -164,11 +164,11 @@ model Ruta {
   horarioFin    String?
 
   clientes  Cliente[]
-  negocios  Negocio[]     @relation("RutaNegocio")
+  negocios  Negocio[]  @relation("RutaNegocio")
   embarques Embarque[]
 
-  createdAt DateTime @db.Timestamptz() @default(now())
-  updatedAt DateTime @db.Timestamptz() @updatedAt
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
 
   @@index([createdById])
   @@index([repartidorId])
@@ -180,74 +180,78 @@ model Ruta {
 // ====================
 
 model Cliente {
-  id            String   @id @default(cuid())
-  createdById  String?
-  createdBy    User?    @relation("ClienteCreador", fields: [createdById], references: [id])
+  id          String  @id @default(cuid())
+  createdById String?
+  createdBy   User?   @relation("ClienteCreador", fields: [createdById], references: [id])
 
   nombre        String
-  apellido     String?
+  apellido      String?
   telefono      String
-  direccion    String?
-  barrio       String?
-  referencia  String?
+  direccion     String?
+  barrio        String?
+  referencia    String?
   linkUbicacion String?
   contactos     Json?
 
-  nombreNegocio String?
-  tipoNegocio   String?
-  fuente        String?
-  horaApertura String?
+  // NUEVO (Fase 1 EXPAND): relación a tabla normalizada. Coexiste con
+  // `contactos Json?` durante las Fases 2-3; se elimina en Fase 3.
+  contactosRel ContactoCliente[]
+
+  nombreNegocio     String?
+  tipoNegocio       String?
+  fuente            String?
+  horaApertura      String?
   preciosEspeciales String?
 
-  rutaId       String?
-  ruta        Ruta?   @relation(fields: [rutaId], references: [id])
+  rutaId String?
+  ruta   Ruta?   @relation(fields: [rutaId], references: [id])
 
-  frecuencia   String   @default("NINGUNA")
-  cadaNDias    Int?
+  frecuencia String @default("NINGUNA")
+  cadaNDias  Int?
 
-  ultEntrega   DateTime? @db.Timestamptz()
+  ultEntrega  DateTime? @db.Timestamptz()
   proxEntrega DateTime? @db.Timestamptz()
 
-  habAgua      Boolean @default(true)
-  habHielo     Boolean @default(true)
-  habBotellon  Boolean @default(true)
-  habBolsaAgua Boolean @default(true)
+  habAgua       Boolean @default(true)
+  habHielo      Boolean @default(true)
+  habBotellon   Boolean @default(true)
+  habBolsaAgua  Boolean @default(true)
   habBolsaHielo Boolean @default(true)
 
   // NUEVOS — control y verificación
-  verificado     Boolean   @default(false)
-  verificadoEn   DateTime? @db.Timestamptz()
-  creadoPorRol   RolUsuario @default(ASISTENTE)
-  bloqueado      Boolean   @default(false)
-  reclamaciones  Int       @default(0)
-  limitePedidosFiados Int? @default(3)
+  verificado          Boolean    @default(false)
+  verificadoEn        DateTime?  @db.Timestamptz()
+  creadoPorRol        RolUsuario @default(ASISTENTE)
+  bloqueado           Boolean    @default(false)
+  reclamaciones       Int        @default(0)
+  limitePedidosFiados Int?       @default(3)
 
   // NEGOCIOS — un cliente puede ser dueño de varios negocios
-  negocios          Negocio[]
-  negocioDefaultId  String?  @unique
-  negocioDefault    Negocio? @relation("NegocioDefault", fields: [negocioDefaultId], references: [id])
+  negocios         Negocio[]
+  negocioDefaultId String?   @unique
+  negocioDefault   Negocio?  @relation("NegocioDefault", fields: [negocioDefaultId], references: [id])
 
   plantillaRecurrente PlantillaRecurrente?
 
-  notas        String?
-  activo      Boolean  @default(true)
+  notas  String?
+  activo Boolean @default(true)
 
   // FIX Fase 2 §3.4: saldo a favor del cliente. Si un pago excede el
   // total del pedido, el excedente queda como crédito reutilizable.
   // @default(0) garantiza que clientes existentes tengan 0.
-  saldoFavor  Decimal  @default(0) @db.Decimal(10, 2)
+  saldoFavor Decimal @default(0) @db.Decimal(10, 2)
 
   // Offline-first dedup: si la request llega con un offlineId ya existente,
   // el server devuelve el cliente creado en lugar de duplicar.
-  offlineId    String?  @unique
+  offlineId String? @unique
 
-  pedidos       Pedido[]
-  facturas      Factura[]
-  abonos        Abono[]
-  casos         Caso[]        @relation("CasoCliente")
+  pedidos  Pedido[]
+  facturas Factura[]
+  abonos   Abono[]
+  casos    Caso[]    @relation("CasoCliente")
 
-  createdAt   DateTime @db.Timestamptz() @default(now())
-  updatedAt  DateTime @db.Timestamptz() @updatedAt
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
 
   @@index([rutaId])
   @@index([createdById])
@@ -266,47 +270,47 @@ model Cliente {
 // ====================
 
 model Negocio {
-  id              String   @id @default(cuid())
-  createdById     String?
-  createdBy       User?    @relation("NegocioCreador", fields: [createdById], references: [id])
+  id          String  @id @default(cuid())
+  createdById String?
+  createdBy   User?   @relation("NegocioCreador", fields: [createdById], references: [id])
 
-  clienteId       String
-  cliente         Cliente  @relation(fields: [clienteId], references: [id])
+  clienteId String
+  cliente   Cliente @relation(fields: [clienteId], references: [id])
 
-  nombre          String
-  tipoNegocio     String?
-  direccion       String?       // si null, fallback a cliente.direccion
-  barrio          String?       // si null, fallback a cliente.barrio
-  referencia      String?
-  linkUbicacion   String?
-  horaApertura    String?
+  nombre        String
+  tipoNegocio   String?
+  direccion     String? // si null, fallback a cliente.direccion
+  barrio        String? // si null, fallback a cliente.barrio
+  referencia    String?
+  linkUbicacion String?
+  horaApertura  String?
 
-  rutaId          String?
-  ruta            Ruta?    @relation("RutaNegocio", fields: [rutaId], references: [id])
+  rutaId String?
+  ruta   Ruta?   @relation("RutaNegocio", fields: [rutaId], references: [id])
 
-  preciosEspeciales String?     // si null, fallback a cliente.preciosEspeciales
+  preciosEspeciales String? // si null, fallback a cliente.preciosEspeciales
 
-  habAgua         Boolean  @default(true)
-  habHielo        Boolean  @default(true)
-  habBotellon     Boolean  @default(true)
-  habBolsaAgua    Boolean  @default(true)
-  habBolsaHielo   Boolean  @default(true)
+  habAgua       Boolean @default(true)
+  habHielo      Boolean @default(true)
+  habBotellon   Boolean @default(true)
+  habBolsaAgua  Boolean @default(true)
+  habBolsaHielo Boolean @default(true)
 
-  frecuencia      String?
-  cadaNDias       Int?
+  frecuencia String?
+  cadaNDias  Int?
 
   plantillaRecurrente PlantillaRecurrente?
 
-  pedidos         Pedido[]
-  facturas        Factura[]
-  abonos          Abono[]
-  casos           Caso[]        @relation("CasoNegocio")
+  pedidos        Pedido[]
+  facturas       Factura[]
+  abonos         Abono[]
+  casos          Caso[]    @relation("CasoNegocio")
   // Relation for Cliente.negocioDefault
-  clienteDefault  Cliente?      @relation("NegocioDefault")
-  activo          Boolean  @default(true)
+  clienteDefault Cliente?  @relation("NegocioDefault")
+  activo         Boolean   @default(true)
 
-  createdAt       DateTime @db.Timestamptz() @default(now())
-  updatedAt       DateTime @db.Timestamptz() @updatedAt
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
 
   @@index([clienteId])
   @@index([rutaId])
@@ -319,28 +323,31 @@ model Negocio {
 // ====================
 
 model PlantillaRecurrente {
-  id              String   @id @default(cuid())
+  id               String              @id @default(cuid())
   // NUEVO: relación principal a Negocio
-  negocioId       String?  @unique
-  negocio         Negocio? @relation(fields: [negocioId], references: [id])
+  negocioId        String?             @unique
+  negocio          Negocio?            @relation(fields: [negocioId], references: [id])
   // LEGACY: mantener para compatibilidad durante migración
-  clienteId       String?  @unique
-  cliente         Cliente? @relation(fields: [clienteId], references: [id])
-  activo          Boolean  @default(true)
-  cadaNDias       Int      @default(7)
-  tipo            String   @default("ENVIO")
-  canal           String   @default("DOMICILIO")
-  horaPreferida   String?
-  productos       String   // JSON: {"PACA_AGUA":2,"PACA_HIELO":0,...}
-  ultimaGeneracion DateTime? @db.Timestamptz()
-  proxGeneracion  DateTime? @db.Timestamptz()
-  saltos          String[]
-  pausaHasta      DateTime? @db.Timestamptz()
-  notas           String?
-  createdById     String?
-  createdBy       User?    @relation("PlantillaCreador", fields: [createdById], references: [id])
-  createdAt       DateTime @default(now()) @db.Timestamptz()
-  updatedAt       DateTime @updatedAt @db.Timestamptz()
+  clienteId        String?             @unique
+  cliente          Cliente?            @relation(fields: [clienteId], references: [id])
+  activo           Boolean             @default(true)
+  cadaNDias        Int                 @default(7)
+  tipo             String              @default("ENVIO")
+  canal            String              @default("DOMICILIO")
+  horaPreferida    String?
+  productos        String // JSON: {"PACA_AGUA":2,"PACA_HIELO":0,...}
+  // NUEVO (Fase 1 EXPAND): relación a tabla normalizada. Coexiste con
+  // `productos String` durante las Fases 2-3; se elimina en Fase 3.
+  productosRel     PlantillaProducto[]
+  ultimaGeneracion DateTime?           @db.Timestamptz()
+  proxGeneracion   DateTime?           @db.Timestamptz()
+  saltos           String[]
+  pausaHasta       DateTime?           @db.Timestamptz()
+  notas            String?
+  createdById      String?
+  createdBy        User?               @relation("PlantillaCreador", fields: [createdById], references: [id])
+  createdAt        DateTime            @default(now()) @db.Timestamptz()
+  updatedAt        DateTime            @updatedAt @db.Timestamptz()
 
   @@index([activo, proxGeneracion])
   @@index([clienteId])
@@ -352,44 +359,44 @@ model PlantillaRecurrente {
 // ====================
 
 model Trabajador {
-  id            String   @id @default(cuid())
-  createdById  String?
-  createdBy    User?    @relation("TrabajadorCreador", fields: [createdById], references: [id])
-  userId       String?  @unique
-  user         User?    @relation(fields: [userId], references: [id])
-  nombre        String
-  rol           String
-  tipoPago      TipoPagoTrabajador @default(COMISION)
+  id          String             @id @default(cuid())
+  createdById String?
+  createdBy   User?              @relation("TrabajadorCreador", fields: [createdById], references: [id])
+  userId      String?            @unique
+  user        User?              @relation(fields: [userId], references: [id])
+  nombre      String
+  rol         String
+  tipoPago    TipoPagoTrabajador @default(COMISION)
 
-  usaMoto       Boolean  @default(false)
-  capacidadKg   Int      @default(500)
-  comPacaAgua   Decimal  @default(200) @db.Decimal(10, 2)
-  comPacaHielo  Decimal  @default(200) @db.Decimal(10, 2)
-  comBotellon   Decimal  @default(200) @db.Decimal(10, 2)
+  usaMoto      Boolean @default(false)
+  capacidadKg  Int     @default(500)
+  comPacaAgua  Decimal @default(200) @db.Decimal(10, 2)
+  comPacaHielo Decimal @default(200) @db.Decimal(10, 2)
+  comBotellon  Decimal @default(200) @db.Decimal(10, 2)
 
-  comRepartAgua    Decimal  @default(0) @db.Decimal(10, 2)
-  comRepartHielo   Decimal  @default(0) @db.Decimal(10, 2)
-  comRepartBotellon Decimal  @default(0) @db.Decimal(10, 2)
+  comRepartAgua     Decimal @default(0) @db.Decimal(10, 2)
+  comRepartHielo    Decimal @default(0) @db.Decimal(10, 2)
+  comRepartBotellon Decimal @default(0) @db.Decimal(10, 2)
 
-  salarioFijo   Decimal  @default(0)   @db.Decimal(10, 2)
+  salarioFijo Decimal @default(0) @db.Decimal(10, 2)
 
-  deudaReposAgua  Decimal  @default(0) @db.Decimal(10, 2)
-  deudaReposHielo Decimal  @default(0) @db.Decimal(10, 2)
-  telefono      String?
-  activo       Boolean  @default(true)
+  deudaReposAgua  Decimal @default(0) @db.Decimal(10, 2)
+  deudaReposHielo Decimal @default(0) @db.Decimal(10, 2)
+  telefono        String?
+  activo          Boolean @default(true)
 
   embarques    Embarque[]
   producciones Produccion[]
-  nominas     Nomina[]
+  nominas      Nomina[]
   gpsTracks    GpsTrack[]
   descuentos   DescuentoRepartidor[]
   deudas       DeudaTrabajador[]
 
-  rutasAsignadas    Ruta[] @relation("RutaRepartidor")
-  rutasRespaldo     Ruta[] @relation("RutaRespaldo")
+  rutasAsignadas Ruta[] @relation("RutaRepartidor")
+  rutasRespaldo  Ruta[] @relation("RutaRespaldo")
 
-  createdAt  DateTime @db.Timestamptz() @default(now())
-  updatedAt DateTime @db.Timestamptz() @updatedAt
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
 
   @@index([createdById])
   @@index([rol, activo])
@@ -400,42 +407,42 @@ model Trabajador {
 // ====================
 
 model Nomina {
-  id                String     @id @default(cuid())
-  createdById      String?
-  createdBy        User?      @relation("NominaCreador", fields: [createdById], references: [id])
-  trabajadorId      String
-  trabajador       Trabajador @relation(fields: [trabajadorId], references: [id])
+  id           String     @id @default(cuid())
+  createdById  String?
+  createdBy    User?      @relation("NominaCreador", fields: [createdById], references: [id])
+  trabajadorId String
+  trabajador   Trabajador @relation(fields: [trabajadorId], references: [id])
 
-  fechaInicio       DateTime @db.Timestamptz()
-  fechaFin         DateTime @db.Timestamptz()
+  fechaInicio DateTime @db.Timestamptz()
+  fechaFin    DateTime @db.Timestamptz()
 
-  entregasAgua     Int       @default(0)
-  entregasHielo    Int       @default(0)
-  entregasBotellon Int       @default(0)
+  entregasAgua     Int @default(0)
+  entregasHielo    Int @default(0)
+  entregasBotellon Int @default(0)
 
-  comEntregasAgua  Decimal   @default(0) @db.Decimal(10, 2)
-  comEntregasHielo Decimal   @default(0) @db.Decimal(10, 2)
+  comEntregasAgua     Decimal @default(0) @db.Decimal(10, 2)
+  comEntregasHielo    Decimal @default(0) @db.Decimal(10, 2)
   comEntregasBotellon Decimal @default(0) @db.Decimal(10, 2)
-  totalComisiones  Decimal   @default(0) @db.Decimal(10, 2)
+  totalComisiones     Decimal @default(0) @db.Decimal(10, 2)
 
   // NUEVOS — comisiones por origen
-  comVentaLibreAgua   Decimal @default(0) @db.Decimal(10, 2)
-  comVentaLibreHielo  Decimal @default(0) @db.Decimal(10, 2)
-  comPedidoAgua       Decimal @default(0) @db.Decimal(10, 2)
-  comPedidoHielo      Decimal @default(0) @db.Decimal(10, 2)
+  comVentaLibreAgua  Decimal @default(0) @db.Decimal(10, 2)
+  comVentaLibreHielo Decimal @default(0) @db.Decimal(10, 2)
+  comPedidoAgua      Decimal @default(0) @db.Decimal(10, 2)
+  comPedidoHielo     Decimal @default(0) @db.Decimal(10, 2)
 
-  salario          Decimal   @default(0) @db.Decimal(10, 2)
-  total            Decimal   @db.Decimal(10, 2)
+  salario Decimal @default(0) @db.Decimal(10, 2)
+  total   Decimal @db.Decimal(10, 2)
 
   // Deducciones aplicadas
-  totalDescuentos     Decimal   @default(0) @db.Decimal(10, 2)
-  descuentoDeudas     Decimal   @default(0) @db.Decimal(10, 2)
+  totalDescuentos Decimal @default(0) @db.Decimal(10, 2)
+  descuentoDeudas Decimal @default(0) @db.Decimal(10, 2)
 
-  estado        EstadoNomina @default(PENDIENTE)
-  fechaPago    DateTime? @db.Timestamptz()
+  estado    EstadoNomina @default(PENDIENTE)
+  fechaPago DateTime?    @db.Timestamptz()
 
-  createdAt    DateTime @db.Timestamptz() @default(now())
-  updatedAt    DateTime @db.Timestamptz() @updatedAt
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
 
   descuentosAplicados DescuentoRepartidor[] @relation("NominaDescuentos")
   deduccionesDeudas   DeduccionDeuda[]
@@ -453,51 +460,51 @@ model Pedido {
   id          String    @id @default(cuid())
   numero      Int       @default(autoincrement())
   createdById String?
-  createdBy  User?     @relation("PedidoCreador", fields: [createdById], references: [id])
+  createdBy   User?     @relation("PedidoCreador", fields: [createdById], references: [id])
   clienteId   String
-  cliente    Cliente   @relation(fields: [clienteId], references: [id])
-  negocioId  String?
-  negocio    Negocio?  @relation(fields: [negocioId], references: [id])
-  embarqueId String?
-  embarque   Embarque? @relation(fields: [embarqueId], references: [id])
+  cliente     Cliente   @relation(fields: [clienteId], references: [id])
+  negocioId   String?
+  negocio     Negocio?  @relation(fields: [negocioId], references: [id])
+  embarqueId  String?
+  embarque    Embarque? @relation(fields: [embarqueId], references: [id])
 
-  tipo        String    @default("ENVIO")
-  canal       String    @default("DOMICILIO")
+  tipo  String @default("ENVIO")
+  canal String @default("DOMICILIO")
 
   fechaEntrega DateTime? @db.Timestamptz()
-  fecha       DateTime @db.Timestamptz()  @default(now())
+  fecha        DateTime  @default(now()) @db.Timestamptz()
 
   // NUEVOS — estado desacoplado
-  origen        OrigenPedido     @default(PEDIDO)
-  estadoEntrega EstadoEntrega    @default(PENDIENTE)
-  estadoPago    EstadoPago       @default(PENDIENTE)
+  origen        OrigenPedido  @default(PEDIDO)
+  estadoEntrega EstadoEntrega @default(PENDIENTE)
+  estadoPago    EstadoPago    @default(PENDIENTE)
 
   // NUEVOS — control y trazabilidad
-  promesaPagoFecha  DateTime?   @db.Timestamptz()
+  promesaPagoFecha  DateTime? @db.Timestamptz()
   fotoEntrega       String?
-  gpsLat            Decimal?    @db.Decimal(10, 6)
-  gpsLng            Decimal?    @db.Decimal(10, 6)
-  offlineId         String?     @unique
-  recurrenteBatchId String?     // batch id compartido por todos los pedidos de un batch de recurrentes
+  gpsLat            Decimal?  @db.Decimal(10, 6)
+  gpsLng            Decimal?  @db.Decimal(10, 6)
+  offlineId         String?   @unique
+  recurrenteBatchId String? // batch id compartido por todos los pedidos de un batch de recurrentes
   // FIX Fase 1: dedup key dedicado para POST /api/pedidos/[id]/enviar.
   // Antes el dedup se hacia por estado (embarqueId+EN_RUTA), fragil si el
   // check externo y la tx se desincronizan. Ahora: el server persiste el
   // offlineId y el retry con el mismo offlineId retorna deduped: true.
-  envioOfflineId    String?     @unique
-  disputaAbierta    Boolean     @default(false)
+  envioOfflineId    String?   @unique
+  disputaAbierta    Boolean   @default(false)
   codigoVisita      String?
 
   // LEGACY — se mantiene para compatibilidad
-  estado      EstadoPedido     @default(PENDIENTE)
+  estado EstadoPedido @default(PENDIENTE)
 
   // Productos embebidos (DEPRECATED — leer desde items[])
-  cPacaAguaPed      Int     @default(0)
-  cPacaAguaEnt      Int     @default(0)
-  precioPacaAgua    Decimal @default(0) @db.Decimal(10, 2)
+  cPacaAguaPed   Int     @default(0)
+  cPacaAguaEnt   Int     @default(0)
+  precioPacaAgua Decimal @default(0) @db.Decimal(10, 2)
 
-  cPacaHieloPed     Int     @default(0)
-  cPacaHieloEnt     Int     @default(0)
-  precioPacaHielo   Decimal @default(0) @db.Decimal(10, 2)
+  cPacaHieloPed   Int     @default(0)
+  cPacaHieloEnt   Int     @default(0)
+  precioPacaHielo Decimal @default(0) @db.Decimal(10, 2)
 
   cBotellonFabPed   Int     @default(0)
   cBotellonFabEnt   Int     @default(0)
@@ -507,37 +514,37 @@ model Pedido {
   cBotellonDomEnt   Int     @default(0)
   precioBotellonDom Decimal @default(0) @db.Decimal(10, 2)
 
-  cBolsaAguaPed     Int     @default(0)
-  cBolsaAguaEnt     Int     @default(0)
-  precioBolsaAgua   Decimal @default(0) @db.Decimal(10, 2)
+  cBolsaAguaPed   Int     @default(0)
+  cBolsaAguaEnt   Int     @default(0)
+  precioBolsaAgua Decimal @default(0) @db.Decimal(10, 2)
 
-  cBolsaHieloPed    Int     @default(0)
-  cBolsaHieloEnt    Int     @default(0)
-  precioBolsaHielo  Decimal @default(0) @db.Decimal(10, 2)
+  cBolsaHieloPed   Int     @default(0)
+  cBolsaHieloEnt   Int     @default(0)
+  precioBolsaHielo Decimal @default(0) @db.Decimal(10, 2)
 
   // Totales
-  total        Decimal  @default(0) @db.Decimal(10, 2)
-  totalPagado  Decimal  @default(0) @db.Decimal(10, 2)
-  saldo        Decimal  @default(0) @db.Decimal(10, 2)
+  total       Decimal @default(0) @db.Decimal(10, 2)
+  totalPagado Decimal @default(0) @db.Decimal(10, 2)
+  saldo       Decimal @default(0) @db.Decimal(10, 2)
 
-  repartidor   String?
-  obs         String?
+  repartidor    String?
+  obs           String?
   horaPreferida String?
 
   // Referencia polimórfica: PlantillaRecurrente.id o null
-  idOrigen     String?
+  idOrigen String?
 
   // Relaciones nuevas
-  items         PedidoItem[]
+  items PedidoItem[]
 
-  factura    Factura?
-  pagos      Pago[]
+  factura      Factura?
+  pagos        Pago[]
   notasCredito NotaCredito[]
-  abonos     Abono[]
-  casos      Caso[]    @relation("CasoPedido")
+  abonos       Abono[]
+  casos        Caso[]        @relation("CasoPedido")
 
-  createdAt  DateTime @db.Timestamptz() @default(now())
-  updatedAt DateTime @db.Timestamptz() @updatedAt
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
 
   @@index([clienteId])
   @@index([negocioId])
@@ -568,16 +575,16 @@ model Pedido {
 // ====================
 
 model PedidoItem {
-  id          String   @id @default(cuid())
-  pedidoId    String
-  pedido      Pedido   @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  id       String @id @default(cuid())
+  pedidoId String
+  pedido   Pedido @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
 
-  producto    String   // PACA_AGUA, PACA_HIELO, BOTELLON, BOLSA_AGUA, BOLSA_HIELO
-  cantPedido  Int      @default(0)
-  cantEntrega Int      @default(0)
-  precio      Decimal  @default(0) @db.Decimal(10, 2)
-  subtotal    Decimal  @default(0) @db.Decimal(10, 2)
-  precioOrigen String @default("base") // manual, cliente, volumen, base
+  producto     String // PACA_AGUA, PACA_HIELO, BOTELLON, BOLSA_AGUA, BOLSA_HIELO
+  cantPedido   Int     @default(0)
+  cantEntrega  Int     @default(0)
+  precio       Decimal @default(0) @db.Decimal(10, 2)
+  subtotal     Decimal @default(0) @db.Decimal(10, 2)
+  precioOrigen String  @default("base") // manual, cliente, volumen, base
 
   @@index([pedidoId])
   @@index([producto])
@@ -588,13 +595,13 @@ model PedidoItem {
 // ====================
 
 model Pago {
-  id        String   @id @default(cuid())
+  id        String     @id @default(cuid())
   pedidoId  String
-  pedido    Pedido   @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  pedido    Pedido     @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
   metodo    MetodoPago
-  monto     Decimal  @db.Decimal(10, 2)
-  offlineId String?  // batch id para dedup offline-first (pagos del mismo batch comparten offlineId)
-  createdAt DateTime @db.Timestamptz() @default(now())
+  monto     Decimal    @db.Decimal(10, 2)
+  offlineId String? // batch id para dedup offline-first (pagos del mismo batch comparten offlineId)
+  createdAt DateTime   @default(now()) @db.Timestamptz()
 
   @@index([pedidoId])
   @@index([offlineId])
@@ -605,55 +612,55 @@ model Pago {
 // ====================
 
 model Embarque {
-  id            String     @id @default(cuid())
+  id           String         @id @default(cuid())
   createdById  String?
-  createdBy    User?      @relation("EmbarqueCreador", fields: [createdById], references: [id])
-  numero        Int       @default(autoincrement())
-  numeroDia     Int       @default(0)
-  fecha         DateTime @db.Timestamptz()   @default(now())
+  createdBy    User?          @relation("EmbarqueCreador", fields: [createdById], references: [id])
+  numero       Int            @default(autoincrement())
+  numeroDia    Int            @default(0)
+  fecha        DateTime       @default(now()) @db.Timestamptz()
   trabajadorId String
-  trabajador   Trabajador @relation(fields: [trabajadorId], references: [id])
-  rutaId        String?
-  ruta         Ruta?     @relation(fields: [rutaId], references: [id])
-  horaSalida    DateTime? @db.Timestamptz()
-  horaLlegada   DateTime? @db.Timestamptz()
-  estado      EstadoEmbarque @default(ABIERTO)
+  trabajador   Trabajador     @relation(fields: [trabajadorId], references: [id])
+  rutaId       String?
+  ruta         Ruta?          @relation(fields: [rutaId], references: [id])
+  horaSalida   DateTime?      @db.Timestamptz()
+  horaLlegada  DateTime?      @db.Timestamptz()
+  estado       EstadoEmbarque @default(ABIERTO)
 
   // Legacy — se mantiene para compatibilidad
-  pacasAgua    Int       @default(0)
-  pacasHielo  Int       @default(0)
-  devueltasAgua Int      @default(0)
-  devueltasHielo Int     @default(0)
-  rotasAgua    Int       @default(0)
-  rotasHielo   Int       @default(0)
+  pacasAgua      Int @default(0)
+  pacasHielo     Int @default(0)
+  devueltasAgua  Int @default(0)
+  devueltasHielo Int @default(0)
+  rotasAgua      Int @default(0)
+  rotasHielo     Int @default(0)
 
   // Tipo de motocarga
-  tipoMoto      String?
+  tipoMoto String?
 
   // Dinero
-  baseDinero    Decimal   @default(0) @db.Decimal(10, 2)
+  baseDinero      Decimal @default(0) @db.Decimal(10, 2)
   dineroEntregado Decimal @default(0) @db.Decimal(10, 2)
 
   // Snapshot de stock al crear
   stockSnapshot Json?
 
   // NUEVO — código de visita del día
-  codigoVisita  String?
+  codigoVisita String?
 
   // Offline-first dedup: cada acción (update, cancel) escribe su offlineId aquí.
   // Si una request con el mismo offlineId llega de nuevo, el server detecta que
   // la acción ya fue aplicada y devuelve el estado actual sin re-aplicar.
-  offlineId     String?
+  offlineId String?
 
-  obs         String?
+  obs String?
 
-  pedidos     Pedido[]
-  gpsTracks   GpsTrack[]
-  productos   EmbarqueProducto[]
-  gastos      Gasto[]
+  pedidos   Pedido[]
+  gpsTracks GpsTrack[]
+  productos EmbarqueProducto[]
+  gastos    Gasto[]
 
-  createdAt  DateTime @db.Timestamptz() @default(now())
-  updatedAt DateTime @db.Timestamptz() @updatedAt
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
 
   @@unique([trabajadorId, fecha, numeroDia], name: "embarque_trabajador_fecha_numeroDia_unique")
   @@index([createdById])
@@ -670,15 +677,15 @@ model Embarque {
 // ====================
 
 model EmbarqueProducto {
-  id          String   @id @default(cuid())
-  embarqueId  String
-  embarque    Embarque @relation(fields: [embarqueId], references: [id], onDelete: Cascade)
+  id         String   @id @default(cuid())
+  embarqueId String
+  embarque   Embarque @relation(fields: [embarqueId], references: [id], onDelete: Cascade)
 
-  producto    String   // PACA_AGUA, PACA_HIELO, BOTELLON, BOLSA_AGUA, BOLSA_HIELO
-  cargadas    Int      @default(0)
-  devueltas   Int      @default(0)
-  cambios     Int      @default(0)
-  rotas       Int      @default(0)
+  producto  String // PACA_AGUA, PACA_HIELO, BOTELLON, BOLSA_AGUA, BOLSA_HIELO
+  cargadas  Int    @default(0)
+  devueltas Int    @default(0)
+  cambios   Int    @default(0)
+  rotas     Int    @default(0)
 
   @@unique([embarqueId, producto])
   @@index([embarqueId])
@@ -689,16 +696,16 @@ model EmbarqueProducto {
 // ====================
 
 model GpsTrack {
-  id            String   @id @default(cuid())
-  embarqueId    String
-  trabajadorId  String
-  lat           Decimal  @db.Decimal(10, 6)
-  lng           Decimal  @db.Decimal(10, 6)
-  timestamp     DateTime @db.Timestamptz()
-  synced        Boolean  @default(false)
+  id           String   @id @default(cuid())
+  embarqueId   String
+  trabajadorId String
+  lat          Decimal  @db.Decimal(10, 6)
+  lng          Decimal  @db.Decimal(10, 6)
+  timestamp    DateTime @db.Timestamptz()
+  synced       Boolean  @default(false)
 
-  embarque      Embarque   @relation(fields: [embarqueId], references: [id])
-  trabajador    Trabajador @relation(fields: [trabajadorId], references: [id])
+  embarque   Embarque   @relation(fields: [embarqueId], references: [id])
+  trabajador Trabajador @relation(fields: [trabajadorId], references: [id])
 
   @@index([embarqueId])
   @@index([trabajadorId, timestamp])
@@ -709,18 +716,18 @@ model GpsTrack {
 // ====================
 
 model DescuentoRepartidor {
-  id                String   @id @default(cuid())
-  embarqueId        String
-  trabajadorId      String
-  monto             Decimal  @db.Decimal(10, 2)
-  motivo            String
-  justificado       Boolean  @default(false)
-  aplicadoEnNomina  Boolean  @default(false)
-  nominaId          String?
-  fecha             DateTime @db.Timestamptz() @default(now())
+  id               String   @id @default(cuid())
+  embarqueId       String
+  trabajadorId     String
+  monto            Decimal  @db.Decimal(10, 2)
+  motivo           String
+  justificado      Boolean  @default(false)
+  aplicadoEnNomina Boolean  @default(false)
+  nominaId         String?
+  fecha            DateTime @default(now()) @db.Timestamptz()
 
-  trabajador        Trabajador @relation(fields: [trabajadorId], references: [id])
-  nomina            Nomina?    @relation("NominaDescuentos", fields: [nominaId], references: [id])
+  trabajador Trabajador @relation(fields: [trabajadorId], references: [id])
+  nomina     Nomina?    @relation("NominaDescuentos", fields: [nominaId], references: [id])
 
   @@index([trabajadorId])
   @@index([embarqueId])
@@ -733,38 +740,38 @@ model DescuentoRepartidor {
 // ====================
 
 model Factura {
-  id          String    @id @default(cuid())
+  id          String   @id @default(cuid())
   createdById String?
-  createdBy  User?     @relation("FacturaCreador", fields: [createdById], references: [id])
-  numero      String    @unique
+  createdBy   User?    @relation("FacturaCreador", fields: [createdById], references: [id])
+  numero      String   @unique
   clienteId   String
-  cliente    Cliente   @relation(fields: [clienteId], references: [id])
-  negocioId  String?
-  negocio    Negocio?  @relation(fields: [negocioId], references: [id])
-  pedidoId    String    @unique
-  pedido     Pedido    @relation(fields: [pedidoId], references: [id])
+  cliente     Cliente  @relation(fields: [clienteId], references: [id])
+  negocioId   String?
+  negocio     Negocio? @relation(fields: [negocioId], references: [id])
+  pedidoId    String   @unique
+  pedido      Pedido   @relation(fields: [pedidoId], references: [id])
 
-  fecha       DateTime @db.Timestamptz()   @default(now())
-  subtotal    Decimal  @db.Decimal(10, 2)
-  total       Decimal  @db.Decimal(10, 2)
+  fecha    DateTime @default(now()) @db.Timestamptz()
+  subtotal Decimal  @db.Decimal(10, 2)
+  total    Decimal  @db.Decimal(10, 2)
 
-  estado     EstadoFactura @default(EMITIDA)
+  estado EstadoFactura @default(EMITIDA)
 
-  montoPagado Decimal  @default(0) @db.Decimal(10, 2)
-  saldo       Decimal  @db.Decimal(10, 2)
+  montoPagado Decimal @default(0) @db.Decimal(10, 2)
+  saldo       Decimal @db.Decimal(10, 2)
 
   // Snapshot de datos de empresa al momento de emisión (inmutable)
-  empresaNombre    String?   @default("Agua Bambú SAS")
-  empresaNit       String?   @default("900.123.456-7")
-  empresaDireccion String?   @default("")
-  empresaTelefono  String?   @default("")
-  empresaEmail     String?   @default("")
+  empresaNombre    String? @default("Agua Bambú SAS")
+  empresaNit       String? @default("900.123.456-7")
+  empresaDireccion String? @default("")
+  empresaTelefono  String? @default("")
+  empresaEmail     String? @default("")
 
-  abonos    Abono[]
+  abonos       Abono[]
   notasCredito NotaCredito[]
 
-  createdAt  DateTime @db.Timestamptz() @default(now())
-  updatedAt DateTime @db.Timestamptz() @updatedAt
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
 
   @@index([clienteId])
   @@index([negocioId])
@@ -859,21 +866,21 @@ model Factura {
 // ====================
 
 model Abono {
-  id          String   @id @default(cuid())
-  numero      String   @unique
-  facturaId   String
-  factura     Factura  @relation(fields: [facturaId], references: [id])
-  clienteId   String
-  cliente     Cliente  @relation(fields: [clienteId], references: [id])
-  negocioId   String?
-  negocio     Negocio? @relation(fields: [negocioId], references: [id])
-  pedidoId    String?
-  pedido      Pedido?  @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
-  monto       Decimal  @db.Decimal(10, 2)
-  metodoPago  String
-  fecha       DateTime @db.Timestamptz() @default(now())
+  id         String   @id @default(cuid())
+  numero     String   @unique
+  facturaId  String
+  factura    Factura  @relation(fields: [facturaId], references: [id])
+  clienteId  String
+  cliente    Cliente  @relation(fields: [clienteId], references: [id])
+  negocioId  String?
+  negocio    Negocio? @relation(fields: [negocioId], references: [id])
+  pedidoId   String?
+  pedido     Pedido?  @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
+  monto      Decimal  @db.Decimal(10, 2)
+  metodoPago String
+  fecha      DateTime @default(now()) @db.Timestamptz()
 
-  createdAt   DateTime @db.Timestamptz() @default(now())
+  createdAt DateTime @default(now()) @db.Timestamptz()
 
   @@index([facturaId])
   @@index([clienteId])
@@ -888,70 +895,70 @@ model Abono {
 // ====================
 
 model Produccion {
-  id             String     @id @default(cuid())
-  createdById    String?
-  createdBy      User?      @relation("ProduccionCreador", fields: [createdById], references: [id])
-  fecha          DateTime @db.Timestamptz()    @default(now())
-  turno          Turno
-  trabajadorId  String
-  trabajador   Trabajador  @relation(fields: [trabajadorId], references: [id])
+  id           String     @id @default(cuid())
+  createdById  String?
+  createdBy    User?      @relation("ProduccionCreador", fields: [createdById], references: [id])
+  fecha        DateTime   @default(now()) @db.Timestamptz()
+  turno        Turno
+  trabajadorId String
+  trabajador   Trabajador @relation(fields: [trabajadorId], references: [id])
 
   // Comisiones agregadas (la desagregación por producto está en ProduccionItem)
-  comSellTotal     Decimal @default(0) @db.Decimal(10, 2)
-  comRepartTotal   Decimal @default(0) @db.Decimal(10, 2)
+  comSellTotal   Decimal @default(0) @db.Decimal(10, 2)
+  comRepartTotal Decimal @default(0) @db.Decimal(10, 2)
 
-  obs         String?
+  obs String?
 
   // Offline-first dedup: si la request llega con un offlineId ya existente,
   // el server devuelve la Produccion existente en lugar de duplicar.
-  offlineId   String?  @unique
+  offlineId String? @unique
 
-  createdAt  DateTime @db.Timestamptz() @default(now())
-  updatedAt DateTime @db.Timestamptz() @updatedAt
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
 
   items ProduccionItem[]
 
+  @@unique([trabajadorId, fecha, turno])
   @@index([createdById])
   @@index([fecha])
   @@index([trabajadorId, fecha])
   @@index([turno, fecha])
-  @@unique([trabajadorId, fecha, turno])
 }
 
 model ProduccionItem {
-  id                String     @id @default(cuid())
-  produccionId      String
-  produccion        Produccion @relation(fields: [produccionId], references: [id], onDelete: Cascade)
+  id           String     @id @default(cuid())
+  produccionId String
+  produccion   Produccion @relation(fields: [produccionId], references: [id], onDelete: Cascade)
 
   // Producto: solo PACA_AGUA y PACA_HIELO. Botellones y bolsas son
   // passthrough (no tienen ciclo de stock), por eso no se trackean
   // como items de producción.
-  producto          String     // 'PACA_AGUA' | 'PACA_HIELO'
+  producto String // 'PACA_AGUA' | 'PACA_HIELO'
 
   // Conteos del sellador
-  conteoA           Int        @default(0)
-  conteoB           Int        @default(0)
-  producido         Int        @default(0)  // (A+B)/2 redondeado
+  conteoA   Int @default(0)
+  conteoB   Int @default(0)
+  producido Int @default(0) // (A+B)/2 redondeado
 
   // Snapshot al momento del cierre
-  stockIni          Int        @default(0)
-  ventas            Int        @default(0)
+  stockIni Int @default(0)
+  ventas   Int @default(0)
 
   // Resultado
-  stockFinEsperado  Int        @default(0)
-  stockFinFisico    Int        @default(0)
-  diferencia        Int        @default(0)  // stockFinEsperado - stockFinFisico - perdidasTotales
+  stockFinEsperado Int @default(0)
+  stockFinFisico   Int @default(0)
+  diferencia       Int @default(0) // stockFinEsperado - stockFinFisico - perdidasTotales
 
   // Pérdidas
-  filtradas         Int        @default(0)
-  rotas             Int        @default(0)
-  consumoInterno    Int        @default(0)
+  filtradas      Int @default(0)
+  rotas          Int @default(0)
+  consumoInterno Int @default(0)
 
   // Comisión del sellador por este item
-  comSellador       Decimal    @default(0) @db.Decimal(10, 2)
+  comSellador Decimal @default(0) @db.Decimal(10, 2)
 
-  createdAt         DateTime   @db.Timestamptz() @default(now())
-  updatedAt         DateTime   @db.Timestamptz() @updatedAt
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
 
   @@unique([produccionId, producto])
   @@index([producto])
@@ -962,20 +969,20 @@ model ProduccionItem {
 // ====================
 
 model Gasto {
-  id           String   @id @default(cuid())
-  createdById  String?
-  createdBy    User?    @relation("GastoCreador", fields: [createdById], references: [id])
-  fecha        DateTime @db.Timestamptz() @default(now())
+  id          String    @id @default(cuid())
+  createdById String?
+  createdBy   User?     @relation("GastoCreador", fields: [createdById], references: [id])
+  fecha       DateTime  @default(now()) @db.Timestamptz()
   categoria   String
   descripcion String
-  monto       Decimal  @default(0) @db.Decimal(10, 2)
+  monto       Decimal   @default(0) @db.Decimal(10, 2)
   responsable String?
   notas       String?
   embarqueId  String?
   embarque    Embarque? @relation(fields: [embarqueId], references: [id])
 
-  createdAt  DateTime @db.Timestamptz() @default(now())
-  updatedAt DateTime @db.Timestamptz() @updatedAt
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
 
   @@index([createdById])
   @@index([fecha])
@@ -988,22 +995,22 @@ model Gasto {
 // ====================
 
 model Proveedor {
-  id         String     @id @default(cuid())
-  createdById String?
-  createdBy  User?      @relation("ProveedorCreador", fields: [createdById], references: [id])
+  id            String  @id @default(cuid())
+  createdById   String?
+  createdBy     User?   @relation("ProveedorCreador", fields: [createdById], references: [id])
   nombre        String
   telefono      String?
   email         String?
   direccion     String?
-  tipoProducto  String?   @db.VarChar(100)
-  observaciones String?   @db.Text
-  activo        Boolean   @default(true)
+  tipoProducto  String? @db.VarChar(100)
+  observaciones String? @db.Text
+  activo        Boolean @default(true)
 
-  insumos   Insumo[]
-  compras   CompraInsumo[]
+  insumos Insumo[]
+  compras CompraInsumo[]
 
-  createdAt DateTime @db.Timestamptz() @default(now())
-  updatedAt DateTime @db.Timestamptz() @updatedAt
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
 
   @@index([createdById])
 }
@@ -1013,23 +1020,23 @@ model Proveedor {
 // ====================
 
 model Insumo {
-  id          String     @id @default(cuid())
+  id          String  @id @default(cuid())
   createdById String?
-  createdBy  User?      @relation("InsumoCreador", fields: [createdById], references: [id])
-  nombre     String
-  unidad    String
-  stock      Decimal    @default(0) @db.Decimal(10, 2)
-  stockMin   Decimal    @default(0) @db.Decimal(10, 2)
-  precioUnit Decimal    @default(0) @db.Decimal(10, 2)
-  activo     Boolean    @default(true)
+  createdBy   User?   @relation("InsumoCreador", fields: [createdById], references: [id])
+  nombre      String
+  unidad      String
+  stock       Decimal @default(0) @db.Decimal(10, 2)
+  stockMin    Decimal @default(0) @db.Decimal(10, 2)
+  precioUnit  Decimal @default(0) @db.Decimal(10, 2)
+  activo      Boolean @default(true)
 
   proveedorId String?
-  proveedor  Proveedor? @relation(fields: [proveedorId], references: [id])
+  proveedor   Proveedor? @relation(fields: [proveedorId], references: [id])
 
-  compras    CompraInsumo[]
+  compras CompraInsumo[]
 
-  createdAt DateTime @db.Timestamptz() @default(now())
-  updatedAt DateTime @db.Timestamptz() @updatedAt
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
 
   @@index([createdById])
 }
@@ -1039,20 +1046,20 @@ model Insumo {
 // ====================
 
 model CompraInsumo {
-  id           String    @id @default(cuid())
-  createdById  String?
-  createdBy    User?      @relation("CompraCreador", fields: [createdById], references: [id])
+  id          String    @id @default(cuid())
+  createdById String?
+  createdBy   User?     @relation("CompraCreador", fields: [createdById], references: [id])
   numero      String    @unique
   proveedorId String
-  proveedor  Proveedor @relation(fields: [proveedorId], references: [id])
+  proveedor   Proveedor @relation(fields: [proveedorId], references: [id])
   insumoId    String
-  insumo     Insumo   @relation(fields: [insumoId], references: [id])
-  cantidad   Decimal  @db.Decimal(10, 2)
-  montoTotal Decimal  @db.Decimal(10, 2)
-  fecha      DateTime @db.Timestamptz() @default(now())
+  insumo      Insumo    @relation(fields: [insumoId], references: [id])
+  cantidad    Decimal   @db.Decimal(10, 2)
+  montoTotal  Decimal   @db.Decimal(10, 2)
+  fecha       DateTime  @default(now()) @db.Timestamptz()
 
-  createdAt  DateTime @db.Timestamptz() @default(now())
-  updatedAt DateTime @db.Timestamptz() @updatedAt
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
 
   @@index([createdById])
   @@index([fecha])
@@ -1065,21 +1072,21 @@ model CompraInsumo {
 // ====================
 
 model Producto {
-  id                  String   @id @default(cuid())
-  codigo              String   @unique
+  id                  String  @id @default(cuid())
+  codigo              String  @unique
   nombre              String
   descripcion         String?
   unidad              String
   contenido           String?
-  activo              Boolean  @default(true)
-  aplicaDomicilio     Boolean  @default(false)
-  sobreCostoDomicilio Decimal  @default(0) @db.Decimal(10, 2)
-  precioBase          Decimal  @default(0) @db.Decimal(10, 2)
+  activo              Boolean @default(true)
+  aplicaDomicilio     Boolean @default(false)
+  sobreCostoDomicilio Decimal @default(0) @db.Decimal(10, 2)
+  precioBase          Decimal @default(0) @db.Decimal(10, 2)
 
-  precios             PrecioVolumen[]
+  precios PrecioVolumen[]
 
-  createdAt           DateTime @db.Timestamptz() @default(now())
-  updatedAt           DateTime @db.Timestamptz() @updatedAt
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
 }
 
 // ====================
@@ -1087,22 +1094,22 @@ model Producto {
 // ====================
 
 model PrecioVolumen {
-  id          String   @id @default(cuid())
-  productoId  String
-  producto    Producto @relation(fields: [productoId], references: [id])
+  id         String   @id @default(cuid())
+  productoId String
+  producto   Producto @relation(fields: [productoId], references: [id])
 
-  cantMin     Int      @default(1)
-  cantMax     Int?
-  precio      Decimal  @db.Decimal(10, 2)
+  cantMin Int     @default(1)
+  cantMax Int?
+  precio  Decimal @db.Decimal(10, 2)
 
-  activo      Boolean  @default(true)
+  activo Boolean @default(true)
 
-  createdAt   DateTime @db.Timestamptz() @default(now())
-  updatedAt   DateTime @db.Timestamptz() @updatedAt
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
 
+  @@unique([productoId, cantMin])
   @@index([productoId])
   @@index([productoId, activo])
-  @@unique([productoId, cantMin])
 }
 
 // ====================
@@ -1113,7 +1120,7 @@ model Config {
   id        String   @id @default(cuid())
   clave     String   @unique
   valor     String
-  updatedAt DateTime @db.Timestamptz() @updatedAt
+  updatedAt DateTime @updatedAt @db.Timestamptz()
 }
 
 // ====================
@@ -1121,25 +1128,25 @@ model Config {
 // ====================
 
 model CierreDia {
-  id            String   @id @default(cuid())
-  fecha         DateTime @db.Timestamptz() @unique
+  id    String   @id @default(cuid())
+  fecha DateTime @unique @db.Timestamptz()
 
-  numPedidos   Int     @default(0)
-  totalVentas  Decimal @default(0) @db.Decimal(10, 2)
+  numPedidos  Int     @default(0)
+  totalVentas Decimal @default(0) @db.Decimal(10, 2)
 
   // Por origen (nuevos)
-  totalVentaRapida  Decimal @default(0) @db.Decimal(10, 2)
-  totalPedido       Decimal @default(0) @db.Decimal(10, 2)
-  totalVentaLibre   Decimal @default(0) @db.Decimal(10, 2)
+  totalVentaRapida Decimal @default(0) @db.Decimal(10, 2)
+  totalPedido      Decimal @default(0) @db.Decimal(10, 2)
+  totalVentaLibre  Decimal @default(0) @db.Decimal(10, 2)
 
-  fiadoVentaRapida  Decimal @default(0) @db.Decimal(10, 2)
-  fiadoPedido       Decimal @default(0) @db.Decimal(10, 2)
-  fiadoVentaLibre   Decimal @default(0) @db.Decimal(10, 2)
+  fiadoVentaRapida Decimal @default(0) @db.Decimal(10, 2)
+  fiadoPedido      Decimal @default(0) @db.Decimal(10, 2)
+  fiadoVentaLibre  Decimal @default(0) @db.Decimal(10, 2)
 
-  aguaVendida    Int     @default(0)
-  hieloVendido  Int     @default(0)
-  botellonVendido Int   @default(0)
-  bolsaAguaVendida Int  @default(0)
+  aguaVendida       Int @default(0)
+  hieloVendido      Int @default(0)
+  botellonVendido   Int @default(0)
+  bolsaAguaVendida  Int @default(0)
   bolsaHieloVendida Int @default(0)
 
   cobrado       Decimal @default(0) @db.Decimal(10, 2)
@@ -1150,25 +1157,25 @@ model CierreDia {
   transferencia Decimal @default(0) @db.Decimal(10, 2)
   bono          Decimal @default(0) @db.Decimal(10, 2)
 
-  baseDia       Decimal @default(0) @db.Decimal(10, 2)
-  comisiones    Decimal @default(0) @db.Decimal(10, 2)
-  salarios      Decimal @default(0) @db.Decimal(10, 2)
-  gastos        Decimal @default(0) @db.Decimal(10, 2)
+  baseDia    Decimal @default(0) @db.Decimal(10, 2)
+  comisiones Decimal @default(0) @db.Decimal(10, 2)
+  salarios   Decimal @default(0) @db.Decimal(10, 2)
+  gastos     Decimal @default(0) @db.Decimal(10, 2)
 
-  stockIniAgua Int      @default(0)
-  prodAgua    Int      @default(0)
-  stockFinAgua Int     @default(0)
-  stockIniHielo Int    @default(0)
-  prodHielo    Int      @default(0)
-  stockFinHielo Int     @default(0)
+  stockIniAgua  Int @default(0)
+  prodAgua      Int @default(0)
+  stockFinAgua  Int @default(0)
+  stockIniHielo Int @default(0)
+  prodHielo     Int @default(0)
+  stockFinHielo Int @default(0)
 
-  netoCaja    Decimal  @default(0) @db.Decimal(10, 2)
+  netoCaja Decimal @default(0) @db.Decimal(10, 2)
 
-  cerradoPor  String?
-  horaCierre  DateTime? @db.Timestamptz()
-  reporte     Json?
+  cerradoPor String?
+  horaCierre DateTime? @db.Timestamptz()
+  reporte    Json?
 
-  createdAt   DateTime @db.Timestamptz() @default(now())
+  createdAt DateTime @default(now()) @db.Timestamptz()
 }
 
 // ====================
@@ -1176,18 +1183,18 @@ model CierreDia {
 // ====================
 
 model NotaCredito {
-  id          String   @id @default(cuid())
-  numero      String   @unique
-  pedidoId    String
-  pedido      Pedido   @relation(fields: [pedidoId], references: [id])
-  facturaId   String?
-  factura     Factura? @relation(fields: [facturaId], references: [id])
-  monto       Decimal  @db.Decimal(10, 2)
-  motivo      String
-  fecha       DateTime @db.Timestamptz() @default(now())
-  creadoPor   String?
+  id        String   @id @default(cuid())
+  numero    String   @unique
+  pedidoId  String
+  pedido    Pedido   @relation(fields: [pedidoId], references: [id])
+  facturaId String?
+  factura   Factura? @relation(fields: [facturaId], references: [id])
+  monto     Decimal  @db.Decimal(10, 2)
+  motivo    String
+  fecha     DateTime @default(now()) @db.Timestamptz()
+  creadoPor String?
 
-  createdAt   DateTime @db.Timestamptz() @default(now())
+  createdAt DateTime @default(now()) @db.Timestamptz()
 
   @@index([pedidoId])
   @@index([facturaId])
@@ -1202,10 +1209,10 @@ model Historial {
   id         String   @id @default(cuid())
   entidad    String
   registroId String
-  accion    String
-  datos     String
-  usuarioId String?
-  fecha     DateTime @db.Timestamptz() @default(now())
+  accion     String
+  datos      String
+  usuarioId  String?
+  fecha      DateTime @default(now()) @db.Timestamptz()
 
   @@index([entidad])
   @@index([fecha])
@@ -1219,13 +1226,13 @@ model Historial {
 // ====================
 
 model PrecioHistorial {
-  id            String   @id @default(cuid())
-  producto      String
-  precio        Decimal  @db.Decimal(10, 2)
-  vigenteDesde  DateTime @db.Timestamptz() @default(now())
-  creadoPor     String
+  id           String   @id @default(cuid())
+  producto     String
+  precio       Decimal  @db.Decimal(10, 2)
+  vigenteDesde DateTime @default(now()) @db.Timestamptz()
+  creadoPor    String
 
-  createdAt     DateTime @db.Timestamptz() @default(now())
+  createdAt DateTime @default(now()) @db.Timestamptz()
 }
 
 // ====================
@@ -1233,36 +1240,36 @@ model PrecioHistorial {
 // ====================
 
 model Caso {
-  id              String      @id @default(cuid())
-  alertaTipo      String
-  severidad       String
-  titulo          String
-  descripcion     String?     @db.Text
+  id          String  @id @default(cuid())
+  alertaTipo  String
+  severidad   String
+  titulo      String
+  descripcion String? @db.Text
 
   // Polimórfico: link al negocio
-  clienteId       String?
-  cliente         Cliente?    @relation("CasoCliente", fields: [clienteId], references: [id], onDelete: SetNull)
-  negocioId       String?
-  negocio         Negocio?    @relation("CasoNegocio", fields: [negocioId], references: [id], onDelete: SetNull)
-  pedidoId        String?
-  pedido          Pedido?     @relation("CasoPedido", fields: [pedidoId], references: [id], onDelete: SetNull)
+  clienteId String?
+  cliente   Cliente? @relation("CasoCliente", fields: [clienteId], references: [id], onDelete: SetNull)
+  negocioId String?
+  negocio   Negocio? @relation("CasoNegocio", fields: [negocioId], references: [id], onDelete: SetNull)
+  pedidoId  String?
+  pedido    Pedido?  @relation("CasoPedido", fields: [pedidoId], references: [id], onDelete: SetNull)
 
   // Workflow
-  status          CasoStatus  @default(ABIERTO)
-  asignadoAId     String?
-  asignadoA       User?       @relation("CasoAsignado", fields: [asignadoAId], references: [id], onDelete: SetNull)
-  creadoPorId     String
-  creadoPor       User        @relation("CasoCreador", fields: [creadoPorId], references: [id])
+  status      CasoStatus @default(ABIERTO)
+  asignadoAId String?
+  asignadoA   User?      @relation("CasoAsignado", fields: [asignadoAId], references: [id], onDelete: SetNull)
+  creadoPorId String
+  creadoPor   User       @relation("CasoCreador", fields: [creadoPorId], references: [id])
 
   // Resolución
-  notasResolucion String?     @db.Text
-  resueltoEn      DateTime?   @db.Timestamptz()
-  cerradoEn       DateTime?   @db.Timestamptz()
+  notasResolucion String?   @db.Text
+  resueltoEn      DateTime? @db.Timestamptz()
+  cerradoEn       DateTime? @db.Timestamptz()
 
-  createdAt       DateTime    @db.Timestamptz() @default(now())
-  updatedAt       DateTime    @db.Timestamptz() @updatedAt
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
 
-  eventos         CasoEvento[]
+  eventos CasoEvento[]
 
   @@index([status])
   @@index([asignadoAId])
@@ -1273,16 +1280,16 @@ model Caso {
 }
 
 model CasoEvento {
-  id          String      @id @default(cuid())
-  casoId      String
-  caso        Caso        @relation(fields: [casoId], references: [id], onDelete: Cascade)
-  userId      String
-  user        User        @relation("CasoEventoUser", fields: [userId], references: [id])
-  accion      String
-  valorPre    String?
-  valorPost   String?
-  comentario  String?     @db.Text
-  createdAt   DateTime    @db.Timestamptz() @default(now())
+  id         String   @id @default(cuid())
+  casoId     String
+  caso       Caso     @relation(fields: [casoId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation("CasoEventoUser", fields: [userId], references: [id])
+  accion     String
+  valorPre   String?
+  valorPost  String?
+  comentario String?  @db.Text
+  createdAt  DateTime @default(now()) @db.Timestamptz()
 
   @@index([casoId])
   @@index([createdAt])
@@ -1293,24 +1300,24 @@ model CasoEvento {
 // ====================
 
 model DeudaTrabajador {
-  id             String   @id @default(cuid())
-  createdById    String?
-  createdBy      User?       @relation("DeudaCreador", fields: [createdById], references: [id])
-  trabajadorId   String
-  trabajador     Trabajador  @relation(fields: [trabajadorId], references: [id])
+  id           String     @id @default(cuid())
+  createdById  String?
+  createdBy    User?      @relation("DeudaCreador", fields: [createdById], references: [id])
+  trabajadorId String
+  trabajador   Trabajador @relation(fields: [trabajadorId], references: [id])
 
-  tipo           String   // PRESTAMO, DEFICIT_EFECTIVO, OTRO
-  montoOriginal  Decimal  @db.Decimal(10, 2)
-  montoPendiente Decimal  @db.Decimal(10, 2)
+  tipo           String // PRESTAMO, DEFICIT_EFECTIVO, OTRO
+  montoOriginal  Decimal @db.Decimal(10, 2)
+  montoPendiente Decimal @db.Decimal(10, 2)
 
-  embarqueId     String?
-  descripcion    String   @db.Text
-  fecha          DateTime @db.Timestamptz() @default(now())
+  embarqueId  String?
+  descripcion String   @db.Text
+  fecha       DateTime @default(now()) @db.Timestamptz()
 
-  deducciones    DeduccionDeuda[]
-  abonos         AbonoDeuda[]
-  createdAt      DateTime @db.Timestamptz() @default(now())
-  updatedAt      DateTime @db.Timestamptz() @updatedAt
+  deducciones DeduccionDeuda[]
+  abonos      AbonoDeuda[]
+  createdAt   DateTime         @default(now()) @db.Timestamptz()
+  updatedAt   DateTime         @updatedAt @db.Timestamptz()
 
   @@index([trabajadorId])
   @@index([trabajadorId, montoPendiente])
@@ -1321,12 +1328,12 @@ model DeudaTrabajador {
 // ====================
 
 model AbonoDeuda {
-  id       String   @id @default(cuid())
-  deudaId  String
-  deuda    DeudaTrabajador @relation(fields: [deudaId], references: [id], onDelete: Cascade)
-  monto    Decimal  @db.Decimal(10, 2)
-  fecha    DateTime @db.Timestamptz() @default(now())
-  nota     String?  @db.Text
+  id      String          @id @default(cuid())
+  deudaId String
+  deuda   DeudaTrabajador @relation(fields: [deudaId], references: [id], onDelete: Cascade)
+  monto   Decimal         @db.Decimal(10, 2)
+  fecha   DateTime        @default(now()) @db.Timestamptz()
+  nota    String?         @db.Text
 
   @@index([deudaId])
 }
@@ -1336,15 +1343,42 @@ model AbonoDeuda {
 // ====================
 
 model DeduccionDeuda {
-  id        String   @id @default(cuid())
+  id        String          @id @default(cuid())
   nominaId  String
-  nomina    Nomina   @relation(fields: [nominaId], references: [id])
+  nomina    Nomina          @relation(fields: [nominaId], references: [id])
   deudaId   String
   deuda     DeudaTrabajador @relation(fields: [deudaId], references: [id])
-  monto     Decimal  @db.Decimal(10, 2)
-  createdAt DateTime @db.Timestamptz() @default(now())
+  monto     Decimal         @db.Decimal(10, 2)
+  createdAt DateTime        @default(now()) @db.Timestamptz()
 
   @@unique([nominaId, deudaId])
   @@index([nominaId])
   @@index([deudaId])
+}
+
+// ====================
+// MIGRACIÓN 1FN: ContactoCliente y PlantillaProducto (Fase 1 - EXPAND)
+// ====================
+
+model ContactoCliente {
+  id        String  @id @default(cuid())
+  clienteId String
+  cliente   Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  nombre    String
+  telefono  String
+  relacion  String?
+
+  @@index([clienteId])
+  @@index([telefono])
+}
+
+model PlantillaProducto {
+  id          String              @id @default(cuid())
+  plantillaId String
+  plantilla   PlantillaRecurrente @relation(fields: [plantillaId], references: [id], onDelete: Cascade)
+  producto    String
+  cantidad    Int                 @default(0)
+
+  @@unique([plantillaId, producto])
+  @@index([plantillaId])
 }
