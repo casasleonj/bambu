@@ -1,67 +1,9 @@
 // src/lib/cliente-hydrate.ts
-// Hidratador temporal (Fase 2): reconstruye la shape legacy `contactos: [...]`
-// desde la nueva relación `contactosRel`. La UI consume la shape legacy;
-// este wrapper se elimina en Fase 3 cuando se renombre la relación.
-
-import { prisma } from '@/lib/prisma'
-
-export type ClienteConContactos = NonNullable<
-  Awaited<ReturnType<typeof loadClienteCompleto>>
->
-
-/**
- * Carga un cliente con sus contactos hidratados al shape legacy.
- * En Fase 3, eliminar este wrapper y usar `prisma.cliente.findUnique` directo.
- */
-export async function loadClienteCompleto(id: string) {
-  const c = await prisma.cliente.findUnique({
-    where: { id },
-    include: { contactosRel: true },
-  })
-  if (!c) return null
-  return {
-    ...c,
-    contactos: c.contactosRel.map(r => ({
-      nombre: r.nombre,
-      telefono: r.telefono,
-      relacion: r.relacion ?? undefined,
-    })),
-  }
-}
-
-/**
- * Hidrata un cliente ya cargado (con contactosRel) al shape legacy.
- * Útil en mapeos post-query.
- */
-export function hydrateContactos<
-  T extends { contactosRel: Array<{ nombre: string; telefono: string; relacion: string | null }> }
->(c: T): T & { contactos: Array<{ nombre: string; telefono: string; relacion?: string }> } {
-  return {
-    ...c,
-    contactos: c.contactosRel.map(r => ({
-      nombre: r.nombre,
-      telefono: r.telefono,
-      relacion: r.relacion ?? undefined,
-    })),
-  }
-}
-
-/**
- * Carga una plantilla con sus productos como map.
- * Fase 2: lee desde productosRel, expone como {PACA_AGUA: n, ...}.
- * Fase 3: se elimina este wrapper.
- */
-export async function loadPlantillaCompleta(id: string) {
-  const p = await prisma.plantillaRecurrente.findUnique({
-    where: { id },
-    include: { productosRel: true },
-  })
-  if (!p) return null
-  return {
-    ...p,
-    productos: hydrateProductos(p.productosRel),
-  }
-}
+// (Fase 3 CONTRACT) Helper de hidratación de productos.
+// `cliente.contactos` ahora ES directamente la relación Prisma (array de
+// ContactoCliente[]), no necesita hidratación. `cliente.productos` (de
+// PlantillaRecurrente) sigue siendo array y necesita mapearse a un map
+// {PACA_AGUA: n, ...} para consumidores que esperan el shape legacy.
 
 /**
  * Convierte el array de PlantillaProducto[] en el map legacy.

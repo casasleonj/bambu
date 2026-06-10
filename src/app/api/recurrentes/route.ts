@@ -55,14 +55,14 @@ export async function GET() {
       where: { activo: true },
       include: {
         cliente: { select: { id: true, nombre: true, telefono: true } },
-        productosRel: true,
+        productos: true,
       },
       orderBy: { createdAt: 'desc' },
     })
 
     const recurrentes = plantillas.map(pt => ({
       ...pt,
-      productos: hydrateProductos(pt.productosRel),
+      productos: hydrateProductos(pt.productos),
     }))
 
     return apiSuccess({ recurrentes })
@@ -110,7 +110,6 @@ export async function POST(request: NextRequest) {
       }
 
       const nuevaPlantilla = await tx.plantillaRecurrente.create({
-        // FASE 3 CONTRACT: el cast es temporal hasta Task 3.7 (drop de columna `productos`).
         data: {
           clienteId,
           tipo,
@@ -120,10 +119,10 @@ export async function POST(request: NextRequest) {
           proxGeneracion,
           notas: notas ?? null,
           createdById: (authResult.user as { id: string }).id,
-        } as any,
+        },
         include: {
           cliente: { select: { id: true, nombre: true, telefono: true } },
-          productosRel: true,
+          productos: true,
         },
       })
 
@@ -142,7 +141,7 @@ export async function POST(request: NextRequest) {
       }
 
       return nuevaPlantilla as typeof nuevaPlantilla & {
-        productosRel: Array<{ producto: string; cantidad: number }>
+        productos: Array<{ producto: string; cantidad: number }>
       }
     })
 
@@ -155,7 +154,7 @@ export async function POST(request: NextRequest) {
     })
 
     return apiSuccess({
-      recurrente: { ...plantilla, productos: hydrateProductos(plantilla.productosRel) },
+      recurrente: { ...plantilla, productos: hydrateProductos(plantilla.productos) },
     }, 201)
   } catch (error) {
     // FIX F-26a: mapear error thrown desde la tx
@@ -263,7 +262,7 @@ export async function PUT(request: NextRequest) {
       where: { id },
       include: {
         cliente: { select: { id: true, nombre: true } },
-        productosRel: true,
+        productos: true,
       },
     })
     if (!plantilla) return apiError('Plantilla no encontrada', 404)  // no debería pasar
@@ -277,7 +276,7 @@ export async function PUT(request: NextRequest) {
     })
 
     return apiSuccess({
-      recurrente: { ...plantilla, productos: hydrateProductos(plantilla.productosRel) },
+      recurrente: { ...plantilla, productos: hydrateProductos(plantilla.productos) },
     })
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error updating plantilla recurrente:')

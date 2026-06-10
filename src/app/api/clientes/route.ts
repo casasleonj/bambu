@@ -8,7 +8,6 @@ import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { executeSerializableWithRetry } from '@/lib/serializable'
-import { hydrateContactos } from '@/lib/cliente-hydrate'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -168,7 +167,7 @@ export async function GET(request: NextRequest) {
               referencia: true,
             },
           },
-          contactosRel: true,  // NUEVO (Fase 2)
+          contactos: true,  // FASE 3: ya es el nombre final
         },
         ...prismaPagination,
       }),
@@ -179,7 +178,6 @@ export async function GET(request: NextRequest) {
       ...c,
       clienteId: c.id,
       saldoPendiente: c.pedidos.reduce((sum, p) => sum + Number(p.saldo), 0),
-      contactos: hydrateContactos(c).contactos,  // shape legacy
     }))
     return apiSuccess(
       pagination.all
@@ -233,7 +231,7 @@ export async function POST(request: NextRequest) {
             activo: true,
             OR: [
               { telefono: parsed.data.telefono },
-              { contactosRel: { some: { telefono: parsed.data.telefono } } },
+              { contactos: { some: { telefono: parsed.data.telefono } } },
             ],
           },
           select: { id: true, nombre: true, telefono: true },

@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
             activo: true,
             OR: [
               { telefono },
-              { contactosRel: { some: { telefono } } },
+              { contactos: { some: { telefono } } },
             ],
           },
           select: { id: true, nombre: true, telefono: true },

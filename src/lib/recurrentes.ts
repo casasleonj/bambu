@@ -148,7 +148,7 @@ export async function previewGeneracionRecurrentes(
       activo: true,
       proxGeneracion: { lte: lookaheadEnd },
     },
-    include: { cliente: true, negocio: { include: { cliente: true } }, productosRel: true },
+    include: { cliente: true, negocio: { include: { cliente: true } }, productos: true },
   })
 
   // Batch fetch all pending orders for all clients in a single query
@@ -203,7 +203,7 @@ export async function previewGeneracionRecurrentes(
     const saltosSanitizados = sanitizarSaltos(pt.saltos || [])
     if (estaEnSaltos(saltosSanitizados, fechaGen)) continue
 
-      const productos = hydrateProductos(pt.productosRel)
+      const productos = hydrateProductos(pt.productos)
     const cantidadBase = productosToCantidades(productos, pt.canal)
 
     const pedidosPendientesRaw = pedidosPorCliente.get(effectiveClienteId) || []
@@ -418,7 +418,7 @@ export async function generarPedidosRecurrentes(
       // 1. findUnique plantilla
       const pt = await tx.plantillaRecurrente.findUnique({
         where: { id: decision.recurrenteId },
-        include: { cliente: true, negocio: { include: { cliente: true } }, productosRel: true },
+        include: { cliente: true, negocio: { include: { cliente: true } }, productos: true },
       })
       if (!pt || !pt.activo) return { skipped: true }
 
@@ -513,7 +513,7 @@ export async function generarPedidosRecurrentes(
       }
 
       // 6. Productos y validaciones
-    const productos = hydrateProductos(pt.productosRel)
+    const productos = hydrateProductos(pt.productos)
       let cantidades = productosToCantidades(productos, pt.canal)
 
       if (decision.decision === 'SOLO_PENDIENTES' || decision.decision === 'APLICAR_CREDITO') {

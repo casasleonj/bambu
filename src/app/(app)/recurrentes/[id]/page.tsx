@@ -9,7 +9,7 @@ export default async function EditarRecurrentePage({ params }: { params: Promise
     where: { id },
     include: {
       cliente: { select: { id: true, nombre: true, telefono: true, barrio: true, direccion: true } },
-      productosRel: true,
+      productos: true,
     },
   })
 
@@ -17,8 +17,8 @@ export default async function EditarRecurrentePage({ params }: { params: Promise
 
   // Hidratar productos al shape legacy para la UI
   const serialized = JSON.parse(JSON.stringify(plantilla))
-  serialized.productos = plantilla.productosRel
-    ? Object.fromEntries(plantilla.productosRel.map(p => [p.producto, p.cantidad]))
+  serialized.productos = plantilla.productos
+    ? Object.fromEntries(plantilla.productos.map(p => [p.producto, p.cantidad]))
     : {}
 
   return <EditarRecurrenteClient plantilla={serialized} />
