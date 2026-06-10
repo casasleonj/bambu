@@ -502,11 +502,30 @@ export async function POST(request: NextRequest) {
         const totalVentas = pedidos.reduce((acc, p) => acc + Number(p.total), 0) - totalNC
         const cobrado = pedidos.reduce((acc, p) => acc + Number(p.totalPagado), 0)
         const fiado = pedidos.reduce((acc, p) => acc + Number(p.saldo), 0)
-        const efectivo = pedidos.flatMap(p => p.pagos).filter(p => p.metodo === MetodoPago.EFECTIVO).reduce((acc, p) => acc + Number(p.monto), 0)
-        const transferencia = pedidos.flatMap(p => p.pagos).filter(p => p.metodo === MetodoPago.TRANSFERENCIA).reduce((acc, p) => acc + Number(p.monto), 0)
-        const nequi = pedidos.flatMap(p => p.pagos).filter(p => p.metodo === MetodoPago.NEQUI).reduce((acc, p) => acc + Number(p.monto), 0)
-        const daviplata = pedidos.flatMap(p => p.pagos).filter(p => p.metodo === MetodoPago.DAVIPLATA).reduce((acc, p) => acc + Number(p.monto), 0)
-        const bono = pedidos.flatMap(p => p.pagos).filter(p => p.metodo === MetodoPago.BONO).reduce((acc, p) => acc + Number(p.monto), 0)
+
+        // P-1 (performance optimization): single pass over pagos to compute
+        // totals per method, instead of 5 separate flatMap+filter+reduce
+        // iterations. For a day with N pedidos × M pagos, this is O(N*M)
+        // instead of O(5*N*M).
+        const totalesPorMetodo: Record<string, number> = {
+          [MetodoPago.EFECTIVO]: 0,
+          [MetodoPago.TRANSFERENCIA]: 0,
+          [MetodoPago.NEQUI]: 0,
+          [MetodoPago.DAVIPLATA]: 0,
+          [MetodoPago.BONO]: 0,
+        }
+        for (const pedido of pedidos) {
+          for (const pago of pedido.pagos) {
+            if (pago.metodo in totalesPorMetodo) {
+              totalesPorMetodo[pago.metodo] = (totalesPorMetodo[pago.metodo] || 0) + Number(pago.monto)
+            }
+          }
+        }
+        const efectivo = totalesPorMetodo[MetodoPago.EFECTIVO]
+        const transferencia = totalesPorMetodo[MetodoPago.TRANSFERENCIA]
+        const nequi = totalesPorMetodo[MetodoPago.NEQUI]
+        const daviplata = totalesPorMetodo[MetodoPago.DAVIPLATA]
+        const bono = totalesPorMetodo[MetodoPago.BONO]
         const cobroVentasHoy = efectivo + transferencia + nequi + daviplata + bono
         const cobroCartera = abonos.reduce((sum, a) => sum + Number(a.monto), 0)
         const gastosTotal = Number(gastosAgg._sum.monto) || 0
