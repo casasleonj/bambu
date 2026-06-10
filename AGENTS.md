@@ -228,7 +228,8 @@ vercel --prod
    - **a) Componente faltante**: `src/components/money-display.tsx` no estaba commiteado pero `dashboard-client/index.tsx` lo importa. Causaba que `/api/trabajadores` devolviera 500 (HTML de error de Next.js), lo que rompía el flujo del test.
    - **b) `CierreDia` con fechas futuras**: Filas de cierres con fechas > hoy hacían que `base-caja-modal.tsx` (líneas 60-73) redirigiera `/dashboard` a `/cierre?fecha=<next-unclosed>`. Fix: `DELETE FROM "CierreDia" WHERE fecha > NOW();`
    - **c) NEXTAUTH_URL se revierte**: Ver issue #7.
-   - Tras arreglar (a) y (b), el test pasa consistentemente con `--workers=4` en 19-26s. Verificado en commit `eb37b14`.
+    - Tras arreglar (a) y (b), el test pasa consistentemente con `--workers=4` en 19-26s. Verificado en commit `eb37b14`.
+9. **Errores TS fantasma en `.next/dev/types/validator.ts`** (resuelto): Si `npx tsc --noEmit` reporta errores inexplicables (módulos que sí existen, signatures que coinciden con el código fuente, identificadores que NO aparecen en el archivo), correr `rm -rf .next` y reintentar. Patrón observable: el error apunta a líneas/carácteres inexistentes en el archivo o a identificadores que no están en el código. El dev server (`next dev`) regenera `.next/dev/types/validator.ts` automáticamente y resuelve la inconsistencia. Si el dev server está corriendo, el cache se regenera al toque de archivo; si no está, el `rm -rf .next` fuerza la regeneración al próximo build.
 
 ---
 

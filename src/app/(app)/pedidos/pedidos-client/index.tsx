@@ -3,10 +3,13 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
+import { useSession } from 'next-auth/react'
 import { toast } from 'sonner'
 import { formatCurrency } from '@/lib/utils'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
+import { fetchRequiereFotoEntrega } from '@/lib/client/config-client'
 import { Modal } from '@/components/modal'
+import { FotoEntregaModal } from '@/components/foto-entrega-modal'
 import { ErrorState } from '@/components/error-state'
 import { SkeletonPage } from '@/components/skeleton'
 import { Tooltip, InfoBanner } from '@/components/tooltip'
@@ -31,6 +34,8 @@ export function PedidosClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { confirm, modal: confirmModal } = useConfirm()
+  const { data: session } = useSession()
+  const userRole = (session?.user as { role?: string } | undefined)?.role ?? null
 
   // Use pedidos hook for data fetching
   const { pedidos: pedidosRaw, loading, error: fetchError, refetch } = usePedidos(
@@ -58,6 +63,10 @@ export function PedidosClient() {
   const [pedidoInicial, setPedidoInicial] = useState<PedidoInicial | undefined>(undefined)
   const anularMotivoRef = useRef<string>('')
   const anularDevolverStockRef = useRef<boolean>(false)
+  // Foto entrega (admin) — when REQUIERE_FOTO_ENTREGA is on, ENTREGADO flow shows the modal first.
+  const [showFotoEntrega, setShowFotoEntrega] = useState(false)
+  const [pedidoParaEntregar, setPedidoParaEntregar] = useState<Pedido | null>(null)
+  const [requiereFotoEntrega, setRequiereFotoEntrega] = useState(false)
 
   // Fechas desde URL (fuente de verdad)
   const desdeUrl = searchParams.get('desde')
@@ -193,6 +202,14 @@ export function PedidosClient() {
       }
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    // Fetch REQUIERE_FOTO_ENTREGA config (best-effort, default false on error).
+    ;(async () => {
+      const required = await fetchRequiereFotoEntrega()
+      setRequiereFotoEntrega(required)
+    })()
   }, [])
 
   useEffect(() => {
@@ -608,6 +625,66 @@ export function PedidosClient() {
     }
   }
 
+  /**
+   * After the user confirms a delivery photo, mark the pedido as ENTREGADO
+   * via the dedicated /entrega endpoint (which persists the photo + GPS).
+   */
+  async function handleFotoConfirm(fotoBase64: string) {
+    if (!pedidoParaEntregar) {
+      throw new Error('No hay pedido seleccionado')
+    }
+    const id = pedidoParaEntregar.id
+    setUpdatingId(id)
+    setShowFotoEntrega(false)
+    try {
+      // Try to grab GPS (non-blocking, best-effort)
+      let gpsLat: number | undefined
+      let gpsLng: number | undefined
+      if (typeof navigator !== 'undefined' && navigator.geolocation) {
+        try {
+          const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000, maximumAge: 60000 })
+          })
+          gpsLat = pos.coords.latitude
+          gpsLng = pos.coords.longitude
+        } catch {
+          // ignore — GPS not available
+        }
+      }
+
+      const itemsEntregados = (pedidoParaEntregar.items || []).flatMap((i) => {
+        const entries: Array<{ producto: string; cantidad: number }> = []
+        if (i.cantPedido > 0) entries.push({ producto: i.producto, cantidad: i.cantPedido })
+        return entries
+      })
+
+      const res = await fetch(`/api/pedidos/${id}/entrega`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          itemsEntregados,
+          pagos: [],
+          fotoEntrega: fotoBase64,
+          gpsLat,
+          gpsLng,
+        }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(json?.error || 'Error registrando entrega')
+      }
+      setShowDetailModal(false)
+      fetchPedidos()
+      toast.success('Pedido entregado con foto')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error confirmando entrega')
+      throw err
+    } finally {
+      setUpdatingId(null)
+      setPedidoParaEntregar(null)
+    }
+  }
+
   if (fetchError) {
     return (
       <ErrorState
@@ -746,6 +823,7 @@ export function PedidosClient() {
           pedidos={pedidosFiltrados}
           updatingId={updatingId}
           hasActiveFilters={hasActiveFilters}
+          userRole={userRole}
           renderOrigenBadge={getOrigenBadge}
           renderEstadoEntregaBadge={getEstadoEntregaBadge}
           renderEstadoPagoBadge={getEstadoPagoBadge}
@@ -756,7 +834,7 @@ export function PedidosClient() {
           onCreateClick={() => setShowModal(true)}
         />
       )}
-      {activeTab === 'fiados' && <FiadosTable pedidos={pedidos} onPedidosChange={fetchPedidos} />}
+      {activeTab === 'fiados' && <FiadosTable pedidos={pedidos} onPedidosChange={fetchPedidos} userRole={userRole} />}
       {activeTab === 'alertas' && <AlertasTable pedidos={pedidos} />}
 
       {/* Modal Formulario Unificado */}
@@ -1181,7 +1259,14 @@ export function PedidosClient() {
                   {selectedPedido.estadoEntrega === 'EN_RUTA' && (
                     <>
                       <button
-                        onClick={() => cambiarEstado(selectedPedido.id, 'ENTREGADO')}
+                        onClick={() => {
+                          if (requiereFotoEntrega) {
+                            setPedidoParaEntregar(selectedPedido)
+                            setShowFotoEntrega(true)
+                          } else {
+                            cambiarEstado(selectedPedido.id, 'ENTREGADO')
+                          }
+                        }}
                         disabled={updatingId === selectedPedido.id}
                         className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition disabled:opacity-50"
                       >
@@ -1318,6 +1403,17 @@ export function PedidosClient() {
 
       {/* Confirm Modal */}
       {confirmModal}
+
+      {/* Foto entrega modal (admin) — only mounted when delivery photo is required */}
+      <FotoEntregaModal
+        open={showFotoEntrega}
+        onClose={() => {
+          if (updatingId) return
+          setShowFotoEntrega(false)
+          setPedidoParaEntregar(null)
+        }}
+        onConfirm={handleFotoConfirm}
+      />
 
       {/* FAB Unificado */}
       <div

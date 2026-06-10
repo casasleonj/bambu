@@ -2,8 +2,8 @@
 
 import type { ReactNode } from 'react'
 import { EmptyState } from '@/components/empty-state'
-import { formatCurrency } from '@/lib/utils'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
+import { MoneyDisplay } from '@/components/money-display'
 import type { Pedido } from './types'
 
 function getItemsFromPedido(pedido: Pedido) {
@@ -25,6 +25,7 @@ interface PedidoTableProps {
   pedidos: Pedido[]
   updatingId: string | null
   hasActiveFilters: boolean
+  userRole?: string | null
   renderOrigenBadge: (origen: string) => ReactNode
   renderEstadoEntregaBadge: (estado: string) => ReactNode
   renderEstadoPagoBadge: (estado: string) => ReactNode
@@ -38,6 +39,7 @@ interface PedidoTableProps {
 function DesktopRow({
   pedido,
   updatingId,
+  userRole,
   renderOrigenBadge,
   renderEstadoEntregaBadge,
   renderEstadoPagoBadge,
@@ -93,7 +95,7 @@ function DesktopRow({
           <span className="text-xs text-gray-500">🕐 {pedido.horaAperturaCli}</span>
         )}
         {fiado && (
-          <span className="text-xs text-red-600 font-medium">Fiado: {formatCurrency(Number(pedido.saldo))}</span>
+          <span className="text-xs text-red-600 font-medium">Fiado: <MoneyDisplay value={Number(pedido.saldo)} userRole={userRole} /></span>
         )}
       </td>
       <td className="px-4 py-3">
@@ -115,11 +117,11 @@ function DesktopRow({
         </div>
       </td>
       <td className="px-4 py-3 text-right">
-        <div className="font-semibold text-gray-800">{formatCurrency(Number(pedido.total))}</div>
+        <div className="font-semibold text-gray-800"><MoneyDisplay value={Number(pedido.total)} userRole={userRole} /></div>
       </td>
       <td className="px-4 py-3 text-right">
         {Number(pedido.saldo) > 0 ? (
-          <span className="text-sm font-semibold text-red-600">{formatCurrency(Number(pedido.saldo))}</span>
+          <span className="text-sm font-semibold text-red-600"><MoneyDisplay value={Number(pedido.saldo)} userRole={userRole} /></span>
         ) : (
           <span className="text-xs text-green-600 font-medium">✓</span>
         )}
@@ -169,6 +171,7 @@ function DesktopRow({
 function MobileCard({
   pedido,
   updatingId,
+  userRole,
   renderOrigenBadge,
   renderEstadoEntregaBadge,
   renderEstadoPagoBadge,
@@ -232,9 +235,9 @@ function MobileCard({
           </div>
         </div>
         <div className="text-right ml-2">
-          <p className="font-bold text-gray-800 text-sm">{formatCurrency(Number(pedido.total))}</p>
+          <p className="font-bold text-gray-800 text-sm"><MoneyDisplay value={Number(pedido.total)} userRole={userRole} /></p>
           {Number(pedido.saldo) > 0 ? (
-            <p className="text-xs text-red-500 font-medium">Debe: {formatCurrency(Number(pedido.saldo))}</p>
+            <p className="text-xs text-red-500 font-medium">Debe: <MoneyDisplay value={Number(pedido.saldo)} userRole={userRole} /></p>
           ) : (
             <p className="text-xs text-green-600 font-medium">Pagado</p>
           )}
@@ -309,6 +312,7 @@ export function PedidoTable({
   pedidos,
   updatingId,
   hasActiveFilters,
+  userRole,
   renderOrigenBadge,
   renderEstadoEntregaBadge,
   renderEstadoPagoBadge,
@@ -318,7 +322,7 @@ export function PedidoTable({
   onCambiarEstado,
   onCreateClick,
 }: PedidoTableProps) {
-  const rowProps = { updatingId, renderOrigenBadge, renderEstadoEntregaBadge, renderEstadoPagoBadge, getAlertasPedido, tieneFiado, onDetail, onCambiarEstado }
+  const rowProps = { updatingId, userRole, renderOrigenBadge, renderEstadoEntregaBadge, renderEstadoPagoBadge, getAlertasPedido, tieneFiado, onDetail, onCambiarEstado }
   const { pinned, unpinned } = splitPinned(pedidos)
 
   function renderPinnedRows() {

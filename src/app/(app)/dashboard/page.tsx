@@ -22,5 +22,7 @@ export default async function DashboardPage() {
   // Adapt DDD shape to legacy DashboardClient shape
   const data = JSON.parse(JSON.stringify(toLegacyDashboardData(dddData)))
 
-  return <DashboardClient data={data} />
+  const userRole = (session.user as { role?: string } | undefined)?.role ?? null
+
+  return <DashboardClient data={data} userRole={userRole} />
 }

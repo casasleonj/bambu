@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { redirect } from 'next/navigation'
 import { RepartidorClient } from './repartidor-client'
 import { requirePagePermission } from '@/lib/auth-guard'
+import { getConfigBool } from '@/lib/config'
 
 export default async function RepartidorPage() {
   await requirePagePermission('view:repartidor')
@@ -44,6 +45,10 @@ export default async function RepartidorPage() {
     orderBy: { numero: 'desc' },
   })
 
+  // BLOQUEAR_PRECIOS_REPARTIDOR — strip all monetary fields server-side when on.
+  const bloquearPrecios = await getConfigBool('BLOQUEAR_PRECIOS_REPARTIDOR', false)
+  const maskPrices = bloquearPrecios && userRole === 'REPARTIDOR'
+
   const embarqueData = embarque
     ? {
         ...embarque,
@@ -56,21 +61,21 @@ export default async function RepartidorPage() {
           ...p,
           fecha: p.fecha.toISOString(),
           fechaEntrega: p.fechaEntrega?.toISOString() || null,
-          total: Number(p.total),
-          saldo: Number(p.saldo),
-          totalPagado: Number(p.totalPagado),
-          precioPacaAgua: Number(p.precioPacaAgua),
-          precioPacaHielo: Number(p.precioPacaHielo),
-          precioBotellonFab: Number(p.precioBotellonFab),
-          precioBotellonDom: Number(p.precioBotellonDom),
-          precioBolsaAgua: Number(p.precioBolsaAgua),
-          precioBolsaHielo: Number(p.precioBolsaHielo),
+          total: maskPrices ? 0 : Number(p.total),
+          saldo: maskPrices ? 0 : Number(p.saldo),
+          totalPagado: maskPrices ? 0 : Number(p.totalPagado),
+          precioPacaAgua: maskPrices ? 0 : Number(p.precioPacaAgua),
+          precioPacaHielo: maskPrices ? 0 : Number(p.precioPacaHielo),
+          precioBotellonFab: maskPrices ? 0 : Number(p.precioBotellonFab),
+          precioBotellonDom: maskPrices ? 0 : Number(p.precioBotellonDom),
+          precioBolsaAgua: maskPrices ? 0 : Number(p.precioBolsaAgua),
+          precioBolsaHielo: maskPrices ? 0 : Number(p.precioBolsaHielo),
           gpsLat: p.gpsLat ? Number(p.gpsLat) : null,
           gpsLng: p.gpsLng ? Number(p.gpsLng) : null,
           items: p.items.map(i => ({
             ...i,
-            precio: Number(i.precio),
-            subtotal: Number(i.subtotal),
+            precio: maskPrices ? 0 : Number(i.precio),
+            subtotal: maskPrices ? 0 : Number(i.subtotal),
           })),
         })),
       }

@@ -7,11 +7,11 @@ import { signOut } from 'next-auth/react'
 import { purgeSWCache } from '@/lib/purge-sw-cache'
 import { useBaseCaja } from '@/hooks/use-base-caja'
 import { useAppStore } from '@/stores/app-store'
-import { formatCurrency } from '@/lib/utils'
 import { getUserPermissions, type Permission } from '@/lib/permissions'
 import type { Role } from '@/lib/constants'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger, useCollapsible } from '@/components/ui/collapsible'
 import { icons, navSections, type NavItem, type NavSubItem } from './nav-data'
+import { MoneyDisplay } from '@/components/money-display'
 
 function NavIcon({ name }: { name: string }) {
   return <>{icons[name] || null}</>
@@ -150,7 +150,7 @@ export function Sidebar() {
           <div className="flex items-center justify-between">
             <span className="text-xs text-gray-500">Caja base</span>
             <span className="text-sm font-semibold text-gray-800">
-              {baseDia ? formatCurrency(Number(baseDia)) : '—'}
+              {baseDia ? <MoneyDisplay value={Number(baseDia)} userRole={userRole} className="text-sm font-semibold text-gray-800" /> : '—'}
             </span>
           </div>
         </div>
