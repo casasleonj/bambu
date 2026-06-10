@@ -52,9 +52,14 @@ const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     'view:configuracion', 'view:mi-perfil', 'view:deudas',
     'view:recurrentes', 'view:resumen-facturas',
   ],
+  // REPARTIDOR is restricted to the delivery view + their profile.
+  // Per BLOQUEAR_PRECIOS_REPARTIDOR = Opción C: "ningún precio en ningún lado",
+  // we don't grant access to pages that send raw prices (/dashboard, /pedidos,
+  // /embarques, /rutas) — the proxy redirects to /repartidor if attempted.
+  // If admin later wants to expose a price-free view of these pages, build a
+  // dedicated route (e.g. /mis-pedidos) rather than re-granting access here.
   [ROLES.REPARTIDOR]: [
-    'view:dashboard', 'view:pedidos', 'view:embarques',
-    'view:rutas', 'view:repartidor', 'view:mi-perfil',
+    'view:repartidor', 'view:mi-perfil',
   ],
   [ROLES.SELLADOR]: [
     'view:dashboard', 'view:produccion', 'view:mi-perfil',
