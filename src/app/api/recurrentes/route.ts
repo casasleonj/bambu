@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { sanitizarSaltos, calcularProxGeneracion } from '@/lib/recurrentes'
+import { hydrateProductos } from '@/lib/cliente-hydrate'
 import { z } from 'zod'
 import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
@@ -62,13 +63,14 @@ export async function GET() {
       where: { activo: true },
       include: {
         cliente: { select: { id: true, nombre: true, telefono: true } },
+        productosRel: true,
       },
       orderBy: { createdAt: 'desc' },
     })
 
     const recurrentes = plantillas.map(pt => ({
       ...pt,
-      productos: JSON.parse(pt.productos),
+      productos: hydrateProductos(pt.productosRel),
     }))
 
     return apiSuccess({ recurrentes })
@@ -115,7 +117,7 @@ export async function POST(request: NextRequest) {
         throw new Error('PLANTILLA_YA_EXISTE')
       }
 
-      return tx.plantillaRecurrente.create({
+      const nuevaPlantilla = await tx.plantillaRecurrente.create({
         data: {
           clienteId,
           tipo,
@@ -129,8 +131,25 @@ export async function POST(request: NextRequest) {
         },
         include: {
           cliente: { select: { id: true, nombre: true, telefono: true } },
+          productosRel: true,
         },
       })
+
+      // Dual-write PlantillaProducto (Fase 2 MIGRATE)
+      if (productos && Object.keys(productos).length > 0) {
+        const items = Object.entries(productos)
+          .filter(([, cant]) => (cant ?? 0) > 0)
+          .map(([prod, cant]) => ({
+            plantillaId: nuevaPlantilla.id,
+            producto: prod.toUpperCase(),
+            cantidad: cant!,
+          }))
+        if (items.length > 0) {
+          await tx.plantillaProducto.createMany({ data: items })
+        }
+      }
+
+      return nuevaPlantilla
     })
 
     logAudit({
@@ -142,7 +161,7 @@ export async function POST(request: NextRequest) {
     })
 
     return apiSuccess({
-      recurrente: { ...plantilla, productos: JSON.parse(plantilla.productos) },
+      recurrente: { ...plantilla, productos: hydrateProductos(plantilla.productosRel) },
     }, 201)
   } catch (error) {
     // FIX F-26a: mapear error thrown desde la tx
@@ -209,6 +228,25 @@ export async function PUT(request: NextRequest) {
 
     if (parsed.data.productos) {
       data.productos = productosToJson(parsed.data.productos)
+
+      // Dual-write productos (Fase 2 MIGRATE) — fuera del updateMany para
+      // que se ejecute antes de la condición optimistic-lock.
+      const items = Object.entries(parsed.data.productos)
+        .filter(([, cant]) => (cant ?? 0) > 0)
+        .map(([prod, cant]) => ({
+          producto: prod.toUpperCase(),
+          cantidad: cant!,
+        }))
+
+      // Transacción para deleteMany + createMany atómico
+      await prisma.$transaction(async (tx) => {
+        await tx.plantillaProducto.deleteMany({ where: { plantillaId: id } })
+        if (items.length > 0) {
+          await tx.plantillaProducto.createMany({
+            data: items.map(item => ({ ...item, plantillaId: id })),
+          })
+        }
+      })
     }
 
     const updateResult = await prisma.plantillaRecurrente.updateMany({
@@ -231,6 +269,7 @@ export async function PUT(request: NextRequest) {
       where: { id },
       include: {
         cliente: { select: { id: true, nombre: true } },
+        productosRel: true,
       },
     })
     if (!plantilla) return apiError('Plantilla no encontrada', 404)  // no debería pasar
@@ -244,7 +283,7 @@ export async function PUT(request: NextRequest) {
     })
 
     return apiSuccess({
-      recurrente: { ...plantilla, productos: JSON.parse(plantilla.productos) },
+      recurrente: { ...plantilla, productos: hydrateProductos(plantilla.productosRel) },
     })
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error updating plantilla recurrente:')

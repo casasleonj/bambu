@@ -67,14 +67,14 @@ export async function POST(request: NextRequest) {
 
         // 2. Dedup por teléfono (F-N6: race condition fix)
         // Antes: el findFirst estaba FUERA de la tx. Ahora corre dentro
-        // de Serializable, lo que evita que dos requests simultáneos con
-        // el mismo teléfono pasen el check y ambos intenten crear.
+        // de Serializable, lo que evita que dos requests simultáneos con el
+        // mismo teléfono pasen el check y ambos intenten crear.
         const duplicadoTelefono = await tx.cliente.findFirst({
           where: {
             activo: true,
             OR: [
               { telefono },
-              { contactos: { path: ['[*].telefono'], equals: telefono } },
+              { contactosRel: { some: { telefono } } },
             ],
           },
           select: { id: true, nombre: true, telefono: true },

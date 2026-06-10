@@ -111,19 +111,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
     const data = parsed.data
 
-    if (data.contactos) {
-      const cleaned = data.contactos.filter((c: { nombre?: string; telefono?: string }) => c.nombre?.trim() && c.telefono?.trim())
-      const seen = new Set<string>()
-      data.contactos = cleaned.filter((c: { telefono: string }) => {
-        if (seen.has(c.telefono)) return false
-        seen.add(c.telefono)
-        return true
-      })
-      if (data.telefono) {
-        data.contactos = data.contactos.filter((c: { telefono: string }) => c.telefono !== data.telefono)
-      }
-    }
-
     // FIX F-N20 (hallazgo 26): optimistic locking con updatedAt.
     // Antes: prisma.cliente.update directo SIN tx ni check de
     // updatedAt. Dos PUT/PATCH casi simultáneos del mismo cliente
@@ -140,13 +127,58 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     })
     if (!existing) return apiError('Not found', 404)
 
-    const updateResult = await prisma.cliente.updateMany({
-      where: {
-        id,
-        activo: true,
-        updatedAt: existing.updatedAt,
-      },
-      data,
+    // Transacción: dual-write contactos + updateMany cliente
+    const updateResult = await prisma.$transaction(async (tx) => {
+      if (data.contactos !== undefined) {
+        const cleaned = data.contactos.filter((c: { nombre?: string; telefono?: string }) =>
+          c.nombre?.trim() && c.telefono?.trim()
+        )
+        const seen = new Set<string>()
+        const deduped = cleaned.filter((c: { telefono: string }) => {
+          if (seen.has(c.telefono)) return false
+          seen.add(c.telefono)
+          return true
+        })
+        const telefonos = deduped.map((c: { telefono: string }) => c.telefono)
+
+        // Borrar los contactos que ya no están
+        await tx.contactoCliente.deleteMany({
+          where: { clienteId: id, telefono: { notIn: telefonos } },
+        })
+
+        // Upsert cada contacto nuevo/existente
+        for (const c of deduped) {
+          await tx.contactoCliente.upsert({
+            where: { clienteId_telefono: { clienteId: id, telefono: c.telefono } },
+            create: {
+              clienteId: id,
+              nombre: c.nombre,
+              telefono: c.telefono,
+              relacion: c.relacion ?? null,
+            },
+            update: {
+              nombre: c.nombre,
+              relacion: c.relacion ?? null,
+            },
+          })
+        }
+
+        // Si el teléfono principal cambió, borrar el contacto con ese teléfono
+        if (data.telefono) {
+          await tx.contactoCliente.deleteMany({
+            where: { clienteId: id, telefono: data.telefono },
+          })
+        }
+
+        // Quitar `contactos` del payload que va a `cliente.updateMany`
+        // (la columna legacy aún existe en Fase 2, pero ya no la tocamos desde la app)
+        delete data.contactos
+      }
+
+      return tx.cliente.updateMany({
+        where: { id, activo: true, updatedAt: existing.updatedAt },
+        data,
+      })
     })
 
     if (updateResult.count === 0) {
@@ -170,7 +202,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     return apiSuccess({ cliente })
   } catch (error) {
-    if (error instanceof PrismaClientKnownRequestError && error.code === 'P2025') {
+    if (error && typeof error === 'object' && 'code' in error && (error as { code: string }).code === 'P2025') {
       return apiError('Not found', 404)
     }
     return apiError('Error updating', 500)

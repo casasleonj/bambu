@@ -1368,6 +1368,7 @@ model ContactoCliente {
   telefono  String
   relacion  String?
 
+  @@unique([clienteId, telefono])
   @@index([clienteId])
   @@index([telefono])
 }

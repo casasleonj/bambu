@@ -8,6 +8,7 @@ import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { executeSerializableWithRetry } from '@/lib/serializable'
+import { hydrateContactos } from '@/lib/cliente-hydrate'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -51,7 +52,12 @@ export async function GET(request: NextRequest) {
           c."verificadoEn", c."creadoPorRol", c.bloqueado, c.reclamaciones,
           c."limitePedidosFiados", c."negocioDefaultId", c.notas, c.activo,
           c."createdAt", c."updatedAt", c."createdById", c."rutaId", c.referencia,
-          c."linkUbicacion", c.contactos, c."preciosEspeciales",
+          c."linkUbicacion", c."preciosEspeciales",
+          COALESCE(
+            (SELECT json_agg(json_build_object('nombre', cc.nombre, 'telefono', cc.telefono, 'relacion', cc.relacion))
+             FROM "ContactoCliente" cc WHERE cc."clienteId" = c.id),
+            '[]'::json
+          ) AS contactos,
           GREATEST(
             word_similarity(${search}, c.nombre),
             word_similarity(${search}, COALESCE(c.apellido, '')),
@@ -162,6 +168,7 @@ export async function GET(request: NextRequest) {
               referencia: true,
             },
           },
+          contactosRel: true,  // NUEVO (Fase 2)
         },
         ...prismaPagination,
       }),
@@ -172,6 +179,7 @@ export async function GET(request: NextRequest) {
       ...c,
       clienteId: c.id,
       saldoPendiente: c.pedidos.reduce((sum, p) => sum + Number(p.saldo), 0),
+      contactos: hydrateContactos(c).contactos,  // shape legacy
     }))
     return apiSuccess(
       pagination.all
@@ -225,7 +233,7 @@ export async function POST(request: NextRequest) {
             activo: true,
             OR: [
               { telefono: parsed.data.telefono },
-              { contactos: { path: ['[*].telefono'], equals: parsed.data.telefono } },
+              { contactosRel: { some: { telefono: parsed.data.telefono } } },
             ],
           },
           select: { id: true, nombre: true, telefono: true },
@@ -255,6 +263,18 @@ export async function POST(request: NextRequest) {
           },
           select: { id: true, nombre: true, telefono: true },
         })
+
+        // Dual-write ContactoCliente (Fase 2 MIGRATE)
+        if (contactosSinDuplicados.length > 0) {
+          await tx.contactoCliente.createMany({
+            data: contactosSinDuplicados.map(c => ({
+              clienteId: cliente.id,
+              nombre: c.nombre,
+              telefono: c.telefono,
+              relacion: c.relacion ?? null,
+            })),
+          })
+        }
 
         return { kind: 'created' as const, cliente: { ...cliente, clienteId: cliente.id } }
       },

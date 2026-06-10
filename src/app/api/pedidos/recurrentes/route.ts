@@ -69,6 +69,7 @@ export async function POST(request: NextRequest) {
       where: { id: { in: decisiones.map(d => d.recurrenteId) } },
       include: {
         cliente: { select: { id: true, nombre: true, activo: true, bloqueado: true, limitePedidosFiados: true } },
+        productosRel: true,
       },
     })
     const cambiadas = plantillasActuales.filter(pt => !pt.proxGeneracion || pt.proxGeneracion > fecha)
