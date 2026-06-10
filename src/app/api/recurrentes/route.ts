@@ -46,6 +46,23 @@ const RecurrenteUpdateSchema = z.object({
 
 // (productosToJson eliminado en Fase 3: los productos ahora viven en PlantillaProducto)
 
+/**
+ * Mapea las keys camelCase del Zod a los códigos UPPER_SNAKE_CASE
+ * esperados por `PlantillaProducto.producto`. La columna legacy
+ * `productos` (JSON) usaba este mismo shape; lo preservamos acá
+ * para no romper consumidores.
+ */
+function mapProductoKey(key: string): string | null {
+  const map: Record<string, string> = {
+    pacaAgua: 'PACA_AGUA',
+    pacaHielo: 'PACA_HIELO',
+    botellon: 'BOTELLON',
+    bolsaAgua: 'BOLSA_AGUA',
+    bolsaHielo: 'BOLSA_HIELO',
+  }
+  return map[key] ?? null
+}
+
 export async function GET() {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
@@ -130,11 +147,13 @@ export async function POST(request: NextRequest) {
       if (productos && Object.keys(productos).length > 0) {
         const items = Object.entries(productos)
           .filter(([, cant]) => (cant ?? 0) > 0)
-          .map(([prod, cant]) => ({
-            plantillaId: nuevaPlantilla.id,
-            producto: prod.toUpperCase(),
-            cantidad: cant!,
-          }))
+          .map(([prod, cant]) => {
+            const codigo = mapProductoKey(prod)
+            return codigo
+              ? { plantillaId: nuevaPlantilla.id, producto: codigo, cantidad: cant! }
+              : null
+          })
+          .filter((item): item is NonNullable<typeof item> => item !== null)
         if (items.length > 0) {
           await tx.plantillaProducto.createMany({ data: items })
         }
@@ -219,29 +238,6 @@ export async function PUT(request: NextRequest) {
     if (parsed.data.activo !== undefined) data.activo = parsed.data.activo
     if (parsed.data.saltos) data.saltos = sanitizarSaltos(parsed.data.saltos)
 
-    if (parsed.data.productos) {
-      // FASE 3 CONTRACT: dual-write eliminado. La columna `productos` ya no
-      // existe en la tabla. Los productos se manejan via tabla PlantillaProducto.
-
-      // Reemplazar todos los productos de la plantilla (deleteMany + createMany
-      // atómico via transacción).
-      const items = Object.entries(parsed.data.productos)
-        .filter(([, cant]) => (cant ?? 0) > 0)
-        .map(([prod, cant]) => ({
-          producto: prod.toUpperCase(),
-          cantidad: cant!,
-        }))
-
-      await prisma.$transaction(async (tx) => {
-        await tx.plantillaProducto.deleteMany({ where: { plantillaId: id } })
-        if (items.length > 0) {
-          await tx.plantillaProducto.createMany({
-            data: items.map(item => ({ ...item, plantillaId: id })),
-          })
-        }
-      })
-    }
-
     const updateResult = await prisma.plantillaRecurrente.updateMany({
       where: {
         id,
@@ -255,6 +251,32 @@ export async function PUT(request: NextRequest) {
         'La plantilla fue modificada por otro usuario. Recarga y vuelve a intentar.',
         409,
       )
+    }
+
+    if (parsed.data.productos) {
+      // FASE 3 CONTRACT: dual-write eliminado. La columna `productos` ya no
+      // existe en la tabla. Los productos se manejan via tabla PlantillaProducto.
+      // Se ejecuta DESPUÉS del updateMany para que el optimistic lock
+      // rechace primero si hay conflicto (si fallara, no tocaríamos productos).
+
+      // Reemplazar todos los productos de la plantilla (deleteMany + createMany
+      // atómico via transacción).
+      const items = Object.entries(parsed.data.productos)
+        .filter(([, cant]) => (cant ?? 0) > 0)
+        .map(([prod, cant]) => {
+          const codigo = mapProductoKey(prod)
+          return codigo ? { producto: codigo, cantidad: cant! } : null
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null)
+
+      await prisma.$transaction(async (tx) => {
+        await tx.plantillaProducto.deleteMany({ where: { plantillaId: id } })
+        if (items.length > 0) {
+          await tx.plantillaProducto.createMany({
+            data: items.map(item => ({ ...item, plantillaId: id })),
+          })
+        }
+      })
     }
 
     // Re-leer para devolver el estado final

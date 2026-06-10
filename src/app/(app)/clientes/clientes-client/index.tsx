@@ -304,6 +304,110 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
 
   const [saving, setSaving] = useState(false)
 
+  /**
+   * Sincroniza los contactos de un cliente con la nueva tabla ContactoCliente
+   * (Fase 3 de la 1FN). Compara los contactos actuales del servidor
+   * con los del form y hace POST/PATCH/DELETE individuales.
+   *
+   * Estrategia: diff por teléfono (es la clave única [clienteId, telefono]).
+   * - Contactos en form con teléfono nuevo (sin match en server) → POST
+   * - Contactos en server con teléfono que ya no está en form → DELETE
+   * - Contactos en ambos con el mismo teléfono pero distinto nombre/relacion → PATCH
+   * - Contactos en ambos con el mismo teléfono y mismos campos → unchanged
+   *
+   * Devuelve {ok, errors} donde ok es true si todas las ops fueron exitosas
+   * (o no había nada que sincronizar).
+   */
+  async function syncContactos(
+    clienteId: string,
+    contactosActuales: Array<{ id?: string; telefono: string; nombre?: string; relacion?: string | null }>,
+    contactosForm: Array<{ telefono: string; nombre: string; relacion?: string }>,
+  ): Promise<{ ok: boolean; errors: string[] }> {
+    const errors: string[] = []
+
+    // Normalizar teléfonos para el diff (sin espacios/guiones)
+    const norm = (t: string) => t.replace(/\s|-|\(|\)/g, '').trim()
+    const normRel = (r?: string | null) => (r ?? '').trim() || null
+
+    // Map: telefono normalizado → { nombre, relacion, id? }
+    const enForm = new Map<string, { nombre: string; relacion: string | null }>()
+    for (const c of contactosForm) {
+      if (!c.nombre.trim() || !c.telefono.trim()) continue
+      enForm.set(norm(c.telefono), {
+        nombre: c.nombre.trim(),
+        relacion: normRel(c.relacion),
+      })
+    }
+
+    // Map: telefono normalizado → { id, nombre, relacion } del server
+    const enServer = new Map<string, { id: string; nombre: string; relacion: string | null }>()
+    for (const c of contactosActuales) {
+      if (c.id && c.telefono) {
+        enServer.set(norm(c.telefono), {
+          id: c.id,
+          nombre: (c.nombre ?? '').trim(),
+          relacion: normRel(c.relacion ?? null),
+        })
+      }
+    }
+
+    // DELETE: están en server pero NO en form
+    for (const [tel, { id }] of enServer) {
+      if (!enForm.has(tel)) {
+        const res = await fetch(`/api/clientes/${clienteId}/contactos/${id}`, {
+          method: 'DELETE',
+        })
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          errors.push(`DELETE ${tel}: ${data.error?.message ?? res.status}`)
+        }
+      }
+    }
+
+    // POST: están en form pero NO en server (teléfono nuevo)
+    for (const [tel, payload] of enForm) {
+      if (!enServer.has(tel)) {
+        const res = await fetch(`/api/clientes/${clienteId}/contactos`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nombre: payload.nombre,
+            telefono: tel,
+            relacion: payload.relacion ?? undefined,
+          }),
+        })
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          errors.push(`POST ${tel}: ${data.error?.message ?? res.status}`)
+        }
+      }
+    }
+
+    // PATCH: están en ambos pero cambiaron nombre o relacion
+    for (const [tel, formPayload] of enForm) {
+      const serverEntry = enServer.get(tel)
+      if (!serverEntry) continue // ya manejado en POST
+      const changed =
+        serverEntry.nombre !== formPayload.nombre ||
+        serverEntry.relacion !== formPayload.relacion
+      if (!changed) continue
+      const res = await fetch(`/api/clientes/${clienteId}/contactos/${serverEntry.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nombre: formPayload.nombre,
+          relacion: formPayload.relacion,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        errors.push(`PATCH ${tel}: ${data.error?.message ?? res.status}`)
+      }
+    }
+
+    return { ok: errors.length === 0, errors }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setFormError('')
@@ -329,11 +433,14 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
     setSaving(true)
     try {
       const preciosJson = buildPreciosJson()
+      // NOTA: `contactos` ya no va en el body (Fase 3: la columna legacy
+      // `Cliente.contactos Json?` no existe). Se sincroniza después via
+      // sub-endpoints `POST/DELETE /api/clientes/[id]/contactos`.
+      const { contactos: _contactosLegacy, ...formDataSinContactos } = formData
       const body = {
-        ...formData,
+        ...formDataSinContactos,
         preciosEspeciales: preciosJson || undefined,
         linkUbicacion: formData.linkUbicacion || null,
-        contactos: formData.contactos.filter(c => c.nombre.trim() && c.telefono.trim()),
       }
       if (isEdit && selectedCliente) {
         // PUT no tiene server-side dedup todavía (admin-only, no field use);
@@ -344,6 +451,17 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
           body: JSON.stringify(body),
         })
         if (res.ok) {
+          // Sincronizar contactos con la tabla ContactoCliente (1FN, Fase 3)
+          // Diff contra los contactos originales del cliente seleccionado.
+          const contactosOriginales = (selectedCliente.contactos as Array<{ id?: string; telefono: string }>) || []
+          const contactosLimpios = formData.contactos.filter(
+            c => c.nombre.trim() && c.telefono.trim()
+          )
+          const sync = await syncContactos(selectedCliente.id, contactosOriginales, contactosLimpios)
+          if (!sync.ok) {
+            toast.error(`Cliente guardado, pero algunos contactos fallaron: ${sync.errors.join('; ')}`)
+          }
+
           await fetchClientes()
           if (isEditing) {
             setIsEditing(false)
@@ -352,7 +470,7 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
           } else {
             setShowModal(false)
           }
-          toast.success('Cliente actualizado')
+          if (sync.ok) toast.success('Cliente actualizado')
         } else {
           const data = await res.json().catch(() => ({}))
           setFormError(data.error?.formErrors?.[0] || data.error?.message || 'Error al guardar cliente')
@@ -387,9 +505,31 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
 
         // status === 'ok' (puede ser deduped o freshly created)
         const data = result.data
+        const newCliente = data.cliente || null
+        const newClienteId = newCliente?.id
+
+        // Sincronizar contactos con la tabla ContactoCliente (1FN, Fase 3)
+        // Si la creación fue deduped (cliente ya existía), NO sincronizamos:
+        // los contactos del form podrían pisar los del cliente original.
+        if (newClienteId && !data.deduped) {
+          const contactosLimpios = formData.contactos.filter(
+            c => c.nombre.trim() && c.telefono.trim()
+          )
+          if (contactosLimpios.length > 0) {
+            // El cliente es nuevo: ningún contacto previo que pudiera chocar.
+            const sync = await syncContactos(
+              newClienteId,
+              [], // server vacío porque es cliente nuevo
+              contactosLimpios,
+            )
+            if (!sync.ok) {
+              toast.error(`Cliente creado, pero algunos contactos fallaron: ${sync.errors.join('; ')}`)
+            }
+          }
+        }
+
         await fetchClientes()
         setShowModal(false)
-        const newCliente = data.cliente || null
         toast.success(data.deduped ? 'Cliente ya estaba creado' : 'Cliente creado exitosamente', {
           action: {
             label: 'Agregar negocio',

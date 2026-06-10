@@ -152,6 +152,21 @@ vercel --prod
 - **Toast contract**: `toast.success` (online result), `toast.info` (offline enqueued), `toast.error` (logic error).
 - **Hooks expose** `pendingOffline: string[]` (offlineIds) and `lastResult: ResilientResult` for UI counters.
 
+### 1FN Normalization — `Cliente.contactos` y `PlantillaRecurrente.productos`
+- **Cerrado en migración `1fn-migration-contactos-plantillaproducto` (3 fases, expand-contract, sin downtime)**.
+- Las dos violaciones de 1FN (arrays/objetos JSON como columna) ahora son tablas relacionales:
+  - **`ContactoCliente`** — `id, clienteId, nombre, telefono, relacion?` con `@@unique([clienteId, telefono])` para upsert dedup, `@@index([clienteId])` y `@@index([telefono])` para búsquedas.
+  - **`PlantillaProducto`** — `id, plantillaId, producto, cantidad` con `@@unique([plantillaId, producto])` y `@@index([plantillaId])`.
+- Ambas con `onDelete: Cascade` (soft-delete del padre no afecta los hijos; solo `DELETE` real).
+- **Shape en la API**:
+  - `cliente.contactos` ahora es directamente `ContactoCliente[]` (Prisma nativo). NO se necesita hidratación para contactos.
+  - `plantilla.productos` ahora es `PlantillaProducto[]` (array). Para consumidores que esperan el shape legacy `{PACA_AGUA: n, ...}`, usar `hydrateProductos()` de `@/lib/cliente-hydrate`.
+- **Búsqueda por teléfono de contacto**: usar `cliente.contactos: { some: { telefono: X } }` en lugar del antiguo `contactos: { path: ['[*].telefono'], equals: X }` (eliminado).
+- **Permisos**: el usuario de runtime (`app_write` en Docker, `postgres` en Supabase) necesita `GRANT` sobre las tablas nuevas. La migración `20260610_grant_permissions_new_tables` los aplica automáticamente.
+- **CRUD de contactos desde la UI**: la 1FN storage está cerrada, pero el plan original no incluyó sub-endpoints para `POST/DELETE /api/clientes/[id]/contactos`. La UI cliente (`cliente-form.tsx`) muestra contactos existentes (GET los hidrata), pero **agregar/editar contactos vía el form no persiste en el backend** — el Zod de Fase 3 removió el campo `contactos` del body. Es trabajo futuro: crear `POST/DELETE /api/clientes/[id]/contactos` y actualizar la UI para usarlos.
+- **Patrón Expand-Contract usado**: tablas additive → backfill idempotente paginado → dual-write → cambiar lecturas con hidratación → drop de columnas legacy. Ver `docs/superpowers/plans/2026-06-10-1fn-migration-contactos-productos.md` para el detalle.
+- **Tags de deploy**: `deploy/1fn-fase1-expand`, `deploy/1fn-fase2-migrate`, `deploy/1fn-fase3-contract`.
+
 ### Service Worker (PWA)
 - `public/sw.js`: Network-first for navigation, cache-first for static assets
 - APIs bypass cache entirely
@@ -236,6 +251,20 @@ vercel --prod
     - `src/app/layout.tsx`: `Viewport` export ahora incluye `width: 'device-width'`, `initialScale: 1`, `interactiveWidget: 'resizes-content'` (Chrome 108+ Android lo respeta, iOS Safari lo ignora silenciosamente hasta que WebKit implemente la spec).
     - `enterKeyHint="next"` (username → password) y `enterKeyHint="go"`/`"done"` (último input) para UX mobile.
     - **Validación**: `e2e/auth-mobile-keyboard.spec.ts` con viewport iPhone 13 emulado, valida que el input activo queda visible tras focus y que el wrapper usa `dvh`. **Limitación**: Playwright no emula el OSK real de iOS Safari. Validación 100% real en device iOS/Android queda como tarea manual post-merge (no automatizable en CI sin device farm).
+11. **CRUD de contactos desde la UI** (resuelto por `0d13fb3` + `2d3fd12` + `d3218b3` + `c0bd1b2` + `0b151dd`): La 1FN storage está cerrada (columnas JSON dropeadas, datos en `ContactoCliente` y `PlantillaProducto`).
+    - Sub-endpoints creados en `d3218b3`, `2d3fd12` y `0b151dd`:
+      - `POST /api/clientes/[id]/contactos` — crea un contacto. Devuelve 409 si ya existe uno con mismo (clienteId, telefono).
+      - `PATCH /api/clientes/[id]/contactos/[contactoId]` (agregado en `2d3fd12`) — actualiza parcialmente. Todos los campos opcionales pero al menos uno requerido (validado con Zod `.refine()`). Devuelve 409 si el nuevo `telefono` choca con otro contacto del mismo cliente (unique constraint).
+      - `DELETE /api/clientes/[id]/contactos/[contactoId]` — borra un contacto. Devuelve 404 si el contacto no pertenece al cliente (no leak info).
+      - **Bug fix `0b151dd`**: `GET /api/clientes/[id]` ahora incluye `contactos: { orderBy: { nombre: 'asc' } }` en el `prisma.cliente.findUnique`. Antes faltaba, devolvía 500 al hidratar.
+    - UI wireada en `0d13fb3` y extendida en `2d3fd12`: `cliente-form.tsx` ahora sincroniza los contactos via `syncContactos()` (diff por teléfono = unique key) después de cada POST/PUT exitoso. La función:
+      - **POST nuevos** (teléfono no existe en server) → `POST /contactos`
+      - **PATCH cambios** (mismo teléfono, distinto `nombre` o `relacion`) → `PATCH /contactos/[id]`
+      - **DELETE borrados** (teléfono ya no en form) → `DELETE /contactos/[id]`
+      - **Unchanged** (mismo teléfono, mismos campos) → skip
+      - Dedup edge: en POST deduped (cliente ya existía), no sincroniza para evitar pisar contactos del cliente original.
+    - Tests unitarios (32) en `c0bd1b2` y `2d3fd12` cubren: estructura de auth/role, validación Zod (incluyendo `.refine()` para "al menos un campo"), manejo de P2002/P2003, construcción dinámica del updateData, cross-cliente protection (no leak info), logAudit con `cambios` y `antes` (auditoría completa), orden auth-before-role.
+    - Mismo issue aplica a **productos de plantilla desde el form del cliente**: si la UI intenta editarlos, no persiste. (Los productos SÍ persisten via el `PUT /api/recurrentes` cuando se editan desde `/recurrentes/[id]`, pero no desde el form de cliente.)
 
 ---
 
