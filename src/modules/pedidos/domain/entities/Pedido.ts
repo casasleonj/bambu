@@ -119,8 +119,12 @@ export class Pedido {
 
   /**
    * Record delivery of items. Recalculates total based on delivered quantities.
+   * Optionally accepts delivery metadata (photo URL, GPS, visit code).
    */
-  entregar(entregas: Array<{ producto: ProductCode; cantidad: number }>): void {
+  entregar(
+    entregas: Array<{ producto: ProductCode; cantidad: number }>,
+    metadata?: { fotoEntrega?: string; gpsLat?: number; gpsLng?: number; codigoVisita?: string },
+  ): void {
     if (!this.puedeEntregar()) {
       throw new Error(`Transición inválida: ${this.estadoEntrega.get()} → ENTREGADO`)
     }
@@ -146,6 +150,10 @@ export class Pedido {
         nuevoTotal.toDecimal(),
         this.props.totalPagado.toDecimal(),
       ),
+      fotoEntrega: metadata?.fotoEntrega || this.props.fotoEntrega,
+      gpsLat: metadata?.gpsLat ?? this.props.gpsLat,
+      gpsLng: metadata?.gpsLng ?? this.props.gpsLng,
+      codigoVisita: metadata?.codigoVisita || this.props.codigoVisita,
     }
   }
 
