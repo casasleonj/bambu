@@ -154,7 +154,18 @@ export async function resetRateLimit(identifier: string, type: RateLimitType): P
 }
 
 export function classifyRequest(pathname: string): RateLimitType {
-  if (pathname.startsWith('/api/auth/')) return 'auth'
+  // S-2 fix: stricter rate limit only for the login callback (where brute
+  // force attacks happen). Other /api/auth/* endpoints (profile,
+  // force-password-change) are admin-only and use the more permissive
+  // 'api' limit.
+  if (
+    pathname.startsWith('/api/auth/') &&
+    (pathname.includes('/callback/credentials') ||
+     pathname.endsWith('/signin') ||
+     pathname.endsWith('/signin/credentials'))
+  ) {
+    return 'auth'
+  }
   if (pathname.startsWith('/api/')) return 'api'
   return 'page'
 }
