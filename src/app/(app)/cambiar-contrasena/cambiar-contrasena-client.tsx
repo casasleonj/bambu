@@ -5,6 +5,22 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { AuthShell } from '@/components/auth-shell'
+
+/**
+ * Mobile keyboard fix: ver login/page.tsx handleInputFocus para la
+ * explicacion completa. Mismo handler reutilizado.
+ */
+function handleInputFocus(e: React.FocusEvent<HTMLInputElement>) {
+  e.target.scrollIntoView({ block: 'center' })
+  const vv = window.visualViewport
+  if (!vv) return
+  const onResize = () => {
+    e.target.scrollIntoView({ block: 'center' })
+    vv.removeEventListener('resize', onResize)
+  }
+  vv.addEventListener('resize', onResize, { once: true })
+}
 
 export default function CambiarContrasenaClient({ displayName }: { displayName: string }) {
   const router = useRouter()
@@ -42,9 +58,9 @@ export default function CambiarContrasenaClient({ displayName }: { displayName: 
   }
 
   return (
-    <div className="min-h-[100dvh] bg-gray-100 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
+    <AuthShell>
+      <Card className="border-0 shadow-none">
+        <CardHeader className="text-center p-0 mb-6">
           <div className="mx-auto w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center mb-3">
             <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
@@ -55,7 +71,7 @@ export default function CambiarContrasenaClient({ displayName }: { displayName: 
             Hola <span className="font-semibold">{displayName}</span>. Debes cambiar tu contraseña para continuar.
           </p>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-6">
             <p className="text-xs text-amber-700 flex items-start gap-2">
               <svg className="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -75,6 +91,8 @@ export default function CambiarContrasenaClient({ displayName }: { displayName: 
                 minLength={6}
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
+                onFocus={handleInputFocus}
+                enterKeyHint="next"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                 placeholder="Mínimo 6 caracteres"
               />
@@ -89,6 +107,8 @@ export default function CambiarContrasenaClient({ displayName }: { displayName: 
                 minLength={6}
                 value={confirmNewPassword}
                 onChange={(e) => setConfirmNewPassword(e.target.value)}
+                onFocus={handleInputFocus}
+                enterKeyHint="done"
                 className={`w-full px-3 py-2 border rounded-lg transition ${
                   confirmNewPassword && !passwordsMatch
                     ? 'border-red-400 bg-red-50/30'
@@ -127,6 +147,6 @@ export default function CambiarContrasenaClient({ displayName }: { displayName: 
           </form>
         </CardContent>
       </Card>
-    </div>
+    </AuthShell>
   )
 }

@@ -230,6 +230,12 @@ vercel --prod
    - **c) NEXTAUTH_URL se revierte**: Ver issue #7.
     - Tras arreglar (a) y (b), el test pasa consistentemente con `--workers=4` en 19-26s. Verificado en commit `eb37b14`.
 9. **Errores TS fantasma en `.next/dev/types/validator.ts`** (resuelto): Si `npx tsc --noEmit` reporta errores inexplicables (módulos que sí existen, signatures que coinciden con el código fuente, identificadores que NO aparecen en el archivo), correr `rm -rf .next` y reintentar. Patrón observable: el error apunta a líneas/carácteres inexistentes en el archivo o a identificadores que no están en el código. El dev server (`next dev`) regenera `.next/dev/types/validator.ts` automáticamente y resuelve la inconsistencia. Si el dev server está corriendo, el cache se regenera al toque de archivo; si no está, el `rm -rf .next` fuerza la regeneración al próximo build.
+10. **Bug teclado virtual tapa input en login (móvil)** (resuelto): En iOS Safari y Android Chrome pre-108 el teclado virtual subía y tapaba el input activo del login porque: (a) el wrapper usaba `flex items-center` con altura completa sin `overflow-y-auto`, así que el card no podía scrollear; (b) no había `scrollIntoView` en `onFocus`; (c) faltaba meta viewport con `width=device-width, initial-scale=1`. **Fix aplicado**:
+    - `src/components/auth-shell.tsx` (nuevo): wrapper compartido con `min-h-[100dvh] flex items-center justify-center overflow-y-auto` + card con padding. Usado por login y cambiar-contraseña.
+    - `src/app/(auth)/login/page.tsx` y `src/app/(app)/cambiar-contrasena/cambiar-contrasena-client.tsx`: `handleInputFocus` que hace `scrollIntoView({ block: 'center' })` + listener `visualViewport.resize` con `{ once: true }` para re-scrollear cuando el teclado termina de subir. Event-driven, sin `setTimeout` mágico.
+    - `src/app/layout.tsx`: `Viewport` export ahora incluye `width: 'device-width'`, `initialScale: 1`, `interactiveWidget: 'resizes-content'` (Chrome 108+ Android lo respeta, iOS Safari lo ignora silenciosamente hasta que WebKit implemente la spec).
+    - `enterKeyHint="next"` (username → password) y `enterKeyHint="go"`/`"done"` (último input) para UX mobile.
+    - **Validación**: `e2e/auth-mobile-keyboard.spec.ts` con viewport iPhone 13 emulado, valida que el input activo queda visible tras focus y que el wrapper usa `dvh`. **Limitación**: Playwright no emula el OSK real de iOS Safari. Validación 100% real en device iOS/Android queda como tarea manual post-merge (no automatizable en CI sin device farm).
 
 ---
 
