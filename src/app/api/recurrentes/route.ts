@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
         throw new Error('PLANTILLA_YA_EXISTE')
       }
 
-      return tx.plantillaRecurrente.create({
+      const nuevaPlantilla = await tx.plantillaRecurrente.create({
         data: {
           clienteId,
           tipo,
@@ -131,6 +131,22 @@ export async function POST(request: NextRequest) {
           cliente: { select: { id: true, nombre: true, telefono: true } },
         },
       })
+
+      // Dual-write PlantillaProducto (Fase 2 MIGRATE)
+      if (productos && Object.keys(productos).length > 0) {
+        const items = Object.entries(productos)
+          .filter(([, cant]) => (cant ?? 0) > 0)
+          .map(([prod, cant]) => ({
+            plantillaId: nuevaPlantilla.id,
+            producto: prod.toUpperCase(),
+            cantidad: cant!,
+          }))
+        if (items.length > 0) {
+          await tx.plantillaProducto.createMany({ data: items })
+        }
+      }
+
+      return nuevaPlantilla
     })
 
     logAudit({
