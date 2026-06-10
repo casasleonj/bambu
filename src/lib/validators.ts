@@ -178,6 +178,21 @@ export const ContactoAlternativoSchema = z.object({
   relacion: z.string().optional(),
 })
 
+/**
+ * Schema para PATCH /api/clientes/[id]/contactos/[contactoId].
+ * Todos los campos son opcionales (PATCH parcial), pero al menos uno
+ * debe estar presente. El cliente puede querer renombrar, cambiar la
+ * relación, o corregir el teléfono.
+ */
+export const ContactoAlternativoUpdateSchema = z.object({
+  nombre: z.string().min(1, 'Nombre requerido').optional(),
+  telefono: z.string().min(7, 'Teléfono inválido').optional(),
+  relacion: z.string().nullable().optional(),
+}).refine(
+  (data) => data.nombre !== undefined || data.telefono !== undefined || data.relacion !== undefined,
+  { message: 'Debe enviar al menos un campo a actualizar' },
+)
+
 export const ClienteCreateSchema = z.object({
   nombre: z.string().min(1).max(100),
   apellido: z.string().max(100).optional(),
