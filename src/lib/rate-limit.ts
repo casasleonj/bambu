@@ -131,9 +131,27 @@ export async function checkRateLimit(
         retryAfter: Math.ceil(rej.msBeforeNext / 1000),
       }
     }
-    // Internal error (Redis crash, memory corruption, etc.).
-    // Circuit breaker: allow requests but at 10% capacity to prevent total lockout
-    // while limiting damage. Log loudly for alerts.
+    // FIX Fase 4 §4.1: FAIL-CLOSED para auth, FAIL-OPEN degradado para
+    // el resto. OWASP Authentication Cheat Sheet recomienda fail-closed
+    // cuando el rate-limiter no está disponible: rechazar es preferible
+    // a permitir intentos de credential stuffing sin protección.
+    //
+    // Para api/page, mantener el comportamiento degradado (10% capacity)
+    // es operacional: si Redis cae, no queremos tumbar toda la app.
+    if (type === 'auth') {
+      logger.error(
+        '[RATE-LIMIT auth] Internal error — FAIL-CLOSED. Login rejected. ' +
+        'Verificar Redis (production) o insuranceLimiter (fallback).',
+      )
+      return {
+        allowed: false,
+        limit: cfg.points,
+        remaining: 0,
+        resetTime: new Date(Date.now() + 60_000),
+        retryAfter: 60,
+      }
+    }
+    // API/page: circuit breaker con 10% capacity (comportamiento previo).
     logger.error('[RATE-LIMIT] Internal error — circuit breaker engaged with 10% capacity')
     return {
       allowed: true,

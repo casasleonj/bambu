@@ -31,24 +31,55 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return apiError(formatZodError(parsed.error), 400)
     }
 
-    const { embarqueId } = parsed.data
+    const { embarqueId, offlineId } = parsed.data
 
-    // Offline-first: dedup — si el pedido ya está en este embarque, retornar OK
-    {
-      const current = await prisma.pedido.findUnique({
+    // FIX Fase 1: dedup robusto. Antes este check era por estado
+    // (embarqueId+EN_RUTA) y se hacía FUERA de la tx con prisma.* global.
+    // Dos requests idénticos podían pasar el check antes de que cualquiera
+    // entrara a la tx, y el segundo recibía 400 'PEDIDO_YA_ASIGNADO' o
+    // 'PEDIDO_NOT_PENDIENTE' en vez de un dedup idempotente.
+    //
+    // Ahora: el dedup se hace DENTRO de la tx por `envioOfflineId`
+    // (campo único, persistente). Si la request ya fue procesada, el
+    // server retorna el pedido actual con deduped: true.
+    type EnviarResult =
+      | { deduped: true; pedidoId: string; embarqueId: string | null; estadoEntrega: string; numero: number }
+      | { deduped: false; pedidoId: string; embarqueId: string | null; estadoEntrega: string; numero: number }
+
+    const result: EnviarResult = await prisma.$transaction(async (tx) => {
+      const current = await tx.pedido.findUnique({
         where: { id },
-        select: { embarqueId: true, estadoEntrega: true },
+        select: {
+          id: true,
+          estado: true,
+          embarqueId: true,
+          estadoEntrega: true,
+          envioOfflineId: true,
+          numero: true,
+          // Necesarios para el cálculo de peso
+          cPacaAguaPed: true,
+          cPacaHieloPed: true,
+          cBotellonFabPed: true,
+          cBotellonDomPed: true,
+          cBolsaAguaPed: true,
+          cBolsaHieloPed: true,
+        },
       })
-      if (current?.embarqueId === embarqueId && current.estadoEntrega === 'EN_RUTA') {
-        return apiSuccess({ deduped: true, pedido: { id, embarqueId, estadoEntrega: 'EN_RUTA' } }, 200)
-      }
-    }
-
-    const pedido = await prisma.$transaction(async (tx) => {
-      const current = await tx.pedido.findUnique({ where: { id } })
       if (!current) {
         throw new Error('PEDIDO_NOT_FOUND')
       }
+
+      // Dedup DENTRO de la tx
+      if (offlineId && current.envioOfflineId === offlineId) {
+        return {
+          deduped: true as const,
+          pedidoId: current.id,
+          embarqueId: current.embarqueId,
+          estadoEntrega: current.estadoEntrega,
+          numero: current.numero,
+        }
+      }
+
       if (current.estado !== 'PENDIENTE') {
         throw new Error('PEDIDO_NOT_PENDIENTE')
       }
@@ -87,25 +118,60 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         throw new Error('EMBARQUE_CAPACIDAD_EXCEDIDA')
       }
 
-      return tx.pedido.update({
+      const updated = await tx.pedido.update({
         where: { id },
         data: {
           estado: 'EN_RUTA',
           estadoEntrega: 'EN_RUTA',
           embarqueId,
+          // Persistir offlineId para dedup en retries (offline-first)
+          ...(offlineId ? { envioOfflineId: offlineId } : {}),
         },
+        select: { id: true, embarqueId: true, estadoEntrega: true, numero: true },
       })
+
+      return {
+        deduped: false as const,
+        pedidoId: updated.id,
+        embarqueId: updated.embarqueId,
+        estadoEntrega: updated.estadoEntrega,
+        numero: updated.numero,
+      }
     })
+
+    // FIX Fase 1: respuesta explícita para el caso deduped
+    if (result.deduped) {
+      return apiSuccess(
+        {
+          deduped: true,
+          pedido: {
+            id: result.pedidoId,
+            embarqueId: result.embarqueId,
+            estadoEntrega: result.estadoEntrega,
+          },
+        },
+        200,
+      )
+    }
 
     logAudit({
       entidad: 'Pedido',
-      registroId: pedido.id,
+      registroId: result.pedidoId,
       accion: 'UPDATE',
-      datos: { numero: pedido.numero, embarqueId },
+      datos: { numero: result.numero, embarqueId },
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     })
 
-    return apiSuccess({ pedido }, 201)
+    return apiSuccess(
+      {
+        pedido: {
+          id: result.pedidoId,
+          embarqueId: result.embarqueId,
+          estadoEntrega: result.estadoEntrega,
+        },
+      },
+      201,
+    )
   } catch (error) {
     if (error instanceof Error) {
       const messages: Record<string, [string, number]> = {

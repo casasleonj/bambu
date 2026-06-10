@@ -42,4 +42,19 @@ export interface IClienteRepository {
   }, tx?: TransactionClient): Promise<{ id: string }>
   updateDireccion(id: string, direccion: string, barrio?: string, tx?: TransactionClient): Promise<void>
   findNegocioById(id: string, tx?: TransactionClient): Promise<NegocioBasico | null>
+  /**
+   * FIX Fase 2 §3.4: incrementar saldoFavor del cliente (crédito por
+   * pago que excedió el total de un pedido).
+   */
+  incrementarSaldoFavor(id: string, monto: number, tx?: TransactionClient): Promise<void>
+  /**
+   * FIX Fase 2 §3.4: leer saldoFavor actual del cliente.
+   */
+  getSaldoFavor(id: string, tx?: TransactionClient): Promise<number>
+  /**
+   * FIX Fase 2 §3.4: aplicar saldo a favor al pedido (decrementa saldoFavor).
+   * Devuelve el monto realmente aplicado (puede ser menor al saldo si el
+   * pedido es chico).
+   */
+  aplicarSaldoFavor(id: string, monto: number, tx?: TransactionClient): Promise<number>
 }

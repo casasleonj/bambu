@@ -22,29 +22,45 @@ export function calcularSaldo(total: number, totalPagado: number): number {
 }
 
 /**
+ * FIX Fase 2 §3.4: resultado de normalizar pagos. Distingue pagos
+ * aplicados al pedido del excedente (que va a saldo a favor del cliente).
+ * Antes el excedente se truncaba en silencio — eso descartaba plata sin
+ * registro. Ahora la route puede persistir el excedente como saldoFavor.
+ */
+export interface NormalizarPagosResult {
+  pagosAplicados: PagoData[]
+  excedente: number // monto que NO se aplicó al pedido (>= 0)
+}
+
+/**
  * Normalize payments so they do not exceed the total.
- * If overpaid, truncates to the total, preserving the order of payment methods.
+ * If overpaid, truncates the LAST payment(s) to fit, returning the
+ * excedente explicitly so the caller can persist it as cliente.saldoFavor.
  */
 export function normalizarPagos(
   pagos: PagoData[],
   total: number,
-): PagoData[] {
-  const totalPagado = pagos.reduce((sum, p) => sum + p.monto, 0)
+): NormalizarPagosResult {
+  const pagosPositivos = pagos.filter(p => p.monto > 0)
+  const totalPagado = pagosPositivos.reduce((sum, p) => sum + p.monto, 0)
 
   if (totalPagado <= total) {
-    return pagos.filter(p => p.monto > 0)
+    return { pagosAplicados: pagosPositivos, excedente: 0 }
   }
 
   let remaining = total
-  return pagos
-    .filter(p => p.monto > 0)
-    .map(p => {
-      if (remaining <= 0) return null
-      const monto = Math.min(p.monto, remaining)
-      remaining -= monto
-      return { metodo: p.metodo, monto }
-    })
-    .filter((p): p is PagoData => p !== null)
+  const aplicados: PagoData[] = []
+  for (const p of pagosPositivos) {
+    if (remaining <= 0) {
+      // Toda esta entrada y las siguientes son excedente.
+      break
+    }
+    const monto = Math.min(p.monto, remaining)
+    remaining -= monto
+    aplicados.push({ metodo: p.metodo, monto })
+  }
+  const excedente = Math.max(0, totalPagado - total)
+  return { pagosAplicados: aplicados, excedente }
 }
 
 /**

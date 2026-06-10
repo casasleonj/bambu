@@ -41,8 +41,10 @@ export function calcularProxGeneracion(desde: Date, cadaNDias: number): Date {
   const result = new Date(desde)
   result.setDate(result.getDate() + cadaNDias)
 
+  // FIX Fase 2 §3.3: bogotaDate ya viene TZ-safe (string -05:00), el
+  // setHours(0,0,0,0) naive era redundante y peligroso (en Vercel UTC,
+  // podría correr la fecha). Lo borramos.
   const bogotaDate = new Date(result.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }) + 'T00:00:00-05:00')
-  bogotaDate.setHours(0, 0, 0, 0)
 
   // Sunday rule: shift to Monday for all frequencies
   if (bogotaDate.getDay() === 0) {

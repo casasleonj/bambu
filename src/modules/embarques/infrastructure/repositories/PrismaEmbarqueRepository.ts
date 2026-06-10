@@ -5,6 +5,7 @@
  */
 
 import { prisma } from '@/lib/prisma'
+import { startOfDayBogota, endOfDayBogota } from '@/lib/dates'
 import { EmbarqueMapper } from '../mappers/EmbarqueMapper'
 import type {
   IEmbarqueRepository,
@@ -40,10 +41,11 @@ export class PrismaEmbarqueRepository implements IEmbarqueRepository {
 
   async findByTrabajadorAndFecha(trabajadorId: string, fecha: Date, tx?: unknown): Promise<Embarque | null> {
     const client = getTx(tx)
-    const startOfDay = new Date(fecha)
-    startOfDay.setHours(0, 0, 0, 0)
-    const endOfDay = new Date(fecha)
-    endOfDay.setHours(23, 59, 59, 999)
+    // FIX Fase 2 §3.3: antes setHours(0,0,0,0) naive (UTC en Vercel).
+    // Ahora: zona Bogotá explícita.
+    const fechaStr = fecha.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+    const startOfDay = startOfDayBogota(fechaStr)
+    const endOfDay = endOfDayBogota(fechaStr)
 
     const raw = await client.embarque.findFirst({
       where: {
@@ -222,10 +224,10 @@ export class PrismaEmbarqueRepository implements IEmbarqueRepository {
 
   async getNextNumeroDia(fecha: Date, tx?: unknown): Promise<number> {
     const client = getTx(tx)
-    const startOfDay = new Date(fecha)
-    startOfDay.setHours(0, 0, 0, 0)
-    const endOfDay = new Date(fecha)
-    endOfDay.setHours(23, 59, 59, 999)
+    // FIX Fase 2 §3.3: zona Bogotá explícita.
+    const fechaStr = fecha.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+    const startOfDay = startOfDayBogota(fechaStr)
+    const endOfDay = endOfDayBogota(fechaStr)
 
     const count = await client.embarque.count({
       where: {

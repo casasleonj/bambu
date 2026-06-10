@@ -6,6 +6,7 @@
 
 import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
+import { startOfDayBogota, endOfDayBogota } from '@/lib/dates'
 import { Pedido } from '../../domain/entities/Pedido'
 import { PedidoId } from '../../domain/value-objects/PedidoId'
 import type { IPedidoRepository, PedidoFilter } from '../../domain/repositories/IPedidoRepository'
@@ -127,10 +128,11 @@ export class PrismaPedidoRepository implements IPedidoRepository {
 
   async countByClienteAndDate(clienteId: string, date: Date, tx?: TransactionClient): Promise<number> {
     const client = tx || prisma
-    const start = new Date(date)
-    start.setHours(0, 0, 0, 0)
-    const end = new Date(date)
-    end.setHours(23, 59, 59, 999)
+    // FIX Fase 2 §3.3: antes usaba setHours(0,0,0,0) naive (UTC en Vercel),
+    // corriendo la query 5h. Ahora: zona Bogotá explícita.
+    const dateStr = date.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+    const start = startOfDayBogota(dateStr)
+    const end = endOfDayBogota(dateStr)
     return client.pedido.count({
       where: {
         clienteId,

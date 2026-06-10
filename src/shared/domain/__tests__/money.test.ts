@@ -7,7 +7,7 @@ describe('Money.fromDecimal', () => {
   it('convierte 10.50 a 1050 cents', () => {
     expect(Money.fromDecimal(10.50).cents).toBe(1050)
   })
-  it('convierte string "$5.000" a 500000 cents', () => {
+  it('convierte string "5000" a 500000 cents', () => {
     expect(Money.fromDecimal('5000').cents).toBe(500000)
   })
   it('maneja NaN como 0', () => {
@@ -15,6 +15,44 @@ describe('Money.fromDecimal', () => {
   })
   it('redondea correctamente (5000.005 → 500001 cents)', () => {
     expect(Money.fromDecimal(5000.005).cents).toBe(500001)
+  })
+  // FIX Fase 2 §3.2: casos COP (separador de miles = punto)
+  it('FIX §3.2: "5.000" (COP miles) → 500000 cents, NO 500', () => {
+    // Bug original: parseFloat("5.000") = 5 → 500 cents (INCORRECTO)
+    expect(Money.fromDecimal('5.000').cents).toBe(500000)
+  })
+  it('FIX §3.2: "1.234.567" (COP millones) → 123456700 cents', () => {
+    expect(Money.fromDecimal('1.234.567').cents).toBe(123456700)
+  })
+  it('FIX §3.2: "1.234,56" (COP miles+decimal) → 123456 cents', () => {
+    expect(Money.fromDecimal('1.234,56').cents).toBe(123456)
+  })
+  it('FIX §3.2: "1,234.56" (US miles+decimal) → 123456 cents', () => {
+    expect(Money.fromDecimal('1,234.56').cents).toBe(123456)
+  })
+  it('FIX §3.2: "10,50" (CO decimal) → 1050 cents', () => {
+    expect(Money.fromDecimal('10,50').cents).toBe(1050)
+  })
+  it('FIX §3.2: "10.50" (US decimal) → 1050 cents (sigue funcionando)', () => {
+    expect(Money.fromDecimal('10.50').cents).toBe(1050)
+  })
+  it('FIX §3.2: "$ 5.000" (con símbolo y espacio) → 500000 cents', () => {
+    expect(Money.fromDecimal('$ 5.000').cents).toBe(500000)
+  })
+  it('FIX §3.2: number 5000 → 500000 cents', () => {
+    expect(Money.fromDecimal(5000).cents).toBe(500000)
+  })
+  it('FIX §3.2: string vacío → 0 cents', () => {
+    expect(Money.fromDecimal('').cents).toBe(0)
+  })
+  it('FIX §3.2: "abc" → 0 cents', () => {
+    expect(Money.fromDecimal('abc').cents).toBe(0)
+  })
+  it('FIX §3.2: null → 0 cents', () => {
+    expect(Money.fromDecimal(null).cents).toBe(0)
+  })
+  it('FIX §3.2: undefined → 0 cents', () => {
+    expect(Money.fromDecimal(undefined).cents).toBe(0)
   })
 })
 

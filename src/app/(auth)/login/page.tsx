@@ -15,7 +15,7 @@ export default function LoginPage() {
   }, [])
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100">
+    <div className="min-h-[100dvh] flex items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100">
       <div className="w-full max-w-md p-8 bg-white rounded-2xl shadow-xl">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-blue-600">Agua Bambú</h1>

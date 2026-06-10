@@ -89,6 +89,42 @@ export class PrismaClienteRepository implements IClienteRepository {
     })
   }
 
+  async incrementarSaldoFavor(id: string, monto: number, tx?: TransactionClient): Promise<void> {
+    const client = tx || prisma
+    // FIX Fase 2 §3.4: incrementar saldoFavor del cliente. Se llama dentro
+    // de la tx del CrearPedidoUseCase cuando el pago excede el total.
+    await client.cliente.update({
+      where: { id },
+      data: {
+        saldoFavor: { increment: monto },
+      },
+    })
+  }
+
+  async getSaldoFavor(id: string, tx?: TransactionClient): Promise<number> {
+    const client = tx || prisma
+    const c = await client.cliente.findUnique({
+      where: { id },
+      select: { saldoFavor: true },
+    })
+    return c ? Number(c.saldoFavor) : 0
+  }
+
+  async aplicarSaldoFavor(id: string, monto: number, tx?: TransactionClient): Promise<number> {
+    const client = tx || prisma
+    // FIX Fase 2 §3.4: aplicar saldo a favor. Devuelve el monto aplicado.
+    // Si el saldo es menor al monto, aplica solo lo disponible.
+    const current = await this.getSaldoFavor(id, tx)
+    const aplicar = Math.min(monto, current)
+    if (aplicar > 0) {
+      await client.cliente.update({
+        where: { id },
+        data: { saldoFavor: { decrement: aplicar } },
+      })
+    }
+    return aplicar
+  }
+
   async findNegocioById(id: string, tx?: TransactionClient): Promise<NegocioBasico | null> {
     const client = tx || prisma
     const raw = await client.negocio.findUnique({

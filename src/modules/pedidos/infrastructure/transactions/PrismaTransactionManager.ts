@@ -1,29 +1,14 @@
 /**
- * PrismaTransactionManager.
+ * @deprecated Importar desde '@/shared/infrastructure/transactions/PrismaTransactionManager'.
+ * Este archivo es solo un re-export para backward compat.
  *
- * Wraps Prisma transactions with PostgreSQL advisory locks.
- * Provides the transactional boundary for use cases.
+ * FIX Fase 5 §7.2: el PrismaTransactionManager vivía duplicado en
+ * pedidos/ y embarques/. Unificado en shared/. Las copias deprecadas
+ * se mantienen para no romper imports existentes durante la migración;
+ * eliminarlas en una iteración futura.
  */
-
-import { prisma } from '@/lib/prisma'
-import { withAdvisoryLock, LOCK_IDS } from '@/lib/locks'
-
-export type TransactionClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0]
-
-export interface ITransactionManager {
-  execute<T>(fn: (tx: TransactionClient) => Promise<T>): Promise<T>
-  executeWithLock<T>(lockName: keyof typeof LOCK_IDS, fn: (tx: TransactionClient) => Promise<T>): Promise<T>
-}
-
-export class PrismaTransactionManager implements ITransactionManager {
-  async execute<T>(fn: (tx: TransactionClient) => Promise<T>): Promise<T> {
-    return prisma.$transaction(fn)
-  }
-
-  async executeWithLock<T>(
-    lockName: keyof typeof LOCK_IDS,
-    fn: (tx: TransactionClient) => Promise<T>,
-  ): Promise<T> {
-    return withAdvisoryLock(lockName, fn)
-  }
-}
+export {
+  PrismaTransactionManager,
+  type ITransactionManager,
+  type TransactionClient,
+} from '@/shared/infrastructure/transactions/PrismaTransactionManager'

@@ -13,6 +13,7 @@ import { Carga, type ProductCode } from '../../domain/value-objects/Carga'
 import type { CrearEmbarqueInput, EmbarqueDetalleDTO } from '../dto'
 import { EmbarqueDTOMapper } from '../dto/EmbarqueDTOMapper'
 import type { ITransactionManager } from '../../infrastructure/transactions/PrismaTransactionManager'
+import { startOfDayBogota } from '@/lib/dates'
 
 export class CrearEmbarqueUseCase {
   constructor(
@@ -64,8 +65,9 @@ export class CrearEmbarqueUseCase {
       }
 
       // 6. Check no duplicate embarque for worker today
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
+      // FIX Fase 2 §3.3: antes usaba setHours(0,0,0,0) naive (UTC en Vercel).
+      // Ahora usa zona Bogotá explícita.
+      const today = startOfDayBogota()
       const existing = await this.embarqueRepo.findByTrabajadorAndFecha(input.trabajadorId, today, tx)
       if (existing) {
         throw new Error('El trabajador ya tiene un embarque abierto hoy')

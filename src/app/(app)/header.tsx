@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { purgeSWCache } from '@/lib/purge-sw-cache'
 import { ConnectivityIndicator } from '@/components/connectivity-indicator'
 import { useAppStore } from '@/stores/app-store'
+import { useIsDesktop } from '@/hooks/use-is-desktop'
 
 const ROL_LABELS: Record<string, { label: string; color: string }> = {
   ADMIN: { label: 'Admin', color: 'bg-yellow-400 text-yellow-900' },
@@ -16,11 +17,27 @@ const ROL_LABELS: Record<string, { label: string; color: string }> = {
 }
 
 export function Header() {
-  const sidebarOpen = useAppStore(s => s.sidebarOpen)
-  const toggleSidebar = useAppStore(s => s.toggleSidebar)
+  // FIX Fase 4 §6.4: el botón hamburguesa del header decide según el
+  // breakpoint qué estado toggle:
+  // - Móvil: abre/cierra el drawer temporal (mobileDrawerOpen)
+  // - Desktop: colapsa/expande el drawer permanente (desktopCollapsed)
+  const isDesktop = useIsDesktop()
+  const mobileDrawerOpen = useAppStore((s) => s.mobileDrawerOpen)
+  const setMobileDrawerOpen = useAppStore((s) => s.setMobileDrawerOpen)
+  const desktopCollapsed = useAppStore((s) => s.desktopCollapsed)
+  const toggleDesktopCollapsed = useAppStore((s) => s.toggleDesktopCollapsed)
   const { data: session } = useSession()
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+
+  const sidebarOpen = isDesktop ? !desktopCollapsed : mobileDrawerOpen
+  const onToggleSidebar = () => {
+    if (isDesktop) {
+      toggleDesktopCollapsed()
+    } else {
+      setMobileDrawerOpen(!mobileDrawerOpen)
+    }
+  }
 
   const userName = session?.user?.name || session?.user?.email || 'U'
   const userRole = (session?.user as { role?: string } | undefined)?.role
@@ -42,9 +59,9 @@ export function Header() {
     <header className="bg-blue-600 text-white px-4 py-3 flex items-center justify-between fixed top-0 left-0 right-0 z-50">
       <div className="flex items-center gap-4">
         <button
-          onClick={toggleSidebar}
-          className="p-2 hover:bg-blue-700 rounded-lg"
-          aria-label="Abrir menú"
+          onClick={onToggleSidebar}
+          className="p-2 hover:bg-blue-700 rounded-lg min-h-[44px] min-w-[44px] flex items-center justify-center"
+          aria-label={isDesktop ? 'Colapsar/expandir menú' : 'Abrir menú'}
           aria-expanded={sidebarOpen}
         >
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">

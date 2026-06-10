@@ -4,9 +4,11 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { signOut } from 'next-auth/react'
+import { useEffect } from 'react'
 import { purgeSWCache } from '@/lib/purge-sw-cache'
 import { useBaseCaja } from '@/hooks/use-base-caja'
 import { useAppStore } from '@/stores/app-store'
+import { useIsDesktop } from '@/hooks/use-is-desktop'
 import { getUserPermissions, type Permission } from '@/lib/permissions'
 import type { Role } from '@/lib/constants'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger, useCollapsible } from '@/components/ui/collapsible'
@@ -123,28 +125,75 @@ function SidebarMenuItem({ item }: { item: NavItem }) {
 }
 
 export function Sidebar() {
-  const sidebarOpen = useAppStore(s => s.sidebarOpen)
-  const setSidebarOpen = useAppStore(s => s.toggleSidebar)
+  // FIX Fase 4 §6.4: drawer responsive desacoplado.
+  // - Móvil: drawer temporal (modal), controlado por `mobileDrawerOpen`
+  //   (en memoria, no persistido). Cerrado por defecto.
+  // - Desktop: drawer permanente, controlado por `desktopCollapsed`
+  //   (persistido). Default: expandido.
+  const isDesktop = useIsDesktop()
+  const mobileDrawerOpen = useAppStore((s) => s.mobileDrawerOpen)
+  const setMobileDrawerOpen = useAppStore((s) => s.setMobileDrawerOpen)
+  const desktopCollapsed = useAppStore((s) => s.desktopCollapsed)
+  const pathname = usePathname()
+
+  // FIX §6.4: en móvil, cerrar el drawer al cambiar de ruta
+  useEffect(() => {
+    if (!isDesktop && mobileDrawerOpen) {
+      setMobileDrawerOpen(false)
+    }
+  }, [pathname, isDesktop, mobileDrawerOpen, setMobileDrawerOpen])
+
+  // FIX §6.4: scroll-lock del body mientras el drawer móvil está abierto
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    if (!isDesktop && mobileDrawerOpen) {
+      const prev = document.body.style.overflow
+      document.body.style.overflow = 'hidden'
+      return () => {
+        document.body.style.overflow = prev
+      }
+    }
+  }, [isDesktop, mobileDrawerOpen])
+
   const { baseDia } = useBaseCaja()
   const { data: session } = useSession()
   const userRole = (session?.user as { role?: Role } | undefined)?.role
   const permissions = getUserPermissions(userRole)
 
+  // Visibilidad derivada del breakpoint
+  const isVisible = isDesktop ? !desktopCollapsed : mobileDrawerOpen
+  const isInteractive = isDesktop ? !desktopCollapsed : mobileDrawerOpen
+
+  // FIX §6.4: clase de ancho según variante
+  // - Desktop expandido: w-64 (permanente, ocupa su espacio)
+  // - Desktop colapsado: w-0 overflow-hidden (no se ve)
+  // - Móvil abierto: w-64 fixed (drawer temporal, cubre contenido)
+  // - Móvil cerrado: w-0 -invisible (no ocupa espacio, no es interactivo)
+  const asideWidth = isDesktop
+    ? desktopCollapsed
+      ? 'w-0 overflow-hidden'
+      : 'w-64'
+    : mobileDrawerOpen
+      ? 'w-64'
+      : 'w-0 overflow-hidden -translate-x-full md:translate-x-0'
+
   return (
     <>
-      {sidebarOpen && (
+      {/* Scrim: solo en móvil cuando el drawer está abierto */}
+      {!isDesktop && mobileDrawerOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-30 md:hidden"
-          onClick={() => setSidebarOpen()}
+          className="fixed inset-0 bg-black/50 z-30"
+          onClick={() => setMobileDrawerOpen(false)}
           aria-hidden="true"
         />
       )}
       <aside
         aria-label="Navegación principal"
-        inert={sidebarOpen ? undefined : true}
-        className={`fixed top-14 left-0 h-[calc(100vh-3.5rem)] bg-white shadow-lg transition-all duration-300 z-40 flex flex-col ${
-          sidebarOpen ? 'w-64' : 'w-0 overflow-hidden'
-        }`}
+        inert={isInteractive ? undefined : true}
+        aria-hidden={!isVisible}
+        // FIX Fase 1 §6.5: 100dvh en vez de 100vh.
+        // FIX Fase 4 §6.4: width y translate según variante.
+        className={`fixed top-14 left-0 h-[calc(100dvh-3.5rem)] bg-white shadow-lg transition-all duration-300 z-40 flex flex-col ${asideWidth}`}
       >
         <div className="px-4 py-3 border-b bg-gray-50">
           <div className="flex items-center justify-between">
@@ -196,9 +245,14 @@ export function Sidebar() {
 }
 
 export function MainContent({ children }: { children: React.ReactNode }) {
-  const sidebarOpen = useAppStore(s => s.sidebarOpen)
+  // FIX Fase 4 §6.4: el margen izquierdo del main content SOLO aplica
+  // en desktop (md:) y solo cuando el sidebar está expandido. En móvil,
+  // el sidebar es un overlay, no empuja el contenido.
+  const isDesktop = useIsDesktop()
+  const desktopCollapsed = useAppStore((s) => s.desktopCollapsed)
+  const shouldOffset = isDesktop && !desktopCollapsed
   return (
-    <main className={`pt-14 print:pt-0 transition-all duration-300 ${sidebarOpen ? 'md:ml-64 print:ml-0' : 'md:ml-0'}`}>
+    <main className={`pt-14 print:pt-0 transition-all duration-300 ${shouldOffset ? 'md:ml-64 print:ml-0' : 'md:ml-0'}`}>
       <div className="p-6 print:p-0">{children}</div>
     </main>
   )

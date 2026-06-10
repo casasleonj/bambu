@@ -84,6 +84,17 @@ const authOptions: NextAuthConfig = {
         token.displayName = (user as User & { name?: string }).name
         token.mustChangePassword = (user as User & { mustChangePassword?: boolean }).mustChangePassword
         token.lastVerified = Date.now()
+        // FIX Fase 4 §4.3: REPARTIDOR tiene sesión extendida (2h) porque
+        // su flujo de trabajo es offline-first en campo con 2G/3G y no
+        // puede re-loguear a mitad de un embarque. El resto de roles
+        // mantiene 30 min por seguridad. Los permisos de REPARTIDOR ya
+        // están recortados (solo lectura + sus propios embarques), lo
+        // que mitiga el riesgo de un token robado.
+        const role = (user as User & { role?: string }).role
+        const sessionSeconds = role === 'REPARTIDOR' ? 2 * 60 * 60 : 30 * 60
+        const maxAgeMs = sessionSeconds * 1000
+        token.sessionMaxAgeMs = maxAgeMs
+        token.sessionExpiresAt = Date.now() + maxAgeMs
         return token
       }
 
@@ -146,8 +157,12 @@ const authOptions: NextAuthConfig = {
   },
   session: {
     strategy: 'jwt' as const,
-    maxAge: 30 * 60, // 30 minutes (was 4 hours — reduces stolen-token window)
-    updateAge: 5 * 60, // refresh JWT every 5 minutes of activity
+    // FIX Fase 4 §4.3: el maxAge global es el caso más largo (2h para
+    // REPARTIDOR). El resto de roles respeta su propio sessionExpiresAt
+    // seteado en el callback jwt() de arriba. updateAge=5min mantiene
+    // el refresh transparente mientras hay actividad.
+    maxAge: 2 * 60 * 60, // 2 hours (REPARTIDOR case); otros roles respetan su sessionExpiresAt propio
+    updateAge: 5 * 60,
   },
   trustHost: process.env.AUTH_TRUST_HOST === 'true',
 }

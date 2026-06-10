@@ -28,6 +28,33 @@ export function getTodayString(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: TIMEZONE })
 }
 
+/**
+ * FIX Fase 2 §3.3: helper unificado para "hoy en Bogotá" como string YYYY-MM-DD.
+ * Reemplaza versiones naive con `setHours()` en el código de dominio.
+ * `date-helpers.ts:todayInBogota()` también existe pero usa math manual;
+ * este es la versión canónica.
+ */
+export function todayStringBogota(): string {
+  return getTodayString()
+}
+
+/**
+ * FIX Fase 2 §3.3: inicio del día en Bogotá a partir de un string YYYY-MM-DD.
+ * Si no se pasa fecha, usa hoy en Bogotá.
+ */
+export function startOfDayBogota(fechaStr?: string): Date {
+  const dateStr = fechaStr || getTodayString()
+  return new Date(`${dateStr}T00:00:00-05:00`)
+}
+
+/**
+ * FIX Fase 2 §3.3: fin del día en Bogotá a partir de un string YYYY-MM-DD.
+ */
+export function endOfDayBogota(fechaStr?: string): Date {
+  const dateStr = fechaStr || getTodayString()
+  return new Date(`${dateStr}T23:59:59.999-05:00`)
+}
+
 export function getNextBusinessDay(date: Date = new Date()): Date {
   const tomorrow = new Date(date)
   tomorrow.setDate(tomorrow.getDate() + 1)

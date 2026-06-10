@@ -20,6 +20,27 @@ export function ConnectivityIndicator() {
     setOnline(isOnline())
   }, [])
 
+  // FIX Fase 1 §5.2: pedir persistent storage al boot. Sin esto, el SO
+  // puede borrar la cola offline (requestQueue en IndexedDB) cuando hay
+  // presión de almacenamiento. navigator.storage.persist() pide al browser
+  // que marque el origin como persistente — el usuario puede negarlo, en
+  // cuyo caso seguimos funcionando en best-effort como antes.
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.storage?.persist) return
+    let cancelled = false
+    void navigator.storage.persisted().then(async (alreadyGranted) => {
+      if (alreadyGranted || cancelled) return
+      const granted = await navigator.storage.persist()
+      logger.info(
+        { granted, persisted: await navigator.storage.persisted() },
+        'storage.persist() request',
+      )
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   useEffect(() => {
     if (!mounted) return
     const handle = () => setOnline(isOnline())

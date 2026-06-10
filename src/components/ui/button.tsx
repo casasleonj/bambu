@@ -17,10 +17,13 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       link: "text-blue-600 underline-offset-4 hover:underline",
     }
     const sizes = {
-      default: "h-10 px-4 py-2",
+      // FIX Fase 1 §6.2: h-11 (44px) cumple con Apple HIG y WCAG 2.5.5 AAA.
+      // Antes era h-10 (40px) — por debajo del mínimo recomendado para
+      // touch targets en móvil.
+      default: "h-11 px-4 py-2",
       sm: "h-9 px-3",
-      lg: "h-11 px-8",
-      icon: "h-10 w-10",
+      lg: "h-12 px-8", // 48px para CTAs primarios en formularios
+      icon: "h-11 w-11", // 44×44 para icon buttons
     }
     return (
       <button

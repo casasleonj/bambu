@@ -137,9 +137,26 @@ export class CrearPedidoUseCase {
       const origen = input.ventaRapida ? OrigenPedidoVO.create('VENTA_RAPIDA') : OrigenPedidoVO.create(input.origen || 'PEDIDO')
       const estadoEntrega = origen.isVentaRapida() ? EstadoEntregaVO.create('ENTREGADO') : EstadoEntregaVO.create('PENDIENTE')
       const total = preciosResueltos.reduce((sum, pr) => sum + pr.subtotal, 0)
-      const pagosNormalizados = normalizarPagos(input.pagos || [], total)
-      const totalPagado = pagosNormalizados.reduce((sum, p) => sum + p.monto, 0)
+
+      // FIX Fase 2 §3.4: aplicar saldo a favor disponible del cliente
+      // antes de calcular lo que falta pagar. Si saldoFavor cubre
+      // parcialmente el pedido, se acredita esa parte.
+      const saldoFavorDisponible = await this.clienteRepo.getSaldoFavor(clienteId, tx)
+      const montoCredito = Math.min(saldoFavorDisponible, total)
+      if (montoCredito > 0) {
+        await this.clienteRepo.aplicarSaldoFavor(clienteId, montoCredito, tx)
+      }
+      const totalDespuesCredito = total - montoCredito
+
+      // FIX Fase 2 §3.4: el normalizarPagos ahora devuelve { pagosAplicados, excedente }
+      const { pagosAplicados: pagosNormalizados, excedente } = normalizarPagos(input.pagos || [], totalDespuesCredito)
+      const totalPagado = pagosNormalizados.reduce((sum, p) => sum + p.monto, 0) + montoCredito
       const estadoPago = EstadoPagoVO.fromTotals(total, totalPagado)
+
+      // FIX Fase 2 §3.4: si hay excedente sobre el saldo restante, se acredita al cliente
+      if (excedente > 0) {
+        await this.clienteRepo.incrementarSaldoFavor(clienteId, excedente, tx)
+      }
 
       const items = preciosResueltos.map(pr =>
         new PedidoItem(

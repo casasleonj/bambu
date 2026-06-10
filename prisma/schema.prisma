@@ -232,6 +232,11 @@ model Cliente {
   notas        String?
   activo      Boolean  @default(true)
 
+  // FIX Fase 2 §3.4: saldo a favor del cliente. Si un pago excede el
+  // total del pedido, el excedente queda como crédito reutilizable.
+  // @default(0) garantiza que clientes existentes tengan 0.
+  saldoFavor  Decimal  @default(0) @db.Decimal(10, 2)
+
   // Offline-first dedup: si la request llega con un offlineId ya existente,
   // el server devuelve el cliente creado en lugar de duplicar.
   offlineId    String?  @unique
@@ -474,6 +479,11 @@ model Pedido {
   gpsLng            Decimal?    @db.Decimal(10, 6)
   offlineId         String?     @unique
   recurrenteBatchId String?     // batch id compartido por todos los pedidos de un batch de recurrentes
+  // FIX Fase 1: dedup key dedicado para POST /api/pedidos/[id]/enviar.
+  // Antes el dedup se hacia por estado (embarqueId+EN_RUTA), fragil si el
+  // check externo y la tx se desincronizan. Ahora: el server persiste el
+  // offlineId y el retry con el mismo offlineId retorna deduped: true.
+  envioOfflineId    String?     @unique
   disputaAbierta    Boolean     @default(false)
   codigoVisita      String?
 
@@ -548,6 +558,7 @@ model Pedido {
   @@index([estadoPago])
   @@index([offlineId])
   @@index([recurrenteBatchId])
+  @@index([envioOfflineId])
   @@index([clienteId, estadoEntrega, estadoPago])
   @@index([promesaPagoFecha])
 }
@@ -766,6 +777,46 @@ model Factura {
 // ====================
 // CHECK CONSTRAINTS via raw SQL migration
 // ====================
+// IMPORTANTE: Prisma Schema Language NO soporta CHECK constraints.
+// Los siguientes viven en migraciones SQL raw, NO en este schema.
+// Para ver/editar: `prisma/migrations/20260610_add_check_constraints/`.
+//
+// Auditoría pre-aplicación (2026-06-10): 0 violaciones en las 8 reglas
+// principales. Datos limpios → aplicación directa con NOT VALID + VALIDATE.
+//
+// Aplicados en 20260610_add_check_constraints:
+//   chk_pedido_saldo_nonneg          saldo >= 0
+//   chk_pedido_montopagado_le_total  totalPagado <= total
+//   chk_pedido_saldo_calc            saldo = total - totalPagado
+//   chk_pedido_total_nonneg          total >= 0
+//   chk_pago_monto_pos               monto > 0
+//   chk_factura_saldo_nonneg         saldo >= 0
+//   chk_factura_montopagado_le_total montoPagado <= total
+//   chk_factura_total_nonneg         total >= 0
+//   chk_abono_monto_pos              monto > 0
+//
+// Pendientes (no críticos para Fase 3):
+//   chk_precio_cantmin / chk_precio_rango / chk_precio_positivo
+//   chk_nomina_fechas
+//   chk_trabajador_rol / chk_trabajador_capacidad
+//   chk_embarque_pacas
+//   chk_gasto_monto
+//   chk_compra_cantidad / chk_compra_monto
+//   chk_insumo_stockmin
+//
+// ====================
+// SECUENCIA PARA Factura.numero (Fase 3 §2.3)
+// ====================
+// IMPORTANTE: NO aplicada aún. Gated por respuesta DIAN:
+//   - Si permite huecos → aplicar 20260610_add_factura_numero_seq (secuencia)
+//   - Si exige consecutivo sin huecos → NO aplicar; usar row-lock
+//     (SELECT ... FOR UPDATE sobre una fila contadora) en su lugar.
+//
+// La migración crea la secuencia con START WITH = MAX(numero) + 1
+// para no colisionar con facturas existentes. Cuando se confirme la
+// decisión, además hay que actualizar src/lib/sequence.ts para que
+// getNextNumero() use la secuencia cuando seqName = 'factura_numero_seq'.
+// -- Pedido: totalPagado no puede exceder total, saldo no negativo
 // -- Pedido: totalPagado no puede exceder total, saldo no negativo
 // ALTER TABLE "Pedido" ADD CONSTRAINT chk_pedido_saldo CHECK ("saldo" >= 0);
 // ALTER TABLE "Pedido" ADD CONSTRAINT chk_pedido_totalpagado CHECK ("totalPagado" <= "total");
