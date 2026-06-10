@@ -244,9 +244,6 @@ export async function POST(request: NextRequest) {
         }
 
         // 3. Create
-        const contactos = parsed.data.contactos ?? []
-        const contactosSinDuplicados = contactos.filter(c => c.telefono !== parsed.data.telefono)
-
         const cliente = await tx.cliente.create({
           data: {
             nombre: parsed.data.nombre,
@@ -256,25 +253,12 @@ export async function POST(request: NextRequest) {
             barrio: parsed.data.barrio,
             direccion: parsed.data.direccion,
             linkUbicacion: parsed.data.linkUbicacion ?? null,
-            contactos: contactosSinDuplicados.length > 0 ? contactosSinDuplicados : undefined,
             preciosEspeciales: parsed.data.preciosEspeciales,
             notas: parsed.data.notas,
             offlineId: parsed.data.offlineId ?? null,
           },
           select: { id: true, nombre: true, telefono: true },
         })
-
-        // Dual-write ContactoCliente (Fase 2 MIGRATE)
-        if (contactosSinDuplicados.length > 0) {
-          await tx.contactoCliente.createMany({
-            data: contactosSinDuplicados.map(c => ({
-              clienteId: cliente.id,
-              nombre: c.nombre,
-              telefono: c.telefono,
-              relacion: c.relacion ?? null,
-            })),
-          })
-        }
 
         return { kind: 'created' as const, cliente: { ...cliente, clienteId: cliente.id } }
       },

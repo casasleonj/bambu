@@ -44,15 +44,7 @@ const RecurrenteUpdateSchema = z.object({
   activo: z.boolean().optional(),
 })
 
-function productosToJson(p: Record<string, number | undefined>): string {
-  return JSON.stringify({
-    PACA_AGUA: p.pacaAgua ?? 0,
-    PACA_HIELO: p.pacaHielo ?? 0,
-    BOTELLON: p.botellon ?? 0,
-    BOLSA_AGUA: p.bolsaAgua ?? 0,
-    BOLSA_HIELO: p.bolsaHielo ?? 0,
-  })
-}
+// (productosToJson eliminado en Fase 3: los productos ahora viven en PlantillaProducto)
 
 export async function GET() {
   const authResult = await requireAuth()
@@ -118,24 +110,24 @@ export async function POST(request: NextRequest) {
       }
 
       const nuevaPlantilla = await tx.plantillaRecurrente.create({
+        // FASE 3 CONTRACT: el cast es temporal hasta Task 3.7 (drop de columna `productos`).
         data: {
           clienteId,
           tipo,
           canal,
           cadaNDias,
           horaPreferida: horaPreferida ?? null,
-          productos: productosToJson(productos ?? {}),
           proxGeneracion,
           notas: notas ?? null,
           createdById: (authResult.user as { id: string }).id,
-        },
+        } as any,
         include: {
           cliente: { select: { id: true, nombre: true, telefono: true } },
           productosRel: true,
         },
       })
 
-      // Dual-write PlantillaProducto (Fase 2 MIGRATE)
+      // FASE 3 CONTRACT: productos ahora vive solo en PlantillaProducto
       if (productos && Object.keys(productos).length > 0) {
         const items = Object.entries(productos)
           .filter(([, cant]) => (cant ?? 0) > 0)
@@ -149,7 +141,9 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      return nuevaPlantilla
+      return nuevaPlantilla as typeof nuevaPlantilla & {
+        productosRel: Array<{ producto: string; cantidad: number }>
+      }
     })
 
     logAudit({
@@ -227,10 +221,11 @@ export async function PUT(request: NextRequest) {
     if (parsed.data.saltos) data.saltos = sanitizarSaltos(parsed.data.saltos)
 
     if (parsed.data.productos) {
-      data.productos = productosToJson(parsed.data.productos)
+      // FASE 3 CONTRACT: dual-write eliminado. La columna `productos` ya no
+      // existe en la tabla. Los productos se manejan via tabla PlantillaProducto.
 
-      // Dual-write productos (Fase 2 MIGRATE) — fuera del updateMany para
-      // que se ejecute antes de la condición optimistic-lock.
+      // Reemplazar todos los productos de la plantilla (deleteMany + createMany
+      // atómico via transacción).
       const items = Object.entries(parsed.data.productos)
         .filter(([, cant]) => (cant ?? 0) > 0)
         .map(([prod, cant]) => ({
@@ -238,7 +233,6 @@ export async function PUT(request: NextRequest) {
           cantidad: cant!,
         }))
 
-      // Transacción para deleteMany + createMany atómico
       await prisma.$transaction(async (tx) => {
         await tx.plantillaProducto.deleteMany({ where: { plantillaId: id } })
         if (items.length > 0) {
