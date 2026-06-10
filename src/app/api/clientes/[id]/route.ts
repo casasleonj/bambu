@@ -24,6 +24,12 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         facturas: { orderBy: { fecha: 'desc' }, take: 20 },
         _count: { select: { pedidos: true } },
         plantillaRecurrente: true,
+        // 1FN (Fase 3): incluir contactos desde la tabla ContactoCliente.
+        // Antes la columna `Cliente.contactos Json?` proveía los contactos
+        // directamente; ahora es una relación Prisma.
+        contactos: {
+          orderBy: { nombre: 'asc' },
+        },
       },
     })
     if (!cliente) return apiError('Not found', 404)
