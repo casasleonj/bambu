@@ -225,6 +225,25 @@ export async function PUT(request: NextRequest) {
 
     if (parsed.data.productos) {
       data.productos = productosToJson(parsed.data.productos)
+
+      // Dual-write productos (Fase 2 MIGRATE) — fuera del updateMany para
+      // que se ejecute antes de la condición optimistic-lock.
+      const items = Object.entries(parsed.data.productos)
+        .filter(([, cant]) => (cant ?? 0) > 0)
+        .map(([prod, cant]) => ({
+          producto: prod.toUpperCase(),
+          cantidad: cant!,
+        }))
+
+      // Transacción para deleteMany + createMany atómico
+      await prisma.$transaction(async (tx) => {
+        await tx.plantillaProducto.deleteMany({ where: { plantillaId: id } })
+        if (items.length > 0) {
+          await tx.plantillaProducto.createMany({
+            data: items.map(item => ({ ...item, plantillaId: id })),
+          })
+        }
+      })
     }
 
     const updateResult = await prisma.plantillaRecurrente.updateMany({
