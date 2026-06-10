@@ -381,13 +381,14 @@ export function ClienteForm({
                   {plantillaRecurrente.horaPreferida && <p><span className="font-medium">Horario:</span> {plantillaRecurrente.horaPreferida}</p>}
                   {plantillaRecurrente.proxGeneracion && <p><span className="font-medium">Próxima generación:</span> {formatLocalDate(plantillaRecurrente.proxGeneracion)}</p>}
                   {(() => {
-                    try {
-                      const prods = JSON.parse(plantillaRecurrente.productos)
-                      const entries = Object.entries(prods).filter(([_, v]) => (v as number) > 0)
-                      if (entries.length > 0) {
-                        return <p><span className="font-medium">Productos:</span> {entries.map(([k, v]) => `${k}=${v}`).join(', ')}</p>
-                      }
-                    } catch {}
+                    // FASE 3: productos ahora es array de PlantillaProducto[]
+                    const items = Array.isArray(plantillaRecurrente.productos)
+                      ? plantillaRecurrente.productos
+                      : []
+                    const entries = items.filter(p => p.cantidad > 0)
+                    if (entries.length > 0) {
+                      return <p><span className="font-medium">Productos:</span> {entries.map(p => `${p.producto}=${p.cantidad}`).join(', ')}</p>
+                    }
                     return null
                   })()}
                 </div>
