@@ -373,6 +373,58 @@ describe('emptyStock', () => {
   })
 })
 
+// ─── Sprint 4 (C-2 Fase 2): shape canónico items[] ─────────────────
+
+describe('calcularPacasEmbarque con items[] (Sprint 4)', () => {
+  it('FIX: items[] es single source of truth, no requiere legacy', () => {
+    const result = calcularPacasEmbarque([{
+      items: [
+        { producto: 'PACA_AGUA', cantPedido: 2 },
+        { producto: 'PACA_HIELO', cantPedido: 1 },
+        { producto: 'BOTELLON', cantPedido: 3 },
+      ],
+    }])
+    expect(result).toBe(6)
+  })
+
+  it('FIX: items[] tiene precedencia sobre legacy si ambos están presentes', () => {
+    // Si vienen ambos, items[] gana (single source of truth).
+    const result = calcularPacasEmbarque([{
+      cPacaAguaPed: 99, // legacy — ignorado
+      items: [{ producto: 'PACA_AGUA', cantPedido: 2 }],
+    }])
+    expect(result).toBe(2)
+  })
+
+  it('FIX: items[] vacío (sin datos) → 0', () => {
+    const result = calcularPacasEmbarque([{ items: [] }])
+    expect(result).toBe(0)
+  })
+})
+
+describe('calcularPesoEmbarque con items[] (Sprint 4)', () => {
+  it('FIX: items[] calcula peso correctamente', () => {
+    const result = calcularPesoEmbarque([{
+      items: [
+        { producto: 'PACA_AGUA', cantPedido: 1 },
+        { producto: 'PACA_HIELO', cantPedido: 2 },
+        { producto: 'BOTELLON', cantPedido: 1 },
+      ],
+    }])
+    expect(result).toBe(10 + 22 + 20)
+  })
+
+  it('FIX: items[] múltiples pedidos con split botellón correcto', () => {
+    // Antes: el legacy cBotellonFabPed vs cBotellonDomPed requería split manual.
+    // Con items[]: el botellón se cuenta una vez, no por canal.
+    const result = calcularPesoEmbarque([
+      { items: [{ producto: 'BOTELLON', cantPedido: 5 }] },
+      { items: [{ producto: 'BOTELLON', cantPedido: 3 }] },
+    ])
+    expect(result).toBe(8 * 20) // 8 botellones × 20 kg
+  })
+})
+
 // ─── PESOS_KG constants ──────────────────────────────────────────────
 
 describe('PESOS_KG constants', () => {

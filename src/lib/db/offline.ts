@@ -60,6 +60,29 @@ export interface OfflineRequest {
   offlineId: string
   localEndpoint: string
   createdAt: Date
+  // Sprint 6 (G-2 DLQ): tracking de reintentos para evitar loops
+  // infinitos y distinguir errores retryable de errores permanentes.
+  attempts?: number
+  lastAttemptAt?: Date
+  lastError?: string
+}
+
+/**
+ * Sprint 6 (G-2): Failed Items (Dead Letter Queue).
+ * Items que exceden 100 intentos o 7 días se mueven acá para
+ * revisión manual del admin. No se reintentan automáticamente.
+ */
+export interface FailedItem {
+  id?: number
+  url: string
+  method: 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+  body: string
+  offlineId: string
+  localEndpoint: string
+  attempts: number
+  lastError: string
+  firstAttemptAt: Date
+  failedAt: Date
 }
 
 class BambuOfflineDB extends Dexie {
@@ -67,6 +90,7 @@ class BambuOfflineDB extends Dexie {
   clientes!: Table<OfflineCliente, number>
   syncQueue!: Table<SyncQueueItem, number>
   requestQueue!: Table<OfflineRequest, number>
+  failedItems!: Table<FailedItem, number>
 
   constructor() {
     super('BambuOfflineDB')
@@ -75,13 +99,19 @@ class BambuOfflineDB extends Dexie {
       clientes: '++id, localId, nombre, syncStatus, createdAt',
       syncQueue: '++id, table, operation, createdAt',
     })
-    // v4: añade requestQueue para que fetchResilient() reencole requests crudas
-    // (POST/PUT/PATCH/DELETE a /api/pedidos/*, /api/precios/resolver, etc.)
     this.version(4).stores({
       pedidos: '++id, localId, numero, clienteId, syncStatus, createdAt, origen, embarqueId',
       clientes: '++id, localId, nombre, syncStatus, createdAt',
       syncQueue: '++id, table, operation, createdAt',
       requestQueue: '++id, offlineId, localEndpoint, createdAt',
+    })
+    // v5 (Sprint 6 §G-2): agrega índices para DLQ y tracking de reintentos.
+    this.version(5).stores({
+      pedidos: '++id, localId, numero, clienteId, syncStatus, createdAt, origen, embarqueId',
+      clientes: '++id, localId, nombre, syncStatus, createdAt',
+      syncQueue: '++id, table, operation, createdAt',
+      requestQueue: '++id, offlineId, localEndpoint, createdAt, lastAttemptAt',
+      failedItems: '++id, offlineId, localEndpoint, failedAt, attempts',
     })
   }
 }

@@ -22,11 +22,14 @@ interface TxLike {
  * - Acepta huecos si hay rollback o anulación; eso se resuelve
  *   administrativamente con la DIAN (inhabilitación de rango), no
  *   en el código.
- * - Mantiene el fallback MAX+1 para otros modelos (abono, embarque)
- *   donde la concurrencia no genera facturas fiscales.
+ * - Mantiene el fallback MAX+1 para otros modelos donde la concurrencia
+ *   no genera facturas fiscales (legacy, mantener para retrocompat).
+ *   Sprint 6: agregado Abono y Embarque a las secuencias atómicas.
  */
 const SEQ_NAMES: Record<string, string> = {
   'factura:numero': 'factura_numero_seq',
+  'abono:numero': 'abono_numero_seq',
+  'embarque:numero': 'embarque_numero_seq',
 }
 
 export async function getNextNumero(

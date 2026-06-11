@@ -84,24 +84,47 @@ const authOptions: NextAuthConfig = {
         token.displayName = (user as User & { name?: string }).name
         token.mustChangePassword = (user as User & { mustChangePassword?: boolean }).mustChangePassword
         token.lastVerified = Date.now()
-        // FIX Fase 4 §4.3: REPARTIDOR tiene sesión extendida (2h) porque
-        // su flujo de trabajo es offline-first en campo con 2G/3G y no
-        // puede re-loguear a mitad de un embarque. El resto de roles
+        // FIX Fase 4 §4.3 + Sprint 6: REPARTIDOR tiene sesión extendida (6h)
+        // porque su flujo de trabajo es offline-first en campo con 2G/3G y
+        // no puede re-loguear a mitad de un embarque. El resto de roles
         // mantiene 30 min por seguridad. Los permisos de REPARTIDOR ya
         // están recortados (solo lectura + sus propios embarques), lo
         // que mitiga el riesgo de un token robado.
         const role = (user as User & { role?: string }).role
-        const sessionSeconds = role === 'REPARTIDOR' ? 2 * 60 * 60 : 30 * 60
+        const sessionSeconds = role === 'REPARTIDOR' ? 6 * 60 * 60 : 30 * 60
         const maxAgeMs = sessionSeconds * 1000
         token.sessionMaxAgeMs = maxAgeMs
         token.sessionExpiresAt = Date.now() + maxAgeMs
         return token
       }
 
-      // Re-verify user state from DB every 5 minutes
-      // Protects against: role demotion, account deactivation with stale JWT
+      // SLIDING SESSION (Sprint 6): si hay actividad reciente y la sesión
+      // aún no expiró, extender automáticamente. Patrón custom porque
+      // Auth.js v5 NO renueva exp automáticamente con uso online
+      // (https://authjs.dev/reference/core#updateage). Esto da UX
+      // "infinite session" mientras el usuario esté activo.
+      //
+      // Ventana de actividad: 15 min. Si el último request fue hace menos
+      // de 15 min, extender. Si pasaron más, no extender (usuario idle
+      // o app cerrada) — pero la sesión sigue vigente hasta sessionExpiresAt.
       const FIVE_MIN = 5 * 60 * 1000
       const lastVerified = (token.lastVerified as number) || 0
+      const SLIDING_WINDOW_MS = 15 * 60 * 1000
+      const sessionExpiresAt = (token.sessionExpiresAt as number) || 0
+      const maxAgeMs = (token.sessionMaxAgeMs as number) || 0
+
+      if (
+        maxAgeMs > 0 &&
+        sessionExpiresAt > 0 &&
+        Date.now() - lastVerified < SLIDING_WINDOW_MS &&
+        Date.now() < sessionExpiresAt
+      ) {
+        // Hay actividad reciente y aún no expiró → extender
+        token.sessionExpiresAt = Date.now() + maxAgeMs
+      }
+
+      // Re-verify user state from DB every 5 minutes
+      // Protects against: role demotion, account deactivation with stale JWT
       if ((trigger === 'update' || Date.now() - lastVerified > FIVE_MIN) && token.sub) {
         try {
           const dbUser = await prisma.user.findUnique({
@@ -157,11 +180,12 @@ const authOptions: NextAuthConfig = {
   },
   session: {
     strategy: 'jwt' as const,
-    // FIX Fase 4 §4.3: el maxAge global es el caso más largo (2h para
-    // REPARTIDOR). El resto de roles respeta su propio sessionExpiresAt
-    // seteado en el callback jwt() de arriba. updateAge=5min mantiene
-    // el refresh transparente mientras hay actividad.
-    maxAge: 2 * 60 * 60, // 2 hours (REPARTIDOR case); otros roles respetan su sessionExpiresAt propio
+    // FIX Fase 4 §4.3 + Sprint 6: maxAge global = 6h (REPARTIDOR con
+    // sliding session). El resto de roles respeta su propio
+    // sessionExpiresAt (30 min) seteado en el callback jwt() de arriba.
+    // updateAge=5min mantiene el refresh transparente mientras hay
+    // actividad online.
+    maxAge: 6 * 60 * 60, // 6 hours (REPARTIDOR case); otros roles respetan su sessionExpiresAt propio
     updateAge: 5 * 60,
   },
   trustHost: process.env.AUTH_TRUST_HOST === 'true',

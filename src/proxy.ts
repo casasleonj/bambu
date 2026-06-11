@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server'
+import { randomUUID } from 'crypto'
 import { auth } from '@/lib/auth'
 import { checkRateLimit, classifyRequest } from '@/lib/rate-limit'
 import { isRouteAllowed, getRedirectForRole } from '@/lib/permissions'
 import { validateCsrf } from '@/lib/csrf'
+import { setRequestIdProvider } from '@/lib/logger'
 import type { Role } from '@/lib/constants'
 
 /**
@@ -24,6 +26,11 @@ import type { Role } from '@/lib/constants'
  * 2. Page routes: Auth check + mustChangePassword guard + role-based access.
  */
 export const proxy = auth(async (request) => {
+  // Sprint 6 (V-5): set request ID para correlación de logs. Honra
+  // x-request-id upstream (Vercel/edge proxies lo inyectan) o genera UUID.
+  const requestId = request.headers.get('x-request-id') || randomUUID()
+  setRequestIdProvider(() => requestId)
+
   const pathname = request.nextUrl.pathname
 
   // ── API routes: CSRF + rate limiting ──────────────────────────────────

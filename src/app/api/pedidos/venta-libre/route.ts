@@ -7,6 +7,7 @@ import { withAdvisoryLock } from '@/lib/locks'
 import { getNextNumero } from '@/lib/sequence'
 import { resolverPreciosPedido, type Canal } from '@/lib/pricing'
 import { calcularEstadoPago, puedeFiar, puedeCrearPedido } from '@/lib/pedido-utils'
+import { buildPedidoLegacyFields } from '@/lib/pedido-legacy'
 import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
@@ -149,6 +150,20 @@ export async function POST(request: NextRequest) {
       }
 
       // 8. Crear pedido
+      // Sprint 3 (C-2 Fase 1): legacy fields se computan desde items[]
+      // vía buildPedidoLegacyFields() — única fuente de verdad.
+      // Antes: 18 líneas hardcoded con split incorrecto del botellón
+      // (siempre iba a Dom aunque el canal fuera PUNTO).
+      const itemsParaLegacy = itemsParaPrecios.map(i => ({
+        producto: i.codigo as any,
+        cantidad: i.cantidad,
+        precio: precioMap[i.codigo] || 0,
+      }))
+      const legacyFields = buildPedidoLegacyFields(
+        itemsParaLegacy,
+        canal as Canal,
+      )
+
       const pedido = await tx.pedido.create({
         data: {
           clienteId: clienteFinalId,
@@ -168,25 +183,7 @@ export async function POST(request: NextRequest) {
           gpsLat: gpsLat || null,
           gpsLng: gpsLng || null,
           offlineId: offlineId || null,
-          // Legacy
-          cPacaAguaPed: itemsParaPrecios.find(i => i.codigo === 'PACA_AGUA')?.cantidad || 0,
-          cPacaAguaEnt: itemsParaPrecios.find(i => i.codigo === 'PACA_AGUA')?.cantidad || 0,
-          cPacaHieloPed: itemsParaPrecios.find(i => i.codigo === 'PACA_HIELO')?.cantidad || 0,
-          cPacaHieloEnt: itemsParaPrecios.find(i => i.codigo === 'PACA_HIELO')?.cantidad || 0,
-          cBotellonFabPed: 0,
-          cBotellonFabEnt: 0,
-          cBotellonDomPed: itemsParaPrecios.find(i => i.codigo === 'BOTELLON')?.cantidad || 0,
-          cBotellonDomEnt: itemsParaPrecios.find(i => i.codigo === 'BOTELLON')?.cantidad || 0,
-          cBolsaAguaPed: itemsParaPrecios.find(i => i.codigo === 'BOLSA_AGUA')?.cantidad || 0,
-          cBolsaAguaEnt: itemsParaPrecios.find(i => i.codigo === 'BOLSA_AGUA')?.cantidad || 0,
-          cBolsaHieloPed: itemsParaPrecios.find(i => i.codigo === 'BOLSA_HIELO')?.cantidad || 0,
-          cBolsaHieloEnt: itemsParaPrecios.find(i => i.codigo === 'BOLSA_HIELO')?.cantidad || 0,
-          precioPacaAgua: precioMap['PACA_AGUA'] || 0,
-          precioPacaHielo: precioMap['PACA_HIELO'] || 0,
-          precioBotellonFab: 0,
-          precioBotellonDom: precioMap['BOTELLON'] || 0,
-          precioBolsaAgua: precioMap['BOLSA_AGUA'] || 0,
-          precioBolsaHielo: precioMap['BOLSA_HIELO'] || 0,
+          ...legacyFields,
           items: {
             create: itemsParaPrecios.map(i => ({
               producto: i.codigo,

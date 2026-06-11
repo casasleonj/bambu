@@ -17,44 +17,66 @@ export const PESOS_KG = {
 
 export type ProductCode = keyof typeof PESOS_KG
 
-export function calcularPacasEmbarque(pedidos: Array<{
+/**
+ * Sprint 4 (C-2 Fase 2): input type unificado. Acepta tanto el shape
+ * legacy (cPacaAguaPed, cBotellonDomPed, etc.) como el shape canónico
+ * items[] (PedidoItem[] con { producto, cantPedido }). El primero se
+ * mantiene por retrocompatibilidad durante la migración, pero las
+ * rutas modernas deben preferir `items`.
+ */
+export interface PedidoCapacidadInput {
+  // Shape legacy (mantener para retrocompat)
   cPacaAguaPed?: number
   cPacaHieloPed?: number
   cBotellonFabPed?: number
   cBotellonDomPed?: number
   cBolsaAguaPed?: number
   cBolsaHieloPed?: number
-}>): number {
+  // Shape canónico (Sprint 4+)
+  items?: Array<{
+    producto: string
+    cantPedido: number
+  }>
+}
+
+function cantidadProducto(pedido: PedidoCapacidadInput, code: ProductCode): number {
+  // Preferir items[] si está presente (single source of truth).
+  if (pedido.items && pedido.items.length > 0) {
+    return pedido.items.find(i => i.producto === code)?.cantPedido ?? 0
+  }
+  // Fallback a legacy si items[] no está.
+  switch (code) {
+    case 'PACA_AGUA': return pedido.cPacaAguaPed || 0
+    case 'PACA_HIELO': return pedido.cPacaHieloPed || 0
+    case 'BOTELLON':
+      return (pedido.cBotellonFabPed || 0) + (pedido.cBotellonDomPed || 0)
+    case 'BOLSA_AGUA': return pedido.cBolsaAguaPed || 0
+    case 'BOLSA_HIELO': return pedido.cBolsaHieloPed || 0
+  }
+}
+
+export function calcularPacasEmbarque(pedidos: PedidoCapacidadInput[]): number {
   return pedidos.reduce((total, p) => {
     return (
       total +
-      (p.cPacaAguaPed || 0) +
-      (p.cPacaHieloPed || 0) +
-      (p.cBotellonFabPed || 0) +
-      (p.cBotellonDomPed || 0) +
-      (p.cBolsaAguaPed || 0) +
-      (p.cBolsaHieloPed || 0)
+      cantidadProducto(p, 'PACA_AGUA') +
+      cantidadProducto(p, 'PACA_HIELO') +
+      cantidadProducto(p, 'BOTELLON') +
+      cantidadProducto(p, 'BOLSA_AGUA') +
+      cantidadProducto(p, 'BOLSA_HIELO')
     )
   }, 0)
 }
 
-export function calcularPesoEmbarque(pedidos: Array<{
-  cPacaAguaPed?: number
-  cPacaHieloPed?: number
-  cBotellonFabPed?: number
-  cBotellonDomPed?: number
-  cBolsaAguaPed?: number
-  cBolsaHieloPed?: number
-}>): number {
+export function calcularPesoEmbarque(pedidos: PedidoCapacidadInput[]): number {
   return pedidos.reduce((total, p) => {
     return (
       total +
-      (p.cPacaAguaPed || 0) * PESOS_KG.PACA_AGUA +
-      (p.cPacaHieloPed || 0) * PESOS_KG.PACA_HIELO +
-      (p.cBotellonFabPed || 0) * PESOS_KG.BOTELLON +
-      (p.cBotellonDomPed || 0) * PESOS_KG.BOTELLON +
-      (p.cBolsaAguaPed || 0) * PESOS_KG.BOLSA_AGUA +
-      (p.cBolsaHieloPed || 0) * PESOS_KG.BOLSA_HIELO
+      cantidadProducto(p, 'PACA_AGUA') * PESOS_KG.PACA_AGUA +
+      cantidadProducto(p, 'PACA_HIELO') * PESOS_KG.PACA_HIELO +
+      cantidadProducto(p, 'BOTELLON') * PESOS_KG.BOTELLON +
+      cantidadProducto(p, 'BOLSA_AGUA') * PESOS_KG.BOLSA_AGUA +
+      cantidadProducto(p, 'BOLSA_HIELO') * PESOS_KG.BOLSA_HIELO
     )
   }, 0)
 }
