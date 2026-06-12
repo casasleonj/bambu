@@ -158,7 +158,7 @@ export default function GastosPage() {
           onAction={() => setShowCrear(true)}
         />
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-4">
           <div className="flex justify-between p-3 bg-muted rounded-lg font-bold">
             <span>Total Gastos:</span>
             <span>{formatCurrency(totalGastos)}</span>

@@ -418,7 +418,7 @@ export function PedidoTable({
         </table>
       </div>
 
-      <div className="md:hidden divide-y divide-gray-100">
+      <div className="md:hidden space-y-3">
         {pedidos.length === 0 ? (
           <EmptyState
             icon={<svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>}
@@ -429,10 +429,12 @@ export function PedidoTable({
           />
         ) : (
           renderMobileSections().map((section) => (
-            <div key={section.label}>
+            <div key={section.label} className="space-y-3">
               <MobileSectionHeader label={section.label} />
               {section.items.map((pedido) => (
-                <MobileCard key={pedido.id} pedido={pedido} {...rowProps} />
+                <div key={pedido.id} className="bg-white border border-gray-200 rounded-lg shadow-sm">
+                  <MobileCard pedido={pedido} {...rowProps} />
+                </div>
               ))}
             </div>
           ))

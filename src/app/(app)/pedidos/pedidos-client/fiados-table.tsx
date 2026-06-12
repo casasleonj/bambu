@@ -408,9 +408,9 @@ export function FiadosTable({ pedidos, onPedidosChange, userRole }: FiadosTableP
         </div>
 
         {/* Mobile cards */}
-        <div className="md:hidden divide-y divide-gray-100">
+        <div className="md:hidden space-y-3">
           {filtrados.map((row) => (
-            <div key={row.clienteId} className="p-4">
+            <div key={row.clienteId} className="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
               <div className="flex justify-between items-start mb-2">
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">

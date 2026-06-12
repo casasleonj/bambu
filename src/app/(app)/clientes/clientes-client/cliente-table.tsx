@@ -316,12 +316,12 @@ export const ClienteTable = React.memo(function ClienteTable({
             )}
           </div>
         ) : (
-          <div className="divide-y divide-gray-50">
+          <div className="space-y-2 md:space-y-0 md:divide-y md:divide-gray-50">
             {clientesFiltrados.map((cliente) => {
               return (
                 <div
                   key={cliente.id}
-                  className={`grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-4 px-4 py-3 cursor-pointer transition group relative ${
+                  className={`md:grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-4 px-4 py-3 cursor-pointer transition group relative border md:border-0 border-gray-200 rounded-lg md:rounded-none shadow-sm md:shadow-none ${
                     selectedClienteId === cliente.id
                       ? 'bg-blue-50 border-l-4 border-blue-500'
                       : cliente.saldoPendiente && cliente.saldoPendiente > 0

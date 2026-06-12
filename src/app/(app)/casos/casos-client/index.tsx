@@ -270,9 +270,9 @@ export default function CasosClient({ initialCasos, usuarios }: CasosClientProps
           </div>
 
           {/* Mobile */}
-          <div className="md:hidden divide-y divide-gray-100">
+          <div className="md:hidden space-y-3">
             {filtrados.map((caso) => (
-              <div key={caso.id} className="p-4" onClick={() => handleOpenDetail(caso)}>
+              <div key={caso.id} className="bg-white border border-gray-200 rounded-lg shadow-sm p-4" onClick={() => handleOpenDetail(caso)}>
                 <div className="flex items-start gap-2 mb-2">
                   <span className={`inline-block w-2 h-2 rounded-full mt-1.5 ${SEVERIDAD_DOT[caso.severidad] || 'bg-gray-400'}`} />
                   <div className="flex-1 min-w-0">

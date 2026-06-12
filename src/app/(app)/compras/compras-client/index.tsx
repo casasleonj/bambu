@@ -174,7 +174,7 @@ export default function ComprasPage() {
           description="Registra las compras de insumos y materiales"
         />
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-4">
           <div className="flex justify-between p-3 bg-muted rounded-lg font-bold">
             <span>Total Compras:</span>
             <span>{formatCurrency(totalCompras)}</span>

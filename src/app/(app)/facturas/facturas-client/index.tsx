@@ -548,7 +548,7 @@ export default function FacturasPage() {
           </div>
 
           {/* Cards mobile */}
-          <div className="md:hidden divide-y divide-gray-100">
+          <div className="md:hidden space-y-3">
             {facturasFiltradas.map((factura) => {
               const total = Number(factura.total)
               const saldo = Number(factura.saldo)
@@ -560,7 +560,7 @@ export default function FacturasPage() {
                 <div
                   key={factura.id}
                   ref={(el) => { if (el) cardRefs.current.set(factura.id, el) }}
-                  className={`p-4 cursor-pointer transition ${
+                  className={`p-4 bg-white border border-gray-200 rounded-lg shadow-sm cursor-pointer transition ${
                     highlightedFactura === factura.id ? 'bg-blue-50 ring-1 ring-blue-200' :
                     tieneSaldo ? 'bg-red-50/30 hover:bg-red-50/50' : 'hover:bg-gray-50'
                   }`}

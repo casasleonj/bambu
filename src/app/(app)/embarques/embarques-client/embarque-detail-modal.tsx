@@ -107,7 +107,7 @@ function PedidoListGrouped({ pedidos }: { pedidos: Pedido[] }) {
   const libres = pedidos.filter((p) => p.origen === 'VENTA_LIBRE')
 
   return (
-    <div className="border rounded-lg divide-y mt-2 max-h-60 overflow-y-auto">
+    <div className="border rounded-lg mt-2 max-h-60 overflow-y-auto divide-y divide-gray-100">
       {normales.map((pedido) => (
         <PedidoRow key={pedido.id} pedido={pedido} />
       ))}

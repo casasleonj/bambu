@@ -182,7 +182,7 @@ export function AlertasTable({ pedidos }: AlertasTableProps) {
         </button>
         {reglasOpen && (
           <div className="border-t border-gray-100 p-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {REGLAS_ALERTAS.map((regla) => (
                 <button
                   key={regla.tipo}
@@ -356,9 +356,9 @@ export function AlertasTable({ pedidos }: AlertasTableProps) {
         </div>
 
         {/* Mobile */}
-        <div className="md:hidden divide-y divide-gray-100">
+        <div className="md:hidden space-y-3">
           {filtrados.map((row) => (
-            <div key={row.clienteId} className="p-4">
+            <div key={row.clienteId} className="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
               <div className="flex justify-between items-start mb-2">
                 <div>
                   <h3 className="font-medium text-gray-800">{row.nombreCli}</h3>
