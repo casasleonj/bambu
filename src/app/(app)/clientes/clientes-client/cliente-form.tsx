@@ -381,15 +381,46 @@ export function ClienteForm({
                   {plantillaRecurrente.horaPreferida && <p><span className="font-medium">Horario:</span> {plantillaRecurrente.horaPreferida}</p>}
                   {plantillaRecurrente.proxGeneracion && <p><span className="font-medium">Próxima generación:</span> {formatLocalDate(plantillaRecurrente.proxGeneracion)}</p>}
                   {(() => {
-                    // FASE 3: productos ahora es array de PlantillaProducto[]
+                    // FASE 3: productos ahora es array de PlantillaProducto[].
+                    // FIX AGENTS.md nota 11: antes el form mostraba los
+                    // productos como un string read-only ("PACA_AGUA=1,
+                    // HIELO=2") sin accion visible para editarlos. El
+                    // user tenia que descubrir el "Gestionar →" del header
+                    // o probar el form y notar que no persistia. Ahora
+                    // mostramos la lista de productos + un link/boton
+                    // prominente "Editar productos" que va a
+                    // /recurrentes/[id] donde SI persisten via PUT.
+                    //
+                    // Decidimos NO duplicar el editor de productos aca
+                    // (1FN storage: los productos viven en PlantillaProducto
+                    // con @unique([plantillaId, producto]), no en el
+                    // formData del cliente). La UX optima es mostrar el
+                    // estado actual y un CTA claro al editor canonico.
                     const items = Array.isArray(plantillaRecurrente.productos)
                       ? plantillaRecurrente.productos
                       : []
                     const entries = items.filter(p => p.cantidad > 0)
-                    if (entries.length > 0) {
-                      return <p><span className="font-medium">Productos:</span> {entries.map(p => `${p.producto}=${p.cantidad}`).join(', ')}</p>
-                    }
-                    return null
+                    if (entries.length === 0) return null
+                    return (
+                      <div className="mt-3 pt-3 border-t border-indigo-200" data-testid="plantilla-productos-display">
+                        <p className="font-medium mb-1">Productos:</p>
+                        <ul className="text-sm space-y-0.5 mb-2">
+                          {entries.map((p) => (
+                            <li key={p.producto}>
+                              <span className="font-mono">{p.producto}</span>
+                              <span className="text-indigo-700"> = {p.cantidad}</span>
+                            </li>
+                          ))}
+                        </ul>
+                        <Link
+                          href={`/recurrentes/${plantillaRecurrente.id}`}
+                          data-testid="editar-productos-link"
+                          className="inline-flex items-center gap-1 text-xs text-indigo-700 hover:text-indigo-900 font-semibold underline"
+                        >
+                          Editar productos en Pedidos Recurrentes →
+                        </Link>
+                      </div>
+                    )
                   })()}
                 </div>
               </div>
