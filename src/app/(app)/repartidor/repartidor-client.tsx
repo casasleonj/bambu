@@ -361,7 +361,7 @@ export function RepartidorClient({ trabajador, embarque, userRole }: RepartidorC
 
       {/* Pedidos list */}
       {embarque && embarque.pedidos && embarque.pedidos.length > 0 && (
-        <div className="max-w-5xl mx-auto">
+        <div className="max-w-7xl mx-auto">
           <div className="px-4 py-3 border-b bg-transparent">
             <h2 className="font-semibold text-gray-800">Pedidos asignados</h2>
           </div>

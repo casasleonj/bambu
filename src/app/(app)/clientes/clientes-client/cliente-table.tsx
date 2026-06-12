@@ -260,7 +260,7 @@ export const ClienteTable = React.memo(function ClienteTable({
       )}
 
       {/* Client list */}
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-7xl mx-auto">
         {clientesFiltrados.length === 0 ? (
           <div className="p-8">
             {search ? (
