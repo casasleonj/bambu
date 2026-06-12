@@ -55,6 +55,15 @@ BEGIN
   END IF;
 END $$;
 
+-- 2026-06-11: tablas creadas por la migración 1FN (Fase 3) que se montaron
+-- sin GRANTs porque el ALTER DEFAULT PRIVILEGES de 01-roles.sql no había
+-- persistido. ALL TABLES solo aplica a las existentes al ejecutar este
+-- script, así que las nuevas necesitan grant explícito. Idempotente.
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE "ContactoCliente" TO app_write;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE "PlantillaProducto" TO app_write;
+GRANT SELECT ON TABLE "ContactoCliente" TO app_read;
+GRANT SELECT ON TABLE "PlantillaProducto" TO app_read;
+
 -- Verify
 SELECT
   'app_write: ' || has_schema_privilege('app_write', 'public', 'USAGE')::text ||
