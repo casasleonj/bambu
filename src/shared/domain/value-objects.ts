@@ -27,15 +27,31 @@ export class Money {
   constructor(public readonly cents: number) {}
 
   static fromDecimal(value: number | string | unknown): Money {
+    // FIX H1-2: rechazar tipos que no sean number | string | null | undefined
+    // antes de aplicar Number(). Sin esto, Number([-1]) = -1 (JS spec) y
+    // Money.fromDecimal([-1]) retornaba -100 cents, no 0. Pie de mina
+    // silencioso para quien pase un array/objeto por error.
+    if (
+      value !== null &&
+      value !== undefined &&
+      typeof value !== 'number' &&
+      typeof value !== 'string'
+    ) {
+      return new Money(0)
+    }
     if (typeof value === 'string') {
       // Normalizar: detectar formato US vs CO y unificar
       const normalized = Money.normalizeNumericString(value)
       const num = Number(normalized)
-      if (isNaN(num)) return new Money(0)
+      // FIX H1-1: usar !Number.isFinite() en vez de solo isNaN().
+      // isNaN(Infinity) es false → el valor se propagaba.
+      // Number.isFinite() rechaza NaN, +Infinity y -Infinity en un solo check.
+      if (!Number.isFinite(num)) return new Money(0)
       return new Money(Math.round(num * 100))
     }
     const num = Number(value)
-    if (isNaN(num)) return new Money(0)
+    // FIX H1-1: misma guarda que en el path string.
+    if (!Number.isFinite(num)) return new Money(0)
     return new Money(Math.round(num * 100))
   }
 

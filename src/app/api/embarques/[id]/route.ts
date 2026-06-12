@@ -103,6 +103,14 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       }
 
       // Enforce field restrictions by state
+      // FIX H3-3: un embarque despachado (EN_RUTA o CERRADO) es
+      // INMUTABLE. Solo se permite modificar un embarque en estado
+      // ABIERTO. Esto protege los datos contables que el cierre del
+      // día usa para calcular totales.
+      // El único flujo válido para cerrar es POST /api/embarques/[id]/cerrar.
+      if (currentEmbarque.estado !== 'ABIERTO') {
+        throw new Error(`EMBARQUE_DESPACHADO_INMUTABLE:${currentEmbarque.estado}`)
+      }
       if (currentEmbarque.estado !== 'ABIERTO') {
         const forbiddenFields = ABIERTO_ONLY_FIELDS.filter((field) => parsed.data[field] !== undefined)
         if (forbiddenFields.length > 0) {
@@ -314,6 +322,15 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     // Mapear errores thrown desde dentro del lock a HTTP responses
     if (error instanceof Error) {
       const msg = error.message
+      if (msg.startsWith('EMBARQUE_DESPACHADO_INMUTABLE:')) {
+        // FIX H3-3: embarque despachado (EN_RUTA o CERRADO) es inmutable.
+        // El único flujo para cerrar es POST /api/embarques/[id]/cerrar.
+        return apiError(
+          'Embarque despachado es inmutable. No se puede modificar. ' +
+            'Use POST /api/embarques/[id]/cerrar para cerrar.',
+          409,
+        )
+      }
       if (msg === 'EMBARQUE_NOT_FOUND') return apiError('Embarque no encontrado', 404)
       if (msg === 'TRABAJADOR_NOT_FOUND') return apiError('Trabajador no encontrado', 400)
       if (msg === 'TRABAJADOR_SIN_MOTO') return apiError('Este trabajador no tiene moto asignada', 400)

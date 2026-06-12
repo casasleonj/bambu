@@ -10,7 +10,12 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 import { executeSerializableWithRetry } from '@/lib/serializable'
 
 export async function GET(request: NextRequest) {
-  const authResult = await requireAuth()
+  // FIX H3-4: GET /api/clientes solo para roles con visibilidad de
+  // cartera de clientes (ADMIN, ASISTENTE, CONTADOR). REPARTIDOR
+  // no debe listar clientes — debe usar el endpoint dedicado de su
+  // ruta (futuro /api/clientes/mi-ruta). Antes: cualquier usuario
+  // autenticado veía toda la base.
+  const authResult = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE, ROLES.CONTADOR])
   if (authResult instanceof Response) return authResult
   const pagination = getPaginationParams(request.nextUrl.searchParams)
   try {

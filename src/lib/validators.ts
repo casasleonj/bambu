@@ -26,8 +26,12 @@ export const PedidoItemSchema = z.object({
 // ====================
 
 export const PedidoCreateSchema = z.object({
-  clienteId: z.string().min(1),
-  negocioId: z.string().min(1).optional(),
+  // FIX H1-3: trim() antes de min(1) para rechazar IDs con solo espacios.
+  // Antes z.string().min(1) aceptaba "   " (length 3, no vacío).
+  // trim() corre en Zod antes de validar constraints, por lo que
+  // "   " → "" → rechazado por min(1).
+  clienteId: z.string().trim().min(1),
+  negocioId: z.string().trim().min(1).optional(),
   canal: z.enum(['PUNTO', 'DOMICILIO']).optional().default('DOMICILIO'),
   origen: OrigenPedidoSchema.optional().default('PEDIDO'),
   items: z.array(PedidoItemSchema).min(1, 'Agrega al menos un producto'),
@@ -340,7 +344,23 @@ export const NominaCreateSchema = z.object({
 });
 
 export const CierreCreateSchema = z.object({
-  fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  // FIX H1-4: la regex validaba el formato YYYY-MM-DD pero no que la fecha
+  // exista. "2025-02-30" pasaba el schema y JS new Date() hacía rollover
+  // silencioso a "2 de marzo". Ahora: regex + refine con Date.parse y
+  // round-trip para detectar rollovers.
+  fecha: z.string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .refine(
+      (s) => {
+        // Truco: el round-trip YYYY-MM-DD → Date → YYYY-MM-DD debe
+        // devolver el mismo string. Si no, fue rollover (mes 13, día 32, etc).
+        const d = new Date(s + 'T00:00:00Z')
+        if (isNaN(d.getTime())) return false
+        return d.toISOString().split('T')[0] === s
+      },
+      { message: 'Fecha inválida (ej: 2025-02-30 no existe)' }
+    )
+    .optional(),
   // Client only sends data the server CANNOT calculate:
   baseDia: z.coerce.number().min(0),
   stockIniAgua: z.coerce.number().int().min(0),
