@@ -264,7 +264,23 @@ vercel --prod
       - **Unchanged** (mismo teléfono, mismos campos) → skip
       - Dedup edge: en POST deduped (cliente ya existía), no sincroniza para evitar pisar contactos del cliente original.
     - Tests unitarios (32) en `c0bd1b2` y `2d3fd12` cubren: estructura de auth/role, validación Zod (incluyendo `.refine()` para "al menos un campo"), manejo de P2002/P2003, construcción dinámica del updateData, cross-cliente protection (no leak info), logAudit con `cambios` y `antes` (auditoría completa), orden auth-before-role.
-    - Mismo issue aplica a **productos de plantilla desde el form del cliente**: si la UI intenta editarlos, no persiste. (Los productos SÍ persisten via el `PUT /api/recurrentes` cuando se editan desde `/recurrentes/[id]`, pero no desde el form de cliente.)
+    - ~~Mismo issue aplica a **productos de plantilla desde el form del cliente**: si la UI intenta editarlos, no persiste.~~ (Resuelto) **Productos de plantilla desde el form del cliente**: la sección "Recurrentes" del form (`cliente-form.tsx`) ahora muestra los productos con un link prominente "Editar productos en Pedidos Recurrentes →" (`data-testid="editar-productos-link"`) que lleva a `/recurrentes/[id]` donde SÍ persisten via `PUT /api/recurrentes`. La edición desde el form del cliente NO está soportada por diseño: los productos viven en `PlantillaProducto` (1FN storage) y se editan en su editor canónico. El form solo muestra el estado actual.
+12. **`prisma migrate deploy` falla en dev con `0_init already exists`** (resuelto): El dev DB fue inicializado con `prisma db push`, no con `migrate deploy`. Esto significa que la tabla `_prisma_migrations` está vacía aunque el schema (enums + tablas) ya existe en la DB. Si corrés `npx prisma migrate deploy` en dev, Prisma intenta aplicar `0_init` desde cero y falla con:
+       ```
+       P3018: Migration failed to apply
+       Database error code: 42710
+       ERROR: type "EstadoPedido" already exists
+       ```
+       **Workarounds**:
+       - **Para verificar la nueva migración en dev** (caso normal): aplicar el SQL directo con `psql`:
+         ```bash
+         PGPASSWORD=bambu_dev psql -h localhost -p 5433 -U bambu -d bambu \
+           -f prisma/migrations/<nombre>/migration.sql
+         ```
+         El SQL de cada migración nueva es idempotente (verificado en `20260611_grant_contacto_plantilla_app_write`).
+       - **NO correr `migrate deploy` en dev** salvo que la DB haya sido wipeada. El flujo documentado usa `db push` (línea 64: `npx prisma db push`).
+       - **En Supabase prod**: el schema se inicializa también vía `db push` (mismo comando), no vía `migrate deploy`. Si en algún momento se quiere usar `migrate deploy` (e.g. para CI/CD con migraciones versionadas), hay que poblar `_prisma_migrations` con `prisma migrate resolve --applied <nombre>` para cada migración ya en la DB. Documentado como follow-up si en el futuro se cambia el deploy flow.
+       - **Síntoma típico**: alguien corre `prisma migrate deploy` esperando "aplicar las migraciones nuevas" y obtiene P3018. Es confuso porque la DB ya está al día. La causa es la separación entre "schema sync" (db push) y "migrations tracking" (migrate deploy). El proyecto usa el primero; el segundo no es la fuente de verdad.
 
 ---
 
