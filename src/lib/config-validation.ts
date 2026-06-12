@@ -50,6 +50,34 @@ const VALIDATORS: Record<string, Validator> = {
     if (isNaN(n) || n < 1 || !Number.isInteger(n)) return 'Debe ser un número entero mayor a 0'
     return null
   },
+
+  // Alertas antifraude (Bloque: Sistema de Alertas) — números no-negativos
+  // o con tope superior según corresponda.
+  MULTIPLICADOR_MONTO_ANOMALO: (v) => {
+    const n = Number(v)
+    if (isNaN(n) || n < 1) return 'Debe ser un número mayor o igual a 1'
+    return null
+  },
+  VARIACION_PRECIO_BRUSCO_PCT: (v) => {
+    const n = Number(v)
+    if (isNaN(n) || n < 1 || n > 100) return 'Debe ser un número entre 1 y 100 (porcentaje)'
+    return null
+  },
+  UMBRAL_DEUDA_REPARTIDOR_PACAS: (v) => {
+    const n = Number(v)
+    if (isNaN(n) || n < 0 || !Number.isInteger(n)) return 'Debe ser un número entero mayor o igual a 0'
+    return null
+  },
+  DIAS_SIN_JUSTIFICAR_DESCUENTO: (v) => {
+    const n = Number(v)
+    if (isNaN(n) || n < 0 || !Number.isInteger(n)) return 'Debe ser un número entero mayor o igual a 0'
+    return null
+  },
+  PCT_DEVOLUCIONES_ANORMALES: (v) => {
+    const n = Number(v)
+    if (isNaN(n) || n < 1) return 'Debe ser un número mayor o igual a 1'
+    return null
+  },
 }
 
 /**

@@ -155,6 +155,13 @@ const CONFIGS: Array<{ clave: string; valor: string; descripcion?: string }> = [
   { clave: 'MAX_PEDIDOS_DIA_ALERTA', valor: '2', descripcion: 'Máx pedidos/día antes de alerta' },
   { clave: 'LIMITE_PEDIDOS_FIADOS_DEFAULT', valor: '3', descripcion: 'Límite default de pedidos fiados por cliente' },
 
+  // Umbrales de alertas antifraude (Bloque: Sistema de Alertas)
+  { clave: 'MULTIPLICADOR_MONTO_ANOMALO', valor: '2', descripcion: 'Multiplicador sobre mediana para disparar alerta MONTO_ANOMALO' },
+  { clave: 'VARIACION_PRECIO_BRUSCO_PCT', valor: '30', descripcion: '% máximo de variación de precio vs último pedido sin alerta (1-100)' },
+  { clave: 'UMBRAL_DEUDA_REPARTIDOR_PACAS', valor: '50', descripcion: 'Umbral de deuda acumulada (pacas) para alerta REPARTIDOR_DEUDA_ALTA' },
+  { clave: 'DIAS_SIN_JUSTIFICAR_DESCUENTO', valor: '2', descripcion: 'Días sin justificar para alerta DESCUENTO_NO_JUSTIFICADO' },
+  { clave: 'PCT_DEVOLUCIONES_ANORMALES', valor: '2', descripcion: 'Multiplicador sobre promedio de devoluciones/roturas para alerta (>=1)' },
+
   // Reglas de negocio activables
   { clave: 'BLOQUEAR_PRECIOS_REPARTIDOR', valor: 'true', descripcion: 'Si true, REPARTIDOR no ve ni modifica precios' },
   { clave: 'REQUIERE_FOTO_ENTREGA', valor: 'true', descripcion: 'Si true, REPARTIDOR y trabajadores con moto deben tomar foto' },
@@ -334,6 +341,49 @@ async function seedConfigs() {
   console.log(`✅ ${CONFIGS.length} configs seeded`)
 }
 
+/**
+ * SYSTEM user: usuario técnico usado por crons y procesos automatizados
+ * como creador de Casos y demás registros que requieren un `creadoPorId`.
+ *
+ * - No tiene credenciales de login (password es un hash de un string
+ *   claramente no usable).
+ * - Rol: ADMIN para tener permisos totales a nivel de queries internas.
+ * - Inactivo: false (existe y puede ser FK), pero nadie puede hacer login
+ *   porque la pantalla de login rechaza usuarios sin password conocido.
+ * - Idempotente: usa upsert por username.
+ */
+async function seedSystemUser() {
+  const SYSTEM_PASSWORD = 'SYSTEM_NEVER_LOGIN_' + Date.now()
+  const hashed = await hashPassword(SYSTEM_PASSWORD)
+
+  const existing = await prisma.user.findUnique({ where: { username: 'system@bambu.local' } })
+  if (existing) {
+    // No actualizar password en re-runs (mantener el hash original).
+    await prisma.user.update({
+      where: { id: existing.id },
+      data: {
+        nombre: 'Sistema',
+        apellido: '',
+        rol: RolUsuario.ADMIN,
+        activo: true,
+      },
+    })
+  } else {
+    await prisma.user.create({
+      data: {
+        username: 'system@bambu.local',
+        password: hashed,
+        rol: RolUsuario.ADMIN,
+        nombre: 'Sistema',
+        apellido: '',
+        activo: true,
+        mustChangePassword: false,
+      },
+    })
+  }
+  console.log(`✅ SYSTEM user seeded (idempotent)`)
+}
+
 async function seedProductos() {
   for (const p of PRODUCTOS) {
     const precioBase = PRECIO_BASE[p.codigo] ?? 0
@@ -402,6 +452,7 @@ async function main() {
 
   // Order matters: users + trabajadores in parallel-safe batches, then link.
   await seedUsers()
+  await seedSystemUser()
   await seedTrabajadores()
   await linkUsersToTrabajadores()
   await seedConfigs()
