@@ -260,25 +260,7 @@ export const ClienteTable = React.memo(function ClienteTable({
       )}
 
       {/* Client list */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        {/* Header - desktop only */}
-        <div className="hidden md:grid grid-cols-12 gap-4 px-4 py-3 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-          <button onClick={() => onSortChange('nombre', sortBy === 'nombre' && sortDir === 'asc' ? 'desc' : 'asc')} className="col-span-3 flex items-center gap-1 text-left hover:text-gray-700 transition">
-            Cliente
-            {sortBy === 'nombre' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
-          </button>
-          <div className="col-span-2">Contacto</div>
-          <div className="col-span-2">Zona</div>
-          <div className="col-span-2">Frecuencia</div>
-          <div className="col-span-2 text-right">Saldo</div>
-          <div className="col-span-1 text-center">
-            <button onClick={() => onSortChange('createdAt', sortBy === 'createdAt' && sortDir === 'asc' ? 'desc' : 'asc')} className="inline-flex items-center gap-1 hover:text-gray-700 transition">
-              Registro
-              {sortBy === 'createdAt' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
-            </button>
-          </div>
-        </div>
-
+      <div className="max-w-5xl mx-auto">
         {clientesFiltrados.length === 0 ? (
           <div className="p-8">
             {search ? (
@@ -316,14 +298,14 @@ export const ClienteTable = React.memo(function ClienteTable({
             )}
           </div>
         ) : (
-          <div className="space-y-2 md:space-y-0 md:divide-y md:divide-gray-50">
+          <div className="space-y-3">
             {clientesFiltrados.map((cliente) => {
               return (
                 <div
                   key={cliente.id}
-                  className={`md:grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-4 px-4 py-3 cursor-pointer transition group relative border md:border-0 border-gray-200 rounded-lg md:rounded-none shadow-sm md:shadow-none ${
+                  className={`grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-4 p-4 bg-white border border-gray-200 rounded-lg shadow-sm cursor-pointer transition group relative hover:border-gray-300 hover:shadow-md ${
                     selectedClienteId === cliente.id
-                      ? 'bg-blue-50 border-l-4 border-blue-500'
+                      ? 'border-l-4 border-blue-500 border-blue-500 bg-blue-50'
                       : cliente.saldoPendiente && cliente.saldoPendiente > 0
                         ? 'bg-red-50/30 hover:bg-red-50/60'
                         : 'hover:bg-blue-50/50'
@@ -331,7 +313,7 @@ export const ClienteTable = React.memo(function ClienteTable({
                   onClick={() => onViewCliente(cliente.id)}
                 >
                   {/* Quick actions menu */}
-                  <div className="absolute right-2 top-2 z-10">
+                  <div className="absolute right-3 top-3 z-10">
                     <button
                       onClick={(e) => { e.stopPropagation(); setQuickActionsRow(quickActionsRow === cliente.id ? null : cliente.id) }}
                       className="p-1.5 rounded-lg bg-white/80 hover:bg-white shadow-sm opacity-100 md:opacity-0 md:group-hover:opacity-100 transition text-gray-500 hover:text-gray-700"

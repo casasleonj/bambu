@@ -361,16 +361,16 @@ export function RepartidorClient({ trabajador, embarque, userRole }: RepartidorC
 
       {/* Pedidos list */}
       {embarque && embarque.pedidos && embarque.pedidos.length > 0 && (
-        <div className="bg-white rounded-xl shadow overflow-hidden">
-          <div className="px-4 py-3 border-b">
+        <div className="max-w-5xl mx-auto">
+          <div className="px-4 py-3 border-b bg-transparent">
             <h2 className="font-semibold text-gray-800">Pedidos asignados</h2>
           </div>
-          <div className="space-y-3 md:space-y-0 md:divide-y md:divide-gray-100">
+          <div className="space-y-3">
             {embarque!.pedidos.map((pedido) => {
               const items = getItemsFromPedido(pedido)
               const saldo = Number(pedido.saldo)
               return (
-                <div key={pedido.id} className="p-4 md:p-4 border md:border-0 border-gray-200 rounded-lg md:rounded-none">
+                <div key={pedido.id} className="p-4 bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition">
                   <div className="flex justify-between items-start mb-1">
                     <div>
                       <span className="text-xs text-gray-400 font-medium">#{pedido.numero}</span>
