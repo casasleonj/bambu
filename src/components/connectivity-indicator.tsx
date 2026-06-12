@@ -145,18 +145,19 @@ export function ConnectivityIndicator() {
       }
       data-testid="connectivity-indicator"
       data-pending-count={pendingCount}
-      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full ${bg} transition-colors duration-300 ${
+      // FIX mobile UX: padding más compacto, label oculto en <sm.
+      className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full ${bg} transition-colors duration-300 flex-shrink-0 ${
         canSync ? 'cursor-pointer hover:brightness-110 active:scale-95' : 'cursor-default'
       }`}
     >
       <span className={`w-2 h-2 rounded-full ${dot} shadow-[0_0_6px_currentColor] transition-colors duration-300`} />
-      <span className={`text-xs font-semibold tracking-wide ${text} transition-colors duration-300`}>
+      <span className={`text-xs font-semibold tracking-wide ${text} transition-colors duration-300 hidden sm:inline`}>
         {label}
       </span>
       {showPending && (
         <span
           data-testid="pending-sync-counter"
-          className="ml-0.5 px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-amber-400 text-amber-950 leading-none"
+          className="ml-0.5 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold rounded-full bg-amber-400 text-amber-950 leading-none"
           title={`${pendingCount} cambio${pendingCount === 1 ? '' : 's'} pendiente${pendingCount === 1 ? '' : 's'} de sincronizar`}
         >
           {pendingCount}

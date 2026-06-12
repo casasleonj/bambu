@@ -136,12 +136,27 @@ export function Sidebar() {
   const desktopCollapsed = useAppStore((s) => s.desktopCollapsed)
   const pathname = usePathname()
 
-  // FIX §6.4: en móvil, cerrar el drawer al cambiar de ruta
+  // FIX §6.4 + REGRESION mobile 2026-06-10: en móvil, cerrar el drawer
+  // SOLO cuando el usuario navega a otra ruta. NO al abrir/cerrar el drawer.
+  //
+  // Bug original: las deps del useEffect incluian `mobileDrawerOpen` y
+  // `setMobileDrawerOpen`, lo que hacia que el efecto se ejecutara en el
+  // mismo render donde el handler del hamburguesa llamaba
+  // `setMobileDrawerOpen(true)`. El efecto inmediatamente volvia a
+  // llamar `setMobileDrawerOpen(false)`, abriendo y cerrando el drawer en
+  // el mismo ciclo de React. Resultado: el usuario veia "el menú no abre".
+  //
+  // Fix: leer el state via `useAppStore.getState()` (lectura no-reactiva)
+  // y dejar las deps solo en `pathname` e `isDesktop`. Asi el efecto
+  // corre solo cuando el usuario navega (cambia pathname) o cuando
+  // cambia el breakpoint (de mobile a desktop o viceversa).
   useEffect(() => {
+    const { mobileDrawerOpen } = useAppStore.getState()
     if (!isDesktop && mobileDrawerOpen) {
-      setMobileDrawerOpen(false)
+      useAppStore.getState().setMobileDrawerOpen(false)
     }
-  }, [pathname, isDesktop, mobileDrawerOpen, setMobileDrawerOpen])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, isDesktop])
 
   // FIX §6.4: scroll-lock del body mientras el drawer móvil está abierto
   useEffect(() => {
@@ -164,18 +179,26 @@ export function Sidebar() {
   const isVisible = isDesktop ? !desktopCollapsed : mobileDrawerOpen
   const isInteractive = isDesktop ? !desktopCollapsed : mobileDrawerOpen
 
+  // FIX mobile UX (regresión header mobile):
+  // Antes: en móvil cerrado, el `<aside>` se rendía con `w-0 -translate-x-full`.
+  // Eso causaba 2 problemas: (1) el rectángulo seguía presente y en iOS Safari
+  // el primer tap se interpretaba como scroll-gesture en lugar de click sobre
+  // el botón hamburguesa del header, (2) el header overflow horizontal se
+  // notaba más por la presencia del nodo.
+  // Ahora: en móvil, el aside SOLO se rinde cuando el drawer está abierto.
+  // En desktop, el aside siempre está en el DOM (control de visibilidad por width).
+  const showAside = isDesktop || mobileDrawerOpen
+
   // FIX §6.4: clase de ancho según variante
   // - Desktop expandido: w-64 (permanente, ocupa su espacio)
   // - Desktop colapsado: w-0 overflow-hidden (no se ve)
   // - Móvil abierto: w-64 fixed (drawer temporal, cubre contenido)
-  // - Móvil cerrado: w-0 -invisible (no ocupa espacio, no es interactivo)
+  // - Móvil cerrado: no se rinde (showAside=false)
   const asideWidth = isDesktop
     ? desktopCollapsed
       ? 'w-0 overflow-hidden'
       : 'w-64'
-    : mobileDrawerOpen
-      ? 'w-64'
-      : 'w-0 overflow-hidden -translate-x-full md:translate-x-0'
+    : 'w-64'
 
   return (
     <>
@@ -187,13 +210,12 @@ export function Sidebar() {
           aria-hidden="true"
         />
       )}
+      {showAside && (
       <aside
         aria-label="Navegación principal"
         inert={isInteractive ? undefined : true}
         aria-hidden={!isVisible}
-        // FIX Fase 1 §6.5: 100dvh en vez de 100vh.
-        // FIX Fase 4 §6.4: width y translate según variante.
-        className={`fixed top-14 left-0 h-[calc(100dvh-3.5rem)] bg-white shadow-lg transition-all duration-300 z-40 flex flex-col ${asideWidth}`}
+        className={`fixed top-14 left-0 h-[calc(100dvh-3.5rem)] bg-white shadow-lg transition-[width,transform] duration-300 z-40 flex flex-col ${asideWidth}`}
       >
         <div className="px-4 py-3 border-b bg-gray-50">
           <div className="flex items-center justify-between">
@@ -240,6 +262,7 @@ export function Sidebar() {
           </button>
         </div>
       </aside>
+      )}
     </>
   )
 }

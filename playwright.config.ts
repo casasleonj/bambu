@@ -24,5 +24,12 @@ export default defineConfig({
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    // Project mobile: iPhone 13 viewport (390x844) con touch + isMobile.
+    // Usado por los specs e2e/mobile-*.spec.ts para validar regresiones
+    // mobile (overflow horizontal, drawer, detalle de clientes).
+    // Los specs usan `test.use` al top-level para override explicito del
+    // viewport; este project provee el default y permite correrlos con:
+    //   npx playwright test e2e/mobile-*.spec.ts --project=chromium-mobile
+    { name: 'chromium-mobile', use: { ...devices['iPhone 13'] } },
   ],
 })

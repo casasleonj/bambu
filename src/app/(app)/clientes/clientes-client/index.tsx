@@ -39,6 +39,7 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
   const [isEdit, setIsEdit] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [formError, setFormError] = useState('')
+  const [detailError, setDetailError] = useState<string | null>(null)
   const [alertasKey, setAlertasKey] = useState(0)
   const [formData, setFormData] = useState<FormData>({
     nombre: '',
@@ -128,6 +129,7 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
   useEscapeGuard(showDetail, () => {
     setShowDetail(false)
     setIsEditing(false)
+    setDetailError(null)
   })
 
   const [canalActivo, setCanalActivo] = useState<Canal>('DOMICILIO')
@@ -160,10 +162,24 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
     }
   }, [filtroActivo])
 
-  // Refetch cuando cambia el filtro de riesgo (vino del dashboard o se quito)
-  useEffect(() => {
-    fetchClientes()
-  }, [fetchClientes])
+  // FIX REGRESION mobile 2026-06-10 ("no se pudieron cargar los clientes"):
+  // NO disparar fetchClientes() en mount. El page.tsx server ya pasa
+  // `initialClientes` con los datos correctos (filtrados si hay filtroActivo
+  // en el URL: ?bloqueado=true, ?reclamaciones=gte3, ?noVerificado=true).
+  // Hacer un fetch extra en mount causa:
+  // - Round-trip innecesario a /api/clientes.
+  // - Posible rate-limit en mobile con conexion lenta.
+  // - Si el fetch falla, `setFetchError` setea el error y la UI de error
+  //   REEMPLAZA la lista del SSR visualmente, aunque los datos
+  //   ya estaban disponibles. Esto era el bug del user.
+  //
+  // Si el user cambia el filtroActivo, cliente-table.tsx usa
+  // router.push con nuevos params, lo cual re-renderiza el layout server
+  // y trae nuevos `initialClientes`. No necesitamos re-fetch en cliente.
+  //
+  // fetchClientes() todavia se llama despues de cada mutacion
+  // (handleCreate, handleDelete, etc., lineas 465, 531, 592, 615, 637)
+  // para refrescar la lista despues de cambios.
 
   const loadPreciosBase = useCallback(async () => {
     for (const canal of ['DOMICILIO', 'PUNTO'] as Canal[]) {
@@ -564,10 +580,30 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
 
   async function viewCliente(id: string) {
     setDetailLoading(true)
+    setDetailError(null)
     try {
       const res = await fetch(`/api/clientes/${id}`)
       if (!res.ok) {
-        toast.error('Cliente no encontrado')
+        // FIX REGRESION mobile 2026-06-10 ("no me abre el detalle"):
+        // antes esto solo hacia toast.error y retornaba, sin abrir el modal.
+        // El user pensaba que el click no funcionaba. Ahora abrimos el modal
+        // con un cliente stub (solo el id) y mostramos el error dentro del
+        // modal para que el user sepa que paso.
+        setSelectedCliente({
+          id,
+          clienteId: id,
+          nombre: 'No se pudo cargar el cliente',
+          telefono: '',
+          frecuencia: 'IRREGULAR',
+          activo: true,
+        } as Cliente)
+        setShowDetail(true)
+        setActiveTab('info')
+        setDetailError(
+          res.status === 404
+            ? 'Cliente no encontrado.'
+            : `Error al cargar el cliente (HTTP ${res.status}). Intenta de nuevo.`,
+        )
         return
       }
       const data = await res.json()
@@ -575,9 +611,24 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
         setSelectedCliente(data.cliente)
         setShowDetail(true)
         setActiveTab('info')
+        setDetailError(null)
+      } else {
+        setDetailError('Respuesta inesperada del servidor.')
+        setShowDetail(true)
       }
     } catch (error) {
-      toast.error('Error cargando cliente')
+      setSelectedCliente({
+        id,
+        clienteId: id,
+        nombre: 'Error de red',
+        telefono: '',
+        frecuencia: 'IRREGULAR',
+        activo: true,
+      } as Cliente)
+      setShowDetail(true)
+      setDetailError(
+        'No se pudo conectar al servidor. Verifica tu conexión e intenta de nuevo.',
+      )
     } finally {
       setDetailLoading(false)
     }
@@ -592,6 +643,7 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
         await fetchClientes()
         setShowDetail(false)
         setSelectedCliente(null)
+        setDetailError(null)
         toast.success('Cliente desactivado')
       } else {
         toast.error('Error desactivando cliente')
@@ -735,6 +787,30 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
               <div className="w-16" />
             </div>
 
+            {/* FIX REGRESION mobile 2026-06-10 ("no me abre el detalle"):
+                mostrar el error de carga dentro del modal en lugar de
+                solo un toast. El user debe ver que el modal abrió y por
+                que el contenido no se cargo. */}
+            {detailError && !detailLoading && (
+              <div className="px-4 py-3 bg-red-50 border-b border-red-200 flex items-start gap-2" role="alert">
+                <svg className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div className="flex-1">
+                  <p className="text-sm text-red-700 font-medium">{detailError}</p>
+                </div>
+                <button
+                  onClick={() => { setShowDetail(false); setIsEditing(false); setDetailError(null) }}
+                  className="text-red-400 hover:text-red-600 p-1"
+                  aria-label="Cerrar"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            )}
+
             {detailLoading ? (
               <div className="p-6 space-y-4">
                 <div className="flex items-center gap-4">
@@ -810,7 +886,7 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
                   </div>
                 </div>
                 <button
-                  onClick={() => setShowDetail(false)}
+                  onClick={() => { setShowDetail(false); setDetailError(null) }}
                   className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg p-1 transition"
                   aria-label="Cerrar"
                 >
