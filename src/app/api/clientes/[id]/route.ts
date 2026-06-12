@@ -1,12 +1,52 @@
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library'
 import { formatZodError } from '@/lib/utils'
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { ClienteUpdateSchema } from '@/lib/validators'
 import { logAudit } from '@/lib/audit'
 import { apiSuccess, apiError } from '@/lib/api-response'
+import { logger } from '@/lib/logger'
 import { ROLES } from '@/lib/constants'
+
+// Extrae info util del error de Prisma/PostgreSQL para logging.
+// Devuelve: { pgCode, pgMessage, tableName, httpStatus, summary }.
+// httpStatus=500 por defecto; 503 si la DB esta caida (3D000/08006).
+function classifyDbError(err: unknown): {
+  pgCode?: string
+  pgMessage?: string
+  tableName?: string
+  summary: string
+  httpStatus: number
+} {
+  if (err && typeof err === 'object') {
+    const e = err as {
+      code?: string
+      message?: string
+      meta?: { code?: string; table?: string; constraint?: string }
+    }
+    const pgCode = e.code ?? e.meta?.code
+    const pgMessage = e.message
+    const tableName = e.meta?.table
+    let summary = 'unknown'
+    let httpStatus = 500
+    if (pgCode === '42501') {
+      summary = `permission denied${tableName ? ` for table ${tableName}` : ''}`
+      httpStatus = 500
+    } else if (pgCode === 'P2025') {
+      summary = 'record not found'
+      httpStatus = 404
+    } else if (pgCode === 'P2002') {
+      summary = 'unique constraint violation'
+      httpStatus = 409
+    } else if (pgCode === '3D000' || pgCode === '08006') {
+      summary = 'database unavailable'
+      httpStatus = 503
+    }
+    return { pgCode, pgMessage, tableName, summary, httpStatus }
+  }
+  return { summary: 'unknown', httpStatus: 500 }
+}
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
@@ -99,7 +139,27 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
     return apiSuccess({ cliente: serialized })
   } catch (error) {
-    return apiError('Error', 500)
+    const cls = classifyDbError(error)
+    logger.error(
+      {
+        err: error,
+        route: 'GET /api/clientes/[id]',
+        clienteId: id,
+        pgCode: cls.pgCode,
+        tableName: cls.tableName,
+        summary: cls.summary,
+      },
+      `GET cliente falló: ${cls.summary}`,
+    )
+    // En dev exponemos el codigo PG en X-Error-Code para debugging rapido.
+    const devHeaders =
+      process.env.NODE_ENV !== 'production' && cls.pgCode
+        ? { 'X-Error-Code': cls.pgCode, 'X-Error-Summary': cls.summary }
+        : undefined
+    return NextResponse.json(
+      { success: false, error: { message: 'Error' } },
+      { status: cls.httpStatus, headers: devHeaders },
+    )
   }
 }
 
