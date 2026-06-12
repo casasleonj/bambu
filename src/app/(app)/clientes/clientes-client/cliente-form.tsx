@@ -387,15 +387,21 @@ export function ClienteForm({
                     // HIELO=2") sin accion visible para editarlos. El
                     // user tenia que descubrir el "Gestionar →" del header
                     // o probar el form y notar que no persistia. Ahora
-                    // mostramos la lista de productos + un link/boton
-                    // prominente "Editar productos" que va a
-                    // /recurrentes/[id] donde SI persisten via PUT.
+                    // mostramos la lista de productos + un link prominente
+                    // "Editar productos" que va a /recurrentes/[id] donde
+                    // SI persisten via PUT.
                     //
-                    // Decidimos NO duplicar el editor de productos aca
-                    // (1FN storage: los productos viven en PlantillaProducto
-                    // con @unique([plantillaId, producto]), no en el
-                    // formData del cliente). La UX optima es mostrar el
-                    // estado actual y un CTA claro al editor canonico.
+                    // === DECISION DE DISENO FINAL (no es un workaround) ===
+                    // La edicion de productos desde el form del cliente
+                    // NO se implementa. Los productos viven en
+                    // PlantillaProducto con @unique([plantillaId, producto])
+                    // — 1FN storage, separados de la entidad Cliente — y
+                    // se editan EXCLUSIVAMENTE en /recurrentes/[id]. Esta
+                    // es la decision de diseno explicita (no un follow-up
+                    // pendiente): el form del cliente solo muestra el
+                    // estado actual + un CTA al editor canonico. No crear
+                    // sub-endpoints /api/clientes/[id]/plantilla-productos
+                    // ni duplicar el editor aca.
                     const items = Array.isArray(plantillaRecurrente.productos)
                       ? plantillaRecurrente.productos
                       : []
