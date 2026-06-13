@@ -44,6 +44,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   if (!hasAccess) return apiError('Forbidden', 403)
   try {
     const body = await request.json()
+    // commit 0e: casoId opcional en el body para vincular este UPDATE
+    // con un Caso (alerta antifraude). Se extrae ANTES de validar
+    // con Zod porque el schema no incluye casoId (es metadata forense,
+    // no dato de negocio).
+    const casoId: string | null = typeof body?.casoId === 'string' ? body.casoId : null
+
     const parsed = PedidoUpdateSchema.safeParse(body)
     if (!parsed.success) {
       return apiError(formatZodError(parsed.error), 400)
@@ -70,6 +76,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       accion: 'UPDATE',
       datos: { numero: result.pedido.numero, estado: result.pedido.estadoEntrega },
       usuarioId: getUserFromSession(authResult).id,
+      casoId,
     })
 
     return apiSuccess({ pedido: result.pedido })
@@ -82,13 +89,22 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   }
 }
 
-export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
   const roleCheck = await requireRole([ROLES.ADMIN, ROLES.CONTADOR], authResult)
   if (roleCheck instanceof Response) return roleCheck
   const { id } = await params
   try {
+    // commit 0e: casoId opcional en el body
+    let casoId: string | null = null
+    try {
+      const body = await request.json()
+      casoId = typeof body?.casoId === 'string' ? body.casoId : null
+    } catch {
+      // body vacio o invalido: OK, casoId queda null
+    }
+
     // Try anular (requires ENTREGADO), fallback to cancelar
     try {
       const result = await anularPedidoUseCase.execute({ pedidoId: id })
@@ -98,6 +114,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
         accion: 'DELETE',
         datos: { estado: 'ANULADO' },
         usuarioId: getUserFromSession(authResult).id,
+        casoId,
       })
       return apiSuccess({ pedido: result.pedido })
     } catch (err) {
@@ -113,6 +130,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
         accion: 'DELETE',
         datos: { estado: 'CANCELADO' },
         usuarioId: getUserFromSession(authResult).id,
+        casoId,
       })
       return apiSuccess({ pedido: result.pedido })
     }

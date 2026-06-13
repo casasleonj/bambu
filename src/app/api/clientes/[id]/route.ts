@@ -257,6 +257,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       updateData.bloqueado = bloqueado
     }
 
+    // commit 0e: casoId opcional en el body para que la UI de /casos/[id]
+    // pueda mostrar este cambio en la timeline del caso. El campo se
+    // ignora silenciosamente si no se envia (backward compat con clientes
+    // que ya llaman este endpoint sin casoId).
+    const casoId: string | null = typeof body.casoId === 'string' ? body.casoId : null
+
     const cliente = await prisma.cliente.update({
       where: { id, activo: true },
       data: updateData,
@@ -268,6 +274,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       accion: 'UPDATE',
       datos: { verificado: cliente.verificado, bloqueado: cliente.bloqueado },
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+      casoId,
     })
 
     return apiSuccess({ cliente })

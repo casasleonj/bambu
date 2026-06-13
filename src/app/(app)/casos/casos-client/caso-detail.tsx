@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 interface Caso {
   id: string
@@ -356,11 +356,17 @@ export function CasoDetail({ caso, usuarios, onClose, onStatusChange }: CasoDeta
         </div>
       )}
 
+      {/* Auditoria (commit 0e) — Historial forense vinculado a este caso.
+          Lista los UPDATE/DELETE en Cliente/Pedido/otros que fueron
+          disparados por el flujo de auto-resolver, identificados por
+          `datos._casoId` en la tabla Historial. */}
+      <AuditoriaSection casoId={caso.id} />
+
       {/* Timeline */}
       {caso.eventos && caso.eventos.length > 0 && (
         <div className="pt-2 border-t">
           <h3 className="text-sm font-semibold text-gray-700 mb-3">Historial</h3>
-          <div className="space-y-2 max-h-48 overflow-y-auto">
+            <div className="space-y-2 max-h-48 overflow-y-auto">
             {caso.eventos.map((evento) => (
               <div key={evento.id} className="flex gap-3 text-sm">
                 <div className="w-2 h-2 rounded-full bg-blue-400 mt-1.5 shrink-0" />
@@ -391,6 +397,127 @@ export function CasoDetail({ caso, usuarios, onClose, onStatusChange }: CasoDeta
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * Sub-componente: muestra los registros de Historial (audit log) que
+ * tienen `datos._casoId === casoId`. Esto cubre los cambios automaticos
+ * disparados por el flujo de auto-resolver (commit 3.2) y permite al
+ * admin ver quien origino cada cambio subyacente.
+ */
+function AuditoriaSection({ casoId }: { casoId: string }) {
+  const [entries, setEntries] = useState<
+    Array<{
+      id: string
+      entidad: string
+      registroId: string
+      accion: string
+      summary: Record<string, unknown>
+      fecha: string
+      usuario: { id: string; username: string; nombre: string } | null
+    }>
+  >([])
+  const [loading, setLoading] = useState(true)
+  const [expanded, setExpanded] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    fetch(`/api/casos/${casoId}/auditoria`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return
+        if (data?.success) setEntries(data.entries)
+      })
+      .catch(() => {
+        // Silenciar: la auditoria es informativa, no debe romper la pagina
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [casoId])
+
+  if (loading) {
+    return (
+      <div className="pt-2 border-t">
+        <h3 className="text-sm font-semibold text-gray-700 mb-2">Auditoría forense</h3>
+        <p className="text-xs text-gray-400">Cargando...</p>
+      </div>
+    )
+  }
+
+  if (entries.length === 0) {
+    return null // sin entries: no mostrar seccion
+  }
+
+  return (
+    <div className="pt-2 border-t">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-sm font-semibold text-gray-700">
+          Auditoría forense
+          <span className="ml-2 inline-flex items-center justify-center min-w-[1.5rem] h-5 px-1.5 text-xs font-bold text-white bg-indigo-600 rounded-full">
+            {entries.length}
+          </span>
+        </h3>
+        {entries.length > 3 && (
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="text-xs text-blue-600 hover:underline"
+          >
+            {expanded ? 'Colapsar' : `Ver todos (${entries.length})`}
+          </button>
+        )}
+      </div>
+      <p className="text-xs text-gray-400 mb-2">
+        Cambios automaticos en entidades disparados por este caso.
+      </p>
+      <div className="space-y-2 max-h-64 overflow-y-auto">
+        {(expanded ? entries : entries.slice(0, 3)).map((entry) => {
+          // Summary legible: serializa a JSON truncado
+          const summaryStr = Object.keys(entry.summary).length > 0
+            ? Object.entries(entry.summary)
+                .map(([k, v]) => `${k}=${typeof v === 'string' ? v : JSON.stringify(v)}`)
+                .join(', ')
+            : '(sin datos)'
+
+          return (
+            <div key={entry.id} className="flex gap-3 text-sm bg-gray-50 rounded p-2">
+              <div className="w-2 h-2 rounded-full bg-indigo-400 mt-1.5 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-medium text-gray-700">
+                    {entry.usuario?.username ?? '(sistema)'}
+                  </span>
+                  <span className="text-xs text-gray-500">
+                    {entry.accion} {entry.entidad}
+                  </span>
+                  <span className="text-xs text-gray-400">
+                    {new Date(entry.fecha).toLocaleDateString('es-CO', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </span>
+                </div>
+                <div className="text-xs text-gray-600 mt-1 break-words">
+                  {summaryStr}
+                </div>
+              </div>
+            </div>
+          )
+        })}
+        {!expanded && entries.length > 3 && (
+          <p className="text-xs text-gray-400 text-center">
+            + {entries.length - 3} mas (click &quot;Ver todos&quot;)
+          </p>
+        )}
+      </div>
     </div>
   )
 }
