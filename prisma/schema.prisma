@@ -140,6 +140,8 @@ model User {
   casosAsignados Caso[]       @relation("CasoAsignado")
   eventosCaso    CasoEvento[] @relation("CasoEventoUser")
 
+  pedidoItemsAutorizados PedidoItem[] @relation("PedidoItemAutorizador")
+
   deudasCreadas DeudaTrabajador[] @relation("DeudaCreador")
 }
 
@@ -191,6 +193,16 @@ model Cliente {
   barrio        String?
   referencia  String?
   linkUbicacion String?
+
+  // Geo coords — Bloque 1 (Ruta por Cercanía).
+  // Backfilled desde linkUbicacion parseado, o desde mediana de
+  // Pedido.gpsLat/gpsLng confirmados, o desde Negocio. `geocodeOrigen`
+  // audita de dónde salieron las coords para que el admin pueda
+  // revalidarlas si cambian.
+  lat           Decimal? @db.Decimal(10, 6)
+  lng           Decimal? @db.Decimal(10, 6)
+  geocodeOrigen String?  // 'PARSED_URL' | 'GPS_HISTORIAL' | 'NEGOCIO' | 'MANUAL'
+  geocodeAt     DateTime? @db.Timestamptz()
 
   // FASE 3 CONTRACT: contactos legacy eliminada. Ahora es relación.
   contactos ContactoCliente[]
@@ -261,6 +273,9 @@ model Cliente {
   @@index([verificado])
   @@index([bloqueado])
   @@index([offlineId])
+  // Geo: partial index (solo clientes con coords) para queries de clustering
+  // y bounding box. WHERE lat IS NOT NULL reduce el tamaño del índice.
+  @@index([lat, lng])
 }
 
 // ====================
@@ -281,6 +296,12 @@ model Negocio {
   barrio        String? // si null, fallback a cliente.barrio
   referencia    String?
   linkUbicacion String?
+
+  // Geo coords — Bloque 1. Misma semántica que Cliente.lat/lng.
+  // Si Negocio tiene coords propias, gana sobre Cliente. Si no, fallback a Cliente.
+  lat           Decimal? @db.Decimal(10, 6)
+  lng           Decimal? @db.Decimal(10, 6)
+
   horaApertura  String?
 
   rutaId String?
@@ -387,6 +408,8 @@ model Trabajador {
   gpsTracks    GpsTrack[]
   descuentos   DescuentoRepartidor[]
   deudas       DeudaTrabajador[]
+
+  casosRepartidor Caso[] @relation("CasoRepartidor")
 
   rutasAsignadas Ruta[] @relation("RutaRepartidor")
   rutasRespaldo  Ruta[] @relation("RutaRespaldo")
@@ -582,6 +605,14 @@ model PedidoItem {
   subtotal     Decimal @default(0) @db.Decimal(10, 2)
   precioOrigen String  @default("base") // manual, cliente, volumen, base
 
+  // commit 0c plan antifraude: cuando precioOrigen = 'manual', la alerta
+  // CAMBIO_PRECIO_BRUSCO skipea SOLO si autorizadoPorAdmin = true. Sin
+  // esta marca, cualquier precio manual es sospechoso (vector de fraude).
+  autorizadoPorAdmin Boolean   @default(false)
+  autorizadoPorId    String?
+  autorizadoPor      User?     @relation("PedidoItemAutorizador", fields: [autorizadoPorId], references: [id], onDelete: SetNull)
+  autorizadoEn       DateTime? @db.Timestamptz()
+
   @@index([pedidoId])
   @@index([producto])
 }
@@ -649,6 +680,13 @@ model Embarque {
   offlineId String?
 
   obs String?
+
+  // Bloque 2: orden de visita optimizado por TSP heurístico (NN + 2-opt).
+  // Array de {pedidoId, lat, lng, distanciaAcumulada, orden}.
+  // Se persiste al llamar POST /api/embarques/[id]/optimizar-orden.
+  // El repartidor ve la lista de pedidos en este orden en /repartidor.
+  ordenVisita  Json?
+  optimizadoEn DateTime?
 
   pedidos   Pedido[]
   gpsTracks GpsTrack[]
@@ -1098,6 +1136,11 @@ model PrecioVolumen {
   cantMax Int?
   precio  Decimal @db.Decimal(10, 2)
 
+  // Umbral minimo de alerta (commit 0c plan antifraude). Si el precio
+  // de un item es < precioMinimo, la alerta PRECIO_POR_DEBAJO_TABLA
+  // dispara. null = sin restriccion (alerta deshabilitada para esa fila).
+  precioMinimo Decimal? @db.Decimal(10, 2)
+
   activo Boolean @default(true)
 
   createdAt DateTime @default(now()) @db.Timestamptz()
@@ -1242,13 +1285,16 @@ model Caso {
   titulo      String
   descripcion String? @db.Text
 
-  // Polimórfico: link al negocio
+  // Polimórfico: link al negocio. clienteId, pedidoId, negocioId y
+  // repartidorId son mutuamente excluyentes (un caso es de UN sujeto).
   clienteId String?
-  cliente   Cliente? @relation("CasoCliente", fields: [clienteId], references: [id], onDelete: SetNull)
+  cliente   Cliente?  @relation("CasoCliente", fields: [clienteId], references: [id], onDelete: SetNull)
   negocioId String?
-  negocio   Negocio? @relation("CasoNegocio", fields: [negocioId], references: [id], onDelete: SetNull)
+  negocio   Negocio?  @relation("CasoNegocio", fields: [negocioId], references: [id], onDelete: SetNull)
   pedidoId  String?
-  pedido    Pedido?  @relation("CasoPedido", fields: [pedidoId], references: [id], onDelete: SetNull)
+  pedido    Pedido?   @relation("CasoPedido", fields: [pedidoId], references: [id], onDelete: SetNull)
+  repartidorId String?
+  repartidor   Trabajador? @relation("CasoRepartidor", fields: [repartidorId], references: [id], onDelete: SetNull)
 
   // Workflow
   status      CasoStatus @default(ABIERTO)
@@ -1271,6 +1317,8 @@ model Caso {
   @@index([asignadoAId])
   @@index([clienteId])
   @@index([negocioId])
+  @@index([pedidoId])
+  @@index([repartidorId])
   @@index([alertaTipo])
   @@index([createdAt])
 }
