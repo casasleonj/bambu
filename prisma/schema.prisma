@@ -142,6 +142,8 @@ model User {
 
   pedidoItemsAutorizados PedidoItem[] @relation("PedidoItemAutorizador")
 
+  pushSubscriptions PushSubscription[] @relation("PushSubscriptions")
+
   deudasCreadas DeudaTrabajador[] @relation("DeudaCreador")
 }
 
@@ -203,6 +205,22 @@ model Cliente {
   lng           Decimal? @db.Decimal(10, 6)
   geocodeOrigen String?  // 'PARSED_URL' | 'GPS_HISTORIAL' | 'NEGOCIO' | 'MANUAL'
   geocodeAt     DateTime? @db.Timestamptz()
+
+  // Bloque 3 (predicción de demanda) — auto-computado por cron diario.
+  // `intervaloMediano` = días típicos entre pedidos (mediana).
+  // `proxEsperada` = ultEntrega + intervaloMediano.
+  // `diasAtraso` = hoy - proxEsperada (positivo = atrasado, llamar).
+  // `scoreLlamada` = diasAtraso * pesoAtraso + valorTipico_norm * pesoValor.
+  // `valorTipico` = promedio de los últimos 10 pedidos (moneda).
+  // `scoreRecalculadoEn` = timestamp del último compute.
+  // `ultimaLlamada` = timestamp del último "Marcar contactado".
+  intervaloMediano    Int?
+  proxEsperada        DateTime? @db.Timestamptz()
+  diasAtraso          Int?
+  scoreLlamada        Decimal?  @db.Decimal(8, 2)
+  valorTipico         Decimal?  @db.Decimal(10, 2)
+  scoreRecalculadoEn  DateTime? @db.Timestamptz()
+  ultimaLlamada       DateTime? @db.Timestamptz()
 
   // FASE 3 CONTRACT: contactos legacy eliminada. Ahora es relación.
   contactos ContactoCliente[]
@@ -276,6 +294,9 @@ model Cliente {
   // Geo: partial index (solo clientes con coords) para queries de clustering
   // y bounding box. WHERE lat IS NOT NULL reduce el tamaño del índice.
   @@index([lat, lng])
+  // Bloque 3: índice para query "top N clientes con scoreLlamada más alto".
+  @@index([scoreLlamada])
+  @@index([diasAtraso])
 }
 
 // ====================
@@ -1238,6 +1259,45 @@ model NotaCredito {
   @@index([pedidoId])
   @@index([facturaId])
   @@index([fecha])
+}
+
+// ====================
+// PUSH_SUBSCRIPTION (Web Push — commit 0d plan antifraude)
+// ====================
+//
+// Almacena las suscripciones Web Push de los navegadores de los usuarios
+// del sistema. Cuando se crea un Caso ALTA (alerta antifraude), el server
+// itera sobre las suscripciones activas y manda un push via web-push.
+//
+// Estructura del endpoint segun W3C Web Push spec:
+//   {
+//     endpoint: 'https://fcm.googleapis.com/...',
+//     keys: {
+//       p256dh: '<base64url 65 bytes>',
+//       auth: '<base64url 16 bytes>'
+//     }
+//   }
+//
+// El browser PUEDE renovar el endpoint (ej: chrome rota endpoints cada
+// pocos meses para privacidad). Por eso el upsert es por endpoint+userId.
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation("PushSubscriptions", fields: [userId], references: [id], onDelete: Cascade)
+
+  endpoint String   @unique
+  p256dh   String
+  auth     String
+
+  // Metadata
+  userAgent String?  @db.Text
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
+  lastSeenAt DateTime @default(now()) @db.Timestamptz()
+
+  @@index([userId])
+  @@index([lastSeenAt])
 }
 
 // ====================
