@@ -75,6 +75,17 @@ export function AlertasTable({ pedidos }: AlertasTableProps) {
       .catch(() => {
         // silencioso: si falla, el detector funciona sin este dato
       })
+    // commit 1.4: fetch descuentos sin justificar
+    fetch('/api/alertas/descuentos-sin-justificar')
+      .then(r => r.json())
+      .then(data => {
+        if (data.success && Array.isArray(data.descuentos)) {
+          setDescuentosSinJustificar(data.descuentos)
+        }
+      })
+      .catch(() => {
+        // silencioso: si falla, el detector funciona sin descuentos
+      })
   }, [])
 
   const alertaRows = useMemo(
@@ -86,6 +97,11 @@ export function AlertasTable({ pedidos }: AlertasTableProps) {
   // ROTURAS_ANORMALES). Necesitamos embarques para alimentar el calculo.
   const [embarques, setEmbarques] = useState<EmbarqueBase[]>([])
   const [nombresRepartidor, setNombresRepartidor] = useState<Map<string, string>>(new Map())
+
+  // commit 1.4: descuentos sin justificar
+  const [descuentosSinJustificar, setDescuentosSinJustificar] = useState<
+    Array<{ id: string; repartidorId: string; fecha: string; monto: number; motivo: string }>
+  >([])
 
   useEffect(() => {
     // Traemos embarques del ultimo mes (suficiente para minEmbarquesMuestral=5
@@ -133,8 +149,12 @@ export function AlertasTable({ pedidos }: AlertasTableProps) {
   }, [])
 
   const alertaRepartidorRows = useMemo(
-    () => calcularAlertasRepartidor(embarques, { nombres: nombresRepartidor }),
-    [embarques, nombresRepartidor],
+    () =>
+      calcularAlertasRepartidor(embarques, {
+        nombres: nombresRepartidor,
+        descuentosSinJustificar,
+      }),
+    [embarques, nombresRepartidor, descuentosSinJustificar],
   )
 
   const filtrados = alertaRows

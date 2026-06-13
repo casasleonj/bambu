@@ -645,6 +645,18 @@ export interface CalcularAlertasRepartidorOptions {
   minEmbarquesMuestral?: number
   /** Mapa opcional de repartidorId → nombre (si no se pasa, se usa el id) */
   nombres?: Map<string, string>
+  /**
+   * commit 1.4 plan antifraude: descuentos a repartidor sin justificar
+   * (justificado=false y mas viejos que el umbral). El caller pre-filtra
+   * por fecha y por justificado=false; el detector solo agrupa y alerta.
+   */
+  descuentosSinJustificar?: Array<{
+    id: string
+    repartidorId: string
+    fecha: string
+    monto: number
+    motivo: string
+  }>
 }
 
 /**
@@ -675,6 +687,7 @@ export function calcularAlertasRepartidor(
   const multiplicador = options.multiplicador ?? UMBRALES_DEFAULT.pctDevolucionesAnormales
   const minEmbarquesMuestral = options.minEmbarquesMuestral ?? 5
   const nombres = options.nombres
+  const descuentosSinJustificar = options.descuentosSinJustificar
 
   // 1. Agrupar embarques por repartidor
   const embarquesPorRepartidor = new Map<string, EmbarqueBase[]>()
@@ -684,10 +697,13 @@ export function calcularAlertasRepartidor(
     embarquesPorRepartidor.set(e.trabajadorId, arr)
   }
 
-  const rows: AlertaRepartidorRow[] = []
+  // Acumulador de alertas por repartidor. Combina los 3 tipos
+  // (DEVOLUCIONES, ROTURAS, DESCUENTO) en un solo row.
+  const alertasPorRepartidor = new Map<string, AlertaItem[]>()
+  const repartidoresEnMap = new Set<string>()
 
+  // 1. DEVOLUCIONES + ROTURAS (requiere minEmbarquesMuestral)
   for (const [repartidorId, lista] of embarquesPorRepartidor) {
-    // 2. Minimo muestral
     if (lista.length < minEmbarquesMuestral) continue
 
     // Calcular promedios de devueltas y rotas
@@ -702,7 +718,7 @@ export function calcularAlertasRepartidor(
     const promedioDevueltas = totalDevueltas / lista.length
     const promedioRotas = totalRotas / lista.length
 
-    // 3. Evaluar cada embarque del repartidor
+    // Evaluar cada embarque
     const alertas: AlertaItem[] = []
     for (const e of lista) {
       const devueltas = (e.devueltasAgua || 0) + (e.devueltasHielo || 0)
@@ -730,19 +746,46 @@ export function calcularAlertasRepartidor(
     }
 
     if (alertas.length > 0) {
-      // Calcular severidadMasAlta
-      const severidadMasAlta = alertas.reduce<SeveridadAlerta>((max, a) =>
-        SEVERIDAD_ORDER[a.severidad] > SEVERIDAD_ORDER[max] ? a.severidad : max,
-        'BAJA',
-      )
-
-      rows.push({
-        repartidorId,
-        nombreRep: nombres?.get(repartidorId) ?? repartidorId,
-        alertas,
-        severidadMasAlta,
-      })
+      alertasPorRepartidor.set(repartidorId, alertas)
+      repartidoresEnMap.add(repartidorId)
     }
+  }
+
+  // 2. DESCUENTO_NO_JUSTIFICADO (NO requiere minEmbarquesMuestral).
+  // El caller pre-filtra descuentos donde justificado=false y
+  // fecha < (now - umbral). El detector solo agrupa por repartidor.
+  // Cada descuento genera su propia alerta (puede haber varias para
+  // el mismo repartidor).
+  if (descuentosSinJustificar) {
+    for (const d of descuentosSinJustificar) {
+      const alertas = alertasPorRepartidor.get(d.repartidorId) ?? []
+      alertas.push({
+        tipo: 'DESCUENTO_NO_JUSTIFICADO',
+        severidad: 'MEDIA',
+        detalle: `${formatCurrency(d.monto)} - ${d.motivo}`,
+        fecha: d.fecha,
+        embarqueId: d.id,
+      })
+      alertasPorRepartidor.set(d.repartidorId, alertas)
+      repartidoresEnMap.add(d.repartidorId)
+    }
+  }
+
+  // 3. Construir rows finales
+  const rows: AlertaRepartidorRow[] = []
+  for (const repartidorId of repartidoresEnMap) {
+    const alertas = alertasPorRepartidor.get(repartidorId) ?? []
+    if (alertas.length === 0) continue
+    const severidadMasAlta = alertas.reduce<SeveridadAlerta>(
+      (max, a) => (SEVERIDAD_ORDER[a.severidad] > SEVERIDAD_ORDER[max] ? a.severidad : max),
+      'BAJA',
+    )
+    rows.push({
+      repartidorId,
+      nombreRep: nombres?.get(repartidorId) ?? repartidorId,
+      alertas,
+      severidadMasAlta,
+    })
   }
 
   return rows

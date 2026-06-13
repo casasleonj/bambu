@@ -33,6 +33,19 @@ function makePedido(overrides: Partial<PedidoBase> = {}): PedidoBase {
   }
 }
 
+function makeEmbarque(overrides: Partial<EmbarqueBase> = {}): EmbarqueBase {
+  return {
+    id: 'emb-default',
+    fecha: new Date().toISOString(),
+    trabajadorId: 'rep-1',
+    devueltasAgua: 0,
+    devueltasHielo: 0,
+    rotasAgua: 0,
+    rotasHielo: 0,
+    ...overrides,
+  }
+}
+
 beforeEach(() => {
   // localStorage mock para estaIgnorada
   if (typeof globalThis.localStorage === 'undefined') {
@@ -511,19 +524,6 @@ describe('findPrecioMinimo (helper)', () => {
 
 // commit 1.2 plan antifraude: DEVOLUCIONES_ANORMALES + ROTURAS_ANORMALES
 describe('calcularAlertasRepartidor (commit 1.2)', () => {
-  function makeEmbarque(overrides: Partial<EmbarqueBase> = {}): EmbarqueBase {
-    return {
-      id: 'emb-default',
-      fecha: new Date().toISOString(),
-      trabajadorId: 'rep-1',
-      devueltasAgua: 0,
-      devueltasHielo: 0,
-      rotasAgua: 0,
-      rotasHielo: 0,
-      ...overrides,
-    }
-  }
-
   it('detecta DEVOLUCIONES_ANORMALES cuando un embarque supera 2x el promedio', () => {
     // 5 embarques historicos con devueltas bajas (1 paca cada uno)
     // 1 embarque outlier con 10 devueltas
@@ -795,5 +795,98 @@ describe('calcularAlertasCliente — NOTA_CREDITO_FRECUENTE (commit 1.3)', () =>
   it('NO detecta si no se provee count', () => {
     const result = calcularAlertasCliente(clienteBase, [])
     expect(result.some((a) => a.tipo === 'NOTA_CREDITO_FRECUENTE')).toBe(false)
+  })
+})
+
+// commit 1.4 plan antifraude: DESCUENTO_NO_JUSTIFICADO
+describe('calcularAlertasRepartidor — DESCUENTO_NO_JUSTIFICADO (commit 1.4)', () => {
+  // El test usa descuentos de un repartidor con 5+ embarques (cumple
+  // minEmbarquesMuestral) para que el row se cree
+  function setupRepartidorWithEmbarques(repartidorId: string): EmbarqueBase[] {
+    return [
+      makeEmbarque({ id: 'e1', trabajadorId: repartidorId, devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e2', trabajadorId: repartidorId, devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e3', trabajadorId: repartidorId, devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e4', trabajadorId: repartidorId, devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e5', trabajadorId: repartidorId, devueltasAgua: 1 }),
+    ]
+  }
+
+  it('detecta descuento sin justificar como alerta MEDIA', () => {
+    const embarques = setupRepartidorWithEmbarques('rep-X')
+    const descuentosSinJustificar = [
+      { id: 'd1', repartidorId: 'rep-X', fecha: new Date().toISOString(), monto: 50000, motivo: 'Producto perdido' },
+    ]
+    const result = calcularAlertasRepartidor(embarques, { descuentosSinJustificar })
+    expect(result).toHaveLength(1)
+    const flat = result[0].alertas
+    expect(flat.some((a) => a.tipo === 'DESCUENTO_NO_JUSTIFICADO')).toBe(true)
+  })
+
+  it('genera multiples alertas si hay multiples descuentos', () => {
+    const embarques = setupRepartidorWithEmbarques('rep-X')
+    const descuentosSinJustificar = [
+      { id: 'd1', repartidorId: 'rep-X', fecha: new Date().toISOString(), monto: 50000, motivo: 'Perdido' },
+      { id: 'd2', repartidorId: 'rep-X', fecha: new Date().toISOString(), monto: 30000, motivo: 'Roto' },
+      { id: 'd3', repartidorId: 'rep-X', fecha: new Date().toISOString(), monto: 10000, motivo: 'Cliente reclamó' },
+    ]
+    const result = calcularAlertasRepartidor(embarques, { descuentosSinJustificar })
+    const flat = result[0].alertas.filter((a) => a.tipo === 'DESCUENTO_NO_JUSTIFICADO')
+    expect(flat).toHaveLength(3)
+  })
+
+  it('NO detecta descuentos de OTRO repartidor', () => {
+    const embarques = setupRepartidorWithEmbarques('rep-X')
+    const descuentosSinJustificar = [
+      { id: 'd1', repartidorId: 'rep-OTHER', fecha: new Date().toISOString(), monto: 50000, motivo: 'Perdido' },
+    ]
+    const result = calcularAlertasRepartidor(embarques, { descuentosSinJustificar })
+    // El row se crea por los descuentos de rep-OTHER, no de rep-X
+    // (que tambien esta en el map por los embarques)
+    const tipos = result.flatMap((r) => r.alertas).map((a) => a.tipo)
+    expect(tipos).toContain('DESCUENTO_NO_JUSTIFICADO')
+    // Solo del otro repartidor
+    const rowOther = result.find((r) => r.repartidorId === 'rep-OTHER')
+    expect(rowOther?.alertas.some((a) => a.tipo === 'DESCUENTO_NO_JUSTIFICADO')).toBe(true)
+    const rowX = result.find((r) => r.repartidorId === 'rep-X')
+    expect(rowX?.alertas.some((a) => a.tipo === 'DESCUENTO_NO_JUSTIFICADO')).toBeFalsy()
+  })
+
+  it('NO detecta si descuentosSinJustificar no se provee', () => {
+    const embarques = setupRepartidorWithEmbarques('rep-X')
+    const result = calcularAlertasRepartidor(embarques)
+    const flat = result.flatMap((r) => r.alertas)
+    expect(flat.some((a) => a.tipo === 'DESCUENTO_NO_JUSTIFICADO')).toBe(false)
+  })
+
+  it('coexiste con DEVOLUCIONES_ANORMALES (alertas independientes)', () => {
+    const embarques = [
+      makeEmbarque({ id: 'e1', trabajadorId: 'rep-X', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e2', trabajadorId: 'rep-X', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e3', trabajadorId: 'rep-X', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e4', trabajadorId: 'rep-X', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e5', trabajadorId: 'rep-X', devueltasAgua: 1 }),
+      // outlier: alta devueltas
+      makeEmbarque({ id: 'e6', trabajadorId: 'rep-X', devueltasAgua: 10 }),
+    ]
+    const descuentosSinJustificar = [
+      { id: 'd1', repartidorId: 'rep-X', fecha: new Date().toISOString(), monto: 20000, motivo: 'Sin justificar' },
+    ]
+    const result = calcularAlertasRepartidor(embarques, { descuentosSinJustificar })
+    const tipos = result[0].alertas.map((a) => a.tipo)
+    expect(tipos).toContain('DEVOLUCIONES_ANORMALES')
+    expect(tipos).toContain('DESCUENTO_NO_JUSTIFICADO')
+  })
+
+  it('el detalle de la alerta incluye monto formateado y motivo', () => {
+    const embarques = setupRepartidorWithEmbarques('rep-X')
+    const descuentosSinJustificar = [
+      { id: 'd1', repartidorId: 'rep-X', fecha: new Date().toISOString(), monto: 75000, motivo: 'Pérdida de carga' },
+    ]
+    const result = calcularAlertasRepartidor(embarques, { descuentosSinJustificar })
+    const alerta = result[0].alertas.find((a) => a.tipo === 'DESCUENTO_NO_JUSTIFICADO')
+    expect(alerta?.detalle).toContain('Pérdida de carga')
+    // formatCurrency usa Intl.NumberFormat 'es-CO' currency COP
+    expect(alerta?.detalle).toMatch(/\$/)
   })
 })
