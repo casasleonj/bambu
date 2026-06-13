@@ -657,6 +657,16 @@ export interface CalcularAlertasRepartidorOptions {
     monto: number
     motivo: string
   }>
+  /**
+   * commit 1.5 plan antifraude: deuda acumulada por repartidor
+   * (suma de deudaReposAgua + deudaReposHielo del Trabajador). El caller
+   * pasa un Map solo con los repartidores que tienen deuda > 0.
+   * Si la deuda total (agua + hielo, en pacas) supera el umbral
+   * configurado, alerta REPARTIDOR_DEUDA_ALTA.
+   */
+  deudasPorRepartidor?: Map<string, { deudaAgua: number; deudaHielo: number }>
+  /** Umbral de deuda en pacas para disparar alerta (default: umbrales.umbralDeudaRepartidorPacas) */
+  umbralDeudaPacas?: number
 }
 
 /**
@@ -688,6 +698,8 @@ export function calcularAlertasRepartidor(
   const minEmbarquesMuestral = options.minEmbarquesMuestral ?? 5
   const nombres = options.nombres
   const descuentosSinJustificar = options.descuentosSinJustificar
+  const deudasPorRepartidor = options.deudasPorRepartidor
+  const umbralDeudaPacas = options.umbralDeudaPacas ?? UMBRALES_DEFAULT.umbralDeudaRepartidorPacas
 
   // 1. Agrupar embarques por repartidor
   const embarquesPorRepartidor = new Map<string, EmbarqueBase[]>()
@@ -771,7 +783,29 @@ export function calcularAlertasRepartidor(
     }
   }
 
-  // 3. Construir rows finales
+  // 3. commit 1.5 plan antifraude: REPARTIDOR_DEUDA_ALTA
+  // El caller pasa un Map con repartidores que tienen deuda > 0.
+  // Si deuda total (agua + hielo en pacas) > umbral, alerta MEDIA.
+  // NO requiere minEmbarquesMuestral (la deuda es acumulativa, no
+  // necesita historial de embarques).
+  if (deudasPorRepartidor) {
+    for (const [repartidorId, deuda] of deudasPorRepartidor) {
+      const totalPacas = (deuda.deudaAgua || 0) + (deuda.deudaHielo || 0)
+      if (totalPacas <= umbralDeudaPacas) continue
+
+      const alertas = alertasPorRepartidor.get(repartidorId) ?? []
+      alertas.push({
+        tipo: 'REPARTIDOR_DEUDA_ALTA',
+        severidad: 'MEDIA',
+        detalle: `${totalPacas} pacas adeudadas (agua: ${deuda.deudaAgua}, hielo: ${deuda.deudaHielo}, umbral: ${umbralDeudaPacas})`,
+        fecha: new Date().toISOString(),
+      })
+      alertasPorRepartidor.set(repartidorId, alertas)
+      repartidoresEnMap.add(repartidorId)
+    }
+  }
+
+  // 4. Construir rows finales
   const rows: AlertaRepartidorRow[] = []
   for (const repartidorId of repartidoresEnMap) {
     const alertas = alertasPorRepartidor.get(repartidorId) ?? []

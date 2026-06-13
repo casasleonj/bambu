@@ -86,6 +86,23 @@ export function AlertasTable({ pedidos }: AlertasTableProps) {
       .catch(() => {
         // silencioso: si falla, el detector funciona sin descuentos
       })
+    // commit 1.5: fetch deudas acumuladas por repartidor
+    fetch('/api/alertas/repartidor-deudas')
+      .then(r => r.json())
+      .then(data => {
+        if (data.success && data.deudas) {
+          // El endpoint devuelve { repartidorId: { nombre, deudaAgua, deudaHielo } }
+          // El detector solo necesita deudaAgua + deudaHielo.
+          const map = new Map<string, { deudaAgua: number; deudaHielo: number }>()
+          for (const [id, d] of Object.entries(data.deudas as Record<string, { nombre: string; deudaAgua: number; deudaHielo: number }>)) {
+            map.set(id, { deudaAgua: d.deudaAgua, deudaHielo: d.deudaHielo })
+          }
+          setDeudasPorRepartidor(map)
+        }
+      })
+      .catch(() => {
+        // silencioso: sin deudas, no se genera alerta
+      })
   }, [])
 
   const alertaRows = useMemo(
@@ -102,6 +119,11 @@ export function AlertasTable({ pedidos }: AlertasTableProps) {
   const [descuentosSinJustificar, setDescuentosSinJustificar] = useState<
     Array<{ id: string; repartidorId: string; fecha: string; monto: number; motivo: string }>
   >([])
+
+  // commit 1.5: deudas acumuladas por repartidor
+  const [deudasPorRepartidor, setDeudasPorRepartidor] = useState<
+    Map<string, { deudaAgua: number; deudaHielo: number }>
+  >(new Map())
 
   useEffect(() => {
     // Traemos embarques del ultimo mes (suficiente para minEmbarquesMuestral=5
@@ -153,8 +175,9 @@ export function AlertasTable({ pedidos }: AlertasTableProps) {
       calcularAlertasRepartidor(embarques, {
         nombres: nombresRepartidor,
         descuentosSinJustificar,
+        deudasPorRepartidor,
       }),
-    [embarques, nombresRepartidor, descuentosSinJustificar],
+    [embarques, nombresRepartidor, descuentosSinJustificar, deudasPorRepartidor],
   )
 
   const filtrados = alertaRows

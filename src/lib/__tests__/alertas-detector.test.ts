@@ -890,3 +890,98 @@ describe('calcularAlertasRepartidor — DESCUENTO_NO_JUSTIFICADO (commit 1.4)', 
     expect(alerta?.detalle).toMatch(/\$/)
   })
 })
+
+// commit 1.5 plan antifraude: REPARTIDOR_DEUDA_ALTA
+describe('calcularAlertasRepartidor — REPARTIDOR_DEUDA_ALTA (commit 1.5)', () => {
+  it('detecta cuando deudaAgua + deudaHielo > umbral', () => {
+    // deuda total 60 (30 agua + 30 hielo) > 50 umbral
+    const deudasPorRepartidor = new Map([
+      ['rep-X', { deudaAgua: 30, deudaHielo: 30 }],
+    ])
+    const result = calcularAlertasRepartidor([], { deudasPorRepartidor })
+    expect(result).toHaveLength(1)
+    const flat = result[0].alertas
+    expect(flat.some((a) => a.tipo === 'REPARTIDOR_DEUDA_ALTA')).toBe(true)
+  })
+
+  it('NO detecta si deuda <= umbral', () => {
+    const deudasPorRepartidor = new Map([
+      ['rep-X', { deudaAgua: 20, deudaHielo: 20 }], // total 40 < 50
+    ])
+    const result = calcularAlertasRepartidor([], { deudasPorRepartidor })
+    expect(result).toEqual([])
+  })
+
+  it('respeta umbralDeudaPacas custom', () => {
+    const deudasPorRepartidor = new Map([
+      ['rep-X', { deudaAgua: 10, deudaHielo: 0 }], // total 10
+    ])
+    // Con default 50: no alerta. Con custom 5: si alerta
+    const resultDefault = calcularAlertasRepartidor([], { deudasPorRepartidor })
+    expect(resultDefault).toEqual([])
+
+    const resultCustom = calcularAlertasRepartidor([], {
+      deudasPorRepartidor,
+      umbralDeudaPacas: 5,
+    })
+    expect(resultCustom).toHaveLength(1)
+  })
+
+  it('NO requiere minEmbarquesMuestral (deuda es acumulativa)', () => {
+    // Sin embarques: 0 embarques historicos. Pero deuda > umbral → alerta
+    const deudasPorRepartidor = new Map([
+      ['rep-X', { deudaAgua: 100, deudaHielo: 0 }],
+    ])
+    const result = calcularAlertasRepartidor([], { deudasPorRepartidor })
+    expect(result).toHaveLength(1)
+  })
+
+  it('multiples repartidores con deudas procesadas independientemente', () => {
+    const deudasPorRepartidor = new Map([
+      ['rep-A', { deudaAgua: 60, deudaHielo: 0 }], // alerta
+      ['rep-B', { deudaAgua: 10, deudaHielo: 0 }], // no alerta
+      ['rep-C', { deudaAgua: 100, deudaHielo: 50 }], // alerta
+    ])
+    const result = calcularAlertasRepartidor([], { deudasPorRepartidor })
+    expect(result).toHaveLength(2)
+    const ids = result.map((r) => r.repartidorId).sort()
+    expect(ids).toEqual(['rep-A', 'rep-C'])
+  })
+
+  it('el detalle incluye agua + hielo + umbral desglosados', () => {
+    const deudasPorRepartidor = new Map([
+      ['rep-X', { deudaAgua: 35, deudaHielo: 20 }],
+    ])
+    const result = calcularAlertasRepartidor([], { deudasPorRepartidor })
+    const alerta = result[0].alertas.find((a) => a.tipo === 'REPARTIDOR_DEUDA_ALTA')
+    expect(alerta?.detalle).toContain('55 pacas adeudadas')
+    expect(alerta?.detalle).toContain('agua: 35')
+    expect(alerta?.detalle).toContain('hielo: 20')
+    expect(alerta?.detalle).toContain('umbral: 50')
+  })
+
+  it('coexiste con otras alertas de repartidor en el mismo row', () => {
+    // 5 embarques con devueltas outlier + deuda alta
+    const embarques: EmbarqueBase[] = [
+      makeEmbarque({ id: 'e1', trabajadorId: 'rep-X', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e2', trabajadorId: 'rep-X', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e3', trabajadorId: 'rep-X', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e4', trabajadorId: 'rep-X', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e5', trabajadorId: 'rep-X', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e6', trabajadorId: 'rep-X', devueltasAgua: 10 }), // outlier
+    ]
+    const deudasPorRepartidor = new Map([
+      ['rep-X', { deudaAgua: 100, deudaHielo: 0 }],
+    ])
+    const result = calcularAlertasRepartidor(embarques, { deudasPorRepartidor })
+    const tipos = result[0].alertas.map((a) => a.tipo)
+    expect(tipos).toContain('DEVOLUCIONES_ANORMALES')
+    expect(tipos).toContain('REPARTIDOR_DEUDA_ALTA')
+  })
+
+  it('NO detecta si deudasPorRepartidor no se provee', () => {
+    const result = calcularAlertasRepartidor([])
+    const flat = result.flatMap((r) => r.alertas)
+    expect(flat.some((a) => a.tipo === 'REPARTIDOR_DEUDA_ALTA')).toBe(false)
+  })
+})
