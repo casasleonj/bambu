@@ -694,3 +694,106 @@ describe('calcularAlertasRepartidor (commit 1.2)', () => {
     expect(result[0].severidadMasAlta).toBe('MEDIA')
   })
 })
+
+// commit 1.3 plan antifraude: NOTA_CREDITO_FRECUENTE
+describe('calcularAlertas — NOTA_CREDITO_FRECUENTE (commit 1.3)', () => {
+  it('detecta cuando count >= 2 (default)', () => {
+    const pedidos = [
+      makePedido({ id: 'p1', clienteId: 'cli-X' }),
+    ]
+    const notasCreditoCount = new Map([['cli-X', 3]])
+    const result = calcularAlertas(pedidos, { notasCreditoCount })
+    const flat = result.flatMap((r) => r.alertas)
+    expect(flat.some((a) => a.tipo === 'NOTA_CREDITO_FRECUENTE')).toBe(true)
+  })
+
+  it('NO detecta cuando count < 2', () => {
+    const pedidos = [makePedido({ id: 'p1', clienteId: 'cli-X' })]
+    const notasCreditoCount = new Map([['cli-X', 1]])
+    const result = calcularAlertas(pedidos, { notasCreditoCount })
+    const flat = result.flatMap((r) => r.alertas)
+    expect(flat.some((a) => a.tipo === 'NOTA_CREDITO_FRECUENTE')).toBe(false)
+  })
+
+  it('respeta minNotasCreditoCount custom', () => {
+    const pedidos = [makePedido({ id: 'p1', clienteId: 'cli-X' })]
+    const notasCreditoCount = new Map([['cli-X', 3]])
+    // min=5 → 3 < 5 → no alerta
+    const result = calcularAlertas(pedidos, {
+      notasCreditoCount,
+      minNotasCreditoCount: 5,
+    })
+    const flat = result.flatMap((r) => r.alertas)
+    expect(flat.some((a) => a.tipo === 'NOTA_CREDITO_FRECUENTE')).toBe(false)
+  })
+
+  it('agrega alerta a cliente existente en el map (sin duplicar)', () => {
+    const pedidos = [
+      makePedido({ id: 'p1', clienteId: 'cli-X', estadoPago: 'VENCIDO' }), // CLIENTE_BLOQUEADO
+    ]
+    const notasCreditoCount = new Map([['cli-X', 5]])
+    const result = calcularAlertas(pedidos, { notasCreditoCount })
+    const row = result[0]
+    const tipos = row.alertas.map((a) => a.tipo)
+    expect(tipos).toContain('CLIENTE_BLOQUEADO')
+    expect(tipos).toContain('NOTA_CREDITO_FRECUENTE')
+    // Exactamente 1 NC alert (no duplica)
+    expect(tipos.filter((t) => t === 'NOTA_CREDITO_FRECUENTE')).toHaveLength(1)
+  })
+
+  it('crea row nuevo para cliente sin alertas previas', () => {
+    const pedidos: PedidoBase[] = [] // sin pedidos
+    const notasCreditoCount = new Map([['cli-new', 4]])
+    const result = calcularAlertas(pedidos, { notasCreditoCount })
+    expect(result).toHaveLength(1)
+    expect(result[0].clienteId).toBe('cli-new')
+    expect(result[0].severidadMasAlta).toBe('ALTA')
+  })
+
+  it('NO detecta si notasCreditoCount no se provee', () => {
+    const pedidos = [makePedido({ id: 'p1', clienteId: 'cli-X' })]
+    const result = calcularAlertas(pedidos)
+    const flat = result.flatMap((r) => r.alertas)
+    expect(flat.some((a) => a.tipo === 'NOTA_CREDITO_FRECUENTE')).toBe(false)
+  })
+
+  it('procesa multiples clientes con counts independientes', () => {
+    const pedidos: PedidoBase[] = []
+    const notasCreditoCount = new Map([
+      ['cli-A', 5], // alerta
+      ['cli-B', 1], // no alerta
+      ['cli-C', 3], // alerta
+    ])
+    const result = calcularAlertas(pedidos, { notasCreditoCount })
+    expect(result).toHaveLength(2)
+    const ids = result.map((r) => r.clienteId).sort()
+    expect(ids).toEqual(['cli-A', 'cli-C'])
+  })
+})
+
+describe('calcularAlertasCliente — NOTA_CREDITO_FRECUENTE (commit 1.3)', () => {
+  const clienteBase = {
+    id: 'cli-1',
+    nombre: 'Test',
+    telefono: '300',
+  }
+
+  it('detecta con notasCreditoCount >= 2 (default)', () => {
+    const result = calcularAlertasCliente(clienteBase, [], {
+      notasCreditoCount: 2,
+    })
+    expect(result.some((a) => a.tipo === 'NOTA_CREDITO_FRECUENTE')).toBe(true)
+  })
+
+  it('NO detecta con count = 1', () => {
+    const result = calcularAlertasCliente(clienteBase, [], {
+      notasCreditoCount: 1,
+    })
+    expect(result.some((a) => a.tipo === 'NOTA_CREDITO_FRECUENTE')).toBe(false)
+  })
+
+  it('NO detecta si no se provee count', () => {
+    const result = calcularAlertasCliente(clienteBase, [])
+    expect(result.some((a) => a.tipo === 'NOTA_CREDITO_FRECUENTE')).toBe(false)
+  })
+})

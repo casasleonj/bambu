@@ -35,6 +35,9 @@ export function AlertasTable({ pedidos }: AlertasTableProps) {
   // commit 1.1: precioMinimos para detectar PRECIO_POR_DEBAJO_TABLA
   const [precioMinimos, setPrecioMinimos] = useState<PrecioMinimoRow[]>([])
 
+  // commit 1.3: notasCreditoCount (clienteId → count de NCs en 30d)
+  const [notasCreditoCount, setNotasCreditoCount] = useState<Map<string, number>>(new Map())
+
   useEffect(() => {
     fetch('/api/clientes?pageSize=1')
       .then(r => r.json())
@@ -61,11 +64,22 @@ export function AlertasTable({ pedidos }: AlertasTableProps) {
       .catch(() => {
         // silencioso: si falla, el detector funciona sin precioMinimos
       })
+    // commit 1.3: fetch notasCreditoCount (NCs por cliente, ultimos 30d)
+    fetch('/api/alertas/notas-credito-count?dias=30')
+      .then(r => r.json())
+      .then(data => {
+        if (data.success && data.counts) {
+          setNotasCreditoCount(new Map(Object.entries(data.counts)))
+        }
+      })
+      .catch(() => {
+        // silencioso: si falla, el detector funciona sin este dato
+      })
   }, [])
 
   const alertaRows = useMemo(
-    () => calcularAlertas(pedidos, { precioMinimos }),
-    [pedidos, precioMinimos],
+    () => calcularAlertas(pedidos, { precioMinimos, notasCreditoCount }),
+    [pedidos, precioMinimos, notasCreditoCount],
   )
 
   // commit 1.2: alertas por repartidor (DEVOLUCIONES_ANORMALES +

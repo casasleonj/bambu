@@ -131,6 +131,15 @@ export interface CalcularAlertasOptions {
   clienteIdIgnorar?: string
   /** Tabla de preciosMinimo por (producto, tier) para detectar PRECIO_POR_DEBAJO_TABLA. */
   precioMinimos?: PrecioMinimoRow[]
+  /**
+   * commit 1.3 plan antifraude: cuenta de Notas de Credito por cliente
+   * (en los ultimos N dias, default 30). Si count >= 2 → NOTA_CREDITO_FRECUENTE.
+   * El caller (la alerts page) hace el filtro por fecha y el count
+   * via /api/alertas/notas-credito-count.
+   */
+  notasCreditoCount?: Map<string, number>
+  /** Minimo de NCs en el periodo para disparar alerta (default 2) */
+  minNotasCreditoCount?: number
 }
 
 export function calcularAlertas(pedidos: PedidoBase[], options: CalcularAlertasOptions | string = {}): AlertaRow[] {
@@ -139,6 +148,8 @@ export function calcularAlertas(pedidos: PedidoBase[], options: CalcularAlertasO
   const umbrales = opts.umbrales ?? UMBRALES_DEFAULT
   const clienteIdIgnorar = opts.clienteIdIgnorar
   const precioMinimos = opts.precioMinimos
+  const notasCreditoCount = opts.notasCreditoCount
+  const minNotasCreditoCount = opts.minNotasCreditoCount ?? 2
 
   const clientesMap = new Map<string, AlertaRow>()
   const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
@@ -422,6 +433,41 @@ export function calcularAlertas(pedidos: PedidoBase[], options: CalcularAlertasO
     }
   })
 
+  // commit 1.3 plan antifraude: NOTA_CREDITO_FRECUENTE (post-proceso)
+  // El caller provee notasCreditoCount (clienteId → count de NCs en
+  // el periodo). Si count >= minNotasCreditoCount, agrega alerta ALTA.
+  // El alert NO se agrega si el cliente ya tiene una alerta del mismo
+  // tipo (dedup intra-row).
+  if (notasCreditoCount) {
+    for (const [clienteId, count] of notasCreditoCount) {
+      if (count < minNotasCreditoCount) continue
+
+      const existing = clientesMap.get(clienteId)
+      const yaTieneAlerta = existing?.alertas.some((a) => a.tipo === 'NOTA_CREDITO_FRECUENTE')
+      if (yaTieneAlerta) continue
+
+      const alerta: AlertaItem = {
+        tipo: 'NOTA_CREDITO_FRECUENTE',
+        severidad: 'ALTA',
+        detalle: `${count} notas de credito en los ultimos 30 dias`,
+        fecha: new Date().toISOString(),
+      }
+
+      if (existing) {
+        existing.alertas.push(alerta)
+      } else {
+        // Cliente no estaba en el map (sin alertas previas)
+        clientesMap.set(clienteId, {
+          clienteId,
+          nombreCli: clienteId, // fallback: el id. La UI lo resolveria via lookup.
+          telefonoCli: '',
+          alertas: [alerta],
+          severidadMasAlta: 'ALTA',
+        })
+      }
+    }
+  }
+
   return Array.from(clientesMap.values()).filter((r) => r.alertas.length > 0)
 }
 
@@ -444,6 +490,10 @@ export interface CalcularAlertasClienteOptions {
   umbrales?: UmbralesAlertas
   /** Tabla de preciosMinimo por (producto, tier) para detectar PRECIO_POR_DEBAJO_TABLA. */
   precioMinimos?: PrecioMinimoRow[]
+  /** commit 1.3: count de NCs de este cliente en el periodo */
+  notasCreditoCount?: number
+  /** Minimo para disparar (default 2) */
+  minNotasCreditoCount?: number
 }
 
 export function calcularAlertasCliente(
@@ -562,6 +612,18 @@ export function calcularAlertasCliente(
           alertas.push({ tipo: 'PRECIO_POR_DEBAJO_TABLA', severidad: 'ALTA', detalle: `${item.producto}: ${formatCurrency(Number(item.precio))} < minimo ${formatCurrency(minimo)}`, fecha: ultimoPedido.fecha, pedidoId: ultimoPedido.id })
         }
       }
+    })
+  }
+
+  // commit 1.3: NOTA_CREDITO_FRECUENTE para este cliente
+  const ncCount = options.notasCreditoCount
+  const minNc = options.minNotasCreditoCount ?? 2
+  if (ncCount !== undefined && ncCount >= minNc) {
+    alertas.push({
+      tipo: 'NOTA_CREDITO_FRECUENTE',
+      severidad: 'ALTA',
+      detalle: `${ncCount} notas de credito en los ultimos 30 dias`,
+      fecha: hoy,
     })
   }
 
