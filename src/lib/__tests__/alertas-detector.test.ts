@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { calcularAlertas, calcularAlertasCliente, calcularPromedioCliente } from '@/lib/alertas-detector'
+import { calcularAlertas, calcularAlertasCliente, calcularPromedioCliente, findPrecioMinimo } from '@/lib/alertas-detector'
 import type { PedidoBase } from '@/lib/alertas-detector'
 import { UMBRALES_DEFAULT } from '@/lib/umbrales'
 
@@ -374,5 +374,137 @@ describe('calcularAlertas — pedidos invalidos / vacios', () => {
       makePedido({ id: '2', clienteId: 'c1', total: 20000 }),
     ]
     expect(() => calcularAlertas(pedidos)).not.toThrow()
+  })
+})
+
+describe('calcularAlertas — PRECIO_POR_DEBAJO_TABLA (commit 1.1)', () => {
+  it('detecta cuando item.precio < precioMinimo del tier correspondiente', () => {
+    const pedidos = [
+      makePedido({
+        id: 'p1',
+        clienteId: 'c1',
+        items: [{ producto: 'PACA_AGUA', cantPedido: 5, precio: 2000 }],
+      }),
+    ]
+    const result = calcularAlertas(pedidos, {
+      precioMinimos: [
+        { producto: 'PACA_AGUA', cantMin: 1, cantMax: 9, precioMinimo: 2500 },
+      ],
+    })
+    const flat = result.flatMap((r) => r.alertas)
+    expect(flat.some((a) => a.tipo === 'PRECIO_POR_DEBAJO_TABLA')).toBe(true)
+  })
+
+  it('NO detecta cuando item.precio >= precioMinimo', () => {
+    const pedidos = [
+      makePedido({
+        id: 'p1',
+        clienteId: 'c1',
+        items: [{ producto: 'PACA_AGUA', cantPedido: 5, precio: 3000 }],
+      }),
+    ]
+    const result = calcularAlertas(pedidos, {
+      precioMinimos: [
+        { producto: 'PACA_AGUA', cantMin: 1, cantMax: 9, precioMinimo: 2500 },
+      ],
+    })
+    const flat = result.flatMap((r) => r.alertas)
+    expect(flat.some((a) => a.tipo === 'PRECIO_POR_DEBAJO_TABLA')).toBe(false)
+  })
+
+  it('respeta el tier por cantidad (cantMin/cantMax)', () => {
+    // 5 pacas cae en tier [1,9] minimo=2500
+    // 15 pacas cae en tier [10,null] minimo=1800
+    // ambos items estan por debajo de su respectivo minimo
+    const pedidos = [
+      makePedido({
+        id: 'p1',
+        clienteId: 'c1',
+        items: [
+          { producto: 'PACA_AGUA', cantPedido: 5, precio: 2000 }, // < 2500 → alerta
+          { producto: 'PACA_AGUA', cantPedido: 15, precio: 1500 }, // < 1800 → alerta
+        ],
+      }),
+    ]
+    const result = calcularAlertas(pedidos, {
+      precioMinimos: [
+        { producto: 'PACA_AGUA', cantMin: 1, cantMax: 9, precioMinimo: 2500 },
+        { producto: 'PACA_AGUA', cantMin: 10, cantMax: null, precioMinimo: 1800 },
+      ],
+    })
+    const flat = result.flatMap((r) => r.alertas).filter((a) => a.tipo === 'PRECIO_POR_DEBAJO_TABLA')
+    expect(flat).toHaveLength(2)
+  })
+
+  it('NO detecta si precioMinimos es null (sin restriccion)', () => {
+    const pedidos = [
+      makePedido({
+        id: 'p1',
+        clienteId: 'c1',
+        items: [{ producto: 'PACA_AGUA', cantPedido: 5, precio: 100 }], // ridiculo bajo
+      }),
+    ]
+    const result = calcularAlertas(pedidos, {
+      precioMinimos: [
+        { producto: 'PACA_AGUA', cantMin: 1, cantMax: 9, precioMinimo: null },
+      ],
+    })
+    const flat = result.flatMap((r) => r.alertas)
+    expect(flat.some((a) => a.tipo === 'PRECIO_POR_DEBAJO_TABLA')).toBe(false)
+  })
+
+  it('NO detecta si no hay match (producto sin tier configurado)', () => {
+    const pedidos = [
+      makePedido({
+        id: 'p1',
+        clienteId: 'c1',
+        items: [{ producto: 'PACA_AGUA', cantPedido: 5, precio: 100 }],
+      }),
+    ]
+    const result = calcularAlertas(pedidos, {
+      precioMinimos: [
+        { producto: 'PACA_HIELO', cantMin: 1, cantMax: 9, precioMinimo: 5000 },
+      ],
+    })
+    const flat = result.flatMap((r) => r.alertas)
+    expect(flat.some((a) => a.tipo === 'PRECIO_POR_DEBAJO_TABLA')).toBe(false)
+  })
+
+  it('NO detecta si precioMinimos no se provee (opcional)', () => {
+    const pedidos = [
+      makePedido({
+        id: 'p1',
+        clienteId: 'c1',
+        items: [{ producto: 'PACA_AGUA', cantPedido: 5, precio: 100 }],
+      }),
+    ]
+    // sin precioMinimos
+    const result = calcularAlertas(pedidos)
+    const flat = result.flatMap((r) => r.alertas)
+    expect(flat.some((a) => a.tipo === 'PRECIO_POR_DEBAJO_TABLA')).toBe(false)
+  })
+})
+
+describe('findPrecioMinimo (helper)', () => {
+  const rows = [
+    { producto: 'PACA_AGUA', cantMin: 1, cantMax: 9, precioMinimo: 2500 },
+    { producto: 'PACA_AGUA', cantMin: 10, cantMax: null, precioMinimo: 1800 },
+    { producto: 'PACA_HIELO', cantMin: 1, cantMax: null, precioMinimo: 3000 },
+  ]
+
+  it('encuentra el tier correcto por cantidad', () => {
+    expect(findPrecioMinimo(rows, 'PACA_AGUA', 5)).toBe(2500)
+    expect(findPrecioMinimo(rows, 'PACA_AGUA', 10)).toBe(1800)
+    expect(findPrecioMinimo(rows, 'PACA_AGUA', 100)).toBe(1800)
+  })
+
+  it('filtra por producto', () => {
+    expect(findPrecioMinimo(rows, 'PACA_HIELO', 1)).toBe(3000)
+  })
+
+  it('retorna null si no hay match', () => {
+    expect(findPrecioMinimo(rows, 'BOTELLON', 1)).toBeNull()
+    expect(findPrecioMinimo([], 'PACA_AGUA', 1)).toBeNull()
+    expect(findPrecioMinimo(undefined, 'PACA_AGUA', 1)).toBeNull()
   })
 })

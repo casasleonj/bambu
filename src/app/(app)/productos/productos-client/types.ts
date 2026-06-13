@@ -4,6 +4,8 @@ export interface PrecioVolumen {
   cantMin: number
   cantMax: number | null
   precio: string | number
+  /** commit 1.1 plan antifraude: umbral minimo para alerta PRECIO_POR_DEBAJO_TABLA. null = sin restriccion. */
+  precioMinimo: number | null
   activo: boolean
 }
 

@@ -25,6 +25,39 @@ import { UMBRALES_DEFAULT, type UmbralesAlertas } from '@/lib/umbrales'
 export type { AlertaItem, AlertaRow, AlertaTipo, SeveridadAlerta } from '@/lib/alertas-config'
 export { REGLAS_ALERTAS, getGuiaAlerta } from '@/lib/alertas-config'
 
+/**
+ * Tupla (producto, cantidad) -> precioMinimo para alertas.
+ * El detector hace match del item del pedido contra la tupla correcta
+ * segun la cantidad (mismo algoritmo que PrecioVolumen resolver).
+ *
+ * null = sin restriccion (alerta deshabilitada para esa tupla).
+ */
+export interface PrecioMinimoRow {
+  producto: string
+  cantMin: number
+  cantMax: number | null
+  precioMinimo: number | null
+}
+
+/**
+ * Encuentra el precioMinimo aplicable para un item (producto, cantidad).
+ * Retorna null si no hay match (alerta deshabilitada).
+ */
+export function findPrecioMinimo(
+  rows: PrecioMinimoRow[] | undefined,
+  producto: string,
+  cantidad: number,
+): number | null {
+  if (!rows) return null
+  for (const r of rows) {
+    if (r.producto !== producto) continue
+    if (cantidad < r.cantMin) continue
+    if (r.cantMax !== null && cantidad > r.cantMax) continue
+    return r.precioMinimo
+  }
+  return null
+}
+
 interface PedidoBase {
   id: string
   numero: number
@@ -62,6 +95,8 @@ export interface CalcularAlertasOptions {
   umbrales?: UmbralesAlertas
   /** ID de cliente cuyas alertas BAJA/MEDIA se deben filtrar (24h cooldown) */
   clienteIdIgnorar?: string
+  /** Tabla de preciosMinimo por (producto, tier) para detectar PRECIO_POR_DEBAJO_TABLA. */
+  precioMinimos?: PrecioMinimoRow[]
 }
 
 export function calcularAlertas(pedidos: PedidoBase[], options: CalcularAlertasOptions | string = {}): AlertaRow[] {
@@ -69,6 +104,7 @@ export function calcularAlertas(pedidos: PedidoBase[], options: CalcularAlertasO
   const opts: CalcularAlertasOptions = typeof options === 'string' ? { clienteIdIgnorar: options } : options
   const umbrales = opts.umbrales ?? UMBRALES_DEFAULT
   const clienteIdIgnorar = opts.clienteIdIgnorar
+  const precioMinimos = opts.precioMinimos
 
   const clientesMap = new Map<string, AlertaRow>()
   const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
@@ -264,6 +300,34 @@ export function calcularAlertas(pedidos: PedidoBase[], options: CalcularAlertasO
       }
     })
 
+    // 15. Precio por debajo de tabla (commit 1.1 plan antifraude)
+    // Para cada item del pedido, busca el precioMinimo aplicable
+    // segun (producto, cantidad) y compara contra item.precio.
+    // Si item.precio < precioMinimo, alerta ALTA.
+    //
+    // Comportamiento por caso:
+    //   - precioMinimos no provisto: alerta deshabilitada (no rompe UI)
+    //   - sin match para (producto, cantidad): alerta deshabilitada
+    //   - precioMinimo === null: alerta deshabilitada
+    //   - item.precio >= precioMinimo: OK
+    //   - item.precio < precioMinimo: ALERTA
+    if (precioMinimos) {
+      items.forEach((item) => {
+        if (item.cantPedido > 0 && item.precio > 0) {
+          const minimo = findPrecioMinimo(precioMinimos, item.producto, item.cantPedido)
+          if (minimo !== null && Number(item.precio) < minimo) {
+            alertas.push({
+              tipo: 'PRECIO_POR_DEBAJO_TABLA',
+              severidad: 'ALTA',
+              detalle: `${item.producto}: ${formatCurrency(Number(item.precio))} < minimo ${formatCurrency(minimo)}`,
+              fecha: p.fecha,
+              pedidoId: p.id,
+            })
+          }
+        }
+      })
+    }
+
     if (alertas.length > 0) {
       const existing = clientesMap.get(p.clienteId)
       if (existing) {
@@ -344,6 +408,8 @@ function legacyItems(p: PedidoBase): Array<{ producto: string; cantPedido: numbe
 
 export interface CalcularAlertasClienteOptions {
   umbrales?: UmbralesAlertas
+  /** Tabla de preciosMinimo por (producto, tier) para detectar PRECIO_POR_DEBAJO_TABLA. */
+  precioMinimos?: PrecioMinimoRow[]
 }
 
 export function calcularAlertasCliente(
@@ -361,6 +427,7 @@ export function calcularAlertasCliente(
   options: CalcularAlertasClienteOptions = {},
 ): AlertaItem[] {
   const umbrales = options.umbrales ?? UMBRALES_DEFAULT
+  const precioMinimos = options.precioMinimos
 
   const alertas: AlertaItem[] = []
   const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
@@ -447,6 +514,21 @@ export function calcularAlertasCliente(
     if (promedio > 0 && Number(ultimoPedido.total) > promedio * umbrales.multiplicadorMontoAnomalo) {
       alertas.push({ tipo: 'MONTO_ANOMALO', severidad: 'ALTA', detalle: `${formatCurrency(Number(ultimoPedido.total))} (promedio: ${formatCurrency(promedio)})`, fecha: ultimoPedido.fecha, pedidoId: ultimoPedido.id })
     }
+  }
+
+  // PRECIO_POR_DEBAJO_TABLA (commit 1.1)
+  // Itera sobre los items del primer pedido (o el unico, usualmente el
+  // contexto de /clientes/[id] muestra los pedidos recientes del cliente).
+  if (precioMinimos && ultimoPedido) {
+    const items = ultimoPedido.items && ultimoPedido.items.length > 0 ? ultimoPedido.items : legacyItems(ultimoPedido)
+    items.forEach((item) => {
+      if (item.cantPedido > 0 && item.precio > 0) {
+        const minimo = findPrecioMinimo(precioMinimos, item.producto, item.cantPedido)
+        if (minimo !== null && Number(item.precio) < minimo) {
+          alertas.push({ tipo: 'PRECIO_POR_DEBAJO_TABLA', severidad: 'ALTA', detalle: `${item.producto}: ${formatCurrency(Number(item.precio))} < minimo ${formatCurrency(minimo)}`, fecha: ultimoPedido.fecha, pedidoId: ultimoPedido.id })
+        }
+      }
+    })
   }
 
   // Filtrar ignoradas (solo BAJA/MEDIA)

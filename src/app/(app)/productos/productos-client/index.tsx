@@ -64,6 +64,12 @@ export default function ProductosClient({ productos: initialProductos, isAdmin =
   const [editValue, setEditValue] = useState('')
   const [saving, setSaving] = useState(false)
 
+  // commit 1.1 plan antifraude: estado para el editor de precioMinimo
+  // (separado del editor de precio para no acoplarlos).
+  const [editingMinimoId, setEditingMinimoId] = useState<string | null>(null)
+  const [editMinimoValue, setEditMinimoValue] = useState('')
+  const [savingMinimo, setSavingMinimo] = useState(false)
+
   const [modalOpen, setModalOpen] = useState(false)
   const [modalProductoId, setModalProductoId] = useState<string | null>(null)
   const [modalCantMin, setModalCantMin] = useState('')
@@ -99,6 +105,79 @@ export default function ProductosClient({ productos: initialProductos, isAdmin =
   function cancelEdit() {
     setEditingId(null)
     setEditValue('')
+  }
+
+  // commit 1.1: handlers para precioMinimo (separados del editor de precio)
+  function startEditMinimo(precio: PrecioVolumen) {
+    setEditingMinimoId(precio.id)
+    setEditMinimoValue(precio.precioMinimo !== null ? String(precio.precioMinimo) : '')
+  }
+
+  function cancelEditMinimo() {
+    setEditingMinimoId(null)
+    setEditMinimoValue('')
+  }
+
+  async function saveMinimo(precioId: string) {
+    // Trim y validacion: vacio = sin restriccion (null)
+    const trimmed = editMinimoValue.trim()
+    let newMinimo: number | null
+    if (trimmed === '') {
+      newMinimo = null
+    } else {
+      const parsed = parseFloat(trimmed)
+      if (isNaN(parsed) || parsed < 0) {
+        toast.error('Ingrese un numero valido mayor o igual a 0, o deje vacio para sin restriccion')
+        return
+      }
+      newMinimo = parsed
+    }
+
+    // Buscar el producto y el precio existente para obtener el precio
+    // (el endpoint PATCH requiere precio aunque no cambie).
+    const producto = productos.find(p => p.precios.some(pr => pr.id === precioId))
+    if (!producto) {
+      toast.error('Producto no encontrado')
+      return
+    }
+    const precioActual = producto.precios.find(pr => pr.id === precioId)
+    if (!precioActual) {
+      toast.error('Precio no encontrado')
+      return
+    }
+
+    setSavingMinimo(true)
+    try {
+      const res = await fetch('/api/precios', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          precioVolumenId: precioId,
+          precio: Number(precioActual.precio), // sin cambio
+          precioMinimo: newMinimo,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error?.message ?? 'Error guardando')
+      }
+      // Actualizar estado local
+      setProductos((prev) =>
+        prev.map((p) => ({
+          ...p,
+          precios: p.precios.map((pr) =>
+            pr.id === precioId ? { ...pr, precioMinimo: newMinimo } : pr,
+          ),
+        })),
+      )
+      toast.success(newMinimo === null ? 'Sin restriccion (alerta deshabilitada)' : `Minimo guardado: ${formatCOP(newMinimo)}`)
+      cancelEditMinimo()
+    } catch (e) {
+      const errMsg = e instanceof Error ? e.message : 'Unknown'
+      toast.error(`Error: ${errMsg}`)
+    } finally {
+      setSavingMinimo(false)
+    }
   }
 
   async function savePrice(precioId: string) {
@@ -451,6 +530,7 @@ export default function ProductosClient({ productos: initialProductos, isAdmin =
                           <th className="text-left py-2 px-3 font-medium text-muted-foreground">Cantidad mínima</th>
                           <th className="text-left py-2 px-3 font-medium text-muted-foreground">Cantidad máxima</th>
                           <th className="text-right py-2 px-3 font-medium text-muted-foreground">Precio</th>
+                          <th className="text-right py-2 px-3 font-medium text-muted-foreground" title="Umbral minimo para alerta antifraude PRECIO_POR_DEBAJO_TABLA. Vacio = sin restriccion.">Precio mínimo</th>
                           <th className="w-[100px] py-2 px-3"></th>
                         </tr>
                       </thead>
@@ -488,6 +568,38 @@ export default function ProductosClient({ productos: initialProductos, isAdmin =
                                   title="Clic para editar"
                                 >
                                   {formatCOP(Number(precio.precio))}
+                                </button>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-3 text-right">
+                              {editingMinimoId === precio.id ? (
+                                <div className="flex items-center gap-1 justify-end" data-testid={`minimo-edit-row-${precio.id}`}>
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    placeholder="Sin restricción"
+                                    data-testid={`minimo-input-${precio.id}`}
+                                    value={editMinimoValue}
+                                    onChange={(e) => setEditMinimoValue(e.target.value)}
+                                    className="w-28 text-right h-8 text-sm"
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') saveMinimo(precio.id)
+                                      if (e.key === 'Escape') cancelEditMinimo()
+                                    }}
+                                    autoFocus
+                                  />
+                                  <Button size="sm" data-testid={`minimo-save-${precio.id}`} onClick={() => saveMinimo(precio.id)} disabled={savingMinimo}>OK</Button>
+                                  <Button size="sm" variant="outline" data-testid={`minimo-cancel-${precio.id}`} onClick={cancelEditMinimo} disabled={savingMinimo}>X</Button>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  data-testid={`minimo-display-${precio.id}`}
+                                  className={`text-sm hover:underline cursor-pointer ${precio.precioMinimo !== null ? 'text-amber-700 font-medium' : 'text-muted-foreground'}`}
+                                  onClick={() => startEditMinimo(precio)}
+                                  title="Clic para editar umbral minimo (alerta antifraude)"
+                                >
+                                  {precio.precioMinimo !== null ? formatCOP(precio.precioMinimo) : '— sin restricción'}
                                 </button>
                               )}
                             </td>

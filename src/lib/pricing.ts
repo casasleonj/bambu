@@ -294,14 +294,14 @@ export async function resolverPreciosPedido(
  * Get the default price table for display (e.g., in PedidoForm).
  * Returns all active prices grouped by product.
  */
-export async function getPriceTable(): Promise<Record<ProductCode, Array<{ cantMin: number; cantMax: number | null; precio: number }>>> {
+export async function getPriceTable(): Promise<Record<ProductCode, Array<{ cantMin: number; cantMax: number | null; precio: number; precioMinimo: number | null }>>> {
   const precios = await prisma.precioVolumen.findMany({
     where: { activo: true },
     include: { producto: true },
     orderBy: [{ producto: { codigo: 'asc' } }, { cantMin: 'asc' }],
   })
 
-  const table: Record<string, Array<{ cantMin: number; cantMax: number | null; precio: number }>> = {}
+  const table: Record<string, Array<{ cantMin: number; cantMax: number | null; precio: number; precioMinimo: number | null }>> = {}
   for (const p of precios) {
     const code = p.producto.codigo
     if (!table[code]) table[code] = []
@@ -309,8 +309,31 @@ export async function getPriceTable(): Promise<Record<ProductCode, Array<{ cantM
       cantMin: p.cantMin,
       cantMax: p.cantMax,
       precio: Number(p.precio),
+      precioMinimo: p.precioMinimo !== null ? Number(p.precioMinimo) : null,
     })
   }
 
   return table as any
+}
+
+/**
+ * commit 1.1 plan antifraude: retorna la lista flat de precioMinimos
+ * para alimentar el detector de alertas (PRECIO_POR_DEBAJO_TABLA).
+ *
+ * Solo incluye tuplas con precioMinimo !== null (las nulls son
+ * "sin restriccion" y el detector las skipea).
+ */
+export async function getPrecioMinimos(): Promise<
+  Array<{ producto: string; cantMin: number; cantMax: number | null; precioMinimo: number | null }>
+> {
+  const rows = await prisma.precioVolumen.findMany({
+    where: { activo: true, precioMinimo: { not: null } },
+    include: { producto: { select: { codigo: true } } },
+  })
+  return rows.map((r) => ({
+    producto: r.producto.codigo,
+    cantMin: r.cantMin,
+    cantMax: r.cantMax,
+    precioMinimo: r.precioMinimo !== null ? Number(r.precioMinimo) : null,
+  }))
 }

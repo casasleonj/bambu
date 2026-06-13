@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
+import { revalidatePrecioMinimosCache } from '@/app/api/alertas/precio-minimos/route'
 
 /** Format currency for API messages (COP) */
 function formatCOP(value: number): string {
@@ -26,6 +27,10 @@ const PrecioVolumenCreateSchema = z.object({
 const PrecioVolumenUpdateSchema = z.object({
   precioVolumenId: z.string().min(1),
   precio: z.coerce.number().positive(),
+  // commit 1.1 plan antifraude: umbral minimo opcional para la alerta
+  // PRECIO_POR_DEBAJO_TABLA. Si se omite o es null, no se actualiza
+  // (backward compat con llamadas que solo actualizan precio).
+  precioMinimo: z.coerce.number().min(0).nullable().optional(),
 })
 
 const PrecioHistorialSchema = z.object({
@@ -173,7 +178,7 @@ export async function POST(request: NextRequest) {
     // Update existing volume tier price
     const updateParsed = PrecioVolumenUpdateSchema.safeParse(body)
     if (updateParsed.success) {
-      const { precioVolumenId, precio } = updateParsed.data
+      const { precioVolumenId, precio, precioMinimo } = updateParsed.data
 
       logger.debug({ precioVolumenId }, 'DEBUG: Intentando buscar PrecioVolumen por ID')
 
@@ -197,9 +202,17 @@ export async function POST(request: NextRequest) {
         return apiError('Rango de precio no encontrado', 404)
       }
 
+      // commit 1.1 plan antifraude: build updateData solo con campos
+      // provistos. precioMinimo es opcional; si no viene en el body,
+      // no se actualiza (backward compat).
+      const updateData: Record<string, unknown> = { precio }
+      if (precioMinimo !== undefined) {
+        updateData.precioMinimo = precioMinimo
+      }
+
       await prisma.precioVolumen.update({
         where: { id: precioVolumenId },
-        data: { precio },
+        data: updateData,
       })
 
       // Auto-create price history entry
@@ -222,9 +235,15 @@ export async function POST(request: NextRequest) {
           cantMax: existing.cantMax,
           precioAnterior: Number(existing.precio),
           precioNuevo: precio,
+          ...(precioMinimo !== undefined ? { precioMinimoAnterior: existing.precioMinimo, precioMinimoNuevo: precioMinimo } : {}),
         },
         usuarioId: (authResult.user as { id?: string } | undefined)?.id,
       }).catch(() => {})
+
+      // commit 1.1: invalidar cache de /api/alertas/precio-minimos
+      // para que el siguiente fetch del detector vea el cambio.
+      revalidatePrecioMinimosCache()
+
       return apiSuccess({})
     }
 

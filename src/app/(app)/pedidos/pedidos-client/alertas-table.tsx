@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useMemo, useEffect } from 'react'
-import { calcularAlertas, REGLAS_ALERTAS } from './alertas-utils'
+import { calcularAlertas, REGLAS_ALERTAS, type PrecioMinimoRow } from './alertas-utils'
 import { GuiaAlertaModal } from '@/components/guia-alerta-modal'
 import { CasoGuiaModal } from '@/components/caso-guia-modal'
 import type { AlertaTipo, AlertaItem } from '@/lib/alertas-config'
@@ -25,6 +25,9 @@ export function AlertasTable({ pedidos }: AlertasTableProps) {
   const [casoCreado, setCasoCreado] = useState<any>(null)
   const [usuarios, setUsuarios] = useState<Array<{ id: string; username: string; rol: string }>>([])
 
+  // commit 1.1: precioMinimos para detectar PRECIO_POR_DEBAJO_TABLA
+  const [precioMinimos, setPrecioMinimos] = useState<PrecioMinimoRow[]>([])
+
   useEffect(() => {
     fetch('/api/clientes?pageSize=1')
       .then(r => r.json())
@@ -42,9 +45,21 @@ export function AlertasTable({ pedidos }: AlertasTableProps) {
             })
         }
       })
+    // commit 1.1: fetch precioMinimos en paralelo
+    fetch('/api/alertas/precio-minimos')
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) setPrecioMinimos(data.rows)
+      })
+      .catch(() => {
+        // silencioso: si falla, el detector funciona sin precioMinimos
+      })
   }, [])
 
-  const alertaRows = useMemo(() => calcularAlertas(pedidos), [pedidos])
+  const alertaRows = useMemo(
+    () => calcularAlertas(pedidos, { precioMinimos }),
+    [pedidos, precioMinimos],
+  )
 
   const filtrados = alertaRows
     .filter((row) => {
