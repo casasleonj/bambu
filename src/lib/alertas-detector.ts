@@ -26,6 +26,40 @@ export type { AlertaItem, AlertaRow, AlertaTipo, SeveridadAlerta } from '@/lib/a
 export { REGLAS_ALERTAS, getGuiaAlerta } from '@/lib/alertas-config'
 
 /**
+ * commit 1.2 plan antifraude: shape minima de Embarque para los
+ * calculos de alertas por repartidor. El detector NO toca Prisma
+ * directamente — recibe un array de estos objetos y los procesa
+ * en memoria (puro, testeable).
+ *
+ * Los campos devueltas/rotas vienen de las columnas legacy
+ * (Embarque.devueltasAgua, etc) o de la tabla normalizada
+ * EmbarqueProducto (la cual el trigger 20260611_add_embarque_legacy_sync_trigger
+ * mantiene sincronizada con las legacy). El caller decide cual usar.
+ */
+export interface EmbarqueBase {
+  id: string
+  fecha: string
+  trabajadorId: string
+  /** legacy columns o suma de EmbarqueProducto (caller normaliza) */
+  devueltasAgua: number
+  devueltasHielo: number
+  rotasAgua: number
+  rotasHielo: number
+}
+
+/**
+ * AlertaRepartidorRow: agrupa alertas por REPARTIDOR (no por cliente).
+ * Usado para DEVOLUCIONES_ANORMALES, ROTURAS_ANORMALES, REPARTIDOR_DEUDA_ALTA.
+ * La UI los muestra con el nombre del repartidor (no del cliente).
+ */
+export interface AlertaRepartidorRow {
+  repartidorId: string
+  nombreRep: string
+  alertas: AlertaItem[]
+  severidadMasAlta: SeveridadAlerta
+}
+
+/**
  * Tupla (producto, cantidad) -> precioMinimo para alertas.
  * El detector hace match del item del pedido contra la tupla correcta
  * segun la cantidad (mismo algoritmo que PrecioVolumen resolver).
@@ -540,4 +574,114 @@ export function calcularPromedioCliente(pedidos: PedidoBase[]): number {
   if (validos.length === 0) return 0
   const total = validos.reduce((acc, p) => acc + Number(p.total), 0)
   return total / validos.length
+}
+
+export interface CalcularAlertasRepartidorOptions {
+  /** Multiplicador sobre promedio para disparar alerta (default: umbrales.pctDevolucionesAnormales) */
+  multiplicador?: number
+  /** Minimo de embarques historicos para que un repartidor sea evaluado (default: 5) */
+  minEmbarquesMuestral?: number
+  /** Mapa opcional de repartidorId → nombre (si no se pasa, se usa el id) */
+  nombres?: Map<string, string>
+}
+
+/**
+ * commit 1.2 plan antifraude: detecta DEVOLUCIONES_ANORMALES y
+ * ROTURAS_ANORMALES por repartidor.
+ *
+ * Algoritmo:
+ *   1. Agrupa embarques por repartidorId
+ *   2. Para cada repartidor con >= minEmbarquesMuestral embarques,
+ *      calcula promedio de (devueltas y rotas) sumando agua + hielo
+ *   3. Para cada embarque de ese repartidor, si devueltas o rotas
+ *      superan promedio * multiplicador, agrega alerta
+ *   4. Retorna AlertaRepartidorRow[] con todas las alertas agrupadas
+ *      por repartidor
+ *
+ * Notas:
+ *   - Si minEmbarquesMuestral no se cumple, NO alerta (pocos datos
+ *     para comparar — evita falsos positivos en repartidores nuevos)
+ *   - DEVOLUCIONES y ROTURAS se evaluan en el mismo embarque, ambos
+ *     pueden disparar alertas independientes
+ *   - La UI muestra estos rows con el nombre del repartidor (no
+ *     del cliente) usando la `severidadMasAlta` como badge
+ */
+export function calcularAlertasRepartidor(
+  embarques: EmbarqueBase[],
+  options: CalcularAlertasRepartidorOptions = {},
+): AlertaRepartidorRow[] {
+  const multiplicador = options.multiplicador ?? UMBRALES_DEFAULT.pctDevolucionesAnormales
+  const minEmbarquesMuestral = options.minEmbarquesMuestral ?? 5
+  const nombres = options.nombres
+
+  // 1. Agrupar embarques por repartidor
+  const embarquesPorRepartidor = new Map<string, EmbarqueBase[]>()
+  for (const e of embarques) {
+    const arr = embarquesPorRepartidor.get(e.trabajadorId) || []
+    arr.push(e)
+    embarquesPorRepartidor.set(e.trabajadorId, arr)
+  }
+
+  const rows: AlertaRepartidorRow[] = []
+
+  for (const [repartidorId, lista] of embarquesPorRepartidor) {
+    // 2. Minimo muestral
+    if (lista.length < minEmbarquesMuestral) continue
+
+    // Calcular promedios de devueltas y rotas
+    const totalDevueltas = lista.reduce(
+      (acc, e) => acc + (e.devueltasAgua || 0) + (e.devueltasHielo || 0),
+      0,
+    )
+    const totalRotas = lista.reduce(
+      (acc, e) => acc + (e.rotasAgua || 0) + (e.rotasHielo || 0),
+      0,
+    )
+    const promedioDevueltas = totalDevueltas / lista.length
+    const promedioRotas = totalRotas / lista.length
+
+    // 3. Evaluar cada embarque del repartidor
+    const alertas: AlertaItem[] = []
+    for (const e of lista) {
+      const devueltas = (e.devueltasAgua || 0) + (e.devueltasHielo || 0)
+      const rotas = (e.rotasAgua || 0) + (e.rotasHielo || 0)
+
+      if (promedioDevueltas > 0 && devueltas > promedioDevueltas * multiplicador) {
+        alertas.push({
+          tipo: 'DEVOLUCIONES_ANORMALES',
+          severidad: 'MEDIA',
+          detalle: `${devueltas} devueltas (promedio: ${promedioDevueltas.toFixed(1)}, umbral: ${(promedioDevueltas * multiplicador).toFixed(1)})`,
+          fecha: e.fecha,
+          embarqueId: e.id,
+        })
+      }
+
+      if (promedioRotas > 0 && rotas > promedioRotas * multiplicador) {
+        alertas.push({
+          tipo: 'ROTURAS_ANORMALES',
+          severidad: 'BAJA',
+          detalle: `${rotas} rotas (promedio: ${promedioRotas.toFixed(1)}, umbral: ${(promedioRotas * multiplicador).toFixed(1)})`,
+          fecha: e.fecha,
+          embarqueId: e.id,
+        })
+      }
+    }
+
+    if (alertas.length > 0) {
+      // Calcular severidadMasAlta
+      const severidadMasAlta = alertas.reduce<SeveridadAlerta>((max, a) =>
+        SEVERIDAD_ORDER[a.severidad] > SEVERIDAD_ORDER[max] ? a.severidad : max,
+        'BAJA',
+      )
+
+      rows.push({
+        repartidorId,
+        nombreRep: nombres?.get(repartidorId) ?? repartidorId,
+        alertas,
+        severidadMasAlta,
+      })
+    }
+  }
+
+  return rows
 }

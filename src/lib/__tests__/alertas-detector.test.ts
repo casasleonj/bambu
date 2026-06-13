@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { calcularAlertas, calcularAlertasCliente, calcularPromedioCliente, findPrecioMinimo } from '@/lib/alertas-detector'
-import type { PedidoBase } from '@/lib/alertas-detector'
+import { calcularAlertas, calcularAlertasCliente, calcularPromedioCliente, calcularAlertasRepartidor, findPrecioMinimo } from '@/lib/alertas-detector'
+import type { PedidoBase, EmbarqueBase } from '@/lib/alertas-detector'
 import { UMBRALES_DEFAULT } from '@/lib/umbrales'
 
 // Helper para construir un PedidoBase de test
@@ -506,5 +506,191 @@ describe('findPrecioMinimo (helper)', () => {
     expect(findPrecioMinimo(rows, 'BOTELLON', 1)).toBeNull()
     expect(findPrecioMinimo([], 'PACA_AGUA', 1)).toBeNull()
     expect(findPrecioMinimo(undefined, 'PACA_AGUA', 1)).toBeNull()
+  })
+})
+
+// commit 1.2 plan antifraude: DEVOLUCIONES_ANORMALES + ROTURAS_ANORMALES
+describe('calcularAlertasRepartidor (commit 1.2)', () => {
+  function makeEmbarque(overrides: Partial<EmbarqueBase> = {}): EmbarqueBase {
+    return {
+      id: 'emb-default',
+      fecha: new Date().toISOString(),
+      trabajadorId: 'rep-1',
+      devueltasAgua: 0,
+      devueltasHielo: 0,
+      rotasAgua: 0,
+      rotasHielo: 0,
+      ...overrides,
+    }
+  }
+
+  it('detecta DEVOLUCIONES_ANORMALES cuando un embarque supera 2x el promedio', () => {
+    // 5 embarques historicos con devueltas bajas (1 paca cada uno)
+    // 1 embarque outlier con 10 devueltas
+    const embarques: EmbarqueBase[] = [
+      makeEmbarque({ id: 'e1', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e2', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e3', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e4', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e5', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e6', devueltasAgua: 10 }), // outlier
+    ]
+    const result = calcularAlertasRepartidor(embarques)
+    expect(result).toHaveLength(1)
+    const row = result[0]
+    expect(row.repartidorId).toBe('rep-1')
+    const flat = row.alertas
+    expect(flat.some((a) => a.tipo === 'DEVOLUCIONES_ANORMALES')).toBe(true)
+  })
+
+  it('detecta ROTURAS_ANORMALES independientemente de DEVOLUCIONES', () => {
+    const embarques: EmbarqueBase[] = [
+      makeEmbarque({ id: 'e1', rotasAgua: 1 }),
+      makeEmbarque({ id: 'e2', rotasAgua: 1 }),
+      makeEmbarque({ id: 'e3', rotasAgua: 1 }),
+      makeEmbarque({ id: 'e4', rotasAgua: 1 }),
+      makeEmbarque({ id: 'e5', rotasAgua: 1 }),
+      makeEmbarque({ id: 'e6', rotasAgua: 8 }), // outlier en rotas
+    ]
+    const result = calcularAlertasRepartidor(embarques)
+    const row = result[0]
+    const flat = row.alertas
+    expect(flat.some((a) => a.tipo === 'ROTURAS_ANORMALES')).toBe(true)
+    // DEVOLUCIONES_NO_ANORMALES (todos tienen 0 devueltas)
+    expect(flat.some((a) => a.tipo === 'DEVOLUCIONES_ANORMALES')).toBe(false)
+  })
+
+  it('detecta DEVOLUCIONES y ROTURAS en el mismo embarque (independientes)', () => {
+    const embarques: EmbarqueBase[] = [
+      makeEmbarque({ id: 'e1', devueltasAgua: 1, rotasAgua: 0 }),
+      makeEmbarque({ id: 'e2', devueltasAgua: 1, rotasAgua: 0 }),
+      makeEmbarque({ id: 'e3', devueltasAgua: 1, rotasAgua: 0 }),
+      makeEmbarque({ id: 'e4', devueltasAgua: 1, rotasAgua: 0 }),
+      makeEmbarque({ id: 'e5', devueltasAgua: 1, rotasAgua: 0 }),
+      makeEmbarque({ id: 'e6', devueltasAgua: 10, rotasAgua: 8 }), // outlier en ambos
+    ]
+    const result = calcularAlertasRepartidor(embarques)
+    const row = result[0]
+    const tipos = row.alertas.map((a) => a.tipo)
+    expect(tipos).toContain('DEVOLUCIONES_ANORMALES')
+    expect(tipos).toContain('ROTURAS_ANORMALES')
+  })
+
+  it('NO detecta si repartidor tiene < minEmbarquesMuestral (datos insuficientes)', () => {
+    const embarques: EmbarqueBase[] = [
+      // solo 3 embarques (minimo es 5)
+      makeEmbarque({ id: 'e1', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e2', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e3', devueltasAgua: 100 }), // outlier
+    ]
+    const result = calcularAlertasRepartidor(embarques)
+    expect(result).toEqual([])
+  })
+
+  it('respeta minEmbarquesMuestral custom', () => {
+    const embarques: EmbarqueBase[] = [
+      makeEmbarque({ id: 'e1', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e2', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e3', devueltasAgua: 100 }),
+    ]
+    // con minEmbarquesMuestral=2, 3 embarques >= 2 → evalua
+    const result = calcularAlertasRepartidor(embarques, { minEmbarquesMuestral: 2 })
+    expect(result.length).toBeGreaterThan(0)
+  })
+
+  it('NO dispara si multiplicador es muy alto (todos pasan el filtro)', () => {
+    const embarques: EmbarqueBase[] = [
+      makeEmbarque({ id: 'e1', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e2', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e3', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e4', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e5', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e6', devueltasAgua: 1000 }), // outlier
+    ]
+    // multiplicador 1000 → umbral muy permisivo → no alerta
+    const result = calcularAlertasRepartidor(embarques, { multiplicador: 1000 })
+    expect(result).toEqual([])
+  })
+
+  it('suma devueltas y rotas de agua + hielo', () => {
+    const embarques: EmbarqueBase[] = [
+      // historico: 0 agua + 0 hielo = 0
+      makeEmbarque({ id: 'e1', devueltasAgua: 0, devueltasHielo: 0 }),
+      makeEmbarque({ id: 'e2', devueltasAgua: 0, devueltasHielo: 0 }),
+      makeEmbarque({ id: 'e3', devueltasAgua: 0, devueltasHielo: 0 }),
+      makeEmbarque({ id: 'e4', devueltasAgua: 0, devueltasHielo: 0 }),
+      makeEmbarque({ id: 'e5', devueltasAgua: 0, devueltasHielo: 0 }),
+      // outlier: 2 agua + 3 hielo = 5 (sobre umbral)
+      makeEmbarque({ id: 'e6', devueltasAgua: 2, devueltasHielo: 3 }),
+    ]
+    const result = calcularAlertasRepartidor(embarques)
+    const row = result[0]
+    const flat = row.alertas
+    expect(flat.some((a) => a.tipo === 'DEVOLUCIONES_ANORMALES')).toBe(true)
+  })
+
+  it('separa alertas por repartidor', () => {
+    // Repartidor A: 6 embarques, 1 outlier en devueltas
+    // Repartidor B: 6 embarques, normal
+    const embarques: EmbarqueBase[] = [
+      makeEmbarque({ id: 'a1', trabajadorId: 'rep-A', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'a2', trabajadorId: 'rep-A', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'a3', trabajadorId: 'rep-A', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'a4', trabajadorId: 'rep-A', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'a5', trabajadorId: 'rep-A', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'a6', trabajadorId: 'rep-A', devueltasAgua: 10 }),
+      // B normal
+      makeEmbarque({ id: 'b1', trabajadorId: 'rep-B', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'b2', trabajadorId: 'rep-B', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'b3', trabajadorId: 'rep-B', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'b4', trabajadorId: 'rep-B', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'b5', trabajadorId: 'rep-B', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'b6', trabajadorId: 'rep-B', devueltasAgua: 1 }),
+    ]
+    const result = calcularAlertasRepartidor(embarques)
+    expect(result).toHaveLength(1)
+    expect(result[0].repartidorId).toBe('rep-A')
+  })
+
+  it('usa el nombre del mapa nombres si se provee', () => {
+    const embarques: EmbarqueBase[] = [
+      makeEmbarque({ id: 'e1', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e2', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e3', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e4', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e5', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e6', devueltasAgua: 10 }),
+    ]
+    const nombres = new Map([['rep-1', 'Yesid Ramírez']])
+    const result = calcularAlertasRepartidor(embarques, { nombres })
+    expect(result[0].nombreRep).toBe('Yesid Ramírez')
+  })
+
+  it('usa el id como nombre si no hay mapa de nombres', () => {
+    const embarques: EmbarqueBase[] = [
+      makeEmbarque({ id: 'e1', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e2', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e3', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e4', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e5', devueltasAgua: 1 }),
+      makeEmbarque({ id: 'e6', devueltasAgua: 10 }),
+    ]
+    const result = calcularAlertasRepartidor(embarques)
+    expect(result[0].nombreRep).toBe('rep-1')
+  })
+
+  it('calcula severidadMasAlta correctamente (MEDIA gana sobre BAJA)', () => {
+    const embarques: EmbarqueBase[] = [
+      // historico bajo
+      makeEmbarque({ id: 'e1', devueltasAgua: 1, rotasAgua: 0 }),
+      makeEmbarque({ id: 'e2', devueltasAgua: 1, rotasAgua: 0 }),
+      makeEmbarque({ id: 'e3', devueltasAgua: 1, rotasAgua: 0 }),
+      makeEmbarque({ id: 'e4', devueltasAgua: 1, rotasAgua: 0 }),
+      makeEmbarque({ id: 'e5', devueltasAgua: 1, rotasAgua: 0 }),
+      // outlier: alta devueltas (MEDIA) y alta rotas (BAJA)
+      makeEmbarque({ id: 'e6', devueltasAgua: 10, rotasAgua: 8 }),
+    ]
+    const result = calcularAlertasRepartidor(embarques)
+    expect(result[0].severidadMasAlta).toBe('MEDIA')
   })
 })

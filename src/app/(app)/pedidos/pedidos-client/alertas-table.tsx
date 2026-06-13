@@ -1,7 +1,14 @@
 'use client'
 
 import React, { useState, useMemo, useEffect } from 'react'
-import { calcularAlertas, REGLAS_ALERTAS, type PrecioMinimoRow } from './alertas-utils'
+import {
+  calcularAlertas,
+  calcularAlertasRepartidor,
+  REGLAS_ALERTAS,
+  type PrecioMinimoRow,
+  type EmbarqueBase,
+  type AlertaRepartidorRow,
+} from './alertas-utils'
 import { GuiaAlertaModal } from '@/components/guia-alerta-modal'
 import { CasoGuiaModal } from '@/components/caso-guia-modal'
 import type { AlertaTipo, AlertaItem } from '@/lib/alertas-config'
@@ -61,11 +68,76 @@ export function AlertasTable({ pedidos }: AlertasTableProps) {
     [pedidos, precioMinimos],
   )
 
+  // commit 1.2: alertas por repartidor (DEVOLUCIONES_ANORMALES +
+  // ROTURAS_ANORMALES). Necesitamos embarques para alimentar el calculo.
+  const [embarques, setEmbarques] = useState<EmbarqueBase[]>([])
+  const [nombresRepartidor, setNombresRepartidor] = useState<Map<string, string>>(new Map())
+
+  useEffect(() => {
+    // Traemos embarques del ultimo mes (suficiente para minEmbarquesMuestral=5
+    // y un historial razonable). El endpoint permite pasar rango de fechas.
+    const hace30Dias = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    const hoy = new Date().toISOString().slice(0, 10)
+    fetch(`/api/embarques?desde=${hace30Dias}&hasta=${hoy}&all=true`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.success && Array.isArray(data.embarques)) {
+          // Normalizar: el endpoint devuelve devueltasAgua/Hielo y rotasAgua/Hielo
+          // ya como columnas (legacy). Para commit 1.2 usamos esas directo.
+          const norm: EmbarqueBase[] = data.embarques.map((e: {
+            id: string
+            fecha: string
+            trabajadorId: string
+            devueltasAgua: number
+            devueltasHielo: number
+            rotasAgua: number
+            rotasHielo: number
+            trabajador?: { nombre?: string }
+          }) => ({
+            id: e.id,
+            fecha: e.fecha,
+            trabajadorId: e.trabajadorId,
+            devueltasAgua: e.devueltasAgua ?? 0,
+            devueltasHielo: e.devueltasHielo ?? 0,
+            rotasAgua: e.rotasAgua ?? 0,
+            rotasHielo: e.rotasHielo ?? 0,
+          }))
+          setEmbarques(norm)
+          // Construir mapa de nombres
+          const map = new Map<string, string>()
+          for (const e of data.embarques) {
+            if (e.trabajadorId && e.trabajador?.nombre) {
+              map.set(e.trabajadorId, e.trabajador.nombre)
+            }
+          }
+          setNombresRepartidor(map)
+        }
+      })
+      .catch(() => {
+        // silencioso: sin embarques, no hay alertas por repartidor
+      })
+  }, [])
+
+  const alertaRepartidorRows = useMemo(
+    () => calcularAlertasRepartidor(embarques, { nombres: nombresRepartidor }),
+    [embarques, nombresRepartidor],
+  )
+
   const filtrados = alertaRows
     .filter((row) => {
       const matchSearch = !searchTerm ||
         row.nombreCli.toLowerCase().includes(searchTerm.toLowerCase()) ||
         row.telefonoCli?.includes(searchTerm)
+      const matchSeveridad = filtroSeveridad === 'TODAS' || row.severidadMasAlta === filtroSeveridad
+      return matchSearch && matchSeveridad
+    })
+    .sort((a, b) => SEVERIDAD_ORDER[b.severidadMasAlta] - SEVERIDAD_ORDER[a.severidadMasAlta])
+
+  // Filtrar alertas por repartidor (commit 1.2)
+  const filtradosRepartidor = alertaRepartidorRows
+    .filter((row) => {
+      const matchSearch = !searchTerm ||
+        row.nombreRep.toLowerCase().includes(searchTerm.toLowerCase())
       const matchSeveridad = filtroSeveridad === 'TODAS' || row.severidadMasAlta === filtroSeveridad
       return matchSearch && matchSeveridad
     })
@@ -248,7 +320,55 @@ export function AlertasTable({ pedidos }: AlertasTableProps) {
         </div>
       </div>
 
-      {filtrados.length === 0 ? (
+      {/* commit 1.2: alertas por repartidor (DEVOLUCIONES + ROTURAS anormales) */}
+      {filtradosRepartidor.length > 0 && (
+        <div className="bg-white rounded-xl shadow overflow-hidden mb-4">
+          <div className="px-4 py-3 bg-amber-50 border-b border-amber-100 flex items-center justify-between">
+            <span className="text-sm font-medium text-amber-900">
+              🛵 {filtradosRepartidor.length} repartidor{filtradosRepartidor.length !== 1 ? 'es' : ''} con alertas de devoluciones/roturas
+            </span>
+            <span className="text-xs text-amber-700">Promedio de embarques vs outlier</span>
+          </div>
+          <div className="hidden md:block overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Repartidor</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">Alertas</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">Severidad</th>
+                  <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Acción</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filtradosRepartidor.map((row) => (
+                  <tr key={row.repartidorId} className="hover:bg-gray-50 transition">
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-gray-800">{row.nombreRep}</div>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className="inline-flex items-center justify-center min-w-[1.5rem] h-6 px-2 text-sm font-bold text-white bg-red-600 rounded-full">
+                        {row.alertas.length}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium border ${getBadgeColorLocal(row.severidadMasAlta)}`}>
+                        {row.severidadMasAlta}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className="text-xs text-gray-400" data-testid="repartidor-row">
+                        Ver embarques →
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {filtrados.length === 0 && filtradosRepartidor.length === 0 ? (
         <div className="bg-white rounded-xl shadow p-8 text-center">
           <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -271,7 +391,7 @@ export function AlertasTable({ pedidos }: AlertasTableProps) {
             </ul>
           </div>
         </div>
-      ) : (
+      ) : filtrados.length > 0 ? (
         <div className="bg-white rounded-xl shadow overflow-hidden">
           <div className="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
             <span className="text-sm font-medium text-gray-600">
