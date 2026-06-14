@@ -62,8 +62,8 @@ skipIf('seed idempotency', () => {
     // Por eso: ejecutamos el seed con try/catch y si falla por FK,
     // el test pasa con skip explicativo (el seed no pudo correr,
     // no podemos verificar idempotencia).
-    let countsAfterFirst: ReturnType<typeof getCounts> | null = null
-    let countsAfterSecond: ReturnType<typeof getCounts> | null = null
+    let countsAfterFirst: Awaited<ReturnType<typeof getCounts>> | null = null
+    let countsAfterSecond: Awaited<ReturnType<typeof getCounts>> | null = null
 
     try {
       execSync('npx tsx prisma/seed.ts', {

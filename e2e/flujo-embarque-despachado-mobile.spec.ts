@@ -5,7 +5,7 @@
 //   2. Cambiar a EN_RUTA o CERRADO (despachar)
 //   3. Intentar editar → 4xx
 import { test, expect } from '@playwright/test'
-import { fullLogin, apiPost, apiPut, apiGet, createTrabajador, createEmbarque } from './fixtures'
+import { fullLogin, apiPut, apiGet, createTrabajador, createEmbarque } from './fixtures'
 
 test.use({
   viewport: { width: 390, height: 844 },
