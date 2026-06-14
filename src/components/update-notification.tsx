@@ -33,7 +33,14 @@ export function UpdateNotification() {
       { once: true },
     )
 
+    // Guard: si por alguna razón el .then se llama con `registration`
+    // undefined (lo que pasa si el SW fue bloqueado por Playwright o por el
+    // usuario con devtools), no reventamos con `Cannot read properties of
+    // undefined (reading 'waiting')`. Es la misma defensa que ya existía
+    // en el provider de Serwist con la prop `disable` — acá es belt-and-
+    // suspenders por si alguien en el futuro quita la prop.
     navigator.serviceWorker.ready.then((registration) => {
+      if (!registration) return
       // Check if there's a waiting worker immediately
       if (registration.waiting) {
         setShow(true)
@@ -51,16 +58,19 @@ export function UpdateNotification() {
           }
         })
       })
+    }).catch(() => {
+      // SW bloqueado (Playwright, devtools, browser policy). Silenciar.
     })
   }, [])
 
   const handleUpdate = () => {
     if (!('serviceWorker' in navigator)) return
     navigator.serviceWorker.ready.then((registration) => {
-      if (registration.waiting) {
-        // Tell the waiting worker to skip waiting and activate
-        registration.waiting.postMessage({ type: 'SKIP_WAITING' })
-      }
+      if (!registration || !registration.waiting) return
+      // Tell the waiting worker to skip waiting and activate
+      registration.waiting.postMessage({ type: 'SKIP_WAITING' })
+    }).catch(() => {
+      // SW no disponible — ignorar.
     })
   }
 

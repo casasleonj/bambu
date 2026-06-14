@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { calcularAlertas, calcularAlertasCliente, calcularPromedioCliente, calcularAlertasRepartidor, findPrecioMinimo } from '@/lib/alertas-detector'
+import { calcularAlertas, calcularAlertasCliente, calcularPromedioCliente, calcularAlertasRepartidor, findPrecioMinimo, calcularMediana } from '@/lib/alertas-detector'
 import type { PedidoBase, EmbarqueBase } from '@/lib/alertas-detector'
 import { UMBRALES_DEFAULT } from '@/lib/umbrales'
 
@@ -215,8 +215,8 @@ describe('calcularAlertas — detecciones (smoke tests)', () => {
     expect(flat.some((a) => a.tipo === 'CAMBIO_PRECIO_BRUSCO')).toBe(false)
   })
 
-  it('skipea CAMBIO_PRECIO_BRUSCO si precioOrigen = "manual"', () => {
-    // TODO commit 2: este test cambiara cuando se cambie a autorizadoPorAdmin
+  it('skipea CAMBIO_PRECIO_BRUSCO si precioOrigen = "manual" + autorizadoPorAdmin=true', () => {
+    // commit 2: ahora requiere autorizadoPorAdmin=true para skipear.
     const pedidos = [
       makePedido({
         id: 'old',
@@ -229,12 +229,12 @@ describe('calcularAlertas — detecciones (smoke tests)', () => {
       makePedido({
         id: 'new',
         clienteId: 'c1',
-        estadoEntrega: 'PENDIENTE', // explicito para que NO se incluya en el map de precios
+        estadoEntrega: 'PENDIENTE',
         estadoPago: 'PENDIENTE',
         fecha: new Date().toISOString(),
-        cPacaAguaPed: 0, // legacy vacio, usa items
+        cPacaAguaPed: 0,
         precioPacaAgua: 0,
-        items: [{ producto: 'PACA_AGUA', cantPedido: 5, precio: 5000, precioOrigen: 'manual' }],
+        items: [{ producto: 'PACA_AGUA', cantPedido: 5, precio: 5000, precioOrigen: 'manual', autorizadoPorAdmin: true }],
       }),
     ]
     const result = calcularAlertas(pedidos)
@@ -257,21 +257,27 @@ describe('calcularAlertas — detecciones (smoke tests)', () => {
 
 describe('calcularAlertas — umbrales respetados', () => {
   it('usa multiplicadorMontoAnomalo del parametro umbrales (no el default)', () => {
-    // Promedio de [10000, 10000, 60000] = 26666. Con default (2x): 60000 > 53333 → dispara.
-    // Con multiplicador=3: 60000 > 80000 → NO dispara.
+    // commit 2: ahora usa MEDIANA en vez de promedio.
+    // 4 pedidos: 10000, 10000, 10000, 10000 → mediana=10000
+    // 1 pedido outlier: 1000000 (se excluye porque > 3*10000)
+    // pedido nuevo: 60000
+    // Con default (2x): 60000 > 10000*2=20000 → dispara
+    // Con multiplicador=10: 60000 > 10000*10=100000 → NO dispara
     const pedidos = [
       makePedido({ id: 'old1', clienteId: 'c1', total: 10000, estadoEntrega: 'ENTREGADO' }),
       makePedido({ id: 'old2', clienteId: 'c1', total: 10000, estadoEntrega: 'ENTREGADO' }),
+      makePedido({ id: 'old3', clienteId: 'c1', total: 10000, estadoEntrega: 'ENTREGADO' }),
+      makePedido({ id: 'old4', clienteId: 'c1', total: 10000, estadoEntrega: 'ENTREGADO' }),
       makePedido({ id: 'new', clienteId: 'c1', total: 60000, estadoEntrega: 'PENDIENTE' }),
     ]
-    // Default (2): 60000 > 26666*2 = 53333 → dispara
+    // Default (2): 60000 > 10000*2 = 20000 → dispara
     const resultDefault = calcularAlertas(pedidos)
     const flatDefault = resultDefault.flatMap((r) => r.alertas)
     expect(flatDefault.some((a) => a.tipo === 'MONTO_ANOMALO')).toBe(true)
 
-    // Con multiplicador=3: 60000 > 26666*3 = 80000 → NO dispara
+    // Con multiplicador=10: 60000 > 10000*10 = 100000 → NO dispara
     const resultAlto = calcularAlertas(pedidos, {
-      umbrales: { ...UMBRALES_DEFAULT, multiplicadorMontoAnomalo: 3 },
+      umbrales: { ...UMBRALES_DEFAULT, multiplicadorMontoAnomalo: 10 },
     })
     const flatAlto = resultAlto.flatMap((r) => r.alertas)
     expect(flatAlto.some((a) => a.tipo === 'MONTO_ANOMALO')).toBe(false)
@@ -319,9 +325,10 @@ describe('calcularAlertasCliente — umbrales respetados', () => {
   }
 
   it('detecta CLIENTE_NO_VERIFICADO con diasNoVerificado default (30)', () => {
+    // commit 2: requiere creadoPorRol='REPARTIDOR' para alertar
     const hace35Dias = new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString()
     const result = calcularAlertasCliente(
-      { ...clienteBase, createdAt: hace35Dias },
+      { ...clienteBase, creadoPorRol: 'REPARTIDOR', createdAt: hace35Dias },
       [],
     )
     expect(result.some((a) => a.tipo === 'CLIENTE_NO_VERIFICADO')).toBe(true)
@@ -330,7 +337,7 @@ describe('calcularAlertasCliente — umbrales respetados', () => {
   it('NO detecta CLIENTE_NO_VERIFICADO si dias < default (30)', () => {
     const hace10Dias = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString()
     const result = calcularAlertasCliente(
-      { ...clienteBase, createdAt: hace10Dias },
+      { ...clienteBase, creadoPorRol: 'REPARTIDOR', createdAt: hace10Dias },
       [],
     )
     expect(result.some((a) => a.tipo === 'CLIENTE_NO_VERIFICADO')).toBe(false)
@@ -340,14 +347,14 @@ describe('calcularAlertasCliente — umbrales respetados', () => {
     const hace15Dias = new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString()
     // Con default 30: 15 dias NO dispara
     const resultDefault = calcularAlertasCliente(
-      { ...clienteBase, createdAt: hace15Dias },
+      { ...clienteBase, creadoPorRol: 'REPARTIDOR', createdAt: hace15Dias },
       [],
     )
     expect(resultDefault.some((a) => a.tipo === 'CLIENTE_NO_VERIFICADO')).toBe(false)
 
     // Con diasNoVerificado=7: 15 dias SI dispara
     const resultEstricto = calcularAlertasCliente(
-      { ...clienteBase, createdAt: hace15Dias },
+      { ...clienteBase, creadoPorRol: 'REPARTIDOR', createdAt: hace15Dias },
       [],
       { umbrales: { ...UMBRALES_DEFAULT, diasNoVerificado: 7 } },
     )
@@ -983,5 +990,202 @@ describe('calcularAlertasRepartidor — REPARTIDOR_DEUDA_ALTA (commit 1.5)', () 
     const result = calcularAlertasRepartidor([])
     const flat = result.flatMap((r) => r.alertas)
     expect(flat.some((a) => a.tipo === 'REPARTIDOR_DEUDA_ALTA')).toBe(false)
+  })
+})
+
+// commit 2 plan antifraude: median, autorizadoPorAdmin, creadoPorRol
+describe('calcularMediana (helper, commit 2)', () => {
+  it('retorna 0 para array vacio', () => {
+    expect(calcularMediana([])).toBe(0)
+  })
+  it('retorna el unico valor para array de 1', () => {
+    expect(calcularMediana([42])).toBe(42)
+  })
+  it('mediana de longitud impar', () => {
+    expect(calcularMediana([1, 3, 5])).toBe(3)
+    expect(calcularMediana([5, 1, 3])).toBe(3) // sin orden
+  })
+  it('mediana de longitud par (promedio de los 2 centrales)', () => {
+    expect(calcularMediana([1, 3, 5, 7])).toBe(4) // (3+5)/2
+  })
+  it('no muta el array de entrada', () => {
+    const arr = [3, 1, 2]
+    calcularMediana(arr)
+    expect(arr).toEqual([3, 1, 2])
+  })
+})
+
+describe('calcularAlertas — CAMBIO_PRECIO_BRUSCO con autorizadoPorAdmin (commit 2)', () => {
+  it('NO detecta si precio manual + autorizadoPorAdmin=true', () => {
+    // IMPORTANTE: new debe ser PENDIENTE para NO estar en el map de
+    // precios historicos (que solo incluye ENTREGADO). Si new fuera
+    // ENTREGADO, su precio 5000 pisaría el de old (2000) en el map, y
+    // la variacion de old seria >30% (falso positivo).
+    const pedidos = [
+      makePedido({
+        id: 'old',
+        clienteId: 'c1',
+        estadoEntrega: 'ENTREGADO',
+        fecha: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+        cPacaAguaPed: 5,
+        precioPacaAgua: 2000,
+      }),
+      makePedido({
+        id: 'new',
+        clienteId: 'c1',
+        estadoEntrega: 'PENDIENTE', // no se incluye en el map
+        estadoPago: 'PENDIENTE',
+        fecha: new Date().toISOString(),
+        cPacaAguaPed: 0, // legacy vacio, usa items
+        precioPacaAgua: 0,
+        items: [{ producto: 'PACA_AGUA', cantPedido: 5, precio: 5000, precioOrigen: 'manual', autorizadoPorAdmin: true }],
+      }),
+    ]
+    const result = calcularAlertas(pedidos)
+    const flat = result.flatMap((r) => r.alertas)
+    expect(flat.some((a) => a.tipo === 'CAMBIO_PRECIO_BRUSCO')).toBe(false)
+  })
+
+  it('DETECTA si precio manual + autorizadoPorAdmin=false (vector de fraude)', () => {
+    const pedidos = [
+      makePedido({
+        id: 'old',
+        clienteId: 'c1',
+        estadoEntrega: 'ENTREGADO',
+        fecha: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+        cPacaAguaPed: 5,
+        precioPacaAgua: 2000,
+      }),
+      makePedido({
+        id: 'new',
+        clienteId: 'c1',
+        fecha: new Date().toISOString(),
+        cPacaAguaPed: 5,
+        precioPacaAgua: 5000,
+        items: [{ producto: 'PACA_AGUA', cantPedido: 5, precio: 5000, precioOrigen: 'manual', autorizadoPorAdmin: false }],
+      }),
+    ]
+    const result = calcularAlertas(pedidos)
+    const flat = result.flatMap((r) => r.alertas)
+    expect(flat.some((a) => a.tipo === 'CAMBIO_PRECIO_BRUSCO')).toBe(true)
+  })
+
+  it('DETECTA si precio manual sin autorizadoPorAdmin (campo undefined)', () => {
+    const pedidos = [
+      makePedido({
+        id: 'old',
+        clienteId: 'c1',
+        estadoEntrega: 'ENTREGADO',
+        fecha: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+        cPacaAguaPed: 5,
+        precioPacaAgua: 2000,
+      }),
+      makePedido({
+        id: 'new',
+        clienteId: 'c1',
+        fecha: new Date().toISOString(),
+        cPacaAguaPed: 5,
+        precioPacaAgua: 5000,
+        items: [{ producto: 'PACA_AGUA', cantPedido: 5, precio: 5000, precioOrigen: 'manual' }], // sin autorizadoPorAdmin
+      }),
+    ]
+    const result = calcularAlertas(pedidos)
+    const flat = result.flatMap((r) => r.alertas)
+    expect(flat.some((a) => a.tipo === 'CAMBIO_PRECIO_BRUSCO')).toBe(true)
+  })
+})
+
+describe('calcularAlertas — MONTO_ANOMALO con mediana (commit 2)', () => {
+  it('usa la mediana, no el promedio (robusto a outliers)', () => {
+    // 4 pedidos historicos: 10000, 10000, 10000, 100000 (1 outlier)
+    // mediana = 10000, promedio = 30000
+    // pedido nuevo: 50000
+    // Con promedio: 50000 > 30000*2=60000? NO
+    // Con mediana: 50000 > 10000*2=20000? SI → alerta
+    const pedidos = [
+      makePedido({ id: 'p1', clienteId: 'c1', total: 10000, estadoEntrega: 'ENTREGADO' }),
+      makePedido({ id: 'p2', clienteId: 'c1', total: 10000, estadoEntrega: 'ENTREGADO' }),
+      makePedido({ id: 'p3', clienteId: 'c1', total: 10000, estadoEntrega: 'ENTREGADO' }),
+      makePedido({ id: 'p4', clienteId: 'c1', total: 100000, estadoEntrega: 'ENTREGADO' }),
+      makePedido({ id: 'p5', clienteId: 'c1', total: 50000, estadoEntrega: 'PENDIENTE' }),
+    ]
+    const result = calcularAlertas(pedidos)
+    const flat = result.flatMap((r) => r.alertas)
+    expect(flat.some((a) => a.tipo === 'MONTO_ANOMALO')).toBe(true)
+  })
+
+  it('excluye outliers (>3x mediana tentativa) del calculo', () => {
+    // 5 pedidos: 10000, 10000, 10000, 10000, 1000000 (1 outlier extremo)
+    // mediana tentativa: 10000. excluye 1000000 (> 3*10000 = 30000).
+    // 4 restantes → mediana = 10000
+    // pedido nuevo: 100000 → 100000 > 10000*2=20000? SI → alerta
+    // (si el outlier NO se excluyera, mediana = 10000*4 + 1000000 = 1040000/5 = 208000, y 100000 < 208000*2=416000 → NO alerta)
+    const pedidos = [
+      makePedido({ id: 'p1', clienteId: 'c1', total: 10000, estadoEntrega: 'ENTREGADO' }),
+      makePedido({ id: 'p2', clienteId: 'c1', total: 10000, estadoEntrega: 'ENTREGADO' }),
+      makePedido({ id: 'p3', clienteId: 'c1', total: 10000, estadoEntrega: 'ENTREGADO' }),
+      makePedido({ id: 'p4', clienteId: 'c1', total: 10000, estadoEntrega: 'ENTREGADO' }),
+      makePedido({ id: 'p5', clienteId: 'c1', total: 1000000, estadoEntrega: 'ENTREGADO' }),
+      makePedido({ id: 'p6', clienteId: 'c1', total: 100000, estadoEntrega: 'PENDIENTE' }),
+    ]
+    const result = calcularAlertas(pedidos)
+    const flat = result.flatMap((r) => r.alertas)
+    expect(flat.some((a) => a.tipo === 'MONTO_ANOMALO')).toBe(true)
+  })
+
+  it('NO alerta si cliente tiene < 3 pedidos historicos', () => {
+    // Solo 2 pedidos totales (1 historico + 1 actual). medianaPorCliente
+    // no se setea (< 3) → no alertar.
+    const pedidos = [
+      makePedido({ id: 'p1', clienteId: 'c1', total: 10000, estadoEntrega: 'ENTREGADO' }),
+      makePedido({ id: 'p2', clienteId: 'c1', total: 1000000, estadoEntrega: 'PENDIENTE' }),
+    ]
+    const result = calcularAlertas(pedidos)
+    const flat = result.flatMap((r) => r.alertas)
+    expect(flat.some((a) => a.tipo === 'MONTO_ANOMALO')).toBe(false)
+  })
+})
+
+describe('calcularAlertasCliente — CLIENTE_NO_VERIFICADO filtrado por creadoPorRol (commit 2)', () => {
+  const clienteBase = {
+    id: 'cli-1',
+    nombre: 'Test',
+    telefono: '300',
+  }
+  const hace35Dias = () => new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString()
+
+  it('DETECTA si creadoPorRol=REPARTIDOR y >30d sin verificar (patron cliente fantasma)', () => {
+    const result = calcularAlertasCliente(
+      { ...clienteBase, verificado: false, creadoPorRol: 'REPARTIDOR', createdAt: hace35Dias() },
+      [],
+    )
+    expect(result.some((a) => a.tipo === 'CLIENTE_NO_VERIFICADO')).toBe(true)
+  })
+
+  it('NO detecta si creadoPorRol=ASISTENTE (cliente de oficina, no sospechoso)', () => {
+    const result = calcularAlertasCliente(
+      { ...clienteBase, verificado: false, creadoPorRol: 'ASISTENTE', createdAt: hace35Dias() },
+      [],
+    )
+    expect(result.some((a) => a.tipo === 'CLIENTE_NO_VERIFICADO')).toBe(false)
+  })
+
+  it('NO detecta si creadoPorRol=ADMIN (no es repartidor)', () => {
+    const result = calcularAlertasCliente(
+      { ...clienteBase, verificado: false, creadoPorRol: 'ADMIN', createdAt: hace35Dias() },
+      [],
+    )
+    expect(result.some((a) => a.tipo === 'CLIENTE_NO_VERIFICADO')).toBe(false)
+  })
+
+  it('NO detecta si creadoPorRol=undefined (backward compat: NO alertar)', () => {
+    // Antes del fix, cualquier cliente con creadoPorRol=undefined disparaba.
+    // Ahora solo REPARTIDOR dispara. undefined se trata como "no es
+    // repartidor" → no alerta (filtro mas estricto).
+    const result = calcularAlertasCliente(
+      { ...clienteBase, verificado: false, createdAt: hace35Dias() }, // sin creadoPorRol
+      [],
+    )
+    expect(result.some((a) => a.tipo === 'CLIENTE_NO_VERIFICADO')).toBe(false)
   })
 })

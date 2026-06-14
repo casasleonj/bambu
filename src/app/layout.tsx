@@ -39,7 +39,24 @@ export default async function RootLayout({
   return (
     <html lang="es" className="light" style={{ colorScheme: 'light' }}>
       <body className="antialiased" {...(nonce ? { 'data-nonce': nonce } : {})}>
-        <SerwistProvider swUrl="/serwist/sw.js">
+        {/*
+         * SerwistProvider se desactiva en dev por DOS razones:
+         * 1. El plugin `withSerwist` de next.config.ts ya está condicionado
+         *    a NODE_ENV=production — el SW real no se genera en dev. Pero
+         *    el Provider SÍ se importa y se renderiza siempre, e intenta
+         *    registrar un SW que no existe.
+         * 2. Cuando Playwright (o cualquier SW-blocker) bloquea el registro,
+         *    Serwist internamente accede a `this._registration.waiting` sin
+         *    guard, lo que tira `Cannot read properties of undefined (reading
+         *    'waiting')` y ensucia el dev log con un unhandledRejection.
+         *
+         * El switch `disable={...}` corta el register() en dev. En prod
+         *    todo sigue funcionando normal (PWA offline mode intacto).
+         */}
+        <SerwistProvider
+          swUrl="/serwist/sw.js"
+          disable={process.env.NODE_ENV !== 'production'}
+        >
           <Providers>{children}</Providers>
         </SerwistProvider>
       </body>

@@ -50,6 +50,7 @@
     "public/sw*.js",
     "public/swe-worker*",
     "vitest.config.ts",
-    "playwright.config.ts"
+    "playwright.config.ts",
+    "vitest.integration.config.ts"
   ]
 }

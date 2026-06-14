@@ -1,6 +1,6 @@
 import { auth } from "./auth";
 import { prisma } from "./prisma";
-import { PRIVILEGED_ROLES, type Role } from "./constants";
+import { PRIVILEGED_READ_ROLES, type Role } from "./constants";
 import { apiError } from "./api-response";
 import { userCan, type Permission } from "./permissions";
 
@@ -102,8 +102,10 @@ export async function requireOwnership(
   resourceId: string,
   user: { id: string; role?: string }
 ): Promise<boolean> {
-  // Privileged roles can access everything
-  if (PRIVILEGED_ROLES.includes(user.role as Role)) return true;
+  // Privileged READ roles can read any resource (CONTADOR for accounting, ADMIN for full access)
+  // FIX MEDIUM (C-BIZ-4): Renamed for clarity. Note: write operations are still
+  // blocked at the route handler level via requireRole([ADMIN, ASISTENTE]).
+  if (PRIVILEGED_READ_ROLES.includes(user.role as Role)) return true;
 
   // ASISTENTE puede gestionar todos los embarques (rol operativo)
   if (user.role === 'ASISTENTE' && entity === 'embarque') return true;

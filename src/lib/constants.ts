@@ -9,5 +9,23 @@ export const ROLES = {
 
 export type Role = (typeof ROLES)[keyof typeof ROLES]
 
-// Admin/contador roles that can see all data
-export const PRIVILEGED_ROLES: Role[] = [ROLES.ADMIN, ROLES.CONTADOR]
+/**
+ * Roles that bypass ownership checks in `requireOwnership`.
+ *
+ * FIX MEDIUM (C-BIZ-4): Renamed from PRIVILEGED_ROLES to clarify intent.
+ *
+ * IMPORTANTE: estos roles pueden LEER cualquier recurso de cualquier
+ * trabajador, pero NO necesariamente pueden MODIFICARLO. Los endpoints
+ * de WRITE (POST/PUT/DELETE en /api/embarques, /api/pedidos, etc.)
+ * tienen su propio `requireRole([ADMIN, ASISTENTE])` que bloquea a
+ * CONTADOR. La única excepción es el caso del CONTADOR navegando al
+ * detalle de un embarque via GET (esto sigue siendo permitido).
+ *
+ * Si necesitas un check más estricto (solo ADMIN puede acceder),
+ * usa `requireRole([ROLES.ADMIN])` directamente en el endpoint.
+ */
+export const PRIVILEGED_READ_ROLES: Role[] = [ROLES.ADMIN, ROLES.CONTADOR]
+
+// Alias para backward compatibility
+/** @deprecated Use PRIVILEGED_READ_ROLES instead */
+export const PRIVILEGED_ROLES = PRIVILEGED_READ_ROLES

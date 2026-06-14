@@ -28,6 +28,11 @@ export interface Cliente {
   proxEntrega?: string
   activo: boolean
   negocioDefaultId?: string
+  /** Bloque 1: lat/lng calculadas (link / GPS / Negocio). */
+  lat?: number | string | null
+  lng?: number | string | null
+  geocodeOrigen?: string | null
+  geocodeAt?: string | null
   _count?: { pedidos: number; negocios?: number }
   pedidos?: Pedido[]
   facturas?: Factura[]
@@ -43,6 +48,9 @@ export interface Negocio {
   barrio?: string
   referencia?: string
   linkUbicacion?: string
+  /** Bloque 1: coords del Negocio (opcional, fallback a Cliente.lat/lng). */
+  lat?: number | string | null
+  lng?: number | string | null
   horaApertura?: string
   rutaId?: string
   preciosEspeciales?: string

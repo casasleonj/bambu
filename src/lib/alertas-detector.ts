@@ -105,7 +105,16 @@ interface PedidoBase {
   estadoPago: string
   disputaAbierta?: boolean
   promesaPagoFecha?: string
-  items?: Array<{ producto: string; cantPedido: number; precio: number; precioOrigen?: string }>
+  items?: Array<{
+    producto: string
+    cantPedido: number
+    precio: number
+    precioOrigen?: string
+    /** commit 0c/2 plan antifraude: si true, el admin autorizo este precio manual
+     *  y la alerta CAMBIO_PRECIO_BRUSCO skipea este item. Sin esta marca,
+     *  cualquier precio manual es sospechoso (vector de fraude). */
+    autorizadoPorAdmin?: boolean
+  }>
   cPacaAguaPed: number
   cPacaHieloPed: number
   cBotellonFabPed: number
@@ -155,6 +164,50 @@ export function calcularAlertas(pedidos: PedidoBase[], options: CalcularAlertasO
   const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
 
   // Promedio por cliente (excluyendo anulados/cancelados)
+  // commit 2 plan antifraude: mediana de los ultimos N pedidos por
+  // cliente (no promedio). La mediana es mas robusta a outliers: si un
+  // fraude historico infla el promedio, futuros fraudes pueden pasar
+  // desapercibidos. Con la mediana, el fraude es siempre comparable
+  // contra el grueso del historial.
+  //
+  // Algoritmo:
+  // 1. Por cada cliente, tomar los ultimos 5 pedidos validos
+  //    (cronologicamente), excluyendo el pedido actual del check
+  // 2. Excluir outliers (>3x mediana tentativa) — recursivo 1 vez
+  // 3. Si quedan <3 pedidos, no alertar (datos insuficientes)
+  // 4. Computar mediana final
+  const medianaPorCliente = new Map<string, number>()
+  {
+    // Agrupar pedidos por cliente, ordenados por fecha
+    const pedidosPorCliente = new Map<string, PedidoBase[]>()
+    for (const p of pedidos) {
+      if (p.estadoEntrega === 'ANULADO' || p.estadoEntrega === 'CANCELADO') continue
+      const arr = pedidosPorCliente.get(p.clienteId) || []
+      arr.push(p)
+      pedidosPorCliente.set(p.clienteId, arr)
+    }
+    for (const [clienteId, lista] of pedidosPorCliente) {
+      // Ordenar por fecha asc y tomar ultimos 5
+      const recientes = lista
+        .sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())
+        .slice(-5)
+      const totales = recientes.map((p) => Number(p.total))
+      if (totales.length < 3) {
+        // No hay suficientes datos para una mediana confiable
+        continue
+      }
+      // Mediana tentativa
+      let m = calcularMediana(totales)
+      // Excluir outliers > 3x mediana (recursivo 1 vez)
+      const sinOutliers = totales.filter((t) => t <= m * 3)
+      if (sinOutliers.length >= 3) {
+        m = calcularMediana(sinOutliers)
+      }
+      medianaPorCliente.set(clienteId, m)
+    }
+  }
+
+  // Mantener promedioPorCliente por backward compat (usado en detalle del alert)
   const promedioPorCliente = new Map<string, number>()
   const conteoPorCliente = new Map<string, number>()
   pedidos.forEach((p) => {
@@ -251,14 +304,20 @@ export function calcularAlertas(pedidos: PedidoBase[], options: CalcularAlertasO
       }
     }
 
-    // 2. Monto anomalo (>N x promedio personal)
-    // TODO commit 2: usar umbrales.multiplicadorMontoAnomalo en vez de hardcoded 2
-    const promedio = promedioPorCliente.get(p.clienteId) || 0
-    if (promedio > 0 && Number(p.total) > promedio * umbrales.multiplicadorMontoAnomalo) {
+    // 2. Monto anomalo (>N x mediana personal)
+    // commit 2 plan antifraude: usa la MEDIANA de los ultimos 5 pedidos
+    // (no el promedio). La mediana es mas robusta a outliers — si un
+    // fraude historico infla el promedio, futuros fraudes pueden pasar
+    // desapercibidos. Con la mediana, el fraude siempre se compara
+    // contra el grueso del historial.
+    // Si medianaPorCliente no tiene el cliente (<3 pedidos historicos),
+    // no alertar (datos insuficientes).
+    const mediana = medianaPorCliente.get(p.clienteId) || 0
+    if (mediana > 0 && Number(p.total) > mediana * umbrales.multiplicadorMontoAnomalo) {
       alertas.push({
         tipo: 'MONTO_ANOMALO',
         severidad: 'ALTA',
-        detalle: `${formatCurrency(Number(p.total))} (promedio: ${formatCurrency(promedio)})`,
+        detalle: `${formatCurrency(Number(p.total))} (mediana: ${formatCurrency(mediana)})`,
         fecha: p.fecha,
         pedidoId: p.id,
       })
@@ -304,7 +363,6 @@ export function calcularAlertas(pedidos: PedidoBase[], options: CalcularAlertasO
     }
 
     // 9. Promesa proxima a vencer
-    // TODO commit 2: usar umbrales.diasVencimientoPromesa en vez de hardcoded 2/-1
     if (p.promesaPagoFecha && p.estadoPago !== 'PAGADO' && p.estadoPago !== 'ANTICIPADO' && p.estadoPago !== 'ANULADO') {
       const promesa = new Date(p.promesaPagoFecha)
       const diffMs = promesa.getTime() - Date.now()
@@ -321,11 +379,17 @@ export function calcularAlertas(pedidos: PedidoBase[], options: CalcularAlertasO
     }
 
     // 19. Cambio precio brusco
-    // TODO commit 2: el skip de precioOrigen='manual' se hace inseguro (cambia a autorizadoPorAdmin)
+    // commit 2 plan antifraude: el skip de precioOrigen='manual' ahora
+    // requiere autorizadoPorAdmin=true. Sin esa marca, un precio
+    // manual es sospechoso (vector de fraude: el repartidor marca
+    // como 'manual' para evadir la deteccion).
+    // - precioOrigen='manual' + autorizadoPorAdmin=true → skip (autorizado)
+    // - precioOrigen='manual' + autorizadoPorAdmin=false/undefined → alerta
+    // - precioOrigen='base'/'volumen'/'cliente' → compara contra ultimo
     const items = p.items && p.items.length > 0 ? p.items : legacyItems(p)
     items.forEach((item) => {
       if (item.cantPedido > 0 && item.precio > 0) {
-        if (item.precioOrigen === 'manual') return
+        if (item.precioOrigen === 'manual' && item.autorizadoPorAdmin === true) return
 
         const ultPrecioMap = ultimoPrecioPorClienteProducto.get(p.clienteId)
         const ultPrecio = ultPrecioMap?.get(item.producto)
@@ -380,8 +444,8 @@ export function calcularAlertas(pedidos: PedidoBase[], options: CalcularAlertasO
       } else {
         clientesMap.set(p.clienteId, {
           clienteId: p.clienteId,
-          nombreCli: p.nombreCli,
-          telefonoCli: p.telefonoCli,
+          nombreCli: p.nombreCli ?? '',
+          telefonoCli: p.telefonoCli ?? '',
           alertas,
           severidadMasAlta: 'BAJA',
         })
@@ -413,8 +477,8 @@ export function calcularAlertas(pedidos: PedidoBase[], options: CalcularAlertasO
       } else {
         clientesMap.set(clienteId, {
           clienteId,
-          nombreCli: arr[0].nombreCli,
-          telefonoCli: arr[0].telefonoCli,
+          nombreCli: arr[0].nombreCli ?? '',
+          telefonoCli: arr[0].telefonoCli ?? '',
           alertas: [alerta],
           severidadMasAlta: 'BAJA',
         })
@@ -471,7 +535,7 @@ export function calcularAlertas(pedidos: PedidoBase[], options: CalcularAlertasO
   return Array.from(clientesMap.values()).filter((r) => r.alertas.length > 0)
 }
 
-function legacyItems(p: PedidoBase): Array<{ producto: string; cantPedido: number; precio: number; precioOrigen?: string }> {
+function legacyItems(p: PedidoBase): Array<{ producto: string; cantPedido: number; precio: number; precioOrigen?: string; autorizadoPorAdmin?: boolean }> {
   // precioOrigen es undefined: las columnas legacy no tienen origen. Esto
   // evita que la alerta CAMBIO_PRECIO_BRUSCO skipee por "manual" en pedidos
   // legacy. Coincide con la logica original (que tampoco las skipeaba).
@@ -562,7 +626,6 @@ export function calcularAlertasCliente(
     if (p.disputaAbierta) {
       alertas.push({ tipo: 'DISPUTA_ABIERTA', severidad: 'ALTA', detalle: `Pedido #${p.numero} con disputa`, fecha: p.fecha, pedidoId: p.id })
     }
-    // TODO commit 2: usar umbrales.diasVencimientoPromesa
     if (p.promesaPagoFecha && p.estadoPago !== 'PAGADO' && p.estadoPago !== 'ANTICIPADO' && p.estadoPago !== 'ANULADO') {
       const promesa = new Date(p.promesaPagoFecha)
       const diffDias = Math.ceil((promesa.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
@@ -581,22 +644,41 @@ export function calcularAlertasCliente(
   }
 
   // CLIENTE_NO_VERIFICADO
-  // TODO commit 2: filtrar por creadoPorRol === 'REPARTIDOR'
-  // TODO commit 2: usar umbrales.diasNoVerificado en vez de hardcoded 30
-  if (cliente.verificado === false && cliente.createdAt) {
+  // commit 2 plan antifraude (Hallazgo 6): solo alertar si el cliente
+  // fue creado por un REPARTIDOR. Clientes creados por ADMIN/ASISTENTE
+  // son parte del flujo normal de la oficina y no son sospechosos.
+  // Patrón: "cliente fantasma" = repartidor crea cliente sin verificar
+  // (a veces con datos falsos) y le fía a ese mismo cliente.
+  // Sin este filtro, la alerta disparaba para TODOS los clientes no
+  // verificados > N días (sobre-detección: falsos positivos en
+  // clientes reales de la oficina).
+  if (
+    cliente.verificado === false &&
+    cliente.createdAt &&
+    cliente.creadoPorRol === 'REPARTIDOR'
+  ) {
     const dias = Math.floor((Date.now() - new Date(cliente.createdAt).getTime()) / (1000 * 60 * 60 * 24))
     if (dias > umbrales.diasNoVerificado) {
-      alertas.push({ tipo: 'CLIENTE_NO_VERIFICADO', severidad: 'MEDIA', detalle: `Sin verificar hace ${dias} días`, fecha: cliente.createdAt })
+      alertas.push({ tipo: 'CLIENTE_NO_VERIFICADO', severidad: 'MEDIA', detalle: `Sin verificar hace ${dias} días (creado por repartidor)`, fecha: cliente.createdAt })
     }
   }
 
-  // MONTO_ANOMALO (ultimo pedido)
-  // TODO commit 2: usar umbrales.multiplicadorMontoAnomalo
+  // MONTO_ANOMALO (ultimo pedido) — commit 2: usa mediana
   const ultimoPedido = pedidos[0]
   if (ultimoPedido) {
-    const promedio = calcularPromedioCliente(pedidos)
-    if (promedio > 0 && Number(ultimoPedido.total) > promedio * umbrales.multiplicadorMontoAnomalo) {
-      alertas.push({ tipo: 'MONTO_ANOMALO', severidad: 'ALTA', detalle: `${formatCurrency(Number(ultimoPedido.total))} (promedio: ${formatCurrency(promedio)})`, fecha: ultimoPedido.fecha, pedidoId: ultimoPedido.id })
+    // Calcular mediana de ultimos 5 (excluyendo el actual)
+    const validos = pedidos
+      .filter((p) => p.estadoEntrega !== 'ANULADO' && p.estadoEntrega !== 'CANCELADO' && p.id !== ultimoPedido.id)
+      .sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())
+      .slice(-5)
+    const totales = validos.map((p) => Number(p.total))
+    if (totales.length >= 3) {
+      let m = calcularMediana(totales)
+      const sinOutliers = totales.filter((t) => t <= m * 3)
+      if (sinOutliers.length >= 3) m = calcularMediana(sinOutliers)
+      if (Number(ultimoPedido.total) > m * umbrales.multiplicadorMontoAnomalo) {
+        alertas.push({ tipo: 'MONTO_ANOMALO', severidad: 'ALTA', detalle: `${formatCurrency(Number(ultimoPedido.total))} (mediana: ${formatCurrency(m)})`, fecha: ultimoPedido.fecha, pedidoId: ultimoPedido.id })
+      }
     }
   }
 
@@ -636,6 +718,21 @@ export function calcularPromedioCliente(pedidos: PedidoBase[]): number {
   if (validos.length === 0) return 0
   const total = validos.reduce((acc, p) => acc + Number(p.total), 0)
   return total / validos.length
+}
+
+/**
+ * commit 2 plan antifraude: helper de mediana.
+ * Para inputs vacios retorna 0. Para longitud 1 retorna el unico valor.
+ * Para longitud par toma el promedio de los 2 valores centrales.
+ */
+export function calcularMediana(valores: number[]): number {
+  if (valores.length === 0) return 0
+  const sorted = [...valores].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  if (sorted.length % 2 === 1) {
+    return sorted[mid]
+  }
+  return (sorted[mid - 1] + sorted[mid]) / 2
 }
 
 export interface CalcularAlertasRepartidorOptions {
