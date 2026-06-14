@@ -232,11 +232,16 @@ export class CerrarEmbarqueUseCase {
         gastosCreados: gastosCount,
         totalVentas,
         comision: totalVentas * 0.05,
-        caja: {
-          efectivoEsperado: 0,
-          efectivoReal: 0,
-          diferencia: 0,
-        },
+        // FIX HIGH (C-BIZ-2): Calcular caja con la función de dominio
+        // Previously: returned hardcoded { 0, 0, 0 } — discrepancia entre lo que
+        // esperaba el sistema y lo que reportó el repartidor no se computaba.
+        caja: this.calcularCajaFinal(
+          embarque.baseDinero ?? 0,
+          totalVentas,
+          this.coleccionarPagos(pedidosRaw, input.ventasLibres ?? []),
+          (input.gastos ?? []).reduce((sum, g) => sum + (g.monto || 0), 0),
+          input.dineroEntregado ?? 0,
+        ),
       }
     })
   }
@@ -325,5 +330,71 @@ export class CerrarEmbarqueUseCase {
 
   private getTx(tx: unknown): TxOrPrisma {
     return (tx as TxOrPrisma) ?? prisma
+  }
+
+  /**
+   * FIX HIGH (C-BIZ-2): Helper que colecta todos los pagos (de pedidos
+   * del embarque + ventas libres) y llama al service de dominio.
+   * @param baseDinero - efectivo que el repartidor recibió al salir
+   * @param totalVentas - suma de todos los pedidos + ventas libres
+   * @param pagos - array unificado de pagos con metodo y monto
+   * @param gastosTotal - suma de gastos del embarque
+   * @param dineroEntregado - efectivo que el repartidor retorna
+   */
+  private calcularCajaFinal(
+    baseDinero: number,
+    totalVentas: number,
+    pagos: Array<{ metodo: string; monto: number }>,
+    gastosTotal: number,
+    dineroEntregado: number,
+  ) {
+    const cajaCalc = this.cierreService.calcularCaja(
+      totalVentas,
+      pagos,
+      baseDinero,
+      gastosTotal,
+    )
+    // efectivoReal (calculado por service) refleja lo que el sistema esperaba
+    // que el repartidor retornara. La `diferencia` efectiva entre lo reportado
+    // (dineroEntregado) y lo esperado (efectivoReal) es la "sobrante/faltante".
+    return {
+      efectivoEsperado: cajaCalc.efectivoEsperado,
+      efectivoReal: cajaCalc.efectivoReal,
+      diferencia: cajaCalc.diferencia,
+      otrosPagos: cajaCalc.otrosPagos,
+      dineroEntregadoReportado: dineroEntregado,
+      sobranteFaltante: dineroEntregado - cajaCalc.efectivoReal,
+    }
+  }
+
+  /**
+   * FIX HIGH (C-BIZ-2): Helper que une pagos de pedidos del embarque
+   * con pagos de ventas libres en un solo array para calcular caja.
+   */
+  private coleccionarPagos(
+    pedidosRaw: PedidoRaw[],
+    ventasLibres: NonNullable<CerrarEmbarqueInput['ventasLibres']>,
+  ): Array<{ metodo: string; monto: number }> {
+    const out: Array<{ metodo: string; monto: number }> = []
+    for (const p of pedidosRaw) {
+      // FIX TypeScript: cast to unknown first, then to expected shape
+      const pedidoConPagos = p as unknown as {
+        pagos?: Array<{ metodo: string; monto: number | { toNumber: () => number } }>
+      }
+      if (Array.isArray(pedidoConPagos.pagos)) {
+        for (const pg of pedidoConPagos.pagos) {
+          const monto = typeof pg.monto === 'number' ? pg.monto : pg.monto.toNumber()
+          out.push({ metodo: pg.metodo, monto })
+        }
+      }
+    }
+    for (const v of ventasLibres) {
+      if (Array.isArray(v.pagos)) {
+        for (const pg of v.pagos) {
+          out.push({ metodo: pg.metodo, monto: pg.monto || 0 })
+        }
+      }
+    }
+    return out
   }
 }

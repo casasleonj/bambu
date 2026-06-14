@@ -120,6 +120,11 @@ export class Pedido {
   /**
    * Record delivery of items. Recalculates total based on delivered quantities.
    * Optionally accepts delivery metadata (photo URL, GPS, visit code).
+   *
+   * FIX MEDIUM (C-BIZ-5 + C-BIZ-6): El nuevo total se calcula con los
+   * subtotalesEntregados. Si un pago previo era > nuevoTotal (parcial
+   * después de descuentos), se clipea a nuevoTotal para no violar
+   * chk_pedido_montopagado_le_total CHECK constraint.
    */
   entregar(
     entregas: Array<{ producto: ProductCode; cantidad: number }>,
@@ -142,13 +147,26 @@ export class Pedido {
       new Money(0),
     )
 
+    // FIX C-BIZ-5: Forzar source-of-truth en totalPagado.
+    // Si por algún cálculo raro totalPagado > nuevoTotal (overpayment
+    // preexistente), clipamos a nuevoTotal. La fórmula canónica es:
+    //   total = subtotals de items entregados
+    //   totalPagado = min(pagos aplicados, total)
+    //   saldo = total - totalPagado
+    const nuevoTotalPagadoCents = Math.min(
+      this.props.totalPagado.cents,
+      nuevoTotal.cents,
+    )
+    const nuevoTotalPagado = new Money(nuevoTotalPagadoCents)
+
     this.props = {
       ...this.props,
       estadoEntrega: EstadoEntregaVO.create('ENTREGADO'),
       total: nuevoTotal,
+      totalPagado: nuevoTotalPagado,
       estadoPago: EstadoPagoVO.fromTotals(
         nuevoTotal.toDecimal(),
-        this.props.totalPagado.toDecimal(),
+        nuevoTotalPagado.toDecimal(),
       ),
       fotoEntrega: metadata?.fotoEntrega || this.props.fotoEntrega,
       gpsLat: metadata?.gpsLat ?? this.props.gpsLat,
@@ -159,6 +177,19 @@ export class Pedido {
 
   /**
    * Register a payment and recalculate payment state.
+   *
+   * FIX MEDIUM (C-BIZ-6): Rechaza overpayment. Antes, el método aceptaba
+   * pagos que hacían totalPagado > total sin validar, lo que producía
+   * saldo < 0 (violando chk_pedido_saldo_calc CHECK constraint en runtime).
+   *
+   * La política es: rechazar el pago si causaría overpayment directo.
+   * Para overpayment con saldo a favor, el cliente tiene la opción de
+   * usar `saldoFavor` en la creación del pedido (en CrearPedidoUseCase).
+   *
+   * Si el pago es parcial (nuevoTotalPagado <= total), se acepta.
+   * Si igualaría exactamente, también.
+   * Si excede, throw — el caller debe normalizar el pago o
+   * registrar el excedente como saldoFavor manualmente.
    */
   registrarPago(pago: PagoData): void {
     if (this.props.estadoEntrega.isTerminal()) {
@@ -166,9 +197,20 @@ export class Pedido {
     }
 
     const nuevosPagos = [...this.props.pagos, pago]
-    const nuevoTotalPagado = new Money(
-      this.props.totalPagado.cents + Math.round(pago.monto * 100),
-    )
+    const nuevoTotalPagadoCents = this.props.totalPagado.cents + Math.round(pago.monto * 100)
+
+    // FIX C-BIZ-6: rechazo overpayment
+    if (nuevoTotalPagadoCents > this.props.total.cents) {
+      throw new Error(
+        `Pago de ${pago.monto} excede el saldo del pedido. ` +
+        `Total: ${this.props.total.toDecimal()}, ` +
+        `Ya pagado: ${this.props.totalPagado.toDecimal()}, ` +
+        `Saldo: ${this.saldo.toDecimal()}. ` +
+        `Use saldoFavor para overpayments.`
+      )
+    }
+
+    const nuevoTotalPagado = new Money(nuevoTotalPagadoCents)
 
     this.props = {
       ...this.props,
@@ -182,14 +224,23 @@ export class Pedido {
   }
 
   /**
-   * Mark as CANCELADO. Resets totals. Returns true if there were payments (nota crédito needed).
+   * Mark as CANCELADO. Resets totals. Returns cancellation data needed to
+   * create a compensating NotaCredito (FIX CRITICAL C-BIZ-1).
+   *
+   * Previously: this method reset `total` to 0, then `CancelarPedidoUseCase`
+   * created the NotaCredito with `monto = updated.total.toDecimal() = 0`.
+   * Customers who had paid for a pedido lost their refund silently.
+   *
+   * Now: we return the original total in the result so the use case can
+   * build the NotaCredito with the correct amount.
    */
-  cancelar(): boolean {
+  cancelar(): { tuvoPagos: boolean; totalOriginal: number } {
     if (!this.puedeCancelar()) {
       throw new Error(`No se puede cancelar pedido ${this.id.get()} en estado ${this.estadoEntrega.get()}`)
     }
 
     const tuvoPagos = this.props.totalPagado.cents > 0
+    const totalOriginal = this.props.total.toDecimal()
 
     this.props = {
       ...this.props,
@@ -199,7 +250,7 @@ export class Pedido {
       total: new Money(0),
     }
 
-    return tuvoPagos
+    return { tuvoPagos, totalOriginal }
   }
 
   /**

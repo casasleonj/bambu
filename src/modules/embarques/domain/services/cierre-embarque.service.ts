@@ -24,6 +24,10 @@ export interface ProductoConciliacion {
 
 export interface DiscrepanciaResult {
   totalDiscrepancia: number
+  /** FIX C-BIZ-3: unidades que faltan (cargadas - entregadas - devueltas > 0) */
+  totalFaltantes: number
+  /** FIX C-BIZ-3: unidades que sobran (entregadas + devueltas > cargadas) */
+  totalSobrante: number
   discrepanciasPorProducto: ProductoConciliacion[]
   justificado: boolean
   justificacion?: string
@@ -82,16 +86,38 @@ export class CierreEmbarqueService {
 
   /**
    * Calcula discrepancias totales y determina si requiere descuento.
+   *
+   * FIX MEDIUM (C-BIZ-3): Ahora detecta AMBAS direcciones de discrepancia.
+   * Previously: solo sumaba `Math.max(0, p.discrepancia)`, lo que ignoraba
+   * sobre-entregas (discrepancia < 0). Un repartidor podía entregar MÁS de lo
+   * que cargó sin levantar ninguna alerta.
+   *
+   * Comportamiento:
+   * - discrepancia > 0: faltan unidades (cargadas - entregadas - devueltas - cambios - rotas > 0)
+   *   → posible robo/pérdida, suma a totalDiscrepancia como antes
+   * - discrepancia < 0: sobre-entrega (entregadas + devueltas > cargadas)
+   *   → ahora también se cuenta y requiere justificación
+   * - discrepancia == 0: balanceado, ok
+   *
+   * Para no romper la lógica existente (unidades que faltan son lo más común),
+   * `totalFaltantes` mantiene la semántica original. `totalSobrante` es nuevo.
+   * Si cualquiera de los dos > 0, se requiere justificación.
    */
   calcularDiscrepancia(
     conciliacion: ProductoConciliacion[],
     justificado: boolean = false,
     justificacion?: string,
   ): DiscrepanciaResult {
-    const totalDiscrepancia = conciliacion.reduce((sum, p) => sum + Math.max(0, p.discrepancia), 0)
+    const totalFaltantes = conciliacion.reduce((sum, p) => sum + Math.max(0, p.discrepancia), 0)
+    // FIX C-BIZ-3: detectar sobre-entregas (Math.max(0, -p.discrepancia))
+    const totalSobrante = conciliacion.reduce((sum, p) => sum + Math.max(0, -p.discrepancia), 0)
+    // Mantener compatibilidad: totalDiscrepancia = suma absoluta de ambos
+    const totalDiscrepancia = totalFaltantes + totalSobrante
 
     return {
       totalDiscrepancia,
+      totalFaltantes,
+      totalSobrante,
       discrepanciasPorProducto: conciliacion,
       justificado,
       justificacion,

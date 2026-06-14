@@ -141,9 +141,10 @@ describe('Pedido.anular', () => {
 describe('Pedido.cancelar', () => {
   it('cambia estado a CANCELADO desde PENDIENTE', () => {
     const pedido = makePedido({ estadoEntrega: 'PENDIENTE' })
-    const tuvoPagos = pedido.cancelar()
+    const result = pedido.cancelar()
     expect(pedido.estadoEntrega.get()).toBe('CANCELADO')
-    expect(typeof tuvoPagos).toBe('boolean')
+    expect(typeof result.tuvoPagos).toBe('boolean')
+    expect(typeof result.totalOriginal).toBe('number')
   })
 
   it('resetea totalPagado a 0 al cancelar', () => {
@@ -151,5 +152,14 @@ describe('Pedido.cancelar', () => {
     pedido.registrarPago({ metodo: 'EFECTIVO' as any, monto: 1000 })
     pedido.cancelar()
     expect(pedido.totalPagado.toDecimal()).toBe(0)
+  })
+
+  it('FIX C-BIZ-1: preserva totalOriginal para NotaCredito', () => {
+    const pedido = makePedido({ estadoEntrega: 'PENDIENTE', total: 5000 })
+    pedido.registrarPago({ metodo: 'EFECTIVO' as any, monto: 5000 })
+    const { totalOriginal } = pedido.cancelar()
+    // Even though pedido.total is reset to 0, the original is preserved
+    expect(totalOriginal).toBe(5000)
+    expect(pedido.total.toDecimal()).toBe(0)
   })
 })

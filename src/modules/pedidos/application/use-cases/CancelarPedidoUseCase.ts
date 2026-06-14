@@ -25,7 +25,10 @@ export class CancelarPedidoUseCase {
       const pedido = await this.pedidoRepo.findById(PedidoId.from(input.pedidoId), tx)
       if (!pedido) throw new Error('PEDIDO_NOT_FOUND')
 
-      const tuvoPagos = pedido.cancelar()
+      // FIX CRITICAL (C-BIZ-1): cancelar() now returns both tuvoPagos and totalOriginal
+      // Previously, pedido.total was reset to 0 inside cancelar(), causing the NC
+      // to be created with monto=0 (customer lost refund silently).
+      const { tuvoPagos, totalOriginal } = pedido.cancelar()
 
       const updated = await this.pedidoRepo.update(pedido, tx)
 
@@ -41,12 +44,13 @@ export class CancelarPedidoUseCase {
       await this.facturaRepo.anularByPedidoId(pedido.id.get(), tx)
 
       // Create nota crédito if there were payments
+      // FIX CRITICAL (C-BIZ-1): use totalOriginal instead of updated.total (which is now 0)
       if (tuvoPagos) {
         const nextNum = await getNextNumero(tx, { model: 'notaCredito' })
         await this.notaCreditoRepo.create({
           numero: `NC-${nextNum.toString().padStart(5, '0')}`,
           pedidoId: pedido.id.get(),
-          monto: updated.total.toDecimal(),
+          monto: totalOriginal,
           motivo: 'CANCELADO',
         }, tx)
       }
