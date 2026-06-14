@@ -350,7 +350,16 @@ export function CasoGuiaModal({ caso, contextData, usuarios, onClose, onStatusCh
 
     setActionLoading('status')
     try {
-      const res = await fetch(`/api/casos/${caso.id}`, {
+      // commit 3.2 plan antifraude: cuando se resuelve, intentar
+      // auto-aplicar la solucion (arreglar causa raiz). El server
+      // retorna 400 AUTO_RESOLVER_NO_APLICA si el tipo no es
+      // auto-resoluble; en ese caso, fallback al PATCH normal.
+      const isResolver = newStatus === 'RESUELTO'
+      const endpoint = isResolver
+        ? `/api/casos/${caso.id}?aplicarSolucion=true`
+        : `/api/casos/${caso.id}`
+
+      let res = await fetch(endpoint, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -358,7 +367,25 @@ export function CasoGuiaModal({ caso, contextData, usuarios, onClose, onStatusCh
           notasResolucion: notas || null,
         }),
       })
-      const data = await res.json()
+      let data = await res.json()
+
+      // Fallback: si auto-resolver fallo porque el tipo no es
+      // auto-resoluble, intentar sin ?aplicarSolucion (solo cambiar
+      // status). El admin debera actuar manualmente sobre la causa
+      // raiz (ver UI: el caso vuelve a aparecer si la alerta persiste).
+      if (!data.success && data.error?.code === 'AUTO_RESOLVER_NO_APLICA' && isResolver) {
+        showToast('info', 'Tipo de alerta no auto-resoluble. Marcando como resuelto sin arreglar causa raiz.')
+        res = await fetch(`/api/casos/${caso.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            status: newStatus,
+            notasResolucion: notas ? `${notas} [Auto-resolver no aplicable]` : '[Auto-resolver no aplicable]',
+          }),
+        })
+        data = await res.json()
+      }
+
       if (data.success) {
         setStatus(newStatus)
         onStatusChange?.(caso.id, newStatus)

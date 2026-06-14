@@ -78,3 +78,60 @@ describe('F-N19: el GET sigue intacto (no se refactorizó)', () => {
     expect(getSource).toMatch(/prisma\.caso\.findUnique/)
   })
 })
+
+// @tests casos auto-resolver — commit 3.2 plan antifraude
+// Hallazgo 3: "Resolver caso" debe arreglar la causa raiz. Sin esto,
+// el admin marca el caso como RESUELTO sin tocar el problema
+// subyacente y la alerta vuelve a aparecer al dia siguiente.
+
+describe('commit 3.2: auto-resolver con ?aplicarSolucion=true', () => {
+  it('FIX: el PATCH lee aplicarSolucion del query string', () => {
+    expect(source).toMatch(/aplicarSolucion\s*=\s*request\.nextUrl\.searchParams\.get\(['"]aplicarSolucion['"]\)\s*===\s*['"]true['"]/)
+  })
+
+  it('FIX: cuando aplicarSolucion=true, requireRole([ADMIN, ASISTENTE])', () => {
+    // El role check debe estar dentro del if de aplicarSolucion
+    const aplicarMatch = source.match(/if\s*\(aplicarSolucion\)\s*\{([\s\S]*?)\}/)
+    expect(aplicarMatch).not.toBeNull()
+    expect(aplicarMatch![1]).toMatch(/requireRole\(\[ROLES\.ADMIN,\s*ROLES\.ASISTENTE\]/)
+  })
+
+  it('FIX: hay una funcion aplicarAccionCorrectiva con switch sobre alertaTipo', () => {
+    expect(source).toMatch(/async\s+function\s+aplicarAccionCorrectiva/)
+    expect(source).toMatch(/switch\s*\(alertaTipo\)/)
+  })
+
+  it('FIX: CLIENTE_NO_VERIFICADO → cliente.verificado = true', () => {
+    expect(source).toMatch(/case\s+['"]CLIENTE_NO_VERIFICADO['"][\s\S]*?verificado:\s*true/)
+  })
+
+  it('FIX: DISPUTA_ABIERTA → pedido.disputaAbierta = false', () => {
+    expect(source).toMatch(/case\s+['"]DISPUTA_ABIERTA['"][\s\S]*?disputaAbierta:\s*false/)
+  })
+
+  it('FIX: CLIENTE_BLOQUEADO requiere Pago antes de PAGADO (PAGO_REQUERIDO)', () => {
+    expect(source).toMatch(/case\s+['"]CLIENTE_BLOQUEADO['"][\s\S]*?PAGO_REQUERIDO/)
+  })
+
+  it('FIX: PROMESA_PROXIMA_VENCER requiere Pago antes de PAGADO', () => {
+    expect(source).toMatch(/case\s+['"]PROMESA_PROXIMA_VENCER['"][\s\S]*?PAGO_REQUERIDO/)
+  })
+
+  it('FIX: FIADO_REcurrente → cliente.bloqueado = true', () => {
+    expect(source).toMatch(/case\s+['"]FIADO_REcurrente['"][\s\S]*?bloqueado:\s*true/)
+  })
+
+  it('FIX: tipos NO auto-resolubles retornan AUTO_RESOLVER_NO_APLICA', () => {
+    expect(source).toMatch(/AUTO_RESOLVER_NO_APLICA/)
+  })
+
+  it('FIX: la accion correctiva se ejecuta ANTES de la tx principal (pre-check)', () => {
+    // El PATCH debe llamar aplicarAccionCorrectiva antes de la tx
+    // para que validaciones de Pago fallen rapido sin lockear.
+    const patchFn = source.substring(source.indexOf('export async function PATCH'))
+    const aplicMatch = patchFn.indexOf('aplicarAccionCorrectiva')
+    const txMatch = patchFn.indexOf('prisma.$transaction')
+    expect(aplicMatch).toBeGreaterThan(-1)
+    expect(aplicMatch).toBeLessThan(txMatch)
+  })
+})
