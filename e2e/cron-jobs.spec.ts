@@ -7,10 +7,6 @@ async function apiPost(page: Page, path: string, headers?: Record<string, string
   return page.request.post(`${BASE}${path}`, { headers })
 }
 
-async function apiGet(page: Page, path: string, headers?: Record<string, string>) {
-  return page.request.get(`${BASE}${path}`, { headers })
-}
-
 test.describe('Cron Jobs', () => {
   test('alerta-no-verificados rejects without CRON_SECRET', async ({ page }) => {
     const res = await apiPost(page, '/api/cron/alerta-no-verificados')
@@ -26,19 +22,22 @@ test.describe('Cron Jobs', () => {
     expect(body.error).toBeDefined()
   })
 
-  test('generar-recurrentes rejects without Bearer token', async ({ page }) => {
-    const res = await apiGet(page, '/api/cron/generar-recurrentes')
+  test('generar-recurrentes rejects without CRON_SECRET', async ({ page }) => {
+    // POST-only endpoint (cambiado en P0 security fix 2bbcb01).
+    // Test actualizado para usar POST + x-cron-secret header.
+    // Antes usaba GET + Authorization: Bearer, lo cual devolvia 405.
+    const res = await apiPost(page, '/api/cron/generar-recurrentes')
     expect(res.status()).toBe(401)
     const body = await res.json()
     expect(body.error).toBeDefined()
   })
 
-  test('generar-recurrentes accepts valid Bearer token', async ({ page }) => {
+  test('generar-recurrentes accepts valid x-cron-secret header', async ({ page }) => {
     const cronSecret = process.env.CRON_SECRET || 'test-cron-secret'
-    const res = await apiGet(page, '/api/cron/generar-recurrentes', {
-      authorization: `Bearer ${cronSecret}`,
+    const res = await apiPost(page, '/api/cron/generar-recurrentes', {
+      'x-cron-secret': cronSecret,
     })
-    // 200 or 401 depending on env CRON_SECRET
+    // 200 (job ejecutado) o 401 (si CRON_SECRET no coincide)
     expect([200, 401]).toContain(res.status())
   })
 })
