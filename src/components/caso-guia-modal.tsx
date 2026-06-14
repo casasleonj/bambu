@@ -145,14 +145,17 @@ export function CasoGuiaModal({ caso, contextData, usuarios, onClose, onStatusCh
     if (accionId === 'resolver_disputa' && caso.pedidoId) {
       setActionLoading(accionId)
       try {
-        const res = await fetch(`/api/pedidos/${caso.pedidoId}`, {
-          method: 'PATCH',
+        // commit 3.1 plan antifraude: usar endpoint dedicado con
+        // requireRole([ADMIN, ASISTENTE]). El PATCH generico permitia
+        // al REPARTIDOR cerrar su propia disputa (vector de fraude).
+        const res = await fetch(`/api/pedidos/${caso.pedidoId}/resolver-disputa`, {
+          method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ disputaAbierta: false }),
+          body: JSON.stringify({ casoId: caso.id }),
         })
         const data = await res.json()
         if (data.success) {
-          showToast('success', 'Disputa cerrada')
+          showToast('success', data.yaCerrada ? 'Disputa ya estaba cerrada' : 'Disputa cerrada')
           const idx = soluciones.findIndex(s => s.toLowerCase().includes('cerr') || s.toLowerCase().includes('disputa'))
           if (idx >= 0) toggleStep(idx)
         } else {
