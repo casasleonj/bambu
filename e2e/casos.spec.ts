@@ -267,10 +267,11 @@ test.describe('Casos', () => {
     expect(res.status()).toBe(400)
     const data = await res.json()
     expect(data.success).toBe(false)
-    // Zod 4.3.6 + formatZodError (commit 36ee74d): flatten() en
-    // Zod 4 ignora los custom messages del schema y devuelve
-    // "Invalid input: expected <type>, received <type>".
-    expect(data.error?.message).toMatch(/Invalid input|alertaTipo/)
+    // formatZodError (Zod 4) ahora preserva los custom messages
+    // del schema. CasoCreateSchema tiene 'alertaTipo requerido'.
+    // Formato: "alertaTipo: alertaTipo requerido"
+    expect(data.error?.message).toContain('alertaTipo')
+    expect(data.error?.message).toContain('requerido')
   })
 
   test('POST solo con alertaTipo retorna 400', async ({ page }) => {
@@ -283,9 +284,11 @@ test.describe('Casos', () => {
     expect(res.status()).toBe(400)
     const data = await res.json()
     expect(data.success).toBe(false)
-    // Faltan: severidad, titulo. Zod 4 flatten() devuelve
-    // "Invalid input: expected..." para cada uno, joined con ', '.
-    expect(data.error?.message).toMatch(/Invalid input/)
+    // Faltan: severidad, titulo. formatZodError (Zod 4) devuelve
+    // "severidad: severidad debe ser ALTA, MEDIA o BAJA" y
+    // "titulo: titulo requerido", joined con ', '.
+    expect(data.error?.message).toContain('severidad')
+    expect(data.error?.message).toContain('titulo')
   })
 
   test('PATCH a caso inexistente retorna 404', async ({ page }) => {
@@ -326,9 +329,10 @@ test.describe('Casos', () => {
     expect(res.status()).toBe(400)
     const data = await res.json()
     expect(data.success).toBe(false)
-    // Zod 4.3.6 + formatZodError: "Invalid input: expected string..."
-    // para el campo `accion` faltante.
-    expect(data.error?.message).toMatch(/Invalid input|accion/)
+    // formatZodError (Zod 4) preserva el custom message de
+    // CasoEventoCreateSchema: 'accion: accion requerido' (min(1)).
+    expect(data.error?.message).toContain('accion')
+    expect(data.error?.message).toContain('requerido')
   })
 
   test('PATCH sin cambios retorna 400', async ({ page }) => {

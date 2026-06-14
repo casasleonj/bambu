@@ -25,8 +25,26 @@ export function formatLocalDate(dateStr: string): string {
 }
 
 export function formatZodError(error: ZodError): string {
-  const flat = error.flatten()
-  const fieldErrors = Object.values(flat.fieldErrors).flat().filter(Boolean)
-  const formErrors = flat.formErrors.filter(Boolean)
-  return [...formErrors, ...fieldErrors].join(', ') || 'Error de validación'
+  // Zod 4 cambio: error.flatten() IGNORA los custom messages del
+  // schema y devuelve "Invalid input: expected X, received Y" generico.
+  // Hay que iterar error.issues y extraer path + message para
+  // preservar los custom messages (ej. "alertaTipo requerido").
+  //
+  // Tambien deduplica: si un solo campo tiene multiples issues
+  // (ej. min + max violation), reportamos solo el primero.
+  // Filtramos issues con mensaje vacio (caso edge: refine con
+  // message: '' devuelve error con mensaje vacio).
+  const seen = new Set<string>()
+  const messages: string[] = []
+  for (const issue of error.issues) {
+    if (!issue.message) continue
+    const path = issue.path.length > 0 ? issue.path.join('.') : 'body'
+    const key = `${path}:${issue.message}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    // Formato: "<path>: <message>" para que el admin sepa que campo
+    // fallo. Si no hay path (error de root), usamos "body".
+    messages.push(`${path}: ${issue.message}`)
+  }
+  return messages.length > 0 ? messages.join(', ') : 'Error de validación'
 }

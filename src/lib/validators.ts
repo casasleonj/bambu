@@ -120,6 +120,23 @@ export const VentaLibreSchema = z.object({
   gpsLat: z.number(),
   gpsLng: z.number(),
   offlineId: z.string(),
+  // FIX CRITICAL (C-INT-1): Accept additional fields that VentaRapidaForm
+  // sends. The form is currently an orphan (no page in production uses it),
+  // but extending the schema ensures the form is "API-compatible" if
+  // wired in the future. The server uses the values from the original
+  // `items`/`pagos` fields; `canal`/`tipo`/`ventaRapida` are stored
+  // in the obs if needed but otherwise ignored server-side.
+  canal: z.enum(['PUNTO', 'DOMICILIO']).optional(),
+  tipo: z.enum(['ENVIO', 'PUNTO']).optional(),
+  ventaRapida: z.boolean().optional(),
+  preciosManuales: z.record(z.string(), z.number()).optional(),
+  total: z.number().optional(),
+  clienteNuevo: z.object({
+    nombre: z.string().min(1).max(100).optional(),
+    telefono: z.string().min(1).max(20).optional(),
+    direccion: z.string().max(200).optional(),
+    barrio: z.string().max(100).optional(),
+  }).optional(),
 })
 
 // ====================
@@ -639,4 +656,37 @@ export const DeudaUpdateSchema = z.object({
 export const AbonoDeudaSchema = z.object({
   monto: z.coerce.number().positive('El monto debe ser mayor a 0'),
   nota: z.string().max(500).optional(),
+})
+
+// ====================
+// CASOS (Alert Resolution Workflow)
+// FIX CRITICAL (C-VAL-1): Added Zod schema — previously no validation
+// ====================
+
+// Allowed values for alertaTipo and severidad come from alertas-config.ts in client code.
+// We use a permissive z.string() here but cap length and reject control chars.
+// Zod 4: z.string({ message: 'X' }) usa 'X' cuando el campo es undefined.
+// .min(1, 'Y') solo se usa para too_small (string vacio), no para invalid_type.
+export const CasoCreateSchema = z.object({
+  alertaTipo: z.string({ message: 'alertaTipo requerido' }).min(1, 'alertaTipo requerido').max(50),
+  severidad: z.enum(['ALTA', 'MEDIA', 'BAJA'], { message: 'severidad debe ser ALTA, MEDIA o BAJA' }),
+  titulo: z.string({ message: 'titulo requerido' }).min(1, 'titulo requerido').max(200, 'titulo máximo 200 caracteres'),
+  descripcion: z.string().max(2000, 'descripcion máximo 2000 caracteres').optional().nullable(),
+  clienteId: z.string().min(1).optional().nullable(),
+  pedidoId: z.string().min(1).optional().nullable(),
+})
+
+export const CasoUpdateSchema = z.object({
+  status: z.enum(['ABIERTO', 'EN_PROCESO', 'RESUELTO', 'CERRADO']).optional(),
+  asignadoAId: z.string().min(1).nullable().optional(),
+  notasResolucion: z.string().max(2000).optional(),
+  titulo: z.string().min(1).max(200).optional(),
+  descripcion: z.string().max(2000).optional().nullable(),
+})
+
+export const CasoEventoCreateSchema = z.object({
+  accion: z.string({ message: 'accion requerido' }).min(1, 'accion requerido').max(50),
+  valorPre: z.string().max(200).optional().nullable(),
+  valorPost: z.string().max(200).optional().nullable(),
+  comentario: z.string().max(2000).optional().nullable(),
 })
