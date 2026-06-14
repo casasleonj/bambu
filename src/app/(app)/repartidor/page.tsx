@@ -38,7 +38,20 @@ export default async function RepartidorPage() {
     include: {
       ruta: { select: { nombre: true } },
       pedidos: {
-        include: { cliente: { select: { id: true, nombre: true, telefono: true, direccion: true } }, items: true },
+        include: {
+          cliente: {
+            select: {
+              id: true,
+              nombre: true,
+              telefono: true,
+              direccion: true,
+              lat: true,    // Bloque 2: para "Abrir en Maps" desde cada pedido
+              lng: true,
+              linkUbicacion: true,
+            },
+          },
+          items: true,
+        },
         orderBy: { numero: 'asc' },
       },
     },
@@ -57,6 +70,9 @@ export default async function RepartidorPage() {
         horaLlegada: embarque.horaLlegada?.toISOString() || null,
         createdAt: embarque.createdAt.toISOString(),
         updatedAt: embarque.updatedAt.toISOString(),
+        // Bloque 2: pasar ordenVisita al cliente
+        ordenVisita: embarque.ordenVisita,
+        optimizadoEn: embarque.optimizadoEn?.toISOString() || null,
         pedidos: embarque.pedidos.map(p => ({
           ...p,
           fecha: p.fecha.toISOString(),
@@ -72,6 +88,11 @@ export default async function RepartidorPage() {
           precioBolsaHielo: maskPrices ? 0 : Number(p.precioBolsaHielo),
           gpsLat: p.gpsLat ? Number(p.gpsLat) : null,
           gpsLng: p.gpsLng ? Number(p.gpsLng) : null,
+          cliente: {
+            ...p.cliente,
+            lat: p.cliente.lat != null ? Number(p.cliente.lat) : null,
+            lng: p.cliente.lng != null ? Number(p.cliente.lng) : null,
+          },
           items: p.items.map(i => ({
             ...i,
             precio: maskPrices ? 0 : Number(i.precio),

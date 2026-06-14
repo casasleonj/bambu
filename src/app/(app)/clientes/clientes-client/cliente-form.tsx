@@ -11,6 +11,7 @@ import { FeedbackField } from '@/components/feedback-field'
 import { InfoBanner } from '@/components/tooltip'
 
 import { TipoNegocioSelect } from '@/components/tipo-negocio-select'
+import { CoordsPreview } from '@/components/coords-preview'
 
 const FUENTES: string[] = [
   'Página web', 'Instagram', 'Facebook', 'Referido', 'WhatsApp',
@@ -266,6 +267,8 @@ export function ClienteForm({
                 placeholder="https://maps.google.com/?q=..."
               />
               <p className="text-xs text-gray-400 mt-1">Opcional. Pega el enlace de Google Maps de la ubicación del cliente.</p>
+              {/* Bloque 1: feedback client-side de si el link es parseable. */}
+              <CoordsPreview url={formData.linkUbicacion} />
             </div>
           </div>
         )}

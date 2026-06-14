@@ -1206,7 +1206,55 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                               </svg>
                             </button>
+                            {/* Bloque 1: botón "Actualizar coordenadas" — recalcula
+                                lat/lng desde linkUbicacion → GPS historial → Negocio. */}
+                            <button
+                              onClick={async () => {
+                                if (!selectedCliente) return
+                                const btn = document.getElementById('btn-geocode') as HTMLButtonElement | null
+                                btn?.setAttribute('disabled', 'true')
+                                try {
+                                  const r = await fetch(`/api/clientes/${selectedCliente.id}/geocode`, { method: 'POST' })
+                                  const data = await r.json()
+                                  if (data.success) {
+                                    if (data.coords) {
+                                      toast.success(`Coordenadas actualizadas (${data.coords.origen})`)
+                                      await fetchClientes()
+                                    } else {
+                                      toast.warning('No se pudieron obtener coords automáticamente')
+                                    }
+                                  } else {
+                                    toast.error(data.error?.message || 'Error al geocodificar')
+                                  }
+                                } catch {
+                                  toast.error('Error de red')
+                                } finally {
+                                  btn?.removeAttribute('disabled')
+                                }
+                              }}
+                              id="btn-geocode"
+                              className="p-1.5 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded transition"
+                              aria-label="Actualizar coordenadas desde link/GPS/negocio"
+                              title="Recalcular lat/lng desde link / historial GPS / negocio"
+                              data-testid="btn-geocode"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                              </svg>
+                            </button>
                           </div>
+                        </div>
+                      )}
+                      {/* Bloque 1: mostrar coords si ya están calculadas */}
+                      {(selectedCliente as any).lat != null && (selectedCliente as any).lng != null && (
+                        <div className="flex items-center justify-between text-xs text-gray-500 bg-gray-50 -mx-2 px-2 py-1 rounded" data-testid="coords-internas">
+                          <span>Coords internas</span>
+                          <span className="font-mono">
+                            {(selectedCliente as any).lat}, {(selectedCliente as any).lng}
+                            <span className="ml-1.5 px-1.5 py-0.5 bg-white border border-gray-200 rounded text-[10px] uppercase tracking-wide">
+                              {(selectedCliente as any).geocodeOrigen || 'MANUAL'}
+                            </span>
+                          </span>
                         </div>
                       )}
                       {selectedCliente.direccion && (

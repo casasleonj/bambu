@@ -77,6 +77,12 @@ export interface Pedido {
   estadoEntrega: string
   estadoPago: string
   fecha: string
+  // commit alertas: campos requeridos por PedidoBase (alertas-detector.ts).
+  // clienteId es obligatorio; nombreCli/telefonoCli son opcionales en PedidoBase
+  // pero la UI los muestra siempre (ver alertas-table.tsx L52, L280).
+  clienteId: string
+  nombreCli?: string
+  telefonoCli?: string
   disputaAbierta?: boolean
   promesaPagoFecha?: string
   items?: PedidoItem[]

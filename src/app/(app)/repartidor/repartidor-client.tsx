@@ -22,10 +22,27 @@ interface RepartidorClientProps {
     pacasAgua: number
     pacasHielo: number
     codigoVisita?: string | null
+    // Bloque 2: orden optimizado por TSP.
+    ordenVisita?: {
+      pedidoIds: string[]
+      distanciaKm: number
+      iteraciones: number
+      sinCoords: string[]
+      generadoEn: string
+    } | null
+    optimizadoEn?: string | null
     pedidos: Array<{
       id: string
       numero: number
-      cliente: { id: string; nombre: string; telefono: string; direccion?: string | null }
+      cliente: {
+        id: string
+        nombre: string
+        telefono: string
+        direccion?: string | null
+        lat?: number | null
+        lng?: number | null
+        linkUbicacion?: string | null
+      }
       estado: string
       estadoEntrega: string
       estadoPago: string
@@ -53,6 +70,8 @@ export function RepartidorClient({ trabajador, embarque, userRole }: RepartidorC
   const [pendingCount, setPendingCount] = useState(0)
   const [online, setOnline] = useState(isOnline())
   const [gpsPos, setGpsPos] = useState<{ lat: number; lng: number } | null>(null)
+  // Bloque 2: optimizando ruta
+  const [optimizando, setOptimizando] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Venta libre form state
@@ -277,6 +296,77 @@ export function RepartidorClient({ trabajador, embarque, userRole }: RepartidorC
     return legacy
   }
 
+  // Bloque 2: optimiza el orden de visita del embarque via TSP heurístico.
+  // Recarga la página al terminar (Next router.refresh) para que el server
+  // component re-fetchee con el nuevo ordenVisita.
+  const optimizarOrdenEmbarque = async () => {
+    if (!embarque) return
+    setOptimizando(true)
+    try {
+      const r = await fetch(`/api/embarques/${embarque.id}/optimizar-orden`, { method: 'POST' })
+      const data = await r.json()
+      if (data.success) {
+        toast.success(data.mensaje || 'Ruta optimizada')
+        // Re-fetch del server component
+        window.location.reload()
+      } else {
+        toast.error(data.error?.message || 'No se pudo optimizar')
+      }
+    } catch {
+      toast.error('Error de red')
+    } finally {
+      setOptimizando(false)
+    }
+  }
+
+  // Bloque 2: genera la Universal URL de Google Maps Directions con todos
+  // los pedidos del embarque en el orden optimizado. Gratis, sin API key.
+  // Docs: https://developers.google.com/maps/documentation/urls/get-started
+  const openRutaEnGoogleMaps = () => {
+    if (!embarque) return
+    const pedidoIds = embarque.ordenVisita?.pedidoIds
+    const pedidos = pedidoIds
+      ? pedidoIds
+          .map(id => embarque.pedidos.find(p => p.id === id))
+          .filter((p): p is NonNullable<typeof p> => p != null)
+      : embarque.pedidos
+    const waypoints = pedidos
+      .map(p => {
+        const lat = p.cliente.lat
+        const lng = p.cliente.lng
+        if (lat == null || lng == null) return null
+        return `${lat.toFixed(6)},${lng.toFixed(6)}`
+      })
+      .filter((w): w is string => w != null)
+    if (waypoints.length === 0) {
+      toast.warning('Ningún pedido tiene coordenadas')
+      return
+    }
+    // Universal URL. Android/iOS abre la app de Maps, desktop abre web.
+    const url = `https://www.google.com/maps/dir/?api=1&travelmode=driving&waypoints=${waypoints.map(encodeURIComponent).join('%7C')}`
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
+
+  // Bloque 2: si hay orden optimizado, reordenar la lista de pedidos
+  // para iterar en el orden TSP. Los pedidos sin coords (no incluidos
+  // en el orden) van al final.
+  const pedidosOrdenados = (() => {
+    if (!embarque) return []
+    const ordenIds = embarque.ordenVisita?.pedidoIds
+    if (!ordenIds || ordenIds.length === 0) return embarque.pedidos
+    const byId = new Map(embarque.pedidos.map(p => [p.id, p]))
+    const ordenados: typeof embarque.pedidos = []
+    for (const id of ordenIds) {
+      const p = byId.get(id)
+      if (p) ordenados.push(p)
+    }
+    // Los que no están en el orden (ej. sin coords) al final
+    for (const p of embarque.pedidos) {
+      if (!ordenIds.includes(p.id)) ordenados.push(p)
+    }
+    return ordenados
+  })()
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -328,6 +418,38 @@ export function RepartidorClient({ trabajador, embarque, userRole }: RepartidorC
               <div className="text-xl font-bold text-yellow-800 tracking-widest">{embarque.codigoVisita}</div>
             </div>
           )}
+          {/* Bloque 2: estado de optimización + botones */}
+          <div className="mt-3 pt-3 border-t border-gray-100 flex flex-col gap-2">
+            {embarque.ordenVisita ? (
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-emerald-700 font-medium flex items-center gap-1.5">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                  </svg>
+                  Ruta optimizada · {embarque.ordenVisita.distanciaKm.toFixed(1)} km
+                </span>
+                <button
+                  onClick={openRutaEnGoogleMaps}
+                  className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-50 text-emerald-700 rounded text-xs font-medium hover:bg-emerald-100 transition"
+                  data-testid="btn-abrir-ruta-maps"
+                >
+                  🗺️ Abrir ruta en Maps
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={optimizarOrdenEmbarque}
+                disabled={optimizando || embarque.pedidos.length < 2}
+                className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-sm font-medium hover:bg-indigo-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                data-testid="btn-optimizar-orden"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                </svg>
+                {optimizando ? 'Optimizando…' : 'Optimizar orden de visita'}
+              </button>
+            )}
+          </div>
         </div>
       ) : (
         <div className="bg-white rounded-xl shadow p-6 text-center">
@@ -366,14 +488,20 @@ export function RepartidorClient({ trabajador, embarque, userRole }: RepartidorC
             <h2 className="font-semibold text-gray-800">Pedidos asignados</h2>
           </div>
           <div className="space-y-3">
-            {embarque!.pedidos.map((pedido) => {
+            {pedidosOrdenados.map((pedido, idx) => {
               const items = getItemsFromPedido(pedido)
               const saldo = Number(pedido.saldo)
               return (
                 <div key={pedido.id} className="p-4 bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition">
                   <div className="flex justify-between items-start mb-1">
                     <div>
-                      <span className="text-xs text-gray-400 font-medium">#{pedido.numero}</span>
+                      {/* Bloque 2: badge de orden de visita si está optimizado */}
+                      {embarque.ordenVisita && idx < embarque.ordenVisita.pedidoIds.length && (
+                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold mb-1" data-testid={`orden-${idx + 1}`}>
+                          {idx + 1}
+                        </span>
+                      )}
+                      <span className="text-xs text-gray-400 font-medium ml-2">#{pedido.numero}</span>
                       <h3 className="font-medium text-gray-800 text-sm">{pedido.cliente.nombre}</h3>
                       <p className="text-xs text-gray-400">{pedido.cliente.telefono}</p>
                     </div>
