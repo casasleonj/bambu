@@ -1,14 +1,7 @@
 'use client'
 
-import React, { useState, useMemo, useEffect } from 'react'
-import {
-  calcularAlertas,
-  calcularAlertasRepartidor,
-  REGLAS_ALERTAS,
-  type PrecioMinimoRow,
-  type EmbarqueBase,
-  type AlertaRepartidorRow,
-} from './alertas-utils'
+import { useState, useMemo, useEffect } from 'react'
+import { calcularAlertas, REGLAS_ALERTAS } from './alertas-utils'
 import { GuiaAlertaModal } from '@/components/guia-alerta-modal'
 import { CasoGuiaModal } from '@/components/caso-guia-modal'
 import type { AlertaTipo, AlertaItem } from '@/lib/alertas-config'
@@ -32,12 +25,6 @@ export function AlertasTable({ pedidos }: AlertasTableProps) {
   const [casoCreado, setCasoCreado] = useState<any>(null)
   const [usuarios, setUsuarios] = useState<Array<{ id: string; username: string; rol: string }>>([])
 
-  // commit 1.1: precioMinimos para detectar PRECIO_POR_DEBAJO_TABLA
-  const [precioMinimos, setPrecioMinimos] = useState<PrecioMinimoRow[]>([])
-
-  // commit 1.3: notasCreditoCount (clienteId → count de NCs en 30d)
-  const [notasCreditoCount, setNotasCreditoCount] = useState<Map<string, number>>(new Map())
-
   useEffect(() => {
     fetch('/api/clientes?pageSize=1')
       .then(r => r.json())
@@ -55,146 +42,15 @@ export function AlertasTable({ pedidos }: AlertasTableProps) {
             })
         }
       })
-    // commit 1.1: fetch precioMinimos en paralelo
-    fetch('/api/alertas/precio-minimos')
-      .then(r => r.json())
-      .then(data => {
-        if (data.success) setPrecioMinimos(data.rows)
-      })
-      .catch(() => {
-        // silencioso: si falla, el detector funciona sin precioMinimos
-      })
-    // commit 1.3: fetch notasCreditoCount (NCs por cliente, ultimos 30d)
-    fetch('/api/alertas/notas-credito-count?dias=30')
-      .then(r => r.json())
-      .then(data => {
-        if (data.success && data.counts) {
-          setNotasCreditoCount(new Map(Object.entries(data.counts)))
-        }
-      })
-      .catch(() => {
-        // silencioso: si falla, el detector funciona sin este dato
-      })
-    // commit 1.4: fetch descuentos sin justificar
-    fetch('/api/alertas/descuentos-sin-justificar')
-      .then(r => r.json())
-      .then(data => {
-        if (data.success && Array.isArray(data.descuentos)) {
-          setDescuentosSinJustificar(data.descuentos)
-        }
-      })
-      .catch(() => {
-        // silencioso: si falla, el detector funciona sin descuentos
-      })
-    // commit 1.5: fetch deudas acumuladas por repartidor
-    fetch('/api/alertas/repartidor-deudas')
-      .then(r => r.json())
-      .then(data => {
-        if (data.success && data.deudas) {
-          // El endpoint devuelve { repartidorId: { nombre, deudaAgua, deudaHielo } }
-          // El detector solo necesita deudaAgua + deudaHielo.
-          const map = new Map<string, { deudaAgua: number; deudaHielo: number }>()
-          for (const [id, d] of Object.entries(data.deudas as Record<string, { nombre: string; deudaAgua: number; deudaHielo: number }>)) {
-            map.set(id, { deudaAgua: d.deudaAgua, deudaHielo: d.deudaHielo })
-          }
-          setDeudasPorRepartidor(map)
-        }
-      })
-      .catch(() => {
-        // silencioso: sin deudas, no se genera alerta
-      })
   }, [])
 
-  const alertaRows = useMemo(
-    () => calcularAlertas(pedidos, { precioMinimos, notasCreditoCount }),
-    [pedidos, precioMinimos, notasCreditoCount],
-  )
-
-  // commit 1.2: alertas por repartidor (DEVOLUCIONES_ANORMALES +
-  // ROTURAS_ANORMALES). Necesitamos embarques para alimentar el calculo.
-  const [embarques, setEmbarques] = useState<EmbarqueBase[]>([])
-  const [nombresRepartidor, setNombresRepartidor] = useState<Map<string, string>>(new Map())
-
-  // commit 1.4: descuentos sin justificar
-  const [descuentosSinJustificar, setDescuentosSinJustificar] = useState<
-    Array<{ id: string; repartidorId: string; fecha: string; monto: number; motivo: string }>
-  >([])
-
-  // commit 1.5: deudas acumuladas por repartidor
-  const [deudasPorRepartidor, setDeudasPorRepartidor] = useState<
-    Map<string, { deudaAgua: number; deudaHielo: number }>
-  >(new Map())
-
-  useEffect(() => {
-    // Traemos embarques del ultimo mes (suficiente para minEmbarquesMuestral=5
-    // y un historial razonable). El endpoint permite pasar rango de fechas.
-    const hace30Dias = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-    const hoy = new Date().toISOString().slice(0, 10)
-    fetch(`/api/embarques?desde=${hace30Dias}&hasta=${hoy}&all=true`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (data?.success && Array.isArray(data.embarques)) {
-          // Normalizar: el endpoint devuelve devueltasAgua/Hielo y rotasAgua/Hielo
-          // ya como columnas (legacy). Para commit 1.2 usamos esas directo.
-          const norm: EmbarqueBase[] = data.embarques.map((e: {
-            id: string
-            fecha: string
-            trabajadorId: string
-            devueltasAgua: number
-            devueltasHielo: number
-            rotasAgua: number
-            rotasHielo: number
-            trabajador?: { nombre?: string }
-          }) => ({
-            id: e.id,
-            fecha: e.fecha,
-            trabajadorId: e.trabajadorId,
-            devueltasAgua: e.devueltasAgua ?? 0,
-            devueltasHielo: e.devueltasHielo ?? 0,
-            rotasAgua: e.rotasAgua ?? 0,
-            rotasHielo: e.rotasHielo ?? 0,
-          }))
-          setEmbarques(norm)
-          // Construir mapa de nombres
-          const map = new Map<string, string>()
-          for (const e of data.embarques) {
-            if (e.trabajadorId && e.trabajador?.nombre) {
-              map.set(e.trabajadorId, e.trabajador.nombre)
-            }
-          }
-          setNombresRepartidor(map)
-        }
-      })
-      .catch(() => {
-        // silencioso: sin embarques, no hay alertas por repartidor
-      })
-  }, [])
-
-  const alertaRepartidorRows = useMemo(
-    () =>
-      calcularAlertasRepartidor(embarques, {
-        nombres: nombresRepartidor,
-        descuentosSinJustificar,
-        deudasPorRepartidor,
-      }),
-    [embarques, nombresRepartidor, descuentosSinJustificar, deudasPorRepartidor],
-  )
+  const alertaRows = useMemo(() => calcularAlertas(pedidos), [pedidos])
 
   const filtrados = alertaRows
     .filter((row) => {
       const matchSearch = !searchTerm ||
         row.nombreCli.toLowerCase().includes(searchTerm.toLowerCase()) ||
         row.telefonoCli?.includes(searchTerm)
-      const matchSeveridad = filtroSeveridad === 'TODAS' || row.severidadMasAlta === filtroSeveridad
-      return matchSearch && matchSeveridad
-    })
-    .sort((a, b) => SEVERIDAD_ORDER[b.severidadMasAlta] - SEVERIDAD_ORDER[a.severidadMasAlta])
-
-  // Filtrar alertas por repartidor (commit 1.2)
-  const filtradosRepartidor = alertaRepartidorRows
-    .filter((row) => {
-      const matchSearch = !searchTerm ||
-        row.nombreRep.toLowerCase().includes(searchTerm.toLowerCase())
       const matchSeveridad = filtroSeveridad === 'TODAS' || row.severidadMasAlta === filtroSeveridad
       return matchSearch && matchSeveridad
     })
@@ -286,21 +142,19 @@ export function AlertasTable({ pedidos }: AlertasTableProps) {
 
   return (
     <div className="space-y-4">
-      {/* Header explicativo — solo se muestra cuando hay alertas activas */}
-      {filtrados.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl">
-          <div className="flex items-start gap-3">
-            <div className="text-2xl shrink-0">🛡️</div>
-            <div>
-              <h2 className="text-lg font-bold text-amber-900">Sistema de Alertas</h2>
-              <p className="text-sm text-amber-700 mt-1">
-                Detectamos automáticamente comportamientos inusuales: pedidos múltiples, montos anómalos,
-                fiados frecuentes, pagos vencidos, disputas abiertas y más. Haz clic en ℹ️ para ver la guía de cada alerta.
-              </p>
-            </div>
+      {/* Header explicativo */}
+      <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl">
+        <div className="flex items-start gap-3">
+          <div className="text-2xl shrink-0">🛡️</div>
+          <div>
+            <h2 className="text-lg font-bold text-amber-900">Sistema de Alertas</h2>
+            <p className="text-sm text-amber-700 mt-1">
+              Detectamos automáticamente comportamientos inusuales: pedidos múltiples, montos anómalos,
+              fiados frecuentes, pagos vencidos, disputas abiertas y más. Haz clic en ℹ️ para ver la guía de cada alerta.
+            </p>
           </div>
         </div>
-      )}
+      </div>
 
       {/* Reglas activas (collapsable) */}
       <div className="bg-white rounded-xl shadow overflow-hidden">
@@ -326,7 +180,7 @@ export function AlertasTable({ pedidos }: AlertasTableProps) {
         </button>
         {reglasOpen && (
           <div className="border-t border-gray-100 p-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {REGLAS_ALERTAS.map((regla) => (
                 <button
                   key={regla.tipo}
@@ -377,55 +231,7 @@ export function AlertasTable({ pedidos }: AlertasTableProps) {
         </div>
       </div>
 
-      {/* commit 1.2: alertas por repartidor (DEVOLUCIONES + ROTURAS anormales) */}
-      {filtradosRepartidor.length > 0 && (
-        <div className="bg-white rounded-xl shadow overflow-hidden mb-4">
-          <div className="px-4 py-3 bg-amber-50 border-b border-amber-100 flex items-center justify-between">
-            <span className="text-sm font-medium text-amber-900">
-              🛵 {filtradosRepartidor.length} repartidor{filtradosRepartidor.length !== 1 ? 'es' : ''} con alertas de devoluciones/roturas
-            </span>
-            <span className="text-xs text-amber-700">Promedio de embarques vs outlier</span>
-          </div>
-          <div className="hidden md:block overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Repartidor</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">Alertas</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">Severidad</th>
-                  <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Acción</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filtradosRepartidor.map((row) => (
-                  <tr key={row.repartidorId} className="hover:bg-gray-50 transition">
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-gray-800">{row.nombreRep}</div>
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <span className="inline-flex items-center justify-center min-w-[1.5rem] h-6 px-2 text-sm font-bold text-white bg-red-600 rounded-full">
-                        {row.alertas.length}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium border ${getBadgeColorLocal(row.severidadMasAlta)}`}>
-                        {row.severidadMasAlta}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <span className="text-xs text-gray-400" data-testid="repartidor-row">
-                        Ver embarques →
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {filtrados.length === 0 && filtradosRepartidor.length === 0 ? (
+      {filtrados.length === 0 ? (
         <div className="bg-white rounded-xl shadow p-8 text-center">
           <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -448,7 +254,7 @@ export function AlertasTable({ pedidos }: AlertasTableProps) {
             </ul>
           </div>
         </div>
-      ) : filtrados.length > 0 ? (
+      ) : (
         <div className="bg-white rounded-xl shadow overflow-hidden">
           <div className="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
             <span className="text-sm font-medium text-gray-600">
@@ -468,8 +274,8 @@ export function AlertasTable({ pedidos }: AlertasTableProps) {
               </thead>
               <tbody className="divide-y divide-gray-100">
               {filtrados.map((row) => (
-                <React.Fragment key={row.clienteId}>
-                  <tr className="hover:bg-gray-50 transition">
+                <>
+                  <tr key={row.clienteId} className="hover:bg-gray-50 transition">
                     <td className="px-4 py-3">
                       <div className="font-medium text-gray-800">{row.nombreCli}</div>
                       <div className="text-xs text-gray-400">{row.telefonoCli}</div>
@@ -541,16 +347,16 @@ export function AlertasTable({ pedidos }: AlertasTableProps) {
                       </td>
                     </tr>
                   )}
-                </React.Fragment>
+                </>
               ))}
             </tbody>
           </table>
         </div>
 
         {/* Mobile */}
-        <div className="md:hidden space-y-3">
+        <div className="md:hidden divide-y divide-gray-100">
           {filtrados.map((row) => (
-            <div key={row.clienteId} className="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
+            <div key={row.clienteId} className="p-4">
               <div className="flex justify-between items-start mb-2">
                 <div>
                   <h3 className="font-medium text-gray-800">{row.nombreCli}</h3>
