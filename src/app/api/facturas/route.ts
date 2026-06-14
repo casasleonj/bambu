@@ -36,7 +36,9 @@ async function getEmpresaSnapshot(): Promise<{
 }
 
 export async function GET(request: NextRequest) {
-  const authResult = await requireAuth()
+  // FIX CRITICAL (C-SEC-1): Only ADMIN/CONTADOR can read facturas
+  // Previously: requireAuth() only — any logged-in user (incl. REPARTIDOR) could read all financial data
+  const authResult = await requireRole(['ADMIN', 'CONTADOR'])
   if (authResult instanceof Response) return authResult
   const { searchParams } = new URL(request.url)
   const pendiente = searchParams.get('pendiente') === 'true'

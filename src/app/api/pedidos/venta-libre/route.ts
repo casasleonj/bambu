@@ -6,7 +6,7 @@ import { VentaLibreSchema } from '@/lib/validators'
 import { withAdvisoryLock } from '@/lib/locks'
 import { getNextNumero } from '@/lib/sequence'
 import { resolverPreciosPedido, type Canal } from '@/lib/pricing'
-import { calcularEstadoPago, puedeFiar, puedeCrearPedido } from '@/lib/pedido-utils'
+import { calcularEstadoPago, puedeFiar, puedeCrearPedido, resolverLimiteFiados } from '@/lib/pedido-utils'
 import { buildPedidoLegacyFields } from '@/lib/pedido-legacy'
 import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
@@ -129,9 +129,9 @@ export async function POST(request: NextRequest) {
         let limiteFiados = cliente.limitePedidosFiados ?? 3
         if (cliente.limitePedidosFiados == null) {
           const configLimite = await tx.config.findUnique({ where: { clave: 'LIMITE_PEDIDOS_FIADOS_DEFAULT' } })
-          if (configLimite) {
-            limiteFiados = parseInt(configLimite.valor, 10) || 3
-          }
+          // FIX MEDIUM (C-VAL-7): Usar resolverLimiteFiados para consistencia
+          // con CrearPedidoUseCase (que antes usaba solo hardcoded 3)
+          limiteFiados = resolverLimiteFiados(cliente, configLimite?.valor ?? null)
         }
 
         const errorDeuda = puedeCrearPedido(cliente, pedidosPendientes, limiteFiados)

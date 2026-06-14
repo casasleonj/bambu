@@ -246,6 +246,17 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return apiError('Debe enviar verificado o bloqueado', 400)
     }
 
+    // FIX MEDIUM (C-VAL-2): Validar que verificado/bloqueado sean booleanos reales.
+    // Previously: `if (verificado !== undefined) updateData.verificado = verificado`
+    // aceptaba strings como "false" (truthy), números como 0/1, objetos, etc.
+    // Esto permitía mass assignment parcial (cliente.verificado='false' se guardaba como true).
+    if (verificado !== undefined && typeof verificado !== 'boolean') {
+      return apiError('verificado debe ser boolean (true o false)', 400)
+    }
+    if (bloqueado !== undefined && typeof bloqueado !== 'boolean') {
+      return apiError('bloqueado debe ser boolean (true o false)', 400)
+    }
+
     const updateData: Record<string, unknown> = {}
     if (verificado !== undefined) {
       updateData.verificado = verificado

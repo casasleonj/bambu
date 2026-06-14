@@ -1,11 +1,15 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuth } from '@/lib/auth-check'
+import { requirePermission } from '@/lib/auth-check'
+import { CasoCreateSchema } from '@/lib/validators'
+import { formatZodError } from '@/lib/utils'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 
 export async function GET(request: NextRequest) {
-  const authResult = await requireAuth()
+  // FIX CRITICAL (C-SEC-7a): Only users with view:casos can read cases
+  // Previously: requireAuth() only — any user could read customer PII and descriptions
+  const authResult = await requirePermission('view:casos')
   if (authResult instanceof Response) return authResult
 
   const { searchParams } = request.nextUrl
@@ -47,7 +51,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const authResult = await requireAuth()
+  // FIX CRITICAL (C-SEC-7b): Only users with view:casos can create cases
+  // Previously: requireAuth() only — any user could create cases and assign them to anyone
+  const authResult = await requirePermission('view:casos')
   if (authResult instanceof Response) return authResult
 
   const userId = (authResult.user as { id?: string } | undefined)?.id
@@ -55,10 +61,22 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { alertaTipo, severidad, titulo, descripcion, clienteId, pedidoId } = body
+    // FIX CRITICAL (C-VAL-1): Use Zod schema instead of ad-hoc checks
+    // Previously: no length limits, no enum validation — XSS / overflow / mass assignment risk
+    const parsed = CasoCreateSchema.safeParse(body)
+    if (!parsed.success) {
+      return apiError(formatZodError(parsed.error), 400)
+    }
+    const { alertaTipo, severidad, titulo, descripcion, clienteId, pedidoId } = parsed.data
 
-    if (!alertaTipo || !severidad || !titulo) {
-      return apiError('Faltan campos requeridos: alertaTipo, severidad, titulo', 400)
+    // FIX CRITICAL (C-VAL-2): Validate clienteId and pedidoId exist before assignment
+    if (clienteId) {
+      const exists = await prisma.cliente.findUnique({ where: { id: clienteId }, select: { id: true } })
+      if (!exists) return apiError('Cliente no encontrado', 404)
+    }
+    if (pedidoId) {
+      const exists = await prisma.pedido.findUnique({ where: { id: pedidoId }, select: { id: true } })
+      if (!exists) return apiError('Pedido no encontrado', 404)
     }
 
     const caso = await prisma.caso.create({

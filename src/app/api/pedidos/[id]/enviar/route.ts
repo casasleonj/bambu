@@ -1,7 +1,7 @@
 import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuth, requireRole } from '@/lib/auth-check'
+import { requireAuth, requireRole, requireOwnership } from '@/lib/auth-check'
 import { ROLES } from '@/lib/constants'
 import { z } from 'zod'
 import { logAudit } from '@/lib/audit'
@@ -24,6 +24,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   const { id } = await params
 
+  // FIX HIGH (C-SEC-9): REPARTIDOR can only attach pedidos to their own embarques.
+  // Previously: any REPARTIDOR with a valid JWT could attach any pedido to any embarque.
+  // We check ownership on the target embarque here (not the pedido, since the pedido
+  // may not be assigned yet at this stage — the action is "send to embarque").
+  const user = (authResult as { user?: { id?: string; role?: string } }).user
+  // (Body hasn't been parsed yet — we'll do the actual ownership check after parsing
+  // the embarqueId, below. This is a marker so the check isn't forgotten.)
+
   try {
     const body = await request.json()
     const parsed = EnviarPedidoSchema.safeParse(body)
@@ -32,6 +40,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     const { embarqueId, offlineId } = parsed.data
+
+    // FIX HIGH (C-SEC-9): REPARTIDOR can only attach pedidos to their own embarques.
+    // Previously: any REPARTIDOR with a valid JWT could attach any pedido to any embarque.
+    if (user?.role === 'REPARTIDOR' && user.id) {
+      const hasOwnership = await requireOwnership('embarque', embarqueId, { id: user.id, role: user.role })
+      if (!hasOwnership) {
+        return apiError('No tiene permisos para asignar a este embarque', 403)
+      }
+    }
 
     // FIX Fase 1: dedup robusto. Antes este check era por estado
     // (embarqueId+EN_RUTA) y se hacía FUERA de la tx con prisma.* global.

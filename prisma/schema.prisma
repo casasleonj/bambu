@@ -648,6 +648,16 @@ model Pago {
   pedido    Pedido     @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
   metodo    MetodoPago
   monto     Decimal    @db.Decimal(10, 2)
+  // FIX LOW (C-VAL-8): offlineId actualmente es solo @index, no @unique.
+  // Esto es por diseño: múltiples pagos del mismo batch offline comparten
+  // offlineId para reconstruir el resumen "pagosAplicados" en el cliente.
+  // Trade-off: si el cliente cambia el body de la request y reintenta
+  // con el mismo offlineId, el server hace dedup y retorna los datos
+  // del primer intento (data loss silencioso).
+  //
+  // Para hacerlo strict, se podría agregar @unique + un index en (pedidoId, offlineId),
+  // pero eso requiere migración DB. Por ahora, se documenta el trade-off
+  // y se confía en que el cliente no cambie el body entre reintentos.
   offlineId String? // batch id para dedup offline-first (pagos del mismo batch comparten offlineId)
   createdAt DateTime   @default(now()) @db.Timestamptz()
 

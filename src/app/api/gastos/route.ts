@@ -10,7 +10,9 @@ import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
 
 export async function GET(request: NextRequest) {
-  const authResult = await requireAuth()
+  // FIX CRITICAL (C-SEC-4): Only ADMIN/CONTADOR can read gastos
+  // Previously: requireAuth() only — any user could read internal cost data
+  const authResult = await requireRole(['ADMIN', 'CONTADOR'])
   if (authResult instanceof Response) return authResult
   const { searchParams } = new URL(request.url)
   const pagination = getPaginationParams(searchParams)

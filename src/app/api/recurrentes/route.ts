@@ -25,7 +25,21 @@ const RecurrenteCreateSchema = z.object({
     bolsaHielo: z.coerce.number().int().min(0).optional(),
   }).optional(),
   notas: z.string().max(500).optional(),
-})
+}).refine(
+  // FIX MEDIUM (C-VAL-6): El cliente enforcea min 3 productos sumados,
+  // pero el server aceptaba cualquier cosa. Un atacante podía crear
+  // plantillas con 0 productos y nunca se generaban pedidos.
+  (data) => {
+    if (!data.productos) return false
+    const total = (data.productos.pacaAgua || 0)
+      + (data.productos.pacaHielo || 0)
+      + (data.productos.botellon || 0)
+      + (data.productos.bolsaAgua || 0)
+      + (data.productos.bolsaHielo || 0)
+    return total >= 3
+  },
+  { message: 'Mínimo 3 productos por entrega (suma de pacaAgua + pacaHielo + botellon + bolsaAgua + bolsaHielo)', path: ['productos'] }
+)
 
 const RecurrenteUpdateSchema = z.object({
   cadaNDias: z.coerce.number().int().min(1).optional(),

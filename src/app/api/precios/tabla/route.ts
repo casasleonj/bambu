@@ -1,11 +1,13 @@
 import { NextRequest } from 'next/server'
-import { requireAuth } from '@/lib/auth-check'
+import { requirePermission } from '@/lib/auth-check'
 import { getPriceTable } from '@/lib/pricing'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 
 export async function GET(_request: NextRequest) {
-  const authResult = await requireAuth()
+  // FIX CRITICAL (C-SEC-6b): Only users with view:productos can see price table
+  // Previously: requireAuth() only — REPARTIDOR could read all prices
+  const authResult = await requirePermission('view:productos')
   if (authResult instanceof Response) return authResult
 
   try {

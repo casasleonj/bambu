@@ -9,7 +9,9 @@ import { logger } from '@/lib/logger'
 import { executeSerializableWithRetry } from '@/lib/serializable'
 
 export async function GET(request: NextRequest) {
-  const authResult = await requireAuth()
+  // FIX CRITICAL (C-SEC-3): Only ADMIN/CONTADOR can read nominas
+  // Previously: requireAuth() only — any user could read worker salaries (HR privacy)
+  const authResult = await requireRole(['ADMIN', 'CONTADOR'])
   if (authResult instanceof Response) return authResult
   const { searchParams } = new URL(request.url)
   const pendientes = searchParams.get('pendientes') === 'true'

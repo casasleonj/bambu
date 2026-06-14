@@ -9,7 +9,9 @@ import { logger } from '@/lib/logger'
 import { apiSuccess, apiError } from '@/lib/api-response'
 
 export async function GET(request: NextRequest) {
-  const authResult = await requireAuth()
+  // FIX CRITICAL (C-SEC-5): Only ADMIN/CONTADOR can read deudas
+  // Previously: requireAuth() only — any user could read worker debt PII (HR privacy)
+  const authResult = await requireRole(['ADMIN', 'CONTADOR'])
   if (authResult instanceof Response) return authResult
 
   const { searchParams } = new URL(request.url)

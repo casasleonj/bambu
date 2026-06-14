@@ -2,7 +2,7 @@ import { generateUUID } from '@/lib/uuid'
 import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuth } from '@/lib/auth-check'
+import { requireAuth, requireOwnership } from '@/lib/auth-check'
 import { EntregaSchema } from '@/lib/validators'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
@@ -18,6 +18,16 @@ export async function POST(
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
   const { id } = await params
+
+  // FIX HIGH (C-SEC-8): REPARTIDOR can only deliver pedidos assigned to their own embarques.
+  // Previously: requireAuth() only — any REPARTIDOR could mark any pedido as delivered.
+  const user = (authResult as { user?: { id?: string; role?: string } }).user
+  if (user?.role === 'REPARTIDOR' && user.id) {
+    const hasOwnership = await requireOwnership('pedido', id, { id: user.id, role: user.role })
+    if (!hasOwnership) {
+      return apiError('No tiene permisos para entregar este pedido', 403)
+    }
+  }
 
   try {
     const body = await request.json()

@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuth } from '@/lib/auth-check'
+import { requirePermission } from '@/lib/auth-check'
+import { CasoEventoCreateSchema } from '@/lib/validators'
+import { formatZodError } from '@/lib/utils'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 
@@ -8,7 +10,8 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const authResult = await requireAuth()
+  // FIX CRITICAL (C-SEC-7e): Only users with view:casos can add eventos
+  const authResult = await requirePermission('view:casos')
   if (authResult instanceof Response) return authResult
 
   const userId = (authResult.user as { id?: string } | undefined)?.id
@@ -17,11 +20,12 @@ export async function POST(
   try {
     const { id } = await params
     const body = await request.json()
-    const { accion, comentario } = body
-
-    if (!accion) {
-      return apiError('Falta campo requerido: accion', 400)
+    // FIX CRITICAL (C-VAL-5): Use Zod schema for evento creation
+    const parsed = CasoEventoCreateSchema.safeParse(body)
+    if (!parsed.success) {
+      return apiError(formatZodError(parsed.error), 400)
     }
+    const { accion, valorPre, valorPost, comentario } = parsed.data
 
     const caso = await prisma.caso.findUnique({
       where: { id },
@@ -35,6 +39,8 @@ export async function POST(
         casoId: id,
         userId,
         accion,
+        valorPre: valorPre || null,
+        valorPost: valorPost || null,
         comentario: comentario || null,
       },
       include: {

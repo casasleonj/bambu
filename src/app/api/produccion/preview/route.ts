@@ -1,13 +1,16 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuth } from '@/lib/auth-check'
+import { requirePermission } from '@/lib/auth-check'
 import { getVentasDelDia } from '@/lib/ventas'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 import { startOfDayInBogota, endOfDayInBogota, todayInBogota } from '@/lib/date-helpers'
 
 export async function GET(request: NextRequest) {
-  const authResult = await requireAuth()
+  // FIX HIGH (C-SEC-11): Only users with view:produccion can see production preview
+  // Previously: requireAuth() only — REPARTIDOR/SELLADOR could see other repartidores' commissions
+  // and stock estimates. The permission is needed for the production workflow.
+  const authResult = await requirePermission('view:produccion')
   if (authResult instanceof Response) return authResult
   try {
     // FIX 1.6: usar TZ Bogotá explícita para que el rango del día

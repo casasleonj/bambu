@@ -140,6 +140,34 @@ export function puedeCrearPedido(
 }
 
 /**
+ * FIX MEDIUM (C-VAL-7): Resuelve el límite de fiados con fallback consistente.
+ * Antes, CrearPedidoUseCase usaba `?? 3` (hardcoded) y venta-libre route
+ * usaba config `LIMITE_PEDIDOS_FIADOS_DEFAULT` — comportamiento divergente.
+ *
+ * Orden de prioridad (de más específico a más general):
+ * 1. cliente.limitePedidosFiados (campo por cliente) — si está setado
+ * 2. config LIMITE_PEDIDOS_FIADOS_DEFAULT (config global) — si existe
+ * 3. hardcoded 3 (default histórico)
+ *
+ * @param cliente - cliente con campo limitePedidosFiados opcional
+ * @param configCliente - valor de la config (null si no existe)
+ * @returns limite final (entero >= 1)
+ */
+export function resolverLimiteFiados(
+  cliente: { limitePedidosFiados?: number | null },
+  configCliente: string | null,
+): number {
+  if (cliente.limitePedidosFiados != null && cliente.limitePedidosFiados > 0) {
+    return cliente.limitePedidosFiados
+  }
+  if (configCliente != null) {
+    const parsed = parseInt(configCliente, 10)
+    if (Number.isFinite(parsed) && parsed > 0) return parsed
+  }
+  return 3
+}
+
+/**
  * Retorna el estado de fiados de un cliente para mostrar en UI
  */
 export function getEstadoFiados(

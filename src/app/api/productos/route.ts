@@ -1,13 +1,16 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuth, requireRole } from '@/lib/auth-check'
+import { requireAuth, requireRole, requirePermission } from '@/lib/auth-check'
 import { z } from 'zod'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
 
 export async function GET(_request: NextRequest) {
-  const authResult = await requireAuth()
+  // FIX CRITICAL (C-SEC-6a): Only users with view:productos can see prices
+  // Previously: requireAuth() only — REPARTIDOR could read all prices
+  // (violates BLOQUEAR_PRECIOS_REPARTIDOR=true stated intent)
+  const authResult = await requirePermission('view:productos')
   if (authResult instanceof Response) return authResult
 
   try {

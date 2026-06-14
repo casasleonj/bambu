@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuth, requirePermission, requireRole } from '@/lib/auth-check'
+import { requirePermission, requireRole } from '@/lib/auth-check'
 import { CasoUpdateSchema } from '@/lib/validators'
 import { formatZodError } from '@/lib/utils'
 import { apiSuccess, apiError } from '@/lib/api-response'

@@ -1,6 +1,6 @@
 import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
-import { requireAuth } from '@/lib/auth-check'
+import { requirePermission } from '@/lib/auth-check'
 import { resolverPrecio, type Canal, type ProductCode } from '@/lib/pricing'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
@@ -23,7 +23,9 @@ const PrecioResolverSchema = z.object({
 })
 
 export async function POST(request: NextRequest) {
-  const authResult = await requireAuth()
+  // FIX CRITICAL (C-SEC-6c): Only users with view:productos can resolve prices
+  // Previously: requireAuth() only — REPARTIDOR could compute prices
+  const authResult = await requirePermission('view:productos')
   if (authResult instanceof Response) return authResult
 
   try {
