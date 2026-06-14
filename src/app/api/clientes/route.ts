@@ -57,6 +57,7 @@ export async function GET(request: NextRequest) {
           c."limitePedidosFiados", c."negocioDefaultId", c.notas, c.activo,
           c."createdAt", c."updatedAt", c."createdById", c."rutaId", c.referencia,
           c."linkUbicacion", c."preciosEspeciales",
+          c.lat, c.lng, c."geocodeOrigen", c."geocodeAt",
           COALESCE(
             (SELECT json_agg(json_build_object('nombre', cc.nombre, 'telefono', cc.telefono, 'relacion', cc.relacion))
              FROM "ContactoCliente" cc WHERE cc."clienteId" = c.id),
@@ -256,6 +257,10 @@ export async function POST(request: NextRequest) {
             barrio: parsed.data.barrio,
             direccion: parsed.data.direccion,
             linkUbicacion: parsed.data.linkUbicacion ?? null,
+            // lat/lng se persisten después vía POST /api/clientes/[id]/geocode.
+            // No es responsabilidad de POST /api/clientes. El admin puede
+            // triggerearlo desde el botón "Actualizar coordenadas" o el
+            // cron job.
             preciosEspeciales: parsed.data.preciosEspeciales,
             notas: parsed.data.notas,
             offlineId: parsed.data.offlineId ?? null,

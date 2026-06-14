@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// Mock getConfigs desde src/lib/config (es lo que umbrales.ts importa)
+// Mock getConfigs desde src/lib/config (es lo que umbrales-server.ts importa)
 vi.mock('@/lib/config', () => ({
   getConfigs: vi.fn(),
 }))
 
 import { getConfigs } from '@/lib/config'
-import { getUmbralesAlertas, UMBRALES_DEFAULT } from '@/lib/umbrales'
+import { UMBRALES_DEFAULT } from '@/lib/umbrales'
+import { getUmbralesAlertas } from '@/lib/umbrales-server'
 
 const mockGetConfigs = getConfigs as ReturnType<typeof vi.fn>
 

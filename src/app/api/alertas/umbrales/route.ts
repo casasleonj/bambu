@@ -16,7 +16,7 @@
 import { NextRequest } from 'next/server'
 import { requireAuth } from '@/lib/auth-check'
 import { apiSuccess, apiError } from '@/lib/api-response'
-import { getUmbralesAlertas } from '@/lib/umbrales'
+import { getUmbralesAlertas } from '@/lib/umbrales-server'
 
 export async function GET(_request: NextRequest) {
   const authResult = await requireAuth()
