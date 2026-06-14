@@ -567,9 +567,20 @@ async function checkEnvioSinDireccion() {
 
 // ─── Main ────────────────────────────────────────────────────────────────────
 
-async function main() {
+ async function main() {
   console.log('🔍 Validating data integrity...\n')
 
+  const results = await runValidation()
+  printResults(results)
+}
+
+/**
+ * Ejecuta todos los checks de integridad y devuelve los resultados
+ * estructurados. commit 5 plan antifraude: extraido de main() para
+ * poder llamarlo desde un endpoint (/api/validate-data) y desde la
+ * pagina de salud antifraude.
+ */
+export async function runValidation(): Promise<ValidationResult[]> {
   await checkPedidoTotals()
   await checkSaldoConsistency()
   await checkPagosMatchTotalPagado()
@@ -591,8 +602,19 @@ async function main() {
   await checkDistribucionPedidosPorDia()
   await checkPedidosDomicilioSinRuta()
   await checkEnvioSinDireccion()
+  // Limpiar el array global para que sea reusable (siguiente llamada
+  // no acumula resultados de la anterior)
+  const r = results.slice()
+  results.length = 0
+  return r
+}
 
-  // Print results
+/**
+ * Imprime los resultados por consola. commit 5 plan antifraude:
+ * separado de runValidation() para que el endpoint /api/validate-data
+ * pueda ejecutar los checks sin imprimir (y devolver JSON en su lugar).
+ */
+export function printResults(results: ValidationResult[]): void {
   console.log('═'.repeat(80))
   console.log('RESULTADOS DE VALIDACIÓN')
   console.log('═'.repeat(80))
@@ -629,11 +651,18 @@ async function main() {
   }
 }
 
-main()
-  .catch((e) => {
-    console.error('Validation error:', e instanceof Error ? e.message : 'Unknown')
-    process.exit(1)
-  })
-  .finally(async () => {
-    await prisma.$disconnect()
-  })
+// commit 5: solo auto-ejecutar si el script es invocado directamente.
+// Cuando se importa desde /api/validate-data, runValidation() se
+// llama explicitamente y el auto-run es skip.
+import { fileURLToPath } from 'url'
+const isMain = process.argv[1] === fileURLToPath(import.meta.url)
+if (isMain) {
+  main()
+    .catch((e) => {
+      console.error('Validation error:', e instanceof Error ? e.message : 'Unknown')
+      process.exit(1)
+    })
+    .finally(async () => {
+      await prisma.$disconnect()
+    })
+}
