@@ -33,8 +33,8 @@ import { prisma } from '@/lib/prisma'
 import { logger } from '@/lib/logger'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { requireCronSecret } from '@/lib/cron-auth'
-import { getPrecioMinimos } from '@/lib/pricing'
 import { UMBRALES_DEFAULT } from '@/lib/umbrales'
+import { broadcastPush } from '@/lib/push'
 
 const SISTEMA_USERNAME = 'system@bambu.local'
 const NC_VENTANA_DIAS = 30
@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
           descripcion: `Patron 'pide-factura-devuelve': el cliente ha generado ${count} NCs en los ultimos ${NC_VENTANA_DIAS} dias.`,
           creadoPorId: systemUser.id,
         })
-        if (result === 'creado') casosCreados++
+        if (result.result === 'creado') casosCreados++
         else casosSaltados++
       }
     }
@@ -143,7 +143,7 @@ export async function POST(request: NextRequest) {
           descripcion: `Monto total: $${totalMonto.toLocaleString('es-CO')}. ${ds.length} descuentos sin justificacion por mas de ${DESCUENTO_SIN_JUSTIFICAR_DIAS} dias.`,
           creadoPorId: systemUser.id,
         })
-        if (result === 'creado') casosCreados++
+        if (result.result === 'creado') casosCreados++
         else casosSaltados++
       }
     }
@@ -177,7 +177,7 @@ export async function POST(request: NextRequest) {
           descripcion: `Deuda acumulada: agua=${t.deudaReposAgua}, hielo=${t.deudaReposHielo}. Umbral: ${DEUDA_REPARTIDOR_MIN_PACAS} pacas.`,
           creadoPorId: systemUser.id,
         })
-        if (result === 'creado') casosCreados++
+        if (result.result === 'creado') casosCreados++
         else casosSaltados++
       }
     }
@@ -241,7 +241,7 @@ export async function POST(request: NextRequest) {
             descripcion: `Embarque ${outliersDev.id} con ${outliersDev.devueltasAgua + outliersDev.devueltasHielo} devueltas (promedio: ${promDev.toFixed(1)}, umbral: ${(promDev * DEVOLUCIONES_MULTIPLICADOR).toFixed(1)}).`,
             creadoPorId: systemUser.id,
           })
-          if (result === 'creado') casosCreados++
+          if (result.result === 'creado') casosCreados++
           else casosSaltados++
         }
         if (outliersRot) {
@@ -253,7 +253,7 @@ export async function POST(request: NextRequest) {
             descripcion: `Embarque ${outliersRot.id} con ${outliersRot.rotasAgua + outliersRot.rotasHielo} rotas (promedio: ${promRot.toFixed(1)}, umbral: ${(promRot * DEVOLUCIONES_MULTIPLICADOR).toFixed(1)}).`,
             creadoPorId: systemUser.id,
           })
-          if (result === 'creado') casosCreados++
+          if (result.result === 'creado') casosCreados++
           else casosSaltados++
         }
       }
@@ -283,7 +283,7 @@ export async function POST(request: NextRequest) {
           descripcion: `El cliente tiene ${c.reclamaciones} disputas en su historial. Posible fraude recurrente o problema sistematico.`,
           creadoPorId: systemUser.id,
         })
-        if (result === 'creado') casosCreados++
+        if (result.result === 'creado') casosCreados++
         else casosSaltados++
       }
     }
@@ -324,7 +324,7 @@ async function crearCasoSiNoExiste(params: {
   titulo: string
   descripcion: string
   creadoPorId: string
-}): Promise<'creado' | 'saltado'> {
+}): Promise<{ result: 'creado' | 'saltado'; casoId: string | null }> {
   const { clienteId, repartidorId, alertaTipo, severidad, titulo, descripcion, creadoPorId } = params
 
   // Pre-check explicito (mejor UX/log que el P2002 del unique index)
@@ -334,11 +334,11 @@ async function crearCasoSiNoExiste(params: {
 
   const existing = await prisma.caso.findFirst({ where: whereClause })
   if (existing) {
-    return 'saltado'
+    return { result: 'saltado', casoId: existing.id }
   }
 
   try {
-    await prisma.caso.create({
+    const caso = await prisma.caso.create({
       data: {
         alertaTipo,
         severidad,
@@ -349,13 +349,26 @@ async function crearCasoSiNoExiste(params: {
         creadoPorId,
         status: 'ABIERTO',
       },
+      select: { id: true },
     })
-    return 'creado'
+
+    // commit 4b: trigger push para ALTA (MEDIA y BAJA son
+    // lower-priority, no requieren atencion inmediata)
+    if (severidad === 'ALTA') {
+      void broadcastPush({
+        title: `Alerta antifraude: ${alertaTipo}`,
+        body: titulo,
+        url: `/casos/${caso.id}`,
+        tag: `caso-${caso.id}`,
+      })
+    }
+
+    return { result: 'creado', casoId: caso.id }
   } catch (e: unknown) {
     // Si el unique index dispara (P2002), significa que hubo
     // carrera con otro cron. Eso es OK, es dedup normal.
     if (e && typeof e === 'object' && 'code' in e && (e as { code: string }).code === 'P2002') {
-      return 'saltado'
+      return { result: 'saltado', casoId: null }
     }
     throw e
   }

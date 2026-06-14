@@ -72,12 +72,17 @@ describe('commit 4: dedup via partial unique index + pre-check', () => {
 
   it('FIX: si pre-check encuentra, retorna "saltado" sin insertar', () => {
     // El return 'saltado' cuando existing existe
-    expect(source).toMatch(/if\s*\(existing\)\s*\{[\s\S]+?return\s+['"]saltado['"]/)
+    expect(source).toMatch(/if\s*\(existing\)\s*\{[\s\S]+?result:\s*['"]saltado['"]/)
   })
 
   it('FIX: si P2002 (unique index) salta, retorna "saltado" (carrera con otro cron)', () => {
     expect(source).toMatch(/P2002/)
-    expect(source).toMatch(/return\s+['"]saltado['"]/)
+    expect(source).toMatch(/result:\s*['"]saltado['"]/)
+  })
+
+  it('FIX: retorna { result, casoId } (no string) para que caller dispare push', () => {
+    // commit 4b: caller necesita el casoId para armar el push payload
+    expect(source).toMatch(/Promise<\s*\{\s*result:[\s\S]+?casoId:\s*string\s*\|\s*null\s*\}\s*>/)
   })
 
   it('FIX: usa el partial unique index caso_dedup_abierto_cliente_unique (commit 0c)', () => {
@@ -89,5 +94,28 @@ describe('commit 4: dedup via partial unique index + pre-check', () => {
 describe('commit 4: respuesta del cron', () => {
   it('FIX: el cron retorna casosCreados, casosSaltados, fallos', () => {
     expect(source).toMatch(/casosCreados[\s\S]+?casosSaltados[\s\S]+?fallos/)
+  })
+})
+
+describe('commit 4b: push trigger para Casos ALTA', () => {
+  it('FIX: el cron importa broadcastPush de @/lib/push', () => {
+    expect(source).toMatch(/import\s*\{[^}]*broadcastPush[^}]*\}\s*from\s*['"]@\/lib\/push['"]/)
+  })
+
+  it('FIX: broadcastPush se llama solo cuando severidad es ALTA', () => {
+    // El fire-and-forget se dispara despues del create, gateado por severidad
+    expect(source).toMatch(/severidad\s*===\s*['"]ALTA['"]/)
+    expect(source).toMatch(/broadcastPush\(/)
+  })
+
+  it('FIX: el push payload incluye url /casos/[id] y tag caso-[id]', () => {
+    // El tag dedup garantiza que un Caso no genere N notifications
+    expect(source).toMatch(/url:\s*`\/casos\/\$\{caso\.id\}`/)
+    expect(source).toMatch(/tag:\s*`caso-\$\{caso\.id\}`/)
+  })
+
+  it('FIX: broadcastPush es fire-and-forget (no bloquea el cron)', () => {
+    // `void` antes de la llamada: errores de push no rompen el cron
+    expect(source).toMatch(/void\s+broadcastPush\(/)
   })
 })
