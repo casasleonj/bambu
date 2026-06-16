@@ -38,6 +38,9 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
+
+# debug scripts (kept locally, not committed or deployed)
+/scripts/debug/
 next-env.d.ts
 .worktrees/
 
