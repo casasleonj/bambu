@@ -1,0 +1,95 @@
+# Build outputs
+/.next
+/.vercel
+
+# Dependencies
+/node_modules
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Agent/tool configs
+/.agents
+/.claude
+/.ocx
+/.opencode
+/.playwright-cli
+/.playwright-mcp
+/.worktrees
+/.turbo
+
+# Dev/test artifacts
+/screenshots
+/graphify-out
+/memory
+/docs
+/docs/plans
+/e2e
+/backups
+/obsidian
+/playwright-report
+/reports
+/coverage
+/docker-entrypoint-initdb.d
+/scripts
+/test-results
+
+# Sensitive files
+/hermes
+/hermes.pub
+
+# One-off dev scripts at root
+/create-table.ts
+/fix-perms.ts
+/recreate-table.ts
+/screenshot-fixes.js
+/screenshot-honest.js
+/screenshot-pedidos.js
+/screenshot-tabs.js
+/test-fixes.ts
+
+# Config files not needed at deploy time
+/opencode.json
+/opencode.jsonc
+/skills-lock.json
+/playwright.config.ts
+/playwright.test.config.ts
+/vitest.config.ts
+/vitest.integration.config.ts
+/eslint.config.mjs
+/docker-compose.yml
+
+# Reports/docs
+/AGENTS.md
+/API_AUDIT_REPORT.md
+/DB_AUDIT_REPORT.md
+/DEBUG_REPORT.md
+/PERFORMANCE_AUDIT_REPORT.md
+/QA_FINAL_REPORT.md
+/REPORT.md
+/TESTING_STRATEGY_MVP.md
+/UX_AUDIT_REPORT.md
+/MERGE_INSTRUCTIONS.md
+/PR_DESCRIPTION.md
+
+# Cache/build info
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
+# Data dumps
+*.sql.gz
+*.dump
+
+# Logs
+*.log
+
+# Tests co-located anywhere
+__tests__/
+/test-results/
+/src/test/
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
