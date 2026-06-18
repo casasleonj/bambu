@@ -168,9 +168,12 @@ vercel --prod
 - **Tags de deploy**: `deploy/1fn-fase1-expand`, `deploy/1fn-fase2-migrate`, `deploy/1fn-fase3-contract`.
 
 ### Service Worker (PWA)
-- `public/sw.js`: Network-first for navigation, cache-first for static assets
-- APIs bypass cache entirely
-- Playwright tests use `serviceWorkers: 'block'`
+- Serwist 9.5.7 genera el service worker en build a partir de `src/app/sw.ts`.
+- El SW se sirve en `/serwist/sw.js` vía `src/app/serwist/[path]/route.ts`.
+- Estrategia: Network-first para navegación, cache-first para assets estáticos; las APIs no se cachean.
+- `SerwistProvider` (en `src/app/layout.tsx`) usa `swUrl="/serwist/sw.js"` y `reloadOnOnline={false}` para evitar recargas automáticas que pierdan estado no sincronizado.
+- `clientsClaim: false` en `src/app/sw.ts` para evitar página en blanco con SSR streaming; documentado en el propio SW.
+- Playwright tests usan `serviceWorkers: 'block'`.
 
 ### App Router Structure
 - Protected pages live under `src/app/(app)/` (group route)
@@ -214,7 +217,13 @@ vercel --prod
 | `src/lib/db/offline.ts` | Dexie v4 with `requestQueue` table |
 | `src/modules/dashboard/` | DDD pilot — domain/application/infrastructure/presentation |
 | `src/shared/` | Cross-domain value objects (Money, DateRange, ProductCode) |
-| `public/sw.js` | Manual service worker (PWA) |
+| `src/app/sw.ts` | Service worker generado por Serwist (PWA) |
+| `src/app/serwist/[path]/route.ts` | Ruta dinámica que sirve el SW en `/serwist/sw.js` |
+| `public/manifest.json` | Web App Manifest |
+| `public/icons/` | Íconos PWA (incluye badge y Apple touch icon) |
+| `public/screenshots/` | Screenshots del manifest para install prompts |
+| `scripts/generate-pwa-icons.ts` | Generador de badge y Apple touch icon |
+| `scripts/generate-pwa-screenshots.ts` | Generador de screenshots placeholder |
 | `prisma/migrations/20260602_add_offline_id_fields/` | Production migration for offlineId dedup fields |
 | `prisma/migrations/20260602_add_produccion_item/` | ProduccionItem model (Bloque 2: refactor per-product columns to items[]) |
 | `prisma/migrations/20260603_add_produccion_offline_id/` | Produccion.offlineId for offline-first dedup (Bloque 5) |
@@ -234,7 +243,7 @@ vercel --prod
 
 1. **Decimal fields**: Prisma returns `Prisma.Decimal` objects. Always cast with `Number(value)` when doing arithmetic.
 2. **Next.js workspace inference**: With multiple `package-lock.json` files, Next.js may pick wrong root. `outputFileTracingRoot` set in `next.config.ts`.
-3. **Serwist dependency**: `@serwist/next` is installed but not configured. The PWA uses the manual `public/sw.js` instead.
+3. **Serwist dependency**: `@serwist/next` está configurado y genera el SW en build. El SW manual `public/sw.js` ya no se usa; quedó como fallback histórico. Ver sección "Service Worker (PWA)".
 4. **Auth adapter**: `@auth/prisma-adapter` is installed but auth uses JWT strategy (not database sessions).
 5. **Redis v5 + rate-limiter-flexible**: Requires `useRedisPackage: true` (auto-detection fails because redis v5 constructor name is "Class", not "Commander").
 6. **Docker Compose**: Redis 8 service added to `docker-compose.yml` on port 6379.
