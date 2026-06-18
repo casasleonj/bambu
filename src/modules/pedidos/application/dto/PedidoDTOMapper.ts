@@ -28,6 +28,7 @@ export class PedidoDTOMapper {
       fecha: pedido.fecha.toISOString(),
       fechaEntrega: pedido.fechaEntrega?.toISOString(),
       obs: pedido.obs,
+      offlineId: pedido.offlineId ?? null,
       // Legacy price fields
       precioPacaAgua: legacy.precioPacaAgua,
       precioPacaHielo: legacy.precioPacaHielo,

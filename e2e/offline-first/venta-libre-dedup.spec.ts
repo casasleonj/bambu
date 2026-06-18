@@ -22,7 +22,7 @@ test.describe('Offline-First: Venta Libre Dedup por offlineId', () => {
     const ventaLibrePayload = {
       clienteId: cliente.cliente.id,
       items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
-      pagos: [{ metodo: 'EFECTIVO', monto: 10000 }],
+      pagos: [{ metodo: 'EFECTIVO', monto: 5600 }],
       embarqueId: embarque.embarque.id,
       fotoEntrega: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEB/9k=',
       gpsLat: 4.7110,

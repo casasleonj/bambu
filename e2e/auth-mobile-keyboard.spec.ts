@@ -16,7 +16,13 @@ import { test, expect, devices } from '@playwright/test'
 const MOBILE_VIEWPORT = devices['iPhone 13']
 
 test.describe('Mobile keyboard visibility — auth pages', () => {
-  test.use({ ...MOBILE_VIEWPORT })
+  test.use({
+    viewport: MOBILE_VIEWPORT.viewport,
+    hasTouch: MOBILE_VIEWPORT.hasTouch,
+    isMobile: MOBILE_VIEWPORT.isMobile,
+    deviceScaleFactor: MOBILE_VIEWPORT.deviceScaleFactor,
+    userAgent: MOBILE_VIEWPORT.userAgent,
+  })
 
   test('login: input activo queda visible cuando el viewport se reduce (teclado)', async ({ page }) => {
     await page.goto('/login')

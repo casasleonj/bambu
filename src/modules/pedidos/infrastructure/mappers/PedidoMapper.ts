@@ -36,6 +36,7 @@ interface PrismaPedido {
   gpsLat: number | { toNumber: () => number } | null
   gpsLng: number | { toNumber: () => number } | null
   codigoVisita: string | null
+  offlineId: string | null
   items: Array<{
     producto: string
     cantPedido: number
@@ -93,6 +94,7 @@ export class PedidoMapper {
       gpsLat: raw.gpsLat ? toNumber(raw.gpsLat) : undefined,
       gpsLng: raw.gpsLng ? toNumber(raw.gpsLng) : undefined,
       codigoVisita: raw.codigoVisita || undefined,
+      offlineId: raw.offlineId || undefined,
     })
   }
 

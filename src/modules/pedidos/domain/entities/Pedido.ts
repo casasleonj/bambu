@@ -37,6 +37,7 @@ export interface PedidoProps {
   gpsLat?: number
   gpsLng?: number
   codigoVisita?: string
+  offlineId?: string
   createdById?: string
 }
 
@@ -71,6 +72,7 @@ export class Pedido {
   get gpsLat(): number | undefined { return this.props.gpsLat }
   get gpsLng(): number | undefined { return this.props.gpsLng }
   get codigoVisita(): string | undefined { return this.props.codigoVisita }
+  get offlineId(): string | undefined { return this.props.offlineId }
 
   // ── Business Rules ─────────────────────────────────────────────────────
 

@@ -20,6 +20,16 @@ test.describe('Offline resilience — Ventas dedup', () => {
     const clienteId = c.cliente?.id || c.data?.id
     if (!clienteId) { test.skip(); return }
 
+    // Crear una deuda pendiente para que el pago de fiado tenga dónde aplicarse
+    const pedidoRes = await apiPost(page, '/api/pedidos', {
+      clienteId,
+      canal: 'DOMICILIO',
+      items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
+      pagos: [],
+    })
+    expect(pedidoRes.status()).toBeGreaterThanOrEqual(200)
+    expect(pedidoRes.status()).toBeLessThan(300)
+
     const offlineId = crypto.randomUUID()
     const payload = {
       clienteId,

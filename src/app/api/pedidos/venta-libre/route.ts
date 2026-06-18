@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
           precioManual: i.precioManual,
         }))
 
-      const preciosResueltos = await resolverPreciosPedido(itemsParaPrecios, canal, clienteId, tx)
+      const preciosResueltos = await resolverPreciosPedido(itemsParaPrecios, canal, clienteId, null, tx)
       const precioMap: Record<string, number> = {}
       for (const pr of preciosResueltos) {
         precioMap[pr.codigo] = pr.precio
@@ -261,7 +261,7 @@ export async function POST(request: NextRequest) {
       if (error.message === 'PAGO_COMPLETO_OBLIGATORIO') return apiError('Cliente no verificado/anónimo debe pagar completo', 400)
       if (error.message.startsWith('CLIENTE_DEBE:')) return apiError(error.message.replace('CLIENTE_DEBE: ', ''), 400)
     }
-    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error creando venta libre:')
+    logger.error({ err: error instanceof Error ? error.stack || error.message : 'Unknown' }, 'Error creando venta libre:')
     return apiError('Error creando venta libre')
   }
 }

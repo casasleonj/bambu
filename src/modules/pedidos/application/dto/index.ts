@@ -96,6 +96,7 @@ export interface PedidoResumenDTO {
   fecha: string
   fechaEntrega?: string
   obs?: string
+  offlineId?: string | null
   // Legacy price fields (for backward compat with UI and tests)
   precioPacaAgua: number
   precioPacaHielo: number
