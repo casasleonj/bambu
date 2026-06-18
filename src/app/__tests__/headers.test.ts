@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import vercelConfig from '../../../vercel.json'
+import { config as proxyConfig } from '../../../src/proxy'
 
 type HeaderEntry = {
   source: string
@@ -45,6 +46,33 @@ describe('PWA headers', () => {
     } finally {
       env.NODE_ENV = originalNodeEnv
     }
+  })
+})
+
+describe('Proxy matcher', () => {
+  it('excludes PWA manifest from auth redirect', () => {
+    const matchers = proxyConfig.matcher as string[]
+    const matcherRegex = new RegExp(matchers[0].slice(1, -1))
+
+    expect(matcherRegex.test('/manifest.json')).toBe(false)
+  })
+
+  it('excludes static image assets from auth redirect', () => {
+    const matchers = proxyConfig.matcher as string[]
+    const matcherRegex = new RegExp(matchers[0].slice(1, -1))
+
+    expect(matcherRegex.test('/icons/icon-192x192.png')).toBe(false)
+    expect(matcherRegex.test('/icons/badge-72x72.png')).toBe(false)
+    expect(matcherRegex.test('/icons/apple-touch-icon.png')).toBe(false)
+    expect(matcherRegex.test('/screenshots/dashboard-narrow.png')).toBe(false)
+  })
+
+  it('still matches protected page routes', () => {
+    const matchers = proxyConfig.matcher as string[]
+    const matcherRegex = new RegExp(matchers[0].slice(1, -1))
+
+    expect(matcherRegex.test('/dashboard')).toBe(true)
+    expect(matcherRegex.test('/pedidos')).toBe(true)
   })
 })
 

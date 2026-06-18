@@ -15,9 +15,9 @@ import { test, expect, devices } from '@playwright/test'
 // Pixel 7 es similar (412x915). Cubrimos el peor caso (mas pequeno).
 const MOBILE_VIEWPORT = devices['iPhone 13']
 
-test.describe('Mobile keyboard visibility — auth pages', () => {
-  test.use({ ...MOBILE_VIEWPORT })
+test.use({ ...MOBILE_VIEWPORT })
 
+test.describe('Mobile keyboard visibility — auth pages', () => {
   test('login: input activo queda visible cuando el viewport se reduce (teclado)', async ({ page }) => {
     await page.goto('/login')
 

@@ -15,7 +15,9 @@ export default defineConfig({
 
   webServer: {
     command: 'npm run dev',
-    url: process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000',
+    url: process.env.PLAYWRIGHT_TEST_BASE_URL
+      ? `${process.env.PLAYWRIGHT_TEST_BASE_URL}/api/health`
+      : 'http://localhost:3000/api/health',
     // Reusar server existente solo cuando se corre en localhost.
     // Para LAN, Playwright SIEMPRE arranca un webServer nuevo (el server
     // ya debe estar corriendo manualmente en la IP LAN esperada).
