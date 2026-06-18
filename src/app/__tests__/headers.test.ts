@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
+import vercelConfig from '../../../vercel.json'
 
 type HeaderEntry = {
   source: string
@@ -44,5 +45,30 @@ describe('PWA headers', () => {
     } finally {
       env.NODE_ENV = originalNodeEnv
     }
+  })
+})
+
+describe('Vercel headers', () => {
+  it('Service-Worker-Allowed header applies to /serwist/sw.js', () => {
+    const swHeader = vercelConfig.headers.find((h) => h.source === '/serwist/sw.js')
+    expect(swHeader).toBeDefined()
+    expect(swHeader!.headers).toContainEqual({
+      key: 'Service-Worker-Allowed',
+      value: '/',
+    })
+  })
+
+  it('does not apply Service-Worker-Allowed to obsolete /sw.js', () => {
+    const swHeader = vercelConfig.headers.find((h) => h.source === '/sw.js')
+    expect(swHeader).toBeUndefined()
+  })
+
+  it('Permissions-Policy allows geolocation for same origin', () => {
+    const globalHeader = vercelConfig.headers.find((h) => h.source === '/(.*)')
+    expect(globalHeader).toBeDefined()
+    const permissionsPolicy = globalHeader!.headers.find((h) => h.key === 'Permissions-Policy')
+    expect(permissionsPolicy).toBeDefined()
+    expect(permissionsPolicy!.value).toContain('geolocation=(self)')
+    expect(permissionsPolicy!.value).not.toContain('geolocation=()')
   })
 })
