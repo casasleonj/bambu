@@ -69,11 +69,12 @@ describe('F-N6: race condition fix con Serializable', () => {
 })
 
 describe('Manejo de respuestas (kind-based)', () => {
-  it('retorna 409 cuando hay teléfono duplicado', () => {
+  it('retorna 200 con el cliente existente cuando hay teléfono duplicado', () => {
+    // FIX e2e/clientes.spec.ts: quick create es idempotente para teléfono
+    // duplicado y devuelve el cliente existente (no 409), para no romper
+    // callers que usan el resultado para crear pedidos.
     expect(routeSource).toMatch(/duplicate_phone/)
-    // El 409 está en una línea separada del apiError por template string multilinea
-    expect(routeSource).toMatch(/409/)
-    expect(routeSource).toMatch(/Ya existe un cliente con ese teléfono/)
+    expect(routeSource).toMatch(/apiSuccess\(\{\s*cliente:\s*result\.existing\s*\},\s*200\)/)
   })
 
   it('retorna 200 con deduped: true cuando offlineId ya existe', () => {

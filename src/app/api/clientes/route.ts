@@ -257,6 +257,8 @@ export async function POST(request: NextRequest) {
             barrio: parsed.data.barrio,
             direccion: parsed.data.direccion,
             linkUbicacion: parsed.data.linkUbicacion ?? null,
+            nombreNegocio: parsed.data.nombreNegocio ?? null,
+            tipoNegocio: parsed.data.tipoNegocio ?? null,
             // lat/lng se persisten después vía POST /api/clientes/[id]/geocode.
             // No es responsabilidad de POST /api/clientes. El admin puede
             // triggerearlo desde el botón "Actualizar coordenadas" o el
@@ -265,7 +267,21 @@ export async function POST(request: NextRequest) {
             notas: parsed.data.notas,
             offlineId: parsed.data.offlineId ?? null,
           },
-          select: { id: true, nombre: true, telefono: true },
+          select: {
+            id: true,
+            nombre: true,
+            apellido: true,
+            telefono: true,
+            fuente: true,
+            barrio: true,
+            direccion: true,
+            linkUbicacion: true,
+            preciosEspeciales: true,
+            notas: true,
+            offlineId: true,
+            nombreNegocio: true,
+            tipoNegocio: true,
+          },
         })
 
         return { kind: 'created' as const, cliente: { ...cliente, clienteId: cliente.id } }

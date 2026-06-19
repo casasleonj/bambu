@@ -5,7 +5,17 @@
  * creates ventas libres, reconciles products, calculates discrepancies,
  * creates descuentos, creates gastos, and updates facturas.
  *
- * This is the most complex use case — formerly a 582-line route handler.
+ * Architecture notes (F4.10 refactor):
+ * - ProcesarPedidoService handles per-pedido delivery logic.
+ * - CrearVentasLibresService handles free-sale pedido creation.
+ * - CierreEmbarqueService holds pure domain logic for reconciliation and cash.
+ * - CrearDescuentoDiscrepanciaService creates worker discounts.
+ * - CerrarEmbarqueSideEffectsService creates gastos and updates returned products.
+ * - Cash-collection helpers live in cerrar-embarque-caja.helper.ts.
+ *
+ * This keeps the use case as an orchestrator rather than a 500-line god method.
+ * It formerly was a 582-line route handler, then a 398-line use case, and is now
+ * kept intentionally compact by delegating responsibilities to domain services.
  */
 
 import { prisma } from '@/lib/prisma'
@@ -20,47 +30,14 @@ import { ProcesarPedidoService } from '../../domain/services/procesar-pedido.ser
 import { CrearVentasLibresService } from '../../domain/services/crear-ventas-libres.service'
 import { CrearDescuentoDiscrepanciaService } from '../../domain/services/crear-descuento-discrepancia.service'
 import { CerrarEmbarqueSideEffectsService } from '../../domain/services/cerrar-embarque-side-effects.service'
+import type { PedidoRawInput } from '../../domain/services/procesar-pedido.service'
 import { Carga, type ProductCode } from '../../domain/value-objects/Carga'
 import { EstadoEmbarque as EstadoEmbarqueVO } from '../../domain/value-objects/EstadoEmbarque'
 import type { CerrarEmbarqueInput, CierreResultadoDTO } from '../dto'
 import type { ITransactionManager } from '../../infrastructure/transactions/PrismaTransactionManager'
+import { coleccionarPagos, calcularCajaFinal } from './cerrar-embarque-caja.helper'
 
 type TxOrPrisma = Parameters<Parameters<typeof prisma.$transaction>[0]>[0]
-
-interface PedidoRaw {
-  id: string
-  numero: number
-  clienteId: string
-  embarqueId: string | null
-  estadoEntrega: string
-  estado: string
-  tipo: string
-  canal: string
-  origen: string
-  precioPacaAgua: number | { toNumber: () => number }
-  precioPacaHielo: number | { toNumber: () => number }
-  precioBotellonFab: number | { toNumber: () => number }
-  precioBotellonDom: number | { toNumber: () => number }
-  precioBolsaAgua: number | { toNumber: () => number }
-  precioBolsaHielo: number | { toNumber: () => number }
-  cPacaAguaPed: number
-  cPacaHieloPed: number
-  cBotellonFabPed: number
-  cBotellonDomPed: number
-  cBolsaAguaPed: number
-  cBolsaHieloPed: number
-  cPacaAguaEnt: number
-  cPacaHieloEnt: number
-  cBotellonFabEnt: number
-  cBotellonDomEnt: number
-  cBolsaAguaEnt: number
-  cBolsaHieloEnt: number
-  total: number | { toNumber: () => number }
-  obs: string | null
-  createdById: string | null
-  items: Array<{ producto: string }>
-  factura: { id: string } | null
-}
 
 export class CerrarEmbarqueUseCase {
   private readonly transitions = new EmbarqueTransitionsService()
@@ -235,10 +212,11 @@ export class CerrarEmbarqueUseCase {
         // FIX HIGH (C-BIZ-2): Calcular caja con la función de dominio
         // Previously: returned hardcoded { 0, 0, 0 } — discrepancia entre lo que
         // esperaba el sistema y lo que reportó el repartidor no se computaba.
-        caja: this.calcularCajaFinal(
+        caja: calcularCajaFinal(
+          this.cierreService,
           embarque.baseDinero ?? 0,
           totalVentas,
-          this.coleccionarPagos(pedidosRaw, input.ventasLibres ?? []),
+          coleccionarPagos(pedidosRaw, input.ventasLibres ?? []),
           (input.gastos ?? []).reduce((sum, g) => sum + (g.monto || 0), 0),
           input.dineroEntregado ?? 0,
         ),
@@ -246,18 +224,27 @@ export class CerrarEmbarqueUseCase {
     })
   }
 
-  private async fetchPedidosForEmbarque(embarqueId: string, client: TxOrPrisma): Promise<PedidoRaw[]> {
+  /**
+   * Loads pedidos with related data needed for closing.
+   */
+  private async fetchPedidosForEmbarque(embarqueId: string, client: TxOrPrisma): Promise<PedidoRawInput[]> {
     const raw = await client.pedido.findMany({
       where: { embarqueId },
       include: { cliente: true, pagos: true, items: true, factura: true },
     })
-    return raw as unknown as PedidoRaw[]
+    return raw as unknown as PedidoRawInput[]
   }
 
 
+  /**
+   * Adapter that builds the Carga value object and delivered-product map,
+   * then delegates pure reconciliation math to CierreEmbarqueService.
+   * Kept in the use case because it translates Prisma-shaped raw pedidos
+   * into the domain value objects the service expects.
+   */
   private conciliarProductos(
     embarque: { productos: Array<{ producto: string; cargadas: number }> },
-    pedidosRaw: PedidoRaw[],
+    pedidosRaw: PedidoRawInput[],
     ventasLibres: CerrarEmbarqueInput['ventasLibres'],
     productosRetorno: CerrarEmbarqueInput['productosRetorno'],
   ): { totalDiscrepancia: number; discrepanciasPorProducto: Array<{ producto: string; discrepancia: number }> } {
@@ -331,70 +318,5 @@ export class CerrarEmbarqueUseCase {
   private getTx(tx: unknown): TxOrPrisma {
     return (tx as TxOrPrisma) ?? prisma
   }
-
-  /**
-   * FIX HIGH (C-BIZ-2): Helper que colecta todos los pagos (de pedidos
-   * del embarque + ventas libres) y llama al service de dominio.
-   * @param baseDinero - efectivo que el repartidor recibió al salir
-   * @param totalVentas - suma de todos los pedidos + ventas libres
-   * @param pagos - array unificado de pagos con metodo y monto
-   * @param gastosTotal - suma de gastos del embarque
-   * @param dineroEntregado - efectivo que el repartidor retorna
-   */
-  private calcularCajaFinal(
-    baseDinero: number,
-    totalVentas: number,
-    pagos: Array<{ metodo: string; monto: number }>,
-    gastosTotal: number,
-    dineroEntregado: number,
-  ) {
-    const cajaCalc = this.cierreService.calcularCaja(
-      totalVentas,
-      pagos,
-      baseDinero,
-      gastosTotal,
-    )
-    // efectivoReal (calculado por service) refleja lo que el sistema esperaba
-    // que el repartidor retornara. La `diferencia` efectiva entre lo reportado
-    // (dineroEntregado) y lo esperado (efectivoReal) es la "sobrante/faltante".
-    return {
-      efectivoEsperado: cajaCalc.efectivoEsperado,
-      efectivoReal: cajaCalc.efectivoReal,
-      diferencia: cajaCalc.diferencia,
-      otrosPagos: cajaCalc.otrosPagos,
-      dineroEntregadoReportado: dineroEntregado,
-      sobranteFaltante: dineroEntregado - cajaCalc.efectivoReal,
-    }
-  }
-
-  /**
-   * FIX HIGH (C-BIZ-2): Helper que une pagos de pedidos del embarque
-   * con pagos de ventas libres en un solo array para calcular caja.
-   */
-  private coleccionarPagos(
-    pedidosRaw: PedidoRaw[],
-    ventasLibres: NonNullable<CerrarEmbarqueInput['ventasLibres']>,
-  ): Array<{ metodo: string; monto: number }> {
-    const out: Array<{ metodo: string; monto: number }> = []
-    for (const p of pedidosRaw) {
-      // FIX TypeScript: cast to unknown first, then to expected shape
-      const pedidoConPagos = p as unknown as {
-        pagos?: Array<{ metodo: string; monto: number | { toNumber: () => number } }>
-      }
-      if (Array.isArray(pedidoConPagos.pagos)) {
-        for (const pg of pedidoConPagos.pagos) {
-          const monto = typeof pg.monto === 'number' ? pg.monto : pg.monto.toNumber()
-          out.push({ metodo: pg.metodo, monto })
-        }
-      }
-    }
-    for (const v of ventasLibres) {
-      if (Array.isArray(v.pagos)) {
-        for (const pg of v.pagos) {
-          out.push({ metodo: pg.metodo, monto: pg.monto || 0 })
-        }
-      }
-    }
-    return out
-  }
 }
+

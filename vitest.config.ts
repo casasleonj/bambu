@@ -13,6 +13,7 @@ export default defineConfig({
       '.opencode/**',
       'e2e/**',
       '.next/**',
+      '.worktrees/**',
       // Integration tests con DB real corren con su propio config
       // (vitest.integration.config.ts + singleFork). Excluidos acá
       // para que NO corran en paralelo durante la suite normal.

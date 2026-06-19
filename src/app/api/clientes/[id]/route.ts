@@ -111,7 +111,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       }
 
       for (const p of pedidosEntregados) {
-        for (const [key, _name] of Object.entries(productNames)) {
+        for (const key of Object.keys(productNames)) {
           const qty = (p as unknown as Record<string, number>)[key] || 0
           if (qty > 0) {
             if (!productStats[key]) productStats[key] = { count: 0, totalQty: 0 }
@@ -175,33 +175,33 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (!parsed.success) {
       return apiError(formatZodError(parsed.error), 400)
     }
-    const data = parsed.data
 
     // FIX F-N20 (hallazgo 26): optimistic locking con updatedAt.
-    // Antes: prisma.cliente.update directo SIN tx ni check de
-    // updatedAt. Dos PUT/PATCH casi simultáneos del mismo cliente
-    // (admin edita teléfono, asistente edita barrio) causaban
-    // last-write-wins silencioso: el segundo pisa al primero
-    // sin warning, posibles pérdidas de datos en campos no tocados
-    // por el request que ganó.
-    //
+    // Antes: prisma.cliente.update directo SIN tx ni check de updatedAt.
     // Ahora: leer updatedAt, updateMany con condición atómica.
-    // Si count=0, devolver 409 con mensaje específico.
     const existing = await prisma.cliente.findUnique({
       where: { id, activo: true },
       select: { updatedAt: true },
     })
     if (!existing) return apiError('Not found', 404)
 
-    // FASE 3 CONTRACT: dual-write eliminado. La columna `contactos` ya no
-    // existe en la tabla. Los contactos se manejan via tabla ContactoCliente.
+    if (Object.keys(parsed.data).length === 0) {
+      // No hay cambios de cliente: re-leer y devolver estado actual.
+      const cliente = await prisma.cliente.findUnique({
+        where: { id },
+        include: { contactos: { orderBy: { nombre: 'asc' } } },
+      })
+      if (!cliente) return apiError('Not found', 404)
+      return apiSuccess({ cliente })
+    }
+
     const updateResult = await prisma.cliente.updateMany({
       where: {
         id,
         activo: true,
         updatedAt: existing.updatedAt,
       },
-      data,
+      data: parsed.data,
     })
 
     if (updateResult.count === 0) {
@@ -212,7 +212,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     // Re-leer para devolver el estado final
-    const cliente = await prisma.cliente.findUnique({ where: { id } })
+    const cliente = await prisma.cliente.findUnique({
+      where: { id },
+      include: { contactos: { orderBy: { nombre: 'asc' } } },
+    })
     if (!cliente) return apiError('Not found', 404)
 
     logAudit({

@@ -2,6 +2,12 @@ import { test, expect, type Page } from '@playwright/test'
 import { execSync } from 'child_process'
 import { resolve } from 'path'
 
+declare global {
+  interface Window {
+    __PLAYWRIGHT_TEST__?: boolean
+  }
+}
+
 export const BASE = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000'
 
 // ─── Test Database Reset ─────────────────────────────────────────────────────
@@ -67,7 +73,7 @@ export async function skipBaseCaja(page: Page) {
   await page.addInitScript(({ date }: { date: string }) => {
     localStorage.setItem('baseDiaDate', date)
     localStorage.setItem('baseDia', '100000')
-    ;(window as any).__PLAYWRIGHT_TEST__ = true
+    ;(window).__PLAYWRIGHT_TEST__ = true
   }, { date: today })
 }
 
@@ -178,7 +184,7 @@ export async function goto(page: Page, path: string) {
 
 // ─── API Helpers ─────────────────────────────────────────────────────────────
 
-export async function apiPost(page: Page, path: string, data: any) {
+export async function apiPost(page: Page, path: string, data: unknown) {
   return page.request.post(`${BASE}${path}`, { data })
 }
 
@@ -186,11 +192,11 @@ export async function apiGet(page: Page, path: string) {
   return page.request.get(`${BASE}${path}`)
 }
 
-export async function apiPut(page: Page, path: string, data: any) {
+export async function apiPut(page: Page, path: string, data: unknown) {
   return page.request.put(`${BASE}${path}`, { data })
 }
 
-export async function apiPatch(page: Page, path: string, data: any) {
+export async function apiPatch(page: Page, path: string, data: unknown) {
   return page.request.patch(`${BASE}${path}`, { data })
 }
 
@@ -231,7 +237,6 @@ export async function createClienteFull(page: Page, data: {
   barrio?: string
   direccion?: string
   linkUbicacion?: string
-  contactos?: Array<{ nombre: string; telefono: string; relacion?: string }>
   preciosEspeciales?: string
   notas?: string
   horaApertura?: string
@@ -362,7 +367,7 @@ export async function getFirstTrabajador(page: Page) {
 export async function getFirstFacturaConSaldo(page: Page) {
   const res = await apiGet(page, '/api/facturas')
   const body = await res.json()
-  return body.facturas?.find((f: any) => Number(f.saldo) > 0)
+  return body.facturas?.find((f: { saldo: number | string }) => Number(f.saldo) > 0)
 }
 
 // ─── Produccion Helpers ──────────────────────────────────────────────────────

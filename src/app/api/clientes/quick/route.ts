@@ -106,10 +106,10 @@ export async function POST(request: NextRequest) {
     )
 
     if (result.kind === 'duplicate_phone') {
-      return apiError(
-        `Ya existe un cliente con ese teléfono (${result.existing.nombre})`,
-        409,
-      )
+      // FIX e2e/clientes.spec.ts: quick create debe ser idempotente para
+      // teléfono duplicado y devolver el cliente existente (no 409), para
+      // no romper callers que usan el resultado para crear pedidos.
+      return apiSuccess({ cliente: result.existing }, 200)
     }
 
     if (result.kind === 'existing') {

@@ -224,9 +224,13 @@ export const ClienteCreateSchema = z.object({
   ),
   barrio: z.string().max(100).optional(),
   direccion: z.string().max(200).optional(),
+  nombreNegocio: z.string().max(100).optional(),
+  tipoNegocio: z.string().max(100).optional(),
   linkUbicacion: z.string().url().optional().nullable(),
-  // FASE 3 CONTRACT: campo `contactos` eliminado del schema.
-  // Los contactos ahora se manejan via tabla ContactoCliente (relación Prisma).
+  // FASE 3 CONTRACT: el campo `contactos` ya no vive en el schema de Cliente.
+  // Los contactos se gestionan exclusivamente via
+  // POST /api/clientes/[id]/contactos y
+  // PATCH/DELETE /api/clientes/[id]/contactos/[contactoId].
   preciosEspeciales: z.string().optional(),
   notas: z.string().max(500).optional(),
   limitePedidosFiados: z.coerce.number().int().min(1).max(20).optional(),

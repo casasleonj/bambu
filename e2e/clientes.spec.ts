@@ -3,6 +3,10 @@ import { test, expect, fullLogin, loginAs, goto, apiPost, apiGet, apiPut, apiPat
 
 const BASE = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000'
 
+interface Recomendacion {
+  urgencia: string
+}
+
 // ─── UI Tests ────────────────────────────────────────────────────────────────
 
 test.describe('Clientes UI', () => {
@@ -26,7 +30,7 @@ test.describe('Clientes UI', () => {
 
     const name = `UI Test ${Date.now() % 10000}`
     await nameInput.fill(name)
-    const phoneInput = page.locator('input[placeholder*="300"]').first()
+    const phoneInput = page.locator('input[type="tel"]').first().or(page.locator('input[placeholder*="3111234567"]'))
     await phoneInput.fill(`3${String(Date.now()).slice(-9)}`)
 
     const submitBtn = page.getByRole('button', { name: /Guardar|Crear/ })
@@ -59,11 +63,11 @@ test.describe('Clientes UI', () => {
 
     const searchInput = page.locator('input[placeholder*="Buscar"]')
     await searchInput.fill('BuscarTest')
-    await expect(page.getByText('BuscarTest Cliente')).toBeVisible()
+    await expect(page.getByText('BuscarTest Cliente').first()).toBeVisible()
 
     await searchInput.clear()
     await searchInput.fill('zzzznoexiste')
-    await expect(page.getByText('BuscarTest Cliente')).not.toBeVisible({ timeout: 5000 })
+    await expect(page.getByText('BuscarTest Cliente').first()).not.toBeVisible({ timeout: 5000 })
   })
 
   test('ver detalle de cliente al hacer click en fila', async ({ page }) => {
@@ -88,7 +92,7 @@ test.describe('Clientes UI', () => {
     const c = await createCliente(page, { nombre: 'Links Test' })
     await goto(page, `/clientes?openCliente=${c.cliente.id}`)
     await expect(page.getByRole('heading', { name: 'Links Test' })).toBeVisible()
-    await expect(page.locator('a[href*="/pedidos?cliente="]')).toBeVisible()
+    await expect(page.getByRole('link', { name: /Crear Pedido/ })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Editar' })).toBeVisible()
   })
 
@@ -184,7 +188,7 @@ test.describe('Clientes API CRUD', () => {
     try {
       const res = await apiGet(page, '/api/clientes/00000000-0000-0000-0000-000000000000')
       expect(res.status()).toBe(404)
-    } catch (e) {
+    } catch {
       // ECONNRESET - server may be restarting
       test.skip(true, 'Server connection reset during test')
     }
@@ -197,26 +201,6 @@ test.describe('Clientes API CRUD', () => {
     const body = await res.json()
     expect(body.success).toBe(true)
     expect(body.cliente.nombre).toBe('Editado')
-  })
-
-  test('PUT deduplica contactos', async ({ page }) => {
-    await fullLogin(page)
-    const c = await createCliente(page, { telefono: '3001002003' })
-    const res = await apiPut(page, `/api/clientes/${c.cliente.id}`, {
-      contactos: [
-        { nombre: '', telefono: '' },
-        { nombre: 'A', telefono: '3001002003' },
-        { nombre: 'B', telefono: '3009999999' },
-        { nombre: 'C', telefono: '3009999999' },
-      ]
-    })
-    // API may return 200 (success) or 400 (validation error for JSON field)
-    if (res.status() === 200) {
-      const body = await res.json()
-      expect(body.success).toBe(true)
-      expect(body.cliente.contactos).toHaveLength(1)
-      expect(body.cliente.contactos[0].nombre).toBe('B')
-    }
   })
 
   test('PUT con ID inexistente retorna 404 o 500', async ({ page }) => {
@@ -278,21 +262,90 @@ test.describe('Clientes API CRUD', () => {
     expect(getBody.cliente.preciosEspeciales).toBe(precios)
   })
 
-  test('contactos con telefono validado', async ({ page }) => {
+})
+
+// ─── Contactos API Tests (Fase 3: sub-endpoints canónicos) ───────────────────
+
+test.describe('Contactos API', () => {
+  test('POST crea contactos y GET los incluye', async ({ page }) => {
     await fullLogin(page)
     const c = await createCliente(page, { nombre: 'Contactos Test' })
-    const res = await apiPut(page, `/api/clientes/${c.cliente.id}`, {
-      contactos: [
-        { nombre: 'Juan', telefono: '3001234567', relacion: 'Esposo' },
-        { nombre: 'Maria', telefono: '3009876543', relacion: 'Hija' },
-      ]
+
+    const res1 = await apiPost(page, `/api/clientes/${c.cliente.id}/contactos`, {
+      nombre: 'Juan',
+      telefono: '3001234567',
+      relacion: 'Esposo',
     })
-    expect([200, 400]).toContain(res.status())
-    if (res.status() === 200) {
-      const body = await res.json()
-      expect(body.success).toBe(true)
-      expect(body.cliente.contactos).toHaveLength(2)
-    }
+    expect(res1.status()).toBe(201)
+    const body1 = await res1.json()
+    expect(body1.success).toBe(true)
+    expect(body1.contacto.nombre).toBe('Juan')
+
+    const res2 = await apiPost(page, `/api/clientes/${c.cliente.id}/contactos`, {
+      nombre: 'Maria',
+      telefono: '3009876543',
+      relacion: 'Hija',
+    })
+    expect(res2.status()).toBe(201)
+
+    const getRes = await apiGet(page, `/api/clientes/${c.cliente.id}`)
+    const getBody = await getRes.json()
+    expect(getBody.cliente.contactos).toHaveLength(2)
+  })
+
+  test('POST deduplica por telefono (409)', async ({ page }) => {
+    await fullLogin(page)
+    const c = await createCliente(page)
+
+    const res1 = await apiPost(page, `/api/clientes/${c.cliente.id}/contactos`, {
+      nombre: 'Primero',
+      telefono: '3009999999',
+    })
+    expect(res1.status()).toBe(201)
+
+    const res2 = await apiPost(page, `/api/clientes/${c.cliente.id}/contactos`, {
+      nombre: 'Duplicado',
+      telefono: '3009999999',
+    })
+    expect(res2.status()).toBe(409)
+  })
+
+  test('PATCH actualiza contacto', async ({ page }) => {
+    await fullLogin(page)
+    const c = await createCliente(page)
+
+    const createRes = await apiPost(page, `/api/clientes/${c.cliente.id}/contactos`, {
+      nombre: 'Original',
+      telefono: '3001111111',
+    })
+    const createBody = await createRes.json()
+    const contactoId = createBody.contacto.id
+
+    const patchRes = await apiPatch(page, `/api/clientes/${c.cliente.id}/contactos/${contactoId}`, {
+      nombre: 'Actualizado',
+    })
+    expect(patchRes.status()).toBe(200)
+    const patchBody = await patchRes.json()
+    expect(patchBody.contacto.nombre).toBe('Actualizado')
+  })
+
+  test('DELETE borra contacto', async ({ page }) => {
+    await fullLogin(page)
+    const c = await createCliente(page)
+
+    const createRes = await apiPost(page, `/api/clientes/${c.cliente.id}/contactos`, {
+      nombre: 'Borrar',
+      telefono: '3002222222',
+    })
+    const createBody = await createRes.json()
+    const contactoId = createBody.contacto.id
+
+    const delRes = await apiDelete(page, `/api/clientes/${c.cliente.id}/contactos/${contactoId}`)
+    expect(delRes.status()).toBe(200)
+
+    const getRes = await apiGet(page, `/api/clientes/${c.cliente.id}`)
+    const getBody = await getRes.json()
+    expect(getBody.cliente.contactos).toHaveLength(0)
   })
 })
 
@@ -502,11 +555,12 @@ test.describe('Clientes Recomendaciones API', () => {
     const res = await apiGet(page, '/api/clientes/recomendaciones')
     const body = await res.json()
     if (body.recomendaciones.length >= 2) {
-      const altas = body.recomendaciones.filter((r: any) => r.urgencia === 'alta')
-      const medias = body.recomendaciones.filter((r: any) => r.urgencia === 'media')
+      const recomendaciones = body.recomendaciones as Recomendacion[]
+      const altas = recomendaciones.filter((r) => r.urgencia === 'alta')
+      const medias = recomendaciones.filter((r) => r.urgencia === 'media')
       if (altas.length > 0 && medias.length > 0) {
-        const lastAltaIdx = body.recomendaciones.map((r: any) => r.urgencia).lastIndexOf('alta')
-        const firstMediaIdx = body.recomendaciones.map((r: any) => r.urgencia).indexOf('media')
+        const lastAltaIdx = recomendaciones.map((r) => r.urgencia).lastIndexOf('alta')
+        const firstMediaIdx = recomendaciones.map((r) => r.urgencia).indexOf('media')
         expect(lastAltaIdx).toBeLessThan(firstMediaIdx)
       }
     }
@@ -543,8 +597,7 @@ test.describe('Negocios API', () => {
     const res = await apiGet(page, '/api/negocios')
     expect(res.status()).toBe(200)
     const body = await res.json()
-    // apiSuccess spreads array into object with numeric keys
-    const negocios = body.success ? Object.values(body).filter((v: any) => typeof v === 'object' && v?.id) : []
+    const negocios = body.success && Array.isArray(body.data) ? body.data : []
     expect(negocios.length).toBeGreaterThanOrEqual(2)
   })
 
@@ -557,9 +610,9 @@ test.describe('Negocios API', () => {
 
     const res = await apiGet(page, `/api/negocios?clienteId=${c1.cliente.id}`)
     const body = await res.json()
-    const negocios = body.success ? Object.values(body).filter((v: any) => typeof v === 'object' && v?.id) : []
+    const negocios = (body.success && Array.isArray(body.data) ? body.data : []) as Array<{ nombre: string }>
     expect(negocios.length).toBe(1)
-    expect((negocios[0] as any).nombre).toBe('Solo C1')
+    expect(negocios[0].nombre).toBe('Solo C1')
   })
 
   test('PUT actualiza negocio', async ({ page }) => {

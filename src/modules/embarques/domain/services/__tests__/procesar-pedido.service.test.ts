@@ -92,8 +92,11 @@ describe('F4.10-a: el use case se simplificó (807 → ~500 líneas)', () => {
     expect(useCaseSource).not.toMatch(/^interface\s+ProductosEntregados/m)
   })
 
-  it('FIX: el use case aún tiene PedidoRaw (lo usa para fetchPedidosForEmbarque)', () => {
-    expect(useCaseSource).toMatch(/^interface\s+PedidoRaw/m)
+  it('FIX: el use case usa PedidoRawInput importado (o alias local) para fetchPedidosForEmbarque', () => {
+    // Tras el refactor F4.10-f el use case importa PedidoRawInput desde
+    // ProcesarPedidoService en lugar de declarar una interfaz duplicada.
+    expect(useCaseSource).toMatch(/import\s+type\s+\{\s*PedidoRawInput\s*\}\s+from\s+['"]\.\.\/\.\.\/domain\/services\/procesar-pedido\.service['"]/)
+    expect(useCaseSource).toMatch(/fetchPedidosForEmbarque\([^)]*\):\s*Promise<PedidoRawInput/)
   })
 })
 

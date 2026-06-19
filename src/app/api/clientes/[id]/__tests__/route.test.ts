@@ -45,11 +45,13 @@ describe('F-N20: el flujo normal sigue funcionando (no rompe)', () => {
     expect(putSource).toMatch(/logAudit\(/)
   })
 
-  it('FIX: el cleanup de contactos se hace via contactoCliente (Fase 3)', () => {
+  it('FASE 3: PUT no sincroniza contactos inline', () => {
+    // El handler no debe tocar contactoCliente; eso es responsabilidad de
+    // POST/PATCH/DELETE /api/clientes/[id]/contactos.
+    expect(putSource).not.toMatch(/contactoCliente\.deleteMany/)
+    expect(putSource).not.toMatch(/contactoCliente\.createMany/)
     // Patrón legacy eliminado (no más data.contactos = data.contactos.filter)
     expect(putSource).not.toMatch(/data\.contactos\s*=\s*data\.contactos\.filter/)
-    // Fase 3: dual-write también eliminado (no más tx.contactoCliente en este handler)
-    expect(putSource).not.toMatch(/tx\.contactoCliente/)
   })
 })
 
