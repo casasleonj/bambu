@@ -120,14 +120,15 @@ export const config = {
      * - api/auth (Auth.js endpoints — handled by Auth.js internally)
      * - sentry-tunnel (Sentry ingestion)
      * - serwist (PWA service worker)
-     * - _next/static (static files)
-     * - _next/image (image optimization)
-     * - favicon.ico, sitemap.xml, robots.txt (metadata)
-     * - sw.js (service worker)
-     * - static assets (svg, png, jpg, etc.)
-     *
-     * NOTE: /api is NOT excluded — proxy handles rate limiting for API routes.
-     */
-    '/((?!login|offline|api/auth|sentry-tunnel|serwist|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|sw\\.js|.*\\.(?:svg|png|jpg|jpeg|gif|webp|css|js|woff|woff2)$).*)',
+      * - _next/static (static files)
+      * - _next/image (image optimization)
+      * - favicon.ico, sitemap.xml, robots.txt (metadata)
+      * - manifest.json (PWA manifest)
+      * - sw.js (service worker)
+      * - static assets (svg, png, jpg, jpeg, gif, webp, css, js, woff, woff2)
+      *
+      * NOTE: /api is NOT excluded — proxy handles rate limiting for API routes.
+      */
+    '/((?!login|offline|api/auth|sentry-tunnel|serwist|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|manifest\.json|sw\\.js|.*\\.(?:svg|png|jpg|jpeg|gif|webp|css|js|woff|woff2)$).*)',
   ],
 }

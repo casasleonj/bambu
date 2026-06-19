@@ -92,3 +92,7 @@ public/swe-worker*
 # QA artifacts
 reports/
 screenshots/
+
+# PWA screenshots referenced by manifest.json
+!public/screenshots/
+!public/screenshots/*.png
