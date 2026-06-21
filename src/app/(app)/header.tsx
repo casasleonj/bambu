@@ -4,7 +4,9 @@ import { useState, useRef } from 'react'
 import { useSession, signOut } from 'next-auth/react'
 import Link from 'next/link'
 import { purgeSWCache } from '@/lib/purge-sw-cache'
+import { unsubscribePushOnLogout } from '@/lib/push-cleanup'
 import { ConnectivityIndicator } from '@/components/connectivity-indicator'
+import { PushSettings } from '@/components/push-settings'
 import { useAppStore } from '@/stores/app-store'
 import { useIsDesktop } from '@/hooks/use-is-desktop'
 
@@ -173,8 +175,12 @@ export function Header() {
                   Mi Perfil
                 </Link>
                 <hr className="border-gray-100" />
+                <div className="px-4 py-3 border-b border-gray-100">
+                  <PushSettings />
+                </div>
                 <button
                   onClick={async () => {
+                    await unsubscribePushOnLogout()
                     await purgeSWCache()
                     signOut({ callbackUrl: '/login' })
                   }}
