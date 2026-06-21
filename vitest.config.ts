@@ -1,13 +1,45 @@
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import path from 'path'
+import type { Plugin } from 'vite'
+
+/**
+ * Vite plugin that resolves bare Next.js subpath imports (e.g. `next/server`,
+ * `next/headers`) to their `.js` counterparts, but ONLY when requested by
+ * `next-auth` internals. Next.js 16 ships these entry points as files but does
+ * not expose an `exports` map, so Vitest/Node ESM resolution fails on the
+ * extensionless specifier. Limiting the rewrite to `next-auth` preserves
+ * existing `vi.mock('next/...')` calls in test files.
+ */
+function nextSubpathResolver(): Plugin {
+  return {
+    name: 'next-subpath-resolver',
+    enforce: 'pre',
+    resolveId(id, importer) {
+      if (
+        importer?.includes('node_modules/next-auth/') &&
+        id.startsWith('next/') &&
+        !id.endsWith('.js')
+      ) {
+        return { id: id + '.js', external: true }
+      }
+    },
+  }
+}
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [nextSubpathResolver(), react()],
   test: {
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
+    // NOTE: `deps.inline` is deprecated in Vitest v3, but `server.deps.inline`
+    // does not inline `next-auth` sufficiently for our custom resolver plugin
+    // to intercept its `next/server` import. Keep this until Vitest provides a
+    // working replacement for this use case.
+    deps: {
+      inline: ['next-auth'],
+    },
     exclude: [
       'node_modules/**',
       '.opencode/**',

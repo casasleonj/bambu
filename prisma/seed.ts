@@ -166,6 +166,11 @@ const CONFIGS: Array<{ clave: string; valor: string; descripcion?: string }> = [
   { clave: 'BLOQUEAR_PRECIOS_REPARTIDOR', valor: 'true', descripcion: 'Si true, REPARTIDOR no ve ni modifica precios' },
   { clave: 'REQUIERE_FOTO_ENTREGA', valor: 'true', descripcion: 'Si true, REPARTIDOR y trabajadores con moto deben tomar foto' },
 
+  // GPS repartidor (Fase 2)
+  { clave: 'umbralGpsEntregaMetros', valor: '30', descripcion: 'Distancia máxima en metros entre GPS del repartidor y la ubicación del cliente para considerar entrega válida' },
+  { clave: 'requerirGpsParaEntrega', valor: 'true', descripcion: 'Si true, se exige GPS en la entrega' },
+  { clave: 'permitirEntregaSinGpsConJustificacion', valor: 'true', descripcion: 'Si true, permite entrega sin GPS si se envía justificación' },
+
   // Empresa
   { clave: 'empresa_nombre', valor: 'Agua Bambú' },
   { clave: 'empresa_nit', valor: '49008664', descripcion: 'Cédula/NIT del propietario' },

@@ -95,4 +95,44 @@ describe('Pedido.entregar()', () => {
     pedido.entregar([{ producto: 'PACA_AGUA', cantidad: 3 }], { fotoEntrega: 'x' })
     expect(Number(pedido.total.toDecimal())).toBe(19500) // 3 x 6500
   })
+
+  it('persists gpsAccuracy, gpsJustificacion, entregadoConGps and entregadoAt when provided', () => {
+    const pedido = makePedido()
+    const entregadoAt = new Date('2026-06-15T14:30:00Z')
+    pedido.entregar(
+      [{ producto: 'PACA_AGUA', cantidad: 5 }],
+      {
+        gpsAccuracy: 12.5,
+        gpsJustificacion: 'Cliente no permitió GPS',
+        entregadoConGps: false,
+        entregadoAt,
+      },
+    )
+    expect(pedido.gpsAccuracy).toBe(12.5)
+    expect(pedido.gpsJustificacion).toBe('Cliente no permitió GPS')
+    expect(pedido.entregadoConGps).toBe(false)
+    expect(pedido.entregadoAt?.toISOString()).toBe(entregadoAt.toISOString())
+  })
+
+  it('defaults entregadoAt to now when not provided', () => {
+    const pedido = makePedido()
+    const before = new Date()
+    pedido.entregar([{ producto: 'PACA_AGUA', cantidad: 5 }])
+    const after = new Date()
+    expect(pedido.entregadoAt).toBeDefined()
+    expect(pedido.entregadoAt!.getTime()).toBeGreaterThanOrEqual(before.getTime())
+    expect(pedido.entregadoAt!.getTime()).toBeLessThanOrEqual(after.getTime())
+  })
+
+  it('marcarAdminOverride stores admin override metadata', () => {
+    const pedido = makePedido()
+    const before = new Date()
+    pedido.marcarAdminOverride('GPS ausente aprobado por supervisor', 'admin-1')
+    const after = new Date()
+    expect(pedido.adminOverrideNota).toBe('GPS ausente aprobado por supervisor')
+    expect(pedido.adminOverrideBy).toBe('admin-1')
+    expect(pedido.adminOverrideAt).toBeDefined()
+    expect(pedido.adminOverrideAt!.getTime()).toBeGreaterThanOrEqual(before.getTime())
+    expect(pedido.adminOverrideAt!.getTime()).toBeLessThanOrEqual(after.getTime())
+  })
 })

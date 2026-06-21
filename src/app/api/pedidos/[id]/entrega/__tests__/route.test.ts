@@ -73,3 +73,29 @@ describe('F-N7: la route sigue trabajando (no rompe backward compat)', () => {
     expect(routeSource).toMatch(/TRANSICION_INVALIDA/)
   })
 })
+
+describe('Fase 2 GPS: validación y persistencia de GPS en entrega', () => {
+  it('la route lee REQUIERE_GPS_PARA_ENTREGA y PERMITIR_ENTREGA_SIN_GPS_CON_JUSTIFICACION', () => {
+    expect(routeSource).toMatch(/REQUIERE_GPS_PARA_ENTREGA/)
+    expect(routeSource).toMatch(/PERMITIR_ENTREGA_SIN_GPS_CON_JUSTIFICACION/)
+  })
+
+  it('la route devuelve 400 si se requiere GPS y no hay coords ni justificación', () => {
+    expect(routeSource).toMatch(/La ubicación GPS es obligatoria para registrar la entrega/)
+    expect(routeSource).toMatch(/apiError\(['"]La ubicación GPS es obligatoria para registrar la entrega['"],\s*400\)/)
+  })
+
+  it('la route pasa los nuevos campos GPS al use case', () => {
+    expect(routeSource).toMatch(/gpsAccuracy,/)
+    expect(routeSource).toMatch(/gpsJustificacion,/)
+    expect(routeSource).toMatch(/entregadoConGps,/)
+    expect(routeSource).toMatch(/entregadoAt,/)
+  })
+
+  it('la route crea un GpsTrack tras entrega exitosa con coords y embarque', () => {
+    expect(routeSource).toMatch(/prisma\.gpsTrack\.create/)
+    expect(routeSource).toMatch(/result\.pedido\.embarqueId/)
+    expect(routeSource).toMatch(/trabajadorId/)
+    expect(routeSource).toMatch(/synced:\s*true/)
+  })
+})

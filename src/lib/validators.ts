@@ -95,6 +95,10 @@ export const EntregaSchema = z.object({
   fotoEntrega: z.string().max(15 * 1024 * 1024, 'Foto demasiado grande (máx 15MB)').optional(),
   gpsLat: z.number().optional(),
   gpsLng: z.number().optional(),
+  gpsAccuracy: z.number().optional(),
+  gpsJustificacion: z.string().max(500, 'La justificación es muy larga').optional(),
+  entregadoConGps: z.boolean().optional(),
+  entregadoAt: z.string().datetime().optional(),
   codigoVisita: z.string().optional(),
   // Offline-first: dedup si la request se encola y se reintenta
   offlineId: z.string().optional(),
@@ -449,6 +453,19 @@ export const GastoEmbarqueSchema = z.object({
   categoria: z.string().min(1),
   monto: z.coerce.number().positive(),
   nota: z.string().max(500).optional(),
+})
+
+// ====================
+// GPS TRACK (Fase 2)
+// ====================
+
+export const GpsTrackCreateSchema = z.object({
+  embarqueId: z.string().min(1),
+  lat: z.number().min(-90).max(90),
+  lng: z.number().min(-180).max(180),
+  accuracy: z.number().min(0).optional(),
+  timestamp: z.string().datetime().optional(),
+  offlineId: z.string().optional(),
 })
 
 export const CerrarEmbarqueSchema = z.object({

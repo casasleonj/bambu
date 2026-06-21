@@ -524,6 +524,13 @@ model Pedido {
   fotoEntrega       String?
   gpsLat            Decimal?  @db.Decimal(10, 6)
   gpsLng            Decimal?  @db.Decimal(10, 6)
+  gpsAccuracy       Decimal?  @db.Decimal(10, 2)
+  gpsJustificacion  String?   @db.Text
+  entregadoConGps   Boolean   @default(true)
+  entregadoAt       DateTime? @db.Timestamptz()
+  adminOverrideNota String?   @db.Text
+  adminOverrideBy   String?
+  adminOverrideAt   DateTime? @db.Timestamptz()
   offlineId         String?   @unique
   recurrenteBatchId String? // batch id compartido por todos los pedidos de un batch de recurrentes
   // FIX Fase 1: dedup key dedicado para POST /api/pedidos/[id]/enviar.
@@ -766,6 +773,7 @@ model GpsTrack {
   trabajadorId String
   lat          Decimal  @db.Decimal(10, 6)
   lng          Decimal  @db.Decimal(10, 6)
+  accuracy     Decimal? @db.Decimal(10, 2)
   timestamp    DateTime @db.Timestamptz()
   synced       Boolean  @default(false)
 

@@ -26,6 +26,8 @@ import { usePedidos } from '@/hooks/use-pedidos'
 import { useCrearPedido } from '@/hooks/use-crear-pedido'
 import { useAnularPedido } from '@/hooks/use-anular-pedido'
 import { useAsignarEmbarque } from '@/hooks/use-asignar-embarque'
+import { useEntregarPedido } from '@/hooks/use-entregar-pedido'
+import { GpsCaptureModal } from '@/components/gps-capture-modal'
 
 const PedidoFormUnified = dynamic(() => import('@/components/pedido-form-unified').then(m => m.PedidoFormUnified), { ssr: false })
 import type { PedidoInicial, PedidoUnifiedData } from '@/components/pedido-form-unified'
@@ -65,8 +67,15 @@ export function PedidosClient() {
   const anularDevolverStockRef = useRef<boolean>(false)
   // Foto entrega (admin) — when REQUIERE_FOTO_ENTREGA is on, ENTREGADO flow shows the modal first.
   const [showFotoEntrega, setShowFotoEntrega] = useState(false)
+  const [showGpsCapture, setShowGpsCapture] = useState(false)
   const [pedidoParaEntregar, setPedidoParaEntregar] = useState<Pedido | null>(null)
+  const [fotoParaEntregar, setFotoParaEntregar] = useState<string | null>(null)
   const [requiereFotoEntrega, setRequiereFotoEntrega] = useState(false)
+  const [gpsConfig, setGpsConfig] = useState({
+    radiusMeters: 30,
+    requerirGps: false,
+    permitirSinGpsConJustificacion: true,
+  })
 
   // Fechas desde URL (fuente de verdad)
   const desdeUrl = searchParams.get('desde')
@@ -213,6 +222,34 @@ export function PedidosClient() {
   }, [])
 
   useEffect(() => {
+    // Fetch GPS delivery config (best-effort, defaults applied on error).
+    ;(async () => {
+      try {
+        const res = await fetch('/api/config?keys=umbralGpsEntregaMetros,requerirGpsParaEntrega,permitirEntregaSinGpsConJustificacion', { cache: 'no-store' })
+        if (!res.ok) return
+        const json: unknown = await res.json()
+        const data = (json as { data?: Record<string, string> } | null)?.data ?? (json as Record<string, string> | null)
+        if (!data || typeof data !== 'object') return
+        const parseNumber = (raw: unknown, fallback: number) => {
+          const n = Number(raw)
+          return Number.isFinite(n) && n > 0 ? n : fallback
+        }
+        const parseBool = (raw: unknown, fallback: boolean) => {
+          if (raw === undefined || raw === null) return fallback
+          return String(raw).trim().toLowerCase() === 'true'
+        }
+        setGpsConfig({
+          radiusMeters: parseNumber((data as Record<string, string>)['umbralGpsEntregaMetros'], 30),
+          requerirGps: parseBool((data as Record<string, string>)['requerirGpsParaEntrega'], false),
+          permitirSinGpsConJustificacion: parseBool((data as Record<string, string>)['permitirEntregaSinGpsConJustificacion'], true),
+        })
+      } catch {
+        // defaults already set
+      }
+    })()
+  }, [])
+
+  useEffect(() => {
     let isFetching = false
     const getPollInterval = () => {
       const conn = (navigator as any).connection
@@ -283,6 +320,20 @@ export function PedidosClient() {
     onSuccess: () => {
       fetchPedidos()
       fetchEmbarques()
+    },
+  })
+
+  const { entregar } = useEntregarPedido({
+    onSuccess: () => {
+      setShowDetailModal(false)
+      setShowGpsCapture(false)
+      setPedidoParaEntregar(null)
+      setFotoParaEntregar(null)
+      fetchPedidos()
+      toast.success('Pedido entregado con foto')
+    },
+    onError: (error) => {
+      toast.error(error || 'Error registrando entrega')
     },
   })
 
@@ -626,62 +677,48 @@ export function PedidosClient() {
   }
 
   /**
-   * After the user confirms a delivery photo, mark the pedido as ENTREGADO
-   * via the dedicated /entrega endpoint (which persists the photo + GPS).
+   * After the user confirms a delivery photo, proceed to the GPS capture step.
    */
   async function handleFotoConfirm(fotoBase64: string) {
     if (!pedidoParaEntregar) {
       throw new Error('No hay pedido seleccionado')
     }
+    setFotoParaEntregar(fotoBase64)
+    setShowFotoEntrega(false)
+    setShowGpsCapture(true)
+  }
+
+  /**
+   * After GPS capture/justification, mark the pedido as ENTREGADO via the hook.
+   */
+  async function handleGpsConfirm(coords: { lat: number; lng: number; accuracy?: number } | null, justificacion?: string) {
+    if (!pedidoParaEntregar || !fotoParaEntregar) {
+      toast.error('No hay pedido o foto seleccionados')
+      return
+    }
     const id = pedidoParaEntregar.id
     setUpdatingId(id)
-    setShowFotoEntrega(false)
     try {
-      // Try to grab GPS (non-blocking, best-effort)
-      let gpsLat: number | undefined
-      let gpsLng: number | undefined
-      if (typeof navigator !== 'undefined' && navigator.geolocation) {
-        try {
-          const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000, maximumAge: 60000 })
-          })
-          gpsLat = pos.coords.latitude
-          gpsLng = pos.coords.longitude
-        } catch {
-          // ignore — GPS not available
-        }
-      }
-
       const itemsEntregados = (pedidoParaEntregar.items || []).flatMap((i) => {
         const entries: Array<{ producto: string; cantidad: number }> = []
         if (i.cantPedido > 0) entries.push({ producto: i.producto, cantidad: i.cantPedido })
         return entries
       })
 
-      const res = await fetch(`/api/pedidos/${id}/entrega`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          itemsEntregados,
-          pagos: [],
-          fotoEntrega: fotoBase64,
-          gpsLat,
-          gpsLng,
-        }),
+      await entregar({
+        pedidoId: id,
+        tipo: 'COMPLETO',
+        itemsEntregados,
+        pagos: [],
+        fotoEntrega: fotoParaEntregar,
+        gpsLat: coords?.lat,
+        gpsLng: coords?.lng,
+        gpsAccuracy: coords?.accuracy,
+        gpsJustificacion: justificacion,
+        entregadoConGps: coords !== null,
       })
-      if (!res.ok) {
-        const json = await res.json().catch(() => ({}))
-        throw new Error(json?.error || 'Error registrando entrega')
-      }
-      setShowDetailModal(false)
-      fetchPedidos()
-      toast.success('Pedido entregado con foto')
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error confirmando entrega')
-      throw err
     } finally {
       setUpdatingId(null)
-      setPedidoParaEntregar(null)
     }
   }
 
@@ -1411,9 +1448,36 @@ export function PedidosClient() {
           if (updatingId) return
           setShowFotoEntrega(false)
           setPedidoParaEntregar(null)
+          setFotoParaEntregar(null)
         }}
         onConfirm={handleFotoConfirm}
       />
+
+      {/* GPS capture modal — second step after photo confirmation */}
+      {(() => {
+        const clienteParaGps = pedidoParaEntregar
+          ? clientes.find(c => c.id === pedidoParaEntregar.clienteId)
+          : null
+        return (
+          <GpsCaptureModal
+            open={showGpsCapture}
+            onClose={() => {
+              if (updatingId) return
+              setShowGpsCapture(false)
+              setPedidoParaEntregar(null)
+              setFotoParaEntregar(null)
+            }}
+            onConfirm={handleGpsConfirm}
+            clienteCoords={
+              clienteParaGps?.lat != null && clienteParaGps?.lng != null
+                ? { lat: clienteParaGps.lat, lng: clienteParaGps.lng }
+                : undefined
+            }
+            clienteName={pedidoParaEntregar?.nombreCli ?? undefined}
+            deliveryRadiusMeters={gpsConfig.radiusMeters}
+          />
+        )
+      })()}
 
       {/* FAB Unificado */}
       <div

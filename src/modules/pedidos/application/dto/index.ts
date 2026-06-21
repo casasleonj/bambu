@@ -52,6 +52,10 @@ export interface EntregarPedidoInput {
   fotoEntrega?: string
   gpsLat?: number
   gpsLng?: number
+  gpsAccuracy?: number
+  gpsJustificacion?: string
+  entregadoConGps?: boolean
+  entregadoAt?: string
   codigoVisita?: string
   offlineId?: string
 }
@@ -97,6 +101,13 @@ export interface PedidoResumenDTO {
   fechaEntrega?: string
   obs?: string
   offlineId?: string | null
+  gpsAccuracy?: number | null
+  gpsJustificacion?: string | null
+  entregadoConGps: boolean
+  entregadoAt?: string | null
+  adminOverrideNota?: string | null
+  adminOverrideBy?: string | null
+  adminOverrideAt?: string | null
   // Legacy price fields (for backward compat with UI and tests)
   precioPacaAgua: number
   precioPacaHielo: number

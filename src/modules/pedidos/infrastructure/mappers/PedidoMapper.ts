@@ -35,7 +35,14 @@ interface PrismaPedido {
   fotoEntrega: string | null
   gpsLat: number | { toNumber: () => number } | null
   gpsLng: number | { toNumber: () => number } | null
+  gpsAccuracy: number | { toNumber: () => number } | null
+  gpsJustificacion: string | null
+  entregadoConGps: boolean
+  entregadoAt: Date | null
   codigoVisita: string | null
+  adminOverrideNota: string | null
+  adminOverrideBy: string | null
+  adminOverrideAt: Date | null
   offlineId: string | null
   items: Array<{
     producto: string
@@ -93,7 +100,14 @@ export class PedidoMapper {
       fotoEntrega: raw.fotoEntrega || undefined,
       gpsLat: raw.gpsLat ? toNumber(raw.gpsLat) : undefined,
       gpsLng: raw.gpsLng ? toNumber(raw.gpsLng) : undefined,
+      gpsAccuracy: raw.gpsAccuracy ? toNumber(raw.gpsAccuracy) : undefined,
+      gpsJustificacion: raw.gpsJustificacion || undefined,
+      entregadoConGps: raw.entregadoConGps,
+      entregadoAt: raw.entregadoAt || undefined,
       codigoVisita: raw.codigoVisita || undefined,
+      adminOverrideNota: raw.adminOverrideNota || undefined,
+      adminOverrideBy: raw.adminOverrideBy || undefined,
+      adminOverrideAt: raw.adminOverrideAt || undefined,
       offlineId: raw.offlineId || undefined,
     })
   }
@@ -122,7 +136,14 @@ export class PedidoMapper {
       fotoEntrega: pedido.fotoEntrega || null,
       gpsLat: pedido.gpsLat || null,
       gpsLng: pedido.gpsLng || null,
+      gpsAccuracy: pedido.gpsAccuracy || null,
+      gpsJustificacion: pedido.gpsJustificacion || null,
+      entregadoConGps: pedido.entregadoConGps ?? true,
+      entregadoAt: pedido.entregadoAt || null,
       codigoVisita: pedido.codigoVisita || null,
+      adminOverrideNota: pedido.adminOverrideNota || null,
+      adminOverrideBy: pedido.adminOverrideBy || null,
+      adminOverrideAt: pedido.adminOverrideAt || null,
       ...legacy,
       items: {
         create: pedido.items.map(i => ({
@@ -154,7 +175,14 @@ export class PedidoMapper {
       fotoEntrega: pedido.fotoEntrega || null,
       gpsLat: pedido.gpsLat || null,
       gpsLng: pedido.gpsLng || null,
+      gpsAccuracy: pedido.gpsAccuracy || null,
+      gpsJustificacion: pedido.gpsJustificacion || null,
+      entregadoConGps: pedido.entregadoConGps ?? true,
+      entregadoAt: pedido.entregadoAt || null,
       codigoVisita: pedido.codigoVisita || null,
+      adminOverrideNota: pedido.adminOverrideNota || null,
+      adminOverrideBy: pedido.adminOverrideBy || null,
+      adminOverrideAt: pedido.adminOverrideAt || null,
       ...legacy,
     }
   }
