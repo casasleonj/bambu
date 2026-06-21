@@ -36,7 +36,32 @@ export async function POST(
       return apiError(formatZodError(parsed.error), 400)
     }
 
-    const { tipo, itemsEntregados, pagos, fotoEntrega, gpsLat, gpsLng, codigoVisita, offlineId } = parsed.data
+    const {
+      tipo,
+      itemsEntregados,
+      pagos,
+      fotoEntrega,
+      gpsLat,
+      gpsLng,
+      gpsAccuracy,
+      gpsJustificacion,
+      entregadoConGps,
+      entregadoAt,
+      codigoVisita,
+      offlineId,
+    } = parsed.data
+
+    // Rule: REQUIERE_GPS_PARA_ENTREGA
+    // If GPS is required, the delivery must include coordinates OR a justification.
+    const requerirGps = await getConfigBool('REQUIERE_GPS_PARA_ENTREGA', false)
+    const permitirSinGpsConJustificacion = await getConfigBool('PERMITIR_ENTREGA_SIN_GPS_CON_JUSTIFICACION', false)
+    if (requerirGps) {
+      const tieneGps = typeof gpsLat === 'number' && typeof gpsLng === 'number'
+      const tieneJustificacion = typeof gpsJustificacion === 'string' && gpsJustificacion.trim().length > 0
+      if (!tieneGps && !(permitirSinGpsConJustificacion && tieneJustificacion)) {
+        return apiError('La ubicación GPS es obligatoria para registrar la entrega', 400)
+      }
+    }
 
     // Rule: REQUIERE_FOTO_ENTREGA
     // Applies to:
@@ -106,9 +131,42 @@ export async function POST(
       fotoEntrega: fotoUrl,
       gpsLat,
       gpsLng,
+      gpsAccuracy,
+      gpsJustificacion,
+      entregadoConGps,
+      entregadoAt,
       codigoVisita,
       offlineId,
     })
+
+    // Persist a GpsTrack snapshot when coordinates are available and the
+    // pedido belongs to an embarque. Use the embarque's trabajadorId as
+    // the track owner.
+    if (typeof gpsLat === 'number' && typeof gpsLng === 'number' && result.pedido.embarqueId) {
+      try {
+        const embarque = await prisma.embarque.findUnique({
+          where: { id: result.pedido.embarqueId },
+          select: { trabajadorId: true },
+        })
+        if (embarque?.trabajadorId) {
+          await prisma.gpsTrack.create({
+            data: {
+              embarqueId: result.pedido.embarqueId,
+              trabajadorId: embarque.trabajadorId,
+              lat: gpsLat,
+              lng: gpsLng,
+              timestamp: new Date(),
+              synced: true,
+            },
+          })
+        }
+      } catch (gpsError) {
+        logger.error(
+          { err: gpsError instanceof Error ? gpsError.message : 'Unknown', pedidoId: id },
+          'Error creando GpsTrack tras entrega',
+        )
+      }
+    }
 
     logAudit({
       entidad: 'Pedido',

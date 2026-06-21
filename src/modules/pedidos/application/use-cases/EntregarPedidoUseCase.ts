@@ -64,6 +64,10 @@ export class EntregarPedidoUseCase {
           fotoEntrega: input.fotoEntrega,
           gpsLat: input.gpsLat,
           gpsLng: input.gpsLng,
+          gpsAccuracy: input.gpsAccuracy,
+          gpsJustificacion: input.gpsJustificacion,
+          entregadoConGps: input.entregadoConGps,
+          entregadoAt: input.entregadoAt ? new Date(input.entregadoAt) : undefined,
           codigoVisita: input.codigoVisita,
         },
       )

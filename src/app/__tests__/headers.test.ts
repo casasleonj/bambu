@@ -52,27 +52,30 @@ describe('PWA headers', () => {
 describe('Proxy matcher', () => {
   it('excludes PWA manifest from auth redirect', () => {
     const matchers = proxyConfig.matcher as string[]
-    const matcherRegex = new RegExp(matchers[0].slice(1, -1))
+    // The matcher pattern begins with a literal `/` that consumes the leading
+    // slash of the pathname, so we test the remainder of the path anchored to
+    // the start (matching Next.js path-to-regexp semantics).
+    const matcherRegex = new RegExp('^' + matchers[0].slice(1) + '$')
 
-    expect(matcherRegex.test('/manifest.json')).toBe(false)
+    expect(matcherRegex.test('manifest.json')).toBe(false)
   })
 
   it('excludes static image assets from auth redirect', () => {
     const matchers = proxyConfig.matcher as string[]
-    const matcherRegex = new RegExp(matchers[0].slice(1, -1))
+    const matcherRegex = new RegExp('^' + matchers[0].slice(1) + '$')
 
-    expect(matcherRegex.test('/icons/icon-192x192.png')).toBe(false)
-    expect(matcherRegex.test('/icons/badge-72x72.png')).toBe(false)
-    expect(matcherRegex.test('/icons/apple-touch-icon.png')).toBe(false)
-    expect(matcherRegex.test('/screenshots/dashboard-narrow.png')).toBe(false)
+    expect(matcherRegex.test('icons/icon-192x192.png')).toBe(false)
+    expect(matcherRegex.test('icons/badge-72x72.png')).toBe(false)
+    expect(matcherRegex.test('icons/apple-touch-icon.png')).toBe(false)
+    expect(matcherRegex.test('screenshots/dashboard-narrow.png')).toBe(false)
   })
 
   it('still matches protected page routes', () => {
     const matchers = proxyConfig.matcher as string[]
-    const matcherRegex = new RegExp(matchers[0].slice(1, -1))
+    const matcherRegex = new RegExp('^' + matchers[0].slice(1) + '$')
 
-    expect(matcherRegex.test('/dashboard')).toBe(true)
-    expect(matcherRegex.test('/pedidos')).toBe(true)
+    expect(matcherRegex.test('dashboard')).toBe(true)
+    expect(matcherRegex.test('pedidos')).toBe(true)
   })
 })
 

@@ -104,6 +104,8 @@ export interface Cliente {
   telefono: string
   direccion?: string
   barrio?: string
+  lat?: number | null
+  lng?: number | null
   preciosEspeciales?: string
 }
 

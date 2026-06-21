@@ -20,6 +20,9 @@ export interface EntregarPedidoPayload {
   fotoEntrega?: string
   gpsLat?: number
   gpsLng?: number
+  gpsAccuracy?: number
+  gpsJustificacion?: string
+  entregadoConGps?: boolean
   codigoVisita?: string
 }
 

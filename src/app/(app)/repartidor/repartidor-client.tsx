@@ -12,6 +12,8 @@ import { PRODUCTO_INFO, DEFAULT_PRICES, getProductosForCanal } from '@/lib/price
 import { getProductoIconConfig } from '@/lib/producto-iconos'
 import { fetchResilient } from '@/lib/fetch-resilient'
 import { MoneyDisplay } from '@/components/money-display'
+import { useGpsCapture } from '@/hooks/use-gps-capture'
+import { formatGPSError } from '@/lib/gps'
 
 interface RepartidorClientProps {
   trabajador: { id: string; nombre: string }
@@ -69,7 +71,6 @@ export function RepartidorClient({ trabajador, embarque, userRole }: RepartidorC
   const [syncing, setSyncing] = useState(false)
   const [pendingCount, setPendingCount] = useState(0)
   const [online, setOnline] = useState(isOnline())
-  const [gpsPos, setGpsPos] = useState<{ lat: number; lng: number } | null>(null)
   // Bloque 2: optimizando ruta
   const [optimizando, setOptimizando] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -133,20 +134,13 @@ export function RepartidorClient({ trabajador, embarque, userRole }: RepartidorC
     }
   }
 
-  const captureGPS = () => {
-    if (!navigator.geolocation) {
-      toast.error('GPS no disponible')
-      return
+  const { coordinates, error: gpsError, loading: gpsLoading, capture: captureGPS, reset: resetGps } = useGpsCapture()
+
+  useEffect(() => {
+    if (gpsError) {
+      toast.error(formatGPSError(gpsError.code))
     }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setGpsPos({ lat: pos.coords.latitude, lng: pos.coords.longitude })
-        toast.success(`GPS capturado: ${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`)
-      },
-      () => toast.error('No se pudo obtener GPS'),
-      { enableHighAccuracy: true, timeout: 10000 }
-    )
-  }
+  }, [gpsError])
 
   const handleFotoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -185,7 +179,7 @@ export function RepartidorClient({ trabajador, embarque, userRole }: RepartidorC
       toast.error('Toma una foto de la entrega')
       return
     }
-    if (!gpsPos) {
+    if (!coordinates) {
       toast.error('Captura el GPS')
       return
     }
@@ -211,8 +205,8 @@ export function RepartidorClient({ trabajador, embarque, userRole }: RepartidorC
               embarqueId: embarque.id,
               obs,
               fotoEntrega: fotoBase64,
-              gpsLat: gpsPos.lat,
-              gpsLng: gpsPos.lng,
+              gpsLat: coordinates.lat,
+              gpsLng: coordinates.lng,
               offlineId: generateUUID(),
             },
             localEndpoint: 'venta-libre',
@@ -248,8 +242,8 @@ export function RepartidorClient({ trabajador, embarque, userRole }: RepartidorC
           total,
           estado: 'ENTREGADO',
           fotoEntrega: fotoBase64,
-          gpsLat: gpsPos.lat,
-          gpsLng: gpsPos.lng,
+          gpsLat: coordinates.lat,
+          gpsLng: coordinates.lng,
           obs,
         })
         toast.success('Venta guardada offline. Se sincronizará al recuperar conexión.')
@@ -271,7 +265,7 @@ export function RepartidorClient({ trabajador, embarque, userRole }: RepartidorC
     setPagos([])
     setFotoBase64(null)
     setObs('')
-    setGpsPos(null)
+    resetGps()
   }
 
   const addPago = (metodo: string, monto: number) => {
@@ -648,9 +642,10 @@ export function RepartidorClient({ trabajador, embarque, userRole }: RepartidorC
             <h3 className="text-sm font-semibold text-gray-700 mb-2">Ubicación GPS</h3>
             <button
               onClick={captureGPS}
-              className={`w-full py-3 rounded-lg border-2 border-dashed text-sm font-medium transition ${gpsPos ? 'border-green-300 bg-green-50 text-green-700' : 'border-gray-300 bg-gray-50 text-gray-600 hover:border-gray-400'}`}
+              disabled={gpsLoading}
+              className={`w-full py-3 rounded-lg border-2 border-dashed text-sm font-medium transition ${coordinates ? 'border-green-300 bg-green-50 text-green-700' : 'border-gray-300 bg-gray-50 text-gray-600 hover:border-gray-400'} disabled:opacity-50 disabled:cursor-not-allowed`}
             >
-              {gpsPos ? `📍 ${gpsPos.lat.toFixed(4)}, ${gpsPos.lng.toFixed(4)}` : '📍 Capturar GPS'}
+              {gpsLoading ? 'Obteniendo ubicación...' : coordinates ? `📍 ${coordinates.lat.toFixed(4)}, ${coordinates.lng.toFixed(4)}` : '📍 Capturar GPS'}
             </button>
           </div>
 

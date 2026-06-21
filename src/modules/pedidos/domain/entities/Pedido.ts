@@ -36,7 +36,14 @@ export interface PedidoProps {
   fotoEntrega?: string
   gpsLat?: number
   gpsLng?: number
+  gpsAccuracy?: number
+  gpsJustificacion?: string
+  entregadoConGps?: boolean
+  entregadoAt?: Date
   codigoVisita?: string
+  adminOverrideNota?: string
+  adminOverrideBy?: string
+  adminOverrideAt?: Date
   offlineId?: string
   createdById?: string
 }
@@ -71,7 +78,14 @@ export class Pedido {
   get fotoEntrega(): string | undefined { return this.props.fotoEntrega }
   get gpsLat(): number | undefined { return this.props.gpsLat }
   get gpsLng(): number | undefined { return this.props.gpsLng }
+  get gpsAccuracy(): number | undefined { return this.props.gpsAccuracy }
+  get gpsJustificacion(): string | undefined { return this.props.gpsJustificacion }
+  get entregadoConGps(): boolean | undefined { return this.props.entregadoConGps }
+  get entregadoAt(): Date | undefined { return this.props.entregadoAt }
   get codigoVisita(): string | undefined { return this.props.codigoVisita }
+  get adminOverrideNota(): string | undefined { return this.props.adminOverrideNota }
+  get adminOverrideBy(): string | undefined { return this.props.adminOverrideBy }
+  get adminOverrideAt(): Date | undefined { return this.props.adminOverrideAt }
   get offlineId(): string | undefined { return this.props.offlineId }
 
   // ── Business Rules ─────────────────────────────────────────────────────
@@ -130,7 +144,16 @@ export class Pedido {
    */
   entregar(
     entregas: Array<{ producto: ProductCode; cantidad: number }>,
-    metadata?: { fotoEntrega?: string; gpsLat?: number; gpsLng?: number; codigoVisita?: string },
+    metadata?: {
+      fotoEntrega?: string
+      gpsLat?: number
+      gpsLng?: number
+      gpsAccuracy?: number
+      gpsJustificacion?: string
+      entregadoConGps?: boolean
+      entregadoAt?: Date
+      codigoVisita?: string
+    },
   ): void {
     if (!this.puedeEntregar()) {
       throw new Error(`Transición inválida: ${this.estadoEntrega.get()} → ENTREGADO`)
@@ -173,7 +196,23 @@ export class Pedido {
       fotoEntrega: metadata?.fotoEntrega || this.props.fotoEntrega,
       gpsLat: metadata?.gpsLat ?? this.props.gpsLat,
       gpsLng: metadata?.gpsLng ?? this.props.gpsLng,
+      gpsAccuracy: metadata?.gpsAccuracy ?? this.props.gpsAccuracy,
+      gpsJustificacion: metadata?.gpsJustificacion || this.props.gpsJustificacion,
+      entregadoConGps: metadata?.entregadoConGps ?? this.props.entregadoConGps,
+      entregadoAt: metadata?.entregadoAt ?? this.props.entregadoAt ?? new Date(),
       codigoVisita: metadata?.codigoVisita || this.props.codigoVisita,
+    }
+  }
+
+  /**
+   * Mark an admin override on the delivery (e.g. admin clears a GPS dispute).
+   */
+  marcarAdminOverride(nota: string, adminId: string): void {
+    this.props = {
+      ...this.props,
+      adminOverrideNota: nota,
+      adminOverrideBy: adminId,
+      adminOverrideAt: new Date(),
     }
   }
 
