@@ -17,6 +17,17 @@ declare global {
 
 declare const self: ServiceWorkerGlobalScope;
 
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const rawData = atob(base64)
+  const outputArray = new Uint8Array(rawData.length)
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i)
+  }
+  return outputArray
+}
+
 const serwist = new Serwist({
   precacheEntries: self.__SW_MANIFEST,
   skipWaiting: true,
@@ -128,5 +139,40 @@ self.addEventListener("notificationclick", (event: NotificationEvent) => {
         // Si no, abrir nuevo tab
         return self.clients.openWindow(url)
       }),
+  )
+})
+
+// El browser puede rotar el endpoint de push (especialmente Chrome cada ~mes).
+// Cuando eso pasa, emitimos `pushsubscriptionchange` y re-suscribimos con el
+// nuevo endpoint, reportándolo al backend para seguir enviando notificaciones.
+self.addEventListener('pushsubscriptionchange', (event: PushSubscriptionChangeEvent) => {
+  event.waitUntil(
+    (async () => {
+      const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+      if (!publicKey) {
+        console.error('[sw] NEXT_PUBLIC_VAPID_PUBLIC_KEY no configurada')
+        return
+      }
+      try {
+        const newSubscription = await self.registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
+        })
+        const json = newSubscription.toJSON()
+        await fetch('/api/push/subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            endpoint: newSubscription.endpoint,
+            keys: {
+              p256dh: json.keys?.p256dh,
+              auth: json.keys?.auth,
+            },
+          }),
+        })
+      } catch (err) {
+        console.error('[sw] pushsubscriptionchange fallo:', err)
+      }
+    })(),
   )
 })
