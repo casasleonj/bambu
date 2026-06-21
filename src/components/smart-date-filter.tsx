@@ -31,13 +31,6 @@ export function SmartDateFilter({ onDateChange }: SmartDateFilterProps) {
   const hastaUrl = searchParams.get('hasta')
 
   const syncFromUrl = useCallback(() => {
-    if (!desdeUrl && !hastaUrl) {
-      setActivePreset('todos')
-      setMode('preset')
-      setIsCustomExpanded(false)
-      return
-    }
-
     const presets: { preset: DatePreset; desde: string; hasta: string }[] = [
       { preset: 'ayer', ...getPresetDate('ayer')! },
       { preset: 'hoy', ...getPresetDate('hoy')! },
@@ -53,6 +46,13 @@ export function SmartDateFilter({ onDateChange }: SmartDateFilterProps) {
       setActivePreset(match.preset)
       setMode('preset')
       setIsCustomExpanded(false)
+    } else if (!desdeUrl && !hastaUrl) {
+      // Default a hoy si no hay filtro de fecha en la URL.
+      // El preset "Todos" se comporta como "Hoy" para no traer
+      // todo el histórico de pedidos por defecto.
+      setActivePreset('hoy')
+      setMode('preset')
+      setIsCustomExpanded(false)
     } else {
       setActivePreset(null)
       setMode('custom')
@@ -65,6 +65,19 @@ export function SmartDateFilter({ onDateChange }: SmartDateFilterProps) {
   useEffect(() => {
     syncFromUrl()
   }, [syncFromUrl])
+
+  // Default a "Hoy" al montar si no hay filtro de fecha en la URL.
+  // Esto hace que SmartDateFilter sea la única fuente de verdad del
+  // filtro default y evita duplicar la lógica en los consumidores.
+  useEffect(() => {
+    if (!desdeUrl && !hastaUrl) {
+      const dates = getPresetDate('hoy')
+      if (dates) {
+        updateUrl(dates.desde, dates.hasta)
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const updateUrl = useCallback(
     (desde: string | null, hasta: string | null) => {
@@ -83,10 +96,15 @@ export function SmartDateFilter({ onDateChange }: SmartDateFilterProps) {
 
   const handlePresetClick = (preset: DatePreset) => {
     if (preset === 'todos') {
-      updateUrl(null, null)
-      setActivePreset('todos')
-      setMode('preset')
-      setIsCustomExpanded(false)
+      // "Todos" se comporta como "Hoy" para evitar traer todo el
+      // histórico de pedidos por defecto.
+      const dates = getPresetDate('hoy')
+      if (dates) {
+        updateUrl(dates.desde, dates.hasta)
+        setActivePreset('hoy')
+        setMode('preset')
+        setIsCustomExpanded(false)
+      }
       return
     }
 
@@ -110,8 +128,14 @@ export function SmartDateFilter({ onDateChange }: SmartDateFilterProps) {
   const handleCustomClear = () => {
     setCustomDesde('')
     setCustomHasta('')
-    updateUrl(null, null)
-    setActivePreset('todos')
+    // Limpiar vuelve al default "Hoy" (no "Todos").
+    const dates = getPresetDate('hoy')
+    if (dates) {
+      updateUrl(dates.desde, dates.hasta)
+    } else {
+      updateUrl(null, null)
+    }
+    setActivePreset('hoy')
     setMode('preset')
     setIsCustomExpanded(false)
   }

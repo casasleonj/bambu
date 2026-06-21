@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { useConfirm } from '@/components/confirm-modal'
 import { formatDate } from '@/lib/utils'
+import { generateUUID } from '@/lib/uuid'
 import { EmptyState } from '@/components/empty-state'
 import type { Recurrente, PreviewItem } from './types'
 
@@ -69,9 +70,10 @@ export default function RecurrentesClient() {
     abortRef.current = ctrl
     setGenerating(true)
     try {
+      const offlineId = generateUUID()
       const res = await fetch('/api/pedidos/recurrentes', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ decisiones: decisionesArray }),
+        body: JSON.stringify({ decisiones: decisionesArray, offlineId }),
         signal: ctrl.signal,
       })
       const data = await res.json()

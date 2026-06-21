@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     const desde = searchParams.get('desde')
     const hasta = searchParams.get('hasta')
     const all = searchParams.get('all')
-    const clienteFilter = searchParams.get('cliente')
+    const clienteFilter = searchParams.get('clienteId')
 
     // Build filter for use case
     const filter: Record<string, unknown> = {}

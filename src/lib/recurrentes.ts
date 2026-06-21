@@ -136,8 +136,8 @@ export async function previewGeneracionRecurrentes(
   fechaReferencia: Date = new Date()
 ): Promise<PreviewRecurrente[]> {
   const { endDate } = getDateRange(
-    fechaReferencia.toISOString().slice(0, 10),
-    fechaReferencia.toISOString().slice(0, 10)
+    formatDateISO(fechaReferencia),
+    formatDateISO(fechaReferencia)
   )
 
   const lookaheadEnd = new Date(endDate)

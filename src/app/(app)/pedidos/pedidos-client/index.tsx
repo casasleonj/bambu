@@ -39,13 +39,6 @@ export function PedidosClient() {
   const { data: session } = useSession()
   const userRole = (session?.user as { role?: string } | undefined)?.role ?? null
 
-  // Use pedidos hook for data fetching
-  const { pedidos: pedidosRaw, loading, error: fetchError, refetch } = usePedidos(
-    {},
-    { autoFetch: false },
-  )
-  const pedidos = pedidosRaw as Pedido[]
-
   const [showModal, setShowModal] = useState(false)
   const [showVentaRapida, setShowVentaRapida] = useState(false)
   const [selectedPedido, setSelectedPedido] = useState<Pedido | null>(null)
@@ -88,6 +81,25 @@ export function PedidosClient() {
   const search = searchParams.get('search') || ''
   const clienteIdFromUrl = searchParams.get('clienteId')
   const openPedidoParam = searchParams.get('openPedido')
+
+  // Filtros derivados de la URL (fuente de verdad)
+  const pedidoFilterParams = useMemo(() => ({
+    desde: desdeUrl || undefined,
+    hasta: hastaUrl || undefined,
+    tipo: filtroTipo.length > 0 ? filtroTipo : undefined,
+    origen: filtroOrigen.length > 0 ? filtroOrigen : undefined,
+    estadoEntrega: filtroEstadoEntrega.length > 0 ? filtroEstadoEntrega : undefined,
+    estadoPago: filtroEstadoPago.length > 0 ? filtroEstadoPago : undefined,
+    search: search || undefined,
+    clienteId: clienteIdFromUrl || undefined,
+  }), [desdeUrl, hastaUrl, filtroTipo, filtroOrigen, filtroEstadoEntrega, filtroEstadoPago, search, clienteIdFromUrl])
+
+  // Use pedidos hook for data fetching
+  const { pedidos: pedidosRaw, loading, error: fetchError, refetch } = usePedidos(
+    pedidoFilterParams,
+    { autoFetch: false },
+  )
+  const pedidos = pedidosRaw as Pedido[]
 
   // Auto-open pedido from URL param
   useEffect(() => {
@@ -171,18 +183,9 @@ export function PedidosClient() {
     return () => clearTimeout(timer)
   }, [searchInput, search, updateSearch])
 
-  // Carga inicial — default a hoy si no hay filtro de fecha
+  // Carga inicial
   useEffect(() => {
     (async () => {
-      if (!desdeUrl && !hastaUrl) {
-        const hoy = getPresetDate('hoy')
-        if (hoy) {
-          const params = new URLSearchParams(searchParams.toString())
-          params.set('desde', hoy.desde)
-          params.set('hasta', hoy.hasta)
-          router.replace(`?${params.toString()}`, { scroll: false })
-        }
-      }
       await fetchPedidos()
       const [clientesList] = await Promise.all([fetchClientes(), fetchEmbarques()])
 
@@ -365,6 +368,12 @@ export function PedidosClient() {
         // Create uses the hook
         const result = await crearPedido(data as any)
         if (!result) return
+        setShowModal(false)
+        setShowVentaRapida(false)
+        setPedidoInicial(undefined)
+        setPedidoEditando(null)
+        fetchPedidos()
+        fetchClientes()
         const msg = data.ventaRapida
           ? (data.pagos?.length === 0 ? 'Venta registrada (pendiente)' : 'Venta cobrada')
           : 'Pedido creado exitosamente'
@@ -1482,8 +1491,7 @@ export function PedidosClient() {
       {/* FAB Unificado */}
       <div
         className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-2"
-        onMouseEnter={() => setFabOpen(true)}
-        onMouseLeave={() => setFabOpen(false)}
+        data-testid="fab-container"
       >
         {/* Speed Dial */}
         {fabOpen && (
@@ -1491,6 +1499,7 @@ export function PedidosClient() {
             <Tooltip content="Crea un pedido con cliente, dirección y envío a domicilio" title="Pedido con Envío" position="left">
               <button
                 onClick={() => { setFabOpen(false); setShowModal(true); setModalKey(k => k + 1) }}
+                data-testid="fab-pedido-envio"
                 className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 transition text-sm font-medium"
               >
                 <span>📦</span>
@@ -1500,6 +1509,7 @@ export function PedidosClient() {
             <Tooltip content="Venta inmediata en punto de venta sin registro de cliente" title="Venta Rápida" position="left">
               <button
                 onClick={() => { setFabOpen(false); setShowVentaRapida(true); setModalKey(k => k + 1) }}
+                data-testid="fab-venta-rapida"
                 className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 transition text-sm font-medium"
               >
                 <span>💰</span>
@@ -1511,6 +1521,7 @@ export function PedidosClient() {
         {/* FAB Principal */}
         <button
           onClick={() => setFabOpen((v) => !v)}
+          data-testid="fab-main"
           className={`w-14 h-14 flex items-center justify-center rounded-full shadow-xl transition-all duration-200 ${
             fabOpen ? 'bg-gray-700 rotate-45' : 'bg-blue-600 hover:bg-blue-700'
           } text-white`}

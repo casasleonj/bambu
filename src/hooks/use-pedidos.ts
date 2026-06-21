@@ -5,7 +5,7 @@
  * Replaces direct fetch('/api/pedidos') calls in components.
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { toast } from 'sonner'
 
 export interface PedidoFilterParams {
@@ -43,6 +43,13 @@ export function usePedidos(
   const [error, setError] = useState<string | null>(null)
   const [total, setTotal] = useState(0)
   const abortRef = useRef<AbortController | null>(null)
+  const didInitialFetchRef = useRef(false)
+  const lastParamsKeyRef = useRef<string>('')
+
+  const paramsKey = useMemo(() => JSON.stringify({
+    ...params,
+    all: options?.all,
+  }), [params, options?.all])
 
   const buildUrl = useCallback(() => {
     const url = new URL('/api/pedidos', window.location.origin)
@@ -97,14 +104,33 @@ export function usePedidos(
     await fetchPedidos()
   }, [fetchPedidos])
 
+  // Fetch inicial controlado por autoFetch, y refetch automático cuando
+  // cambian los filtros (params). Comparamos por serialización para evitar
+  // loops infinitos cuando params cambia de referencia pero no de valor.
   useEffect(() => {
-    if (options?.autoFetch !== false) {
+    const isFirstRun = !didInitialFetchRef.current
+    const paramsChanged = paramsKey !== lastParamsKeyRef.current
+
+    if (isFirstRun) {
+      didInitialFetchRef.current = true
+      lastParamsKeyRef.current = paramsKey
+      if (options?.autoFetch !== false) {
+        fetchPedidos()
+      }
+      return
+    }
+
+    if (paramsChanged) {
+      lastParamsKeyRef.current = paramsKey
       fetchPedidos()
     }
+  }, [paramsKey, options?.all, options?.autoFetch, fetchPedidos])
+
+  useEffect(() => {
     return () => {
       if (abortRef.current) abortRef.current.abort()
     }
-  }, [fetchPedidos, options?.autoFetch])
+  }, [])
 
   return { pedidos, loading, error, total, fetchPedidos, refetch }
 }

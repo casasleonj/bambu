@@ -1,5 +1,6 @@
 import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { ClienteCreateSchema } from '@/lib/validators'
@@ -45,7 +46,7 @@ export async function GET(request: NextRequest) {
     if (search && search.trim().length >= 2) {
       // Use raw SQL with pg_trgm word_similarity for better relevance
       const isAdmin = (authResult.user as { role?: string } | undefined)?.role === 'ADMIN'
-      const adminFilter = isAdmin ? '' : 'AND c.id != \'CONSUMIDOR_FINAL\''
+      const adminFilter = isAdmin ? Prisma.empty : Prisma.sql`AND c.id != 'CONSUMIDOR_FINAL'`
 
       const clientesRaw = await prisma.$queryRaw`
         SELECT DISTINCT ON (c.id)

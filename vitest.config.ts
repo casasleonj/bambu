@@ -76,4 +76,12 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  server: {
+    deps: {
+      // next-auth v5 beta importa 'next/server' sin extensión .js,
+      // lo cual falla en la resolución ESM de Vitest/Vite.
+      // Forzamos a inlinearlo para que use la resolución de Node.
+      inline: ['next-auth'],
+    },
+  },
 })

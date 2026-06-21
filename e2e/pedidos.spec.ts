@@ -9,19 +9,14 @@ test.describe('Pedidos', () => {
     await fullLogin(page)
     await goto(page, '/pedidos')
     // Click the main FAB button to open menu
-    const fabMain = page.locator('button.fixed.bottom-6').first()
-    if (await fabMain.isVisible()) {
-      await fabMain.click()
-      await page.waitForTimeout(300)
-    }
+    const fabMain = page.locator('[data-testid="fab-main"]').first()
+    await expect(fabMain).toBeVisible({ timeout: 5000 })
+    await fabMain.click()
+    await page.waitForTimeout(300)
     // Click "Venta Rápida"
-    const ventaBtn = page.locator('button:has-text("Venta Rápida")').last()
-    if (await ventaBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await ventaBtn.click()
-    } else {
-      // Try alternate - maybe the button is different
-      await page.locator('span:has-text("Venta Rápida")').first().click()
-    }
+    const ventaBtn = page.locator('[data-testid="fab-venta-rapida"]').first()
+    await expect(ventaBtn, 'botón Venta Rápida no aparece tras abrir FAB').toBeVisible({ timeout: 3000 })
+    await ventaBtn.click()
     await page.waitForTimeout(500)
     // Add a product — click the green plus button in the product grid
     // Use the PedidoFormUnified increment button: w-8 h-8 rounded-full bg-green-100
@@ -33,7 +28,8 @@ test.describe('Pedidos', () => {
       await page.locator('button:has-text("Pagar completo")').click()
       await page.waitForTimeout(300)
       // Click submit - "Cobrar" button
-      const cobrarBtn = page.locator('button:has-text("Cobrar")').first()
+      const cobrarBtn = page.locator('[data-testid="submit-pedido"]').filter({ hasText: 'Cobrar' }).first()
+      await expect(cobrarBtn).toBeVisible({ timeout: 3000 })
       await cobrarBtn.click()
       await page.waitForTimeout(2000)
       // Should close modal
@@ -195,6 +191,43 @@ test.describe('Pedidos', () => {
   })
 
   // ─── Filtros ──────────────────────────────────────────────────────────────
+
+  test('filtro default es hoy al entrar a pedidos', async ({ page }) => {
+    await fullLogin(page)
+    await goto(page, '/pedidos')
+    await page.waitForLoadState('networkidle')
+    // La URL debe contener desde/hasta de hoy
+    await expect(page).toHaveURL(/desde=\d{4}-\d{2}-\d{2}/)
+    await expect(page).toHaveURL(/hasta=\d{4}-\d{2}-\d{2}/)
+    // El botón "Hoy" debe estar activo (bg-blue-600)
+    const hoyBtn = page.locator('button:has-text("Hoy")').first()
+    await expect(hoyBtn).toHaveClass(/bg-blue-600/)
+  })
+
+  test('pedido creado aparece en lista de pedidos', async ({ page }) => {
+    await fullLogin(page)
+    const unique = Date.now()
+    const cliente = await createCliente(page, {
+      nombre: `Aparece En Lista ${unique}`,
+      telefono: `3${String(unique).slice(-9)}`,
+    })
+    const clienteId = cliente.cliente?.id || cliente.data?.id
+    if (!clienteId) { test.skip(); return }
+    const pedido = await createPedido(page, {
+      clienteId,
+      canal: 'PUNTO',
+      ventaRapida: true,
+      pacaAgua: 1,
+      pagoMonto: 5000,
+    })
+    const pedidoId = pedido.pedido?.id || pedido.data?.id
+    if (!pedidoId) { test.skip(); return }
+
+    await goto(page, '/pedidos')
+    await page.waitForLoadState('networkidle')
+    // El nombre del cliente debe aparecer en la tabla de pedidos
+    await expect(page.locator('table tbody')).toContainText(`Aparece En Lista ${unique}`, { timeout: 10000 })
+  })
 
   test('filtrar pedidos por estado entrega', async ({ page }) => {
     await fullLogin(page)

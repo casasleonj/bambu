@@ -850,7 +850,9 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
 
         {/* Botón Submit */}
         <button
-          type="submit"
+          type="button"
+          onClick={() => handleSubmit()}
+          data-testid="submit-pedido"
           disabled={submitting || total <= 0 || fiadosStatus?.nivel === 'limite'}
           className={`w-full py-3 rounded-xl text-white font-bold text-lg shadow-lg transition ${
             canal === 'PUNTO'

@@ -416,10 +416,10 @@ export default function NuevoRecurrenteClient() {
                   <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-semibold text-sm">
                     {selectedCliente.nombre.charAt(0).toUpperCase()}
                   </div>
-                  <div>
-                    <p className="font-medium text-sm text-gray-800">{selectedCliente.nombre}</p>
-                    <p className="text-xs text-gray-500">{selectedCliente.telefono}{selectedCliente.barrio && ` · ${selectedCliente.barrio}`}</p>
-                  </div>
+                    <div>
+                      <p className="font-medium text-sm text-gray-800" data-testid="cliente-seleccionado-nombre">{selectedCliente.nombre}</p>
+                      <p className="text-xs text-gray-500">{selectedCliente.telefono}{selectedCliente.barrio && ` · ${selectedCliente.barrio}`}</p>
+                    </div>
                 </div>
                 <button type="button" onClick={clearCliente} aria-label="Cambiar cliente"
                   className="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-1 rounded-lg hover:bg-blue-100 transition">
@@ -448,6 +448,7 @@ export default function NuevoRecurrenteClient() {
                   aria-expanded={dropdownOpen}
                   aria-controls="cliente-results"
                   aria-autocomplete="list"
+                  data-testid="cliente-search-input"
                 />
                 {searching && (
                   <span className="absolute right-3 top-1/2 -translate-y-1/2">
@@ -481,6 +482,8 @@ export default function NuevoRecurrenteClient() {
                         aria-selected={idx === highlightedIndex}
                         onClick={() => selectCliente(c)}
                         onMouseEnter={() => setHighlightedIndex(idx)}
+                        data-testid="cliente-option"
+                        data-cliente-id={c.id}
                         className={cn(
                           'w-full text-left px-3 py-2.5 flex items-center gap-3 border-b last:border-b-0 transition-colors',
                           idx === highlightedIndex ? 'bg-blue-50' : 'hover:bg-blue-50/50'

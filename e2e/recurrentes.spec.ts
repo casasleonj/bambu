@@ -27,7 +27,11 @@ test.describe('Recurrentes', () => {
       nombre: `Cliente Rec ${Date.now() % 10000}`,
       telefono: `3${String(Date.now()).slice(-9)}`,
     })
-    const cliente = clienteRes.cliente || clienteRes
+    // Verificar que el cliente se creó realmente antes de continuar
+    expect(clienteRes.success, `crear cliente falló: ${JSON.stringify(clienteRes)}`).toBe(true)
+    const cliente = clienteRes.cliente || clienteRes.data
+    expect(cliente).toBeTruthy()
+    expect(cliente.nombre).toBeTruthy()
 
     await goto(page, '/recurrentes')
     await page.waitForTimeout(500)
@@ -37,15 +41,17 @@ test.describe('Recurrentes', () => {
     await page.waitForTimeout(500)
 
     // Buscar cliente por nombre
-    const searchInput = page.locator('input[placeholder*="Buscar"]').first()
+    const searchInput = page.locator('[data-testid="cliente-search-input"]').first()
+    await expect(searchInput).toBeVisible({ timeout: 5000 })
     await searchInput.fill(cliente.nombre)
-    await page.waitForTimeout(800)
 
-    // Seleccionar cliente de resultados
-    const clienteOption = page.locator(`text=${cliente.nombre}`).first()
-    if (await clienteOption.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await clienteOption.click()
-    }
+    // Esperar a que aparezcan opciones de búsqueda (debounce 300ms + network)
+    const clienteOption = page.locator('[data-testid="cliente-option"]').filter({ hasText: cliente.nombre }).first()
+    await expect(clienteOption, `cliente "${cliente.nombre}" no aparece en búsqueda`).toBeVisible({ timeout: 5000 })
+    await clienteOption.click()
+
+    // Verificar que el cliente quedó seleccionado
+    await expect(page.locator('[data-testid="cliente-seleccionado-nombre"]')).toHaveText(cliente.nombre, { timeout: 5000 })
     await page.waitForTimeout(300)
 
     // Agregar producto: 3 pacas de agua (mínimo 3 productos por entrega)
