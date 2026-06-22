@@ -236,8 +236,65 @@ vercel --prod
 - [ ] Login works — dev credentials: `admin`/`admin123`, `asistente`/`asist123`, `contador`/`cont123`, `repartidor`/`rep123`
 - [ ] `/dashboard` loads
 - [ ] `/repartidor` loads (for `REPARTIDOR` role)
+- [ ] `/api/realtime` responds with SSE stream when authenticated
+- [ ] `REDIS_URL` is set and Redis is reachable in production
 - [ ] `npx tsc --noEmit` passes
 - [ ] `npx playwright test` passes
+
+## Realtime Updates (multi-sesión)
+
+Actualizaciones en vivo entre sesiones/usuarios para cambios en clientes, pedidos, embarques, pagos, gastos, compras y producción.
+
+### Arquitectura
+
+- **Redis Pub/Sub** para distribuir eventos entre instancias del servidor.
+- **SSE (`/api/realtime`)** como conexión persistente autenticada con cookie de Auth.js.
+- **Eventos pequeños**: `{ type, id, timestamp }`. El cliente recibe el aviso y hace refetch del recurso afectado.
+- **Broadcast sin filtros de rol**: todos los usuarios reciben todos los eventos; cada pantalla decide si le interesa.
+
+### Comportamiento del cliente
+
+- `RealtimeProvider` mantiene **una sola** conexión SSE global.
+- Se pausa al perder visibilidad de la pestaña (`document.hidden`).
+- Se cierra (y no intenta conectar) en conexiones `2g` / `slow-2g` vía `navigator.connection.effectiveType`.
+- Reconexión automática con backoff exponencial (1s → 30s).
+- Heartbeat de 90s desde el servidor; si no llega, el cliente cierra y reconecta.
+
+### Entidades y eventos publicados
+
+| Recurso | Eventos |
+|---------|---------|
+| Cliente | `cliente.created`, `cliente.updated`, `cliente.deleted` |
+| Pedido | `pedido.created`, `pedido.updated`, `pedido.deleted` |
+| Embarque | `embarque.created`, `embarque.updated`, `embarque.deleted` |
+| Pago | `pago.created` (emitido desde `/api/pedidos/pagar-fiado`) |
+| Gasto | `gasto.created` |
+| Compra | `compra.created` |
+| Producción | `produccion.created` |
+
+### Archivos relevantes
+
+| File | Purpose |
+|------|---------|
+| `src/lib/realtime.ts` | Tipos, publicador Redis (`publishRealtimeEvent`) y validación de eventos. |
+| `src/app/api/realtime/route.ts` | Endpoint SSE autenticado con heartbeat, suscripción Redis y cleanup. |
+| `src/components/realtime-provider.tsx` | Proveedor global de EventSource, reconexión y pausa en background. |
+| `src/hooks/use-realtime.ts` | Hook de contexto para acceder al estado de conexión. |
+| `src/hooks/use-realtime-listener.ts` | Hook de suscripción con debounce 500ms. |
+| `src/proxy.ts` | Excluye `/api/realtime` del rate limiting. |
+
+### Requisitos de deployment
+
+- Variable `REDIS_URL` configurada en producción (mismo Redis usado para rate limiting).
+- En Vercel Hobby el endpoint SSE usa `maxDuration: 60` (límite de la plataforma); el cliente reconecta automáticamente.
+- Si `REDIS_URL` no está configurado, `publishRealtimeEvent` es no-op y el endpoint retorna `503`, sin romper el resto de la app.
+
+### Troubleshooting
+
+- **El navegador no conecta**: revisar que la cookie de sesión esté presente (`/api/realtime` usa misma autenticación que el resto de la app).
+- **Múltiples conexiones SSE**: verificar que solo haya un `RealtimeProvider` en el árbol (ya está en `src/app/(app)/layout.tsx`).
+- **Hydration mismatch en `/repartidor`**: el indicador de conexión debe usar `useOnlineStatus()` (SSR-safe), no `navigator.onLine` directamente.
+- **Tests E2E lentos/colgados**: `scripts/dev-with-lan.mjs` puede quedar pegado al puerto 3000; matar el proceso manualmente antes de re-correr Playwright.
 
 ## Known Issues
 
