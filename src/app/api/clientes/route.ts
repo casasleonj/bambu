@@ -9,6 +9,7 @@ import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { executeSerializableWithRetry } from '@/lib/serializable'
+import { publishRealtimeEvent } from '@/lib/realtime'
 
 export async function GET(request: NextRequest) {
   // FIX H3-4: GET /api/clientes solo para roles con visibilidad de
@@ -308,6 +309,8 @@ export async function POST(request: NextRequest) {
       datos: { nombre: result.cliente.nombre, telefono: result.cliente.telefono },
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     }).catch(() => {})
+
+    publishRealtimeEvent('cliente.created', result.cliente.id).catch(() => {})
 
     return apiSuccess({ cliente: result.cliente }, 201)
   } catch (error) {

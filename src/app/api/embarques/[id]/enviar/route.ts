@@ -6,6 +6,7 @@ import { EstadoEmbarque, Prisma } from '@prisma/client'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 import { executeSerializableWithRetry } from '@/lib/serializable'
+import { publishRealtimeEvent } from '@/lib/realtime'
 
 // Tipo del embarque con las relaciones que necesitamos en la respuesta
 type EmbarqueConRelaciones = Prisma.EmbarqueGetPayload<{
@@ -17,7 +18,7 @@ type EnviarResult =
   | { kind: 'not_abierto'; estado: EstadoEmbarque }
   | { kind: 'empty_embarque_repartidor' }
   | { kind: 'repartidor_en_ruta'; numero: number; nombre: string }
-  | { kind: 'enviado'; embarque: EmbarqueConRelaciones }
+  | { kind: 'enviado'; embarque: EmbarqueConRelaciones; pedidoIds: string[] }
 
 /**
  * POST /api/embarques/[id]/enviar
@@ -108,12 +109,16 @@ export async function POST(
         })
 
         // 5. updateMany pedidos → EN_RUTA
+        const pedidosPendientes = await tx.pedido.findMany({
+          where: { embarqueId: id, estadoEntrega: 'PENDIENTE' },
+          select: { id: true },
+        })
         await tx.pedido.updateMany({
           where: { embarqueId: id, estadoEntrega: 'PENDIENTE' },
           data: { estado: 'EN_RUTA', estadoEntrega: 'EN_RUTA' },
         })
 
-        return { kind: 'enviado', embarque: updated }
+        return { kind: 'enviado', embarque: updated, pedidoIds: pedidosPendientes.map((p) => p.id) }
       },
       `embarques/enviar:${id}`,
     )
@@ -145,6 +150,11 @@ export async function POST(
       datos: { accion: 'ENVIAR_EN_RUTA', numero: embarque.numero },
       usuarioId: session.user?.id,
     }).catch(() => {})
+
+    publishRealtimeEvent('embarque.updated', id).catch(() => {})
+    result.pedidoIds.forEach((pedidoId) => {
+      publishRealtimeEvent('pedido.updated', pedidoId).catch(() => {})
+    })
 
     return apiSuccess({ embarque })
   } catch (error) {

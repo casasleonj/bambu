@@ -7,6 +7,7 @@ import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 import { anularPedidoUseCase } from '@/modules/pedidos'
+import { publishRealtimeEvent } from '@/lib/realtime'
 
 export async function POST(
   request: NextRequest,
@@ -53,6 +54,8 @@ export async function POST(
       datos: { motivo, estado: result.pedido.estadoEntrega },
       usuarioId: (authResult as { user?: { id?: string } }).user?.id,
     })
+
+    publishRealtimeEvent('pedido.updated', id).catch(() => {})
 
     return apiSuccess(result)
   } catch (error) {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
 import { formatCurrency } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EmptyState } from '@/components/empty-state'
 import type { Proveedor, Insumo, CompraInsumo } from './types'
+import { useRealtimeListener } from '@/hooks/use-realtime-listener'
 
 export default function ComprasPage() {
   const [compras, setCompras] = useState<CompraInsumo[]>([])
@@ -21,11 +22,7 @@ export default function ComprasPage() {
   const [montoTotal, setMontoTotal] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  useEffect(() => {
-    fetchData()
-  }, [])
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       const [cRes, pRes, iRes] = await Promise.all([
         fetch('/api/compras'),
@@ -42,7 +39,14 @@ export default function ComprasPage() {
       console.error(e)
       toast.error('Error cargando compras')
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    fetchData()
+  }, [fetchData])
+
+  // Realtime: refresh compras when another user creates one.
+  useRealtimeListener(['compra.created'], fetchData)
 
   const crearCompra = async (e?: React.FormEvent) => {
     e?.preventDefault()

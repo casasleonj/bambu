@@ -1,4 +1,5 @@
 import { Providers } from '@/components/providers'
+import { RealtimeProvider } from '@/components/realtime-provider'
 import { Toaster } from 'sonner'
 import { BaseCajaLoader } from '@/components/base-caja-loader'
 import { UpdateNotification } from '@/components/update-notification'
@@ -25,14 +26,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <Providers session={session}>
-      <MustChangePasswordGuard />
-      <AppShell>
-        {children}
-      </AppShell>
-      <BaseCajaLoader />
-      <UpdateNotification />
-      <Toaster />
-      <PwaInstallBanner />
+      <RealtimeProvider>
+        <MustChangePasswordGuard />
+        <AppShell>
+          {children}
+        </AppShell>
+        <BaseCajaLoader />
+        <UpdateNotification />
+        <Toaster />
+        <PwaInstallBanner />
+      </RealtimeProvider>
     </Providers>
   )
 }

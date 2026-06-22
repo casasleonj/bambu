@@ -9,6 +9,7 @@ import { withAdvisoryLock } from '@/lib/locks'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
+import { publishRealtimeEvent } from '@/lib/realtime'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -97,6 +98,8 @@ export async function POST(request: NextRequest) {
       datos: { insumoId, proveedorId, cantidad, monto: montoTotal },
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     }).catch(() => {})
+
+    publishRealtimeEvent('compra.created', compra.id).catch(() => {})
 
     return apiSuccess({}, 201)
   } catch (error) {

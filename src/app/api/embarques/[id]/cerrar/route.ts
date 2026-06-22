@@ -20,6 +20,7 @@ import { PrismaEmbarqueProductoRepository } from '@/modules/embarques/infrastruc
 import { PrismaTransactionManager } from '@/modules/embarques/infrastructure/transactions/PrismaTransactionManager'
 import { CerrarEmbarqueUseCase } from '@/modules/embarques/application/use-cases/CerrarEmbarqueUseCase'
 import { CierrePresenter } from '@/modules/embarques/presentation/CierrePresenter'
+import { publishRealtimeEvent } from '@/lib/realtime'
 
 // Infrastructure dependencies
 const embarqueRepo = new PrismaEmbarqueRepository()
@@ -111,6 +112,17 @@ export async function POST(
 
     // Convert to legacy response shape for backward compatibility
     const legacyResponse = CierrePresenter.toLegacyResponse(result)
+
+    publishRealtimeEvent('embarque.updated', id).catch(() => {})
+    const { prisma } = await import('@/lib/prisma')
+    prisma.embarque.findUnique({
+      where: { id },
+      include: { pedidos: { select: { id: true } } },
+    }).then((embarque) => {
+      embarque?.pedidos.forEach((p) => {
+        publishRealtimeEvent('pedido.updated', p.id).catch(() => {})
+      })
+    }).catch(() => {})
 
     return apiSuccess(legacyResponse)
   } catch (error) {

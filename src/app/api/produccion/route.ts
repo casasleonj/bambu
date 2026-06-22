@@ -13,6 +13,7 @@ import { calcComSellador } from '@/lib/comisiones'
 import { getTodayRange, getDateRange } from '@/lib/dates'
 import { startOfDayInBogota, todayInBogota } from '@/lib/date-helpers'
 import { captureApiError, addApiBreadcrumb } from '@/lib/sentry-helpers'
+import { publishRealtimeEvent } from '@/lib/realtime'
 
 // FIX 1.1: advisory lock key dedicado a producción. Cierre usa 7.
 const PROD_ADVISORY_LOCK_KEY = 8
@@ -292,6 +293,8 @@ export async function POST(request: NextRequest) {
         ip,
         userAgent,
       }).catch(() => {})
+
+      publishRealtimeEvent('produccion.created', produccion.id).catch(() => {})
 
       return apiSuccess({ produccion }, 201)
     } catch (error) {

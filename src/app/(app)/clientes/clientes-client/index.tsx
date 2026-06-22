@@ -24,6 +24,7 @@ import { CasoGuiaModal } from '@/components/caso-guia-modal'
 import type { AlertaTipo } from '@/lib/alertas-config'
 import { getBadgeColor, ignorarAlerta } from '@/lib/alertas-config'
 import { useEscapeGuard } from '@/hooks/use-escape-guard'
+import { useRealtimeListener } from '@/hooks/use-realtime-listener'
 
 export default function ClientesClient({ initialClientes, openClienteId, totalClientes, filtroActivo }: ClientesClientProps) {
   const [clientes, setClientes] = useState<Cliente[]>(initialClientes)
@@ -161,6 +162,9 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
       setLoading(false)
     }
   }, [filtroActivo])
+
+  // Realtime: refresh client list when any cliente changes in another session.
+  useRealtimeListener(['cliente.*'], fetchClientes)
 
   // FIX REGRESION mobile 2026-06-10 ("no se pudieron cargar los clientes"):
   // NO disparar fetchClientes() en mount. El page.tsx server ya pasa

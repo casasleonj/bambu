@@ -2,7 +2,9 @@
 
 import { generateUUID } from '@/lib/uuid'
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
+import { useRealtimeListener } from '@/hooks/use-realtime-listener'
 import { formatCurrency } from '@/lib/utils'
 import { Modal } from '@/components/modal'
 import { offlineDb, queuePedidoOffline } from '@/lib/db/offline'
@@ -68,6 +70,7 @@ interface RepartidorClientProps {
 const METODOS_PAGO = ['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA', 'BONO'] as const
 
 export function RepartidorClient({ trabajador, embarque, userRole }: RepartidorClientProps) {
+  const router = useRouter()
   const [showVentaLibre, setShowVentaLibre] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [pendingCount, setPendingCount] = useState(0)
@@ -114,6 +117,11 @@ export function RepartidorClient({ trabajador, embarque, userRole }: RepartidorC
     const interval = setInterval(updatePendingCount, 5000)
     return () => clearInterval(interval)
   }, [])
+
+  // Realtime: refresh server data when the route or its pedidos change.
+  useRealtimeListener(['embarque.updated', 'pedido.updated'], () => {
+    router.refresh()
+  })
 
   const updatePendingCount = useCallback(async () => {
     const count = await offlineDb.pedidos.where('syncStatus').equals('pending').count()

@@ -19,6 +19,7 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
 import { optimizeEmbarqueOrden } from '@/lib/geo/optimize-ruta'
+import { publishRealtimeEvent } from '@/lib/realtime'
 
 export async function POST(
   _request: NextRequest,
@@ -83,6 +84,8 @@ export async function POST(
         nSinCoords: result.sinCoords.length,
       },
     })
+
+    publishRealtimeEvent('embarque.updated', id).catch(() => {})
 
     return apiSuccess({
       embarqueId: id,

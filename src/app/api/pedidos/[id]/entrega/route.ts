@@ -9,6 +9,7 @@ import { logger } from '@/lib/logger'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { entregarPedidoUseCase } from '@/modules/pedidos'
 import { getConfigBool } from '@/lib/config'
+import { publishRealtimeEvent } from '@/lib/realtime'
 import { uploadBase64Foto, isBase64Image } from '@/lib/storage'
 
 export async function POST(
@@ -175,6 +176,11 @@ export async function POST(
       datos: { accion: 'ENTREGA', tipo, estadoEntrega: result.pedido.estadoEntrega, estadoPago: result.pedido.estadoPago },
       usuarioId: (authResult as { user?: { id?: string } }).user?.id,
     })
+
+    publishRealtimeEvent('pedido.updated', id).catch(() => {})
+    if (result.pedido.embarqueId) {
+      publishRealtimeEvent('embarque.updated', result.pedido.embarqueId).catch(() => {})
+    }
 
     return apiSuccess(result)
   } catch (error) {

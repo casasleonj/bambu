@@ -10,6 +10,7 @@ import { emptyStock } from '@/lib/stock'
 import { ROLES } from '@/lib/constants'
 import { logger } from '@/lib/logger'
 import { apiSuccess, apiError } from '@/lib/api-response'
+import { publishRealtimeEvent } from '@/lib/realtime'
 
 // Fields that can only be edited when embarque is ABIERTO
 const ABIERTO_ONLY_FIELDS = ['trabajadorId', 'rutaId', 'horaSalida', 'baseDinero', 'tipoMoto', 'carga'] as const
@@ -317,6 +318,13 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     })
 
+    publishRealtimeEvent('embarque.updated', serialized.id).catch(() => {})
+    if (pedidoIds && Array.isArray(pedidoIds) && pedidoIds.length > 0) {
+      pedidoIds.forEach((pedidoId: string) => {
+        publishRealtimeEvent('pedido.updated', pedidoId).catch(() => {})
+      })
+    }
+
     return apiSuccess({ embarque: serialized })
   } catch (error) {
     // Mapear errores thrown desde dentro del lock a HTTP responses
@@ -382,7 +390,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     const result = await withAdvisoryLock('EMBARQUE', async (tx: any) => {
       const embarque = await tx.embarque.findUnique({
         where: { id },
-        include: { pedidos: true },
+        include: { pedidos: { select: { id: true } } },
       })
 
       if (!embarque) {
@@ -408,10 +416,12 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       }
 
       // Soft-delete by marking as CANCELADO
-      return tx.embarque.update({
+      const updated = await tx.embarque.update({
         where: { id },
         data: { estado: 'CANCELADO', offlineId: offlineId || embarque.offlineId },
       })
+
+      return { ...updated, pedidoIds: embarque.pedidos.map((p: { id: string }) => p.id) }
     })
 
     logAudit({
@@ -425,6 +435,14 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     if ('deduped' in result && result.deduped) {
       return apiSuccess({ deduped: true, embarque: result.embarque })
     }
+
+    publishRealtimeEvent('embarque.deleted', id).catch(() => {})
+    if ('pedidoIds' in result && Array.isArray(result.pedidoIds)) {
+      result.pedidoIds.forEach((pedidoId: string) => {
+        publishRealtimeEvent('pedido.updated', pedidoId).catch(() => {})
+      })
+    }
+
     return apiSuccess({})
   } catch (error) {
     if (error instanceof Error && error.message === 'EMBARQUE_NOT_FOUND') {

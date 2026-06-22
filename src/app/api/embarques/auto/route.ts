@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 import { PESOS_KG } from '@/lib/embarque-capacidad'
+import { publishRealtimeEvent } from '@/lib/realtime'
 
 const EmbarqueAutoSchema = z.object({
   rutaId: z.string().min(1).optional(),
@@ -278,6 +279,10 @@ export async function POST(request: NextRequest) {
       accion: 'CREATE',
       datos: { auto: true, count: result.created },
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+    })
+
+    result.embarques?.forEach((e) => {
+      publishRealtimeEvent('embarque.created', e.embarque.id).catch(() => {})
     })
 
     return apiSuccess(result)

@@ -8,6 +8,7 @@ import { getNextNumero } from '@/lib/sequence'
 import { logAudit } from '@/lib/audit'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
+import { publishRealtimeEvent } from '@/lib/realtime'
 
 export async function POST(request: NextRequest) {
   // FIX C-1: solo ADMIN/ASISTENTE pueden registrar pagos de fiado.
@@ -188,6 +189,14 @@ export async function POST(request: NextRequest) {
       datos: { monto, metodo, pagosAplicados: resultado.pagosAplicados },
       usuarioId: authResult.user?.id,
     })
+
+    if (!resultado.deduped && resultado.pagosAplicados.length > 0) {
+      publishRealtimeEvent('pago.created', clienteId).catch(() => {})
+      const afectados = new Set(resultado.pagosAplicados.map((p) => p.pedidoId))
+      afectados.forEach((pedidoId) => {
+        publishRealtimeEvent('pedido.updated', pedidoId).catch(() => {})
+      })
+    }
 
     return apiSuccess({
       // Si fue deduped, propagar la respuesta original; si no, la nueva

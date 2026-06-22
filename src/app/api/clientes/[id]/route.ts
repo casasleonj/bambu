@@ -8,6 +8,7 @@ import { logAudit } from '@/lib/audit'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 import { ROLES } from '@/lib/constants'
+import { publishRealtimeEvent } from '@/lib/realtime'
 
 // Extrae info util del error de Prisma/PostgreSQL para logging.
 // Devuelve: { pgCode, pgMessage, tableName, httpStatus, summary }.
@@ -226,6 +227,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     })
 
+    publishRealtimeEvent('cliente.updated', cliente.id).catch(() => {})
+
     return apiSuccess({ cliente })
   } catch (error) {
     if (error && typeof error === 'object' && 'code' in error && (error as { code: string }).code === 'P2025') {
@@ -291,6 +294,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       casoId,
     })
 
+    publishRealtimeEvent('cliente.updated', cliente.id).catch(() => {})
+
     return apiSuccess({ cliente })
   } catch (error) {
     if (error instanceof PrismaClientKnownRequestError && error.code === 'P2025') {
@@ -321,6 +326,8 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
       datos: { activo: false },
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     })
+
+    publishRealtimeEvent('cliente.deleted', id).catch(() => {})
 
     return apiSuccess({})
   } catch (error) {
