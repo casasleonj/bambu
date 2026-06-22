@@ -217,7 +217,7 @@ export function Sidebar() {
         aria-label="Navegación principal"
         inert={isInteractive ? undefined : true}
         aria-hidden={!isVisible}
-        className={`fixed top-14 left-0 h-[calc(100dvh-3.5rem)] bg-white shadow-lg transition-[width,transform] duration-300 z-40 flex flex-col ${asideWidth}`}
+        className={`fixed top-14 left-0 h-[calc(100dvh-3.5rem)] bg-white shadow-lg transition-[width,transform] duration-300 z-40 flex flex-col pb-safe ${asideWidth}`}
       >
         <div className="px-4 py-3 border-b bg-gray-50">
           <div className="flex items-center justify-between">

@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react'
 import { Modal } from './modal'
 import { toast } from 'sonner'
+import { compressImage } from '@/lib/image-compress'
 
 interface FotoEntregaModalProps {
   open: boolean
@@ -59,33 +60,13 @@ export function FotoEntregaModal({
       return
     }
 
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      const dataUrl = ev.target?.result as string
-      // Resize via canvas to keep payload small
-      const img = new Image()
-      img.onload = () => {
-        const scale = Math.min(1, MAX_DIMENSION / Math.max(img.width, img.height))
-        const w = Math.round(img.width * scale)
-        const h = Math.round(img.height * scale)
-        const canvas = document.createElement('canvas')
-        canvas.width = w
-        canvas.height = h
-        const ctx = canvas.getContext('2d')
-        if (!ctx) {
-          setFotoBase64(dataUrl)
-          return
-        }
-        ctx.drawImage(img, 0, 0, w, h)
-        const resized = canvas.toDataURL('image/jpeg', JPEG_QUALITY)
+    compressImage(file, { maxDimension: MAX_DIMENSION, quality: JPEG_QUALITY })
+      .then((resized) => {
         setFotoBase64(resized)
-      }
-      img.onerror = () => {
-        toast.error('No se pudo leer la imagen')
-      }
-      img.src = dataUrl
-    }
-    reader.readAsDataURL(file)
+      })
+      .catch((err) => {
+        toast.error(err instanceof Error ? err.message : 'No se pudo leer la imagen')
+      })
   }
 
   const handleConfirm = async () => {

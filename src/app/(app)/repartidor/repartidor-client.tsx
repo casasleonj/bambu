@@ -14,6 +14,7 @@ import { fetchResilient } from '@/lib/fetch-resilient'
 import { MoneyDisplay } from '@/components/money-display'
 import { useGpsCapture } from '@/hooks/use-gps-capture'
 import { formatGPSError } from '@/lib/gps'
+import { compressImage } from '@/lib/image-compress'
 
 interface RepartidorClientProps {
   trabajador: { id: string; nombre: string }
@@ -83,6 +84,9 @@ export function RepartidorClient({ trabajador, embarque, userRole }: RepartidorC
   const [obs, setObs] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [productosConfig, setProductosConfig] = useState<Array<{ codigo: string; aplicaDomicilio: boolean }>>([])
+  const [showPagoInput, setShowPagoInput] = useState(false)
+  const [pagoMetodo, setPagoMetodo] = useState<string | null>(null)
+  const [pagoMonto, setPagoMonto] = useState('')
 
   useEffect(() => {
     fetch(`/api/productos/configs`)
@@ -142,18 +146,16 @@ export function RepartidorClient({ trabajador, embarque, userRole }: RepartidorC
     }
   }, [gpsError])
 
-  const handleFotoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFotoCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      const result = ev.target?.result as string
-      if (result) {
-        setFotoBase64(result)
-        toast.success('Foto capturada')
-      }
+    try {
+      const compressed = await compressImage(file, { maxDimension: 1280, quality: 0.8 })
+      setFotoBase64(compressed)
+      toast.success('Foto capturada')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'No se pudo procesar la foto')
     }
-    reader.readAsDataURL(file)
   }
 
   const calcularTotal = () => {
@@ -265,7 +267,28 @@ export function RepartidorClient({ trabajador, embarque, userRole }: RepartidorC
     setPagos([])
     setFotoBase64(null)
     setObs('')
+    setPagoMonto('')
+    setPagoMetodo(null)
+    setShowPagoInput(false)
     resetGps()
+  }
+
+  const openPagoInput = (metodo: string) => {
+    setPagoMetodo(metodo)
+    setPagoMonto('')
+    setShowPagoInput(true)
+  }
+
+  const confirmPago = () => {
+    const monto = parseFloat(pagoMonto)
+    if (!pagoMetodo || Number.isNaN(monto) || monto <= 0) {
+      toast.error('Ingresa un monto válido')
+      return
+    }
+    addPago(pagoMetodo, monto)
+    setShowPagoInput(false)
+    setPagoMonto('')
+    setPagoMetodo(null)
   }
 
   const addPago = (metodo: string, monto: number) => {
@@ -601,10 +624,7 @@ export function RepartidorClient({ trabajador, embarque, userRole }: RepartidorC
                 return (
                   <button
                     key={metodo}
-                    onClick={() => {
-                      const monto = parseFloat(prompt(`Monto ${metodo}:`) || '0')
-                      if (monto > 0) addPago(metodo, monto)
-                    }}
+                    onClick={() => openPagoInput(metodo)}
                     disabled={usado}
                     className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${usado ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
                   >
@@ -669,6 +689,43 @@ export function RepartidorClient({ trabajador, embarque, userRole }: RepartidorC
           >
             {submitting ? 'Guardando...' : online ? 'Registrar Venta' : 'Guardar Offline'}
           </button>
+        </div>
+      </Modal>
+
+      {/* Modal para ingresar monto de pago (reemplaza window.prompt) */}
+      <Modal
+        open={showPagoInput}
+        onClose={() => { setShowPagoInput(false); setPagoMonto(''); setPagoMetodo(null) }}
+        title={`Monto ${pagoMetodo || ''}`}
+      >
+        <div className="space-y-4">
+          <label htmlFor="pago-monto" className="block text-sm font-medium text-gray-700">
+            Monto a pagar
+          </label>
+          <input
+            id="pago-monto"
+            type="number"
+            inputMode="decimal"
+            value={pagoMonto}
+            onChange={(e) => setPagoMonto(e.target.value)}
+            placeholder="0"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            autoFocus
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={() => { setShowPagoInput(false); setPagoMonto(''); setPagoMetodo(null) }}
+              className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={confirmPago}
+              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition"
+            >
+              Agregar
+            </button>
+          </div>
         </div>
       </Modal>
     </div>

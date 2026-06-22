@@ -95,7 +95,7 @@ export function Header() {
     // - `flex-1` en el contenedor izquierdo, `flex-shrink-0` en el derecho
     // - `flex-shrink-0` en cada item interno (button, fecha, avatar, indicator)
     // - `whitespace-nowrap` en el bloque fecha
-    <header className="bg-blue-600 text-white px-3 sm:px-4 py-3 flex items-center justify-between gap-2 sm:gap-3 fixed top-0 left-0 right-0 z-50">
+    <header className="bg-blue-600 text-white px-3 sm:px-4 py-3 flex items-center justify-between gap-2 sm:gap-3 fixed top-0 left-0 right-0 z-50 pt-safe">
       <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
         <button
           onClick={onToggleSidebar}

@@ -14,6 +14,7 @@ export const viewport: Viewport = {
   // scrollIntoView en el onFocus (ver AuthShell + login).
   interactiveWidget: 'resizes-content',
   themeColor: '#2563eb',
+  viewportFit: 'cover',
 }
 
 export const metadata: Metadata = {
