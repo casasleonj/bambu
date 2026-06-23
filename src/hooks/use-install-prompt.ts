@@ -39,10 +39,12 @@ export function useInstallPrompt(): UseInstallPromptReturn {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
   const [isStandalone, setIsStandalone] = useState(false)
   const [dismissed, setDismissed] = useState(false)
+  const [isIos, setIsIos] = useState(false)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
 
+    setIsIos(isIosDevice())
     setIsStandalone(isStandaloneMode())
     setDismissed(localStorage.getItem(DISMISS_KEY) === 'true')
 
@@ -85,7 +87,7 @@ export function useInstallPrompt(): UseInstallPromptReturn {
 
   return {
     canInstall: deferredPrompt !== null,
-    isIos: isIosDevice(),
+    isIos,
     isStandalone,
     deferredPrompt,
     install,
