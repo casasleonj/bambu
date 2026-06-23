@@ -1,5 +1,7 @@
 import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
+import { Prisma } from '@prisma/client'
+import * as Sentry from '@sentry/nextjs'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { PedidoCreateSchema } from '@/lib/validators'
 import { getPaginationParams, buildPaginationResponse } from '@/lib/pagination'
@@ -213,6 +215,24 @@ export async function POST(request: NextRequest) {
 
     return apiSuccess({ pedido: result.pedido }, 201)
   } catch (error) {
+    Sentry.captureException(error, {
+      extra: { route: 'POST /api/pedidos' },
+    })
+
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === 'P2002') {
+        return apiError('Datos duplicados. Verificá que no estés creando el mismo pedido dos veces.', 409)
+      }
+      if (error.code === 'P2003') {
+        return apiError('Referencia inválida. Algun cliente o negocio no existe.', 400)
+      }
+      if (error.code === 'P2022') {
+        return apiError('Error de base de datos: columna no encontrada. Contactá a soporte.', 500)
+      }
+      logger.error({ err: error.message, code: error.code }, 'Error creating pedido (Prisma):')
+      return apiError('Error de base de datos. Contactá a soporte.', 500, { code: error.code })
+    }
+
     if (error instanceof Error) {
       if (error.message === 'CLIENTE_NOT_FOUND') return apiError('Cliente no encontrado', 404)
       if (error.message.startsWith('CLIENTE_DEBE:')) return apiError(error.message.replace('CLIENTE_DEBE: ', ''), 400)

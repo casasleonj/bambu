@@ -36,6 +36,20 @@ export type ResilientResult<T> =
 const DEFAULT_TIMEOUT_MS = 10_000
 const MAX_QUEUE_SIZE = 500 // Backpressure: cap encolado para evitar unbounded growth
 
+function buildErrorDetails(error?: { formErrors?: string[]; fieldErrors?: Record<string, string[]> }): string {
+  if (!error) return ''
+  const parts: string[] = []
+  if (error.formErrors?.length) {
+    parts.push(error.formErrors.join('; '))
+  }
+  if (error.fieldErrors) {
+    for (const [field, messages] of Object.entries(error.fieldErrors)) {
+      if (messages?.length) parts.push(`${field}: ${messages.join(', ')}`)
+    }
+  }
+  return parts.join('; ')
+}
+
 function isResilientEnabled(): boolean {
   // Default ON en dev/prod. Override con env var para rollback.
   const flag = process.env.NEXT_PUBLIC_USE_RESILIENT_FETCH
@@ -124,9 +138,12 @@ export async function fetchResilient<T = unknown>(
 
     // 4xx/5xx NO son fallos de red — son respuestas del server.
     // Devolvemos error para que el hook muestre el mensaje al usuario.
-    const errMsg =
-      (data as { error?: { message?: string } })?.error?.message ||
-      `Error ${res.status} en ${init.localEndpoint}`
+    // Incluimos detalles de validación si el server los envía.
+    const serverError = (data as { error?: { message?: string; formErrors?: string[]; fieldErrors?: Record<string, string[]> } })?.error
+    const details = buildErrorDetails(serverError)
+    const errMsg = serverError?.message
+      ? `${serverError.message}${details ? ` (${details})` : ''}`
+      : `Error ${res.status} en ${init.localEndpoint}`
     return { status: 'error', error: errMsg, statusCode: res.status }
   } catch (err) {
     clearTimeout(timeoutId)
@@ -175,9 +192,11 @@ async function fetchDirect<T>(
     })
     const data = (await res.json()) as T
     if (res.ok) return { status: 'ok', data, statusCode: res.status }
-    const errMsg =
-      (data as { error?: { message?: string } })?.error?.message ||
-      `Error ${res.status}`
+    const serverError = (data as { error?: { message?: string; formErrors?: string[]; fieldErrors?: Record<string, string[]> } })?.error
+    const details = buildErrorDetails(serverError)
+    const errMsg = serverError?.message
+      ? `${serverError.message}${details ? ` (${details})` : ''}`
+      : `Error ${res.status}`
     return { status: 'error', error: errMsg, statusCode: res.status }
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : 'Error desconocido'

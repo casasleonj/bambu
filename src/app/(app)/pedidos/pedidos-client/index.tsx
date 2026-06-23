@@ -55,7 +55,16 @@ export function PedidosClient() {
   const initialTab = tabFromUrl === 'fiados' || tabFromUrl === 'alertas' ? tabFromUrl : 'hoy'
   const [activeTab, setActiveTab] = useState<'hoy' | 'fiados' | 'alertas'>(initialTab)
   const [fabOpen, setFabOpen] = useState(false)
+  const [fabHoverable, setFabHoverable] = useState(false)
   const [modalKey, setModalKey] = useState(0)
+
+  useEffect(() => {
+    const mq = window.matchMedia('(hover: hover) and (pointer: fine)')
+    setFabHoverable(mq.matches)
+    const handler = (e: MediaQueryListEvent) => setFabHoverable(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
   const [pedidoInicial, setPedidoInicial] = useState<PedidoInicial | undefined>(undefined)
   const anularMotivoRef = useRef<string>('')
   const anularDevolverStockRef = useRef<boolean>(false)
@@ -1500,6 +1509,8 @@ export function PedidosClient() {
       <div
         className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-2"
         data-testid="fab-container"
+        onMouseEnter={() => fabHoverable && setFabOpen(true)}
+        onMouseLeave={() => fabHoverable && setFabOpen(false)}
       >
         {/* Speed Dial */}
         {fabOpen && (
@@ -1528,7 +1539,13 @@ export function PedidosClient() {
         )}
         {/* FAB Principal */}
         <button
-          onClick={() => setFabOpen((v) => !v)}
+          onClick={() => {
+            if (fabHoverable) {
+              setFabOpen(true)
+            } else {
+              setFabOpen((v) => !v)
+            }
+          }}
           data-testid="fab-main"
           className={`w-14 h-14 flex items-center justify-center rounded-full shadow-xl transition-all duration-200 ${
             fabOpen ? 'bg-gray-700 rotate-45' : 'bg-blue-600 hover:bg-blue-700'
