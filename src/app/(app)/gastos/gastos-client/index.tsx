@@ -11,6 +11,7 @@ import { EmptyState } from '@/components/empty-state'
 import { DateRangeFilter } from '@/components/date-range-filter'
 import type { Gasto } from './types'
 import { categorias } from './types'
+import { useRealtimeListener } from '@/hooks/use-realtime-listener'
 
 export default function GastosPage() {
   const [gastos, setGastos] = useState<Gasto[]>([])
@@ -22,16 +23,7 @@ export default function GastosPage() {
   const [responsable, setResponsable] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  const handleDateChange = useCallback((desde: string | null, hasta: string | null) => {
-    setDateRange({ desde, hasta })
-    setTimeout(fetchGastos, 0)
-  }, [])
-
-  useEffect(() => {
-    fetchGastos()
-  }, [dateRange])
-
-  const fetchGastos = async () => {
+  const fetchGastos = useCallback(async () => {
     try {
       const params = new URLSearchParams()
       if (dateRange.desde && dateRange.hasta) {
@@ -48,7 +40,18 @@ export default function GastosPage() {
       console.error(e)
       toast.error('Error cargando gastos')
     }
-  }
+  }, [dateRange])
+
+  const handleDateChange = useCallback((desde: string | null, hasta: string | null) => {
+    setDateRange({ desde, hasta })
+  }, [])
+
+  useEffect(() => {
+    fetchGastos()
+  }, [fetchGastos])
+
+  // Realtime: refresh gastos when another user creates one.
+  useRealtimeListener(['gasto.created'], fetchGastos)
 
   const crearGasto = async (e?: React.FormEvent) => {
     e?.preventDefault()

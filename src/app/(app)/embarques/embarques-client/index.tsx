@@ -14,6 +14,7 @@ import { EmbarqueCard } from './embarque-card'
 import { EmbarqueFormModal } from './embarque-form-modal'
 import { EmbarqueDetailModal } from './embarque-detail-modal'
 import { StatsTab } from './stats-tab'
+import { useRealtimeListener } from '@/hooks/use-realtime-listener'
 
 interface InitialData {
   embarques: Embarque[]
@@ -99,6 +100,9 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
   useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  // Realtime: refresh embarques and related pedidos when anything changes.
+  useRealtimeListener(['embarque.*', 'pedido.*'], fetchData)
 
   useEffect(() => {
     if (showDetailModal && selectedEmbarque) {

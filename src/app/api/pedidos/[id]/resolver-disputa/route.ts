@@ -32,6 +32,7 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { prisma } from '@/lib/prisma'
 import { logger } from '@/lib/logger'
+import { publishRealtimeEvent } from '@/lib/realtime'
 
 const BodySchema = z
   .object({
@@ -109,6 +110,8 @@ export async function POST(
       { pedidoId, pedidoNumero: pedido.numero, casoId, userId },
       '[disputa] cerrada via endpoint seguro',
     )
+
+    publishRealtimeEvent('pedido.updated', pedidoId).catch(() => {})
 
     return apiSuccess({
       pedido: updated,

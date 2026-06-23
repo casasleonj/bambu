@@ -2,11 +2,14 @@
 
 import { generateUUID } from '@/lib/uuid'
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
+import { useRealtimeListener } from '@/hooks/use-realtime-listener'
 import { formatCurrency } from '@/lib/utils'
 import { Modal } from '@/components/modal'
 import { offlineDb, queuePedidoOffline } from '@/lib/db/offline'
-import { syncWithServer, isOnline } from '@/lib/db/sync'
+import { syncWithServer } from '@/lib/db/sync'
+import { useOnlineStatus } from '@/hooks/use-online-status'
 import { logger } from '@/lib/logger'
 import { PRODUCTO_INFO, DEFAULT_PRICES, getProductosForCanal } from '@/lib/prices'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
@@ -68,10 +71,11 @@ interface RepartidorClientProps {
 const METODOS_PAGO = ['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA', 'BONO'] as const
 
 export function RepartidorClient({ trabajador, embarque, userRole }: RepartidorClientProps) {
+  const router = useRouter()
   const [showVentaLibre, setShowVentaLibre] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [pendingCount, setPendingCount] = useState(0)
-  const [online, setOnline] = useState(isOnline())
+  const online = useOnlineStatus()
   // Bloque 2: optimizando ruta
   const [optimizando, setOptimizando] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -99,21 +103,15 @@ export function RepartidorClient({ trabajador, embarque, userRole }: RepartidorC
   const productosDomicilio = new Set(productosDomicilioIds.map(id => PRODUCTO_INFO[id].codigo))
 
   useEffect(() => {
-    const handleOnline = () => setOnline(true)
-    const handleOffline = () => setOnline(false)
-    window.addEventListener('online', handleOnline)
-    window.addEventListener('offline', handleOffline)
-    return () => {
-      window.removeEventListener('online', handleOnline)
-      window.removeEventListener('offline', handleOffline)
-    }
-  }, [])
-
-  useEffect(() => {
     updatePendingCount()
     const interval = setInterval(updatePendingCount, 5000)
     return () => clearInterval(interval)
   }, [])
+
+  // Realtime: refresh server data when the route or its pedidos change.
+  useRealtimeListener(['embarque.updated', 'pedido.updated'], () => {
+    router.refresh()
+  })
 
   const updatePendingCount = useCallback(async () => {
     const count = await offlineDb.pedidos.where('syncStatus').equals('pending').count()

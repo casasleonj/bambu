@@ -27,6 +27,7 @@ import { useCrearPedido } from '@/hooks/use-crear-pedido'
 import { useAnularPedido } from '@/hooks/use-anular-pedido'
 import { useAsignarEmbarque } from '@/hooks/use-asignar-embarque'
 import { useEntregarPedido } from '@/hooks/use-entregar-pedido'
+import { useRealtimeListener } from '@/hooks/use-realtime-listener'
 import { GpsCaptureModal } from '@/components/gps-capture-modal'
 
 const PedidoFormUnified = dynamic(() => import('@/components/pedido-form-unified').then(m => m.PedidoFormUnified), { ssr: false })
@@ -100,6 +101,13 @@ export function PedidosClient() {
     { autoFetch: false },
   )
   const pedidos = pedidosRaw as Pedido[]
+
+  // Realtime: refetch when pedidos, clientes or embarques change in other sessions.
+  useRealtimeListener(['pedido.*', 'cliente.*', 'embarque.*'], () => {
+    refetch()
+    fetchClientes()
+    fetchEmbarques()
+  })
 
   // Auto-open pedido from URL param
   useEffect(() => {

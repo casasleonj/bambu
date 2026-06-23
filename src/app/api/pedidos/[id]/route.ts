@@ -13,6 +13,7 @@ import {
 } from '@/modules/pedidos'
 import { PedidoId } from '@/modules/pedidos/domain/value-objects/PedidoId'
 import { PedidoDTOMapper } from '@/modules/pedidos/application/dto/PedidoDTOMapper'
+import { publishRealtimeEvent } from '@/lib/realtime'
 
 function getUserFromSession(authResult: unknown) {
   return { id: (authResult as { user?: { id?: string } })?.user?.id || '', role: (authResult as { user?: { role?: string } })?.user?.role }
@@ -79,6 +80,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       casoId,
     })
 
+    publishRealtimeEvent('pedido.updated', id).catch(() => {})
+
     return apiSuccess({ pedido: result.pedido })
   } catch (error) {
     if (error instanceof Error && error.message === 'PEDIDO_NOT_FOUND') {
@@ -116,6 +119,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
         usuarioId: getUserFromSession(authResult).id,
         casoId,
       })
+      publishRealtimeEvent('pedido.updated', id).catch(() => {})
       return apiSuccess({ pedido: result.pedido })
     } catch (err) {
       // If anular fails because pedido is not ENTREGADO, try cancelar
@@ -132,6 +136,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
         usuarioId: getUserFromSession(authResult).id,
         casoId,
       })
+      publishRealtimeEvent('pedido.updated', id).catch(() => {})
       return apiSuccess({ pedido: result.pedido })
     }
   } catch (error) {

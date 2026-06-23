@@ -35,8 +35,12 @@ export const proxy = auth(async (request) => {
 
   // ── API routes: CSRF + rate limiting ──────────────────────────────────
   if (pathname.startsWith('/api/')) {
-    // Skip health checks and cron jobs
-    if (pathname === '/api/health' || pathname.startsWith('/api/cron/')) {
+    // Skip health checks, cron jobs, and realtime SSE endpoint.
+    // SSE connections are long-lived and should not consume the API rate-limit budget.
+    if (
+      pathname === '/api/health' || pathname.startsWith('/api/cron/') ||
+      pathname === '/api/realtime'
+    ) {
       return NextResponse.next()
     }
 

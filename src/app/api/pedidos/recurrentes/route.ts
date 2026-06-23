@@ -8,6 +8,7 @@ import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 import { logBulkAudit } from '@/lib/audit'
+import { publishRealtimeEvent } from '@/lib/realtime'
 
 const DecisionSchema = z.object({
   recurrenteId: z.string().min(1),
@@ -221,6 +222,10 @@ export async function POST(request: NextRequest) {
           usuarioId: (authResult.user as { id?: string } | undefined)?.id,
         }))
       ).catch(() => {})
+
+      resultado.generados.forEach((g) => {
+        publishRealtimeEvent('pedido.created', g.id).catch(() => {})
+      })
     }
 
     return apiSuccess({

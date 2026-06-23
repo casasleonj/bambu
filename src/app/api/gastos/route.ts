@@ -8,6 +8,7 @@ import { getDateRange } from '@/lib/dates'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
+import { publishRealtimeEvent } from '@/lib/realtime'
 
 export async function GET(request: NextRequest) {
   // FIX CRITICAL (C-SEC-4): Only ADMIN/CONTADOR can read gastos
@@ -91,6 +92,8 @@ export async function POST(request: NextRequest) {
       datos: { categoria, descripcion, monto },
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     }).catch(() => {})
+
+    publishRealtimeEvent('gasto.created', gasto.id).catch(() => {})
 
     return apiSuccess({ gasto }, 201)
   } catch (error) {

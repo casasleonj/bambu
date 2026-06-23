@@ -11,6 +11,7 @@ import { InfoBanner } from '@/components/tooltip'
 import { fetchResilient } from '@/lib/fetch-resilient'
 import { ProduccionPendingBadge } from '@/components/produccion/pending-sync-badge'
 import type { StockInicial, FormData, TrabajadorOption, PreviewData, RepartidorOption } from './types'
+import { useRealtimeListener } from '@/hooks/use-realtime-listener'
 
 const EMPTY_FORM: FormData = {
   trabajadorId: '',
@@ -107,6 +108,11 @@ export default function ProduccionClient() {
     fetchTrabajadores(controller.signal)
     return () => controller.abort()
   }, [])
+
+  // Realtime: refresh preview when production is registered elsewhere.
+  useRealtimeListener(['produccion.created'], () => {
+    fetchPreview()
+  })
 
   const prodAgua = useMemo(() => Math.round((formData.conteoAAgua + formData.conteoBAgua) / 2), [formData.conteoAAgua, formData.conteoBAgua])
   const prodHielo = useMemo(() => Math.round((formData.conteoAHielo + formData.conteoBHielo) / 2), [formData.conteoAHielo, formData.conteoBHielo])

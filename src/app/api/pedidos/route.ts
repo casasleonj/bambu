@@ -11,6 +11,7 @@ import {
   crearPedidoUseCase,
   listarPedidosUseCase,
 } from '@/modules/pedidos'
+import { publishRealtimeEvent } from '@/lib/realtime'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -205,6 +206,10 @@ export async function POST(request: NextRequest) {
       createdById: authResult.user?.id,
       createdByRole: authResult.user?.role,
     })
+
+    if (!result.deduped) {
+      publishRealtimeEvent('pedido.created', result.pedido.id).catch(() => {})
+    }
 
     return apiSuccess({ pedido: result.pedido }, 201)
   } catch (error) {

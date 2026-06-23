@@ -14,6 +14,7 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 import { uploadBase64Foto, isBase64Image } from '@/lib/storage'
 import { getConfigBool } from '@/lib/config'
+import { publishRealtimeEvent } from '@/lib/realtime'
 import { OrigenPedido, EstadoEntrega } from '@prisma/client'
 
 export async function POST(request: NextRequest) {
@@ -251,6 +252,9 @@ export async function POST(request: NextRequest) {
       datos: { numero: result.numero, origen: 'VENTA_LIBRE', total: Number(result.total), embarqueId },
       usuarioId: authResult.user?.id,
     })
+
+    publishRealtimeEvent('pedido.created', result.id).catch(() => {})
+    publishRealtimeEvent('embarque.updated', embarqueId).catch(() => {})
 
     return apiSuccess({ pedido: result }, 201)
   } catch (error) {

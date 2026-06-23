@@ -8,6 +8,7 @@ import { logAudit } from '@/lib/audit'
 import { calcularPesoEmbarque } from '@/lib/embarque-capacidad'
 import { logger } from '@/lib/logger'
 import { apiSuccess, apiError } from '@/lib/api-response'
+import { publishRealtimeEvent } from '@/lib/realtime'
 
 const EnviarPedidoSchema = z.object({
   embarqueId: z.string().min(1),
@@ -178,6 +179,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       datos: { numero: result.numero, embarqueId },
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     })
+
+    publishRealtimeEvent('pedido.updated', result.pedidoId).catch(() => {})
+    publishRealtimeEvent('embarque.updated', embarqueId).catch(() => {})
 
     return apiSuccess(
       {

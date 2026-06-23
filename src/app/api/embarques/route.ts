@@ -19,6 +19,7 @@ import { EstadoEmbarque } from '@prisma/client'
 import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
+import { publishRealtimeEvent } from '@/lib/realtime'
 
 // DDD imports
 import { PrismaEmbarqueRepository } from '@/modules/embarques/infrastructure/repositories/PrismaEmbarqueRepository'
@@ -203,6 +204,8 @@ export async function POST(request: NextRequest) {
       usuarioId: session.user?.id,
     })
 
+    publishRealtimeEvent('embarque.created', result.id).catch(() => {})
+
     return apiSuccess({ embarque: result }, 201)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown'
@@ -264,6 +267,13 @@ export async function DELETE(request: NextRequest) {
 
     const cancelUseCase = new CancelarEmbarqueUseCase(embarqueRepo, pedidoRepo as never, txManager)
     await cancelUseCase.execute({ id })
+
+    publishRealtimeEvent('embarque.deleted', id).catch(() => {})
+    // Pedidos reasignados también cambiaron de estado/embarque.
+    const reasignados = await pedidoRepo.findByEmbarqueId(id)
+    reasignados.forEach((p) => {
+      publishRealtimeEvent('pedido.updated', p.id).catch(() => {})
+    })
 
     return apiSuccess({ message: 'Embarque cancelado' })
   } catch (error) {
