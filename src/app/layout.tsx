@@ -42,6 +42,15 @@ export default async function RootLayout({
 
   return (
     <html lang="es" className="light" style={{ colorScheme: 'light' }}>
+      <head>
+        {process.env.NODE_ENV === 'production' && (
+          <script
+            dangerouslySetInnerHTML={{
+              __html: "if('serviceWorker' in navigator){navigator.serviceWorker.register('/serwist/sw.js').catch(function(e){console.error('SW registration failed',e)})}",
+            }}
+          />
+        )}
+      </head>
       <body className="antialiased" {...(nonce ? { 'data-nonce': nonce } : {})}>
         {/*
          * SerwistProvider se desactiva en dev por DOS razones:
@@ -53,6 +62,11 @@ export default async function RootLayout({
          *    Serwist internamente accede a `this._registration.waiting` sin
          *    guard, lo que tira `Cannot read properties of undefined (reading
          *    'waiting')` y ensucia el dev log con un unhandledRejection.
+         *
+         * El script en <head> arriba satisface el regex de PWABuilder
+         * (navigator.serviceWorker.register('...')) y registra el SW antes
+         * de que React hidrate. El provider sigue activo en prod para
+         * cacheOnNavigation y como fallback de registro idempotente.
          *
          * El switch `disable={...}` corta el register() en dev. En prod
          *    todo sigue funcionando normal (PWA offline mode intacto).
