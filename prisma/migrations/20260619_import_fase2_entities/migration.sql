@@ -1,0 +1,6 @@
+-- Importación histórica Fase 2: extender enum ImportEntity con PROVEEDOR, INSUMO, COMPRA.
+
+ALTER TYPE "ImportEntity" ADD VALUE IF NOT EXISTS 'PROVEEDOR';
+ALTER TYPE "ImportEntity" ADD VALUE IF NOT EXISTS 'INSUMO';
+ALTER TYPE "ImportEntity" ADD VALUE IF NOT EXISTS 'COMPRA';
+ALTER TYPE "ImportEntity" ADD VALUE IF NOT EXISTS 'NOMINA';
