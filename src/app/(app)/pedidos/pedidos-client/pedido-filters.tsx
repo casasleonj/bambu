@@ -58,12 +58,16 @@ export function PedidoFilters({
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  const [expanded, setExpanded] = useState(() => {
-    if (typeof window === 'undefined') return false
-    return window.localStorage.getItem(FILTERS_KEY) === 'true'
-  })
+  const [expanded, setExpanded] = useState(false)
 
   useEffect(() => {
+    if (typeof window === 'undefined') return
+    const stored = window.localStorage.getItem(FILTERS_KEY) === 'true'
+    setExpanded(stored)
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
     window.localStorage.setItem(FILTERS_KEY, String(expanded))
   }, [expanded])
 
