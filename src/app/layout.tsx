@@ -27,6 +27,9 @@ export const metadata: Metadata = {
     statusBarStyle: 'default',
     title: 'Agua Bambú',
   },
+  icons: {
+    apple: '/icons/apple-touch-icon.png',
+  },
 }
 
 export default async function RootLayout({
