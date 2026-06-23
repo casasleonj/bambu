@@ -30,6 +30,7 @@ const SEQ_NAMES: Record<string, string> = {
   'factura:numero': 'factura_numero_seq',
   'abono:numero': 'abono_numero_seq',
   'embarque:numero': 'embarque_numero_seq',
+  'compraInsumo:numero': 'compra_insumo_numero_seq',
 }
 
 export async function getNextNumero(

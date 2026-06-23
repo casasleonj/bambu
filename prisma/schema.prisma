@@ -103,6 +103,37 @@ enum CasoStatus {
   CERRADO
 }
 
+enum ImportBatchEstado {
+  DRAFT
+  ANALYZED
+  COMMITTING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum ImportEntity {
+  CLIENTE
+  PEDIDO
+  PAGO
+  EMBARQUE
+  PRODUCCION
+  GASTO
+  CIERRE
+  PROVEEDOR
+  INSUMO
+  COMPRA
+  NOMINA
+}
+
+enum ImportDecision {
+  PENDING
+  AUTO_MERGE
+  MANUAL_MERGE
+  CREATE_NEW
+  SKIP
+}
+
 // ====================
 // USUARIOS
 // ====================
@@ -145,6 +176,8 @@ model User {
   pushSubscriptions PushSubscription[] @relation("PushSubscriptions")
 
   deudasCreadas DeudaTrabajador[] @relation("DeudaCreador")
+
+  importBatchesCreadas ImportBatch[] @relation("ImportBatchCreador")
 }
 
 // ====================
@@ -426,6 +459,7 @@ model Trabajador {
   embarques    Embarque[]
   producciones Produccion[]
   nominas      Nomina[]
+  gastos       Gasto[]
   gpsTracks    GpsTrack[]
   descuentos   DescuentoRepartidor[]
   deudas       DeudaTrabajador[]
@@ -518,6 +552,9 @@ model Pedido {
   origen        OrigenPedido  @default(PEDIDO)
   estadoEntrega EstadoEntrega @default(PENDIENTE)
   estadoPago    EstadoPago    @default(PENDIENTE)
+
+  // Importación histórica: trazabilidad del origen (ej: IMPORTACION_HISTORICA)
+  fuente String?
 
   // NUEVOS — control y trazabilidad
   promesaPagoFecha  DateTime? @db.Timestamptz()
@@ -1054,6 +1091,14 @@ model Gasto {
   embarqueId  String?
   embarque    Embarque? @relation(fields: [embarqueId], references: [id])
 
+  // Importación histórica: true si el gasto fue detectado como pago a personal
+  // (nómina, sueldo, comisión, etc.) durante la importación.
+  esPagoPersonal Boolean @default(false)
+
+  // Importación histórica / gastos de nómina: vínculo al trabajador pagado.
+  trabajadorId String?
+  trabajador   Trabajador? @relation(fields: [trabajadorId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now()) @db.Timestamptz()
   updatedAt DateTime @updatedAt @db.Timestamptz()
 
@@ -1061,6 +1106,7 @@ model Gasto {
   @@index([fecha])
   @@index([categoria, fecha])
   @@index([embarqueId])
+  @@index([trabajadorId])
 }
 
 // ====================
@@ -1072,6 +1118,7 @@ model Proveedor {
   createdById   String?
   createdBy     User?   @relation("ProveedorCreador", fields: [createdById], references: [id])
   nombre        String
+  nit           String? @unique
   telefono      String?
   email         String?
   direccion     String?
@@ -1248,6 +1295,10 @@ model CierreDia {
   stockFinHielo Int @default(0)
 
   netoCaja Decimal @default(0) @db.Decimal(10, 2)
+
+  // Importación histórica: true si el cierre vino del papel/Excel viejo y
+  // todavía no se verificó contra pedidos/pagos reales.
+  necesitaValidacion Boolean @default(false)
 
   cerradoPor String?
   horaCierre DateTime? @db.Timestamptz()
@@ -1504,4 +1555,74 @@ model PlantillaProducto {
 
   @@unique([plantillaId, producto])
   @@index([plantillaId])
+}
+
+// ====================
+// IMPORTACIÓN HISTÓRICA: zona de staging para carga masiva
+// ====================
+
+model ImportBatch {
+  id        String            @id @default(cuid())
+  createdById String
+  createdBy   User            @relation("ImportBatchCreador", fields: [createdById], references: [id])
+  nombre    String
+  estado    ImportBatchEstado @default(DRAFT)
+
+  totalRows        Int @default(0)
+  autoMergedRows   Int @default(0)
+  manualMergedRows Int @default(0)
+  createdRows      Int @default(0)
+  skippedRows      Int @default(0)
+  errorRows        Int @default(0)
+
+  reportJson Json?
+  errorJson  Json?
+
+  rows ImportStagingRow[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
+
+  @@index([createdById])
+  @@index([estado])
+}
+
+model ImportStagingRow {
+  id      String      @id @default(cuid())
+  batchId String
+  batch   ImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  entity    ImportEntity
+  rowNumber Int
+
+  rawJson        Json
+  normalizedJson Json?
+  parseError     String?
+
+  matchCandidates Json?
+  decision        ImportDecision @default(PENDING)
+  targetId        String? // id del registro canónico existente para merge
+  createdId       String? // id del registro creado en commit
+  error           String?
+
+  contactos ImportStagingContacto[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
+
+  @@index([batchId])
+  @@index([batchId, entity])
+  @@index([batchId, decision])
+}
+
+model ImportStagingContacto {
+  id           String           @id @default(cuid())
+  stagingRowId String
+  stagingRow   ImportStagingRow @relation(fields: [stagingRowId], references: [id], onDelete: Cascade)
+
+  nombre   String
+  telefono String
+  relacion String?
+
+  @@index([stagingRowId])
 }
