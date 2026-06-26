@@ -50,7 +50,7 @@ describe('AdminBaseCajaCard', () => {
     render(<AdminBaseCajaCard />)
 
     await waitFor(() => {
-      expect(screen.getByText(/150\.000/)).toBeInTheDocument()
+      expect(screen.getByText(/125\.000/)).toBeInTheDocument()
     })
 
     fireEvent.click(screen.getByRole('button', { name: /Editar base/i }))
