@@ -10,7 +10,7 @@ test.describe('Admin - Base de caja editable en dashboard', () => {
     await page.goto('/dashboard')
 
     // Wait for the admin base card to load.
-    await expect(page.getByText('Base de caja')).first().toBeVisible()
+    await expect(page.getByText('Base de caja').first()).toBeVisible()
 
     // Initial state: no base registered.
     await expect(page.getByText('Aún no registrada')).toBeVisible()
