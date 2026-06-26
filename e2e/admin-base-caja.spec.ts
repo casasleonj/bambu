@@ -8,7 +8,7 @@ test.describe('Admin - Base de caja editable en dashboard', () => {
   })
 
   test('admin puede registrar y editar la base de caja desde el dashboard', async ({ page }) => {
-    await expect(page.getByText('Base de caja hoy')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText('Base de caja')).toBeVisible({ timeout: 10000 })
 
     // With no backend base registered the card shows "Aún no registrada".
     await expect(page.getByText('Aún no registrada')).toBeVisible()
