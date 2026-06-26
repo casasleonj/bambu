@@ -47,6 +47,7 @@ export function buildVentasPorPrecio(pedidos: PedidoRaw[]): VentaPorPrecio[] {
   const map = new Map<string, VentaPorPrecio>()
 
   for (const pedido of pedidos) {
+    if (pedido.estadoEntrega !== 'ENTREGADO') continue
     if (!pedido.items) continue
     for (const item of pedido.items) {
       const key = `${item.producto}-${Number(item.precio)}`
