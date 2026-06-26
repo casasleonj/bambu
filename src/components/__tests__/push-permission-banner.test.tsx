@@ -73,6 +73,7 @@ describe('PushPermissionBanner', () => {
       permission: 'default',
       subscribed: false,
       loading: false,
+      recovering: false,
       error: null,
       subscribe,
       unsubscribe: vi.fn(),
