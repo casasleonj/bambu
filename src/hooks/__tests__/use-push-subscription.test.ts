@@ -80,6 +80,38 @@ describe('usePushSubscription', () => {
     })
   })
 
+  it('auto-recupera suscripción cuando permiso=granted pero no hay subscription', async () => {
+    vi.stubGlobal('Notification', {
+      permission: 'granted' as NotificationPermission,
+      requestPermission: requestPermissionMock,
+    })
+
+    const sub = makeSubscription()
+    registration.pushManager.subscribe.mockResolvedValue(sub)
+    fetchMock.mockResolvedValue({ ok: true } as Response)
+
+    const { result } = renderHook(() => usePushSubscription())
+
+    expect(result.current.permission).toBe('granted')
+
+    await waitFor(() => {
+      expect(result.current.recovering).toBe(true)
+    })
+
+    await waitFor(() => {
+      expect(result.current.subscribed).toBe(true)
+      expect(result.current.recovering).toBe(false)
+    })
+
+    expect(registration.pushManager.subscribe).toHaveBeenCalledWith(
+      expect.objectContaining({ userVisibleOnly: true }),
+    )
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/push/subscribe',
+      expect.objectContaining({ method: 'POST' }),
+    )
+  })
+
   it('subscribe: solicita permiso, se suscribe y registra en el backend', async () => {
     const sub = makeSubscription()
     requestPermissionMock.mockResolvedValue('granted')
