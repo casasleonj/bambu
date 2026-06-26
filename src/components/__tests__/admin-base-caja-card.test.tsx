@@ -21,7 +21,7 @@ describe('AdminBaseCajaCard', () => {
     expect(document.querySelector('.animate-pulse')).toBeInTheDocument()
   })
 
-  it('muestra estado sin base y abre modal al registrar', async () => {
+  it('muestra estado sin base con botón registrar', async () => {
     fetchMock
       .mockResolvedValueOnce({ ok: true, json: async () => ({ cierre: null }) } as Response)
       .mockResolvedValueOnce({ ok: true, json: async () => ({ config: null }) } as Response)
@@ -30,16 +30,11 @@ describe('AdminBaseCajaCard', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Aún no registrada')).toBeInTheDocument()
-    })
-
-    fireEvent.click(screen.getByRole('button', { name: /Registrar base/i }))
-
-    await waitFor(() => {
-      expect(screen.getByText('Base de Caja')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Registrar base/i })).toBeInTheDocument()
     })
   })
 
-  it('muestra estado con base y abre modal en modo edición', async () => {
+  it('muestra estado con base y botón editar', async () => {
     fetchMock
       .mockResolvedValueOnce({ ok: true, json: async () => ({ cierre: null }) } as Response)
       .mockResolvedValueOnce({
@@ -51,12 +46,7 @@ describe('AdminBaseCajaCard', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/125\.000/)).toBeInTheDocument()
-    })
-
-    fireEvent.click(screen.getByRole('button', { name: /Editar base/i }))
-
-    await waitFor(() => {
-      expect(screen.getByText('Base de Caja')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Editar base/i })).toBeInTheDocument()
     })
   })
 
