@@ -24,10 +24,12 @@ export function useAdminBaseCaja(): AdminBaseCajaState {
           fetch(`/api/config?clave=BASE_DIA_${today}`),
         ])
 
-        const todayClosed =
-          cierreRes.ok &&
-          (await cierreRes.json()).cierre?.fecha ===
-            new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+        const cierreData = cierreRes.ok ? await cierreRes.json() : { cierre: null }
+        const cierreDate = cierreData.cierre
+          ? new Date(cierreData.cierre.fecha).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+          : null
+        const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+        const todayClosed = cierreDate === todayStr
 
         const baseValue: string | null = configRes.ok
           ? (await configRes.json()).config?.valor ?? null
