@@ -1,27 +1,21 @@
 import { test, expect } from '@playwright/test'
-import { fullLogin } from './fixtures'
+import { login } from './fixtures'
 
 test.describe('Admin - Base de caja editable en dashboard', () => {
   test.beforeEach(async ({ page }) => {
-    await fullLogin(page, 'admin', 'admin123')
+    await page.goto('/login')
+    await login(page, 'admin', 'admin123')
   })
 
   test('admin puede registrar y editar la base de caja desde el dashboard', async ({ page }) => {
-    await page.goto('/dashboard')
-
-    // Wait for the admin base card to load.
-    await expect(page.getByText('Base de caja').first()).toBeVisible()
-
-    // Initial state: no base registered.
-    await expect(page.getByText('Aún no registrada')).toBeVisible()
-    await page.getByRole('button', { name: /Registrar base/i }).click()
-
-    // Fill and save the base amount.
+    // With no base registered, the modal opens automatically after login.
+    await expect(page.getByText('Base de Caja')).toBeVisible()
     await page.locator('#base-dia-input').fill('125000')
     await page.getByRole('button', { name: /Continuar/i }).click()
 
-    // Card should now show the registered amount.
-    await expect(page.getByText(/125,000/)).toBeVisible()
+    // Once saved, dashboard should show the registered amount.
+    await expect(page.getByText('Base de caja hoy')).toBeVisible()
+    await expect(page.getByText(/125\.000/)).toBeVisible()
     await expect(page.getByRole('button', { name: /Editar base/i })).toBeVisible()
 
     // Edit the base amount.
@@ -29,7 +23,7 @@ test.describe('Admin - Base de caja editable en dashboard', () => {
     await page.locator('#base-dia-input').fill('150000')
     await page.getByRole('button', { name: /Guardar cambios/i }).click()
 
-    // Card should reflect the updated amount.
-    await expect(page.getByText(/150,000/)).toBeVisible()
+    // Dashboard should reflect the updated amount.
+    await expect(page.getByText(/150\.000/)).toBeVisible()
   })
 })
