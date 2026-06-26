@@ -71,8 +71,7 @@ export async function handleBaseCaja(page: Page) {
 export async function skipBaseCaja(page: Page) {
   const today = new Date().toISOString().split('T')[0]
   await page.addInitScript(({ date }: { date: string }) => {
-    localStorage.setItem('baseDiaDate', date)
-    localStorage.setItem('baseDia', '100000')
+    localStorage.setItem(`baseDia_${date}`, '100000')
     ;(window).__PLAYWRIGHT_TEST__ = true
   }, { date: today })
 }
