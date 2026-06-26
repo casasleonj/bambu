@@ -28,7 +28,7 @@ test.describe('Fiados - límite global y criterio de pedido fiado', () => {
 
   test('pedido PENDIENTE no entregado NO cuenta para el límite de fiados', async ({ page }) => {
     const cliente = await createCliente(page, { nombre: 'Cliente Pendiente No Cuenta' })
-    const clienteId = cliente.id
+    const clienteId = cliente.cliente.id
 
     // 1. Crear pedido PENDIENTE (no venta rápida) → queda fiado pero no entregado
     const p1 = await (await createPedidoFiado(page, clienteId, false)).json()
@@ -43,7 +43,7 @@ test.describe('Fiados - límite global y criterio de pedido fiado', () => {
   test('límite global LIMITE_PEDIDOS_FIADOS_DEFAULT se respeta', async ({ page }) => {
     await setLimiteGlobal(page, 1)
     const cliente = await createCliente(page, { nombre: 'Cliente Limite Global 1' })
-    const clienteId = cliente.id
+    const clienteId = cliente.cliente.id
 
     // 1. Primer pedido fiado entregado (venta rápida) → OK
     const p1 = await createPedidoFiado(page, clienteId, true)
@@ -59,7 +59,7 @@ test.describe('Fiados - límite global y criterio de pedido fiado', () => {
   test('límite personal por cliente tiene prioridad sobre el global', async ({ page }) => {
     await setLimiteGlobal(page, 1)
     const cliente = await createCliente(page, { nombre: 'Cliente Limite Personal 2' })
-    const clienteId = cliente.id
+    const clienteId = cliente.cliente.id
 
     // Actualizar límite personal a 2 (global es 1)
     await apiPut(page, `/api/clientes/${clienteId}`, {
@@ -84,7 +84,7 @@ test.describe('Fiados - límite global y criterio de pedido fiado', () => {
   test('saldoPendiente del cliente solo incluye pedidos ENTREGADOS fiados', async ({ page }) => {
     const unique = Date.now()
     const cliente = await createCliente(page, { nombre: `Cliente Saldo Pendiente ${unique}` })
-    const clienteId = cliente.id
+    const clienteId = cliente.cliente.id
 
     // 1. Crear pedido PENDIENTE (no entregado) fiado
     const p1 = await (await createPedidoFiado(page, clienteId, false)).json()
