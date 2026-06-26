@@ -4,9 +4,8 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import type { DashboardData } from './types'
 import { useBaseCaja } from '@/hooks/use-base-caja'
-import { openBaseCajaModal } from '@/components/base-caja-loader'
+import { AdminBaseCajaCard } from '@/components/admin-base-caja-card'
 import { MoneyDisplay } from '@/components/money-display'
-import { todayInBogota } from '@/lib/date-helpers'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
 import { PRODUCT_LABELS } from '@/shared/domain'
 import type { ProductCode } from '@/shared/domain'
@@ -17,61 +16,6 @@ const PRODUCTO_COLOR: Record<ProductCode, { bg: string; text: string }> = {
   PACA_HIELO: { bg: 'bg-cyan-50', text: 'text-cyan-600' },
   BOLSA_HIELO: { bg: 'bg-cyan-50', text: 'text-cyan-600' },
   BOTELLON: { bg: 'bg-amber-50', text: 'text-amber-600' },
-}
-
-function AdminBaseCajaBanner() {
-  const { baseDia: baseDiaLocal } = useBaseCaja()
-  const [needsBase, setNeedsBase] = useState(false)
-  const [checking, setChecking] = useState(true)
-
-  useEffect(() => {
-    const today = todayInBogota()
-    Promise.all([
-      fetch('/api/cierre/last'),
-      fetch(`/api/config?clave=BASE_DIA_${today}`),
-    ])
-      .then(async ([cierreRes, configRes]) => {
-        const cierreJson = cierreRes.ok ? await cierreRes.json() : { cierre: null }
-        const configJson = configRes.ok ? await configRes.json() : { config: null }
-        const cierreDate = cierreJson.cierre
-          ? new Date(cierreJson.cierre.fecha).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
-          : null
-        const hasBaseInDb = !!configJson.config
-        setNeedsBase(cierreDate !== today && !hasBaseInDb)
-      })
-      .catch((error) => {
-        console.error('[dashboard] Error checking base caja banner:', error)
-        // If we cannot verify state, assume base is needed so the admin can act.
-        setNeedsBase(true)
-      })
-      .finally(() => setChecking(false))
-  }, [])
-
-  // Hide banner as soon as the admin registers a base via the modal.
-  useEffect(() => {
-    if (baseDiaLocal) {
-      setNeedsBase(false)
-    }
-  }, [baseDiaLocal])
-
-  if (checking || !needsBase) return null
-
-  return (
-    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-      <div className="flex items-center gap-2 text-sm text-blue-800">
-        <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        <span>No hay base de caja registrada para hoy.</span>
-      </div>
-      <button
-        onClick={openBaseCajaModal}
-        className="text-sm font-medium text-blue-700 hover:text-blue-900 underline self-start sm:self-auto"
-      >
-        Registrar base
-      </button>
-    </div>
-  )
 }
 
 function RefreshBadge() {
@@ -169,7 +113,11 @@ export function DashboardClient({ data, userRole }: { data: DashboardData; userR
         <RefreshBadge />
       </div>
 
-      {userRole === 'ADMIN' && <AdminBaseCajaBanner />}
+      {userRole === 'ADMIN' && (
+        <div className="max-w-md">
+          <AdminBaseCajaCard />
+        </div>
+      )}
 
       {/* KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
