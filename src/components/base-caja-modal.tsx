@@ -108,6 +108,12 @@ export default function BaseCajaModal() {
 
   // Allow manual opening from dashboard for ADMIN/ASISTENTE (edit mode).
   useEffect(() => {
+    const pendingValue = (window as unknown as { __OPEN_BASE_CAJA_MODAL_VALUE?: string }).__OPEN_BASE_CAJA_MODAL_VALUE
+    if (pendingValue !== undefined) {
+      openModal(pendingValue)
+      ;(window as unknown as { __OPEN_BASE_CAJA_MODAL_VALUE?: string }).__OPEN_BASE_CAJA_MODAL_VALUE = undefined
+    }
+
     const handler = (e: CustomEvent<string | undefined>) => {
       openModal(e.detail)
     }
