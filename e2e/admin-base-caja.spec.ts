@@ -11,10 +11,15 @@ test.describe('Admin - Base de caja editable en dashboard', () => {
     await expect(page.getByText('Base de caja')).toBeVisible({ timeout: 10000 })
     await expect(page.getByText('Aún no registrada')).toBeVisible()
 
-    await page.getByRole('button', { name: /Registrar base/i }).click()
-
     const modal = page.locator('div.fixed.inset-0.bg-black\\/50').filter({ hasText: 'Base de Caja' })
-    await expect(modal).toBeVisible({ timeout: 10000 })
+
+    // The modal may open automatically (no backend base) or we open it manually.
+    try {
+      await expect(modal).toBeVisible({ timeout: 3000 })
+    } catch {
+      await page.getByRole('button', { name: /Registrar base/i }).click()
+      await expect(modal).toBeVisible({ timeout: 10000 })
+    }
 
     const input = modal.locator('#base-dia-input')
     await expect(input).toBeVisible()
