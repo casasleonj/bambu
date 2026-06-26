@@ -7,6 +7,7 @@ export interface UsePushSubscriptionReturn {
   permission: NotificationPermission | 'unknown'
   subscribed: boolean
   loading: boolean
+  recovering: boolean
   error: string | null
   subscribe: () => Promise<void>
   unsubscribe: () => Promise<void>
@@ -28,66 +29,39 @@ function isPushSupported(): boolean {
   return 'serviceWorker' in navigator && 'PushManager' in window
 }
 
+async function fetchVapidPublicKey(): Promise<string | undefined> {
+  let publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+  if (publicKey) return publicKey
+
+  const response = await fetch('/api/push/vapid-public-key')
+  if (!response.ok) {
+    throw new Error('No se pudo obtener la clave VAPID')
+  }
+  const data = (await response.json()) as { publicKey: string | null }
+  return data.publicKey ?? undefined
+}
+
 export function usePushSubscription(): UsePushSubscriptionReturn {
   const [supported] = useState<boolean>(isPushSupported)
   const [permission, setPermission] = useState<NotificationPermission | 'unknown'>('unknown')
   const [subscribed, setSubscribed] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [recovering, setRecovering] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!supported) return
-
-    setPermission(Notification.permission)
-
-    let cancelled = false
-    const checkSubscription = async () => {
-      try {
-        const registration = await navigator.serviceWorker.ready
-        const subscription = await registration.pushManager.getSubscription()
-        if (!cancelled) {
-          setSubscribed(!!subscription)
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Error leyendo suscripcion activa')
-        }
-      }
+  const performSubscribe = useCallback(async (isRecovery: boolean) => {
+    if (!isRecovery) {
+      setLoading(true)
+    } else {
+      setRecovering(true)
     }
-
-    void checkSubscription()
-    return () => {
-      cancelled = true
-    }
-  }, [supported])
-
-  const subscribe = useCallback(async () => {
     setError(null)
-    setLoading(true)
 
     try {
-      const newPermission = await Notification.requestPermission()
-      setPermission(newPermission)
-
-      if (newPermission === 'denied') {
-        setError('Permiso de notificaciones denegado')
-        setLoading(false)
-        return
-      }
-
-      let publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
-      if (!publicKey) {
-        const response = await fetch('/api/push/vapid-public-key')
-        if (!response.ok) {
-          throw new Error('No se pudo obtener la clave VAPID')
-        }
-        const data = (await response.json()) as { publicKey: string | null }
-        publicKey = data.publicKey ?? undefined
-      }
+      const publicKey = await fetchVapidPublicKey()
 
       if (!publicKey) {
         setError('Clave VAPID no configurada')
-        setLoading(false)
         return
       }
 
@@ -119,9 +93,65 @@ export function usePushSubscription(): UsePushSubscriptionReturn {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error suscribiendo notificaciones')
     } finally {
-      setLoading(false)
+      if (!isRecovery) {
+        setLoading(false)
+      } else {
+        setRecovering(false)
+      }
     }
   }, [])
+
+  useEffect(() => {
+    if (!supported) return
+
+    setPermission(Notification.permission)
+
+    let cancelled = false
+    const checkSubscription = async () => {
+      try {
+        const registration = await navigator.serviceWorker.ready
+        const subscription = await registration.pushManager.getSubscription()
+        if (cancelled) return
+
+        const hasSubscription = !!subscription
+        setSubscribed(hasSubscription)
+
+        if (!hasSubscription && Notification.permission === 'granted') {
+          await performSubscribe(true)
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Error leyendo suscripcion activa')
+        }
+      }
+    }
+
+    void checkSubscription()
+    return () => {
+      cancelled = true
+    }
+  }, [supported, performSubscribe])
+
+  const subscribe = useCallback(async () => {
+    setError(null)
+    setLoading(true)
+
+    try {
+      const newPermission = await Notification.requestPermission()
+      setPermission(newPermission)
+
+      if (newPermission === 'denied') {
+        setError('Permiso de notificaciones denegado')
+        setLoading(false)
+        return
+      }
+
+      await performSubscribe(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error suscribiendo notificaciones')
+      setLoading(false)
+    }
+  }, [performSubscribe])
 
   const unsubscribe = useCallback(async () => {
     setError(null)
@@ -159,6 +189,7 @@ export function usePushSubscription(): UsePushSubscriptionReturn {
     permission,
     subscribed,
     loading,
+    recovering,
     error,
     subscribe,
     unsubscribe,
