@@ -4,7 +4,75 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import type { DashboardData } from './types'
 import { useBaseCaja } from '@/hooks/use-base-caja'
+import { openBaseCajaModal } from '@/components/base-caja-loader'
 import { MoneyDisplay } from '@/components/money-display'
+import { todayInBogota } from '@/lib/date-helpers'
+import { getProductoIconConfig } from '@/lib/producto-iconos'
+import { PRODUCT_LABELS } from '@/shared/domain'
+import type { ProductCode } from '@/shared/domain'
+
+const PRODUCTO_COLOR: Record<ProductCode, { bg: string; text: string }> = {
+  PACA_AGUA: { bg: 'bg-blue-50', text: 'text-blue-600' },
+  BOLSA_AGUA: { bg: 'bg-blue-50', text: 'text-blue-600' },
+  PACA_HIELO: { bg: 'bg-cyan-50', text: 'text-cyan-600' },
+  BOLSA_HIELO: { bg: 'bg-cyan-50', text: 'text-cyan-600' },
+  BOTELLON: { bg: 'bg-amber-50', text: 'text-amber-600' },
+}
+
+function AdminBaseCajaBanner() {
+  const { baseDia: baseDiaLocal } = useBaseCaja()
+  const [needsBase, setNeedsBase] = useState(false)
+  const [checking, setChecking] = useState(true)
+
+  useEffect(() => {
+    const today = todayInBogota()
+    Promise.all([
+      fetch('/api/cierre/last'),
+      fetch(`/api/config?clave=BASE_DIA_${today}`),
+    ])
+      .then(async ([cierreRes, configRes]) => {
+        const cierreJson = cierreRes.ok ? await cierreRes.json() : { cierre: null }
+        const configJson = configRes.ok ? await configRes.json() : { config: null }
+        const cierreDate = cierreJson.cierre
+          ? new Date(cierreJson.cierre.fecha).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+          : null
+        const hasBaseInDb = !!configJson.config
+        setNeedsBase(cierreDate !== today && !hasBaseInDb)
+      })
+      .catch((error) => {
+        console.error('[dashboard] Error checking base caja banner:', error)
+        // If we cannot verify state, assume base is needed so the admin can act.
+        setNeedsBase(true)
+      })
+      .finally(() => setChecking(false))
+  }, [])
+
+  // Hide banner as soon as the admin registers a base via the modal.
+  useEffect(() => {
+    if (baseDiaLocal) {
+      setNeedsBase(false)
+    }
+  }, [baseDiaLocal])
+
+  if (checking || !needsBase) return null
+
+  return (
+    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+      <div className="flex items-center gap-2 text-sm text-blue-800">
+        <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span>No hay base de caja registrada para hoy.</span>
+      </div>
+      <button
+        onClick={openBaseCajaModal}
+        className="text-sm font-medium text-blue-700 hover:text-blue-900 underline self-start sm:self-auto"
+      >
+        Registrar base
+      </button>
+    </div>
+  )
+}
 
 function RefreshBadge() {
   const [minutes, setMinutes] = useState(0)
@@ -30,7 +98,7 @@ export function DashboardClient({ data, userRole }: { data: DashboardData; userR
   const { baseDia: baseDiaLocal } = useBaseCaja()
   const baseDia = baseDiaLocal ? Number(baseDiaLocal) : data.baseDia
   const {
-    pedidos,
+    pedidosHoy,
     ventas,
     fiadosTotal,
     clientesConFiado,
@@ -101,11 +169,13 @@ export function DashboardClient({ data, userRole }: { data: DashboardData; userR
         <RefreshBadge />
       </div>
 
+      {userRole === 'ADMIN' && <AdminBaseCajaBanner />}
+
       {/* KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white p-5 rounded-xl shadow-sm border-l-4 border-blue-500">
           <p className="text-sm text-gray-500">Pedidos del Día</p>
-          <p className="text-3xl font-bold text-gray-800">{pedidos.length}</p>
+          <p className="text-3xl font-bold text-gray-800">{pedidosHoy}</p>
           <p className="text-xs text-gray-400 mt-1">
             {pedidosPendientes} pendientes · {pedidosEntregados} entregados
           </p>
@@ -289,14 +359,22 @@ export function DashboardClient({ data, userRole }: { data: DashboardData; userR
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {ventasPorPrecio.map((item, index) => (
-                  <tr key={index} className="hover:bg-gray-50">
-                    <td className="px-4 py-3"><span className="font-medium text-gray-800">{item.producto}</span></td>
-                    <td className="px-4 py-3 text-center"><span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-semibold"><MoneyDisplay value={item.precio} userRole={userRole} /></span></td>
-                    <td className="px-4 py-3 text-center"><span className="text-2xl font-bold text-gray-800">{item.cantidad}</span><span className="text-sm text-gray-400 ml-1">und</span></td>
-                    <td className="px-4 py-3 text-right"><span className="font-semibold text-green-600"><MoneyDisplay value={item.subtotal} userRole={userRole} /></span></td>
-                  </tr>
-                ))}
+                {ventasPorPrecio.map((item, index) => {
+                  const { Icon } = getProductoIconConfig(item.producto)
+                  return (
+                    <tr key={index} className="hover:bg-gray-50">
+                      <td className="px-4 py-3">
+                        <span className="flex items-center gap-2 font-medium text-gray-800">
+                          <Icon size={18} aria-hidden="true" className="flex-shrink-0" />
+                          {item.producto}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-center"><span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-semibold"><MoneyDisplay value={item.precio} userRole={userRole} /></span></td>
+                      <td className="px-4 py-3 text-center"><span className="text-2xl font-bold text-gray-800">{item.cantidad}</span><span className="text-sm text-gray-400 ml-1">und</span></td>
+                      <td className="px-4 py-3 text-right"><span className="font-semibold text-green-600"><MoneyDisplay value={item.subtotal} userRole={userRole} /></span></td>
+                    </tr>
+                  )
+                })}
               </tbody>
               <tfoot className="bg-gray-50">
                 <tr><td colSpan={3} className="px-4 py-3 text-right font-bold text-gray-800">TOTAL:</td><td className="px-4 py-3 text-right font-bold text-green-600 text-lg"><MoneyDisplay value={ventas} userRole={userRole} /></td></tr>
@@ -308,16 +386,21 @@ export function DashboardClient({ data, userRole }: { data: DashboardData; userR
 
       {/* Resumen por Producto */}
       {ventasPorPrecio.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-          {['Paca Agua', 'Paca Hielo', 'Botellon Fab', 'Botellon Dom', 'Bolsa Agua', 'Bolsa Hielo'].map((producto) => {
-            const items = ventasPorPrecio.filter(v => v.producto === producto)
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+          {(Object.keys(PRODUCT_LABELS) as ProductCode[]).map((code) => {
+            const items = ventasPorPrecio.filter(v => v.producto === code)
             const totalCantidad = items.reduce((acc, v) => acc + v.cantidad, 0)
             const totalSubtotal = items.reduce((acc, v) => acc + v.subtotal, 0)
             if (totalCantidad === 0) return null
+            const { Icon } = getProductoIconConfig(code)
+            const { bg, text } = PRODUCTO_COLOR[code]
             return (
-              <div key={producto} className="bg-white p-4 rounded-xl shadow-sm">
-                <p className="text-sm text-gray-500">{producto}</p>
-                <p className="text-2xl font-bold text-blue-600">{totalCantidad}</p>
+              <div key={code} className="bg-white p-4 rounded-xl shadow-sm flex flex-col items-center text-center">
+                <div className={`w-14 h-14 rounded-full flex items-center justify-center mb-2 ${bg}`}>
+                  <Icon size={32} aria-hidden="true" />
+                </div>
+                <p className="text-sm text-gray-500">{PRODUCT_LABELS[code]}</p>
+                <p className={`text-2xl font-bold ${text}`}>{totalCantidad}</p>
                 <p className="text-sm text-gray-400"><MoneyDisplay value={totalSubtotal} userRole={userRole} /></p>
               </div>
             )
@@ -328,7 +411,7 @@ export function DashboardClient({ data, userRole }: { data: DashboardData; userR
       {/* Pedidos por Franja Horaria */}
       <div className="bg-white p-5 rounded-xl shadow-sm">
         <h2 className="text-lg font-semibold text-gray-800 mb-4">Pedidos por Franja Horaria</h2>
-        {pedidos.length === 0 ? (
+        {franjas.every(f => f.count === 0) ? (
           <div className="text-center py-8 text-gray-400"><p>No hay pedidos registrados hoy</p></div>
         ) : (
           <div className="flex items-end gap-3 h-44">
@@ -404,7 +487,7 @@ export function DashboardClient({ data, userRole }: { data: DashboardData; userR
         <div className="bg-white p-5 rounded-xl shadow-sm">
           <h2 className="text-lg font-semibold text-gray-800 mb-4">Resumen de Caja</h2>
           <div className="space-y-3">
-            <div className="flex justify-between items-center py-2 border-b border-gray-100"><span className="text-gray-600">Base del día</span><span className="font-medium"><MoneyDisplay value={baseDia} userRole={userRole} /></span></div>
+            <div className="flex justify-between items-center py-2 border-b border-gray-100"><span className="text-gray-600">Base del día</span><span className="font-medium">{baseDia === 0 ? 'Sin base registrada' : <MoneyDisplay value={baseDia} userRole={userRole} />}</span></div>
             <div className="flex justify-between items-center py-2 border-b border-gray-100"><span className="text-gray-600">+ Ventas cobradas</span><span className="font-medium text-green-600"><MoneyDisplay value={ventas - fiadosHoy} userRole={userRole} /></span></div>
             <div className="flex justify-between items-center py-2 border-b border-gray-100"><span className="text-gray-600">- Gastos</span><span className="font-medium text-red-600"><MoneyDisplay value={totalGastos} userRole={userRole} /></span></div>
             <div className="flex justify-between items-center py-3 bg-gray-50 rounded-lg px-3 mt-2"><span className="font-semibold text-gray-800">= Efectivo esperado</span><span className="font-bold text-lg text-green-600"><MoneyDisplay value={baseDia + (ventas - fiadosHoy) - totalGastos} userRole={userRole} /></span></div>

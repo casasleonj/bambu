@@ -5,6 +5,7 @@
  * This is the single entry point for the dashboard presentation layer.
  */
 
+import { getTodayString } from '@/lib/dates'
 import type { DashboardData, DashboardKPIs } from '../domain'
 import {
   pedidosValidos,
@@ -58,7 +59,7 @@ export async function getDashboardData(
   ] = await Promise.all([
     deps.pedidos.findByDateRange(todayRange.start, todayRange.end),
     deps.pedidos.findByDateRange(yesterdayRange.start, yesterdayRange.end),
-    deps.config.getBaseDia(`BASE_DIA_${new Date().toISOString().split('T')[0]}`),
+    deps.config.getBaseDia(`BASE_DIA_${getTodayString()}`),
     deps.config.getLastCierre(),
     deps.gastos.sumByDateRange(todayRange.start, todayRange.end),
     deps.embarques.countAbiertos(),

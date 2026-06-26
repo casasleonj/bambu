@@ -5,31 +5,6 @@ export interface VentaPorPrecio {
   subtotal: number
 }
 
-export interface PedidoRaw {
-  cPacaAguaPed: number
-  cPacaHieloPed: number
-  cBotellonFabPed: number
-  cBotellonDomPed: number
-  cBolsaAguaPed: number
-  cBolsaHieloPed: number
-  cPacaAguaEnt: number
-  cPacaHieloEnt: number
-  cBotellonFabEnt: number
-  cBotellonDomEnt: number
-  cBolsaAguaEnt: number
-  cBolsaHieloEnt: number
-  precioPacaAgua: unknown
-  precioPacaHielo: unknown
-  precioBotellonFab: unknown
-  precioBotellonDom: unknown
-  precioBolsaAgua: unknown
-  precioBolsaHielo: unknown
-  total: unknown
-  saldo: unknown
-  estadoEntrega: string
-  fecha: Date | string
-}
-
 export interface FranjaHoraria {
   label: string
   range: [number, number]
@@ -37,7 +12,7 @@ export interface FranjaHoraria {
 }
 
 export interface DashboardData {
-  pedidos: PedidoRaw[]
+  pedidosHoy: number
   ventas: number
   fiadosHoy: number
   fiadosTotal: number
@@ -75,43 +50,4 @@ export interface DashboardData {
     criticos: number
     sinResolver48h: number
   }
-}
-
-export function buildVentasPorPrecio(pedidos: PedidoRaw[]): VentaPorPrecio[] {
-  const ventasPorPrecio: VentaPorPrecio[] = []
-  if (pedidos.length === 0) return ventasPorPrecio
-
-  const buckets: Record<string, Record<number, number>> = {
-    'Paca Agua': {},
-    'Paca Hielo': {},
-    'Botellon Fab': {},
-    'Botellon Dom': {},
-    'Bolsa Agua': {},
-    'Bolsa Hielo': {},
-  }
-
-  for (const p of pedidos) {
-    if (p.estadoEntrega === 'ANULADO' || p.estadoEntrega === 'CANCELADO') continue
-    if (p.cPacaAguaEnt > 0 && Number(p.precioPacaAgua) > 0)
-      buckets['Paca Agua'][Number(p.precioPacaAgua)] = (buckets['Paca Agua'][Number(p.precioPacaAgua)] || 0) + p.cPacaAguaEnt
-    if (p.cPacaHieloEnt > 0 && Number(p.precioPacaHielo) > 0)
-      buckets['Paca Hielo'][Number(p.precioPacaHielo)] = (buckets['Paca Hielo'][Number(p.precioPacaHielo)] || 0) + p.cPacaHieloEnt
-    if (p.cBotellonFabEnt > 0 && Number(p.precioBotellonFab) > 0)
-      buckets['Botellon Fab'][Number(p.precioBotellonFab)] = (buckets['Botellon Fab'][Number(p.precioBotellonFab)] || 0) + p.cBotellonFabEnt
-    if (p.cBotellonDomEnt > 0 && Number(p.precioBotellonDom) > 0)
-      buckets['Botellon Dom'][Number(p.precioBotellonDom)] = (buckets['Botellon Dom'][Number(p.precioBotellonDom)] || 0) + p.cBotellonDomEnt
-    if (p.cBolsaAguaEnt > 0 && Number(p.precioBolsaAgua) > 0)
-      buckets['Bolsa Agua'][Number(p.precioBolsaAgua)] = (buckets['Bolsa Agua'][Number(p.precioBolsaAgua)] || 0) + p.cBolsaAguaEnt
-    if (p.cBolsaHieloEnt > 0 && Number(p.precioBolsaHielo) > 0)
-      buckets['Bolsa Hielo'][Number(p.precioBolsaHielo)] = (buckets['Bolsa Hielo'][Number(p.precioBolsaHielo)] || 0) + p.cBolsaHieloEnt
-  }
-
-  for (const [producto, precios] of Object.entries(buckets)) {
-    for (const [precio, cantidad] of Object.entries(precios)) {
-      const p = parseFloat(precio)
-      ventasPorPrecio.push({ producto, precio: p, cantidad, subtotal: p * cantidad })
-    }
-  }
-
-  return ventasPorPrecio
 }

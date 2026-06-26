@@ -11,11 +11,8 @@ import type { DashboardData as LegacyData } from '@/app/(app)/dashboard/dashboar
 
 export function toLegacyDashboardData(ddd: DDDData): LegacyData {
   return {
-    // Legacy pedidos array — empty since client doesn't actually iterate it
-    // The client uses pre-aggregated fields instead
-    pedidos: [],
-
     // KPIs
+    pedidosHoy: ddd.kpis.pedidosHoy,
     ventas: ddd.kpis.ventasHoy,
     fiadosHoy: ddd.kpis.fiadosHoy,
     fiadosTotal: ddd.kpis.fiadosTotal,
