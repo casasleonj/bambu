@@ -74,7 +74,8 @@ describe('AdminBaseCajaCard', () => {
     render(<AdminBaseCajaCard />)
 
     await waitFor(() => {
-      expect(screen.getByText('Cierre completado')).toBeInTheDocument()
+      expect(screen.getByText(/80\.000/)).toBeInTheDocument()
+      expect(screen.getByText('El cierre del día ya fue realizado. No se puede editar la base.')).toBeInTheDocument()
     })
 
     expect(screen.queryByRole('button', { name: /Editar base/i })).not.toBeInTheDocument()
