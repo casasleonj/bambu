@@ -46,7 +46,7 @@ export default async function ClientesPage({
       pedidos: {
         where: {
           saldo: { gt: 0 },
-          estadoEntrega: { in: ['ENTREGADO', 'EN_RUTA', 'PENDIENTE', 'NO_ENTREGADO'] },
+          estadoEntrega: 'ENTREGADO',
         },
         include: {
           factura: {

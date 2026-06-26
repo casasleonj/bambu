@@ -137,6 +137,12 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     serialized.clienteId = serialized.id
     serialized.frecuenciaSugerida = frecuenciaSugerida
     serialized.productosSugeridos = productosSugeridos
+    // FIX C-FIADOS-2: saldoPendiente debe ser solo de pedidos ENTREGADOS fiados.
+    serialized.saldoPendiente = cliente.pedidos
+      .filter((p: { estadoEntrega: string; saldo: { toNumber: () => number } | number }) =>
+        p.estadoEntrega === 'ENTREGADO' && Number(p.saldo) > 0
+      )
+      .reduce((sum: number, p: { saldo: { toNumber: () => number } | number }) => sum + Number(p.saldo), 0)
 
     return apiSuccess({ cliente: serialized })
   } catch (error) {

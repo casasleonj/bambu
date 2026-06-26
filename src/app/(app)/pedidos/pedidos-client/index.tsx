@@ -79,6 +79,7 @@ export function PedidosClient() {
     requerirGps: false,
     permitirSinGpsConJustificacion: true,
   })
+  const [limiteGlobalFiados, setLimiteGlobalFiados] = useState<number>(3)
 
   // Fechas desde URL (fuente de verdad)
   const desdeUrl = searchParams.get('desde')
@@ -270,6 +271,22 @@ export function PedidosClient() {
   }, [])
 
   useEffect(() => {
+    // Fetch global fiado limit (best-effort, default 3 on error).
+    ;(async () => {
+      try {
+        const res = await fetch('/api/config?clave=LIMITE_PEDIDOS_FIADOS_DEFAULT', { cache: 'no-store' })
+        if (!res.ok) return
+        const json: unknown = await res.json()
+        const valor = (json as { data?: { valor?: string } | null } | null)?.data?.valor ?? (json as { valor?: string } | null)?.valor
+        const n = Number(valor)
+        if (Number.isFinite(n) && n > 0) setLimiteGlobalFiados(n)
+      } catch {
+        // default already set
+      }
+    })()
+  }, [])
+
+  useEffect(() => {
     let isFetching = false
     const getPollInterval = () => {
       const conn = (navigator as any).connection
@@ -422,7 +439,7 @@ export function PedidosClient() {
 
   const totalVentas = useMemo(() => pedidosFiltrados.reduce((acc, p) => acc + Number(p.total || 0), 0), [pedidosFiltrados])
   const totalFiado = useMemo(() => pedidosFiltrados
-    .filter(p => Number(p.saldo) > 0)
+    .filter(p => p.estadoEntrega === 'ENTREGADO' && Number(p.saldo) > 0)
     .reduce((acc, p) => acc + Number(p.saldo), 0), [pedidosFiltrados])
   const alertasCount = useMemo(() => calcularAlertas(pedidos).length, [pedidos])
 
@@ -796,7 +813,7 @@ export function PedidosClient() {
         <div className="flex border-b border-gray-200">
           {[
             { key: 'hoy', label: 'Pedidos', count: pedidosFiltrados.length },
-            { key: 'fiados', label: 'Fiados', count: pedidos.filter((p) => Number(p.saldo) > 0 && p.estadoEntrega !== 'ANULADO' && p.clienteId !== 'CONSUMIDOR_FINAL').length },
+            { key: 'fiados', label: 'Fiados', count: pedidos.filter((p) => p.estadoEntrega === 'ENTREGADO' && Number(p.saldo) > 0 && p.clienteId !== 'CONSUMIDOR_FINAL').length },
             { key: 'alertas', label: 'Alertas', count: alertasCount },
           ].map((tab) => (
             <button
@@ -897,7 +914,7 @@ export function PedidosClient() {
           onCreateClick={() => setShowModal(true)}
         />
       )}
-      {activeTab === 'fiados' && <FiadosTable pedidos={pedidos} onPedidosChange={fetchPedidos} userRole={userRole} />}
+      {activeTab === 'fiados' && <FiadosTable pedidos={pedidos} clientes={clientes} limiteGlobal={limiteGlobalFiados} onPedidosChange={fetchPedidos} userRole={userRole} />}
       {activeTab === 'alertas' && <AlertasTable pedidos={pedidos} />}
 
       {/* Modal Formulario Unificado */}

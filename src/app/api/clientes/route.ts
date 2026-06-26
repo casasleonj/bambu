@@ -110,7 +110,7 @@ export async function GET(request: NextRequest) {
           where: {
             clienteId: { in: clienteIds },
             saldo: { gt: 0 },
-            estadoEntrega: { in: ['ENTREGADO', 'EN_RUTA', 'PENDIENTE', 'NO_ENTREGADO'] },
+            estadoEntrega: 'ENTREGADO',
           },
           select: { clienteId: true, saldo: true },
         }).then(pedidos => {
@@ -161,7 +161,7 @@ export async function GET(request: NextRequest) {
           pedidos: {
             where: {
               saldo: { gt: 0 },
-              estadoEntrega: { in: ['ENTREGADO', 'EN_RUTA', 'PENDIENTE', 'NO_ENTREGADO'] },
+              estadoEntrega: 'ENTREGADO',
             },
             select: { saldo: true },
           },

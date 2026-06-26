@@ -23,7 +23,7 @@ import type { IFacturaRepository } from '../../domain/repositories/IFacturaRepos
 import type { IPagoRepository } from '../../domain/repositories/IPagoRepository'
 import type { IClienteRepository } from '../../domain/repositories/IClienteRepository'
 import type { IPricingPort } from '../../domain/repositories/IPricingPort'
-import { puedeCrearPedido } from '../../domain/services/pedido-validation.service'
+import { puedeCrearPedido, resolverLimiteFiados } from '../../domain/services/pedido-validation.service'
 import { normalizarPagos } from '../../domain/services/pagos-calculator.service'
 import type { ITransactionManager } from '../../infrastructure/transactions/PrismaTransactionManager'
 import type { CrearPedidoInput, CrearPedidoResult } from '../dto'
@@ -99,7 +99,11 @@ export class CrearPedidoUseCase {
 
       // 3. Validate credit limit
       const pedidosPendientes = await this.pedidoRepo.findPendingByCliente(clienteId, tx)
-      const limite = cliente?.limitePedidosFiados ?? 3
+      const configLimite = await tx.config.findUnique({
+        where: { clave: 'LIMITE_PEDIDOS_FIADOS_DEFAULT' },
+        select: { valor: true },
+      })
+      const limite = resolverLimiteFiados(cliente ?? {}, configLimite?.valor ?? null)
       const errorDeuda = puedeCrearPedido(
         { id: clienteId, bloqueado: cliente?.bloqueado ?? false, verificado: cliente?.verificado ?? false, creadoPorRol: cliente?.creadoPorRol || '' },
         pedidosPendientes,

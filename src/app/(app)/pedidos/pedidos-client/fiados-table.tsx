@@ -5,8 +5,8 @@ import React, { useState, useMemo } from 'react'
 import { formatCurrency } from '@/lib/utils'
 import { toast } from 'sonner'
 import { filtrarPorPeriodo, PERIODOS, type PeriodoFiltro } from './date-utils'
-import type { Pedido } from './types'
-import { getEstadoFiados } from '@/lib/pedido-utils'
+import type { Pedido, Cliente } from './types'
+import { getEstadoFiados, resolverLimiteFiados } from '@/lib/pedido-utils'
 import { fetchResilient } from '@/lib/fetch-resilient'
 import { MoneyDisplay } from '@/components/money-display'
 
@@ -20,15 +20,18 @@ interface FiadoRow {
   pedidosFiados: Pedido[]
   diasFiado: number
   ultimoPedido: Date
+  limitePedidosFiados?: number | null
 }
 
 interface FiadosTableProps {
   pedidos: Pedido[]
+  clientes: Cliente[]
+  limiteGlobal?: number
   onPedidosChange?: () => void
   userRole?: string | null
 }
 
-export function FiadosTable({ pedidos, onPedidosChange, userRole }: FiadosTableProps) {
+export function FiadosTable({ pedidos, clientes, limiteGlobal, onPedidosChange, userRole }: FiadosTableProps) {
   const [expandedCliente, setExpandedCliente] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [minDeuda, setMinDeuda] = useState('')
@@ -48,9 +51,10 @@ export function FiadosTable({ pedidos, onPedidosChange, userRole }: FiadosTableP
     const clientesMap = new Map<string, FiadoRow>()
 
     pedidosFiltrados
-      .filter((p) => Number(p.saldo) > 0 && p.estadoEntrega !== 'ANULADO' && p.clienteId !== 'CONSUMIDOR_FINAL')
+      .filter((p) => p.estadoEntrega === 'ENTREGADO' && Number(p.saldo) > 0 && p.clienteId !== 'CONSUMIDOR_FINAL')
       .forEach((p) => {
         const existing = clientesMap.get(p.clienteId)
+        const cliente = clientes.find((c) => c.id === p.clienteId)
         if (existing) {
           existing.deudaTotal += Number(p.saldo)
           existing.pedidosFiados.push(p)
@@ -68,6 +72,7 @@ export function FiadosTable({ pedidos, onPedidosChange, userRole }: FiadosTableP
             pedidosFiados: [p],
             diasFiado: 0,
             ultimoPedido: new Date(p.fecha),
+            limitePedidosFiados: cliente?.limitePedidosFiados,
           })
         }
       })
@@ -295,7 +300,8 @@ export function FiadosTable({ pedidos, onPedidosChange, userRole }: FiadosTableP
                     </td>
                     <td className="px-4 py-3 text-center">
                       {(() => {
-                        const estado = getEstadoFiados(row.pedidosFiados, 3)
+                        const limite = resolverLimiteFiados(row, String(limiteGlobal ?? 3))
+                        const estado = getEstadoFiados(row.pedidosFiados, limite)
                         const badgeColor = estado.nivel === 'limite'
                           ? 'bg-red-100 text-red-700 border-red-200'
                           : estado.nivel === 'cerca'
@@ -422,7 +428,8 @@ export function FiadosTable({ pedidos, onPedidosChange, userRole }: FiadosTableP
                 <div className="text-right">
                   <p className="font-bold text-red-600"><MoneyDisplay value={row.deudaTotal} userRole={userRole} /></p>
                   {(() => {
-                    const estado = getEstadoFiados(row.pedidosFiados, 3)
+                    const limite = resolverLimiteFiados(row, String(limiteGlobal ?? 3))
+                    const estado = getEstadoFiados(row.pedidosFiados, limite)
                     const badgeColor = estado.nivel === 'limite'
                       ? 'text-red-600'
                       : estado.nivel === 'cerca'

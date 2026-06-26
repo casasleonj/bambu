@@ -6,6 +6,7 @@ export interface Cliente {
   direccion?: string
   barrio?: string
   nombreNegocio?: string
+  limitePedidosFiados?: number | null
 }
 
 export interface Tier {

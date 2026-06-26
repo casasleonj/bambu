@@ -285,7 +285,7 @@ model Cliente {
   creadoPorRol        RolUsuario @default(ASISTENTE)
   bloqueado           Boolean    @default(false)
   reclamaciones       Int        @default(0)
-  limitePedidosFiados Int?       @default(3)
+  limitePedidosFiados Int?
 
   // NEGOCIOS — un cliente puede ser dueño de varios negocios
   negocios         Negocio[]

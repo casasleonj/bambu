@@ -9,6 +9,7 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 import { logBulkAudit } from '@/lib/audit'
 import { publishRealtimeEvent } from '@/lib/realtime'
+import { resolverLimiteFiados } from '@/lib/pedido-utils'
 
 const DecisionSchema = z.object({
   recurrenteId: z.string().min(1),
@@ -85,22 +86,26 @@ export async function POST(request: NextRequest) {
       return apiError(`Clientes inactivos o bloqueados: ${nombres}`, 400)
     }
 
-    // A8: Check fiado limit for all clients
+    // A8: Check fiado limit for all clients.
+    // FIX C-FIADOS-1: solo pedidos ENTREGADOS con saldo > 0 cuentan.
     const limiteConfig = await prisma.config.findUnique({ where: { clave: 'LIMITE_PEDIDOS_FIADOS_DEFAULT' } })
-    const limiteGlobal = limiteConfig ? parseInt(limiteConfig.valor, 10) || 3 : 3
 
     const limitesPorCliente = new Map<string, number>()
     for (const pt of plantillasActuales) {
       const clienteId = pt.clienteId
       if (!clienteId) continue
-      const limite = pt.cliente?.limitePedidosFiados ?? limiteGlobal
+      const limite = resolverLimiteFiados(
+        { limitePedidosFiados: pt.cliente?.limitePedidosFiados ?? null },
+        limiteConfig?.valor ?? null,
+      )
       limitesPorCliente.set(clienteId, limite)
     }
 
     const pedidosPendientesTodos = await prisma.pedido.findMany({
       where: {
         clienteId: { in: Array.from(limitesPorCliente.keys()) },
-        estadoEntrega: { notIn: ['ANULADO', 'CANCELADO'] },
+        estadoEntrega: 'ENTREGADO',
+        saldo: { gt: 0 },
         estadoPago: { notIn: ['PAGADO', 'ANTICIPADO', 'ANULADO'] },
       },
       select: { clienteId: true, id: true, numero: true, saldo: true },

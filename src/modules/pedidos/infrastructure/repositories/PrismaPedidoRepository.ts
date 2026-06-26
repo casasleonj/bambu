@@ -110,10 +110,14 @@ export class PrismaPedidoRepository implements IPedidoRepository {
     tx?: TransactionClient,
   ): Promise<Array<{ id: string; numero: number; saldo: number }>> {
     const client = tx || prisma
+    // FIX C-FIADOS-1: solo pedidos ENTREGADOS con saldo > 0 cuentan para el
+    // límite de fiados. Pedidos PENDIENTE/EN_RUTA/NO_ENTREGADO no generan
+    // deuda real hasta ser entregados.
     const raw = await client.pedido.findMany({
       where: {
         clienteId,
-        estadoEntrega: { notIn: ['ANULADO', 'CANCELADO'] },
+        estadoEntrega: 'ENTREGADO',
+        saldo: { gt: 0 },
         estadoPago: { notIn: ['PAGADO', 'ANTICIPADO', 'ANULADO'] },
       },
       orderBy: { numero: 'asc' },

@@ -29,7 +29,8 @@ export interface IPedidoRepository {
   update(pedido: Pedido, tx?: TransactionClient): Promise<Pedido>
 
   /**
-   * Find pending (non-paid, non-cancelled, non-anulled) orders for a customer.
+   * Find delivered-but-unpaid orders for a customer.
+   * These are the orders that count against the customer's fiado limit.
    */
   findPendingByCliente(clienteId: string, tx?: TransactionClient): Promise<Array<{ id: string; numero: number; saldo: number }>>
 

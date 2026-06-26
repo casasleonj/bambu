@@ -4,6 +4,7 @@ import {
   getEstadoFiados,
   puedeFiar,
   getAlertaPedidoDia,
+  resolverLimiteFiados,
 } from '@/lib/pedido-utils'
 
 describe('puedeCrearPedido', () => {
@@ -95,6 +96,33 @@ describe('getEstadoFiados', () => {
     const result = getEstadoFiados([], 0)
     expect(result.porcentaje).toBe(100)
     expect(result.nivel).toBe('limite')
+  })
+})
+
+describe('resolverLimiteFiados', () => {
+  it('usa el límite personal del cliente cuando está definido', () => {
+    expect(resolverLimiteFiados({ limitePedidosFiados: 5 }, '10')).toBe(5)
+  })
+
+  it('usa la config global cuando no hay límite personal', () => {
+    expect(resolverLimiteFiados({}, '10')).toBe(10)
+    expect(resolverLimiteFiados({ limitePedidosFiados: null }, '7')).toBe(7)
+  })
+
+  it('usa el default cuando no hay ni personal ni global', () => {
+    expect(resolverLimiteFiados({}, null)).toBe(3)
+    expect(resolverLimiteFiados({ limitePedidosFiados: null }, null)).toBe(3)
+  })
+
+  it('ignora límite personal inválido (0 o negativo)', () => {
+    expect(resolverLimiteFiados({ limitePedidosFiados: 0 }, '4')).toBe(4)
+    expect(resolverLimiteFiados({ limitePedidosFiados: -1 }, '4')).toBe(4)
+  })
+
+  it('ignora config global inválida (NaN o <= 0)', () => {
+    expect(resolverLimiteFiados({}, 'foo')).toBe(3)
+    expect(resolverLimiteFiados({}, '0')).toBe(3)
+    expect(resolverLimiteFiados({}, '-2')).toBe(3)
   })
 })
 

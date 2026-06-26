@@ -41,6 +41,25 @@ export function puedeCrearPedido(
 }
 
 /**
+ * Resolves the effective fiado limit for a customer.
+ * Priority: cliente.limitePedidosFiados > config global > default (3)
+ */
+export function resolverLimiteFiados(
+  cliente: { limitePedidosFiados?: number | null },
+  configValor: string | null,
+  defaultValue = 3,
+): number {
+  if (cliente.limitePedidosFiados != null && cliente.limitePedidosFiados > 0) {
+    return cliente.limitePedidosFiados
+  }
+  if (configValor != null) {
+    const parsed = parseInt(configValor, 10)
+    if (Number.isFinite(parsed) && parsed > 0) return parsed
+  }
+  return defaultValue
+}
+
+/**
  * Returns the customer's credit status for UI display.
  */
 export function getEstadoFiados(

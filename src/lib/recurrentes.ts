@@ -4,6 +4,7 @@ import { resolverPreciosPedido, type Canal, type ProductCode } from "@/lib/prici
 import { getDateRange } from "@/lib/dates";
 import { executeSerializableWithRetry } from "@/lib/serializable";
 import { hydrateProductos } from "@/lib/cliente-hydrate";
+import { resolverLimiteFiados } from "@/lib/pedido-utils";
 
 type ProductosMap = {
   PACA_AGUA: number
@@ -473,13 +474,23 @@ export async function generarPedidosRecurrentes(
         return { skipped: true }
       }
 
-      // 4. Verificar limite de fiados
-      const limite = clienteForCheck.limitePedidosFiados ?? 3
+      // 4. Verificar limite de fiados.
+      // FIX C-FIADOS-1: solo pedidos ENTREGADOS con saldo > 0 cuentan y se
+      // respeta la config global LIMITE_PEDIDOS_FIADOS_DEFAULT.
+      const limiteConfig = await tx.config.findUnique({
+        where: { clave: 'LIMITE_PEDIDOS_FIADOS_DEFAULT' },
+        select: { valor: true },
+      })
+      const limite = resolverLimiteFiados(
+        { limitePedidosFiados: clienteForCheck.limitePedidosFiados ?? null },
+        limiteConfig?.valor ?? null,
+      )
 
       const pedidosPendientesCount = await tx.pedido.count({
         where: {
           clienteId: effectiveClienteId,
-          estadoEntrega: { notIn: ['ANULADO', 'CANCELADO'] },
+          estadoEntrega: 'ENTREGADO',
+          saldo: { gt: 0 },
           estadoPago: { notIn: ['PAGADO', 'ANTICIPADO', 'ANULADO'] },
         },
       })

@@ -107,6 +107,7 @@ export interface Cliente {
   lat?: number | null
   lng?: number | null
   preciosEspeciales?: string
+  limitePedidosFiados?: number | null
 }
 
 export const TIPOS = ['ENVIO', 'PUNTO']

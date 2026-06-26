@@ -10,6 +10,7 @@ import { TipoNegocioSelect } from '@/components/tipo-negocio-select'
 import { matchCliente } from '@/lib/cliente-search'
 import { NegocioSelector } from '@/components/negocio-selector'
 import { usePriceSync } from '@/hooks/use-price-sync'
+import { resolverLimiteFiados } from '@/lib/pedido-utils'
 import type { Cliente, Tier } from './types'
 
 const FUENTES: string[] = [
@@ -43,6 +44,7 @@ export interface PedidoInicial {
 export interface PedidoFormUnifiedProps {
   contexto: 'PUNTO' | 'DOMICILIO'
   clientes: Cliente[]
+  limiteGlobal?: number
   onSubmit: (data: PedidoUnifiedData) => void
   onClose?: () => void
   pedidoInicial?: PedidoInicial
@@ -65,7 +67,7 @@ export interface PedidoUnifiedData {
 
 // ==================== COMPONENTE ====================
 
-export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial }: PedidoFormUnifiedProps) {
+export function PedidoFormUnified({ contexto, clientes, limiteGlobal, onSubmit, pedidoInicial }: PedidoFormUnifiedProps) {
   const [canal, setCanal] = useState<'PUNTO' | 'DOMICILIO'>(contexto)
   const [cantidades, setCantidades] = useState<Record<string, number>>({})
   const [searchTerm, setSearchTerm] = useState('')
@@ -200,11 +202,17 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
         .then(r => r.json())
         .then(d => {
           const pedidos = d.pedidos || d.data || []
+          // FIX C-FIADOS-1: solo pedidos ENTREGADOS con saldo > 0 cuentan
+          // para el límite de fiados.
           const pendientes = pedidos.filter((p: any) =>
-            !['ANULADO', 'CANCELADO'].includes(p.estadoEntrega) &&
+            p.estadoEntrega === 'ENTREGADO' &&
+            Number(p.saldo) > 0 &&
             !['PAGADO', 'ANTICIPADO', 'ANULADO'].includes(p.estadoPago)
           )
-          const limite = (clienteSeleccionado as any).limitePedidosFiados ?? 3
+          const limite = resolverLimiteFiados(
+            { limitePedidosFiados: clienteSeleccionado.limitePedidosFiados ?? null },
+            limiteGlobal != null ? String(limiteGlobal) : null,
+          )
           const count = pendientes.length
           const porcentaje = limite > 0 ? (count / limite) * 100 : 100
           let nivel: 'ok' | 'cerca' | 'limite' = 'ok'

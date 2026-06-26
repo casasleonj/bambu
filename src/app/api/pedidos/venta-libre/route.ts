@@ -115,25 +115,22 @@ export async function POST(request: NextRequest) {
 
       const estadoPago = calcularEstadoPago(total, totalPagado)
 
-      // 6b. Verificar límite de fiados si el pedido va a quedar con saldo
+      // 6b. Verificar límite de fiados si el pedido va a quedar con saldo.
+      // FIX C-FIADOS-1: solo pedidos ENTREGADOS con saldo > 0 cuentan.
       if (!esAnonimo && cliente && puedeFiar(cliente, esAnonimo) && totalPagado < total) {
         const pedidosPendientes = await tx.pedido.findMany({
           where: {
             clienteId: cliente.id,
-            estadoEntrega: { notIn: ['ANULADO', 'CANCELADO'] },
+            estadoEntrega: 'ENTREGADO',
+            saldo: { gt: 0 },
             estadoPago: { notIn: ['PAGADO', 'ANTICIPADO', 'ANULADO'] },
           },
           orderBy: { numero: 'asc' },
           select: { id: true, numero: true, saldo: true },
         })
 
-        let limiteFiados = cliente.limitePedidosFiados ?? 3
-        if (cliente.limitePedidosFiados == null) {
-          const configLimite = await tx.config.findUnique({ where: { clave: 'LIMITE_PEDIDOS_FIADOS_DEFAULT' } })
-          // FIX MEDIUM (C-VAL-7): Usar resolverLimiteFiados para consistencia
-          // con CrearPedidoUseCase (que antes usaba solo hardcoded 3)
-          limiteFiados = resolverLimiteFiados(cliente, configLimite?.valor ?? null)
-        }
+        const configLimite = await tx.config.findUnique({ where: { clave: 'LIMITE_PEDIDOS_FIADOS_DEFAULT' } })
+        const limiteFiados = resolverLimiteFiados(cliente, configLimite?.valor ?? null)
 
         const errorDeuda = puedeCrearPedido(cliente, pedidosPendientes, limiteFiados)
         if (errorDeuda) {
