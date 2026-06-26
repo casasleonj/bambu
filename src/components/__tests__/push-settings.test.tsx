@@ -139,7 +139,7 @@ describe('PushSettings', () => {
 
     render(<PushSettings />)
 
-    expect(screen.getByText('Restaurando...')).toBeInTheDocument()
+    expect(screen.getByText('Estamos recuperando tu suscripción de notificaciones.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Restaurando/i })).toBeDisabled()
   })
 
