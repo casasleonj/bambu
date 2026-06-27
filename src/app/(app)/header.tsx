@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react'
 import { useSession, signOut } from 'next-auth/react'
 import Link from 'next/link'
+import { Pencil, Check } from 'lucide-react'
 import { purgeSWCache } from '@/lib/purge-sw-cache'
 import { unsubscribePushOnLogout } from '@/lib/push-cleanup'
 import { ConnectivityIndicator } from '@/components/connectivity-indicator'
@@ -27,10 +28,16 @@ export function Header() {
   const mobileDrawerOpen = useAppStore((s) => s.mobileDrawerOpen)
   const setMobileDrawerOpen = useAppStore((s) => s.setMobileDrawerOpen)
   const desktopCollapsed = useAppStore((s) => s.desktopCollapsed)
+  const setDesktopCollapsed = useAppStore((s) => s.setDesktopCollapsed)
   const toggleDesktopCollapsed = useAppStore((s) => s.toggleDesktopCollapsed)
+  const setMenuEditing = useAppStore((s) => s.setMenuEditing)
   const { data: session } = useSession()
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+
+  const userId = (session?.user as { id?: string } | undefined)?.id
+  const effectiveUserId = userId ?? 'anonymous'
+  const menuEditing = useAppStore((s) => s.menuEditingByUser[effectiveUserId] ?? false)
 
   const sidebarOpen = isDesktop ? !desktopCollapsed : mobileDrawerOpen
   const onToggleSidebar = () => {
@@ -38,6 +45,19 @@ export function Header() {
       toggleDesktopCollapsed()
     } else {
       setMobileDrawerOpen(!mobileDrawerOpen)
+    }
+  }
+
+  const onToggleMenuEditing = () => {
+    const next = !menuEditing
+    setMenuEditing(effectiveUserId, next)
+    if (next) {
+      // En modo edición el sidebar debe estar visible.
+      if (isDesktop) {
+        setDesktopCollapsed(false)
+      } else {
+        setMobileDrawerOpen(true)
+      }
     }
   }
 
@@ -106,6 +126,17 @@ export function Header() {
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
           </svg>
+        </button>
+        <button
+          onClick={onToggleMenuEditing}
+          data-testid="edit-menu-button"
+          className="p-2 hover:bg-blue-700 rounded-lg min-h-[44px] min-w-[44px] flex items-center justify-center flex-shrink-0"
+          aria-pressed={menuEditing}
+          aria-label={menuEditing ? 'Listo' : 'Editar menú'}
+          title={menuEditing ? 'Listo' : 'Editar menú'}
+          type="button"
+        >
+          {menuEditing ? <Check className="w-5 h-5" /> : <Pencil className="w-5 h-5" />}
         </button>
         <h1 className="text-base sm:text-lg md:text-xl font-bold truncate">Agua Bambú</h1>
       </div>

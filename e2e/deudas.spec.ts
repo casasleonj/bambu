@@ -1,6 +1,5 @@
 import { test, expect } from '@playwright/test'
-import {
-  fullLogin,
+import {fullLogin,
   loginAs,
   goto,
   apiPost,
@@ -11,8 +10,7 @@ import {
   createCliente,
   createEmbarque,
   resetTestDatabase,
-  waitForToast,
-} from './fixtures'
+  waitForToast, resetDatabase} from './fixtures'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

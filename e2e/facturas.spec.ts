@@ -1,7 +1,15 @@
 // @tests api/factura, api/abono, api/pedido
-import { test, expect, fullLogin, goto, apiPost, apiGet, getFirstFacturaConSaldo, createPedido, createCliente } from './fixtures'
+import {test, expect, fullLogin, goto, apiPost, apiGet, getFirstFacturaConSaldo, createPedido, createCliente,  resetDatabase} from './fixtures'
 
 test.describe('Facturas', () => {
+  test.describe.configure({ mode: 'serial' })
+
+  test.use({ storageState: {} })
+
+  test.beforeAll(() => {
+    resetDatabase()
+  })
+
 
   test('page loads', async ({ page }) => {
     await fullLogin(page)

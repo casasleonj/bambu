@@ -178,6 +178,32 @@ model User {
   deudasCreadas DeudaTrabajador[] @relation("DeudaCreador")
 
   importBatchesCreadas ImportBatch[] @relation("ImportBatchCreador")
+
+  // Session tracking for concurrent device limits (NOT NextAuth adapter Session table)
+  sesionesActivas SesionActiva[]
+}
+
+// ====================
+// SESIONES ACTIVAS (custom session tracking, NOT NextAuth adapter table)
+// ====================
+
+model SesionActiva {
+  id          String     @id @default(cuid())
+  usuarioId   String
+  sessionId   String     @unique
+  rol         RolUsuario
+  userAgent   String?    @db.Text
+  ip          String?
+  dispositivo String?
+  createdAt   DateTime   @default(now()) @db.Timestamptz()
+  lastActive  DateTime   @default(now()) @db.Timestamptz()
+  expiresAt   DateTime   @db.Timestamptz()
+
+  usuario User @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId, expiresAt])
+  @@index([expiresAt])
+  @@map("SesionActiva")
 }
 
 // ====================

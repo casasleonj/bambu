@@ -8,7 +8,7 @@ declare global {
   }
 }
 
-export const BASE = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000'
+export const BASE = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3001'
 
 // ─── Test Database Reset ─────────────────────────────────────────────────────
 
@@ -52,15 +52,15 @@ export async function handleBaseCaja(page: Page) {
   // Poll for modal to appear (it may take time due to async API calls in base-caja-modal)
   for (let i = 0; i < 10; i++) {
     await page.waitForTimeout(300)
-    const btn = page.locator('button:has-text("Continuar")')
-    const count = await btn.count()
-    if (count > 0) {
-      const input = page.locator('.fixed input[type="number"]')
-      if (await input.count() > 0) {
+    const input = page.locator('#base-dia-input')
+    const count = await input.count()
+    if (count > 0 && await input.isVisible().catch(() => false)) {
+      try {
         await input.fill('100000')
-        await page.waitForTimeout(100)
-        await btn.first().click()
-        await page.waitForTimeout(600)
+        await page.locator('button[type="submit"]').filter({ hasText: /Continuar|Guardar/ }).click()
+        await page.waitForSelector('#base-dia-input', { state: 'detached', timeout: 5000 })
+      } catch {
+        // Modal may have been closed concurrently; ignore
       }
       return
     }
@@ -69,16 +69,21 @@ export async function handleBaseCaja(page: Page) {
 
 /** Pre-block Base Caja modal by setting localStorage before page load */
 export async function skipBaseCaja(page: Page) {
-  const today = new Date().toISOString().split('T')[0]
-  await page.addInitScript(({ date }: { date: string }) => {
-    localStorage.setItem(`baseDia_${date}`, '100000')
+  const now = new Date()
+  const utcDate = now.toISOString().split('T')[0]
+  const bogotaDate = now.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+  await page.addInitScript(({ dates }: { dates: string[] }) => {
+    for (const date of dates) {
+      localStorage.setItem(`baseDia_${date}`, '100000')
+    }
     ;(window).__PLAYWRIGHT_TEST__ = true
-  }, { date: today })
+  }, { dates: [utcDate, bogotaDate] })
 }
 
 export async function fullLogin(page: Page, user = 'admin', pass = 'admin123') {
   await skipBaseCaja(page)
   await login(page, user, pass)
+  await handleBaseCaja(page)
 }
 
 export async function loginAs(page: Page, role: 'admin' | 'asistente' | 'contador' | 'repartidor') {

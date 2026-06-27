@@ -21,12 +21,16 @@ export default defineConfig({
     command: 'npm run dev',
     url: process.env.PLAYWRIGHT_TEST_BASE_URL
       ? `${process.env.PLAYWRIGHT_TEST_BASE_URL}/api/health`
-      : 'http://localhost:3000/api/health',
+      : 'http://localhost:3001/api/health',
     // Reusar server existente solo cuando se corre en localhost.
     // Para LAN, Playwright SIEMPRE arranca un webServer nuevo (el server
     // ya debe estar corriendo manualmente en la IP LAN esperada).
     reuseExistingServer: !process.env.PLAYWRIGHT_TEST_BASE_URL,
     timeout: 120000,
+    env: {
+      PORT: '3001',
+      DISABLE_RATE_LIMIT: 'true',
+    },
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },

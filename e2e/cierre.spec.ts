@@ -11,6 +11,8 @@ function getUniqueFutureDate(): string {
 test.describe('Cierre', () => {
   test.describe.configure({ mode: 'serial' })
 
+  test.use({ storageState: {} })
+
   test.beforeAll(() => {
     resetDatabase()
   })

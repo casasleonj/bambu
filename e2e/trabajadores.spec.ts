@@ -1,7 +1,15 @@
 // @tests api/trabajador
-import { test, expect, fullLogin, goto, apiPost, apiDelete, createTrabajador } from './fixtures'
+import {test, expect, fullLogin, goto, apiPost, apiDelete, createTrabajador,  resetDatabase} from './fixtures'
 
 test.describe('Trabajadores', () => {
+  test.describe.configure({ mode: 'serial' })
+
+  test.use({ storageState: {} })
+
+  test.beforeAll(() => {
+    resetDatabase()
+  })
+
   test('page loads', async ({ page }) => {
     await fullLogin(page)
     await goto(page, '/trabajadores')

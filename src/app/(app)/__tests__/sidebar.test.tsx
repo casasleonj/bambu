@@ -5,9 +5,10 @@
 // que `mobileDrawerOpen` cambiaba, en vez de solo cuando cambiaba `pathname`).
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, act, waitFor } from '@testing-library/react'
+import { render, act, waitFor, screen } from '@testing-library/react'
 import { useAppStore } from '@/stores/app-store'
 import { usePathname } from 'next/navigation'
+import { reconcileMenuOrder } from '@/app/(app)/sidebar'
 
 // Mock useIsDesktop para forzar mobile
 vi.mock('@/hooks/use-is-desktop', () => ({
@@ -21,7 +22,7 @@ vi.mock('next/navigation', () => ({
 
 // Mock next-auth
 vi.mock('next-auth/react', () => ({
-  useSession: () => ({ data: { user: { name: 'Admin', role: 'ADMIN' } } }),
+  useSession: () => ({ data: { user: { id: 'user-1', name: 'Admin', role: 'ADMIN' } } }),
   signOut: vi.fn(),
 }))
 
@@ -43,7 +44,7 @@ vi.mock('@/components/money-display', () => ({
 
 // Mock de los modulos de permisos (necesarios para renderizar el sidebar)
 vi.mock('@/lib/permissions', () => ({
-  getUserPermissions: () => ['view:dashboard', 'view:clientes'],
+  getUserPermissions: () => ['view:dashboard', 'view:clientes', 'view:pedidos', 'view:productos', 'view:casos'],
 }))
 
 vi.mock('@/lib/constants', () => ({
@@ -51,6 +52,7 @@ vi.mock('@/lib/constants', () => ({
 }))
 
 import { Sidebar } from '@/app/(app)/sidebar'
+import { navSections } from '@/app/(app)/nav-data'
 
 describe('Sidebar — regresion mobile 2026-06-10: drawer permanece abierto tras click', () => {
   beforeEach(() => {
@@ -59,6 +61,8 @@ describe('Sidebar — regresion mobile 2026-06-10: drawer permanece abierto tras
         mobileDrawerOpen: false,
         desktopCollapsed: false,
         sidebarOpen: true,
+        menuOrderByUser: {},
+        menuEditingByUser: {},
       })
     })
   })
@@ -181,5 +185,120 @@ describe('Sidebar — regresion mobile 2026-06-10: drawer permanece abierto tras
 
     // El useEffect no debe cerrar el drawer porque !isDesktop es false ahora.
     expect(useAppStore.getState().mobileDrawerOpen).toBe(true)
+  })
+})
+
+describe('Sidebar — menú reorganizable', () => {
+  it('reconcileMenuOrder mantiene el orden guardado y agrega items nuevos al final de su sección', () => {
+    const saved = [
+      'section:Ventas',
+      '/clientes',
+      '/dashboard',
+      'section:Operaciones',
+      '/produccion',
+    ]
+    const order = reconcileMenuOrder(saved, navSections)
+
+    expect(order.indexOf('section:Ventas')).toBeLessThan(order.indexOf('/clientes'))
+    expect(order.indexOf('/clientes')).toBeLessThan(order.indexOf('/dashboard'))
+    // Items nuevos de Ventas que no estaban en saved van al final de Ventas
+    const ventasEnd = order.indexOf('section:Operaciones')
+    const pedidosIndex = order.indexOf('/pedidos')
+    const productosIndex = order.indexOf('/productos')
+    expect(pedidosIndex).toBeGreaterThan(0)
+    expect(pedidosIndex).toBeLessThan(ventasEnd)
+    expect(productosIndex).toBeGreaterThan(0)
+    expect(productosIndex).toBeLessThan(ventasEnd)
+  })
+
+  it('reconcileMenuOrder descarta items y secciones que ya no existen', () => {
+    const saved = [
+      'section:Ventas',
+      '/dashboard',
+      '/ruta-fantasma',
+      'section:Legacy',
+      '/clientes',
+    ]
+    const order = reconcileMenuOrder(saved, navSections)
+    expect(order).not.toContain('/ruta-fantasma')
+    expect(order).not.toContain('section:Legacy')
+    expect(order).toContain('/dashboard')
+    expect(order).toContain('/clientes')
+  })
+
+  it('reconcileMenuOrder agrega una sección nueva al final respetando el orden original de items dentro de ella', () => {
+    // Simulamos que no teníamos la sección Admin guardada.
+    const saved = [
+      'section:Ventas',
+      '/dashboard',
+      'section:Operaciones',
+      '/produccion',
+      'section:Finanzas',
+      '/facturacion',
+    ]
+    const order = reconcileMenuOrder(saved, navSections)
+    const adminIndex = order.indexOf('section:Admin')
+    expect(adminIndex).toBeGreaterThan(-1)
+    expect(adminIndex).toBeGreaterThan(order.indexOf('section:Finanzas'))
+    // Los items de Admin aparecen después del header Admin.
+    expect(order.indexOf('/trabajadores')).toBeGreaterThan(adminIndex)
+  })
+
+  it('renderiza items en el orden guardado por el usuario', () => {
+    act(() => {
+      useAppStore.setState({
+        menuOrderByUser: {
+          'user-1': ['section:Ventas', '/clientes', '/dashboard', '/pedidos', '/productos', '/casos'],
+        },
+        menuEditingByUser: { 'user-1': false },
+        mobileDrawerOpen: true,
+      })
+    })
+
+    render(<Sidebar />)
+    const nav = screen.getByLabelText('Navegación principal')
+    const links = nav.querySelectorAll('a')
+    const firstLink = links[0]
+    const secondLink = links[1]
+    expect(firstLink?.textContent).toContain('Clientes')
+    expect(secondLink?.textContent).toContain('Dashboard')
+  })
+
+  it('muestra drag handles solo cuando el modo edición está activo', () => {
+    const { rerender } = render(<Sidebar />)
+
+    // Fuera de modo edición no hay handles.
+    expect(screen.queryAllByTestId('drag-handle')).toHaveLength(0)
+
+    act(() => {
+      useAppStore.setState({ menuEditingByUser: { 'user-1': true }, mobileDrawerOpen: true })
+    })
+    rerender(<Sidebar />)
+
+    // En modo edición hay al menos un handle por cada sección visible + item visible.
+    const handles = screen.queryAllByTestId('drag-handle')
+    expect(handles.length).toBeGreaterThan(0)
+  })
+
+  it('resetMenuOrder vuelve al orden por defecto', () => {
+    act(() => {
+      useAppStore.setState({
+        menuOrderByUser: {
+          'user-1': ['section:Ventas', '/clientes', '/dashboard'],
+        },
+      })
+    })
+
+    render(<Sidebar />)
+    const nav = screen.getByLabelText('Navegación principal')
+    const links = nav.querySelectorAll('a')
+    expect(links[0]?.textContent).toContain('Clientes')
+
+    act(() => {
+      useAppStore.getState().resetMenuOrder('user-1')
+    })
+
+    // Tras resetear, el orden guardado queda vacío y se usa el default.
+    expect(useAppStore.getState().menuOrderByUser['user-1']).toEqual([])
   })
 })

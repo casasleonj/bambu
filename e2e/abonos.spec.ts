@@ -2,6 +2,14 @@
 import { test, expect, type Page } from '@playwright/test'
 
 test.describe('Abonos', () => {
+  test.describe.configure({ mode: 'serial' })
+
+  test.use({ storageState: {} })
+
+  test.beforeAll(() => {
+    resetDatabase()
+  })
+
   async function login(page: Page, username: string, password: string) {
     await page.goto('/login')
     await page.fill('input[placeholder="Ingrese usuario"]', username)

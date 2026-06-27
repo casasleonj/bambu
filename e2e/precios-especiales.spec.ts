@@ -1,7 +1,15 @@
 // @tests precios especiales cliente en pedidos
-import { test, expect, fullLogin, goto, apiPut, createCliente } from './fixtures'
+import {test, expect, fullLogin, goto, apiPut, createCliente,  resetDatabase} from './fixtures'
 
 test.describe('Precios Especiales en Pedidos', () => {
+  test.describe.configure({ mode: 'serial' })
+
+  test.use({ storageState: {} })
+
+  test.beforeAll(() => {
+    resetDatabase()
+  })
+
 
   test('precios especiales se aplican en Venta Rápida PUNTO', async ({ page }) => {
     await fullLogin(page)

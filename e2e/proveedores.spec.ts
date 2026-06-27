@@ -1,7 +1,15 @@
 // @tests api/proveedor
-import { test, expect, fullLogin, goto, apiPost, createProveedor } from './fixtures'
+import {test, expect, fullLogin, goto, apiPost, createProveedor,  resetDatabase} from './fixtures'
 
 test.describe('Proveedores', () => {
+  test.describe.configure({ mode: 'serial' })
+
+  test.use({ storageState: {} })
+
+  test.beforeAll(() => {
+    resetDatabase()
+  })
+
   test('page loads', async ({ page }) => {
     await fullLogin(page)
     await goto(page, '/proveedores')

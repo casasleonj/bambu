@@ -1,5 +1,5 @@
 // @tests embarques module - comprehensive E2E coverage
-import { test, expect, fullLogin, apiPost, apiGet, apiPut, apiDelete, createTrabajador, createCliente, skipBaseCaja, login, BASE } from './fixtures'
+import {test, expect, fullLogin, apiPost, apiGet, apiPut, apiDelete, createTrabajador, createCliente, skipBaseCaja, login, BASE,  resetDatabase} from './fixtures'
 
 /** Login that skips base caja modal to avoid redirect to /cierre */
 async function embarquesLogin(page: any) {
@@ -25,6 +25,14 @@ async function gotoEmbarques(page: any) {
 }
 
 test.describe('Embarques — Navegación y Carga', () => {
+  test.describe.configure({ mode: 'serial' })
+
+  test.use({ storageState: {} })
+
+  test.beforeAll(() => {
+    resetDatabase()
+  })
+
 
   test('page loads with correct heading', async ({ page }) => {
     await embarquesLogin(page)

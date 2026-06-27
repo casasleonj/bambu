@@ -1,5 +1,5 @@
 // @tests api/pedido, api/recurrente
-import { test, expect, BASE, handleBaseCaja, fullLogin, goto, apiGet, apiPut, createCliente, createPedido, resetTestDatabase } from './fixtures'
+import {test, expect, BASE, handleBaseCaja, fullLogin, goto, apiGet, apiPut, createCliente, createPedido, resetTestDatabase,  resetDatabase} from './fixtures'
 
 test.describe('Recurrentes', () => {
   test.describe.configure({ mode: 'serial' })

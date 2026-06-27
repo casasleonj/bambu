@@ -1,5 +1,5 @@
 // @tests api/abono, api/caso, api/cierre-dia, api/cliente, api/config, api/embarque, api/factura, api/nomina, api/pedido, api/ruta
-import { test, expect, BASE, fullLogin, goto, apiPost, apiGet, apiDelete, createCliente, createTrabajador, createPedido, createEmbarque, getFirstTrabajador, getFirstFacturaConSaldo } from './fixtures'
+import {test, expect, BASE, fullLogin, goto, apiPost, apiGet, apiDelete, createCliente, createTrabajador, createPedido, createEmbarque, getFirstTrabajador, getFirstFacturaConSaldo,  resetDatabase} from './fixtures'
 
 const PROTECTED_PAGES = [
   '/dashboard', '/pedidos', '/clientes', '/embarques', '/produccion',
@@ -12,6 +12,14 @@ const PROTECTED_PAGES = [
 // 1. SIN AUTENTICACIÓN
 // ═══════════════════════════════════════════════════════════════════════════════
 test.describe('1. Sin autenticación', () => {
+  test.describe.configure({ mode: 'serial' })
+
+  test.use({ storageState: {} })
+
+  test.beforeAll(() => {
+    resetDatabase()
+  })
+
   for (const path of PROTECTED_PAGES) {
     test(`Redirige ${path} a /login`, async ({ page }) => {
       await page.goto(`${BASE}${path}`)

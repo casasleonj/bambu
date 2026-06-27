@@ -4,7 +4,27 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { signOut } from 'next-auth/react'
-import { useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DraggableAttributes,
+  DragOverlay,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { purgeSWCache } from '@/lib/purge-sw-cache'
 import { unsubscribePushOnLogout } from '@/lib/push-cleanup'
 import { PushSettings } from '@/components/push-settings'
@@ -14,7 +34,7 @@ import { useIsDesktop } from '@/hooks/use-is-desktop'
 import { getUserPermissions, type Permission } from '@/lib/permissions'
 import type { Role } from '@/lib/constants'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger, useCollapsible } from '@/components/ui/collapsible'
-import { icons, navSections, type NavItem, type NavSubItem } from './nav-data'
+import { icons, navSections, defaultMenuOrder, type NavItem, type NavSubItem, type NavSection } from './nav-data'
 
 function NavIcon({ name }: { name: string }) {
   return <>{icons[name] || null}</>
@@ -23,10 +43,10 @@ function NavIcon({ name }: { name: string }) {
 function ChevronIcon() {
   const { open } = useCollapsible()
   return (
-    <svg 
-      className={`w-4 h-4 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} 
-      fill="none" 
-      stroke="currentColor" 
+    <svg
+      className={`w-4 h-4 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+      fill="none"
+      stroke="currentColor"
       viewBox="0 0 24 24"
     >
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -57,10 +77,80 @@ function filterItems(items: NavItem[], permissions: Permission[]): NavItem[] {
   return result
 }
 
-function SidebarMenuItem({ item }: { item: NavItem }) {
+/**
+ * Reconcilia el orden guardado por el usuario contra las secciones/items
+ * actuales del código. Descarta hrefs o secciones que ya no existen,
+ * agrega secciones nuevas al final, y agrega items nuevos al final de su
+ * sección. Los items siempre se reubican dentro de su sección original.
+ */
+export function reconcileMenuOrder(saved: string[], sections: NavSection[]): string[] {
+  const sectionIds = new Set(sections.map((s) => `section:${s.title}`))
+  const itemSectionMap = new Map<string, string>()
+  const itemHrefs = new Set<string>()
+  for (const section of sections) {
+    for (const item of section.items) {
+      itemSectionMap.set(item.href, section.title)
+      itemHrefs.add(item.href)
+    }
+  }
+
+  // Mantener elementos existentes en el orden guardado.
+  const valid: string[] = []
+  const seen = new Set<string>()
+  for (const id of saved) {
+    const exists = id.startsWith('section:') ? sectionIds.has(id) : itemHrefs.has(id)
+    if (exists && !seen.has(id)) {
+      valid.push(id)
+      seen.add(id)
+    }
+  }
+
+  // Secciones en orden: primero las que el usuario guardó, luego las nuevas.
+  const sectionOrder: string[] = []
+  for (const id of valid) {
+    if (id.startsWith('section:') && !sectionOrder.includes(id)) {
+      sectionOrder.push(id)
+    }
+  }
+  for (const section of sections) {
+    const sectionId = `section:${section.title}`
+    if (!sectionOrder.includes(sectionId)) {
+      sectionOrder.push(sectionId)
+    }
+  }
+
+  // Reconstruir la lista aplanada: header de sección + items de esa sección
+  // en el orden que el usuario definió, con items nuevos al final.
+  const finalOrder: string[] = []
+  const placedItems = new Set<string>()
+  for (const sectionId of sectionOrder) {
+    finalOrder.push(sectionId)
+    const sectionTitle = sectionId.slice(8)
+    const sectionItems = sections.find((s) => s.title === sectionTitle)?.items.map((i) => i.href) ?? []
+
+    // Items de esta sección que ya estaban en el orden guardado, respetando su orden.
+    for (const id of valid) {
+      if (sectionItems.includes(id) && itemSectionMap.get(id) === sectionTitle && !placedItems.has(id)) {
+        finalOrder.push(id)
+        placedItems.add(id)
+      }
+    }
+    // Items nuevos de esta sección que no estaban en el orden guardado.
+    for (const href of sectionItems) {
+      if (!placedItems.has(href)) {
+        finalOrder.push(href)
+        placedItems.add(href)
+      }
+    }
+  }
+
+  return finalOrder
+}
+
+function SidebarMenuItem({ item, dragHandle }: { item: NavItem; dragHandle?: React.ReactNode }) {
   const pathname = usePathname()
   const hasSubItems = item.subItems && item.subItems.length > 0
-  
+
   // Check if this item or any of its subitems is active
   const isItemActive = pathname === item.href
   const isSubItemActive = item.subItems?.some(sub => pathname === sub.href)
@@ -78,6 +168,7 @@ function SidebarMenuItem({ item }: { item: NavItem }) {
           }`}
         >
           <div className="flex items-center gap-3">
+            {dragHandle}
             <NavIcon name={item.icon} />
             <span>{item.label}</span>
           </div>
@@ -119,38 +210,101 @@ function SidebarMenuItem({ item }: { item: NavItem }) {
           : 'text-gray-700 hover:bg-gray-50'
       }`}
     >
+      {dragHandle}
       <NavIcon name={item.icon} />
       <span>{item.label}</span>
     </Link>
   )
 }
 
+function DragHandle({
+  listeners,
+  attributes,
+}: {
+  listeners?: Record<string, Function>
+  attributes?: DraggableAttributes
+}) {
+  return (
+    <span
+      {...attributes}
+      {...listeners}
+      data-testid="drag-handle"
+      className="touch-none cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 flex-shrink-0"
+      aria-label="Arrastrar para reordenar"
+      role="button"
+      tabIndex={0}
+    >
+      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+        <circle cx="9" cy="6" r="2" />
+        <circle cx="15" cy="6" r="2" />
+        <circle cx="9" cy="12" r="2" />
+        <circle cx="15" cy="12" r="2" />
+        <circle cx="9" cy="18" r="2" />
+        <circle cx="15" cy="18" r="2" />
+      </svg>
+    </span>
+  )
+}
+
+function SortableNavSectionHeader({ title, editing }: { title: string; editing: boolean }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: `section:${title}`,
+    data: { type: 'section' },
+    disabled: !editing,
+  })
+  const style = { transform: CSS.Transform.toString(transform), transition }
+
+  return (
+    <h3
+      ref={setNodeRef}
+      style={style}
+      className={`text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-2 flex items-center gap-2 ${
+        isDragging ? 'opacity-30' : ''
+      }`}
+    >
+      {editing && <DragHandle listeners={listeners} attributes={attributes} />}
+      {title}
+    </h3>
+  )
+}
+
+function SortableNavItem({ item, editing }: { item: NavItem; editing: boolean }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: item.href,
+    data: { type: 'item' },
+    disabled: !editing,
+  })
+  const style = { transform: CSS.Transform.toString(transform), transition }
+  const dragHandle = editing ? <DragHandle listeners={listeners} attributes={attributes} /> : undefined
+
+  return (
+    <div ref={setNodeRef} style={style} className={`${isDragging ? 'opacity-30' : ''}`}>
+      <SidebarMenuItem item={item} dragHandle={dragHandle} />
+    </div>
+  )
+}
+
 export function Sidebar() {
-  // FIX Fase 4 §6.4: drawer responsive desacoplado.
-  // - Móvil: drawer temporal (modal), controlado por `mobileDrawerOpen`
-  //   (en memoria, no persistido). Cerrado por defecto.
-  // - Desktop: drawer permanente, controlado por `desktopCollapsed`
-  //   (persistido). Default: expandido.
   const isDesktop = useIsDesktop()
   const mobileDrawerOpen = useAppStore((s) => s.mobileDrawerOpen)
   const setMobileDrawerOpen = useAppStore((s) => s.setMobileDrawerOpen)
   const desktopCollapsed = useAppStore((s) => s.desktopCollapsed)
   const pathname = usePathname()
 
-  // FIX §6.4 + REGRESION mobile 2026-06-10: en móvil, cerrar el drawer
+  const { data: session } = useSession()
+  const userId = (session?.user as { id?: string } | undefined)?.id
+  const userRole = (session?.user as { role?: Role } | undefined)?.role
+  const permissions = getUserPermissions(userRole)
+
+  const setMenuOrder = useAppStore((s) => s.setMenuOrder)
+  const resetMenuOrder = useAppStore((s) => s.resetMenuOrder)
+
+  const effectiveUserId = userId ?? 'anonymous'
+  const savedOrder = useAppStore((s) => s.menuOrderByUser[effectiveUserId])
+  const menuEditing = useAppStore((s) => s.menuEditingByUser[effectiveUserId])
+
+  // FIX Fase 4 §6.4 + REGRESION mobile 2026-06-10: en móvil, cerrar el drawer
   // SOLO cuando el usuario navega a otra ruta. NO al abrir/cerrar el drawer.
-  //
-  // Bug original: las deps del useEffect incluian `mobileDrawerOpen` y
-  // `setMobileDrawerOpen`, lo que hacia que el efecto se ejecutara en el
-  // mismo render donde el handler del hamburguesa llamaba
-  // `setMobileDrawerOpen(true)`. El efecto inmediatamente volvia a
-  // llamar `setMobileDrawerOpen(false)`, abriendo y cerrando el drawer en
-  // el mismo ciclo de React. Resultado: el usuario veia "el menú no abre".
-  //
-  // Fix: leer el state via `useAppStore.getState()` (lectura no-reactiva)
-  // y dejar las deps solo en `pathname` e `isDesktop`. Asi el efecto
-  // corre solo cuando el usuario navega (cambia pathname) o cuando
-  // cambia el breakpoint (de mobile a desktop o viceversa).
   useEffect(() => {
     const { mobileDrawerOpen } = useAppStore.getState()
     if (!isDesktop && mobileDrawerOpen) {
@@ -171,29 +325,117 @@ export function Sidebar() {
     }
   }, [isDesktop, mobileDrawerOpen])
 
-  const { data: session } = useSession()
-  const userRole = (session?.user as { role?: Role } | undefined)?.role
-  const permissions = getUserPermissions(userRole)
+  // Construir estructura filtrada y ordenada.
+  const filteredSections = useMemo(() => {
+    return navSections
+      .map((section) => ({ ...section, items: filterItems(section.items, permissions) }))
+      .filter((section) => section.items.length > 0)
+  }, [permissions])
+
+  const itemSectionMap = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const section of filteredSections) {
+      for (const item of section.items) {
+        map.set(item.href, section.title)
+      }
+    }
+    return map
+  }, [filteredSections])
+
+  const defaultOrder = useMemo(() => reconcileMenuOrder(defaultMenuOrder as string[], filteredSections), [filteredSections])
+  const order = useMemo(
+    () => reconcileMenuOrder(savedOrder && savedOrder.length > 0 ? savedOrder : defaultOrder, filteredSections),
+    [savedOrder, defaultOrder, filteredSections]
+  )
+
+  const itemMap = useMemo(() => {
+    const map = new Map<string, NavItem>()
+    for (const section of filteredSections) {
+      for (const item of section.items) {
+        map.set(item.href, item)
+      }
+    }
+    return map
+  }, [filteredSections])
+
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const activeEntry = activeId ? (activeId.startsWith('section:') ? activeId : itemMap.get(activeId)) : null
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  )
+
+  const announcements = useMemo(
+    () => ({
+      onDragStart({ active }: { active: { id: string | number } }) {
+        return `Moviendo ${String(active.id)}`
+      },
+      onDragOver({ active, over }: { active: { id: string | number }; over?: { id: string | number } | null }) {
+        return over ? `Moviendo ${String(active.id)} sobre ${String(over.id)}` : `Moviendo ${String(active.id)}`
+      },
+      onDragEnd({ active, over }: { active: { id: string | number }; over?: { id: string | number } | null }) {
+        return over ? `${String(active.id)} movido a ${String(over.id)}` : `${String(active.id)} movido`
+      },
+      onDragCancel({ active }: { active: { id: string | number } }) {
+        return `Movimiento cancelado para ${String(active.id)}`
+      },
+    }),
+    []
+  )
+
+  function handleDragStart(event: DragEndEvent) {
+    setActiveId(String(event.active.id))
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    setActiveId(null)
+    const { active, over } = event
+    if (!over) return
+    const activeId = String(active.id)
+    const overId = String(over.id)
+    if (activeId === overId) return
+
+    const oldIndex = order.indexOf(activeId)
+    const newIndex = order.indexOf(overId)
+    if (oldIndex === -1 || newIndex === -1) return
+
+    const activeIsSection = activeId.startsWith('section:')
+    const overIsSection = overId.startsWith('section:')
+
+    // Sección solo se reordena sobre otra sección.
+    if (activeIsSection && !overIsSection) return
+
+    // Item solo se reordena dentro de su misma sección.
+    if (!activeIsSection) {
+      const activeSection = itemSectionMap.get(activeId)
+      const predictedOrder = arrayMove(order, oldIndex, newIndex)
+      const activeNewIndex = predictedOrder.indexOf(activeId)
+      let predictedSection: string | null = null
+      for (let i = activeNewIndex; i >= 0; i--) {
+        const id = predictedOrder[i]
+        if (id.startsWith('section:')) {
+          predictedSection = id.slice(8)
+          break
+        }
+      }
+      if (predictedSection !== activeSection) return
+    }
+
+    setMenuOrder(effectiveUserId, arrayMove(order, oldIndex, newIndex))
+  }
+
+  function handleReset() {
+    resetMenuOrder(effectiveUserId)
+  }
 
   // Visibilidad derivada del breakpoint
   const isVisible = isDesktop ? !desktopCollapsed : mobileDrawerOpen
   const isInteractive = isDesktop ? !desktopCollapsed : mobileDrawerOpen
 
-  // FIX mobile UX (regresión header mobile):
-  // Antes: en móvil cerrado, el `<aside>` se rendía con `w-0 -translate-x-full`.
-  // Eso causaba 2 problemas: (1) el rectángulo seguía presente y en iOS Safari
-  // el primer tap se interpretaba como scroll-gesture en lugar de click sobre
-  // el botón hamburguesa del header, (2) el header overflow horizontal se
-  // notaba más por la presencia del nodo.
-  // Ahora: en móvil, el aside SOLO se rinde cuando el drawer está abierto.
-  // En desktop, el aside siempre está en el DOM (control de visibilidad por width).
   const showAside = isDesktop || mobileDrawerOpen
 
-  // FIX §6.4: clase de ancho según variante
-  // - Desktop expandido: w-64 (permanente, ocupa su espacio)
-  // - Desktop colapsado: w-0 overflow-hidden (no se ve)
-  // - Móvil abierto: w-64 fixed (drawer temporal, cubre contenido)
-  // - Móvil cerrado: no se rinde (showAside=false)
   const asideWidth = isDesktop
     ? desktopCollapsed
       ? 'w-0 overflow-hidden'
@@ -219,25 +461,66 @@ export function Sidebar() {
       >
         <CajaBaseHeader />
 
-        <nav className="flex-1 overflow-y-auto py-2">
-          {navSections.map((section) => {
-            const visibleItems = filterItems(section.items, permissions)
-            if (visibleItems.length === 0) return null
+        {menuEditing && (
+          <div className="px-4 py-2 border-b border-gray-200 flex items-center justify-between bg-gray-50">
+            <span className="text-xs font-medium text-gray-500">Editando menú</span>
+            <button
+              onClick={handleReset}
+              className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+              type="button"
+            >
+              Restablecer
+            </button>
+          </div>
+        )}
 
-            return (
-              <div key={section.title} className="mb-2">
-                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-2">
-                  {section.title}
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          accessibility={{ announcements }}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+        >
+          <nav className="flex-1 overflow-y-auto py-2">
+            <SortableContext items={order} strategy={verticalListSortingStrategy}>
+              {order.map((id) => {
+                if (id.startsWith('section:')) {
+                  const title = id.slice(8)
+                  return (
+                    <SortableNavSectionHeader
+                      key={id}
+                      title={title}
+                      editing={menuEditing}
+                    />
+                  )
+                }
+                const item = itemMap.get(id)
+                if (!item) return null
+                return (
+                  <SortableNavItem
+                    key={id}
+                    item={item}
+                    editing={menuEditing}
+                  />
+                )
+              })}
+            </SortableContext>
+          </nav>
+          <DragOverlay dropAnimation={{ duration: 150, easing: 'ease-out' }}>
+            {activeEntry ? (
+              typeof activeEntry === 'string' ? (
+                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-2 flex items-center gap-2 bg-white shadow-lg rounded-lg">
+                  <DragHandle />
+                  {activeEntry.slice(8)}
                 </h3>
-                <div className="space-y-1 px-2">
-                  {visibleItems.map((item) => (
-                    <SidebarMenuItem key={item.href} item={item} />
-                  ))}
+              ) : (
+                <div className="bg-white shadow-lg rounded-lg opacity-90">
+                  <SidebarMenuItem item={activeEntry} dragHandle={<DragHandle />} />
                 </div>
-              </div>
-            )
-          })}
-        </nav>
+              )
+            ) : null}
+          </DragOverlay>
+        </DndContext>
 
         <div className="p-4 border-t space-y-4">
           <div>

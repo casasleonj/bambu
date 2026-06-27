@@ -12,6 +12,14 @@ async function login(page: any) {
 }
 
 test.describe('Configuración', () => {
+  test.describe.configure({ mode: 'serial' })
+
+  test.use({ storageState: {} })
+
+  test.beforeAll(() => {
+    resetDatabase()
+  })
+
 
   test('page loads with tabs', async ({ page }) => {
     await login(page)

@@ -44,6 +44,15 @@ export interface NavSection {
   items: NavItem[]
 }
 
+export type MenuEntryId = `section:${string}` | string
+
+export function buildDefaultOrder(sections: NavSection[]): MenuEntryId[] {
+  return sections.flatMap((section) => [
+    `section:${section.title}`,
+    ...section.items.map((item) => item.href),
+  ])
+}
+
 export const navSections: NavSection[] = [
   {
     title: 'Ventas',
@@ -101,3 +110,5 @@ export const navSections: NavSection[] = [
     ]
   },
 ]
+
+export const defaultMenuOrder: MenuEntryId[] = buildDefaultOrder(navSections)

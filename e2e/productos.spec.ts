@@ -1,7 +1,15 @@
 // @tests api/cliente, api/precio, api/producto
-import { test, expect, BASE, fullLogin, goto, apiPost, apiGet } from './fixtures'
+import {test, expect, BASE, fullLogin, goto, apiPost, apiGet,  resetDatabase} from './fixtures'
 
 test.describe('Productos', () => {
+  test.describe.configure({ mode: 'serial' })
+
+  test.use({ storageState: {} })
+
+  test.beforeAll(() => {
+    resetDatabase()
+  })
+
 
   // ─── 1. Page loads ──────────────────────────────────────────────────────────
 

@@ -1,5 +1,5 @@
 // @tests api/cliente, api/cliente/quick, api/negocios, api/clientes/stats, api/clientes/historial
-import { test, expect, fullLogin, loginAs, goto, apiPost, apiGet, apiPut, apiPatch, apiDelete, createCliente, setupClienteWithPedidos } from './fixtures'
+import {test, expect, fullLogin, loginAs, goto, apiPost, apiGet, apiPut, apiPatch, apiDelete, createCliente, setupClienteWithPedidos,  resetDatabase} from './fixtures'
 
 const BASE = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000'
 
@@ -10,6 +10,14 @@ interface Recomendacion {
 // ─── UI Tests ────────────────────────────────────────────────────────────────
 
 test.describe('Clientes UI', () => {
+  test.describe.configure({ mode: 'serial' })
+
+  test.use({ storageState: {} })
+
+  test.beforeAll(() => {
+    resetDatabase()
+  })
+
 
   test('page loads with heading, button and search', async ({ page }) => {
     await fullLogin(page)

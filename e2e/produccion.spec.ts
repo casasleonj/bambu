@@ -1,8 +1,16 @@
 // @tests E2E Producción — Suite exhaustiva
-import { test, expect, fullLogin, goto, apiPost, apiGet, apiPut, createSellador, getSellador } from './fixtures'
+import {test, expect, fullLogin, goto, apiPost, apiGet, apiPut, createSellador, getSellador,  resetDatabase} from './fixtures'
 import type { Page } from '@playwright/test'
 
 test.describe('Producción — E2E Exhaustivo', () => {
+  test.describe.configure({ mode: 'serial' })
+
+  test.use({ storageState: {} })
+
+  test.beforeAll(() => {
+    resetDatabase()
+  })
+
 
   // ─── Helpers ───────────────────────────────────────────────────────────────
 

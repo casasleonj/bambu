@@ -64,7 +64,7 @@ describe('Header — toggle del drawer movil', () => {
       useAppStore.setState({ mobileDrawerOpen: true })
     })
     render(<Header />)
-    const hamburger = screen.getByRole('button', { name: /men/i })
+    const hamburger = screen.getByRole('button', { name: /abrir menú/i })
 
     expect(useAppStore.getState().mobileDrawerOpen).toBe(true)
     fireEvent.click(hamburger)

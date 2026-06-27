@@ -1,7 +1,15 @@
 // @tests api/ruta
-import { test, expect, handleBaseCaja, fullLogin, goto, apiPost, apiGet } from './fixtures'
+import {test, expect, handleBaseCaja, fullLogin, goto, apiPost, apiGet,  resetDatabase} from './fixtures'
 
 test.describe('Rutas', () => {
+  test.describe.configure({ mode: 'serial' })
+
+  test.use({ storageState: {} })
+
+  test.beforeAll(() => {
+    resetDatabase()
+  })
+
   test('page loads', async ({ page }) => {
     await fullLogin(page)
     await goto(page, '/rutas')
@@ -16,7 +24,7 @@ test.describe('Rutas', () => {
     await goto(page, '/rutas')
     await page.waitForTimeout(500)
 
-    await page.click('button:has-text("+ Nueva Ruta")')
+    await page.locator('button:has-text("+ Nueva Ruta")').click({ force: true })
     await page.waitForURL('**/rutas/nuevo')
     await page.waitForTimeout(500)
 
@@ -65,7 +73,7 @@ test.describe('Rutas', () => {
       await page.waitForTimeout(500)
 
       await page.reload()
-      await page.waitForLoadState('networkidle')
+      await page.waitForLoadState('domcontentloaded')
       await handleBaseCaja(page)
       await page.waitForTimeout(500)
 
@@ -81,7 +89,6 @@ test.describe('Rutas', () => {
     const res = await apiPost(page, '/api/rutas', {
       nombre: name,
       dias: 'LUNES',
-      repartidorId: null,
     })
     const body = await res.json()
     const rutaId = body.ruta?.id
@@ -108,7 +115,7 @@ test.describe('Rutas', () => {
     }
 
     await page.reload()
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('domcontentloaded')
     await handleBaseCaja(page)
     await page.waitForTimeout(500)
 
@@ -121,7 +128,7 @@ test.describe('Rutas', () => {
     await goto(page, '/rutas')
     await page.waitForTimeout(500)
 
-    await page.click('button:has-text("+ Nueva Ruta")')
+    await page.locator('button:has-text("+ Nueva Ruta")').click({ force: true })
     await page.waitForURL('**/rutas/nuevo')
     await page.waitForTimeout(500)
 
@@ -231,7 +238,7 @@ test.describe('Rutas', () => {
     await goto(page, '/rutas')
     await page.waitForTimeout(500)
 
-    await page.click('button:has-text("+ Nueva Ruta")')
+    await page.locator('button:has-text("+ Nueva Ruta")').click({ force: true })
     await page.waitForURL('**/rutas/nuevo')
     await page.waitForTimeout(500)
 

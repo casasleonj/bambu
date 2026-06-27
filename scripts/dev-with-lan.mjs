@@ -77,6 +77,7 @@ function detectLanIp() {
 // ─── Main ────────────────────────────────────────────────────────────────
 
 const detectedIp = detectLanIp()
+const port = process.env.PORT || '3000'
 
 // Si el usuario ya seteo la env var manualmente, respetarla
 const existingIp = process.env.NEXT_PUBLIC_DEV_LAN_ORIGIN
@@ -86,15 +87,15 @@ if (existingIp) {
   process.env.NEXT_PUBLIC_DEV_LAN_ORIGIN = detectedIp
   console.log(`\u{1F310} IP LAN auto-detectada: ${detectedIp}`)
   console.log(`   Configurando NEXT_PUBLIC_DEV_LAN_ORIGIN=${detectedIp}`)
-  console.log(`   Accedé desde otro dispositivo en: http://${detectedIp}:3000`)
+  console.log(`   Accedé desde otro dispositivo en: http://${detectedIp}:${port}`)
 } else {
-  console.log(`\u26A0\uFE0F  No se detect\u00f3 IP LAN \u2014 solo accesible v\u00eda http://localhost:3000`)
+  console.log(`\u26A0\uFE0F  No se detect\u00f3 IP LAN \u2014 solo accesible v\u00eda http://localhost:${port}`)
   console.log(`   Si necesit\u00e1s acceso LAN, export\u00e1:`)
   console.log(`     NEXT_PUBLIC_DEV_LAN_ORIGIN="<tu-ip>" npm run dev`)
 }
 
 // Spawn next dev con el env actualizado
-const child = spawn('npx', ['next', 'dev', '-H', '0.0.0.0', '-p', '3000'], {
+const child = spawn('npx', ['next', 'dev', '-H', '0.0.0.0', '-p', port], {
   env: process.env,
   stdio: 'inherit',
   shell: true,

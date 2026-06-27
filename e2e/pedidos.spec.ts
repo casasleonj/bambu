@@ -1,7 +1,15 @@
 // @tests api/embarque, api/pedido
-import { test, expect, fullLogin, goto, apiPost, createTrabajador, createCliente, createPedido } from './fixtures'
+import {test, expect, fullLogin, goto, apiPost, createTrabajador, createCliente, createPedido,  resetDatabase} from './fixtures'
 
 test.describe('Pedidos', () => {
+  test.describe.configure({ mode: 'serial' })
+
+  test.use({ storageState: {} })
+
+  test.beforeAll(() => {
+    resetDatabase()
+  })
+
 
   // ─── Venta Rápida ────────────────────────────────────────────────────────
 

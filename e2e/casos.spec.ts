@@ -1,7 +1,15 @@
 // @tests api/casos, api/casos/[id], api/casos/[id]/eventos
-import { test, expect, BASE, fullLogin, skipBaseCaja, goto, apiPost, apiGet, createCliente } from './fixtures'
+import {test, expect, BASE, fullLogin, skipBaseCaja, goto, apiPost, apiGet, createCliente,  resetDatabase} from './fixtures'
 
 test.describe('Casos', () => {
+  test.describe.configure({ mode: 'serial' })
+
+  test.use({ storageState: {} })
+
+  test.beforeAll(() => {
+    resetDatabase()
+  })
+
   test('page loads', async ({ page }) => {
     await fullLogin(page)
     await goto(page, '/casos')

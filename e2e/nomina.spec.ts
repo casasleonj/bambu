@@ -1,7 +1,15 @@
 // @tests api/nomina
-import { test, expect, fullLogin, goto, apiPost, createTrabajador } from './fixtures'
+import {test, expect, fullLogin, goto, apiPost, createTrabajador,  resetDatabase} from './fixtures'
 
 test.describe('Nomina', () => {
+  test.describe.configure({ mode: 'serial' })
+
+  test.use({ storageState: {} })
+
+  test.beforeAll(() => {
+    resetDatabase()
+  })
+
   test('page loads', async ({ page }) => {
     await fullLogin(page)
     await goto(page, '/nomina')

@@ -1,7 +1,15 @@
 // @tests api/insumo
-import { test, expect, fullLogin, goto, apiPost, apiGet, createProveedor } from './fixtures'
+import {test, expect, fullLogin, goto, apiPost, apiGet, createProveedor,  resetDatabase} from './fixtures'
 
 test.describe('Insumos', () => {
+  test.describe.configure({ mode: 'serial' })
+
+  test.use({ storageState: {} })
+
+  test.beforeAll(() => {
+    resetDatabase()
+  })
+
   test('page loads', async ({ page }) => {
     await fullLogin(page)
     await goto(page, '/insumos')

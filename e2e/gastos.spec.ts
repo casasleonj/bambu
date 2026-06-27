@@ -1,7 +1,15 @@
 // @tests api/gasto
-import { test, expect, fullLogin, goto, apiPost, apiGet } from './fixtures'
+import {test, expect, fullLogin, goto, apiPost, apiGet,  resetDatabase} from './fixtures'
 
 test.describe('Gastos', () => {
+  test.describe.configure({ mode: 'serial' })
+
+  test.use({ storageState: {} })
+
+  test.beforeAll(() => {
+    resetDatabase()
+  })
+
   test('page loads', async ({ page }) => {
     await fullLogin(page)
     await goto(page, '/gastos')

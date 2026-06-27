@@ -1,4 +1,4 @@
-import { test, expect, goto, BASE } from './fixtures'
+import {test, expect, goto, BASE,  resetDatabase} from './fixtures'
 import type { Page } from '@playwright/test'
 import ExcelJS from 'exceljs'
 
@@ -48,6 +48,14 @@ async function buildImportBuffer(): Promise<Buffer> {
 }
 
 test.describe('Importación histórica', () => {
+  test.describe.configure({ mode: 'serial' })
+
+  test.use({ storageState: {} })
+
+  test.beforeAll(() => {
+    resetDatabase()
+  })
+
   test('flujo completo desde el wizard', async ({ page }) => {
     test.setTimeout(120000)
     await fullLoginWarm(page)
