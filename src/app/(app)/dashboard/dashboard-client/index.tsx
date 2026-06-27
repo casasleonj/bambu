@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import type { DashboardData } from './types'
 import { useBaseCaja } from '@/hooks/use-base-caja'
-import { AdminBaseCajaCard } from '@/components/admin-base-caja-card'
 import { MoneyDisplay } from '@/components/money-display'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
 import { PRODUCT_LABELS } from '@/shared/domain'
@@ -112,12 +111,6 @@ export function DashboardClient({ data, userRole }: { data: DashboardData; userR
         </div>
         <RefreshBadge />
       </div>
-
-      {userRole === 'ADMIN' && (
-        <div className="max-w-md">
-          <AdminBaseCajaCard />
-        </div>
-      )}
 
       {/* KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

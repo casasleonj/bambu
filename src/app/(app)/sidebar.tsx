@@ -8,14 +8,13 @@ import { useEffect } from 'react'
 import { purgeSWCache } from '@/lib/purge-sw-cache'
 import { unsubscribePushOnLogout } from '@/lib/push-cleanup'
 import { PushSettings } from '@/components/push-settings'
-import { useBaseCaja } from '@/hooks/use-base-caja'
+import { CajaBaseHeader } from '@/components/caja-base-header'
 import { useAppStore } from '@/stores/app-store'
 import { useIsDesktop } from '@/hooks/use-is-desktop'
 import { getUserPermissions, type Permission } from '@/lib/permissions'
 import type { Role } from '@/lib/constants'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger, useCollapsible } from '@/components/ui/collapsible'
 import { icons, navSections, type NavItem, type NavSubItem } from './nav-data'
-import { MoneyDisplay } from '@/components/money-display'
 
 function NavIcon({ name }: { name: string }) {
   return <>{icons[name] || null}</>
@@ -172,7 +171,6 @@ export function Sidebar() {
     }
   }, [isDesktop, mobileDrawerOpen])
 
-  const { baseDia } = useBaseCaja()
   const { data: session } = useSession()
   const userRole = (session?.user as { role?: Role } | undefined)?.role
   const permissions = getUserPermissions(userRole)
@@ -219,14 +217,7 @@ export function Sidebar() {
         aria-hidden={!isVisible}
         className={`fixed top-14 left-0 h-[calc(100dvh-3.5rem)] bg-white shadow-lg transition-[width,transform] duration-300 z-40 flex flex-col pb-safe ${asideWidth}`}
       >
-        <div className="px-4 py-3 border-b bg-gray-50">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-gray-500">Caja base</span>
-            <span className="text-sm font-semibold text-gray-800">
-              {baseDia ? <MoneyDisplay value={Number(baseDia)} userRole={userRole} className="text-sm font-semibold text-gray-800" /> : '—'}
-            </span>
-          </div>
-        </div>
+        <CajaBaseHeader />
 
         <nav className="flex-1 overflow-y-auto py-2">
           {navSections.map((section) => {

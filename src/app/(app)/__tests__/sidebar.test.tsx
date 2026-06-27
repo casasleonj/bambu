@@ -30,6 +30,12 @@ vi.mock('@/hooks/use-base-caja', () => ({
   useBaseCaja: () => ({ baseDia: 100000 }),
 }))
 
+// Mock CajaBaseHeader: no queremos que haga fetch ni dispare su logica
+// en tests que solo verifican comportamiento del drawer.
+vi.mock('@/components/caja-base-header', () => ({
+  CajaBaseHeader: () => <div data-testid="caja-base-header-mock">Caja base $100.000</div>,
+}))
+
 // Mock de MoneyDisplay
 vi.mock('@/components/money-display', () => ({
   MoneyDisplay: ({ value }: { value: number }) => <span>${value}</span>,
