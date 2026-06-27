@@ -184,6 +184,14 @@ export default function BaseCajaModal() {
                 inputMode="numeric"
                 pattern="[0-9]*"
                 value={baseDiaInput}
+                onBeforeInput={(e: React.FormEvent<HTMLInputElement>) => {
+                  const inputEvent = e.nativeEvent as InputEvent
+                  // Dejar pasar eventos que no insertan texto (borrar, tab, etc.) y composición IME.
+                  if (inputEvent.inputType === 'insertCompositionText') return
+                  if (inputEvent.data && /[^0-9]/.test(inputEvent.data)) {
+                    inputEvent.preventDefault()
+                  }
+                }}
                 onChange={(e) => {
                   const digitsOnly = e.target.value.replace(/\D/g, '')
                   setBaseDiaInput(digitsOnly)

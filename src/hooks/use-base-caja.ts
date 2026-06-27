@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { getTodayString } from '@/lib/dates'
 
 function getTodayKey() {
@@ -24,18 +24,18 @@ export function useBaseCaja() {
     return () => window.removeEventListener('storage', handler)
   }, [])
 
-  const setBaseDia = (val: string) => {
+  const setBaseDia = useCallback((val: string) => {
     const todayKey = getTodayKey()
     localStorage.setItem(`baseDia_${todayKey}`, val)
     setBaseDiaState(val)
     window.dispatchEvent(new StorageEvent('storage', { key: `baseDia_${todayKey}`, newValue: val }))
-  }
+  }, [])
 
-  const clearBaseDia = () => {
+  const clearBaseDia = useCallback(() => {
     const todayKey = getTodayKey()
     localStorage.removeItem(`baseDia_${todayKey}`)
     setBaseDiaState(null)
-  }
+  }, [])
 
   return { baseDia, setBaseDia, clearBaseDia }
 }
