@@ -160,4 +160,38 @@ describe('PushSettings', () => {
     expect(screen.getByText('Activas')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Desactivar notificaciones/i })).toBeInTheDocument()
   })
+
+  it('muestra el error debajo del hint cuando hay un error manual', () => {
+    mockedUsePushSubscription.mockReturnValue({
+      supported: true,
+      permission: 'granted',
+      subscribed: false,
+      loading: false,
+      recovering: false,
+      error: 'La conexion tardo demasiado. Intenta de nuevo.',
+      subscribe: vi.fn(),
+      unsubscribe: vi.fn(),
+    })
+
+    render(<PushSettings />)
+
+    expect(screen.getByRole('alert')).toHaveTextContent('La conexion tardo demasiado. Intenta de nuevo.')
+  })
+
+  it('no muestra error cuando el error es nulo', () => {
+    mockedUsePushSubscription.mockReturnValue({
+      supported: true,
+      permission: 'granted',
+      subscribed: false,
+      loading: false,
+      recovering: false,
+      error: null,
+      subscribe: vi.fn(),
+      unsubscribe: vi.fn(),
+    })
+
+    render(<PushSettings />)
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
 })

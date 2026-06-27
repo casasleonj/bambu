@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 export interface UsePushSubscriptionReturn {
   supported: boolean
@@ -12,6 +12,8 @@ export interface UsePushSubscriptionReturn {
   subscribe: () => Promise<void>
   unsubscribe: () => Promise<void>
 }
+
+const DEFAULT_TIMEOUT_MS = 10_000
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
@@ -41,6 +43,29 @@ async function fetchVapidPublicKey(): Promise<string | undefined> {
   return data.publicKey ?? undefined
 }
 
+/**
+ * fetch con timeout via AbortController.
+ *
+ * Si la request tarda mas de timeoutMs, se aborta y fetch arroja un AbortError.
+ * Esto evita que el boton se quede pegado en "Procesando..." indefinidamente
+ * en conexiones 2G/3G o cuando el servidor no responde.
+ */
+async function fetchWithTimeout(
+  controller: AbortController,
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+): Promise<Response> {
+  const timeoutId = setTimeout(() => {
+    controller.abort(new DOMException('La conexion tardo demasiado', 'TimeoutError'))
+  }, timeoutMs)
+  try {
+    return await fetch(input, { ...init, signal: controller.signal })
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
 export function usePushSubscription(): UsePushSubscriptionReturn {
   const [supported] = useState<boolean>(isPushSupported)
   const [permission, setPermission] = useState<NotificationPermission | 'unknown'>('unknown')
@@ -48,20 +73,35 @@ export function usePushSubscription(): UsePushSubscriptionReturn {
   const [loading, setLoading] = useState(false)
   const [recovering, setRecovering] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   const performSubscribe = useCallback(async (isRecovery: boolean) => {
+    // Si ya hay una operacion en curso (manual o recovery), no iniciar otra.
+    // Esto previene race conditions si el usuario clickea varias veces o si
+    // React StrictMode monta/desmonta el componente.
+    if (abortRef.current) {
+      return
+    }
+
+    const controller = new AbortController()
+    abortRef.current = controller
+
     if (!isRecovery) {
       setLoading(true)
     } else {
       setRecovering(true)
     }
-    setError(null)
+    if (!isRecovery) {
+      setError(null)
+    }
 
     try {
       const publicKey = await fetchVapidPublicKey()
 
       if (!publicKey) {
-        setError('Clave VAPID no configurada')
+        if (!isRecovery) {
+          setError('Clave VAPID no configurada')
+        }
         return
       }
 
@@ -72,17 +112,21 @@ export function usePushSubscription(): UsePushSubscriptionReturn {
       })
 
       const json = subscription.toJSON()
-      const response = await fetch('/api/push/subscribe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          endpoint: subscription.endpoint,
-          keys: {
-            p256dh: json.keys?.p256dh,
-            auth: json.keys?.auth,
-          },
-        }),
-      })
+      const response = await fetchWithTimeout(
+        controller,
+        '/api/push/subscribe',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            endpoint: subscription.endpoint,
+            keys: {
+              p256dh: json.keys?.p256dh,
+              auth: json.keys?.auth,
+            },
+          }),
+        },
+      )
 
       if (!response.ok) {
         const text = await response.text()
@@ -91,12 +135,27 @@ export function usePushSubscription(): UsePushSubscriptionReturn {
 
       setSubscribed(true)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error suscribiendo notificaciones')
+      // Si fue abortado, distinguimos timeout (mostramos error) de unmount (silencio).
+      if (controller.signal.aborted) {
+        const isTimeout = err instanceof DOMException && err.name === 'TimeoutError'
+        if (isTimeout && !isRecovery) {
+          setError('La conexion tardo demasiado. Intenta de nuevo.')
+        }
+        return
+      }
+      // En auto-recovery fallamos silenciosamente para no asustar al usuario
+      // que recien abre la pantalla. El boton "Restaurar" queda disponible.
+      if (!isRecovery) {
+        setError(err instanceof Error ? err.message : 'Error suscribiendo notificaciones')
+      }
     } finally {
       if (!isRecovery) {
         setLoading(false)
       } else {
         setRecovering(false)
+      }
+      if (abortRef.current === controller) {
+        abortRef.current = null
       }
     }
   }, [])
@@ -106,12 +165,10 @@ export function usePushSubscription(): UsePushSubscriptionReturn {
 
     setPermission(Notification.permission)
 
-    let cancelled = false
     const checkSubscription = async () => {
       try {
         const registration = await navigator.serviceWorker.ready
         const subscription = await registration.pushManager.getSubscription()
-        if (cancelled) return
 
         const hasSubscription = !!subscription
         setSubscribed(hasSubscription)
@@ -119,22 +176,20 @@ export function usePushSubscription(): UsePushSubscriptionReturn {
         if (!hasSubscription && Notification.permission === 'granted') {
           await performSubscribe(true)
         }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Error leyendo suscripcion activa')
-        }
+      } catch {
+        // Errores de auto-recovery son silenciosos. El usuario puede reintentar manualmente.
       }
     }
 
     void checkSubscription()
     return () => {
-      cancelled = true
+      // Abortamos cualquier operacion en curso al desmontar (StrictMode-safe).
+      abortRef.current?.abort()
     }
   }, [supported, performSubscribe])
 
   const subscribe = useCallback(async () => {
     setError(null)
-    setLoading(true)
 
     try {
       const newPermission = await Notification.requestPermission()
@@ -142,18 +197,23 @@ export function usePushSubscription(): UsePushSubscriptionReturn {
 
       if (newPermission === 'denied') {
         setError('Permiso de notificaciones denegado')
-        setLoading(false)
         return
       }
 
       await performSubscribe(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error suscribiendo notificaciones')
-      setLoading(false)
     }
   }, [performSubscribe])
 
   const unsubscribe = useCallback(async () => {
+    if (abortRef.current) {
+      return
+    }
+
+    const controller = new AbortController()
+    abortRef.current = controller
+
     setError(null)
     setLoading(true)
 
@@ -164,11 +224,15 @@ export function usePushSubscription(): UsePushSubscriptionReturn {
       if (subscription) {
         await subscription.unsubscribe()
 
-        const response = await fetch('/api/push/unsubscribe', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ endpoint: subscription.endpoint }),
-        })
+        const response = await fetchWithTimeout(
+          controller,
+          '/api/push/unsubscribe',
+          {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ endpoint: subscription.endpoint }),
+          },
+        )
 
         if (!response.ok) {
           const text = await response.text()
@@ -178,9 +242,19 @@ export function usePushSubscription(): UsePushSubscriptionReturn {
 
       setSubscribed(false)
     } catch (err) {
+      if (controller.signal.aborted) {
+        const isTimeout = err instanceof DOMException && err.name === 'TimeoutError'
+        if (isTimeout) {
+          setError('La conexion tardo demasiado. Intenta de nuevo.')
+        }
+        return
+      }
       setError(err instanceof Error ? err.message : 'Error cancelando suscripcion')
     } finally {
       setLoading(false)
+      if (abortRef.current === controller) {
+        abortRef.current = null
+      }
     }
   }, [])
 

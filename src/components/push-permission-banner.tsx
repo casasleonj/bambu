@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { usePushSubscription } from '@/hooks/use-push-subscription'
 import { Button } from '@/components/ui/button'
+import { isIosDevice, isStandaloneMode } from '@/lib/pwa'
 
 function BellIcon({ className }: { className?: string }) {
   return (
@@ -25,17 +26,6 @@ function CloseIcon({ className }: { className?: string }) {
   )
 }
 
-function isIosDevice(): boolean {
-  if (typeof navigator === 'undefined') return false
-  return /iPad|iPhone|iPod/.test(navigator.userAgent)
-}
-
-function isStandalone(): boolean {
-  if (typeof window === 'undefined') return false
-  const standalone = (navigator as Navigator & { standalone?: boolean }).standalone
-  return window.matchMedia('(display-mode: standalone)').matches || standalone === true
-}
-
 export function PushPermissionBanner() {
   const { supported, permission, loading, subscribe } = usePushSubscription()
   const [dismissed, setDismissed] = useState(false)
@@ -44,7 +34,7 @@ export function PushPermissionBanner() {
     return null
   }
 
-  const showIosHint = isIosDevice() && !isStandalone()
+  const showIosHint = isIosDevice() && !isStandaloneMode()
 
   return (
     <div className="mb-4 bg-blue-50 border border-blue-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3">

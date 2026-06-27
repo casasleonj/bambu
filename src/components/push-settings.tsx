@@ -104,7 +104,7 @@ function getPushState(
 
 export function PushSettings({ variant = 'default', settingsHref }: PushSettingsProps) {
   const [mounted, setMounted] = useState(false)
-  const { supported, permission, subscribed, loading, recovering, subscribe, unsubscribe } =
+  const { supported, permission, subscribed, loading, recovering, error, subscribe, unsubscribe } =
     usePushSubscription()
 
   useEffect(() => {
@@ -168,6 +168,12 @@ export function PushSettings({ variant = 'default', settingsHref }: PushSettings
           </Link>
         )}
         <p className="text-xs text-gray-500">{state.hint}</p>
+
+        {error && (
+          <p className="text-xs text-red-600" role="alert">
+            {error}
+          </p>
+        )}
       </div>
     )
   }
@@ -190,6 +196,12 @@ export function PushSettings({ variant = 'default', settingsHref }: PushSettings
       </p>
 
       <p className="text-xs text-gray-600">{state.hint}</p>
+
+      {error && (
+        <p className="text-xs text-red-600" role="alert">
+          {error}
+        </p>
+      )}
 
       <Button
         type="button"

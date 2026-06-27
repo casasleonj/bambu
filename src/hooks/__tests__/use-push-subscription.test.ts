@@ -49,6 +49,7 @@ describe('usePushSubscription', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     vi.unstubAllGlobals()
     vi.clearAllMocks()
     delete process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
@@ -191,5 +192,119 @@ describe('usePushSubscription', () => {
       }),
     )
     expect(result.current.subscribed).toBe(false)
+  })
+
+  it('subscribe: timeout en el backend desbloquea el boton y muestra error', async () => {
+    const sub = makeSubscription()
+    requestPermissionMock.mockResolvedValue('granted')
+    registration.pushManager.subscribe.mockResolvedValue(sub)
+    // fetch nunca resuelve por si solo, pero respeta el AbortSignal del timeout.
+    fetchMock.mockImplementation((_url: unknown, init?: RequestInit) => {
+      return new Promise<never>((_, reject) => {
+        const signal = init?.signal
+        if (signal?.aborted) {
+          reject(new DOMException('La conexion tardo demasiado', 'TimeoutError'))
+          return
+        }
+        signal?.addEventListener(
+          'abort',
+          () => reject(new DOMException('La conexion tardo demasiado', 'TimeoutError')),
+          { once: true },
+        )
+      })
+    })
+
+    vi.useFakeTimers({ shouldAdvanceTime: false })
+
+    const { result } = renderHook(() => usePushSubscription())
+
+    // Iniciamos subscribe sin esperar a que termine.
+    act(() => {
+      void result.current.subscribe()
+    })
+
+    // Flush de microtareas para que requestPermission resuelva y loading pase a true.
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(result.current.loading).toBe(true)
+
+    // Avanzamos el timeout de fetchWithTimeout (10s).
+    act(() => {
+      vi.advanceTimersByTime(10_001)
+    })
+
+    // Flush de microtareas para que el catch actualice el estado.
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(result.current.loading).toBe(false)
+    expect(result.current.error).toBe('La conexion tardo demasiado. Intenta de nuevo.')
+    expect(result.current.subscribed).toBe(false)
+  })
+
+  it('auto-recovery: falla silenciosamente sin mostrar error al usuario', async () => {
+    vi.stubGlobal('Notification', {
+      permission: 'granted' as NotificationPermission,
+      requestPermission: requestPermissionMock,
+    })
+
+    // No hay suscripcion activa, el auto-recovery intenta suscribirse y falla.
+    registration.pushManager.getSubscription.mockResolvedValue(null)
+    registration.pushManager.subscribe.mockRejectedValue(new Error('Push service unavailable'))
+
+    const { result } = renderHook(() => usePushSubscription())
+
+    // Esperamos a que el auto-recovery termine (setRecovering(false)).
+    await waitFor(() => expect(result.current.recovering).toBe(false), { timeout: 1000 })
+
+    // El error del auto-recovery NO se muestra al usuario.
+    expect(result.current.error).toBeNull()
+    expect(result.current.subscribed).toBe(false)
+  })
+
+  it('cleanup: aborta la operacion en curso al desmontar', async () => {
+    const sub = makeSubscription()
+    requestPermissionMock.mockResolvedValue('granted')
+    registration.pushManager.subscribe.mockResolvedValue(sub)
+    fetchMock.mockImplementation((_url: unknown, init?: RequestInit) => {
+      return new Promise<never>((_, reject) => {
+        const signal = init?.signal
+        if (signal?.aborted) {
+          reject(new DOMException('La conexion tardo demasiado', 'TimeoutError'))
+          return
+        }
+        signal?.addEventListener(
+          'abort',
+          () => reject(new DOMException('La conexion tardo demasiado', 'TimeoutError')),
+          { once: true },
+        )
+      })
+    })
+
+    vi.useFakeTimers({ shouldAdvanceTime: false })
+
+    const { result, unmount } = renderHook(() => usePushSubscription())
+
+    act(() => {
+      void result.current.subscribe()
+    })
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(result.current.loading).toBe(true)
+
+    // Al desmontar, abortamos la operacion en curso. No debe lanzar errores.
+    unmount()
+
+    act(() => {
+      vi.advanceTimersByTime(20_000)
+    })
+
+    await act(async () => {
+      await Promise.resolve()
+    })
   })
 })

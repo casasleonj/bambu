@@ -153,6 +153,8 @@ self.addEventListener('pushsubscriptionchange', (event: PushSubscriptionChangeEv
         console.error('[sw] NEXT_PUBLIC_VAPID_PUBLIC_KEY no configurada')
         return
       }
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 10_000)
       try {
         const newSubscription = await self.registration.pushManager.subscribe({
           userVisibleOnly: true,
@@ -169,9 +171,12 @@ self.addEventListener('pushsubscriptionchange', (event: PushSubscriptionChangeEv
               auth: json.keys?.auth,
             },
           }),
+          signal: controller.signal,
         })
       } catch (err) {
         console.error('[sw] pushsubscriptionchange fallo:', err)
+      } finally {
+        clearTimeout(timeoutId)
       }
     })(),
   )
