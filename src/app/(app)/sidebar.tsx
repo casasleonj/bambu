@@ -4,7 +4,8 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { signOut } from 'next-auth/react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
+import { MoreVertical } from 'lucide-react'
 import {
   DndContext,
   closestCenter,
@@ -339,11 +340,215 @@ function SortableNavItem({
   )
 }
 
+interface SidebarEditActivatorProps {
+  children: React.ReactNode
+  onEdit: () => void
+  menuEditing: boolean
+}
+
+function SidebarEditActivator({ children, onEdit, menuEditing }: SidebarEditActivatorProps) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const longPressTimer = useRef<number | null>(null)
+  const touchStart = useRef<{ x: number; y: number } | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+
+  const clearLongPress = useCallback(() => {
+    if (longPressTimer.current) {
+      window.clearTimeout(longPressTimer.current)
+      longPressTimer.current = null
+    }
+    touchStart.current = null
+  }, [])
+
+  const isInteractiveTarget = useCallback((target: EventTarget | null) => {
+    if (!(target instanceof Element)) return false
+    return (
+      target.closest('a, button, [role="button"], input, textarea, select') !== null ||
+      target.closest('[data-testid="drag-handle"]') !== null
+    )
+  }, [])
+
+  const handleTouchStart = useCallback(
+    (event: React.TouchEvent) => {
+      if (menuEditing) return
+      if (isInteractiveTarget(event.target)) return
+      const touch = event.touches[0]
+      touchStart.current = { x: touch.clientX, y: touch.clientY }
+      longPressTimer.current = window.setTimeout(() => {
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+          navigator.vibrate(20)
+        }
+        onEdit()
+        touchStart.current = null
+      }, 600)
+    },
+    [menuEditing, onEdit, isInteractiveTarget]
+  )
+
+  const handleTouchMove = useCallback(
+    (event: React.TouchEvent) => {
+      if (!touchStart.current || longPressTimer.current === null) return
+      const touch = event.touches[0]
+      const dx = Math.abs(touch.clientX - touchStart.current.x)
+      const dy = Math.abs(touch.clientY - touchStart.current.y)
+      if (dx > 10 || dy > 10) {
+        clearLongPress()
+      }
+    },
+    [clearLongPress]
+  )
+
+  const handleTouchEnd = useCallback(() => {
+    clearLongPress()
+  }, [clearLongPress])
+
+  const handleContextMenu = useCallback(
+    (event: React.MouseEvent) => {
+      if (menuEditing) return
+      if (isInteractiveTarget(event.target)) return
+      event.preventDefault()
+      setContextMenu({ x: event.clientX, y: event.clientY })
+    },
+    [menuEditing, isInteractiveTarget]
+  )
+
+  const handleEditClick = useCallback(() => {
+    onEdit()
+    setContextMenu(null)
+  }, [onEdit])
+
+  useEffect(() => {
+    if (!contextMenu) return
+    function closeMenu() {
+      setContextMenu(null)
+    }
+    window.addEventListener('click', closeMenu, { once: true })
+    window.addEventListener('resize', closeMenu, { once: true })
+    return () => {
+      window.removeEventListener('click', closeMenu)
+      window.removeEventListener('resize', closeMenu)
+    }
+  }, [contextMenu])
+
+  return (
+    <div
+      ref={containerRef}
+      className="relative flex flex-col flex-1 min-h-0"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
+      onContextMenu={handleContextMenu}
+    >
+      {children}
+      {contextMenu && (
+        <div
+          className="fixed z-50 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+          role="menu"
+        >
+          <button
+            onClick={handleEditClick}
+            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            role="menuitem"
+            type="button"
+          >
+            Personalizar menú
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SidebarMenuOptionsButton({
+  menuEditing,
+  onEdit,
+  onDone,
+}: {
+  menuEditing: boolean
+  onEdit: () => void
+  onDone: () => void
+}) {
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    function close() {
+      setOpen(false)
+    }
+    window.addEventListener('click', close, { once: true })
+    window.addEventListener('resize', close, { once: true })
+    return () => {
+      window.removeEventListener('click', close)
+      window.removeEventListener('resize', close)
+    }
+  }, [open])
+
+  return (
+    <div className="absolute top-2 right-2 z-10">
+      {menuEditing ? (
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            onDone()
+          }}
+          className="p-1.5 rounded-md text-blue-600 hover:text-blue-800 hover:bg-blue-50 transition"
+          aria-label="Listo"
+          title="Listo"
+          type="button"
+          data-testid="sidebar-menu-done"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+          </svg>
+        </button>
+      ) : (
+        <>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              setOpen((prev) => !prev)
+            }}
+            className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition"
+            aria-label="Opciones del menú"
+            title="Opciones del menú"
+            type="button"
+            data-testid="sidebar-menu-options"
+          >
+            <MoreVertical className="w-4 h-4" />
+          </button>
+          {open && (
+            <div
+              className="absolute right-0 mt-1 w-44 bg-white rounded-lg shadow-lg border border-gray-200 py-1"
+              role="menu"
+            >
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onEdit()
+                  setOpen(false)
+                }}
+                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                role="menuitem"
+                type="button"
+              >
+                Personalizar menú
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 export function Sidebar() {
   const isDesktop = useIsDesktop()
   const mobileDrawerOpen = useAppStore((s) => s.mobileDrawerOpen)
   const setMobileDrawerOpen = useAppStore((s) => s.setMobileDrawerOpen)
   const desktopCollapsed = useAppStore((s) => s.desktopCollapsed)
+  const setDesktopCollapsed = useAppStore((s) => s.setDesktopCollapsed)
   const pathname = usePathname()
 
   const { data: session } = useSession()
@@ -353,6 +558,7 @@ export function Sidebar() {
 
   const setMenuOrder = useAppStore((s) => s.setMenuOrder)
   const resetMenuOrder = useAppStore((s) => s.resetMenuOrder)
+  const setMenuEditing = useAppStore((s) => s.setMenuEditing)
 
   const effectiveUserId = userId ?? 'anonymous'
   const savedOrder = useAppStore((s) => s.menuOrderByUser[effectiveUserId])
@@ -516,6 +722,16 @@ export function Sidebar() {
     resetMenuOrder(effectiveUserId)
   }
 
+  const enableMenuEditing = useCallback(() => {
+    setMenuEditing(effectiveUserId, true)
+    // Al entrar en modo edición el sidebar debe estar visible.
+    if (isDesktop) {
+      setDesktopCollapsed(false)
+    } else {
+      setMobileDrawerOpen(true)
+    }
+  }, [effectiveUserId, isDesktop, setDesktopCollapsed, setMobileDrawerOpen, setMenuEditing])
+
   // Visibilidad derivada del breakpoint
   const isVisible = isDesktop ? !desktopCollapsed : mobileDrawerOpen
   const isInteractive = isDesktop ? !desktopCollapsed : mobileDrawerOpen
@@ -547,80 +763,87 @@ export function Sidebar() {
       >
         <CajaBaseHeader />
 
-        {menuEditing && (
-          <div className="px-4 py-2 border-b border-gray-200 flex items-center justify-between bg-gray-50">
-            <span className="text-xs font-medium text-gray-500">Editando menú</span>
-            <button
-              onClick={handleReset}
-              className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-              type="button"
-            >
-              Restablecer
-            </button>
-          </div>
-        )}
+        <SidebarEditActivator onEdit={enableMenuEditing} menuEditing={menuEditing}>
+          <SidebarMenuOptionsButton
+            menuEditing={menuEditing}
+            onEdit={enableMenuEditing}
+            onDone={() => setMenuEditing(effectiveUserId, false)}
+          />
 
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          accessibility={{ announcements }}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-        >
-          <nav className="flex-1 overflow-y-auto py-2">
-            <SortableContext items={order} strategy={verticalListSortingStrategy}>
-              {order.map((id) => {
-                if (id.startsWith('section:')) {
-                  const title = id.slice(8)
-                  return (
-                    <SortableNavSectionHeader
-                      key={id}
-                      title={title}
-                      editing={menuEditing}
-                    />
-                  )
-                }
-                if (id.startsWith('top:')) {
-                  const item = itemMap.get(id.slice(4))
+          {menuEditing && (
+            <div className="px-4 py-2 border-b border-gray-200 flex items-center justify-between bg-gray-50">
+              <span className="text-xs font-medium text-gray-500">Editando menú</span>
+              <button
+                onClick={handleReset}
+                className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                type="button"
+              >
+                Restablecer
+              </button>
+            </div>
+          )}
+
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            accessibility={{ announcements }}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+          >
+            <nav className="flex-1 overflow-y-auto py-2">
+              <SortableContext items={order} strategy={verticalListSortingStrategy}>
+                {order.map((id) => {
+                  if (id.startsWith('section:')) {
+                    const title = id.slice(8)
+                    return (
+                      <SortableNavSectionHeader
+                        key={id}
+                        title={title}
+                        editing={menuEditing}
+                      />
+                    )
+                  }
+                  if (id.startsWith('top:')) {
+                    const item = itemMap.get(id.slice(4))
+                    if (!item) return null
+                    return (
+                      <SortableNavItem
+                        key={id}
+                        item={item}
+                        editing={menuEditing}
+                        isTopLevel
+                      />
+                    )
+                  }
+                  const item = itemMap.get(id)
                   if (!item) return null
                   return (
                     <SortableNavItem
                       key={id}
                       item={item}
                       editing={menuEditing}
-                      isTopLevel
                     />
                   )
-                }
-                const item = itemMap.get(id)
-                if (!item) return null
-                return (
-                  <SortableNavItem
-                    key={id}
-                    item={item}
-                    editing={menuEditing}
-                  />
+                })}
+              </SortableContext>
+            </nav>
+            <DragOverlay dropAnimation={{ duration: 150, easing: 'ease-out' }}>
+              {activeEntry ? (
+                typeof activeEntry === 'string' ? (
+                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-2 flex items-center gap-2 bg-white shadow-lg rounded-lg">
+                    <DragHandle />
+                    {activeEntry.slice(8)}
+                  </h3>
+                ) : (
+                  <div className="bg-white shadow-lg rounded-lg opacity-90">
+                    <SidebarMenuItem item={activeEntry} dragHandle={<DragHandle />} />
+                  </div>
                 )
-              })}
-            </SortableContext>
-          </nav>
-          <DragOverlay dropAnimation={{ duration: 150, easing: 'ease-out' }}>
-            {activeEntry ? (
-              typeof activeEntry === 'string' ? (
-                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-2 flex items-center gap-2 bg-white shadow-lg rounded-lg">
-                  <DragHandle />
-                  {activeEntry.slice(8)}
-                </h3>
-              ) : (
-                <div className="bg-white shadow-lg rounded-lg opacity-90">
-                  <SidebarMenuItem item={activeEntry} dragHandle={<DragHandle />} />
-                </div>
-              )
-            ) : null}
-          </DragOverlay>
-        </DndContext>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
 
-        <div className="p-4 border-t space-y-4">
+          <div className="p-4 border-t space-y-4">
           <div>
             <div className="flex items-center gap-2 mb-2 px-4">
               <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -653,6 +876,7 @@ export function Sidebar() {
             <span>Cerrar Sesión</span>
           </button>
         </div>
+        </SidebarEditActivator>
       </aside>
       )}
     </>

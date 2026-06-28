@@ -5,7 +5,7 @@
 // que `mobileDrawerOpen` cambiaba, en vez de solo cuando cambiaba `pathname`).
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, act, waitFor, screen } from '@testing-library/react'
+import { render, act, waitFor, screen, fireEvent } from '@testing-library/react'
 import { useAppStore } from '@/stores/app-store'
 import { usePathname } from 'next/navigation'
 import { reconcileMenuOrder } from '@/app/(app)/sidebar'
@@ -325,5 +325,47 @@ describe('Sidebar — menú reorganizable', () => {
     const order = reconcileMenuOrder(saved, navSections, topLevelItems)
     expect(order.indexOf('top:/dashboard')).toBe(0)
     expect(order.indexOf('section:Ventas')).toBeGreaterThan(order.indexOf('top:/dashboard'))
+  })
+
+})
+
+describe('Sidebar — menú reorganizable', () => {
+  beforeEach(() => {
+    act(() => {
+      useAppStore.setState({
+        mobileDrawerOpen: true,
+        desktopCollapsed: false,
+        sidebarOpen: true,
+        menuOrderByUser: {},
+        menuEditingByUser: {},
+      })
+    })
+  })
+
+  it('botón de opciones del sidebar abre menú contextual y activa modo edición', () => {
+    render(<Sidebar />)
+
+    const optionsButton = screen.getByTestId('sidebar-menu-options')
+    expect(optionsButton).toBeTruthy()
+
+    fireEvent.click(optionsButton)
+
+    expect(screen.getByRole('menuitem', { name: 'Personalizar menú' })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Personalizar menú' }))
+
+    expect(useAppStore.getState().menuEditingByUser['user-1']).toBe(true)
+    expect(screen.getByText('Editando menú')).toBeTruthy()
+  })
+
+  it('modo edición muestra drag handles en items y secciones', () => {
+    act(() => {
+      useAppStore.setState({ menuEditingByUser: { 'user-1': true } })
+    })
+
+    render(<Sidebar />)
+
+    const handles = screen.queryAllByTestId('drag-handle')
+    expect(handles.length).toBeGreaterThanOrEqual(2)
   })
 })
