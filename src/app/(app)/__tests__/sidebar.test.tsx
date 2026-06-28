@@ -52,7 +52,7 @@ vi.mock('@/lib/constants', () => ({
 }))
 
 import { Sidebar } from '@/app/(app)/sidebar'
-import { navSections } from '@/app/(app)/nav-data'
+import { navSections, topLevelItems } from '@/app/(app)/nav-data'
 
 describe('Sidebar — regresion mobile 2026-06-10: drawer permanece abierto tras click', () => {
   beforeEach(() => {
@@ -191,63 +191,72 @@ describe('Sidebar — regresion mobile 2026-06-10: drawer permanece abierto tras
 describe('Sidebar — menú reorganizable', () => {
   it('reconcileMenuOrder mantiene el orden guardado y agrega items nuevos al final de su sección', () => {
     const saved = [
+      'top:/dashboard',
       'section:Ventas',
       '/clientes',
-      '/dashboard',
+      '/pedidos',
       'section:Operaciones',
       '/produccion',
     ]
-    const order = reconcileMenuOrder(saved, navSections)
+    const order = reconcileMenuOrder(saved, navSections, topLevelItems)
 
+    expect(order.indexOf('top:/dashboard')).toBeLessThan(order.indexOf('section:Ventas'))
     expect(order.indexOf('section:Ventas')).toBeLessThan(order.indexOf('/clientes'))
-    expect(order.indexOf('/clientes')).toBeLessThan(order.indexOf('/dashboard'))
+    expect(order.indexOf('/clientes')).toBeLessThan(order.indexOf('/pedidos'))
     // Items nuevos de Ventas que no estaban en saved van al final de Ventas
     const ventasEnd = order.indexOf('section:Operaciones')
-    const pedidosIndex = order.indexOf('/pedidos')
     const productosIndex = order.indexOf('/productos')
-    expect(pedidosIndex).toBeGreaterThan(0)
-    expect(pedidosIndex).toBeLessThan(ventasEnd)
+    const casosIndex = order.indexOf('/casos')
     expect(productosIndex).toBeGreaterThan(0)
     expect(productosIndex).toBeLessThan(ventasEnd)
+    expect(casosIndex).toBeGreaterThan(0)
+    expect(casosIndex).toBeLessThan(ventasEnd)
   })
 
-  it('reconcileMenuOrder descarta items y secciones que ya no existen', () => {
+  it('reconcileMenuOrder descarta items y secciones que ya no existen y promueve Dashboard a top-level', () => {
     const saved = [
       'section:Ventas',
       '/dashboard',
+      '/clientes',
       '/ruta-fantasma',
       'section:Legacy',
-      '/clientes',
     ]
-    const order = reconcileMenuOrder(saved, navSections)
+    const order = reconcileMenuOrder(saved, navSections, topLevelItems)
     expect(order).not.toContain('/ruta-fantasma')
     expect(order).not.toContain('section:Legacy')
-    expect(order).toContain('/dashboard')
+    // Dashboard se promueve automáticamente al bucket top-level.
+    expect(order).toContain('top:/dashboard')
+    expect(order.indexOf('top:/dashboard')).toBeLessThan(order.indexOf('section:Ventas'))
     expect(order).toContain('/clientes')
+    expect(order.indexOf('section:Ventas')).toBeLessThan(order.indexOf('/clientes'))
   })
 
   it('reconcileMenuOrder agrega una sección nueva al final respetando el orden original de items dentro de ella', () => {
     // Simulamos que no teníamos la sección Admin guardada.
     const saved = [
       'section:Ventas',
-      '/dashboard',
+      '/clientes',
       'section:Operaciones',
       '/produccion',
       'section:Finanzas',
       '/facturacion',
     ]
-    const order = reconcileMenuOrder(saved, navSections)
+    const order = reconcileMenuOrder(saved, navSections, topLevelItems)
     const adminIndex = order.indexOf('section:Admin')
     expect(adminIndex).toBeGreaterThan(-1)
     expect(adminIndex).toBeGreaterThan(order.indexOf('section:Finanzas'))
     // Los items de Admin aparecen después del header Admin.
     expect(order.indexOf('/trabajadores')).toBeGreaterThan(adminIndex)
+    // Dashboard (top-level) aparece antes que Ventas.
+    expect(order.indexOf('top:/dashboard')).toBeLessThan(order.indexOf('section:Ventas'))
   })
 
-  it('renderiza items en el orden guardado por el usuario', () => {
+  it('renderiza items en el orden guardado por el usuario y auto-promueve Dashboard a top-level', () => {
     act(() => {
       useAppStore.setState({
         menuOrderByUser: {
+          // Orden legacy: Dashboard estaba dentro de Ventas. El Sidebar debe
+          // auto-promoverlo a top-level sin perder el resto del orden.
           'user-1': ['section:Ventas', '/clientes', '/dashboard', '/pedidos', '/productos', '/casos'],
         },
         menuEditingByUser: { 'user-1': false },
@@ -260,8 +269,8 @@ describe('Sidebar — menú reorganizable', () => {
     const links = nav.querySelectorAll('a')
     const firstLink = links[0]
     const secondLink = links[1]
-    expect(firstLink?.textContent).toContain('Clientes')
-    expect(secondLink?.textContent).toContain('Dashboard')
+    expect(firstLink?.textContent).toContain('Dashboard')
+    expect(secondLink?.textContent).toContain('Clientes')
   })
 
   it('muestra drag handles solo cuando el modo edición está activo', () => {
@@ -280,7 +289,7 @@ describe('Sidebar — menú reorganizable', () => {
     expect(handles.length).toBeGreaterThan(0)
   })
 
-  it('resetMenuOrder vuelve al orden por defecto', () => {
+  it('resetMenuOrder vuelve al orden por defecto con Dashboard arriba', () => {
     act(() => {
       useAppStore.setState({
         menuOrderByUser: {
@@ -292,7 +301,8 @@ describe('Sidebar — menú reorganizable', () => {
     render(<Sidebar />)
     const nav = screen.getByLabelText('Navegación principal')
     const links = nav.querySelectorAll('a')
-    expect(links[0]?.textContent).toContain('Clientes')
+    // Tras reconciliar, Dashboard es top-level y el primer link.
+    expect(links[0]?.textContent).toContain('Dashboard')
 
     act(() => {
       useAppStore.getState().resetMenuOrder('user-1')
@@ -300,5 +310,20 @@ describe('Sidebar — menú reorganizable', () => {
 
     // Tras resetear, el orden guardado queda vacío y se usa el default.
     expect(useAppStore.getState().menuOrderByUser['user-1']).toEqual([])
+  })
+
+  it('reconcileMenuOrder mantiene top-level items al inicio aunque el guardado los ponga abajo', () => {
+    // El usuario intentó guardar Dashboard abajo de todo (o legacy lo tenía ahí).
+    const saved = [
+      'section:Ventas',
+      '/clientes',
+      '/pedidos',
+      '/productos',
+      '/casos',
+      '/dashboard',
+    ]
+    const order = reconcileMenuOrder(saved, navSections, topLevelItems)
+    expect(order.indexOf('top:/dashboard')).toBe(0)
+    expect(order.indexOf('section:Ventas')).toBeGreaterThan(order.indexOf('top:/dashboard'))
   })
 })

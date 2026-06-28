@@ -44,20 +44,29 @@ export interface NavSection {
   items: NavItem[]
 }
 
-export type MenuEntryId = `section:${string}` | string
+export type MenuEntryId = `section:${string}` | `top:${string}` | string
 
-export function buildDefaultOrder(sections: NavSection[]): MenuEntryId[] {
-  return sections.flatMap((section) => [
-    `section:${section.title}`,
-    ...section.items.map((item) => item.href),
-  ])
+export function buildDefaultOrder(
+  sections: NavSection[],
+  topLevelItems: NavItem[] = []
+): MenuEntryId[] {
+  return [
+    ...topLevelItems.map((item) => `top:${item.href}` as MenuEntryId),
+    ...sections.flatMap((section) => [
+      `section:${section.title}` as MenuEntryId,
+      ...section.items.map((item) => item.href),
+    ]),
+  ]
 }
+
+export const topLevelItems: NavItem[] = [
+  { href: '/dashboard', label: 'Dashboard', icon: 'home', requiredPermission: 'view:dashboard' },
+]
 
 export const navSections: NavSection[] = [
   {
     title: 'Ventas',
     items: [
-      { href: '/dashboard', label: 'Dashboard', icon: 'home', requiredPermission: 'view:dashboard' },
       { href: '/clientes', label: 'Clientes', icon: 'users', requiredPermission: 'view:clientes' },
       { href: '/pedidos', label: 'Pedidos', icon: 'package', requiredPermission: 'view:pedidos', subItems: [
         { href: '/pedidos', label: 'Únicos', icon: 'package', requiredPermission: 'view:pedidos' },
@@ -111,4 +120,4 @@ export const navSections: NavSection[] = [
   },
 ]
 
-export const defaultMenuOrder: MenuEntryId[] = buildDefaultOrder(navSections)
+export const defaultMenuOrder: MenuEntryId[] = buildDefaultOrder(navSections, topLevelItems)

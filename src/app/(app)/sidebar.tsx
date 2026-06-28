@@ -27,6 +27,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { purgeSWCache } from '@/lib/purge-sw-cache'
 import { unsubscribePushOnLogout } from '@/lib/push-cleanup'
+import { revokeSessionOnLogout } from '@/lib/session-cleanup'
 import { PushSettings } from '@/components/push-settings'
 import { CajaBaseHeader } from '@/components/caja-base-header'
 import { useAppStore } from '@/stores/app-store'
@@ -34,7 +35,7 @@ import { useIsDesktop } from '@/hooks/use-is-desktop'
 import { getUserPermissions, type Permission } from '@/lib/permissions'
 import type { Role } from '@/lib/constants'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger, useCollapsible } from '@/components/ui/collapsible'
-import { icons, navSections, defaultMenuOrder, type NavItem, type NavSubItem, type NavSection } from './nav-data'
+import { icons, navSections, topLevelItems, defaultMenuOrder, type NavItem, type NavSubItem, type NavSection } from './nav-data'
 
 function NavIcon({ name }: { name: string }) {
   return <>{icons[name] || null}</>
@@ -82,11 +83,24 @@ function filterItems(items: NavItem[], permissions: Permission[]): NavItem[] {
  * actuales del código. Descarta hrefs o secciones que ya no existen,
  * agrega secciones nuevas al final, y agrega items nuevos al final de su
  * sección. Los items siempre se reubican dentro de su sección original.
+ *
+ * Items "top-level" viven antes de la primera sección. Se identifican por
+ * el prefijo `top:` o por no estar en ninguna sección actual.
  */
-export function reconcileMenuOrder(saved: string[], sections: NavSection[]): string[] {
+export function reconcileMenuOrder(
+  saved: string[],
+  sections: NavSection[],
+  topLevelItems: NavItem[] = []
+): string[] {
   const sectionIds = new Set(sections.map((s) => `section:${s.title}`))
   const itemSectionMap = new Map<string, string>()
   const itemHrefs = new Set<string>()
+
+  for (const item of topLevelItems) {
+    itemSectionMap.set(item.href, '__top__')
+    itemHrefs.add(item.href)
+  }
+
   for (const section of sections) {
     for (const item of section.items) {
       itemSectionMap.set(item.href, section.title)
@@ -94,11 +108,25 @@ export function reconcileMenuOrder(saved: string[], sections: NavSection[]): str
     }
   }
 
+  // Normalizar ids legacy: si un href guardado como item de sección ahora es
+  // top-level, lo promovemos automáticamente.
+  function normalizeId(id: string): string {
+    if (id.startsWith('section:')) return id
+    if (id.startsWith('top:')) return id
+    if (itemSectionMap.get(id) === '__top__') return `top:${id}`
+    return id
+  }
+
   // Mantener elementos existentes en el orden guardado.
   const valid: string[] = []
   const seen = new Set<string>()
-  for (const id of saved) {
-    const exists = id.startsWith('section:') ? sectionIds.has(id) : itemHrefs.has(id)
+  for (const rawId of saved) {
+    const id = normalizeId(rawId)
+    const exists = id.startsWith('section:')
+      ? sectionIds.has(id)
+      : id.startsWith('top:')
+        ? itemHrefs.has(id.slice(4))
+        : itemHrefs.has(id)
     if (exists && !seen.has(id)) {
       valid.push(id)
       seen.add(id)
@@ -119,10 +147,26 @@ export function reconcileMenuOrder(saved: string[], sections: NavSection[]): str
     }
   }
 
-  // Reconstruir la lista aplanada: header de sección + items de esa sección
-  // en el orden que el usuario definió, con items nuevos al final.
+  // Top-level items: respetar orden guardado, luego agregar los nuevos.
   const finalOrder: string[] = []
   const placedItems = new Set<string>()
+
+  for (const id of valid) {
+    if (id.startsWith('top:') && itemHrefs.has(id.slice(4)) && !placedItems.has(id)) {
+      finalOrder.push(id)
+      placedItems.add(id)
+    }
+  }
+  for (const item of topLevelItems) {
+    const id = `top:${item.href}`
+    if (!placedItems.has(id)) {
+      finalOrder.push(id)
+      placedItems.add(id)
+    }
+  }
+
+  // Reconstruir la lista aplanada: header de sección + items de esa sección
+  // en el orden que el usuario definió, con items nuevos al final.
   for (const sectionId of sectionOrder) {
     finalOrder.push(sectionId)
     const sectionTitle = sectionId.slice(8)
@@ -229,10 +273,12 @@ function DragHandle({
       {...attributes}
       {...listeners}
       data-testid="drag-handle"
-      className="touch-none cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 flex-shrink-0"
+      className="touch-none cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 flex-shrink-0 select-none"
+      style={{ WebkitTouchCallout: 'none' }}
       aria-label="Arrastrar para reordenar"
       role="button"
       tabIndex={0}
+      onContextMenu={(event) => event.preventDefault()}
     >
       <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
         <circle cx="9" cy="6" r="2" />
@@ -268,10 +314,19 @@ function SortableNavSectionHeader({ title, editing }: { title: string; editing: 
   )
 }
 
-function SortableNavItem({ item, editing }: { item: NavItem; editing: boolean }) {
+function SortableNavItem({
+  item,
+  editing,
+  isTopLevel,
+}: {
+  item: NavItem
+  editing: boolean
+  isTopLevel?: boolean
+}) {
+  const id = isTopLevel ? `top:${item.href}` : item.href
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: item.href,
-    data: { type: 'item' },
+    id,
+    data: { type: 'item', section: isTopLevel ? '__top__' : null },
     disabled: !editing,
   })
   const style = { transform: CSS.Transform.toString(transform), transition }
@@ -326,6 +381,7 @@ export function Sidebar() {
   }, [isDesktop, mobileDrawerOpen])
 
   // Construir estructura filtrada y ordenada.
+  const filteredTopLevel = useMemo(() => filterItems(topLevelItems, permissions), [permissions])
   const filteredSections = useMemo(() => {
     return navSections
       .map((section) => ({ ...section, items: filterItems(section.items, permissions) }))
@@ -334,36 +390,59 @@ export function Sidebar() {
 
   const itemSectionMap = useMemo(() => {
     const map = new Map<string, string>()
+    for (const item of filteredTopLevel) {
+      map.set(item.href, '__top__')
+    }
     for (const section of filteredSections) {
       for (const item of section.items) {
         map.set(item.href, section.title)
       }
     }
     return map
-  }, [filteredSections])
+  }, [filteredTopLevel, filteredSections])
 
-  const defaultOrder = useMemo(() => reconcileMenuOrder(defaultMenuOrder as string[], filteredSections), [filteredSections])
+  const defaultOrder = useMemo(
+    () => reconcileMenuOrder(defaultMenuOrder as string[], filteredSections, filteredTopLevel),
+    [filteredSections, filteredTopLevel]
+  )
   const order = useMemo(
-    () => reconcileMenuOrder(savedOrder && savedOrder.length > 0 ? savedOrder : defaultOrder, filteredSections),
-    [savedOrder, defaultOrder, filteredSections]
+    () =>
+      reconcileMenuOrder(
+        savedOrder && savedOrder.length > 0 ? savedOrder : defaultOrder,
+        filteredSections,
+        filteredTopLevel
+      ),
+    [savedOrder, defaultOrder, filteredSections, filteredTopLevel]
   )
 
   const itemMap = useMemo(() => {
     const map = new Map<string, NavItem>()
+    for (const item of filteredTopLevel) {
+      map.set(item.href, item)
+    }
     for (const section of filteredSections) {
       for (const item of section.items) {
         map.set(item.href, item)
       }
     }
     return map
-  }, [filteredSections])
+  }, [filteredTopLevel, filteredSections])
 
   const [activeId, setActiveId] = useState<string | null>(null)
-  const activeEntry = activeId ? (activeId.startsWith('section:') ? activeId : itemMap.get(activeId)) : null
+  const activeEntry = activeId
+    ? activeId.startsWith('section:')
+      ? activeId
+      : activeId.startsWith('top:')
+        ? itemMap.get(activeId.slice(4))
+        : itemMap.get(activeId)
+    : null
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
+    // 250ms es el delay recomendado por dnd-kit para touch: evita drags
+    // accidentales al scrollear y reduce la probabilidad de que el browser
+    // dispare el menú contextual de long-press.
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
@@ -407,9 +486,9 @@ export function Sidebar() {
     // Sección solo se reordena sobre otra sección.
     if (activeIsSection && !overIsSection) return
 
-    // Item solo se reordena dentro de su misma sección.
+    // Item solo se reordena dentro de su mismo grupo (top-level o sección).
     if (!activeIsSection) {
-      const activeSection = itemSectionMap.get(activeId)
+      const activeSection = itemSectionMap.get(activeId.startsWith('top:') ? activeId.slice(4) : activeId)
       const predictedOrder = arrayMove(order, oldIndex, newIndex)
       const activeNewIndex = predictedOrder.indexOf(activeId)
       let predictedSection: string | null = null
@@ -420,7 +499,14 @@ export function Sidebar() {
           break
         }
       }
-      if (predictedSection !== activeSection) return
+
+      if (activeSection === '__top__') {
+        // Top-level items deben permanecer arriba de todas las secciones.
+        if (predictedSection !== null) return
+      } else if (activeSection !== undefined) {
+        // Items de sección deben permanecer dentro de su sección.
+        if (predictedSection !== activeSection) return
+      }
     }
 
     setMenuOrder(effectiveUserId, arrayMove(order, oldIndex, newIndex))
@@ -494,6 +580,18 @@ export function Sidebar() {
                     />
                   )
                 }
+                if (id.startsWith('top:')) {
+                  const item = itemMap.get(id.slice(4))
+                  if (!item) return null
+                  return (
+                    <SortableNavItem
+                      key={id}
+                      item={item}
+                      editing={menuEditing}
+                      isTopLevel
+                    />
+                  )
+                }
                 const item = itemMap.get(id)
                 if (!item) return null
                 return (
@@ -541,6 +639,7 @@ export function Sidebar() {
           </div>
           <button
             onClick={async () => {
+              await revokeSessionOnLogout()
               await unsubscribePushOnLogout()
               await purgeSWCache()
               signOut({ callbackUrl: '/login' })

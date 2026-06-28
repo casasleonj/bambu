@@ -12,16 +12,18 @@ async function dragHandleAbove(page: Page, sourceHandle: Locator, targetHandle: 
   const endX = targetBox.x + targetBox.width / 2
   const endY = targetBox.y - 6
 
-  await page.mouse.move(startX, startY)
+  await sourceHandle.hover()
   await page.mouse.down()
   // dnd-kit PointerSensor requiere un pequeño movimiento para activar el drag.
   await page.mouse.move(startX, startY - 5)
-  await page.mouse.move(endX, endY, { steps: 15 })
-  await page.mouse.move(endX, endY, { steps: 5 })
+  await page.mouse.move(endX, endY, { steps: 25 })
+  await page.waitForTimeout(100)
   await page.mouse.up()
 }
 
 test.describe('Menú reorganizable', () => {
+  test.setTimeout(60000)
+
   test.beforeEach(async ({ page }) => {
     await page.goto(`${BASE}/login`)
     await page.evaluate(() => {
@@ -47,9 +49,10 @@ test.describe('Menú reorganizable', () => {
     const handles = page.locator('[data-testid="drag-handle"]')
     await expect(handles.first()).toBeVisible({ timeout: 10000 })
 
-    // Mover "Clientes" (tercer handle: sección Ventas, Dashboard, Clientes)
-    // arriba de "Dashboard" (segundo handle).
-    await dragHandleAbove(page, handles.nth(2), handles.nth(1))
+    // Orden inicial: [Dashboard(top), section:Ventas, Clientes, Pedidos, Productos, Incidencias, ...]
+    // Mover "Productos" arriba de "Clientes" (ambos son links dentro de Ventas).
+    // Productos es el 5to handle (Dashboard, section:Ventas, Clientes, Pedidos, Productos).
+    await dragHandleAbove(page, handles.nth(4), handles.nth(2))
 
     // Salir del modo edición.
     const doneBtn = page.getByTitle('Listo')
@@ -59,11 +62,11 @@ test.describe('Menú reorganizable', () => {
     // Verificar inmediatamente que el orden cambió antes de refrescar.
     const nav = page.locator('aside[aria-label="Navegación principal"]')
     let texts = await nav.locator('a').allTextContents()
+    let productosIdx = texts.findIndex((t) => t.includes('Productos'))
     let clientesIdx = texts.findIndex((t) => t.includes('Clientes'))
-    let dashboardIdx = texts.findIndex((t) => t.includes('Dashboard'))
+    expect(productosIdx).toBeGreaterThanOrEqual(0)
     expect(clientesIdx).toBeGreaterThanOrEqual(0)
-    expect(dashboardIdx).toBeGreaterThanOrEqual(0)
-    expect(clientesIdx).toBeLessThan(dashboardIdx)
+    expect(productosIdx).toBeLessThan(clientesIdx)
 
     // Verificar que el orden se persistió en localStorage (no depende del
     // drawer en mobile, que se cierra al refrescar).
@@ -72,53 +75,54 @@ test.describe('Menú reorganizable', () => {
     const orders: Record<string, string[]> = parsed.state?.menuOrderByUser ?? {}
     const userOrder = Object.values(orders)[0]
     expect(userOrder).toBeDefined()
+    const productosOrderIdx = userOrder.indexOf('/productos')
     const clientesOrderIdx = userOrder.indexOf('/clientes')
-    const dashboardOrderIdx = userOrder.indexOf('/dashboard')
+    expect(productosOrderIdx).toBeGreaterThanOrEqual(0)
     expect(clientesOrderIdx).toBeGreaterThanOrEqual(0)
-    expect(dashboardOrderIdx).toBeGreaterThanOrEqual(0)
-    expect(clientesOrderIdx).toBeLessThan(dashboardOrderIdx)
+    expect(productosOrderIdx).toBeLessThan(clientesOrderIdx)
 
-    // Refrescar y abrir el menú si está cerrado (mobile) para verificar UI.
+    // Refrescar y, si estamos en mobile, abrir el drawer con el hamburger.
     await page.reload()
     await page.waitForLoadState('domcontentloaded')
-    if (!(await nav.isVisible().catch(() => false))) {
-      await page.getByRole('button', { name: /abrir menú/i }).click()
+    const hamburger = page.getByRole('button', { name: /abrir menú/i })
+    if (await hamburger.isVisible().catch(() => false)) {
+      await hamburger.click()
     }
     await expect(nav).toBeVisible()
     texts = await nav.locator('a').allTextContents()
+    productosIdx = texts.findIndex((t) => t.includes('Productos'))
     clientesIdx = texts.findIndex((t) => t.includes('Clientes'))
-    dashboardIdx = texts.findIndex((t) => t.includes('Dashboard'))
-    expect(clientesIdx).toBeLessThan(dashboardIdx)
+    expect(productosIdx).toBeLessThan(clientesIdx)
   })
 
   test('botón Restablecer vuelve al orden por defecto', async ({ page }) => {
     await fullLogin(page)
     await page.goto(`${BASE}/dashboard`)
 
-    // Entrar en modo edición y mover Clientes arriba de Dashboard.
+    // Entrar en modo edición y mover Productos arriba de Clientes.
     await page.getByTestId('edit-menu-button').click()
     await expect(page.getByTitle('Listo')).toBeVisible({ timeout: 10000 })
     const handles = page.locator('[data-testid="drag-handle"]')
     await expect(handles.first()).toBeVisible({ timeout: 10000 })
-    await dragHandleAbove(page, handles.nth(2), handles.nth(1))
+    await dragHandleAbove(page, handles.nth(4), handles.nth(2))
 
     // Salir y verificar que el orden cambió.
     await page.getByTitle('Listo').click()
     const nav = page.locator('aside[aria-label="Navegación principal"]')
     let texts = await nav.locator('a').allTextContents()
+    let productosIdx = texts.findIndex((t) => t.includes('Productos'))
     let clientesIdx = texts.findIndex((t) => t.includes('Clientes'))
-    let dashboardIdx = texts.findIndex((t) => t.includes('Dashboard'))
-    expect(clientesIdx).toBeLessThan(dashboardIdx)
+    expect(productosIdx).toBeLessThan(clientesIdx)
 
     // Volver a entrar en modo edición y restablecer.
     await page.getByTitle('Editar menú').click()
     await page.getByRole('button', { name: 'Restablecer' }).click()
     await page.getByTitle('Listo').click()
 
-    // El orden debe volver al default: Dashboard antes que Clientes.
+    // El orden debe volver al default: Clientes antes que Productos.
     texts = await nav.locator('a').allTextContents()
+    productosIdx = texts.findIndex((t) => t.includes('Productos'))
     clientesIdx = texts.findIndex((t) => t.includes('Clientes'))
-    dashboardIdx = texts.findIndex((t) => t.includes('Dashboard'))
-    expect(dashboardIdx).toBeLessThan(clientesIdx)
+    expect(clientesIdx).toBeLessThan(productosIdx)
   })
 })
