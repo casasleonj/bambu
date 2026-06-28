@@ -6,12 +6,29 @@
  * the next user on the same device does not receive the previous user's
  * notifications.
  */
+const SERVICE_WORKER_READY_TIMEOUT_MS = 3000
+
+async function serviceWorkerReadyWithTimeout(): Promise<ServiceWorkerRegistration | null> {
+  if (!('serviceWorker' in navigator)) return null
+  try {
+    return await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('serviceWorker.ready timeout')), SERVICE_WORKER_READY_TIMEOUT_MS),
+      ),
+    ])
+  } catch {
+    return null
+  }
+}
+
 export async function unsubscribePushOnLogout(): Promise<void> {
   if (typeof window === 'undefined') return
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
 
   try {
-    const registration = await navigator.serviceWorker.ready
+    const registration = await serviceWorkerReadyWithTimeout()
+    if (!registration) return
     const subscription = await registration.pushManager.getSubscription()
 
     if (subscription) {

@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { Pencil, Check } from 'lucide-react'
 import { purgeSWCache } from '@/lib/purge-sw-cache'
 import { unsubscribePushOnLogout } from '@/lib/push-cleanup'
+import { revokeSessionOnLogout } from '@/lib/session-cleanup'
 import { ConnectivityIndicator } from '@/components/connectivity-indicator'
 import { PushSettings } from '@/components/push-settings'
 import { useAppStore } from '@/stores/app-store'
@@ -209,14 +210,16 @@ export function Header() {
                 <div className="px-4 py-3 border-b border-gray-100">
                   <PushSettings />
                 </div>
-                <button
-                  onClick={async () => {
-                    await unsubscribePushOnLogout()
-                    await purgeSWCache()
-                    signOut({ callbackUrl: '/login' })
-                  }}
-                  className="flex items-center gap-2 w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50"
-                >
+                  <button
+                    data-testid="logout-button"
+                    onClick={async () => {
+                      await revokeSessionOnLogout()
+                      await unsubscribePushOnLogout()
+                      await purgeSWCache()
+                      signOut({ callbackUrl: '/login' })
+                    }}
+                    className="flex items-center gap-2 w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                  >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                   </svg>

@@ -1,10 +1,19 @@
 import { prisma } from './prisma'
 import { logger } from './logger'
 
+export type AuditAction =
+  | 'CREATE'
+  | 'UPDATE'
+  | 'DELETE'
+  | 'RESTORE'
+  | 'LOGIN'
+  | 'SESSION_EVICTED'
+  | 'FORCE_LOGOUT'
+
 export interface AuditEntry {
   entidad: string
   registroId: string
-  accion: 'CREATE' | 'UPDATE' | 'DELETE' | 'RESTORE'
+  accion: AuditAction
   datos: Record<string, unknown>
   usuarioId?: string | null
   /** Optional request metadata for forensics (Bloque 4) */
