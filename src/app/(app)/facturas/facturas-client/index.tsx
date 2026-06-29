@@ -14,6 +14,7 @@ import type { UnifiedSelection } from '@/components/unified-search'
 import { Modal } from '@/components/modal'
 import { FacturaDetail } from './factura-detail'
 import './factura-print.css'
+import { getAnonymousClientDisplayName } from '@/lib/cliente-canonical'
 import type { Factura, EmpresaConfig } from './types'
 
 const DEFAULT_EMPRESA: EmpresaConfig = {
@@ -469,13 +470,19 @@ export default function FacturasPage() {
                       </td>
                       <td className="px-4 py-3">
                         {factura.cliente ? (
-                          <a
-                            href={`/clientes?openCliente=${factura.cliente.id}`}
-                            className="text-sm font-medium text-gray-800 hover:text-blue-600 hover:underline"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            {factura.cliente.nombre}
-                          </a>
+                          getAnonymousClientDisplayName(factura.cliente.id) ? (
+                            <span className="text-sm font-medium text-gray-800">
+                              {getAnonymousClientDisplayName(factura.cliente.id, 'short')}
+                            </span>
+                          ) : (
+                            <a
+                              href={`/clientes?openCliente=${factura.cliente.id}`}
+                              className="text-sm font-medium text-gray-800 hover:text-blue-600 hover:underline"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {factura.cliente.nombre}
+                            </a>
+                          )
                         ) : (
                           <span className="text-sm text-gray-400">N/A</span>
                         )}
@@ -575,13 +582,19 @@ export default function FacturasPage() {
                         </span>
                       </div>
                       {factura.cliente ? (
-                        <a
-                          href={`/clientes?openCliente=${factura.cliente.id}`}
-                          className="text-sm font-medium text-gray-800 hover:text-blue-600 hover:underline block truncate"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {factura.cliente.nombre}
-                        </a>
+                        getAnonymousClientDisplayName(factura.cliente.id) ? (
+                          <span className="text-sm font-medium text-gray-800 block truncate">
+                            {getAnonymousClientDisplayName(factura.cliente.id, 'short')}
+                          </span>
+                        ) : (
+                          <a
+                            href={`/clientes?openCliente=${factura.cliente.id}`}
+                            className="text-sm font-medium text-gray-800 hover:text-blue-600 hover:underline block truncate"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {factura.cliente.nombre}
+                          </a>
+                        )
                       ) : (
                         <p className="text-sm text-gray-400">N/A</p>
                       )}

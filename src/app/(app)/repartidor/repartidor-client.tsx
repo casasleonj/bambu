@@ -15,6 +15,7 @@ import { PRODUCTO_INFO, DEFAULT_PRICES, getProductosForCanal } from '@/lib/price
 import { getProductoIconConfig } from '@/lib/producto-iconos'
 import { fetchResilient } from '@/lib/fetch-resilient'
 import { MoneyDisplay } from '@/components/money-display'
+import { getAnonymousClientDisplayName } from '@/lib/cliente-canonical'
 import { useGpsCapture } from '@/hooks/use-gps-capture'
 import { formatGPSError } from '@/lib/gps'
 import { compressImage } from '@/lib/image-compress'
@@ -517,7 +518,9 @@ export function RepartidorClient({ trabajador, embarque, userRole }: RepartidorC
                         </span>
                       )}
                       <span className="text-xs text-gray-400 font-medium ml-2">#{pedido.numero}</span>
-                      <h3 className="font-medium text-gray-800 text-sm">{pedido.cliente.nombre}</h3>
+                      <h3 className="font-medium text-gray-800 text-sm">
+                        {getAnonymousClientDisplayName(pedido.cliente.id, 'short') ?? pedido.cliente.nombre}
+                      </h3>
                       <p className="text-xs text-gray-400">{pedido.cliente.telefono}</p>
                     </div>
                     <div className="text-right">

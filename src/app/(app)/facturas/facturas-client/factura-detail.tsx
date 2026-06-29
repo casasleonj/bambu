@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
+import { getAnonymousClientDisplayName } from '@/lib/cliente-canonical'
 import type { Factura, EmpresaConfig } from './types'
 
 const BRAND = {
@@ -42,6 +43,7 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono }: Fact
   const pagado = Number(factura.montoPagado || 0)
   const saldo = Number(factura.saldo)
   const progreso = total > 0 ? Math.round((pagado / total) * 100) : 0
+  const clienteDisplayName = getAnonymousClientDisplayName(factura.cliente?.id, 'short') ?? (factura.cliente?.nombre || 'N/A')
 
   const empresa = {
     nombre: factura.empresaNombre || empresaConfig.nombre,
@@ -156,7 +158,7 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono }: Fact
           <div class="column">
             <h3>Datos del Cliente</h3>
             ${factura.cliente ? `
-              <div class="field"><div class="field-label">Nombre</div><div class="field-value">${factura.cliente.nombre}</div></div>
+              <div class="field"><div class="field-label">Nombre</div><div class="field-value">${clienteDisplayName}</div></div>
               ${factura.cliente.telefono ? `<div class="field"><div class="field-label">Teléfono</div><div class="field-value">${factura.cliente.telefono}</div></div>` : ''}
               ${factura.cliente.direccion ? `<div class="field"><div class="field-label">Dirección</div><div class="field-value">${factura.cliente.direccion}</div></div>` : ''}
             ` : '<div class="field"><div class="field-value">N/A</div></div>'}
@@ -313,7 +315,7 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono }: Fact
               <div className="space-y-2">
                 <div>
                   <p className="text-xs text-gray-400">Nombre</p>
-                  {factura.cliente?.id ? (
+                  {factura.cliente?.id && !getAnonymousClientDisplayName(factura.cliente.id) ? (
                     <a
                       href={`/clientes?openCliente=${factura.cliente.id}`}
                       className="text-sm font-semibold text-gray-900 hover:text-blue-600 hover:underline"
@@ -322,7 +324,7 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono }: Fact
                       {factura.cliente.nombre}
                     </a>
                   ) : (
-                    <p className="text-sm font-semibold text-gray-900">N/A</p>
+                    <p className="text-sm font-semibold text-gray-900">{clienteDisplayName}</p>
                   )}
 
                 </div>

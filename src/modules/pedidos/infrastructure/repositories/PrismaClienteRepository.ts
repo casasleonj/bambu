@@ -52,14 +52,12 @@ export class PrismaClienteRepository implements IClienteRepository {
 
   async create(
     data: {
-      id?: string
       nombre: string
       apellido?: string
       telefono: string
       direccion?: string
       barrio?: string
       fuente?: string
-      activo?: boolean
       creadoPorRol: string
     },
     tx?: TransactionClient,
@@ -67,7 +65,6 @@ export class PrismaClienteRepository implements IClienteRepository {
     const client = tx || prisma
     return client.cliente.create({
       data: {
-        id: data.id,
         nombre: data.nombre,
         apellido: data.apellido || null,
         telefono: data.telefono,
@@ -76,7 +73,6 @@ export class PrismaClienteRepository implements IClienteRepository {
         fuente: data.fuente || null,
         frecuencia: 'NINGUNA',
         creadoPorRol: data.creadoPorRol,
-        activo: data.activo ?? true,
       } as unknown as Parameters<typeof client.cliente.create>[0]['data'],
       select: { id: true },
     })
