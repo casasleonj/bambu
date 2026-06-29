@@ -5,14 +5,13 @@
 -- explícito, así que cada venta anónima creaba un nuevo cliente con CUID y
 -- nombre='Consumidor Final'.
 --
--- Esta migración es idempotente y atómica (DO $$ ejecuta en una transacción
--- implícita). Puede correrse múltiples veces sin daño.
+-- Esta migración es idempotente y atómica (envuelta en BEGIN/COMMIT). Puede
+-- correrse múltiples veces sin daño.
 --
 -- IMPORTANTE: aplicar con psql o prisma db execute, NO con prisma migrate deploy
 -- (issue conocido #12 del AGENTS.md: la tabla _prisma_migrations no está sincronizada).
 
--- Extensiones necesarias
-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+BEGIN;
 
 -- ============================================================================
 -- 1. Crear/asegurar el cliente canónico
@@ -117,7 +116,22 @@ VALUES (
   NOW(),
   NOW()
 )
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET
+  nombre = EXCLUDED.nombre,
+  telefono = EXCLUDED.telefono,
+  direccion = EXCLUDED.direccion,
+  activo = EXCLUDED.activo,
+  "creadoPorRol" = EXCLUDED."creadoPorRol",
+  verificado = EXCLUDED.verificado,
+  bloqueado = EXCLUDED.bloqueado,
+  reclamaciones = EXCLUDED.reclamaciones,
+  frecuencia = EXCLUDED.frecuencia,
+  "habAgua" = EXCLUDED."habAgua",
+  "habHielo" = EXCLUDED."habHielo",
+  "habBotellon" = EXCLUDED."habBotellon",
+  "habBolsaAgua" = EXCLUDED."habBolsaAgua",
+  "habBolsaHielo" = EXCLUDED."habBolsaHielo",
+  "saldoFavor" = EXCLUDED."saldoFavor";
 
 -- ============================================================================
 -- 2. Consolidar duplicados en el canónico
@@ -134,11 +148,6 @@ DECLARE
   contactos_borrados int := 0;
   clientes_borrados int := 0;
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM "Cliente" WHERE id = 'CONSUMIDOR_FINAL') THEN
-    RAISE NOTICE 'Canónico CONSUMIDOR_FINAL no existe; saltando consolidación.';
-    RETURN;
-  END IF;
-
   FOR dup_record IN (
     SELECT id, nombre, telefono
     FROM "Cliente"
@@ -170,10 +179,10 @@ BEGIN
     DELETE FROM "ContactoCliente" WHERE "clienteId" = dup_record.id;
     GET DIAGNOSTICS contactos_borrados = ROW_COUNT;
 
-    -- Auditoría del borrado destructivo (id generado por pgcrypto)
+    -- Auditoría del borrado destructivo (id generado por PostgreSQL nativo)
     INSERT INTO "Historial" (id, entidad, "registroId", accion, datos, fecha)
     VALUES (
-      'hist-' || gen_random_uuid(),
+      gen_random_uuid()::text,
       'Cliente',
       dup_record.id,
       'DELETE',
@@ -202,3 +211,5 @@ BEGIN
 
   RAISE NOTICE 'Consolidación completa: % cliente(s) duplicado(s) eliminado(s).', clientes_borrados;
 END $$;
+
+COMMIT;

@@ -32,14 +32,12 @@ export interface IClienteRepository {
   findById(id: string, tx?: TransactionClient): Promise<ClienteBasico | null>
   findByTelefono(telefono: string, tx?: TransactionClient): Promise<{ id: string } | null>
   create(data: {
-    id?: string
     nombre: string
     apellido?: string
     telefono: string
     direccion?: string
     barrio?: string
     fuente?: string
-    activo?: boolean
     creadoPorRol: string
   }, tx?: TransactionClient): Promise<{ id: string }>
   updateDireccion(id: string, direccion: string, barrio?: string, tx?: TransactionClient): Promise<void>

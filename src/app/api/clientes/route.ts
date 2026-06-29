@@ -6,7 +6,7 @@ import { requireAuth, requireRole } from '@/lib/auth-check'
 import { ClienteCreateSchema } from '@/lib/validators'
 import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
 import { logAudit } from '@/lib/audit'
-import { ROLES } from '@/lib/constants'
+import { ROLES, CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { executeSerializableWithRetry } from '@/lib/serializable'
 import { publishRealtimeEvent } from '@/lib/realtime'
@@ -27,12 +27,10 @@ export async function GET(request: NextRequest) {
     const noVerificado = request.nextUrl.searchParams.get('noVerificado')
     const where: any = {
       activo: true,
-      // FIX consumidor-final-duplicado: ocultar el canónico y cualquier
-      // duplicado legacy CUID que haya quedado con nombre='Consumidor Final'.
-      NOT: [
-        { id: 'CONSUMIDOR_FINAL' },
-        { nombre: 'Consumidor Final', telefono: '' },
-      ],
+      // FIX consumidor-final-duplicado: ocultar el canónico. La migración
+      // one-time consolidó duplicados legacy; en runtime identificamos al
+      // canónico solo por id para no ocultar clientes reales con ese nombre.
+      NOT: { id: CANONICAL_CONSUMIDOR_FINAL_ID },
     }
 
     // Filtros de riesgo (vienen del dashboard)
@@ -50,8 +48,8 @@ export async function GET(request: NextRequest) {
     // Fall back to Prisma contains for single-char queries
     if (search && search.trim().length >= 2) {
       // Use raw SQL with pg_trgm word_similarity for better relevance
-      // Ocultar canónico y duplicados legacy en la búsqueda raw SQL también.
-      const adminFilter = Prisma.sql`AND NOT (c.id = 'CONSUMIDOR_FINAL' OR (c.nombre = 'Consumidor Final' AND c.telefono = ''))`
+      // Ocultar canónico en la búsqueda raw SQL también.
+      const adminFilter = Prisma.sql`AND c.id != ${CANONICAL_CONSUMIDOR_FINAL_ID}`
 
       const clientesRaw = await prisma.$queryRaw`
         SELECT DISTINCT ON (c.id)

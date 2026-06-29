@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
 import ClientesClient from './clientes-client'
 
 export type ClientesSearchParams = {
@@ -20,13 +21,11 @@ export default async function ClientesPage({
   let filtroActivo: FiltroRiesgo = null
   const where: Record<string, unknown> = {
     activo: true,
-    // FIX consumidor-final-duplicado: ocultar el canónico y cualquier
-    // duplicado legacy CUID que haya quedado con nombre='Consumidor Final'.
-    // El canónico tiene activo=false, pero esta es defensa en profundidad.
-    NOT: [
-      { id: 'CONSUMIDOR_FINAL' },
-      { nombre: 'Consumidor Final', telefono: '' },
-    ],
+    // FIX consumidor-final-duplicado: ocultar el canónico. La migración
+    // one-time ya consolidó los duplicados legacy; en runtime identificamos
+    // al canónico exclusivamente por su id para no ocultar clientes reales
+    // que casualmente tengan nombre='Consumidor Final'.
+    NOT: { id: CANONICAL_CONSUMIDOR_FINAL_ID },
   }
 
   if (resolvedSearchParams.bloqueado === 'true') {

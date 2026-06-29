@@ -28,6 +28,7 @@ import { normalizarPagos } from '../../domain/services/pagos-calculator.service'
 import type { ITransactionManager } from '../../infrastructure/transactions/PrismaTransactionManager'
 import type { CrearPedidoInput, CrearPedidoResult } from '../dto'
 import { PedidoDTOMapper } from '../dto/PedidoDTOMapper'
+import { ensureConsumidorFinalCanonical, isConsumidorFinalCanonical } from '@/lib/cliente-canonical'
 
 export class CrearPedidoUseCase {
   constructor(
@@ -84,25 +85,16 @@ export class CrearPedidoUseCase {
 
       // 2. Validate cliente exists
       // FIX consumidor-final-duplicado: el cliente canónico usa el id literal
-      // 'CONSUMIDOR_FINAL'. Si no existe (entorno sin seed/migración), lo
-      // creamos explícitamente con ESE id para evitar generar un CUID nuevo
-      // y duplicar el registro en futuras ventas anónimas.
-      let cliente = await this.clienteRepo.findById(clienteId, tx)
+      // CANONICAL_CONSUMIDOR_FINAL_ID. Si no existe (entorno sin seed/migración),
+      // lo aseguramos atómicamente con el helper para evitar generar un CUID
+      // nuevo y duplicar el registro en futuras ventas anónimas.
+      if (isConsumidorFinalCanonical(clienteId)) {
+        await ensureConsumidorFinalCanonical(tx)
+      }
+
+      const cliente = await this.clienteRepo.findById(clienteId, tx)
       if (!cliente) {
-        if (clienteId === 'CONSUMIDOR_FINAL') {
-          const nuevo = await this.clienteRepo.create({
-            id: 'CONSUMIDOR_FINAL',
-            nombre: 'Consumidor Final',
-            telefono: '',
-            activo: false,
-            creadoPorRol: input.createdByRole || 'ASISTENTE',
-          }, tx)
-          cliente = await this.clienteRepo.findById(nuevo.id, tx)
-          if (!cliente) throw new Error('CLIENTE_NOT_FOUND')
-          clienteId = cliente.id
-        } else {
-          throw new Error('CLIENTE_NOT_FOUND')
-        }
+        throw new Error('CLIENTE_NOT_FOUND')
       }
 
       // 3. Validate credit limit
@@ -122,7 +114,7 @@ export class CrearPedidoUseCase {
       }
 
       // 4. Update cliente address if needed
-      if (input.actualizarCliente && clienteId !== 'CONSUMIDOR_FINAL' && cliente) {
+      if (input.actualizarCliente && !isConsumidorFinalCanonical(clienteId) && cliente) {
         await this.clienteRepo.updateDireccion(
           clienteId,
           input.actualizarCliente.direccion || '',

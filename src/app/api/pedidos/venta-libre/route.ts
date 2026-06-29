@@ -9,8 +9,9 @@ import { resolverPreciosPedido, type Canal } from '@/lib/pricing'
 import { calcularEstadoPago, puedeFiar, puedeCrearPedido, resolverLimiteFiados } from '@/lib/pedido-utils'
 import { buildPedidoLegacyFields } from '@/lib/pedido-legacy'
 import { logAudit } from '@/lib/audit'
-import { ROLES } from '@/lib/constants'
+import { ROLES, CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
+import { ensureConsumidorFinalCanonical, isConsumidorFinalCanonical } from '@/lib/cliente-canonical'
 import { logger } from '@/lib/logger'
 import { uploadBase64Foto, isBase64Image } from '@/lib/storage'
 import { getConfigBool } from '@/lib/config'
@@ -79,11 +80,18 @@ export async function POST(request: NextRequest) {
 
       // 3. Resolver cliente
       let clienteFinalId = clienteId
-      const esAnonimo = clienteId === 'CONSUMIDOR_FINAL' || clienteId === 'CONSUMIDOR_FINAL'
+      const esAnonimo = isConsumidorFinalCanonical(clienteId)
       const cliente = await tx.cliente.findUnique({ where: { id: clienteId } })
-      
+
       if (!cliente && !esAnonimo) {
         throw new Error('CLIENTE_NOT_FOUND')
+      }
+
+      // FIX consumidor-final-duplicado: asegurar el cliente canónico antes
+      // de crear el pedido. Si no existe, lo creamos atómicamente para evitar
+      // FK violation en entornos sin seed/migración.
+      if (esAnonimo) {
+        await ensureConsumidorFinalCanonical(tx)
       }
 
       // 4. Forzar canal DOMICILIO
@@ -207,7 +215,7 @@ export async function POST(request: NextRequest) {
       }
 
       // 10. SIEMPRE crear factura (Consumidor Final si anónimo)
-      const facturaClienteId = esAnonimo ? 'CONSUMIDOR_FINAL' : clienteFinalId
+      const facturaClienteId = esAnonimo ? CANONICAL_CONSUMIDOR_FINAL_ID : clienteFinalId
 
       // FIX C-13: además del lock 'PEDIDO' (que ya cubre esta operación),
       // adquirir también 'FACTURA_NUM' específicamente alrededor de la

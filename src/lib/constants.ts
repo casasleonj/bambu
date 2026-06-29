@@ -29,3 +29,14 @@ export const PRIVILEGED_READ_ROLES: Role[] = [ROLES.ADMIN, ROLES.CONTADOR]
 // Alias para backward compatibility
 /** @deprecated Use PRIVILEGED_READ_ROLES instead */
 export const PRIVILEGED_ROLES = PRIVILEGED_READ_ROLES
+
+/**
+ * Id canónico para ventas anónimas (VENTA_RAPIDA / VENTA_LIBRE).
+ *
+ * Este id es un contrato fuerte en la aplicación: 13+ lugares del código lo
+ * usan como string literal. NUNCA cambiar este valor sin un refactor mayor.
+ *
+ * El registro correspondiente en la base de datos tiene activo=false para no
+ * aparecer en listados de clientes.
+ */
+export const CANONICAL_CONSUMIDOR_FINAL_ID = 'CONSUMIDOR_FINAL'

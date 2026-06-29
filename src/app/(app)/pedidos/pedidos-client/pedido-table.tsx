@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { EmptyState } from '@/components/empty-state'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
 import { MoneyDisplay } from '@/components/money-display'
+import { getAnonymousClientDisplayName } from '@/lib/cliente-canonical'
 import type { Pedido } from './types'
 
 function getItemsFromPedido(pedido: Pedido) {
@@ -76,7 +77,9 @@ function DesktopRow({
       <td className="px-4 py-3 text-sm font-medium text-gray-500">#{pedido.numero}</td>
       <td className="px-4 py-3">
         <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-          <span className="font-medium text-gray-800">{pedido.nombreCli}{pedido.apellidoCli ? ` ${pedido.apellidoCli}` : ''}</span>
+          <span className="font-medium text-gray-800">
+            {getAnonymousClientDisplayName(pedido.clienteId, 'short') ?? `${pedido.nombreCli}${pedido.apellidoCli ? ` ${pedido.apellidoCli}` : ''}`}
+          </span>
           {pedido.nombreNegocioCli && (
             <span className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">{pedido.nombreNegocioCli}</span>
           )}
@@ -218,7 +221,9 @@ function MobileCard({
               </span>
             ))}
           </div>
-          <h3 className="font-medium text-gray-800 text-sm">{pedido.nombreCli}{pedido.apellidoCli ? ` ${pedido.apellidoCli}` : ''}</h3>
+          <h3 className="font-medium text-gray-800 text-sm">
+            {getAnonymousClientDisplayName(pedido.clienteId, 'short') ?? `${pedido.nombreCli}${pedido.apellidoCli ? ` ${pedido.apellidoCli}` : ''}`}
+          </h3>
           {pedido.nombreNegocioCli && (
             <p className="text-xs text-gray-500">{pedido.nombreNegocioCli}</p>
           )}
