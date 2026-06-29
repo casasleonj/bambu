@@ -35,7 +35,9 @@ describe('commit 4b: push event handler', () => {
     // event.waitUntil extiende la vida del SW hasta que la
     // promise se resuelva. Sin esto, el SW se mata antes de
     // mostrar la notification en conexiones lentas.
-    expect(source).toMatch(/event\.waitUntil\(\s*self\.registration\.showNotification/)
+    // Ahora showNotification esta dentro de un IIFE async; el regex
+    // busca que aparezca en el cuerpo de event.waitUntil.
+    expect(source).toMatch(/event\.waitUntil\([\s\S]+?self\.registration\.showNotification/)
   })
 })
 
