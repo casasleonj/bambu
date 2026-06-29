@@ -39,8 +39,8 @@ test.describe('Domain Flow - Pedidos', () => {
   test('TC-DP-05: Filter by clienteId pre-fills the list', async ({ page }) => {
     const c = await apiPost(page, '/api/clientes', { nombre: uniqueClientName('TC-DP-05'), telefono: uniquePhone() })
     const cliente = (await c.json()).cliente || (await c.json())
-    await page.goto(`${BASE}/pedidos?cliente=${cliente.id}`)
-    await expect(page).toHaveURL(/cliente=/)
+    await page.goto(`${BASE}/pedidos?clienteId=${cliente.id}`)
+    await expect(page).toHaveURL(/clienteId=/)
   })
 
   test('TC-DP-06: Filter by date range works', async ({ page }) => {

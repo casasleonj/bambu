@@ -20,9 +20,9 @@ test.describe('Cross-Page Navigation', () => {
     const createBtn = page.locator('a:has-text("Crear Pedido"), button:has-text("Crear Pedido")')
     if (await createBtn.count() > 0) {
       await createBtn.first().click()
-      // Should navigate to /pedidos?cliente=...
+      // Should navigate to /pedidos?clienteId=...
       await page.waitForURL(/\/pedidos/, { timeout: 10000 })
-      expect(page.url()).toContain('cliente=')
+      expect(page.url()).toContain('clienteId=')
     }
   })
 
@@ -30,8 +30,8 @@ test.describe('Cross-Page Navigation', () => {
     const c = await apiPost(page, '/api/clientes', { nombre: uniqueClientName('NAV-02'), telefono: uniquePhone() })
     const cliente = (await c.json()).cliente || (await c.json())
 
-    await page.goto(`${BASE}/pedidos?cliente=${cliente.id}`)
-    await expect(page).toHaveURL(/\/pedidos\?cliente=/)
+    await page.goto(`${BASE}/pedidos?clienteId=${cliente.id}`)
+    await expect(page).toHaveURL(/\/pedidos\?clienteId=/)
   })
 
   // ─── Dashboard → Clientes (with filters) ──────────────────────────────────
