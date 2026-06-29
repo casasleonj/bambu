@@ -336,7 +336,7 @@ export const ClienteTable = React.memo(function ClienteTable({
                           Llamar
                         </a>
                         <Link
-                          href={`/pedidos?clienteId=${cliente.id}`}
+                          href={`/pedidos?cliente=${cliente.id}`}
                           onClick={(e) => e.stopPropagation()}
                           className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
                         >
