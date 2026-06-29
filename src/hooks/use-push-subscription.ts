@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 export interface UsePushSubscriptionReturn {
   supported: boolean
   permission: NotificationPermission | 'unknown'
+  setPermission: (permission: NotificationPermission | 'unknown') => void
   subscribed: boolean
   loading: boolean
   recovering: boolean
@@ -261,6 +262,7 @@ export function usePushSubscription(): UsePushSubscriptionReturn {
   return {
     supported,
     permission,
+    setPermission,
     subscribed,
     loading,
     recovering,

@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { usePushSubscription } from '@/hooks/use-push-subscription'
+import { isIosDevice, isStandaloneMode } from '@/lib/pwa'
 import { Button } from '@/components/ui/button'
 
 const STATUS_LABELS: Record<string, string> = {
@@ -10,6 +11,20 @@ const STATUS_LABELS: Record<string, string> = {
   granted: 'Permitido',
   denied: 'Bloqueado por el navegador',
   unknown: 'Desconocido',
+}
+
+function getDeniedHint(): string {
+  if (isIosDevice()) {
+    if (isStandaloneMode()) {
+      return 'Safari no permite configurar notificaciones por sitio en modo standalone. Contactá al administrador del dispositivo.'
+    }
+    return 'En iPhone/iPad, primero añadí esta app a tu pantalla de inicio (Compartir → Añadir a inicio). Después podrás activar notificaciones.'
+  }
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
+  if (/android/i.test(ua)) {
+    return 'En Android: tocá el candado 🔒 junto a la URL → Notificaciones → Permitir. Si no aparece: ⋮ → Configuración del sitio → Notificaciones.'
+  }
+  return 'En tu navegador: hacé clic en el candado 🔒 de la barra de direcciones → Notificaciones → Permitir.'
 }
 
 function BellIcon({ className }: { className?: string }) {
@@ -68,7 +83,7 @@ function getPushState(
       statusClass: 'bg-red-100 text-red-800',
       buttonLabel: 'Bloqueado',
       disabled: true,
-      hint: 'El permiso fue bloqueado. Para activar notificaciones, habilítalas en la configuración del navegador y vuelve a intentar.',
+      hint: getDeniedHint(),
     }
   }
 
@@ -104,12 +119,27 @@ function getPushState(
 
 export function PushSettings({ variant = 'default', settingsHref }: PushSettingsProps) {
   const [mounted, setMounted] = useState(false)
-  const { supported, permission, subscribed, loading, recovering, error, subscribe, unsubscribe } =
+  const { supported, permission, setPermission, subscribed, loading, recovering, error, subscribe, unsubscribe } =
     usePushSubscription()
 
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  useEffect(() => {
+    if (!mounted) return
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        setPermission(Notification.permission)
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [mounted, setPermission])
 
   if (!mounted) {
     return <PushSettingsPlaceholder variant={variant} />
