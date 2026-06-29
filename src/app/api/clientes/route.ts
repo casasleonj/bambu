@@ -25,10 +25,14 @@ export async function GET(request: NextRequest) {
     const bloqueado = request.nextUrl.searchParams.get('bloqueado')
     const reclamaciones = request.nextUrl.searchParams.get('reclamaciones')
     const noVerificado = request.nextUrl.searchParams.get('noVerificado')
-    const isAdmin = (authResult.user as { role?: string } | undefined)?.role === 'ADMIN'
     const where: any = {
       activo: true,
-      ...(isAdmin ? {} : { id: { not: 'CONSUMIDOR_FINAL' } }),
+      // FIX consumidor-final-duplicado: ocultar el canónico y cualquier
+      // duplicado legacy CUID que haya quedado con nombre='Consumidor Final'.
+      NOT: [
+        { id: 'CONSUMIDOR_FINAL' },
+        { nombre: 'Consumidor Final', telefono: '' },
+      ],
     }
 
     // Filtros de riesgo (vienen del dashboard)
@@ -46,8 +50,8 @@ export async function GET(request: NextRequest) {
     // Fall back to Prisma contains for single-char queries
     if (search && search.trim().length >= 2) {
       // Use raw SQL with pg_trgm word_similarity for better relevance
-      const isAdmin = (authResult.user as { role?: string } | undefined)?.role === 'ADMIN'
-      const adminFilter = isAdmin ? Prisma.empty : Prisma.sql`AND c.id != 'CONSUMIDOR_FINAL'`
+      // Ocultar canónico y duplicados legacy en la búsqueda raw SQL también.
+      const adminFilter = Prisma.sql`AND NOT (c.id = 'CONSUMIDOR_FINAL' OR (c.nombre = 'Consumidor Final' AND c.telefono = ''))`
 
       const clientesRaw = await prisma.$queryRaw`
         SELECT DISTINCT ON (c.id)

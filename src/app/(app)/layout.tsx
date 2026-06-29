@@ -4,6 +4,7 @@ import { Toaster } from 'sonner'
 import { BaseCajaLoader } from '@/components/base-caja-loader'
 import { UpdateNotification } from '@/components/update-notification'
 import { PwaInstallBanner } from '@/components/pwa-install-banner'
+import { InAppPushListener } from '@/components/in-app-push-listener'
 import { AppShell } from './app-shell'
 import { MustChangePasswordGuard } from '@/components/must-change-password-guard'
 import { auth } from '@/lib/auth'
@@ -28,6 +29,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <Providers session={session}>
       <RealtimeProvider>
         <MustChangePasswordGuard />
+        <InAppPushListener />
         <AppShell>
           {children}
         </AppShell>

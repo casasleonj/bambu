@@ -87,6 +87,14 @@ interface PushPayload {
   tag?: string
 }
 
+async function isAnyClientOpen(): Promise<boolean> {
+  const clients = await self.clients.matchAll({
+    type: "window",
+    includeUncontrolled: true,
+  })
+  return clients.length > 0
+}
+
 self.addEventListener("push", (event: PushEvent) => {
   let payload: PushPayload = {}
   try {
@@ -111,9 +119,33 @@ self.addEventListener("push", (event: PushEvent) => {
   }
 
   event.waitUntil(
-    self.registration.showNotification(title, options).catch((err) => {
-      console.error("[sw] showNotification fallo:", err)
-    }),
+    (async () => {
+      try {
+        if (await isAnyClientOpen()) {
+          // App abierta en alguna tab → notificar in-app via postMessage.
+          // El listener en el cliente filtra por document.hasFocus().
+          const clients = await self.clients.matchAll({
+            type: "window",
+            includeUncontrolled: true,
+          })
+          for (const client of clients) {
+            client.postMessage({
+              type: "in-app-alert",
+              payload: {
+                title,
+                body: payload.body,
+                url: payload.url,
+              },
+            })
+          }
+          return
+        }
+        // App cerrada → notification nativa
+        await self.registration.showNotification(title, options)
+      } catch (err) {
+        console.error("[sw] push handler fallo:", err)
+      }
+    })(),
   )
 })
 

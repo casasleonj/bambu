@@ -3,6 +3,7 @@
  * Tests: 10
  */
 import { test, expect, loginAsAdmin, apiPost, expectStatus } from '../00-fixtures'
+import { resetTestDatabase } from '../../fixtures'
 
 test.describe('Form Validation - Venta Rápida', () => {
   test.beforeEach(async ({ page }) => {
@@ -138,5 +139,52 @@ test.describe('Form Validation - Venta Rápida', () => {
     })
     // Should default to CONSUMIDOR_FINAL or reject
     expect([200, 201, 400, 422]).toContain(res.status())
+  })
+
+  test.describe('TC-VR-11: Venta rápida no duplica cliente Consumidor Final', () => {
+    test.describe.configure({ mode: 'serial' })
+
+    test.beforeAll(() => {
+      resetTestDatabase()
+    })
+
+    test.beforeEach(async ({ page }) => {
+      await loginAsAdmin(page)
+    })
+
+    test('3 ventas rápidas anónimas usan el mismo clienteId canónico', async ({ page }) => {
+      test.setTimeout(30000)
+
+      const createdIds: string[] = []
+      for (let i = 0; i < 3; i++) {
+        const res = await apiPost(page, '/api/pedidos', {
+          clienteId: 'CONSUMIDOR_FINAL',
+          canal: 'PUNTO',
+          ventaRapida: true,
+          items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
+          pagos: [{ metodo: 'EFECTIVO', monto: 5000 }],
+          offlineId: `vr11-test-${i}-${Date.now()}`,
+        })
+        await expectStatus(res, [200, 201])
+        const body = await res.json()
+        const pedido = body.pedido || body
+        expect(pedido.clienteId).toBe('CONSUMIDOR_FINAL')
+        createdIds.push(pedido.id)
+      }
+
+      // Todos los pedidos deben compartir el mismo clienteId
+      expect(new Set(createdIds).size).toBe(3)
+
+      // La lista de clientes NO debe mostrar "Consumidor Final"
+      // (el canónico tiene activo=false; los duplicados CUID no deben existir)
+      const data = await page.evaluate(async () => {
+        const r = await fetch('/api/clientes?all=true', { credentials: 'include' })
+        return r.json()
+      })
+      const consumidoresFinal = (data.clientes || []).filter(
+        (c: any) => c.nombre === 'Consumidor Final',
+      )
+      expect(consumidoresFinal).toHaveLength(0)
+    })
   })
 })

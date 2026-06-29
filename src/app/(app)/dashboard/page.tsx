@@ -2,7 +2,6 @@ import { getTodayRange, getYesterdayRange } from '@/lib/dates'
 import { fetchDashboardData } from '@/modules/dashboard'
 import { toLegacyDashboardData } from '@/modules/dashboard/presentation'
 import { DashboardClient } from './dashboard-client'
-import { PushPermissionBanner } from '@/components/push-permission-banner'
 import { auth } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 
@@ -27,7 +26,6 @@ export default async function DashboardPage() {
 
   return (
     <>
-      <PushPermissionBanner />
       <DashboardClient data={data} userRole={userRole} />
     </>
   )

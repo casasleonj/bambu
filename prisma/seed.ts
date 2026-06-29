@@ -389,6 +389,41 @@ async function seedSystemUser() {
   console.log(`✅ SYSTEM user seeded (idempotent)`)
 }
 
+/**
+ * Cliente canónico para ventas anónimas (VENTA_RAPIDA / VENTA_LIBRE).
+ * - El id literal 'CONSUMIDOR_FINAL' es un contrato fuerte en 13+ lugares.
+ * - activo=false lo oculta de la lista de clientes para todos los roles.
+ * - creadoPorRol=ASISTENTE es el default del schema (no hay valor SYSTEM).
+ */
+async function seedConsumidorFinal() {
+  const existing = await prisma.cliente.findUnique({ where: { id: 'CONSUMIDOR_FINAL' } })
+  if (existing) {
+    if (existing.activo) {
+      await prisma.cliente.update({
+        where: { id: 'CONSUMIDOR_FINAL' },
+        data: { activo: false, nombre: 'Consumidor Final', telefono: '' },
+      })
+      console.log('✅ CONSUMIDOR_FINAL cliente: activo corregido a false')
+    } else {
+      console.log('✅ CONSUMIDOR_FINAL cliente already seeded (idempotent)')
+    }
+    return
+  }
+  await prisma.cliente.create({
+    data: {
+      id: 'CONSUMIDOR_FINAL',
+      nombre: 'Consumidor Final',
+      telefono: '',
+      direccion: '',
+      activo: false,
+      creadoPorRol: RolUsuario.ASISTENTE,
+      verificado: false,
+      bloqueado: false,
+    },
+  })
+  console.log('✅ CONSUMIDOR_FINAL cliente seeded (id=CONSUMIDOR_FINAL, activo=false)')
+}
+
 async function seedProductos() {
   for (const p of PRODUCTOS) {
     const precioBase = PRECIO_BASE[p.codigo] ?? 0
@@ -461,6 +496,7 @@ async function main() {
   await seedTrabajadores()
   await linkUsersToTrabajadores()
   await seedConfigs()
+  await seedConsumidorFinal()
   await seedProductos()
   await seedPreciosVolumen()
   await seedPrecioHistorial()
@@ -471,6 +507,7 @@ async function main() {
     trabajadores: await prisma.trabajador.count(),
     trabajadoresConUser: await prisma.trabajador.count({ where: { userId: { not: null } } }),
     configs: await prisma.config.count(),
+    clientes: await prisma.cliente.count(),
     productos: await prisma.producto.count(),
     preciosVolumen: await prisma.precioVolumen.count(),
   }
