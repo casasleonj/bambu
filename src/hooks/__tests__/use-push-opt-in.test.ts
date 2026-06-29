@@ -26,7 +26,7 @@ const mockedIsStandaloneMode = vi.mocked(isStandaloneMode)
 
 function mockSession(role: string) {
   mockedUseSession.mockReturnValue({
-    data: { user: { role } },
+    data: { user: { role }, expires: '2099-01-01T00:00:00.000Z' },
     status: 'authenticated',
     update: vi.fn(),
   })
