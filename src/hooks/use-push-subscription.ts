@@ -70,7 +70,7 @@ async function fetchWithTimeout(
 export function usePushSubscription(): UsePushSubscriptionReturn {
   const [supported] = useState<boolean>(isPushSupported)
   const [permission, setPermission] = useState<NotificationPermission | 'unknown'>(() => {
-    if (typeof Notification === 'undefined') return 'unknown'
+    if (!isPushSupported() || typeof Notification === 'undefined') return 'unknown'
     return Notification.permission
   })
   const [subscribed, setSubscribed] = useState(false)
