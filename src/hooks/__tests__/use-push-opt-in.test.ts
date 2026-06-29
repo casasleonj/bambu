@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { renderHook, waitFor } from '@testing-library/react'
+import { renderHook, waitFor, act } from '@testing-library/react'
 import { usePushOptIn } from '@/hooks/use-push-opt-in'
 
 vi.mock('next-auth/react', () => ({
@@ -109,7 +109,9 @@ describe('usePushOptIn', () => {
   it('dismiss persiste flag y oculta toast', async () => {
     const { result } = renderHook(() => usePushOptIn())
     await waitFor(() => expect(result.current.shouldShow).toBe(true))
-    result.current.dismiss()
+    act(() => {
+      result.current.dismiss()
+    })
     await waitFor(() => expect(result.current.shouldShow).toBe(false))
     expect(localStorage.getItem('push-opt-in-dismissed')).toBe('1')
     expect(sessionStorage.getItem('push-opt-in-shown-this-session')).toBe('1')
@@ -160,7 +162,9 @@ describe('usePushOptIn', () => {
     mockPushSubscription({ subscribe })
     const { result } = renderHook(() => usePushOptIn())
     await waitFor(() => expect(result.current.shouldShow).toBe(true))
-    await result.current.accept()
+    await act(async () => {
+      await result.current.accept()
+    })
     await waitFor(() => expect(result.current.error).toBe('VAPID missing'))
   })
 })
