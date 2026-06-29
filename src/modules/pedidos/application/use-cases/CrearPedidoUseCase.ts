@@ -83,15 +83,23 @@ export class CrearPedidoUseCase {
       }
 
       // 2. Validate cliente exists
-      const cliente = await this.clienteRepo.findById(clienteId, tx)
+      // FIX consumidor-final-duplicado: el cliente canónico usa el id literal
+      // 'CONSUMIDOR_FINAL'. Si no existe (entorno sin seed/migración), lo
+      // creamos explícitamente con ESE id para evitar generar un CUID nuevo
+      // y duplicar el registro en futuras ventas anónimas.
+      let cliente = await this.clienteRepo.findById(clienteId, tx)
       if (!cliente) {
         if (clienteId === 'CONSUMIDOR_FINAL') {
           const nuevo = await this.clienteRepo.create({
+            id: 'CONSUMIDOR_FINAL',
             nombre: 'Consumidor Final',
             telefono: '',
+            activo: false,
             creadoPorRol: input.createdByRole || 'ASISTENTE',
           }, tx)
-          clienteId = nuevo.id
+          cliente = await this.clienteRepo.findById(nuevo.id, tx)
+          if (!cliente) throw new Error('CLIENTE_NOT_FOUND')
+          clienteId = cliente.id
         } else {
           throw new Error('CLIENTE_NOT_FOUND')
         }

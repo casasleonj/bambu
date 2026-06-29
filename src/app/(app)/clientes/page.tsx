@@ -1,5 +1,4 @@
 import { prisma } from '@/lib/prisma'
-import { auth } from '@/lib/auth'
 import ClientesClient from './clientes-client'
 
 export type ClientesSearchParams = {
@@ -17,14 +16,17 @@ export default async function ClientesPage({
   searchParams: Promise<ClientesSearchParams>
 }) {
   const resolvedSearchParams = await searchParams
-  const session = await auth()
-  const isAdmin = session?.user?.role === 'ADMIN'
-
   // Determinar filtro de riesgo activo
   let filtroActivo: FiltroRiesgo = null
   const where: Record<string, unknown> = {
     activo: true,
-    ...(isAdmin ? {} : { id: { not: 'CONSUMIDOR_FINAL' } }),
+    // FIX consumidor-final-duplicado: ocultar el canónico y cualquier
+    // duplicado legacy CUID que haya quedado con nombre='Consumidor Final'.
+    // El canónico tiene activo=false, pero esta es defensa en profundidad.
+    NOT: [
+      { id: 'CONSUMIDOR_FINAL' },
+      { nombre: 'Consumidor Final', telefono: '' },
+    ],
   }
 
   if (resolvedSearchParams.bloqueado === 'true') {

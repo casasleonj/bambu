@@ -79,6 +79,25 @@ async function main() {
   }
   console.log('✅ Clientes seeded')
 
+  // 3b. Cliente canónico para ventas anónimas (VENTA_RAPIDA / VENTA_LIBRE)
+  // El id literal 'CONSUMIDOR_FINAL' es un contrato fuerte en 13+ lugares del código.
+  // Se siembra con activo=false para no aparecer en la lista de clientes.
+  await prisma.cliente.upsert({
+    where: { id: 'CONSUMIDOR_FINAL' },
+    update: { activo: false },
+    create: {
+      id: 'CONSUMIDOR_FINAL',
+      nombre: 'Consumidor Final',
+      telefono: '',
+      direccion: '',
+      activo: false,
+      creadoPorRol: RolUsuario.ASISTENTE,
+      verificado: false,
+      bloqueado: false,
+    },
+  })
+  console.log('✅ CONSUMIDOR_FINAL seeded')
+
   // 4. Productos
   const PRECIO_BASE: Record<string, number> = {
     PACA_AGUA: 6500,

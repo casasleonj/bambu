@@ -199,6 +199,14 @@ vercel --prod
 - `src/lib/dashboard-domain.ts` — Backward-compatible re-exports for existing code
 - New bounded contexts should follow this same structure
 
+### Cliente canónico `CONSUMIDOR_FINAL` (venta anónima)
+- La app usa la **string literal `'CONSUMIDOR_FINAL'`** como id mágico para ventas sin cliente real (`VENTA_RAPIDA` y `VENTA_LIBRE`).
+- 13+ lugares del código la usan como contrato fuerte (forms, validaciones, filtros, APIs). Cambiar el id requeriría refactor mayor; no es deuda técnica pendiente, es un contrato establecido.
+- Se siembra en `prisma/seed.ts` y `prisma/seed-test.ts` con `activo: false` para **no aparecer en la lista de clientes** (todos los roles).
+- `prisma/migrations/20260630_consolidate_consumidor_final/migration.sql` asegura el canónico y consolida duplicados legacy en producción.
+- `CrearPedidoUseCase` implementa **lookup-or-create**: si el canónico no existe (entorno sin seed/migración), lo crea explícitamente con `id='CONSUMIDOR_FINAL'` (no genera CUID). Esto previene que cada venta anónima cree un cliente duplicado.
+- Los filtros de `/clientes` y `/api/clientes` ocultan tanto el canónico (`activo=false`) como cualquier duplicado legacy CUID con `nombre='Consumidor Final' AND telefono=''` (defensa en profundidad).
+
 ## File Reference
 
 | File | Purpose |
