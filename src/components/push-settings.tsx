@@ -118,13 +118,9 @@ function getPushState(
 }
 
 export function PushSettings({ variant = 'default', settingsHref }: PushSettingsProps) {
-  const [mounted, setMounted] = useState(false)
+  const [mounted] = useState(() => typeof document !== 'undefined')
   const { supported, permission, setPermission, subscribed, loading, recovering, error, subscribe, unsubscribe } =
     usePushSubscription()
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
 
   useEffect(() => {
     if (!mounted) return

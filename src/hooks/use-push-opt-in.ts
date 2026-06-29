@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { usePushSubscription } from '@/hooks/use-push-subscription'
 import { isIosDevice, isStandaloneMode } from '@/lib/pwa'
@@ -55,13 +55,12 @@ export function usePushOptIn(): UsePushOptInReturn {
   const { data: session } = useSession()
   const { permission, subscribe, loading } = usePushSubscription()
   const [error, setError] = useState<string | null>(null)
-  const [dismissed, setDismissed] = useState(false)
-  const [shownThisSession, setShownThisSession] = useState(false)
-
-  useEffect(() => {
-    setDismissed(safeLocalGet(DISMISSED_KEY) === '1')
-    setShownThisSession(safeSessionGet(SHOWN_SESSION_KEY) === '1')
-  }, [])
+  const [dismissed, setDismissed] = useState(
+    () => safeLocalGet(DISMISSED_KEY) === '1',
+  )
+  const [shownThisSession, setShownThisSession] = useState(
+    () => safeSessionGet(SHOWN_SESSION_KEY) === '1',
+  )
 
   const role = (session?.user as { role?: string } | undefined)?.role
   const isTargetRole = role ? TARGET_ROLES.has(role) : false

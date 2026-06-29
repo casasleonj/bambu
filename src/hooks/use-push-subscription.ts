@@ -33,7 +33,7 @@ function isPushSupported(): boolean {
 }
 
 async function fetchVapidPublicKey(): Promise<string | undefined> {
-  let publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+  const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
   if (publicKey) return publicKey
 
   const response = await fetch('/api/push/vapid-public-key')
@@ -69,7 +69,10 @@ async function fetchWithTimeout(
 
 export function usePushSubscription(): UsePushSubscriptionReturn {
   const [supported] = useState<boolean>(isPushSupported)
-  const [permission, setPermission] = useState<NotificationPermission | 'unknown'>('unknown')
+  const [permission, setPermission] = useState<NotificationPermission | 'unknown'>(() => {
+    if (typeof Notification === 'undefined') return 'unknown'
+    return Notification.permission
+  })
   const [subscribed, setSubscribed] = useState(false)
   const [loading, setLoading] = useState(false)
   const [recovering, setRecovering] = useState(false)
@@ -163,8 +166,6 @@ export function usePushSubscription(): UsePushSubscriptionReturn {
 
   useEffect(() => {
     if (!supported) return
-
-    setPermission(Notification.permission)
 
     const checkSubscription = async () => {
       try {
