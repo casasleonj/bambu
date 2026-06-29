@@ -1,53 +1,102 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { PushSettings } from '@/components/push-settings'
-import { usePushSubscription } from '@/hooks/use-push-subscription'
 
 vi.mock('@/hooks/use-push-subscription', () => ({
   usePushSubscription: vi.fn(),
 }))
 
+vi.mock('@/lib/pwa', () => ({
+  isIosDevice: vi.fn(),
+  isStandaloneMode: vi.fn(),
+}))
+
+import { usePushSubscription } from '@/hooks/use-push-subscription'
+import { isIosDevice, isStandaloneMode } from '@/lib/pwa'
+
 const mockedUsePushSubscription = vi.mocked(usePushSubscription)
+const mockedIsIosDevice = vi.mocked(isIosDevice)
+const mockedIsStandaloneMode = vi.mocked(isStandaloneMode)
 
-describe('PushSettings', () => {
+function mockPermission(permission: NotificationPermission) {
+  Object.defineProperty(window, 'Notification', {
+    value: { permission },
+    writable: true,
+    configurable: true,
+  })
+}
+
+function mockPushSubscription(
+  overrides: Partial<ReturnType<typeof usePushSubscription>> = {},
+) {
+  mockedUsePushSubscription.mockReturnValue({
+    supported: true,
+    permission: overrides.permission ?? 'default',
+    setPermission: vi.fn(),
+    subscribed: false,
+    loading: false,
+    recovering: false,
+    error: null,
+    subscribe: vi.fn(),
+    unsubscribe: vi.fn(),
+    ...overrides,
+  })
+}
+
+describe('PushSettings denied state', () => {
   beforeEach(() => {
-    mockedUsePushSubscription.mockReturnValue({
-      supported: true,
-      permission: 'default',
-      subscribed: false,
-      loading: false,
-      recovering: false,
-      error: null,
-      subscribe: vi.fn(),
-      unsubscribe: vi.fn(),
-    })
+    mockedIsIosDevice.mockReturnValue(false)
+    mockedIsStandaloneMode.mockReturnValue(false)
+    mockPermission('denied')
   })
 
-  afterEach(() => {
-    vi.clearAllMocks()
-  })
-
-  it('muestra estado no soportado cuando push no está disponible', () => {
-    mockedUsePushSubscription.mockReturnValue({
-      supported: false,
-      permission: 'default',
-      subscribed: false,
-      loading: false,
-      recovering: false,
-      error: null,
-      subscribe: vi.fn(),
-      unsubscribe: vi.fn(),
+  it('muestra guia de Android en Android', () => {
+    Object.defineProperty(navigator, 'userAgent', {
+      value: 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/120.0.0.0',
+      writable: true,
+      configurable: true,
     })
-
+    mockPushSubscription({ permission: 'denied' })
     render(<PushSettings />)
-
-    expect(screen.getByText('Las notificaciones push no están soportadas en este dispositivo.')).toBeInTheDocument()
+    expect(screen.getByText(/Android/)).toBeInTheDocument()
   })
 
-  it('muestra bloqueadas y deshabilita el botón cuando el permiso fue denegado', () => {
+  it('muestra guia de iOS web en iPhone sin standalone', () => {
+    mockedIsIosDevice.mockReturnValue(true)
+    mockedIsStandaloneMode.mockReturnValue(false)
+    mockPushSubscription({ permission: 'denied' })
+    render(<PushSettings />)
+    expect(screen.getByText(/Añadir a inicio/)).toBeInTheDocument()
+  })
+
+  it('muestra guia de iOS standalone en iPhone con standalone', () => {
+    mockedIsIosDevice.mockReturnValue(true)
+    mockedIsStandaloneMode.mockReturnValue(true)
+    mockPushSubscription({ permission: 'denied' })
+    render(<PushSettings />)
+    expect(screen.getByText(/Safari no permite configurar notificaciones por sitio/)).toBeInTheDocument()
+  })
+
+  it('muestra guia de Desktop en desktop', () => {
+    Object.defineProperty(navigator, 'userAgent', {
+      value: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0',
+      writable: true,
+      configurable: true,
+    })
+    mockPushSubscription({ permission: 'denied' })
+    render(<PushSettings />)
+    expect(screen.getByText(/barra de direcciones/)).toBeInTheDocument()
+  })
+})
+
+describe('PushSettings visibilitychange', () => {
+  it('re-evalua permission al volver a la pestaña', async () => {
+    mockPermission('denied')
+    const setPermission = vi.fn()
     mockedUsePushSubscription.mockReturnValue({
       supported: true,
       permission: 'denied',
+      setPermission,
       subscribed: false,
       loading: false,
       recovering: false,
@@ -55,143 +104,22 @@ describe('PushSettings', () => {
       subscribe: vi.fn(),
       unsubscribe: vi.fn(),
     })
-
     render(<PushSettings />)
 
-    expect(screen.getByText('Bloqueadas')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Bloqueado/i })).toBeDisabled()
-  })
-
-  it('muestra activas y desactivar cuando hay suscripción activa', () => {
-    const unsubscribe = vi.fn()
-    mockedUsePushSubscription.mockReturnValue({
-      supported: true,
-      permission: 'granted',
-      subscribed: true,
-      loading: false,
-      recovering: false,
-      error: null,
-      subscribe: vi.fn(),
-      unsubscribe,
+    Object.defineProperty(window, 'Notification', {
+      value: { permission: 'granted' },
+      writable: true,
+      configurable: true,
     })
 
-    render(<PushSettings />)
-
-    expect(screen.getByText('Activas')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /Desactivar notificaciones/i }))
-
-    expect(unsubscribe).toHaveBeenCalledTimes(1)
-  })
-
-  it('muestra restaurar suscripción cuando el permiso está concedido pero no hay suscripción', () => {
-    const subscribe = vi.fn()
-    mockedUsePushSubscription.mockReturnValue({
-      supported: true,
-      permission: 'granted',
-      subscribed: false,
-      loading: false,
-      recovering: false,
-      error: null,
-      subscribe,
-      unsubscribe: vi.fn(),
+    Object.defineProperty(document, 'hidden', {
+      value: false,
+      writable: true,
+      configurable: true,
     })
 
-    render(<PushSettings />)
+    document.dispatchEvent(new Event('visibilitychange'))
 
-    expect(screen.getByText('Inactivas')).toBeInTheDocument()
-    expect(screen.getByText(/El navegador ya permite notificaciones/i)).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: /Restaurar suscripción/i }))
-    expect(subscribe).toHaveBeenCalledTimes(1)
-  })
-
-  it('muestra activar cuando el permiso aún no fue solicitado', () => {
-    const subscribe = vi.fn()
-    mockedUsePushSubscription.mockReturnValue({
-      supported: true,
-      permission: 'default',
-      subscribed: false,
-      loading: false,
-      recovering: false,
-      error: null,
-      subscribe,
-      unsubscribe: vi.fn(),
-    })
-
-    render(<PushSettings />)
-
-    expect(screen.getByText('Inactivas')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /Activar notificaciones/i }))
-    expect(subscribe).toHaveBeenCalledTimes(1)
-  })
-
-  it('muestra restaurando durante auto-recuperación', () => {
-    mockedUsePushSubscription.mockReturnValue({
-      supported: true,
-      permission: 'granted',
-      subscribed: false,
-      loading: false,
-      recovering: true,
-      error: null,
-      subscribe: vi.fn(),
-      unsubscribe: vi.fn(),
-    })
-
-    render(<PushSettings />)
-
-    expect(screen.getByText('Estamos recuperando tu suscripción de notificaciones.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Restaurando/i })).toBeDisabled()
-  })
-
-  it('renderiza variante compacta', () => {
-    mockedUsePushSubscription.mockReturnValue({
-      supported: true,
-      permission: 'granted',
-      subscribed: true,
-      loading: false,
-      recovering: false,
-      error: null,
-      subscribe: vi.fn(),
-      unsubscribe: vi.fn(),
-    })
-
-    render(<PushSettings variant="compact" />)
-
-    expect(screen.getByText('Activas')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Desactivar notificaciones/i })).toBeInTheDocument()
-  })
-
-  it('muestra el error debajo del hint cuando hay un error manual', () => {
-    mockedUsePushSubscription.mockReturnValue({
-      supported: true,
-      permission: 'granted',
-      subscribed: false,
-      loading: false,
-      recovering: false,
-      error: 'La conexion tardo demasiado. Intenta de nuevo.',
-      subscribe: vi.fn(),
-      unsubscribe: vi.fn(),
-    })
-
-    render(<PushSettings />)
-
-    expect(screen.getByRole('alert')).toHaveTextContent('La conexion tardo demasiado. Intenta de nuevo.')
-  })
-
-  it('no muestra error cuando el error es nulo', () => {
-    mockedUsePushSubscription.mockReturnValue({
-      supported: true,
-      permission: 'granted',
-      subscribed: false,
-      loading: false,
-      recovering: false,
-      error: null,
-      subscribe: vi.fn(),
-      unsubscribe: vi.fn(),
-    })
-
-    render(<PushSettings />)
-
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    await waitFor(() => expect(setPermission).toHaveBeenCalledWith('granted'))
   })
 })

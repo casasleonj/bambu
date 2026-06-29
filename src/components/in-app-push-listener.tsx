@@ -15,7 +15,7 @@ export function InAppPushListener() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return
-    if (!('serviceWorker' in navigator)) return
+    if (!navigator.serviceWorker) return
 
     let cancelled = false
     let handler: ((event: MessageEvent) => void) | null = null
