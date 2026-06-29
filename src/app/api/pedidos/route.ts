@@ -205,8 +205,8 @@ export async function POST(request: NextRequest) {
         direccion: actualizarCliente.direccion,
         barrio: actualizarCliente.barrio,
       } : undefined,
-      createdById: authResult.user?.id,
-      createdByRole: authResult.user?.role,
+      createdById: authResult.user?.id ?? undefined,
+      createdByRole: authResult.user?.role ?? undefined,
     })
 
     if (!result.deduped) {
