@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 import { getSessionLimit } from '@/lib/session-limits'
 import { executeSerializableWithRetry } from '@/lib/serializable'
 import { logger } from '@/lib/logger'
@@ -156,6 +157,16 @@ export async function sessionExists(sessionId: string): Promise<boolean> {
     if (!session) return false
     return session.expiresAt > new Date()
   } catch (error) {
+    // Fail-open on P2021 (table missing). This prevents a schema drift
+    // (e.g. migration not applied) from locking every user out of the app.
+    // Other errors still invalidate the session.
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2021') {
+      logger.warn(
+        { sessionId },
+        'SesionActiva table missing (P2021); treating session as valid to avoid lockout',
+      )
+      return true
+    }
     logger.error(
       { err: error instanceof Error ? error.message : 'Unknown error', sessionId },
       'Error checking session existence',
