@@ -141,7 +141,7 @@ test.describe('A. Base de caja', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 test.describe('B. Transición Cliente → Pedido', () => {
-  test('B1: Botón "Crear pedido" desde clientes navega a /pedidos?cliente=ID', async ({ page }) => {
+  test('B1: Botón "Crear pedido" desde clientes navega a /pedidos?clienteId=ID', async ({ page }) => {
     await page.goto(`${BASE}/login`)
     await page.fill('input[placeholder="Ingrese usuario"]', 'admin')
     await page.fill('input[placeholder="Ingrese contraseña"]', 'admin123')
@@ -187,13 +187,13 @@ test.describe('B. Transición Cliente → Pedido', () => {
     }
 
     const href = await crearPedidoLink.getAttribute('href')
-    if (href && !href.includes('cliente=')) {
+    if (href && !href.includes('clienteId=')) {
       addFinding({
         severity: 'P0',
         module: 'clientes',
         title: 'Link "Crear pedido" no pasa clienteId al destino',
-        description: `href=${href}. No incluye el query param "cliente=" que el código espera`,
-        expected: 'href contiene cliente=ID',
+        description: `href=${href}. No incluye el query param "clienteId=" que el código espera`,
+        expected: 'href contiene clienteId=ID',
         observed: href,
         userComplaint: 'Queja: "crear pedido desde cliente" no funciona',
       })
@@ -205,13 +205,13 @@ test.describe('B. Transición Cliente → Pedido', () => {
     await shoot(page, 'B1-despues-click-crear-pedido')
 
     const url = page.url()
-    if (!url.includes('cliente=')) {
+    if (!url.includes('clienteId=')) {
       addFinding({
         severity: 'P0',
         module: 'clientes',
-        title: 'Click en "Crear pedido" no lleva a URL con cliente=ID',
+        title: 'Click en "Crear pedido" no lleva a URL con clienteId=ID',
         description: `URL resultante: ${url}. El botón no pasa el clienteId al destino.`,
-        expected: 'URL contiene ?cliente=ID',
+        expected: 'URL contiene ?clienteId=ID',
         observed: url,
         userComplaint: 'Queja: "crear pedido desde cliente" no funciona',
       })
@@ -231,11 +231,10 @@ test.describe('B. Transición Cliente → Pedido', () => {
     }
   })
 
-  test('B2: Mismatches en query param: cliente vs clienteId', async ({ page }) => {
-    // Comparar lo que el código cliente espera vs lo que el link manda
-    // cliente-table.tsx línea 339 manda /pedidos?cliente=ID
-    // pedidos-all-contexts.spec.ts usa ?clienteId=ID
-    // → Posible bug
+  test('B2: Query param unificado a clienteId', async ({ page }) => {
+    // Después del fix, ?clienteId= es el contrato canónico para crear pedido desde cliente.
+    // cliente-table.tsx y clientes-client/index.tsx mandan /pedidos?clienteId=ID
+    // El modal opener y el filtro leen ?clienteId=ID.
     await page.goto(`${BASE}/login`)
     await page.fill('input[placeholder="Ingrese usuario"]', 'admin')
     await page.fill('input[placeholder="Ingrese contraseña"]', 'admin123')
@@ -243,25 +242,20 @@ test.describe('B. Transición Cliente → Pedido', () => {
     await page.waitForURL(/\/dashboard/, { timeout: 20000 })
     await page.waitForTimeout(2000)
 
-    // Probar /pedidos?cliente=fake-id
-    await page.goto(`${BASE}/pedidos?cliente=fake-test-id`)
-    await page.waitForTimeout(3000)
-    await shoot(page, 'B2-pedidos-cliente-fake')
-
-    // Probar /pedidos?clienteId=fake-id
+    // Probar /pedidos?clienteId=fake-id (caso canónico)
     await page.goto(`${BASE}/pedidos?clienteId=fake-test-id`)
     await page.waitForTimeout(3000)
     await shoot(page, 'B2-pedidos-clienteId-fake')
 
-    // Verificar que el segundo caso muestra un mensaje de "cliente no existe"
+    // Verificar que no hay error de UI al navegar con clienteId
     const bodyText1 = (await page.locator('body').textContent()) ?? ''
     const hasNoExistMsg = bodyText1.includes('no existe') || bodyText1.includes('No se encontró') || bodyText1.includes('filtrar')
     addFinding({
       severity: 'P2',
       module: 'clientes',
-      title: 'Verificar comportamiento con clienteId vs cliente en query',
-      description: `Probados: /pedidos?cliente=fake-id y /pedidos?clienteId=fake-id. El código en cliente-table.tsx usa "cliente=" pero el filtro podría esperar "clienteId="`,
-      observed: `URLs navegadas correctamente. Body length: ${bodyText1.length}`,
+      title: 'Verificar comportamiento con clienteId en query',
+      description: `Probado: /pedidos?clienteId=fake-id. El código ahora usa consistentemente "clienteId=" para el flujo cliente→pedido.`,
+      observed: `URL navegada correctamente. Body length: ${bodyText1.length}`,
     })
   })
 })

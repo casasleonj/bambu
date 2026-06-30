@@ -21,6 +21,7 @@ import {
   createPedidoReal,
 } from './00-fixtures'
 
+test.describe.configure({ mode: 'serial' })
 test.describe('09: Pedidos desde clientes — UI real', () => {
   test('01: Link "Crear Pedido" en /clientes navega a /pedidos?clienteId=', async ({ page }) => {
     cleanTestState()
@@ -65,14 +66,15 @@ test.describe('09: Pedidos desde clientes — UI real', () => {
     await page.waitForLoadState('domcontentloaded')
     await page.waitForTimeout(1500)
 
-    // Click en "Acciones rápidas" del cliente
-    const quickActions = page.locator('[aria-label="Acciones rápidas"]')
+    // Click en "Acciones rápidas" de la fila del cliente creado
+    const row = page.locator('tr, [role="row"]').filter({ hasText: c.cliente?.nombre || c.nombre })
+    const quickActions = row.locator('[aria-label="Acciones rápidas"]')
     const count = await quickActions.count()
     if (count > 0) {
       await quickActions.first().click()
       await page.waitForTimeout(500)
-      // El link "Crear pedido" debe aparecer en el menú
-      const createLink = page.locator('a:has-text("Crear pedido")').first()
+      // El link "Crear pedido" debe aparecer en el menú (dentro de la fila)
+      const createLink = row.locator('a:has-text("Crear pedido")').first()
       if (await createLink.count() > 0) {
         await createLink.click()
         await page.waitForURL(/\/pedidos\?clienteId=/, { timeout: 5000 })
@@ -211,5 +213,44 @@ test.describe('09: Pedidos desde clientes — UI real', () => {
     await page.waitForLoadState('domcontentloaded')
     await page.waitForTimeout(2000)
     await expect(page).toHaveURL(/\/clientes/)
+  })
+
+  test('07: Modal de nuevo pedido desde /clientes NO se desmonta durante refetch', async ({ page }) => {
+    cleanTestState()
+    await fullLoginRealistic(page, 'admin', 50_000)
+    const c = await createClienteReal(page, {
+      nombre: `Flicker Test ${Date.now()}`,
+      telefono: `3${String(Date.now()).slice(-9)}`,
+    })
+    const clienteId = c.cliente?.id || c.id
+
+    // 1) Navegar a /clientes con openCliente=ID
+    await page.goto(`/clientes?openCliente=${clienteId}`)
+    await page.waitForLoadState('domcontentloaded')
+    await page.waitForTimeout(2000)
+
+    // 2) Click "Crear Pedido" -> abre modal en /pedidos
+    await page.locator('a:has-text("Crear Pedido")').first().click()
+    await page.waitForURL(/\/pedidos\?clienteId=/, { timeout: 5000 })
+
+    // 3) Esperar a que el modal esté visible
+    const modalHeader = page.locator('h2:has-text("Nuevo Pedido")')
+    await expect(modalHeader).toBeVisible({ timeout: 3000 })
+
+    // 4) Forzar varios refetches vía visibilitychange (simula polling + realtime)
+    //    y verificar que el modal SIGUE visible
+    for (let i = 0; i < 3; i++) {
+      await page.evaluate(() => {
+        document.dispatchEvent(new Event('visibilitychange'))
+      })
+      await page.waitForTimeout(200)
+    }
+
+    // 5) El modal debe seguir visible sin haberse desmontado nunca
+    await expect(modalHeader).toBeVisible()
+
+    // 6) Verificar que el cliente sigue preseleccionado
+    const hasCliente = await page.locator('text=/Cliente/').first().isVisible()
+    expect(hasCliente).toBeTruthy()
   })
 })

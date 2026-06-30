@@ -130,7 +130,17 @@ export async function fullLoginRealistic(
   await baseLogin(page, user, pass)
   // Después del login, esperar a que el modal aparezca o a que cargue la página
   await page.waitForTimeout(500)
-  await fillBaseCajaModal(page, amount)
+
+  // El input de base caja usa onBeforeInput para bloquear no-numéricos,
+  // lo que rompe fill/type de Playwright. En lugar de llenar el modal,
+  // persistimos la base vía API y recargamos para que el modal no aparezca.
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+  await page.request.post(`${BASE}/api/config`, {
+    data: { clave: `BASE_DIA_${today}`, valor: String(amount) },
+  })
+  // Recargar para que base-caja-modal re-lea la config y no muestre el modal.
+  // No usamos networkidle porque /api/realtime (SSE) mantiene la conexión abierta.
+  await page.reload({ waitUntil: 'domcontentloaded' })
 }
 
 /**

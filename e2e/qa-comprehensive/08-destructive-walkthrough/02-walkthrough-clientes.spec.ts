@@ -351,13 +351,13 @@ test('admin desktop: "Crear pedido" desde cliente pre-llena el form', async ({ p
   }
 
   const href = await crearPedido.getAttribute('href').catch(() => null)
-  if (href && !href.includes('cliente=') && !href.includes('clienteId=')) {
+  if (href && !href.includes('clienteId=')) {
     addFinding({
       severity: 'P0',
       module: 'clientes',
       title: '"Crear pedido" no pasa clienteId al destino',
-      description: `href=${href} no contiene cliente= ni clienteId=`,
-      expected: 'URL contiene ?cliente=ID o ?clienteId=ID',
+      description: `href=${href} no contiene clienteId=`,
+      expected: 'URL contiene ?clienteId=ID',
       observed: href,
     })
   }

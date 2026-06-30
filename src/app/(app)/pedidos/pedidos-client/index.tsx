@@ -205,11 +205,14 @@ export function PedidosClient() {
 
   // Carga inicial
   useEffect(() => {
-    (async () => {
+    let cancelled = false
+    ;(async () => {
       await fetchPedidos()
+      if (cancelled) return
       const [clientesList] = await Promise.all([fetchClientes(), fetchEmbarques()])
+      if (cancelled) return
 
-      const clienteId = searchParams.get('cliente')
+      const clienteId = searchParams.get('clienteId')
       if (clienteId) {
         const cliente = clientesList.find((c: Cliente) => c.id === clienteId)
         if (cliente) {
@@ -229,10 +232,11 @@ export function PedidosClient() {
           setModalKey(k => k + 1)
         }
         const params = new URLSearchParams(searchParams.toString())
-        params.delete('cliente')
+        params.delete('clienteId')
         router.replace(`?${params.toString()}`, { scroll: false })
       }
     })()
+    return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -785,7 +789,7 @@ export function PedidosClient() {
     )
   }
 
-  if (loading) {
+  if (loading && pedidos.length === 0 && !showModal) {
     return <SkeletonPage hasStats hasFilters cardCount={4} />
   }
 
