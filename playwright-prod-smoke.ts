@@ -2,7 +2,7 @@ import { chromium, Browser, Page } from 'playwright';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const BASE_URL = 'https://bambudemomultimodelo.vercel.app';
+const BASE_URL = 'https://portal.aguabambu.com';
 const SCREENSHOTS_DIR = '/tmp/playwright-prod-smoke-screenshots';
 
 interface RoleConfig {

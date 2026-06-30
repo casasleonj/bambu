@@ -9,7 +9,7 @@ const spec = {
   },
   servers: [
     { url: 'http://localhost:3000', description: 'Desarrollo' },
-    { url: 'https://agua-bambu.vercel.app', description: 'Producción' },
+    { url: 'https://portal.aguabambu.com', description: 'Producción' },
   ],
   security: [{ bearerAuth: [] }],
   paths: {
