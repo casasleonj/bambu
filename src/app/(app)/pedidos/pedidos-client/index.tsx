@@ -92,6 +92,7 @@ export function PedidosClient() {
   const search = searchParams.get('search') || ''
   const clienteIdFromUrl = searchParams.get('clienteId')
   const openPedidoParam = searchParams.get('openPedido')
+  const allFromUrl = searchParams.get('all') === 'true'
 
   // Filtros derivados de la URL (fuente de verdad)
   const pedidoFilterParams = useMemo(() => ({
@@ -105,10 +106,11 @@ export function PedidosClient() {
     clienteId: clienteIdFromUrl || undefined,
   }), [desdeUrl, hastaUrl, filtroTipo, filtroOrigen, filtroEstadoEntrega, filtroEstadoPago, search, clienteIdFromUrl])
 
-  // Use pedidos hook for data fetching
+  // Use pedidos hook for data fetching. `all` disables the server's
+  // default-to-today fallback so "Limpiar" really muestra todo el histórico.
   const { pedidos: pedidosRaw, loading, error: fetchError, refetch } = usePedidos(
     pedidoFilterParams,
-    { autoFetch: false },
+    { autoFetch: false, all: allFromUrl },
   )
   const pedidos = pedidosRaw as Pedido[]
 
@@ -805,7 +807,11 @@ export function PedidosClient() {
 
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
           <h1 className="text-2xl font-bold text-gray-800">
-            {activeTab === 'fiados' ? 'Fiados' : activeTab === 'alertas' ? 'Alertas' : getTituloFecha(desdeUrl, hastaUrl)}
+            {activeTab === 'fiados'
+              ? 'Fiados'
+              : activeTab === 'alertas'
+                ? 'Alertas'
+                : getTituloFecha(desdeUrl, hastaUrl, allFromUrl)}
           </h1>
         </div>
 
@@ -1578,13 +1584,14 @@ export function PedidosClient() {
   )
 }
 
-function getTituloFecha(desde: string | null, hasta: string | null): string {
+function getTituloFecha(desde: string | null, hasta: string | null, all: boolean): string {
   const presets = {
     hoy: getPresetDate('hoy'),
     ayer: getPresetDate('ayer'),
     manana: getPresetDate('manana'),
   }
 
+  if (all) return 'Todos los Pedidos'
   if (!desde && !hasta) return 'Pedidos'
   if (presets.hoy && desde === presets.hoy.desde && hasta === presets.hoy.hasta) return 'Pedidos de Hoy'
   if (presets.ayer && desde === presets.ayer.desde && hasta === presets.ayer.hasta) return 'Pedidos de Ayer'
