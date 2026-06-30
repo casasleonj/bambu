@@ -697,6 +697,21 @@ export function PedidosClient() {
     setSelectedPedido(pedido)
     setShowDetailModal(true)
 
+    // Lazy-load factura for the detail modal (issue 3). The list does not
+    // eagerly fetch it, so we fetch it when the user opens a pedido.
+    try {
+      const res = await fetch(`/api/pedidos/${pedido.id}`)
+      if (res.ok) {
+        const data = await res.json()
+        const pedidoConFactura = data.pedido as Pedido | undefined
+        if (pedidoConFactura && Array.isArray(pedidoConFactura.items)) {
+          setSelectedPedido(pedidoConFactura)
+        }
+      }
+    } catch {
+      // Keep showing the list copy if the detail fetch fails.
+    }
+
     // Fetch current prices for comparison
     const items = pedido.items && pedido.items.length > 0
       ? pedido.items.filter(i => i.cantPedido > 0).map(i => ({ codigo: i.producto, cantidad: i.cantPedido }))

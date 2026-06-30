@@ -56,6 +56,20 @@ interface PrismaPedido {
     metodo: string
     monto: number | { toNumber: () => number }
   }>
+  factura?: {
+    id: string
+    numero: string
+    estado: string
+    total: number | { toNumber: () => number }
+    saldo: number | { toNumber: () => number }
+    abonos: Array<{
+      id: string
+      numero: string
+      monto: number | { toNumber: () => number }
+      metodoPago: string
+      fecha: Date
+    }>
+  } | null
 }
 
 function toNumber(value: number | { toNumber: () => number }): number {

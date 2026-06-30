@@ -5,10 +5,49 @@
  */
 
 import { Pedido } from '../../domain/entities/Pedido'
-import type { PedidoResumenDTO } from '../dto'
+import type { FacturaDTOSnapshot, PedidoResumenDTO } from '../dto'
+
+type PrismaFacturaRaw = {
+  id: string
+  numero: string
+  estado: string
+  total: number | { toNumber: () => number }
+  saldo: number | { toNumber: () => number }
+  abonos: Array<{
+    id: string
+    numero: string
+    monto: number | { toNumber: () => number }
+    metodoPago: string
+    fecha: Date
+  }>
+}
+
+function toDecimal(value: number | { toNumber: () => number }): number {
+  return typeof value === 'number' ? value : value.toNumber()
+}
+
+function mapFacturaToDTO(raw: PrismaFacturaRaw): FacturaDTOSnapshot {
+  return {
+    id: raw.id,
+    numero: raw.numero,
+    estado: raw.estado,
+    total: toDecimal(raw.total),
+    saldo: toDecimal(raw.saldo),
+    abonos: raw.abonos.map(a => ({
+      id: a.id,
+      numero: a.numero,
+      monto: toDecimal(a.monto),
+      metodoPago: a.metodoPago,
+      fecha: a.fecha.toISOString(),
+    })),
+  }
+}
 
 export class PedidoDTOMapper {
-  static toResumen(pedido: Pedido): PedidoResumenDTO {
+  static toResumen(
+    pedido: Pedido,
+    raw?: { factura?: PrismaFacturaRaw | null },
+  ): PedidoResumenDTO {
     const estadoEntrega = pedido.estadoEntrega.get()
     const legacy = pedido.toLegacyFields()
     return {
@@ -18,6 +57,7 @@ export class PedidoDTOMapper {
       negocioId: pedido.negocioId,
       embarqueId: pedido.embarqueId ?? null,
       canal: pedido.canal.get(),
+      tipo: pedido.canal.get() === 'PUNTO' ? 'PUNTO' : 'ENVIO',
       origen: pedido.origen.get(),
       estado: estadoEntrega, // Backward compat: legacy 'estado' mirrors estadoEntrega
       estadoEntrega,
@@ -67,6 +107,7 @@ export class PedidoDTOMapper {
         metodo: p.metodo,
         monto: p.monto,
       })),
+      factura: raw?.factura ? mapFacturaToDTO(raw.factura) : null,
     }
   }
 }

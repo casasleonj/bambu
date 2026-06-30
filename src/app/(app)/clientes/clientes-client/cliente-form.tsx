@@ -221,7 +221,7 @@ export function ClienteForm({
                 value={formData.limitePedidosFiados || ''}
                 onChange={(e) => onFormDataChange({ ...formData, limitePedidosFiados: e.target.value ? parseInt(e.target.value) : undefined })}
                 className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
-                placeholder="3 (default)"
+                placeholder="Ej: 3"
               />
               <p className="text-xs text-gray-400 mt-1">Máximo de pedidos con saldo pendiente antes de bloquear nuevos pedidos. Deja vacío para usar el límite global.</p>
             </div>

@@ -26,12 +26,13 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const hasAccess = await requireOwnership('pedido', id, getUserFromSession(authResult))
   if (!hasAccess) return apiError('Forbidden', 403)
   try {
-    // Simple read — delegate to repository via module composition
+    // Detail read includes factura lazily. This projection is specific to
+    // Prisma and is therefore implemented in PrismaPedidoRepository.
     const { PrismaPedidoRepository } = await import('@/modules/pedidos/infrastructure/repositories/PrismaPedidoRepository')
     const repo = new PrismaPedidoRepository()
-    const pedido = await repo.findById(PedidoId.from(id))
-    if (!pedido) return apiError('Not found', 404)
-    return apiSuccess({ pedido: PedidoDTOMapper.toResumen(pedido) })
+    const found = await repo.findByIdWithFactura(PedidoId.from(id))
+    if (!found) return apiError('Not found', 404)
+    return apiSuccess({ pedido: PedidoDTOMapper.toResumen(found.pedido, { factura: found.factura }) })
   } catch (error) {
     return apiError('Error', 500)
   }

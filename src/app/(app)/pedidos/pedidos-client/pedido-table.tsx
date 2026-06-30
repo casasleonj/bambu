@@ -123,7 +123,7 @@ function DesktopRow({
         <div className="font-semibold text-gray-800"><MoneyDisplay value={Number(pedido.total)} userRole={userRole} /></div>
       </td>
       <td className="px-4 py-3 text-right">
-        {Number(pedido.saldo) > 0 ? (
+        {fiado ? (
           <span className="text-sm font-semibold text-red-600"><MoneyDisplay value={Number(pedido.saldo)} userRole={userRole} /></span>
         ) : (
           <span className="text-xs text-green-600 font-medium">✓</span>
@@ -241,7 +241,7 @@ function MobileCard({
         </div>
         <div className="text-right ml-2">
           <p className="font-bold text-gray-800 text-sm"><MoneyDisplay value={Number(pedido.total)} userRole={userRole} /></p>
-          {Number(pedido.saldo) > 0 ? (
+          {fiado ? (
             <p className="text-xs text-red-500 font-medium">Debe: <MoneyDisplay value={Number(pedido.saldo)} userRole={userRole} /></p>
           ) : (
             <p className="text-xs text-green-600 font-medium">Pagado</p>

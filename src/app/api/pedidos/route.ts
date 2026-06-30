@@ -27,6 +27,10 @@ export async function GET(request: NextRequest) {
     const hasta = searchParams.get('hasta')
     const all = searchParams.get('all')
     const clienteFilter = searchParams.get('clienteId')
+    const estadoEntregaFilter = searchParams.get('estadoEntrega')
+    const estadoPagoFilter = searchParams.get('estadoPago')
+    const origenFilter = searchParams.get('origen')
+    const tipoFilter = searchParams.get('tipo')
 
     // Build filter for use case
     const filter: Record<string, unknown> = {}
@@ -66,6 +70,18 @@ export async function GET(request: NextRequest) {
     if (clienteFilter) {
       filter.clienteId = clienteFilter
     }
+    if (estadoEntregaFilter) {
+      filter.estadoEntrega = estadoEntregaFilter
+    }
+    if (estadoPagoFilter) {
+      filter.estadoPago = estadoPagoFilter
+    }
+    if (origenFilter) {
+      filter.origen = origenFilter
+    }
+    if (tipoFilter) {
+      filter.tipo = tipoFilter.split(',').map(t => t.trim()).filter(Boolean)
+    }
 
     const result = await listarPedidosUseCase.execute({
       ...filter,
@@ -75,36 +91,50 @@ export async function GET(request: NextRequest) {
     })
 
     // NEGOCIO COMPATIBILITY: enrich with legacy fields
+    // FIX N+1: batch-fetch clientes and negocios in two queries instead of
+    // one findUnique per pedido.
     const { prisma } = await import('@/lib/prisma')
-    const enriched = await Promise.all(
-      result.pedidos.map(async (p) => {
-        const raw = await prisma.pedido.findUnique({
-          where: { id: p.id },
-          include: {
-            cliente: { include: { ruta: { select: { nombre: true } } } },
-            negocio: { include: { ruta: { select: { nombre: true } } } },
-          },
-        })
-        const nombreNegocio = raw?.negocio?.nombre || raw?.cliente?.nombreNegocio || null
-        const direccion = raw?.negocio?.direccion ?? raw?.cliente?.direccion
-        const barrio = raw?.negocio?.barrio ?? raw?.cliente?.barrio
-        const horaApertura = raw?.negocio?.horaApertura ?? raw?.cliente?.horaApertura
-        const rutaNombre = raw?.negocio?.ruta?.nombre || raw?.cliente?.ruta?.nombre
-
-        return {
-          ...p,
-          nombreCli: p.clienteId === 'CONSUMIDOR_FINAL' ? 'Consumidor Final' : (raw?.cliente?.nombre || 'Desconocido'),
-          apellidoCli: raw?.cliente?.apellido || null,
-          telefonoCli: raw?.cliente?.telefono || '',
-          zonaCli: direccion || '',
-          barrioCli: barrio || '',
-          nombreNegocioCli: nombreNegocio,
-          horaAperturaCli: horaApertura || null,
-          rutaNombre,
-          fecha: p.fecha,
-        }
+    const clienteIds = [...new Set(result.pedidos.map(p => p.clienteId))]
+    const negocioIds = [
+      ...new Set(result.pedidos.map(p => p.negocioId).filter((id): id is string => Boolean(id))),
+    ]
+    const [clientes, negocios] = await Promise.all([
+      prisma.cliente.findMany({
+        where: { id: { in: clienteIds } },
+        include: { ruta: { select: { nombre: true } } },
       }),
-    )
+      negocioIds.length > 0
+        ? prisma.negocio.findMany({
+            where: { id: { in: negocioIds } },
+            include: { ruta: { select: { nombre: true } } },
+          })
+        : Promise.resolve([]),
+    ])
+    const clienteById = new Map(clientes.map(c => [c.id, c]))
+    const negocioById = new Map(negocios.map(n => [n.id, n]))
+
+    const enriched = result.pedidos.map(p => {
+      const cliente = clienteById.get(p.clienteId)
+      const negocio = p.negocioId ? negocioById.get(p.negocioId) : undefined
+      const nombreNegocio = negocio?.nombre || cliente?.nombreNegocio || null
+      const direccion = negocio?.direccion ?? cliente?.direccion
+      const barrio = negocio?.barrio ?? cliente?.barrio
+      const horaApertura = negocio?.horaApertura ?? cliente?.horaApertura
+      const rutaNombre = negocio?.ruta?.nombre || cliente?.ruta?.nombre
+
+      return {
+        ...p,
+        nombreCli: p.clienteId === 'CONSUMIDOR_FINAL' ? 'Consumidor Final' : (cliente?.nombre || 'Desconocido'),
+        apellidoCli: cliente?.apellido || null,
+        telefonoCli: cliente?.telefono || '',
+        zonaCli: direccion || '',
+        barrioCli: barrio || '',
+        nombreNegocioCli: nombreNegocio,
+        horaAperturaCli: horaApertura || null,
+        rutaNombre,
+        fecha: p.fecha,
+      }
+    })
 
     return apiSuccess(
       pagination.all

@@ -79,3 +79,15 @@ describe('F-N3: el GET NO usa Serializable (no es necesario, es read-only)', () 
     expect(getSection).not.toMatch(/executeSerializableWithRetry/)
   })
 })
+
+describe('Issue cliente limitePedidosFiados', () => {
+  it('POST persiste limitePedidosFiados en tx.cliente.create', () => {
+    const postSection = source.split('export async function POST')[1] || ''
+    expect(postSection).toMatch(/limitePedidosFiados:\s*parsed\.data\.limitePedidosFiados\s*\?\?\s*null/)
+  })
+
+  it('POST devuelve limitePedidosFiados en el select de respuesta', () => {
+    const postSection = source.split('export async function POST')[1] || ''
+    expect(postSection).toMatch(/limitePedidosFiados:\s*true/)
+  })
+})

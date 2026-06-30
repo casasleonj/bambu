@@ -269,6 +269,7 @@ export async function POST(request: NextRequest) {
             // cron job.
             preciosEspeciales: parsed.data.preciosEspeciales,
             notas: parsed.data.notas,
+            limitePedidosFiados: parsed.data.limitePedidosFiados ?? null,
             offlineId: parsed.data.offlineId ?? null,
           },
           select: {
@@ -285,6 +286,7 @@ export async function POST(request: NextRequest) {
             offlineId: true,
             nombreNegocio: true,
             tipoNegocio: true,
+            limitePedidosFiados: true,
           },
         })
 
