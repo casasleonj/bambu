@@ -21,6 +21,8 @@ interface InitialData {
   trabajadores: Trabajador[]
   rutas: Ruta[]
   pedidos: Pedido[]
+  stockEstimado: { agua: number; hielo: number } | null
+  stockBajo: boolean
 }
 
 interface EmbarquesClientProps {
@@ -43,16 +45,17 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
   const [dateRange, setDateRange] = useState<{ desde: string | null; hasta: string | null }>({ desde: null, hasta: null })
   const [filtroEstado, setFiltroEstado] = useState('')
   const [activeTab, setActiveTab] = useState<'embarques' | 'stats'>('embarques')
-  const [stockEstimado, setStockEstimado] = useState<{ agua: number; hielo: number } | null>(null)
+  const [stockEstimado, setStockEstimado] = useState<{ agua: number; hielo: number } | null>(initialData?.stockEstimado || null)
   const [showStockModal, setShowStockModal] = useState(false)
   const [estimadoAgua, setEstimadoAgua] = useState("")
   const [estimadoHielo, setEstimadoHielo] = useState("")
   const [estimadoBotellon, setEstimadoBotellon] = useState("")
   const [guardandoEstimado, setGuardandoEstimado] = useState(false)
   const [bannerDismissed, setBannerDismissed] = useState(false)
-  const [stockBajo, setStockBajo] = useState(false)
+  const [stockBajo, setStockBajo] = useState(initialData?.stockBajo || false)
   const { confirm, modal } = useConfirm()
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const isFirstRun = useRef(true)
 
   const fetchData = useCallback(async () => {
     try {
@@ -98,6 +101,10 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
   }, [dateRange, filtroEstado])
 
   useEffect(() => {
+    if (isFirstRun.current) {
+      isFirstRun.current = false
+      return
+    }
     fetchData()
   }, [fetchData])
 
@@ -172,7 +179,10 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
   const handleDateChange = useCallback((desde: string | null, hasta: string | null) => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
-      setDateRange({ desde, hasta })
+      setDateRange(prev => {
+        if (prev.desde === desde && prev.hasta === hasta) return prev
+        return { desde, hasta }
+      })
     }, 300)
   }, [])
 
