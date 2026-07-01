@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { filtrarPorPeriodo, PERIODOS, type PeriodoFiltro } from './date-utils'
 import type { Pedido, Cliente } from './types'
 import { getEstadoFiados, resolverLimiteFiados } from '@/lib/pedido-utils'
+import { LIMITE_FIADOS_DEFAULT } from '@/lib/constants'
 import { fetchResilient } from '@/lib/fetch-resilient'
 import { MoneyDisplay } from '@/components/money-display'
 
@@ -300,7 +301,7 @@ export function FiadosTable({ pedidos, clientes, limiteGlobal, onPedidosChange, 
                     </td>
                     <td className="px-4 py-3 text-center">
                       {(() => {
-                        const limite = resolverLimiteFiados(row, String(limiteGlobal ?? 3))
+                        const limite = resolverLimiteFiados(row, String(limiteGlobal ?? LIMITE_FIADOS_DEFAULT))
                         const estado = getEstadoFiados(row.pedidosFiados, limite)
                         const badgeColor = estado.nivel === 'limite'
                           ? 'bg-red-100 text-red-700 border-red-200'
@@ -428,7 +429,7 @@ export function FiadosTable({ pedidos, clientes, limiteGlobal, onPedidosChange, 
                 <div className="text-right">
                   <p className="font-bold text-red-600"><MoneyDisplay value={row.deudaTotal} userRole={userRole} /></p>
                   {(() => {
-                    const limite = resolverLimiteFiados(row, String(limiteGlobal ?? 3))
+                    const limite = resolverLimiteFiados(row, String(limiteGlobal ?? LIMITE_FIADOS_DEFAULT))
                     const estado = getEstadoFiados(row.pedidosFiados, limite)
                     const badgeColor = estado.nivel === 'limite'
                       ? 'text-red-600'

@@ -153,7 +153,7 @@ const CONFIGS: Array<{ clave: string; valor: string; descripcion?: string }> = [
   { clave: 'DIAS_ALERTA_NO_VERIFICADO', valor: '15', descripcion: 'Días para alertar clientes no verificados' },
   { clave: 'DIAS_VENCIMIENTO_PROMESA', valor: '2', descripcion: 'Días antes de marcar promesa de pago vencida' },
   { clave: 'MAX_PEDIDOS_DIA_ALERTA', valor: '2', descripcion: 'Máx pedidos/día antes de alerta' },
-  { clave: 'LIMITE_PEDIDOS_FIADOS_DEFAULT', valor: '3', descripcion: 'Límite default de pedidos fiados por cliente' },
+  { clave: 'LIMITE_PEDIDOS_FIADOS_DEFAULT', valor: '2', descripcion: 'Límite default de pedidos fiados por cliente (debe matchear LIMITE_FIADOS_DEFAULT en src/lib/constants.ts)' },
 
   // Umbrales de alertas antifraude (Bloque: Sistema de Alertas)
   { clave: 'MULTIPLICADOR_MONTO_ANOMALO', valor: '2', descripcion: 'Multiplicador sobre mediana para disparar alerta MONTO_ANOMALO' },

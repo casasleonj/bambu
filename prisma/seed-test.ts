@@ -173,7 +173,7 @@ async function main() {
     { clave: 'BASE_DIA', valor: '100000' },
     { clave: 'empresa_nombre', valor: 'Agua Bambú SAS' },
     { clave: 'empresa_nit', valor: '900.123.456-7' },
-    { clave: 'LIMITE_PEDIDOS_FIADOS_DEFAULT', valor: '3' },
+    { clave: 'LIMITE_PEDIDOS_FIADOS_DEFAULT', valor: '2' },
   ]
   for (const cfg of configs) {
     await prisma.config.upsert({ where: { clave: cfg.clave }, update: {}, create: cfg })

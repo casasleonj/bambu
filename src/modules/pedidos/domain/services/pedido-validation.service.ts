@@ -5,6 +5,8 @@
  * No database access.
  */
 
+import { LIMITE_FIADOS_DEFAULT } from '@/lib/constants'
+
 export interface ClienteResumen {
   id: string
   bloqueado: boolean
@@ -25,7 +27,7 @@ export interface PedidoResumen {
 export function puedeCrearPedido(
   cliente: ClienteResumen,
   pedidosPendientes: PedidoResumen[],
-  limite: number = 3,
+  limite: number = LIMITE_FIADOS_DEFAULT,
 ): string | null {
   if (cliente.id === 'CONSUMIDOR_FINAL') return null
 
@@ -42,12 +44,12 @@ export function puedeCrearPedido(
 
 /**
  * Resolves the effective fiado limit for a customer.
- * Priority: cliente.limitePedidosFiados > config global > default (3)
+ * Priority: cliente.limitePedidosFiados > config global > default (2)
  */
 export function resolverLimiteFiados(
   cliente: { limitePedidosFiados?: number | null },
   configValor: string | null,
-  defaultValue = 3,
+  defaultValue = LIMITE_FIADOS_DEFAULT,
 ): number {
   if (cliente.limitePedidosFiados != null && cliente.limitePedidosFiados > 0) {
     return cliente.limitePedidosFiados
@@ -64,7 +66,7 @@ export function resolverLimiteFiados(
  */
 export function getEstadoFiados(
   pedidosPendientes: PedidoResumen[],
-  limite: number = 3,
+  limite: number = LIMITE_FIADOS_DEFAULT,
 ): { count: number; limite: number; porcentaje: number; nivel: 'ok' | 'cerca' | 'limite' } {
   const count = pedidosPendientes.length
   const porcentaje = limite > 0 ? (count / limite) * 100 : 100

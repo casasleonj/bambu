@@ -40,3 +40,9 @@ export const PRIVILEGED_ROLES = PRIVILEGED_READ_ROLES
  * aparecer en listados de clientes.
  */
 export const CANONICAL_CONSUMIDOR_FINAL_ID = 'CONSUMIDOR_FINAL'
+
+/**
+ * Default global fiado limit used across the app when no explicit value is set
+ * in Config (LIMITE_PEDIDOS_FIADOS_DEFAULT) or on the customer.
+ */
+export const LIMITE_FIADOS_DEFAULT = 2

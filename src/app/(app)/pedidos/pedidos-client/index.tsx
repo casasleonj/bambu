@@ -23,6 +23,7 @@ import { calcularAlertas } from './alertas-utils'
 import type { Pedido, Embarque, Cliente } from './types'
 import { getPresetDate } from '@/lib/dates'
 import { usePedidos } from '@/hooks/use-pedidos'
+import { LIMITE_FIADOS_DEFAULT } from '@/lib/constants'
 import { useCrearPedido } from '@/hooks/use-crear-pedido'
 import { useAnularPedido } from '@/hooks/use-anular-pedido'
 import { useAsignarEmbarque } from '@/hooks/use-asignar-embarque'
@@ -79,7 +80,7 @@ export function PedidosClient() {
     requerirGps: false,
     permitirSinGpsConJustificacion: true,
   })
-  const [limiteGlobalFiados, setLimiteGlobalFiados] = useState<number>(3)
+  const [limiteGlobalFiados, setLimiteGlobalFiados] = useState<number>(LIMITE_FIADOS_DEFAULT)
 
   // Fechas desde URL (fuente de verdad)
   const desdeUrl = searchParams.get('desde')

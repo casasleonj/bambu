@@ -146,6 +146,7 @@ export type FiltroRiesgo = 'bloqueado' | 'reclamaciones' | 'noVerificado' | null
 
 export interface ClientesClientProps {
   initialClientes: Cliente[]
+  initialLimiteFiados?: number
   openClienteId?: string
   totalClientes?: number
   filtroActivo?: FiltroRiesgo
