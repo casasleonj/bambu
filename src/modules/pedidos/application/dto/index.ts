@@ -68,6 +68,8 @@ export interface AnularPedidoInput {
 
 export interface CancelarPedidoInput {
   pedidoId: string
+  motivo?: string
+  offlineId?: string
 }
 
 export interface ListarPedidosInput {

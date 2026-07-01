@@ -26,6 +26,7 @@ import { usePedidos } from '@/hooks/use-pedidos'
 import { LIMITE_FIADOS_DEFAULT } from '@/lib/constants'
 import { useCrearPedido } from '@/hooks/use-crear-pedido'
 import { useAnularPedido } from '@/hooks/use-anular-pedido'
+import { useCancelarPedido } from '@/hooks/use-cancelar-pedido'
 import { useAsignarEmbarque } from '@/hooks/use-asignar-embarque'
 import { useEntregarPedido } from '@/hooks/use-entregar-pedido'
 import { useRealtimeListener } from '@/hooks/use-realtime-listener'
@@ -360,6 +361,13 @@ export function PedidosClient() {
     },
   })
 
+  const { cancelar: cancelarPedido } = useCancelarPedido({
+    onSuccess: () => {
+      setShowDetailModal(false)
+      fetchPedidos()
+    },
+  })
+
   const { asignar: asignarEmbarque } = useAsignarEmbarque({
     onSuccess: () => {
       fetchPedidos()
@@ -651,6 +659,12 @@ export function PedidosClient() {
           motivo: anularMotivoRef.current.trim(),
           devolverStock: anularDevolverStockRef.current,
         })
+      } else if (nuevoEstado === 'CANCELADO') {
+        // FIX: cancelar ahora usa su propio POST /cancelar con dedup por
+        // estado CANCELADO bajo lock NC (paridad con anular). Antes se
+        // reutilizaba PUT /api/pedidos/:id con { estado: 'CANCELADO' },
+        // lo que no generaba NC automática y permitía inconsistencias.
+        success = await cancelarPedido({ pedidoId: id })
       } else {
         // Other state transitions still use PUT directly (not yet migrated)
         const res = await fetch(`/api/pedidos/${id}`, {
@@ -663,7 +677,10 @@ export function PedidosClient() {
       if (success) {
         setShowDetailModal(false)
         fetchPedidos()
-        toast.success(`Estado actualizado a ${nuevoEstado}`)
+        if (nuevoEstado !== 'CANCELADO') {
+          // El hook useCancelarPedido ya muestra su propio toast.success.
+          toast.success(`Estado actualizado a ${nuevoEstado}`)
+        }
       } else {
         toast.error('Error actualizando estado')
       }

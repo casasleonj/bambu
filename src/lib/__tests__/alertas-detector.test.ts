@@ -115,6 +115,28 @@ describe('calcularAlertas — firma backward-compat', () => {
   })
 })
 
+describe('Fase 4: calcularAlertas excluye ventas anónimas (CONSUMIDOR_FINAL)', () => {
+  it('no genera alertas para pedidos con clienteId CONSUMIDOR_FINAL', () => {
+    const pedidos = [
+      makePedido({ id: 'anon-1', clienteId: 'CONSUMIDOR_FINAL', nombreCli: 'Venta anónima', total: 50000, estadoEntrega: 'ENTREGADO' }),
+      makePedido({ id: 'anon-2', clienteId: 'CONSUMIDOR_FINAL', nombreCli: 'Venta anónima', total: 60000, estadoEntrega: 'ENTREGADO', fecha: new Date(Date.now() - 30 * 60 * 1000).toISOString() }),
+    ]
+    const result = calcularAlertas(pedidos)
+    expect(result).toEqual([])
+  })
+
+  it('sigue generando alertas para clientes reales', () => {
+    const pedidos = [
+      makePedido({ id: 'real-1', clienteId: 'cli-real', nombreCli: 'Cliente Real', total: 10000, estadoEntrega: 'ENTREGADO' }),
+      makePedido({ id: 'real-2', clienteId: 'cli-real', nombreCli: 'Cliente Real', total: 10000, estadoEntrega: 'ENTREGADO', fecha: new Date(Date.now() - 30 * 60 * 1000).toISOString() }),
+      makePedido({ id: 'real-3', clienteId: 'cli-real', nombreCli: 'Cliente Real', total: 100000, estadoEntrega: 'ENTREGADO' }),
+    ]
+    const result = calcularAlertas(pedidos)
+    expect(result.length).toBeGreaterThan(0)
+    expect(result[0].clienteId).toBe('cli-real')
+  })
+})
+
 describe('calcularAlertas — detecciones (smoke tests)', () => {
   it('detecta MONTO_ANOMALO cuando pedido es > 2x promedio', () => {
     // Promedio historico: 10000. Pedido actual: 50000 (> 2x)

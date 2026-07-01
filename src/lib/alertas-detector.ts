@@ -18,6 +18,7 @@
  */
 
 import { formatCurrency } from '@/lib/utils'
+import { CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
 import type { AlertaItem, AlertaRow, SeveridadAlerta } from '@/lib/alertas-config'
 import { estaIgnorada } from '@/lib/alertas-config'
 import { UMBRALES_DEFAULT, type UmbralesAlertas } from '@/lib/umbrales'
@@ -159,6 +160,10 @@ export function calcularAlertas(pedidos: PedidoBase[], options: CalcularAlertasO
   const precioMinimos = opts.precioMinimos
   const notasCreditoCount = opts.notasCreditoCount
   const minNotasCreditoCount = opts.minNotasCreditoCount ?? 2
+
+  // FIX Fase 4: las ventas anónimas (CONSUMIDOR_FINAL) no son un cliente real,
+  // por lo que no deben generar alertas de fraude ni aparecer en el panel.
+  pedidos = pedidos.filter((p) => p.clienteId !== CANONICAL_CONSUMIDOR_FINAL_ID)
 
   const clientesMap = new Map<string, AlertaRow>()
   const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })

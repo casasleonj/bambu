@@ -7,6 +7,7 @@ import { PedidoCreateSchema } from '@/lib/validators'
 import { getPaginationParams, buildPaginationResponse } from '@/lib/pagination'
 import { getTodayRange, getDateRange } from '@/lib/dates'
 import { ROLES } from '@/lib/constants'
+import { getAnonymousClientDisplayName } from '@/lib/cliente-canonical'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 import {
@@ -124,7 +125,7 @@ export async function GET(request: NextRequest) {
 
       return {
         ...p,
-        nombreCli: p.clienteId === 'CONSUMIDOR_FINAL' ? 'Consumidor Final' : (cliente?.nombre || 'Desconocido'),
+        nombreCli: getAnonymousClientDisplayName(p.clienteId, 'short') ?? (cliente?.nombre || 'Desconocido'),
         apellidoCli: cliente?.apellido || null,
         telefonoCli: cliente?.telefono || '',
         zonaCli: direccion || '',

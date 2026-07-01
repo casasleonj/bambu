@@ -20,10 +20,20 @@ export class CancelarPedidoUseCase {
     private txManager: ITransactionManager,
   ) {}
 
-  async execute(input: CancelarPedidoInput) {
-    return this.txManager.execute(async (tx) => {
+  async execute(input: CancelarPedidoInput): Promise<{ pedido: import('../dto').PedidoResumenDTO; deduped?: boolean }> {
+    return this.txManager.executeWithLock('NC', async (tx) => {
       const pedido = await this.pedidoRepo.findById(PedidoId.from(input.pedidoId), tx)
       if (!pedido) throw new Error('PEDIDO_NOT_FOUND')
+
+      // FIX: dedup por estado CANCELADO DENTRO del lock. Paridad con
+      // AnularPedidoUseCase (F-N21): si ya está cancelado, retornar
+      // idempotente en vez de re-ejecutar el flujo de NC/factura.
+      if (pedido.estadoEntrega.get() === 'CANCELADO') {
+        return {
+          pedido: PedidoDTOMapper.toResumen(pedido),
+          deduped: true,
+        }
+      }
 
       // FIX CRITICAL (C-BIZ-1): cancelar() now returns both tuvoPagos and totalOriginal
       // Previously, pedido.total was reset to 0 inside cancelar(), causing the NC
@@ -51,7 +61,7 @@ export class CancelarPedidoUseCase {
           numero: `NC-${nextNum.toString().padStart(5, '0')}`,
           pedidoId: pedido.id.get(),
           monto: totalOriginal,
-          motivo: 'CANCELADO',
+          motivo: input.motivo || 'CANCELADO',
         }, tx)
       }
 
@@ -59,7 +69,7 @@ export class CancelarPedidoUseCase {
         entidad: 'Pedido',
         registroId: pedido.id.get(),
         accion: 'UPDATE',
-        datos: { estado: updated.estadoEntrega.get() },
+        datos: { motivo: input.motivo, estado: updated.estadoEntrega.get(), notaCredito: tuvoPagos },
       })
 
       return { pedido: PedidoDTOMapper.toResumen(updated) }

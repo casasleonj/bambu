@@ -20,6 +20,7 @@ const mockPrismaPedido = {
   findUnique: vi.fn(),
   create: vi.fn(),
   findFirst: vi.fn(),
+  findMany: vi.fn().mockResolvedValue([]),
 }
 const mockPrismaEmbarque = {
   findUnique: vi.fn(),
@@ -38,6 +39,7 @@ const mockPrismaFactura = {
 }
 const mockPrismaConfig = {
   findUnique: vi.fn(),
+  findMany: vi.fn(),
 }
 const mockResolverPreciosPedido = vi.fn()
 const mockGetNextNumero = vi.fn()
@@ -127,6 +129,8 @@ vi.mock('@/lib/pedido-utils', () => ({
     pagado >= total ? 'PAGADO' : 'PENDIENTE',
   puedeFiar: () => true,
   puedeCrearPedido: () => null,
+  resolverLimiteFiados: (_cliente: { limitePedidosFiados?: number | null }, _configValor?: string | null) =>
+    _cliente.limitePedidosFiados ?? 2,
 }))
 
 // ── Import under test ──────────────────────────────────────────────────
@@ -179,6 +183,7 @@ describe('POST /api/pedidos/venta-libre — BLOQUEAR_PRECIOS_REPARTIDOR', () => 
     mockPrismaPago.create.mockReset()
     mockPrismaFactura.create.mockReset()
     mockPrismaConfig.findUnique.mockReset()
+    mockPrismaConfig.findMany.mockReset()
     mockResolverPreciosPedido.mockReset()
     mockGetNextNumero.mockReset()
 
@@ -203,6 +208,13 @@ describe('POST /api/pedidos/venta-libre — BLOQUEAR_PRECIOS_REPARTIDOR', () => 
       { codigo: 'PACA_AGUA', precio: 6500, subtotal: 13000 },
     ])
     mockGetNextNumero.mockResolvedValue(100)
+    mockPrismaConfig.findMany.mockResolvedValue([
+      { clave: 'empresa_nombre', valor: 'Agua Bambú' },
+      { clave: 'empresa_nit', valor: '49008664' },
+      { clave: 'empresa_direccion', valor: 'Vereda Centro' },
+      { clave: 'empresa_telefono', valor: '300 000 0000' },
+      { clave: 'empresa_email', valor: 'contacto@aguabambu.com' },
+    ])
     mockPrismaPedido.create.mockResolvedValue({ id: 'p-new', numero: 100 })
   })
 
@@ -276,5 +288,31 @@ describe('POST /api/pedidos/venta-libre — BLOQUEAR_PRECIOS_REPARTIDOR', () => 
       // This is the right behavior (defense in depth).
       expect(res.status).toBe(400)
     })
+  })
+
+  describe('FIX: factura incluye montoPagado y snapshot de empresa', () => {
+    beforeEach(() => {
+      mockAuth.mockResolvedValue({ user: { id: 'u-asis', role: 'ASISTENTE' } })
+      mockPrismaEmbarque.findUnique.mockResolvedValue({
+        id: 'emb1',
+        estado: 'ABIERTO',
+        trabajadorId: 't1',
+        trabajador: { user: null },
+      })
+    })
+
+    it('crea factura PAGADA con montoPagado=total y datos de empresa', async () => {
+      const res = await POST(makeRequest(validBody))
+      expect(res.status).toBe(201)
+      expect(mockPrismaFactura.create).toHaveBeenCalledTimes(1)
+      const facturaData = mockPrismaFactura.create.mock.calls[0][0].data
+      expect(facturaData.montoPagado).toBe(13000)
+      expect(facturaData.saldo).toBe(0)
+      expect(facturaData.estado).toBe('PAGADA')
+      expect(facturaData.empresaNit).toBe('49008664')
+      expect(facturaData.empresaNombre).toBe('Agua Bambú')
+    })
+
+
   })
 })
