@@ -14,7 +14,7 @@ const PROTECTED_PAGES = [
 test.describe('1. Sin autenticación', () => {
   test.describe.configure({ mode: 'serial' })
 
-  test.use({ storageState: {} })
+  test.use({ storageState: { cookies: [], origins: [] } })
 
   test.beforeAll(() => {
     resetDatabase()

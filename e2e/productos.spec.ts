@@ -4,7 +4,7 @@ import {test, expect, BASE, fullLogin, goto, apiPost, apiGet,  resetDatabase} fr
 test.describe('Productos', () => {
   test.describe.configure({ mode: 'serial' })
 
-  test.use({ storageState: {} })
+  test.use({ storageState: { cookies: [], origins: [] } })
 
   test.beforeAll(() => {
     resetDatabase()

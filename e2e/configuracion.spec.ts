@@ -1,5 +1,6 @@
 // @tests api/config
 import { test, expect } from '@playwright/test'
+import { resetDatabase } from './fixtures'
 
 const BASE_URL = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000'
 
@@ -14,7 +15,7 @@ async function login(page: any) {
 test.describe('Configuración', () => {
   test.describe.configure({ mode: 'serial' })
 
-  test.use({ storageState: {} })
+  test.use({ storageState: { cookies: [], origins: [] } })
 
   test.beforeAll(() => {
     resetDatabase()

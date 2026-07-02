@@ -1,8 +1,8 @@
-import { test, expect, fullLogin, apiPost, apiGet, createCliente, resetDatabase } from './fixtures'
+import { test, expect, fullLogin, apiPost, resetDatabase } from './fixtures'
 
 test.describe('Issue cliente limitePedidosFiados', () => {
   test.describe.configure({ mode: 'serial' })
-  test.use({ storageState: {} })
+  test.use({ storageState: { cookies: [], origins: [] } })
 
   test.beforeAll(() => {
     resetDatabase()

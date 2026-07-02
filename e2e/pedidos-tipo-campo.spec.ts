@@ -2,7 +2,7 @@ import { test, expect, fullLogin, apiPost, apiGet, createCliente, resetDatabase 
 
 test.describe('Pedidos: campo Tipo', () => {
   test.describe.configure({ mode: 'serial' })
-  test.use({ storageState: {} })
+  test.use({ storageState: { cookies: [], origins: [] } })
 
   test.beforeAll(() => {
     resetDatabase()

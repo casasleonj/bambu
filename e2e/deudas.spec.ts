@@ -10,7 +10,7 @@ import {fullLogin,
   createCliente,
   createEmbarque,
   resetTestDatabase,
-  waitForToast, resetDatabase} from './fixtures'
+  waitForToast} from './fixtures'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

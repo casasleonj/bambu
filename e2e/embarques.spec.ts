@@ -27,7 +27,7 @@ async function gotoEmbarques(page: any) {
 test.describe('Embarques — Navegación y Carga', () => {
   test.describe.configure({ mode: 'serial' })
 
-  test.use({ storageState: {} })
+  test.use({ storageState: { cookies: [], origins: [] } })
 
   test.beforeAll(() => {
     resetDatabase()

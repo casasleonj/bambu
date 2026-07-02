@@ -5,7 +5,7 @@ import type { Page } from '@playwright/test'
 test.describe('Producción — E2E Exhaustivo', () => {
   test.describe.configure({ mode: 'serial' })
 
-  test.use({ storageState: {} })
+  test.use({ storageState: { cookies: [], origins: [] } })
 
   test.beforeAll(() => {
     resetDatabase()

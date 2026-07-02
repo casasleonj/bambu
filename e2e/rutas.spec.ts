@@ -4,7 +4,7 @@ import {test, expect, handleBaseCaja, fullLogin, goto, apiPost, apiGet,  resetDa
 test.describe('Rutas', () => {
   test.describe.configure({ mode: 'serial' })
 
-  test.use({ storageState: {} })
+  test.use({ storageState: { cookies: [], origins: [] } })
 
   test.beforeAll(() => {
     resetDatabase()

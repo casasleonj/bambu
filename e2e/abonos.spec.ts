@@ -1,10 +1,11 @@
 // @tests api/abonos
 import { test, expect, type Page } from '@playwright/test'
+import { resetDatabase } from './fixtures'
 
 test.describe('Abonos', () => {
   test.describe.configure({ mode: 'serial' })
 
-  test.use({ storageState: {} })
+  test.use({ storageState: { cookies: [], origins: [] } })
 
   test.beforeAll(() => {
     resetDatabase()

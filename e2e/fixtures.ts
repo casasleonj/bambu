@@ -49,15 +49,29 @@ export async function loginAlt(page: Page, user: string, pass: string) {
 // ─── Base Caja ───────────────────────────────────────────────────────────────
 
 export async function handleBaseCaja(page: Page) {
-  // Poll for modal to appear (it may take time due to async API calls in base-caja-modal)
-  for (let i = 0; i < 10; i++) {
+  // If the sidebar already shows a base for today, the modal will not appear.
+  const baseSetIndicator = page.locator('text=Caja base').first()
+  if (await baseSetIndicator.isVisible().catch(() => false)) return
+
+  // Poll for modal to appear (cold dev-server API calls can take several seconds).
+  const input = page.locator('#base-dia-input')
+  for (let i = 0; i < 25; i++) {
     await page.waitForTimeout(300)
-    const input = page.locator('#base-dia-input')
     const count = await input.count()
     if (count > 0 && await input.isVisible().catch(() => false)) {
       try {
+        await input.click()
+        // Controlled React input: fill then dispatch input/change events to ensure state updates.
         await input.fill('100000')
-        await page.locator('button[type="submit"]').filter({ hasText: /Continuar|Guardar/ }).click()
+        await input.evaluate((el: HTMLInputElement) => {
+          el.dispatchEvent(new Event('input', { bubbles: true }))
+          el.dispatchEvent(new Event('change', { bubbles: true }))
+        })
+        await page.waitForTimeout(200)
+        // Wait for React controlled state to update and enable the submit button.
+        const submitBtn = page.locator('button[type="submit"]').filter({ hasText: /Continuar|Guardar/ })
+        await expect(submitBtn).toBeEnabled({ timeout: 3000 })
+        await submitBtn.click()
         await page.waitForSelector('#base-dia-input', { state: 'detached', timeout: 5000 })
       } catch {
         // Modal may have been closed concurrently; ignore
@@ -180,7 +194,9 @@ export function getUniqueFutureDate(offsetDays: number = 0): string {
 // ─── Navigation ──────────────────────────────────────────────────────────────
 
 export async function goto(page: Page, path: string) {
-  await page.goto(`${BASE}${path}`)
+  // Cold dev-server compiles can take >60s on the first navigation;
+  // give the page load enough headroom before the test timeout kicks in.
+  await page.goto(`${BASE}${path}`, { timeout: 120000 })
   await page.waitForLoadState('domcontentloaded')
   await page.waitForTimeout(500)
   await handleBaseCaja(page)
