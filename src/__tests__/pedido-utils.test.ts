@@ -110,8 +110,8 @@ describe('resolverLimiteFiados', () => {
   })
 
   it('usa el default cuando no hay ni personal ni global', () => {
-    expect(resolverLimiteFiados({}, null)).toBe(3)
-    expect(resolverLimiteFiados({ limitePedidosFiados: null }, null)).toBe(3)
+    expect(resolverLimiteFiados({}, null)).toBe(2)
+    expect(resolverLimiteFiados({ limitePedidosFiados: null }, null)).toBe(2)
   })
 
   it('ignora límite personal inválido (0 o negativo)', () => {
@@ -120,9 +120,9 @@ describe('resolverLimiteFiados', () => {
   })
 
   it('ignora config global inválida (NaN o <= 0)', () => {
-    expect(resolverLimiteFiados({}, 'foo')).toBe(3)
-    expect(resolverLimiteFiados({}, '0')).toBe(3)
-    expect(resolverLimiteFiados({}, '-2')).toBe(3)
+    expect(resolverLimiteFiados({}, 'foo')).toBe(2)
+    expect(resolverLimiteFiados({}, '0')).toBe(2)
+    expect(resolverLimiteFiados({}, '-2')).toBe(2)
   })
 })
 

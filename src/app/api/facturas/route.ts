@@ -11,29 +11,7 @@ import { withAdvisoryLock } from '@/lib/locks'
 import type { Factura } from '@prisma/client'
 import { logger } from '@/lib/logger'
 import { apiSuccess, apiError } from '@/lib/api-response'
-
-async function getEmpresaSnapshot(): Promise<{
-  empresaNombre: string
-  empresaNit: string
-  empresaDireccion: string
-  empresaTelefono: string
-  empresaEmail: string
-}> {
-  const configs = await prisma.config.findMany({
-    where: {
-      clave: { in: ['empresa_nombre', 'empresa_nit', 'empresa_direccion', 'empresa_telefono', 'empresa_email'] },
-    },
-  })
-  const map: Record<string, string> = {}
-  configs.forEach(c => { map[c.clave] = c.valor })
-  return {
-    empresaNombre: map.empresa_nombre || 'Agua Bambú SAS',
-    empresaNit: map.empresa_nit || '900.123.456-7',
-    empresaDireccion: map.empresa_direccion || '',
-    empresaTelefono: map.empresa_telefono || '',
-    empresaEmail: map.empresa_email || '',
-  }
-}
+import { getFacturaEmpresaSnapshot } from '@/lib/factura-empresa'
 
 export async function GET(request: NextRequest) {
   // FIX CRITICAL (C-SEC-1): Only ADMIN/CONTADOR can read facturas
@@ -59,20 +37,60 @@ export async function GET(request: NextRequest) {
     }
     const prismaPagination = getPrismaPagination(pagination)
 
-    const [facturas, total] = await Promise.all([
+    const [facturas, total, agregados] = await Promise.all([
       prisma.factura.findMany({
         where,
         orderBy: { fecha: 'desc' },
-        include: { cliente: true, abonos: true, pedido: true },
+        select: {
+          id: true,
+          numero: true,
+          fecha: true,
+          subtotal: true,
+          total: true,
+          saldo: true,
+          montoPagado: true,
+          estado: true,
+          empresaNombre: true,
+          empresaNit: true,
+          empresaDireccion: true,
+          empresaTelefono: true,
+          empresaEmail: true,
+          cliente: {
+            select: {
+              id: true,
+              nombre: true,
+              apellido: true,
+              telefono: true,
+              direccion: true,
+              barrio: true,
+              nombreNegocio: true,
+            },
+          },
+          pedido: {
+            select: { id: true, numero: true },
+          },
+        },
         ...prismaPagination,
       }),
       prisma.factura.count({ where }),
+      prisma.factura.aggregate({
+        where,
+        _sum: { total: true, saldo: true, montoPagado: true },
+        _count: { _all: true },
+      }),
     ])
+
+    const totales = {
+      totalFacturado: Number(agregados._sum.total ?? 0),
+      totalCobrado: Number(agregados._sum.montoPagado ?? 0),
+      totalPorCobrar: Number(agregados._sum.saldo ?? 0),
+      count: agregados._count._all,
+    }
 
     return apiSuccess(
       pagination.all
-        ? { facturas, total }
-        : buildPaginationResponse(facturas, total, pagination.page!, pagination.pageSize!)
+        ? { facturas, total, totales }
+        : { ...buildPaginationResponse(facturas, total, pagination.page!, pagination.pageSize!), totales }
     )
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching facturas:')
@@ -93,7 +111,7 @@ export async function POST(request: NextRequest) {
     }
     const { pedidoId, clienteId } = parsed.data
 
-    const empresaSnapshot = await getEmpresaSnapshot()
+    const empresaSnapshot = await getFacturaEmpresaSnapshot()
 
     const factura = await withAdvisoryLock<Factura>('FACTURA_NUM', async (tx) => {
       const pedido = await tx.pedido.findUnique({

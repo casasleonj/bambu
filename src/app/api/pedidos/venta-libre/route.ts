@@ -16,6 +16,7 @@ import { logger } from '@/lib/logger'
 import { uploadBase64Foto, isBase64Image } from '@/lib/storage'
 import { getConfigBool } from '@/lib/config'
 import { publishRealtimeEvent } from '@/lib/realtime'
+import { getFacturaEmpresaSnapshot } from '@/lib/factura-empresa'
 import { OrigenPedido, EstadoEntrega } from '@prisma/client'
 
 export async function POST(request: NextRequest) {
@@ -46,6 +47,10 @@ export async function POST(request: NextRequest) {
     }
     const pagosData = pagos || []
     const totalPagado = pagosData.reduce((sum, p) => sum + p.monto, 0)
+
+    // Snapshot de datos de empresa: lectura simple fuera del lock.
+    // Se guarda en la factura para que quede inmutable al momento de emisión.
+    const empresaSnapshot = await getFacturaEmpresaSnapshot()
 
     // Upload base64 foto to Supabase Storage if present
     let fotoUrl = fotoEntrega
@@ -243,7 +248,9 @@ export async function POST(request: NextRequest) {
           subtotal: total,
           total,
           saldo: total - totalPagado,
+          montoPagado: totalPagado,
           estado: totalPagado >= total ? 'PAGADA' : (totalPagado > 0 ? 'PARCIAL' : 'EMITIDA'),
+          ...empresaSnapshot,
         },
       })
 

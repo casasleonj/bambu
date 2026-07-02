@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { previewGeneracionRecurrentes, generarPedidosRecurrentes, type DecisionGeneracion } from '@/lib/recurrentes'
 import { z } from 'zod'
-import { ROLES } from '@/lib/constants'
+import { ROLES, LIMITE_FIADOS_DEFAULT } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 import { logBulkAudit } from '@/lib/audit'
@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
     const clientesEnLimite: string[] = []
     for (const pt of plantillasActuales) {
       if (!pt.clienteId) continue
-      const limite = limitesPorCliente.get(pt.clienteId) || 3
+      const limite = limitesPorCliente.get(pt.clienteId) || LIMITE_FIADOS_DEFAULT
       const count = pendientesPorCliente.get(pt.clienteId) || 0
       if (count >= limite) {
         clientesEnLimite.push(`${pt.cliente?.nombre || 'unknown'} (${count}/${limite})`)

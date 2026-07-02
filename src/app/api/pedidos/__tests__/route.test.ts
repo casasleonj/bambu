@@ -113,3 +113,17 @@ describe('F-N10: la route sigue trabajando con el use case (no rompe backward co
     expect(routeSource).toMatch(/return\s+apiSuccess\(\{\s*pedido:\s*result\.pedido/)
   })
 })
+
+describe('Fase 3: ventas anónimas muestran "Venta anónima" en vez de "Consumidor Final"', () => {
+  it('FIX: la route importa getAnonymousClientDisplayName', () => {
+    expect(routeSource).toMatch(/import\s*\{\s*getAnonymousClientDisplayName\s*\}\s*from\s*['"]@\/lib\/cliente-canonical['"]/)
+  })
+
+  it('FIX: nombreCli para CONSUMIDOR_FINAL usa getAnonymousClientDisplayName', () => {
+    expect(routeSource).toMatch(/getAnonymousClientDisplayName\(p\.clienteId,\s*['"]short['"]\)/)
+  })
+
+  it('FIX: no queda hardcodeado "Consumidor Final" en el mapping', () => {
+    expect(routeSource).not.toMatch(/p\.clienteId\s*===\s*['"]CONSUMIDOR_FINAL['"]\s*\?\s*['"]Consumidor Final['"]/)
+  })
+})

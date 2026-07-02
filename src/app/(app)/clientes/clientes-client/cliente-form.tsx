@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { LIMITE_FIADOS_DEFAULT } from '@/lib/constants'
 import type { Canal, FormData } from './types'
 import { PRODUCTOS_PRECIO } from './types'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
@@ -45,6 +46,7 @@ interface ClienteFormProps {
   onPrecioEspecialChange: (canal: Canal, codigo: string, valor: number | undefined) => void
   preciosBase: Record<Canal, Record<string, number>>
   plantillaRecurrente?: PlantillaInfo | null
+  limiteGlobalFiados?: number
   inline?: boolean
   formId?: string
 }
@@ -64,6 +66,7 @@ export function ClienteForm({
   onPrecioEspecialChange,
   preciosBase,
   plantillaRecurrente,
+  limiteGlobalFiados,
   inline,
   formId = 'cliente-form',
 }: ClienteFormProps) {
@@ -221,7 +224,7 @@ export function ClienteForm({
                 value={formData.limitePedidosFiados || ''}
                 onChange={(e) => onFormDataChange({ ...formData, limitePedidosFiados: e.target.value ? parseInt(e.target.value) : undefined })}
                 className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
-                placeholder="3 (default)"
+                placeholder={limiteGlobalFiados != null ? String(limiteGlobalFiados) : String(LIMITE_FIADOS_DEFAULT)}
               />
               <p className="text-xs text-gray-400 mt-1">Máximo de pedidos con saldo pendiente antes de bloquear nuevos pedidos. Deja vacío para usar el límite global.</p>
             </div>

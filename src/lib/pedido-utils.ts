@@ -1,4 +1,5 @@
 import { EstadoEntrega, EstadoPago, OrigenPedido } from '@prisma/client'
+import { LIMITE_FIADOS_DEFAULT } from './constants'
 
 // ====================
 // TRANSICIONES VÁLIDAS
@@ -123,7 +124,7 @@ export function puedeCrearPedido(
     id: string
   },
   pedidosPendientes: Array<{ id: string; numero: number; saldo: number }>,
-  limite: number = 3
+  limite: number = LIMITE_FIADOS_DEFAULT
 ): string | null {
   // Ventas anónimas (CONSUMIDOR_FINAL) nunca se bloquean por deudas previas
   if (cliente.id === 'CONSUMIDOR_FINAL') return null
@@ -152,7 +153,7 @@ export { resolverLimiteFiados } from '@/modules/pedidos/domain/services/pedido-v
  */
 export function getEstadoFiados(
   pedidosPendientes: Array<{ id: string; numero: number; saldo: number }>,
-  limite: number = 3
+  limite: number = LIMITE_FIADOS_DEFAULT
 ): { count: number; limite: number; porcentaje: number; nivel: 'ok' | 'cerca' | 'limite' } {
   const count = pedidosPendientes.length
   const porcentaje = limite > 0 ? (count / limite) * 100 : 100

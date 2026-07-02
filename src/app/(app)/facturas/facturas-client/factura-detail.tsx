@@ -43,7 +43,11 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono }: Fact
   const pagado = Number(factura.montoPagado || 0)
   const saldo = Number(factura.saldo)
   const progreso = total > 0 ? Math.round((pagado / total) * 100) : 0
-  const clienteDisplayName = getAnonymousClientDisplayName(factura.cliente?.id, 'short') ?? (factura.cliente?.nombre || 'N/A')
+  const clienteDisplayName = getAnonymousClientDisplayName(factura.cliente?.id, 'short') ?? (() => {
+    if (!factura.cliente) return 'N/A'
+    const nombre = [factura.cliente.nombre, factura.cliente.apellido].filter(Boolean).join(' ')
+    return factura.cliente.nombreNegocio ? `${nombre} — ${factura.cliente.nombreNegocio}` : nombre
+  })()
 
   const empresa = {
     nombre: factura.empresaNombre || empresaConfig.nombre,
@@ -321,7 +325,7 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono }: Fact
                       className="text-sm font-semibold text-gray-900 hover:text-blue-600 hover:underline"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      {factura.cliente.nombre}
+                      {clienteDisplayName}
                     </a>
                   ) : (
                     <p className="text-sm font-semibold text-gray-900">{clienteDisplayName}</p>

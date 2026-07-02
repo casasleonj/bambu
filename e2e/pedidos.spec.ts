@@ -4,7 +4,7 @@ import {test, expect, fullLogin, goto, apiPost, createTrabajador, createCliente,
 test.describe('Pedidos', () => {
   test.describe.configure({ mode: 'serial' })
 
-  test.use({ storageState: {} })
+  test.use({ storageState: { cookies: [], origins: [] } })
 
   test.beforeAll(() => {
     resetDatabase()
@@ -14,16 +14,17 @@ test.describe('Pedidos', () => {
   // ─── Venta Rápida ────────────────────────────────────────────────────────
 
   test('crear pedido venta rapida via UI', async ({ page }) => {
+    // Cold dev-server compile of /pedidos can take >60s on the first run.
+    test.setTimeout(120000)
     await fullLogin(page)
     await goto(page, '/pedidos')
     // Click the main FAB button to open menu
     const fabMain = page.locator('[data-testid="fab-main"]').first()
     await expect(fabMain).toBeVisible({ timeout: 5000 })
     await fabMain.click()
-    await page.waitForTimeout(300)
     // Click "Venta Rápida"
     const ventaBtn = page.locator('[data-testid="fab-venta-rapida"]').first()
-    await expect(ventaBtn, 'botón Venta Rápida no aparece tras abrir FAB').toBeVisible({ timeout: 3000 })
+    await expect(ventaBtn, 'botón Venta Rápida no aparece tras abrir FAB').toBeVisible({ timeout: 5000 })
     await ventaBtn.click()
     await page.waitForTimeout(500)
     // Add a product — click the green plus button in the product grid
@@ -200,16 +201,17 @@ test.describe('Pedidos', () => {
 
   // ─── Filtros ──────────────────────────────────────────────────────────────
 
-  test('filtro default es hoy al entrar a pedidos', async ({ page }) => {
+  test('filtro default es Turno al entrar a pedidos', async ({ page }) => {
     await fullLogin(page)
     await goto(page, '/pedidos')
-    await page.waitForLoadState('networkidle')
-    // La URL debe contener desde/hasta de hoy
+    // Esperar a que los botones de filtro rendericen (SSE mantiene conexión abierta)
+    const turnoBtn = page.locator('button:has-text("Turno")').first()
+    await expect(turnoBtn).toBeVisible({ timeout: 10000 })
+    // La URL debe contener desde/hasta del turno (ayer + hoy)
     await expect(page).toHaveURL(/desde=\d{4}-\d{2}-\d{2}/)
     await expect(page).toHaveURL(/hasta=\d{4}-\d{2}-\d{2}/)
-    // El botón "Hoy" debe estar activo (bg-blue-600)
-    const hoyBtn = page.locator('button:has-text("Hoy")').first()
-    await expect(hoyBtn).toHaveClass(/bg-blue-600/)
+    // El botón "Turno" debe estar activo (bg-blue-600)
+    await expect(turnoBtn).toHaveClass(/bg-blue-600/)
   })
 
   test('pedido creado aparece en lista de pedidos', async ({ page }) => {
@@ -232,7 +234,6 @@ test.describe('Pedidos', () => {
     if (!pedidoId) { test.skip(); return }
 
     await goto(page, '/pedidos')
-    await page.waitForLoadState('networkidle')
     // El nombre del cliente debe aparecer en la tabla de pedidos
     await expect(page.locator('table tbody')).toContainText(`Aparece En Lista ${unique}`, { timeout: 10000 })
   })

@@ -15,6 +15,7 @@ export interface PedidoFilter {
   estadoPago?: string
   origen?: string
   embarqueId?: string
+  tipo?: string[]
 }
 
 import type { TransactionClient } from '../../infrastructure/transactions/PrismaTransactionManager'

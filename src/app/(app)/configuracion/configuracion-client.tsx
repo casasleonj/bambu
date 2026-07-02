@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
+import { LIMITE_FIADOS_DEFAULT } from '@/lib/constants'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsList } from '@/components/ui/tabs'
@@ -81,7 +82,7 @@ const SECTIONS: SectionConfig[] = [
       { key: 'DIAS_ALERTA_NO_VERIFICADO', label: 'Días para alerta de cliente no verificado', type: 'number', placeholder: '30', suffix: 'días', min: 1 },
       { key: 'DIAS_VENCIMIENTO_PROMESA', label: 'Días vencimiento promesa de pago', type: 'number', placeholder: '2', suffix: 'días', min: 1 },
       { key: 'MAX_PEDIDOS_DIA_ALERTA', label: 'Máx. pedidos por día para alerta', type: 'number', placeholder: '2', suffix: 'pedidos', min: 1 },
-      { key: 'LIMITE_PEDIDOS_FIADOS_DEFAULT', label: 'Límite de pedidos fiados por cliente', type: 'number', placeholder: '3', suffix: 'pedidos', min: 1 },
+      { key: 'LIMITE_PEDIDOS_FIADOS_DEFAULT', label: 'Límite de pedidos fiados por cliente', type: 'number', placeholder: String(LIMITE_FIADOS_DEFAULT), suffix: 'pedidos', min: 1 },
     ],
   },
 ]

@@ -4,7 +4,7 @@ import {fullLogin,  resetDatabase} from './fixtures'
 test.describe('Admin - Base de caja editable en dashboard', () => {
   test.describe.configure({ mode: 'serial' })
 
-  test.use({ storageState: {} })
+  test.use({ storageState: { cookies: [], origins: [] } })
 
   test.beforeAll(() => {
     resetDatabase()

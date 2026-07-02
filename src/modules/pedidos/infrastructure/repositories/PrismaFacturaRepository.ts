@@ -29,6 +29,12 @@ export class PrismaFacturaRepository implements IFacturaRepository {
         total: factura.total,
         saldo: factura.saldo,
         estado: factura.estado,
+        montoPagado: factura.montoPagado,
+        empresaNombre: factura.empresaNombre,
+        empresaNit: factura.empresaNit,
+        empresaDireccion: factura.empresaDireccion,
+        empresaTelefono: factura.empresaTelefono,
+        empresaEmail: factura.empresaEmail,
       } as unknown as Parameters<typeof client.factura.create>[0]['data'],
     })
     return PedidoMapper.facturaSnapshotFromPrisma(raw)
@@ -43,6 +49,7 @@ export class PrismaFacturaRepository implements IFacturaRepository {
         total: factura.total,
         saldo: factura.saldo,
         estado: factura.estado,
+        montoPagado: factura.montoPagado,
       } as unknown as Parameters<typeof client.factura.update>[0]['data'],
     })
     return PedidoMapper.facturaSnapshotFromPrisma(raw)

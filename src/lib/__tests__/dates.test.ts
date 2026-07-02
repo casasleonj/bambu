@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getTodayRange, getDateRange, getYesterdayRange, getTodayString } from '@/lib/dates'
+import { getTodayRange, getDateRange, getYesterdayRange, getTodayString, getPresetDate } from '@/lib/dates'
 
 describe('getTodayRange', () => {
   it('returns an object with startOfDay and endOfDay keys', () => {
@@ -147,9 +147,11 @@ describe('getYesterdayRange', () => {
     expect(diff).toBe(24 * 60 * 60 * 1000 - 1)
   })
 
-  it('endOfDay UTC date is startOfDay UTC date + 1', () => {
+  it('endOfDay is 1ms before the next UTC calendar day', () => {
     const range = getYesterdayRange()
-    expect(range.endOfDay.getUTCDate()).toBe(range.startOfDay.getUTCDate() + 1)
+    const nextDay = new Date(range.startOfDay.getTime())
+    nextDay.setUTCDate(nextDay.getUTCDate() + 1)
+    expect(range.endOfDay.getTime()).toBe(nextDay.getTime() - 1)
   })
 })
 
@@ -192,5 +194,18 @@ describe('getTodayString', () => {
     // So if today in CO is 2026-05-04, getTodayRange().startOfDay ISO = 2026-05-04T05:00:00.000Z
     // which matches the date part
     expect(today).toBe(utcIso)
+  })
+})
+
+describe('getPresetDate', () => {
+  it('turno returns yesterday to today', () => {
+    const result = getPresetDate('turno')
+    expect(result).not.toBeNull()
+    const hoy = getTodayString()
+    const ayer = new Date()
+    ayer.setDate(ayer.getDate() - 1)
+    const ayerStr = ayer.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+    expect(result?.desde).toBe(ayerStr)
+    expect(result?.hasta).toBe(hoy)
   })
 })

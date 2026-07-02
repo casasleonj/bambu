@@ -26,13 +26,51 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const hasAccess = await requireOwnership('pedido', id, getUserFromSession(authResult))
   if (!hasAccess) return apiError('Forbidden', 403)
   try {
-    // Simple read — delegate to repository via module composition
+    // Detail read includes factura lazily. This projection is specific to
+    // Prisma and is therefore implemented in PrismaPedidoRepository.
     const { PrismaPedidoRepository } = await import('@/modules/pedidos/infrastructure/repositories/PrismaPedidoRepository')
     const repo = new PrismaPedidoRepository()
-    const pedido = await repo.findById(PedidoId.from(id))
-    if (!pedido) return apiError('Not found', 404)
-    return apiSuccess({ pedido: PedidoDTOMapper.toResumen(pedido) })
+    const found = await repo.findByIdWithFactura(PedidoId.from(id))
+    if (!found) return apiError('Not found', 404)
+
+    // Enrich detail response with cliente/negocio legacy fields so the modal
+    // shows the owner name consistently with the list endpoint.
+    const { prisma } = await import('@/lib/prisma')
+    const [cliente, negocio] = await Promise.all([
+      prisma.cliente.findUnique({
+        where: { id: found.pedido.clienteId },
+        include: { ruta: { select: { nombre: true } } },
+      }),
+      found.pedido.negocioId
+        ? prisma.negocio.findUnique({
+            where: { id: found.pedido.negocioId },
+            include: { ruta: { select: { nombre: true } } },
+          })
+        : Promise.resolve(null),
+    ])
+
+    const nombreNegocio = negocio?.nombre || cliente?.nombreNegocio || null
+    const direccion = negocio?.direccion ?? cliente?.direccion
+    const barrio = negocio?.barrio ?? cliente?.barrio
+    const horaApertura = negocio?.horaApertura ?? cliente?.horaApertura
+    const rutaNombre = negocio?.ruta?.nombre || cliente?.ruta?.nombre
+
+    const dto = PedidoDTOMapper.toResumen(found.pedido, { factura: found.factura })
+    return apiSuccess({
+      pedido: {
+        ...dto,
+        nombreCli: dto.clienteId === 'CONSUMIDOR_FINAL' ? 'Consumidor Final' : (cliente?.nombre || 'Desconocido'),
+        apellidoCli: cliente?.apellido || null,
+        telefonoCli: cliente?.telefono || '',
+        zonaCli: direccion || '',
+        barrioCli: barrio || '',
+        nombreNegocioCli: nombreNegocio,
+        horaAperturaCli: horaApertura || null,
+        rutaNombre,
+      },
+    })
   } catch (error) {
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching pedido detail:')
     return apiError('Error', 500)
   }
 }

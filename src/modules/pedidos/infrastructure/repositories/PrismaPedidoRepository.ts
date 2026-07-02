@@ -24,6 +24,34 @@ export class PrismaPedidoRepository implements IPedidoRepository {
     return PedidoMapper.fromPrisma(raw as unknown as Parameters<typeof PedidoMapper.fromPrisma>[0])
   }
 
+  /**
+   * Find by id and include the associated Factura with its abonos.
+   * This is kept in the Prisma implementation only (not the domain port)
+   * because it is a persistence-specific projection used by the detail API.
+   */
+  async findByIdWithFactura(
+    id: PedidoId,
+    tx?: TransactionClient,
+  ): Promise<{ pedido: Pedido; factura: Parameters<typeof PedidoMapper.fromPrisma>[0]['factura'] } | null> {
+    const client = tx || prisma
+    const raw = await client.pedido.findUnique({
+      where: { id: id.get() },
+      include: {
+        items: true,
+        pagos: true,
+        factura: {
+          include: { abonos: { orderBy: { fecha: 'desc' } } },
+        },
+      },
+    })
+    if (!raw) return null
+    const typedRaw = raw as unknown as Parameters<typeof PedidoMapper.fromPrisma>[0]
+    return {
+      pedido: PedidoMapper.fromPrisma(typedRaw),
+      factura: typedRaw.factura,
+    }
+  }
+
   async findByNumero(numero: number, tx?: TransactionClient): Promise<Pedido | null> {
     const client = tx || prisma
     const raw = await client.pedido.findFirst({
@@ -152,6 +180,18 @@ export class PrismaPedidoRepository implements IPedidoRepository {
     if (filter?.estadoEntrega) where.estadoEntrega = filter.estadoEntrega
     if (filter?.estadoPago) where.estadoPago = filter.estadoPago
     if (filter?.origen) where.origen = filter.origen
+    if (filter?.tipo && filter.tipo.length > 0) {
+      // Tipo es un derivado semántico de canal: PUNTO → 'PUNTO', cualquier otro → 'ENVIO'.
+      const canalCondition = filter.tipo.includes('PUNTO') ? ['PUNTO'] : []
+      const excludePunto = filter.tipo.includes('ENVIO')
+      if (canalCondition.length > 0 && excludePunto) {
+        where.canal = { not: 'PUNTO' }
+      } else if (canalCondition.length > 0) {
+        where.canal = 'PUNTO'
+      } else if (excludePunto) {
+        where.canal = { not: 'PUNTO' }
+      }
+    }
     if (filter?.desde || filter?.hasta) {
       where.fecha = {}
       if (filter.desde) (where.fecha as Record<string, Date>).gte = filter.desde

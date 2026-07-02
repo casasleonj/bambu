@@ -50,7 +50,7 @@ async function buildImportBuffer(): Promise<Buffer> {
 test.describe('Importación histórica', () => {
   test.describe.configure({ mode: 'serial' })
 
-  test.use({ storageState: {} })
+  test.use({ storageState: { cookies: [], origins: [] } })
 
   test.beforeAll(() => {
     resetDatabase()

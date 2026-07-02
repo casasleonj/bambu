@@ -155,6 +155,16 @@ export const AnularSchema = z.object({
 })
 
 // ====================
+// CANCELAR (nuevo)
+// ====================
+
+export const CancelarSchema = z.object({
+  motivo: z.string().optional(),
+  // Offline-first: dedup si la request se encola y se reintenta
+  offlineId: z.string().optional(),
+})
+
+// ====================
 // ACTUALIZAR PEDIDO (actualizado)
 // ====================
 

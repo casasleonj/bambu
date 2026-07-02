@@ -18,6 +18,7 @@ export class ListarPedidosUseCase {
       estadoPago: input.estadoPago,
       origen: input.origen,
       embarqueId: input.embarqueId,
+      tipo: input.tipo,
     }
 
     const options = input.all

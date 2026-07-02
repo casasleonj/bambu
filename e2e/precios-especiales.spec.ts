@@ -4,7 +4,7 @@ import {test, expect, fullLogin, goto, apiPut, createCliente,  resetDatabase} fr
 test.describe('Precios Especiales en Pedidos', () => {
   test.describe.configure({ mode: 'serial' })
 
-  test.use({ storageState: {} })
+  test.use({ storageState: { cookies: [], origins: [] } })
 
   test.beforeAll(() => {
     resetDatabase()

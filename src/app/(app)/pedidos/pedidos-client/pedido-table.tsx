@@ -5,7 +5,18 @@ import { EmptyState } from '@/components/empty-state'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
 import { MoneyDisplay } from '@/components/money-display'
 import { getAnonymousClientDisplayName } from '@/lib/cliente-canonical'
+import { calcularEstadoPagoVisual } from '@/modules/pedidos/presentation/visual-states'
 import type { Pedido } from './types'
+
+function getPagoVisual(pedido: Pedido) {
+  return calcularEstadoPagoVisual({
+    estadoPago: pedido.estadoPago,
+    estadoEntrega: pedido.estadoEntrega,
+    saldo: Number(pedido.saldo),
+    total: Number(pedido.total),
+    totalPagado: Number(pedido.totalPagado),
+  })
+}
 
 function getItemsFromPedido(pedido: Pedido) {
   if (pedido.items && pedido.items.length > 0) {
@@ -123,11 +134,16 @@ function DesktopRow({
         <div className="font-semibold text-gray-800"><MoneyDisplay value={Number(pedido.total)} userRole={userRole} /></div>
       </td>
       <td className="px-4 py-3 text-right">
-        {Number(pedido.saldo) > 0 ? (
-          <span className="text-sm font-semibold text-red-600"><MoneyDisplay value={Number(pedido.saldo)} userRole={userRole} /></span>
-        ) : (
-          <span className="text-xs text-green-600 font-medium">✓</span>
-        )}
+        {((): ReactNode => {
+          const visual = getPagoVisual(pedido)
+          if (visual.key === 'FIADO') {
+            return <span className="text-sm font-semibold text-red-600"><MoneyDisplay value={Number(pedido.saldo)} userRole={userRole} /></span>
+          }
+          if (visual.key === 'PAGADO') {
+            return <span className="text-xs text-green-600 font-medium">✓</span>
+          }
+          return <span className="text-xs text-gray-400 font-medium">—</span>
+        })()}
       </td>
       <td className="px-4 py-3 text-center space-y-1">
         {renderEstadoEntregaBadge(pedido.estadoEntrega)}
@@ -241,11 +257,13 @@ function MobileCard({
         </div>
         <div className="text-right ml-2">
           <p className="font-bold text-gray-800 text-sm"><MoneyDisplay value={Number(pedido.total)} userRole={userRole} /></p>
-          {Number(pedido.saldo) > 0 ? (
-            <p className="text-xs text-red-500 font-medium">Debe: <MoneyDisplay value={Number(pedido.saldo)} userRole={userRole} /></p>
-          ) : (
-            <p className="text-xs text-green-600 font-medium">Pagado</p>
-          )}
+          {((): ReactNode => {
+            const visual = getPagoVisual(pedido)
+            if (visual.key === 'FIADO') {
+              return <p className="text-xs text-red-500 font-medium">Debe: <MoneyDisplay value={Number(pedido.saldo)} userRole={userRole} /></p>
+            }
+            return <p className={`text-xs font-medium ${visual.color === 'green' ? 'text-green-600' : 'text-gray-500'}`}>{visual.label}</p>
+          })()}
         </div>
       </div>
       <div className="flex gap-1.5 flex-wrap mt-2">

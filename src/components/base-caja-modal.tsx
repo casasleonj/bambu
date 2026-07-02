@@ -40,6 +40,16 @@ export default function BaseCajaModal() {
     try {
       const today = todayInBogota()
 
+      // Test mode: if Playwright pre-seeded localStorage, trust it and skip the API round-trip.
+      if (typeof window !== 'undefined' && (window as unknown as { __PLAYWRIGHT_TEST__?: boolean }).__PLAYWRIGHT_TEST__) {
+        const preseeded = localStorage.getItem(`baseDia_${today}`)
+        if (preseeded) {
+          persistBaseDia(preseeded)
+          setStatus('ready')
+          return
+        }
+      }
+
       const [cierreRes, configRes] = await Promise.all([
         fetch('/api/cierre/last'),
         fetch(`/api/config?clave=BASE_DIA_${today}`),

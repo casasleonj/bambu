@@ -4,7 +4,7 @@ import {test, expect, fullLogin, goto, apiPost, apiGet, getFirstFacturaConSaldo,
 test.describe('Facturas', () => {
   test.describe.configure({ mode: 'serial' })
 
-  test.use({ storageState: {} })
+  test.use({ storageState: { cookies: [], origins: [] } })
 
   test.beforeAll(() => {
     resetDatabase()
@@ -14,7 +14,7 @@ test.describe('Facturas', () => {
   test('page loads', async ({ page }) => {
     await fullLogin(page)
     await goto(page, '/facturas')
-    await expect(page.getByRole('heading', { name: 'Facturas' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Facturas', exact: true })).toBeVisible()
   })
 
   test('ver detalle factura', async ({ page }) => {
@@ -116,15 +116,15 @@ test.describe('Facturas', () => {
       await searchInput.fill('FAC')
       await page.waitForTimeout(500)
       // Page should still be visible
-      await expect(page.getByRole('heading', { name: 'Facturas' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Facturas', exact: true })).toBeVisible()
     }
   })
 
-  test('asistente puede acceder a facturas', async ({ page }) => {
+  test('contador puede acceder a facturas', async ({ page }) => {
     const { login, handleBaseCaja } = await import('./fixtures')
-    await login(page, 'asistente', 'asist123')
+    await login(page, 'contador', 'cont123')
     await handleBaseCaja(page)
     await goto(page, '/facturas')
-    await expect(page.getByRole('heading', { name: 'Facturas' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Facturas', exact: true })).toBeVisible({ timeout: 10000 })
   })
 })

@@ -4,7 +4,7 @@ import {test, expect, fullLogin, goto, apiPost, createTrabajador,  resetDatabase
 test.describe('Nomina', () => {
   test.describe.configure({ mode: 'serial' })
 
-  test.use({ storageState: {} })
+  test.use({ storageState: { cookies: [], origins: [] } })
 
   test.beforeAll(() => {
     resetDatabase()

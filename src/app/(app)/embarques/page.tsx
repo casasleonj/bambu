@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
 import EmbarquesClient from './embarques-client'
 import { calcularPacasEmbarque, calcularPesoEmbarque, getCapacidadInfo, PESOS_KG } from '@/lib/embarque-capacidad'
+import { getStockEstimadoHoy, getStockDisponible } from '@/lib/stock'
 
 export default async function EmbarquesPage() {
   const authResult = await requireAuth()
@@ -10,7 +11,7 @@ export default async function EmbarquesPage() {
   const session = authResult as { user?: { id?: string; role?: string } }
   const isAdmin = session.user?.role === 'ADMIN'
 
-  const [embarques, trabajadores, rutas, pedidos] = await Promise.all([
+  const [embarques, trabajadores, rutas, pedidos, stockEstimado, stockDisponible] = await Promise.all([
     prisma.embarque.findMany({
       orderBy: [{ fecha: 'desc' }, { numeroDia: 'desc' }],
       include: {
@@ -44,7 +45,12 @@ export default async function EmbarquesPage() {
             cliente: { select: { id: true, nombre: true, barrio: true } },
           },
         }),
+    getStockEstimadoHoy(),
+    getStockDisponible(),
   ])
+
+  const totalStockAguaHielo = (stockDisponible.stock.PACA_AGUA || 0) + (stockDisponible.stock.PACA_HIELO || 0)
+  const stockBajo = totalStockAguaHielo < 50
 
   const initialData = JSON.parse(JSON.stringify({
     embarques: embarques.map(e => {
@@ -73,6 +79,8 @@ export default async function EmbarquesPage() {
     trabajadores,
     rutas,
     pedidos,
+    stockEstimado,
+    stockBajo,
   }))
 
   return <EmbarquesClient initialData={initialData} isAdmin={isAdmin} />

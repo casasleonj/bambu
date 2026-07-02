@@ -1,5 +1,5 @@
 // @tests productos comprehensive - UI + API + Roles + Mobile + Edge cases
-import {test, expect, BASE, fullLogin, login, goto, apiPost, apiGet, apiPut, apiDelete, resetTestDatabase, waitForToast, setMobileViewport, checkHorizontalOverflow, skipBaseCaja,  resetDatabase} from './fixtures'
+import {test, expect, BASE, fullLogin, login, goto, apiPost, apiGet, apiPut, apiDelete, resetTestDatabase, waitForToast, setMobileViewport, checkHorizontalOverflow, skipBaseCaja} from './fixtures'
 
 test.describe('Productos - Comprehensive', () => {
 

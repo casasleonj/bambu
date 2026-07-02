@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
-import { CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
+import { CANONICAL_CONSUMIDOR_FINAL_ID, LIMITE_FIADOS_DEFAULT } from '@/lib/constants'
+import { getConfigInt } from '@/lib/config'
 import ClientesClient from './clientes-client'
 
 export type ClientesSearchParams = {
@@ -86,5 +87,7 @@ export default async function ClientesPage({
     })
   )
 
-  return <ClientesClient initialClientes={serialized} openClienteId={resolvedSearchParams.openCliente} filtroActivo={filtroActivo} />
+  const limiteGlobalFiados = await getConfigInt('LIMITE_PEDIDOS_FIADOS_DEFAULT', LIMITE_FIADOS_DEFAULT)
+
+  return <ClientesClient initialClientes={serialized} initialLimiteFiados={limiteGlobalFiados} openClienteId={resolvedSearchParams.openCliente} filtroActivo={filtroActivo} />
 }

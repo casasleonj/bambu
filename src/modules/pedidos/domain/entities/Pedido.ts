@@ -5,7 +5,7 @@
  * Encapsulates all business rules for order lifecycle.
  */
 
-import { Money } from '@/shared/domain'
+import { Money, calcularSaldo } from '@/shared/domain'
 import type { ProductCode } from '@/shared/domain'
 import { PedidoId } from '../value-objects/PedidoId'
 import { CanalVO } from '../value-objects/Canal'
@@ -69,7 +69,7 @@ export class Pedido {
   get items(): readonly PedidoItem[] { return this.props.items }
   get total(): Money { return this.props.total }
   get totalPagado(): Money { return this.props.totalPagado }
-  get saldo(): Money { return this.props.total.subtract(this.props.totalPagado) }
+  get saldo(): Money { return calcularSaldo(this.props.total, this.props.totalPagado) }
   get pagos(): readonly PagoData[] { return this.props.pagos }
   get fecha(): Date { return this.props.fecha }
   get fechaEntrega(): Date | undefined { return this.props.fechaEntrega }

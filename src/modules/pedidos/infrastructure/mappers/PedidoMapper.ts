@@ -56,6 +56,20 @@ interface PrismaPedido {
     metodo: string
     monto: number | { toNumber: () => number }
   }>
+  factura?: {
+    id: string
+    numero: string
+    estado: string
+    total: number | { toNumber: () => number }
+    saldo: number | { toNumber: () => number }
+    abonos: Array<{
+      id: string
+      numero: string
+      monto: number | { toNumber: () => number }
+      metodoPago: string
+      fecha: Date
+    }>
+  } | null
 }
 
 function toNumber(value: number | { toNumber: () => number }): number {
@@ -206,6 +220,11 @@ export class PedidoMapper {
     saldo: number | { toNumber: () => number }
     estado: string
     montoPagado?: number | { toNumber: () => number } | null
+    empresaNombre?: string | null
+    empresaNit?: string | null
+    empresaDireccion?: string | null
+    empresaTelefono?: string | null
+    empresaEmail?: string | null
   }): FacturaSnapshot {
     return {
       id: raw.id,
@@ -215,6 +234,11 @@ export class PedidoMapper {
       saldo: toNumber(raw.saldo),
       estado: raw.estado as FacturaSnapshot['estado'],
       montoPagado: raw.montoPagado ? toNumber(raw.montoPagado) : 0,
+      empresaNombre: raw.empresaNombre ?? undefined,
+      empresaNit: raw.empresaNit ?? undefined,
+      empresaDireccion: raw.empresaDireccion ?? undefined,
+      empresaTelefono: raw.empresaTelefono ?? undefined,
+      empresaEmail: raw.empresaEmail ?? undefined,
     }
   }
 }

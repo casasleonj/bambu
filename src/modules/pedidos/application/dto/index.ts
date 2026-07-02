@@ -68,6 +68,8 @@ export interface AnularPedidoInput {
 
 export interface CancelarPedidoInput {
   pedidoId: string
+  motivo?: string
+  offlineId?: string
 }
 
 export interface ListarPedidosInput {
@@ -78,9 +80,25 @@ export interface ListarPedidosInput {
   estadoPago?: string
   origen?: string
   embarqueId?: string
+  tipo?: string[]
   page?: number
   pageSize?: number
   all?: boolean
+}
+
+export interface FacturaDTOSnapshot {
+  id: string
+  numero: string
+  estado: string
+  total: number
+  saldo: number
+  abonos: Array<{
+    id: string
+    numero: string
+    monto: number
+    metodoPago: string
+    fecha: string
+  }>
 }
 
 export interface PedidoResumenDTO {
@@ -90,6 +108,7 @@ export interface PedidoResumenDTO {
   negocioId?: string
   embarqueId?: string | null
   canal: string
+  tipo: string
   origen: string
   estado: string
   estadoEntrega: string
@@ -139,6 +158,7 @@ export interface PedidoResumenDTO {
     metodo: string
     monto: number
   }>
+  factura?: FacturaDTOSnapshot | null
 }
 
 export interface CrearPedidoResult {

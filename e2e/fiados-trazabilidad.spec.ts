@@ -1,5 +1,6 @@
 // @tests api/pedido, api/abono
 import { test, expect } from '@playwright/test'
+import { resetDatabase } from './fixtures'
 import { prisma } from '../src/lib/prisma'
 
 const BASE = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000'
@@ -7,7 +8,7 @@ const BASE = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000'
 test.describe('Trazabilidad de pagos de fiados', () => {
   test.describe.configure({ mode: 'serial' })
 
-  test.use({ storageState: {} })
+  test.use({ storageState: { cookies: [], origins: [] } })
 
   test.beforeAll(() => {
     resetDatabase()

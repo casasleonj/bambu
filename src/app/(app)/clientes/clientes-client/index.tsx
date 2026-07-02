@@ -26,7 +26,7 @@ import { getBadgeColor, ignorarAlerta } from '@/lib/alertas-config'
 import { useEscapeGuard } from '@/hooks/use-escape-guard'
 import { useRealtimeListener } from '@/hooks/use-realtime-listener'
 
-export default function ClientesClient({ initialClientes, openClienteId, totalClientes, filtroActivo }: ClientesClientProps) {
+export default function ClientesClient({ initialClientes, initialLimiteFiados, openClienteId, totalClientes, filtroActivo }: ClientesClientProps) {
   const [clientes, setClientes] = useState<Cliente[]>(initialClientes)
   const { confirm, modal } = useConfirm()
   const [loading, setLoading] = useState(false)
@@ -764,6 +764,7 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
         onPrecioEspecialChange={handlePrecioEspecialChange}
         preciosBase={preciosBase}
         plantillaRecurrente={selectedCliente?.plantillaRecurrente}
+        limiteGlobalFiados={initialLimiteFiados}
       />
 
       {/* Side Panel for Client Detail */}
@@ -853,6 +854,7 @@ export default function ClientesClient({ initialClientes, openClienteId, totalCl
                   onPrecioEspecialChange={handlePrecioEspecialChange}
                   preciosBase={preciosBase}
                   plantillaRecurrente={selectedCliente?.plantillaRecurrente}
+                  limiteGlobalFiados={initialLimiteFiados}
                 />
                 <div className="p-4 border-t border-gray-100 bg-gray-50 flex gap-3">
                   <button type="button" onClick={cancelEdit} className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium">Cancelar</button>
