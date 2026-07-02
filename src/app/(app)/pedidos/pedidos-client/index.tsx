@@ -21,7 +21,7 @@ import { FiadosTable } from './fiados-table'
 import { AlertasTable } from './alertas-table'
 import { calcularAlertas } from './alertas-utils'
 import type { Pedido, Embarque, Cliente } from './types'
-import { getPresetDate } from '@/lib/dates'
+import { getPresetDate, getTodayString } from '@/lib/dates'
 import { usePedidos } from '@/hooks/use-pedidos'
 import { LIMITE_FIADOS_DEFAULT } from '@/lib/constants'
 import { useCrearPedido } from '@/hooks/use-crear-pedido'
@@ -144,6 +144,23 @@ export function PedidosClient() {
     } else {
       params.append(key, value)
     }
+    router.push(`?${params.toString()}`, { scroll: false })
+  }, [searchParams, router])
+
+  const setSingleFilter = useCallback((key: string, value: string) => {
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete(key)
+    params.append(key, value)
+    router.push(`?${params.toString()}`, { scroll: false })
+  }, [searchParams, router])
+
+  const setHoyFilter = useCallback((key: string, value: string) => {
+    const today = getTodayString()
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete(key)
+    params.append(key, value)
+    params.set('desde', today)
+    params.set('hasta', today)
     router.push(`?${params.toString()}`, { scroll: false })
   }, [searchParams, router])
 
@@ -452,10 +469,24 @@ export function PedidosClient() {
     return matchTipo && matchOrigen && matchEstadoEntrega && matchEstadoPago && matchCliente && matchSearch && matchFecha
   }), [pedidos, filtroTipo, filtroOrigen, filtroEstadoEntrega, filtroEstadoPago, clienteIdFromUrl, search, desdeUrl, hastaUrl])
 
-  const totalVentas = useMemo(() => pedidosFiltrados.reduce((acc, p) => acc + Number(p.total || 0), 0), [pedidosFiltrados])
-  const totalFiado = useMemo(() => pedidosFiltrados
-    .filter(p => p.estadoEntrega === 'ENTREGADO' && Number(p.saldo) > 0)
-    .reduce((acc, p) => acc + Number(p.saldo), 0), [pedidosFiltrados])
+  const hoyStr = useMemo(() => getTodayString(), [])
+  const stats = useMemo(() => {
+    const fechaEsHoy = (p: Pedido) => {
+      if (!p.fecha) return false
+      return new Date(p.fecha).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }) === hoyStr
+    }
+    const entregadosHoyArr = pedidos.filter(p => p.estadoEntrega === 'ENTREGADO' && fechaEsHoy(p))
+    return {
+      totalPedidos: pedidos.length,
+      pendientes: pedidos.filter(p => p.estadoEntrega === 'PENDIENTE').length,
+      enRuta: pedidos.filter(p => p.estadoEntrega === 'EN_RUTA').length,
+      entregadosHoy: entregadosHoyArr.length,
+      ventasHoy: entregadosHoyArr.reduce((acc, p) => acc + Number(p.total || 0), 0),
+      fiadoTotal: pedidos
+        .filter(p => p.estadoEntrega === 'ENTREGADO' && Number(p.saldo) > 0)
+        .reduce((acc, p) => acc + Number(p.saldo), 0),
+    }
+  }, [pedidos, hoyStr])
   const alertasCount = useMemo(() => calcularAlertas(pedidos).length, [pedidos])
 
   const hasActiveFilters = !!(search || clienteIdFromUrl || filtroTipo.length > 0 || filtroOrigen.length > 0 || filtroEstadoEntrega.length > 0 || filtroEstadoPago.length > 0 || desdeUrl || hastaUrl)
@@ -723,7 +754,23 @@ export function PedidosClient() {
         const data = await res.json()
         const pedidoConFactura = data.pedido as Pedido | undefined
         if (pedidoConFactura && Array.isArray(pedidoConFactura.items)) {
-          setSelectedPedido(pedidoConFactura)
+          setSelectedPedido(prev => {
+            if (!prev) return pedidoConFactura
+            // Merge detail fields, preserving legacy client fields (nombreCli,
+            // telefonoCli, etc.) when the response omits them. This prevents
+            // the name from disappearing while the factura loads.
+            const merged = { ...prev }
+            Object.entries(pedidoConFactura).forEach(([key, value]) => {
+              if (value === undefined) return
+              // FIX A-5: no pisar items/pagos con arrays vacíos del detalle;
+              // el listado ya trae el resumen completo.
+              if ((key === 'items' || key === 'pagos') && Array.isArray(value) && value.length === 0) {
+                return
+              }
+              ;(merged as Record<string, unknown>)[key] = value
+            })
+            return merged
+          })
         }
       }
     } catch {
@@ -879,21 +926,51 @@ export function PedidosClient() {
         </div>
       </div>
 
-      {/* Stats - solo en Hoy */}
+      {/* Stats - solo en Hoy (siempre sobre todos los pedidos, ignoran filtros activos) */}
       {activeTab === 'hoy' && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div className="bg-white p-4 rounded-xl shadow">
-            <p className="text-sm text-gray-500">Total Pedidos</p>
-            <p className="text-2xl font-bold text-gray-800">{pedidosFiltrados.length}</p>
-          </div>
-          <div className="bg-white p-4 rounded-xl shadow">
-            <p className="text-sm text-gray-500">Ventas</p>
-            <p className="text-2xl font-bold text-green-600">{formatCurrency(totalVentas)}</p>
-          </div>
-          <div className="bg-white p-4 rounded-xl shadow">
-            <p className="text-sm text-gray-500">Fiados</p>
-            <p className="text-2xl font-bold text-red-600">{formatCurrency(totalFiado)}</p>
-          </div>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+          <button
+            onClick={() => setSingleFilter('estadoEntrega', 'PENDIENTE')}
+            className="bg-white p-3 rounded-xl shadow text-left hover:shadow-md transition"
+          >
+            <p className="text-xs text-gray-500">Pendientes</p>
+            <p className="text-xl font-bold text-amber-600">{stats.pendientes}</p>
+          </button>
+          <button
+            onClick={() => setSingleFilter('estadoEntrega', 'EN_RUTA')}
+            className="bg-white p-3 rounded-xl shadow text-left hover:shadow-md transition"
+          >
+            <p className="text-xs text-gray-500">En Ruta</p>
+            <p className="text-xl font-bold text-sky-600">{stats.enRuta}</p>
+          </button>
+          <button
+            onClick={() => setHoyFilter('estadoEntrega', 'ENTREGADO')}
+            className="bg-white p-3 rounded-xl shadow text-left hover:shadow-md transition"
+          >
+            <p className="text-xs text-gray-500">Entregados Hoy</p>
+            <p className="text-xl font-bold text-green-600">{stats.entregadosHoy}</p>
+          </button>
+          <button
+            onClick={() => setHoyFilter('estadoEntrega', 'ENTREGADO')}
+            className="bg-white p-3 rounded-xl shadow text-left hover:shadow-md transition"
+          >
+            <p className="text-xs text-gray-500">Ventas Hoy</p>
+            <p className="text-xl font-bold text-emerald-600">{formatCurrency(stats.ventasHoy)}</p>
+          </button>
+          <button
+            onClick={() => setSingleFilter('estadoEntrega', 'ENTREGADO')}
+            className="bg-white p-3 rounded-xl shadow text-left hover:shadow-md transition"
+          >
+            <p className="text-xs text-gray-500">Fiado Total</p>
+            <p className="text-xl font-bold text-red-600">{formatCurrency(stats.fiadoTotal)}</p>
+          </button>
+          <button
+            onClick={() => { const params = new URLSearchParams(searchParams.toString()); params.delete('estadoEntrega'); router.push(`?${params.toString()}`, { scroll: false }) }}
+            className="bg-white p-3 rounded-xl shadow text-left hover:shadow-md transition"
+          >
+            <p className="text-xs text-gray-500">Total Pedidos</p>
+            <p className="text-xl font-bold text-gray-800">{stats.totalPedidos}</p>
+          </button>
         </div>
       )}
 
@@ -1625,6 +1702,7 @@ function getTituloFecha(desde: string | null, hasta: string | null, all: boolean
   const presets = {
     hoy: getPresetDate('hoy'),
     ayer: getPresetDate('ayer'),
+    turno: getPresetDate('turno'),
     manana: getPresetDate('manana'),
   }
 
@@ -1632,6 +1710,7 @@ function getTituloFecha(desde: string | null, hasta: string | null, all: boolean
   if (!desde && !hasta) return 'Pedidos'
   if (presets.hoy && desde === presets.hoy.desde && hasta === presets.hoy.hasta) return 'Pedidos de Hoy'
   if (presets.ayer && desde === presets.ayer.desde && hasta === presets.ayer.hasta) return 'Pedidos de Ayer'
+  if (presets.turno && desde === presets.turno.desde && hasta === presets.turno.hasta) return 'Pedidos del Turno'
   if (presets.manana && desde === presets.manana.desde && hasta === presets.manana.hasta) return 'Pedidos de Mañana'
   if (desde && hasta) {
     if (desde === hasta) {

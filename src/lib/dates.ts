@@ -81,7 +81,7 @@ export function getEndOfWeek(date: Date = new Date()): Date {
   return end
 }
 
-export type DatePreset = 'ayer' | 'hoy' | 'manana' | 'semana' | 'todos'
+export type DatePreset = 'ayer' | 'hoy' | 'manana' | 'semana' | 'todos' | 'turno'
 
 export function getPresetDate(preset: DatePreset): { desde: string; hasta: string } | null {
   if (preset === 'todos') return null
@@ -107,6 +107,12 @@ export function getPresetDate(preset: DatePreset): { desde: string; hasta: strin
       const finSemana = getEndOfWeek(hoy)
       const finSemanaStr = finSemana.toLocaleDateString('en-CA', { timeZone: TIMEZONE })
       return { desde: hoyStr, hasta: finSemanaStr }
+    }
+    case 'turno': {
+      const ayer = new Date(hoy)
+      ayer.setDate(ayer.getDate() - 1)
+      const ayerStr = ayer.toLocaleDateString('en-CA', { timeZone: TIMEZONE })
+      return { desde: ayerStr, hasta: hoyStr }
     }
     default:
       return null

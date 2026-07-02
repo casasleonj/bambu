@@ -35,6 +35,7 @@ export function SmartDateFilter({ onDateChange }: SmartDateFilterProps) {
     const presets: { preset: DatePreset; desde: string; hasta: string }[] = [
       { preset: 'ayer', ...getPresetDate('ayer')! },
       { preset: 'hoy', ...getPresetDate('hoy')! },
+      { preset: 'turno', ...getPresetDate('turno')! },
       { preset: 'manana', ...getPresetDate('manana')! },
       { preset: 'semana', ...getPresetDate('semana')! },
     ]
@@ -53,8 +54,8 @@ export function SmartDateFilter({ onDateChange }: SmartDateFilterProps) {
       setMode('preset')
       setIsCustomExpanded(false)
     } else if (!desdeUrl && !hastaUrl) {
-      // Default a hoy si no hay filtro de fecha en la URL.
-      setActivePreset('hoy')
+      // Default a turno (ayer + hoy) para cubrir jornadas que cruzan medianoche.
+      setActivePreset('turno')
       setMode('preset')
       setIsCustomExpanded(false)
     } else {
@@ -70,13 +71,13 @@ export function SmartDateFilter({ onDateChange }: SmartDateFilterProps) {
     syncFromUrl()
   }, [syncFromUrl])
 
-  // Default a "Hoy" al montar si no hay filtro de fecha en la URL
+  // Default a "Turno" (ayer + hoy) al montar si no hay filtro de fecha en la URL
   // y no se ha pedido explícitamente "Todos" con ?all=true.
   // Esto hace que SmartDateFilter sea la única fuente de verdad del
   // filtro default y evita duplicar la lógica en los consumidores.
   useEffect(() => {
     if (!desdeUrl && !hastaUrl && !allUrl) {
-      const dates = getPresetDate('hoy')
+      const dates = getPresetDate('turno')
       if (dates) {
         updateUrl(dates.desde, dates.hasta, false)
       }
@@ -167,6 +168,11 @@ export function SmartDateFilter({ onDateChange }: SmartDateFilterProps) {
     {
       key: 'hoy',
       label: 'Hoy',
+      getDate: () => new Date(),
+    },
+    {
+      key: 'turno',
+      label: 'Turno',
       getDate: () => new Date(),
     },
     {
@@ -311,6 +317,8 @@ function getPresetLabel(preset: DatePreset): string {
       return 'Ayer'
     case 'hoy':
       return 'Hoy'
+    case 'turno':
+      return 'Turno'
     case 'manana':
       return 'Mañana'
     case 'semana':

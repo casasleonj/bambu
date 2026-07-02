@@ -11,6 +11,7 @@
 import { Money } from '@/shared/domain'
 import { getNextNumero } from '@/lib/sequence'
 import { logAudit } from '@/lib/audit'
+import { logger } from '@/lib/logger'
 import { Pedido } from '../../domain/entities/Pedido'
 import { PedidoItem } from '../../domain/entities/PedidoItem'
 import { PedidoId } from '../../domain/value-objects/PedidoId'
@@ -29,6 +30,7 @@ import type { ITransactionManager } from '../../infrastructure/transactions/Pris
 import type { CrearPedidoInput, CrearPedidoResult } from '../dto'
 import { PedidoDTOMapper } from '../dto/PedidoDTOMapper'
 import { ensureConsumidorFinalCanonical, isConsumidorFinalCanonical } from '@/lib/cliente-canonical'
+import { getFacturaEmpresaSnapshot } from '@/lib/factura-empresa'
 
 export class CrearPedidoUseCase {
   constructor(
@@ -41,6 +43,10 @@ export class CrearPedidoUseCase {
   ) {}
 
   async execute(input: CrearPedidoInput): Promise<CrearPedidoResult> {
+    // Snapshot de empresa fuera del lock: lectura simple de Config,
+    // no genera contención y no cambia durante la tx.
+    const empresaSnapshot = await getFacturaEmpresaSnapshot()
+
     return this.txManager.executeWithLock('PEDIDO', async (tx) => {
       // FIX F-N10: dedup por offlineId DENTRO del lock.
       // Antes: la route hacía findUnique FUERA del lock (línea 151-153
@@ -195,6 +201,10 @@ export class CrearPedidoUseCase {
 
       // 7. Persist
       const saved = await this.pedidoRepo.save(pedido, tx, { offlineId: input.offlineId })
+      logger.info(
+        { pedidoId: saved.id.get(), numero: saved.numero, clienteId, total, offlineId: input.offlineId ?? null },
+        'Pedido created'
+      )
 
       // 8. Persist pagos
       if (pagosNormalizados.length > 0) {
@@ -210,6 +220,11 @@ export class CrearPedidoUseCase {
         saldo: total - totalPagado,
         estado: totalPagado >= total ? 'PAGADA' : (totalPagado > 0 ? 'PARCIAL' : 'EMITIDA'),
         montoPagado: totalPagado,
+        empresaNombre: empresaSnapshot.empresaNombre,
+        empresaNit: empresaSnapshot.empresaNit,
+        empresaDireccion: empresaSnapshot.empresaDireccion,
+        empresaTelefono: empresaSnapshot.empresaTelefono,
+        empresaEmail: empresaSnapshot.empresaEmail,
       }, saved.id.get(), clienteId, tx)
 
       // 10. Audit
