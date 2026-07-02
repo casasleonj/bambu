@@ -92,6 +92,12 @@ export interface FacturaSnapshot {
   saldo: number
   estado: 'EMITIDA' | 'PAGADA' | 'ANULADA' | 'PARCIAL'
   montoPagado: number
+  // Snapshot de datos de empresa al momento de emisión (inmutable)
+  empresaNombre?: string
+  empresaNit?: string
+  empresaDireccion?: string
+  empresaTelefono?: string
+  empresaEmail?: string
 }
 
 export interface NotaCreditoData {

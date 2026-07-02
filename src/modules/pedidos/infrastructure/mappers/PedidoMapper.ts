@@ -220,6 +220,11 @@ export class PedidoMapper {
     saldo: number | { toNumber: () => number }
     estado: string
     montoPagado?: number | { toNumber: () => number } | null
+    empresaNombre?: string | null
+    empresaNit?: string | null
+    empresaDireccion?: string | null
+    empresaTelefono?: string | null
+    empresaEmail?: string | null
   }): FacturaSnapshot {
     return {
       id: raw.id,
@@ -229,6 +234,11 @@ export class PedidoMapper {
       saldo: toNumber(raw.saldo),
       estado: raw.estado as FacturaSnapshot['estado'],
       montoPagado: raw.montoPagado ? toNumber(raw.montoPagado) : 0,
+      empresaNombre: raw.empresaNombre ?? undefined,
+      empresaNit: raw.empresaNit ?? undefined,
+      empresaDireccion: raw.empresaDireccion ?? undefined,
+      empresaTelefono: raw.empresaTelefono ?? undefined,
+      empresaEmail: raw.empresaEmail ?? undefined,
     }
   }
 }

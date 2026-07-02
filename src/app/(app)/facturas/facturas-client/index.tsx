@@ -16,6 +16,7 @@ import { FacturaDetail } from './factura-detail'
 import './factura-print.css'
 import { getAnonymousClientDisplayName } from '@/lib/cliente-canonical'
 import type { Factura, EmpresaConfig } from './types'
+import { SkeletonPage } from '@/components/skeleton'
 
 const DEFAULT_EMPRESA: EmpresaConfig = {
   nombre: 'Agua Bambú SAS',
@@ -43,6 +44,7 @@ export default function FacturasPage() {
   const [selectedFactura, setSelectedFactura] = useState<Factura | null>(null)
   const [facturaDetail, setFacturaDetail] = useState<Factura | null>(null)
   const [empresaConfig, setEmpresaConfig] = useState<EmpresaConfig>(DEFAULT_EMPRESA)
+  const [loading, setLoading] = useState(true)
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [hasAutoOpened, setHasAutoOpened] = useState(false)
   const [selection, setSelection] = useState<UnifiedSelection>(null)
@@ -53,13 +55,25 @@ export default function FacturasPage() {
   const [sortField, setSortField] = useState<SortField>('fecha')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
 
+  const [page, setPage] = useState(1)
+  const [pageSize] = useState(50)
+  const [total, setTotal] = useState(0)
+  const [totalPages, setTotalPages] = useState(0)
+  const [totales, setTotales] = useState({
+    totalFacturado: 0,
+    totalCobrado: 0,
+    totalPorCobrar: 0,
+    count: 0,
+  })
+
   useEffect(() => {
     const loadConfig = async () => {
       try {
         const res = await fetch('/api/config?keys=empresa_nombre,empresa_nit,empresa_direccion,empresa_telefono,empresa_email')
         if (res.ok) {
           const data = await res.json()
-          const configs = data.data || {}
+          // apiSuccess hace spread de los valores, no los envuelve en "data"
+          const configs = data
           setEmpresaConfig({
             nombre: configs.empresa_nombre || DEFAULT_EMPRESA.nombre,
             nit: configs.empresa_nit || DEFAULT_EMPRESA.nit,
@@ -88,20 +102,26 @@ export default function FacturasPage() {
 
 
   const fetchFacturas = useCallback(async () => {
+    setLoading(true)
     try {
-      const params = new URLSearchParams()
+      const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
       if (dateRange.desde && dateRange.hasta) {
         params.set('desde', dateRange.desde)
         params.set('hasta', dateRange.hasta)
       }
       const res = await fetch(`/api/facturas?${params.toString()}`)
       const data = await res.json()
-      setFacturas(data.facturas || data.data || [])
+      setFacturas(data.data || data.facturas || [])
+      setTotal(data.total || 0)
+      setTotalPages(data.totalPages || 0)
+      setTotales(data.totales || { totalFacturado: 0, totalCobrado: 0, totalPorCobrar: 0, count: 0 })
     } catch (e) {
       console.error(e)
       toast.error('Error cargando facturas')
+    } finally {
+      setLoading(false)
     }
-  }, [dateRange])
+  }, [dateRange, page, pageSize])
 
   useEffect(() => { fetchFacturas() }, [fetchFacturas])
 
@@ -202,6 +222,7 @@ export default function FacturasPage() {
 
   const handleDateChange = useCallback((desde: string | null, hasta: string | null) => {
     setDateRange({ desde, hasta })
+    setPage(1)
   }, [])
 
   const handleSort = (field: SortField) => {
@@ -213,12 +234,12 @@ export default function FacturasPage() {
     }
   }
 
-  // KPIs
+  // KPIs globales del rango de fechas (del backend)
   const kpis = {
-    total: facturasFiltradas.reduce((s, f) => s + Number(f.total), 0),
-    cobrado: facturasFiltradas.reduce((s, f) => s + Number(f.montoPagado || 0), 0),
-    porCobrar: facturasFiltradas.reduce((s, f) => s + Number(f.saldo), 0),
-    count: facturasFiltradas.length,
+    total: totales.totalFacturado,
+    cobrado: totales.totalCobrado,
+    porCobrar: totales.totalPorCobrar,
+    count: totales.count,
     countPendientes: facturasFiltradas.filter(f => f.saldo > 0).length,
     countPagadas: facturasFiltradas.filter(f => f.estado === 'PAGADA').length,
   }
@@ -232,6 +253,15 @@ export default function FacturasPage() {
   // Evita desfase UTC: fuerza timezone Bogotá para strings YYYY-MM-DD
   const formatDateLocal = (dateStr: string) =>
     new Date(`${dateStr}T12:00:00-05:00`).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
+
+  const formatClienteNombre = (cliente?: Factura['cliente']) => {
+    if (!cliente) return 'N/A'
+    const nombre = [cliente.nombre, cliente.apellido].filter(Boolean).join(' ')
+    if (cliente.nombreNegocio) {
+      return `${nombre} — ${cliente.nombreNegocio}`
+    }
+    return nombre
+  }
 
   const estadoBadgeClass = (estado: string) => {
     switch (estado) {
@@ -250,7 +280,7 @@ export default function FacturasPage() {
   ]
 
   const clientesUnicos = useMemo(() => {
-    const map = new Map<string, { id: string; nombre: string; apellido: string | null; telefono: string; direccion: string | null }>()
+    const map = new Map<string, { id: string; nombre: string; apellido: string | null; telefono: string; direccion: string | null; nombreNegocio: string | null }>()
     facturas.forEach(f => {
       if (f.cliente?.id && !map.has(f.cliente.id)) {
         map.set(f.cliente.id, {
@@ -259,6 +289,7 @@ export default function FacturasPage() {
           apellido: f.cliente.apellido ?? null,
           telefono: f.cliente.telefono ?? '',
           direccion: f.cliente.direccion ?? null,
+          nombreNegocio: f.cliente.nombreNegocio ?? null,
         })
       }
     })
@@ -273,7 +304,7 @@ export default function FacturasPage() {
     facturas.map(f => ({
       id: f.id,
       numero: f.numero,
-      clienteNombre: f.cliente?.nombre ?? null,
+      clienteNombre: f.cliente ? formatClienteNombre(f.cliente) : null,
       fecha: f.fecha,
     })),
   [facturas])
@@ -281,6 +312,14 @@ export default function FacturasPage() {
   const sortIcon = (field: SortField) => {
     if (sortField !== field) return <span className="text-gray-300 ml-1">↕</span>
     return <span className="text-blue-600 ml-1">{sortDir === 'asc' ? '↑' : '↓'}</span>
+  }
+
+  if (loading && facturas.length === 0) {
+    return (
+      <div className="p-4">
+        <SkeletonPage hasStats cardCount={5} />
+      </div>
+    )
   }
 
   return (
@@ -480,7 +519,7 @@ export default function FacturasPage() {
                               className="text-sm font-medium text-gray-800 hover:text-blue-600 hover:underline"
                               onClick={(e) => e.stopPropagation()}
                             >
-                              {factura.cliente.nombre}
+                              {formatClienteNombre(factura.cliente)}
                             </a>
                           )
                         ) : (
@@ -592,7 +631,7 @@ export default function FacturasPage() {
                             className="text-sm font-medium text-gray-800 hover:text-blue-600 hover:underline block truncate"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            {factura.cliente.nombre}
+                            {formatClienteNombre(factura.cliente)}
                           </a>
                         )
                       ) : (
@@ -665,6 +704,36 @@ export default function FacturasPage() {
         </div>
       )}
 
+      {/* Paginación */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between bg-white rounded-xl p-3 shadow-sm border border-gray-100">
+          <p className="text-sm text-gray-500">
+            Mostrando {facturas.length} de {total} facturas
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page <= 1 || loading}
+            >
+              Anterior
+            </Button>
+            <span className="text-sm text-gray-600 px-2">
+              Página {page} de {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages || loading}
+            >
+              Siguiente
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Modal de detalle de factura */}
       <Modal open={!!selectedFactura} onClose={closeFacturaDetail} className="bg-white rounded-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto mx-auto mt-10 md:mt-0 p-0">
         {loadingDetail ? (
@@ -701,7 +770,7 @@ export default function FacturasPage() {
             <div className="flex justify-between items-center mb-4">
               <div>
                 <h2 className="text-lg font-semibold">Registrar Abono</h2>
-                <p className="text-sm text-gray-500">Factura #{abonoFactura.numero} — {abonoFactura.cliente?.nombre}</p>
+                <p className="text-sm text-gray-500">Factura #{abonoFactura.numero} — {abonoFactura.cliente ? formatClienteNombre(abonoFactura.cliente) : 'N/A'}</p>
               </div>
               <button
                 onClick={() => setAbonoFactura(null)}

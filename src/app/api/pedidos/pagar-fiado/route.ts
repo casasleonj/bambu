@@ -9,6 +9,7 @@ import { logAudit } from '@/lib/audit'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 import { publishRealtimeEvent } from '@/lib/realtime'
+import { Money, calcularSaldo } from '@/shared/domain'
 
 export async function POST(request: NextRequest) {
   // FIX C-1: solo ADMIN/ASISTENTE pueden registrar pagos de fiado.
@@ -118,7 +119,10 @@ export async function POST(request: NextRequest) {
         })
 
         const nuevoTotalPagado = Number(pedido.totalPagado) + montoAplicar
-        const nuevoSaldo = saldoPedido - montoAplicar
+        const nuevoSaldo = calcularSaldo(
+          Money.fromDecimal(Number(pedido.total)),
+          Money.fromDecimal(nuevoTotalPagado)
+        ).toDecimal()
         const nuevoEstadoPago = calcularEstadoPago(Number(pedido.total), nuevoTotalPagado)
 
         // Actualizar pedido

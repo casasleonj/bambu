@@ -11,6 +11,7 @@ import { matchCliente } from '@/lib/cliente-search'
 import { NegocioSelector } from '@/components/negocio-selector'
 import { usePriceSync } from '@/hooks/use-price-sync'
 import { resolverLimiteFiados } from '@/lib/pedido-utils'
+import { Money, calcularSaldo } from '@/shared/domain'
 import type { Cliente, Tier } from './types'
 
 const FUENTES: string[] = [
@@ -286,7 +287,10 @@ export function PedidoFormUnified({ contexto, clientes, limiteGlobal, onSubmit, 
 
   const total = calcularTotal()
   const totalPagado = pagos.reduce((sum, p) => sum + (p.monto || 0), 0)
-  const saldoPendiente = total - totalPagado
+  const saldoPendiente = calcularSaldo(
+    Money.fromDecimal(total),
+    Money.fromDecimal(totalPagado)
+  ).toDecimal()
   const requiereCliente = canal === 'DOMICILIO' || saldoPendiente > 0
 
   const handleCantidadChange = (id: string, value: string) => {
@@ -772,12 +776,7 @@ export function PedidoFormUnified({ contexto, clientes, limiteGlobal, onSubmit, 
                 <span className="font-medium text-red-600">${saldoPendiente.toLocaleString()}</span>
               </div>
             )}
-            {saldoPendiente < 0 && (
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Cambio:</span>
-                <span className="font-medium text-blue-600">${Math.abs(saldoPendiente).toLocaleString()}</span>
-              </div>
-            )}
+
           </div>
         </div>
 
