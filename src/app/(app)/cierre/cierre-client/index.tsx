@@ -17,6 +17,7 @@ import CierreSection from '@/components/cierre/cierre-section'
 import CierreStockBlock from '@/components/cierre/cierre-stock-block'
 import CierreValidationList from '@/components/cierre/cierre-validation-list'
 import type { CierreData } from './types'
+import { useRealtimeListener } from '@/hooks/use-realtime-listener'
 
 const formatMoney = (val: number) => formatCurrency(val)
 
@@ -178,6 +179,13 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
     /* eslint-enable react-hooks/set-state-in-effect */
     return () => ctrl.abort()
   }, [fecha, fetchCierre, loadBaseDia, checkLastCierre])
+
+  // Cross-session sync: refetch base de caja when another user updates it.
+  useRealtimeListener(['config.updated'], () => {
+    const ctrl = new AbortController()
+    loadBaseDia(fecha, ctrl.signal)
+    return () => ctrl.abort()
+  })
 
   const handleCerrar = async (e?: React.FormEvent) => {
     e?.preventDefault()

@@ -90,7 +90,6 @@ export default function ClientesClient({
   const [viewNegocioData, setViewNegocioData] = useState<NegocioDetail | null>(null)
   const [showNegocioDetail, setShowNegocioDetail] = useState(false)
 
-  const [preciosLoaded, setPreciosLoaded] = useState(false)
 
   const puedeDesactivar = userRole === 'ADMIN' || userRole === 'CONTADOR'
   const puedeEliminarNegocio = userRole === 'ADMIN'

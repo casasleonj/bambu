@@ -7,6 +7,7 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { validateConfigValue } from '@/lib/config-validation'
 import { revalidateConfigCache } from '@/lib/config'
+import { publishRealtimeEvent } from '@/lib/realtime'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -100,6 +101,9 @@ export async function POST(request: NextRequest) {
 
     // Solo revalidar si la tx commiteó exitosamente
     revalidateConfigCache()
+
+    // Notify other sessions that a config value changed (e.g. base de caja).
+    publishRealtimeEvent('config.updated', config.id).catch(() => {})
 
     return apiSuccess({ config }, 201)
   } catch (error) {

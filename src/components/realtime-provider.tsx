@@ -18,6 +18,8 @@ interface RealtimeSubscription {
 interface RealtimeContextValue {
   status: 'connecting' | 'open' | 'closed' | 'paused'
   subscribe: (filters: string[], callback: (event: RealtimeEvent) => void) => () => void
+  /** Register a callback to run each time the SSE connection (re)connects. */
+  registerReconnectHandler: (id: string, callback: () => void) => () => void
 }
 
 export const RealtimeContext = createContext<RealtimeContextValue | null>(null)
@@ -49,6 +51,7 @@ function shouldAvoidPersistentConnection(): boolean {
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<RealtimeContextValue['status']>('closed')
   const subscriptionsRef = useRef<RealtimeSubscription[]>([])
+  const reconnectHandlersRef = useRef<Map<string, () => void>>(new Map())
   const eventSourceRef = useRef<EventSource | null>(null)
   const retryDelayRef = useRef(INITIAL_RETRY_DELAY_MS)
   const heartbeatTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -95,6 +98,14 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       retryDelayRef.current = INITIAL_RETRY_DELAY_MS
       setStatus('open')
       resetHeartbeat()
+      // Trigger refetch-on-reconnect handlers (closure-safe via callback refs).
+      reconnectHandlersRef.current.forEach((callback) => {
+        try {
+          callback()
+        } catch {
+          // Ignore handler errors to avoid breaking the connection.
+        }
+      })
     })
 
     es.addEventListener('message', (e) => {
@@ -211,8 +222,18 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     [connect, closeConnection],
   )
 
+  const registerReconnectHandler = useCallback(
+    (id: string, callback: () => void) => {
+      reconnectHandlersRef.current.set(id, callback)
+      return () => {
+        reconnectHandlersRef.current.delete(id)
+      }
+    },
+    [],
+  )
+
   return (
-    <RealtimeContext.Provider value={{ status, subscribe }}>
+    <RealtimeContext.Provider value={{ status, subscribe, registerReconnectHandler }}>
       {children}
     </RealtimeContext.Provider>
   )

@@ -22,6 +22,7 @@ export type RealtimeEntity =
   | 'compra'
   | 'produccion'
   | 'trabajador'
+  | 'config'
 
 export type RealtimeAction = 'created' | 'updated' | 'deleted'
 

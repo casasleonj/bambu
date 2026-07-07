@@ -25,12 +25,30 @@ describe('F-N24: config POST envuelve upsert en tx y revalida solo si commit OK'
   })
 
   it('FIX: el revalidateConfigCache se llama DESPUÉS del commit de la tx', () => {
-    // El revalidate debe estar FUERA del bloque prisma.$transaction
+    // El revalidate debe estar FUERA del bloque prisma.$transaction.
+    // Buscamos el cierre real de la tx contando llaves para no confundir
+    // con otros '})' que puedan agregarse después (ej. .catch(() => {})).
     const txStart = postSource.indexOf('prisma.$transaction(')
-    const txClose = postSource.lastIndexOf('})')
-    const revalidateIdx = postSource.indexOf('revalidateConfigCache()')
-
     expect(txStart).toBeGreaterThan(-1)
+
+    let txClose = -1
+    let depth = 0
+    let inTx = false
+    for (let i = txStart; i < postSource.length; i++) {
+      const ch = postSource[i]
+      if (ch === '(') {
+        inTx = true
+        depth++
+      } else if (ch === ')') {
+        depth--
+        if (inTx && depth === 0) {
+          txClose = i
+          break
+        }
+      }
+    }
+
+    const revalidateIdx = postSource.indexOf('revalidateConfigCache()')
     expect(revalidateIdx).toBeGreaterThan(txClose)
   })
 

@@ -1,15 +1,19 @@
-import { useEffect, useRef } from 'react'
+'use client'
+
+import { useContext, useEffect, useId, useRef } from 'react'
+import { RealtimeContext } from '@/components/realtime-provider'
 
 /**
- * Calls the provided callback when the browser detects it is back online.
- * Useful for refreshing data after a network interruption or when an SSE
- * connection cycles (e.g. Vercel Hobby 60s timeout).
+ * Register a callback that runs every time the shared SSE connection
+ * (re)connects. Useful for refetching data after a Vercel Hobby 60s
+ * disconnect or any other reconnect.
  *
- * The callback is debounced so rapid `online` events do not fire multiple
- * refetches in succession.
+ * The callback is kept in a ref so the caller can use fresh closures
+ * without re-registering on every render.
  */
-export function useReconnectHandler(callback: () => void, debounceMs = 1000) {
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+export function useReconnectHandler(callback: () => void) {
+  const ctx = useContext(RealtimeContext)
+  const id = useId()
   const callbackRef = useRef(callback)
 
   useEffect(() => {
@@ -17,21 +21,9 @@ export function useReconnectHandler(callback: () => void, debounceMs = 1000) {
   }, [callback])
 
   useEffect(() => {
-    const handleOnline = () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current)
-      }
-      timeoutRef.current = setTimeout(() => {
-        callbackRef.current()
-      }, debounceMs)
-    }
-
-    window.addEventListener('online', handleOnline)
-    return () => {
-      window.removeEventListener('online', handleOnline)
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current)
-      }
-    }
-  }, [debounceMs])
+    if (!ctx) return undefined
+    return ctx.registerReconnectHandler(id, () => {
+      callbackRef.current()
+    })
+  }, [ctx, id])
 }

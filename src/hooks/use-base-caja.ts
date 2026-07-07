@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { getTodayString } from '@/lib/dates'
+import { useRealtimeListener } from '@/hooks/use-realtime-listener'
 
 function getTodayKey() {
   return getTodayString()
@@ -23,6 +24,22 @@ export function useBaseCaja() {
     window.addEventListener('storage', handler)
     return () => window.removeEventListener('storage', handler)
   }, [])
+
+  // Cross-session sync: when another user updates BASE_DIA, refetch and update
+  // localStorage (which also notifies other tabs via the storage event above).
+  useRealtimeListener(['config.updated'], () => {
+    const todayKey = getTodayKey()
+    fetch(`/api/config?clave=BASE_DIA_${todayKey}`, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        const valor = data?.config?.valor ?? null
+        if (valor !== null) {
+          localStorage.setItem(`baseDia_${todayKey}`, valor)
+          setBaseDiaState(valor)
+        }
+      })
+      .catch(() => {})
+  })
 
   const setBaseDia = useCallback((val: string) => {
     const todayKey = getTodayKey()
