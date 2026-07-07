@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PUT /api/negocios/[id]
+// PUT /api/negocios?id=xxx
 export async function PUT(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
@@ -113,7 +113,7 @@ export async function PUT(request: NextRequest) {
 
   try {
     const url = new URL(request.url)
-    const id = url.pathname.split('/').pop()
+    const id = url.searchParams.get('id')
     if (!id) return apiError('ID requerido', 400)
 
     const body = await request.json()
@@ -179,7 +179,7 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-// DELETE /api/negocios/[id]
+// DELETE /api/negocios?id=xxx
 export async function DELETE(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
@@ -188,7 +188,7 @@ export async function DELETE(request: NextRequest) {
 
   try {
     const url = new URL(request.url)
-    const id = url.pathname.split('/').pop()
+    const id = url.searchParams.get('id')
     if (!id) return apiError('ID requerido', 400)
 
     // FIX F-35c: read+check+delete DENTRO de prisma.$transaction.

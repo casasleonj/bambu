@@ -72,7 +72,7 @@ export function NegocioForm({
 
     setSaving(true)
     try {
-      const url = isEdit ? `/api/negocios/${editData!.id}` : '/api/negocios'
+      const url = isEdit ? `/api/negocios?id=${editData!.id}` : '/api/negocios'
       const method = isEdit ? 'PUT' : 'POST'
 
       const body: Record<string, unknown> = {

@@ -63,7 +63,7 @@ export function NegocioDetailModal({
 
     setDeleting(true)
     try {
-      const res = await fetch(`/api/negocios/${neg.id}`, { method: 'DELETE' })
+      const res = await fetch(`/api/negocios?id=${neg.id}`, { method: 'DELETE' })
       if (res.ok) {
         toast.success('Negocio eliminado')
         onDeleted()

@@ -271,6 +271,9 @@ export async function createNegocio(page: Page, data: {
   tipoNegocio?: string
   direccion?: string
   barrio?: string
+  referencia?: string
+  linkUbicacion?: string
+  horaApertura?: string
   rutaId?: string | null
   habAgua?: boolean
   habHielo?: boolean
@@ -281,6 +284,9 @@ export async function createNegocio(page: Page, data: {
     tipoNegocio: data.tipoNegocio,
     direccion: data.direccion,
     barrio: data.barrio,
+    referencia: data.referencia,
+    linkUbicacion: data.linkUbicacion,
+    horaApertura: data.horaApertura,
     rutaId: data.rutaId ?? null,
     habAgua: data.habAgua ?? true,
     habHielo: data.habHielo ?? true,
