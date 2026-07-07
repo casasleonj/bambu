@@ -482,7 +482,16 @@ export function PedidosClient() {
       pendientes: pedidos.filter(p => p.estadoEntrega === 'PENDIENTE').length,
       enRuta: pedidos.filter(p => p.estadoEntrega === 'EN_RUTA').length,
       entregadosHoy: entregadosHoyArr.length,
-      ventasHoy: entregadosHoyArr.reduce((acc, p) => acc + Number(p.total || 0), 0),
+      pacasVendidas: pedidos
+        .filter(p => p.estadoEntrega === 'ENTREGADO')
+        .reduce(
+          (acc, p) => acc
+            + Number(p.cPacaAguaEnt || 0)
+            + Number(p.cPacaHieloEnt || 0)
+            + Number(p.cBotellonFabEnt || 0)
+            + Number(p.cBotellonDomEnt || 0),
+          0
+        ),
       fiadoTotal: pedidos
         .filter(p => p.estadoEntrega === 'ENTREGADO' && Number(p.saldo) > 0)
         .reduce((acc, p) => acc + Number(p.saldo), 0),
@@ -956,7 +965,7 @@ export function PedidosClient() {
             className="bg-white p-3 rounded-xl shadow text-left hover:shadow-md transition"
           >
             <p className="text-xs text-gray-500">Ventas Hoy</p>
-            <p className="text-xl font-bold text-emerald-600">{formatCurrency(stats.ventasHoy)}</p>
+            <p className="text-xl font-bold text-emerald-600">{stats.pacasVendidas}</p>
           </button>
           <button
             onClick={() => setSingleFilter('estadoEntrega', 'ENTREGADO')}
