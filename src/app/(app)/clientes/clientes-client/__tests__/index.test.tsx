@@ -84,6 +84,9 @@ vi.mock('./cliente-stats', () => ({
 vi.mock('@/components/negocio-form', () => ({
   NegocioForm: () => <div data-testid="negocio-form-mock" />,
 }))
+vi.mock('@/components/negocio-detail-modal', () => ({
+  NegocioDetailModal: () => <div data-testid="negocio-detail-mock" />,
+}))
 vi.mock('@/components/confirm-modal', () => ({
   useConfirm: () => ({
     confirm: vi.fn().mockResolvedValue(false),

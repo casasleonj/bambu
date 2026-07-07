@@ -18,6 +18,7 @@ import { fetchResilient } from '@/lib/fetch-resilient'
 import { ClienteHistorial } from './cliente-historial'
 import { ClienteStats } from './cliente-stats'
 import { NegocioForm } from '@/components/negocio-form'
+import { NegocioDetailModal, type NegocioDetail } from '@/components/negocio-detail-modal'
 import { calcularAlertasCliente } from '@/app/(app)/pedidos/pedidos-client/alertas-utils'
 import { GuiaAlertaModal } from '@/components/guia-alerta-modal'
 import { CasoGuiaModal } from '@/components/caso-guia-modal'
@@ -65,13 +66,16 @@ export default function ClientesClient({ initialClientes, initialLimiteFiados, o
   const [userRole, setUserRole] = useState<string | null>(null)
 
   // Negocios state
-  const [negocios, setNegocios] = useState<Array<{ id: string; nombre: string; tipoNegocio: string | null; direccion: string | null; barrio: string | null; referencia: string | null; linkUbicacion: string | null; horaApertura: string | null; ruta: { id: string; nombre: string } | null; _count: { pedidos: number } }>>([])
+  const [negocios, setNegocios] = useState<NegocioDetail[]>([])
   const [negocioFormOpen, setNegocioFormOpen] = useState(false)
   const [negocioEditData, setNegocioEditData] = useState<{ id: string; nombre: string; tipoNegocio: string | null; direccion: string | null; barrio: string | null; referencia: string | null; linkUbicacion: string | null; horaApertura: string | null; rutaId: string | null } | null>(null)
+  const [viewNegocioData, setViewNegocioData] = useState<NegocioDetail | null>(null)
+  const [showNegocioDetail, setShowNegocioDetail] = useState(false)
 
   const [preciosLoaded, setPreciosLoaded] = useState(false)
 
   const puedeDesactivar = userRole === 'ADMIN' || userRole === 'CONTADOR'
+  const puedeEliminarNegocio = userRole === 'ADMIN'
 
   const alertas = useMemo(() => {
     if (!selectedCliente) return []
@@ -655,6 +659,46 @@ export default function ClientesClient({ initialClientes, initialLimiteFiados, o
     } catch (error) {
       toast.error('Error desactivando cliente')
     }
+  }
+
+  function viewNegocio(neg: NegocioDetail) {
+    setViewNegocioData(neg)
+    setShowNegocioDetail(true)
+  }
+
+  function closeNegocioDetail() {
+    setViewNegocioData(null)
+    setShowNegocioDetail(false)
+  }
+
+  function handleEditNegocioFromDetail(neg: NegocioDetail) {
+    setViewNegocioData(null)
+    setShowNegocioDetail(false)
+    setNegocioEditData({
+      id: neg.id,
+      nombre: neg.nombre,
+      tipoNegocio: neg.tipoNegocio,
+      direccion: neg.direccion,
+      barrio: neg.barrio,
+      referencia: neg.referencia || null,
+      linkUbicacion: neg.linkUbicacion || null,
+      horaApertura: neg.horaApertura || null,
+      rutaId: neg.ruta?.id || null,
+    })
+    setNegocioFormOpen(true)
+  }
+
+  async function handleNegocioDeleted() {
+    if (selectedCliente) {
+      try {
+        const res = await fetch(`/api/negocios?clienteId=${selectedCliente.id}`)
+        if (res.ok) {
+          const data = await res.json()
+          if (data.success) setNegocios(data.data)
+        }
+      } catch {}
+    }
+    closeNegocioDetail()
   }
 
   async function toggleVerificado(id: string, verificado: boolean) {
@@ -1355,7 +1399,20 @@ export default function ClientesClient({ initialClientes, initialLimiteFiados, o
                           const hasDetails = neg.tipoNegocio || neg.direccion || neg.barrio || neg.horaApertura || neg.ruta
 
                           return (
-                            <div key={neg.id} className="bg-white rounded-xl border border-gray-200 p-3.5 transition hover:shadow-sm hover:border-gray-300 group">
+                            <div
+                              key={neg.id}
+                              className="bg-white rounded-xl border border-gray-200 p-3.5 transition hover:shadow-sm hover:border-gray-300 group cursor-pointer"
+                              onClick={() => viewNegocio(neg)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault()
+                                  viewNegocio(neg)
+                                }
+                              }}
+                              role="button"
+                              tabIndex={0}
+                              aria-label={`Ver detalle de ${neg.nombre}`}
+                            >
                               <div className="flex items-start gap-3">
                                 {/* Avatar */}
                                 <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0 ${avatarColor}`}>
@@ -1373,7 +1430,8 @@ export default function ClientesClient({ initialClientes, initialLimiteFiados, o
                                       )}
                                     </div>
                                     <button
-                                      onClick={() => {
+                                      onClick={(e) => {
+                                        e.stopPropagation()
                                         setNegocioEditData({
                                           id: neg.id,
                                           nombre: neg.nombre,
@@ -1723,6 +1781,21 @@ export default function ClientesClient({ initialClientes, initialLimiteFiados, o
               .catch(() => {})
             toast.success(negocioEditData ? 'Negocio actualizado' : 'Negocio creado')
           }}
+        />
+      )}
+
+      {/* Negocio Detail Modal */}
+      {selectedCliente && (
+        <NegocioDetailModal
+          key={viewNegocioData?.id || 'closed'}
+          open={showNegocioDetail}
+          onClose={closeNegocioDetail}
+          negocio={viewNegocioData}
+          canEdit={true}
+          canDelete={puedeEliminarNegocio}
+          clienteId={selectedCliente.id}
+          onEdit={() => viewNegocioData && handleEditNegocioFromDetail(viewNegocioData)}
+          onDeleted={handleNegocioDeleted}
         />
       )}
     </div>
