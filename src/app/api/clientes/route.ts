@@ -270,6 +270,8 @@ export async function POST(request: NextRequest) {
             linkUbicacion: parsed.data.linkUbicacion ?? null,
             nombreNegocio: parsed.data.nombreNegocio ?? null,
             tipoNegocio: parsed.data.tipoNegocio ?? null,
+            horaApertura: parsed.data.horaApertura ?? null,
+            referencia: parsed.data.referencia ?? null,
             // lat/lng se persisten después vía POST /api/clientes/[id]/geocode.
             // No es responsabilidad de POST /api/clientes. El admin puede
             // triggerearlo desde el botón "Actualizar coordenadas" o el
@@ -293,6 +295,8 @@ export async function POST(request: NextRequest) {
             offlineId: true,
             nombreNegocio: true,
             tipoNegocio: true,
+            horaApertura: true,
+            referencia: true,
             limitePedidosFiados: true,
           },
         })

@@ -22,6 +22,17 @@ interface NegocioFormData {
   rutaId: string
 }
 
+const emptyFormData: NegocioFormData = {
+  nombre: '',
+  tipoNegocio: '',
+  direccion: '',
+  barrio: '',
+  referencia: '',
+  linkUbicacion: '',
+  horaApertura: '',
+  rutaId: '',
+}
+
 interface NegocioFormProps {
   open: boolean
   onClose: () => void
@@ -48,16 +59,21 @@ export function NegocioForm({
   editData,
 }: NegocioFormProps) {
   const isEdit = !!editData
-  const [formData, setFormData] = useState<NegocioFormData>({
-    nombre: editData?.nombre || '',
-    tipoNegocio: editData?.tipoNegocio || '',
-    direccion: editData?.direccion || '',
-    barrio: editData?.barrio || '',
-    referencia: editData?.referencia || '',
-    linkUbicacion: editData?.linkUbicacion || '',
-    horaApertura: editData?.horaApertura || '',
-    rutaId: editData?.rutaId || '',
-  })
+  const [formData, setFormData] = useState<NegocioFormData>(() =>
+    editData
+      ? {
+          nombre: editData.nombre || '',
+          tipoNegocio: editData.tipoNegocio || '',
+          direccion: editData.direccion || '',
+          barrio: editData.barrio || '',
+          referencia: editData.referencia || '',
+          linkUbicacion: editData.linkUbicacion || '',
+          horaApertura: editData.horaApertura || '',
+          rutaId: editData.rutaId || '',
+        }
+      : emptyFormData,
+  )
+
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
 
