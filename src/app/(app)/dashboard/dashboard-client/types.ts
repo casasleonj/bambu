@@ -32,6 +32,13 @@ export interface DashboardData {
   botellonVendido: number
   prodAguaHoy: number
   prodHieloHoy: number
+  prodPiezasHoy: number
+  prodPerdidasHoy: number
+  prodEficienciaHoy: number
+  prodPiezasAyer: number
+  prodEficienciaAyer: number
+  prodPiezasTrend: number
+  prodEficienciaTrend: number
   stockAgua: number
   stockHielo: number
   // stockBotellon eliminado — botellones son passthrough (sin ciclo de stock).

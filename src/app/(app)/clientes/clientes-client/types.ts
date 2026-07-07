@@ -174,6 +174,7 @@ export type TimelineEventType =
   | 'CASO'
   | 'NOTA_CREDITO'
   | 'AUDITORIA'
+  | 'EMBARQUE'
 
 export type TimelineFilter = 'TODOS' | TimelineEventType
 

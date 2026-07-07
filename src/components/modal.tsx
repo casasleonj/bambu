@@ -28,9 +28,10 @@ interface ModalProps {
   className?: string
   title?: string
   description?: string
+  'data-testid'?: string
 }
 
-export function Modal({ open, onClose, children, className, title, description }: ModalProps) {
+export function Modal({ open, onClose, children, className, title, description, 'data-testid': dataTestId }: ModalProps) {
   const id = useId()
   const overlayRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -108,6 +109,7 @@ export function Modal({ open, onClose, children, className, title, description }
       aria-modal="true"
       aria-labelledby={title ? 'modal-title' : undefined}
       aria-describedby={description ? 'modal-description' : undefined}
+      data-testid={dataTestId}
       className="fixed inset-0 bg-black/50 flex items-start md:items-center justify-center z-50 overflow-y-auto p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >

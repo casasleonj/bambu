@@ -78,7 +78,7 @@ const SECTIONS: SectionConfig[] = [
     title: 'Parámetros de Operación',
     icon: '⚙️',
     fields: [
-      { key: 'BASE_DIA', label: 'Base de Caja Diaria', type: 'number', placeholder: '100000', prefix: '$', required: true, min: 0 },
+      { key: 'BASE_DIA', label: 'Base de Caja Diaria (valor por defecto)', type: 'number', placeholder: '100000', prefix: '$', required: true, min: 0 },
       { key: 'DIAS_ALERTA_NO_VERIFICADO', label: 'Días para alerta de cliente no verificado', type: 'number', placeholder: '30', suffix: 'días', min: 1 },
       { key: 'DIAS_VENCIMIENTO_PROMESA', label: 'Días vencimiento promesa de pago', type: 'number', placeholder: '2', suffix: 'días', min: 1 },
       { key: 'MAX_PEDIDOS_DIA_ALERTA', label: 'Máx. pedidos por día para alerta', type: 'number', placeholder: '2', suffix: 'pedidos', min: 1 },
@@ -99,7 +99,7 @@ function validateConfig(data: ConfigData): FieldErrors {
     errs.empresa_email = 'Email inválido'
   }
   if (data.BASE_DIA && (isNaN(Number(data.BASE_DIA)) || Number(data.BASE_DIA) < 0)) {
-    errs.BASE_DIA = 'Debe ser un número positivo'
+    errs.BASE_DIA = 'Debe ser un número mayor o igual a 0'
   }
   const numericFields: Array<keyof ConfigData> = [
     'DIAS_ALERTA_NO_VERIFICADO',

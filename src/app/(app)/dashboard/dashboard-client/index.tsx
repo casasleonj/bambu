@@ -61,6 +61,13 @@ export function DashboardClient({ data, userRole }: { data: DashboardData; userR
     fechaHoy,
     alertasRiesgo,
     casosActivos,
+    prodPiezasHoy,
+    prodPerdidasHoy,
+    prodEficienciaHoy,
+    prodPiezasTrend,
+    prodEficienciaTrend,
+    prodAguaHoy,
+    prodHieloHoy,
   } = data
 
   const fiadosHoy = data.fiadosHoy
@@ -150,6 +157,40 @@ export function DashboardClient({ data, userRole }: { data: DashboardData; userR
             <MoneyDisplay value={totalGastos} userRole={userRole} />
           </p>
           <p className="text-xs text-gray-400 mt-1">Total gastado</p>
+        </div>
+      </div>
+
+      {/* KPIs de Producción */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white p-5 rounded-xl shadow-sm border-l-4 border-purple-500">
+          <p className="text-sm text-gray-500">Piezas Producidas</p>
+          <p className="text-3xl font-bold text-purple-600">{prodPiezasHoy}</p>
+          <p className="text-xs text-gray-400 mt-1">Agua {prodAguaHoy} · Hielo {prodHieloHoy}</p>
+          <p className={`text-xs mt-1 font-medium ${trendClass(prodPiezasTrend)}`}>
+            {trendArrow(prodPiezasTrend)} {Math.abs(prodPiezasTrend).toFixed(0)}% vs ayer
+          </p>
+        </div>
+
+        <div className="bg-white p-5 rounded-xl shadow-sm border-l-4 border-rose-500">
+          <p className="text-sm text-gray-500">Pérdidas</p>
+          <p className="text-3xl font-bold text-rose-600">{prodPerdidasHoy}</p>
+          <p className="text-xs text-gray-400 mt-1">Rotas + filtradas + consumo</p>
+        </div>
+
+        <div className="bg-white p-5 rounded-xl shadow-sm border-l-4 border-teal-500">
+          <p className="text-sm text-gray-500">Eficiencia</p>
+          <p className="text-3xl font-bold text-teal-600">{prodEficienciaHoy.toFixed(0)}%</p>
+          <p className="text-xs text-gray-400 mt-1">Producción - pérdidas</p>
+          <p className={`text-xs mt-1 font-medium ${trendClass(prodEficienciaTrend)}`}>
+            {trendArrow(prodEficienciaTrend)} {Math.abs(prodEficienciaTrend).toFixed(0)}% vs ayer
+          </p>
+        </div>
+
+        <div className="bg-white p-5 rounded-xl shadow-sm border-l-4 border-indigo-500">
+          <p className="text-sm text-gray-500">Producción</p>
+          <p className="text-lg font-bold text-indigo-600">{prodAguaHoy} agua · {prodHieloHoy} hielo</p>
+          <p className="text-xs text-gray-400 mt-1">Piezas por producto</p>
+          <Link href="/produccion" className="text-xs text-indigo-600 hover:underline mt-1 inline-block">Registrar →</Link>
         </div>
       </div>
 

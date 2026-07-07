@@ -41,6 +41,13 @@ export function toLegacyDashboardData(ddd: DDDData): LegacyData {
     // Production
     prodAguaHoy: ddd.produccion.aguaProducida,
     prodHieloHoy: ddd.produccion.hieloProducido,
+    prodPiezasHoy: ddd.produccion.piezasProducidas,
+    prodPerdidasHoy: ddd.produccion.perdidasTotales,
+    prodEficienciaHoy: ddd.produccion.eficiencia,
+    prodPiezasAyer: ddd.kpis.prodPiezasAyer,
+    prodEficienciaAyer: ddd.kpis.prodEficienciaAyer,
+    prodPiezasTrend: ddd.kpis.prodPiezasTrend,
+    prodEficienciaTrend: ddd.kpis.prodEficienciaTrend,
 
     // Stock
     stockAgua: ddd.stock.agua,

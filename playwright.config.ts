@@ -12,7 +12,7 @@ export default defineConfig({
   // por defecto para evitar timeouts y falsos negativos.
   testIgnore: ['**/exploratory/**', '**/qa-comprehensive/**'],
   use: {
-    baseURL: process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000',
+    baseURL: process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3001',
     trace: 'on-first-retry',
     serviceWorkers: 'block',
   },

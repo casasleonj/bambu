@@ -18,6 +18,12 @@ function makeDDDData(overrides: Partial<DDDData> = {}): DDDData {
       ventasTrend: 11.11,
       pedidosTrend: 25,
       embarquesAbiertos: 1,
+      prodPiezasHoy: 300,
+      prodPiezasAyer: 250,
+      prodPiezasTrend: 20,
+      prodEficienciaHoy: 95,
+      prodEficienciaAyer: 92,
+      prodEficienciaTrend: 3.26,
     },
     stock: { agua: 100, hielo: 50 },
     produccion: {
@@ -25,6 +31,9 @@ function makeDDDData(overrides: Partial<DDDData> = {}): DDDData {
       hieloProducido: 100,
       perdidasAgua: 0,
       perdidasHielo: 0,
+      piezasProducidas: 300,
+      perdidasTotales: 15,
+      eficiencia: 95,
     },
     vendidos: { agua: 10, hielo: 5, botellon: 2 },
     ventasPorPrecio: [],
@@ -63,6 +72,20 @@ describe('toLegacyDashboardData', () => {
     expect(legacy.pedidosPendientes).toBe(2)
     expect(legacy.pedidosEntregados).toBe(3)
     expect(legacy.embarquesAbiertos).toBe(1)
+  })
+
+  it('mapea métricas de producción correctamente', () => {
+    const legacy = toLegacyDashboardData(makeDDDData())
+
+    expect(legacy.prodAguaHoy).toBe(200)
+    expect(legacy.prodHieloHoy).toBe(100)
+    expect(legacy.prodPiezasHoy).toBe(300)
+    expect(legacy.prodPerdidasHoy).toBe(15)
+    expect(legacy.prodEficienciaHoy).toBe(95)
+    expect(legacy.prodPiezasAyer).toBe(250)
+    expect(legacy.prodEficienciaAyer).toBe(92)
+    expect(legacy.prodPiezasTrend).toBe(20)
+    expect(legacy.prodEficienciaTrend).toBe(3.26)
   })
 
   it('pasa franjas y ventasPorPrecio sin transformar', () => {

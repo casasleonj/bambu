@@ -25,7 +25,7 @@ const VALIDATORS: Record<string, Validator> = {
   // Monetary — must be non-negative integer
   BASE_DIA: (v) => {
     const n = Number(v)
-    if (isNaN(n) || n < 0 || !Number.isInteger(n)) return 'Debe ser un número entero positivo'
+    if (isNaN(n) || n < 0 || !Number.isInteger(n)) return 'Debe ser un número entero mayor o igual a 0'
     return null
   },
 

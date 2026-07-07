@@ -132,7 +132,7 @@ export async function POST(
     if (message === 'EMBARQUE_NOT_FOUND') {
       return apiError('Embarque no encontrado', 404)
     }
-    if (message === 'EMBARQUE_YA_CERRADO' || message.includes('transicion')) {
+    if (message === 'EMBARQUE_YA_CERRADO' || message.toLowerCase().includes('transicion')) {
       return apiError('El embarque ya esta cerrado', 400)
     }
     if (message.startsWith('PAGOS_EXCEDIDOS')) {

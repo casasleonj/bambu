@@ -52,6 +52,7 @@ export async function getDashboardData(
     stockAlertas,
     fiadosTotal,
     produccionHoy,
+    produccionAyer,
     stockConfigs,
     alertasRiesgo,
     casosActivos,
@@ -66,6 +67,7 @@ export async function getDashboardData(
     deps.alertas.getStockAlertas(),
     deps.pedidos.sumFiadosEntregados(),
     deps.produccion.aggregateByDateRange(todayRange.start, todayRange.end),
+    deps.produccion.aggregateByDateRange(yesterdayRange.start, yesterdayRange.end),
     deps.config.getStockConfigs(),
     deps.alertas.getRiskAlerts(),
     deps.alertas.getActiveCases(),
@@ -116,6 +118,12 @@ export async function getDashboardData(
     ventasTrend: calcularTrend(ventasHoy, ventasAyer),
     pedidosTrend: calcularTrend(validosHoy.length, validosAyer.length),
     embarquesAbiertos,
+    prodPiezasHoy: produccionHoy.piezasProducidas,
+    prodPiezasAyer: produccionAyer.piezasProducidas,
+    prodPiezasTrend: calcularTrend(produccionHoy.piezasProducidas, produccionAyer.piezasProducidas),
+    prodEficienciaHoy: produccionHoy.eficiencia,
+    prodEficienciaAyer: produccionAyer.eficiencia,
+    prodEficienciaTrend: calcularTrend(produccionHoy.eficiencia, produccionAyer.eficiencia),
   }
 
   // ── Assemble result ───────────────────────────────────────────────────

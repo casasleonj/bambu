@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
+import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { useSession } from 'next-auth/react'
 import { toast } from 'sonner'
@@ -1295,10 +1296,18 @@ export function PedidosClient() {
                   <div className="text-xs text-gray-400 mb-0.5">Hora</div>
                   <div className="font-medium text-gray-700">{new Date(selectedPedido.fecha).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}</div>
                 </div>
-                {selectedPedido.estadoEntrega === 'EN_RUTA' && selectedPedido.embarqueId && (
+                {selectedPedido.embarqueId && (
                   <div className="bg-white border rounded-lg p-2.5">
                     <div className="text-xs text-gray-400 mb-0.5">Embarque</div>
-                    <div className="font-medium text-gray-700">#{embarques.find(e => e.id === selectedPedido.embarqueId)?.numeroDia || selectedPedido.embarqueId}</div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-gray-700">#{embarques.find(e => e.id === selectedPedido.embarqueId)?.numeroDia || selectedPedido.embarqueId}</span>
+                      <Link
+                        href={`/embarques/${selectedPedido.embarqueId}`}
+                        className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                      >
+                        Ver →
+                      </Link>
+                    </div>
                   </div>
                 )}
               </div>

@@ -43,7 +43,7 @@ export async function PUT(
 ) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
-  const roleCheck = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE], authResult)
+  const roleCheck = await requireRole([ROLES.ADMIN], authResult)
   if (roleCheck instanceof Response) return roleCheck
 
   const { id } = await params

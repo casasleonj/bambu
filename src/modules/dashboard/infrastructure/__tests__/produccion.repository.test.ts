@@ -34,6 +34,9 @@ describe('PrismaProduccionRepository.aggregateByDateRange', () => {
     expect(result.hieloProducido).toBe(50)
     expect(result.perdidasAgua).toBe(2 + 1 + 1)
     expect(result.perdidasHielo).toBe(1 + 0 + 0)
+    expect(result.piezasProducidas).toBe(150)
+    expect(result.perdidasTotales).toBe(5)
+    expect(result.eficiencia).toBe(96.7)
   })
 
   it('devuelve 0 cuando no hay producción registrada', async () => {
@@ -49,6 +52,9 @@ describe('PrismaProduccionRepository.aggregateByDateRange', () => {
     expect(result.hieloProducido).toBe(0)
     expect(result.perdidasAgua).toBe(0)
     expect(result.perdidasHielo).toBe(0)
+    expect(result.piezasProducidas).toBe(0)
+    expect(result.perdidasTotales).toBe(0)
+    expect(result.eficiencia).toBe(0)
   })
 
   it('agrega correctamente múltiples turnos del mismo día', async () => {
@@ -70,6 +76,9 @@ describe('PrismaProduccionRepository.aggregateByDateRange', () => {
     expect(result.hieloProducido).toBe(40)
     expect(result.perdidasAgua).toBe(4) // (1+1+0) + (2+0+0)
     expect(result.perdidasHielo).toBe(2) // (1+0+0) + (1+0+0)
+    expect(result.piezasProducidas).toBe(120)
+    expect(result.perdidasTotales).toBe(6)
+    expect(result.eficiencia).toBe(95)
   })
 
   it('FIX 1.2: filtra por rango de fecha via produccion.fecha', async () => {

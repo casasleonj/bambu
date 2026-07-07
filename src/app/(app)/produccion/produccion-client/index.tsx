@@ -10,8 +10,9 @@ import { SkeletonPage } from '@/components/skeleton'
 import { InfoBanner } from '@/components/tooltip'
 import { fetchResilient } from '@/lib/fetch-resilient'
 import { ProduccionPendingBadge } from '@/components/produccion/pending-sync-badge'
-import type { StockInicial, FormData, TrabajadorOption, PreviewData, RepartidorOption } from './types'
+import type { StockInicial, FormData, TrabajadorOption, PreviewData, RepartidorOption, ProduccionRegistro } from './types'
 import { useRealtimeListener } from '@/hooks/use-realtime-listener'
+import { ProduccionEditModal } from './edit-modal'
 
 const EMPTY_FORM: FormData = {
   trabajadorId: '',
@@ -57,6 +58,10 @@ export default function ProduccionClient() {
   const [repartidores, setRepartidores] = useState<RepartidorOption[]>([])
   const [embarquesAbiertos, setEmbarquesAbiertos] = useState(false)
   const [formData, setFormData] = useState<FormData>(EMPTY_FORM)
+  const [userRole, setUserRole] = useState<string | null>(null)
+  const [produccionesHoy, setProduccionesHoy] = useState<ProduccionRegistro[]>([])
+  const [loadingProducciones, setLoadingProducciones] = useState(true)
+  const [editRegistro, setEditRegistro] = useState<ProduccionRegistro | null>(null)
 
   const selectedTrabajador = trabajadores.find((t) => t.id === formData.trabajadorId)
 
@@ -74,6 +79,35 @@ export default function ProduccionClient() {
       toast.error('Error cargando trabajadores')
     } finally {
       setLoadingTrabajadores(false)
+    }
+  }
+
+  const fetchProfile = async (signal?: AbortSignal) => {
+    try {
+      const res = await fetch('/api/auth/profile', { signal })
+      if (res.ok) {
+        const data = await res.json()
+        setUserRole(data.user?.rol ?? null)
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  const fetchProducciones = async (signal?: AbortSignal) => {
+    try {
+      const res = await fetch('/api/produccion', { signal })
+      if (res.status === 401 || res.status === 403) {
+        router.push(`/login?callbackUrl=${encodeURIComponent('/produccion')}`)
+        return
+      }
+      const data = await res.json()
+      setProduccionesHoy(data.produccion || [])
+    } catch {
+      if (signal?.aborted) return
+      toast.error('Error cargando producciones del día')
+    } finally {
+      setLoadingProducciones(false)
     }
   }
 
@@ -106,12 +140,15 @@ export default function ProduccionClient() {
     const controller = new AbortController()
     fetchPreview(controller.signal)
     fetchTrabajadores(controller.signal)
+    fetchProfile(controller.signal)
+    fetchProducciones(controller.signal)
     return () => controller.abort()
   }, [])
 
   // Realtime: refresh preview when production is registered elsewhere.
   useRealtimeListener(['produccion.created'], () => {
     fetchPreview()
+    fetchProducciones()
   })
 
   const prodAgua = useMemo(() => Math.round((formData.conteoAAgua + formData.conteoBAgua) / 2), [formData.conteoAAgua, formData.conteoBAgua])
@@ -377,6 +414,50 @@ export default function ProduccionClient() {
         </div>
         <ProduccionPendingBadge />
       </div>
+
+      {/* Lista de producciones del día */}
+      {!loadingProducciones && produccionesHoy.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border p-5">
+          <h2 className="text-lg font-semibold text-gray-800 mb-4">Producciones de hoy</h2>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-gray-600">
+                <tr>
+                  <th className="px-4 py-3 text-left font-medium">Turno</th>
+                  <th className="px-4 py-3 text-left font-medium">Sellador</th>
+                  <th className="px-4 py-3 text-center font-medium">Agua</th>
+                  <th className="px-4 py-3 text-center font-medium">Hielo</th>
+                  <th className="px-4 py-3 text-right font-medium">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {produccionesHoy.map((p) => {
+                  const agua = p.items.find(i => i.producto === 'PACA_AGUA')
+                  const hielo = p.items.find(i => i.producto === 'PACA_HIELO')
+                  return (
+                    <tr key={p.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 font-medium text-gray-800">{p.turno}</td>
+                      <td className="px-4 py-3 text-gray-600">{p.trabajador.nombre}</td>
+                      <td className="px-4 py-3 text-center text-blue-600 font-semibold">{agua?.producido ?? 0}</td>
+                      <td className="px-4 py-3 text-center text-cyan-600 font-semibold">{hielo?.producido ?? 0}</td>
+                      <td className="px-4 py-3 text-right">
+                        {userRole === 'ADMIN' && (
+                          <button
+                            onClick={() => setEditRegistro(p)}
+                            className="text-xs text-blue-600 hover:text-blue-800 px-3 py-1.5 rounded bg-blue-50 hover:bg-blue-100 transition"
+                          >
+                            Editar
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {renderStepper()}
 
@@ -990,6 +1071,16 @@ export default function ProduccionClient() {
         <div className="lg:hidden mt-6">{renderBalanceCard()}</div>
       </div>
       {modal}
+      <ProduccionEditModal
+        key={editRegistro?.id}
+        open={!!editRegistro}
+        onClose={() => setEditRegistro(null)}
+        registro={editRegistro}
+        onSaved={() => {
+          fetchProducciones()
+          fetchPreview()
+        }}
+      />
     </div>
   )
 }

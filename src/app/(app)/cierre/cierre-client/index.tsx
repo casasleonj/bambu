@@ -75,10 +75,20 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
 
   const loadBaseDia = useCallback(async (dateStr: string, signal: AbortSignal) => {
     try {
-      const res = await fetch(`/api/config?clave=BASE_DIA_${dateStr}`, { signal })
+      const [res, defaultRes] = await Promise.all([
+        fetch(`/api/config?clave=BASE_DIA_${dateStr}`, { signal }),
+        fetch('/api/config?clave=BASE_DIA', { signal }),
+      ])
       if (res.ok) {
         const data = await res.json()
-        if (data.config) setBaseDia(Number(data.config.valor))
+        if (data.config) {
+          setBaseDia(Number(data.config.valor))
+          return
+        }
+      }
+      if (defaultRes.ok) {
+        const defaultData = await defaultRes.json()
+        if (defaultData.config?.valor) setBaseDia(Number(defaultData.config.valor))
       }
     } catch { /* ignore */ }
   }, [])

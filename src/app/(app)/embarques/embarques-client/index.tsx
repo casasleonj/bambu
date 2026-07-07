@@ -474,10 +474,6 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
             key={embarque.id}
             embarque={embarque}
             getEstadoBadge={getEstadoBadge}
-            onClick={() => {
-              setSelectedEmbarque(embarque)
-              setShowDetailModal(true)
-            }}
           />
         ))}
         {embarques.length === 0 && (

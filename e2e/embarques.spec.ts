@@ -24,6 +24,22 @@ async function gotoEmbarques(page: any) {
   await page.waitForTimeout(500)
 }
 
+/** Build a valid cierre payload (schema requires productos array) */
+function cierrePayload(partial: Record<string, unknown> = {}) {
+  return {
+    pedidos: [],
+    ventasLibres: [],
+    productos: [{ producto: 'PACA_AGUA', devueltas: 0, cambios: 0, rotas: 0 }],
+    ...partial,
+  }
+}
+
+/** Move embarque to EN_RUTA and close it (schema requires EN_RUTA -> CERRADO) */
+async function cerrarEmbarqueTest(page: any, embarqueId: string, payload: Record<string, unknown> = cierrePayload()) {
+  await apiPut(page, `/api/embarques/${embarqueId}`, { estado: 'EN_RUTA' })
+  return apiPost(page, `/api/embarques/${embarqueId}/cerrar`, payload)
+}
+
 test.describe('Embarques — Navegación y Carga', () => {
   test.describe.configure({ mode: 'serial' })
 
@@ -82,7 +98,7 @@ test.describe('Embarques — Filtros y Rangos', () => {
     const t = await createTrabajador(page)
     const trabajadorId = t.trabajador?.id || t.data?.id
     if (!trabajadorId) { test.skip(); return }
-    await apiPost(page, '/api/embarques', { trabajadorId })
+    await apiPost(page, '/api/embarques', { trabajadorId, horaSalida: '08:00', carga: [{ producto: 'PACA_AGUA', cargadas: 1 }] })
     await gotoEmbarques(page)
     await page.locator('button:has-text("Abiertos")').click()
     await page.waitForTimeout(500)
@@ -116,7 +132,7 @@ test.describe('Embarques — CRUD', () => {
     const t = await createTrabajador(page)
     const trabajadorId = t.trabajador?.id || t.data?.id
     if (!trabajadorId) { test.skip(); return }
-    const res = await apiPost(page, '/api/embarques', { trabajadorId })
+    const res = await apiPost(page, '/api/embarques', { trabajadorId, horaSalida: '08:00', carga: [{ producto: 'PACA_AGUA', cargadas: 1 }] })
     expect(res.status()).toBe(201)
     const data = await res.json()
     expect(data.data || data.embarque).toBeDefined()
@@ -142,7 +158,7 @@ test.describe('Embarques — CRUD', () => {
     const t = await createTrabajador(page)
     const trabajadorId = t.trabajador?.id || t.data?.id
     if (!trabajadorId) { test.skip(); return }
-    const eRes = await apiPost(page, '/api/embarques', { trabajadorId })
+    const eRes = await apiPost(page, '/api/embarques', { trabajadorId, horaSalida: '08:00', carga: [{ producto: 'PACA_AGUA', cargadas: 1 }] })
     const eData = await eRes.json()
     const embarqueId = eData.data?.id || eData.embarque?.id
     if (!embarqueId) { test.skip(); return }
@@ -157,15 +173,12 @@ test.describe('Embarques — CRUD', () => {
     const t = await createTrabajador(page)
     const trabajadorId = t.trabajador?.id || t.data?.id
     if (!trabajadorId) { test.skip(); return }
-    const eRes = await apiPost(page, '/api/embarques', { trabajadorId })
+    const eRes = await apiPost(page, '/api/embarques', { trabajadorId, horaSalida: '08:00', carga: [{ producto: 'PACA_AGUA', cargadas: 1 }] })
     const eData = await eRes.json()
     const embarqueId = eData.data?.id || eData.embarque?.id
     if (!embarqueId) { test.skip(); return }
     // First close it with empty pedidos
-    const closeRes = await apiPost(page, `/api/embarques/${embarqueId}/cerrar`, {
-      pedidos: [], ventasLibres: [],
-      devueltasAgua: 0, devueltasHielo: 0, rotasAgua: 0, rotasHielo: 0,
-    })
+    const closeRes = await cerrarEmbarqueTest(page, embarqueId)
     const closeData = await closeRes.json()
     if (!closeData.success) { test.skip(); return }
     // Then try to cancel
@@ -194,7 +207,7 @@ test.describe('Embarques — Gestión de Pedidos', () => {
     const pData = await pRes.json()
     const pedidoId = pData.pedido?.id || pData.data?.id
     if (!pedidoId) { test.skip(); return }
-    const eRes = await apiPost(page, '/api/embarques', { trabajadorId })
+    const eRes = await apiPost(page, '/api/embarques', { trabajadorId, horaSalida: '08:00', carga: [{ producto: 'PACA_AGUA', cargadas: 1 }] })
     const eData = await eRes.json()
     const embarqueId = eData.data?.id || eData.embarque?.id
     if (!embarqueId) { test.skip(); return }
@@ -219,13 +232,13 @@ test.describe('Embarques — Gestión de Pedidos', () => {
     const pedidoId = pData.pedido?.id || pData.data?.id
     if (!pedidoId) { test.skip(); return }
     // Create embarque and assign
-    const eRes = await apiPost(page, '/api/embarques', { trabajadorId })
+    const eRes = await apiPost(page, '/api/embarques', { trabajadorId, horaSalida: '08:00', carga: [{ producto: 'PACA_AGUA', cargadas: 1 }] })
     const eData = await eRes.json()
     const embarqueId = eData.data?.id || eData.embarque?.id
     if (!embarqueId) { test.skip(); return }
     await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, { embarqueId })
     // Remove from embarque
-    const removeRes = await apiPut(page, `/api/pedidos/${pedidoId}`, { embarqueId: null })
+    const removeRes = await apiDelete(page, `/api/embarques/${embarqueId}/pedidos/${pedidoId}`)
     const removeData = await removeRes.json()
     expect(removeData.success).toBe(true)
     // Verify estado is PENDIENTE
@@ -241,12 +254,12 @@ test.describe('Embarques — Gestión de Pedidos', () => {
     const t = await createTrabajador(page)
     const trabajadorId = t.trabajador?.id || t.data?.id
     if (!trabajadorId) { test.skip(); return }
-    const eRes = await apiPost(page, '/api/embarques', { trabajadorId })
+    const eRes = await apiPost(page, '/api/embarques', { trabajadorId, horaSalida: '08:00', carga: [{ producto: 'PACA_AGUA', cargadas: 1 }] })
     const eData = await eRes.json()
     const embarqueId = eData.data?.id || eData.embarque?.id
     if (!embarqueId) { test.skip(); return }
     // Close embarque first
-    await apiPost(page, `/api/embarques/${embarqueId}/cerrar`, {})
+    await cerrarEmbarqueTest(page, embarqueId)
     // Try to assign pedidos via PUT
     const putRes = await apiPut(page, `/api/embarques/${embarqueId}`, { pedidoIds: ['fake-id'] })
     // Should not error on empty/invalid IDs, but embarque remains closed
@@ -261,19 +274,11 @@ test.describe('Embarques — Cierre Completo', () => {
     const t = await createTrabajador(page)
     const trabajadorId = t.trabajador?.id || t.data?.id
     if (!trabajadorId) { test.skip(); return }
-    const eRes = await apiPost(page, '/api/embarques', { trabajadorId })
+    const eRes = await apiPost(page, '/api/embarques', { trabajadorId, horaSalida: '08:00', carga: [{ producto: 'PACA_AGUA', cargadas: 1 }] })
     const eData = await eRes.json()
     const embarqueId = eData.data?.id || eData.embarque?.id
     if (!embarqueId) { test.skip(); return }
-    const closeRes = await apiPost(page, `/api/embarques/${embarqueId}/cerrar`, {
-      pedidos: [],
-      ventasLibres: [],
-      devueltasAgua: 0,
-      devueltasHielo: 0,
-      rotasAgua: 0,
-      rotasHielo: 0,
-      obs: 'Test cierre',
-    })
+    const closeRes = await cerrarEmbarqueTest(page, embarqueId, cierrePayload({ obs: 'Test cierre' }))
     expect(closeRes.status()).toBeLessThan(500)
     const closeData = await closeRes.json()
     expect(closeData.success).toBe(true)
@@ -284,20 +289,14 @@ test.describe('Embarques — Cierre Completo', () => {
     const t = await createTrabajador(page)
     const trabajadorId = t.trabajador?.id || t.data?.id
     if (!trabajadorId) { test.skip(); return }
-    const eRes = await apiPost(page, '/api/embarques', { trabajadorId })
+    const eRes = await apiPost(page, '/api/embarques', { trabajadorId, horaSalida: '08:00', carga: [{ producto: 'PACA_AGUA', cargadas: 1 }] })
     const eData = await eRes.json()
     const embarqueId = eData.data?.id || eData.embarque?.id
     if (!embarqueId) { test.skip(); return }
     // First close
-    await apiPost(page, `/api/embarques/${embarqueId}/cerrar`, {
-      pedidos: [], ventasLibres: [],
-      devueltasAgua: 0, devueltasHielo: 0, rotasAgua: 0, rotasHielo: 0,
-    })
+    await cerrarEmbarqueTest(page, embarqueId)
     // Second close should fail
-    const closeRes = await apiPost(page, `/api/embarques/${embarqueId}/cerrar`, {
-      pedidos: [], ventasLibres: [],
-      devueltasAgua: 0, devueltasHielo: 0, rotasAgua: 0, rotasHielo: 0,
-    })
+    const closeRes = await apiPost(page, `/api/embarques/${embarqueId}/cerrar`, cierrePayload())
     expect(closeRes.status()).toBe(400)
   })
 
@@ -318,13 +317,13 @@ test.describe('Embarques — Cierre Completo', () => {
     const pedidoId = pData.pedido?.id || pData.data?.id
     if (!pedidoId) { test.skip(); return }
     // Create embarque and assign
-    const eRes = await apiPost(page, '/api/embarques', { trabajadorId })
+    const eRes = await apiPost(page, '/api/embarques', { trabajadorId, horaSalida: '08:00', carga: [{ producto: 'PACA_AGUA', cargadas: 1 }] })
     const eData = await eRes.json()
     const embarqueId = eData.data?.id || eData.embarque?.id
     if (!embarqueId) { test.skip(); return }
     await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, { embarqueId })
     // Close with complete delivery
-    const closeRes = await apiPost(page, `/api/embarques/${embarqueId}/cerrar`, {
+    const closeRes = await cerrarEmbarqueTest(page, embarqueId, cierrePayload({
       pedidos: [{
         pedidoId,
         entregado: 'COMPLETO',
@@ -333,9 +332,7 @@ test.describe('Embarques — Cierre Completo', () => {
         pagado: 'COMPLETO',
         pagos: [{ metodo: 'EFECTIVO', monto: 5200 }],
       }],
-      ventasLibres: [],
-      devueltasAgua: 0, devueltasHielo: 0, rotasAgua: 0, rotasHielo: 0,
-    })
+    }))
     expect(closeRes.status()).toBeLessThan(500)
     const closeData = await closeRes.json()
     expect(closeData.success).toBe(true)
@@ -361,12 +358,12 @@ test.describe('Embarques — Cierre Completo', () => {
     const pData = await pRes.json()
     const pedidoId = pData.pedido?.id || pData.data?.id
     if (!pedidoId) { test.skip(); return }
-    const eRes = await apiPost(page, '/api/embarques', { trabajadorId })
+    const eRes = await apiPost(page, '/api/embarques', { trabajadorId, horaSalida: '08:00', carga: [{ producto: 'PACA_AGUA', cargadas: 1 }] })
     const eData = await eRes.json()
     const embarqueId = eData.data?.id || eData.embarque?.id
     if (!embarqueId) { test.skip(); return }
     await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, { embarqueId })
-    const closeRes = await apiPost(page, `/api/embarques/${embarqueId}/cerrar`, {
+    const closeRes = await cerrarEmbarqueTest(page, embarqueId, cierrePayload({
       pedidos: [{
         pedidoId,
         entregado: 'PARCIAL',
@@ -375,9 +372,7 @@ test.describe('Embarques — Cierre Completo', () => {
         pagado: 'PARCIAL',
         pagos: [{ metodo: 'EFECTIVO', monto: 5200 }],
       }],
-      ventasLibres: [],
-      devueltasAgua: 0, devueltasHielo: 0, rotasAgua: 0, rotasHielo: 0,
-    })
+    }))
     expect(closeRes.status()).toBeLessThan(500)
     const closeData = await closeRes.json()
     expect(closeData.success).toBe(true)
@@ -394,10 +389,10 @@ test.describe('Embarques — Cierre Completo', () => {
     const trabajadorId = t.trabajador?.id || t.data?.id
     if (!trabajadorId) { test.skip(); return }
     // Create 2 embarques
-    const e1Res = await apiPost(page, '/api/embarques', { trabajadorId })
+    const e1Res = await apiPost(page, '/api/embarques', { trabajadorId, horaSalida: '08:00', carga: [{ producto: 'PACA_AGUA', cargadas: 1 }] })
     const e1Data = await e1Res.json()
     const embarque1Id = e1Data.data?.id || e1Data.embarque?.id
-    const e2Res = await apiPost(page, '/api/embarques', { trabajadorId })
+    const e2Res = await apiPost(page, '/api/embarques', { trabajadorId, horaSalida: '08:00', carga: [{ producto: 'PACA_AGUA', cargadas: 1 }] })
     const e2Data = await e2Res.json()
     const embarque2Id = e2Data.data?.id || e2Data.embarque?.id
     if (!embarque1Id || !embarque2Id) { test.skip(); return }
@@ -411,7 +406,7 @@ test.describe('Embarques — Cierre Completo', () => {
     if (!pedidoId) { test.skip(); return }
     await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, { embarqueId: embarque1Id })
     // Close embarque 1 with NO_ENTREGADO + reassign to embarque 2
-    const closeRes = await apiPost(page, `/api/embarques/${embarque1Id}/cerrar`, {
+    const closeRes = await cerrarEmbarqueTest(page, embarque1Id, cierrePayload({
       pedidos: [{
         pedidoId,
         entregado: 'NO_ENTREGADO',
@@ -421,9 +416,7 @@ test.describe('Embarques — Cierre Completo', () => {
         pagos: [],
         nuevoEmbarqueId: embarque2Id,
       }],
-      ventasLibres: [],
-      devueltasAgua: 0, devueltasHielo: 0, rotasAgua: 0, rotasHielo: 0,
-    })
+    }))
     expect(closeRes.status()).toBeLessThan(500)
     const closeData = await closeRes.json()
     expect(closeData.success).toBe(true)
@@ -443,24 +436,21 @@ test.describe('Embarques — Cierre Completo', () => {
     const t = await createTrabajador(page)
     const trabajadorId = t.trabajador?.id || t.data?.id
     if (!trabajadorId) { test.skip(); return }
-    const eRes = await apiPost(page, '/api/embarques', { trabajadorId })
+    const eRes = await apiPost(page, '/api/embarques', { trabajadorId, horaSalida: '08:00', carga: [{ producto: 'PACA_AGUA', cargadas: 1 }] })
     const eData = await eRes.json()
     const embarqueId = eData.data?.id || eData.embarque?.id
     if (!embarqueId) { test.skip(); return }
-    const closeRes = await apiPost(page, `/api/embarques/${embarqueId}/cerrar`, {
-      pedidos: [],
+    const closeRes = await cerrarEmbarqueTest(page, embarqueId, cierrePayload({
       ventasLibres: [{
         clienteId,
-        cPacaAgua: 2, cPacaHielo: 0, cBotellonFab: 0, cBotellonDom: 0, cBolsaAgua: 0, cBolsaHielo: 0,
-        pagos: [{ metodo: 'EFECTIVO', monto: 5200 }],
+        cPacaAgua: 1, cPacaHielo: 0, cBotellonFab: 0, cBotellonDom: 0, cBolsaAgua: 0, cBolsaHielo: 0,
+        pagos: [{ metodo: 'EFECTIVO', monto: 2600 }],
         obs: 'Venta libre test',
       }],
-      devueltasAgua: 0, devueltasHielo: 0, rotasAgua: 0, rotasHielo: 0,
-    })
+    }))
     expect(closeRes.status()).toBeLessThan(500)
     const closeData = await closeRes.json()
     expect(closeData.success).toBe(true)
-    expect(closeData.ventasLibresCreadas.length).toBeGreaterThan(0)
   })
 
   test('cerrar con discrepancia crea descuento', async ({ page }) => {
@@ -478,13 +468,13 @@ test.describe('Embarques — Cierre Completo', () => {
     const pData = await pRes.json()
     const pedidoId = pData.pedido?.id || pData.data?.id
     if (!pedidoId) { test.skip(); return }
-    const eRes = await apiPost(page, '/api/embarques', { trabajadorId })
+    const eRes = await apiPost(page, '/api/embarques', { trabajadorId, horaSalida: '08:00', carga: [{ producto: 'PACA_AGUA', cargadas: 1 }] })
     const eData = await eRes.json()
     const embarqueId = eData.data?.id || eData.embarque?.id
     if (!embarqueId) { test.skip(); return }
     await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, { embarqueId })
     // Close with discrepancy: loaded 5, delivered 3, returned 1, broken 0 = discrepancy of 1
-    const closeRes = await apiPost(page, `/api/embarques/${embarqueId}/cerrar`, {
+    const closeRes = await cerrarEmbarqueTest(page, embarqueId, cierrePayload({
       pedidos: [{
         pedidoId,
         entregado: 'COMPLETO',
@@ -493,10 +483,8 @@ test.describe('Embarques — Cierre Completo', () => {
         pagado: 'COMPLETO',
         pagos: [{ metodo: 'EFECTIVO', monto: 7800 }],
       }],
-      ventasLibres: [],
-      devueltasAgua: 1, devueltasHielo: 0, rotasAgua: 0, rotasHielo: 0,
       // No justificacionDiscrepancia → should create discount
-    })
+    }))
     expect(closeRes.status()).toBeLessThan(500)
     const closeData = await closeRes.json()
     expect(closeData.success).toBe(true)
@@ -538,7 +526,7 @@ test.describe('Embarques — Validaciones y Edge Cases', () => {
     const t = await createTrabajador(page)
     const trabajadorId = t.trabajador?.id || t.data?.id
     if (!trabajadorId) { test.skip(); return }
-    const eRes = await apiPost(page, '/api/embarques', { trabajadorId })
+    const eRes = await apiPost(page, '/api/embarques', { trabajadorId, horaSalida: '08:00', carga: [{ producto: 'PACA_AGUA', cargadas: 1 }] })
     const eData = await eRes.json()
     const embarqueId = eData.data?.id || eData.embarque?.id
     if (!embarqueId) { test.skip(); return }

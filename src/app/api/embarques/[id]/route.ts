@@ -23,18 +23,52 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const hasAccess = await requireOwnership('embarque', id, { id: session.user?.id || '', role: session.user?.role })
     if (!hasAccess) return apiError('Forbidden', 403)
   try {
-    const embarque = await prisma.embarque.findUnique({
+    const embarqueRaw = await prisma.embarque.findUnique({
       where: { id },
       include: {
         trabajador: true,
         ruta: true,
         pedidos: {
-          include: { cliente: true, pagos: true },
+          take: 50,
+          select: {
+            id: true,
+            numero: true,
+            estado: true,
+            estadoEntrega: true,
+            estadoPago: true,
+            origen: true,
+            total: true,
+            totalPagado: true,
+            saldo: true,
+            cPacaAguaPed: true,
+            cPacaHieloPed: true,
+            cBotellonFabPed: true,
+            cBotellonDomPed: true,
+            cBolsaAguaPed: true,
+            cBolsaHieloPed: true,
+            cPacaAguaEnt: true,
+            cPacaHieloEnt: true,
+            cBotellonFabEnt: true,
+            cBotellonDomEnt: true,
+            cBolsaAguaEnt: true,
+            cBolsaHieloEnt: true,
+            cliente: { select: { id: true, nombre: true, barrio: true, telefono: true } },
+          },
+          orderBy: { numero: 'asc' },
         },
         productos: true,
       },
     })
-    if (!embarque) return apiError('Not found', 404)
+    if (!embarqueRaw) return apiError('Not found', 404)
+    const embarque = {
+      ...embarqueRaw,
+      pedidos: embarqueRaw.pedidos.map((p) => ({
+        ...p,
+        total: Number(p.total),
+        totalPagado: Number(p.totalPagado),
+        saldo: Number(p.saldo),
+      })),
+    }
     return apiSuccess({ embarque })
   } catch (error) {
     return apiError('Error', 500)

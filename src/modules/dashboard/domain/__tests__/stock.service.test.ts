@@ -8,6 +8,9 @@ describe('calcularStock (Bloque 3 — passthrough botellones)', () => {
     hieloProducido: 0,
     perdidasAgua: 0,
     perdidasHielo: 0,
+    piezasProducidas: 0,
+    perdidasTotales: 0,
+    eficiencia: 0,
   }
 
   it('NO retorna campo botellon en el snapshot (passthrough)', () => {
@@ -27,7 +30,7 @@ describe('calcularStock (Bloque 3 — passthrough botellones)', () => {
     const input: StockInput = {
       stockIniAgua: 100,
       stockIniHielo: 50,
-      produccion: { aguaProducida: 200, hieloProducido: 100, perdidasAgua: 0, perdidasHielo: 0 },
+      produccion: { aguaProducida: 200, hieloProducido: 100, perdidasAgua: 0, perdidasHielo: 0, piezasProducidas: 300, perdidasTotales: 0, eficiencia: 100 },
       aguaVendida: 30,
       hieloVendido: 20,
     }
@@ -40,7 +43,7 @@ describe('calcularStock (Bloque 3 — passthrough botellones)', () => {
     const input: StockInput = {
       stockIniAgua: 100,
       stockIniHielo: 50,
-      produccion: { aguaProducida: 100, hieloProducido: 50, perdidasAgua: 10, perdidasHielo: 5 },
+      produccion: { aguaProducida: 100, hieloProducido: 50, perdidasAgua: 10, perdidasHielo: 5, piezasProducidas: 150, perdidasTotales: 15, eficiencia: 90 },
       aguaVendida: 0,
       hieloVendido: 0,
     }

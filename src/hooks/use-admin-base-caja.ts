@@ -42,7 +42,7 @@ export function useAdminBaseCaja(): AdminBaseCajaState {
           return
         }
 
-        if (baseValue) {
+        if (baseValue !== null && baseValue !== undefined && baseValue !== '') {
           setState({ status: 'con_base', valor: baseValue })
           return
         }

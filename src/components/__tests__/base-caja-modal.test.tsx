@@ -30,6 +30,7 @@ describe('BaseCajaModal', () => {
     fetchMock
       .mockResolvedValueOnce({ ok: true, json: async () => ({ cierre: null }) } as Response)
       .mockResolvedValueOnce({ ok: true, json: async () => ({ config: null }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ config: null }) } as Response)
     vi.stubGlobal('fetch', fetchMock)
   })
 
@@ -51,9 +52,9 @@ describe('BaseCajaModal', () => {
       expect(input).toHaveValue('5')
     })
 
-    // Solo el check inicial (2 fetch: cierre + config). Si checkBaseDia se
-    // re-ejecuta por cada tecla, habría 4, 6, ... llamadas.
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    // Solo el check inicial (3 fetch: cierre + config del día + config global).
+    // Si checkBaseDia se re-ejecuta por cada tecla, habría 6, 9, ... llamadas.
+    expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 
   it('usa input numérico y pattern de dígitos', async () => {

@@ -44,6 +44,20 @@ export class PrismaProduccionRepository implements ProduccionRepository {
       }
     }
 
-    return { aguaProducida, hieloProducido, perdidasAgua, perdidasHielo }
+    const piezasProducidas = aguaProducida + hieloProducido
+    const perdidasTotales = perdidasAgua + perdidasHielo
+    const eficiencia = piezasProducidas > 0
+      ? Number(((piezasProducidas - perdidasTotales) / piezasProducidas * 100).toFixed(1))
+      : 0
+
+    return {
+      aguaProducida,
+      hieloProducido,
+      perdidasAgua,
+      perdidasHielo,
+      piezasProducidas,
+      perdidasTotales,
+      eficiencia,
+    }
   }
 }

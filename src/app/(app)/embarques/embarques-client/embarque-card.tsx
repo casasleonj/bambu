@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import type { Embarque, Pedido } from './types'
 
 function getDeficitBadge(embarque: Embarque): React.ReactNode {
@@ -32,18 +33,16 @@ function ClosedPedidosSummary({ pedidos }: { pedidos: Pedido[] }) {
 export function EmbarqueCard({
   embarque,
   getEstadoBadge,
-  onClick,
 }: {
   embarque: Embarque
   getEstadoBadge: (estado: string) => React.ReactNode
-  onClick: () => void
 }) {
   const cap = embarque.capacidadInfo
 
   return (
-    <div
-      className="bg-white p-4 rounded-xl shadow hover:shadow-md transition cursor-pointer border"
-      onClick={onClick}
+    <Link
+      href={`/embarques/${embarque.id}`}
+      className="block bg-white p-4 rounded-xl shadow hover:shadow-md transition cursor-pointer border"
       data-testid="embarque-card"
     >
       <div className="flex justify-between items-start mb-3">
@@ -88,6 +87,6 @@ export function EmbarqueCard({
       {embarque.obs && (
         <p className="mt-2 text-xs text-gray-500 truncate">{embarque.obs}</p>
       )}
-    </div>
+    </Link>
   )
 }

@@ -28,7 +28,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const fechaFilter = desde ? { gte: desde } : undefined
 
   try {
-    const [pedidos, facturas, casos, notasCredito, auditoria] = await Promise.all([
+    const [pedidos, facturas, casos, notasCredito, auditoria, embarques] = await Promise.all([
       prisma.pedido.findMany({
         where: { clienteId: id, ...(fechaFilter ? { fecha: fechaFilter } : {}) },
         orderBy: { fecha: 'desc' },
@@ -70,6 +70,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         where: { entidad: 'Cliente', registroId: id, ...(fechaFilter ? { fecha: fechaFilter } : {}) },
         orderBy: { fecha: 'desc' },
         take: 200,
+      }),
+      prisma.embarque.findMany({
+        where: { pedidos: { some: { clienteId: id } }, ...(fechaFilter ? { fecha: fechaFilter } : {}) },
+        orderBy: { fecha: 'desc' },
+        take: 200,
+        include: {
+          trabajador: { select: { nombre: true } },
+          pedidos: {
+            where: { clienteId: id },
+            select: { id: true, numero: true, estadoEntrega: true },
+          },
+        },
       }),
     ])
 
@@ -174,6 +186,26 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           link: nc.pedidoId ? `/pedidos?openPedido=${nc.pedidoId}` : undefined,
         })
       }
+    }
+
+    // Embarques
+    for (const e of embarques) {
+      const pedidosCliente = e.pedidos || []
+      const entregados = pedidosCliente.filter(p => p.estadoEntrega === 'ENTREGADO').length
+      const descripcion = pedidosCliente.length === 1
+        ? `Pedido #${pedidosCliente[0].numero}`
+        : `${pedidosCliente.length} pedidos (${entregados} entregados)`
+      events.push({
+        id: `embarque-${e.id}`,
+        tipo: 'EMBARQUE',
+        fecha: e.fecha.toISOString(),
+        titulo: `Embarque #${e.numeroDia > 0 ? e.numeroDia : e.numero}`,
+        descripcion: `${e.trabajador.nombre} · ${descripcion}`,
+        estado: e.estado,
+        numero: e.numeroDia > 0 ? e.numeroDia : e.numero,
+        link: `/embarques/${e.id}`,
+        metadata: { repartidor: e.trabajador.nombre, pedidos: pedidosCliente.map(p => p.numero) },
+      })
     }
 
     // Auditoría

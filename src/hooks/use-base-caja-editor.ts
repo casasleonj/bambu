@@ -70,7 +70,7 @@ export function useBaseCajaEditor() {
           setState({ status: 'cerrado', valor: baseValue })
           return
         }
-        if (baseValue) {
+        if (baseValue !== null && baseValue !== undefined && baseValue !== '') {
           setState({ status: 'con_base', valor: baseValue })
           return
         }

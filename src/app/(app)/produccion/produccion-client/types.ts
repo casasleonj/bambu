@@ -49,3 +49,29 @@ export interface PreviewData {
   repartidores: RepartidorOption[]
   embarquesAbiertos: boolean
 }
+
+export interface ProduccionItem {
+  id: string
+  producto: 'PACA_AGUA' | 'PACA_HIELO'
+  conteoA: number
+  conteoB: number
+  producido: number
+  stockIni: number
+  ventas: number
+  stockFinEsperado: number
+  stockFinFisico: number
+  diferencia: number
+  filtradas: number
+  rotas: number
+  consumoInterno: number
+}
+
+export interface ProduccionRegistro {
+  id: string
+  fecha: string
+  turno: 'MANANA' | 'TARDE' | 'NOCHE'
+  trabajadorId: string
+  trabajador: { id: string; nombre: string }
+  obs: string | null
+  items: ProduccionItem[]
+}

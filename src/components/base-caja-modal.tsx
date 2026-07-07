@@ -50,9 +50,10 @@ export default function BaseCajaModal() {
         }
       }
 
-      const [cierreRes, configRes] = await Promise.all([
+      const [cierreRes, configRes, defaultRes] = await Promise.all([
         fetch('/api/cierre/last'),
         fetch(`/api/config?clave=BASE_DIA_${today}`),
+        fetch('/api/config?clave=BASE_DIA'),
       ])
 
       if (cierreRes.ok) {
@@ -76,12 +77,14 @@ export default function BaseCajaModal() {
             const nextUnclosed = new Date(cierreData.cierre.fecha)
             nextUnclosed.setDate(nextUnclosed.getDate() + 1)
             const targetDate = nextUnclosed.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
-            const targetUrl = `/cierre?fecha=${targetDate}`
-            const currentPath = window.location.pathname + window.location.search
-            if (currentPath !== targetUrl) {
-              router.push(targetUrl)
-            }
-            return
+            toast.warning(`Hay cierres pendientes desde ${cierreDate}. Revisá /cierre?fecha=${targetDate}`, {
+              duration: 8000,
+              action: {
+                label: 'Ir →',
+                onClick: () => router.push(`/cierre?fecha=${targetDate}`),
+              },
+            })
+            // Continue to base prompt; do not force redirect.
           }
         }
       }
@@ -95,8 +98,16 @@ export default function BaseCajaModal() {
         }
       }
 
-      // No cierre and no base for today — show modal for first-time entry.
-      openModal()
+      // No base for today yet. Use the global default as the initial value if available.
+      let defaultValue = ''
+      if (defaultRes.ok) {
+        const defaultData = await defaultRes.json()
+        if (defaultData.config?.valor) {
+          defaultValue = String(defaultData.config.valor)
+        }
+      }
+
+      openModal(defaultValue)
     } catch (error) {
       console.error('[base-caja] Error checking base:', error)
       toast.error('No se pudo verificar el estado de caja')
@@ -133,7 +144,7 @@ export default function BaseCajaModal() {
 
   async function handleSave(e?: React.FormEvent) {
     e?.preventDefault()
-    if (!baseDiaInput || isNaN(Number(baseDiaInput)) || Number(baseDiaInput) < 0) {
+    if (baseDiaInput === '' || isNaN(Number(baseDiaInput)) || Number(baseDiaInput) < 0) {
       toast.error('Ingresa un monto válido')
       return
     }
@@ -177,7 +188,7 @@ export default function BaseCajaModal() {
           <div className="text-6xl mb-4">💰</div>
           <h2 className="text-2xl font-bold text-gray-800">Base de Caja</h2>
           <p className="text-gray-500 mt-2">
-            {baseDiaInput ? 'Actualiza el dinero físico en caja' : 'Contá el dinero físico en caja para iniciar el día'}
+            {baseDiaInput ? 'Actualiza el dinero físico en caja' : 'Contá el dinero físico en caja para iniciar el día (0 es válido)'}
           </p>
         </div>
 
@@ -222,7 +233,7 @@ export default function BaseCajaModal() {
 
           <Button
             type="submit"
-            disabled={saving || !baseDiaInput}
+            disabled={saving || baseDiaInput === '' || isNaN(Number(baseDiaInput)) || Number(baseDiaInput) < 0}
             className="w-full mt-6 py-4 text-lg"
             size="lg"
           >

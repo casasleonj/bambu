@@ -76,6 +76,9 @@ export interface ProduccionDiaria {
   hieloProducido: number
   perdidasAgua: number
   perdidasHielo: number
+  piezasProducidas: number
+  perdidasTotales: number
+  eficiencia: number
 }
 
 export interface VendidosHoy {
@@ -100,6 +103,12 @@ export interface DashboardKPIs {
   ventasTrend: number
   pedidosTrend: number
   embarquesAbiertos: number
+  prodPiezasHoy: number
+  prodPiezasAyer: number
+  prodPiezasTrend: number
+  prodEficienciaHoy: number
+  prodEficienciaAyer: number
+  prodEficienciaTrend: number
 }
 
 // ── Full Dashboard Data (aggregation of all domain data) ────────────────
