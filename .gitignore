@@ -74,6 +74,7 @@ backups/
 
 # agent ephemeral planning docs
 docs/superpowers/plans/
+au.md
 
 # one-off migration scripts (already executed)
 create-table.ts
