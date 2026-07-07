@@ -1769,6 +1769,7 @@ export default function ClientesClient({ initialClientes, initialLimiteFiados, o
       {/* Negocio Form Modal */}
       {selectedCliente && (
         <NegocioForm
+          key={negocioEditData?.id || 'new'}
           open={negocioFormOpen}
           onClose={() => { setNegocioFormOpen(false); setNegocioEditData(null) }}
           clienteId={selectedCliente.id}
