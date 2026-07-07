@@ -50,6 +50,55 @@ test.describe('Negocios CRUD UI - admin', () => {
     await expect(page.getByText('Abre a las 08:30')).toBeVisible()
   })
 
+  test('regresion: formulario de edicion carga datos al cambiar de negocio', async ({ page }) => {
+    // Regression for stale state: NegocioForm is mounted once and reused.
+    // Opening create first, then editing two different negocios must show
+    // the correct data each time.
+    const { cliente } = await createCliente(page, { nombre: 'Cliente Stale Regression', telefono: '3000000008' })
+    const { negocio: negA } = await createNegocio(page, {
+      clienteId: cliente.id,
+      nombre: 'Negocio Alfa',
+      tipoNegocio: 'Tienda',
+      direccion: 'Dir Alfa',
+      barrio: 'Barrio Alfa',
+      horaApertura: '07:00',
+    })
+    const { negocio: negB } = await createNegocio(page, {
+      clienteId: cliente.id,
+      nombre: 'Negocio Beta',
+      tipoNegocio: 'Restaurante',
+      direccion: 'Dir Beta',
+      barrio: 'Barrio Beta',
+      horaApertura: '09:00',
+    })
+
+    await goto(page, `/clientes?openCliente=${cliente.id}`)
+
+    // 1. Open create form first to mount the component with editData=null
+    await page.getByRole('button', { name: 'Agregar' }).first().click()
+    await expect(page.getByRole('heading', { name: 'Nuevo Negocio' })).toBeVisible()
+    await expect(page.locator('input[placeholder="Ej: Restaurante El Sabor"]')).toHaveValue('')
+    await page.getByRole('button', { name: 'Cancelar' }).click()
+    await expect(page.getByRole('heading', { name: 'Nuevo Negocio' })).toBeHidden()
+
+    // 2. Edit negocio A — form must pre-fill with A's data
+    await page.getByRole('button', { name: `Ver detalle de ${negA.nombre}` }).click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Editar' }).click()
+    await expect(page.getByRole('heading', { name: 'Editar Negocio' })).toBeVisible()
+    await expect(page.locator('input[placeholder="Ej: Restaurante El Sabor"]')).toHaveValue(negA.nombre)
+    await expect(page.locator('input[placeholder="Ej: Centro"]')).toHaveValue('Barrio Alfa')
+    await expect(page.locator('input[type="time"]')).toHaveValue('07:00')
+    await page.getByRole('button', { name: 'Cancelar' }).click()
+
+    // 3. Edit negocio B — form must pre-fill with B's data, not A's
+    await page.getByRole('button', { name: `Ver detalle de ${negB.nombre}` }).click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Editar' }).click()
+    await expect(page.getByRole('heading', { name: 'Editar Negocio' })).toBeVisible()
+    await expect(page.locator('input[placeholder="Ej: Restaurante El Sabor"]')).toHaveValue(negB.nombre)
+    await expect(page.locator('input[placeholder="Ej: Centro"]')).toHaveValue('Barrio Beta')
+    await expect(page.locator('input[type="time"]')).toHaveValue('09:00')
+  })
+
   test('ver detalle de negocio en modal', async ({ page }) => {
     const { cliente } = await createCliente(page, { nombre: 'Cliente Detalle Negocio', telefono: '3000000002' })
     const { negocio } = await createNegocio(page, {
