@@ -11,6 +11,7 @@ import { ROLES } from '@/lib/constants'
 import { logger } from '@/lib/logger'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { publishRealtimeEvent } from '@/lib/realtime'
+import { enrichPedidosWithNegocio } from '@/lib/embarque-pedido-enrich'
 
 // Fields that can only be edited when embarque is ABIERTO
 const ABIERTO_ONLY_FIELDS = ['trabajadorId', 'rutaId', 'horaSalida', 'baseDinero', 'tipoMoto', 'carga'] as const
@@ -52,7 +53,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
             cBotellonDomEnt: true,
             cBolsaAguaEnt: true,
             cBolsaHieloEnt: true,
-            cliente: { select: { id: true, nombre: true, barrio: true, telefono: true } },
+            negocioId: true,
+            cliente: { select: { id: true, nombre: true, apellido: true, barrio: true, telefono: true } },
           },
           orderBy: { numero: 'asc' },
         },
@@ -60,9 +62,10 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       },
     })
     if (!embarqueRaw) return apiError('Not found', 404)
+    const pedidosEnriquecidos = await enrichPedidosWithNegocio(embarqueRaw.pedidos)
     const embarque = {
       ...embarqueRaw,
-      pedidos: embarqueRaw.pedidos.map((p) => ({
+      pedidos: pedidosEnriquecidos.map((p) => ({
         ...p,
         total: Number(p.total),
         totalPagado: Number(p.totalPagado),

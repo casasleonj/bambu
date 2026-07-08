@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 
 import { matchCliente, scoreCliente, meetsMinSearchLength, MIN_SEARCH_CHARS } from '@/lib/cliente-search'
+import { getPedidoClienteDisplay } from '@/lib/pedido-display'
 
 export interface ClienteSearchOption {
   id: string
@@ -145,7 +146,15 @@ export function PedidosSearch({
         <input
           ref={inputRef}
           type="text"
-          value={selectedCliente ? selectedCliente.nombre : searchInput}
+          value={selectedCliente
+            ? getPedidoClienteDisplay({
+                clienteId: selectedCliente.id,
+                nombreCli: selectedCliente.nombre,
+                apellidoCli: selectedCliente.apellido,
+                negocioId: selectedCliente.nombreNegocio ? selectedCliente.id : undefined,
+                nombreNegocioCli: selectedCliente.nombreNegocio,
+              }).nombrePrincipal
+            : searchInput}
           onChange={e => handleInputChange(e.target.value)}
           onFocus={() => {
             if (!selectedCliente && searchInput) setOpen(true)
@@ -183,12 +192,18 @@ export function PedidosSearch({
               }`}
             >
               <p className="text-sm font-medium text-gray-900">
-                {c.nombre}{c.apellido ? ` ${c.apellido}` : ''}
+                {c.nombreNegocio || `${c.nombre}${c.apellido ? ` ${c.apellido}` : ''}`}
               </p>
               <p className="text-xs text-gray-500">
                 {c.telefono}
                 {c.barrio && ` · ${c.barrio}`}
                 {c.direccion && ` · ${c.direccion}`}
+                {c.negocios && c.negocios.length > 0 && !c.nombreNegocio && (
+                  <>
+                    {' · '}
+                    <span className="text-blue-600">🏪 {c.negocios[0].nombre}{c.negocios.length > 1 && ` (+${c.negocios.length - 1})`}</span>
+                  </>
+                )}
               </p>
             </button>
           ))}

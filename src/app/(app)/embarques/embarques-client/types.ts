@@ -30,7 +30,12 @@ export interface Pedido {
   estado: string
   estadoEntrega?: string
   origen?: string
-  cliente?: { nombre: string; barrio: string | null }
+  clienteId?: string
+  negocioId?: string | null
+  nombreCli?: string
+  apellidoCli?: string | null
+  nombreNegocioCli?: string | null
+  cliente?: { id?: string; nombre: string; apellido?: string | null; barrio: string | null }
   cPacaAguaPed: number
   cPacaHieloPed: number
   cBotellonFabPed: number

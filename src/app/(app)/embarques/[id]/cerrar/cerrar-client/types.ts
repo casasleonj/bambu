@@ -3,12 +3,18 @@ export { METODOS_PAGO_IDS as METODOS_PAGO } from '@/lib/metodos-pago'
 export interface Cliente {
   id: string
   nombre: string
+  apellido?: string | null
   telefono: string
 }
 
 export interface Pedido {
   id: string
   numero: number
+  clienteId: string
+  negocioId?: string | null
+  nombreCli: string
+  apellidoCli?: string | null
+  nombreNegocioCli?: string | null
   cliente: Cliente
   tipo: string
   cPacaAguaPed: number

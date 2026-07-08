@@ -10,6 +10,7 @@ import { formatCurrency } from '@/lib/utils'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
 import { fetchRequiereFotoEntrega } from '@/lib/client/config-client'
 import { Modal } from '@/components/modal'
+import { PedidoClienteDisplay } from '@/components/pedido-cliente-display'
 import { FotoEntregaModal } from '@/components/foto-entrega-modal'
 import { ErrorState } from '@/components/error-state'
 import { SkeletonPage } from '@/components/skeleton'
@@ -1260,8 +1261,23 @@ export function PedidosClient() {
                   {getEstadoEntregaBadge(selectedPedido.estadoEntrega)}
                   {getTipoBadge(selectedPedido.tipo)}
                 </div>
-                <h2 className="text-lg font-bold text-gray-800">{selectedPedido.nombreCli}</h2>
+                <PedidoClienteDisplay
+                  clienteId={selectedPedido.clienteId}
+                  nombreCli={selectedPedido.nombreCli}
+                  apellidoCli={selectedPedido.apellidoCli}
+                  negocioId={selectedPedido.negocioId}
+                  nombreNegocioCli={selectedPedido.nombreNegocioCli}
+                  variant="heading"
+                  showBadge
+                />
                 <p className="text-sm text-gray-500">{selectedPedido.telefonoCli}</p>
+                {(selectedPedido.zonaCli || selectedPedido.barrioCli) && (
+                  <p className="text-sm text-gray-500">
+                    {selectedPedido.zonaCli}
+                    {selectedPedido.zonaCli && selectedPedido.barrioCli ? ' · ' : ''}
+                    {selectedPedido.barrioCli}
+                  </p>
+                )}
               </div>
               <button onClick={() => setShowDetailModal(false)} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition" aria-label="Cerrar">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>

@@ -3,6 +3,7 @@ import { METODOS_PAGO, calcularTotalEntregado, calcularMontoPagado } from './typ
 import { getProductoIconConfig } from '@/lib/producto-iconos'
 import { formatCurrency } from '@/lib/utils'
 import { useProductosDomicilio } from '@/hooks/use-productos-domicilio'
+import { PedidoClienteDisplay } from '@/components/pedido-cliente-display'
 
 interface PedidoCuadreProps {
   pedido: Pedido
@@ -77,7 +78,14 @@ export function PedidoCuadre({
         <div>
           <div className="flex items-center gap-2">
             <span className="font-semibold">#{pedido.numero}</span>
-            <span>{pedido.cliente.nombre}</span>
+            <PedidoClienteDisplay
+              clienteId={pedido.clienteId}
+              nombreCli={pedido.nombreCli}
+              apellidoCli={pedido.apellidoCli}
+              negocioId={pedido.negocioId}
+              nombreNegocioCli={pedido.nombreNegocioCli}
+              variant="row"
+            />
           </div>
           <div className="text-sm text-gray-500 mt-1">
             Pedido:{' '}

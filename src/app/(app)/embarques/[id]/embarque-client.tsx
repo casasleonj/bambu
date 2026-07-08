@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { useConfirm } from '@/components/confirm-modal'
 import { MoneyDisplay } from '@/components/money-display'
 import { ClienteHistorialModal } from '@/components/cliente-historial-modal'
+import { PedidoClienteDisplay } from '@/components/pedido-cliente-display'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
 import { calcularEstadoPagoVisual } from '@/modules/pedidos/presentation/visual-states'
 import type { EmbarqueDetalle, PedidoResumen } from './types'
@@ -293,7 +294,14 @@ export function EmbarqueClient({ embarque, userRole }: EmbarqueClientProps) {
                       <tr key={pedido.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 text-sm font-medium text-gray-500">#{pedido.numero}</td>
                         <td className="px-4 py-3">
-                          <p className="text-sm font-medium text-gray-800">{pedido.cliente?.nombre || 'Sin cliente'}</p>
+                          <PedidoClienteDisplay
+                            clienteId={pedido.clienteId || pedido.cliente?.id || ''}
+                            nombreCli={pedido.nombreCli || pedido.cliente?.nombre || 'Sin cliente'}
+                            apellidoCli={pedido.apellidoCli || pedido.cliente?.apellido}
+                            negocioId={pedido.negocioId}
+                            nombreNegocioCli={pedido.nombreNegocioCli}
+                            variant="row"
+                          />
                           <p className="text-xs text-gray-400">{pedido.cliente?.barrio || pedido.cliente?.telefono || ''}</p>
                         </td>
                         <td className="px-4 py-3"><PedidoItems pedido={pedido} /></td>
@@ -350,7 +358,14 @@ export function EmbarqueClient({ embarque, userRole }: EmbarqueClientProps) {
                     <div className="flex justify-between items-start mb-2">
                       <div>
                         <p className="text-sm font-bold text-gray-800">#{pedido.numero}</p>
-                        <p className="text-sm text-gray-700">{pedido.cliente?.nombre || 'Sin cliente'}</p>
+                        <PedidoClienteDisplay
+                          clienteId={pedido.clienteId || pedido.cliente?.id || ''}
+                          nombreCli={pedido.nombreCli || pedido.cliente?.nombre || 'Sin cliente'}
+                          apellidoCli={pedido.apellidoCli || pedido.cliente?.apellido}
+                          negocioId={pedido.negocioId}
+                          nombreNegocioCli={pedido.nombreNegocioCli}
+                          variant="card"
+                        />
                         <p className="text-xs text-gray-400">{pedido.cliente?.barrio || pedido.cliente?.telefono || ''}</p>
                       </div>
                       {getEstadoEntregaBadge(pedido.estadoEntrega)}

@@ -20,7 +20,12 @@ export interface PedidoResumen {
   cBotellonDomEnt?: number | null
   cBolsaAguaEnt?: number | null
   cBolsaHieloEnt?: number | null
-  cliente?: { id: string; nombre: string; barrio: string | null; telefono: string | null } | null
+  clienteId?: string
+  negocioId?: string | null
+  nombreCli?: string
+  apellidoCli?: string | null
+  nombreNegocioCli?: string | null
+  cliente?: { id: string; nombre: string; apellido?: string | null; barrio: string | null; telefono: string | null } | null
 }
 
 export interface EmbarqueDetalle {

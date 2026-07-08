@@ -43,6 +43,7 @@ export default async function RepartidorPage() {
             select: {
               id: true,
               nombre: true,
+              apellido: true,
               telefono: true,
               direccion: true,
               lat: true,    // Bloque 2: para "Abrir en Maps" desde cada pedido
@@ -62,6 +63,16 @@ export default async function RepartidorPage() {
   const bloquearPrecios = await getConfigBool('BLOQUEAR_PRECIOS_REPARTIDOR', false)
   const maskPrices = bloquearPrecios && userRole === 'REPARTIDOR'
 
+  // Batch-fetch business names so the driver view can prioritize the
+  // negocio name over the owner name when a pedido is linked to one.
+  const negocioIds = embarque
+    ? [...new Set(embarque.pedidos.map(p => p.negocioId).filter(Boolean))] as string[]
+    : []
+  const negocios = negocioIds.length > 0
+    ? await prisma.negocio.findMany({ where: { id: { in: negocioIds } }, select: { id: true, nombre: true } })
+    : []
+  const negocioMap = new Map(negocios.map(n => [n.id, n.nombre]))
+
   const embarqueData = embarque
     ? {
         ...embarque,
@@ -75,6 +86,11 @@ export default async function RepartidorPage() {
         optimizadoEn: embarque.optimizadoEn?.toISOString() || null,
         pedidos: embarque.pedidos.map(p => ({
           ...p,
+          clienteId: p.clienteId,
+          negocioId: p.negocioId,
+          nombreCli: p.cliente.nombre,
+          apellidoCli: p.cliente.apellido,
+          nombreNegocioCli: p.negocioId ? negocioMap.get(p.negocioId) ?? null : null,
           fecha: p.fecha.toISOString(),
           fechaEntrega: p.fechaEntrega?.toISOString() || null,
           total: maskPrices ? 0 : Number(p.total),

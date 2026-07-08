@@ -10,11 +10,13 @@ import { getEstadoFiados, resolverLimiteFiados } from '@/lib/pedido-utils'
 import { LIMITE_FIADOS_DEFAULT } from '@/lib/constants'
 import { fetchResilient } from '@/lib/fetch-resilient'
 import { MoneyDisplay } from '@/components/money-display'
+import { PedidoClienteDisplay } from '@/components/pedido-cliente-display'
 
 interface FiadoRow {
   clienteId: string
   nombreCli: string
   apellidoCli?: string | null
+  negocioId?: string | null
   nombreNegocioCli?: string | null
   telefonoCli: string
   deudaTotal: number
@@ -67,6 +69,7 @@ export function FiadosTable({ pedidos, clientes, limiteGlobal, onPedidosChange, 
             clienteId: p.clienteId,
             nombreCli: p.nombreCli,
             apellidoCli: p.apellidoCli,
+            negocioId: p.negocioId,
             nombreNegocioCli: p.nombreNegocioCli,
             telefonoCli: p.telefonoCli,
             deudaTotal: Number(p.saldo),
@@ -290,10 +293,14 @@ export function FiadosTable({ pedidos, clientes, limiteGlobal, onPedidosChange, 
                 <React.Fragment key={row.clienteId}>
                   <tr className="hover:bg-gray-50 transition">
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                        <span className="font-medium text-gray-800">{row.nombreCli}{row.apellidoCli ? ` ${row.apellidoCli}` : ''}</span>
-                        {row.nombreNegocioCli && <span className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">{row.nombreNegocioCli}</span>}
-                      </div>
+                      <PedidoClienteDisplay
+                        clienteId={row.clienteId}
+                        nombreCli={row.nombreCli}
+                        apellidoCli={row.apellidoCli}
+                        negocioId={row.negocioId}
+                        nombreNegocioCli={row.nombreNegocioCli}
+                        variant="row"
+                      />
                       <div className="text-xs text-gray-400">{row.telefonoCli}</div>
                     </td>
                     <td className="px-4 py-3 text-right">
@@ -420,10 +427,14 @@ export function FiadosTable({ pedidos, clientes, limiteGlobal, onPedidosChange, 
             <div key={row.clienteId} className="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
               <div className="flex justify-between items-start mb-2">
                 <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-medium text-gray-800">{row.nombreCli}{row.apellidoCli ? ` ${row.apellidoCli}` : ''}</h3>
-                    {row.nombreNegocioCli && <span className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">{row.nombreNegocioCli}</span>}
-                  </div>
+                  <PedidoClienteDisplay
+                    clienteId={row.clienteId}
+                    nombreCli={row.nombreCli}
+                    apellidoCli={row.apellidoCli}
+                    negocioId={row.negocioId}
+                    nombreNegocioCli={row.nombreNegocioCli}
+                    variant="card"
+                  />
                   <p className="text-xs text-gray-400">{row.telefonoCli}</p>
                 </div>
                 <div className="text-right">

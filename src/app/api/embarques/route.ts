@@ -20,6 +20,7 @@ import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 import { publishRealtimeEvent } from '@/lib/realtime'
+import { enrichPedidosWithNegocio } from '@/lib/embarque-pedido-enrich'
 
 // DDD imports
 import { PrismaEmbarqueRepository } from '@/modules/embarques/infrastructure/repositories/PrismaEmbarqueRepository'
@@ -144,7 +145,8 @@ export async function GET(request: NextRequest) {
               cBotellonDomEnt: true,
               cBolsaAguaEnt: true,
               cBolsaHieloEnt: true,
-              cliente: { select: { id: true, nombre: true, barrio: true, telefono: true } },
+              negocioId: true,
+              cliente: { select: { id: true, nombre: true, apellido: true, barrio: true, telefono: true } },
             },
             orderBy: { numero: 'asc' },
           },
@@ -154,7 +156,7 @@ export async function GET(request: NextRequest) {
       prisma.embarque.count({ where }),
     ])
 
-    const embarques = embarquesRaw.map((e) => {
+    const embarques = await Promise.all(embarquesRaw.map(async (e) => {
       const carga: CargaSnapshot = emptyStock() as CargaSnapshot
       for (const prod of e.productos) {
         const key = prod.producto as keyof typeof carga
@@ -168,9 +170,10 @@ export async function GET(request: NextRequest) {
       const pesoKg = calcularPesoDesdeCarga(carga)
       const capacidadKg = e.trabajador.capacidadKg || 500
       const capacidadInfo = getCapacidadInfo(totalPacas, pesoKg, capacidadKg)
+      const pedidosEnriquecidos = await enrichPedidosWithNegocio(e.pedidos)
       return {
         ...e,
-        pedidos: e.pedidos.map((p) => ({
+        pedidos: pedidosEnriquecidos.map((p) => ({
           ...p,
           total: Number(p.total),
           totalPagado: Number(p.totalPagado),
@@ -181,7 +184,7 @@ export async function GET(request: NextRequest) {
         capacidadKg,
         capacidadInfo,
       }
-    })
+    }))
 
     const stock = request.nextUrl.searchParams.get('stock')
     if (stock === 'true') {

@@ -11,6 +11,7 @@ export interface Pedido {
   id: string
   numero: number
   clienteId: string
+  negocioId?: string | null
   nombreCli: string
   apellidoCli?: string | null
   telefonoCli: string

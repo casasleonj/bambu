@@ -9,6 +9,7 @@ import { Modal } from '@/components/modal'
 import { getCapacidadInfo, PESOS_KG } from '@/lib/embarque-capacidad'
 import { fetchResilient } from '@/lib/fetch-resilient'
 import { MoneyDisplay } from '@/components/money-display'
+import { PedidoClienteDisplay } from '@/components/pedido-cliente-display'
 import type { Embarque, Pedido, Trabajador } from './types'
 
 function calcularCapacidadProyectada(embarque: Embarque, pedidos: Pedido[], nuevosPedidoIds: string[]): { totalPacas: number; pesoKg: number } {
@@ -40,7 +41,14 @@ function PedidoRow({ pedido, label }: { pedido: Pedido; label?: string }) {
   return (
     <div className="flex justify-between items-center p-2 hover:bg-gray-50">
       <span className="text-sm">
-        #{pedido.numero} - {pedido.cliente?.nombre || 'Sin cliente'} ({pedido.cliente?.barrio || 'Sin zona'})
+        #{pedido.numero} - <PedidoClienteDisplay
+          clienteId={pedido.clienteId || pedido.cliente?.id || ''}
+          nombreCli={pedido.nombreCli || pedido.cliente?.nombre || 'Sin cliente'}
+          apellidoCli={pedido.apellidoCli || pedido.cliente?.apellido}
+          negocioId={pedido.negocioId}
+          nombreNegocioCli={pedido.nombreNegocioCli}
+          variant="row"
+        /> ({pedido.cliente?.barrio || 'Sin zona'})
         {label && (
           <span className="ml-2 px-1.5 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">{label}</span>
         )}
@@ -394,7 +402,14 @@ export function EmbarqueDetailModal({
                     className="mr-2"
                   />
                   <span className="text-sm">
-                    #{pedido.numero} - {pedido.cliente?.nombre || 'Sin cliente'} ({pedido.cliente?.barrio || 'Sin zona'})
+                    #{pedido.numero} - <PedidoClienteDisplay
+          clienteId={pedido.clienteId || pedido.cliente?.id || ''}
+          nombreCli={pedido.nombreCli || pedido.cliente?.nombre || 'Sin cliente'}
+          apellidoCli={pedido.apellidoCli || pedido.cliente?.apellido}
+          negocioId={pedido.negocioId}
+          nombreNegocioCli={pedido.nombreNegocioCli}
+          variant="row"
+        /> ({pedido.cliente?.barrio || 'Sin zona'})
                     <span className="text-gray-500 ml-1">
                       {(pedido.cPacaAguaPed || 0) + (pedido.cPacaHieloPed || 0) + (pedido.cBotellonFabPed || 0) + (pedido.cBotellonDomPed || 0) + (pedido.cBolsaAguaPed || 0) + (pedido.cBolsaHieloPed || 0)} pacas
                     </span>
@@ -450,7 +465,14 @@ export function EmbarqueDetailModal({
             {embarque.pedidos?.map((pedido) => (
               <div key={pedido.id} className="flex justify-between items-center p-2">
                 <span className="text-sm">
-                  #{pedido.numero} - {pedido.cliente?.nombre || 'Sin cliente'} ({pedido.cliente?.barrio || 'Sin zona'})
+                  #{pedido.numero} - <PedidoClienteDisplay
+          clienteId={pedido.clienteId || pedido.cliente?.id || ''}
+          nombreCli={pedido.nombreCli || pedido.cliente?.nombre || 'Sin cliente'}
+          apellidoCli={pedido.apellidoCli || pedido.cliente?.apellido}
+          negocioId={pedido.negocioId}
+          nombreNegocioCli={pedido.nombreNegocioCli}
+          variant="row"
+        /> ({pedido.cliente?.barrio || 'Sin zona'})
                   <span className="block text-xs text-gray-500">
                     {pedido.cPacaAguaPed > 0 && `🍶 ${pedido.cPacaAguaPed} `}
                     {pedido.cPacaHieloPed > 0 && `🧊 ${pedido.cPacaHieloPed} `}
