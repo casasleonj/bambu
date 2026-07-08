@@ -38,6 +38,7 @@ export interface PedidoInicial {
   id: string
   canal: 'PUNTO' | 'DOMICILIO'
   cliente?: PedidoInicialCliente | null
+  negocioId?: string | null
   items: PedidoInicialItem[]
   obs?: string | null
 }
@@ -176,7 +177,9 @@ export function PedidoFormUnified({ contexto, clientes, limiteGlobal, onSubmit, 
     resolverPrecios(allProducts, canalRef.current, clienteSeleccionado.id)
   }, [productosConfig, clienteSeleccionado?.id, productosActuales])
 
-  // Sync direccion/barrio when negocio selection changes
+  // Sync direccion/barrio when negocio selection changes.
+  // Use clienteSeleccionado?.id to avoid re-running when the parent
+  // passes a fresh object reference on every render.
   useEffect(() => {
     if (!clienteSeleccionado) return
     if (negocioData) {
@@ -188,7 +191,7 @@ export function PedidoFormUnified({ contexto, clientes, limiteGlobal, onSubmit, 
       setEditDireccion(clienteSeleccionado.direccion || '')
       setEditBarrio(clienteSeleccionado.barrio || '')
     }
-  }, [negocioData, clienteSeleccionado])
+  }, [negocioData, clienteSeleccionado?.id])
 
   useEffect(() => {
     if (clienteSeleccionado) {
@@ -237,6 +240,7 @@ export function PedidoFormUnified({ contexto, clientes, limiteGlobal, onSubmit, 
     if (pedidoInicial.cliente) {
       setClienteSeleccionado(pedidoInicial.cliente as Cliente)
     }
+    setNegocioSeleccionado(pedidoInicial.negocioId ?? null)
     const items = pedidoInicial.items
     const cantidadesIniciales: Record<string, number> = {}
     const manuales: Record<string, number> = {}
@@ -254,7 +258,7 @@ export function PedidoFormUnified({ contexto, clientes, limiteGlobal, onSubmit, 
     // No need to call resolverPrecios here — it would be redundant
     // and causes a re-initialization loop when resolverPrecios reference changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pedidoInicial])
+  }, [pedidoInicial?.id])
 
   const getPrecioBase = (codigo: string): number => {
     if (preciosResueltos[codigo]) return preciosResueltos[codigo]
@@ -590,7 +594,12 @@ export function PedidoFormUnified({ contexto, clientes, limiteGlobal, onSubmit, 
                 <div className="border rounded-lg max-h-40 overflow-y-auto">
                   {filteredClientes.map(c => (
                     <button key={c.id} type="button" onClick={() => handleSelectCliente(c)} className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b last:border-b-0 text-sm">
-                      <span className="font-medium">{c.nombre}{c.apellido ? ` ${c.apellido}` : ''}</span>
+                      <span className="font-medium">
+                        {c.nombreNegocio || `${c.nombre}${c.apellido ? ` ${c.apellido}` : ''}`}
+                      </span>
+                      {c.nombreNegocio && (
+                        <span className="text-gray-400 ml-2 text-xs">de {c.nombre}{c.apellido ? ` ${c.apellido}` : ''}</span>
+                      )}
                       <span className="text-gray-400 ml-2">{c.telefono}</span>
                     </button>
                   ))}

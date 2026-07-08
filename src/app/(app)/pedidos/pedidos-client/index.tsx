@@ -1610,6 +1610,7 @@ export function PedidosClient() {
                   cliente: pedidoEditando.clienteId !== 'CONSUMIDOR_FINAL'
                     ? { id: pedidoEditando.clienteId, nombre: pedidoEditando.nombreCli, telefono: pedidoEditando.telefonoCli, direccion: pedidoEditando.zonaCli, barrio: pedidoEditando.barrioCli }
                     : null,
+                  negocioId: pedidoEditando.negocioId,
                   items: itemsArray,
                   obs: pedidoEditando.obs,
                 }}
