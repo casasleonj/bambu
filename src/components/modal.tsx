@@ -66,15 +66,21 @@ export function Modal({ open, onClose, children, className, title, description, 
       if (wasOpen.current) {
         wasOpen.current = false
         removeModal(id)
-        if (modalStack.length === 0) {
-          document.body.style.overflow = ''
-        }
+        // Always clear the body overflow when this modal closes.
+        // The previous useEffect cleanup already restored the exact
+        // previous value; this branch is a defensive fallback.
+        document.body.style.overflow = ''
       }
       return
     }
     if (!wasOpen.current) {
       wasOpen.current = true
       pushModal(id)
+      // Capture the current overflow value so we can restore it exactly.
+      // This prevents the body from getting stuck with overflow='hidden'
+      // when a non-Modal overlay (e.g. a side panel via useEscapeGuard)
+      // participates in the modalStack without touching overflow itself.
+      const prevOverflow = document.body.style.overflow
       document.body.style.overflow = 'hidden'
       const timer = setTimeout(() => {
         if (contentRef.current) {
@@ -86,9 +92,7 @@ export function Modal({ open, onClose, children, className, title, description, 
       }, 50)
       return () => {
         removeModal(id)
-        if (modalStack.length === 0) {
-          document.body.style.overflow = ''
-        }
+        document.body.style.overflow = prevOverflow
         clearTimeout(timer)
       }
     }
