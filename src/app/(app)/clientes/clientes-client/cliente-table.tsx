@@ -4,10 +4,12 @@ import React, { useState, useEffect, useRef, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
 import { toast } from 'sonner'
-import type { Cliente, FiltroRiesgo } from './types'
+import type { Cliente, FiltroRiesgo, FiltrosActivos, MostrarNegocio } from './types'
 import { formatCurrency } from '@/lib/utils'
 import { EmptyState, EmptySearch } from '@/components/empty-state'
 import { Tooltip } from '@/components/tooltip'
+import { NegociosUbicacionesFilter } from './negocios-ubicaciones-filter'
+import { getClienteNegocioStatus } from '@/lib/cliente-filters'
 
 interface ClienteTableProps {
   clientes: Cliente[]
@@ -21,8 +23,8 @@ interface ClienteTableProps {
   sortDir: 'asc' | 'desc'
   onSortChange: (by: 'nombre' | 'createdAt', dir: 'asc' | 'desc') => void
   selectedClienteId?: string | null
-  totalClientes?: number
   filtroActivo?: FiltroRiesgo
+  filtrosActivos: FiltrosActivos
 }
 
 export const ClienteTable = React.memo(function ClienteTable({
@@ -38,6 +40,7 @@ export const ClienteTable = React.memo(function ClienteTable({
   onSortChange,
   selectedClienteId,
   filtroActivo,
+  filtrosActivos,
 }: ClienteTableProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -63,20 +66,35 @@ export const ClienteTable = React.memo(function ClienteTable({
     return true
   }), [clientes, filterSaldo, filterFrecuencia])
 
-  const hasActiveFilters = filterSaldo || filterFrecuencia || search || filtroActivo
+  const hasActiveFilters =
+    filterSaldo ||
+    filterFrecuencia ||
+    search ||
+    filtroActivo ||
+    filtrosActivos.mostrarNegocio !== 'todos' ||
+    filtrosActivos.todosNegociosConLink ||
+    filtrosActivos.clienteConLink
 
   const clearFilters = () => {
     setFilterSaldo(false)
     setFilterFrecuencia(false)
     onSearchChange('')
-    if (filtroActivo) {
-      const params = new URLSearchParams(window.location.search)
-      params.delete('bloqueado')
-      params.delete('reclamaciones')
-      params.delete('noVerificado')
-      router.push(`${pathname}?${params.toString()}`)
-      router.refresh()
-    }
+    const params = new URLSearchParams(window.location.search)
+    params.delete('bloqueado')
+    params.delete('reclamaciones')
+    params.delete('noVerificado')
+    params.delete('mostrarNegocio')
+    params.delete('todosNegociosConLink')
+    params.delete('clienteConLink')
+    router.push(`${pathname}?${params.toString()}`, { scroll: false })
+    router.refresh()
+  }
+
+  const clearFiltro = (key: 'mostrarNegocio' | 'todosNegociosConLink' | 'clienteConLink') => {
+    const params = new URLSearchParams(window.location.search)
+    params.delete(key)
+    router.push(`${pathname}?${params.toString()}`, { scroll: false })
+    router.refresh()
   }
 
   const toggleFiltroRiesgo = (filtro: FiltroRiesgo) => {
@@ -89,7 +107,32 @@ export const ClienteTable = React.memo(function ClienteTable({
       else if (filtro === 'reclamaciones') params.set('reclamaciones', 'gte3')
       else if (filtro === 'noVerificado') params.set('noVerificado', 'true')
     }
-    router.push(`${pathname}?${params.toString()}`)
+    router.push(`${pathname}?${params.toString()}`, { scroll: false })
+    router.refresh()
+  }
+
+  const handleFiltrosActivosChange = (key: keyof FiltrosActivos, value: MostrarNegocio | boolean) => {
+    const params = new URLSearchParams(window.location.search)
+    if (key === 'mostrarNegocio') {
+      const val = value as MostrarNegocio
+      if (val === 'todos') {
+        params.delete('mostrarNegocio')
+      } else {
+        params.set('mostrarNegocio', val)
+      }
+      // Al cambiar a "Sin negocio", quitamos el toggle de negocios con link
+      if (val === 'sin') {
+        params.delete('todosNegociosConLink')
+      }
+    } else {
+      const val = value as boolean
+      if (val) {
+        params.set(key, 'true')
+      } else {
+        params.delete(key)
+      }
+    }
+    router.push(`${pathname}?${params.toString()}`, { scroll: false })
     router.refresh()
   }
 
@@ -119,6 +162,15 @@ export const ClienteTable = React.memo(function ClienteTable({
             </button>
           )}
         </div>
+
+        <NegociosUbicacionesFilter
+          mostrarNegocio={filtrosActivos.mostrarNegocio}
+          todosNegociosConLink={filtrosActivos.todosNegociosConLink}
+          clienteConLink={filtrosActivos.clienteConLink}
+          onChangeMostrarNegocio={(valor) => handleFiltrosActivosChange('mostrarNegocio', valor)}
+          onToggleTodosNegociosConLink={() => handleFiltrosActivosChange('todosNegociosConLink', !filtrosActivos.todosNegociosConLink)}
+          onToggleClienteConLink={() => handleFiltrosActivosChange('clienteConLink', !filtrosActivos.clienteConLink)}
+        />
 
         <div className="flex flex-wrap gap-2">
           <Tooltip content="Mostrar solo clientes con saldo pendiente" position="bottom">
@@ -199,6 +251,65 @@ export const ClienteTable = React.memo(function ClienteTable({
             </Tooltip>
           )}
 
+          {/* Filtros de negocio / ubicación */}
+          {filtrosActivos.mostrarNegocio === 'con' && (
+            <Tooltip content="Filtro activo: clientes con negocio — click para quitar" position="bottom">
+              <button
+                onClick={() => clearFiltro('mostrarNegocio')}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border bg-indigo-50 border-indigo-200 text-indigo-700"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+                Con negocio
+                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+              </button>
+            </Tooltip>
+          )}
+          {filtrosActivos.mostrarNegocio === 'sin' && (
+            <Tooltip content="Filtro activo: clientes sin negocio — click para quitar" position="bottom">
+              <button
+                onClick={() => clearFiltro('mostrarNegocio')}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border bg-gray-100 border-gray-200 text-gray-600"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+                Sin negocio
+                <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+              </button>
+            </Tooltip>
+          )}
+          {filtrosActivos.todosNegociosConLink && (
+            <Tooltip content="Filtro activo: todos los negocios con link de Maps — click para quitar" position="bottom">
+              <button
+                onClick={() => clearFiltro('todosNegociosConLink')}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border bg-emerald-50 border-emerald-200 text-emerald-700"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                Negocios con link
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              </button>
+            </Tooltip>
+          )}
+          {filtrosActivos.clienteConLink && (
+            <Tooltip content="Filtro activo: clientes con link de Maps — click para quitar" position="bottom">
+              <button
+                onClick={() => clearFiltro('clienteConLink')}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border bg-blue-50 border-blue-200 text-blue-700"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+                Cliente con link
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+              </button>
+            </Tooltip>
+          )}
+
           {hasActiveFilters && (
             <button
               onClick={clearFilters}
@@ -240,6 +351,10 @@ export const ClienteTable = React.memo(function ClienteTable({
             {filtroActivo === 'bloqueado' && ' — bloqueados'}
             {filtroActivo === 'reclamaciones' && ' — con 3+ reclamaciones'}
             {filtroActivo === 'noVerificado' && ' — sin verificar'}
+            {filtrosActivos.mostrarNegocio === 'con' && ' — con negocio'}
+            {filtrosActivos.mostrarNegocio === 'sin' && ' — sin negocio'}
+            {filtrosActivos.todosNegociosConLink && ' — todos con link'}
+            {filtrosActivos.clienteConLink && ' — con link propio'}
           </p>
           <div className="flex items-center gap-1 text-xs text-gray-500">
             <span className="hidden sm:inline">Ordenar:</span>
@@ -399,6 +514,41 @@ export const ClienteTable = React.memo(function ClienteTable({
                             <p className="text-xs text-amber-600 font-medium truncate">
                               👤 {matched.nombre}{matched.relacion ? ` (${matched.relacion})` : ''} — {matched.telefono}
                             </p>
+                          )
+                        })()}
+                        {(() => {
+                          const status = getClienteNegocioStatus(cliente)
+                          if (!status.tieneNegocio && !status.clienteConLink) return null
+                          return (
+                            <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                              {status.totalNegociosActivos > 0 && (
+                                <span
+                                  className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                                    status.negociosSinLink === 0
+                                      ? 'bg-green-100 text-green-700'
+                                      : status.negociosConLink > 0
+                                        ? 'bg-amber-100 text-amber-700'
+                                        : 'bg-red-100 text-red-700'
+                                  }`}
+                                  title={`${status.negociosConLink} de ${status.totalNegociosActivos} negocios con link de Maps`}
+                                >
+                                  <span>🏪</span>
+                                  {status.negociosConLink}/{status.totalNegociosActivos} con link
+                                </span>
+                              )}
+                              {status.tieneNegocioLegacy && !status.tieneNegocioFormal && (
+                                <span
+                                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700"
+                                  title="Negocio legacy sin formalizar"
+                                >
+                                  <span>🏪</span>
+                                  Legacy
+                                </span>
+                              )}
+                              {status.clienteConLink && (
+                                <span className="text-blue-500 text-xs" title="Cliente tiene link de Maps">📍</span>
+                              )}
+                            </div>
                           )
                         })()}
                       </div>

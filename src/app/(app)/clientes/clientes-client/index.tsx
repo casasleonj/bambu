@@ -27,8 +27,22 @@ import { getBadgeColor, ignorarAlerta } from '@/lib/alertas-config'
 import { useEscapeGuard } from '@/hooks/use-escape-guard'
 import { useRealtimeListener } from '@/hooks/use-realtime-listener'
 
-export default function ClientesClient({ initialClientes, initialLimiteFiados, openClienteId, totalClientes, filtroActivo }: ClientesClientProps) {
+export default function ClientesClient({
+  initialClientes,
+  initialLimiteFiados,
+  openClienteId,
+  filtroActivo,
+  filtrosActivos,
+}: ClientesClientProps) {
   const [clientes, setClientes] = useState<Cliente[]>(initialClientes)
+
+  // FIX: sincronizar estado del cliente cuando el Server Component
+  // re-renderiza con nuevos searchParams (ej: cambio de filtro en URL).
+  // Sin esto, los filtros server-side no actualizan la UI.
+  useEffect(() => {
+    setClientes(initialClientes)
+  }, [initialClientes])
+
   const { confirm, modal } = useConfirm()
   const [loading, setLoading] = useState(false)
   const [fetchError, setFetchError] = useState<string | null>(null)
@@ -155,6 +169,15 @@ export default function ClientesClient({ initialClientes, initialLimiteFiados, o
       if (filtroActivo === 'bloqueado') params.set('bloqueado', 'true')
       else if (filtroActivo === 'reclamaciones') params.set('reclamaciones', 'gte3')
       else if (filtroActivo === 'noVerificado') params.set('noVerificado', 'true')
+      if (filtrosActivos.mostrarNegocio !== 'todos') {
+        params.set('mostrarNegocio', filtrosActivos.mostrarNegocio)
+      }
+      if (filtrosActivos.todosNegociosConLink) {
+        params.set('todosNegociosConLink', 'true')
+      }
+      if (filtrosActivos.clienteConLink) {
+        params.set('clienteConLink', 'true')
+      }
       const res = await fetch(`/api/clientes?${params.toString()}`)
       if (!res.ok) throw new Error('Error al cargar clientes')
       const data = await res.json()
@@ -165,7 +188,7 @@ export default function ClientesClient({ initialClientes, initialLimiteFiados, o
     } finally {
       setLoading(false)
     }
-  }, [filtroActivo])
+  }, [filtroActivo, filtrosActivos])
 
   // Realtime: refresh client list when any cliente changes in another session.
   useRealtimeListener(['cliente.*'], fetchClientes)
@@ -789,8 +812,8 @@ export default function ClientesClient({ initialClientes, initialLimiteFiados, o
         sortDir={sortDir}
         onSortChange={(by, dir) => { setSortBy(by); setSortDir(dir) }}
         selectedClienteId={selectedCliente?.id}
-        totalClientes={totalClientes}
         filtroActivo={filtroActivo}
+        filtrosActivos={filtrosActivos}
       />
 
       <ClienteForm

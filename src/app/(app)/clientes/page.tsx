@@ -1,14 +1,12 @@
 import { prisma } from '@/lib/prisma'
-import { CANONICAL_CONSUMIDOR_FINAL_ID, LIMITE_FIADOS_DEFAULT } from '@/lib/constants'
+import { LIMITE_FIADOS_DEFAULT } from '@/lib/constants'
 import { getConfigInt } from '@/lib/config'
 import ClientesClient from './clientes-client'
-
-export type ClientesSearchParams = {
-  openCliente?: string
-  bloqueado?: string
-  reclamaciones?: string
-  noVerificado?: string
-}
+import {
+  buildClientesWhere,
+  type ClientesSearchParams,
+  type MostrarNegocio,
+} from '@/lib/cliente-filters'
 
 export type FiltroRiesgo = 'bloqueado' | 'reclamaciones' | 'noVerificado' | null
 
@@ -18,27 +16,13 @@ export default async function ClientesPage({
   searchParams: Promise<ClientesSearchParams>
 }) {
   const resolvedSearchParams = await searchParams
-  // Determinar filtro de riesgo activo
-  let filtroActivo: FiltroRiesgo = null
-  const where: Record<string, unknown> = {
-    activo: true,
-    // FIX consumidor-final-duplicado: ocultar el canónico. La migración
-    // one-time ya consolidó los duplicados legacy; en runtime identificamos
-    // al canónico exclusivamente por su id para no ocultar clientes reales
-    // que casualmente tengan nombre='Consumidor Final'.
-    NOT: { id: CANONICAL_CONSUMIDOR_FINAL_ID },
-  }
+  const where = buildClientesWhere(resolvedSearchParams)
 
-  if (resolvedSearchParams.bloqueado === 'true') {
-    filtroActivo = 'bloqueado'
-    ;(where as Record<string, unknown>).bloqueado = true
-  } else if (resolvedSearchParams.reclamaciones === 'gte3') {
-    filtroActivo = 'reclamaciones'
-    ;(where as Record<string, unknown>).reclamaciones = { gte: 3 }
-  } else if (resolvedSearchParams.noVerificado === 'true') {
-    filtroActivo = 'noVerificado'
-    ;(where as Record<string, unknown>).verificado = false
-  }
+  // Determinar filtro de riesgo activo (legacy, exclusivo)
+  let filtroActivo: FiltroRiesgo = null
+  if (resolvedSearchParams.bloqueado === 'true') filtroActivo = 'bloqueado'
+  else if (resolvedSearchParams.reclamaciones === 'gte3') filtroActivo = 'reclamaciones'
+  else if (resolvedSearchParams.noVerificado === 'true') filtroActivo = 'noVerificado'
 
   const clientes = await prisma.cliente.findMany({
     where,
@@ -68,6 +52,7 @@ export default async function ClientesPage({
           direccion: true,
           barrio: true,
           referencia: true,
+          linkUbicacion: true,
         },
       },
     },
@@ -89,5 +74,19 @@ export default async function ClientesPage({
 
   const limiteGlobalFiados = await getConfigInt('LIMITE_PEDIDOS_FIADOS_DEFAULT', LIMITE_FIADOS_DEFAULT)
 
-  return <ClientesClient initialClientes={serialized} initialLimiteFiados={limiteGlobalFiados} openClienteId={resolvedSearchParams.openCliente} filtroActivo={filtroActivo} />
+  const filtrosActivos = {
+    mostrarNegocio: (resolvedSearchParams.mostrarNegocio ?? 'todos') as MostrarNegocio,
+    todosNegociosConLink: resolvedSearchParams.todosNegociosConLink === 'true',
+    clienteConLink: resolvedSearchParams.clienteConLink === 'true',
+  }
+
+  return (
+    <ClientesClient
+      initialClientes={serialized}
+      initialLimiteFiados={limiteGlobalFiados}
+      openClienteId={resolvedSearchParams.openCliente}
+      filtroActivo={filtroActivo}
+      filtrosActivos={filtrosActivos}
+    />
+  )
 }

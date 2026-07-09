@@ -37,15 +37,13 @@ export default function LoginPage() {
   return (
     <AuthShell title="Agua Bambú" subtitle="Sistema de Gestión">
       <form action={formAction} className="space-y-6">
-        <input type="hidden" name="username" value={username} />
-        <input type="hidden" name="password" value={password} />
-
         <div>
           <label htmlFor="login-username" className="block text-sm font-medium text-gray-700 mb-2">
             Usuario
           </label>
           <input
             id="login-username"
+            name="username"
             type="text"
             autoComplete="username"
             autoFocus
@@ -66,6 +64,7 @@ export default function LoginPage() {
           <div className="relative">
             <input
               id="login-password"
+              name="password"
               type={showPassword ? 'text' : 'password'}
               autoComplete="current-password"
               enterKeyHint="go"

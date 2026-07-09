@@ -1,7 +1,7 @@
 // @tests api/cliente, api/cliente/quick, api/negocios, api/clientes/stats, api/clientes/historial
-import {test, expect, fullLogin, loginAs, goto, apiPost, apiGet, apiPut, apiPatch, apiDelete, createCliente, setupClienteWithPedidos,  resetDatabase} from './fixtures'
+import {test, expect, fullLogin, loginAs, goto, apiPost, apiGet, apiPut, apiPatch, apiDelete, createCliente, createClienteFull, setupClienteWithPedidos,  resetDatabase} from './fixtures'
 
-const BASE = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000'
+const BASE = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3001'
 
 interface Recomendacion {
   urgencia: string
@@ -22,7 +22,7 @@ test.describe('Clientes UI', () => {
   test('page loads with heading, button and search', async ({ page }) => {
     await fullLogin(page)
     await goto(page, '/clientes')
-    await expect(page.getByRole('heading', { name: 'Clientes' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Clientes', exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: /Nuevo Cliente/ })).toBeVisible()
     await expect(page.locator('input[placeholder*="Buscar"]')).toBeVisible()
   })
@@ -41,7 +41,7 @@ test.describe('Clientes UI', () => {
     const phoneInput = page.locator('input[type="tel"]').first().or(page.locator('input[placeholder*="3111234567"]'))
     await phoneInput.fill(`3${String(Date.now()).slice(-9)}`)
 
-    const submitBtn = page.getByRole('button', { name: /Guardar|Crear/ })
+    const submitBtn = page.getByRole('button', { name: 'Crear cliente' })
     await submitBtn.click()
 
     // Wait for modal to close
@@ -101,7 +101,7 @@ test.describe('Clientes UI', () => {
     await goto(page, `/clientes?openCliente=${c.cliente.id}`)
     await expect(page.getByRole('heading', { name: 'Links Test' })).toBeVisible()
     await expect(page.getByRole('link', { name: /Crear Pedido/ })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Editar' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Editar', exact: true })).toBeVisible()
   })
 
   test('vista lista muestra filtros y controles', async ({ page }) => {
@@ -109,6 +109,82 @@ test.describe('Clientes UI', () => {
     await goto(page, '/clientes')
     await expect(page.getByRole('button', { name: 'Con saldo' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Con frecuencia' })).toBeVisible()
+  })
+
+  test('filtros de negocio y ubicación funcionan', async ({ page }) => {
+    await fullLogin(page)
+
+    // Crear clientes base
+    const cConNegocioLink = await createClienteFull(page, {
+      nombre: 'NegocioConLink',
+      telefono: `3${String(Date.now()).slice(-9)}`,
+      linkUbicacion: 'https://maps.google.com/?q=1,2',
+    })
+    const cConNegocioSinLink = await createClienteFull(page, {
+      nombre: 'NegocioSinLink',
+      telefono: `3${String(Date.now() + 1).slice(-9)}`,
+    })
+    await createClienteFull(page, {
+      nombre: 'SinNegocioConLink',
+      telefono: `3${String(Date.now() + 2).slice(-9)}`,
+      linkUbicacion: 'https://maps.google.com/?q=3,4',
+    })
+    await createClienteFull(page, {
+      nombre: 'SinNegocioSinLink',
+      telefono: `3${String(Date.now() + 3).slice(-9)}`,
+    })
+
+    // Crear negocios formales
+    await apiPost(page, '/api/negocios', {
+      clienteId: cConNegocioLink.cliente.id,
+      nombre: 'Sucursal Con Link',
+      linkUbicacion: 'https://maps.google.com/?q=1,2',
+    })
+    await apiPost(page, '/api/negocios', {
+      clienteId: cConNegocioSinLink.cliente.id,
+      nombre: 'Sucursal Sin Link',
+    })
+
+    await goto(page, '/clientes')
+
+    // Verificar badges de negocios/link
+    await expect(page.getByText('NegocioConLink', { exact: true })).toBeVisible()
+    await expect(page.getByText('1/1 con link').first()).toBeVisible()
+    await expect(page.getByText('0/1 con link').first()).toBeVisible()
+
+    // Filtro "Con negocio"
+    await page.getByLabel('Filtrar por negocio').selectOption('con')
+    await page.waitForURL(/mostrarNegocio=con/)
+    await expect(page.getByText('NegocioConLink', { exact: true })).toBeVisible()
+    await expect(page.getByText('NegocioSinLink', { exact: true })).toBeVisible()
+    await expect(page.getByText('SinNegocioConLink', { exact: true })).not.toBeVisible()
+    await expect(page.getByText('SinNegocioSinLink', { exact: true })).not.toBeVisible()
+
+    // Filtro "Todos los negocios con link" (solo pasa el que tiene link)
+    await page.getByRole('button', { name: 'Negocios con link' }).click()
+    await page.waitForURL(/todosNegociosConLink=true/)
+    await expect(page.getByText('NegocioConLink', { exact: true })).toBeVisible()
+    await expect(page.getByText('NegocioSinLink', { exact: true })).not.toBeVisible()
+
+    // Limpiar filtros de negocio
+    await page.getByRole('button', { name: 'Con negocio' }).click()
+    await page.waitForURL((url) => !url.searchParams.has('mostrarNegocio'))
+
+    // Filtro "Sin negocio"
+    await page.getByLabel('Filtrar por negocio').selectOption('sin')
+    await page.waitForURL(/mostrarNegocio=sin/)
+    await expect(page.getByText('SinNegocioConLink', { exact: true })).toBeVisible()
+    await expect(page.getByText('SinNegocioSinLink', { exact: true })).toBeVisible()
+    await expect(page.getByText('NegocioConLink', { exact: true })).not.toBeVisible()
+
+    // "Negocios con link" debe estar deshabilitado cuando "Sin negocio"
+    await expect(page.getByRole('button', { name: 'Negocios con link' })).toBeDisabled()
+
+    // Filtro "Cliente con link" dentro de "Sin negocio"
+    await page.getByRole('button', { name: 'Cliente con link' }).click()
+    await page.waitForURL(/clienteConLink=true/)
+    await expect(page.getByText('SinNegocioConLink', { exact: true })).toBeVisible()
+    await expect(page.getByText('SinNegocioSinLink', { exact: true })).not.toBeVisible()
   })
 })
 

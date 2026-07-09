@@ -41,6 +41,7 @@ export interface Cliente {
     direccion?: string | null
     barrio?: string | null
     referencia?: string | null
+    linkUbicacion?: string | null
   }>
   frecuenciaSugerida?: { dias: number; label: string } | null
   productosSugeridos?: Array<{ codigo: string; nombre: string; frecuencia: number; cantidadPromedio: number }>
@@ -144,12 +145,20 @@ export const PRODUCTO_NOMBRES: Record<string, string> = {
 
 export type FiltroRiesgo = 'bloqueado' | 'reclamaciones' | 'noVerificado' | null
 
+export type MostrarNegocio = 'todos' | 'con' | 'sin'
+
+export interface FiltrosActivos {
+  mostrarNegocio: MostrarNegocio
+  todosNegociosConLink: boolean
+  clienteConLink: boolean
+}
+
 export interface ClientesClientProps {
   initialClientes: Cliente[]
   initialLimiteFiados?: number
   openClienteId?: string
-  totalClientes?: number
   filtroActivo?: FiltroRiesgo
+  filtrosActivos: FiltrosActivos
 }
 
 export interface FormData {

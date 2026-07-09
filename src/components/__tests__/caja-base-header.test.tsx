@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { CajaBaseHeader } from '@/components/caja-base-header'
 import { fetchResilient } from '@/lib/fetch-resilient'
+import { todayInBogota } from '@/lib/date-helpers'
 
 const fetchMock = vi.fn()
 
@@ -283,7 +284,7 @@ describe('CajaBaseHeader', () => {
   })
 
   it('modo readonly cuando el dia esta cerrado', async () => {
-    const today = new Date().toISOString().split('T')[0]
+    const today = todayInBogota()
     fetchMock
       .mockResolvedValueOnce({
         ok: true,

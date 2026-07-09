@@ -10,6 +10,11 @@ import { ROLES, CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { executeSerializableWithRetry } from '@/lib/serializable'
 import { publishRealtimeEvent } from '@/lib/realtime'
+import {
+  buildClientesWhere,
+  buildClientesRawWhere,
+  type MostrarNegocio,
+} from '@/lib/cliente-filters'
 
 export async function GET(request: NextRequest) {
   // FIX H3-4: GET /api/clientes solo para roles con visibilidad de
@@ -22,27 +27,20 @@ export async function GET(request: NextRequest) {
   const pagination = getPaginationParams(request.nextUrl.searchParams)
   try {
     const search = request.nextUrl.searchParams.get('search')
+    const mostrarNegocio = request.nextUrl.searchParams.get('mostrarNegocio') as MostrarNegocio | null
+    const todosNegociosConLink = request.nextUrl.searchParams.get('todosNegociosConLink')
+    const clienteConLink = request.nextUrl.searchParams.get('clienteConLink')
     const bloqueado = request.nextUrl.searchParams.get('bloqueado')
     const reclamaciones = request.nextUrl.searchParams.get('reclamaciones')
     const noVerificado = request.nextUrl.searchParams.get('noVerificado')
-    const where: any = {
-      activo: true,
-      // FIX consumidor-final-duplicado: ocultar el canónico. La migración
-      // one-time consolidó duplicados legacy; en runtime identificamos al
-      // canónico solo por id para no ocultar clientes reales con ese nombre.
-      NOT: { id: CANONICAL_CONSUMIDOR_FINAL_ID },
-    }
-
-    // Filtros de riesgo (vienen del dashboard)
-    if (bloqueado === 'true') {
-      where.bloqueado = true
-    }
-    if (reclamaciones === 'gte3') {
-      where.reclamaciones = { gte: 3 }
-    }
-    if (noVerificado === 'true') {
-      where.verificado = false
-    }
+    const where = buildClientesWhere({
+      bloqueado: bloqueado ?? undefined,
+      reclamaciones: reclamaciones ?? undefined,
+      noVerificado: noVerificado ?? undefined,
+      mostrarNegocio: mostrarNegocio ?? undefined,
+      todosNegociosConLink: todosNegociosConLink === 'true' ? 'true' : undefined,
+      clienteConLink: clienteConLink === 'true' ? 'true' : undefined,
+    })
 
     // Use pg_trgm search for queries with 2+ characters (better relevance)
     // Fall back to Prisma contains for single-char queries
@@ -50,6 +48,13 @@ export async function GET(request: NextRequest) {
       // Use raw SQL with pg_trgm word_similarity for better relevance
       // Ocultar canónico en la búsqueda raw SQL también.
       const adminFilter = Prisma.sql`AND c.id != ${CANONICAL_CONSUMIDOR_FINAL_ID}`
+      const filtrosNegocioRaw = Prisma.raw(
+        buildClientesRawWhere({
+          mostrarNegocio: mostrarNegocio ?? undefined,
+          todosNegociosConLink: todosNegociosConLink === 'true' ? 'true' : undefined,
+          clienteConLink: clienteConLink === 'true' ? 'true' : undefined,
+        })
+      )
 
       const clientesRaw = await prisma.$queryRaw`
         SELECT DISTINCT ON (c.id)
@@ -77,6 +82,7 @@ export async function GET(request: NextRequest) {
         FROM "Cliente" c
         WHERE c.activo = true
           ${adminFilter}
+          ${filtrosNegocioRaw}
           AND (
             c.nombre <% ${search} OR
             COALESCE(c.apellido, '') <% ${search} OR
@@ -98,7 +104,7 @@ export async function GET(request: NextRequest) {
       const [negociosMap, countsMap] = await Promise.all([
         prisma.negocio.findMany({
           where: { clienteId: { in: clienteIds }, activo: true },
-          select: { id: true, nombre: true, tipoNegocio: true, direccion: true, barrio: true, referencia: true, clienteId: true },
+          select: { id: true, nombre: true, tipoNegocio: true, direccion: true, barrio: true, referencia: true, linkUbicacion: true, clienteId: true },
         }).then(negs => {
           const map = new Map<string, any[]>()
           for (const n of negs) {
@@ -175,6 +181,7 @@ export async function GET(request: NextRequest) {
               direccion: true,
               barrio: true,
               referencia: true,
+              linkUbicacion: true,
             },
           },
           contactos: true,  // FASE 3: ya es el nombre final

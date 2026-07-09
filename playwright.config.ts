@@ -5,7 +5,10 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: 4,
+  // Workers reduced to 1 while Auth.js credential sign-in via Server Action
+  // shows concurrency issues in dev mode (intermittent CredentialsSignin / 403).
+  // See discussion: e2e clientes.spec.ts passes 61/61 with workers=1.
+  workers: 1,
   reporter: 'html',
   // Specs exploratorios y QA comprehensivo son scripts manuales/auditores
   // que registran hallazgos, no tests CI. Los excluimos de la ejecución

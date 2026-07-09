@@ -219,8 +219,8 @@ describe('ClientesClient — regresion mobile 2026-06-10', () => {
     render(
       <ClientesClient
         initialClientes={[mockCliente]}
+        filtrosActivos={{ mostrarNegocio: 'todos', todosNegociosConLink: false, clienteConLink: false }}
         openClienteId={undefined}
-        totalClientes={1}
         filtroActivo={null}
       />,
     )
@@ -263,8 +263,8 @@ describe('ClientesClient — regresion mobile 2026-06-10', () => {
     render(
       <ClientesClient
         initialClientes={[mockCliente]}
+        filtrosActivos={{ mostrarNegocio: 'todos', todosNegociosConLink: false, clienteConLink: false }}
         openClienteId={undefined}
-        totalClientes={1}
         filtroActivo={null}
       />,
     )
@@ -319,8 +319,8 @@ describe('ClientesClient — regresion mobile 2026-06-10', () => {
     render(
       <ClientesClient
         initialClientes={[mockCliente]}
+        filtrosActivos={{ mostrarNegocio: 'todos', todosNegociosConLink: false, clienteConLink: false }}
         openClienteId={undefined}
-        totalClientes={1}
         filtroActivo={null}
       />,
     )
@@ -351,8 +351,8 @@ describe('ClientesClient — regresion mobile 2026-06-10', () => {
     render(
       <ClientesClient
         initialClientes={[mockCliente]}
+        filtrosActivos={{ mostrarNegocio: 'todos', todosNegociosConLink: false, clienteConLink: false }}
         openClienteId={undefined}
-        totalClientes={1}
         filtroActivo={null}
       />,
     )
@@ -392,8 +392,8 @@ describe('ClientesClient — regresion mobile 2026-06-10', () => {
     render(
       <ClientesClient
         initialClientes={[mockCliente]}
+        filtrosActivos={{ mostrarNegocio: 'todos', todosNegociosConLink: false, clienteConLink: false }}
         openClienteId={undefined}
-        totalClientes={1}
         filtroActivo={null}
       />,
     )
