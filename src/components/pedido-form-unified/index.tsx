@@ -10,8 +10,8 @@ import { TipoNegocioSelect } from '@/components/tipo-negocio-select'
 import { matchCliente } from '@/lib/cliente-search'
 import { NegocioSelector } from '@/components/negocio-selector'
 import { usePriceSync } from '@/hooks/use-price-sync'
-import { resolverLimiteFiados } from '@/lib/pedido-utils'
 import { Money, calcularSaldo } from '@/shared/domain'
+import type { FiadoStatus } from '@/modules/pedidos/domain/types'
 import type { Cliente, Tier } from './types'
 
 const FUENTES: string[] = [
@@ -46,7 +46,6 @@ export interface PedidoInicial {
 export interface PedidoFormUnifiedProps {
   contexto: 'PUNTO' | 'DOMICILIO'
   clientes: Cliente[]
-  limiteGlobal?: number
   onSubmit: (data: PedidoUnifiedData) => void
   onClose?: () => void
   pedidoInicial?: PedidoInicial
@@ -69,7 +68,7 @@ export interface PedidoUnifiedData {
 
 // ==================== COMPONENTE ====================
 
-export function PedidoFormUnified({ contexto, clientes, limiteGlobal, onSubmit, pedidoInicial }: PedidoFormUnifiedProps) {
+export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial }: PedidoFormUnifiedProps) {
   const [canal, setCanal] = useState<'PUNTO' | 'DOMICILIO'>(contexto)
   const [cantidades, setCantidades] = useState<Record<string, number>>({})
   const [searchTerm, setSearchTerm] = useState('')
@@ -90,10 +89,11 @@ export function PedidoFormUnified({ contexto, clientes, limiteGlobal, onSubmit, 
   const [editBarrio, setEditBarrio] = useState('')
   const resolverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [productosConfig, setProductosConfig] = useState<Array<{ codigo: string; aplicaDomicilio: boolean; sobreCostoDomicilio: number }>>([])
-  const [fiadosStatus, setFiadosStatus] = useState<{ count: number; limite: number; nivel: 'ok' | 'cerca' | 'limite' } | null>(null)
+  const [fiadosStatus, setFiadosStatus] = useState<FiadoStatus | null>(null)
   const [precioBajoConfirmado, setPrecioBajoConfirmado] = useState<Record<string, boolean>>({})
   const cantidadesRef = useRef(cantidades)
   const canalRef = useRef(canal)
+  const clienteIdRef = useRef<string | null>(null)
 
   useEffect(() => { cantidadesRef.current = cantidades }, [cantidades])
   useEffect(() => { canalRef.current = canal }, [canal])
@@ -168,7 +168,10 @@ export function PedidoFormUnified({ contexto, clientes, limiteGlobal, onSubmit, 
 
   useEffect(() => {
     if (productosConfig.length === 0) return
-    if (!clienteSeleccionado?.id) return
+    if (!clienteSeleccionado?.id) {
+      setPreciosResueltos({})
+      return
+    }
 
     const allProducts: Record<string, number> = {}
     for (const id of productosActuales) {
@@ -194,44 +197,36 @@ export function PedidoFormUnified({ contexto, clientes, limiteGlobal, onSubmit, 
   }, [negocioData, clienteSeleccionado?.id])
 
   useEffect(() => {
-    if (clienteSeleccionado) {
-      const timer = setTimeout(() => {
-        const allProducts: Record<string, number> = {}
-        for (const id of productosActuales) {
-          allProducts[id] = cantidadesRef.current[id] || 1
-        }
-        resolverPrecios(allProducts, canalRef.current, clienteSeleccionado.id)
-      }, 100)
-      fetch(`/api/pedidos?all=true&cliente=${clienteSeleccionado.id}`)
-        .then(r => r.json())
-        .then(d => {
-          const pedidos = d.pedidos || d.data || []
-          // FIX C-FIADOS-1: solo pedidos ENTREGADOS con saldo > 0 cuentan
-          // para el límite de fiados.
-          const pendientes = pedidos.filter((p: any) =>
-            p.estadoEntrega === 'ENTREGADO' &&
-            Number(p.saldo) > 0 &&
-            !['PAGADO', 'ANTICIPADO', 'ANULADO'].includes(p.estadoPago)
-          )
-          const limite = resolverLimiteFiados(
-            { limitePedidosFiados: clienteSeleccionado.limitePedidosFiados ?? null },
-            limiteGlobal != null ? String(limiteGlobal) : null,
-          )
-          const count = pendientes.length
-          const porcentaje = limite > 0 ? (count / limite) * 100 : 100
-          let nivel: 'ok' | 'cerca' | 'limite' = 'ok'
-          if (count >= limite) nivel = 'limite'
-          else if (porcentaje >= 60) nivel = 'cerca'
-          setFiadosStatus({ count, limite, nivel })
-        })
-        .catch(() => setFiadosStatus(null))
-      return () => clearTimeout(timer)
-    } else {
+    if (!clienteSeleccionado?.id) {
       setFiadosStatus(null)
-      setPreciosResueltos({})
+      return
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clienteSeleccionado, productosActuales])
+
+    const capturedId = clienteSeleccionado.id
+    const controller = new AbortController()
+    clienteIdRef.current = capturedId
+
+    fetch(`/api/clientes/${capturedId}/fiado-status`, {
+      signal: controller.signal,
+      cache: 'no-store',
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (controller.signal.aborted) return
+        if (clienteIdRef.current !== capturedId) return
+        if (d?.success && d.status) {
+          setFiadosStatus(d.status)
+        } else {
+          setFiadosStatus(null)
+        }
+      })
+      .catch(err => {
+        if (err?.name === 'AbortError') return
+        setFiadosStatus(null)
+      })
+
+    return () => controller.abort()
+  }, [clienteSeleccionado?.id])
 
   useEffect(() => {
     if (!pedidoInicial) return
@@ -521,11 +516,14 @@ export function PedidoFormUnified({ contexto, clientes, limiteGlobal, onSubmit, 
 
               {/* Banner de fiados */}
               {fiadosStatus && fiadosStatus.nivel !== 'ok' && (
-                <div className={`px-3 py-2 rounded-lg text-xs flex items-center gap-2 ${
-                  fiadosStatus.nivel === 'limite'
-                    ? 'bg-red-50 border border-red-200 text-red-700'
-                    : 'bg-amber-50 border border-amber-200 text-amber-700'
-                }`}>
+                <div
+                  data-testid="fiado-status-banner"
+                  className={`px-3 py-2 rounded-lg text-xs flex items-center gap-2 ${
+                    fiadosStatus.nivel === 'limite'
+                      ? 'bg-red-50 border border-red-200 text-red-700'
+                      : 'bg-amber-50 border border-amber-200 text-amber-700'
+                  }`}
+                >
                   <span>{fiadosStatus.nivel === 'limite' ? '🔒' : '⚠️'}</span>
                   <span>
                     {fiadosStatus.nivel === 'limite'
@@ -593,7 +591,7 @@ export function PedidoFormUnified({ contexto, clientes, limiteGlobal, onSubmit, 
               {searchTerm && filteredClientes.length > 0 && (
                 <div className="border rounded-lg max-h-40 overflow-y-auto">
                   {filteredClientes.map(c => (
-                    <button key={c.id} type="button" onClick={() => handleSelectCliente(c)} className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b last:border-b-0 text-sm">
+                    <button key={c.id} type="button" data-testid="cliente-search-result" onClick={() => handleSelectCliente(c)} className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b last:border-b-0 text-sm">
                       <span className="font-medium">
                         {c.nombreNegocio || `${c.nombre}${c.apellido ? ` ${c.apellido}` : ''}`}
                       </span>

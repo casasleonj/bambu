@@ -121,3 +121,12 @@ export interface PedidoHijoData {
 }
 
 export type TipoEntrega = 'COMPLETO' | 'PARCIAL' | 'NO_ENTREGADO'
+
+export type FiadoStatusNivel = 'ok' | 'cerca' | 'limite'
+
+export interface FiadoStatus {
+  count: number
+  limite: number
+  nivel: FiadoStatusNivel
+  pedidos: Array<{ id: string; numero: number; saldo: number }>
+}

@@ -12,6 +12,8 @@ export {
   anularPedidoUseCase,
   cancelarPedidoUseCase,
   actualizarPedidoUseCase,
+  getFiadoStatusUseCase,
+  ClienteNotFoundError,
   PedidoDTOMapper,
 } from './application'
 
