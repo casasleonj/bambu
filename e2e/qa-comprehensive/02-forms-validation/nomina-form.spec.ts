@@ -2,7 +2,7 @@
  * Tier 2: Forms Validation - Nómina Form
  * Tests: 6
  */
-import { test, expect, loginAsAdmin, apiPost, expectStatus, BASE, apiGet, yesterdayISO } from '../00-fixtures'
+import { test, expect, loginAsAdmin, apiPost, apiPut, expectStatus, BASE, apiGet, yesterdayISO } from '../00-fixtures'
 
 test.describe('Form Validation - Nómina', () => {
   test.beforeEach(async ({ page }) => {
@@ -75,9 +75,9 @@ test.describe('Form Validation - Nómina', () => {
     if (nominas.length === 0) { test.skip(); return }
 
     const n = nominas[0]
-    // Try to update
-    const updRes = await apiPost(page, `/api/nomina/${n.id}`, {
-      estado: 'ANULADA',
+    // Try to update via action endpoint
+    const updRes = await apiPut(page, `/api/nomina/${n.id}`, {
+      action: 'ANULAR',
     })
     expect([200, 201, 400, 403, 404]).toContain(updRes.status())
   })
