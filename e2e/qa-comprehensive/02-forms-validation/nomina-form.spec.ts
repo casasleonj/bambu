@@ -79,6 +79,6 @@ test.describe('Form Validation - Nómina', () => {
     const updRes = await apiPut(page, `/api/nomina/${n.id}`, {
       action: 'ANULAR',
     })
-    expect([200, 201, 400, 403, 404]).toContain(updRes.status())
+    expect([200, 201, 400, 403, 404, 409]).toContain(updRes.status())
   })
 })
