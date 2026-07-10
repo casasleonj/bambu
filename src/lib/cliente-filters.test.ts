@@ -3,6 +3,7 @@ import {
   buildClientesWhere,
   buildClientesRawWhere,
   getClienteNegocioStatus,
+  getNegocioSearchMatch,
 } from './cliente-filters'
 import { CANONICAL_CONSUMIDOR_FINAL_ID } from './constants'
 
@@ -199,5 +200,91 @@ describe('getClienteNegocioStatus', () => {
     expect(status.totalNegociosActivos).toBe(2)
     expect(status.negociosConLink).toBe(1)
     expect(status.negociosSinLink).toBe(1)
+  })
+})
+
+describe('getNegocioSearchMatch', () => {
+  it('devuelve array vacío cuando search está vacío', () => {
+    const result = getNegocioSearchMatch({ negocios: [{ id: 'n1', nombre: 'La Esquina' }] }, '')
+    expect(result.matchedNegocios).toEqual([])
+  })
+
+  it('encuentra coincidencia por nombre de negocio', () => {
+    const result = getNegocioSearchMatch(
+      { negocios: [{ id: 'n1', nombre: 'La Esquina' }] },
+      'esquina'
+    )
+    expect(result.matchedNegocios).toEqual([{ id: 'n1', nombre: 'La Esquina' }])
+  })
+
+  it('encuentra coincidencia por dirección', () => {
+    const result = getNegocioSearchMatch(
+      { negocios: [{ id: 'n1', nombre: 'Tienda', direccion: 'Calle 5 #10-20' }] },
+      'calle 5'
+    )
+    expect(result.matchedNegocios).toEqual([{ id: 'n1', nombre: 'Tienda' }])
+  })
+
+  it('encuentra coincidencia por barrio', () => {
+    const result = getNegocioSearchMatch(
+      { negocios: [{ id: 'n1', nombre: 'Tienda', barrio: 'Centro' }] },
+      'centro'
+    )
+    expect(result.matchedNegocios).toEqual([{ id: 'n1', nombre: 'Tienda' }])
+  })
+
+  it('encuentra coincidencia por tipo de negocio', () => {
+    const result = getNegocioSearchMatch(
+      { negocios: [{ id: 'n1', nombre: 'Mi Café', tipoNegocio: 'Café' }] },
+      'café'
+    )
+    expect(result.matchedNegocios).toEqual([{ id: 'n1', nombre: 'Mi Café' }])
+  })
+
+  it('encuentra coincidencia por referencia', () => {
+    const result = getNegocioSearchMatch(
+      { negocios: [{ id: 'n1', nombre: 'Tienda', referencia: 'Frente al parque' }] },
+      'parque'
+    )
+    expect(result.matchedNegocios).toEqual([{ id: 'n1', nombre: 'Tienda' }])
+  })
+
+  it('devuelve múltiples coincidencias', () => {
+    const result = getNegocioSearchMatch(
+      {
+        negocios: [
+          { id: 'n1', nombre: 'La Esquina' },
+          { id: 'n2', nombre: 'Esquina Norte' },
+          { id: 'n3', nombre: 'Otro' },
+        ],
+      },
+      'esquina'
+    )
+    expect(result.matchedNegocios).toHaveLength(2)
+    expect(result.matchedNegocios.map((n) => n.id).sort()).toEqual(['n1', 'n2'])
+  })
+
+  it('no considera negocios con valores null/undefined', () => {
+    const result = getNegocioSearchMatch(
+      { negocios: [{ id: 'n1', nombre: 'Tienda', direccion: null, barrio: undefined }] },
+      'null'
+    )
+    expect(result.matchedNegocios).toEqual([])
+  })
+
+  it('ignora mayúsculas consistente con búsqueda existente', () => {
+    const result = getNegocioSearchMatch(
+      { negocios: [{ id: 'n1', nombre: 'Café Central' }] },
+      'CAFÉ'
+    )
+    expect(result.matchedNegocios).toEqual([{ id: 'n1', nombre: 'Café Central' }])
+  })
+
+  it('no coincide si falta el acento (consistente con búsqueda principal)', () => {
+    const result = getNegocioSearchMatch(
+      { negocios: [{ id: 'n1', nombre: 'Café Central' }] },
+      'cafe'
+    )
+    expect(result.matchedNegocios).toEqual([])
   })
 })

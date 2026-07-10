@@ -808,6 +808,7 @@ export default function ClientesClient({
         onRetry={fetchClientes}
         onCreateClick={openCreateModal}
         onViewCliente={viewCliente}
+        onViewNegocio={viewNegocio}
         sortBy={sortBy}
         sortDir={sortDir}
         onSortChange={(by, dir) => { setSortBy(by); setSortDir(dir) }}
@@ -1809,7 +1810,7 @@ export default function ClientesClient({
       )}
 
       {/* Negocio Detail Modal */}
-      {selectedCliente && (
+      {viewNegocioData && (
         <NegocioDetailModal
           key={viewNegocioData?.id || 'closed'}
           open={showNegocioDetail}
@@ -1817,7 +1818,7 @@ export default function ClientesClient({
           negocio={viewNegocioData}
           canEdit={true}
           canDelete={puedeEliminarNegocio}
-          clienteId={selectedCliente.id}
+          clienteId={viewNegocioData.clienteId || selectedCliente?.id}
           onEdit={() => viewNegocioData && handleEditNegocioFromDetail(viewNegocioData)}
           onDeleted={handleNegocioDeleted}
         />

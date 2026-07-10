@@ -31,6 +31,7 @@ export interface UsePedidosResult {
   total: number
   fetchPedidos: () => Promise<void>
   refetch: () => Promise<void>
+  hasLoadedOnce: boolean
 }
 
 export function usePedidos(
@@ -41,6 +42,7 @@ export function usePedidos(
   const [loading, setLoading] = useState(options?.autoFetch !== false)
   const [error, setError] = useState<string | null>(null)
   const [total, setTotal] = useState(0)
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const didInitialFetchRef = useRef(false)
   const lastParamsKeyRef = useRef<string>('')
@@ -85,6 +87,7 @@ export function usePedidos(
       if (data.success) {
         setPedidos(data.pedidos || data.data || [])
         setTotal(data.total || 0)
+        setHasLoadedOnce(true)
       } else {
         setError(data.error?.message || 'Error cargando pedidos')
       }
@@ -130,5 +133,5 @@ export function usePedidos(
     }
   }, [])
 
-  return { pedidos, loading, error, total, fetchPedidos, refetch }
+  return { pedidos, loading, error, total, fetchPedidos, refetch, hasLoadedOnce }
 }

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useShallowSearchParams } from '@/hooks/use-shallow-search-params'
 import {
   DatePreset,
   getPresetDate,
@@ -18,8 +18,7 @@ interface SmartDateFilterProps {
 type FilterMode = 'preset' | 'custom'
 
 export function SmartDateFilter({ onDateChange }: SmartDateFilterProps) {
-  const router = useRouter()
-  const searchParams = useSearchParams()
+  const params = useShallowSearchParams()
 
   const [mode, setMode] = useState<FilterMode>('preset')
   const [activePreset, setActivePreset] = useState<DatePreset | null>(null)
@@ -27,9 +26,9 @@ export function SmartDateFilter({ onDateChange }: SmartDateFilterProps) {
   const [customHasta, setCustomHasta] = useState('')
   const [isCustomExpanded, setIsCustomExpanded] = useState(false)
 
-  const desdeUrl = searchParams.get('desde')
-  const hastaUrl = searchParams.get('hasta')
-  const allUrl = searchParams.get('all') === 'true'
+  const desdeUrl = params.get('desde')
+  const hastaUrl = params.get('hasta')
+  const allUrl = params.get('all') === 'true'
 
   const syncFromUrl = useCallback(() => {
     const presets: { preset: DatePreset; desde: string; hasta: string }[] = [
@@ -67,6 +66,17 @@ export function SmartDateFilter({ onDateChange }: SmartDateFilterProps) {
     }
   }, [desdeUrl, hastaUrl, allUrl])
 
+  const updateUrl = useCallback(
+    (desde: string | null, hasta: string | null, all: boolean, history: 'push' | 'replace' = 'push') => {
+      params.set({
+        desde: desde || undefined,
+        hasta: hasta || undefined,
+        all: all ? 'true' : undefined,
+      }, { history })
+    },
+    [params]
+  )
+
   useEffect(() => {
     syncFromUrl()
   }, [syncFromUrl])
@@ -79,29 +89,11 @@ export function SmartDateFilter({ onDateChange }: SmartDateFilterProps) {
     if (!desdeUrl && !hastaUrl && !allUrl) {
       const dates = getPresetDate('turno')
       if (dates) {
-        updateUrl(dates.desde, dates.hasta, false)
+        updateUrl(dates.desde, dates.hasta, false, 'replace')
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  const updateUrl = useCallback(
-    (desde: string | null, hasta: string | null, all: boolean) => {
-      const params = new URLSearchParams(searchParams.toString())
-
-      if (desde) params.set('desde', desde)
-      else params.delete('desde')
-
-      if (hasta) params.set('hasta', hasta)
-      else params.delete('hasta')
-
-      if (all) params.set('all', 'true')
-      else params.delete('all')
-
-      router.push(`?${params.toString()}`, { scroll: false })
-    },
-    [router, searchParams]
-  )
 
   const handlePresetClick = (preset: DatePreset) => {
     if (preset === 'todos') {

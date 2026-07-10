@@ -132,6 +132,48 @@ type ClienteConNegocios = {
   negocios?: Array<{ activo?: boolean | null; linkUbicacion?: string | null }>
 }
 
+export interface NegocioSearchMatch {
+  id: string
+  nombre: string
+}
+
+export interface NegocioSearchMatchResult {
+  matchedNegocios: NegocioSearchMatch[]
+}
+
+interface NegocioSearchMatchInput {
+  id: string
+  nombre: string
+  tipoNegocio?: string | null
+  direccion?: string | null
+  barrio?: string | null
+  referencia?: string | null
+}
+
+/**
+ * Devuelve los negocios formales del cliente que coinciden con el término de búsqueda.
+ * Coincide insensible a mayúsculas en nombre, tipo, dirección, barrio o referencia.
+ *
+ * NOTA: usa toLowerCase() simple para mantener consistencia con la búsqueda
+ * client-side de la lista de clientes (src/app/(app)/clientes/clientes-client/index.tsx).
+ * Si en el futuro se normalizan acentos en esa búsqueda, este helper debe actualizarse.
+ */
+export function getNegocioSearchMatch(
+  cliente: { negocios?: NegocioSearchMatchInput[] | null },
+  search: string
+): NegocioSearchMatchResult {
+  const term = search.trim().toLowerCase()
+  if (!term) return { matchedNegocios: [] }
+
+  const negocios = cliente.negocios ?? []
+  const matched = negocios.filter((neg) => {
+    const fields = [neg.nombre, neg.tipoNegocio, neg.direccion, neg.barrio, neg.referencia]
+    return fields.some((field) => typeof field === 'string' && field.toLowerCase().includes(term))
+  })
+
+  return { matchedNegocios: matched.map(({ id, nombre }) => ({ id, nombre })) }
+}
+
 /**
  * Calcula el estado de negocios y ubicación de un cliente para la UI.
  * Función pura, testeable; no toca Prisma.
