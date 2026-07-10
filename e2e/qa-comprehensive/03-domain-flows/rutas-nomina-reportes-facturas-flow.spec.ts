@@ -2,7 +2,7 @@
  * Tier 3: Domain Flows - Rutas, Nómina, Reportes, Facturas, Resumen
  * Tests: 5 each, combined for efficiency
  */
-import { test, expect, loginAsAdmin, apiPost, expectStatus, BASE, apiGet, todayBogota, yesterdayISO } from '../00-fixtures'
+import { test, expect, loginAsAdmin, apiPost, apiPut, expectStatus, BASE, apiGet, todayBogota, yesterdayISO } from '../00-fixtures'
 
 test.describe('Domain Flow - Rutas', () => {
   test.beforeEach(async ({ page }) => {
@@ -80,8 +80,8 @@ test.describe('Domain Flow - Nómina', () => {
     const pendiente = list.find((n: any) => n.estado === 'PENDIENTE')
     if (!pendiente) { test.skip(); return }
 
-    const res = await apiPost(page, `/api/nomina/${pendiente.id}`, {
-      estado: 'PAGADA',
+    const res = await apiPut(page, `/api/nomina/${pendiente.id}`, {
+      action: 'PAGAR',
     })
     expect([200, 201, 400]).toContain(res.status())
   })

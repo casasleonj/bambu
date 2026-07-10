@@ -61,12 +61,26 @@ test.describe('Domain Flow - Pedidos', () => {
     expect([200, 201]).toContain(pedRes.status())
     const pedido = (await pedRes.json()).pedido || (await pedRes.json())
 
-    // Need to deliver first
-    await apiPost(page, `/api/pedidos/${pedido.id}/entrega`, {
+    // Need an embarque to send the pedido to EN_RUTA first
+    const listRes = await apiGet(page, '/api/embarques?estado=ABIERTO&all=true')
+    const embarques = (await listRes.json()).embarques || []
+    if (embarques.length === 0) { test.skip(); return }
+
+    // Send to EN_RUTA
+    const sendRes = await apiPost(page, `/api/pedidos/${pedido.id}/enviar`, {
+      embarqueId: embarques[0].id,
+    })
+    expect([200, 201]).toContain(sendRes.status())
+
+    // Deliver (foto y GPS requeridos en entornos con flags activas)
+    const delivRes = await apiPost(page, `/api/pedidos/${pedido.id}/entrega`, {
       tipo: 'COMPLETO',
       itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: 1 }],
-      pagos: [{ metodo: 'EFECTIVO', monto: 5000 }],
+      fotoEntrega: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+      gpsLat: 4.711,
+      gpsLng: -74.0721,
     })
+    expect([200, 201, 400]).toContain(delivRes.status())
 
     // Now anular
     const anuRes = await apiPost(page, `/api/pedidos/${pedido.id}/anular`, {
