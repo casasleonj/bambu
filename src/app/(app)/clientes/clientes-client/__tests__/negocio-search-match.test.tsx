@@ -69,4 +69,23 @@ describe('NegocioSearchMatch', () => {
     fireEvent.click(button)
     expect(onViewCliente).toHaveBeenCalledWith('c1')
   })
+
+  it('detiene propagación del click para no activar la fila padre', () => {
+    const onViewNegocio = vi.fn()
+    const onParentClick = vi.fn()
+    render(
+      <div onClick={onParentClick}>
+        <NegocioSearchMatch
+          cliente={cliente}
+          search="la esquina"
+          onViewNegocio={onViewNegocio}
+          onViewCliente={vi.fn()}
+        />
+      </div>
+    )
+    const button = screen.getByText(/Coincide con el negocio:/)
+    fireEvent.click(button)
+    expect(onViewNegocio).toHaveBeenCalledTimes(1)
+    expect(onParentClick).not.toHaveBeenCalled()
+  })
 })

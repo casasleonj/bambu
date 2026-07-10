@@ -32,7 +32,8 @@ export function NegocioSearchMatch({
   const { matchedNegocios } = getNegocioSearchMatch(cliente, search)
   if (matchedNegocios.length === 0) return null
 
-  function handleClick() {
+  function handleClick(e: React.MouseEvent<HTMLButtonElement>) {
+    e.stopPropagation()
     if (matchedNegocios.length === 1) {
       const negocio = cliente.negocios?.find((n) => n.id === matchedNegocios[0].id)
       if (negocio) {
