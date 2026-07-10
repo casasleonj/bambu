@@ -974,7 +974,7 @@ export default function ClientesClient({
               <div className="flex gap-2 mt-3 flex-wrap">
                 <Tooltip content="Crear un pedido para este cliente" position="bottom">
                   <Link
-                    href={`/pedidos?clienteId=${selectedCliente.id}`}
+                    href={`/pedidos?new=1&clienteId=${selectedCliente.id}`}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-xs font-medium hover:bg-blue-100 transition"
                   >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

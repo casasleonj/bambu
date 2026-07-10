@@ -141,7 +141,7 @@ test.describe('A. Base de caja', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 test.describe('B. Transición Cliente → Pedido', () => {
-  test('B1: Botón "Crear pedido" desde clientes navega a /pedidos?clienteId=ID', async ({ page }) => {
+  test('B1: Botón "Crear pedido" desde clientes navega a /pedidos?new=1&clienteId=ID', async ({ page }) => {
     await page.goto(`${BASE}/login`)
     await page.fill('input[placeholder="Ingrese usuario"]', 'admin')
     await page.fill('input[placeholder="Ingrese contraseña"]', 'admin123')
@@ -187,13 +187,13 @@ test.describe('B. Transición Cliente → Pedido', () => {
     }
 
     const href = await crearPedidoLink.getAttribute('href')
-    if (href && !href.includes('clienteId=')) {
+    if (href && (!href.includes('new=1') || !href.includes('clienteId='))) {
       addFinding({
         severity: 'P0',
         module: 'clientes',
-        title: 'Link "Crear pedido" no pasa clienteId al destino',
-        description: `href=${href}. No incluye el query param "clienteId=" que el código espera`,
-        expected: 'href contiene clienteId=ID',
+        title: 'Link "Crear pedido" no pasa new=1 ni clienteId al destino',
+        description: `href=${href}. Debe incluir "new=1" y "clienteId=" para abrir el formulario`,
+        expected: 'href contiene new=1&clienteId=ID',
         observed: href,
         userComplaint: 'Queja: "crear pedido desde cliente" no funciona',
       })
@@ -205,13 +205,13 @@ test.describe('B. Transición Cliente → Pedido', () => {
     await shoot(page, 'B1-despues-click-crear-pedido')
 
     const url = page.url()
-    if (!url.includes('clienteId=')) {
+    if (!url.includes('new=1') || !url.includes('clienteId=')) {
       addFinding({
         severity: 'P0',
         module: 'clientes',
-        title: 'Click en "Crear pedido" no lleva a URL con clienteId=ID',
-        description: `URL resultante: ${url}. El botón no pasa el clienteId al destino.`,
-        expected: 'URL contiene ?clienteId=ID',
+        title: 'Click en "Crear pedido" no lleva a URL con new=1&clienteId=ID',
+        description: `URL resultante: ${url}. El botón no abre el formulario de pedido.`,
+        expected: 'URL contiene ?new=1&clienteId=ID',
         observed: url,
         userComplaint: 'Queja: "crear pedido desde cliente" no funciona',
       })
@@ -231,10 +231,10 @@ test.describe('B. Transición Cliente → Pedido', () => {
     }
   })
 
-  test('B2: Query param unificado a clienteId', async ({ page }) => {
-    // Después del fix, ?clienteId= es el contrato canónico para crear pedido desde cliente.
-    // cliente-table.tsx y clientes-client/index.tsx mandan /pedidos?clienteId=ID
-    // El modal opener y el filtro leen ?clienteId=ID.
+  test('B2: Query params separados: new=1 abre formulario, clienteId filtra lista', async ({ page }) => {
+    // Contrato actual: ?new=1&clienteId=ID abre el formulario de pedido.
+    // ?clienteId=ID (sin new=1) solo filtra la lista de pedidos por cliente.
+    // cliente-table.tsx y clientes-client/index.tsx mandan /pedidos?new=1&clienteId=ID
     await page.goto(`${BASE}/login`)
     await page.fill('input[placeholder="Ingrese usuario"]', 'admin')
     await page.fill('input[placeholder="Ingrese contraseña"]', 'admin123')
@@ -242,19 +242,17 @@ test.describe('B. Transición Cliente → Pedido', () => {
     await page.waitForURL(/\/dashboard/, { timeout: 20000 })
     await page.waitForTimeout(2000)
 
-    // Probar /pedidos?clienteId=fake-id (caso canónico)
+    // Probar /pedidos?clienteId=fake-id (solo filtra; no debe abrir modal)
     await page.goto(`${BASE}/pedidos?clienteId=fake-test-id`)
     await page.waitForTimeout(3000)
     await shoot(page, 'B2-pedidos-clienteId-fake')
 
-    // Verificar que no hay error de UI al navegar con clienteId
     const bodyText1 = (await page.locator('body').textContent()) ?? ''
-    const hasNoExistMsg = bodyText1.includes('no existe') || bodyText1.includes('No se encontró') || bodyText1.includes('filtrar')
     addFinding({
       severity: 'P2',
       module: 'clientes',
       title: 'Verificar comportamiento con clienteId en query',
-      description: `Probado: /pedidos?clienteId=fake-id. El código ahora usa consistentemente "clienteId=" para el flujo cliente→pedido.`,
+      description: `Probado: /pedidos?clienteId=fake-id filtra la lista sin abrir el formulario.`,
       observed: `URL navegada correctamente. Body length: ${bodyText1.length}`,
     })
   })

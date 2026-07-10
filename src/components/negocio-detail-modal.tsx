@@ -222,6 +222,14 @@ export function NegocioDetailModal({
               Ver pedidos
             </Link>
           )}
+          {clienteId && (
+            <Link
+              href={`/pedidos?new=1&clienteId=${clienteId}&negocioId=${neg.id}`}
+              className="px-3 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition"
+            >
+              Crear Pedido
+            </Link>
+          )}
           {canEdit && (
             <button
               onClick={onEdit}

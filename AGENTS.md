@@ -355,6 +355,11 @@ Actualizaciones en vivo entre sesiones/usuarios para cambios en clientes, pedido
        - **NO correr `migrate deploy` en dev** salvo que la DB haya sido wipeada. El flujo documentado usa `db push` (línea 64: `npx prisma db push`).
        - **En Supabase prod**: el schema se inicializa también vía `db push` (mismo comando), no vía `migrate deploy`. Si en algún momento se quiere usar `migrate deploy` (e.g. para CI/CD con migraciones versionadas), hay que poblar `_prisma_migrations` con `prisma migrate resolve --applied <nombre>` para cada migración ya en la DB. Documentado como follow-up si en el futuro se cambia el deploy flow.
        - **Síntoma típico**: alguien corre `prisma migrate deploy` esperando "aplicar las migraciones nuevas" y obtiene P3018. Es confuso porque la DB ya está al día. La causa es la separación entre "schema sync" (db push) y "migrations tracking" (migrate deploy). El proyecto usa el primero; el segundo no es la fuente de verdad.
+ 13. **Query params de `/pedidos` separados en filtros y triggers**:
+     - **Filtros persistentes**: `clienteId`, `desde`, `hasta`, `search`, `tab`, `tipo`, `origen`, `estadoEntrega`, `estadoPago`. Estos params se aplican a la lista y se conservan en la URL para que el usuario no pierda el contexto al cerrar un modal o volver atrás.
+     - **Trigger para nuevo pedido**: `?new=1&clienteId=ID` abre el modal de nuevo pedido con el cliente pre-seleccionado. También puede incluir `&negocioId=ID` para pre-seleccionar un negocio/sucursal. Después de abrir el formulario, los params `new`, `clienteId` y `negocioId` se limpian de la URL para que un refresh no reabra el formulario.
+     - **Trigger para detalle**: `?openPedido=ID` abre el detalle del pedido. Se limpia tras abrir.
+     - **Regla de diseño**: un query param no debe tener doble función (filtro + trigger). `clienteId` solo filtra; para abrir el formulario se usa explícitamente `new=1`. Esto permite que "Ver pedidos" desde el modal de negocio muestre la lista filtrada sin abrir el formulario, mientras que "Crear Pedido" abre el formulario con los datos pre-llenos.
 
 ---
 

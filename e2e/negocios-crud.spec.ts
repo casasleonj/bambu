@@ -190,7 +190,7 @@ test.describe('Negocios CRUD UI - admin', () => {
     await expect(page.getByRole('button', { name: 'Ver detalle de Frutería Natural Plus' })).toBeVisible()
   })
 
-  test('link "Ver pedidos" navega a pedidos filtrados por cliente', async ({ page }) => {
+  test('link "Ver pedidos" navega a pedidos filtrados por cliente sin abrir formulario', async ({ page }) => {
     const { cliente } = await createCliente(page, { nombre: 'Cliente Ver Pedidos', telefono: '3000000005' })
     const { negocio } = await createNegocio(page, {
       clienteId: cliente.id,
@@ -208,6 +208,32 @@ test.describe('Negocios CRUD UI - admin', () => {
     await page.waitForURL(/\/pedidos\?clienteId=.+/)
     await expect(page).toHaveURL(new RegExp(`/pedidos\\?clienteId=${cliente.id}`))
     await expect(page.getByRole('heading', { name: 'Pedidos', exact: true })).toBeVisible()
+    // Regresión: antes el mismo link abría el formulario de nuevo pedido.
+    await expect(page.getByRole('heading', { name: 'Nuevo Pedido' })).toBeHidden()
+  })
+
+  test('link "Crear Pedido" en detalle de negocio abre formulario con cliente y negocio preseleccionados', async ({ page }) => {
+    const { cliente } = await createCliente(page, { nombre: 'Cliente Crear Pedido Negocio', telefono: '3000000009' })
+    const { negocio } = await createNegocio(page, {
+      clienteId: cliente.id,
+      nombre: 'Panadería Central',
+      tipoNegocio: 'Panadería',
+      direccion: 'Calle Pan 123',
+      barrio: 'Centro',
+    })
+
+    await goto(page, `/clientes?openCliente=${cliente.id}`)
+    await page.getByRole('button', { name: `Ver detalle de ${negocio.nombre}` }).click()
+
+    const crearPedidoLink = page.getByRole('dialog').getByRole('link', { name: 'Crear Pedido' })
+    await expect(crearPedidoLink).toHaveAttribute('href', `/pedidos?new=1&clienteId=${cliente.id}&negocioId=${negocio.id}`)
+    await crearPedidoLink.click()
+
+    await page.waitForURL(/pedidos.*new=1.*clienteId=/)
+    await expect(page.getByRole('heading', { name: 'Nuevo Pedido' })).toBeVisible()
+    const modal = page.locator('[role="dialog"]').filter({ hasText: 'Nuevo Pedido' })
+    await expect(modal.getByText(cliente.nombre).first()).toBeVisible()
+    await expect(modal.getByText(negocio.nombre).first()).toBeVisible()
   })
 
   test('eliminar negocio desde el modal de detalle', async ({ page }) => {
