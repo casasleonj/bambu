@@ -153,6 +153,10 @@ interface NegocioSearchMatchInput {
 /**
  * Devuelve los negocios formales del cliente que coinciden con el término de búsqueda.
  * Coincide insensible a mayúsculas en nombre, tipo, dirección, barrio o referencia.
+ *
+ * NOTA: usa toLowerCase() simple para mantener consistencia con la búsqueda
+ * client-side de la lista de clientes (src/app/(app)/clientes/clientes-client/index.tsx).
+ * Si en el futuro se normalizan acentos en esa búsqueda, este helper debe actualizarse.
  */
 export function getNegocioSearchMatch(
   cliente: { negocios?: NegocioSearchMatchInput[] | null },

@@ -272,11 +272,19 @@ describe('getNegocioSearchMatch', () => {
     expect(result.matchedNegocios).toEqual([])
   })
 
-  it('ignora mayúsculas y acentos consistente con búsqueda existente', () => {
+  it('ignora mayúsculas consistente con búsqueda existente', () => {
     const result = getNegocioSearchMatch(
       { negocios: [{ id: 'n1', nombre: 'Café Central' }] },
-      'café'
+      'CAFÉ'
     )
     expect(result.matchedNegocios).toEqual([{ id: 'n1', nombre: 'Café Central' }])
+  })
+
+  it('no coincide si falta el acento (consistente con búsqueda principal)', () => {
+    const result = getNegocioSearchMatch(
+      { negocios: [{ id: 'n1', nombre: 'Café Central' }] },
+      'cafe'
+    )
+    expect(result.matchedNegocios).toEqual([])
   })
 })
