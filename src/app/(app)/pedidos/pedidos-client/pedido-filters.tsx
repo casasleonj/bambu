@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useShallowSearchParams } from '@/hooks/use-shallow-search-params'
 import { DateRangeFilter } from '@/components/date-range-filter'
 import { PedidosSearch, type ClienteSearchOption } from '@/components/pedidos-search'
 import { TIPOS, ORIGENES, ESTADOS_ENTREGA, ESTADOS_PAGO } from './types'
@@ -55,8 +55,7 @@ export function PedidoFilters({
   onDateChange,
   hideDateFilter = false,
 }: PedidoFiltersProps) {
-  const router = useRouter()
-  const searchParams = useSearchParams()
+  const params = useShallowSearchParams()
 
   const [expanded, setExpanded] = useState(false)
 
@@ -143,10 +142,12 @@ export function PedidoFilters({
           )}
           <button
             onClick={() => {
-              const params = new URLSearchParams(searchParams.toString())
-              const keys = ['origen', 'estadoEntrega', 'estadoPago', 'tipo']
-              keys.forEach((k) => params.delete(k))
-              router.push(`?${params.toString()}`, { scroll: false })
+              params.set({
+                origen: undefined,
+                estadoEntrega: undefined,
+                estadoPago: undefined,
+                tipo: undefined,
+              }, { history: 'push' })
             }}
             className="text-xs text-red-600 hover:text-red-800 font-medium px-2 py-1"
           >

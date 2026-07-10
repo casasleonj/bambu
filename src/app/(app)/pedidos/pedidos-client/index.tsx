@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { useSearchParams, useRouter } from 'next/navigation'
+import { useShallowSearchParams } from '@/hooks/use-shallow-search-params'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { useSession } from 'next-auth/react'
@@ -13,7 +13,7 @@ import { Modal } from '@/components/modal'
 import { PedidoClienteDisplay } from '@/components/pedido-cliente-display'
 import { FotoEntregaModal } from '@/components/foto-entrega-modal'
 import { ErrorState } from '@/components/error-state'
-import { SkeletonPage } from '@/components/skeleton'
+import { SkeletonPage, SkeletonCard } from '@/components/skeleton'
 import { Tooltip, InfoBanner } from '@/components/tooltip'
 import { useConfirm } from '@/components/confirm-modal'
 import { SmartDateFilter } from '@/components/smart-date-filter'
@@ -38,8 +38,7 @@ const PedidoFormUnified = dynamic(() => import('@/components/pedido-form-unified
 import type { PedidoInicial, PedidoUnifiedData } from '@/components/pedido-form-unified'
 
 export function PedidosClient() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
+  const params = useShallowSearchParams()
   const { confirm, modal: confirmModal } = useConfirm()
   const { data: session } = useSession()
   const userRole = (session?.user as { role?: string } | undefined)?.role ?? null
@@ -55,7 +54,7 @@ export function PedidosClient() {
   const [selectedPedidoForEmbarque, setSelectedPedidoForEmbarque] = useState<string | null>(null)
   const [pedidoEditando, setPedidoEditando] = useState<Pedido | null>(null)
   const [selectedEmbarqueId, setSelectedEmbarqueId] = useState('')
-  const tabFromUrl = searchParams.get('tab')
+  const tabFromUrl = params.get('tab')
   const initialTab = tabFromUrl === 'fiados' || tabFromUrl === 'alertas' ? tabFromUrl : 'hoy'
   const [activeTab, setActiveTab] = useState<'hoy' | 'fiados' | 'alertas'>(initialTab)
   const [fabOpen, setFabOpen] = useState(false)
@@ -86,17 +85,17 @@ export function PedidosClient() {
   const [limiteGlobalFiados, setLimiteGlobalFiados] = useState<number>(LIMITE_FIADOS_DEFAULT)
 
   // Fechas desde URL (fuente de verdad)
-  const desdeUrl = searchParams.get('desde')
-  const hastaUrl = searchParams.get('hasta')
+  const desdeUrl = params.get('desde')
+  const hastaUrl = params.get('hasta')
 
-  const filtroTipo = searchParams.getAll('tipo')
-  const filtroOrigen = searchParams.getAll('origen')
-  const filtroEstadoEntrega = searchParams.getAll('estadoEntrega')
-  const filtroEstadoPago = searchParams.getAll('estadoPago')
-  const search = searchParams.get('search') || ''
-  const clienteIdFromUrl = searchParams.get('clienteId')
-  const openPedidoParam = searchParams.get('openPedido')
-  const allFromUrl = searchParams.get('all') === 'true'
+  const filtroTipo = params.getAll('tipo')
+  const filtroOrigen = params.getAll('origen')
+  const filtroEstadoEntrega = params.getAll('estadoEntrega')
+  const filtroEstadoPago = params.getAll('estadoPago')
+  const search = params.get('search') || ''
+  const clienteIdFromUrl = params.get('clienteId')
+  const openPedidoParam = params.get('openPedido')
+  const allFromUrl = params.get('all') === 'true'
 
   // Filtros derivados de la URL (fuente de verdad)
   const pedidoFilterParams = useMemo(() => ({
@@ -112,7 +111,7 @@ export function PedidosClient() {
 
   // Use pedidos hook for data fetching. `all` disables the server's
   // default-to-today fallback so "Limpiar" really muestra todo el histórico.
-  const { pedidos: pedidosRaw, loading, error: fetchError, refetch } = usePedidos(
+  const { pedidos: pedidosRaw, loading, error: fetchError, refetch, hasLoadedOnce } = usePedidos(
     pedidoFilterParams,
     { autoFetch: false, all: allFromUrl },
   )
@@ -131,54 +130,34 @@ export function PedidosClient() {
     const pedido = pedidos.find(p => p.id === openPedidoParam || p.numero.toString() === openPedidoParam)
     if (pedido) {
       handleDetail(pedido)
-      const params = new URLSearchParams(searchParams.toString())
-      params.delete('openPedido')
-      router.replace(`?${params.toString()}`, { scroll: false })
+      params.set({ openPedido: undefined }, { history: 'replace' })
     }
-  }, [openPedidoParam, pedidos])
+  }, [openPedidoParam, pedidos, params])
 
   const updateFilter = useCallback((key: string, value: string) => {
-    const params = new URLSearchParams(searchParams.toString())
     const current = params.getAll(key)
-    params.delete(key)
-    if (current.includes(value)) {
-      current.filter(v => v !== value).forEach(v => params.append(key, v))
-    } else {
-      params.append(key, value)
-    }
-    router.push(`?${params.toString()}`, { scroll: false })
-  }, [searchParams, router])
+    const next = current.includes(value)
+      ? current.filter(v => v !== value)
+      : [...current, value]
+    params.set({ [key]: next.length > 0 ? next : undefined }, { history: 'push' })
+  }, [params])
 
   const setSingleFilter = useCallback((key: string, value: string) => {
-    const params = new URLSearchParams(searchParams.toString())
-    params.delete(key)
-    params.append(key, value)
-    router.push(`?${params.toString()}`, { scroll: false })
-  }, [searchParams, router])
+    params.set({ [key]: value }, { history: 'push' })
+  }, [params])
 
   const setHoyFilter = useCallback((key: string, value: string) => {
     const today = getTodayString()
-    const params = new URLSearchParams(searchParams.toString())
-    params.delete(key)
-    params.append(key, value)
-    params.set('desde', today)
-    params.set('hasta', today)
-    router.push(`?${params.toString()}`, { scroll: false })
-  }, [searchParams, router])
+    params.set({ [key]: value, desde: today, hasta: today }, { history: 'push' })
+  }, [params])
 
   const updateSearch = useCallback((value: string) => {
-    const params = new URLSearchParams(searchParams.toString())
-    if (value) params.set('search', value)
-    else params.delete('search')
-    router.push(`?${params.toString()}`, { scroll: false })
-  }, [searchParams, router])
+    params.set({ search: value || undefined }, { history: 'replace' })
+  }, [params])
 
   const updateClienteId = useCallback((value: string | null) => {
-    const params = new URLSearchParams(searchParams.toString())
-    if (value) params.set('clienteId', value)
-    else params.delete('clienteId')
-    router.push(`?${params.toString()}`, { scroll: false })
-  }, [searchParams, router])
+    params.set({ clienteId: value || undefined }, { history: 'push' })
+  }, [params])
 
   const [searchInput, setSearchInput] = useState(search)
 
@@ -233,7 +212,7 @@ export function PedidosClient() {
       const [clientesList] = await Promise.all([fetchClientes(), fetchEmbarques()])
       if (cancelled) return
 
-      const clienteId = searchParams.get('clienteId')
+      const clienteId = params.get('clienteId')
       if (clienteId) {
         const cliente = clientesList.find((c: Cliente) => c.id === clienteId)
         if (cliente) {
@@ -252,9 +231,7 @@ export function PedidosClient() {
           setShowModal(true)
           setModalKey(k => k + 1)
         }
-        const params = new URLSearchParams(searchParams.toString())
-        params.delete('clienteId')
-        router.replace(`?${params.toString()}`, { scroll: false })
+        params.set({ clienteId: undefined }, { history: 'replace' })
       }
     })()
     return () => { cancelled = true }
@@ -349,18 +326,15 @@ export function PedidosClient() {
 
   // Sync activeTab with URL query param
   useEffect(() => {
-    const params = new URLSearchParams(searchParams.toString())
     const currentTab = params.get('tab')
     if (activeTab === 'hoy') {
       if (currentTab) {
-        params.delete('tab')
-        router.replace(`?${params.toString()}`, { scroll: false })
+        params.set({ tab: undefined }, { history: 'replace' })
       }
     } else if (currentTab !== activeTab) {
-      params.set('tab', activeTab)
-      router.replace(`?${params.toString()}`, { scroll: false })
+      params.set({ tab: activeTab }, { history: 'replace' })
     }
-  }, [activeTab, searchParams, router])
+  }, [activeTab, params])
 
   const { create: crearPedido } = useCrearPedido({
     onSuccess: () => {
@@ -880,7 +854,7 @@ export function PedidosClient() {
     )
   }
 
-  if (loading && pedidos.length === 0 && !showModal) {
+  if (!hasLoadedOnce) {
     return <SkeletonPage hasStats hasFilters cardCount={4} />
   }
 
@@ -976,7 +950,7 @@ export function PedidosClient() {
             <p className="text-xl font-bold text-red-600">{formatCurrency(stats.fiadoTotal)}</p>
           </button>
           <button
-            onClick={() => { const params = new URLSearchParams(searchParams.toString()); params.delete('estadoEntrega'); router.push(`?${params.toString()}`, { scroll: false }) }}
+            onClick={() => params.set({ estadoEntrega: undefined }, { history: 'push' })}
             className="bg-white p-3 rounded-xl shadow text-left hover:shadow-md transition"
           >
             <p className="text-xs text-gray-500">Total Pedidos</p>
@@ -1030,20 +1004,28 @@ export function PedidosClient() {
 
       {/* Contenido por tab */}
       {activeTab === 'hoy' && (
-        <PedidoTable
-          pedidos={pedidosFiltrados}
-          updatingId={updatingId}
-          hasActiveFilters={hasActiveFilters}
-          userRole={userRole}
-          renderOrigenBadge={getOrigenBadge}
-          renderEstadoEntregaBadge={getEstadoEntregaBadge}
-          renderEstadoPagoBadge={getEstadoPagoBadge}
-          getAlertasPedido={getAlertasPedido}
-          tieneFiado={tieneFiado}
-          onDetail={handleDetail}
-          onCambiarEstado={cambiarEstado}
-          onCreateClick={() => setShowModal(true)}
-        />
+        loading && pedidos.length === 0 ? (
+          <div className="space-y-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <SkeletonCard key={i} />
+            ))}
+          </div>
+        ) : (
+          <PedidoTable
+            pedidos={pedidosFiltrados}
+            updatingId={updatingId}
+            hasActiveFilters={hasActiveFilters}
+            userRole={userRole}
+            renderOrigenBadge={getOrigenBadge}
+            renderEstadoEntregaBadge={getEstadoEntregaBadge}
+            renderEstadoPagoBadge={getEstadoPagoBadge}
+            getAlertasPedido={getAlertasPedido}
+            tieneFiado={tieneFiado}
+            onDetail={handleDetail}
+            onCambiarEstado={cambiarEstado}
+            onCreateClick={() => setShowModal(true)}
+          />
+        )
       )}
       {activeTab === 'fiados' && <FiadosTable pedidos={pedidos} clientes={clientes} limiteGlobal={limiteGlobalFiados} onPedidosChange={fetchPedidos} userRole={userRole} />}
       {activeTab === 'alertas' && <AlertasTable pedidos={pedidos} />}

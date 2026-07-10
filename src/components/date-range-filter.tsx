@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useShallowSearchParams } from '@/hooks/use-shallow-search-params'
 
 interface DateRangeFilterProps {
   onDateChange?: (desde: string | null, hasta: string | null) => void
@@ -35,21 +35,18 @@ const SHORTCUTS = [
 ]
 
 export function DateRangeFilter({ onDateChange, syncWithUrl = true }: DateRangeFilterProps) {
-  const router = useRouter()
-  const searchParams = useSearchParams()
+  const params = useShallowSearchParams()
 
-  const [desde, setDesde] = useState(searchParams.get('desde') || '')
-  const [hasta, setHasta] = useState(searchParams.get('hasta') || '')
+  const [desde, setDesde] = useState(params.get('desde') || '')
+  const [hasta, setHasta] = useState(params.get('hasta') || '')
 
   const updateUrl = useCallback((d: string, h: string) => {
     if (!syncWithUrl) return
-    const params = new URLSearchParams(searchParams.toString())
-    if (d) params.set('desde', d)
-    else params.delete('desde')
-    if (h) params.set('hasta', h)
-    else params.delete('hasta')
-    router.push(`?${params.toString()}`, { scroll: false })
-  }, [router, searchParams, syncWithUrl])
+    params.set({
+      desde: d || undefined,
+      hasta: h || undefined,
+    }, { history: 'push' })
+  }, [params, syncWithUrl])
 
   useEffect(() => {
     onDateChange?.(desde || null, hasta || null)
@@ -76,10 +73,7 @@ export function DateRangeFilter({ onDateChange, syncWithUrl = true }: DateRangeF
     setDesde('')
     setHasta('')
     if (syncWithUrl) {
-      const params = new URLSearchParams(searchParams.toString())
-      params.delete('desde')
-      params.delete('hasta')
-      router.push(`?${params.toString()}`, { scroll: false })
+      params.set({ desde: undefined, hasta: undefined }, { history: 'push' })
     }
   }
 

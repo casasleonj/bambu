@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { useSearchParams, useRouter } from 'next/navigation'
+import { useShallowSearchParams } from '@/hooks/use-shallow-search-params'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -31,8 +31,7 @@ type SortDir = 'asc' | 'desc'
 type EstadoFilter = 'TODAS' | 'PAGADA' | 'EMITIDA' | 'ANULADA'
 
 export default function FacturasPage() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
+  const params = useShallowSearchParams()
   const [facturas, setFacturas] = useState<Factura[]>([])
   const [abonoFactura, setAbonoFactura] = useState<Factura | null>(null)
   const [montoAbono, setMontoAbono] = useState('')
@@ -49,7 +48,7 @@ export default function FacturasPage() {
   const [hasAutoOpened, setHasAutoOpened] = useState(false)
   const [selection, setSelection] = useState<UnifiedSelection>(null)
   const cardRefs = useRef<Map<string, HTMLElement>>(new Map())
-  const openFacturaParam = searchParams.get('openFactura')
+  const openFacturaParam = params.get('openFactura')
 
   const [estadoFilter, setEstadoFilter] = useState<EstadoFilter>('TODAS')
   const [sortField, setSortField] = useState<SortField>('fecha')
@@ -87,45 +86,7 @@ export default function FacturasPage() {
     loadConfig()
   }, [])
 
-  useEffect(() => {
-    if (!openFacturaParam || facturas.length === 0 || hasAutoOpened) return
-    const factura = facturas.find(f => f.id === openFacturaParam || f.numero === openFacturaParam)
-    if (factura) {
-      openFacturaDetail(factura.id)
-      setHasAutoOpened(true)
-      const params = new URLSearchParams(window.location.search)
-      params.delete('openFactura')
-      router.replace(`?${params.toString()}`, { scroll: false })
-    }
-  }, [openFacturaParam, facturas, hasAutoOpened])
-
-
-
-  const fetchFacturas = useCallback(async () => {
-    setLoading(true)
-    try {
-      const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
-      if (dateRange.desde && dateRange.hasta) {
-        params.set('desde', dateRange.desde)
-        params.set('hasta', dateRange.hasta)
-      }
-      const res = await fetch(`/api/facturas?${params.toString()}`)
-      const data = await res.json()
-      setFacturas(data.data || data.facturas || [])
-      setTotal(data.total || 0)
-      setTotalPages(data.totalPages || 0)
-      setTotales(data.totales || { totalFacturado: 0, totalCobrado: 0, totalPorCobrar: 0, count: 0 })
-    } catch (e) {
-      console.error(e)
-      toast.error('Error cargando facturas')
-    } finally {
-      setLoading(false)
-    }
-  }, [dateRange, page, pageSize])
-
-  useEffect(() => { fetchFacturas() }, [fetchFacturas])
-
-  const openFacturaDetail = async (id: string) => {
+  const openFacturaDetail = useCallback(async (id: string) => {
     setLoadingDetail(true)
     setSelectedFactura(facturas.find(f => f.id === id) || null)
     try {
@@ -141,7 +102,41 @@ export default function FacturasPage() {
       toast.error('Error cargando detalle')
     }
     setLoadingDetail(false)
-  }
+  }, [facturas])
+
+  useEffect(() => {
+    if (!openFacturaParam || facturas.length === 0 || hasAutoOpened) return
+    const factura = facturas.find(f => f.id === openFacturaParam || f.numero === openFacturaParam)
+    if (factura) {
+      openFacturaDetail(factura.id)
+      setHasAutoOpened(true)
+      params.set({ openFactura: undefined }, { history: 'replace' })
+    }
+  }, [openFacturaParam, facturas, hasAutoOpened, params, openFacturaDetail])
+
+  const fetchFacturas = useCallback(async () => {
+    setLoading(true)
+    try {
+      const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
+      if (dateRange.desde && dateRange.hasta) {
+        query.set('desde', dateRange.desde)
+        query.set('hasta', dateRange.hasta)
+      }
+      const res = await fetch(`/api/facturas?${query.toString()}`)
+      const data = await res.json()
+      setFacturas(data.data || data.facturas || [])
+      setTotal(data.total || 0)
+      setTotalPages(data.totalPages || 0)
+      setTotales(data.totales || { totalFacturado: 0, totalCobrado: 0, totalPorCobrar: 0, count: 0 })
+    } catch (e) {
+      console.error(e)
+      toast.error('Error cargando facturas')
+    } finally {
+      setLoading(false)
+    }
+  }, [dateRange, page, pageSize])
+
+  useEffect(() => { fetchFacturas() }, [fetchFacturas])
 
   const closeFacturaDetail = () => {
     setSelectedFactura(null)
