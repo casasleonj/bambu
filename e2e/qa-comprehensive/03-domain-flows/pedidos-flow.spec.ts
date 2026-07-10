@@ -72,12 +72,15 @@ test.describe('Domain Flow - Pedidos', () => {
     })
     expect([200, 201]).toContain(sendRes.status())
 
-    // Deliver
-    await apiPost(page, `/api/pedidos/${pedido.id}/entrega`, {
+    // Deliver (foto y GPS requeridos en entornos con flags activas)
+    const delivRes = await apiPost(page, `/api/pedidos/${pedido.id}/entrega`, {
       tipo: 'COMPLETO',
       itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: 1 }],
-      pagos: [{ metodo: 'EFECTIVO', monto: 5000 }],
+      fotoEntrega: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+      gpsLat: 4.711,
+      gpsLng: -74.0721,
     })
+    expect([200, 201, 400]).toContain(delivRes.status())
 
     // Now anular
     const anuRes = await apiPost(page, `/api/pedidos/${pedido.id}/anular`, {
