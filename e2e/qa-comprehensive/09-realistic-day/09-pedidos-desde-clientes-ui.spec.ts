@@ -4,8 +4,8 @@
  * Flujo UI real: crear pedido DESDE la página de /clientes.
  *
  * Patrón verificado en `src/app/(app)/clientes/clientes-client/`:
- * 1. Abrir un cliente (detail panel) → ver "Crear Pedido" link (línea 902)
- * 2. Click → navega a /pedidos?clienteId=ID
+ * 1. Abrir un cliente (detail panel) → ver "Crear Pedido" link
+ * 2. Click → navega a /pedidos?new=1&clienteId=ID
  * 3. /pedidos lee el query param, abre modal con PedidoFormUnified
  * 4. Form tiene cliente preseleccionado
  * 5. User completa productos, dirección (DOMICILIO) y submit
@@ -23,7 +23,7 @@ import {
 
 test.describe.configure({ mode: 'serial' })
 test.describe('09: Pedidos desde clientes — UI real', () => {
-  test('01: Link "Crear Pedido" en /clientes navega a /pedidos?clienteId=', async ({ page }) => {
+  test('01: Link "Crear Pedido" en /clientes navega a /pedidos?new=1&clienteId=', async ({ page }) => {
     cleanTestState()
     await fullLoginRealistic(page, 'asistente', 50_000)
 
@@ -45,10 +45,10 @@ test.describe('09: Pedidos desde clientes — UI real', () => {
     const createLink = page.locator('a:has-text("Crear Pedido")')
     const count = await createLink.count()
     if (count > 0) {
-      // Click y verificar que navega a /pedidos?clienteId=
+      // Click y verificar que navega a /pedidos?new=1&clienteId=
       await createLink.first().click()
-      await page.waitForURL(/\/pedidos\?clienteId=/, { timeout: 5000 })
-      await expect(page).toHaveURL(/\/pedidos\?clienteId=/)
+      await page.waitForURL(/\/pedidos\?new=1&clienteId=/, { timeout: 5000 })
+      await expect(page).toHaveURL(/\/pedidos\?new=1&clienteId=/)
     }
   })
 
@@ -77,13 +77,13 @@ test.describe('09: Pedidos desde clientes — UI real', () => {
       const createLink = row.locator('a:has-text("Crear pedido")').first()
       if (await createLink.count() > 0) {
         await createLink.click()
-        await page.waitForURL(/\/pedidos\?clienteId=/, { timeout: 5000 })
-        await expect(page).toHaveURL(new RegExp(`/pedidos\\?clienteId=${clienteId}`))
+        await page.waitForURL(/\/pedidos\?new=1&clienteId=/, { timeout: 5000 })
+        await expect(page).toHaveURL(new RegExp(`/pedidos\\?new=1&clienteId=${clienteId}`))
       }
     }
   })
 
-  test('03: /pedidos?clienteId=X preselecciona el cliente en el modal', async ({ page }) => {
+  test('03: /pedidos?new=1&clienteId=X preselecciona el cliente en el modal', async ({ page }) => {
     cleanTestState()
     await fullLoginRealistic(page, 'asistente', 50_000)
 
@@ -94,7 +94,7 @@ test.describe('09: Pedidos desde clientes — UI real', () => {
     const clienteId = c.cliente?.id || c.id
 
     // Navegar directamente con el query param
-    await page.goto(`/pedidos?clienteId=${clienteId}`)
+    await page.goto(`/pedidos?new=1&clienteId=${clienteId}`)
     await page.waitForLoadState('domcontentloaded')
     await page.waitForTimeout(2000)
 
@@ -102,14 +102,14 @@ test.describe('09: Pedidos desde clientes — UI real', () => {
     // El form tiene un header "Cliente *" en DOMICILIO
     // Y debe haber un botón "X" con title="Quitar cliente" si está preseleccionado
     const removeBtn = page.locator('[title="Quitar cliente"]')
-    const clienteHeader = page.locator('text=/Cliente \\*/')
+    const clienteHeader = page.locator('text=/Cliente \*/')
     // Al menos uno debe estar visible (cliente preseleccionado)
     const hasPreselect =
       (await removeBtn.count()) > 0 || (await clienteHeader.count()) > 0
     if (!hasPreselect) {
       console.warn(
-        '[P3] /pedidos?clienteId=X no parece preseleccionar el cliente. ' +
-        'Ver src/app/(app)/pedidos/pedidos-client/index.tsx:96-110'
+        '[P3] /pedidos?new=1&clienteId=X no parece preseleccionar el cliente. ' +
+        'Ver src/app/(app)/pedidos/pedidos-client/index.tsx'
       )
     }
     expect(hasPreselect).toBeTruthy()
@@ -127,7 +127,7 @@ test.describe('09: Pedidos desde clientes — UI real', () => {
     const clienteId = c.cliente?.id || c.id
 
     // Ir directamente con el query param
-    await page.goto(`/pedidos?clienteId=${clienteId}`)
+    await page.goto(`/pedidos?new=1&clienteId=${clienteId}`)
     await page.waitForLoadState('domcontentloaded')
     await page.waitForTimeout(2000)
 
@@ -231,7 +231,7 @@ test.describe('09: Pedidos desde clientes — UI real', () => {
 
     // 2) Click "Crear Pedido" -> abre modal en /pedidos
     await page.locator('a:has-text("Crear Pedido")').first().click()
-    await page.waitForURL(/\/pedidos\?clienteId=/, { timeout: 5000 })
+    await page.waitForURL(/\/pedidos\?new=1&clienteId=/, { timeout: 5000 })
 
     // 3) Esperar a que el modal esté visible
     const modalHeader = page.locator('h2:has-text("Nuevo Pedido")')

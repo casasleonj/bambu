@@ -213,7 +213,10 @@ export function PedidosClient() {
       if (cancelled) return
 
       const clienteId = params.get('clienteId')
-      if (clienteId) {
+      const negocioId = params.get('negocioId')
+      const openNew = params.get('new') === '1'
+
+      if (openNew && clienteId) {
         const cliente = clientesList.find((c: Cliente) => c.id === clienteId)
         if (cliente) {
           setPedidoInicial({
@@ -226,13 +229,22 @@ export function PedidosClient() {
               direccion: cliente.direccion || null,
               barrio: cliente.barrio || null,
             },
+            negocioId: negocioId || null,
             items: [],
           })
           setShowModal(true)
           setModalKey(k => k + 1)
+        } else {
+          toast.error('El cliente seleccionado no está disponible')
         }
-        params.set({ clienteId: undefined }, { history: 'replace' })
+        params.set({ new: undefined, clienteId: undefined, negocioId: undefined }, { history: 'replace' })
+      } else if (openNew) {
+        // new=1 sin clienteId no es un estado válido para abrir el formulario.
+        params.set({ new: undefined, negocioId: undefined }, { history: 'replace' })
       }
+      // Si solo hay clienteId (sin new=1), se aplica como filtro de lista
+      // mediante pedidoFilterParams; no se limpia para que el usuario vea
+      // el filtro activo.
     })()
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps

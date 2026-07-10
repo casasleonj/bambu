@@ -178,7 +178,7 @@ test('admin desktop: crear pedido con cliente colombiano (DOMICILIO)', async ({ 
   })
   const clienteId = cliente.cliente?.id || cliente.id
 
-  await page.goto(`${BASE}/pedidos?clienteId=${clienteId}`, { waitUntil: 'domcontentloaded' })
+  await page.goto(`${BASE}/pedidos?new=1&clienteId=${clienteId}`, { waitUntil: 'domcontentloaded' })
   await page.waitForTimeout(800)
 
   // Verificar que el cliente está pre-seleccionado en algún lugar
@@ -188,7 +188,7 @@ test('admin desktop: crear pedido con cliente colombiano (DOMICILIO)', async ({ 
     addFinding({
       severity: 'P2',
       module: 'pedidos',
-      title: 'Cliente no pre-seleccionado al entrar con ?clienteId=ID',
+      title: 'Cliente no pre-seleccionado al entrar con ?new=1&clienteId=ID',
       description: 'El código debería leer query param y pre-llenar cliente.',
     })
   }
@@ -215,7 +215,7 @@ test('admin desktop: doble-click en submit de pedido NO crea duplicados', async 
   const beforeBody = await beforeRes.json()
   const beforeCount = (beforeBody.pedidos || []).length
 
-  await page.goto(`${BASE}/pedidos?clienteId=${clienteId}`, { waitUntil: 'domcontentloaded' })
+  await page.goto(`${BASE}/pedidos?new=1&clienteId=${clienteId}`, { waitUntil: 'domcontentloaded' })
   await page.waitForTimeout(800)
 
   // Doble-click submit
