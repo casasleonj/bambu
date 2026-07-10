@@ -16,6 +16,7 @@ export interface NegocioDetail {
   linkUbicacion: string | null
   horaApertura: string | null
   ruta: { id: string; nombre: string } | null
+  clienteId?: string
   _count: { pedidos: number }
 }
 
@@ -25,7 +26,7 @@ interface NegocioDetailModalProps {
   negocio: NegocioDetail | null
   canEdit: boolean
   canDelete: boolean
-  clienteId: string
+  clienteId?: string
   onEdit: () => void
   onDeleted: () => void
 }
@@ -213,12 +214,14 @@ export function NegocioDetailModal({
 
         {/* Footer */}
         <div className="p-4 border-t border-gray-100 flex flex-wrap gap-2 justify-end bg-gray-50">
-          <Link
-            href={`/pedidos?clienteId=${clienteId}`}
-            className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-100 transition"
-          >
-            Ver pedidos
-          </Link>
+          {clienteId && (
+            <Link
+              href={`/pedidos?clienteId=${clienteId}`}
+              className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-100 transition"
+            >
+              Ver pedidos
+            </Link>
+          )}
           {canEdit && (
             <button
               onClick={onEdit}

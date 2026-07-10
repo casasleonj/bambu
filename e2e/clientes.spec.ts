@@ -78,6 +78,32 @@ test.describe('Clientes UI', () => {
     await expect(page.getByText('BuscarTest Cliente').first()).not.toBeVisible({ timeout: 5000 })
   })
 
+  test('buscar por nombre de negocio muestra coincidencia y abre detalle', async ({ page }) => {
+    await fullLogin(page)
+    const unique = `NegocioBusqueda${Date.now()}`
+    const cliente = await createClienteFull(page, {
+      nombre: 'ClienteConNegocioBusqueda',
+      telefono: `3${String(Date.now()).slice(-9)}`,
+    })
+    await apiPost(page, '/api/negocios', {
+      clienteId: cliente.cliente.id,
+      nombre: unique,
+      tipoNegocio: 'Tienda',
+      direccion: 'Calle Busqueda 123',
+      barrio: 'Centro Busqueda',
+    })
+
+    await goto(page, '/clientes')
+    const searchInput = page.locator('input[placeholder*="Buscar"]')
+    await searchInput.fill(unique)
+
+    const matchButton = page.getByText(`Coincide con el negocio: ${unique}`)
+    await expect(matchButton).toBeVisible()
+
+    await matchButton.click()
+    await expect(page.getByRole('heading', { name: unique, exact: true })).toBeVisible({ timeout: 5000 })
+  })
+
   test('ver detalle de cliente al hacer click en fila', async ({ page }) => {
     await fullLogin(page)
     await goto(page, '/clientes')

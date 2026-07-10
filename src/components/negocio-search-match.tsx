@@ -47,6 +47,7 @@ export function NegocioSearchMatch({
           linkUbicacion: negocio.linkUbicacion ?? null,
           horaApertura: null,
           ruta: null,
+          clienteId: cliente.id,
           _count: { pedidos: 0 },
         })
       }
