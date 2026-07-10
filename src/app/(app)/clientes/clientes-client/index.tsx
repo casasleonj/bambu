@@ -808,6 +808,7 @@ export default function ClientesClient({
         onRetry={fetchClientes}
         onCreateClick={openCreateModal}
         onViewCliente={viewCliente}
+        onViewNegocio={viewNegocio}
         sortBy={sortBy}
         sortDir={sortDir}
         onSortChange={(by, dir) => { setSortBy(by); setSortDir(dir) }}

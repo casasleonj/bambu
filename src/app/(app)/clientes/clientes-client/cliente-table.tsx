@@ -10,6 +10,8 @@ import { EmptyState, EmptySearch } from '@/components/empty-state'
 import { Tooltip } from '@/components/tooltip'
 import { NegociosUbicacionesFilter } from './negocios-ubicaciones-filter'
 import { getClienteNegocioStatus } from '@/lib/cliente-filters'
+import { NegocioSearchMatch } from '@/components/negocio-search-match'
+import type { NegocioDetail } from '@/components/negocio-detail-modal'
 
 interface ClienteTableProps {
   clientes: Cliente[]
@@ -19,6 +21,7 @@ interface ClienteTableProps {
   onRetry: () => void
   onCreateClick: () => void
   onViewCliente: (id: string) => void
+  onViewNegocio: (negocio: NegocioDetail) => void
   sortBy: 'nombre' | 'createdAt'
   sortDir: 'asc' | 'desc'
   onSortChange: (by: 'nombre' | 'createdAt', dir: 'asc' | 'desc') => void
@@ -35,6 +38,7 @@ export const ClienteTable = React.memo(function ClienteTable({
   onRetry,
   onCreateClick,
   onViewCliente,
+  onViewNegocio,
   sortBy,
   sortDir,
   onSortChange,
@@ -516,6 +520,14 @@ export const ClienteTable = React.memo(function ClienteTable({
                             </p>
                           )
                         })()}
+                        {search && (
+                          <NegocioSearchMatch
+                            cliente={cliente}
+                            search={search}
+                            onViewNegocio={onViewNegocio}
+                            onViewCliente={onViewCliente}
+                          />
+                        )}
                         {(() => {
                           const status = getClienteNegocioStatus(cliente)
                           if (!status.tieneNegocio && !status.clienteConLink) return null
