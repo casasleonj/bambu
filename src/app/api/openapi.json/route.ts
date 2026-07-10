@@ -123,6 +123,16 @@ const spec = {
         responses: { '200': { description: 'Desactivado' } },
       },
     },
+    '/api/clientes/{id}/fiado-status': {
+      get: {
+        tags: ['Clientes'], summary: 'Estado de fiados del cliente',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': { description: 'Estado de fiados', content: { 'application/json': { schema: { $ref: '#/components/schemas/FiadoStatusResponse' } } } },
+          '404': { description: 'Cliente no encontrado', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+        },
+      },
+    },
     '/api/clientes/quick': {
       post: {
         tags: ['Clientes'], summary: 'Creación rápida de cliente',
@@ -386,6 +396,8 @@ const spec = {
       ClienteCreate: { type: 'object', required: ['nombre', 'telefono'], properties: { nombre: { type: 'string' }, telefono: { type: 'string' }, direccion: { type: 'string' }, barrio: { type: 'string' }, frecuencia: { type: 'string', enum: ['NINGUNA', 'DIARIA', 'SEMANAL', 'QUINCENAL', 'MENSUAL'] }, dias: { type: 'string' }, preciosEspeciales: { type: 'object' }, obs: { type: 'string' } } },
       ClienteUpdate: { type: 'object', properties: { nombre: { type: 'string' }, telefono: { type: 'string' }, direccion: { type: 'string' }, barrio: { type: 'string' }, frecuencia: { type: 'string' }, dias: { type: 'string' }, preciosEspeciales: { type: 'object' }, obs: { type: 'string' } } },
       ClienteQuickCreate: { type: 'object', required: ['nombre', 'telefono'], properties: { nombre: { type: 'string' }, telefono: { type: 'string' }, direccion: { type: 'string' }, barrio: { type: 'string' } } },
+      FiadoStatusResponse: { type: 'object', required: ['success', 'status'], properties: { success: { type: 'boolean', enum: [true] }, status: { $ref: '#/components/schemas/FiadoStatus' } } },
+      FiadoStatus: { type: 'object', required: ['count', 'limite', 'nivel'], properties: { count: { type: 'integer', minimum: 0 }, limite: { type: 'integer', minimum: 0 }, nivel: { type: 'string', enum: ['ok', 'cerca', 'limite'] } } },
 
       EmbarqueCreate: { type: 'object', required: ['trabajadorId'], properties: { trabajadorId: { type: 'string' }, rutaId: { type: 'string' }, pedidoIds: { type: 'array', items: { type: 'string' } }, obs: { type: 'string' }, fecha: { type: 'string', format: 'date' } } },
       EmbarqueUpdate: { type: 'object', properties: { pedidoIds: { type: 'array', items: { type: 'string' } }, trabajadorId: { type: 'string' }, rutaId: { type: 'string' }, obs: { type: 'string' } } },

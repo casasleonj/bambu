@@ -18,6 +18,7 @@ import { EntregarPedidoUseCase } from './use-cases/EntregarPedidoUseCase'
 import { AnularPedidoUseCase } from './use-cases/AnularPedidoUseCase'
 import { CancelarPedidoUseCase } from './use-cases/CancelarPedidoUseCase'
 import { ActualizarPedidoUseCase } from './use-cases/ActualizarPedidoUseCase'
+import { GetFiadoStatusUseCase, ClienteNotFoundError } from './use-cases/GetFiadoStatusUseCase'
 
 const txManager = new PrismaTransactionManager()
 const pedidoRepo = new PrismaPedidoRepository()
@@ -67,5 +68,8 @@ export const actualizarPedidoUseCase = new ActualizarPedidoUseCase(
   txManager,
 )
 
+export const getFiadoStatusUseCase = new GetFiadoStatusUseCase(pedidoRepo, clienteRepo)
+
 export { PedidoDTOMapper } from './dto/PedidoDTOMapper'
 export type * from './dto'
+export { ClienteNotFoundError }

@@ -11,7 +11,6 @@ import { toast } from 'sonner'
 export interface PedidoFilterParams {
   desde?: string
   hasta?: string
-  cliente?: string
   tipo?: string[]
   origen?: string[]
   estadoEntrega?: string[]
@@ -58,7 +57,6 @@ export function usePedidos(
     }
     if (params?.desde) url.searchParams.set('desde', params.desde)
     if (params?.hasta) url.searchParams.set('hasta', params.hasta)
-    if (params?.cliente) url.searchParams.set('cliente', params.cliente)
     if (params?.clienteId) url.searchParams.set('clienteId', params.clienteId)
     if (params?.tipo) params.tipo.forEach(t => url.searchParams.append('tipo', t))
     if (params?.origen) params.origen.forEach(o => url.searchParams.append('origen', o))
