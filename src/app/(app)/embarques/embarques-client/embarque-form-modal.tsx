@@ -3,7 +3,7 @@ import { toast } from 'sonner'
 import { Modal } from '@/components/modal'
 import { PESOS_KG, calcularPesoDesdeCarga, getCapacidadInfo, type CargaSnapshot } from '@/lib/embarque-capacidad'
 import { useProductosDomicilio, getProductoEmoji } from '@/hooks/use-productos-domicilio'
-import type { Trabajador, Ruta, Embarque } from './types'
+import type { Trabajador, Ruta, EmbarqueEditable } from './types'
 
 interface StockDisponible {
   PACA_AGUA: number
@@ -20,7 +20,7 @@ interface EmbarqueFormModalProps {
   trabajadores: Trabajador[]
   rutas: Ruta[]
   mode: 'create' | 'edit'
-  embarque?: Embarque | null
+  embarque?: EmbarqueEditable | null
 }
 
 export function EmbarqueFormModal({

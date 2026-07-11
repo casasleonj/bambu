@@ -13,10 +13,7 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { enrichPedidosWithNegocio } from '@/lib/embarque-pedido-enrich'
 
-// Fields that can only be edited when embarque is ABIERTO
-const ABIERTO_ONLY_FIELDS = ['trabajadorId', 'rutaId', 'horaSalida', 'baseDinero', 'tipoMoto', 'carga'] as const
-
-export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
   const { id } = await params
@@ -24,13 +21,15 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const hasAccess = await requireOwnership('embarque', id, { id: session.user?.id || '', role: session.user?.role })
     if (!hasAccess) return apiError('Forbidden', 403)
   try {
+    const { searchParams } = new URL(request.url)
+    const full = searchParams.get('full') === 'true'
     const embarqueRaw = await prisma.embarque.findUnique({
       where: { id },
       include: {
         trabajador: true,
         ruta: true,
         pedidos: {
-          take: 50,
+          ...(full ? {} : { take: 50 }),
           select: {
             id: true,
             numero: true,
@@ -141,18 +140,22 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       }
 
       // Enforce field restrictions by state
-      // FIX H3-3: un embarque despachado (EN_RUTA o CERRADO) es
-      // INMUTABLE. Solo se permite modificar un embarque en estado
-      // ABIERTO. Esto protege los datos contables que el cierre del
-      // día usa para calcular totales.
+      // FIX H3-3: un embarque CERRADO o CANCELADO es inmutable.
+      // En estado ABIERTO se permite cualquier campo editable.
+      // En estado EN_RUTA solo se permite asignar/quitar pedidos (pedidoIds)
+      // para dar flexibilidad operativa sin comprometer datos contables.
       // El único flujo válido para cerrar es POST /api/embarques/[id]/cerrar.
-      if (currentEmbarque.estado !== 'ABIERTO') {
+      if (currentEmbarque.estado === 'CERRADO' || currentEmbarque.estado === 'CANCELADO') {
         throw new Error(`EMBARQUE_DESPACHADO_INMUTABLE:${currentEmbarque.estado}`)
       }
-      if (currentEmbarque.estado !== 'ABIERTO') {
-        const forbiddenFields = ABIERTO_ONLY_FIELDS.filter((field) => parsed.data[field] !== undefined)
+      if (currentEmbarque.estado === 'EN_RUTA') {
+        const allowedInRuta = ['pedidoIds', 'offlineId']
+        const allFields = Object.keys(parsed.data) as Array<keyof typeof parsed.data>
+        const forbiddenFields = allFields.filter(
+          (field) => parsed.data[field] !== undefined && !allowedInRuta.includes(field as string)
+        )
         if (forbiddenFields.length > 0) {
-          throw new Error(`FORBIDDEN_FIELDS:${forbiddenFields.join(',')}:${currentEmbarque.estado}`)
+          throw new Error(`FORBIDDEN_FIELDS_EN_RUTA:${forbiddenFields.join(',')}`)
         }
       }
 

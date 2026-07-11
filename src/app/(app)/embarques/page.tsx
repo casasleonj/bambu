@@ -11,7 +11,7 @@ export default async function EmbarquesPage() {
   const session = authResult as { user?: { id?: string; role?: string } }
   const isAdmin = session.user?.role === 'ADMIN'
 
-  const [embarques, trabajadores, rutas, pedidos, stockEstimado, stockDisponible] = await Promise.all([
+  const [embarques, trabajadores, rutas, stockEstimado, stockDisponible] = await Promise.all([
     prisma.embarque.findMany({
       orderBy: [{ fecha: 'desc' }, { numeroDia: 'desc' }],
       include: {
@@ -29,22 +29,6 @@ export default async function EmbarquesPage() {
       where: { rol: 'REPARTIDOR', activo: true, usaMoto: true },
     }),
     prisma.ruta.findMany(),
-    isAdmin
-      ? prisma.pedido.findMany({
-          where: { estado: { in: ['PENDIENTE', 'EN_RUTA'] } },
-          include: {
-            cliente: { select: { id: true, nombre: true, barrio: true } },
-          },
-        })
-      : prisma.pedido.findMany({
-          where: {
-            estado: { in: ['PENDIENTE', 'EN_RUTA'] },
-            embarque: { trabajadorId: session.user?.id },
-          },
-          include: {
-            cliente: { select: { id: true, nombre: true, barrio: true } },
-          },
-        }),
     getStockEstimadoHoy(),
     getStockDisponible(),
   ])
@@ -78,7 +62,6 @@ export default async function EmbarquesPage() {
     }),
     trabajadores,
     rutas,
-    pedidos,
     stockEstimado,
     stockBajo,
   }))

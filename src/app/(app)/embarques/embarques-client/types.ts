@@ -80,3 +80,14 @@ export interface Embarque {
   }
   stockSnapshot?: unknown
 }
+
+export interface EmbarqueEditable {
+  id: string
+  trabajador: Trabajador
+  ruta?: Ruta | null
+  horaSalida: string | null
+  tipoMoto: string | null
+  baseDinero: number
+  obs: string | null
+  productos: EmbarqueProducto[]
+}
