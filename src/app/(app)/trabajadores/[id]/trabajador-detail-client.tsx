@@ -131,7 +131,7 @@ function InfoTab({ trabajador }: { trabajador: TrabajadorDetail }) {
       <div className="bg-white rounded-xl shadow-sm p-6">
         <h2 className="text-lg font-semibold text-gray-800 mb-4">Configuracion de Pago</h2>
         <div className="space-y-3">
-          {(trabajador.tipoPago === 'COMISION' || trabajador.tipoPago === 'MIXTO') && (
+          {trabajador.rol === 'SELLADOR' && (trabajador.tipoPago === 'COMISION' || trabajador.tipoPago === 'MIXTO') && (
             <>
               <div className="flex justify-between">
                 <span className="text-sm text-gray-500">Com. paca agua</span>
