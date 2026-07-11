@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useShallowSearchParams } from '@/hooks/use-shallow-search-params'
 import { DateRangeFilter } from '@/components/date-range-filter'
 import { PedidosSearch, type ClienteSearchOption } from '@/components/pedidos-search'
 import { TIPOS, ORIGENES, ESTADOS_ENTREGA, ESTADOS_PAGO } from './types'
@@ -17,6 +16,7 @@ interface PedidoFiltersProps {
   filtroEstadoEntrega: string[]
   filtroEstadoPago: string[]
   onUpdateFilter: (key: string, value: string) => void
+  onClearAll: () => void
   onDateChange?: (desde: string | null, hasta: string | null) => void
   hideDateFilter?: boolean
 }
@@ -52,11 +52,10 @@ export function PedidoFilters({
   filtroEstadoEntrega,
   filtroEstadoPago,
   onUpdateFilter,
+  onClearAll,
   onDateChange,
   hideDateFilter = false,
 }: PedidoFiltersProps) {
-  const params = useShallowSearchParams()
-
   const [expanded, setExpanded] = useState(false)
 
   useEffect(() => {
@@ -74,7 +73,9 @@ export function PedidoFilters({
     filtroTipo.length +
     filtroOrigen.length +
     filtroEstadoEntrega.length +
-    filtroEstadoPago.length
+    filtroEstadoPago.length +
+    (searchInput ? 1 : 0) +
+    (selectedClienteId ? 1 : 0)
 
   const activeMap: Record<string, string[]> = {
     origen: filtroOrigen,
@@ -141,14 +142,7 @@ export function PedidoFilters({
             ))
           )}
           <button
-            onClick={() => {
-              params.set({
-                origen: undefined,
-                estadoEntrega: undefined,
-                estadoPago: undefined,
-                tipo: undefined,
-              }, { history: 'push' })
-            }}
+            onClick={onClearAll}
             className="text-xs text-red-600 hover:text-red-800 font-medium px-2 py-1"
           >
             Limpiar todo

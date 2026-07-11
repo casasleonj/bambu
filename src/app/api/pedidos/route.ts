@@ -28,10 +28,10 @@ export async function GET(request: NextRequest) {
     const hasta = searchParams.get('hasta')
     const all = searchParams.get('all')
     const clienteFilter = searchParams.get('clienteId')
-    const estadoEntregaFilter = searchParams.get('estadoEntrega')
-    const estadoPagoFilter = searchParams.get('estadoPago')
-    const origenFilter = searchParams.get('origen')
-    const tipoFilter = searchParams.get('tipo')
+    const estadoEntregaFilter = searchParams.getAll('estadoEntrega')
+    const estadoPagoFilter = searchParams.getAll('estadoPago')
+    const origenFilter = searchParams.getAll('origen')
+    const tipoFilter = searchParams.getAll('tipo')
 
     // Build filter for use case
     const filter: Record<string, unknown> = {}
@@ -71,17 +71,17 @@ export async function GET(request: NextRequest) {
     if (clienteFilter) {
       filter.clienteId = clienteFilter
     }
-    if (estadoEntregaFilter) {
+    if (estadoEntregaFilter.length > 0) {
       filter.estadoEntrega = estadoEntregaFilter
     }
-    if (estadoPagoFilter) {
+    if (estadoPagoFilter.length > 0) {
       filter.estadoPago = estadoPagoFilter
     }
-    if (origenFilter) {
+    if (origenFilter.length > 0) {
       filter.origen = origenFilter
     }
-    if (tipoFilter) {
-      filter.tipo = tipoFilter.split(',').map(t => t.trim()).filter(Boolean)
+    if (tipoFilter.length > 0) {
+      filter.tipo = tipoFilter
     }
 
     const result = await listarPedidosUseCase.execute({

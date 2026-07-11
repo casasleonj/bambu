@@ -76,9 +76,9 @@ export interface ListarPedidosInput {
   clienteId?: string
   desde?: Date
   hasta?: Date
-  estadoEntrega?: string
-  estadoPago?: string
-  origen?: string
+  estadoEntrega?: string[]
+  estadoPago?: string[]
+  origen?: string[]
   embarqueId?: string
   tipo?: string[]
   page?: number
