@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useSyncExternalStore } from 'react'
+import { useCallback, useMemo, useRef, useSyncExternalStore } from 'react'
 import { useSearchParams } from 'next/navigation'
 
 export type ShallowParams = Record<string, string | string[] | undefined>
@@ -75,12 +75,23 @@ function updateUrl(next: URLSearchParams, history: 'push' | 'replace'): void {
  */
 export function useShallowSearchParams(): ShallowSearchParams {
   const searchParams = useSearchParams()
+  // Flag que indica si este hook (o cualquier otro consumidor) ha mutado la URL
+  // manualmente vía set(). Después de una mutación manual, Next.js puede tener
+  // searchParams stale por un ciclo, así que leemos directamente de
+  // window.location.search para garantizar consistencia sincrónica.
+  const manualUpdateRef = useRef(false)
+
+  const currentParams = useCallback(() => {
+    if (typeof window === 'undefined') return searchParams
+    if (manualUpdateRef.current) return new URLSearchParams(window.location.search)
+    return searchParams
+  }, [searchParams])
 
   // Snapshot combina el version propio (para forzar re-render cuando este hook
   // o cualquier otro consumidor muta la URL vía set) con los params de Next.js
   // (para sincronizar back/forward y SSR).
   const getSnapshot = useCallback(
-    () => `${version}:${searchParams.toString()}`,
+    () => `${version}:${manualUpdateRef.current && typeof window !== 'undefined' ? window.location.search.slice(1) : searchParams.toString()}`,
     [searchParams],
   )
   const getServerSnapshot = useCallback(
@@ -92,14 +103,16 @@ export function useShallowSearchParams(): ShallowSearchParams {
 
   return useMemo(
     () => ({
-      get: (key: string) => searchParams.get(key),
-      getAll: (key: string) => searchParams.getAll(key),
+      get: (key: string) => currentParams().get(key),
+      getAll: (key: string) => currentParams().getAll(key),
       set: (changes: ShallowParams, options?: SetShallowParamsOptions) => {
         const history = options?.history ?? 'push'
-        const next = applyChanges(searchParams, changes)
+        const current = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : searchParams.toString())
+        const next = applyChanges(current, changes)
         updateUrl(next, history)
+        manualUpdateRef.current = true
       },
     }),
-    [searchParams],
+    [searchParams, currentParams],
   )
 }

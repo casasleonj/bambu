@@ -40,7 +40,7 @@ export function FiadosTable({ pedidos, clientes, limiteGlobal, onPedidosChange, 
   const [minDeuda, setMinDeuda] = useState('')
   const [maxDeuda, setMaxDeuda] = useState('')
   const [diasFiado, setDiasFiado] = useState<'todos' | '0-7' | '8-30' | '30+' | string>('todos')
-  const [periodo, setPeriodo] = useState<PeriodoFiltro>('hoy')
+  const [periodo, setPeriodo] = useState<PeriodoFiltro>('todos')
   const [pagandoClienteId, setPagandoClienteId] = useState<string | null>(null)
   const [montoPago, setMontoPago] = useState('')
   const [metodoPago, setMetodoPago] = useState('EFECTIVO')
@@ -198,8 +198,14 @@ export function FiadosTable({ pedidos, clientes, limiteGlobal, onPedidosChange, 
               </span>
             </div>
             <p className="text-sm text-red-700">
-              Aquí ves todos los clientes que tienen saldo pendiente. Selecciona un cliente para ver 
+              Aquí ves todos los clientes que tienen saldo pendiente. Selecciona un cliente para ver
               sus pedidos fiados y registrar un pago. Los pagos se aplican automáticamente a los pedidos más antiguos.
+              {periodo !== 'todos' && (
+                <span className="block mt-1 font-medium">
+                  Mostrando solo fiados de {PERIODOS.find(p => p.key === periodo)?.label.toLowerCase()}.{' '}
+                  Click en &quot;Todos&quot; para ver el histórico.
+                </span>
+              )}
             </p>
             {/* Período independiente */}
             <div className="flex flex-wrap gap-2 mt-3">
@@ -257,6 +263,19 @@ export function FiadosTable({ pedidos, clientes, limiteGlobal, onPedidosChange, 
             <option value="8-30">8-30 días</option>
             <option value="30+">30+ días</option>
           </select>
+          {(searchTerm || minDeuda || maxDeuda || diasFiado !== 'todos') && (
+            <button
+              onClick={() => {
+                setSearchTerm('')
+                setMinDeuda('')
+                setMaxDeuda('')
+                setDiasFiado('todos')
+              }}
+              className="px-3 py-2 text-sm font-medium text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition"
+            >
+              Limpiar
+            </button>
+          )}
         </div>
       </div>
 
