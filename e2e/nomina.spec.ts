@@ -22,7 +22,7 @@ test.describe('Nomina', () => {
     await fullLogin(page)
 
     const trabajador = await createTrabajador(page)
-    expect(trabajador.id).toBeTruthy()
+    expect(trabajador.trabajador.id).toBeTruthy()
 
     await goto(page, '/nomina')
     await page.waitForTimeout(500)
@@ -63,7 +63,7 @@ test.describe('Nomina', () => {
     const trabajador = await createTrabajador(page)
 
     const res = await apiPost(page, '/api/nomina', {
-      trabajadorId: trabajador.id,
+      trabajadorId: trabajador.trabajador.id,
       fechaInicio: '2026-05-01',
       fechaFin: '2026-05-31',
       tipoCalculo: 'AUTO',
@@ -78,7 +78,7 @@ test.describe('Nomina', () => {
     const trabajador = await createTrabajador(page)
 
     const res = await apiPost(page, '/api/nomina', {
-      trabajadorId: trabajador.id,
+      trabajadorId: trabajador.trabajador.id,
       fechaInicio: '2026-05-01',
       fechaFin: '2026-05-15',
       tipoCalculo: 'MANUAL',

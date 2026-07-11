@@ -37,11 +37,8 @@ test.describe('Trabajadores', () => {
     await page.waitForTimeout(2000)
 
     await page.reload()
-    await page.waitForLoadState('networkidle')
-    await page.waitForTimeout(500)
-
-    const bodyText = await page.locator('body').innerText()
-    expect(bodyText).toContain(workerName)
+    // No usamos networkidle porque /api/realtime (SSE) mantiene la conexión abierta.
+    await expect(page.locator('body')).toContainText(workerName)
   })
 
   test('crear con moto y capacidad', async ({ page }) => {
@@ -68,11 +65,8 @@ test.describe('Trabajadores', () => {
     await page.waitForTimeout(2000)
 
     await page.reload()
-    await page.waitForLoadState('networkidle')
-    await page.waitForTimeout(500)
-
-    const bodyText = await page.locator('body').innerText()
-    expect(bodyText).toContain(workerName)
+    // No usamos networkidle porque /api/realtime (SSE) mantiene la conexión abierta.
+    await expect(page.locator('body')).toContainText(workerName)
   })
 
   test('crear sellador', async ({ page }) => {
@@ -94,11 +88,8 @@ test.describe('Trabajadores', () => {
     await page.waitForTimeout(2000)
 
     await page.reload()
-    await page.waitForLoadState('networkidle')
-    await page.waitForTimeout(500)
-
-    const bodyText = await page.locator('body').innerText()
-    expect(bodyText).toContain(workerName)
+    // No usamos networkidle porque /api/realtime (SSE) mantiene la conexión abierta.
+    await expect(page.locator('body')).toContainText(workerName)
   })
 
   test('editar trabajador', async ({ page }) => {
@@ -110,7 +101,7 @@ test.describe('Trabajadores', () => {
       rol: 'REPARTIDOR',
       tipoPago: 'COMISION',
     })
-    expect(trabajador.id).toBeTruthy()
+    expect(trabajador.trabajador.id).toBeTruthy()
 
     await goto(page, '/trabajadores')
     await page.waitForTimeout(500)
@@ -131,11 +122,8 @@ test.describe('Trabajadores', () => {
       await page.waitForTimeout(2000)
 
       await page.reload()
-      await page.waitForLoadState('networkidle')
-      await page.waitForTimeout(500)
-
-      const bodyText = await page.locator('body').innerText()
-      expect(bodyText).toContain(newName)
+      // No usamos networkidle porque /api/realtime (SSE) mantiene la conexión abierta.
+      await expect(page.locator('body')).toContainText(newName)
     }
   })
 
@@ -148,10 +136,10 @@ test.describe('Trabajadores', () => {
       rol: 'REPARTIDOR',
       tipoPago: 'COMISION',
     })
-    expect(trabajador.id).toBeTruthy()
+    expect(trabajador.trabajador.id).toBeTruthy()
 
     // Delete via API directly to verify API works
-    const deleteRes = await apiDelete(page, `/api/trabajadores/${trabajador.id}`)
+    const deleteRes = await apiDelete(page, `/api/trabajadores/${trabajador.trabajador.id}`)
     expect(deleteRes.status()).toBe(200)
 
     await goto(page, '/trabajadores')

@@ -100,9 +100,6 @@ export async function POST(request: NextRequest) {
           select: {
             rol: true,
             tipoPago: true,
-            comPacaAgua: true,
-            comPacaHielo: true,
-            comBotellon: true,
             comRepartAgua: true,
             comRepartHielo: true,
             comRepartBotellon: true,
@@ -126,7 +123,10 @@ export async function POST(request: NextRequest) {
         let comBotellon = 0
         let totalComisiones = 0
 
-        if (isRepartidor && comisionesEnabled && trabajador.usaMoto) {
+        // Repartidor eventual: cualquier trabajador con moto y tipoPago
+        // COMISION/MIXTO cobra comision por entregas de embarque, sin
+        // depender de rol=REPARTIDOR.
+        if (trabajador.usaMoto && comisionesEnabled) {
           const embarques = await tx.embarque.findMany({
             where: {
               trabajadorId,
@@ -146,9 +146,9 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          comAgua = entregasAgua * Number(trabajador.comRepartAgua || trabajador.comPacaAgua || configMap.COM_REPARTIDOR || 200)
-          comHielo = entregasHielo * Number(trabajador.comRepartHielo || trabajador.comPacaHielo || configMap.COM_REPARTIDOR || 200)
-          comBotellon = entregasBotellon * Number(trabajador.comRepartBotellon || trabajador.comBotellon || 200)
+          comAgua = entregasAgua * Number(trabajador.comRepartAgua || configMap.COM_REPARTIDOR || 200)
+          comHielo = entregasHielo * Number(trabajador.comRepartHielo || configMap.COM_REPARTIDOR || 200)
+          comBotellon = entregasBotellon * Number(trabajador.comRepartBotellon || 200)
           totalComisiones = comAgua + comHielo + comBotellon
         }
 

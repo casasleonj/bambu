@@ -576,22 +576,45 @@ const TrabajadorBaseObject = z.object({
   telefono: z.string().max(20).optional(),
 })
 
+/**
+ * Normaliza los campos de comisión de un trabajador según su rol y uso de moto.
+ *
+ * Reglas:
+ * - REPARTIDOR nunca produce: comPaca* en 0.
+ * - ADMIN/CONTADOR o sin moto: fijo, sin comisiones de reparto (comRepart* en 0).
+ * - SELLADOR sin moto: no reparte (comRepart* en 0).
+ * - SELLADOR con moto: puede tener tanto comPaca* como comRepart*.
+ */
 export function normalizeTrabajador<T extends { usaMoto?: boolean | null; tipoPago?: string; rol?: string; comPacaAgua?: number; comPacaHielo?: number; comBotellon?: number; comRepartAgua?: number; comRepartHielo?: number; comRepartBotellon?: number; capacidadKg?: number }>(data: T): T {
   const isAdminOrContador = data.rol === 'ADMIN' || data.rol === 'CONTADOR'
+  const isRepartidor = data.rol === 'REPARTIDOR'
+  const isSellador = data.rol === 'SELLADOR'
   const noMoto = !data.usaMoto || isAdminOrContador
 
-  if (noMoto) {
-    return {
-      ...data,
-      tipoPago: 'FIJO',
-      capacidadKg: 0,
-      usaMoto: false,
-      comRepartAgua: 0,
-      comRepartHielo: 0,
-      comRepartBotellon: 0,
-    }
+  const base: T = { ...data }
+
+  if (isRepartidor) {
+    base.comPacaAgua = 0
+    base.comPacaHielo = 0
+    base.comBotellon = 0
   }
-  return data
+
+  if (isSellador && noMoto) {
+    base.comRepartAgua = 0
+    base.comRepartHielo = 0
+    base.comRepartBotellon = 0
+  }
+
+  if (noMoto) {
+    base.tipoPago = 'FIJO'
+    base.capacidadKg = 0
+    base.usaMoto = false
+    base.comRepartAgua = 0
+    base.comRepartHielo = 0
+    base.comRepartBotellon = 0
+  }
+
+  return base
 }
 
 export const TrabajadorCreateSchema = TrabajadorBaseObject.refine(

@@ -2,8 +2,10 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { formatCurrency } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
+import { useRealtimeListener } from '@/hooks/use-realtime-listener'
 import { rolLabels, tipoPagoLabels } from '../trabajadores-client/types'
 import DeudasTab from './deudas-tab'
 
@@ -31,11 +33,36 @@ interface TrabajadorDetail {
 }
 
 export default function TrabajadorDetailClient({
-  trabajador,
+  trabajador: initialTrabajador,
 }: {
   trabajador: TrabajadorDetail
 }) {
+  const router = useRouter()
+  const [trabajador, setTrabajador] = useState<TrabajadorDetail>(initialTrabajador)
   const [activeTab, setActiveTab] = useState<'info' | 'deudas'>('info')
+
+  async function fetchTrabajador() {
+    try {
+      const res = await fetch(`/api/trabajadores/${trabajador.id}`)
+      if (!res.ok) return
+      const data = await res.json()
+      if (data.trabajador) {
+        setTrabajador(data.trabajador)
+      }
+    } catch {
+      // Silencioso: no queremos toast spam en cada evento
+    }
+  }
+
+  useRealtimeListener(['trabajador.updated'], () => {
+    fetchTrabajador()
+  })
+
+  useRealtimeListener(['trabajador.deleted'], (event) => {
+    if (event.id === trabajador.id) {
+      router.push('/trabajadores')
+    }
+  })
 
   return (
     <div>
@@ -131,7 +158,7 @@ function InfoTab({ trabajador }: { trabajador: TrabajadorDetail }) {
       <div className="bg-white rounded-xl shadow-sm p-6">
         <h2 className="text-lg font-semibold text-gray-800 mb-4">Configuracion de Pago</h2>
         <div className="space-y-3">
-          {(trabajador.tipoPago === 'COMISION' || trabajador.tipoPago === 'MIXTO') && (
+          {trabajador.rol === 'SELLADOR' && (trabajador.tipoPago === 'COMISION' || trabajador.tipoPago === 'MIXTO') && (
             <>
               <div className="flex justify-between">
                 <span className="text-sm text-gray-500">Com. paca agua</span>

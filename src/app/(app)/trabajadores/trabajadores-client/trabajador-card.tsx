@@ -53,26 +53,9 @@ export function TrabajadorCard({
           <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">
             Configuración de pago
           </p>
-          {(trabajador.rol === 'SELLADOR' && (trabajador.tipoPago === 'COMISION' || trabajador.tipoPago === 'MIXTO')) && (
+          {trabajador.rol === 'SELLADOR' && (trabajador.tipoPago === 'COMISION' || trabajador.tipoPago === 'MIXTO') && (
             <>
               <p className="text-[10px] text-zinc-400 mt-1">Sellado</p>
-              <div className="flex items-center gap-2">
-                <span className="font-medium text-zinc-500 dark:text-zinc-500">Com. paca agua:</span>
-                <span>{formatCurrency(trabajador.comPacaAgua ?? 0)}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="font-medium text-zinc-500 dark:text-zinc-500">Com. paca hielo:</span>
-                <span>{formatCurrency(trabajador.comPacaHielo ?? 0)}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="font-medium text-zinc-500 dark:text-zinc-500">Com. botellón:</span>
-                <span>{formatCurrency(trabajador.comBotellon ?? 0)}</span>
-              </div>
-            </>
-          )}
-          {trabajador.rol === 'REPARTIDOR' && (trabajador.tipoPago === 'COMISION' || trabajador.tipoPago === 'MIXTO') && (
-            <>
-              <p className="text-[10px] text-zinc-400 mt-1">Producción</p>
               <div className="flex items-center gap-2">
                 <span className="font-medium text-zinc-500 dark:text-zinc-500">Com. paca agua:</span>
                 <span>{formatCurrency(trabajador.comPacaAgua ?? 0)}</span>

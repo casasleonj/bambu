@@ -21,38 +21,22 @@ export function TrabajadorFormModal({
   const [formData, setFormData] = useState<TrabajadorFormData>(initialData)
   const [formError, setFormError] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [tarifaDiferencia, setTarifaDiferencia] = useState(false)
 
   useEffect(() => {
     setFormData(initialData)
     setFormError('')
-    if (initialData.rol === 'REPARTIDOR' && initialData.usaMoto && isEdit) {
-      setTarifaDiferencia(
-        initialData.comRepartAgua !== initialData.comPacaAgua ||
-        initialData.comRepartHielo !== initialData.comPacaHielo ||
-        initialData.comRepartBotellon !== initialData.comBotellon
-      )
-    } else {
-      setTarifaDiferencia(false)
-    }
-  }, [initialData, open, isEdit])
+  }, [initialData, open])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setFormError('')
     setSubmitting(true)
     try {
-      const dataToSend = { ...formData }
-      if (formData.rol === 'REPARTIDOR' && formData.usaMoto && !tarifaDiferencia) {
-        dataToSend.comRepartAgua = formData.comPacaAgua
-        dataToSend.comRepartHielo = formData.comPacaHielo
-        dataToSend.comRepartBotellon = formData.comBotellon
-      }
       if (isEdit && editingId) {
         const res = await fetch(`/api/trabajadores/${editingId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(dataToSend),
+          body: JSON.stringify(formData),
         })
         if (res.ok) {
           onSaved()
@@ -65,7 +49,7 @@ export function TrabajadorFormModal({
         const res = await fetch('/api/trabajadores', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(dataToSend),
+          body: JSON.stringify(formData),
         })
         if (res.ok) {
           onSaved()
@@ -114,13 +98,35 @@ export function TrabajadorFormModal({
               value={formData.rol}
               onChange={(e) => {
                 const newRol = e.target.value
+                const prevRol = formData.rol
                 const isAdminOrContador = newRol === 'ADMIN' || newRol === 'CONTADOR'
-                setFormData({
-                  ...formData,
-                  rol: newRol,
-                  tipoPago: isAdminOrContador ? 'FIJO' : formData.tipoPago,
-                  usaMoto: isAdminOrContador ? false : formData.usaMoto,
-                  capacidadKg: isAdminOrContador ? 0 : formData.capacidadKg,
+                setFormData((prev) => {
+                  let next: TrabajadorFormData = {
+                    ...prev,
+                    rol: newRol,
+                    tipoPago: isAdminOrContador ? 'FIJO' : prev.tipoPago,
+                    usaMoto: isAdminOrContador ? false : prev.usaMoto,
+                    capacidadKg: isAdminOrContador ? 0 : prev.capacidadKg,
+                  }
+                  if (prevRol === 'SELLADOR' && newRol === 'REPARTIDOR') {
+                    next = {
+                      ...next,
+                      comRepartAgua: prev.comPacaAgua,
+                      comRepartHielo: prev.comPacaHielo,
+                      comRepartBotellon: prev.comBotellon,
+                      comPacaAgua: 0,
+                      comPacaHielo: 0,
+                      comBotellon: 0,
+                    }
+                  } else if (prevRol === 'REPARTIDOR' && newRol === 'SELLADOR') {
+                    next = {
+                      ...next,
+                      comPacaAgua: prev.comPacaAgua === 0 ? prev.comRepartAgua : prev.comPacaAgua,
+                      comPacaHielo: prev.comPacaHielo === 0 ? prev.comRepartHielo : prev.comPacaHielo,
+                      comBotellon: prev.comBotellon === 0 ? prev.comRepartBotellon : prev.comBotellon,
+                    }
+                  }
+                  return next
                 })
               }}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg"
@@ -152,6 +158,23 @@ export function TrabajadorFormModal({
             )}
           </div>
         </div>
+
+        {isEdit && initialData.rol !== formData.rol && (
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm">
+            {(() => {
+              if (initialData.rol === 'SELLADOR' && formData.rol === 'REPARTIDOR') {
+                return <>Al cambiar a <strong>Repartidor</strong>, las comisiones de producción se pasaron a comisiones de reparto.</>
+              }
+              if (initialData.rol === 'REPARTIDOR' && formData.rol === 'SELLADOR') {
+                return <>Al cambiar a <strong>Sellador</strong>, las comisiones de reparto se pasaron a comisiones de producción.</>
+              }
+              if (formData.rol === 'ADMIN' || formData.rol === 'CONTADOR') {
+                return <>Al cambiar a <strong>{rolLabels[formData.rol]}</strong>, el trabajador pasará a salario fijo y sin comisiones.</>
+              }
+              return <>Al cambiar el rol, las comisiones se ajustarán automáticamente.</>
+            })()}
+          </div>
+        )}
 
         <div className="flex items-center gap-2">
           <input
@@ -210,11 +233,9 @@ export function TrabajadorFormModal({
           </div>
         )}
 
-        {(formData.rol === 'SELLADOR' || formData.rol === 'REPARTIDOR') && (formData.tipoPago === 'COMISION' || formData.tipoPago === 'MIXTO') && (
+        {formData.rol === 'SELLADOR' && (formData.tipoPago === 'COMISION' || formData.tipoPago === 'MIXTO') && (
           <div className="border rounded-lg p-3 bg-gray-50 space-y-3">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-              {formData.rol === 'REPARTIDOR' ? 'Comisiones' : 'Comisiones producción'}
-            </p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Comisiones producción</p>
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <label htmlFor="trabajador-comPacaAgua" className="block text-sm font-medium mb-1">Com. paca agua</label>
@@ -250,61 +271,10 @@ export function TrabajadorFormModal({
                 />
               </div>
             </div>
-
-            {formData.rol === 'REPARTIDOR' && formData.usaMoto && (
-              <div className="space-y-3 pt-2 border-t border-gray-200">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={tarifaDiferencia}
-                    onChange={(e) => setTarifaDiferencia(e.target.checked)}
-                    className="h-4 w-4 text-blue-600 border-gray-300 rounded"
-                  />
-                  <span className="text-xs font-medium text-gray-600">Tarifa diferencia (editar tarifa de reparto separadamente)</span>
-                </label>
-                {tarifaDiferencia && (
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <label htmlFor="trabajador-comRepartAgua" className="block text-sm font-medium mb-1">Com. reparto agua</label>
-                      <input
-                        id="trabajador-comRepartAgua"
-                        type="number"
-                        min={0}
-                        value={formData.comRepartAgua}
-                        onChange={(e) => setFormData({ ...formData, comRepartAgua: parseFloat(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="trabajador-comRepartHielo" className="block text-sm font-medium mb-1">Com. reparto hielo</label>
-                      <input
-                        id="trabajador-comRepartHielo"
-                        type="number"
-                        min={0}
-                        value={formData.comRepartHielo}
-                        onChange={(e) => setFormData({ ...formData, comRepartHielo: parseFloat(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="trabajador-comRepartBotellon" className="block text-sm font-medium mb-1">Com. reparto botellón</label>
-                      <input
-                        id="trabajador-comRepartBotellon"
-                        type="number"
-                        min={0}
-                        value={formData.comRepartBotellon}
-                        onChange={(e) => setFormData({ ...formData, comRepartBotellon: parseFloat(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         )}
 
-        {formData.rol === 'SELLADOR' && formData.usaMoto && (formData.tipoPago === 'COMISION' || formData.tipoPago === 'MIXTO') && (
+        {(formData.rol === 'REPARTIDOR' || formData.rol === 'SELLADOR') && formData.usaMoto && (formData.tipoPago === 'COMISION' || formData.tipoPago === 'MIXTO') && (
           <div className="border rounded-lg p-3 bg-blue-50 space-y-3">
             <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Comisiones reparto</p>
             <div className="grid grid-cols-3 gap-4">
