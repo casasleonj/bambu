@@ -6,6 +6,7 @@ import { TrabajadorCreateSchema, normalizeTrabajador } from '@/lib/validators'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
+import { publishRealtimeEvent } from '@/lib/realtime'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -76,6 +77,8 @@ export async function POST(request: NextRequest) {
       datos: { nombre: parsed.data.nombre, rol: parsed.data.rol },
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     }).catch(() => {})
+
+    publishRealtimeEvent('trabajador.created', trabajador.id).catch(() => {})
 
     return apiSuccess({ trabajador }, 201)
   } catch (error) {

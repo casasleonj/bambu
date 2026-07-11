@@ -2,8 +2,10 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { formatCurrency } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
+import { useRealtimeListener } from '@/hooks/use-realtime-listener'
 import { rolLabels, tipoPagoLabels } from '../trabajadores-client/types'
 import DeudasTab from './deudas-tab'
 
@@ -31,11 +33,36 @@ interface TrabajadorDetail {
 }
 
 export default function TrabajadorDetailClient({
-  trabajador,
+  trabajador: initialTrabajador,
 }: {
   trabajador: TrabajadorDetail
 }) {
+  const router = useRouter()
+  const [trabajador, setTrabajador] = useState<TrabajadorDetail>(initialTrabajador)
   const [activeTab, setActiveTab] = useState<'info' | 'deudas'>('info')
+
+  async function fetchTrabajador() {
+    try {
+      const res = await fetch(`/api/trabajadores/${trabajador.id}`)
+      if (!res.ok) return
+      const data = await res.json()
+      if (data.trabajador) {
+        setTrabajador(data.trabajador)
+      }
+    } catch {
+      // Silencioso: no queremos toast spam en cada evento
+    }
+  }
+
+  useRealtimeListener(['trabajador.updated'], () => {
+    fetchTrabajador()
+  })
+
+  useRealtimeListener(['trabajador.deleted'], (event) => {
+    if (event.id === trabajador.id) {
+      router.push('/trabajadores')
+    }
+  })
 
   return (
     <div>

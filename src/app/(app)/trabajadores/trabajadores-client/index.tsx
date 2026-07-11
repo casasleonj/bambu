@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import { useConfirm } from '@/components/confirm-modal'
 import { EmptyState } from '@/components/empty-state'
+import { useRealtimeListener } from '@/hooks/use-realtime-listener'
 import type { Trabajador, TrabajadorFormData, TrabajadoresClientProps } from './types'
 import { TrabajadorCard } from './trabajador-card'
 import { TrabajadorFormModal } from './trabajador-form-modal'
@@ -46,6 +47,10 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
       toast.error('Error cargando trabajadores')
     }
   }
+
+  useRealtimeListener(['trabajador.created', 'trabajador.updated', 'trabajador.deleted'], () => {
+    fetchTrabajadores()
+  })
 
   const trabajadoresFiltrados = trabajadores.filter((t) => {
     const term = search.toLowerCase()

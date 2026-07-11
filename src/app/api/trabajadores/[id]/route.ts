@@ -5,6 +5,35 @@ import { requireAuth, requireRole } from '@/lib/auth-check'
 import { TrabajadorUpdateSchema, normalizeTrabajador } from '@/lib/validators'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
+import { publishRealtimeEvent } from '@/lib/realtime'
+import { logger } from '@/lib/logger'
+
+export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const authResult = await requireAuth()
+  if (authResult instanceof Response) return authResult
+  const { id } = await params
+  try {
+    const trabajador = await prisma.trabajador.findUnique({
+      where: { id },
+      include: {
+        _count: {
+          select: {
+            embarques: true,
+            nominas: true,
+            deudas: true,
+          },
+        },
+      },
+    })
+    if (!trabajador) {
+      return apiError('Trabajador no encontrado', 404)
+    }
+    return apiSuccess({ trabajador })
+  } catch (error) {
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching trabajador:')
+    return apiError('Error cargando trabajador')
+  }
+}
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
@@ -37,6 +66,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       datos: { nombre: trabajador.nombre, rol: trabajador.rol },
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     }).catch(() => {})
+
+    publishRealtimeEvent('trabajador.updated', trabajador.id).catch(() => {})
 
     return apiSuccess({ trabajador })
   } catch (error) {
@@ -94,6 +125,8 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
       datos: { nombre: result.nombre, rol: result.rol },
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     }).catch(() => {})
+
+    publishRealtimeEvent('trabajador.deleted', result.id).catch(() => {})
 
     return apiSuccess({})
   } catch (error) {
