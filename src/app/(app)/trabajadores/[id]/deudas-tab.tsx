@@ -12,6 +12,8 @@ interface Deuda {
   tipo: string
   montoOriginal: number
   montoPendiente: number
+  plazoNominas: number | null
+  porcentajePorNomina: number | null
   descripcion: string
   fecha: string
   embarqueId: string | null
@@ -22,6 +24,7 @@ interface Deuda {
 const tipoLabels: Record<string, string> = {
   PRESTAMO: 'Prestamo',
   DEFICIT_EFECTIVO: 'Deficit Efectivo',
+  ADELANTO_NOMINA: 'Adelanto de Nomina',
   OTRO: 'Otro',
 }
 
@@ -174,6 +177,22 @@ function DeudaCard({
           <p className="text-xs text-gray-400">de {formatCurrency(deuda.montoOriginal)}</p>
         </div>
       </div>
+
+      {/* Plan de pago */}
+      {deuda.tipo !== 'ADELANTO_NOMINA' && (deuda.plazoNominas || deuda.porcentajePorNomina) && (
+        <div className="flex flex-wrap gap-2 mb-3 text-xs text-gray-600">
+          {deuda.plazoNominas && (
+            <span className="bg-gray-100 px-2 py-0.5 rounded">
+              {deuda.plazoNominas} nóminas
+            </span>
+          )}
+          {deuda.porcentajePorNomina && (
+            <span className="bg-gray-100 px-2 py-0.5 rounded">
+              máx {deuda.porcentajePorNomina}% por nómina
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Progress bar */}
       {deuda.montoOriginal > 0 && (

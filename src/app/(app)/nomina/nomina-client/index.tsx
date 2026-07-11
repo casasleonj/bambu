@@ -76,6 +76,7 @@ export default function NominaPage() {
     comBotellon: number
     comisionTotal: number
     descuentos?: number
+    descuentoDeudas: number
     salarioFijo: number
   } | null>(null)
   const [selectedNomina, setSelectedNomina] = useState<Nomina | null>(null)
@@ -227,6 +228,7 @@ export default function NominaPage() {
       comHielo: Number(nom.comEntregasHielo),
       comBotellon: Number(nom.comEntregasBotellon ?? 0),
       comisionTotal: Number(nom.totalComisiones),
+      descuentoDeudas: Number(nom.descuentoDeudas ?? 0),
       salarioFijo: Number(nom.salario),
     })
     setSelectedNomina(nom)
@@ -350,6 +352,9 @@ export default function NominaPage() {
                 <div className="text-muted-foreground">Salario fijo</div><div className="font-medium text-right">${formatCOP(detalles.salarioFijo)}</div>
                 {detalles.descuentos !== undefined && detalles.descuentos > 0 && (
                   <><div className="text-muted-foreground">Descuentos</div><div className="font-medium text-right text-red-600">-${formatCOP(detalles.descuentos)}</div></>
+                )}
+                {detalles.descuentoDeudas > 0 && (
+                  <><div className="text-muted-foreground">Descuento deudas</div><div className="font-medium text-right text-red-600">-${formatCOP(detalles.descuentoDeudas)}</div></>
                 )}
               </div>
             </div>

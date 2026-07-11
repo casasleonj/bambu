@@ -11,6 +11,7 @@ export interface Nomina {
   comEntregasBotellon: number
   totalComisiones: number
   salario: number
+  descuentoDeudas: number
   total: number
   estado: string
   trabajador: {
