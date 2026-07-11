@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
       return apiError(formatZodError(parsed.error), 400)
     }
 
-    const { trabajadorId, tipo, monto, descripcion, embarqueId } = parsed.data
+    const { trabajadorId, tipo, monto, descripcion, embarqueId, plazoNominas, porcentajePorNomina } = parsed.data
 
     const userId = (authResult as { user?: { id?: string } })?.user?.id
 
@@ -74,6 +74,8 @@ export async function POST(request: NextRequest) {
           tipo,
           montoOriginal: monto,
           montoPendiente: monto,
+          plazoNominas: plazoNominas ?? null,
+          porcentajePorNomina: porcentajePorNomina ?? null,
           descripcion,
           embarqueId: embarqueId || null,
         },
