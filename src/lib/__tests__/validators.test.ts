@@ -9,6 +9,7 @@ import {
   EmbarqueProductoSchema,
   CerrarEmbarqueSchema,
   GastoEmbarqueSchema,
+  normalizeTrabajador,
 } from '@/lib/validators'
 
 describe('PedidoCreateSchema', () => {
@@ -579,5 +580,112 @@ describe('CerrarEmbarqueSchema', () => {
       expect(pe?.cPacaHieloEnt).toBe(0)
       expect(pe?.cBotellonFabEnt).toBe(0)
     }
+  })
+})
+
+describe('normalizeTrabajador', () => {
+  it('zero-ifies comPaca* for REPARTIDOR with moto', () => {
+    const result = normalizeTrabajador({
+      rol: 'REPARTIDOR',
+      tipoPago: 'COMISION',
+      usaMoto: true,
+      capacidadKg: 500,
+      comPacaAgua: 200,
+      comPacaHielo: 200,
+      comBotellon: 200,
+      comRepartAgua: 100,
+      comRepartHielo: 100,
+      comRepartBotellon: 100,
+    })
+    expect(result.comPacaAgua).toBe(0)
+    expect(result.comPacaHielo).toBe(0)
+    expect(result.comBotellon).toBe(0)
+    expect(result.comRepartAgua).toBe(100)
+    expect(result.comRepartHielo).toBe(100)
+    expect(result.comRepartBotellon).toBe(100)
+  })
+
+  it('zero-ifies comPaca* and comRepart* for REPARTIDOR without moto', () => {
+    const result = normalizeTrabajador({
+      rol: 'REPARTIDOR',
+      tipoPago: 'COMISION',
+      usaMoto: false,
+      capacidadKg: 500,
+      comPacaAgua: 200,
+      comPacaHielo: 200,
+      comBotellon: 200,
+      comRepartAgua: 100,
+      comRepartHielo: 100,
+      comRepartBotellon: 100,
+    })
+    expect(result.comPacaAgua).toBe(0)
+    expect(result.comPacaHielo).toBe(0)
+    expect(result.comBotellon).toBe(0)
+    expect(result.comRepartAgua).toBe(0)
+    expect(result.comRepartHielo).toBe(0)
+    expect(result.comRepartBotellon).toBe(0)
+    expect(result.tipoPago).toBe('FIJO')
+    expect(result.usaMoto).toBe(false)
+    expect(result.capacidadKg).toBe(0)
+  })
+
+  it('preserves comPaca* for SELLADOR with moto', () => {
+    const result = normalizeTrabajador({
+      rol: 'SELLADOR',
+      tipoPago: 'COMISION',
+      usaMoto: true,
+      capacidadKg: 500,
+      comPacaAgua: 200,
+      comPacaHielo: 200,
+      comBotellon: 200,
+      comRepartAgua: 100,
+      comRepartHielo: 100,
+      comRepartBotellon: 100,
+    })
+    expect(result.comPacaAgua).toBe(200)
+    expect(result.comPacaHielo).toBe(200)
+    expect(result.comBotellon).toBe(200)
+    expect(result.comRepartAgua).toBe(100)
+    expect(result.comRepartHielo).toBe(100)
+    expect(result.comRepartBotellon).toBe(100)
+  })
+
+  it('zero-ifies comRepart* for SELLADOR without moto', () => {
+    const result = normalizeTrabajador({
+      rol: 'SELLADOR',
+      tipoPago: 'COMISION',
+      usaMoto: false,
+      capacidadKg: 500,
+      comPacaAgua: 200,
+      comPacaHielo: 200,
+      comBotellon: 200,
+      comRepartAgua: 100,
+      comRepartHielo: 100,
+      comRepartBotellon: 100,
+    })
+    expect(result.comPacaAgua).toBe(200)
+    expect(result.comPacaHielo).toBe(200)
+    expect(result.comBotellon).toBe(200)
+    expect(result.comRepartAgua).toBe(0)
+    expect(result.comRepartHielo).toBe(0)
+    expect(result.comRepartBotellon).toBe(0)
+    expect(result.tipoPago).toBe('FIJO')
+    expect(result.usaMoto).toBe(false)
+    expect(result.capacidadKg).toBe(0)
+  })
+
+  it('zero-ifies comRepart* and forces FIJO for ADMIN with moto', () => {
+    const result = normalizeTrabajador({
+      rol: 'ADMIN',
+      tipoPago: 'COMISION',
+      usaMoto: true,
+      capacidadKg: 500,
+      comPacaAgua: 200,
+      comRepartAgua: 100,
+    })
+    expect(result.comRepartAgua).toBe(0)
+    expect(result.tipoPago).toBe('FIJO')
+    expect(result.usaMoto).toBe(false)
+    expect(result.capacidadKg).toBe(0)
   })
 })
