@@ -131,6 +131,22 @@ export async function PUT(
           data: { aplicadoEnNomina: false },
         })
 
+        // Revertir deducciones de deudas de esta nomina
+        const deduccionesDeuda = await tx.deduccionDeuda.findMany({
+          where: { nominaId: id },
+        })
+        for (const dd of deduccionesDeuda) {
+          await tx.deudaTrabajador.update({
+            where: { id: dd.deudaId },
+            data: { montoPendiente: { increment: dd.monto } },
+          })
+        }
+        if (deduccionesDeuda.length > 0) {
+          await tx.deduccionDeuda.deleteMany({
+            where: { nominaId: id },
+          })
+        }
+
         return updated
       })
 

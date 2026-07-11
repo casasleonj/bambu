@@ -88,6 +88,12 @@ export async function PATCH(
     if (parsed.data.descripcion !== undefined) {
       updateData.descripcion = parsed.data.descripcion
     }
+    if (parsed.data.plazoNominas !== undefined) {
+      updateData.plazoNominas = parsed.data.plazoNominas
+    }
+    if (parsed.data.porcentajePorNomina !== undefined) {
+      updateData.porcentajePorNomina = parsed.data.porcentajePorNomina
+    }
 
     // Si no hay campos para actualizar, retornar la deuda actual
     if (Object.keys(updateData).length === 0) {

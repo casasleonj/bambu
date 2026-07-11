@@ -692,7 +692,7 @@ export const UserUpdateSchema = z.object({
 // DEUDAS TRABAJADOR
 // ====================
 
-export const DeudaTipoSchema = z.enum(['PRESTAMO', 'DEFICIT_EFECTIVO', 'OTRO'])
+export const DeudaTipoSchema = z.enum(['PRESTAMO', 'DEFICIT_EFECTIVO', 'ADELANTO_NOMINA', 'OTRO'])
 
 export const DeudaCreateSchema = z.object({
   trabajadorId: z.string().min(1),
@@ -700,11 +700,26 @@ export const DeudaCreateSchema = z.object({
   monto: z.coerce.number().positive('El monto debe ser mayor a 0'),
   descripcion: z.string().min(1, 'La descripcion es obligatoria').max(500),
   embarqueId: z.string().optional(),
-})
+  plazoNominas: z.coerce.number().int().min(1).optional(),
+  porcentajePorNomina: z.coerce.number().int().min(1).max(100).optional(),
+}).refine(
+  (data) => {
+    if (data.tipo === 'ADELANTO_NOMINA') {
+      return data.plazoNominas === undefined && data.porcentajePorNomina === undefined
+    }
+    return true
+  },
+  {
+    message: 'ADELANTO_NOMINA no usa plazo ni porcentaje; se descuenta 100% en la siguiente nomina',
+    path: ['tipo'],
+  },
+)
 
 export const DeudaUpdateSchema = z.object({
   montoPendiente: z.coerce.number().min(0).optional(),
   descripcion: z.string().min(1).max(500).optional(),
+  plazoNominas: z.coerce.number().int().min(1).optional(),
+  porcentajePorNomina: z.coerce.number().int().min(1).max(100).optional(),
 })
 
 export const AbonoDeudaSchema = z.object({

@@ -6,8 +6,13 @@ import { toast } from 'sonner'
 const TIPOS = [
   { value: 'PRESTAMO', label: 'Prestamo' },
   { value: 'DEFICIT_EFECTIVO', label: 'Deficit de Efectivo' },
+  { value: 'ADELANTO_NOMINA', label: 'Adelanto de Nomina' },
   { value: 'OTRO', label: 'Otro' },
 ]
+
+function requierePlanPago(tipo: string) {
+  return tipo !== 'ADELANTO_NOMINA'
+}
 
 export default function NuevaDeudaDialog({
   open,
@@ -23,6 +28,8 @@ export default function NuevaDeudaDialog({
   const [tipo, setTipo] = useState('PRESTAMO')
   const [monto, setMonto] = useState('')
   const [descripcion, setDescripcion] = useState('')
+  const [plazoNominas, setPlazoNominas] = useState('')
+  const [porcentajePorNomina, setPorcentajePorNomina] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
@@ -38,15 +45,21 @@ export default function NuevaDeudaDialog({
 
     setSubmitting(true)
     try {
+      const payload: Record<string, unknown> = {
+        trabajadorId,
+        tipo,
+        monto: parseFloat(monto),
+        descripcion: descripcion.trim(),
+      }
+      if (requierePlanPago(tipo)) {
+        if (plazoNominas) payload.plazoNominas = parseInt(plazoNominas, 10)
+        if (porcentajePorNomina) payload.porcentajePorNomina = parseInt(porcentajePorNomina, 10)
+      }
+
       const res = await fetch('/api/deudas', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          trabajadorId,
-          tipo,
-          monto: parseFloat(monto),
-          descripcion: descripcion.trim(),
-        }),
+        body: JSON.stringify(payload),
       })
 
       if (!res.ok) {
@@ -57,6 +70,8 @@ export default function NuevaDeudaDialog({
       toast.success('Deuda creada exitosamente')
       setMonto('')
       setDescripcion('')
+      setPlazoNominas('')
+      setPorcentajePorNomina('')
       onCreated()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error de conexion')
@@ -114,6 +129,46 @@ export default function NuevaDeudaDialog({
               required
             />
           </div>
+
+          {requierePlanPago(tipo) && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Plazo (nominas)
+                </label>
+                <input
+                  type="number"
+                  value={plazoNominas}
+                  onChange={e => setPlazoNominas(e.target.value)}
+                  placeholder="Ej: 3"
+                  min="1"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                />
+                <p className="text-xs text-gray-500 mt-1">Opcional</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Tope % por nomina
+                </label>
+                <input
+                  type="number"
+                  value={porcentajePorNomina}
+                  onChange={e => setPorcentajePorNomina(e.target.value)}
+                  placeholder="Ej: 20"
+                  min="1"
+                  max="100"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                />
+                <p className="text-xs text-gray-500 mt-1">Opcional</p>
+              </div>
+            </div>
+          )}
+
+          {tipo === 'ADELANTO_NOMINA' && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
+              Se descontará <strong>100%</strong> en la siguiente nómina calculada.
+            </div>
+          )}
 
           <div className="flex gap-3 pt-2">
             <button

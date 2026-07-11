@@ -1,7 +1,7 @@
 'use client'
 
 import { generateUUID } from '@/lib/uuid'
-import React, { useState, useMemo } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { formatCurrency } from '@/lib/utils'
 import { toast } from 'sonner'
 import { filtrarPorPeriodo, PERIODOS, type PeriodoFiltro } from './date-utils'
@@ -45,6 +45,18 @@ export function FiadosTable({ pedidos, clientes, limiteGlobal, onPedidosChange, 
   const [montoPago, setMontoPago] = useState('')
   const [metodoPago, setMetodoPago] = useState('EFECTIVO')
   const [submitting, setSubmitting] = useState(false)
+  const [trabajadores, setTrabajadores] = useState<Array<{ id: string; nombre: string; rol: string }>>([])
+  const [convirtiendoClienteId, setConvirtiendoClienteId] = useState<string | null>(null)
+  const [trabajadorDeudaId, setTrabajadorDeudaId] = useState('')
+  const [montoDeuda, setMontoDeuda] = useState('')
+  const [descripcionDeuda, setDescripcionDeuda] = useState('')
+
+  useEffect(() => {
+    fetch('/api/trabajadores')
+      .then(r => r.ok ? r.json() : { trabajadores: [] })
+      .then(data => setTrabajadores(data.trabajadores || data.data || []))
+      .catch(() => setTrabajadores([]))
+  }, [])
 
   // Pedidos filtrados por período local (independiente de URL)
   const pedidosFiltrados = useMemo(() => filtrarPorPeriodo(pedidos, periodo), [pedidos, periodo])
@@ -107,6 +119,53 @@ export function FiadosTable({ pedidos, clientes, limiteGlobal, onPedidosChange, 
       (diasFiado === '30+' && row.diasFiado > 30)
     return matchSearch && matchMin && matchMax && matchDias
   })
+
+  async function handleConvertirDeuda(row: FiadoRow) {
+    if (!trabajadorDeudaId || !montoDeuda || Number(montoDeuda) <= 0) {
+      toast.error('Selecciona un trabajador y un monto válido')
+      return
+    }
+    setSubmitting(true)
+    try {
+      const result = await fetchResilient<{ deuda?: { id: string } }>(
+        '/api/deudas',
+        {
+          method: 'POST',
+          body: {
+            trabajadorId: trabajadorDeudaId,
+            tipo: 'FIADO',
+            monto: Number(montoDeuda),
+            descripcion: descripcionDeuda || `Fiado convertido: ${row.nombreCli}${row.nombreNegocioCli ? ` - ${row.nombreNegocioCli}` : ''}`,
+            offlineId: generateUUID(),
+          },
+          localEndpoint: 'deudas',
+        }
+      )
+
+      if (result.status === 'offline') {
+        toast.info('Sin conexión. Deuda guardada, se sincronizará al recuperar la red.')
+        setConvirtiendoClienteId(null)
+        setTrabajadorDeudaId('')
+        setMontoDeuda('')
+        setDescripcionDeuda('')
+        return
+      }
+
+      if (result.status === 'error') {
+        toast.error(result.error || 'Error creando deuda')
+        return
+      }
+
+      toast.success('Deuda de trabajador creada')
+      setConvirtiendoClienteId(null)
+      setTrabajadorDeudaId('')
+      setMontoDeuda('')
+      setDescripcionDeuda('')
+      onPedidosChange?.()
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   async function handlePagar(clienteId: string) {
     if (!montoPago || Number(montoPago) <= 0) {
@@ -360,6 +419,19 @@ export function FiadosTable({ pedidos, clientes, limiteGlobal, onPedidosChange, 
                         >
                           Pagar
                         </button>
+                        {(userRole === 'ADMIN' || userRole === 'ASISTENTE') && (
+                          <button
+                            onClick={() => {
+                              setConvirtiendoClienteId(row.clienteId)
+                              setTrabajadorDeudaId('')
+                              setMontoDeuda(String(row.deudaTotal))
+                              setDescripcionDeuda(`Fiado convertido: ${row.nombreCli}${row.nombreNegocioCli ? ` - ${row.nombreNegocioCli}` : ''}`)
+                            }}
+                            className="text-sm bg-amber-600 text-white hover:bg-amber-700 px-3 py-1.5 rounded-lg transition"
+                          >
+                            Convertir
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -380,6 +452,63 @@ export function FiadosTable({ pedidos, clientes, limiteGlobal, onPedidosChange, 
                             </div>
                           ))}
                         </div>
+                      </td>
+                    </tr>
+                  )}
+                  {convirtiendoClienteId === row.clienteId && (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-4 bg-amber-50 border-t border-amber-200">
+                        <div className="flex flex-col sm:flex-row gap-3 items-end">
+                          <div className="flex-1">
+                            <label className="text-xs font-medium text-gray-600 block mb-1">Trabajador responsable</label>
+                            <select
+                              value={trabajadorDeudaId}
+                              onChange={(e) => setTrabajadorDeudaId(e.target.value)}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                            >
+                              <option value="">Seleccionar...</option>
+                              {trabajadores.map((t) => (
+                                <option key={t.id} value={t.id}>{t.nombre} - {t.rol}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-xs font-medium text-gray-600 block mb-1">Monto</label>
+                            <input
+                              type="number"
+                              value={montoDeuda}
+                              onChange={(e) => setMontoDeuda(e.target.value)}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                            />
+                          </div>
+                          <div className="flex-[2]">
+                            <label className="text-xs font-medium text-gray-600 block mb-1">Descripción</label>
+                            <input
+                              type="text"
+                              value={descripcionDeuda}
+                              onChange={(e) => setDescripcionDeuda(e.target.value)}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                            />
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setConvirtiendoClienteId(null)}
+                              className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              onClick={() => handleConvertirDeuda(row)}
+                              disabled={submitting}
+                              className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm hover:bg-amber-700 disabled:opacity-50"
+                            >
+                              {submitting ? 'Procesando...' : 'Crear deuda'}
+                            </button>
+                          </div>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-2">
+                          Se creará una deuda de trabajador tipo FIADO por el monto indicado. Se descontará de nómina según el plan configurado.
+                        </p>
                       </td>
                     </tr>
                   )}
@@ -486,6 +615,19 @@ export function FiadosTable({ pedidos, clientes, limiteGlobal, onPedidosChange, 
                 >
                   Pagar
                 </button>
+                {(userRole === 'ADMIN' || userRole === 'ASISTENTE') && (
+                  <button
+                    onClick={() => {
+                      setConvirtiendoClienteId(row.clienteId)
+                      setTrabajadorDeudaId('')
+                      setMontoDeuda(String(row.deudaTotal))
+                      setDescripcionDeuda(`Fiado convertido: ${row.nombreCli}${row.nombreNegocioCli ? ` - ${row.nombreNegocioCli}` : ''}`)
+                    }}
+                    className="flex-1 text-sm bg-amber-600 text-white py-2 rounded-lg"
+                  >
+                    Convertir
+                  </button>
+                )}
               </div>
               {expandedCliente === row.clienteId && (
                 <div className="mt-3 space-y-2 bg-gray-50 p-3 rounded-lg">
@@ -495,6 +637,49 @@ export function FiadosTable({ pedidos, clientes, limiteGlobal, onPedidosChange, 
                       <span className="font-semibold text-red-600"><MoneyDisplay value={Number(p.saldo)} userRole={userRole} /></span>
                     </div>
                   ))}
+                </div>
+              )}
+              {convirtiendoClienteId === row.clienteId && (
+                <div className="mt-3 space-y-2 bg-amber-50 p-3 rounded-lg border border-amber-200">
+                  <select
+                    value={trabajadorDeudaId}
+                    onChange={(e) => setTrabajadorDeudaId(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  >
+                    <option value="">Seleccionar trabajador...</option>
+                    {trabajadores.map((t) => (
+                      <option key={t.id} value={t.id}>{t.nombre} - {t.rol}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    value={montoDeuda}
+                    onChange={(e) => setMontoDeuda(e.target.value)}
+                    placeholder="Monto de deuda"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  />
+                  <input
+                    type="text"
+                    value={descripcionDeuda}
+                    onChange={(e) => setDescripcionDeuda(e.target.value)}
+                    placeholder="Descripción"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setConvirtiendoClienteId(null)}
+                      className="flex-1 py-2 border rounded-lg text-sm"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={() => handleConvertirDeuda(row)}
+                      disabled={submitting}
+                      className="flex-1 py-2 bg-amber-600 text-white rounded-lg text-sm disabled:opacity-50"
+                    >
+                      {submitting ? '...' : 'Crear deuda'}
+                    </button>
+                  </div>
                 </div>
               )}
               {pagandoClienteId === row.clienteId && (

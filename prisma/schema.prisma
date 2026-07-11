@@ -284,7 +284,9 @@ model Cliente {
   // FASE 3 CONTRACT: contactos legacy eliminada. Ahora es relación.
   contactos ContactoCliente[]
 
-  nombreNegocio String?
+  // LEGACY negocio fields — migración a Negocio en curso; no remover
+  // del schema hasta que todo el código deje de referenciarlos.
+  nombreNegocio     String?
   tipoNegocio       String?
   fuente            String?
   horaApertura      String?
@@ -1505,9 +1507,13 @@ model DeudaTrabajador {
   trabajadorId String
   trabajador   Trabajador @relation(fields: [trabajadorId], references: [id])
 
-  tipo           String // PRESTAMO, DEFICIT_EFECTIVO, OTRO
+  tipo           String // PRESTAMO, DEFICIT_EFECTIVO, ADELANTO_NOMINA, OTRO
   montoOriginal  Decimal @db.Decimal(10, 2)
   montoPendiente Decimal @db.Decimal(10, 2)
+
+  // Plan de pago via nomina
+  plazoNominas        Int?    // cuantas nominas se reparte (null = hasta pagar)
+  porcentajePorNomina Int?    // tope % de la nomina a descontar por periodo (null = sin tope)
 
   embarqueId  String?
   descripcion String   @db.Text
