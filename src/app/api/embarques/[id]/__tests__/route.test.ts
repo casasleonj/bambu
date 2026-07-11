@@ -33,9 +33,9 @@ describe('F-N12: TODOS los checks pre-tx están DENTRO del lock EMBARQUE', () =>
     expect(dedupCheck).toBeLessThan(lockClose)
   })
 
-  it('FIX: el check de estado (ABIERTO_ONLY_FIELDS) está dentro del lock', () => {
+  it('FIX: el check de estado (CERRADO/CANCELADO inmutable + EN_RUTA restricciones) está dentro del lock', () => {
     const lockOpen = source.indexOf("withAdvisoryLock('EMBARQUE'")
-    const stateCheck = source.indexOf('ABIERTO_ONLY_FIELDS.filter')
+    const stateCheck = source.indexOf("currentEmbarque.estado === 'CERRADO' || currentEmbarque.estado === 'CANCELADO'")
     const lockClose = source.lastIndexOf('})')
 
     expect(stateCheck).toBeGreaterThan(lockOpen)
@@ -140,7 +140,7 @@ describe('F-N12: los errores thrown se mapean a HTTP responses (en PUT)', () => 
     expect(putCatch).toMatch(/STOCK_EXCEDIDO/)
   })
 
-  it('FIX: FORBIDDEN_FIELDS → 400 con estado y campos', () => {
+  it('FIX: FORBIDDEN_FIELDS / FORBIDDEN_FIELDS_EN_RUTA → 400 con estado y campos', () => {
     expect(putCatch).toMatch(/FORBIDDEN_FIELDS/)
   })
 })

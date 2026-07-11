@@ -46,7 +46,7 @@ export default function CerrarEmbarqueClient() {
     async function fetchData() {
       try {
         const [embarqueRes, clientesRes, embarquesRes, profileRes] = await Promise.all([
-          fetch(`/api/embarques/${embarqueId}`, { credentials: 'include' }),
+          fetch(`/api/embarques/${embarqueId}?full=true`, { credentials: 'include' }),
           fetch('/api/clientes?all=true', { credentials: 'include' }),
           fetch('/api/embarques', { credentials: 'include' }),
           fetch('/api/auth/profile', { credentials: 'include' }),

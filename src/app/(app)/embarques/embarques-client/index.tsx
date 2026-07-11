@@ -9,10 +9,9 @@ import { SkeletonPage } from '@/components/skeleton'
 import { Tooltip, InfoBanner } from '@/components/tooltip'
 import { DateRangeFilter } from '@/components/date-range-filter'
 import { Modal } from '@/components/modal'
-import type { Embarque, Trabajador, Ruta, Pedido } from './types'
+import type { Embarque, Trabajador, Ruta } from './types'
 import { EmbarqueCard } from './embarque-card'
 import { EmbarqueFormModal } from './embarque-form-modal'
-import { EmbarqueDetailModal } from './embarque-detail-modal'
 import { StatsTab } from './stats-tab'
 import { useRealtimeListener } from '@/hooks/use-realtime-listener'
 
@@ -20,7 +19,6 @@ interface InitialData {
   embarques: Embarque[]
   trabajadores: Trabajador[]
   rutas: Ruta[]
-  pedidos: Pedido[]
   stockEstimado: { agua: number; hielo: number } | null
   stockBajo: boolean
 }
@@ -34,13 +32,10 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
   const [embarques, setEmbarques] = useState<Embarque[]>(initialData?.embarques || [])
   const [trabajadores, setTrabajadores] = useState<Trabajador[]>(initialData?.trabajadores || [])
   const [rutas, setRutas] = useState<Ruta[]>(initialData?.rutas || [])
-  const [pedidos, setPedidos] = useState<Pedido[]>(initialData?.pedidos || [])
   const [loading, setLoading] = useState(!initialData)
   const [showFormModal, setShowFormModal] = useState(false)
   const [formMode, setFormMode] = useState<'create' | 'edit'>('create')
   const [editingEmbarque, setEditingEmbarque] = useState<Embarque | null>(null)
-  const [showDetailModal, setShowDetailModal] = useState(false)
-  const [selectedEmbarque, setSelectedEmbarque] = useState<Embarque | null>(null)
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [dateRange, setDateRange] = useState<{ desde: string | null; hasta: string | null }>({ desde: null, hasta: null })
   const [filtroEstado, setFiltroEstado] = useState('')
@@ -66,24 +61,21 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
         params.set('hasta', dateRange.hasta)
       }
       if (filtroEstado) params.set('estado', filtroEstado)
-      const [embarquesRes, trabajadoresRes, rutasRes, pedidosRes] = await Promise.all([
+      const [embarquesRes, trabajadoresRes, rutasRes] = await Promise.all([
         fetch(`/api/embarques?${params.toString()}`, { credentials: 'include' }),
         fetch('/api/trabajadores?rol=REPARTIDOR&activo=true&usaMoto=true', { credentials: 'include' }),
         fetch('/api/rutas?all=true', { credentials: 'include' }),
-        fetch('/api/pedidos?all=true', { credentials: 'include' }),
       ])
 
       const embarquesJson = await embarquesRes.json()
       const trabajadoresJson = await trabajadoresRes.json()
       const rutasJson = await rutasRes.json()
-      const pedidosData = await pedidosRes.json()
       const stockJson = await fetch('/api/stock-estimado', { credentials: 'include' }).then(r => r.json())
       const stockData = await fetch('/api/embarques?all=true&stock=true', { credentials: 'include' }).then(r => r.json())
 
       setEmbarques(embarquesJson.embarques || embarquesJson.data || [])
       setTrabajadores(trabajadoresJson.trabajadores || [])
       setRutas(rutasJson.rutas || [])
-      setPedidos(pedidosData.pedidos || pedidosData.data || [])
       if (stockJson.data?.estimado) {
         setStockEstimado(stockJson.data.estimado)
         setBannerDismissed(false)
@@ -108,22 +100,8 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
     fetchData()
   }, [fetchData])
 
-  // Realtime: refresh embarques and related pedidos when anything changes.
+  // Realtime: refresh embarques when anything changes.
   useRealtimeListener(['embarque.*', 'pedido.*'], fetchData)
-
-  useEffect(() => {
-    if (showDetailModal && selectedEmbarque) {
-      const updated = embarques.find(e => e.id === selectedEmbarque.id)
-      if (updated && updated !== selectedEmbarque) {
-        setSelectedEmbarque(updated)
-      }
-    }
-  }, [embarques, showDetailModal, selectedEmbarque])
-
-  const handleEmbarqueUpdated = (updatedEmbarque: Embarque) => {
-    setSelectedEmbarque(updatedEmbarque)
-    setEmbarques(prev => prev.map(e => e.id === updatedEmbarque.id ? updatedEmbarque : e))
-  }
 
   const getEstadoBadge = (estado: string) => {
     const styles: Record<string, string> = {
@@ -507,23 +485,6 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
         rutas={rutas}
         mode={formMode}
         embarque={editingEmbarque}
-      />
-
-      <EmbarqueDetailModal
-        open={showDetailModal && !!selectedEmbarque}
-        onClose={() => setShowDetailModal(false)}
-        embarque={selectedEmbarque}
-        pedidos={pedidos}
-        embarques={embarques}
-        getEstadoBadge={getEstadoBadge}
-        onChanged={fetchData}
-        onEmbarqueUpdated={handleEmbarqueUpdated}
-        onEdit={(embarque) => {
-          setFormMode('edit')
-          setEditingEmbarque(embarque)
-          setShowDetailModal(false)
-          setShowFormModal(true)
-        }}
       />
 
       {/* Stock Estimado Modal */}

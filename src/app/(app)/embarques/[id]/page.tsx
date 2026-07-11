@@ -1,9 +1,10 @@
 import { notFound } from 'next/navigation'
-import { requireAuth } from '@/lib/auth-check'
+import { requireAuth, requireOwnership } from '@/lib/auth-check'
 import { prisma } from '@/lib/prisma'
 import { calcularPacasEmbarque, calcularPesoEmbarque, getCapacidadInfo, PESOS_KG } from '@/lib/embarque-capacidad'
 import { EmbarqueClient } from './embarque-client'
 import type { EmbarqueDetalle } from './types'
+import type { Trabajador, Ruta } from '../embarques-client/types'
 
 interface EmbarquePageProps {
   params: Promise<{ id: string }>
@@ -15,6 +16,12 @@ export default async function EmbarquePage({ params }: EmbarquePageProps) {
 
   const session = authResult as { user?: { id?: string; role?: string } }
   const { id } = await params
+
+  const hasAccess = await requireOwnership('embarque', id, {
+    id: session.user?.id || '',
+    role: session.user?.role,
+  })
+  if (!hasAccess) return notFound()
 
   const embarqueRaw = await prisma.embarque.findUnique({
     where: { id },
@@ -110,9 +117,17 @@ export default async function EmbarquePage({ params }: EmbarquePageProps) {
     estado: embarqueRaw.estado,
     tipoMoto: embarqueRaw.tipoMoto,
     baseDinero: Number(embarqueRaw.baseDinero || 0),
+    dineroEntregado: Number(embarqueRaw.dineroEntregado || 0),
     obs: embarqueRaw.obs,
     trabajador,
     ruta: embarqueRaw.ruta,
+    productos: embarqueRaw.productos.map((p) => ({
+      producto: p.producto,
+      cargadas: p.cargadas,
+      devueltas: p.devueltas ?? 0,
+      cambios: p.cambios ?? 0,
+      rotas: p.rotas ?? 0,
+    })),
     pedidos: embarqueRaw.pedidos.map((p) => ({
       id: p.id,
       numero: p.numero,
@@ -143,9 +158,51 @@ export default async function EmbarquePage({ params }: EmbarquePageProps) {
     capacidadInfo,
   }
 
+  const [trabajadoresRaw, rutasRaw] = await Promise.all([
+    prisma.trabajador.findMany({
+      where: { activo: true, usaMoto: true },
+      select: {
+        id: true,
+        nombre: true,
+        capacidadKg: true,
+        comPacaAgua: true,
+        comPacaHielo: true,
+        comBotellon: true,
+        comRepartAgua: true,
+        comRepartHielo: true,
+        comRepartBotellon: true,
+      },
+      orderBy: { nombre: 'asc' },
+    }),
+    prisma.ruta.findMany({
+      select: { id: true, nombre: true, repartidorId: true },
+      orderBy: { nombre: 'asc' },
+    }),
+  ])
+
+  const trabajadores: Trabajador[] = trabajadoresRaw.map((t) => ({
+    id: t.id,
+    nombre: t.nombre,
+    capacidadKg: Number(t.capacidadKg || 0),
+    comPacaAgua: Number(t.comPacaAgua || 0),
+    comPacaHielo: Number(t.comPacaHielo || 0),
+    comBotellon: Number(t.comBotellon || 0),
+    comRepartAgua: Number(t.comRepartAgua || 0),
+    comRepartHielo: Number(t.comRepartHielo || 0),
+    comRepartBotellon: Number(t.comRepartBotellon || 0),
+  }))
+
+  const rutas: Ruta[] = rutasRaw.map((r) => ({
+    id: r.id,
+    nombre: r.nombre,
+    repartidorId: r.repartidorId,
+  }))
+
   return (
     <EmbarqueClient
       embarque={embarque}
+      trabajadores={trabajadores}
+      rutas={rutas}
       userRole={session.user?.role}
       userId={session.user?.id}
     />

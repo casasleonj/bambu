@@ -38,6 +38,7 @@ export interface EmbarqueDetalle {
   estado: string
   tipoMoto: string | null
   baseDinero: number
+  dineroEntregado: number
   obs: string | null
   trabajador: {
     id: string
@@ -52,7 +53,7 @@ export interface EmbarqueDetalle {
   }
   ruta?: { id: string; nombre: string } | null
   pedidos: PedidoResumen[]
-  productos?: Array<{ producto: string; cargadas: number; devueltas?: number; cambios?: number; rotas?: number }>
+  productos: Array<{ producto: string; cargadas: number; devueltas?: number; cambios?: number; rotas?: number }>
   totalPacas?: number
   pesoKg?: number
   capacidadKg?: number
