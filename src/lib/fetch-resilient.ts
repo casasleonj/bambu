@@ -19,6 +19,7 @@
 import { offlineDb } from './db/offline'
 import { generateUUID } from './uuid'
 import { logger } from './logger'
+import { AUTH_EXPIRED_EVENT } from './auth-events'
 
 export interface ResilientRequest {
   url: string
@@ -85,6 +86,25 @@ async function encolarResilient(req: ResilientRequest): Promise<{ enqueued: bool
 }
 
 /**
+ * Notifica a los componentes client-side que la sesión fue rechazada por el
+ * servidor (401/403). El SessionExpiryGuard escucha este evento y redirige al
+ * login. Se ignora para endpoints internos de Auth.js para evitar duplicar la
+ * lógica que el SessionProvider ya maneja.
+ */
+function dispatchAuthExpired(url: string, statusCode: number, endpoint: string): void {
+  if (typeof window === 'undefined') return
+  if (url.startsWith('/api/auth/')) return
+  if (statusCode !== 401 && statusCode !== 403) return
+  logger.warn(
+    { url, statusCode, endpoint },
+    'fetchResilient: sesión rechazada por el servidor',
+  )
+  window.dispatchEvent(
+    new CustomEvent(AUTH_EXPIRED_EVENT, { detail: { statusCode, url } }),
+  )
+}
+
+/**
  * Wrapper de fetch con timeout + fallback a cola offline.
  *
  * Detecta fallos de red (TypeError: fetch failed, AbortError por timeout)
@@ -135,6 +155,8 @@ export async function fetchResilient<T = unknown>(
     if (res.ok) {
       return { status: 'ok', data, statusCode: res.status }
     }
+
+    dispatchAuthExpired(url, res.status, init.localEndpoint)
 
     // 4xx/5xx NO son fallos de red — son respuestas del server.
     // Devolvemos error para que el hook muestre el mensaje al usuario.
@@ -192,6 +214,7 @@ async function fetchDirect<T>(
     })
     const data = (await res.json()) as T
     if (res.ok) return { status: 'ok', data, statusCode: res.status }
+    dispatchAuthExpired(url, res.status, 'direct')
     const serverError = (data as { error?: { message?: string; formErrors?: string[]; fieldErrors?: Record<string, string[]> } })?.error
     const details = buildErrorDetails(serverError)
     const errMsg = serverError?.message
