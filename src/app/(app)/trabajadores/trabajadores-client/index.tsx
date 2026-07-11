@@ -17,9 +17,9 @@ const EMPTY_FORM: TrabajadorFormData = {
   comPacaAgua: 200,
   comPacaHielo: 200,
   comBotellon: 200,
-  comRepartAgua: 0,
-  comRepartHielo: 0,
-  comRepartBotellon: 0,
+  comRepartAgua: 200,
+  comRepartHielo: 200,
+  comRepartBotellon: 200,
   salarioFijo: 0,
   telefono: '',
 }
