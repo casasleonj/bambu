@@ -363,6 +363,17 @@ Actualizaciones en vivo entre sesiones/usuarios para cambios en clientes, pedido
 
 ---
 
+13. **Session expiry UX: app congelada / "no permission" hasta F5** (resuelto): Cuando el JWT expiraba o era revocado server-side, el cliente no se enteraba hasta que el usuario recargaba, mostrando pantallas congeladas o errores de permiso. **Fix aplicado**:
+    - `SessionProvider` hace polling cada 60s (`refetchInterval: 60`, `refetchOnWindowFocus`, `refetchWhenOffline: false`) para detectar invalidación server-side.
+    - `fetchResilient` dispara el evento `app:auth:expired` ante 401/403 no relacionados con endpoints de Auth.js.
+    - `SessionExpiryGuard` escucha el evento y redirige a `/login?reason=expired`, con debounce y prevención de doble redirect.
+    - Login renderiza un banner ámbar "Tu sesión expiró" cuando `?reason=expired`.
+    - `pedidos-client` verifica 401/403 también en fetches iniciales (`fetchClientes`, `fetchEmbarques`) y redirige si la sesión murió antes de montar el guard.
+    - **Decisiones de scope**: no se purga la cola offline al expirar (`sync.ts` ya maneja 401 durante replay); no se refactorizan todos los `fetch` directos a `fetchResilient` en este ticket; no se implementa "smart polling" dinámico (se mantiene intervalo fijo simple).
+    - **Validación**: `e2e/session-expiry.spec.ts` (8 tests, chromium + mobile), `src/components/__tests__/session-expiry-guard.test.tsx` (10 tests), `src/lib/__tests__/fetch-resilient-auth-error.test.ts` (6 tests).
+
+---
+
 # Reglas de Código
 
 - Tipado estricto. Sin `any`. Sin `// TODO` abandonados.

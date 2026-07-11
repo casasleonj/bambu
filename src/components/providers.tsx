@@ -20,5 +20,18 @@ export function Providers({
   // requieren autenticacion (e.g. root layout, login). El (app)/layout
   // SIEMPRE debe pasar la session real.
   // Ver (app)/layout.tsx para el contexto completo.
-  return <SessionProvider session={session}>{children}</SessionProvider>
+  return (
+    <SessionProvider
+      session={session}
+      // Poll every 60s so the client learns about server-side session
+      // invalidation (expiry, revocation, account deactivation) and the
+      // SessionExpiryGuard can redirect to /login without waiting for a
+      // full page reload.
+      refetchInterval={60}
+      refetchOnWindowFocus
+      refetchWhenOffline={false}
+    >
+      {children}
+    </SessionProvider>
+  )
 }
