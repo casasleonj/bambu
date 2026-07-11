@@ -7,6 +7,7 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
 import { executeSerializableWithRetry } from '@/lib/serializable'
+import { calcularDeduccionesDeuda } from '@/lib/nomina-deudas'
 
 export async function GET(request: NextRequest) {
   // FIX CRITICAL (C-SEC-3): Only ADMIN/CONTADOR can read nominas
@@ -67,7 +68,7 @@ export async function POST(request: NextRequest) {
       // nómina en un período que la primera tx acaba de crear. La
       // segunda tx recibe P2034 y re-intenta. En el re-intento, el
       // findFirst encuentra la nómina recién creada y devuelve 409.
-      const result = await executeSerializableWithRetry<{
+        const result = await executeSerializableWithRetry<{
         nomina: { id: string; total: unknown; salario: unknown }
         entregasAgua: number
         entregasHielo: number
@@ -77,6 +78,7 @@ export async function POST(request: NextRequest) {
         comBotellon: number
         totalComisiones: number
         totalDescuentos: number
+        descuentoDeudas: number
       }>(async (tx) => {
         // Verificar duplicados
         const existente = await tx.nomina.findFirst({
@@ -192,6 +194,35 @@ export async function POST(request: NextRequest) {
           }
         }
 
+        // Aplicar deducciones de deudas (FIFO; ADELANTO_NOMINA primero).
+        const deudasPendientes = await tx.deudaTrabajador.findMany({
+          where: { trabajadorId, montoPendiente: { gt: 0 } },
+        })
+        const { descuentoDeudas, deducciones: deduccionesDeuda } = calcularDeduccionesDeuda(
+          deudasPendientes.map((d) => ({
+            id: d.id,
+            tipo: d.tipo,
+            montoOriginal: Number(d.montoOriginal),
+            montoPendiente: Number(d.montoPendiente),
+            plazoNominas: d.plazoNominas,
+            porcentajePorNomina: d.porcentajePorNomina,
+            fecha: d.fecha,
+            createdAt: d.createdAt,
+          })),
+          total,
+        )
+
+        if (deduccionesDeuda.length > 0) {
+          for (const d of deduccionesDeuda) {
+            await tx.deudaTrabajador.update({
+              where: { id: d.deudaId },
+              data: { montoPendiente: { decrement: d.monto } },
+            })
+          }
+        }
+
+        total -= descuentoDeudas
+
         const nomina = await tx.nomina.create({
           data: {
             trabajadorId,
@@ -207,9 +238,21 @@ export async function POST(request: NextRequest) {
             totalComisiones,
             salario: salarioFijo,
             total,
+            totalDescuentos,
+            descuentoDeudas,
             estado: 'PENDIENTE',
           },
         })
+
+        if (deduccionesDeuda.length > 0) {
+          await tx.deduccionDeuda.createMany({
+            data: deduccionesDeuda.map((d) => ({
+              nominaId: nomina.id,
+              deudaId: d.deudaId,
+              monto: d.monto,
+            })),
+          })
+        }
 
         return {
           nomina,
@@ -221,6 +264,7 @@ export async function POST(request: NextRequest) {
           comBotellon,
           totalComisiones,
           totalDescuentos,
+          descuentoDeudas,
         }
       }, 'nomina.POST:AUTO')
 
@@ -248,6 +292,7 @@ export async function POST(request: NextRequest) {
           comBotellon: result.comBotellon,
           comisionTotal: result.totalComisiones,
           descuentos: result.totalDescuentos,
+          descuentoDeudas: result.descuentoDeudas,
           salarioFijo: result.nomina.salario,
         },
       })
