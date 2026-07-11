@@ -33,8 +33,6 @@ export async function GET(request: NextRequest) {
             select: {
               id: true,
               nombre: true,
-              comPacaAgua: true,
-              comPacaHielo: true,
               comRepartAgua: true,
               comRepartHielo: true,
             },
@@ -70,8 +68,8 @@ export async function GET(request: NextRequest) {
         repMap.set(e.trabajador.id, {
           id: e.trabajador.id,
           nombre: e.trabajador.nombre,
-          comRepartAgua: Number(e.trabajador.comRepartAgua || e.trabajador.comPacaAgua),
-          comRepartHielo: Number(e.trabajador.comRepartHielo || e.trabajador.comPacaHielo),
+          comRepartAgua: Number(e.trabajador.comRepartAgua),
+          comRepartHielo: Number(e.trabajador.comRepartHielo),
           entregasAgua,
           entregasHielo,
         })

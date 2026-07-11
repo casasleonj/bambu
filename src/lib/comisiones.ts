@@ -19,16 +19,16 @@ export function calcComSellador(
 export function calcComRepartidor(
   ventasAgua: number,
   ventasHielo: number,
-  repartidores: Array<Pick<Trabajador, 'comRepartAgua' | 'comRepartHielo' | 'comPacaAgua' | 'comPacaHielo' | 'usaMoto'>>,
+  repartidores: Array<Pick<Trabajador, 'comRepartAgua' | 'comRepartHielo' | 'usaMoto'>>,
 ): ComisionResult {
   const activos = repartidores.filter(r => r.usaMoto)
   if (activos.length === 0) {
     return { comAgua: 0, comHielo: 0, total: 0 }
   }
   const avgComAgua =
-    activos.reduce((s, r) => s + Number(r.comRepartAgua || r.comPacaAgua), 0) / activos.length
+    activos.reduce((s, r) => s + Number(r.comRepartAgua), 0) / activos.length
   const avgComHielo =
-    activos.reduce((s, r) => s + Number(r.comRepartHielo || r.comPacaHielo), 0) / activos.length
+    activos.reduce((s, r) => s + Number(r.comRepartHielo), 0) / activos.length
 
   const comAgua = ventasAgua * avgComAgua
   const comHielo = ventasHielo * avgComHielo

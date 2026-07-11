@@ -114,7 +114,7 @@ describe('calcComRepartidor', () => {
     expect(r.total).toBe(0)
   })
 
-  it('usa comRepartAgua si está presente, sino fallback a comPacaAgua', () => {
+  it('usa comRepartAgua para repartidores con moto', () => {
     const t = makeTrabajador({
       usaMoto: true,
       comRepartAgua: 150 as any,
@@ -125,16 +125,15 @@ describe('calcComRepartidor', () => {
     expect(r.comAgua).toBe(1500)
   })
 
-  it('hace fallback a comPacaAgua cuando comRepartAgua es 0 (truthy check)', () => {
-    // comRepartAgua = 0 → Number(0 || 200) = 200 (código actual usa ||)
+  it('no hace fallback a comPacaAgua cuando comRepartAgua es 0', () => {
     const t = makeTrabajador({
       usaMoto: true,
       comRepartAgua: 0 as any,
       comPacaAgua: 200 as any,
     })
     const r = calcComRepartidor(5, 0, [t])
-    // 5 * 200 = 1000 (fallback al comPacaAgua)
-    expect(r.comAgua).toBe(1000)
+    // 5 * 0 = 0 (sin fallback)
+    expect(r.comAgua).toBe(0)
   })
 
   it('promedia comisiones entre repartidores activos con moto', () => {

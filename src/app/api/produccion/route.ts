@@ -158,8 +158,6 @@ export async function POST(request: NextRequest) {
             select: {
               comPacaAgua: true,
               comPacaHielo: true,
-              comRepartAgua: true,
-              comRepartHielo: true,
               rol: true,
             },
           })
@@ -187,8 +185,6 @@ export async function POST(request: NextRequest) {
               rotasHielo: true,
               trabajador: {
                 select: {
-                  comPacaAgua: true,
-                  comPacaHielo: true,
                   comRepartAgua: true,
                   comRepartHielo: true,
                   usaMoto: true,
@@ -203,8 +199,8 @@ export async function POST(request: NextRequest) {
             if (!e.trabajador.usaMoto) continue
             const entregasAgua = Math.max(0, e.pacasAgua - e.devueltasAgua - e.rotasAgua)
             const entregasHielo = Math.max(0, e.pacasHielo - e.devueltasHielo - e.rotasHielo)
-            comRepartAgua += entregasAgua * Number(e.trabajador.comRepartAgua || e.trabajador.comPacaAgua)
-            comRepartHielo += entregasHielo * Number(e.trabajador.comRepartHielo || e.trabajador.comPacaHielo)
+            comRepartAgua += entregasAgua * Number(e.trabajador.comRepartAgua)
+            comRepartHielo += entregasHielo * Number(e.trabajador.comRepartHielo)
           }
           const comRepartTotal = comRepartAgua + comRepartHielo
 
