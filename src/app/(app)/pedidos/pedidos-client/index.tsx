@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { useShallowSearchParams } from '@/hooks/use-shallow-search-params'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
@@ -42,6 +43,7 @@ export function PedidosClient() {
   const { confirm, modal: confirmModal } = useConfirm()
   const { data: session } = useSession()
   const userRole = (session?.user as { role?: string } | undefined)?.role ?? null
+  const router = useRouter()
 
   const [showModal, setShowModal] = useState(false)
   const [showVentaRapida, setShowVentaRapida] = useState(false)
@@ -111,9 +113,13 @@ export function PedidosClient() {
 
   // Use pedidos hook for data fetching. `all` disables the server's
   // default-to-today fallback so "Limpiar" really muestra todo el histórico.
+  // Tabs 'fiados' and 'alertas' must always show the full historical dataset
+  // (their own local period filters refine the result). Tab 'hoy' respects the
+  // URL date filter for the daily operation view.
+  const fetchAllForTab = activeTab !== 'hoy'
   const { pedidos: pedidosRaw, loading, error: fetchError, refetch, hasLoadedOnce } = usePedidos(
     pedidoFilterParams,
-    { autoFetch: false, all: allFromUrl },
+    { autoFetch: false, all: allFromUrl || fetchAllForTab },
   )
   const pedidos = pedidosRaw as Pedido[]
 
@@ -159,6 +165,21 @@ export function PedidosClient() {
     params.set({ clienteId: value || undefined }, { history: 'push' })
   }, [params])
 
+  const clearAllFilters = useCallback(() => {
+    setSearchInput('')
+    params.set({
+      search: undefined,
+      clienteId: undefined,
+      origen: undefined,
+      estadoEntrega: undefined,
+      estadoPago: undefined,
+      tipo: undefined,
+      desde: undefined,
+      hasta: undefined,
+      all: 'true',
+    }, { history: 'push' })
+  }, [params])
+
   const [searchInput, setSearchInput] = useState(search)
 
   // Wrap refetch to handle initial load
@@ -166,9 +187,18 @@ export function PedidosClient() {
     await refetch()
   }, [refetch])
 
+  function redirectIfAuthError(res: Response): boolean {
+    if (res.status === 401 || res.status === 403) {
+      router.push('/login?reason=expired')
+      return true
+    }
+    return false
+  }
+
   async function fetchClientes(): Promise<Cliente[]> {
     try {
       const res = await fetch('/api/clientes?all=true', { credentials: 'include' })
+      if (redirectIfAuthError(res)) return []
       const data = await res.json()
       const list = data.clientes || data.data || []
       setClientes(list)
@@ -183,6 +213,7 @@ export function PedidosClient() {
   async function fetchEmbarques() {
     try {
       const res = await fetch('/api/embarques', { credentials: 'include' })
+      if (redirectIfAuthError(res)) return
       const data = await res.json()
       setEmbarques((data.embarques || data.data || []).filter((e: Embarque) => e.estado === 'ABIERTO' || e.estado === 'EN_RUTA'))
     } catch (error) {
@@ -986,6 +1017,7 @@ export function PedidosClient() {
             filtroEstadoEntrega={filtroEstadoEntrega}
             filtroEstadoPago={filtroEstadoPago}
             onUpdateFilter={updateFilter}
+            onClearAll={clearAllFilters}
             hideDateFilter={true}
           />
           {clienteIdFromUrl && (() => {
