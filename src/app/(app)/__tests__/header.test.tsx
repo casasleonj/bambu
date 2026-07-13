@@ -49,7 +49,7 @@ describe('Header — toggle del drawer movil', () => {
   })
 
   it('hamburguesa toggle mobileDrawerOpen de false a true', () => {
-    render(<Header />)
+    render(<Header fechaLarga="vie, 13 jul 2026" fechaCorta="13 jul" />)
     const hamburger = screen.getByRole('button', { name: /abrir men/i })
 
     expect(useAppStore.getState().mobileDrawerOpen).toBe(false)
@@ -63,7 +63,7 @@ describe('Header — toggle del drawer movil', () => {
     act(() => {
       useAppStore.setState({ mobileDrawerOpen: true })
     })
-    render(<Header />)
+    render(<Header fechaLarga="vie, 13 jul 2026" fechaCorta="13 jul" />)
     const hamburger = screen.getByRole('button', { name: /abrir menú/i })
 
     expect(useAppStore.getState().mobileDrawerOpen).toBe(true)
@@ -73,7 +73,7 @@ describe('Header — toggle del drawer movil', () => {
   })
 
   it('hamburguesa aria-expanded refleja mobileDrawerOpen', () => {
-    render(<Header />)
+    render(<Header fechaLarga="vie, 13 jul 2026" fechaCorta="13 jul" />)
     const hamburger = screen.getByRole('button', { name: /abrir men/i })
     expect(hamburger.getAttribute('aria-expanded')).toBe('false')
 
@@ -87,7 +87,7 @@ describe('Header — toggle del drawer movil', () => {
   })
 
   it('hamburguesa toggle repetido alterna el estado', () => {
-    render(<Header />)
+    render(<Header fechaLarga="vie, 13 jul 2026" fechaCorta="13 jul" />)
     const hamburger = screen.getByRole('button', { name: /abrir men/i })
 
     fireEvent.click(hamburger)
@@ -109,7 +109,7 @@ describe('Header — user menu dropdown con click catcher', () => {
   })
 
   it('click en user-menu abre el dropdown', () => {
-    render(<Header />)
+    render(<Header fechaLarga="vie, 13 jul 2026" fechaCorta="13 jul" />)
     const userMenu = screen.getByTestId('user-menu')
     expect(userMenu).toBeTruthy()
 
@@ -120,7 +120,7 @@ describe('Header — user menu dropdown con click catcher', () => {
   })
 
   it('click en el backdrop cierra el dropdown', () => {
-    render(<Header />)
+    render(<Header fechaLarga="vie, 13 jul 2026" fechaCorta="13 jul" />)
     fireEvent.click(screen.getByTestId('user-menu'))
 
     // El dropdown esta abierto
@@ -137,7 +137,7 @@ describe('Header — user menu dropdown con click catcher', () => {
     const addSpy = vi.spyOn(document, 'addEventListener')
     const removeSpy = vi.spyOn(document, 'removeEventListener')
 
-    const { unmount } = render(<Header />)
+    const { unmount } = render(<Header fechaLarga="vie, 13 jul 2026" fechaCorta="13 jul" />)
 
     // El Header no debe attachar listeners globales en document.
     // Si lo hiciera, seria una regresion del bug original.
@@ -160,7 +160,7 @@ describe('Header — regresion mobile 2026-06-10: header SIN overflow-x-hidden',
   })
 
   it('el <header> NO tiene la clase overflow-x-hidden (regresion)', () => {
-    render(<Header />)
+    render(<Header fechaLarga="vie, 13 jul 2026" fechaCorta="13 jul" />)
     const header = document.querySelector('header')
     expect(header).not.toBeNull()
 
@@ -173,7 +173,7 @@ describe('Header — regresion mobile 2026-06-10: header SIN overflow-x-hidden',
   })
 
   it('el dropdown del user-menu se renderiza FUERA del header (no clipeado)', () => {
-    render(<Header />)
+    render(<Header fechaLarga="vie, 13 jul 2026" fechaCorta="13 jul" />)
     fireEvent.click(screen.getByTestId('user-menu'))
 
     // Buscar el dropdown por su contenido (Mi Perfil / Cerrar Sesion)

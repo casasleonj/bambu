@@ -27,6 +27,27 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // `await auth()` y pasa `session` al `<SessionProvider session={session}>`.
   const session = await auth()
 
+  // FIX hydration error: el Header es Client Component y usaba `new Date()`
+  // directamente. Eso generaba texto diferente entre SSR (timezone del
+  // servidor) e hidratacion (timezone del navegador). Generamos la fecha
+  // una sola vez en el servidor con timezone fijo America/Bogota y la
+  // pasamos como string. El Header la usa tal cual.
+  const formatterLarga = new Intl.DateTimeFormat('es-CO', {
+    timeZone: 'America/Bogota',
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
+  const formatterCorta = new Intl.DateTimeFormat('es-CO', {
+    timeZone: 'America/Bogota',
+    day: 'numeric',
+    month: 'short',
+  })
+  const now = new Date()
+  const headerFechaLarga = formatterLarga.format(now)
+  const headerFechaCorta = formatterCorta.format(now)
+
   return (
     <Providers session={session}>
       <RealtimeProvider>
@@ -34,7 +55,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <SessionExpiryGuard />
         <InAppPushListener />
         <PushOptInToast />
-        <AppShell>
+        <AppShell fechaLarga={headerFechaLarga} fechaCorta={headerFechaCorta}>
           {children}
         </AppShell>
         <BaseCajaLoader />
