@@ -8,6 +8,7 @@ import { useRealtimeListener } from '@/hooks/use-realtime-listener'
 import type { Trabajador, TrabajadorFormData, TrabajadoresClientProps } from './types'
 import { TrabajadorCard } from './trabajador-card'
 import { TrabajadorFormModal } from './trabajador-form-modal'
+import { normalizarTelefono } from '@/lib/telefono'
 
 const EMPTY_FORM: TrabajadorFormData = {
   nombre: '',
@@ -54,10 +55,11 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
 
   const trabajadoresFiltrados = trabajadores.filter((t) => {
     const term = search.toLowerCase()
+    const termTelefono = normalizarTelefono(term)
     return (
       t.nombre.toLowerCase().includes(term) ||
       t.rol.toLowerCase().includes(term) ||
-      (t.telefono?.toLowerCase() ?? '').includes(term) ||
+      normalizarTelefono(t.telefono ?? '').includes(termTelefono) ||
       t.tipoPago.toLowerCase().includes(term)
     )
   })

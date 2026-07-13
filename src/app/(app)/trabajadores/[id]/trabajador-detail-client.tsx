@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { useRealtimeListener } from '@/hooks/use-realtime-listener'
 import { rolLabels, tipoPagoLabels } from '../trabajadores-client/types'
 import DeudasTab from './deudas-tab'
+import { formatearTelefonoParaInput } from '@/lib/telefono'
 
 interface TrabajadorDetail {
   id: string
@@ -131,7 +132,7 @@ function InfoTab({ trabajador }: { trabajador: TrabajadorDetail }) {
         <div className="space-y-3">
           <div className="flex justify-between">
             <span className="text-sm text-gray-500">Telefono</span>
-            <span className="text-sm font-medium">{trabajador.telefono || '—'}</span>
+            <span className="text-sm font-medium">{formatearTelefonoParaInput(trabajador.telefono ?? '') || '—'}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-sm text-gray-500">Usa moto</span>

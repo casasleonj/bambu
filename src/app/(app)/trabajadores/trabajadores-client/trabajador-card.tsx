@@ -2,6 +2,7 @@ import { formatCurrency } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import type { Trabajador } from './types'
 import { rolLabels, tipoPagoLabels } from './types'
+import { formatearTelefonoParaInput } from '@/lib/telefono'
 
 export function TrabajadorCard({
   trabajador,
@@ -32,7 +33,7 @@ export function TrabajadorCard({
         {trabajador.telefono && (
           <div className="flex items-center gap-2">
             <span className="font-medium text-zinc-500 dark:text-zinc-500">Teléfono:</span>
-            <span>{trabajador.telefono}</span>
+            <span>{formatearTelefonoParaInput(trabajador.telefono)}</span>
           </div>
         )}
         <div className="flex items-center gap-2">

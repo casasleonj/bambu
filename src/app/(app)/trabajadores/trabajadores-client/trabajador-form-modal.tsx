@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { Modal } from '@/components/modal'
 import type { TrabajadorFormData } from './types'
 import { rolOptions, rolLabels, tipoPagoOptions, tipoPagoLabels } from './types'
+import { TelefonoInput } from '@/components/telefono-input'
+import { normalizarTelefono } from '@/lib/telefono'
 
 export function TrabajadorFormModal({
   open,
@@ -36,7 +38,10 @@ export function TrabajadorFormModal({
         const res = await fetch(`/api/trabajadores/${editingId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formData),
+          body: JSON.stringify({
+            ...formData,
+            telefono: formData.telefono ? normalizarTelefono(formData.telefono) : formData.telefono,
+          }),
         })
         if (res.ok) {
           onSaved()
@@ -49,7 +54,10 @@ export function TrabajadorFormModal({
         const res = await fetch('/api/trabajadores', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formData),
+          body: JSON.stringify({
+            ...formData,
+            telefono: formData.telefono ? normalizarTelefono(formData.telefono) : formData.telefono,
+          }),
         })
         if (res.ok) {
           onSaved()
@@ -329,13 +337,11 @@ export function TrabajadorFormModal({
               />
             </div>
             <div>
-              <label htmlFor="trabajador-telefono" className="block text-sm font-medium mb-1">Teléfono</label>
-              <input
-                id="trabajador-telefono"
-                type="tel"
+              <TelefonoInput
+                label="Teléfono"
                 value={formData.telefono}
-                onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                onChange={(v) => setFormData({ ...formData, telefono: v })}
+                inputClassName="w-full px-3 py-2 border border-gray-300 rounded-lg"
               />
             </div>
           </div>
@@ -343,13 +349,11 @@ export function TrabajadorFormModal({
 
         {formData.tipoPago === 'COMISION' && (
           <div>
-            <label htmlFor="trabajador-telefono" className="block text-sm font-medium mb-1">Teléfono</label>
-            <input
-              id="trabajador-telefono"
-              type="tel"
+            <TelefonoInput
+              label="Teléfono"
               value={formData.telefono}
-              onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              onChange={(v) => setFormData({ ...formData, telefono: v })}
+              inputClassName="w-full px-3 py-2 border border-gray-300 rounded-lg"
             />
           </div>
         )}

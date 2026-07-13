@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import { Modal } from '@/components/modal'
 import type { ProveedorForm } from './types'
+import { TelefonoInput } from '@/components/telefono-input'
+import { normalizarTelefono } from '@/lib/telefono'
 
 export function ProveedorFormModal({
   open,
@@ -29,7 +31,10 @@ export function ProveedorFormModal({
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          ...form,
+          telefono: form.telefono ? normalizarTelefono(form.telefono) : form.telefono,
+        }),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
@@ -61,11 +66,13 @@ export function ProveedorFormModal({
             placeholder="Nombre del proveedor" />
         </div>
         <div>
-          <label htmlFor="telefono" className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Teléfono</label>
-          <input id="telefono" type="tel" value={form.telefono}
-            onChange={(e) => setForm((prev) => ({ ...prev, telefono: e.target.value }))}
-            className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm text-zinc-900 outline-none transition focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50 dark:focus:border-zinc-50 dark:focus:ring-zinc-50/10"
-            placeholder="+52 000 000 0000" />
+          <TelefonoInput
+            label="Teléfono"
+            value={form.telefono ?? ''}
+            onChange={(v) => setForm((prev) => ({ ...prev, telefono: v }))}
+            inputClassName="w-full rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm text-zinc-900 outline-none transition focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50 dark:focus:border-zinc-50 dark:focus:ring-zinc-50/10"
+            placeholder="310 292 1234"
+          />
         </div>
         <div>
           <label htmlFor="email" className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Email</label>
