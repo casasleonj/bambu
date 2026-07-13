@@ -21,6 +21,7 @@ import { getProductoIconConfig } from '@/lib/producto-iconos'
 import { ClienteTable } from './cliente-table'
 import { ClienteForm } from './cliente-form'
 import { fetchResilient } from '@/lib/fetch-resilient'
+import { fetchWithTimeout, FetchTimeoutError } from '@/lib/fetch-timeout'
 import { ClienteHistorial } from './cliente-historial'
 import { ClienteStats } from './cliente-stats'
 import { NegocioForm } from '@/components/negocio-form'
@@ -187,13 +188,16 @@ export default function ClientesClient({
       if (filtrosActivos.clienteConLink) {
         params.set('clienteConLink', 'true')
       }
-      const res = await fetch(`/api/clientes?${params.toString()}`)
+      const res = await fetchWithTimeout(`/api/clientes?${params.toString()}`, {}, 10_000)
       if (!res.ok) throw new Error('Error al cargar clientes')
       const data = await res.json()
       setClientes(data.clientes || data.data || [])
     } catch (error) {
-      setFetchError('No se pudieron cargar los clientes')
-      toast.error('Error cargando clientes')
+      const msg = error instanceof FetchTimeoutError
+        ? 'La conexión tardó demasiado cargando clientes'
+        : 'No se pudieron cargar los clientes'
+      setFetchError(msg)
+      toast.error(msg)
     } finally {
       setLoading(false)
     }
@@ -423,12 +427,16 @@ export default function ClientesClient({
     // DELETE: están en server pero NO en form
     for (const [tel, { id }] of enServer) {
       if (!enForm.has(tel)) {
-        const res = await fetch(`/api/clientes/${clienteId}/contactos/${id}`, {
-          method: 'DELETE',
-        })
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          errors.push(`DELETE ${tel}: ${data.error?.message ?? res.status}`)
+        try {
+          const res = await fetchWithTimeout(`/api/clientes/${clienteId}/contactos/${id}`, {
+            method: 'DELETE',
+          }, 10_000)
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}))
+            errors.push(`DELETE ${tel}: ${data.error?.message ?? res.status}`)
+          }
+        } catch (err) {
+          errors.push(`DELETE ${tel}: ${err instanceof FetchTimeoutError ? 'timeout' : 'error de red'}`)
         }
       }
     }
@@ -436,18 +444,22 @@ export default function ClientesClient({
     // POST: están en form pero NO en server (teléfono nuevo)
     for (const [tel, payload] of enForm) {
       if (!enServer.has(tel)) {
-        const res = await fetch(`/api/clientes/${clienteId}/contactos`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            nombre: payload.nombre,
-            telefono: tel,
-            relacion: payload.relacion ?? undefined,
-          }),
-        })
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          errors.push(`POST ${tel}: ${data.error?.message ?? res.status}`)
+        try {
+          const res = await fetchWithTimeout(`/api/clientes/${clienteId}/contactos`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              nombre: payload.nombre,
+              telefono: tel,
+              relacion: payload.relacion ?? undefined,
+            }),
+          }, 10_000)
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}))
+            errors.push(`POST ${tel}: ${data.error?.message ?? res.status}`)
+          }
+        } catch (err) {
+          errors.push(`POST ${tel}: ${err instanceof FetchTimeoutError ? 'timeout' : 'error de red'}`)
         }
       }
     }
@@ -460,17 +472,21 @@ export default function ClientesClient({
         serverEntry.nombre !== formPayload.nombre ||
         serverEntry.relacion !== formPayload.relacion
       if (!changed) continue
-      const res = await fetch(`/api/clientes/${clienteId}/contactos/${serverEntry.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nombre: formPayload.nombre,
-          relacion: formPayload.relacion,
-        }),
-      })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        errors.push(`PATCH ${tel}: ${data.error?.message ?? res.status}`)
+      try {
+        const res = await fetchWithTimeout(`/api/clientes/${clienteId}/contactos/${serverEntry.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nombre: formPayload.nombre,
+            relacion: formPayload.relacion,
+          }),
+        }, 10_000)
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          errors.push(`PATCH ${tel}: ${data.error?.message ?? res.status}`)
+        }
+      } catch (err) {
+        errors.push(`PATCH ${tel}: ${err instanceof FetchTimeoutError ? 'timeout' : 'error de red'}`)
       }
     }
 
@@ -579,31 +595,12 @@ export default function ClientesClient({
         const newCliente = data.cliente || null
         const newClienteId = newCliente?.id
 
-        // Sincronizar contactos con la tabla ContactoCliente (1FN, Fase 3)
-        // Si la creación fue deduped (cliente ya existía), NO sincronizamos:
-        // los contactos del form podrían pisar los del cliente original.
-        if (newClienteId && !data.deduped) {
-          const contactosLimpios = formData.contactos.filter(
-            c => {
-              const tel = normalizarTelefono(c.telefono)
-              return c.nombre.trim() && tel.length >= 7
-            }
-          )
-          if (contactosLimpios.length > 0) {
-            // El cliente es nuevo: ningún contacto previo que pudiera chocar.
-            const sync = await syncContactos(
-              newClienteId,
-              [], // server vacío porque es cliente nuevo
-              contactosLimpios,
-            )
-            if (!sync.ok) {
-              toast.error(`Cliente creado, pero algunos contactos fallaron: ${sync.errors.join('; ')}`)
-            }
-          }
-        }
-
-        await fetchClientes()
+        // Cerrar modal y liberar botón INMEDIATAMENTE después de que el
+        // servidor respondió. La sincronización de contactos y el refetch
+        // de la lista corren en segundo plano para no congelar la UI en
+        // conexiones rurales 2G/3G.
         setShowModal(false)
+        setSaving(false)
         toast.success(data.deduped ? 'Cliente ya estaba creado' : 'Cliente creado exitosamente', {
           action: {
             label: 'Agregar negocio',
@@ -627,6 +624,39 @@ export default function ClientesClient({
             },
           },
         })
+
+        // Sincronizar contactos y recargar lista en background.
+        // Si falla, avisamos con toast pero NO volvemos a dejar el botón
+        // trabado.
+        ;(async () => {
+          // Sincronizar contactos con la tabla ContactoCliente (1FN, Fase 3)
+          // Si la creación fue deduped (cliente ya existía), NO sincronizamos:
+          // los contactos del form podrían pisar los del cliente original.
+          if (newClienteId && !data.deduped) {
+            const contactosLimpios = formData.contactos.filter(
+              c => {
+                const tel = normalizarTelefono(c.telefono)
+                return c.nombre.trim() && tel.length >= 7
+              }
+            )
+            if (contactosLimpios.length > 0) {
+              const sync = await syncContactos(
+                newClienteId,
+                [], // server vacío porque es cliente nuevo
+                contactosLimpios,
+              )
+              if (!sync.ok) {
+                toast.error(`Cliente creado, pero algunos contactos fallaron: ${sync.errors.join('; ')}`)
+              }
+            }
+          }
+
+          try {
+            await fetchClientes()
+          } catch (err) {
+            toast.error('No se pudo actualizar la lista de clientes. Se actualizará al recargar.')
+          }
+        })()
       }
     } catch (error) {
       setFormError('Error de conexión al guardar')
@@ -640,7 +670,7 @@ export default function ClientesClient({
     setDetailLoading(true)
     setDetailError(null)
     try {
-      const res = await fetch(`/api/clientes/${id}`)
+      const res = await fetchWithTimeout(`/api/clientes/${id}`, {}, 10_000)
       if (!res.ok) {
         // FIX REGRESION mobile 2026-06-10 ("no me abre el detalle"):
         // antes esto solo hacia toast.error y retornaba, sin abrir el modal.
