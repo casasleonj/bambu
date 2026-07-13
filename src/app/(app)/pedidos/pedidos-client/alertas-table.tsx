@@ -6,14 +6,26 @@ import { GuiaAlertaModal } from '@/components/guia-alerta-modal'
 import { CasoGuiaModal } from '@/components/caso-guia-modal'
 import type { AlertaTipo, AlertaItem } from '@/lib/alertas-config'
 import { ignorarAlerta, getGuiaAlerta } from '@/lib/alertas-config'
+import { usePedidos } from '@/hooks/use-pedidos'
+import { useRealtimeListener } from '@/hooks/use-realtime-listener'
+import { useReconnectHandler } from '@/hooks/use-reconnect-handler'
+import type { Pedido } from './types'
 
 interface AlertasTableProps {
-  pedidos: import('./types').Pedido[]
+  onCountChange?: (count: number) => void
 }
 
 const SEVERIDAD_ORDER = { ALTA: 3, MEDIA: 2, BAJA: 1 }
 
-export function AlertasTable({ pedidos }: AlertasTableProps) {
+export function AlertasTable({ onCountChange }: AlertasTableProps) {
+  const { pedidos, loading, refetch } = usePedidos(
+    { scope: 'alertas' },
+    { all: true, autoFetch: true },
+  )
+  const pedidosAlertas = pedidos as Pedido[]
+
+  useRealtimeListener(['pedido.*', 'cliente.*'], () => refetch())
+  useReconnectHandler(() => refetch())
   const [expandedCliente, setExpandedCliente] = useState<string | null>(null)
   const [filtroSeveridad, setFiltroSeveridad] = useState<'TODAS' | 'ALTA' | 'MEDIA' | 'BAJA'>('TODAS')
   const [searchTerm, setSearchTerm] = useState('')
@@ -44,7 +56,7 @@ export function AlertasTable({ pedidos }: AlertasTableProps) {
       })
   }, [])
 
-  const alertaRows = useMemo(() => calcularAlertas(pedidos), [pedidos])
+  const alertaRows = useMemo(() => calcularAlertas(pedidosAlertas), [pedidosAlertas])
 
   const filtrados = alertaRows
     .filter((row) => {
@@ -55,6 +67,10 @@ export function AlertasTable({ pedidos }: AlertasTableProps) {
       return matchSearch && matchSeveridad
     })
     .sort((a, b) => SEVERIDAD_ORDER[b.severidadMasAlta] - SEVERIDAD_ORDER[a.severidadMasAlta])
+
+  useEffect(() => {
+    onCountChange?.(filtrados.length)
+  }, [filtrados.length, onCountChange])
 
   const getBadgeColorLocal = (severidad: string) => {
     switch (severidad) {
@@ -111,8 +127,8 @@ export function AlertasTable({ pedidos }: AlertasTableProps) {
       })
       const data = await res.json()
       if (data.success) {
-        const clienteData = pedidos.find(p => p.clienteId === clienteId)
-        const pedidoData = pedidos.find(p => p.id === alerta.pedidoId)
+        const clienteData = pedidosAlertas.find(p => p.clienteId === clienteId)
+        const pedidoData = pedidosAlertas.find(p => p.id === alerta.pedidoId)
         setCasoCreado({
           ...data.caso,
           cliente: clienteData ? { id: clienteData.clienteId, nombre: clienteData.nombreCli, telefono: clienteData.telefonoCli } : null,
@@ -126,11 +142,11 @@ export function AlertasTable({ pedidos }: AlertasTableProps) {
   }
 
   const getContextData = (clienteId: string, alerta: AlertaItem) => {
-    const pedidoData = pedidos.find(p => p.id === alerta.pedidoId)
+    const pedidoData = pedidosAlertas.find(p => p.id === alerta.pedidoId)
     return {
       pedidoDisputa: pedidoData?.disputaAbierta ?? undefined,
       pedidoEstadoPago: pedidoData?.estadoPago ?? undefined,
-      clienteConSaldo: pedidos.some(p => p.clienteId === clienteId && Number(p.saldo) > 0),
+      clienteConSaldo: pedidosAlertas.some(p => p.clienteId === clienteId && Number(p.saldo) > 0),
     }
   }
 
@@ -138,6 +154,19 @@ export function AlertasTable({ pedidos }: AlertasTableProps) {
     if (casoCreado && casoCreado.id === casoId) {
       setCasoCreado({ ...casoCreado, status: newStatus })
     }
+  }
+
+  if (loading && pedidosAlertas.length === 0) {
+    return (
+      <div className="space-y-4">
+        <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl">
+          <h2 className="text-lg font-bold text-amber-900">Sistema de Alertas</h2>
+        </div>
+        <div className="bg-white rounded-xl shadow p-8 text-center text-sm text-gray-500">
+          Cargando alertas...
+        </div>
+      </div>
+    )
   }
 
   return (

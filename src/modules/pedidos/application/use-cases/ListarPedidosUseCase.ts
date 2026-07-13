@@ -19,6 +19,7 @@ export class ListarPedidosUseCase {
       origen: input.origen,
       embarqueId: input.embarqueId,
       tipo: input.tipo,
+      scope: input.scope,
     }
 
     const options = input.all

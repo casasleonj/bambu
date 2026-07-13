@@ -22,7 +22,7 @@ import { PedidoFilters } from './pedido-filters'
 import { PedidoTable } from './pedido-table'
 import { FiadosTable } from './fiados-table'
 import { AlertasTable } from './alertas-table'
-import { calcularAlertas } from './alertas-utils'
+
 import type { Pedido, Embarque, Cliente } from './types'
 import { getPresetDate, getTodayString } from '@/lib/dates'
 import { usePedidos } from '@/hooks/use-pedidos'
@@ -33,6 +33,7 @@ import { useCancelarPedido } from '@/hooks/use-cancelar-pedido'
 import { useAsignarEmbarque } from '@/hooks/use-asignar-embarque'
 import { useEntregarPedido } from '@/hooks/use-entregar-pedido'
 import { useRealtimeListener } from '@/hooks/use-realtime-listener'
+import { useReconnectHandler } from '@/hooks/use-reconnect-handler'
 import { GpsCaptureModal } from '@/components/gps-capture-modal'
 
 const PedidoFormUnified = dynamic(() => import('@/components/pedido-form-unified').then(m => m.PedidoFormUnified), { ssr: false })
@@ -85,6 +86,8 @@ export function PedidosClient() {
     permitirSinGpsConJustificacion: true,
   })
   const [limiteGlobalFiados, setLimiteGlobalFiados] = useState<number>(LIMITE_FIADOS_DEFAULT)
+  const [fiadosCount, setFiadosCount] = useState(0)
+  const [alertasCount, setAlertasCount] = useState(0)
 
   // Fechas desde URL (fuente de verdad)
   const desdeUrl = params.get('desde')
@@ -125,6 +128,13 @@ export function PedidosClient() {
 
   // Realtime: refetch when pedidos, clientes or embarques change in other sessions.
   useRealtimeListener(['pedido.*', 'cliente.*', 'embarque.*'], () => {
+    refetch()
+    fetchClientes()
+    fetchEmbarques()
+  })
+
+  // Refetch main pedidos dataset on SSE reconnect (Vercel Hobby 60s cycle).
+  useReconnectHandler(() => {
     refetch()
     fetchClientes()
     fetchEmbarques()
@@ -515,7 +525,6 @@ export function PedidosClient() {
         .reduce((acc, p) => acc + Number(p.saldo), 0),
     }
   }, [pedidos, hoyStr])
-  const alertasCount = useMemo(() => calcularAlertas(pedidos).length, [pedidos])
 
   const hasActiveFilters = !!(search || clienteIdFromUrl || filtroTipo.length > 0 || filtroOrigen.length > 0 || filtroEstadoEntrega.length > 0 || filtroEstadoPago.length > 0 || desdeUrl || hastaUrl)
 
@@ -931,7 +940,7 @@ export function PedidosClient() {
         <div className="flex border-b border-gray-200">
           {[
             { key: 'hoy', label: 'Pedidos', count: pedidosFiltrados.length },
-            { key: 'fiados', label: 'Fiados', count: pedidos.filter((p) => p.estadoEntrega === 'ENTREGADO' && Number(p.saldo) > 0 && p.clienteId !== 'CONSUMIDOR_FINAL').length },
+            { key: 'fiados', label: 'Fiados', count: fiadosCount },
             { key: 'alertas', label: 'Alertas', count: alertasCount },
           ].map((tab) => (
             <button
@@ -1071,8 +1080,8 @@ export function PedidosClient() {
           />
         )
       )}
-      {activeTab === 'fiados' && <FiadosTable pedidos={pedidos} clientes={clientes} limiteGlobal={limiteGlobalFiados} onPedidosChange={fetchPedidos} userRole={userRole} />}
-      {activeTab === 'alertas' && <AlertasTable pedidos={pedidos} />}
+      {activeTab === 'fiados' && <FiadosTable clientes={clientes} limiteGlobal={limiteGlobalFiados} onPedidosChange={fetchPedidos} onCountChange={setFiadosCount} userRole={userRole} />}
+      {activeTab === 'alertas' && <AlertasTable onCountChange={setAlertasCount} />}
 
       {/* Modal Formulario Unificado */}
       <Modal open={showModal || showVentaRapida} onClose={() => { setShowModal(false); setShowVentaRapida(false); setPedidoInicial(undefined) }} className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[95vh] overflow-hidden flex flex-col">

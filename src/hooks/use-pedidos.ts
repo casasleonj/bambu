@@ -17,6 +17,8 @@ export interface PedidoFilterParams {
   estadoPago?: string[]
   search?: string
   clienteId?: string
+  /** Server-side tab scope: isolates Pedidos/Fiados/Alertas datasets. */
+  scope?: 'fiados' | 'alertas'
 }
 
 export interface UsePedidosOptions {
@@ -65,6 +67,7 @@ export function usePedidos(
     if (params?.estadoEntrega) params.estadoEntrega.forEach(e => url.searchParams.append('estadoEntrega', e))
     if (params?.estadoPago) params.estadoPago.forEach(e => url.searchParams.append('estadoPago', e))
     if (params?.search) url.searchParams.set('search', params.search)
+    if (params?.scope) url.searchParams.set('scope', params.scope)
     return url.toString()
   }, [params, options?.all])
 

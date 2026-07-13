@@ -16,6 +16,8 @@ export interface PedidoFilter {
   origen?: string[]
   embarqueId?: string
   tipo?: string[]
+  /** Server-side tab scope: isolates Pedidos/Fiados/Alertas datasets. */
+  scope?: 'fiados' | 'alertas'
 }
 
 import type { TransactionClient } from '../../infrastructure/transactions/PrismaTransactionManager'
