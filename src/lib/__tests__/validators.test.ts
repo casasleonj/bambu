@@ -136,13 +136,20 @@ describe('ClienteCreateSchema - teléfono colombiano', () => {
     expect(result.success).toBe(true)
   })
 
-  it('acepta teléfono corto (schema min 1 char)', () => {
+  it('acepta teléfono corto con al menos 7 dígitos', () => {
+    const result = ClienteCreateSchema.safeParse({
+      nombre: 'Test',
+      telefono: '1234567',
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('rechaza teléfono con menos de 7 dígitos', () => {
     const result = ClienteCreateSchema.safeParse({
       nombre: 'Test',
       telefono: '123456',
     })
-    // Schema accepts any string with min length 1, max 20
-    expect(result.success).toBe(true)
+    expect(result.success).toBe(false)
   })
 
   it('rechaza teléfono con letras', () => {

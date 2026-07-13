@@ -1,4 +1,20 @@
 import { z } from "zod";
+import { normalizarTelefono } from "./telefono";
+
+const TelefonoRequeridoSchema = z.preprocess(
+  (v) => normalizarTelefono(String(v ?? "")),
+  z.string().min(7, "Teléfono inválido").max(20)
+)
+
+const TelefonoOpcionalSchema = z.preprocess(
+  (v) => (v === undefined || v === "" ? undefined : normalizarTelefono(String(v))),
+  z.string().min(7, "Teléfono inválido").max(20).optional()
+)
+
+const TelefonoOpcionalSinMinSchema = z.preprocess(
+  (v) => (v === undefined || v === "" ? undefined : normalizarTelefono(String(v))),
+  z.string().max(20).optional()
+)
 
 // ====================
 // NUEVOS ENUMS
@@ -59,7 +75,7 @@ export const PedidoCreateSchema = z.object({
   clienteNuevo: z.object({
     nombre: z.string().min(1),
     apellido: z.string().optional(),
-    telefono: z.string().min(1),
+    telefono: TelefonoRequeridoSchema,
     direccion: z.string().optional(),
     barrio: z.string().optional(),
     fuente: z.string().optional(),
@@ -220,8 +236,8 @@ export const ContactoAlternativoSchema = z.object({
  * relación, o corregir el teléfono.
  */
 export const ContactoAlternativoUpdateSchema = z.object({
-  nombre: z.string().min(1, 'Nombre requerido').optional(),
-  telefono: z.string().min(7, 'Teléfono inválido').optional(),
+  nombre: z.string().min(1, "Nombre requerido").optional(),
+  telefono: TelefonoOpcionalSchema,
   relacion: z.string().nullable().optional(),
 }).refine(
   (data) => data.nombre !== undefined || data.telefono !== undefined || data.relacion !== undefined,
@@ -231,7 +247,7 @@ export const ContactoAlternativoUpdateSchema = z.object({
 export const ClienteCreateSchema = z.object({
   nombre: z.string().min(1).max(100),
   apellido: z.string().max(100).optional(),
-  telefono: z.string().min(1).max(20),
+  telefono: TelefonoRequeridoSchema,
   fuente: z.preprocess(
     (val) => (val === '' ? undefined : val),
     z.string().max(100).optional()
@@ -556,7 +572,7 @@ export const ResumenFacturasQuerySchema = z.object({
 
 export const ProveedorCreateSchema = z.object({
   nombre: z.string().min(1).max(100),
-  telefono: z.string().max(20).optional(),
+  telefono: TelefonoOpcionalSinMinSchema,
   email: z.string().email().optional(),
   direccion: z.string().max(200).optional(),
   tipoProducto: z.string().max(100).optional(),
@@ -578,7 +594,7 @@ const TrabajadorBaseObject = z.object({
   comRepartHielo: z.coerce.number().min(0).optional(),
   comRepartBotellon: z.coerce.number().min(0).optional(),
   salarioFijo: z.coerce.number().min(0).optional(),
-  telefono: z.string().max(20).optional(),
+  telefono: TelefonoOpcionalSinMinSchema,
 })
 
 /**
