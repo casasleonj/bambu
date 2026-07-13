@@ -62,6 +62,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     })
     if (!embarqueRaw) return apiError('Not found', 404)
     const pedidosEnriquecidos = await enrichPedidosWithNegocio(embarqueRaw.pedidos)
+    const deudas = await prisma.deudaTrabajador.findMany({
+      where: { embarqueId: id },
+      select: { id: true, montoOriginal: true, montoPendiente: true, tipo: true, descripcion: true },
+      orderBy: { createdAt: 'desc' },
+    })
     const embarque = {
       ...embarqueRaw,
       pedidos: pedidosEnriquecidos.map((p) => ({
@@ -69,6 +74,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         total: Number(p.total),
         totalPagado: Number(p.totalPagado),
         saldo: Number(p.saldo),
+      })),
+      deudas: deudas.map((d) => ({
+        id: d.id,
+        montoOriginal: Number(d.montoOriginal),
+        montoPendiente: Number(d.montoPendiente),
+        tipo: d.tipo,
+        descripcion: d.descripcion,
       })),
     }
     return apiSuccess({ embarque })

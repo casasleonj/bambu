@@ -27,6 +27,16 @@ export interface CierreLegacyResponse {
     justificacionDiscrepancia: string | null
   }
   descuento: { id: string; monto: number } | null
+  // PR3: exponer resumen de caja y deuda generada para la UI de cierre.
+  caja: {
+    efectivoEsperado: number
+    efectivoReal: number
+    diferencia: number
+    otrosPagos: number
+    dineroEntregadoReportado: number
+    sobranteFaltante: number
+  }
+  deudaCreada: { id: string; monto: number } | null
 }
 
 export class CierrePresenter {
@@ -57,6 +67,8 @@ export class CierrePresenter {
         justificacionDiscrepancia: null,
       },
       descuento: result.descuentoCreado ?? null,
+      caja: result.caja,
+      deudaCreada: result.deudaCreada ?? null,
     }
   }
 }

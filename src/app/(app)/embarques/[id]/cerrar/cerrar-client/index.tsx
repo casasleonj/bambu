@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { formatCurrency } from '@/lib/utils'
+import { UMBRAL_MINIMO_FALTANTE_CAJA, DEUDA_FALTANTE_CAJA_PLAZO_NOMINAS_DEFAULT, DEUDA_FALTANTE_CAJA_PORCENTAJE_NOMINA_DEFAULT } from '@/lib/constants'
 import { getCapacidadInfo, calcularPesoDesdeCarga, type CargaSnapshot, emptyStock, type StockSnapshot } from '@/lib/embarque-capacidad'
 import { useProductosDomicilio, getProductoEmoji } from '@/hooks/use-productos-domicilio'
 import type { Cliente, PagoItem, Embarque, EmbarqueAbierto, CuadrePedido, VentaLibre, ProductoRetorno, GastoItem } from './types'
@@ -38,6 +39,7 @@ export default function CerrarEmbarqueClient() {
   const [gastos, setGastos] = useState<GastoItem[]>([])
   const [dineroEntregado, setDineroEntregado] = useState(0)
   const [justificacion, setJustificacion] = useState('')
+  const [justificacionFaltante, setJustificacionFaltante] = useState('')
   const [obsGeneral, setObsGeneral] = useState('')
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [activeSection, setActiveSection] = useState(0)
@@ -333,6 +335,8 @@ export default function CerrarEmbarqueClient() {
     const efectivoEsperado = totalCobrado - totalFiado - (totalCobrado - totalEfectivoRecibido)
     const debeEntregar = efectivoEsperado - totalGastos + (embarque.baseDinero || 0)
     const faltanteSobrante = dineroEntregado - debeEntregar
+    const faltanteEfectivo = faltanteSobrante < 0 ? Math.abs(faltanteSobrante) : 0
+    const generaraDeuda = faltanteEfectivo >= UMBRAL_MINIMO_FALTANTE_CAJA && !justificacionFaltante.trim()
 
     const totalEntregadoUnidades = Object.values(entregado).reduce((s, v) => s + v, 0)
 
@@ -359,12 +363,12 @@ export default function CerrarEmbarqueClient() {
       totalDevueltas, totalCambios, totalRotas,
       discrepancias, totalDiscrepancia,
       totalCobrado, totalFiado, totalGastos,
-      totalEfectivoRecibido, efectivoEsperado, debeEntregar, faltanteSobrante,
+      totalEfectivoRecibido, efectivoEsperado, debeEntregar, faltanteSobrante, faltanteEfectivo, generaraDeuda,
       totalEntregadoUnidades, totalComision,
       pagosPorMetodo,
       noEntregados, parciales,
     }
-  }, [embarque, cuadres, ventasLibres, retornos, gastos, dineroEntregado])
+  }, [embarque, cuadres, ventasLibres, retornos, gastos, dineroEntregado, justificacionFaltante])
 
   function ventasLibreTotal(v: VentaLibre): number {
     if (!embarque || embarque.pedidos.length === 0) return 0
@@ -438,6 +442,7 @@ export default function CerrarEmbarqueClient() {
         })),
         dineroEntregado,
         justificacionDiscrepancia: justificacion || undefined,
+        justificacionFaltante: justificacionFaltante || undefined,
         obs: obsGeneral,
       }
 
@@ -450,7 +455,18 @@ export default function CerrarEmbarqueClient() {
 
       const data = await res.json()
       if (data.success) {
-        toast.success('Embarque cerrado correctamente')
+        const deuda = data.deudaCreada
+        if (deuda && deuda.id) {
+          toast.success(
+            <div className="space-y-1">
+              <p className="font-semibold">Embarque cerrado</p>
+              <p className="text-sm">Se creó deuda por {formatCurrency(deuda.monto)} al trabajador.</p>
+            </div>,
+            { duration: 6000 }
+          )
+        } else {
+          toast.success('Embarque cerrado correctamente')
+        }
         router.push('/embarques')
       } else {
         toast.error(data.error?.message || 'Error al cerrar')
@@ -821,8 +837,41 @@ export default function CerrarEmbarqueClient() {
                       : `✅ CUADRE PERFECTO`}
                   </p>
                   {calculos.faltanteSobrante < 0 && (
-                    <p className="text-xs text-red-600 text-center mt-1">Se descontará al repartidor en nómina</p>
+                    <p className="text-xs text-red-600 text-center mt-1">
+                      {calculos.generaraDeuda
+                        ? 'Se creará deuda al trabajador si no se justifica'
+                        : 'No genera deuda (por debajo del umbral o justificado)'}
+                    </p>
                   )}
+                </div>
+              )}
+
+              {calculos.generaraDeuda && (
+                <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <span className="text-xl shrink-0">💳</span>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-amber-900">
+                        Se generará una deuda de {formatCurrency(calculos.faltanteEfectivo)} a {embarque.trabajador.nombre}
+                      </p>
+                      <p className="text-xs text-amber-700 mt-1">
+                        Plan de pago: {DEUDA_FALTANTE_CAJA_PLAZO_NOMINAS_DEFAULT} nóminas, máximo {DEUDA_FALTANTE_CAJA_PORCENTAJE_NOMINA_DEFAULT}% por nómina.
+                      </p>
+                      <label className="block text-xs font-medium text-amber-800 mt-3 mb-1">
+                        Justificación del faltante (opcional)
+                      </label>
+                      <textarea
+                        value={justificacionFaltante}
+                        onChange={(e) => setJustificacionFaltante(e.target.value)}
+                        placeholder="Ej: pagó peaje de emergencia, billete roto, etc."
+                        className="w-full px-3 py-2 border border-amber-300 rounded-lg text-sm"
+                        rows={2}
+                      />
+                      {justificacionFaltante.trim() && (
+                        <p className="text-xs text-green-700 mt-1">✅ Con esta justificación no se creará la deuda.</p>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -883,9 +932,17 @@ export default function CerrarEmbarqueClient() {
           <button
             onClick={() => setShowConfirmModal(true)}
             disabled={submitting}
-            className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium disabled:opacity-50"
+            className={`flex-1 px-4 py-3 rounded-lg transition font-medium disabled:opacity-50 ${
+              calculos?.generaraDeuda
+                ? 'bg-amber-600 text-white hover:bg-amber-700'
+                : 'bg-blue-600 text-white hover:bg-blue-700'
+            }`}
           >
-            {submitting ? 'Cerrando...' : 'Confirmar Cierre'}
+            {submitting
+              ? 'Cerrando...'
+              : calculos?.generaraDeuda
+              ? 'Cerrar y generar deuda'
+              : 'Confirmar Cierre'}
           </button>
         </div>
       </div>
@@ -904,6 +961,9 @@ export default function CerrarEmbarqueClient() {
             parciales: calculos?.parciales || 0,
             faltante: calculos?.faltanteSobrante || 0,
             discrepancia: calculos?.totalDiscrepancia || 0,
+            faltanteEfectivo: calculos?.faltanteEfectivo || 0,
+            generaraDeuda: calculos?.generaraDeuda || false,
+            nombreTrabajador: embarque?.trabajador?.nombre,
           }}
         />
       )}

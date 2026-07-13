@@ -75,3 +75,28 @@ describe('F4.10-c: reducción de código', () => {
     expect(source).not.toMatch(/const totalEntregado:\s*Record<string,\s*number>/)
   })
 })
+
+// PR3: auto-deuda por faltante de caja al cerrar embarque
+describe('PR3: integración de CrearDeudaFaltanteCajaService', () => {
+  it('FIX: el use case importa CrearDeudaFaltanteCajaService', () => {
+    expect(source).toMatch(/import\s*\{\s*CrearDeudaFaltanteCajaService\s*\}\s*from\s*['"]\.\.\/\.\.\/domain\/services\/crear-deuda-faltante-caja\.service['"]/)
+  })
+
+  it('FIX: el constructor acepta CrearDeudaFaltanteCajaService con default', () => {
+    expect(source).toMatch(/private readonly crearDeudaFaltanteService:\s*CrearDeudaFaltanteCajaService\s*=\s*new CrearDeudaFaltanteCajaService\(\)/)
+  })
+
+  it('FIX: calcula caja (sobranteFaltante) antes de cerrar', () => {
+    expect(source).toMatch(/sobranteFaltante/)
+    expect(source).toMatch(/calcularCajaFinal\(/)
+  })
+
+  it('FIX: llama al servicio con justificacionFaltante del input', () => {
+    expect(source).toMatch(/this\.crearDeudaFaltanteService\.execute\(/)
+    expect(source).toMatch(/input\.justificacionFaltante/)
+  })
+
+  it('FIX: retorna deudaCreada en el DTO', () => {
+    expect(source).toMatch(/deudaCreada,/)
+  })
+})

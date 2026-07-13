@@ -49,7 +49,7 @@ export async function POST(
       return apiError(formatZodError(parsed.error), 400)
     }
 
-    const { pedidos, ventasLibres, productos, gastos, dineroEntregado, justificacionDiscrepancia, obs } = parsed.data
+    const { pedidos, ventasLibres, productos, gastos, dineroEntregado, justificacionDiscrepancia, justificacionFaltante, obs } = parsed.data
 
     // Helper to coerce null to 0 (from Zod .nullish() fields)
     const n = (v: number | null | undefined): number => v ?? 0
@@ -107,6 +107,7 @@ export async function POST(
       })),
       dineroEntregado,
       justificacionDiscrepancia,
+      justificacionFaltante,
       obs,
     })
 

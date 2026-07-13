@@ -1,5 +1,6 @@
 import type { CuadrePedido } from './types'
 import { formatCurrency } from '@/lib/utils'
+import { DEUDA_FALTANTE_CAJA_PLAZO_NOMINAS_DEFAULT, DEUDA_FALTANTE_CAJA_PORCENTAJE_NOMINA_DEFAULT } from '@/lib/constants'
 
 interface ConfirmModalProps {
   cuadres: Record<string, CuadrePedido>
@@ -14,6 +15,9 @@ interface ConfirmModalProps {
     parciales: number
     faltante: number
     discrepancia: number
+    faltanteEfectivo?: number
+    generaraDeuda?: boolean
+    nombreTrabajador?: string
   }
 }
 
@@ -55,6 +59,16 @@ export function ConfirmModal({ cuadres, submitting, onClose, onConfirm, resumen 
               <div className="flex justify-between text-red-600">
                 <span>Discrepancia</span>
                 <span className="font-bold">{resumen.discrepancia} u.</span>
+              </div>
+            )}
+            {resumen.generaraDeuda && resumen.faltanteEfectivo && resumen.faltanteEfectivo > 0 && (
+              <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-1">
+                <p className="text-sm font-semibold text-amber-900">
+                  Se creará una deuda de {formatCurrency(resumen.faltanteEfectivo)} a {resumen.nombreTrabajador || 'el trabajador'}
+                </p>
+                <p className="text-xs text-amber-700">
+                  Plan: {DEUDA_FALTANTE_CAJA_PLAZO_NOMINAS_DEFAULT} nóminas, máximo {DEUDA_FALTANTE_CAJA_PORCENTAJE_NOMINA_DEFAULT}% por nómina.
+                </p>
               </div>
             )}
           </div>

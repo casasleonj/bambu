@@ -528,6 +528,9 @@ export const CerrarEmbarqueSchema = z.object({
   gastos: z.array(GastoEmbarqueSchema).optional().default([]),
   dineroEntregado: z.coerce.number().min(0).default(0),
   justificacionDiscrepancia: z.string().optional(),
+  // PR3: permite justificar un faltante de caja para evitar crear
+  // una DeudaTrabajador automática al cerrar el embarque.
+  justificacionFaltante: z.string().optional(),
   obs: z.string().optional(),
 })
 

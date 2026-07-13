@@ -82,6 +82,9 @@ export interface CerrarEmbarqueInput {
   }>
   dineroEntregado?: number
   justificacionDiscrepancia?: string
+  // PR3: permite justificar un faltante de caja para evitar crear
+  // una DeudaTrabajador automática al cerrar el embarque.
+  justificacionFaltante?: string
   obs?: string
 }
 
@@ -191,6 +194,7 @@ export interface CierreResultadoDTO {
   ventasLibresCreadas: number
   discrepanciaTotal: number
   descuentoCreado?: { id: string; monto: number }
+  deudaCreada?: { id: string; monto: number }
   gastosCreados: number
   totalVentas: number
   comision: number
@@ -198,5 +202,8 @@ export interface CierreResultadoDTO {
     efectivoEsperado: number
     efectivoReal: number
     diferencia: number
+    otrosPagos: number
+    dineroEntregadoReportado: number
+    sobranteFaltante: number
   }
 }

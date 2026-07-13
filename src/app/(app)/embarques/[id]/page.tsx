@@ -76,6 +76,12 @@ export default async function EmbarquePage({ params }: EmbarquePageProps) {
     notFound()
   }
 
+  const deudasRaw = await prisma.deudaTrabajador.findMany({
+    where: { embarqueId: id },
+    select: { id: true, montoOriginal: true, montoPendiente: true, tipo: true, descripcion: true },
+    orderBy: { createdAt: 'desc' },
+  })
+
   const totalPacas = embarqueRaw.productos && embarqueRaw.productos.length > 0
     ? embarqueRaw.productos.reduce((sum, p) => sum + p.cargadas, 0)
     : calcularPacasEmbarque(embarqueRaw.pedidos)
@@ -127,6 +133,13 @@ export default async function EmbarquePage({ params }: EmbarquePageProps) {
       devueltas: p.devueltas ?? 0,
       cambios: p.cambios ?? 0,
       rotas: p.rotas ?? 0,
+    })),
+    deudas: deudasRaw.map((d) => ({
+      id: d.id,
+      montoOriginal: Number(d.montoOriginal),
+      montoPendiente: Number(d.montoPendiente),
+      tipo: d.tipo,
+      descripcion: d.descripcion,
     })),
     pedidos: embarqueRaw.pedidos.map((p) => ({
       id: p.id,

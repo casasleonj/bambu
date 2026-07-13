@@ -524,6 +524,28 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
                 Ver cierre completo →
               </Link>
             </div>
+            {embarque.deudas && embarque.deudas.length > 0 && (
+              <div className="mt-3 pt-3 border-t space-y-2">
+                {embarque.deudas.map((deuda) => (
+                  <div key={deuda.id} className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="text-amber-600">💳</span>
+                      <span className="text-gray-700">Deuda generada por faltante de caja</span>
+                      <span className="text-xs text-gray-400">({deuda.descripcion})</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="font-semibold text-gray-800"><MoneyDisplay value={deuda.montoOriginal} userRole={userRole} /></span>
+                      <Link
+                        href={`/trabajadores/${embarque.trabajador.id}`}
+                        className="text-xs text-blue-600 hover:underline"
+                      >
+                        Ver trabajador →
+                      </Link>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

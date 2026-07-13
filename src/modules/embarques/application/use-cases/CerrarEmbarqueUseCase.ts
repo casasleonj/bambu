@@ -29,6 +29,7 @@ import { CierreEmbarqueService } from '../../domain/services/cierre-embarque.ser
 import { ProcesarPedidoService } from '../../domain/services/procesar-pedido.service'
 import { CrearVentasLibresService } from '../../domain/services/crear-ventas-libres.service'
 import { CrearDescuentoDiscrepanciaService } from '../../domain/services/crear-descuento-discrepancia.service'
+import { CrearDeudaFaltanteCajaService } from '../../domain/services/crear-deuda-faltante-caja.service'
 import { CerrarEmbarqueSideEffectsService } from '../../domain/services/cerrar-embarque-side-effects.service'
 import type { PedidoRawInput } from '../../domain/services/procesar-pedido.service'
 import { Carga, type ProductCode } from '../../domain/value-objects/Carga'
@@ -66,6 +67,10 @@ export class CerrarEmbarqueUseCase {
     // delegar la creación de descuentos por discrepancia (~35 líneas).
     // Default: nueva instancia (backward compatible con callers existentes).
     private readonly crearDescuentoService: CrearDescuentoDiscrepanciaService = new CrearDescuentoDiscrepanciaService(),
+    // PR3: inyectar CrearDeudaFaltanteCajaService para crear deudas
+    // automáticas por faltante de caja al cerrar embarque.
+    // Default: nueva instancia (backward compatible con callers existentes).
+    private readonly crearDeudaFaltanteService: CrearDeudaFaltanteCajaService = new CrearDeudaFaltanteCajaService(),
     // FIX F4.10-d: inyectar CerrarEmbarqueSideEffectsService para
     // delegar los side effects finales: crearGastos y actualizarProductosRetorno.
     // Default: nueva instancia (backward compatible con callers existentes).
@@ -168,7 +173,29 @@ export class CerrarEmbarqueUseCase {
         this.productoRepo,
       )
 
-      // 9. Close embarque
+      // 9. Reconcile cash before closing to detect faltante de caja.
+      const pagosColeccionados = coleccionarPagos(pedidosRaw, input.ventasLibres ?? [])
+      const gastosTotal = (input.gastos ?? []).reduce((sum, g) => sum + (g.monto || 0), 0)
+      const caja = calcularCajaFinal(
+        this.cierreService,
+        embarque.baseDinero ?? 0,
+        totalVentas,
+        pagosColeccionados,
+        gastosTotal,
+        input.dineroEntregado ?? 0,
+      )
+
+      // 10. Create worker debt for unexplained cash shortfall (PR3).
+      const deudaCreada = await this.crearDeudaFaltanteService.execute(
+        client,
+        embarque.trabajadorId,
+        input.id,
+        caja.sobranteFaltante,
+        input.justificacionFaltante,
+        this.userId,
+      )
+
+      // 11. Close embarque
       await this.embarqueRepo.update(
         input.id,
         {
@@ -180,7 +207,7 @@ export class CerrarEmbarqueUseCase {
         tx,
       )
 
-      // 10. Log audit
+      // 12. Log audit
       logAudit({
         entidad: 'Embarque',
         registroId: input.id,
@@ -193,6 +220,7 @@ export class CerrarEmbarqueUseCase {
           gastos: gastosCount,
           discrepancia: totalDiscrepancia,
           dineroEntregado: input.dineroEntregado ?? 0,
+          deudaCreada: deudaCreada ? { id: deudaCreada.id, monto: deudaCreada.monto } : null,
         },
         usuarioId: this.userId,
       })
@@ -206,20 +234,13 @@ export class CerrarEmbarqueUseCase {
         ventasLibresCreadas: ventasLibresCount,
         discrepanciaTotal: totalDiscrepancia,
         descuentoCreado,
+        deudaCreada,
         gastosCreados: gastosCount,
         totalVentas,
         comision: totalVentas * 0.05,
-        // FIX HIGH (C-BIZ-2): Calcular caja con la función de dominio
-        // Previously: returned hardcoded { 0, 0, 0 } — discrepancia entre lo que
-        // esperaba el sistema y lo que reportó el repartidor no se computaba.
-        caja: calcularCajaFinal(
-          this.cierreService,
-          embarque.baseDinero ?? 0,
-          totalVentas,
-          coleccionarPagos(pedidosRaw, input.ventasLibres ?? []),
-          (input.gastos ?? []).reduce((sum, g) => sum + (g.monto || 0), 0),
-          input.dineroEntregado ?? 0,
-        ),
+        // FIX HIGH (C-BIZ-2): Calcular caja con la función de dominio.
+        // Reutilizamos el objeto `caja` calculado en el paso 9.
+        caja,
       }
     })
   }
