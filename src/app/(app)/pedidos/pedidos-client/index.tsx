@@ -1583,7 +1583,9 @@ export function PedidosClient() {
                     <div className="flex justify-between items-center mb-2">
                       <span className="text-sm text-gray-500">#{selectedPedido.factura.numero}</span>
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                        selectedPedido.factura.estado === 'PAGADA' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                        selectedPedido.factura.estado === 'PAGADA' ? 'bg-green-100 text-green-700' :
+                        selectedPedido.factura.estado === 'ANULADA' ? 'bg-gray-100 text-gray-700' :
+                        'bg-yellow-100 text-yellow-700'
                       }`}>
                         {selectedPedido.factura.estado}
                       </span>

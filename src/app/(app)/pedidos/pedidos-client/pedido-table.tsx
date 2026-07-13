@@ -144,6 +144,9 @@ function DesktopRow({
           if (visual.key === 'PAGADO') {
             return <span className="text-xs text-green-600 font-medium">✓</span>
           }
+          if (visual.key === 'ANULADO') {
+            return <span className="text-xs text-gray-500 font-medium">Anulado</span>
+          }
           return <span className="text-xs text-gray-400 font-medium">—</span>
         })()}
       </td>

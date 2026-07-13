@@ -455,25 +455,27 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono }: Fact
               BARRA DE PROGRESO + TOTALES
               ════════════════════════════════════════ */}
           
-          {/* Barra de progreso */}
-          <div className="mb-6">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Progreso de pago</h3>
-              <span className={`text-sm font-bold ${progreso === 100 ? 'text-green-600' : 'text-blue-600'}`}>
-                {progreso}%
-              </span>
+          {/* Barra de progreso (oculta si está anulada) */}
+          {factura.estado !== 'ANULADA' && (
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Progreso de pago</h3>
+                <span className={`text-sm font-bold ${progreso === 100 ? 'text-green-600' : 'text-blue-600'}`}>
+                  {progreso}%
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                <div
+                  className="h-3 rounded-full transition-all duration-500"
+                  style={{ width: `${progreso}%`, backgroundColor: progreso === 100 ? BRAND.green : BRAND.blue }}
+                />
+              </div>
+              <div className="flex justify-between mt-1.5 text-xs text-gray-400">
+                <span>{formatCurrency(pagado)} pagado</span>
+                <span>{formatCurrency(total)} total</span>
+              </div>
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
-              <div
-                className="h-3 rounded-full transition-all duration-500"
-                style={{ width: `${progreso}%`, backgroundColor: progreso === 100 ? BRAND.green : BRAND.blue }}
-              />
-            </div>
-            <div className="flex justify-between mt-1.5 text-xs text-gray-400">
-              <span>{formatCurrency(pagado)} pagado</span>
-              <span>{formatCurrency(total)} total</span>
-            </div>
-          </div>
+          )}
 
           {/* Totales en cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
@@ -481,16 +483,18 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono }: Fact
               <p className="text-xs text-gray-400 mb-1">Subtotal</p>
               <p className="text-sm font-semibold text-gray-900">{formatCurrency(Number(factura.subtotal || factura.total))}</p>
             </div>
-            <div className="bg-green-50 rounded-xl p-4 text-center border border-green-100">
-              <p className="text-xs text-green-600 mb-1">Pagado</p>
-              <p className="text-sm font-semibold text-green-700">{formatCurrency(pagado)}</p>
+            <div className={`rounded-xl p-4 text-center border ${factura.estado === 'ANULADA' ? 'bg-gray-50 border-gray-100' : 'bg-green-50 border-green-100'}`}>
+              <p className={`text-xs mb-1 ${factura.estado === 'ANULADA' ? 'text-gray-400' : 'text-green-600'}`}>Pagado</p>
+              <p className={`text-sm font-semibold ${factura.estado === 'ANULADA' ? 'text-gray-500' : 'text-green-700'}`}>{formatCurrency(pagado)}</p>
             </div>
-            <div className={`rounded-xl p-4 text-center border ${saldo > 0 ? 'bg-red-50 border-red-100' : 'bg-gray-50 border-gray-100'}`}>
-              <p className={`text-xs mb-1 ${saldo > 0 ? 'text-red-600' : 'text-gray-400'}`}>
-                {saldo > 0 ? 'Saldo' : 'Estado'}
+            <div className={`rounded-xl p-4 text-center border ${saldo > 0 && factura.estado !== 'ANULADA' ? 'bg-red-50 border-red-100' : 'bg-gray-50 border-gray-100'}`}>
+              <p className={`text-xs mb-1 ${saldo > 0 && factura.estado !== 'ANULADA' ? 'text-red-600' : 'text-gray-400'}`}>
+                {saldo > 0 && factura.estado !== 'ANULADA' ? 'Saldo' : 'Estado'}
               </p>
-              {saldo > 0 ? (
+              {saldo > 0 && factura.estado !== 'ANULADA' ? (
                 <p className="text-sm font-bold text-red-700">{formatCurrency(saldo)}</p>
+              ) : factura.estado === 'ANULADA' ? (
+                <p className="text-sm font-bold text-gray-500">Anulada</p>
               ) : (
                 <p className="text-sm font-bold text-green-600">PAGADA</p>
               )}

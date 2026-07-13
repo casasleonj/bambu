@@ -64,4 +64,32 @@ describe('calcularEstadoPagoVisual', () => {
     )
     expect(estado.key).toBe('PENDIENTE')
   })
+
+  it('retorna ANULADO cuando estadoPago es ANULADO', () => {
+    const estado = calcularEstadoPagoVisual(make({ estadoPago: 'ANULADO' }))
+    expect(estado.key).toBe('ANULADO')
+    expect(estado.label).toBe('Anulado')
+    expect(estado.color).toBe('gray')
+    expect(estado.isMoney).toBe(false)
+  })
+
+  it('retorna ANULADO cuando estadoEntrega es ANULADO', () => {
+    const estado = calcularEstadoPagoVisual(make({ estadoEntrega: 'ANULADO' }))
+    expect(estado.key).toBe('ANULADO')
+    expect(estado.label).toBe('Anulado')
+    expect(estado.color).toBe('gray')
+  })
+
+  it('NO retorna PAGADO cuando está anulado aunque totalPagado >= total', () => {
+    const estado = calcularEstadoPagoVisual(
+      make({
+        estadoPago: 'ANULADO',
+        estadoEntrega: 'ANULADO',
+        total: 100_000,
+        totalPagado: 100_000,
+      })
+    )
+    expect(estado.key).toBe('ANULADO')
+    expect(estado.color).toBe('gray')
+  })
 })
