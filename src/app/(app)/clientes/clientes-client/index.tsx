@@ -274,10 +274,13 @@ export default function ClientesClient({
   const clientesFiltrados = useMemo(() => clientes.filter((c) => {
     const term = search.toLowerCase()
     const termTelefono = normalizarTelefono(term)
+    const matchTelefono = termTelefono.length > 0
+      ? (tel: string) => normalizarTelefono(tel).includes(termTelefono)
+      : () => false
     return (
       c.nombre.toLowerCase().includes(term) ||
       (c.apellido ?? '').toLowerCase().includes(term) ||
-      normalizarTelefono(c.telefono).includes(termTelefono) ||
+      matchTelefono(c.telefono) ||
       c.nombreNegocio?.toLowerCase().includes(term) ||
       c.tipoNegocio?.toLowerCase().includes(term) ||
       c.barrio?.toLowerCase().includes(term) ||
@@ -285,7 +288,7 @@ export default function ClientesClient({
       c.notas?.toLowerCase().includes(term) ||
       c.contactos?.some(ct =>
         ct.nombre.toLowerCase().includes(term) ||
-        normalizarTelefono(ct.telefono).includes(termTelefono) ||
+        matchTelefono(ct.telefono) ||
         ct.relacion?.toLowerCase().includes(term)
       ) ||
       c.negocios?.some(neg =>

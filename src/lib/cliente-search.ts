@@ -93,16 +93,18 @@ export function scoreCliente(cliente: ClienteSearchable, query: string): number 
 
   // Campos terciarios (peso 1x)
   const camposTerciarios = [
-    normalizarTelefono(cliente.telefono || ''),
     normalize(cliente.notas || ''),
     normalize(cliente.fuente || ''),
+  ]
+  const telefonosTerciarios = [
+    normalizarTelefono(cliente.telefono || ''),
   ]
 
   // Contactos (peso 1x)
   if (cliente.contactos) {
     for (const ct of cliente.contactos) {
       camposTerciarios.push(normalize(ct.nombre))
-      camposTerciarios.push(normalizarTelefono(ct.telefono))
+      telefonosTerciarios.push(normalizarTelefono(ct.telefono))
       camposTerciarios.push(normalize(ct.relacion || ''))
     }
   }
@@ -136,6 +138,11 @@ export function scoreCliente(cliente: ClienteSearchable, query: string): number 
     }
     // Check terciarios (1x)
     else if (camposTerciarios.some(campo => campo.includes(palabra))) {
+      score += 1
+      wordMatched = true
+    }
+    // Check teléfonos solo si la palabra contiene dígitos
+    else if (/\d/.test(palabra) && telefonosTerciarios.some(campo => campo.includes(palabra))) {
       score += 1
       wordMatched = true
     }

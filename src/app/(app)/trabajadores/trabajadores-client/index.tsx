@@ -56,10 +56,13 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
   const trabajadoresFiltrados = trabajadores.filter((t) => {
     const term = search.toLowerCase()
     const termTelefono = normalizarTelefono(term)
+    const matchTelefono = termTelefono.length > 0
+      ? normalizarTelefono(t.telefono ?? '').includes(termTelefono)
+      : false
     return (
       t.nombre.toLowerCase().includes(term) ||
       t.rol.toLowerCase().includes(term) ||
-      normalizarTelefono(t.telefono ?? '').includes(termTelefono) ||
+      matchTelefono ||
       t.tipoPago.toLowerCase().includes(term)
     )
   })

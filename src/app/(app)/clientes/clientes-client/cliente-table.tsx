@@ -514,9 +514,13 @@ export const ClienteTable = React.memo(function ClienteTable({
                         {(() => {
                           if (!search || !cliente.contactos) return null
                           const term = search.toLowerCase()
+                          const termTelefono = normalizarTelefono(term)
+                          const matchTelefono = termTelefono.length > 0
+                            ? (tel: string) => normalizarTelefono(tel).includes(termTelefono)
+                            : () => false
                           const matched = cliente.contactos.find(ct =>
                             ct.nombre.toLowerCase().includes(term) ||
-                            normalizarTelefono(ct.telefono).includes(normalizarTelefono(term)) ||
+                            matchTelefono(ct.telefono) ||
                             ct.relacion?.toLowerCase().includes(term)
                           )
                           if (!matched) return null
