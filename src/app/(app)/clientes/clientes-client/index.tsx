@@ -6,6 +6,12 @@ import Link from 'next/link'
 import { toast } from 'sonner'
 import { useConfirm } from '@/components/confirm-modal'
 import { formatCurrency, formatLocalDate } from '@/lib/utils'
+import {
+  normalizarTelefono,
+  formatearTelefonoParaInput,
+  formatearTelefonoParaCopiar,
+  formatearTelefonoParaLlamar,
+} from '@/lib/telefono'
 import { ErrorState } from '@/components/error-state'
 import { SkeletonPage } from '@/components/skeleton'
 import { Tooltip } from '@/components/tooltip'
@@ -267,10 +273,11 @@ export default function ClientesClient({
 
   const clientesFiltrados = useMemo(() => clientes.filter((c) => {
     const term = search.toLowerCase()
+    const termTelefono = normalizarTelefono(term)
     return (
       c.nombre.toLowerCase().includes(term) ||
       (c.apellido ?? '').toLowerCase().includes(term) ||
-      c.telefono.includes(term) ||
+      normalizarTelefono(c.telefono).includes(termTelefono) ||
       c.nombreNegocio?.toLowerCase().includes(term) ||
       c.tipoNegocio?.toLowerCase().includes(term) ||
       c.barrio?.toLowerCase().includes(term) ||
@@ -278,7 +285,7 @@ export default function ClientesClient({
       c.notas?.toLowerCase().includes(term) ||
       c.contactos?.some(ct =>
         ct.nombre.toLowerCase().includes(term) ||
-        ct.telefono.includes(term) ||
+        normalizarTelefono(ct.telefono).includes(termTelefono) ||
         ct.relacion?.toLowerCase().includes(term)
       ) ||
       c.negocios?.some(neg =>
@@ -383,15 +390,16 @@ export default function ClientesClient({
   ): Promise<{ ok: boolean; errors: string[] }> {
     const errors: string[] = []
 
-    // Normalizar teléfonos para el diff (sin espacios/guiones)
-    const norm = (t: string) => t.replace(/\s|-|\(|\)/g, '').trim()
+    // Normalizar teléfonos para el diff (formato internacional colombiano)
+    const norm = (t: string) => normalizarTelefono(t)
     const normRel = (r?: string | null) => (r ?? '').trim() || null
 
     // Map: telefono normalizado → { nombre, relacion, id? }
     const enForm = new Map<string, { nombre: string; relacion: string | null }>()
     for (const c of contactosForm) {
-      if (!c.nombre.trim() || !c.telefono.trim()) continue
-      enForm.set(norm(c.telefono), {
+      const telNormalizado = normalizarTelefono(c.telefono)
+      if (!c.nombre.trim() || !telNormalizado || telNormalizado.length < 7) continue
+      enForm.set(telNormalizado, {
         nombre: c.nombre.trim(),
         relacion: normRel(c.relacion),
       })
@@ -476,15 +484,13 @@ export default function ClientesClient({
       setFormError('El nombre es obligatorio')
       return
     }
-    if (!formData.telefono.trim()) {
+    const telefonoNormalizado = normalizarTelefono(formData.telefono)
+    if (!telefonoNormalizado) {
       setFormError('El teléfono es obligatorio')
       return
     }
-    // Normalizar teléfono: quitar espacios, guiones, paréntesis
-    const telefonoLimpio = formData.telefono.replace(/\s|-|\(|\)/g, '').trim()
-    // Validar formato colombiano: celular 3xx (10 dígitos) o fijo 60x (10-11 dígitos), opcional +57
-    if (!/^(?:\+?57)?\d{10,11}$/.test(telefonoLimpio)) {
-      setFormError('Teléfono inválido. Celular: 3xxXXXXXXX (10 dígitos). Fijo: 60xXXXXXXX (10-11 dígitos)')
+    if (telefonoNormalizado.length < 7) {
+      setFormError('Teléfono inválido. Debe tener al menos 7 dígitos.')
       return
     }
 
@@ -494,9 +500,10 @@ export default function ClientesClient({
       // NOTA: `contactos` ya no va en el body (Fase 3: la columna legacy
       // `Cliente.contactos Json?` no existe). Se sincroniza después via
       // sub-endpoints `POST/DELETE /api/clientes/[id]/contactos`.
-      const { contactos: _contactosLegacy, ...formDataSinContactos } = formData
+      const { contactos: _contactosLegacy, telefono: _telefonoRaw, ...formDataSinContactos } = formData
       const body = {
         ...formDataSinContactos,
+        telefono: telefonoNormalizado,
         preciosEspeciales: preciosJson || undefined,
         linkUbicacion: formData.linkUbicacion || null,
       }
@@ -513,7 +520,10 @@ export default function ClientesClient({
           // Diff contra los contactos originales del cliente seleccionado.
           const contactosOriginales = (selectedCliente.contactos as Array<{ id?: string; telefono: string }>) || []
           const contactosLimpios = formData.contactos.filter(
-            c => c.nombre.trim() && c.telefono.trim()
+            c => {
+              const tel = normalizarTelefono(c.telefono)
+              return c.nombre.trim() && tel.length >= 7
+            }
           )
           const sync = await syncContactos(selectedCliente.id, contactosOriginales, contactosLimpios)
           if (!sync.ok) {
@@ -571,7 +581,10 @@ export default function ClientesClient({
         // los contactos del form podrían pisar los del cliente original.
         if (newClienteId && !data.deduped) {
           const contactosLimpios = formData.contactos.filter(
-            c => c.nombre.trim() && c.telefono.trim()
+            c => {
+              const tel = normalizarTelefono(c.telefono)
+              return c.nombre.trim() && tel.length >= 7
+            }
           )
           if (contactosLimpios.length > 0) {
             // El cliente es nuevo: ningún contacto previo que pudiera chocar.
@@ -996,7 +1009,7 @@ export default function ClientesClient({
                 </Tooltip>
                 <Tooltip content="Llamar al cliente" position="bottom">
                   <a
-                    href={`tel:${selectedCliente.telefono}`}
+                    href={formatearTelefonoParaLlamar(selectedCliente.telefono)}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-700 rounded-lg text-xs font-medium hover:bg-green-100 transition"
                   >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1232,11 +1245,11 @@ export default function ClientesClient({
                           <span className="text-sm text-gray-500">Teléfono</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <a href={`tel:${selectedCliente.telefono}`} className="font-medium text-blue-600 hover:underline">
-                            {selectedCliente.telefono}
+                          <a href={formatearTelefonoParaLlamar(selectedCliente.telefono)} className="font-medium text-blue-600 hover:underline">
+                            {formatearTelefonoParaInput(selectedCliente.telefono)}
                           </a>
                           <button
-                            onClick={() => { navigator.clipboard.writeText(selectedCliente.telefono); toast.success('Teléfono copiado') }}
+                            onClick={() => { navigator.clipboard.writeText(formatearTelefonoParaCopiar(selectedCliente.telefono)); toast.success('Teléfono copiado') }}
                             className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded transition"
                             aria-label="Copiar teléfono"
                           >
@@ -1376,7 +1389,7 @@ export default function ClientesClient({
                                 </div>
                                 <div className="flex items-center gap-1 shrink-0">
                                   <a
-                                    href={`tel:${contacto.telefono}`}
+                                    href={formatearTelefonoParaLlamar(contacto.telefono)}
                                     className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
                                     aria-label={`Llamar a ${contacto.nombre}`}
                                   >
@@ -1385,7 +1398,7 @@ export default function ClientesClient({
                                     </svg>
                                   </a>
                                   <button
-                                    onClick={() => { navigator.clipboard.writeText(contacto.telefono); toast.success('Teléfono copiado') }}
+                                    onClick={() => { navigator.clipboard.writeText(formatearTelefonoParaCopiar(contacto.telefono)); toast.success('Teléfono copiado') }}
                                     className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded transition"
                                     aria-label="Copiar teléfono"
                                   >
@@ -1393,7 +1406,7 @@ export default function ClientesClient({
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                                     </svg>
                                   </button>
-                                  <span className="text-xs text-gray-500 font-mono ml-1">{contacto.telefono}</span>
+                                  <span className="text-xs text-gray-500 font-mono ml-1">{formatearTelefonoParaInput(contacto.telefono)}</span>
                                 </div>
                               </div>
                             ))}
