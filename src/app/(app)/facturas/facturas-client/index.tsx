@@ -528,22 +528,28 @@ export default function FacturasPage() {
                         <span className="text-sm font-semibold text-gray-800">{formatCurrency(total)}</span>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        {tieneSaldo ? (
+                        {factura.estado === 'ANULADA' ? (
+                          <span className="text-xs text-gray-500 font-medium">Anulada</span>
+                        ) : tieneSaldo ? (
                           <span className="text-sm font-semibold text-red-600">{formatCurrency(saldo)}</span>
                         ) : (
                           <span className="text-xs text-green-600 font-medium">✓</span>
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <div className="w-full max-w-[100px] mx-auto">
-                          <div className="w-full bg-gray-200 rounded-full h-1.5">
-                            <div
-                              className={`h-1.5 rounded-full transition-all ${progreso === 100 ? 'bg-green-500' : 'bg-blue-500'}`}
-                              style={{ width: `${progreso}%` }}
-                            />
+                        {factura.estado === 'ANULADA' ? (
+                          <span className="text-[10px] text-gray-400 block text-center">—</span>
+                        ) : (
+                          <div className="w-full max-w-[100px] mx-auto">
+                            <div className="w-full bg-gray-200 rounded-full h-1.5">
+                              <div
+                                className={`h-1.5 rounded-full transition-all ${progreso === 100 ? 'bg-green-500' : 'bg-blue-500'}`}
+                                style={{ width: `${progreso}%` }}
+                              />
+                            </div>
+                            <span className="text-[10px] text-gray-400 mt-0.5 block text-center">{progreso}%</span>
                           </div>
-                          <span className="text-[10px] text-gray-400 mt-0.5 block text-center">{progreso}%</span>
-                        </div>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-center">
                         <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium border ${estadoBadgeClass(factura.estado)}`}>
@@ -645,7 +651,9 @@ export default function FacturasPage() {
                     </div>
                     <div className="text-right ml-3 shrink-0">
                       <p className="font-bold text-gray-800 text-sm">{formatCurrency(total)}</p>
-                      {tieneSaldo ? (
+                      {factura.estado === 'ANULADA' ? (
+                        <p className="text-xs text-gray-500 font-medium">Anulada</p>
+                      ) : tieneSaldo ? (
                         <p className="text-xs text-red-600 font-semibold">Saldo: {formatCurrency(saldo)}</p>
                       ) : (
                         <p className="text-xs text-green-600 font-medium">Pagada</p>
@@ -654,15 +662,17 @@ export default function FacturasPage() {
                   </div>
 
                   {/* Barra de progreso */}
-                  <div className="mt-2">
-                    <div className="w-full bg-gray-200 rounded-full h-1.5">
-                      <div
-                        className={`h-1.5 rounded-full transition-all ${progreso === 100 ? 'bg-green-500' : 'bg-blue-500'}`}
-                        style={{ width: `${progreso}%` }}
-                      />
+                  {factura.estado !== 'ANULADA' && (
+                    <div className="mt-2">
+                      <div className="w-full bg-gray-200 rounded-full h-1.5">
+                        <div
+                          className={`h-1.5 rounded-full transition-all ${progreso === 100 ? 'bg-green-500' : 'bg-blue-500'}`}
+                          style={{ width: `${progreso}%` }}
+                        />
+                      </div>
+                      <span className="text-[10px] text-gray-400">{progreso}% pagado</span>
                     </div>
-                    <span className="text-[10px] text-gray-400">{progreso}% pagado</span>
-                  </div>
+                  )}
 
                   {/* Acciones */}
                   <div className="flex gap-2 mt-3 pt-3 border-t border-gray-100">
