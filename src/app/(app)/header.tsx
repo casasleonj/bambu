@@ -19,7 +19,12 @@ const ROL_LABELS: Record<string, { label: string; color: string }> = {
   SELLADOR: { label: 'Sellador', color: 'bg-blue-300 text-blue-900' },
 }
 
-export function Header() {
+interface HeaderProps {
+  fechaLarga: string
+  fechaCorta: string
+}
+
+export function Header({ fechaLarga, fechaCorta }: HeaderProps) {
   // FIX Fase 4 §6.4: el botón hamburguesa del header decide según el
   // breakpoint qué estado toggle:
   // - Móvil: abre/cierra el drawer temporal (mobileDrawerOpen)
@@ -69,11 +74,9 @@ export function Header() {
   // apuntando a un state stale.)
   // Ver e2e/mobile-menu.spec.ts para tests de regresion.
 
-  // FIX mobile UX: formatear la fecha según el viewport.
-  // - Móvil: "10 jun" (corto, ~50px)
-  // - sm+ (≥640px): "mié, 10 jun 2026" (largo, ~110px)
-  const fechaLarga = new Date().toLocaleDateString('es-CO', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
-  const fechaCorta = new Date().toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })
+  // FIX hydration error: la fecha viene como prop desde el Server Layout,
+  // generada una sola vez con timezone fijo America/Bogota. El Header la
+  // usa tal cual, sin llamar a `new Date()` en el cliente.
 
   return (
     // FIX REGRESION mobile 2026-06-10: el `<header>` NO tiene `overflow-x-hidden`
