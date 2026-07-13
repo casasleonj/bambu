@@ -69,6 +69,10 @@ export default function ClientesClient({
     preciosEspeciales: '',
     notas: '',
     limitePedidosFiados: undefined,
+    nombreNegocio: '',
+    tipoNegocio: '',
+    horaApertura: '',
+    referencia: '',
   })
 
   const [sortBy, setSortBy] = useState<'nombre' | 'createdAt'>('createdAt')
@@ -307,6 +311,10 @@ export default function ClientesClient({
       preciosEspeciales: '',
       notas: '',
       limitePedidosFiados: undefined,
+      nombreNegocio: '',
+      tipoNegocio: '',
+      horaApertura: '',
+      referencia: '',
     })
     setPreciosEspecialesMap({ DOMICILIO: {}, PUNTO: {} })
     setCanalActivo('DOMICILIO')
@@ -333,6 +341,10 @@ export default function ClientesClient({
       preciosEspeciales: selectedCliente.preciosEspeciales || '',
       notas: selectedCliente.notas || '',
       limitePedidosFiados: selectedCliente.limitePedidosFiados || undefined,
+      nombreNegocio: selectedCliente.nombreNegocio || '',
+      tipoNegocio: selectedCliente.tipoNegocio || '',
+      horaApertura: selectedCliente.horaApertura || '',
+      referencia: selectedCliente.referencia || '',
     })
     setPreciosEspecialesMap(parsePreciosEspeciales(selectedCliente.preciosEspeciales))
     setCanalActivo('DOMICILIO')

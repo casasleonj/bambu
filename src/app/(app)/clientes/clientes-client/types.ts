@@ -16,6 +16,7 @@ export interface Cliente {
   barrio?: string
   linkUbicacion?: string
   direccion?: string
+  referencia?: string | null
   contactos?: ContactoAlternativo[]
   frecuencia: string
   cadaNDias?: number
@@ -173,6 +174,10 @@ export interface FormData {
   preciosEspeciales: string
   notas: string
   limitePedidosFiados?: number
+  nombreNegocio?: string
+  tipoNegocio?: string
+  horaApertura?: string
+  referencia?: string
 }
 
 export type TimelineEventType =
