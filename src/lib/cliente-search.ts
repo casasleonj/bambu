@@ -1,3 +1,5 @@
+import { normalizarTelefono } from './telefono'
+
 export interface ClienteSearchable {
   nombre: string
   apellido?: string | null
@@ -91,7 +93,7 @@ export function scoreCliente(cliente: ClienteSearchable, query: string): number 
 
   // Campos terciarios (peso 1x)
   const camposTerciarios = [
-    normalize(cliente.telefono || ''),
+    normalizarTelefono(cliente.telefono || ''),
     normalize(cliente.notas || ''),
     normalize(cliente.fuente || ''),
   ]
@@ -100,7 +102,7 @@ export function scoreCliente(cliente: ClienteSearchable, query: string): number 
   if (cliente.contactos) {
     for (const ct of cliente.contactos) {
       camposTerciarios.push(normalize(ct.nombre))
-      camposTerciarios.push(normalize(ct.telefono))
+      camposTerciarios.push(normalizarTelefono(ct.telefono))
       camposTerciarios.push(normalize(ct.relacion || ''))
     }
   }
