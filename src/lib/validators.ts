@@ -137,7 +137,7 @@ export const VentaLibreSchema = z.object({
   total: z.number().optional(),
   clienteNuevo: z.object({
     nombre: z.string().min(1).max(100).optional(),
-    telefono: z.string().min(1).max(20).optional(),
+    telefono: TelefonoOpcionalSchema,
     direccion: z.string().max(200).optional(),
     barrio: z.string().max(100).optional(),
   }).optional(),
@@ -199,7 +199,7 @@ export const PedidoUpdateSchema = z.object({
 export const ClienteQuickCreateSchema = z.object({
   nombre: z.string().min(2, 'Nombre requerido'),
   apellido: z.string().optional(),
-  telefono: z.string().min(7, 'Celular requerido'),
+  telefono: TelefonoRequeridoSchema,
   direccion: z.string().min(3, 'Dirección requerida'),
   barrio: z.string().optional(),
   // Offline-first dedup (F-N5): si la request llega con un offlineId ya
@@ -209,7 +209,7 @@ export const ClienteQuickCreateSchema = z.object({
 
 export const ContactoAlternativoSchema = z.object({
   nombre: z.string().min(1, 'Nombre requerido'),
-  telefono: z.string().min(7, 'Teléfono inválido'),
+  telefono: TelefonoRequeridoSchema,
   relacion: z.string().optional(),
 })
 
