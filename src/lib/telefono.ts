@@ -58,7 +58,7 @@ export function formatearTelefonoParaCopiar(raw: string | number | null | undefi
   if (conIndicativo.length <= 2) return `+${conIndicativo}`
   if (conIndicativo.length <= 5) return `+${conIndicativo.slice(0, 2)} ${conIndicativo.slice(2)}`
   if (conIndicativo.length <= 8) return `+${conIndicativo.slice(0, 2)} ${conIndicativo.slice(2, 5)} ${conIndicativo.slice(5)}`
-  return `+${conIndicativo.slice(0, 2)} ${conIndicativo.slice(2, 5)} ${conIndicativo.slice(5, 9)} ${conIndicativo.slice(9)}`
+  return `+${conIndicativo.slice(0, 2)} ${conIndicativo.slice(2, 5)} ${conIndicativo.slice(5, 8)} ${conIndicativo.slice(8)}`
 }
 
 export function formatearTelefonoParaLlamar(raw: string | number | null | undefined): string {
