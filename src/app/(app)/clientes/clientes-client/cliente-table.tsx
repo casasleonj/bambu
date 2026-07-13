@@ -11,6 +11,12 @@ import { Tooltip } from '@/components/tooltip'
 import { NegociosUbicacionesFilter } from './negocios-ubicaciones-filter'
 import { getClienteNegocioStatus } from '@/lib/cliente-filters'
 import { NegocioSearchMatch } from '@/components/negocio-search-match'
+import {
+  normalizarTelefono,
+  formatearTelefonoParaInput,
+  formatearTelefonoParaCopiar,
+  formatearTelefonoParaLlamar,
+} from '@/lib/telefono'
 import type { NegocioDetail } from '@/components/negocio-detail-modal'
 
 interface ClienteTableProps {
@@ -445,7 +451,7 @@ export const ClienteTable = React.memo(function ClienteTable({
                     {quickActionsRow === cliente.id && (
                       <div ref={quickActionsRef} className="absolute right-0 top-8 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
                         <a
-                          href={`tel:${cliente.telefono}`}
+                          href={formatearTelefonoParaLlamar(cliente.telefono)}
                           onClick={(e) => e.stopPropagation()}
                           className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
                         >
@@ -465,7 +471,7 @@ export const ClienteTable = React.memo(function ClienteTable({
                           Crear pedido
                         </Link>
                         <button
-                          onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(cliente.telefono); toast.success('Teléfono copiado'); setQuickActionsRow(null) }}
+                          onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(formatearTelefonoParaCopiar(cliente.telefono)); toast.success('Teléfono copiado'); setQuickActionsRow(null) }}
                           className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
                         >
                           <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -510,13 +516,13 @@ export const ClienteTable = React.memo(function ClienteTable({
                           const term = search.toLowerCase()
                           const matched = cliente.contactos.find(ct =>
                             ct.nombre.toLowerCase().includes(term) ||
-                            ct.telefono.includes(term) ||
+                            normalizarTelefono(ct.telefono).includes(normalizarTelefono(term)) ||
                             ct.relacion?.toLowerCase().includes(term)
                           )
                           if (!matched) return null
                           return (
                             <p className="text-xs text-amber-600 font-medium truncate">
-                              👤 {matched.nombre}{matched.relacion ? ` (${matched.relacion})` : ''} — {matched.telefono}
+                              👤 {matched.nombre}{matched.relacion ? ` (${matched.relacion})` : ''} — {formatearTelefonoParaInput(matched.telefono)}
                             </p>
                           )
                         })()}
@@ -589,7 +595,7 @@ export const ClienteTable = React.memo(function ClienteTable({
                       <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
                       </svg>
-                      <span className="truncate">{cliente.telefono}</span>
+                      <span className="truncate">{formatearTelefonoParaInput(cliente.telefono)}</span>
                       {cliente.contactos && cliente.contactos.length > 0 && (
                         <span className="text-gray-400" title={`${cliente.contactos.length} contacto(s) adicional(es)`}>👥</span>
                       )}
