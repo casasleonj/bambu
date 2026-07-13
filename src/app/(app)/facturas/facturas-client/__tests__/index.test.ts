@@ -54,14 +54,20 @@ describe('FIX: paginación UI', () => {
 
 describe('FIX: saldo no muestra ✓ en facturas ANULADAS', () => {
   it('celda desktop de saldo renderiza "Anulada" en gris cuando ANULADA', () => {
-    expect(source).toMatch(/factura\.estado === 'ANULADA' \?\s*\(\s*<span className="text-xs text-gray-500 font-medium">Anulada<\/span>/s)
+    expect(source).toMatch(new RegExp(
+      `factura\\.estado === 'ANULADA' \\?\\s*\\(\\s*<span className="text-xs text-gray-500 font-medium">Anulada</span>`,
+      's'
+    ))
   })
 
   it('celda mobile de saldo no muestra "Pagada" cuando ANULADA', () => {
-    expect(source).toMatch(/factura\.estado === 'ANULADA' \?\s*\(\s*<p className="text-xs text-gray-500 font-medium">Anulada<\/p>/s)
+    expect(source).toMatch(new RegExp(
+      `factura\\.estado === 'ANULADA' \\?\\s*\\(\\s*<p className="text-xs text-gray-500 font-medium">Anulada</p>`,
+      's'
+    ))
   })
 
   it('barra de progreso no se renderiza cuando ANULADA', () => {
-    expect(source).toMatch(/factura\.estado !== 'ANULADA' && \(/s)
+    expect(source).toMatch(new RegExp(`factura\\.estado !== 'ANULADA' && \\(`, 's'))
   })
 })
