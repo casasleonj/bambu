@@ -6,7 +6,7 @@
  * Domain layer must NOT depend on this file.
  */
 
-export type EstadoPagoVisualKey = 'PAGADO' | 'FIADO' | 'PENDIENTE'
+export type EstadoPagoVisualKey = 'PAGADO' | 'FIADO' | 'PENDIENTE' | 'ANULADO'
 
 export interface EstadoPagoVisual {
   key: EstadoPagoVisualKey
@@ -28,6 +28,7 @@ export interface PedidoSaldoInput {
  * Determines the visual payment state for a Pedido row.
  *
  * Rules:
+ *  - ANULADO → estadoEntrega is ANULADO OR estadoPago is ANULADO
  *  - PAGADO  → estadoPago is PAGADO/ANTICIPADO OR totalPagado >= total
  *  - FIADO   → estadoEntrega is ENTREGADO AND saldo > 0
  *  - PENDIENTE → everything else (including partial payments before delivery)
@@ -38,6 +39,15 @@ export function calcularEstadoPagoVisual(pedido: PedidoSaldoInput): EstadoPagoVi
   const saldo = Number(pedido.saldo || 0)
   const total = Number(pedido.total || 0)
   const totalPagado = Number(pedido.totalPagado || 0)
+
+  if (pedido.estadoEntrega === 'ANULADO' || pedido.estadoPago === 'ANULADO') {
+    return {
+      key: 'ANULADO',
+      label: 'Anulado',
+      color: 'gray',
+      isMoney: false,
+    }
+  }
 
   const isPagado =
     pedido.estadoPago === 'PAGADO' ||
