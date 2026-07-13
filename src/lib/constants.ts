@@ -46,3 +46,17 @@ export const CANONICAL_CONSUMIDOR_FINAL_ID = 'CONSUMIDOR_FINAL'
  * in Config (LIMITE_PEDIDOS_FIADOS_DEFAULT) or on the customer.
  */
 export const LIMITE_FIADOS_DEFAULT = 2
+
+/**
+ * Faltante mínimo de caja en un embarque para generar DeudaTrabajador
+ * automáticamente al cerrar. Evita deudas administrativas por diferencias
+ * menores al costo de procesarlas.
+ */
+export const UMBRAL_MINIMO_FALTANTE_CAJA = 5000
+
+/**
+ * Plan de pago por defecto para deudas automáticas por faltante de caja.
+ * Se usa para no descontar la totalidad en una sola nómina.
+ */
+export const DEUDA_FALTANTE_CAJA_PLAZO_NOMINAS_DEFAULT = 2
+export const DEUDA_FALTANTE_CAJA_PORCENTAJE_NOMINA_DEFAULT = 30

@@ -28,6 +28,14 @@ export interface PedidoResumen {
   cliente?: { id: string; nombre: string; apellido?: string | null; barrio: string | null; telefono: string | null } | null
 }
 
+export interface EmbarqueDeudaResumen {
+  id: string
+  montoOriginal: number
+  montoPendiente: number
+  tipo: string
+  descripcion: string
+}
+
 export interface EmbarqueDetalle {
   id: string
   numero: number
@@ -40,6 +48,7 @@ export interface EmbarqueDetalle {
   baseDinero: number
   dineroEntregado: number
   obs: string | null
+  deudas?: EmbarqueDeudaResumen[]
   trabajador: {
     id: string
     nombre: string

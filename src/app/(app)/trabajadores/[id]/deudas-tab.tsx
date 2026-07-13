@@ -161,10 +161,18 @@ function DeudaCard({
     <div className={`bg-white rounded-xl shadow-sm p-5 border-l-4 ${isPendiente ? 'border-l-red-500' : 'border-l-green-500'}`}>
       <div className="flex items-start justify-between mb-3">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Badge variant={isPendiente ? 'destructive' : 'default'}>
               {tipoLabels[deuda.tipo] || deuda.tipo}
             </Badge>
+            {deuda.embarqueId && (
+              <span
+                title="Generada automáticamente por faltante de caja en un embarque"
+                className="text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full font-medium"
+              >
+                Auto
+              </span>
+            )}
             {!isPendiente && <span className="text-xs text-green-600 font-medium">Pagada</span>}
           </div>
           <p className="text-sm text-gray-600 mt-1">{deuda.descripcion}</p>
