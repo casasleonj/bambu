@@ -32,6 +32,7 @@ export async function GET(request: NextRequest) {
     const estadoPagoFilter = searchParams.getAll('estadoPago')
     const origenFilter = searchParams.getAll('origen')
     const tipoFilter = searchParams.getAll('tipo')
+    const scopeFilter = searchParams.get('scope')
 
     // Build filter for use case
     const filter: Record<string, unknown> = {}
@@ -82,6 +83,9 @@ export async function GET(request: NextRequest) {
     }
     if (tipoFilter.length > 0) {
       filter.tipo = tipoFilter
+    }
+    if (scopeFilter === 'fiados' || scopeFilter === 'alertas') {
+      filter.scope = scopeFilter
     }
 
     const result = await listarPedidosUseCase.execute({

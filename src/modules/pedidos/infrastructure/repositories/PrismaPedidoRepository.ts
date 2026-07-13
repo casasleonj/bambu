@@ -12,6 +12,7 @@ import { PedidoId } from '../../domain/value-objects/PedidoId'
 import type { IPedidoRepository, PedidoFilter } from '../../domain/repositories/IPedidoRepository'
 import { PedidoMapper } from '../mappers/PedidoMapper'
 import type { TransactionClient } from '../transactions/PrismaTransactionManager'
+import { CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
 
 export class PrismaPedidoRepository implements IPedidoRepository {
   async findById(id: PedidoId, tx?: TransactionClient): Promise<Pedido | null> {
@@ -180,6 +181,13 @@ export class PrismaPedidoRepository implements IPedidoRepository {
     if (filter?.estadoEntrega && filter.estadoEntrega.length > 0) where.estadoEntrega = { in: filter.estadoEntrega }
     if (filter?.estadoPago && filter.estadoPago.length > 0) where.estadoPago = { in: filter.estadoPago }
     if (filter?.origen && filter.origen.length > 0) where.origen = { in: filter.origen }
+    if (filter?.scope === 'fiados') {
+      where.estadoEntrega = 'ENTREGADO'
+      where.saldo = { gt: 0 }
+      if (!filter.clienteId) {
+        where.clienteId = { not: CANONICAL_CONSUMIDOR_FINAL_ID }
+      }
+    }
     if (filter?.tipo && filter.tipo.length > 0) {
       // Tipo es un derivado semántico de canal: PUNTO → 'PUNTO', cualquier otro → 'ENVIO'.
       const canalCondition = filter.tipo.includes('PUNTO') ? ['PUNTO'] : []

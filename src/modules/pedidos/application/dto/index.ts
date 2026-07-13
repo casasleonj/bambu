@@ -81,6 +81,8 @@ export interface ListarPedidosInput {
   origen?: string[]
   embarqueId?: string
   tipo?: string[]
+  /** Server-side tab scope: isolates Pedidos/Fiados/Alertas datasets. */
+  scope?: 'fiados' | 'alertas'
   page?: number
   pageSize?: number
   all?: boolean

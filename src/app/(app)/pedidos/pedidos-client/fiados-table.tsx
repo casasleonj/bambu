@@ -11,6 +11,9 @@ import { LIMITE_FIADOS_DEFAULT } from '@/lib/constants'
 import { fetchResilient } from '@/lib/fetch-resilient'
 import { MoneyDisplay } from '@/components/money-display'
 import { PedidoClienteDisplay } from '@/components/pedido-cliente-display'
+import { usePedidos } from '@/hooks/use-pedidos'
+import { useRealtimeListener } from '@/hooks/use-realtime-listener'
+import { useReconnectHandler } from '@/hooks/use-reconnect-handler'
 
 interface FiadoRow {
   clienteId: string
@@ -27,14 +30,22 @@ interface FiadoRow {
 }
 
 interface FiadosTableProps {
-  pedidos: Pedido[]
   clientes: Cliente[]
   limiteGlobal?: number
   onPedidosChange?: () => void
+  onCountChange?: (count: number) => void
   userRole?: string | null
 }
 
-export function FiadosTable({ pedidos, clientes, limiteGlobal, onPedidosChange, userRole }: FiadosTableProps) {
+export function FiadosTable({ clientes, limiteGlobal, onPedidosChange, onCountChange, userRole }: FiadosTableProps) {
+  const { pedidos, loading, refetch } = usePedidos(
+    { scope: 'fiados' },
+    { all: true, autoFetch: true },
+  )
+  const pedidosFiados = pedidos as Pedido[]
+
+  useRealtimeListener(['pedido.*', 'pago.*'], () => refetch())
+  useReconnectHandler(() => refetch())
   const [expandedCliente, setExpandedCliente] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [minDeuda, setMinDeuda] = useState('')
@@ -59,7 +70,7 @@ export function FiadosTable({ pedidos, clientes, limiteGlobal, onPedidosChange, 
   }, [])
 
   // Pedidos filtrados por período local (independiente de URL)
-  const pedidosFiltrados = useMemo(() => filtrarPorPeriodo(pedidos, periodo), [pedidos, periodo])
+  const pedidosFiltrados = useMemo(() => filtrarPorPeriodo(pedidosFiados, periodo), [pedidosFiados, periodo])
 
   // Agrupar pedidos por cliente
   const fiadoRows = useMemo(() => {
@@ -119,6 +130,10 @@ export function FiadosTable({ pedidos, clientes, limiteGlobal, onPedidosChange, 
       (diasFiado === '30+' && row.diasFiado > 30)
     return matchSearch && matchMin && matchMax && matchDias
   })
+
+  useEffect(() => {
+    onCountChange?.(filtrados.length)
+  }, [filtrados.length, onCountChange])
 
   async function handleConvertirDeuda(row: FiadoRow) {
     if (!trabajadorDeudaId || !montoDeuda || Number(montoDeuda) <= 0) {
@@ -236,11 +251,25 @@ export function FiadosTable({ pedidos, clientes, limiteGlobal, onPedidosChange, 
 
       setPagandoClienteId(null)
       setMontoPago('')
-      // Refetch pedidos sin recargar la página
+      // Refetch fiados dataset independently; also notify parent for other tabs.
+      refetch()
       onPedidosChange?.()
     } finally {
       setSubmitting(false)
     }
+  }
+
+  if (loading && pedidosFiados.length === 0) {
+    return (
+      <div className="space-y-4">
+        <div className="bg-red-50 border border-red-200 p-4 rounded-xl">
+          <h2 className="text-lg font-bold text-red-900">Control de Fiados</h2>
+        </div>
+        <div className="bg-white rounded-xl shadow p-8 text-center text-sm text-gray-500">
+          Cargando fiados...
+        </div>
+      </div>
+    )
   }
 
   return (

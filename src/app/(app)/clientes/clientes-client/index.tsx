@@ -1546,40 +1546,8 @@ export default function ClientesClient({
                         })}
                       </div>
                     ) : selectedCliente.nombreNegocio ? (
-                      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-                        <div className="flex items-start gap-3">
-                          <svg className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          <div className="flex-1">
-                            <p className="text-sm text-amber-800">
-                              Este cliente tiene un negocio registrado: <strong>"{selectedCliente.nombreNegocio}"</strong>
-                            </p>
-                            <p className="text-xs text-amber-600 mt-1">
-                              Crea un negocio formal para gestionar pedidos, rutas y precios por separado.
-                            </p>
-                            <button
-                              onClick={() => {
-                                setNegocioEditData(null)
-                                setNegocioFormOpen(true)
-                                // Pre-fill the form with the legacy business name
-                                setTimeout(() => {
-                                  const nameInput = document.querySelector<HTMLInputElement>('input[placeholder="Ej: Restaurante El Sabor"]')
-                                  if (nameInput && !nameInput.value) {
-                                    nameInput.value = selectedCliente.nombreNegocio || ''
-                                    nameInput.dispatchEvent(new Event('input', { bubbles: true }))
-                                  }
-                                }, 100)
-                              }}
-                              className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-medium hover:bg-amber-700 transition"
-                            >
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                              </svg>
-                              Crear negocio formal
-                            </button>
-                          </div>
-                        </div>
+                      <div className="bg-gray-50 rounded-xl p-5 text-center border border-dashed border-gray-200">
+                        <p className="text-sm font-medium text-gray-500">Los datos del negocio se gestionan en la pestaña Negocios.</p>
                       </div>
                     ) : (
                       <div className="bg-gray-50 rounded-xl p-5 text-center border border-dashed border-gray-200">
