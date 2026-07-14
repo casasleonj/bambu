@@ -34,16 +34,31 @@ class MockEventSource {
   }
 }
 
+function installMock() {
+  instances.length = 0
+  // @ts-expect-error jsdom does not provide EventSource.
+  globalThis.EventSource = MockEventSource
+}
+
+function uninstallMock() {
+  instances.forEach((i) => i.close())
+  instances.length = 0
+  // @ts-expect-error restore missing global.
+  globalThis.EventSource = undefined
+}
+
+// Guard against other tests that may leave the global unset. The provider
+// accesses EventSource lazily inside useEffect, but some test runners/schedulers
+// can interleave suites, so keeping a live mock on the global is safer.
+installMock()
+
 describe('useRealtimeListener', () => {
   beforeEach(() => {
-    instances.length = 0
-    vi.stubGlobal('EventSource', MockEventSource)
+    installMock()
   })
 
   afterEach(() => {
-    instances.forEach((i) => i.close())
-    instances.length = 0
-    vi.unstubAllGlobals()
+    uninstallMock()
   })
 
   it('does nothing when there is no RealtimeProvider', () => {
