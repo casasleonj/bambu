@@ -260,6 +260,7 @@ export async function createClienteFull(page: Page, data: {
   preciosEspeciales?: string
   notas?: string
   horaApertura?: string
+  limitePedidosFiados?: number
 }) {
   const res = await apiPost(page, '/api/clientes', data)
   return res.json()
