@@ -22,6 +22,7 @@ import { PedidoFilters } from './pedido-filters'
 import { PedidoTable } from './pedido-table'
 import { FiadosTable } from './fiados-table'
 import { AlertasTable } from './alertas-table'
+import { calcularAlertas } from './alertas-utils'
 
 import type { Pedido, Embarque, Cliente } from './types'
 import { getPresetDate, getTodayString } from '@/lib/dates'
@@ -32,8 +33,8 @@ import { useAnularPedido } from '@/hooks/use-anular-pedido'
 import { useCancelarPedido } from '@/hooks/use-cancelar-pedido'
 import { useAsignarEmbarque } from '@/hooks/use-asignar-embarque'
 import { useEntregarPedido } from '@/hooks/use-entregar-pedido'
-import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 import { useReconnectHandler } from '@/hooks/use-reconnect-handler'
+import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 import { GpsCaptureModal } from '@/components/gps-capture-modal'
 
 const PedidoFormUnified = dynamic(() => import('@/components/pedido-form-unified').then(m => m.PedidoFormUnified), { ssr: false })
@@ -86,8 +87,6 @@ export function PedidosClient() {
     permitirSinGpsConJustificacion: true,
   })
   const [limiteGlobalFiados, setLimiteGlobalFiados] = useState<number>(LIMITE_FIADOS_DEFAULT)
-  const [fiadosCount, setFiadosCount] = useState(0)
-  const [alertasCount, setAlertasCount] = useState(0)
 
   // Fechas desde URL (fuente de verdad)
   const desdeUrl = params.get('desde')
@@ -120,22 +119,59 @@ export function PedidosClient() {
   // (their own local period filters refine the result). Tab 'hoy' respects the
   // URL date filter for the daily operation view.
   const fetchAllForTab = activeTab !== 'hoy'
-  const { pedidos: pedidosRaw, loading, error: fetchError, refetch, hasLoadedOnce } = usePedidos(
-    pedidoFilterParams,
-    { autoFetch: false, all: allFromUrl || fetchAllForTab },
-  )
+  const {
+    pedidos: pedidosRaw,
+    loading,
+    error: fetchError,
+    refetch,
+    hasLoadedOnce,
+  } = usePedidos(pedidoFilterParams, { autoFetch: false, all: allFromUrl || fetchAllForTab })
   const pedidos = pedidosRaw as Pedido[]
 
-  // Polling: refetch every 30s (critical screen for the repartidor).
+  // Independent datasets for Fiados and Alertas tabs. They always fetch the
+  // full historical dataset scoped server-side so that their badges stay live
+  // regardless of which tab is active or which filters are applied in Pedidos.
+  const {
+    pedidos: pedidosFiadosRaw,
+    loading: loadingFiados,
+    error: errorFiados,
+    refetch: refetchFiados,
+  } = usePedidos({ scope: 'fiados' }, { all: true, autoFetch: true })
+  const pedidosFiados = pedidosFiadosRaw as Pedido[]
+
+  const {
+    pedidos: pedidosAlertasRaw,
+    loading: loadingAlertas,
+    error: errorAlertas,
+    refetch: refetchAlertas,
+  } = usePedidos({ scope: 'alertas' }, { all: true, autoFetch: true })
+  const pedidosAlertas = pedidosAlertasRaw as Pedido[]
+
+  // Badges reflect the total unfiltered counts, derived from the live datasets.
+  const fiadosCount = useMemo(
+    () => new Set(pedidosFiados.map((p) => p.clienteId)).size,
+    [pedidosFiados]
+  )
+  const alertasCount = useMemo(() => calcularAlertas(pedidosAlertas).length, [pedidosAlertas])
+
+  // Polling: refetch all three datasets every 30s (replaces SSE to cut Vercel cost).
+  // Critical screen for the repartidor; faster than the 60s default.
+  // Each dataset refetches unconditionally because we no longer filter by
+  // event type; this is a trade-off for simpler infrastructure.
   usePollingRefetch(() => {
     refetch()
+    refetchFiados()
+    refetchAlertas()
     fetchClientes()
     fetchEmbarques()
   }, 30_000)
 
-  // Refetch main pedidos dataset on SSE reconnect (Vercel Hobby 60s cycle).
+  // Refetch all datasets on SSE reconnect (Vercel Hobby 60s cycle). The client
+  // may have missed realtime events while disconnected.
   useReconnectHandler(() => {
     refetch()
+    refetchFiados()
+    refetchAlertas()
     fetchClientes()
     fetchEmbarques()
   })
@@ -397,6 +433,8 @@ export function PedidosClient() {
       setPedidoEditando(null)
       setShowDetailModal(false)
       fetchPedidos()
+      refetchFiados()
+      refetchAlertas()
       fetchClientes()
     },
   })
@@ -404,6 +442,8 @@ export function PedidosClient() {
   const { anular: anularPedido } = useAnularPedido({
     onSuccess: () => {
       fetchPedidos()
+      refetchFiados()
+      refetchAlertas()
     },
   })
 
@@ -411,6 +451,8 @@ export function PedidosClient() {
     onSuccess: () => {
       setShowDetailModal(false)
       fetchPedidos()
+      refetchFiados()
+      refetchAlertas()
     },
   })
 
@@ -428,6 +470,8 @@ export function PedidosClient() {
       setPedidoParaEntregar(null)
       setFotoParaEntregar(null)
       fetchPedidos()
+      refetchFiados()
+      refetchAlertas()
       toast.success('Pedido entregado con foto')
     },
     onError: (error) => {
@@ -945,6 +989,7 @@ export function PedidosClient() {
           ].map((tab) => (
             <button
               key={tab.key}
+              data-testid={`tab-${tab.key}`}
               onClick={() => setActiveTab(tab.key as any)}
               className={`px-4 py-2.5 text-sm font-medium border-b-2 transition ${
                 activeTab === tab.key
@@ -1080,8 +1125,26 @@ export function PedidosClient() {
           />
         )
       )}
-      {activeTab === 'fiados' && <FiadosTable clientes={clientes} limiteGlobal={limiteGlobalFiados} onPedidosChange={fetchPedidos} onCountChange={setFiadosCount} userRole={userRole} />}
-      {activeTab === 'alertas' && <AlertasTable onCountChange={setAlertasCount} />}
+      {activeTab === 'fiados' && (
+        <FiadosTable
+          clientes={clientes}
+          limiteGlobal={limiteGlobalFiados}
+          pedidos={pedidosFiados}
+          loading={loadingFiados}
+          error={errorFiados}
+          activeTab={activeTab}
+          onPedidosChange={refetchFiados}
+          userRole={userRole}
+        />
+      )}
+      {activeTab === 'alertas' && (
+        <AlertasTable
+          pedidos={pedidosAlertas}
+          loading={loadingAlertas}
+          error={errorAlertas}
+          activeTab={activeTab}
+        />
+      )}
 
       {/* Modal Formulario Unificado */}
       <Modal open={showModal || showVentaRapida} onClose={() => { setShowModal(false); setShowVentaRapida(false); setPedidoInicial(undefined) }} className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[95vh] overflow-hidden flex flex-col">

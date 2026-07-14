@@ -6,26 +6,23 @@ import { GuiaAlertaModal } from '@/components/guia-alerta-modal'
 import { CasoGuiaModal } from '@/components/caso-guia-modal'
 import type { AlertaTipo, AlertaItem } from '@/lib/alertas-config'
 import { ignorarAlerta, getGuiaAlerta } from '@/lib/alertas-config'
-import { usePedidos } from '@/hooks/use-pedidos'
-import { usePollingRefetch } from '@/hooks/use-polling-refetch'
-import { useReconnectHandler } from '@/hooks/use-reconnect-handler'
 import type { Pedido } from './types'
 
 interface AlertasTableProps {
-  onCountChange?: (count: number) => void
+  pedidos: Pedido[]
+  loading: boolean
+  error: string | null
+  activeTab: 'hoy' | 'fiados' | 'alertas'
 }
 
 const SEVERIDAD_ORDER = { ALTA: 3, MEDIA: 2, BAJA: 1 }
 
-export function AlertasTable({ onCountChange }: AlertasTableProps) {
-  const { pedidos, loading, refetch } = usePedidos(
-    { scope: 'alertas' },
-    { all: true, autoFetch: true },
-  )
-  const pedidosAlertas = pedidos as Pedido[]
-
-  usePollingRefetch(() => refetch(), 60_000)
-  useReconnectHandler(() => refetch())
+export function AlertasTable({
+  pedidos: pedidosAlertas,
+  loading,
+  error,
+  activeTab,
+}: AlertasTableProps) {
   const [expandedCliente, setExpandedCliente] = useState<string | null>(null)
   const [filtroSeveridad, setFiltroSeveridad] = useState<'TODAS' | 'ALTA' | 'MEDIA' | 'BAJA'>('TODAS')
   const [searchTerm, setSearchTerm] = useState('')
@@ -67,10 +64,6 @@ export function AlertasTable({ onCountChange }: AlertasTableProps) {
       return matchSearch && matchSeveridad
     })
     .sort((a, b) => SEVERIDAD_ORDER[b.severidadMasAlta] - SEVERIDAD_ORDER[a.severidadMasAlta])
-
-  useEffect(() => {
-    onCountChange?.(filtrados.length)
-  }, [filtrados.length, onCountChange])
 
   const getBadgeColorLocal = (severidad: string) => {
     switch (severidad) {
@@ -156,7 +149,20 @@ export function AlertasTable({ onCountChange }: AlertasTableProps) {
     }
   }
 
-  if (loading && pedidosAlertas.length === 0) {
+  if (error) {
+    return (
+      <div className="space-y-4">
+        <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl">
+          <h2 className="text-lg font-bold text-amber-900">Sistema de Alertas</h2>
+        </div>
+        <div className="bg-white rounded-xl shadow p-8 text-center">
+          <p className="text-sm text-red-600 mb-3">{error}</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (activeTab === 'alertas' && loading && pedidosAlertas.length === 0) {
     return (
       <div className="space-y-4">
         <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl">
