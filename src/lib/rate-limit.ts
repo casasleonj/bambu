@@ -45,6 +45,9 @@ async function getRedisClient() {
       // Disable offline queue per rate-limiter-flexible docs:
       // prevents request storms when Redis reconnects after downtime
       disableOfflineQueue: true,
+      socket: {
+        connectTimeout: 5000,
+      },
     })
     client.on('error', (err: Error) => logger.error({ err }, 'Redis error'))
     await client.connect()
