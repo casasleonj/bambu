@@ -10,6 +10,7 @@ import { ROLES, CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { executeSerializableWithRetry } from '@/lib/serializable'
 import { publishRealtimeEvent } from '@/lib/realtime'
+import { broadcastPush } from '@/lib/push'
 import {
   buildClientesWhere,
   buildClientesRawWhere,
@@ -326,6 +327,13 @@ export async function POST(request: NextRequest) {
     }).catch(() => {})
 
     publishRealtimeEvent('cliente.created', result.cliente.id).catch(() => {})
+    // Push notification for new cliente (replaces SSE for off-tab users).
+    void broadcastPush({
+      title: 'Nuevo cliente',
+      body: `${result.cliente.nombre} fue agregado.`,
+      url: `/clientes?openCliente=${result.cliente.id}`,
+      tag: `cliente-${result.cliente.id}`,
+    })
 
     return apiSuccess({ cliente: result.cliente }, 201)
   } catch (error) {

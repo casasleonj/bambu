@@ -21,6 +21,7 @@ import { PrismaTransactionManager } from '@/modules/embarques/infrastructure/tra
 import { CerrarEmbarqueUseCase } from '@/modules/embarques/application/use-cases/CerrarEmbarqueUseCase'
 import { CierrePresenter } from '@/modules/embarques/presentation/CierrePresenter'
 import { publishRealtimeEvent } from '@/lib/realtime'
+import { broadcastPush } from '@/lib/push'
 
 // Infrastructure dependencies
 const embarqueRepo = new PrismaEmbarqueRepository()
@@ -124,6 +125,14 @@ export async function POST(
         publishRealtimeEvent('pedido.updated', p.id).catch(() => {})
       })
     }).catch(() => {})
+
+    // Push notification to admins (replaces SSE for off-tab users).
+    void broadcastPush({
+      title: 'Embarque cerrado',
+      body: `Un embarque fue cerrado. Revisá la caja.`,
+      url: `/embarques?openEmbarque=${id}`,
+      tag: `embarque-cerrado-${id}`,
+    })
 
     return apiSuccess(legacyResponse)
   } catch (error) {

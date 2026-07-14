@@ -15,6 +15,7 @@ import {
   listarPedidosUseCase,
 } from '@/modules/pedidos'
 import { publishRealtimeEvent } from '@/lib/realtime'
+import { broadcastPush } from '@/lib/push'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -246,6 +247,14 @@ export async function POST(request: NextRequest) {
 
     if (!result.deduped) {
       publishRealtimeEvent('pedido.created', result.pedido.id).catch(() => {})
+      // Push notification for new pedido (replaces SSE for off-tab users).
+      // Fire-and-forget: never block the request on push delivery.
+      void broadcastPush({
+        title: 'Nuevo pedido',
+        body: `Se creó un pedido nuevo.`,
+        url: `/pedidos?openPedido=${result.pedido.id}`,
+        tag: `pedido-${result.pedido.id}`,
+      })
     }
 
     return apiSuccess({ pedido: result.pedido }, 201)
