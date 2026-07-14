@@ -566,17 +566,31 @@ export default function ClientesClient({
       } else {
         // POST: usa fetchResilient para offline-first (repartidor field use).
         // Si la red falla durante la creación, encola automáticamente.
+        // Defensa adicional: nunca dejar el botón pegado más de 15s por si
+        // fetchResilient no resuelve (ej. Service Worker interfiriendo).
         const offlineId = generateUUID()
-        const result = await fetchResilient<{
-          success: boolean
-          deduped?: boolean
-          cliente?: { id: string; nombre: string; telefono: string; direccion?: string; barrio?: string; [key: string]: unknown }
-          error?: { message?: string; formErrors?: string[] }
-        }>('/api/clientes', {
-          method: 'POST',
-          body: { ...body, offlineId },
-          localEndpoint: 'crear-cliente',
-        })
+        const submitTimeoutMs = 15_000
+        const result = await Promise.race([
+          fetchResilient<{
+            success: boolean
+            deduped?: boolean
+            cliente?: { id: string; nombre: string; telefono: string; direccion?: string; barrio?: string; [key: string]: unknown }
+            error?: { message?: string; formErrors?: string[] }
+          }>('/api/clientes', {
+            method: 'POST',
+            body: { ...body, offlineId },
+            localEndpoint: 'crear-cliente',
+          }),
+          new Promise<
+            { status: 'timeout' }
+          >((resolve) => setTimeout(() => resolve({ status: 'timeout' }), submitTimeoutMs)),
+        ])
+
+        if (result.status === 'timeout') {
+          toast.info('La conexión tardó mucho. El cliente quedó guardado en el celular y se enviará cuando la red mejore.')
+          setShowModal(false)
+          return
+        }
 
         if (result.status === 'offline') {
           toast.info('Sin conexión. Cliente guardado, se creará al recuperar la red.')
