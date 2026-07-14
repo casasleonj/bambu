@@ -96,7 +96,6 @@ export default function ClientesClient({
   const [negocioEditData, setNegocioEditData] = useState<{ id: string; nombre: string; tipoNegocio: string | null; direccion: string | null; barrio: string | null; referencia: string | null; linkUbicacion: string | null; horaApertura: string | null; rutaId: string | null } | null>(null)
   const [viewNegocioData, setViewNegocioData] = useState<NegocioDetail | null>(null)
   const [showNegocioDetail, setShowNegocioDetail] = useState(false)
-  const [preciosLoaded, setPreciosLoaded] = useState(false)
 
   const puedeDesactivar = userRole === 'ADMIN' || userRole === 'CONTADOR'
   const puedeEliminarNegocio = userRole === 'ADMIN'
@@ -170,6 +169,7 @@ export default function ClientesClient({
     DOMICILIO: {},
     PUNTO: {},
   })
+  const [preciosLoaded, setPreciosLoaded] = useState(false)
 
   const fetchClientes = useCallback(async () => {
     setLoading(true)
