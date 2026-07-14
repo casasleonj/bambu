@@ -1,19 +1,26 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useContext } from 'react'
 import { syncWithServer, isOnline } from '@/lib/db/sync'
 import { fetchResilient } from '@/lib/fetch-resilient'
 import { offlineDb } from '@/lib/db/offline'
 import { logger } from '@/lib/logger'
+import { RealtimeContext } from '@/components/realtime-provider'
 
 const SYNC_INTERVAL_MS = 30000
 const QUEUE_POLL_MS = 5000 // Poll queue size for UI counter (cheap read)
+
+function useRealtimeStatus(): 'connecting' | 'open' | 'closed' | 'paused' | 'polling' | null {
+  const ctx = useContext(RealtimeContext)
+  return ctx?.status ?? null
+}
 
 export function ConnectivityIndicator() {
   const [online, setOnline] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [pendingCount, setPendingCount] = useState(0)
+  const sseStatus = useRealtimeStatus()
 
   useEffect(() => {
     setMounted(true)
@@ -122,10 +129,43 @@ export function ConnectivityIndicator() {
     )
   }
 
-  const bg = online ? 'bg-emerald-500/20' : 'bg-red-500/20'
-  const dot = online ? 'bg-emerald-400 shadow-emerald-400/60' : 'bg-red-400 shadow-red-400/60'
-  const text = online ? 'text-emerald-100' : 'text-red-100'
-  const label = syncing ? 'Sync' : online ? 'Online' : 'Offline'
+  // Combine network state with realtime transport state for a single,
+  // non-technical indicator.
+  const isPolling = sseStatus === 'polling' || sseStatus === 'connecting'
+  const isOpen = sseStatus === 'open'
+
+  let bg: string
+  let dot: string
+  let text: string
+  let label: string
+  let tooltip: string
+
+  if (!online) {
+    bg = 'bg-red-500/20'
+    dot = 'bg-red-400 shadow-red-400/60'
+    text = 'text-red-100'
+    label = 'Offline'
+    tooltip = 'No hay internet. Tus cambios se guardan en el celular y se enviarán cuando vuelva la señal.'
+  } else if (isPolling) {
+    bg = 'bg-amber-500/20'
+    dot = 'bg-amber-400 shadow-amber-400/60 animate-pulse'
+    text = 'text-amber-100'
+    label = syncing ? 'Sync' : 'Sync'
+    tooltip = 'La red está lenta. La app está chequeando cambios cada pocos segundos.'
+  } else if (isOpen) {
+    bg = 'bg-emerald-500/20'
+    dot = 'bg-emerald-400 shadow-emerald-400/60'
+    text = 'text-emerald-100'
+    label = syncing ? 'Sync' : 'Online'
+    tooltip = 'Todo está actualizado en tiempo real.'
+  } else {
+    bg = 'bg-red-500/20'
+    dot = 'bg-red-400 shadow-red-400/60'
+    text = 'text-red-100'
+    label = 'Offline'
+    tooltip = 'No hay internet. Tus cambios se guardan en el celular y se enviarán cuando vuelva la señal.'
+  }
+
   const showPending = pendingCount > 0
   const canSync = online && !syncing && pendingCount > 0
 
@@ -138,6 +178,7 @@ export function ConnectivityIndicator() {
       type="button"
       onClick={handleClick}
       disabled={!canSync}
+      title={tooltip}
       aria-label={
         canSync
           ? `Sincronizar ${pendingCount} cambio${pendingCount === 1 ? '' : 's'} pendiente${pendingCount === 1 ? '' : 's'}`
