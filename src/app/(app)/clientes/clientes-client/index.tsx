@@ -163,6 +163,7 @@ export default function ClientesClient({
     DOMICILIO: {},
     PUNTO: {},
   })
+  const [preciosLoaded, setPreciosLoaded] = useState(false)
 
   const fetchClientes = useCallback(async () => {
     setLoading(true)

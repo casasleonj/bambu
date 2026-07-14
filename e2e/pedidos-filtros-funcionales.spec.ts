@@ -1,4 +1,4 @@
-import { test, expect, fullLogin, apiPost, apiGet, createCliente, goto, resetDatabase } from './fixtures'
+import { test, expect, fullLogin, apiPost, apiGet, createCliente, createClienteFull, goto, resetDatabase } from './fixtures'
 import { execSync } from 'child_process'
 import { resolve } from 'path'
 
@@ -119,6 +119,72 @@ test.describe('Pedidos: UX filtros y limpieza', () => {
     await expect(page).toHaveURL(/all=true/)
     await expect(searchInput).toHaveValue('')
     await expect(page.locator('[aria-label="Quitar filtro Entrega PENDIENTE"]')).not.toBeVisible()
+  })
+})
+
+test.describe('Pedidos: tabs independientes y badges', () => {
+  test.describe.configure({ mode: 'serial' })
+  test.use({ storageState: { cookies: [], origins: [] } })
+  test.setTimeout(60000)
+
+  test.beforeAll(() => {
+    resetDatabase()
+  })
+
+  test('badge de Fiados refleja clientes con deuda y no cambia con filtros de Pedidos', async ({ page }) => {
+    await fullLogin(page)
+
+    // Cliente con límite de fiados = 5 y 2 pedidos fiados.
+    const c = await createClienteFull(page, {
+      nombre: 'Cliente Badge Fiados',
+      telefono: '3001112222',
+      limitePedidosFiados: 5,
+    })
+    const today = getTodayStr()
+    createPedidoDirecto(c.cliente.id, today, 'ENTREGADO', 'PENDIENTE')
+    createPedidoDirecto(c.cliente.id, today, 'ENTREGADO', 'PENDIENTE')
+
+    await goto(page, '/pedidos')
+
+    // El badge de Fiados debe mostrar 1 (un cliente con fiados).
+    const fiadosTab = page.locator('[data-testid="tab-fiados"]')
+    await expect(fiadosTab.locator('span.rounded-full')).toHaveText('1', { timeout: 10000 })
+
+    // Ir a Fiados y verificar X/Y = 2/5.
+    await fiadosTab.click()
+    await expect(page.locator('text=Cliente Badge Fiados').first()).toBeVisible({ timeout: 10000 })
+    await expect(page.locator('text=2/5').first()).toBeVisible()
+
+    // Volver a Pedidos y aplicar un filtro que excluya al cliente.
+    await page.locator('[data-testid="tab-hoy"]').click()
+    await page.locator('input[placeholder*="Buscar por cliente"]').first().fill('ZZZ_NO_MATCH')
+    await page.keyboard.press('Enter')
+    await expect(page).toHaveURL(/search=ZZZ_NO_MATCH/, { timeout: 10000 })
+    await expect(page.locator('text=No hay resultados').first()).toBeVisible({ timeout: 10000 })
+
+    // Volver a Fiados: el badge y el X/Y deben seguir igual.
+    await fiadosTab.click()
+    await expect(fiadosTab.locator('span.rounded-full')).toHaveText('1')
+    await expect(page.locator('text=2/5').first()).toBeVisible()
+  })
+
+  test('filtros de Pedidos no afectan el dataset de Fiados', async ({ page }) => {
+    await fullLogin(page)
+
+    const c = await createCliente(page, {
+      nombre: 'Cliente Filtro Independiente',
+      telefono: '3003334444',
+    })
+    const today = getTodayStr()
+    // Pedido ENTREGADO PENDIENTE (aparece en fiados).
+    createPedidoDirecto(c.cliente.id, today, 'ENTREGADO', 'PENDIENTE')
+
+    await goto(page, '/pedidos?estadoEntrega=PENDIENTE')
+    await expect(page.locator('text=No hay resultados').first()).toBeVisible({ timeout: 10000 })
+
+    // Cambiar a Fiados: el pedido ENTREGADO PENDIENTE debe seguir visible.
+    await page.locator('[data-testid="tab-fiados"]').click()
+    await expect(page.locator('text=Cliente Filtro Independiente').first()).toBeVisible({ timeout: 10000 })
   })
 })
 
