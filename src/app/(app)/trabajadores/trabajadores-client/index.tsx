@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import { useConfirm } from '@/components/confirm-modal'
 import { EmptyState } from '@/components/empty-state'
-import { useRealtimeListener } from '@/hooks/use-realtime-listener'
+import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 import type { Trabajador, TrabajadorFormData, TrabajadoresClientProps } from './types'
 import { TrabajadorCard } from './trabajador-card'
 import { TrabajadorFormModal } from './trabajador-form-modal'
@@ -49,9 +49,9 @@ export default function TrabajadoresClient({ initialTrabajadores }: Trabajadores
     }
   }
 
-  useRealtimeListener(['trabajador.created', 'trabajador.updated', 'trabajador.deleted'], () => {
+  usePollingRefetch(() => {
     fetchTrabajadores()
-  })
+  }, 60_000)
 
   const trabajadoresFiltrados = trabajadores.filter((t) => {
     const term = search.toLowerCase()

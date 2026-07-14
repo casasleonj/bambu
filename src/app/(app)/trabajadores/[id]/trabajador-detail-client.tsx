@@ -2,10 +2,9 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { formatCurrency } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
-import { useRealtimeListener } from '@/hooks/use-realtime-listener'
+import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 import { rolLabels, tipoPagoLabels } from '../trabajadores-client/types'
 import DeudasTab from './deudas-tab'
 import { formatearTelefonoParaInput } from '@/lib/telefono'
@@ -38,7 +37,6 @@ export default function TrabajadorDetailClient({
 }: {
   trabajador: TrabajadorDetail
 }) {
-  const router = useRouter()
   const [trabajador, setTrabajador] = useState<TrabajadorDetail>(initialTrabajador)
   const [activeTab, setActiveTab] = useState<'info' | 'deudas'>('info')
 
@@ -55,15 +53,13 @@ export default function TrabajadorDetailClient({
     }
   }
 
-  useRealtimeListener(['trabajador.updated'], () => {
+  usePollingRefetch(() => {
     fetchTrabajador()
-  })
+  }, 60_000)
 
-  useRealtimeListener(['trabajador.deleted'], (event) => {
-    if (event.id === trabajador.id) {
-      router.push('/trabajadores')
-    }
-  })
+  // If the worker is deleted in another session, fetchTrabajador will set
+  // an error or null; the detail page already redirects to /trabajadores
+  // on fetch error. See fetchTrabajador implementation above.
 
   return (
     <div>

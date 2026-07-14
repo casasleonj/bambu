@@ -11,7 +11,7 @@ import { EmptyState } from '@/components/empty-state'
 import { DateRangeFilter } from '@/components/date-range-filter'
 import type { Gasto } from './types'
 import { categorias } from './types'
-import { useRealtimeListener } from '@/hooks/use-realtime-listener'
+import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 
 export default function GastosPage() {
   const [gastos, setGastos] = useState<Gasto[]>([])
@@ -50,8 +50,8 @@ export default function GastosPage() {
     fetchGastos()
   }, [fetchGastos])
 
-  // Realtime: refresh gastos when another user creates one.
-  useRealtimeListener(['gasto.created'], fetchGastos)
+  // Polling: refresh gastos every 60s.
+  usePollingRefetch(fetchGastos, 60_000)
 
   const crearGasto = async (e?: React.FormEvent) => {
     e?.preventDefault()

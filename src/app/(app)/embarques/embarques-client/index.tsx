@@ -13,7 +13,7 @@ import type { Embarque, Trabajador, Ruta } from './types'
 import { EmbarqueCard } from './embarque-card'
 import { EmbarqueFormModal } from './embarque-form-modal'
 import { StatsTab } from './stats-tab'
-import { useRealtimeListener } from '@/hooks/use-realtime-listener'
+import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 
 interface InitialData {
   embarques: Embarque[]
@@ -100,8 +100,8 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
     fetchData()
   }, [fetchData])
 
-  // Realtime: refresh embarques when anything changes.
-  useRealtimeListener(['embarque.*', 'pedido.*'], fetchData)
+  // Polling: refresh embarques every 60s.
+  usePollingRefetch(fetchData, 60_000)
 
   const getEstadoBadge = (estado: string) => {
     const styles: Record<string, string> = {

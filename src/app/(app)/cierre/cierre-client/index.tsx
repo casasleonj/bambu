@@ -17,7 +17,7 @@ import CierreSection from '@/components/cierre/cierre-section'
 import CierreStockBlock from '@/components/cierre/cierre-stock-block'
 import CierreValidationList from '@/components/cierre/cierre-validation-list'
 import type { CierreData } from './types'
-import { useRealtimeListener } from '@/hooks/use-realtime-listener'
+import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 
 const formatMoney = (val: number) => formatCurrency(val)
 
@@ -180,12 +180,11 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
     return () => ctrl.abort()
   }, [fecha, fetchCierre, loadBaseDia, checkLastCierre])
 
-  // Cross-session sync: refetch base de caja when another user updates it.
-  useRealtimeListener(['config.updated'], () => {
+  // Polling: refetch base de caja every 60s (replaces config.updated SSE).
+  usePollingRefetch(() => {
     const ctrl = new AbortController()
-    loadBaseDia(fecha, ctrl.signal)
-    return () => ctrl.abort()
-  })
+    void loadBaseDia(fecha, ctrl.signal)
+  }, 60_000)
 
   const handleCerrar = async (e?: React.FormEvent) => {
     e?.preventDefault()

@@ -32,7 +32,7 @@ import { useAnularPedido } from '@/hooks/use-anular-pedido'
 import { useCancelarPedido } from '@/hooks/use-cancelar-pedido'
 import { useAsignarEmbarque } from '@/hooks/use-asignar-embarque'
 import { useEntregarPedido } from '@/hooks/use-entregar-pedido'
-import { useRealtimeListener } from '@/hooks/use-realtime-listener'
+import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 import { useReconnectHandler } from '@/hooks/use-reconnect-handler'
 import { GpsCaptureModal } from '@/components/gps-capture-modal'
 
@@ -126,12 +126,12 @@ export function PedidosClient() {
   )
   const pedidos = pedidosRaw as Pedido[]
 
-  // Realtime: refetch when pedidos, clientes or embarques change in other sessions.
-  useRealtimeListener(['pedido.*', 'cliente.*', 'embarque.*'], () => {
+  // Polling: refetch every 30s (critical screen for the repartidor).
+  usePollingRefetch(() => {
     refetch()
     fetchClientes()
     fetchEmbarques()
-  })
+  }, 30_000)
 
   // Refetch main pedidos dataset on SSE reconnect (Vercel Hobby 60s cycle).
   useReconnectHandler(() => {

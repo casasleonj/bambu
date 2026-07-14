@@ -8,7 +8,7 @@ import { formatDate } from '@/lib/utils'
 import { generateUUID } from '@/lib/uuid'
 import { EmptyState } from '@/components/empty-state'
 import type { Recurrente, PreviewItem } from './types'
-import { useRealtimeListener } from '@/hooks/use-realtime-listener'
+import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 
 export default function RecurrentesClient() {
   const router = useRouter()
@@ -62,8 +62,8 @@ export default function RecurrentesClient() {
     return () => { abortRef.current?.abort() }
   }, [fetchData])
 
-  // Realtime: refresh recurrentes preview when new recurrent pedidos are generated.
-  useRealtimeListener(['pedido.created'], fetchData)
+  // Polling: refresh recurrentes every 60s.
+  usePollingRefetch(fetchData, 60_000)
 
   async function handleGenerar() {
     const decisionesArray = Object.entries(decisiones)

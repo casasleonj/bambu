@@ -7,7 +7,7 @@ import { CasoGuiaModal } from '@/components/caso-guia-modal'
 import type { AlertaTipo, AlertaItem } from '@/lib/alertas-config'
 import { ignorarAlerta, getGuiaAlerta } from '@/lib/alertas-config'
 import { usePedidos } from '@/hooks/use-pedidos'
-import { useRealtimeListener } from '@/hooks/use-realtime-listener'
+import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 import { useReconnectHandler } from '@/hooks/use-reconnect-handler'
 import type { Pedido } from './types'
 
@@ -24,7 +24,7 @@ export function AlertasTable({ onCountChange }: AlertasTableProps) {
   )
   const pedidosAlertas = pedidos as Pedido[]
 
-  useRealtimeListener(['pedido.*', 'cliente.*'], () => refetch())
+  usePollingRefetch(() => refetch(), 60_000)
   useReconnectHandler(() => refetch())
   const [expandedCliente, setExpandedCliente] = useState<string | null>(null)
   const [filtroSeveridad, setFiltroSeveridad] = useState<'TODAS' | 'ALTA' | 'MEDIA' | 'BAJA'>('TODAS')

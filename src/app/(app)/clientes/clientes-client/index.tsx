@@ -32,7 +32,7 @@ import { CasoGuiaModal } from '@/components/caso-guia-modal'
 import type { AlertaTipo } from '@/lib/alertas-config'
 import { getBadgeColor, ignorarAlerta } from '@/lib/alertas-config'
 import { useEscapeGuard } from '@/hooks/use-escape-guard'
-import { useRealtimeListener } from '@/hooks/use-realtime-listener'
+import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 
 export default function ClientesClient({
   initialClientes,
@@ -203,8 +203,8 @@ export default function ClientesClient({
     }
   }, [filtroActivo, filtrosActivos])
 
-  // Realtime: refresh client list when any cliente changes in another session.
-  useRealtimeListener(['cliente.*'], fetchClientes)
+  // Polling: refresh client list every 60s (replaces realtime SSE to cut Vercel cost).
+  usePollingRefetch(fetchClientes, 60_000)
 
   // FIX REGRESION mobile 2026-06-10 ("no se pudieron cargar los clientes"):
   // NO disparar fetchClientes() en mount. El page.tsx server ya pasa

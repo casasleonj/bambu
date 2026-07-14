@@ -12,7 +12,7 @@ import { fetchResilient } from '@/lib/fetch-resilient'
 import { MoneyDisplay } from '@/components/money-display'
 import { PedidoClienteDisplay } from '@/components/pedido-cliente-display'
 import { usePedidos } from '@/hooks/use-pedidos'
-import { useRealtimeListener } from '@/hooks/use-realtime-listener'
+import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 import { useReconnectHandler } from '@/hooks/use-reconnect-handler'
 
 interface FiadoRow {
@@ -44,7 +44,7 @@ export function FiadosTable({ clientes, limiteGlobal, onPedidosChange, onCountCh
   )
   const pedidosFiados = pedidos as Pedido[]
 
-  useRealtimeListener(['pedido.*', 'pago.*'], () => refetch())
+  usePollingRefetch(() => refetch(), 60_000)
   useReconnectHandler(() => refetch())
   const [expandedCliente, setExpandedCliente] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
