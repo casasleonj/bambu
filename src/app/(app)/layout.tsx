@@ -1,5 +1,6 @@
 import { Providers } from '@/components/providers'
 import { RealtimeProvider } from '@/components/realtime-provider'
+import { RealtimeStatusBanner } from '@/components/realtime-status-banner'
 import { Toaster } from 'sonner'
 import { BaseCajaLoader } from '@/components/base-caja-loader'
 import { UpdateNotification } from '@/components/update-notification'
@@ -55,6 +56,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <SessionExpiryGuard />
         <InAppPushListener />
         <PushOptInToast />
+        <RealtimeStatusBanner />
         <AppShell fechaLarga={headerFechaLarga} fechaCorta={headerFechaCorta}>
           {children}
         </AppShell>

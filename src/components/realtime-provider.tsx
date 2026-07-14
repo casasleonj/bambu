@@ -17,6 +17,8 @@ interface RealtimeSubscription {
 
 interface RealtimeContextValue {
   status: 'connecting' | 'open' | 'closed' | 'paused' | 'polling'
+  /** True when realtime was disabled via NEXT_PUBLIC_REALTIME_ENABLED=false. */
+  disabled: boolean
   subscribe: (filters: string[], callback: (event: RealtimeEvent) => void) => () => void
   /** Register a callback to run each time the SSE connection (re)connects or polling ticks. */
   registerReconnectHandler: (id: string, callback: () => void) => () => void
@@ -286,7 +288,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   )
 
   return (
-    <RealtimeContext.Provider value={{ status, subscribe, registerReconnectHandler }}>
+    <RealtimeContext.Provider value={{ status, disabled: !REALTIME_ENABLED, subscribe, registerReconnectHandler }}>
       {children}
     </RealtimeContext.Provider>
   )
