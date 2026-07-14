@@ -15,6 +15,11 @@ const LIMITS = {
     : { points: 10, duration: 15 * 60, blockDuration: 30 * 60 }, // 10 per 15 min, block 30 min after exhaustion
   api: { points: 300, duration: 60, blockDuration: 0 },
   page: { points: 600, duration: 60, blockDuration: 0 },
+  // SSE realtime: allow a small number of connections per user to prevent
+  // runaway consumption from many tabs or aggressive reconnects.
+  // Each refresh consumes one point; 2 points per minute is enough for normal
+  // use while capping abuse.
+  realtime: { points: 2, duration: 60, blockDuration: 0 },
 } as const
 
 export type RateLimitType = keyof typeof LIMITS
@@ -40,6 +45,9 @@ async function getRedisClient() {
       // Disable offline queue per rate-limiter-flexible docs:
       // prevents request storms when Redis reconnects after downtime
       disableOfflineQueue: true,
+      socket: {
+        connectTimeout: 5000,
+      },
     })
     client.on('error', (err: Error) => logger.error({ err }, 'Redis error'))
     await client.connect()

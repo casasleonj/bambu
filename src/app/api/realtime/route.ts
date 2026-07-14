@@ -1,9 +1,13 @@
 import { logger } from '@/lib/logger'
 import { auth } from '@/lib/auth'
+import { checkRateLimit } from '@/lib/rate-limit'
 import { getRealtimeChannel, type RealtimeEvent } from '@/lib/realtime'
 
 // Hobby plan safe default; increase if your deployment supports longer.
-export const maxDuration = 60
+// Configurable via env to tune cost vs freshness.
+export const maxDuration = process.env.REALTIME_MAX_DURATION
+  ? Number(process.env.REALTIME_MAX_DURATION)
+  : 30
 export const dynamic = 'force-dynamic'
 
 const HEARTBEAT_INTERVAL_MS = 45_000
@@ -22,6 +26,16 @@ export async function GET(request: Request) {
   const session = await auth()
   if (!session?.user?.id) {
     return new Response('Unauthorized', { status: 401 })
+  }
+
+  // Rate limit realtime connections per user to prevent runaway consumption
+  // from many tabs, aggressive reconnects, or misbehaving clients.
+  const rateLimit = await checkRateLimit(session.user.id, 'realtime')
+  if (!rateLimit.allowed) {
+    return new Response('Too Many Requests', {
+      status: 429,
+      headers: { 'Retry-After': String(rateLimit.retryAfter ?? 60) },
+    })
   }
 
   if (!process.env.REDIS_URL) {

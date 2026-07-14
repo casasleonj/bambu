@@ -32,7 +32,7 @@ import { CasoGuiaModal } from '@/components/caso-guia-modal'
 import type { AlertaTipo } from '@/lib/alertas-config'
 import { getBadgeColor, ignorarAlerta } from '@/lib/alertas-config'
 import { useEscapeGuard } from '@/hooks/use-escape-guard'
-import { useRealtimeListener } from '@/hooks/use-realtime-listener'
+import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 
 export default function ClientesClient({
   initialClientes,
@@ -96,7 +96,6 @@ export default function ClientesClient({
   const [negocioEditData, setNegocioEditData] = useState<{ id: string; nombre: string; tipoNegocio: string | null; direccion: string | null; barrio: string | null; referencia: string | null; linkUbicacion: string | null; horaApertura: string | null; rutaId: string | null } | null>(null)
   const [viewNegocioData, setViewNegocioData] = useState<NegocioDetail | null>(null)
   const [showNegocioDetail, setShowNegocioDetail] = useState(false)
-  const [preciosLoaded, setPreciosLoaded] = useState(false)
 
   const puedeDesactivar = userRole === 'ADMIN' || userRole === 'CONTADOR'
   const puedeEliminarNegocio = userRole === 'ADMIN'
@@ -204,8 +203,8 @@ export default function ClientesClient({
     }
   }, [filtroActivo, filtrosActivos])
 
-  // Realtime: refresh client list when any cliente changes in another session.
-  useRealtimeListener(['cliente.*'], fetchClientes)
+  // Polling: refresh client list every 60s (replaces realtime SSE to cut Vercel cost).
+  usePollingRefetch(fetchClientes, 60_000)
 
   // FIX REGRESION mobile 2026-06-10 ("no se pudieron cargar los clientes"):
   // NO disparar fetchClientes() en mount. El page.tsx server ya pasa
@@ -567,17 +566,31 @@ export default function ClientesClient({
       } else {
         // POST: usa fetchResilient para offline-first (repartidor field use).
         // Si la red falla durante la creación, encola automáticamente.
+        // Defensa adicional: nunca dejar el botón pegado más de 15s por si
+        // fetchResilient no resuelve (ej. Service Worker interfiriendo).
         const offlineId = generateUUID()
-        const result = await fetchResilient<{
-          success: boolean
-          deduped?: boolean
-          cliente?: { id: string; nombre: string; telefono: string; direccion?: string; barrio?: string; [key: string]: unknown }
-          error?: { message?: string; formErrors?: string[] }
-        }>('/api/clientes', {
-          method: 'POST',
-          body: { ...body, offlineId },
-          localEndpoint: 'crear-cliente',
-        })
+        const submitTimeoutMs = 15_000
+        const result = await Promise.race([
+          fetchResilient<{
+            success: boolean
+            deduped?: boolean
+            cliente?: { id: string; nombre: string; telefono: string; direccion?: string; barrio?: string; [key: string]: unknown }
+            error?: { message?: string; formErrors?: string[] }
+          }>('/api/clientes', {
+            method: 'POST',
+            body: { ...body, offlineId },
+            localEndpoint: 'crear-cliente',
+          }),
+          new Promise<
+            { status: 'timeout' }
+          >((resolve) => setTimeout(() => resolve({ status: 'timeout' }), submitTimeoutMs)),
+        ])
+
+        if (result.status === 'timeout') {
+          toast.info('La conexión tardó mucho. El cliente quedó guardado en el celular y se enviará cuando la red mejore.')
+          setShowModal(false)
+          return
+        }
 
         if (result.status === 'offline') {
           toast.info('Sin conexión. Cliente guardado, se creará al recuperar la red.')

@@ -7,6 +7,7 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 import { executeSerializableWithRetry } from '@/lib/serializable'
 import { publishRealtimeEvent } from '@/lib/realtime'
+import { sendPushToUser } from '@/lib/push'
 
 // Tipo del embarque con las relaciones que necesitamos en la respuesta
 type EmbarqueConRelaciones = Prisma.EmbarqueGetPayload<{
@@ -155,6 +156,17 @@ export async function POST(
     result.pedidoIds.forEach((pedidoId) => {
       publishRealtimeEvent('pedido.updated', pedidoId).catch(() => {})
     })
+
+    // Push notification to the assigned repartidor (replaces SSE for off-tab users).
+    const repartidorUserId = embarque.trabajador?.userId
+    if (repartidorUserId) {
+      void sendPushToUser(repartidorUserId, {
+        title: 'Embarque en ruta',
+        body: `Embarque #${embarque.numero} asignado a ${embarque.trabajador.nombre}.`,
+        url: `/repartidor`,
+        tag: `embarque-ruta-${id}`,
+      })
+    }
 
     return apiSuccess({ embarque })
   } catch (error) {

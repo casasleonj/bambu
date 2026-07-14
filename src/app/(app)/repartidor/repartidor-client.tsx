@@ -4,7 +4,7 @@ import { generateUUID } from '@/lib/uuid'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { useRealtimeListener } from '@/hooks/use-realtime-listener'
+import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 import { formatCurrency } from '@/lib/utils'
 import { Modal } from '@/components/modal'
 import { offlineDb, queuePedidoOffline } from '@/lib/db/offline'
@@ -114,10 +114,10 @@ export function RepartidorClient({ trabajador, embarque, userRole }: RepartidorC
     return () => clearInterval(interval)
   }, [])
 
-  // Realtime: refresh server data when the route or its pedidos change.
-  useRealtimeListener(['embarque.updated', 'pedido.updated'], () => {
+  // Polling: refresh server data every 30s (critical for the repartidor on the route).
+  usePollingRefetch(() => {
     router.refresh()
-  })
+  }, 30_000)
 
   const updatePendingCount = useCallback(async () => {
     const count = await offlineDb.pedidos.where('syncStatus').equals('pending').count()

@@ -36,9 +36,14 @@ export interface RealtimeEvent {
 
 const REALTIME_CHANNEL = 'bambu:events'
 
+// Respect the same feature flag as the client-side RealtimeProvider.
+// If realtime is disabled, never open a Redis connection from the server.
+const isRealtimeEnabled = process.env.NEXT_PUBLIC_REALTIME_ENABLED !== 'false'
+
 let publisherClient: ReturnType<typeof import('redis').createClient> | null = null
 
 async function getPublisherClient(): Promise<ReturnType<typeof import('redis').createClient> | null> {
+  if (!isRealtimeEnabled) return null
   if (publisherClient) return publisherClient
   if (!process.env.REDIS_URL) return null
 
@@ -47,6 +52,9 @@ async function getPublisherClient(): Promise<ReturnType<typeof import('redis').c
     const client = createClient({
       url: process.env.REDIS_URL,
       disableOfflineQueue: true,
+      socket: {
+        connectTimeout: 5000,
+      },
     })
     client.on('error', (err: Error) => {
       logger.error({ err }, 'Realtime Redis publisher error')

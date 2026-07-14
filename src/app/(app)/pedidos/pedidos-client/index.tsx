@@ -33,8 +33,8 @@ import { useAnularPedido } from '@/hooks/use-anular-pedido'
 import { useCancelarPedido } from '@/hooks/use-cancelar-pedido'
 import { useAsignarEmbarque } from '@/hooks/use-asignar-embarque'
 import { useEntregarPedido } from '@/hooks/use-entregar-pedido'
-import { useRealtimeListener } from '@/hooks/use-realtime-listener'
 import { useReconnectHandler } from '@/hooks/use-reconnect-handler'
+import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 import { GpsCaptureModal } from '@/components/gps-capture-modal'
 
 const PedidoFormUnified = dynamic(() => import('@/components/pedido-form-unified').then(m => m.PedidoFormUnified), { ssr: false })
@@ -154,19 +154,17 @@ export function PedidosClient() {
   )
   const alertasCount = useMemo(() => calcularAlertas(pedidosAlertas).length, [pedidosAlertas])
 
-  // Realtime: each dataset refetches only when relevant events arrive. This
-  // avoids wasted refetches (e.g. a pago.* event should not refetch Alertas).
-  useRealtimeListener(['pedido.*', 'cliente.*', 'embarque.*'], () => {
+  // Polling: refetch all three datasets every 30s (replaces SSE to cut Vercel cost).
+  // Critical screen for the repartidor; faster than the 60s default.
+  // Each dataset refetches unconditionally because we no longer filter by
+  // event type; this is a trade-off for simpler infrastructure.
+  usePollingRefetch(() => {
     refetch()
+    refetchFiados()
+    refetchAlertas()
     fetchClientes()
     fetchEmbarques()
-  })
-  useRealtimeListener(['pedido.*', 'pago.*', 'cliente.*'], () => {
-    refetchFiados()
-  })
-  useRealtimeListener(['pedido.*', 'cliente.*'], () => {
-    refetchAlertas()
-  })
+  }, 30_000)
 
   // Refetch all datasets on SSE reconnect (Vercel Hobby 60s cycle). The client
   // may have missed realtime events while disconnected.

@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EmptyState } from '@/components/empty-state'
 import type { Proveedor, Insumo, CompraInsumo } from './types'
-import { useRealtimeListener } from '@/hooks/use-realtime-listener'
+import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 
 export default function ComprasPage() {
   const [compras, setCompras] = useState<CompraInsumo[]>([])
@@ -45,8 +45,8 @@ export default function ComprasPage() {
     fetchData()
   }, [fetchData])
 
-  // Realtime: refresh compras when another user creates one.
-  useRealtimeListener(['compra.created'], fetchData)
+  // Polling: refresh compras every 60s.
+  usePollingRefetch(fetchData, 60_000)
 
   const crearCompra = async (e?: React.FormEvent) => {
     e?.preventDefault()

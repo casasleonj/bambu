@@ -85,7 +85,7 @@ export async function broadcastPush(payload: PushPayload): Promise<number> {
           keys: { p256dh: sub.p256dh, auth: sub.auth },
         }
         try {
-          await webpush.sendNotification(webpushSub, jsonPayload)
+          await webpush.sendNotification(webpushSub, jsonPayload, { timeout: 5000 })
           successCount++
           // Update lastSeenAt para garbage collection
           await prisma.pushSubscription.update({
