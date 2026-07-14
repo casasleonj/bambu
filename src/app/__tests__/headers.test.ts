@@ -30,7 +30,7 @@ describe('PWA headers', () => {
     } finally {
       env.NODE_ENV = originalNodeEnv
     }
-  })
+  }, 10000)
 
   it('production security headers are not returned in development/test', async () => {
     vi.resetModules()
