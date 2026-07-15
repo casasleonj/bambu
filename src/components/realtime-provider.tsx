@@ -9,6 +9,7 @@ import {
   useState,
 } from 'react'
 import type { RealtimeEvent } from '@/lib/realtime'
+import { logger } from '@/lib/logger'
 
 interface RealtimeSubscription {
   filters: string[]
@@ -218,8 +219,25 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     intendedRef.current = true
     connectingRef.current = true
     setStatus('connecting')
+    clearReconnectTimer()
 
-    const es = new EventSource(SSE_URL)
+    let es: EventSource
+    try {
+      es = new EventSource(SSE_URL)
+    } catch (err) {
+      logger.error({ err: err instanceof Error ? err.message : 'Unknown' }, 'Failed to create EventSource')
+      connectingRef.current = false
+      setStatus('closed')
+      errorCountRef.current += 1
+      if (errorCountRef.current >= MAX_ERRORS_BEFORE_POLLING) {
+        startPolling()
+      } else {
+        const baseDelay = RETRY_DELAYS_MS[retryIndexRef.current] ?? RETRY_DELAYS_MS[RETRY_DELAYS_MS.length - 1]
+        retryIndexRef.current = Math.min(retryIndexRef.current + 1, RETRY_DELAYS_MS.length - 1)
+        scheduleReconnect(jitteredDelay(baseDelay))
+      }
+      return
+    }
     eventSourceRef.current = es
 
     const finishConnecting = () => {

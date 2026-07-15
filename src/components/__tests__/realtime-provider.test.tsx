@@ -303,4 +303,5 @@ describe('RealtimeProvider rate_limited handling', () => {
 
     expect(MockEventSource.instances.length).toBe(2)
   })
+
 })

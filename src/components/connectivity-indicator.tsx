@@ -154,7 +154,7 @@ export function ConnectivityIndicator() {
     bg = 'bg-gray-500/20'
     dot = 'bg-gray-400 shadow-gray-400/60'
     text = 'text-gray-100'
-    label = 'Actualizado'
+    label = 'Desactivado'
     tooltip = 'El canal en vivo está desactivado. La app sigue sincronizando manualmente.'
   } else if (isOpen) {
     bg = 'bg-emerald-500/20'
