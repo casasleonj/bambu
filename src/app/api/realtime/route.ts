@@ -3,8 +3,9 @@ import { auth } from '@/lib/auth'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { getRealtimeChannel, type RealtimeEvent } from '@/lib/realtime'
 
-// Short-lived SSE fallback: 30s is enough for Pro and keeps cost bounded.
-export const maxDuration = 30
+// SSE connection lifetime. 300s matches Vercel Pro max; Hobby runtime caps
+// to 60s automatically. Configurable via env to tune cost vs freshness.
+export const maxDuration = Number(process.env.REALTIME_MAX_DURATION ?? 300)
 export const dynamic = 'force-dynamic'
 
 const HEARTBEAT_INTERVAL_MS = 45_000
@@ -29,9 +30,24 @@ export async function GET(request: Request) {
   // from many tabs, aggressive reconnects, or misbehaving clients.
   const rateLimit = await checkRateLimit(session.user.id, 'realtime')
   if (!rateLimit.allowed) {
-    return new Response('Too Many Requests', {
-      status: 429,
-      headers: { 'Retry-After': String(rateLimit.retryAfter ?? 60) },
+    // Return a valid SSE stream with a rate_limited event instead of a plain
+    // 429. Native EventSource implementations may auto-reconnect aggressively
+    // on non-event-stream error responses, causing a request storm. A 200
+    // text/event-stream response lets the client parse the event and back off.
+    const retryAfter = rateLimit.retryAfter ?? 60
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(sseEvent('rate_limited', { retryAfter }))
+        controller.close()
+      },
+    })
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        'Retry-After': String(retryAfter),
+        Connection: 'close',
+      },
     })
   }
 

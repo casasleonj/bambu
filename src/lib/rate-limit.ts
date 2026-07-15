@@ -17,9 +17,14 @@ const LIMITS = {
   page: { points: 600, duration: 60, blockDuration: 0 },
   // SSE realtime: allow a small number of connections per user to prevent
   // runaway consumption from many tabs or aggressive reconnects.
-  // Each refresh consumes one point; 2 points per minute is enough for normal
+  // Each refresh consumes one point; 6 points per minute is enough for normal
   // use while capping abuse.
-  realtime: { points: 2, duration: 60, blockDuration: 0 },
+  // Configurable via env to tune cost vs freshness per deployment.
+  realtime: {
+    points: Number(process.env.REALTIME_RATE_LIMIT_POINTS ?? 6),
+    duration: Number(process.env.REALTIME_RATE_LIMIT_DURATION_SEC ?? 60),
+    blockDuration: Number(process.env.REALTIME_RATE_LIMIT_BLOCK_DURATION_SEC ?? 0),
+  },
 } as const
 
 export type RateLimitType = keyof typeof LIMITS
