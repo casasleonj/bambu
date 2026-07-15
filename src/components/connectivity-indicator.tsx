@@ -186,8 +186,8 @@ export function ConnectivityIndicator() {
       }
       data-testid="connectivity-indicator"
       data-pending-count={pendingCount}
-      // FIX mobile UX: padding más compacto, label oculto en <sm.
-      className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full ${bg} transition-colors duration-300 flex-shrink-0 ${
+      // FIX mobile UX: label oculto en <sm, touch target >=44px.
+      className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-2.5 min-h-[44px] rounded-full ${bg} transition-colors duration-300 flex-shrink-0 ${
         canSync ? 'cursor-pointer hover:brightness-110 active:scale-95' : 'cursor-default'
       }`}
     >

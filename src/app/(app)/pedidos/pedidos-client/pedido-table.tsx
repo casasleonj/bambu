@@ -158,7 +158,7 @@ function DesktopRow({
         <div className="flex gap-2 justify-end">
           <button
             onClick={(e) => { e.stopPropagation(); onDetail(pedido) }}
-            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition"
+            className="p-1.5 min-h-[40px] md:min-h-0 text-blue-600 hover:bg-blue-50 rounded-lg transition"
             title="Ver detalle"
             aria-label="Ver detalle"
           >
@@ -168,7 +168,7 @@ function DesktopRow({
             <button
               onClick={(e) => { e.stopPropagation(); onCambiarEstado(pedido.id, 'EN_RUTA') }}
               disabled={updatingId === pedido.id}
-              className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-1.5 min-h-[40px] md:min-h-0 text-green-600 hover:bg-green-50 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
               title="Enviar"
               aria-label="Enviar"
             >
@@ -179,7 +179,7 @@ function DesktopRow({
             <button
               onClick={(e) => { e.stopPropagation(); onCambiarEstado(pedido.id, 'ENTREGADO') }}
               disabled={updatingId === pedido.id}
-              className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-1.5 min-h-[40px] md:min-h-0 text-green-600 hover:bg-green-50 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
               title="Entregar"
               aria-label="Entregar"
             >
@@ -293,7 +293,7 @@ function MobileCard({
           <button
             onClick={(e) => { e.stopPropagation(); onCambiarEstado(pedido.id, 'EN_RUTA') }}
             disabled={updatingId === pedido.id}
-            className="flex-1 flex items-center justify-center px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50"
+            className="flex-1 flex items-center justify-center px-3 py-2 min-h-[40px] bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50"
             aria-label="Enviar pedido"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
@@ -303,7 +303,7 @@ function MobileCard({
           <button
             onClick={(e) => { e.stopPropagation(); onCambiarEstado(pedido.id, 'ENTREGADO') }}
             disabled={updatingId === pedido.id}
-            className="flex-1 flex items-center justify-center px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50"
+            className="flex-1 flex items-center justify-center px-3 py-2 min-h-[40px] bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50"
             aria-label="Marcar entregado"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>

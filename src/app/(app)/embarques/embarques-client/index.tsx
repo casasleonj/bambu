@@ -251,7 +251,7 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
             <Tooltip content="Ajustar stock temporal para embarques de hoy" title="Stock Estimado" position="bottom">
               <button
                 onClick={openStockModal}
-                className={`px-3 py-2 rounded-lg transition flex items-center gap-1.5 ${
+                className={`px-3 py-2 min-h-[40px] md:min-h-0 rounded-lg transition flex items-center gap-1.5 ${
                   stockEstimado
                     ? 'bg-amber-100 text-amber-700 hover:bg-amber-200 border border-amber-300'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -267,7 +267,7 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
           <Tooltip content="Agrupa automáticamente los pedidos pendientes en embarques optimizados por zona" title="Auto-Generar" position="bottom">
             <button
               onClick={handleAutoGenerate}
-              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
+              className="px-4 py-2 min-h-[40px] md:min-h-0 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
             >
               Auto-Generar
             </button>
@@ -275,7 +275,7 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
           <Tooltip content="Crea un embarque manual seleccionando repartidor y ruta" title="Nuevo Embarque" position="bottom">
             <button
               onClick={() => { setFormMode('create'); setEditingEmbarque(null); setShowFormModal(true) }}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+              className="px-4 py-2 min-h-[40px] md:min-h-0 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
             >
               + Nuevo Embarque
             </button>
@@ -295,7 +295,7 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
             <button
               key={key}
               onClick={() => setFiltroEstado(key)}
-              className={`px-4 py-1.5 rounded-full text-sm font-medium transition ${
+              className={`px-4 py-1.5 min-h-[40px] md:min-h-0 rounded-full text-sm font-medium transition ${
                 filtroEstado === key
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -311,7 +311,7 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
       <div className="flex border-b border-gray-200 mb-4">
         <button
           onClick={() => setActiveTab('embarques')}
-          className={`px-5 py-2.5 text-sm font-medium border-b-2 transition ${
+          className={`px-5 py-2.5 min-h-[40px] md:min-h-0 text-sm font-medium border-b-2 transition ${
             activeTab === 'embarques'
               ? 'border-blue-600 text-blue-600'
               : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -321,7 +321,7 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
         </button>
         <button
           onClick={() => setActiveTab('stats')}
-          className={`px-5 py-2.5 text-sm font-medium border-b-2 transition ${
+          className={`px-5 py-2.5 min-h-[40px] md:min-h-0 text-sm font-medium border-b-2 transition ${
             activeTab === 'stats'
               ? 'border-blue-600 text-blue-600'
               : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'

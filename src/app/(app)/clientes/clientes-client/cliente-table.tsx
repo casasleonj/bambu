@@ -164,7 +164,7 @@ export const ClienteTable = React.memo(function ClienteTable({
           {search && (
             <button
               onClick={() => onSearchChange('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              className="absolute right-3 top-1/2 -translate-y-1/2 min-h-[40px] md:min-h-0 px-2 text-gray-400 hover:text-gray-600"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -186,7 +186,7 @@ export const ClienteTable = React.memo(function ClienteTable({
           <Tooltip content="Mostrar solo clientes con saldo pendiente" position="bottom">
             <button
               onClick={() => setFilterSaldo(!filterSaldo)}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition ${
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[40px] md:min-h-0 rounded-full text-xs font-medium border transition ${
                 filterSaldo
                   ? 'bg-red-50 border-red-200 text-red-700'
                   : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
@@ -203,7 +203,7 @@ export const ClienteTable = React.memo(function ClienteTable({
           <Tooltip content="Mostrar solo clientes con frecuencia de compra configurada" position="bottom">
             <button
               onClick={() => setFilterFrecuencia(!filterFrecuencia)}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition ${
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[40px] md:min-h-0 rounded-full text-xs font-medium border transition ${
                 filterFrecuencia
                   ? 'bg-green-50 border-green-200 text-green-700'
                   : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
@@ -323,7 +323,7 @@ export const ClienteTable = React.memo(function ClienteTable({
           {hasActiveFilters && (
             <button
               onClick={clearFilters}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-gray-500 hover:text-gray-700 transition"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[40px] md:min-h-0 rounded-full text-xs font-medium text-gray-500 hover:text-gray-700 transition"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -345,7 +345,7 @@ export const ClienteTable = React.memo(function ClienteTable({
           </div>
           <button
             onClick={onRetry}
-            className="px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium"
+            className="px-3 py-1.5 min-h-[40px] md:min-h-0 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium"
           >
             Reintentar
           </button>
@@ -370,13 +370,13 @@ export const ClienteTable = React.memo(function ClienteTable({
             <span className="hidden sm:inline">Ordenar:</span>
             <button
               onClick={() => onSortChange('nombre', sortBy === 'nombre' && sortDir === 'asc' ? 'desc' : 'asc')}
-              className={`px-2 py-1 rounded font-medium transition ${sortBy === 'nombre' ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-100'}`}
+              className={`px-2 py-1 min-h-[40px] md:min-h-0 rounded font-medium transition ${sortBy === 'nombre' ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-100'}`}
             >
               Nombre {sortBy === 'nombre' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
             </button>
             <button
               onClick={() => onSortChange('createdAt', sortBy === 'createdAt' && sortDir === 'asc' ? 'desc' : 'asc')}
-              className={`px-2 py-1 rounded font-medium transition ${sortBy === 'createdAt' ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-100'}`}
+              className={`px-2 py-1 min-h-[40px] md:min-h-0 rounded font-medium transition ${sortBy === 'createdAt' ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-100'}`}
             >
               Fecha {sortBy === 'createdAt' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
             </button>
@@ -441,7 +441,7 @@ export const ClienteTable = React.memo(function ClienteTable({
                   <div className="absolute right-3 top-3 z-10">
                     <button
                       onClick={(e) => { e.stopPropagation(); setQuickActionsRow(quickActionsRow === cliente.id ? null : cliente.id) }}
-                      className="p-1.5 rounded-lg bg-white/80 hover:bg-white shadow-sm opacity-100 md:opacity-0 md:group-hover:opacity-100 transition text-gray-500 hover:text-gray-700"
+                      className="p-1.5 min-h-[40px] md:min-h-0 rounded-lg bg-white/80 hover:bg-white shadow-sm opacity-100 md:opacity-0 md:group-hover:opacity-100 transition text-gray-500 hover:text-gray-700"
                       aria-label="Acciones rápidas"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -453,7 +453,7 @@ export const ClienteTable = React.memo(function ClienteTable({
                         <a
                           href={formatearTelefonoParaLlamar(cliente.telefono)}
                           onClick={(e) => e.stopPropagation()}
-                          className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                          className="flex items-center gap-2 px-3 py-2 min-h-[40px] md:min-h-0 text-sm text-gray-700 hover:bg-gray-50"
                         >
                           <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
@@ -463,7 +463,7 @@ export const ClienteTable = React.memo(function ClienteTable({
                         <Link
                           href={`/pedidos?new=1&clienteId=${cliente.id}`}
                           onClick={(e) => e.stopPropagation()}
-                          className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                          className="flex items-center gap-2 px-3 py-2 min-h-[40px] md:min-h-0 text-sm text-gray-700 hover:bg-gray-50"
                         >
                           <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
@@ -472,7 +472,7 @@ export const ClienteTable = React.memo(function ClienteTable({
                         </Link>
                         <button
                           onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(formatearTelefonoParaCopiar(cliente.telefono)); toast.success('Teléfono copiado'); setQuickActionsRow(null) }}
-                          className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                          className="flex items-center gap-2 w-full px-3 py-2 min-h-[40px] md:min-h-0 text-sm text-gray-700 hover:bg-gray-50"
                         >
                           <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
@@ -482,7 +482,7 @@ export const ClienteTable = React.memo(function ClienteTable({
                         {cliente.direccion && (
                           <button
                             onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(cliente.direccion || ''); toast.success('Dirección copiada'); setQuickActionsRow(null) }}
-                            className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                            className="flex items-center gap-2 w-full px-3 py-2 min-h-[40px] md:min-h-0 text-sm text-gray-700 hover:bg-gray-50"
                           >
                             <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
