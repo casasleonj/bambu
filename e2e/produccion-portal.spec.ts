@@ -261,6 +261,24 @@ async function triggerInteraction(page: Page) {
   }
 }
 
+async function dismissInstallBanner(page: Page, section: string, viewport: string) {
+  const close = page.locator('button[aria-label="Cerrar banner de instalación"]')
+  if (await close.isVisible({ timeout: 3000 }).catch(() => false)) {
+    addFinding(page, {
+      severity: 'P2',
+      section,
+      title: 'Banner PWA de instalación visible',
+      description: 'El banner de "Instala Agua Bambú" tapa contenido hasta que se cierra',
+      url: page.url(),
+      viewport,
+    })
+    await close.click()
+    await page.waitForTimeout(500)
+  }
+}
+
+
+
 async function measureNavigation(
   page: Page,
   section: string,
@@ -419,7 +437,7 @@ function printSummary() {
 // ─── SUITE ───────────────────────────────────────────────────────────────────
 
 test.describe('Produccion — Smoke + Audit @produccion', () => {
-  test.describe.configure({ mode: 'serial' })
+  test.describe.configure({ mode: 'parallel' })
   test.use({ storageState: { cookies: [], origins: [] } })
   test.slow()
 
@@ -435,6 +453,7 @@ test.describe('Produccion — Smoke + Audit @produccion', () => {
 
   test('@smoke login admin redirige a dashboard', async ({ page }) => {
     await fullLogin(page, 'admin', 'admin123')
+    await dismissInstallBanner(page, 'general', viewportLabel())
     await expect(page).toHaveURL(/\/(dashboard|reportes|repartidor)/, { timeout: 30000 })
     const heading = page.getByRole('heading').first()
     await expect(heading).toBeVisible()
@@ -442,6 +461,7 @@ test.describe('Produccion — Smoke + Audit @produccion', () => {
 
   test('@smoke @audit /clientes carga sin errores críticos', async ({ page }) => {
     await fullLogin(page, 'admin', 'admin123')
+    await dismissInstallBanner(page, 'general', viewportLabel())
     await measureNavigation(page, 'clientes', '/clientes', viewportLabel())
     await expect(page.getByRole('heading', { name: /Clientes/i })).toBeVisible({ timeout: 30000 })
     await expect(page.locator('button:has-text("Nuevo Cliente")')).toBeVisible({ timeout: 10000 })
@@ -449,20 +469,37 @@ test.describe('Produccion — Smoke + Audit @produccion', () => {
 
   test('@smoke @audit /pedidos carga sin errores críticos', async ({ page }) => {
     await fullLogin(page, 'admin', 'admin123')
+    await dismissInstallBanner(page, 'general', viewportLabel())
     await measureNavigation(page, 'pedidos', '/pedidos', viewportLabel())
-    await expect(page.locator('[data-testid="tab-hoy"], button:has-text("Pedidos")').first()).toBeVisible({
-      timeout: 30000,
-    })
+    const pedidosTab = page
+      .locator('[data-testid="tab-hoy"]')
+      .or(page.locator('[role="tab"]'))
+      .or(page.locator('button').filter({ hasText: /Hoy|Pedidos/i }))
+      .first()
+    const isVisible = await pedidosTab.isVisible({ timeout: 30000 }).catch(() => false)
+    if (!isVisible) {
+      addFinding(page, {
+        severity: 'P0',
+        section: 'pedidos',
+        title: 'Contenido de pedidos no renderiza en mobile',
+        description: 'No se detectaron tabs, lista ni contenido de pedidos tras cerrar banner PWA',
+        url: `${BASE}/pedidos`,
+        viewport: viewportLabel(),
+      })
+    }
+    await expect(pedidosTab).toBeVisible({ timeout: 30000 })
   })
 
   test('@smoke @audit /recurrentes carga sin errores críticos', async ({ page }) => {
     await fullLogin(page, 'admin', 'admin123')
+    await dismissInstallBanner(page, 'general', viewportLabel())
     await measureNavigation(page, 'recurrentes', '/recurrentes', viewportLabel())
     await expect(page.getByRole('heading', { name: /Pedidos Recurrentes/i, level: 1 })).toBeVisible({ timeout: 30000 })
   })
 
   test('@smoke @audit /embarques carga sin errores críticos', async ({ page }) => {
     await fullLogin(page, 'admin', 'admin123')
+    await dismissInstallBanner(page, 'general', viewportLabel())
     await measureNavigation(page, 'embarques', '/embarques', viewportLabel())
     await expect(page.getByRole('heading', { name: /Embarques/i })).toBeVisible({ timeout: 30000 })
   })
@@ -471,6 +508,7 @@ test.describe('Produccion — Smoke + Audit @produccion', () => {
 
   test('@audit navegación sidebar funciona en todas las secciones', async ({ page }) => {
     await fullLogin(page, 'admin', 'admin123')
+    await dismissInstallBanner(page, 'general', viewportLabel())
     const paths = ['/clientes', '/pedidos', '/recurrentes', '/embarques']
     for (const p of paths) {
       const start = Date.now()
@@ -505,6 +543,7 @@ test.describe('Produccion — Smoke + Audit @produccion', () => {
 
   test('@audit búsqueda y filtros respondan en clientes, pedidos y embarques', async ({ page }) => {
     await fullLogin(page, 'admin', 'admin123')
+    await dismissInstallBanner(page, 'general', viewportLabel())
 
     // Clientes: buscar
     await page.goto(`${BASE}/clientes`, { waitUntil: 'domcontentloaded', timeout: 60000 })
@@ -556,6 +595,7 @@ test.describe('Produccion — Smoke + Audit @produccion', () => {
 
   test('@audit detalle de entidades abre sin errores', async ({ page }) => {
     await fullLogin(page, 'admin', 'admin123')
+    await dismissInstallBanner(page, 'general', viewportLabel())
 
     // Cliente
     await page.goto(`${BASE}/clientes`, { waitUntil: 'domcontentloaded', timeout: 60000 })
@@ -621,6 +661,7 @@ test.describe('Produccion — Smoke + Audit @produccion', () => {
   test('@audit mobile: overflow y touch targets', async ({ page, isMobile }) => {
     test.skip(!isMobile, 'mobile-only')
     await fullLogin(page, 'admin', 'admin123')
+    await dismissInstallBanner(page, 'general', viewportLabel())
 
     const paths = ['/clientes', '/pedidos', '/recurrentes', '/embarques']
     for (const p of paths) {
@@ -647,6 +688,7 @@ test.describe('Produccion — Smoke + Audit @produccion', () => {
   test('@audit desktop: sidebar persistente y tablas renderizan', async ({ page, isMobile }) => {
     test.skip(isMobile, 'desktop-only')
     await fullLogin(page, 'admin', 'admin123')
+    await dismissInstallBanner(page, 'general', viewportLabel())
 
     const paths = ['/clientes', '/pedidos', '/recurrentes', '/embarques']
     for (const p of paths) {
