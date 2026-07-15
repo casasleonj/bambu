@@ -30,9 +30,15 @@ const SSE_URL = '/api/realtime'
 const RETRY_DELAYS_MS = [5_000, 15_000, 30_000]
 const HEARTBEAT_TIMEOUT_MS = 90_000
 const POLL_INTERVAL_MS = 30_000
-const MAX_ERRORS_BEFORE_POLLING = 2
+const MAX_ERRORS_BEFORE_POLLING = 3
 const SSE_CONNECTION_TIMEOUT_MS = 8_000
+const RATE_LIMITED_WINDOW_MS = 10 * 60 * 1000
+const RATE_LIMITED_COOLDOWN_MS = 5 * 60 * 1000
 const REALTIME_ENABLED = process.env.NEXT_PUBLIC_REALTIME_ENABLED !== 'false'
+
+function jitteredDelay(baseMs: number): number {
+  return Math.floor(baseMs * (1 + Math.random() * 0.3))
+}
 
 function matchesFilter(filter: string, eventType: string): boolean {
   if (filter === eventType) return true
@@ -47,6 +53,7 @@ interface NetworkConnection {
   effectiveType?: string
   downlink?: number
   rtt?: number
+  saveData?: boolean
 }
 
 function getConnection(): NetworkConnection | undefined {
@@ -60,7 +67,9 @@ function shouldAvoidPersistentConnection(): boolean {
   // Use estimated downlink when available: slow 3g links (<1.5 Mbps) or
   // officially slow types should not hold a long-lived SSE connection.
   const slowDownlink = typeof conn?.downlink === 'number' && conn.downlink < 1.5
-  return type === '2g' || type === 'slow-2g' || slowDownlink
+  // Data saver mode (common on prepaid mobile plans) disables long-lived connections
+  // because they keep the radio active and consume the data quota.
+  return type === '2g' || type === 'slow-2g' || slowDownlink || conn?.saveData === true
 }
 
 function isOnline(): boolean {
@@ -79,6 +88,12 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const connectRef = useRef<() => void>(() => {})
   const errorCountRef = useRef(0)
   const retryIndexRef = useRef(0)
+  const connectingRef = useRef(false)
+  const rateLimitedUntilRef = useRef(0)
+  const consecutiveRateLimitsRef = useRef(0)
+  const lastRateLimitedAtRef = useRef(0)
+  const disableRealtimeUntilRef = useRef(0)
+  const lastErrorAtRef = useRef(0)
 
   const clearHeartbeat = useCallback(() => {
     if (heartbeatTimerRef.current) {
@@ -147,8 +162,15 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const connect = useCallback(() => {
     if (typeof window === 'undefined') return
     if (!REALTIME_ENABLED) return
-    if (eventSourceRef.current) return
+    if (connectingRef.current || eventSourceRef.current) return
     if (document.hidden) return
+
+    // Rate-limit circuit breaker: server told us to back off.
+    const now = Date.now()
+    if (now < rateLimitedUntilRef.current || now < disableRealtimeUntilRef.current) {
+      if (isOnline()) startPolling()
+      return
+    }
     if (!isOnline()) {
       startPolling()
       return
@@ -159,37 +181,52 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     }
 
     intendedRef.current = true
+    connectingRef.current = true
     setStatus('connecting')
 
     const es = new EventSource(SSE_URL)
     eventSourceRef.current = es
 
+    const finishConnecting = () => {
+      connectingRef.current = false
+    }
+
     // Guard against SSE connections that never establish (e.g. Vercel 504).
-    // If we don't receive the `connected` event quickly, treat it as an error
-    // so we fall back to polling without waiting for the browser timeout.
+    // If we don't receive any event quickly, treat it as an error so we fall
+    // back to polling without waiting for the browser timeout.
     sseTimeoutRef.current = setTimeout(() => {
       closeConnection()
+      finishConnecting()
       setStatus('closed')
+      // Mark the error timestamp so the browser's 'error' event (fired as a
+      // consequence of closeConnection) is deduped and does not double-count.
+      lastErrorAtRef.current = Date.now()
       errorCountRef.current += 1
       if (errorCountRef.current >= MAX_ERRORS_BEFORE_POLLING) {
         startPolling()
       } else {
-        const delay = RETRY_DELAYS_MS[retryIndexRef.current] ?? RETRY_DELAYS_MS[RETRY_DELAYS_MS.length - 1]
+        const baseDelay = RETRY_DELAYS_MS[retryIndexRef.current] ?? RETRY_DELAYS_MS[RETRY_DELAYS_MS.length - 1]
         retryIndexRef.current = Math.min(retryIndexRef.current + 1, RETRY_DELAYS_MS.length - 1)
-        setTimeout(() => connectRef.current(), delay)
+        setTimeout(() => connectRef.current(), jitteredDelay(baseDelay))
       }
     }, SSE_CONNECTION_TIMEOUT_MS)
 
     es.addEventListener('connected', () => {
       clearSseTimeout()
+      finishConnecting()
       errorCountRef.current = 0
       retryIndexRef.current = 0
+      consecutiveRateLimitsRef.current = 0
+      lastRateLimitedAtRef.current = 0
+      disableRealtimeUntilRef.current = 0
+      rateLimitedUntilRef.current = 0
       setStatus('open')
       resetHeartbeat()
       notifyHandlers()
     })
 
     es.addEventListener('message', (e) => {
+      clearSseTimeout()
       try {
         const event = JSON.parse(e.data) as RealtimeEvent
         resetHeartbeat()
@@ -204,15 +241,57 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     })
 
     es.addEventListener('heartbeat', () => {
+      clearSseTimeout()
       resetHeartbeat()
+    })
+
+    es.addEventListener('rate_limited', (e) => {
+      closeConnection()
+      finishConnecting()
+      setStatus('closed')
+
+      let retryAfter = 60
+      try {
+        const payload = JSON.parse((e as MessageEvent).data)
+        if (typeof payload?.retryAfter === 'number') retryAfter = payload.retryAfter
+      } catch {
+        // Use default retryAfter.
+      }
+
+      const now = Date.now()
+      rateLimitedUntilRef.current = now + retryAfter * 1000
+
+      // Circuit breaker: 3 consecutive rate-limited events within the window
+      // disable SSE for a longer cooldown to stop the request storm.
+      if (now - lastRateLimitedAtRef.current < RATE_LIMITED_WINDOW_MS) {
+        consecutiveRateLimitsRef.current += 1
+      } else {
+        consecutiveRateLimitsRef.current = 1
+      }
+      lastRateLimitedAtRef.current = now
+      if (consecutiveRateLimitsRef.current >= 3) {
+        disableRealtimeUntilRef.current = now + RATE_LIMITED_COOLDOWN_MS
+      }
+
+      // Reset error counters so the general retry ladder doesn't double-count.
+      errorCountRef.current = 0
+      retryIndexRef.current = 0
+
+      if (isOnline()) startPolling()
     })
 
     es.addEventListener('error', () => {
       closeConnection()
+      finishConnecting()
       setStatus('closed')
 
       if (!intendedRef.current) return
       if (document.hidden) return
+
+      // Dedup: some browsers fire multiple error events for the same failure.
+      const now = Date.now()
+      if (now - lastErrorAtRef.current < 1000) return
+      lastErrorAtRef.current = now
 
       errorCountRef.current += 1
 
@@ -221,15 +300,10 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         return
       }
 
-      const delay = RETRY_DELAYS_MS[retryIndexRef.current] ?? RETRY_DELAYS_MS[RETRY_DELAYS_MS.length - 1]
+      const baseDelay = RETRY_DELAYS_MS[retryIndexRef.current] ?? RETRY_DELAYS_MS[RETRY_DELAYS_MS.length - 1]
       retryIndexRef.current = Math.min(retryIndexRef.current + 1, RETRY_DELAYS_MS.length - 1)
 
-      setTimeout(
-        () => {
-          connectRef.current()
-        },
-        delay,
-      )
+      setTimeout(() => connectRef.current(), jitteredDelay(baseDelay))
     })
   }, [closeConnection, clearSseTimeout, resetHeartbeat, notifyHandlers, startPolling])
 

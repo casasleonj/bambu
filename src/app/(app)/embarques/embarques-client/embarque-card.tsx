@@ -45,8 +45,8 @@ export function EmbarqueCard({
       className="block bg-white p-4 rounded-xl shadow hover:shadow-md transition cursor-pointer border"
       data-testid="embarque-card"
     >
-      <div className="flex justify-between items-start mb-3">
-        <div>
+      <div className="flex justify-between items-start mb-3 min-w-0">
+        <div className="min-w-0">
           <p className="text-lg font-bold text-gray-800">#{embarque.numeroDia > 0 ? embarque.numeroDia : embarque.numero}</p>
           <p className="text-sm text-gray-500">{embarque.trabajador.nombre}</p>
           {embarque.ruta && (

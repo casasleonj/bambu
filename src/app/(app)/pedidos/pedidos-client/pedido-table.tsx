@@ -158,7 +158,7 @@ function DesktopRow({
         <div className="flex gap-2 justify-end">
           <button
             onClick={(e) => { e.stopPropagation(); onDetail(pedido) }}
-            className="p-1.5 min-h-[40px] md:min-h-0 text-blue-600 hover:bg-blue-50 rounded-lg transition"
+            className="p-1.5 min-h-[40px] min-w-[40px] md:min-h-0 md:min-w-0 text-blue-600 hover:bg-blue-50 rounded-lg transition"
             title="Ver detalle"
             aria-label="Ver detalle"
           >
@@ -168,7 +168,7 @@ function DesktopRow({
             <button
               onClick={(e) => { e.stopPropagation(); onCambiarEstado(pedido.id, 'EN_RUTA') }}
               disabled={updatingId === pedido.id}
-              className="p-1.5 min-h-[40px] md:min-h-0 text-green-600 hover:bg-green-50 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-1.5 min-h-[40px] min-w-[40px] md:min-h-0 md:min-w-0 text-green-600 hover:bg-green-50 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
               title="Enviar"
               aria-label="Enviar"
             >
@@ -179,7 +179,7 @@ function DesktopRow({
             <button
               onClick={(e) => { e.stopPropagation(); onCambiarEstado(pedido.id, 'ENTREGADO') }}
               disabled={updatingId === pedido.id}
-              className="p-1.5 min-h-[40px] md:min-h-0 text-green-600 hover:bg-green-50 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-1.5 min-h-[40px] min-w-[40px] md:min-h-0 md:min-w-0 text-green-600 hover:bg-green-50 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
               title="Entregar"
               aria-label="Entregar"
             >

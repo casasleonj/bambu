@@ -390,7 +390,7 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
             </button>
           </div>
           {isAdmin && (
-            <div className="grid grid-cols-4 gap-2 mt-3 items-end">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 items-end">
               <div>
                 <label className="text-xs text-amber-700">Pacas Agua</label>
                 <input

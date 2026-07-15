@@ -441,7 +441,7 @@ export const ClienteTable = React.memo(function ClienteTable({
                   <div className="absolute right-3 top-3 z-10">
                     <button
                       onClick={(e) => { e.stopPropagation(); setQuickActionsRow(quickActionsRow === cliente.id ? null : cliente.id) }}
-                      className="p-1.5 min-h-[40px] md:min-h-0 rounded-lg bg-white/80 hover:bg-white shadow-sm opacity-100 md:opacity-0 md:group-hover:opacity-100 transition text-gray-500 hover:text-gray-700"
+                      className="p-1.5 min-h-[40px] min-w-[40px] md:min-h-0 md:min-w-0 rounded-lg bg-white/80 hover:bg-white shadow-sm opacity-100 md:opacity-0 md:group-hover:opacity-100 transition text-gray-500 hover:text-gray-700"
                       aria-label="Acciones rápidas"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

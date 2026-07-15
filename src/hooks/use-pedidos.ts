@@ -34,8 +34,6 @@ export interface UsePedidosResult {
   fetchPedidos: () => Promise<void>
   refetch: () => Promise<void>
   hasLoadedOnce: boolean
-  /** True when the current fetch was aborted due to timeout. */
-  timedOut: boolean
 }
 
 export function usePedidos(
@@ -47,7 +45,6 @@ export function usePedidos(
   const [error, setError] = useState<string | null>(null)
   const [total, setTotal] = useState(0)
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false)
-  const [timedOut, setTimedOut] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const didInitialFetchRef = useRef(false)
   const lastParamsKeyRef = useRef<string>('')
@@ -82,13 +79,11 @@ export function usePedidos(
 
     setLoading(true)
     setError(null)
-    setTimedOut(false)
 
     // Mobile networks (2g/3g) can leave fetch requests hanging indefinitely.
     // Enforce a 10s timeout so callers can surface a retry UI instead of a
     // permanent skeleton.
     const timeoutId = setTimeout(() => {
-      setTimedOut(true)
       controller.abort()
     }, 10_000)
 
@@ -110,7 +105,8 @@ export function usePedidos(
     } catch (err) {
       clearTimeout(timeoutId)
       if (err instanceof Error && err.name === 'AbortError') {
-        // Timeout already set the timedOut flag and loading will be cleared.
+        // Fetch was aborted by the timeout above or by a newer request/filter change.
+        // Surface a retry-friendly message without generic error noise.
         setError('La carga está tardando demasiado. Reintenta.')
         setLoading(false)
         return
@@ -155,5 +151,5 @@ export function usePedidos(
     }
   }, [])
 
-  return { pedidos, loading, error, total, fetchPedidos, refetch, hasLoadedOnce, timedOut }
+  return { pedidos, loading, error, total, fetchPedidos, refetch, hasLoadedOnce }
 }
