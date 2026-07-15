@@ -338,10 +338,13 @@ export function TrabajadorFormModal({
             </div>
             <div>
               <TelefonoInput
+                id="telefono"
+                name="telefono"
                 label="Teléfono"
                 value={formData.telefono}
                 onChange={(v) => setFormData({ ...formData, telefono: v })}
                 inputClassName="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                helpText="Se agrega automáticamente +57"
               />
             </div>
           </div>
@@ -350,10 +353,13 @@ export function TrabajadorFormModal({
         {formData.tipoPago === 'COMISION' && (
           <div>
             <TelefonoInput
+              id="telefono"
+              name="telefono"
               label="Teléfono"
               value={formData.telefono}
               onChange={(v) => setFormData({ ...formData, telefono: v })}
               inputClassName="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              helpText="Se agrega automáticamente +57"
             />
           </div>
         )}
