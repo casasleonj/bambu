@@ -33,7 +33,7 @@ class MockEventSource {
   })
   removeEventListener = vi.fn()
 
-  constructor(_url: string) {
+  constructor() {
     instances.push(this)
   }
 

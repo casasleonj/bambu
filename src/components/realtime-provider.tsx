@@ -361,7 +361,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
       scheduleReconnect(jitteredDelay(baseDelay))
     })
-  }, [closeConnection, clearSseTimeout, resetHeartbeat, notifyHandlers, startPolling, scheduleReconnect])
+  }, [closeConnection, clearSseTimeout, clearReconnectTimer, resetHeartbeat, notifyHandlers, startPolling, scheduleReconnect])
 
   // Keep the latest connect() reference available for heartbeat recovery.
   useEffect(() => {
