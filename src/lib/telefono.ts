@@ -3,7 +3,7 @@ const DIGITOS_MOVIL_FIJO_COLOMBIA = 10
 const DIGITOS_INTERNACIONAL_COLOMBIA = 12
 const MIN_DIGITOS_TELEFONO = 7
 
-function extraerDigitos(raw: string | number | null | undefined): string {
+export function extraerDigitos(raw: string | number | null | undefined): string {
   const input = typeof raw === 'number' ? String(raw) : (raw ?? '')
   return input.replace(/\D/g, '')
 }
@@ -36,6 +36,14 @@ export function normalizarTelefono(raw: string | number | null | undefined): str
   return digitos
 }
 
+function formatearConEspacios(digitos: string): string {
+  if (digitos.length <= 3) return digitos
+  if (digitos.length <= 6) return `${digitos.slice(0, 3)} ${digitos.slice(3)}`
+  if (digitos.length === 7) return `${digitos.slice(0, 3)} ${digitos.slice(3)}`
+  if (digitos.length <= 9) return `${digitos.slice(0, 3)} ${digitos.slice(3, 6)} ${digitos.slice(6)}`
+  return `${digitos.slice(0, 3)} ${digitos.slice(3, 6)} ${digitos.slice(6, 10)}`
+}
+
 export function formatearTelefonoParaInput(raw: string | number | null | undefined): string {
   const digitos = extraerDigitos(raw)
   if (!digitos) return ''
@@ -44,9 +52,25 @@ export function formatearTelefonoParaInput(raw: string | number | null | undefin
     ? digitos.slice(INDICATIVO_COLOMBIA.length)
     : digitos
 
-  if (sinIndicativo.length <= 3) return sinIndicativo
-  if (sinIndicativo.length <= 6) return `${sinIndicativo.slice(0, 3)} ${sinIndicativo.slice(3)}`
-  return `${sinIndicativo.slice(0, 3)} ${sinIndicativo.slice(3, 6)} ${sinIndicativo.slice(6, 10)}`
+  return formatearConEspacios(sinIndicativo)
+}
+
+export function extraerDigitosLocales(raw: string | number | null | undefined): string {
+  const digitos = extraerDigitos(raw)
+  if (!digitos) return ''
+
+  const esInternacional = digitos.startsWith(INDICATIVO_COLOMBIA) && digitos.length === DIGITOS_INTERNACIONAL_COLOMBIA
+  if (esInternacional) {
+    return digitos.slice(INDICATIVO_COLOMBIA.length)
+  }
+
+  return digitos
+}
+
+export function formatearDigitosLocales(raw: string | number | null | undefined): string {
+  const digitos = extraerDigitosLocales(raw)
+  if (!digitos) return ''
+  return formatearConEspacios(digitos)
 }
 
 export function formatearTelefonoParaCopiar(raw: string | number | null | undefined): string {
