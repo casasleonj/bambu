@@ -34,6 +34,8 @@ export interface UsePedidosResult {
   fetchPedidos: () => Promise<void>
   refetch: () => Promise<void>
   hasLoadedOnce: boolean
+  /** True when the current fetch was aborted due to timeout. */
+  timedOut: boolean
 }
 
 export function usePedidos(
@@ -45,6 +47,7 @@ export function usePedidos(
   const [error, setError] = useState<string | null>(null)
   const [total, setTotal] = useState(0)
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false)
+  const [timedOut, setTimedOut] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const didInitialFetchRef = useRef(false)
   const lastParamsKeyRef = useRef<string>('')
@@ -79,6 +82,15 @@ export function usePedidos(
 
     setLoading(true)
     setError(null)
+    setTimedOut(false)
+
+    // Mobile networks (2g/3g) can leave fetch requests hanging indefinitely.
+    // Enforce a 10s timeout so callers can surface a retry UI instead of a
+    // permanent skeleton.
+    const timeoutId = setTimeout(() => {
+      setTimedOut(true)
+      controller.abort()
+    }, 10_000)
 
     try {
       const url = buildUrl()
@@ -86,6 +98,7 @@ export function usePedidos(
         credentials: 'include',
         signal: controller.signal,
       })
+      clearTimeout(timeoutId)
       const data = await res.json()
       if (data.success) {
         setPedidos(data.pedidos || data.data || [])
@@ -95,7 +108,13 @@ export function usePedidos(
         setError(data.error?.message || 'Error cargando pedidos')
       }
     } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') return
+      clearTimeout(timeoutId)
+      if (err instanceof Error && err.name === 'AbortError') {
+        // Timeout already set the timedOut flag and loading will be cleared.
+        setError('La carga está tardando demasiado. Reintenta.')
+        setLoading(false)
+        return
+      }
       console.error('Error fetching pedidos:', err)
       setError('No se pudieron cargar los pedidos')
       toast.error('Error cargando pedidos')
@@ -136,5 +155,5 @@ export function usePedidos(
     }
   }, [])
 
-  return { pedidos, loading, error, total, fetchPedidos, refetch, hasLoadedOnce }
+  return { pedidos, loading, error, total, fetchPedidos, refetch, hasLoadedOnce, timedOut }
 }
