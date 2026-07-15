@@ -44,27 +44,26 @@ function formatearConEspacios(digitos: string): string {
   return `${digitos.slice(0, 3)} ${digitos.slice(3, 6)} ${digitos.slice(6, 10)}`
 }
 
+function quitarIndicativoInicial(digitos: string): string {
+  // El prefijo +57 se muestra como elemento visual separado en el input, por lo
+  // que nunca debe formar parte de los dígitos locales editables. Si el usuario
+  // pega o escribe un número que incluye el indicativo 57, lo descartamos.
+  if (digitos.startsWith(INDICATIVO_COLOMBIA)) {
+    return digitos.slice(INDICATIVO_COLOMBIA.length)
+  }
+  return digitos
+}
+
 export function formatearTelefonoParaInput(raw: string | number | null | undefined): string {
   const digitos = extraerDigitos(raw)
   if (!digitos) return ''
-
-  const sinIndicativo = digitos.startsWith(INDICATIVO_COLOMBIA) && digitos.length === DIGITOS_INTERNACIONAL_COLOMBIA
-    ? digitos.slice(INDICATIVO_COLOMBIA.length)
-    : digitos
-
-  return formatearConEspacios(sinIndicativo)
+  return formatearConEspacios(quitarIndicativoInicial(digitos))
 }
 
 export function extraerDigitosLocales(raw: string | number | null | undefined): string {
   const digitos = extraerDigitos(raw)
   if (!digitos) return ''
-
-  const esInternacional = digitos.startsWith(INDICATIVO_COLOMBIA) && digitos.length === DIGITOS_INTERNACIONAL_COLOMBIA
-  if (esInternacional) {
-    return digitos.slice(INDICATIVO_COLOMBIA.length)
-  }
-
-  return digitos
+  return quitarIndicativoInicial(digitos)
 }
 
 export function formatearDigitosLocales(raw: string | number | null | undefined): string {
