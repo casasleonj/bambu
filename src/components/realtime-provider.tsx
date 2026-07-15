@@ -30,7 +30,8 @@ const SSE_URL = '/api/realtime'
 const RETRY_DELAYS_MS = [5_000, 15_000, 30_000]
 const HEARTBEAT_TIMEOUT_MS = 90_000
 const POLL_INTERVAL_MS = 30_000
-const MAX_ERRORS_BEFORE_POLLING = 3
+const MAX_ERRORS_BEFORE_POLLING = 2
+const SSE_CONNECTION_TIMEOUT_MS = 8_000
 const REALTIME_ENABLED = process.env.NEXT_PUBLIC_REALTIME_ENABLED !== 'false'
 
 function matchesFilter(filter: string, eventType: string): boolean {
@@ -42,14 +43,24 @@ function matchesFilter(filter: string, eventType: string): boolean {
   return false
 }
 
-function getConnectionType(): string | undefined {
-  const nav = navigator as Navigator & { connection?: { effectiveType?: string } }
-  return nav.connection?.effectiveType
+interface NetworkConnection {
+  effectiveType?: string
+  downlink?: number
+  rtt?: number
+}
+
+function getConnection(): NetworkConnection | undefined {
+  const nav = navigator as Navigator & { connection?: NetworkConnection }
+  return nav.connection
 }
 
 function shouldAvoidPersistentConnection(): boolean {
-  const type = getConnectionType()
-  return type === '2g' || type === 'slow-2g'
+  const conn = getConnection()
+  const type = conn?.effectiveType
+  // Use estimated downlink when available: slow 3g links (<1.5 Mbps) or
+  // officially slow types should not hold a long-lived SSE connection.
+  const slowDownlink = typeof conn?.downlink === 'number' && conn.downlink < 1.5
+  return type === '2g' || type === 'slow-2g' || slowDownlink
 }
 
 function isOnline(): boolean {
@@ -63,6 +74,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const eventSourceRef = useRef<EventSource | null>(null)
   const heartbeatTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const sseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const intendedRef = useRef(false)
   const connectRef = useRef<() => void>(() => {})
   const errorCountRef = useRef(0)
@@ -75,6 +87,13 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
+  const clearSseTimeout = useCallback(() => {
+    if (sseTimeoutRef.current) {
+      clearTimeout(sseTimeoutRef.current)
+      sseTimeoutRef.current = null
+    }
+  }, [])
+
   const clearPolling = useCallback(() => {
     if (pollTimerRef.current) {
       clearInterval(pollTimerRef.current)
@@ -84,11 +103,12 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
   const closeConnection = useCallback(() => {
     clearHeartbeat()
+    clearSseTimeout()
     if (eventSourceRef.current) {
       eventSourceRef.current.close()
       eventSourceRef.current = null
     }
-  }, [clearHeartbeat])
+  }, [clearHeartbeat, clearSseTimeout])
 
   const resetHeartbeat = useCallback(() => {
     clearHeartbeat()
@@ -144,7 +164,24 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     const es = new EventSource(SSE_URL)
     eventSourceRef.current = es
 
+    // Guard against SSE connections that never establish (e.g. Vercel 504).
+    // If we don't receive the `connected` event quickly, treat it as an error
+    // so we fall back to polling without waiting for the browser timeout.
+    sseTimeoutRef.current = setTimeout(() => {
+      closeConnection()
+      setStatus('closed')
+      errorCountRef.current += 1
+      if (errorCountRef.current >= MAX_ERRORS_BEFORE_POLLING) {
+        startPolling()
+      } else {
+        const delay = RETRY_DELAYS_MS[retryIndexRef.current] ?? RETRY_DELAYS_MS[RETRY_DELAYS_MS.length - 1]
+        retryIndexRef.current = Math.min(retryIndexRef.current + 1, RETRY_DELAYS_MS.length - 1)
+        setTimeout(() => connectRef.current(), delay)
+      }
+    }, SSE_CONNECTION_TIMEOUT_MS)
+
     es.addEventListener('connected', () => {
+      clearSseTimeout()
       errorCountRef.current = 0
       retryIndexRef.current = 0
       setStatus('open')
@@ -194,7 +231,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         delay,
       )
     })
-  }, [closeConnection, resetHeartbeat, notifyHandlers, startPolling])
+  }, [closeConnection, clearSseTimeout, resetHeartbeat, notifyHandlers, startPolling])
 
   // Keep the latest connect() reference available for heartbeat recovery.
   useEffect(() => {
