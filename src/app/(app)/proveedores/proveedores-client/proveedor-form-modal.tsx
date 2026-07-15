@@ -32,8 +32,12 @@ export function ProveedorFormModal({
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...form,
-          telefono: form.telefono ? normalizarTelefono(form.telefono) : form.telefono,
+          nombre: form.nombre.trim(),
+          telefono: form.telefono ? normalizarTelefono(form.telefono) : undefined,
+          email: form.email?.trim() || undefined,
+          direccion: form.direccion?.trim() || undefined,
+          tipoProducto: form.tipoProducto?.trim() || undefined,
+          observaciones: form.observaciones?.trim() || undefined,
         }),
       })
       if (!res.ok) {
@@ -67,11 +71,14 @@ export function ProveedorFormModal({
         </div>
         <div>
           <TelefonoInput
+            id="telefono"
+            name="telefono"
             label="Teléfono"
             value={form.telefono ?? ''}
             onChange={(v) => setForm((prev) => ({ ...prev, telefono: v }))}
             inputClassName="w-full rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm text-zinc-900 outline-none transition focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50 dark:focus:border-zinc-50 dark:focus:ring-zinc-50/10"
             placeholder="310 292 1234"
+            helpText="Se agrega automáticamente +57"
           />
         </div>
         <div>
