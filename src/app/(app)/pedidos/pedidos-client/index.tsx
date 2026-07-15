@@ -982,10 +982,6 @@ export function PedidosClient() {
     return <SkeletonPage hasStats hasFilters cardCount={4} />
   }
 
-  if (!hasLoadedOnce) {
-    return <SkeletonPage hasStats hasFilters cardCount={4} />
-  }
-
   return (
     <div>
       {/* Header con tabs */}
