@@ -278,6 +278,9 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       retryIndexRef.current = 0
 
       if (isOnline()) startPolling()
+
+      // Schedule an SSE reconnect once the server's backoff window expires.
+      setTimeout(() => connectRef.current(), retryAfter * 1000)
     })
 
     es.addEventListener('error', () => {
