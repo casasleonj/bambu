@@ -3,11 +3,8 @@ import { auth } from '@/lib/auth'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { getRealtimeChannel, type RealtimeEvent } from '@/lib/realtime'
 
-// Hobby plan safe default; increase if your deployment supports longer.
-// Configurable via env to tune cost vs freshness.
-export const maxDuration = process.env.REALTIME_MAX_DURATION
-  ? Number(process.env.REALTIME_MAX_DURATION)
-  : 30
+// Short-lived SSE fallback: 30s is enough for Pro and keeps cost bounded.
+export const maxDuration = 30
 export const dynamic = 'force-dynamic'
 
 const HEARTBEAT_INTERVAL_MS = 45_000
