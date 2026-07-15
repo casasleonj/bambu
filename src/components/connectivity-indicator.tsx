@@ -146,24 +146,26 @@ export function ConnectivityIndicator() {
     text = 'text-red-100'
     label = 'Offline'
     tooltip = 'No hay internet. Tus cambios se guardan en el celular y se enviarán cuando vuelva la señal.'
-  } else if (isPolling) {
-    bg = 'bg-amber-500/20'
-    dot = 'bg-amber-400 shadow-amber-400/60 animate-pulse'
-    text = 'text-amber-100'
-    label = syncing ? 'Sync' : 'Sync'
-    tooltip = 'La red está lenta. La app está chequeando cambios cada pocos segundos.'
   } else if (isOpen) {
     bg = 'bg-emerald-500/20'
     dot = 'bg-emerald-400 shadow-emerald-400/60'
     text = 'text-emerald-100'
     label = syncing ? 'Sync' : 'Online'
     tooltip = 'Todo está actualizado en tiempo real.'
+  } else if (isPolling) {
+    bg = 'bg-amber-500/20'
+    dot = 'bg-amber-400 shadow-amber-400/60 animate-pulse'
+    text = 'text-amber-100'
+    label = syncing ? 'Sync' : 'Sync'
+    tooltip = 'La red está lenta. La app está chequeando cambios cada pocos segundos.'
   } else {
-    bg = 'bg-red-500/20'
-    dot = 'bg-red-400 shadow-red-400/60'
-    text = 'text-red-100'
-    label = 'Offline'
-    tooltip = 'No hay internet. Tus cambios se guardan en el celular y se enviarán cuando vuelva la señal.'
+    // Network is online but SSE is not open yet (connecting, closed or paused).
+    // Do NOT show "Offline" — that confuses users who do have internet.
+    bg = 'bg-amber-500/20'
+    dot = 'bg-amber-400 shadow-amber-400/60 animate-pulse'
+    text = 'text-amber-100'
+    label = 'Conectando'
+    tooltip = 'Hay internet, pero el canal en vivo aún no se estableció. La app seguirá intentando.'
   }
 
   const showPending = pendingCount > 0
