@@ -28,22 +28,25 @@ export function resetDatabase() {
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
+const LOGIN_TIMEOUT = BASE.startsWith('http://localhost') ? 15000 : 60000
+
 export async function login(page: Page, user: string, pass: string) {
-  await page.goto(`${BASE}/login`)
+  await page.goto(`${BASE}/login`, { timeout: LOGIN_TIMEOUT })
   await page.fill('input[placeholder="Ingrese usuario"]', user)
   await page.fill('input[placeholder="Ingrese contraseña"]', pass)
   await page.click('button[type="submit"]')
-  // Wait for navigation away from login page (any role-specific page)
-  await page.waitForURL(/.*\/(dashboard|repartidor|reportes)/, { timeout: 15000 })
+  // Wait for navigation away from login page (any role-specific page).
+  // Cold starts on Vercel Hobby can take >15s for the first auth callback.
+  await page.waitForURL(/.*\/(dashboard|repartidor|reportes)/, { timeout: LOGIN_TIMEOUT })
 }
 
 export async function loginAlt(page: Page, user: string, pass: string) {
   // Fallback selector pattern
-  await page.goto(`${BASE}/login`)
+  await page.goto(`${BASE}/login`, { timeout: LOGIN_TIMEOUT })
   await page.fill('input[type="text"]', user)
   await page.fill('input[type="password"]', pass)
   await page.click('button:has-text("Ingresar")')
-  await page.waitForURL(/.*dashboard/, { timeout: 15000 })
+  await page.waitForURL(/.*dashboard/, { timeout: LOGIN_TIMEOUT })
 }
 
 // ─── Base Caja ───────────────────────────────────────────────────────────────
