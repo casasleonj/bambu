@@ -10,9 +10,12 @@ import { RealtimeContext } from '@/components/realtime-provider'
 const SYNC_INTERVAL_MS = 30000
 const QUEUE_POLL_MS = 5000 // Poll queue size for UI counter (cheap read)
 
-function useRealtimeStatus(): 'connecting' | 'open' | 'closed' | 'paused' | 'polling' | null {
+function useRealtimeStatus(): {
+  status: 'connecting' | 'open' | 'closed' | 'paused' | 'polling'
+  disabled: boolean
+} {
   const ctx = useContext(RealtimeContext)
-  return ctx?.status ?? null
+  return { status: ctx?.status ?? 'closed', disabled: ctx?.disabled ?? false }
 }
 
 export function ConnectivityIndicator() {
@@ -20,7 +23,7 @@ export function ConnectivityIndicator() {
   const [syncing, setSyncing] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [pendingCount, setPendingCount] = useState(0)
-  const sseStatus = useRealtimeStatus()
+  const { status: sseStatus, disabled: realtimeDisabled } = useRealtimeStatus()
 
   useEffect(() => {
     setMounted(true)
@@ -131,7 +134,8 @@ export function ConnectivityIndicator() {
 
   // Combine network state with realtime transport state for a single,
   // non-technical indicator.
-  const isPolling = sseStatus === 'polling' || sseStatus === 'connecting'
+  const isPolling = sseStatus === 'polling'
+  const isConnecting = sseStatus === 'connecting'
   const isOpen = sseStatus === 'open'
 
   let bg: string
@@ -146,6 +150,12 @@ export function ConnectivityIndicator() {
     text = 'text-red-100'
     label = 'Offline'
     tooltip = 'No hay internet. Tus cambios se guardan en el celular y se enviarán cuando vuelva la señal.'
+  } else if (realtimeDisabled) {
+    bg = 'bg-gray-500/20'
+    dot = 'bg-gray-400 shadow-gray-400/60'
+    text = 'text-gray-100'
+    label = 'Actualizado'
+    tooltip = 'El canal en vivo está desactivado. La app sigue sincronizando manualmente.'
   } else if (isOpen) {
     bg = 'bg-emerald-500/20'
     dot = 'bg-emerald-400 shadow-emerald-400/60'
@@ -158,8 +168,15 @@ export function ConnectivityIndicator() {
     text = 'text-amber-100'
     label = syncing ? 'Sync' : 'Sync'
     tooltip = 'La red está lenta. La app está chequeando cambios cada pocos segundos.'
+  } else if (isConnecting) {
+    // Network is online but SSE handshake is still in progress.
+    bg = 'bg-amber-500/20'
+    dot = 'bg-amber-400 shadow-amber-400/60 animate-pulse'
+    text = 'text-amber-100'
+    label = 'Conectando'
+    tooltip = 'Hay internet, pero el canal en vivo aún no se estableció. La app seguirá intentando.'
   } else {
-    // Network is online but SSE is not open yet (connecting, closed or paused).
+    // Network is online but SSE is closed or paused (e.g. background tab).
     // Do NOT show "Offline" — that confuses users who do have internet.
     bg = 'bg-amber-500/20'
     dot = 'bg-amber-400 shadow-amber-400/60 animate-pulse'

@@ -1,6 +1,21 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, act } from '@testing-library/react'
-import { RealtimeProvider } from '@/components/realtime-provider'
+import { RealtimeProvider, useRealtime } from '@/components/realtime-provider'
+
+function TestSubscriber({ onSubscribe }: { onSubscribe?: (unsub: () => void) => void }) {
+  const { subscribe } = useRealtime()
+  return (
+    <button
+      data-testid="subscribe"
+      onClick={() => {
+        const unsub = subscribe(['cliente.*'], vi.fn())
+        onSubscribe?.(unsub)
+      }}
+    >
+      Subscribe
+    </button>
+  )
+}
 
 const instances: MockEventSource[] = []
 
@@ -185,5 +200,107 @@ describe('RealtimeProvider rate_limited handling', () => {
     expect(MockEventSource.instances.length).toBe(2)
 
     randomSpy.mockRestore()
+  })
+
+  it('does not reconnect after unsubscribe', async () => {
+    let unsubscribe: (() => void) | undefined
+    const { getByTestId } = render(
+      <RealtimeProvider>
+        <TestSubscriber onSubscribe={(unsub) => { unsubscribe = unsub }} />
+      </RealtimeProvider>,
+    )
+
+    await act(async () => {
+      getByTestId('subscribe').click()
+      vi.advanceTimersByTime(0)
+    })
+
+    expect(MockEventSource.instances.length).toBe(1)
+
+    await act(async () => {
+      unsubscribe?.()
+      vi.advanceTimersByTime(0)
+    })
+
+    // Even after an error schedules a reconnect, it should be skipped because
+    // there are no active subscriptions.
+    await act(async () => {
+      getLatestInstance().onerror?.()
+      vi.advanceTimersByTime(10_000)
+    })
+
+    expect(MockEventSource.instances.length).toBe(1)
+  })
+
+  it('clamps retryAfter to safe bounds', async () => {
+    renderProvider()
+    await flushInitialConnect()
+
+    const es = getLatestInstance()
+
+    // Negative retryAfter should be clamped to 1s.
+    await act(async () => {
+      es.onrateLimited?.(new MessageEvent('rate_limited', { data: JSON.stringify({ retryAfter: -10 }) }))
+    })
+
+    await act(async () => vi.advanceTimersByTime(1_500))
+    expect(MockEventSource.instances.length).toBeGreaterThanOrEqual(2)
+
+    // Huge retryAfter should be clamped to 300s.
+    const latest = getLatestInstance()
+    await act(async () => {
+      latest.onrateLimited?.(new MessageEvent('rate_limited', { data: JSON.stringify({ retryAfter: 999_999 }) }))
+    })
+
+    // No new connection within 120s because it was clamped to 300s.
+    await act(async () => vi.advanceTimersByTime(120_000))
+    expect(MockEventSource.instances.length).toBe(2)
+  })
+
+  it('clears pending reconnects on unmount', async () => {
+    const { unmount } = renderProvider()
+    await flushInitialConnect()
+
+    const es = getLatestInstance()
+    await act(async () => {
+      es.onerror?.()
+    })
+
+    unmount()
+
+    // Advance well past the retry delay; no lingering timer should create an
+    // EventSource after unmount.
+    await act(async () => vi.advanceTimersByTime(60_000))
+    expect(MockEventSource.instances.length).toBe(1)
+  })
+
+  it('resets connectingRef when unsubscribing during a connection attempt', async () => {
+    let unsubscribe: (() => void) | undefined
+    const { getByTestId } = render(
+      <RealtimeProvider>
+        <TestSubscriber onSubscribe={(unsub) => { unsubscribe = unsub }} />
+      </RealtimeProvider>,
+    )
+
+    await act(async () => {
+      getByTestId('subscribe').click()
+      vi.advanceTimersByTime(0)
+    })
+
+    expect(MockEventSource.instances.length).toBe(1)
+
+    // Unsubscribe before the connected event arrives.
+    await act(async () => {
+      unsubscribe?.()
+      vi.advanceTimersByTime(0)
+    })
+
+    // Re-subscribe: it should be able to create a new connection.
+    await act(async () => {
+      getByTestId('subscribe').click()
+      vi.advanceTimersByTime(0)
+    })
+
+    expect(MockEventSource.instances.length).toBe(2)
   })
 })

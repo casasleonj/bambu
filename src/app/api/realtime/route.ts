@@ -4,8 +4,9 @@ import { checkRateLimit } from '@/lib/rate-limit'
 import { getRealtimeChannel, type RealtimeEvent } from '@/lib/realtime'
 
 // SSE connection lifetime. 300s matches Vercel Pro max; Hobby runtime caps
-// to 60s automatically. Configurable via env to tune cost vs freshness.
-export const maxDuration = Number(process.env.REALTIME_MAX_DURATION ?? 300)
+// to 60s automatically. Must be a static number literal (Next.js segment
+// config does not accept dynamic expressions or env variables).
+export const maxDuration = 300
 export const dynamic = 'force-dynamic'
 
 const HEARTBEAT_INTERVAL_MS = 45_000

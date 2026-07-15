@@ -21,9 +21,9 @@ const LIMITS = {
   // use while capping abuse.
   // Configurable via env to tune cost vs freshness per deployment.
   realtime: {
-    points: Number(process.env.REALTIME_RATE_LIMIT_POINTS ?? 6),
-    duration: Number(process.env.REALTIME_RATE_LIMIT_DURATION_SEC ?? 60),
-    blockDuration: Number(process.env.REALTIME_RATE_LIMIT_BLOCK_DURATION_SEC ?? 0),
+    points: Math.max(1, Number(process.env.REALTIME_RATE_LIMIT_POINTS ?? 6) || 6),
+    duration: Math.max(1, Number(process.env.REALTIME_RATE_LIMIT_DURATION_SEC ?? 60) || 60),
+    blockDuration: Math.max(0, Number(process.env.REALTIME_RATE_LIMIT_BLOCK_DURATION_SEC ?? 0) || 0),
   },
 } as const
 
