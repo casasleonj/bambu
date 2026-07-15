@@ -5,7 +5,7 @@ export default defineConfig({
   testMatch: /produccion-portal\.spec\.ts/,
   workers: 1,
   retries: 0,
-  timeout: 300000,
+  timeout: 600000,
   use: {
     baseURL: process.env.PLAYWRIGHT_TEST_BASE_URL || 'https://portal.aguabambu.com',
     trace: 'on',

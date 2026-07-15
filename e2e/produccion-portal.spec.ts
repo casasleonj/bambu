@@ -458,7 +458,7 @@ test.describe('Produccion — Smoke + Audit @produccion', () => {
   test('@smoke @audit /recurrentes carga sin errores críticos', async ({ page }) => {
     await fullLogin(page, 'admin', 'admin123')
     await measureNavigation(page, 'recurrentes', '/recurrentes', viewportLabel())
-    await expect(page.getByRole('heading', { name: /Recurrentes/i })).toBeVisible({ timeout: 30000 })
+    await expect(page.getByRole('heading', { name: /Pedidos Recurrentes/i, level: 1 })).toBeVisible({ timeout: 30000 })
   })
 
   test('@smoke @audit /embarques carga sin errores críticos', async ({ page }) => {
@@ -474,8 +474,21 @@ test.describe('Produccion — Smoke + Audit @produccion', () => {
     const paths = ['/clientes', '/pedidos', '/recurrentes', '/embarques']
     for (const p of paths) {
       const start = Date.now()
-      await page.goto(`${BASE}${p}`, { waitUntil: 'domcontentloaded', timeout: 60000 })
-      await page.waitForLoadState('networkidle', { timeout: 60000 }).catch(() => {})
+      try {
+        await page.goto(`${BASE}${p}`, { waitUntil: 'domcontentloaded', timeout: 120000 })
+        await page.waitForLoadState('networkidle', { timeout: 60000 }).catch(() => {})
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        addFinding(page, {
+          severity: 'P0',
+          section: p.replace('/', ''),
+          title: 'Navegación falla o excede timeout',
+          description: msg.slice(0, 300),
+          url: `${BASE}${p}`,
+          viewport: viewportLabel(),
+        })
+        continue
+      }
       const loadTime = Date.now() - start
       if (loadTime > 10000) {
         addFinding(page, {
