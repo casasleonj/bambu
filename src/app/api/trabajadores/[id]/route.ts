@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { TrabajadorUpdateSchema, normalizeTrabajador } from '@/lib/validators'
+import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { publishRealtimeEvent } from '@/lib/realtime'
@@ -11,6 +12,8 @@ import { logger } from '@/lib/logger'
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
+  const roleCheck = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE, ROLES.CONTADOR], authResult)
+  if (roleCheck instanceof Response) return roleCheck
   const { id } = await params
   try {
     const trabajador = await prisma.trabajador.findUnique({

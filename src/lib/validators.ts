@@ -16,6 +16,21 @@ const TelefonoOpcionalSinMinSchema = z.preprocess(
   z.string().max(20).optional()
 )
 
+// FIX M2-XSS: solo permitir URLs http/https. Zod .url() acepta javascript:,
+// data:, etc., que son vectores XSS si se renderizan en href.
+const SafeUrlSchema = z.string().refine(
+  (val) => {
+    if (!val) return true
+    try {
+      const url = new URL(val)
+      return url.protocol === 'http:' || url.protocol === 'https:'
+    } catch {
+      return false
+    }
+  },
+  { message: 'El link debe ser una URL http o https válida' }
+)
+
 // ====================
 // NUEVOS ENUMS
 // ====================
@@ -258,7 +273,7 @@ export const ClienteCreateSchema = z.object({
   tipoNegocio: z.string().max(100).optional(),
   horaApertura: z.string().max(50).optional().nullable(),
   referencia: z.string().max(200).optional(),
-  linkUbicacion: z.string().url().optional().nullable(),
+  linkUbicacion: SafeUrlSchema.optional().nullable(),
   // FASE 3 CONTRACT: el campo `contactos` ya no vive en el schema de Cliente.
   // Los contactos se gestionan exclusivamente via
   // POST /api/clientes/[id]/contactos y

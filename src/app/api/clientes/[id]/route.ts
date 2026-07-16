@@ -4,10 +4,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { ClienteUpdateSchema } from '@/lib/validators'
+import { ROLES } from '@/lib/constants'
 import { logAudit } from '@/lib/audit'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
-import { ROLES } from '@/lib/constants'
 import { publishRealtimeEvent } from '@/lib/realtime'
 
 // Extrae info util del error de Prisma/PostgreSQL para logging.
@@ -52,6 +52,8 @@ function classifyDbError(err: unknown): {
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
+  const roleCheck = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE, ROLES.CONTADOR], authResult)
+  if (roleCheck instanceof Response) return roleCheck
   const { id } = await params
   try {
     const cliente = await prisma.cliente.findUnique({

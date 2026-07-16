@@ -23,6 +23,8 @@ const MAX_RETRIES = 3
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
+  const roleCheck = await requireRole([ROLES.ADMIN], authResult)
+  if (roleCheck instanceof Response) return roleCheck
   try {
     const { searchParams } = new URL(request.url)
     const fecha = searchParams.get('fecha')
