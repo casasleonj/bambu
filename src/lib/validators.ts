@@ -18,7 +18,7 @@ const TelefonoOpcionalSinMinSchema = z.preprocess(
 
 // FIX M2-XSS: solo permitir URLs http/https. Zod .url() acepta javascript:,
 // data:, etc., que son vectores XSS si se renderizan en href.
-const SafeUrlSchema = z.string().refine(
+export const SafeUrlSchema = z.string().refine(
   (val) => {
     if (!val) return true
     try {
@@ -288,7 +288,17 @@ export const ClienteCreateSchema = z.object({
   offlineId: z.string().optional(),
 });
 
-export const ClienteUpdateSchema = ClienteCreateSchema.partial();
+// FIX M3-VAL: no permitir mass assignment de campos internos / controlados
+// por otros endpoints (verificado/bloqueado via PATCH, offlineId inmutable).
+// strict() rechaza campos no declarados en lugar de strippearlos silenciosamente.
+export const ClienteUpdateSchema = ClienteCreateSchema.omit({
+  verificado: true,
+  bloqueado: true,
+  offlineId: true,
+}).partial().extend({
+  activo: z.boolean().optional(),
+  updatedAt: z.string().datetime().optional(),
+}).strict();
 
 // ====================
 // ABONO / GASTO / INSUMO / COMPRA / PRODUCCION / NOMINA / CIERRE

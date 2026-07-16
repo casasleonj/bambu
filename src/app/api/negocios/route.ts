@@ -2,6 +2,7 @@ import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
+import { SafeUrlSchema } from '@/lib/validators'
 import { z } from 'zod'
 import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
@@ -14,7 +15,7 @@ const NegocioCreateSchema = z.object({
   direccion: z.string().optional(),
   barrio: z.string().optional(),
   referencia: z.string().optional(),
-  linkUbicacion: z.string().url().optional().or(z.literal('')),
+  linkUbicacion: SafeUrlSchema.optional().or(z.literal('')),
   horaApertura: z.string().optional(),
   rutaId: z.string().optional().nullable(),
   preciosEspeciales: z.string().optional().nullable(),
