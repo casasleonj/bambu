@@ -2,6 +2,13 @@ import { test, expect, type Page, type APIRequestContext } from '@playwright/tes
 import { PrismaClient } from '@prisma/client'
 import { execSync } from 'child_process'
 import { resolve } from 'path'
+
+declare global {
+  interface Window {
+    __PLAYWRIGHT_TEST__?: boolean
+  }
+}
+
 import {
   reportBug as reportBugPure,
   getAllFindings,
@@ -12,7 +19,7 @@ import {
   type BugCategory,
 } from '@/lib/qa-reportBug'
 
-export { test, expect, getAllFindings, clearFindings, formatBug }
+export { test, expect, getAllFindings, clearFindings, formatBug, prisma }
 export type { BugFinding, Severity, BugCategory }
 
 export const BASE = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3001'
@@ -39,6 +46,38 @@ export function reportBug(finding: BugFinding): void {
     ...finding,
     evidencia: `[${testFile} :: ${testName}] ${finding.evidencia}`,
   })
+}
+
+// ─── Auth Helpers ────────────────────────────────────────────────────────────
+
+const LOGIN_TIMEOUT = BASE.startsWith('http://localhost') ? 15000 : 60000
+
+export async function login(page: Page, user: string, pass: string) {
+  await page.goto(`${BASE}/login`, { timeout: LOGIN_TIMEOUT })
+  await page.fill('input[placeholder="Ingrese usuario"]', user)
+  await page.fill('input[placeholder="Ingrese contraseña"]', pass)
+  await page.click('button[type="submit"]')
+  await page.waitForURL(/.*\/(dashboard|repartidor|reportes)/, { timeout: LOGIN_TIMEOUT })
+}
+
+export async function loginAs(
+  page: Page,
+  role: 'admin' | 'asistente' | 'contador' | 'repartidor'
+) {
+  const credentials = {
+    admin: { user: 'admin', pass: 'admin123' },
+    asistente: { user: 'asistente', pass: 'asist123' },
+    contador: { user: 'contador', pass: 'cont123' },
+    repartidor: { user: 'repartidor', pass: 'rep123' },
+  }
+  const { user, pass } = credentials[role]
+  await skipBaseCajaParanoid(page)
+  await login(page, user, pass)
+}
+
+export async function fullLogin(page: Page, user = 'admin', pass = 'admin123') {
+  await skipBaseCajaParanoid(page)
+  await login(page, user, pass)
 }
 
 // ─── API Call Helper ─────────────────────────────────────────────────────────
