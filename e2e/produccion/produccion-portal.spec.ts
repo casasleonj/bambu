@@ -3,7 +3,7 @@
 // No muta datos. Documenta hallazgos P0-P3 en JSONL.
 
 import { test, expect, type Page } from '@playwright/test'
-import { fullLogin, checkHorizontalOverflow } from './fixtures'
+import { fullLogin, checkHorizontalOverflow } from '../fixtures'
 import * as fs from 'fs'
 import * as path from 'path'
 

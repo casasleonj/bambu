@@ -13,10 +13,11 @@ export default defineConfig({
   // Specs exploratorios y QA comprehensivo son scripts manuales/auditores
   // que registran hallazgos, no tests CI. Los excluimos de la ejecución
   // por defecto para evitar timeouts y falsos negativos.
-  testIgnore: ['**/exploratory/**', '**/qa-comprehensive/**'],
+  testIgnore: ['**/exploratory/**', '**/qa-comprehensive/**', '**/produccion/**'],
   use: {
     baseURL: process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3001',
     trace: 'on-first-retry',
+    screenshot: 'only-on-failure',
     serviceWorkers: 'block',
   },
 
