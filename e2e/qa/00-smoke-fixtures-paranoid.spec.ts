@@ -3,7 +3,7 @@ import { apiCall, ensureSelladorUser, assertNoUnexpectedConsoleErrors, assertUx,
 import { resetTestDatabase, loginAs } from '../fixtures'
 
 test.describe('fixtures-paranoid smoke', () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async () => {
     resetTestDatabase()
   })
 
