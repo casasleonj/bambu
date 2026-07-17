@@ -23,7 +23,7 @@ export interface SyncResult {
 /**
  * Sprint 6 (G-2): determina si un status HTTP es retryable.
  */
-function isRetryableStatus(status: number): boolean {
+export function isRetryableStatus(status: number): boolean {
   if (status === 401) return false
   if (status === 409) return false
   if (status === 429) return true
@@ -35,16 +35,16 @@ function isRetryableStatus(status: number): boolean {
 /**
  * Calcula backoff exponencial con jitter (AWS Builders Library pattern).
  */
-function calculateBackoff(attempts: number): number {
+export function calculateBackoff(attempts: number, randomFn?: () => number): number {
   const exponential = Math.min(BACKOFF_BASE_MS * Math.pow(2, attempts), BACKOFF_MAX_MS)
-  const jitter = Math.random() * BACKOFF_JITTER_MS
+  const jitter = (randomFn ?? Math.random)() * BACKOFF_JITTER_MS
   return exponential + jitter
 }
 
 /**
  * Sprint 6 (G-2): determina si un item debe moverse a DLQ.
  */
-function shouldMoveToDLQ(item: { attempts?: number; createdAt: Date }): boolean {
+export function shouldMoveToDLQ(item: { attempts?: number; createdAt: Date }): boolean {
   const attempts = item.attempts ?? 0
   const ageMs = Date.now() - item.createdAt.getTime()
   return attempts >= MAX_ATTEMPTS || ageMs >= MAX_AGE_MS
