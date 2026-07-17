@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { LIMITE_FIADOS_DEFAULT } from '@/lib/constants'
 import { getConfigInt } from '@/lib/config'
+import { unstable_cache } from 'next/cache'
 import ClientesClient from './clientes-client'
 import {
   buildClientesWhere,
@@ -16,7 +17,6 @@ export default async function ClientesPage({
   searchParams: Promise<ClientesSearchParams>
 }) {
   const resolvedSearchParams = await searchParams
-  const where = buildClientesWhere(resolvedSearchParams)
 
   // Determinar filtro de riesgo activo (legacy, exclusivo)
   let filtroActivo: FiltroRiesgo = null
@@ -27,57 +27,62 @@ export default async function ClientesPage({
   // FIX prod-performance: no cargar pedidos/facturas/abonos/pagos en el listado.
   // El listado solo necesita datos superficiales + contactos + negocios +
   // plantilla recurrente. El detalle (modal) carga el resto vía API.
-  // FIX prod-performance: limitar listado inicial a 100 clientes.
-  // La búsqueda global de todos los clientes requiere server-side search o
-  // paginación (follow-up); por ahora se prioriza que la página cargue en
-  // producción en tiempos aceptables.
-  const clientes = await prisma.cliente.findMany({
-    where,
-    orderBy: { nombre: 'asc' },
-    take: 100,
-    include: {
-      _count: { select: { pedidos: true } },
-      contactos: { orderBy: { nombre: 'asc' } },
-      negocios: {
-        where: { activo: true },
-        select: {
-          id: true,
-          nombre: true,
-          tipoNegocio: true,
-          direccion: true,
-          barrio: true,
-          referencia: true,
-          linkUbicacion: true,
+  // FIX prod-performance: cachear datos de listado por 60s para reducir
+  // impacto de cold-start + latencia a Supabase en Vercel Pro.
+  const getClientesCached = unstable_cache(
+    async (searchParamsJson: string) => {
+      const params = JSON.parse(searchParamsJson) as ClientesSearchParams
+      const cachedWhere = buildClientesWhere(params)
+
+      const cachedClientes = await prisma.cliente.findMany({
+        where: cachedWhere,
+        orderBy: { nombre: 'asc' },
+        take: 100,
+        include: {
+          _count: { select: { pedidos: true } },
+          contactos: { orderBy: { nombre: 'asc' } },
+          negocios: {
+            where: { activo: true },
+            select: {
+              id: true,
+              nombre: true,
+              tipoNegocio: true,
+              direccion: true,
+              barrio: true,
+              referencia: true,
+              linkUbicacion: true,
+            },
+          },
+          plantillaRecurrente: true,
         },
-      },
-      plantillaRecurrente: true,
-    },
-  })
+      })
 
-  // Calcular saldoPendiente de todos los clientes en una sola query agregada
-  // en lugar de traer todos los pedidos con facturas/abonos/pagos.
-  const saldosPendientes = await prisma.pedido.groupBy({
-    by: ['clienteId'],
-    where: {
-      saldo: { gt: 0 },
-      estadoEntrega: 'ENTREGADO',
+      const cachedSaldos = await prisma.pedido.groupBy({
+        by: ['clienteId'],
+        where: {
+          saldo: { gt: 0 },
+          estadoEntrega: 'ENTREGADO',
+        },
+        _sum: { saldo: true },
+      })
+      const cachedSaldoById = new Map(
+        cachedSaldos.map(s => [s.clienteId, Number(s._sum.saldo ?? 0)])
+      )
+
+      return JSON.parse(JSON.stringify(cachedClientes)).map(
+        (c: Record<string, unknown>) => ({
+          ...c,
+          clienteId: c.id,
+          saldoPendiente: cachedSaldoById.get(c.id as string) ?? 0,
+          preciosEspeciales: c.preciosEspeciales || undefined,
+        })
+      )
     },
-    _sum: { saldo: true },
-  })
-  const saldoByClienteId = new Map(
-    saldosPendientes.map(s => [s.clienteId, Number(s._sum.saldo ?? 0)])
+    ['clientes-list'],
+    { revalidate: 60, tags: ['clientes-list'] }
   )
 
-  // Serialize Prisma objects (Date, Decimal) for client component props.
-  // Also map id -> clienteId to match the shape the client component expects.
-  const serialized = JSON.parse(JSON.stringify(clientes)).map(
-    (c: Record<string, unknown>) => ({
-      ...c,
-      clienteId: c.id,
-      saldoPendiente: saldoByClienteId.get(c.id as string) ?? 0,
-      preciosEspeciales: c.preciosEspeciales || undefined,
-    })
-  )
+  const serialized = await getClientesCached(JSON.stringify(resolvedSearchParams))
 
   const limiteGlobalFiados = await getConfigInt('LIMITE_PEDIDOS_FIADOS_DEFAULT', LIMITE_FIADOS_DEFAULT)
 
