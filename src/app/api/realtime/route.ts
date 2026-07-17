@@ -27,11 +27,27 @@ export async function GET(request: Request) {
 
   // Rate limit realtime connections per user to prevent runaway consumption
   // from many tabs, aggressive reconnects, or misbehaving clients.
+  // Sprint 6 (M6): en lugar de 429 HTTP (que el cliente interpreta como error
+  // genérico y reconecta inmediatamente), devolvemos un stream SSE 200 con
+  // evento rate_limited + Retry-After y cerramos la conexión.
   const rateLimit = await checkRateLimit(session.user.id, 'realtime')
   if (!rateLimit.allowed) {
-    return new Response('Too Many Requests', {
-      status: 429,
-      headers: { 'Retry-After': String(rateLimit.retryAfter ?? 60) },
+    const retryAfter = String(rateLimit.retryAfter ?? 60)
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(
+          sseEvent('rate_limited', { retryAfter: Number(retryAfter) }),
+        )
+        controller.close()
+      },
+    })
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'close',
+        'Retry-After': retryAfter,
+      },
     })
   }
 
