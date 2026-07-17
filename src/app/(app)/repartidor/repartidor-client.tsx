@@ -490,6 +490,7 @@ export function RepartidorClient({ trabajador, embarque, userRole }: RepartidorC
         <button
           onClick={() => setShowVentaLibre(true)}
           disabled={!embarque}
+          data-testid="btn-venta-libre"
           className="flex items-center justify-center gap-2 px-4 py-3 bg-rose-600 text-white rounded-xl font-medium hover:bg-rose-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
@@ -498,6 +499,7 @@ export function RepartidorClient({ trabajador, embarque, userRole }: RepartidorC
         <button
           onClick={handleSync}
           disabled={syncing || !online || pendingCount === 0}
+          data-testid="btn-sync-repartidor"
           className="flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
@@ -589,7 +591,7 @@ export function RepartidorClient({ trabajador, embarque, userRole }: RepartidorC
                   const iconCfg = getProductoIconConfig(info.codigo)
                   const Icon = iconCfg.Icon
                   return (
-                    <div key={id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
+                    <div key={id} data-testid={`producto-${info.codigo}`} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
                       <div className="flex items-center gap-2">
                         <Icon size={20} />
                         <span className="text-sm font-medium text-gray-700">{info.nombre}</span>
@@ -597,11 +599,13 @@ export function RepartidorClient({ trabajador, embarque, userRole }: RepartidorC
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => setCantidades(prev => ({ ...prev, [info.codigo]: Math.max(0, (prev[info.codigo] || 0) - 1) }))}
+                          data-testid={`producto-${info.codigo}-menos`}
                           className="w-8 h-8 flex items-center justify-center bg-white border rounded-lg text-gray-600 hover:bg-gray-100"
                         >-</button>
-                        <span className="w-8 text-center text-sm font-semibold">{cantidades[info.codigo] || 0}</span>
+                        <span data-testid={`cantidad-${info.codigo}`} className="w-8 text-center text-sm font-semibold">{cantidades[info.codigo] || 0}</span>
                         <button
                           onClick={() => setCantidades(prev => ({ ...prev, [info.codigo]: (prev[info.codigo] || 0) + 1 }))}
+                          data-testid={`producto-${info.codigo}-mas`}
                           className="w-8 h-8 flex items-center justify-center bg-white border rounded-lg text-gray-600 hover:bg-gray-100"
                         >+</button>
                       </div>
@@ -700,6 +704,7 @@ export function RepartidorClient({ trabajador, embarque, userRole }: RepartidorC
           <button
             onClick={handleVentaLibreSubmit}
             disabled={submitting}
+            data-testid="btn-guardar-venta-libre"
             className="w-full py-3 bg-rose-600 text-white rounded-xl font-medium hover:bg-rose-700 transition disabled:opacity-50"
           >
             {submitting ? 'Guardando...' : online ? 'Registrar Venta' : 'Guardar Offline'}
