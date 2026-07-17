@@ -120,8 +120,11 @@ export function RepartidorClient({ trabajador, embarque, userRole }: RepartidorC
   }, 30_000)
 
   const updatePendingCount = useCallback(async () => {
-    const count = await offlineDb.pedidos.where('syncStatus').equals('pending').count()
-    setPendingCount(count)
+    const [pedidoCount, failedCount] = await Promise.all([
+      offlineDb.pedidos.where('syncStatus').equals('pending').count(),
+      offlineDb.failedItems.count(),
+    ])
+    setPendingCount(pedidoCount + failedCount)
   }, [])
 
   const handleSync = async () => {
