@@ -2,6 +2,7 @@ import { offlineDb } from './offline'
 import { logger } from '@/lib/logger'
 
 const BATCH_SIZE = 25 // Drain N items per batch to avoid long blocking sync
+const SYNC_TIMEOUT_MS = 60_000 // 1 minuto máximo por request
 
 // Sprint 6 (G-2): DLQ + backoff. Constantes ajustables.
 const MAX_ATTEMPTS = 100 // Tras N intentos, mover a failedItems (industry: 802.3 usa 10, pero offline-first tolera más)
@@ -18,7 +19,11 @@ export interface SyncResult {
   drained: boolean
   failedPermanently: number
   sessionExpired: boolean
+  alreadyRunning?: boolean
 }
+
+// Mutex: evita que múltiples llamadas a syncWithServer corran en paralelo.
+let syncPromise: Promise<SyncResult> | null = null
 
 /**
  * Sprint 6 (G-2): determina si un status HTTP es retryable.
@@ -92,7 +97,17 @@ async function moveToDLQ(
 }
 
 export async function syncWithServer(): Promise<SyncResult> {
-  const queue = await offlineDb.syncQueue.orderBy('createdAt').limit(BATCH_SIZE).toArray()
+  if (syncPromise) {
+    return { synced: 0, failed: 0, conflicts: 0, remaining: 0, drained: false, failedPermanently: 0, sessionExpired: false, alreadyRunning: true }
+  }
+  syncPromise = doSyncWithServer().finally(() => {
+    syncPromise = null
+  })
+  return syncPromise
+}
+
+async function doSyncWithServer(): Promise<SyncResult> {
+  const legacyQueue = await offlineDb.syncQueue.orderBy('createdAt').limit(BATCH_SIZE).toArray()
   const requestQueue = await offlineDb.requestQueue.orderBy('createdAt').limit(BATCH_SIZE).toArray()
   let synced = 0
   let failed = 0
@@ -100,123 +115,20 @@ export async function syncWithServer(): Promise<SyncResult> {
   let failedPermanently = 0
   let sessionExpired = false
 
-  // 1) Replay de requests crudas encoladas por fetchResilient()
-  for (const req of requestQueue) {
-    const newAttempts = (req.attempts ?? 0) + 1
-    await offlineDb.requestQueue.update(req.id!, {
-      attempts: newAttempts,
-      lastAttemptAt: new Date(),
-    })
-
-    if (shouldMoveToDLQ({ ...req, attempts: newAttempts })) {
-      await moveToDLQ(req, 'Excedido MAX_ATTEMPTS o MAX_AGE')
-      failedPermanently++
-      continue
-    }
-
-    try {
-      const res = await fetch(req.url, {
-        method: req.method,
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: req.body,
-      })
-
-      // 401: sesión expirada. Purgar cola y forzar logout.
-      if (res.status === 401) {
-        sessionExpired = true
-        await offlineDb.requestQueue.clear()
-        await offlineDb.syncQueue.clear()
-        logger.error(
-          { localId: req.offlineId, endpoint: req.localEndpoint },
-          'Sync: 401 recibido, sesión expirada — cola purgada, forzar logout',
-        )
-        if (typeof window !== 'undefined') {
-          window.location.href = '/login?reason=expired'
-        }
-        return { synced, failed, conflicts, remaining: 0, drained: true, failedPermanently, sessionExpired }
-      }
-
-      if (res.ok) {
-        await offlineDb.requestQueue.delete(req.id!)
-        synced++
-        logger.info(
-          { localId: req.offlineId, endpoint: req.localEndpoint, attempts: newAttempts },
-          'Sync: request reencolada completada',
-        )
-      } else if (res.status === 409) {
-        await offlineDb.requestQueue.delete(req.id!)
-        conflicts++
-        logger.warn(
-          { localId: req.offlineId, endpoint: req.localEndpoint, status: 409 },
-          'Sync: conflict resuelto por server (dedup)',
-        )
-      } else if (res.status === 429) {
-        const retryAfter = Number(res.headers.get('Retry-After') || 60)
-        await offlineDb.requestQueue.update(req.id!, {
-          lastError: `429: retry after ${retryAfter}s`,
-        })
-        logger.warn(
-          { localId: req.offlineId, endpoint: req.localEndpoint, retryAfter },
-          'Sync: 429 rate limit, mantener en cola',
-        )
-        failed++
-        if (retryAfter * 1000 > BACKOFF_MAX_MS) {
-          await new Promise((r) => setTimeout(r, retryAfter * 1000))
-        }
-      } else if (!isRetryableStatus(res.status)) {
-        const errorMsg = `HTTP ${res.status}: error de cliente`
-        await moveToDLQ(
-          { ...req, attempts: newAttempts, lastAttemptAt: new Date() },
-          errorMsg,
-        )
-        failedPermanently++
-        logger.error(
-          { localId: req.offlineId, endpoint: req.localEndpoint, status: res.status },
-          'Sync: 4xx error de lógica, movido a DLQ',
-        )
-      } else {
-        await offlineDb.requestQueue.update(req.id!, {
-          lastError: `HTTP ${res.status}`,
-        })
-        failed++
-        logger.warn(
-          { localId: req.offlineId, endpoint: req.localEndpoint, status: res.status, attempts: newAttempts },
-          'Sync: error retryable, mantener en cola',
-        )
-      }
-    } catch (e) {
-      const errMsg = e instanceof Error ? e.message : 'Unknown error'
-      await offlineDb.requestQueue.update(req.id!, {
-        lastError: `Network: ${errMsg}`,
-      })
-      failed++
-      logger.error(
-        { err: errMsg, id: req.id, attempts: newAttempts },
-        'Sync: request reencolada falló de red, se mantiene',
-      )
-    }
-
-    const isLast = req === requestQueue[requestQueue.length - 1]
-    if (!isLast) {
-      await new Promise((r) => setTimeout(r, calculateBackoff(newAttempts)))
-    }
-  }
-
-  // 2) syncQueue legacy (pedidos/clientes)
-  for (const item of queue) {
+  // 1) Migrar syncQueue legacy a requestQueue (una sola vez, luego se borra).
+  for (const item of legacyQueue) {
     try {
       if (item.table === 'pedidos' && item.operation === 'create') {
         const pedido = await offlineDb.pedidos.where('localId').equals(item.localId).first()
-        if (!pedido) continue
+        if (!pedido || pedido.syncStatus !== 'pending') {
+          await offlineDb.syncQueue.delete(item.id!)
+          continue
+        }
 
         const isVentaLibre = pedido.origen === 'VENTA_LIBRE'
-        const endpoint = isVentaLibre ? '/api/pedidos/venta-libre' : '/api/pedidos'
-
         const body = isVentaLibre
           ? {
               clienteId: pedido.clienteId,
-              negocioId: pedido.negocioId,
               items: pedido.items,
               pagos: pedido.pagos,
               embarqueId: pedido.embarqueId,
@@ -237,52 +149,25 @@ export async function syncWithServer(): Promise<SyncResult> {
               fechaEntrega: pedido.fechaEntrega,
             }
 
-        const res = await fetch(endpoint, {
+        await offlineDb.requestQueue.add({
+          url: isVentaLibre ? '/api/pedidos/venta-libre' : '/api/pedidos',
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
+          offlineId: pedido.localId,
+          localEndpoint: isVentaLibre ? 'venta-libre' : 'pedido',
+          createdAt: item.createdAt,
         })
-
-        if (res.status === 401) {
-          sessionExpired = true
-          await offlineDb.requestQueue.clear()
-          await offlineDb.syncQueue.clear()
-          if (typeof window !== 'undefined') {
-            window.location.href = '/login?reason=expired'
-          }
-          return { synced, failed, conflicts, remaining: 0, drained: true, failedPermanently, sessionExpired }
-        }
-
-        if (res.ok) {
-          const serverPedido = await res.json()
-          await offlineDb.pedidos.where('localId').equals(item.localId).modify({
-            numero: serverPedido.pedido?.numero,
-            syncStatus: 'synced',
-          })
-          await offlineDb.syncQueue.delete(item.id!)
-          synced++
-        } else if (res.status === 409) {
-          await offlineDb.pedidos.where('localId').equals(item.localId).modify({
-            syncStatus: 'conflict',
-          })
-          await offlineDb.syncQueue.delete(item.id!)
-          conflicts++
-        } else if (!isRetryableStatus(res.status)) {
-          await offlineDb.pedidos.where('localId').equals(item.localId).modify({
-            syncStatus: 'conflict',
-          })
-          await offlineDb.syncQueue.delete(item.id!)
-          failedPermanently++
-        } else {
-          failed++
-        }
+        await offlineDb.syncQueue.delete(item.id!)
       } else if (item.table === 'clientes' && item.operation === 'create') {
         const cliente = await offlineDb.clientes.where('localId').equals(item.localId).first()
-        if (!cliente) continue
+        if (!cliente || cliente.syncStatus !== 'pending') {
+          await offlineDb.syncQueue.delete(item.id!)
+          continue
+        }
 
-        const res = await fetch('/api/clientes', {
+        await offlineDb.requestQueue.add({
+          url: '/api/clientes',
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             nombre: cliente.nombre,
             telefono: cliente.telefono,
@@ -290,43 +175,124 @@ export async function syncWithServer(): Promise<SyncResult> {
             barrio: cliente.barrio,
             rutaId: cliente.rutaId,
           }),
+          offlineId: cliente.localId,
+          localEndpoint: 'cliente',
+          createdAt: item.createdAt,
         })
-
-        if (res.status === 401) {
-          sessionExpired = true
-          await offlineDb.requestQueue.clear()
-          await offlineDb.syncQueue.clear()
-          if (typeof window !== 'undefined') {
-            window.location.href = '/login?reason=expired'
-          }
-          return { synced, failed, conflicts, remaining: 0, drained: true, failedPermanently, sessionExpired }
-        }
-
-        if (res.ok) {
-          await offlineDb.clientes.where('localId').equals(item.localId).modify({
-            syncStatus: 'synced',
-          })
-          await offlineDb.syncQueue.delete(item.id!)
-          synced++
-        } else if (res.status === 409) {
-          await offlineDb.clientes.where('localId').equals(item.localId).modify({
-            syncStatus: 'conflict',
-          })
-          await offlineDb.syncQueue.delete(item.id!)
-          conflicts++
-        } else if (!isRetryableStatus(res.status)) {
-          await offlineDb.clientes.where('localId').equals(item.localId).modify({
-            syncStatus: 'conflict',
-          })
-          await offlineDb.syncQueue.delete(item.id!)
-          failedPermanently++
-        } else {
-          failed++
-        }
+        await offlineDb.syncQueue.delete(item.id!)
+      } else {
+        // syncQueue legacy no soportado: eliminar para no bloquear.
+        await offlineDb.syncQueue.delete(item.id!)
       }
     } catch (e) {
-      logger.error({ err: e instanceof Error ? e.message : 'Unknown', id: (item as any).id }, 'Sync failed for item')
+      logger.error({ err: e instanceof Error ? e.message : 'Unknown', id: item.id }, 'Sync: failed to migrate legacy syncQueue item')
+    }
+  }
+
+  // 2) Procesar requestQueue con timeout, retry, DLQ y 401 sin purge.
+  for (const req of requestQueue) {
+    const newAttempts = (req.attempts ?? 0) + 1
+    await offlineDb.requestQueue.update(req.id!, {
+      attempts: newAttempts,
+      lastAttemptAt: new Date(),
+    })
+
+    if (shouldMoveToDLQ({ ...req, attempts: newAttempts })) {
+      await moveToDLQ(req, 'Excedido MAX_ATTEMPTS o MAX_AGE')
+      await markOfflineItemConflict(req.offlineId)
+      failedPermanently++
+      continue
+    }
+
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), SYNC_TIMEOUT_MS)
+
+    try {
+      const res = await fetch(req.url, {
+        method: req.method,
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: req.body,
+        signal: controller.signal,
+      })
+      clearTimeout(timeoutId)
+
+      // 401: sesión expirada. NO purgar cola; redirigir a login.
+      if (res.status === 401) {
+        sessionExpired = true
+        logger.error(
+          { localId: req.offlineId, endpoint: req.localEndpoint },
+          'Sync: 401 recibido, sesión expirada — cola conservada, forzar logout',
+        )
+        if (typeof window !== 'undefined') {
+          window.location.href = '/login?reason=expired'
+        }
+        return { synced, failed, conflicts, remaining: 0, drained: true, failedPermanently, sessionExpired }
+      }
+
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}))
+        await finalizeRequestQueueItem(req, data, 'synced')
+        synced++
+        logger.info(
+          { localId: req.offlineId, endpoint: req.localEndpoint, attempts: newAttempts },
+          'Sync: request completada',
+        )
+      } else if (res.status === 409) {
+        const data = await res.json().catch(() => ({}))
+        await finalizeRequestQueueItem(req, data, 'synced')
+        conflicts++
+        logger.warn(
+          { localId: req.offlineId, endpoint: req.localEndpoint, status: 409 },
+          'Sync: conflict resuelto por server (dedup)',
+        )
+      } else if (res.status === 429) {
+        const retryAfter = Number(res.headers.get('Retry-After') || 60)
+        await offlineDb.requestQueue.update(req.id!, {
+          lastError: `429: retry after ${retryAfter}s`,
+        })
+        failed++
+        logger.warn(
+          { localId: req.offlineId, endpoint: req.localEndpoint, retryAfter },
+          'Sync: 429 rate limit, mantener en cola con backoff',
+        )
+      } else if (!isRetryableStatus(res.status)) {
+        await moveToDLQ(
+          { ...req, attempts: newAttempts, lastAttemptAt: new Date() },
+          `HTTP ${res.status}: error de cliente`,
+        )
+        await markOfflineItemConflict(req.offlineId)
+        failedPermanently++
+        logger.error(
+          { localId: req.offlineId, endpoint: req.localEndpoint, status: res.status },
+          'Sync: 4xx error de lógica, movido a DLQ',
+        )
+      } else {
+        await offlineDb.requestQueue.update(req.id!, {
+          lastError: `HTTP ${res.status}`,
+        })
+        failed++
+        logger.warn(
+          { localId: req.offlineId, endpoint: req.localEndpoint, status: res.status, attempts: newAttempts },
+          'Sync: error retryable, mantener en cola',
+        )
+      }
+    } catch (e) {
+      clearTimeout(timeoutId)
+      const errMsg = e instanceof Error ? e.message : 'Unknown error'
+      await offlineDb.requestQueue.update(req.id!, {
+        lastError: `Network: ${errMsg}`,
+      })
       failed++
+      logger.error(
+        { err: errMsg, id: req.id, attempts: newAttempts },
+        'Sync: request falló de red, se mantiene',
+      )
+    }
+
+    const isLast = req === requestQueue[requestQueue.length - 1]
+    if (!isLast) {
+      await new Promise((r) => setTimeout(r, calculateBackoff(newAttempts)))
     }
   }
 
@@ -349,6 +315,59 @@ export async function syncWithServer(): Promise<SyncResult> {
     drained: remaining === 0,
     failedPermanently,
     sessionExpired,
+  }
+}
+
+async function finalizeRequestQueueItem(
+  req: {
+    id?: number
+    offlineId?: string
+  },
+  serverData: Record<string, unknown>,
+  status: 'synced' | 'conflict',
+): Promise<void> {
+  if (!req.offlineId) {
+    await offlineDb.requestQueue.delete(req.id!)
+    return
+  }
+
+  const pedido = await offlineDb.pedidos.where('localId').equals(req.offlineId).first()
+  if (pedido) {
+    const serverPedido = (serverData.pedido || serverData) as { id?: string; numero?: number } | undefined
+    await offlineDb.transaction('rw', offlineDb.pedidos, offlineDb.requestQueue, async () => {
+      await offlineDb.pedidos.where('localId').equals(req.offlineId!).modify({
+        syncStatus: status,
+        numero: serverPedido?.numero ?? pedido.numero,
+      })
+      await offlineDb.requestQueue.delete(req.id!)
+    })
+    return
+  }
+
+  const cliente = await offlineDb.clientes.where('localId').equals(req.offlineId).first()
+  if (cliente) {
+    await offlineDb.transaction('rw', offlineDb.clientes, offlineDb.requestQueue, async () => {
+      await offlineDb.clientes.where('localId').equals(req.offlineId!).modify({
+        syncStatus: status,
+      })
+      await offlineDb.requestQueue.delete(req.id!)
+    })
+    return
+  }
+
+  await offlineDb.requestQueue.delete(req.id!)
+}
+
+async function markOfflineItemConflict(offlineId?: string): Promise<void> {
+  if (!offlineId) return
+  const pedido = await offlineDb.pedidos.where('localId').equals(offlineId).first()
+  if (pedido) {
+    await offlineDb.pedidos.where('localId').equals(offlineId).modify({ syncStatus: 'conflict' })
+    return
+  }
+  const cliente = await offlineDb.clientes.where('localId').equals(offlineId).first()
+  if (cliente) {
+    await offlineDb.clientes.where('localId').equals(offlineId).modify({ syncStatus: 'conflict' })
   }
 }
 
