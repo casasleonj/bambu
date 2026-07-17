@@ -120,19 +120,39 @@ export const offlineDb = new BambuOfflineDB()
 export async function queuePedidoOffline(data: Omit<OfflinePedido, 'id' | 'localId' | 'syncStatus' | 'createdAt' | 'updatedAt'>) {
   const localId = generateUUID()
   const now = new Date()
-  await offlineDb.pedidos.add({
+
+  const pedido: OfflinePedido = {
     ...data,
     localId,
     syncStatus: 'pending',
     createdAt: now,
     updatedAt: now,
+  }
+
+  const body = {
+    clienteId: data.clienteId,
+    items: data.items,
+    pagos: data.pagos,
+    embarqueId: data.embarqueId,
+    obs: data.obs,
+    fotoEntrega: data.fotoEntrega,
+    gpsLat: data.gpsLat,
+    gpsLng: data.gpsLng,
+    offlineId: localId,
+  }
+
+  await offlineDb.transaction('rw', offlineDb.pedidos, offlineDb.requestQueue, async () => {
+    await offlineDb.pedidos.add(pedido)
+    await offlineDb.requestQueue.add({
+      url: '/api/pedidos/venta-libre',
+      method: 'POST',
+      body: JSON.stringify(body),
+      offlineId: localId,
+      localEndpoint: 'venta-libre',
+      createdAt: now,
+    })
   })
-  await offlineDb.syncQueue.add({
-    operation: 'create',
-    table: 'pedidos',
-    localId,
-    createdAt: now,
-  })
+
   return localId
 }
 
