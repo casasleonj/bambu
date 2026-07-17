@@ -6,13 +6,29 @@ import { fetchResilient } from '@/lib/fetch-resilient'
 import { offlineDb } from '@/lib/db/offline'
 import { logger } from '@/lib/logger'
 import { RealtimeContext } from '@/components/realtime-provider'
+import { toast } from 'sonner'
 
 const SYNC_INTERVAL_MS = 30000
 const QUEUE_POLL_MS = 5000 // Poll queue size for UI counter (cheap read)
 
-function useRealtimeStatus(): 'connecting' | 'open' | 'closed' | 'paused' | 'polling' | null {
+async function getPendingCount(): Promise<number> {
+  const [requestCount, syncCount] = await Promise.all([
+    offlineDb.requestQueue.count(),
+    offlineDb.syncQueue.count(),
+  ])
+  return requestCount + syncCount
+}
+
+async function getFailedCount(): Promise<number> {
+  return offlineDb.failedItems.count()
+}
+
+function useRealtimeStatus(): {
+  status: 'connecting' | 'open' | 'closed' | 'paused' | 'polling'
+  disabled: boolean
+} {
   const ctx = useContext(RealtimeContext)
-  return ctx?.status ?? null
+  return { status: ctx?.status ?? 'closed', disabled: ctx?.disabled ?? false }
 }
 
 export function ConnectivityIndicator() {
@@ -20,7 +36,8 @@ export function ConnectivityIndicator() {
   const [syncing, setSyncing] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [pendingCount, setPendingCount] = useState(0)
-  const sseStatus = useRealtimeStatus()
+  const [failedCount, setFailedCount] = useState(0)
+  const { status: sseStatus, disabled: realtimeDisabled } = useRealtimeStatus()
 
   useEffect(() => {
     setMounted(true)
@@ -59,32 +76,38 @@ export function ConnectivityIndicator() {
     }
   }, [mounted])
 
-  const doSync = useCallback(async () => {
+  const doSync = useCallback(async (manual = false) => {
     if (!mounted || !isOnline() || syncing) return
     setSyncing(true)
     try {
       const result = await syncWithServer()
-      logger.info({ ...result }, 'Manual sync result')
+      logger.info({ ...result }, 'Sync result')
+      if (manual && result.failedPermanently > 0 && !sessionStorage.getItem('bambu:dlq-notified')) {
+        toast.error(`Hay ${result.failedPermanently} cambio(s) que no se pudieron sincronizar. Revisá con el admin.`)
+        sessionStorage.setItem('bambu:dlq-notified', '1')
+      }
     } finally {
       setSyncing(false)
-      // Update counter after sync
-      const count = await offlineDb.requestQueue.count()
+      // Update counters after sync
+      const [count, failed] = await Promise.all([getPendingCount(), getFailedCount()])
       setPendingCount(count)
+      setFailedCount(failed)
     }
   }, [mounted, syncing])
 
   // Skip polling when in Playwright test mode (avoids networkidle timeout)
   const isPlaywright = typeof window !== 'undefined' && (window as any).__PLAYWRIGHT_TEST__
 
-  // Poll queue size for the UI counter (one read on mount, then interval)
+  // Poll queue sizes for the UI counter (one read on mount, then interval)
   useEffect(() => {
     if (!mounted) return
     const updateCount = async () => {
       try {
-        const count = await offlineDb.requestQueue.count()
+        const [count, failed] = await Promise.all([getPendingCount(), getFailedCount()])
         setPendingCount(count)
+        setFailedCount(failed)
       } catch (e) {
-        logger.error({ err: e instanceof Error ? e.message : 'Unknown' }, 'Failed to count requestQueue')
+        logger.error({ err: e instanceof Error ? e.message : 'Unknown' }, 'Failed to count offline queues')
       }
     }
     void updateCount()
@@ -131,7 +154,8 @@ export function ConnectivityIndicator() {
 
   // Combine network state with realtime transport state for a single,
   // non-technical indicator.
-  const isPolling = sseStatus === 'polling' || sseStatus === 'connecting'
+  const isPolling = sseStatus === 'polling'
+  const isConnecting = sseStatus === 'connecting'
   const isOpen = sseStatus === 'open'
 
   let bg: string
@@ -146,31 +170,46 @@ export function ConnectivityIndicator() {
     text = 'text-red-100'
     label = 'Offline'
     tooltip = 'No hay internet. Tus cambios se guardan en el celular y se enviarán cuando vuelva la señal.'
-  } else if (isPolling) {
-    bg = 'bg-amber-500/20'
-    dot = 'bg-amber-400 shadow-amber-400/60 animate-pulse'
-    text = 'text-amber-100'
-    label = syncing ? 'Sync' : 'Sync'
-    tooltip = 'La red está lenta. La app está chequeando cambios cada pocos segundos.'
+  } else if (realtimeDisabled) {
+    bg = 'bg-gray-500/20'
+    dot = 'bg-gray-400 shadow-gray-400/60'
+    text = 'text-gray-100'
+    label = 'Desactivado'
+    tooltip = 'El canal en vivo está desactivado. La app sigue sincronizando manualmente.'
   } else if (isOpen) {
     bg = 'bg-emerald-500/20'
     dot = 'bg-emerald-400 shadow-emerald-400/60'
     text = 'text-emerald-100'
     label = syncing ? 'Sync' : 'Online'
     tooltip = 'Todo está actualizado en tiempo real.'
+  } else if (isPolling) {
+    bg = 'bg-amber-500/20'
+    dot = 'bg-amber-400 shadow-amber-400/60 animate-pulse'
+    text = 'text-amber-100'
+    label = syncing ? 'Sync' : 'Sync'
+    tooltip = 'La red está lenta. La app está chequeando cambios cada pocos segundos.'
+  } else if (isConnecting) {
+    // Network is online but SSE handshake is still in progress.
+    bg = 'bg-amber-500/20'
+    dot = 'bg-amber-400 shadow-amber-400/60 animate-pulse'
+    text = 'text-amber-100'
+    label = 'Conectando'
+    tooltip = 'Hay internet, pero el canal en vivo aún no se estableció. La app seguirá intentando.'
   } else {
-    bg = 'bg-red-500/20'
-    dot = 'bg-red-400 shadow-red-400/60'
-    text = 'text-red-100'
-    label = 'Offline'
-    tooltip = 'No hay internet. Tus cambios se guardan en el celular y se enviarán cuando vuelva la señal.'
+    // Network is online but SSE is closed or paused (e.g. background tab).
+    // Do NOT show "Offline" — that confuses users who do have internet.
+    bg = 'bg-amber-500/20'
+    dot = 'bg-amber-400 shadow-amber-400/60 animate-pulse'
+    text = 'text-amber-100'
+    label = 'Conectando'
+    tooltip = 'Hay internet, pero el canal en vivo aún no se estableció. La app seguirá intentando.'
   }
 
   const showPending = pendingCount > 0
   const canSync = online && !syncing && pendingCount > 0
 
   const handleClick = () => {
-    if (canSync) doSync()
+    if (canSync) doSync(true)
   }
 
   return (
@@ -186,8 +225,8 @@ export function ConnectivityIndicator() {
       }
       data-testid="connectivity-indicator"
       data-pending-count={pendingCount}
-      // FIX mobile UX: padding más compacto, label oculto en <sm.
-      className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full ${bg} transition-colors duration-300 flex-shrink-0 ${
+      // FIX mobile UX: label oculto en <sm, touch target >=44px.
+      className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-2.5 min-h-[44px] rounded-full ${bg} transition-colors duration-300 flex-shrink-0 ${
         canSync ? 'cursor-pointer hover:brightness-110 active:scale-95' : 'cursor-default'
       }`}
     >
@@ -203,6 +242,13 @@ export function ConnectivityIndicator() {
         >
           {pendingCount}
         </span>
+      )}
+      {failedCount > 0 && (
+        <span
+          data-testid="failed-sync-counter"
+          className="ml-0.5 w-2 h-2 rounded-full bg-red-500 animate-pulse"
+          title={`${failedCount} cambio${failedCount === 1 ? '' : 's'} fallido${failedCount === 1 ? '' : 's'} de sincronizar`}
+        />
       )}
       {syncing && (
         <svg className="w-3 h-3 animate-spin text-white/60" viewBox="0 0 24 24" fill="none">

@@ -5,21 +5,28 @@ import { logger } from './logger'
 // - Local/dev: uses in-memory limiter (per-process, fine for single instance)
 // - Production (serverless, multi-instance): requires REDIS_URL for distributed rate limit
 //   Without Redis in prod, rate limits are per-instance, effectively bypassable.
+//
+// NOTE: solo dos buckets están activos en producción:
+//   - 'api'    → aplicado por src/proxy.ts a todas las rutas /api/* (excepto health/cron).
+//   - 'realtime' → aplicado por src/app/api/realtime/route.ts por user.id.
+// Los buckets 'auth' y 'page' existían históricamente pero nunca fueron
+// ejecutados por proxy.ts (el matcher excluye /api/auth/* y el proxy nunca
+// rate limitó rutas de página). Se eliminaron para reducir deuda técnica.
 
-const isDev = process.env.NODE_ENV === 'development'
 const redisUrl = process.env.REDIS_URL
 
-const LIMITS = {
-  auth: isDev
-    ? { points: 1000, duration: 60, blockDuration: 0 }
-    : { points: 10, duration: 15 * 60, blockDuration: 30 * 60 }, // 10 per 15 min, block 30 min after exhaustion
+export const LIMITS = {
   api: { points: 300, duration: 60, blockDuration: 0 },
-  page: { points: 600, duration: 60, blockDuration: 0 },
   // SSE realtime: allow a small number of connections per user to prevent
   // runaway consumption from many tabs or aggressive reconnects.
-  // Each refresh consumes one point; 2 points per minute is enough for normal
+  // Each refresh consumes one point; 6 points per minute is enough for normal
   // use while capping abuse.
-  realtime: { points: 2, duration: 60, blockDuration: 0 },
+  // Configurable via env to tune cost vs freshness per deployment.
+  realtime: {
+    points: Math.max(1, Number(process.env.REALTIME_RATE_LIMIT_POINTS ?? 6) || 6),
+    duration: Math.max(1, Number(process.env.REALTIME_RATE_LIMIT_DURATION_SEC ?? 60) || 60),
+    blockDuration: Math.max(0, Number(process.env.REALTIME_RATE_LIMIT_BLOCK_DURATION_SEC ?? 0) || 0),
+  },
 } as const
 
 export type RateLimitType = keyof typeof LIMITS
@@ -139,27 +146,8 @@ export async function checkRateLimit(
         retryAfter: Math.ceil(rej.msBeforeNext / 1000),
       }
     }
-    // FIX Fase 4 §4.1: FAIL-CLOSED para auth, FAIL-OPEN degradado para
-    // el resto. OWASP Authentication Cheat Sheet recomienda fail-closed
-    // cuando el rate-limiter no está disponible: rechazar es preferible
-    // a permitir intentos de credential stuffing sin protección.
-    //
-    // Para api/page, mantener el comportamiento degradado (10% capacity)
-    // es operacional: si Redis cae, no queremos tumbar toda la app.
-    if (type === 'auth') {
-      logger.error(
-        '[RATE-LIMIT auth] Internal error — FAIL-CLOSED. Login rejected. ' +
-        'Verificar Redis (production) o insuranceLimiter (fallback).',
-      )
-      return {
-        allowed: false,
-        limit: cfg.points,
-        remaining: 0,
-        resetTime: new Date(Date.now() + 60_000),
-        retryAfter: 60,
-      }
-    }
-    // API/page: circuit breaker con 10% capacity (comportamiento previo).
+    // Redis down / error interno del limiter: fall-open degradado para no
+    // tumbar toda la app. Se mantiene 10% capacity como circuit breaker.
     logger.error('[RATE-LIMIT] Internal error — circuit breaker engaged with 10% capacity')
     return {
       allowed: true,
@@ -177,21 +165,4 @@ export async function resetRateLimit(identifier: string, type: RateLimitType): P
   } catch {
     // Key may not exist
   }
-}
-
-export function classifyRequest(pathname: string): RateLimitType {
-  // S-2 fix: stricter rate limit only for the login callback (where brute
-  // force attacks happen). Other /api/auth/* endpoints (profile,
-  // force-password-change) are admin-only and use the more permissive
-  // 'api' limit.
-  if (
-    pathname.startsWith('/api/auth/') &&
-    (pathname.includes('/callback/credentials') ||
-     pathname.endsWith('/signin') ||
-     pathname.endsWith('/signin/credentials'))
-  ) {
-    return 'auth'
-  }
-  if (pathname.startsWith('/api/')) return 'api'
-  return 'page'
 }

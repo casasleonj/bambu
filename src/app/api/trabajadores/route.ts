@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { TrabajadorCreateSchema, normalizeTrabajador } from '@/lib/validators'
+import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
@@ -11,6 +12,8 @@ import { publishRealtimeEvent } from '@/lib/realtime'
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
+  const roleCheck = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE, ROLES.CONTADOR], authResult)
+  if (roleCheck instanceof Response) return roleCheck
   try {
     const { searchParams } = new URL(request.url)
     const rol = searchParams.get('rol')

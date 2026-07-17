@@ -87,6 +87,9 @@ export function PedidosClient() {
     permitirSinGpsConJustificacion: true,
   })
   const [limiteGlobalFiados, setLimiteGlobalFiados] = useState<number>(LIMITE_FIADOS_DEFAULT)
+  // Safety net: on slow networks the initial fetch may hang. After 15s we stop
+  // showing the skeleton and surface a retry UI so the user is never stuck.
+  const [loadTimeoutReached, setLoadTimeoutReached] = useState(false)
 
   // Fechas desde URL (fuente de verdad)
   const desdeUrl = params.get('desde')
@@ -279,6 +282,13 @@ export function PedidosClient() {
     }, 300)
     return () => clearTimeout(timer)
   }, [searchInput, search, updateSearch])
+
+  // Safety net: force a non-skeleton UI after 15s even if the hook has not
+  // reported completion (e.g. hanging fetch on a flaky mobile connection).
+  useEffect(() => {
+    const id = setTimeout(() => setLoadTimeoutReached(true), 15_000)
+    return () => clearTimeout(id)
+  }, [])
 
   // Carga inicial
   useEffect(() => {
@@ -935,10 +945,28 @@ export function PedidosClient() {
   if (fetchError) {
     return (
       <ErrorState
-        title="No se pudieron cargar los pedidos"
-        message={fetchError}
+        title="Error cargando pedidos"
+        message={fetchError || 'No se pudieron cargar los pedidos'}
         errorCode="FETCH_PEDIDOS_ERROR"
         onRetry={() => { fetchPedidos(); fetchClientes(); fetchEmbarques(); }}
+        recoveryActions={[
+          {
+            label: 'Verificar conexión',
+            onClick: () => window.location.reload(),
+            variant: 'outline',
+          },
+        ]}
+      />
+    )
+  }
+
+  if (!hasLoadedOnce && loadTimeoutReached) {
+    return (
+      <ErrorState
+        title="La conexión está muy lenta"
+        message="Los pedidos están tardando más de lo normal en cargar. Reintentá ahora o verificá tu conexión."
+        errorCode="LOAD_TIMEOUT"
+        onRetry={() => { setLoadTimeoutReached(false); fetchPedidos(); fetchClientes(); fetchEmbarques(); }}
         recoveryActions={[
           {
             label: 'Verificar conexión',

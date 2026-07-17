@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { auth } from '@/lib/auth'
-import { checkRateLimit, classifyRequest } from '@/lib/rate-limit'
+import { checkRateLimit } from '@/lib/rate-limit'
 import { isRouteAllowed, getRedirectForRole } from '@/lib/permissions'
 import { validateCsrf } from '@/lib/csrf'
 import { setRequestIdProvider } from '@/lib/logger'
@@ -52,13 +52,11 @@ export const proxy = auth(async (request) => {
       return csrfResponse
     }
 
-    const type = classifyRequest(pathname)
-
     // Build identifier: prefer forwarded IP, fallback to real IP, then anonymized
     const forwarded = request.headers.get('x-forwarded-for')
     const ip = forwarded?.split(',')[0]?.trim() || request.headers.get('x-real-ip') || '127.0.0.1'
 
-    const result = await checkRateLimit(ip, type)
+    const result = await checkRateLimit(ip, 'api')
 
     if (!result.allowed) {
       return NextResponse.json(

@@ -80,12 +80,20 @@ export function usePedidos(
     setLoading(true)
     setError(null)
 
+    // Mobile networks (2g/3g) can leave fetch requests hanging indefinitely.
+    // Enforce a 10s timeout so callers can surface a retry UI instead of a
+    // permanent skeleton.
+    const timeoutId = setTimeout(() => {
+      controller.abort()
+    }, 10_000)
+
     try {
       const url = buildUrl()
       const res = await fetch(url, {
         credentials: 'include',
         signal: controller.signal,
       })
+      clearTimeout(timeoutId)
       const data = await res.json()
       if (data.success) {
         setPedidos(data.pedidos || data.data || [])
@@ -95,7 +103,14 @@ export function usePedidos(
         setError(data.error?.message || 'Error cargando pedidos')
       }
     } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') return
+      clearTimeout(timeoutId)
+      if (err instanceof Error && err.name === 'AbortError') {
+        // Fetch was aborted by the timeout above or by a newer request/filter change.
+        // Surface a retry-friendly message without generic error noise.
+        setError('La carga está tardando demasiado. Reintenta.')
+        setLoading(false)
+        return
+      }
       console.error('Error fetching pedidos:', err)
       setError('No se pudieron cargar los pedidos')
       toast.error('Error cargando pedidos')

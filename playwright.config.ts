@@ -13,10 +13,11 @@ export default defineConfig({
   // Specs exploratorios y QA comprehensivo son scripts manuales/auditores
   // que registran hallazgos, no tests CI. Los excluimos de la ejecución
   // por defecto para evitar timeouts y falsos negativos.
-  testIgnore: ['**/exploratory/**', '**/qa-comprehensive/**'],
+  testIgnore: ['**/exploratory/**', '**/qa-comprehensive/**', '**/produccion/**'],
   use: {
     baseURL: process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3001',
     trace: 'on-first-retry',
+    screenshot: 'only-on-failure',
     serviceWorkers: 'block',
   },
 
@@ -32,7 +33,10 @@ export default defineConfig({
     timeout: 120000,
     env: {
       PORT: '3001',
-      DISABLE_RATE_LIMIT: 'true',
+      // Relajar el límite de conexiones SSE en tests E2E para que múltiples
+      // pestañas / reconexiones del RealtimeProvider no provoquen rate-limit
+      // durante las pruebas de entrega de eventos (M6).
+      REALTIME_RATE_LIMIT_POINTS: '100',
     },
   },
   projects: [

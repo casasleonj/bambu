@@ -123,10 +123,11 @@ vercel --prod
 ### Rate Limiting
 - Implemented in `src/proxy.ts` (not in individual route handlers).
 - `rate-limiter-flexible` with Redis support (falls back to in-memory in dev).
-- Auth limit: 10 req/15min in production, 1000 req/min in development.
-- API limit: 300 req/min.
-- Page limit: 600 req/min.
-- Excluded paths: `/api/health`, `/api/cron/*`.
+- API limit: 300 req/min (applies to all `/api/*` except `/api/health`, `/api/cron/*`, `/api/realtime`).
+- Realtime limit: configurable via `REALTIME_RATE_LIMIT_*`; default 6 connections/min per user; applied by `/api/realtime` itself.
+- Auth endpoints (`/api/auth/*`) are handled by Auth.js's own protections; the proxy matcher excludes them.
+- Page routes are not rate-limited; scale is 6 users and the proxy only enforces auth/role checks.
+- Excluded paths: `/api/health`, `/api/cron/*`, `/api/realtime`.
 - Key config: `useRedisPackage: true` (required for redis v5), `disableOfflineQueue: true`, `insuranceLimiter` (memory fallback), `inMemoryBlockOnConsumed` (7x faster after limit reached).
 
 ### Offline-First Architecture
@@ -273,12 +274,14 @@ Actualizaciones en vivo entre sesiones/usuarios para cambios en clientes, pedido
 | Recurso | Eventos |
 |---------|---------|
 | Cliente | `cliente.created`, `cliente.updated`, `cliente.deleted` |
-| Pedido | `pedido.created`, `pedido.updated`, `pedido.deleted` |
+| Pedido | `pedido.created`, `pedido.updated` |
 | Embarque | `embarque.created`, `embarque.updated`, `embarque.deleted` |
 | Pago | `pago.created` (emitido desde `/api/pedidos/pagar-fiado`) |
 | Gasto | `gasto.created` |
 | Compra | `compra.created` |
 | Producción | `produccion.created` |
+| Trabajador | `trabajador.created`, `trabajador.updated`, `trabajador.deleted` |
+| Config | `config.updated` |
 
 ### Archivos relevantes
 
@@ -294,7 +297,7 @@ Actualizaciones en vivo entre sesiones/usuarios para cambios en clientes, pedido
 ### Requisitos de deployment
 
 - Variable `REDIS_URL` configurada en producción (mismo Redis usado para rate limiting).
-- En Vercel Hobby el endpoint SSE usa `maxDuration: 60` (límite de la plataforma); el cliente reconecta automáticamente.
+- El endpoint SSE usa `maxDuration: 300` (límite de Vercel Pro; Hobby lo capa automáticamente a 60s); el cliente reconecta automáticamente.
 - Si `REDIS_URL` no está configurado, `publishRealtimeEvent` es no-op y el endpoint retorna `503`, sin romper el resto de la app.
 
 ### Troubleshooting
@@ -370,7 +373,15 @@ Actualizaciones en vivo entre sesiones/usuarios para cambios en clientes, pedido
     - Login renderiza un banner ámbar "Tu sesión expiró" cuando `?reason=expired`.
     - `pedidos-client` verifica 401/403 también en fetches iniciales (`fetchClientes`, `fetchEmbarques`) y redirige si la sesión murió antes de montar el guard.
     - **Decisiones de scope**: no se purga la cola offline al expirar (`sync.ts` ya maneja 401 durante replay); no se refactorizan todos los `fetch` directos a `fetchResilient` en este ticket; no se implementa "smart polling" dinámico (se mantiene intervalo fijo simple).
-    - **Validación**: `e2e/session-expiry.spec.ts` (8 tests, chromium + mobile), `src/components/__tests__/session-expiry-guard.test.tsx` (10 tests), `src/lib/__tests__/fetch-resilient-auth-error.test.ts` (6 tests).
+     - **Validación**: `e2e/session-expiry.spec.ts` (8 tests, chromium + mobile), `src/components/__tests__/session-expiry-guard.test.tsx` (10 tests), `src/lib/__tests__/fetch-resilient-auth-error.test.ts` (6 tests).
+14. **Navegación entre secciones lenta en producción (~60s por ruta)** (observación documentada): El test de producción `e2e/produccion-portal.spec.ts` midió ~60–63s para cargar `/clientes`, `/pedidos`, `/recurrentes` y `/embarques` desde cero en Vercel. Una vez cargada una ruta, las navegaciones posteriores dentro de la misma ruta son rápidas. La causa raíz es el cold-start de la función serverless de Vercel Hobby más el tiempo de renderizado SSR de cada página. **Fix aplicado**: ninguno a nivel de código (requeriría infraestructura: upgrade de plan, edge functions, o prefetching agresivo). **Mitigaciones aplicadas**: los P0/P1 de esta ronda (timeouts, polling fallback, touch targets) mejoran la percepción de UX cuando la red es lenta. Si el negocio prioriza velocidad de navegación, el siguiente paso es evaluar Vercel Pro, `export const dynamic = 'force-dynamic'` vs ISR, o migrar el SSR de listas a API calls desde client components con skeleton inmediato.
+15. **Realtime `/api/realtime` 429 loop inflando costos Vercel + save cliente atascado en "Guardando..."** (resuelto):
+    - **Causa raíz**: el servidor respondía 429 HTTP plano, que el cliente interpretaba como error genérico y reconectaba inmediatamente, generando un bucle de requests. El indicador de conectividad mostraba "Offline" cada vez que SSE no estaba abierto, y el guardado de clientes usaba un timeout de 15s que dejaba el botón bloqueado.
+    - **Fix servidor** (`src/app/api/realtime/route.ts`, `src/lib/rate-limit.ts`): el límite de rate-limit para realtime es configurable por env (`REALTIME_RATE_LIMIT_*`) y al alcanzarlo el servidor devuelve un stream SSE 200 con evento `rate_limited` + `Connection: close` en lugar de 429 HTTP. `maxDuration` se mantiene como literal estático (`300`) porque Next.js no acepta expresiones dinámicas en segment config.
+    - **Fix cliente** (`src/components/realtime-provider.tsx`): listener para `rate_limited`, guard `rateLimitedUntilRef`, circuit breaker (3 eventos en 10min desactivan SSE por 5min), retry con jitter, dedup de errores, reconexión programada tras `retryAfter`, y fallback a polling. El timeout de conexión SSE se bajó a 8s.
+    - **Fix indicador** (`src/components/connectivity-indicator.tsx`): ahora distingue `connecting` (ámbar) de `offline` (rojo); no muestra "Offline" si `navigator.onLine` es true pero SSE aún no conecta.
+    - **Fix save cliente** (`src/app/(app)/clientes/clientes-client/index.tsx`): timeout de guardado reducido de 15s a 8s, y `setSaving(false)` explícito en branches timeout/offline/error para desbloquear el botón.
+    - **Validación**: `src/components/__tests__/realtime-provider.test.tsx` (9 tests), `src/components/__tests__/connectivity-indicator.test.tsx` (3 tests), `src/hooks/__tests__/use-realtime-listener.test.ts` (3 tests), suite completa Vitest pasa, `npx tsc --noEmit` pasa.
 
 ---
 

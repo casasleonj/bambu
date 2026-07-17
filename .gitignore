@@ -55,6 +55,7 @@ prisma/migrations/dev/
 /playwright-report
 /test-results
 /playwright/.cache
+/.auth
 
 # logs
 *.log

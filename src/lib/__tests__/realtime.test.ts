@@ -18,15 +18,18 @@ vi.mock('redis', () => ({
 
 describe('realtime publisher', () => {
   const originalRedisUrl = process.env.REDIS_URL
+  const originalRealtimeEnabled = process.env.NEXT_PUBLIC_REALTIME_ENABLED
 
   beforeEach(() => {
     vi.clearAllMocks()
     vi.resetModules()
     process.env.REDIS_URL = 'redis://localhost:6380'
+    delete process.env.NEXT_PUBLIC_REALTIME_ENABLED
   })
 
   afterEach(() => {
     process.env.REDIS_URL = originalRedisUrl
+    process.env.NEXT_PUBLIC_REALTIME_ENABLED = originalRealtimeEnabled
   })
 
   it('publishes a small JSON event to the configured Redis channel', async () => {
@@ -75,5 +78,25 @@ describe('realtime publisher', () => {
     const { publishRealtimeEvent } = await import('@/lib/realtime')
 
     await expect(publishRealtimeEvent('pedido.created', 'pedido-123')).resolves.toBeUndefined()
+  })
+
+  it('silently no-ops when NEXT_PUBLIC_REALTIME_ENABLED=false', async () => {
+    process.env.NEXT_PUBLIC_REALTIME_ENABLED = 'false'
+    const { publishRealtimeEvent } = await import('@/lib/realtime')
+
+    await expect(publishRealtimeEvent('pedido.created', 'pedido-123')).resolves.toBeUndefined()
+    expect(createClientMock).not.toHaveBeenCalled()
+    expect(publishMock).not.toHaveBeenCalled()
+  })
+
+  it('timestamp is a valid ISO 8601 string', async () => {
+    const { publishRealtimeEvent } = await import('@/lib/realtime')
+
+    await publishRealtimeEvent('pedido.created', 'pedido-123')
+
+    const publishedPayload = JSON.parse(publishMock.mock.calls[0][1])
+    expect(publishedPayload).toHaveProperty('timestamp')
+    expect(typeof publishedPayload.timestamp).toBe('string')
+    expect(new Date(publishedPayload.timestamp).toISOString()).toBe(publishedPayload.timestamp)
   })
 })

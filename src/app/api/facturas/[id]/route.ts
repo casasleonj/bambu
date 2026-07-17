@@ -1,12 +1,14 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAuth } from '@/lib/auth-check'
+import { requireAuth, requireRole } from '@/lib/auth-check'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
+  const roleCheck = await requireRole(['ADMIN', 'CONTADOR'], authResult)
+  if (roleCheck instanceof Response) return roleCheck
 
   try {
     const { id } = await params
