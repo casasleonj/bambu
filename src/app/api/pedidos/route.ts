@@ -257,7 +257,10 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    return apiSuccess({ pedido: result.pedido }, 201)
+    // FIX M4-OFFLINE: devolver 200 + deduped=true cuando el pedido ya existía
+    // (reintento offline). Antes siempre devolvía 201, rompiendo el contrato
+    // offline-first con los hooks que esperan 200 para dedup.
+    return apiSuccess({ pedido: result.pedido, deduped: result.deduped }, result.deduped ? 200 : 201)
   } catch (error) {
     Sentry.captureException(error, {
       extra: { route: 'POST /api/pedidos' },
