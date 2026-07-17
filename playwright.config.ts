@@ -33,6 +33,10 @@ export default defineConfig({
     timeout: 120000,
     env: {
       PORT: '3001',
+      // Relajar el límite de conexiones SSE en tests E2E para que múltiples
+      // pestañas / reconexiones del RealtimeProvider no provoquen rate-limit
+      // durante las pruebas de entrega de eventos (M6).
+      REALTIME_RATE_LIMIT_POINTS: '100',
     },
   },
   projects: [

@@ -274,12 +274,14 @@ Actualizaciones en vivo entre sesiones/usuarios para cambios en clientes, pedido
 | Recurso | Eventos |
 |---------|---------|
 | Cliente | `cliente.created`, `cliente.updated`, `cliente.deleted` |
-| Pedido | `pedido.created`, `pedido.updated`, `pedido.deleted` |
+| Pedido | `pedido.created`, `pedido.updated` |
 | Embarque | `embarque.created`, `embarque.updated`, `embarque.deleted` |
 | Pago | `pago.created` (emitido desde `/api/pedidos/pagar-fiado`) |
 | Gasto | `gasto.created` |
 | Compra | `compra.created` |
 | Producción | `produccion.created` |
+| Trabajador | `trabajador.created`, `trabajador.updated`, `trabajador.deleted` |
+| Config | `config.updated` |
 
 ### Archivos relevantes
 

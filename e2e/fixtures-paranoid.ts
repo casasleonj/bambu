@@ -359,3 +359,48 @@ export async function screenshotOnFail(page: Page, name: string): Promise<string
   await page.screenshot({ path, fullPage: true })
   return path
 }
+
+// ─── Entity Helpers ──────────────────────────────────────────────────────────
+
+export async function createTrabajador(
+  page: Page,
+  data?: Partial<{
+    nombre: string
+    rol: string
+    tipoPago: string
+    usaMoto: boolean
+    capacidadKg: number
+  }>,
+) {
+  const tipoPago = data?.tipoPago || 'COMISION'
+  const wantsComision = tipoPago === 'COMISION' || tipoPago === 'MIXTO'
+  const res = await apiCall(page, '/api/trabajadores', {
+    method: 'POST',
+    body: {
+      nombre: data?.nombre || `Repartidor Test ${Date.now() % 10000}`,
+      rol: data?.rol || 'REPARTIDOR',
+      tipoPago,
+      usaMoto: data?.usaMoto ?? wantsComision,
+      capacidadKg: data?.capacidadKg ?? (wantsComision ? 500 : 0),
+      comPacaAgua: wantsComision ? 500 : 0,
+      comPacaHielo: wantsComision ? 300 : 0,
+      comBotellon: wantsComision ? 200 : 0,
+      comRepartAgua: (data?.usaMoto ?? wantsComision) ? 500 : 0,
+      comRepartHielo: (data?.usaMoto ?? wantsComision) ? 300 : 0,
+      comRepartBotellon: (data?.usaMoto ?? wantsComision) ? 200 : 0,
+    },
+  })
+  return res.json() as Promise<{ trabajador?: { id: string }; id?: string }>
+}
+
+export async function createEmbarque(page: Page, trabajadorId: string) {
+  const res = await apiCall(page, '/api/embarques', {
+    method: 'POST',
+    body: {
+      trabajadorId,
+      horaSalida: '08:00',
+      carga: [{ producto: 'PACA_AGUA', cargadas: 1 }],
+    },
+  })
+  return res.json() as Promise<{ embarque?: { id: string }; id?: string }>
+}
