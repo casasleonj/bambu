@@ -123,10 +123,11 @@ vercel --prod
 ### Rate Limiting
 - Implemented in `src/proxy.ts` (not in individual route handlers).
 - `rate-limiter-flexible` with Redis support (falls back to in-memory in dev).
-- Auth limit: 10 req/15min in production, 1000 req/min in development.
-- API limit: 300 req/min.
-- Page limit: 600 req/min.
-- Excluded paths: `/api/health`, `/api/cron/*`.
+- API limit: 300 req/min (applies to all `/api/*` except `/api/health`, `/api/cron/*`, `/api/realtime`).
+- Realtime limit: configurable via `REALTIME_RATE_LIMIT_*`; default 6 connections/min per user; applied by `/api/realtime` itself.
+- Auth endpoints (`/api/auth/*`) are handled by Auth.js's own protections; the proxy matcher excludes them.
+- Page routes are not rate-limited; scale is 6 users and the proxy only enforces auth/role checks.
+- Excluded paths: `/api/health`, `/api/cron/*`, `/api/realtime`.
 - Key config: `useRedisPackage: true` (required for redis v5), `disableOfflineQueue: true`, `insuranceLimiter` (memory fallback), `inMemoryBlockOnConsumed` (7x faster after limit reached).
 
 ### Offline-First Architecture

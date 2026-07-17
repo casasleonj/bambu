@@ -33,7 +33,6 @@ export default defineConfig({
     timeout: 120000,
     env: {
       PORT: '3001',
-      DISABLE_RATE_LIMIT: 'true',
     },
   },
   projects: [

@@ -20,7 +20,7 @@ describe('S-1: proxy aplica validateCsrf para state-changing methods', () => {
   it('FIX: el proxy llama validateCsrf(request) antes del rate limit', () => {
     // validateCsrf debe estar ANTES de checkRateLimit
     const csrfIdx = proxySource.indexOf('validateCsrf(request)')
-    const rateLimitIdx = proxySource.indexOf('checkRateLimit(ip, type)')
+    const rateLimitIdx = proxySource.indexOf("checkRateLimit(ip, 'api')")
 
     expect(csrfIdx).toBeGreaterThan(-1)
     expect(rateLimitIdx).toBeGreaterThan(-1)
@@ -37,7 +37,7 @@ describe('S-1: proxy aplica validateCsrf para state-changing methods', () => {
     // El orden debe ser: skip health/cron → CSRF → rate limit
     const skipIdx = proxySource.indexOf("'/api/health' || pathname.startsWith('/api/cron/')")
     const csrfIdx = proxySource.indexOf('validateCsrf(request)')
-    const rateLimitIdx = proxySource.indexOf('checkRateLimit(ip, type)')
+    const rateLimitIdx = proxySource.indexOf("checkRateLimit(ip, 'api')")
 
     expect(skipIdx).toBeGreaterThan(-1)
     expect(csrfIdx).toBeGreaterThan(skipIdx)
