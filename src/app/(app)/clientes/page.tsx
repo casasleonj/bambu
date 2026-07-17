@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { LIMITE_FIADOS_DEFAULT } from '@/lib/constants'
 import { getConfigInt } from '@/lib/config'
+import { unstable_cache } from 'next/cache'
 import ClientesClient from './clientes-client'
 import {
   buildClientesWhere,
@@ -16,7 +17,6 @@ export default async function ClientesPage({
   searchParams: Promise<ClientesSearchParams>
 }) {
   const resolvedSearchParams = await searchParams
-  const where = buildClientesWhere(resolvedSearchParams)
 
   // Determinar filtro de riesgo activo (legacy, exclusivo)
   let filtroActivo: FiltroRiesgo = null
@@ -24,53 +24,65 @@ export default async function ClientesPage({
   else if (resolvedSearchParams.reclamaciones === 'gte3') filtroActivo = 'reclamaciones'
   else if (resolvedSearchParams.noVerificado === 'true') filtroActivo = 'noVerificado'
 
-  const clientes = await prisma.cliente.findMany({
-    where,
-    orderBy: { nombre: 'asc' },
-    include: {
-      _count: { select: { pedidos: true } },
-      pedidos: {
+  // FIX prod-performance: no cargar pedidos/facturas/abonos/pagos en el listado.
+  // El listado solo necesita datos superficiales + contactos + negocios +
+  // plantilla recurrente. El detalle (modal) carga el resto vía API.
+  // FIX prod-performance: cachear datos de listado por 60s para reducir
+  // impacto de cold-start + latencia a Supabase en Vercel Pro.
+  const getClientesCached = unstable_cache(
+    async (searchParamsJson: string) => {
+      const params = JSON.parse(searchParamsJson) as ClientesSearchParams
+      const cachedWhere = buildClientesWhere(params)
+
+      const cachedClientes = await prisma.cliente.findMany({
+        where: cachedWhere,
+        orderBy: { nombre: 'asc' },
+        take: 100,
+        include: {
+          _count: { select: { pedidos: true } },
+          contactos: { orderBy: { nombre: 'asc' } },
+          negocios: {
+            where: { activo: true },
+            select: {
+              id: true,
+              nombre: true,
+              tipoNegocio: true,
+              direccion: true,
+              barrio: true,
+              referencia: true,
+              linkUbicacion: true,
+            },
+          },
+          plantillaRecurrente: true,
+        },
+      })
+
+      const cachedSaldos = await prisma.pedido.groupBy({
+        by: ['clienteId'],
         where: {
           saldo: { gt: 0 },
           estadoEntrega: 'ENTREGADO',
         },
-        include: {
-          factura: {
-            include: {
-              abonos: true,
-            },
-          },
-          pagos: true,
-        },
-      },
-      negocios: {
-        where: { activo: true },
-        select: {
-          id: true,
-          nombre: true,
-          tipoNegocio: true,
-          direccion: true,
-          barrio: true,
-          referencia: true,
-          linkUbicacion: true,
-        },
-      },
-    },
-  })
+        _sum: { saldo: true },
+      })
+      const cachedSaldoById = new Map(
+        cachedSaldos.map(s => [s.clienteId, Number(s._sum.saldo ?? 0)])
+      )
 
-  // Serialize Prisma objects (Date, Decimal) for client component props.
-  // Also map id -> clienteId to match the shape the client component expects.
-  // Calculate saldoPendiente from pedidos with saldo > 0
-  const serialized = JSON.parse(JSON.stringify(clientes)).map(
-    (c: Record<string, unknown>) => ({
-      ...c,
-      clienteId: c.id,
-      saldoPendiente: (c.pedidos as Array<{ saldo: number }>).reduce(
-        (sum: number, p: { saldo: number }) => sum + Number(p.saldo), 0
-      ),
-      preciosEspeciales: c.preciosEspeciales || undefined,
-    })
+      return JSON.parse(JSON.stringify(cachedClientes)).map(
+        (c: Record<string, unknown>) => ({
+          ...c,
+          clienteId: c.id,
+          saldoPendiente: cachedSaldoById.get(c.id as string) ?? 0,
+          preciosEspeciales: c.preciosEspeciales || undefined,
+        })
+      )
+    },
+    ['clientes-list'],
+    { revalidate: 60, tags: ['clientes-list'] }
   )
+
+  const serialized = await getClientesCached(JSON.stringify(resolvedSearchParams))
 
   const limiteGlobalFiados = await getConfigInt('LIMITE_PEDIDOS_FIADOS_DEFAULT', LIMITE_FIADOS_DEFAULT)
 
