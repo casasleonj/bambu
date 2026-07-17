@@ -11,15 +11,25 @@ export default async function EmbarquesPage() {
   const session = authResult as { user?: { id?: string; role?: string } }
   const isAdmin = session.user?.role === 'ADMIN'
 
+  // FIX prod-performance: limitar listado inicial a 100 embarques recientes.
+  // El detalle de un embarque específico carga sus pedidos completos en su
+  // propia página (/embarques/[id]).
   const [embarques, trabajadores, rutas, stockEstimado, stockDisponible] = await Promise.all([
     prisma.embarque.findMany({
       orderBy: [{ fecha: 'desc' }, { numeroDia: 'desc' }],
+      take: 100,
       include: {
         trabajador: true,
         ruta: { select: { id: true, nombre: true } },
         pedidos: {
-          include: {
-            cliente: { select: { id: true, nombre: true, barrio: true } },
+          select: {
+            id: true,
+            cPacaAguaPed: true,
+            cPacaHieloPed: true,
+            cBotellonFabPed: true,
+            cBotellonDomPed: true,
+            cBolsaAguaPed: true,
+            cBolsaHieloPed: true,
           },
         },
         productos: true,

@@ -24,25 +24,20 @@ export default async function ClientesPage({
   else if (resolvedSearchParams.reclamaciones === 'gte3') filtroActivo = 'reclamaciones'
   else if (resolvedSearchParams.noVerificado === 'true') filtroActivo = 'noVerificado'
 
+  // FIX prod-performance: no cargar pedidos/facturas/abonos/pagos en el listado.
+  // El listado solo necesita datos superficiales + contactos + negocios +
+  // plantilla recurrente. El detalle (modal) carga el resto vía API.
+  // FIX prod-performance: limitar listado inicial a 100 clientes.
+  // La búsqueda global de todos los clientes requiere server-side search o
+  // paginación (follow-up); por ahora se prioriza que la página cargue en
+  // producción en tiempos aceptables.
   const clientes = await prisma.cliente.findMany({
     where,
     orderBy: { nombre: 'asc' },
+    take: 100,
     include: {
       _count: { select: { pedidos: true } },
-      pedidos: {
-        where: {
-          saldo: { gt: 0 },
-          estadoEntrega: 'ENTREGADO',
-        },
-        include: {
-          factura: {
-            include: {
-              abonos: true,
-            },
-          },
-          pagos: true,
-        },
-      },
+      contactos: { orderBy: { nombre: 'asc' } },
       negocios: {
         where: { activo: true },
         select: {
@@ -55,19 +50,31 @@ export default async function ClientesPage({
           linkUbicacion: true,
         },
       },
+      plantillaRecurrente: true,
     },
   })
 
+  // Calcular saldoPendiente de todos los clientes en una sola query agregada
+  // en lugar de traer todos los pedidos con facturas/abonos/pagos.
+  const saldosPendientes = await prisma.pedido.groupBy({
+    by: ['clienteId'],
+    where: {
+      saldo: { gt: 0 },
+      estadoEntrega: 'ENTREGADO',
+    },
+    _sum: { saldo: true },
+  })
+  const saldoByClienteId = new Map(
+    saldosPendientes.map(s => [s.clienteId, Number(s._sum.saldo ?? 0)])
+  )
+
   // Serialize Prisma objects (Date, Decimal) for client component props.
   // Also map id -> clienteId to match the shape the client component expects.
-  // Calculate saldoPendiente from pedidos with saldo > 0
   const serialized = JSON.parse(JSON.stringify(clientes)).map(
     (c: Record<string, unknown>) => ({
       ...c,
       clienteId: c.id,
-      saldoPendiente: (c.pedidos as Array<{ saldo: number }>).reduce(
-        (sum: number, p: { saldo: number }) => sum + Number(p.saldo), 0
-      ),
+      saldoPendiente: saldoByClienteId.get(c.id as string) ?? 0,
       preciosEspeciales: c.preciosEspeciales || undefined,
     })
   )
