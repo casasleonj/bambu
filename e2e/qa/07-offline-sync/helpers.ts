@@ -1,4 +1,4 @@
-import { test, type Page } from '@playwright/test'
+import { type Page } from '@playwright/test'
 import { fullLogin, prisma, createEmbarque } from '../../fixtures-paranoid'
 
 export const TEST_PHOTO = '/tmp/opencode/1x1.jpg'

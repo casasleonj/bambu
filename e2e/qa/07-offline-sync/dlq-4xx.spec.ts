@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test } from '@playwright/test'
 import { setupEmbarque, clearOfflineDb, abrirRepartidor, guardarVentaLibreOffline } from './helpers'
 
 test.describe('M7 DLQ 4xx', () => {
