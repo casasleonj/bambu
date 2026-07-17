@@ -3,8 +3,10 @@
 import { useState, useEffect, useId, useCallback } from 'react'
 import {
   normalizarTelefono,
-  formatearTelefonoParaInput,
+  extraerDigitos,
+  extraerDigitosLocales,
   formatearTelefonoParaCopiar,
+  formatearDigitosLocales,
   esTelefonoValido,
 } from '@/lib/telefono'
 
@@ -23,8 +25,6 @@ export interface TelefonoInputProps {
   id?: string
   icon?: React.ReactNode
 }
-
-const CARACTERES_PERMITIDOS = /[\d\s\+\-\(\)]/
 
 export function TelefonoInput({
   value,
@@ -46,48 +46,44 @@ export function TelefonoInput({
   const errorId = `${id}-error`
   const helpId = `${id}-help`
 
-  const [displayValue, setDisplayValue] = useState(() => formatearTelefonoParaInput(value))
+  // Estado local: solo dígitos locales (sin el indicativo internacional 57).
+  // El prefijo "+57" se muestra como elemento visual separado y no forma
+  // parte del valor editable.
+  const [localDigits, setLocalDigits] = useState(() => extraerDigitosLocales(value))
   const [touched, setTouched] = useState(false)
   const [focused, setFocused] = useState(false)
 
   useEffect(() => {
-    setDisplayValue(formatearTelefonoParaInput(value))
+    setLocalDigits(extraerDigitosLocales(value))
   }, [value])
 
-  const normalizado = normalizarTelefono(value)
+  const normalizado = normalizarTelefono(localDigits)
   const hasError = touched && !esTelefonoValido(normalizado) && required
   const isValid = touched && esTelefonoValido(normalizado) && normalizado.length > 0
 
   const handleChange = useCallback((raw: string) => {
-    const formatted = formatearTelefonoParaInput(raw)
-    setDisplayValue(formatted)
-
-    const lastChar = raw.slice(-1)
-    const isUserDeletion = raw.length < displayValue.length
-
-    if (isUserDeletion) {
-      onChange(normalizarTelefono(raw))
-      return
-    }
-
-    if (CARACTERES_PERMITIDOS.test(lastChar) || raw === '') {
-      onChange(normalizarTelefono(raw))
-    }
-  }, [displayValue.length, onChange])
+    const digitos = extraerDigitos(raw)
+    setLocalDigits(digitos)
+    // Emitir siempre el valor normalizado (con indicativo 57) para que el
+    // resto de la aplicación reciba el formato internacional estable.
+    onChange(normalizarTelefono(digitos))
+  }, [onChange])
 
   const handlePaste = useCallback((e: React.ClipboardEvent<HTMLInputElement>) => {
     e.preventDefault()
     const pasted = e.clipboardData.getData('text')
-    const normalizado = normalizarTelefono(pasted)
-    onChange(normalizado)
-    setDisplayValue(formatearTelefonoParaInput(normalizado))
+    const digitosLocales = extraerDigitosLocales(pasted)
+    setLocalDigits(digitosLocales)
+    onChange(normalizarTelefono(digitosLocales))
   }, [onChange])
 
   const handleBlur = useCallback(() => {
     setFocused(false)
     setTouched(true)
-    setDisplayValue(formatearTelefonoParaInput(value))
-  }, [value])
+    const digitosLocales = extraerDigitosLocales(localDigits)
+    setLocalDigits(digitosLocales)
+    onChange(normalizarTelefono(digitosLocales))
+  }, [localDigits, onChange])
 
   const handleFocus = useCallback(() => {
     setFocused(true)
@@ -97,6 +93,10 @@ export function TelefonoInput({
     e.preventDefault()
     e.clipboardData.setData('text/plain', formatearTelefonoParaCopiar(value))
   }, [value])
+
+  const displayValue = formatearDigitosLocales(localDigits)
+  const prefixLeft = icon ? 'left-9' : 'left-3'
+  const inputPaddingLeft = icon ? 'pl-16' : 'pl-10'
 
   return (
     <div className={className}>
@@ -112,6 +112,12 @@ export function TelefonoInput({
             {icon}
           </div>
         )}
+        <span
+          className={`absolute top-1/2 -translate-y-1/2 text-sm text-gray-500 pointer-events-none select-none ${prefixLeft}`}
+          aria-hidden="true"
+        >
+          +57
+        </span>
         <input
           id={id}
           name={name}
@@ -130,9 +136,10 @@ export function TelefonoInput({
           placeholder={placeholder}
           aria-invalid={hasError}
           aria-describedby={hasError ? errorId : helpText ? helpId : undefined}
+          aria-label={`${label ?? 'Teléfono'} (código de país +57)`}
           className={`
             w-full border rounded-lg text-sm transition outline-none
-            ${icon ? 'pl-9' : 'pl-3'} pr-3 py-2.5
+            ${inputPaddingLeft} pr-3 py-2.5
             ${hasError
               ? 'border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-200 bg-red-50/30'
               : isValid

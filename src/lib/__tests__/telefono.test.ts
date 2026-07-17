@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
   normalizarTelefono,
+  extraerDigitosLocales,
   formatearTelefonoParaInput,
+  formatearDigitosLocales,
   formatearTelefonoParaCopiar,
   formatearTelefonoParaLlamar,
   esTelefonoValido,
@@ -60,8 +62,61 @@ describe('telefono', () => {
       expect(formatearTelefonoParaInput('576012345678')).toBe('601 234 5678')
     })
 
+    it('descarta indicativo 57 malformado en números cortos', () => {
+      expect(formatearTelefonoParaInput('573174015')).toBe('317 4015')
+    })
+
     it('devuelve cadena vacía para entrada vacía', () => {
       expect(formatearTelefonoParaInput('')).toBe('')
+    })
+  })
+
+  describe('extraerDigitosLocales', () => {
+    it('quita el indicativo 57 de número internacional', () => {
+      expect(extraerDigitosLocales('573102921234')).toBe('3102921234')
+    })
+
+    it('limpia espacios, signo + e indicativo 57 al extraer dígitos locales', () => {
+      expect(extraerDigitosLocales('+57 310 292 1234')).toBe('3102921234')
+      expect(extraerDigitosLocales('+573102921234')).toBe('3102921234')
+      expect(extraerDigitosLocales('573174015')).toBe('3174015')
+    })
+
+    it('mantiene número nacional de 10 dígitos tal cual', () => {
+      expect(extraerDigitosLocales('3102921234')).toBe('3102921234')
+    })
+
+    it('mantiene número corto sin indicativo', () => {
+      expect(extraerDigitosLocales('1234567')).toBe('1234567')
+    })
+
+    it('devuelve cadena vacía para entrada vacía', () => {
+      expect(extraerDigitosLocales('')).toBe('')
+      expect(extraerDigitosLocales(null)).toBe('')
+      expect(extraerDigitosLocales(undefined)).toBe('')
+    })
+  })
+
+  describe('formatearDigitosLocales', () => {
+    it('formatea 10 dígitos locales con espacios', () => {
+      expect(formatearDigitosLocales('3102921234')).toBe('310 292 1234')
+    })
+
+    it('formatea número corto de 7 dígitos', () => {
+      expect(formatearDigitosLocales('1234567')).toBe('123 4567')
+    })
+
+    it('formatea número corto de 8 dígitos', () => {
+      expect(formatearDigitosLocales('12345678')).toBe('123 456 78')
+    })
+
+    it('ignora indicativo 57 si estuviera presente', () => {
+      expect(formatearDigitosLocales('573102921234')).toBe('310 292 1234')
+      expect(formatearDigitosLocales('573174015')).toBe('317 4015')
+    })
+
+    it('devuelve cadena vacía para entrada vacía', () => {
+      expect(formatearDigitosLocales('')).toBe('')
     })
   })
 
