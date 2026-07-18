@@ -126,9 +126,21 @@ export async function checkRateLimit(
   type: RateLimitType = 'api'
 ): Promise<RateLimitResult> {
   const cfg = LIMITS[type]
-  const limiter = await getLimiter(type)
+
+  // FIX: timeout global de 3s para checkRateLimit. En Vercel serverless,
+  // cada cold start crea una nueva conexión a Redis. Si el TLS handshake
+  // + auth tarda >3s (Upstash en otro datacenter, cold start severo),
+  // el proxy se cuelga y el request nunca llega al endpoint. Con timeout
+  // 3s, fallamos rápido y usamos el fallback de memoria (insuranceLimiter)
+  // en lugar de colgar el proxy. El insuranceLimiter ya existe como
+  // fallback de RateLimiterRedis.
+  const TIMEOUT_MS = 3_000
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error('REDIS_TIMEOUT')), TIMEOUT_MS)
+  })
 
   try {
+    const limiter = await Promise.race([getLimiter(type), timeoutPromise])
     const res = await limiter.consume(identifier, 1)
     return {
       allowed: true,
@@ -144,6 +156,37 @@ export async function checkRateLimit(
         remaining: 0,
         resetTime: new Date(Date.now() + rej.msBeforeNext),
         retryAfter: Math.ceil(rej.msBeforeNext / 1000),
+      }
+    }
+    if (rej instanceof Error && rej.message === 'REDIS_TIMEOUT') {
+      // Redis no respondió en 3s. Usar fallback de memoria para no colgar
+      // el proxy. El usuario no nota diferencia (memoria tiene los mismos
+      // límites). Log para monitoreo.
+      logger.warn({ type }, 'checkRateLimit: Redis timeout, usando fallback de memoria')
+      const fallback = new RateLimiterMemory({
+        keyPrefix: `rl_${type}_fallback`,
+        points: cfg.points,
+        duration: cfg.duration,
+      })
+      try {
+        const res = await fallback.consume(identifier, 1)
+        return {
+          allowed: true,
+          limit: cfg.points,
+          remaining: res.remainingPoints,
+          resetTime: new Date(Date.now() + res.msBeforeNext),
+        }
+      } catch (fallbackRej) {
+        if (fallbackRej instanceof RateLimiterRes) {
+          return {
+            allowed: false,
+            limit: cfg.points,
+            remaining: 0,
+            resetTime: new Date(Date.now() + fallbackRej.msBeforeNext),
+            retryAfter: Math.ceil(fallbackRej.msBeforeNext / 1000),
+          }
+        }
+        throw fallbackRej
       }
     }
     // Redis down / error interno del limiter: fall-open degradado para no

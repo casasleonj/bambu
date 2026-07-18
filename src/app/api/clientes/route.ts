@@ -212,6 +212,17 @@ export async function POST(request: NextRequest) {
   if (authResult instanceof Response) return authResult
   const roleCheck = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE], authResult)
   if (roleCheck instanceof Response) return roleCheck
+
+  // FIX: timeout global de 25s para el POST. Si la DB no responde
+  // (Supabase pausada, cold start severo, o conexión colgada), la función
+  // devuelve 500 inmediato en lugar de colgar hasta el timeout de Vercel
+  // (10s en Hobby, 60s en Pro). Esto evita que el cliente se quede
+  // esperando indefinidamente sin respuesta.
+  const TIMEOUT_MS = 25_000
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error('DB_TIMEOUT')), TIMEOUT_MS)
+  })
+
   try {
     const body = await request.json()
     const parsed = ClienteCreateSchema.safeParse(body)
@@ -223,12 +234,13 @@ export async function POST(request: NextRequest) {
     // dentro de una transacción Serializable. Antes eran 3 operaciones
     // auto-commit con race window. Dos requests simultáneos con el
     // mismo teléfono podían pasar el check y ambos intentar crear.
-    const result = await executeSerializableWithRetry<
-      | { kind: 'existing'; cliente: { id: string; nombre: string; telefono: string; offlineId: string | null; clienteId: string } }
-      | { kind: 'created'; cliente: { id: string; nombre: string; telefono: string; clienteId: string } }
-      | { kind: 'duplicate_phone'; existingNombre: string }
-    >(
-      async (tx) => {
+    const result = await Promise.race([
+      executeSerializableWithRetry<
+        | { kind: 'existing'; cliente: { id: string; nombre: string; telefono: string; offlineId: string | null; clienteId: string } }
+        | { kind: 'created'; cliente: { id: string; nombre: string; telefono: string; clienteId: string } }
+        | { kind: 'duplicate_phone'; existingNombre: string }
+      >(
+        async (tx) => {
         // 1. Dedup por offlineId
         if (parsed.data.offlineId) {
           const existente = await tx.cliente.findUnique({
@@ -305,7 +317,9 @@ export async function POST(request: NextRequest) {
         return { kind: 'created' as const, cliente: { ...cliente, clienteId: cliente.id } }
       },
       'clientes:create',
-    )
+    ),
+    timeoutPromise,
+  ])
 
     if (result.kind === 'duplicate_phone') {
       return apiError('Ya existe un cliente con ese teléfono', 409, {
@@ -337,6 +351,12 @@ export async function POST(request: NextRequest) {
 
     return apiSuccess({ cliente: result.cliente }, 201)
   } catch (error) {
+    if (error instanceof Error && error.message === 'DB_TIMEOUT') {
+      // La DB no respondió en 25s. Devolvemos 500 con mensaje claro para
+      // que el cliente no se quede esperando indefinidamente. El usuario
+      // puede reintentar cuando la DB vuelva a estar disponible.
+      return apiError('La base de datos tardó demasiado en responder. Reintentá en unos minutos.', 500)
+    }
     return apiError('Error creando cliente')
   }
 }
