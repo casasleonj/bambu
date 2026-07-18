@@ -31,10 +31,13 @@ export interface ResilientRequest {
 
 export type ResilientResult<T> =
   | { status: 'ok'; data: T; statusCode: number }
-  | { status: 'offline'; localId: string }
+  | { status: 'offline'; localId: string; reason: 'network' | 'timeout' }
   | { status: 'error'; error: string; statusCode: number }
 
 const DEFAULT_TIMEOUT_MS = 10_000
+// Para mutaciones de creación (POST) que pueden tardar >10s en Vercel Hobby
+// cold-start, los callers pasan `timeoutMs` para subir el AbortController.
+// El default se mantiene en 10s para no romper behaviour históric de GET.
 const MAX_QUEUE_SIZE = 500 // Backpressure: cap encolado para evitar unbounded growth
 
 function buildErrorDetails(error?: { formErrors?: string[]; fieldErrors?: Record<string, string[]> }): string {
@@ -113,7 +116,7 @@ function dispatchAuthExpired(url: string, statusCode: number, endpoint: string):
  */
 export async function fetchResilient<T = unknown>(
   url: string,
-  init: { method: 'POST' | 'PUT' | 'PATCH' | 'DELETE'; body?: unknown; localEndpoint: string }
+  init: { method: 'POST' | 'PUT' | 'PATCH' | 'DELETE'; body?: unknown; localEndpoint: string; timeoutMs?: number }
 ): Promise<ResilientResult<T>> {
   // Si el body trae offlineId (lo generan los hooks para dedup server-side),
   // lo extraemos y lo usamos también en la cola. Si no, generamos uno nuevo.
@@ -125,6 +128,7 @@ export async function fetchResilient<T = unknown>(
       : undefined
   const offlineId = bodyOfflineId ?? generateUUID()
   const method = init.method
+  const timeoutMs = init.timeoutMs ?? DEFAULT_TIMEOUT_MS
 
   if (!isResilientEnabled()) {
     // Modo rollback: fetch directo sin offline-first
@@ -132,7 +136,7 @@ export async function fetchResilient<T = unknown>(
   }
 
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS)
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
 
   try {
     const res = await fetch(url, {
@@ -175,6 +179,15 @@ export async function fetchResilient<T = unknown>(
     const isTimeout = err instanceof DOMException && err.name === 'AbortError'
 
     if (isNetworkError || isTimeout) {
+      // Distinguimos la causa del offline para que el caller pueda reaccionar:
+      //   - 'network': navigator.onLine=false o sin respuesta del DNS/TCP.
+      //     Encolar en IndexedDB es correcto (la request llegará cuando vuelva
+      //     la red y el sync la reintente).
+      //   - 'timeout': el AbortController disparó por superar timeoutMs.
+      //     El server pudo haber procesado la request — encolar duplica riesgo
+      //     de phantom enqueue. El caller debe decidir qué hacer (toast honesto /
+      //     Reintentar / Cancelar) en lugar de cerrar siempre como 'offline'
+      const reason: 'network' | 'timeout' = isTimeout ? 'timeout' : 'network'
       const { enqueued, queueSize } = await encolarResilient({
         url,
         method,
@@ -191,7 +204,7 @@ export async function fetchResilient<T = unknown>(
           statusCode: 0,
         }
       }
-      return { status: 'offline', localId: offlineId }
+      return { status: 'offline', localId: offlineId, reason }
     }
 
     // Otro error (programming error, etc.) — no encolar

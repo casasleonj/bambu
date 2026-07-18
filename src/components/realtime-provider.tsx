@@ -205,6 +205,15 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     const now = Date.now()
     if (now < rateLimitedUntilRef.current || now < disableRealtimeUntilRef.current) {
       if (isOnline()) startPolling()
+      // FIX: programar un reconnect tras el cooldown del circuit breaker.
+      // Sin esto, el SSE nunca se reconecta al expirar disableRealtimeUntilRef
+      // (o rateLimitedUntilRef) el provider queda permanentemente en polling
+      // si no hay otro disparador (visibilitychange / online event) — que en
+      // desktop pocas veces ocurre. El cooldown más largo define cuándo
+      // reintentar.
+      const cooldownUntil = Math.max(rateLimitedUntilRef.current, disableRealtimeUntilRef.current)
+      const reconnectDelay = Math.max(1_000, cooldownUntil - now)
+      scheduleReconnect(reconnectDelay)
       return
     }
     if (!isOnline()) {
