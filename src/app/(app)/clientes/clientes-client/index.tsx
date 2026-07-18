@@ -566,37 +566,47 @@ export default function ClientesClient({
       } else {
         // POST: usa fetchResilient para offline-first (repartidor field use).
         // Si la red falla durante la creación, encola automáticamente.
-        // Defensa adicional: nunca dejar el botón pegado más de 8s por si
-        // fetchResilient no resuelve (ej. Service Worker interfiriendo o red
-        // lenta que navigator.onLine reporta como online).
+        // IMPORTANTE: NO usar Promise.race con timeout 8s — Vercel Hobby
+        // cold-start + rural 2G/3G pueden tardar >10s legítimamente, y la
+        // race gana antes del AbortController, dejando fetchResilient
+        // colgado y produciendo phantom enqueue con toast engañoso
+        // "guardado en el celular" en desktop. El AbortController interno
+        // de fetchResilient sube a 60s para mutaciones, suficiente para
+        // cold-start + handshake TLS. El timeout real del server (Vercel
+        // maxDuration=60) cubre el resto.
         const offlineId = generateUUID()
-        const submitTimeoutMs = 8_000
-        const result = await Promise.race([
-          fetchResilient<{
-            success: boolean
-            deduped?: boolean
-            cliente?: { id: string; nombre: string; telefono: string; direccion?: string; barrio?: string; [key: string]: unknown }
-            error?: { message?: string; formErrors?: string[] }
-          }>('/api/clientes', {
-            method: 'POST',
-            body: { ...body, offlineId },
-            localEndpoint: 'crear-cliente',
-          }),
-          new Promise<
-            { status: 'timeout' }
-          >((resolve) => setTimeout(() => resolve({ status: 'timeout' }), submitTimeoutMs)),
-        ])
-
-        if (result.status === 'timeout') {
-          setSaving(false)
-          toast.info('La conexión tardó mucho. El cliente quedó guardado en el celular y se enviará cuando la red mejore.')
-          setShowModal(false)
-          return
-        }
+        const result = await fetchResilient<{
+          success: boolean
+          deduped?: boolean
+          cliente?: { id: string; nombre: string; telefono: string; direccion?: string; barrio?: string; [key: string]: unknown }
+          error?: { message?: string; formErrors?: string[] }
+        }>('/api/clientes', {
+          method: 'POST',
+          body: { ...body, offlineId },
+          localEndpoint: 'crear-cliente',
+          timeoutMs: 60_000, // cubre cold-start Vercel Hobby (~30-50s)
+        })
 
         if (result.status === 'offline') {
           setSaving(false)
-          toast.info('Sin conexión. Cliente guardado, se creará al recuperar la red.')
+          // Distinguir offline real (mobile sin señal) de timeout en
+          // desktop-online. En desktop-online el toast "guardado en el
+          // celular" es engañoso (no hay celular) y cierra el modal
+          // diciendo que todo OK cuando el cliente NO se guardó.
+          const isDesktopOnlineTimeout =
+            result.reason === 'timeout' && typeof navigator !== 'undefined' && navigator.onLine
+          if (isDesktopOnlineTimeout) {
+            // NO cerrar modal. Mostrar error inline + toast.error.
+            // El usuario decide: Reintentar (vuelve a clic Submit) o
+            // Cancelar. No se simula éxito.
+            setFormError('El servidor tardó demasiado en responder. El cliente NO fue guardado. Reintentá o volvé en unos minutos.')
+            toast.error('El servidor tardó demasiado. El cliente NO se guardó. Reintentá.')
+            return
+          }
+          // Offline real (mobile sin señal): toast info y modal-cierra
+          // como antes. La request queda en IndexedDB y se sincroniza
+          // cuando vuelve la conexión.
+          toast.info('Sin conexión. Cliente guardado localmente. Se creará al recuperar la red.')
           setShowModal(false)
           return
         }

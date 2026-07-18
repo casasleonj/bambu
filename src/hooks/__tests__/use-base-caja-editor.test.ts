@@ -116,6 +116,7 @@ describe('useBaseCajaEditor', () => {
     fetchResilientMock.mockResolvedValueOnce({
       status: 'offline',
       localId: 'uuid-1',
+      reason: 'network',
     })
 
     const { result } = renderHook(() => useBaseCajaEditor())

@@ -171,11 +171,16 @@ export function ConnectivityIndicator() {
     label = 'Offline'
     tooltip = 'No hay internet. Tus cambios se guardan en el celular y se enviarán cuando vuelva la señal.'
   } else if (realtimeDisabled) {
+    // El kill-switch env NEXT_PUBLIC_REALTIME_ENABLED=false apagó el SSE
+    // intencionalmente (deploy de emergencia para frenar costos Vercel).
+    // Esto NO significa "sin internet" ni "conexión rota": la app sigue
+    // funcionando, solo no recibe avisos en vivo entre pestañas.
+    // Etiqueta neutra, no alarmante, sin parpadeo.
     bg = 'bg-gray-500/20'
-    dot = 'bg-gray-400 shadow-gray-400/60'
+    dot = 'bg-gray-400'
     text = 'text-gray-100'
-    label = 'Desactivado'
-    tooltip = 'El canal en vivo está desactivado. La app sigue sincronizando manualmente.'
+    label = 'Tiempo real en pausa'
+    tooltip = 'Las actualizaciones en vivo están pausadas por el administrador. La app funciona normalmente, solo no recibís avisos automáticos entre pestañas.'
   } else if (isOpen) {
     bg = 'bg-emerald-500/20'
     dot = 'bg-emerald-400 shadow-emerald-400/60'
@@ -212,11 +217,16 @@ export function ConnectivityIndicator() {
     if (canSync) doSync(true)
   }
 
+  // El botón es hover/clickeable SIEMPRE (aunque no haya syncing pendiente)
+  // para que el usuario може explorar el tooltip y entender el estado.
+  // Solo `disabled` cuando syncing=true (evita doble-click).
+  const buttonDisabled = syncing
+
   return (
     <button
       type="button"
       onClick={handleClick}
-      disabled={!canSync}
+      disabled={buttonDisabled}
       title={tooltip}
       aria-label={
         canSync
@@ -227,7 +237,7 @@ export function ConnectivityIndicator() {
       data-pending-count={pendingCount}
       // FIX mobile UX: label oculto en <sm, touch target >=44px.
       className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-2.5 min-h-[44px] rounded-full ${bg} transition-colors duration-300 flex-shrink-0 ${
-        canSync ? 'cursor-pointer hover:brightness-110 active:scale-95' : 'cursor-default'
+        canSync ? 'cursor-pointer hover:brightness-110 active:scale-95' : 'cursor-pointer'
       }`}
     >
       <span className={`w-2 h-2 rounded-full ${dot} shadow-[0_0_6px_currentColor] transition-colors duration-300`} />
