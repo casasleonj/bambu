@@ -188,7 +188,7 @@ export default function ClientesClient({
       if (filtrosActivos.clienteConLink) {
         params.set('clienteConLink', 'true')
       }
-      const res = await fetchWithTimeout(`/api/clientes?${params.toString()}`, {}, 10_000)
+      const res = await fetchWithTimeout(`/api/clientes?${params.toString()}`, {}, 30_000)
       if (!res.ok) throw new Error('Error al cargar clientes')
       const data = await res.json()
       setClientes(data.clientes || data.data || [])

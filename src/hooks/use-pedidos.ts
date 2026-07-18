@@ -81,11 +81,13 @@ export function usePedidos(
     setError(null)
 
     // Mobile networks (2g/3g) can leave fetch requests hanging indefinitely.
-    // Enforce a 10s timeout so callers can surface a retry UI instead of a
-    // permanent skeleton.
+    // Vercel Hobby cold-start + proxy rate-limit + DB queries pueden tardar
+    // >10s legítimamente incluso en desktop. 30s cubre cold-start severo
+    // (~25s) sin ser tan largo como para frustrar al usuario. El caller
+    // puede mostrar un retry UI si expira.
     const timeoutId = setTimeout(() => {
       controller.abort()
-    }, 10_000)
+    }, 30_000)
 
     try {
       const url = buildUrl()
