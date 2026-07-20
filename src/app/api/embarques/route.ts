@@ -11,8 +11,7 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { EmbarqueCreateSchema } from '@/lib/validators'
-import { getTodayRange } from '@/lib/dates'
-import { startOfDayInBogota, endOfDayInBogota } from '@/lib/date-helpers'
+import { getTodayRange, buildDateRangeFilter } from '@/lib/dates'
 import { logAudit } from '@/lib/audit'
 import { calcularPesoDesdeCarga, getCapacidadInfo, type CargaSnapshot } from '@/lib/embarque-capacidad'
 import { emptyStock } from '@/lib/stock'
@@ -101,8 +100,9 @@ export async function GET(request: NextRequest) {
     }
 
     if (!(all === 'true')) {
-      if (desde && hasta) {
-        where.fecha = { gte: startOfDayInBogota(desde), lte: endOfDayInBogota(hasta) }
+      const dateFilter = buildDateRangeFilter(desde, hasta)
+      if (dateFilter) {
+        where.fecha = dateFilter
       } else {
         const { startOfDay, endOfDay } = getTodayRange()
         where.fecha = { gte: startOfDay, lt: endOfDay }

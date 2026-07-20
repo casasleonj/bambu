@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { CompraCreateSchema } from '@/lib/validators'
 import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
-import { getDateRange } from '@/lib/dates'
+import { buildDateRangeFilter } from '@/lib/dates'
 import { withAdvisoryLock } from '@/lib/locks'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
@@ -21,12 +21,11 @@ export async function GET(request: NextRequest) {
     const all = request.nextUrl.searchParams.get('all')
 
     let where: Record<string, unknown> = {}
-    if (desde && hasta) {
-      const { startDate, endDate } = getDateRange(desde, hasta)
-      where = { fecha: { gte: startDate, lt: endDate } }
-    }
-    if (all === 'true') {
-      where = {}
+    if (all !== 'true') {
+      const dateFilter = buildDateRangeFilter(desde, hasta)
+      if (dateFilter) {
+        where = { fecha: dateFilter }
+      }
     }
 
     const prismaPagination = getPrismaPagination(pagination)

@@ -5,7 +5,7 @@ import { requireAuth, requireRole } from '@/lib/auth-check'
 import { FacturaCreateSchema } from '@/lib/validators'
 import { getNextNumero } from '@/lib/sequence'
 import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
-import { getDateRange } from '@/lib/dates'
+import { buildDateRangeFilter } from '@/lib/dates'
 import { logAudit } from '@/lib/audit'
 import { withAdvisoryLock } from '@/lib/locks'
 import type { Factura } from '@prisma/client'
@@ -28,12 +28,11 @@ export async function GET(request: NextRequest) {
     const all = searchParams.get('all')
 
     let where: Record<string, unknown> = pendiente ? { saldo: { gt: 0 } } : {}
-    if (desde && hasta) {
-      const { startDate, endDate } = getDateRange(desde, hasta)
-      where.fecha = { gte: startDate, lt: endDate }
-    }
-    if (all === 'true') {
-      delete where.fecha
+    if (all !== 'true') {
+      const dateFilter = buildDateRangeFilter(desde, hasta)
+      if (dateFilter) {
+        where.fecha = dateFilter
+      }
     }
     const prismaPagination = getPrismaPagination(pagination)
 
