@@ -272,16 +272,16 @@ export class Pedido {
    * created the NotaCredito with `monto = updated.total.toDecimal() = 0`.
    * Customers who had paid for a pedido lost their refund silently.
    *
-   * Now: we return the original total in the result so the use case can
-   * build the NotaCredito with the correct amount.
+   * Now: we return the amount actually paid (`totalPagado`) so the use case
+   * creates the NotaCredito only for money that was actually received.
    */
-  cancelar(): { tuvoPagos: boolean; totalOriginal: number } {
+  cancelar(): { tuvoPagos: boolean; totalPagado: number } {
     if (!this.puedeCancelar()) {
       throw new Error(`No se puede cancelar pedido ${this.id.get()} en estado ${this.estadoEntrega.get()}`)
     }
 
     const tuvoPagos = this.props.totalPagado.cents > 0
-    const totalOriginal = this.props.total.toDecimal()
+    const totalPagado = this.props.totalPagado.toDecimal()
 
     this.props = {
       ...this.props,
@@ -291,18 +291,19 @@ export class Pedido {
       total: new Money(0),
     }
 
-    return { tuvoPagos, totalOriginal }
+    return { tuvoPagos, totalPagado }
   }
 
   /**
    * Mark as ANULADO (only from ENTREGADO). Resets totals.
    */
-  anular(): boolean {
+  anular(): { tuvoPagos: boolean; totalPagado: number } {
     if (!this.puedeAnular()) {
       throw new Error(`Solo se pueden anular pedidos ENTREGADOS. Estado actual: ${this.estadoEntrega.get()}`)
     }
 
     const tuvoPagos = this.props.totalPagado.cents > 0
+    const totalPagado = this.props.totalPagado.toDecimal()
 
     this.props = {
       ...this.props,
@@ -311,7 +312,7 @@ export class Pedido {
       totalPagado: new Money(0),
     }
 
-    return tuvoPagos
+    return { tuvoPagos, totalPagado }
   }
 
   /**

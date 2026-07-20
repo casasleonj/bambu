@@ -37,7 +37,7 @@ export class AnularPedidoUseCase {
         }
       }
 
-      const tuvoPagos = pedido.anular()
+      const { tuvoPagos, totalPagado } = pedido.anular()
 
       const updated = await this.pedidoRepo.update(pedido, tx)
 
@@ -48,13 +48,15 @@ export class AnularPedidoUseCase {
       // factura es parte de la misma transacción.
       await this.facturaRepo.anularByPedidoId(pedido.id.get(), tx)
 
-      // Create nota crédito if there were payments
+      // Create nota crédito if there were payments.
+      // FIX: usar totalPagado (lo efectivamente cobrado), no updated.total
+      // que puede incluir fiado no pagado.
       if (tuvoPagos) {
         const nextNum = await getNextNumero(tx, { model: 'notaCredito' })
         await this.notaCreditoRepo.create({
           numero: `NC-${nextNum.toString().padStart(5, '0')}`,
           pedidoId: pedido.id.get(),
-          monto: updated.total.toDecimal(),
+          monto: totalPagado,
           motivo: input.motivo || 'ANULADO',
         }, tx)
       }
