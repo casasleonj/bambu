@@ -69,7 +69,16 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
       const trabajadoresJson = await trabajadoresRes.json()
       const rutasJson = await rutasRes.json()
       const stockJson = await fetch('/api/stock-estimado', { credentials: 'include' }).then(r => r.json())
-      const stockData = await fetch('/api/embarques?all=true&stock=true', { credentials: 'include' }).then(r => r.json())
+      // FIX prod-performance: evitar la llamada pesada `all=true&stock=true` en
+      // cada cambio de filtro. El stock bajo solo importa para la vista default
+      // (hoy); se recalcula cuando no hay rango activo (initial load + polling).
+      if (!dateRange.desde && !dateRange.hasta) {
+        const stockData = await fetch('/api/embarques?all=true&stock=true', { credentials: 'include' }).then(r => r.json())
+        if (stockData.stock) {
+          const totalStock = (stockData.stock.PACA_AGUA || 0) + (stockData.stock.PACA_HIELO || 0)
+          setStockBajo(totalStock < 50)
+        }
+      }
 
       setEmbarques(embarquesJson.embarques || embarquesJson.data || [])
       setTrabajadores(trabajadoresJson.trabajadores || [])
@@ -77,10 +86,6 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
       if (stockJson.data?.estimado) {
         setStockEstimado(stockJson.data.estimado)
         setBannerDismissed(false)
-      }
-      if (stockData.stock) {
-        const totalStock = (stockData.stock.PACA_AGUA || 0) + (stockData.stock.PACA_HIELO || 0)
-        setStockBajo(totalStock < 50)
       }
     } catch {
       setFetchError('No se pudieron cargar los embarques')
@@ -283,12 +288,13 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
 
       <div className="bg-white p-4 rounded-xl shadow mb-4">
         <DateRangeFilter onDateChange={handleDateChange} />
-        <div className="flex gap-2 mt-3">
+        <div className="flex flex-wrap gap-2 mt-3">
           {[
             { key: '', label: 'Todos' },
             { key: 'ABIERTO', label: 'Abiertos' },
             { key: 'EN_RUTA', label: 'En Ruta' },
             { key: 'CERRADO', label: 'Cerrados' },
+            { key: 'CANCELADO', label: 'Cancelados' },
           ].map(({ key, label }) => (
             <button
               key={key}
