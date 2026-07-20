@@ -1,5 +1,5 @@
 import { prisma } from './prisma'
-import { getTodayRange } from './dates'
+import { getTodayRange, getTodayString } from './dates'
 import { EstadoEmbarque } from '@prisma/client'
 
 export interface StockSnapshot {
@@ -35,7 +35,7 @@ export async function getStockEstimadoHoy(): Promise<StockEstimado | null> {
 
   try {
     const data = JSON.parse(config.valor) as StockEstimado
-    const today = new Date().toISOString().split('T')[0]
+    const today = getTodayString()
     if (data.fecha !== today) return null
     return data
   } catch {

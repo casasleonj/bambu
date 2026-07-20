@@ -118,10 +118,8 @@ export default function FacturasPage() {
     setLoading(true)
     try {
       const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
-      if (dateRange.desde && dateRange.hasta) {
-        query.set('desde', dateRange.desde)
-        query.set('hasta', dateRange.hasta)
-      }
+      if (dateRange.desde) query.set('desde', dateRange.desde)
+      if (dateRange.hasta) query.set('hasta', dateRange.hasta)
       const res = await fetch(`/api/facturas?${query.toString()}`)
       const data = await res.json()
       setFacturas(data.data || data.facturas || [])

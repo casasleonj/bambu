@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { GastoCreateSchema } from '@/lib/validators'
 import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
-import { getDateRange } from '@/lib/dates'
+import { buildDateRangeFilter } from '@/lib/dates'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
@@ -27,15 +27,12 @@ export async function GET(request: NextRequest) {
     let where: Record<string, unknown> = {}
     if (all === 'true') {
       where = {}
-    } else if (desde && hasta) {
-      const { startDate, endDate } = getDateRange(desde, hasta)
-      where = { fecha: { gte: startDate, lt: endDate } }
-    } else if (fecha) {
-      where = {
-        fecha: {
-          gte: new Date(`${fecha}T00:00:00.000Z`),
-          lt: new Date(`${fecha}T23:59:59.999Z`),
-        },
+    } else {
+      const dateFilter = buildDateRangeFilter(desde, hasta)
+      if (dateFilter) {
+        where = { fecha: dateFilter }
+      } else if (fecha) {
+        where = { fecha: buildDateRangeFilter(fecha, fecha) }
       }
     }
 

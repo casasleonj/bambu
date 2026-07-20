@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
 import { apiSuccess, apiError } from '@/lib/api-response'
+import { buildDateRangeFilter } from '@/lib/dates'
 import {
   calcularKpiGeneral,
   calcularStatsPorTrabajador,
@@ -49,11 +50,9 @@ export async function GET(request: NextRequest) {
       where.rutaId = rutaId
     }
 
-    if (desde && hasta) {
-      const startDate = new Date(desde)
-      const endDate = new Date(hasta)
-      endDate.setDate(endDate.getDate() + 1)
-      where.fecha = { gte: startDate, lt: endDate }
+    const dateFilter = buildDateRangeFilter(desde, hasta)
+    if (dateFilter) {
+      where.fecha = dateFilter
     }
 
     const embarquesRaw = await prisma.embarque.findMany({

@@ -101,7 +101,8 @@ export const navSections: NavSection[] = [
       ]},
       { href: '/nomina', label: 'Nómina', icon: 'users-round', requiredPermission: 'view:nomina' },
       { href: '/reportes', label: 'Reportes', icon: 'chart-line', requiredPermission: 'view:reportes', subItems: [
-        { href: '/reportes', label: 'Reportes', icon: 'chart-line', requiredPermission: 'view:reportes' },
+        { href: '/reportes', label: 'Resumen', icon: 'chart-line', requiredPermission: 'view:reportes' },
+        { href: '/reportes/ventas', label: 'Ventas', icon: 'chart-line', requiredPermission: 'view:reportes' },
         { href: '/reportes/forecast', label: 'Forecast producción', icon: 'chart-line', requiredPermission: 'view:reportes' },
         { href: '/reportes/salud-antifraude', label: 'Salud antifraude', icon: 'shield', requiredPermission: 'view:reportes' },
         { href: '/sugerencias', label: 'Sugerencias llamadas', icon: 'phone', requiredPermission: 'view:reportes' },

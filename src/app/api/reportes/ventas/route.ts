@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
     const pagination = all ? { all: true } : { page: page ?? 1, pageSize: pageSize ?? 10 }
     const prismaPagination = getPrismaPagination(pagination)
 
-    const [pedidos, total] = await Promise.all([
+    const [pedidos, total, ventasAgg, pagosPorMetodo] = await Promise.all([
       prisma.pedido.findMany({
         where,
         include: { cliente: true, pagos: true },
@@ -66,29 +66,52 @@ export async function GET(request: NextRequest) {
         ...prismaPagination,
       }),
       prisma.pedido.count({ where }),
+      prisma.pedido.aggregate({
+        where,
+        _sum: {
+          total: true,
+          totalPagado: true,
+          cPacaAguaPed: true,
+          cPacaHieloPed: true,
+          cBotellonFabPed: true,
+          cBotellonDomPed: true,
+          cBolsaAguaPed: true,
+          cBolsaHieloPed: true,
+        },
+      }),
+      prisma.pago.groupBy({
+        by: ['metodo'],
+        where: {
+          pedido: {
+            fecha: dateFilter,
+            estado: { not: EstadoPedido.CANCELADO },
+          },
+        },
+        _sum: { monto: true },
+      }),
     ])
+
+    const fiadoAgg = await prisma.pedido.aggregate({
+      where: { ...where, saldo: { gt: 0 } },
+      _sum: { saldo: true },
+    })
 
     const resumen = {
       totalPedidos: total,
-      totalVentas: pedidos.reduce((sum, p) => sum + Number(p.total), 0),
-      totalPagado: pedidos.reduce((sum, p) => sum + Number(p.totalPagado || 0), 0),
-      totalFiado: pedidos.reduce((sum, p) => sum + (Number(p.saldo) > 0 ? Number(p.saldo) : 0), 0),
+      totalVentas: Number(ventasAgg._sum.total ?? 0),
+      totalPagado: Number(ventasAgg._sum.totalPagado ?? 0),
+      totalFiado: Number(fiadoAgg._sum.saldo ?? 0),
       porProducto: {
-        pacaAgua: pedidos.reduce((sum, p) => sum + p.cPacaAguaPed, 0),
-        pacaHielo: pedidos.reduce((sum, p) => sum + p.cPacaHieloPed, 0),
-        botellonFab: pedidos.reduce((sum, p) => sum + p.cBotellonFabPed, 0),
-        botellonDom: pedidos.reduce((sum, p) => sum + p.cBotellonDomPed, 0),
-        bolsaAgua: pedidos.reduce((sum, p) => sum + p.cBolsaAguaPed, 0),
-        bolsaHielo: pedidos.reduce((sum, p) => sum + p.cBolsaHieloPed, 0),
+        pacaAgua: Number(ventasAgg._sum.cPacaAguaPed ?? 0),
+        pacaHielo: Number(ventasAgg._sum.cPacaHieloPed ?? 0),
+        botellonFab: Number(ventasAgg._sum.cBotellonFabPed ?? 0),
+        botellonDom: Number(ventasAgg._sum.cBotellonDomPed ?? 0),
+        bolsaAgua: Number(ventasAgg._sum.cBolsaAguaPed ?? 0),
+        bolsaHielo: Number(ventasAgg._sum.cBolsaHieloPed ?? 0),
       },
-      porMetodoPago: {} as Record<string, number>,
-    }
-
-    for (const pedido of pedidos) {
-      for (const pago of pedido.pagos) {
-        const metodo = pago.metodo
-        resumen.porMetodoPago[metodo] = (resumen.porMetodoPago[metodo] || 0) + Number(pago.monto)
-      }
+      porMetodoPago: Object.fromEntries(
+        pagosPorMetodo.map((p) => [p.metodo, Number(p._sum.monto ?? 0)])
+      ),
     }
 
     return apiSuccess(

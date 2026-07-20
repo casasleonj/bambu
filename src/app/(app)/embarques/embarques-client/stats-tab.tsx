@@ -81,10 +81,8 @@ export function StatsTab({ dateRange }: StatsTabProps) {
       setLoading(true)
       setError(null)
       const params = new URLSearchParams()
-      if (dateRange.desde && dateRange.hasta) {
-        params.set('desde', dateRange.desde)
-        params.set('hasta', dateRange.hasta)
-      }
+      if (dateRange.desde) params.set('desde', dateRange.desde)
+      if (dateRange.hasta) params.set('hasta', dateRange.hasta)
 
       const res = await fetch(`/api/embarques/stats?${params.toString()}`, {
         credentials: 'include',

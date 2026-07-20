@@ -5,7 +5,7 @@ import * as Sentry from '@sentry/nextjs'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { PedidoCreateSchema } from '@/lib/validators'
 import { getPaginationParams, buildPaginationResponse } from '@/lib/pagination'
-import { getTodayRange, getDateRange } from '@/lib/dates'
+import { getTodayRange, buildDateRangeFilter } from '@/lib/dates'
 import { ROLES } from '@/lib/constants'
 import { getAnonymousClientDisplayName } from '@/lib/cliente-canonical'
 import { apiSuccess, apiError } from '@/lib/api-response'
@@ -60,14 +60,16 @@ export async function GET(request: NextRequest) {
       if (session.user?.role !== 'REPARTIDOR') {
         // No filter
       }
-    } else if (desde && hasta) {
-      const { startDate, endDate } = getDateRange(desde, hasta)
-      filter.desde = startDate
-      filter.hasta = endDate
     } else {
-      const { startOfDay, endOfDay } = getTodayRange()
-      filter.desde = startOfDay
-      filter.hasta = endOfDay
+      const dateFilter = buildDateRangeFilter(desde, hasta)
+      if (dateFilter) {
+        if (dateFilter.gte) filter.desde = dateFilter.gte
+        if (dateFilter.lte) filter.hasta = dateFilter.lte
+      } else {
+        const { startOfDay, endOfDay } = getTodayRange()
+        filter.desde = startOfDay
+        filter.hasta = endOfDay
+      }
     }
 
     if (clienteFilter) {

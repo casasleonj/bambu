@@ -55,6 +55,30 @@ export function endOfDayBogota(fechaStr?: string): Date {
   return new Date(`${dateStr}T23:59:59.999-05:00`)
 }
 
+export type DateRangeFilter = { gte?: Date; lte?: Date }
+
+/**
+ * Construye un filtro Prisma >=/<= a partir de fechas opcionales `desde`/`hasta`
+ * en zona Bogotá. Soporta rangos parciales (solo desde, solo hasta) y devuelve
+ * `undefined` si no hay ninguna fecha.
+ *
+ * Uso típico:
+ *   where: { fecha: buildDateRangeFilter(desde, hasta) }
+ */
+export function buildDateRangeFilter(
+  desde?: string | null,
+  hasta?: string | null
+): DateRangeFilter | undefined {
+  const hasDesde = typeof desde === 'string' && desde.trim() !== ''
+  const hasHasta = typeof hasta === 'string' && hasta.trim() !== ''
+  if (!hasDesde && !hasHasta) return undefined
+
+  const filter: DateRangeFilter = {}
+  if (hasDesde) filter.gte = startOfDayBogota(desde!.trim())
+  if (hasHasta) filter.lte = endOfDayBogota(hasta!.trim())
+  return filter
+}
+
 export function getNextBusinessDay(date: Date = new Date()): Date {
   const tomorrow = new Date(date)
   tomorrow.setDate(tomorrow.getDate() + 1)

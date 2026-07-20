@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ReportesFilter } from './reportes-filter'
-import { startOfDayInBogota, endOfDayInBogota } from '@/lib/date-helpers'
+import { startOfDayBogota, endOfDayBogota, getTodayString } from '@/lib/dates'
 import { requirePagePermission } from '@/lib/auth-guard'
 
 function formatCOP(value: number): string {
@@ -13,11 +13,11 @@ export default async function ReportesPage({ searchParams }: { searchParams: Pro
 
   const params = await searchParams
 
-  const today = new Date().toISOString().split('T')[0]
+  const today = getTodayString()
   const start = params.start || today
   const end = params.end || start
-  const startDate = startOfDayInBogota(start)
-  const endDate = endOfDayInBogota(end)
+  const startDate = startOfDayBogota(start)
+  const endDate = endOfDayBogota(end)
 
   const dateRange = { gte: startDate, lte: endDate }
 

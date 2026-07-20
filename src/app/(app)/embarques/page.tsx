@@ -1,9 +1,10 @@
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
-import { unstable_cache } from 'next/cache'
 import EmbarquesClient from './embarques-client'
 import { calcularPacasEmbarque, calcularPesoEmbarque, getCapacidadInfo, PESOS_KG } from '@/lib/embarque-capacidad'
 import { getStockEstimadoHoy, getStockDisponible } from '@/lib/stock'
+import { EstadoEmbarque } from '@prisma/client'
+import { getTodayRange } from '@/lib/dates'
 
 export default async function EmbarquesPage() {
   const authResult = await requireAuth()
@@ -15,35 +16,36 @@ export default async function EmbarquesPage() {
   // FIX prod-performance: limitar listado inicial a 100 embarques recientes.
   // El detalle de un embarque específico carga sus pedidos completos en su
   // propia página (/embarques/[id]).
-  // FIX prod-performance: cachear listado de embarques por 60s.
-  const getEmbarquesCached = unstable_cache(
-    async () =>
-      prisma.embarque.findMany({
-        orderBy: [{ fecha: 'desc' }, { numeroDia: 'desc' }],
-        take: 100,
-        include: {
-          trabajador: true,
-          ruta: { select: { id: true, nombre: true } },
-          pedidos: {
-            select: {
-              id: true,
-              cPacaAguaPed: true,
-              cPacaHieloPed: true,
-              cBotellonFabPed: true,
-              cBotellonDomPed: true,
-              cBolsaAguaPed: true,
-              cBolsaHieloPed: true,
-            },
-          },
-          productos: true,
-        },
-      }),
-    ['embarques-list'],
-    { revalidate: 60, tags: ['embarques-list'] }
-  )
+  // FIX SSR: la vista default es "hoy + no cancelados" para coincidir con el
+  // cliente. No usar cache con key estático para evitar datos stale entre días.
+  const { startOfDay, endOfDay } = getTodayRange()
+  const where = {
+    estado: { not: EstadoEmbarque.CANCELADO },
+    fecha: { gte: startOfDay, lt: endOfDay },
+  }
 
   const [embarques, trabajadores, rutas, stockEstimado, stockDisponible] = await Promise.all([
-    getEmbarquesCached(),
+    prisma.embarque.findMany({
+      where,
+      orderBy: [{ fecha: 'desc' }, { numeroDia: 'desc' }],
+      take: 100,
+      include: {
+        trabajador: true,
+        ruta: { select: { id: true, nombre: true } },
+        pedidos: {
+          select: {
+            id: true,
+            cPacaAguaPed: true,
+            cPacaHieloPed: true,
+            cBotellonFabPed: true,
+            cBotellonDomPed: true,
+            cBolsaAguaPed: true,
+            cBolsaHieloPed: true,
+          },
+        },
+        productos: true,
+      },
+    }),
     prisma.trabajador.findMany({
       where: { rol: 'REPARTIDOR', activo: true, usaMoto: true },
     }),

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { evaluarStock, emptyStock, getStockDisponible, getStockEstimadoHoy } from '@/lib/stock'
+import { getTodayString } from '@/lib/dates'
 import { prisma } from '@/lib/prisma'
 
 vi.mock('@/lib/prisma', () => ({
@@ -17,6 +18,7 @@ vi.mock('@/lib/dates', () => ({
     startOfDay: new Date('2026-05-26T00:00:00Z'),
     endOfDay: new Date('2026-05-27T00:00:00Z'),
   }),
+  getTodayString: () => '2026-05-26',
 }))
 
 const mockPrisma = prisma as unknown as {
@@ -129,7 +131,7 @@ describe('getStockEstimadoHoy', () => {
   })
 
   it('returns estimated stock when config exists for today', async () => {
-    const today = new Date().toISOString().split('T')[0]
+    const today = getTodayString()
     mockPrisma.config.findUnique.mockResolvedValue({
       clave: 'stock_estimado_hoy',
       valor: JSON.stringify({ agua: 50, hielo: 30, fecha: today }),
@@ -154,7 +156,7 @@ describe('getStockDisponible with estimated stock', () => {
       stockFinAgua: 5,
       stockFinHielo: 3,
     })
-    const today = new Date().toISOString().split('T')[0]
+    const today = getTodayString()
     mockPrisma.config.findUnique.mockResolvedValue({
       clave: 'stock_estimado_hoy',
       valor: JSON.stringify({ agua: 50, hielo: 30, fecha: today }),
@@ -172,7 +174,7 @@ describe('getStockDisponible with estimated stock', () => {
       stockFinAgua: 100,
       stockFinHielo: 80,
     })
-    const today = new Date().toISOString().split('T')[0]
+    const today = getTodayString()
     mockPrisma.config.findUnique.mockResolvedValue({
       clave: 'stock_estimado_hoy',
       valor: JSON.stringify({ agua: 50, hielo: 30, fecha: today }),
@@ -204,7 +206,7 @@ describe('evaluarStock with estimated stock', () => {
       stockFinAgua: 5,
       stockFinHielo: 3,
     })
-    const today = new Date().toISOString().split('T')[0]
+    const today = getTodayString()
     mockPrisma.config.findUnique.mockResolvedValue({
       clave: 'stock_estimado_hoy',
       valor: JSON.stringify({ agua: 50, hielo: 30, fecha: today }),

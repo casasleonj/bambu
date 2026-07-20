@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
 import { formatCurrency } from '@/lib/utils'
+import { getTodayString } from '@/lib/dates'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -26,12 +27,10 @@ export default function GastosPage() {
   const fetchGastos = useCallback(async () => {
     try {
       const params = new URLSearchParams()
-      if (dateRange.desde && dateRange.hasta) {
-        params.set('desde', dateRange.desde)
-        params.set('hasta', dateRange.hasta)
-      } else {
-        const today = new Date().toISOString().split('T')[0]
-        params.set('fecha', today)
+      if (dateRange.desde) params.set('desde', dateRange.desde)
+      if (dateRange.hasta) params.set('hasta', dateRange.hasta)
+      if (!dateRange.desde && !dateRange.hasta) {
+        params.set('fecha', getTodayString())
       }
       const res = await fetch(`/api/gastos?${params.toString()}`)
       const data = await res.json()
