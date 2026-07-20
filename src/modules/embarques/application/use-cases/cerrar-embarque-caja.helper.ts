@@ -38,12 +38,11 @@ export function coleccionarPagos(
 export function calcularCajaFinal(
   cierreService: CierreEmbarqueService,
   baseDinero: number,
-  totalVentas: number,
   pagos: Array<{ metodo: string; monto: number }>,
   gastosTotal: number,
   dineroEntregado: number,
 ) {
-  const cajaCalc = cierreService.calcularCaja(totalVentas, pagos, baseDinero, gastosTotal)
+  const cajaCalc = cierreService.calcularCaja(pagos, baseDinero, gastosTotal)
   return {
     efectivoEsperado: cajaCalc.efectivoEsperado,
     efectivoReal: cajaCalc.efectivoReal,

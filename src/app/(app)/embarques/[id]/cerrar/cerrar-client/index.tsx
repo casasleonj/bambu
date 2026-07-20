@@ -332,7 +332,9 @@ export default function CerrarEmbarqueClient() {
 
     const totalGastos = gastos.reduce((s, g) => s + g.monto, 0)
     const totalEfectivoRecibido = calcularEfectivoRecibido()
-    const efectivoEsperado = totalCobrado - totalFiado - (totalCobrado - totalEfectivoRecibido)
+    // El efectivo esperado es solo lo cobrado en efectivo; fiado y pagos
+    // electrónicos no son dinero físico que el repartidor debe entregar.
+    const efectivoEsperado = totalEfectivoRecibido
     const debeEntregar = efectivoEsperado - totalGastos + (embarque.baseDinero || 0)
     const faltanteSobrante = dineroEntregado - debeEntregar
     const faltanteEfectivo = faltanteSobrante < 0 ? Math.abs(faltanteSobrante) : 0

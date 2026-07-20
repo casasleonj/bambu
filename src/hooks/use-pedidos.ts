@@ -6,7 +6,6 @@
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { toast } from 'sonner'
 
 export interface PedidoFilterParams {
   desde?: string
@@ -48,6 +47,7 @@ export function usePedidos(
   const abortRef = useRef<AbortController | null>(null)
   const didInitialFetchRef = useRef(false)
   const lastParamsKeyRef = useRef<string>('')
+  const requestIdRef = useRef(0)
 
   const paramsKey = useMemo(() => JSON.stringify({
     ...params,
@@ -72,10 +72,15 @@ export function usePedidos(
   }, [params, options?.all])
 
   const fetchPedidos = useCallback(async () => {
-    // Cancel previous request
+    // Cancel previous request and mark this generation as current.
     if (abortRef.current) abortRef.current.abort()
     const controller = new AbortController()
     abortRef.current = controller
+    const requestId = ++requestIdRef.current
+    const isCurrent = () => requestIdRef.current === requestId
+
+    // If a newer request already started while we were setting up, bail out.
+    if (!isCurrent()) return
 
     setLoading(true)
     setError(null)
@@ -96,28 +101,30 @@ export function usePedidos(
         signal: controller.signal,
       })
       clearTimeout(timeoutId)
+      if (!isCurrent()) return
       const data = await res.json()
+      if (!isCurrent()) return
       if (data.success) {
         setPedidos(data.pedidos || data.data || [])
         setTotal(data.total || 0)
         setHasLoadedOnce(true)
+        setError(null)
       } else {
         setError(data.error?.message || 'Error cargando pedidos')
       }
     } catch (err) {
       clearTimeout(timeoutId)
+      if (!isCurrent()) return
       if (err instanceof Error && err.name === 'AbortError') {
         // Fetch was aborted by the timeout above or by a newer request/filter change.
         // Surface a retry-friendly message without generic error noise.
         setError('La carga está tardando demasiado. Reintenta.')
-        setLoading(false)
         return
       }
       console.error('Error fetching pedidos:', err)
       setError('No se pudieron cargar los pedidos')
-      toast.error('Error cargando pedidos')
     } finally {
-      setLoading(false)
+      if (isCurrent()) setLoading(false)
     }
   }, [buildUrl])
 

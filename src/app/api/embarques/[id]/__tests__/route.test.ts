@@ -216,3 +216,23 @@ describe('F-N22: race en asignación de pedidos a embarques distintos', () => {
     expect(putSource).toMatch(/FIX F-N22/)
   })
 })
+
+describe('FIX: DELETE solo cancela embarques ABIERTO y no resetea ENTREGADO', () => {
+  const deleteStart = source.indexOf('export async function DELETE')
+  const deleteSource = source.substring(deleteStart)
+
+  it('FIX: rechaza cancelar si estado no es ABIERTO', () => {
+    expect(deleteSource).toMatch(/embarque\.estado !== 'ABIERTO'/)
+    expect(deleteSource).toMatch(/EMBARQUE_NO_CANCELABLE/)
+  })
+
+  it('FIX: el catch mapea EMBARQUE_NO_CANCELABLE a 400', () => {
+    expect(deleteSource).toMatch(/EMBARQUE_NO_CANCELABLE/)
+    expect(deleteSource).toMatch(/Solo se pueden cancelar embarques abiertos/)
+    expect(deleteSource).toMatch(/400/)
+  })
+
+  it('FIX: updateMany de pedidos excluye ENTREGADO', () => {
+    expect(deleteSource).toMatch(/estadoEntrega:\s*\{\s*not:\s*'ENTREGADO'\s*\}/)
+  })
+})

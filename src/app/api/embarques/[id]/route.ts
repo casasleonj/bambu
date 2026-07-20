@@ -449,20 +449,23 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
         throw new Error('EMBARQUE_NOT_FOUND')
       }
 
-      if (embarque.estado === 'CERRADO') {
-        throw new Error('EMBARQUE_CERRADO')
-      }
-
       // Offline-first: dedup — si el embarque ya está CANCELADO, devolver OK
       // (idempotente, no se re-asignan pedidos a PENDIENTE).
       if (embarque.estado === 'CANCELADO') {
         return { deduped: true as const, embarque }
       }
 
-      // Unassign all pedidos and return them to PENDIENTE
+      // Solo embarques ABIERTOS pueden cancelarse. EN_RUTA/CERRADO ya tienen
+      // pedidos entregados o cierre contable; cancelarlos corrompería estado.
+      if (embarque.estado !== 'ABIERTO') {
+        throw new Error('EMBARQUE_NO_CANCELABLE')
+      }
+
+      // Unassign pedidos that have not been delivered yet. ENTREGADO pedidos
+      // must keep their state; resetting them would corrupt delivery history.
       if (embarque.pedidos.length > 0) {
         await tx.pedido.updateMany({
-          where: { embarqueId: id },
+          where: { embarqueId: id, estadoEntrega: { not: 'ENTREGADO' } },
           data: { embarqueId: null, estado: 'PENDIENTE', estadoEntrega: 'PENDIENTE' },
         })
       }
@@ -500,8 +503,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     if (error instanceof Error && error.message === 'EMBARQUE_NOT_FOUND') {
       return apiError('Embarque no encontrado', 404)
     }
-    if (error instanceof Error && error.message === 'EMBARQUE_CERRADO') {
-      return apiError('No se puede cancelar un embarque cerrado', 400)
+    if (error instanceof Error && error.message === 'EMBARQUE_NO_CANCELABLE') {
+      return apiError('Solo se pueden cancelar embarques abiertos', 400)
     }
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error canceling embarque:')
     return apiError('Error al cancelar embarque', 500)

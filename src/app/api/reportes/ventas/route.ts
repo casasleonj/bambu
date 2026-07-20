@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { EstadoPedido } from '@prisma/client'
 import { logger } from '@/lib/logger'
 import { apiSuccess, apiError } from '@/lib/api-response'
+import { startOfDayInBogota, endOfDayInBogota } from '@/lib/date-helpers'
 
 const ReporteVentasSchema = z.object({
   start: z.string().datetime().optional().or(z.string().date()),
@@ -14,6 +15,19 @@ const ReporteVentasSchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).optional(),
   all: z.coerce.boolean().optional(),
 })
+
+function toDateBoundary(value: string | undefined, boundary: 'start' | 'end'): Date {
+  if (!value) {
+    if (boundary === 'start') {
+      const d = new Date()
+      d.setDate(d.getDate() - 30)
+      return d
+    }
+    return new Date()
+  }
+  if (value.includes('T')) return new Date(value)
+  return boundary === 'start' ? startOfDayInBogota(value) : endOfDayInBogota(value)
+}
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -32,8 +46,8 @@ export async function GET(request: NextRequest) {
     const { start, end, page, pageSize, all } = validation.data
 
     const dateFilter = {
-      gte: start ? new Date(start) : new Date(new Date().setDate(new Date().getDate() - 30)),
-      lte: end ? new Date(end) : new Date(),
+      gte: toDateBoundary(start, 'start'),
+      lte: toDateBoundary(end, 'end'),
     }
 
     const where = {

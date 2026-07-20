@@ -145,7 +145,6 @@ export class CierreEmbarqueService {
    * el efectivo esperado por el monto de la base.
    */
   calcularCaja(
-    totalVentas: number,
     pagosRecibidos: Array<{ metodo: string; monto: number }>,
     baseDinero: number,
     gastos: number,
@@ -159,9 +158,10 @@ export class CierreEmbarqueService {
       .reduce((sum, p) => sum + p.monto, 0)
 
     // FIX C-4: incluir baseDinero en efectivoReal.
-    // El repartidor sale con base + cobra ventas - paga gastos.
-    // Si no contamos la base, el sistema cree que le falta dinero.
-    const efectivoReal = baseDinero + totalVentas - otrosPagos - gastos
+    // El repartidor sale con base + cobra ventas en efectivo - paga gastos.
+    // Los pagos no-efectivo (transferencias) no son efectivo físico que retorna,
+    // y las ventas a crédito/fiado tampoco. Por eso usamos efectivoEsperado.
+    const efectivoReal = baseDinero + efectivoEsperado - gastos
 
     return {
       efectivoEsperado,

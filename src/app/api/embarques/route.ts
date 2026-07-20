@@ -12,6 +12,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { EmbarqueCreateSchema } from '@/lib/validators'
 import { getTodayRange } from '@/lib/dates'
+import { startOfDayInBogota, endOfDayInBogota } from '@/lib/date-helpers'
 import { logAudit } from '@/lib/audit'
 import { calcularPesoDesdeCarga, getCapacidadInfo, type CargaSnapshot } from '@/lib/embarque-capacidad'
 import { emptyStock } from '@/lib/stock'
@@ -101,10 +102,7 @@ export async function GET(request: NextRequest) {
 
     if (!(all === 'true')) {
       if (desde && hasta) {
-        const s = new Date(desde)
-        const e = new Date(hasta)
-        e.setDate(e.getDate() + 1)
-        where.fecha = { gte: s, lt: e }
+        where.fecha = { gte: startOfDayInBogota(desde), lte: endOfDayInBogota(hasta) }
       } else {
         const { startOfDay, endOfDay } = getTodayRange()
         where.fecha = { gte: startOfDay, lt: endOfDay }

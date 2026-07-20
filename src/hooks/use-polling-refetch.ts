@@ -48,8 +48,6 @@ export function usePollingRefetch(
       }
     }
 
-    // First tick after a short delay so the page settles.
-    const initial = setTimeout(tick, 2_000)
     timer = setInterval(tick, intervalMs)
 
     const onVisibility = () => {
@@ -68,7 +66,6 @@ export function usePollingRefetch(
 
     return () => {
       cancelled = true
-      clearTimeout(initial)
       if (timer) clearInterval(timer)
       document.removeEventListener('visibilitychange', onVisibility)
       window.removeEventListener('online', onOnline)

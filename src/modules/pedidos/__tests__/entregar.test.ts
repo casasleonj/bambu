@@ -119,10 +119,11 @@ describe('Pedido.registrarPago', () => {
 describe('Pedido.anular', () => {
   it('cambia estado a ANULADO desde ENTREGADO', () => {
     const pedido = makePedido({ estadoEntrega: 'ENTREGADO' })
-    const tuvoPagos = pedido.anular()
+    const { tuvoPagos, totalPagado } = pedido.anular()
     expect(pedido.estadoEntrega.get()).toBe('ANULADO')
     expect(pedido.estadoPago.get()).toBe('ANULADO')
     expect(typeof tuvoPagos).toBe('boolean')
+    expect(typeof totalPagado).toBe('number')
   })
 
   it('rechaza anular desde PENDIENTE', () => {
@@ -130,11 +131,12 @@ describe('Pedido.anular', () => {
     expect(() => pedido.anular()).toThrow(/Solo se pueden anular/)
   })
 
-  it('retorna true en tuvoPagos si había pagos', () => {
+  it('retorna true en tuvoPagos y monto pagado si había pagos', () => {
     const pedido = makePedido({ estadoEntrega: 'ENTREGADO', total: 10000 })
     pedido.registrarPago({ metodo: 'EFECTIVO' as any, monto: 1000 })
-    const tuvoPagos = pedido.anular()
+    const { tuvoPagos, totalPagado } = pedido.anular()
     expect(tuvoPagos).toBe(true)
+    expect(totalPagado).toBe(1000)
   })
 })
 
@@ -144,7 +146,7 @@ describe('Pedido.cancelar', () => {
     const result = pedido.cancelar()
     expect(pedido.estadoEntrega.get()).toBe('CANCELADO')
     expect(typeof result.tuvoPagos).toBe('boolean')
-    expect(typeof result.totalOriginal).toBe('number')
+    expect(typeof result.totalPagado).toBe('number')
   })
 
   it('resetea totalPagado a 0 al cancelar', () => {
@@ -154,12 +156,12 @@ describe('Pedido.cancelar', () => {
     expect(pedido.totalPagado.toDecimal()).toBe(0)
   })
 
-  it('FIX C-BIZ-1: preserva totalOriginal para NotaCredito', () => {
+  it('FIX C-BIZ-1: preserva totalPagado para NotaCredito (solo lo cobrado)', () => {
     const pedido = makePedido({ estadoEntrega: 'PENDIENTE', total: 5000 })
-    pedido.registrarPago({ metodo: 'EFECTIVO' as any, monto: 5000 })
-    const { totalOriginal } = pedido.cancelar()
-    // Even though pedido.total is reset to 0, the original is preserved
-    expect(totalOriginal).toBe(5000)
+    pedido.registrarPago({ metodo: 'EFECTIVO' as any, monto: 3000 })
+    const { totalPagado } = pedido.cancelar()
+    // La NC debe ser solo por lo pagado, no por el total con fiado.
+    expect(totalPagado).toBe(3000)
     expect(pedido.total.toDecimal()).toBe(0)
   })
 })
