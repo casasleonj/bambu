@@ -56,10 +56,8 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
     try {
       setFetchError(null)
       const params = new URLSearchParams()
-      if (dateRange.desde && dateRange.hasta) {
-        params.set('desde', dateRange.desde)
-        params.set('hasta', dateRange.hasta)
-      }
+      if (dateRange.desde) params.set('desde', dateRange.desde)
+      if (dateRange.hasta) params.set('hasta', dateRange.hasta)
       if (filtroEstado) params.set('estado', filtroEstado)
       const [embarquesRes, trabajadoresRes, rutasRes] = await Promise.all([
         fetch(`/api/embarques?${params.toString()}`, { credentials: 'include' }),
