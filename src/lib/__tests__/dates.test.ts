@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getTodayRange, getDateRange, getYesterdayRange, getTodayString, getPresetDate, buildDateRangeFilter } from '@/lib/dates'
+import { getTodayRange, getDateRange, getYesterdayRange, getTodayString, getPresetDate, buildDateRangeFilter, parseDateParam } from '@/lib/dates'
 
 describe('getTodayRange', () => {
   it('returns an object with startOfDay and endOfDay keys', () => {
@@ -240,5 +240,44 @@ describe('buildDateRangeFilter', () => {
     const filter = buildDateRangeFilter(' 2024-06-01 ', ' 2024-06-15 ')
     expect(filter?.gte?.toISOString()).toBe('2024-06-01T05:00:00.000Z')
     expect(filter?.lte?.toISOString()).toBe('2024-06-16T04:59:59.999Z')
+  })
+
+  it('ignores invalid desde and keeps valid hasta', () => {
+    const filter = buildDateRangeFilter('not-a-date', '2024-06-15')
+    expect(filter).not.toHaveProperty('gte')
+    expect(filter?.lte?.toISOString()).toBe('2024-06-16T04:59:59.999Z')
+  })
+
+  it('ignores invalid hasta and keeps valid desde', () => {
+    const filter = buildDateRangeFilter('2024-06-15', '2024-02-30')
+    expect(filter?.gte?.toISOString()).toBe('2024-06-15T05:00:00.000Z')
+    expect(filter).not.toHaveProperty('lte')
+  })
+
+  it('returns undefined when both dates are invalid', () => {
+    expect(buildDateRangeFilter('garbage', '2025-02-30')).toBeUndefined()
+  })
+})
+
+describe('parseDateParam', () => {
+  it('returns the value when valid', () => {
+    expect(parseDateParam('2024-06-15', 'fallback')).toBe('2024-06-15')
+  })
+
+  it('returns fallback for empty/null/undefined', () => {
+    expect(parseDateParam('', 'fallback')).toBe('fallback')
+    expect(parseDateParam(null, 'fallback')).toBe('fallback')
+    expect(parseDateParam(undefined, 'fallback')).toBe('fallback')
+  })
+
+  it('returns fallback for malformed strings', () => {
+    expect(parseDateParam('garbage', 'fallback')).toBe('fallback')
+    expect(parseDateParam('2024/06/15', 'fallback')).toBe('fallback')
+    expect(parseDateParam('06-15-2024', 'fallback')).toBe('fallback')
+  })
+
+  it('returns fallback for non-existent dates', () => {
+    expect(parseDateParam('2024-02-30', 'fallback')).toBe('fallback')
+    expect(parseDateParam('2024-13-01', 'fallback')).toBe('fallback')
   })
 })

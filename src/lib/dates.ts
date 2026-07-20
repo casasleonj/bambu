@@ -55,12 +55,30 @@ export function endOfDayBogota(fechaStr?: string): Date {
   return new Date(`${dateStr}T23:59:59.999-05:00`)
 }
 
+function isValidDateString(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const d = new Date(`${value}T00:00:00Z`)
+  if (isNaN(d.getTime()) || d.toISOString().split('T')[0] !== value) return false
+  return true
+}
+
+/**
+ * Valida un string YYYY-MM-DD y devuelve `fallback` si es inválido o vacío.
+ * Mismo round-trip que `validators.ts` para detectar fechas inexistentes
+ * (ej: 2025-02-30 → 2025-03-02 en JS Date).
+ */
+export function parseDateParam(value: string | undefined | null, fallback: string): string {
+  if (typeof value !== 'string' || value.trim() === '') return fallback
+  const trimmed = value.trim()
+  return isValidDateString(trimmed) ? trimmed : fallback
+}
+
 export type DateRangeFilter = { gte?: Date; lte?: Date }
 
 /**
  * Construye un filtro Prisma >=/<= a partir de fechas opcionales `desde`/`hasta`
  * en zona Bogotá. Soporta rangos parciales (solo desde, solo hasta) y devuelve
- * `undefined` si no hay ninguna fecha.
+ * `undefined` si no hay ninguna fecha válida.
  *
  * Uso típico:
  *   where: { fecha: buildDateRangeFilter(desde, hasta) }
@@ -69,13 +87,13 @@ export function buildDateRangeFilter(
   desde?: string | null,
   hasta?: string | null
 ): DateRangeFilter | undefined {
-  const hasDesde = typeof desde === 'string' && desde.trim() !== ''
-  const hasHasta = typeof hasta === 'string' && hasta.trim() !== ''
-  if (!hasDesde && !hasHasta) return undefined
+  const validDesde = typeof desde === 'string' && desde.trim() !== '' && isValidDateString(desde.trim())
+  const validHasta = typeof hasta === 'string' && hasta.trim() !== '' && isValidDateString(hasta.trim())
+  if (!validDesde && !validHasta) return undefined
 
   const filter: DateRangeFilter = {}
-  if (hasDesde) filter.gte = startOfDayBogota(desde!.trim())
-  if (hasHasta) filter.lte = endOfDayBogota(hasta!.trim())
+  if (validDesde) filter.gte = startOfDayBogota(desde!.trim())
+  if (validHasta) filter.lte = endOfDayBogota(hasta!.trim())
   return filter
 }
 
