@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getTodayRange, getDateRange, getYesterdayRange, getTodayString, getPresetDate } from '@/lib/dates'
+import { getTodayRange, getDateRange, getYesterdayRange, getTodayString, getPresetDate, buildDateRangeFilter } from '@/lib/dates'
 
 describe('getTodayRange', () => {
   it('returns an object with startOfDay and endOfDay keys', () => {
@@ -207,5 +207,38 @@ describe('getPresetDate', () => {
     const ayerStr = ayer.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
     expect(result?.desde).toBe(ayerStr)
     expect(result?.hasta).toBe(hoy)
+  })
+})
+
+describe('buildDateRangeFilter', () => {
+  it('returns undefined when both dates are empty', () => {
+    expect(buildDateRangeFilter('', '')).toBeUndefined()
+    expect(buildDateRangeFilter(null, undefined)).toBeUndefined()
+  })
+
+  it('returns only gte for partial desde', () => {
+    const filter = buildDateRangeFilter('2024-06-15', '')
+    expect(filter).toHaveProperty('gte')
+    expect(filter).not.toHaveProperty('lte')
+    expect(filter?.gte?.toISOString()).toBe('2024-06-15T05:00:00.000Z')
+  })
+
+  it('returns only lte for partial hasta', () => {
+    const filter = buildDateRangeFilter('', '2024-06-15')
+    expect(filter).not.toHaveProperty('gte')
+    expect(filter).toHaveProperty('lte')
+    expect(filter?.lte?.toISOString()).toBe('2024-06-16T04:59:59.999Z')
+  })
+
+  it('returns both bounds for complete range', () => {
+    const filter = buildDateRangeFilter('2024-06-01', '2024-06-15')
+    expect(filter?.gte?.toISOString()).toBe('2024-06-01T05:00:00.000Z')
+    expect(filter?.lte?.toISOString()).toBe('2024-06-16T04:59:59.999Z')
+  })
+
+  it('trims whitespace around dates', () => {
+    const filter = buildDateRangeFilter(' 2024-06-01 ', ' 2024-06-15 ')
+    expect(filter?.gte?.toISOString()).toBe('2024-06-01T05:00:00.000Z')
+    expect(filter?.lte?.toISOString()).toBe('2024-06-16T04:59:59.999Z')
   })
 })
