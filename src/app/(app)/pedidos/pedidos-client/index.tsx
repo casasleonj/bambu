@@ -913,7 +913,15 @@ export function PedidosClient() {
     }
   }
 
-  if (fetchError) {
+  // Si ya tenemos datos cargados, un error posterior no debe bloquear la UI;
+  // mostramos un toast y conservamos el listado para que el usuario siga operando.
+  useEffect(() => {
+    if (fetchError && hasLoadedOnce) {
+      toast.error(fetchError)
+    }
+  }, [fetchError, hasLoadedOnce])
+
+  if (fetchError && !hasLoadedOnce) {
     return (
       <ErrorState
         title="Error cargando pedidos"

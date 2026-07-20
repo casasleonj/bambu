@@ -6,7 +6,6 @@
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { toast } from 'sonner'
 
 export interface PedidoFilterParams {
   desde?: string
@@ -124,7 +123,6 @@ export function usePedidos(
       }
       console.error('Error fetching pedidos:', err)
       setError('No se pudieron cargar los pedidos')
-      toast.error('Error cargando pedidos')
     } finally {
       if (isCurrent()) setLoading(false)
     }
