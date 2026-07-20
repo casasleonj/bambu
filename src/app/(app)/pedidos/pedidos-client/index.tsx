@@ -22,11 +22,11 @@ import { PedidoFilters } from './pedido-filters'
 import { PedidoTable } from './pedido-table'
 import { FiadosTable } from './fiados-table'
 import { AlertasTable } from './alertas-table'
-import { calcularAlertas } from './alertas-utils'
 
 import type { Pedido, Embarque, Cliente } from './types'
 import { getPresetDate, getTodayString } from '@/lib/dates'
 import { usePedidos } from '@/hooks/use-pedidos'
+import { usePedidosCounts } from '@/hooks/use-pedidos-counts'
 import { LIMITE_FIADOS_DEFAULT } from '@/lib/constants'
 import { useCrearPedido } from '@/hooks/use-crear-pedido'
 import { useAnularPedido } from '@/hooks/use-anular-pedido'
@@ -128,7 +128,7 @@ export function PedidosClient() {
     error: fetchError,
     refetch,
     hasLoadedOnce,
-  } = usePedidos(pedidoFilterParams, { autoFetch: false, all: allFromUrl || fetchAllForTab })
+  } = usePedidos(pedidoFilterParams, { all: allFromUrl || fetchAllForTab })
   const pedidos = pedidosRaw as Pedido[]
 
   // Independent datasets for Fiados and Alertas tabs. They always fetch the
@@ -150,12 +150,13 @@ export function PedidosClient() {
   } = usePedidos({ scope: 'alertas' }, { all: true, autoFetch: true })
   const pedidosAlertas = pedidosAlertasRaw as Pedido[]
 
-  // Badges reflect the total unfiltered counts, derived from the live datasets.
-  const fiadosCount = useMemo(
-    () => new Set(pedidosFiados.map((p) => p.clienteId)).size,
-    [pedidosFiados]
-  )
-  const alertasCount = useMemo(() => calcularAlertas(pedidosAlertas).length, [pedidosAlertas])
+  // Lightweight badge counts fetched independently from the full datasets.
+  // This keeps the badge live without re-downloading the entire Pedidos list.
+  const {
+    fiadosCount,
+    alertasCount,
+    refetch: refetchCounts,
+  } = usePedidosCounts(true)
 
   // Polling: refetch all three datasets every 30s (replaces SSE to cut Vercel cost).
   // Critical screen for the repartidor; faster than the 60s default.
@@ -165,6 +166,7 @@ export function PedidosClient() {
     refetch()
     refetchFiados()
     refetchAlertas()
+    refetchCounts()
     fetchClientes()
     fetchEmbarques()
   }, 30_000)
@@ -175,6 +177,7 @@ export function PedidosClient() {
     refetch()
     refetchFiados()
     refetchAlertas()
+    refetchCounts()
     fetchClientes()
     fetchEmbarques()
   })
@@ -290,12 +293,11 @@ export function PedidosClient() {
     return () => clearTimeout(id)
   }, [])
 
-  // Carga inicial
+  // Carga inicial: clientes/embarques para el modal de nuevo pedido.
+  // El listado principal se carga por usePedidos(autoFetch).
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      await fetchPedidos()
-      if (cancelled) return
       const [clientesList] = await Promise.all([fetchClientes(), fetchEmbarques()])
       if (cancelled) return
 
@@ -389,40 +391,6 @@ export function PedidosClient() {
     })()
   }, [])
 
-  useEffect(() => {
-    let isFetching = false
-    const getPollInterval = () => {
-      const conn = (navigator as any).connection
-      if (!conn) return 60000
-      const et = conn.effectiveType // '4g' | '3g' | '2g' | 'slow-2g'
-      if (et === '4g') return 60000
-      if (et === '3g') return 120000
-      // 2g or slow-2g: disable polling, rely on visibilitychange + manual refresh
-      return 0
-    }
-
-    const intervalMs = getPollInterval()
-    if (intervalMs === 0) return // No polling on slow connections
-
-    const interval = setInterval(() => {
-      if (!isFetching) {
-        isFetching = true
-        fetchPedidos().finally(() => { isFetching = false })
-      }
-    }, intervalMs)
-    return () => clearInterval(interval)
-  }, [fetchPedidos])
-
-  useEffect(() => {
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        fetchPedidos()
-      }
-    }
-    document.addEventListener('visibilitychange', handleVisibility)
-    return () => document.removeEventListener('visibilitychange', handleVisibility)
-  }, [fetchPedidos])
-
   // Sync activeTab with URL query param
   useEffect(() => {
     const currentTab = params.get('tab')
@@ -445,6 +413,7 @@ export function PedidosClient() {
       fetchPedidos()
       refetchFiados()
       refetchAlertas()
+      refetchCounts()
       fetchClientes()
     },
   })
@@ -454,6 +423,7 @@ export function PedidosClient() {
       fetchPedidos()
       refetchFiados()
       refetchAlertas()
+      refetchCounts()
     },
   })
 
@@ -463,6 +433,7 @@ export function PedidosClient() {
       fetchPedidos()
       refetchFiados()
       refetchAlertas()
+      refetchCounts()
     },
   })
 
