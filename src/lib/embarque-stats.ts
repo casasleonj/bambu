@@ -366,7 +366,7 @@ export function calcularTendenciaDiaria(
   const porDia = new Map<string, EmbarqueStatsInput[]>()
 
   for (const e of activos) {
-    const dia = new Date(e.fecha).toISOString().split('T')[0]
+    const dia = new Date(e.fecha).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
     const arr = porDia.get(dia) || []
     arr.push(e)
     porDia.set(dia, arr)

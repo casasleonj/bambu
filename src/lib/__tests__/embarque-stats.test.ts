@@ -382,4 +382,15 @@ describe('calcularTendenciaDiaria', () => {
     expect(result[1].fecha).toBe('2025-01-16')
     expect(result[2].fecha).toBe('2025-01-17')
   })
+
+  it('groups embarques by Bogotá date, not UTC date', () => {
+    const embarques = [
+      makeEmbarque({ id: 'e1', fecha: '2025-01-15T23:00:00Z' }), // 18:00 Bogotá -> 2025-01-15
+      makeEmbarque({ id: 'e2', fecha: '2025-01-16T00:30:00Z' }), // 19:30 Bogotá -> 2025-01-15
+      makeEmbarque({ id: 'e3', fecha: '2025-01-16T06:00:00Z' }), // 01:00 Bogotá -> 2025-01-16
+    ]
+    const result = calcularTendenciaDiaria(embarques)
+    expect(result.find(d => d.fecha === '2025-01-15')?.totalEmbarques).toBe(2)
+    expect(result.find(d => d.fecha === '2025-01-16')?.totalEmbarques).toBe(1)
+  })
 })
