@@ -2,24 +2,11 @@ import { prisma } from '@/lib/prisma'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { requirePagePermission } from '@/lib/auth-guard'
 import { EstadoPedido } from '@prisma/client'
-import { startOfDayInBogota, endOfDayInBogota, todayInBogota } from '@/lib/date-helpers'
+import { startOfDayBogota, endOfDayBogota, getTodayString, parseDateParam } from '@/lib/dates'
 import Link from 'next/link'
 
 function formatCOP(value: number): string {
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(value)
-}
-
-function toDateBoundary(value: string | undefined, boundary: 'start' | 'end'): Date {
-  if (!value) {
-    if (boundary === 'start') {
-      const d = new Date()
-      d.setDate(d.getDate() - 30)
-      return d
-    }
-    return new Date()
-  }
-  if (value.includes('T')) return new Date(value)
-  return boundary === 'start' ? startOfDayInBogota(value) : endOfDayInBogota(value)
 }
 
 const PRODUCT_LABELS: Record<string, string> = {
@@ -48,15 +35,16 @@ export default async function ReporteVentasPage({
   await requirePagePermission('view:reportes')
 
   const params = await searchParams
-  const today = todayInBogota()
-  const start = params.start || today
-  const end = params.end || today
-  const page = Math.max(1, Number(params.page || '1'))
+  const today = getTodayString()
+  const start = parseDateParam(params.start, today)
+  const end = parseDateParam(params.end, today)
+  const rawPage = Number(params.page || '1')
+  const page = Number.isFinite(rawPage) && rawPage >= 1 ? Math.floor(rawPage) : 1
   const pageSize = 20
 
   const dateFilter = {
-    gte: toDateBoundary(start, 'start'),
-    lte: toDateBoundary(end, 'end'),
+    gte: startOfDayBogota(start),
+    lte: endOfDayBogota(end),
   }
 
   const where = {
@@ -64,7 +52,7 @@ export default async function ReporteVentasPage({
     estado: { not: EstadoPedido.CANCELADO },
   }
 
-  const [pedidos, total, ventasAgg, pagosPorMetodo] = await Promise.all([
+  const [pedidos, total, ventasAgg, pagosPorMetodo, fiadoAgg] = await Promise.all([
     prisma.pedido.findMany({
       where,
       include: { cliente: { select: { id: true, nombre: true, apellido: true } }, pagos: true },
@@ -96,12 +84,11 @@ export default async function ReporteVentasPage({
       },
       _sum: { monto: true },
     }),
+    prisma.pedido.aggregate({
+      where: { ...where, saldo: { gt: 0 } },
+      _sum: { saldo: true },
+    }),
   ])
-
-  const fiadoAgg = await prisma.pedido.aggregate({
-    where: { ...where, saldo: { gt: 0 } },
-    _sum: { saldo: true },
-  })
 
   const resumen = {
     totalPedidos: total,

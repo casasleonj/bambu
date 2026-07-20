@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
     const pagination = all ? { all: true } : { page: page ?? 1, pageSize: pageSize ?? 10 }
     const prismaPagination = getPrismaPagination(pagination)
 
-    const [pedidos, total, ventasAgg, pagosPorMetodo] = await Promise.all([
+    const [pedidos, total, ventasAgg, pagosPorMetodo, fiadoAgg] = await Promise.all([
       prisma.pedido.findMany({
         where,
         include: { cliente: true, pagos: true },
@@ -89,12 +89,11 @@ export async function GET(request: NextRequest) {
         },
         _sum: { monto: true },
       }),
+      prisma.pedido.aggregate({
+        where: { ...where, saldo: { gt: 0 } },
+        _sum: { saldo: true },
+      }),
     ])
-
-    const fiadoAgg = await prisma.pedido.aggregate({
-      where: { ...where, saldo: { gt: 0 } },
-      _sum: { saldo: true },
-    })
 
     const resumen = {
       totalPedidos: total,
