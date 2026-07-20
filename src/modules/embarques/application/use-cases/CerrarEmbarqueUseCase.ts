@@ -179,7 +179,6 @@ export class CerrarEmbarqueUseCase {
       const caja = calcularCajaFinal(
         this.cierreService,
         embarque.baseDinero ?? 0,
-        totalVentas,
         pagosColeccionados,
         gastosTotal,
         input.dineroEntregado ?? 0,

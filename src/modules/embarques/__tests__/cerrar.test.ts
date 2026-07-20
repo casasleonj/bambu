@@ -18,25 +18,20 @@ describe('CierreEmbarqueService.calcularComision', () => {
 })
 
 describe('CierreEmbarqueService.calcularCaja — REGRESIÓN C-4', () => {
-  it('REGRESIÓN: efectivoReal = base + ventas - otrosPagos - gastos (debe incluir base)', () => {
-    // Después del fix C-4, efectivoReal debe ser 250,000 (incluye base)
+  it('efectivoReal = base + efectivo cobrado - gastos', () => {
     const service = new CierreEmbarqueService()
     const result = service.calcularCaja(
-      200000, // totalVentas
       [{ metodo: 'EFECTIVO', monto: 200000 }], // pagos
-      50000, // baseDinero (este es el bug — antes era ignorado)
+      50000, // baseDinero
       0 // gastos
     )
-    // ANTES del fix: result.efectivoReal = 200000 (incorrecto)
-    // DESPUÉS del fix: result.efectivoReal = 250000 (correcto)
-    // Este test fallará antes del fix y pasará después.
+    // 50000 base + 200000 efectivo - 0 gastos = 250000
     expect(result.efectivoReal).toBe(250000)
   })
 
-  it('efectivoReal resta otros pagos (transferencias)', () => {
+  it('no cuenta transferencias como efectivo real', () => {
     const service = new CierreEmbarqueService()
     const result = service.calcularCaja(
-      200000,
       [
         { metodo: 'EFECTIVO', monto: 100000 },
         { metodo: 'TRANSFERENCIA', monto: 100000 },
@@ -44,19 +39,18 @@ describe('CierreEmbarqueService.calcularCaja — REGRESIÓN C-4', () => {
       50000, // base
       0
     )
-    // 50000 base + 200000 ventas - 100000 transferencias - 0 gastos = 150000
+    // 50000 base + 100000 efectivo - 0 gastos = 150000
     expect(result.efectivoReal).toBe(150000)
   })
 
-  it('efectivoReal resta gastos', () => {
+  it('resta gastos del efectivo a entregar', () => {
     const service = new CierreEmbarqueService()
     const result = service.calcularCaja(
-      200000,
       [{ metodo: 'EFECTIVO', monto: 200000 }],
       50000,
       30000 // gastos de gasolina
     )
-    // 50000 + 200000 - 0 - 30000 = 220000
+    // 50000 + 200000 - 30000 = 220000
     expect(result.efectivoReal).toBe(220000)
   })
 })
