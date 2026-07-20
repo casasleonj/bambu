@@ -182,7 +182,7 @@ vercel --prod
 - Post-login redirect by role: `ADMIN`/`ASISTENTE` → `/dashboard`, `REPARTIDOR` → `/repartidor`, `CONTADOR` → `/reportes`
 
 ### Server Components
-- `(app)/dashboard/page.tsx`, `(app)/reportes/page.tsx`, and `(app)/repartidor/page.tsx` are async Server Components
+- `(app)/dashboard/page.tsx`, `(app)/reportes/page.tsx`, `(app)/reportes/ventas/page.tsx`, and `(app)/repartidor/page.tsx` are async Server Components
 - Dashboard uses DDD module pattern: `src/modules/dashboard/` with domain/application/infrastructure/presentation layers
 - `clientes`, `trabajadores`, `proveedores`, `insumos` use split pattern: SC page + Client Component
 - SC pages pass serialized data via `JSON.parse(JSON.stringify(data))` to handle Prisma Decimal/Date types
@@ -217,6 +217,7 @@ vercel --prod
 | `prisma/seed.ts` | Initial data seeding |
 | `src/proxy.ts` | Auth redirect + rate limiting (replaces deprecated middleware.ts) |
 | `src/lib/rate-limit.ts` | Rate limiter config (Redis + memory fallback) |
+| `src/lib/dates.ts` | Helpers timezone-aware Bogotá: `getTodayString`, `startOfDayBogota`, `endOfDayBogota`, `buildDateRangeFilter`, `parseDateParam` |
 | `src/lib/sequence.ts` | PostgreSQL sequence generator |
 | `src/lib/locks.ts` | Advisory locks |
 | `src/lib/auth.ts` | NextAuth v5 configuration (JWT strategy) |
@@ -227,6 +228,7 @@ vercel --prod
 | `src/modules/dashboard/` | DDD pilot — domain/application/infrastructure/presentation |
 | `src/shared/` | Cross-domain value objects (Money, DateRange, ProductCode) |
 | `src/app/sw.ts` | Service worker generado por Serwist (PWA) |
+| `src/app/(app)/reportes/ventas/page.tsx` | Server Component de reporte de ventas detallado (productos, métodos de pago, tabla paginada) |
 | `src/app/serwist/[path]/route.ts` | Ruta dinámica que sirve el SW en `/serwist/sw.js` |
 | `public/manifest.json` | Web App Manifest |
 | `public/icons/` | Íconos PWA (incluye badge y Apple touch icon) |
@@ -382,6 +384,12 @@ Actualizaciones en vivo entre sesiones/usuarios para cambios en clientes, pedido
     - **Fix indicador** (`src/components/connectivity-indicator.tsx`): ahora distingue `connecting` (ámbar) de `offline` (rojo); no muestra "Offline" si `navigator.onLine` es true pero SSE aún no conecta.
     - **Fix save cliente** (`src/app/(app)/clientes/clientes-client/index.tsx`): timeout de guardado reducido de 15s a 8s, y `setSaving(false)` explícito en branches timeout/offline/error para desbloquear el botón.
     - **Validación**: `src/components/__tests__/realtime-provider.test.tsx` (9 tests), `src/components/__tests__/connectivity-indicator.test.tsx` (3 tests), `src/hooks/__tests__/use-realtime-listener.test.ts` (3 tests), suite completa Vitest pasa, `npx tsc --noEmit` pasa.
+16. **Filtros de fecha: rango parcial roto + "today" en UTC** (resuelto en `b3114296`, refuerzo en `8c4fc990`):
+    - **Causa raíz**: patrón sistémico `if (desde && hasta)` en 6 endpoints y 4 clients: si el usuario elegía solo "desde" o solo "hasta", el cliente no enviaba nada y la vista saltaba al default de "hoy". Además, múltiples lugares usaban `new Date().toISOString().split('T')[0]` para obtener "hoy", que en Bogotá (UTC-5) devuelve "mañana" entre las 19:00 y las 23:59, ocultando datos recientes.
+    - **Fix**: `buildDateRangeFilter(desde, hasta)` en `src/lib/dates.ts` soporta rangos parciales y omite componentes inválidos; `parseDateParam(value, fallback)` valida strings YYYY-MM-DD con round-trip y fallback seguro. Reemplazados todos los `if (desde && hasta)` en `/api/embarques`, `/api/embarques/stats`, `/api/pedidos`, `/api/compras`, `/api/facturas`, `/api/gastos` y los clients de embarques, facturas y gastos. Reemplazadas las extracciones UTC de `today` en `/reportes/page.tsx`, `gastos-client`, `lib/stock.ts` y `lib/embarque-stats.ts`.
+    - **Fix adicional**: `/reportes/ventas/page.tsx` sanea `page` (evita NaN) y `start`/`end`; `fiadoAgg` se ejecuta en paralelo dentro del `Promise.all` tanto en la página como en `/api/reportes/ventas/route.ts`.
+    - **Validación**: `src/lib/__tests__/dates.test.ts`, smoke test prod de parámetros malformados (`?page=abc`, `?start=garbage`, `?end=2025-02-30`) — responden 200 con fallback, no 500.
+    - **Riesgo residual**: el helper centraliza la validación, pero callers que NO usen `buildDateRangeFilter`/`parseDateParam` siguen expuestos si envían fechas inválidas a Prisma. Revisar nuevas rutas con fechas.
 
 ---
 
