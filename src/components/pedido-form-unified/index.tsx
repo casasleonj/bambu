@@ -38,6 +38,7 @@ export interface PedidoInicial {
   id: string
   canal: 'PUNTO' | 'DOMICILIO'
   cliente?: PedidoInicialCliente | null
+  clienteId?: string
   negocioId?: string | null
   items: PedidoInicialItem[]
   obs?: string | null
@@ -82,8 +83,10 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
   const [montoInput, setMontoInput] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [preciosResueltos, setPreciosResueltos] = useState<Record<string, number>>({})
+  const [preciosOrigen, setPreciosOrigen] = useState<Record<string, string>>({})
   const [tablaPrecios, setTablaPrecios] = useState<Record<string, Tier[]>>({})
   const [preciosManuales, setPreciosManuales] = useState<Record<string, number>>({})
+  const [preciosLoading, setPreciosLoading] = useState(false)
   const [observaciones, setObservaciones] = useState('')
   const [editDireccion, setEditDireccion] = useState('')
   const [editBarrio, setEditBarrio] = useState('')
@@ -124,8 +127,10 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
 
     if (items.length === 0) {
       setPreciosResueltos({})
+      setPreciosOrigen({})
       return
     }
+    setPreciosLoading(true)
     try {
       const res = await fetch('/api/precios/resolver', {
         method: 'POST',
@@ -135,15 +140,20 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
       if (res.ok) {
         const data = await res.json()
         if (data.precios) {
-          const nuevos: Record<string, number> = {}
+          const nuevosPrecios: Record<string, number> = {}
+          const nuevosOrigen: Record<string, string> = {}
           for (const [codigo, info] of Object.entries(data.precios)) {
-            nuevos[codigo] = (info as { precio: number }).precio
+            nuevosPrecios[codigo] = (info as { precio: number }).precio
+            nuevosOrigen[codigo] = (info as { origen?: string }).origen || 'base'
           }
-          setPreciosResueltos(nuevos)
+          setPreciosResueltos(nuevosPrecios)
+          setPreciosOrigen(nuevosOrigen)
         }
       }
     } catch (error) {
       console.error('Error resolviendo precios:', error)
+    } finally {
+      setPreciosLoading(false)
     }
   }, [productosActuales, clienteSeleccionado?.id])
 
@@ -166,19 +176,31 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
 
   const { stale: preciosStale, refresh: refreshPrecios } = usePriceSync(handlePriceRefresh)
 
-  useEffect(() => {
+  // FIX B9: resolver precios para todos los productos visibles (cantidad 1)
+  // inmediatamente al seleccionar un cliente o cambiar de canal. Esto garantiza
+  // que se muestre el precio especial del cliente desde el primer render,
+  // sin esperar a que el usuario modifique la cantidad.
+  // En edición usamos las cantidades actuales del pedido para no perder
+  // la resolución por volumen que ya tenía.
+  const resolverPreciosCliente = useCallback(() => {
     if (productosConfig.length === 0) return
     if (!clienteSeleccionado?.id) {
       setPreciosResueltos({})
+      setPreciosOrigen({})
       return
     }
-
     const allProducts: Record<string, number> = {}
+    const isEdit = Boolean(pedidoInicial?.id)
     for (const id of productosActuales) {
-      allProducts[id] = cantidadesRef.current[id] || 1
+      const actual = cantidadesRef.current[id] || 0
+      allProducts[id] = isEdit && actual > 0 ? actual : 1
     }
     resolverPrecios(allProducts, canalRef.current, clienteSeleccionado.id)
-  }, [productosConfig, clienteSeleccionado?.id, productosActuales])
+  }, [productosConfig, clienteSeleccionado?.id, productosActuales, resolverPrecios, pedidoInicial?.id])
+
+  useEffect(() => {
+    resolverPreciosCliente()
+  }, [resolverPreciosCliente])
 
   // Sync direccion/barrio when negocio selection changes.
   // Use clienteSeleccionado?.id to avoid re-running when the parent
@@ -234,6 +256,12 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
     setObservaciones(pedidoInicial.obs || '')
     if (pedidoInicial.cliente) {
       setClienteSeleccionado(pedidoInicial.cliente as Cliente)
+    } else if (pedidoInicial.clienteId) {
+      // FIX B2: si se pasa solo clienteId, buscar el cliente completo en la lista
+      const clienteEncontrado = clientes.find(c => c.id === pedidoInicial.clienteId)
+      if (clienteEncontrado) {
+        setClienteSeleccionado(clienteEncontrado)
+      }
     }
     setNegocioSeleccionado(pedidoInicial.negocioId ?? null)
     const items = pedidoInicial.items
@@ -346,9 +374,19 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
     setCanal(nuevoCanal)
     if (!pedidoInicial?.id) {
       setPreciosResueltos({})
+      setPreciosOrigen({})
       setPreciosManuales({})
     }
-    setTimeout(() => resolverPrecios(nuevasCantidades, nuevoCanal), 100)
+    // FIX B9: resolver precios para todos los productos del nuevo canal
+    // (cantidad 1) para que los precios especiales del cliente aparezcan
+    // inmediatamente, sin esperar a modificar cantidades.
+    setTimeout(() => {
+      const allProducts: Record<string, number> = {}
+      for (const id of productosNuevoCanal) {
+        allProducts[id] = 1
+      }
+      resolverPrecios(allProducts, nuevoCanal)
+    }, 0)
   }
 
   const setPrecioManual = (codigo: string, valor: number) => {
@@ -656,6 +694,9 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
                       <span className="font-medium text-sm">{info.nombre}</span>
                     </div>
                     <div className="flex items-center gap-1">
+                      {preciosLoading && (
+                        <span className="inline-block w-3 h-3 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin" />
+                      )}
                       {preciosManuales[info.codigo] !== undefined && preciosManuales[info.codigo] > 0 ? (
                         <>
                           <span className="text-[9px] text-gray-400 line-through">${getPrecioBase(info.codigo).toLocaleString()}</span>
@@ -663,6 +704,9 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
                         </>
                       ) : (
                         <span className="text-xs text-gray-500">${precio.toLocaleString()}</span>
+                      )}
+                      {preciosOrigen[info.codigo] === 'cliente' && (
+                        <span className="text-[9px] font-medium text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">Cliente</span>
                       )}
                     </div>
                   </div>
