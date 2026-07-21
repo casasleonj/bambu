@@ -148,10 +148,16 @@ export type FiltroRiesgo = 'bloqueado' | 'reclamaciones' | 'noVerificado' | null
 
 export type MostrarNegocio = 'todos' | 'con' | 'sin'
 
+export type UbicacionMapsFilter =
+  | 'todos'
+  | 'cliente'
+  | 'clienteSin'
+  | 'negocios'
+  | 'negociosSin'
+
 export interface FiltrosActivos {
   mostrarNegocio: MostrarNegocio
-  todosNegociosConLink: boolean
-  clienteConLink: boolean
+  ubicacionMaps: UbicacionMapsFilter
 }
 
 export interface ClientesClientProps {

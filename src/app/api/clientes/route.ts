@@ -15,6 +15,7 @@ import {
   buildClientesWhere,
   buildClientesRawWhere,
   type MostrarNegocio,
+  type UbicacionMapsFilter,
 } from '@/lib/cliente-filters'
 
 export async function GET(request: NextRequest) {
@@ -29,6 +30,7 @@ export async function GET(request: NextRequest) {
   try {
     const search = request.nextUrl.searchParams.get('search')
     const mostrarNegocio = request.nextUrl.searchParams.get('mostrarNegocio') as MostrarNegocio | null
+    const ubicacionMaps = request.nextUrl.searchParams.get('ubicacionMaps') as UbicacionMapsFilter | null
     const todosNegociosConLink = request.nextUrl.searchParams.get('todosNegociosConLink')
     const clienteConLink = request.nextUrl.searchParams.get('clienteConLink')
     const bloqueado = request.nextUrl.searchParams.get('bloqueado')
@@ -39,6 +41,7 @@ export async function GET(request: NextRequest) {
       reclamaciones: reclamaciones ?? undefined,
       noVerificado: noVerificado ?? undefined,
       mostrarNegocio: mostrarNegocio ?? undefined,
+      ubicacionMaps: ubicacionMaps ?? undefined,
       todosNegociosConLink: todosNegociosConLink === 'true' ? 'true' : undefined,
       clienteConLink: clienteConLink === 'true' ? 'true' : undefined,
     })
@@ -52,6 +55,7 @@ export async function GET(request: NextRequest) {
       const filtrosNegocioRaw = Prisma.raw(
         buildClientesRawWhere({
           mostrarNegocio: mostrarNegocio ?? undefined,
+          ubicacionMaps: ubicacionMaps ?? undefined,
           todosNegociosConLink: todosNegociosConLink === 'true' ? 'true' : undefined,
           clienteConLink: clienteConLink === 'true' ? 'true' : undefined,
         })

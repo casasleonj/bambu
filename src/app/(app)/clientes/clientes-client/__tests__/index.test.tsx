@@ -219,7 +219,7 @@ describe('ClientesClient — regresion mobile 2026-06-10', () => {
     render(
       <ClientesClient
         initialClientes={[mockCliente]}
-        filtrosActivos={{ mostrarNegocio: 'todos', todosNegociosConLink: false, clienteConLink: false }}
+        filtrosActivos={{ mostrarNegocio: 'todos', ubicacionMaps: 'todos' }}
         openClienteId={undefined}
         filtroActivo={null}
       />,
@@ -263,7 +263,7 @@ describe('ClientesClient — regresion mobile 2026-06-10', () => {
     render(
       <ClientesClient
         initialClientes={[mockCliente]}
-        filtrosActivos={{ mostrarNegocio: 'todos', todosNegociosConLink: false, clienteConLink: false }}
+        filtrosActivos={{ mostrarNegocio: 'todos', ubicacionMaps: 'todos' }}
         openClienteId={undefined}
         filtroActivo={null}
       />,
@@ -319,7 +319,7 @@ describe('ClientesClient — regresion mobile 2026-06-10', () => {
     render(
       <ClientesClient
         initialClientes={[mockCliente]}
-        filtrosActivos={{ mostrarNegocio: 'todos', todosNegociosConLink: false, clienteConLink: false }}
+        filtrosActivos={{ mostrarNegocio: 'todos', ubicacionMaps: 'todos' }}
         openClienteId={undefined}
         filtroActivo={null}
       />,
@@ -351,7 +351,7 @@ describe('ClientesClient — regresion mobile 2026-06-10', () => {
     render(
       <ClientesClient
         initialClientes={[mockCliente]}
-        filtrosActivos={{ mostrarNegocio: 'todos', todosNegociosConLink: false, clienteConLink: false }}
+        filtrosActivos={{ mostrarNegocio: 'todos', ubicacionMaps: 'todos' }}
         openClienteId={undefined}
         filtroActivo={null}
       />,
@@ -392,7 +392,7 @@ describe('ClientesClient — regresion mobile 2026-06-10', () => {
     render(
       <ClientesClient
         initialClientes={[mockCliente]}
-        filtrosActivos={{ mostrarNegocio: 'todos', todosNegociosConLink: false, clienteConLink: false }}
+        filtrosActivos={{ mostrarNegocio: 'todos', ubicacionMaps: 'todos' }}
         openClienteId={undefined}
         filtroActivo={null}
       />,

@@ -92,6 +92,47 @@ describe('buildClientesWhere', () => {
     const where3 = buildClientesWhere({ noVerificado: 'true' })
     expect(where3.verificado).toBe(false)
   })
+
+  it('con "ubicacionMaps=cliente" filtra Cliente.linkUbicacion no vacío', () => {
+    const where = buildClientesWhere({ ubicacionMaps: 'cliente' })
+    expect(where.linkUbicacion).toEqual({ not: '' })
+  })
+
+  it('con "ubicacionMaps=clienteSin" filtra Cliente.linkUbicacion null o vacío', () => {
+    const where = buildClientesWhere({ ubicacionMaps: 'clienteSin' })
+    expect(where.AND).toEqual(
+      expect.arrayContaining([{ OR: [{ linkUbicacion: null }, { linkUbicacion: '' }] }])
+    )
+  })
+
+  it('con "ubicacionMaps=negocios" filtra al menos un negocio activo con link', () => {
+    const where = buildClientesWhere({ ubicacionMaps: 'negocios' })
+    expect(where.AND).toEqual(
+      expect.arrayContaining([
+        {
+          negocios: {
+            some: { activo: true, linkUbicacion: { not: '' } },
+          },
+        },
+      ])
+    )
+  })
+
+  it('con "ubicacionMaps=negociosSin" filtra al menos un negocio activo sin link', () => {
+    const where = buildClientesWhere({ ubicacionMaps: 'negociosSin' })
+    expect(where.AND).toEqual(
+      expect.arrayContaining([
+        {
+          negocios: {
+            some: {
+              activo: true,
+              OR: [{ linkUbicacion: null }, { linkUbicacion: '' }],
+            },
+          },
+        },
+      ])
+    )
+  })
 })
 
 describe('buildClientesRawWhere', () => {
@@ -129,6 +170,17 @@ describe('buildClientesRawWhere', () => {
     })
     expect(sql.startsWith('AND ')).toBe(true)
     expect(sql.split('AND').length).toBeGreaterThan(2)
+  })
+
+  it('genera condición SQL para "ubicacionMaps=negocios"', () => {
+    const sql = buildClientesRawWhere({ ubicacionMaps: 'negocios' })
+    expect(sql).toMatch(/EXISTS\s*\(\s*SELECT 1 FROM "Negocio"/)
+    expect(sql).toContain('NULLIF(n."linkUbicacion", \'\') IS NOT NULL')
+  })
+
+  it('genera condición SQL para "ubicacionMaps=clienteSin"', () => {
+    const sql = buildClientesRawWhere({ ubicacionMaps: 'clienteSin' })
+    expect(sql).toContain('NULLIF(c."linkUbicacion", \'\') IS NULL')
   })
 })
 

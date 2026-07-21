@@ -182,11 +182,8 @@ export default function ClientesClient({
       if (filtrosActivos.mostrarNegocio !== 'todos') {
         params.set('mostrarNegocio', filtrosActivos.mostrarNegocio)
       }
-      if (filtrosActivos.todosNegociosConLink) {
-        params.set('todosNegociosConLink', 'true')
-      }
-      if (filtrosActivos.clienteConLink) {
-        params.set('clienteConLink', 'true')
+      if (filtrosActivos.ubicacionMaps !== 'todos') {
+        params.set('ubicacionMaps', filtrosActivos.ubicacionMaps)
       }
       const res = await fetchWithTimeout(`/api/clientes?${params.toString()}`, {}, 30_000)
       if (!res.ok) throw new Error('Error al cargar clientes')

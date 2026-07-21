@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
 import { toast } from 'sonner'
-import type { Cliente, FiltroRiesgo, FiltrosActivos, MostrarNegocio } from './types'
+import type { Cliente, FiltroRiesgo, FiltrosActivos, MostrarNegocio, UbicacionMapsFilter } from './types'
 import { formatCurrency } from '@/lib/utils'
 import { EmptyState, EmptySearch } from '@/components/empty-state'
 import { Tooltip } from '@/components/tooltip'
@@ -82,8 +82,7 @@ export const ClienteTable = React.memo(function ClienteTable({
     search ||
     filtroActivo ||
     filtrosActivos.mostrarNegocio !== 'todos' ||
-    filtrosActivos.todosNegociosConLink ||
-    filtrosActivos.clienteConLink
+    filtrosActivos.ubicacionMaps !== 'todos'
 
   const clearFilters = () => {
     setFilterSaldo(false)
@@ -94,13 +93,12 @@ export const ClienteTable = React.memo(function ClienteTable({
     params.delete('reclamaciones')
     params.delete('noVerificado')
     params.delete('mostrarNegocio')
-    params.delete('todosNegociosConLink')
-    params.delete('clienteConLink')
+    params.delete('ubicacionMaps')
     router.push(`${pathname}?${params.toString()}`, { scroll: false })
     router.refresh()
   }
 
-  const clearFiltro = (key: 'mostrarNegocio' | 'todosNegociosConLink' | 'clienteConLink') => {
+  const clearFiltro = (key: 'mostrarNegocio' | 'ubicacionMaps') => {
     const params = new URLSearchParams(window.location.search)
     params.delete(key)
     router.push(`${pathname}?${params.toString()}`, { scroll: false })
@@ -121,7 +119,15 @@ export const ClienteTable = React.memo(function ClienteTable({
     router.refresh()
   }
 
-  const handleFiltrosActivosChange = (key: keyof FiltrosActivos, value: MostrarNegocio | boolean) => {
+  const UBICACION_CHIP_LABELS: Record<UbicacionMapsFilter, string> = {
+    todos: 'Todos',
+    cliente: 'Cliente con link',
+    clienteSin: 'Cliente sin link',
+    negocios: 'Negocio con link',
+    negociosSin: 'Negocio sin link',
+  }
+
+  const handleFiltrosActivosChange = (key: keyof FiltrosActivos, value: MostrarNegocio | UbicacionMapsFilter) => {
     const params = new URLSearchParams(window.location.search)
     if (key === 'mostrarNegocio') {
       const val = value as MostrarNegocio
@@ -130,16 +136,12 @@ export const ClienteTable = React.memo(function ClienteTable({
       } else {
         params.set('mostrarNegocio', val)
       }
-      // Al cambiar a "Sin negocio", quitamos el toggle de negocios con link
-      if (val === 'sin') {
-        params.delete('todosNegociosConLink')
-      }
-    } else {
-      const val = value as boolean
-      if (val) {
-        params.set(key, 'true')
+    } else if (key === 'ubicacionMaps') {
+      const val = value as UbicacionMapsFilter
+      if (val === 'todos') {
+        params.delete('ubicacionMaps')
       } else {
-        params.delete(key)
+        params.set('ubicacionMaps', val)
       }
     }
     router.push(`${pathname}?${params.toString()}`, { scroll: false })
@@ -175,11 +177,9 @@ export const ClienteTable = React.memo(function ClienteTable({
 
         <NegociosUbicacionesFilter
           mostrarNegocio={filtrosActivos.mostrarNegocio}
-          todosNegociosConLink={filtrosActivos.todosNegociosConLink}
-          clienteConLink={filtrosActivos.clienteConLink}
+          ubicacionMaps={filtrosActivos.ubicacionMaps}
           onChangeMostrarNegocio={(valor) => handleFiltrosActivosChange('mostrarNegocio', valor)}
-          onToggleTodosNegociosConLink={() => handleFiltrosActivosChange('todosNegociosConLink', !filtrosActivos.todosNegociosConLink)}
-          onToggleClienteConLink={() => handleFiltrosActivosChange('clienteConLink', !filtrosActivos.clienteConLink)}
+          onChangeUbicacionMaps={(valor) => handleFiltrosActivosChange('ubicacionMaps', valor)}
         />
 
         <div className="flex flex-wrap gap-2">
@@ -290,32 +290,18 @@ export const ClienteTable = React.memo(function ClienteTable({
               </button>
             </Tooltip>
           )}
-          {filtrosActivos.todosNegociosConLink && (
-            <Tooltip content="Filtro activo: todos los negocios con link de Maps — click para quitar" position="bottom">
+          {filtrosActivos.ubicacionMaps !== 'todos' && (
+            <Tooltip content={`Filtro activo: ${UBICACION_CHIP_LABELS[filtrosActivos.ubicacionMaps]} — click para quitar`} position="bottom">
               <button
-                onClick={() => clearFiltro('todosNegociosConLink')}
+                onClick={() => clearFiltro('ubicacionMaps')}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border bg-emerald-50 border-emerald-200 text-emerald-700"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
-                Negocios con link
+                {UBICACION_CHIP_LABELS[filtrosActivos.ubicacionMaps]}
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              </button>
-            </Tooltip>
-          )}
-          {filtrosActivos.clienteConLink && (
-            <Tooltip content="Filtro activo: clientes con link de Maps — click para quitar" position="bottom">
-              <button
-                onClick={() => clearFiltro('clienteConLink')}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border bg-blue-50 border-blue-200 text-blue-700"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                </svg>
-                Cliente con link
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
               </button>
             </Tooltip>
           )}
@@ -363,8 +349,7 @@ export const ClienteTable = React.memo(function ClienteTable({
             {filtroActivo === 'noVerificado' && ' — sin verificar'}
             {filtrosActivos.mostrarNegocio === 'con' && ' — con negocio'}
             {filtrosActivos.mostrarNegocio === 'sin' && ' — sin negocio'}
-            {filtrosActivos.todosNegociosConLink && ' — todos con link'}
-            {filtrosActivos.clienteConLink && ' — con link propio'}
+            {filtrosActivos.ubicacionMaps !== 'todos' && ` — ${UBICACION_CHIP_LABELS[filtrosActivos.ubicacionMaps].toLowerCase()}`}
           </p>
           <div className="flex items-center gap-1 text-xs text-gray-500">
             <span className="hidden sm:inline">Ordenar:</span>
