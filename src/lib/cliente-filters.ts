@@ -2,14 +2,37 @@ import { CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
 
 export type MostrarNegocio = 'todos' | 'con' | 'sin'
 
+export type UbicacionMapsFilter =
+  | 'todos'
+  | 'cliente'
+  | 'clienteSin'
+  | 'negocios'
+  | 'negociosSin'
+
 export type ClientesSearchParams = {
   openCliente?: string
   bloqueado?: string
   reclamaciones?: string
   noVerificado?: string
   mostrarNegocio?: MostrarNegocio
+  ubicacionMaps?: UbicacionMapsFilter
+  /** @deprecated Use ubicacionMaps='negocios' instead. */
   todosNegociosConLink?: 'true'
+  /** @deprecated Use ubicacionMaps='cliente' instead. */
   clienteConLink?: 'true'
+}
+
+/**
+ * Resuelve el filtro de ubicación de Maps, mapeando los params legacy
+ * a la nueva categoría única.
+ */
+export function resolveUbicacionMaps(
+  params: Pick<ClientesSearchParams, 'ubicacionMaps' | 'clienteConLink' | 'todosNegociosConLink'>
+): UbicacionMapsFilter {
+  if (params.ubicacionMaps) return params.ubicacionMaps
+  if (params.clienteConLink === 'true') return 'cliente'
+  if (params.todosNegociosConLink === 'true') return 'negocios'
+  return 'todos'
 }
 
 /**
@@ -21,9 +44,12 @@ export type ClientesSearchParams = {
  * - "mostrarNegocio=con" → cliente con al menos un Negocio formal activo
  *   O con nombreNegocio legacy no vacío.
  * - "mostrarNegocio=sin" → sin negocios formales activos Y sin nombreNegocio legacy.
- * - "todosNegociosConLink=true" → aplica SOLO a clientes con Negocio formal;
- *   fuerza al menos un negocio activo y que TODOS los activos tengan link de Maps.
- * - "clienteConLink=true" → Cliente.linkUbicacion no es null ni vacío.
+ * - "ubicacionMaps=cliente" → Cliente.linkUbicacion no es null ni vacío.
+ * - "ubicacionMaps=clienteSin" → Cliente.linkUbicacion es null o vacío.
+ * - "ubicacionMaps=negocios" → al menos un Negocio formal activo tiene link de Maps.
+ * - "ubicacionMaps=negociosSin" → al menos un Negocio formal activo NO tiene link de Maps.
+ * - "todosNegociosConLink=true" (legacy) → todos los negocios formales activos tienen link.
+ * - "clienteConLink=true" (legacy) → Cliente.linkUbicacion no es null ni vacío.
  */
 export function buildClientesWhere(params: ClientesSearchParams): Record<string, unknown> {
   const where: Record<string, unknown> = {
@@ -56,7 +82,44 @@ export function buildClientesWhere(params: ClientesSearchParams): Record<string,
     ]
   }
 
-  // Filtro: todos los negocios formales activos tienen link de Maps
+  // Filtro: ubicación de Maps del cliente (casa/dueño)
+  if (params.ubicacionMaps === 'cliente' || params.clienteConLink === 'true') {
+    where.linkUbicacion = { not: '' }
+  } else if (params.ubicacionMaps === 'clienteSin') {
+    where.AND = [
+      ...(Array.isArray(where.AND) ? (where.AND as Record<string, unknown>[]) : []),
+      { OR: [{ linkUbicacion: null }, { linkUbicacion: '' }] },
+    ]
+  }
+
+  // Filtro: ubicación de Maps de los negocios formales
+  if (params.ubicacionMaps === 'negocios') {
+    where.AND = [
+      ...(Array.isArray(where.AND) ? (where.AND as Record<string, unknown>[]) : []),
+      {
+        negocios: {
+          some: {
+            activo: true,
+            linkUbicacion: { not: '' },
+          },
+        },
+      },
+    ]
+  } else if (params.ubicacionMaps === 'negociosSin') {
+    where.AND = [
+      ...(Array.isArray(where.AND) ? (where.AND as Record<string, unknown>[]) : []),
+      {
+        negocios: {
+          some: {
+            activo: true,
+            OR: [{ linkUbicacion: null }, { linkUbicacion: '' }],
+          },
+        },
+      },
+    ]
+  }
+
+  // Legacy: "todos los negocios formales activos tienen link de Maps"
   if (params.todosNegociosConLink === 'true') {
     where.AND = [
       ...(Array.isArray(where.AND) ? (where.AND as Record<string, unknown>[]) : []),
@@ -76,11 +139,6 @@ export function buildClientesWhere(params: ClientesSearchParams): Record<string,
     ]
   }
 
-  // Filtro: el cliente tiene link de Maps propio
-  if (params.clienteConLink === 'true') {
-    where.linkUbicacion = { not: '' }
-  }
-
   return where
 }
 
@@ -91,7 +149,7 @@ export function buildClientesWhere(params: ClientesSearchParams): Record<string,
  * IMPORTANTE: este fragmento debe mantenerse en sincronía con buildClientesWhere.
  */
 export function buildClientesRawWhere(
-  params: Pick<ClientesSearchParams, 'mostrarNegocio' | 'todosNegociosConLink' | 'clienteConLink'>
+  params: Pick<ClientesSearchParams, 'mostrarNegocio' | 'ubicacionMaps' | 'todosNegociosConLink' | 'clienteConLink'>
 ): string {
   const conditions: string[] = []
 
@@ -107,6 +165,30 @@ export function buildClientesRawWhere(
     )`)
   }
 
+  if (params.ubicacionMaps === 'cliente' || params.clienteConLink === 'true') {
+    conditions.push(`(NULLIF(c."linkUbicacion", '') IS NOT NULL)`)
+  } else if (params.ubicacionMaps === 'clienteSin') {
+    conditions.push(`(NULLIF(c."linkUbicacion", '') IS NULL)`)
+  } else if (params.ubicacionMaps === 'negocios') {
+    conditions.push(`(
+      EXISTS (
+        SELECT 1 FROM "Negocio" n
+        WHERE n."clienteId" = c.id
+          AND n.activo = true
+          AND NULLIF(n."linkUbicacion", '') IS NOT NULL
+      )
+    )`)
+  } else if (params.ubicacionMaps === 'negociosSin') {
+    conditions.push(`(
+      EXISTS (
+        SELECT 1 FROM "Negocio" n
+        WHERE n."clienteId" = c.id
+          AND n.activo = true
+          AND NULLIF(n."linkUbicacion", '') IS NULL
+      )
+    )`)
+  }
+
   if (params.todosNegociosConLink === 'true') {
     conditions.push(`(
       EXISTS (SELECT 1 FROM "Negocio" n WHERE n."clienteId" = c.id AND n.activo = true)
@@ -117,10 +199,6 @@ export function buildClientesRawWhere(
           AND (n."linkUbicacion" IS NULL OR n."linkUbicacion" = '')
       )
     )`)
-  }
-
-  if (params.clienteConLink === 'true') {
-    conditions.push(`(NULLIF(c."linkUbicacion", '') IS NOT NULL)`)
   }
 
   return conditions.length > 0 ? `AND ${conditions.join(' AND ')}` : ''

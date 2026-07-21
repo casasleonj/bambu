@@ -5,6 +5,7 @@ import { unstable_cache } from 'next/cache'
 import ClientesClient from './clientes-client'
 import {
   buildClientesWhere,
+  resolveUbicacionMaps,
   type ClientesSearchParams,
   type MostrarNegocio,
 } from '@/lib/cliente-filters'
@@ -88,8 +89,7 @@ export default async function ClientesPage({
 
   const filtrosActivos = {
     mostrarNegocio: (resolvedSearchParams.mostrarNegocio ?? 'todos') as MostrarNegocio,
-    todosNegociosConLink: resolvedSearchParams.todosNegociosConLink === 'true',
-    clienteConLink: resolvedSearchParams.clienteConLink === 'true',
+    ubicacionMaps: resolveUbicacionMaps(resolvedSearchParams),
   }
 
   return (
