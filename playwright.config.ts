@@ -29,7 +29,7 @@ export default defineConfig({
     // Reusar server existente solo cuando se corre en localhost.
     // Para LAN, Playwright SIEMPRE arranca un webServer nuevo (el server
     // ya debe estar corriendo manualmente en la IP LAN esperada).
-    reuseExistingServer: !process.env.PLAYWRIGHT_TEST_BASE_URL,
+    reuseExistingServer: true,
     timeout: 120000,
     env: {
       PORT: '3001',

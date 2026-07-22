@@ -16,6 +16,7 @@ const PrecioResolverSchema = z.object({
   items: z.array(PrecioResolverItemSchema).optional(),
   canal: z.enum(['PUNTO', 'DOMICILIO']).optional(),
   clienteId: z.string().min(1).optional(),
+  negocioId: z.string().min(1).optional(),
   codigo: z.string().min(1).optional(),
   cantidad: z.number().int().min(1).optional(),
 }).refine(data => data.items || data.codigo, {
@@ -35,15 +36,29 @@ export async function POST(request: NextRequest) {
       return apiError(formatZodError(parsed.error), 400)
     }
 
-    const { canal, clienteId } = parsed.data
+    const { canal, clienteId, negocioId } = parsed.data
     let clienteOverrides: Record<string, number> | null = null
     if (clienteId) {
-      const cliente = await prisma.cliente.findUnique({
-        where: { id: clienteId },
-        select: { preciosEspeciales: true },
-      })
-      if (cliente?.preciosEspeciales) {
-        try { clienteOverrides = JSON.parse(cliente.preciosEspeciales) } catch {}
+      // Priority: negocio.preciosEspeciales → cliente.preciosEspeciales
+      // Defense: ignore negocio overrides if it does not belong to the client.
+      if (negocioId) {
+        const negocio = await prisma.negocio.findUnique({
+          where: { id: negocioId },
+          select: { preciosEspeciales: true, clienteId: true },
+        })
+        if (negocio?.clienteId === clienteId && negocio.preciosEspeciales) {
+          try { clienteOverrides = JSON.parse(negocio.preciosEspeciales) } catch { /* invalid JSON, fall through */ }
+        }
+      }
+
+      if (!clienteOverrides) {
+        const cliente = await prisma.cliente.findUnique({
+          where: { id: clienteId },
+          select: { preciosEspeciales: true },
+        })
+        if (cliente?.preciosEspeciales) {
+          try { clienteOverrides = JSON.parse(cliente.preciosEspeciales) } catch {}
+        }
       }
     }
 

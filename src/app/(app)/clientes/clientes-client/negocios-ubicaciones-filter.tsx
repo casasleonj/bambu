@@ -46,8 +46,20 @@ export const NegociosUbicacionesFilter = React.memo(function NegociosUbicaciones
           <option value="todos">Todos</option>
           <option value="cliente">Cliente con link</option>
           <option value="clienteSin">Cliente sin link</option>
-          <option value="negocios">Negocio con link</option>
-          <option value="negociosSin">Negocio sin link</option>
+          <option
+            value="negocios"
+            disabled={mostrarNegocio === 'sin'}
+            title={mostrarNegocio === 'sin' ? 'No aplica: estás filtrando clientes sin negocio' : undefined}
+          >
+            Negocio con link
+          </option>
+          <option
+            value="negociosSin"
+            disabled={mostrarNegocio === 'sin'}
+            title={mostrarNegocio === 'sin' ? 'No aplica: estás filtrando clientes sin negocio' : undefined}
+          >
+            Negocio sin link
+          </option>
         </select>
       </label>
     </div>

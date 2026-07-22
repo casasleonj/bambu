@@ -1,3 +1,5 @@
+import type { MostrarNegocio, UbicacionMapsFilter } from '@/lib/cliente-filters'
+
 export interface ContactoAlternativo {
   nombre: string
   telefono: string
@@ -146,14 +148,7 @@ export const PRODUCTO_NOMBRES: Record<string, string> = {
 
 export type FiltroRiesgo = 'bloqueado' | 'reclamaciones' | 'noVerificado' | null
 
-export type MostrarNegocio = 'todos' | 'con' | 'sin'
-
-export type UbicacionMapsFilter =
-  | 'todos'
-  | 'cliente'
-  | 'clienteSin'
-  | 'negocios'
-  | 'negociosSin'
+export type { MostrarNegocio, UbicacionMapsFilter } from '@/lib/cliente-filters'
 
 export interface FiltrosActivos {
   mostrarNegocio: MostrarNegocio

@@ -38,7 +38,6 @@ export interface PedidoInicial {
   id: string
   canal: 'PUNTO' | 'DOMICILIO'
   cliente?: PedidoInicialCliente | null
-  clienteId?: string
   negocioId?: string | null
   items: PedidoInicialItem[]
   obs?: string | null
@@ -120,7 +119,9 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
       .catch(() => {})
   }, [])
 
-  const resolverPrecios = useCallback(async (prods: Record<string, number>, canalVal: 'PUNTO' | 'DOMICILIO', clienteId?: string) => {
+  const resolverSeqRef = useRef(0)
+
+  const resolverPrecios = useCallback(async (prods: Record<string, number>, canalVal: 'PUNTO' | 'DOMICILIO', clienteId?: string, negocioId?: string | null) => {
     const items = productosActuales
       .filter(id => (prods[id] || 0) > 0)
       .map(id => ({ codigo: PRODUCTO_INFO[id].codigo, cantidad: prods[id] || 0 }))
@@ -131,15 +132,21 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
       return
     }
     setPreciosLoading(true)
+    const seq = ++resolverSeqRef.current
     try {
       const res = await fetch('/api/precios/resolver', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items, canal: canalVal, clienteId: clienteId || clienteSeleccionado?.id }),
+        body: JSON.stringify({
+          items,
+          canal: canalVal,
+          clienteId: clienteId || clienteSeleccionado?.id,
+          negocioId: negocioId ?? negocioSeleccionado ?? undefined,
+        }),
       })
       if (res.ok) {
         const data = await res.json()
-        if (data.precios) {
+        if (data.precios && resolverSeqRef.current === seq) {
           const nuevosPrecios: Record<string, number> = {}
           const nuevosOrigen: Record<string, string> = {}
           for (const [codigo, info] of Object.entries(data.precios)) {
@@ -153,9 +160,11 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
     } catch (error) {
       console.error('Error resolviendo precios:', error)
     } finally {
-      setPreciosLoading(false)
+      if (resolverSeqRef.current === seq) {
+        setPreciosLoading(false)
+      }
     }
-  }, [productosActuales, clienteSeleccionado?.id])
+  }, [productosActuales, clienteSeleccionado?.id, negocioSeleccionado])
 
   // Price sync: detectar cambios de precios via polling
   const handlePriceRefresh = useCallback(async () => {
@@ -166,19 +175,19 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
         setTablaPrecios(data.tabla)
         // Re-resolver precios si hay cantidades cargadas
         if (Object.values(cantidadesRef.current).some(c => c > 0)) {
-          resolverPrecios(cantidadesRef.current, canalRef.current, clienteSeleccionado?.id)
+          resolverPrecios(cantidadesRef.current, canalRef.current, clienteSeleccionado?.id, negocioSeleccionado)
         }
       }
     } catch (error) {
       console.error('Error refreshing prices:', error)
     }
-  }, [resolverPrecios, clienteSeleccionado?.id])
+  }, [resolverPrecios, clienteSeleccionado?.id, negocioSeleccionado])
 
   const { stale: preciosStale, refresh: refreshPrecios } = usePriceSync(handlePriceRefresh)
 
   // FIX B9: resolver precios para todos los productos visibles (cantidad 1)
   // inmediatamente al seleccionar un cliente o cambiar de canal. Esto garantiza
-  // que se muestre el precio especial del cliente desde el primer render,
+  // que se muestre el precio especial desde el primer render,
   // sin esperar a que el usuario modifique la cantidad.
   // En edición usamos las cantidades actuales del pedido para no perder
   // la resolución por volumen que ya tenía.
@@ -195,8 +204,8 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
       const actual = cantidadesRef.current[id] || 0
       allProducts[id] = isEdit && actual > 0 ? actual : 1
     }
-    resolverPrecios(allProducts, canalRef.current, clienteSeleccionado.id)
-  }, [productosConfig, clienteSeleccionado?.id, productosActuales, resolverPrecios, pedidoInicial?.id])
+    resolverPrecios(allProducts, canalRef.current, clienteSeleccionado.id, negocioSeleccionado)
+  }, [productosConfig, clienteSeleccionado?.id, productosActuales, resolverPrecios, pedidoInicial?.id, negocioSeleccionado])
 
   useEffect(() => {
     resolverPreciosCliente()
@@ -256,12 +265,6 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
     setObservaciones(pedidoInicial.obs || '')
     if (pedidoInicial.cliente) {
       setClienteSeleccionado(pedidoInicial.cliente as Cliente)
-    } else if (pedidoInicial.clienteId) {
-      // FIX B2: si se pasa solo clienteId, buscar el cliente completo en la lista
-      const clienteEncontrado = clientes.find(c => c.id === pedidoInicial.clienteId)
-      if (clienteEncontrado) {
-        setClienteSeleccionado(clienteEncontrado)
-      }
     }
     setNegocioSeleccionado(pedidoInicial.negocioId ?? null)
     const items = pedidoInicial.items
@@ -328,7 +331,7 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
       clearTimeout(resolverTimeoutRef.current)
     }
     resolverTimeoutRef.current = setTimeout(() => {
-      resolverPrecios(next, canalRef.current, clienteSeleccionado?.id)
+      resolverPrecios(next, canalRef.current, clienteSeleccionado?.id, negocioSeleccionado)
     }, 400)
   }
 
@@ -378,14 +381,16 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
       setPreciosManuales({})
     }
     // FIX B9: resolver precios para todos los productos del nuevo canal
-    // (cantidad 1) para que los precios especiales del cliente aparezcan
-    // inmediatamente, sin esperar a modificar cantidades.
+    // (cantidad 1 o la cantidad real en edición) para que los precios especiales
+    // aparezcan inmediatamente, sin esperar a modificar cantidades.
     setTimeout(() => {
       const allProducts: Record<string, number> = {}
+      const isEdit = Boolean(pedidoInicial?.id)
       for (const id of productosNuevoCanal) {
-        allProducts[id] = 1
+        const actual = cantidadesRef.current[id] || 0
+        allProducts[id] = isEdit && actual > 0 ? actual : 1
       }
-      resolverPrecios(allProducts, nuevoCanal)
+      resolverPrecios(allProducts, nuevoCanal, clienteSeleccionado?.id, negocioSeleccionado)
     }, 0)
   }
 
@@ -706,7 +711,7 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
                         <span className="text-xs text-gray-500">${precio.toLocaleString()}</span>
                       )}
                       {preciosOrigen[info.codigo] === 'cliente' && (
-                        <span className="text-[9px] font-medium text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">Cliente</span>
+                        <span className="text-[9px] font-medium text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">Especial</span>
                       )}
                     </div>
                   </div>

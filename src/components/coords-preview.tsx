@@ -22,36 +22,71 @@ interface CoordsPreviewProps {
   url: string | null | undefined
 }
 
+type ExpandedState =
+  | { coords: ParsedCoords | null; loading: boolean; error?: string }
+  | null
+
+const DEBOUNCE_MS = 500
+
 export function CoordsPreview({ url }: CoordsPreviewProps) {
-  const [expanded, setExpanded] = useState<{ coords: ParsedCoords | null; loading: boolean; error?: string } | null>(null)
+  const [expanded, setExpanded] = useState<ExpandedState>(null)
+  const [expandedUrl, setExpandedUrl] = useState<string | null>(null)
+  const [fetchUrl, setFetchUrl] = useState<string | null>(null)
+
+  // Render-time synchronization: reset cuando el link deja de ser corto
+  // o desaparece. Este es el patrón documentado de React para ajustar estado
+  // derivado de props sin necesitar un effect.
+  const [prevUrl, setPrevUrl] = useState(url)
+  if (url !== prevUrl) {
+    setPrevUrl(url)
+    if (!url || !url.trim() || !isShortMapsUrl(url)) {
+      setExpanded(null)
+      setExpandedUrl(null)
+      setFetchUrl(null)
+    }
+  }
+
+  // Render-time loading: cuando el URL debounced cambia a un link corto
+  // válido, mostramos el estado de carga sin necesitar setState en el body
+  // del effect.
+  if (fetchUrl && fetchUrl !== expandedUrl) {
+    setExpandedUrl(fetchUrl)
+    setExpanded({ coords: null, loading: true })
+  }
 
   const immediateResult = useMemo(() => {
     if (!url || !url.trim()) return null
     return parseGoogleMapsLink(url)
   }, [url])
 
+  // Debounce: solo resolvemos links cortos después de que el usuario deje de
+  // escribir. En 2G/3G rural esto evita una tormenta de requests por tecla.
   useEffect(() => {
-    if (!url || !url.trim()) {
-      setExpanded(null)
-      return
-    }
-    if (!isShortMapsUrl(url)) {
-      setExpanded(null)
-      return
-    }
+    if (!url || !url.trim() || !isShortMapsUrl(url)) return
+    const timeout = setTimeout(() => {
+      setFetchUrl(url)
+    }, DEBOUNCE_MS)
+    return () => clearTimeout(timeout)
+  }, [url])
 
+  // Fetch de la expansión server-side.
+  useEffect(() => {
+    if (!fetchUrl || !isShortMapsUrl(fetchUrl)) return
     let cancelled = false
-    setExpanded({ coords: null, loading: true })
     fetch('/api/geo/expand-maps', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({ url: fetchUrl }),
     })
       .then(async r => {
         const data = await r.json().catch(() => ({}))
         if (cancelled) return
         if (!r.ok) {
-          setExpanded({ coords: null, loading: false, error: data.formErrors?.[0] || 'No se pudo expandir el link' })
+          setExpanded({
+            coords: null,
+            loading: false,
+            error: data.error?.formErrors?.[0] || data.error?.message || 'No se pudo expandir el link',
+          })
           return
         }
         setExpanded({ coords: data.coords || null, loading: false })
@@ -61,7 +96,7 @@ export function CoordsPreview({ url }: CoordsPreviewProps) {
       })
 
     return () => { cancelled = true }
-  }, [url])
+  }, [fetchUrl])
 
   if (!url || !url.trim()) return null
 

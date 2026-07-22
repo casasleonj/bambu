@@ -136,6 +136,13 @@ export const ClienteTable = React.memo(function ClienteTable({
       } else {
         params.set('mostrarNegocio', val)
       }
+      // Footgun prevention: "sin negocio" + filtros de ubicación de negocios = lista vacía garantizada.
+      if (val === 'sin') {
+        const ubicacion = params.get('ubicacionMaps') as UbicacionMapsFilter | null
+        if (ubicacion === 'negocios' || ubicacion === 'negociosSin') {
+          params.delete('ubicacionMaps')
+        }
+      }
     } else if (key === 'ubicacionMaps') {
       const val = value as UbicacionMapsFilter
       if (val === 'todos') {

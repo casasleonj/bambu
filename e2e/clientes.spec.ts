@@ -186,15 +186,15 @@ test.describe('Clientes UI', () => {
     await expect(page.getByText('SinNegocioConLink', { exact: true })).not.toBeVisible()
     await expect(page.getByText('SinNegocioSinLink', { exact: true })).not.toBeVisible()
 
-    // Filtro "Todos los negocios con link" (solo pasa el que tiene link)
-    await page.getByRole('button', { name: 'Negocios con link' }).click()
-    await page.waitForURL(/todosNegociosConLink=true/)
+    // Filtro "Negocio con link" (solo pasa el que tiene negocio con link)
+    await page.getByLabel('Filtrar por ubicación de Maps').selectOption('negocios')
+    await page.waitForURL(/ubicacionMaps=negocios/)
     await expect(page.getByText('NegocioConLink', { exact: true })).toBeVisible()
     await expect(page.getByText('NegocioSinLink', { exact: true })).not.toBeVisible()
 
-    // Limpiar filtros de negocio
-    await page.getByRole('button', { name: 'Con negocio' }).click()
-    await page.waitForURL((url) => !url.searchParams.has('mostrarNegocio'))
+    // Limpiar filtro de ubicación
+    await page.getByRole('button', { name: 'Negocio con link' }).click()
+    await page.waitForURL((url) => !url.searchParams.has('ubicacionMaps'))
 
     // Filtro "Sin negocio"
     await page.getByLabel('Filtrar por negocio').selectOption('sin')
@@ -203,12 +203,13 @@ test.describe('Clientes UI', () => {
     await expect(page.getByText('SinNegocioSinLink', { exact: true })).toBeVisible()
     await expect(page.getByText('NegocioConLink', { exact: true })).not.toBeVisible()
 
-    // "Negocios con link" debe estar deshabilitado cuando "Sin negocio"
-    await expect(page.getByRole('button', { name: 'Negocios con link' })).toBeDisabled()
+    // Las opciones de ubicación de negocios deben estar deshabilitadas cuando "Sin negocio"
+    await expect(page.getByLabel('Filtrar por ubicación de Maps').locator('option[value="negocios"]')).toHaveAttribute('disabled', '')
+    await expect(page.getByLabel('Filtrar por ubicación de Maps').locator('option[value="negociosSin"]')).toHaveAttribute('disabled', '')
 
     // Filtro "Cliente con link" dentro de "Sin negocio"
-    await page.getByRole('button', { name: 'Cliente con link' }).click()
-    await page.waitForURL(/clienteConLink=true/)
+    await page.getByLabel('Filtrar por ubicación de Maps').selectOption('cliente')
+    await page.waitForURL(/ubicacionMaps=cliente/)
     await expect(page.getByText('SinNegocioConLink', { exact: true })).toBeVisible()
     await expect(page.getByText('SinNegocioSinLink', { exact: true })).not.toBeVisible()
   })
