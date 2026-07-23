@@ -29,37 +29,39 @@ export default async function ClientesPage({
   // plantilla recurrente. El detalle (modal) carga el resto vía API.
   const where = buildClientesWhere(resolvedSearchParams)
 
-  const clientes = await prisma.cliente.findMany({
-    where,
-    orderBy: { nombre: 'asc' },
-    take: 100,
-    include: {
-      _count: { select: { pedidos: true } },
-      contactos: { orderBy: { nombre: 'asc' } },
-      negocios: {
-        where: { activo: true },
-        select: {
-          id: true,
-          nombre: true,
-          tipoNegocio: true,
-          direccion: true,
-          barrio: true,
-          referencia: true,
-          linkUbicacion: true,
+  const [clientes, saldos, limiteGlobalFiados] = await Promise.all([
+    prisma.cliente.findMany({
+      where,
+      orderBy: { nombre: 'asc' },
+      take: 100,
+      include: {
+        _count: { select: { pedidos: true } },
+        contactos: { orderBy: { nombre: 'asc' } },
+        negocios: {
+          where: { activo: true },
+          select: {
+            id: true,
+            nombre: true,
+            tipoNegocio: true,
+            direccion: true,
+            barrio: true,
+            referencia: true,
+            linkUbicacion: true,
+          },
         },
+        plantillaRecurrente: true,
       },
-      plantillaRecurrente: true,
-    },
-  })
-
-  const saldos = await prisma.pedido.groupBy({
-    by: ['clienteId'],
-    where: {
-      saldo: { gt: 0 },
-      estadoEntrega: 'ENTREGADO',
-    },
-    _sum: { saldo: true },
-  })
+    }),
+    prisma.pedido.groupBy({
+      by: ['clienteId'],
+      where: {
+        saldo: { gt: 0 },
+        estadoEntrega: 'ENTREGADO',
+      },
+      _sum: { saldo: true },
+    }),
+    getConfigInt('LIMITE_PEDIDOS_FIADOS_DEFAULT', LIMITE_FIADOS_DEFAULT),
+  ])
   const saldoById = new Map(
     saldos.map(s => [s.clienteId, Number(s._sum.saldo ?? 0)])
   )
@@ -72,8 +74,6 @@ export default async function ClientesPage({
       preciosEspeciales: c.preciosEspeciales || undefined,
     })
   )
-
-  const limiteGlobalFiados = await getConfigInt('LIMITE_PEDIDOS_FIADOS_DEFAULT', LIMITE_FIADOS_DEFAULT)
 
   const filtrosActivos = {
     mostrarNegocio: (resolvedSearchParams.mostrarNegocio ?? 'todos') as MostrarNegocio,

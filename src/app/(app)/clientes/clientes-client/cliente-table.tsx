@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useRef, useMemo } from 'react'
+import React, { useState, useEffect, useRef, useMemo, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
 import { toast } from 'sonner'
@@ -27,6 +27,7 @@ interface ClienteTableProps {
   onRetry: () => void
   onCreateClick: () => void
   onViewCliente: (id: string) => void
+  onPrefetchCliente?: (id: string) => void
   onViewNegocio: (negocio: NegocioDetail) => void
   sortBy: 'nombre' | 'createdAt'
   sortDir: 'asc' | 'desc'
@@ -44,6 +45,7 @@ export const ClienteTable = React.memo(function ClienteTable({
   onRetry,
   onCreateClick,
   onViewCliente,
+  onPrefetchCliente,
   onViewNegocio,
   sortBy,
   sortDir,
@@ -58,6 +60,25 @@ export const ClienteTable = React.memo(function ClienteTable({
   const [filterFrecuencia, setFilterFrecuencia] = useState(false)
   const [quickActionsRow, setQuickActionsRow] = useState<string | null>(null)
   const quickActionsRef = useRef<HTMLDivElement>(null)
+  const [isPending, startTransition] = useTransition()
+
+  // Optimistic UI para filtros URL: el usuario ve el cambio inmediatamente
+  // mientras Next.js trae el Server Component actualizado.
+  const [optimisticFiltros, setOptimisticFiltros] = useState(filtrosActivos)
+  const [optimisticFiltroRiesgo, setOptimisticFiltroRiesgo] = useState(filtroActivo)
+  useEffect(() => {
+    setOptimisticFiltros(filtrosActivos)
+  }, [filtrosActivos])
+  useEffect(() => {
+    setOptimisticFiltroRiesgo(filtroActivo)
+  }, [filtroActivo])
+
+  const navigateWithTransition = (params: URLSearchParams, nextFiltros: FiltrosActivos) => {
+    setOptimisticFiltros(nextFiltros)
+    startTransition(() => {
+      router.push(`${pathname}?${params.toString()}`, { scroll: false })
+    })
+  }
 
   useEffect(() => {
     if (!quickActionsRow) return
@@ -80,29 +101,31 @@ export const ClienteTable = React.memo(function ClienteTable({
     filterSaldo ||
     filterFrecuencia ||
     search ||
-    filtroActivo ||
-    filtrosActivos.mostrarNegocio !== 'todos' ||
-    filtrosActivos.ubicacionMaps !== 'todos'
+    optimisticFiltroRiesgo ||
+    optimisticFiltros.mostrarNegocio !== 'todos' ||
+    optimisticFiltros.ubicacionMaps !== 'todos'
 
   const clearFilters = () => {
     setFilterSaldo(false)
     setFilterFrecuencia(false)
     onSearchChange('')
+    setOptimisticFiltroRiesgo(null)
     const params = new URLSearchParams(window.location.search)
     params.delete('bloqueado')
     params.delete('reclamaciones')
     params.delete('noVerificado')
     params.delete('mostrarNegocio')
     params.delete('ubicacionMaps')
-    router.push(`${pathname}?${params.toString()}`, { scroll: false })
-    router.refresh()
+    navigateWithTransition(params, { mostrarNegocio: 'todos', ubicacionMaps: 'todos' })
   }
 
   const clearFiltro = (key: 'mostrarNegocio' | 'ubicacionMaps') => {
     const params = new URLSearchParams(window.location.search)
     params.delete(key)
-    router.push(`${pathname}?${params.toString()}`, { scroll: false })
-    router.refresh()
+    navigateWithTransition(params, {
+      ...optimisticFiltros,
+      [key]: 'todos' as const,
+    })
   }
 
   const toggleFiltroRiesgo = (filtro: FiltroRiesgo) => {
@@ -110,13 +133,16 @@ export const ClienteTable = React.memo(function ClienteTable({
     params.delete('bloqueado')
     params.delete('reclamaciones')
     params.delete('noVerificado')
-    if (filtroActivo !== filtro) {
-      if (filtro === 'bloqueado') params.set('bloqueado', 'true')
-      else if (filtro === 'reclamaciones') params.set('reclamaciones', 'gte3')
-      else if (filtro === 'noVerificado') params.set('noVerificado', 'true')
+    const nextFiltro = optimisticFiltroRiesgo !== filtro ? filtro : null
+    if (nextFiltro) {
+      if (nextFiltro === 'bloqueado') params.set('bloqueado', 'true')
+      else if (nextFiltro === 'reclamaciones') params.set('reclamaciones', 'gte3')
+      else if (nextFiltro === 'noVerificado') params.set('noVerificado', 'true')
     }
-    router.push(`${pathname}?${params.toString()}`, { scroll: false })
-    router.refresh()
+    setOptimisticFiltroRiesgo(nextFiltro)
+    startTransition(() => {
+      router.push(`${pathname}?${params.toString()}`, { scroll: false })
+    })
   }
 
   const UBICACION_CHIP_LABELS: Record<UbicacionMapsFilter, string> = {
@@ -129,6 +155,7 @@ export const ClienteTable = React.memo(function ClienteTable({
 
   const handleFiltrosActivosChange = (key: keyof FiltrosActivos, value: MostrarNegocio | UbicacionMapsFilter) => {
     const params = new URLSearchParams(window.location.search)
+    const nextFiltros = { ...optimisticFiltros, [key]: value }
     if (key === 'mostrarNegocio') {
       const val = value as MostrarNegocio
       if (val === 'todos') {
@@ -141,6 +168,7 @@ export const ClienteTable = React.memo(function ClienteTable({
         const ubicacion = params.get('ubicacionMaps') as UbicacionMapsFilter | null
         if (ubicacion === 'negocios' || ubicacion === 'negociosSin') {
           params.delete('ubicacionMaps')
+          nextFiltros.ubicacionMaps = 'todos'
         }
       }
     } else if (key === 'ubicacionMaps') {
@@ -151,8 +179,7 @@ export const ClienteTable = React.memo(function ClienteTable({
         params.set('ubicacionMaps', val)
       }
     }
-    router.push(`${pathname}?${params.toString()}`, { scroll: false })
-    router.refresh()
+    navigateWithTransition(params, nextFiltros)
   }
 
   return (
@@ -183,11 +210,21 @@ export const ClienteTable = React.memo(function ClienteTable({
         </div>
 
         <NegociosUbicacionesFilter
-          mostrarNegocio={filtrosActivos.mostrarNegocio}
-          ubicacionMaps={filtrosActivos.ubicacionMaps}
+          mostrarNegocio={optimisticFiltros.mostrarNegocio}
+          ubicacionMaps={optimisticFiltros.ubicacionMaps}
+          disabled={isPending}
           onChangeMostrarNegocio={(valor) => handleFiltrosActivosChange('mostrarNegocio', valor)}
           onChangeUbicacionMaps={(valor) => handleFiltrosActivosChange('ubicacionMaps', valor)}
         />
+        {isPending && (
+          <span className="inline-flex items-center gap-1.5 text-xs text-amber-600 animate-pulse">
+            <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+            Aplicando filtro…
+          </span>
+        )}
 
         <div className="flex flex-wrap gap-2">
           <Tooltip content="Mostrar solo clientes con saldo pendiente" position="bottom">
@@ -225,7 +262,7 @@ export const ClienteTable = React.memo(function ClienteTable({
           </Tooltip>
 
           {/* Filtros de riesgo (vienen del dashboard) */}
-          {filtroActivo === 'bloqueado' && (
+          {optimisticFiltroRiesgo === 'bloqueado' && (
             <Tooltip content="Filtro activo: clientes bloqueados — click para quitar" position="bottom">
               <button
                 onClick={() => toggleFiltroRiesgo('bloqueado')}
@@ -239,7 +276,7 @@ export const ClienteTable = React.memo(function ClienteTable({
               </button>
             </Tooltip>
           )}
-          {filtroActivo === 'reclamaciones' && (
+          {optimisticFiltroRiesgo === 'reclamaciones' && (
             <Tooltip content="Filtro activo: clientes con 3+ reclamaciones — click para quitar" position="bottom">
               <button
                 onClick={() => toggleFiltroRiesgo('reclamaciones')}
@@ -253,7 +290,7 @@ export const ClienteTable = React.memo(function ClienteTable({
               </button>
             </Tooltip>
           )}
-          {filtroActivo === 'noVerificado' && (
+          {optimisticFiltroRiesgo === 'noVerificado' && (
             <Tooltip content="Filtro activo: clientes sin verificar — click para quitar" position="bottom">
               <button
                 onClick={() => toggleFiltroRiesgo('noVerificado')}
@@ -269,7 +306,7 @@ export const ClienteTable = React.memo(function ClienteTable({
           )}
 
           {/* Filtros de negocio / ubicación */}
-          {filtrosActivos.mostrarNegocio === 'con' && (
+          {optimisticFiltros.mostrarNegocio === 'con' && (
             <Tooltip content="Filtro activo: clientes con negocio — click para quitar" position="bottom">
               <button
                 onClick={() => clearFiltro('mostrarNegocio')}
@@ -283,7 +320,7 @@ export const ClienteTable = React.memo(function ClienteTable({
               </button>
             </Tooltip>
           )}
-          {filtrosActivos.mostrarNegocio === 'sin' && (
+          {optimisticFiltros.mostrarNegocio === 'sin' && (
             <Tooltip content="Filtro activo: clientes sin negocio — click para quitar" position="bottom">
               <button
                 onClick={() => clearFiltro('mostrarNegocio')}
@@ -297,8 +334,8 @@ export const ClienteTable = React.memo(function ClienteTable({
               </button>
             </Tooltip>
           )}
-          {filtrosActivos.ubicacionMaps !== 'todos' && (
-            <Tooltip content={`Filtro activo: ${UBICACION_CHIP_LABELS[filtrosActivos.ubicacionMaps]} — click para quitar`} position="bottom">
+          {optimisticFiltros.ubicacionMaps !== 'todos' && (
+            <Tooltip content={`Filtro activo: ${UBICACION_CHIP_LABELS[optimisticFiltros.ubicacionMaps]} — click para quitar`} position="bottom">
               <button
                 onClick={() => clearFiltro('ubicacionMaps')}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border bg-emerald-50 border-emerald-200 text-emerald-700"
@@ -307,7 +344,7 @@ export const ClienteTable = React.memo(function ClienteTable({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
-                {UBICACION_CHIP_LABELS[filtrosActivos.ubicacionMaps]}
+                {UBICACION_CHIP_LABELS[optimisticFiltros.ubicacionMaps]}
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
               </button>
             </Tooltip>
@@ -351,12 +388,12 @@ export const ClienteTable = React.memo(function ClienteTable({
           <p className="text-sm text-gray-500">
             {clientesFiltrados.length} de {clientes.length} clientes
             {hasActiveFilters && ' (filtrados)'}
-            {filtroActivo === 'bloqueado' && ' — bloqueados'}
-            {filtroActivo === 'reclamaciones' && ' — con 3+ reclamaciones'}
-            {filtroActivo === 'noVerificado' && ' — sin verificar'}
-            {filtrosActivos.mostrarNegocio === 'con' && ' — con negocio'}
-            {filtrosActivos.mostrarNegocio === 'sin' && ' — sin negocio'}
-            {filtrosActivos.ubicacionMaps !== 'todos' && ` — ${UBICACION_CHIP_LABELS[filtrosActivos.ubicacionMaps].toLowerCase()}`}
+            {optimisticFiltroRiesgo === 'bloqueado' && ' — bloqueados'}
+            {optimisticFiltroRiesgo === 'reclamaciones' && ' — con 3+ reclamaciones'}
+            {optimisticFiltroRiesgo === 'noVerificado' && ' — sin verificar'}
+            {optimisticFiltros.mostrarNegocio === 'con' && ' — con negocio'}
+            {optimisticFiltros.mostrarNegocio === 'sin' && ' — sin negocio'}
+            {optimisticFiltros.ubicacionMaps !== 'todos' && ` — ${UBICACION_CHIP_LABELS[optimisticFiltros.ubicacionMaps].toLowerCase()}`}
           </p>
           <div className="flex items-center gap-1 text-xs text-gray-500">
             <span className="hidden sm:inline">Ordenar:</span>
@@ -428,6 +465,7 @@ export const ClienteTable = React.memo(function ClienteTable({
                         : 'hover:bg-blue-50/50'
                   }`}
                   onClick={() => onViewCliente(cliente.id)}
+                  onPointerEnter={() => onPrefetchCliente?.(cliente.id)}
                 >
                   {/* Quick actions menu */}
                   <div className="absolute right-3 top-3 z-10">

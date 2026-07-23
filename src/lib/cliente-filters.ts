@@ -41,9 +41,9 @@ export function resolveUbicacionMaps(
  *
  * Reglas:
  * - Siempre excluye clientes inactivos y el canónico CONSUMIDOR_FINAL.
- * - "mostrarNegocio=con" → cliente con al menos un Negocio formal activo
- *   O con nombreNegocio legacy no vacío.
- * - "mostrarNegocio=sin" → sin negocios formales activos Y sin nombreNegocio legacy.
+ * - "mostrarNegocio=con" → cliente con al menos un Negocio formal activo.
+ * - "mostrarNegocio=sin" → sin ningún Negocio formal activo (nombreNegocio legacy
+ *   se ignora; el filtro es exclusivamente por negocios formales).
  * - "ubicacionMaps=cliente" → Cliente.linkUbicacion no es null ni vacío.
  * - "ubicacionMaps=clienteSin" → Cliente.linkUbicacion es null o vacío.
  * - "ubicacionMaps=negocios" → al menos un Negocio formal activo tiene link de Maps.
@@ -68,17 +68,14 @@ export function buildClientesWhere(params: ClientesSearchParams): Record<string,
     where.verificado = false
   }
 
-  // Filtro: con/sin negocio
+  // Filtro: con/sin negocio (formal Negocio solamente; no considera
+  // nombreNegocio legacy).
   if (params.mostrarNegocio === 'con') {
-    where.OR = [
-      { negocios: { some: { activo: true } } },
-      { nombreNegocio: { not: '' } },
-    ]
+    where.OR = [{ negocios: { some: { activo: true } } }]
   } else if (params.mostrarNegocio === 'sin') {
     where.AND = [
       ...(Array.isArray(where.AND) ? (where.AND as Record<string, unknown>[]) : []),
       { NOT: { negocios: { some: { activo: true } } } },
-      { OR: [{ nombreNegocio: null }, { nombreNegocio: '' }] },
     ]
   }
 
@@ -156,12 +153,10 @@ export function buildClientesRawWhere(
   if (params.mostrarNegocio === 'con') {
     conditions.push(`(
       EXISTS (SELECT 1 FROM "Negocio" n WHERE n."clienteId" = c.id AND n.activo = true)
-      OR NULLIF(c."nombreNegocio", '') IS NOT NULL
     )`)
   } else if (params.mostrarNegocio === 'sin') {
     conditions.push(`(
       NOT EXISTS (SELECT 1 FROM "Negocio" n WHERE n."clienteId" = c.id AND n.activo = true)
-      AND NULLIF(c."nombreNegocio", '') IS NULL
     )`)
   }
 

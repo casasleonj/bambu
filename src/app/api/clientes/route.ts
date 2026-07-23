@@ -179,6 +179,8 @@ export async function GET(request: NextRequest) {
             select: { saldo: true },
           },
           negocios: {
+            where: { activo: true },
+            orderBy: { nombre: 'asc' },
             select: {
               id: true,
               nombre: true,
@@ -189,6 +191,7 @@ export async function GET(request: NextRequest) {
               linkUbicacion: true,
             },
           },
+          plantillaRecurrente: true,
           contactos: true,  // FASE 3: ya es el nombre final
         },
         ...prismaPagination,

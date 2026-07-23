@@ -45,6 +45,10 @@ export interface Cliente {
     barrio?: string | null
     referencia?: string | null
     linkUbicacion?: string | null
+    horaApertura?: string | null
+    clienteId?: string
+    ruta?: { id: string; nombre: string } | null
+    _count?: { pedidos: number }
   }>
   frecuenciaSugerida?: { dias: number; label: string } | null
   productosSugeridos?: Array<{ codigo: string; nombre: string; frecuencia: number; cantidadPromedio: number }>

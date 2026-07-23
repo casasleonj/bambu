@@ -412,4 +412,131 @@ describe('ClientesClient — regresion mobile 2026-06-10', () => {
     const errorBanner = screen.getByRole('alert')
     expect(errorBanner.textContent).toContain('No se pudo conectar al servidor')
   })
+
+  it('renderiza los negocios que vienen en el detalle del cliente (sin fetch aparte a /api/negocios)', async () => {
+    const { mock, calls, responses } = createFetchMock()
+    global.fetch = mock as unknown as typeof fetch
+
+    responses.set('/api/clientes/cliente-1', {
+      status: 200,
+      body: {
+        success: true,
+        cliente: {
+          ...mockCliente,
+          negocios: [
+            {
+              id: 'negocio-1',
+              nombre: 'Ferretería Don Juan',
+              tipoNegocio: 'Ferretería',
+              direccion: 'Calle 1 #2-3',
+              barrio: 'Centro',
+              referencia: null,
+              linkUbicacion: 'https://maps.google.com/?q=1,2',
+              horaApertura: '08:00',
+              activo: true,
+              _count: { pedidos: 3 },
+              ruta: { id: 'ruta-1', nombre: 'Ruta Norte' },
+            },
+          ],
+        },
+      },
+    })
+
+    render(
+      <ClientesClient
+        initialClientes={[mockCliente]}
+        filtrosActivos={{ mostrarNegocio: 'todos', ubicacionMaps: 'todos' }}
+        openClienteId={undefined}
+        filtroActivo={null}
+      />,
+    )
+
+    const row = screen.getByTestId('cliente-row-cliente-1')
+    await act(async () => {
+      fireEvent.click(row)
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('Ferretería Don Juan')).toBeTruthy()
+    })
+    expect(screen.getByText('Calle 1 #2-3')).toBeTruthy()
+    expect(screen.getByText('Ruta Norte')).toBeTruthy()
+
+    // No debe haber consultado el endpoint legacy de negocios; la fuente
+    // de verdad del panel es ahora el detalle del cliente.
+    const negociosCalls = calls.filter((c) => c.url.includes('/api/negocios'))
+    expect(negociosCalls).toHaveLength(0)
+  })
+
+  it('viewCliente descarta respuesta stale cuando el usuario hace dos clicks rápidos (seq guard)', async () => {
+    const { mock } = createFetchMock()
+    global.fetch = mock as unknown as typeof fetch
+
+    // Configuramos una respuesta LENTA para cliente-1 y una rápida para cliente-2.
+    // Si no hay guarda de secuencia, el modal podría terminar con el nombre lento.
+    let cliente1Resolver: (r: Response) => void
+    const cliente1Promise = new Promise<Response>((resolve) => {
+      cliente1Resolver = resolve
+    })
+
+    mock.mockImplementation(async (url: string | URL | Request) => {
+      const urlStr = String(url)
+      if (urlStr.includes('/api/clientes/cliente-1')) {
+        return cliente1Promise
+      }
+      if (urlStr.includes('/api/clientes/cliente-2')) {
+        return {
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          json: async () => ({
+            success: true,
+            cliente: { ...mockCliente, id: 'cliente-2', clienteId: 'cliente-2', nombre: 'Pedro', apellido: '', negocios: [] },
+          }),
+          text: async () => '',
+        } as Response
+      }
+      return { ok: true, status: 200, json: async () => ({}), text: async () => '' } as Response
+    })
+
+    const cliente2: Cliente = { ...mockCliente, id: 'cliente-2', clienteId: 'cliente-2', nombre: 'Pedro' }
+
+    render(
+      <ClientesClient
+        initialClientes={[mockCliente, cliente2]}
+        filtrosActivos={{ mostrarNegocio: 'todos', ubicacionMaps: 'todos' }}
+        openClienteId={undefined}
+        filtroActivo={null}
+      />,
+    )
+
+    // Click rápido en cliente-1 y luego cliente-2.
+    const row1 = screen.getByTestId('cliente-row-cliente-1')
+    const row2 = screen.getByTestId('cliente-row-cliente-2')
+    await act(async () => {
+      fireEvent.click(row1)
+      fireEvent.click(row2)
+    })
+
+    // La respuesta lenta de cliente-1 llega tarde; debe ser ignorada.
+    await act(async () => {
+      cliente1Resolver!({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: async () => ({
+          success: true,
+          cliente: { ...mockCliente, id: 'cliente-1', clienteId: 'cliente-1', nombre: 'Nombre Stale', apellido: '', negocios: [] },
+        }),
+        text: async () => '',
+      } as Response)
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Pedro' })).toBeTruthy()
+    })
+
+    // El nombre stale nunca debe aparecer en el modal.
+    expect(screen.queryByRole('heading', { name: 'Nombre Stale' })).toBeNull()
+  })
 })

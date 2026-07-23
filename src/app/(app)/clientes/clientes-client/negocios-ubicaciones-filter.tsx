@@ -6,6 +6,7 @@ import type { MostrarNegocio, UbicacionMapsFilter } from './types'
 interface NegociosUbicacionesFilterProps {
   mostrarNegocio: MostrarNegocio
   ubicacionMaps: UbicacionMapsFilter
+  disabled?: boolean
   onChangeMostrarNegocio: (valor: MostrarNegocio) => void
   onChangeUbicacionMaps: (valor: UbicacionMapsFilter) => void
 }
@@ -16,6 +17,7 @@ const SELECT_STYLES =
 export const NegociosUbicacionesFilter = React.memo(function NegociosUbicacionesFilter({
   mostrarNegocio,
   ubicacionMaps,
+  disabled,
   onChangeMostrarNegocio,
   onChangeUbicacionMaps,
 }: NegociosUbicacionesFilterProps) {
@@ -26,7 +28,8 @@ export const NegociosUbicacionesFilter = React.memo(function NegociosUbicaciones
         <select
           value={mostrarNegocio}
           onChange={(e) => onChangeMostrarNegocio(e.target.value as MostrarNegocio)}
-          className={SELECT_STYLES}
+          disabled={disabled}
+          className={`${SELECT_STYLES} disabled:opacity-50 disabled:cursor-not-allowed`}
           aria-label="Filtrar por negocio"
         >
           <option value="todos">Todos</option>
@@ -40,7 +43,8 @@ export const NegociosUbicacionesFilter = React.memo(function NegociosUbicaciones
         <select
           value={ubicacionMaps}
           onChange={(e) => onChangeUbicacionMaps(e.target.value as UbicacionMapsFilter)}
-          className={SELECT_STYLES}
+          disabled={disabled}
+          className={`${SELECT_STYLES} disabled:opacity-50 disabled:cursor-not-allowed`}
           aria-label="Filtrar por ubicación de Maps"
         >
           <option value="todos">Todos</option>

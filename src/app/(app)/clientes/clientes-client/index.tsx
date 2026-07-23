@@ -1,7 +1,7 @@
 'use client'
 
 import { generateUUID } from '@/lib/uuid'
-import { useState, useCallback, useEffect, useMemo } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { useConfirm } from '@/components/confirm-modal'
@@ -33,6 +33,21 @@ import type { AlertaTipo } from '@/lib/alertas-config'
 import { getBadgeColor, ignorarAlerta } from '@/lib/alertas-config'
 import { useEscapeGuard } from '@/hooks/use-escape-guard'
 import { usePollingRefetch } from '@/hooks/use-polling-refetch'
+
+// Warm-up cache: última vez que se precalentó una ruta de detalle.
+// Fire-and-forget: solo despierta la lambda; nunca cachea la respuesta,
+// evitando datos stale y el trabajo de invalidar en cada mutación.
+const WARMUP_TTL_MS = 60_000
+const lastWarmupById = new Map<string, number>()
+
+function warmClienteDetail(id: string) {
+  const now = Date.now()
+  const last = lastWarmupById.get(id)
+  if (last && now - last < WARMUP_TTL_MS) return
+  lastWarmupById.set(id, now)
+  // fetch con no-cors no-op; el objetivo es que Vercel mantenga la lambda viva.
+  fetch(`/api/clientes/${id}`, { method: 'GET', cache: 'no-store' }).catch(() => {})
+}
 
 export default function ClientesClient({
   initialClientes,
@@ -92,6 +107,9 @@ export default function ClientesClient({
 
   // Negocios state
   const [negocios, setNegocios] = useState<NegocioDetail[]>([])
+
+  // Guard contra respuestas stale de viewCliente (clicks rápidos A→B).
+  const viewSeqRef = useRef(0)
   const [negocioFormOpen, setNegocioFormOpen] = useState(false)
   const [negocioEditData, setNegocioEditData] = useState<{ id: string; nombre: string; tipoNegocio: string | null; direccion: string | null; barrio: string | null; referencia: string | null; linkUbicacion: string | null; horaApertura: string | null; rutaId: string | null } | null>(null)
   const [viewNegocioData, setViewNegocioData] = useState<NegocioDetail | null>(null)
@@ -127,29 +145,26 @@ export default function ClientesClient({
       .catch(err => console.warn('[init] profile fetch failed', err))
   }, [])
 
+  // Deep-link ?openCliente=ID: carga detalle completo (igual que click en fila)
+  // para garantizar la shape completa incluyendo negocios.
   useEffect(() => {
     if (!openClienteId || clientes.length === 0) return
     const cliente = clientes.find(c => c.id === openClienteId || c.clienteId === openClienteId)
-    if (cliente) {
-      setSelectedCliente(cliente)
-      setShowDetail(true)
-      setActiveTab('info')
-    }
-  }, [openClienteId, clientes])
+    if (!cliente) return
+    // Si el cliente ya está cargado con el mismo id, no re-fetch; si no, cargar.
+    if (selectedCliente?.id === cliente.id && showDetail) return
+    void viewCliente(cliente.id)
+  }, [openClienteId, clientes, selectedCliente, showDetail])
 
-  // Fetch negocios when a client is selected
+  // Los negocios del panel vienen directamente del detalle del cliente,
+  // eliminando el fetch secuencial y la ventana stale del cliente anterior.
   useEffect(() => {
     if (!selectedCliente) {
       setNegocios([])
       return
     }
-    fetch(`/api/negocios?clienteId=${selectedCliente.id}`)
-      .then(r => r.json())
-      .then(d => {
-        if (d.success) setNegocios(d.data)
-        else setNegocios([])
-      })
-      .catch(() => setNegocios([]))
+    const incoming = selectedCliente.negocios ?? []
+    setNegocios(incoming as NegocioDetail[])
   }, [selectedCliente])
 
   // Escape closes side panel — registered in modal stack so it only fires
@@ -692,10 +707,14 @@ export default function ClientesClient({
   }
 
   async function viewCliente(id: string) {
+    const seq = ++viewSeqRef.current
     setDetailLoading(true)
     setDetailError(null)
     try {
-      const res = await fetchWithTimeout(`/api/clientes/${id}`, {}, 10_000)
+      // 30s para cubrir cold starts de Vercel Pro en conexiones rurales.
+      const res = await fetchWithTimeout(`/api/clientes/${id}`, {}, 30_000)
+      // Si el usuario cambió de cliente mientras tanto, descartar respuesta.
+      if (seq !== viewSeqRef.current) return
       if (!res.ok) {
         // FIX REGRESION mobile 2026-06-10 ("no me abre el detalle"):
         // antes esto solo hacia toast.error y retornaba, sin abrir el modal.
@@ -720,6 +739,8 @@ export default function ClientesClient({
         return
       }
       const data = await res.json()
+      // Re-chequear guard tras parsear JSON (respuesta demorada / orden cruzado).
+      if (seq !== viewSeqRef.current) return
       if (data.cliente) {
         setSelectedCliente(data.cliente)
         setShowDetail(true)
@@ -730,6 +751,7 @@ export default function ClientesClient({
         setShowDetail(true)
       }
     } catch (error) {
+      if (seq !== viewSeqRef.current) return
       setSelectedCliente({
         id,
         clienteId: id,
@@ -794,16 +816,17 @@ export default function ClientesClient({
   }
 
   async function handleNegocioDeleted() {
-    if (selectedCliente) {
-      try {
-        const res = await fetch(`/api/negocios?clienteId=${selectedCliente.id}`)
-        if (res.ok) {
-          const data = await res.json()
-          if (data.success) setNegocios(data.data)
-        }
-      } catch {}
-    }
+    const ownerId = selectedCliente?.id
+    if (!ownerId) return
     closeNegocioDetail()
+    try {
+      const res = await fetch(`/api/negocios?clienteId=${ownerId}`)
+      if (!res.ok) return
+      const data = await res.json()
+      if (data.success && selectedCliente?.id === ownerId) {
+        setNegocios(data.data)
+      }
+    } catch {}
   }
 
   async function toggleVerificado(id: string, verificado: boolean) {
@@ -890,6 +913,7 @@ export default function ClientesClient({
         onRetry={fetchClientes}
         onCreateClick={openCreateModal}
         onViewCliente={viewCliente}
+        onPrefetchCliente={warmClienteDetail}
         onViewNegocio={viewNegocio}
         sortBy={sortBy}
         sortDir={sortDir}
@@ -1849,10 +1873,11 @@ export default function ClientesClient({
           clienteId={selectedCliente.id}
           editData={negocioEditData}
           onSuccess={() => {
-            // Refresh negocios list
-            fetch(`/api/negocios?clienteId=${selectedCliente.id}`)
+            // Refresh negocios list; capturar ownerId para descartar si el usuario cambió de cliente.
+            const ownerId = selectedCliente.id
+            fetch(`/api/negocios?clienteId=${ownerId}`)
               .then(r => r.json())
-              .then(d => { if (d.success) setNegocios(d.data) })
+              .then(d => { if (d.success && selectedCliente?.id === ownerId) setNegocios(d.data) })
               .catch(() => {})
             toast.success(negocioEditData ? 'Negocio actualizado' : 'Negocio creado')
           }}

@@ -73,6 +73,25 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         contactos: {
           orderBy: { nombre: 'asc' },
         },
+        // Incluir negocios activos con shape completo para el panel de detalle,
+        // evitando el fetch secuencial /api/negocios y la ventana stale.
+        negocios: {
+          where: { activo: true },
+          orderBy: { nombre: 'asc' },
+          select: {
+            id: true,
+            nombre: true,
+            tipoNegocio: true,
+            direccion: true,
+            barrio: true,
+            referencia: true,
+            linkUbicacion: true,
+            horaApertura: true,
+            clienteId: true,
+            ruta: { select: { id: true, nombre: true } },
+            _count: { select: { pedidos: true } },
+          },
+        },
       },
     })
     if (!cliente) return apiError('Not found', 404)

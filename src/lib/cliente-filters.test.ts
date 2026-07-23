@@ -16,19 +16,18 @@ describe('buildClientesWhere', () => {
     })
   })
 
-  it('con "mostrarNegocio=con" matchea negocio formal activo o legacy', () => {
+  it('con "mostrarNegocio=con" matchea negocio formal activo solamente', () => {
     const where = buildClientesWhere({ mostrarNegocio: 'con' })
-    expect(where.OR).toEqual([
-      { negocios: { some: { activo: true } } },
-      { nombreNegocio: { not: '' } },
-    ])
+    expect(where.OR).toEqual([{ negocios: { some: { activo: true } } }])
   })
 
-  it('con "mostrarNegocio=sin" exige 0 negocios formales activos y 0 legacy', () => {
+  it('con "mostrarNegocio=sin" exige 0 negocios formales activos', () => {
     const where = buildClientesWhere({ mostrarNegocio: 'sin' })
     expect(where.AND).toEqual(
+      expect.arrayContaining([{ NOT: { negocios: { some: { activo: true } } } }])
+    )
+    expect(where.AND).not.toEqual(
       expect.arrayContaining([
-        { NOT: { negocios: { some: { activo: true } } } },
         { OR: [{ nombreNegocio: null }, { nombreNegocio: '' }] },
       ])
     )
@@ -74,10 +73,7 @@ describe('buildClientesWhere', () => {
       clienteConLink: 'true',
     })
     expect(where.AND).toEqual(
-      expect.arrayContaining([
-        { NOT: { negocios: { some: { activo: true } } } },
-        { OR: [{ nombreNegocio: null }, { nombreNegocio: '' }] },
-      ])
+      expect.arrayContaining([{ NOT: { negocios: { some: { activo: true } } } }])
     )
     expect(where.linkUbicacion).toEqual({ not: '' })
   })
@@ -143,13 +139,13 @@ describe('buildClientesRawWhere', () => {
   it('genera condición SQL para "mostrarNegocio=con"', () => {
     const sql = buildClientesRawWhere({ mostrarNegocio: 'con' })
     expect(sql).toContain('EXISTS (SELECT 1 FROM "Negocio"')
-    expect(sql).toContain('NULLIF(c."nombreNegocio", \'\') IS NOT NULL')
+    expect(sql).not.toContain('c."nombreNegocio"')
   })
 
   it('genera condición SQL para "mostrarNegocio=sin"', () => {
     const sql = buildClientesRawWhere({ mostrarNegocio: 'sin' })
     expect(sql).toContain('NOT EXISTS (SELECT 1 FROM "Negocio"')
-    expect(sql).toContain('NULLIF(c."nombreNegocio", \'\') IS NULL')
+    expect(sql).not.toContain('c."nombreNegocio"')
   })
 
   it('genera condición SQL para "todosNegociosConLink=true"', () => {
