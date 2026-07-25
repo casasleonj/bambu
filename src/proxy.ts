@@ -17,12 +17,16 @@ import type { Role } from '@/lib/constants'
  *
  * Responsabilidades:
  * 1. API routes (/api/*):
- *    a) CSRF check (Origin/Referer) on state-changing methods — S-1 fix.
+ *    a) Auth check (JWT session) — rejects unauthenticated requests before
+ *       they hit rate limiting or route handlers. This stops bot/scanner
+ *       traffic from consuming the Redis rate-limit budget.
+ *    b) CSRF check (Origin/Referer) on state-changing methods — S-1 fix.
  *       Auth.js handles CSRF for /api/auth/* only. The other endpoints
  *       need this defense against CSRF (the validateCsrf() helper in
  *       src/lib/csrf.ts was previously dead code).
- *    b) Rate limiting.
- *    c) Route handlers handle their own auth via requireAuth().
+ *    c) Rate limiting.
+ *    d) Route handlers still handle their own auth via requireAuth() as a
+ *       defense-in-depth fallback.
  * 2. Page routes: Auth check + mustChangePassword guard + role-based access.
  */
 export const proxy = auth(async (request) => {
@@ -33,7 +37,7 @@ export const proxy = auth(async (request) => {
 
   const pathname = request.nextUrl.pathname
 
-  // ── API routes: CSRF + rate limiting ──────────────────────────────────
+  // ── API routes: auth + CSRF + rate limiting ──────────────────────────
   if (pathname.startsWith('/api/')) {
     // Skip health checks, cron jobs, and realtime SSE endpoint.
     // SSE connections are long-lived and should not consume the API rate-limit budget.
@@ -42,6 +46,16 @@ export const proxy = auth(async (request) => {
       pathname === '/api/realtime'
     ) {
       return NextResponse.next()
+    }
+
+    // Auth-first: reject unauthenticated traffic before it consumes the
+    // Redis rate-limit budget or reaches route handlers. Auth.js `auth()`
+    // wrapper already decoded the JWT cookie into request.auth.
+    if (!request.auth?.user?.id) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } },
+      )
     }
 
     // S-1 fix: CSRF check BEFORE rate limiting so failed CSRF

@@ -11,6 +11,7 @@ async function clean() {
   // Orden: tablas hijas primero, luego padres. TRUNCATE CASCADE mitiga
   // dependencias circulares (p. ej. Cliente <-> Negocio).
   const tables = [
+    'SesionActiva',
     'ImportStagingContacto',
     'ImportStagingRow',
     'CasoEvento',

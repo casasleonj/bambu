@@ -6,6 +6,16 @@ test.use({ baseURL: 'http://localhost:3001' })
 
 test.describe.configure({ mode: 'serial' })
 
+test.beforeAll(() => {
+  // Cuando SESSION_LIMITS_JSON está activo (override E2E parallel), los
+  // límites default (ADMIN=2, REPARTIDOR=1, etc.) no aplican y este
+  // spec validando eviction por límite saltaría. Los límites default
+  // se verifican en unit tests (src/lib/__tests__/session-limits.test.ts).
+  if (process.env.SESSION_LIMITS_JSON) {
+    test.skip(true, 'SESSION_LIMITS_JSON override activo; saltando test de límites default')
+  }
+})
+
 test.beforeEach(() => {
   resetTestDatabase()
 })

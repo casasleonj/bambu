@@ -6,6 +6,7 @@ import { useSession } from 'next-auth/react'
 import { signOut } from 'next-auth/react'
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { MoreVertical } from 'lucide-react'
+import { markIntentionalSignOut } from '@/lib/auth-events'
 import {
   DndContext,
   closestCenter,
@@ -845,10 +846,11 @@ export function Sidebar() {
           <div className="p-4 border-t space-y-4">
           <button
             onClick={async () => {
+              markIntentionalSignOut()
               await revokeSessionOnLogout()
               await unsubscribePushOnLogout()
               await purgeSWCache()
-              signOut({ callbackUrl: '/login' })
+              signOut({ redirectTo: '/login' })
             }}
             className="flex items-center gap-3 px-4 py-3 rounded-lg text-red-600 hover:bg-red-50 transition w-full"
             aria-label="Cerrar sesión"

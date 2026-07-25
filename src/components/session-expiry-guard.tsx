@@ -5,7 +5,7 @@ import { useSession } from 'next-auth/react'
 import { useRouter, usePathname } from 'next/navigation'
 import type { Session } from 'next-auth'
 import { logger } from '@/lib/logger'
-import { AUTH_EXPIRED_EVENT } from '@/lib/auth-events'
+import { AUTH_EXPIRED_EVENT, isIntentionalSignOut } from '@/lib/auth-events'
 
 const PUBLIC_PATHS = ['/login', '/login/redirect', '/offline']
 
@@ -20,6 +20,8 @@ export function shouldRedirectOnUnauth(
 ): boolean {
   if (status === 'loading') return false
   if (PUBLIC_PATHS.includes(pathname)) return false
+  // Usuario cerró sesión intencionalmente; Auth.js maneja el redirect limpio.
+  if (isIntentionalSignOut) return false
   if (status === 'unauthenticated') return true
   if (!session?.user?.id) return true
   return false
@@ -63,6 +65,8 @@ export function SessionExpiryGuard() {
     const handleExpired = () => {
       if (PUBLIC_PATHS.includes(pathname)) return
       if (hasRedirected.current) return
+      // Usuario cerró sesión intencionalmente; ignorar 401 concurrentes.
+      if (isIntentionalSignOut) return
 
       hasRedirected.current = true
       logger.info(

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, waitFor } from '@testing-library/react'
 import { SessionExpiryGuard, shouldRedirectOnUnauth } from '@/components/session-expiry-guard'
-import { AUTH_EXPIRED_EVENT } from '@/lib/auth-events'
+import { AUTH_EXPIRED_EVENT, isIntentionalSignOut, markIntentionalSignOut, resetIntentionalSignOut } from '@/lib/auth-events'
 import type { Session } from 'next-auth'
 
 const replaceMock = vi.fn()
@@ -27,6 +27,11 @@ vi.mock('@/lib/logger', () => ({
 }))
 
 describe('shouldRedirectOnUnauth', () => {
+  beforeEach(() => {
+    // Reset the module-level flag before each test
+    resetIntentionalSignOut()
+  })
+
   it('returns true when status is unauthenticated on a protected path', () => {
     expect(shouldRedirectOnUnauth('/pedidos', 'unauthenticated', null)).toBe(true)
   })
@@ -48,6 +53,12 @@ describe('shouldRedirectOnUnauth', () => {
     expect(shouldRedirectOnUnauth('/login/redirect', 'unauthenticated', null)).toBe(false)
     expect(shouldRedirectOnUnauth('/offline', 'unauthenticated', null)).toBe(false)
   })
+
+  it('returns false when isIntentionalSignOut is true', () => {
+    markIntentionalSignOut()
+    expect(isIntentionalSignOut).toBe(true)
+    expect(shouldRedirectOnUnauth('/pedidos', 'unauthenticated', null)).toBe(false)
+  })
 })
 
 describe('SessionExpiryGuard', () => {
@@ -57,6 +68,8 @@ describe('SessionExpiryGuard', () => {
     mockPathname = '/pedidos'
     mockSession = { user: { id: 'user-1' } } as unknown as Session
     mockStatus = 'authenticated'
+    // Reset module-level flag
+    resetIntentionalSignOut()
   })
 
   afterEach(() => {
@@ -116,5 +129,17 @@ describe('SessionExpiryGuard', () => {
 
     expect(removeEventListenerSpy).toHaveBeenCalledWith(AUTH_EXPIRED_EVENT, expect.any(Function))
     removeEventListenerSpy.mockRestore()
+  })
+
+  it('does not redirect when isIntentionalSignOut is true', async () => {
+    markIntentionalSignOut()
+    mockSession = null
+    mockStatus = 'unauthenticated'
+
+    render(<SessionExpiryGuard />)
+
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    expect(replaceMock).not.toHaveBeenCalled()
   })
 })

@@ -17,14 +17,16 @@ describe('S-1: proxy aplica validateCsrf para state-changing methods', () => {
     expect(proxySource).toMatch(/import\s+\{\s*validateCsrf\s*\}\s+from\s+['"]@\/lib\/csrf['"]/)
   })
 
-  it('FIX: el proxy llama validateCsrf(request) antes del rate limit', () => {
-    // validateCsrf debe estar ANTES de checkRateLimit
+  it('FIX: el proxy verifica auth antes de CSRF y antes del rate limit', () => {
+    // auth check -> CSRF -> rate limit para que bots no consuman Redis
+    const authIdx = proxySource.indexOf('request.auth?.user?.id')
     const csrfIdx = proxySource.indexOf('validateCsrf(request)')
     const rateLimitIdx = proxySource.indexOf("checkRateLimit(ip, 'api')")
 
+    expect(authIdx).toBeGreaterThan(-1)
     expect(csrfIdx).toBeGreaterThan(-1)
     expect(rateLimitIdx).toBeGreaterThan(-1)
-    // CSRF debe estar antes de rate limit (no consume budget en failed CSRF)
+    expect(authIdx).toBeLessThan(csrfIdx)
     expect(csrfIdx).toBeLessThan(rateLimitIdx)
   })
 
@@ -33,14 +35,16 @@ describe('S-1: proxy aplica validateCsrf para state-changing methods', () => {
     expect(proxySource).toMatch(/if \(csrfResponse\) \{\s*return csrfResponse\s*\}/)
   })
 
-  it('FIX: el CSRF check se hace DESPUÉS del skip de health/cron', () => {
-    // El orden debe ser: skip health/cron → CSRF → rate limit
+  it('FIX: el auth check se hace DESPUÉS del skip de health/cron y antes de CSRF', () => {
+    // El orden debe ser: skip health/cron → auth → CSRF → rate limit
     const skipIdx = proxySource.indexOf("'/api/health' || pathname.startsWith('/api/cron/')")
+    const authIdx = proxySource.indexOf('request.auth?.user?.id')
     const csrfIdx = proxySource.indexOf('validateCsrf(request)')
     const rateLimitIdx = proxySource.indexOf("checkRateLimit(ip, 'api')")
 
     expect(skipIdx).toBeGreaterThan(-1)
-    expect(csrfIdx).toBeGreaterThan(skipIdx)
+    expect(authIdx).toBeGreaterThan(skipIdx)
+    expect(csrfIdx).toBeGreaterThan(authIdx)
     expect(rateLimitIdx).toBeGreaterThan(csrfIdx)
   })
 

@@ -35,9 +35,18 @@ test('signOut redirects to login', async ({ page }) => {
   await page.click('button:has-text("Ingresar")')
   await expect(page).toHaveURL('/dashboard', { timeout: 5000 })
 
+  // Dismiss the "Base de Caja" modal if it appears (ADMIN role).
+  const baseCajaModal = page.locator('h2:has-text("Base de Caja")').first()
+  if (await baseCajaModal.isVisible({ timeout: 1000 }).catch(() => false)) {
+    await page.click('button:has-text("Guardar cambios")')
+    await page.waitForTimeout(500)
+  }
+
   // Use header dropdown (more stable than sidebar on mobile/desktop)
   await page.click('[data-testid="user-menu"]')
   await page.click('text=Cerrar Sesión')
-  await expect(page).toHaveURL('/login', { timeout: 5000 })
+  // The redirect may use 0.0.0.0 (AUTH_TRUST_HOST) or localhost,
+  // so use a regex matcher instead of exact URL.
+  await expect(page).toHaveURL(/\/login/, { timeout: 10000 })
 })
 
