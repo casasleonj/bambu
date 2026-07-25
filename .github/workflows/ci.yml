@@ -140,7 +140,7 @@ jobs:
           done
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Generate NEXTAUTH_SECRET
         run: echo "NEXTAUTH_SECRET=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
