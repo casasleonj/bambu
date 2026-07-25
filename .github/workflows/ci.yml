@@ -42,17 +42,21 @@ jobs:
         run: npx tsc --noEmit
 
       - name: Unit tests
-        run: npm run test -- --reporter=verbose
+        run: |
+          mkdir -p reports
+          npm run test -- \
+            --reporter=verbose \
+            --reporter=junit \
+            --outputFile.junit=reports/junit.xml 2>&1 | tee reports/test-output.log
+          exit ${PIPESTATUS[0]}
 
       - name: Upload test results
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-results
-          path: |
-            reports/
-            !reports/coverage
-          retention-days: 3
+          path: reports/
+          retention-days: 7
 
   lint:
     name: Lint (non-blocking)
