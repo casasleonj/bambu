@@ -97,7 +97,7 @@ jobs:
           POSTGRES_PASSWORD: bambu_dev
           POSTGRES_DB: bambu
         ports:
-          - 5433:5432
+          - 5432:5432
         options: >-
           --health-cmd pg_isready -U bambu
           --health-interval 5s
@@ -115,8 +115,8 @@ jobs:
           --health-retries 10
 
     env:
-      DATABASE_URL: postgresql://bambu:bambu_dev@localhost:5433/bambu
-      DIRECT_URL: postgresql://bambu:bambu_dev@localhost:5433/bambu
+      DATABASE_URL: postgresql://bambu:bambu_dev@localhost:5432/bambu
+      DIRECT_URL: postgresql://bambu:bambu_dev@localhost:5432/bambu
       REDIS_URL: redis://localhost:6379
       AUTH_TRUST_HOST: 'true'
       TZ: America/Bogota
