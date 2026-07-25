@@ -50,6 +50,9 @@ export default defineConfig({
       // (vitest.integration.config.ts + singleFork). Excluidos acá
       // para que NO corran en paralelo durante la suite normal.
       'src/lib/__tests__/integration/**',
+      // sequence-runtime usa Prisma real (PostgreSQL). Excluido del suite
+      // principal; corre solo via vitest.integration.config.ts.
+      'src/lib/__tests__/sequence-runtime.test.ts',
     ],
     coverage: {
       provider: 'v8',

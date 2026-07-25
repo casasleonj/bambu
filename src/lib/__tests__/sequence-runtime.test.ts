@@ -1,12 +1,15 @@
 // @tests runtime getNextNumero con secuencia — Fase 3 §2.1/§2.3
 // Verifica que la integración entre getNextNumero y la secuencia
 // Postgres funciona en concurrencia simulada.
+// Skip si no hay DATABASE_URL (CI, etc.).
 
 import { describe, it, expect } from 'vitest'
 import { prisma } from '@/lib/prisma'
 import { getNextNumero } from '@/lib/sequence'
 
-describe('Fase 3 §2.3: getNextNumero usa factura_numero_seq para Factura.numero', () => {
+const dbAvailable = !!process.env.DATABASE_URL
+
+describe.skipIf(!dbAvailable)('Fase 3 §2.3: getNextNumero usa factura_numero_seq para Factura.numero', () => {
   it('FIX: getNextNumero con model=factura devuelve enteros de la secuencia', async () => {
     const num1 = await getNextNumero(prisma, { model: 'factura', field: 'numero' })
     const num2 = await getNextNumero(prisma, { model: 'factura', field: 'numero' })
