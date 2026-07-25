@@ -89,31 +89,6 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4]
 
-    services:
-      postgres:
-        image: postgres:17.10-alpine
-        env:
-          POSTGRES_USER: bambu
-          POSTGRES_PASSWORD: bambu_dev
-          POSTGRES_DB: bambu
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready -U bambu
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
-
-      redis:
-        image: redis:8-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd redis-cli ping
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
-
     env:
       DATABASE_URL: postgresql://bambu:bambu_dev@localhost:5432/bambu
       DIRECT_URL: postgresql://bambu:bambu_dev@localhost:5432/bambu
@@ -131,6 +106,38 @@ jobs:
         with:
           node-version: 22
           cache: 'npm'
+
+      - name: Start service containers (PostgreSQL + Redis)
+        run: |
+          docker run -d \
+            --name postgres \
+            -e POSTGRES_USER=bambu \
+            -e POSTGRES_PASSWORD=bambu_dev \
+            -e POSTGRES_DB=bambu \
+            -p 5432:5432 \
+            postgres:17.10-alpine
+          docker run -d \
+            --name redis \
+            -p 6379:6379 \
+            redis:8-alpine
+
+          # Wait for PostgreSQL
+          for i in $(seq 1 30); do
+            if docker exec postgres pg_isready -U bambu &>/dev/null; then
+              echo "PostgreSQL is ready"
+              break
+            fi
+            sleep 1
+          done
+
+          # Wait for Redis
+          for i in $(seq 1 15); do
+            if docker exec redis redis-cli ping 2>/dev/null | grep -q PONG; then
+              echo "Redis is ready"
+              break
+            fi
+            sleep 1
+          done
 
       - name: Install dependencies
         run: npm ci
