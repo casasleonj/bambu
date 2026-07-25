@@ -79,3 +79,92 @@ jobs:
 
       - name: Lint
         run: npm run lint -- --max-warnings 999
+
+  e2e:
+    name: E2E (${{ matrix.shard }}/${{ strategy.job-total }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+
+    services:
+      postgres:
+        image: postgres:17.10-alpine
+        env:
+          POSTGRES_USER: bambu
+          POSTGRES_PASSWORD: bambu_dev
+          POSTGRES_DB: bambu
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready -U bambu
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd redis-cli ping
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://bambu:bambu_dev@localhost:5433/bambu
+      DIRECT_URL: postgresql://bambu:bambu_dev@localhost:5433/bambu
+      REDIS_URL: redis://localhost:6379
+      AUTH_TRUST_HOST: 'true'
+      TZ: America/Bogota
+      PLAYWRIGHT_TEST_BASE_URL: http://localhost:3001
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate NEXTAUTH_SECRET
+        run: echo "NEXTAUTH_SECRET=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Push schema to CI database
+        run: npx prisma db push
+
+      - name: Seed test data
+        run: npx tsx prisma/seed-test.ts
+
+      - name: Install Playwright browsers + system deps
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright tests (shard ${{ matrix.shard }})
+        run: npx playwright test --shard=${{ matrix.shard }}/${{ strategy.job-total }} --reporter=html
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ matrix.shard }}
+          path: playwright-report/
+          retention-days: 7
+
+      - name: Upload Playwright traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces-${{ matrix.shard }}
+          path: test-results/
+          retention-days: 7
