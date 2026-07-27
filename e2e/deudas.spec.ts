@@ -1,6 +1,5 @@
 import { test, expect } from '@playwright/test'
-import {fullLogin,
-  loginAs,
+import {loginAs,
   goto,
   apiPost,
   apiGet,
@@ -34,7 +33,7 @@ async function abonarDeuda(page: any, deudaId: string, data: {
 
 test.describe('Deudas API', () => {
   test.beforeEach(async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
   })
 
   test('crear deuda prestamo via API', async ({ page }) => {
@@ -45,8 +44,7 @@ test.describe('Deudas API', () => {
       trabajadorId: tid,
       tipo: 'PRESTAMO',
       monto: 50000,
-      descripcion: 'Prestamo personal',
-    })
+      descripcion: 'Prestamo personal'})
 
     expect(res.status()).toBe(201)
     const body = await res.json()
@@ -65,8 +63,7 @@ test.describe('Deudas API', () => {
       trabajadorId: tid,
       tipo: 'DEFICIT_EFECTIVO',
       monto: 15000,
-      descripcion: 'Faltante en cierre de embarque',
-    })
+      descripcion: 'Faltante en cierre de embarque'})
 
     expect(res.status()).toBe(201)
     const body = await res.json()
@@ -81,8 +78,7 @@ test.describe('Deudas API', () => {
       trabajadorId: trabajador.trabajador.id,
       tipo: 'PRESTAMO',
       monto: -100,
-      descripcion: 'Deuda invalida',
-    })
+      descripcion: 'Deuda invalida'})
 
     expect(res.status()).toBe(400)
   })
@@ -94,8 +90,7 @@ test.describe('Deudas API', () => {
       trabajadorId: trabajador.trabajador.id,
       tipo: 'PRESTAMO',
       monto: 10000,
-      descripcion: '',
-    })
+      descripcion: ''})
 
     expect(res.status()).toBe(400)
   })
@@ -233,8 +228,7 @@ test.describe('Deudas API', () => {
       trabajadorId: tid,
       tipo: 'PRESTAMO',
       monto: 10000,
-      descripcion: 'Deuda invalida',
-    })
+      descripcion: 'Deuda invalida'})
 
     expect(res.status()).toBe(400)
     const body = await res.json()
@@ -246,7 +240,7 @@ test.describe('Deudas API', () => {
 
 test.describe('Deudas UI', () => {
   test.beforeEach(async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
   })
 
   test('pagina global de deudas carga', async ({ page }) => {
@@ -269,8 +263,7 @@ test.describe('Deudas UI', () => {
       trabajadorId: trabajador.trabajador.id,
       tipo: 'PRESTAMO',
       monto: 75000,
-      descripcion: 'Prestamo para UI test',
-    })
+      descripcion: 'Prestamo para UI test'})
 
     await goto(page, '/deudas')
 
@@ -336,8 +329,7 @@ test.describe('Deudas UI', () => {
       trabajadorId: tid,
       tipo: 'PRESTAMO',
       monto: 80000,
-      descripcion: 'Prestamo para abono UI',
-    })
+      descripcion: 'Prestamo para abono UI'})
 
     await goto(page, `/trabajadores/${tid}`)
     await page.getByRole('button', { name: 'Deudas' }).click()
@@ -373,8 +365,7 @@ test.describe('Deudas UI', () => {
       trabajadorId: tid,
       tipo: 'PRESTAMO',
       monto: 60000,
-      descripcion: 'Deuda para badge',
-    })
+      descripcion: 'Deuda para badge'})
 
     await goto(page, '/trabajadores')
 
@@ -396,8 +387,7 @@ test.describe('Deudas UI', () => {
       trabajadorId: tid,
       tipo: 'PRESTAMO',
       monto: 40000,
-      descripcion: 'Pendiente',
-    })
+      descripcion: 'Pendiente'})
     await res1.json()
 
     // Create and pay off another
@@ -405,8 +395,7 @@ test.describe('Deudas UI', () => {
       trabajadorId: tid,
       tipo: 'OTRO',
       monto: 20000,
-      descripcion: 'Pagada',
-    })
+      descripcion: 'Pagada'})
     const body2 = await res2.json()
     await abonarDeuda(page, body2.deuda.id, { monto: 20000 })
 
@@ -436,8 +425,7 @@ test.describe('Deudas UI', () => {
       trabajadorId: tid,
       tipo: 'PRESTAMO',
       monto: 100000,
-      descripcion: 'Deuda con progress',
-    })
+      descripcion: 'Deuda con progress'})
     const body = await res.json()
     await abonarDeuda(page, body.deuda.id, { monto: 50000 })
 
@@ -463,7 +451,7 @@ test.describe('Deudas + Nomina Integration', () => {
   })
 
   test.beforeEach(async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
   })
 
   test('nomina AUTO descuenta deudas pendientes', async ({ page }) => {
@@ -474,8 +462,7 @@ test.describe('Deudas + Nomina Integration', () => {
       nombre: `NominaDeudaWorker ${Date.now()}`,
       rol: 'REPARTIDOR',
       tipoPago: 'COMISION',
-      usaMoto: true,
-    })
+      usaMoto: true})
     const tid = trabajador.trabajador.id
 
     // Create debt
@@ -483,8 +470,7 @@ test.describe('Deudas + Nomina Integration', () => {
       trabajadorId: tid,
       tipo: 'PRESTAMO',
       monto: 50000,
-      descripcion: 'Prestamo antes de nomina',
-    })
+      descripcion: 'Prestamo antes de nomina'})
 
     // Create a closed embarque with deliveries for commissions
     const cliente = await createCliente(page)
@@ -493,8 +479,7 @@ test.describe('Deudas + Nomina Integration', () => {
       canal: 'PUNTO',
       ventaRapida: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 5 }],
-      pagos: [{ metodo: 'EFECTIVO', monto: 25000 }],
-    })
+      pagos: [{ metodo: 'EFECTIVO', monto: 25000 }]})
     const pedidoId = (await pedidoRes.json()).pedido.id
 
     const embarqueRes = await createEmbarque(page, tid)
@@ -514,11 +499,9 @@ test.describe('Deudas + Nomina Integration', () => {
           cBotellonFabEnt: 0,
           cBotellonDomEnt: 0,
           cBolsaAguaEnt: 0,
-          cBolsaHieloEnt: 0,
-        },
+          cBolsaHieloEnt: 0},
         pagado: 'COMPLETO',
-        pagos: [{ metodo: 'EFECTIVO', monto: 25000 }],
-      }],
+        pagos: [{ metodo: 'EFECTIVO', monto: 25000 }]}],
       ventasLibres: [],
       productos: [
         { producto: 'PACA_AGUA', devueltas: 0, cambios: 0, rotas: 0 },
@@ -528,8 +511,7 @@ test.describe('Deudas + Nomina Integration', () => {
         { producto: 'BOLSA_HIELO', devueltas: 0, cambios: 0, rotas: 0 },
       ],
       gastos: [],
-      dineroEntregado: 25000,
-    })
+      dineroEntregado: 25000})
 
     // Create nomina
     const today = new Date()
@@ -540,8 +522,7 @@ test.describe('Deudas + Nomina Integration', () => {
       trabajadorId: tid,
       fechaInicio: startDate.toISOString().split('T')[0],
       fechaFin: today.toISOString().split('T')[0],
-      tipoCalculo: 'AUTO',
-    })
+      tipoCalculo: 'AUTO'})
 
     const nominaBody = await nominaRes.json()
     expect(nominaBody.success).toBe(true)
@@ -565,8 +546,7 @@ test.describe('Deudas + Nomina Integration', () => {
       nombre: `BigDebtWorker ${Date.now()}`,
       rol: 'SELLADOR',
       tipoPago: 'COMISION',
-      usaMoto: false,
-    })
+      usaMoto: false})
     const tid = trabajador.trabajador.id
 
     // Create big debt
@@ -574,8 +554,7 @@ test.describe('Deudas + Nomina Integration', () => {
       trabajadorId: tid,
       tipo: 'PRESTAMO',
       monto: 500000,
-      descripcion: 'Deuda grande',
-    })
+      descripcion: 'Deuda grande'})
 
     // Create nomina with small total
     const today = new Date()
@@ -586,8 +565,7 @@ test.describe('Deudas + Nomina Integration', () => {
       trabajadorId: tid,
       fechaInicio: startDate.toISOString().split('T')[0],
       fechaFin: today.toISOString().split('T')[0],
-      tipoCalculo: 'AUTO',
-    })
+      tipoCalculo: 'AUTO'})
 
     const nominaBody = await nominaRes.json()
     expect(nominaBody.success).toBe(true)
@@ -611,8 +589,7 @@ test.describe('Deudas + Nomina Integration', () => {
       nombre: `AnularWorker ${Date.now()}`,
       rol: 'SELLADOR',
       tipoPago: 'COMISION',
-      usaMoto: false,
-    })
+      usaMoto: false})
     const tid = trabajador.trabajador.id
 
     // Create debt
@@ -620,8 +597,7 @@ test.describe('Deudas + Nomina Integration', () => {
       trabajadorId: tid,
       tipo: 'PRESTAMO',
       monto: 30000,
-      descripcion: 'Deuda para anular',
-    })
+      descripcion: 'Deuda para anular'})
 
     // Create nomina
     const today = new Date()
@@ -632,8 +608,7 @@ test.describe('Deudas + Nomina Integration', () => {
       trabajadorId: tid,
       fechaInicio: startDate.toISOString().split('T')[0],
       fechaFin: today.toISOString().split('T')[0],
-      tipoCalculo: 'AUTO',
-    })
+      tipoCalculo: 'AUTO'})
 
     const nominaBody = await nominaRes.json()
     const nominaId = nominaBody.nomina.id
@@ -658,7 +633,7 @@ test.describe('Deudas + Nomina Integration', () => {
 
 test.describe('Embarque Cash Reconciliation', () => {
   test.beforeEach(async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
   })
 
   test('cierre de embarque retorna deficitCaja en conciliacion', async ({ page }) => {
@@ -666,8 +641,7 @@ test.describe('Embarque Cash Reconciliation', () => {
       nombre: `CashWorker ${Date.now()}`,
       rol: 'REPARTIDOR',
       tipoPago: 'COMISION',
-      usaMoto: true,
-    })
+      usaMoto: true})
     const tid = trabajador.trabajador.id
 
     const cliente = await createCliente(page)
@@ -676,8 +650,7 @@ test.describe('Embarque Cash Reconciliation', () => {
       canal: 'PUNTO',
       ventaRapida: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 3 }],
-      pagos: [{ metodo: 'EFECTIVO', monto: 15000 }],
-    })
+      pagos: [{ metodo: 'EFECTIVO', monto: 15000 }]})
     const pedidoId = (await pedidoRes.json()).pedido.id
 
     const embarqueRes = await createEmbarque(page, tid)
@@ -697,11 +670,9 @@ test.describe('Embarque Cash Reconciliation', () => {
           cBotellonFabEnt: 0,
           cBotellonDomEnt: 0,
           cBolsaAguaEnt: 0,
-          cBolsaHieloEnt: 0,
-        },
+          cBolsaHieloEnt: 0},
         pagado: 'COMPLETO',
-        pagos: [{ metodo: 'EFECTIVO', monto: 15000 }],
-      }],
+        pagos: [{ metodo: 'EFECTIVO', monto: 15000 }]}],
       ventasLibres: [],
       productos: [
         { producto: 'PACA_AGUA', devueltas: 0, cambios: 0, rotas: 0 },
@@ -729,8 +700,7 @@ test.describe('Embarque Cash Reconciliation', () => {
       nombre: `PerfectCash ${Date.now()}`,
       rol: 'REPARTIDOR',
       tipoPago: 'COMISION',
-      usaMoto: true,
-    })
+      usaMoto: true})
     const tid = trabajador.trabajador.id
 
     const cliente = await createCliente(page)
@@ -739,8 +709,7 @@ test.describe('Embarque Cash Reconciliation', () => {
       canal: 'PUNTO',
       ventaRapida: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
-      pagos: [{ metodo: 'EFECTIVO', monto: 10000 }],
-    })
+      pagos: [{ metodo: 'EFECTIVO', monto: 10000 }]})
     const pedidoId = (await pedidoRes.json()).pedido.id
 
     const embarqueRes = await createEmbarque(page, tid)
@@ -758,11 +727,9 @@ test.describe('Embarque Cash Reconciliation', () => {
           cBotellonFabEnt: 0,
           cBotellonDomEnt: 0,
           cBolsaAguaEnt: 0,
-          cBolsaHieloEnt: 0,
-        },
+          cBolsaHieloEnt: 0},
         pagado: 'COMPLETO',
-        pagos: [{ metodo: 'EFECTIVO', monto: 10000 }],
-      }],
+        pagos: [{ metodo: 'EFECTIVO', monto: 10000 }]}],
       ventasLibres: [],
       productos: [
         { producto: 'PACA_AGUA', devueltas: 0, cambios: 0, rotas: 0 },
@@ -793,8 +760,7 @@ test.describe('Deudas Permissions', () => {
       trabajadorId: trabajador.trabajador.id,
       tipo: 'PRESTAMO',
       monto: 10000,
-      descripcion: 'Intento no autorizado',
-    })
+      descripcion: 'Intento no autorizado'})
 
     expect(res.status()).toBe(403)
   })
@@ -807,8 +773,7 @@ test.describe('Deudas Permissions', () => {
       trabajadorId: 'some-id',
       tipo: 'PRESTAMO',
       monto: 10000,
-      descripcion: 'Intento no autorizado',
-    })
+      descripcion: 'Intento no autorizado'})
 
     expect(res.status()).toBe(403)
   })
@@ -823,14 +788,13 @@ test.describe('Deudas Permissions', () => {
       trabajadorId: trabajador.trabajador.id,
       tipo: 'PRESTAMO',
       monto: 20000,
-      descripcion: 'Prestamo autorizado por asistente',
-    })
+      descripcion: 'Prestamo autorizado por asistente'})
 
     expect(res.status()).toBe(201)
   })
 
   test('admin puede crear deuda', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/dashboard')
 
     const trabajador = await createTrabajador(page, { nombre: `AdminWorker ${Date.now()}` })
@@ -839,8 +803,7 @@ test.describe('Deudas Permissions', () => {
       trabajadorId: trabajador.trabajador.id,
       tipo: 'PRESTAMO',
       monto: 30000,
-      descripcion: 'Prestamo autorizado por admin',
-    })
+      descripcion: 'Prestamo autorizado por admin'})
 
     expect(res.status()).toBe(201)
   })
@@ -851,14 +814,13 @@ test.describe('Deudas Permissions', () => {
 
     // Create debt as admin first
     const adminPage = await page.context().browser()!.newPage()
-    await fullLogin(adminPage)
+    await loginAs(adminPage, 'admin')
     const trabajador = await createTrabajador(adminPage, { nombre: `AbonoAsist ${Date.now()}` })
     const res1 = await apiPost(adminPage, '/api/deudas', {
       trabajadorId: trabajador.trabajador.id,
       tipo: 'PRESTAMO',
       monto: 40000,
-      descripcion: 'Deuda para abono',
-    })
+      descripcion: 'Deuda para abono'})
     const body1 = await res1.json()
     const deudaId = body1.deuda.id
     await adminPage.close()
@@ -866,8 +828,7 @@ test.describe('Deudas Permissions', () => {
     // Abono as asistente
     const res2 = await apiPost(page, `/api/deudas/${deudaId}/abonar`, {
       monto: 10000,
-      nota: 'Abono por asistente',
-    })
+      nota: 'Abono por asistente'})
 
     expect(res2.status()).toBe(201)
   })

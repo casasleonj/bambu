@@ -1,5 +1,5 @@
 // @tests embarques module - comprehensive E2E coverage
-import {test, expect, fullLogin, apiPost, apiGet, apiPut, apiDelete, createTrabajador, createCliente, skipBaseCaja, login, BASE,  resetDatabase} from './fixtures'
+import {test, expect, loginAs, apiPost, apiGet, apiPut, apiDelete, createTrabajador, createCliente, skipBaseCaja, login, BASE,  resetDatabase} from './fixtures'
 
 /** Login that skips base caja modal to avoid redirect to /cierre */
 async function embarquesLogin(page: any) {
@@ -128,7 +128,7 @@ test.describe('Embarques — Filtros y Rangos', () => {
 test.describe('Embarques — CRUD', () => {
 
   test('crear embarque via API returns 201', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const t = await createTrabajador(page)
     const trabajadorId = t.trabajador?.id || t.data?.id
     if (!trabajadorId) { test.skip(); return }
@@ -139,13 +139,13 @@ test.describe('Embarques — CRUD', () => {
   })
 
   test('crear embarque via API without trabajador fails', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const res = await apiPost(page, '/api/embarques', {})
     expect(res.status()).toBeGreaterThanOrEqual(400)
   })
 
   test('auto-generar embarques', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await createTrabajador(page)
     const res = await apiPost(page, '/api/embarques/auto', {})
     const data = await res.json()
@@ -154,7 +154,7 @@ test.describe('Embarques — CRUD', () => {
   })
 
   test('cancelar embarque via DELETE', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const t = await createTrabajador(page)
     const trabajadorId = t.trabajador?.id || t.data?.id
     if (!trabajadorId) { test.skip(); return }
@@ -169,7 +169,7 @@ test.describe('Embarques — CRUD', () => {
   })
 
   test('cannot cancel closed embarque', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const t = await createTrabajador(page)
     const trabajadorId = t.trabajador?.id || t.data?.id
     if (!trabajadorId) { test.skip(); return }
@@ -193,7 +193,7 @@ test.describe('Embarques — CRUD', () => {
 test.describe('Embarques — Gestión de Pedidos', () => {
 
   test('asignar pedido a embarque via enviar endpoint', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const c = await createCliente(page)
     const clienteId = c.cliente?.id || c.data?.id
     if (!clienteId) { test.skip(); return }
@@ -216,7 +216,7 @@ test.describe('Embarques — Gestión de Pedidos', () => {
   })
 
   test('quitar pedido de embarque resetea estado a PENDIENTE', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const c = await createCliente(page)
     const clienteId = c.cliente?.id || c.data?.id
     if (!clienteId) { test.skip(); return }
@@ -250,7 +250,7 @@ test.describe('Embarques — Gestión de Pedidos', () => {
   })
 
   test('cannot assign pedido to closed embarque via PUT', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const t = await createTrabajador(page)
     const trabajadorId = t.trabajador?.id || t.data?.id
     if (!trabajadorId) { test.skip(); return }
@@ -270,7 +270,7 @@ test.describe('Embarques — Gestión de Pedidos', () => {
 test.describe('Embarques — Cierre Completo', () => {
 
   test('cerrar embarque sin pedidos returns success', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const t = await createTrabajador(page)
     const trabajadorId = t.trabajador?.id || t.data?.id
     if (!trabajadorId) { test.skip(); return }
@@ -285,7 +285,7 @@ test.describe('Embarques — Cierre Completo', () => {
   })
 
   test('cerrar embarque ya cerrado returns 400', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const t = await createTrabajador(page)
     const trabajadorId = t.trabajador?.id || t.data?.id
     if (!trabajadorId) { test.skip(); return }
@@ -301,7 +301,7 @@ test.describe('Embarques — Cierre Completo', () => {
   })
 
   test('cerrar con entrega COMPLETA y pago', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const c = await createCliente(page)
     const clienteId = c.cliente?.id || c.data?.id
     if (!clienteId) { test.skip(); return }
@@ -344,7 +344,7 @@ test.describe('Embarques — Cierre Completo', () => {
   })
 
   test('cerrar con entrega PARCIAL crea pedido hijo', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const c = await createCliente(page)
     const clienteId = c.cliente?.id || c.data?.id
     if (!clienteId) { test.skip(); return }
@@ -381,7 +381,7 @@ test.describe('Embarques — Cierre Completo', () => {
   })
 
   test('cerrar con NO_ENTREGADO y reasignación', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const c = await createCliente(page)
     const clienteId = c.cliente?.id || c.data?.id
     if (!clienteId) { test.skip(); return }
@@ -429,7 +429,7 @@ test.describe('Embarques — Cierre Completo', () => {
   })
 
   test('cerrar con venta libre crea pedido y factura', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const c = await createCliente(page)
     const clienteId = c.cliente?.id || c.data?.id
     if (!clienteId) { test.skip(); return }
@@ -454,7 +454,7 @@ test.describe('Embarques — Cierre Completo', () => {
   })
 
   test('cerrar con discrepancia crea descuento', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const c = await createCliente(page)
     const clienteId = c.cliente?.id || c.data?.id
     if (!clienteId) { test.skip(); return }
@@ -496,7 +496,7 @@ test.describe('Embarques — Cierre Completo', () => {
 test.describe('Embarques — Validaciones y Edge Cases', () => {
 
   test('auto-generar sin repartidores activos returns 400', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     // Assuming no active repartidores exist (fresh state)
     const res = await apiPost(page, '/api/embarques/auto', {})
     await res.json()
@@ -505,7 +505,7 @@ test.describe('Embarques — Validaciones y Edge Cases', () => {
   })
 
   test('auto-generar sin pedidos pendientes returns informative message', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await createTrabajador(page)
     const res = await apiPost(page, '/api/embarques/auto', {})
     const data = await res.json()
@@ -516,13 +516,13 @@ test.describe('Embarques — Validaciones y Edge Cases', () => {
   })
 
   test('GET embarque not found returns 404', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const res = await apiGet(page, '/api/embarques/nonexistent-id')
     expect(res.status()).toBe(404)
   })
 
   test('embarque detail includes pedidos and trabajador', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const t = await createTrabajador(page)
     const trabajadorId = t.trabajador?.id || t.data?.id
     if (!trabajadorId) { test.skip(); return }

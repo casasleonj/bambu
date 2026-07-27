@@ -8,7 +8,7 @@
 // Ver AGENTS.md -> Regresion header mobile 2026-06-10.
 
 import { test, expect } from '@playwright/test'
-import { fullLogin } from './fixtures'
+import { loginAs } from './fixtures'
 
 // FIX: `test.use` debe estar al top-level del archivo, NO dentro de
 // test.describe. Ver e2e/mobile-header.spec.ts para el rationale completo.
@@ -18,7 +18,7 @@ test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true
 
 test.describe('Drawer (menu lateral) mobile', () => {
   test('aside NO esta en el DOM en estado inicial mobile', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await page.goto('/dashboard')
     await page.waitForLoadState('domcontentloaded')
     await page.waitForTimeout(500)
@@ -30,7 +30,7 @@ test.describe('Drawer (menu lateral) mobile', () => {
   })
 
   test('primer tap en hamburguesa abre el drawer', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await page.goto('/dashboard')
     await page.waitForLoadState('domcontentloaded')
     await page.waitForTimeout(500)
@@ -53,7 +53,7 @@ test.describe('Drawer (menu lateral) mobile', () => {
   })
 
   test('tap en el scrim cierra el drawer', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await page.goto('/dashboard')
     await page.waitForLoadState('domcontentloaded')
     await page.waitForTimeout(500)
@@ -76,7 +76,7 @@ test.describe('Drawer (menu lateral) mobile', () => {
   })
 
   test('hamburguesa toggle: abrir y cerrar con el mismo boton', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await page.goto('/dashboard')
     await page.waitForLoadState('domcontentloaded')
     await page.waitForTimeout(500)
@@ -97,7 +97,7 @@ test.describe('Drawer (menu lateral) mobile', () => {
   })
 
   test('navegar a otra ruta cierra el drawer automaticamente', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await page.goto('/dashboard')
     await page.waitForLoadState('domcontentloaded')
     await page.waitForTimeout(500)
@@ -147,7 +147,7 @@ test.describe('Drawer (menu lateral) mobile', () => {
 test.describe('Drawer desktop (no regresion)', () => {
   test('aside esta en el DOM y visible en desktop (>= 768px)', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 720 })
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await page.goto('/dashboard')
     await page.waitForLoadState('domcontentloaded')
     await page.waitForTimeout(500)

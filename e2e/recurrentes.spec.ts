@@ -1,5 +1,5 @@
 // @tests api/pedido, api/recurrente
-import {test, expect, BASE, handleBaseCaja, fullLogin, goto, apiGet, apiPut, createCliente, createPedido, resetTestDatabase} from './fixtures'
+import {test, expect, BASE, handleBaseCaja, loginAs, goto, apiGet, apiPut, createCliente, createPedido, resetTestDatabase} from './fixtures'
 
 test.describe('Recurrentes', () => {
   test.describe.configure({ mode: 'serial' })
@@ -9,7 +9,7 @@ test.describe('Recurrentes', () => {
   })
 
   test('page loads', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/recurrentes')
     await page.waitForTimeout(500)
 
@@ -21,7 +21,7 @@ test.describe('Recurrentes', () => {
   })
 
   test('crear recurrente', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const clienteRes = await createCliente(page, {
       nombre: `Cliente Rec ${Date.now() % 10000}`,
@@ -73,7 +73,7 @@ test.describe('Recurrentes', () => {
   })
 
   test('editar recurrente', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const cliente = await createCliente(page, {
       nombre: `Cliente Edit Rec ${Date.now() % 10000}`,
@@ -108,7 +108,7 @@ test.describe('Recurrentes', () => {
   })
 
   test('eliminar recurrente (soft delete)', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const cliente = await createCliente(page, {
       nombre: `Cliente Del Rec ${Date.now() % 10000}`,
@@ -135,7 +135,7 @@ test.describe('Recurrentes', () => {
   })
 
   test('generar seleccionados', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/recurrentes')
     await page.waitForTimeout(500)
 
@@ -146,7 +146,7 @@ test.describe('Recurrentes', () => {
   })
 
   test('API recurrente preview', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const res = await apiGet(page, '/api/pedidos/recurrentes')
     expect(res.status()).toBe(200)
@@ -157,7 +157,7 @@ test.describe('Recurrentes', () => {
   })
 
   test('sugerencias NORMAL/SALTAR', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/recurrentes')
     await page.waitForTimeout(500)
 
@@ -183,7 +183,7 @@ test.describe('Recurrentes', () => {
   })
 
   test('generar pedido desde recurrente via API', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const cliente = await createCliente(page, {
       nombre: `Cliente Gen ${Date.now() % 10000}`,
@@ -213,7 +213,7 @@ test.describe('Recurrentes', () => {
   })
 
   test('aplicar crédito de pedido pagado al recurrente', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     // 1. Crear cliente
     const clienteRes = await createCliente(page, {

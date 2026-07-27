@@ -1,5 +1,5 @@
 // @tests api/embarque, api/pedido
-import {test, expect, fullLogin, goto, apiPost, createTrabajador, createCliente, createPedido,  resetDatabase} from './fixtures'
+import {test, expect, loginAs, goto, apiPost, createTrabajador, createCliente, createPedido,  resetDatabase} from './fixtures'
 
 test.describe('Pedidos', () => {
   test.describe.configure({ mode: 'serial' })
@@ -16,7 +16,7 @@ test.describe('Pedidos', () => {
   test('crear pedido venta rapida via UI', async ({ page }) => {
     // Cold dev-server compile of /pedidos can take >60s on the first run.
     test.setTimeout(120000)
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/pedidos')
     // Click the main FAB button to open menu
     const fabMain = page.locator('[data-testid="fab-main"]').first()
@@ -47,7 +47,7 @@ test.describe('Pedidos', () => {
   })
 
   test('crear pedido venta rapida via API', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     // Create fresh client to avoid CLIENTE_DEBE errors
     const c = await createCliente(page)
     const clienteId = c.cliente?.id || c.data?.id || 'CONSUMIDOR_FINAL'
@@ -69,7 +69,7 @@ test.describe('Pedidos', () => {
   })
 
   test('venta rapida con sobrepago', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/pedidos')
     // Use direct navigation via FAB
     const fabMain = page.locator('button.fixed.bottom-6').first()
@@ -102,7 +102,7 @@ test.describe('Pedidos', () => {
   // ─── Pedidos con Envío ────────────────────────────────────────────────────
 
   test('crear pedido con envio via API', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const c = await createCliente(page)
     const clienteId = c.cliente?.id || c.data?.id
     if (!clienteId) { test.skip(); return }
@@ -117,7 +117,7 @@ test.describe('Pedidos', () => {
   })
 
   test('pedido sin pago es PENDIENTE', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const c = await createCliente(page)
     const clienteId = c.cliente?.id || c.data?.id
     if (!clienteId) { test.skip(); return }
@@ -135,7 +135,7 @@ test.describe('Pedidos', () => {
   // ─── Asignar a Embarque ───────────────────────────────────────────────────
 
   test('asignar pedido a embarque via API', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const p = await createPedido(page, { ventaRapida: false, pagoMonto: 0 })
     const t = await createTrabajador(page)
     const pid = p.pedido?.id || p.data?.id
@@ -152,7 +152,7 @@ test.describe('Pedidos', () => {
   // ─── Pagar Fiado ──────────────────────────────────────────────────────────
 
   test('pagar fiado via API', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     // Create fresh client + pedido to avoid CLIENTE_DEBE
     const c = await createCliente(page)
     const clienteId = c.cliente?.id || c.data?.id
@@ -179,7 +179,7 @@ test.describe('Pedidos', () => {
   // ─── Anular Pedido ────────────────────────────────────────────────────────
 
   test('anular pedido via API', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const c = await createCliente(page)
     const clienteId = c.cliente?.id || c.data?.id
     if (!clienteId) { test.skip(); return }
@@ -202,7 +202,7 @@ test.describe('Pedidos', () => {
   // ─── Filtros ──────────────────────────────────────────────────────────────
 
   test('filtro default es Turno al entrar a pedidos', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/pedidos')
     // Esperar a que los botones de filtro rendericen (SSE mantiene conexión abierta)
     const turnoBtn = page.locator('button:has-text("Turno")').first()
@@ -215,7 +215,7 @@ test.describe('Pedidos', () => {
   })
 
   test('pedido creado aparece en lista de pedidos', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const unique = Date.now()
     const cliente = await createCliente(page, {
       nombre: `Aparece En Lista ${unique}`,
@@ -239,7 +239,7 @@ test.describe('Pedidos', () => {
   })
 
   test('filtrar pedidos por estado entrega', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/pedidos')
     // Expand filters panel
     const filtrosBtn = page.locator('button:has-text("Filtros")')
@@ -255,7 +255,7 @@ test.describe('Pedidos', () => {
   })
 
   test('filtrar pedidos por origen', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/pedidos')
     // Expand filters panel
     const filtrosBtn = page.locator('button:has-text("Filtros")')
@@ -272,7 +272,7 @@ test.describe('Pedidos', () => {
   // ─── Detalle ──────────────────────────────────────────────────────────────
 
   test('ver detalle de pedido', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/pedidos')
     const firstRow = page.locator('table tbody tr').first()
     if (await firstRow.isVisible({ timeout: 3000 }).catch(() => false)) {
@@ -285,7 +285,7 @@ test.describe('Pedidos', () => {
   // ─── Mi Ruta ──────────────────────────────────────────────────────────────
 
   test('repartidor puede ver Mi Ruta', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     // Create embarque for visibility
     const t = await createTrabajador(page)
     const tid = t.trabajador?.id || t.data?.id

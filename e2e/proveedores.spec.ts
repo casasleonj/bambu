@@ -1,5 +1,5 @@
 // @tests api/proveedor
-import {test, expect, fullLogin, goto, apiPost, createProveedor,  resetDatabase} from './fixtures'
+import {test, expect, loginAs, goto, apiPost, createProveedor,  resetDatabase} from './fixtures'
 
 test.describe('Proveedores', () => {
   test.describe.configure({ mode: 'serial' })
@@ -11,7 +11,7 @@ test.describe('Proveedores', () => {
   })
 
   test('page loads', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/proveedores')
     await page.waitForTimeout(500)
 
@@ -19,7 +19,7 @@ test.describe('Proveedores', () => {
   })
 
   test('crear proveedor', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/proveedores')
     await page.waitForTimeout(500)
 
@@ -50,7 +50,7 @@ test.describe('Proveedores', () => {
   })
 
   test('crear con todos los campos', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/proveedores')
     await page.waitForTimeout(500)
 
@@ -81,7 +81,7 @@ test.describe('Proveedores', () => {
   })
 
   test('editar proveedor', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const proveedor = await createProveedor(page)
     expect(proveedor.id).toBeTruthy()
@@ -116,7 +116,7 @@ test.describe('Proveedores', () => {
   })
 
   test('desactivar proveedor', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const proveedor = await createProveedor(page)
     const provId = proveedor.id || proveedor.proveedorId
@@ -152,7 +152,7 @@ test.describe('Proveedores', () => {
   })
 
   test('API crear proveedor', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const res = await apiPost(page, '/api/proveedores', {
       nombre: `Prov API ${Date.now() % 10000}`,

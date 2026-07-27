@@ -1,5 +1,5 @@
 // @tests api/cierre, api/cierre-dia, api/embarque, api/pedido, api/trabajador
-import { test, expect, login, handleBaseCaja, fullLogin, goto, apiPost, apiGet, resetDatabase } from './fixtures'
+import { test, expect, login, handleBaseCaja, loginAs, goto, apiPost, apiGet, resetDatabase } from './fixtures'
 
 let _uniqueDateOffset = 0
 function getUniqueFutureDate(): string {
@@ -18,7 +18,7 @@ test.describe('Cierre', () => {
   })
 
   test('page loads', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/cierre')
     await page.waitForTimeout(1000)
     await expect(page.locator('h1:has-text("Cierre del Día")')).toBeVisible({ timeout: 10000 })
@@ -26,7 +26,7 @@ test.describe('Cierre', () => {
   })
 
   test('admin sees cerrar dia button', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/cierre')
     await page.waitForTimeout(1000)
     const cerrarBtn = page.locator('button:has-text("Cerrar Día")')
@@ -49,7 +49,7 @@ test.describe('Cierre', () => {
   })
 
   test('admin can input stock', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/cierre')
     await page.waitForTimeout(1000)
     const yaCerrado = page.locator('text=Día ya cerrado')
@@ -71,7 +71,7 @@ test.describe('Cierre', () => {
   })
 
   test('admin can close day via API', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const fecha = getUniqueFutureDate()
     const res = await apiPost(page, '/api/cierre', {
       fecha,
@@ -93,7 +93,7 @@ test.describe('Cierre', () => {
   })
 
   test('double close same day fails', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const fecha = getUniqueFutureDate()
     const data = {
       fecha,
@@ -121,7 +121,7 @@ test.describe('Cierre', () => {
   })
 
   test('ver reporte para imprimir', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/cierre')
     await page.waitForTimeout(1000)
     const yaCerrado = page.locator('text=Día ya cerrado')
@@ -137,7 +137,7 @@ test.describe('Cierre', () => {
   })
 
   test('arqueo de caja', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/cierre')
     await page.waitForTimeout(1000)
     const yaCerrado = page.locator('text=Día ya cerrado')
@@ -153,7 +153,7 @@ test.describe('Cierre', () => {
 
   test('cierre blocked by open embarques', async ({ page }) => {
     test.setTimeout(120000)
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const trabajador = await (async () => {
       const res = await apiGet(page, '/api/trabajadores')
       const body = await res.json()
@@ -187,7 +187,7 @@ test.describe('Cierre', () => {
   })
 
   test('post-cierre: ventas nocturnas aparecen despues del cierre', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const fecha = getUniqueFutureDate()
     // 1. Cerrar el día
     const cierreRes = await apiPost(page, '/api/cierre', {

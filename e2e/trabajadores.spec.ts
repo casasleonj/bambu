@@ -1,5 +1,5 @@
 // @tests api/trabajador
-import {test, expect, fullLogin, goto, apiPost, apiDelete, createTrabajador,  resetDatabase} from './fixtures'
+import {test, expect, loginAs, goto, apiPost, apiDelete, createTrabajador,  resetDatabase} from './fixtures'
 
 test.describe('Trabajadores', () => {
   test.describe.configure({ mode: 'serial' })
@@ -11,7 +11,7 @@ test.describe('Trabajadores', () => {
   })
 
   test('page loads', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/trabajadores')
     await page.waitForTimeout(500)
 
@@ -19,7 +19,7 @@ test.describe('Trabajadores', () => {
   })
 
   test('crear trabajador', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/trabajadores')
     await page.waitForTimeout(500)
 
@@ -42,7 +42,7 @@ test.describe('Trabajadores', () => {
   })
 
   test('crear con moto y capacidad', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/trabajadores')
     await page.waitForTimeout(500)
 
@@ -70,7 +70,7 @@ test.describe('Trabajadores', () => {
   })
 
   test('crear sellador', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/trabajadores')
     await page.waitForTimeout(500)
 
@@ -93,7 +93,7 @@ test.describe('Trabajadores', () => {
   })
 
   test('editar trabajador', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const originalName = `Editame ${Date.now() % 10000}`
     const trabajador = await createTrabajador(page, {
@@ -128,7 +128,7 @@ test.describe('Trabajadores', () => {
   })
 
   test('eliminar trabajador', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const name = `Borrame ${Date.now() % 10000}`
     const trabajador = await createTrabajador(page, {
@@ -151,7 +151,7 @@ test.describe('Trabajadores', () => {
   })
 
   test('filtrar por rol', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/trabajadores')
     await page.waitForTimeout(500)
 
@@ -164,7 +164,7 @@ test.describe('Trabajadores', () => {
   })
 
   test('API crear con todos los campos', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const res = await apiPost(page, '/api/trabajadores', {
       nombre: `Full Worker ${Date.now() % 10000}`,

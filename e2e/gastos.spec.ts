@@ -1,5 +1,5 @@
 // @tests api/gasto
-import {test, expect, fullLogin, goto, apiPost, apiGet,  resetDatabase} from './fixtures'
+import {test, expect, loginAs, goto, apiPost, apiGet,  resetDatabase} from './fixtures'
 
 test.describe('Gastos', () => {
   test.describe.configure({ mode: 'serial' })
@@ -11,7 +11,7 @@ test.describe('Gastos', () => {
   })
 
   test('page loads', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/gastos')
     await page.waitForTimeout(500)
 
@@ -20,7 +20,7 @@ test.describe('Gastos', () => {
   })
 
   test('crear gasto', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/gastos')
     await page.waitForTimeout(500)
 
@@ -49,7 +49,7 @@ test.describe('Gastos', () => {
   })
 
   test('crear con todos los campos', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/gastos')
     await page.waitForTimeout(500)
 
@@ -82,7 +82,7 @@ test.describe('Gastos', () => {
   })
 
   test('validacion: sin categoria', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/gastos')
     await page.waitForTimeout(500)
 
@@ -104,7 +104,7 @@ test.describe('Gastos', () => {
   })
 
   test('validacion: monto vacio', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/gastos')
     await page.waitForTimeout(500)
 
@@ -125,7 +125,7 @@ test.describe('Gastos', () => {
   })
 
   test('filtrar por fecha', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/gastos')
     await page.waitForTimeout(500)
 
@@ -142,7 +142,7 @@ test.describe('Gastos', () => {
   })
 
   test('API crear gasto', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const res = await apiPost(page, '/api/gastos', {
       categoria: 'OTRO',
@@ -156,7 +156,7 @@ test.describe('Gastos', () => {
   })
 
   test('API filtrar gastos', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const today = new Date().toISOString().split('T')[0]
     const res = await apiGet(page, `/api/gastos?fecha=${today}`)

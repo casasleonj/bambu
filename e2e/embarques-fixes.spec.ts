@@ -1,6 +1,6 @@
 // @tests embarques module - tests for critical fixes applied
 // Covers: Fix #1, #2, #5, #7, #8, #9, #12, #16, #17, #21, #22, #24, #25
-import { test, expect, fullLogin, apiPost, apiGet, apiDelete, createTrabajador, createCliente, skipBaseCaja, login, BASE } from './fixtures'
+import { test, expect, loginAs, apiPost, apiGet, apiDelete, createTrabajador, createCliente, skipBaseCaja, login, BASE } from './fixtures'
 
 async function embarquesLogin(page: any) {
   await skipBaseCaja(page)
@@ -20,7 +20,7 @@ async function embarquesLogin(page: any) {
 test.describe('Embarques — Fix #1: Discrepancia valora productos individualmente', () => {
 
   test('cerrar con discrepancia mixta crea descuento con precios correctos', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const c = await createCliente(page)
     const clienteId = c.cliente?.id || c.data?.id
     if (!clienteId) { test.skip(); return }
@@ -106,7 +106,7 @@ test.describe('Embarques — Fix #2: REPARTIDOR no puede override precios', () =
   // To enable: seed a trabajador with userId linked to the repartidor user.
   test.skip('REPARTIDOR sending inflated preciosReales uses original prices', async ({ page }) => {
     // Step 1: Create everything as ADMIN
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const t = await createTrabajador(page)
     const trabajadorId = t.trabajador?.id || t.data?.id
     if (!trabajadorId) { test.skip(); return }
@@ -186,7 +186,7 @@ test.describe('Embarques — Fix #2: REPARTIDOR no puede override precios', () =
   })
 
   test('ADMIN can override preciosReales', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const c = await createCliente(page)
     const clienteId = c.cliente?.id || c.data?.id
     if (!clienteId) { test.skip(); return }
@@ -259,7 +259,7 @@ test.describe('Embarques — Fix #2: REPARTIDOR no puede override precios', () =
 test.describe('Embarques — Fix #5: DELETE resetea estadoEntrega', () => {
 
   test('cancelar embarque resetea estadoEntrega a PENDIENTE', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const c = await createCliente(page)
     const clienteId = c.cliente?.id || c.data?.id
     if (!clienteId) { test.skip(); return }
@@ -313,7 +313,7 @@ test.describe('Embarques — Fix #5: DELETE resetea estadoEntrega', () => {
 test.describe('Embarques — Fix #7: Auto-generador crea EmbarqueProducto', () => {
 
   test('auto-generar crea embarque con productos desde pedidos', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const c = await createCliente(page)
     const clienteId = c.cliente?.id || c.data?.id
     if (!clienteId) { test.skip(); return }
@@ -352,7 +352,7 @@ test.describe('Embarques — Fix #7: Auto-generador crea EmbarqueProducto', () =
 test.describe('Embarques — Fix #8: ADMIN puede enviar embarque vacio', () => {
 
   test('ADMIN puede enviar embarque sin pedidos para venta libre → 200', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const t = await createTrabajador(page)
     const trabajadorId = t.trabajador?.id || t.data?.id
     if (!trabajadorId) { test.skip(); return }
@@ -378,7 +378,7 @@ test.describe('Embarques — Fix #8: ADMIN puede enviar embarque vacio', () => {
 test.describe('Embarques — Fix #9: nuevoEmbarqueId validado', () => {
 
   test('nuevoEmbarqueId inexistente retorna 404', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const c = await createCliente(page)
     const clienteId = c.cliente?.id || c.data?.id
     if (!clienteId) { test.skip(); return }
@@ -431,7 +431,7 @@ test.describe('Embarques — Fix #9: nuevoEmbarqueId validado', () => {
   })
 
   test('nuevoEmbarqueId cerrado retorna 400', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const c = await createCliente(page)
     const clienteId = c.cliente?.id || c.data?.id
     if (!clienteId) { test.skip(); return }
@@ -512,7 +512,7 @@ test.describe('Embarques — Fix #9: nuevoEmbarqueId validado', () => {
 test.describe('Embarques — Fix #12: Pagos sin validacion de monto maximo', () => {
 
   test('pagos que exceden totalReal retorna 400', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const c = await createCliente(page)
     const clienteId = c.cliente?.id || c.data?.id
     if (!clienteId) { test.skip(); return }
@@ -578,7 +578,7 @@ test.describe('Embarques — Fix #12: Pagos sin validacion de monto maximo', () 
 test.describe('Embarques — Fix #16: numeroDia fallback a numero', () => {
 
   test('embarque card muestra numero cuando numeroDia es 0', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const t = await createTrabajador(page)
     const trabajadorId = t.trabajador?.id || t.data?.id
     if (!trabajadorId) { test.skip(); return }
@@ -609,7 +609,7 @@ test.describe('Embarques — Fix #16: numeroDia fallback a numero', () => {
 test.describe('Embarques — Fix #22: Gastos ownership check', () => {
 
   test('REPARTIDOR no puede agregar gastos a embarque de otro', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const t = await createTrabajador(page)
     const trabajadorId = t.trabajador?.id || t.data?.id
     if (!trabajadorId) { test.skip(); return }
@@ -646,7 +646,7 @@ test.describe('Embarques — Fix #22: Gastos ownership check', () => {
 test.describe('Embarques — Fix #24: Stats incluye EN_RUTA', () => {
 
   test('embarquesDetalle incluye embarques EN_RUTA', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const t = await createTrabajador(page)
     const trabajadorId = t.trabajador?.id || t.data?.id
     if (!trabajadorId) { test.skip(); return }
@@ -692,7 +692,7 @@ test.describe('Embarques — Fix #24: Stats incluye EN_RUTA', () => {
 test.describe('Embarques — Fix #25: overrideMotivo en stockSnapshot', () => {
 
   test('crear embarque con overrideMotivo lo guarda en stockSnapshot', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const t = await createTrabajador(page)
     const trabajadorId = t.trabajador?.id || t.data?.id
     if (!trabajadorId) { test.skip(); return }

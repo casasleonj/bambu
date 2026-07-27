@@ -1,4 +1,4 @@
-import { test, expect, fullLogin, apiPost, apiGet, createCliente, createClienteFull, goto, resetDatabase } from './fixtures'
+import { test, expect, loginAs, apiPost, apiGet, createCliente, createClienteFull, goto, resetDatabase } from './fixtures'
 import { execSync } from 'child_process'
 import { resolve } from 'path'
 
@@ -31,7 +31,7 @@ test.describe('Pedidos: filtros backend funcionan', () => {
   })
 
   test('filtro tipo=ENVIO solo devuelve pedidos DOMICILIO', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const c = await createCliente(page)
 
     await apiPost(page, '/api/pedidos', {
@@ -56,28 +56,28 @@ test.describe('Pedidos: filtros backend funcionan', () => {
   })
 
   test('filtro estadoEntrega=PENDIENTE funciona', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const res = await apiGet(page, '/api/pedidos?all=true&estadoEntrega=PENDIENTE')
     const body = await res.json()
     expect(body.pedidos.every((p: { estadoEntrega: string }) => p.estadoEntrega === 'PENDIENTE')).toBe(true)
   })
 
   test('filtro estadoPago=PENDIENTE funciona', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const res = await apiGet(page, '/api/pedidos?all=true&estadoPago=PENDIENTE')
     const body = await res.json()
     expect(body.pedidos.every((p: { estadoPago: string }) => p.estadoPago === 'PENDIENTE')).toBe(true)
   })
 
   test('filtro origen=PEDIDO funciona', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const res = await apiGet(page, '/api/pedidos?all=true&origen=PEDIDO')
     const body = await res.json()
     expect(body.pedidos.every((p: { origen: string }) => p.origen === 'PEDIDO')).toBe(true)
   })
 
   test('filtro multi-valor estadoEntrega=PENDIENTE&ENTREGADO devuelve ambos', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const c = await createCliente(page)
     const today = getTodayStr()
 
@@ -101,7 +101,7 @@ test.describe('Pedidos: UX filtros y limpieza', () => {
   })
 
   test('Limpiar todo borra buscador y filtros activos', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     // Navegar a /pedidos con búsqueda y filtro activo
     await goto(page, '/pedidos?estadoEntrega=PENDIENTE&search=Pedro')
@@ -132,7 +132,7 @@ test.describe('Pedidos: tabs independientes y badges', () => {
   })
 
   test('badge de Fiados refleja clientes con deuda y no cambia con filtros de Pedidos', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     // Cliente con límite de fiados = 5 y 2 pedidos fiados.
     const c = await createClienteFull(page, {
@@ -169,7 +169,7 @@ test.describe('Pedidos: tabs independientes y badges', () => {
   })
 
   test('filtros de Pedidos no afectan el dataset de Fiados', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const c = await createCliente(page, {
       nombre: 'Cliente Filtro Independiente',
@@ -197,7 +197,7 @@ test.describe('Pedidos: tab Fiados', () => {
   })
 
   test('tab Fiados muestra fiados de fechas pasadas sin filtrar por turno', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const c = await createCliente(page, { nombre: 'Pedro Pinilla', telefono: '3001234567' })
     const yesterday = getYesterdayStr()
     createPedidoDirecto(c.cliente.id, yesterday, 'ENTREGADO', 'PENDIENTE')
@@ -210,7 +210,7 @@ test.describe('Pedidos: tab Fiados', () => {
   })
 
   test('tab Fiados con periodo Hoy oculta fiados de ayer y muestra hint', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const c = await createCliente(page, { nombre: 'Sandra Leon', telefono: '3007654321' })
     const yesterday = getYesterdayStr()
     createPedidoDirecto(c.cliente.id, yesterday, 'ENTREGADO', 'PENDIENTE')
@@ -228,7 +228,7 @@ test.describe('Pedidos: tab Fiados', () => {
   })
 
   test('boton Limpiar en FiadosTable resetea filtros locales', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const c = await createCliente(page, { nombre: 'Cliente Limpieza', telefono: '3009998888' })
     const today = getTodayStr()
     createPedidoDirecto(c.cliente.id, today, 'ENTREGADO', 'PENDIENTE')

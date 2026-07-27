@@ -1,5 +1,5 @@
 // @tests api/cliente, api/precio, api/producto
-import {test, expect, BASE, fullLogin, goto, apiPost, apiGet,  resetDatabase} from './fixtures'
+import {test, expect, BASE, loginAs, goto, apiPost, apiGet,  resetDatabase} from './fixtures'
 
 test.describe('Productos', () => {
   test.describe.configure({ mode: 'serial' })
@@ -14,7 +14,7 @@ test.describe('Productos', () => {
   // ─── 1. Page loads ──────────────────────────────────────────────────────────
 
   test('page loads', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/productos')
     await page.waitForTimeout(1000)
     await expect(page.locator('h1').first()).toBeVisible({ timeout: 10000 })
@@ -26,7 +26,7 @@ test.describe('Productos', () => {
   // ─── 2. Editar precio inline ────────────────────────────────────────────────
 
   test('editar precio inline', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/productos')
     await page.waitForTimeout(1000)
 
@@ -61,7 +61,7 @@ test.describe('Productos', () => {
   // ─── 3. Agregar rango de volumen ────────────────────────────────────────────
 
   test('agregar rango de volumen', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/productos')
     await page.waitForTimeout(1000)
 
@@ -107,7 +107,7 @@ test.describe('Productos', () => {
   // ─── 4. Eliminar rango ──────────────────────────────────────────────────────
 
   test('eliminar rango', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/productos')
     await page.waitForTimeout(1000)
 
@@ -136,7 +136,7 @@ test.describe('Productos', () => {
   // ─── 5. API tabla precios ───────────────────────────────────────────────────
 
   test('API tabla precios', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const res = await apiGet(page, '/api/precios/tabla')
     expect(res.status()).toBe(200)
     const body = await res.json()
@@ -148,7 +148,7 @@ test.describe('Productos', () => {
   // ─── 6. API resolver precios ────────────────────────────────────────────────
 
   test('API resolver precios', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const res = await apiPost(page, '/api/precios/resolver', {
       codigo: 'PACA_AGUA',
       cantidad: 1,
@@ -162,7 +162,7 @@ test.describe('Productos', () => {
   })
 
   test('API resolver precios batch', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const res = await apiPost(page, '/api/precios/resolver', {
       items: [
         { codigo: 'PACA_AGUA', cantidad: 1 },
@@ -180,7 +180,7 @@ test.describe('Productos', () => {
   // ─── 7. API actualizar precio ───────────────────────────────────────────────
 
   test('API actualizar precio', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const prodRes = await apiGet(page, '/api/productos')
     const prodBody = await prodRes.json()
@@ -201,7 +201,7 @@ test.describe('Productos', () => {
   // ─── 8. API crear precio ────────────────────────────────────────────────────
 
   test('API crear precio', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const prodRes = await apiGet(page, '/api/productos')
     const prodBody = await prodRes.json()
@@ -226,7 +226,7 @@ test.describe('Productos', () => {
   // ─── 9. Sobrecosto domicilio ────────────────────────────────────────────────
 
   test('sobrecosto domicilio', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const prodRes = await apiGet(page, '/api/productos')
     const prodBody = await prodRes.json()
@@ -261,7 +261,7 @@ test.describe('Productos', () => {
   // ─── 10. Precios especiales por cliente ─────────────────────────────────────
 
   test('precios especiales por cliente', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const clientesRes = await apiGet(page, '/api/clientes')
     const clientesBody = await clientesRes.json()

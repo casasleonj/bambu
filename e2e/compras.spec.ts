@@ -1,5 +1,5 @@
 // @tests api/compra, api/insumo
-import {test, expect, fullLogin, goto, apiPost, apiGet, createProveedor, createInsumo,  resetDatabase} from './fixtures'
+import {test, expect, loginAs, goto, apiPost, apiGet, createProveedor, createInsumo,  resetDatabase} from './fixtures'
 
 test.describe('Compras', () => {
   test.describe.configure({ mode: 'serial' })
@@ -11,7 +11,7 @@ test.describe('Compras', () => {
   })
 
   test('page loads', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/compras')
     await page.waitForTimeout(500)
 
@@ -19,7 +19,7 @@ test.describe('Compras', () => {
   })
 
   test('crear compra', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     await createProveedor(page)
     await createInsumo(page)
@@ -66,7 +66,7 @@ test.describe('Compras', () => {
   })
 
   test('validacion: sin proveedor', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/compras')
     await page.waitForTimeout(500)
 
@@ -86,7 +86,7 @@ test.describe('Compras', () => {
   })
 
   test('validacion: sin insumo', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/compras')
     await page.waitForTimeout(500)
 
@@ -106,7 +106,7 @@ test.describe('Compras', () => {
   })
 
   test('API crear compra', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const proveedor = await createProveedor(page)
     const insumo = await createInsumo(page)
@@ -122,7 +122,7 @@ test.describe('Compras', () => {
   })
 
   test('verificar stock aumenta post-compra', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const proveedor = await createProveedor(page)
     const insumo = await createInsumo(page)

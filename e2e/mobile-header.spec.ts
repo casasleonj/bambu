@@ -8,7 +8,7 @@
 // Ver AGENTS.md -> Regresion header mobile 2026-06-10.
 
 import { test, expect } from '@playwright/test'
-import { fullLogin, checkHorizontalOverflow } from './fixtures'
+import { loginAs, checkHorizontalOverflow } from './fixtures'
 
 // FIX: `test.use` debe estar al top-level del archivo, NO dentro de
 // test.describe. Playwright rechaza `test.use` dentro de un describe group
@@ -27,7 +27,7 @@ test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true
 
 test.describe('Header mobile responsive', () => {
   test('header no se desborda horizontalmente en iPhone 13', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await page.goto('/dashboard')
     await page.waitForLoadState('domcontentloaded')
     await page.waitForTimeout(500)
@@ -37,7 +37,7 @@ test.describe('Header mobile responsive', () => {
   })
 
   test('todos los elementos del header son visibles en mobile', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await page.goto('/dashboard')
     await page.waitForLoadState('domcontentloaded')
     await page.waitForTimeout(500)
@@ -57,7 +57,7 @@ test.describe('Header mobile responsive', () => {
   })
 
   test('titulo h1 esta en una sola linea en mobile', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await page.goto('/dashboard')
     await page.waitForLoadState('domcontentloaded')
     await page.waitForTimeout(500)
@@ -77,7 +77,7 @@ test.describe('Header mobile responsive', () => {
   })
 
   test('fecha se muestra en formato corto en mobile', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await page.goto('/dashboard')
     await page.waitForLoadState('domcontentloaded')
     await page.waitForTimeout(500)
@@ -96,7 +96,7 @@ test.describe('Header mobile responsive', () => {
   })
 
   test('connectivity indicator oculta el label "Online" en mobile', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await page.goto('/dashboard')
     await page.waitForLoadState('domcontentloaded')
     await page.waitForTimeout(500)
@@ -110,7 +110,7 @@ test.describe('Header mobile responsive', () => {
   test('header no se desborda en viewport pequeno (320x568 — iPhone SE 1ra gen)', async ({ page }) => {
     // Reset viewport override para este test especifico.
     await page.setViewportSize({ width: 320, height: 568 })
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await page.goto('/dashboard')
     await page.waitForLoadState('domcontentloaded')
     await page.waitForTimeout(500)

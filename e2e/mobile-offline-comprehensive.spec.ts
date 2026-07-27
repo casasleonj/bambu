@@ -15,7 +15,7 @@
 import { test, expect } from '@playwright/test'
 import {
   BASE,
-  fullLogin,
+  loginAs,
   createCliente,
   createTrabajador,
   createEmbarque,
@@ -77,7 +77,7 @@ test.describe('Mobile Offline Comprehensive', () => {
   }
 
   test('M1: Asistente crea pedido offline → sync → 1 pedido persistido', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await waitForBambu(page)
     await clearQueues(page)
 
@@ -126,7 +126,7 @@ test.describe('Mobile Offline Comprehensive', () => {
   })
 
   test('M2: Asistente crea cliente offline → sync → cliente persistido', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await waitForBambu(page)
     await clearQueues(page)
 
@@ -171,7 +171,7 @@ test.describe('Mobile Offline Comprehensive', () => {
   })
 
   test('M3: Repartidor venta libre offline → sync → pedido + factura persistidos', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await waitForBambu(page)
     await clearQueues(page)
 
@@ -223,7 +223,7 @@ test.describe('Mobile Offline Comprehensive', () => {
   })
 
   test('M4: Admin paga fiado offline → sync → saldo reducido', async ({ page }) => {
-    await fullLogin(page, 'admin', 'admin123')
+    await loginAs(page, 'admin')
     await waitForBambu(page)
     await clearQueues(page)
 
@@ -287,7 +287,7 @@ test.describe('Mobile Offline Comprehensive', () => {
   })
 
   test('M5: Repartidor entrega pedido offline → sync → estado ENTREGADO', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await waitForBambu(page)
     await clearQueues(page)
 
@@ -358,7 +358,7 @@ test.describe('Mobile Offline Comprehensive', () => {
   })
 
   test('M6: Múltiples requests offline se drenan en orden y sin duplicar', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await waitForBambu(page)
     await clearQueues(page)
 
@@ -424,7 +424,7 @@ test.describe('Mobile Offline Comprehensive', () => {
   })
 
   test('M7: Recargar página conserva la cola offline', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await waitForBambu(page)
     await clearQueues(page)
 
@@ -472,7 +472,7 @@ test.describe('Mobile Offline Comprehensive', () => {
   })
 
   test('M8: Mobile UX — touch targets ≥ 44px y sin overflow horizontal', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await page.goto(`${BASE}/dashboard`, { waitUntil: 'domcontentloaded' })
     await page.waitForTimeout(800)
 

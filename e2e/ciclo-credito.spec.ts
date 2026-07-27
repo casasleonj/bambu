@@ -1,5 +1,5 @@
 // @tests api/abono, api/factura, api/pedido
-import { test, expect, fullLogin, apiPost, apiGet, createCliente, resetTestDatabase } from './fixtures'
+import { test, expect, loginAs, apiPost, apiGet, createCliente, resetTestDatabase } from './fixtures'
 
 test.describe('Ciclo de Crédito', () => {
   test.describe.configure({ mode: 'serial' })
@@ -11,7 +11,7 @@ test.describe('Ciclo de Crédito', () => {
 
   test('ciclo completo: pedido fiado → factura → abonos parciales → PAGADA', async ({ page }) => {
     test.setTimeout(120000)
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const cliente = await createCliente(page)
     expect(cliente.cliente.id).toBeTruthy()
@@ -100,7 +100,7 @@ test.describe('Ciclo de Crédito', () => {
 
   test('FIFO across multiple pedidos', async ({ page }) => {
     test.setTimeout(120000)
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const cliente = await createCliente(page)
 
@@ -143,7 +143,7 @@ test.describe('Ciclo de Crédito', () => {
   // ─── 3. Sobrepago ───────────────────────────────────────────────────────────
 
   test('sobrepago', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const cliente = await createCliente(page)
     const pedidoRes = await apiPost(page, '/api/pedidos', {
@@ -172,7 +172,7 @@ test.describe('Ciclo de Crédito', () => {
   // ─── 4. Cliente sin deuda ───────────────────────────────────────────────────
 
   test('cliente sin deuda', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const cliente = await createCliente(page)
 
@@ -210,7 +210,7 @@ test.describe('Ciclo de Crédito', () => {
 
   test('multi-metodo abono', async ({ page }) => {
     test.setTimeout(120000)
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const cliente = await createCliente(page)
     const pedidoRes = await apiPost(page, '/api/pedidos', {

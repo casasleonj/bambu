@@ -1,11 +1,11 @@
 // @tests embarques detail page — dedicated E2E coverage
 // Covers: action bar, assign modal, send/cancel flows, closed summary
-import { test, expect, fullLogin, apiPost, createTrabajador, createCliente, BASE } from './fixtures'
+import { test, expect, loginAs, apiPost, createTrabajador, createCliente, BASE } from './fixtures'
 
 test.describe('Embarques — Detail Page Actions', () => {
 
   test('ADMIN puede asignar pedidos desde embarque ABIERTO', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const t = await createTrabajador(page)
     const trabajadorId = t.trabajador?.id || t.data?.id
@@ -57,7 +57,7 @@ test.describe('Embarques — Detail Page Actions', () => {
   })
 
   test('ADMIN puede enviar embarque ABIERTO en ruta', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const t = await createTrabajador(page)
     const trabajadorId = t.trabajador?.id || t.data?.id
@@ -86,7 +86,7 @@ test.describe('Embarques — Detail Page Actions', () => {
   })
 
   test('ADMIN puede cancelar embarque ABIERTO', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const t = await createTrabajador(page)
     const trabajadorId = t.trabajador?.id || t.data?.id
@@ -116,7 +116,7 @@ test.describe('Embarques — Detail Page Actions', () => {
   })
 
   test('embarque EN_RUTA muestra Cerrar y Cuadrar y Asignar pedidos', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const t = await createTrabajador(page)
     const trabajadorId = t.trabajador?.id || t.data?.id
@@ -145,7 +145,7 @@ test.describe('Embarques — Detail Page Actions', () => {
   })
 
   test('embarque CERRADO muestra resumen y link a cierre', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const t = await createTrabajador(page)
     const trabajadorId = t.trabajador?.id || t.data?.id

@@ -1,5 +1,5 @@
 // @tests api/insumo
-import {test, expect, fullLogin, goto, apiPost, apiGet, createProveedor,  resetDatabase} from './fixtures'
+import {test, expect, loginAs, goto, apiPost, apiGet, createProveedor,  resetDatabase} from './fixtures'
 
 test.describe('Insumos', () => {
   test.describe.configure({ mode: 'serial' })
@@ -11,7 +11,7 @@ test.describe('Insumos', () => {
   })
 
   test('page loads', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/insumos')
     await page.waitForTimeout(500)
 
@@ -19,7 +19,7 @@ test.describe('Insumos', () => {
   })
 
   test('crear insumo', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/insumos')
     await page.waitForTimeout(500)
 
@@ -51,7 +51,7 @@ test.describe('Insumos', () => {
   })
 
   test('crear con proveedor', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const proveedor = await createProveedor(page)
     expect(proveedor.id).toBeTruthy()
@@ -91,7 +91,7 @@ test.describe('Insumos', () => {
   })
 
   test('validacion: nombre vacio', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/insumos')
     await page.waitForTimeout(500)
 
@@ -110,7 +110,7 @@ test.describe('Insumos', () => {
   })
 
   test('API crear insumo', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const res = await apiPost(page, '/api/insumos', {
       nombre: `Insumo API ${Date.now() % 10000}`,
@@ -122,7 +122,7 @@ test.describe('Insumos', () => {
   })
 
   test('API listar insumos', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const res = await apiGet(page, '/api/insumos')
     expect(res.status()).toBe(200)

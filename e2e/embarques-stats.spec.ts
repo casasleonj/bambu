@@ -1,5 +1,5 @@
 // @tests embarques stats module - comprehensive E2E coverage
-import { test, expect, fullLogin, apiPost, apiGet, apiDelete, createCliente, skipBaseCaja, login, BASE } from './fixtures'
+import { test, expect, loginAs, apiPost, apiGet, apiDelete, createCliente, skipBaseCaja, login, BASE } from './fixtures'
 
 async function embarquesLogin(page: any) {
   await skipBaseCaja(page)
@@ -152,7 +152,7 @@ async function createAndCloseEmbarque(page: any, trabajadorId: string, clienteId
 test.describe('Embarques Stats — API Estructura', () => {
 
   test('GET /api/embarques/stats returns 200 with correct shape', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const res = await apiGet(page, '/api/embarques/stats')
     expect(res.status()).toBe(200)
     const data = await res.json()
@@ -169,7 +169,7 @@ test.describe('Embarques Stats — API Estructura', () => {
   })
 
   test('kpiGeneral has all expected fields', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const res = await apiGet(page, '/api/embarques/stats')
     const data = await res.json()
     const kpi = (data.data ?? data).kpiGeneral
@@ -189,7 +189,7 @@ test.describe('Embarques Stats — API Estructura', () => {
   })
 
   test('porTrabajador entries have correct shape', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const trabajadorId = await createStatsRepartidor(page)
     if (!trabajadorId) { test.skip(); return }
     const result = await createAndCloseEmbarque(page, trabajadorId, null, [], 'COMPLETO')
@@ -213,7 +213,7 @@ test.describe('Embarques Stats — API Estructura', () => {
   })
 
   test('porRuta entries have correct shape', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const res = await apiGet(page, '/api/embarques/stats')
     const data = await res.json()
     const routes = (data.data ?? data).porRuta
@@ -232,7 +232,7 @@ test.describe('Embarques Stats — API Estructura', () => {
   })
 
   test('embarquesDetalle entries have correct shape', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const trabajadorId = await createStatsRepartidor(page)
     if (!trabajadorId) { test.skip(); return }
     const result = await createAndCloseEmbarque(page, trabajadorId, null, [], 'COMPLETO')
@@ -262,7 +262,7 @@ test.describe('Embarques Stats — API Estructura', () => {
 test.describe('Embarques Stats — API Filtros', () => {
 
   test('filter by date range returns data within range', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const today = new Date().toISOString().split('T')[0]
     const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0]
     const res = await apiGet(page, `/api/embarques/stats?desde=${today}&hasta=${tomorrow}`)
@@ -272,7 +272,7 @@ test.describe('Embarques Stats — API Filtros', () => {
   })
 
   test('filter by future date range returns empty stats', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const futureStart = new Date(Date.now() + 86400000 * 30).toISOString().split('T')[0]
     const futureEnd = new Date(Date.now() + 86400000 * 60).toISOString().split('T')[0]
     const res = await apiGet(page, `/api/embarques/stats?desde=${futureStart}&hasta=${futureEnd}`)
@@ -283,7 +283,7 @@ test.describe('Embarques Stats — API Filtros', () => {
   })
 
   test('filter by trabajadorId only returns that worker stats', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const id1 = await createStatsRepartidor(page)
     const id2 = await createStatsRepartidor(page)
     if (!id1 || !id2) { test.skip(); return }
@@ -305,7 +305,7 @@ test.describe('Embarques Stats — API Filtros', () => {
 test.describe('Embarques Stats — API Calculos con Datos Reales', () => {
 
   test('closed embarque contributes to totalEmbarques', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const before = await apiGet(page, '/api/embarques/stats')
     const beforeData = await before.json()
     const beforeCount = (beforeData.data ?? beforeData).kpiGeneral.totalEmbarques
@@ -325,7 +325,7 @@ test.describe('Embarques Stats — API Calculos con Datos Reales', () => {
   })
 
   test('open embarque does not count in kpiGeneral', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const trabajadorId = await createStatsRepartidor(page)
     if (!trabajadorId) { test.skip(); return }
     await apiPost(page, '/api/embarques', { trabajadorId, horaSalida: new Date().toISOString(), baseDinero: 0, carga: [{ producto: 'PACA_AGUA', cargadas: 1 }] })
@@ -339,7 +339,7 @@ test.describe('Embarques Stats — API Calculos con Datos Reales', () => {
   })
 
   test('cancelled embarque does not count in stats', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const trabajadorId = await createStatsRepartidor(page)
     if (!trabajadorId) { test.skip(); return }
   const eRes = await apiPost(page, '/api/embarques', {
@@ -359,7 +359,7 @@ test.describe('Embarques Stats — API Calculos con Datos Reales', () => {
   })
 
   test('embarque with complete delivery has 100% tasaEntrega', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const c = await createCliente(page)
     const clienteId = c.cliente?.id || c.data?.id
     const trabajadorId = await createStatsRepartidor(page)
@@ -381,7 +381,7 @@ test.describe('Embarques Stats — API Calculos con Datos Reales', () => {
   })
 
   test('embarque with NO_ENTREGADO has 0% tasaEntrega', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const c = await createCliente(page)
     const clienteId = c.cliente?.id || c.data?.id
     const trabajadorId = await createStatsRepartidor(page)

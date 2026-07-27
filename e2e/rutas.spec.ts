@@ -1,5 +1,5 @@
 // @tests api/ruta
-import {test, expect, handleBaseCaja, fullLogin, goto, apiPost, apiGet,  resetDatabase} from './fixtures'
+import {test, expect, handleBaseCaja, loginAs, goto, apiPost, apiGet,  resetDatabase} from './fixtures'
 
 test.describe('Rutas', () => {
   test.describe.configure({ mode: 'serial' })
@@ -11,7 +11,7 @@ test.describe('Rutas', () => {
   })
 
   test('page loads', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/rutas')
     await page.waitForTimeout(500)
 
@@ -20,7 +20,7 @@ test.describe('Rutas', () => {
   })
 
   test('crear ruta', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/rutas')
     await page.waitForTimeout(500)
 
@@ -51,7 +51,7 @@ test.describe('Rutas', () => {
   })
 
   test('editar ruta', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/rutas')
     await page.waitForTimeout(500)
 
@@ -83,7 +83,7 @@ test.describe('Rutas', () => {
   })
 
   test('eliminar ruta (soft delete)', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const name = `Ruta Del ${Date.now() % 100000}`
     const res = await apiPost(page, '/api/rutas', {
@@ -124,7 +124,7 @@ test.describe('Rutas', () => {
   })
 
   test('ruta con repartidor suplente', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/rutas')
     await page.waitForTimeout(500)
 
@@ -167,7 +167,7 @@ test.describe('Rutas', () => {
   })
 
   test('vista analisis', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/rutas')
     await page.waitForTimeout(500)
 
@@ -180,7 +180,7 @@ test.describe('Rutas', () => {
   })
 
   test('API analisis', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const res = await apiGet(page, '/api/rutas/analisis')
     expect(res.status()).toBe(200)
@@ -190,7 +190,7 @@ test.describe('Rutas', () => {
   })
 
   test('filtrar rutas', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/rutas')
     await page.waitForTimeout(500)
 
@@ -206,7 +206,7 @@ test.describe('Rutas', () => {
   })
 
   test('ruta aparece en crear embarque', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const name = `Ruta Emb ${Date.now() % 100000}`
     const res = await apiPost(page, '/api/rutas', {
@@ -234,7 +234,7 @@ test.describe('Rutas', () => {
   })
 
   test('crear con todos los campos', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/rutas')
     await page.waitForTimeout(500)
 

@@ -1,10 +1,10 @@
 // @tests api/produccion (dedup por offlineId) + offline-first behavior
 // @requires Bloque 5: Produccion.offlineId + fetchResilient en wizard
-import { test, expect, fullLogin, apiPost, apiGet, createSellador } from './fixtures'
+import { test, expect, loginAs, apiPost, apiGet, createSellador } from './fixtures'
 
 test.describe('Produccion — offline-first (Bloque 5)', () => {
   test('POST con offlineId nuevo → 201 (crea Produccion)', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const sellador = await createSellador(page)
     const selladorId = sellador?.trabajador?.id || sellador?.id
     if (!selladorId) test.skip(true, 'No se pudo crear sellador')
@@ -29,7 +29,7 @@ test.describe('Produccion — offline-first (Bloque 5)', () => {
   })
 
   test('POST con mismo offlineId → 200 con deduped=true (no duplica)', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const sellador = await createSellador(page)
     const selladorId = sellador?.trabajador?.id || sellador?.id
     if (!selladorId) test.skip(true, 'No se pudo crear sellador')
@@ -63,7 +63,7 @@ test.describe('Produccion — offline-first (Bloque 5)', () => {
   })
 
   test('GET /api/produccion incluye offlineId en registros', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const sellador = await createSellador(page)
     const selladorId = sellador?.trabajador?.id || sellador?.id
     if (!selladorId) test.skip(true, 'No se pudo crear sellador')
@@ -94,7 +94,7 @@ test.describe('Produccion — offline-first (Bloque 5)', () => {
   })
 
   test('POST sin offlineId → 201 normal (backward compat)', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const sellador = await createSellador(page)
     const selladorId = sellador?.trabajador?.id || sellador?.id
     if (!selladorId) test.skip(true, 'No se pudo crear sellador')
@@ -117,7 +117,7 @@ test.describe('Produccion — offline-first (Bloque 5)', () => {
   })
 
   test('POST con offlineId vacío string → 400 (Zod strict)', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const sellador = await createSellador(page)
     const selladorId = sellador?.trabajador?.id || sellador?.id
     if (!selladorId) test.skip(true, 'No se pudo crear sellador')

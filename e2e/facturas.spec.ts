@@ -1,5 +1,5 @@
 // @tests api/factura, api/abono, api/pedido
-import {test, expect, fullLogin, goto, apiPost, apiGet, getFirstFacturaConSaldo, createPedido, createCliente,  resetDatabase} from './fixtures'
+import {test, expect, loginAs, goto, apiPost, apiGet, getFirstFacturaConSaldo, createPedido, createCliente,  resetDatabase} from './fixtures'
 
 test.describe('Facturas', () => {
   test.describe.configure({ mode: 'serial' })
@@ -12,13 +12,13 @@ test.describe('Facturas', () => {
 
 
   test('page loads', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/facturas')
     await expect(page.getByRole('heading', { name: 'Facturas', exact: true })).toBeVisible()
   })
 
   test('ver detalle factura', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/facturas')
     // Click any factura card/row
     const cards = page.locator('[class*="cursor-pointer"]').first()
@@ -31,7 +31,7 @@ test.describe('Facturas', () => {
   })
 
   test('registrar abono via API', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const factura = await getFirstFacturaConSaldo(page)
     if (!factura) { test.skip(); return }
     const res = await apiPost(page, '/api/abonos', {
@@ -44,7 +44,7 @@ test.describe('Facturas', () => {
   })
 
   test('abono excede saldo debe fallar', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const factura = await getFirstFacturaConSaldo(page)
     if (!factura) { test.skip(); return }
     const res = await apiPost(page, '/api/abonos', {
@@ -59,7 +59,7 @@ test.describe('Facturas', () => {
   })
 
   test('crear factura via API', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const p = await createPedido(page, { ventaRapida: true })
     const pedidoId = p.pedido?.id || p.data?.id
     if (!pedidoId) { test.skip(); return }
@@ -73,7 +73,7 @@ test.describe('Facturas', () => {
   })
 
   test('ciclo de credito: pedido → factura → abono → PAGADA', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     // 1. Create pedido with partial payment
     const p = await apiPost(page, '/api/pedidos', {
       clienteId: 'CLI_VERIFICADO',
@@ -109,7 +109,7 @@ test.describe('Facturas', () => {
   })
 
   test('filtrar facturas por búsqueda', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/facturas')
     const searchInput = page.locator('input[placeholder*="Buscar"]')
     if (await searchInput.isVisible({ timeout: 2000 }).catch(() => false)) {

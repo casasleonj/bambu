@@ -1,5 +1,5 @@
 // @tests api/abono, api/caso, api/cierre-dia, api/cliente, api/config, api/embarque, api/factura, api/nomina, api/pedido, api/ruta
-import {test, expect, BASE, fullLogin, goto, apiPost, apiGet, apiDelete, createCliente, createTrabajador, createPedido, createEmbarque, getFirstTrabajador, getFirstFacturaConSaldo,  resetDatabase} from './fixtures'
+import {test, expect, BASE, loginAs, goto, apiPost, apiGet, apiDelete, createCliente, createTrabajador, createPedido, createEmbarque, getFirstTrabajador, getFirstFacturaConSaldo,  resetDatabase} from './fixtures'
 
 const PROTECTED_PAGES = [
   '/dashboard', '/pedidos', '/clientes', '/embarques', '/produccion',
@@ -46,7 +46,7 @@ test.describe('1. Sin autenticación', () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 test.describe('2. ADMIN — acceso total', () => {
   test.beforeEach(async ({ page }) => {
-    await fullLogin(page, 'admin', 'admin123')
+    await loginAs(page, 'admin')
   })
 
   test('Accede a todas las páginas protegidas sin redirect', async ({ page }) => {
@@ -164,7 +164,7 @@ test.describe('2. ADMIN — acceso total', () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 test.describe('3. ASISTENTE — acceso limitado', () => {
   test.beforeEach(async ({ page }) => {
-    await fullLogin(page, 'asistente', 'asist123')
+    await loginAs(page, 'asistente')
   })
 
   const allowedPages = ['/dashboard', '/pedidos', '/clientes', '/facturas', '/embarques', '/gastos', '/produccion']
@@ -272,7 +272,7 @@ test.describe('3. ASISTENTE — acceso limitado', () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 test.describe('4. CONTADOR — acceso financiero', () => {
   test.beforeEach(async ({ page }) => {
-    await fullLogin(page, 'contador', 'cont123')
+    await loginAs(page, 'contador')
   })
 
   test('Accede a páginas administrativas', async ({ page }) => {
@@ -358,7 +358,7 @@ test.describe('4. CONTADOR — acceso financiero', () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 test.describe('5. REPARTIDOR — acceso a propia ruta', () => {
   test.beforeEach(async ({ page }) => {
-    await fullLogin(page, 'repartidor', 'rep123')
+    await loginAs(page, 'repartidor')
   })
 
   test('Accede a /repartidor (Mi Ruta)', async ({ page }) => {
@@ -412,8 +412,8 @@ test.describe('6. Concurrencia', () => {
     const p1 = await ctx1.newPage()
     const p2 = await ctx2.newPage()
 
-    await fullLogin(p1, 'asistente', 'asist123')
-    await fullLogin(p2, 'asistente', 'asist123')
+    await loginAs(p1, 'asistente')
+    await loginAs(p2, 'asistente')
 
     const [r1, r2] = await Promise.all([
       apiPost(p1, '/api/clientes', { nombre: `Concurrente A ${Date.now()}`, telefono: '3001111111' }),
@@ -433,8 +433,8 @@ test.describe('6. Concurrencia', () => {
     const p1 = await ctx1.newPage()
     const p2 = await ctx2.newPage()
 
-    await fullLogin(p1, 'admin', 'admin123')
-    await fullLogin(p2, 'contador', 'cont123')
+    await loginAs(p1, 'admin')
+    await loginAs(p2, 'contador')
 
     const [r1, r2] = await Promise.all([
       apiPost(p1, '/api/clientes', { nombre: `Conc Admin ${Date.now()}`, telefono: '3003333333' }),
@@ -454,8 +454,8 @@ test.describe('6. Concurrencia', () => {
     const p1 = await ctx1.newPage()
     const p2 = await ctx2.newPage()
 
-    await fullLogin(p1, 'admin', 'admin123')
-    await fullLogin(p2, 'asistente', 'asist123')
+    await loginAs(p1, 'admin')
+    await loginAs(p2, 'asistente')
 
     const [r1, r2] = await Promise.all([
       apiPost(p1, '/api/pedidos', {
@@ -487,7 +487,7 @@ test.describe('6. Concurrencia', () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 test.describe('7. Flujo completo: ASISTENTE', () => {
   test('Crear cliente → pedido → verificar en lista', async ({ page }) => {
-    await fullLogin(page, 'asistente', 'asist123')
+    await loginAs(page, 'asistente')
 
     const cliente = await createCliente(page, { nombre: `Flujo Asistente ${Date.now()}` })
     expect(cliente.cliente).toBeDefined()
@@ -513,7 +513,7 @@ test.describe('7. Flujo completo: ASISTENTE', () => {
 
 test.describe('7. Flujo completo: CONTADOR', () => {
   test('Ver facturas → hacer abono → verificar saldo actualizado', async ({ page }) => {
-    await fullLogin(page, 'contador', 'cont123')
+    await loginAs(page, 'contador')
 
     const factura = await getFirstFacturaConSaldo(page)
     if (!factura) { test.skip(); return }
@@ -544,7 +544,7 @@ test.describe('7. Flujo completo: CONTADOR', () => {
 test.describe('7. Flujo completo: ADMIN', () => {
   test('Crear trabajador → embarque → pedido → asignar → cerrar embarque', async ({ page }) => {
     test.setTimeout(60000)
-    await fullLogin(page, 'admin', 'admin123')
+    await loginAs(page, 'admin')
 
     const trabajador = await createTrabajador(page, {
       nombre: `Rep Admin Flow ${Date.now() % 10000}`,
@@ -597,7 +597,7 @@ test.describe('7. Flujo completo: ADMIN', () => {
 
 test.describe('7. Flujo completo: REPARTIDOR', () => {
   test('Ver embarque asignado → navegar mi ruta', async ({ page }) => {
-    await fullLogin(page, 'repartidor', 'rep123')
+    await loginAs(page, 'repartidor')
 
     const res = await apiGet(page, '/api/embarques?all=true')
     expect(res.ok()).toBe(true)

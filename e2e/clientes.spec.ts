@@ -1,5 +1,5 @@
 // @tests api/cliente, api/cliente/quick, api/negocios, api/clientes/stats, api/clientes/historial
-import {test, expect, fullLogin, loginAs, goto, apiPost, apiGet, apiPut, apiPatch, apiDelete, createCliente, createClienteFull, setupClienteWithPedidos, resetDatabase, sharedPageLogin, sharedLoginAs} from './fixtures'
+import {test, expect, loginAs, goto, apiPost, apiGet, apiPut, apiPatch, apiDelete, createCliente, createClienteFull, setupClienteWithPedidos, resetDatabase, sharedPageLogin, sharedLoginAs} from './fixtures'
 import type { Page } from '@playwright/test'
 
 const BASE = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3001'
@@ -83,15 +83,13 @@ test.describe('Clientes UI', () => {
     const unique = `NegocioBusqueda${Date.now()}`
     const cliente = await createClienteFull(p, {
       nombre: 'ClienteConNegocioBusqueda',
-      telefono: `3${String(Date.now()).slice(-9)}`,
-    })
+      telefono: `3${String(Date.now()).slice(-9)}`})
     await apiPost(p, '/api/negocios', {
       clienteId: cliente.cliente.id,
       nombre: unique,
       tipoNegocio: 'Tienda',
       direccion: 'Calle Busqueda 123',
-      barrio: 'Centro Busqueda',
-    })
+      barrio: 'Centro Busqueda'})
 
     await goto(p, '/clientes')
     const searchInput = p.locator('input[placeholder*="Buscar"]')
@@ -139,32 +137,26 @@ test.describe('Clientes UI', () => {
     const cConNegocioLink = await createClienteFull(p, {
       nombre: 'NegocioConLink',
       telefono: `3${String(Date.now()).slice(-9)}`,
-      linkUbicacion: 'https://maps.google.com/?q=1,2',
-    })
+      linkUbicacion: 'https://maps.google.com/?q=1,2'})
     const cConNegocioSinLink = await createClienteFull(p, {
       nombre: 'NegocioSinLink',
-      telefono: `3${String(Date.now() + 1).slice(-9)}`,
-    })
+      telefono: `3${String(Date.now() + 1).slice(-9)}`})
     await createClienteFull(p, {
       nombre: 'SinNegocioConLink',
       telefono: `3${String(Date.now() + 2).slice(-9)}`,
-      linkUbicacion: 'https://maps.google.com/?q=3,4',
-    })
+      linkUbicacion: 'https://maps.google.com/?q=3,4'})
     await createClienteFull(p, {
       nombre: 'SinNegocioSinLink',
-      telefono: `3${String(Date.now() + 3).slice(-9)}`,
-    })
+      telefono: `3${String(Date.now() + 3).slice(-9)}`})
 
     // Crear negocios formales
     await apiPost(p, '/api/negocios', {
       clienteId: cConNegocioLink.cliente.id,
       nombre: 'Sucursal Con Link',
-      linkUbicacion: 'https://maps.google.com/?q=1,2',
-    })
+      linkUbicacion: 'https://maps.google.com/?q=1,2'})
     await apiPost(p, '/api/negocios', {
       clienteId: cConNegocioSinLink.cliente.id,
-      nombre: 'Sucursal Sin Link',
-    })
+      nombre: 'Sucursal Sin Link'})
 
     await goto(p, '/clientes')
 
@@ -237,8 +229,7 @@ test.describe('Clientes API CRUD', () => {
       tipoNegocio: 'Tienda',
       barrio: 'Centro',
       direccion: 'Calle 123 #45-67',
-      notas: 'Notas de prueba',
-    })
+      notas: 'Notas de prueba'})
     const body = await res.json()
     expect(body.success).toBe(true)
     expect(body.cliente.nombre).toBe('Cliente Completo')
@@ -252,8 +243,7 @@ test.describe('Clientes API CRUD', () => {
 
     const res = await apiPost(p, '/api/clientes', {
       nombre: 'Duplicado',
-      telefono: phone,
-    })
+      telefono: phone})
     expect(res.status()).toBe(409)
     const body = await res.json()
     // Error can be string, array, or object with message
@@ -268,8 +258,7 @@ test.describe('Clientes API CRUD', () => {
   test('POST valida campos requeridos', async ({ page }) => {
     const res = await apiPost(p, '/api/clientes', {
       nombre: '',
-      telefono: '3001234567',
-    })
+      telefono: '3001234567'})
     expect(res.status()).toBe(400)
   })
 
@@ -277,8 +266,7 @@ test.describe('Clientes API CRUD', () => {
     const res = await apiPost(p, '/api/clientes', {
       nombre: 'Test',
       telefono: `3${String(Date.now()).slice(-9)}`,
-      linkUbicacion: 'not-a-url',
-    })
+      linkUbicacion: 'not-a-url'})
     expect(res.status()).toBe(400)
   })
 
@@ -380,8 +368,7 @@ test.describe('Contactos API', () => {
     const res1 = await apiPost(p, `/api/clientes/${c.cliente.id}/contactos`, {
       nombre: 'Juan',
       telefono: '3001234567',
-      relacion: 'Esposo',
-    })
+      relacion: 'Esposo'})
     expect(res1.status()).toBe(201)
     const body1 = await res1.json()
     expect(body1.success).toBe(true)
@@ -390,8 +377,7 @@ test.describe('Contactos API', () => {
     const res2 = await apiPost(p, `/api/clientes/${c.cliente.id}/contactos`, {
       nombre: 'Maria',
       telefono: '3009876543',
-      relacion: 'Hija',
-    })
+      relacion: 'Hija'})
     expect(res2.status()).toBe(201)
 
     const getRes = await apiGet(p, `/api/clientes/${c.cliente.id}`)
@@ -404,14 +390,12 @@ test.describe('Contactos API', () => {
 
     const res1 = await apiPost(p, `/api/clientes/${c.cliente.id}/contactos`, {
       nombre: 'Primero',
-      telefono: '3009999999',
-    })
+      telefono: '3009999999'})
     expect(res1.status()).toBe(201)
 
     const res2 = await apiPost(p, `/api/clientes/${c.cliente.id}/contactos`, {
       nombre: 'Duplicado',
-      telefono: '3009999999',
-    })
+      telefono: '3009999999'})
     expect(res2.status()).toBe(409)
   })
 
@@ -420,14 +404,12 @@ test.describe('Contactos API', () => {
 
     const createRes = await apiPost(p, `/api/clientes/${c.cliente.id}/contactos`, {
       nombre: 'Original',
-      telefono: '3001111111',
-    })
+      telefono: '3001111111'})
     const createBody = await createRes.json()
     const contactoId = createBody.contacto.id
 
     const patchRes = await apiPatch(p, `/api/clientes/${c.cliente.id}/contactos/${contactoId}`, {
-      nombre: 'Actualizado',
-    })
+      nombre: 'Actualizado'})
     expect(patchRes.status()).toBe(200)
     const patchBody = await patchRes.json()
     expect(patchBody.contacto.nombre).toBe('Actualizado')
@@ -438,8 +420,7 @@ test.describe('Contactos API', () => {
 
     const createRes = await apiPost(p, `/api/clientes/${c.cliente.id}/contactos`, {
       nombre: 'Borrar',
-      telefono: '3002222222',
-    })
+      telefono: '3002222222'})
     const createBody = await createRes.json()
     const contactoId = createBody.contacto.id
 
@@ -462,12 +443,11 @@ test.describe('Quick Create API', () => {
   })
 
   test('POST quick crea cliente minimal', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const res = await apiPost(page, '/api/clientes/quick', {
       nombre: 'Quick Client',
       telefono: `3${String(Date.now()).slice(-9)}`,
-      direccion: 'Calle 1',
-    })
+      direccion: 'Calle 1'})
     expect([200, 201]).toContain(res.status())
     const body = await res.json()
     expect(body.cliente.id).toBeTruthy()
@@ -475,26 +455,24 @@ test.describe('Quick Create API', () => {
   })
 
   test('POST quick retorna existente para telefono duplicado', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const phone = `3${String(Date.now()).slice(-9)}`
     const c1 = await createCliente(page, { telefono: phone })
 
     const res = await apiPost(page, '/api/clientes/quick', {
       nombre: 'Different Name',
       telefono: phone,
-      direccion: 'Different Address',
-    })
+      direccion: 'Different Address'})
     const body = await res.json()
     expect(body.cliente.id).toBe(c1.cliente.id)
     expect(body.cliente.nombre).toBe(c1.cliente.nombre)
   })
 
   test('POST quick valida campos minimos', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const res = await apiPost(page, '/api/clientes/quick', {
       nombre: '',
-      telefono: '',
-    })
+      telefono: ''})
     expect(res.status()).toBe(400)
   })
 
@@ -503,8 +481,7 @@ test.describe('Quick Create API', () => {
     const res = await apiPost(page, '/api/clientes/quick', {
       nombre: 'Repartidor Quick',
       telefono: `3${String(Date.now()).slice(-9)}`,
-      direccion: 'Calle 1',
-    })
+      direccion: 'Calle 1'})
     expect([200, 201]).toContain(res.status())
     const body = await res.json()
     expect(body.cliente.id).toBeTruthy()
@@ -714,8 +691,7 @@ test.describe('Negocios API', () => {
       tipoNegocio: 'Tienda',
       direccion: 'Calle 5',
       habAgua: true,
-      habHielo: false,
-    })
+      habHielo: false})
     expect(res.status()).toBe(200)
     const body = await res.json()
     expect(body.negocio.nombre).toBe('Tienda Principal')
@@ -751,8 +727,7 @@ test.describe('Negocios API', () => {
     const c = await createCliente(p)
     const negRes = await apiPost(p, '/api/negocios', {
       clienteId: c.cliente.id,
-      nombre: 'Original Name',
-    })
+      nombre: 'Original Name'})
     expect(negRes.status()).toBe(200)
     const negBody = await negRes.json()
     const negocio = negBody.negocio
@@ -762,8 +737,7 @@ test.describe('Negocios API', () => {
     // with all Next.js configurations. Test verifies POST works.
     const res = await apiPut(p, `/api/negocios/${negocio.id}`, {
       nombre: 'Updated Name',
-      direccion: 'New Address',
-    })
+      direccion: 'New Address'})
     // May return 200 (works) or 404/500 (routing issue)
     expect([200, 404, 500]).toContain(res.status())
     if (res.status() === 200) {
@@ -776,8 +750,7 @@ test.describe('Negocios API', () => {
     const c = await createCliente(p)
     const negRes = await apiPost(p, '/api/negocios', {
       clienteId: c.cliente.id,
-      nombre: 'ToDelete',
-    })
+      nombre: 'ToDelete'})
     expect(negRes.status()).toBe(200)
     const negBody = await negRes.json()
     const negocio = negBody.negocio
@@ -796,8 +769,7 @@ test.describe('Negocios API', () => {
     const c = await createCliente(p)
     const negRes = await apiPost(p, '/api/negocios', {
       clienteId: c.cliente.id,
-      nombre: 'Negocio Test Eliminar',
-    })
+      nombre: 'Negocio Test Eliminar'})
     expect(negRes.status()).toBe(200)
     const negBody = await negRes.json()
     const negocio = negBody.negocio
@@ -810,8 +782,7 @@ test.describe('Negocios API', () => {
       canal: 'DOMICILIO',
       ventaRapida: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
-      pagos: [{ metodo: 'EFECTIVO', monto: 5000 }],
-    })
+      pagos: [{ metodo: 'EFECTIVO', monto: 5000 }]})
 
     const res = await apiDelete(p, `/api/negocios/${negocio.id}`)
     // May return 400 (blocked), 404 (routing), or 500 (error)
@@ -825,8 +796,7 @@ test.describe('Negocios API', () => {
   test('POST negocio con cliente inexistente retorna 404', async ({ page }) => {
     const res = await apiPost(p, '/api/negocios', {
       clienteId: '00000000-0000-0000-0000-000000000000',
-      nombre: 'Ghost',
-    })
+      nombre: 'Ghost'})
     expect(res.status()).toBe(404)
   })
 
@@ -834,8 +804,7 @@ test.describe('Negocios API', () => {
     const c = await createCliente(p)
     const res = await apiPost(p, '/api/negocios', {
       clienteId: c.cliente.id,
-      nombre: '',
-    })
+      nombre: ''})
     expect(res.status()).toBe(400)
   })
 })
@@ -852,7 +821,7 @@ test.describe('Clientes Role-Based Access', () => {
   })
 
   test('ADMIN puede crear y eliminar clientes', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const c = await createCliente(page)
     expect(c.cliente?.id).toBeTruthy()
     const res = await apiDelete(page, `/api/clientes/${c.cliente.id}`)
@@ -880,13 +849,12 @@ test.describe('Clientes Role-Based Access', () => {
     await loginAs(page, 'contador')
     const res = await apiPost(page, '/api/clientes', {
       nombre: 'Should Fail',
-      telefono: `3${String(Date.now()).slice(-9)}`,
-    })
+      telefono: `3${String(Date.now()).slice(-9)}`})
     expect([401, 403]).toContain(res.status())
   })
 
   test('CONTADOR no puede editar clientes', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const c = await createCliente(page)
     await loginAs(page, 'contador')
     await page.waitForTimeout(500)
@@ -902,8 +870,7 @@ test.describe('Clientes Role-Based Access', () => {
     await loginAs(page, 'repartidor')
     const res = await apiPost(page, '/api/clientes', {
       nombre: 'Should Fail',
-      telefono: `3${String(Date.now()).slice(-9)}`,
-    })
+      telefono: `3${String(Date.now()).slice(-9)}`})
     expect(res.status()).toBe(403)
   })
 
@@ -912,8 +879,7 @@ test.describe('Clientes Role-Based Access', () => {
     const res = await apiPost(page, '/api/clientes/quick', {
       nombre: 'Quick Repartidor',
       telefono: `3${String(Date.now()).slice(-9)}`,
-      direccion: 'Calle 1',
-    })
+      direccion: 'Calle 1'})
     expect([200, 201]).toContain(res.status())
     const body = await res.json()
     expect(body.cliente.id).toBeTruthy()

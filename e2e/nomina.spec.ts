@@ -1,5 +1,5 @@
 // @tests api/nomina
-import {test, expect, fullLogin, goto, apiPost, createTrabajador,  resetDatabase} from './fixtures'
+import {test, expect, loginAs, goto, apiPost, createTrabajador,  resetDatabase} from './fixtures'
 
 test.describe('Nomina', () => {
   test.describe.configure({ mode: 'serial' })
@@ -11,7 +11,7 @@ test.describe('Nomina', () => {
   })
 
   test('page loads', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/nomina')
     await page.waitForTimeout(500)
 
@@ -19,7 +19,7 @@ test.describe('Nomina', () => {
   })
 
   test('crear nomina con calculo automatico', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const trabajador = await createTrabajador(page)
     expect(trabajador.trabajador.id).toBeTruthy()
@@ -58,7 +58,7 @@ test.describe('Nomina', () => {
   })
 
   test('API crear nomina', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const trabajador = await createTrabajador(page)
 
@@ -73,7 +73,7 @@ test.describe('Nomina', () => {
   })
 
   test('API crear nomina manual', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const trabajador = await createTrabajador(page)
 
@@ -94,7 +94,7 @@ test.describe('Nomina', () => {
   })
 
   test('validacion: sin trabajador', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/nomina')
     await page.waitForTimeout(500)
 
