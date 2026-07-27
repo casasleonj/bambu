@@ -570,7 +570,7 @@ test.describe('Clientes Historial API', () => {
     const res = await apiGet(p, `/api/clientes/${c.cliente.id}/historial?page=1&pageSize=2`)
     const body = await res.json()
     expect(body.events.length).toBeLessThanOrEqual(2)
-    expect(body.p).toBe(1)
+    expect(body.page).toBe(1)
     expect(body.pageSize).toBe(2)
   })
 
