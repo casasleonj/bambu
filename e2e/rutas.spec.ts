@@ -13,7 +13,6 @@ test.describe('Rutas', () => {
   test('page loads', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/rutas')
-    await page.waitForTimeout(500)
 
     await expect(page.locator('h1:has-text("Rutas")')).toBeVisible()
     await expect(page.locator('button:has-text("+ Nueva Ruta")')).toBeVisible()
@@ -22,7 +21,6 @@ test.describe('Rutas', () => {
   test('crear ruta', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/rutas')
-    await page.waitForTimeout(500)
 
     await page.locator('button:has-text("+ Nueva Ruta")').click({ force: true })
     await page.waitForURL('**/rutas/nuevo')
@@ -53,7 +51,6 @@ test.describe('Rutas', () => {
   test('editar ruta', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/rutas')
-    await page.waitForTimeout(500)
 
     const editBtn = page.locator('button:has-text("Editar")').first()
     await editBtn.click()
@@ -95,7 +92,6 @@ test.describe('Rutas', () => {
     expect(rutaId).toBeTruthy()
 
     await goto(page, '/rutas')
-    await page.waitForTimeout(500)
 
     const searchInput = page.locator('input[placeholder="Buscar ruta o repartidor..."]')
     await searchInput.fill(name)
@@ -126,7 +122,6 @@ test.describe('Rutas', () => {
   test('ruta con repartidor suplente', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/rutas')
-    await page.waitForTimeout(500)
 
     await page.locator('button:has-text("+ Nueva Ruta")').click({ force: true })
     await page.waitForURL('**/rutas/nuevo')
@@ -169,7 +164,6 @@ test.describe('Rutas', () => {
   test('vista analisis', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/rutas')
-    await page.waitForTimeout(500)
 
     await page.click('button:has-text("Análisis")')
     await page.waitForURL('**/rutas/analisis')
@@ -192,7 +186,6 @@ test.describe('Rutas', () => {
   test('filtrar rutas', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/rutas')
-    await page.waitForTimeout(500)
 
     const searchInput = page.locator('input[placeholder="Buscar ruta o repartidor..."]')
     expect(await searchInput.isVisible()).toBe(true)
@@ -217,7 +210,6 @@ test.describe('Rutas', () => {
     expect(body.ruta?.id).toBeTruthy()
 
     await goto(page, '/embarques')
-    await page.waitForTimeout(500)
 
     await page.click('button:has-text("Nuevo Embarque")')
     await page.waitForTimeout(500)
@@ -236,7 +228,6 @@ test.describe('Rutas', () => {
   test('crear con todos los campos', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/rutas')
-    await page.waitForTimeout(500)
 
     await page.locator('button:has-text("+ Nueva Ruta")').click({ force: true })
     await page.waitForURL('**/rutas/nuevo')

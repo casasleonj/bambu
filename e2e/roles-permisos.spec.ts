@@ -52,7 +52,6 @@ test.describe('2. ADMIN — acceso total', () => {
   test('Accede a todas las páginas protegidas sin redirect', async ({ page }) => {
     for (const path of PROTECTED_PAGES) {
       await goto(page, path)
-      await page.waitForTimeout(500)
       const segment = path.split('/')[1]
       expect(page.url()).toContain(segment)
     }
@@ -173,7 +172,6 @@ test.describe('3. ASISTENTE — acceso limitado', () => {
   test('Accede a páginas permitidas sin redirect', async ({ page }) => {
     for (const path of allowedPages) {
       await goto(page, path)
-      await page.waitForTimeout(500)
       const segment = path.split('/')[1]
       expect(page.url()).toContain(segment)
     }
@@ -182,7 +180,6 @@ test.describe('3. ASISTENTE — acceso limitado', () => {
   test('Redirige a /dashboard desde páginas restringidas', async ({ page }) => {
     for (const path of forbiddenPages) {
       await goto(page, path)
-      await page.waitForTimeout(500)
       expect(page.url()).toContain('/dashboard')
     }
   })
@@ -279,7 +276,6 @@ test.describe('4. CONTADOR — acceso financiero', () => {
     const adminPages = ['/trabajadores', '/cierre', '/reportes', '/productos', '/nomina', '/configuracion']
     for (const path of adminPages) {
       await goto(page, path)
-      await page.waitForTimeout(500)
       const segment = path.split('/')[1]
       expect(page.url()).toContain(segment)
     }
@@ -288,7 +284,6 @@ test.describe('4. CONTADOR — acceso financiero', () => {
   test('Accede a dashboard, pedidos, facturas, gastos', async ({ page }) => {
     for (const path of ['/dashboard', '/pedidos', '/facturas', '/gastos']) {
       await goto(page, path)
-      await page.waitForTimeout(500)
       const segment = path.split('/')[1]
       expect(page.url()).toContain(segment)
     }
@@ -363,13 +358,11 @@ test.describe('5. REPARTIDOR — acceso a propia ruta', () => {
 
   test('Accede a /repartidor (Mi Ruta)', async ({ page }) => {
     await goto(page, '/repartidor')
-    await page.waitForTimeout(500)
     expect(page.url()).toContain('/repartidor')
   })
 
   test('Accede a /dashboard', async ({ page }) => {
     await goto(page, '/dashboard')
-    await page.waitForTimeout(500)
     expect(page.url()).toContain('/dashboard')
   })
 
@@ -383,13 +376,11 @@ test.describe('5. REPARTIDOR — acceso a propia ruta', () => {
 
   test('NO puede acceder a /trabajadores → redirect', async ({ page }) => {
     await goto(page, '/trabajadores')
-    await page.waitForTimeout(500)
     expect(page.url()).toContain('/dashboard')
   })
 
   test('NO puede acceder a /cierre → redirect', async ({ page }) => {
     await goto(page, '/cierre')
-    await page.waitForTimeout(500)
     expect(page.url()).toContain('/dashboard')
   })
 
@@ -606,7 +597,6 @@ test.describe('7. Flujo completo: REPARTIDOR', () => {
 
     if (embarques.length === 0) {
       await goto(page, '/repartidor')
-      await page.waitForTimeout(500)
       expect(page.url()).toContain('/repartidor')
       test.skip()
       return
@@ -615,7 +605,6 @@ test.describe('7. Flujo completo: REPARTIDOR', () => {
     expect(embarques.length).toBeGreaterThan(0)
 
     await goto(page, '/repartidor')
-    await page.waitForTimeout(500)
     expect(page.url()).toContain('/repartidor')
   })
 })

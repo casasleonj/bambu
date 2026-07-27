@@ -13,7 +13,6 @@ test.describe('Compras', () => {
   test('page loads', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/compras')
-    await page.waitForTimeout(500)
 
     await expect(page.locator('h1:has-text("Compras")')).toBeVisible()
   })
@@ -25,7 +24,6 @@ test.describe('Compras', () => {
     await createInsumo(page)
 
     await goto(page, '/compras')
-    await page.waitForTimeout(500)
 
     await page.click('button:has-text("Nueva Compra")')
     await page.waitForTimeout(500)
@@ -68,7 +66,6 @@ test.describe('Compras', () => {
   test('validacion: sin proveedor', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/compras')
-    await page.waitForTimeout(500)
 
     await page.click('button:has-text("Nueva Compra")')
     await page.waitForTimeout(500)
@@ -88,7 +85,6 @@ test.describe('Compras', () => {
   test('validacion: sin insumo', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/compras')
-    await page.waitForTimeout(500)
 
     await page.click('button:has-text("Nueva Compra")')
     await page.waitForTimeout(500)

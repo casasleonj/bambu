@@ -52,7 +52,6 @@ test.describe('Ciclo Repartidor', () => {
     expect(miEmbarque).toBeTruthy()
 
     await goto(repartidorPage, '/repartidor')
-    await repartidorPage.waitForTimeout(1000)
     const bodyText = await repartidorPage.locator('body').innerText()
     expect(bodyText).toMatch(/Mi Ruta|Embarque|Ruta/i)
 

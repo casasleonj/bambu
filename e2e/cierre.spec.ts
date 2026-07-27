@@ -20,7 +20,6 @@ test.describe('Cierre', () => {
   test('page loads', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/cierre')
-    await page.waitForTimeout(1000)
     await expect(page.locator('h1:has-text("Cierre del Día")')).toBeVisible({ timeout: 10000 })
     await expect(page.locator('text=Resumen Financiero').first()).toBeVisible({ timeout: 5000 })
   })
@@ -28,7 +27,6 @@ test.describe('Cierre', () => {
   test('admin sees cerrar dia button', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/cierre')
-    await page.waitForTimeout(1000)
     const cerrarBtn = page.locator('button:has-text("Cerrar Día")')
     if (await cerrarBtn.count() === 0) {
       const yaCerrado = page.locator('text=Día ya cerrado')
@@ -51,7 +49,6 @@ test.describe('Cierre', () => {
   test('admin can input stock', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/cierre')
-    await page.waitForTimeout(1000)
     const yaCerrado = page.locator('text=Día ya cerrado')
     if (await yaCerrado.isVisible({ timeout: 2000 }).catch(() => false)) {
       test.skip()
@@ -123,7 +120,6 @@ test.describe('Cierre', () => {
   test('ver reporte para imprimir', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/cierre')
-    await page.waitForTimeout(1000)
     const yaCerrado = page.locator('text=Día ya cerrado')
     if (await yaCerrado.isVisible({ timeout: 2000 }).catch(() => false)) {
       const irDashboard = page.locator('button:has-text("Volver al Dashboard")')
@@ -139,7 +135,6 @@ test.describe('Cierre', () => {
   test('arqueo de caja', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/cierre')
-    await page.waitForTimeout(1000)
     const yaCerrado = page.locator('text=Día ya cerrado')
     if (await yaCerrado.isVisible({ timeout: 2000 }).catch(() => false)) {
       test.skip()

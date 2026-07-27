@@ -11,7 +11,6 @@ test.describe('Recurrentes', () => {
   test('page loads', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/recurrentes')
-    await page.waitForTimeout(500)
 
     const bodyText = await page.locator('body').innerText()
     expect(bodyText).toMatch(/Pedidos Recurrentes|No hay recurrentes/)
@@ -34,7 +33,6 @@ test.describe('Recurrentes', () => {
     expect(cliente.nombre).toBeTruthy()
 
     await goto(page, '/recurrentes')
-    await page.waitForTimeout(500)
 
     await page.click('button:has-text("+ Nueva Plantilla")')
     await page.waitForURL('**/recurrentes/nuevo')
@@ -84,7 +82,6 @@ test.describe('Recurrentes', () => {
     await page.waitForTimeout(300)
 
     await goto(page, '/recurrentes')
-    await page.waitForTimeout(500)
 
     const editBtn = page.locator('button:has-text("Editar")').first()
     if (await editBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
@@ -119,7 +116,6 @@ test.describe('Recurrentes', () => {
     await page.waitForTimeout(300)
 
     await goto(page, '/recurrentes')
-    await page.waitForTimeout(500)
 
     const deleteBtn = page.locator('button:has-text("Eliminar")').first()
     if (await deleteBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
@@ -137,7 +133,6 @@ test.describe('Recurrentes', () => {
   test('generar seleccionados', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/recurrentes')
-    await page.waitForTimeout(500)
 
     const generateBtn = page.locator('button:has-text("Generar Seleccionados")')
     if (await generateBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
@@ -159,7 +154,6 @@ test.describe('Recurrentes', () => {
   test('sugerencias NORMAL/SALTAR', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/recurrentes')
-    await page.waitForTimeout(500)
 
     const normalBtn = page.locator('button:has-text("NORMAL")').first()
     const saltarBtn = page.locator('button:has-text("SALTAR")').first()

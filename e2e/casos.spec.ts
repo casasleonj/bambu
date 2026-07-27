@@ -19,7 +19,6 @@ test.describe('Casos', () => {
 
   test('page loads', async () => {
     await goto(p, '/casos')
-    await p.waitForTimeout(500)
 
     await expect(p.locator('h1:has-text("Gestión de Casos")')).toBeVisible()
 
@@ -75,7 +74,6 @@ test.describe('Casos', () => {
 
   test('filtrar casos por status', async () => {
     await goto(p, '/casos')
-    await p.waitForTimeout(500)
 
     const statusFilter = p.locator('select').first()
     if (await statusFilter.isVisible({ timeout: 2000 }).catch(() => false)) {
@@ -95,7 +93,6 @@ test.describe('Casos', () => {
 
   test('filtrar por severidad', async () => {
     await goto(p, '/casos')
-    await p.waitForTimeout(500)
 
     const severityFilter = p.locator('select').nth(1)
     if (await severityFilter.isVisible({ timeout: 2000 }).catch(() => false)) {
@@ -112,7 +109,6 @@ test.describe('Casos', () => {
 
   test('solo mios checkbox', async () => {
     await goto(p, '/casos')
-    await p.waitForTimeout(500)
 
     const checkbox = p.locator('input[type="checkbox"]').first()
     if (await checkbox.isVisible({ timeout: 2000 }).catch(() => false)) {
@@ -142,7 +138,6 @@ test.describe('Casos', () => {
     })
 
     await goto(p, '/casos')
-    await p.waitForTimeout(500)
 
     const searchInput = p.locator('input[placeholder="Buscar caso o cliente..."]')
     await searchInput.fill(clienteNombre)
@@ -168,7 +163,6 @@ test.describe('Casos', () => {
     })
 
     await goto(p, '/casos')
-    await p.waitForTimeout(500)
 
     const verBtn = p.locator('button:has-text("Ver")').first()
     if (await verBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
@@ -485,7 +479,6 @@ test.describe('Casos', () => {
     const casoNumero = getData.caso?.pedido?.numero
 
     await goto(p, '/casos')
-    await p.waitForTimeout(500)
 
     const verBtn = p.locator('button:has-text("Ver")').first()
     if (await verBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
@@ -709,7 +702,6 @@ test.describe('Casos', () => {
     })
 
     await goto(p, '/casos')
-    await p.waitForTimeout(500)
 
     const verBtn = p.locator('button:has-text("Ver")').first()
     if (await verBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
@@ -740,7 +732,6 @@ test.describe('Casos', () => {
     })
 
     await goto(p, '/casos')
-    await p.waitForTimeout(500)
 
     const verBtn = p.locator('button:has-text("Ver")').first()
     if (await verBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
@@ -786,7 +777,6 @@ test.describe('Casos', () => {
 
     // Open modal from list view - search for specific case first
     await goto(p, '/casos')
-    await p.waitForTimeout(500)
 
     // Search for the specific case
     const searchInput = p.locator('input[placeholder="Buscar caso o cliente..."]')
@@ -943,7 +933,6 @@ test.describe('Casos', () => {
     })
 
     await goto(p, '/casos')
-    await p.waitForTimeout(500)
 
     // In mobile view, the entire card is clickable (no "Ver" button in mobile)
     const mobileCard = p.locator('.md:hidden > div').first()
@@ -972,7 +961,6 @@ test.describe('Casos', () => {
     })
 
     await goto(p, '/casos')
-    await p.waitForTimeout(500)
 
     // TIPO_LABELS['MONTO_ANOMALO'] = 'Monto anómalo'
     const bodyText = await p.locator('tbody').innerText()
@@ -995,7 +983,6 @@ test.describe('Casos', () => {
     })
 
     await goto(p, '/casos')
-    await p.waitForTimeout(500)
 
     // Should show the raw alertaTipo value
     const bodyText = await p.locator('tbody').innerText()
@@ -1006,7 +993,6 @@ test.describe('Casos', () => {
 
   test('filtro sin resultados muestra estado vacio', async () => {
     await goto(p, '/casos')
-    await p.waitForTimeout(500)
 
     // Filter by CERRADO - if no closed cases exist, empty state should show
     const statusFilter = p.locator('select').first()

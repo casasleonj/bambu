@@ -13,7 +13,6 @@ test.describe('Nomina', () => {
   test('page loads', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/nomina')
-    await page.waitForTimeout(500)
 
     await expect(page.locator('h1:has-text("Nómina")')).toBeVisible()
   })
@@ -25,7 +24,6 @@ test.describe('Nomina', () => {
     expect(trabajador.trabajador.id).toBeTruthy()
 
     await goto(page, '/nomina')
-    await page.waitForTimeout(500)
 
     await page.click('button:has-text("Nueva Nómina")')
     await page.waitForTimeout(500)
@@ -96,7 +94,6 @@ test.describe('Nomina', () => {
   test('validacion: sin trabajador', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/nomina')
-    await page.waitForTimeout(500)
 
     await page.click('button:has-text("Nueva Nómina")')
     await page.waitForTimeout(500)

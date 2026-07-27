@@ -13,7 +13,6 @@ test.describe('Proveedores', () => {
   test('page loads', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/proveedores')
-    await page.waitForTimeout(500)
 
     await expect(page.locator('h1:has-text("Proveedores")')).toBeVisible()
   })
@@ -21,7 +20,6 @@ test.describe('Proveedores', () => {
   test('crear proveedor', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/proveedores')
-    await page.waitForTimeout(500)
 
     await page.click('button:has-text("+ Nuevo proveedor")')
     await page.waitForTimeout(500)
@@ -52,7 +50,6 @@ test.describe('Proveedores', () => {
   test('crear con todos los campos', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/proveedores')
-    await page.waitForTimeout(500)
 
     await page.click('button:has-text("+ Nuevo proveedor")')
     await page.waitForTimeout(500)
@@ -87,7 +84,6 @@ test.describe('Proveedores', () => {
     expect(proveedor.id).toBeTruthy()
 
     await goto(page, '/proveedores')
-    await page.waitForTimeout(500)
 
     const editButton = page.locator('button:has-text("Editar")').first()
     if (await editButton.isVisible({ timeout: 3000 }).catch(() => false)) {
@@ -123,7 +119,6 @@ test.describe('Proveedores', () => {
     expect(provId).toBeTruthy()
 
     await goto(page, '/proveedores')
-    await page.waitForTimeout(500)
 
     const deactivateButton = page.locator('button:has-text("Desactivar")').first()
     if (await deactivateButton.isVisible({ timeout: 3000 }).catch(() => false)) {

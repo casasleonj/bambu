@@ -84,7 +84,6 @@ test.describe('Productos - Comprehensive', () => {
 
     test('page loads with all seeded products', async () => {
       await goto(p, '/productos')
-      await p.waitForTimeout(500)
 
       await expect(p.locator('h1').first()).toBeVisible({ timeout: 10000 })
       await expect(p.getByText('Gestiona productos y sus precios por volumen')).toBeVisible()
@@ -370,7 +369,6 @@ test.describe('Productos - Comprehensive', () => {
 
     test('crear tier sin cantMax (sin limite)', async ({ page }) => {
       await goto(page, '/productos')
-      await page.waitForTimeout(1000)
 
       await page.keyboard.press('Escape')
 
@@ -502,7 +500,6 @@ test.describe('Productos - Comprehensive', () => {
       }
 
       await goto(page, '/productos')
-      await page.waitForTimeout(1000)
       const afterRestore = await pacaAguaCard.locator('table tbody tr').count()
       expect(afterRestore).toBe(initialCount)
     })

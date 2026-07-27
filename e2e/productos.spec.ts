@@ -16,7 +16,6 @@ test.describe('Productos', () => {
   test('page loads', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/productos')
-    await page.waitForTimeout(1000)
     await expect(page.locator('h1').first()).toBeVisible({ timeout: 10000 })
     await expect(page.locator('table').first()).toBeVisible({ timeout: 5000 })
     const bodyText = await page.locator('body').innerText()
@@ -28,7 +27,6 @@ test.describe('Productos', () => {
   test('editar precio inline', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/productos')
-    await page.waitForTimeout(1000)
 
     // Use the correct selector: price display button with title="Clic para editar"
     const priceDisplay = page.locator('[title="Clic para editar"]').first()
@@ -63,7 +61,6 @@ test.describe('Productos', () => {
   test('agregar rango de volumen', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/productos')
-    await page.waitForTimeout(1000)
 
     const addBtn = page.locator('button:has-text("Agregar rango")').first()
     if (await addBtn.count() === 0) {
@@ -109,7 +106,6 @@ test.describe('Productos', () => {
   test('eliminar rango', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/productos')
-    await page.waitForTimeout(1000)
 
     const deleteBtn = page.locator('button:has-text("Eliminar")').first()
     if (await deleteBtn.count() === 0) {
@@ -128,7 +124,6 @@ test.describe('Productos', () => {
     }
 
     await goto(page, '/productos')
-    await page.waitForTimeout(1000)
     const afterCount = await page.locator('table tbody tr').count()
     expect(afterCount).toBeLessThanOrEqual(beforeCount)
   })
@@ -272,7 +267,6 @@ test.describe('Productos', () => {
     }
 
     await goto(page, `/clientes/${cliente.id}`)
-    await page.waitForTimeout(1000)
 
     const bodyText = await page.locator('body').innerText()
     const hasPreciosEspeciales = bodyText.includes('Precio Especial') || bodyText.includes('precios especiales')

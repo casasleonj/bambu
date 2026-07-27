@@ -13,7 +13,6 @@ test.describe('Insumos', () => {
   test('page loads', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/insumos')
-    await page.waitForTimeout(500)
 
     await expect(page.locator('h1:has-text("Insumos")')).toBeVisible()
   })
@@ -21,7 +20,6 @@ test.describe('Insumos', () => {
   test('crear insumo', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/insumos')
-    await page.waitForTimeout(500)
 
     await page.click('button:has-text("+ Nuevo Insumo")')
     await page.waitForTimeout(500)
@@ -57,7 +55,6 @@ test.describe('Insumos', () => {
     expect(proveedor.id).toBeTruthy()
 
     await goto(page, '/insumos')
-    await page.waitForTimeout(500)
 
     await page.click('button:has-text("+ Nuevo Insumo")')
     await page.waitForTimeout(500)
@@ -93,7 +90,6 @@ test.describe('Insumos', () => {
   test('validacion: nombre vacio', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/insumos')
-    await page.waitForTimeout(500)
 
     await page.click('button:has-text("+ Nuevo Insumo")')
     await page.waitForTimeout(500)

@@ -13,7 +13,6 @@ test.describe('Trabajadores', () => {
   test('page loads', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/trabajadores')
-    await page.waitForTimeout(500)
 
     await expect(page.locator('h1:has-text("Trabajadores")')).toBeVisible()
   })
@@ -21,7 +20,6 @@ test.describe('Trabajadores', () => {
   test('crear trabajador', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/trabajadores')
-    await page.waitForTimeout(500)
 
     await page.click('button:has-text("+ Nuevo Trabajador")')
     await page.waitForTimeout(500)
@@ -44,7 +42,6 @@ test.describe('Trabajadores', () => {
   test('crear con moto y capacidad', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/trabajadores')
-    await page.waitForTimeout(500)
 
     await page.click('button:has-text("+ Nuevo Trabajador")')
     await page.waitForTimeout(500)
@@ -72,7 +69,6 @@ test.describe('Trabajadores', () => {
   test('crear sellador', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/trabajadores')
-    await page.waitForTimeout(500)
 
     await page.click('button:has-text("+ Nuevo Trabajador")')
     await page.waitForTimeout(500)
@@ -104,7 +100,6 @@ test.describe('Trabajadores', () => {
     expect(trabajador.trabajador.id).toBeTruthy()
 
     await goto(page, '/trabajadores')
-    await page.waitForTimeout(500)
 
     const searchInput = page.locator('input[placeholder*="Buscar"]').first()
     await searchInput.fill(originalName)
@@ -143,7 +138,6 @@ test.describe('Trabajadores', () => {
     expect(deleteRes.status()).toBe(200)
 
     await goto(page, '/trabajadores')
-    await page.waitForTimeout(500)
 
     // Verify worker is not in the list (check for worker card heading, not body text)
     const workerHeading = page.locator(`h2:has-text("${name}")`)
@@ -153,7 +147,6 @@ test.describe('Trabajadores', () => {
   test('filtrar por rol', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/trabajadores')
-    await page.waitForTimeout(500)
 
     const searchInput = page.locator('input[placeholder*="Buscar"]').first()
     await searchInput.fill('REPARTIDOR')

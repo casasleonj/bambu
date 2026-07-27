@@ -13,7 +13,6 @@ test.describe('Gastos', () => {
   test('page loads', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/gastos')
-    await page.waitForTimeout(500)
 
     await expect(page.locator('h1:has-text("Gastos")')).toBeVisible()
     await expect(page.locator('button:has-text("Nuevo Gasto")')).toBeVisible()
@@ -22,7 +21,6 @@ test.describe('Gastos', () => {
   test('crear gasto', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/gastos')
-    await page.waitForTimeout(500)
 
     await page.click('button:has-text("Nuevo Gasto")')
     await page.waitForTimeout(500)
@@ -51,7 +49,6 @@ test.describe('Gastos', () => {
   test('crear con todos los campos', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/gastos')
-    await page.waitForTimeout(500)
 
     await page.click('button:has-text("Nuevo Gasto")')
     await page.waitForTimeout(500)
@@ -84,7 +81,6 @@ test.describe('Gastos', () => {
   test('validacion: sin categoria', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/gastos')
-    await page.waitForTimeout(500)
 
     await page.click('button:has-text("Nuevo Gasto")')
     await page.waitForTimeout(500)
@@ -106,7 +102,6 @@ test.describe('Gastos', () => {
   test('validacion: monto vacio', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/gastos')
-    await page.waitForTimeout(500)
 
     await page.click('button:has-text("Nuevo Gasto")')
     await page.waitForTimeout(500)
@@ -127,7 +122,6 @@ test.describe('Gastos', () => {
   test('filtrar por fecha', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/gastos')
-    await page.waitForTimeout(500)
 
     const dateRange = page.locator('input[type="date"]')
     if (await dateRange.first().isVisible({ timeout: 3000 }).catch(() => false)) {
