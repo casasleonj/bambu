@@ -1,5 +1,5 @@
 // @tests E2E Producción — Suite exhaustiva
-import {test, expect, fullLogin, goto, apiPost, apiGet, apiPut, createSellador, getSellador,  resetDatabase} from './fixtures'
+import {test, expect, loginAs, goto, apiPost, apiGet, apiPut, createSellador, getSellador,  resetDatabase} from './fixtures'
 import type { Page } from '@playwright/test'
 
 test.describe('Producción — E2E Exhaustivo', () => {
@@ -24,7 +24,7 @@ test.describe('Producción — E2E Exhaustivo', () => {
   // ─── 1. Carga inicial ─────────────────────────────────────────────────────
 
   test('carga inicial con stepper y stock', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/produccion')
 
     await expect(page.getByRole('heading', { name: 'Registro de Producción' })).toBeVisible()
@@ -41,7 +41,7 @@ test.describe('Producción — E2E Exhaustivo', () => {
   // ─── 2. Navegación de steps ───────────────────────────────────────────────
 
   test('navegación avanzada y retroceso sin perder datos', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/produccion')
     await page.getByRole('button', { name: 'Siguiente →' }).click()
     await expect(page.getByTestId('conteos-section')).toBeVisible()
@@ -76,7 +76,7 @@ test.describe('Producción — E2E Exhaustivo', () => {
   // ─── 3. Conteos con promedio ──────────────────────────────────────────────
 
   test('promedio calculado en UI', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/produccion')
     await page.getByRole('button', { name: 'Siguiente →' }).click()
 
@@ -92,7 +92,7 @@ test.describe('Producción — E2E Exhaustivo', () => {
   // ─── 4. Alerta de diferencia de conteos ───────────────────────────────────
 
   test('alerta cuando conteos A y B difieren > 5', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/produccion')
     await page.getByRole('button', { name: 'Siguiente →' }).click()
 
@@ -106,7 +106,7 @@ test.describe('Producción — E2E Exhaustivo', () => {
   // ─── 5. Datos del turno ───────────────────────────────────────────────────
 
   test('seleccionar sellador, turno, stock físico y pérdidas', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/produccion')
     await page.getByRole('button', { name: 'Siguiente →' }).click()
     await fillConteos(page, 100, 100, 50, 50)
@@ -140,7 +140,7 @@ test.describe('Producción — E2E Exhaustivo', () => {
   // ─── 6. Conciliación OK ───────────────────────────────────────────────────
 
   test('conciliación verde cuando cuentas cuadran exacto', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/produccion')
     await page.getByRole('button', { name: 'Siguiente →' }).click()
     // Prod agua = 100, prod hielo = 50
@@ -162,7 +162,7 @@ test.describe('Producción — E2E Exhaustivo', () => {
   // ─── 7. Conciliación Warning ──────────────────────────────────────────────
 
   test('conciliación amarilla con diferencia faltante', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/produccion')
     await page.getByRole('button', { name: 'Siguiente →' }).click()
     await fillConteos(page, 100, 100, 50, 50)
@@ -182,7 +182,7 @@ test.describe('Producción — E2E Exhaustivo', () => {
   // ─── 8. Conciliación Danger (sobrantes) ───────────────────────────────────
 
   test('conciliación roja con sobrantes de stock', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/produccion')
     await page.getByRole('button', { name: 'Siguiente →' }).click()
     await fillConteos(page, 100, 100, 50, 50)
@@ -202,7 +202,7 @@ test.describe('Producción — E2E Exhaustivo', () => {
 
   test('completar wizard y guardar producción', async ({ page }) => {
     test.slow()
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     // Asegurar que hay un sellador
     let sellador = await getSellador(page)
@@ -215,7 +215,6 @@ test.describe('Producción — E2E Exhaustivo', () => {
     if (!sellador) test.skip(true, 'No sellador available')
 
     await goto(page, '/produccion')
-    await page.waitForTimeout(500)
     await page.getByRole('button', { name: 'Siguiente →' }).click()
     await fillConteos(page, 80, 80, 40, 40)
     await page.getByRole('button', { name: 'Siguiente →' }).click()
@@ -243,7 +242,7 @@ test.describe('Producción — E2E Exhaustivo', () => {
 
   test('segundo registro mismo turno retorna 409', async ({ page }) => {
     test.slow()
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const selladoresRes = await apiGet(page, '/api/trabajadores?rol=SELLADOR&activo=true')
     const selladoresBody = await selladoresRes.json()
@@ -258,7 +257,6 @@ test.describe('Producción — E2E Exhaustivo', () => {
 
     // Primer registro
     await goto(page, '/produccion')
-    await page.waitForTimeout(500)
     await page.getByRole('button', { name: 'Siguiente →' }).click()
     await fillConteos(page, 90, 90, 45, 45)
     await page.getByRole('button', { name: 'Siguiente →' }).click()
@@ -275,7 +273,6 @@ test.describe('Producción — E2E Exhaustivo', () => {
 
     // Segundo registro MISMO sellador + MISMO turno → 409
     await goto(page, '/produccion')
-    await page.waitForTimeout(500)
     await page.getByRole('button', { name: 'Siguiente →' }).click()
     await fillConteos(page, 90, 90, 45, 45)
     await page.getByRole('button', { name: 'Siguiente →' }).click()
@@ -300,7 +297,7 @@ test.describe('Producción — E2E Exhaustivo', () => {
   // ─── 11. Validación de rol sellador (API) ─────────────────────────────────
 
   test('POST con trabajador no-sellador retorna 400', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     // Crear repartidor
     const repRes = await apiPost(page, '/api/trabajadores', {
@@ -345,7 +342,7 @@ test.describe('Producción — E2E Exhaustivo', () => {
   // ─── 12. Stock esperado negativo ──────────────────────────────────────────
 
   test('stock esperado negativo se muestra correctamente', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/produccion')
     await page.getByRole('button', { name: 'Siguiente →' }).click()
     // Prod = 0
@@ -365,7 +362,7 @@ test.describe('Producción — E2E Exhaustivo', () => {
   // ─── 13. API Preview ──────────────────────────────────────────────────────
 
   test('GET /api/produccion/preview retorna estructura correcta', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const res = await apiGet(page, '/api/produccion/preview')
     expect(res.status()).toBe(200)
     const body = await res.json()
@@ -381,7 +378,7 @@ test.describe('Producción — E2E Exhaustivo', () => {
   // ─── 14. Campos vacíos — validación ───────────────────────────────────────
 
   test('avanzar sin sellador muestra error', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/produccion')
     await page.getByRole('button', { name: 'Siguiente →' }).click()
     await fillConteos(page, 100, 100, 50, 50)
@@ -396,7 +393,7 @@ test.describe('Producción — E2E Exhaustivo', () => {
   })
 
   test('avanzar sin conteos muestra error al confirmar', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/produccion')
     await page.getByRole('button', { name: 'Siguiente →' }).click()
     // No llenar conteos — ambos en 0
@@ -412,7 +409,7 @@ test.describe('Producción — E2E Exhaustivo', () => {
   // ─── 15. Comisiones según tipoPago ────────────────────────────────────────
 
   test('comisiones FIJAS muestran salario fijo', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     // Crear sellador FIJO
     await createSellador(page, { tipoPago: 'FIJO' })
@@ -442,7 +439,7 @@ test.describe('Producción — E2E Exhaustivo', () => {
   // ─── 16. Responsive layout ────────────────────────────────────────────────
 
   test('balance card abajo en mobile, sidebar en desktop', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     // Desktop: sidebar visible
     await page.setViewportSize({ width: 1280, height: 720 })
@@ -461,7 +458,7 @@ test.describe('Producción — E2E Exhaustivo', () => {
   // ─── 17. GET /api/produccion con filtro por fecha ─────────────────────────
 
   test('GET /api/produccion retorna registros del día', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const today = new Date().toISOString().split('T')[0]
     const res = await apiGet(page, `/api/produccion?fecha=${today}`)
@@ -474,7 +471,7 @@ test.describe('Producción — E2E Exhaustivo', () => {
   // ─── 18. FIX 1.5: obs obligatorio cuando hay diferencia (server-side) ──────
 
   test('FIX 1.5: POST con diferencia y obs vacío debe rechazarse con 400', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     // Crear sellador fresco y obtener SU id (no el primero de la lista)
     const sellador = await createSellador(page)
@@ -512,7 +509,7 @@ test.describe('Producción — E2E Exhaustivo', () => {
   })
 
   test('FIX 1.5: POST con diferencia y obs presente debe aceptarse', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const sellador = await createSellador(page)
     const selladorId = sellador?.trabajador?.id || sellador?.id
@@ -546,7 +543,7 @@ test.describe('Producción — E2E Exhaustivo', () => {
   // ─── 19. FIX 1.1: race condition — concurrent POSTs ──────────────────────
 
   test('FIX 1.1: dos POSTs concurrentes mismo sellador+turno → solo uno gana', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const sellador = await createSellador(page)
     const selladorId = sellador?.trabajador?.id || sellador?.id
@@ -596,7 +593,7 @@ test.describe('Producción — E2E Exhaustivo', () => {
   // ─── 20. FIX 1.6: fecha truncada a medianoche Bogotá ──────────────────────
 
   test('FIX 1.6: registro creado tiene fecha en 00:00:00 (medianoche Bogotá)', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const sellador = await createSellador(page)
     const selladorId = sellador?.trabajador?.id || sellador?.id
@@ -642,7 +639,7 @@ test.describe('Producción — E2E Exhaustivo', () => {
   // ─── 21. PUT /api/produccion/[id] (Bloque 4) ────────────────────────────────
 
   test('PUT corregir conteos del mismo día → 200, valores actualizados', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const sellador = await createSellador(page)
     const selladorId = sellador?.trabajador?.id || sellador?.id
@@ -680,7 +677,7 @@ test.describe('Producción — E2E Exhaustivo', () => {
   })
 
   test('PUT con diferencia y obs vacío → 400 (FIX 1.5)', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const sellador = await createSellador(page)
     const selladorId = sellador?.trabajador?.id || sellador?.id
@@ -714,7 +711,7 @@ test.describe('Producción — E2E Exhaustivo', () => {
   })
 
   test('PUT en id inexistente → 404', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const putRes = await apiPut(page, '/api/produccion/id_que_no_existe_999', {
       obs: 'cualquier cosa',
     })
@@ -722,13 +719,13 @@ test.describe('Producción — E2E Exhaustivo', () => {
   })
 
   test('PUT sin items ni obs → 400 (Zod refine)', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const putRes = await apiPut(page, '/api/produccion/cualquierid', {})
     expect(putRes.status()).toBe(400)
   })
 
   test('PUT con items pero producto inválido → 400 (Zod strict)', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const putRes = await apiPut(page, '/api/produccion/cualquierid', {
       items: [
         { producto: 'BOTELLON', conteoA: 5 }, // producto no permitido
