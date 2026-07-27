@@ -1,35 +1,40 @@
 // @tests api/casos, api/casos/[id], api/casos/[id]/eventos
-import {test, expect, BASE, fullLogin, skipBaseCaja, goto, apiPost, apiGet, createCliente,  resetDatabase} from './fixtures'
+import {test, expect, BASE, fullLogin, skipBaseCaja, goto, apiPost, apiGet, createCliente, resetDatabase, sharedPageLogin} from './fixtures'
+import type { Page } from '@playwright/test'
 
 test.describe('Casos', () => {
   test.describe.configure({ mode: 'serial' })
 
-  test.use({ storageState: { cookies: [], origins: [] } })
 
-  test.beforeAll(() => {
+  let p: Page
+
+  test.beforeAll(async ({ browser }) => {
     resetDatabase()
+    p = await sharedPageLogin(browser)
   })
 
-  test('page loads', async ({ page }) => {
-    await fullLogin(page)
-    await goto(page, '/casos')
-    await page.waitForTimeout(500)
+  test.afterAll(async () => {
+    await p?.close()
+  })
 
-    await expect(page.locator('h1:has-text("Gestión de Casos")')).toBeVisible()
+  test('page loads', async () => {
+    await goto(p, '/casos')
+    await p.waitForTimeout(500)
 
-    const filters = page.locator('input[placeholder="Buscar caso o cliente..."]')
+    await expect(p.locator('h1:has-text("Gestión de Casos")')).toBeVisible()
+
+    const filters = p.locator('input[placeholder="Buscar caso o cliente..."]')
     expect(await filters.isVisible()).toBe(true)
   })
 
-  test('crear caso via API', async ({ page }) => {
-    await fullLogin(page)
+  test('crear caso via API', async () => {
 
-    const cliente = await createCliente(page, {
+    const cliente = await createCliente(p, {
       nombre: `Cliente Caso ${Date.now() % 10000}`,
       telefono: `3${String(Date.now()).slice(-9)}`,
     })
 
-    const res = await apiPost(page, '/api/casos', {
+    const res = await apiPost(p, '/api/casos', {
       alertaTipo: 'MONTO_ANOMALO',
       severidad: 'ALTA',
       titulo: `Caso Test ${Date.now() % 10000}`,
@@ -44,15 +49,14 @@ test.describe('Casos', () => {
     expect(data.caso?.cliente?.nombre).toBe(cliente.nombre)
   })
 
-  test('listar casos', async ({ page }) => {
-    await fullLogin(page)
+  test('listar casos', async () => {
 
-    const cliente = await createCliente(page, {
+    const cliente = await createCliente(p, {
       nombre: `Cliente List ${Date.now() % 10000}`,
       telefono: `3${String(Date.now()).slice(-9)}`,
     })
 
-    await apiPost(page, '/api/casos', {
+    await apiPost(p, '/api/casos', {
       alertaTipo: 'MONTO_ANOMALO',
       severidad: 'ALTA',
       titulo: `Caso Listar ${Date.now() % 10000}`,
@@ -60,7 +64,7 @@ test.describe('Casos', () => {
       clienteId: cliente.id,
     })
 
-    const res = await apiGet(page, '/api/casos')
+    const res = await apiGet(p, '/api/casos')
     expect(res.status()).toBe(200)
 
     const data = await res.json()
@@ -69,20 +73,19 @@ test.describe('Casos', () => {
     expect(data.casos.length).toBeGreaterThan(0)
   })
 
-  test('filtrar casos por status', async ({ page }) => {
-    await fullLogin(page)
-    await goto(page, '/casos')
-    await page.waitForTimeout(500)
+  test('filtrar casos por status', async () => {
+    await goto(p, '/casos')
+    await p.waitForTimeout(500)
 
-    const statusFilter = page.locator('select').first()
+    const statusFilter = p.locator('select').first()
     if (await statusFilter.isVisible({ timeout: 2000 }).catch(() => false)) {
       await statusFilter.selectOption('ABIERTO')
-      await page.waitForTimeout(500)
+      await p.waitForTimeout(500)
 
       // FIX: en mobile el layout es card (md:hidden), no table. Usar
       // `:visible` para filtrar spans ocultos del desktop layout
       // (que esta en DOM con `hidden md:block`).
-      const badge = page.locator('span:has-text("Abierto"):visible').first()
+      const badge = p.locator('span:has-text("Abierto"):visible').first()
       const badgeVisible = await badge.isVisible({ timeout: 3000 }).catch(() => false)
       if (badgeVisible) {
         expect(badgeVisible).toBeTruthy()
@@ -90,17 +93,16 @@ test.describe('Casos', () => {
     }
   })
 
-  test('filtrar por severidad', async ({ page }) => {
-    await fullLogin(page)
-    await goto(page, '/casos')
-    await page.waitForTimeout(500)
+  test('filtrar por severidad', async () => {
+    await goto(p, '/casos')
+    await p.waitForTimeout(500)
 
-    const severityFilter = page.locator('select').nth(1)
+    const severityFilter = p.locator('select').nth(1)
     if (await severityFilter.isVisible({ timeout: 2000 }).catch(() => false)) {
       await severityFilter.selectOption('ALTA')
-      await page.waitForTimeout(500)
+      await p.waitForTimeout(500)
 
-      const dots = page.locator('.bg-red-500')
+      const dots = p.locator('.bg-red-500')
       const count = await dots.count().catch(() => 0)
       if (count > 0) {
         expect(count).toBeGreaterThan(0)
@@ -108,32 +110,30 @@ test.describe('Casos', () => {
     }
   })
 
-  test('solo mios checkbox', async ({ page }) => {
-    await fullLogin(page)
-    await goto(page, '/casos')
-    await page.waitForTimeout(500)
+  test('solo mios checkbox', async () => {
+    await goto(p, '/casos')
+    await p.waitForTimeout(500)
 
-    const checkbox = page.locator('input[type="checkbox"]').first()
+    const checkbox = p.locator('input[type="checkbox"]').first()
     if (await checkbox.isVisible({ timeout: 2000 }).catch(() => false)) {
       await checkbox.check()
-      await page.waitForTimeout(500)
+      await p.waitForTimeout(500)
 
-      const labels = page.locator('label:has-text("Solo míos")')
+      const labels = p.locator('label:has-text("Solo míos")')
       expect(await labels.isVisible()).toBe(true)
     }
   })
 
-  test('buscar caso', async ({ page }) => {
-    await fullLogin(page)
+  test('buscar caso', async () => {
 
-    const clienteRes = await createCliente(page, {
+    const clienteRes = await createCliente(p, {
       nombre: `Cliente Search ${Date.now() % 10000}`,
       telefono: `3${String(Date.now()).slice(-9)}`,
     })
     const clienteNombre = clienteRes.cliente?.nombre || clienteRes.nombre
 
     const titulo = `Caso Buscable ${Date.now() % 10000}`
-    await apiPost(page, '/api/casos', {
+    await apiPost(p, '/api/casos', {
       alertaTipo: 'MONTO_ANOMALO',
       severidad: 'BAJA',
       titulo,
@@ -141,26 +141,25 @@ test.describe('Casos', () => {
       clienteId: clienteRes.cliente?.id || clienteRes.id,
     })
 
-    await goto(page, '/casos')
-    await page.waitForTimeout(500)
+    await goto(p, '/casos')
+    await p.waitForTimeout(500)
 
-    const searchInput = page.locator('input[placeholder="Buscar caso o cliente..."]')
+    const searchInput = p.locator('input[placeholder="Buscar caso o cliente..."]')
     await searchInput.fill(clienteNombre)
-    await page.waitForTimeout(500)
+    await p.waitForTimeout(500)
 
-    const bodyText = await page.locator('body').innerText()
+    const bodyText = await p.locator('body').innerText()
     expect(bodyText).toContain(clienteNombre)
   })
 
-  test('ver detalle caso', async ({ page }) => {
-    await fullLogin(page)
+  test('ver detalle caso', async () => {
 
-    const cliente = await createCliente(page, {
+    const cliente = await createCliente(p, {
       nombre: `Cliente Detail ${Date.now() % 10000}`,
       telefono: `3${String(Date.now()).slice(-9)}`,
     })
 
-    await apiPost(page, '/api/casos', {
+    await apiPost(p, '/api/casos', {
       alertaTipo: 'MONTO_ANOMALO',
       severidad: 'MEDIA',
       titulo: `Caso Detail ${Date.now() % 10000}`,
@@ -168,15 +167,15 @@ test.describe('Casos', () => {
       clienteId: cliente.id,
     })
 
-    await goto(page, '/casos')
-    await page.waitForTimeout(500)
+    await goto(p, '/casos')
+    await p.waitForTimeout(500)
 
-    const verBtn = page.locator('button:has-text("Ver")').first()
+    const verBtn = p.locator('button:has-text("Ver")').first()
     if (await verBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
       await verBtn.click()
-      await page.waitForTimeout(500)
+      await p.waitForTimeout(500)
 
-      const modal = page.locator('[role="dialog"]')
+      const modal = p.locator('[role="dialog"]')
       if (await modal.isVisible({ timeout: 3000 }).catch(() => false)) {
         const dialogText = await modal.innerText()
         expect(dialogText.length).toBeGreaterThan(0)
@@ -184,15 +183,14 @@ test.describe('Casos', () => {
     }
   })
 
-  test('actualizar caso via API', async ({ page }) => {
-    await fullLogin(page)
+  test('actualizar caso via API', async () => {
 
-    const cliente = await createCliente(page, {
+    const cliente = await createCliente(p, {
       nombre: `Cliente Update ${Date.now() % 10000}`,
       telefono: `3${String(Date.now()).slice(-9)}`,
     })
 
-    const createRes = await apiPost(page, '/api/casos', {
+    const createRes = await apiPost(p, '/api/casos', {
       alertaTipo: 'MONTO_ANOMALO',
       severidad: 'BAJA',
       titulo: `Caso Update ${Date.now() % 10000}`,
@@ -204,7 +202,7 @@ test.describe('Casos', () => {
     expect(createData.caso?.id).toBeTruthy()
     const casoId = createData.caso.id
 
-    const patchRes = await page.request.patch(`${BASE}/api/casos/${casoId}`, {
+    const patchRes = await p.request.patch(`${BASE}/api/casos/${casoId}`, {
       data: {
         status: 'EN_PROCESO',
         titulo: `Caso Updated ${Date.now() % 10000}`,
@@ -217,15 +215,14 @@ test.describe('Casos', () => {
     expect(patchData.caso?.status).toBe('EN_PROCESO')
   })
 
-  test('agregar evento via API', async ({ page }) => {
-    await fullLogin(page)
+  test('agregar evento via API', async () => {
 
-    const cliente = await createCliente(page, {
+    const cliente = await createCliente(p, {
       nombre: `Cliente Event ${Date.now() % 10000}`,
       telefono: `3${String(Date.now()).slice(-9)}`,
     })
 
-    const createRes = await apiPost(page, '/api/casos', {
+    const createRes = await apiPost(p, '/api/casos', {
       alertaTipo: 'MONTO_ANOMALO',
       severidad: 'BAJA',
       titulo: `Caso Event ${Date.now() % 10000}`,
@@ -236,7 +233,7 @@ test.describe('Casos', () => {
     const createData = await createRes.json()
     const casoId = createData.caso.id
 
-    const eventRes = await page.request.post(`${BASE}/api/casos/${casoId}/eventos`, {
+    const eventRes = await p.request.post(`${BASE}/api/casos/${casoId}/eventos`, {
       data: {
         accion: 'comentario',
         comentario: 'Comentario de prueba E2E',
@@ -249,10 +246,9 @@ test.describe('Casos', () => {
     expect(eventData.evento?.comentario).toBe('Comentario de prueba E2E')
   })
 
-  test('API stats', async ({ page }) => {
-    await fullLogin(page)
+  test('API stats', async () => {
 
-    const res = await apiGet(page, '/api/casos/stats')
+    const res = await apiGet(p, '/api/casos/stats')
     expect(res.status()).toBe(200)
 
     const data = await res.json()
@@ -264,10 +260,9 @@ test.describe('Casos', () => {
 
   // ─── API Error Validation ───────────────────────────────────────────────
 
-  test('POST sin campos requeridos retorna 400', async ({ page }) => {
-    await fullLogin(page)
+  test('POST sin campos requeridos retorna 400', async () => {
 
-    const res = await apiPost(page, '/api/casos', {
+    const res = await apiPost(p, '/api/casos', {
       severidad: 'ALTA',
       titulo: 'Caso sin alertaTipo',
     })
@@ -282,10 +277,9 @@ test.describe('Casos', () => {
     expect(data.error?.message).toContain('requerido')
   })
 
-  test('POST solo con alertaTipo retorna 400', async ({ page }) => {
-    await fullLogin(page)
+  test('POST solo con alertaTipo retorna 400', async () => {
 
-    const res = await apiPost(page, '/api/casos', {
+    const res = await apiPost(p, '/api/casos', {
       alertaTipo: 'MONTO_ANOMALO',
     })
 
@@ -299,10 +293,9 @@ test.describe('Casos', () => {
     expect(data.error?.message).toContain('titulo')
   })
 
-  test('PATCH a caso inexistente retorna 404', async ({ page }) => {
-    await fullLogin(page)
+  test('PATCH a caso inexistente retorna 404', async () => {
 
-    const res = await page.request.patch(`${BASE}/api/casos/caso-inexistente-999`, {
+    const res = await p.request.patch(`${BASE}/api/casos/caso-inexistente-999`, {
       data: { status: 'EN_PROCESO' },
     })
 
@@ -312,15 +305,14 @@ test.describe('Casos', () => {
     expect(data.error?.message).toContain('Caso no encontrado')
   })
 
-  test('POST evento sin accion retorna 400', async ({ page }) => {
-    await fullLogin(page)
+  test('POST evento sin accion retorna 400', async () => {
 
-    const cliente = await createCliente(page, {
+    const cliente = await createCliente(p, {
       nombre: `Cliente EventErr ${Date.now() % 10000}`,
       telefono: `3${String(Date.now()).slice(-9)}`,
     })
 
-    const createRes = await apiPost(page, '/api/casos', {
+    const createRes = await apiPost(p, '/api/casos', {
       alertaTipo: 'MONTO_ANOMALO',
       severidad: 'BAJA',
       titulo: `Caso EventErr ${Date.now() % 10000}`,
@@ -330,7 +322,7 @@ test.describe('Casos', () => {
     const createData = await createRes.json()
     const casoId = createData.caso.id
 
-    const res = await page.request.post(`${BASE}/api/casos/${casoId}/eventos`, {
+    const res = await p.request.post(`${BASE}/api/casos/${casoId}/eventos`, {
       data: { comentario: 'Sin accion' },
     })
 
@@ -343,15 +335,14 @@ test.describe('Casos', () => {
     expect(data.error?.message).toContain('requerido')
   })
 
-  test('PATCH sin cambios retorna 400', async ({ page }) => {
-    await fullLogin(page)
+  test('PATCH sin cambios retorna 400', async () => {
 
-    const cliente = await createCliente(page, {
+    const cliente = await createCliente(p, {
       nombre: `Cliente NoChange ${Date.now() % 10000}`,
       telefono: `3${String(Date.now()).slice(-9)}`,
     })
 
-    const createRes = await apiPost(page, '/api/casos', {
+    const createRes = await apiPost(p, '/api/casos', {
       alertaTipo: 'MONTO_ANOMALO',
       severidad: 'BAJA',
       titulo: `Caso NoChange ${Date.now() % 10000}`,
@@ -361,7 +352,7 @@ test.describe('Casos', () => {
     const createData = await createRes.json()
     const casoId = createData.caso.id
 
-    const res = await page.request.patch(`${BASE}/api/casos/${casoId}`, {
+    const res = await p.request.patch(`${BASE}/api/casos/${casoId}`, {
       data: {},
     })
 
@@ -373,16 +364,15 @@ test.describe('Casos', () => {
 
   // ─── API Search Parameter ───────────────────────────────────────────────
 
-  test('GET /api/casos?search= filtra por titulo (case-insensitive)', async ({ page }) => {
-    await fullLogin(page)
+  test('GET /api/casos?search= filtra por titulo (case-insensitive)', async () => {
 
     const uniqueTitle = `Caso Buscable API ${Date.now() % 10000}`
-    const cliente = await createCliente(page, {
+    const cliente = await createCliente(p, {
       nombre: `Cliente SearchAPI ${Date.now() % 10000}`,
       telefono: `3${String(Date.now()).slice(-9)}`,
     })
 
-    await apiPost(page, '/api/casos', {
+    await apiPost(p, '/api/casos', {
       alertaTipo: 'MONTO_ANOMALO',
       severidad: 'ALTA',
       titulo: uniqueTitle,
@@ -391,7 +381,7 @@ test.describe('Casos', () => {
 
     // Search with lowercase (title has mixed case)
     const searchLower = uniqueTitle.toLowerCase()
-    const res = await apiGet(page, `/api/casos?search=${encodeURIComponent(searchLower)}`)
+    const res = await apiGet(p, `/api/casos?search=${encodeURIComponent(searchLower)}`)
     expect(res.status()).toBe(200)
 
     const data = await res.json()
@@ -400,17 +390,16 @@ test.describe('Casos', () => {
     expect(data.casos[0].titulo).toBe(uniqueTitle)
   })
 
-  test('GET /api/casos?search= filtra por cliente.nombre', async ({ page }) => {
-    await fullLogin(page)
+  test('GET /api/casos?search= filtra por cliente.nombre', async () => {
 
     const uniqueClientName = `Cliente Searchable API ${Date.now() % 10000}`
-    const clienteRes = await createCliente(page, {
+    const clienteRes = await createCliente(p, {
       nombre: uniqueClientName,
       telefono: `3${String(Date.now()).slice(-9)}`,
     })
     const clienteId = clienteRes.cliente?.id || clienteRes.id
 
-    await apiPost(page, '/api/casos', {
+    await apiPost(p, '/api/casos', {
       alertaTipo: 'FIADO_REcurrente',
       severidad: 'MEDIA',
       titulo: `Caso para buscar cliente API ${Date.now() % 10000}`,
@@ -419,7 +408,7 @@ test.describe('Casos', () => {
 
     // Search by partial client name (lowercase)
     const searchLower = uniqueClientName.toLowerCase().split(' ')[0]
-    const res = await apiGet(page, `/api/casos?search=${encodeURIComponent(searchLower)}`)
+    const res = await apiGet(p, `/api/casos?search=${encodeURIComponent(searchLower)}`)
     expect(res.status()).toBe(200)
 
     const data = await res.json()
@@ -431,16 +420,15 @@ test.describe('Casos', () => {
 
   // ─── Caso con Pedido ────────────────────────────────────────────────────
 
-  test('crear caso vinculado a pedido real', async ({ page }) => {
-    await fullLogin(page)
+  test('crear caso vinculado a pedido real', async () => {
 
-    const clienteRes = await createCliente(page, {
+    const clienteRes = await createCliente(p, {
       nombre: `Cliente PedidoCaso ${Date.now() % 10000}`,
       telefono: `3${String(Date.now()).slice(-9)}`,
     })
     const clienteId = clienteRes.cliente?.id || clienteRes.id
 
-    const pedidoRes = await apiPost(page, '/api/pedidos', {
+    const pedidoRes = await apiPost(p, '/api/pedidos', {
       clienteId,
       canal: 'PUNTO',
       ventaRapida: true,
@@ -449,7 +437,7 @@ test.describe('Casos', () => {
     const pedidoData = await pedidoRes.json()
     const pedidoId = pedidoData.pedido?.id || pedidoData.id
 
-    const casoRes = await apiPost(page, '/api/casos', {
+    const casoRes = await apiPost(p, '/api/casos', {
       alertaTipo: 'MONTO_ANOMALO',
       severidad: 'ALTA',
       titulo: `Caso con Pedido ${Date.now() % 10000}`,
@@ -464,15 +452,14 @@ test.describe('Casos', () => {
     expect(casoData.caso?.pedido?.id || casoData.caso?.pedidoId).toBeTruthy()
   })
 
-  test('modal muestra Pedido #X cuando caso tiene pedido', async ({ page }) => {
-    await fullLogin(page)
+  test('modal muestra Pedido #X cuando caso tiene pedido', async () => {
 
-    const cliente = await createCliente(page, {
+    const cliente = await createCliente(p, {
       nombre: `Cliente ModalPedido ${Date.now() % 10000}`,
       telefono: `3${String(Date.now()).slice(-9)}`,
     })
 
-    const pedidoRes = await apiPost(page, '/api/pedidos', {
+    const pedidoRes = await apiPost(p, '/api/pedidos', {
       clienteId: cliente.id,
       canal: 'PUNTO',
       ventaRapida: true,
@@ -481,7 +468,7 @@ test.describe('Casos', () => {
     const pedidoData = await pedidoRes.json()
     const pedidoId = pedidoData.pedido?.id || pedidoData.id
 
-    const casoRes = await apiPost(page, '/api/casos', {
+    const casoRes = await apiPost(p, '/api/casos', {
       alertaTipo: 'DESCUENTO_NO_JUSTIFICADO',
       severidad: 'MEDIA',
       titulo: `Caso Modal Pedido ${Date.now() % 10000}`,
@@ -493,19 +480,19 @@ test.describe('Casos', () => {
     const casoId = casoData.caso.id
 
     // Get full caso with pedido
-    const getRes = await apiGet(page, `/api/casos/${casoId}`)
+    const getRes = await apiGet(p, `/api/casos/${casoId}`)
     const getData = await getRes.json()
     const casoNumero = getData.caso?.pedido?.numero
 
-    await goto(page, '/casos')
-    await page.waitForTimeout(500)
+    await goto(p, '/casos')
+    await p.waitForTimeout(500)
 
-    const verBtn = page.locator('button:has-text("Ver")').first()
+    const verBtn = p.locator('button:has-text("Ver")').first()
     if (await verBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
       await verBtn.click()
-      await page.waitForTimeout(500)
+      await p.waitForTimeout(500)
 
-      const modal = page.locator('[role="dialog"]')
+      const modal = p.locator('[role="dialog"]')
       if (await modal.isVisible({ timeout: 3000 }).catch(() => false)) {
         // Should show Pedido section
         const modalText = await modal.innerText()
@@ -519,16 +506,15 @@ test.describe('Casos', () => {
 
   // ─── Assignment Side-Effect ─────────────────────────────────────────────
 
-  test('asignar caso cambia status a EN_PROCESO automaticamente', async ({ page }) => {
-    await fullLogin(page)
+  test('asignar caso cambia status a EN_PROCESO automaticamente', async () => {
 
-    const clienteRes = await createCliente(page, {
+    const clienteRes = await createCliente(p, {
       nombre: `Cliente AutoAssign ${Date.now() % 10000}`,
       telefono: `3${String(Date.now()).slice(-9)}`,
     })
     const clienteId = clienteRes.cliente?.id || clienteRes.id
 
-    const createRes = await apiPost(page, '/api/casos', {
+    const createRes = await apiPost(p, '/api/casos', {
       alertaTipo: 'MONTO_ANOMALO',
       severidad: 'BAJA',
       titulo: `Caso AutoAssign ${Date.now() % 10000}`,
@@ -540,7 +526,7 @@ test.describe('Casos', () => {
     expect(createData.caso.status).toBe('ABIERTO')
 
     // Get a worker's userId (asignadoAId expects User.id, not Trabajador.id)
-    const workersRes = await apiGet(page, '/api/trabajadores')
+    const workersRes = await apiGet(p, '/api/trabajadores')
     const workersData = await workersRes.json()
     const userId = workersData.trabajadores?.[0]?.userId
 
@@ -550,7 +536,7 @@ test.describe('Casos', () => {
     }
 
     // Assign without changing status explicitly
-    const assignRes = await page.request.patch(`${BASE}/api/casos/${casoId}`, {
+    const assignRes = await p.request.patch(`${BASE}/api/casos/${casoId}`, {
       data: { asignadoAId: userId },
     })
 
@@ -564,15 +550,14 @@ test.describe('Casos', () => {
 
   // ─── Reopen Timestamp Reset ─────────────────────────────────────────────
 
-  test('reabrir desde RESUELTO limpia resueltoEn', async ({ page }) => {
-    await fullLogin(page)
+  test('reabrir desde RESUELTO limpia resueltoEn', async () => {
 
-    const cliente = await createCliente(page, {
+    const cliente = await createCliente(p, {
       nombre: `Cliente ReopenTs ${Date.now() % 10000}`,
       telefono: `3${String(Date.now()).slice(-9)}`,
     })
 
-    const createRes = await apiPost(page, '/api/casos', {
+    const createRes = await apiPost(p, '/api/casos', {
       alertaTipo: 'RECLAMACION_ACTIVA',
       severidad: 'ALTA',
       titulo: `Caso Reopen Timestamp ${Date.now() % 10000}`,
@@ -583,17 +568,17 @@ test.describe('Casos', () => {
     const casoId = createData.caso.id
 
     // Resolve
-    await page.request.patch(`${BASE}/api/casos/${casoId}`, {
+    await p.request.patch(`${BASE}/api/casos/${casoId}`, {
       data: { status: 'RESUELTO', notasResolucion: 'Resuelto para test' },
     })
 
     // Verify resueltoEn was set
-    const getResolved = await apiGet(page, `/api/casos/${casoId}`)
+    const getResolved = await apiGet(p, `/api/casos/${casoId}`)
     const resolvedData = await getResolved.json()
     expect(resolvedData.caso?.resueltoEn).toBeTruthy()
 
     // Reopen
-    const reopenRes = await page.request.patch(`${BASE}/api/casos/${casoId}`, {
+    const reopenRes = await p.request.patch(`${BASE}/api/casos/${casoId}`, {
       data: { status: 'EN_PROCESO' },
     })
 
@@ -604,16 +589,15 @@ test.describe('Casos', () => {
     expect(reopenData.caso?.resueltoEn).toBeNull()
   })
 
-  test('reabrir desde CERRADO limpia cerradoEn', async ({ page }) => {
-    await fullLogin(page)
+  test('reabrir desde CERRADO limpia cerradoEn', async () => {
 
-    const clienteRes = await createCliente(page, {
+    const clienteRes = await createCliente(p, {
       nombre: `Cliente ClosedTs ${Date.now() % 10000}`,
       telefono: `3${String(Date.now()).slice(-9)}`,
     })
     const clienteId = clienteRes.cliente?.id || clienteRes.id
 
-    const createRes = await apiPost(page, '/api/casos', {
+    const createRes = await apiPost(p, '/api/casos', {
       alertaTipo: 'NO_ENTREGADO_REPETIDO',
       severidad: 'ALTA',
       titulo: `Caso Closed Timestamp ${Date.now() % 10000}`,
@@ -624,20 +608,20 @@ test.describe('Casos', () => {
     const casoId = createData.caso.id
 
     // Resolve then close
-    await page.request.patch(`${BASE}/api/casos/${casoId}`, {
+    await p.request.patch(`${BASE}/api/casos/${casoId}`, {
       data: { status: 'RESUELTO', notasResolucion: 'Resuelto' },
     })
-    await page.request.patch(`${BASE}/api/casos/${casoId}`, {
+    await p.request.patch(`${BASE}/api/casos/${casoId}`, {
       data: { status: 'CERRADO' },
     })
 
     // Verify timestamps
-    const getClosed = await apiGet(page, `/api/casos/${casoId}`)
+    const getClosed = await apiGet(p, `/api/casos/${casoId}`)
     const closedData = await getClosed.json()
     expect(closedData.caso?.cerradoEn).toBeTruthy()
 
     // Reopen
-    const reopenRes = await page.request.patch(`${BASE}/api/casos/${casoId}`, {
+    const reopenRes = await p.request.patch(`${BASE}/api/casos/${casoId}`, {
       data: { status: 'EN_PROCESO' },
     })
 
@@ -652,16 +636,15 @@ test.describe('Casos', () => {
 
   // ─── Multiple Events Transactional ──────────────────────────────────────
 
-  test('PATCH con status + asignadoAId genera multiples eventos', async ({ page }) => {
-    await fullLogin(page)
+  test('PATCH con status + asignadoAId genera multiples eventos', async () => {
 
-    const clienteRes = await createCliente(page, {
+    const clienteRes = await createCliente(p, {
       nombre: `Cliente MultiEvent ${Date.now() % 10000}`,
       telefono: `3${String(Date.now()).slice(-9)}`,
     })
     const clienteId = clienteRes.cliente?.id || clienteRes.id
 
-    const createRes = await apiPost(page, '/api/casos', {
+    const createRes = await apiPost(p, '/api/casos', {
       alertaTipo: 'MONTO_ANOMALO',
       severidad: 'ALTA',
       titulo: `Caso MultiEvent ${Date.now() % 10000}`,
@@ -671,7 +654,7 @@ test.describe('Casos', () => {
     const createData = await createRes.json()
     const casoId = createData.caso.id
 
-    const workersRes = await apiGet(page, '/api/trabajadores')
+    const workersRes = await apiGet(p, '/api/trabajadores')
     const workersData = await workersRes.json()
     const userId = workersData.trabajadores?.[0]?.userId
 
@@ -681,7 +664,7 @@ test.describe('Casos', () => {
     }
 
     // PATCH both status and assignment in one request
-    const patchRes = await page.request.patch(`${BASE}/api/casos/${casoId}`, {
+    const patchRes = await p.request.patch(`${BASE}/api/casos/${casoId}`, {
       data: {
         status: 'EN_PROCESO',
         asignadoAId: userId,
@@ -693,7 +676,7 @@ test.describe('Casos', () => {
     expect(patchData.success).toBe(true)
 
     // Get caso with events
-    const getRes = await apiGet(page, `/api/casos/${casoId}`)
+    const getRes = await apiGet(p, `/api/casos/${casoId}`)
     const getData = await getRes.json()
 
     // Should have at least 3 events: creado + status_change + asignado
@@ -708,17 +691,16 @@ test.describe('Casos', () => {
 
   // ─── Detail Modal Content ───────────────────────────────────────────────
 
-  test('modal muestra titulo y descripcion del caso', async ({ page }) => {
-    await fullLogin(page)
+  test('modal muestra titulo y descripcion del caso', async () => {
 
     const uniqueTitle = `Caso Modal Title ${Date.now() % 10000}`
     const uniqueDesc = `Descripcion unica para test de modal ${Date.now() % 10000}`
-    const cliente = await createCliente(page, {
+    const cliente = await createCliente(p, {
       nombre: `Cliente ModalContent ${Date.now() % 10000}`,
       telefono: `3${String(Date.now()).slice(-9)}`,
     })
 
-    await apiPost(page, '/api/casos', {
+    await apiPost(p, '/api/casos', {
       alertaTipo: 'MONTO_ANOMALO',
       severidad: 'ALTA',
       titulo: uniqueTitle,
@@ -726,15 +708,15 @@ test.describe('Casos', () => {
       clienteId: cliente.id,
     })
 
-    await goto(page, '/casos')
-    await page.waitForTimeout(500)
+    await goto(p, '/casos')
+    await p.waitForTimeout(500)
 
-    const verBtn = page.locator('button:has-text("Ver")').first()
+    const verBtn = p.locator('button:has-text("Ver")').first()
     if (await verBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
       await verBtn.click()
-      await page.waitForTimeout(500)
+      await p.waitForTimeout(500)
 
-      const modal = page.locator('[role="dialog"]')
+      const modal = p.locator('[role="dialog"]')
       if (await modal.isVisible({ timeout: 3000 }).catch(() => false)) {
         const modalText = await modal.innerText()
         expect(modalText).toContain(uniqueTitle)
@@ -743,30 +725,29 @@ test.describe('Casos', () => {
     }
   })
 
-  test('modal muestra boton Cambiar para asignacion', async ({ page }) => {
-    await fullLogin(page)
+  test('modal muestra boton Cambiar para asignacion', async () => {
 
-    const cliente = await createCliente(page, {
+    const cliente = await createCliente(p, {
       nombre: `Cliente ModalAssign ${Date.now() % 10000}`,
       telefono: `3${String(Date.now()).slice(-9)}`,
     })
 
-    await apiPost(page, '/api/casos', {
+    await apiPost(p, '/api/casos', {
       alertaTipo: 'MONTO_ANOMALO',
       severidad: 'MEDIA',
       titulo: `Caso Modal Cambiar ${Date.now() % 10000}`,
       clienteId: cliente.id,
     })
 
-    await goto(page, '/casos')
-    await page.waitForTimeout(500)
+    await goto(p, '/casos')
+    await p.waitForTimeout(500)
 
-    const verBtn = page.locator('button:has-text("Ver")').first()
+    const verBtn = p.locator('button:has-text("Ver")').first()
     if (await verBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
       await verBtn.click()
-      await page.waitForTimeout(500)
+      await p.waitForTimeout(500)
 
-      const modal = page.locator('[role="dialog"]')
+      const modal = p.locator('[role="dialog"]')
       if (await modal.isVisible({ timeout: 3000 }).catch(() => false)) {
         const cambiarBtn = modal.locator('button:has-text("Cambiar")')
         await expect(cambiarBtn).toBeVisible()
@@ -774,17 +755,16 @@ test.describe('Casos', () => {
     }
   })
 
-  test('modal muestra info basica del caso (eventos se cargan via API separada)', async ({ page }) => {
-    await fullLogin(page)
+  test('modal muestra info basica del caso (eventos se cargan via API separada)', async () => {
 
     const uniqueTitle = `Caso Historial Modal ${Date.now() % 10000}`
-    const clienteRes = await createCliente(page, {
+    const clienteRes = await createCliente(p, {
       nombre: `Cliente Historial ${Date.now() % 10000}`,
       telefono: `3${String(Date.now()).slice(-9)}`,
     })
     const clienteId = clienteRes.cliente?.id || clienteRes.id
 
-    const createRes = await apiPost(page, '/api/casos', {
+    const createRes = await apiPost(p, '/api/casos', {
       alertaTipo: 'MONTO_ANOMALO',
       severidad: 'ALTA',
       titulo: uniqueTitle,
@@ -795,30 +775,30 @@ test.describe('Casos', () => {
     const casoId = createData.caso.id
 
     // Add a comment event via API
-    await page.request.post(`${BASE}/api/casos/${casoId}/eventos`, {
+    await p.request.post(`${BASE}/api/casos/${casoId}/eventos`, {
       data: { accion: 'comentado', comentario: 'Comentario de prueba' },
     })
 
     // Verify evento exists via API
-    const getRes = await apiGet(page, `/api/casos/${casoId}`)
+    const getRes = await apiGet(p, `/api/casos/${casoId}`)
     const getData = await getRes.json()
     expect(getData.caso?.eventos?.length).toBeGreaterThanOrEqual(2) // creado + comentado
 
     // Open modal from list view - search for specific case first
-    await goto(page, '/casos')
-    await page.waitForTimeout(500)
+    await goto(p, '/casos')
+    await p.waitForTimeout(500)
 
     // Search for the specific case
-    const searchInput = page.locator('input[placeholder="Buscar caso o cliente..."]')
+    const searchInput = p.locator('input[placeholder="Buscar caso o cliente..."]')
     await searchInput.fill(uniqueTitle)
-    await page.waitForTimeout(500)
+    await p.waitForTimeout(500)
 
-    const verBtn = page.locator('button:has-text("Ver")').first()
+    const verBtn = p.locator('button:has-text("Ver")').first()
     if (await verBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
       await verBtn.click()
-      await page.waitForTimeout(500)
+      await p.waitForTimeout(500)
 
-      const modal = page.locator('[role="dialog"]')
+      const modal = p.locator('[role="dialog"]')
       if (await modal.isVisible({ timeout: 3000 }).catch(() => false)) {
         // Modal shows basic info (eventos not loaded in list view)
         const modalText = await modal.innerText()
@@ -832,25 +812,25 @@ test.describe('Casos', () => {
 
   // ─── Role-Based CRUD ────────────────────────────────────────────────────
 
-  test('asistente puede crear caso via API', async ({ page }) => {
+  test('asistente puede crear caso via API', async () => {
     // C-SEC-7b (commit 36ee74d): POST /api/casos requiere view:casos
     // permission. REPARTIDOR no la tiene, pero ASISTENTE si.
     // El test verifica que un rol con permission puede crear.
     // Login as asistente
-    await skipBaseCaja(page)
-    await page.goto(`${BASE}/login`)
-    await page.fill('input[placeholder="Ingrese usuario"]', 'asistente')
-    await page.fill('input[placeholder="Ingrese contraseña"]', 'asist123')
-    await page.click('button[type="submit"]')
-    await page.waitForURL(/.*\/(dashboard|repartidor)/, { timeout: 15000 })
+    await skipBaseCaja(p)
+    await p.goto(`${BASE}/login`)
+    await p.fill('input[placeholder="Ingrese usuario"]', 'asistente')
+    await p.fill('input[placeholder="Ingrese contraseña"]', 'asist123')
+    await p.click('button[type="submit"]')
+    await p.waitForURL(/.*\/(dashboard|repartidor)/, { timeout: 15000 })
 
-    const clienteRes = await createCliente(page, {
+    const clienteRes = await createCliente(p, {
       nombre: `Cliente Asist ${Date.now() % 10000}`,
       telefono: `3${String(Date.now()).slice(-9)}`,
     })
     const clienteId = clienteRes.cliente?.id || clienteRes.id
 
-    const res = await apiPost(page, '/api/casos', {
+    const res = await apiPost(p, '/api/casos', {
       alertaTipo: 'NO_ENTREGADO_REPETIDO',
       severidad: 'ALTA',
       titulo: `Caso Asistente ${Date.now() % 10000}`,
@@ -863,19 +843,18 @@ test.describe('Casos', () => {
     expect(data.caso?.id).toBeTruthy()
   })
 
-  test('asistente puede actualizar status via PATCH', async ({ page }) => {
+  test('asistente puede actualizar status via PATCH', async () => {
     // C-SEC-7b: PATCH /api/casos/[id] requiere view:casos permission.
     // ASISTENTE la tiene, REPARTIDOR no. Test verifica el flujo positivo.
     // Login as admin to create case
-    await fullLogin(page)
 
-    const clienteRes = await createCliente(page, {
+    const clienteRes = await createCliente(p, {
       nombre: `Cliente AsistPatch ${Date.now() % 10000}`,
       telefono: `3${String(Date.now()).slice(-9)}`,
     })
     const clienteId = clienteRes.cliente?.id || clienteRes.id
 
-    const createRes = await apiPost(page, '/api/casos', {
+    const createRes = await apiPost(p, '/api/casos', {
       alertaTipo: 'MONTO_ANOMALO',
       severidad: 'BAJA',
       titulo: `Caso Asist Patch ${Date.now() % 10000}`,
@@ -886,14 +865,14 @@ test.describe('Casos', () => {
     const casoId = createData.caso.id
 
     // Login as asistente and update
-    await skipBaseCaja(page)
-    await page.goto(`${BASE}/login`)
-    await page.fill('input[placeholder="Ingrese usuario"]', 'asistente')
-    await page.fill('input[placeholder="Ingrese contraseña"]', 'asist123')
-    await page.click('button[type="submit"]')
-    await page.waitForURL(/.*\/(dashboard|repartidor)/, { timeout: 15000 })
+    await skipBaseCaja(p)
+    await p.goto(`${BASE}/login`)
+    await p.fill('input[placeholder="Ingrese usuario"]', 'asistente')
+    await p.fill('input[placeholder="Ingrese contraseña"]', 'asist123')
+    await p.click('button[type="submit"]')
+    await p.waitForURL(/.*\/(dashboard|repartidor)/, { timeout: 15000 })
 
-    const patchRes = await page.request.patch(`${BASE}/api/casos/${casoId}`, {
+    const patchRes = await p.request.patch(`${BASE}/api/casos/${casoId}`, {
       data: { status: 'EN_PROCESO' },
     })
 
@@ -903,28 +882,27 @@ test.describe('Casos', () => {
     expect(patchData.caso?.status).toBe('EN_PROCESO')
   })
 
-  test('contador puede ver lista de casos', async ({ page }) => {
+  test('contador puede ver lista de casos', async () => {
     // Login as contador (redirects to /reportes, not /dashboard)
-    await skipBaseCaja(page)
-    await page.goto(`${BASE}/login`)
-    await page.fill('input[placeholder="Ingrese usuario"]', 'contador')
-    await page.fill('input[placeholder="Ingrese contraseña"]', 'cont123')
-    await page.click('button[type="submit"]')
-    await page.waitForURL(/.*\/(dashboard|reportes)/, { timeout: 15000 })
+    await skipBaseCaja(p)
+    await p.goto(`${BASE}/login`)
+    await p.fill('input[placeholder="Ingrese usuario"]', 'contador')
+    await p.fill('input[placeholder="Ingrese contraseña"]', 'cont123')
+    await p.click('button[type="submit"]')
+    await p.waitForURL(/.*\/(dashboard|reportes)/, { timeout: 15000 })
 
-    await goto(page, '/casos')
-    await expect(page.locator('h1:has-text("Gestión de Casos")')).toBeVisible()
+    await goto(p, '/casos')
+    await expect(p.locator('h1:has-text("Gestión de Casos")')).toBeVisible()
   })
 
-  test('asistente puede agregar comentarios', async ({ page }) => {
-    await fullLogin(page)
+  test('asistente puede agregar comentarios', async () => {
 
-    const cliente = await createCliente(page, {
+    const cliente = await createCliente(p, {
       nombre: `Cliente AsistComment ${Date.now() % 10000}`,
       telefono: `3${String(Date.now()).slice(-9)}`,
     })
 
-    const createRes = await apiPost(page, '/api/casos', {
+    const createRes = await apiPost(p, '/api/casos', {
       alertaTipo: 'MONTO_ANOMALO',
       severidad: 'BAJA',
       titulo: `Caso Asistente Comment ${Date.now() % 10000}`,
@@ -935,9 +913,9 @@ test.describe('Casos', () => {
     const casoId = createData.caso.id
 
     // Login as asistente and add comment
-    await fullLogin(page, 'asistente', 'asist123')
+    await fullLogin(p, 'asistente', 'asist123')
 
-    const commentRes = await page.request.post(`${BASE}/api/casos/${casoId}/eventos`, {
+    const commentRes = await p.request.post(`${BASE}/api/casos/${casoId}/eventos`, {
       data: { accion: 'comentado', comentario: 'Comentario del asistente' },
     })
 
@@ -949,27 +927,26 @@ test.describe('Casos', () => {
 
   // ─── Mobile Touch Targets ───────────────────────────────────────────────
 
-  test('mobile view: botones Ver tienen touch target adecuado', async ({ page }) => {
-    await fullLogin(page)
-    await page.setViewportSize({ width: 375, height: 667 })
+  test('mobile view: botones Ver tienen touch target adecuado', async () => {
+    await p.setViewportSize({ width: 375, height: 667 })
 
-    const cliente = await createCliente(page, {
+    const cliente = await createCliente(p, {
       nombre: `Cliente MobileTouch ${Date.now() % 10000}`,
       telefono: `3${String(Date.now()).slice(-9)}`,
     })
 
-    await apiPost(page, '/api/casos', {
+    await apiPost(p, '/api/casos', {
       alertaTipo: 'MONTO_ANOMALO',
       severidad: 'ALTA',
       titulo: `Caso Mobile Touch ${Date.now() % 10000}`,
       clienteId: cliente.id,
     })
 
-    await goto(page, '/casos')
-    await page.waitForTimeout(500)
+    await goto(p, '/casos')
+    await p.waitForTimeout(500)
 
     // In mobile view, the entire card is clickable (no "Ver" button in mobile)
-    const mobileCard = page.locator('.md:hidden > div').first()
+    const mobileCard = p.locator('.md:hidden > div').first()
     if (await mobileCard.isVisible({ timeout: 3000 }).catch(() => false)) {
       const box = await mobileCard.boundingBox()
       if (box) {
@@ -980,85 +957,81 @@ test.describe('Casos', () => {
 
   // ─── AlertaTipo Labels ──────────────────────────────────────────────────
 
-  test('TIPO_LABELS renderiza correctamente en tabla', async ({ page }) => {
-    await fullLogin(page)
+  test('TIPO_LABELS renderiza correctamente en tabla', async () => {
 
-    const cliente = await createCliente(page, {
+    const cliente = await createCliente(p, {
       nombre: `Cliente LabelTest ${Date.now() % 10000}`,
       telefono: `3${String(Date.now()).slice(-9)}`,
     })
 
-    await apiPost(page, '/api/casos', {
+    await apiPost(p, '/api/casos', {
       alertaTipo: 'MONTO_ANOMALO',
       severidad: 'ALTA',
       titulo: `Caso Label Test ${Date.now() % 10000}`,
       clienteId: cliente.id,
     })
 
-    await goto(page, '/casos')
-    await page.waitForTimeout(500)
+    await goto(p, '/casos')
+    await p.waitForTimeout(500)
 
     // TIPO_LABELS['MONTO_ANOMALO'] = 'Monto anómalo'
-    const bodyText = await page.locator('tbody').innerText()
+    const bodyText = await p.locator('tbody').innerText()
     expect(bodyText).toContain('Monto anómalo')
   })
 
-  test('alertaTipo desconocido muestra raw value como fallback', async ({ page }) => {
-    await fullLogin(page)
+  test('alertaTipo desconocido muestra raw value como fallback', async () => {
 
-    const cliente = await createCliente(page, {
+    const cliente = await createCliente(p, {
       nombre: `Cliente UnknownType ${Date.now() % 10000}`,
       telefono: `3${String(Date.now()).slice(-9)}`,
     })
 
     const unknownType = 'TIPO_INVENTADO_999'
-    await apiPost(page, '/api/casos', {
+    await apiPost(p, '/api/casos', {
       alertaTipo: unknownType,
       severidad: 'BAJA',
       titulo: `Caso Unknown Type ${Date.now() % 10000}`,
       clienteId: cliente.id,
     })
 
-    await goto(page, '/casos')
-    await page.waitForTimeout(500)
+    await goto(p, '/casos')
+    await p.waitForTimeout(500)
 
     // Should show the raw alertaTipo value
-    const bodyText = await page.locator('tbody').innerText()
+    const bodyText = await p.locator('tbody').innerText()
     expect(bodyText).toContain(unknownType)
   })
 
   // ─── Empty State After Filter ───────────────────────────────────────────
 
-  test('filtro sin resultados muestra estado vacio', async ({ page }) => {
-    await fullLogin(page)
-    await goto(page, '/casos')
-    await page.waitForTimeout(500)
+  test('filtro sin resultados muestra estado vacio', async () => {
+    await goto(p, '/casos')
+    await p.waitForTimeout(500)
 
     // Filter by CERRADO - if no closed cases exist, empty state should show
-    const statusFilter = page.locator('select').first()
+    const statusFilter = p.locator('select').first()
     await statusFilter.selectOption('CERRADO')
-    await page.waitForTimeout(500)
+    await p.waitForTimeout(500)
 
-    const emptyState = page.locator('h3:has-text("Sin casos")')
+    const emptyState = p.locator('h3:has-text("Sin casos")')
     const isEmpty = await emptyState.isVisible({ timeout: 2000 }).catch(() => false)
 
     if (isEmpty) {
-      await expect(page.locator('text=No hay casos que coincidan con los filtros aplicados')).toBeVisible()
-      await expect(page.locator('.bg-green-100 svg')).toBeVisible()
+      await expect(p.locator('text=No hay casos que coincidan con los filtros aplicados')).toBeVisible()
+      await expect(p.locator('.bg-green-100 svg')).toBeVisible()
     }
   })
 
   // ─── Concurrent Status Changes ──────────────────────────────────────────
 
-  test('PATCH ABIERTO → RESUELTO directamente (skip EN_PROCESO)', async ({ page }) => {
-    await fullLogin(page)
+  test('PATCH ABIERTO → RESUELTO directamente (skip EN_PROCESO)', async () => {
 
-    const cliente = await createCliente(page, {
+    const cliente = await createCliente(p, {
       nombre: `Cliente SkipStatus ${Date.now() % 10000}`,
       telefono: `3${String(Date.now()).slice(-9)}`,
     })
 
-    const createRes = await apiPost(page, '/api/casos', {
+    const createRes = await apiPost(p, '/api/casos', {
       alertaTipo: 'MONTO_ANOMALO',
       severidad: 'BAJA',
       titulo: `Caso Skip Status ${Date.now() % 10000}`,
@@ -1070,7 +1043,7 @@ test.describe('Casos', () => {
     expect(createData.caso.status).toBe('ABIERTO')
 
     // Skip directly to RESUELTO
-    const patchRes = await page.request.patch(`${BASE}/api/casos/${casoId}`, {
+    const patchRes = await p.request.patch(`${BASE}/api/casos/${casoId}`, {
       data: {
         status: 'RESUELTO',
         notasResolucion: 'Resuelto sin pasar por EN_PROCESO',

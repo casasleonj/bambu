@@ -52,13 +52,23 @@ export async function loginAlt(page: Page, user: string, pass: string) {
 // ─── Base Caja ───────────────────────────────────────────────────────────────
 
 export async function handleBaseCaja(page: Page) {
+  // Fast path: check localStorage first (works in all viewports, sidesteps
+  // the mobile polling bug where sidebar `text=Caja base` is hidden).
+  const bogotaDate = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+  const hasBaseInStorage = await page.evaluate((date) => {
+    return !!localStorage.getItem(`baseDia_${date}`)
+  }, bogotaDate).catch(() => false)
+  if (hasBaseInStorage) return
+
   // If the sidebar already shows a base for today, the modal will not appear.
   const baseSetIndicator = page.locator('text=Caja base').first()
-  if (await baseSetIndicator.isVisible().catch(() => false)) return
+  if (await baseSetIndicator.isVisible({ timeout: 1000 }).catch(() => false)) return
 
   // Poll for modal to appear (cold dev-server API calls can take several seconds).
+  // Reduced from 25→10 iterations (3s max vs 7.5s) since dev server is typically
+  // warm after the first test navigation.
   const input = page.locator('#base-dia-input')
-  for (let i = 0; i < 25; i++) {
+  for (let i = 0; i < 10; i++) {
     await page.waitForTimeout(300)
     const count = await input.count()
     if (count > 0 && await input.isVisible().catch(() => false)) {
@@ -99,12 +109,53 @@ export async function skipBaseCaja(page: Page) {
 
 export async function fullLogin(page: Page, user = 'admin', pass = 'admin123') {
   await skipBaseCaja(page)
-  await login(page, user, pass)
+
+  // CSRF-based login (~3s vs ~9s for UI form filling).
+  // Avoids the slow page.fill/click/waitForURL round-trip through /login.
+  await csrfLogin(page, user, pass)
+
+  // Navigate to dashboard to establish session cookie in the browser context.
+  await page.goto(`${BASE}/dashboard`, { timeout: 15000 })
+  await page.waitForLoadState('networkidle')
+
   await handleBaseCaja(page)
 }
 
+/** CSRF-based authentication — 3x faster than UI form filling. */
+export async function csrfLogin(page: Page, user: string, pass: string) {
+  const csrfRes = await page.request.get(`${BASE}/api/auth/csrf`)
+  const { csrfToken } = await csrfRes.json()
+  await page.request.post(`${BASE}/api/auth/callback/credentials`, {
+    data: { csrfToken, username: user, password: pass, redirect: false, json: true },
+  })
+}
+
+/**
+ * Helper for shared-page-per-describe-block pattern.
+ * Use in test.beforeAll to create a single authenticated page for all tests
+ * in the block, eliminating redundant login calls.
+ *
+ * Usage:
+ *   let p: Page
+ *   test.beforeAll(async ({ browser }) => { p = await sharedPageLogin(browser) })
+ *   test.afterAll(async () => { await p?.close() })
+ *   test('name', async () => { await goto(p, '/page') })
+ */
+export async function sharedPageLogin(browser: { newPage: () => Promise<Page> }, user = 'admin', pass = 'admin123') {
+  const page = await browser.newPage()
+  await page.context().clearCookies()
+  await page.goto(`${BASE}/login`, { timeout: 15000 })
+  await page.evaluate(() => localStorage.clear())
+  await skipBaseCaja(page)
+  await csrfLogin(page, user, pass)
+  await page.goto(`${BASE}/dashboard`, { timeout: 15000 })
+  await page.waitForLoadState('networkidle')
+  await handleBaseCaja(page)
+  return page
+}
+
 export async function loginAs(page: Page, role: 'admin' | 'asistente' | 'contador' | 'repartidor') {
-  const credentials = {
+  const credentials: Record<string, { user: string; pass: string }> = {
     admin: { user: 'admin', pass: 'admin123' },
     asistente: { user: 'asistente', pass: 'asist123' },
     contador: { user: 'contador', pass: 'cont123' },
@@ -112,7 +163,31 @@ export async function loginAs(page: Page, role: 'admin' | 'asistente' | 'contado
   }
   const { user, pass } = credentials[role]
   await skipBaseCaja(page)
-  await login(page, user, pass)
+  await csrfLogin(page, user, pass)
+  await page.goto(`${BASE}/dashboard`, { timeout: 15000 })
+  await page.waitForLoadState('networkidle')
+  await handleBaseCaja(page)
+}
+
+/** Role-aware shared page login. */
+export async function sharedLoginAs(browser: { newPage: () => Promise<Page> }, role: 'admin' | 'asistente' | 'contador' | 'repartidor') {
+  const credentials: Record<string, { user: string; pass: string }> = {
+    admin: { user: 'admin', pass: 'admin123' },
+    asistente: { user: 'asistente', pass: 'asist123' },
+    contador: { user: 'contador', pass: 'cont123' },
+    repartidor: { user: 'repartidor', pass: 'rep123' },
+  }
+  const { user, pass } = credentials[role]
+  const page = await browser.newPage()
+  await page.context().clearCookies()
+  await page.goto(`${BASE}/login`, { timeout: 15000 })
+  await page.evaluate(() => localStorage.clear())
+  await skipBaseCaja(page)
+  await csrfLogin(page, user, pass)
+  await page.goto(`${BASE}/dashboard`, { timeout: 15000 })
+  await page.waitForLoadState('networkidle')
+  await handleBaseCaja(page)
+  return page
 }
 
 // ─── UI Helpers ──────────────────────────────────────────────────────────────
