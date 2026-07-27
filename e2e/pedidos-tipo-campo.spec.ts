@@ -1,4 +1,4 @@
-import { test, expect, fullLogin, apiPost, apiGet, createCliente, resetDatabase } from './fixtures'
+import { test, expect, loginAs, apiPost, apiGet, createCliente, resetDatabase } from './fixtures'
 
 test.describe('Pedidos: campo Tipo', () => {
   test.describe.configure({ mode: 'serial' })
@@ -9,7 +9,7 @@ test.describe('Pedidos: campo Tipo', () => {
   })
 
   test('pedido PUNTO tiene tipo=PUNTO en el listado y en detalle', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const c = await createCliente(page)
     const create = await apiPost(page, '/api/pedidos', {
       clienteId: c.cliente.id,
@@ -31,7 +31,7 @@ test.describe('Pedidos: campo Tipo', () => {
   })
 
   test('pedido DOMICILIO tiene tipo=ENVIO en el listado y en detalle', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const c = await createCliente(page)
     const create = await apiPost(page, '/api/pedidos', {
       clienteId: c.cliente.id,

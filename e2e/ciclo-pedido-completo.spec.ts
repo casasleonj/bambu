@@ -1,5 +1,5 @@
 // @tests api/abono, api/cierre, api/embarque, api/factura, api/pedido, api/reporte
-import { test, expect, fullLogin, apiPost, apiGet, apiPut, createCliente, createTrabajador, createEmbarque, resetTestDatabase } from './fixtures'
+import { test, expect, loginAs, apiPost, apiGet, apiPut, createCliente, createTrabajador, createEmbarque, resetTestDatabase } from './fixtures'
 
 function cierrePayload(partial: Record<string, unknown> = {}) {
   return {
@@ -25,7 +25,7 @@ test.describe('Ciclo Completo Pedido', () => {
 
   test('full lifecycle: pedido → embarque → entrega → cierre → factura → abono → reporte', async ({ page }) => {
     test.setTimeout(120000)
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const cliente = await createCliente(page)
     expect(cliente.cliente.id).toBeTruthy()
@@ -109,7 +109,7 @@ test.describe('Ciclo Completo Pedido', () => {
 
   test('multiple pedidos in same embarque', async ({ page }) => {
     test.setTimeout(120000)
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const cliente1 = await createCliente(page)
     const cliente2 = await createCliente(page)
@@ -180,7 +180,7 @@ test.describe('Ciclo Completo Pedido', () => {
 
   test('flow with partial payment', async ({ page }) => {
     test.setTimeout(120000)
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const cliente = await createCliente(page)
     const pedidoRes = await apiPost(page, '/api/pedidos', {

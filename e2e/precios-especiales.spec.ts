@@ -1,5 +1,5 @@
 // @tests precios especiales cliente en pedidos
-import {test, expect, fullLogin, goto, apiPut, createCliente,  resetDatabase} from './fixtures'
+import {test, expect, loginAs, goto, apiPut, createCliente,  resetDatabase} from './fixtures'
 
 test.describe('Precios Especiales en Pedidos', () => {
   test.describe.configure({ mode: 'serial' })
@@ -12,7 +12,7 @@ test.describe('Precios Especiales en Pedidos', () => {
 
 
   test('precios especiales se aplican en Venta Rápida PUNTO', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     // 1. Create a client with special prices via API
     const c = await createCliente(page, {
@@ -74,7 +74,7 @@ test.describe('Precios Especiales en Pedidos', () => {
   })
 
   test('precios especiales se aplican en Nuevo Pedido DOMICILIO', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     // 1. Create a client with special prices
     const c = await createCliente(page, {
@@ -143,7 +143,7 @@ test.describe('Precios Especiales en Pedidos', () => {
   })
 
   test('precios vuelven a volumen al quitar cliente', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     // 1. Create a client with special prices
     const c = await createCliente(page, {

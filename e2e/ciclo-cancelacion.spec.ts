@@ -1,5 +1,5 @@
 // @tests api/factura, api/pedido
-import { test, expect, fullLogin, apiPost, apiGet, createCliente, resetTestDatabase } from './fixtures'
+import { test, expect, loginAs, apiPost, apiGet, createCliente, resetTestDatabase } from './fixtures'
 
 test.describe('Ciclo de Cancelación', () => {
   test.describe.configure({ mode: 'serial' })
@@ -11,7 +11,7 @@ test.describe('Ciclo de Cancelación', () => {
 
   test('anular pedido entregado → nota de crédito → factura ANULADA', async ({ page }) => {
     test.setTimeout(120000)
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const cliente = await createCliente(page)
     expect(cliente.cliente.id).toBeTruthy()
@@ -63,7 +63,7 @@ test.describe('Ciclo de Cancelación', () => {
   // ─── 2. Anular pedido no entregado debe fallar ──────────────────────────────
 
   test('anular pedido no entregado debe fallar', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const cliente = await createCliente(page)
     const pedidoRes = await apiPost(page, '/api/pedidos', {
@@ -92,7 +92,7 @@ test.describe('Ciclo de Cancelación', () => {
 
   test('anular pedido ya anulado', async ({ page }) => {
     test.setTimeout(120000)
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const cliente = await createCliente(page)
     const pedidoRes = await apiPost(page, '/api/pedidos', {
@@ -130,7 +130,7 @@ test.describe('Ciclo de Cancelación', () => {
 
   test('pedido con hijos', async ({ page }) => {
     test.setTimeout(120000)
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const cliente = await createCliente(page)
     const pedidoRes = await apiPost(page, '/api/pedidos', {

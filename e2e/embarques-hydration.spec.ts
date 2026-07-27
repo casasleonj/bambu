@@ -1,4 +1,4 @@
-import { test, expect, fullLogin, createEmbarque, createTrabajador, BASE, resetDatabase } from './fixtures'
+import { test, expect, loginAs, createEmbarque, createTrabajador, BASE, resetDatabase } from './fixtures'
 import { PrismaClient } from '@prisma/client'
 import type { Page } from '@playwright/test'
 
@@ -13,7 +13,7 @@ async function embarquesLogin(page: Page) {
       body: JSON.stringify({ config: { clave: route.request().url().split('clave=')[1], valor: '100000' } }),
     })
   })
-  await fullLogin(page)
+  await loginAs(page, 'admin')
 }
 
 test.describe('Embarques — Hidratación sin refetch espurio', () => {

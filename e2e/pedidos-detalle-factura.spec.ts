@@ -1,4 +1,4 @@
-import { test, expect, fullLogin, apiPost, apiGet, createCliente, resetDatabase } from './fixtures'
+import { test, expect, loginAs, apiPost, apiGet, createCliente, resetDatabase } from './fixtures'
 
 test.describe('Pedidos: factura en detalle', () => {
   test.describe.configure({ mode: 'serial' })
@@ -9,7 +9,7 @@ test.describe('Pedidos: factura en detalle', () => {
   })
 
   test('GET /api/pedidos/[id] incluye factura cuando existe', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const c = await createCliente(page)
     const create = await apiPost(page, '/api/pedidos', {
       clienteId: c.cliente.id,

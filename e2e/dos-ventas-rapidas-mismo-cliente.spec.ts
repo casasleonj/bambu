@@ -1,11 +1,11 @@
 import { test, expect } from '@playwright/test'
-import { fullLogin, goto, apiPost, createCliente } from './fixtures'
+import { loginAs, goto, apiPost, createCliente } from './fixtures'
 
 test.describe('Dos ventas rapidas mismo cliente', () => {
   test.describe.configure({ mode: 'serial' })
 
   test('dos ventas rapidas fiado del mismo cliente aparecen en la lista', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const unique = Date.now()
     const cliente = await createCliente(page, {
       nombre: `Dos Ventas ${unique}`,
@@ -42,7 +42,7 @@ test.describe('Dos ventas rapidas mismo cliente', () => {
   })
 
   test('filtro default es Turno al entrar a pedidos', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await goto(page, '/pedidos')
     // Wait for the filter buttons to render
     const turnoBtn = page.locator('button:has-text("Turno")').first()

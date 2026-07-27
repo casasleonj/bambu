@@ -5,7 +5,7 @@
 //   2. Intentar cerrar de nuevo el mismo día → 4xx (no 500 silencioso)
 //   3. GET /api/cierre?fecha=X devuelve el reporte guardado
 import { test, expect } from '@playwright/test'
-import { fullLogin, apiPost } from './fixtures'
+import { loginAs, apiPost } from './fixtures'
 
 test.use({
   viewport: { width: 390, height: 844 },
@@ -18,7 +18,7 @@ test.use({
 
 test.describe('H3-2: Cierre del día (iPhone 13)', () => {
   test('dos cierres consecutivos con misma fecha: el segundo falla con 4xx', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     // 1. Construir datos válidos para un cierre "cualquiera"
     const data = {
@@ -49,7 +49,7 @@ test.describe('H3-2: Cierre del día (iPhone 13)', () => {
   })
 
   test('cierre con datos inválidos (stockIniAgua negativo) → 400', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const dataInvalida = {
       baseDia: 0,
@@ -67,7 +67,7 @@ test.describe('H3-2: Cierre del día (iPhone 13)', () => {
   })
 
   test('cierre con fecha inválida (2025-02-30) → 400 (FIX H1-4)', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const data = {
       fecha: '2025-02-30', // fecha imposible

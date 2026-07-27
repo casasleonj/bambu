@@ -6,7 +6,7 @@
 //   3. Restaurar red + sync → la cola se vacía
 //   4. El pedido existe en el server (1 fila, sin duplicar)
 import { test, expect } from '@playwright/test'
-import { fullLogin, createCliente, BASE } from './fixtures'
+import { loginAs, createCliente, BASE } from './fixtures'
 
 test.use({
   viewport: { width: 390, height: 844 },
@@ -24,7 +24,7 @@ test.describe('H3-1: Pedido offline → reconectar → sync (iPhone 13)', () => 
   test.describe.configure({ mode: 'serial' })
 
   test('pedido creado offline llega al server sin duplicar cuando se restaura la red', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     // 1. Crear cliente vía API para tener con qué trabajar
     const c = await createCliente(page, { nombre: 'Test Offline Mobile' })
@@ -106,7 +106,7 @@ test.describe('H3-1: Pedido offline → reconectar → sync (iPhone 13)', () => 
   })
 
   test('doble clic offline (mismo offlineId × 2) crea 1 solo pedido', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const c = await createCliente(page, { nombre: 'Test Dedup Mobile' })
     const clienteId = c.cliente?.id || c.data?.id

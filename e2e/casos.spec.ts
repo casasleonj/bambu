@@ -1,5 +1,5 @@
 // @tests api/casos, api/casos/[id], api/casos/[id]/eventos
-import {test, expect, BASE, fullLogin, skipBaseCaja, goto, apiPost, apiGet, createCliente, resetDatabase, sharedPageLogin} from './fixtures'
+import {test, expect, BASE, loginAs, skipBaseCaja, goto, apiPost, apiGet, createCliente, resetDatabase, sharedPageLogin} from './fixtures'
 import type { Page } from '@playwright/test'
 
 test.describe('Casos', () => {
@@ -913,7 +913,7 @@ test.describe('Casos', () => {
     const casoId = createData.caso.id
 
     // Login as asistente and add comment
-    await fullLogin(p, 'asistente', 'asist123')
+    await loginAs(p, 'asistente')
 
     const commentRes = await p.request.post(`${BASE}/api/casos/${casoId}/eventos`, {
       data: { accion: 'comentado', comentario: 'Comentario del asistente' },

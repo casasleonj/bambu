@@ -10,12 +10,12 @@
  * Usa window.__bambu (expuesto por ConnectivityIndicator en modo test).
  */
 
-import { test, expect, fullLogin, createCliente } from './fixtures'
+import { test, expect, loginAs, createCliente } from './fixtures'
 
 test.describe('Full-flow offline-resilience (abort → enqueue → drain)', () => {
 
   test('abort → enqueue → reconnect → drain: pedido llega al server con mismo offlineId', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     // Setup: cliente y limpiamos cualquier cola residual
     const c = await createCliente(page)
@@ -98,7 +98,7 @@ test.describe('Full-flow offline-resilience (abort → enqueue → drain)', () =
   })
 
   test('Doble sync con mismo offlineId → server deduplica (no se duplica)', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const c = await createCliente(page)
     const clienteId = c.cliente?.id || c.data?.id
@@ -171,7 +171,7 @@ test.describe('Full-flow offline-resilience (abort → enqueue → drain)', () =
   })
 
   test('Item con error 4xx NO se reencola (sólo errores de red)', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const c = await createCliente(page)
     const clienteId = c.cliente?.id || c.data?.id

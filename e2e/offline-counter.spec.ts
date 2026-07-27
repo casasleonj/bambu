@@ -4,12 +4,12 @@
  * Verifica que el badge muestra el número correcto de items en la cola.
  */
 
-import { test, expect, fullLogin, createCliente } from './fixtures'
+import { test, expect, loginAs, createCliente } from './fixtures'
 
 test.describe('ConnectivityIndicator — pending sync counter', () => {
 
   test('Muestra el contador cuando hay items encolados', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const c = await createCliente(page)
     const clienteId = c.cliente?.id || c.data?.id
@@ -75,7 +75,7 @@ test.describe('ConnectivityIndicator — pending sync counter', () => {
   })
 
   test('No muestra el counter cuando la cola está vacía', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     await page.waitForFunction(() => (window as any).__bambu !== undefined, { timeout: 10000 })
     await page.evaluate(() => (window as any).__bambu.clearQueues())
@@ -86,7 +86,7 @@ test.describe('ConnectivityIndicator — pending sync counter', () => {
   })
 
   test('Click en el indicador dispara sync cuando hay items pendientes', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const c = await createCliente(page)
     const clienteId = c.cliente?.id || c.data?.id

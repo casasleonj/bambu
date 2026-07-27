@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
-import {fullLogin, createCliente, apiPost, apiPut, apiGet, resetDatabase} from './fixtures'
+import {loginAs, createCliente, apiPost, apiPut, apiGet, resetDatabase} from './fixtures'
 
 async function createPedidoFiado(page: Page, clienteId: string, ventaRapida = false) {
   return apiPost(page, '/api/pedidos', {
@@ -23,7 +23,7 @@ test.describe('Fiados - límite global y criterio de pedido fiado', () => {
   })
 
   test.beforeEach(async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
   })
 
   test('pedido PENDIENTE no entregado NO cuenta para el límite de fiados', async ({ page }) => {

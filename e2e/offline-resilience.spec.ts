@@ -10,12 +10,12 @@
  * (fetch-resilient.test.ts). Aquí validamos el contrato server-side.
  */
 
-import { test, expect, fullLogin, apiPost, createCliente } from './fixtures'
+import { test, expect, loginAs, apiPost, createCliente } from './fixtures'
 
 test.describe('Offline resilience — dedup por offlineId', () => {
 
   test('Doble POST con mismo offlineId → server deduplica (no se duplica el pedido)', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const c = await createCliente(page)
     const clienteId = c.cliente?.id || c.data?.id
@@ -48,7 +48,7 @@ test.describe('Offline resilience — dedup por offlineId', () => {
   })
 
   test('POST sin offlineId funciona normalmente (backward compatibility)', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const c = await createCliente(page)
     const clienteId = c.cliente?.id || c.data?.id
@@ -66,7 +66,7 @@ test.describe('Offline resilience — dedup por offlineId', () => {
   })
 
   test('POST con offlineId persiste el campo en la DB', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const c = await createCliente(page)
     const clienteId = c.cliente?.id || c.data?.id

@@ -4,7 +4,7 @@
 // link "Ver pedidos", eliminar, y bloqueo de eliminación con pedidos.
 
 import { test, expect } from '@playwright/test'
-import { fullLogin, createCliente, createNegocio, apiPost, goto, waitForToast, resetDatabase } from './fixtures'
+import { loginAs, createCliente, createNegocio, apiPost, goto, waitForToast, resetDatabase } from './fixtures'
 
 test.describe('Negocios CRUD UI - admin', () => {
   test.describe.configure({ mode: 'serial' })
@@ -14,7 +14,7 @@ test.describe('Negocios CRUD UI - admin', () => {
   })
 
   test.beforeEach(async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
   })
 
   test('crear negocio desde detalle de cliente', async ({ page }) => {

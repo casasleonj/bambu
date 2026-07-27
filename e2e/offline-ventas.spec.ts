@@ -9,12 +9,12 @@
  * 3. POST a /api/pedidos/recurrentes con offlineId persiste el batchId.
  */
 
-import { test, expect, fullLogin, apiPost, createCliente } from './fixtures'
+import { test, expect, loginAs, apiPost, createCliente } from './fixtures'
 
 test.describe('Offline resilience — Ventas dedup', () => {
 
   test('Doble POST a /api/pedidos/pagar-fiado con mismo offlineId → server deduplica', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const c = await createCliente(page)
     const clienteId = c.cliente?.id || c.data?.id
@@ -59,7 +59,7 @@ test.describe('Offline resilience — Ventas dedup', () => {
   })
 
   test('POST a /api/pedidos/venta-libre con offlineId persiste el campo', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     // Necesitamos un embarque activo para venta-libre
     // El helper createCliente crea un cliente, pero para venta-libre se requiere
@@ -86,7 +86,7 @@ test.describe('Offline resilience — Ventas dedup', () => {
   })
 
   test('POST a /api/pedidos/pagar-fiado sin offlineId funciona normalmente (backward compat)', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const c = await createCliente(page)
     const clienteId = c.cliente?.id || c.data?.id

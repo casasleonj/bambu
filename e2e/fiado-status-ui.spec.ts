@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
-import { fullLogin, createCliente, apiPost, apiPut, resetDatabase, BASE } from './fixtures'
+import { loginAs, createCliente, apiPost, apiPut, resetDatabase, BASE } from './fixtures'
 
 async function createPedidoEntregado(page: Page, clienteId: string) {
   return apiPost(page, '/api/pedidos', {
@@ -32,7 +32,7 @@ test.describe('UI fiado status banner', () => {
   })
 
   test('nuevo cliente sin pedidos no muestra banner de límite', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const cliente = await createCliente(page, { nombre: 'Karina Limpia' })
     await apiPut(page, `/api/clientes/${cliente.cliente.id}`, { limitePedidosFiados: 2 })
@@ -50,7 +50,7 @@ test.describe('UI fiado status banner', () => {
   })
 
   test('cliente al límite muestra banner 2/2 límite alcanzado', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const cliente = await createCliente(page, { nombre: 'Karina Limite' })
     const clienteId = cliente.cliente.id

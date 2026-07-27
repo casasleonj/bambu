@@ -7,12 +7,12 @@
  * 3. PUT /api/embarques/[id] sin offlineId funciona normalmente (backward compat)
  */
 
-import { test, expect, fullLogin, apiPost, apiPut, apiDelete, createTrabajador, createCliente } from './fixtures'
+import { test, expect, loginAs, apiPost, apiPut, apiDelete, createTrabajador, createCliente } from './fixtures'
 
 test.describe('Offline resilience — Operaciones dedup', () => {
 
   test('PUT /api/embarques/[id] con mismo offlineId → server deduplica', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     // Setup: crear trabajador, cliente, embarque y pedido pendiente
     const t = await createTrabajador(page)
@@ -58,7 +58,7 @@ test.describe('Offline resilience — Operaciones dedup', () => {
   })
 
   test('DELETE /api/embarques/[id] es idempotente (segundo cancel retorna deduped:true)', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     // Setup: crear embarque
     const t = await createTrabajador(page)
@@ -88,7 +88,7 @@ test.describe('Offline resilience — Operaciones dedup', () => {
   })
 
   test('PUT /api/embarques/[id] sin offlineId funciona normalmente (backward compat)', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const t = await createTrabajador(page)
     const trabajadorId = t.trabajador?.id || t.data?.id

@@ -8,12 +8,12 @@
  * 3. POST sin offlineId funciona normalmente (backward compat).
  */
 
-import { test, expect, fullLogin, apiPost } from './fixtures'
+import { test, expect, loginAs, apiPost } from './fixtures'
 
 test.describe('Offline resilience — Finanzas (clientes) dedup', () => {
 
   test('Doble POST a /api/clientes con mismo offlineId → server deduplica', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     // Generar teléfono único (para no chocar con la constraint de unique)
     const timestamp = Date.now()
@@ -45,7 +45,7 @@ test.describe('Offline resilience — Finanzas (clientes) dedup', () => {
   })
 
   test('POST a /api/clientes con offlineId persiste el campo en la DB', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const timestamp = Date.now() + 1
     const telefono = `32${String(timestamp).slice(-8)}`
@@ -66,7 +66,7 @@ test.describe('Offline resilience — Finanzas (clientes) dedup', () => {
   })
 
   test('POST a /api/clientes sin offlineId funciona normalmente (backward compat)', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const timestamp = Date.now() + 2
     const telefono = `33${String(timestamp).slice(-8)}`

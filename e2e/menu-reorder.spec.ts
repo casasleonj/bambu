@@ -1,5 +1,5 @@
 import type { Page, Locator } from '@playwright/test'
-import { test, expect, fullLogin, BASE } from './fixtures'
+import { test, expect, loginAs, BASE } from './fixtures'
 
 async function dragHandleAbove(page: Page, sourceHandle: Locator, targetHandle: Locator) {
   const sourceBox = await sourceHandle.boundingBox()
@@ -33,7 +33,7 @@ test.describe('Menú reorganizable', () => {
   })
 
   test('modo edición muestra drag handles y el reordenamiento persiste tras refresh', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await page.goto(`${BASE}/dashboard`)
 
     // Entrar en modo edición via el botón de opciones del sidebar.
@@ -99,7 +99,7 @@ test.describe('Menú reorganizable', () => {
   })
 
   test('botón Restablecer vuelve al orden por defecto', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await page.goto(`${BASE}/dashboard`)
 
     // Entrar en modo edición y mover Productos arriba de Clientes.

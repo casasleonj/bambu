@@ -5,7 +5,7 @@
 //   2. Cambiar a EN_RUTA o CERRADO (despachar)
 //   3. Intentar editar → 4xx
 import { test, expect } from '@playwright/test'
-import { fullLogin, apiPut, apiGet, createTrabajador, createEmbarque } from './fixtures'
+import { loginAs, apiPut, apiGet, createTrabajador, createEmbarque } from './fixtures'
 
 test.use({
   viewport: { width: 390, height: 844 },
@@ -18,7 +18,7 @@ test.use({
 
 test.describe('H3-3: Embarque despachado es inmutable (iPhone 13)', () => {
   test('PUT a embarque CERRADO es rechazado', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     // 1. Crear un trabajdor y embarque (usando helpers que sí conocen el shape correcto)
     const t = await createTrabajador(page, { rol: 'REPARTIDOR' })
@@ -58,7 +58,7 @@ test.describe('H3-3: Embarque despachado es inmutable (iPhone 13)', () => {
   })
 
   test('PUT a embarque ABIERTO sí se permite', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const t = await createTrabajador(page, { rol: 'REPARTIDOR' })
     const trabajadorId = t.trabajador?.id || t.data?.id

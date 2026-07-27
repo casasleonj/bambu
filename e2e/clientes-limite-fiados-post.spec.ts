@@ -1,4 +1,4 @@
-import { test, expect, fullLogin, apiPost, resetDatabase } from './fixtures'
+import { test, expect, loginAs, apiPost, resetDatabase } from './fixtures'
 
 test.describe('Issue cliente limitePedidosFiados', () => {
   test.describe.configure({ mode: 'serial' })
@@ -9,7 +9,7 @@ test.describe('Issue cliente limitePedidosFiados', () => {
   })
 
   test('POST /api/clientes persiste limitePedidosFiados y lo devuelve', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const res = await apiPost(page, '/api/clientes', {
       nombre: 'Cliente Límite Test',
       telefono: `3${String(Date.now()).slice(-9)}`,
@@ -21,7 +21,7 @@ test.describe('Issue cliente limitePedidosFiados', () => {
   })
 
   test('POST /api/clientes sin limitePedidosFiados lo guarda como null', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const res = await apiPost(page, '/api/clientes', {
       nombre: 'Cliente Sin Límite Test',
       telefono: `3${String(Date.now() + 1).slice(-9)}`,

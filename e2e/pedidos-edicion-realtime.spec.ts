@@ -1,4 +1,4 @@
-import { test, expect, fullLogin, goto, apiPost, createClienteFull, resetDatabase } from './fixtures'
+import { test, expect, loginAs, goto, apiPost, createClienteFull, resetDatabase } from './fixtures'
 
 test.describe('Pedidos - edición sobrevive a refetch del padre', () => {
   test.describe.configure({ mode: 'serial' })
@@ -11,7 +11,7 @@ test.describe('Pedidos - edición sobrevive a refetch del padre', () => {
   test('edición persiste cantidad, precio y dirección tras refetch realtime', async ({ page }) => {
     test.setTimeout(120000)
 
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     // Crear cliente con dirección/barrio para envío a domicilio
     const clienteRes = await createClienteFull(page, {

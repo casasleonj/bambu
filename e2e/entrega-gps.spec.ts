@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { fullLogin, loginAs, createEmbarque, apiGet } from './fixtures'
+import { loginAs, createEmbarque, apiGet } from './fixtures'
 
 async function ensureEmbarqueAbierto(page: import('@playwright/test').Page, trabajadorId: string) {
   const activosRes = await apiGet(page, `/api/embarques?trabajadorId=${trabajadorId}&estado=ABIERTO&all=true`)
@@ -21,7 +21,7 @@ test.describe('Entrega con GPS (repartidor)', () => {
     await context.setGeolocation({ latitude: 4.65, longitude: -74.05 })
 
     // Preparar embarque abierto para el trabajador vinculado al usuario repartidor
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const trabajadoresRes = await apiGet(page, '/api/trabajadores?rol=REPARTIDOR&activo=true')
     expect(trabajadoresRes.status()).toBe(200)
     const trabajadoresBody = await trabajadoresRes.json()

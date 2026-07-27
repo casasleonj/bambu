@@ -1,4 +1,4 @@
-import { test, expect, fullLogin, apiPost, createCliente, createTrabajador, createEmbarque, resetDatabase } from './fixtures'
+import { test, expect, loginAs, apiPost, createCliente, createTrabajador, createEmbarque, resetDatabase } from './fixtures'
 
 test.describe('Pedidos: estado de pago visual refleja el estado real', () => {
   test.describe.configure({ mode: 'serial' })
@@ -10,7 +10,7 @@ test.describe('Pedidos: estado de pago visual refleja el estado real', () => {
 
   test('pedido PENDIENTE sin pago no muestra checkmark verde', async ({ page, isMobile }) => {
     test.skip(isMobile, 'desktop-only: tabla de pedidos')
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const c = await createCliente(page)
     const create = await apiPost(page, '/api/pedidos', {
       clienteId: c.cliente.id,
@@ -33,7 +33,7 @@ test.describe('Pedidos: estado de pago visual refleja el estado real', () => {
 
   test('pedido ENTREGADO con saldo muestra monto fiado en rojo', async ({ page, isMobile }) => {
     test.skip(isMobile, 'desktop-only: tabla de pedidos')
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const c = await createCliente(page)
     const create = await apiPost(page, '/api/pedidos', {
       clienteId: c.cliente.id,

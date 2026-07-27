@@ -1,11 +1,11 @@
 import { test, expect } from '@playwright/test'
-import { fullLogin, goto, apiPost, createCliente } from './fixtures'
+import { loginAs, goto, apiPost, createCliente } from './fixtures'
 
 test.describe('Pedidos - detalle muestra nombre', () => {
   test.describe.configure({ mode: 'serial' })
 
   test('abrir detalle de pedido muestra el nombre del cliente', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     const unique = Date.now()
     const cliente = await createCliente(page, {
       nombre: `Detalle Nombre ${unique}`,

@@ -3,7 +3,7 @@
 // lista de clientes y abrir el detalle al hacer click.
 
 import { test, expect } from '@playwright/test'
-import { fullLogin } from './fixtures'
+import { loginAs } from './fixtures'
 
 // Viewport mobile iPhone 13 (390x844) sin forzar webkit (que no esta
 // instalado en este entorno). Usamos chromium con viewport mobile,
@@ -19,7 +19,7 @@ test.use({
 
 test.describe('Clientes en mobile', () => {
   test('lista de clientes se muestra sin error "no se pudieron cargar"', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await page.goto('/clientes')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
@@ -50,7 +50,7 @@ test.describe('Clientes en mobile', () => {
   })
 
   test('click en cliente abre el modal de detalle', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await page.goto('/clientes')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(800)
@@ -77,7 +77,7 @@ test.describe('Clientes en mobile', () => {
   })
 
   test('modal de detalle muestra informacion del cliente (no error)', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
     await page.goto('/clientes')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(800)

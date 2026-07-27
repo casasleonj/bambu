@@ -1,4 +1,4 @@
-import { test, expect, fullLogin, goto, apiPost, createClienteFull, createNegocio, resetDatabase } from './fixtures'
+import { test, expect, loginAs, goto, apiPost, createClienteFull, createNegocio, resetDatabase } from './fixtures'
 
 test.describe('Pedidos - display prioriza nombre del negocio', () => {
   test.describe.configure({ mode: 'serial' })
@@ -11,7 +11,7 @@ test.describe('Pedidos - display prioriza nombre del negocio', () => {
   test('pedido a negocio muestra el negocio prominente en lista y detalle', async ({ page }) => {
     test.setTimeout(120000)
 
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     // Crear cliente Pedro Pérez
     const clienteRes = await createClienteFull(page, {

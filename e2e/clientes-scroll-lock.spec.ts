@@ -1,4 +1,4 @@
-import { test, expect, fullLogin, goto, createCliente, createClienteFull, createNegocio, resetDatabase } from './fixtures'
+import { test, expect, loginAs, goto, createCliente, createClienteFull, createNegocio, resetDatabase } from './fixtures'
 
 test.describe('Clientes - scroll no se congela tras cerrar panel + sub-modal', () => {
   test.describe.configure({ mode: 'serial' })
@@ -11,7 +11,7 @@ test.describe('Clientes - scroll no se congela tras cerrar panel + sub-modal', (
   test('scroll funciona después de abrir detalle, sub-modal y cerrar todo', async ({ page }) => {
     test.setTimeout(120000)
 
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     // Crear cliente con un negocio para poder abrir sub-modal
     const clienteRes = await createClienteFull(page, {

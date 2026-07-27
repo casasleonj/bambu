@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
-import { fullLogin, createCliente, apiPost, apiGet, apiPut, resetDatabase } from './fixtures'
+import { loginAs, createCliente, apiPost, apiGet, apiPut, resetDatabase } from './fixtures'
 
 async function createPedidoEntregado(page: Page, clienteId: string, cantidad = 1) {
   return apiPost(page, '/api/pedidos', {
@@ -19,7 +19,7 @@ test.describe('API /api/clientes/[id]/fiado-status', () => {
   })
 
   test.beforeEach(async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
   })
 
   test('cliente sin pedidos fiados reporta 0/2 ok', async ({ page }) => {

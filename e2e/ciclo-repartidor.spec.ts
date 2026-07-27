@@ -1,5 +1,5 @@
 // @tests api/cierre, api/embarque, api/pedido
-import { test, expect, BASE, fullLogin, goto, apiPost, createCliente, createTrabajador, createEmbarque, login } from './fixtures'
+import { test, expect, BASE, loginAs, goto, apiPost, createCliente, createTrabajador, createEmbarque, login } from './fixtures'
 
 test.describe('Ciclo Repartidor', () => {
 
@@ -7,7 +7,7 @@ test.describe('Ciclo Repartidor', () => {
 
   test('repartidor ve embarque asignado → entrega pedidos → cierra ruta', async ({ page }) => {
     test.setTimeout(120000)
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const trabajador = await createTrabajador(page, {
       nombre: `RepTest ${Date.now() % 10000}`,
@@ -63,7 +63,7 @@ test.describe('Ciclo Repartidor', () => {
 
   test('venta libre desde repartidor', async ({ page }) => {
     test.setTimeout(120000)
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const trabajador = await createTrabajador(page, {
       nombre: `RepVL ${Date.now() % 10000}`,
@@ -100,7 +100,7 @@ test.describe('Ciclo Repartidor', () => {
   // ─── 3. Repartidor no puede cerrar dia ──────────────────────────────────────
 
   test('repartidor no puede cerrar dia', async ({ page }) => {
-    await fullLogin(page)
+    await loginAs(page, 'admin')
 
     const repartidorContext = await page.context().browser()!.newContext()
     const repartidorPage = await repartidorContext.newPage()
