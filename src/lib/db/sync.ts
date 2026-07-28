@@ -107,8 +107,16 @@ export async function syncWithServer(): Promise<SyncResult> {
 }
 
 async function doSyncWithServer(): Promise<SyncResult> {
+  // Early return: si ambas colas están vacías, salir sin procesar.
+  // syncWithServer() corre cada 30s desde connectivity-indicator aunque
+  // no haya datos offline. Este early return evita el bucle de procesamiento
+  // (null-safe: iterar array vacío es inmediato y no requiere guard).
   const legacyQueue = await offlineDb.syncQueue.orderBy('createdAt').limit(BATCH_SIZE).toArray()
   const requestQueue = await offlineDb.requestQueue.orderBy('createdAt').limit(BATCH_SIZE).toArray()
+  if (legacyQueue.length === 0 && requestQueue.length === 0) {
+    return { synced: 0, failed: 0, conflicts: 0, remaining: 0, drained: true, failedPermanently: 0, sessionExpired: false }
+  }
+
   let synced = 0
   let failed = 0
   let conflicts = 0

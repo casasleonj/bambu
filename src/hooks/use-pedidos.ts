@@ -86,13 +86,13 @@ export function usePedidos(
     setError(null)
 
     // Mobile networks (2g/3g) can leave fetch requests hanging indefinitely.
-    // Vercel Hobby cold-start + proxy rate-limit + DB queries pueden tardar
-    // >10s legítimamente incluso en desktop. 30s cubre cold-start severo
-    // (~25s) sin ser tan largo como para frustrar al usuario. El caller
-    // puede mostrar un retry UI si expira.
+    // 8s timeout: con Fluid Compute activo, cold starts son <500ms y queries
+    // DB con los nuevos índices son <100ms. Si en 8s no respondió, algo anda
+    // mal (red 2g extremo, Vercel evict, DB caída). Mejor mostrar error rápido
+    // que dejar al usuario esperando 30s (el valor legacy).
     const timeoutId = setTimeout(() => {
       controller.abort()
-    }, 30_000)
+    }, 8_000)
 
     try {
       const url = buildUrl()

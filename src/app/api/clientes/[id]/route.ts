@@ -64,7 +64,6 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
           take: 20,
           include: { items: true },
         },
-        facturas: { orderBy: { fecha: 'desc' }, take: 20 },
         _count: { select: { pedidos: true } },
         plantillaRecurrente: true,
         // 1FN (Fase 3): incluir contactos desde la tabla ContactoCliente.

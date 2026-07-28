@@ -28,7 +28,7 @@ export function usePedidosCounts(autoFetch = true): UsePedidosCountsResult {
     setLoading(true)
     setError(null)
 
-    const timeoutId = setTimeout(() => controller.abort(), 30_000)
+    const timeoutId = setTimeout(() => controller.abort(), 8_000)
 
     try {
       const res = await fetch('/api/pedidos/counts', {

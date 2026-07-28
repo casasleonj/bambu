@@ -249,7 +249,7 @@ export function PedidosClient() {
 
   async function fetchClientes(): Promise<Cliente[]> {
     try {
-      const res = await fetch('/api/clientes?all=true', { credentials: 'include' })
+      const res = await fetch('/api/clientes?all=true', { credentials: 'include', signal: AbortSignal.timeout(8_000) })
       if (redirectIfAuthError(res)) return []
       const data = await res.json()
       const list = data.clientes || data.data || []
@@ -264,7 +264,7 @@ export function PedidosClient() {
 
   async function fetchEmbarques() {
     try {
-      const res = await fetch('/api/embarques', { credentials: 'include' })
+      const res = await fetch('/api/embarques', { credentials: 'include', signal: AbortSignal.timeout(8_000) })
       if (redirectIfAuthError(res)) return
       const data = await res.json()
       setEmbarques((data.embarques || data.data || []).filter((e: Embarque) => e.estado === 'ABIERTO' || e.estado === 'EN_RUTA'))
@@ -351,7 +351,7 @@ export function PedidosClient() {
     // Fetch GPS delivery config (best-effort, defaults applied on error).
     ;(async () => {
       try {
-        const res = await fetch('/api/config?keys=umbralGpsEntregaMetros,requerirGpsParaEntrega,permitirEntregaSinGpsConJustificacion', { cache: 'no-store' })
+        const res = await fetch('/api/config?keys=umbralGpsEntregaMetros,requerirGpsParaEntrega,permitirEntregaSinGpsConJustificacion', { cache: 'no-store', signal: AbortSignal.timeout(8_000) })
         if (!res.ok) return
         const json: unknown = await res.json()
         const data = (json as { data?: Record<string, string> } | null)?.data ?? (json as Record<string, string> | null)
@@ -379,7 +379,7 @@ export function PedidosClient() {
     // Fetch global fiado limit (best-effort, default 3 on error).
     ;(async () => {
       try {
-        const res = await fetch('/api/config?clave=LIMITE_PEDIDOS_FIADOS_DEFAULT', { cache: 'no-store' })
+        const res = await fetch('/api/config?clave=LIMITE_PEDIDOS_FIADOS_DEFAULT', { cache: 'no-store', signal: AbortSignal.timeout(8_000) })
         if (!res.ok) return
         const json: unknown = await res.json()
         const valor = (json as { data?: { valor?: string } | null } | null)?.data?.valor ?? (json as { valor?: string } | null)?.valor
@@ -469,6 +469,7 @@ export function PedidosClient() {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
+          signal: AbortSignal.timeout(8_000),
           body: JSON.stringify({ items: data.items, obs: data.obs, actualizarCliente: data.actualizarCliente }),
         })
         if (res.ok) {
@@ -763,6 +764,7 @@ export function PedidosClient() {
         const res = await fetch(`/api/pedidos/${id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout(8_000),
           body: JSON.stringify({ estado: nuevoEstado }),
         })
         success = res.ok
@@ -811,7 +813,7 @@ export function PedidosClient() {
     // Lazy-load factura for the detail modal (issue 3). The list does not
     // eagerly fetch it, so we fetch it when the user opens a pedido.
     try {
-      const res = await fetch(`/api/pedidos/${pedido.id}`)
+      const res = await fetch(`/api/pedidos/${pedido.id}`, { signal: AbortSignal.timeout(8_000) })
       if (res.ok) {
         const data = await res.json()
         const pedidoConFactura = data.pedido as Pedido | undefined
@@ -855,6 +857,7 @@ export function PedidosClient() {
         const res = await fetch('/api/precios/resolver', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout(8_000),
           body: JSON.stringify({ items, canal: pedido.canal }),
         })
         if (res.ok) {

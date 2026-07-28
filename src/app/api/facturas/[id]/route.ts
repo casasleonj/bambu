@@ -20,7 +20,6 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         pedido: {
           include: {
             items: true,
-            pagos: true,
           },
         },
         abonos: {

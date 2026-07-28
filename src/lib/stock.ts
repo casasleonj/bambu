@@ -76,11 +76,42 @@ export interface StockDisponibleResult {
 export async function getStockDisponible(): Promise<StockDisponibleResult> {
   const { startOfDay, endOfDay } = getTodayRange()
 
-  const ultimoCierre = await prisma.cierreDia.findFirst({
-    orderBy: { fecha: 'desc' },
-  })
+  // Paralelizar: cierre + stock estimado corren junto con producción + embarques.
+  // Antes: 5 queries secuenciales, cada una esperaba a la anterior.
+  // Ahora: 
+  //   - Promise.all(lote1): cierreDia + stockEstimado (2 queries rápidas)
+  //   - Promise.all(lote2): produccion + embarques de hoy (3 queries, las pesadas)
+  // Los dos lotes corren en paralelo porque no comparten datos intermedios.
+  const [loteConfig, loteProduccion] = await Promise.all([
+    Promise.all([
+      prisma.cierreDia.findFirst({
+        orderBy: { fecha: 'desc' },
+      }),
+      getStockEstimadoHoy(),
+    ]),
+    Promise.all([
+      // Producción del día: sumar producido por producto
+      prisma.produccionItem.findMany({
+        where: {
+          produccion: { fecha: { gte: startOfDay, lt: endOfDay } },
+        },
+        select: { producto: true, producido: true },
+      }),
+      // Embarques del día: abiertos, en ruta y cerrados en UNA sola query.
+      // Antes eran dos queries separadas (abiertos + cerrados), ahora se filtran
+      // en aplicación. Esto reduce de 2 round-trips a 1.
+      prisma.embarque.findMany({
+        where: {
+          fecha: { gte: startOfDay, lt: endOfDay },
+          estado: { in: [EstadoEmbarque.ABIERTO, EstadoEmbarque.EN_RUTA, EstadoEmbarque.CERRADO] },
+        },
+        include: { productos: true },
+      }),
+    ]),
+  ])
 
-  const stockEstimado = await getStockEstimadoHoy()
+  const [ultimoCierre, stockEstimado] = loteConfig
+  const [produccionesHoy, embarquesHoy] = loteProduccion
 
   const stockBase: StockSnapshot = {
     PACA_AGUA: Math.max(ultimoCierre?.stockFinAgua || 0, stockEstimado?.agua || 0),
@@ -90,18 +121,6 @@ export async function getStockDisponible(): Promise<StockDisponibleResult> {
     BOLSA_HIELO: 0,
   }
 
-  // Bloque 2: la desagregación por producto vive en ProduccionItem.
-  // Sumamos `producido` de cada item (PACA_AGUA / PACA_HIELO) del día.
-  const produccionesHoy = await prisma.produccionItem.findMany({
-    where: {
-      produccion: { fecha: { gte: startOfDay, lt: endOfDay } },
-    },
-    select: {
-      producto: true,
-      producido: true,
-    },
-  })
-
   for (const item of produccionesHoy) {
     if (item.producto === 'PACA_AGUA') {
       stockBase.PACA_AGUA += item.producido
@@ -110,45 +129,25 @@ export async function getStockDisponible(): Promise<StockDisponibleResult> {
     }
   }
 
-  const embarquesAbiertos = await prisma.embarque.findMany({
-    where: {
-      fecha: { gte: startOfDay, lt: endOfDay },
-      estado: { in: [EstadoEmbarque.ABIERTO, EstadoEmbarque.EN_RUTA] },
-    },
-    include: { productos: true },
-  })
-
-  for (const emb of embarquesAbiertos) {
+  // Un solo loop: restar cargadas (abiertos/en_ruta), sumar devueltas (cerrados)
+  for (const emb of embarquesHoy) {
+    const esCerrado = emb.estado === EstadoEmbarque.CERRADO
     for (const prod of emb.productos) {
       const key = prod.producto as keyof StockSnapshot
       if (key in stockBase) {
-        stockBase[key] -= prod.cargadas
+        if (esCerrado) {
+          stockBase[key] += prod.devueltas
+        } else {
+          stockBase[key] -= prod.cargadas
+        }
       }
     }
-    if (emb.pacasAgua > 0 && emb.productos.length === 0) {
-      stockBase.PACA_AGUA -= emb.pacasAgua
-      stockBase.PACA_HIELO -= emb.pacasHielo
-    }
-  }
-
-  const embarquesCerradosHoy = await prisma.embarque.findMany({
-    where: {
-      fecha: { gte: startOfDay, lt: endOfDay },
-      estado: EstadoEmbarque.CERRADO,
-    },
-    include: { productos: true },
-  })
-
-  for (const emb of embarquesCerradosHoy) {
-    for (const prod of emb.productos) {
-      const key = prod.producto as keyof StockSnapshot
-      if (key in stockBase) {
-        stockBase[key] += prod.devueltas
+    // Fallback legacy (productos array vacío pero legacy pacasAgua/pacasHielo seteados)
+    if (emb.productos.length === 0) {
+      if (emb.pacasAgua > 0 || emb.devueltasAgua > 0) {
+        stockBase.PACA_AGUA += esCerrado ? emb.devueltasAgua : -emb.pacasAgua
+        stockBase.PACA_HIELO += esCerrado ? emb.devueltasHielo : -emb.pacasHielo
       }
-    }
-    if (emb.devueltasAgua > 0 && emb.productos.length === 0) {
-      stockBase.PACA_AGUA += emb.devueltasAgua
-      stockBase.PACA_HIELO += emb.devueltasHielo
     }
   }
 
