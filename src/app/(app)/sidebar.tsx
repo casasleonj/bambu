@@ -227,6 +227,7 @@ function SidebarMenuItem({ item, dragHandle }: { item: NavItem; dragHandle?: Rea
                 <Link
                   key={subItem.href}
                   href={subItem.href}
+                  prefetch={false}
                   aria-current={isSubActive ? 'page' : undefined}
                   className={`flex items-center gap-3 py-2 px-3 rounded-lg transition text-sm ${
                     isSubActive
@@ -248,6 +249,7 @@ function SidebarMenuItem({ item, dragHandle }: { item: NavItem; dragHandle?: Rea
   return (
     <Link
       href={item.href}
+      prefetch={false}
       aria-current={isActive ? 'page' : undefined}
       className={`flex items-center gap-3 py-2.5 px-4 rounded-lg transition text-sm ${
         isActive

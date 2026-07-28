@@ -553,6 +553,7 @@ export function PedidosClient() {
   }, [pedidos, hoyStr])
 
   const hasActiveFilters = !!(search || clienteIdFromUrl || filtroTipo.length > 0 || filtroOrigen.length > 0 || filtroEstadoEntrega.length > 0 || filtroEstadoPago.length > 0 || desdeUrl || hastaUrl)
+  const hasDateFilter = !!(desdeUrl || hastaUrl)
 
   function getOrigenBadge(origen: string) {
     const styles: Record<string, string> = {
@@ -806,7 +807,12 @@ export function PedidosClient() {
     }
   }
 
+  // Stale guard: rejects responses from a previous rapid-click request.
+  // Pattern: identical to clientes-client viewSeqRef.
+  const detailSeqRef = useRef(0)
+
   async function handleDetail(pedido: Pedido) {
+    const seq = ++detailSeqRef.current
     setSelectedPedido(pedido)
     setShowDetailModal(true)
 
@@ -814,6 +820,7 @@ export function PedidosClient() {
     // eagerly fetch it, so we fetch it when the user opens a pedido.
     try {
       const res = await fetch(`/api/pedidos/${pedido.id}`, { signal: AbortSignal.timeout(8_000) })
+      if (seq !== detailSeqRef.current) return // stale, discard
       if (res.ok) {
         const data = await res.json()
         const pedidoConFactura = data.pedido as Pedido | undefined
@@ -1123,6 +1130,7 @@ export function PedidosClient() {
             pedidos={pedidosFiltrados}
             updatingId={updatingId}
             hasActiveFilters={hasActiveFilters}
+            hasDateFilter={hasDateFilter}
             userRole={userRole}
             renderOrigenBadge={getOrigenBadge}
             renderEstadoEntregaBadge={getEstadoEntregaBadge}

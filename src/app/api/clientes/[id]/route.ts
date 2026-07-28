@@ -62,7 +62,18 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         pedidos: {
           orderBy: { fecha: 'desc' },
           take: 20,
-          include: { items: true },
+          include: {
+            items: {
+              select: {
+                id: true,
+                producto: true,
+                cantPedido: true,
+                cantEntrega: true,
+                precio: true,
+                subtotal: true,
+              },
+            },
+          },
         },
         _count: { select: { pedidos: true } },
         plantillaRecurrente: true,

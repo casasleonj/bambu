@@ -2,7 +2,6 @@
 
 import { generateUUID } from '@/lib/uuid'
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 import { formatCurrency } from '@/lib/utils'
@@ -76,8 +75,7 @@ interface RepartidorClientProps {
 
 const METODOS_PAGO = ['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA', 'BONO'] as const
 
-export function RepartidorClient({ trabajador, embarque, userRole }: RepartidorClientProps) {
-  const router = useRouter()
+export function RepartidorClient({ trabajador, embarque: initialEmbarque, userRole }: RepartidorClientProps) {
   const [showVentaLibre, setShowVentaLibre] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [pendingCount, setPendingCount] = useState(0)
@@ -114,9 +112,26 @@ export function RepartidorClient({ trabajador, embarque, userRole }: RepartidorC
     return () => clearInterval(interval)
   }, [])
 
-  // Polling: refresh server data every 30s (critical for the repartidor on the route).
-  usePollingRefetch(() => {
-    router.refresh()
+  // State-driven embarque: start from SSR prop, then refresh client-side via API.
+  // Avoids router.refresh() which in Next.js 16 eagerly refetches all visible
+  // <Link> elements (vercel/next.js#93210 — ~5,184 extra serverless invocations/hr).
+  const [embarque, setEmbarque] = useState(initialEmbarque)
+  const embarqueIdRef = useRef(initialEmbarque?.id)
+
+  usePollingRefetch(async () => {
+    const id = embarqueIdRef.current
+    if (!id) return
+    try {
+      const res = await fetch(`/api/embarques/${id}?full=true`, { credentials: 'include' })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.success && data.embarque) {
+          setEmbarque(data.embarque)
+        }
+      }
+    } catch {
+      // Silently retry next cycle
+    }
   }, 30_000)
 
   const updatePendingCount = useCallback(async () => {
@@ -321,8 +336,8 @@ export function RepartidorClient({ trabajador, embarque, userRole }: RepartidorC
   }
 
   // Bloque 2: optimiza el orden de visita del embarque via TSP heurístico.
-  // Recarga la página al terminar (Next router.refresh) para que el server
-  // component re-fetchee con el nuevo ordenVisita.
+  // Recarga la página al terminar para que el server component
+  // re-fetchee con el nuevo ordenVisita.
   const optimizarOrdenEmbarque = async () => {
     if (!embarque) return
     setOptimizando(true)

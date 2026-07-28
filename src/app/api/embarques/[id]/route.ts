@@ -53,7 +53,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             cBolsaAguaEnt: true,
             cBolsaHieloEnt: true,
             negocioId: true,
-            cliente: { select: { id: true, nombre: true, apellido: true, barrio: true, telefono: true } },
+            ...(full
+              ? {
+                  items: {
+                    select: {
+                      id: true,
+                      producto: true,
+                      cantPedido: true,
+                      cantEntrega: true,
+                      precio: true,
+                      subtotal: true,
+                    },
+                  },
+                }
+              : {}),
+            cliente: { select: { id: true, nombre: true, apellido: true, barrio: true, telefono: true, direccion: true, lat: true, lng: true, linkUbicacion: true } },
           },
           orderBy: { numero: 'asc' },
         },

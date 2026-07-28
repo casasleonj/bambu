@@ -37,6 +37,8 @@ interface PedidoTableProps {
   pedidos: Pedido[]
   updatingId: string | null
   hasActiveFilters: boolean
+  /** True when the user has a date range filter active (desde/hasta). Used to show a specific empty-state message. */
+  hasDateFilter?: boolean
   userRole?: string | null
   renderOrigenBadge: (origen: string) => ReactNode
   renderEstadoEntregaBadge: (estado: string) => ReactNode
@@ -342,6 +344,7 @@ export function PedidoTable({
   pedidos,
   updatingId,
   hasActiveFilters,
+  hasDateFilter,
   userRole,
   renderOrigenBadge,
   renderEstadoEntregaBadge,
@@ -429,9 +432,9 @@ export function PedidoTable({
                 <td colSpan={7}>
                   <EmptyState
                     icon={<svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>}
-                    title={hasActiveFilters ? "No hay resultados" : "No hay pedidos"}
-                    description={hasActiveFilters ? "Ajusta los filtros o búsqueda para ver más pedidos" : "Crea tu primer pedido para comenzar"}
-                    actionLabel={hasActiveFilters ? undefined : "+ Crear Pedido"}
+                    title={hasDateFilter ? "No hay pedidos en este rango de fechas" : hasActiveFilters ? "No hay resultados" : "No hay pedidos"}
+                    description={hasDateFilter ? "Prueba con un rango más amplio o presiona \"Limpiar\" para ver todo el histórico" : hasActiveFilters ? "Ajusta los filtros o búsqueda para ver más pedidos" : "Crea tu primer pedido para comenzar"}
+                    actionLabel={hasActiveFilters && !hasDateFilter ? undefined : "+ Crear Pedido"}
                     onAction={onCreateClick}
                   />
                 </td>
@@ -452,9 +455,9 @@ export function PedidoTable({
         {pedidos.length === 0 ? (
           <EmptyState
             icon={<svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>}
-            title={hasActiveFilters ? "No hay resultados" : "No hay pedidos"}
-            description={hasActiveFilters ? "Ajusta los filtros o búsqueda para ver más pedidos" : "Crea tu primer pedido para comenzar"}
-            actionLabel={hasActiveFilters ? undefined : "+ Crear Pedido"}
+            title={hasDateFilter ? "No hay pedidos en este rango de fechas" : hasActiveFilters ? "No hay resultados" : "No hay pedidos"}
+            description={hasDateFilter ? "Prueba con un rango más amplio o presiona \"Limpiar\" para ver todo el histórico" : hasActiveFilters ? "Ajusta los filtros o búsqueda para ver más pedidos" : "Crea tu primer pedido para comenzar"}
+            actionLabel={hasActiveFilters && !hasDateFilter ? undefined : "+ Crear Pedido"}
             onAction={onCreateClick}
           />
         ) : (
