@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/nextjs'
 import { useState, useEffect, useCallback, useRef } from 'react'
 
 export interface UsePedidosCountsResult {
@@ -28,7 +29,7 @@ export function usePedidosCounts(autoFetch = true): UsePedidosCountsResult {
     setLoading(true)
     setError(null)
 
-    const timeoutId = setTimeout(() => controller.abort(), 8_000)
+    const timeoutId = setTimeout(() => controller.abort(), 30_000)
 
     try {
       const res = await fetch('/api/pedidos/counts', {
@@ -50,6 +51,7 @@ export function usePedidosCounts(autoFetch = true): UsePedidosCountsResult {
       clearTimeout(timeoutId)
       if (!isCurrent()) return
       if (err instanceof Error && err.name === 'AbortError') {
+        Sentry.captureException(err, { tags: { cause: 'use_pedidos_counts_timeout' } })
         setError('La carga está tardando demasiado. Reintenta.')
         return
       }

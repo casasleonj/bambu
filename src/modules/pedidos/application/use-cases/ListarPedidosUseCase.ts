@@ -26,10 +26,14 @@ export class ListarPedidosUseCase {
       ? { take: 200 }
       : { take: input.pageSize || 20, skip: ((input.page || 1) - 1) * (input.pageSize || 20) }
 
-    const [pedidos, total] = await Promise.all([
-      this.pedidoRepo.findMany(filter, { ...options, orderBy: 'desc' }),
-      this.pedidoRepo.count(filter),
-    ])
+    // Cuando all=true el cliente nunca consume `total` (usa pedidos.length).
+    // Skip COUNT(*) para evitar full table scan en PostgreSQL.
+    const [pedidos, total] = input.all
+      ? [await this.pedidoRepo.findMany(filter, { ...options, orderBy: 'desc' }), 0]
+      : await Promise.all([
+          this.pedidoRepo.findMany(filter, { ...options, orderBy: 'desc' }),
+          this.pedidoRepo.count(filter),
+        ])
 
     return {
       pedidos: pedidos.map(p => PedidoDTOMapper.toResumen(p)),

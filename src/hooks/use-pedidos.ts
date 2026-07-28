@@ -5,6 +5,7 @@
  * Replaces direct fetch('/api/pedidos') calls in components.
  */
 
+import * as Sentry from '@sentry/nextjs'
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 
 export interface PedidoFilterParams {
@@ -85,14 +86,13 @@ export function usePedidos(
     setLoading(true)
     setError(null)
 
-    // Mobile networks (2g/3g) can leave fetch requests hanging indefinitely.
-    // 8s timeout: con Fluid Compute activo, cold starts son <500ms y queries
-    // DB con los nuevos índices son <100ms. Si en 8s no respondió, algo anda
-    // mal (red 2g extremo, Vercel evict, DB caída). Mejor mostrar error rápido
-    // que dejar al usuario esperando 30s (el valor legacy).
+    // La API con ?all=true y COUNT(*) sin filtros puede tardar hasta 30s
+    // en producción (full table scan). Timeout alto para no abortar queries
+    // legítimas. El usuario recibe feedback visual con un banner de error
+    // si la conexión falla (ver pedidos-client/index.tsx).
     const timeoutId = setTimeout(() => {
       controller.abort()
-    }, 8_000)
+    }, 30_000)
 
     try {
       const url = buildUrl()
@@ -116,8 +116,9 @@ export function usePedidos(
       clearTimeout(timeoutId)
       if (!isCurrent()) return
       if (err instanceof Error && err.name === 'AbortError') {
-        // Fetch was aborted by the timeout above or by a newer request/filter change.
-        // Surface a retry-friendly message without generic error noise.
+        // El timeout de 30s se excedió (red muy lenta o servidor caído).
+        // Capturamos en Sentry para monitorear frecuencia sin molestar al usuario.
+        Sentry.captureException(err, { tags: { cause: 'use_pedidos_timeout' } })
         setError('La carga está tardando demasiado. Reintenta.')
         return
       }
