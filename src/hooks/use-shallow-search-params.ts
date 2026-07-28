@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useRef, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 
 export type ShallowParams = Record<string, string | string[] | undefined>
@@ -16,23 +16,16 @@ export interface ShallowSearchParams {
 }
 
 type Listener = () => void
+const listeners = new Set<Listener>()
 
-let version = 0
-const subscribers = new Set<Listener>()
-
-function subscribe(listener: Listener): () => void {
-  subscribers.add(listener)
-  return () => {
-    subscribers.delete(listener)
-  }
+function broadcast(): void {
+  listeners.forEach((fn) => fn())
 }
 
-function notify(): void {
-  version += 1
-  subscribers.forEach((listener) => listener())
-}
-
-function applyChanges(current: URLSearchParams, changes: ShallowParams): URLSearchParams {
+function applyChanges(
+  current: URLSearchParams,
+  changes: ShallowParams,
+): URLSearchParams {
   const next = new URLSearchParams(current.toString())
   for (const [key, value] of Object.entries(changes)) {
     next.delete(key)
@@ -64,55 +57,81 @@ function updateUrl(next: URLSearchParams, history: 'push' | 'replace'): void {
   } else {
     window.history.pushState(window.history.state, '', url)
   }
-  notify()
+  broadcast()
 }
 
 /**
  * Hook para leer y escribir query params de la URL sin desmontar/remontar
- * la página. Lee desde `useSearchParams` de Next.js (SSR-safe) y escribe con
- * `window.history.pushState/replaceState`, notificando a todos los consumidores
- * para que re-rendericen sincronizados.
+ * la página.
+ *
+ * - SSR/hydration: usa `useSearchParams` de Next.js (coincide con el render
+ *   del servidor, evitando hydration mismatches).
+ * - Después del primer `set()` o `popstate`: cambia permanentemente a leer
+ *   desde `window.location.search` (porque `useSearchParams` no se actualiza
+ *   tras manipulación manual del history).
+ * - Notificación cross-consumer: usa un `Set<Listener> + broadcast()` a nivel
+ *   de módulo para que todos los hooks (en distintos componentes) se enteren
+ *   cuando alguien muta la URL.
+ * - Re-render: usa `useState(0)` counter + `forceRender()`, no
+ *   `useSyncExternalStore`, para evitar el bug de getSnapshot inestable.
  */
 export function useShallowSearchParams(): ShallowSearchParams {
   const searchParams = useSearchParams()
-  // Flag que indica si este hook (o cualquier otro consumidor) ha mutado la URL
-  // manualmente vía set(). Después de una mutación manual, Next.js puede tener
-  // searchParams stale por un ciclo, así que leemos directamente de
-  // window.location.search para garantizar consistencia sincrónica.
-  const manualUpdateRef = useRef(false)
+  const [, forceRender] = useState(0)
+  const useRealParamsRef = useRef(false)
 
-  const currentParams = useCallback(() => {
-    if (typeof window === 'undefined') return searchParams
-    if (manualUpdateRef.current) return new URLSearchParams(window.location.search)
-    return searchParams
-  }, [searchParams])
+  useEffect(() => {
+    const onBroadcast = () => {
+      useRealParamsRef.current = true
+      forceRender((n) => n + 1)
+    }
+    listeners.add(onBroadcast)
 
-  // Snapshot combina el version propio (para forzar re-render cuando este hook
-  // o cualquier otro consumidor muta la URL vía set) con los params de Next.js
-  // (para sincronizar back/forward y SSR).
-  const getSnapshot = useCallback(
-    () => `${version}:${manualUpdateRef.current && typeof window !== 'undefined' ? window.location.search.slice(1) : searchParams.toString()}`,
+    const onPopState = () => {
+      useRealParamsRef.current = true
+      forceRender((n) => n + 1)
+    }
+    window.addEventListener('popstate', onPopState)
+
+    return () => {
+      listeners.delete(onBroadcast)
+      window.removeEventListener('popstate', onPopState)
+    }
+  }, [])
+
+  const get = useCallback(
+    (key: string): string | null => {
+      if (typeof window !== 'undefined' && useRealParamsRef.current) {
+        return new URLSearchParams(window.location.search).get(key)
+      }
+      return searchParams?.get(key) ?? null
+    },
     [searchParams],
   )
-  const getServerSnapshot = useCallback(
-    () => searchParams.toString(),
+
+  const getAll = useCallback(
+    (key: string): string[] => {
+      if (typeof window !== 'undefined' && useRealParamsRef.current) {
+        return new URLSearchParams(window.location.search).getAll(key)
+      }
+      return searchParams?.getAll(key) ?? []
+    },
     [searchParams],
   )
 
-  useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
-
-  return useMemo(
-    () => ({
-      get: (key: string) => currentParams().get(key),
-      getAll: (key: string) => currentParams().getAll(key),
-      set: (changes: ShallowParams, options?: SetShallowParamsOptions) => {
-        const history = options?.history ?? 'push'
-        const current = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : searchParams.toString())
-        const next = applyChanges(current, changes)
-        updateUrl(next, history)
-        manualUpdateRef.current = true
-      },
-    }),
-    [searchParams, currentParams],
+  const set = useCallback(
+    (changes: ShallowParams, options?: SetShallowParamsOptions) => {
+      const current = new URLSearchParams(
+        typeof window !== 'undefined'
+          ? window.location.search
+          : searchParams?.toString() ?? '',
+      )
+      const next = applyChanges(current, changes)
+      updateUrl(next, options?.history ?? 'push')
+      useRealParamsRef.current = true
+    },
+    [searchParams],
   )
+
+  return useMemo(() => ({ get, getAll, set }), [get, getAll, set])
 }
