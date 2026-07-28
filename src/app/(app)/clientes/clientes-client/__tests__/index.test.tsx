@@ -114,6 +114,7 @@ vi.mock('sonner', () => ({
 }))
 
 import ClientesClient from '@/app/(app)/clientes/clientes-client'
+import { __resetDetailCache } from '@/app/(app)/clientes/clientes-client'
 import type { Cliente } from '@/app/(app)/clientes/clientes-client/types'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
@@ -206,6 +207,7 @@ describe('ClientesClient — regresion mobile 2026-06-10', () => {
   afterEach(() => {
     cleanup()
     global.fetch = originalFetch
+    __resetDetailCache()
     // NO usar vi.restoreAllMocks() — eso restaura las implementaciones
     // de los vi.fn() (e.g. `mockReturnValue([])`) a la implementacion
     // original (undefined), causando que `calcularAlertasCliente` retorne
@@ -247,14 +249,14 @@ describe('ClientesClient — regresion mobile 2026-06-10', () => {
     expect(screen.getByText('Juan')).toBeTruthy()
   })
 
-  it('viewCliente abre el modal con stub + detailError banner cuando el fetch falla (regresion "no me abre el detalle")', async () => {
+  it('viewCliente abre el modal al instante con la fila + banner de error si el fetch falla', async () => {
     const { mock, responses } = createFetchMock()
     global.fetch = mock as unknown as typeof fetch
 
     // El GET del detalle va a fallar con 500. Antes del fix, viewCliente
     // solo hacia toast.error y retornaba sin abrir el modal — el user
-    // pensaba que el click no funcionaba. Con el fix, el modal se abre
-    // con un cliente stub y un banner de error visible.
+    // pensaba que el click no funcionaba. Ahora el modal se abre
+    // inmediatamente con los datos de la fila y un banner de error visible.
     responses.set('/api/clientes/cliente-1', {
       status: 500,
       body: { success: false, error: { message: 'internal' } },
@@ -269,28 +271,22 @@ describe('ClientesClient — regresion mobile 2026-06-10', () => {
       />,
     )
 
-    // El row del SSR debe estar visible antes del click.
     const row = screen.getByTestId('cliente-row-cliente-1')
-    expect(row).toBeTruthy()
-
-    // Click en la fila dispara viewCliente('cliente-1'). El handler
-    // es async (hace fetch + setState), asi que usamos act() y
-    // waitFor para esperar a que el modal se monte.
     await act(async () => {
       fireEvent.click(row)
     })
 
-    // Tras el click, el modal debe estar abierto. El stub del cliente
-    // tiene nombre "No se pudo cargar el cliente" (del branch !res.ok).
+    // El panel abre al instante con el nombre real de la lista (Juan),
+    // no con un stub genérico.
     await waitFor(() => {
-      expect(screen.getByText('No se pudo cargar el cliente')).toBeTruthy()
+      expect(screen.getByRole('heading', { name: /Juan/ })).toBeTruthy()
     })
 
     // El detailError banner debe estar visible con el mensaje del HTTP 500.
     const errorBanner = screen.getByRole('alert')
     expect(errorBanner).toBeTruthy()
     expect(errorBanner.textContent).toContain('Error al cargar el cliente (HTTP 500)')
-    expect(errorBanner.textContent).toContain('Intenta de nuevo')
+    expect(errorBanner.textContent).toContain('Reintentar')
   })
 
   it('viewCliente abre el modal con cliente real cuando el fetch tiene exito', async () => {
@@ -339,7 +335,7 @@ describe('ClientesClient — regresion mobile 2026-06-10', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
-  it('viewCliente muestra mensaje de "Cliente no encontrado" cuando el fetch responde 404', async () => {
+  it('viewCliente mantiene datos de la fila + banner cuando el fetch responde 404', async () => {
     const { mock, responses } = createFetchMock()
     global.fetch = mock as unknown as typeof fetch
 
@@ -362,23 +358,19 @@ describe('ClientesClient — regresion mobile 2026-06-10', () => {
       fireEvent.click(row)
     })
 
-    // El stub + el mensaje 404 ("Cliente no encontrado.") deben estar.
+    // El panel se abre con el nombre real; el banner muestra 404.
     await waitFor(() => {
-      expect(screen.getByText('No se pudo cargar el cliente')).toBeTruthy()
+      expect(screen.getByRole('heading', { name: /Juan/ })).toBeTruthy()
     })
     const errorBanner = screen.getByRole('alert')
     expect(errorBanner.textContent).toContain('Cliente no encontrado')
   })
 
-  it('viewCliente muestra mensaje de "Error de red" cuando fetch lanza excepcion', async () => {
-    // Mock que rechaza la promesa (simula error de red real, no HTTP).
-    // El componente debe abrir el modal con stub y mensaje "Error de red"
-    // en el detailError.
+  it('viewCliente mantiene datos de la fila + banner cuando fetch lanza excepcion', async () => {
     const mock = vi.fn(async (url: string | URL | Request) => {
       if (String(url).includes('/api/clientes/cliente-1')) {
         throw new TypeError('Failed to fetch')
       }
-      // Otros fetches retornan OK vacio.
       return {
         ok: true,
         status: 200,
@@ -403,10 +395,8 @@ describe('ClientesClient — regresion mobile 2026-06-10', () => {
       fireEvent.click(row)
     })
 
-    // En el catch, el stub tiene nombre "Error de red" (distinto del
-    // branch !res.ok que dice "No se pudo cargar el cliente").
     await waitFor(() => {
-      expect(screen.getByText('Error de red')).toBeTruthy()
+      expect(screen.getByRole('heading', { name: /Juan/ })).toBeTruthy()
     })
 
     const errorBanner = screen.getByRole('alert')
@@ -538,5 +528,211 @@ describe('ClientesClient — regresion mobile 2026-06-10', () => {
 
     // El nombre stale nunca debe aparecer en el modal.
     expect(screen.queryByRole('heading', { name: 'Nombre Stale' })).toBeNull()
+  })
+
+  it('viewCliente abre el modal con datos de la fila antes de que llegue el fetch', async () => {
+    const { mock } = createFetchMock()
+    global.fetch = mock as unknown as typeof fetch
+
+    let resolveFetch: (r: Response) => void
+    const fetchPromise = new Promise<Response>((resolve) => {
+      resolveFetch = resolve
+    })
+
+    mock.mockImplementation(async (url: string | URL | Request) => {
+      if (String(url).includes('/api/clientes/cliente-1')) {
+        return fetchPromise
+      }
+      return { ok: true, status: 200, json: async () => ({}), text: async () => '' } as Response
+    })
+
+    render(
+      <ClientesClient
+        initialClientes={[mockCliente]}
+        filtrosActivos={{ mostrarNegocio: 'todos', ubicacionMaps: 'todos' }}
+        openClienteId={undefined}
+        filtroActivo={null}
+      />,
+    )
+
+    const row = screen.getByTestId('cliente-row-cliente-1')
+    await act(async () => {
+      fireEvent.click(row)
+    })
+
+    // Antes de resolver el fetch, el modal debe estar abierto con los datos de la fila.
+    expect(screen.getByRole('heading', { name: /Juan/ })).toBeTruthy()
+    expect(screen.queryByRole('alert')).toBeNull()
+
+    // Ahora resuelve el fetch; los datos del servidor reemplazan al optimista.
+    await act(async () => {
+      resolveFetch!({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: async () => ({
+          success: true,
+          cliente: { ...mockCliente, nombre: 'Juan Carlos', apellido: '', negocios: [] },
+        }),
+        text: async () => '',
+      } as Response)
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Juan Carlos' })).toBeTruthy()
+    })
+  })
+
+  it('usa el caché: segunda apertura dentro de 60s no vuelve a hacer fetch', async () => {
+    const { mock, calls, responses } = createFetchMock()
+    global.fetch = mock as unknown as typeof fetch
+
+    responses.set('/api/clientes/cliente-1', {
+      status: 200,
+      body: {
+        success: true,
+        cliente: { ...mockCliente, nombre: 'Juan Servidor', apellido: '', negocios: [] },
+      },
+    })
+
+    render(
+      <ClientesClient
+        initialClientes={[mockCliente]}
+        filtrosActivos={{ mostrarNegocio: 'todos', ubicacionMaps: 'todos' }}
+        openClienteId={undefined}
+        filtroActivo={null}
+      />,
+    )
+
+    const row = screen.getByTestId('cliente-row-cliente-1')
+    await act(async () => {
+      fireEvent.click(row)
+    })
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Juan Servidor' })).toBeTruthy()
+    })
+
+    // Cerrar y reabrir.
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText('Cerrar'))
+    })
+    await act(async () => {
+      fireEvent.click(row)
+    })
+
+    // Debe abrir al instante con el nombre cacheado.
+    expect(screen.getByRole('heading', { name: 'Juan Servidor' })).toBeTruthy()
+
+    const detailCalls = calls.filter(c => c.url.includes('/api/clientes/cliente-1'))
+    expect(detailCalls).toHaveLength(1)
+  })
+
+  it('prefetch en hover deduplica con el click: solo 1 request', async () => {
+    const { mock, calls, responses } = createFetchMock()
+    global.fetch = mock as unknown as typeof fetch
+
+    responses.set('/api/clientes/cliente-1', {
+      status: 200,
+      body: {
+        success: true,
+        cliente: { ...mockCliente, nombre: 'Juan Servidor', apellido: '', negocios: [] },
+      },
+    })
+
+    render(
+      <ClientesClient
+        initialClientes={[mockCliente]}
+        filtrosActivos={{ mostrarNegocio: 'todos', ubicacionMaps: 'todos' }}
+        openClienteId={undefined}
+        filtroActivo={null}
+      />,
+    )
+
+    const row = screen.getByTestId('cliente-row-cliente-1')
+    // Simular hover: cliente-table propaga onPrefetchCliente.
+    await act(async () => {
+      fireEvent.mouseEnter(row)
+    })
+    // Pequeña espera para que el prefetch dispare.
+    await new Promise(r => setTimeout(r, 50))
+    await act(async () => {
+      fireEvent.click(row)
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Juan Servidor' })).toBeTruthy()
+    })
+
+    const detailCalls = calls.filter(c => c.url.includes('/api/clientes/cliente-1'))
+    expect(detailCalls).toHaveLength(1)
+  })
+
+  it('toggleVerificado actualiza la UI sin recargar toda la lista', async () => {
+    const { mock, calls, responses } = createFetchMock()
+    global.fetch = mock as unknown as typeof fetch
+
+    // Detalle: carga una sola vez y queda en caché.
+    responses.set('/api/clientes/cliente-1', {
+      status: 200,
+      body: {
+        success: true,
+        cliente: { ...mockCliente, verificado: false, apellido: '', negocios: [] },
+      },
+    })
+    responses.set('/api/clientes/cliente-1/patch', {
+      status: 200,
+      body: { success: true, cliente: { ...mockCliente, verificado: true, apellido: '', negocios: [] } },
+    })
+
+    mock.mockImplementation(async (url: string | URL | Request, init?: RequestInit) => {
+      const urlStr = String(url)
+      calls.push({ url: urlStr, init })
+      if (urlStr.includes('/api/clientes/cliente-1') && init?.method === 'PATCH') {
+        const resp = responses.get('/api/clientes/cliente-1/patch')!
+        return { ...resp, json: async () => resp.body, text: async () => JSON.stringify(resp.body) } as Response
+      }
+      // Default lookup por URL exacta/patrón.
+      for (const [pattern, resp] of responses.entries()) {
+        if (urlStr === pattern || urlStr.includes(pattern)) {
+          return { ...resp, json: async () => resp.body, text: async () => JSON.stringify(resp.body) } as Response
+        }
+      }
+      return { ok: true, status: 200, json: async () => ({}), text: async () => '' } as Response
+    })
+
+    const clienteNoVerificado = { ...mockCliente, verificado: false }
+    render(
+      <ClientesClient
+        initialClientes={[clienteNoVerificado]}
+        filtrosActivos={{ mostrarNegocio: 'todos', ubicacionMaps: 'todos' }}
+        openClienteId={undefined}
+        filtroActivo={null}
+      />,
+    )
+
+    const row = screen.getByTestId('cliente-row-cliente-1')
+    await act(async () => {
+      fireEvent.click(row)
+    })
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Juan/ })).toBeTruthy()
+    })
+
+    // Limpiar calls del detalle inicial.
+    calls.length = 0
+
+    const verificarBtn = screen.getByText('Verificar')
+    await act(async () => {
+      fireEvent.click(verificarBtn)
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('Verificado')).toBeTruthy()
+    })
+
+    const postPatchCalls = calls.filter(c => c.url.includes('/api/clientes'))
+    expect(postPatchCalls).toHaveLength(1)
+    expect(postPatchCalls[0].url).toContain('/api/clientes/cliente-1')
+    expect(postPatchCalls[0].init?.method).toBe('PATCH')
   })
 })

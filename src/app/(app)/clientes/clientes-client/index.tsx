@@ -34,19 +34,111 @@ import { getBadgeColor, ignorarAlerta } from '@/lib/alertas-config'
 import { useEscapeGuard } from '@/hooks/use-escape-guard'
 import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 
-// Warm-up cache: última vez que se precalentó una ruta de detalle.
-// Fire-and-forget: solo despierta la lambda; nunca cachea la respuesta,
-// evitando datos stale y el trabajo de invalidar en cada mutación.
-const WARMUP_TTL_MS = 60_000
-const lastWarmupById = new Map<string, number>()
+// Detail cache: cache de sesión en cliente para evitar re-descargar la ficha
+// completa cada vez que se abre. TTL 60s alineado con el polling de lista.
+// LRU de 50 entradas para no crecer sin límite.
+const DETAIL_TTL_MS = 60_000
+const DETAIL_CACHE_MAX = 50
+
+type DetailCacheEntry = {
+  data?: Cliente
+  ts: number
+  promise?: Promise<{ ok: false; status: number; error: string } | { ok: true; cliente: Cliente }>
+}
+
+const detailCache = new Map<string, DetailCacheEntry>()
+
+function isFresh(entry: DetailCacheEntry): boolean {
+  return Date.now() - entry.ts < DETAIL_TTL_MS
+}
+
+function setDetailCacheEntry(id: string, data: Cliente) {
+  if (detailCache.size >= DETAIL_CACHE_MAX && !detailCache.has(id)) {
+    const first = detailCache.keys().next().value as string | undefined
+    if (first) detailCache.delete(first)
+  }
+  detailCache.set(id, { data, ts: Date.now() })
+}
+
+function clearDetailCache() {
+  detailCache.clear()
+}
+
+/** Solo para tests. */
+export function __resetDetailCache() {
+  detailCache.clear()
+}
+
+function mergeDetailWithRow(detail: Cliente, row?: Cliente): Cliente {
+  if (!row) return detail
+  // La lista se refresca por polling y tiene la fuente más fresca para
+  // estos escalares; el detalle cacheado puede quedar ligeramente atrás.
+  return {
+    ...detail,
+    saldoPendiente: row.saldoPendiente,
+    verificado: row.verificado,
+    bloqueado: row.bloqueado,
+  }
+}
+
+function optimisticClienteFromRow(row: Cliente): Cliente {
+  return {
+    ...row,
+    pedidos: row.pedidos ?? [],
+    frecuenciaSugerida: null,
+    productosSugeridos: [],
+  }
+}
+
+function updateCachedCliente(id: string, partial: Partial<Cliente>) {
+  const entry = detailCache.get(id)
+  if (entry?.data) {
+    setDetailCacheEntry(id, { ...entry.data, ...partial })
+  }
+}
+
+async function fetchClienteDetail(id: string): Promise<{ ok: false; status: number; error: string } | { ok: true; cliente: Cliente }> {
+  try {
+    const res = await fetchWithTimeout(`/api/clientes/${id}`, {}, 30_000)
+    if (!res.ok) {
+      return {
+        ok: false,
+        status: res.status,
+        error: res.status === 404
+          ? 'Cliente no encontrado.'
+          : `Error al cargar el cliente (HTTP ${res.status}). Intenta de nuevo.`,
+      }
+    }
+    const data = await res.json()
+    if (!data.cliente) {
+      return { ok: false, status: 500, error: 'Respuesta inesperada del servidor.' }
+    }
+    return { ok: true, cliente: data.cliente as Cliente }
+  } catch {
+    return { ok: false, status: 0, error: 'No se pudo conectar al servidor. Verifica tu conexión e intenta de nuevo.' }
+  }
+}
+
+async function fetchAndCacheDetail(id: string) {
+  const result = await fetchClienteDetail(id)
+  if (result.ok) {
+    setDetailCacheEntry(id, result.cliente)
+  } else {
+    detailCache.delete(id)
+  }
+  return result
+}
+
+function prefetchClienteDetail(id: string) {
+  const entry = detailCache.get(id)
+  if (entry && isFresh(entry)) return
+  if (entry?.promise) return
+  const promise = fetchAndCacheDetail(id)
+  detailCache.set(id, { data: entry?.data, ts: Date.now(), promise })
+}
 
 function warmClienteDetail(id: string) {
-  const now = Date.now()
-  const last = lastWarmupById.get(id)
-  if (last && now - last < WARMUP_TTL_MS) return
-  lastWarmupById.set(id, now)
-  // fetch con no-cors no-op; el objetivo es que Vercel mantenga la lambda viva.
-  fetch(`/api/clientes/${id}`, { method: 'GET', cache: 'no-store' }).catch(() => {})
+  prefetchClienteDetail(id)
 }
 
 export default function ClientesClient({
@@ -143,6 +235,12 @@ export default function ClientesClient({
         if (d.success && d.user) setUserRole(d.user.rol)
       })
       .catch(err => console.warn('[init] profile fetch failed', err))
+
+    // Si el usuario cambia (logout / sesión expirada en otro tab), limpiar
+    // el caché de detalle para evitar mezclar datos de otro usuario.
+    const onAuthExpired = () => clearDetailCache()
+    window.addEventListener('app:auth:expired', onAuthExpired)
+    return () => window.removeEventListener('app:auth:expired', onAuthExpired)
   }, [])
 
   // Deep-link ?openCliente=ID: carga detalle completo (igual que click en fila)
@@ -547,6 +645,9 @@ export default function ClientesClient({
           body: JSON.stringify(body),
         })
         if (res.ok) {
+          const data = await res.json().catch(() => ({}))
+          const updatedCliente = data.cliente
+
           // Sincronizar contactos con la tabla ContactoCliente (1FN, Fase 3)
           // Diff contra los contactos originales del cliente seleccionado.
           const contactosOriginales = (selectedCliente.contactos as Array<{ id?: string; telefono: string }>) || []
@@ -561,11 +662,43 @@ export default function ClientesClient({
             toast.error(`Cliente guardado, pero algunos contactos fallaron: ${sync.errors.join('; ')}`)
           }
 
-          await fetchClientes()
+          // Actualización quirúrgica: el PUT devuelve los escalares; los
+          // contactos los conocemos del form sincronizado.
+          if (updatedCliente) {
+            const clienteId = selectedCliente.id
+            const mergePatch: Partial<Cliente> = {
+              nombre: updatedCliente.nombre,
+              apellido: updatedCliente.apellido,
+              telefono: updatedCliente.telefono,
+              fuente: updatedCliente.fuente,
+              barrio: updatedCliente.barrio,
+              direccion: updatedCliente.direccion,
+              linkUbicacion: updatedCliente.linkUbicacion,
+              preciosEspeciales: updatedCliente.preciosEspeciales,
+              notas: updatedCliente.notas,
+              limitePedidosFiados: updatedCliente.limitePedidosFiados,
+              nombreNegocio: updatedCliente.nombreNegocio,
+              tipoNegocio: updatedCliente.tipoNegocio,
+              horaApertura: updatedCliente.horaApertura,
+              referencia: updatedCliente.referencia,
+              verificado: updatedCliente.verificado,
+              bloqueado: updatedCliente.bloqueado,
+              contactos: contactosLimpios,
+            }
+            setClientes(prev => prev.map(c => (c.id === clienteId || c.clienteId === clienteId) ? { ...c, ...mergePatch } as Cliente : c))
+            updateCachedCliente(clienteId, mergePatch)
+            if (selectedCliente?.id === clienteId) {
+              setSelectedCliente(prev => prev ? { ...prev, ...mergePatch } as Cliente : prev)
+            }
+          }
+
           if (isEditing) {
             setIsEditing(false)
             setIsEdit(false)
-            await viewCliente(selectedCliente.id)
+            // Invalidar caché para refrescar pedidos/sugerencias/negocios en
+            // background sin bloquear la UI.
+            detailCache.delete(selectedCliente.id)
+            void viewCliente(selectedCliente.id)
           } else {
             setShowModal(false)
           }
@@ -710,17 +843,45 @@ export default function ClientesClient({
     const seq = ++viewSeqRef.current
     setDetailLoading(true)
     setDetailError(null)
-    try {
-      // 30s para cubrir cold starts de Vercel Pro en conexiones rurales.
-      const res = await fetchWithTimeout(`/api/clientes/${id}`, {}, 30_000)
-      // Si el usuario cambió de cliente mientras tanto, descartar respuesta.
-      if (seq !== viewSeqRef.current) return
-      if (!res.ok) {
-        // FIX REGRESION mobile 2026-06-10 ("no me abre el detalle"):
-        // antes esto solo hacia toast.error y retornaba, sin abrir el modal.
-        // El user pensaba que el click no funcionaba. Ahora abrimos el modal
-        // con un cliente stub (solo el id) y mostramos el error dentro del
-        // modal para que el user sepa que paso.
+
+    const row = clientes.find(c => c.id === id || c.clienteId === id)
+    // Apertura optimista: si la fila está cargada, mostrar el modal al
+    // instante con los datos de la lista. El detalle completo se hidrata
+    // cuando llegue (o desde caché).
+    if (row) {
+      setSelectedCliente(optimisticClienteFromRow(row))
+      setShowDetail(true)
+      setActiveTab('info')
+    }
+
+    const entry = detailCache.get(id)
+    if (entry?.data && isFresh(entry) && !entry.promise) {
+      if (seq === viewSeqRef.current) {
+        setSelectedCliente(mergeDetailWithRow(entry.data, row))
+        setDetailLoading(false)
+        setDetailError(null)
+      }
+      return
+    }
+
+    const promise = entry?.promise ?? fetchAndCacheDetail(id)
+    if (!entry?.promise) {
+      detailCache.set(id, { data: entry?.data, ts: Date.now(), promise })
+    }
+
+    const result = await promise
+    if (seq !== viewSeqRef.current) return
+
+    if (result.ok) {
+      const merged = row ? mergeDetailWithRow(result.cliente, row) : result.cliente
+      setSelectedCliente(merged)
+      setShowDetail(true)
+      setActiveTab('info')
+      setDetailLoading(false)
+      setDetailError(null)
+    } else {
+      // Si no hay fila, mostrar stub como fallback (deep-link cliente no visible).
+      if (!row) {
         setSelectedCliente({
           id,
           clienteId: id,
@@ -731,40 +892,8 @@ export default function ClientesClient({
         } as Cliente)
         setShowDetail(true)
         setActiveTab('info')
-        setDetailError(
-          res.status === 404
-            ? 'Cliente no encontrado.'
-            : `Error al cargar el cliente (HTTP ${res.status}). Intenta de nuevo.`,
-        )
-        return
       }
-      const data = await res.json()
-      // Re-chequear guard tras parsear JSON (respuesta demorada / orden cruzado).
-      if (seq !== viewSeqRef.current) return
-      if (data.cliente) {
-        setSelectedCliente(data.cliente)
-        setShowDetail(true)
-        setActiveTab('info')
-        setDetailError(null)
-      } else {
-        setDetailError('Respuesta inesperada del servidor.')
-        setShowDetail(true)
-      }
-    } catch (error) {
-      if (seq !== viewSeqRef.current) return
-      setSelectedCliente({
-        id,
-        clienteId: id,
-        nombre: 'Error de red',
-        telefono: '',
-        frecuencia: 'IRREGULAR',
-        activo: true,
-      } as Cliente)
-      setShowDetail(true)
-      setDetailError(
-        'No se pudo conectar al servidor. Verifica tu conexión e intenta de nuevo.',
-      )
-    } finally {
+      setDetailError(result.error)
       setDetailLoading(false)
     }
   }
@@ -775,7 +904,8 @@ export default function ClientesClient({
     try {
       const res = await fetch(`/api/clientes/${id}`, { method: 'DELETE' })
       if (res.ok) {
-        await fetchClientes()
+        setClientes(prev => prev.filter(c => c.id !== id && c.clienteId !== id))
+        detailCache.delete(id)
         setShowDetail(false)
         setSelectedCliente(null)
         setDetailError(null)
@@ -819,6 +949,7 @@ export default function ClientesClient({
     const ownerId = selectedCliente?.id
     if (!ownerId) return
     closeNegocioDetail()
+    detailCache.delete(ownerId)
     try {
       const res = await fetch(`/api/negocios?clienteId=${ownerId}`)
       if (!res.ok) return
@@ -839,8 +970,14 @@ export default function ClientesClient({
       const data = await res.json()
       if (data.success) {
         toast.success(verificado ? 'Cliente verificado' : 'Marcado como no verificado')
-        await viewCliente(id)
-        await fetchClientes()
+        // Actualización quirúrgica: la respuesta PATCH ya trae el cliente
+        // actualizado; no hace falta recargar toda la lista ni el detalle.
+        const nextVerificado = data.cliente?.verificado ?? verificado
+        setClientes(prev => prev.map(c => (c.id === id || c.clienteId === id) ? { ...c, verificado: nextVerificado } as Cliente : c))
+        updateCachedCliente(id, { verificado: nextVerificado })
+        if (selectedCliente?.id === id || selectedCliente?.clienteId === id) {
+          setSelectedCliente(prev => prev ? { ...prev, verificado: nextVerificado } as Cliente : prev)
+        }
       } else {
         toast.error(data.error?.message || 'Error actualizando cliente')
       }
@@ -861,8 +998,12 @@ export default function ClientesClient({
       const data = await res.json()
       if (data.success) {
         toast.success(bloqueado ? 'Cliente bloqueado' : 'Cliente desbloqueado')
-        await viewCliente(id)
-        await fetchClientes()
+        const nextBloqueado = data.cliente?.bloqueado ?? bloqueado
+        setClientes(prev => prev.map(c => (c.id === id || c.clienteId === id) ? { ...c, bloqueado: nextBloqueado } as Cliente : c))
+        updateCachedCliente(id, { bloqueado: nextBloqueado })
+        if (selectedCliente?.id === id || selectedCliente?.clienteId === id) {
+          setSelectedCliente(prev => prev ? { ...prev, bloqueado: nextBloqueado } as Cliente : prev)
+        }
       } else {
         toast.error(data.error?.message || 'Error actualizando cliente')
       }
@@ -979,6 +1120,12 @@ export default function ClientesClient({
                   <p className="text-sm text-red-700 font-medium">{detailError}</p>
                 </div>
                 <button
+                  onClick={() => { void viewCliente(selectedCliente.id); setDetailError(null) }}
+                  className="text-red-700 hover:text-red-900 text-xs font-medium underline"
+                >
+                  Reintentar
+                </button>
+                <button
                   onClick={() => { setShowDetail(false); setIsEditing(false); setDetailError(null) }}
                   className="text-red-400 hover:text-red-600 p-1"
                   aria-label="Cerrar"
@@ -990,7 +1137,17 @@ export default function ClientesClient({
               </div>
             )}
 
-            {detailLoading ? (
+            {detailLoading && selectedCliente && (
+              <div className="px-4 py-2 bg-blue-50 border-b border-blue-100 flex items-center gap-2 text-xs text-blue-700">
+                <svg className="animate-spin h-4 w-4 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                Cargando detalles completos…
+              </div>
+            )}
+
+            {detailLoading && !selectedCliente ? (
               <div className="p-6 space-y-4">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 rounded-full bg-gray-200 animate-pulse" />
@@ -1399,7 +1556,17 @@ export default function ClientesClient({
                                   if (data.success) {
                                     if (data.coords) {
                                       toast.success(`Coordenadas actualizadas (${data.coords.origen})`)
-                                      await fetchClientes()
+                                      const clienteId = selectedCliente.id
+                                      const coords = {
+                                        lat: data.coords.lat as number,
+                                        lng: data.coords.lng as number,
+                                        geocodeOrigen: data.coords.origen as string,
+                                      }
+                                      setClientes(prev => prev.map(c => (c.id === clienteId || c.clienteId === clienteId)
+                                        ? { ...c, ...coords } as unknown as Cliente
+                                        : c))
+                                      updateCachedCliente(clienteId, coords as unknown as Partial<Cliente>)
+                                      setSelectedCliente(prev => prev?.id === clienteId ? { ...prev, ...coords } as unknown as Cliente : prev)
                                     } else {
                                       toast.warning('No se pudieron obtener coords automáticamente')
                                     }
@@ -1875,6 +2042,7 @@ export default function ClientesClient({
           onSuccess={() => {
             // Refresh negocios list; capturar ownerId para descartar si el usuario cambió de cliente.
             const ownerId = selectedCliente.id
+            detailCache.delete(ownerId)
             fetch(`/api/negocios?clienteId=${ownerId}`)
               .then(r => r.json())
               .then(d => { if (d.success && selectedCliente?.id === ownerId) setNegocios(d.data) })
