@@ -69,6 +69,11 @@ function formatDate(dateStr: string) {
 function generateResumenNumber(): string {
   const now = new Date()
   const datePart = now.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }).replace(/-/g, '')
+  if (typeof window === 'undefined') {
+    // SSR: sin sessionStorage, generamos un número basado en timestamp
+    const fallback = now.getTime().toString(36).slice(-4).toUpperCase()
+    return `RES-${datePart}-${fallback}`
+  }
   const storageKey = `resumen-counter-${datePart}`
   let counter = parseInt(sessionStorage.getItem(storageKey) || '0', 10) + 1
   sessionStorage.setItem(storageKey, counter.toString())
