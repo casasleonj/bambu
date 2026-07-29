@@ -161,6 +161,11 @@ export interface FiltrosActivos {
 
 export interface ClientesClientProps {
   initialClientes: Cliente[]
+  initialTotal?: number
+  initialTotalPages?: number
+  initialPage?: number
+  initialPageSize?: number
+  initialSearch?: string
   initialLimiteFiados?: number
   openClienteId?: string
   filtroActivo?: FiltroRiesgo

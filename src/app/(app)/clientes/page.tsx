@@ -1,15 +1,17 @@
-import { prisma } from '@/lib/prisma'
+import type { ClientesClientProps } from './clientes-client/types'
+import { headers } from 'next/headers'
 import { LIMITE_FIADOS_DEFAULT } from '@/lib/constants'
 import { getConfigInt } from '@/lib/config'
 import ClientesClient from './clientes-client'
 import {
-  buildClientesWhere,
   resolveUbicacionMaps,
   type ClientesSearchParams,
   type MostrarNegocio,
 } from '@/lib/cliente-filters'
 
 export type FiltroRiesgo = 'bloqueado' | 'reclamaciones' | 'noVerificado' | null
+
+const DEFAULT_PAGE_SIZE = 25
 
 export default async function ClientesPage({
   searchParams,
@@ -24,56 +26,45 @@ export default async function ClientesPage({
   else if (resolvedSearchParams.reclamaciones === 'gte3') filtroActivo = 'reclamaciones'
   else if (resolvedSearchParams.noVerificado === 'true') filtroActivo = 'noVerificado'
 
-  // FIX prod-performance: no cargar pedidos/facturas/abonos/pagos en el listado.
-  // El listado solo necesita datos superficiales + contactos + negocios +
-  // plantilla recurrente. El detalle (modal) carga el resto vía API.
-  const where = buildClientesWhere(resolvedSearchParams)
+  const page = Math.max(1, parseInt(resolvedSearchParams.page || '1', 10))
+  const pageSize = Math.min(100, Math.max(1, parseInt(resolvedSearchParams.pageSize || String(DEFAULT_PAGE_SIZE), 10)))
+  const search = resolvedSearchParams.search || ''
 
-  const [clientes, saldos, limiteGlobalFiados] = await Promise.all([
-    prisma.cliente.findMany({
-      where,
-      orderBy: { nombre: 'asc' },
-      take: 100,
-      include: {
-        _count: { select: { pedidos: true } },
-        contactos: { orderBy: { nombre: 'asc' } },
-        negocios: {
-          where: { activo: true },
-          select: {
-            id: true,
-            nombre: true,
-            tipoNegocio: true,
-            direccion: true,
-            barrio: true,
-            referencia: true,
-            linkUbicacion: true,
-          },
-        },
-        plantillaRecurrente: true,
-      },
-    }),
-    prisma.pedido.groupBy({
-      by: ['clienteId'],
-      where: {
-        saldo: { gt: 0 },
-        estadoEntrega: 'ENTREGADO',
-      },
-      _sum: { saldo: true },
-    }),
-    getConfigInt('LIMITE_PEDIDOS_FIADOS_DEFAULT', LIMITE_FIADOS_DEFAULT),
-  ])
-  const saldoById = new Map(
-    saldos.map(s => [s.clienteId, Number(s._sum.saldo ?? 0)])
-  )
+  // Reutilizar la lógica de paginación, búsqueda y filtros de la API
+  // para mantener Server Component y Client Component perfectamente sincronizados.
+  const apiParams = new URLSearchParams()
+  apiParams.set('page', String(page))
+  apiParams.set('pageSize', String(pageSize))
+  if (search) apiParams.set('search', search)
+  if (resolvedSearchParams.bloqueado) apiParams.set('bloqueado', resolvedSearchParams.bloqueado)
+  if (resolvedSearchParams.reclamaciones) apiParams.set('reclamaciones', resolvedSearchParams.reclamaciones)
+  if (resolvedSearchParams.noVerificado) apiParams.set('noVerificado', resolvedSearchParams.noVerificado)
+  if (resolvedSearchParams.mostrarNegocio) apiParams.set('mostrarNegocio', resolvedSearchParams.mostrarNegocio)
+  if (resolvedSearchParams.ubicacionMaps) apiParams.set('ubicacionMaps', resolvedSearchParams.ubicacionMaps)
+  if (resolvedSearchParams.todosNegociosConLink === 'true') apiParams.set('todosNegociosConLink', 'true')
+  if (resolvedSearchParams.clienteConLink === 'true') apiParams.set('clienteConLink', 'true')
 
-  const serialized = JSON.parse(JSON.stringify(clientes)).map(
-    (c: Record<string, unknown>) => ({
-      ...c,
-      clienteId: c.id,
-      saldoPendiente: saldoById.get(c.id as string) ?? 0,
-      preciosEspeciales: c.preciosEspeciales || undefined,
-    })
-  )
+  // El Server Component necesita una URL absoluta para fetch; Next.js no
+  // acepta paths relativos en el runtime de Node.js en todos los casos.
+  const reqHeaders = await headers()
+  const host = reqHeaders.get('host') || 'localhost:3001'
+  const protocol = host.startsWith('localhost') ? 'http' : 'https'
+  const apiUrl = `${protocol}://${host}/api/clientes?${apiParams.toString()}`
+
+  const apiRes = await fetch(apiUrl, { headers: { cookie: reqHeaders.get('cookie') || '' } })
+  let clientes: ClientesClientProps['initialClientes'] = []
+  let total = 0
+  let totalPages = 1
+  if (apiRes.ok) {
+    const data = await apiRes.json()
+    if (data.success) {
+      clientes = (data.data as ClientesClientProps['initialClientes']) || (data.data?.clientes as ClientesClientProps['initialClientes']) || []
+      total = (data.total as number) ?? 0
+      totalPages = (data.totalPages as number) ?? 1
+    }
+  }
+
+  const limiteGlobalFiados = await getConfigInt('LIMITE_PEDIDOS_FIADOS_DEFAULT', LIMITE_FIADOS_DEFAULT)
 
   const filtrosActivos = {
     mostrarNegocio: (resolvedSearchParams.mostrarNegocio ?? 'todos') as MostrarNegocio,
@@ -82,7 +73,12 @@ export default async function ClientesPage({
 
   return (
     <ClientesClient
-      initialClientes={serialized}
+      initialClientes={clientes}
+      initialTotal={total}
+      initialTotalPages={totalPages}
+      initialPage={page}
+      initialPageSize={pageSize}
+      initialSearch={search}
       initialLimiteFiados={limiteGlobalFiados}
       openClienteId={resolvedSearchParams.openCliente}
       filtroActivo={filtroActivo}

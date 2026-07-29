@@ -1,5 +1,5 @@
 // @tests api/cliente, api/cliente/quick, api/negocios, api/clientes/stats, api/clientes/historial
-import {test, expect, loginAs, goto, apiPost, apiGet, apiPut, apiPatch, apiDelete, createCliente, createClienteFull, setupClienteWithPedidos, resetDatabase, sharedPageLogin, sharedLoginAs} from './fixtures'
+import {test, expect, loginAs, goto, apiPost, apiGet, apiPut, apiPatch, apiDelete, createCliente, createClienteFull, setupClienteWithPedidos, resetDatabase, sharedPageLogin} from './fixtures'
 import type { Page } from '@playwright/test'
 
 const BASE = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3001'
@@ -24,14 +24,14 @@ test.describe('Clientes UI', () => {
   })
 
 
-  test('page loads with heading, button and search', async ({ page }) => {
+  test('page loads with heading, button and search', async ({ page: _page }) => {
     await goto(p, '/clientes')
     await expect(p.getByRole('heading', { name: 'Clientes', exact: true })).toBeVisible()
     await expect(p.getByRole('button', { name: /Nuevo Cliente/ })).toBeVisible()
     await expect(p.locator('input[placeholder*="Buscar"]')).toBeVisible()
   })
 
-  test('crear cliente via UI modal', async ({ page }) => {
+  test('crear cliente via UI modal', async ({ page: _page }) => {
     await goto(p, '/clientes')
     await p.getByRole('button', { name: /Nuevo Cliente/ }).click()
 
@@ -53,7 +53,7 @@ test.describe('Clientes UI', () => {
     await expect(p.getByText(name)).toBeVisible()
   })
 
-  test('validacion: nombre vacio mantiene modal abierto', async ({ page }) => {
+  test('validacion: nombre vacio mantiene modal abierto', async ({ page: _page }) => {
     await goto(p, '/clientes')
     await p.getByRole('button', { name: /Nuevo Cliente/ }).click()
 
@@ -66,20 +66,21 @@ test.describe('Clientes UI', () => {
     await expect(modal).toBeVisible()
   })
 
-  test('buscar cliente filtra resultados', async ({ page }) => {
+  test('buscar cliente filtra resultados', async ({ page: _page }) => {
     await createCliente(p, { nombre: 'BuscarTest Cliente' })
     await goto(p, '/clientes')
 
     const searchInput = p.locator('input[placeholder*="Buscar"]')
     await searchInput.fill('BuscarTest')
-    await expect(p.getByText('BuscarTest Cliente').first()).toBeVisible()
+    // La búsqueda es server-side con debounce 500ms; esperamos el round-trip.
+    await expect(p.getByText('BuscarTest Cliente').first()).toBeVisible({ timeout: 10000 })
 
     await searchInput.clear()
     await searchInput.fill('zzzznoexiste')
-    await expect(p.getByText('BuscarTest Cliente').first()).not.toBeVisible({ timeout: 5000 })
+    await expect(p.getByText('BuscarTest Cliente').first()).not.toBeVisible({ timeout: 10000 })
   })
 
-  test('buscar por nombre de negocio muestra coincidencia y abre detalle', async ({ page }) => {
+  test('buscar por nombre de negocio muestra coincidencia y abre detalle', async ({ page: _page }) => {
     const unique = `NegocioBusqueda${Date.now()}`
     const cliente = await createClienteFull(p, {
       nombre: 'ClienteConNegocioBusqueda',
@@ -96,13 +97,13 @@ test.describe('Clientes UI', () => {
     await searchInput.fill(unique)
 
     const matchButton = p.getByText(`Coincide con el negocio: ${unique}`)
-    await expect(matchButton).toBeVisible()
+    await expect(matchButton).toBeVisible({ timeout: 10000 })
 
     await matchButton.click()
     await expect(p.getByRole('heading', { name: unique, exact: true })).toBeVisible({ timeout: 5000 })
   })
 
-  test('ver detalle de cliente al hacer click en fila', async ({ page }) => {
+  test('ver detalle de cliente al hacer click en fila', async ({ page: _page }) => {
     await goto(p, '/clientes')
     const firstRow = p.locator('table tbody tr').first()
     if (await firstRow.isVisible({ timeout: 3000 }).catch(() => false)) {
@@ -111,13 +112,13 @@ test.describe('Clientes UI', () => {
     }
   })
 
-  test('openCliente param abre panel de detalle', async ({ page }) => {
+  test('openCliente param abre panel de detalle', async ({ page: _page }) => {
     const c = await createCliente(p, { nombre: 'Open Param Test' })
     await goto(p, `/clientes?openCliente=${c.cliente.id}`)
     await expect(p.getByRole('heading', { name: 'Open Param Test' })).toBeVisible()
   })
 
-  test('links sin 404 desde detalle', async ({ page }) => {
+  test('links sin 404 desde detalle', async ({ page: _page }) => {
     const c = await createCliente(p, { nombre: 'Links Test' })
     await goto(p, `/clientes?openCliente=${c.cliente.id}`)
     await expect(p.getByRole('heading', { name: 'Links Test' })).toBeVisible()
@@ -125,13 +126,13 @@ test.describe('Clientes UI', () => {
     await expect(p.getByRole('button', { name: 'Editar', exact: true })).toBeVisible()
   })
 
-  test('vista lista muestra filtros y controles', async ({ page }) => {
+  test('vista lista muestra filtros y controles', async ({ page: _page }) => {
     await goto(p, '/clientes')
     await expect(p.getByRole('button', { name: 'Con saldo' })).toBeVisible()
     await expect(p.getByRole('button', { name: 'Con frecuencia' })).toBeVisible()
   })
 
-  test('filtros de negocio y ubicación funcionan', async ({ page }) => {
+  test('filtros de negocio y ubicación funcionan', async ({ page: _page }) => {
 
     // Crear clientes base
     const cConNegocioLink = await createClienteFull(p, {
@@ -214,13 +215,13 @@ test.describe('Clientes API CRUD', () => {
   test.afterAll(async () => {
     await p?.close()
   })
-  test('POST crea cliente y retorna id', async ({ page }) => {
+  test('POST crea cliente y retorna id', async ({ page: _page }) => {
     const c = await createCliente(p)
     expect(c.cliente?.id).toBeTruthy()
     expect(c.cliente?.clienteId).toBeTruthy()
   })
 
-  test('POST crea cliente con datos completos', async ({ page }) => {
+  test('POST crea cliente con datos completos', async ({ page: _page }) => {
     const res = await apiPost(p, '/api/clientes', {
       nombre: 'Cliente Completo',
       apellido: 'Apellido Test',
@@ -237,7 +238,7 @@ test.describe('Clientes API CRUD', () => {
     expect(body.cliente.nombreNegocio).toBe('Tienda Test')
   })
 
-  test('POST retorna 409 con telefono duplicado', async ({ page }) => {
+  test('POST retorna 409 con telefono duplicado', async ({ page: _page }) => {
     const phone = `3${String(Date.now()).slice(-9)}`
     await createCliente(p, { nombre: 'Original', telefono: phone })
 
@@ -255,14 +256,14 @@ test.describe('Clientes API CRUD', () => {
     expect(errorMsg.toLowerCase()).toMatch(/teléfono|telefono|existe/)
   })
 
-  test('POST valida campos requeridos', async ({ page }) => {
+  test('POST valida campos requeridos', async ({ page: _page }) => {
     const res = await apiPost(p, '/api/clientes', {
       nombre: '',
       telefono: '3001234567'})
     expect(res.status()).toBe(400)
   })
 
-  test('POST valida linkUbicacion como URL', async ({ page }) => {
+  test('POST valida linkUbicacion como URL', async ({ page: _page }) => {
     const res = await apiPost(p, '/api/clientes', {
       nombre: 'Test',
       telefono: `3${String(Date.now()).slice(-9)}`,
@@ -270,7 +271,7 @@ test.describe('Clientes API CRUD', () => {
     expect(res.status()).toBe(400)
   })
 
-  test('GET retorna cliente por id', async ({ page }) => {
+  test('GET retorna cliente por id', async ({ page: _page }) => {
     const c = await createCliente(p)
     const res = await apiGet(p, `/api/clientes/${c.cliente.id}`)
     expect(res.status()).toBe(200)
@@ -279,7 +280,7 @@ test.describe('Clientes API CRUD', () => {
     expect(body.cliente.clienteId).toBeTruthy()
   })
 
-  test('GET con ID inexistente retorna 404', async ({ page }) => {
+  test('GET con ID inexistente retorna 404', async ({ page: _page }) => {
     try {
       const res = await apiGet(p, '/api/clientes/00000000-0000-0000-0000-000000000000')
       expect(res.status()).toBe(404)
@@ -289,7 +290,7 @@ test.describe('Clientes API CRUD', () => {
     }
   })
 
-  test('PUT edita cliente', async ({ page }) => {
+  test('PUT edita cliente', async ({ page: _page }) => {
     const c = await createCliente(p)
     const res = await apiPut(p, `/api/clientes/${c.cliente.id}`, { nombre: 'Editado' })
     const body = await res.json()
@@ -297,12 +298,12 @@ test.describe('Clientes API CRUD', () => {
     expect(body.cliente.nombre).toBe('Editado')
   })
 
-  test('PUT con ID inexistente retorna 404 o 500', async ({ page }) => {
+  test('PUT con ID inexistente retorna 404 o 500', async ({ page: _page }) => {
     const res = await apiPut(p, '/api/clientes/00000000-0000-0000-0000-000000000000', { nombre: 'X' })
     expect([404, 500]).toContain(res.status())
   })
 
-  test('PATCH verificado sets timestamp', async ({ page }) => {
+  test('PATCH verificado sets timestamp', async ({ page: _page }) => {
     const c = await createCliente(p)
     const res = await apiPatch(p, `/api/clientes/${c.cliente.id}`, { verificado: true })
     expect(res.status()).toBe(200)
@@ -311,7 +312,7 @@ test.describe('Clientes API CRUD', () => {
     expect(body.cliente.verificadoEn).toBeTruthy()
   })
 
-  test('PATCH bloqueado blocks client', async ({ page }) => {
+  test('PATCH bloqueado blocks client', async ({ page: _page }) => {
     const c = await createCliente(p)
     const res = await apiPatch(p, `/api/clientes/${c.cliente.id}`, { bloqueado: true })
     expect(res.status()).toBe(200)
@@ -319,13 +320,13 @@ test.describe('Clientes API CRUD', () => {
     expect(body.cliente.bloqueado).toBe(true)
   })
 
-  test('PATCH sin verificado ni bloqueado retorna 400', async ({ page }) => {
+  test('PATCH sin verificado ni bloqueado retorna 400', async ({ page: _page }) => {
     const c = await createCliente(p)
     const res = await apiPatch(p, `/api/clientes/${c.cliente.id}`, { nombre: 'Should fail' })
     expect(res.status()).toBe(400)
   })
 
-  test('DELETE soft delete - GET retorna 404', async ({ page }) => {
+  test('DELETE soft delete - GET retorna 404', async ({ page: _page }) => {
     const c = await createCliente(p)
     const res = await apiDelete(p, `/api/clientes/${c.cliente.id}`)
     expect(res.status()).toBe(200)
@@ -333,14 +334,14 @@ test.describe('Clientes API CRUD', () => {
     expect(res2.status()).toBe(404)
   })
 
-  test('DELETE dos veces retorna 404 o 500', async ({ page }) => {
+  test('DELETE dos veces retorna 404 o 500', async ({ page: _page }) => {
     const c = await createCliente(p)
     await apiDelete(p, `/api/clientes/${c.cliente.id}`)
     const res2 = await apiDelete(p, `/api/clientes/${c.cliente.id}`)
     expect([404, 500]).toContain(res2.status())
   })
 
-  test('precios especiales via API', async ({ page }) => {
+  test('precios especiales via API', async ({ page: _page }) => {
     const c = await createCliente(p)
     const precios = JSON.stringify({ DOMICILIO: { cPacaAguaPed: 3000 }, PUNTO: {} })
     await apiPut(p, `/api/clientes/${c.cliente.id}`, { preciosEspeciales: precios })
@@ -362,7 +363,7 @@ test.describe('Contactos API', () => {
   test.afterAll(async () => {
     await p?.close()
   })
-  test('POST crea contactos y GET los incluye', async ({ page }) => {
+  test('POST crea contactos y GET los incluye', async ({ page: _page }) => {
     const c = await createCliente(p, { nombre: 'Contactos Test' })
 
     const res1 = await apiPost(p, `/api/clientes/${c.cliente.id}/contactos`, {
@@ -385,7 +386,7 @@ test.describe('Contactos API', () => {
     expect(getBody.cliente.contactos).toHaveLength(2)
   })
 
-  test('POST deduplica por telefono (409)', async ({ page }) => {
+  test('POST deduplica por telefono (409)', async ({ page: _page }) => {
     const c = await createCliente(p)
 
     const res1 = await apiPost(p, `/api/clientes/${c.cliente.id}/contactos`, {
@@ -399,7 +400,7 @@ test.describe('Contactos API', () => {
     expect(res2.status()).toBe(409)
   })
 
-  test('PATCH actualiza contacto', async ({ page }) => {
+  test('PATCH actualiza contacto', async ({ page: _page }) => {
     const c = await createCliente(p)
 
     const createRes = await apiPost(p, `/api/clientes/${c.cliente.id}/contactos`, {
@@ -415,7 +416,7 @@ test.describe('Contactos API', () => {
     expect(patchBody.contacto.nombre).toBe('Actualizado')
   })
 
-  test('DELETE borra contacto', async ({ page }) => {
+  test('DELETE borra contacto', async ({ page: _page }) => {
     const c = await createCliente(p)
 
     const createRes = await apiPost(p, `/api/clientes/${c.cliente.id}/contactos`, {
@@ -500,7 +501,7 @@ test.describe('Clientes Stats API', () => {
   test.afterAll(async () => {
     await p?.close()
   })
-  test('GET stats retorna datos financieros con pedidos', async ({ page }) => {
+  test('GET stats retorna datos financieros con pedidos', async ({ page: _page }) => {
     const c = await setupClienteWithPedidos(p, 3)
 
     const res = await apiGet(p, `/api/clientes/${c.cliente.id}/stats`)
@@ -513,7 +514,7 @@ test.describe('Clientes Stats API', () => {
     expect(body.stats.productosFavoritos).toBeDefined()
   })
 
-  test('GET stats retorna ceros para cliente sin pedidos', async ({ page }) => {
+  test('GET stats retorna ceros para cliente sin pedidos', async ({ page: _page }) => {
     const c = await createCliente(p)
 
     const res = await apiGet(p, `/api/clientes/${c.cliente.id}/stats`)
@@ -524,7 +525,7 @@ test.describe('Clientes Stats API', () => {
     expect(body.stats.totalFiado).toBe(0)
   })
 
-  test('GET stats incluye frecuenciaRealDias', async ({ page }) => {
+  test('GET stats incluye frecuenciaRealDias', async ({ page: _page }) => {
     const c = await setupClienteWithPedidos(p, 4)
 
     const res = await apiGet(p, `/api/clientes/${c.cliente.id}/stats`)
@@ -534,7 +535,7 @@ test.describe('Clientes Stats API', () => {
     expect(body.stats.metodosPago).toBeDefined()
   })
 
-  test('GET stats con ID inexistente retorna 500 o 200 con ceros', async ({ page }) => {
+  test('GET stats con ID inexistente retorna 500 o 200 con ceros', async ({ page: _page }) => {
     const res = await apiGet(p, '/api/clientes/00000000-0000-0000-0000-000000000000/stats')
     // The endpoint queries pedidos by clienteId, which returns empty array for non-existent ID
     expect([200, 500]).toContain(res.status())
@@ -553,7 +554,7 @@ test.describe('Clientes Historial API', () => {
   test.afterAll(async () => {
     await p?.close()
   })
-  test('GET historial retorna eventos de pedido', async ({ page }) => {
+  test('GET historial retorna eventos de pedido', async ({ page: _page }) => {
     const c = await setupClienteWithPedidos(p, 2)
 
     const res = await apiGet(p, `/api/clientes/${c.cliente.id}/historial`)
@@ -564,7 +565,7 @@ test.describe('Clientes Historial API', () => {
     expect(body.hasMore).toBeDefined()
   })
 
-  test('GET historial con paginacion', async ({ page }) => {
+  test('GET historial con paginacion', async ({ page: _page }) => {
     const c = await setupClienteWithPedidos(p, 5)
 
     const res = await apiGet(p, `/api/clientes/${c.cliente.id}/historial?page=1&pageSize=2`)
@@ -574,7 +575,7 @@ test.describe('Clientes Historial API', () => {
     expect(body.pageSize).toBe(2)
   })
 
-  test('GET historial con filtro de meses', async ({ page }) => {
+  test('GET historial con filtro de meses', async ({ page: _page }) => {
     const c = await setupClienteWithPedidos(p, 2)
 
     const res = await apiGet(p, `/api/clientes/${c.cliente.id}/historial?meses=1`)
@@ -596,7 +597,7 @@ test.describe('Clientes Resumen Facturas API', () => {
   test.afterAll(async () => {
     await p?.close()
   })
-  test('GET resumen-facturas con rango de fechas valido', async ({ page }) => {
+  test('GET resumen-facturas con rango de fechas valido', async ({ page: _page }) => {
     const c = await createCliente(p)
     const hoy = new Date().toISOString().split('T')[0]
     const ayer = new Date(Date.now() - 86400000).toISOString().split('T')[0]
@@ -609,7 +610,7 @@ test.describe('Clientes Resumen Facturas API', () => {
     expect(body.totales).toBeDefined()
   })
 
-  test('GET resumen-facturas con periodo mayor a 3 meses retorna 400', async ({ page }) => {
+  test('GET resumen-facturas con periodo mayor a 3 meses retorna 400', async ({ page: _page }) => {
     const c = await createCliente(p)
     const hoy = new Date().toISOString().split('T')[0]
     const hace4meses = new Date(Date.now() - 120 * 86400000).toISOString().split('T')[0]
@@ -618,7 +619,7 @@ test.describe('Clientes Resumen Facturas API', () => {
     expect(res.status()).toBe(400)
   })
 
-  test('GET resumen-facturas con cliente inexistente retorna 404', async ({ page }) => {
+  test('GET resumen-facturas con cliente inexistente retorna 404', async ({ page: _page }) => {
     const hoy = new Date().toISOString().split('T')[0]
     const ayer = new Date(Date.now() - 86400000).toISOString().split('T')[0]
 
@@ -639,7 +640,7 @@ test.describe('Clientes Recomendaciones API', () => {
   test.afterAll(async () => {
     await p?.close()
   })
-  test('GET recomendaciones retorna lista', async ({ page }) => {
+  test('GET recomendaciones retorna lista', async ({ page: _page }) => {
     const res = await apiGet(p, '/api/clientes/recomendaciones')
     expect(res.status()).toBe(200)
     const body = await res.json()
@@ -647,7 +648,7 @@ test.describe('Clientes Recomendaciones API', () => {
     expect(body.total).toBeDefined()
   })
 
-  test('GET recomendaciones incluye clientes sin pedidos', async ({ page }) => {
+  test('GET recomendaciones incluye clientes sin pedidos', async ({ page: _page }) => {
     await createCliente(p, { nombre: 'Sin Pedidos Rec' })
 
     const res = await apiGet(p, '/api/clientes/recomendaciones')
@@ -655,7 +656,7 @@ test.describe('Clientes Recomendaciones API', () => {
     expect(res.status()).toBe(200)
   })
 
-  test('GET recomendaciones ordena por urgencia', async ({ page }) => {
+  test('GET recomendaciones ordena por urgencia', async ({ page: _page }) => {
     const res = await apiGet(p, '/api/clientes/recomendaciones')
     const body = await res.json()
     if (body.recomendaciones.length >= 2) {
@@ -683,7 +684,7 @@ test.describe('Negocios API', () => {
   test.afterAll(async () => {
     await p?.close()
   })
-  test('POST crea negocio para cliente', async ({ page }) => {
+  test('POST crea negocio para cliente', async ({ page: _page }) => {
     const c = await createCliente(p)
     const res = await apiPost(p, '/api/negocios', {
       clienteId: c.cliente.id,
@@ -698,7 +699,7 @@ test.describe('Negocios API', () => {
     expect(body.negocio.clienteId).toBe(c.cliente.id)
   })
 
-  test('GET negocios lista todos', async ({ page }) => {
+  test('GET negocios lista todos', async ({ page: _page }) => {
     const c = await createCliente(p)
     await apiPost(p, '/api/negocios', { clienteId: c.cliente.id, nombre: 'Negocio A' })
     await apiPost(p, '/api/negocios', { clienteId: c.cliente.id, nombre: 'Negocio B' })
@@ -710,7 +711,7 @@ test.describe('Negocios API', () => {
     expect(negocios.length).toBeGreaterThanOrEqual(2)
   })
 
-  test('GET negocios filtra por clienteId', async ({ page }) => {
+  test('GET negocios filtra por clienteId', async ({ page: _page }) => {
     const c1 = await createCliente(p, { nombre: 'Cliente Filtro 1' })
     const c2 = await createCliente(p, { nombre: 'Cliente Filtro 2' })
     await apiPost(p, '/api/negocios', { clienteId: c1.cliente.id, nombre: 'Solo C1' })
@@ -723,7 +724,7 @@ test.describe('Negocios API', () => {
     expect(negocios[0].nombre).toBe('Solo C1')
   })
 
-  test('PUT actualiza negocio', async ({ page }) => {
+  test('PUT actualiza negocio', async ({ page: _page }) => {
     const c = await createCliente(p)
     const negRes = await apiPost(p, '/api/negocios', {
       clienteId: c.cliente.id,
@@ -746,7 +747,7 @@ test.describe('Negocios API', () => {
     }
   })
 
-  test('DELETE negocio sin pedidos', async ({ page }) => {
+  test('DELETE negocio sin pedidos', async ({ page: _page }) => {
     const c = await createCliente(p)
     const negRes = await apiPost(p, '/api/negocios', {
       clienteId: c.cliente.id,
@@ -765,7 +766,7 @@ test.describe('Negocios API', () => {
     }
   })
 
-  test('DELETE negocio con pedidos retorna 400', async ({ page }) => {
+  test('DELETE negocio con pedidos retorna 400', async ({ page: _page }) => {
     const c = await createCliente(p)
     const negRes = await apiPost(p, '/api/negocios', {
       clienteId: c.cliente.id,
@@ -793,14 +794,14 @@ test.describe('Negocios API', () => {
     }
   })
 
-  test('POST negocio con cliente inexistente retorna 404', async ({ page }) => {
+  test('POST negocio con cliente inexistente retorna 404', async ({ page: _page }) => {
     const res = await apiPost(p, '/api/negocios', {
       clienteId: '00000000-0000-0000-0000-000000000000',
       nombre: 'Ghost'})
     expect(res.status()).toBe(404)
   })
 
-  test('POST negocio valida campos requeridos', async ({ page }) => {
+  test('POST negocio valida campos requeridos', async ({ page: _page }) => {
     const c = await createCliente(p)
     const res = await apiPost(p, '/api/negocios', {
       clienteId: c.cliente.id,

@@ -56,8 +56,34 @@ vi.mock('@/lib/fetch-resilient', () => ({
 // del modulo. El path relativo './cliente-table' desde este test
 // (ubicado en __tests__/) apunta a una carpeta que no existe.
 vi.mock('@/app/(app)/clientes/clientes-client/cliente-table', () => ({
-  ClienteTable: ({ clientes, onViewCliente }: { clientes: Array<{ id: string; nombre: string }>; onViewCliente: (id: string) => void }) => (
+  ClienteTable: ({
+    clientes,
+    total,
+    page,
+    totalPages,
+    search,
+    onSearchChange,
+    onPageChange,
+    onViewCliente,
+    onRetry,
+  }: {
+    clientes: Array<{ id: string; nombre: string }>
+    total: number
+    page: number
+    totalPages: number
+    search: string
+    onSearchChange: (val: string) => void
+    onPageChange: (page: number) => void
+    onViewCliente: (id: string) => void
+    onRetry: () => void
+  }) => (
     <div data-testid="cliente-table">
+      <input
+        data-testid="cliente-search-input"
+        value={search}
+        onChange={(e) => onSearchChange(e.target.value)}
+      />
+      <div data-testid="cliente-pagination-info">{total} clientes — página {page} de {totalPages}</div>
       {clientes.map((c: { id: string; nombre: string }) => (
         <div
           key={c.id}
@@ -68,6 +94,9 @@ vi.mock('@/app/(app)/clientes/clientes-client/cliente-table', () => ({
           {c.nombre}
         </div>
       ))}
+      <button data-testid="cliente-page-prev" onClick={() => onPageChange(page - 1)}>Anterior</button>
+      <button data-testid="cliente-page-next" onClick={() => onPageChange(page + 1)}>Siguiente</button>
+      <button data-testid="cliente-retry" onClick={onRetry}>Reintentar</button>
     </div>
   ),
 }))
@@ -115,7 +144,9 @@ vi.mock('sonner', () => ({
 
 import ClientesClient from '@/app/(app)/clientes/clientes-client'
 import { __resetDetailCache } from '@/app/(app)/clientes/clientes-client'
+import { __resetPanelCaches } from '@/app/(app)/clientes/clientes-client/panel-prefetch'
 import type { Cliente } from '@/app/(app)/clientes/clientes-client/types'
+import { useSearchParams } from 'next/navigation'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
@@ -208,6 +239,7 @@ describe('ClientesClient — regresion mobile 2026-06-10', () => {
     cleanup()
     global.fetch = originalFetch
     __resetDetailCache()
+    __resetPanelCaches()
     // NO usar vi.restoreAllMocks() — eso restaura las implementaciones
     // de los vi.fn() (e.g. `mockReturnValue([])`) a la implementacion
     // original (undefined), causando que `calcularAlertasCliente` retorne
@@ -623,7 +655,9 @@ describe('ClientesClient — regresion mobile 2026-06-10', () => {
     // Debe abrir al instante con el nombre cacheado.
     expect(screen.getByRole('heading', { name: 'Juan Servidor' })).toBeTruthy()
 
-    const detailCalls = calls.filter(c => c.url.includes('/api/clientes/cliente-1'))
+    // Match exacto: el prefetch del panel también llama /stats y /historial
+    // (sub-paths de /api/clientes/cliente-1) — el assertion es sobre el detalle.
+    const detailCalls = calls.filter(c => c.url === '/api/clientes/cliente-1')
     expect(detailCalls).toHaveLength(1)
   })
 
@@ -663,8 +697,47 @@ describe('ClientesClient — regresion mobile 2026-06-10', () => {
       expect(screen.getByRole('heading', { name: 'Juan Servidor' })).toBeTruthy()
     })
 
-    const detailCalls = calls.filter(c => c.url.includes('/api/clientes/cliente-1'))
+    const detailCalls = calls.filter(c => c.url === '/api/clientes/cliente-1')
     expect(detailCalls).toHaveLength(1)
+  })
+
+  it('viewCliente dispara prefetch de stats e historial en background', async () => {
+    const { mock, calls, responses } = createFetchMock()
+    global.fetch = mock as unknown as typeof fetch
+
+    responses.set('/api/clientes/cliente-1', {
+      status: 200,
+      body: {
+        success: true,
+        cliente: { ...mockCliente, nombre: 'Juan Servidor', apellido: '', negocios: [] },
+      },
+    })
+
+    render(
+      <ClientesClient
+        initialClientes={[mockCliente]}
+        filtrosActivos={{ mostrarNegocio: 'todos', ubicacionMaps: 'todos' }}
+        openClienteId={undefined}
+        filtroActivo={null}
+      />,
+    )
+
+    const row = screen.getByTestId('cliente-row-cliente-1')
+    await act(async () => {
+      fireEvent.click(row)
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Juan Servidor' })).toBeTruthy()
+    })
+
+    // El panel prefetch dispara ambas pestañas en background (una vez cada una).
+    const statsCalls = calls.filter(c => c.url === '/api/clientes/cliente-1/stats')
+    const historialCalls = calls.filter(c =>
+      c.url === '/api/clientes/cliente-1/historial?meses=12&page=1&pageSize=20',
+    )
+    expect(statsCalls).toHaveLength(1)
+    expect(historialCalls).toHaveLength(1)
   })
 
   it('toggleVerificado actualiza la UI sin recargar toda la lista', async () => {
@@ -734,5 +807,57 @@ describe('ClientesClient — regresion mobile 2026-06-10', () => {
     expect(postPatchCalls).toHaveLength(1)
     expect(postPatchCalls[0].url).toContain('/api/clientes/cliente-1')
     expect(postPatchCalls[0].init?.method).toBe('PATCH')
+  })
+
+  it('recibe metadatos de paginación desde el Server Component y los pasa a ClienteTable', () => {
+    render(
+      <ClientesClient
+        initialClientes={[mockCliente]}
+        initialTotal={128}
+        initialTotalPages={6}
+        initialPage={2}
+        initialPageSize={25}
+        initialSearch=""
+        filtrosActivos={{ mostrarNegocio: 'todos', ubicacionMaps: 'todos' }}
+        openClienteId={undefined}
+        filtroActivo={null}
+      />,
+    )
+
+    expect(screen.getByTestId('cliente-pagination-info').textContent).toBe('128 clientes — página 2 de 6')
+  })
+
+  it('fetchClientes usa los parámetros actuales de la URL (page, pageSize, búsqueda)', async () => {
+    const { mock, calls } = createFetchMock()
+    global.fetch = mock as unknown as typeof fetch
+
+    // Simular URL con página 2 y búsqueda server-side.
+    const mockUseSearchParams = vi.mocked(useSearchParams)
+    mockUseSearchParams.mockReturnValue(new URLSearchParams('page=2&search=Juan&pageSize=25') as unknown as ReturnType<typeof useSearchParams>)
+
+    render(
+      <ClientesClient
+        initialClientes={[mockCliente]}
+        initialTotal={1}
+        initialTotalPages={1}
+        initialPage={1}
+        initialPageSize={25}
+        initialSearch=""
+        filtrosActivos={{ mostrarNegocio: 'todos', ubicacionMaps: 'todos' }}
+        openClienteId={undefined}
+        filtroActivo={null}
+      />,
+    )
+
+    // Forzar fetchClientes vía el botón de reintentar del ClienteTable.
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('cliente-retry'))
+    })
+
+    const listCalls = calls.filter(c => c.url.includes('/api/clientes?'))
+    expect(listCalls).toHaveLength(1)
+    expect(listCalls[0].url).toContain('page=2')
+    expect(listCalls[0].url).toContain('search=Juan')
+    expect(listCalls[0].url).toContain('pageSize=25')
   })
 })

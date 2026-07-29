@@ -11,6 +11,9 @@ export type UbicacionMapsFilter =
 
 export type ClientesSearchParams = {
   openCliente?: string
+  search?: string
+  page?: string
+  pageSize?: string
   bloqueado?: string
   reclamaciones?: string
   noVerificado?: string

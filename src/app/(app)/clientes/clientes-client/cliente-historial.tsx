@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import { loadClienteHistorial, peekClienteHistorial } from './panel-prefetch'
 import type { TimelineEvent, TimelineFilter } from './types'
 
 const FILTROS: { key: TimelineFilter; label: string }[] = [
@@ -33,18 +34,37 @@ interface ClienteHistorialProps {
 }
 
 export function ClienteHistorial({ clienteId }: ClienteHistorialProps) {
-  const [events, setEvents] = useState<TimelineEvent[]>([])
+  // Estado inicial desde la caché del panel (poblada por el prefetch al
+  // abrir el detalle). Solo aplica a la vista default (meses=12, página 1).
+  const [events, setEvents] = useState<TimelineEvent[]>(() => peekClienteHistorial(clienteId)?.events ?? [])
   const [filtro, setFiltro] = useState<TimelineFilter>('TODOS')
   const [meses, setMeses] = useState<string>('12')
   const [loading, setLoading] = useState(false)
   const [page, setPage] = useState(1)
-  const [hasMore, setHasMore] = useState(false)
+  const [hasMore, setHasMore] = useState(() => peekClienteHistorial(clienteId)?.hasMore ?? false)
   const [error, setError] = useState('')
 
   const fetchEvents = useCallback(async (nextPage = 1, append = false, signal?: AbortSignal) => {
     setLoading(true)
     setError('')
     try {
+      // Vista default (meses=12, página 1, sin append): usa la caché
+      // compartida con el prefetch del panel. Si el prefetch está en vuelo,
+      // comparte la MISMA promesa (cero fetches duplicados). Otros filtros
+      // y páginas van directo a la API como antes.
+      if (meses === '12' && nextPage === 1 && !append) {
+        const cached = peekClienteHistorial(clienteId)
+        const data = cached ?? await loadClienteHistorial(clienteId)
+        if (signal?.aborted) return
+        if (data) {
+          setEvents(data.events)
+          setHasMore(data.hasMore)
+          setPage(1)
+        } else {
+          setError('Error cargando historial')
+        }
+        return
+      }
       const url = `/api/clientes/${clienteId}/historial?meses=${meses}&page=${nextPage}&pageSize=20`
       const res = await fetch(url, signal ? { signal } : undefined)
       const data = await res.json()

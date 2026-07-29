@@ -61,48 +61,72 @@ export async function GET(request: NextRequest) {
         })
       )
 
-      const clientesRaw = await prisma.$queryRaw`
-        SELECT DISTINCT ON (c.id)
-          c.id, c.nombre, c.apellido, c.telefono, c.direccion, c.barrio,
-          c."nombreNegocio", c."tipoNegocio", c.notas, c.fuente, c.frecuencia,
-          c."cadaNDias", c."ultEntrega", c."proxEntrega", c."habAgua", c."habHielo",
-          c."habBotellon", c."habBolsaAgua", c."habBolsaHielo", c.verificado,
-          c."verificadoEn", c."creadoPorRol", c.bloqueado, c.reclamaciones,
-          c."limitePedidosFiados", c."negocioDefaultId", c.notas, c.activo,
-          c."createdAt", c."updatedAt", c."createdById", c."rutaId", c.referencia,
-          c."linkUbicacion", c."preciosEspeciales",
-          c.lat, c.lng, c."geocodeOrigen", c."geocodeAt",
-          COALESCE(
-            (SELECT json_agg(json_build_object('nombre', cc.nombre, 'telefono', cc.telefono, 'relacion', cc.relacion))
-             FROM "ContactoCliente" cc WHERE cc."clienteId" = c.id),
-            '[]'::json
-          ) AS contactos,
-          GREATEST(
-            word_similarity(${search}, c.nombre),
-            word_similarity(${search}, COALESCE(c.apellido, '')),
-            word_similarity(${search}, COALESCE(c."nombreNegocio", '')),
-            word_similarity(${search}, COALESCE(c.barrio, '')),
-            word_similarity(${search}, COALESCE(c.direccion, ''))
-          ) as similarity_score
-        FROM "Cliente" c
-        WHERE c.activo = true
-          ${adminFilter}
-          ${filtrosNegocioRaw}
-          AND (
-            c.nombre <% ${search} OR
-            COALESCE(c.apellido, '') <% ${search} OR
-            COALESCE(c."nombreNegocio", '') <% ${search} OR
-            COALESCE(c.barrio, '') <% ${search} OR
-            COALESCE(c.direccion, '') <% ${search} OR
-            c.nombre ILIKE '%' || ${search} || '%' OR
-            COALESCE(c.apellido, '') ILIKE '%' || ${search} || '%' OR
-            COALESCE(c."nombreNegocio", '') ILIKE '%' || ${search} || '%' OR
-            COALESCE(c.barrio, '') ILIKE '%' || ${search} || '%' OR
-            COALESCE(c.direccion, '') ILIKE '%' || ${search} || '%'
+      const searchLike = `%${search}%`
+      const skip = pagination.all ? 0 : ((pagination.page || 1) - 1) * (pagination.pageSize || 20)
+      const take = pagination.all ? 1000 : (pagination.pageSize || 20)
+
+      const searchConditions = Prisma.sql`
+        (
+          c.nombre <% ${search} OR
+          COALESCE(c.apellido, '') <% ${search} OR
+          COALESCE(c."nombreNegocio", '') <% ${search} OR
+          COALESCE(c.barrio, '') <% ${search} OR
+          COALESCE(c.direccion, '') <% ${search} OR
+          c.nombre ILIKE ${searchLike} OR
+          COALESCE(c.apellido, '') ILIKE ${searchLike} OR
+          COALESCE(c."nombreNegocio", '') ILIKE ${searchLike} OR
+          COALESCE(c.barrio, '') ILIKE ${searchLike} OR
+          COALESCE(c.direccion, '') ILIKE ${searchLike} OR
+          EXISTS (
+            SELECT 1 FROM "ContactoCliente" cc
+            WHERE cc."clienteId" = c.id
+              AND (cc.nombre ILIKE ${searchLike} OR cc.telefono ILIKE ${searchLike})
           )
-        ORDER BY c.id, similarity_score DESC
-        LIMIT 100
-      ` as any[]
+        )
+      `
+
+      const [clientesRaw, totalRaw] = await Promise.all([
+        prisma.$queryRaw<unknown[]>`
+          SELECT DISTINCT ON (c.id)
+            c.id, c.nombre, c.apellido, c.telefono, c.direccion, c.barrio,
+            c."nombreNegocio", c."tipoNegocio", c.notas, c.fuente, c.frecuencia,
+            c."cadaNDias", c."ultEntrega", c."proxEntrega", c."habAgua", c."habHielo",
+            c."habBotellon", c."habBolsaAgua", c."habBolsaHielo", c.verificado,
+            c."verificadoEn", c."creadoPorRol", c.bloqueado, c.reclamaciones,
+            c."limitePedidosFiados", c."negocioDefaultId", c.notas, c.activo,
+            c."createdAt", c."updatedAt", c."createdById", c."rutaId", c.referencia,
+            c."linkUbicacion", c."preciosEspeciales",
+            c.lat, c.lng, c."geocodeOrigen", c."geocodeAt",
+            COALESCE(
+              (SELECT json_agg(json_build_object('nombre', cc.nombre, 'telefono', cc.telefono, 'relacion', cc.relacion))
+               FROM "ContactoCliente" cc WHERE cc."clienteId" = c.id),
+              '[]'::json
+            ) AS contactos,
+            GREATEST(
+              word_similarity(${search}, c.nombre),
+              word_similarity(${search}, COALESCE(c.apellido, '')),
+              word_similarity(${search}, COALESCE(c."nombreNegocio", '')),
+              word_similarity(${search}, COALESCE(c.barrio, '')),
+              word_similarity(${search}, COALESCE(c.direccion, ''))
+            ) as similarity_score
+          FROM "Cliente" c
+          WHERE c.activo = true
+            ${adminFilter}
+            ${filtrosNegocioRaw}
+            AND ${searchConditions}
+          ORDER BY c.id, similarity_score DESC
+          LIMIT ${take}
+          OFFSET ${skip}
+        `,
+        prisma.$queryRaw<unknown[]>`
+          SELECT COUNT(DISTINCT c.id) as total
+          FROM "Cliente" c
+          WHERE c.activo = true
+            ${adminFilter}
+            ${filtrosNegocioRaw}
+            AND ${searchConditions}
+        `,
+      ])
 
       // Enrich with negocios and counts
       const clienteIds = clientesRaw.map((c: any) => c.id)
@@ -135,6 +159,7 @@ export async function GET(request: NextRequest) {
         }),
       ])
 
+      const total = Number((totalRaw[0] as any)?.total ?? 0)
       const clientes = clientesRaw.map((c: any) => ({
         ...c,
         clienteId: c.id,
@@ -143,7 +168,11 @@ export async function GET(request: NextRequest) {
         _count: { pedidos: 0 }, // simplified
       }))
 
-      return apiSuccess({ clientes, total: clientes.length })
+      return apiSuccess(
+        pagination.all
+          ? { clientes, total }
+          : buildPaginationResponse(clientes, total, pagination.page || 1, pagination.pageSize || 20)
+      )
     }
 
     if (search) {
@@ -156,6 +185,8 @@ export async function GET(request: NextRequest) {
         { nombreNegocio: { contains: search, mode: 'insensitive' } },
         { tipoNegocio: { contains: search, mode: 'insensitive' } },
         { notas: { contains: search, mode: 'insensitive' } },
+        { contactos: { some: { nombre: { contains: search, mode: 'insensitive' } } } },
+        { contactos: { some: { telefono: { contains: search, mode: 'insensitive' } } } },
         { negocios: { some: { nombre: { contains: search, mode: 'insensitive' } } } },
         { negocios: { some: { direccion: { contains: search, mode: 'insensitive' } } } },
         { negocios: { some: { barrio: { contains: search, mode: 'insensitive' } } } },

@@ -21,8 +21,13 @@ import type { NegocioDetail } from '@/components/negocio-detail-modal'
 
 interface ClienteTableProps {
   clientes: Cliente[]
+  total: number
+  page: number
+  pageSize: number
+  totalPages: number
   search: string
   onSearchChange: (val: string) => void
+  onPageChange: (page: number) => void
   fetchError: string | null
   onRetry: () => void
   onCreateClick: () => void
@@ -39,8 +44,13 @@ interface ClienteTableProps {
 
 export const ClienteTable = React.memo(function ClienteTable({
   clientes,
+  total,
+  page,
+  pageSize,
+  totalPages,
   search,
   onSearchChange,
+  onPageChange,
   fetchError,
   onRetry,
   onCreateClick,
@@ -383,17 +393,23 @@ export const ClienteTable = React.memo(function ClienteTable({
       )}
 
       {/* Results count + sort toggle */}
-      {clientes.length > 0 && (
+      {(clientes.length > 0 || total > 0) && (
         <div className="flex items-center justify-between mb-3">
           <p className="text-sm text-gray-500">
-            {clientesFiltrados.length} de {clientes.length} clientes
-            {hasActiveFilters && ' (filtrados)'}
-            {optimisticFiltroRiesgo === 'bloqueado' && ' — bloqueados'}
-            {optimisticFiltroRiesgo === 'reclamaciones' && ' — con 3+ reclamaciones'}
-            {optimisticFiltroRiesgo === 'noVerificado' && ' — sin verificar'}
-            {optimisticFiltros.mostrarNegocio === 'con' && ' — con negocio'}
-            {optimisticFiltros.mostrarNegocio === 'sin' && ' — sin negocio'}
-            {optimisticFiltros.ubicacionMaps !== 'todos' && ` — ${UBICACION_CHIP_LABELS[optimisticFiltros.ubicacionMaps].toLowerCase()}`}
+            {total === 0 ? (
+              '0 clientes'
+            ) : (
+              <>
+                {Math.min((page - 1) * pageSize + 1, total)}-{Math.min(page * pageSize, total)} de {total} clientes
+                {hasActiveFilters && ' (filtrados)'}
+                {optimisticFiltroRiesgo === 'bloqueado' && ' — bloqueados'}
+                {optimisticFiltroRiesgo === 'reclamaciones' && ' — con 3+ reclamaciones'}
+                {optimisticFiltroRiesgo === 'noVerificado' && ' — sin verificar'}
+                {optimisticFiltros.mostrarNegocio === 'con' && ' — con negocio'}
+                {optimisticFiltros.mostrarNegocio === 'sin' && ' — sin negocio'}
+                {optimisticFiltros.ubicacionMaps !== 'todos' && ` — ${UBICACION_CHIP_LABELS[optimisticFiltros.ubicacionMaps].toLowerCase()}`}
+              </>
+            )}
           </p>
           <div className="flex items-center gap-1 text-xs text-gray-500">
             <span className="hidden sm:inline">Ordenar:</span>
@@ -415,7 +431,7 @@ export const ClienteTable = React.memo(function ClienteTable({
 
       {/* Client list */}
       <div className="max-w-7xl mx-auto">
-        {clientesFiltrados.length === 0 ? (
+        {clientes.length === 0 ? (
           <div className="p-8">
             {search ? (
               <EmptySearch searchTerm={search} onClear={() => onSearchChange('')} />
@@ -430,6 +446,19 @@ export const ClienteTable = React.memo(function ClienteTable({
                 description="Prueba desactivando algunos filtros para ver más resultados"
                 actionLabel="Limpiar filtros"
                 onAction={clearFilters}
+                compact
+              />
+            ) : total > 0 ? (
+              <EmptyState
+                icon={
+                  <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                }
+                title="No hay clientes en esta página"
+                description={`Mostrando ${total} clientes en total, pero esta página está vacía.`}
+                actionLabel="Ir a la primera página"
+                onAction={() => onPageChange(1)}
                 compact
               />
             ) : (
@@ -693,6 +722,31 @@ export const ClienteTable = React.memo(function ClienteTable({
                 </div>
               )
             })}
+          </div>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-6" data-testid="clientes-pagination">
+            <p className="text-sm text-gray-500">
+              Página {page} de {totalPages}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => onPageChange(page - 1)}
+                disabled={page <= 1}
+                className="px-3 py-2 min-h-[40px] md:min-h-0 text-sm font-medium rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              >
+                Anterior
+              </button>
+              <button
+                onClick={() => onPageChange(page + 1)}
+                disabled={page >= totalPages}
+                className="px-3 py-2 min-h-[40px] md:min-h-0 text-sm font-medium rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              >
+                Siguiente
+              </button>
+            </div>
           </div>
         )}
       </div>

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { formatCurrency } from '@/lib/utils'
+import { loadClienteStats, peekClienteStats } from './panel-prefetch'
 import type { ClienteStats } from './types'
 
 interface ClienteStatsProps {
@@ -9,39 +10,53 @@ interface ClienteStatsProps {
 }
 
 export function ClienteStats({ clienteId }: ClienteStatsProps) {
-  const [stats, setStats] = useState<ClienteStats | null>(null)
-  const [loading, setLoading] = useState(false)
+  // Estado inicial desde la caché del panel (poblada por el prefetch al
+  // abrir el detalle). Si hay dato fresco, el primer render ya es útil.
+  const [stats, setStats] = useState<ClienteStats | null>(() => peekClienteStats(clienteId))
+  const [loading, setLoading] = useState(() => peekClienteStats(clienteId) === null)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    const controller = new AbortController()
+    let cancelled = false
+    const cached = peekClienteStats(clienteId)
+    if (cached) {
+      // Cache-first: dato fresco dentro del TTL → sin fetch, sin revalidación
+      // en background (evita un request extra por cada cambio de pestaña,
+      // crítico en 2G/3G).
+      setStats(cached)
+      setLoading(false)
+      setError('')
+      return
+    }
     setLoading(true)
-    fetch(`/api/clientes/${clienteId}/stats`, { signal: controller.signal })
-      .then(r => r.json())
-      .then(data => {
-        if (!controller.signal.aborted) {
-          if (data.success) setStats(data.stats)
-          else setError(data.error?.message || 'Error')
-        }
-      })
-      .catch(err => {
-        if (err.name !== 'AbortError' && !controller.signal.aborted) setError('Error de conexión')
-      })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false) })
-    return () => controller.abort()
+    setError('')
+    // Comparte la promesa en vuelo del prefetch si existe (cero duplicados).
+    void loadClienteStats(clienteId).then((data) => {
+      if (cancelled) return
+      if (data) {
+        setStats(data)
+        setError('')
+      } else {
+        setError('Error cargando estadísticas')
+      }
+      setLoading(false)
+    })
+    return () => { cancelled = true }
   }, [clienteId])
 
   const refetch = useCallback(() => {
     setError('')
     setLoading(true)
-    fetch(`/api/clientes/${clienteId}/stats`)
-      .then(r => r.json())
-      .then(data => {
-        if (data.success) { setStats(data.stats); setError('') }
-        else setError(data.error?.message || 'Error')
-      })
-      .catch(() => setError('Error de conexión'))
-      .finally(() => setLoading(false))
+    // Los fallos no quedan cacheados: reintentar siempre dispara fetch nuevo.
+    void loadClienteStats(clienteId).then((data) => {
+      if (data) {
+        setStats(data)
+        setError('')
+      } else {
+        setError('Error cargando estadísticas')
+      }
+      setLoading(false)
+    })
   }, [clienteId])
 
   if (loading) {

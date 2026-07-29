@@ -226,6 +226,7 @@ vercel --prod
 | `src/lib/fetch-resilient.ts` | Offline-first fetch wrapper (10s timeout + Dexie enqueue) |
 | `src/lib/db/sync.ts` | `syncWithServer()` — drains `requestQueue` + legacy `syncQueue` |
 | `src/lib/db/offline.ts` | Dexie v4 with `requestQueue` table |
+| `src/app/(app)/clientes/clientes-client/panel-prefetch.ts` | Caché TTL 60s/LRU 20 + prefetch de stats/historial del panel de cliente (fetch plano, nunca fetchResilient; invalidación vía realtime pedido.*/pago.*/embarque.*) |
 | `src/modules/dashboard/` | DDD pilot — domain/application/infrastructure/presentation |
 | `src/shared/` | Cross-domain value objects (Money, DateRange, ProductCode) |
 | `src/app/sw.ts` | Service worker generado por Serwist (PWA) |

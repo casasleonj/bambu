@@ -33,6 +33,9 @@ import type { AlertaTipo } from '@/lib/alertas-config'
 import { getBadgeColor, ignorarAlerta } from '@/lib/alertas-config'
 import { useEscapeGuard } from '@/hooks/use-escape-guard'
 import { usePollingRefetch } from '@/hooks/use-polling-refetch'
+import { useRealtimeListener } from '@/hooks/use-realtime-listener'
+import { prefetchClientePanel, invalidateClientePanelCaches } from './panel-prefetch'
+import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 
 // Detail cache: cache de sesión en cliente para evitar re-descargar la ficha
 // completa cada vez que se abre. TTL 60s alineado con el polling de lista.
@@ -143,12 +146,53 @@ function warmClienteDetail(id: string) {
 
 export default function ClientesClient({
   initialClientes,
+  initialTotal = 0,
+  initialTotalPages = 1,
+  initialPage = 1,
+  initialPageSize = 25,
+  initialSearch = '',
   initialLimiteFiados,
   openClienteId,
   filtroActivo,
   filtrosActivos,
 }: ClientesClientProps) {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const [clientes, setClientes] = useState<Cliente[]>(initialClientes)
+  const [total, setTotal] = useState<number>(initialTotal)
+  const [totalPages, setTotalPages] = useState<number>(initialTotalPages)
+  const [searchInput, setSearchInput] = useState<string>(initialSearch)
+
+  // Sincronizar input de búsqueda cuando el Server Component re-renderiza
+  // (ej. usuario usó back/forward o cambió un filtro URL).
+  useEffect(() => {
+    setSearchInput(initialSearch)
+  }, [initialSearch])
+
+  // Sincronizar total/paginación cuando el Server Component re-renderiza.
+  useEffect(() => {
+    setTotal(initialTotal)
+    setTotalPages(initialTotalPages)
+  }, [initialTotal, initialTotalPages])
+
+  // Búsqueda server-side: debounce 500ms para no saturar 2G/3G.
+  // Al cambiar el término, volvemos a página 1.
+  useEffect(() => {
+    const currentSearch = searchParams?.get('search') || ''
+    if (searchInput === currentSearch) return
+    const t = setTimeout(() => {
+      const nextParams = new URLSearchParams(searchParams?.toString() || '')
+      if (searchInput) {
+        nextParams.set('search', searchInput)
+      } else {
+        nextParams.delete('search')
+      }
+      nextParams.set('page', '1')
+      router.push(`${pathname}?${nextParams.toString()}`, { scroll: false })
+    }, 500)
+    return () => clearTimeout(t)
+  }, [searchInput, searchParams, pathname, router])
 
   // FIX: sincronizar estado del cliente cuando el Server Component
   // re-renderiza con nuevos searchParams (ej: cambio de filtro en URL).
@@ -160,7 +204,6 @@ export default function ClientesClient({
   const { confirm, modal } = useConfirm()
   const [loading, setLoading] = useState(false)
   const [fetchError, setFetchError] = useState<string | null>(null)
-  const [search, setSearch] = useState('')
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [showDetail, setShowDetail] = useState(false)
@@ -282,26 +325,33 @@ export default function ClientesClient({
     DOMICILIO: {},
     PUNTO: {},
   })
-  const [preciosLoaded, setPreciosLoaded] = useState(false)
+
+  // Lee los parámetros actuales de la URL para que polling/mutaciones
+  // siempre refresquen la página, búsqueda y filtros seleccionados.
+  const getCurrentListParams = useCallback((): URLSearchParams => {
+    const p = new URLSearchParams(searchParams?.toString() || '')
+    p.set('pageSize', String(initialPageSize))
+    if (!p.get('page')) p.set('page', '1')
+    return p
+  }, [initialPageSize, searchParams])
 
   const fetchClientes = useCallback(async () => {
     setLoading(true)
     setFetchError(null)
     try {
-      const params = new URLSearchParams('all=true')
-      if (filtroActivo === 'bloqueado') params.set('bloqueado', 'true')
-      else if (filtroActivo === 'reclamaciones') params.set('reclamaciones', 'gte3')
-      else if (filtroActivo === 'noVerificado') params.set('noVerificado', 'true')
-      if (filtrosActivos.mostrarNegocio !== 'todos') {
-        params.set('mostrarNegocio', filtrosActivos.mostrarNegocio)
-      }
-      if (filtrosActivos.ubicacionMaps !== 'todos') {
-        params.set('ubicacionMaps', filtrosActivos.ubicacionMaps)
-      }
-      const res = await fetchWithTimeout(`/api/clientes?${params.toString()}`, {}, 30_000)
+      const listParams = getCurrentListParams()
+      const res = await fetchWithTimeout(`/api/clientes?${listParams.toString()}`, {}, 30_000)
       if (!res.ok) throw new Error('Error al cargar clientes')
       const data = await res.json()
-      setClientes(data.clientes || data.data || [])
+      if (data.success) {
+        setClientes(data.data || [])
+        setTotal(data.total ?? 0)
+        setTotalPages(data.totalPages ?? 1)
+      } else {
+        setClientes(data.clientes || [])
+        setTotal(data.total ?? clientes.length)
+        setTotalPages(1)
+      }
     } catch (error) {
       const msg = error instanceof FetchTimeoutError
         ? 'La conexión tardó demasiado cargando clientes'
@@ -311,10 +361,19 @@ export default function ClientesClient({
     } finally {
       setLoading(false)
     }
-  }, [filtroActivo, filtrosActivos])
+  }, [getCurrentListParams, clientes.length])
 
   // Polling: refresh client list every 60s (replaces realtime SSE to cut Vercel cost).
   usePollingRefetch(fetchClientes, 60_000)
+
+  // Invalida la caché de stats/historial del panel cuando cambian las
+  // entidades que las alimentan. Sin esto, un usuario podía registrar un
+  // pago y al abrir el panel ver totales viejos hasta 60s (TTL).
+  // Nota: facturas/abonos/NC no tienen eventos realtime (ver RealtimeEntity);
+  // su staleness queda acotado por el TTL de la caché.
+  useRealtimeListener(['pedido.*', 'pago.*', 'embarque.*'], () => {
+    invalidateClientePanelCaches()
+  })
 
   // FIX REGRESION mobile 2026-06-10 ("no se pudieron cargar los clientes"):
   // NO disparar fetchClientes() en mount. El page.tsx server ya pasa
@@ -385,43 +444,17 @@ export default function ClientesClient({
     return hasAny ? JSON.stringify(result) : ''
   }
 
-  const clientesFiltrados = useMemo(() => clientes.filter((c) => {
-    const term = search.toLowerCase()
-    const termTelefono = normalizarTelefono(term)
-    const matchTelefono = termTelefono.length > 0
-      ? (tel: string) => normalizarTelefono(tel).includes(termTelefono)
-      : () => false
-    return (
-      c.nombre.toLowerCase().includes(term) ||
-      (c.apellido ?? '').toLowerCase().includes(term) ||
-      matchTelefono(c.telefono) ||
-      c.nombreNegocio?.toLowerCase().includes(term) ||
-      c.tipoNegocio?.toLowerCase().includes(term) ||
-      c.barrio?.toLowerCase().includes(term) ||
-      c.direccion?.toLowerCase().includes(term) ||
-      c.notas?.toLowerCase().includes(term) ||
-      c.contactos?.some(ct =>
-        ct.nombre.toLowerCase().includes(term) ||
-        matchTelefono(ct.telefono) ||
-        ct.relacion?.toLowerCase().includes(term)
-      ) ||
-      c.negocios?.some(neg =>
-        neg.nombre?.toLowerCase().includes(term) ||
-        neg.direccion?.toLowerCase().includes(term) ||
-        neg.barrio?.toLowerCase().includes(term) ||
-        neg.tipoNegocio?.toLowerCase().includes(term) ||
-        neg.referencia?.toLowerCase().includes(term)
-      )
-    )
-  }).sort((a, b) => {
+  // Filtros client-side: solo saldo/frecuencia y ordenamiento. La búsqueda
+  // de texto y la paginación ahora son server-side para escalar a ~400 clientes.
+  const clientesFiltrados = useMemo(() => [...clientes].sort((a, b) => {
     const dir = sortDir === 'asc' ? 1 : -1
     if (sortBy === 'createdAt') {
       return dir * (new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime())
     }
     return dir * a.nombre.localeCompare(b.nombre)
-  }), [clientes, search, sortBy, sortDir])
+  }), [clientes, sortBy, sortDir])
 
-  async function openCreateModal() {
+  function openCreateModal() {
     setFormData({
       nombre: '',
       apellido: '',
@@ -444,13 +477,14 @@ export default function ClientesClient({
     setFormError('')
     setIsEdit(false)
     setIsEditing(false)
-    setPreciosLoaded(false)
     setShowModal(true)
-    await loadPreciosBase()
-    setPreciosLoaded(true)
+    // Carga en background: los precios base solo se usan para mostrar
+    // "Base: $X" y para no persistir overrides iguales a la base; no hay
+    // razón para bloquear el formulario (ni el botón Guardar) esperándolos.
+    void loadPreciosBase()
   }
 
-  async function openEditModal() {
+  function openEditModal() {
     if (!selectedCliente) return
     setFormData({
       nombre: selectedCliente.nombre,
@@ -473,9 +507,8 @@ export default function ClientesClient({
     setCanalActivo('DOMICILIO')
     setIsEdit(true)
     setIsEditing(true)
-    setPreciosLoaded(false)
-    await loadPreciosBase()
-    setPreciosLoaded(true)
+    // Mismo criterio que en create: background, sin bloquear la UI.
+    void loadPreciosBase()
   }
 
   function cancelEdit() {
@@ -825,6 +858,11 @@ export default function ClientesClient({
           }
 
           try {
+            // El nuevo cliente aparece al inicio de la lista ordenada por nombre,
+            // así que volvemos a página 1 para que el usuario lo vea.
+            const nextParams = new URLSearchParams(searchParams?.toString() || '')
+            nextParams.set('page', '1')
+            router.push(`${pathname}?${nextParams.toString()}`, { scroll: false })
             await fetchClientes()
           } catch (err) {
             toast.error('No se pudo actualizar la lista de clientes. Se actualizará al recargar.')
@@ -843,6 +881,11 @@ export default function ClientesClient({
     const seq = ++viewSeqRef.current
     setDetailLoading(true)
     setDetailError(null)
+
+    // Prefetch de stats/historial en background: mientras el usuario lee la
+    // pestaña Info, ambas cargas corren (cold start de Vercel oculto) y al
+    // cambiar de pestaña los datos ya están en caché → render instantáneo.
+    prefetchClientePanel(id)
 
     const row = clientes.find(c => c.id === id || c.clienteId === id)
     // Apertura optimista: si la fila está cargada, mostrar el modal al
@@ -1048,8 +1091,17 @@ export default function ClientesClient({
 
       <ClienteTable
         clientes={clientesFiltrados}
-        search={search}
-        onSearchChange={setSearch}
+        total={total}
+        page={Math.max(1, parseInt(searchParams?.get('page') || String(initialPage), 10))}
+        pageSize={initialPageSize}
+        totalPages={totalPages}
+        search={searchInput}
+        onSearchChange={setSearchInput}
+        onPageChange={(newPage) => {
+          const nextParams = new URLSearchParams(searchParams?.toString() || '')
+          nextParams.set('page', String(newPage))
+          router.push(`${pathname}?${nextParams.toString()}`, { scroll: false })
+        }}
         fetchError={fetchError}
         onRetry={fetchClientes}
         onCreateClick={openCreateModal}
@@ -1189,9 +1241,9 @@ export default function ClientesClient({
                 />
                 <div className="p-4 border-t border-gray-100 bg-gray-50 flex gap-3">
                   <button type="button" onClick={cancelEdit} className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium">Cancelar</button>
-                  <button type="submit" form="cliente-form-inline" disabled={saving || (isEdit && !preciosLoaded)}
+                  <button type="submit" form="cliente-form-inline" disabled={saving}
                     className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
-                    {saving ? 'Guardando...' : !preciosLoaded && isEdit ? 'Cargando precios...' : 'Guardar'}
+                    {saving ? 'Guardando...' : 'Guardar'}
                   </button>
                 </div>
               </div>
