@@ -164,11 +164,17 @@ export default function ClientesClient({
   const [totalPages, setTotalPages] = useState<number>(initialTotalPages)
   const [searchInput, setSearchInput] = useState<string>(initialSearch)
 
-  // Sincronizar input de búsqueda cuando el Server Component re-renderiza
-  // (ej. usuario usó back/forward o cambió un filtro URL).
+  // Sincronizar input de búsqueda cuando la URL cambia por navegación
+  // externa (back/forward) o carga inicial con ?search=... en el URL.
+  // NO sincronizar desde initialSearch (prop del RSC) porque llega después
+  // que searchParams y sobreescribe lo que el usuario está escribiendo,
+  // causando el parpadeo "escribe → desaparece → reaparece".
   useEffect(() => {
-    setSearchInput(initialSearch)
-  }, [initialSearch])
+    const urlSearch = searchParams?.get('search') || ''
+    if (urlSearch && searchInput === '') {
+      setSearchInput(urlSearch)
+    }
+  }, [searchParams, searchInput])
 
   // Sincronizar total/paginación cuando el Server Component re-renderiza.
   useEffect(() => {
@@ -177,7 +183,9 @@ export default function ClientesClient({
   }, [initialTotal, initialTotalPages])
 
   // Búsqueda server-side: debounce 500ms para no saturar 2G/3G.
-  // Al cambiar el término, volvemos a página 1.
+  // Solo reseteamos a página 1 cuando el término de búsqueda realmente
+  // cambia (escritura en el input). Si cambió solo la página (paginación),
+  // preservamos el número de página para no regresar al usuario a la 1.
   useEffect(() => {
     const currentSearch = searchParams?.get('search') || ''
     if (searchInput === currentSearch) return
@@ -188,7 +196,10 @@ export default function ClientesClient({
       } else {
         nextParams.delete('search')
       }
-      nextParams.set('page', '1')
+      const changedSearch = searchInput !== (searchParams?.get('search') || '')
+      if (changedSearch) {
+        nextParams.set('page', '1')
+      }
       router.push(`${pathname}?${nextParams.toString()}`, { scroll: false })
     }, 500)
     return () => clearTimeout(t)
@@ -845,16 +856,14 @@ export default function ClientesClient({
             }
           }
 
-          try {
-            // El nuevo cliente aparece al inicio de la lista ordenada por nombre,
-            // así que volvemos a página 1 para que el usuario lo vea.
-            const nextParams = new URLSearchParams(searchParams?.toString() || '')
-            nextParams.set('page', '1')
-            router.push(`${pathname}?${nextParams.toString()}`, { scroll: false })
-            await fetchClientes()
-          } catch (err) {
-            toast.error('No se pudo actualizar la lista de clientes. Se actualizará al recargar.')
-          }
+          // El nuevo cliente aparece al inicio de la lista ordenada por nombre,
+          // así que volvemos a página 1 para que el usuario lo vea.
+          // No hacemos fetch manual: el RSC re-renderizará con los datos
+          // frescos y evitamos la carrera entre fetchClientes() (params stale)
+          // y el payload del Server Component.
+          const nextParams = new URLSearchParams(searchParams?.toString() || '')
+          nextParams.set('page', '1')
+          router.push(`${pathname}?${nextParams.toString()}`, { scroll: false })
         })()
       }
     } catch (error) {

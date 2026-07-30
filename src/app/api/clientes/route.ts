@@ -75,10 +75,23 @@ export async function GET(request: NextRequest) {
           COALESCE(c.apellido, '') ILIKE ${searchLike} OR
           COALESCE(c.barrio, '') ILIKE ${searchLike} OR
           COALESCE(c.direccion, '') ILIKE ${searchLike} OR
+          c.telefono ILIKE ${searchLike} OR
           EXISTS (
             SELECT 1 FROM "ContactoCliente" cc
             WHERE cc."clienteId" = c.id
               AND (cc.nombre ILIKE ${searchLike} OR cc.telefono ILIKE ${searchLike})
+          ) OR
+          EXISTS (
+            SELECT 1 FROM "Negocio" n
+            WHERE n."clienteId" = c.id
+              AND n.activo = true
+              AND (
+                n.nombre ILIKE ${searchLike} OR
+                COALESCE(n."tipoNegocio", '') ILIKE ${searchLike} OR
+                COALESCE(n.direccion, '') ILIKE ${searchLike} OR
+                COALESCE(n.barrio, '') ILIKE ${searchLike} OR
+                COALESCE(n.referencia, '') ILIKE ${searchLike}
+              )
           )
         )
       `
