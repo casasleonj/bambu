@@ -163,18 +163,27 @@ export default function ClientesClient({
   const [total, setTotal] = useState<number>(initialTotal)
   const [totalPages, setTotalPages] = useState<number>(initialTotalPages)
   const [searchInput, setSearchInput] = useState<string>(initialSearch)
+  const searchInputRef = useRef(searchInput)
+  useEffect(() => { searchInputRef.current = searchInput }, [searchInput])
 
   // Sincronizar input de búsqueda cuando la URL cambia por navegación
   // externa (back/forward) o carga inicial con ?search=... en el URL.
   // NO sincronizar desde initialSearch (prop del RSC) porque llega después
   // que searchParams y sobreescribe lo que el usuario está escribiendo,
   // causando el parpadeo "escribe → desaparece → reaparece".
+  // Usamos lastCommittedSearchRef para distinguir un cambio real de URL
+  // (que sí debe reflejarse en el input) de una transición pendiente que
+  // aún no cometió el valor.
+  const lastCommittedSearchRef = useRef(initialSearch)
   useEffect(() => {
     const urlSearch = searchParams?.get('search') || ''
-    if (urlSearch && searchInput === '') {
+    const url = urlSearch.trim()
+    const input = searchInputRef.current.trim()
+    if (url !== input && url !== lastCommittedSearchRef.current.trim()) {
       setSearchInput(urlSearch)
     }
-  }, [searchParams, searchInput])
+    lastCommittedSearchRef.current = urlSearch
+  }, [searchParams])
 
   // Sincronizar total/paginación cuando el Server Component re-renderiza.
   useEffect(() => {
@@ -188,19 +197,21 @@ export default function ClientesClient({
   // preservamos el número de página para no regresar al usuario a la 1.
   useEffect(() => {
     const currentSearch = searchParams?.get('search') || ''
-    if (searchInput === currentSearch) return
+    if (searchInput.trim() === currentSearch.trim()) return
     const t = setTimeout(() => {
       const nextParams = new URLSearchParams(searchParams?.toString() || '')
-      if (searchInput) {
-        nextParams.set('search', searchInput)
+      if (searchInput.trim()) {
+        nextParams.set('search', searchInput.trim())
       } else {
         nextParams.delete('search')
       }
-      const changedSearch = searchInput !== (searchParams?.get('search') || '')
+      const changedSearch = searchInput.trim() !== (searchParams?.get('search') || '').trim()
       if (changedSearch) {
         nextParams.set('page', '1')
       }
-      router.push(`${pathname}?${nextParams.toString()}`, { scroll: false })
+      const nextUrl = `${pathname}?${nextParams.toString()}`
+      lastCommittedSearchRef.current = searchInput.trim()
+      router.push(nextUrl, { scroll: false })
     }, 500)
     return () => clearTimeout(t)
   }, [searchInput, searchParams, pathname, router])
