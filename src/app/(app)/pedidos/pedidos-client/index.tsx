@@ -189,16 +189,16 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   }, [pedidos])
 
   // Independent datasets for Fiados and Alertas tabs.
-  // Lazy: hooks always mounted, but autoFetch=false + refetchOnParamsChange=false
-  // so they don't fire on mount or when filters change.
-  // refetchFiados()/refetchAlertas() are called manually when tab activates.
+  // Eager background fetch on mount (not blocking the main list render).
+  // The hooks fire on mount with autoFetch=true, but since the main list hook
+  // is independent, the initial page render is not blocked by these fetches.
+  // refetchOnParamsChange=false is only for the main list hook (it uses RSC).
   const {
     pedidos: pedidosFiadosRaw,
     loading: loadingFiados,
     error: errorFiados,
     refetch: refetchFiados,
-    hasLoadedOnce: fiadosLoaded,
-  } = usePedidos({ scope: 'fiados' }, { all: true, autoFetch: false, refetchOnParamsChange: false })
+  } = usePedidos({ scope: 'fiados' }, { all: true, autoFetch: true, refetchOnParamsChange: true })
   const pedidosFiados = pedidosFiadosRaw as Pedido[]
 
   const {
@@ -206,22 +206,8 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     loading: loadingAlertas,
     error: errorAlertas,
     refetch: refetchAlertas,
-    hasLoadedOnce: alertasLoaded,
-  } = usePedidos({ scope: 'alertas' }, { all: true, autoFetch: false, refetchOnParamsChange: false })
+  } = usePedidos({ scope: 'alertas' }, { all: true, autoFetch: true, refetchOnParamsChange: true })
   const pedidosAlertas = pedidosAlertasRaw as Pedido[]
-
-  // Trigger lazy load when tab activates
-  useEffect(() => {
-    if (activeTab === 'fiados' && !fiadosLoaded) {
-      refetchFiados()
-    }
-  }, [activeTab, fiadosLoaded, refetchFiados])
-
-  useEffect(() => {
-    if (activeTab === 'alertas' && !alertasLoaded) {
-      refetchAlertas()
-    }
-  }, [activeTab, alertasLoaded, refetchAlertas])
 
   // Lightweight badge counts fetched independently from the full datasets.
   // This keeps the badge live without re-downloading the entire Pedidos list.
@@ -463,17 +449,10 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     })()
   }, [])
 
-  // Sync activeTab with URL query param
-  useEffect(() => {
-    const currentTab = searchParams.get('tab')
-    if (activeTab === 'hoy') {
-      if (currentTab) {
-        navigateWithParams({ tab: undefined }, { replace: true })
-      }
-    } else if (currentTab !== activeTab) {
-      navigateWithParams({ tab: activeTab }, { replace: true })
-    }
-  }, [activeTab, searchParams, navigateWithParams])
+  // No URL sync for activeTab: tab state is local UI.
+  // Previously synced to ?tab= param via navigateWithParams, but this caused
+  // RSC re-renders that interfered with data loading on mobile (startTransition
+  // + router.replace could reset the component tree). Tab is ephemeral UI state.
 
   const { create: crearPedido } = useCrearPedido({
     onSuccess: () => {
