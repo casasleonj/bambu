@@ -10,9 +10,10 @@ import { EmptyState } from '@/components/empty-state'
 import type { Recurrente, PreviewItem } from './types'
 import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 
-export default function RecurrentesClient() {
+export default function RecurrentesClient({ initialRecurrentes }: { initialRecurrentes?: Recurrente[] }) {
   const router = useRouter()
-  const [recurrentes, setRecurrentes] = useState<Recurrente[]>([])
+  // Seed from SSR data if available; preview is always lazy (expensive).
+  const [recurrentes, setRecurrentes] = useState<Recurrente[]>(initialRecurrentes || [])
   const [preview, setPreview] = useState<PreviewItem[]>([])
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
@@ -29,15 +30,11 @@ export default function RecurrentesClient() {
     setLoading(true)
     setFetchError(null)
     try {
-      const [recRes, previewRes] = await Promise.all([
-        fetch('/api/recurrentes', { signal: ctrl.signal }),
-        fetch('/api/pedidos/recurrentes', { signal: ctrl.signal }),
-      ])
+      // Fetch preview (always lazy, complex). Recurrentes list comes from SSR.
+      const previewRes = await fetch('/api/pedidos/recurrentes', { signal: ctrl.signal })
       if (ctrl.signal.aborted) return
-      const recData = await recRes.json()
       const previewData = await previewRes.json()
 
-      if (recData.success) setRecurrentes(recData.recurrentes || [])
       if (previewData.success) {
         const p = previewData.preview || []
         setPreview(p)
@@ -48,6 +45,16 @@ export default function RecurrentesClient() {
         }
         setDecisiones(defaults)
       }
+
+      // Also refetch the recurrentes list in background (SSR data may be stale
+      // if page was rendered long ago, e.g. after PWA wake from background).
+      if (!initialRecurrentes) {
+        const recRes = await fetch('/api/recurrentes', { signal: ctrl.signal })
+        if (!ctrl.signal.aborted) {
+          const recData = await recRes.json()
+          if (recData.success) setRecurrentes(recData.recurrentes || [])
+        }
+      }
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return
       setFetchError('No se pudieron cargar los datos')
@@ -55,7 +62,7 @@ export default function RecurrentesClient() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [initialRecurrentes])
 
   useEffect(() => {
     fetchData()
@@ -113,7 +120,9 @@ export default function RecurrentesClient() {
     )
   }
 
-  if (loading) {
+  // Only show full-page skeleton if there's NO SSR data and loading.
+  // When SSR data is available, show it immediately and preview loads in background.
+  if (loading && !initialRecurrentes) {
     return (
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -153,6 +162,13 @@ export default function RecurrentesClient() {
         <div><h1 className="text-2xl font-bold text-gray-900">Pedidos Recurrentes</h1><p className="text-gray-600">{recurrentes.length} plantillas activas</p></div>
         <button onClick={() => router.push('/recurrentes/nuevo')} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">+ Nueva Plantilla</button>
       </div>
+
+      {/* Lazy preview loading indicator */}
+      {loading && initialRecurrentes && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-center">
+          <p className="text-blue-700 font-medium animate-pulse">Cargando preview de generación...</p>
+        </div>
+      )}
 
       {preview.length > 0 ? (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">

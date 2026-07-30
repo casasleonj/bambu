@@ -43,7 +43,6 @@ export async function GET(request: NextRequest) {
       telefono: string
       barrio: string | null
       direccion: string | null
-      nombreNegocio: string | null
       similarity_score: number
     }>
 

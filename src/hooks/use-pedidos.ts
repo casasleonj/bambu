@@ -24,6 +24,11 @@ export interface PedidoFilterParams {
 export interface UsePedidosOptions {
   all?: boolean
   autoFetch?: boolean
+  /** When false, skips the automatic refetch when params change.
+   *  Used when the parent component receives data via server component props
+   *  and manages filter changes via RSC navigation (router.push + startTransition).
+   *  Default: true (backward compatible). */
+  refetchOnParamsChange?: boolean
 }
 
 export interface UsePedidosResult {
@@ -136,7 +141,21 @@ export function usePedidos(
   // Fetch inicial controlado por autoFetch, y refetch automático cuando
   // cambian los filtros (params). Comparamos por serialización para evitar
   // loops infinitos cuando params cambia de referencia pero no de valor.
+  // refetchOnParamsChange=false desactiva el refetch automático para evitar
+  // duplicar fetches cuando el padre usa RSC navigation + props initial data.
   useEffect(() => {
+    // Si refetchOnParamsChange es false, NO refetchear ni en mount ni en
+    // cambios de params. El padre maneja los datos via server props y
+    // solo usa refetch() manual para polling/mutations.
+    if (options?.refetchOnParamsChange === false) {
+      // Aún así marcamos que se hizo el intento inicial para consistencia.
+      if (!didInitialFetchRef.current) {
+        didInitialFetchRef.current = true
+        lastParamsKeyRef.current = paramsKey
+      }
+      return
+    }
+
     const isFirstRun = !didInitialFetchRef.current
     const paramsChanged = paramsKey !== lastParamsKeyRef.current
 
@@ -153,7 +172,7 @@ export function usePedidos(
       lastParamsKeyRef.current = paramsKey
       fetchPedidos()
     }
-  }, [paramsKey, options?.all, options?.autoFetch, fetchPedidos])
+  }, [paramsKey, options?.all, options?.autoFetch, options?.refetchOnParamsChange, fetchPedidos])
 
   useEffect(() => {
     return () => {

@@ -5,6 +5,7 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 import { calcularAlertas } from '@/lib/alertas-detector'
 import { CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
+import { subDaysBogota } from '@/lib/dates'
 
 export async function GET(_request: NextRequest) {
   const authResult = await requireAuth()
@@ -24,11 +25,14 @@ export async function GET(_request: NextRequest) {
       distinct: ['clienteId'],
     })
 
-    // Alertas: detector necesite un subconjunto mínimo de campos.
-    // Usamos el historial completo para mantener paridad con el tab Alertas.
+    // Alertas: detector necesita un subconjunto mínimo de campos.
+    // Limitamos a últimos 90 días porque todas las reglas de alertas
+    // operan en ventanas ≤30 días (múltiples hoy, 7d fiado, 30d repetido).
+    const hace90Dias = subDaysBogota(90)
     const pedidos = await prisma.pedido.findMany({
       where: {
         clienteId: { not: CANONICAL_CONSUMIDOR_FINAL_ID },
+        fecha: { gte: hace90Dias },
       },
       select: {
         id: true,
