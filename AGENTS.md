@@ -362,15 +362,7 @@ Actualizaciones en vivo entre sesiones/usuarios para cambios en clientes, pedido
        - **NO correr `migrate deploy` en dev** salvo que la DB haya sido wipeada. El flujo documentado usa `db push` (línea 64: `npx prisma db push`).
        - **En Supabase prod**: el schema se inicializa también vía `db push` (mismo comando), no vía `migrate deploy`. Si en algún momento se quiere usar `migrate deploy` (e.g. para CI/CD con migraciones versionadas), hay que poblar `_prisma_migrations` con `prisma migrate resolve --applied <nombre>` para cada migración ya en la DB.
        - **Síntoma típico**: alguien corre `prisma migrate deploy` esperando "aplicar las migraciones nuevas" y obtiene P3018. Es confuso porque la DB ya está al día. La causa es la separación entre "schema sync" (db push) y "migrations tracking" (migrate deploy). El proyecto usa el primero; el segundo no es la fuente de verdad.
-       - **Producción actual (jul 2026)**: `_prisma_migrations` tenía 29 filas registradas mientras el repo tenía 34 migraciones. Cinco migraciones estaban sin registrar y la migración `20260626_remove_limite_fiados_default` (DROP DEFAULT de `Cliente.limitePedidosFiados`) no había aplicado su efecto en prod: la columna seguía con `DEFAULT 3`, haciendo que clientes nuevos reciban límite 3 en vez de NULL→global 2. Acciones post-merge:
-          1. Aplicar el SQL faltante:
-             ```sql
-             ALTER TABLE "Cliente" ALTER COLUMN "limitePedidosFiados" DROP DEFAULT;
-             UPDATE "Cliente" SET "limitePedidosFiados" = NULL WHERE "limitePedidosFiados" = 3;
-             UPDATE "Config" SET "valor" = '2' WHERE "clave" = 'LIMITE_PEDIDOS_FIADOS_DEFAULT' AND "valor" = '3';
-             ```
-          2. Registrar cada migración ya presente en la DB con `npx prisma migrate resolve --applied <nombre>`. Tras ello `_prisma_migrations` debe tener 34 filas.
-          3. Verificar que clientes nuevos creados sin `limitePedidosFiados` explícito quedan con `NULL` (resuelve a 2 vía `LIMITE_PEDIDOS_FIADOS_DEFAULT`).
+        - **Producción actual (jul 2026)**: ✅ **Resuelto**. `_prisma_migrations` ahora tiene 36 filas, exactamente las 36 migraciones del repo (`diff` vacío). `npx prisma migrate status` reporta `Database schema is up to date!` y `Cliente.limitePedidosFiados` tiene `column_default = NULL` / `is_nullable = YES`, confirmando que `20260626_remove_limite_fiados_default` y las migraciones posteriores están aplicadas y registradas.
   13. **Query params de `/pedidos` separados en filtros y triggers**:
      - **Filtros persistentes**: `clienteId`, `desde`, `hasta`, `search`, `tab`, `tipo`, `origen`, `estadoEntrega`, `estadoPago`. Estos params se aplican a la lista y se conservan en la URL para que el usuario no pierda el contexto al cerrar un modal o volver atrás.
      - **Trigger para nuevo pedido**: `?new=1&clienteId=ID` abre el modal de nuevo pedido con el cliente pre-seleccionado. También puede incluir `&negocioId=ID` para pre-seleccionar un negocio/sucursal. Después de abrir el formulario, los params `new`, `clienteId` y `negocioId` se limpian de la URL para que un refresh no reabra el formulario.
