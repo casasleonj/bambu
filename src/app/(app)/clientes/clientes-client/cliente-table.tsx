@@ -126,6 +126,8 @@ export const ClienteTable = React.memo(function ClienteTable({
     params.delete('noVerificado')
     params.delete('mostrarNegocio')
     params.delete('ubicacionMaps')
+    params.delete('search')
+    params.delete('page')
     navigateWithTransition(params, { mostrarNegocio: 'todos', ubicacionMaps: 'todos' })
   }
 

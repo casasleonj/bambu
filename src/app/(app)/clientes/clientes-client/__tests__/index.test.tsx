@@ -990,3 +990,157 @@ describe('ClientesClient — regresion mobile 2026-06-10', () => {
     })
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Regresión 2026-07-29: sync search input <-> URL
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ClientesClient — sync búsqueda URL/input', () => {
+  let originalFetch: typeof fetch
+  const pushMock = vi.fn()
+  const useRouterMock = vi.mocked(useRouter)
+  const useSearchParamsMock = vi.mocked(useSearchParams)
+
+  beforeEach(() => {
+    originalFetch = global.fetch
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    pushMock.mockClear()
+    useRouterMock.mockReturnValue({
+      push: pushMock,
+      replace: vi.fn(),
+      refresh: vi.fn(),
+      back: vi.fn(),
+    } as unknown as ReturnType<typeof useRouter>)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    cleanup()
+    global.fetch = originalFetch
+    __resetDetailCache()
+    __resetPanelCaches()
+  })
+
+  const renderWithSearchParams = (searchParams: URLSearchParams, initialSearch: string) => {
+    useSearchParamsMock.mockReturnValue(searchParams as unknown as ReturnType<typeof useSearchParams>)
+    return render(
+      <ClientesClient
+        initialClientes={[mockCliente]}
+        initialTotal={1}
+        initialTotalPages={1}
+        initialPage={1}
+        initialPageSize={25}
+        initialSearch={initialSearch}
+        filtrosActivos={{ mostrarNegocio: 'todos', ubicacionMaps: 'todos' }}
+        openClienteId={undefined}
+        filtroActivo={null}
+      />,
+    )
+  }
+
+  it('typing pushes debounced URL search with page=1', async () => {
+    const { mock } = createFetchMock()
+    global.fetch = mock as unknown as typeof fetch
+
+    renderWithSearchParams(new URLSearchParams(), '')
+
+    const input = screen.getByTestId('cliente-search-input') as HTMLInputElement
+    await act(async () => {
+      fireEvent.change(input, { target: { value: 'Juan' } })
+    })
+
+    expect(pushMock).not.toHaveBeenCalled()
+
+    await act(async () => { vi.advanceTimersByTime(500) })
+
+    expect(pushMock).toHaveBeenCalledTimes(1)
+    expect(pushMock).toHaveBeenCalledWith('/clientes?search=Juan&page=1', { scroll: false })
+  })
+
+  it('clearing input deletes search from URL and resets page', async () => {
+    const { mock } = createFetchMock()
+    global.fetch = mock as unknown as typeof fetch
+
+    renderWithSearchParams(new URLSearchParams('search=Juan&page=2'), 'Juan')
+
+    const input = screen.getByTestId('cliente-search-input') as HTMLInputElement
+    await act(async () => {
+      fireEvent.change(input, { target: { value: '' } })
+    })
+
+    await act(async () => { vi.advanceTimersByTime(500) })
+
+    expect(pushMock).toHaveBeenCalledTimes(1)
+    expect(pushMock).toHaveBeenCalledWith('/clientes?page=1', { scroll: false })
+  })
+
+  it('URL change (back/forward) updates the input', async () => {
+    const { mock } = createFetchMock()
+    global.fetch = mock as unknown as typeof fetch
+
+    const { rerender } = renderWithSearchParams(new URLSearchParams('search=Juan'), 'Juan')
+
+    const input = screen.getByTestId('cliente-search-input') as HTMLInputElement
+    expect(input.value).toBe('Juan')
+
+    await act(async () => {
+      useSearchParamsMock.mockReturnValue(new URLSearchParams('search=Pedro') as unknown as ReturnType<typeof useSearchParams>)
+      rerender(
+        <ClientesClient
+          initialClientes={[mockCliente]}
+          initialTotal={1}
+          initialTotalPages={1}
+          initialPage={1}
+          initialPageSize={25}
+          initialSearch="Pedro"
+          filtrosActivos={{ mostrarNegocio: 'todos', ubicacionMaps: 'todos' }}
+          openClienteId={undefined}
+          filtroActivo={null}
+        />,
+      )
+    })
+
+    expect(input.value).toBe('Pedro')
+    expect(pushMock).not.toHaveBeenCalled()
+  })
+
+  it('trailing space does not cause push loop or snapback', async () => {
+    const { mock } = createFetchMock()
+    global.fetch = mock as unknown as typeof fetch
+
+    const { rerender } = renderWithSearchParams(new URLSearchParams('search=Juan'), 'Juan')
+
+    const input = screen.getByTestId('cliente-search-input') as HTMLInputElement
+    await act(async () => {
+      fireEvent.change(input, { target: { value: 'Juan ' } })
+    })
+
+    // El valor trimmeado ya coincide con la URL; no debe empujar nada.
+    await act(async () => { vi.advanceTimersByTime(500) })
+    expect(pushMock).not.toHaveBeenCalled()
+
+    // Simular que el Server Component re-renderiza con el valor ya cometido.
+    await act(async () => {
+      useSearchParamsMock.mockReturnValue(new URLSearchParams('search=Juan') as unknown as ReturnType<typeof useSearchParams>)
+      rerender(
+        <ClientesClient
+          initialClientes={[mockCliente]}
+          initialTotal={1}
+          initialTotalPages={1}
+          initialPage={1}
+          initialPageSize={25}
+          initialSearch="Juan"
+          filtrosActivos={{ mostrarNegocio: 'todos', ubicacionMaps: 'todos' }}
+          openClienteId={undefined}
+          filtroActivo={null}
+        />,
+      )
+    })
+
+    // El input debe seguir siendo "Juan " (sin snapback) y no debe haber
+    // un segundo push espurio.
+    expect(input.value).toBe('Juan ')
+    await act(async () => { vi.advanceTimersByTime(500) })
+    expect(pushMock).not.toHaveBeenCalled()
+  })
+})
