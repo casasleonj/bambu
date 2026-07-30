@@ -1,22 +1,17 @@
 import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
-import { Prisma } from '@prisma/client'
-import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { ClienteCreateSchema } from '@/lib/validators'
-import { getPaginationParams, getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
 import { logAudit } from '@/lib/audit'
-import { ROLES, CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
+import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { executeSerializableWithRetry } from '@/lib/serializable'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { broadcastPush } from '@/lib/push'
 import {
-  buildClientesWhere,
-  buildClientesRawWhere,
-  type MostrarNegocio,
-  type UbicacionMapsFilter,
-} from '@/lib/cliente-filters'
+  fetchClientesList,
+  parseClienteListParams,
+} from '@/lib/clientes-repo'
 
 export async function GET(request: NextRequest) {
   // FIX H3-4: GET /api/clientes solo para roles con visibilidad de
@@ -26,228 +21,15 @@ export async function GET(request: NextRequest) {
   // autenticado veía toda la base.
   const authResult = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE, ROLES.CONTADOR])
   if (authResult instanceof Response) return authResult
-  const pagination = getPaginationParams(request.nextUrl.searchParams)
   try {
-    const search = request.nextUrl.searchParams.get('search')
-    const mostrarNegocio = request.nextUrl.searchParams.get('mostrarNegocio') as MostrarNegocio | null
-    const ubicacionMaps = request.nextUrl.searchParams.get('ubicacionMaps') as UbicacionMapsFilter | null
-    const todosNegociosConLink = request.nextUrl.searchParams.get('todosNegociosConLink')
-    const clienteConLink = request.nextUrl.searchParams.get('clienteConLink')
-    const bloqueado = request.nextUrl.searchParams.get('bloqueado')
-    const reclamaciones = request.nextUrl.searchParams.get('reclamaciones')
-    const noVerificado = request.nextUrl.searchParams.get('noVerificado')
-    const where = buildClientesWhere({
-      bloqueado: bloqueado ?? undefined,
-      reclamaciones: reclamaciones ?? undefined,
-      noVerificado: noVerificado ?? undefined,
-      mostrarNegocio: mostrarNegocio ?? undefined,
-      ubicacionMaps: ubicacionMaps ?? undefined,
-      todosNegociosConLink: todosNegociosConLink === 'true' ? 'true' : undefined,
-      clienteConLink: clienteConLink === 'true' ? 'true' : undefined,
+    const params = parseClienteListParams(request.nextUrl.searchParams)
+    const result = await fetchClientesList(params)
+    return apiSuccess({
+      clientes: result.clientes,
+      total: result.total,
+      totalPages: result.totalPages,
+      page: result.page,
     })
-
-    // Use pg_trgm search for queries with 2+ characters (better relevance)
-    // Fall back to Prisma contains for single-char queries
-    if (search && search.trim().length >= 2) {
-      // Use raw SQL with pg_trgm word_similarity for better relevance
-      // Ocultar canónico en la búsqueda raw SQL también.
-      const adminFilter = Prisma.sql`AND c.id != ${CANONICAL_CONSUMIDOR_FINAL_ID}`
-      const filtrosNegocioRaw = Prisma.raw(
-        buildClientesRawWhere({
-          mostrarNegocio: mostrarNegocio ?? undefined,
-          ubicacionMaps: ubicacionMaps ?? undefined,
-          todosNegociosConLink: todosNegociosConLink === 'true' ? 'true' : undefined,
-          clienteConLink: clienteConLink === 'true' ? 'true' : undefined,
-        })
-      )
-
-      const searchLike = `%${search}%`
-      const skip = pagination.all ? 0 : ((pagination.page || 1) - 1) * (pagination.pageSize || 20)
-      const take = pagination.all ? 1000 : (pagination.pageSize || 20)
-
-      const searchConditions = Prisma.sql`
-        (
-          c.nombre <% ${search} OR
-          COALESCE(c.apellido, '') <% ${search} OR
-          COALESCE(c.barrio, '') <% ${search} OR
-          COALESCE(c.direccion, '') <% ${search} OR
-          c.nombre ILIKE ${searchLike} OR
-          COALESCE(c.apellido, '') ILIKE ${searchLike} OR
-          COALESCE(c.barrio, '') ILIKE ${searchLike} OR
-          COALESCE(c.direccion, '') ILIKE ${searchLike} OR
-          c.telefono ILIKE ${searchLike} OR
-          EXISTS (
-            SELECT 1 FROM "ContactoCliente" cc
-            WHERE cc."clienteId" = c.id
-              AND (cc.nombre ILIKE ${searchLike} OR cc.telefono ILIKE ${searchLike})
-          ) OR
-          EXISTS (
-            SELECT 1 FROM "Negocio" n
-            WHERE n."clienteId" = c.id
-              AND n.activo = true
-              AND (
-                n.nombre ILIKE ${searchLike} OR
-                COALESCE(n."tipoNegocio", '') ILIKE ${searchLike} OR
-                COALESCE(n.direccion, '') ILIKE ${searchLike} OR
-                COALESCE(n.barrio, '') ILIKE ${searchLike} OR
-                COALESCE(n.referencia, '') ILIKE ${searchLike}
-              )
-          )
-        )
-      `
-
-      const [clientesRaw, totalRaw] = await Promise.all([
-        prisma.$queryRaw<unknown[]>`
-          SELECT DISTINCT ON (c.id)
-            c.id, c.nombre, c.apellido, c.telefono, c.direccion, c.barrio,
-            c.notas, c.fuente, c.frecuencia,
-            c."cadaNDias", c."ultEntrega", c."proxEntrega", c."habAgua", c."habHielo",
-            c."habBotellon", c."habBolsaAgua", c."habBolsaHielo", c.verificado,
-            c."verificadoEn", c."creadoPorRol", c.bloqueado, c.reclamaciones,
-            c."limitePedidosFiados", c."negocioDefaultId", c.notas, c.activo,
-            c."createdAt", c."updatedAt", c."createdById", c."rutaId", c.referencia,
-            c."linkUbicacion", c."preciosEspeciales",
-            c.lat, c.lng, c."geocodeOrigen", c."geocodeAt",
-            COALESCE(
-              (SELECT json_agg(json_build_object('nombre', cc.nombre, 'telefono', cc.telefono, 'relacion', cc.relacion))
-               FROM "ContactoCliente" cc WHERE cc."clienteId" = c.id),
-              '[]'::json
-            ) AS contactos,
-            GREATEST(
-              word_similarity(${search}, c.nombre),
-              word_similarity(${search}, COALESCE(c.apellido, '')),
-              word_similarity(${search}, COALESCE(c.barrio, '')),
-              word_similarity(${search}, COALESCE(c.direccion, ''))
-            ) as similarity_score
-          FROM "Cliente" c
-          WHERE c.activo = true
-            ${adminFilter}
-            ${filtrosNegocioRaw}
-            AND ${searchConditions}
-          ORDER BY c.id, similarity_score DESC
-          LIMIT ${take}
-          OFFSET ${skip}
-        `,
-        prisma.$queryRaw<unknown[]>`
-          SELECT COUNT(DISTINCT c.id) as total
-          FROM "Cliente" c
-          WHERE c.activo = true
-            ${adminFilter}
-            ${filtrosNegocioRaw}
-            AND ${searchConditions}
-        `,
-      ])
-
-      // Enrich with negocios and counts
-      const clienteIds = clientesRaw.map((c: any) => c.id)
-      const [negociosMap, countsMap] = await Promise.all([
-        prisma.negocio.findMany({
-          where: { clienteId: { in: clienteIds }, activo: true },
-          select: { id: true, nombre: true, tipoNegocio: true, direccion: true, barrio: true, referencia: true, linkUbicacion: true, clienteId: true },
-        }).then(negs => {
-          const map = new Map<string, any[]>()
-          for (const n of negs) {
-            const existing = map.get(n.clienteId) || []
-            existing.push(n)
-            map.set(n.clienteId, existing)
-          }
-          return map
-        }),
-        prisma.pedido.findMany({
-          where: {
-            clienteId: { in: clienteIds },
-            saldo: { gt: 0 },
-            estadoEntrega: 'ENTREGADO',
-          },
-          select: { clienteId: true, saldo: true },
-        }).then(pedidos => {
-          const map = new Map<string, number>()
-          for (const p of pedidos) {
-            map.set(p.clienteId, (map.get(p.clienteId) || 0) + Number(p.saldo))
-          }
-          return map
-        }),
-      ])
-
-      const total = Number((totalRaw[0] as any)?.total ?? 0)
-      const clientes = clientesRaw.map((c: any) => ({
-        ...c,
-        clienteId: c.id,
-        saldoPendiente: countsMap.get(c.id) || 0,
-        negocios: negociosMap.get(c.id) || [],
-        _count: { pedidos: 0 }, // simplified
-      }))
-
-      return apiSuccess(
-        pagination.all
-          ? { clientes, total }
-          : buildPaginationResponse(clientes, total, pagination.page || 1, pagination.pageSize || 20)
-      )
-    }
-
-    if (search) {
-      where.OR = [
-        { nombre: { contains: search, mode: 'insensitive' } },
-        { apellido: { contains: search, mode: 'insensitive' } },
-        { telefono: { contains: search, mode: 'insensitive' } },
-        { direccion: { contains: search, mode: 'insensitive' } },
-        { barrio: { contains: search, mode: 'insensitive' } },
-        { notas: { contains: search, mode: 'insensitive' } },
-        { contactos: { some: { nombre: { contains: search, mode: 'insensitive' } } } },
-        { contactos: { some: { telefono: { contains: search, mode: 'insensitive' } } } },
-        { negocios: { some: { nombre: { contains: search, mode: 'insensitive' } } } },
-        { negocios: { some: { direccion: { contains: search, mode: 'insensitive' } } } },
-        { negocios: { some: { barrio: { contains: search, mode: 'insensitive' } } } },
-        { negocios: { some: { tipoNegocio: { contains: search, mode: 'insensitive' } } } },
-        { negocios: { some: { referencia: { contains: search, mode: 'insensitive' } } } },
-      ]
-    }
-
-    const prismaPagination = getPrismaPagination(pagination)
-    const [clientesRaw, total] = await Promise.all([
-      prisma.cliente.findMany({
-        where,
-        orderBy: { nombre: 'asc' },
-        include: {
-          _count: { select: { pedidos: true } },
-          pedidos: {
-            where: {
-              saldo: { gt: 0 },
-              estadoEntrega: 'ENTREGADO',
-            },
-            select: { saldo: true },
-          },
-          negocios: {
-            where: { activo: true },
-            orderBy: { nombre: 'asc' },
-            select: {
-              id: true,
-              nombre: true,
-              tipoNegocio: true,
-              direccion: true,
-              barrio: true,
-              referencia: true,
-              linkUbicacion: true,
-            },
-          },
-          plantillaRecurrente: true,
-          contactos: true,  // FASE 3: ya es el nombre final
-        },
-        ...prismaPagination,
-      }),
-      prisma.cliente.count({ where }),
-    ])
-
-    const clientes = clientesRaw.map(c => ({
-      ...c,
-      clienteId: c.id,
-      saldoPendiente: c.pedidos.reduce((sum, p) => sum + Number(p.saldo), 0),
-    }))
-    return apiSuccess(
-      pagination.all
-        ? { clientes, total }
-        : buildPaginationResponse(clientes, total, pagination.page!, pagination.pageSize!)
-    )
   } catch (error) {
     return apiError('Error cargando clientes')
   }

@@ -1,7 +1,10 @@
 import type { ClientesClientProps } from './clientes-client/types'
-import { headers } from 'next/headers'
 import { LIMITE_FIADOS_DEFAULT } from '@/lib/constants'
 import { getConfigInt } from '@/lib/config'
+import {
+  fetchClientesList,
+  parseClienteListParams,
+} from '@/lib/clientes-repo'
 import ClientesClient from './clientes-client'
 import {
   resolveUbicacionMaps,
@@ -30,8 +33,8 @@ export default async function ClientesPage({
   const pageSize = Math.min(100, Math.max(1, parseInt(resolvedSearchParams.pageSize || String(DEFAULT_PAGE_SIZE), 10)))
   const search = resolvedSearchParams.search || ''
 
-  // Reutilizar la lógica de paginación, búsqueda y filtros de la API
-  // para mantener Server Component y Client Component perfectamente sincronizados.
+  // Consulta directa a la base de datos (sin HTTP interno) usando el
+  // mismo repositorio que GET /api/clientes. Elimina el cold start duplicado.
   const apiParams = new URLSearchParams()
   apiParams.set('page', String(page))
   apiParams.set('pageSize', String(pageSize))
@@ -44,27 +47,11 @@ export default async function ClientesPage({
   if (resolvedSearchParams.todosNegociosConLink === 'true') apiParams.set('todosNegociosConLink', 'true')
   if (resolvedSearchParams.clienteConLink === 'true') apiParams.set('clienteConLink', 'true')
 
-  // El Server Component necesita una URL absoluta para fetch; Next.js no
-  // acepta paths relativos en el runtime de Node.js en todos los casos.
-  const reqHeaders = await headers()
-  const host = reqHeaders.get('host') || 'localhost:3001'
-  const protocol = host.startsWith('localhost') ? 'http' : 'https'
-  const apiUrl = `${protocol}://${host}/api/clientes?${apiParams.toString()}`
-
-  const apiRes = await fetch(apiUrl, { headers: { cookie: reqHeaders.get('cookie') || '' } })
-  let clientes: ClientesClientProps['initialClientes'] = []
-  let total = 0
-  let totalPages = 1
-  if (apiRes.ok) {
-    const data = await apiRes.json()
-    if (data.success) {
-      clientes = (data.data as ClientesClientProps['initialClientes']) || (data.data?.clientes as ClientesClientProps['initialClientes']) || []
-      total = (data.total as number) ?? 0
-      totalPages = (data.totalPages as number) ?? 1
-    }
-  }
+  const result = await fetchClientesList(parseClienteListParams(apiParams))
 
   const limiteGlobalFiados = await getConfigInt('LIMITE_PEDIDOS_FIADOS_DEFAULT', LIMITE_FIADOS_DEFAULT)
+
+  const clientes = (result.clientes ?? []) as ClientesClientProps['initialClientes']
 
   const filtrosActivos = {
     mostrarNegocio: (resolvedSearchParams.mostrarNegocio ?? 'todos') as MostrarNegocio,
@@ -74,8 +61,8 @@ export default async function ClientesPage({
   return (
     <ClientesClient
       initialClientes={clientes}
-      initialTotal={total}
-      initialTotalPages={totalPages}
+      initialTotal={result.total}
+      initialTotalPages={result.totalPages}
       initialPage={page}
       initialPageSize={pageSize}
       initialSearch={search}

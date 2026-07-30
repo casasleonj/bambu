@@ -9,6 +9,9 @@ import { join } from 'path'
 const routePath = join(process.cwd(), 'src/app/api/clientes/route.ts')
 const source = readFileSync(routePath, 'utf-8')
 
+const repoPath = join(process.cwd(), 'src/lib/clientes-repo.ts')
+const repoSrc = readFileSync(repoPath, 'utf-8')
+
 const migrationPath = join(process.cwd(), 'prisma/migrations/20260729210000_fix_search_clientes_phone_negocio/migration.sql')
 const migrationSource = readFileSync(migrationPath, 'utf-8')
 
@@ -97,12 +100,13 @@ describe('Issue cliente limitePedidosFiados', () => {
 
 describe('Regresión búsqueda /clientes (2026-07-29): teléfono y negocio en pg_trgm', () => {
   it('GET incluye c.telefono ILIKE en searchConditions', () => {
-    const getSection = source.split('export async function GET')[1]?.split('export async function POST')[0] || ''
+    // La lógica SQL se movió a clientes-repo.ts (refactor page.tsx anti-patrón).
+    const getSection = repoSrc.split('async function fetchSearchRaw')[1] || ''
     expect(getSection).toMatch(/c\.telefono\s*ILIKE\s*\$\{searchLike\}/)
   })
 
   it('GET incluye subquery Negocio en searchConditions', () => {
-    const getSection = source.split('export async function GET')[1]?.split('export async function POST')[0] || ''
+    const getSection = repoSrc.split('async function fetchSearchRaw')[1] || ''
     expect(getSection).toMatch(/SELECT\s+1\s+FROM\s+"Negocio"\s+n\s+WHERE\s+n\."clienteId"\s*=\s*c\.id/)
     expect(getSection).toMatch(/n\.nombre\s*ILIKE\s*\$\{searchLike\}/)
     expect(getSection).toMatch(/n\."tipoNegocio".*?ILIKE\s*\$\{searchLike\}/)
