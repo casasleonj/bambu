@@ -252,37 +252,34 @@ describe('ClientesClient — regresion mobile 2026-06-10', () => {
     // undefined en el siguiente test y rompa el `alertas.filter()`.
   })
 
-  it('NO dispara fetch a /api/clientes en mount si hay initialClientes (regresion "no se pudieron cargar")', async () => {
-    const { mock, calls } = createFetchMock()
+  it('NO reemplaza la lista del SSR si el fetch de lista falla (regresion "no se pudieron cargar")', async () => {
+    const { mock, responses } = createFetchMock()
+    // El cache de búsqueda client-side hace un fetch en background a
+    // /api/clientes?all=true. Si falla, NO debe reemplazar la lista del SSR.
+    responses.set('/api/clientes?all=true&pageSize=500', {
+      status: 500,
+      body: { success: false, error: { message: 'internal' } },
+    })
     global.fetch = mock as unknown as typeof fetch
 
-    render(
-      <ClientesClient
-        initialClientes={[mockCliente]}
-        filtrosActivos={{ mostrarNegocio: 'todos', ubicacionMaps: 'todos' }}
-        openClienteId={undefined}
-        filtroActivo={null}
-      />,
-    )
+    await act(async () => {
+      render(
+        <ClientesClient
+          initialClientes={[mockCliente]}
+          filtrosActivos={{ mostrarNegocio: 'todos', ubicacionMaps: 'todos' }}
+          openClienteId={undefined}
+          filtroActivo={null}
+        />,
+      )
+    })
 
-    // Esperar 100ms para que cualquier useEffect de mount se hubiera disparado.
-    await new Promise((resolve) => setTimeout(resolve, 100))
+    // Esperar a que el useEffect de mount intente cargar el cache.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 150))
+    })
 
-    // Con el fix #1 aplicado, NO debe haber fetch a /api/clientes al mount
-    // porque el SSR ya proveyo initialClientes.
-    //
-    // (Antes: useEffect de mount disparaba fetchClientes() que fallaba en
-    // mobile y setFetchError reemplazaba visualmente la lista del SSR.)
-    //
-    // Nota: SI hay otros fetches al mount (/api/trabajadores, /api/auth/profile)
-    // que son normales. Lo que verificamos es que NO se hace fetch
-    // especifico a /api/clientes.
-    const clientesCalls = calls.filter((c) => c.url.includes('/api/clientes'))
-    expect(clientesCalls).toHaveLength(0)
-
-    // Verificacion adicional: la lista del SSR se ve (no fue reemplazada
-    // por un banner de error). El nombre del cliente mockeado debe estar
-    // en el DOM.
+    // El fetch de cache falló, pero la lista del SSR sigue visible
+    // (no fue reemplazada por un banner de error).
     expect(screen.getByTestId('cliente-row-cliente-1')).toBeTruthy()
     expect(screen.getByText('Juan')).toBeTruthy()
   })
@@ -860,7 +857,7 @@ describe('ClientesClient — regresion mobile 2026-06-10', () => {
       fireEvent.click(screen.getByTestId('cliente-retry'))
     })
 
-    const listCalls = calls.filter(c => c.url.includes('/api/clientes?'))
+    const listCalls = calls.filter(c => c.url.includes('/api/clientes?') && !c.url.includes('all=true'))
     expect(listCalls).toHaveLength(1)
     expect(listCalls[0].url).toContain('page=2')
     expect(listCalls[0].url).toContain('search=Juan')
@@ -987,6 +984,66 @@ describe('ClientesClient — regresion mobile 2026-06-10', () => {
       })
 
       expect(mockPush).not.toHaveBeenCalled()
+    })
+  })
+
+  it('filtra client-side cuando el cache completo está cargado (búsqueda instantánea)', async () => {
+    const { mock, responses } = createFetchMock()
+    const mockUseSearchParams = vi.mocked(useSearchParams)
+    mockUseSearchParams.mockReturnValue(new URLSearchParams() as unknown as ReturnType<typeof useSearchParams>)
+    responses.set('/api/clientes?all=true&pageSize=500', {
+      status: 200,
+      body: {
+        success: true,
+        clientes: [
+          mockCliente,
+          { ...mockCliente, id: 'cliente-2', clienteId: 'cliente-2', nombre: 'Carlos', telefono: '3007654321' },
+          { ...mockCliente, id: 'cliente-3', clienteId: 'cliente-3', nombre: 'Ana María', telefono: '3001112222' },
+        ],
+      },
+    })
+    global.fetch = mock as unknown as typeof fetch
+
+    await act(async () => {
+      render(
+        <ClientesClient
+          initialClientes={[mockCliente]}
+          initialTotal={1}
+          initialTotalPages={1}
+          filtrosActivos={{ mostrarNegocio: 'todos', ubicacionMaps: 'todos' }}
+          openClienteId={undefined}
+          filtroActivo={null}
+        />,
+      )
+    })
+
+    // Esperar a que cargue el cache completo.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 150))
+    })
+
+    // Escribir en el input de búsqueda: debe filtrar localmente sin fetch.
+    const input = screen.getByTestId('cliente-search-input')
+    await act(async () => {
+      fireEvent.change(input, { target: { value: 'Carlos' } })
+    })
+
+    // Solo debe mostrar el cliente filtrado (cliente-2).
+    await waitFor(() => {
+      expect(screen.queryByTestId('cliente-row-cliente-1')).toBeNull()
+      expect(screen.getByTestId('cliente-row-cliente-2')).toBeTruthy()
+      expect(screen.queryByTestId('cliente-row-cliente-3')).toBeNull()
+    })
+
+    // Limpiar la búsqueda: vuelve a la vista paginada del server (initialClientes).
+    await act(async () => {
+      fireEvent.change(input, { target: { value: '' } })
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('cliente-row-cliente-1')).toBeTruthy()
+      expect(screen.queryByTestId('cliente-row-cliente-2')).toBeNull()
+      expect(screen.queryByTestId('cliente-row-cliente-3')).toBeNull()
     })
   })
 })

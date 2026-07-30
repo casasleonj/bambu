@@ -1,7 +1,7 @@
 'use client'
 
 import { generateUUID } from '@/lib/uuid'
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef, useTransition } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { useConfirm } from '@/components/confirm-modal'
@@ -144,6 +144,61 @@ function warmClienteDetail(id: string) {
   prefetchClienteDetail(id)
 }
 
+/**
+ * Filtro de búsqueda client-side. Replica el matching server-side de
+ * /api/clientes para que, una vez cargado el cache completo, la búsqueda
+ * sea instantánea (<10ms) sin round-trip al servidor por cada tecla.
+ */
+function clienteMatchesSearch(cliente: Cliente, term: string): boolean {
+  const t = term.toLowerCase().trim()
+  if (!t) return true
+  const termTelefono = normalizarTelefono(t)
+
+  const camposCliente = [
+    cliente.nombre,
+    cliente.apellido,
+    cliente.telefono,
+    cliente.direccion,
+    cliente.barrio,
+    cliente.notas,
+    cliente.referencia,
+  ]
+  if (camposCliente.some((f) => f?.toLowerCase().includes(t))) return true
+  if (
+    termTelefono &&
+    normalizarTelefono(cliente.telefono || '').includes(termTelefono)
+  )
+    return true
+
+  if (
+    cliente.contactos?.some((c) => {
+      const tel = normalizarTelefono(c.telefono || '')
+      return (
+        c.nombre?.toLowerCase().includes(t) ||
+        (termTelefono && tel.includes(termTelefono)) ||
+        c.relacion?.toLowerCase().includes(t)
+      )
+    })
+  )
+    return true
+
+  if (
+    cliente.negocios?.some((n) => {
+      const camposNegocio = [
+        n.nombre,
+        n.direccion,
+        n.barrio,
+        n.tipoNegocio,
+        n.referencia,
+      ]
+      return camposNegocio.some((f) => f?.toLowerCase().includes(t))
+    })
+  )
+    return true
+
+  return false
+}
+
 export default function ClientesClient({
   initialClientes,
   initialTotal = 0,
@@ -166,6 +221,11 @@ export default function ClientesClient({
   const searchInputRef = useRef(searchInput)
   useEffect(() => { searchInputRef.current = searchInput }, [searchInput])
 
+  // Cache client-side: lista completa para búsqueda instantánea sin round-trip.
+  const [allClientes, setAllClientes] = useState<Cliente[]>([])
+  const [allClientesLoading, setAllClientesLoading] = useState(false)
+  const [isSearchPending, startSearchTransition] = useTransition()
+
   // Sincronizar input de búsqueda cuando la URL cambia por navegación
   // externa (back/forward) o carga inicial con ?search=... en el URL.
   // NO sincronizar desde initialSearch (prop del RSC) porque llega después
@@ -175,6 +235,7 @@ export default function ClientesClient({
   // (que sí debe reflejarse en el input) de una transición pendiente que
   // aún no cometió el valor.
   const lastCommittedSearchRef = useRef(initialSearch)
+
   useEffect(() => {
     const urlSearch = searchParams?.get('search') || ''
     const url = urlSearch.trim()
@@ -191,10 +252,12 @@ export default function ClientesClient({
     setTotalPages(initialTotalPages)
   }, [initialTotal, initialTotalPages])
 
-  // Búsqueda server-side: debounce 500ms para no saturar 2G/3G.
-  // Solo reseteamos a página 1 cuando el término de búsqueda realmente
-  // cambia (escritura en el input). Si cambió solo la página (paginación),
-  // preservamos el número de página para no regresar al usuario a la 1.
+  // Sincroniza la URL con el término de búsqueda. La búsqueda se filtra
+  // client-side, así que el input responde instantáneamente; el debounce
+  // solo actualiza la URL para que sea compartible. startTransition mantiene
+  // la UI anterior visible durante la transición. Solo reseteamos a página 1
+  // cuando el término de búsqueda realmente cambia; si cambió solo la página
+  // (paginación), la preservamos.
   useEffect(() => {
     const currentSearch = searchParams?.get('search') || ''
     if (searchInput.trim() === currentSearch.trim()) return
@@ -211,8 +274,10 @@ export default function ClientesClient({
       }
       const nextUrl = `${pathname}?${nextParams.toString()}`
       lastCommittedSearchRef.current = searchInput.trim()
-      router.push(nextUrl, { scroll: false })
-    }, 500)
+      startSearchTransition(() => {
+        router.push(nextUrl, { scroll: false })
+      })
+    }, 100)
     return () => clearTimeout(t)
   }, [searchInput, searchParams, pathname, router])
 
@@ -222,6 +287,51 @@ export default function ClientesClient({
   useEffect(() => {
     setClientes(initialClientes)
   }, [initialClientes])
+
+  // Carga en background la lista completa de clientes para búsqueda
+  // instantánea client-side. Se ejecuta al montar y cada vez que cambian
+  // los filtros server-side (negocio/ubicación/riesgo). El ref evita
+  // requests concurrentes; el flag de estado sirve para feedback visual.
+  const allClientesLoadingRef = useRef(false)
+  const loadAllClientes = useCallback(async () => {
+    if (allClientesLoadingRef.current) return
+    allClientesLoadingRef.current = true
+    setAllClientesLoading(true)
+    try {
+      const params = new URLSearchParams()
+      params.set('all', 'true')
+      params.set('pageSize', '500')
+      if (filtroActivo === 'bloqueado') params.set('bloqueado', 'true')
+      else if (filtroActivo === 'reclamaciones') params.set('reclamaciones', 'gte3')
+      else if (filtroActivo === 'noVerificado') params.set('noVerificado', 'true')
+      if (filtrosActivos.mostrarNegocio !== 'todos') {
+        params.set('mostrarNegocio', filtrosActivos.mostrarNegocio)
+      }
+      if (filtrosActivos.ubicacionMaps !== 'todos') {
+        params.set('ubicacionMaps', filtrosActivos.ubicacionMaps)
+      }
+      const res = await fetchWithTimeout(
+        `/api/clientes?${params.toString()}`,
+        {},
+        30_000,
+      )
+      if (!res.ok) throw new Error('Error cargando clientes')
+      const data = await res.json()
+      const next = data.success
+        ? (data.data || data.clientes || [])
+        : (data.clientes || [])
+      setAllClientes(next as Cliente[])
+    } catch (error) {
+      console.warn('[loadAllClientes] error', error)
+    } finally {
+      allClientesLoadingRef.current = false
+      setAllClientesLoading(false)
+    }
+  }, [filtroActivo, filtrosActivos])
+
+  useEffect(() => {
+    void loadAllClientes()
+  }, [loadAllClientes])
 
   const { confirm, modal } = useConfirm()
   const [loading, setLoading] = useState(false)
@@ -463,15 +573,34 @@ export default function ClientesClient({
     return hasAny ? JSON.stringify(result) : ''
   }
 
-  // Filtros client-side: solo saldo/frecuencia y ordenamiento. La búsqueda
-  // de texto y la paginación ahora son server-side para escalar a ~400 clientes.
-  const clientesFiltrados = useMemo(() => [...clientes].sort((a, b) => {
+  // Búsqueda client-side: si el cache completo está cargado y el usuario
+  // está escribiendo, filtramos localmente (<10ms) en lugar de hacer un
+  // round-trip al servidor por cada tecla. Si no hay cache, caemos al
+  // server-side search tradicional (respuesta del Server Component).
+  const clientesSearchResult = useMemo(() => {
+    const term = searchInput.trim()
+    if (!term || allClientes.length === 0) return clientes
+    return allClientes.filter((c) => clienteMatchesSearch(c, term))
+  }, [searchInput, allClientes, clientes])
+
+  // Filtros client-side: saldo/frecuencia y ordenamiento sobre el resultado
+  // de búsqueda (ya sea server-side o client-side).
+  const clientesFiltrados = useMemo(() => [...clientesSearchResult].sort((a, b) => {
     const dir = sortDir === 'asc' ? 1 : -1
     if (sortBy === 'createdAt') {
       return dir * (new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime())
     }
     return dir * a.nombre.localeCompare(b.nombre)
-  }), [clientes, sortBy, sortDir])
+  }), [clientesSearchResult, sortBy, sortDir])
+
+  // Cuando la búsqueda es client-side, el resultado no está paginado y el
+  // total real es la cantidad filtrada. Esto evita mostrar "1-25 de 400"
+  // cuando el usuario busca un nombre y hay 3 coincidencias.
+  const page = Math.max(1, parseInt(searchParams?.get('page') || String(initialPage), 10))
+  const isClientSearchActive = Boolean(searchInput.trim()) && allClientes.length > 0
+  const displayTotal = isClientSearchActive ? clientesFiltrados.length : total
+  const displayTotalPages = isClientSearchActive ? 1 : totalPages
+  const displayPage = isClientSearchActive ? 1 : page
 
   function openCreateModal() {
     setFormData({
@@ -745,6 +874,8 @@ export default function ClientesClient({
           } else {
             setShowModal(false)
           }
+          // Refrescar cache client-side para búsqueda instantánea.
+          void loadAllClientes()
           if (sync.ok) toast.success('Cliente actualizado')
         } else {
           const data = await res.json().catch(() => ({}))
@@ -875,6 +1006,9 @@ export default function ClientesClient({
           const nextParams = new URLSearchParams(searchParams?.toString() || '')
           nextParams.set('page', '1')
           router.push(`${pathname}?${nextParams.toString()}`, { scroll: false })
+          // Refrescar el cache client-side en background para que la búsqueda
+          // instantánea incluya el cliente recién creado.
+          void loadAllClientes()
         })()
       }
     } catch (error) {
@@ -956,6 +1090,8 @@ export default function ClientesClient({
       const res = await fetch(`/api/clientes/${id}`, { method: 'DELETE' })
       if (res.ok) {
         setClientes(prev => prev.filter(c => c.id !== id && c.clienteId !== id))
+        // Mantener cache client-side sincronizado para búsqueda instantánea.
+        setAllClientes(prev => prev.filter(c => c.id !== id && c.clienteId !== id))
         detailCache.delete(id)
         setShowDetail(false)
         setSelectedCliente(null)
@@ -1025,6 +1161,7 @@ export default function ClientesClient({
         // actualizado; no hace falta recargar toda la lista ni el detalle.
         const nextVerificado = data.cliente?.verificado ?? verificado
         setClientes(prev => prev.map(c => (c.id === id || c.clienteId === id) ? { ...c, verificado: nextVerificado } as Cliente : c))
+        setAllClientes(prev => prev.map(c => (c.id === id || c.clienteId === id) ? { ...c, verificado: nextVerificado } as Cliente : c))
         updateCachedCliente(id, { verificado: nextVerificado })
         if (selectedCliente?.id === id || selectedCliente?.clienteId === id) {
           setSelectedCliente(prev => prev ? { ...prev, verificado: nextVerificado } as Cliente : prev)
@@ -1051,6 +1188,7 @@ export default function ClientesClient({
         toast.success(bloqueado ? 'Cliente bloqueado' : 'Cliente desbloqueado')
         const nextBloqueado = data.cliente?.bloqueado ?? bloqueado
         setClientes(prev => prev.map(c => (c.id === id || c.clienteId === id) ? { ...c, bloqueado: nextBloqueado } as Cliente : c))
+        setAllClientes(prev => prev.map(c => (c.id === id || c.clienteId === id) ? { ...c, bloqueado: nextBloqueado } as Cliente : c))
         updateCachedCliente(id, { bloqueado: nextBloqueado })
         if (selectedCliente?.id === id || selectedCliente?.clienteId === id) {
           setSelectedCliente(prev => prev ? { ...prev, bloqueado: nextBloqueado } as Cliente : prev)
@@ -1099,10 +1237,10 @@ export default function ClientesClient({
 
       <ClienteTable
         clientes={clientesFiltrados}
-        total={total}
-        page={Math.max(1, parseInt(searchParams?.get('page') || String(initialPage), 10))}
+        total={displayTotal}
+        page={displayPage}
         pageSize={initialPageSize}
-        totalPages={totalPages}
+        totalPages={displayTotalPages}
         search={searchInput}
         onSearchChange={setSearchInput}
         onPageChange={(newPage) => {
@@ -1122,6 +1260,8 @@ export default function ClientesClient({
         selectedClienteId={selectedCliente?.id}
         filtroActivo={filtroActivo}
         filtrosActivos={filtrosActivos}
+        searchPending={isSearchPending}
+        allClientesLoading={allClientesLoading}
       />
 
       <ClienteForm
