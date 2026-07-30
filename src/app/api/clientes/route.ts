@@ -69,12 +69,10 @@ export async function GET(request: NextRequest) {
         (
           c.nombre <% ${search} OR
           COALESCE(c.apellido, '') <% ${search} OR
-          COALESCE(c."nombreNegocio", '') <% ${search} OR
           COALESCE(c.barrio, '') <% ${search} OR
           COALESCE(c.direccion, '') <% ${search} OR
           c.nombre ILIKE ${searchLike} OR
           COALESCE(c.apellido, '') ILIKE ${searchLike} OR
-          COALESCE(c."nombreNegocio", '') ILIKE ${searchLike} OR
           COALESCE(c.barrio, '') ILIKE ${searchLike} OR
           COALESCE(c.direccion, '') ILIKE ${searchLike} OR
           EXISTS (
@@ -89,7 +87,7 @@ export async function GET(request: NextRequest) {
         prisma.$queryRaw<unknown[]>`
           SELECT DISTINCT ON (c.id)
             c.id, c.nombre, c.apellido, c.telefono, c.direccion, c.barrio,
-            c."nombreNegocio", c."tipoNegocio", c.notas, c.fuente, c.frecuencia,
+            c.notas, c.fuente, c.frecuencia,
             c."cadaNDias", c."ultEntrega", c."proxEntrega", c."habAgua", c."habHielo",
             c."habBotellon", c."habBolsaAgua", c."habBolsaHielo", c.verificado,
             c."verificadoEn", c."creadoPorRol", c.bloqueado, c.reclamaciones,
@@ -105,7 +103,6 @@ export async function GET(request: NextRequest) {
             GREATEST(
               word_similarity(${search}, c.nombre),
               word_similarity(${search}, COALESCE(c.apellido, '')),
-              word_similarity(${search}, COALESCE(c."nombreNegocio", '')),
               word_similarity(${search}, COALESCE(c.barrio, '')),
               word_similarity(${search}, COALESCE(c.direccion, ''))
             ) as similarity_score
@@ -182,8 +179,6 @@ export async function GET(request: NextRequest) {
         { telefono: { contains: search, mode: 'insensitive' } },
         { direccion: { contains: search, mode: 'insensitive' } },
         { barrio: { contains: search, mode: 'insensitive' } },
-        { nombreNegocio: { contains: search, mode: 'insensitive' } },
-        { tipoNegocio: { contains: search, mode: 'insensitive' } },
         { notas: { contains: search, mode: 'insensitive' } },
         { contactos: { some: { nombre: { contains: search, mode: 'insensitive' } } } },
         { contactos: { some: { telefono: { contains: search, mode: 'insensitive' } } } },
@@ -319,14 +314,7 @@ export async function POST(request: NextRequest) {
             barrio: parsed.data.barrio,
             direccion: parsed.data.direccion,
             linkUbicacion: parsed.data.linkUbicacion ?? null,
-            nombreNegocio: parsed.data.nombreNegocio ?? null,
-            tipoNegocio: parsed.data.tipoNegocio ?? null,
-            horaApertura: parsed.data.horaApertura ?? null,
             referencia: parsed.data.referencia ?? null,
-            // lat/lng se persisten después vía POST /api/clientes/[id]/geocode.
-            // No es responsabilidad de POST /api/clientes. El admin puede
-            // triggerearlo desde el botón "Actualizar coordenadas" o el
-            // cron job.
             preciosEspeciales: parsed.data.preciosEspeciales,
             notas: parsed.data.notas,
             limitePedidosFiados: parsed.data.limitePedidosFiados ?? null,
@@ -344,9 +332,6 @@ export async function POST(request: NextRequest) {
             preciosEspeciales: true,
             notas: true,
             offlineId: true,
-            nombreNegocio: true,
-            tipoNegocio: true,
-            horaApertura: true,
             referencia: true,
             limitePedidosFiados: true,
           },

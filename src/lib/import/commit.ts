@@ -202,9 +202,6 @@ async function commitCliente(
     if (data.direccion) updateData.direccion = data.direccion
     if (data.barrio) updateData.barrio = data.barrio
     if (data.referencia) updateData.referencia = data.referencia
-    if (data.nombreNegocio) updateData.nombreNegocio = data.nombreNegocio
-    if (data.tipoNegocio) updateData.tipoNegocio = data.tipoNegocio
-    if (data.horaApertura) updateData.horaApertura = data.horaApertura
     if (data.notas) updateData.notas = data.notas
 
     await tx.cliente.update({
@@ -241,9 +238,6 @@ async function commitCliente(
       barrio: data.barrio ?? null,
       referencia: data.referencia ?? null,
       linkUbicacion: data.linkUbicacion ?? null,
-      nombreNegocio: data.nombreNegocio ?? null,
-      tipoNegocio: data.tipoNegocio ?? null,
-      horaApertura: data.horaApertura ?? null,
       preciosEspeciales: data.preciosEspeciales ?? null,
       fuente: 'IMPORTACION_HISTORICA',
       verificado: false,

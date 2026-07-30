@@ -76,7 +76,6 @@ export async function getNegocioContext(
       habBotellon: true,
       habBolsaAgua: true,
       habBolsaHielo: true,
-      horaApertura: true,
       frecuencia: true,
       cadaNDias: true,
     },
@@ -103,7 +102,7 @@ export async function getNegocioContext(
     habBotellon: cliente.habBotellon,
     habBolsaAgua: cliente.habBolsaAgua,
     habBolsaHielo: cliente.habBolsaHielo,
-    horaApertura: cliente.horaApertura,
+    horaApertura: null,
     frecuencia: cliente.frecuencia !== 'NINGUNA' ? cliente.frecuencia : null,
     cadaNDias: cliente.cadaNDias,
   }
@@ -225,7 +224,6 @@ export async function batchGetNegocioContexts(
         habBotellon: true,
         habBolsaAgua: true,
         habBolsaHielo: true,
-        horaApertura: true,
         frecuencia: true,
         cadaNDias: true,
       },
@@ -245,12 +243,12 @@ export async function batchGetNegocioContexts(
             habAgua: true,
             habHielo: true,
             habBotellon: true,
-            habBolsaAgua: true,
-            habBolsaHielo: true,
-            horaApertura: true,
-            frecuencia: true,
-            cadaNDias: true,
-          },
+        habBolsaAgua: true,
+        habBolsaHielo: true,
+        horaApertura: true,
+        frecuencia: true,
+        cadaNDias: true,
+      },
         })
       : Promise.resolve([]),
   ])
@@ -280,7 +278,7 @@ export async function batchGetNegocioContexts(
       habBotellon: negocio?.habBotellon ?? cliente.habBotellon,
       habBolsaAgua: negocio?.habBolsaAgua ?? cliente.habBolsaAgua,
       habBolsaHielo: negocio?.habBolsaHielo ?? cliente.habBolsaHielo,
-      horaApertura: negocio?.horaApertura ?? cliente.horaApertura,
+      horaApertura: negocio?.horaApertura ?? null,
       frecuencia: (negocio?.frecuencia ?? cliente.frecuencia) !== 'NINGUNA'
         ? (negocio?.frecuencia ?? cliente.frecuencia)
         : null,

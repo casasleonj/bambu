@@ -5,8 +5,15 @@ export interface Cliente {
   telefono: string
   direccion?: string
   barrio?: string
-  nombreNegocio?: string
   limitePedidosFiados?: number | null
+  negocios?: Array<{
+    id: string
+    nombre: string
+    tipoNegocio?: string | null
+    direccion?: string | null
+    barrio?: string | null
+    referencia?: string | null
+  }>
 }
 
 export interface Tier {

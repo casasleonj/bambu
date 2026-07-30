@@ -269,9 +269,6 @@ export const ClienteCreateSchema = z.object({
   ),
   barrio: z.string().max(100).optional(),
   direccion: z.string().max(200).optional(),
-  nombreNegocio: z.string().max(100).optional(),
-  tipoNegocio: z.string().max(100).optional(),
-  horaApertura: z.string().max(50).optional().nullable(),
   referencia: z.string().max(200).optional(),
   linkUbicacion: SafeUrlSchema.optional().nullable(),
   // FASE 3 CONTRACT: el campo `contactos` ya no vive en el schema de Cliente.

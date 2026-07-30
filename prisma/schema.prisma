@@ -284,12 +284,9 @@ model Cliente {
   // FASE 3 CONTRACT: contactos legacy eliminada. Ahora es relación.
   contactos ContactoCliente[]
 
-  // LEGACY negocio fields — migración a Negocio en curso; no remover
-  // del schema hasta que todo el código deje de referenciarlos.
-  nombreNegocio     String?
-  tipoNegocio       String?
+  // FASE 2 CONTRACT: campos legacy de negocio eliminados de Cliente.
+  // Los datos fueron migrados a la tabla Negocio formal.
   fuente            String?
-  horaApertura      String?
   preciosEspeciales String?
 
   rutaId String?

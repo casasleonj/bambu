@@ -37,7 +37,7 @@ export async function GET(
     const [cliente, facturas, empresaConfigs] = await Promise.all([
       prisma.cliente.findUnique({
         where: { id: clienteId },
-        select: { id: true, nombre: true, apellido: true, telefono: true, direccion: true, barrio: true, nombreNegocio: true },
+        select: { id: true, nombre: true, apellido: true, telefono: true, direccion: true, barrio: true },
       }),
       prisma.factura.findMany({
         where: {

@@ -11,7 +11,6 @@ const NOMBRES_M = ['María', 'Ana', 'Carmen', 'Luz', 'Sandra', 'Patricia', 'Glor
 const APELLIDOS = ['Rodríguez', 'García', 'Martínez', 'López', 'González', 'Hernández', 'Pérez', 'Sánchez', 'Ramírez', 'Torres', 'Díaz', 'Morales', 'Castro', 'Vargas', 'Ruiz', 'Moreno', 'Jiménez', 'Reyes', 'Cruz', 'Ortiz', 'Rojas', 'Mendoza', 'Castillo', 'Medina', 'Vargas', 'Guerrero', 'Ríos', 'Salazar', 'Aguilar', 'Delgado', 'Vega', 'Figueroa', 'Herrera', 'Campos', 'Núñez', 'Paredes', 'Valencia', 'Acosta', 'Bernal', 'Duque', 'Espinosa', 'Franco', 'Giraldo', 'Henao', 'Ibarra', 'Jaramillo', 'Londoño', 'Marín', 'Montoya', 'Ochoa', 'Palacio', 'Quintero', 'Restrepo', 'Salinas', 'Toro', 'Uribe', 'Vallejo', 'Zapata', 'Aristizábal', 'Cárdenas']
 const BARRIOS = ['Centro', 'La Candelaria', 'San Victorino', 'Santa Fe', 'Los Mártires', 'Antonio Nariño', 'Puente Aranda', 'Kennedy', 'Tunjuelito', 'Bosa', 'Ciudad Bolívar', 'Usme', 'Rafael Uribe', 'San Cristóbal', 'Usaquén', 'Chapinero', 'Teusaquillo', 'Barrios Unidos', 'Engativá', 'Suba', 'Fontibón', 'Fontibón Centro', 'Modelia', 'Normandía', 'Hayuelos', 'Galán', 'Castilla', 'Amarillo', 'El Poblado', 'Laureles', 'Belén', 'Aranjuez', 'Manrique', 'Popular', 'Doce de Octubre', 'Robledo', 'Santa Cruz', 'Villa Hermosa', 'Miraflores', 'El Pedregal', 'La Sierra', 'El Progreso', 'San José', 'El Refugio', 'La Pradera', 'Los Almendros', 'El Bosque', 'La Estrella', 'Sabaneta', 'Envigado', 'Itagüí', 'Caldas', 'Bello', 'Copacabana', 'Barbosa', 'Girardota', 'Donmatías', 'San Pedro', 'Carmen de Viboral', 'La Ceja', 'Rionegro', 'Marinela', 'El Retiro', 'La Unión', 'Cocorná', 'Guarne', 'Santo Domingo', 'Pedro Regalo', 'El Salado', 'La Mota', 'San Antonio', 'El Centro', 'La Playa', 'El Empalme', 'El Triunfo', 'La Victoria', 'San Isidro', 'El Porvenir', 'La Esperanza', 'El Progreso']
 const DIRECCIONES = ['Calle', 'Carrera', 'Av.', 'Transversal', 'Diagonal']
-const TIPOS_NEGOCIO = ['Tienda', 'Restaurante', 'Café', 'Hotel', 'Bar', 'Panadería', 'Farmacia', 'Peluquería', 'Frutería', 'Carnicería', 'Lavandería', 'Taller']
 const CATEGORIAS_GASTO = ['Combustible', 'Mantenimiento moto', 'Mantenimiento planta', 'Insumos limpieza', 'Gas', 'Electricidad', 'Agua', 'Teléfono/Internet', 'Papelería', 'Viáticos', 'Almuerzo personal', 'Peajes', 'Parqueaderos', 'Repuestos', 'Uniformes', 'Herramientas', 'Bolsas plásticas', 'Tapas', 'Etiquetas', 'Cloro']
 const OBS_PEDIDOS = ['', '', '', '', '', '', '', '', '', 'Entregar antes de las 9am', 'Llamar al llegar', 'No hay timbre, tocar puerta', 'Dejar en portería', 'Cuidado con el perro', 'Subir al 3er piso', 'Casa esquina', 'Portón verde', 'Al lado de la tienda', 'Detrás de la iglesia', 'Frente al parque']
 
@@ -254,7 +253,6 @@ async function main() {
     const barrio = rand(BARRIOS)
     const ruta = rand(rutas)
     const freq = pickWeighted(frecuencias, freqWeights)
-    const tieneNegocio = Math.random() > 0.4
 
     const cliente = await prisma.cliente.create({
       data: {
@@ -265,9 +263,6 @@ async function main() {
         barrio,
         referencia: Math.random() > 0.7 ? rand(OBS_PEDIDOS.filter(o => o !== '')) : null,
         linkUbicacion: Math.random() > 0.8 ? `https://maps.google.com/?q=${randFloat(4.5, 4.8, 6)},${randFloat(-74.2, -73.9, 6)}` : null,
-        nombreNegocio: tieneNegocio ? `${rand(['Don', 'Doña'])} ${nombre.split(' ')[0]}` : null,
-        tipoNegocio: tieneNegocio ? rand(TIPOS_NEGOCIO) : null,
-        horaApertura: tieneNegocio ? `${randInt(6, 9).toString().padStart(2, '0')}:${rand([0, 30]).toString().padStart(2, '0')}` : null,
         rutaId: ruta.id,
         frecuencia: freq,
         cadaNDias: freq === 'DIARIA' ? 1 : freq === 'SEMANAL' ? 7 : freq === 'QUINCENAL' ? 15 : freq === 'MENSUAL' ? 30 : null,

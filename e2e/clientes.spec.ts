@@ -226,8 +226,6 @@ test.describe('Clientes API CRUD', () => {
       nombre: 'Cliente Completo',
       apellido: 'Apellido Test',
       telefono: `3${String(Date.now()).slice(-9)}`,
-      nombreNegocio: 'Tienda Test',
-      tipoNegocio: 'Tienda',
       barrio: 'Centro',
       direccion: 'Calle 123 #45-67',
       notas: 'Notas de prueba'})
@@ -235,7 +233,6 @@ test.describe('Clientes API CRUD', () => {
     expect(body.success).toBe(true)
     expect(body.cliente.nombre).toBe('Cliente Completo')
     expect(body.cliente.apellido).toBe('Apellido Test')
-    expect(body.cliente.nombreNegocio).toBe('Tienda Test')
   })
 
   test('POST retorna 409 con telefono duplicado', async ({ page: _page }) => {

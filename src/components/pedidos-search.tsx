@@ -12,12 +12,11 @@ export interface ClienteSearchOption {
   telefono: string
   direccion: string | null
   barrio: string | null
-  nombreNegocio?: string
-  tipoNegocio?: string | null
   notas?: string | null
   fuente?: string | null
   contactos?: Array<{ nombre: string; telefono: string; relacion?: string }>
   negocios?: Array<{
+    id: string
     nombre: string
     tipoNegocio?: string | null
     direccion?: string | null
@@ -151,8 +150,8 @@ export function PedidosSearch({
                 clienteId: selectedCliente.id,
                 nombreCli: selectedCliente.nombre,
                 apellidoCli: selectedCliente.apellido,
-                negocioId: selectedCliente.nombreNegocio ? selectedCliente.id : undefined,
-                nombreNegocioCli: selectedCliente.nombreNegocio,
+                negocioId: selectedCliente.negocios?.[0]?.id,
+                nombreNegocioCli: selectedCliente.negocios?.[0]?.nombre,
               }).nombrePrincipal
             : searchInput}
           onChange={e => handleInputChange(e.target.value)}
@@ -191,20 +190,34 @@ export function PedidosSearch({
                 i === highlightedIndex ? 'bg-blue-50' : 'hover:bg-gray-50'
               }`}
             >
-              <p className="text-sm font-medium text-gray-900">
-                {c.nombreNegocio || `${c.nombre}${c.apellido ? ` ${c.apellido}` : ''}`}
-              </p>
-              <p className="text-xs text-gray-500">
-                {c.telefono}
-                {c.barrio && ` · ${c.barrio}`}
-                {c.direccion && ` · ${c.direccion}`}
-                {c.negocios && c.negocios.length > 0 && !c.nombreNegocio && (
-                  <>
-                    {' · '}
-                    <span className="text-blue-600">🏪 {c.negocios[0].nombre}{c.negocios.length > 1 && ` (+${c.negocios.length - 1})`}</span>
-                  </>
-                )}
-              </p>
+              {
+                (() => {
+                  const principalNegocio = c.negocios?.[0]
+                  const nombrePrincipal = principalNegocio
+                    ? principalNegocio.nombre
+                    : `${c.nombre}${c.apellido ? ` ${c.apellido}` : ''}`
+                  const subtexto = principalNegocio
+                    ? `de ${c.nombre}${c.apellido ? ` ${c.apellido}` : ''}`
+                    : null
+                  return (
+                    <>
+                      <p className="text-sm font-medium text-gray-900">{nombrePrincipal}</p>
+                      <p className="text-xs text-gray-500">
+                        {c.telefono}
+                        {subtexto && ` · ${subtexto}`}
+                        {c.barrio && ` · ${c.barrio}`}
+                        {c.direccion && ` · ${c.direccion}`}
+                        {c.negocios && c.negocios.length > 1 && (
+                          <>
+                            {' · '}
+                            <span className="text-blue-600">+{c.negocios.length - 1} negocio{c.negocios.length - 1 > 1 ? 's' : ''}</span>
+                          </>
+                        )}
+                      </p>
+                    </>
+                  )
+                })()
+              }
             </button>
           ))}
         </div>

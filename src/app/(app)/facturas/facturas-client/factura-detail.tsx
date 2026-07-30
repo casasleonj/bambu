@@ -45,8 +45,7 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono }: Fact
   const progreso = total > 0 ? Math.round((pagado / total) * 100) : 0
   const clienteDisplayName = getAnonymousClientDisplayName(factura.cliente?.id, 'short') ?? (() => {
     if (!factura.cliente) return 'N/A'
-    const nombre = [factura.cliente.nombre, factura.cliente.apellido].filter(Boolean).join(' ')
-    return factura.cliente.nombreNegocio ? `${nombre} — ${factura.cliente.nombreNegocio}` : nombre
+    return [factura.cliente.nombre, factura.cliente.apellido].filter(Boolean).join(' ')
   })()
 
   const empresa = {

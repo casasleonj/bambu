@@ -581,7 +581,6 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
               <NegocioSelector
                 clienteId={clienteSeleccionado.id}
                 clienteNombre={clienteSeleccionado.nombre}
-                clienteNombreNegocio={(clienteSeleccionado as any).nombreNegocio}
                 clienteDireccion={clienteSeleccionado.direccion}
                 clienteBarrio={clienteSeleccionado.barrio}
                 selectedNegocioId={negocioSeleccionado}
@@ -636,9 +635,9 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
                   {filteredClientes.map(c => (
                     <button key={c.id} type="button" data-testid="cliente-search-result" onClick={() => handleSelectCliente(c)} className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b last:border-b-0 text-sm">
                       <span className="font-medium">
-                        {c.nombreNegocio || `${c.nombre}${c.apellido ? ` ${c.apellido}` : ''}`}
+                        {c.negocios?.[0]?.nombre || `${c.nombre}${c.apellido ? ` ${c.apellido}` : ''}`}
                       </span>
-                      {c.nombreNegocio && (
+                      {c.negocios?.[0] && (
                         <span className="text-gray-400 ml-2 text-xs">de {c.nombre}{c.apellido ? ` ${c.apellido}` : ''}</span>
                       )}
                       <span className="text-gray-400 ml-2">{c.telefono}</span>

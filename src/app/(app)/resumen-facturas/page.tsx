@@ -302,12 +302,6 @@ export default function ResumenFacturasPage() {
                     {cliente.nombre} {cliente.apellido || ''}
                   </Link>
                 </div>
-                {cliente.nombreNegocio && (
-                  <div>
-                    <span className="text-gray-500">Negocio:</span>{' '}
-                    <span className="font-medium">{cliente.nombreNegocio}</span>
-                  </div>
-                )}
                 <div>
                   <span className="text-gray-500">Teléfono:</span>{' '}
                   <span className="font-medium">{cliente.telefono}</span>

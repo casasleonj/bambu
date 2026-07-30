@@ -12,9 +12,6 @@ function makeCliente(partial: Partial<NormalizedCliente> = {}): NormalizedClient
     barrio: partial.barrio,
     referencia: partial.referencia,
     linkUbicacion: partial.linkUbicacion,
-    nombreNegocio: partial.nombreNegocio,
-    tipoNegocio: partial.tipoNegocio,
-    horaApertura: partial.horaApertura,
     preciosEspeciales: partial.preciosEspeciales,
     contactos: partial.contactos ?? [],
     notas: partial.notas,
@@ -28,7 +25,6 @@ function makeExisting(overrides: {
   telefono?: string
   direccion?: string | null
   barrio?: string | null
-  nombreNegocio?: string | null
   isPhoneMatch?: number
 }) {
   return {
@@ -38,7 +34,6 @@ function makeExisting(overrides: {
     telefono: overrides.telefono ?? '573001234567',
     direccion: overrides.direccion ?? null,
     barrio: overrides.barrio ?? null,
-    nombreNegocio: overrides.nombreNegocio ?? null,
     similarity: 0.8,
     isPhoneMatch: overrides.isPhoneMatch ?? 0,
   }

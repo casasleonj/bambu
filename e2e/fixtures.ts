@@ -329,15 +329,12 @@ export async function createClienteFull(page: Page, data: {
   nombre: string
   telefono: string
   apellido?: string
-  nombreNegocio?: string
-  tipoNegocio?: string
   fuente?: string
   barrio?: string
   direccion?: string
   linkUbicacion?: string
   preciosEspeciales?: string
   notas?: string
-  horaApertura?: string
   limitePedidosFiados?: number
 }) {
   const res = await apiPost(page, '/api/clientes', data)

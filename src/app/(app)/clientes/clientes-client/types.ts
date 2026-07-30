@@ -12,8 +12,6 @@ export interface Cliente {
   nombre: string
   apellido?: string
   telefono: string
-  nombreNegocio?: string
-  tipoNegocio?: string
   fuente?: string
   barrio?: string
   linkUbicacion?: string
@@ -52,7 +50,6 @@ export interface Cliente {
   }>
   frecuenciaSugerida?: { dias: number; label: string } | null
   productosSugeridos?: Array<{ codigo: string; nombre: string; frecuencia: number; cantidadPromedio: number }>
-  horaApertura?: string | null
   plantillaRecurrente?: {
     id: string
     activo: boolean
@@ -184,9 +181,6 @@ export interface FormData {
   preciosEspeciales: string
   notas: string
   limitePedidosFiados?: number
-  nombreNegocio?: string
-  tipoNegocio?: string
-  horaApertura?: string
   referencia?: string
 }
 

@@ -226,9 +226,6 @@ export default function ClientesClient({
     preciosEspeciales: '',
     notas: '',
     limitePedidosFiados: undefined,
-    nombreNegocio: '',
-    tipoNegocio: '',
-    horaApertura: '',
     referencia: '',
   })
 
@@ -467,9 +464,6 @@ export default function ClientesClient({
       preciosEspeciales: '',
       notas: '',
       limitePedidosFiados: undefined,
-      nombreNegocio: '',
-      tipoNegocio: '',
-      horaApertura: '',
       referencia: '',
     })
     setPreciosEspecialesMap({ DOMICILIO: {}, PUNTO: {} })
@@ -498,9 +492,6 @@ export default function ClientesClient({
       preciosEspeciales: selectedCliente.preciosEspeciales || '',
       notas: selectedCliente.notas || '',
       limitePedidosFiados: selectedCliente.limitePedidosFiados || undefined,
-      nombreNegocio: selectedCliente.nombreNegocio || '',
-      tipoNegocio: selectedCliente.tipoNegocio || '',
-      horaApertura: selectedCliente.horaApertura || '',
       referencia: selectedCliente.referencia || '',
     })
     setPreciosEspecialesMap(parsePreciosEspeciales(selectedCliente.preciosEspeciales))
@@ -710,9 +701,6 @@ export default function ClientesClient({
               preciosEspeciales: updatedCliente.preciosEspeciales,
               notas: updatedCliente.notas,
               limitePedidosFiados: updatedCliente.limitePedidosFiados,
-              nombreNegocio: updatedCliente.nombreNegocio,
-              tipoNegocio: updatedCliente.tipoNegocio,
-              horaApertura: updatedCliente.horaApertura,
               referencia: updatedCliente.referencia,
               verificado: updatedCliente.verificado,
               bloqueado: updatedCliente.bloqueado,
@@ -1264,14 +1252,6 @@ export default function ClientesClient({
                     <h2 className="text-lg font-bold text-gray-800">
                       {selectedCliente.nombre} {selectedCliente.apellido}
                     </h2>
-                    {selectedCliente.nombreNegocio && (
-                      <p className="text-xs text-gray-500 flex items-center gap-1">
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                        </svg>
-                        {selectedCliente.nombreNegocio}
-                      </p>
-                    )}
                   </div>
                 </div>
                 <button
@@ -1857,10 +1837,6 @@ export default function ClientesClient({
                             </div>
                           )
                         })}
-                      </div>
-                    ) : selectedCliente.nombreNegocio ? (
-                      <div className="bg-gray-50 rounded-xl p-5 text-center border border-dashed border-gray-200">
-                        <p className="text-sm font-medium text-gray-500">Los datos del negocio se gestionan en la pestaña Negocios.</p>
                       </div>
                     ) : (
                       <div className="bg-gray-50 rounded-xl p-5 text-center border border-dashed border-gray-200">

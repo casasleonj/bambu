@@ -45,8 +45,7 @@ export function resolveUbicacionMaps(
  * Reglas:
  * - Siempre excluye clientes inactivos y el canónico CONSUMIDOR_FINAL.
  * - "mostrarNegocio=con" → cliente con al menos un Negocio formal activo.
- * - "mostrarNegocio=sin" → sin ningún Negocio formal activo (nombreNegocio legacy
- *   se ignora; el filtro es exclusivamente por negocios formales).
+ * - "mostrarNegocio=sin" → sin ningún Negocio formal activo.
  * - "ubicacionMaps=cliente" → Cliente.linkUbicacion no es null ni vacío.
  * - "ubicacionMaps=clienteSin" → Cliente.linkUbicacion es null o vacío.
  * - "ubicacionMaps=negocios" → al menos un Negocio formal activo tiene link de Maps.
@@ -71,8 +70,7 @@ export function buildClientesWhere(params: ClientesSearchParams): Record<string,
     where.verificado = false
   }
 
-  // Filtro: con/sin negocio (formal Negocio solamente; no considera
-  // nombreNegocio legacy).
+  // Filtro: con/sin negocio (formal Negocio solamente).
   if (params.mostrarNegocio === 'con') {
     where.OR = [{ negocios: { some: { activo: true } } }]
   } else if (params.mostrarNegocio === 'sin') {
@@ -203,7 +201,6 @@ export function buildClientesRawWhere(
 }
 
 type ClienteConNegocios = {
-  nombreNegocio?: string | null
   linkUbicacion?: string | null
   negocios?: Array<{ activo?: boolean | null; linkUbicacion?: string | null }>
 }
@@ -261,12 +258,11 @@ export function getClienteNegocioStatus(cliente: ClienteConNegocios) {
   const negociosConLink = negociosActivos.filter(
     (n) => typeof n.linkUbicacion === 'string' && n.linkUbicacion !== ''
   )
-  const hasLegacy = typeof cliente.nombreNegocio === 'string' && cliente.nombreNegocio !== ''
 
   return {
     tieneNegocioFormal: negociosActivos.length > 0,
-    tieneNegocioLegacy: hasLegacy,
-    tieneNegocio: negociosActivos.length > 0 || hasLegacy,
+    tieneNegocioLegacy: false,
+    tieneNegocio: negociosActivos.length > 0,
     totalNegociosActivos: negociosActivos.length,
     negociosConLink: negociosConLink.length,
     negociosSinLink: negociosActivos.length - negociosConLink.length,

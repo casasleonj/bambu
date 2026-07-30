@@ -289,10 +289,8 @@ export interface ClienteData {
   direccion: string
   barrio: string
   ciudad?: string
-  tipoNegocio?: string
   notas?: string
   linkUbicacion?: string
-  horaApertura?: string
   horaCierre?: string
 }
 
@@ -303,10 +301,8 @@ export function randomClienteData(overrides: Partial<ClienteData> = {}): Cliente
     direccion: randomDireccion(),
     barrio: randomBarrio(),
     ciudad: randomCiudad(),
-    tipoNegocio: randomTipoNegocio(),
     notas: randomComentario(3, 8),
     linkUbicacion: randomLinkMaps(),
-    horaApertura: '08:00',
     horaCierre: '18:00',
     ...overrides,
   }

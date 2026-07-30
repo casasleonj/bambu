@@ -20,7 +20,6 @@ export interface Factura {
     telefono: string
     direccion?: string
     barrio?: string
-    nombreNegocio?: string | null
   }
   pedido?: {
     id: string

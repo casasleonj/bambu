@@ -62,7 +62,6 @@ export async function GET(request: NextRequest) {
               telefono: true,
               direccion: true,
               barrio: true,
-              nombreNegocio: true,
             },
           },
           pedido: {

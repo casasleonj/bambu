@@ -17,10 +17,9 @@ describe('FIX: lectura correcta de /api/config', () => {
 })
 
 describe('FIX: nombre completo del cliente', () => {
-  it('define helper formatClienteNombre que concatena apellido y negocio', () => {
+  it('define helper formatClienteNombre que concatena apellido', () => {
     expect(source).toMatch(/const formatClienteNombre = /)
     expect(source).toMatch(/cliente\.apellido/)
-    expect(source).toMatch(/cliente\.nombreNegocio/)
   })
 
   it('usa formatClienteNombre en lugar de cliente\.nombre directo', () => {

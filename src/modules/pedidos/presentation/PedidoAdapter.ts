@@ -14,8 +14,6 @@ export interface LegacyPedidoResponse {
     telefonoCli?: string
     zonaCli?: string
     barrioCli?: string
-    nombreNegocioCli?: string | null
-    horaAperturaCli?: string | null
     rutaNombre?: string | null
   }
 }
@@ -27,8 +25,6 @@ export class PedidoAdapter {
     telefono?: string
     direccion?: string
     barrio?: string
-    nombreNegocio?: string
-    horaApertura?: string
     rutaNombre?: string
   }): LegacyPedidoResponse['pedido'] {
     return {
@@ -38,8 +34,6 @@ export class PedidoAdapter {
       telefonoCli: clienteInfo?.telefono || '',
       zonaCli: clienteInfo?.direccion || '',
       barrioCli: clienteInfo?.barrio || '',
-      nombreNegocioCli: clienteInfo?.nombreNegocio || null,
-      horaAperturaCli: clienteInfo?.horaApertura || null,
       rutaNombre: clienteInfo?.rutaNombre || null,
     }
   }

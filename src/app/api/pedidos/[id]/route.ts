@@ -49,10 +49,10 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         : Promise.resolve(null),
     ])
 
-    const nombreNegocio = negocio?.nombre || cliente?.nombreNegocio || null
+    const nombreNegocio = negocio?.nombre || null
     const direccion = negocio?.direccion ?? cliente?.direccion
     const barrio = negocio?.barrio ?? cliente?.barrio
-    const horaApertura = negocio?.horaApertura ?? cliente?.horaApertura
+    const horaApertura = negocio?.horaApertura || null
     const rutaNombre = negocio?.ruta?.nombre || cliente?.ruta?.nombre
 
     const dto = PedidoDTOMapper.toResumen(found.pedido, { factura: found.factura })
@@ -65,7 +65,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         zonaCli: direccion || '',
         barrioCli: barrio || '',
         nombreNegocioCli: nombreNegocio,
-        horaAperturaCli: horaApertura || null,
+        horaAperturaCli: horaApertura,
         rutaNombre,
       },
     })

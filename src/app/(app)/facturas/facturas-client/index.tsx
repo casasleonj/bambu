@@ -249,11 +249,7 @@ export default function FacturasPage() {
 
   const formatClienteNombre = (cliente?: Factura['cliente']) => {
     if (!cliente) return 'N/A'
-    const nombre = [cliente.nombre, cliente.apellido].filter(Boolean).join(' ')
-    if (cliente.nombreNegocio) {
-      return `${nombre} — ${cliente.nombreNegocio}`
-    }
-    return nombre
+    return [cliente.nombre, cliente.apellido].filter(Boolean).join(' ')
   }
 
   const estadoBadgeClass = (estado: string) => {
@@ -273,7 +269,7 @@ export default function FacturasPage() {
   ]
 
   const clientesUnicos = useMemo(() => {
-    const map = new Map<string, { id: string; nombre: string; apellido: string | null; telefono: string; direccion: string | null; nombreNegocio: string | null }>()
+    const map = new Map<string, { id: string; nombre: string; apellido: string | null; telefono: string; direccion: string | null }>()
     facturas.forEach(f => {
       if (f.cliente?.id && !map.has(f.cliente.id)) {
         map.set(f.cliente.id, {
@@ -282,7 +278,6 @@ export default function FacturasPage() {
           apellido: f.cliente.apellido ?? null,
           telefono: f.cliente.telefono ?? '',
           direccion: f.cliente.direccion ?? null,
-          nombreNegocio: f.cliente.nombreNegocio ?? null,
         })
       }
     })

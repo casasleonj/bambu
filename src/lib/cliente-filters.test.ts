@@ -26,11 +26,6 @@ describe('buildClientesWhere', () => {
     expect(where.AND).toEqual(
       expect.arrayContaining([{ NOT: { negocios: { some: { activo: true } } } }])
     )
-    expect(where.AND).not.toEqual(
-      expect.arrayContaining([
-        { OR: [{ nombreNegocio: null }, { nombreNegocio: '' }] },
-      ])
-    )
   })
 
   it('con "todosNegociosConLink=true" fuerza al menos 1 negocio formal y niega negocios activos sin link', () => {
@@ -192,16 +187,6 @@ describe('getClienteNegocioStatus', () => {
       negociosSinLink: 0,
       clienteConLink: false,
     })
-  })
-
-  it('cliente con negocio legacy puro', () => {
-    const status = getClienteNegocioStatus({
-      nombreNegocio: 'Tienda Don Pepe',
-      negocios: [],
-    })
-    expect(status.tieneNegocioLegacy).toBe(true)
-    expect(status.tieneNegocioFormal).toBe(false)
-    expect(status.tieneNegocio).toBe(true)
   })
 
   it('cliente con negocio formal activo con link', () => {

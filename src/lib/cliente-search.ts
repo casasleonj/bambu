@@ -4,8 +4,6 @@ export interface ClienteSearchable {
   nombre: string
   apellido?: string | null
   telefono?: string
-  nombreNegocio?: string | null
-  tipoNegocio?: string | null
   direccion?: string | null
   barrio?: string | null
   notas?: string | null
@@ -30,7 +28,7 @@ export interface ClienteSearchable {
  * Retorna score de relevancia basado en cuantas palabras matchearon y en que campos prioritarios.
  *
  * Campos prioritarios (mayor peso): nombre, apellido
- * Campos secundarios: nombreNegocio, tipoNegocio, barrio, direccion
+ * Campos secundarios: tipoNegocio/nombre de negocios formales, barrio, direccion
  * Campos terciarios: telefono, notas, fuente, contactos, negocios
  *
  * Ejemplos:
@@ -85,8 +83,6 @@ export function scoreCliente(cliente: ClienteSearchable, query: string): number 
 
   // Campos secundarios (peso 2x)
   const camposSecundarios = [
-    normalize(cliente.nombreNegocio || ''),
-    normalize(cliente.tipoNegocio || ''),
     normalize(cliente.barrio || ''),
     normalize(cliente.direccion || ''),
   ]

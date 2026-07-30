@@ -70,9 +70,6 @@ export interface NormalizedCliente {
   barrio?: string
   referencia?: string
   linkUbicacion?: string
-  nombreNegocio?: string
-  tipoNegocio?: string
-  horaApertura?: string
   preciosEspeciales?: string
   contactos: NormalizedContacto[]
   notas?: string
@@ -270,7 +267,6 @@ export interface MatchTargetPreview {
   telefono?: string | null
   direccion?: string | null
   barrio?: string | null
-  nombreNegocio?: string | null
 }
 
 export interface NormalizedRowWithErrors<T extends NormalizedEntity = NormalizedEntity> {

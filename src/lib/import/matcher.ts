@@ -57,7 +57,6 @@ interface DbMatchRow {
   telefono: string
   direccion: string | null
   barrio: string | null
-  nombreNegocio: string | null
   similarity: number
   isPhoneMatch: number
 }
@@ -90,7 +89,6 @@ async function queryClientCandidates(
       c.telefono,
       c.direccion,
       c.barrio,
-      c."nombreNegocio",
       GREATEST(
         similarity(${cliente.nombre}, c.nombre),
         similarity(${cliente.nombre}, COALESCE(c.apellido, ''))
@@ -179,7 +177,6 @@ export function scoreClientMatch(
     telefono: existing.telefono,
     direccion: existing.direccion,
     barrio: existing.barrio,
-    nombreNegocio: existing.nombreNegocio,
   }
 
   return {

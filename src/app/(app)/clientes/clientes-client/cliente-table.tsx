@@ -567,9 +567,7 @@ export const ClienteTable = React.memo(function ClienteTable({
                         <p className="font-semibold text-gray-800 truncate">
                           {cliente.nombre} {cliente.apellido}
                         </p>
-                        {cliente.nombreNegocio && (
-                          <p className="text-xs text-gray-500 truncate">{cliente.nombreNegocio}</p>
-                        )}
+                        
                         {(() => {
                           if (!search || !cliente.contactos) return null
                           const term = search.toLowerCase()
@@ -617,15 +615,7 @@ export const ClienteTable = React.memo(function ClienteTable({
                                   {status.negociosConLink}/{status.totalNegociosActivos} con link
                                 </span>
                               )}
-                              {status.tieneNegocioLegacy && !status.tieneNegocioFormal && (
-                                <span
-                                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700"
-                                  title="Negocio legacy sin formalizar"
-                                >
-                                  <span>🏪</span>
-                                  Legacy
-                                </span>
-                              )}
+                              
                               {status.clienteConLink && (
                                 <span className="text-blue-500 text-xs" title="Cliente tiene link de Maps">📍</span>
                               )}

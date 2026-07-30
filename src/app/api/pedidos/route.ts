@@ -124,10 +124,10 @@ export async function GET(request: NextRequest) {
     const enriched = result.pedidos.map(p => {
       const cliente = clienteById.get(p.clienteId)
       const negocio = p.negocioId ? negocioById.get(p.negocioId) : undefined
-      const nombreNegocio = negocio?.nombre || cliente?.nombreNegocio || null
+      const nombreNegocio = negocio?.nombre || null
       const direccion = negocio?.direccion ?? cliente?.direccion
       const barrio = negocio?.barrio ?? cliente?.barrio
-      const horaApertura = negocio?.horaApertura ?? cliente?.horaApertura
+      const horaApertura = negocio?.horaApertura || null
       const rutaNombre = negocio?.ruta?.nombre || cliente?.ruta?.nombre
 
       return {
@@ -138,7 +138,7 @@ export async function GET(request: NextRequest) {
         zonaCli: direccion || '',
         barrioCli: barrio || '',
         nombreNegocioCli: nombreNegocio,
-        horaAperturaCli: horaApertura || null,
+        horaAperturaCli: horaApertura,
         rutaNombre,
         fecha: p.fecha,
       }

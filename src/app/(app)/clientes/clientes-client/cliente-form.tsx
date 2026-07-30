@@ -19,12 +19,6 @@ const FUENTES: string[] = [
   'Página web', 'Instagram', 'Facebook', 'Referido', 'WhatsApp',
 ]
 
-const TIPOS_NEGOCIO: string[] = [
-  'Tienda', 'Restaurante', 'Café', 'Hotel', 'Bar',
-  'Panadería', 'Farmacia', 'Peluquería', 'Frutería',
-  'Carnicería', 'Lavandería', 'Taller',
-]
-
 interface PlantillaInfo {
   id: string
   activo: boolean
@@ -236,40 +230,7 @@ export function ClienteForm({
               <p className="text-xs text-gray-400 mt-1">Máximo de pedidos con saldo pendiente antes de bloquear nuevos pedidos. Deja vacío para usar el límite global.</p>
             </div>
 
-            <div className="border-t border-gray-200 pt-4 space-y-4">
-              <h3 className="text-sm font-semibold text-gray-700">Información del negocio</h3>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Nombre del negocio</label>
-                <input
-                  type="text"
-                  value={formData.nombreNegocio}
-                  onChange={(e) => onFormDataChange({ ...formData, nombreNegocio: e.target.value })}
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
-                  placeholder="Ej: Tienda Don Pepe"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Tipo de negocio</label>
-                <TipoNegocioSelect
-                  options={TIPOS_NEGOCIO}
-                  value={formData.tipoNegocio || ''}
-                  onChange={(val) => onFormDataChange({ ...formData, tipoNegocio: val })}
-                  placeholder="Buscar tipo de negocio..."
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Hora de apertura</label>
-                <input
-                  type="time"
-                  value={formData.horaApertura}
-                  onChange={(e) => onFormDataChange({ ...formData, horaApertura: e.target.value })}
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
-                />
-              </div>
-            </div>
+            
           </div>
         )}
 

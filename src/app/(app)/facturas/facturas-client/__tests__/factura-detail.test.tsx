@@ -26,7 +26,6 @@ function buildFactura(overrides: Partial<Factura> = {}): Factura {
       nombre: 'Juan',
       apellido: 'Pérez',
       telefono: '3000000000',
-      nombreNegocio: null,
     },
     pedido: {
       id: 'pedido-1',
