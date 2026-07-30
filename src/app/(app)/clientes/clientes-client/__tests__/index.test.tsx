@@ -26,14 +26,16 @@ vi.mock('@/hooks/use-is-desktop', () => ({
   useIsDesktop: vi.fn(() => false),
 }))
 
+const createMockRouter = () => ({
+  push: vi.fn(),
+  replace: vi.fn(),
+  refresh: vi.fn(),
+  back: vi.fn(),
+})
+
 vi.mock('next/navigation', () => ({
   usePathname: vi.fn(() => '/clientes'),
-  useRouter: vi.fn(() => ({
-    push: vi.fn(),
-    replace: vi.fn(),
-    refresh: vi.fn(),
-    back: vi.fn(),
-  })),
+  useRouter: vi.fn(() => createMockRouter()),
   useSearchParams: vi.fn(() => new URLSearchParams()),
 }))
 
@@ -146,7 +148,7 @@ import ClientesClient from '@/app/(app)/clientes/clientes-client'
 import { __resetDetailCache } from '@/app/(app)/clientes/clientes-client'
 import { __resetPanelCaches } from '@/app/(app)/clientes/clientes-client/panel-prefetch'
 import type { Cliente } from '@/app/(app)/clientes/clientes-client/types'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
@@ -233,6 +235,10 @@ describe('ClientesClient — regresion mobile 2026-06-10', () => {
 
   beforeEach(() => {
     originalFetch = global.fetch
+    // Resetear mocks de navegación entre tests para evitar que un override
+    // en un test contamine el siguiente.
+    vi.mocked(useRouter).mockReset().mockReturnValue(createMockRouter() as unknown as ReturnType<typeof useRouter>)
+    vi.mocked(useSearchParams).mockReset().mockReturnValue(new URLSearchParams() as unknown as ReturnType<typeof useSearchParams>)
   })
 
   afterEach(() => {
@@ -859,5 +865,128 @@ describe('ClientesClient — regresion mobile 2026-06-10', () => {
     expect(listCalls[0].url).toContain('page=2')
     expect(listCalls[0].url).toContain('search=Juan')
     expect(listCalls[0].url).toContain('pageSize=25')
+  })
+
+  describe('Regresión búsqueda/paginación (2026-07-29)', () => {
+    it('typing in search input debounces and pushes search=term&page=1', async () => {
+      const mockPush = vi.fn()
+      const mockUseRouter = vi.mocked(useRouter)
+      mockUseRouter.mockReturnValue({
+        ...createMockRouter(),
+        push: mockPush,
+      } as unknown as ReturnType<typeof useRouter>)
+
+      const mockUseSearchParams = vi.mocked(useSearchParams)
+      mockUseSearchParams.mockReturnValue(new URLSearchParams() as unknown as ReturnType<typeof useSearchParams>)
+
+      render(
+        <ClientesClient
+          initialClientes={[mockCliente]}
+          initialTotal={1}
+          initialTotalPages={1}
+          initialPage={1}
+          initialPageSize={25}
+          initialSearch=""
+          filtrosActivos={{ mostrarNegocio: 'todos', ubicacionMaps: 'todos' }}
+          openClienteId={undefined}
+          filtroActivo={null}
+        />,
+      )
+
+      const input = screen.getByTestId('cliente-search-input') as HTMLInputElement
+      await act(async () => {
+        fireEvent.change(input, { target: { value: 'leidys' } })
+      })
+
+      // Inmediatamente: no debe disparar push.
+      expect(mockPush).not.toHaveBeenCalled()
+
+      // Esperar 600ms para que venza el debounce de 500ms.
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 600))
+      })
+
+      expect(mockPush).toHaveBeenCalledTimes(1)
+      const pushedUrl = mockPush.mock.calls[0][0] as string
+      expect(pushedUrl).toContain('/clientes?')
+      expect(pushedUrl).toContain('search=leidys')
+      expect(pushedUrl).toContain('page=1')
+    })
+
+    it('pagination "Siguiente" preserves existing search term and increments page', async () => {
+      const mockPush = vi.fn()
+      const mockUseRouter = vi.mocked(useRouter)
+      mockUseRouter.mockReturnValue({
+        ...createMockRouter(),
+        push: mockPush,
+      } as unknown as ReturnType<typeof useRouter>)
+
+      const mockUseSearchParams = vi.mocked(useSearchParams)
+      mockUseSearchParams.mockReturnValue(new URLSearchParams('search=leidys&page=1') as unknown as ReturnType<typeof useSearchParams>)
+
+      render(
+        <ClientesClient
+          initialClientes={[mockCliente]}
+          initialTotal={30}
+          initialTotalPages={2}
+          initialPage={1}
+          initialPageSize={25}
+          initialSearch="leidys"
+          filtrosActivos={{ mostrarNegocio: 'todos', ubicacionMaps: 'todos' }}
+          openClienteId={undefined}
+          filtroActivo={null}
+        />,
+      )
+
+      const nextBtn = screen.getByTestId('cliente-page-next')
+      await act(async () => {
+        fireEvent.click(nextBtn)
+      })
+
+      expect(mockPush).toHaveBeenCalledTimes(1)
+      const pushedUrl = mockPush.mock.calls[0][0] as string
+      expect(pushedUrl).toContain('search=leidys')
+      expect(pushedUrl).toContain('page=2')
+      expect(pushedUrl).not.toContain('page=1')
+    })
+
+    it('does not reset page to 1 when URL search term matches current input (flicker guard)', async () => {
+      const mockPush = vi.fn()
+      const mockUseRouter = vi.mocked(useRouter)
+      mockUseRouter.mockReturnValue({
+        ...createMockRouter(),
+        push: mockPush,
+      } as unknown as ReturnType<typeof useRouter>)
+
+      const mockUseSearchParams = vi.mocked(useSearchParams)
+      mockUseSearchParams.mockReturnValue(new URLSearchParams('search=leidys&page=2') as unknown as ReturnType<typeof useSearchParams>)
+
+      render(
+        <ClientesClient
+          initialClientes={[mockCliente]}
+          initialTotal={30}
+          initialTotalPages={2}
+          initialPage={2}
+          initialPageSize={25}
+          initialSearch=""
+          filtrosActivos={{ mostrarNegocio: 'todos', ubicacionMaps: 'todos' }}
+          openClienteId={undefined}
+          filtroActivo={null}
+        />,
+      )
+
+      // El input debe haberse sincronizado desde la URL a "leidys".
+      const input = screen.getByTestId('cliente-search-input') as HTMLInputElement
+      await waitFor(() => {
+        expect(input.value).toBe('leidys')
+      })
+
+      // Esperar debounce: como el input es igual a la URL, no debe empujar.
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 600))
+      })
+
+      expect(mockPush).not.toHaveBeenCalled()
+    })
   })
 })

@@ -9,6 +9,9 @@ import { join } from 'path'
 const routePath = join(process.cwd(), 'src/app/api/clientes/route.ts')
 const source = readFileSync(routePath, 'utf-8')
 
+const migrationPath = join(process.cwd(), 'prisma/migrations/20260729210000_fix_search_clientes_phone_negocio/migration.sql')
+const migrationSource = readFileSync(migrationPath, 'utf-8')
+
 describe('F-N3: race condition fix en clientes POST', () => {
   it('FIX F-N3: el POST importa executeSerializableWithRetry', () => {
     expect(source).toMatch(/import\s*\{\s*executeSerializableWithRetry\s*\}\s*from\s*['"]@\/lib\/serializable['"]/)
@@ -89,5 +92,35 @@ describe('Issue cliente limitePedidosFiados', () => {
   it('POST devuelve limitePedidosFiados en el select de respuesta', () => {
     const postSection = source.split('export async function POST')[1] || ''
     expect(postSection).toMatch(/limitePedidosFiados:\s*true/)
+  })
+})
+
+describe('Regresión búsqueda /clientes (2026-07-29): teléfono y negocio en pg_trgm', () => {
+  it('GET incluye c.telefono ILIKE en searchConditions', () => {
+    const getSection = source.split('export async function GET')[1]?.split('export async function POST')[0] || ''
+    expect(getSection).toMatch(/c\.telefono\s*ILIKE\s*\$\{searchLike\}/)
+  })
+
+  it('GET incluye subquery Negocio en searchConditions', () => {
+    const getSection = source.split('export async function GET')[1]?.split('export async function POST')[0] || ''
+    expect(getSection).toMatch(/SELECT\s+1\s+FROM\s+"Negocio"\s+n\s+WHERE\s+n\."clienteId"\s*=\s*c\.id/)
+    expect(getSection).toMatch(/n\.nombre\s*ILIKE\s*\$\{searchLike\}/)
+    expect(getSection).toMatch(/n\."tipoNegocio".*?ILIKE\s*\$\{searchLike\}/)
+    expect(getSection).toMatch(/n\.direccion.*?ILIKE\s*\$\{searchLike\}/)
+    expect(getSection).toMatch(/n\.barrio.*?ILIKE\s*\$\{searchLike\}/)
+    expect(getSection).toMatch(/n\.referencia.*?ILIKE\s*\$\{searchLike\}/)
+  })
+
+  it('Migración search_clientes() incluye c.telefono ILIKE', () => {
+    expect(migrationSource).toMatch(/c\.telefono\s*ILIKE/)
+  })
+
+  it('Migración search_clientes() incluye subquery Negocio', () => {
+    expect(migrationSource).toMatch(/SELECT\s+1\s+FROM\s+"Negocio"\s+n\s+WHERE\s+n\."clienteId"\s*=\s*c\.id/)
+    expect(migrationSource).toMatch(/n\.nombre\s*ILIKE/)
+    expect(migrationSource).toMatch(/n\."tipoNegocio".*?ILIKE/)
+    expect(migrationSource).toMatch(/n\.direccion.*?ILIKE/)
+    expect(migrationSource).toMatch(/n\.barrio.*?ILIKE/)
+    expect(migrationSource).toMatch(/n\.referencia.*?ILIKE/)
   })
 })
