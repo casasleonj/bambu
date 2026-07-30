@@ -374,6 +374,8 @@ export default function ClientesClient({
 
   // Guard contra respuestas stale de viewCliente (clicks rápidos A→B).
   const viewSeqRef = useRef(0)
+  // Guard contra respuestas stale de fetchClientes en paginación (clics rápidos).
+  const pageSeqRef = useRef(0)
   const [negocioFormOpen, setNegocioFormOpen] = useState(false)
   const [negocioEditData, setNegocioEditData] = useState<{ id: string; nombre: string; tipoNegocio: string | null; direccion: string | null; barrio: string | null; referencia: string | null; linkUbicacion: string | null; horaApertura: string | null; rutaId: string | null } | null>(null)
   const [viewNegocioData, setViewNegocioData] = useState<NegocioDetail | null>(null)
@@ -457,18 +459,22 @@ export default function ClientesClient({
 
   // Lee los parámetros actuales de la URL para que polling/mutaciones
   // siempre refresquen la página, búsqueda y filtros seleccionados.
-  const getCurrentListParams = useCallback((): URLSearchParams => {
+  // Si se pasa pageOverride, usa ese número en lugar de leer de searchParams
+  // (que está stale durante transiciones de router.push). Esto permite que
+  // onPageChange llame fetchClientes(newPage) con la página correcta.
+  const getCurrentListParams = useCallback((pageOverride?: number): URLSearchParams => {
     const p = new URLSearchParams(searchParams?.toString() || '')
     p.set('pageSize', String(initialPageSize))
-    if (!p.get('page')) p.set('page', '1')
+    const page = pageOverride ?? p.get('page') ?? '1'
+    p.set('page', String(page))
     return p
   }, [initialPageSize, searchParams])
 
-  const fetchClientes = useCallback(async () => {
+  const fetchClientes = useCallback(async (pageOverride?: number) => {
     setLoading(true)
     setFetchError(null)
     try {
-      const listParams = getCurrentListParams()
+      const listParams = getCurrentListParams(pageOverride)
       const res = await fetchWithTimeout(`/api/clientes?${listParams.toString()}`, {}, 30_000)
       if (!res.ok) throw new Error('Error al cargar clientes')
       const data = await res.json()
@@ -1218,7 +1224,7 @@ export default function ClientesClient({
         title="No se pudieron cargar los clientes"
         message={fetchError}
         errorCode="FETCH_CLIENTES_ERROR"
-        onRetry={fetchClientes}
+        onRetry={() => fetchClientes()}
       />
     )
   }
@@ -1244,12 +1250,22 @@ export default function ClientesClient({
         search={searchInput}
         onSearchChange={setSearchInput}
         onPageChange={(newPage) => {
+          // Llamar fetchClientes(newPage) para que los datos se carguen
+          // inmediatamente via API directa (~1-3s) en vez de esperar el
+          // RSC payload (30-60s en Vercel cold start). seqRef descarta
+          // respuestas de clics rápidos. Usar searchParams?.toString()
+          // (capturado en el closure, refleja la URL actual antes del
+          // router.push) para preservar filtros como search y pageSize.
+          const seq = ++pageSeqRef.current
           const nextParams = new URLSearchParams(searchParams?.toString() || '')
           nextParams.set('page', String(newPage))
           router.push(`${pathname}?${nextParams.toString()}`, { scroll: false })
+          void fetchClientes(newPage).then(() => {
+            if (seq !== pageSeqRef.current) return
+          })
         }}
         fetchError={fetchError}
-        onRetry={fetchClientes}
+        onRetry={() => fetchClientes()}
         onCreateClick={openCreateModal}
         onViewCliente={viewCliente}
         onPrefetchCliente={warmClienteDetail}
@@ -1262,6 +1278,7 @@ export default function ClientesClient({
         filtrosActivos={filtrosActivos}
         searchPending={isSearchPending}
         allClientesLoading={allClientesLoading}
+        loading={loading}
       />
 
       <ClienteForm
