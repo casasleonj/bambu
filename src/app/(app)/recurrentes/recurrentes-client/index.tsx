@@ -19,6 +19,13 @@ export default function RecurrentesClient({ initialRecurrentes }: { initialRecur
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
   const [decisiones, setDecisiones] = useState<Record<string, string>>({})
+  // Ref para leer decisiones actuales desde el fetchData callback sin recrearlo.
+  // El efecto de abajo mantiene el ref sincronizado; sin esto, el polling usa
+  // el closure del mount y resetea la selección del usuario cada 60s.
+  const decisionesRef = useRef<Record<string, string>>(decisiones)
+  useEffect(() => {
+    decisionesRef.current = decisiones
+  }, [decisiones])
   const { confirm, modal } = useConfirm()
   const abortRef = useRef<AbortController | null>(null)
   // Skip list refetch on the FIRST fetchData call when SSR data is present,
@@ -41,10 +48,12 @@ export default function RecurrentesClient({ initialRecurrentes }: { initialRecur
       if (previewData.success) {
         const p = previewData.preview || []
         setPreview(p)
-        // Keep decisions only for current preview items
+        // Keep decisions only for current preview items. Leer desde ref para no
+        // depender del closure del fetchData (previene reseteo por polling).
+        const currentDecisions = decisionesRef.current
         const defaults: Record<string, string> = {}
         for (const item of p) {
-          defaults[item.recurrenteId] = decisiones[item.recurrenteId] || 'NORMAL'
+          defaults[item.recurrenteId] = currentDecisions[item.recurrenteId] || 'NORMAL'
         }
         setDecisiones(defaults)
       }
@@ -67,10 +76,6 @@ export default function RecurrentesClient({ initialRecurrentes }: { initialRecur
     } finally {
       setLoading(false)
     }
-    // decisiones es state modificado por el usuario; incluirlo recrearía
-    // fetchData en cada click y dispararía el effect [fetchData] en loop.
-    // Este closure es intencionalmente el del mount (igual que main).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialRecurrentes])
 
   useEffect(() => {

@@ -278,6 +278,14 @@ export async function goto(page: Page, path: string) {
   await page.waitForLoadState('domcontentloaded')
   await page.waitForTimeout(500)
   await handleBaseCaja(page)
+  await dismissInstallBanner(page)
+}
+
+export async function dismissInstallBanner(page: Page) {
+  const closeBtn = page.locator('[aria-label="Cerrar banner de instalación"]').first()
+  if (await closeBtn.isVisible().catch(() => false)) {
+    await closeBtn.click()
+  }
 }
 
 // ─── API Helpers ─────────────────────────────────────────────────────────────
