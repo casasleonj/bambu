@@ -67,6 +67,10 @@ export default function RecurrentesClient({ initialRecurrentes }: { initialRecur
     } finally {
       setLoading(false)
     }
+    // decisiones es state modificado por el usuario; incluirlo recrearía
+    // fetchData en cada click y dispararía el effect [fetchData] en loop.
+    // Este closure es intencionalmente el del mount (igual que main).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialRecurrentes])
 
   useEffect(() => {

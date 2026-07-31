@@ -193,7 +193,6 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   // datos nuevos enviados por el RSC. `hasLoadedOnce` acepta listas vacías.
   useEffect(() => {
     if (hasLoadedOnce && appliedKeyRef.current === hookParamsKey) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- merge de fuente hook a state display, patrón clientes
       setDisplayPedidos(pedidos)
     }
   }, [pedidos, hasLoadedOnce, hookParamsKey, appliedKeyRef])

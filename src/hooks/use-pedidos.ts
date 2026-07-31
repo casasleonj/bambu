@@ -119,7 +119,8 @@ export function usePedidos(
       if (data.success) {
         // Guardar la key de los parámetros de este fetch para que el consumidor
         // pueda descartar respuestas stale que lleguen tras un cambio de URL.
-        appliedKeyRef.current = JSON.stringify({ ...params, all: options?.all })
+        // paramsKey ya serializa { ...params, all: options?.all }.
+        appliedKeyRef.current = paramsKey
         setPedidos(data.pedidos || data.data || [])
         setTotal(data.total || 0)
         setHasLoadedOnce(true)
@@ -142,7 +143,7 @@ export function usePedidos(
     } finally {
       if (isCurrent()) setLoading(false)
     }
-  }, [buildUrl])
+  }, [buildUrl, paramsKey])
 
   const refetch = useCallback(async () => {
     await fetchPedidos()
