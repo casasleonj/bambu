@@ -454,10 +454,20 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     })()
   }, [])
 
-  // No URL sync for activeTab: tab state is local UI.
-  // Previously synced to ?tab= param via navigateWithParams, but this caused
-  // RSC re-renders that interfered with data loading on mobile (startTransition
-  // + router.replace could reset the component tree). Tab is ephemeral UI state.
+  // Sync activeTab con el query param ?tab= en la URL.
+  // Los tests E2E y el deep-linking dependen de este comportamiento.
+  // Usa navigateWithParams (router.replace en startTransition) para no
+  // bloquear la UI durante la navegación RSC.
+  useEffect(() => {
+    const currentTab = searchParams.get('tab')
+    if (activeTab === 'hoy') {
+      if (currentTab) {
+        navigateWithParams({ tab: undefined }, { replace: true })
+      }
+    } else if (currentTab !== activeTab) {
+      navigateWithParams({ tab: activeTab }, { replace: true })
+    }
+  }, [activeTab, searchParams, navigateWithParams])
 
   const { create: crearPedido } = useCrearPedido({
     onSuccess: () => {
