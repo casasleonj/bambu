@@ -5,6 +5,7 @@ import { buildDateRangeFilter, getTodayRange } from '@/lib/dates'
 import { getAnonymousClientDisplayName } from '@/lib/cliente-canonical'
 import { getPaginationParams } from '@/lib/pagination'
 import type { PedidoResumenDTO } from '@/modules/pedidos/application/dto'
+import type { Pedido } from './pedidos-client/types'
 import { PedidosClient } from './pedidos-client'
 
 export type { PedidoResumenDTO }
@@ -88,6 +89,7 @@ export default async function PedidosPage({
     filter.scope = scopeFilter
   }
 
+  let serialized: Pedido[] | null = null
   try {
     const result = await listarPedidosUseCase.execute({
       ...filter,
@@ -133,16 +135,17 @@ export default async function PedidosPage({
     })
 
     // Serialize: handle Prisma Decimal/Date types
-    const serialized = JSON.parse(JSON.stringify(enriched))
-
-    return (
-      <PedidosClient
-        initialPedidos={serialized}
-      />
-    )
+    serialized = JSON.parse(JSON.stringify(enriched))
   } catch (error) {
     // On error, fall back to client-side fetching (graceful degradation)
     console.error('PedidosPage data fetch failed:', error)
-    return <PedidosClient />
   }
+
+  // JSX fuera del try/catch: los errores de renderizado requieren error boundary,
+  // no try/catch. Solo el fetching de datos va dentro del try.
+  return (
+    <PedidosClient
+      initialPedidos={serialized ?? undefined}
+    />
+  )
 }

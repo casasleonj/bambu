@@ -21,6 +21,9 @@ export default function RecurrentesClient({ initialRecurrentes }: { initialRecur
   const [decisiones, setDecisiones] = useState<Record<string, string>>({})
   const { confirm, modal } = useConfirm()
   const abortRef = useRef<AbortController | null>(null)
+  // Skip list refetch on the FIRST fetchData call when SSR data is present,
+  // but ALWAYS refetch on subsequent calls (polling, mutations).
+  const initialFetchDoneRef = useRef(false)
 
   const fetchData = useCallback(async () => {
     abortRef.current?.abort()
@@ -46,15 +49,17 @@ export default function RecurrentesClient({ initialRecurrentes }: { initialRecur
         setDecisiones(defaults)
       }
 
-      // Also refetch the recurrentes list in background (SSR data may be stale
-      // if page was rendered long ago, e.g. after PWA wake from background).
-      if (!initialRecurrentes) {
+      // Refetch the recurrentes list on every call EXCEPT the first one when
+      // SSR data is present (avoids duplicating the SSR fetch). Subsequent
+      // calls (polling, after create/delete) MUST refresh the list.
+      if (!(initialFetchDoneRef.current && initialRecurrentes)) {
         const recRes = await fetch('/api/recurrentes', { signal: ctrl.signal })
         if (!ctrl.signal.aborted) {
           const recData = await recRes.json()
           if (recData.success) setRecurrentes(recData.recurrentes || [])
         }
       }
+      initialFetchDoneRef.current = true
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return
       setFetchError('No se pudieron cargar los datos')

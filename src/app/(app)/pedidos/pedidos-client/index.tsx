@@ -154,15 +154,17 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   // This eliminates the initial API call waterfall — data arrives with HTML.
   const [displayPedidos, setDisplayPedidos] = useState<Pedido[]>(initialPedidos || [])
 
-  // Sync when RSC re-renders with new initial data (e.g. after filter changes)
-  const initialPedidosKey = useMemo(() =>
-    JSON.stringify(initialPedidos?.map(p => p.id)),
-  [initialPedidos])
+  // Sync when RSC re-renders with new initial data (e.g. after filter changes).
+  // Pattern intencional de prop→state sync (mismo que clientes/index.tsx:281):
+  // el RSC envía initialPedidos nuevos como props, este effect los sincroniza
+  // al state de display. No es derivable — las dos fuentes (SSR y hook) se
+  // mergean acá por diseño.
   useEffect(() => {
     if (initialPedidos) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- sync de prop RSC a state, patrón clientes
       setDisplayPedidos(initialPedidos)
     }
-  }, [initialPedidosKey])
+  }, [initialPedidos])
 
   // Use pedidos hook for data fetching. refetchOnParamsChange=false because
   // filter changes are handled by RSC navigation (router.push → RSC re-render
@@ -181,9 +183,12 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   const pedidos = pedidosRaw as Pedido[]
 
   // When hook data arrives (after initial render), use it instead of server data.
-  // Skip if displayPedidos already reflects the latest server data (RSC re-render).
+  // Mismo patrón de merge de fuentes que arriba: el hook es la fuente fresca
+  // (polling/mutations), el SSR es la fuente inicial. El state display es el
+  // único punto de consolidación.
   useEffect(() => {
     if (pedidos.length > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- merge de fuente hook a state display, patrón clientes
       setDisplayPedidos(pedidos)
     }
   }, [pedidos])
@@ -248,7 +253,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       handleDetail(pedido)
       navigateWithParams({ openPedido: undefined }, { replace: true })
     }
-  }, [openPedidoParam, pedidos, navigateWithParams])
+  }, [openPedidoParam, displayPedidos, navigateWithParams])
 
   const updateFilter = useCallback((key: string, value: string) => {
     const current = searchParams.getAll(key)
