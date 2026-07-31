@@ -39,6 +39,12 @@ export interface UsePedidosResult {
   fetchPedidos: () => Promise<void>
   refetch: () => Promise<void>
   hasLoadedOnce: boolean
+  /** Serialización de los parámetros actuales del hook. */
+  paramsKey: string
+  /** Ref con la key de los parámetros del último fetch aplicado. Se actualiza
+   *  justo antes de setPedidos para poder detectar y descartar datos stale en
+   *  el consumidor cuando el polling resuelve tras un cambio de URL. */
+  appliedKeyRef: React.MutableRefObject<string>
 }
 
 export function usePedidos(
@@ -54,6 +60,7 @@ export function usePedidos(
   const didInitialFetchRef = useRef(false)
   const lastParamsKeyRef = useRef<string>('')
   const requestIdRef = useRef(0)
+  const appliedKeyRef = useRef<string>('')
 
   const paramsKey = useMemo(() => JSON.stringify({
     ...params,
@@ -110,6 +117,9 @@ export function usePedidos(
       const data = await res.json()
       if (!isCurrent()) return
       if (data.success) {
+        // Guardar la key de los parámetros de este fetch para que el consumidor
+        // pueda descartar respuestas stale que lleguen tras un cambio de URL.
+        appliedKeyRef.current = JSON.stringify({ ...params, all: options?.all })
         setPedidos(data.pedidos || data.data || [])
         setTotal(data.total || 0)
         setHasLoadedOnce(true)
@@ -180,5 +190,5 @@ export function usePedidos(
     }
   }, [])
 
-  return { pedidos, loading, error, total, fetchPedidos, refetch, hasLoadedOnce }
+  return { pedidos, loading, error, total, fetchPedidos, refetch, hasLoadedOnce, paramsKey, appliedKeyRef }
 }

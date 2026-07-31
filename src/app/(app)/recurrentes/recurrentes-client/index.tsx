@@ -52,7 +52,7 @@ export default function RecurrentesClient({ initialRecurrentes }: { initialRecur
       // Refetch the recurrentes list on every call EXCEPT the first one when
       // SSR data is present (avoids duplicating the SSR fetch). Subsequent
       // calls (polling, after create/delete) MUST refresh the list.
-      if (!(initialFetchDoneRef.current && initialRecurrentes)) {
+      if (initialFetchDoneRef.current || !initialRecurrentes) {
         const recRes = await fetch('/api/recurrentes', { signal: ctrl.signal })
         if (!ctrl.signal.aborted) {
           const recData = await recRes.json()

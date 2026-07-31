@@ -1,5 +1,5 @@
 // @tests api/pedido, api/recurrente
-import {test, expect, BASE, handleBaseCaja, loginAs, goto, apiGet, apiPut, createCliente, createPedido, resetTestDatabase} from './fixtures'
+import {test, expect, BASE, handleBaseCaja, loginAs, goto, apiGet, createCliente, createPedido, resetTestDatabase} from './fixtures'
 
 test.describe('Recurrentes', () => {
   test.describe.configure({ mode: 'serial' })
@@ -217,22 +217,19 @@ test.describe('Recurrentes', () => {
     const cliente = clienteRes.cliente || clienteRes
     expect(cliente.id).toBeDefined()
 
-    // 2. Crear pedido extra de 4 pacas con pago COMPLETO (debe pagar todo para que saldo = 0)
+    // 2. Crear pedido extra de 4 pacas con pago COMPLETO (debe pagar todo para que saldo = 0).
+    // Se crea como PENDIENTE (ventaRapida: false) para cumplir el criterio
+    // pedidosPagados (estadoEntrega=PENDIENTE, saldo=0, totalPagado>0).
+    // ENTREGADO -> PENDIENTE es una transición inválida; no se puede degradar.
     const pedidoExtraData = await createPedido(page, {
       clienteId: cliente.id,
       canal: 'DOMICILIO',
+      ventaRapida: false,
       pacaAgua: 4,
       pagoMetodo: 'EFECTIVO',
       pagoMonto: 11200, // Pago completo: 4 pacas × $2,800
     })
     expect(pedidoExtraData.pedido).toBeDefined()
-
-    // El pedido se creó como ENTREGADO por ventaRapida. Necesitamos que esté PENDIENTE
-    // pero con totalPagado > 0 y saldo = 0. Actualizamos el estado vía API directa.
-    await apiPut(page, `/api/pedidos/${pedidoExtraData.pedido.id}`, {
-      estadoEntrega: 'PENDIENTE',
-      estado: 'PENDIENTE',
-    })
 
     // 3. Crear plantilla recurrente
     await generateRecurrente(page, cliente.id)

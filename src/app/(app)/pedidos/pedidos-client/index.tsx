@@ -176,22 +176,27 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     error: fetchError,
     refetch,
     hasLoadedOnce,
+    paramsKey: hookParamsKey,
+    appliedKeyRef,
   } = usePedidos(pedidoFilterParams, {
     all: allFromUrl || fetchAllForTab,
-    refetchOnParamsChange: false,
+    // Si el SSR falla (initialPedidos undefined), el hook vuelve al modo
+    // backward-compatible: fetchea inicialmente y refetchea en cambios de params.
+    refetchOnParamsChange: initialPedidos === undefined,
   })
   const pedidos = pedidosRaw as Pedido[]
 
   // When hook data arrives (after initial render), use it instead of server data.
-  // Mismo patrón de merge de fuentes que arriba: el hook es la fuente fresca
-  // (polling/mutations), el SSR es la fuente inicial. El state display es el
-  // único punto de consolidación.
+  // El hook es la fuente fresca (polling/mutations). El SSR es la fuente inicial.
+  // Guard `appliedKeyRef.current === hookParamsKey` evita que un fetch stale del
+  // polling (disparado con filtros viejos antes de un cambio de URL) pise los
+  // datos nuevos enviados por el RSC. `hasLoadedOnce` acepta listas vacías.
   useEffect(() => {
-    if (pedidos.length > 0) {
+    if (hasLoadedOnce && appliedKeyRef.current === hookParamsKey) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- merge de fuente hook a state display, patrón clientes
       setDisplayPedidos(pedidos)
     }
-  }, [pedidos])
+  }, [pedidos, hasLoadedOnce, hookParamsKey, appliedKeyRef])
 
   // Independent datasets for Fiados and Alertas tabs.
   // Eager background fetch on mount (not blocking the main list render).

@@ -25,14 +25,17 @@ export async function GET(_request: NextRequest) {
       distinct: ['clienteId'],
     })
 
-    // Alertas: detector necesita un subconjunto mínimo de campos.
-    // Limitamos a últimos 90 días porque todas las reglas de alertas
-    // operan en ventanas ≤30 días (múltiples hoy, 7d fiado, 30d repetido).
-    const hace90Dias = subDaysBogota(90)
+    // Alertas: detector necesita un subconjunto de campos. Limitamos a 365 días
+    // para evitar full table scan en producción mientras mantenemos casi total
+    // paridad con el tab Alertas (que usa historial completo). Las reglas de
+    // ventanas ≤30 días (hoy, 7d fiado, 30d repetido) están cubiertas. Reglas que
+    // miran el historial completo (mediana últimos 5 pedidos, último precio)
+    // pueden tener un drift residual para clientes con pedidos >365 días.
+    const hace365Dias = subDaysBogota(365)
     const pedidos = await prisma.pedido.findMany({
       where: {
         clienteId: { not: CANONICAL_CONSUMIDOR_FINAL_ID },
-        fecha: { gte: hace90Dias },
+        fecha: { gte: hace365Dias },
       },
       select: {
         id: true,
