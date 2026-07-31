@@ -288,6 +288,16 @@ export async function dismissInstallBanner(page: Page) {
   }
 }
 
+// Selector de contenedor responsive: vista mobile (`md:hidden`) o desktop
+// (`hidden md:block`) según el ancho del viewport. Los componentes duplican
+// textos en ambas vistas (display:none en la inactiva); scoping con .first()
+// o con un solo data-testid rompe en uno de los dos proyectos de Playwright
+// (AGENTS.md #24).
+export function responsiveContainer(page: Page, mobileTestId: string, desktopTestId: string) {
+  const width = page.viewportSize()?.width ?? 1280
+  return width < 768 ? page.getByTestId(mobileTestId) : page.getByTestId(desktopTestId)
+}
+
 // ─── API Helpers ─────────────────────────────────────────────────────────────
 
 export async function apiPost(page: Page, path: string, data: unknown) {
