@@ -284,8 +284,19 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     navigateWithParams({ clienteId: value || undefined })
   }, [navigateWithParams])
 
+  const [searchInput, setSearchInput] = useState(search)
+  // Último valor de search que fue committeado a la URL. Trata la URL como
+  // fuente de verdad y el input como borrador (AGENTS.md #22): el effect de
+  // debounce solo navega si el input difiere del ref, no de la prop stale.
+  const lastCommittedSearchRef = useRef(search)
+
   const clearAllFilters = useCallback(() => {
     setSearchInput('')
+    // Marcar el ref ANTES de navegar: el effect de debounce de searchInput
+    // compararía '' (nuevo input) contra la prop search aún stale ('Pedro')
+    // y sobreescribiría la URL con un closure viejo, perdiendo all=true y
+    // dejando estadoEntrega. Mismo anti-patrón documentado en AGENTS.md #22.
+    lastCommittedSearchRef.current = ''
     navigateWithParams({
       search: undefined,
       clienteId: undefined,
@@ -298,8 +309,6 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       all: 'true',
     })
   }, [navigateWithParams])
-
-  const [searchInput, setSearchInput] = useState(search)
 
   // Wrap refetch to handle initial load
   const fetchPedidos = useCallback(async () => {
@@ -342,11 +351,14 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
 
   useEffect(() => {
     setSearchInput(search)
+    lastCommittedSearchRef.current = search
   }, [search])
 
   useEffect(() => {
+    if (searchInput === lastCommittedSearchRef.current) return
     const timer = setTimeout(() => {
-      if (searchInput !== search) {
+      if (searchInput !== lastCommittedSearchRef.current) {
+        lastCommittedSearchRef.current = searchInput
         updateSearch(searchInput)
       }
     }, 300)

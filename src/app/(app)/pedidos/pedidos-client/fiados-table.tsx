@@ -400,7 +400,7 @@ export function FiadosTable({
         </div>
       ) : (
         <div className="bg-white rounded-xl shadow overflow-hidden">
-          <div className="hidden md:block overflow-x-auto">
+          <div className="hidden md:block overflow-x-auto" data-testid="fiados-desktop">
             <table className="w-full">
               <thead className="bg-gray-50">
                 <tr>
@@ -615,7 +615,7 @@ export function FiadosTable({
         </div>
 
         {/* Mobile cards */}
-        <div className="md:hidden space-y-3">
+        <div className="md:hidden space-y-3" data-testid="fiados-mobile">
           {filtrados.map((row) => (
             <div key={row.clienteId} className="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
               <div className="flex justify-between items-start mb-2">

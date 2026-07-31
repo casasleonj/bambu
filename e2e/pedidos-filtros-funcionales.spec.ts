@@ -152,20 +152,21 @@ test.describe('Pedidos: tabs independientes y badges', () => {
 
     // Ir a Fiados y verificar X/Y = 2/5.
     await fiadosTab.click()
-    await expect(page.locator('text=Cliente Badge Fiados').first()).toBeVisible({ timeout: 10000 })
-    await expect(page.locator('text=2/5').first()).toBeVisible()
+    const fiadosMobile = page.getByTestId('fiados-mobile')
+    await expect(fiadosMobile.getByText('Cliente Badge Fiados')).toBeVisible({ timeout: 10000 })
+    await expect(fiadosMobile.getByText('2/5')).toBeVisible()
 
     // Volver a Pedidos y aplicar un filtro que excluya al cliente.
     await page.locator('[data-testid="tab-hoy"]').click()
     await page.locator('input[placeholder*="Buscar por cliente"]').first().fill('ZZZ_NO_MATCH')
     await page.keyboard.press('Enter')
     await expect(page).toHaveURL(/search=ZZZ_NO_MATCH/, { timeout: 10000 })
-    await expect(page.locator('text=No hay resultados').first()).toBeVisible({ timeout: 10000 })
+    await expect(page.getByTestId('pedidos-mobile').getByText('No hay resultados')).toBeVisible({ timeout: 10000 })
 
     // Volver a Fiados: el badge y el X/Y deben seguir igual.
     await fiadosTab.click()
     await expect(fiadosTab.locator('span.rounded-full')).toHaveText('1')
-    await expect(page.locator('text=2/5').first()).toBeVisible()
+    await expect(fiadosMobile.getByText('2/5')).toBeVisible()
   })
 
   test('filtros de Pedidos no afectan el dataset de Fiados', async ({ page }) => {
@@ -180,11 +181,11 @@ test.describe('Pedidos: tabs independientes y badges', () => {
     createPedidoDirecto(c.cliente.id, today, 'ENTREGADO', 'PENDIENTE')
 
     await goto(page, '/pedidos?estadoEntrega=PENDIENTE')
-    await expect(page.locator('text=No hay resultados').first()).toBeVisible({ timeout: 10000 })
+    await expect(page.getByTestId('pedidos-mobile').getByText('No hay resultados')).toBeVisible({ timeout: 10000 })
 
     // Cambiar a Fiados: el pedido ENTREGADO PENDIENTE debe seguir visible.
     await page.locator('[data-testid="tab-fiados"]').click()
-    await expect(page.locator('text=Cliente Filtro Independiente').first()).toBeVisible({ timeout: 10000 })
+    await expect(page.getByTestId('fiados-mobile').getByText('Cliente Filtro Independiente')).toBeVisible({ timeout: 10000 })
   })
 })
 
@@ -206,7 +207,7 @@ test.describe('Pedidos: tab Fiados', () => {
     await goto(page, '/pedidos?tab=fiados')
 
     // Pedro debe aparecer aunque su fiado sea de ayer
-    await expect(page.locator('text=Pedro Pinilla').first()).toBeVisible({ timeout: 10000 })
+    await expect(page.getByTestId('fiados-mobile').getByText('Pedro Pinilla')).toBeVisible({ timeout: 10000 })
   })
 
   test('tab Fiados con periodo Hoy oculta fiados de ayer y muestra hint', async ({ page }) => {
@@ -221,7 +222,7 @@ test.describe('Pedidos: tab Fiados', () => {
     await page.locator('button:has-text("Hoy")').first().click()
 
     // Sandra no debe aparecer (fiado de ayer)
-    await expect(page.locator('text=Sandra Leon').first()).not.toBeVisible({ timeout: 5000 })
+    await expect(page.getByTestId('fiados-mobile').getByText('Sandra Leon')).not.toBeVisible({ timeout: 5000 })
 
     // El hint debe ser visible
     await expect(page.locator('text=Mostrando solo fiados de hoy').first()).toBeVisible()
@@ -234,19 +235,20 @@ test.describe('Pedidos: tab Fiados', () => {
     createPedidoDirecto(c.cliente.id, today, 'ENTREGADO', 'PENDIENTE')
 
     await goto(page, '/pedidos?tab=fiados')
-    await expect(page.locator('text=Cliente Limpieza').first()).toBeVisible({ timeout: 10000 })
+    const fiadosMobile = page.getByTestId('fiados-mobile')
+    await expect(fiadosMobile.getByText('Cliente Limpieza')).toBeVisible({ timeout: 10000 })
 
     // Aplicar filtros locales
     await page.locator('input[placeholder="Buscar cliente..."]').first().fill('XYZ')
     await page.locator('input[placeholder="Deuda min"]').first().fill('999999')
 
     // Cliente debe desaparecer
-    await expect(page.locator('text=Cliente Limpieza').first()).not.toBeVisible({ timeout: 5000 })
+    await expect(fiadosMobile.getByText('Cliente Limpieza')).not.toBeVisible({ timeout: 5000 })
 
     // Click en Limpiar
     await page.locator('button:has-text("Limpiar")').first().click()
 
     // Cliente debe volver a aparecer
-    await expect(page.locator('text=Cliente Limpieza').first()).toBeVisible({ timeout: 10000 })
+    await expect(fiadosMobile.getByText('Cliente Limpieza')).toBeVisible({ timeout: 10000 })
   })
 })
