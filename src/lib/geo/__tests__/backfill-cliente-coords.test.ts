@@ -1,7 +1,7 @@
 // @tests backfill-cliente-coords — Bloque 1
 // Mockeamos prisma y cubrimos las 4 estrategias del backfill.
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 // Mock prisma ANTES de importar el módulo bajo test.
 vi.mock('@/lib/prisma', () => ({
@@ -27,8 +27,15 @@ const mockPedido = prisma.pedido as unknown as {
   findMany: ReturnType<typeof vi.fn>
 }
 
+// Short URLs intentan expansión server-side (fetch). Por defecto el fetch
+// falla (sin red) → fallback a GPS historial (determinístico en tests).
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('network down')))
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
 })
 
 describe('backfillClienteCoords', () => {
@@ -40,6 +47,40 @@ describe('backfillClienteCoords', () => {
     })
     const r = await backfillClienteCoords('c1')
     expect(r).toEqual({ lat: 4.65, lng: -74.05, origen: 'PARSED_URL' })
+  })
+
+  it('1b) short URL se expande server-side → PARSED_URL', async () => {
+    mockCliente.findUnique.mockResolvedValue({
+      id: 'c1',
+      linkUbicacion: 'https://maps.app.goo.gl/short',
+      negocioDefault: null,
+    })
+    // HEAD → 302 con la URL larga; HEAD de la URL larga → 200.
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(null, { status: 302, headers: { location: 'https://maps.google.com/?q=4.65,-74.05' } }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const r = await backfillClienteCoords('c1')
+    expect(r).toEqual({ lat: 4.65, lng: -74.05, origen: 'PARSED_URL' })
+  })
+
+  it('1c) short URL no expandible → cae a GPS historial', async () => {
+    mockCliente.findUnique.mockResolvedValue({
+      id: 'c1',
+      linkUbicacion: 'https://maps.app.goo.gl/short',
+      negocioDefault: { lat: 10, lng: 10 },
+    })
+    mockPedido.findMany.mockResolvedValue([
+      { gpsLat: 4.64, gpsLng: -74.04 },
+      { gpsLat: 4.65, gpsLng: -74.05 },
+      { gpsLat: 4.66, gpsLng: -74.06 },
+      { gpsLat: 4.67, gpsLng: -74.07 },
+    ])
+    const r = await backfillClienteCoords('c1')
+    expect(r).toEqual({ lat: 4.655, lng: -74.055, origen: 'GPS_HISTORIAL' })
   })
 
   it('2) cae a mediana GPS si linkUbicacion no parsea', async () => {

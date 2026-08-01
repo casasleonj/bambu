@@ -18,6 +18,9 @@ export interface NegocioDetail {
   ruta: { id: string; nombre: string } | null
   clienteId?: string
   _count: { pedidos: number }
+  // Coords geocodificadas (linkUbicacion → mediana GPS historial).
+  lat?: number | null
+  lng?: number | null
 }
 
 interface NegocioDetailModalProps {
@@ -29,6 +32,8 @@ interface NegocioDetailModalProps {
   clienteId?: string
   onEdit: () => void
   onDeleted: () => void
+  /** Callback tras geocodificar exitosamente (para actualizar el state del padre). */
+  onGeocoded?: (negocioId: string, coords: { lat: number; lng: number }) => void
 }
 
 export function NegocioDetailModal({
@@ -40,9 +45,11 @@ export function NegocioDetailModal({
   clienteId,
   onEdit,
   onDeleted,
+  onGeocoded,
 }: NegocioDetailModalProps) {
   const { confirm, modal } = useConfirm()
   const [deleting, setDeleting] = useState(false)
+  const [geocoding, setGeocoding] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const neg = negocio
@@ -76,6 +83,30 @@ export function NegocioDetailModal({
       setError('Error de red. Verifica tu conexión e intenta de nuevo.')
     } finally {
       setDeleting(false)
+    }
+  }
+
+  async function handleGeocode() {
+    if (!neg) return
+    setGeocoding(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/negocios/${neg.id}/geocode`, { method: 'POST' })
+      const data = await res.json()
+      if (data.success) {
+        if (data.coords) {
+          toast.success(`Coordenadas actualizadas (${data.coords.origen})`)
+          onGeocoded?.(neg.id, { lat: data.coords.lat as number, lng: data.coords.lng as number })
+        } else {
+          toast.warning('No se pudieron obtener coords automáticamente')
+        }
+      } else {
+        setError(data.error?.message || `Error al geocodificar (HTTP ${res.status})`)
+      }
+    } catch {
+      setError('Error de red. Verifica tu conexión e intenta de nuevo.')
+    } finally {
+      setGeocoding(false)
     }
   }
 
@@ -200,6 +231,29 @@ export function NegocioDetailModal({
                 </div>
               </div>
             )}
+            {/* Coordenadas geocodificadas (linkUbicacion → mediana GPS historial) */}
+            <div className="flex items-center justify-between text-xs text-gray-500 bg-gray-50 -mx-2 px-2 py-1 rounded" data-testid="coords-internas-negocio">
+              <span>Coords internas</span>
+              <span className="flex items-center gap-1.5">
+                {neg.lat != null && neg.lng != null ? (
+                  <span className="font-mono">
+                    {neg.lat}, {neg.lng}
+                  </span>
+                ) : (
+                  <span className="italic">no configuradas</span>
+                )}
+                {canEdit && (
+                  <button
+                    onClick={handleGeocode}
+                    disabled={geocoding}
+                    data-testid="btn-geocode-negocio"
+                    className="px-2 py-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded hover:bg-emerald-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {geocoding ? 'Actualizando...' : 'Actualizar coordenadas'}
+                  </button>
+                )}
+              </span>
+            </div>
           </div>
 
           {neg._count?.pedidos > 0 && (

@@ -4,6 +4,7 @@ import { listarPedidosUseCase } from '@/modules/pedidos'
 import { buildDateRangeFilter, getTodayRange } from '@/lib/dates'
 import { getAnonymousClientDisplayName } from '@/lib/cliente-canonical'
 import { getPaginationParams } from '@/lib/pagination'
+import { pickCoords } from '@/lib/geo/pedido-coords'
 import type { PedidoResumenDTO } from '@/modules/pedidos/application/dto'
 import type { Pedido } from './pedidos-client/types'
 import { PedidosClient } from './pedidos-client'
@@ -121,6 +122,8 @@ export default async function PedidosPage({
     const enriched = result.pedidos.map(p => {
       const cliente = clienteById.get(p.clienteId)
       const negocio = p.negocioId ? negocioById.get(p.negocioId) : undefined
+      // Coords efectivas (regla única pickCoords: negocio gana, fallback cliente).
+      const coordsEfectivas = pickCoords({ cliente, negocio })
       return {
         ...p,
         nombreCli: getAnonymousClientDisplayName(p.clienteId, 'short') ?? (cliente?.nombre || 'Desconocido'),
@@ -131,6 +134,8 @@ export default async function PedidosPage({
         nombreNegocioCli: negocio?.nombre || null,
         horaAperturaCli: negocio?.horaApertura || null,
         rutaNombre: negocio?.ruta?.nombre || cliente?.ruta?.nombre,
+        lat: coordsEfectivas?.lat ?? null,
+        lng: coordsEfectivas?.lng ?? null,
       }
     })
 

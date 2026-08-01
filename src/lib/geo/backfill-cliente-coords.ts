@@ -18,7 +18,8 @@
  */
 
 import { prisma } from '@/lib/prisma'
-import { parseGoogleMapsLink } from './parse-google-maps-link'
+import { parseGoogleMapsLink, isShortMapsUrl } from './parse-google-maps-link'
+import { expandShortMapsUrl } from './expand-short-maps-url'
 
 export type GeocodeOrigen = 'PARSED_URL' | 'GPS_HISTORIAL' | 'NEGOCIO' | 'MANUAL'
 
@@ -48,6 +49,18 @@ export async function backfillClienteCoords(clienteId: string): Promise<GeocodeR
     const parsed = parseGoogleMapsLink(cliente.linkUbicacion)
     if (parsed) {
       return { lat: parsed.lat, lng: parsed.lng, origen: 'PARSED_URL' }
+    }
+    // 1b. Short URL (maps.app.goo.gl / goo.gl/maps): resolver el redirect
+    // server-side y parsear la URL final. Los usuarios suelen pegar el link
+    // corto de "Compartir" de Google Maps, no el largo con @lat,lng.
+    if (isShortMapsUrl(cliente.linkUbicacion)) {
+      const expanded = await expandShortMapsUrl(cliente.linkUbicacion)
+      if (expanded) {
+        const parsedExpanded = parseGoogleMapsLink(expanded)
+        if (parsedExpanded) {
+          return { lat: parsedExpanded.lat, lng: parsedExpanded.lng, origen: 'PARSED_URL' }
+        }
+      }
     }
   }
 

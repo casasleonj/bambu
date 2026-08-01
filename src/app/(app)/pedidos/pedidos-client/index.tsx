@@ -1876,9 +1876,14 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
 
       {/* GPS capture modal — second step after photo confirmation */}
       {(() => {
+        // Target de validación: coords EFECTIVAS del pedido (negocio gana,
+        // viene en el payload vía pickCoords). Fallback al cliente de la
+        // lista para payloads legacy sin lat/lng.
         const clienteParaGps = pedidoParaEntregar
           ? clientes.find(c => c.id === pedidoParaEntregar.clienteId)
           : null
+        const targetLat = pedidoParaEntregar?.lat ?? clienteParaGps?.lat
+        const targetLng = pedidoParaEntregar?.lng ?? clienteParaGps?.lng
         return (
           <GpsCaptureModal
             open={showGpsCapture}
@@ -1890,11 +1895,15 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
             }}
             onConfirm={handleGpsConfirm}
             clienteCoords={
-              clienteParaGps?.lat != null && clienteParaGps?.lng != null
-                ? { lat: clienteParaGps.lat, lng: clienteParaGps.lng }
+              targetLat != null && targetLng != null
+                ? { lat: targetLat, lng: targetLng }
                 : undefined
             }
-            clienteName={pedidoParaEntregar?.nombreCli ?? undefined}
+            clienteName={
+              pedidoParaEntregar?.nombreNegocioCli ??
+              pedidoParaEntregar?.nombreCli ??
+              undefined
+            }
             deliveryRadiusMeters={gpsConfig.radiusMeters}
           />
         )

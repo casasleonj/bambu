@@ -52,7 +52,7 @@ export async function POST(
 
     if (result.pedidoIds.length === 0) {
       return apiError(
-        `No hay pedidos con coordenadas (${result.sinCoords.length} sin coords). Backfilleá las coords primero con POST /api/clientes/[id]/geocode.`,
+        `No hay pedidos con coordenadas (${result.sinCoords.length} sin coords). Actualizá las coords de los clientes (perfil → "Actualizar coordenadas") o de los negocios (negocio → "Actualizar coordenadas").`,
         400,
       )
     }

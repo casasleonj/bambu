@@ -13,11 +13,11 @@ test.describe('Ciclo Repartidor', () => {
       nombre: `RepTest ${Date.now() % 10000}`,
       rol: 'REPARTIDOR',
     })
-    expect(trabajador.id).toBeTruthy()
+    expect(trabajador.trabajador.id).toBeTruthy()
 
     const cliente = await createCliente(page)
     const pedidoRes = await apiPost(page, '/api/pedidos', {
-      clienteId: cliente.id,
+      clienteId: cliente.cliente.id,
       canal: 'DOMICILIO',
       ventaRapida: false,
       items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
@@ -26,10 +26,10 @@ test.describe('Ciclo Repartidor', () => {
     const pedidoJson = await pedidoRes.json()
     const pedidoId = pedidoJson.pedido?.id || pedidoJson.id
 
-    const embarque = await createEmbarque(page, trabajador.id)
-    expect(embarque.id).toBeTruthy()
+    const embarque = await createEmbarque(page, trabajador.trabajador.id)
+    expect(embarque.embarque.id).toBeTruthy()
 
-    const enviarRes = await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, { embarqueId: embarque.id })
+    const enviarRes = await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, { embarqueId: embarque.embarque.id })
     expect(enviarRes.status()).toBe(201)
 
     const repartidorContext = await page.context().browser()!.newContext()
@@ -48,7 +48,7 @@ test.describe('Ciclo Repartidor', () => {
     expect(embarquesRes.status()).toBe(200)
     const embBody = await embarquesRes.json()
     const embarques = embBody.embarques || embBody.data || []
-    const miEmbarque = embarques.find((e: any) => e.id === embarque.id)
+    const miEmbarque = embarques.find((e: any) => e.id === embarque.embarque.id)
     expect(miEmbarque).toBeTruthy()
 
     await goto(repartidorPage, '/repartidor')
@@ -68,12 +68,12 @@ test.describe('Ciclo Repartidor', () => {
       nombre: `RepVL ${Date.now() % 10000}`,
       rol: 'REPARTIDOR',
     })
-    const embarque = await createEmbarque(page, trabajador.id)
-    expect(embarque.id).toBeTruthy()
+    const embarque = await createEmbarque(page, trabajador.trabajador.id)
+    expect(embarque.embarque.id).toBeTruthy()
 
     const ventaLibreRes = await apiPost(page, '/api/pedidos/venta-libre', {
       clienteId: 'CONSUMIDOR_FINAL',
-      embarqueId: embarque.id,
+      embarqueId: embarque.embarque.id,
       items: [
         { producto: 'PACA_AGUA', cantidad: 2 },
       ],

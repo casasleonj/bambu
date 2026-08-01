@@ -16,6 +16,7 @@ import {
 } from '@/modules/pedidos'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { broadcastPush } from '@/lib/push'
+import { pickCoords } from '@/lib/geo/pedido-coords'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -129,6 +130,8 @@ export async function GET(request: NextRequest) {
       const barrio = negocio?.barrio ?? cliente?.barrio
       const horaApertura = negocio?.horaApertura || null
       const rutaNombre = negocio?.ruta?.nombre || cliente?.ruta?.nombre
+      // Coords efectivas (regla única pickCoords: negocio gana, fallback cliente).
+      const coordsEfectivas = pickCoords({ cliente, negocio })
 
       return {
         ...p,
@@ -140,6 +143,8 @@ export async function GET(request: NextRequest) {
         nombreNegocioCli: nombreNegocio,
         horaAperturaCli: horaApertura,
         rutaNombre,
+        lat: coordsEfectivas?.lat ?? null,
+        lng: coordsEfectivas?.lng ?? null,
         fecha: p.fecha,
       }
     })
