@@ -71,7 +71,7 @@ test.describe('Ciclo Repartidor', () => {
     expect(embarquesRes.status()).toBe(200)
     const embBody = await embarquesRes.json()
     const embarques = embBody.embarques || embBody.data || []
-    const miEmbarque = embarques.find((e: any) => e.id === embarque.id)
+    const miEmbarque = embarques.find((e: { id: string }) => e.id === embarque.id)
     expect(miEmbarque).toBeTruthy()
 
     await goto(repartidorPage, '/repartidor')
