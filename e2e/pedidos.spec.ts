@@ -241,9 +241,11 @@ test.describe('Pedidos', () => {
   test('filtrar pedidos por estado entrega', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/pedidos')
-    // Expand filters panel
-    const filtrosBtn = page.locator('button:has-text("Filtros")')
-    if (await filtrosBtn.isVisible()) await filtrosBtn.click()
+    // Expand filters panel. waitFor con auto-wait: el server component asíncrono
+    // puede tardar en renderizar (loading.tsx skeleton) tras el domcontentloaded.
+    const filtrosBtn = page.locator('button:has-text("Filtros")').first()
+    await filtrosBtn.waitFor({ state: 'visible', timeout: 20000 }).catch(() => {})
+    if (await filtrosBtn.isVisible().catch(() => false)) await filtrosBtn.click()
     await page.waitForTimeout(300)
     // Click ENTREGADO chip
     const entregadoBtn = page.locator('button:has-text("ENTREGADO")').first()
@@ -257,9 +259,11 @@ test.describe('Pedidos', () => {
   test('filtrar pedidos por origen', async ({ page }) => {
     await loginAs(page, 'admin')
     await goto(page, '/pedidos')
-    // Expand filters panel
-    const filtrosBtn = page.locator('button:has-text("Filtros")')
-    if (await filtrosBtn.isVisible()) await filtrosBtn.click()
+    // Expand filters panel. waitFor con auto-wait: el server component asíncrono
+    // puede tardar en renderizar (loading.tsx skeleton) tras el domcontentloaded.
+    const filtrosBtn = page.locator('button:has-text("Filtros")').first()
+    await filtrosBtn.waitFor({ state: 'visible', timeout: 20000 }).catch(() => {})
+    if (await filtrosBtn.isVisible().catch(() => false)) await filtrosBtn.click()
     await page.waitForTimeout(300)
     const origenBtn = page.locator('button:has-text("VENTA RAPIDA")').first()
     if (await origenBtn.isVisible({ timeout: 3000 }).catch(() => false)) {

@@ -10,16 +10,27 @@ import { EmptyState } from '@/components/empty-state'
 import type { Recurrente, PreviewItem } from './types'
 import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 
-export default function RecurrentesClient() {
+export default function RecurrentesClient({ initialRecurrentes }: { initialRecurrentes?: Recurrente[] }) {
   const router = useRouter()
-  const [recurrentes, setRecurrentes] = useState<Recurrente[]>([])
+  // Seed from SSR data if available; preview is always lazy (expensive).
+  const [recurrentes, setRecurrentes] = useState<Recurrente[]>(initialRecurrentes || [])
   const [preview, setPreview] = useState<PreviewItem[]>([])
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
   const [decisiones, setDecisiones] = useState<Record<string, string>>({})
+  // Ref para leer decisiones actuales desde el fetchData callback sin recrearlo.
+  // El efecto de abajo mantiene el ref sincronizado; sin esto, el polling usa
+  // el closure del mount y resetea la selección del usuario cada 60s.
+  const decisionesRef = useRef<Record<string, string>>(decisiones)
+  useEffect(() => {
+    decisionesRef.current = decisiones
+  }, [decisiones])
   const { confirm, modal } = useConfirm()
   const abortRef = useRef<AbortController | null>(null)
+  // Skip list refetch on the FIRST fetchData call when SSR data is present,
+  // but ALWAYS refetch on subsequent calls (polling, mutations).
+  const initialFetchDoneRef = useRef(false)
 
   const fetchData = useCallback(async () => {
     abortRef.current?.abort()
@@ -29,25 +40,35 @@ export default function RecurrentesClient() {
     setLoading(true)
     setFetchError(null)
     try {
-      const [recRes, previewRes] = await Promise.all([
-        fetch('/api/recurrentes', { signal: ctrl.signal }),
-        fetch('/api/pedidos/recurrentes', { signal: ctrl.signal }),
-      ])
+      // Fetch preview (always lazy, complex). Recurrentes list comes from SSR.
+      const previewRes = await fetch('/api/pedidos/recurrentes', { signal: ctrl.signal })
       if (ctrl.signal.aborted) return
-      const recData = await recRes.json()
       const previewData = await previewRes.json()
 
-      if (recData.success) setRecurrentes(recData.recurrentes || [])
       if (previewData.success) {
         const p = previewData.preview || []
         setPreview(p)
-        // Keep decisions only for current preview items
+        // Keep decisions only for current preview items. Leer desde ref para no
+        // depender del closure del fetchData (previene reseteo por polling).
+        const currentDecisions = decisionesRef.current
         const defaults: Record<string, string> = {}
         for (const item of p) {
-          defaults[item.recurrenteId] = decisiones[item.recurrenteId] || 'NORMAL'
+          defaults[item.recurrenteId] = currentDecisions[item.recurrenteId] || 'NORMAL'
         }
         setDecisiones(defaults)
       }
+
+      // Refetch the recurrentes list on every call EXCEPT the first one when
+      // SSR data is present (avoids duplicating the SSR fetch). Subsequent
+      // calls (polling, after create/delete) MUST refresh the list.
+      if (initialFetchDoneRef.current || !initialRecurrentes) {
+        const recRes = await fetch('/api/recurrentes', { signal: ctrl.signal })
+        if (!ctrl.signal.aborted) {
+          const recData = await recRes.json()
+          if (recData.success) setRecurrentes(recData.recurrentes || [])
+        }
+      }
+      initialFetchDoneRef.current = true
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return
       setFetchError('No se pudieron cargar los datos')
@@ -55,7 +76,7 @@ export default function RecurrentesClient() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [initialRecurrentes])
 
   useEffect(() => {
     fetchData()
@@ -113,7 +134,9 @@ export default function RecurrentesClient() {
     )
   }
 
-  if (loading) {
+  // Only show full-page skeleton if there's NO SSR data and loading.
+  // When SSR data is available, show it immediately and preview loads in background.
+  if (loading && !initialRecurrentes) {
     return (
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -153,6 +176,13 @@ export default function RecurrentesClient() {
         <div><h1 className="text-2xl font-bold text-gray-900">Pedidos Recurrentes</h1><p className="text-gray-600">{recurrentes.length} plantillas activas</p></div>
         <button onClick={() => router.push('/recurrentes/nuevo')} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">+ Nueva Plantilla</button>
       </div>
+
+      {/* Lazy preview loading indicator */}
+      {loading && initialRecurrentes && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-center">
+          <p className="text-blue-700 font-medium animate-pulse">Cargando preview de generación...</p>
+        </div>
+      )}
 
       {preview.length > 0 ? (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">

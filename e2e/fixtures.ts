@@ -278,6 +278,24 @@ export async function goto(page: Page, path: string) {
   await page.waitForLoadState('domcontentloaded')
   await page.waitForTimeout(500)
   await handleBaseCaja(page)
+  await dismissInstallBanner(page)
+}
+
+export async function dismissInstallBanner(page: Page) {
+  const closeBtn = page.locator('[aria-label="Cerrar banner de instalación"]').first()
+  if (await closeBtn.isVisible().catch(() => false)) {
+    await closeBtn.click()
+  }
+}
+
+// Selector de contenedor responsive: vista mobile (`md:hidden`) o desktop
+// (`hidden md:block`) según el ancho del viewport. Los componentes duplican
+// textos en ambas vistas (display:none en la inactiva); scoping con .first()
+// o con un solo data-testid rompe en uno de los dos proyectos de Playwright
+// (AGENTS.md #24).
+export function responsiveContainer(page: Page, mobileTestId: string, desktopTestId: string) {
+  const width = page.viewportSize()?.width ?? 1280
+  return width < 768 ? page.getByTestId(mobileTestId) : page.getByTestId(desktopTestId)
 }
 
 // ─── API Helpers ─────────────────────────────────────────────────────────────

@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma'
 import { RepartidorClient } from './repartidor-client'
 import { requirePagePermission } from '@/lib/auth-guard'
 import { getConfigBool } from '@/lib/config'
+import { pickCoords } from '@/lib/geo/pedido-coords'
 
 export default async function RepartidorPage() {
   // requirePagePermission ya llama a auth() internamente y devuelve la sesión.
@@ -64,13 +65,17 @@ export default async function RepartidorPage() {
 
   // Batch-fetch business names so the driver view can prioritize the
   // negocio name over the owner name when a pedido is linked to one.
+  // lat/lng: coords efectivas del negocio (regla pickCoords: negocio gana).
   const negocioIds = embarque
     ? [...new Set(embarque.pedidos.map(p => p.negocioId).filter(Boolean))] as string[]
     : []
   const negocios = negocioIds.length > 0
-    ? await prisma.negocio.findMany({ where: { id: { in: negocioIds } }, select: { id: true, nombre: true } })
+    ? await prisma.negocio.findMany({
+        where: { id: { in: negocioIds } },
+        select: { id: true, nombre: true, lat: true, lng: true },
+      })
     : []
-  const negocioMap = new Map(negocios.map(n => [n.id, n.nombre]))
+  const negocioMap = new Map(negocios.map(n => [n.id, n]))
 
   const embarqueData = embarque
     ? {
@@ -83,37 +88,45 @@ export default async function RepartidorPage() {
         // Bloque 2: pasar ordenVisita al cliente
         ordenVisita: embarque.ordenVisita,
         optimizadoEn: embarque.optimizadoEn?.toISOString() || null,
-        pedidos: embarque.pedidos.map(p => ({
-          ...p,
-          clienteId: p.clienteId,
-          negocioId: p.negocioId,
-          nombreCli: p.cliente.nombre,
-          apellidoCli: p.cliente.apellido,
-          nombreNegocioCli: p.negocioId ? negocioMap.get(p.negocioId) ?? null : null,
-          fecha: p.fecha.toISOString(),
-          fechaEntrega: p.fechaEntrega?.toISOString() || null,
-          total: maskPrices ? 0 : Number(p.total),
-          saldo: maskPrices ? 0 : Number(p.saldo),
-          totalPagado: maskPrices ? 0 : Number(p.totalPagado),
-          precioPacaAgua: maskPrices ? 0 : Number(p.precioPacaAgua),
-          precioPacaHielo: maskPrices ? 0 : Number(p.precioPacaHielo),
-          precioBotellonFab: maskPrices ? 0 : Number(p.precioBotellonFab),
-          precioBotellonDom: maskPrices ? 0 : Number(p.precioBotellonDom),
-          precioBolsaAgua: maskPrices ? 0 : Number(p.precioBolsaAgua),
-          precioBolsaHielo: maskPrices ? 0 : Number(p.precioBolsaHielo),
-          gpsLat: p.gpsLat ? Number(p.gpsLat) : null,
-          gpsLng: p.gpsLng ? Number(p.gpsLng) : null,
-          cliente: {
-            ...p.cliente,
-            lat: p.cliente.lat != null ? Number(p.cliente.lat) : null,
-            lng: p.cliente.lng != null ? Number(p.cliente.lng) : null,
-          },
-          items: p.items.map(i => ({
-            ...i,
-            precio: maskPrices ? 0 : Number(i.precio),
-            subtotal: maskPrices ? 0 : Number(i.subtotal),
-          })),
-        })),
+        pedidos: embarque.pedidos.map(p => {
+          const negocioInfo = p.negocioId ? negocioMap.get(p.negocioId) : undefined
+          // Coords efectivas del pedido: negocio gana, fallback a cliente.
+          const coordsEfectivas = pickCoords({ cliente: p.cliente, negocio: negocioInfo })
+          return {
+            ...p,
+            clienteId: p.clienteId,
+            negocioId: p.negocioId,
+            nombreCli: p.cliente.nombre,
+            apellidoCli: p.cliente.apellido,
+            nombreNegocioCli: negocioInfo?.nombre ?? null,
+            fecha: p.fecha.toISOString(),
+            fechaEntrega: p.fechaEntrega?.toISOString() || null,
+            total: maskPrices ? 0 : Number(p.total),
+            saldo: maskPrices ? 0 : Number(p.saldo),
+            totalPagado: maskPrices ? 0 : Number(p.totalPagado),
+            precioPacaAgua: maskPrices ? 0 : Number(p.precioPacaAgua),
+            precioPacaHielo: maskPrices ? 0 : Number(p.precioPacaHielo),
+            precioBotellonFab: maskPrices ? 0 : Number(p.precioBotellonFab),
+            precioBotellonDom: maskPrices ? 0 : Number(p.precioBotellonDom),
+            precioBolsaAgua: maskPrices ? 0 : Number(p.precioBolsaAgua),
+            precioBolsaHielo: maskPrices ? 0 : Number(p.precioBolsaHielo),
+            gpsLat: p.gpsLat ? Number(p.gpsLat) : null,
+            gpsLng: p.gpsLng ? Number(p.gpsLng) : null,
+            // Coords efectivas (para Maps y validación GPS del repartidor)
+            lat: coordsEfectivas?.lat ?? null,
+            lng: coordsEfectivas?.lng ?? null,
+            cliente: {
+              ...p.cliente,
+              lat: p.cliente.lat != null ? Number(p.cliente.lat) : null,
+              lng: p.cliente.lng != null ? Number(p.cliente.lng) : null,
+            },
+            items: p.items.map(i => ({
+              ...i,
+              precio: maskPrices ? 0 : Number(i.precio),
+              subtotal: maskPrices ? 0 : Number(i.subtotal),
+            })),
+          }
+        }),
       }
     : null
 

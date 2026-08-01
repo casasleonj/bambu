@@ -35,9 +35,11 @@ describe('getTodayRange', () => {
     expect(range.endOfDay.getUTCMilliseconds()).toBe(999)
   })
 
-  it('endOfDay UTC date is startOfDay UTC date + 1', () => {
+  it('endOfDay UTC date is the day after startOfDay UTC date', () => {
     const range = getTodayRange()
-    expect(range.endOfDay.getUTCDate()).toBe(range.startOfDay.getUTCDate() + 1)
+    const expected = new Date(range.startOfDay)
+    expected.setUTCDate(expected.getUTCDate() + 1)
+    expect(range.endOfDay.getUTCDate()).toBe(expected.getUTCDate())
   })
 
   it('covers full 24h minus 1ms range', () => {

@@ -1195,6 +1195,22 @@ export default function ClientesClient({
     setNegocioFormOpen(true)
   }
 
+  // Tras geocodificar un negocio (POST /api/negocios/[id]/geocode) el modal
+  // actualiza la fila de coords y el panel de negocios del cliente seleccionado
+  // se re-deriva vía el effect [selectedCliente] → setNegocios.
+  function handleNegocioGeocoded(negocioId: string, coords: { lat: number; lng: number }) {
+    setViewNegocioData(prev =>
+      prev && prev.id === negocioId ? { ...prev, lat: coords.lat, lng: coords.lng } : prev,
+    )
+    setSelectedCliente(prev => {
+      if (!prev) return prev
+      const negocios = (prev.negocios ?? []).map(n =>
+        n.id === negocioId ? { ...n, lat: coords.lat, lng: coords.lng } : n,
+      )
+      return { ...prev, negocios }
+    })
+  }
+
   async function handleNegocioDeleted() {
     const ownerId = selectedCliente?.id
     if (!ownerId) return
@@ -2325,6 +2341,7 @@ export default function ClientesClient({
           clienteId={viewNegocioData.clienteId || selectedCliente?.id}
           onEdit={() => viewNegocioData && handleEditNegocioFromDetail(viewNegocioData)}
           onDeleted={handleNegocioDeleted}
+          onGeocoded={handleNegocioGeocoded}
         />
       )}
     </div>

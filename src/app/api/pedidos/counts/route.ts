@@ -5,6 +5,7 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 import { calcularAlertas } from '@/lib/alertas-detector'
 import { CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
+import { subDaysBogota } from '@/lib/dates'
 
 export async function GET(_request: NextRequest) {
   const authResult = await requireAuth()
@@ -24,11 +25,17 @@ export async function GET(_request: NextRequest) {
       distinct: ['clienteId'],
     })
 
-    // Alertas: detector necesite un subconjunto mínimo de campos.
-    // Usamos el historial completo para mantener paridad con el tab Alertas.
+    // Alertas: detector necesita un subconjunto de campos. Limitamos a 365 días
+    // para evitar full table scan en producción mientras mantenemos casi total
+    // paridad con el tab Alertas (que usa historial completo). Las reglas de
+    // ventanas ≤30 días (hoy, 7d fiado, 30d repetido) están cubiertas. Reglas que
+    // miran el historial completo (mediana últimos 5 pedidos, último precio)
+    // pueden tener un drift residual para clientes con pedidos >365 días.
+    const hace365Dias = subDaysBogota(365)
     const pedidos = await prisma.pedido.findMany({
       where: {
         clienteId: { not: CANONICAL_CONSUMIDOR_FINAL_ID },
+        fecha: { gte: hace365Dias },
       },
       select: {
         id: true,

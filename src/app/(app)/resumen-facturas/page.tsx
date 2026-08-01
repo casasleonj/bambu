@@ -32,7 +32,6 @@ interface ClienteResumen {
   telefono: string
   direccion: string | null
   barrio: string | null
-  nombreNegocio: string | null
 }
 
 interface EmpresaResumen {

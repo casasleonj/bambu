@@ -123,6 +123,17 @@ export function getEndOfWeek(date: Date = new Date()): Date {
   return end
 }
 
+/**
+ * Devuelve el inicio del día en Bogotá hace `dias` días.
+ * Útil para queries con límite temporal (ej: últimos 90 días).
+ */
+export function subDaysBogota(dias: number): Date {
+  const hoy = getTodayString()
+  const fecha = new Date(`${hoy}T00:00:00-05:00`)
+  fecha.setDate(fecha.getDate() - dias)
+  return fecha
+}
+
 export type DatePreset = 'ayer' | 'hoy' | 'manana' | 'semana' | 'todos' | 'turno'
 
 export function getPresetDate(preset: DatePreset): { desde: string; hasta: string } | null {

@@ -52,6 +52,10 @@ export interface Pedido {
   obs?: string | null
   nombreNegocioCli?: string | null
   horaAperturaCli?: string | null
+  // Coords efectivas del pedido (negocio gana, fallback cliente).
+  // Las agregan API y SSR vía pickCoords; null si no hay fuente con coords.
+  lat?: number | null
+  lng?: number | null
   disputaAbierta?: boolean
   promesaPagoFecha?: string
   factura?: {

@@ -98,6 +98,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
             linkUbicacion: true,
             horaApertura: true,
             clienteId: true,
+            lat: true,
+            lng: true,
             ruta: { select: { id: true, nombre: true } },
             _count: { select: { pedidos: true } },
           },

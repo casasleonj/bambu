@@ -24,6 +24,11 @@ export interface PedidoFilterParams {
 export interface UsePedidosOptions {
   all?: boolean
   autoFetch?: boolean
+  /** When false, skips the automatic refetch when params change.
+   *  Used when the parent component receives data via server component props
+   *  and manages filter changes via RSC navigation (router.push + startTransition).
+   *  Default: true (backward compatible). */
+  refetchOnParamsChange?: boolean
 }
 
 export interface UsePedidosResult {
@@ -34,6 +39,12 @@ export interface UsePedidosResult {
   fetchPedidos: () => Promise<void>
   refetch: () => Promise<void>
   hasLoadedOnce: boolean
+  /** Serialización de los parámetros actuales del hook. */
+  paramsKey: string
+  /** Ref con la key de los parámetros del último fetch aplicado. Se actualiza
+   *  justo antes de setPedidos para poder detectar y descartar datos stale en
+   *  el consumidor cuando el polling resuelve tras un cambio de URL. */
+  appliedKeyRef: React.MutableRefObject<string>
 }
 
 export function usePedidos(
@@ -49,6 +60,7 @@ export function usePedidos(
   const didInitialFetchRef = useRef(false)
   const lastParamsKeyRef = useRef<string>('')
   const requestIdRef = useRef(0)
+  const appliedKeyRef = useRef<string>('')
 
   const paramsKey = useMemo(() => JSON.stringify({
     ...params,
@@ -105,6 +117,10 @@ export function usePedidos(
       const data = await res.json()
       if (!isCurrent()) return
       if (data.success) {
+        // Guardar la key de los parámetros de este fetch para que el consumidor
+        // pueda descartar respuestas stale que lleguen tras un cambio de URL.
+        // paramsKey ya serializa { ...params, all: options?.all }.
+        appliedKeyRef.current = paramsKey
         setPedidos(data.pedidos || data.data || [])
         setTotal(data.total || 0)
         setHasLoadedOnce(true)
@@ -127,7 +143,7 @@ export function usePedidos(
     } finally {
       if (isCurrent()) setLoading(false)
     }
-  }, [buildUrl])
+  }, [buildUrl, paramsKey])
 
   const refetch = useCallback(async () => {
     await fetchPedidos()
@@ -136,7 +152,21 @@ export function usePedidos(
   // Fetch inicial controlado por autoFetch, y refetch automático cuando
   // cambian los filtros (params). Comparamos por serialización para evitar
   // loops infinitos cuando params cambia de referencia pero no de valor.
+  // refetchOnParamsChange=false desactiva el refetch automático para evitar
+  // duplicar fetches cuando el padre usa RSC navigation + props initial data.
   useEffect(() => {
+    // Si refetchOnParamsChange es false, NO refetchear ni en mount ni en
+    // cambios de params. El padre maneja los datos via server props y
+    // solo usa refetch() manual para polling/mutations.
+    if (options?.refetchOnParamsChange === false) {
+      // Aún así marcamos que se hizo el intento inicial para consistencia.
+      if (!didInitialFetchRef.current) {
+        didInitialFetchRef.current = true
+        lastParamsKeyRef.current = paramsKey
+      }
+      return
+    }
+
     const isFirstRun = !didInitialFetchRef.current
     const paramsChanged = paramsKey !== lastParamsKeyRef.current
 
@@ -153,7 +183,7 @@ export function usePedidos(
       lastParamsKeyRef.current = paramsKey
       fetchPedidos()
     }
-  }, [paramsKey, options?.all, options?.autoFetch, fetchPedidos])
+  }, [paramsKey, options?.all, options?.autoFetch, options?.refetchOnParamsChange, fetchPedidos])
 
   useEffect(() => {
     return () => {
@@ -161,5 +191,5 @@ export function usePedidos(
     }
   }, [])
 
-  return { pedidos, loading, error, total, fetchPedidos, refetch, hasLoadedOnce }
+  return { pedidos, loading, error, total, fetchPedidos, refetch, hasLoadedOnce, paramsKey, appliedKeyRef }
 }

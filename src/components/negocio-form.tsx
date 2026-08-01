@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Modal } from '@/components/modal'
 import { InfoBanner } from '@/components/tooltip'
 import { TipoNegocioSelect } from '@/components/tipo-negocio-select'
+import { CoordsPreview } from '@/components/coords-preview'
 
 const TIPOS_NEGOCIO: string[] = [
   'Tienda', 'Restaurante', 'Café', 'Hotel', 'Bar',
@@ -225,6 +226,9 @@ export function NegocioForm({
             className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
             placeholder="https://maps.google.com/?q=..."
           />
+          <p className="text-xs text-gray-400 mt-1">Opcional. Pega el enlace de Google Maps de la ubicación del negocio.</p>
+          {/* Feedback client-side de si el link es parseable (incluye short URLs). */}
+          <CoordsPreview url={formData.linkUbicacion} />
         </div>
       </form>
 

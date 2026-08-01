@@ -11,6 +11,7 @@
 
 import { prisma } from '@/lib/prisma'
 import { optimizeRuta, type TSPPoint } from './tsp'
+import { pickCoords } from './pedido-coords'
 
 export interface OptimizeResult {
   pedidoIds: string[]
@@ -25,6 +26,7 @@ export async function optimizeEmbarqueOrden(embarqueId: string): Promise<Optimiz
     select: {
       id: true,
       cliente: { select: { lat: true, lng: true } },
+      negocio: { select: { lat: true, lng: true } },
     },
     orderBy: { numero: 'asc' },
   })
@@ -33,10 +35,10 @@ export async function optimizeEmbarqueOrden(embarqueId: string): Promise<Optimiz
   const puntos: TSPPoint[] = []
 
   for (const p of pedidos) {
-    const lat = p.cliente?.lat != null ? Number(p.cliente.lat) : null
-    const lng = p.cliente?.lng != null ? Number(p.cliente.lng) : null
-    if (lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng)) {
-      puntos.push({ id: p.id, lat, lng })
+    // Coords efectivas: negocio gana, fallback a cliente (schema.prisma contrato).
+    const coords = pickCoords(p)
+    if (coords) {
+      puntos.push({ id: p.id, lat: coords.lat, lng: coords.lng })
     } else {
       sinCoords.push(p.id)
     }

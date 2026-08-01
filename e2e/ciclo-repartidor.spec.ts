@@ -1,5 +1,23 @@
 // @tests api/cierre, api/embarque, api/pedido
-import { test, expect, BASE, loginAs, goto, apiPost, createCliente, createTrabajador, createEmbarque, login } from './fixtures'
+import { test, expect, BASE, loginAs, goto, apiPost, apiGet, createCliente, createTrabajador, createEmbarque, login } from './fixtures'
+
+// Obtiene un embarque ABIERTO del trabajador indicado. POST directo; si
+// devuelve 409 (ya tiene uno abierto hoy), lee la lista ABIERTO y filtra por
+// trabajadorId client-side — GET /api/embarques NO soporta el param
+// trabajadorId (lo ignora silenciosamente y devolvería el ABIERTO de cualquier
+// trabajador, rompiendo el flujo de "repartidor ve SU embarque").
+async function ensureEmbarqueAbierto(page: import('@playwright/test').Page, trabajadorId: string) {
+  const res = await apiPost(page, '/api/embarques', {
+    trabajadorId,
+    horaSalida: '08:00',
+    carga: [{ producto: 'PACA_AGUA', cargadas: 1 }],
+  })
+  if (res.status() === 201) {
+    return (await res.json()).embarque
+  }
+  const activos = await (await apiGet(page, '/api/embarques?estado=ABIERTO&all=true')).json()
+  return (activos.embarques || []).find((e: { trabajadorId: string }) => e.trabajadorId === trabajadorId)
+}
 
 test.describe('Ciclo Repartidor', () => {
 
@@ -9,15 +27,20 @@ test.describe('Ciclo Repartidor', () => {
     test.setTimeout(120000)
     await loginAs(page, 'admin')
 
-    const trabajador = await createTrabajador(page, {
-      nombre: `RepTest ${Date.now() % 10000}`,
-      rol: 'REPARTIDOR',
-    })
-    expect(trabajador.id).toBeTruthy()
+    // El seed vincula el usuario 'repartidor' al trabajador 'Yesid Ramírez'.
+    // El embarque debe pertenecer a ESE trabajador para que el repartidor lo
+    // vea en GET /api/embarques (filtro por trabajadorId del usuario logueado).
+    const trabajadoresRes = await apiGet(page, '/api/trabajadores?rol=REPARTIDOR&activo=true')
+    expect(trabajadoresRes.status()).toBe(200)
+    const trabajadoresBody = await trabajadoresRes.json()
+    const trabajador =
+      trabajadoresBody.trabajadores?.find((t: { nombre: string }) => t.nombre.includes('Yesid')) ||
+      trabajadoresBody.trabajadores?.[0]
+    expect(trabajador?.id).toBeTruthy()
 
     const cliente = await createCliente(page)
     const pedidoRes = await apiPost(page, '/api/pedidos', {
-      clienteId: cliente.id,
+      clienteId: cliente.cliente.id,
       canal: 'DOMICILIO',
       ventaRapida: false,
       items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
@@ -26,8 +49,8 @@ test.describe('Ciclo Repartidor', () => {
     const pedidoJson = await pedidoRes.json()
     const pedidoId = pedidoJson.pedido?.id || pedidoJson.id
 
-    const embarque = await createEmbarque(page, trabajador.id)
-    expect(embarque.id).toBeTruthy()
+    const embarque = await ensureEmbarqueAbierto(page, trabajador.id)
+    expect(embarque?.id).toBeTruthy()
 
     const enviarRes = await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, { embarqueId: embarque.id })
     expect(enviarRes.status()).toBe(201)
@@ -35,7 +58,7 @@ test.describe('Ciclo Repartidor', () => {
     const repartidorContext = await page.context().browser()!.newContext()
     const repartidorPage = await repartidorContext.newPage()
 
-    await login(repartidorPage, 'rep', 'rep123')
+    await login(repartidorPage, 'repartidor', 'rep123')
     await repartidorPage.waitForTimeout(500)
     const baseCajaBtn = repartidorPage.locator('button:has-text("Continuar")')
     if (await baseCajaBtn.count() > 0) {
@@ -48,7 +71,7 @@ test.describe('Ciclo Repartidor', () => {
     expect(embarquesRes.status()).toBe(200)
     const embBody = await embarquesRes.json()
     const embarques = embBody.embarques || embBody.data || []
-    const miEmbarque = embarques.find((e: any) => e.id === embarque.id)
+    const miEmbarque = embarques.find((e: { id: string }) => e.id === embarque.id)
     expect(miEmbarque).toBeTruthy()
 
     await goto(repartidorPage, '/repartidor')
@@ -68,21 +91,28 @@ test.describe('Ciclo Repartidor', () => {
       nombre: `RepVL ${Date.now() % 10000}`,
       rol: 'REPARTIDOR',
     })
-    const embarque = await createEmbarque(page, trabajador.id)
-    expect(embarque.id).toBeTruthy()
+    const embarque = await createEmbarque(page, trabajador.trabajador.id)
+    expect(embarque.embarque.id).toBeTruthy()
 
     const ventaLibreRes = await apiPost(page, '/api/pedidos/venta-libre', {
       clienteId: 'CONSUMIDOR_FINAL',
-      embarqueId: embarque.id,
+      embarqueId: embarque.embarque.id,
       items: [
         { producto: 'PACA_AGUA', cantidad: 2 },
       ],
-      pagos: [{ metodo: 'EFECTIVO', monto: 50000 }],
+      pagos: [{ metodo: 'EFECTIVO', monto: 5600 }],
+      // VentaLibreSchema exige estos campos (validación GPS de entrega).
+      // fotoEntrega no vacío: la ruta la guarda tal cual si no es base64.
+      fotoEntrega: 'e2e-test',
+      gpsLat: 4.65,
+      gpsLng: -74.05,
+      offlineId: crypto.randomUUID(),
     })
 
     if (ventaLibreRes.status() === 400) {
       const errBody = await ventaLibreRes.json().catch(() => ({}))
-      if (errBody.error?.includes('PAGO_COMPLETO') || errBody.error?.includes('completo')) {
+      const errMsg = typeof errBody.error === 'string' ? errBody.error : errBody.error?.message
+      if (errMsg?.includes('PAGO_COMPLETO') || errMsg?.includes('completo')) {
         test.skip(true, 'CONSUMIDOR_FINAL requires full payment; skip')
         return
       }
@@ -104,7 +134,7 @@ test.describe('Ciclo Repartidor', () => {
     const repartidorContext = await page.context().browser()!.newContext()
     const repartidorPage = await repartidorContext.newPage()
 
-    await login(repartidorPage, 'rep', 'rep123')
+    await login(repartidorPage, 'repartidor', 'rep123')
     await repartidorPage.waitForTimeout(500)
     const baseCajaBtn = repartidorPage.locator('button:has-text("Continuar")')
     if (await baseCajaBtn.count() > 0) {

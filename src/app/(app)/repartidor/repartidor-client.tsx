@@ -45,6 +45,9 @@ interface RepartidorClientProps {
         nombreCli: string
         apellidoCli?: string | null
         nombreNegocioCli?: string | null
+        // Coords efectivas del pedido (negocio gana, fallback cliente).
+        lat?: number | null
+        lng?: number | null
         cliente: {
           id: string
           nombre: string
@@ -371,8 +374,9 @@ export function RepartidorClient({ trabajador, embarque: initialEmbarque, userRo
       : embarque.pedidos
     const waypoints = pedidos
       .map(p => {
-        const lat = p.cliente.lat
-        const lng = p.cliente.lng
+        // Coords efectivas: top-level (negocio gana) con fallback a cliente.
+        const lat = p.lat ?? p.cliente.lat
+        const lng = p.lng ?? p.cliente.lng
         if (lat == null || lng == null) return null
         return `${lat.toFixed(6)},${lng.toFixed(6)}`
       })

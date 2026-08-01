@@ -256,9 +256,11 @@ test.describe('Pedidos — Tab Pedidos (Hoy)', () => {
 
   test('filtros de tipo, origen, estado entrega, estado pago estan disponibles', async () => {
     await gotoPedidos(p)
-    // Open filters panel
-    const filtrosBtn = p.locator('button:has-text("Filtros")')
-    if (await filtrosBtn.isVisible()) {
+    // Open filters panel. waitFor con auto-wait: el server component asíncrono
+    // puede tardar en renderizar (loading.tsx skeleton) tras el domcontentloaded.
+    const filtrosBtn = p.locator('button:has-text("Filtros")').first()
+    await filtrosBtn.waitFor({ state: 'visible', timeout: 20000 }).catch(() => {})
+    if (await filtrosBtn.isVisible().catch(() => false)) {
       await filtrosBtn.click()
       await p.waitForTimeout(300)
     }
