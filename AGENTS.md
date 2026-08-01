@@ -209,6 +209,21 @@ vercel --prod
 - `CrearPedidoUseCase` implementa **lookup-or-create**: si el canónico no existe (entorno sin seed/migración), lo crea explícitamente con `id='CONSUMIDOR_FINAL'` (no genera CUID). Esto previene que cada venta anónima cree un cliente duplicado.
 - Los filtros de `/clientes` y `/api/clientes` ocultan tanto el canónico (`activo=false`) como cualquier duplicado legacy CUID con `nombre='Consumidor Final' AND telefono=''` (defensa en profundidad).
 
+### Coordenadas efectivas del pedido (geo)
+- **Regla ÚNICA de resolución**: `pickCoords()` en `src/lib/geo/pedido-coords.ts`. **Si el `Negocio` tiene coords válidas, ganan; si no, las del `Cliente`.** Contrato documentado en `schema.prisma` (modelo `Negocio`). `null` si ninguna fuente tiene coords.
+- **Guard crítico**: `Number(null) === 0` → coords `(0,0)` (Golfo de Guinea). Las fuentes sin coords (`null`/`undefined`) se saltan ANTES del cast; solo pasan `Number` los valores no-null y se valida `isFinite`.
+- **5 consumidores alineados** (no deben divergir):
+  1. SSR repartidor (`repartidor/page.tsx`) → expone `lat`/`lng` top-level por pedido (efectivas) + `cliente.lat/lng` (fuente).
+  2. `GET /api/pedidos` → `lat`/`lng` top-level por pedido (efectivas).
+  3. SSR `/pedidos` (`pedidos/page.tsx`) → `lat`/`lng` top-level (efectivas).
+  4. TSP (`optimize-ruta.ts`) → usa `pickCoords(p)` para los waypoints de optimización de orden.
+  5. Validación GPS (`pedidos-client/index.tsx`) → `pedidoParaEntregar.lat ?? cliente.lat` (payload efectivo con fallback legacy).
+- **Payload**: `Pedido.lat/lng` en `pedidos-client/types.ts` son opcionales (`null` si no hay fuente) para compat con payloads legacy.
+- **Backfill de negocios**: `POST /api/negocios/[id]/geocode` → `backfillNegocioCoords()` (`src/lib/geo/backfill-negocio-coords.ts`). Prioridad: `linkUbicacion` parseado (incluye short URLs expandidas) → mediana de `Pedido.gpsLat/gpsLng` confirmados con ese `negocioId`. `Negocio` NO tiene columnas `geocodeOrigen`/`geocodeAt` (decisión: evitar migración); la procedencia se audita vía `logAudit` en el caller.
+- **Short URLs**: `src/lib/geo/expand-short-maps-url.ts` (server-only, extraído de `/api/geo/expand-maps`) resuelve `maps.app.goo.gl` / `goo.gl/maps` vía cadena de redirects. Seguridad SSRF: allowlist de hosts Google (`maps.app.goo.gl`, `goo.gl`, `www.google.com`, `google.com`, `maps.google.com`), tope 5 redirects, timeout 8s. Compartido por el endpoint y los backfills de cliente/negocio.
+- **UI**: `negocio-detail-modal.tsx` muestra "Coords internas" (data-testid `coords-internas-negocio`) con botón "Actualizar coordenadas" (`btn-geocode-negocio`, solo edición) que llama al endpoint y propaga vía `onGeocoded` → `handleNegocioGeocoded` en `clientes-client`. `negocio-form.tsx` incluye `CoordsPreview` para feedback client-side del link.
+- **Tests**: `src/lib/geo/__tests__/pedido-coords.test.ts`, `expand-short-maps-url.test.ts`, `backfill-negocio-coords.test.ts`, `optimize-ruta.test.ts`, `src/app/api/negocios/[id]/geocode/__tests__/route.test.ts`.
+
 ## File Reference
 
 | File | Purpose |
@@ -226,6 +241,10 @@ vercel --prod
 | `src/lib/fetch-resilient.ts` | Offline-first fetch wrapper (10s timeout + Dexie enqueue) |
 | `src/lib/db/sync.ts` | `syncWithServer()` — drains `requestQueue` + legacy `syncQueue` |
 | `src/lib/db/offline.ts` | Dexie v4 with `requestQueue` table |
+| `src/lib/geo/pedido-coords.ts` | Regla única de coords efectivas del pedido (`pickCoords`: negocio gana, fallback cliente) |
+| `src/lib/geo/expand-short-maps-url.ts` | Expansión server-only de short URLs de Maps (allowlist SSRF, tope redirects, timeout) |
+| `src/lib/geo/backfill-negocio-coords.ts` | Backfill de coords de negocio (linkUbicacion parseado → mediana GPS historial) |
+| `src/app/api/negocios/[id]/geocode/route.ts` | Endpoint de geocode de negocio (usado por el botón "Actualizar coordenadas") |
 | `src/app/(app)/clientes/clientes-client/panel-prefetch.ts` | Caché TTL 60s/LRU 20 + prefetch de stats/historial del panel de cliente (fetch plano, nunca fetchResilient; invalidación vía realtime pedido.*/pago.*/embarque.*) |
 | `src/modules/dashboard/` | DDD pilot — domain/application/infrastructure/presentation |
 | `src/shared/` | Cross-domain value objects (Money, DateRange, ProductCode) |
