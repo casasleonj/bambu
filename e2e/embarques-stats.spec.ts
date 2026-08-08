@@ -451,12 +451,18 @@ test.describe('Embarques Stats — UI Tabs', () => {
 
 test.describe('Embarques Stats — UI Contenido del Tab', () => {
 
-  test('empty state shown when no closed embarques exist', async ({ page }) => {
+  // FIX #30 (embarques-fixes.spec.ts): el empty-state real ("no hay NADA en
+  // el período") cambió de copy. Antes decía "No hay embarques cerrados..."
+  // aunque la condición de gate no distinguía "cero embarques" de "cero
+  // embarques cerrados" — cuando había embarques ABIERTO/CANCELADO en el
+  // período, ese texto ocultaba incorrectamente la tabla de detalle. Ver
+  // Fix #30 para el caso "hay embarques pero ninguno cerrado".
+  test('empty state shown when no embarques exist at all', async ({ page }) => {
     await embarquesLogin(page)
     await gotoEmbarques(page)
     await page.locator('button:has-text("Estadísticas")').click()
     await page.waitForTimeout(1000)
-    await expect(page.getByText('No hay embarques cerrados en este período')).toBeVisible()
+    await expect(page.getByText('No hay embarques en este período')).toBeVisible()
   })
 
   test('KPI cards appear when there are closed embarques', async ({ page }) => {

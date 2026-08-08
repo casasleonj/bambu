@@ -3,7 +3,6 @@ import { requireAuth } from '@/lib/auth-check'
 import EmbarquesClient from './embarques-client'
 import { calcularPacasEmbarque, calcularPesoEmbarque, getCapacidadInfo, PESOS_KG } from '@/lib/embarque-capacidad'
 import { getStockEstimadoHoy, getStockDisponible } from '@/lib/stock'
-import { EstadoEmbarque } from '@prisma/client'
 import { getTodayRange } from '@/lib/dates'
 
 export default async function EmbarquesPage() {
@@ -16,11 +15,12 @@ export default async function EmbarquesPage() {
   // FIX prod-performance: limitar listado inicial a 100 embarques recientes.
   // El detalle de un embarque específico carga sus pedidos completos en su
   // propia página (/embarques/[id]).
-  // FIX SSR: la vista default es "hoy + no cancelados" para coincidir con el
-  // cliente. No usar cache con key estático para evitar datos stale entre días.
+  // FIX SSR: la vista default es "hoy" (todos los estados, incluye
+  // CANCELADO) para coincidir con el cliente — "Todos" debe ser
+  // consistente entre SSR y la API. No usar cache con key estático para
+  // evitar datos stale entre días.
   const { startOfDay, endOfDay } = getTodayRange()
   const where = {
-    estado: { not: EstadoEmbarque.CANCELADO },
     fecha: { gte: startOfDay, lt: endOfDay },
   }
 
