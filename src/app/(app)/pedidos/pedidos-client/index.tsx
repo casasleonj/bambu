@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo, useRef, useTransition } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
@@ -23,7 +23,7 @@ import { FiadosTable } from './fiados-table'
 import { AlertasTable } from './alertas-table'
 
 import type { Pedido, Embarque, Cliente } from './types'
-import { getPresetDate, getTodayString } from '@/lib/dates'
+import { getPresetDate, getTodayString, buildDateRangeFilter, getTodayRange } from '@/lib/dates'
 import { usePedidos } from '@/hooks/use-pedidos'
 import { usePedidosCounts } from '@/hooks/use-pedidos-counts'
 import { LIMITE_FIADOS_DEFAULT } from '@/lib/constants'
@@ -34,6 +34,7 @@ import { useAsignarEmbarque } from '@/hooks/use-asignar-embarque'
 import { useEntregarPedido } from '@/hooks/use-entregar-pedido'
 import { useReconnectHandler } from '@/hooks/use-reconnect-handler'
 import { usePollingRefetch } from '@/hooks/use-polling-refetch'
+import { useRealtimeListener } from '@/hooks/use-realtime-listener'
 import { GpsCaptureModal } from '@/components/gps-capture-modal'
 
 const PedidoFormUnified = dynamic(() => import('@/components/pedido-form-unified').then(m => m.PedidoFormUnified), { ssr: false })
@@ -49,7 +50,6 @@ interface PedidosClientProps {
 export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   const searchParams = useSearchParams()
   const pathname = usePathname()
-  const [isPending, startTransition] = useTransition()
   const { confirm, modal: confirmModal } = useConfirm()
   const { data: session } = useSession()
   const userRole = (session?.user as { role?: string } | undefined)?.role ?? null
@@ -112,30 +112,26 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   const openPedidoParam = searchParams.get('openPedido')
   const allFromUrl = searchParams.get('all') === 'true'
 
-  // Helper: navegación con transición para cambios de filtro.
-  // Usa startTransition para que React no muestre estado de carga durante
-  // el RSC re-render, manteniendo la UI responsiva.
-  const navigateWithParams = useCallback((updates: Record<string, string | string[] | undefined>, options?: { replace?: boolean }) => {
-    startTransition(() => {
-      const next = new URLSearchParams(searchParams?.toString() || '')
-      for (const [key, value] of Object.entries(updates)) {
-        next.delete(key)
-        if (value === undefined || value === null) continue
-        if (Array.isArray(value)) {
-          value.forEach(v => { if (v) next.append(key, v) })
-        } else {
-          next.set(key, value)
-        }
-      }
-      const qs = next.toString()
-      const url = qs ? `${pathname}?${qs}` : pathname
-      if (options?.replace) {
-        router.replace(url, { scroll: false })
+  // Sync de URL sin navegación RSC: los filtros se resuelven 100% en memoria
+  // (ver pedidosVisibles/allPedidos más abajo), así que no hace falta
+  // router.push/router.replace — solo reflejar el estado en la URL para
+  // deep-linking/back-forward, vía la History API nativa (patrón oficial de
+  // Next.js App Router para shallow routing, igual que clientes-client).
+  const syncUrl = useCallback((updates: Record<string, string | string[] | undefined>) => {
+    const next = new URLSearchParams(searchParams?.toString() || '')
+    for (const [key, value] of Object.entries(updates)) {
+      next.delete(key)
+      if (value === undefined || value === null) continue
+      if (Array.isArray(value)) {
+        value.forEach(v => { if (v) next.append(key, v) })
       } else {
-        router.push(url, { scroll: false })
+        next.set(key, value)
       }
-    })
-  }, [searchParams, pathname, router])
+    }
+    const qs = next.toString()
+    const url = qs ? `${pathname}?${qs}` : pathname
+    window.history.replaceState(null, '', url)
+  }, [searchParams, pathname])
 
   // Filtros derivados de la URL (fuente de verdad)
   const pedidoFilterParams = useMemo(() => ({
@@ -149,53 +145,91 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     clienteId: clienteIdFromUrl || undefined,
   }), [desdeUrl, hastaUrl, filtroTipo, filtroOrigen, filtroEstadoEntrega, filtroEstadoPago, search, clienteIdFromUrl])
 
-  // Server-provided initial data display (from SSR page.tsx).
-  // Seeded once on mount, overridden by usePedidos data when available.
-  // This eliminates the initial API call waterfall — data arrives with HTML.
-  const [displayPedidos, setDisplayPedidos] = useState<Pedido[]>(initialPedidos || [])
+  // --- Cache-driven pedidos (P0 fix: filtros en memoria, sin RSC round-trip) ---
+  // Igual patrón que clientes-client/index.tsx (loadAllClientes): se carga el
+  // dataset completo una vez en background y todos los filtros persistentes
+  // (clienteId, desde, hasta, search, tipo, origen, estadoEntrega, estadoPago)
+  // se resuelven en memoria. window.history.replaceState (syncUrl) reemplaza
+  // router.push para que cambiar un filtro no dispare re-render del Server
+  // Component.
+  const [allPedidos, setAllPedidos] = useState<Pedido[]>([])
+  const [allPedidosTotal, setAllPedidosTotal] = useState(0)
+  const [allPedidosError, setAllPedidosError] = useState<string | null>(null)
+  const [cacheLoadedOnce, setCacheLoadedOnce] = useState(false)
+  const allPedidosLoadingRef = useRef(false)
 
-  // Sync when RSC re-renders with new initial data (e.g. after filter changes).
-  // Pattern intencional de prop→state sync (mismo que clientes/index.tsx:281):
-  // el RSC envía initialPedidos nuevos como props, este effect los sincroniza
-  // al state de display. No es derivable — las dos fuentes (SSR y hook) se
-  // mergean acá por diseño.
-  useEffect(() => {
-    if (initialPedidos) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- sync de prop RSC a state, patrón clientes
-      setDisplayPedidos(initialPedidos)
+  const loadAllPedidos = useCallback(async () => {
+    if (allPedidosLoadingRef.current) return
+    allPedidosLoadingRef.current = true
+    try {
+      const params = new URLSearchParams()
+      params.set('all', 'true')
+      params.set('pageSize', '500')
+      const res = await fetch(`/api/pedidos?${params.toString()}`, {
+        credentials: 'include',
+        signal: AbortSignal.timeout(30_000),
+      })
+      if (redirectIfAuthError(res)) return
+      const data = await res.json()
+      if (!data.success) throw new Error(data.error?.message || 'Error cargando pedidos')
+      setAllPedidos((data.pedidos || data.data || []) as Pedido[])
+      setAllPedidosTotal(data.total || 0)
+      setAllPedidosError(null)
+    } catch (err) {
+      setAllPedidosError('No se pudieron cargar los pedidos')
+      console.error('[loadAllPedidos] error:', err)
+    } finally {
+      allPedidosLoadingRef.current = false
+      setCacheLoadedOnce(true)
     }
-  }, [initialPedidos])
+  }, [])
 
-  // Use pedidos hook for data fetching. refetchOnParamsChange=false because
-  // filter changes are handled by RSC navigation (router.push → RSC re-render
-  // → new initialPedidos). The hook is used for polling and mutation refetch only.
+  useEffect(() => { void loadAllPedidos() }, [loadAllPedidos])
+
+  // cacheActive: el cache trajo el dataset completo (no truncado por el tope
+  // de 500). Si el negocio supera el tope, cae a fallback server-filtrado.
+  const cacheActive = useMemo(
+    () => allPedidos.length > 0 && allPedidos.length >= allPedidosTotal,
+    [allPedidos.length, allPedidosTotal],
+  )
+
+  // Fallback: solo se activa (refetchOnParamsChange) cuando el cache está
+  // truncado. Mismo mecanismo de red que antes (fetch a /api/pedidos con los
+  // filtros actuales), pero sin pasar por router.push/RSC.
   const fetchAllForTab = activeTab !== 'hoy'
   const {
-    pedidos: pedidosRaw,
-    loading,
-    error: fetchError,
-    refetch,
-    hasLoadedOnce,
-    paramsKey: hookParamsKey,
-    appliedKeyRef,
+    pedidos: fallbackPedidosRaw,
+    error: fallbackError,
+    refetch: fallbackRefetch,
   } = usePedidos(pedidoFilterParams, {
     all: allFromUrl || fetchAllForTab,
-    // Si el SSR falla (initialPedidos undefined), el hook vuelve al modo
-    // backward-compatible: fetchea inicialmente y refetchea en cambios de params.
-    refetchOnParamsChange: initialPedidos === undefined,
+    autoFetch: false,
+    refetchOnParamsChange: !cacheActive,
   })
-  const pedidos = pedidosRaw as Pedido[]
 
-  // When hook data arrives (after initial render), use it instead of server data.
-  // El hook es la fuente fresca (polling/mutations). El SSR es la fuente inicial.
-  // Guard `appliedKeyRef.current === hookParamsKey` evita que un fetch stale del
-  // polling (disparado con filtros viejos antes de un cambio de URL) pise los
-  // datos nuevos enviados por el RSC. `hasLoadedOnce` acepta listas vacías.
+  // Dispara el primer fetch del fallback exactamente en la transición
+  // cache-completo → cache-truncado (no en cada render ni en el mount).
+  const wasCacheActiveRef = useRef(true)
   useEffect(() => {
-    if (hasLoadedOnce && appliedKeyRef.current === hookParamsKey) {
-      setDisplayPedidos(pedidos)
+    if (wasCacheActiveRef.current && !cacheActive && cacheLoadedOnce) {
+      fallbackRefetch()
     }
-  }, [pedidos, hasLoadedOnce, hookParamsKey, appliedKeyRef])
+    wasCacheActiveRef.current = cacheActive
+  }, [cacheActive, cacheLoadedOnce, fallbackRefetch])
+
+  // Fuente de datos "cruda" a filtrar en memoria: prioriza allPedidos una vez
+  // cargado; antes de eso (o si quedó truncado), usa el SSR inicial / fallback
+  // para no mostrar una lista vacía durante el gap de carga.
+  const pedidosSource = useMemo(() => {
+    if (!cacheLoadedOnce) return initialPedidos || []
+    if (cacheActive) return allPedidos
+    return (fallbackPedidosRaw as Pedido[]).length > 0 ? (fallbackPedidosRaw as Pedido[]) : allPedidos
+  }, [cacheLoadedOnce, cacheActive, allPedidos, fallbackPedidosRaw, initialPedidos])
+
+  const pedidos = pedidosSource
+  const hasLoadedOnce = initialPedidos !== undefined || cacheLoadedOnce
+  const fetchError = allPedidosError || fallbackError
+  const loading = !hasLoadedOnce
 
   // Independent datasets for Fiados and Alertas tabs.
   // Eager background fetch on mount (not blocking the main list render).
@@ -226,11 +260,21 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     refetch: refetchCounts,
   } = usePedidosCounts(true)
 
+  // Refresca el dataset activo: el cache completo (modo normal) o el
+  // fallback server-filtrado (negocio con más pedidos que el tope del cache).
+  const refreshPedidos = useCallback(async () => {
+    if (cacheActive) {
+      await loadAllPedidos()
+    } else {
+      await fallbackRefetch()
+    }
+  }, [cacheActive, loadAllPedidos, fallbackRefetch])
+
   // Polling: refetch active tab dataset + counts every 60s.
   // Fiados/alertas datasets are lazy-loaded and only polled when their tab is active.
   // Clientes/embarques have their own polling (60s default) in their respective components.
   usePollingRefetch(() => {
-    refetch()
+    refreshPedidos()
     if (activeTab === 'fiados') refetchFiados()
     if (activeTab === 'alertas') refetchAlertas()
     refetchCounts()
@@ -241,7 +285,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   // Refetch active dataset on SSE reconnect (Vercel 60s cycle). The client
   // may have missed realtime events while disconnected.
   useReconnectHandler(() => {
-    refetch()
+    refreshPedidos()
     if (activeTab === 'fiados') refetchFiados()
     if (activeTab === 'alertas') refetchAlertas()
     refetchCounts()
@@ -249,40 +293,47 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     fetchEmbarques()
   })
 
+  // Wire-up de realtime (aditivo sobre el polling de 60s, que queda intacto
+  // como fallback para cuando SSE está apagado: 2G, circuit breaker, tab
+  // oculta, offline). Mismo patrón que clientes-client.
+  useRealtimeListener(['pedido.*'], () => {
+    refreshPedidos()
+  })
+
   // Auto-open pedido from URL param
   useEffect(() => {
-    if (!openPedidoParam || displayPedidos.length === 0) return
-    const pedido = displayPedidos.find(p => p.id === openPedidoParam || p.numero.toString() === openPedidoParam)
+    if (!openPedidoParam || pedidos.length === 0) return
+    const pedido = pedidos.find(p => p.id === openPedidoParam || p.numero.toString() === openPedidoParam)
     if (pedido) {
       handleDetail(pedido)
-      navigateWithParams({ openPedido: undefined }, { replace: true })
+      syncUrl({ openPedido: undefined })
     }
-  }, [openPedidoParam, displayPedidos, navigateWithParams])
+  }, [openPedidoParam, pedidos, syncUrl])
 
   const updateFilter = useCallback((key: string, value: string) => {
     const current = searchParams.getAll(key)
     const next = current.includes(value)
       ? current.filter(v => v !== value)
       : [...current, value]
-    navigateWithParams({ [key]: next.length > 0 ? next : undefined })
-  }, [searchParams, navigateWithParams])
+    syncUrl({ [key]: next.length > 0 ? next : undefined })
+  }, [searchParams, syncUrl])
 
   const setSingleFilter = useCallback((key: string, value: string) => {
-    navigateWithParams({ [key]: value })
-  }, [navigateWithParams])
+    syncUrl({ [key]: value })
+  }, [syncUrl])
 
   const setHoyFilter = useCallback((key: string, value: string) => {
     const today = getTodayString()
-    navigateWithParams({ [key]: value, desde: today, hasta: today })
-  }, [navigateWithParams])
+    syncUrl({ [key]: value, desde: today, hasta: today })
+  }, [syncUrl])
 
   const updateSearch = useCallback((value: string) => {
-    navigateWithParams({ search: value || undefined }, { replace: true })
-  }, [navigateWithParams])
+    syncUrl({ search: value || undefined })
+  }, [syncUrl])
 
   const updateClienteId = useCallback((value: string | null) => {
-    navigateWithParams({ clienteId: value || undefined })
-  }, [navigateWithParams])
+    syncUrl({ clienteId: value || undefined })
+  }, [syncUrl])
 
   const [searchInput, setSearchInput] = useState(search)
   // Último valor de search que fue committeado a la URL. Trata la URL como
@@ -297,7 +348,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     // y sobreescribiría la URL con un closure viejo, perdiendo all=true y
     // dejando estadoEntrega. Mismo anti-patrón documentado en AGENTS.md #22.
     lastCommittedSearchRef.current = ''
-    navigateWithParams({
+    syncUrl({
       search: undefined,
       clienteId: undefined,
       origen: undefined,
@@ -308,12 +359,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       hasta: undefined,
       all: 'true',
     })
-  }, [navigateWithParams])
-
-  // Wrap refetch to handle initial load
-  const fetchPedidos = useCallback(async () => {
-    await refetch()
-  }, [refetch])
+  }, [syncUrl])
 
   function redirectIfAuthError(res: Response): boolean {
     if (res.status === 401 || res.status === 403) {
@@ -405,10 +451,10 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
         } else {
           toast.error('El cliente seleccionado no está disponible')
         }
-        navigateWithParams({ new: undefined, clienteId: undefined, negocioId: undefined }, { replace: true })
+        syncUrl({ new: undefined, clienteId: undefined, negocioId: undefined })
       } else if (openNew) {
         // new=1 sin clienteId no es un estado válido para abrir el formulario.
-        navigateWithParams({ new: undefined, negocioId: undefined }, { replace: true })
+        syncUrl({ new: undefined, negocioId: undefined })
       }
       // Si solo hay clienteId (sin new=1), se aplica como filtro de lista
       // mediante pedidoFilterParams; no se limpia para que el usuario vea
@@ -472,18 +518,16 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
 
   // Sync activeTab con el query param ?tab= en la URL.
   // Los tests E2E y el deep-linking dependen de este comportamiento.
-  // Usa navigateWithParams (router.replace en startTransition) para no
-  // bloquear la UI durante la navegación RSC.
   useEffect(() => {
     const currentTab = searchParams.get('tab')
     if (activeTab === 'hoy') {
       if (currentTab) {
-        navigateWithParams({ tab: undefined }, { replace: true })
+        syncUrl({ tab: undefined })
       }
     } else if (currentTab !== activeTab) {
-      navigateWithParams({ tab: activeTab }, { replace: true })
+      syncUrl({ tab: activeTab })
     }
-  }, [activeTab, searchParams, navigateWithParams])
+  }, [activeTab, searchParams, syncUrl])
 
   const { create: crearPedido } = useCrearPedido({
     onSuccess: () => {
@@ -492,7 +536,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       setPedidoInicial(undefined)
       setPedidoEditando(null)
       setShowDetailModal(false)
-      fetchPedidos()
+      refreshPedidos()
       if (activeTab === 'fiados') refetchFiados()
       if (activeTab === 'alertas') refetchAlertas()
       refetchCounts()
@@ -502,7 +546,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
 
   const { anular: anularPedido } = useAnularPedido({
     onSuccess: () => {
-      fetchPedidos()
+      refreshPedidos()
       refetchFiados()
       refetchAlertas()
       refetchCounts()
@@ -512,7 +556,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   const { cancelar: cancelarPedido } = useCancelarPedido({
     onSuccess: () => {
       setShowDetailModal(false)
-      fetchPedidos()
+      refreshPedidos()
       refetchFiados()
       refetchAlertas()
       refetchCounts()
@@ -521,7 +565,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
 
   const { asignar: asignarEmbarque } = useAsignarEmbarque({
     onSuccess: () => {
-      fetchPedidos()
+      refreshPedidos()
       fetchEmbarques()
     },
   })
@@ -532,7 +576,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       setShowGpsCapture(false)
       setPedidoParaEntregar(null)
       setFotoParaEntregar(null)
-      fetchPedidos()
+      refreshPedidos()
       refetchFiados()
       refetchAlertas()
       toast.success('Pedido entregado con foto')
@@ -560,7 +604,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
           setPedidoInicial(undefined)
           setPedidoEditando(null)
           setShowDetailModal(false)
-          fetchPedidos()
+          refreshPedidos()
           fetchClientes()
           toast.success('Pedido actualizado')
         } else {
@@ -575,7 +619,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
         setShowVentaRapida(false)
         setPedidoInicial(undefined)
         setPedidoEditando(null)
-        fetchPedidos()
+        refreshPedidos()
         fetchClientes()
         const msg = data.ventaRapida
           ? (data.pagos?.length === 0 ? 'Venta registrada (pendiente)' : 'Venta cobrada')
@@ -588,19 +632,44 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     }
   }
 
-  // Client-side search filter on displayPedidos (merged server + hook data).
-  // All other filters (tipo, origen, estado, fecha, cliente) are applied server-side
-  // by the API/SSR. The redundant client-side filter was removed to prevent visual
-  // "jump" when params change before the API response arrives.
-  const pedidosFiltrados = useMemo(() => {
-    if (!search) return displayPedidos
+  // Filtrado 100% en memoria sobre pedidosSource (cache completo o fallback).
+  // Reemplaza el filtrado server-side que antes hacía RSC-nav por filtro.
+  // Se separa en dos niveles para preservar exactamente la semántica previa:
+  // - pedidosSinSearch: aplica clienteId/desde/hasta/tipo/origen/estado
+  //   (antes: filtros server-side que ya llegaban aplicados en displayPedidos).
+  // - pedidosVisibles: pedidosSinSearch + search (antes: pedidosFiltrados).
+  // stats se calcula sobre pedidosSinSearch (mismo comportamiento previo:
+  // ignora el término de búsqueda, respeta el resto de los filtros activos).
+  const pedidosSinSearch = useMemo(() => {
+    const { gte: desde, lte: hasta } = allFromUrl
+      ? { gte: undefined, lte: undefined }
+      : (buildDateRangeFilter(desdeUrl, hastaUrl) ?? (() => {
+          const { startOfDay, endOfDay } = getTodayRange()
+          return { gte: startOfDay, lte: endOfDay }
+        })())
+    return pedidosSource.filter((p) => {
+      if (clienteIdFromUrl && p.clienteId !== clienteIdFromUrl) return false
+      if (filtroTipo.length > 0 && !filtroTipo.includes(p.tipo)) return false
+      if (filtroOrigen.length > 0 && !filtroOrigen.includes(p.origen)) return false
+      if (filtroEstadoEntrega.length > 0 && !filtroEstadoEntrega.includes(p.estadoEntrega)) return false
+      if (filtroEstadoPago.length > 0 && !filtroEstadoPago.includes(p.estadoPago)) return false
+      if (!p.fecha) return false
+      const fecha = new Date(p.fecha)
+      if (desde && fecha < desde) return false
+      if (hasta && fecha > hasta) return false
+      return true
+    })
+  }, [pedidosSource, allFromUrl, desdeUrl, hastaUrl, clienteIdFromUrl, filtroTipo, filtroOrigen, filtroEstadoEntrega, filtroEstadoPago])
+
+  const pedidosVisibles = useMemo(() => {
+    if (!search) return pedidosSinSearch
     const term = search.toLowerCase()
-    return displayPedidos.filter((p) =>
+    return pedidosSinSearch.filter((p) =>
       p.nombreCli?.toLowerCase().includes(term) ||
       p.telefonoCli?.includes(search) ||
       p.numero.toString().includes(term)
     )
-  }, [displayPedidos, search])
+  }, [pedidosSinSearch, search])
 
   const hoyStr = useMemo(() => getTodayString(), [])
   const stats = useMemo(() => {
@@ -608,13 +677,13 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       if (!p.fecha) return false
       return new Date(p.fecha).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }) === hoyStr
     }
-    const entregadosHoyArr = displayPedidos.filter(p => p.estadoEntrega === 'ENTREGADO' && fechaEsHoy(p))
+    const entregadosHoyArr = pedidosSinSearch.filter(p => p.estadoEntrega === 'ENTREGADO' && fechaEsHoy(p))
     return {
-      totalPedidos: displayPedidos.length,
-      pendientes: displayPedidos.filter(p => p.estadoEntrega === 'PENDIENTE').length,
-      enRuta: displayPedidos.filter(p => p.estadoEntrega === 'EN_RUTA').length,
+      totalPedidos: pedidosSinSearch.length,
+      pendientes: pedidosSinSearch.filter(p => p.estadoEntrega === 'PENDIENTE').length,
+      enRuta: pedidosSinSearch.filter(p => p.estadoEntrega === 'EN_RUTA').length,
       entregadosHoy: entregadosHoyArr.length,
-      pacasVendidas: displayPedidos
+      pacasVendidas: pedidosSinSearch
         .filter(p => p.estadoEntrega === 'ENTREGADO')
         .reduce(
           (acc, p) => acc
@@ -624,11 +693,11 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
             + Number(p.cBotellonDomEnt || 0),
           0
         ),
-      fiadoTotal: displayPedidos
+      fiadoTotal: pedidosSinSearch
         .filter(p => p.estadoEntrega === 'ENTREGADO' && Number(p.saldo) > 0)
         .reduce((acc, p) => acc + Number(p.saldo), 0),
     }
-  }, [displayPedidos, hoyStr])
+  }, [pedidosSinSearch, hoyStr])
 
   const hasActiveFilters = !!(search || clienteIdFromUrl || filtroTipo.length > 0 || filtroOrigen.length > 0 || filtroEstadoEntrega.length > 0 || filtroEstadoPago.length > 0 || desdeUrl || hastaUrl)
   const hasDateFilter = !!(desdeUrl || hastaUrl)
@@ -850,7 +919,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       }
       if (success) {
         setShowDetailModal(false)
-        fetchPedidos()
+        refreshPedidos()
         if (nuevoEstado !== 'CANCELADO') {
           // El hook useCancelarPedido ya muestra su propio toast.success.
           toast.success(`Estado actualizado a ${nuevoEstado}`)
@@ -1017,7 +1086,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
         title="Error cargando pedidos"
         message={fetchError || 'No se pudieron cargar los pedidos'}
         errorCode="FETCH_PEDIDOS_ERROR"
-        onRetry={() => { fetchPedidos(); fetchClientes(); fetchEmbarques(); }}
+        onRetry={() => { refreshPedidos(); fetchClientes(); fetchEmbarques(); }}
         recoveryActions={[
           {
             label: 'Verificar conexión',
@@ -1035,7 +1104,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
         title="La conexión está muy lenta"
         message="Los pedidos están tardando más de lo normal en cargar. Reintentá ahora o verificá tu conexión."
         errorCode="LOAD_TIMEOUT"
-        onRetry={() => { setLoadTimeoutReached(false); fetchPedidos(); fetchClientes(); fetchEmbarques(); }}
+        onRetry={() => { setLoadTimeoutReached(false); refreshPedidos(); fetchClientes(); fetchEmbarques(); }}
         recoveryActions={[
           {
             label: 'Verificar conexión',
@@ -1063,7 +1132,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
             <span className="text-amber-800 text-sm font-medium">{fetchError}</span>
           </div>
           <button
-            onClick={() => refetch()}
+            onClick={() => refreshPedidos()}
             className="text-amber-700 text-sm font-semibold hover:text-amber-900 px-3 py-1.5 rounded-lg hover:bg-amber-100 transition shrink-0"
             data-testid="retry-fetch"
           >
@@ -1074,7 +1143,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       {/* Header con tabs */}
       <div className="mb-6">
         {/* Banner explicativo para nuevos usuarios */}
-        {displayPedidos.length === 0 && !hasActiveFilters && (
+        {pedidosVisibles.length === 0 && !hasActiveFilters && (
           <InfoBanner type="tip" title="¿Cómo funciona el flujo de pedidos?" className="mb-4">
             <ol className="list-decimal list-inside space-y-1 mt-1">
               <li><strong>Crea un pedido</strong> con los productos y cliente</li>
@@ -1098,7 +1167,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
         {/* Tabs */}
         <div className="flex border-b border-gray-200">
           {[
-            { key: 'hoy', label: 'Pedidos', count: pedidosFiltrados.length },
+            { key: 'hoy', label: 'Pedidos', count: pedidosVisibles.length },
             { key: 'fiados', label: 'Fiados', count: fiadosCount },
             { key: 'alertas', label: 'Alertas', count: alertasCount },
           ].map((tab) => (
@@ -1162,19 +1231,12 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
             <p className="text-xl font-bold text-red-600">{formatCurrency(stats.fiadoTotal)}</p>
           </button>
           <button
-            onClick={() => navigateWithParams({ estadoEntrega: undefined })}
+            onClick={() => syncUrl({ estadoEntrega: undefined })}
             className="bg-white p-3 rounded-xl shadow text-left hover:shadow-md transition"
           >
             <p className="text-xs text-gray-500">Total Pedidos</p>
             <p className="text-xl font-bold text-gray-800">{stats.totalPedidos}</p>
           </button>
-        </div>
-      )}
-
-      {/* Loading indicator para cambios de filtro (useTransition) */}
-      {isPending && (
-        <div className="h-0.5 bg-blue-200 overflow-hidden rounded-full mb-1">
-          <div className="h-full bg-blue-600 rounded-full animate-pulse" style={{ width: '30%' }} />
         </div>
       )}
 
@@ -1199,7 +1261,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
           {clienteIdFromUrl && (() => {
             const cliente = clientes.find(c => c.id === clienteIdFromUrl)
             if (!cliente) return null
-            const countCliente = pedidosFiltrados.length
+            const countCliente = pedidosVisibles.length
             return (
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex justify-between items-center">
                 <div>
@@ -1224,7 +1286,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
 
       {/* Contenido por tab */}
       {activeTab === 'hoy' && (
-        !hasLoadedOnce && loading && displayPedidos.length === 0 ? (
+        !hasLoadedOnce && loading && pedidosVisibles.length === 0 ? (
           <div className="space-y-4">
             {Array.from({ length: 4 }).map((_, i) => (
               <SkeletonCard key={i} />
@@ -1232,7 +1294,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
           </div>
         ) : (
           <PedidoTable
-            pedidos={pedidosFiltrados}
+            pedidos={pedidosVisibles}
             updatingId={updatingId}
             hasActiveFilters={hasActiveFilters}
             hasDateFilter={hasDateFilter}

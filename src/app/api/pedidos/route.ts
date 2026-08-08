@@ -92,10 +92,20 @@ export async function GET(request: NextRequest) {
       filter.scope = scopeFilter
     }
 
+    // Cuando all=true, permitir un pageSize mayor al cap de 100 de
+    // getPaginationParams (compartido con otros endpoints paginados) para
+    // soportar el cache-driven UI de /pedidos. El tope duro de seguridad
+    // (1000) vive en ListarPedidosUseCase, independiente de este valor.
+    const rawPageSizeParam = all === 'true' ? searchParams.get('pageSize') : null
+    const rawPageSize = rawPageSizeParam ? parseInt(rawPageSizeParam, 10) : NaN
+    const effectivePageSize = all === 'true' && Number.isFinite(rawPageSize) && rawPageSize > 0
+      ? rawPageSize
+      : pagination.pageSize || 20
+
     const result = await listarPedidosUseCase.execute({
       ...filter,
       page: pagination.page || 1,
-      pageSize: pagination.pageSize || 20,
+      pageSize: effectivePageSize,
       all: all === 'true',
     })
 
