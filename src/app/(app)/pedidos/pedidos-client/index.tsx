@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { useRouter, useSearchParams, usePathname } from 'next/navigation'
+import { useRouter } from 'next/navigation'
+import { useShallowSearchParams } from '@/hooks/use-shallow-search-params'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { useSession } from 'next-auth/react'
@@ -48,8 +49,14 @@ interface PedidosClientProps {
 }
 
 export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
-  const searchParams = useSearchParams()
-  const pathname = usePathname()
+  // useShallowSearchParams (no useSearchParams crudo): una vez que CUALQUIER
+  // escritor de la URL (este componente o SmartDateFilter) hace su primer
+  // set(), pasa a leer/escribir siempre desde window.location.search real +
+  // un broadcast cross-componente — evita el race donde dos escritores de
+  // shallow-routing independientes (cada uno reconstruyendo la URL desde su
+  // propio snapshot de useSearchParams, potencialmente stale) se pisan entre
+  // sí. Mismo hook que ya usan SmartDateFilter/DateRangeFilter/facturas-client.
+  const shallowParams = useShallowSearchParams()
   const { confirm, modal: confirmModal } = useConfirm()
   const { data: session } = useSession()
   const userRole = (session?.user as { role?: string } | undefined)?.role ?? null
@@ -66,7 +73,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   const [selectedPedidoForEmbarque, setSelectedPedidoForEmbarque] = useState<string | null>(null)
   const [pedidoEditando, setPedidoEditando] = useState<Pedido | null>(null)
   const [selectedEmbarqueId, setSelectedEmbarqueId] = useState('')
-  const tabFromUrl = searchParams.get('tab')
+  const tabFromUrl = shallowParams.get('tab')
   const initialTab = tabFromUrl === 'fiados' || tabFromUrl === 'alertas' ? tabFromUrl : 'hoy'
   const [activeTab, setActiveTab] = useState<'hoy' | 'fiados' | 'alertas'>(initialTab)
   const [fabOpen, setFabOpen] = useState(false)
@@ -100,38 +107,25 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   const [loadTimeoutReached, setLoadTimeoutReached] = useState(false)
 
   // Fechas desde URL (fuente de verdad)
-  const desdeUrl = searchParams.get('desde')
-  const hastaUrl = searchParams.get('hasta')
+  const desdeUrl = shallowParams.get('desde')
+  const hastaUrl = shallowParams.get('hasta')
 
-  const filtroTipo = searchParams.getAll('tipo')
-  const filtroOrigen = searchParams.getAll('origen')
-  const filtroEstadoEntrega = searchParams.getAll('estadoEntrega')
-  const filtroEstadoPago = searchParams.getAll('estadoPago')
-  const search = searchParams.get('search') || ''
-  const clienteIdFromUrl = searchParams.get('clienteId')
-  const openPedidoParam = searchParams.get('openPedido')
-  const allFromUrl = searchParams.get('all') === 'true'
+  const filtroTipo = shallowParams.getAll('tipo')
+  const filtroOrigen = shallowParams.getAll('origen')
+  const filtroEstadoEntrega = shallowParams.getAll('estadoEntrega')
+  const filtroEstadoPago = shallowParams.getAll('estadoPago')
+  const search = shallowParams.get('search') || ''
+  const clienteIdFromUrl = shallowParams.get('clienteId')
+  const openPedidoParam = shallowParams.get('openPedido')
+  const allFromUrl = shallowParams.get('all') === 'true'
 
   // Sync de URL sin navegación RSC: los filtros se resuelven 100% en memoria
-  // (ver pedidosVisibles/allPedidos más abajo), así que no hace falta
-  // router.push/router.replace — solo reflejar el estado en la URL para
-  // deep-linking/back-forward, vía la History API nativa (patrón oficial de
-  // Next.js App Router para shallow routing, igual que clientes-client).
+  // (ver pedidosVisibles/allPedidos más abajo). history:'replace' porque son
+  // cambios de filtro, no navegación (no queremos spamear el historial del
+  // navegador en cada click de chip).
   const syncUrl = useCallback((updates: Record<string, string | string[] | undefined>) => {
-    const next = new URLSearchParams(searchParams?.toString() || '')
-    for (const [key, value] of Object.entries(updates)) {
-      next.delete(key)
-      if (value === undefined || value === null) continue
-      if (Array.isArray(value)) {
-        value.forEach(v => { if (v) next.append(key, v) })
-      } else {
-        next.set(key, value)
-      }
-    }
-    const qs = next.toString()
-    const url = qs ? `${pathname}?${qs}` : pathname
-    window.history.replaceState(null, '', url)
-  }, [searchParams, pathname])
+    shallowParams.set(updates, { history: 'replace' })
+  }, [shallowParams])
 
   // Filtros derivados de la URL (fuente de verdad)
   const pedidoFilterParams = useMemo(() => ({
@@ -311,12 +305,12 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   }, [openPedidoParam, pedidos, syncUrl])
 
   const updateFilter = useCallback((key: string, value: string) => {
-    const current = searchParams.getAll(key)
+    const current = shallowParams.getAll(key)
     const next = current.includes(value)
       ? current.filter(v => v !== value)
       : [...current, value]
     syncUrl({ [key]: next.length > 0 ? next : undefined })
-  }, [searchParams, syncUrl])
+  }, [shallowParams, syncUrl])
 
   const setSingleFilter = useCallback((key: string, value: string) => {
     syncUrl({ [key]: value })
@@ -426,9 +420,9 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       const [clientesList] = await Promise.all([fetchClientes(), fetchEmbarques()])
       if (cancelled) return
 
-      const clienteId = searchParams.get('clienteId')
-      const negocioId = searchParams.get('negocioId')
-      const openNew = searchParams.get('new') === '1'
+      const clienteId = shallowParams.get('clienteId')
+      const negocioId = shallowParams.get('negocioId')
+      const openNew = shallowParams.get('new') === '1'
 
       if (openNew && clienteId) {
         const cliente = clientesList.find((c: Cliente) => c.id === clienteId)
@@ -519,7 +513,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   // Sync activeTab con el query param ?tab= en la URL.
   // Los tests E2E y el deep-linking dependen de este comportamiento.
   useEffect(() => {
-    const currentTab = searchParams.get('tab')
+    const currentTab = shallowParams.get('tab')
     if (activeTab === 'hoy') {
       if (currentTab) {
         syncUrl({ tab: undefined })
@@ -527,7 +521,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     } else if (currentTab !== activeTab) {
       syncUrl({ tab: activeTab })
     }
-  }, [activeTab, searchParams, syncUrl])
+  }, [activeTab, shallowParams, syncUrl])
 
   const { create: crearPedido } = useCrearPedido({
     onSuccess: () => {
