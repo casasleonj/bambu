@@ -52,10 +52,17 @@ function updateUrl(next: URLSearchParams, history: 'push' | 'replace'): void {
   if (currentSearch === (nextSearch ? `?${nextSearch}` : '')) return
   const url = new URL(window.location.href)
   url.search = nextSearch
+  // IMPORTANTE: pasar string, no el objeto `URL`. `@serwist/turbopack`
+  // (SerwistProvider) parchea history.pushState/replaceState globalmente
+  // y reenvía el 3er argumento tal cual a `sw.postMessage()`. Los objetos
+  // `URL` no son clonables por la Structured Clone Algorithm que usa
+  // postMessage → dispara `DataCloneError` (visto en prod, Sentry
+  // JAVASCRIPT-NEXTJS-D, culprit /pedidos).
+  const href = url.toString()
   if (history === 'replace') {
-    window.history.replaceState(window.history.state, '', url)
+    window.history.replaceState(window.history.state, '', href)
   } else {
-    window.history.pushState(window.history.state, '', url)
+    window.history.pushState(window.history.state, '', href)
   }
   broadcast()
 }
@@ -93,10 +100,28 @@ export function useShallowSearchParams(): ShallowSearchParams {
     }
     window.addEventListener('popstate', onPopState)
 
+    // Catch-up de montaje: los efectos de React corren de hijo a padre. Si
+    // otro consumidor (ej. SmartDateFilter, hijo de PedidosClient) escribió
+    // un default a la URL en SU propio efecto de montaje (sin deps, corre
+    // una sola vez), ese broadcast se dispara ANTES de que este hook (el del
+    // padre) llegue a registrar su listener — el broadcast se pierde y este
+    // consumidor queda leyendo el snapshot stale de useSearchParams() para
+    // siempre, sin ningún evento futuro que lo corrija. Comparar contra la
+    // URL real una vez montado y sincronizar de inmediato si ya divergió.
+    const searchParamsSnapshot = searchParams?.toString() ?? ''
+    const currentSearch = searchParamsSnapshot ? `?${searchParamsSnapshot}` : ''
+    if (window.location.search !== currentSearch) {
+      /* eslint-disable react-hooks/set-state-in-effect */
+      useRealParamsRef.current = true
+      forceRender((n) => n + 1)
+      /* eslint-enable react-hooks/set-state-in-effect */
+    }
+
     return () => {
       listeners.delete(onBroadcast)
       window.removeEventListener('popstate', onPopState)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const get = useCallback(

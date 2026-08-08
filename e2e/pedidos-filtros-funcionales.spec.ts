@@ -120,6 +120,58 @@ test.describe('Pedidos: UX filtros y limpieza', () => {
     await expect(searchInput).toHaveValue('')
     await expect(page.locator('[aria-label="Quitar filtro Entrega PENDIENTE"]')).not.toBeVisible()
   })
+
+  // Regresión: bug reportado por usuarios en producción — al clickear "Limpiar
+  // todo", la lista completa de pedidos no aparecía en la UI, solo tras F5.
+  // Causa raíz: pedidos-client usaba window.history.replaceState() reconstruyendo
+  // la URL desde un snapshot de useSearchParams() potencialmente stale. Cuando
+  // el usuario clickeaba un chip de filtro justo después de montar la página,
+  // ese snapshot stale no incluía el desde/hasta que SmartDateFilter (un
+  // escritor de URL independiente, vía useShallowSearchParams) acababa de
+  // escribir — el segundo escritor (pedidos-client) lo pisaba en silencio. El
+  // test anterior solo verificaba el estado de los chips/input, no el
+  // contenido real de la tabla — por eso el bug no se detectó antes.
+  test('Limpiar todo muestra la lista completa en la UI sin necesitar refresh (regresión race de URL)', async ({ page }) => {
+    await loginAs(page, 'admin')
+    const c = await createCliente(page)
+
+    // Pedido de hace 10 días: fuera del rango "hoy" por defecto, solo debe
+    // aparecer cuando el filtro realmente se limpia (all=true efectivo).
+    const fechaVieja = new Date()
+    fechaVieja.setDate(fechaVieja.getDate() - 10)
+    const fechaViejaStr = fechaVieja.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+    createPedidoDirecto(c.cliente.id, fechaViejaStr, 'PENDIENTE', 'PENDIENTE')
+
+    // Landing SIN filtros (como un usuario real) — SmartDateFilter escribe su
+    // desde/hasta default ("hoy") vía su propio shallow-routing al montar.
+    await goto(page, '/pedidos')
+
+    // Aplicar un filtro vía la UI real (no vía URL directa) inmediatamente
+    // después del mount, para no darle tiempo a que las escrituras de URL de
+    // ambos componentes se "asienten" — esta es la ventana de carrera real.
+    await page.locator('button:has-text("Filtros")').first().click()
+    // Mobile usa <details> colapsables por categoría (pedido-filters.tsx);
+    // el chip "PENDIENTE" del grupo "Entrega" solo es visible/clickeable tras
+    // expandir su <summary>. En desktop este locator no matchea nada visible
+    // (el grid ya está expandido), así que el guard no hace nada allí.
+    const entregaSummary = page.locator('summary:has-text("Entrega")').first()
+    if (await entregaSummary.isVisible().catch(() => false)) {
+      await entregaSummary.click()
+    }
+    // `:visible` evita pisar la instancia desktop (oculta con `hidden md:grid`
+    // en mobile) — mismo anti-patrón documentado en AGENTS.md #24.
+    await page.locator('button:visible:text-is("PENDIENTE")').first().click()
+
+    const limpiarBtn = page.locator('button:has-text("Limpiar todo")').first()
+    await limpiarBtn.waitFor({ state: 'visible', timeout: 10_000 })
+    await limpiarBtn.click()
+
+    // Debe aparecer en la lista SIN reload — sin esto, el bug de producción
+    // pasaba silenciosamente porque el test viejo no miraba la tabla.
+    const view = responsiveContainer(page, 'pedidos-mobile', 'pedidos-desktop')
+    await expect(view.getByText(c.cliente.nombre)).toBeVisible({ timeout: 10_000 })
+    await expect(page).toHaveURL(/all=true/)
+  })
 })
 
 test.describe('Pedidos: tabs independientes y badges', () => {
@@ -161,7 +213,11 @@ test.describe('Pedidos: tabs independientes y badges', () => {
     await page.locator('input[placeholder*="Buscar por cliente"]').first().fill('ZZZ_NO_MATCH')
     await page.keyboard.press('Enter')
     await expect(page).toHaveURL(/search=ZZZ_NO_MATCH/, { timeout: 10000 })
-    await expect(responsiveContainer(page, 'pedidos-mobile', 'pedidos-desktop').getByText('No hay resultados')).toBeVisible({ timeout: 10000 })
+    // El tab "Hoy" trae desde/hasta=hoy por default (SmartDateFilter), asi que
+    // el empty-state prioriza el mensaje de rango de fechas sobre el generico
+    // de "sin resultados" (mismo criterio que pedido-table.tsx: hasDateFilter
+    // antes que hasActiveFilters).
+    await expect(responsiveContainer(page, 'pedidos-mobile', 'pedidos-desktop').getByText('No hay pedidos en este rango de fechas')).toBeVisible({ timeout: 10000 })
 
     // Volver a Fiados: el badge y el X/Y deben seguir igual.
     await fiadosTab.click()
@@ -181,7 +237,9 @@ test.describe('Pedidos: tabs independientes y badges', () => {
     createPedidoDirecto(c.cliente.id, today, 'ENTREGADO', 'PENDIENTE')
 
     await goto(page, '/pedidos?estadoEntrega=PENDIENTE')
-    await expect(responsiveContainer(page, 'pedidos-mobile', 'pedidos-desktop').getByText('No hay resultados')).toBeVisible({ timeout: 10000 })
+    // Mismo criterio que el test anterior: sin desde/hasta explicitos, el tab
+    // "Hoy" default a hoy y el empty-state usa el mensaje de rango de fechas.
+    await expect(responsiveContainer(page, 'pedidos-mobile', 'pedidos-desktop').getByText('No hay pedidos en este rango de fechas')).toBeVisible({ timeout: 10000 })
 
     // Cambiar a Fiados: el pedido ENTREGADO PENDIENTE debe seguir visible.
     await page.locator('[data-testid="tab-fiados"]').click()
