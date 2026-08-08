@@ -96,11 +96,17 @@ export async function GET(request: NextRequest) {
     // getPaginationParams (compartido con otros endpoints paginados) para
     // soportar el cache-driven UI de /pedidos. El tope duro de seguridad
     // (1000) vive en ListarPedidosUseCase, independiente de este valor.
+    // BUG evitado: si all=true y NO viene pageSize explícito, NO debe caer
+    // al default de paginación normal (20) — eso truncaba silenciosamente
+    // a los callers preexistentes de all=true sin pageSize (fiados/alertas,
+    // etc.) que antes recibían el default de 200 del use case. Se pasa
+    // `undefined` en ese caso para que ListarPedidosUseCase aplique SU
+    // propio default (200), preservando el comportamiento previo.
     const rawPageSizeParam = all === 'true' ? searchParams.get('pageSize') : null
     const rawPageSize = rawPageSizeParam ? parseInt(rawPageSizeParam, 10) : NaN
-    const effectivePageSize = all === 'true' && Number.isFinite(rawPageSize) && rawPageSize > 0
-      ? rawPageSize
-      : pagination.pageSize || 20
+    const effectivePageSize = all === 'true'
+      ? (Number.isFinite(rawPageSize) && rawPageSize > 0 ? rawPageSize : undefined)
+      : (pagination.pageSize || 20)
 
     const result = await listarPedidosUseCase.execute({
       ...filter,
