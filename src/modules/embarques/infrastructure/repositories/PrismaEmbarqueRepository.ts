@@ -158,6 +158,7 @@ export class PrismaEmbarqueRepository implements IEmbarqueRepository {
       tipoMoto?: string
       capacidadKg: number
       baseDinero: number
+      horaSalida?: Date
       stockSnapshot?: Record<string, number>
       codigoVisita?: string
       obs?: string

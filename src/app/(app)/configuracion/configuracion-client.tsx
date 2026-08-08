@@ -25,6 +25,7 @@ interface ConfigData {
   DIAS_VENCIMIENTO_PROMESA: string
   MAX_PEDIDOS_DIA_ALERTA: string
   LIMITE_PEDIDOS_FIADOS_DEFAULT: string
+  MAX_UNIDADES_EMBARQUE: string
 }
 
 interface ConfiguracionClientProps {
@@ -83,6 +84,7 @@ const SECTIONS: SectionConfig[] = [
       { key: 'DIAS_VENCIMIENTO_PROMESA', label: 'Días vencimiento promesa de pago', type: 'number', placeholder: '2', suffix: 'días', min: 1 },
       { key: 'MAX_PEDIDOS_DIA_ALERTA', label: 'Máx. pedidos por día para alerta', type: 'number', placeholder: '2', suffix: 'pedidos', min: 1 },
       { key: 'LIMITE_PEDIDOS_FIADOS_DEFAULT', label: 'Límite de pedidos fiados por cliente', type: 'number', placeholder: String(LIMITE_FIADOS_DEFAULT), suffix: 'pedidos', min: 1 },
+      { key: 'MAX_UNIDADES_EMBARQUE', label: 'Máximo de unidades por embarque', type: 'number', placeholder: '70', suffix: 'unidades', min: 1 },
     ],
   },
 ]
@@ -106,6 +108,7 @@ function validateConfig(data: ConfigData): FieldErrors {
     'DIAS_VENCIMIENTO_PROMESA',
     'MAX_PEDIDOS_DIA_ALERTA',
     'LIMITE_PEDIDOS_FIADOS_DEFAULT',
+    'MAX_UNIDADES_EMBARQUE',
   ]
   for (const key of numericFields) {
     const val = data[key]

@@ -152,6 +152,7 @@ export class EmbarqueMapper {
     tipoMoto?: string
     capacidadKg: number
     baseDinero: number
+    horaSalida?: Date
     stockSnapshot?: Record<string, number>
     codigoVisita?: string
     obs?: string
@@ -166,6 +167,7 @@ export class EmbarqueMapper {
       rutaId: embarque.rutaId ?? null,
       tipoMoto: embarque.tipoMoto ?? null,
       baseDinero: embarque.baseDinero,
+      horaSalida: embarque.horaSalida ?? null,
       stockSnapshot: embarque.stockSnapshot ?? cargaJson,
       codigoVisita: embarque.codigoVisita ?? null,
       obs: embarque.obs ?? null,

@@ -72,7 +72,7 @@ export class ActualizarEmbarqueUseCase {
       const carga = new Carga(input.carga)
 
       // Validate max units
-      const unitsValidation = this.validation.validarMaxUnidades(carga)
+      const unitsValidation = this.validation.validarMaxUnidades(carga, input.maxUnidades)
       if (!unitsValidation.valid) {
         throw new Error(unitsValidation.errors.join(', '))
       }

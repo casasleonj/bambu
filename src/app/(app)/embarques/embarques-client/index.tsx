@@ -12,6 +12,7 @@ import { Modal } from '@/components/modal'
 import type { Embarque, Trabajador, Ruta } from './types'
 import { EmbarqueCard } from './embarque-card'
 import { EmbarqueFormModal } from './embarque-form-modal'
+import { AutoGenerarPreviewModal } from './auto-generar-preview-modal'
 import { StatsTab } from './stats-tab'
 import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 import { useRepartidoresYRutas } from '@/hooks/use-repartidores-y-rutas'
@@ -38,6 +39,7 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
   )
   const [loading, setLoading] = useState(!initialData)
   const [showFormModal, setShowFormModal] = useState(false)
+  const [showAutoGenerarModal, setShowAutoGenerarModal] = useState(false)
   const [formMode, setFormMode] = useState<'create' | 'edit'>('create')
   const [editingEmbarque, setEditingEmbarque] = useState<Embarque | null>(null)
   const [fetchError, setFetchError] = useState<string | null>(null)
@@ -123,41 +125,8 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
     )
   }
 
-  const handleAutoGenerate = async () => {
-    const ok = await confirm({
-      title: 'Generar embarques automáticos',
-      message: '¿Crear embarques automáticos para todos los pedidos pendientes?',
-      description: 'El sistema agrupará los pedidos pendientes por zona y creará embarques optimizados.',
-      consequences: [
-        'Se crearán nuevos embarques si hay pedidos pendientes',
-        'Los pedidos se asignarán automáticamente a rutas',
-        'No afectará pedidos ya en embarques existentes',
-      ],
-      variant: 'warning',
-      confirmLabel: 'Sí, generar',
-      cancelLabel: 'Cancelar',
-    })
-    if (!ok) return
-    try {
-      const res = await fetch('/api/embarques/auto', { method: 'POST', credentials: 'include' })
-      const data = await res.json()
-      if (data.success) {
-        toast.success(data.message)
-        if (data.gruposSinAsignar && data.gruposSinAsignar.length > 0) {
-          for (const grupo of data.gruposSinAsignar) {
-            toast.warning(
-              `${grupo.pedidosCount} pedidos de "${grupo.ruta}" no asignados — no hay repartidores disponibles`,
-              { duration: 8000 }
-            )
-          }
-        }
-        fetchData()
-      } else {
-        toast.error(data.error?.message || 'Error al generar embarques')
-      }
-    } catch {
-      toast.error('Error de conexión al generar embarques')
-    }
+  const handleAutoGenerate = () => {
+    setShowAutoGenerarModal(true)
   }
 
   const handleDateChange = useCallback((desde: string | null, hasta: string | null) => {
@@ -518,6 +487,12 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
         rutas={rutas}
         mode={formMode}
         embarque={editingEmbarque}
+      />
+
+      <AutoGenerarPreviewModal
+        open={showAutoGenerarModal}
+        onClose={() => setShowAutoGenerarModal(false)}
+        onCreated={fetchData}
       />
 
       {/* Stock Estimado Modal */}

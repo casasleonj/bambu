@@ -12,6 +12,8 @@ import { logger } from '@/lib/logger'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { enrichPedidosWithNegocio } from '@/lib/embarque-pedido-enrich'
+import { getConfigInt } from '@/lib/config'
+import { MAX_UNIDADES } from '@/modules/embarques/domain/services/embarque-validation.service'
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
@@ -126,6 +128,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return apiError('Use el flujo de cierre de ruta para cerrar embarques', 400)
     }
 
+    const maxUnidades = await getConfigInt('MAX_UNIDADES_EMBARQUE', MAX_UNIDADES)
+
     // FIX F-N12: TODOS los checks de estado, carga, trabajador, pedidoIds
     // se movieron DENTRO del lock EMBARQUE. Antes se hacían con
     // prisma.* (cliente global) FUERA del lock, lo que causaba TOCTOU:
@@ -196,8 +200,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         }
 
         const totalUnidades = Object.values(cargaSnapshot).reduce((s, v) => s + v, 0)
-        if (totalUnidades > 70) {
-          throw new Error(`MAX_UNIDADES:${totalUnidades}`)
+        if (totalUnidades > maxUnidades) {
+          throw new Error(`MAX_UNIDADES:${totalUnidades}:${maxUnidades}`)
         }
 
         // Check weight capacity with current or new trabajador
@@ -267,8 +271,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
               (p.cBolsaAguaPed || 0) + (p.cBolsaHieloPed || 0), 0)
 
         const totalUnidades = unidadesActuales + unidadesNuevas
-        if (totalUnidades > 70) {
-          throw new Error(`MAX_UNIDADES:${totalUnidades}:${unidadesActuales}:${unidadesNuevas}`)
+        if (totalUnidades > maxUnidades) {
+          throw new Error(`MAX_UNIDADES_ASIGNACION:${totalUnidades}:${unidadesActuales}:${unidadesNuevas}:${maxUnidades}`)
         }
       }
 
@@ -408,7 +412,14 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       if (msg === 'EMBARQUE_NOT_FOUND') return apiError('Embarque no encontrado', 404)
       if (msg === 'TRABAJADOR_NOT_FOUND') return apiError('Trabajador no encontrado', 400)
       if (msg === 'TRABAJADOR_SIN_MOTO') return apiError('Este trabajador no tiene moto asignada', 400)
-      if (msg.startsWith('MAX_UNIDADES:')) return apiError(`Excede máximo de 70 unidades: ${msg.split(':')[1]}`, 400)
+      if (msg.startsWith('MAX_UNIDADES:')) {
+        const [, totalUnidades, limite] = msg.split(':')
+        return apiError(`Excede máximo de ${limite} unidades: ${totalUnidades}`, 400)
+      }
+      if (msg.startsWith('MAX_UNIDADES_ASIGNACION:')) {
+        const [, totalUnidades, , , limite] = msg.split(':')
+        return apiError(`Excede máximo de ${limite} unidades: ${totalUnidades}`, 400)
+      }
       if (msg.startsWith('PESO_EXCEDIDO:')) {
         const [, peso, cap] = msg.split(':')
         return apiError(`Peso excede capacidad del repartidor (${peso}kg > ${cap}kg)`, 400)

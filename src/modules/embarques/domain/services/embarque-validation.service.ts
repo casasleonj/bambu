@@ -46,14 +46,16 @@ export class EmbarqueValidationService {
   }
 
   /**
-   * Validates that the carga does not exceed MAX_UNIDADES.
+   * Validates that the carga does not exceed the max units allowed.
+   * Defaults to MAX_UNIDADES but callers may pass a configurable override
+   * (see Config.MAX_UNIDADES_EMBARQUE, read via getConfigInt in the API layer).
    */
-  validarMaxUnidades(carga: Carga): ValidationResult {
+  validarMaxUnidades(carga: Carga, maxUnidades: number = MAX_UNIDADES): ValidationResult {
     const total = carga.totalUnidades()
-    if (total > MAX_UNIDADES) {
+    if (total > maxUnidades) {
       return {
         valid: false,
-        errors: [`La carga excede el maximo de ${MAX_UNIDADES} unidades (${total} unidades)`],
+        errors: [`La carga excede el maximo de ${maxUnidades} unidades (${total} unidades)`],
       }
     }
     return { valid: true, errors: [] }
