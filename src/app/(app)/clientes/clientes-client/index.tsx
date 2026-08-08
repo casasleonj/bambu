@@ -367,6 +367,8 @@ export default function ClientesClient({
 
   const [sortBy, setSortBy] = useState<'nombre' | 'createdAt'>('createdAt')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const [filterSaldo, setFilterSaldo] = useState(false)
+  const [filterFrecuencia, setFilterFrecuencia] = useState(false)
   const [guiaTipo, setGuiaTipo] = useState<AlertaTipo | null>(null)
   const [guiaOpen, setGuiaOpen] = useState(false)
   const [casoCreado, setCasoCreado] = useState<any>(null)
@@ -620,14 +622,27 @@ export default function ClientesClient({
   }, [searchInput, allClientes, clientes, cacheActive])
 
   // Filtros client-side: saldo/frecuencia y ordenamiento sobre el resultado
-  // de búsqueda (cache o RSC).
-  const clientesFiltrados = useMemo(() => [...clientesSearchResult].sort((a, b) => {
-    const dir = sortDir === 'asc' ? 1 : -1
-    if (sortBy === 'createdAt') {
-      return dir * (new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime())
-    }
-    return dir * a.nombre.localeCompare(b.nombre)
-  }), [clientesSearchResult, sortBy, sortDir])
+  // de búsqueda (cache o RSC). Se aplican ANTES de paginar para que "Con
+  // saldo"/"Con frecuencia" filtren la lista completa y no solo la página
+  // visible. FIX: antes el filtrado por saldo/frecuencia vivía en
+  // ClienteTable y se aplicaba sobre `clientes` ya paginado — activar el
+  // chip podía mostrar 0 resultados en la página actual aunque hubiera
+  // clientes que cumplían el filtro en otras páginas, sin ningún aviso
+  // (el contador seguía mostrando el total sin filtrar).
+  const clientesFiltrados = useMemo(() => {
+    const filtrados = clientesSearchResult.filter((c) => {
+      if (filterSaldo && !(c.saldoPendiente && c.saldoPendiente > 0)) return false
+      if (filterFrecuencia && !c.plantillaRecurrente?.activo) return false
+      return true
+    })
+    return [...filtrados].sort((a, b) => {
+      const dir = sortDir === 'asc' ? 1 : -1
+      if (sortBy === 'createdAt') {
+        return dir * (new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime())
+      }
+      return dir * a.nombre.localeCompare(b.nombre)
+    })
+  }, [clientesSearchResult, filterSaldo, filterFrecuencia, sortBy, sortDir])
 
   // Paginación client-side cuando la fuente es el cache.
   const page = Math.max(1, parseInt(searchParams?.get('page') || String(initialPage), 10))
@@ -651,12 +666,15 @@ export default function ClientesClient({
     displayTotalPages = 1
     displayPage = 1
   } else if (cacheActive) {
-    // Vista general desde cache: paginado
-    const start = (page - 1) * pageSize
+    // Vista general desde cache: paginado. Clamp de página por si un
+    // filtro (ej. "Con saldo") reduce el total y la página actual queda
+    // fuera de rango.
+    const clampedPage = Math.min(page, totalPagesFiltrado)
+    const start = (clampedPage - 1) * pageSize
     displayList = clientesFiltrados.slice(start, start + pageSize)
     displayTotal = totalFiltrado
     displayTotalPages = totalPagesFiltrado
-    displayPage = page
+    displayPage = clampedPage
   } else {
     // Fallback RSC: usar los valores del servidor
     displayList = clientesFiltrados
@@ -1351,6 +1369,10 @@ export default function ClientesClient({
         filtrosActivos={filtrosActivos}
         allClientesLoading={allClientesLoading}
         loading={loading}
+        filterSaldo={filterSaldo}
+        filterFrecuencia={filterFrecuencia}
+        onFilterSaldoChange={setFilterSaldo}
+        onFilterFrecuenciaChange={setFilterFrecuencia}
       />
 
       <ClienteForm
