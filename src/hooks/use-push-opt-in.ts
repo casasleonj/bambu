@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { usePushSubscription } from '@/hooks/use-push-subscription'
 import { isIosDevice, isStandaloneMode } from '@/lib/pwa'
@@ -55,18 +55,33 @@ export function usePushOptIn(): UsePushOptInReturn {
   const { data: session } = useSession()
   const { permission, subscribe, loading } = usePushSubscription()
   const [error, setError] = useState<string | null>(null)
-  const [dismissed, setDismissed] = useState(
-    () => safeLocalGet(DISMISSED_KEY) === '1',
-  )
-  const [shownThisSession, setShownThisSession] = useState(
-    () => safeSessionGet(SHOWN_SESSION_KEY) === '1',
-  )
+
+  // dismissed/shownThisSession/isIosWithoutStandalone dependen de
+  // localStorage/sessionStorage/navigator, que no existen durante SSR y
+  // pueden diferir de lo que el server asume. Si se leen en el render
+  // (via lazy useState initializer, como antes) o directo en el cuerpo del
+  // hook, el primer render del cliente (hydration) puede no coincidir con
+  // el HTML del server → React descarta el árbol entero y lo regenera
+  // (hydration mismatch, visible en AppLayout completo, no solo el toast).
+  // Fix: arrancar con el mismo valor determinístico que el server (false)
+  // y resolver el valor real recién en un efecto post-mount.
+  const [dismissed, setDismissed] = useState(false)
+  const [shownThisSession, setShownThisSession] = useState(false)
+  const [isIosWithoutStandalone, setIsIosWithoutStandalone] = useState(false)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setDismissed(safeLocalGet(DISMISSED_KEY) === '1')
+    setShownThisSession(safeSessionGet(SHOWN_SESSION_KEY) === '1')
+    setIsIosWithoutStandalone(isIosDevice() && !isStandaloneMode())
+    setMounted(true)
+  }, [])
 
   const role = (session?.user as { role?: string } | undefined)?.role
   const isTargetRole = role ? TARGET_ROLES.has(role) : false
-  const isIosWithoutStandalone = isIosDevice() && !isStandaloneMode()
 
   const shouldShow =
+    mounted &&
     permission === 'default' &&
     isTargetRole &&
     !isIosWithoutStandalone &&
