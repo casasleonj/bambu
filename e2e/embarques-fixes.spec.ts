@@ -1,6 +1,9 @@
 // @tests embarques module - tests for critical fixes applied
-// Covers: Fix #1, #2, #5, #7, #8, #9, #12, #16, #17, #21, #22, #24, #25
+// Covers: Fix #1, #2, #5, #7, #8, #9, #12, #16, #17, #21, #22, #24, #25, #26
 import { test, expect, loginAs, apiPost, apiGet, apiDelete, createTrabajador, createCliente, skipBaseCaja, login, BASE } from './fixtures'
+import { PrismaClient } from '@prisma/client'
+
+const prisma = new PrismaClient()
 
 async function embarquesLogin(page: any) {
   await skipBaseCaja(page)
@@ -713,5 +716,67 @@ test.describe('Embarques — Fix #25: overrideMotivo en stockSnapshot', () => {
         : embarque.stockSnapshot
       expect(snapshot.overrideMotivo).toBe(motivo)
     }
+  })
+})
+
+// ─── Fix #26: "Ver últimos 30 días" revela embarques fuera del rango default ─
+//
+// Usuarios reportaron que un día sin embarques nuevos dejaba /embarques
+// completamente vacío ("No hay embarques hoy"), incluso habiendo historial.
+// Causa: /api/embarques cae a "solo hoy" cuando no se manda desde/hasta/all,
+// y el botón "Todos" solo controla el filtro de *estado*, no de fecha — no
+// existía ninguna forma de ampliar el rango desde la UI. Se descartó cablear
+// `all=true` (el endpoint no tiene límite/paginación, sería una query no
+// acotada) a favor de un botón que reutiliza el filtro desde/hasta existente
+// con una ventana fija de 30 días.
+
+test.describe('Embarques — Fix #26: Ver últimos 30 días', () => {
+
+  test('embarque fuera del rango default aparece tras click en "Ver últimos 30 días"', async ({ page }) => {
+    const nombreUnico = `Repartidor Historico ${Date.now() % 100000}`
+    await loginAs(page, 'admin')
+    const t = await createTrabajador(page, { nombre: nombreUnico })
+    const trabajadorId = t.trabajador?.id || t.data?.id
+    if (!trabajadorId) { test.skip(); return }
+
+    const eRes = await apiPost(page, '/api/embarques', {
+      trabajadorId, horaSalida: '08:00',
+      carga: [{ producto: 'PACA_AGUA', cargadas: 1 }],
+    })
+    expect(eRes.status()).toBe(201)
+    const eData = await eRes.json()
+    const embarqueId = eData.data?.embarque?.id || eData.embarque?.id
+    expect(embarqueId).toBeTruthy()
+
+    // La API no acepta fecha custom en la creación; se backdatea directo en
+    // la DB (mismo patrón que embarques-hydration.spec.ts). 10 días atrás:
+    // fuera del rango default ("hoy"), dentro de la ventana de 30 días.
+    const hace10Dias = new Date()
+    hace10Dias.setDate(hace10Dias.getDate() - 10)
+    await prisma.embarque.update({
+      where: { id: embarqueId },
+      data: { fecha: hace10Dias },
+    })
+
+    await embarquesLogin(page)
+    await page.goto(`${BASE}/embarques`)
+    await page.waitForLoadState('domcontentloaded')
+    await page.waitForTimeout(1000)
+
+    // Fuera del rango default: no debe aparecer.
+    await expect(page.locator('[data-testid="embarque-card"]', { hasText: nombreUnico })).toHaveCount(0)
+
+    const boton = page.locator('[data-testid="ver-ultimos-30-dias"]')
+    await expect(boton).toBeVisible()
+    await boton.click()
+    await page.waitForTimeout(1000)
+
+    // Con la ventana de 30 días, el embarque de hace 10 días debe aparecer.
+    await expect(page.locator('[data-testid="embarque-card"]', { hasText: nombreUnico })).toHaveCount(1)
+
+    // El botón es solo para el estado "sin filtro de fecha explícito": una
+    // vez que hay un rango activo, debe ocultarse (evita confusión sobre
+    // qué rango se está viendo).
+    await expect(boton).not.toBeVisible()
   })
 })

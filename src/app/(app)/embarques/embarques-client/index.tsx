@@ -16,6 +16,7 @@ import { StatsTab } from './stats-tab'
 import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 import { useRepartidoresYRutas } from '@/hooks/use-repartidores-y-rutas'
 import { useRealtimeListener } from '@/hooks/use-realtime-listener'
+import { getFechaOffset, getTodayString } from '@/lib/dates'
 
 interface InitialData {
   embarques: Embarque[]
@@ -169,6 +170,17 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
     }, 300)
   }, [])
 
+  // Sin esto, un día sin embarques nuevos deja la pantalla vacía sin ninguna
+  // pista de que hay historial: el backend cae a "solo hoy" cuando no se manda
+  // desde/hasta/all (src/app/api/embarques/route.ts), y a diferencia de
+  // /pedidos acá no hay un preset "Todos" que amplíe la fecha. Reutiliza
+  // dateRange (mismo filtro ya soportado, sin costo extra de query) en vez de
+  // pedir all=true, que en este endpoint no tiene límite de resultados.
+  const handleVerUltimosDias = useCallback((dias: number) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    setDateRange({ desde: getFechaOffset(-dias), hasta: getTodayString() })
+  }, [])
+
   const openStockModal = () => {
     setEstimadoAgua(stockEstimado?.agua ? String(stockEstimado.agua) : "")
     setEstimadoHielo(stockEstimado?.hielo ? String(stockEstimado.hielo) : "")
@@ -289,7 +301,18 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
       </div>
 
       <div className="bg-white p-4 rounded-xl shadow mb-4">
-        <DateRangeFilter onDateChange={handleDateChange} />
+        <div className="flex items-center gap-2 flex-wrap">
+          <DateRangeFilter onDateChange={handleDateChange} />
+          {!dateRange.desde && !dateRange.hasta && (
+            <button
+              data-testid="ver-ultimos-30-dias"
+              onClick={() => handleVerUltimosDias(30)}
+              className="text-sm text-blue-600 hover:text-blue-800 font-medium px-2 py-1"
+            >
+              Ver últimos 30 días
+            </button>
+          )}
+        </div>
         <div className="flex flex-wrap gap-2 mt-3">
           {[
             { key: '', label: 'Todos' },
@@ -465,7 +488,11 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
             <EmptyState
               icon={<svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m0 0a2 2 0 104 0m0 0a2 2 0 104 0" /></svg>}
               title="No hay embarques hoy"
-              description="Los embarques agrupan pedidos por zona para optimizar las rutas de entrega"
+              description={
+                !dateRange.desde && !dateRange.hasta
+                  ? 'Los embarques agrupan pedidos por zona para optimizar las rutas de entrega. Si buscás embarques de días anteriores, probá "Ver últimos 30 días" arriba.'
+                  : 'Los embarques agrupan pedidos por zona para optimizar las rutas de entrega'
+              }
               actionLabel="+ Crear Embarque"
               onAction={() => { setFormMode('create'); setEditingEmbarque(null); setShowFormModal(true) }}
               guidedSteps={[
