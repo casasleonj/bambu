@@ -451,12 +451,28 @@ test.describe('Embarques Stats — UI Tabs', () => {
 
 test.describe('Embarques Stats — UI Contenido del Tab', () => {
 
-  test('empty state shown when no closed embarques exist', async ({ page }) => {
+  // FIX #30 (embarques-fixes.spec.ts): el empty-state real ("no hay NADA en
+  // el período") cambió de copy. Antes decía "No hay embarques cerrados..."
+  // aunque la condición de gate no distinguía "cero embarques" de "cero
+  // embarques cerrados" — cuando había embarques ABIERTO/CANCELADO en el
+  // período, ese texto ocultaba incorrectamente la tabla de detalle. Ver
+  // Fix #30 para el caso "hay embarques pero ninguno cerrado".
+  //
+  // La nueva condición de "vacío" exige CERO embarques de cualquier estado
+  // en el rango — más estricta que la vieja (que solo exigía cero
+  // cerrados/en ruta). Sin filtro de fecha, esta suite y otras (que corren
+  // antes en el mismo worker) ya crearon embarques ABIERTO hoy, así que el
+  // dataset global nunca está realmente vacío. Se filtra a un rango
+  // histórico aislado (sin datos de ningún test) en vez de depender de que
+  // la tabla completa esté vacía.
+  test('empty state shown when no embarques exist at all', async ({ page }) => {
     await embarquesLogin(page)
     await gotoEmbarques(page)
+    await page.locator('input[type="date"]').first().fill('2020-01-01')
+    await page.locator('input[type="date"]').nth(1).fill('2020-01-02')
     await page.locator('button:has-text("Estadísticas")').click()
     await page.waitForTimeout(1000)
-    await expect(page.getByText('No hay embarques cerrados en este período')).toBeVisible()
+    await expect(page.getByText('No hay embarques en este período')).toBeVisible()
   })
 
   test('KPI cards appear when there are closed embarques', async ({ page }) => {
