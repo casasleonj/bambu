@@ -22,18 +22,25 @@ export class ListarPedidosUseCase {
       scope: input.scope,
     }
 
+    // Cuando all=true, el caller (cache-driven UI) puede pedir un pageSize
+    // más grande que el default de paginación. Cap duro de 1000 como techo
+    // de seguridad independiente de lo que llegue del cliente.
+    const takeLimit = input.all
+      ? Math.min(Math.max(input.pageSize || 200, 1), 1000)
+      : (input.pageSize || 20)
     const options = input.all
-      ? { take: 200 }
-      : { take: input.pageSize || 20, skip: ((input.page || 1) - 1) * (input.pageSize || 20) }
+      ? { take: takeLimit }
+      : { take: takeLimit, skip: ((input.page || 1) - 1) * takeLimit }
 
-    // Cuando all=true el cliente nunca consume `total` (usa pedidos.length).
-    // Skip COUNT(*) para evitar full table scan en PostgreSQL.
-    const [pedidos, total] = input.all
-      ? [await this.pedidoRepo.findMany(filter, { ...options, orderBy: 'desc' }), 0]
-      : await Promise.all([
-          this.pedidoRepo.findMany(filter, { ...options, orderBy: 'desc' }),
-          this.pedidoRepo.count(filter),
-        ])
+    const pedidos = await this.pedidoRepo.findMany(filter, { ...options, orderBy: 'desc' })
+
+    // Cuando all=true, `pedidos.length` es el total exacto salvo que se haya
+    // truncado en el tope (pedidos.length === takeLimit); en ese caso, y solo
+    // en ese caso, se paga un COUNT(*) para saber el total real. Evita pagar
+    // el costo de COUNT(*) en el caso común (no truncado).
+    const total = input.all
+      ? (pedidos.length === takeLimit ? await this.pedidoRepo.count(filter) : pedidos.length)
+      : await this.pedidoRepo.count(filter)
 
     return {
       pedidos: pedidos.map(p => PedidoDTOMapper.toResumen(p)),

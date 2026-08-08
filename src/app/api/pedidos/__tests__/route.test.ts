@@ -127,3 +127,23 @@ describe('Fase 3: ventas anónimas muestran "Venta anónima" en vez de "Consumid
     expect(routeSource).not.toMatch(/p\.clienteId\s*===\s*['"]CONSUMIDOR_FINAL['"]\s*\?\s*['"]Consumidor Final['"]/)
   })
 })
+
+describe('Regresión E2E (auditoría performance /pedidos): all=true sin pageSize explícito', () => {
+  // Hallazgo: la primera versión de este fix pasaba `pagination.pageSize || 20`
+  // como default cuando all=true y no venía `pageSize` en el query string.
+  // Como `getPaginationParams` default a 20 (no undefined), TODO caller
+  // preexistente de `/api/pedidos?all=true` sin pageSize explícito (tabs
+  // Fiados/Alertas, getAlertasPedido, etc.) quedaba truncado a 20 resultados
+  // en vez de los 200 que daba el use case antes de esta migración.
+  // Detectado por E2E real (pedidos-filtros-funcionales.spec.ts), no por
+  // tsc/unit tests — el bug era de comportamiento en runtime, no de tipos.
+  it('FIX: cuando all=true y no hay pageSize en el query, se pasa undefined (no el default de paginación normal)', () => {
+    expect(routeSource).toMatch(
+      /const effectivePageSize = all === 'true'\s*\n\s*\?\s*\(Number\.isFinite\(rawPageSize\)\s*&&\s*rawPageSize > 0 \? rawPageSize : undefined\)\s*\n\s*:\s*\(pagination\.pageSize \|\| 20\)/
+    )
+  })
+
+  it('FIX: el effectivePageSize resultante se pasa tal cual al use case (que aplica su propio default 200)', () => {
+    expect(routeSource).toMatch(/pageSize:\s*effectivePageSize/)
+  })
+})

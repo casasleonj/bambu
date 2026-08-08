@@ -14,6 +14,8 @@ import { EmbarqueCard } from './embarque-card'
 import { EmbarqueFormModal } from './embarque-form-modal'
 import { StatsTab } from './stats-tab'
 import { usePollingRefetch } from '@/hooks/use-polling-refetch'
+import { useRepartidoresYRutas } from '@/hooks/use-repartidores-y-rutas'
+import { useRealtimeListener } from '@/hooks/use-realtime-listener'
 
 interface InitialData {
   embarques: Embarque[]
@@ -30,8 +32,9 @@ interface EmbarquesClientProps {
 
 export default function EmbarquesClient({ initialData, isAdmin = false }: EmbarquesClientProps) {
   const [embarques, setEmbarques] = useState<Embarque[]>(initialData?.embarques || [])
-  const [trabajadores, setTrabajadores] = useState<Trabajador[]>(initialData?.trabajadores || [])
-  const [rutas, setRutas] = useState<Ruta[]>(initialData?.rutas || [])
+  const { trabajadores, rutas } = useRepartidoresYRutas(
+    initialData ? { trabajadores: initialData.trabajadores, rutas: initialData.rutas } : undefined
+  )
   const [loading, setLoading] = useState(!initialData)
   const [showFormModal, setShowFormModal] = useState(false)
   const [formMode, setFormMode] = useState<'create' | 'edit'>('create')
@@ -59,15 +62,9 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
       if (dateRange.desde) params.set('desde', dateRange.desde)
       if (dateRange.hasta) params.set('hasta', dateRange.hasta)
       if (filtroEstado) params.set('estado', filtroEstado)
-      const [embarquesRes, trabajadoresRes, rutasRes] = await Promise.all([
-        fetch(`/api/embarques?${params.toString()}`, { credentials: 'include' }),
-        fetch('/api/trabajadores?rol=REPARTIDOR&activo=true&usaMoto=true', { credentials: 'include' }),
-        fetch('/api/rutas?all=true', { credentials: 'include' }),
-      ])
+      const embarquesRes = await fetch(`/api/embarques?${params.toString()}`, { credentials: 'include' })
 
       const embarquesJson = await embarquesRes.json()
-      const trabajadoresJson = await trabajadoresRes.json()
-      const rutasJson = await rutasRes.json()
       const stockJson = await fetch('/api/stock-estimado', { credentials: 'include' }).then(r => r.json())
       // FIX prod-performance: evitar la llamada pesada `all=true&stock=true` en
       // cada cambio de filtro. El stock bajo solo importa para la vista default
@@ -81,8 +78,6 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
       }
 
       setEmbarques(embarquesJson.embarques || embarquesJson.data || [])
-      setTrabajadores(trabajadoresJson.trabajadores || [])
-      setRutas(rutasJson.rutas || [])
       if (stockJson.data?.estimado) {
         setStockEstimado(stockJson.data.estimado)
         setBannerDismissed(false)
@@ -105,6 +100,13 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
 
   // Polling: refresh embarques every 60s.
   usePollingRefetch(fetchData, 60_000)
+
+  // Wire-up de realtime (aditivo sobre el polling de 60s, que queda intacto
+  // como fallback para cuando SSE está apagado: 2G, circuit breaker, tab
+  // oculta, offline). Mismo patrón que clientes-client/pedidos-client.
+  useRealtimeListener(['embarque.*'], () => {
+    fetchData()
+  })
 
   const getEstadoBadge = (estado: string) => {
     const styles: Record<string, string> = {
