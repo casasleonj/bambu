@@ -7,9 +7,19 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatCurrency(amount: number): string {
+  // minimumFractionDigits/maximumFractionDigits fijos en 0: sin esto,
+  // Intl.NumberFormat toma los decimales por defecto de COP desde los
+  // datos ICU del runtime, que difieren entre Node (server) y V8 del
+  // navegador (client) según la build/version — causa un hydration
+  // mismatch de texto ("$ 17.600" en el server vs "$ 17.600,00" en el
+  // client) que hace que React regenere el árbol completo en cada página
+  // que muestra un monto. COP no tiene decimales en uso real, así que 0
+  // es además el formato correcto, no solo el determinístico.
   return new Intl.NumberFormat('es-CO', {
     style: 'currency',
     currency: 'COP',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
   }).format(amount)
 }
 
