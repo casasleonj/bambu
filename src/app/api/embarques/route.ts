@@ -11,7 +11,7 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { EmbarqueCreateSchema } from '@/lib/validators'
-import { getTodayRange, buildDateRangeFilter } from '@/lib/dates'
+import { getTodayRange, buildDateRangeFilter, todayStringBogota } from '@/lib/dates'
 import { logAudit } from '@/lib/audit'
 import { calcularPesoDesdeCarga, getCapacidadInfo, type CargaSnapshot } from '@/lib/embarque-capacidad'
 import { emptyStock } from '@/lib/stock'
@@ -21,53 +21,33 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { enrichPedidosWithNegocio } from '@/lib/embarque-pedido-enrich'
+import { getConfigInt } from '@/lib/config'
+import { MAX_UNIDADES } from '@/modules/embarques/domain/services/embarque-validation.service'
+
+/**
+ * Convierte un input type="time" ("HH:MM") en un Date UTC, asumiendo que la
+ * hora es local a Bogotá (UTC-5). Evita `new Date("HH:MM")` (Invalid Date)
+ * y el bug de "hoy" en UTC documentado en AGENTS.md (issue #17).
+ */
+function horaSalidaToDate(horaSalida: string): Date {
+  return new Date(`${todayStringBogota()}T${horaSalida}:00-05:00`)
+}
 
 // DDD imports
 import { PrismaEmbarqueRepository } from '@/modules/embarques/infrastructure/repositories/PrismaEmbarqueRepository'
 import { PrismaEmbarqueProductoRepository } from '@/modules/embarques/infrastructure/repositories/PrismaEmbarqueProductoRepository'
+import { PrismaTrabajadorEmbarqueRepository } from '@/modules/embarques/infrastructure/repositories/PrismaTrabajadorEmbarqueRepository'
 import { PrismaTransactionManager } from '@/modules/embarques/infrastructure/transactions/PrismaTransactionManager'
 import { StockValidator } from '@/modules/embarques/infrastructure/stock/StockValidator'
 import { CrearEmbarqueUseCase } from '@/modules/embarques/application/use-cases/CrearEmbarqueUseCase'
 import { CancelarEmbarqueUseCase } from '@/modules/embarques/application/use-cases/CancelarEmbarqueUseCase'
-import type { ITrabajadorEmbarqueRepository, TrabajadorEmbarqueData } from '@/modules/embarques/domain'
 
 // Infrastructure dependencies (lazy-instantiated)
 const embarqueRepo = new PrismaEmbarqueRepository()
 const productoRepo = new PrismaEmbarqueProductoRepository()
 const txManager = new PrismaTransactionManager()
 const stockRepo = new StockValidator()
-
-// Worker repo adapter
-const workerRepo: ITrabajadorEmbarqueRepository = {
-  async findById(id: string, tx?: unknown): Promise<TrabajadorEmbarqueData | null> {
-    const client = (tx as typeof prisma) ?? prisma
-    const raw = await client.trabajador.findUnique({
-      where: { id },
-      select: { id: true, nombre: true, telefono: true, usaMoto: true, capacidadKg: true },
-    })
-    if (!raw) return null
-    return {
-      id: raw.id,
-      nombre: raw.nombre,
-      telefono: raw.telefono ?? undefined,
-      usaMoto: raw.usaMoto,
-      capacidadKg: raw.capacidadKg,
-    }
-  },
-  async findRepartidoresDisponibles(_fecha: Date, _tx?: unknown): Promise<TrabajadorEmbarqueData[]> {
-    const raw = await prisma.trabajador.findMany({
-      where: { usaMoto: true, activo: true },
-      select: { id: true, nombre: true, telefono: true, usaMoto: true, capacidadKg: true },
-    })
-    return raw.map((r) => ({
-      id: r.id,
-      nombre: r.nombre,
-      telefono: r.telefono ?? undefined,
-      usaMoto: r.usaMoto,
-      capacidadKg: r.capacidadKg,
-    }))
-  },
-}
+const workerRepo = new PrismaTrabajadorEmbarqueRepository()
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -220,15 +200,19 @@ export async function POST(request: NextRequest) {
       carga[item.producto] = item.cargadas
     }
 
+    const maxUnidades = await getConfigInt('MAX_UNIDADES_EMBARQUE', MAX_UNIDADES)
+
     const result = await useCase.execute({
       trabajadorId: parsed.data.trabajadorId,
       rutaId: parsed.data.rutaId,
       carga: carga as never,
       tipoMoto: parsed.data.tipoMoto,
       baseDinero: parsed.data.baseDinero,
+      horaSalida: horaSalidaToDate(parsed.data.horaSalida),
       obs: parsed.data.obs,
       createdById: session.user?.id,
       verificarStock: true,
+      maxUnidades,
     })
 
     logAudit({
@@ -253,8 +237,8 @@ export async function POST(request: NextRequest) {
     if (message.startsWith('STOCK_INSUFFICIENT')) {
       return apiError(message.replace('STOCK_INSUFFICIENT: ', 'Stock insuficiente: '), 400)
     }
-    if (message.includes('70')) {
-      return apiError('Maximo 70 unidades por embarque', 400)
+    if (message.includes('excede el maximo de')) {
+      return apiError(message, 400)
     }
     if (message.includes('peso') || message.includes('capacidad')) {
       return apiError('La carga excede la capacidad de la moto', 400)

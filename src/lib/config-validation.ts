@@ -50,6 +50,11 @@ const VALIDATORS: Record<string, Validator> = {
     if (isNaN(n) || n < 1 || !Number.isInteger(n)) return 'Debe ser un número entero mayor a 0'
     return null
   },
+  MAX_UNIDADES_EMBARQUE: (v) => {
+    const n = Number(v)
+    if (isNaN(n) || n < 1 || !Number.isInteger(n)) return 'Debe ser un número entero mayor a 0'
+    return null
+  },
 
   // Alertas antifraude (Bloque: Sistema de Alertas) — números no-negativos
   // o con tope superior según corresponda.

@@ -42,9 +42,9 @@ describe('F-N12: TODOS los checks pre-tx están DENTRO del lock EMBARQUE', () =>
     expect(stateCheck).toBeLessThan(lockClose)
   })
 
-  it('FIX: la validación de carga (totalUnidades ≤ 70) está dentro del lock', () => {
+  it('FIX: la validación de carga (totalUnidades ≤ maxUnidades configurable) está dentro del lock', () => {
     const lockOpen = source.indexOf("withAdvisoryLock('EMBARQUE'")
-    const cargaCheck = source.indexOf('totalUnidades > 70')
+    const cargaCheck = source.indexOf('totalUnidades > maxUnidades')
     const lockClose = source.lastIndexOf('})')
 
     // Asegurar que está dentro del lock
