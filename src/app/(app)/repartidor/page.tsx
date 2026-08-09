@@ -14,11 +14,15 @@ export default async function RepartidorPage() {
   const userId = session.user.id
   const userRole = session.user.role
 
-  // Find trabajador linked to user
-  const trabajador = await prisma.trabajador.findFirst({
-    where: { userId },
-    select: { id: true, nombre: true },
-  })
+  // Find trabajador linked to user. bloquearPrecios no depende de trabajador
+  // ni de embarque — se carga en paralelo en vez de esperar a ambas queries.
+  const [trabajador, bloquearPrecios] = await Promise.all([
+    prisma.trabajador.findFirst({
+      where: { userId },
+      select: { id: true, nombre: true },
+    }),
+    getConfigBool('BLOQUEAR_PRECIOS_REPARTIDOR', false),
+  ])
 
   if (!trabajador) {
     return (
@@ -60,7 +64,6 @@ export default async function RepartidorPage() {
   })
 
   // BLOQUEAR_PRECIOS_REPARTIDOR — strip all monetary fields server-side when on.
-  const bloquearPrecios = await getConfigBool('BLOQUEAR_PRECIOS_REPARTIDOR', false)
   const maskPrices = bloquearPrecios && userRole === 'REPARTIDOR'
 
   // Batch-fetch business names so the driver view can prioritize the

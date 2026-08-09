@@ -367,6 +367,8 @@ export default function ClientesClient({
 
   const [sortBy, setSortBy] = useState<'nombre' | 'createdAt'>('createdAt')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const [filterSaldo, setFilterSaldo] = useState(false)
+  const [filterFrecuencia, setFilterFrecuencia] = useState(false)
   const [guiaTipo, setGuiaTipo] = useState<AlertaTipo | null>(null)
   const [guiaOpen, setGuiaOpen] = useState(false)
   const [casoCreado, setCasoCreado] = useState<any>(null)
@@ -620,14 +622,27 @@ export default function ClientesClient({
   }, [searchInput, allClientes, clientes, cacheActive])
 
   // Filtros client-side: saldo/frecuencia y ordenamiento sobre el resultado
-  // de búsqueda (cache o RSC).
-  const clientesFiltrados = useMemo(() => [...clientesSearchResult].sort((a, b) => {
-    const dir = sortDir === 'asc' ? 1 : -1
-    if (sortBy === 'createdAt') {
-      return dir * (new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime())
-    }
-    return dir * a.nombre.localeCompare(b.nombre)
-  }), [clientesSearchResult, sortBy, sortDir])
+  // de búsqueda (cache o RSC). Se aplican ANTES de paginar para que "Con
+  // saldo"/"Con frecuencia" filtren la lista completa y no solo la página
+  // visible. FIX: antes el filtrado por saldo/frecuencia vivía en
+  // ClienteTable y se aplicaba sobre `clientes` ya paginado — activar el
+  // chip podía mostrar 0 resultados en la página actual aunque hubiera
+  // clientes que cumplían el filtro en otras páginas, sin ningún aviso
+  // (el contador seguía mostrando el total sin filtrar).
+  const clientesFiltrados = useMemo(() => {
+    const filtrados = clientesSearchResult.filter((c) => {
+      if (filterSaldo && !(c.saldoPendiente && c.saldoPendiente > 0)) return false
+      if (filterFrecuencia && !c.plantillaRecurrente?.activo) return false
+      return true
+    })
+    return [...filtrados].sort((a, b) => {
+      const dir = sortDir === 'asc' ? 1 : -1
+      if (sortBy === 'createdAt') {
+        return dir * (new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime())
+      }
+      return dir * a.nombre.localeCompare(b.nombre)
+    })
+  }, [clientesSearchResult, filterSaldo, filterFrecuencia, sortBy, sortDir])
 
   // Paginación client-side cuando la fuente es el cache.
   const page = Math.max(1, parseInt(searchParams?.get('page') || String(initialPage), 10))
@@ -651,12 +666,15 @@ export default function ClientesClient({
     displayTotalPages = 1
     displayPage = 1
   } else if (cacheActive) {
-    // Vista general desde cache: paginado
-    const start = (page - 1) * pageSize
+    // Vista general desde cache: paginado. Clamp de página por si un
+    // filtro (ej. "Con saldo") reduce el total y la página actual queda
+    // fuera de rango.
+    const clampedPage = Math.min(page, totalPagesFiltrado)
+    const start = (clampedPage - 1) * pageSize
     displayList = clientesFiltrados.slice(start, start + pageSize)
     displayTotal = totalFiltrado
     displayTotalPages = totalPagesFiltrado
-    displayPage = page
+    displayPage = clampedPage
   } else {
     // Fallback RSC: usar los valores del servidor
     displayList = clientesFiltrados
@@ -772,43 +790,55 @@ export default function ClientesClient({
       }
     }
 
+    // DELETE/POST/PATCH operan sobre contactos distintos por construcción
+    // (un mismo teléfono no puede estar simultáneamente en "solo server",
+    // "solo form" y "en ambos"), así que no hay riesgo de colisión entre
+    // ellos. Se disparan todos en paralelo con Promise.all en vez de un
+    // round trip HTTP a la vez, lo que en 2G/3G rural multiplica la latencia
+    // por cada contacto tocado.
+    const ops: Promise<void>[] = []
+
     // DELETE: están en server pero NO en form
     for (const [tel, { id }] of enServer) {
       if (!enForm.has(tel)) {
-        try {
-          const res = await fetchWithTimeout(`/api/clientes/${clienteId}/contactos/${id}`, {
-            method: 'DELETE',
-          }, 10_000)
-          if (!res.ok) {
-            const data = await res.json().catch(() => ({}))
-            errors.push(`DELETE ${tel}: ${data.error?.message ?? res.status}`)
+        ops.push((async () => {
+          try {
+            const res = await fetchWithTimeout(`/api/clientes/${clienteId}/contactos/${id}`, {
+              method: 'DELETE',
+            }, 10_000)
+            if (!res.ok) {
+              const data = await res.json().catch(() => ({}))
+              errors.push(`DELETE ${tel}: ${data.error?.message ?? res.status}`)
+            }
+          } catch (err) {
+            errors.push(`DELETE ${tel}: ${err instanceof FetchTimeoutError ? 'timeout' : 'error de red'}`)
           }
-        } catch (err) {
-          errors.push(`DELETE ${tel}: ${err instanceof FetchTimeoutError ? 'timeout' : 'error de red'}`)
-        }
+        })())
       }
     }
 
     // POST: están en form pero NO en server (teléfono nuevo)
     for (const [tel, payload] of enForm) {
       if (!enServer.has(tel)) {
-        try {
-          const res = await fetchWithTimeout(`/api/clientes/${clienteId}/contactos`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              nombre: payload.nombre,
-              telefono: tel,
-              relacion: payload.relacion ?? undefined,
-            }),
-          }, 10_000)
-          if (!res.ok) {
-            const data = await res.json().catch(() => ({}))
-            errors.push(`POST ${tel}: ${data.error?.message ?? res.status}`)
+        ops.push((async () => {
+          try {
+            const res = await fetchWithTimeout(`/api/clientes/${clienteId}/contactos`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                nombre: payload.nombre,
+                telefono: tel,
+                relacion: payload.relacion ?? undefined,
+              }),
+            }, 10_000)
+            if (!res.ok) {
+              const data = await res.json().catch(() => ({}))
+              errors.push(`POST ${tel}: ${data.error?.message ?? res.status}`)
+            }
+          } catch (err) {
+            errors.push(`POST ${tel}: ${err instanceof FetchTimeoutError ? 'timeout' : 'error de red'}`)
           }
-        } catch (err) {
-          errors.push(`POST ${tel}: ${err instanceof FetchTimeoutError ? 'timeout' : 'error de red'}`)
-        }
+        })())
       }
     }
 
@@ -820,23 +850,27 @@ export default function ClientesClient({
         serverEntry.nombre !== formPayload.nombre ||
         serverEntry.relacion !== formPayload.relacion
       if (!changed) continue
-      try {
-        const res = await fetchWithTimeout(`/api/clientes/${clienteId}/contactos/${serverEntry.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            nombre: formPayload.nombre,
-            relacion: formPayload.relacion,
-          }),
-        }, 10_000)
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          errors.push(`PATCH ${tel}: ${data.error?.message ?? res.status}`)
+      ops.push((async () => {
+        try {
+          const res = await fetchWithTimeout(`/api/clientes/${clienteId}/contactos/${serverEntry.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              nombre: formPayload.nombre,
+              relacion: formPayload.relacion,
+            }),
+          }, 10_000)
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}))
+            errors.push(`PATCH ${tel}: ${data.error?.message ?? res.status}`)
+          }
+        } catch (err) {
+          errors.push(`PATCH ${tel}: ${err instanceof FetchTimeoutError ? 'timeout' : 'error de red'}`)
         }
-      } catch (err) {
-        errors.push(`PATCH ${tel}: ${err instanceof FetchTimeoutError ? 'timeout' : 'error de red'}`)
-      }
+      })())
     }
+
+    await Promise.all(ops)
 
     return { ok: errors.length === 0, errors }
   }
@@ -1351,6 +1385,10 @@ export default function ClientesClient({
         filtrosActivos={filtrosActivos}
         allClientesLoading={allClientesLoading}
         loading={loading}
+        filterSaldo={filterSaldo}
+        filterFrecuencia={filterFrecuencia}
+        onFilterSaldoChange={setFilterSaldo}
+        onFilterFrecuenciaChange={setFilterFrecuencia}
       />
 
       <ClienteForm

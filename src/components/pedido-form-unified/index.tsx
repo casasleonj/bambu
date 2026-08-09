@@ -9,6 +9,7 @@ import { getProductoIconConfig } from '@/lib/producto-iconos'
 import { TipoNegocioSelect } from '@/components/tipo-negocio-select'
 import { matchCliente } from '@/lib/cliente-search'
 import { NegocioSelector } from '@/components/negocio-selector'
+import { resolveActualizarCliente } from './resolve-actualizar-cliente'
 import { usePriceSync } from '@/hooks/use-price-sync'
 import { Money, calcularSaldo } from '@/shared/domain'
 import type { FiadoStatus } from '@/modules/pedidos/domain/types'
@@ -127,8 +128,12 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
       .map(id => ({ codigo: PRODUCTO_INFO[id].codigo, cantidad: prods[id] || 0 }))
 
     if (items.length === 0) {
+      // Invalida cualquier fetch anterior todavía en vuelo para que su
+      // respuesta tardía no pise este estado vacío con precios stale.
+      resolverSeqRef.current++
       setPreciosResueltos({})
       setPreciosOrigen({})
+      setPreciosLoading(false)
       return
     }
     setPreciosLoading(true)
@@ -330,7 +335,15 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
     if (resolverTimeoutRef.current) {
       clearTimeout(resolverTimeoutRef.current)
     }
+    // Marcar precios como "cargando" ANTES de esperar el debounce, no solo
+    // durante el fetch. Sin esto había una ventana de hasta 400ms donde
+    // preciosLoading seguía en false pero la cantidad ya había cambiado,
+    // dejando que el usuario cobrara/enviara con el precio previo (stale).
+    if (Object.values(next).some(c => c > 0)) {
+      setPreciosLoading(true)
+    }
     resolverTimeoutRef.current = setTimeout(() => {
+      resolverTimeoutRef.current = null
       resolverPrecios(next, canalRef.current, clienteSeleccionado?.id, negocioSeleccionado)
     }, 400)
   }
@@ -383,6 +396,9 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
     // FIX B9: resolver precios para todos los productos del nuevo canal
     // (cantidad 1 o la cantidad real en edición) para que los precios especiales
     // aparezcan inmediatamente, sin esperar a modificar cantidades.
+    if (productosNuevoCanal.length > 0) {
+      setPreciosLoading(true)
+    }
     setTimeout(() => {
       const allProducts: Record<string, number> = {}
       const isEdit = Boolean(pedidoInicial?.id)
@@ -420,6 +436,16 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault()
+    // Bloquear el submit mientras el precio real todavía se está resolviendo
+    // (debounce + fetch a /api/precios/resolver). El total/precio autoritativo
+    // lo calcula el servidor de todas formas, pero si se cobra/factura con un
+    // total desactualizado en pantalla, lo cobrado no cuadra con lo registrado
+    // y el pedido queda con saldo pendiente o saldo a favor sin que nadie se
+    // entere. Ver también: disabled del botón de submit más abajo.
+    if (preciosLoading) {
+      toast.info('Espera a que se actualicen los precios...')
+      return
+    }
     if (total <= 0) { toast.error('Agrega al menos un producto'); return }
     if (requiereCliente && !clienteSeleccionado && !mostrarNuevo) {
       toast.error(canal === 'DOMICILIO' ? 'Selecciona un cliente para el envío' : 'Selecciona un cliente para registrar el fiado')
@@ -459,10 +485,13 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
         precioManual: preciosManuales[PRODUCTO_INFO[id].codigo],
       }))
 
-    const actualizarCliente = clienteSeleccionado && canal === 'DOMICILIO' && (
-      editDireccion !== (clienteSeleccionado.direccion || '') ||
-      editBarrio !== (clienteSeleccionado.barrio || '')
-    ) ? { direccion: editDireccion, barrio: editBarrio } : undefined
+    const actualizarCliente = resolveActualizarCliente({
+      clienteSeleccionado,
+      canal,
+      negocioSeleccionado,
+      editDireccion,
+      editBarrio,
+    })
 
     const data: PedidoUnifiedData = {
       clienteId,
@@ -589,19 +618,10 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
 
               {canal === 'DOMICILIO' && (
                 <div className="space-y-2">
-                  {/* Destination indicator */}
-                  <div className={`px-3 py-2 rounded-lg text-xs flex items-center gap-2 ${
-                    negocioSeleccionado
-                      ? 'bg-purple-50 border border-purple-200 text-purple-700'
-                      : 'bg-gray-50 border border-gray-200 text-gray-600'
-                  }`}>
-                    <span>{negocioSeleccionado ? '🏪' : '🏠'}</span>
-                    <span className="font-medium">
-                      {negocioSeleccionado
-                        ? `Envío a sucursal`
-                        : 'Envío a domicilio del cliente'}
-                    </span>
-                  </div>
+                  {/* La dirección de destino (negocio o domicilio principal) ya se
+                      muestra en el selector de arriba una sola vez (resumen
+                      colapsado). Estos inputs son para AJUSTAR el texto de entrega
+                      de este pedido puntual, no repiten el indicador de destino. */}
                   <div className="grid grid-cols-2 gap-2">
                     <input
                       type="text"
@@ -840,7 +860,13 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
           <div className="flex justify-between items-center mb-3">
             <h3 className="font-semibold text-gray-700 text-sm">💳 Pagos</h3>
             {total > 0 && (
-              <button type="button" onClick={pagarCompleto} className="text-xs text-green-600 hover:text-green-700">
+              <button
+                type="button"
+                onClick={pagarCompleto}
+                disabled={preciosLoading}
+                title={preciosLoading ? 'Esperando precio actualizado...' : undefined}
+                className="text-xs text-green-600 hover:text-green-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
                 Pagar completo
               </button>
             )}
@@ -915,14 +941,18 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
           type="button"
           onClick={() => handleSubmit()}
           data-testid="submit-pedido"
-          disabled={submitting || total <= 0 || fiadosStatus?.nivel === 'limite'}
+          disabled={submitting || preciosLoading || total <= 0 || fiadosStatus?.nivel === 'limite'}
           className={`w-full py-3 rounded-xl text-white font-bold text-lg shadow-lg transition ${
             canal === 'PUNTO'
               ? 'bg-green-600 hover:bg-green-700'
               : 'bg-blue-600 hover:bg-blue-700'
           } disabled:opacity-50 disabled:cursor-not-allowed`}
         >
-          {submitting ? 'Procesando...' : pedidoInicial?.id ? `📝 Actualizar Pedido $${total.toLocaleString()}` : canal === 'PUNTO' ? `💰 Cobrar $${total.toLocaleString()}` : `📦 Crear Pedido $${total.toLocaleString()}`}
+          {submitting
+            ? 'Procesando...'
+            : preciosLoading
+              ? 'Actualizando precios...'
+              : pedidoInicial?.id ? `📝 Actualizar Pedido $${total.toLocaleString()}` : canal === 'PUNTO' ? `💰 Cobrar $${total.toLocaleString()}` : `📦 Crear Pedido $${total.toLocaleString()}`}
         </button>
       </div>
     </form>

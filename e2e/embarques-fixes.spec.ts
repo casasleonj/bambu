@@ -780,3 +780,160 @@ test.describe('Embarques — Fix #26: Ver últimos 30 días', () => {
     await expect(boton).not.toBeVisible()
   })
 })
+
+// ─── Fix #27: "Todos" incluye Cancelados ────────────────────────────────────
+//
+// Usuarios reportaron que un embarque cancelado "desaparecía" del filtro
+// "Todos" — solo era visible pidiendo explícitamente el chip "Cancelados".
+// Causa: tanto GET /api/embarques (sin ?estado=) como la query SSR inicial
+// excluían implícitamente CANCELADO. "Todos" debe significar todos los
+// estados, no "todos menos cancelados".
+
+test.describe('Embarques — Fix #27: "Todos" incluye Cancelados', () => {
+
+  test('embarque cancelado es visible bajo el filtro default "Todos"', async ({ page }) => {
+    const nombreUnico = `Repartidor Cancelado ${Date.now() % 100000}`
+    await loginAs(page, 'admin')
+    const t = await createTrabajador(page, { nombre: nombreUnico })
+    const trabajadorId = t.trabajador?.id || t.data?.id
+    if (!trabajadorId) { test.skip(); return }
+
+    const eRes = await apiPost(page, '/api/embarques', {
+      trabajadorId, horaSalida: '08:00',
+      carga: [{ producto: 'PACA_AGUA', cargadas: 1 }],
+    })
+    expect(eRes.status()).toBe(201)
+    const eData = await eRes.json()
+    const embarqueId = eData.data?.embarque?.id || eData.embarque?.id
+    expect(embarqueId).toBeTruthy()
+
+    const delRes = await apiDelete(page, `/api/embarques?id=${embarqueId}`)
+    expect(delRes.status()).toBe(200)
+
+    await embarquesLogin(page)
+    await page.goto(`${BASE}/embarques`)
+    await page.waitForLoadState('domcontentloaded')
+    await page.waitForTimeout(1000)
+
+    // Filtro default es "Todos" (sin chip activo) — el embarque cancelado
+    // debe verse sin necesidad de pedir explícitamente "Cancelados".
+    await expect(page.locator('button:has-text("Todos")')).toHaveClass(/bg-blue-600/)
+    await expect(page.locator('[data-testid="embarque-card"]', { hasText: nombreUnico })).toHaveCount(1)
+  })
+})
+
+// ─── Fix #28: Indicador "Mostrando: Hoy" ────────────────────────────────────
+//
+// La vista default de /embarques (sin filtro de fecha) muestra solo "hoy",
+// pero nada en pantalla lo decía — un embarque de ayer parecía "perdido" en
+// vez de simplemente estar fuera de un rango implícito. Hace explícito el
+// rango que ya existía.
+
+test.describe('Embarques — Fix #28: indicador "Mostrando: Hoy"', () => {
+
+  test('badge visible sin filtro de fecha, oculto con rango explícito activo', async ({ page }) => {
+    await embarquesLogin(page)
+    await page.goto(`${BASE}/embarques`)
+    await page.waitForLoadState('domcontentloaded')
+
+    const badge = page.locator('[data-testid="mostrando-hoy-badge"]')
+    await expect(badge).toBeVisible()
+    await expect(badge).toHaveText('Mostrando: Hoy')
+
+    // Activar un rango explícito ("Ver últimos 30 días") debe ocultar el
+    // badge — ya no aplica el default implícito de "hoy".
+    await page.locator('[data-testid="ver-ultimos-30-dias"]').click()
+    await page.waitForTimeout(500)
+    await expect(badge).not.toBeVisible()
+  })
+})
+
+// ─── Fix #29: Fetches paralelos al cambiar de filtro ────────────────────────
+//
+// Usuarios reportaron un delay perceptible al cambiar de filtro en
+// producción, pese a haber pocos embarques. Causa: fetchData() esperaba
+// /api/embarques, /api/stock-estimado y (condicionalmente)
+// /api/embarques?all=true&stock=true en serie, aunque son independientes
+// entre sí. Se paralelizaron con Promise.all. Verificación: con ambos
+// endpoints artificialmente retrasados el mismo tiempo fijo, el tiempo total
+// hasta que ambas respuestas llegan debe acercarse a ese retraso (paralelo),
+// no a la suma de los dos (secuencial).
+
+test.describe('Embarques — Fix #29: fetches paralelos', () => {
+
+  test('cambiar de filtro de estado no serializa las llamadas de red', async ({ page }) => {
+    await embarquesLogin(page)
+    await page.goto(`${BASE}/embarques`)
+    await page.waitForLoadState('domcontentloaded')
+    await page.waitForTimeout(500)
+
+    const DELAY_MS = 700
+    await page.route('**/api/embarques?*', async (route) => {
+      await new Promise((r) => setTimeout(r, DELAY_MS))
+      await route.continue()
+    })
+    await page.route('**/api/stock-estimado', async (route) => {
+      await new Promise((r) => setTimeout(r, DELAY_MS))
+      await route.continue()
+    })
+
+    const embarquesResponse = page.waitForResponse(
+      (res) => res.url().includes('/api/embarques?') && res.request().method() === 'GET' && res.status() === 200
+    )
+    const stockResponse = page.waitForResponse(
+      (res) => res.url().includes('/api/stock-estimado') && res.status() === 200
+    )
+
+    const start = Date.now()
+    await page.locator('button:has-text("Abiertos")').click()
+    await Promise.all([embarquesResponse, stockResponse])
+    const elapsed = Date.now() - start
+
+    // Secuencial (bug): ~2×DELAY_MS. Paralelo (fix): ~DELAY_MS. El umbral de
+    // 1.6x deja margen para jitter de CI sin poder confundirse con el caso
+    // secuencial.
+    expect(elapsed).toBeLessThan(DELAY_MS * 1.6)
+  })
+})
+
+// ─── Fix #30: Estadísticas no oculta el detalle sin embarques cerrados ──────
+//
+// La pestaña "Estadísticas" mostraba "No hay embarques cerrados en este
+// período" (ocultando TODO, incluida la tabla "Detalle de Embarques") cada
+// vez que no había ningún embarque CERRADO/EN_RUTA, aunque sí hubiera
+// embarques ABIERTO/CANCELADO en el período — el propio encabezado de esa
+// tabla dice "Todos los embarques en el período seleccionado", contradiciendo
+// la condición que la ocultaba. El gate ahora se basa en si hay algún
+// embarque en absoluto (embarquesDetalle), no en si hay alguno cerrado.
+
+test.describe('Embarques — Fix #30: Stats no oculta detalle sin cerrados', () => {
+
+  test('embarque ABIERTO (sin cerrar) aparece en el detalle de Estadísticas', async ({ page }) => {
+    const nombreUnico = `Repartidor StatsAbierto ${Date.now() % 100000}`
+    await loginAs(page, 'admin')
+    const t = await createTrabajador(page, { nombre: nombreUnico })
+    const trabajadorId = t.trabajador?.id || t.data?.id
+    if (!trabajadorId) { test.skip(); return }
+
+    const eRes = await apiPost(page, '/api/embarques', {
+      trabajadorId, horaSalida: '08:00',
+      carga: [{ producto: 'PACA_AGUA', cargadas: 1 }],
+    })
+    expect(eRes.status()).toBe(201)
+    const eData = await eRes.json()
+    const embarqueId = eData.data?.embarque?.id || eData.embarque?.id
+    expect(embarqueId).toBeTruthy()
+    // Se deja en ABIERTO a propósito: no se envía ni se cierra.
+
+    await embarquesLogin(page)
+    await page.goto(`${BASE}/embarques`)
+    await page.waitForLoadState('domcontentloaded')
+    await page.locator('button:has-text("Estadísticas")').click()
+    await page.waitForTimeout(1000)
+
+    // Antes: pantalla vacía pese a haber un embarque en el período.
+    await expect(page.locator('text=No hay embarques en este período')).not.toBeVisible()
+    await expect(page.locator('text=Detalle de Embarques')).toBeVisible()
+    await expect(page.locator('tbody tr', { hasText: nombreUnico })).toHaveCount(1)
+  })
+})

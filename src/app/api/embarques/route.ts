@@ -15,7 +15,6 @@ import { getTodayRange, buildDateRangeFilter, todayStringBogota } from '@/lib/da
 import { logAudit } from '@/lib/audit'
 import { calcularPesoDesdeCarga, getCapacidadInfo, type CargaSnapshot } from '@/lib/embarque-capacidad'
 import { emptyStock } from '@/lib/stock'
-import { EstadoEmbarque } from '@prisma/client'
 import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
@@ -73,10 +72,12 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // FIX UX: "Todos" (sin filtro estado) debe incluir CANCELADO. Antes se
+    // excluía implícitamente, lo que hacía que un embarque cancelado
+    // "desapareciera" de la vista default y solo fuera visible pidiendo
+    // ?estado=CANCELADO explícitamente — contra-intuitivo para el usuario.
     if (estado) {
       where.estado = estado
-    } else {
-      where.estado = { not: EstadoEmbarque.CANCELADO }
     }
 
     if (!(all === 'true')) {
@@ -134,7 +135,17 @@ export async function GET(request: NextRequest) {
       prisma.embarque.count({ where }),
     ])
 
-    const embarques = await Promise.all(embarquesRaw.map(async (e) => {
+    // FIX N+1: antes se llamaba enrichPedidosWithNegocio() una vez por
+    // embarque (2 queries — negocios + clientes — por cada uno), hasta 2N
+    // round trips a la DB para N embarques. Ahora se aplanan todos los
+    // pedidos de todos los embarques y se enriquecen en una sola llamada
+    // (2 queries totales); el orden se preserva así que se puede volver a
+    // repartir por embarque usando la longitud de cada `e.pedidos` original.
+    const allPedidos = embarquesRaw.flatMap((e) => e.pedidos)
+    const allPedidosEnriquecidos = await enrichPedidosWithNegocio(allPedidos)
+
+    let cursor = 0
+    const embarques = embarquesRaw.map((e) => {
       const carga: CargaSnapshot = emptyStock() as CargaSnapshot
       for (const prod of e.productos) {
         const key = prod.producto as keyof typeof carga
@@ -148,7 +159,8 @@ export async function GET(request: NextRequest) {
       const pesoKg = calcularPesoDesdeCarga(carga)
       const capacidadKg = e.trabajador.capacidadKg || 500
       const capacidadInfo = getCapacidadInfo(totalPacas, pesoKg, capacidadKg)
-      const pedidosEnriquecidos = await enrichPedidosWithNegocio(e.pedidos)
+      const pedidosEnriquecidos = allPedidosEnriquecidos.slice(cursor, cursor + e.pedidos.length)
+      cursor += e.pedidos.length
       return {
         ...e,
         pedidos: pedidosEnriquecidos.map((p) => ({
@@ -162,7 +174,7 @@ export async function GET(request: NextRequest) {
         capacidadKg,
         capacidadInfo,
       }
-    }))
+    })
 
     const stock = request.nextUrl.searchParams.get('stock')
     if (stock === 'true') {

@@ -66,14 +66,21 @@ export async function POST(request: NextRequest) {
     // pedidos con el mismo recurrenteBatchId → doble pedido, doble
     // factura, doble cobro.
 
-    // Race-guard: validate proxGeneracion hasn't shifted since preview
-    const plantillasActuales = await prisma.plantillaRecurrente.findMany({
-      where: { id: { in: decisiones.map(d => d.recurrenteId) } },
-      include: {
-        cliente: { select: { id: true, nombre: true, activo: true, bloqueado: true, limitePedidosFiados: true } },
-        productos: true,
-      },
-    })
+    // Race-guard: validate proxGeneracion hasn't shifted since preview.
+    // limiteConfig (paso A8) no depende de plantillasActuales — se carga
+    // en paralelo en vez de esperar a que termine la query anterior.
+    const [plantillasActuales, limiteConfig] = await Promise.all([
+      prisma.plantillaRecurrente.findMany({
+        where: { id: { in: decisiones.map(d => d.recurrenteId) } },
+        include: {
+          cliente: { select: { id: true, nombre: true, activo: true, bloqueado: true, limitePedidosFiados: true } },
+          productos: true,
+        },
+      }),
+      // A8: Check fiado limit for all clients.
+      // FIX C-FIADOS-1: solo pedidos ENTREGADOS con saldo > 0 cuentan.
+      prisma.config.findUnique({ where: { clave: 'LIMITE_PEDIDOS_FIADOS_DEFAULT' } }),
+    ])
     const cambiadas = plantillasActuales.filter(pt => !pt.proxGeneracion || pt.proxGeneracion > fecha)
     if (cambiadas.length > 0) {
       return apiError('Algunas plantillas ya fueron generadas o modificadas. Recarga el preview.', 409)
@@ -85,10 +92,6 @@ export async function POST(request: NextRequest) {
       const nombres = inactivas.map(pt => pt.clienteId || pt.negocioId || 'unknown').join(', ')
       return apiError(`Clientes inactivos o bloqueados: ${nombres}`, 400)
     }
-
-    // A8: Check fiado limit for all clients.
-    // FIX C-FIADOS-1: solo pedidos ENTREGADOS con saldo > 0 cuentan.
-    const limiteConfig = await prisma.config.findUnique({ where: { clave: 'LIMITE_PEDIDOS_FIADOS_DEFAULT' } })
 
     const limitesPorCliente = new Map<string, number>()
     for (const pt of plantillasActuales) {

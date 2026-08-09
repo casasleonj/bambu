@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useRef, useMemo, useTransition } from 'react'
+import React, { useState, useEffect, useRef, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
 import { toast } from 'sonner'
@@ -42,6 +42,10 @@ interface ClienteTableProps {
   filtrosActivos: FiltrosActivos
   allClientesLoading?: boolean
   loading?: boolean
+  filterSaldo?: boolean
+  filterFrecuencia?: boolean
+  onFilterSaldoChange?: (val: boolean) => void
+  onFilterFrecuenciaChange?: (val: boolean) => void
 }
 
 export const ClienteTable = React.memo(function ClienteTable({
@@ -67,11 +71,13 @@ export const ClienteTable = React.memo(function ClienteTable({
   filtrosActivos,
   allClientesLoading = false,
   loading = false,
+  filterSaldo = false,
+  filterFrecuencia = false,
+  onFilterSaldoChange = () => {},
+  onFilterFrecuenciaChange = () => {},
 }: ClienteTableProps) {
   const router = useRouter()
   const pathname = usePathname()
-  const [filterSaldo, setFilterSaldo] = useState(false)
-  const [filterFrecuencia, setFilterFrecuencia] = useState(false)
   const [quickActionsRow, setQuickActionsRow] = useState<string | null>(null)
   const quickActionsRef = useRef<HTMLDivElement>(null)
   const [isPending, startTransition] = useTransition()
@@ -105,12 +111,9 @@ export const ClienteTable = React.memo(function ClienteTable({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [quickActionsRow])
 
-  const clientesFiltrados = useMemo(() => clientes.filter((c) => {
-    if (filterSaldo && !(c.saldoPendiente && c.saldoPendiente > 0)) return false
-    if (filterFrecuencia && !c.plantillaRecurrente?.activo) return false
-    return true
-  }), [clientes, filterSaldo, filterFrecuencia])
-
+  // El filtrado por saldo/frecuencia ya viene aplicado en `clientes` (lo hace
+  // el padre sobre la lista completa, antes de paginar). Ver comentario en
+  // clientes-client/index.tsx sobre por qué no se filtra acá.
   const hasActiveFilters =
     filterSaldo ||
     filterFrecuencia ||
@@ -120,8 +123,8 @@ export const ClienteTable = React.memo(function ClienteTable({
     optimisticFiltros.ubicacionMaps !== 'todos'
 
   const clearFilters = () => {
-    setFilterSaldo(false)
-    setFilterFrecuencia(false)
+    onFilterSaldoChange(false)
+    onFilterFrecuenciaChange(false)
     onSearchChange('')
     setOptimisticFiltroRiesgo(null)
     const params = new URLSearchParams(window.location.search)
@@ -254,7 +257,7 @@ export const ClienteTable = React.memo(function ClienteTable({
         <div className="flex flex-wrap gap-2">
           <Tooltip content="Mostrar solo clientes con saldo pendiente" position="bottom">
             <button
-              onClick={() => setFilterSaldo(!filterSaldo)}
+              onClick={() => onFilterSaldoChange(!filterSaldo)}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[40px] md:min-h-0 rounded-full text-xs font-medium border transition ${
                 filterSaldo
                   ? 'bg-red-50 border-red-200 text-red-700'
@@ -271,7 +274,7 @@ export const ClienteTable = React.memo(function ClienteTable({
 
           <Tooltip content="Mostrar solo clientes con frecuencia de compra configurada" position="bottom">
             <button
-              onClick={() => setFilterFrecuencia(!filterFrecuencia)}
+              onClick={() => onFilterFrecuenciaChange(!filterFrecuencia)}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[40px] md:min-h-0 rounded-full text-xs font-medium border transition ${
                 filterFrecuencia
                   ? 'bg-green-50 border-green-200 text-green-700'
@@ -506,7 +509,7 @@ export const ClienteTable = React.memo(function ClienteTable({
           </div>
         ) : (
           <div className="space-y-3">
-            {clientesFiltrados.map((cliente) => {
+            {clientes.map((cliente) => {
               return (
                 <div
                   key={cliente.id}

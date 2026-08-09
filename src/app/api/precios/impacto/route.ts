@@ -54,21 +54,50 @@ export async function GET(request: NextRequest) {
       ? ((precioNuevo - precioActual) / precioActual) * 100 
       : 0
 
-    // 2. Buscar clientes con preciosEspeciales que contengan este código
-    const clientesConEspeciales = await prisma.cliente.findMany({
-      where: {
-        preciosEspeciales: {
-          contains: producto.codigo,
+    // 2-4. Clientes con precio especial, pedidos pendientes y rangos
+    // existentes solo dependen del producto ya resuelto (paso 1), no entre
+    // sí — se cargan en paralelo en vez de 3 round trips secuenciales.
+    const [clientesConEspeciales, pedidosPendientes, rangosExistentes] = await Promise.all([
+      // 2. Buscar clientes con preciosEspeciales que contengan este código
+      prisma.cliente.findMany({
+        where: {
+          preciosEspeciales: {
+            contains: producto.codigo,
+          },
+          activo: true,
         },
-        activo: true,
-      },
-      select: {
-        id: true,
-        nombre: true,
-        apellido: true,
-        preciosEspeciales: true,
-      },
-    })
+        select: {
+          id: true,
+          nombre: true,
+          apellido: true,
+          preciosEspeciales: true,
+        },
+      }),
+      // 3. Contar pedidos pendientes con este producto
+      prisma.pedido.count({
+        where: {
+          estadoEntrega: { notIn: ['ENTREGADO', 'CANCELADO', 'ANULADO'] },
+          items: {
+            some: {
+              producto: producto.codigo,
+            },
+          },
+        },
+      }),
+      // 4. Obtener rangos existentes para contexto
+      prisma.precioVolumen.findMany({
+        where: {
+          productoId,
+          activo: true,
+        },
+        select: {
+          cantMin: true,
+          cantMax: true,
+          precio: true,
+        },
+        orderBy: { cantMin: 'asc' },
+      }),
+    ])
 
     // Parsear y extraer el precio especial de cada cliente
     const clientesAfectados = clientesConEspeciales.map(cliente => {
@@ -88,32 +117,6 @@ export async function GET(request: NextRequest) {
         desviacion: Math.round(desviacion * 10) / 10,
       }
     }).filter(c => c.precioEspecial > 0) // Solo los que realmente tienen especial para este producto
-
-    // 3. Contar pedidos pendientes con este producto
-    const pedidosPendientes = await prisma.pedido.count({
-      where: {
-        estadoEntrega: { notIn: ['ENTREGADO', 'CANCELADO', 'ANULADO'] },
-        items: {
-          some: {
-            producto: producto.codigo,
-          },
-        },
-      },
-    })
-
-    // 4. Obtener rangos existentes para contexto
-    const rangosExistentes = await prisma.precioVolumen.findMany({
-      where: {
-        productoId,
-        activo: true,
-      },
-      select: {
-        cantMin: true,
-        cantMax: true,
-        precio: true,
-      },
-      orderBy: { cantMin: 'asc' },
-    })
 
     return apiSuccess({
       impacto: {

@@ -123,102 +123,76 @@ export async function resolverPrecio(
   return { precio: 0, origen: 'base' }
 }
 
+export type TiersByCode = Record<string, Array<{ cantMin: number; cantMax: number | null; precio: number }>>
+export type ProductosByCode = Record<string, { aplicaDomicilio: boolean; sobreCostoDomicilio: number; precioBase: number }>
+
 /**
- * Resolve prices for all products in a pedido.
- * Uses a SINGLE batch query for all volume tiers + products.
- * Returns a map of product code -> resolved price info.
+ * Batch-loads volume tiers + product configs for a set of product codes in
+ * exactly 2 parallel queries, no matter how many codes/items are involved.
  *
- * NUEVO: Supports negocioId — checks negocio.preciosEspeciales first,
- * then falls back to cliente.preciosEspeciales for backward compatibility.
+ * Extracted out of resolverPreciosPedido() so callers that already resolved
+ * clienteOverrides themselves (e.g. /api/precios/resolver, which enforces
+ * negocio-ownership before trusting preciosEspeciales — see route.ts) can
+ * reuse the batching without duplicating or bypassing that check.
  */
-export async function resolverPreciosPedido(
+export async function cargarTiersYProductos(
+  activeCodes: ProductCode[],
+  db?: PrismaClient | Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$extends'>,
+): Promise<{ tiersByCode: TiersByCode; productosByCode: ProductosByCode }> {
+  const tiersByCode: TiersByCode = {}
+  const productosByCode: ProductosByCode = {}
+  if (activeCodes.length === 0) return { tiersByCode, productosByCode }
+
+  const client = db || prisma
+  const [allTiers, allProductos] = await Promise.all([
+    client.precioVolumen.findMany({
+      where: {
+        producto: { codigo: { in: activeCodes } },
+        activo: true,
+      },
+      include: { producto: true },
+      orderBy: [{ producto: { codigo: 'asc' } }, { cantMin: 'asc' }],
+    }),
+    client.producto.findMany({
+      where: { codigo: { in: activeCodes } },
+      select: { codigo: true, aplicaDomicilio: true, sobreCostoDomicilio: true, precioBase: true },
+    }),
+  ])
+
+  for (const tier of allTiers) {
+    const code = tier.producto.codigo
+    if (!tiersByCode[code]) tiersByCode[code] = []
+    tiersByCode[code].push({
+      cantMin: tier.cantMin,
+      cantMax: tier.cantMax,
+      precio: Number(tier.precio),
+    })
+  }
+
+  for (const prod of allProductos) {
+    productosByCode[prod.codigo] = {
+      aplicaDomicilio: prod.aplicaDomicilio,
+      sobreCostoDomicilio: Number(prod.sobreCostoDomicilio),
+      precioBase: Number(prod.precioBase),
+    }
+  }
+
+  return { tiersByCode, productosByCode }
+}
+
+/**
+ * Resolve prices for a set of items using ALREADY-LOADED tiers/product
+ * configs (no DB access — pure function). Same priority order as
+ * resolverPrecio(): manual > cliente/negocio override > volume tier > base
+ * price, plus domicilio surcharge.
+ */
+export function resolverPreciosConContexto(
   items: Array<{ codigo: ProductCode; cantidad: number; precioManual?: number }>,
   canal: Canal,
-  clienteId?: string,
-  negocioId?: string | null,
-  db?: PrismaClient | Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$extends'>,
-): Promise<PrecioResuelto[]> {
-  // Get client/negocio overrides — negocio takes priority
-  let clienteOverrides: Record<string, number> | null = null
-  if (clienteId) {
-    const client = db || prisma
-
-    // Try negocio first
-    if (negocioId) {
-      const negocio = await client.negocio.findUnique({
-        where: { id: negocioId },
-        select: { preciosEspeciales: true },
-      })
-      if (negocio?.preciosEspeciales) {
-        try {
-          clienteOverrides = JSON.parse(negocio.preciosEspeciales)
-        } catch { /* invalid JSON, fall through to cliente */ }
-      }
-    }
-
-    // Fallback to cliente if negocio had no overrides
-    if (!clienteOverrides) {
-      const cliente = await client.cliente.findUnique({
-        where: { id: clienteId },
-        select: { preciosEspeciales: true },
-      })
-      if (cliente?.preciosEspeciales) {
-        try {
-          clienteOverrides = JSON.parse(cliente.preciosEspeciales)
-        } catch { /* invalid JSON, ignore */ }
-      }
-    }
-  }
-
-  // Batch load all relevant volume tiers + product configs in ONE query each
-  const activeCodes = items.filter(i => i.cantidad > 0).map(i => i.codigo)
-  const maxCantidades: Record<string, number> = {}
-  for (const item of items) {
-    if (item.cantidad > 0) {
-      maxCantidades[item.codigo] = Math.max(maxCantidades[item.codigo] || 0, item.cantidad)
-    }
-  }
-
-  let tiersByCode: Record<string, Array<{ cantMin: number; cantMax: number | null; precio: number }>> = {}
-  let productosByCode: Record<string, { aplicaDomicilio: boolean; sobreCostoDomicilio: number; precioBase: number }> = {}
-
-  if (activeCodes.length > 0) {
-    const client = db || prisma
-    const [allTiers, allProductos] = await Promise.all([
-      client.precioVolumen.findMany({
-        where: {
-          producto: { codigo: { in: activeCodes } },
-          activo: true,
-        },
-        include: { producto: true },
-        orderBy: [{ producto: { codigo: 'asc' } }, { cantMin: 'asc' }],
-      }),
-      client.producto.findMany({
-        where: { codigo: { in: activeCodes } },
-        select: { codigo: true, aplicaDomicilio: true, sobreCostoDomicilio: true, precioBase: true },
-      }),
-    ])
-
-    for (const tier of allTiers) {
-      const code = tier.producto.codigo
-      if (!tiersByCode[code]) tiersByCode[code] = []
-      tiersByCode[code].push({
-        cantMin: tier.cantMin,
-        cantMax: tier.cantMax,
-        precio: Number(tier.precio),
-      })
-    }
-
-    for (const prod of allProductos) {
-      productosByCode[prod.codigo] = {
-        aplicaDomicilio: prod.aplicaDomicilio,
-        sobreCostoDomicilio: Number(prod.sobreCostoDomicilio),
-        precioBase: Number(prod.precioBase),
-      }
-    }
-  }
-
-  // Resolve each item using pre-loaded tiers (no more DB calls)
+  clienteOverrides: Record<string, number> | null,
+  tiersByCode: TiersByCode,
+  productosByCode: ProductosByCode,
+): PrecioResuelto[] {
   const results: PrecioResuelto[] = []
   for (const item of items) {
     if (item.cantidad <= 0) continue
@@ -288,6 +262,60 @@ export async function resolverPreciosPedido(
   }
 
   return results
+}
+
+/**
+ * Resolve prices for all products in a pedido.
+ * Uses a SINGLE batch query for all volume tiers + products.
+ * Returns a map of product code -> resolved price info.
+ *
+ * NUEVO: Supports negocioId — checks negocio.preciosEspeciales first,
+ * then falls back to cliente.preciosEspeciales for backward compatibility.
+ */
+export async function resolverPreciosPedido(
+  items: Array<{ codigo: ProductCode; cantidad: number; precioManual?: number }>,
+  canal: Canal,
+  clienteId?: string,
+  negocioId?: string | null,
+  db?: PrismaClient | Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$extends'>,
+): Promise<PrecioResuelto[]> {
+  // Get client/negocio overrides — negocio takes priority
+  let clienteOverrides: Record<string, number> | null = null
+  if (clienteId) {
+    const client = db || prisma
+
+    // Try negocio first
+    if (negocioId) {
+      const negocio = await client.negocio.findUnique({
+        where: { id: negocioId },
+        select: { preciosEspeciales: true },
+      })
+      if (negocio?.preciosEspeciales) {
+        try {
+          clienteOverrides = JSON.parse(negocio.preciosEspeciales)
+        } catch { /* invalid JSON, fall through to cliente */ }
+      }
+    }
+
+    // Fallback to cliente if negocio had no overrides
+    if (!clienteOverrides) {
+      const cliente = await client.cliente.findUnique({
+        where: { id: clienteId },
+        select: { preciosEspeciales: true },
+      })
+      if (cliente?.preciosEspeciales) {
+        try {
+          clienteOverrides = JSON.parse(cliente.preciosEspeciales)
+        } catch { /* invalid JSON, ignore */ }
+      }
+    }
+  }
+
+  // Batch load all relevant volume tiers + product configs in ONE query each
+  const activeCodes = items.filter(i => i.cantidad > 0).map(i => i.codigo)
+  const { tiersByCode, productosByCode } = await cargarTiersYProductos(activeCodes, db)
+
+  return resolverPreciosConContexto(items, canal, clienteOverrides, tiersByCode, productosByCode)
 }
 
 /**

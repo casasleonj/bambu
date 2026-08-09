@@ -5,9 +5,12 @@ import BaseCajaModal from '@/components/base-caja-modal'
 const fetchMock = vi.fn()
 
 vi.mock('next-auth/react', () => {
-  const session = { data: { user: { role: 'ADMIN' } }, status: 'authenticated' }
+  // Devuelve un objeto NUEVO en cada llamada, como hace next-auth's
+  // SessionProvider en cada poll (refetchInterval: 60), aunque el
+  // contenido no cambie — esto es justo lo que rompía checkBaseDia
+  // cuando dependía del objeto `session` completo en vez de un primitivo.
   return {
-    useSession: () => session,
+    useSession: () => ({ data: { user: { role: 'ADMIN' } }, status: 'authenticated' }),
   }
 })
 
@@ -67,5 +70,44 @@ describe('BaseCajaModal', () => {
     const input = screen.getByPlaceholderText('50000')
     expect(input).toHaveAttribute('inputMode', 'numeric')
     expect(input).toHaveAttribute('pattern', '[0-9]*')
+  })
+
+  it('no resetea el input ni re-verifica cuando el componente re-renderiza con un nuevo objeto session (simula el polling de SessionProvider)', async () => {
+    const { rerender } = render(<BaseCajaModal />)
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('50000')).toBeInTheDocument()
+    })
+
+    const input = screen.getByPlaceholderText('50000')
+    fireEvent.change(input, { target: { value: '5' } })
+
+    await waitFor(() => {
+      expect(input).toHaveValue('5')
+    })
+
+    // Re-render: el mock de useSession devuelve un objeto nuevo cada vez
+    // (misma data), igual que un poll de SessionProvider sin cambios reales.
+    rerender(<BaseCajaModal />)
+
+    expect(screen.getByPlaceholderText('50000')).toHaveValue('5')
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('el botón "Ahora no" cierra el modal sin guardar', async () => {
+    render(<BaseCajaModal />)
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('50000')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByTestId('base-caja-modal-skip'))
+
+    await waitFor(() => {
+      expect(screen.queryByPlaceholderText('50000')).not.toBeInTheDocument()
+    })
+
+    // No debió llamar a POST /api/config (solo los 3 GET del check inicial).
+    expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 })

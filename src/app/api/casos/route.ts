@@ -69,15 +69,15 @@ export async function POST(request: NextRequest) {
     }
     const { alertaTipo, severidad, titulo, descripcion, clienteId, pedidoId } = parsed.data
 
-    // FIX CRITICAL (C-VAL-2): Validate clienteId and pedidoId exist before assignment
-    if (clienteId) {
-      const exists = await prisma.cliente.findUnique({ where: { id: clienteId }, select: { id: true } })
-      if (!exists) return apiError('Cliente no encontrado', 404)
-    }
-    if (pedidoId) {
-      const exists = await prisma.pedido.findUnique({ where: { id: pedidoId }, select: { id: true } })
-      if (!exists) return apiError('Pedido no encontrado', 404)
-    }
+    // FIX CRITICAL (C-VAL-2): Validate clienteId and pedidoId exist before assignment.
+    // Ambos checks son independientes — se corren en paralelo en vez de
+    // esperar el de cliente antes de empezar el de pedido.
+    const [clienteExists, pedidoExists] = await Promise.all([
+      clienteId ? prisma.cliente.findUnique({ where: { id: clienteId }, select: { id: true } }) : null,
+      pedidoId ? prisma.pedido.findUnique({ where: { id: pedidoId }, select: { id: true } }) : null,
+    ])
+    if (clienteId && !clienteExists) return apiError('Cliente no encontrado', 404)
+    if (pedidoId && !pedidoExists) return apiError('Pedido no encontrado', 404)
 
     const caso = await prisma.caso.create({
       data: {

@@ -100,7 +100,7 @@ export function useBaseCajaEditor() {
       const newVal = e.newValue
       if (newVal) {
         setState((prev) =>
-          prev.status === 'cerrado' || prev.status === 'sin_base' || prev.status === 'loading'
+          prev.status === 'cerrado' || prev.status === 'loading'
             ? prev
             : { status: 'con_base', valor: newVal },
         )

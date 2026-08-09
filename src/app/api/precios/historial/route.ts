@@ -44,22 +44,24 @@ export async function GET(request: NextRequest) {
       return apiError('Debe proporcionar producto o productoId', 400)
     }
 
-    // 1. Fetch PrecioHistorial entries (price changes)
-    const precioHistorial = await prisma.precioHistorial.findMany({
-      where: producto ? { producto } : {},
-      orderBy: { vigenteDesde: 'desc' },
-    })
-
-    // 2. Fetch all Historial entries for PrecioVolumen
-    const auditEntries = await prisma.historial.findMany({
-      where: { entidad: 'PrecioVolumen' },
-      orderBy: { fecha: 'desc' },
-    })
-
-    // 3. Build map: registroId -> tier data from existing PrecioVolumen rows
-    const allTiers = await prisma.precioVolumen.findMany({
-      select: { id: true, productoId: true, cantMin: true, cantMax: true, precio: true },
-    })
+    // 1-3: PrecioHistorial, Historial (audit) y PrecioVolumen no dependen
+    // entre sí — se cargan en paralelo en vez de 3 round trips secuenciales.
+    const [precioHistorial, auditEntries, allTiers] = await Promise.all([
+      // 1. Fetch PrecioHistorial entries (price changes)
+      prisma.precioHistorial.findMany({
+        where: producto ? { producto } : {},
+        orderBy: { vigenteDesde: 'desc' },
+      }),
+      // 2. Fetch all Historial entries for PrecioVolumen
+      prisma.historial.findMany({
+        where: { entidad: 'PrecioVolumen' },
+        orderBy: { fecha: 'desc' },
+      }),
+      // 3. Build map: registroId -> tier data from existing PrecioVolumen rows
+      prisma.precioVolumen.findMany({
+        select: { id: true, productoId: true, cantMin: true, cantMax: true, precio: true },
+      }),
+    ])
     const tierMap = new Map<string, { productoId: string; cantMin: number; cantMax: number | null; precio: string }>()
     for (const t of allTiers) {
       tierMap.set(t.id, { productoId: t.productoId, cantMin: t.cantMin, cantMax: t.cantMax, precio: t.precio.toString() })
