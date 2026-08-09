@@ -120,7 +120,11 @@ export class CrearPedidoUseCase {
       }
 
       // 4. Update cliente address if needed
-      if (input.actualizarCliente && !isConsumidorFinalCanonical(clienteId) && cliente) {
+      // NUNCA aplicar si el destino del pedido es un negocio/sucursal: en ese
+      // caso actualizarCliente traería la dirección del negocio, no una
+      // edición real de la dirección propia del cliente (ver bug silencioso
+      // donde la dirección del cliente quedaba pisada por la del negocio).
+      if (input.actualizarCliente && !input.negocioId && !isConsumidorFinalCanonical(clienteId) && cliente) {
         await this.clienteRepo.updateDireccion(
           clienteId,
           input.actualizarCliente.direccion || '',

@@ -1,7 +1,7 @@
 import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
 import { requirePermission } from '@/lib/auth-check'
-import { resolverPrecio, type Canal, type ProductCode } from '@/lib/pricing'
+import { resolverPrecio, cargarTiersYProductos, resolverPreciosConContexto, type Canal, type ProductCode } from '@/lib/pricing'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
@@ -62,12 +62,22 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Batch mode
+    // Batch mode — 2 queries totales (tiers + configs de producto) sin
+    // importar cuántos items vengan, en vez de hasta 2 queries POR item.
+    // Los precios de volumen/producto casi nunca cambian; no hay razón para
+    // pegarle a Postgres una vez por cada producto del carrito.
     if (parsed.data.items && parsed.data.items.length > 0) {
+      const activeCodes = [...new Set(parsed.data.items.map(i => i.codigo as ProductCode))]
+      const { tiersByCode, productosByCode } = await cargarTiersYProductos(activeCodes)
+      const itemsConCantidad = parsed.data.items.map(i => ({
+        codigo: i.codigo as ProductCode,
+        cantidad: i.cantidad || 1,
+      }))
+      const resueltos = resolverPreciosConContexto(itemsConCantidad, canal as Canal, clienteOverrides, tiersByCode, productosByCode)
+
       const precios: Record<string, { precio: number; origen: string }> = {}
-      for (const item of parsed.data.items) {
-        const result = await resolverPrecio(item.codigo as ProductCode, item.cantidad || 1, canal as Canal, clienteOverrides)
-        precios[item.codigo] = result
+      for (const r of resueltos) {
+        precios[r.codigo] = { precio: r.precio, origen: r.origen }
       }
       return apiSuccess({ precios })
     }
