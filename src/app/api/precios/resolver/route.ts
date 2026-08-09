@@ -1,7 +1,7 @@
 import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
 import { requirePermission } from '@/lib/auth-check'
-import { resolverPrecio, type Canal, type ProductCode } from '@/lib/pricing'
+import { resolverPrecio, resolverPreciosBatch, type Canal, type ProductCode } from '@/lib/pricing'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
@@ -62,13 +62,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Batch mode
+    // Batch mode: resolverPreciosBatch carga los tiers + productos de todos
+    // los items en 2 queries en vez de hasta 2 por item.
     if (parsed.data.items && parsed.data.items.length > 0) {
-      const precios: Record<string, { precio: number; origen: string }> = {}
-      for (const item of parsed.data.items) {
-        const result = await resolverPrecio(item.codigo as ProductCode, item.cantidad || 1, canal as Canal, clienteOverrides)
-        precios[item.codigo] = result
-      }
+      const batchItems = parsed.data.items.map((item) => ({
+        codigo: item.codigo as ProductCode,
+        cantidad: item.cantidad || 1,
+      }))
+      const precios = await resolverPreciosBatch(batchItems, canal as Canal, clienteOverrides)
       return apiSuccess({ precios })
     }
 

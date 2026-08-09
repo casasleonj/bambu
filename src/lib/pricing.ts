@@ -124,6 +124,107 @@ export async function resolverPrecio(
 }
 
 /**
+ * Batch version of resolverPrecio() for multiple items sharing the same
+ * canal/clienteOverrides (e.g. POST /api/precios/resolver "batch mode").
+ * Loads all matching volume tiers + product configs in 2 queries total
+ * instead of up to 2 queries per item.
+ *
+ * IMPORTANT: replicates resolverPrecio()'s exact per-item priority and
+ * surcharge semantics — in particular, the domicilio surcharge is applied
+ * ONLY to volume-tier ('volumen') matches, never to manual/cliente/base
+ * origins. This differs from resolverPreciosPedido(), whose inner loop
+ * applies the surcharge to any origin; that function is NOT a drop-in
+ * replacement here.
+ */
+export async function resolverPreciosBatch(
+  items: Array<{ codigo: ProductCode; cantidad: number }>,
+  canal: Canal,
+  clienteOverrides?: Record<string, number> | null,
+  db?: PrismaClient | Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$extends'>,
+): Promise<Record<string, { precio: number; origen: PrecioResuelto['origen'] }>> {
+  const client = db || prisma
+  const codes = [...new Set(items.map((i) => i.codigo))]
+
+  const parsedOverrides = clienteOverrides
+    ? parsePreciosEspeciales(
+        typeof clienteOverrides === 'string' ? clienteOverrides : JSON.stringify(clienteOverrides),
+      )
+    : null
+
+  const tiersByCode: Record<string, Array<{ cantMin: number; cantMax: number | null; precio: number }>> = {}
+  const productosByCode: Record<string, { aplicaDomicilio: boolean; sobreCostoDomicilio: number; precioBase: number }> = {}
+
+  if (codes.length > 0) {
+    const [allTiers, allProductos] = await Promise.all([
+      client.precioVolumen.findMany({
+        where: {
+          producto: { codigo: { in: codes } },
+          activo: true,
+        },
+        include: { producto: true },
+        orderBy: [{ producto: { codigo: 'asc' } }, { cantMin: 'asc' }],
+      }),
+      client.producto.findMany({
+        where: { codigo: { in: codes } },
+        select: { codigo: true, aplicaDomicilio: true, sobreCostoDomicilio: true, precioBase: true },
+      }),
+    ])
+
+    for (const tier of allTiers) {
+      const code = tier.producto.codigo
+      if (!tiersByCode[code]) tiersByCode[code] = []
+      tiersByCode[code].push({ cantMin: tier.cantMin, cantMax: tier.cantMax, precio: Number(tier.precio) })
+    }
+    for (const prod of allProductos) {
+      productosByCode[prod.codigo] = {
+        aplicaDomicilio: prod.aplicaDomicilio,
+        sobreCostoDomicilio: Number(prod.sobreCostoDomicilio),
+        precioBase: Number(prod.precioBase),
+      }
+    }
+  }
+
+  const results: Record<string, { precio: number; origen: PrecioResuelto['origen'] }> = {}
+  for (const item of items) {
+    // 1. Channel-specific client/negocio override (same priority as resolverPrecio)
+    const channelOverride = parsedOverrides?.[canal]?.[item.codigo]
+    if (channelOverride && channelOverride > 0) {
+      results[item.codigo] = { precio: channelOverride, origen: 'cliente' }
+      continue
+    }
+
+    // 2. Best matching volume tier: highest cantMin <= cantidad whose cantMax
+    // still covers it — mirrors resolverPrecio's `findFirst` + `orderBy cantMin desc`.
+    const tiers = tiersByCode[item.codigo] || []
+    let bestTier: { cantMin: number; cantMax: number | null; precio: number } | null = null
+    for (const t of tiers) {
+      if (t.cantMin <= item.cantidad && (t.cantMax === null || t.cantMax >= item.cantidad)) {
+        if (!bestTier || t.cantMin > bestTier.cantMin) bestTier = t
+      }
+    }
+
+    const prodConfig = productosByCode[item.codigo]
+    let precio = bestTier ? bestTier.precio : 0
+
+    // Surcharge applies ONLY to a tier match, matching resolverPrecio exactly.
+    if (canal === 'DOMICILIO' && precio > 0 && prodConfig?.aplicaDomicilio) {
+      precio += prodConfig.sobreCostoDomicilio
+    }
+
+    if (bestTier) {
+      results[item.codigo] = { precio, origen: 'volumen' }
+      continue
+    }
+
+    // 3. Fallback to producto.precioBase if no tier matched (no surcharge, matches resolverPrecio)
+    const basePrice = prodConfig?.precioBase || 0
+    results[item.codigo] = basePrice > 0 ? { precio: basePrice, origen: 'base' } : { precio: 0, origen: 'base' }
+  }
+
+  return results
+}
+
+/**
  * Resolve prices for all products in a pedido.
  * Uses a SINGLE batch query for all volume tiers + products.
  * Returns a map of product code -> resolved price info.
