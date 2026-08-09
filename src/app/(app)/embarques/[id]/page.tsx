@@ -23,64 +23,89 @@ export default async function EmbarquePage({ params }: EmbarquePageProps) {
   })
   if (!hasAccess) return notFound()
 
-  const embarqueRaw = await prisma.embarque.findUnique({
-    where: { id },
-    include: {
-      trabajador: {
-        select: {
-          id: true,
-          nombre: true,
-          capacidadKg: true,
-          comPacaAgua: true,
-          comPacaHielo: true,
-          comBotellon: true,
-          comRepartAgua: true,
-          comRepartHielo: true,
-          comRepartBotellon: true,
+  // embarqueRaw, deudasRaw, trabajadoresRaw y rutasRaw son independientes
+  // entre sí (deudasRaw solo depende del `id` de la ruta, no del resultado
+  // de embarqueRaw) — se cargan en un solo Promise.all de 4 en vez de 2
+  // round trips secuenciales (antes: embarqueRaw+deudasRaw, luego
+  // Promise.all([trabajadoresRaw, rutasRaw])).
+  const [embarqueRaw, deudasRaw, trabajadoresRaw, rutasRaw] = await Promise.all([
+    prisma.embarque.findUnique({
+      where: { id },
+      include: {
+        trabajador: {
+          select: {
+            id: true,
+            nombre: true,
+            capacidadKg: true,
+            comPacaAgua: true,
+            comPacaHielo: true,
+            comBotellon: true,
+            comRepartAgua: true,
+            comRepartHielo: true,
+            comRepartBotellon: true,
+          },
+        },
+        ruta: { select: { id: true, nombre: true } },
+        productos: true,
+        pedidos: {
+          take: 50,
+          select: {
+            id: true,
+            numero: true,
+            estado: true,
+            estadoEntrega: true,
+            estadoPago: true,
+            origen: true,
+            total: true,
+            totalPagado: true,
+            saldo: true,
+            cPacaAguaPed: true,
+            cPacaHieloPed: true,
+            cBotellonFabPed: true,
+            cBotellonDomPed: true,
+            cBolsaAguaPed: true,
+            cBolsaHieloPed: true,
+            cPacaAguaEnt: true,
+            cPacaHieloEnt: true,
+            cBotellonFabEnt: true,
+            cBotellonDomEnt: true,
+            cBolsaAguaEnt: true,
+            cBolsaHieloEnt: true,
+            cliente: { select: { id: true, nombre: true, barrio: true, telefono: true } },
+          },
+          orderBy: { numero: 'asc' },
         },
       },
-      ruta: { select: { id: true, nombre: true } },
-      productos: true,
-      pedidos: {
-        take: 50,
-        select: {
-          id: true,
-          numero: true,
-          estado: true,
-          estadoEntrega: true,
-          estadoPago: true,
-          origen: true,
-          total: true,
-          totalPagado: true,
-          saldo: true,
-          cPacaAguaPed: true,
-          cPacaHieloPed: true,
-          cBotellonFabPed: true,
-          cBotellonDomPed: true,
-          cBolsaAguaPed: true,
-          cBolsaHieloPed: true,
-          cPacaAguaEnt: true,
-          cPacaHieloEnt: true,
-          cBotellonFabEnt: true,
-          cBotellonDomEnt: true,
-          cBolsaAguaEnt: true,
-          cBolsaHieloEnt: true,
-          cliente: { select: { id: true, nombre: true, barrio: true, telefono: true } },
-        },
-        orderBy: { numero: 'asc' },
+    }),
+    prisma.deudaTrabajador.findMany({
+      where: { embarqueId: id },
+      select: { id: true, montoOriginal: true, montoPendiente: true, tipo: true, descripcion: true },
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.trabajador.findMany({
+      where: { activo: true, usaMoto: true },
+      select: {
+        id: true,
+        nombre: true,
+        capacidadKg: true,
+        comPacaAgua: true,
+        comPacaHielo: true,
+        comBotellon: true,
+        comRepartAgua: true,
+        comRepartHielo: true,
+        comRepartBotellon: true,
       },
-    },
-  })
+      orderBy: { nombre: 'asc' },
+    }),
+    prisma.ruta.findMany({
+      select: { id: true, nombre: true, repartidorId: true },
+      orderBy: { nombre: 'asc' },
+    }),
+  ])
 
   if (!embarqueRaw) {
     notFound()
   }
-
-  const deudasRaw = await prisma.deudaTrabajador.findMany({
-    where: { embarqueId: id },
-    select: { id: true, montoOriginal: true, montoPendiente: true, tipo: true, descripcion: true },
-    orderBy: { createdAt: 'desc' },
-  })
 
   const totalPacas = embarqueRaw.productos && embarqueRaw.productos.length > 0
     ? embarqueRaw.productos.reduce((sum, p) => sum + p.cargadas, 0)
@@ -170,28 +195,6 @@ export default async function EmbarquePage({ params }: EmbarquePageProps) {
     capacidadKg,
     capacidadInfo,
   }
-
-  const [trabajadoresRaw, rutasRaw] = await Promise.all([
-    prisma.trabajador.findMany({
-      where: { activo: true, usaMoto: true },
-      select: {
-        id: true,
-        nombre: true,
-        capacidadKg: true,
-        comPacaAgua: true,
-        comPacaHielo: true,
-        comBotellon: true,
-        comRepartAgua: true,
-        comRepartHielo: true,
-        comRepartBotellon: true,
-      },
-      orderBy: { nombre: 'asc' },
-    }),
-    prisma.ruta.findMany({
-      select: { id: true, nombre: true, repartidorId: true },
-      orderBy: { nombre: 'asc' },
-    }),
-  ])
 
   const trabajadores: Trabajador[] = trabajadoresRaw.map((t) => ({
     id: t.id,

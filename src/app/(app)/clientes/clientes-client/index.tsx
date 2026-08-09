@@ -790,43 +790,55 @@ export default function ClientesClient({
       }
     }
 
+    // DELETE/POST/PATCH operan sobre contactos distintos por construcción
+    // (un mismo teléfono no puede estar simultáneamente en "solo server",
+    // "solo form" y "en ambos"), así que no hay riesgo de colisión entre
+    // ellos. Se disparan todos en paralelo con Promise.all en vez de un
+    // round trip HTTP a la vez, lo que en 2G/3G rural multiplica la latencia
+    // por cada contacto tocado.
+    const ops: Promise<void>[] = []
+
     // DELETE: están en server pero NO en form
     for (const [tel, { id }] of enServer) {
       if (!enForm.has(tel)) {
-        try {
-          const res = await fetchWithTimeout(`/api/clientes/${clienteId}/contactos/${id}`, {
-            method: 'DELETE',
-          }, 10_000)
-          if (!res.ok) {
-            const data = await res.json().catch(() => ({}))
-            errors.push(`DELETE ${tel}: ${data.error?.message ?? res.status}`)
+        ops.push((async () => {
+          try {
+            const res = await fetchWithTimeout(`/api/clientes/${clienteId}/contactos/${id}`, {
+              method: 'DELETE',
+            }, 10_000)
+            if (!res.ok) {
+              const data = await res.json().catch(() => ({}))
+              errors.push(`DELETE ${tel}: ${data.error?.message ?? res.status}`)
+            }
+          } catch (err) {
+            errors.push(`DELETE ${tel}: ${err instanceof FetchTimeoutError ? 'timeout' : 'error de red'}`)
           }
-        } catch (err) {
-          errors.push(`DELETE ${tel}: ${err instanceof FetchTimeoutError ? 'timeout' : 'error de red'}`)
-        }
+        })())
       }
     }
 
     // POST: están en form pero NO en server (teléfono nuevo)
     for (const [tel, payload] of enForm) {
       if (!enServer.has(tel)) {
-        try {
-          const res = await fetchWithTimeout(`/api/clientes/${clienteId}/contactos`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              nombre: payload.nombre,
-              telefono: tel,
-              relacion: payload.relacion ?? undefined,
-            }),
-          }, 10_000)
-          if (!res.ok) {
-            const data = await res.json().catch(() => ({}))
-            errors.push(`POST ${tel}: ${data.error?.message ?? res.status}`)
+        ops.push((async () => {
+          try {
+            const res = await fetchWithTimeout(`/api/clientes/${clienteId}/contactos`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                nombre: payload.nombre,
+                telefono: tel,
+                relacion: payload.relacion ?? undefined,
+              }),
+            }, 10_000)
+            if (!res.ok) {
+              const data = await res.json().catch(() => ({}))
+              errors.push(`POST ${tel}: ${data.error?.message ?? res.status}`)
+            }
+          } catch (err) {
+            errors.push(`POST ${tel}: ${err instanceof FetchTimeoutError ? 'timeout' : 'error de red'}`)
           }
-        } catch (err) {
-          errors.push(`POST ${tel}: ${err instanceof FetchTimeoutError ? 'timeout' : 'error de red'}`)
-        }
+        })())
       }
     }
 
@@ -838,23 +850,27 @@ export default function ClientesClient({
         serverEntry.nombre !== formPayload.nombre ||
         serverEntry.relacion !== formPayload.relacion
       if (!changed) continue
-      try {
-        const res = await fetchWithTimeout(`/api/clientes/${clienteId}/contactos/${serverEntry.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            nombre: formPayload.nombre,
-            relacion: formPayload.relacion,
-          }),
-        }, 10_000)
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          errors.push(`PATCH ${tel}: ${data.error?.message ?? res.status}`)
+      ops.push((async () => {
+        try {
+          const res = await fetchWithTimeout(`/api/clientes/${clienteId}/contactos/${serverEntry.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              nombre: formPayload.nombre,
+              relacion: formPayload.relacion,
+            }),
+          }, 10_000)
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}))
+            errors.push(`PATCH ${tel}: ${data.error?.message ?? res.status}`)
+          }
+        } catch (err) {
+          errors.push(`PATCH ${tel}: ${err instanceof FetchTimeoutError ? 'timeout' : 'error de red'}`)
         }
-      } catch (err) {
-        errors.push(`PATCH ${tel}: ${err instanceof FetchTimeoutError ? 'timeout' : 'error de red'}`)
-      }
+      })())
     }
+
+    await Promise.all(ops)
 
     return { ok: errors.length === 0, errors }
   }

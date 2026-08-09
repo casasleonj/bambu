@@ -47,9 +47,12 @@ export default async function ClientesPage({
   if (resolvedSearchParams.todosNegociosConLink === 'true') apiParams.set('todosNegociosConLink', 'true')
   if (resolvedSearchParams.clienteConLink === 'true') apiParams.set('clienteConLink', 'true')
 
-  const result = await fetchClientesList(parseClienteListParams(apiParams))
-
-  const limiteGlobalFiados = await getConfigInt('LIMITE_PEDIDOS_FIADOS_DEFAULT', LIMITE_FIADOS_DEFAULT)
+  // fetchClientesList y getConfigInt son independientes — se cargan en
+  // paralelo en vez de esperar la lista de clientes antes de leer el config.
+  const [result, limiteGlobalFiados] = await Promise.all([
+    fetchClientesList(parseClienteListParams(apiParams)),
+    getConfigInt('LIMITE_PEDIDOS_FIADOS_DEFAULT', LIMITE_FIADOS_DEFAULT),
+  ])
 
   const clientes = (result.clientes ?? []) as ClientesClientProps['initialClientes']
 
