@@ -138,6 +138,29 @@ describe('useBaseCajaEditor', () => {
     expect(localStorage.getItem(todayKey())).toBe('30000')
   })
 
+  it('sale de sin_base cuando llega un evento storage con un nuevo valor (guardado desde el modal u otra pestaña)', async () => {
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ cierre: null }) } as Response)
+      .mockResolvedValueOnce({ ok: false } as Response)
+
+    const { result } = renderHook(() => useBaseCajaEditor())
+
+    await waitFor(() => {
+      expect(result.current.state.status).toBe('sin_base')
+    })
+
+    act(() => {
+      window.dispatchEvent(new StorageEvent('storage', { key: todayKey(), newValue: '60000' }))
+    })
+
+    await waitFor(() => {
+      expect(result.current.state.status).toBe('con_base')
+    })
+    if (result.current.state.status === 'con_base') {
+      expect(result.current.state.valor).toBe('60000')
+    }
+  })
+
   it('update con error del server: devuelve ok=false con mensaje', async () => {
     fetchMock
       .mockResolvedValueOnce({ ok: true, json: async () => ({ cierre: null }) } as Response)

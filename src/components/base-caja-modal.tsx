@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { toast } from 'sonner'
@@ -16,11 +16,28 @@ export default function BaseCajaModal() {
   const [baseDiaInput, setBaseDiaInput] = useState('')
   const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState<'checking' | 'ready' | 'error'>('checking')
+  const userRole = (session?.user as { role?: string } | undefined)?.role
+
+  // Ref mirror of showModal so checkBaseDia (re-triggered by every SessionProvider
+  // poll, every 60s) can bail out without racing an in-progress edit.
+  const showModalRef = useRef(false)
+  useEffect(() => {
+    showModalRef.current = showModal
+  }, [showModal])
 
   const closeModal = useCallback(() => {
     setShowModal(false)
     setBaseDiaInput('')
   }, [])
+
+  const skipModal = useCallback(() => {
+    try {
+      sessionStorage.setItem(`baseDiaDismissed_${todayInBogota()}`, '1')
+    } catch {
+      // sessionStorage puede fallar en modo privado; no es crítico, solo evita el re-prompt.
+    }
+    closeModal()
+  }, [closeModal])
 
   const openModal = useCallback((initialValue?: string) => {
     setBaseDiaInput(initialValue ?? '')
@@ -29,9 +46,14 @@ export default function BaseCajaModal() {
   }, [])
 
   const checkBaseDia = useCallback(async () => {
+    // Bail out if the modal is already open (e.g. the admin is mid-edit) —
+    // SessionProvider polls every 60s and hands back a new `session` object
+    // reference each time even when nothing changed, which would otherwise
+    // re-run this whole check and reset baseDiaInput out from under the user.
+    if (showModalRef.current) return
+
     setStatus('checking')
 
-    const userRole = (session?.user as { role?: string } | undefined)?.role
     if (userRole !== 'ADMIN' && userRole !== 'ASISTENTE') {
       setStatus('ready')
       return
@@ -39,6 +61,15 @@ export default function BaseCajaModal() {
 
     try {
       const today = todayInBogota()
+
+      try {
+        if (sessionStorage.getItem(`baseDiaDismissed_${today}`)) {
+          setStatus('ready')
+          return
+        }
+      } catch {
+        // sessionStorage inaccesible: continuar sin el flag de descarte.
+      }
 
       // Test mode: if Playwright pre-seeded localStorage, trust it and skip the API round-trip.
       if (typeof window !== 'undefined' && (window as unknown as { __PLAYWRIGHT_TEST__?: boolean }).__PLAYWRIGHT_TEST__) {
@@ -113,7 +144,7 @@ export default function BaseCajaModal() {
       toast.error('No se pudo verificar el estado de caja')
       setStatus('error')
     }
-  }, [session, router, persistBaseDia, openModal])
+  }, [userRole, router, persistBaseDia, openModal])
 
   useEffect(() => {
     if (sessionStatus === 'loading') return
@@ -121,11 +152,10 @@ export default function BaseCajaModal() {
       setStatus('ready')
       return
     }
-    const userRole = (session?.user as { role?: string } | undefined)?.role
     if (!userRole) return
 
     checkBaseDia()
-  }, [sessionStatus, session, checkBaseDia])
+  }, [sessionStatus, userRole, checkBaseDia])
 
   // Allow manual opening from dashboard for ADMIN/ASISTENTE (edit mode).
   useEffect(() => {
@@ -239,6 +269,16 @@ export default function BaseCajaModal() {
           >
             {saving ? 'Guardando...' : baseDiaInput ? 'Guardar cambios' : 'Continuar →'}
           </Button>
+
+          <button
+            type="button"
+            onClick={skipModal}
+            disabled={saving}
+            data-testid="base-caja-modal-skip"
+            className="w-full mt-2 py-2 text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50"
+          >
+            Ahora no
+          </button>
         </form>
       </div>
     </div>
