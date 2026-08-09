@@ -15,7 +15,6 @@ import { getTodayRange, buildDateRangeFilter } from '@/lib/dates'
 import { logAudit } from '@/lib/audit'
 import { calcularPesoDesdeCarga, getCapacidadInfo, type CargaSnapshot } from '@/lib/embarque-capacidad'
 import { emptyStock } from '@/lib/stock'
-import { EstadoEmbarque } from '@prisma/client'
 import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
@@ -93,10 +92,12 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // FIX UX: "Todos" (sin filtro estado) debe incluir CANCELADO. Antes se
+    // excluía implícitamente, lo que hacía que un embarque cancelado
+    // "desapareciera" de la vista default y solo fuera visible pidiendo
+    // ?estado=CANCELADO explícitamente — contra-intuitivo para el usuario.
     if (estado) {
       where.estado = estado
-    } else {
-      where.estado = { not: EstadoEmbarque.CANCELADO }
     }
 
     if (!(all === 'true')) {
