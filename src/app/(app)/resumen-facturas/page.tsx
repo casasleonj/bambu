@@ -207,9 +207,9 @@ export default function ResumenFacturasPage() {
   return (
     <div className="p-4 space-y-4">
       {/* Header de app — no imprimible */}
-      <div className="flex justify-between items-center print:hidden">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 print:hidden">
         <h1 className="text-2xl font-bold">Resumen Consolidado de Facturas</h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => window.history.back()}>Volver</Button>
           <Button onClick={handlePrint}>
             <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

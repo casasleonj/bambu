@@ -445,7 +445,7 @@ export default function ProductosClient({ productos: initialProductos, isAdmin =
           {productos.map((producto) => (
             <Card key={producto.id} data-testid={`producto-card-${producto.codigo}`}>
               <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                   <div>
                     <CardTitle className="text-lg">
                       {producto.nombre}
@@ -454,7 +454,7 @@ export default function ProductosClient({ productos: initialProductos, isAdmin =
                       )}
                     </CardTitle>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Button size="sm" variant="outline" data-testid={`history-btn-${producto.id}`} onClick={() => openHistory(producto.id, producto.codigo)}>
                       📋 Historial
                     </Button>
