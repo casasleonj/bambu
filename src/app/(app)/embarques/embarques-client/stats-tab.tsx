@@ -136,33 +136,55 @@ export function StatsTab({ dateRange }: StatsTabProps) {
     )
   }
 
-  if (!data?.kpiGeneral || data.kpiGeneral.totalEmbarques === 0) {
+  // FIX UX: antes esta pantalla se ocultaba por completo (incluida la tabla
+  // "Detalle de Embarques", cuyo propio encabezado dice "Todos los embarques
+  // en el período") cada vez que no había ningún embarque CERRADO/EN_RUTA —
+  // aunque sí hubiera embarques ABIERTO/CANCELADO en el período. El usuario
+  // veía "no hay embarques" cuando en realidad sí los había, solo que
+  // ninguno había llegado a ese estado. El gate de "no hay nada que mostrar"
+  // ahora se basa en `embarquesDetalle` (que sí incluye todos los estados),
+  // no en `kpiGeneral.totalEmbarques` (que solo cuenta CERRADO/EN_RUTA).
+  if (!data || data.embarquesDetalle.length === 0) {
     return (
       <div className="bg-white rounded-xl border p-8 text-center">
         <p className="text-3xl mb-3">📊</p>
         <p className="text-gray-600 font-medium">
-          No hay embarques cerrados en este período
+          No hay embarques en este período
         </p>
         <p className="text-sm text-gray-500 mt-1">
-          Las estadísticas se calculan solo con embarques que han sido cerrados
+          Ajustá el rango de fechas para ver embarques de otros días.
         </p>
       </div>
     )
   }
 
+  const kpiGeneral = data.kpiGeneral
+
   return (
     <div className="space-y-4">
-      {/* KPI Cards */}
-      <StatsKpiCards kpi={data.kpiGeneral} />
+      {kpiGeneral && kpiGeneral.totalEmbarques > 0 ? (
+        <>
+          {/* KPI Cards */}
+          <StatsKpiCards kpi={kpiGeneral} />
 
-      {/* Timeline */}
-      <StatsTimeline data={data.tendenciaDiaria} />
+          {/* Timeline */}
+          <StatsTimeline data={data.tendenciaDiaria} />
 
-      {/* By Worker + By Route side by side on large screens */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <StatsByWorker data={data.porTrabajador} />
-        <StatsByRoute data={data.porRuta} />
-      </div>
+          {/* By Worker + By Route side by side on large screens */}
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            <StatsByWorker data={data.porTrabajador} />
+            <StatsByRoute data={data.porRuta} />
+          </div>
+        </>
+      ) : (
+        <div
+          data-testid="stats-sin-metricas-notice"
+          className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800"
+        >
+          Las métricas (duración, tasa de entrega, etc.) se calculan solo con embarques cerrados o en ruta.
+          Ninguno de los embarques de este período llegó a ese estado todavía — el detalle está abajo.
+        </div>
+      )}
 
       {/* Detail table */}
       <div className="bg-white rounded-xl border overflow-hidden">

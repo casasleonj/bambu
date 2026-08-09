@@ -63,19 +63,26 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
       if (dateRange.desde) params.set('desde', dateRange.desde)
       if (dateRange.hasta) params.set('hasta', dateRange.hasta)
       if (filtroEstado) params.set('estado', filtroEstado)
-      const embarquesRes = await fetch(`/api/embarques?${params.toString()}`, { credentials: 'include' })
-
-      const embarquesJson = await embarquesRes.json()
-      const stockJson = await fetch('/api/stock-estimado', { credentials: 'include' }).then(r => r.json())
       // FIX prod-performance: evitar la llamada pesada `all=true&stock=true` en
       // cada cambio de filtro. El stock bajo solo importa para la vista default
       // (hoy); se recalcula cuando no hay rango activo (initial load + polling).
-      if (!dateRange.desde && !dateRange.hasta) {
-        const stockData = await fetch('/api/embarques?all=true&stock=true', { credentials: 'include' }).then(r => r.json())
-        if (stockData.stock) {
-          const totalStock = (stockData.stock.PACA_AGUA || 0) + (stockData.stock.PACA_HIELO || 0)
-          setStockBajo(totalStock < 50)
-        }
+      const showStock = !dateRange.desde && !dateRange.hasta
+
+      // FIX UX: estos 3 fetches son independientes entre sí (ninguno depende
+      // del resultado de otro), pero antes se esperaban en serie, sumando
+      // latencia en cada cambio de filtro. Corren en paralelo con
+      // Promise.all — mismo resultado final, sin la espera acumulada.
+      const [embarquesJson, stockJson, stockData] = await Promise.all([
+        fetch(`/api/embarques?${params.toString()}`, { credentials: 'include' }).then(r => r.json()),
+        fetch('/api/stock-estimado', { credentials: 'include' }).then(r => r.json()),
+        showStock
+          ? fetch('/api/embarques?all=true&stock=true', { credentials: 'include' }).then(r => r.json())
+          : Promise.resolve(null),
+      ])
+
+      if (stockData?.stock) {
+        const totalStock = (stockData.stock.PACA_AGUA || 0) + (stockData.stock.PACA_HIELO || 0)
+        setStockBajo(totalStock < 50)
       }
 
       setEmbarques(embarquesJson.embarques || embarquesJson.data || [])
@@ -304,13 +311,24 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
         <div className="flex items-center gap-2 flex-wrap">
           <DateRangeFilter onDateChange={handleDateChange} />
           {!dateRange.desde && !dateRange.hasta && (
-            <button
-              data-testid="ver-ultimos-30-dias"
-              onClick={() => handleVerUltimosDias(30)}
-              className="text-sm text-blue-600 hover:text-blue-800 font-medium px-2 py-1"
-            >
-              Ver últimos 30 días
-            </button>
+            <>
+              {/* FIX UX: sin un rango explícito, la vista muestra "hoy" por
+                  default — pero nada en pantalla lo decía, así que un embarque
+                  de ayer parecía "perdido". Hace explícito el rango implícito. */}
+              <span
+                data-testid="mostrando-hoy-badge"
+                className="text-sm text-gray-500 font-medium px-2 py-1 bg-gray-100 rounded-full"
+              >
+                Mostrando: Hoy
+              </span>
+              <button
+                data-testid="ver-ultimos-30-dias"
+                onClick={() => handleVerUltimosDias(30)}
+                className="text-sm text-blue-600 hover:text-blue-800 font-medium px-2 py-1"
+              >
+                Ver últimos 30 días
+              </button>
+            </>
           )}
         </div>
         <div className="flex flex-wrap gap-2 mt-3">

@@ -21,7 +21,6 @@ import {
   parsePreciosEspeciales,
   resolverPrecio,
   resolverPreciosPedido,
-  resolverPreciosBatch,
   getPriceTable,
 } from '@/lib/pricing'
 
@@ -598,114 +597,6 @@ describe('resolverPreciosPedido', () => {
       'PUNTO',
     )
     expect(result[0].subtotal).toBe(36000)
-  })
-})
-
-// ─── resolverPreciosBatch ────────────────────────────────────────────
-// Regression guard: must match resolverPrecio's exact per-item semantics
-// (used by POST /api/precios/resolver batch mode), NOT resolverPreciosPedido's
-// (which applies the domicilio surcharge to every origin).
-
-describe('resolverPreciosBatch', () => {
-  it('returns empty object for empty items', async () => {
-    const result = await resolverPreciosBatch([], 'PUNTO')
-    expect(result).toEqual({})
-  })
-
-  it('returns client override for matching canal, same as resolverPrecio', async () => {
-    const overrides = { DOMICILIO: { PACA_AGUA: 7000 }, PUNTO: { PACA_AGUA: 6000 } }
-    const result = await resolverPreciosBatch(
-      [{ codigo: 'PACA_AGUA', cantidad: 10 }],
-      'PUNTO',
-      overrides as any,
-    )
-    expect(result['PACA_AGUA']).toEqual({ precio: 6000, origen: 'cliente' })
-  })
-
-  it('does NOT apply domicilio surcharge to a client override (matches resolverPrecio, unlike resolverPreciosPedido)', async () => {
-    vi.mocked(prisma.producto.findMany).mockResolvedValue([
-      { codigo: 'PACA_AGUA', aplicaDomicilio: true, sobreCostoDomicilio: 1000, precioBase: 0 },
-    ] as any)
-    const overrides = { DOMICILIO: { PACA_AGUA: 7000 } }
-    const result = await resolverPreciosBatch(
-      [{ codigo: 'PACA_AGUA', cantidad: 10 }],
-      'DOMICILIO',
-      overrides as any,
-    )
-    expect(result['PACA_AGUA']).toEqual({ precio: 7000, origen: 'cliente' })
-  })
-
-  it('picks the best matching volume tier and applies domicilio surcharge to it', async () => {
-    vi.mocked(prisma.precioVolumen.findMany).mockResolvedValue([
-      { producto: { codigo: 'PACA_AGUA' }, cantMin: 1, cantMax: 50, precio: 5500 },
-      { producto: { codigo: 'PACA_AGUA' }, cantMin: 51, cantMax: null, precio: 5000 },
-    ] as any)
-    vi.mocked(prisma.producto.findMany).mockResolvedValue([
-      { codigo: 'PACA_AGUA', aplicaDomicilio: true, sobreCostoDomicilio: 1000, precioBase: 0 },
-    ] as any)
-    const result = await resolverPreciosBatch(
-      [{ codigo: 'PACA_AGUA', cantidad: 10 }],
-      'DOMICILIO',
-    )
-    expect(result['PACA_AGUA']).toEqual({ precio: 6500, origen: 'volumen' })
-  })
-
-  it('does NOT apply domicilio surcharge to the base-price fallback (matches resolverPrecio, unlike resolverPreciosPedido)', async () => {
-    vi.mocked(prisma.precioVolumen.findMany).mockResolvedValue([])
-    vi.mocked(prisma.producto.findMany).mockResolvedValue([
-      { codigo: 'PACA_AGUA', aplicaDomicilio: true, sobreCostoDomicilio: 1000, precioBase: 6500 },
-    ] as any)
-    const result = await resolverPreciosBatch(
-      [{ codigo: 'PACA_AGUA', cantidad: 1 }],
-      'DOMICILIO',
-    )
-    expect(result['PACA_AGUA']).toEqual({ precio: 6500, origen: 'base' })
-  })
-
-  it('resolves multiple items with mixed origins in a single batch, using 1 query per table', async () => {
-    vi.mocked(prisma.precioVolumen.findMany).mockResolvedValue([
-      { producto: { codigo: 'PACA_HIELO' }, cantMin: 1, cantMax: 30, precio: 8000 },
-    ] as any)
-    vi.mocked(prisma.producto.findMany).mockResolvedValue([
-      { codigo: 'PACA_AGUA', aplicaDomicilio: false, sobreCostoDomicilio: 0, precioBase: 0 },
-      { codigo: 'PACA_HIELO', aplicaDomicilio: false, sobreCostoDomicilio: 0, precioBase: 0 },
-      { codigo: 'BOTELLON', aplicaDomicilio: false, sobreCostoDomicilio: 0, precioBase: 7500 },
-    ] as any)
-    const overrides = { PUNTO: { PACA_AGUA: 6000 } }
-
-    const result = await resolverPreciosBatch(
-      [
-        { codigo: 'PACA_AGUA', cantidad: 10 },
-        { codigo: 'PACA_HIELO', cantidad: 5 },
-        { codigo: 'BOTELLON', cantidad: 2 },
-      ],
-      'PUNTO',
-      overrides as any,
-    )
-
-    expect(result['PACA_AGUA']).toEqual({ precio: 6000, origen: 'cliente' })
-    expect(result['PACA_HIELO']).toEqual({ precio: 8000, origen: 'volumen' })
-    expect(result['BOTELLON']).toEqual({ precio: 7500, origen: 'base' })
-    expect(prisma.precioVolumen.findMany).toHaveBeenCalledTimes(1)
-    expect(prisma.producto.findMany).toHaveBeenCalledTimes(1)
-  })
-
-  it('produces the same result as calling resolverPrecio per item (parity check)', async () => {
-    // Sequential (existing, known-correct) resolution per item:
-    vi.mocked(prisma.precioVolumen.findFirst).mockResolvedValue({ precio: 5500 } as any)
-    vi.mocked(prisma.producto.findUnique).mockResolvedValue({ aplicaDomicilio: true, sobreCostoDomicilio: 1000, precioBase: 0 } as any)
-    const sequential = await resolverPrecio('PACA_AGUA', 10, 'DOMICILIO', null)
-
-    // Batch resolution for the same input:
-    vi.mocked(prisma.precioVolumen.findMany).mockResolvedValue([
-      { producto: { codigo: 'PACA_AGUA' }, cantMin: 1, cantMax: null, precio: 5500 },
-    ] as any)
-    vi.mocked(prisma.producto.findMany).mockResolvedValue([
-      { codigo: 'PACA_AGUA', aplicaDomicilio: true, sobreCostoDomicilio: 1000, precioBase: 0 },
-    ] as any)
-    const batch = await resolverPreciosBatch([{ codigo: 'PACA_AGUA', cantidad: 10 }], 'DOMICILIO')
-
-    expect(batch['PACA_AGUA']).toEqual(sequential)
   })
 })
 

@@ -111,7 +111,10 @@ export class ActualizarPedidoUseCase {
         }
 
         // Update cliente address if needed
-        if (input.actualizarCliente && saved.clienteId !== 'CONSUMIDOR_FINAL') {
+        // NUNCA aplicar si el pedido está destinado a un negocio/sucursal:
+        // en ese caso actualizarCliente trae la dirección del negocio, no
+        // una edición real de la dirección propia del cliente.
+        if (input.actualizarCliente && !saved.negocioId && saved.clienteId !== 'CONSUMIDOR_FINAL') {
           await this.clienteRepo.updateDireccion(
             saved.clienteId,
             input.actualizarCliente.direccion || '',
