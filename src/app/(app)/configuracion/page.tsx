@@ -18,6 +18,7 @@ export default async function ConfiguracionPage() {
     DIAS_VENCIMIENTO_PROMESA: configMap.DIAS_VENCIMIENTO_PROMESA || '2',
     MAX_PEDIDOS_DIA_ALERTA: configMap.MAX_PEDIDOS_DIA_ALERTA || '2',
     LIMITE_PEDIDOS_FIADOS_DEFAULT: configMap.LIMITE_PEDIDOS_FIADOS_DEFAULT || String(LIMITE_FIADOS_DEFAULT),
+    MAX_UNIDADES_EMBARQUE: configMap.MAX_UNIDADES_EMBARQUE || '70',
   }
 
   return <ConfiguracionClient initialData={initialData} />

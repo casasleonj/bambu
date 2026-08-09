@@ -44,6 +44,7 @@ export function EmbarqueFormModal({
   })
   const [stockDisponible, setStockDisponible] = useState<StockDisponible | null>(null)
   const [tieneStockEstimado, setTieneStockEstimado] = useState(false)
+  const [maxUnidades, setMaxUnidades] = useState(70)
   const [confirmOverride, setConfirmOverride] = useState(false)
   const [overrideMotivo, setOverrideMotivo] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -99,6 +100,14 @@ export function EmbarqueFormModal({
           if (data.tieneStockEstimado) setTieneStockEstimado(data.tieneStockEstimado)
         })
         .catch(() => {})
+
+      fetch('/api/config?keys=MAX_UNIDADES_EMBARQUE', { credentials: 'include' })
+        .then(r => r.json())
+        .then(data => {
+          const n = Number(data?.MAX_UNIDADES_EMBARQUE)
+          if (Number.isInteger(n) && n > 0) setMaxUnidades(n)
+        })
+        .catch(() => {})
     }
   }, [open, isEdit, embarque])
 
@@ -122,8 +131,7 @@ export function EmbarqueFormModal({
   const totalUnidades = Object.values(carga).reduce((s, v) => s + v, 0)
   const capacidadInfo = getCapacidadInfo(totalUnidades, pesoKg, capacidadKg)
 
-  const MAX_UNIDADES = 70
-  const excedeUnidades = totalUnidades > MAX_UNIDADES
+  const excedeUnidades = totalUnidades > maxUnidades
 
   const hayStockInsuficiente = stockDisponible
     ? Object.entries(carga).some(([key, val]) => val > (stockDisponible as unknown as Record<string, number>)[key])
@@ -404,7 +412,7 @@ export function EmbarqueFormModal({
           </div>
         )}
         {excedeUnidades && (
-          <p className="text-xs text-red-600 font-medium">⛔ Máximo {MAX_UNIDADES} unidades ({totalUnidades})</p>
+          <p className="text-xs text-red-600 font-medium">⛔ Máximo {maxUnidades} unidades ({totalUnidades})</p>
         )}
         {capacidadInfo.nivel === 'excedido' && !excedeUnidades && (
           <p className="text-xs text-yellow-600">⚠️ Excede peso recomendado ({capacidadKg}kg) — proceder con precaución</p>

@@ -103,6 +103,27 @@ describe('validateConfigValue — 5 claves nuevas (alertas antifraude)', () => {
   })
 })
 
+describe('MAX_UNIDADES_EMBARQUE', () => {
+  it('acepta 70 (default)', () => {
+    expect(validateConfigValue('MAX_UNIDADES_EMBARQUE', '70')).toBeNull()
+  })
+  it('acepta 1 (mínimo)', () => {
+    expect(validateConfigValue('MAX_UNIDADES_EMBARQUE', '1')).toBeNull()
+  })
+  it('rechaza 0', () => {
+    expect(validateConfigValue('MAX_UNIDADES_EMBARQUE', '0')).not.toBeNull()
+  })
+  it('rechaza negativo', () => {
+    expect(validateConfigValue('MAX_UNIDADES_EMBARQUE', '-5')).not.toBeNull()
+  })
+  it('rechaza decimal', () => {
+    expect(validateConfigValue('MAX_UNIDADES_EMBARQUE', '70.5')).not.toBeNull()
+  })
+  it('rechaza no-numérico', () => {
+    expect(validateConfigValue('MAX_UNIDADES_EMBARQUE', 'abc')).not.toBeNull()
+  })
+})
+
 describe('validateConfigValue — clave desconocida (forward-compat)', () => {
   it('acepta cualquier valor para clave desconocida', () => {
     expect(validateConfigValue('CLAVE_FUTURA', 'lo-que-sea')).toBeNull()

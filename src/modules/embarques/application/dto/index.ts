@@ -14,10 +14,12 @@ export interface CrearEmbarqueInput {
   carga: Record<ProductCode, number>
   tipoMoto?: string
   baseDinero: number
+  horaSalida?: Date
   codigoVisita?: string
   obs?: string
   createdById?: string
   verificarStock?: boolean
+  maxUnidades?: number
 }
 
 export interface ActualizarEmbarqueInput {
@@ -30,6 +32,7 @@ export interface ActualizarEmbarqueInput {
   baseDinero?: number
   codigoVisita?: string
   obs?: string
+  maxUnidades?: number
 }
 
 export interface EnviarEmbarqueInput {
