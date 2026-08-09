@@ -95,14 +95,14 @@ export function SugerenciasClient() {
 
   return (
     <div className="p-4 space-y-4 max-w-7xl mx-auto">
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Sugerencias de llamadas</h1>
           <p className="text-sm text-gray-500 mt-1">
             Clientes con alta probabilidad de pedir agua. Score auto-computado por el cron diario.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={triggerRecompute}
             disabled={recalculando}

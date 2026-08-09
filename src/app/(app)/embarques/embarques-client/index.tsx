@@ -237,9 +237,9 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
         <h1 className="text-2xl font-bold text-gray-800">Embarques del Día</h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {isAdmin && (
             <Tooltip content="Ajustar stock temporal para embarques de hoy" title="Stock Estimado" position="bottom">
               <button
