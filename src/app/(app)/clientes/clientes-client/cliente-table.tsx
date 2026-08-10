@@ -18,6 +18,7 @@ import {
   formatearTelefonoParaLlamar,
 } from '@/lib/telefono'
 import type { NegocioDetail } from '@/components/negocio-detail-modal'
+import { warmPedidoFormAssets } from '@/lib/cliente-detail-cache'
 
 interface ClienteTableProps {
   clientes: Cliente[]
@@ -549,6 +550,8 @@ export const ClienteTable = React.memo(function ClienteTable({
                         <Link
                           href={`/pedidos?new=1&clienteId=${cliente.id}`}
                           onClick={(e) => e.stopPropagation()}
+                          onPointerEnter={() => warmPedidoFormAssets(cliente.id)}
+                          onFocus={() => warmPedidoFormAssets(cliente.id)}
                           className="flex items-center gap-2 px-3 py-2 min-h-[40px] md:min-h-0 text-sm text-gray-700 hover:bg-gray-50"
                         >
                           <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">

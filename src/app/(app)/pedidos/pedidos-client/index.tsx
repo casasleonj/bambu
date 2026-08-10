@@ -37,6 +37,7 @@ import { useReconnectHandler } from '@/hooks/use-reconnect-handler'
 import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 import { useRealtimeListener } from '@/hooks/use-realtime-listener'
 import { GpsCaptureModal } from '@/components/gps-capture-modal'
+import { loadClienteDetail } from '@/lib/cliente-detail-cache'
 
 const PedidoFormUnified = dynamic(() => import('@/components/pedido-form-unified').then(m => m.PedidoFormUnified), { ssr: false })
 import type { PedidoInicial, PedidoUnifiedData } from '@/components/pedido-form-unified'
@@ -412,21 +413,48 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     return () => clearTimeout(id)
   }, [])
 
-  // Carga inicial: clientes/embarques para el modal de nuevo pedido.
-  // El listado principal se carga por usePedidos(autoFetch).
+  // Carga inicial: clientes/embarques para el buscador interno del modal de
+  // nuevo pedido. El listado principal se carga por usePedidos(autoFetch).
+  // Deliberadamente NO se espera este fetch para abrir el modal cuando hay
+  // un clienteId conocido (ver efecto siguiente): `fetchClientes()` pega a
+  // GET /api/clientes?all=true, un scan sin paginar de toda la tabla con 4
+  // relaciones — antes bloqueaba la apertura del modal solo para encontrar
+  // el ÚNICO cliente que ya se conocía por id.
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      const [clientesList] = await Promise.all([fetchClientes(), fetchEmbarques()])
+      await Promise.all([fetchClientes(), fetchEmbarques()])
       if (cancelled) return
+    })()
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-      const clienteId = shallowParams.get('clienteId')
-      const negocioId = shallowParams.get('negocioId')
-      const openNew = shallowParams.get('new') === '1'
+  // Apertura del modal de "Nuevo Pedido" con cliente pre-seleccionado
+  // (?new=1&clienteId=X, deep-link desde /clientes). Fetch targeted de un
+  // solo cliente (con caché compartida, ver src/lib/cliente-detail-cache.ts)
+  // en vez de esperar la lista completa de arriba — la apertura del modal ya
+  // no depende de fetchClientes()/fetchEmbarques().
+  useEffect(() => {
+    let cancelled = false
+    const clienteId = shallowParams.get('clienteId')
+    const negocioId = shallowParams.get('negocioId')
+    const openNew = shallowParams.get('new') === '1'
 
-      if (openNew && clienteId) {
-        const cliente = clientesList.find((c: Cliente) => c.id === clienteId)
-        if (cliente) {
+    if (openNew && clienteId) {
+      ;(async () => {
+        const result = await loadClienteDetail<{
+          id: string
+          nombre: string
+          telefono: string
+          direccion?: string | null
+          barrio?: string | null
+          frecuenciaSugerida?: { dias: number; label: string } | null
+          productosSugeridos?: Array<{ codigo: string; nombre: string; frecuencia: number; cantidadPromedio: number }>
+        }>(clienteId)
+        if (cancelled) return
+        if (result.ok) {
+          const cliente = result.cliente
           setPedidoInicial({
             id: '',
             canal: 'DOMICILIO',
@@ -439,21 +467,29 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
             },
             negocioId: negocioId || null,
             items: [],
+            frecuenciaSugerida: cliente.frecuenciaSugerida ?? null,
+            productosSugeridos: cliente.productosSugeridos ?? [],
           })
           setShowModal(true)
           setModalKey(k => k + 1)
-        } else {
+        } else if (result.status === 401 || result.status === 403) {
+          router.push('/login?reason=expired')
+        } else if (result.status === 404) {
           toast.error('El cliente seleccionado no está disponible')
+        } else {
+          // Error de red/timeout, distinto de "no encontrado": no colapsar
+          // a un solo mensaje genérico para no confundir al usuario.
+          toast.error(result.error)
         }
         syncUrl({ new: undefined, clienteId: undefined, negocioId: undefined })
-      } else if (openNew) {
-        // new=1 sin clienteId no es un estado válido para abrir el formulario.
-        syncUrl({ new: undefined, negocioId: undefined })
-      }
-      // Si solo hay clienteId (sin new=1), se aplica como filtro de lista
-      // mediante pedidoFilterParams; no se limpia para que el usuario vea
-      // el filtro activo.
-    })()
+      })()
+    } else if (openNew) {
+      // new=1 sin clienteId no es un estado válido para abrir el formulario.
+      syncUrl({ new: undefined, negocioId: undefined })
+    }
+    // Si solo hay clienteId (sin new=1), se aplica como filtro de lista
+    // mediante pedidoFilterParams; no se limpia para que el usuario vea
+    // el filtro activo.
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
