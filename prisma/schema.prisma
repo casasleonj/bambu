@@ -603,6 +603,12 @@ model Pedido {
   envioOfflineId    String?   @unique
   disputaAbierta    Boolean   @default(false)
   codigoVisita      String?
+  // Dirección de entrega puntual para ESTE pedido — null si no aplica
+  // (se usa la dirección resuelta en vivo de negocio/cliente vía
+  // pickDireccionTexto). Nunca modifica Cliente.direccion/barrio ni
+  // Negocio.direccion/barrio; es un snapshot propio del pedido.
+  direccionEntrega String?
+  barrioEntrega    String?
 
   // LEGACY — se mantiene para compatibilidad
   estado EstadoPedido @default(PENDIENTE)
