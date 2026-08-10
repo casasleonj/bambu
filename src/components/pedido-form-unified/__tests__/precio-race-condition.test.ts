@@ -21,9 +21,14 @@ const source = readFileSync(
 )
 
 describe('FIX: preciosLoading cubre la ventana completa de debounce + fetch', () => {
-  it('handleCantidadChange marca preciosLoading=true ANTES de agendar el debounce', () => {
-    const start = source.indexOf('const handleCantidadChange')
-    const end = source.indexOf('const increment', start)
+  // El guard vive en applyCantidadesUpdate (extraído para reusarlo también
+  // desde "Aplicar sugerencia" de patrón de consumo, ver aplicarSugerenciaConsumo)
+  // y handleCantidadChange delega en él — se verifican ambas partes para
+  // seguir protegiendo la regresión sin importar cuál de las dos rutas
+  // modifique `cantidades`.
+  it('applyCantidadesUpdate marca preciosLoading=true ANTES de agendar el debounce', () => {
+    const start = source.indexOf('const applyCantidadesUpdate')
+    const end = source.indexOf('const handleCantidadChange', start)
     const body = source.slice(start, end)
     expect(body).toMatch(/setPreciosLoading\(true\)/)
     // El setPreciosLoading debe ocurrir antes del setTimeout que dispara resolverPrecios
@@ -32,6 +37,20 @@ describe('FIX: preciosLoading cubre la ventana completa de debounce + fetch', ()
     expect(loadingIdx).toBeGreaterThan(-1)
     expect(timeoutIdx).toBeGreaterThan(-1)
     expect(loadingIdx).toBeLessThan(timeoutIdx)
+  })
+
+  it('handleCantidadChange y aplicarSugerenciaConsumo delegan en applyCantidadesUpdate (no duplican el guard)', () => {
+    const handleStart = source.indexOf('const handleCantidadChange')
+    const handleEnd = source.indexOf('const aplicarSugerenciaConsumo', handleStart)
+    const handleBody = source.slice(handleStart, handleEnd)
+    expect(handleBody).toContain('applyCantidadesUpdate(')
+    expect(handleBody).not.toMatch(/setPreciosLoading\(true\)/)
+
+    const sugerenciaStart = source.indexOf('const aplicarSugerenciaConsumo')
+    const sugerenciaEnd = source.indexOf('const verPatronConsumo', sugerenciaStart)
+    const sugerenciaBody = source.slice(sugerenciaStart, sugerenciaEnd)
+    expect(sugerenciaBody).toContain('applyCantidadesUpdate(')
+    expect(sugerenciaBody).not.toMatch(/setPreciosLoading\(true\)/)
   })
 
   it('resolverPrecios apaga preciosLoading incluso en el early-return de items vacíos', () => {
