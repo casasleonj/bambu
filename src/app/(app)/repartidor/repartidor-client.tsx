@@ -18,6 +18,7 @@ import { useGpsCapture } from '@/hooks/use-gps-capture'
 import { formatGPSError } from '@/lib/gps'
 import { compressImage } from '@/lib/image-compress'
 import { PedidoClienteDisplay } from '@/components/pedido-cliente-display'
+import { DireccionIndicator } from '@/components/direccion-indicator'
 
 interface RepartidorClientProps {
   trabajador: { id: string; nombre: string }
@@ -48,6 +49,11 @@ interface RepartidorClientProps {
         // Coords efectivas del pedido (negocio gana, fallback cliente).
         lat?: number | null
         lng?: number | null
+        // Dirección de texto + link de Maps efectivos (misma prioridad
+        // que lat/lng: negocio gana, fallback cliente).
+        direccionTexto?: string
+        barrioTexto?: string
+        linkUbicacionEfectivo?: string | null
         cliente: {
           id: string
           nombre: string
@@ -557,6 +563,22 @@ export function RepartidorClient({ trabajador, embarque: initialEmbarque, userRo
                         showBadge
                       />
                       <p className="text-xs text-gray-400">{pedido.cliente.telefono}</p>
+                      {/* FIX: antes no se mostraba NINGÚN texto de dirección —
+                          el repartidor solo tenía el botón de ruta completa
+                          basado en coords. Si el destino no tiene dirección en
+                          texto pero sí un link de Maps pegado, se ofrece como
+                          respaldo en vez de mostrar nada. */}
+                      {(pedido.direccionTexto || pedido.barrioTexto) ? (
+                        <p className="text-xs text-gray-500">
+                          {[pedido.direccionTexto, pedido.barrioTexto].filter(Boolean).join(' — ')}
+                        </p>
+                      ) : (
+                        <DireccionIndicator
+                          direccion={pedido.direccionTexto}
+                          barrio={pedido.barrioTexto}
+                          linkUbicacion={pedido.linkUbicacionEfectivo}
+                        />
+                      )}
                     </div>
                     <div className="text-right">
                       <span className="text-sm font-bold text-gray-800"><MoneyDisplay value={Number(pedido.total)} userRole={userRole} /></span>

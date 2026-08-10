@@ -107,6 +107,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         direccion: parsed.data.actualizarCliente.direccion || undefined,
         barrio: parsed.data.actualizarCliente.barrio || undefined,
       } : undefined,
+      usuarioId: getUserFromSession(authResult).id,
     })
 
     logAudit({

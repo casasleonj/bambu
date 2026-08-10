@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import { requireAuth, requireOwnership } from '@/lib/auth-check'
 import { prisma } from '@/lib/prisma'
 import { calcularPacasEmbarque, calcularPesoEmbarque, getCapacidadInfo, PESOS_KG } from '@/lib/embarque-capacidad'
+import { pickDireccionTexto } from '@/lib/geo/pedido-direccion'
 import { EmbarqueClient } from './embarque-client'
 import type { EmbarqueDetalle } from './types'
 import type { Trabajador, Ruta } from '../embarques-client/types'
@@ -71,7 +72,8 @@ export default async function EmbarquePage({ params }: EmbarquePageProps) {
             cBotellonDomEnt: true,
             cBolsaAguaEnt: true,
             cBolsaHieloEnt: true,
-            cliente: { select: { id: true, nombre: true, barrio: true, telefono: true } },
+            negocioId: true,
+            cliente: { select: { id: true, nombre: true, direccion: true, barrio: true, telefono: true, linkUbicacion: true } },
           },
           orderBy: { numero: 'asc' },
         },
@@ -106,6 +108,19 @@ export default async function EmbarquePage({ params }: EmbarquePageProps) {
   if (!embarqueRaw) {
     notFound()
   }
+
+  // FIX: esta página nunca consultaba Negocio — el barrio mostrado en cada
+  // fila de pedido era siempre el del cliente, incluso cuando el pedido
+  // estaba destinado a un negocio/sucursal con su propia dirección (mismo
+  // patrón ya usado en /repartidor: negocio gana, fallback a cliente).
+  const negocioIds = [...new Set(embarqueRaw.pedidos.map((p) => p.negocioId).filter(Boolean))] as string[]
+  const negocios = negocioIds.length > 0
+    ? await prisma.negocio.findMany({
+        where: { id: { in: negocioIds } },
+        select: { id: true, direccion: true, barrio: true, linkUbicacion: true },
+      })
+    : []
+  const negocioMap = new Map(negocios.map((n) => [n.id, n]))
 
   const totalPacas = embarqueRaw.productos && embarqueRaw.productos.length > 0
     ? embarqueRaw.productos.reduce((sum, p) => sum + p.cargadas, 0)
@@ -166,30 +181,43 @@ export default async function EmbarquePage({ params }: EmbarquePageProps) {
       tipo: d.tipo,
       descripcion: d.descripcion,
     })),
-    pedidos: embarqueRaw.pedidos.map((p) => ({
-      id: p.id,
-      numero: p.numero,
-      estado: p.estado,
-      estadoEntrega: p.estadoEntrega,
-      estadoPago: p.estadoPago,
-      origen: p.origen,
-      total: Number(p.total),
-      totalPagado: Number(p.totalPagado),
-      saldo: Number(p.saldo),
-      cPacaAguaPed: p.cPacaAguaPed,
-      cPacaHieloPed: p.cPacaHieloPed,
-      cBotellonFabPed: p.cBotellonFabPed,
-      cBotellonDomPed: p.cBotellonDomPed,
-      cBolsaAguaPed: p.cBolsaAguaPed,
-      cBolsaHieloPed: p.cBolsaHieloPed,
-      cPacaAguaEnt: p.cPacaAguaEnt,
-      cPacaHieloEnt: p.cPacaHieloEnt,
-      cBotellonFabEnt: p.cBotellonFabEnt,
-      cBotellonDomEnt: p.cBotellonDomEnt,
-      cBolsaAguaEnt: p.cBolsaAguaEnt,
-      cBolsaHieloEnt: p.cBolsaHieloEnt,
-      cliente: p.cliente,
-    })),
+    pedidos: embarqueRaw.pedidos.map((p) => {
+      const negocioInfo = p.negocioId ? negocioMap.get(p.negocioId) : undefined
+      const direccionEfectiva = pickDireccionTexto({ cliente: p.cliente, negocio: negocioInfo })
+      const linkUbicacionEfectivo = direccionEfectiva.fuente === 'negocio'
+        ? negocioInfo?.linkUbicacion ?? null
+        : direccionEfectiva.fuente === 'cliente'
+          ? p.cliente.linkUbicacion ?? null
+          : (negocioInfo?.linkUbicacion ?? p.cliente.linkUbicacion ?? null)
+      return {
+        id: p.id,
+        numero: p.numero,
+        estado: p.estado,
+        estadoEntrega: p.estadoEntrega,
+        estadoPago: p.estadoPago,
+        origen: p.origen,
+        total: Number(p.total),
+        totalPagado: Number(p.totalPagado),
+        saldo: Number(p.saldo),
+        cPacaAguaPed: p.cPacaAguaPed,
+        cPacaHieloPed: p.cPacaHieloPed,
+        cBotellonFabPed: p.cBotellonFabPed,
+        cBotellonDomPed: p.cBotellonDomPed,
+        cBolsaAguaPed: p.cBolsaAguaPed,
+        cBolsaHieloPed: p.cBolsaHieloPed,
+        cPacaAguaEnt: p.cPacaAguaEnt,
+        cPacaHieloEnt: p.cPacaHieloEnt,
+        cBotellonFabEnt: p.cBotellonFabEnt,
+        cBotellonDomEnt: p.cBotellonDomEnt,
+        cBolsaAguaEnt: p.cBolsaAguaEnt,
+        cBolsaHieloEnt: p.cBolsaHieloEnt,
+        negocioId: p.negocioId,
+        direccionTexto: direccionEfectiva.direccion,
+        barrioTexto: direccionEfectiva.barrio,
+        linkUbicacionEfectivo,
+        cliente: p.cliente,
+      }
+    }),
     totalPacas,
     pesoKg,
     capacidadKg,

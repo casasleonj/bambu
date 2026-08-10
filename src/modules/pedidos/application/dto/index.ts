@@ -42,6 +42,8 @@ export interface ActualizarPedidoInput {
     direccion?: string
     barrio?: string
   }
+  /** Quién dispara la actualización — usado para auditar cambios de dirección. */
+  usuarioId?: string
   offlineId?: string
 }
 

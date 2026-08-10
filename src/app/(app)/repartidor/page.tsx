@@ -3,6 +3,7 @@ import { RepartidorClient } from './repartidor-client'
 import { requirePagePermission } from '@/lib/auth-guard'
 import { getConfigBool } from '@/lib/config'
 import { pickCoords } from '@/lib/geo/pedido-coords'
+import { pickDireccionTexto } from '@/lib/geo/pedido-direccion'
 
 export default async function RepartidorPage() {
   // requirePagePermission ya llama a auth() internamente y devuelve la sesión.
@@ -75,7 +76,11 @@ export default async function RepartidorPage() {
   const negocios = negocioIds.length > 0
     ? await prisma.negocio.findMany({
         where: { id: { in: negocioIds } },
-        select: { id: true, nombre: true, lat: true, lng: true },
+        // FIX: antes solo se pedían lat/lng — el conductor nunca podía ver
+        // el texto de dirección del negocio (ni linkUbicacion como
+        // respaldo), aunque el negocio tuviera destino propio distinto al
+        // del cliente dueño.
+        select: { id: true, nombre: true, lat: true, lng: true, direccion: true, barrio: true, linkUbicacion: true },
       })
     : []
   const negocioMap = new Map(negocios.map(n => [n.id, n]))
@@ -95,6 +100,16 @@ export default async function RepartidorPage() {
           const negocioInfo = p.negocioId ? negocioMap.get(p.negocioId) : undefined
           // Coords efectivas del pedido: negocio gana, fallback a cliente.
           const coordsEfectivas = pickCoords({ cliente: p.cliente, negocio: negocioInfo })
+          // Dirección de texto efectiva (misma prioridad que coords) + el
+          // linkUbicacion de la MISMA fuente que ganó, para que el
+          // repartidor tenga un link a Maps cuando no hay dirección en
+          // texto (ej. negocio con solo el link pegado).
+          const direccionEfectiva = pickDireccionTexto({ cliente: p.cliente, negocio: negocioInfo })
+          const linkUbicacionEfectivo = direccionEfectiva.fuente === 'negocio'
+            ? negocioInfo?.linkUbicacion ?? null
+            : direccionEfectiva.fuente === 'cliente'
+              ? p.cliente.linkUbicacion ?? null
+              : (negocioInfo?.linkUbicacion ?? p.cliente.linkUbicacion ?? null)
           return {
             ...p,
             clienteId: p.clienteId,
@@ -118,6 +133,11 @@ export default async function RepartidorPage() {
             // Coords efectivas (para Maps y validación GPS del repartidor)
             lat: coordsEfectivas?.lat ?? null,
             lng: coordsEfectivas?.lng ?? null,
+            // Dirección de texto + link de Maps efectivos (para mostrarle
+            // algo legible al repartidor, no solo el botón de coords).
+            direccionTexto: direccionEfectiva.direccion,
+            barrioTexto: direccionEfectiva.barrio,
+            linkUbicacionEfectivo,
             cliente: {
               ...p.cliente,
               lat: p.cliente.lat != null ? Number(p.cliente.lat) : null,

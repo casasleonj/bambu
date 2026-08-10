@@ -262,7 +262,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       entidad: 'Cliente',
       registroId: cliente.id,
       accion: 'UPDATE',
-      datos: { nombre: cliente.nombre },
+      // FIX: antes solo se registraba { nombre }, sin importar qué campo
+      // realmente cambió (incluida dirección/barrio) — igual que ya hace
+      // la ruta PUT de Negocio, se registra el diff real enviado.
+      datos: parsed.data,
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     })
 

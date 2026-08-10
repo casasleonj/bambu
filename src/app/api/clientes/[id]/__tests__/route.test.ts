@@ -45,6 +45,14 @@ describe('F-N20: el flujo normal sigue funcionando (no rompe)', () => {
     expect(putSource).toMatch(/logAudit\(/)
   })
 
+  it('FIX: logAudit registra el diff real (parsed.data), no un {nombre} hardcodeado', () => {
+    // Antes: datos: { nombre: cliente.nombre } — perdía cualquier cambio
+    // de dirección/barrio/etc. del audit trail. Ahora registra parsed.data,
+    // igual que la ruta PUT de Negocio.
+    expect(putSource).toMatch(/datos:\s*parsed\.data/)
+    expect(putSource).not.toMatch(/datos:\s*\{\s*nombre:\s*cliente\.nombre\s*\}/)
+  })
+
   it('FASE 3: PUT no sincroniza contactos inline', () => {
     // El handler no debe tocar contactoCliente; eso es responsabilidad de
     // POST/PATCH/DELETE /api/clientes/[id]/contactos.

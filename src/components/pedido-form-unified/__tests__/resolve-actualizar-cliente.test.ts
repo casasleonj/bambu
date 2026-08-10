@@ -79,4 +79,43 @@ describe('resolveActualizarCliente', () => {
       }),
     ).toBeUndefined()
   })
+
+  it('NO REGRESIÓN: el comportamiento por defecto (soloParaEstePedido ausente/false) reproduce exactamente el comportamiento previo — se guarda', () => {
+    expect(
+      resolveActualizarCliente({
+        clienteSeleccionado: cliente,
+        canal: 'DOMICILIO',
+        negocioSeleccionado: null,
+        editDireccion: 'Calle 2',
+        editBarrio: 'Norte',
+        soloParaEstePedido: false,
+      }),
+    ).toEqual({ direccion: 'Calle 2', barrio: 'Norte' })
+  })
+
+  it('soloParaEstePedido=true: NO envía actualización aunque la dirección difiera y no haya negocio seleccionado (opt-out explícito)', () => {
+    expect(
+      resolveActualizarCliente({
+        clienteSeleccionado: cliente,
+        canal: 'DOMICILIO',
+        negocioSeleccionado: null,
+        editDireccion: 'Calle 2',
+        editBarrio: 'Norte',
+        soloParaEstePedido: true,
+      }),
+    ).toBeUndefined()
+  })
+
+  it('el guard de negocio sigue ganando incluso si soloParaEstePedido está en false — invariante crítico, nunca reordenar', () => {
+    expect(
+      resolveActualizarCliente({
+        clienteSeleccionado: cliente,
+        canal: 'DOMICILIO',
+        negocioSeleccionado: 'negocio-123',
+        editDireccion: 'Dirección del negocio 456',
+        editBarrio: 'Barrio del negocio',
+        soloParaEstePedido: false,
+      }),
+    ).toBeUndefined()
+  })
 })
