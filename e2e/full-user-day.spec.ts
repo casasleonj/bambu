@@ -1,5 +1,6 @@
 // @tests api/cliente, api/compra, api/gasto, api/insumo, api/proveedor, api/trabajador
 import { test, expect, Page } from '@playwright/test'
+import { skipBaseCaja, handleBaseCaja } from './fixtures'
 
 const BASE = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000'
 
@@ -34,17 +35,7 @@ async function login(page: Page, user = 'admin', pass = 'admin123') {
 }
 
 async function dismissBaseCaja(page: Page) {
-  try {
-    const overlay = page.locator('.fixed.inset-0')
-    if (await overlay.isVisible({ timeout: 800 })) {
-      const numInput = overlay.locator('input[type="number"]')
-      if (await numInput.isVisible({ timeout: 500 })) {
-        await numInput.fill('100000')
-      }
-      await overlay.locator('button').click({ force: true })
-      await page.waitForTimeout(500)
-    }
-  } catch { /* no modal */ }
+  await handleBaseCaja(page)
 }
 
 async function nav(page: Page, path: string) {
@@ -60,13 +51,11 @@ test.describe('Dia completo de usuario', () => {
   test.setTimeout(60000)
 
   test.beforeEach(async ({ page }) => {
-    await page.addInitScript(() => {
-      (window as any).__PLAYWRIGHT_TEST__ = true
-      // Pre-set baseDia to prevent modal from blocking interactions
-      const today = new Date().toISOString().split('T')[0]
-      localStorage.setItem('baseDiaDate', today)
-      localStorage.setItem('baseDia', '100000')
-    })
+    // Pre-set baseDia to prevent modal from blocking interactions. Was
+    // seeding the wrong localStorage keys (baseDia/baseDiaDate) — the
+    // component reads `baseDia_${fecha}` — so the modal opened for real on
+    // every test and the broken dismissBaseCaja() below couldn't close it.
+    await skipBaseCaja(page)
   })
 
   // ═══════════════════════════════════════════
