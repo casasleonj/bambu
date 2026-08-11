@@ -1,6 +1,6 @@
 // @tests api/cliente, api/pedido
 import { test, expect } from '@playwright/test'
-import { handleBaseCaja } from './fixtures'
+import { handleBaseCaja, openFabPedidoEnvio, openSidebarIfMobile } from './fixtures'
 
 const BASE_URL = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000'
 
@@ -79,7 +79,7 @@ test.describe('Flujos críticos de negocio', () => {
     })
 
     // Open create modal
-    await page.click('button:has-text("+ Nuevo Pedido")')
+    await openFabPedidoEnvio(page)
     await page.waitForTimeout(800)
 
     const modal = page.locator('form').filter({ hasText: 'Cliente' })
@@ -143,9 +143,10 @@ test.describe('Flujos críticos de negocio', () => {
   test('Sidebar tiene logout y configuración', async ({ page }) => {
     await login(page)
     await handleBaseCaja(page)
+    await openSidebarIfMobile(page)
 
     await expect(page.locator('text=Cerrar Sesión')).toBeVisible()
-    await expect(page.locator('text=Precios')).toBeVisible()
+    await expect(page.locator('text=Configuración')).toBeVisible()
   })
 
   test('Pedido agendado sin pago es permitido via items array', async ({ page }) => {
@@ -165,7 +166,7 @@ test.describe('Flujos críticos de negocio', () => {
       await route.continue()
     })
 
-    await page.click('button:has-text("+ Nuevo Pedido")')
+    await openFabPedidoEnvio(page)
     await page.waitForTimeout(800)
 
     const modal = page.locator('form').filter({ hasText: 'Cliente' })

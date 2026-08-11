@@ -288,6 +288,36 @@ export async function dismissInstallBanner(page: Page) {
   }
 }
 
+/**
+ * Opens the "Nuevo Pedido" (Pedido con Envío) form via the FAB speed-dial.
+ * Assumes the page is already on /pedidos and loaded. The old direct
+ * `button:has-text("+ Nuevo Pedido")` open button was replaced by this FAB
+ * (`data-testid="fab-main"` -> `data-testid="fab-pedido-envio"`).
+ */
+export async function openFabPedidoEnvio(page: Page) {
+  await dismissInstallBanner(page)
+  const fabMain = page.getByTestId('fab-main')
+  await expect(fabMain).toBeVisible({ timeout: 5000 })
+  await fabMain.click()
+  const fabPedido = page.getByTestId('fab-pedido-envio')
+  await expect(fabPedido).toBeVisible({ timeout: 5000 })
+  await fabPedido.click()
+}
+
+/**
+ * On mobile viewports the sidebar `<aside>` (nav items + "Cerrar Sesión")
+ * is not rendered in the DOM until the hamburger button is tapped; on
+ * desktop it's always in the DOM. Call this before asserting on/clicking
+ * sidebar content so the same test works on both `chromium` and
+ * `chromium-mobile` projects.
+ */
+export async function openSidebarIfMobile(page: Page) {
+  const hamburger = page.getByRole('button', { name: /abrir men[uú]/i })
+  if (await hamburger.isVisible({ timeout: 1000 }).catch(() => false)) {
+    await hamburger.click()
+  }
+}
+
 // Selector de contenedor responsive: vista mobile (`md:hidden`) o desktop
 // (`hidden md:block`) según el ancho del viewport. Los componentes duplican
 // textos en ambas vistas (display:none en la inactiva); scoping con .first()

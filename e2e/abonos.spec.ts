@@ -1,6 +1,6 @@
 // @tests api/abonos
 import { test, expect, type Page } from '@playwright/test'
-import { resetDatabase, handleBaseCaja } from './fixtures'
+import { resetDatabase, handleBaseCaja, openFabPedidoEnvio } from './fixtures'
 
 test.describe('Abonos', () => {
   test.describe.configure({ mode: 'serial' })
@@ -39,7 +39,7 @@ test.describe('Abonos', () => {
     await page.waitForTimeout(2000)
     await handleBaseCaja(page)
 
-    await page.click('button:has-text("+ Nuevo Pedido")')
+    await openFabPedidoEnvio(page)
     await page.waitForTimeout(2000)
 
     // Search and select client
