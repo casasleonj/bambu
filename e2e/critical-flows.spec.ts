@@ -1,5 +1,5 @@
 // @tests api/cliente, api/pedido
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import { handleBaseCaja, openFabPedidoEnvio, openSidebarIfMobile } from './fixtures'
 
 const BASE_URL = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000'
@@ -10,6 +10,34 @@ async function login(page: any) {
   await page.fill('input[type="password"]', 'admin123')
   await page.click('button:has-text("Ingresar")')
   await page.waitForURL(/.*dashboard/, { timeout: 15000 })
+}
+
+// pedidos-client fetches the full clientes list in the background with an
+// 8s AbortSignal timeout (src/app/(app)/pedidos/pedidos-client/index.tsx).
+// Under heavy CI load that fetch can abort before the list ever populates,
+// leaving the search results empty regardless of how long the test waits —
+// the only way to give it a fresh 8s budget is to reload and reopen the
+// modal. DOMICILIO pedidos require a client (handleSubmit validation), so
+// unlike abonos.spec.ts this can't just be skipped when empty.
+async function searchAndSelectCliente(page: Page) {
+  const modal = page.locator('form').filter({ hasText: 'Cliente' })
+  const clientBtn = page.getByTestId('cliente-search-result').first()
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await modal.locator('input[placeholder="Buscar cliente por nombre o teléfono..."]').fill('a')
+    if (await clientBtn.isVisible({ timeout: 10000 }).catch(() => false)) {
+      await clientBtn.click()
+      return modal
+    }
+    if (attempt === 0) {
+      await page.reload()
+      await page.waitForLoadState('networkidle')
+      await handleBaseCaja(page)
+      await openFabPedidoEnvio(page)
+      await page.waitForTimeout(800)
+    }
+  }
+  await clientBtn.click()
+  return modal
 }
 
 test.describe('Flujos críticos de negocio', () => {
@@ -82,17 +110,8 @@ test.describe('Flujos críticos de negocio', () => {
     await openFabPedidoEnvio(page)
     await page.waitForTimeout(800)
 
-    const modal = page.locator('form').filter({ hasText: 'Cliente' })
-
     // Search and select first client
-    await modal.locator('input[placeholder="Buscar cliente por nombre o teléfono..."]').fill('a')
-    await page.waitForTimeout(500)
-    // Unscoped (not modal.getByTestId): the results panel is a lazy
-    // background-loaded list gated by `filteredClientes`, and CI showed the
-    // page-level lookup (same pattern abonos.spec.ts already uses
-    // successfully) resolves it while the form-scoped lookup can time out.
-    const clientBtn = page.getByTestId('cliente-search-result').first()
-    await clientBtn.click()
+    const modal = await searchAndSelectCliente(page)
 
     // Add product
     const aguaInput = modal.locator('input[type="number"]').first()
@@ -173,13 +192,8 @@ test.describe('Flujos críticos de negocio', () => {
     await openFabPedidoEnvio(page)
     await page.waitForTimeout(800)
 
-    const modal = page.locator('form').filter({ hasText: 'Cliente' })
-
     // Select client
-    await modal.locator('input[placeholder="Buscar cliente por nombre o teléfono..."]').fill('a')
-    await page.waitForTimeout(500)
-    // Unscoped: see comment on the equivalent lookup above.
-    await page.getByTestId('cliente-search-result').first().click()
+    const modal = await searchAndSelectCliente(page)
 
     // Add product
     await modal.locator('input[type="number"]').first().fill('1')
