@@ -85,7 +85,7 @@ test.describe('Flujos críticos de negocio', () => {
     const modal = page.locator('form').filter({ hasText: 'Cliente' })
 
     // Search and select first client
-    await modal.locator('input[placeholder="Buscar por nombre o telefono..."]').fill('a')
+    await modal.locator('input[placeholder="Buscar cliente por nombre o teléfono..."]').fill('a')
     await page.waitForTimeout(500)
     const clientBtn = modal.locator('div.border.rounded-md button').first()
     await clientBtn.click()
@@ -172,7 +172,7 @@ test.describe('Flujos críticos de negocio', () => {
     const modal = page.locator('form').filter({ hasText: 'Cliente' })
 
     // Select client
-    await modal.locator('input[placeholder="Buscar por nombre o telefono..."]').fill('a')
+    await modal.locator('input[placeholder="Buscar cliente por nombre o teléfono..."]').fill('a')
     await page.waitForTimeout(500)
     await modal.locator('div.border.rounded-md button').first().click()
 
