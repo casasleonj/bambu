@@ -296,10 +296,25 @@ export async function dismissInstallBanner(page: Page) {
  */
 export async function openFabPedidoEnvio(page: Page) {
   // Defensive re-check: under heavy CI load a SessionProvider poll can
-  // race checkBaseDia() and reopen the Base Caja modal moments after the
-  // caller's own handleBaseCaja() call resolved, leaving its backdrop
-  // (fixed inset-0 bg-black/50) intercepting the FAB click.
-  await handleBaseCaja(page)
+  // race checkBaseDia() and reopen the Base Caja modal (React state, not
+  // localStorage) moments after the caller's own handleBaseCaja() call
+  // resolved, leaving its backdrop (fixed inset-0 bg-black/50) intercepting
+  // the FAB click. handleBaseCaja()'s localStorage fast-path would no-op
+  // here (the value was already persisted by the earlier dismissal), so
+  // check the DOM directly instead of relying on that cache.
+  const baseDiaInput = page.locator('#base-dia-input')
+  if (await baseDiaInput.isVisible({ timeout: 500 }).catch(() => false)) {
+    await baseDiaInput.click()
+    await baseDiaInput.fill('100000')
+    await baseDiaInput.evaluate((el: HTMLInputElement) => {
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+      el.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    const submitBtn = page.locator('button[type="submit"]').filter({ hasText: /Continuar|Guardar/ })
+    await expect(submitBtn).toBeEnabled({ timeout: 3000 }).catch(() => {})
+    await submitBtn.click().catch(() => {})
+    await page.waitForSelector('#base-dia-input', { state: 'detached', timeout: 5000 }).catch(() => {})
+  }
   await dismissInstallBanner(page)
   // .first(): observed in CI as a transient strict-mode violation
   // (getByTestId('fab-main') resolving to 2 elements, one hidden) — same
