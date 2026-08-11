@@ -20,6 +20,13 @@ export interface EmbarqueFilter {
 
 export interface IEmbarqueRepository {
   findById(id: string, tx?: unknown): Promise<Embarque | null>
+  /**
+   * Devuelve el embarque de `fecha` del trabajador sólo si está ABIERTO o
+   * EN_RUTA (activo); ignora CERRADO y CANCELADO. Permite que un trabajador
+   * tenga múltiples embarques el mismo día (recargas) mientras no tenga más
+   * de uno activo a la vez. Usado por CrearEmbarqueUseCase para bloquear la
+   * creación de un nuevo embarque mientras el anterior sigue en curso.
+   */
   findByTrabajadorAndFecha(trabajadorId: string, fecha: Date, tx?: unknown): Promise<Embarque | null>
   findMany(filters: EmbarqueFilter, tx?: unknown): Promise<Embarque[]>
   findWithPedidos(id: string, tx?: unknown): Promise<Embarque | null>
