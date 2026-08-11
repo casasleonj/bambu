@@ -15,16 +15,30 @@ export interface ResolveActualizarClienteInput {
   negocioSeleccionado: string | null
   editDireccion: string
   editBarrio: string
+  /**
+   * Opt-out explícito para direcciones de entrega puntuales ("el cliente
+   * pidió que se lo lleven a otro lado solo hoy"). Default false preserva
+   * el comportamiento histórico (toda edición de la dirección del domicilio
+   * principal se persiste) — invertir la polaridad a "opt-in por defecto"
+   * habría dejado de guardar correcciones reales silenciosamente, que es
+   * exactamente el tipo de regresión que este módulo existe para evitar.
+   */
+  soloParaEstePedido?: boolean
 }
 
 export function resolveActualizarCliente(
   input: ResolveActualizarClienteInput,
 ): { direccion: string; barrio: string } | undefined {
-  const { clienteSeleccionado, canal, negocioSeleccionado, editDireccion, editBarrio } = input
+  const { clienteSeleccionado, canal, negocioSeleccionado, editDireccion, editBarrio, soloParaEstePedido } = input
 
   if (!clienteSeleccionado) return undefined
   if (canal !== 'DOMICILIO') return undefined
+  // Invariante crítico (no reordenar): el guard de negocio va siempre
+  // primero e incondicional, sin importar soloParaEstePedido. Es la
+  // protección del fix original contra pisar Cliente.direccion con la
+  // dirección de un negocio.
   if (negocioSeleccionado) return undefined
+  if (soloParaEstePedido) return undefined
 
   const direccionCambio = editDireccion !== (clienteSeleccionado.direccion || '')
   const barrioCambio = editBarrio !== (clienteSeleccionado.barrio || '')

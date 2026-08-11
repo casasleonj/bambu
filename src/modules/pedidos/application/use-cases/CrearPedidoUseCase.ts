@@ -130,6 +130,7 @@ export class CrearPedidoUseCase {
           input.actualizarCliente.direccion || '',
           input.actualizarCliente.barrio,
           tx,
+          { usuarioId: input.createdById },
         )
       }
 

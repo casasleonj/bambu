@@ -120,6 +120,7 @@ export class ActualizarPedidoUseCase {
             input.actualizarCliente.direccion || '',
             input.actualizarCliente.barrio,
             tx,
+            { usuarioId: input.usuarioId, pedidoId: saved.id.get() },
           )
         }
 

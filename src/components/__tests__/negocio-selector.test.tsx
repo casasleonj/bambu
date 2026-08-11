@@ -103,6 +103,30 @@ describe('NegocioSelector — resumen colapsado', () => {
     })
   })
 
+  it('readOnly: el resumen no es interactivo — click no expande la lista', async () => {
+    const onNegocioSelected = vi.fn()
+    render(
+      <NegocioSelector
+        clienteId="cli-1"
+        clienteNombre="Juan Pérez"
+        clienteDireccion="Calle 1"
+        clienteBarrio="Barrio A"
+        selectedNegocioId="neg-1"
+        onNegocioSelected={onNegocioSelected}
+        readOnly
+      />,
+    )
+
+    const resumen = await screen.findByTestId('negocio-selector-resumen')
+    expect(resumen).toHaveTextContent('Tienda Centro')
+    expect(resumen).toBeDisabled()
+    expect(resumen).not.toHaveTextContent('Cambiar')
+
+    fireEvent.click(resumen)
+    expect(screen.queryByText('Bodega Norte')).not.toBeInTheDocument()
+    expect(onNegocioSelected).not.toHaveBeenCalled()
+  })
+
   it('no renderiza nada si el cliente no tiene negocios formales', async () => {
     fetchMock.mockResolvedValue({ ok: true, json: async () => ({ success: true, data: [] }) })
     const { container } = render(

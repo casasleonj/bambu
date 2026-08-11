@@ -1900,6 +1900,14 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
 
       {/* Modal Editar Pedido */}
       {pedidoEditando && (() => {
+        // FIX: pedidoEditando.zonaCli/barrioCli ya son la dirección RESUELTA
+        // (negocio gana, fallback cliente) — usarla como si fuera la
+        // dirección propia del cliente corrompía la opción "domicilio
+        // principal" del selector con la dirección del negocio cuando el
+        // pedido tenía uno. Se busca el registro real del cliente ya
+        // cargado en memoria; zonaCli/barrioCli solo quedan como fallback
+        // defensivo si por algún motivo el cliente no está en la lista.
+        const clienteRaw = clientes.find(c => c.id === pedidoEditando.clienteId)
         const itemsArray = pedidoEditando.items && pedidoEditando.items.length > 0
           ? pedidoEditando.items.map((i: any) => ({
               producto: i.producto,
@@ -1939,9 +1947,20 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
                   id: pedidoEditando.id,
                   canal: pedidoEditando.canal as 'PUNTO' | 'DOMICILIO',
                   cliente: pedidoEditando.clienteId !== 'CONSUMIDOR_FINAL'
-                    ? { id: pedidoEditando.clienteId, nombre: pedidoEditando.nombreCli, telefono: pedidoEditando.telefonoCli, direccion: pedidoEditando.zonaCli, barrio: pedidoEditando.barrioCli }
+                    ? {
+                        id: pedidoEditando.clienteId,
+                        nombre: pedidoEditando.nombreCli,
+                        telefono: pedidoEditando.telefonoCli,
+                        direccion: clienteRaw?.direccion ?? pedidoEditando.zonaCli,
+                        barrio: clienteRaw?.barrio ?? pedidoEditando.barrioCli,
+                      }
                     : null,
                   negocioId: pedidoEditando.negocioId,
+                  // zonaCli/barrioCli YA están resueltos con prioridad negocio
+                  // cuando el pedido tiene negocioId — son la dirección del
+                  // negocio en ese caso, no la del cliente.
+                  negocioDireccion: pedidoEditando.negocioId ? pedidoEditando.zonaCli : null,
+                  negocioBarrio: pedidoEditando.negocioId ? pedidoEditando.barrioCli : null,
                   items: itemsArray,
                   obs: pedidoEditando.obs,
                 }}

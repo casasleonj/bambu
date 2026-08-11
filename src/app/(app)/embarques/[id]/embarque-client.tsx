@@ -9,6 +9,7 @@ import { Modal } from '@/components/modal'
 import { MoneyDisplay } from '@/components/money-display'
 import { ClienteHistorialModal } from '@/components/cliente-historial-modal'
 import { PedidoClienteDisplay } from '@/components/pedido-cliente-display'
+import { DireccionIndicator } from '@/components/direccion-indicator'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
 import { calcularEstadoPagoVisual } from '@/modules/pedidos/presentation/visual-states'
 import { fetchResilient } from '@/lib/fetch-resilient'
@@ -631,7 +632,23 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
                             nombreNegocioCli={pedido.nombreNegocioCli}
                             variant="row"
                           />
-                          <p className="text-xs text-gray-400">{pedido.cliente?.barrio || pedido.cliente?.telefono || ''}</p>
+                          {/* FIX: antes mostraba siempre pedido.cliente?.barrio, ignorando
+                              negocioId — un pedido a un negocio con dirección propia mostraba
+                              el barrio del cliente dueño, no el del negocio. */}
+                          {pedido.direccionTexto || pedido.barrioTexto ? (
+                            <p className="text-xs text-gray-400">
+                              {[pedido.direccionTexto, pedido.barrioTexto].filter(Boolean).join(' — ')}
+                            </p>
+                          ) : (
+                            <DireccionIndicator
+                              direccion={pedido.direccionTexto}
+                              barrio={pedido.barrioTexto}
+                              linkUbicacion={pedido.linkUbicacionEfectivo}
+                            />
+                          )}
+                          {pedido.cliente?.telefono && (
+                            <p className="text-xs text-gray-400">{pedido.cliente.telefono}</p>
+                          )}
                         </td>
                         <td className="px-4 py-3"><PedidoItems pedido={pedido} /></td>
                         <td className="px-4 py-3 text-sm font-medium text-gray-800"><MoneyDisplay value={pedido.total} userRole={userRole} /></td>
@@ -695,7 +712,20 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
                           nombreNegocioCli={pedido.nombreNegocioCli}
                           variant="card"
                         />
-                        <p className="text-xs text-gray-400">{pedido.cliente?.barrio || pedido.cliente?.telefono || ''}</p>
+                        {pedido.direccionTexto || pedido.barrioTexto ? (
+                          <p className="text-xs text-gray-400">
+                            {[pedido.direccionTexto, pedido.barrioTexto].filter(Boolean).join(' — ')}
+                          </p>
+                        ) : (
+                          <DireccionIndicator
+                            direccion={pedido.direccionTexto}
+                            barrio={pedido.barrioTexto}
+                            linkUbicacion={pedido.linkUbicacionEfectivo}
+                          />
+                        )}
+                        {pedido.cliente?.telefono && (
+                          <p className="text-xs text-gray-400">{pedido.cliente.telefono}</p>
+                        )}
                       </div>
                       {getEstadoEntregaBadge(pedido.estadoEntrega)}
                     </div>

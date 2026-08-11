@@ -46,6 +46,11 @@ export interface PedidoInicial {
   canal: 'PUNTO' | 'DOMICILIO'
   cliente?: PedidoInicialCliente | null
   negocioId?: string | null
+  /** Dirección/barrio del NEGOCIO (no del cliente) cuando negocioId está seteado —
+   * necesarios para que el selector no muestre la dirección del cliente al abrir
+   * un pedido a negocio para editar. */
+  negocioDireccion?: string | null
+  negocioBarrio?: string | null
   items: PedidoInicialItem[]
   obs?: string | null
   // Patrón de consumo del cliente (frecuencia/productos habituales, calculado
@@ -120,6 +125,10 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
   const [observaciones, setObservaciones] = useState('')
   const [editDireccion, setEditDireccion] = useState('')
   const [editBarrio, setEditBarrio] = useState('')
+  // Default false preserva el comportamiento actual: toda edición de la
+  // dirección del domicilio principal se guarda. Marcarlo es el opt-out
+  // explícito para "solo por esta vez, no toques el dato guardado".
+  const [soloParaEstePedido, setSoloParaEstePedido] = useState(false)
   const resolverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [productosConfig, setProductosConfig] = useState<Array<{ codigo: string; aplicaDomicilio: boolean; sobreCostoDomicilio: number }>>([])
   const [fiadosStatus, setFiadosStatus] = useState<FiadoStatus | null>(null)
@@ -305,6 +314,7 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
     if (!pedidoInicial) return
     setCanal(pedidoInicial.canal)
     setObservaciones(pedidoInicial.obs || '')
+    setSoloParaEstePedido(false)
     if (pedidoInicial.cliente) {
       setClienteSeleccionado(pedidoInicial.cliente as Cliente)
     }
@@ -358,6 +368,20 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
     )
     setSugerenciaAplicada(false)
     setNegocioSeleccionado(pedidoInicial.negocioId ?? null)
+    // FIX: negocioData nunca se inicializaba al editar un pedido a negocio —
+    // solo se setea vía el click del usuario dentro de NegocioSelector. El
+    // efecto de sync de dirección (más abajo) dependía de negocioData, no de
+    // negocioSeleccionado, así que en el primer render tomaba la rama "sin
+    // negocio" y prellenaba con la dirección del cliente en vez de la del
+    // negocio.
+    if (pedidoInicial.negocioId && (pedidoInicial.negocioDireccion || pedidoInicial.negocioBarrio)) {
+      setNegocioData({
+        direccion: pedidoInicial.negocioDireccion ?? null,
+        barrio: pedidoInicial.negocioBarrio ?? null,
+      })
+    } else {
+      setNegocioData(null)
+    }
     const items = pedidoInicial.items
     const cantidadesIniciales: Record<string, number> = {}
     const manuales: Record<string, number> = {}
@@ -508,6 +532,7 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
     setNegocioSeleccionado(null)
     setSearchTerm('')
     setMostrarNuevo(false)
+    setSoloParaEstePedido(false)
     // Selección manual: a diferencia del deep-link desde /clientes, acá NO
     // se dispara un fetch automático de patrón de consumo (ver
     // verPatronConsumo) — el proyecto es offline-first para 2G/3G y la
@@ -630,6 +655,7 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
       negocioSeleccionado,
       editDireccion,
       editBarrio,
+      soloParaEstePedido,
     })
 
     const data: PedidoUnifiedData = {
@@ -717,6 +743,7 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
                     setPreciosResueltos({})
                     setEditDireccion('')
                     setEditBarrio('')
+                    setSoloParaEstePedido(false)
                     setSugerenciaConsumo(null)
                     setSugerenciaLoading(false)
                     setSugerenciaAplicada(false)
@@ -802,8 +829,15 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
                 clienteNombre={clienteSeleccionado.nombre}
                 clienteDireccion={clienteSeleccionado.direccion}
                 clienteBarrio={clienteSeleccionado.barrio}
+                clienteLinkUbicacion={clienteSeleccionado.linkUbicacion}
                 selectedNegocioId={negocioSeleccionado}
                 onNegocioSelected={(id, data) => { setNegocioSeleccionado(id); setNegocioData(data) }}
+                // FIX: editar un pedido existente NUNCA puede cambiar su
+                // negocioId (ActualizarPedidoInput no tiene ese campo — el
+                // backend siempre reusa el negocioId original). El selector
+                // quedaba interactivo igual, sugiriendo una capacidad que no
+                // existe. Se vuelve de solo lectura al editar.
+                readOnly={Boolean(pedidoInicial?.id)}
               />
 
               {canal === 'DOMICILIO' && (
@@ -828,6 +862,21 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
                       className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
                     />
                   </div>
+                  {/* Solo tiene sentido para el domicilio principal: cuando hay
+                      negocio seleccionado, la persistencia a Cliente ya está
+                      bloqueada incondicionalmente (ver resolveActualizarCliente),
+                      así que el checkbox sería ruido sin efecto. */}
+                  {!negocioSeleccionado && (
+                    <label className="flex items-center gap-2 text-xs text-gray-600">
+                      <input
+                        type="checkbox"
+                        checked={soloParaEstePedido}
+                        onChange={(e) => setSoloParaEstePedido(e.target.checked)}
+                        className="rounded border-gray-300"
+                      />
+                      🕓 Solo para este pedido (no actualizar la dirección guardada)
+                    </label>
+                  )}
                 </div>
               )}
             </div>

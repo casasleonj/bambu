@@ -3,6 +3,7 @@
  */
 
 import { prisma } from '@/lib/prisma'
+import { logAudit } from '@/lib/audit'
 import type { IClienteRepository, ClienteBasico, NegocioBasico } from '../../domain/repositories/IClienteRepository'
 import type { TransactionClient } from '../transactions/PrismaTransactionManager'
 
@@ -78,14 +79,43 @@ export class PrismaClienteRepository implements IClienteRepository {
     })
   }
 
-  async updateDireccion(id: string, direccion: string, barrio?: string, tx?: TransactionClient): Promise<void> {
+  async updateDireccion(
+    id: string,
+    direccion: string,
+    barrio?: string,
+    tx?: TransactionClient,
+    meta?: { usuarioId?: string | null; pedidoId?: string },
+  ): Promise<void> {
     const client = tx || prisma
+    // FIX: este UPDATE no tenía ningún registro de auditoría — un cambio de
+    // dirección del cliente disparado desde el flujo de pedidos quedaba sin
+    // rastro de "antes/después". Se captura el valor previo antes de
+    // sobreescribir y se audita después (logAudit es fire-and-forget, fuera
+    // de la tx, igual que el resto de las auditorías de este repo).
+    const previo = await client.cliente.findUnique({
+      where: { id },
+      select: { direccion: true, barrio: true },
+    })
     await client.cliente.update({
       where: { id },
       data: {
         direccion,
         barrio: barrio || null,
       } as unknown as Parameters<typeof client.cliente.update>[0]['data'],
+    })
+    logAudit({
+      entidad: 'Cliente',
+      registroId: id,
+      accion: 'UPDATE',
+      datos: {
+        direccion,
+        barrio: barrio || null,
+        direccionAnterior: previo?.direccion ?? null,
+        barrioAnterior: previo?.barrio ?? null,
+        origen: 'pedido',
+        pedidoId: meta?.pedidoId,
+      },
+      usuarioId: meta?.usuarioId ?? null,
     })
   }
 

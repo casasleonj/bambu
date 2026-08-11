@@ -40,7 +40,13 @@ export interface IClienteRepository {
     fuente?: string
     creadoPorRol: string
   }, tx?: TransactionClient): Promise<{ id: string }>
-  updateDireccion(id: string, direccion: string, barrio?: string, tx?: TransactionClient): Promise<void>
+  updateDireccion(
+    id: string,
+    direccion: string,
+    barrio?: string,
+    tx?: TransactionClient,
+    meta?: { usuarioId?: string | null; pedidoId?: string },
+  ): Promise<void>
   findNegocioById(id: string, tx?: TransactionClient): Promise<NegocioBasico | null>
   /**
    * FIX Fase 2 §3.4: incrementar saldoFavor del cliente (crédito por

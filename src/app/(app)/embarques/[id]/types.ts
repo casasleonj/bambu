@@ -25,7 +25,11 @@ export interface PedidoResumen {
   nombreCli?: string
   apellidoCli?: string | null
   nombreNegocioCli?: string | null
-  cliente?: { id: string; nombre: string; apellido?: string | null; barrio: string | null; telefono: string | null } | null
+  /** Dirección/barrio efectivos (negocio gana, fallback cliente) — ver pickDireccionTexto(). */
+  direccionTexto?: string
+  barrioTexto?: string
+  linkUbicacionEfectivo?: string | null
+  cliente?: { id: string; nombre: string; apellido?: string | null; direccion?: string | null; barrio: string | null; telefono: string | null; linkUbicacion?: string | null } | null
 }
 
 export interface EmbarqueDeudaResumen {
