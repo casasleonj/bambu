@@ -87,7 +87,7 @@ test.describe('Flujos críticos de negocio', () => {
     // Search and select first client
     await modal.locator('input[placeholder="Buscar cliente por nombre o teléfono..."]').fill('a')
     await page.waitForTimeout(500)
-    const clientBtn = modal.locator('div.border.rounded-md button').first()
+    const clientBtn = modal.getByTestId('cliente-search-result').first()
     await clientBtn.click()
 
     // Add product
@@ -109,7 +109,7 @@ test.describe('Flujos críticos de negocio', () => {
       await dialog.accept()
     })
 
-    await modal.locator('button:has-text("Crear Pedido")').click()
+    await modal.getByTestId('submit-pedido').click()
     await page.waitForTimeout(1000)
 
     // Should close modal (no alert about missing client/payment)
@@ -174,7 +174,7 @@ test.describe('Flujos críticos de negocio', () => {
     // Select client
     await modal.locator('input[placeholder="Buscar cliente por nombre o teléfono..."]').fill('a')
     await page.waitForTimeout(500)
-    await modal.locator('div.border.rounded-md button').first().click()
+    await modal.getByTestId('cliente-search-result').first().click()
 
     // Add product
     await modal.locator('input[type="number"]').first().fill('1')
@@ -184,7 +184,7 @@ test.describe('Flujos críticos de negocio', () => {
     // Intercept API response to verify actual success
     const [apiResponse] = await Promise.all([
       page.waitForResponse(resp => resp.url().includes('/api/pedidos') && resp.request().method() === 'POST'),
-      modal.locator('button:has-text("Crear Pedido")').click(),
+      modal.getByTestId('submit-pedido').click(),
     ])
 
     expect(apiResponse.status()).toBe(201)

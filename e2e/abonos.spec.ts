@@ -47,7 +47,7 @@ test.describe('Abonos', () => {
     await searchInput.fill('a')
     await page.waitForTimeout(600)
 
-    const clientBtn = page.locator('div.border.rounded-md button').first()
+    const clientBtn = page.getByTestId('cliente-search-result').first()
     if (await clientBtn.count() > 0) {
       await clientBtn.click()
       await page.waitForTimeout(500)
@@ -57,8 +57,10 @@ test.describe('Abonos', () => {
     await page.locator('input[placeholder="0"]').first().fill('1')
     await page.waitForTimeout(500)
 
-    // Click Crear Pedido (no payment → generates factura with saldo)
-    await page.locator('button:has-text("Crear Pedido")').click()
+    // Click Crear Pedido (no payment → generates factura with saldo). Scoped
+    // via data-testid: a plain text match also catches the unrelated
+    // "+ Crear Pedido" empty-state buttons (desktop/mobile duplicates).
+    await page.getByTestId('submit-pedido').click()
     // Wait for modal to close (pedido created)
     await page.waitForTimeout(3000)
 
