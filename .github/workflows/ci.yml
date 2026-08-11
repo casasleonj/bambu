@@ -151,6 +151,31 @@ jobs:
       - name: Push schema to CI database
         run: npx prisma db push
 
+      - name: Apply raw-SQL sequence migrations (not covered by db push)
+        # `prisma db push` only syncs what's declared in schema.prisma. These
+        # 3 migrations create Postgres sequences (factura_numero_seq,
+        # abono_numero_seq, embarque_numero_seq, compra_insumo_numero_seq)
+        # via raw SQL — db push never creates them, so getNextNumero() (used
+        # by every pedido/venta-libre/recurrente/abono/compra creation) 500s
+        # with `relation "..._seq" does not exist` on any CI-fresh database.
+        # Root cause confirmed by reproducing e2e/offline-resilience.spec.ts
+        # locally against a fresh db-push'd Postgres. The migration files
+        # GRANT to `app_write`, which doesn't exist in this ephemeral
+        # container (only the POSTGRES_USER superuser does) — create it
+        # first so the migrations apply unmodified, same SQL as prod.
+        run: |
+          export PGPASSWORD=bambu_dev
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -c "
+            DO \$\$ BEGIN
+              IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'app_write') THEN
+                CREATE ROLE app_write;
+              END IF;
+            END \$\$;
+          "
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260610_add_factura_numero_seq/migration.sql
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260611_add_abono_embarque_seqs/migration.sql
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260619_import_fase2_proveedor_compra_seq/migration.sql
+
       - name: Seed test data
         run: npx tsx prisma/seed-test.ts
 
