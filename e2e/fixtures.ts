@@ -295,6 +295,11 @@ export async function dismissInstallBanner(page: Page) {
  * (`data-testid="fab-main"` -> `data-testid="fab-pedido-envio"`).
  */
 export async function openFabPedidoEnvio(page: Page) {
+  // Defensive re-check: under heavy CI load a SessionProvider poll can
+  // race checkBaseDia() and reopen the Base Caja modal moments after the
+  // caller's own handleBaseCaja() call resolved, leaving its backdrop
+  // (fixed inset-0 bg-black/50) intercepting the FAB click.
+  await handleBaseCaja(page)
   await dismissInstallBanner(page)
   // .first(): observed in CI as a transient strict-mode violation
   // (getByTestId('fab-main') resolving to 2 elements, one hidden) — same

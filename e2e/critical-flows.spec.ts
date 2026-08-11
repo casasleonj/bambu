@@ -22,13 +22,14 @@ async function login(page: any) {
 async function searchAndSelectCliente(page: Page) {
   const modal = page.locator('form').filter({ hasText: 'Cliente' })
   const clientBtn = page.getByTestId('cliente-search-result').first()
-  for (let attempt = 0; attempt < 2; attempt++) {
+  const maxAttempts = 3
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     await modal.locator('input[placeholder="Buscar cliente por nombre o teléfono..."]').fill('a')
-    if (await clientBtn.isVisible({ timeout: 10000 }).catch(() => false)) {
+    if (await clientBtn.isVisible({ timeout: 15000 }).catch(() => false)) {
       await clientBtn.click()
       return modal
     }
-    if (attempt === 0) {
+    if (attempt < maxAttempts - 1) {
       await page.reload()
       await page.waitForLoadState('networkidle')
       await handleBaseCaja(page)
