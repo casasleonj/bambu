@@ -8,6 +8,7 @@ import type { Cliente, NuevoRecurrenteForm, CanalRecurrente, TipoRecurrente } fr
 import SectionCard from '../../_components/section-card'
 import ChipGroup from '../../_components/chip-group'
 import ProductStepper from '../../_components/product-stepper'
+import { DireccionIndicator } from '@/components/direccion-indicator'
 import { cn } from '@/lib/utils'
 
 const NuevoRecurrenteSchema = z.object({
@@ -425,6 +426,13 @@ export default function NuevoRecurrenteClient() {
                   className="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-1 rounded-lg hover:bg-blue-100 transition">
                   Cambiar
                 </button>
+              </div>
+              <div className="mt-1.5 px-1">
+                <DireccionIndicator
+                  direccion={selectedCliente.direccion}
+                  barrio={selectedCliente.barrio}
+                  linkUbicacion={selectedCliente.linkUbicacion}
+                />
               </div>
               {hasPlantilla && (
                 <div className="mt-2 flex items-center gap-2 p-2.5 bg-red-50 border border-red-200 rounded-xl animate-shake">
