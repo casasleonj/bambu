@@ -6,6 +6,7 @@ import { logger } from '@/lib/logger'
 import { calcularAlertas } from '@/lib/alertas-detector'
 import { CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
 import { subDaysBogota } from '@/lib/dates'
+import { countPedidosAtrasadosSinAsignar } from '@/lib/pedidos-sin-asignar'
 
 export async function GET(_request: NextRequest) {
   const authResult = await requireAuth()
@@ -73,6 +74,8 @@ export async function GET(_request: NextRequest) {
       orderBy: { fecha: 'desc' },
     })
 
+    const atrasadosCount = await countPedidosAtrasadosSinAsignar()
+
     const alertas = calcularAlertas(
       pedidos.map((p) => ({
         id: p.id,
@@ -110,6 +113,7 @@ export async function GET(_request: NextRequest) {
     return apiSuccess({
       fiadosCount: fiados.length,
       alertasCount: alertas.length,
+      atrasadosCount,
     })
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching pedidos counts:')

@@ -32,4 +32,9 @@ describe('FIX Bug 6: /api/pedidos/counts expone contadores ligeros', () => {
     expect(source).toMatch(/fiadosCount/)
     expect(source).toMatch(/alertasCount/)
   })
+
+  it('expone atrasadosCount reutilizando countPedidosAtrasadosSinAsignar', () => {
+    expect(source).toMatch(/import\s*\{\s*countPedidosAtrasadosSinAsignar\s*\}\s*from\s*['"]@\/lib\/pedidos-sin-asignar['"]/)
+    expect(source).toMatch(/atrasadosCount/)
+  })
 })

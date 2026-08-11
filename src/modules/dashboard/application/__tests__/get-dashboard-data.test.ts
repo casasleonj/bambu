@@ -35,6 +35,7 @@ function makeDeps(overrides = {}) {
         clientesConflictivos: 0,
         promesasProximasVencer: 0,
         clientesNoVerificados: 0,
+        pedidosAtrasadosSinAsignar: 0,
       }),
       getActiveCases: vi.fn().mockResolvedValue({
         total: 0,

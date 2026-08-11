@@ -92,7 +92,8 @@ export interface ListarPedidosInput {
   estadoEntrega?: string[]
   estadoPago?: string[]
   origen?: string[]
-  embarqueId?: string
+  /** `null` filtra explícitamente "sin embarque asignado". */
+  embarqueId?: string | null
   tipo?: string[]
   /** Server-side tab scope: isolates Pedidos/Fiados/Alertas datasets. */
   scope?: 'fiados' | 'alertas'

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 export interface UsePedidosCountsResult {
   fiadosCount: number
   alertasCount: number
+  atrasadosCount: number
   loading: boolean
   error: string | null
   refetch: () => Promise<void>
@@ -12,6 +13,7 @@ export interface UsePedidosCountsResult {
 export function usePedidosCounts(autoFetch = true): UsePedidosCountsResult {
   const [fiadosCount, setFiadosCount] = useState(0)
   const [alertasCount, setAlertasCount] = useState(0)
+  const [atrasadosCount, setAtrasadosCount] = useState(0)
   const [loading, setLoading] = useState(autoFetch)
   const [error, setError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -43,6 +45,7 @@ export function usePedidosCounts(autoFetch = true): UsePedidosCountsResult {
       if (data.success) {
         setFiadosCount(data.data?.fiadosCount ?? data.fiadosCount ?? 0)
         setAlertasCount(data.data?.alertasCount ?? data.alertasCount ?? 0)
+        setAtrasadosCount(data.data?.atrasadosCount ?? data.atrasadosCount ?? 0)
         setError(null)
       } else {
         setError(data.error?.message || 'Error cargando contadores')
@@ -68,5 +71,5 @@ export function usePedidosCounts(autoFetch = true): UsePedidosCountsResult {
     }
   }, [autoFetch, fetchCounts])
 
-  return { fiadosCount, alertasCount, loading, error, refetch: fetchCounts }
+  return { fiadosCount, alertasCount, atrasadosCount, loading, error, refetch: fetchCounts }
 }

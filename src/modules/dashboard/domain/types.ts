@@ -63,6 +63,7 @@ export interface AlertasRiesgo {
   clientesConflictivos: number
   promesasProximasVencer: number
   clientesNoVerificados: number
+  pedidosAtrasadosSinAsignar: number
 }
 
 export interface CasosActivos {
