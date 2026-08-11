@@ -51,6 +51,9 @@ export class PrismaEmbarqueRepository implements IEmbarqueRepository {
       where: {
         trabajadorId,
         fecha: { gte: startOfDay, lte: endOfDay },
+        // Sólo un embarque ACTIVO bloquea uno nuevo el mismo día — CERRADO/
+        // CANCELADO no cuentan, así se habilitan recargas (2+ viajes/día).
+        estado: { in: ['ABIERTO', 'EN_RUTA'] },
       },
       include: {
         trabajador: { select: { nombre: true, usaMoto: true, capacidadKg: true } },
