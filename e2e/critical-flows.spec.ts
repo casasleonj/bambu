@@ -1,5 +1,6 @@
 // @tests api/cliente, api/pedido
 import { test, expect } from '@playwright/test'
+import { handleBaseCaja } from './fixtures'
 
 const BASE_URL = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000'
 
@@ -11,26 +12,15 @@ async function login(page: any) {
   await page.waitForURL(/.*dashboard/, { timeout: 15000 })
 }
 
-async function handleBaseCajaModal(page: any) {
-  try {
-    await page.waitForSelector('text=Base de Caja', { timeout: 2000 })
-    await page.fill('input[type="number"]', '100000')
-    await page.click('button:has-text("Continuar")')
-    await page.waitForTimeout(600)
-  } catch {
-    // Modal didn't appear
-  }
-}
-
 test.describe('Flujos críticos de negocio', () => {
 
   test('Crear un nuevo cliente', async ({ page }) => {
     await login(page)
-    await handleBaseCajaModal(page)
+    await handleBaseCaja(page)
 
     await page.goto(`${BASE_URL}/clientes`)
     await page.waitForLoadState('networkidle')
-    await handleBaseCajaModal(page)
+    await handleBaseCaja(page)
 
     // Intercept API response
     let apiResponse: any = null
@@ -65,7 +55,7 @@ test.describe('Flujos críticos de negocio', () => {
     // Refresh page and verify client appears
     await page.reload()
     await page.waitForLoadState('networkidle')
-    await handleBaseCajaModal(page)
+    await handleBaseCaja(page)
 
     const bodyText = await page.locator('body').innerText()
     expect(bodyText).toContain('Cliente E2E Test')
@@ -73,11 +63,11 @@ test.describe('Flujos críticos de negocio', () => {
 
   test('Crear un pedido con pago via items array', async ({ page }) => {
     await login(page)
-    await handleBaseCajaModal(page)
+    await handleBaseCaja(page)
 
     await page.goto(`${BASE_URL}/pedidos`)
     await page.waitForLoadState('networkidle')
-    await handleBaseCajaModal(page)
+    await handleBaseCaja(page)
 
     // Intercept API request to verify items array
     let requestBody: any = null
@@ -139,7 +129,7 @@ test.describe('Flujos críticos de negocio', () => {
 
   test('Dashboard muestra secciones principales', async ({ page }) => {
     await login(page)
-    await handleBaseCajaModal(page)
+    await handleBaseCaja(page)
 
     // Wait for dashboard to fully load
     await page.waitForLoadState('networkidle')
@@ -152,7 +142,7 @@ test.describe('Flujos críticos de negocio', () => {
 
   test('Sidebar tiene logout y configuración', async ({ page }) => {
     await login(page)
-    await handleBaseCajaModal(page)
+    await handleBaseCaja(page)
 
     await expect(page.locator('text=Cerrar Sesión')).toBeVisible()
     await expect(page.locator('text=Precios')).toBeVisible()
@@ -160,11 +150,11 @@ test.describe('Flujos críticos de negocio', () => {
 
   test('Pedido agendado sin pago es permitido via items array', async ({ page }) => {
     await login(page)
-    await handleBaseCajaModal(page)
+    await handleBaseCaja(page)
 
     await page.goto(`${BASE_URL}/pedidos`)
     await page.waitForLoadState('networkidle')
-    await handleBaseCajaModal(page)
+    await handleBaseCaja(page)
 
     // Intercept to verify items array
     let requestBody: any = null

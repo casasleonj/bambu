@@ -1,6 +1,6 @@
 // @tests api/abonos
 import { test, expect, type Page } from '@playwright/test'
-import { resetDatabase } from './fixtures'
+import { resetDatabase, handleBaseCaja } from './fixtures'
 
 test.describe('Abonos', () => {
   test.describe.configure({ mode: 'serial' })
@@ -19,22 +19,13 @@ test.describe('Abonos', () => {
     await page.waitForURL('**/dashboard')
   }
 
-  async function handleBaseCajaModal(page: Page) {
-    const baseCajaBtn = page.locator('button:has-text("Continuar →")')
-    if (await baseCajaBtn.count() > 0) {
-      await page.fill('input[type="number"]', '50000')
-      await baseCajaBtn.click()
-      await page.waitForTimeout(500)
-    }
-  }
-
   test('page loads with heading', async ({ page }) => {
     await login(page, 'admin', 'admin123')
-    await handleBaseCajaModal(page)
+    await handleBaseCaja(page)
 
     await page.goto('/facturas')
     await page.waitForTimeout(2000)
-    await handleBaseCajaModal(page)
+    await handleBaseCaja(page)
 
     await expect(page.locator('h1:has-text("Facturas")')).toBeVisible({ timeout: 10000 })
   })
@@ -46,7 +37,7 @@ test.describe('Abonos', () => {
     // Step 1: Create a pedido without payment → generates factura
     await page.goto('/pedidos')
     await page.waitForTimeout(2000)
-    await handleBaseCajaModal(page)
+    await handleBaseCaja(page)
 
     await page.click('button:has-text("+ Nuevo Pedido")')
     await page.waitForTimeout(2000)
@@ -74,7 +65,7 @@ test.describe('Abonos', () => {
     // Step 2: Navigate to facturas
     await page.goto('/facturas')
     await page.waitForTimeout(2000)
-    await handleBaseCajaModal(page)
+    await handleBaseCaja(page)
 
     // Step 3: Test CANCEL abono first (won't modify saldo)
     const registrarBtn = page.locator('button:has-text("Registrar Abono")').first()
