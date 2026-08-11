@@ -68,6 +68,8 @@ export class PedidoDTOMapper {
       fecha: pedido.fecha.toISOString(),
       fechaEntrega: pedido.fechaEntrega?.toISOString(),
       obs: pedido.obs,
+      direccionEntrega: pedido.direccionEntrega ?? null,
+      barrioEntrega: pedido.barrioEntrega ?? null,
       offlineId: pedido.offlineId ?? null,
       gpsAccuracy: pedido.gpsAccuracy ?? null,
       gpsJustificacion: pedido.gpsJustificacion ?? null,

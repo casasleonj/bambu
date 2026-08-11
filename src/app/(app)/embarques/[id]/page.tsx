@@ -73,6 +73,8 @@ export default async function EmbarquePage({ params }: EmbarquePageProps) {
             cBolsaAguaEnt: true,
             cBolsaHieloEnt: true,
             negocioId: true,
+            direccionEntrega: true,
+            barrioEntrega: true,
             cliente: { select: { id: true, nombre: true, direccion: true, barrio: true, telefono: true, linkUbicacion: true } },
           },
           orderBy: { numero: 'asc' },
@@ -183,7 +185,12 @@ export default async function EmbarquePage({ params }: EmbarquePageProps) {
     })),
     pedidos: embarqueRaw.pedidos.map((p) => {
       const negocioInfo = p.negocioId ? negocioMap.get(p.negocioId) : undefined
-      const direccionEfectiva = pickDireccionTexto({ cliente: p.cliente, negocio: negocioInfo })
+      const direccionEfectiva = pickDireccionTexto({
+        cliente: p.cliente,
+        negocio: negocioInfo,
+        overrideDireccion: p.direccionEntrega,
+        overrideBarrio: p.barrioEntrega,
+      })
       const linkUbicacionEfectivo = direccionEfectiva.fuente === 'negocio'
         ? negocioInfo?.linkUbicacion ?? null
         : direccionEfectiva.fuente === 'cliente'

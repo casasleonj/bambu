@@ -17,6 +17,7 @@ import {
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { broadcastPush } from '@/lib/push'
 import { pickCoords } from '@/lib/geo/pedido-coords'
+import { pickDireccionTexto } from '@/lib/geo/pedido-direccion'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -142,8 +143,14 @@ export async function GET(request: NextRequest) {
       const cliente = clienteById.get(p.clienteId)
       const negocio = p.negocioId ? negocioById.get(p.negocioId) : undefined
       const nombreNegocio = negocio?.nombre || null
-      const direccion = negocio?.direccion ?? cliente?.direccion
-      const barrio = negocio?.barrio ?? cliente?.barrio
+      // Dirección de texto efectiva (regla única pickDireccionTexto): el
+      // snapshot propio del pedido gana sobre negocio, que gana sobre cliente.
+      const direccionEfectiva = pickDireccionTexto({
+        cliente,
+        negocio,
+        overrideDireccion: p.direccionEntrega,
+        overrideBarrio: p.barrioEntrega,
+      })
       const horaApertura = negocio?.horaApertura || null
       const rutaNombre = negocio?.ruta?.nombre || cliente?.ruta?.nombre
       // Coords efectivas (regla única pickCoords: negocio gana, fallback cliente).
@@ -154,8 +161,8 @@ export async function GET(request: NextRequest) {
         nombreCli: getAnonymousClientDisplayName(p.clienteId, 'short') ?? (cliente?.nombre || 'Desconocido'),
         apellidoCli: cliente?.apellido || null,
         telefonoCli: cliente?.telefono || '',
-        zonaCli: direccion || '',
-        barrioCli: barrio || '',
+        zonaCli: direccionEfectiva.direccion,
+        barrioCli: direccionEfectiva.barrio,
         nombreNegocioCli: nombreNegocio,
         horaAperturaCli: horaApertura,
         rutaNombre,
@@ -200,6 +207,8 @@ export async function POST(request: NextRequest) {
       preciosManuales,
       clienteNuevo,
       actualizarCliente,
+      direccionEntrega,
+      barrioEntrega,
       origen,
       ventaRapida,
       offlineId,
@@ -264,6 +273,8 @@ export async function POST(request: NextRequest) {
         direccion: actualizarCliente.direccion,
         barrio: actualizarCliente.barrio,
       } : undefined,
+      direccionEntrega,
+      barrioEntrega,
       createdById: authResult.user?.id ?? undefined,
       createdByRole: authResult.user?.role ?? undefined,
     })

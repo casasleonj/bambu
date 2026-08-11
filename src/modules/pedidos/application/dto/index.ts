@@ -27,6 +27,14 @@ export interface CrearPedidoInput {
     direccion?: string
     barrio?: string
   }
+  /**
+   * Snapshot de dirección puntual del pedido (no toca Cliente/Negocio).
+   * Se persiste en Pedido.direccionEntrega/barrioEntrega solo si difiere
+   * de la dirección resuelta en vivo (negocio gana, fallback cliente) —
+   * ver CrearPedidoUseCase.
+   */
+  direccionEntrega?: string
+  barrioEntrega?: string
   createdById?: string
   createdByRole?: string
   // Offline-first: id generado por el cliente para dedup al reenviar
@@ -42,6 +50,9 @@ export interface ActualizarPedidoInput {
     direccion?: string
     barrio?: string
   }
+  /** Snapshot de dirección puntual del pedido — ver CrearPedidoInput. */
+  direccionEntrega?: string
+  barrioEntrega?: string
   /** Quién dispara la actualización — usado para auditar cambios de dirección. */
   usuarioId?: string
   offlineId?: string
@@ -123,6 +134,8 @@ export interface PedidoResumenDTO {
   fecha: string
   fechaEntrega?: string
   obs?: string
+  direccionEntrega?: string | null
+  barrioEntrega?: string | null
   offlineId?: string | null
   gpsAccuracy?: number | null
   gpsJustificacion?: string | null

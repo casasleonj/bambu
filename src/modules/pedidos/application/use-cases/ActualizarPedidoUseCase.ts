@@ -17,6 +17,7 @@ import type { ITransactionManager } from '../../infrastructure/transactions/Pris
 import { PedidoItem } from '../../domain/entities/PedidoItem'
 import type { ActualizarPedidoInput } from '../dto'
 import { PedidoDTOMapper } from '../dto/PedidoDTOMapper'
+import { pickDireccionTexto } from '@/lib/geo/pedido-direccion'
 
 export class ActualizarPedidoUseCase {
   constructor(
@@ -67,6 +68,45 @@ export class ActualizarPedidoUseCase {
           ),
         )
 
+        // Snapshot de dirección puntual del pedido (Pedido.direccionEntrega/
+        // barrioEntrega). Por defecto se preserva el valor existente (una
+        // edición de cantidades no debe borrar un override ya guardado).
+        // Solo se recalcula si el body trae explícitamente direccionEntrega
+        // o barrioEntrega, comparando contra la dirección resuelta en vivo
+        // (negocio gana, fallback cliente) — mismo criterio que
+        // CrearPedidoUseCase. El fetch de cliente considera un
+        // actualizarCliente pendiente en este mismo request para no marcar
+        // como "distinta" una dirección que está por convertirse en la
+        // permanente del cliente.
+        let direccionEntregaSnapshot: string | undefined = pedido.direccionEntrega
+        let barrioEntregaSnapshot: string | undefined = pedido.barrioEntrega
+        if (input.direccionEntrega !== undefined || input.barrioEntrega !== undefined) {
+          const clienteActual = await this.clienteRepo.findById(pedido.clienteId, tx)
+          const negocioActual = pedido.negocioId
+            ? await this.clienteRepo.findNegocioById(pedido.negocioId, tx)
+            : null
+          const aplicaraActualizarCliente = Boolean(
+            input.actualizarCliente && !pedido.negocioId && pedido.clienteId !== 'CONSUMIDOR_FINAL',
+          )
+          const clienteParaResolucion = aplicaraActualizarCliente
+            ? { direccion: input.actualizarCliente?.direccion || '', barrio: input.actualizarCliente?.barrio }
+            : clienteActual
+          const resuelta = pickDireccionTexto({
+            cliente: clienteParaResolucion,
+            negocio: negocioActual,
+          })
+          if (
+            (input.direccionEntrega || '') !== resuelta.direccion ||
+            (input.barrioEntrega || '') !== resuelta.barrio
+          ) {
+            direccionEntregaSnapshot = input.direccionEntrega
+            barrioEntregaSnapshot = input.barrioEntrega
+          } else {
+            direccionEntregaSnapshot = undefined
+            barrioEntregaSnapshot = undefined
+          }
+        }
+
         // Create updated pedido entity (rebuild)
         const { Pedido } = await import('../../domain/entities/Pedido')
         const updatedPedido = Pedido.create({
@@ -93,6 +133,8 @@ export class ActualizarPedidoUseCase {
           gpsLat: pedido.gpsLat,
           gpsLng: pedido.gpsLng,
           codigoVisita: pedido.codigoVisita,
+          direccionEntrega: direccionEntregaSnapshot,
+          barrioEntrega: barrioEntregaSnapshot,
         })
 
         const saved = await this.pedidoRepo.update(updatedPedido, tx)

@@ -36,6 +36,8 @@ export interface CrearPedidoPayload {
     direccion?: string
     barrio?: string
   }
+  direccionEntrega?: string
+  barrioEntrega?: string
 }
 
 export interface CrearPedidoResult {

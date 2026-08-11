@@ -104,7 +104,12 @@ export default async function RepartidorPage() {
           // linkUbicacion de la MISMA fuente que ganó, para que el
           // repartidor tenga un link a Maps cuando no hay dirección en
           // texto (ej. negocio con solo el link pegado).
-          const direccionEfectiva = pickDireccionTexto({ cliente: p.cliente, negocio: negocioInfo })
+          const direccionEfectiva = pickDireccionTexto({
+            cliente: p.cliente,
+            negocio: negocioInfo,
+            overrideDireccion: p.direccionEntrega,
+            overrideBarrio: p.barrioEntrega,
+          })
           const linkUbicacionEfectivo = direccionEfectiva.fuente === 'negocio'
             ? negocioInfo?.linkUbicacion ?? null
             : direccionEfectiva.fuente === 'cliente'

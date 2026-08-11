@@ -14,6 +14,7 @@ import {
 import { PedidoId } from '@/modules/pedidos/domain/value-objects/PedidoId'
 import { PedidoDTOMapper } from '@/modules/pedidos/application/dto/PedidoDTOMapper'
 import { publishRealtimeEvent } from '@/lib/realtime'
+import { pickDireccionTexto } from '@/lib/geo/pedido-direccion'
 
 function getUserFromSession(authResult: unknown) {
   return { id: (authResult as { user?: { id?: string } })?.user?.id || '', role: (authResult as { user?: { role?: string } })?.user?.role }
@@ -50,20 +51,26 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     ])
 
     const nombreNegocio = negocio?.nombre || null
-    const direccion = negocio?.direccion ?? cliente?.direccion
-    const barrio = negocio?.barrio ?? cliente?.barrio
     const horaApertura = negocio?.horaApertura || null
     const rutaNombre = negocio?.ruta?.nombre || cliente?.ruta?.nombre
 
     const dto = PedidoDTOMapper.toResumen(found.pedido, { factura: found.factura })
+    // Dirección de texto efectiva (regla única pickDireccionTexto): el
+    // snapshot propio del pedido gana sobre negocio, que gana sobre cliente.
+    const direccionEfectiva = pickDireccionTexto({
+      cliente,
+      negocio,
+      overrideDireccion: dto.direccionEntrega,
+      overrideBarrio: dto.barrioEntrega,
+    })
     return apiSuccess({
       pedido: {
         ...dto,
         nombreCli: dto.clienteId === 'CONSUMIDOR_FINAL' ? 'Consumidor Final' : (cliente?.nombre || 'Desconocido'),
         apellidoCli: cliente?.apellido || null,
         telefonoCli: cliente?.telefono || '',
-        zonaCli: direccion || '',
-        barrioCli: barrio || '',
+        zonaCli: direccionEfectiva.direccion,
+        barrioCli: direccionEfectiva.barrio,
         nombreNegocioCli: nombreNegocio,
         horaAperturaCli: horaApertura,
         rutaNombre,
@@ -107,6 +114,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         direccion: parsed.data.actualizarCliente.direccion || undefined,
         barrio: parsed.data.actualizarCliente.barrio || undefined,
       } : undefined,
+      direccionEntrega: parsed.data.direccionEntrega,
+      barrioEntrega: parsed.data.barrioEntrega,
       usuarioId: getUserFromSession(authResult).id,
     })
 

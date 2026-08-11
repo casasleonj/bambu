@@ -75,6 +75,10 @@ export const PedidoCreateSchema = z.object({
   ).optional(),
   obs: z.string().max(500).optional(),
   fechaEntrega: z.string().optional(),
+  // Snapshot de dirección puntual del pedido (no toca Cliente/Negocio) —
+  // ver CrearPedidoUseCase.
+  direccionEntrega: z.string().max(200).optional(),
+  barrioEntrega: z.string().max(100).optional(),
   // Offline-first: id generado por el cliente para dedup si se encola
   offlineId: z.string().optional(),
   // LEGACY (mantener durante transición)
@@ -218,6 +222,9 @@ export const PedidoUpdateSchema = z.object({
     direccion: z.string().min(1),
     barrio: z.string().min(1),
   }).optional(),
+  // Snapshot de dirección puntual del pedido — ver PedidoCreateSchema.
+  direccionEntrega: z.string().max(200).optional(),
+  barrioEntrega: z.string().max(100).optional(),
   items: z.array(PedidoItemSchema).optional(),
   // Offline-first: dedup si la request se encola y se reintenta
   offlineId: z.string().optional(),
