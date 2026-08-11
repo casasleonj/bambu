@@ -79,6 +79,15 @@ export interface PedidoUnifiedData {
   obs?: string
   clienteNuevo?: { nombre: string; apellido?: string; telefono: string; direccion: string; barrio?: string; fuente?: string }
   actualizarCliente?: { direccion: string; barrio: string }
+  /**
+   * Snapshot de dirección puntual del pedido — se envía siempre que el
+   * canal sea DOMICILIO (independientemente del checkbox "solo para este
+   * pedido"). El servidor decide si difiere de la dirección resuelta en
+   * vivo (negocio gana, fallback cliente) y solo entonces la persiste
+   * como override propio del pedido (Pedido.direccionEntrega/barrioEntrega).
+   */
+  direccionEntrega?: string
+  barrioEntrega?: string
   ventaRapida: boolean
   isEdit?: boolean
   pedidoId?: string
@@ -668,6 +677,8 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
       obs: observaciones || undefined,
       clienteNuevo: clienteNuevoData,
       actualizarCliente,
+      direccionEntrega: canal === 'DOMICILIO' ? editDireccion || undefined : undefined,
+      barrioEntrega: canal === 'DOMICILIO' ? editBarrio || undefined : undefined,
       ventaRapida: canal === 'PUNTO',
       isEdit: !!pedidoInicial?.id,
       pedidoId: pedidoInicial?.id,

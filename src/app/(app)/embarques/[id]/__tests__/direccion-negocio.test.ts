@@ -45,3 +45,17 @@ describe('FIX: /embarques resuelve dirección negocio-gana-else-cliente', () => 
     expect(clientSource).toMatch(/pedido\.barrioTexto/)
   })
 })
+
+describe('Step 7c: snapshot de dirección puntual del pedido (Pedido.direccionEntrega/barrioEntrega)', () => {
+  it('el select de pedidos incluye direccionEntrega/barrioEntrega', () => {
+    expect(pageSource).toMatch(/direccionEntrega:\s*true/)
+    expect(pageSource).toMatch(/barrioEntrega:\s*true/)
+  })
+
+  it('pickDireccionTexto recibe el snapshot como override (máxima prioridad)', () => {
+    const idx = pageSource.indexOf('const direccionEfectiva = pickDireccionTexto({')
+    const block = pageSource.slice(idx, pageSource.indexOf('})', idx))
+    expect(block).toMatch(/overrideDireccion:\s*p\.direccionEntrega/)
+    expect(block).toMatch(/overrideBarrio:\s*p\.barrioEntrega/)
+  })
+})

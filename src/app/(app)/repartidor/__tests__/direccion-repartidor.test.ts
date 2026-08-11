@@ -42,3 +42,12 @@ describe('FIX: /repartidor expone dirección de texto + linkUbicacion de respald
     expect(clientSource).toMatch(/<DireccionIndicator/)
   })
 })
+
+describe('Step 7c: snapshot de dirección puntual del pedido (Pedido.direccionEntrega/barrioEntrega)', () => {
+  it('pickDireccionTexto recibe el snapshot como override (máxima prioridad)', () => {
+    const idx = pageSource.indexOf('const direccionEfectiva = pickDireccionTexto({')
+    const block = pageSource.slice(idx, pageSource.indexOf('})', idx))
+    expect(block).toMatch(/overrideDireccion:\s*p\.direccionEntrega/)
+    expect(block).toMatch(/overrideBarrio:\s*p\.barrioEntrega/)
+  })
+})

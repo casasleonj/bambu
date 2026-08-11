@@ -41,6 +41,8 @@ export interface PedidoProps {
   entregadoConGps?: boolean
   entregadoAt?: Date
   codigoVisita?: string
+  direccionEntrega?: string
+  barrioEntrega?: string
   adminOverrideNota?: string
   adminOverrideBy?: string
   adminOverrideAt?: Date
@@ -83,6 +85,8 @@ export class Pedido {
   get entregadoConGps(): boolean | undefined { return this.props.entregadoConGps }
   get entregadoAt(): Date | undefined { return this.props.entregadoAt }
   get codigoVisita(): string | undefined { return this.props.codigoVisita }
+  get direccionEntrega(): string | undefined { return this.props.direccionEntrega }
+  get barrioEntrega(): string | undefined { return this.props.barrioEntrega }
   get adminOverrideNota(): string | undefined { return this.props.adminOverrideNota }
   get adminOverrideBy(): string | undefined { return this.props.adminOverrideBy }
   get adminOverrideAt(): Date | undefined { return this.props.adminOverrideAt }

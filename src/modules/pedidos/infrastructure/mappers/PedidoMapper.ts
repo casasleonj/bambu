@@ -40,6 +40,8 @@ interface PrismaPedido {
   entregadoConGps: boolean
   entregadoAt: Date | null
   codigoVisita: string | null
+  direccionEntrega: string | null
+  barrioEntrega: string | null
   adminOverrideNota: string | null
   adminOverrideBy: string | null
   adminOverrideAt: Date | null
@@ -119,6 +121,8 @@ export class PedidoMapper {
       entregadoConGps: raw.entregadoConGps,
       entregadoAt: raw.entregadoAt || undefined,
       codigoVisita: raw.codigoVisita || undefined,
+      direccionEntrega: raw.direccionEntrega || undefined,
+      barrioEntrega: raw.barrioEntrega || undefined,
       adminOverrideNota: raw.adminOverrideNota || undefined,
       adminOverrideBy: raw.adminOverrideBy || undefined,
       adminOverrideAt: raw.adminOverrideAt || undefined,
@@ -155,6 +159,8 @@ export class PedidoMapper {
       entregadoConGps: pedido.entregadoConGps ?? true,
       entregadoAt: pedido.entregadoAt || null,
       codigoVisita: pedido.codigoVisita || null,
+      direccionEntrega: pedido.direccionEntrega || null,
+      barrioEntrega: pedido.barrioEntrega || null,
       adminOverrideNota: pedido.adminOverrideNota || null,
       adminOverrideBy: pedido.adminOverrideBy || null,
       adminOverrideAt: pedido.adminOverrideAt || null,
@@ -194,6 +200,8 @@ export class PedidoMapper {
       entregadoConGps: pedido.entregadoConGps ?? true,
       entregadoAt: pedido.entregadoAt || null,
       codigoVisita: pedido.codigoVisita || null,
+      direccionEntrega: pedido.direccionEntrega || null,
+      barrioEntrega: pedido.barrioEntrega || null,
       adminOverrideNota: pedido.adminOverrideNota || null,
       adminOverrideBy: pedido.adminOverrideBy || null,
       adminOverrideAt: pedido.adminOverrideAt || null,

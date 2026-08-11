@@ -5,6 +5,7 @@ import { buildDateRangeFilter, getTodayRange } from '@/lib/dates'
 import { getAnonymousClientDisplayName } from '@/lib/cliente-canonical'
 import { getPaginationParams } from '@/lib/pagination'
 import { pickCoords } from '@/lib/geo/pedido-coords'
+import { pickDireccionTexto } from '@/lib/geo/pedido-direccion'
 import type { PedidoResumenDTO } from '@/modules/pedidos/application/dto'
 import type { Pedido } from './pedidos-client/types'
 import { PedidosClient } from './pedidos-client'
@@ -124,13 +125,22 @@ export default async function PedidosPage({
       const negocio = p.negocioId ? negocioById.get(p.negocioId) : undefined
       // Coords efectivas (regla única pickCoords: negocio gana, fallback cliente).
       const coordsEfectivas = pickCoords({ cliente, negocio })
+      // Dirección de texto efectiva (regla única pickDireccionTexto): el
+      // snapshot propio del pedido (direccionEntrega/barrioEntrega) gana
+      // sobre negocio, que gana sobre cliente.
+      const direccionEfectiva = pickDireccionTexto({
+        cliente,
+        negocio,
+        overrideDireccion: p.direccionEntrega,
+        overrideBarrio: p.barrioEntrega,
+      })
       return {
         ...p,
         nombreCli: getAnonymousClientDisplayName(p.clienteId, 'short') ?? (cliente?.nombre || 'Desconocido'),
         apellidoCli: cliente?.apellido || null,
         telefonoCli: cliente?.telefono || '',
-        zonaCli: (negocio?.direccion ?? cliente?.direccion) || '',
-        barrioCli: (negocio?.barrio ?? cliente?.barrio) || '',
+        zonaCli: direccionEfectiva.direccion,
+        barrioCli: direccionEfectiva.barrio,
         nombreNegocioCli: negocio?.nombre || null,
         horaAperturaCli: negocio?.horaApertura || null,
         rutaNombre: negocio?.ruta?.nombre || cliente?.ruta?.nombre,

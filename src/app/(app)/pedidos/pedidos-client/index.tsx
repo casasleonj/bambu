@@ -626,7 +626,13 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           signal: AbortSignal.timeout(8_000),
-          body: JSON.stringify({ items: data.items, obs: data.obs, actualizarCliente: data.actualizarCliente }),
+          body: JSON.stringify({
+            items: data.items,
+            obs: data.obs,
+            actualizarCliente: data.actualizarCliente,
+            direccionEntrega: data.direccionEntrega,
+            barrioEntrega: data.barrioEntrega,
+          }),
         })
         if (res.ok) {
           setShowModal(false)

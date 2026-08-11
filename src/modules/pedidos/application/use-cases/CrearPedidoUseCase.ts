@@ -29,6 +29,7 @@ import { normalizarPagos } from '../../domain/services/pagos-calculator.service'
 import type { ITransactionManager } from '../../infrastructure/transactions/PrismaTransactionManager'
 import type { CrearPedidoInput, CrearPedidoResult } from '../dto'
 import { PedidoDTOMapper } from '../dto/PedidoDTOMapper'
+import { pickDireccionTexto } from '@/lib/geo/pedido-direccion'
 import { ensureConsumidorFinalCanonical, isConsumidorFinalCanonical } from '@/lib/cliente-canonical'
 import { getFacturaEmpresaSnapshot } from '@/lib/factura-empresa'
 
@@ -132,6 +133,39 @@ export class CrearPedidoUseCase {
           tx,
           { usuarioId: input.createdById },
         )
+        // Reflejar el update en el objeto en memoria: el snapshot de abajo
+        // compara contra la dirección resuelta, y si no se actualiza acá
+        // seguiría viendo el valor viejo de `cliente` y guardaría un
+        // snapshot redundante (dirección puntual == dirección ya persistida).
+        cliente.direccion = input.actualizarCliente.direccion || ''
+        cliente.barrio = input.actualizarCliente.barrio
+      }
+
+      // 4b. Snapshot de dirección puntual del pedido (Pedido.direccionEntrega/
+      // barrioEntrega). Nunca toca Cliente/Negocio — es un dato propio del
+      // pedido. Se persiste SOLO si el texto tipeado difiere de la dirección
+      // resuelta en vivo (negocio gana, fallback cliente vía
+      // pickDireccionTexto), para no duplicar en cada pedido un dato que ya
+      // coincide con lo guardado. Aplica independientemente del checkbox
+      // "solo para este pedido" — ese checkbox solo decide si además se
+      // actualiza Cliente.direccion.
+      let direccionEntregaSnapshot: string | undefined
+      let barrioEntregaSnapshot: string | undefined
+      if (input.direccionEntrega || input.barrioEntrega) {
+        const negocioParaDireccion = input.negocioId
+          ? await this.clienteRepo.findNegocioById(input.negocioId, tx)
+          : null
+        const resuelta = pickDireccionTexto({
+          cliente: { direccion: cliente.direccion, barrio: cliente.barrio },
+          negocio: negocioParaDireccion,
+        })
+        if (
+          (input.direccionEntrega || '') !== resuelta.direccion ||
+          (input.barrioEntrega || '') !== resuelta.barrio
+        ) {
+          direccionEntregaSnapshot = input.direccionEntrega
+          barrioEntregaSnapshot = input.barrioEntrega
+        }
       }
 
       // 5. Resolve prices
@@ -201,6 +235,8 @@ export class CrearPedidoUseCase {
         fecha: new Date(),
         fechaEntrega: input.fechaEntrega,
         obs: input.obs,
+        direccionEntrega: direccionEntregaSnapshot,
+        barrioEntrega: barrioEntregaSnapshot,
         createdById: input.createdById,
       })
 
