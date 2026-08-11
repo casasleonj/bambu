@@ -2,8 +2,9 @@ export interface Cliente {
   id: string
   nombre: string
   telefono: string
-  direccion?: string
-  barrio?: string
+  direccion?: string | null
+  barrio?: string | null
+  linkUbicacion?: string | null
   plantillaRecurrente?: {
     activo: boolean
     cadaNDias: number

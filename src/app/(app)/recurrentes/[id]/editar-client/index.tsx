@@ -8,6 +8,7 @@ import { formatLocalDate } from '@/lib/utils'
 import SectionCard from '../../_components/section-card'
 import ChipGroup from '../../_components/chip-group'
 import ProductStepper from '../../_components/product-stepper'
+import { DireccionIndicator } from '@/components/direccion-indicator'
 import { cn } from '@/lib/utils'
 
 interface PlantillaSerialized {
@@ -29,6 +30,7 @@ interface PlantillaSerialized {
     telefono: string
     barrio: string | null
     direccion: string | null
+    linkUbicacion: string | null
   }
 }
 
@@ -261,6 +263,13 @@ export function EditarRecurrenteClient({ plantilla }: { plantilla: PlantillaSeri
               <div>
                 <p className="font-medium text-sm text-gray-800">{plantilla.cliente.nombre}</p>
                 <p className="text-xs text-gray-500">{plantilla.cliente.telefono}{plantilla.cliente.barrio && ` · ${plantilla.cliente.barrio}`}</p>
+                <div className="mt-1">
+                  <DireccionIndicator
+                    direccion={plantilla.cliente.direccion}
+                    barrio={plantilla.cliente.barrio}
+                    linkUbicacion={plantilla.cliente.linkUbicacion}
+                  />
+                </div>
               </div>
             </div>
             <div className="text-right text-xs text-gray-500 space-y-0.5">

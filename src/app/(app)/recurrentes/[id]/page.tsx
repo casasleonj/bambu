@@ -8,7 +8,7 @@ export default async function EditarRecurrentePage({ params }: { params: Promise
   const plantilla = await prisma.plantillaRecurrente.findUnique({
     where: { id },
     include: {
-      cliente: { select: { id: true, nombre: true, telefono: true, barrio: true, direccion: true } },
+      cliente: { select: { id: true, nombre: true, telefono: true, barrio: true, direccion: true, linkUbicacion: true } },
       productos: true,
     },
   })
