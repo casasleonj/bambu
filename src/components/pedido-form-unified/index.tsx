@@ -14,6 +14,7 @@ import { usePriceSync } from '@/hooks/use-price-sync'
 import { Money, calcularSaldo } from '@/shared/domain'
 import type { FiadoStatus } from '@/modules/pedidos/domain/types'
 import type { Cliente, Tier } from './types'
+import { fetchClienteDetailFresh } from '@/lib/cliente-detail-cache'
 
 const FUENTES: string[] = [
   'Página web', 'Instagram', 'Facebook', 'Referido', 'WhatsApp',
@@ -35,6 +36,11 @@ export interface PedidoInicialItem {
   precioManual?: number
 }
 
+export interface PatronConsumo {
+  frecuenciaSugerida: { dias: number; label: string } | null
+  productosSugeridos: Array<{ codigo: string; nombre: string; frecuencia: number; cantidadPromedio: number }>
+}
+
 export interface PedidoInicial {
   id: string
   canal: 'PUNTO' | 'DOMICILIO'
@@ -47,6 +53,12 @@ export interface PedidoInicial {
   negocioBarrio?: string | null
   items: PedidoInicialItem[]
   obs?: string | null
+  // Patrón de consumo del cliente (frecuencia/productos habituales, calculado
+  // server-side en GET /api/clientes/[id]). Vive en PedidoInicial, no en
+  // PedidoInicialCliente: `clienteSeleccionado` se castea a `Cliente` de
+  // ./types (línea ~272) y ese tipo no debe cargar estos campos transitorios.
+  frecuenciaSugerida?: { dias: number; label: string } | null
+  productosSugeridos?: Array<{ codigo: string; nombre: string; frecuencia: number; cantidadPromedio: number }>
 }
 
 export interface PedidoFormUnifiedProps {
@@ -70,6 +82,24 @@ export interface PedidoUnifiedData {
   ventaRapida: boolean
   isEdit?: boolean
   pedidoId?: string
+}
+
+// `productosSugeridos[].codigo` (de GET /api/clientes/[id]) usa los nombres
+// de columna legacy de Pedido, no el ProductCode canónico de PRODUCTO_INFO.
+// BOTELLON tiene dos columnas legacy (Fab/Dom) que mapean al mismo ProductCode.
+const LEGACY_CODIGO_TO_PRODUCT_CODE: Record<string, string> = {
+  cPacaAguaPed: 'PACA_AGUA',
+  cPacaHieloPed: 'PACA_HIELO',
+  cBotellonFabPed: 'BOTELLON',
+  cBotellonDomPed: 'BOTELLON',
+  cBolsaAguaPed: 'BOLSA_AGUA',
+  cBolsaHieloPed: 'BOLSA_HIELO',
+}
+
+function mapLegacyCodigoToProdId(legacyCodigo: string): string | undefined {
+  const productCode = LEGACY_CODIGO_TO_PRODUCT_CODE[legacyCodigo]
+  if (!productCode) return undefined
+  return Object.keys(PRODUCTO_INFO).find(k => PRODUCTO_INFO[k].codigo === productCode)
 }
 
 // ==================== COMPONENTE ====================
@@ -103,6 +133,13 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
   const [productosConfig, setProductosConfig] = useState<Array<{ codigo: string; aplicaDomicilio: boolean; sobreCostoDomicilio: number }>>([])
   const [fiadosStatus, setFiadosStatus] = useState<FiadoStatus | null>(null)
   const [precioBajoConfirmado, setPrecioBajoConfirmado] = useState<Record<string, boolean>>({})
+  // Patrón de consumo (guía): banner de solo lectura + botón opt-in para
+  // aplicar cantidades sugeridas. Nunca se auto-aplica — este es un ERP con
+  // dinero y despachos reales; pre-llenar cantidades sin acción explícita
+  // del operador puede terminar en un pedido/cobro que el cliente no pidió.
+  const [sugerenciaConsumo, setSugerenciaConsumo] = useState<PatronConsumo | null>(null)
+  const [sugerenciaLoading, setSugerenciaLoading] = useState(false)
+  const [sugerenciaAplicada, setSugerenciaAplicada] = useState(false)
   const cantidadesRef = useRef(cantidades)
   const canalRef = useRef(canal)
   const clienteIdRef = useRef<string | null>(null)
@@ -281,6 +318,55 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
     if (pedidoInicial.cliente) {
       setClienteSeleccionado(pedidoInicial.cliente as Cliente)
     }
+    // Revalidación silenciosa de campos de despacho para pedido NUEVO con
+    // cliente pre-seleccionado (deep-link ?new=1&clienteId=... desde
+    // /clientes). El cliente pudo venir de un caché de hasta 60s
+    // (cliente-detail-cache.ts) — dirección/barrio/teléfono no deben
+    // depender de eso para un despacho real. Se hace acá (no en el padre)
+    // porque tanto este efecto como el de sync de editDireccion/editBarrio
+    // están keyed en `.id` (no en el contenido), así que mutar el prop
+    // `pedidoInicial` después de este primer render no dispararía ningún
+    // re-render que lo propague — hay que actualizar el state derivado
+    // directamente.
+    if (!pedidoInicial.id && pedidoInicial.cliente?.id) {
+      const capturedId = pedidoInicial.cliente.id
+      const cachedTelefono = pedidoInicial.cliente.telefono
+      const cachedDireccion = pedidoInicial.cliente.direccion ?? null
+      const cachedBarrio = pedidoInicial.cliente.barrio ?? null
+      fetchClienteDetailFresh<{ id: string; telefono: string; direccion?: string | null; barrio?: string | null }>(capturedId)
+        .then(fresh => {
+          if (!fresh.ok) return
+          const f = fresh.cliente
+          const changed =
+            f.telefono !== cachedTelefono ||
+            (f.direccion ?? null) !== cachedDireccion ||
+            (f.barrio ?? null) !== cachedBarrio
+          if (!changed) return
+          // Solo corrige si sigue siendo el mismo cliente (no cambió a mitad
+          // de la revalidación) y solo pisa editDireccion/editBarrio si el
+          // operador no los tocó todavía (siguen igual al valor con el que
+          // se sembraron desde el caché).
+          setClienteSeleccionado(prev =>
+            prev && prev.id === capturedId
+              ? { ...prev, telefono: f.telefono, direccion: f.direccion ?? undefined, barrio: f.barrio ?? undefined }
+              : prev
+          )
+          setEditDireccion(prev => (prev === (cachedDireccion || '') ? (f.direccion || '') : prev))
+          setEditBarrio(prev => (prev === (cachedBarrio || '') ? (f.barrio || '') : prev))
+        })
+    }
+    // Patrón de consumo: viene gratis en la misma respuesta que ya resolvió
+    // el cliente (GET /api/clientes/[id]) — no dispara un fetch adicional.
+    // Solo lectura hasta que el usuario haga clic en "Aplicar sugerencia".
+    setSugerenciaConsumo(
+      pedidoInicial.frecuenciaSugerida || (pedidoInicial.productosSugeridos && pedidoInicial.productosSugeridos.length > 0)
+        ? {
+            frecuenciaSugerida: pedidoInicial.frecuenciaSugerida ?? null,
+            productosSugeridos: pedidoInicial.productosSugeridos ?? [],
+          }
+        : null
+    )
+    setSugerenciaAplicada(false)
     setNegocioSeleccionado(pedidoInicial.negocioId ?? null)
     // FIX: negocioData nunca se inicializaba al editar un pedido a negocio —
     // solo se setea vía el click del usuario dentro de NegocioSelector. El
@@ -352,17 +438,19 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
   ).toDecimal()
   const requiereCliente = canal === 'DOMICILIO' || saldoPendiente > 0
 
-  const handleCantidadChange = (id: string, value: string) => {
-    const cant = parseInt(value) || 0
-    const next = { ...cantidades, [id]: cant }
+  // Ruta única para aplicar un nuevo objeto `cantidades` (cambio manual de
+  // un input O aplicar la sugerencia de patrón de consumo). Centralizada a
+  // propósito: marca preciosLoading=true ANTES de esperar el debounce, no
+  // solo durante el fetch. Sin esto había una ventana de hasta 400ms donde
+  // preciosLoading seguía en false pero la cantidad ya había cambiado,
+  // dejando que el usuario cobrara/enviara con el precio previo (stale).
+  // Cualquier nuevo call site que modifique `cantidades` en bloque debe
+  // pasar por acá, no reimplementar el debounce+guard.
+  const applyCantidadesUpdate = (next: Record<string, number>) => {
     setCantidades(next)
     if (resolverTimeoutRef.current) {
       clearTimeout(resolverTimeoutRef.current)
     }
-    // Marcar precios como "cargando" ANTES de esperar el debounce, no solo
-    // durante el fetch. Sin esto había una ventana de hasta 400ms donde
-    // preciosLoading seguía en false pero la cantidad ya había cambiado,
-    // dejando que el usuario cobrara/enviara con el precio previo (stale).
     if (Object.values(next).some(c => c > 0)) {
       setPreciosLoading(true)
     }
@@ -370,6 +458,45 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
       resolverTimeoutRef.current = null
       resolverPrecios(next, canalRef.current, clienteSeleccionado?.id, negocioSeleccionado)
     }, 400)
+  }
+
+  const handleCantidadChange = (id: string, value: string) => {
+    const cant = parseInt(value) || 0
+    applyCantidadesUpdate({ ...cantidades, [id]: cant })
+  }
+
+  const aplicarSugerenciaConsumo = () => {
+    if (!sugerenciaConsumo?.productosSugeridos.length) return
+    const next = { ...cantidades }
+    for (const sugerido of sugerenciaConsumo.productosSugeridos) {
+      const prodId = mapLegacyCodigoToProdId(sugerido.codigo)
+      if (prodId) next[prodId] = sugerido.cantidadPromedio
+    }
+    applyCantidadesUpdate(next)
+    setSugerenciaAplicada(true)
+  }
+
+  const verPatronConsumo = () => {
+    if (!clienteSeleccionado?.id || sugerenciaLoading || sugerenciaConsumo) return
+    const capturedId = clienteSeleccionado.id
+    setSugerenciaLoading(true)
+    fetchClienteDetailFresh<{
+      frecuenciaSugerida?: { dias: number; label: string } | null
+      productosSugeridos?: Array<{ codigo: string; nombre: string; frecuencia: number; cantidadPromedio: number }>
+    }>(capturedId).then(result => {
+      // Guard anti-carrera: si el usuario ya cambió de cliente mientras este
+      // fetch estaba en vuelo, no pisar el estado del cliente actual con la
+      // respuesta tardía del cliente anterior (mismo patrón que el efecto de
+      // fiado-status un poco más abajo, con el mismo clienteIdRef).
+      if (clienteIdRef.current !== capturedId) return
+      setSugerenciaLoading(false)
+      if (result.ok) {
+        setSugerenciaConsumo({
+          frecuenciaSugerida: result.cliente.frecuenciaSugerida ?? null,
+          productosSugeridos: result.cliente.productosSugeridos ?? [],
+        })
+      }
+    })
   }
 
   const increment = (id: string) => handleCantidadChange(id, String((cantidades[id] || 0) + 1))
@@ -400,7 +527,20 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
     ? clientes.filter((c) => matchCliente(c, searchTerm))
     : []
 
-  const handleSelectCliente = (cliente: Cliente) => { setClienteSeleccionado(cliente); setNegocioSeleccionado(null); setSearchTerm(''); setMostrarNuevo(false); setSoloParaEstePedido(false) }
+  const handleSelectCliente = (cliente: Cliente) => {
+    setClienteSeleccionado(cliente)
+    setNegocioSeleccionado(null)
+    setSearchTerm('')
+    setMostrarNuevo(false)
+    setSoloParaEstePedido(false)
+    // Selección manual: a diferencia del deep-link desde /clientes, acá NO
+    // se dispara un fetch automático de patrón de consumo (ver
+    // verPatronConsumo) — el proyecto es offline-first para 2G/3G y la
+    // selección de cliente ya dispara fiado-status + negocios.
+    setSugerenciaConsumo(null)
+    setSugerenciaLoading(false)
+    setSugerenciaAplicada(false)
+  }
   const handleCrearNuevo = () => { setMostrarNuevo(true); setClienteSeleccionado(null); setNuevoCliente(prev => ({ ...prev, nombre: searchTerm })) }
 
   const handleToggleCanal = (nuevoCanal: 'PUNTO' | 'DOMICILIO') => {
@@ -604,6 +744,9 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
                     setEditDireccion('')
                     setEditBarrio('')
                     setSoloParaEstePedido(false)
+                    setSugerenciaConsumo(null)
+                    setSugerenciaLoading(false)
+                    setSugerenciaAplicada(false)
                   }}
                   className="p-1 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition"
                   title="Quitar cliente"
@@ -630,6 +773,54 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
                     }
                   </span>
                 </div>
+              )}
+
+              {/* Patrón de consumo (guía) — solo lectura; aplicar cantidades
+                  es siempre una acción explícita del usuario, nunca automática. */}
+              {sugerenciaConsumo && (sugerenciaConsumo.frecuenciaSugerida || sugerenciaConsumo.productosSugeridos.length > 0) && (
+                <div
+                  data-testid="patron-consumo-banner"
+                  className="px-3 py-2 rounded-lg text-xs bg-blue-50 border border-blue-200 text-blue-800 space-y-1.5"
+                >
+                  <p className="font-semibold uppercase text-[11px] text-blue-700">Patrón de consumo (guía)</p>
+                  {sugerenciaConsumo.frecuenciaSugerida && (
+                    <p>Compra {sugerenciaConsumo.frecuenciaSugerida.label.toLowerCase()}</p>
+                  )}
+                  {sugerenciaConsumo.productosSugeridos.length > 0 && (
+                    <p>
+                      Suele pedir: {sugerenciaConsumo.productosSugeridos.map(p =>
+                        `${p.cantidadPromedio} ${p.nombre} (${p.frecuencia}%)`
+                      ).join(', ')}
+                    </p>
+                  )}
+                  {sugerenciaConsumo.productosSugeridos.length > 0 && (
+                    sugerenciaAplicada ? (
+                      <p className="italic text-blue-600">Cantidades aplicadas — puedes ajustarlas abajo.</p>
+                    ) : (
+                      <button
+                        type="button"
+                        data-testid="aplicar-sugerencia-btn"
+                        onClick={aplicarSugerenciaConsumo}
+                        disabled={productosConfig.length === 0}
+                        className="px-2 py-1 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed transition"
+                      >
+                        Aplicar sugerencia
+                      </button>
+                    )
+                  )}
+                </div>
+              )}
+              {!sugerenciaConsumo && !sugerenciaLoading && (
+                <button
+                  type="button"
+                  onClick={verPatronConsumo}
+                  className="text-xs text-blue-600 hover:text-blue-700 underline"
+                >
+                  Ver patrón de consumo
+                </button>
+              )}
+              {sugerenciaLoading && (
+                <p className="text-xs text-gray-400">Cargando patrón de consumo…</p>
               )}
 
               {/* NEGOCIO SELECTOR */}
@@ -698,6 +889,14 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
               />
+              {searchTerm && clientes.length === 0 && (
+                // La lista completa de clientes se carga en background al
+                // abrir /pedidos (ya no bloquea la apertura del modal
+                // cuando viene con un cliente pre-seleccionado). Si el
+                // usuario busca a OTRO cliente antes de que termine, se
+                // avisa en vez de mostrar una lista vacía sin explicación.
+                <p className="text-xs text-gray-400">Cargando lista completa de clientes…</p>
+              )}
               {searchTerm && filteredClientes.length > 0 && (
                 <div className="border rounded-lg max-h-40 overflow-y-auto">
                   {filteredClientes.map(c => (

@@ -44,8 +44,9 @@ describe('FIX: checkbox "solo para este pedido" — default false, visible solo 
   })
 
   it('se resetea al seleccionar un cliente nuevo', () => {
-    const line = source.split('\n').find(l => l.includes('const handleSelectCliente')) || ''
-    expect(line).toMatch(/setSoloParaEstePedido\(false\)/)
+    const idx = source.indexOf('const handleSelectCliente')
+    const block = source.slice(idx, source.indexOf('handleCrearNuevo', idx))
+    expect(block).toMatch(/setSoloParaEstePedido\(false\)/)
   })
 
   it('se resetea al inicializar desde pedidoInicial (modo edición)', () => {

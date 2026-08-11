@@ -36,6 +36,7 @@ import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 import { useRealtimeListener } from '@/hooks/use-realtime-listener'
 import { prefetchClientePanel, invalidateClientePanelCaches } from './panel-prefetch'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
+import { warmPedidoFormAssets } from '@/lib/cliente-detail-cache'
 
 // Detail cache: cache de sesión en cliente para evitar re-descargar la ficha
 // completa cada vez que se abre. TTL 60s alineado con el polling de lista.
@@ -142,6 +143,11 @@ function prefetchClienteDetail(id: string) {
 
 function warmClienteDetail(id: string) {
   prefetchClienteDetail(id)
+  // Aditivo: también precalienta la caché compartida que usa /pedidos para
+  // abrir el modal de "Nuevo Pedido" rápido (src/lib/cliente-detail-cache.ts).
+  // No reemplaza ni modifica el caché local de arriba (detailCache) — es una
+  // llamada extra, sin efecto sobre el comportamiento existente de este panel.
+  warmPedidoFormAssets(id)
 }
 
 /**
@@ -1557,6 +1563,8 @@ export default function ClientesClient({
                 <Tooltip content="Crear un pedido para este cliente" position="bottom">
                   <Link
                     href={`/pedidos?new=1&clienteId=${selectedCliente.id}`}
+                    onPointerEnter={() => warmPedidoFormAssets(selectedCliente.id)}
+                    onFocus={() => warmPedidoFormAssets(selectedCliente.id)}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-xs font-medium hover:bg-blue-100 transition"
                   >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
