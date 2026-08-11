@@ -296,10 +296,13 @@ export async function dismissInstallBanner(page: Page) {
  */
 export async function openFabPedidoEnvio(page: Page) {
   await dismissInstallBanner(page)
-  const fabMain = page.getByTestId('fab-main')
+  // .first(): observed in CI as a transient strict-mode violation
+  // (getByTestId('fab-main') resolving to 2 elements, one hidden) — same
+  // class of flake fixed for the Base Caja modal buttons in #58.
+  const fabMain = page.getByTestId('fab-main').first()
   await expect(fabMain).toBeVisible({ timeout: 5000 })
   await fabMain.click()
-  const fabPedido = page.getByTestId('fab-pedido-envio')
+  const fabPedido = page.getByTestId('fab-pedido-envio').first()
   await expect(fabPedido).toBeVisible({ timeout: 5000 })
   await fabPedido.click()
 }
