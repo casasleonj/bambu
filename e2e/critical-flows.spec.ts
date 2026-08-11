@@ -87,7 +87,11 @@ test.describe('Flujos críticos de negocio', () => {
     // Search and select first client
     await modal.locator('input[placeholder="Buscar cliente por nombre o teléfono..."]').fill('a')
     await page.waitForTimeout(500)
-    const clientBtn = modal.getByTestId('cliente-search-result').first()
+    // Unscoped (not modal.getByTestId): the results panel is a lazy
+    // background-loaded list gated by `filteredClientes`, and CI showed the
+    // page-level lookup (same pattern abonos.spec.ts already uses
+    // successfully) resolves it while the form-scoped lookup can time out.
+    const clientBtn = page.getByTestId('cliente-search-result').first()
     await clientBtn.click()
 
     // Add product
@@ -174,7 +178,8 @@ test.describe('Flujos críticos de negocio', () => {
     // Select client
     await modal.locator('input[placeholder="Buscar cliente por nombre o teléfono..."]').fill('a')
     await page.waitForTimeout(500)
-    await modal.getByTestId('cliente-search-result').first().click()
+    // Unscoped: see comment on the equivalent lookup above.
+    await page.getByTestId('cliente-search-result').first().click()
 
     // Add product
     await modal.locator('input[type="number"]').first().fill('1')

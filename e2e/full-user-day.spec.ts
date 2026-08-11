@@ -1,6 +1,6 @@
 // @tests api/cliente, api/compra, api/gasto, api/insumo, api/proveedor, api/trabajador
 import { test, expect, Page } from '@playwright/test'
-import { skipBaseCaja, handleBaseCaja, openFabPedidoEnvio, openSidebarIfMobile } from './fixtures'
+import { skipBaseCaja, handleBaseCaja, openFabPedidoEnvio, openSidebarIfMobile, dismissInstallBanner } from './fixtures'
 
 const BASE = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000'
 
@@ -599,6 +599,9 @@ test.describe('Dia completo de usuario', () => {
   test('19. Cerrar sesion redirige a login', async ({ page }) => {
     await login(page)
     await dismissBaseCaja(page)
+    // On mobile the PWA install banner is fixed at the bottom of the
+    // viewport and overlaps the sidebar drawer's logout button.
+    await dismissInstallBanner(page)
     await openSidebarIfMobile(page)
 
     await page.click('text=Cerrar Sesión')
