@@ -113,14 +113,18 @@ export async function GET(request: NextRequest) {
     }
 
     // "En riesgo" no es un Prisma.PedidoWhereInput estático como atrasados
-    // (depende de un cómputo de rutas/embarques resuelto en pedidos-sin-asignar.ts),
-    // así que se resuelve a una lista de IDs y se filtra por `id: { in }`.
-    // Vista autocontenida igual que atrasadosMode: gana sobre cualquier otro filtro.
+    // (depende de un cómputo de rutas/embarques/horas hábiles resuelto en
+    // pedidos-sin-asignar.ts), así que se resuelve a una lista de IDs y se
+    // filtra por `id: { in }`. Vista autocontenida igual que atrasadosMode:
+    // gana sobre cualquier otro filtro. OJO: a diferencia de atrasadosMode,
+    // NO se fuerza estadoEntrega/embarqueId aquí — findPedidosHoyEnRiesgoIds
+    // puede devolver tanto PENDIENTE sin asignar como EN_RUTA sin entregar,
+    // y forzar esos campos filtraría incorrectamente los EN_RUTA.
     if (enRiesgoMode) {
       const ids = await findPedidosHoyEnRiesgoIds()
       filter.id = ids
-      filter.estadoEntrega = ['PENDIENTE']
-      filter.embarqueId = null
+      filter.estadoEntrega = undefined
+      filter.embarqueId = undefined
       filter.desde = undefined
       filter.hasta = undefined
     }

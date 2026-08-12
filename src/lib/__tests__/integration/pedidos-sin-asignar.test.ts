@@ -7,7 +7,18 @@
 //   4. El filtro embarqueId:null vía ListarPedidosUseCase/PrismaPedidoRepository
 //      (el mismo camino que usa GET /api/pedidos?atrasados=true) devuelve
 //      exactamente esos pedidos.
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
+
+// findPedidosHoyEnRiesgoIds ahora lee Config (horario/umbral) vía getConfigs/
+// getConfigNumber, que envuelven la query en unstable_cache — eso requiere un
+// contexto de request de Next.js real y explota fuera de él (confirmado:
+// "Invariant: incrementalCache missing"). Mismo mock que ya usa
+// src/lib/__tests__/config.test.ts para poder llamar esas funciones en tests.
+vi.mock('next/cache', () => ({
+  unstable_cache: (fn: (...args: unknown[]) => unknown) => fn,
+  revalidateTag: vi.fn(),
+}))
+
 import { testPrisma, resetAndSeed, disconnect, uniqueId } from './setup'
 import { startOfDayBogota } from '@/lib/dates'
 import {
@@ -211,6 +222,130 @@ describe('Pedidos de hoy en riesgo (3+ embarques CERRADO de su ruta, nunca asign
     await testPrisma.pedido.delete({ where: { id: pedido.id } })
     await testPrisma.embarque.deleteMany({ where: { id: { in: embarques.map((e) => e.id) } } })
     await testPrisma.trabajador.deleteMany({ where: { id: { in: trabajadores.map((t) => t.id) } } })
+    await testPrisma.cliente.delete({ where: { id: cliente.id } })
+  })
+})
+
+describe('Pedidos de hoy en riesgo — sub-regla de horas hábiles transcurridas', () => {
+  const CONFIG_KEYS = ['HORARIO_MANANA_INICIO', 'HORARIO_MANANA_FIN', 'UMBRAL_HORAS_HABILES_RIESGO']
+
+  beforeAll(async () => {
+    // Turno de 00:00-23:59 (todo el día) + umbral de 3min (0.05h) para que el
+    // test no dependa de la hora real en que corre el CI. No se usa el turno
+    // de tarde: al no configurarse, getTurnosYUmbralRiesgo solo arma un turno.
+    await testPrisma.config.deleteMany({ where: { clave: { in: CONFIG_KEYS } } })
+    await testPrisma.config.createMany({
+      data: [
+        { clave: 'HORARIO_MANANA_INICIO', valor: '00:00' },
+        { clave: 'HORARIO_MANANA_FIN', valor: '23:59' },
+        { clave: 'UMBRAL_HORAS_HABILES_RIESGO', valor: '0.05' },
+      ],
+    })
+  })
+
+  afterAll(async () => {
+    await testPrisma.config.deleteMany({ where: { clave: { in: CONFIG_KEYS } } })
+  })
+
+  async function crearClienteTest(nombre: string) {
+    return testPrisma.cliente.create({
+      data: {
+        nombre,
+        telefono: `3${Math.floor(Math.random() * 1e9).toString().padStart(9, '0')}`,
+        direccion: 'Calle Test',
+        activo: true,
+      },
+    })
+  }
+
+  it('PENDIENTE sin asignar creado hace 10min (> umbral de 3min) entra en riesgo por tiempo', async () => {
+    const cliente = await crearClienteTest('Test Cliente Riesgo Tiempo')
+    const hace10min = new Date(Date.now() - 10 * 60_000)
+    const p = await testPrisma.pedido.create({
+      data: {
+        clienteId: cliente.id,
+        canal: 'DOMICILIO',
+        offlineId: uniqueId('riesgo-tiempo'),
+        fecha: hace10min,
+        embarqueId: null,
+        estadoEntrega: 'PENDIENTE',
+      },
+    })
+
+    const ids = await findPedidosHoyEnRiesgoIds()
+    expect(ids).toContain(p.id)
+
+    await testPrisma.pedido.delete({ where: { id: p.id } })
+    await testPrisma.cliente.delete({ where: { id: cliente.id } })
+  })
+
+  it('PENDIENTE recién creado (< umbral) NO entra en riesgo', async () => {
+    const cliente = await crearClienteTest('Test Cliente Sin Riesgo Tiempo')
+    const p = await testPrisma.pedido.create({
+      data: {
+        clienteId: cliente.id,
+        canal: 'DOMICILIO',
+        offlineId: uniqueId('sin-riesgo-tiempo'),
+        fecha: new Date(),
+        embarqueId: null,
+        estadoEntrega: 'PENDIENTE',
+      },
+    })
+
+    const ids = await findPedidosHoyEnRiesgoIds()
+    expect(ids).not.toContain(p.id)
+
+    await testPrisma.pedido.delete({ where: { id: p.id } })
+    await testPrisma.cliente.delete({ where: { id: cliente.id } })
+  })
+
+  it('EN_RUTA atascado hace 10min entra en riesgo (no solo PENDIENTE sin asignar)', async () => {
+    const cliente = await crearClienteTest('Test Cliente Riesgo EnRuta')
+    const trabajador = await testPrisma.trabajador.create({
+      data: { nombre: 'Test Repartidor Riesgo EnRuta', rol: 'REPARTIDOR', usaMoto: true },
+    })
+    const embarque = await testPrisma.embarque.create({
+      data: { trabajadorId: trabajador.id, estado: 'EN_RUTA' },
+    })
+    const hace10min = new Date(Date.now() - 10 * 60_000)
+    const p = await testPrisma.pedido.create({
+      data: {
+        clienteId: cliente.id,
+        canal: 'DOMICILIO',
+        offlineId: uniqueId('riesgo-en-ruta'),
+        fecha: hace10min,
+        embarqueId: embarque.id,
+        estadoEntrega: 'EN_RUTA',
+      },
+    })
+
+    const ids = await findPedidosHoyEnRiesgoIds()
+    expect(ids).toContain(p.id)
+
+    await testPrisma.pedido.delete({ where: { id: p.id } })
+    await testPrisma.embarque.delete({ where: { id: embarque.id } })
+    await testPrisma.trabajador.delete({ where: { id: trabajador.id } })
+    await testPrisma.cliente.delete({ where: { id: cliente.id } })
+  })
+
+  it('ENTREGADO hace 10min NO entra en riesgo (ya se resolvió)', async () => {
+    const cliente = await crearClienteTest('Test Cliente Entregado No Riesgo')
+    const hace10min = new Date(Date.now() - 10 * 60_000)
+    const p = await testPrisma.pedido.create({
+      data: {
+        clienteId: cliente.id,
+        canal: 'DOMICILIO',
+        offlineId: uniqueId('entregado-no-riesgo'),
+        fecha: hace10min,
+        embarqueId: null,
+        estadoEntrega: 'ENTREGADO',
+      },
+    })
+
+    const ids = await findPedidosHoyEnRiesgoIds()
+    expect(ids).not.toContain(p.id)
+
+    await testPrisma.pedido.delete({ where: { id: p.id } })
     await testPrisma.cliente.delete({ where: { id: cliente.id } })
   })
 })
