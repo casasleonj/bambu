@@ -1239,8 +1239,8 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
           <div data-testid="banner-hoy-en-riesgo">
             <InfoBanner type="tip" className="mb-4">
               <span>
-                🟠 {enRiesgoCount} pedido{enRiesgoCount === 1 ? '' : 's'} de hoy sin asignar tras
-                varios viajes de su ruta — riesgo de quedar sin entregar hoy.{' '}
+                🟠 {enRiesgoCount} pedido{enRiesgoCount === 1 ? '' : 's'} de hoy lleva
+                {enRiesgoCount === 1 ? '' : 'n'} demasiado tiempo sin gestionar — riesgo de olvido o quedar sin entregar hoy.{' '}
                 <Link href="/pedidos?enRiesgo=true" className="font-semibold underline hover:no-underline">
                   Verlos →
                 </Link>
@@ -1357,7 +1357,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
           <p className="text-sm text-blue-900">
             {atrasadosParam
               ? 'Mostrando solo pedidos pendientes sin asignar de días anteriores.'
-              : 'Mostrando solo pedidos de hoy pendientes sin asignar cuya ruta ya tuvo varios embarques cerrados.'}
+              : 'Mostrando solo pedidos de hoy que llevan demasiado tiempo sin gestionar (sin asignar o atascados en ruta).'}
           </p>
           <button
             onClick={volverAPedidosDeHoy}

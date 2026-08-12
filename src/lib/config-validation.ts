@@ -83,6 +83,18 @@ const VALIDATORS: Record<string, Validator> = {
     if (isNaN(n) || n < 1) return 'Debe ser un número mayor o igual a 1'
     return null
   },
+
+  // Horario de trabajo (turnos) — usado por findPedidosHoyEnRiesgoIds
+  // (src/lib/pedidos-sin-asignar.ts) para calcular horas hábiles transcurridas.
+  HORARIO_MANANA_INICIO: (v) => (/^\d{2}:\d{2}$/.test(v) ? null : 'Formato HH:MM'),
+  HORARIO_MANANA_FIN: (v) => (/^\d{2}:\d{2}$/.test(v) ? null : 'Formato HH:MM'),
+  HORARIO_TARDE_INICIO: (v) => (/^\d{2}:\d{2}$/.test(v) ? null : 'Formato HH:MM'),
+  HORARIO_TARDE_FIN: (v) => (/^\d{2}:\d{2}$/.test(v) ? null : 'Formato HH:MM'),
+  UMBRAL_HORAS_HABILES_RIESGO: (v) => {
+    const n = Number(v)
+    if (isNaN(n) || n <= 0) return 'Debe ser un número mayor a 0'
+    return null
+  },
 }
 
 /**

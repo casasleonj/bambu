@@ -23,9 +23,10 @@ export interface PedidoFilterParams {
    *  (ver src/lib/pedidos-sin-asignar.ts). Igual que `scope`, ignora
    *  desde/hasta/estadoEntrega y cualquier otro filtro cuando está activo. */
   atrasados?: boolean
-  /** Vista autocontenida: pedidos PENDIENTE sin embarque de HOY cuya ruta ya
-   *  tuvo 3+ embarques CERRADO (ver findPedidosHoyEnRiesgoIds en
-   *  src/lib/pedidos-sin-asignar.ts). */
+  /** Vista autocontenida: pedidos de HOY que llevan demasiado tiempo sin
+   *  gestionar — PENDIENTE sin asignar (por ciclos de embarque u horas
+   *  hábiles transcurridas) o EN_RUTA sin entregar (ver
+   *  findPedidosHoyEnRiesgoIds en src/lib/pedidos-sin-asignar.ts). */
   enRiesgo?: boolean
 }
 

@@ -28,6 +28,11 @@ interface ConfigData {
   MAX_PEDIDOS_DIA_ALERTA: string
   LIMITE_PEDIDOS_FIADOS_DEFAULT: string
   MAX_UNIDADES_EMBARQUE: string
+  HORARIO_MANANA_INICIO: string
+  HORARIO_MANANA_FIN: string
+  HORARIO_TARDE_INICIO: string
+  HORARIO_TARDE_FIN: string
+  UMBRAL_HORAS_HABILES_RIESGO: string
 }
 
 interface ConfiguracionClientProps {
@@ -87,6 +92,11 @@ const SECTIONS: SectionConfig[] = [
       { key: 'MAX_PEDIDOS_DIA_ALERTA', label: 'Máx. pedidos por día para alerta', type: 'number', placeholder: '2', suffix: 'pedidos', min: 1 },
       { key: 'LIMITE_PEDIDOS_FIADOS_DEFAULT', label: 'Límite de pedidos fiados por cliente', type: 'number', placeholder: String(LIMITE_FIADOS_DEFAULT), suffix: 'pedidos', min: 1 },
       { key: 'MAX_UNIDADES_EMBARQUE', label: 'Máximo de unidades por embarque', type: 'number', placeholder: '70', suffix: 'unidades', min: 1 },
+      { key: 'HORARIO_MANANA_INICIO', label: 'Horario mañana — inicio', type: 'time', placeholder: '06:00' },
+      { key: 'HORARIO_MANANA_FIN', label: 'Horario mañana — fin', type: 'time', placeholder: '12:00' },
+      { key: 'HORARIO_TARDE_INICIO', label: 'Horario tarde — inicio', type: 'time', placeholder: '14:00' },
+      { key: 'HORARIO_TARDE_FIN', label: 'Horario tarde — fin', type: 'time', placeholder: '17:00' },
+      { key: 'UMBRAL_HORAS_HABILES_RIESGO', label: 'Horas hábiles sin gestionar para marcar pedido en riesgo', type: 'number', placeholder: '2', suffix: 'horas', min: 1 },
     ],
   },
 ]
@@ -111,11 +121,24 @@ function validateConfig(data: ConfigData): FieldErrors {
     'MAX_PEDIDOS_DIA_ALERTA',
     'LIMITE_PEDIDOS_FIADOS_DEFAULT',
     'MAX_UNIDADES_EMBARQUE',
+    'UMBRAL_HORAS_HABILES_RIESGO',
   ]
   for (const key of numericFields) {
     const val = data[key]
     if (val && (isNaN(Number(val)) || Number(val) < 1)) {
       errs[key] = 'Debe ser un número mayor a 0'
+    }
+  }
+  const horarioFields: Array<keyof ConfigData> = [
+    'HORARIO_MANANA_INICIO',
+    'HORARIO_MANANA_FIN',
+    'HORARIO_TARDE_INICIO',
+    'HORARIO_TARDE_FIN',
+  ]
+  for (const key of horarioFields) {
+    const val = data[key]
+    if (val && !/^\d{2}:\d{2}$/.test(val)) {
+      errs[key] = 'Formato HH:MM'
     }
   }
   return errs
