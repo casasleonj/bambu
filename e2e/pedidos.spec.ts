@@ -214,6 +214,36 @@ test.describe('Pedidos', () => {
     await expect(turnoBtn).toHaveClass(/bg-blue-600/)
   })
 
+  test('?atrasados=true abre vista autocontenida sin caer a Turno', async ({ page }) => {
+    await loginAs(page, 'admin')
+    await goto(page, '/pedidos?atrasados=true')
+    // El banner "Volver a Pedidos de Hoy" confirma que la vista atrasados
+    // está activa (no la vista normal con SmartDateFilter).
+    const volverBtn = page.locator('[data-testid="volver-pedidos-hoy"]')
+    await expect(volverBtn).toBeVisible({ timeout: 10000 })
+    // Regresión clave: la URL NO debe ganar desde/hasta del preset Turno —
+    // ese era el bug reportado ("el filtro cambia a turno").
+    await expect(page).not.toHaveURL(/desde=\d{4}-\d{2}-\d{2}/)
+    await expect(page).not.toHaveURL(/hasta=\d{4}-\d{2}-\d{2}/)
+    // SmartDateFilter (botones Hoy/Ayer/Turno) no debe estar visible en esta vista.
+    await expect(page.locator('button:has-text("Turno")')).toHaveCount(0)
+    // "Volver" limpia el param atrasados de la URL.
+    await volverBtn.click()
+    await expect(page).not.toHaveURL(/atrasados=true/)
+  })
+
+  test('?enRiesgo=true abre vista autocontenida sin caer a Turno', async ({ page }) => {
+    await loginAs(page, 'admin')
+    await goto(page, '/pedidos?enRiesgo=true')
+    const volverBtn = page.locator('[data-testid="volver-pedidos-hoy"]')
+    await expect(volverBtn).toBeVisible({ timeout: 10000 })
+    await expect(page).not.toHaveURL(/desde=\d{4}-\d{2}-\d{2}/)
+    await expect(page).not.toHaveURL(/hasta=\d{4}-\d{2}-\d{2}/)
+    await expect(page.locator('button:has-text("Turno")')).toHaveCount(0)
+    await volverBtn.click()
+    await expect(page).not.toHaveURL(/enRiesgo=true/)
+  })
+
   test('pedido creado aparece en lista de pedidos', async ({ page }) => {
     await loginAs(page, 'admin')
     const unique = Date.now()

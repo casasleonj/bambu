@@ -18,6 +18,48 @@ function getPagoVisual(pedido: Pedido) {
   })
 }
 
+const BOGOTA_TZ = 'America/Bogota'
+
+function formatFechaPedido(fecha: string): string {
+  const d = new Date(fecha)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleString('es-CO', {
+    timeZone: BOGOTA_TZ,
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+/** Días de atraso (Bogotá) de un pedido PENDIENTE cuya fecha es anterior a
+ *  hoy. `null` si no aplica (no pendiente, o es de hoy/futuro). */
+export function getDiasAtraso(fecha: string, estadoEntrega: string): number | null {
+  if (estadoEntrega !== 'PENDIENTE') return null
+  const d = new Date(fecha)
+  if (Number.isNaN(d.getTime())) return null
+  const hoyStr = new Date().toLocaleDateString('en-CA', { timeZone: BOGOTA_TZ })
+  const fechaStr = d.toLocaleDateString('en-CA', { timeZone: BOGOTA_TZ })
+  if (fechaStr >= hoyStr) return null
+  const hoy = new Date(`${hoyStr}T00:00:00-05:00`)
+  const dia = new Date(`${fechaStr}T00:00:00-05:00`)
+  return Math.round((hoy.getTime() - dia.getTime()) / 86_400_000)
+}
+
+function FechaPedido({ pedido }: { pedido: Pedido }) {
+  const diasAtraso = getDiasAtraso(pedido.fecha, pedido.estadoEntrega)
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      <span className="text-xs text-gray-400">{formatFechaPedido(pedido.fecha)}</span>
+      {diasAtraso !== null && (
+        <span className="text-xs text-red-600 font-semibold">
+          Hace {diasAtraso} día{diasAtraso === 1 ? '' : 's'}
+        </span>
+      )}
+    </div>
+  )
+}
+
 function getItemsFromPedido(pedido: Pedido) {
   if (pedido.items && pedido.items.length > 0) {
     return pedido.items.filter(i => i.cantPedido > 0)
@@ -106,6 +148,7 @@ function DesktopRow({
           ))}
         </div>
         <div className="text-xs text-gray-400">{pedido.telefonoCli}</div>
+        <FechaPedido pedido={pedido} />
         {pedido.horaPreferida && (
           <span className="text-xs text-amber-600 font-medium">{pedido.horaPreferida}</span>
         )}
@@ -253,6 +296,7 @@ function MobileCard({
             variant="card"
           />
           <p className="text-xs text-gray-400">{pedido.telefonoCli}</p>
+          <FechaPedido pedido={pedido} />
           {pedido.horaAperturaCli && (
             <p className="text-xs text-gray-500">🕐 {pedido.horaAperturaCli}</p>
           )}

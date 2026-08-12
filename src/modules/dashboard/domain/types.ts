@@ -64,6 +64,10 @@ export interface AlertasRiesgo {
   promesasProximasVencer: number
   clientesNoVerificados: number
   pedidosAtrasadosSinAsignar: number
+  /** Pedidos de HOY, pendientes y sin embarque, cuya ruta ya tuvo 3+
+   *  embarques cerrados hoy sin haberlos asignado nunca — ver
+   *  findPedidosHoyEnRiesgoIds en src/lib/pedidos-sin-asignar.ts. */
+  pedidosHoyEnRiesgo: number
 }
 
 export interface CasosActivos {

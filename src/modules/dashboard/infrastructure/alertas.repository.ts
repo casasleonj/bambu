@@ -5,7 +5,7 @@
  */
 
 import { prisma } from '@/shared/infrastructure'
-import { countPedidosAtrasadosSinAsignar } from '@/lib/pedidos-sin-asignar'
+import { countPedidosAtrasadosSinAsignar, countPedidosHoyEnRiesgo } from '@/lib/pedidos-sin-asignar'
 import type { AlertasRiesgo, CasosActivos, InsumoAlerta } from '../domain'
 
 export interface AlertasRepository {
@@ -24,6 +24,7 @@ export class PrismaAlertasRepository implements AlertasRepository {
       promesasProximasVencer,
       clientesNoVerificados,
       pedidosAtrasadosSinAsignar,
+      pedidosHoyEnRiesgo,
     ] = await Promise.all([
       prisma.pedido.count({ where: { disputaAbierta: true } }),
       prisma.cliente.count({ where: { bloqueado: true, activo: true } }),
@@ -42,6 +43,7 @@ export class PrismaAlertasRepository implements AlertasRepository {
         },
       }),
       countPedidosAtrasadosSinAsignar(),
+      countPedidosHoyEnRiesgo(),
     ])
 
     return {
@@ -51,6 +53,7 @@ export class PrismaAlertasRepository implements AlertasRepository {
       promesasProximasVencer,
       clientesNoVerificados,
       pedidosAtrasadosSinAsignar,
+      pedidosHoyEnRiesgo,
     }
   }
 

@@ -8,6 +8,9 @@ import type { Pedido } from '../entities/Pedido'
 import type { PedidoId } from '../value-objects/PedidoId'
 
 export interface PedidoFilter {
+  /** Restringe a un conjunto explícito de IDs (ej. vista "en riesgo", ver
+   *  findPedidosHoyEnRiesgoIds en src/lib/pedidos-sin-asignar.ts). */
+  id?: string[]
   clienteId?: string
   desde?: Date
   hasta?: Date

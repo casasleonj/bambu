@@ -50,6 +50,7 @@ function makeDDDData(overrides: Partial<DDDData> = {}): DDDData {
       promesasProximasVencer: 0,
       clientesNoVerificados: 0,
       pedidosAtrasadosSinAsignar: 0,
+      pedidosHoyEnRiesgo: 0,
     },
     casosActivos: { total: 0, criticos: 0, sinResolver48h: 0 },
     fechaHoy: 'jueves, 25 de junio de 2026',
