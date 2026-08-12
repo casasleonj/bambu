@@ -14,6 +14,7 @@ import {
   crearPedidoUseCase,
   listarPedidosUseCase,
 } from '@/modules/pedidos'
+import { findPedidosHoyEnRiesgoIds } from '@/lib/pedidos-sin-asignar'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { broadcastPush } from '@/lib/push'
 import { pickCoords } from '@/lib/geo/pedido-coords'
@@ -40,6 +41,9 @@ export async function GET(request: NextRequest) {
     // No aplica a REPARTIDOR (solo ve pedidos ya asignados a él por diseño,
     // más arriba se fuerza embarqueId: { not: null } para ese rol).
     const atrasadosMode = searchParams.get('atrasados') === 'true' && session.user?.role !== 'REPARTIDOR'
+    // "En riesgo de hoy" — ver findPedidosHoyEnRiesgoIds en pedidos-sin-asignar.ts.
+    // Mismo motivo que atrasadosMode: no aplica a REPARTIDOR.
+    const enRiesgoMode = searchParams.get('enRiesgo') === 'true' && session.user?.role !== 'REPARTIDOR'
 
     // Build filter for use case
     const filter: Record<string, unknown> = {}
@@ -105,6 +109,19 @@ export async function GET(request: NextRequest) {
       filter.embarqueId = null
       filter.desde = undefined
       filter.hasta = startOfDayBogota()
+    }
+
+    // "En riesgo" no es un Prisma.PedidoWhereInput estático como atrasados
+    // (depende de un cómputo de rutas/embarques resuelto en pedidos-sin-asignar.ts),
+    // así que se resuelve a una lista de IDs y se filtra por `id: { in }`.
+    // Vista autocontenida igual que atrasadosMode: gana sobre cualquier otro filtro.
+    if (enRiesgoMode) {
+      const ids = await findPedidosHoyEnRiesgoIds()
+      filter.id = ids
+      filter.estadoEntrega = ['PENDIENTE']
+      filter.embarqueId = null
+      filter.desde = undefined
+      filter.hasta = undefined
     }
 
     // Cuando all=true, permitir un pageSize mayor al cap de 100 de

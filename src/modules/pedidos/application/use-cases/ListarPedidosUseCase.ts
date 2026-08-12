@@ -11,6 +11,7 @@ export class ListarPedidosUseCase {
 
   async execute(input: ListarPedidosInput): Promise<{ pedidos: PedidoResumenDTO[]; total: number }> {
     const filter = {
+      id: input.id,
       clienteId: input.clienteId,
       desde: input.desde,
       hasta: input.hasta,

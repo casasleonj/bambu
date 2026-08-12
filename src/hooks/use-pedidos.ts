@@ -19,6 +19,14 @@ export interface PedidoFilterParams {
   clienteId?: string
   /** Server-side tab scope: isolates Pedidos/Fiados/Alertas datasets. */
   scope?: 'fiados' | 'alertas'
+  /** Vista autocontenida: pedidos PENDIENTE sin embarque de días anteriores
+   *  (ver src/lib/pedidos-sin-asignar.ts). Igual que `scope`, ignora
+   *  desde/hasta/estadoEntrega y cualquier otro filtro cuando está activo. */
+  atrasados?: boolean
+  /** Vista autocontenida: pedidos PENDIENTE sin embarque de HOY cuya ruta ya
+   *  tuvo 3+ embarques CERRADO (ver findPedidosHoyEnRiesgoIds en
+   *  src/lib/pedidos-sin-asignar.ts). */
+  enRiesgo?: boolean
 }
 
 export interface UsePedidosOptions {
@@ -81,6 +89,8 @@ export function usePedidos(
     if (params?.estadoPago) params.estadoPago.forEach(e => url.searchParams.append('estadoPago', e))
     if (params?.search) url.searchParams.set('search', params.search)
     if (params?.scope) url.searchParams.set('scope', params.scope)
+    if (params?.atrasados) url.searchParams.set('atrasados', 'true')
+    if (params?.enRiesgo) url.searchParams.set('enRiesgo', 'true')
     return url.toString()
   }, [params, options?.all])
 

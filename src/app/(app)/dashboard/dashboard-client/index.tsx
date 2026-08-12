@@ -78,7 +78,8 @@ export function DashboardClient({ data, userRole }: { data: DashboardData; userR
     alertasRiesgo.clientesConflictivos +
     alertasRiesgo.promesasProximasVencer +
     alertasRiesgo.clientesNoVerificados +
-    alertasRiesgo.pedidosAtrasadosSinAsignar
+    alertasRiesgo.pedidosAtrasadosSinAsignar +
+    alertasRiesgo.pedidosHoyEnRiesgo
 
   const trendArrow = (val: number) => (val > 0 ? '↑' : val < 0 ? '↓' : '→')
   const trendClass = (val: number) =>
@@ -101,6 +102,9 @@ export function DashboardClient({ data, userRole }: { data: DashboardData; userR
   )
   const IconSinAsignar = () => (
     <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" /></svg>
+  )
+  const IconEnRiesgo = () => (
+    <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
   )
   const IconCaso = () => (
     <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
@@ -278,6 +282,18 @@ export function DashboardClient({ data, userRole }: { data: DashboardData; userR
                   </div>
                 </div>
                 <Link href="/pedidos?atrasados=true" className="text-xs text-amber-700 hover:underline mt-2 inline-block">Ver y asignar →</Link>
+              </div>
+            )}
+            {alertasRiesgo.pedidosHoyEnRiesgo > 0 && (
+              <div className="bg-orange-50 border border-orange-200 p-4 rounded-xl">
+                <div className="flex items-center gap-2">
+                  <IconEnRiesgo />
+                  <div>
+                    <p className="text-sm font-medium text-orange-800">Pedidos de hoy en riesgo</p>
+                    <p className="text-xs text-orange-600">{alertasRiesgo.pedidosHoyEnRiesgo} sin asignar tras varios viajes de su ruta</p>
+                  </div>
+                </div>
+                <Link href="/pedidos?enRiesgo=true" className="text-xs text-orange-700 hover:underline mt-2 inline-block">Ver y asignar →</Link>
               </div>
             )}
           </div>

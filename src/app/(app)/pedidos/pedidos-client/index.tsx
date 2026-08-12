@@ -119,6 +119,11 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   const clienteIdFromUrl = shallowParams.get('clienteId')
   const openPedidoParam = shallowParams.get('openPedido')
   const allFromUrl = shallowParams.get('all') === 'true'
+  // Vistas autocontenidas (mismo patrón que scope=fiados/alertas): ignoran
+  // desde/hasta/estadoEntrega y cualquier otro filtro persistente. Se activan
+  // solo por el link del banner de atrasados/en-riesgo, no son un tab.
+  const atrasadosParam = shallowParams.get('atrasados') === 'true'
+  const enRiesgoParam = shallowParams.get('enRiesgo') === 'true'
 
   // Sync de URL sin navegación RSC: los filtros se resuelven 100% en memoria
   // (ver pedidosVisibles/allPedidos más abajo). history:'replace' porque son
@@ -247,12 +252,45 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   } = usePedidos({ scope: 'alertas' }, { all: true, autoFetch: true, refetchOnParamsChange: true })
   const pedidosAlertas = pedidosAlertasRaw as Pedido[]
 
+  // Vistas autocontenidas "atrasados"/"en riesgo": a diferencia de fiados/
+  // alertas (siempre visibles vía badge), estas solo se piden cuando el
+  // usuario entra por el link del banner — autoFetch:false + refetch manual
+  // en la transición false→true, mismo idioma que wasCacheActiveRef arriba.
+  const {
+    pedidos: pedidosAtrasadosRaw,
+    loading: loadingAtrasados,
+    error: errorAtrasados,
+    refetch: refetchAtrasados,
+  } = usePedidos({ atrasados: true }, { all: true, autoFetch: false, refetchOnParamsChange: false })
+  const pedidosAtrasados = pedidosAtrasadosRaw as Pedido[]
+
+  useEffect(() => {
+    if (atrasadosParam) refetchAtrasados()
+  }, [atrasadosParam, refetchAtrasados])
+
+  const {
+    pedidos: pedidosEnRiesgoRaw,
+    loading: loadingEnRiesgo,
+    error: errorEnRiesgo,
+    refetch: refetchEnRiesgo,
+  } = usePedidos({ enRiesgo: true }, { all: true, autoFetch: false, refetchOnParamsChange: false })
+  const pedidosEnRiesgo = pedidosEnRiesgoRaw as Pedido[]
+
+  useEffect(() => {
+    if (enRiesgoParam) refetchEnRiesgo()
+  }, [enRiesgoParam, refetchEnRiesgo])
+
+  const volverAPedidosDeHoy = useCallback(() => {
+    syncUrl({ atrasados: undefined, enRiesgo: undefined })
+  }, [syncUrl])
+
   // Lightweight badge counts fetched independently from the full datasets.
   // This keeps the badge live without re-downloading the entire Pedidos list.
   const {
     fiadosCount,
     alertasCount,
     atrasadosCount,
+    enRiesgoCount,
     refetch: refetchCounts,
   } = usePedidosCounts(true)
 
@@ -1195,6 +1233,21 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
             </InfoBanner>
           </div>
         )}
+        {/* Pedidos de HOY pendientes sin asignar cuya ruta ya tuvo 3+ embarques
+            CERRADO hoy — ver findPedidosHoyEnRiesgoIds en pedidos-sin-asignar.ts. */}
+        {enRiesgoCount > 0 && (
+          <div data-testid="banner-hoy-en-riesgo">
+            <InfoBanner type="tip" className="mb-4">
+              <span>
+                🟠 {enRiesgoCount} pedido{enRiesgoCount === 1 ? '' : 's'} de hoy sin asignar tras
+                varios viajes de su ruta — riesgo de quedar sin entregar hoy.{' '}
+                <Link href="/pedidos?enRiesgo=true" className="font-semibold underline hover:no-underline">
+                  Verlos →
+                </Link>
+              </span>
+            </InfoBanner>
+          </div>
+        )}
 
         {/* Banner explicativo para nuevos usuarios */}
         {pedidosVisibles.length === 0 && !hasActiveFilters && (
@@ -1214,7 +1267,11 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
               ? 'Fiados'
               : activeTab === 'alertas'
                 ? 'Alertas'
-                : getTituloFecha(desdeUrl, hastaUrl, allFromUrl)}
+                : atrasadosParam
+                  ? 'Pedidos atrasados sin asignar'
+                  : enRiesgoParam
+                    ? 'Pedidos de hoy en riesgo'
+                    : getTituloFecha(desdeUrl, hastaUrl, allFromUrl)}
           </h1>
         </div>
 
@@ -1247,7 +1304,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       </div>
 
       {/* Stats - solo en Hoy (siempre sobre todos los pedidos, ignoran filtros activos) */}
-      {activeTab === 'hoy' && (
+      {activeTab === 'hoy' && !atrasadosParam && !enRiesgoParam && (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
           <button
             onClick={() => setSingleFilter('estadoEntrega', 'PENDIENTE')}
@@ -1294,8 +1351,26 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
         </div>
       )}
 
+      {/* Vista autocontenida: atrasados/en-riesgo, sin filtros de fecha ni SmartDateFilter */}
+      {activeTab === 'hoy' && (atrasadosParam || enRiesgoParam) && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-6 flex justify-between items-center">
+          <p className="text-sm text-blue-900">
+            {atrasadosParam
+              ? 'Mostrando solo pedidos pendientes sin asignar de días anteriores.'
+              : 'Mostrando solo pedidos de hoy pendientes sin asignar cuya ruta ya tuvo varios embarques cerrados.'}
+          </p>
+          <button
+            onClick={volverAPedidosDeHoy}
+            className="text-blue-700 text-sm font-semibold hover:text-blue-900 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition shrink-0"
+            data-testid="volver-pedidos-hoy"
+          >
+            ← Volver a Pedidos de Hoy
+          </button>
+        </div>
+      )}
+
       {/* Filtros - solo en Hoy (fuente de verdad URL) */}
-      {activeTab === 'hoy' && (
+      {activeTab === 'hoy' && !atrasadosParam && !enRiesgoParam && (
         <div className="bg-white p-4 rounded-xl shadow mb-6 space-y-4">
           <SmartDateFilter />
           <PedidoFilters
@@ -1339,7 +1414,51 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       )}
 
       {/* Contenido por tab */}
-      {activeTab === 'hoy' && (
+      {activeTab === 'hoy' && (atrasadosParam || enRiesgoParam) && (() => {
+        const vistaLoading = atrasadosParam ? loadingAtrasados : loadingEnRiesgo
+        const vistaError = atrasadosParam ? errorAtrasados : errorEnRiesgo
+        const vistaPedidos = atrasadosParam ? pedidosAtrasados : pedidosEnRiesgo
+        if (vistaLoading && vistaPedidos.length === 0) {
+          return (
+            <div className="space-y-4">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <SkeletonCard key={i} />
+              ))}
+            </div>
+          )
+        }
+        return (
+          <>
+            {vistaError && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4 flex items-center justify-between">
+                <span className="text-amber-800 text-sm font-medium">{vistaError}</span>
+                <button
+                  onClick={() => (atrasadosParam ? refetchAtrasados() : refetchEnRiesgo())}
+                  className="text-amber-700 text-sm font-semibold hover:text-amber-900 px-3 py-1.5 rounded-lg hover:bg-amber-100 transition shrink-0"
+                >
+                  Reintentar
+                </button>
+              </div>
+            )}
+            <PedidoTable
+              pedidos={vistaPedidos}
+              updatingId={updatingId}
+              hasActiveFilters={false}
+              hasDateFilter={false}
+              userRole={userRole}
+              renderOrigenBadge={getOrigenBadge}
+              renderEstadoEntregaBadge={getEstadoEntregaBadge}
+              renderEstadoPagoBadge={getEstadoPagoBadge}
+              getAlertasPedido={getAlertasPedido}
+              tieneFiado={tieneFiado}
+              onDetail={handleDetail}
+              onCambiarEstado={cambiarEstado}
+              onCreateClick={() => setShowModal(true)}
+            />
+          </>
+        )
+      })()}
+      {activeTab === 'hoy' && !atrasadosParam && !enRiesgoParam && (
         !hasLoadedOnce && loading && pedidosVisibles.length === 0 ? (
           <div className="space-y-4">
             {Array.from({ length: 4 }).map((_, i) => (

@@ -34,7 +34,12 @@ describe('FIX Bug 6: /api/pedidos/counts expone contadores ligeros', () => {
   })
 
   it('expone atrasadosCount reutilizando countPedidosAtrasadosSinAsignar', () => {
-    expect(source).toMatch(/import\s*\{\s*countPedidosAtrasadosSinAsignar\s*\}\s*from\s*['"]@\/lib\/pedidos-sin-asignar['"]/)
+    expect(source).toMatch(/import\s*\{[^}]*countPedidosAtrasadosSinAsignar[^}]*\}\s*from\s*['"]@\/lib\/pedidos-sin-asignar['"]/)
     expect(source).toMatch(/atrasadosCount/)
+  })
+
+  it('expone enRiesgoCount reutilizando countPedidosHoyEnRiesgo', () => {
+    expect(source).toMatch(/import\s*\{[^}]*countPedidosHoyEnRiesgo[^}]*\}\s*from\s*['"]@\/lib\/pedidos-sin-asignar['"]/)
+    expect(source).toMatch(/enRiesgoCount/)
   })
 })

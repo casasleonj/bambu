@@ -86,6 +86,8 @@ export interface CancelarPedidoInput {
 }
 
 export interface ListarPedidosInput {
+  /** Restringe a un conjunto explícito de IDs (ej. vista "en riesgo"). */
+  id?: string[]
   clienteId?: string
   desde?: Date
   hasta?: Date

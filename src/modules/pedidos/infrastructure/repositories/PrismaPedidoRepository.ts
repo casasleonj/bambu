@@ -176,6 +176,7 @@ export class PrismaPedidoRepository implements IPedidoRepository {
 
   private buildWhere(filter?: PedidoFilter): Record<string, unknown> {
     const where: Record<string, unknown> = {}
+    if (filter?.id && filter.id.length > 0) where.id = { in: filter.id }
     if (filter?.clienteId) where.clienteId = filter.clienteId
     if (filter?.embarqueId !== undefined) where.embarqueId = filter.embarqueId
     if (filter?.estadoEntrega && filter.estadoEntrega.length > 0) where.estadoEntrega = { in: filter.estadoEntrega }
