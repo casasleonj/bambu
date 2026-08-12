@@ -30,10 +30,20 @@ function esPedidoAtrasado(p: Pedido): boolean {
   return new Date(p.fecha) < startOfDayBogota()
 }
 
+/**
+ * Compara días CALENDARIO en Bogotá (no una resta de milisegundos / 24h):
+ * un pedido de "anoche" (hace <24h en reloj, pero de ayer en calendario)
+ * debe decir "ayer", no "hoy" — si no, contradice al chip "Atrasado".
+ */
 function formatAntiguedad(fechaIso: string): string {
-  const dias = Math.floor((startOfDayBogota().getTime() - new Date(fechaIso).getTime()) / 86_400_000)
-  if (dias <= 0) return 'hoy'
-  if (dias === 1) return 'hace 1 día'
+  const bogotaDateStr = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+  const hoyStr = bogotaDateStr(new Date())
+  const fechaStr = bogotaDateStr(new Date(fechaIso))
+  if (fechaStr === hoyStr) return 'hoy'
+  const dias = Math.round(
+    (new Date(`${hoyStr}T00:00:00-05:00`).getTime() - new Date(`${fechaStr}T00:00:00-05:00`).getTime()) / 86_400_000,
+  )
+  if (dias === 1) return 'ayer'
   return `hace ${dias} días`
 }
 
