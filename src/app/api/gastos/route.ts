@@ -9,6 +9,8 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
 import { publishRealtimeEvent } from '@/lib/realtime'
+import { notifyEvent } from '@/lib/notifications/notify-event'
+import { NotificationEventType } from '@/lib/notifications/event-types'
 
 export async function GET(request: NextRequest) {
   // FIX CRITICAL (C-SEC-4): Only ADMIN/CONTADOR can read gastos
@@ -91,6 +93,13 @@ export async function POST(request: NextRequest) {
     }).catch(() => {})
 
     publishRealtimeEvent('gasto.created', gasto.id).catch(() => {})
+
+    void notifyEvent(NotificationEventType.GASTO_CREADO, {
+      title: 'Gasto registrado',
+      body: `${categoria}: $${Number(monto).toLocaleString()}${descripcion ? ` — ${descripcion}` : ''}.`,
+      url: `/gastos?openGasto=${gasto.id}`,
+      tag: `gasto-${gasto.id}`,
+    })
 
     return apiSuccess({ gasto }, 201)
   } catch (error) {

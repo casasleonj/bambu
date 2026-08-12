@@ -2,6 +2,9 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
   "fluid": true,
+  "crons": [
+    { "path": "/api/cron/alertas-batch", "schedule": "*/5 * * * *" }
+  ],
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" }
   ],

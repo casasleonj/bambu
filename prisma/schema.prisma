@@ -175,6 +175,8 @@ model User {
 
   pushSubscriptions PushSubscription[] @relation("PushSubscriptions")
 
+  notificationTargets NotificationRuleTargetUser[] @relation("NotificationRuleTargetUser")
+
   deudasCreadas DeudaTrabajador[] @relation("DeudaCreador")
 
   importBatchesCreadas ImportBatch[] @relation("ImportBatchCreador")
@@ -1402,6 +1404,52 @@ model PushSubscription {
 
   @@index([userId])
   @@index([lastSeenAt])
+}
+
+// ====================
+// NOTIFICATION ROUTING
+// ====================
+// Sistema configurable de notificaciones push: por cada tipo de evento
+// de negocio, un ADMIN elige qué roles y/o qué usuarios específicos
+// reciben el aviso. Reemplaza el broadcastPush() sin filtrar (mandaba
+// a TODAS las suscripciones activas sin importar rol/relevancia).
+
+enum NotificationEventType {
+  CLIENTE_CREADO
+  PEDIDO_CREADO
+  EMBARQUE_CERRADO
+  PEDIDO_ENTREGADO
+  PEDIDO_CULMINADO
+  FIADO_GENERADO
+  ABONO_APLICADO
+  CIERRE_DIA_COMPLETADO
+  GASTO_CREADO
+  COMPRA_CREADA
+  CASO_ALTA
+}
+
+model NotificationRule {
+  id        String                @id @default(cuid())
+  eventType NotificationEventType @unique
+  enabled   Boolean               @default(true)
+  roles     RolUsuario[]          @default([])
+
+  targetUsers NotificationRuleTargetUser[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
+}
+
+model NotificationRuleTargetUser {
+  id     String           @id @default(cuid())
+  ruleId String
+  rule   NotificationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  userId String
+  user   User             @relation("NotificationRuleTargetUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([ruleId, userId])
+  @@index([ruleId])
+  @@index([userId])
 }
 
 // ====================

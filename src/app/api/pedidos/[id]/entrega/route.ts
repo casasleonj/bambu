@@ -9,7 +9,10 @@ import { logger } from '@/lib/logger'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { entregarPedidoUseCase } from '@/modules/pedidos'
 import { getConfigBool } from '@/lib/config'
+import { shouldFireCulminado } from '@/lib/pedido-utils'
 import { publishRealtimeEvent } from '@/lib/realtime'
+import { notifyEvent } from '@/lib/notifications/notify-event'
+import { NotificationEventType } from '@/lib/notifications/event-types'
 import { uploadBase64Foto, isBase64Image } from '@/lib/storage'
 
 export async function POST(
@@ -180,6 +183,36 @@ export async function POST(
     publishRealtimeEvent('pedido.updated', id).catch(() => {})
     if (result.pedido.embarqueId) {
       publishRealtimeEvent('embarque.updated', result.pedido.embarqueId).catch(() => {})
+    }
+
+    // Push notifications: no reenviar en un replay deduped (el pedido ya
+    // estaba ENTREGADO antes de esta llamada, ver EntregarPedidoUseCase).
+    if (!result.deduped) {
+      void (async () => {
+        const cliente = await prisma.cliente
+          .findUnique({ where: { id: result.pedido.clienteId }, select: { nombre: true } })
+          .catch(() => null)
+
+        void notifyEvent(NotificationEventType.PEDIDO_ENTREGADO, {
+          title: 'Pedido entregado',
+          body: `Pedido #${result.pedido.numero}${cliente ? ` de ${cliente.nombre}` : ''} fue entregado.`,
+          url: `/pedidos?openPedido=${result.pedido.id}`,
+          tag: `pedido-entregado-${result.pedido.id}`,
+        })
+
+        // PEDIDO_CULMINADO combinado: solo dispara si, además de recién
+        // entregado, el pedido YA está pagado en su totalidad. Si falta
+        // pago, este evento lo dispara pagar-fiado/route.ts más adelante
+        // (ver razonamiento anti-doble-disparo en el plan).
+        if (shouldFireCulminado(result.pedido.estadoEntrega, result.pedido.estadoPago)) {
+          void notifyEvent(NotificationEventType.PEDIDO_CULMINADO, {
+            title: 'Pedido culminado',
+            body: `Pedido #${result.pedido.numero} fue entregado y pagado en su totalidad.`,
+            url: `/pedidos?openPedido=${result.pedido.id}`,
+            tag: `pedido-culminado-${result.pedido.id}`,
+          })
+        }
+      })()
     }
 
     return apiSuccess(result)

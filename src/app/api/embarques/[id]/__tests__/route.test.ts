@@ -155,7 +155,15 @@ describe('F-N12: el response distingue deduped vs camino normal', () => {
   })
 
   it('FIX: el caso normal sigue calculando totalPacas/pesoKg/capacidadInfo', () => {
-    expect(source).toMatch(/calcularPacasEmbarque\(embarque\.pedidos\)/)
+    // La var se renombró a embarqueActualizado (antes: embarque) al
+    // agregar el sistema de notificaciones — el lock ahora también
+    // devuelve estadoAntes (el estado del embarque previo al update,
+    // usado para decidir si avisar al repartidor de una modificación a
+    // su ruta ya en curso), y ese campo interno se destructura fuera
+    // ANTES de serializar la respuesta, para que no se filtre al
+    // cliente vía la API.
+    expect(source).toMatch(/const\s*\{\s*estadoAntes,\s*\.\.\.embarqueActualizado\s*\}\s*=\s*embarque/)
+    expect(source).toMatch(/calcularPacasEmbarque\(embarqueActualizado\.pedidos\)/)
   })
 })
 

@@ -809,3 +809,26 @@ export const CasoEventoCreateSchema = z.object({
   valorPost: z.string().max(200).optional().nullable(),
   comentario: z.string().max(2000).optional().nullable(),
 })
+
+export const NotificationRulesUpdateSchema = z.object({
+  rules: z.array(
+    z.object({
+      eventType: z.enum([
+        'CLIENTE_CREADO',
+        'PEDIDO_CREADO',
+        'EMBARQUE_CERRADO',
+        'PEDIDO_ENTREGADO',
+        'PEDIDO_CULMINADO',
+        'FIADO_GENERADO',
+        'ABONO_APLICADO',
+        'CIERRE_DIA_COMPLETADO',
+        'GASTO_CREADO',
+        'COMPRA_CREADA',
+        'CASO_ALTA',
+      ]),
+      enabled: z.boolean(),
+      roles: z.array(z.enum(['ADMIN', 'ASISTENTE', 'CONTADOR'])),
+      targetUserIds: z.array(z.string().min(1)),
+    }),
+  ),
+})

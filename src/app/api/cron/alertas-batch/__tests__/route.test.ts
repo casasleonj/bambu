@@ -97,15 +97,19 @@ describe('commit 4: respuesta del cron', () => {
   })
 })
 
-describe('commit 4b: push trigger para Casos ALTA', () => {
-  it('FIX: el cron importa broadcastPush de @/lib/push', () => {
-    expect(source).toMatch(/import\s*\{[^}]*broadcastPush[^}]*\}\s*from\s*['"]@\/lib\/push['"]/)
+describe('commit 4b: push trigger para Casos ALTA (via notifyEvent, no broadcastPush)', () => {
+  it('FIX: el cron importa notifyEvent de @/lib/notifications/notify-event', () => {
+    expect(source).toMatch(/import\s*\{[^}]*notifyEvent[^}]*\}\s*from\s*['"]@\/lib\/notifications\/notify-event['"]/)
   })
 
-  it('FIX: broadcastPush se llama solo cuando severidad es ALTA', () => {
+  it('FIX: ya no usa broadcastPush (mandaba a todas las suscripciones sin filtrar rol)', () => {
+    expect(source).not.toMatch(/broadcastPush/)
+  })
+
+  it('FIX: notifyEvent(CASO_ALTA) se llama solo cuando severidad es ALTA', () => {
     // El fire-and-forget se dispara despues del create, gateado por severidad
     expect(source).toMatch(/severidad\s*===\s*['"]ALTA['"]/)
-    expect(source).toMatch(/broadcastPush\(/)
+    expect(source).toMatch(/notifyEvent\(NotificationEventType\.CASO_ALTA/)
   })
 
   it('FIX: el push payload incluye url /casos/[id] y tag caso-[id]', () => {
@@ -114,8 +118,14 @@ describe('commit 4b: push trigger para Casos ALTA', () => {
     expect(source).toMatch(/tag:\s*`caso-\$\{caso\.id\}`/)
   })
 
-  it('FIX: broadcastPush es fire-and-forget (no bloquea el cron)', () => {
+  it('FIX: notifyEvent es fire-and-forget (no bloquea el cron)', () => {
     // `void` antes de la llamada: errores de push no rompen el cron
-    expect(source).toMatch(/void\s+broadcastPush\(/)
+    expect(source).toMatch(/void\s+notifyEvent\(/)
+  })
+})
+
+describe('cron GET export (Vercel Cron Jobs invoca por GET, no POST)', () => {
+  it('FIX: exporta GET = POST para que Vercel Cron pueda invocar el endpoint', () => {
+    expect(source).toMatch(/export\s+const\s+GET\s*=\s*POST/)
   })
 })

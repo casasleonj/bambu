@@ -8,6 +8,8 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { getTodayString } from '@/lib/dates'
 import { startOfDayInBogota, endOfDayInBogota, nowInBogota } from '@/lib/date-helpers'
+import { notifyEvent } from '@/lib/notifications/notify-event'
+import { NotificationEventType } from '@/lib/notifications/event-types'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -594,6 +596,13 @@ export async function POST(request: NextRequest) {
         datos: { fecha: cierre.fecha, totalVentas: cierre.totalVentas, cerradoPor: userId },
         usuarioId: userId,
       }).catch((e) => console.error('[cierre] Audit log failed:', e))
+
+      void notifyEvent(NotificationEventType.CIERRE_DIA_COMPLETADO, {
+        title: 'Cierre del día completado',
+        body: `Se cerró el día ${cierre.fecha.toISOString().slice(0, 10)}. Total ventas: $${Number(cierre.totalVentas).toLocaleString()}.`,
+        url: `/cierre?fecha=${cierre.fecha.toISOString().slice(0, 10)}`,
+        tag: `cierre-${cierre.id}`,
+      })
 
       return apiSuccess({ cierre }, 201)
 

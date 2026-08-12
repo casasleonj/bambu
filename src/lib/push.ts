@@ -44,6 +44,13 @@ export interface PushPayload {
   body: string
   url?: string
   tag?: string
+  /**
+   * Si es true, la notificación nativa no se autodescarta
+   * (requireInteraction en el Service Worker). Reservado para casos
+   * genuinamente urgentes (antifraude ALTA) — default false/undefined
+   * para todo lo demás, evita fatiga de notificaciones.
+   */
+  persistent?: boolean
 }
 
 /**

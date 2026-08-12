@@ -60,8 +60,18 @@ describe('F-N11: la route ya NO tiene el dedup redundante FUERA del lock', () =>
     expect(source).not.toMatch(topLevelDedup)
   })
 
-  it('FIX: ya no se importa prisma en este archivo', () => {
-    expect(source).not.toMatch(/import\s+\{\s*prisma\s*\}\s+from\s+['"]@\/lib\/prisma['"]/)
+  it('FIX: prisma (si se importa) nunca se usa para el dedup de pagos', () => {
+    // El import de `prisma` volvió a este archivo (sistema de
+    // notificaciones: lookup read-only del nombre del cliente, DESPUÉS
+    // de que el lock ya resolvió, solo para el texto del push de
+    // ABONO_APLICADO — no participa del cálculo de pagos ni corre
+    // dentro de la transacción). La invariante real de F-N11 no es
+    // "cero imports de prisma", es "el dedup/aplicación de pagos usa
+    // tx, nunca el cliente global" — ya cubierto por el test de arriba
+    // ('NO hay prisma.pago.findMany para dedup'). Reforzamos acá que
+    // tampoco se usa `prisma.pedido`/`prisma.pago` en ningún lado.
+    expect(source).not.toMatch(/prisma\.pago\./)
+    expect(source).not.toMatch(/prisma\.pedido\./)
   })
 })
 

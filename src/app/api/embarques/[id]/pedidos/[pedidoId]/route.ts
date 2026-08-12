@@ -6,6 +6,7 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 import { logAudit } from '@/lib/audit'
 import { publishRealtimeEvent } from '@/lib/realtime'
+import { sendPushToUser } from '@/lib/push'
 
 /**
  * DELETE /api/embarques/[id]/pedidos/[pedidoId]
@@ -34,7 +35,7 @@ export async function DELETE(
     const result = await prisma.$transaction(async (tx) => {
       const embarque = await tx.embarque.findUnique({
         where: { id },
-        select: { id: true, estado: true, numero: true },
+        select: { id: true, estado: true, numero: true, trabajador: { select: { userId: true } } },
       })
       if (!embarque) throw new Error('EMBARQUE_NOT_FOUND')
       if (embarque.estado === 'CERRADO' || embarque.estado === 'CANCELADO') {
@@ -74,6 +75,20 @@ export async function DELETE(
 
     publishRealtimeEvent('pedido.updated', pedidoId).catch(() => {})
     publishRealtimeEvent('embarque.updated', id).catch(() => {})
+
+    // Push al repartidor SOLO si el embarque está EN_RUTA (si estaba
+    // ABIERTO no hay ruta en curso que interrumpir, no corresponde avisar).
+    if (result.embarque.estado === 'EN_RUTA') {
+      const repartidorUserId = result.embarque.trabajador?.userId
+      if (repartidorUserId) {
+        void sendPushToUser(repartidorUserId, {
+          title: 'Pedido removido de tu ruta',
+          body: `El pedido #${result.pedido.numero} fue removido del embarque #${result.embarque.numero}.`,
+          url: '/repartidor',
+          tag: `embarque-ruta-modificado-${id}`,
+        })
+      }
+    }
 
     return apiSuccess({ embarqueId: id, pedidoId, estadoEntrega: result.pedido.estadoEntrega })
   } catch (error) {
