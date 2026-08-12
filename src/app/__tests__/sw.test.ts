@@ -1,6 +1,6 @@
-// @tests sw.ts push handler — commit 4b plan antifraude
-// El SW recibe los pushes que dispara broadcastPush() y muestra
-// notifications nativas. Tambien maneja el click para abrir la URL.
+// @tests sw.ts push handler
+// El SW recibe los pushes que dispara notifyEvent() (via sendPushToUser)
+// y muestra notifications nativas. Tambien maneja el click para abrir la URL.
 
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'fs'
@@ -24,11 +24,16 @@ describe('commit 4b: push event handler', () => {
     expect(source).toMatch(/self\.registration\.showNotification\(\s*title\s*,\s*options\s*\)/)
   })
 
-  it('FIX: la notification tiene tag dedup + requireInteraction (alerta urgente)', () => {
+  it('FIX: la notification tiene tag dedup + requireInteraction condicional', () => {
     // requireInteraction: true → la noti no se cierra sola (el user
-    // debe actuar). Importante para alertas antifraude ALTA.
+    // debe actuar). Ya NO está hardcodeado a true para todo push —
+    // solo se activa cuando el payload lo pide explícitamente
+    // (payload.persistent === true, hoy: solo antifraude ALTA). El
+    // resto de las notificaciones (nuevo pedido, cliente, etc.) se
+    // autodescartan, para no acumular avisos rutinarios.
     expect(source).toMatch(/tag:\s*payload\.tag/)
-    expect(source).toMatch(/requireInteraction:\s*true/)
+    expect(source).not.toMatch(/requireInteraction:\s*true,/)
+    expect(source).toMatch(/requireInteraction:\s*payload\.persistent\s*===\s*true/)
   })
 
   it('FIX: envuelve showNotification en event.waitUntil (offline-safe)', () => {

@@ -5,6 +5,7 @@ import {
   puedeFiar,
   getAlertaPedidoDia,
   resolverLimiteFiados,
+  shouldFireCulminado,
 } from '@/lib/pedido-utils'
 
 describe('puedeCrearPedido', () => {
@@ -185,5 +186,59 @@ describe('getAlertaPedidoDia', () => {
     const result = getAlertaPedidoDia(5)
     expect(result.tipo).toBe('roja')
     expect(result.mensaje).toBe('5 pedidos hoy')
+  })
+})
+
+describe('shouldFireCulminado', () => {
+  it('true solo cuando ENTREGADO + PAGADO simultáneamente', () => {
+    expect(shouldFireCulminado('ENTREGADO', 'PAGADO')).toBe(true)
+  })
+
+  it('false si solo está entregado (aún debe)', () => {
+    expect(shouldFireCulminado('ENTREGADO', 'PARCIAL')).toBe(false)
+    expect(shouldFireCulminado('ENTREGADO', 'PENDIENTE')).toBe(false)
+  })
+
+  it('false si solo está pagado (aún no se entrega)', () => {
+    expect(shouldFireCulminado('PENDIENTE', 'PAGADO')).toBe(false)
+    expect(shouldFireCulminado('EN_RUTA', 'PAGADO')).toBe(false)
+  })
+
+  it('false si ninguna de las dos condiciones se cumple', () => {
+    expect(shouldFireCulminado('PENDIENTE', 'PENDIENTE')).toBe(false)
+  })
+
+  // Las 3 órdenes reales en que un pedido puede llegar a "culminado",
+  // tal como las evalúa cada endpoint (ver PEDIDO_CULMINADO en el plan
+  // de notificaciones — pedidos/[id]/entrega/route.ts y
+  // pedidos/pagar-fiado/route.ts son mutuamente excluyentes, así que
+  // cada fila simula exactamente lo que ESE endpoint ve en ESE momento).
+  describe('las 3 órdenes posibles, dispara exactamente una vez', () => {
+    it('entrega con pago completo en el mismo request → dispara desde entrega', () => {
+      // entrega/route.ts, tras registrar el pago en el mismo call:
+      // estadoEntrega ya es ENTREGADO y estadoPago ya es PAGADO.
+      expect(shouldFireCulminado('ENTREGADO', 'PAGADO')).toBe(true)
+      // pagar-fiado/route.ts nunca se invoca en este flujo — no hay
+      // riesgo de doble evaluación.
+    })
+
+    it('entrega primero, abono después → NO dispara en entrega, SÍ en pagar-fiado', () => {
+      // Al momento de la entrega, el pago aún no está completo.
+      expect(shouldFireCulminado('ENTREGADO', 'PARCIAL')).toBe(false)
+      // Más tarde, pagar-fiado ve estadoEntrega=ENTREGADO (ya seteado
+      // antes, sin cambios) + nuevoEstadoPago=PAGADO (transición fresca
+      // de este abono).
+      expect(shouldFireCulminado('ENTREGADO', 'PAGADO')).toBe(true)
+    })
+
+    it('abono primero (paga completo), entrega después → NO dispara en pagar-fiado, SÍ en entrega', () => {
+      // Al momento del abono, el pedido aún no fue entregado — el query
+      // FIFO de pagar-fiado ni siquiera lo trae si ya tuviera saldo 0,
+      // pero si el abono lo deja en 0 con estadoEntrega aún PENDIENTE:
+      expect(shouldFireCulminado('PENDIENTE', 'PAGADO')).toBe(false)
+      // Más tarde, la entrega ve estadoPago=PAGADO (ya seteado antes)
+      // + estadoEntrega=ENTREGADO (transición fresca de esta entrega).
+      expect(shouldFireCulminado('ENTREGADO', 'PAGADO')).toBe(true)
+    })
   })
 })

@@ -62,12 +62,15 @@ const serwist = new Serwist({
 serwist.addEventListeners();
 
 // =====================================================================
-// commit 4b plan antifraude: Web Push handler
+// Web Push handler
 // =====================================================================
 //
-// Cuando el cron (3.3 / 4) crea un Caso ALTA, llama broadcastPush()
-// (src/lib/push.ts) que envia un push via web-push. Este SW recibe el
-// push y muestra una notification nativa.
+// Los eventos de negocio (cliente creado, pedido entregado, cierre del
+// dia, alerta antifraude ALTA, etc.) llaman notifyEvent()
+// (src/lib/notifications/notify-event.ts), que resuelve destinatarios
+// segun NotificationRule y manda un push dirigido via sendPushToUser()
+// (src/lib/push.ts). Este SW recibe el push y muestra una notification
+// nativa.
 //
 // Payload esperado:
 //   {
@@ -75,6 +78,7 @@ serwist.addEventListeners();
 //     body: 'Cliente X: 5 NCs en 30 dias',
 //     url: '/casos/{casoId}',  // donde clickear abre
 //     tag: 'caso-{casoId}',    // dedup de notifications del mismo caso
+//     persistent: true,        // solo antifraude ALTA — el resto se autodescarta
 //   }
 //
 // Si el usuario clickea la notification, abrimos la URL en un tab nuevo
@@ -85,6 +89,7 @@ interface PushPayload {
   body?: string
   url?: string
   tag?: string
+  persistent?: boolean
 }
 
 async function isAnyClientOpen(): Promise<boolean> {
@@ -111,9 +116,11 @@ self.addEventListener("push", (event: PushEvent) => {
     badge: "/icons/badge-72x72.png",
     data: { url: payload.url },
     // requireInteraction: true → la notification no se cierra
-    // automaticamente (el user debe actuar). Importante para
-    // alertas antifraude que requieren atencion inmediata.
-    requireInteraction: true,
+    // automaticamente (el user debe actuar). Reservado para
+    // payload.persistent === true (hoy: solo antifraude ALTA) — el
+    // resto de las notificaciones se autodescartan, para no acumular
+    // avisos rutinarios que exigen cierre manual uno por uno.
+    requireInteraction: payload.persistent === true,
     // tag dedup: si llega otro push con mismo tag, el browser
     // reemplaza en vez de apilar multiples notifications.
   }

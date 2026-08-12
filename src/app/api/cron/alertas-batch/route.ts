@@ -34,7 +34,8 @@ import { logger } from '@/lib/logger'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { requireCronSecret } from '@/lib/cron-auth'
 import { UMBRALES_DEFAULT } from '@/lib/umbrales'
-import { broadcastPush } from '@/lib/push'
+import { notifyEvent } from '@/lib/notifications/notify-event'
+import { NotificationEventType } from '@/lib/notifications/event-types'
 
 const SISTEMA_USERNAME = 'system@bambu.local'
 const NC_VENTANA_DIAS = 30
@@ -306,6 +307,11 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// Vercel Cron Jobs siempre invoca por GET (con Authorization: Bearer
+// $CRON_SECRET, ver requireCronSecret). POST se mantiene para
+// invocacion manual/CI con el header x-cron-secret.
+export const GET = POST
+
 /**
  * Crea un Caso si no existe ya uno ABIERTO con la misma
  * (clienteId|repartidorId, alertaTipo). Usa el partial unique
@@ -355,7 +361,7 @@ async function crearCasoSiNoExiste(params: {
     // commit 4b: trigger push para ALTA (MEDIA y BAJA son
     // lower-priority, no requieren atencion inmediata)
     if (severidad === 'ALTA') {
-      void broadcastPush({
+      void notifyEvent(NotificationEventType.CASO_ALTA, {
         title: `Alerta antifraude: ${alertaTipo}`,
         body: titulo,
         url: `/casos/${caso.id}`,

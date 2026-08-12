@@ -15,7 +15,8 @@ import {
   listarPedidosUseCase,
 } from '@/modules/pedidos'
 import { publishRealtimeEvent } from '@/lib/realtime'
-import { broadcastPush } from '@/lib/push'
+import { notifyEvent } from '@/lib/notifications/notify-event'
+import { NotificationEventType } from '@/lib/notifications/event-types'
 import { pickCoords } from '@/lib/geo/pedido-coords'
 import { pickDireccionTexto } from '@/lib/geo/pedido-direccion'
 
@@ -297,12 +298,21 @@ export async function POST(request: NextRequest) {
       publishRealtimeEvent('pedido.created', result.pedido.id).catch(() => {})
       // Push notification for new pedido (replaces SSE for off-tab users).
       // Fire-and-forget: never block the request on push delivery.
-      void broadcastPush({
-        title: 'Nuevo pedido',
+      void notifyEvent(NotificationEventType.PEDIDO_CREADO, {
+        title: 'Pedido nuevo',
         body: `Se creó un pedido nuevo.`,
         url: `/pedidos?openPedido=${result.pedido.id}`,
         tag: `pedido-${result.pedido.id}`,
       })
+
+      if (result.pedido.estadoPago !== 'PAGADO') {
+        void notifyEvent(NotificationEventType.FIADO_GENERADO, {
+          title: 'Fiado generado',
+          body: `Pedido #${result.pedido.numero} quedó fiado (pendiente de pago).`,
+          url: `/pedidos?openPedido=${result.pedido.id}`,
+          tag: `fiado-${result.pedido.id}`,
+        })
+      }
     }
 
     // FIX M4-OFFLINE: devolver 200 + deduped=true cuando el pedido ya existía

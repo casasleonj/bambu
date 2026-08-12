@@ -11,6 +11,7 @@ import { ROLES } from '@/lib/constants'
 import { logger } from '@/lib/logger'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { publishRealtimeEvent } from '@/lib/realtime'
+import { sendPushToUser } from '@/lib/push'
 import { enrichPedidosWithNegocio } from '@/lib/embarque-pedido-enrich'
 import { getConfigInt } from '@/lib/config'
 import { MAX_UNIDADES } from '@/modules/embarques/domain/services/embarque-validation.service'
@@ -342,7 +343,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         }
       }
 
-      return tx.embarque.update({
+      const updated = await tx.embarque.update({
         where: { id },
         data: updateData,
         include: {
@@ -352,6 +353,16 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           productos: true,
         },
       })
+
+      // estadoAntes (el estado ANTES de este update) es lo que decide si
+      // corresponde avisar al repartidor de "se modificó tu ruta ya
+      // despachada" — usar el estado DESPUÉS del update sería ambiguo:
+      // un embarque que pasa de ABIERTO a EN_RUTA en este mismo request
+      // (despacho inicial con pedidos incluidos) también terminaría con
+      // estado EN_RUTA, pero ese caso ya tiene su propio aviso correcto
+      // vía /api/embarques/[id]/enviar — no es una "modificación a una
+      // ruta ya en curso".
+      return { ...updated, estadoAntes: currentEmbarque.estado }
     })
 
     // Manejar el caso deduped: retorna el embarque pre-construido dentro del lock
@@ -367,13 +378,14 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     // Caso normal: el lock retorna un embarque actualizado
-    const totalPacas = calcularPacasEmbarque(embarque.pedidos)
-    const pesoKg = calcularPesoEmbarque(embarque.pedidos)
-    const capacidadKg = embarque.trabajador.capacidadKg || 500
+    const { estadoAntes, ...embarqueActualizado } = embarque
+    const totalPacas = calcularPacasEmbarque(embarqueActualizado.pedidos)
+    const pesoKg = calcularPesoEmbarque(embarqueActualizado.pedidos)
+    const capacidadKg = embarqueActualizado.trabajador.capacidadKg || 500
     const capacidadInfo = getCapacidadInfo(totalPacas, pesoKg, capacidadKg)
 
     const serialized = JSON.parse(JSON.stringify({
-      ...embarque,
+      ...embarqueActualizado,
       totalPacas,
       pesoKg,
       capacidadKg,
@@ -393,6 +405,21 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       pedidoIds.forEach((pedidoId: string) => {
         publishRealtimeEvent('pedido.updated', pedidoId).catch(() => {})
       })
+
+      // Push al repartidor asignado SOLO si el embarque YA estaba
+      // EN_RUTA antes de este request (modificación a una ruta en
+      // curso) — no en el despacho inicial, que ya avisa vía /enviar.
+      if (estadoAntes === 'EN_RUTA') {
+        const repartidorUserId = embarqueActualizado.trabajador?.userId
+        if (repartidorUserId) {
+          void sendPushToUser(repartidorUserId, {
+            title: 'Pedido agregado a tu ruta',
+            body: `Se ${pedidoIds.length === 1 ? 'agregó un pedido' : `agregaron ${pedidoIds.length} pedidos`} al embarque #${embarqueActualizado.numero} en ruta.`,
+            url: '/repartidor',
+            tag: `embarque-ruta-modificado-${serialized.id}`,
+          })
+        }
+      }
     }
 
     return apiSuccess({ embarque: serialized })

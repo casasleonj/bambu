@@ -10,6 +10,8 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
 import { publishRealtimeEvent } from '@/lib/realtime'
+import { notifyEvent } from '@/lib/notifications/notify-event'
+import { NotificationEventType } from '@/lib/notifications/event-types'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -99,6 +101,13 @@ export async function POST(request: NextRequest) {
     }).catch(() => {})
 
     publishRealtimeEvent('compra.created', compra.id).catch(() => {})
+
+    void notifyEvent(NotificationEventType.COMPRA_CREADA, {
+      title: 'Compra registrada',
+      body: `${compra.numero}: ${cantidad} × ${insumo.nombre} — $${Number(montoTotal).toLocaleString()}.`,
+      url: `/compras?openCompra=${compra.id}`,
+      tag: `compra-${compra.id}`,
+    })
 
     return apiSuccess({}, 201)
   } catch (error) {

@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useSession } from 'next-auth/react'
+import Link from 'next/link'
 import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
 import { LIMITE_FIADOS_DEFAULT } from '@/lib/constants'
@@ -136,6 +138,9 @@ function timeAgo(date: Date | null): string {
    ================================================================ */
 
 export default function ConfiguracionClient({ initialData }: ConfiguracionClientProps) {
+  const { data: session } = useSession()
+  const isAdmin = (session?.user as { role?: string } | undefined)?.role === 'ADMIN'
+
   const [data, setData] = useState<ConfigData>(initialData)
   const [savedData, setSavedData] = useState<ConfigData>(initialData)
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
@@ -515,6 +520,15 @@ export default function ConfiguracionClient({ initialData }: ConfiguracionClient
             <h2 className="text-base font-semibold">Notificaciones</h2>
           </div>
           <PushSettings />
+          {isAdmin && (
+            <Link
+              href="/admin/notificaciones"
+              data-testid="link-admin-notificaciones"
+              className="mt-3 inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700"
+            >
+              Configurar quién recibe cada aviso →
+            </Link>
+          )}
         </CardContent>
       </Card>
 

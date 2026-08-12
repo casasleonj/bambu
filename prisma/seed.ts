@@ -348,6 +348,35 @@ async function seedConfigs() {
 }
 
 /**
+ * Reglas de notificación por defecto: preservan el alcance efectivo que
+ * ya tenían broadcastPush() antes del sistema de ruteo configurable —
+ * ADMIN/ASISTENTE/CONTADOR son los únicos roles a los que se les ofrece
+ * el opt-in de push, así que son el mismo público que ya recibía estos
+ * 3 avisos. Los tipos de evento nuevos NO se siembran acá a propósito —
+ * arrancan sin regla (nadie recibe nada) hasta que un ADMIN los
+ * configure explícitamente en /admin/notificaciones.
+ */
+const DEFAULT_NOTIFICATION_RULES: Array<{
+  eventType: 'CLIENTE_CREADO' | 'PEDIDO_CREADO' | 'EMBARQUE_CERRADO'
+  roles: Array<'ADMIN' | 'ASISTENTE' | 'CONTADOR'>
+}> = [
+  { eventType: 'CLIENTE_CREADO', roles: ['ADMIN', 'ASISTENTE', 'CONTADOR'] },
+  { eventType: 'PEDIDO_CREADO', roles: ['ADMIN', 'ASISTENTE', 'CONTADOR'] },
+  { eventType: 'EMBARQUE_CERRADO', roles: ['ADMIN', 'ASISTENTE', 'CONTADOR'] },
+]
+
+async function seedNotificationRules() {
+  for (const rule of DEFAULT_NOTIFICATION_RULES) {
+    await prisma.notificationRule.upsert({
+      where: { eventType: rule.eventType },
+      create: { eventType: rule.eventType, enabled: true, roles: rule.roles },
+      update: {},
+    })
+  }
+  console.log(`✅ ${DEFAULT_NOTIFICATION_RULES.length} notification rules seeded (idempotent)`)
+}
+
+/**
  * SYSTEM user: usuario técnico usado por crons y procesos automatizados
  * como creador de Casos y demás registros que requieren un `creadoPorId`.
  *
@@ -497,6 +526,7 @@ async function main() {
   await seedTrabajadores()
   await linkUsersToTrabajadores()
   await seedConfigs()
+  await seedNotificationRules()
   await seedConsumidorFinal()
   await seedProductos()
   await seedPreciosVolumen()

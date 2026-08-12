@@ -2,13 +2,16 @@ import { NextRequest } from 'next/server'
 import { requireAuth as _requireAuth, requireRole } from '@/lib/auth-check'
 import { ROLES } from '@/lib/constants'
 import { PagarFiadoSchema } from '@/lib/validators'
-import { calcularEstadoPago } from '@/lib/pedido-utils'
+import { calcularEstadoPago, shouldFireCulminado } from '@/lib/pedido-utils'
 import { withAdvisoryLock } from '@/lib/locks'
 import { getNextNumero } from '@/lib/sequence'
 import { logAudit } from '@/lib/audit'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 import { publishRealtimeEvent } from '@/lib/realtime'
+import { notifyEvent } from '@/lib/notifications/notify-event'
+import { NotificationEventType } from '@/lib/notifications/event-types'
+import { prisma } from '@/lib/prisma'
 import { Money, calcularSaldo } from '@/shared/domain'
 
 export async function POST(request: NextRequest) {
@@ -100,6 +103,12 @@ export async function POST(request: NextRequest) {
         saldoRestante: number
         abonoCreado?: boolean
       }> = []
+      // Pedidos que este abono deja ENTREGADO + PAGADO por primera vez.
+      // El query FIFO solo trae pedidos con saldo > 0, así que si un
+      // pedido sale PAGADO del loop es una transición recién ocurrida
+      // (nunca "ya estaba así") — dispara PEDIDO_CULMINADO sin riesgo
+      // de doble aviso.
+      const culminados: Array<{ pedidoId: string; numero: number }> = []
 
       // 2. Aplicar monto FIFO
       for (const pedido of pedidosFiados) {
@@ -134,6 +143,10 @@ export async function POST(request: NextRequest) {
             estadoPago: nuevoEstadoPago,
           },
         })
+
+        if (shouldFireCulminado(pedido.estadoEntrega, nuevoEstadoPago)) {
+          culminados.push({ pedidoId: pedido.id, numero: pedido.numero })
+        }
 
         // Actualizar factura con el abono (siempre, no solo cuando saldo llega a 0)
         if (pedido.factura) {
@@ -183,7 +196,7 @@ export async function POST(request: NextRequest) {
         montoRestante -= montoAplicar
       }
 
-      return { pagosAplicados, montoRestante }
+      return { pagosAplicados, montoRestante, culminados }
     })
 
     logAudit({
@@ -199,6 +212,28 @@ export async function POST(request: NextRequest) {
       const afectados = new Set(resultado.pagosAplicados.map((p) => p.pedidoId))
       afectados.forEach((pedidoId) => {
         publishRealtimeEvent('pedido.updated', pedidoId).catch(() => {})
+      })
+
+      void (async () => {
+        const clienteInfo = await prisma.cliente
+          .findUnique({ where: { id: clienteId }, select: { nombre: true } })
+          .catch(() => null)
+
+        void notifyEvent(NotificationEventType.ABONO_APLICADO, {
+          title: 'Abono aplicado',
+          body: `Se aplicó un abono de $${(monto - resultado.montoRestante).toLocaleString()}${clienteInfo ? ` a ${clienteInfo.nombre}` : ''}.`,
+          url: `/clientes?openCliente=${clienteId}`,
+          tag: offlineId ?? `abono-${clienteId}-${Date.now()}`,
+        })
+      })()
+
+      resultado.culminados.forEach((c) => {
+        void notifyEvent(NotificationEventType.PEDIDO_CULMINADO, {
+          title: 'Pedido culminado',
+          body: `Pedido #${c.numero} fue entregado y pagado en su totalidad.`,
+          url: `/pedidos?openPedido=${c.pedidoId}`,
+          tag: `pedido-culminado-${c.pedidoId}`,
+        })
       })
     }
 

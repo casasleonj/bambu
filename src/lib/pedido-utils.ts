@@ -54,6 +54,26 @@ export function calcularSaldo(total: number, totalPagado: number): number {
   return Math.max(0, total - totalPagado)
 }
 
+/**
+ * Decide si un pedido acaba de "culminar" (entregado + pagado en su
+ * totalidad) — usado para disparar PEDIDO_CULMINADO desde dos endpoints
+ * mutuamente excluyentes (entrega/route.ts y pagar-fiado/route.ts).
+ *
+ * Ambos call sites solo invocan esto sobre una transición RECIÉN
+ * ocurrida (nunca sobre un estado "ya así desde antes"): el use case
+ * de entrega corta temprano si el pedido ya estaba ENTREGADO, y el
+ * query FIFO de pagar-fiado solo trae pedidos con saldo > 0 (nunca ya
+ * PAGADO). Por construcción, un `true` acá es siempre una transición
+ * fresca — no hace falta ninguna columna de control adicional para
+ * evitar doble disparo.
+ */
+export function shouldFireCulminado(
+  estadoEntrega: EstadoEntrega | string,
+  estadoPago: EstadoPago | string,
+): boolean {
+  return estadoEntrega === 'ENTREGADO' && estadoPago === 'PAGADO'
+}
+
 // ====================
 // BADGES VISUALES
 // ====================
