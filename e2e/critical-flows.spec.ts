@@ -1,6 +1,6 @@
 // @tests api/cliente, api/pedido
-import { test, expect } from '@playwright/test'
-import { handleBaseCaja } from './fixtures'
+import { test, expect, type Page } from '@playwright/test'
+import { handleBaseCaja, openFabPedidoEnvio, openSidebarIfMobile } from './fixtures'
 
 const BASE_URL = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000'
 
@@ -10,6 +10,35 @@ async function login(page: any) {
   await page.fill('input[type="password"]', 'admin123')
   await page.click('button:has-text("Ingresar")')
   await page.waitForURL(/.*dashboard/, { timeout: 15000 })
+}
+
+// pedidos-client fetches the full clientes list in the background with an
+// 8s AbortSignal timeout (src/app/(app)/pedidos/pedidos-client/index.tsx).
+// Under heavy CI load that fetch can abort before the list ever populates,
+// leaving the search results empty regardless of how long the test waits —
+// the only way to give it a fresh 8s budget is to reload and reopen the
+// modal. DOMICILIO pedidos require a client (handleSubmit validation), so
+// unlike abonos.spec.ts this can't just be skipped when empty.
+async function searchAndSelectCliente(page: Page) {
+  const modal = page.locator('form').filter({ hasText: 'Cliente' })
+  const clientBtn = page.getByTestId('cliente-search-result').first()
+  const maxAttempts = 3
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    await modal.locator('input[placeholder="Buscar cliente por nombre o teléfono..."]').fill('a')
+    if (await clientBtn.isVisible({ timeout: 15000 }).catch(() => false)) {
+      await clientBtn.click()
+      return modal
+    }
+    if (attempt < maxAttempts - 1) {
+      await page.reload()
+      await page.waitForLoadState('networkidle')
+      await handleBaseCaja(page)
+      await openFabPedidoEnvio(page)
+      await page.waitForTimeout(800)
+    }
+  }
+  await clientBtn.click()
+  return modal
 }
 
 test.describe('Flujos críticos de negocio', () => {
@@ -79,16 +108,11 @@ test.describe('Flujos críticos de negocio', () => {
     })
 
     // Open create modal
-    await page.click('button:has-text("+ Nuevo Pedido")')
+    await openFabPedidoEnvio(page)
     await page.waitForTimeout(800)
 
-    const modal = page.locator('form').filter({ hasText: 'Cliente' })
-
     // Search and select first client
-    await modal.locator('input[placeholder="Buscar por nombre o telefono..."]').fill('a')
-    await page.waitForTimeout(500)
-    const clientBtn = modal.locator('div.border.rounded-md button').first()
-    await clientBtn.click()
+    const modal = await searchAndSelectCliente(page)
 
     // Add product
     const aguaInput = modal.locator('input[type="number"]').first()
@@ -109,7 +133,7 @@ test.describe('Flujos críticos de negocio', () => {
       await dialog.accept()
     })
 
-    await modal.locator('button:has-text("Crear Pedido")').click()
+    await modal.getByTestId('submit-pedido').click()
     await page.waitForTimeout(1000)
 
     // Should close modal (no alert about missing client/payment)
@@ -143,9 +167,10 @@ test.describe('Flujos críticos de negocio', () => {
   test('Sidebar tiene logout y configuración', async ({ page }) => {
     await login(page)
     await handleBaseCaja(page)
+    await openSidebarIfMobile(page)
 
     await expect(page.locator('text=Cerrar Sesión')).toBeVisible()
-    await expect(page.locator('text=Precios')).toBeVisible()
+    await expect(page.locator('text=Configuración')).toBeVisible()
   })
 
   test('Pedido agendado sin pago es permitido via items array', async ({ page }) => {
@@ -165,15 +190,11 @@ test.describe('Flujos críticos de negocio', () => {
       await route.continue()
     })
 
-    await page.click('button:has-text("+ Nuevo Pedido")')
+    await openFabPedidoEnvio(page)
     await page.waitForTimeout(800)
 
-    const modal = page.locator('form').filter({ hasText: 'Cliente' })
-
     // Select client
-    await modal.locator('input[placeholder="Buscar por nombre o telefono..."]').fill('a')
-    await page.waitForTimeout(500)
-    await modal.locator('div.border.rounded-md button').first().click()
+    const modal = await searchAndSelectCliente(page)
 
     // Add product
     await modal.locator('input[type="number"]').first().fill('1')
@@ -183,7 +204,7 @@ test.describe('Flujos críticos de negocio', () => {
     // Intercept API response to verify actual success
     const [apiResponse] = await Promise.all([
       page.waitForResponse(resp => resp.url().includes('/api/pedidos') && resp.request().method() === 'POST'),
-      modal.locator('button:has-text("Crear Pedido")').click(),
+      modal.getByTestId('submit-pedido').click(),
     ])
 
     expect(apiResponse.status()).toBe(201)

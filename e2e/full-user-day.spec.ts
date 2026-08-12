@@ -1,6 +1,6 @@
 // @tests api/cliente, api/compra, api/gasto, api/insumo, api/proveedor, api/trabajador
 import { test, expect, Page } from '@playwright/test'
-import { skipBaseCaja, handleBaseCaja } from './fixtures'
+import { skipBaseCaja, handleBaseCaja, openFabPedidoEnvio, openSidebarIfMobile, dismissInstallBanner } from './fixtures'
 
 const BASE = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000'
 
@@ -209,7 +209,7 @@ test.describe('Dia completo de usuario', () => {
     await login(page)
     await nav(page, '/pedidos')
 
-    await page.click('button:has-text("+ Nuevo Pedido")')
+    await openFabPedidoEnvio(page)
     await page.waitForTimeout(800)
 
     const form = page.locator('form').filter({ hasText: 'Cliente' })
@@ -430,9 +430,12 @@ test.describe('Dia completo de usuario', () => {
   })
 
   // ═══════════════════════════════════════════
-  // 13. PRODUCCION — 3-step wizard
+  // 13. PRODUCCION — 4-step wizard (Stock Inicial → Conteos → Datos del
+  // Turno → Conciliar). Antes era un wizard de 3 pasos ("Confirmar" era
+  // el paso 3); ahora "Datos del Turno" es un paso intermedio separado y
+  // el botón final vive en el paso 4 "Conciliar".
   // ═══════════════════════════════════════════
-  test('13. Registrar produccion (wizard 3 pasos)', async ({ page }) => {
+  test('13. Registrar produccion (wizard 4 pasos)', async ({ page }) => {
     await login(page)
     await nav(page, '/produccion')
 
@@ -443,27 +446,42 @@ test.describe('Dia completo de usuario', () => {
 
     // Step 2: Conteos
     await expect(page.locator('body')).toContainText('Conteo', { timeout: 5000 })
-    // Fill conteos for agua
-    const numberInputs = page.locator('input[type="number"]')
-    const count = await numberInputs.count()
-    for (let i = 0; i < Math.min(count, 4); i++) {
-      await numberInputs.nth(i).fill('10')
-    }
+    await page.getByTestId('conteo-agua-a').fill('10')
+    await page.getByTestId('conteo-agua-b').fill('10')
+    await page.getByTestId('conteo-hielo-a').fill('10')
+    await page.getByTestId('conteo-hielo-b').fill('10')
 
     await page.click('button:has-text("Siguiente")')
     await page.waitForTimeout(500)
 
-    // Step 3: Confirmar
-    await expect(page.locator('body')).toContainText('Confirmar', { timeout: 5000 })
+    // Step 3: Datos del Turno
+    await expect(page.locator('body')).toContainText('Datos del Turno', { timeout: 5000 })
 
-    // Select trabajador
+    // Select sellador
     const trabSelect = page.locator('select').first()
     const optCount = await trabSelect.locator('option').count()
     if (optCount > 1) {
       await trabSelect.selectOption({ index: 1 })
     }
 
-    await page.click('button:has-text("Confirmar")')
+    // Stock físico contado — no puede quedar en 0/0, handleSubmit lo rechaza.
+    await page.getByTestId('stock-fisico-agua').fill('5')
+    await page.getByTestId('stock-fisico-hielo').fill('5')
+
+    await page.click('button:has-text("Ver resumen")')
+    await page.waitForTimeout(500)
+
+    // Step 4: Conciliar
+    await expect(page.locator('body')).toContainText('Confirmar y Guardar', { timeout: 5000 })
+    await page.click('button:has-text("Confirmar y Guardar")')
+    await page.waitForTimeout(500)
+
+    // Si el conteo físico no cuadra exacto con lo esperado, handleSubmit
+    // abre un modal de confirmación (useConfirm) antes de enviar.
+    const confirmModalBtn = page.locator('[role="dialog"] button:has-text("Confirmar")')
+    if (await confirmModalBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await confirmModalBtn.click()
+    }
     await page.waitForTimeout(2000)
 
     // Should show success toast or redirect
@@ -527,7 +545,7 @@ test.describe('Dia completo de usuario', () => {
     await expect(page.locator('body')).toContainText('Dashboard', { timeout: 10000 })
     await expect(page.locator('body')).toContainText('Pedidos del')
     await expect(page.locator('body')).toContainText('Ventas')
-    await expect(page.locator('body')).toContainText('Stock Disponible')
+    await expect(page.locator('body')).toContainText('Inventario')
     await expect(page.locator('body')).toContainText('Resumen de Caja')
     await expect(page.locator('body')).toContainText('Acciones')
   })
@@ -581,6 +599,10 @@ test.describe('Dia completo de usuario', () => {
   test('19. Cerrar sesion redirige a login', async ({ page }) => {
     await login(page)
     await dismissBaseCaja(page)
+    // On mobile the PWA install banner is fixed at the bottom of the
+    // viewport and overlaps the sidebar drawer's logout button.
+    await dismissInstallBanner(page)
+    await openSidebarIfMobile(page)
 
     await page.click('text=Cerrar Sesión')
     await page.waitForURL(/.*login/, { timeout: 15000 })

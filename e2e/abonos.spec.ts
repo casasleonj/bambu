@@ -1,6 +1,6 @@
 // @tests api/abonos
 import { test, expect, type Page } from '@playwright/test'
-import { resetDatabase, handleBaseCaja } from './fixtures'
+import { resetDatabase, handleBaseCaja, openFabPedidoEnvio } from './fixtures'
 
 test.describe('Abonos', () => {
   test.describe.configure({ mode: 'serial' })
@@ -39,15 +39,15 @@ test.describe('Abonos', () => {
     await page.waitForTimeout(2000)
     await handleBaseCaja(page)
 
-    await page.click('button:has-text("+ Nuevo Pedido")')
+    await openFabPedidoEnvio(page)
     await page.waitForTimeout(2000)
 
     // Search and select client
-    const searchInput = page.locator('input[placeholder="Buscar por nombre o telefono..."]')
+    const searchInput = page.locator('input[placeholder="Buscar cliente por nombre o teléfono..."]')
     await searchInput.fill('a')
     await page.waitForTimeout(600)
 
-    const clientBtn = page.locator('div.border.rounded-md button').first()
+    const clientBtn = page.getByTestId('cliente-search-result').first()
     if (await clientBtn.count() > 0) {
       await clientBtn.click()
       await page.waitForTimeout(500)
@@ -57,8 +57,10 @@ test.describe('Abonos', () => {
     await page.locator('input[placeholder="0"]').first().fill('1')
     await page.waitForTimeout(500)
 
-    // Click Crear Pedido (no payment → generates factura with saldo)
-    await page.locator('button:has-text("Crear Pedido")').click()
+    // Click Crear Pedido (no payment → generates factura with saldo). Scoped
+    // via data-testid: a plain text match also catches the unrelated
+    // "+ Crear Pedido" empty-state buttons (desktop/mobile duplicates).
+    await page.getByTestId('submit-pedido').click()
     // Wait for modal to close (pedido created)
     await page.waitForTimeout(3000)
 

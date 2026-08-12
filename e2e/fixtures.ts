@@ -288,6 +288,59 @@ export async function dismissInstallBanner(page: Page) {
   }
 }
 
+/**
+ * Opens the "Nuevo Pedido" (Pedido con Envío) form via the FAB speed-dial.
+ * Assumes the page is already on /pedidos and loaded. The old direct
+ * `button:has-text("+ Nuevo Pedido")` open button was replaced by this FAB
+ * (`data-testid="fab-main"` -> `data-testid="fab-pedido-envio"`).
+ */
+export async function openFabPedidoEnvio(page: Page) {
+  // Defensive re-check: under heavy CI load a SessionProvider poll can
+  // race checkBaseDia() and reopen the Base Caja modal (React state, not
+  // localStorage) moments after the caller's own handleBaseCaja() call
+  // resolved, leaving its backdrop (fixed inset-0 bg-black/50) intercepting
+  // the FAB click. handleBaseCaja()'s localStorage fast-path would no-op
+  // here (the value was already persisted by the earlier dismissal), so
+  // check the DOM directly instead of relying on that cache.
+  const baseDiaInput = page.locator('#base-dia-input')
+  if (await baseDiaInput.isVisible({ timeout: 500 }).catch(() => false)) {
+    await baseDiaInput.click()
+    await baseDiaInput.fill('100000')
+    await baseDiaInput.evaluate((el: HTMLInputElement) => {
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+      el.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    const submitBtn = page.locator('button[type="submit"]').filter({ hasText: /Continuar|Guardar/ })
+    await expect(submitBtn).toBeEnabled({ timeout: 3000 }).catch(() => {})
+    await submitBtn.click().catch(() => {})
+    await page.waitForSelector('#base-dia-input', { state: 'detached', timeout: 5000 }).catch(() => {})
+  }
+  await dismissInstallBanner(page)
+  // .first(): observed in CI as a transient strict-mode violation
+  // (getByTestId('fab-main') resolving to 2 elements, one hidden) — same
+  // class of flake fixed for the Base Caja modal buttons in #58.
+  const fabMain = page.getByTestId('fab-main').first()
+  await expect(fabMain).toBeVisible({ timeout: 5000 })
+  await fabMain.click()
+  const fabPedido = page.getByTestId('fab-pedido-envio').first()
+  await expect(fabPedido).toBeVisible({ timeout: 5000 })
+  await fabPedido.click()
+}
+
+/**
+ * On mobile viewports the sidebar `<aside>` (nav items + "Cerrar Sesión")
+ * is not rendered in the DOM until the hamburger button is tapped; on
+ * desktop it's always in the DOM. Call this before asserting on/clicking
+ * sidebar content so the same test works on both `chromium` and
+ * `chromium-mobile` projects.
+ */
+export async function openSidebarIfMobile(page: Page) {
+  const hamburger = page.getByRole('button', { name: /abrir men[uú]/i })
+  if (await hamburger.isVisible({ timeout: 1000 }).catch(() => false)) {
+    await hamburger.click()
+  }
+}
+
 // Selector de contenedor responsive: vista mobile (`md:hidden`) o desktop
 // (`hidden md:block`) según el ancho del viewport. Los componentes duplican
 // textos en ambas vistas (display:none en la inactiva); scoping con .first()

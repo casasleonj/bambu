@@ -30,7 +30,10 @@ test.describe('Admin - Base de caja', () => {
     await expect(submitBtn).toBeEnabled({ timeout: 3000 })
     await submitBtn.click()
 
-    await expect(input).not.toBeVisible({ timeout: 5000 })
+    // handleSave hace un POST a /api/config antes de cerrar el modal; bajo
+    // carga de CI (shards con muchos tests en paralelo) ese round-trip
+    // puede tardar más que el timeout genérico de 5s.
+    await expect(input).not.toBeVisible({ timeout: 10000 })
     await expect(page).toHaveURL(/\/(dashboard|reportes)/)
   })
 
