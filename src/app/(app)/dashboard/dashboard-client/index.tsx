@@ -77,7 +77,8 @@ export function DashboardClient({ data, userRole }: { data: DashboardData; userR
     alertasRiesgo.clientesBloqueados +
     alertasRiesgo.clientesConflictivos +
     alertasRiesgo.promesasProximasVencer +
-    alertasRiesgo.clientesNoVerificados
+    alertasRiesgo.clientesNoVerificados +
+    alertasRiesgo.pedidosAtrasadosSinAsignar
 
   const trendArrow = (val: number) => (val > 0 ? '↑' : val < 0 ? '↓' : '→')
   const trendClass = (val: number) =>
@@ -97,6 +98,9 @@ export function DashboardClient({ data, userRole }: { data: DashboardData; userR
   )
   const IconVerificar = () => (
     <svg className="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+  )
+  const IconSinAsignar = () => (
+    <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" /></svg>
   )
   const IconCaso = () => (
     <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
@@ -262,6 +266,18 @@ export function DashboardClient({ data, userRole }: { data: DashboardData; userR
                   </div>
                 </div>
                 <Link href="/clientes?noVerificado=true" className="text-xs text-yellow-700 hover:underline mt-2 inline-block">Ver clientes →</Link>
+              </div>
+            )}
+            {alertasRiesgo.pedidosAtrasadosSinAsignar > 0 && (
+              <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl">
+                <div className="flex items-center gap-2">
+                  <IconSinAsignar />
+                  <div>
+                    <p className="text-sm font-medium text-amber-800">Pedidos sin asignar</p>
+                    <p className="text-xs text-amber-600">{alertasRiesgo.pedidosAtrasadosSinAsignar} de días anteriores sin viaje</p>
+                  </div>
+                </div>
+                <Link href="/pedidos?atrasados=true" className="text-xs text-amber-700 hover:underline mt-2 inline-block">Ver y asignar →</Link>
               </div>
             )}
           </div>

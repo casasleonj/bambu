@@ -158,6 +158,10 @@ async function computePreview(maxUnidades: number) {
       cliente: { select: { rutaId: true, barrio: true, nombre: true } },
       negocio: { select: { rutaId: true, barrio: true, nombre: true } },
     },
+    // Más antiguos primero: dentro de cada grupo ruta/barrio, splitPedidosByCapacity
+    // los procesa en este mismo orden, así los pedidos que llevan más tiempo
+    // esperando caen en el primer chunk (mayor chance de conseguir repartidor).
+    orderBy: { fecha: 'asc' },
   })
 
   if (pedidosPendientes.length === 0) {

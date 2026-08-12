@@ -5,7 +5,7 @@ import * as Sentry from '@sentry/nextjs'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { PedidoCreateSchema } from '@/lib/validators'
 import { getPaginationParams, buildPaginationResponse } from '@/lib/pagination'
-import { getTodayRange, buildDateRangeFilter } from '@/lib/dates'
+import { getTodayRange, buildDateRangeFilter, startOfDayBogota } from '@/lib/dates'
 import { ROLES } from '@/lib/constants'
 import { getAnonymousClientDisplayName } from '@/lib/cliente-canonical'
 import { apiSuccess, apiError } from '@/lib/api-response'
@@ -36,6 +36,10 @@ export async function GET(request: NextRequest) {
     const origenFilter = searchParams.getAll('origen')
     const tipoFilter = searchParams.getAll('tipo')
     const scopeFilter = searchParams.get('scope')
+    // "Sin asignar de días anteriores" — ver src/lib/pedidos-sin-asignar.ts.
+    // No aplica a REPARTIDOR (solo ve pedidos ya asignados a él por diseño,
+    // más arriba se fuerza embarqueId: { not: null } para ese rol).
+    const atrasadosMode = searchParams.get('atrasados') === 'true' && session.user?.role !== 'REPARTIDOR'
 
     // Build filter for use case
     const filter: Record<string, unknown> = {}
@@ -91,6 +95,16 @@ export async function GET(request: NextRequest) {
     }
     if (scopeFilter === 'fiados' || scopeFilter === 'alertas') {
       filter.scope = scopeFilter
+    }
+
+    // Gana sobre cualquier estadoEntrega/desde/hasta que haya llegado por
+    // URL — atrasados=true es una vista autocontenida (mismo criterio que
+    // ya siguen scope=fiados/alertas), no se combina con otros filtros.
+    if (atrasadosMode) {
+      filter.estadoEntrega = ['PENDIENTE']
+      filter.embarqueId = null
+      filter.desde = undefined
+      filter.hasta = startOfDayBogota()
     }
 
     // Cuando all=true, permitir un pageSize mayor al cap de 100 de

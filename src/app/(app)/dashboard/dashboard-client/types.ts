@@ -51,6 +51,7 @@ export interface DashboardData {
     clientesConflictivos: number
     promesasProximasVencer: number
     clientesNoVerificados: number
+    pedidosAtrasadosSinAsignar: number
   }
   casosActivos: {
     total: number

@@ -29,6 +29,8 @@ export interface Pedido {
   numero: number
   estado: string
   estadoEntrega?: string
+  /** ISO string. Usado para marcar/ordenar pedidos atrasados sin asignar. */
+  fecha?: string
   origen?: string
   clienteId?: string
   negocioId?: string | null

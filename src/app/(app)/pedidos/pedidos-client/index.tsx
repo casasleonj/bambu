@@ -252,6 +252,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   const {
     fiadosCount,
     alertasCount,
+    atrasadosCount,
     refetch: refetchCounts,
   } = usePedidosCounts(true)
 
@@ -1178,6 +1179,23 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       )}
       {/* Header con tabs */}
       <div className="mb-6">
+        {/* Pedidos pendientes de días anteriores sin asignar a un viaje —
+            ver src/lib/pedidos-sin-asignar.ts. Visible sin importar el tab
+            activo: es una advertencia operativa, no un filtro de la vista. */}
+        {atrasadosCount > 0 && (
+          <div data-testid="banner-atrasados-sin-asignar">
+            <InfoBanner type="tip" className="mb-4">
+              <span>
+                ⚠️ {atrasadosCount} pedido{atrasadosCount === 1 ? '' : 's'} de días anteriores sin
+                asignar a un viaje — riesgo de incumplir la entrega.{' '}
+                <Link href="/pedidos?atrasados=true" className="font-semibold underline hover:no-underline">
+                  Verlos →
+                </Link>
+              </span>
+            </InfoBanner>
+          </div>
+        )}
+
         {/* Banner explicativo para nuevos usuarios */}
         {pedidosVisibles.length === 0 && !hasActiveFilters && (
           <InfoBanner type="tip" title="¿Cómo funciona el flujo de pedidos?" className="mb-4">

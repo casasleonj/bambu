@@ -15,9 +15,37 @@ import { calcularEstadoPagoVisual } from '@/modules/pedidos/presentation/visual-
 import { fetchResilient } from '@/lib/fetch-resilient'
 import { generateUUID } from '@/lib/uuid'
 import { getCapacidadInfo, PESOS_KG } from '@/lib/embarque-capacidad'
+import { startOfDayBogota } from '@/lib/dates'
 import { EmbarqueFormModal } from '../embarques-client/embarque-form-modal'
 import type { EmbarqueDetalle, PedidoResumen } from './types'
 import type { Trabajador, Ruta, EmbarqueEditable, Pedido } from '../embarques-client/types'
+
+/**
+ * Mismo criterio que src/lib/pedidos-sin-asignar.ts (whereAtrasadosSinAsignar):
+ * pendiente, de un día anterior a hoy (Bogotá). Acá `p.estado === 'PENDIENTE'`
+ * y "sin otro embarque" ya vienen garantizados por loadAvailablePedidos.
+ */
+function esPedidoAtrasado(p: Pedido): boolean {
+  if (!p.fecha) return false
+  return new Date(p.fecha) < startOfDayBogota()
+}
+
+/**
+ * Compara días CALENDARIO en Bogotá (no una resta de milisegundos / 24h):
+ * un pedido de "anoche" (hace <24h en reloj, pero de ayer en calendario)
+ * debe decir "ayer", no "hoy" — si no, contradice al chip "Atrasado".
+ */
+function formatAntiguedad(fechaIso: string): string {
+  const bogotaDateStr = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+  const hoyStr = bogotaDateStr(new Date())
+  const fechaStr = bogotaDateStr(new Date(fechaIso))
+  if (fechaStr === hoyStr) return 'hoy'
+  const dias = Math.round(
+    (new Date(`${hoyStr}T00:00:00-05:00`).getTime() - new Date(`${fechaStr}T00:00:00-05:00`).getTime()) / 86_400_000,
+  )
+  if (dias === 1) return 'ayer'
+  return `hace ${dias} días`
+}
 
 interface EmbarqueClientProps {
   embarque: EmbarqueDetalle
@@ -869,25 +897,39 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
           <p className="text-sm text-gray-500">No hay pedidos pendientes disponibles.</p>
         ) : (
           <div className="space-y-2 max-h-96 overflow-y-auto">
-            {availablePedidos.map((p) => (
-              <label key={p.id} className="flex items-center gap-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={selectedPedidoIds.includes(p.id)}
-                  onChange={(e) => {
-                    setSelectedPedidoIds((prev) =>
-                      e.target.checked ? [...prev, p.id] : prev.filter((id) => id !== p.id)
-                    )
-                  }}
-                />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">#{p.numero} — {p.cliente?.nombre || 'Sin cliente'}</p>
-                  <p className="text-xs text-gray-500">
-                    {p.cPacaAguaPed || 0} PACA_AGUA · {p.cPacaHieloPed || 0} PACA_HIELO · {p.cBotellonFabPed || 0} BOTELLON
-                  </p>
-                </div>
-              </label>
-            ))}
+            {[
+              ...availablePedidos.filter(esPedidoAtrasado),
+              ...availablePedidos.filter((p) => !esPedidoAtrasado(p)),
+            ].map((p) => {
+              const atrasado = esPedidoAtrasado(p)
+              return (
+                <label key={p.id} className={`flex items-center gap-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer ${atrasado ? 'border-amber-300 bg-amber-50/50' : ''}`}>
+                  <input
+                    type="checkbox"
+                    checked={selectedPedidoIds.includes(p.id)}
+                    onChange={(e) => {
+                      setSelectedPedidoIds((prev) =>
+                        e.target.checked ? [...prev, p.id] : prev.filter((id) => id !== p.id)
+                      )
+                    }}
+                  />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium flex items-center gap-1.5">
+                      #{p.numero} — {p.cliente?.nombre || 'Sin cliente'}
+                      {atrasado && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-amber-100 text-amber-700">
+                          Atrasado
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {p.cPacaAguaPed || 0} PACA_AGUA · {p.cPacaHieloPed || 0} PACA_HIELO · {p.cBotellonFabPed || 0} BOTELLON
+                      {p.fecha && <> · {formatAntiguedad(p.fecha)}</>}
+                    </p>
+                  </div>
+                </label>
+              )
+            })}
           </div>
         )}
         {selectedPedidoIds.length > 0 && (
