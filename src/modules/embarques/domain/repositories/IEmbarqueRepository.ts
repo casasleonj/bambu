@@ -59,6 +59,7 @@ export interface IEmbarqueRepository {
     codigoVisita?: string
     obs?: string
     dineroEntregado: number
+    offlineId?: string
   }>, tx?: unknown): Promise<Embarque>
   delete(id: string, tx?: unknown): Promise<void>
   getNextNumeroDia(fecha: Date, tx?: unknown): Promise<number>

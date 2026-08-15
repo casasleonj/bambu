@@ -3,6 +3,8 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { toast } from 'sonner'
+import { fetchResilient } from '@/lib/fetch-resilient'
+import { generateUUID } from '@/lib/uuid'
 import { formatCurrency } from '@/lib/utils'
 import { UMBRAL_MINIMO_FALTANTE_CAJA, DEUDA_FALTANTE_CAJA_PLAZO_NOMINAS_DEFAULT, DEUDA_FALTANTE_CAJA_PORCENTAJE_NOMINA_DEFAULT } from '@/lib/constants'
 import { getCapacidadInfo, calcularPesoDesdeCarga, type CargaSnapshot, emptyStock, type StockSnapshot } from '@/lib/embarque-capacidad'
@@ -446,18 +448,18 @@ export default function CerrarEmbarqueClient() {
         justificacionDiscrepancia: justificacion || undefined,
         justificacionFaltante: justificacionFaltante || undefined,
         obs: obsGeneral,
+        // BAMBU-LOG-006: offline-first dedup — mismo offlineId en la cola
+        // y en el body para que el server deduplique un replay.
+        offlineId: generateUUID(),
       }
 
-      const res = await fetch(`/api/embarques/${embarqueId}/cerrar`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload),
-      })
+      const result = await fetchResilient<{ deudaCreada?: { id: string; monto: number } | null }>(
+        `/api/embarques/${embarqueId}/cerrar`,
+        { method: 'POST', body: payload, localEndpoint: 'cerrar-embarque' }
+      )
 
-      const data = await res.json()
-      if (data.success) {
-        const deuda = data.deudaCreada
+      if (result.status === 'ok') {
+        const deuda = result.data.deudaCreada
         if (deuda && deuda.id) {
           toast.success(
             <div className="space-y-1">
@@ -470,8 +472,11 @@ export default function CerrarEmbarqueClient() {
           toast.success('Embarque cerrado correctamente')
         }
         router.push('/embarques')
+      } else if (result.status === 'offline') {
+        toast.info('Sin conexión. El cierre se guardó y se enviará al recuperar la red.')
+        router.push('/embarques')
       } else {
-        toast.error(data.error?.message || 'Error al cerrar')
+        toast.error(result.error || 'Error al cerrar')
       }
     } catch {
       toast.error('Error de conexión')

@@ -201,6 +201,7 @@ export class PrismaEmbarqueRepository implements IEmbarqueRepository {
       codigoVisita?: string
       obs?: string
       dineroEntregado: number
+      offlineId?: string
     }>,
     tx?: unknown,
   ): Promise<Embarque> {

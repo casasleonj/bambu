@@ -37,6 +37,7 @@ export interface CierreLegacyResponse {
     sobranteFaltante: number
   }
   deudaCreada: { id: string; monto: number } | null
+  deduped?: boolean
 }
 
 export class CierrePresenter {
@@ -69,6 +70,7 @@ export class CierrePresenter {
       descuento: result.descuentoCreado ?? null,
       caja: result.caja,
       deudaCreada: result.deudaCreada ?? null,
+      deduped: result.deduped,
     }
   }
 }
