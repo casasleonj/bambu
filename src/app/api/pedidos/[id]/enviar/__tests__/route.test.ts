@@ -42,11 +42,11 @@ describe('Fase 1: el dedup está DENTRO de la tx por envioOfflineId', () => {
   })
 
   it('FIX: el dedup retorna { deduped: true, ... } sin re-aplicar cambios', () => {
-    // El camino deduped debe retornar con el flag y NO ejecutar tx.pedido.update
+    // El camino deduped debe retornar con el flag y NO ejecutar tx.pedido.updateMany
     const dedupReturn = source.indexOf('deduped: true as const,')
-    const updatePos = source.indexOf('tx.pedido.update(')
+    const updatePos = source.indexOf('tx.pedido.updateMany(')
 
-    // El dedup return debe estar ANTES del tx.pedido.update
+    // El dedup return debe estar ANTES del tx.pedido.updateMany
     expect(dedupReturn).toBeGreaterThan(-1)
     expect(updatePos).toBeGreaterThan(dedupReturn)
   })
@@ -83,5 +83,18 @@ describe('Fase 1: la route sigue trabajando (no rompe flujo normal)', () => {
 
   it('FIX: el schema Zod sigue aceptando offlineId opcional', () => {
     expect(source).toMatch(/offlineId:\s*z\.string\(\)\.optional\(\)/)
+  })
+})
+
+describe('BAMBU-LOG-003: guarda contra race entre dos asignaciones concurrentes', () => {
+  it('FIX: usa updateMany con guarda embarqueId: null (no update simple)', () => {
+    expect(source).toMatch(/tx\.pedido\.updateMany\(\{\s*where:\s*\{\s*id,\s*embarqueId:\s*null\s*\}/)
+  })
+
+  it('FIX: si updateMany afecta 0 filas, lanza PEDIDO_YA_ASIGNADO', () => {
+    const updateManyIdx = source.indexOf('tx.pedido.updateMany(')
+    const block = source.slice(updateManyIdx, updateManyIdx + 800)
+    expect(block).toMatch(/assignResult\.count\s*===\s*0/)
+    expect(block).toMatch(/throw new Error\('PEDIDO_YA_ASIGNADO'\)/)
   })
 })
