@@ -29,15 +29,22 @@ import { PedidoId } from '../../../domain/value-objects/PedidoId'
 import { PedidoItem } from '../../../domain/entities/PedidoItem'
 import { Money } from '@/shared/domain'
 import type { ProductCode } from '@/shared/domain'
+import type { EstadoEntrega, ItemPedidoResuelto } from '../../../domain/types'
+import type { IPedidoRepository } from '../../../domain/repositories/IPedidoRepository'
+import type { IFacturaRepository } from '../../../domain/repositories/IFacturaRepository'
+import type { IClienteRepository } from '../../../domain/repositories/IClienteRepository'
+import type { IPricingPort } from '../../../domain/repositories/IPricingPort'
+import type { ITransactionManager, TransactionClient } from '../../../infrastructure/transactions/PrismaTransactionManager'
+import type { ActualizarPedidoInput } from '../../dto'
 
-function makePedido(estadoEntrega: string, id = 'ped_1'): Pedido {
+function makePedido(estadoEntrega: EstadoEntrega, id = 'ped_1'): Pedido {
   return Pedido.create({
     id: PedidoId.from(id),
     numero: 1,
     clienteId: 'cli_1',
     canal: CanalVO.from('DOMICILIO'),
     origen: OrigenPedidoVO.from('PEDIDO'),
-    estadoEntrega: EstadoEntregaVO.from(estadoEntrega as never),
+    estadoEntrega: EstadoEntregaVO.from(estadoEntrega),
     estadoPago: EstadoPagoVO.from('PENDIENTE'),
     items: [new PedidoItem('PACA_AGUA' as ProductCode, 2, Money.fromDecimal(10000), 'base', 0)],
     total: Money.fromDecimal(20000),
@@ -48,19 +55,44 @@ function makePedido(estadoEntrega: string, id = 'ped_1'): Pedido {
 }
 
 function makeUseCase(pedido: Pedido) {
-  const pedidoRepo = {
+  const pedidoRepo: IPedidoRepository = {
     findById: vi.fn().mockResolvedValue(pedido),
+    findByNumero: vi.fn(),
+    findByOfflineId: vi.fn(),
+    findMany: vi.fn(),
+    count: vi.fn(),
+    save: vi.fn(),
     update: vi.fn().mockImplementation(async (p: Pedido) => p),
-  } as any
-  const facturaRepo = { findByPedidoId: vi.fn().mockResolvedValue(null), update: vi.fn() } as any
-  const clienteRepo = { findById: vi.fn(), findNegocioById: vi.fn(), updateDireccion: vi.fn() } as any
-  const pricingPort = {
+    findPendingByCliente: vi.fn(),
+    countByClienteAndDate: vi.fn(),
+  }
+  const facturaRepo: IFacturaRepository = {
+    findByPedidoId: vi.fn().mockResolvedValue(null),
+    create: vi.fn(),
+    update: vi.fn(),
+    anularByPedidoId: vi.fn(),
+  }
+  const clienteRepo: IClienteRepository = {
+    findById: vi.fn(),
+    findByTelefono: vi.fn(),
+    create: vi.fn(),
+    updateDireccion: vi.fn(),
+    findNegocioById: vi.fn(),
+    getSaldoFavor: vi.fn(),
+    aplicarSaldoFavor: vi.fn(),
+    incrementarSaldoFavor: vi.fn(),
+  }
+  const preciosResueltos: ItemPedidoResuelto[] = [
+    { producto: 'PACA_AGUA' as ProductCode, cantidad: 2, precio: 10000, subtotal: 20000, origen: 'base' },
+  ]
+  const pricingPort: IPricingPort = {
     loadPricingContext: vi.fn().mockResolvedValue({}),
-    resolverPrecios: vi.fn().mockResolvedValue([
-      { producto: 'PACA_AGUA', cantidad: 2, precio: 10000, subtotal: 20000, origen: 'base' },
-    ]),
-  } as any
-  const txManager = { execute: (fn: any) => fn({}), executeWithLock: (_: any, fn: any) => fn({}) } as any
+    resolverPrecios: vi.fn().mockResolvedValue(preciosResueltos),
+  }
+  const txManager: ITransactionManager = {
+    execute: (fn) => fn({} as TransactionClient),
+    executeWithLock: (_lockName, fn) => fn({} as TransactionClient),
+  }
   const useCase = new ActualizarPedidoUseCase(pedidoRepo, facturaRepo, clienteRepo, pricingPort, txManager)
   return { useCase, pedidoRepo, facturaRepo }
 }
@@ -70,14 +102,14 @@ describe('ActualizarPedidoUseCase — validación de transición de estado', () 
     const pedido = makePedido('PENDIENTE')
     const { useCase, pedidoRepo } = makeUseCase(pedido)
 
-    await expect(
-      useCase.execute({
-        pedidoId: 'ped_1',
-        estadoEntrega: 'ANULADO', // PENDIENTE no permite ir a ANULADO
-        items: [{ producto: 'PACA_AGUA' as ProductCode, cantidad: 2 }],
-        usuarioId: 'user_1',
-      } as any),
-    ).rejects.toThrow(/Transición inválida/)
+    const input: ActualizarPedidoInput = {
+      pedidoId: 'ped_1',
+      estadoEntrega: 'ANULADO', // PENDIENTE no permite ir a ANULADO
+      items: [{ producto: 'PACA_AGUA' as ProductCode, cantidad: 2 }],
+      usuarioId: 'user_1',
+    }
+
+    await expect(useCase.execute(input)).rejects.toThrow(/Transición inválida/)
 
     expect(pedidoRepo.update).not.toHaveBeenCalled()
   })
@@ -86,12 +118,14 @@ describe('ActualizarPedidoUseCase — validación de transición de estado', () 
     const pedido = makePedido('EN_RUTA')
     const { useCase, pedidoRepo } = makeUseCase(pedido)
 
-    const result = await useCase.execute({
+    const input: ActualizarPedidoInput = {
       pedidoId: 'ped_1',
       estadoEntrega: 'PENDIENTE', // EN_RUTA -> PENDIENTE está permitido
       items: [{ producto: 'PACA_AGUA' as ProductCode, cantidad: 2 }],
       usuarioId: 'user_1',
-    } as any)
+    }
+
+    const result = await useCase.execute(input)
 
     expect(pedidoRepo.update).toHaveBeenCalledTimes(1)
     expect(result.pedido.estadoEntrega).toBe('PENDIENTE')
@@ -103,11 +137,13 @@ describe('ActualizarPedidoUseCase — persistencia de la transición a ENTREGADO
     const pedido = makePedido('EN_RUTA')
     const { useCase, pedidoRepo } = makeUseCase(pedido)
 
-    const result = await useCase.execute({
+    const input: ActualizarPedidoInput = {
       pedidoId: 'ped_1',
       estadoEntrega: 'ENTREGADO',
       usuarioId: 'user_1',
-    } as any)
+    }
+
+    const result = await useCase.execute(input)
 
     expect(pedidoRepo.update).toHaveBeenCalledTimes(1)
     expect(result.pedido.estadoEntrega).toBe('ENTREGADO')
@@ -120,11 +156,13 @@ describe('ActualizarPedidoUseCase — reconstrucción correcta en transiciones s
     const pedido = makePedido('EN_RUTA')
     const { useCase, pedidoRepo } = makeUseCase(pedido)
 
-    const result = await useCase.execute({
+    const input: ActualizarPedidoInput = {
       pedidoId: 'ped_1',
       estadoEntrega: 'PENDIENTE',
       usuarioId: 'user_1',
-    } as any)
+    }
+
+    const result = await useCase.execute(input)
 
     expect(pedidoRepo.update).toHaveBeenCalledTimes(1)
     expect(result.pedido.estadoEntrega).toBe('PENDIENTE')
@@ -136,11 +174,13 @@ describe('ActualizarPedidoUseCase — reconstrucción correcta en transiciones s
     const pedido = makePedido('PENDIENTE')
     const { useCase, pedidoRepo } = makeUseCase(pedido)
 
-    const result = await useCase.execute({
+    const input: ActualizarPedidoInput = {
       pedidoId: 'ped_1',
       obs: 'Nueva observación',
       usuarioId: 'user_1',
-    } as any)
+    }
+
+    const result = await useCase.execute(input)
 
     expect(pedidoRepo.update).toHaveBeenCalledTimes(1)
     expect(result.pedido.obs).toBe('Nueva observación')
@@ -152,11 +192,13 @@ describe('ActualizarPedidoUseCase — reconstrucción correcta en transiciones s
     const pedido = makePedido('PENDIENTE')
     const { useCase, pedidoRepo } = makeUseCase(pedido)
 
-    const result = await useCase.execute({
+    const input: ActualizarPedidoInput = {
       pedidoId: 'ped_1',
       estadoEntrega: 'CANCELADO',
       usuarioId: 'user_1',
-    } as any)
+    }
+
+    const result = await useCase.execute(input)
 
     expect(pedidoRepo.update).toHaveBeenCalledTimes(1)
     expect(result.pedido.estadoEntrega).toBe('CANCELADO')
