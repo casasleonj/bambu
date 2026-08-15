@@ -1232,14 +1232,16 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
             </InfoBanner>
           </div>
         )}
-        {/* Pedidos de HOY pendientes sin asignar cuya ruta ya tuvo 3+ embarques
-            CERRADO hoy — ver findPedidosHoyEnRiesgoIds en pedidos-sin-asignar.ts. */}
+        {/* Pedidos pendientes de HOY sin asignar (por 3+ embarques cerrados de
+            su ruta, o por horas hábiles transcurridas) + pedidos EN_RUTA
+            atascados sin entregar de CUALQUIER día — ver
+            findPedidosHoyEnRiesgoIds en pedidos-sin-asignar.ts. */}
         {enRiesgoCount > 0 && (
           <div data-testid="banner-hoy-en-riesgo">
             <InfoBanner type="tip" className="mb-4">
               <span>
-                🟠 {enRiesgoCount} pedido{enRiesgoCount === 1 ? '' : 's'} de hoy lleva
-                {enRiesgoCount === 1 ? '' : 'n'} demasiado tiempo sin gestionar — riesgo de olvido o quedar sin entregar hoy.{' '}
+                🟠 {enRiesgoCount} pedido{enRiesgoCount === 1 ? '' : 's'} lleva
+                {enRiesgoCount === 1 ? '' : 'n'} demasiado tiempo sin gestionar — riesgo de olvido o de quedar sin entregar.{' '}
                 <Link href="/pedidos?enRiesgo=true" className="font-semibold underline hover:no-underline">
                   Verlos →
                 </Link>
@@ -1269,7 +1271,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
                 : atrasadosParam
                   ? 'Pedidos atrasados sin asignar'
                   : enRiesgoParam
-                    ? 'Pedidos de hoy en riesgo'
+                    ? 'Pedidos en riesgo'
                     : getTituloFecha(desdeUrl, hastaUrl, allFromUrl)}
           </h1>
         </div>
@@ -1356,7 +1358,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
           <p className="text-sm text-blue-900">
             {atrasadosParam
               ? 'Mostrando solo pedidos pendientes sin asignar de días anteriores.'
-              : 'Mostrando solo pedidos de hoy que llevan demasiado tiempo sin gestionar (sin asignar o atascados en ruta).'}
+              : 'Mostrando pedidos pendientes de hoy sin asignar, y pedidos atascados en ruta sin entregar de cualquier día, que llevan demasiado tiempo sin gestionar.'}
           </p>
           <button
             onClick={volverAPedidosDeHoy}

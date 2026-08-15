@@ -289,8 +289,8 @@ export function DashboardClient({ data, userRole }: { data: DashboardData; userR
                 <div className="flex items-center gap-2">
                   <IconEnRiesgo />
                   <div>
-                    <p className="text-sm font-medium text-orange-800">Pedidos de hoy en riesgo</p>
-                    <p className="text-xs text-orange-600">{alertasRiesgo.pedidosHoyEnRiesgo} llevan demasiado tiempo sin gestionar hoy</p>
+                    <p className="text-sm font-medium text-orange-800">Pedidos en riesgo</p>
+                    <p className="text-xs text-orange-600">{alertasRiesgo.pedidosHoyEnRiesgo} llevan demasiado tiempo sin gestionar</p>
                   </div>
                 </div>
                 <Link href="/pedidos?enRiesgo=true" className="text-xs text-orange-700 hover:underline mt-2 inline-block">Ver y asignar →</Link>
