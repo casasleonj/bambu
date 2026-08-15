@@ -19,6 +19,7 @@ import { NextRequest } from 'next/server'
 const mockPedidoFindUnique = vi.fn()
 const mockPedidoUpdateMany = vi.fn()
 const mockEmbarqueFindUnique = vi.fn()
+const mockEmbarqueUpdate = vi.fn()
 const mockTrabajadorFindUnique = vi.fn()
 const mockLogAudit = vi.fn()
 const mockPublishRealtimeEvent = vi.fn().mockResolvedValue(undefined)
@@ -34,7 +35,7 @@ vi.mock('@/lib/prisma', () => ({
     $transaction: (fn: (tx: unknown) => unknown) =>
       fn({
         pedido: { findUnique: mockPedidoFindUnique, updateMany: mockPedidoUpdateMany },
-        embarque: { findUnique: mockEmbarqueFindUnique },
+        embarque: { findUnique: mockEmbarqueFindUnique, update: mockEmbarqueUpdate },
         trabajador: { findUnique: mockTrabajadorFindUnique },
       }),
   },
@@ -79,6 +80,7 @@ describe('POST /api/pedidos/[id]/enviar — BAMBU-LOG-003', () => {
       pedidos: [],
     })
     mockTrabajadorFindUnique.mockResolvedValue({ capacidadKg: 500 })
+    mockEmbarqueUpdate.mockResolvedValue({})
     mockPublishRealtimeEvent.mockResolvedValue(undefined)
   })
 
@@ -91,6 +93,20 @@ describe('POST /api/pedidos/[id]/enviar — BAMBU-LOG-003', () => {
     expect(res.status).toBe(201)
     expect(mockPedidoUpdateMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'ped_1', embarqueId: null } }),
+    )
+  })
+
+  it('FIX BAMBU-LOG-009: al asignar el pedido, invalida ordenVisita/optimizadoEn del embarque', async () => {
+    mockPedidoUpdateMany.mockResolvedValue({ count: 1 })
+
+    const { POST } = await import('../route')
+    await POST(makeRequest({ embarqueId: 'emb_1' }), { params: Promise.resolve({ id: 'ped_1' }) })
+
+    expect(mockEmbarqueUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'emb_1' },
+        data: expect.objectContaining({ optimizadoEn: null }),
+      }),
     )
   })
 

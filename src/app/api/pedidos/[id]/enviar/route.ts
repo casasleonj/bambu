@@ -1,5 +1,6 @@
 import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole, requireOwnership } from '@/lib/auth-check'
 import { ROLES } from '@/lib/constants'
@@ -162,6 +163,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (assignResult.count === 0) {
         throw new Error('PEDIDO_YA_ASIGNADO')
       }
+
+      // FIX BAMBU-LOG-009: invalidar el orden de visita optimizado del
+      // embarque — agregar un pedido después de optimizar dejaba
+      // `ordenVisita` desactualizado (no incluía el pedido nuevo), y la
+      // UI seguía mostrando "Ruta optimizada" con una distancia/orden que
+      // ya no reflejaba la carga real. Forzar `null` hace que la UI del
+      // repartidor muestre explícitamente "sin optimizar" hasta que se
+      // vuelva a correr la optimización.
+      await tx.embarque.update({
+        where: { id: embarqueId },
+        data: { ordenVisita: Prisma.DbNull, optimizadoEn: null },
+      })
 
       return {
         deduped: false as const,

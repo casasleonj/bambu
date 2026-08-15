@@ -370,15 +370,18 @@ export function RepartidorClient({ trabajador, embarque: initialEmbarque, userRo
   // Bloque 2: genera la Universal URL de Google Maps Directions con todos
   // los pedidos del embarque en el orden optimizado. Gratis, sin API key.
   // Docs: https://developers.google.com/maps/documentation/urls/get-started
+  //
+  // FIX BAMBU-LOG-009: antes reconstruía la lista de waypoints filtrando
+  // por `embarque.ordenVisita.pedidoIds` — un pedido agregado al embarque
+  // DESPUÉS de optimizar no está en esa lista y quedaba fuera de la
+  // navegación real de Maps (aunque sí aparecía en la lista en pantalla,
+  // vía `pedidosOrdenados`). El repartidor podía terminar su recorrido de
+  // Maps creyendo que entregó todo y dejar un pedido sin hacer. Ahora usa
+  // `pedidosOrdenados`, que ya incluye ese fallback (pedidos fuera del
+  // orden optimizado van al final).
   const openRutaEnGoogleMaps = () => {
     if (!embarque) return
-    const pedidoIds = embarque.ordenVisita?.pedidoIds
-    const pedidos = pedidoIds
-      ? pedidoIds
-          .map(id => embarque.pedidos.find(p => p.id === id))
-          .filter((p): p is NonNullable<typeof p> => p != null)
-      : embarque.pedidos
-    const waypoints = pedidos
+    const waypoints = pedidosOrdenados
       .map(p => {
         // Coords efectivas: top-level (negocio gana) con fallback a cliente.
         const lat = p.lat ?? p.cliente.lat

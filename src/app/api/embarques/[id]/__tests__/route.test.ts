@@ -225,6 +225,37 @@ describe('F-N22: race en asignación de pedidos a embarques distintos', () => {
   })
 })
 
+describe('BAMBU-LOG-009: invalidar ordenVisita al asignar pedidos en bloque', () => {
+  const putStart = source.indexOf('export async function PUT')
+  const deleteStart = source.indexOf('export async function DELETE')
+  const putSource = source.substring(putStart, deleteStart)
+
+  it('FIX: updateData.ordenVisita se invalida con Prisma.DbNull tras una asignación exitosa', () => {
+    const raceThrowIdx = putSource.indexOf('PEDIDOS_YA_ASIGNADOS:')
+    const invalidateIdx = putSource.indexOf('updateData.ordenVisita = Prisma.DbNull')
+    // Debe estar DESPUÉS del throw de race (o sea, solo corre si la
+    // asignación fue exitosa, no en el camino de error)
+    expect(invalidateIdx).toBeGreaterThan(-1)
+    expect(invalidateIdx).toBeGreaterThan(raceThrowIdx)
+  })
+
+  it('FIX: también invalida optimizadoEn', () => {
+    const invalidateIdx = putSource.indexOf('updateData.ordenVisita = Prisma.DbNull')
+    const block = putSource.slice(invalidateIdx, invalidateIdx + 100)
+    expect(block).toMatch(/updateData\.optimizadoEn\s*=\s*null/)
+  })
+
+  it('FIX: la invalidación está DENTRO del bloque if (pedidoIds && ...) (no siempre)', () => {
+    const ifIdx = putSource.indexOf('if (pedidoIds && Array.isArray(pedidoIds)')
+    const invalidateIdx = putSource.indexOf('updateData.ordenVisita = Prisma.DbNull')
+    // Buscar el cierre del bloque if que contiene la asignación de pedidos
+    const closingBraceAfterInvalidate = putSource.indexOf('\n      }', invalidateIdx)
+    expect(ifIdx).toBeGreaterThan(-1)
+    expect(invalidateIdx).toBeGreaterThan(ifIdx)
+    expect(closingBraceAfterInvalidate).toBeGreaterThan(invalidateIdx)
+  })
+})
+
 describe('FIX: DELETE solo cancela embarques ABIERTO y no resetea ENTREGADO', () => {
   const deleteStart = source.indexOf('export async function DELETE')
   const deleteSource = source.substring(deleteStart)

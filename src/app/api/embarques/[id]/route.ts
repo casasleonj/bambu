@@ -1,5 +1,6 @@
 import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole, requireOwnership } from '@/lib/auth-check'
 import { EmbarqueUpdateSchema } from '@/lib/validators'
@@ -341,6 +342,13 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             .map((p: { id: string; embarqueId: string | null }) => p.id)
           throw new Error(`PEDIDOS_YA_ASIGNADOS:${noAsignados.length}:${noAsignados.join(',')}`)
         }
+
+        // FIX BAMBU-LOG-009: invalidar el orden de visita optimizado —
+        // agregar pedidos aquí dejaba `ordenVisita` desactualizado (no
+        // los incluía), y la navegación de Maps del repartidor los
+        // omitía en silencio. Ver mismo fix en /api/pedidos/[id]/enviar.
+        updateData.ordenVisita = Prisma.DbNull
+        updateData.optimizadoEn = null
       }
 
       const updated = await tx.embarque.update({
