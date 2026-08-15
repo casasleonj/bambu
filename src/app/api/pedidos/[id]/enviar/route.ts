@@ -136,8 +136,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         throw new Error('EMBARQUE_CAPACIDAD_EXCEDIDA')
       }
 
-      const updated = await tx.pedido.update({
-        where: { id },
+      // FIX BAMBU-LOG-003: race entre dos requests concurrentes asignando
+      // el MISMO pedido a embarques distintos. El check de arriba
+      // (`if (current.embarqueId) throw ...`) lee fuera de un lock de fila
+      // — dos transacciones pueden leer `embarqueId: null` antes de que
+      // cualquiera comitee, pasar ambos los checks (incluida la capacidad,
+      // calculada sobre el mismo snapshot), y el segundo `update` simple
+      // sobrescribía silenciosamente el `embarqueId` del primero sin error
+      // (mismo patrón de race ya resuelto para `pedidoIds` en bloque en
+      // PUT /api/embarques/[id]). Ahora: `updateMany` con guarda
+      // `embarqueId: null` — si otra transacción ya asignó el pedido entre
+      // el check y este punto, `count` es 0 y se lanza el mismo error
+      // 'PEDIDO_YA_ASIGNADO' que ya maneja el catch de abajo.
+      const assignResult = await tx.pedido.updateMany({
+        where: { id, embarqueId: null },
         data: {
           estado: 'EN_RUTA',
           estadoEntrega: 'EN_RUTA',
@@ -145,15 +157,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           // Persistir offlineId para dedup en retries (offline-first)
           ...(offlineId ? { envioOfflineId: offlineId } : {}),
         },
-        select: { id: true, embarqueId: true, estadoEntrega: true, numero: true },
       })
+
+      if (assignResult.count === 0) {
+        throw new Error('PEDIDO_YA_ASIGNADO')
+      }
 
       return {
         deduped: false as const,
-        pedidoId: updated.id,
-        embarqueId: updated.embarqueId,
-        estadoEntrega: updated.estadoEntrega,
-        numero: updated.numero,
+        pedidoId: current.id,
+        embarqueId,
+        estadoEntrega: 'EN_RUTA',
+        numero: current.numero,
       }
     })
 

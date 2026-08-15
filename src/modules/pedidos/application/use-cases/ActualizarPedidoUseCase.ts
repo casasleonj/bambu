@@ -15,9 +15,59 @@ import type { IClienteRepository } from '../../domain/repositories/IClienteRepos
 import type { IPricingPort } from '../../domain/repositories/IPricingPort'
 import type { ITransactionManager } from '../../infrastructure/transactions/PrismaTransactionManager'
 import { PedidoItem } from '../../domain/entities/PedidoItem'
+import type { Pedido as PedidoEntity, PedidoProps } from '../../domain/entities/Pedido'
 import type { ActualizarPedidoInput } from '../dto'
 import { PedidoDTOMapper } from '../dto/PedidoDTOMapper'
 import { pickDireccionTexto } from '@/lib/geo/pedido-direccion'
+
+// FIX BAMBU-LOG-018: `{...pedido}` sobre una instancia de la clase Pedido
+// NO copia sus campos — Pedido guarda todo en una única propiedad interna
+// `props`, y sus getters (id, numero, clienteId, ...) viven en el
+// prototipo, no como propiedades propias enumerables. Un spread shallow
+// solo copia `{ props: <objeto original> }`, produciendo un PedidoProps
+// malformado (items/clienteId/etc. quedan `undefined` un nivel más
+// profundo) que rompe cualquier lectura posterior (ej. toLegacyFields()
+// lanza "Cannot read properties of undefined (reading 'find')"). Este
+// helper reconstruye un objeto plano real a partir de los getters.
+function cloneProps(pedido: PedidoEntity): PedidoProps {
+  return {
+    id: pedido.id,
+    numero: pedido.numero,
+    clienteId: pedido.clienteId,
+    negocioId: pedido.negocioId,
+    embarqueId: pedido.embarqueId,
+    canal: pedido.canal,
+    origen: pedido.origen,
+    estadoEntrega: pedido.estadoEntrega,
+    estadoPago: pedido.estadoPago,
+    items: [...pedido.items],
+    total: pedido.total,
+    totalPagado: pedido.totalPagado,
+    pagos: [...pedido.pagos],
+    fecha: pedido.fecha,
+    fechaEntrega: pedido.fechaEntrega,
+    obs: pedido.obs,
+    idOrigen: pedido.idOrigen,
+    fotoEntrega: pedido.fotoEntrega,
+    gpsLat: pedido.gpsLat,
+    gpsLng: pedido.gpsLng,
+    gpsAccuracy: pedido.gpsAccuracy,
+    gpsJustificacion: pedido.gpsJustificacion,
+    entregadoConGps: pedido.entregadoConGps,
+    entregadoAt: pedido.entregadoAt,
+    codigoVisita: pedido.codigoVisita,
+    direccionEntrega: pedido.direccionEntrega,
+    barrioEntrega: pedido.barrioEntrega,
+    adminOverrideNota: pedido.adminOverrideNota,
+    adminOverrideBy: pedido.adminOverrideBy,
+    adminOverrideAt: pedido.adminOverrideAt,
+    offlineId: pedido.offlineId,
+    // createdById no tiene getter público en Pedido (solo se setea en
+    // creación, ver CrearPedidoUseCase) y toPrismaUpdate() tampoco lo
+    // persiste en updates — se omite intencionalmente, igual que en el
+    // rebuild ya existente de la rama de items más arriba.
+  }
+}
 
 export class ActualizarPedidoUseCase {
   constructor(
@@ -35,6 +85,18 @@ export class ActualizarPedidoUseCase {
 
       // Update items if provided
       if (input.items && input.items.length > 0) {
+        // FIX BAMBU-LOG-001: validar la transición de estado también en esta
+        // rama. Antes, un cambio de estado enviado junto con items se
+        // aplicaba sin pasar por canTransitionTo() (solo se validaba el
+        // enum), permitiendo transiciones prohibidas por la máquina de
+        // estados (ej. PENDIENTE -> ANULADO).
+        if (input.estadoEntrega) {
+          const nuevoEstadoEntrega = EstadoEntregaVO.from(input.estadoEntrega)
+          if (!pedido.estadoEntrega.canTransitionTo(nuevoEstadoEntrega)) {
+            throw new Error(`Transición inválida: ${pedido.estadoEntrega.get()} → ${nuevoEstadoEntrega.get()}`)
+          }
+        }
+
         const activeCodes = input.items.filter(i => i.cantidad > 0).map(i => i.producto)
         const pricingData = await this.pricingPort.loadPricingContext(
           pedido.clienteId,
@@ -189,14 +251,36 @@ export class ActualizarPedidoUseCase {
             item.entregar(item.cantPedido)
           }
           pedido.entregar(pedido.items.map(i => ({ producto: i.producto, cantidad: i.cantPedido })))
+
+          // FIX BAMBU-LOG-017: pedido.entregar() solo muta el agregado en
+          // memoria. Antes, este branch terminaba sin llamar a
+          // pedidoRepo.update(), por lo que la transición a ENTREGADO nunca
+          // se persistía — el endpoint respondía 200 con datos coherentes
+          // (entregadoAt, cantidades entregadas) mientras la fila en la DB
+          // quedaba intacta en su estado anterior.
+          const saved = await this.pedidoRepo.update(pedido, tx)
+
+          const factura = await this.facturaRepo.findByPedidoId(saved.id.get(), tx)
+          if (factura) {
+            await this.facturaRepo.update({
+              ...factura,
+              total: saved.total.toDecimal(),
+              saldo: saved.saldo.toDecimal(),
+              estado: saved.saldo.toDecimal() <= 0
+                ? 'PAGADA'
+                : (saved.totalPagado.toDecimal() > 0 ? 'PARCIAL' : 'EMITIDA'),
+            }, tx)
+          }
+
+          return { pedido: PedidoDTOMapper.toResumen(saved) }
         } else {
           // Rebuild with new state
           const { Pedido } = await import('../../domain/entities/Pedido')
           const updated = Pedido.create({
-            ...pedido,
+            ...cloneProps(pedido),
             estadoEntrega: nuevoEstado,
             obs: input.obs !== undefined ? input.obs : pedido.obs,
-          } as unknown as Parameters<typeof Pedido.create>[0])
+          })
 
           const saved = await this.pedidoRepo.update(updated, tx)
           return { pedido: PedidoDTOMapper.toResumen(saved) }
@@ -206,9 +290,9 @@ export class ActualizarPedidoUseCase {
       if (input.obs !== undefined) {
         const { Pedido } = await import('../../domain/entities/Pedido')
         const updated = Pedido.create({
-          ...pedido,
+          ...cloneProps(pedido),
           obs: input.obs,
-        } as unknown as Parameters<typeof Pedido.create>[0])
+        })
         const saved = await this.pedidoRepo.update(updated, tx)
         return { pedido: PedidoDTOMapper.toResumen(saved) }
       }
