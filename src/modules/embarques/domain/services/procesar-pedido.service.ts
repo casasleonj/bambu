@@ -40,6 +40,14 @@ export interface PedidoRawInput {
   id: string
   numero: number
   clienteId: string
+  // FIX BAMBU-LOG-004: necesarios para que el pedido hijo (faltante)
+  // herede negocioId y el snapshot de dirección del padre — ver
+  // crearPedidoHijo() más abajo. Ya vienen en el `findMany` sin `select`
+  // de CerrarEmbarqueUseCase.fetchPedidosForEmbarque (trae todas las
+  // columnas escalares), solo faltaba declararlos en este tipo.
+  negocioId: string | null
+  direccionEntrega: string | null
+  barrioEntrega: string | null
   embarqueId: string | null
   estadoEntrega: string
   estado: string
@@ -407,6 +415,12 @@ export class ProcesarPedidoService {
         data: {
           numero: numeroHijo,
           clienteId: pedido.clienteId,
+          // FIX BAMBU-LOG-004: heredar negocioId y snapshot de dirección
+          // del padre — si no, el hijo resuelve su dirección/coords
+          // contra el Cliente en vez del Negocio/sucursal original.
+          negocioId: pedido.negocioId,
+          direccionEntrega: pedido.direccionEntrega,
+          barrioEntrega: pedido.barrioEntrega,
           tipo: pedido.tipo,
           canal: pedido.canal,
           // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment

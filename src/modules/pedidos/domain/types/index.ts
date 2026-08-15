@@ -118,6 +118,13 @@ export interface PedidoHijoData {
     cantidad: number
     precio: number
   }>
+  // FIX BAMBU-LOG-004: el pedido hijo (faltante de una entrega parcial)
+  // debe heredar negocioId y el snapshot de dirección del padre — si no,
+  // su dirección/coords se resuelven contra el Cliente en vez del
+  // Negocio/sucursal original.
+  negocioId?: string
+  direccionEntrega?: string
+  barrioEntrega?: string
 }
 
 export type TipoEntrega = 'COMPLETO' | 'PARCIAL' | 'NO_ENTREGADO'

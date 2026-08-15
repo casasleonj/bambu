@@ -119,6 +119,12 @@ export class EntregarPedidoUseCase {
             id: PedidoId.from(''),
             numero: hijoData.numero,
             clienteId: hijoData.clienteId,
+            // FIX BAMBU-LOG-004: heredar negocioId y snapshot de dirección
+            // del padre — si no, el hijo resuelve su dirección/coords
+            // contra el Cliente en vez del Negocio/sucursal original.
+            negocioId: hijoData.negocioId,
+            direccionEntrega: hijoData.direccionEntrega,
+            barrioEntrega: hijoData.barrioEntrega,
             canal: CanalVO.create(hijoData.canal),
             origen: OrigenPedidoVO.create(hijoData.origen),
             estadoEntrega: EstadoEntregaVO.create('PENDIENTE'),

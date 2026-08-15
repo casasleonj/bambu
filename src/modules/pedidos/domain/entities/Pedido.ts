@@ -342,6 +342,11 @@ export class Pedido {
       origen: this.props.origen.get(),
       total: totalHijo,
       items: faltantes,
+      // FIX BAMBU-LOG-004: heredar negocioId y snapshot de dirección del
+      // padre — ver comentario en PedidoHijoData.
+      negocioId: this.props.negocioId,
+      direccionEntrega: this.props.direccionEntrega,
+      barrioEntrega: this.props.barrioEntrega,
     }
   }
 
