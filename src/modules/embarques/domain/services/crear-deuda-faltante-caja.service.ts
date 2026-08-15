@@ -67,6 +67,6 @@ export class CrearDeudaFaltanteCajaService {
       },
     })
 
-    return { id: deuda.id, monto: Number(deuda.monto) }
+    return { id: deuda.id, monto: Number(deuda.montoOriginal) }
   }
 }

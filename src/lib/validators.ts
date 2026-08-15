@@ -577,6 +577,8 @@ export const CerrarEmbarqueSchema = z.object({
   // una DeudaTrabajador automática al cerrar el embarque.
   justificacionFaltante: z.string().optional(),
   obs: z.string().optional(),
+  // BAMBU-LOG-006: offline-first dedup para el cierre de embarque.
+  offlineId: z.string().optional(),
 })
 
 // ====================

@@ -44,6 +44,7 @@ export class EmbarqueMapper {
     createdById: string | null
     createdAt: Date
     updatedAt: Date
+    offlineId?: string | null
     productos?: Array<{
       id: string
       embarqueId: string
@@ -140,6 +141,7 @@ export class EmbarqueMapper {
       gastos,
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
+      offlineId: raw.offlineId ?? undefined,
     }
 
     return new Embarque(props)
@@ -192,6 +194,7 @@ export class EmbarqueMapper {
     codigoVisita?: string
     obs?: string
     dineroEntregado: number
+    offlineId?: string
   }>): Record<string, unknown> {
     const result: Record<string, unknown> = {}
 
@@ -211,6 +214,7 @@ export class EmbarqueMapper {
     if (data.codigoVisita !== undefined) result.codigoVisita = data.codigoVisita
     if (data.obs !== undefined) result.obs = data.obs
     if (data.dineroEntregado !== undefined) result.dineroEntregado = data.dineroEntregado
+    if (data.offlineId !== undefined) result.offlineId = data.offlineId
 
     return result
   }

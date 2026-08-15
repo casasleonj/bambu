@@ -31,6 +31,7 @@ import { CrearVentasLibresService } from '../../domain/services/crear-ventas-lib
 import { CrearDescuentoDiscrepanciaService } from '../../domain/services/crear-descuento-discrepancia.service'
 import { CrearDeudaFaltanteCajaService } from '../../domain/services/crear-deuda-faltante-caja.service'
 import { CerrarEmbarqueSideEffectsService } from '../../domain/services/cerrar-embarque-side-effects.service'
+import { CierreDedupService } from '../../domain/services/cierre-dedup.service'
 import type { PedidoRawInput } from '../../domain/services/procesar-pedido.service'
 import { Carga, type ProductCode } from '../../domain/value-objects/Carga'
 import { EstadoEmbarque as EstadoEmbarqueVO } from '../../domain/value-objects/EstadoEmbarque'
@@ -75,6 +76,7 @@ export class CerrarEmbarqueUseCase {
     // delegar los side effects finales: crearGastos y actualizarProductosRetorno.
     // Default: nueva instancia (backward compatible con callers existentes).
     private readonly sideEffectsService: CerrarEmbarqueSideEffectsService = new CerrarEmbarqueSideEffectsService(),
+    private readonly dedupService: CierreDedupService = new CierreDedupService(), // BAMBU-LOG-006
   ) {}
 
   async execute(input: CerrarEmbarqueInput): Promise<CierreResultadoDTO> {
@@ -102,6 +104,9 @@ export class CerrarEmbarqueUseCase {
       const embarque = await this.embarqueRepo.findById(input.id, tx)
       if (!embarque) throw new Error('EMBARQUE_NOT_FOUND')
 
+      if (this.dedupService.esReplay(embarque.estado, embarque.offlineId, input.offlineId)) {
+        return this.dedupService.buildResult(client, input.id, embarque.trabajadorId)
+      }
       const transitionResult = this.transitions.cerrar(embarque.estado)
       if (!transitionResult.success) throw new Error(transitionResult.error)
 
@@ -202,6 +207,7 @@ export class CerrarEmbarqueUseCase {
           horaLlegada: new Date(),
           dineroEntregado: input.dineroEntregado ?? 0,
           obs: input.obs ?? embarque.obs,
+          ...(input.offlineId ? { offlineId: input.offlineId } : {}),
         },
         tx,
       )

@@ -51,7 +51,7 @@ export async function POST(
       return apiError(formatZodError(parsed.error), 400)
     }
 
-    const { pedidos, ventasLibres, productos, gastos, dineroEntregado, justificacionDiscrepancia, justificacionFaltante, obs } = parsed.data
+    const { pedidos, ventasLibres, productos, gastos, dineroEntregado, justificacionDiscrepancia, justificacionFaltante, obs, offlineId } = parsed.data
 
     // Helper to coerce null to 0 (from Zod .nullish() fields)
     const n = (v: number | null | undefined): number => v ?? 0
@@ -111,29 +111,36 @@ export async function POST(
       justificacionDiscrepancia,
       justificacionFaltante,
       obs,
+      offlineId,
     })
 
     // Convert to legacy response shape for backward compatibility
     const legacyResponse = CierrePresenter.toLegacyResponse(result)
 
-    publishRealtimeEvent('embarque.updated', id).catch(() => {})
-    const { prisma } = await import('@/lib/prisma')
-    prisma.embarque.findUnique({
-      where: { id },
-      include: { pedidos: { select: { id: true } } },
-    }).then((embarque) => {
-      embarque?.pedidos.forEach((p) => {
-        publishRealtimeEvent('pedido.updated', p.id).catch(() => {})
-      })
-    }).catch(() => {})
+    // BAMBU-LOG-006: en un replay deduplicado (offline-first retry de un
+    // cierre que ya se aplicó), no re-emitir realtime/push — el cierre
+    // real ya los disparó la primera vez. Evita notificaciones
+    // duplicadas a los admins en cada reintento de sync.
+    if (!result.deduped) {
+      publishRealtimeEvent('embarque.updated', id).catch(() => {})
+      const { prisma } = await import('@/lib/prisma')
+      prisma.embarque.findUnique({
+        where: { id },
+        include: { pedidos: { select: { id: true } } },
+      }).then((embarque) => {
+        embarque?.pedidos.forEach((p) => {
+          publishRealtimeEvent('pedido.updated', p.id).catch(() => {})
+        })
+      }).catch(() => {})
 
-    // Push notification to admins (replaces SSE for off-tab users).
-    void notifyEvent(NotificationEventType.EMBARQUE_CERRADO, {
-      title: 'Embarque cerrado',
-      body: `Un embarque fue cerrado. Revisá la caja.`,
-      url: `/embarques?openEmbarque=${id}`,
-      tag: `embarque-cerrado-${id}`,
-    })
+      // Push notification to admins (replaces SSE for off-tab users).
+      void notifyEvent(NotificationEventType.EMBARQUE_CERRADO, {
+        title: 'Embarque cerrado',
+        body: `Un embarque fue cerrado. Revisá la caja.`,
+        url: `/embarques?openEmbarque=${id}`,
+        tag: `embarque-cerrado-${id}`,
+      })
+    }
 
     return apiSuccess(legacyResponse)
   } catch (error) {

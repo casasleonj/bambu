@@ -100,3 +100,28 @@ describe('PR3: integración de CrearDeudaFaltanteCajaService', () => {
     expect(source).toMatch(/deudaCreada,/)
   })
 })
+
+// BAMBU-LOG-006: offline-first dedup en el cierre de embarque
+describe('BAMBU-LOG-006: integración de CierreDedupService', () => {
+  it('FIX: el use case importa CierreDedupService', () => {
+    expect(source).toMatch(/import\s*\{\s*CierreDedupService\s*\}\s*from\s*['"]\.\.\/\.\.\/domain\/services\/cierre-dedup\.service['"]/)
+  })
+
+  it('FIX: el constructor acepta CierreDedupService con default', () => {
+    expect(source).toMatch(/private readonly dedupService:\s*CierreDedupService\s*=\s*new CierreDedupService\(\)/)
+  })
+
+  it('FIX: el dedup se verifica ANTES de validar la transición de estado', () => {
+    const dedupIdx = source.indexOf('this.dedupService.esReplay(')
+    const transitionIdx = source.indexOf('this.transitions.cerrar(')
+    expect(dedupIdx).toBeGreaterThan(-1)
+    expect(transitionIdx).toBeGreaterThan(-1)
+    expect(dedupIdx).toBeLessThan(transitionIdx)
+  })
+
+  it('FIX: al cerrar, persiste input.offlineId en el embarque para dedup de retries futuros', () => {
+    const updateBlock = source.match(/await this\.embarqueRepo\.update\([\s\S]*?\n      \)/)
+    expect(updateBlock).not.toBeNull()
+    expect(updateBlock![0]).toMatch(/input\.offlineId/)
+  })
+})

@@ -89,6 +89,10 @@ export interface CerrarEmbarqueInput {
   // una DeudaTrabajador automática al cerrar el embarque.
   justificacionFaltante?: string
   obs?: string
+  // BAMBU-LOG-006: offline-first dedup. Si un retry llega con el mismo
+  // offlineId de un embarque ya CERRADO, se devuelve el resultado
+  // existente en vez de fallar con EMBARQUE_YA_CERRADO.
+  offlineId?: string
 }
 
 export interface AutoGenerarEmbarquesInput {
@@ -209,4 +213,7 @@ export interface CierreResultadoDTO {
     dineroEntregadoReportado: number
     sobranteFaltante: number
   }
+  // BAMBU-LOG-006: true si este resultado viene de un replay offline-first
+  // deduplicado por offlineId (el cierre real ya había ocurrido antes).
+  deduped?: boolean
 }

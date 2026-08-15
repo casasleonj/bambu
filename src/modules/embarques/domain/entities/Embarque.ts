@@ -37,6 +37,8 @@ export interface EmbarqueProps {
   gastos?: GastoEmbarque[]
   createdAt: Date
   updatedAt: Date
+  /** Offline-first dedup: offlineId de la última acción aplicada a este embarque. */
+  offlineId?: string
 }
 
 export class Embarque {
@@ -64,6 +66,7 @@ export class Embarque {
   readonly gastos: GastoEmbarque[]
   readonly createdAt: Date
   readonly updatedAt: Date
+  readonly offlineId?: string
 
   constructor(props: EmbarqueProps) {
     this.id = new EmbarqueId(props.id)
@@ -90,6 +93,7 @@ export class Embarque {
     this.gastos = props.gastos ?? []
     this.createdAt = props.createdAt
     this.updatedAt = props.updatedAt
+    this.offlineId = props.offlineId
   }
 
   /**
@@ -193,6 +197,7 @@ export class Embarque {
       gastos: this.gastos,
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
+      offlineId: this.offlineId,
     }
   }
 }
