@@ -13,10 +13,8 @@ import { fetchResilient } from '@/lib/fetch-resilient'
 
 export interface EntregarPedidoPayload {
   pedidoId: string
-  tipo: 'COMPLETO' | 'PARCIAL' | 'NO_ENTREGADO'
   itemsEntregados?: Array<{ producto: string; cantidad: number }>
   pagos?: Array<{ metodo: string; monto: number }>
-  nuevoEmbarqueId?: string
   fotoEntrega?: string
   gpsLat?: number
   gpsLng?: number

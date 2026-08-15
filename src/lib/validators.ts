@@ -114,7 +114,6 @@ export const EntregaSchema = z.object({
   // the URL path (/api/pedidos/[id]/entrega). Kept as optional for clients
   // that still send it (backward compat) but ignored by the server.
   pedidoId: z.string().optional(),
-  tipo: z.enum(['COMPLETO', 'PARCIAL', 'NO_ENTREGADO']),
   itemsEntregados: z.array(z.object({
     producto: z.string(),
     cantidad: z.number().int().min(0),
@@ -123,7 +122,6 @@ export const EntregaSchema = z.object({
     metodo: z.string(),
     monto: z.number().min(0),
   })).optional(),
-  nuevoEmbarqueId: z.string().optional(),
   // fotoEntrega size cap: 15MB covers a 10MB file with ~33% base64 overhead + buffer.
   // DoS protection: prevents a malicious client from sending 100MB+ payloads that
   // would crash JSON parsing or bloat the Postgres TEXT column.
