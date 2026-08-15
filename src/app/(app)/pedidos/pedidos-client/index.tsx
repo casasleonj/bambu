@@ -1130,7 +1130,6 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
 
       await entregar({
         pedidoId: id,
-        tipo: 'COMPLETO',
         itemsEntregados,
         pagos: [],
         fotoEntrega: fotoParaEntregar,

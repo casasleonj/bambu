@@ -41,7 +41,6 @@ export async function POST(
     }
 
     const {
-      tipo,
       itemsEntregados,
       pagos,
       fotoEntrega,
@@ -176,7 +175,7 @@ export async function POST(
       entidad: 'Pedido',
       registroId: id,
       accion: 'UPDATE',
-      datos: { accion: 'ENTREGA', tipo, estadoEntrega: result.pedido.estadoEntrega, estadoPago: result.pedido.estadoPago },
+      datos: { accion: 'ENTREGA', estadoEntrega: result.pedido.estadoEntrega, estadoPago: result.pedido.estadoPago },
       usuarioId: (authResult as { user?: { id?: string } }).user?.id,
     })
 
