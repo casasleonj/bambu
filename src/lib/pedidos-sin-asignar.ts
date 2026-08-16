@@ -5,23 +5,28 @@
  *
  * 1. `whereAtrasadosSinAsignar` / `countPedidosAtrasadosSinAsignar` —
  *    pendiente, sin embarque, de un día ANTERIOR a hoy (Bogotá).
- * 2. `findPedidosHoyEnRiesgoIds` / `countPedidosHoyEnRiesgo` — pedidos de
- *    HOY que llevan demasiado tiempo sin resolverse. Dos sub-reglas, unidas
- *    con OR (cualquiera de las dos marca "en riesgo"):
- *    a) PENDIENTE sin embarque, cuya ruta ya tuvo 3+ embarques CERRADO hoy
- *       (o, sin ruta resoluble, si CUALQUIER ruta ya tuvo 3+ — ver comentario
- *       en la función).
- *    b) PENDIENTE sin embarque O EN_RUTA sin entregar, cuyo tiempo hábil
- *       transcurrido desde `pedido.fecha` (contando solo horas de trabajo,
- *       ver `src/lib/business-hours.ts`) supera `UMBRAL_HORAS_HABILES_RIESGO`.
- *       Esto cubre "se creó a las 6am y a las 4:40pm sigue sin gestionar" sin
- *       importar cuántos embarques haya habido — y también cubre pedidos ya
- *       asignados que quedaron atascados en la calle sin entregar.
+ * 2. `findPedidosHoyEnRiesgoIds` / `countPedidosHoyEnRiesgo` — pedidos que
+ *    llevan demasiado tiempo sin resolverse. Dos sub-reglas, unidas con OR
+ *    (cualquiera de las dos marca "en riesgo"):
+ *    a) PENDIENTE sin embarque **de HOY**, cuya ruta ya tuvo 3+ embarques
+ *       CERRADO hoy (o, sin ruta resoluble, si CUALQUIER ruta ya tuvo 3+ —
+ *       ver comentario en la función). Acotado a hoy porque los días
+ *       anteriores ya los cubre `whereAtrasadosSinAsignar`.
+ *    b) PENDIENTE sin embarque de HOY, O **EN_RUTA sin entregar de
+ *       CUALQUIER DÍA**, cuyo tiempo hábil transcurrido desde `pedido.fecha`
+ *       (contando solo horas de trabajo, ver `src/lib/business-hours.ts`)
+ *       supera `UMBRAL_HORAS_HABILES_RIESGO`. Esto cubre "se creó a las 6am
+ *       y a las 4:40pm sigue sin gestionar" sin importar cuántos embarques
+ *       haya habido — y, para EN_RUTA, cubre pedidos ya asignados que
+ *       quedaron atascados en la calle sin entregar SIN IMPORTAR CUÁNTOS
+ *       DÍAS lleven así, porque no hay ninguna otra regla que los cubra
+ *       (`whereAtrasadosSinAsignar` exige `embarqueId=null`, que un EN_RUTA
+ *       nunca cumple).
  *
  * Ver plan en docs/superpowers/... (o AGENTS.md) para el contexto completo.
  */
 import { prisma } from '@/lib/prisma'
-import { startOfDayBogota, endOfDayBogota } from '@/lib/dates'
+import { startOfDayBogota, endOfDayBogota, subDaysBogota } from '@/lib/dates'
 import { pickRutaId } from '@/lib/pedido-ruta'
 import { minutosHabilesTranscurridos, type Turno } from '@/lib/business-hours'
 import { getConfigs, getConfigNumber } from '@/lib/config'
@@ -77,15 +82,19 @@ async function getTurnosYUmbralRiesgo(): Promise<{ turnos: Turno[]; umbralHoras:
 }
 
 /**
- * Pedidos de HOY en riesgo de quedar sin gestionar. Dos sub-reglas
- * independientes unidas con OR — ver comentario de cabecera del archivo.
+ * Pedidos en riesgo de quedar sin gestionar (PENDIENTE sin asignar de hoy, o
+ * EN_RUTA atascado de cualquier día). Dos sub-reglas independientes unidas
+ * con OR — ver comentario de cabecera del archivo.
  *
  * IMPORTANTE — un pedido asignado a un embarque y luego marcado
  * NO_ENTREGADO al cerrar ese embarque NO vuelve a PENDIENTE (queda en
  * estadoEntrega=NO_ENTREGADO, ver procesar-pedido.service.ts), así que la
  * sub-regla (a) solo puede detectar pedidos NUNCA asignados hoy pese a N
  * ciclos cerrados de su ruta — no pedidos "ya saltados" explícitamente. La
- * sub-regla (b), en cambio, sí cubre pedidos EN_RUTA atascados.
+ * sub-regla (b), en cambio, sí cubre pedidos EN_RUTA atascados, sin límite
+ * de días — confirmado necesario en producción: se encontraron pedidos
+ * EN_RUTA de hasta ~2 meses de antigüedad, invisibles para cualquier otra
+ * regla (ver hallazgo en sesión del 2026-08-15).
  *
  * IMPORTANTE — `Cliente.rutaId` no tiene flujo de escritura en la UI (solo
  * `Negocio.rutaId` es editable), así que la mayoría de pedidos de domicilio
@@ -114,10 +123,15 @@ export async function findPedidosHoyEnRiesgoIds(): Promise<string[]> {
         negocio: { select: { rutaId: true } },
       },
     }),
+    // Sin acotar a "hoy" a propósito (ver comentario de la función):
+    // un EN_RUTA atascado sigue siendo una señal válida sin importar cuántos
+    // días lleve. `subDaysBogota(365)` es solo un guard defensivo contra un
+    // full scan si la tabla crece mucho — EN_RUTA es un estado transitorio
+    // en operación normal, así que en la práctica esto no filtra casos reales.
     prisma.pedido.findMany({
       where: {
         estadoEntrega: 'EN_RUTA',
-        fecha: { gte: desde, lte: hasta },
+        fecha: { gte: subDaysBogota(365) },
       },
       select: { id: true, fecha: true },
     }),

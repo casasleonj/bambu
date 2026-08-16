@@ -328,6 +328,39 @@ describe('Pedidos de hoy en riesgo — sub-regla de horas hábiles transcurridas
     await testPrisma.cliente.delete({ where: { id: cliente.id } })
   })
 
+  it('EN_RUTA atascado de hace VARIOS DÍAS también entra en riesgo (no acotado a hoy)', async () => {
+    // Confirmado en producción (sesión 2026-08-15): pedidos EN_RUTA de hasta
+    // ~2 meses de antigüedad, invisibles para whereAtrasadosSinAsignar
+    // (exige embarqueId=null) y para la versión anterior de esta regla
+    // (acotada a fecha=hoy). Este test fija ese caso.
+    const cliente = await crearClienteTest('Test Cliente Riesgo EnRuta Viejo')
+    const trabajador = await testPrisma.trabajador.create({
+      data: { nombre: 'Test Repartidor Riesgo EnRuta Viejo', rol: 'REPARTIDOR', usaMoto: true },
+    })
+    const embarque = await testPrisma.embarque.create({
+      data: { trabajadorId: trabajador.id, estado: 'EN_RUTA' },
+    })
+    const hace5dias = new Date(Date.now() - 5 * 24 * 60 * 60_000)
+    const p = await testPrisma.pedido.create({
+      data: {
+        clienteId: cliente.id,
+        canal: 'DOMICILIO',
+        offlineId: uniqueId('riesgo-en-ruta-viejo'),
+        fecha: hace5dias,
+        embarqueId: embarque.id,
+        estadoEntrega: 'EN_RUTA',
+      },
+    })
+
+    const ids = await findPedidosHoyEnRiesgoIds()
+    expect(ids).toContain(p.id)
+
+    await testPrisma.pedido.delete({ where: { id: p.id } })
+    await testPrisma.embarque.delete({ where: { id: embarque.id } })
+    await testPrisma.trabajador.delete({ where: { id: trabajador.id } })
+    await testPrisma.cliente.delete({ where: { id: cliente.id } })
+  })
+
   it('ENTREGADO hace 10min NO entra en riesgo (ya se resolvió)', async () => {
     const cliente = await crearClienteTest('Test Cliente Entregado No Riesgo')
     const hace10min = new Date(Date.now() - 10 * 60_000)
