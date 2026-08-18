@@ -145,17 +145,12 @@ describe('Cierre — idempotencia bajo carga paralela', () => {
     expect(indexes.length).toBeGreaterThan(0)
   })
 
-  it('LOCK_IDS contiene los valores esperados (sin cambios accidentales)', async () => {
-    const { LOCK_IDS } = await import('@/lib/locks')
-    // El handler de cierre usa LOCK_IDS.CIERRE (id=7) para pg_advisory_xact_lock.
-    // Si alguien cambia el ID por accidente, los locks de cierre dejan de funcionar.
-    expect(LOCK_IDS.PEDIDO).toBe(1)
-    expect(LOCK_IDS.FACTURA).toBe(2)
-    expect(LOCK_IDS.EMBARQUE).toBe(3)
-    expect(LOCK_IDS.ABONO).toBe(4)
-    expect(LOCK_IDS.COMPRA).toBe(5)
-    expect(LOCK_IDS.FACTURA_NUM).toBe(6)
-    expect(LOCK_IDS.CIERRE).toBe(7)
-    expect(LOCK_IDS.NC).toBe(8)
+  it('LOCK_NAMESPACES contiene los namespaces del contrato (§5/§6)', async () => {
+    const { LOCK_NAMESPACES } = await import('@/lib/locks')
+    // FASE 0 (ADR-CONCURRENCIA-001): locks por agregado con hash 64-bit.
+    // Reemplazan los enteros fijos 1-8 que colisionaban (NC=8 vs producción=8).
+    for (const ns of ['CARTERA', 'PEDIDO', 'RECOVERY_SOURCE', 'OBLIGACION', 'EMBARQUE_CARGA', 'CIERRE', 'SECUENCIA']) {
+      expect(LOCK_NAMESPACES).toContain(ns)
+    }
   })
 })

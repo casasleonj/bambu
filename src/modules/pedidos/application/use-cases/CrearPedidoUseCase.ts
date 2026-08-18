@@ -32,6 +32,7 @@ import { PedidoDTOMapper } from '../dto/PedidoDTOMapper'
 import { pickDireccionTexto } from '@/lib/geo/pedido-direccion'
 import { ensureConsumidorFinalCanonical, isConsumidorFinalCanonical } from '@/lib/cliente-canonical'
 import { getFacturaEmpresaSnapshot } from '@/lib/factura-empresa'
+import { registrarReceivableEntry } from '@/lib/receivable-entry'
 
 export class CrearPedidoUseCase {
   constructor(
@@ -48,7 +49,14 @@ export class CrearPedidoUseCase {
     // no genera contención y no cambia durante la tx.
     const empresaSnapshot = await getFacturaEmpresaSnapshot()
 
-    return this.txManager.executeWithLock('PEDIDO', async (tx) => {
+    // FASE 0 (ADR-CONCURRENCIA-001): lock `SECUENCIA:pedido` — la creación
+    // de pedido usa getNextNumero(model:'pedido') con fallback MAX+1 (no
+    // secuencia atómica), por lo que el número de pedido exige serialización
+    // global de todas las creaciones de pedido (incluye hijos de entrega y
+    // ventas libres). En FASE 8, cuando Pedido.numero migre a secuencia
+    // atómica, este lock se refina a `CARTERA:{clienteId}` (saldoFavor/límite
+    // de fiados) según §6.
+    return this.txManager.executeWithLock('SECUENCIA', 'pedido', async (tx) => {
       // FIX F-N10: dedup por offlineId DENTRO del lock.
       // Antes: la route hacía findUnique FUERA del lock (línea 151-153
       // de pedidos/route.ts antes del fix). Dos requests idénticos
@@ -269,13 +277,27 @@ export class CrearPedidoUseCase {
       }, saved.id.get(), clienteId, tx)
 
       // 10. Audit
-      logAudit({
+      await logAudit({
         entidad: 'Pedido',
         registroId: saved.id.get(),
         accion: 'CREATE',
         datos: { numero: saved.numero, origen: origen.get(), tipo: canal.get(), total, clienteId },
         usuarioId: input.createdById,
-      })
+      }, tx)
+
+      // FASE 5 (ADR-MONETARIO-001, §12): proyección de auditoría de los pagos
+      // iniciales, en la MISMA transacción del Pago.
+      if (totalPagado > 0) {
+        await registrarReceivableEntry(tx, {
+          pedidoId: saved.id.get(),
+          clienteId,
+          tipo: 'PAGO',
+          monto: totalPagado,
+          saldoResultante: total - totalPagado,
+          totalPagadoResultante: totalPagado,
+          offlineId: input.offlineId ?? null,
+        })
+      }
 
       return {
         pedido: PedidoDTOMapper.toResumen(saved),

@@ -17,7 +17,7 @@ import {
   disconnect,
   getRepartidorUser,
 } from './setup'
-import { withAdvisoryLock, LOCK_IDS } from '@/lib/locks'
+import { withAdvisoryLock, LOCK_NAMESPACES } from '@/lib/locks'
 
 describe('IDOR / permisos a nivel de query', () => {
   let repartidorUserId: string
@@ -143,24 +143,24 @@ describe('IDOR / permisos a nivel de query', () => {
     })
   })
 
-  describe('withAdvisoryLock — funciona con locks conocidos', () => {
-    it('lock PEDIDO (id=1) acepta callback', async () => {
-      const result = await withAdvisoryLock('PEDIDO', async (tx) => {
+  describe('withAdvisoryLock — funciona con locks por agregado', () => {
+    it('lock PEDIDO acepta callback', async () => {
+      const result = await withAdvisoryLock('PEDIDO', 'test-pedido', async (tx) => {
         return tx.pedido.count()
       })
       expect(typeof result).toBe('number')
       expect(result).toBeGreaterThanOrEqual(0)
     })
 
-    it('lock CIERRE (id=7) acepta callback', async () => {
-      const result = await withAdvisoryLock('CIERRE', async (tx) => {
+    it('lock CIERRE acepta callback', async () => {
+      const result = await withAdvisoryLock('CIERRE', 'test-cierre', async (tx) => {
         return tx.cierreDia.count()
       })
       expect(typeof result).toBe('number')
     })
 
-    it('lock FACTURA_NUM (id=6) acepta callback', async () => {
-      const result = await withAdvisoryLock('FACTURA_NUM', async (tx) => {
+    it('lock SECUENCIA:factura acepta callback', async () => {
+      const result = await withAdvisoryLock('SECUENCIA', 'factura', async (tx) => {
         return tx.factura.count()
       })
       expect(typeof result).toBe('number')
@@ -169,20 +169,15 @@ describe('IDOR / permisos a nivel de query', () => {
     it('dos locks PEDIDO secuenciales no se interbloquean', async () => {
       // Si los advisory locks se liberan al fin de la tx, deben
       // poderse adquirir repetidamente sin deadlock.
-      const r1 = await withAdvisoryLock('PEDIDO', async (tx) => tx.pedido.count())
-      const r2 = await withAdvisoryLock('PEDIDO', async (tx) => tx.pedido.count())
+      const r1 = await withAdvisoryLock('PEDIDO', 'test-pedido', async (tx) => tx.pedido.count())
+      const r2 = await withAdvisoryLock('PEDIDO', 'test-pedido', async (tx) => tx.pedido.count())
       expect(r1).toBe(r2)
     })
 
-    it('LOCK_IDS tiene los 8 valores esperados (sin cambios)', async () => {
-      expect(LOCK_IDS.PEDIDO).toBe(1)
-      expect(LOCK_IDS.FACTURA).toBe(2)
-      expect(LOCK_IDS.EMBARQUE).toBe(3)
-      expect(LOCK_IDS.ABONO).toBe(4)
-      expect(LOCK_IDS.COMPRA).toBe(5)
-      expect(LOCK_IDS.FACTURA_NUM).toBe(6)
-      expect(LOCK_IDS.CIERRE).toBe(7)
-      expect(LOCK_IDS.NC).toBe(8)
+    it('LOCK_NAMESPACES contiene los namespaces del contrato (§5/§6)', async () => {
+      for (const ns of ['CARTERA', 'PEDIDO', 'RECOVERY_SOURCE', 'OBLIGACION', 'EMBARQUE_CARGA', 'CIERRE', 'SECUENCIA']) {
+        expect(LOCK_NAMESPACES).toContain(ns)
+      }
     })
   })
 

@@ -46,6 +46,9 @@ interface PrismaPedido {
   adminOverrideBy: string | null
   adminOverrideAt: Date | null
   offlineId: string | null
+  entregaOfflineId: string | null
+  anulacionOfflineId: string | null
+  cancelacionOfflineId: string | null
   items: Array<{
     producto: string
     cantPedido: number
@@ -127,6 +130,9 @@ export class PedidoMapper {
       adminOverrideBy: raw.adminOverrideBy || undefined,
       adminOverrideAt: raw.adminOverrideAt || undefined,
       offlineId: raw.offlineId || undefined,
+      entregaOfflineId: raw.entregaOfflineId || undefined,
+      anulacionOfflineId: raw.anulacionOfflineId || undefined,
+      cancelacionOfflineId: raw.cancelacionOfflineId || undefined,
     })
   }
 
@@ -164,6 +170,9 @@ export class PedidoMapper {
       adminOverrideNota: pedido.adminOverrideNota || null,
       adminOverrideBy: pedido.adminOverrideBy || null,
       adminOverrideAt: pedido.adminOverrideAt || null,
+      entregaOfflineId: pedido.entregaOfflineId || null,
+      anulacionOfflineId: pedido.anulacionOfflineId || null,
+      cancelacionOfflineId: pedido.cancelacionOfflineId || null,
       ...legacy,
       items: {
         create: pedido.items.map(i => ({
@@ -205,6 +214,9 @@ export class PedidoMapper {
       adminOverrideNota: pedido.adminOverrideNota || null,
       adminOverrideBy: pedido.adminOverrideBy || null,
       adminOverrideAt: pedido.adminOverrideAt || null,
+      entregaOfflineId: pedido.entregaOfflineId || null,
+      anulacionOfflineId: pedido.anulacionOfflineId || null,
+      cancelacionOfflineId: pedido.cancelacionOfflineId || null,
       ...legacy,
     }
   }

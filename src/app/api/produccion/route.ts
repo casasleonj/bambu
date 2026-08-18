@@ -14,9 +14,7 @@ import { getTodayRange, getDateRange } from '@/lib/dates'
 import { startOfDayInBogota, todayInBogota } from '@/lib/date-helpers'
 import { captureApiError, addApiBreadcrumb } from '@/lib/sentry-helpers'
 import { publishRealtimeEvent } from '@/lib/realtime'
-
-// FIX 1.1: advisory lock key dedicado a producción. Cierre usa 7.
-const PROD_ADVISORY_LOCK_KEY = 8
+import { acquireAdvisoryLockTx } from '@/lib/locks'
 
 const MAX_RETRIES = 3
 
@@ -78,18 +76,11 @@ export async function POST(request: NextRequest) {
     return apiError(formatZodError(parsed.error), 400)
   }
 
-  // Offline-first dedup: si llega con un offlineId ya existente, devolvemos
-  // la Produccion existente. Mismo patrón que Pedido.offlineId, Cliente.offlineId.
-  if (parsed.data.offlineId) {
-    const existente = await prisma.produccion.findUnique({
-      where: { offlineId: parsed.data.offlineId },
-      include: { items: true, trabajador: true },
-    })
-    if (existente) {
-      addApiBreadcrumb('produccion.POST dedup hit', { offlineId: parsed.data.offlineId })
-      return apiSuccess({ produccion: existente, deduped: true }, 200)
-    }
-  }
+  // FASE 1 (ADR-IDEMPOTENCIA-001): el dedup por offlineId se movió DENTRO del
+  // lock. Antes corría acá con el cliente global, fuera del $transaction → dos
+  // requests concurrentes con el mismo offlineId pasaban el findUnique (null)
+  // y el segundo caía en P2002 → 409 no idempotente. Ahora el dedup corre
+  // dentro del lock (ver callback del $transaction).
 
   // Parsear items: separar por producto
   const itemAgua = parsed.data.items.find(i => i.producto === 'PACA_AGUA')!
@@ -134,12 +125,27 @@ export async function POST(request: NextRequest) {
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
-      const produccion = await prisma.$transaction(
+      const { produccion, deduped } = await prisma.$transaction(
         async (tx) => {
           // FIX 1.1: advisory lock para serializar inserciones concurrentes.
           // Usamos ReadCommitted (default) porque el lock ya serializa.
           // Serializable + advisory lock juntos causan P2034 innecesarios.
-          await tx.$queryRaw`SELECT pg_advisory_xact_lock(${PROD_ADVISORY_LOCK_KEY}::int)::text`
+          // FASE 0 (ADR-CONCURRENCIA-001): lock `SECUENCIA:produccion` en lugar
+          // del entero fijo 8 (que colisionaba con NC).
+          await acquireAdvisoryLockTx(tx, 'SECUENCIA', 'produccion')
+
+          // FASE 1 (ADR-IDEMPOTENCIA-001): dedup por offlineId DENTRO del lock.
+          // Un replay con el mismo offlineId retorna el registro existente sin
+          // re-crear ni caer en P2002.
+          if (parsed.data.offlineId) {
+            const existente = await tx.produccion.findUnique({
+              where: { offlineId: parsed.data.offlineId },
+              include: { items: true, trabajador: true },
+            })
+            if (existente) {
+              return { deduped: true as const, produccion: existente }
+            }
+          }
 
           // Re-validar duplicado dentro del lock (defense in depth).
           // Como el lock se libera al hacer COMMIT, los requests posteriores
@@ -210,7 +216,7 @@ export async function POST(request: NextRequest) {
           const stockFinEsperadoAgua = stockIniAgua + prodAgua - ventas.aguaVendida
           const stockFinEsperadoHielo = stockIniHielo + prodHielo - ventas.hieloVendido
 
-          return tx.produccion.create({
+          return { deduped: false as const, produccion: await tx.produccion.create({
             data: {
               fecha: fechaProduccion,
               turno: parsed.data.turno,
@@ -257,7 +263,7 @@ export async function POST(request: NextRequest) {
               },
             },
             include: { trabajador: true, items: true },
-          })
+          }) }
         },
         {
           // ReadCommitted es suficiente: el advisory lock serializa.
@@ -266,6 +272,11 @@ export async function POST(request: NextRequest) {
           timeout: 15000,
         },
       )
+
+      if (deduped) {
+        addApiBreadcrumb('produccion.POST dedup hit', { offlineId: parsed.data.offlineId })
+        return apiSuccess({ produccion, deduped: true }, 200)
+      }
 
       // FIX 4.1: audit log detallado
       logAudit({

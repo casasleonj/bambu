@@ -89,7 +89,14 @@ export async function POST(request: NextRequest) {
     // Ahora: con lock 'CIERRE' (mismo que /api/cierre), dos admins
     // se serializan. La validación previa dentro del lock detecta
     // el duplicado y devuelve 409 limpio.
-    const cierre = await withAdvisoryLock('CIERRE', async (tx) => {
+    // FASE 0 (ADR-CONCURRENCIA-001, §6 "Cierre"): lock por día. La clave se
+    // deriva del inicio del día en Bogotá para que /api/cierre y
+    // /api/cierre-dia se serialicen entre sí para el MISMO día (misma key).
+    const lockKey = startOfDayInBogota(
+      fecha ? new Date(fecha).toISOString() : new Date().toISOString(),
+    ).toISOString()
+
+    const cierre = await withAdvisoryLock('CIERRE', lockKey, async (tx) => {
       // Re-leer y re-validar dentro del lock
       const targetDate = fecha ? new Date(fecha) : new Date()
       const start = startOfDayInBogota(targetDate.toISOString())

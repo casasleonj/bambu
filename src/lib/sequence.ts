@@ -31,6 +31,9 @@ const SEQ_NAMES: Record<string, string> = {
   'abono:numero': 'abono_numero_seq',
   'embarque:numero': 'embarque_numero_seq',
   'compraInsumo:numero': 'compra_insumo_numero_seq',
+  // FASE 8 (ADR-CONCURRENCIA-001): migrados de MAX+1 a secuencia atómica.
+  'pedido:numero': 'pedido_numero_seq',
+  'notaCredito:numero': 'nota_credito_numero_seq',
 }
 
 export async function getNextNumero(

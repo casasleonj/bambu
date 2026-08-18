@@ -96,8 +96,8 @@ describe('PR3: integración de CrearDeudaFaltanteCajaService', () => {
     expect(source).toMatch(/input\.justificacionFaltante/)
   })
 
-  it('FIX: retorna deudaCreada en el DTO', () => {
-    expect(source).toMatch(/deudaCreada,/)
+  it('FIX: retorna responsibilityCases en el DTO (FASE 6 §13, no cargo automático)', () => {
+    expect(source).toMatch(/responsibilityCases:\s*\[/)
   })
 })
 

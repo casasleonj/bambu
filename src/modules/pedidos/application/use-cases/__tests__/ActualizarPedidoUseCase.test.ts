@@ -59,6 +59,9 @@ function makeUseCase(pedido: Pedido) {
     findById: vi.fn().mockResolvedValue(pedido),
     findByNumero: vi.fn(),
     findByOfflineId: vi.fn(),
+    findByEntregaOfflineId: vi.fn(),
+    findByAnulacionOfflineId: vi.fn(),
+    findByCancelacionOfflineId: vi.fn(),
     findMany: vi.fn(),
     count: vi.fn(),
     save: vi.fn(),
@@ -91,7 +94,7 @@ function makeUseCase(pedido: Pedido) {
   }
   const txManager: ITransactionManager = {
     execute: (fn) => fn({} as TransactionClient),
-    executeWithLock: (_lockName, fn) => fn({} as TransactionClient),
+    executeWithLock: (_namespace, _entityKey, fn) => fn({} as TransactionClient),
   }
   const useCase = new ActualizarPedidoUseCase(pedidoRepo, facturaRepo, clienteRepo, pricingPort, txManager)
   return { useCase, pedidoRepo, facturaRepo }

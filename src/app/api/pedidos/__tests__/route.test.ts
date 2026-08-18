@@ -38,7 +38,7 @@ const dtoSource = readFileSync(dtoPath, 'utf-8')
 describe('F-N10: dedup por offlineId DENTRO del lock en CrearPedidoUseCase', () => {
   it('FIX: el use case verifica offlineId al inicio del callback del lock', () => {
     // El check debe estar DENTRO del executeWithLock
-    const lockOpen = useCaseSource.indexOf('executeWithLock(\'PEDIDO\'')
+    const lockOpen = useCaseSource.indexOf("executeWithLock('SECUENCIA', 'pedido'")
     const checkOffline = useCaseSource.indexOf('findByOfflineId(input.offlineId, tx)')
     const lockClose = useCaseSource.lastIndexOf('})')  // cierre del executeWithLock
 

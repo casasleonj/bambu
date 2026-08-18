@@ -77,6 +77,38 @@ export class PrismaPedidoRepository implements IPedidoRepository {
     return PedidoMapper.fromPrisma(raw as unknown as Parameters<typeof PedidoMapper.fromPrisma>[0])
   }
 
+  // FASE 1 (ADR-IDEMPOTENCIA-001): dedup por clave idempotente persistida
+  // para los comandos entrega/anular/cancelar (paridad con envioOfflineId).
+  async findByEntregaOfflineId(offlineId: string, tx?: TransactionClient): Promise<Pedido | null> {
+    const client = tx || prisma
+    const raw = await client.pedido.findUnique({
+      where: { entregaOfflineId: offlineId },
+      include: { items: true, pagos: true },
+    })
+    if (!raw) return null
+    return PedidoMapper.fromPrisma(raw as unknown as Parameters<typeof PedidoMapper.fromPrisma>[0])
+  }
+
+  async findByAnulacionOfflineId(offlineId: string, tx?: TransactionClient): Promise<Pedido | null> {
+    const client = tx || prisma
+    const raw = await client.pedido.findUnique({
+      where: { anulacionOfflineId: offlineId },
+      include: { items: true, pagos: true },
+    })
+    if (!raw) return null
+    return PedidoMapper.fromPrisma(raw as unknown as Parameters<typeof PedidoMapper.fromPrisma>[0])
+  }
+
+  async findByCancelacionOfflineId(offlineId: string, tx?: TransactionClient): Promise<Pedido | null> {
+    const client = tx || prisma
+    const raw = await client.pedido.findUnique({
+      where: { cancelacionOfflineId: offlineId },
+      include: { items: true, pagos: true },
+    })
+    if (!raw) return null
+    return PedidoMapper.fromPrisma(raw as unknown as Parameters<typeof PedidoMapper.fromPrisma>[0])
+  }
+
   async findMany(
     filter?: PedidoFilter,
     options?: { take?: number; skip?: number; orderBy?: 'asc' | 'desc' },

@@ -83,6 +83,59 @@ enum EstadoEmbarque {
   CANCELADO
 }
 
+// FASE 2 (ADR-STOCK-001, contrato §10): metadata de validación al crear una
+// carga. NO representa stock físico ni infiere cuánto se cargó.
+enum AvailabilityBasis {
+  CONFIRMED_STOCK
+  PRODUCTION_CONFIRMED
+  ESTIMATED
+  MIXED
+}
+
+// FASE 2 (ADR-FISICO-001, contrato §8): tipos de movimiento del ledger físico.
+// El efecto se determina por el tipo, nunca por el signo de `cantidad`.
+enum TipoMovimiento {
+  CARGA
+  RECARGA
+  ENTREGA
+  VENTA_RUTA
+  RETORNO
+  REEMPAQUE
+  DESCARTE
+  CUSTODY_TRANSFER
+  PROMOCION
+  AJUSTE_AUTORIZADO
+}
+
+// FASE 3 (ADR-OBLIGACION-001 / ADR-ACTIVIDAD-001, contrato §7):
+enum ObligacionEstado {
+  ABIERTA
+  CUMPLIDA
+  ANULADA
+}
+
+enum ActividadTipo {
+  ENTREGA
+  RECOGIDA_BOTELLON
+  COBRO
+}
+
+enum ActividadEstado {
+  ASIGNADA
+  EN_PROGRESO
+  CUMPLIDA
+  CANCELADA
+}
+
+// FASE 6 (ADR-RESPONSABILIDAD-001, contrato §13):
+enum ResponsibilityEstado {
+  ABIERTA
+  EN_INVESTIGACION
+  RESUELTA_SIN_CARGO
+  RESUELTA_CON_CARGO
+  CERRADA
+}
+
 enum EstadoFactura {
   EMITIDA
   PAGADA
@@ -172,6 +225,20 @@ model User {
   eventosCaso    CasoEvento[] @relation("CasoEventoUser")
 
   pedidoItemsAutorizados PedidoItem[] @relation("PedidoItemAutorizador")
+
+  // FASE 2 (ledger físico)
+  movimientosAutorizados   EmbarqueMovimiento[] @relation("MovimientoAutorizador")
+  sustitucionesAutorizadas Sustitucion[]        @relation("SustitucionAutorizador")
+
+  // FASE 3 (obligaciones)
+  ajustesAutorizados PedidoCantidadAjuste[] @relation("AjusteAutorizador")
+
+  // FASE 6 (responsabilidad)
+  responsibilityAutorizados ResponsibilityCase[] @relation("ResponsibilityAutorizador")
+  responsibilityResueltos   ResponsibilityCase[] @relation("ResponsibilityResolutor")
+
+  // FASE 8 (promociones)
+  promotionsAutorizadas PromotionRule[] @relation("PromotionAutorizador")
 
   pushSubscriptions PushSubscription[] @relation("PushSubscriptions")
 
@@ -338,6 +405,12 @@ model Cliente {
   abonos   Abono[]
   casos    Caso[]    @relation("CasoCliente")
 
+  // FASE 3 (obligaciones)
+  obligaciones ObligacionPendiente[]
+
+  // FASE 5 (cartera)
+  receivableEntries ReceivableEntry[]
+
   createdAt DateTime @default(now()) @db.Timestamptz()
   updatedAt DateTime @updatedAt @db.Timestamptz()
 
@@ -492,6 +565,9 @@ model Trabajador {
   descuentos   DescuentoRepartidor[]
   deudas       DeudaTrabajador[]
 
+  // FASE 6 (responsabilidad)
+  responsibilityCases ResponsibilityCase[]
+
   casosRepartidor Caso[] @relation("CasoRepartidor")
 
   rutasAsignadas Ruta[] @relation("RutaRepartidor")
@@ -603,6 +679,21 @@ model Pedido {
   // check externo y la tx se desincronizan. Ahora: el server persiste el
   // offlineId y el retry con el mismo offlineId retorna deduped: true.
   envioOfflineId    String?   @unique
+  // FASE 1 (ADR-IDEMPOTENCIA-001, §14): claves idempotentes dedicadas por
+  // comando reintentable offline. El retry con el mismo offlineId retorna
+  // deduped:true sin re-ejecutar. Paridad con envioOfflineId (enviar).
+  entregaOfflineId     String? @unique
+  anulacionOfflineId   String? @unique
+  cancelacionOfflineId String? @unique
+  // FASE 7 (ADR-OFFLINE-001, contrato §11): timestamps de venta libre.
+  // occurredAt = cuándo ocurrió la venta según el operador.
+  // capturedAt = cuándo el dispositivo generó el registro local.
+  // serverReceivedAt = cuándo llegó al servidor (server-side).
+  // clasificacionTemporal = NORMAL | TARDIA | SOSPECHOSA (derivada del server).
+  occurredAt           DateTime? @db.Timestamptz()
+  capturedAt           DateTime? @db.Timestamptz()
+  serverReceivedAt     DateTime? @db.Timestamptz()
+  clasificacionTemporal String?
   disputaAbierta    Boolean   @default(false)
   codigoVisita      String?
   // Dirección de entrega puntual para ESTE pedido — null si no aplica
@@ -661,6 +752,21 @@ model Pedido {
   abonos       Abono[]
   casos        Caso[]        @relation("CasoPedido")
 
+  // FASE 2 (ledger físico)
+  sustituciones Sustitucion[]
+  retornos      Retorno[]
+
+  // FASE 3 (obligaciones)
+  obligacion      ObligacionPendiente?
+  ajustesCantidad PedidoCantidadAjuste[]
+
+  // FASE 4 (recovery)
+  recoveriesOrigen  RecoveryDecision[] @relation("RecoveryPedidoOrigen")
+  recoveriesDestino RecoveryDecision[] @relation("RecoveryPedidoDestino")
+
+  // FASE 5 (cartera)
+  receivableEntries ReceivableEntry[]
+
   createdAt DateTime @default(now()) @db.Timestamptz()
   updatedAt DateTime @updatedAt @db.Timestamptz()
 
@@ -684,6 +790,9 @@ model Pedido {
   @@index([offlineId])
   @@index([recurrenteBatchId])
   @@index([envioOfflineId])
+  @@index([entregaOfflineId])
+  @@index([anulacionOfflineId])
+  @@index([cancelacionOfflineId])
   @@index([clienteId, estadoEntrega, estadoPago])
   @@index([promesaPagoFecha])
   @@index([numero])
@@ -804,6 +913,21 @@ model Embarque {
   productos EmbarqueProducto[]
   gastos    Gasto[]
 
+  // FASE 2 (ledger físico)
+  cargas        EmbarqueCarga[]
+  movimientos   EmbarqueMovimiento[]
+  sustituciones Sustitucion[]
+  retornos      Retorno[]
+
+  // FASE 3 (obligaciones)
+  actividades Actividad[]
+
+  // FASE 4 (recovery)
+  recoveries RecoveryDecision[]
+
+  // FASE 6 (responsabilidad)
+  responsibilityCases ResponsibilityCase[]
+
   createdAt DateTime @default(now()) @db.Timestamptz()
   updatedAt DateTime @updatedAt @db.Timestamptz()
 
@@ -838,6 +962,362 @@ model EmbarqueProducto {
 }
 
 // ====================
+// LEDGER FÍSICO (FASE 2 — ADR-FISICO-001 / ADR-CUSTODIA-001 / ADR-STOCK-001)
+// ====================
+//
+// `EmbarqueMovimiento` es el ledger físico canónico (contrato §8): `cantidad`
+// es SIEMPRE positiva; el efecto se determina por `tipo`, nunca por el signo.
+// `EmbarqueCargaProducto.cantidad` es el HECHO FÍSICO de la carga (cuánto se
+// cargó). `EmbarqueCarga.availabilityBasis` es únicamente metadata de
+// validación al crear la carga (contrato §10): NO representa stock físico y
+// NUNCA infiere cuánto se cargó.
+
+model EmbarqueCarga {
+  id         String   @id @default(cuid())
+  embarqueId String
+  embarque   Embarque @relation(fields: [embarqueId], references: [id], onDelete: Cascade)
+
+  // Snapshot del vehículo/capacidad al momento de la carga. No inventar
+  // histórico (contrato §15): null si se desconoce.
+  vehiculo    String?
+  capacidadKg Int?
+
+  // Metadata de validación (contrato §10). NO es inventario físico.
+  availabilityBasis AvailabilityBasis @default(ESTIMATED)
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  offlineId String?  @unique
+
+  productos   EmbarqueCargaProducto[]
+  movimientos EmbarqueMovimiento[]
+
+  @@index([embarqueId])
+  @@index([createdAt])
+}
+
+model EmbarqueCargaProducto {
+  id      String        @id @default(cuid())
+  cargaId String
+  carga   EmbarqueCarga @relation(fields: [cargaId], references: [id], onDelete: Cascade)
+
+  producto String
+  // Hecho físico: unidades cargadas. Siempre positivo (CHECK constraint).
+  cantidad Int
+
+  @@unique([cargaId, producto])
+  @@index([cargaId])
+}
+
+model EmbarqueMovimiento {
+  id         String   @id @default(cuid())
+  embarqueId String
+  embarque   Embarque @relation(fields: [embarqueId], references: [id], onDelete: Cascade)
+  cargaId    String?
+  carga      EmbarqueCarga? @relation(fields: [cargaId], references: [id], onDelete: SetNull)
+
+  tipo     TipoMovimiento
+  producto String
+  // Siempre positivo (CHECK constraint). El efecto es por `tipo` (contrato §8).
+  cantidad Int
+
+  // Custodia origen/destino (convención documentada: VEHICULO, ALMACEN,
+  // INSPECCION, CLIENTE, PRODUCCION, DESCARTE, EXTERNO). Inequivoca (ADR-CUSTODIA-001).
+  origen  String?
+  destino String?
+
+  // AJUSTE_AUTORIZADO exige metadata.effect (INCREASE|DECREASE) + authorization
+  // + userId (contrato §8). Validado en servicio + CHECK constraint.
+  metadata      Json?
+  authorization String?
+  userId        String?
+  autorizador   User? @relation("MovimientoAutorizador", fields: [userId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  offlineId String?  @unique
+
+  retornos             Retorno[]     @relation("RetornoMovimiento")
+  sustitucionRecepcion Sustitucion[] @relation("SustitucionRecepcion")
+  sustitucionEntrega   Sustitucion[] @relation("SustitucionEntrega")
+  recoveries           RecoveryDecision[]
+
+  @@index([embarqueId])
+  @@index([cargaId])
+  @@index([tipo])
+  @@index([origen])
+  @@index([destino])
+  @@index([createdAt])
+}
+
+model Sustitucion {
+  id         String   @id @default(cuid())
+  embarqueId String
+  embarque   Embarque @relation(fields: [embarqueId], references: [id], onDelete: Cascade)
+  pedidoId   String?
+  pedido     Pedido?  @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
+
+  // Vincula los DOS hechos físicos separados (contrato §9): recepción de la
+  // unidad defectuosa (RETORNO repartidor→inspección) + entrega de la unidad
+  // de reemplazo (ENTREGA repartidor→cliente).
+  movimientoRecepcionId String
+  movimientoRecepcion   EmbarqueMovimiento @relation("SustitucionRecepcion", fields: [movimientoRecepcionId], references: [id], onDelete: Cascade)
+
+  movimientoEntregaId String
+  movimientoEntrega   EmbarqueMovimiento @relation("SustitucionEntrega", fields: [movimientoEntregaId], references: [id], onDelete: Cascade)
+
+  autorizadoPorId String?
+  autorizadoPor   User? @relation("SustitucionAutorizador", fields: [autorizadoPorId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  offlineId String?  @unique
+
+  @@index([embarqueId])
+  @@index([pedidoId])
+}
+
+model Retorno {
+  id         String   @id @default(cuid())
+  embarqueId String
+  embarque   Embarque @relation(fields: [embarqueId], references: [id], onDelete: Cascade)
+  pedidoId   String?
+  pedido     Pedido?  @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
+
+  producto String
+  cantidad Int     // positivo (CHECK constraint)
+  motivo   String? // EMPAQUE_ROTO, PACA_FILTRADA, DEFECTUOSA, CLIENTE_RECHAZA, ...
+
+  movimientoId String?
+  movimiento   EmbarqueMovimiento? @relation("RetornoMovimiento", fields: [movimientoId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  offlineId String?  @unique
+
+  @@index([embarqueId])
+  @@index([pedidoId])
+}
+
+// ====================
+// OBLIGACIONES Y ACTIVIDADES (FASE 3 — ADR-OBLIGACION-001 / ADR-ACTIVIDAD-001)
+// ====================
+//
+// `ObligacionPendiente` (contrato §7): `cantidadDisponible` NO se almacena; es
+// derivada = cantidadOriginal - cantidadCumplida - cantidadAsignada.
+// Invariante (CHECK constraint): cantidadCumplida + cantidadAsignada <= original.
+//
+// `Actividad` (contrato §1): trabajo ejecutable; puede existir sin embarque.
+// Máximo una asignación activa por obligación (partial unique index en SQL).
+
+model ObligacionPendiente {
+  id               String  @id @default(cuid())
+  pedidoId         String? @unique
+  pedido           Pedido? @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
+  clienteId        String?
+  cliente          Cliente? @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+  producto         String
+  cantidadOriginal Int
+  cantidadCumplida Int     @default(0)
+  cantidadAsignada Int     @default(0)
+  estado           ObligacionEstado @default(ABIERTA)
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
+  offlineId String?  @unique
+
+  actividades Actividad[]
+  ajustes     PedidoCantidadAjuste[]
+
+  @@index([pedidoId])
+  @@index([clienteId])
+  @@index([producto])
+}
+
+model Actividad {
+  id           String  @id @default(cuid())
+  obligacionId String
+  obligacion   ObligacionPendiente @relation(fields: [obligacionId], references: [id], onDelete: Cascade)
+  embarqueId   String?
+  embarque     Embarque? @relation(fields: [embarqueId], references: [id], onDelete: SetNull)
+
+  tipo             ActividadTipo  @default(ENTREGA)
+  cantidad         Int
+  cantidadCumplida Int            @default(0)
+  estado           ActividadEstado @default(ASIGNADA)
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
+  offlineId String?  @unique
+
+  @@index([obligacionId])
+  @@index([embarqueId])
+}
+
+model PedidoCantidadAjuste {
+  id           String @id @default(cuid())
+  pedidoId     String
+  pedido       Pedido @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  obligacionId String?
+  obligacion   ObligacionPendiente? @relation(fields: [obligacionId], references: [id], onDelete: SetNull)
+
+  producto         String
+  cantidadOriginal Int
+  cantidadNueva    Int
+  delta            Int
+  motivo           String
+  autorizadoPorId  String
+  autorizadoPor    User @relation("AjusteAutorizador", fields: [autorizadoPorId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  offlineId String?  @unique
+
+  @@index([pedidoId])
+  @@index([obligacionId])
+}
+
+// ====================
+// RECOVERY (FASE 4 — ADR-RECUPERACION-001, contrato §3/§4)
+// ====================
+//
+// `sourceEventId` y `cantidadDisponibleEnOrigen` son NULLABLES: un FALTANTE no
+// tiene evento físico de origen consumible (contrato §3). Invariante:
+// 0 <= cantidadAplicada <= cantidad (CHECK constraint).
+
+model RecoveryDecision {
+  id            String   @id @default(cuid())
+  embarqueId    String
+  embarque      Embarque @relation(fields: [embarqueId], references: [id], onDelete: Cascade)
+  sourceEventId String?
+  sourceEvent   EmbarqueMovimiento? @relation(fields: [sourceEventId], references: [id], onDelete: SetNull)
+
+  // SOBRANTE: cantidad disponible en el origen. FALTANTE: NULL (no hay origen).
+  cantidadDisponibleEnOrigen Int?
+  cantidad                   Int
+  cantidadAplicada           Int
+  // SOBRANTE | FALTANTE (contrato §3; validado por CHECK constraint).
+  tipo     String
+  producto String
+
+  pedidoOrigenId  String?
+  pedidoOrigen    Pedido? @relation("RecoveryPedidoOrigen", fields: [pedidoOrigenId], references: [id], onDelete: SetNull)
+  pedidoDestinoId String?
+  pedidoDestino   Pedido? @relation("RecoveryPedidoDestino", fields: [pedidoDestinoId], references: [id], onDelete: SetNull)
+
+  // Snapshot del resultado de la decisión (APLICADA | PARCIAL | RECHAZADA).
+  resultado      String
+  actorId        String
+  authorizedById String?
+  reason         String
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  offlineId String?  @unique
+
+  @@index([embarqueId])
+  @@index([sourceEventId])
+  @@index([pedidoDestinoId])
+  @@index([resultado])
+}
+
+// ====================
+// RECEIVABLE ENTRY (FASE 5 — ADR-MONETARIO-001, contrato §12)
+// ====================
+//
+// Proyección de auditoría DERIVADA de un Pago/Abono. NUNCA es una segunda
+// fuente de verdad de la cartera: `Pedido.saldo`/`totalPagado` son canónicos.
+// `saldoResultante` es un snapshot del saldo del pedido tras el hecho monetario,
+// generado en la MISMA transacción (contrato §12).
+
+model ReceivableEntry {
+  id        String  @id @default(cuid())
+  pedidoId  String?
+  pedido    Pedido? @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
+  facturaId String?
+  factura   Factura? @relation(fields: [facturaId], references: [id], onDelete: SetNull)
+  clienteId String
+  cliente   Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  // PAGO | ABONO — tipo del hecho monetario que originó esta proyección.
+  tipo  String
+  monto Decimal @db.Decimal(10, 2)
+
+  // Snapshot del estado del pedido tras el hecho (proyección, no fuente).
+  saldoResultante       Decimal @db.Decimal(10, 2)
+  totalPagadoResultante Decimal @db.Decimal(10, 2)
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  offlineId String?  @unique
+
+  @@index([pedidoId])
+  @@index([clienteId])
+  @@index([facturaId])
+}
+
+// ====================
+// RESPONSABILIDAD (FASE 6 — ADR-RESPONSABILIDAD-001, contrato §13)
+// ====================
+//
+// La detección de una responsabilidad puede ser automática, pero la
+// transferencia económica al trabajador NUNCA es automática: requiere un
+// workflow de investigación → resolución. `RESUELTA_CON_CARGO` exige
+// `autorizadoPorId` + `resueltoPorId` obligatorios. `embarqueId` es nullable
+// porque una investigación puede ocurrir días después de la operación.
+
+model ResponsibilityCase {
+  id           String   @id @default(cuid())
+  embarqueId   String?
+  embarque     Embarque? @relation(fields: [embarqueId], references: [id], onDelete: SetNull)
+  trabajadorId String?
+  trabajador   Trabajador? @relation(fields: [trabajadorId], references: [id], onDelete: SetNull)
+
+  // DISCREPANCIA_INVENTARIO | FALTANTE_CAJA | FIADO_NO_COBRADO
+  tipo          String
+  descripcion   String
+  montoEstimado Decimal? @db.Decimal(10, 2)
+  estado        ResponsibilityEstado @default(ABIERTA)
+
+  // Resolución autorizada (§13): RESUELTA_CON_CARGO exige ambos.
+  autorizadoPorId String?
+  autorizadoPor   User? @relation("ResponsibilityAutorizador", fields: [autorizadoPorId], references: [id], onDelete: SetNull)
+  resueltoPorId   String?
+  resueltoPor     User? @relation("ResponsibilityResolutor", fields: [resueltoPorId], references: [id], onDelete: SetNull)
+  resueltoAt      DateTime? @db.Timestamptz()
+
+  // Hecho económico materializado SOLO tras resolución con cargo.
+  hechoEconomicoId   String?
+  hechoEconomicoTipo String? // DESCUENTO | DEUDA
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
+  offlineId String?  @unique
+
+  @@index([embarqueId])
+  @@index([trabajadorId])
+  @@index([estado])
+}
+
+// ====================
+// PROMOCIÓN (FASE 8 — ADR-PROMOCION-001 / ADR-AUTORIZACION-REGALOS-001, §17)
+// ====================
+//
+// Un regalo/promoción autorizado consume inventario exactamente una vez y
+// requiere autorización auditable. El consumo se registra en el ledger físico
+// (EmbarqueMovimiento tipo PROMOCION), no como un cobro ficticio.
+
+model PromotionRule {
+  id        String  @id @default(cuid())
+  nombre    String
+  producto  String
+  cantidad  Int     // unidades a regalar por aplicación
+  activo    Boolean @default(true)
+
+  autorizadoPorId String
+  autorizadoPor   User @relation("PromotionAutorizador", fields: [autorizadoPorId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  offlineId String?  @unique
+
+  @@index([producto])
+  @@index([activo])
+}
+
+// ====================
 // GPS TRACK (nueva)
 // ====================
 
@@ -850,6 +1330,9 @@ model GpsTrack {
   accuracy     Decimal? @db.Decimal(10, 2)
   timestamp    DateTime @db.Timestamptz()
   synced       Boolean  @default(false)
+  // FASE FINAL (ADR-IDEMPOTENCIA-001, §14): clave idempotente del comando
+  // reintentable offline. Un retry con el mismo offlineId no duplica el track.
+  offlineId    String?  @unique
 
   embarque   Embarque   @relation(fields: [embarqueId], references: [id])
   trabajador Trabajador @relation(fields: [trabajadorId], references: [id])
@@ -916,6 +1399,9 @@ model Factura {
 
   abonos       Abono[]
   notasCredito NotaCredito[]
+
+  // FASE 5 (cartera)
+  receivableEntries ReceivableEntry[]
 
   createdAt DateTime @default(now()) @db.Timestamptz()
   updatedAt DateTime @updatedAt @db.Timestamptz()

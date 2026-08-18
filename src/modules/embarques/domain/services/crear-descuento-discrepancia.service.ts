@@ -1,17 +1,17 @@
 /**
  * CrearDescuentoDiscrepanciaService.
  *
- * FIX F4.10-c: extrae la lógica de creación de descuento por
- * discrepancia (~35 líneas) del CerrarEmbarqueUseCase.
- * Responsabilidad única: cuando hay discrepancia positiva
- * (cargado - entregado - devuelto - cambios) y el admin no
- * justificó, crear un DescuentoRepartidor que se le cobrará
- * al trabajdor en la próxima nómina.
+ * FASE 6 (ADR-RESPONSABILIDAD-001, contrato §13): la detección de una
+ * discrepancia de inventario es AUTOMÁTICA, pero la transferencia económica al
+ * trabajador NUNCA es automática. Este servicio ya NO crea un
+ * `DescuentoRepartidor` directamente; crea un `ResponsibilityCase` de tipo
+ * DISCREPANCIA_INVENTARIO que queda pendiente de resolución autorizada. El
+ * cargo económico (DescuentoRepartidor) solo se materializa en
+ * `ResolverResponsibilityCaseUseCase` cuando la resolución es RESUELTA_CON_CARGO
+ * con `autorizadoPorId` + `resueltoPorId`.
  *
- * Patrón alineado con ProcesarPedidoService (F4.10-a) y
- * CrearVentasLibresService (F4.10-b): service dedicado,
- * sin dependencias de Prisma (recibe client como param),
- * backward compat con default = new instance.
+ * FIX F4.10-c (histórico): extrae la lógica de cálculo del monto por
+ * discrepancia (~35 líneas) del CerrarEmbarqueUseCase.
  */
 
 import { resolverPrecio } from '@/lib/pricing'
@@ -24,9 +24,9 @@ type TxOrPrisma = {
 
 export class CrearDescuentoDiscrepanciaService {
   /**
-   * Crea un descuento al trabajdor para cada producto con
-   * discrepancia positiva. Retorna { id, monto } del descuento
-   * creado, o undefined si no había discrepancias.
+   * Detecta una discrepancia de inventario y crea un ResponsibilityCase
+   * pendiente de resolución. Retorna { id, monto } del caso creado (id = caseId),
+   * o undefined si no había discrepancias.
    */
   async execute(
     client: TxOrPrisma,
@@ -35,7 +35,7 @@ export class CrearDescuentoDiscrepanciaService {
     discrepancias: Array<{ producto: string; discrepancia: number }>,
   ): Promise<{ id: string; monto: number } | undefined> {
     const tx = client as unknown as {
-      descuentoRepartidor: { create: (args: { data: Record<string, unknown> }) => Promise<{ id: string; monto: unknown }> }
+      responsibilityCase: { create: (args: { data: Record<string, unknown> }) => Promise<{ id: string; montoEstimado: unknown }> }
     }
 
     const precioMap: Record<string, number> = {}
@@ -56,16 +56,17 @@ export class CrearDescuentoDiscrepanciaService {
       }
     }
 
-    const descuento = await tx.descuentoRepartidor.create({
+    // FASE 6 (§13): detectar y crear el caso, NO el cargo económico.
+    const caso = await tx.responsibilityCase.create({
       data: {
         embarqueId,
         trabajadorId,
-        monto: montoTotal,
-        motivo: `Discrepancia conciliacion: ${motivos.join(', ')}`,
-        justificado: false,
+        tipo: 'DISCREPANCIA_INVENTARIO',
+        descripcion: `Discrepancia conciliacion: ${motivos.join(', ')}`,
+        montoEstimado: montoTotal,
       },
     })
 
-    return { id: descuento.id, monto: Number(descuento.monto) }
+    return { id: caso.id, monto: Number(caso.montoEstimado ?? montoTotal) }
   }
 }

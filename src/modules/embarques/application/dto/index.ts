@@ -20,6 +20,8 @@ export interface CrearEmbarqueInput {
   createdById?: string
   verificarStock?: boolean
   maxUnidades?: number
+  // FASE 8 (ADR-STOCK-001, §10): metadata de validación al crear la carga.
+  availabilityBasis?: 'CONFIRMED_STOCK' | 'PRODUCTION_CONFIRMED' | 'ESTIMATED' | 'MIXED'
 }
 
 export interface ActualizarEmbarqueInput {
@@ -200,8 +202,9 @@ export interface CierreResultadoDTO {
   pedidosActualizados: Array<{ id: string; estado: string }>
   ventasLibresCreadas: number
   discrepanciaTotal: number
-  descuentoCreado?: { id: string; monto: number }
-  deudaCreada?: { id: string; monto: number }
+  // FASE 6 (§13): casos de responsabilidad detectados, pendientes de
+  // resolución autorizada. Ya NO se crea el cargo económico automáticamente.
+  responsibilityCases: Array<{ id: string; tipo: string; montoEstimado: number }>
   gastosCreados: number
   totalVentas: number
   comision: number

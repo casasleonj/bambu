@@ -27,12 +27,13 @@ describe('PR3: presenter legacy incluye caja y deudaCreada', () => {
     expect(presenterSource).toMatch(/sobranteFaltante:/)
   })
 
-  it('FIX: CierreLegacyResponse incluye deudaCreada', () => {
+  it('FIX: CierreLegacyResponse incluye deudaCreada (null, sin cargo automático)', () => {
     expect(presenterSource).toMatch(/deudaCreada:/)
   })
 
-  it('FIX: toLegacyResponse asigna result.caja y result.deudaCreada', () => {
+  it('FIX: toLegacyResponse expone responsibilityCases (FASE 6 §13)', () => {
     expect(presenterSource).toMatch(/caja:\s*result\.caja/)
-    expect(presenterSource).toMatch(/deudaCreada:\s*result\.deudaCreada/)
+    expect(presenterSource).toMatch(/responsibilityCases:\s*result\.responsibilityCases/)
+    expect(presenterSource).toMatch(/deudaCreada:\s*null/)
   })
 })

@@ -149,7 +149,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     // El dedup por offlineId también se mueve adentro (antes línea 70-81):
     // si dos requests idénticos llegan, el primero persiste el offlineId,
     // el segundo lo lee dentro del lock y retorna deduped: true.
-    const embarque = await withAdvisoryLock('EMBARQUE', async (tx) => {
+    const embarque = await withAdvisoryLock('EMBARQUE_CARGA', id, async (tx) => {
       // Re-leer current embarque DENTRO del lock
       const currentEmbarque = await tx.embarque.findUnique({
         where: { id },
@@ -499,7 +499,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   }
 
   try {
-    const result = await withAdvisoryLock('EMBARQUE', async (tx: any) => {
+    const result = await withAdvisoryLock('EMBARQUE_CARGA', id, async (tx: any) => {
       const embarque = await tx.embarque.findUnique({
         where: { id },
         include: { pedidos: { select: { id: true } } },

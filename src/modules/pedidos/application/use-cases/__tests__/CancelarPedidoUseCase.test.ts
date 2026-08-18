@@ -37,7 +37,7 @@ describe('F-N8: anularByPedidoId se llama DENTRO de la tx', () => {
   })
 
   it('FIX: la llamada está DENTRO del callback de txManager.executeWithLock', () => {
-    const lockOpen = source.indexOf("executeWithLock('NC'")
+    const lockOpen = source.indexOf("executeWithLock('SECUENCIA', 'notaCredito'")
     const lockClose = source.lastIndexOf('})')
     const callIdx = source.indexOf('anularByPedidoId(')
 
@@ -54,7 +54,7 @@ describe('F-N8: anularByPedidoId se llama DENTRO de la tx', () => {
 
 describe('Cancelar dedup: el use case retorna idempotente cuando ya está CANCELADO', () => {
   it('FIX: verifica estadoEntrega === CANCELADO DENTRO del lock NC', () => {
-    const lockOpen = source.indexOf("executeWithLock('NC'")
+    const lockOpen = source.indexOf("executeWithLock('SECUENCIA', 'notaCredito'")
     const checkIdx = source.indexOf("estadoEntrega.get() === 'CANCELADO'")
     const lockClose = source.lastIndexOf('})')
 
@@ -92,7 +92,7 @@ describe('Paridad con AnularPedidoUseCase', () => {
       'src/modules/pedidos/application/use-cases/AnularPedidoUseCase.ts'
     )
     const anularSource = readFileSync(path, 'utf-8')
-    expect(anularSource).toMatch(/executeWithLock\(['"]NC['"]/)
+    expect(anularSource).toMatch(/executeWithLock\(['"]SECUENCIA['"]\s*,\s*['"]notaCredito['"]/)
     expect(anularSource).toMatch(/estadoEntrega\.get\(\)\s*===\s*['"]ANULADO['"]/)
     expect(anularSource).toMatch(/deduped:\s*true/)
   })

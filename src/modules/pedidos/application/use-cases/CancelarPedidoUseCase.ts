@@ -21,9 +21,19 @@ export class CancelarPedidoUseCase {
   ) {}
 
   async execute(input: CancelarPedidoInput): Promise<{ pedido: import('../dto').PedidoResumenDTO; deduped?: boolean }> {
-    return this.txManager.executeWithLock('NC', async (tx) => {
+    // FASE 0 (ADR-CONCURRENCIA-001): lock `SECUENCIA:notaCredito` (paridad con
+    // AnularPedidoUseCase). La NC se genera con MAX+1 → serialización global.
+    return this.txManager.executeWithLock('SECUENCIA', 'notaCredito', async (tx) => {
       const pedido = await this.pedidoRepo.findById(PedidoId.from(input.pedidoId), tx)
       if (!pedido) throw new Error('PEDIDO_NOT_FOUND')
+
+      // FASE 1 (ADR-IDEMPOTENCIA-001): dedup por clave idempotente persistida.
+      if (input.offlineId && pedido.cancelacionOfflineId === input.offlineId) {
+        return {
+          pedido: PedidoDTOMapper.toResumen(pedido),
+          deduped: true,
+        }
+      }
 
       // FIX: dedup por estado CANCELADO DENTRO del lock. Paridad con
       // AnularPedidoUseCase (F-N21): si ya está cancelado, retornar
@@ -38,7 +48,7 @@ export class CancelarPedidoUseCase {
       // FIX CRITICAL (C-BIZ-1): cancelar() now returns tuvoPagos and totalPagado.
       // Previously, pedido.total was reset to 0 inside cancelar(), causing the NC
       // to be created with monto=0 (customer lost refund silently).
-      const { tuvoPagos, totalPagado } = pedido.cancelar()
+      const { tuvoPagos, totalPagado } = pedido.cancelar(input.offlineId)
 
       const updated = await this.pedidoRepo.update(pedido, tx)
 
@@ -66,12 +76,12 @@ export class CancelarPedidoUseCase {
         }, tx)
       }
 
-      logAudit({
+      await logAudit({
         entidad: 'Pedido',
         registroId: pedido.id.get(),
         accion: 'UPDATE',
         datos: { motivo: input.motivo, estado: updated.estadoEntrega.get(), notaCredito: tuvoPagos },
-      })
+      }, tx)
 
       return { pedido: PedidoDTOMapper.toResumen(updated) }
     })

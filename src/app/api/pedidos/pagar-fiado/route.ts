@@ -13,6 +13,7 @@ import { notifyEvent } from '@/lib/notifications/notify-event'
 import { NotificationEventType } from '@/lib/notifications/event-types'
 import { prisma } from '@/lib/prisma'
 import { Money, calcularSaldo } from '@/shared/domain'
+import { registrarReceivableEntry } from '@/lib/receivable-entry'
 
 export async function POST(request: NextRequest) {
   // FIX C-1: solo ADMIN/ASISTENTE pueden registrar pagos de fiado.
@@ -42,7 +43,7 @@ export async function POST(request: NextRequest) {
     // Ahora: el check corre DENTRO del lock. Si los pagos ya existen,
     // se reconstruye el response y se retorna deduped: true sin hacer
     // trabajo wasted.
-    const resultado = await withAdvisoryLock('ABONO', async (tx) => {
+    const resultado = await withAdvisoryLock('CARTERA', clienteId, async (tx) => {
       // DEDUP DENTRO DEL LOCK
       if (offlineId) {
         const pagosPrevios = await tx.pago.findMany({
@@ -142,6 +143,18 @@ export async function POST(request: NextRequest) {
             saldo: nuevoSaldo,
             estadoPago: nuevoEstadoPago,
           },
+        })
+
+        // FASE 5 (ADR-MONETARIO-001, §12): proyección de auditoría en la MISMA tx.
+        await registrarReceivableEntry(tx, {
+          pedidoId: pedido.id,
+          facturaId: pedido.factura?.id ?? null,
+          clienteId,
+          tipo: 'PAGO',
+          monto: montoAplicar,
+          saldoResultante: nuevoSaldo,
+          totalPagadoResultante: nuevoTotalPagado,
+          offlineId,
         })
 
         if (shouldFireCulminado(pedido.estadoEntrega, nuevoEstadoPago)) {

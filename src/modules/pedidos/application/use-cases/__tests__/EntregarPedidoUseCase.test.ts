@@ -54,6 +54,9 @@ describe('EntregarPedidoUseCase — BAMBU-LOG-004: hijo hereda negocioId/direcci
       findById: vi.fn().mockResolvedValue(pedido),
       findByNumero: vi.fn(),
       findByOfflineId: vi.fn(),
+      findByEntregaOfflineId: vi.fn(),
+      findByAnulacionOfflineId: vi.fn(),
+      findByCancelacionOfflineId: vi.fn(),
       findMany: vi.fn(),
       count: vi.fn(),
       save: vi.fn().mockImplementation(async (p: Pedido) => {
@@ -76,10 +79,13 @@ describe('EntregarPedidoUseCase — BAMBU-LOG-004: hijo hereda negocioId/direcci
     }
     const fakeTx = {
       pedido: { aggregate: vi.fn().mockResolvedValue({ _max: { numero: 100 } }) },
+      historial: { create: vi.fn().mockResolvedValue({}) },
+      // FASE 8: getNextNumero ahora usa secuencia atómica (nextval).
+      $queryRawUnsafe: vi.fn().mockResolvedValue([{ nextval: BigInt(101) }]),
     } as unknown as TransactionClient
     const txManager: ITransactionManager = {
       execute: (fn) => fn(fakeTx),
-      executeWithLock: (_lockName, fn) => fn(fakeTx),
+      executeWithLock: (_namespace, _entityKey, fn) => fn(fakeTx),
     }
 
     const useCase = new EntregarPedidoUseCase(pedidoRepo, facturaRepo, pagoRepo, txManager)

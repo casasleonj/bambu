@@ -157,6 +157,9 @@ export const VentaLibreSchema = z.object({
   gpsLat: z.number(),
   gpsLng: z.number(),
   offlineId: z.string(),
+  // FASE 7 (ADR-OFFLINE-001, §11): timestamps opcionales de la venta.
+  occurredAt: z.string().datetime().optional(),
+  capturedAt: z.string().datetime().optional(),
   // FIX CRITICAL (C-INT-1): Accept additional fields that VentaRapidaForm
   // sends. The form is currently an orphan (no page in production uses it),
   // but extending the schema ensures the form is "API-compatible" if

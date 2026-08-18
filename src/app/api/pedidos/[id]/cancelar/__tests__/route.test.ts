@@ -14,7 +14,7 @@ const useCaseSource = readFileSync(useCasePath, 'utf-8')
 
 describe('Cancelar: dedup por estado CANCELADO está DENTRO del lock en el use case', () => {
   it('FIX: el use case verifica estadoEntrega === CANCELADO DENTRO del lock', () => {
-    const lockOpen = useCaseSource.indexOf("executeWithLock('NC'")
+    const lockOpen = useCaseSource.indexOf("executeWithLock('SECUENCIA', 'notaCredito'")
     const checkIdx = useCaseSource.indexOf("estadoEntrega.get() === 'CANCELADO'")
     const lockClose = useCaseSource.lastIndexOf('})')
 

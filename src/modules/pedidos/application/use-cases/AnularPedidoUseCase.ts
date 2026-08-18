@@ -21,9 +21,22 @@ export class AnularPedidoUseCase {
   ) {}
 
   async execute(input: AnularPedidoInput): Promise<{ pedido: import('../dto').PedidoResumenDTO; deduped?: boolean }> {
-    return this.txManager.executeWithLock('NC', async (tx) => {
+    // FASE 0 (ADR-CONCURRENCIA-001): lock `SECUENCIA:notaCredito`. La NC se
+    // genera con getNextNumero(model:'notaCredito') MAX+1, por lo que exige
+    // serialización global de la numeración. Resuelve la colisión histórica
+    // NC=8 vs producción=8 (keyspace fijo agotado). En FASE 8, con secuencia
+    // atómica, se refina a `PEDIDO:{pedidoId}` + `SECUENCIA:notaCredito`.
+    return this.txManager.executeWithLock('SECUENCIA', 'notaCredito', async (tx) => {
       const pedido = await this.pedidoRepo.findById(PedidoId.from(input.pedidoId), tx)
       if (!pedido) throw new Error('PEDIDO_NOT_FOUND')
+
+      // FASE 1 (ADR-IDEMPOTENCIA-001): dedup por clave idempotente persistida.
+      if (input.offlineId && pedido.anulacionOfflineId === input.offlineId) {
+        return {
+          pedido: PedidoDTOMapper.toResumen(pedido),
+          deduped: true,
+        }
+      }
 
       // FIX F-N21 (hallazgo 2): dedup por estado ANULADO DENTRO del
       // lock. Antes el dedup estaba en la route (fuera del lock),
@@ -37,7 +50,7 @@ export class AnularPedidoUseCase {
         }
       }
 
-      const { tuvoPagos, totalPagado } = pedido.anular()
+      const { tuvoPagos, totalPagado } = pedido.anular(input.offlineId)
 
       const updated = await this.pedidoRepo.update(pedido, tx)
 
@@ -61,12 +74,12 @@ export class AnularPedidoUseCase {
         }, tx)
       }
 
-      logAudit({
+      await logAudit({
         entidad: 'Pedido',
         registroId: pedido.id.get(),
         accion: 'UPDATE',
         datos: { motivo: input.motivo, notaCredito: tuvoPagos },
-      })
+      }, tx)
 
       return { pedido: PedidoDTOMapper.toResumen(updated) }
     })

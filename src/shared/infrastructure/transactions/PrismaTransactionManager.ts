@@ -13,16 +13,24 @@
  * abstracción equivocada. Sandi Metz / Pragmatic Programmer: DRY
  * aplica cuando la regla de negocio es la misma; acá lo es: "toda
  * operación transaccional va con advisory lock opcional".
+ *
+ * FASE 0 (ADR-CONCURRENCIA-001, contrato §5/§6): `executeWithLock` ahora
+ * recibe `(namespace, entityKey)` en lugar de un `lockName` de entero fijo.
+ * El lock se deriva de `"namespace:entityKey"` con hash de 64 bits.
  */
 
 import { prisma } from '@/lib/prisma'
-import { withAdvisoryLock, LOCK_IDS } from '@/lib/locks'
+import { withAdvisoryLock, type LockNamespace, type TransactionClient } from '@/lib/locks'
 
-export type TransactionClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0]
+export type { TransactionClient } from '@/lib/locks'
 
 export interface ITransactionManager {
   execute<T>(fn: (tx: TransactionClient) => Promise<T>): Promise<T>
-  executeWithLock<T>(lockName: keyof typeof LOCK_IDS, fn: (tx: TransactionClient) => Promise<T>): Promise<T>
+  executeWithLock<T>(
+    namespace: LockNamespace,
+    entityKey: string,
+    fn: (tx: TransactionClient) => Promise<T>,
+  ): Promise<T>
 }
 
 export class PrismaTransactionManager implements ITransactionManager {
@@ -31,9 +39,10 @@ export class PrismaTransactionManager implements ITransactionManager {
   }
 
   async executeWithLock<T>(
-    lockName: keyof typeof LOCK_IDS,
+    namespace: LockNamespace,
+    entityKey: string,
     fn: (tx: TransactionClient) => Promise<T>,
   ): Promise<T> {
-    return withAdvisoryLock(lockName, fn)
+    return withAdvisoryLock(namespace, entityKey, fn)
   }
 }

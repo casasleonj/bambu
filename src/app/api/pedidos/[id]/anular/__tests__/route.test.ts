@@ -15,7 +15,7 @@ const useCaseSource = readFileSync(useCasePath, 'utf-8')
 
 describe('F-N21: dedup por estado ANULADO está DENTRO del lock en el use case', () => {
   it('FIX: el use case verifica estadoEntrega === ANULADO DENTRO del lock', () => {
-    const lockOpen = useCaseSource.indexOf("executeWithLock('NC'")
+    const lockOpen = useCaseSource.indexOf("executeWithLock('SECUENCIA', 'notaCredito'")
     const checkIdx = useCaseSource.indexOf("estadoEntrega.get() === 'ANULADO'")
     const lockClose = useCaseSource.lastIndexOf('})')
 

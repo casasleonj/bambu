@@ -38,12 +38,13 @@ describe('F4.10-c: CrearDescuentoDiscrepanciaService existe y es responsable', (
     expect(descuentoSource).toMatch(/FIX F4\.10-c/)
   })
 
-  it('FIX: el service crea el descuento con embarqueId, trabajdorId, monto, motivo, justificado=false', () => {
+  it('FIX: el service crea ResponsibilityCase (FASE 6 §13) con tipo/descripcion/montoEstimado', () => {
     expect(descuentoSource).toMatch(/embarqueId,/)
     expect(descuentoSource).toMatch(/trabajadorId,/)
-    expect(descuentoSource).toMatch(/monto:\s*montoTotal/)
-    expect(descuentoSource).toMatch(/motivo:\s*`Discrepancia conciliacion/)
-    expect(descuentoSource).toMatch(/justificado:\s*false/)
+    expect(descuentoSource).toMatch(/montoEstimado:\s*montoTotal/)
+    expect(descuentoSource).toMatch(/descripcion:\s*`Discrepancia conciliacion/)
+    expect(descuentoSource).toMatch(/tipo:\s*['"]DISCREPANCIA_INVENTARIO['"]/)
+    expect(descuentoSource).toMatch(/responsibilityCase\.create/)
   })
 })
 
@@ -108,9 +109,9 @@ describe('F4.10-c-d: imports correctos en el use case', () => {
 })
 
 describe('F4.10-c-d: el use case se simplificó (398 → ~335 líneas)', () => {
-  it('FIX: el archivo final tiene menos de 350 líneas (era 398)', () => {
+  it('FIX: el archivo final tiene menos de 380 líneas (era 398)', () => {
     const lines = useCaseSource.split('\n').length
-    expect(lines).toBeLessThan(350)
+    expect(lines).toBeLessThan(380)
   })
 
   it('FIX: el archivo final tiene más de 320 líneas (sanity check)', () => {

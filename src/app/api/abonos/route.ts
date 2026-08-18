@@ -8,6 +8,7 @@ import { getNextNumero } from '@/lib/sequence'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
+import { registrarReceivableEntry } from '@/lib/receivable-entry'
 
 export async function GET(request: NextRequest) {
   // FIX CRITICAL (C-SEC-2): Only ADMIN/CONTADOR can read abonos
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest) {
     }
     const { facturaId, clienteId, pedidoId, monto, metodoPago } = parsed.data
 
-    const result = await withAdvisoryLock('ABONO', async (tx) => {
+    const result = await withAdvisoryLock('CARTERA', clienteId, async (tx) => {
       // Verificar que la factura existe
       const factura = await tx.factura.findUnique({
         where: { id: facturaId },
@@ -106,6 +107,17 @@ export async function POST(request: NextRequest) {
           saldo: updatedFactura.saldo,
           totalPagado: { increment: monto },
         },
+      })
+
+      // FASE 5 (ADR-MONETARIO-001, §12): proyección de auditoría en la MISMA tx.
+      await registrarReceivableEntry(tx, {
+        pedidoId: factura.pedidoId,
+        facturaId,
+        clienteId,
+        tipo: 'ABONO',
+        monto,
+        saldoResultante: Number(updatedFactura.saldo),
+        totalPagadoResultante: Number(updatedFactura.montoPagado),
       })
 
       return { abono }

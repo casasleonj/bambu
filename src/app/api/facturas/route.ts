@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
 
     const empresaSnapshot = await getFacturaEmpresaSnapshot()
 
-    const factura = await withAdvisoryLock<Factura>('FACTURA_NUM', async (tx) => {
+    const factura = await withAdvisoryLock<Factura>('SECUENCIA', 'factura', async (tx) => {
       const pedido = await tx.pedido.findUnique({
         where: { id: pedidoId },
         include: { cliente: true, factura: true },

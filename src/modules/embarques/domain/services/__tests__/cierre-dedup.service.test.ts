@@ -39,41 +39,34 @@ describe('CierreDedupService.buildResult', () => {
 
   it('devuelve deduped:true y estado CERRADO sin re-ejecutar side effects', async () => {
     const client = {
-      deudaTrabajador: { findFirst: vi.fn().mockResolvedValue(null) },
+      responsibilityCase: { findMany: vi.fn().mockResolvedValue([]) },
     }
 
-    const result = await service.buildResult(client, 'emb_1', 'trab_1')
+    const result = await service.buildResult(client, 'emb_1')
 
     expect(result.deduped).toBe(true)
     expect(result.estado).toBe('CERRADO')
     expect(result.embarqueId).toBe('emb_1')
     expect(result.pedidosHijosCreados).toEqual([])
     expect(result.gastosCreados).toBe(0)
+    expect(result.responsibilityCases).toEqual([])
   })
 
-  it('reconstruye deudaCreada desde la DeudaTrabajador ya persistida (para el toast del cliente)', async () => {
-    const mockFindFirst = vi.fn().mockResolvedValue({ id: 'deuda_1', montoOriginal: 15000 })
+  it('reconstruye responsibilityCases desde los casos ya persistidos (FASE 6 §13)', async () => {
     const client = {
-      deudaTrabajador: { findFirst: mockFindFirst },
+      responsibilityCase: {
+        findMany: vi.fn().mockResolvedValue([
+          { id: 'case_1', tipo: 'FALTANTE_CAJA', montoEstimado: 15000 },
+          { id: 'case_2', tipo: 'DISCREPANCIA_INVENTARIO', montoEstimado: 8000 },
+        ]),
+      },
     }
 
-    const result = await service.buildResult(client, 'emb_1', 'trab_1')
+    const result = await service.buildResult(client, 'emb_1')
 
-    expect(result.deudaCreada).toEqual({ id: 'deuda_1', monto: 15000 })
-    expect(mockFindFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { embarqueId: 'emb_1', trabajadorId: 'trab_1', tipo: 'DEFICIT_EFECTIVO' },
-      }),
-    )
-  })
-
-  it('deudaCreada queda undefined si no hubo faltante de caja en el cierre original', async () => {
-    const client = {
-      deudaTrabajador: { findFirst: vi.fn().mockResolvedValue(null) },
-    }
-
-    const result = await service.buildResult(client, 'emb_1', 'trab_1')
-
-    expect(result.deudaCreada).toBeUndefined()
+    expect(result.responsibilityCases).toEqual([
+      { id: 'case_1', tipo: 'FALTANTE_CAJA', montoEstimado: 15000 },
+      { id: 'case_2', tipo: 'DISCREPANCIA_INVENTARIO', montoEstimado: 8000 },
+    ])
   })
 })

@@ -33,9 +33,7 @@ import { getVentasDelDia } from '@/lib/ventas'
 import { calcComSellador } from '@/lib/comisiones'
 import { startOfDayInBogota, todayInBogota } from '@/lib/date-helpers'
 import { captureApiError, addApiBreadcrumb } from '@/lib/sentry-helpers'
-
-// Mismo lock que POST para serializar.
-const PROD_ADVISORY_LOCK_KEY = 8
+import { acquireAdvisoryLockTx } from '@/lib/locks'
 
 export async function PUT(
   request: NextRequest,
@@ -71,8 +69,10 @@ export async function PUT(
   try {
     const updated = await prisma.$transaction(
       async (tx) => {
-        // Advisory lock para serializar vs POSTs concurrentes
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(${PROD_ADVISORY_LOCK_KEY}::int)::text`
+        // Advisory lock para serializar vs POSTs concurrentes.
+        // FASE 0 (ADR-CONCURRENCIA-001): lock `SECUENCIA:produccion` en lugar
+        // del entero fijo 8 (que colisionaba con NC).
+        await acquireAdvisoryLockTx(tx, 'SECUENCIA', 'produccion')
 
         // 1. Cargar Produccion existente con items
         const existing = await tx.produccion.findUnique({

@@ -37,6 +37,7 @@ export class CrearVentasLibresService {
       pedido: { create: (args: { data: Record<string, unknown> }) => Promise<{ id: string; numero: number }> }
       pago: { create: (args: { data: Record<string, unknown> }) => Promise<unknown> }
       factura: { create: (args: { data: Record<string, unknown> }) => Promise<unknown> }
+      receivableEntry: { create: (args: { data: Record<string, unknown> }) => Promise<unknown> }
     }
 
     let count = 0
@@ -118,6 +119,20 @@ export class CrearVentasLibresService {
             data: { pedidoId: nuevaVenta.id, metodo: pago.metodo as MetodoPago, monto: pago.monto },
           })
         }
+      }
+
+      // FASE FINAL (ADR-MONETARIO-001, §12): proyección de auditoría de los pagos.
+      if (totalPagado > 0) {
+        await tx.receivableEntry.create({
+          data: {
+            pedidoId: nuevaVenta.id,
+            clienteId: venta.clienteId,
+            tipo: 'PAGO',
+            monto: totalPagado,
+            saldoResultante: totalVenta - totalPagado,
+            totalPagadoResultante: totalPagado,
+          },
+        })
       }
 
       const facturaNum = await getNextNumero(client, { model: 'factura', field: 'numero' })

@@ -41,6 +41,15 @@ export async function POST(request: NextRequest) {
       return apiError('No tiene permisos para registrar GPS en este embarque', 403)
     }
 
+    // FASE FINAL (ADR-IDEMPOTENCIA-001, §14): dedup por offlineId. Un retry
+    // del mismo comando offline no duplica el track.
+    if (offlineId) {
+      const existente = await prisma.gpsTrack.findUnique({ where: { offlineId } })
+      if (existente) {
+        return apiSuccess({ track: existente, deduped: true }, 200)
+      }
+    }
+
     const track = await prisma.gpsTrack.create({
       data: {
         embarqueId,
@@ -50,6 +59,7 @@ export async function POST(request: NextRequest) {
         accuracy: accuracy ?? null,
         timestamp: timestamp ? new Date(timestamp) : new Date(),
         synced: true,
+        offlineId: offlineId ?? null,
       },
     })
 

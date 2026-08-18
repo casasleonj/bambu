@@ -3,7 +3,7 @@ import { formatZodError } from '@/lib/utils'
 import { NextRequest } from 'next/server'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { VentaLibreSchema } from '@/lib/validators'
-import { withAdvisoryLock } from '@/lib/locks'
+import { withAdvisoryLock, acquireAdvisoryLockTx } from '@/lib/locks'
 import { getNextNumero } from '@/lib/sequence'
 import { resolverPreciosPedido, type Canal } from '@/lib/pricing'
 import { calcularEstadoPago, puedeFiar, puedeCrearPedido, resolverLimiteFiados } from '@/lib/pedido-utils'
@@ -17,6 +17,9 @@ import { uploadBase64Foto, isBase64Image } from '@/lib/storage'
 import { getConfigBool } from '@/lib/config'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { getFacturaEmpresaSnapshot } from '@/lib/factura-empresa'
+import { clasificarVentaLibre } from '@/lib/venta-libre-clasificacion'
+import { incrementMetric } from '@/lib/metrics'
+import { registrarReceivableEntry } from '@/lib/receivable-entry'
 import { OrigenPedido, EstadoEntrega } from '@prisma/client'
 
 export async function POST(request: NextRequest) {
@@ -33,6 +36,19 @@ export async function POST(request: NextRequest) {
     }
 
     const { clienteId, items, pagos, embarqueId, obs, fotoEntrega, gpsLat, gpsLng, offlineId } = parsed.data
+
+    // FASE 7 (ADR-OFFLINE-001, §11): timestamps de la venta espontánea.
+    const serverReceivedAt = new Date()
+    const occurredAt = parsed.data.occurredAt ? new Date(parsed.data.occurredAt) : null
+    const capturedAt = parsed.data.capturedAt ? new Date(parsed.data.capturedAt) : null
+    const clasificacionTemporal = clasificarVentaLibre({
+      occurredAt,
+      capturedAt,
+      serverReceivedAt,
+    })
+    // Métricas de observabilidad (§24): no bloquean la venta, solo la señalan.
+    if (clasificacionTemporal === 'TARDIA') incrementMetric('venta_libre_tardia_count')
+    if (clasificacionTemporal === 'SOSPECHOSA') incrementMetric('venta_libre_sospechosa_count')
 
     // BLOQUEAR_PRECIOS_REPARTIDOR — REPARTIDOR cannot set precioManual on any item.
     // Check `!== undefined` (not `> 0`) so any override is rejected. The schema
@@ -60,7 +76,11 @@ export async function POST(request: NextRequest) {
       if (uploadedUrl) fotoUrl = uploadedUrl
     }
 
-    const result = await withAdvisoryLock('PEDIDO', async (tx) => {
+    // FASE 0 (ADR-CONCURRENCIA-001): lock `SECUENCIA:pedido` (paridad con el
+    // resto de creadores de pedidos). La venta libre usa autoincrement para
+    // Pedido.numero, pero comparte serialización con CrearPedido (MAX+1) para
+    // no introducir colisiones de numeración.
+    const result = await withAdvisoryLock('SECUENCIA', 'pedido', async (tx) => {
       // 1. Verificar embarque existe y está abierto
       const embarque = await tx.embarque.findUnique({
         where: { id: embarqueId },
@@ -145,7 +165,11 @@ export async function POST(request: NextRequest) {
         const configLimite = await tx.config.findUnique({ where: { clave: 'LIMITE_PEDIDOS_FIADOS_DEFAULT' } })
         const limiteFiados = resolverLimiteFiados(cliente, configLimite?.valor ?? null)
 
-        const errorDeuda = puedeCrearPedido(cliente, pedidosPendientes, limiteFiados)
+        const errorDeuda = puedeCrearPedido(
+          cliente,
+          pedidosPendientes.map((p) => ({ id: p.id, numero: p.numero, saldo: Number(p.saldo) })),
+          limiteFiados,
+        )
         if (errorDeuda) {
           throw new Error(`CLIENTE_DEBE: ${errorDeuda}`)
         }
@@ -194,6 +218,10 @@ export async function POST(request: NextRequest) {
           gpsLat: gpsLat || null,
           gpsLng: gpsLng || null,
           offlineId: offlineId || null,
+          occurredAt: occurredAt ?? null,
+          capturedAt: capturedAt ?? null,
+          serverReceivedAt,
+          clasificacionTemporal,
           ...legacyFields,
           items: {
             create: itemsParaPrecios.map(i => ({
@@ -219,25 +247,27 @@ export async function POST(request: NextRequest) {
         })
       }
 
+      // FASE FINAL (ADR-MONETARIO-001, §12): proyección de auditoría de los pagos.
+      if (totalPagado > 0) {
+        await registrarReceivableEntry(tx, {
+          pedidoId: pedido.id,
+          clienteId: clienteFinalId,
+          tipo: 'PAGO',
+          monto: totalPagado,
+          saldoResultante: total - totalPagado,
+          totalPagadoResultante: totalPagado,
+          offlineId,
+        })
+      }
+
       // 10. SIEMPRE crear factura (Consumidor Final si anónimo)
       const facturaClienteId = esAnonimo ? CANONICAL_CONSUMIDOR_FINAL_ID : clienteFinalId
 
-      // FIX C-13: además del lock 'PEDIDO' (que ya cubre esta operación),
-      // adquirir también 'FACTURA_NUM' específicamente alrededor de la
-      // generación del número de factura. Esto previene race condition con
-      // POST /api/facturas (que usa 'FACTURA_NUM' como lock principal) cuando
-      // ambos corren en paralelo:
-      //   - venta-libre A (bajo PEDIDO) genera factura #1500
-      //   - /api/facturas B (bajo FACTURA_NUM) genera factura #1500 también
-      // Sin este lock adicional, getNextNumero (count+1) en src/lib/sequence.ts:23
-      // NO es atómico entre transacciones con locks DIFERENTES — solo entre
-      // transacciones con el MISMO lock. La unique constraint en Factura.numero
-      // (schema.prisma:728) eventualmente lo cacha, pero el 500 resultante es
-      // confuso para el operador.
-      // pg_advisory_xact_lock es re-entrante en la misma tx, así que adquirir
-      // FACTURA_NUM dentro del lock PEDIDO no causa deadlock.
-      const { LOCK_IDS } = await import('@/lib/locks')
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(${LOCK_IDS.FACTURA_NUM})::text`
+      // FASE 0 (ADR-CONCURRENCIA-001): lock de secuencia de factura en la
+      // MISMA tx (multi-lock, orden SECUENCIA:pedido → SECUENCIA:factura).
+      // Factura.numero ya usa secuencia atómica (factura_numero_seq), pero se
+      // conserva el lock defensivo por paridad con POST /api/facturas.
+      await acquireAdvisoryLockTx(tx, 'SECUENCIA', 'factura')
       const facturaNum = await getNextNumero(tx, { model: 'factura', field: 'numero' })
 
       await tx.factura.create({

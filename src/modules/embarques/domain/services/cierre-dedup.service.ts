@@ -40,11 +40,12 @@ export class CierreDedupService {
    * creada"); el resto queda en su valor neutro porque no se re-ejecuta
    * ningún cálculo.
    */
-  async buildResult(client: TxOrPrisma, embarqueId: string, trabajadorId: string): Promise<CierreResultadoDTO> {
-    const deuda = await client.deudaTrabajador.findFirst({
-      where: { embarqueId, trabajadorId, tipo: 'DEFICIT_EFECTIVO' },
-      orderBy: { createdAt: 'desc' },
-      select: { id: true, montoOriginal: true },
+  async buildResult(client: TxOrPrisma, embarqueId: string): Promise<CierreResultadoDTO> {
+    // FASE 6 (§13): en un replay no se re-ejecuta nada; se reconstruyen los
+    // casos de responsabilidad ya detectados en el cierre original.
+    const casos = await client.responsibilityCase.findMany({
+      where: { embarqueId },
+      select: { id: true, tipo: true, montoEstimado: true },
     })
 
     return {
@@ -55,7 +56,11 @@ export class CierreDedupService {
       pedidosActualizados: [],
       ventasLibresCreadas: 0,
       discrepanciaTotal: 0,
-      deudaCreada: deuda ? { id: deuda.id, monto: Number(deuda.montoOriginal) } : undefined,
+      responsibilityCases: casos.map((c: { id: string; tipo: string; montoEstimado: unknown }) => ({
+        id: c.id,
+        tipo: c.tipo,
+        montoEstimado: Number(c.montoEstimado ?? 0),
+      })),
       gastosCreados: 0,
       totalVentas: 0,
       comision: 0,

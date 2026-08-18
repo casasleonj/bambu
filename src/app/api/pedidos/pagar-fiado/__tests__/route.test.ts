@@ -15,7 +15,7 @@ const source = readFileSync(routePath, 'utf-8')
 describe('F-N11: dedup DENTRO del lock ABONO', () => {
   it('FIX: el check de pagosPrevios está DENTRO de withAdvisoryLock', () => {
     // Encontrar las posiciones relativas
-    const lockOpen = source.indexOf('withAdvisoryLock(\'ABONO\'')
+    const lockOpen = source.indexOf("withAdvisoryLock('CARTERA'")
     const dedupCheck = source.indexOf('pagosPrevios = await tx.pago.findMany')
     const lockClose = source.lastIndexOf('})')  // cierre del callback
 
@@ -110,6 +110,6 @@ describe('F-N11: la route sigue trabajando (no rompe flujo normal)', () => {
   })
 
   it('FIX: el lock ABONO sigue envolviendo toda la operación', () => {
-    expect(source).toMatch(/withAdvisoryLock\(['"]ABONO['"]/)
+    expect(source).toMatch(/withAdvisoryLock\(['"]CARTERA['"]/)
   })
 })

@@ -20,6 +20,7 @@
 
 import { prisma } from '@/lib/prisma'
 import { logAudit } from '@/lib/audit'
+import { acquireAdvisoryLockTx } from '@/lib/locks'
 
 import type { IEmbarqueRepository } from '../../domain/repositories/IEmbarqueRepository'
 import type { IGastoEmbarqueRepository } from '../../domain/repositories/IGastoEmbarqueRepository'
@@ -32,6 +33,7 @@ import { CrearDescuentoDiscrepanciaService } from '../../domain/services/crear-d
 import { CrearDeudaFaltanteCajaService } from '../../domain/services/crear-deuda-faltante-caja.service'
 import { CerrarEmbarqueSideEffectsService } from '../../domain/services/cerrar-embarque-side-effects.service'
 import { CierreDedupService } from '../../domain/services/cierre-dedup.service'
+import { RegistrarMovimientosCierre } from '../../domain/services/registrar-movimientos-cierre.service'
 import type { PedidoRawInput } from '../../domain/services/procesar-pedido.service'
 import { Carga, type ProductCode } from '../../domain/value-objects/Carga'
 import { EstadoEmbarque as EstadoEmbarqueVO } from '../../domain/value-objects/EstadoEmbarque'
@@ -76,36 +78,29 @@ export class CerrarEmbarqueUseCase {
     // delegar los side effects finales: crearGastos y actualizarProductosRetorno.
     // Default: nueva instancia (backward compatible con callers existentes).
     private readonly sideEffectsService: CerrarEmbarqueSideEffectsService = new CerrarEmbarqueSideEffectsService(),
+    // FASE FINAL (dual-write §23): escribe el ledger físico del cierre.
+    private readonly registrarMovimientosService: RegistrarMovimientosCierre = new RegistrarMovimientosCierre(),
     private readonly dedupService: CierreDedupService = new CierreDedupService(), // BAMBU-LOG-006
   ) {}
 
   async execute(input: CerrarEmbarqueInput): Promise<CierreResultadoDTO> {
-    // FIX F2.2: usar executeWithLock('CIERRE', ...) en vez de execute sin lock.
-    //
-    // Antes: dos cierres concurrentes del mismo embarque (o cierres
-    // paralelos de embarques distintos) podían crear el mismo número
-    // de pedido/factura porque getNextNumero usa `_max + 1` (count + 1),
-    // que NO es atómico entre transacciones paralelas.
-    //
-    // pg_advisory_xact_lock(7) — el id de CIERRE en LOCK_IDS (locks.ts:10)
-    // — serializa TODAS las operaciones de cierre dentro de la misma
-    // conexión PostgreSQL. Se libera automáticamente al hacer commit/rollback.
-    //
-    // Trade-off conocido (aceptable):
-    // - Si dos admins intentan cerrar embarques al MISMO tiempo, uno espera
-    //   al otro. El lock se mantiene solo durante el cierre, no encolar
-    //   requests, pero el segundo sentirá latencia. Aceptable porque los
-    //   cierres son operaciones infrecuentes (1-3 por día típicamente).
-    // - Si la operación falla dentro del lock, el rollback libera el lock.
-    return this.txManager.executeWithLock('CIERRE', async (tx) => {
+    // FIX F2.2 + FASE 0 (ADR-CONCURRENCIA-001, §6 "Cierre"):
+    // lock `CIERRE:{embarqueId}` (antes CIERRE global id=7). Dos cierres de
+    // embarques DISTINTOS ya no se serializan. El cierre además genera pedidos
+    // (ventas libres + hijos) con numeración MAX+1 no atómica, por lo que se
+    // adquiere `SECUENCIA:pedido` en la MISMA tx (orden CIERRE → SECUENCIA,
+    // anti-deadlock); se elimina en FASE 8 con secuencia atómica de pedido.
+    return this.txManager.executeWithLock('CIERRE', input.id, async (tx) => {
       const client = this.getTx(tx)
+
+      await acquireAdvisoryLockTx(client, 'SECUENCIA', 'pedido')
 
       // 1. Verify embarque exists and can be closed
       const embarque = await this.embarqueRepo.findById(input.id, tx)
       if (!embarque) throw new Error('EMBARQUE_NOT_FOUND')
 
       if (this.dedupService.esReplay(embarque.estado, embarque.offlineId, input.offlineId)) {
-        return this.dedupService.buildResult(client, input.id, embarque.trabajadorId)
+        return this.dedupService.buildResult(client, input.id)
       }
       const transitionResult = this.transitions.cerrar(embarque.estado)
       if (!transitionResult.success) throw new Error(transitionResult.error)
@@ -178,6 +173,15 @@ export class CerrarEmbarqueUseCase {
         this.productoRepo,
       )
 
+      // FASE FINAL (dual-write §23, ADR-FISICO-001): escribir el ledger físico
+      // del cierre (ENTREGA/VENTA_RUTA/RETORNO) además de la conciliación legacy.
+      await this.registrarMovimientosService.execute(client, {
+        embarqueId: input.id,
+        pedidosRaw,
+        ventasLibres: input.ventasLibres ?? [],
+        productosRetorno: input.productosRetorno ?? [],
+      })
+
       // 9. Reconcile cash before closing to detect faltante de caja.
       const pagosColeccionados = coleccionarPagos(pedidosRaw, input.ventasLibres ?? [])
       const gastosTotal = (input.gastos ?? []).reduce((sum, g) => sum + (g.monto || 0), 0)
@@ -213,7 +217,7 @@ export class CerrarEmbarqueUseCase {
       )
 
       // 12. Log audit
-      logAudit({
+      await logAudit({
         entidad: 'Embarque',
         registroId: input.id,
         accion: 'UPDATE',
@@ -228,7 +232,7 @@ export class CerrarEmbarqueUseCase {
           deudaCreada: deudaCreada ? { id: deudaCreada.id, monto: deudaCreada.monto } : null,
         },
         usuarioId: this.userId,
-      })
+      }, tx)
 
       return {
         embarqueId: input.id,
@@ -238,8 +242,16 @@ export class CerrarEmbarqueUseCase {
         pedidosActualizados,
         ventasLibresCreadas: ventasLibresCount,
         discrepanciaTotal: totalDiscrepancia,
-        descuentoCreado,
-        deudaCreada,
+        // FASE 6 (§13): el cierre detecta y crea ResponsibilityCase pendientes de
+        // resolución autorizada; ya NO crea el cargo económico automáticamente.
+        responsibilityCases: [
+          ...(descuentoCreado
+            ? [{ id: descuentoCreado.id, tipo: 'DISCREPANCIA_INVENTARIO' as const, montoEstimado: descuentoCreado.monto }]
+            : []),
+          ...(deudaCreada
+            ? [{ id: deudaCreada.id, tipo: 'FALTANTE_CAJA' as const, montoEstimado: deudaCreada.monto }]
+            : []),
+        ],
         gastosCreados: gastosCount,
         totalVentas,
         comision: totalVentas * 0.05,

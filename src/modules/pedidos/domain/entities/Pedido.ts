@@ -47,6 +47,9 @@ export interface PedidoProps {
   adminOverrideBy?: string
   adminOverrideAt?: Date
   offlineId?: string
+  entregaOfflineId?: string
+  anulacionOfflineId?: string
+  cancelacionOfflineId?: string
   createdById?: string
 }
 
@@ -91,6 +94,9 @@ export class Pedido {
   get adminOverrideBy(): string | undefined { return this.props.adminOverrideBy }
   get adminOverrideAt(): Date | undefined { return this.props.adminOverrideAt }
   get offlineId(): string | undefined { return this.props.offlineId }
+  get entregaOfflineId(): string | undefined { return this.props.entregaOfflineId }
+  get anulacionOfflineId(): string | undefined { return this.props.anulacionOfflineId }
+  get cancelacionOfflineId(): string | undefined { return this.props.cancelacionOfflineId }
 
   // ── Business Rules ─────────────────────────────────────────────────────
 
@@ -157,6 +163,7 @@ export class Pedido {
       entregadoConGps?: boolean
       entregadoAt?: Date
       codigoVisita?: string
+      entregaOfflineId?: string
     },
   ): void {
     if (!this.puedeEntregar()) {
@@ -205,6 +212,7 @@ export class Pedido {
       entregadoConGps: metadata?.entregadoConGps ?? this.props.entregadoConGps,
       entregadoAt: metadata?.entregadoAt ?? this.props.entregadoAt ?? new Date(),
       codigoVisita: metadata?.codigoVisita || this.props.codigoVisita,
+      entregaOfflineId: metadata?.entregaOfflineId ?? this.props.entregaOfflineId,
     }
   }
 
@@ -279,7 +287,7 @@ export class Pedido {
    * Now: we return the amount actually paid (`totalPagado`) so the use case
    * creates the NotaCredito only for money that was actually received.
    */
-  cancelar(): { tuvoPagos: boolean; totalPagado: number } {
+  cancelar(offlineId?: string): { tuvoPagos: boolean; totalPagado: number } {
     if (!this.puedeCancelar()) {
       throw new Error(`No se puede cancelar pedido ${this.id.get()} en estado ${this.estadoEntrega.get()}`)
     }
@@ -293,6 +301,7 @@ export class Pedido {
       estadoPago: EstadoPagoVO.create('ANULADO'),
       totalPagado: new Money(0),
       total: new Money(0),
+      ...(offlineId ? { cancelacionOfflineId: offlineId } : {}),
     }
 
     return { tuvoPagos, totalPagado }
@@ -301,7 +310,7 @@ export class Pedido {
   /**
    * Mark as ANULADO (only from ENTREGADO). Resets totals.
    */
-  anular(): { tuvoPagos: boolean; totalPagado: number } {
+  anular(offlineId?: string): { tuvoPagos: boolean; totalPagado: number } {
     if (!this.puedeAnular()) {
       throw new Error(`Solo se pueden anular pedidos ENTREGADOS. Estado actual: ${this.estadoEntrega.get()}`)
     }
@@ -314,6 +323,7 @@ export class Pedido {
       estadoEntrega: EstadoEntregaVO.create('ANULADO'),
       estadoPago: EstadoPagoVO.create('ANULADO'),
       totalPagado: new Money(0),
+      ...(offlineId ? { anulacionOfflineId: offlineId } : {}),
     }
 
     return { tuvoPagos, totalPagado }

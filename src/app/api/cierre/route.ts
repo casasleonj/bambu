@@ -10,6 +10,7 @@ import { getTodayString } from '@/lib/dates'
 import { startOfDayInBogota, endOfDayInBogota, nowInBogota } from '@/lib/date-helpers'
 import { notifyEvent } from '@/lib/notifications/notify-event'
 import { NotificationEventType } from '@/lib/notifications/event-types'
+import { acquireAdvisoryLockTx } from '@/lib/locks'
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -458,8 +459,8 @@ export async function POST(request: NextRequest) {
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
       const cierre = await prisma.$transaction(async (tx) => {
-        // 1. Advisory lock
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(7)::text`
+        // 1. Advisory lock por día (ADR-CONCURRENCIA-001, §6 "Cierre").
+        await acquireAdvisoryLockTx(tx, 'CIERRE', startOfDay.toISOString())
 
         // 2. Validate sequence inside lock
         const lastCierre = await tx.cierreDia.findFirst({ orderBy: { fecha: 'desc' } })

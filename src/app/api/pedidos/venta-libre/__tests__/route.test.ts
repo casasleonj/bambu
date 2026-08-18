@@ -95,8 +95,7 @@ vi.mock('@/lib/logger', () => ({
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
 }))
 vi.mock('@/lib/locks', () => ({
-  LOCK_IDS: { PEDIDO: 1, FACTURA_NUM: 6, FACTURA: 2, EMBARQUE: 3, ABONO: 4, COMPRA: 5, CIERRE: 7, NC: 8 },
-  withAdvisoryLock: async (_key: string, fn: any) => {
+  withAdvisoryLock: async (_namespace: string, _entityKey: string, fn: any) => {
     // Build a tx object that has all the prisma models the route touches.
     // The route uses tx.embarque, tx.cliente, tx.pedido, tx.pago, tx.factura, tx.config, tx.trabajador.
     const tx = {
@@ -110,13 +109,13 @@ vi.mock('@/lib/locks', () => ({
       factura: mockPrismaFactura,
       config: mockPrismaConfig,
       trabajador: mockPrismaTrabajador,
-      // FIX: pg_advisory_xact_lock via $queryRaw (called for FACTURA_NUM
-      // during the tx). Without this mock, the route throws because
-      // tx.$queryRaw is undefined.
+      receivableEntry: { create: vi.fn().mockResolvedValue({}) },
       $queryRaw: vi.fn().mockResolvedValue([]),
     }
     return fn(tx)
   },
+  // FASE 0 (ADR-CONCURRENCIA-001): multi-lock SECUENCIA:pedido → SECUENCIA:factura.
+  acquireAdvisoryLockTx: async () => {},
 }))
 vi.mock('@/lib/sequence', () => ({
   getNextNumero: (...args: unknown[]) => mockGetNextNumero(...args),

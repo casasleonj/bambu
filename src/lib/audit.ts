@@ -1,5 +1,6 @@
 import { prisma } from './prisma'
 import { logger } from './logger'
+import type { Prisma } from '@prisma/client'
 
 export type AuditAction =
   | 'CREATE'
@@ -32,7 +33,12 @@ export interface AuditEntry {
   casoId?: string | null
 }
 
-export async function logAudit(entry: AuditEntry) {
+export async function logAudit(entry: AuditEntry, tx?: { historial: Prisma.HistorialDelegate }) {
+  // FASE 1 (ADR-CONCURRENCIA-001): si se pasa `tx`, la auditoría se escribe
+  // en la MISMA transacción que adquirió el lock. Antes se usaba siempre el
+  // cliente global (auto-commit en otra conexión): alargaba la tenencia del
+  // lock y podía dejar filas de auditoría "fantasma" si la tx hacía rollback.
+  const client = tx ?? prisma
   try {
     // Merge IP/userAgent/casoId into datos JSON so el reporte forense
     // y la UI de Casos los ven. (Historial table no tiene columnas
@@ -43,7 +49,7 @@ export async function logAudit(entry: AuditEntry) {
     if (entry.userAgent) datosWithMeta._userAgent = entry.userAgent
     if (entry.casoId) datosWithMeta._casoId = entry.casoId
 
-    await prisma.historial.create({
+    await client.historial.create({
       data: {
         entidad: entry.entidad,
         registroId: entry.registroId,
@@ -54,6 +60,10 @@ export async function logAudit(entry: AuditEntry) {
     })
   } catch (e) {
     logger.error({ err: e }, '[AUDIT] Failed to log')
+    // Si la auditoría corre dentro de una transacción y falla, re-lanzamos
+    // para que la tx haga rollback atómico (no dejar la operación de negocio
+    // commiteada sin su evidencia, ni una tx abortada silenciosamente).
+    if (tx) throw e
   }
 }
 

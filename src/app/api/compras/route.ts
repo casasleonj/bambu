@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Crear compra y actualizar stock atómicamente (advisory lock previene race conditions)
-    const compra = await withAdvisoryLock('COMPRA', async (tx) => {
+    const compra = await withAdvisoryLock('SECUENCIA', 'compraInsumo', async (tx) => {
       const lastCompra = await tx.compraInsumo.findFirst({ orderBy: { numero: 'desc' } })
       const nextNum = lastCompra ? parseInt(lastCompra.numero.replace('COM-', '')) + 1 : 1
 

@@ -18,7 +18,7 @@ const dtoSource = readFileSync(dtoPath, 'utf-8')
 describe('F-N7: dedup check DENTRO del lock en EntregarPedidoUseCase', () => {
   it('FIX: el use case verifica estadoEntrega === ENTREGADO dentro del callback del lock', () => {
     // El check debe estar DENTRO del executeWithLock, no antes
-    const lockOpen = useCaseSource.indexOf('executeWithLock(\'PEDIDO\'')
+    const lockOpen = useCaseSource.indexOf("executeWithLock('SECUENCIA', 'pedido'")
     const checkEntregado = useCaseSource.indexOf("estadoEntrega.get() === 'ENTREGADO'")
     const lockClose = useCaseSource.lastIndexOf('})') // cierre del executeWithLock
 

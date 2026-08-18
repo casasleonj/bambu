@@ -161,6 +161,8 @@ describe('BAMBU-LOG-004: crearPedidoHijo hereda negocioId y dirección del padre
   function makeClient(hijoCreateSpy: ReturnType<typeof vi.fn>) {
     return {
       $queryRaw: vi.fn(),
+      // FASE 8: getNextNumero ahora usa secuencia atómica (nextval).
+      $queryRawUnsafe: vi.fn().mockResolvedValue([{ nextval: BigInt(101) }]),
       pedido: {
         update: vi.fn(),
         create: hijoCreateSpy,

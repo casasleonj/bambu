@@ -10,6 +10,7 @@ import type { IPedidoRepository } from '../../domain/repositories/IPedidoReposit
 import type { IFacturaRepository } from '../../domain/repositories/IFacturaRepository'
 import type { IPagoRepository } from '../../domain/repositories/IPagoRepository'
 import type { ITransactionManager } from '../../infrastructure/transactions/PrismaTransactionManager'
+import { registrarReceivableEntry } from '@/lib/receivable-entry'
 import type { EntregarPedidoInput, EntregarPedidoResult } from '../dto'
 import { PedidoDTOMapper } from '../dto/PedidoDTOMapper'
 
@@ -35,11 +36,26 @@ export class EntregarPedidoUseCase {
     // ENTREGADO, devolvemos { deduped: true } con el pedido actual.
     // El segundo request no hace trabajo wasted.
     //
-    // El lock 'PEDIDO' (id=1 en LOCK_IDS) es el apropiado porque
-    // entrega es una transición de estado del pedido.
-    return this.txManager.executeWithLock('PEDIDO', async (tx) => {
+    // FASE 0 (ADR-CONCURRENCIA-001): lock `SECUENCIA:pedido`. La entrega
+    // crea un pedido hijo con getNextNumero(model:'pedido') MAX+1, por lo que
+    // necesita compartir el lock de secuencia de pedido con el resto de
+    // creadores (CrearPedido, venta-libre, cierre). En FASE 1/8, cuando la
+    // numeración sea atómica, se refina a `PEDIDO:{pedidoId}` (transición de
+    // estado del pedido, §6) más `SECUENCIA:pedido` solo para el hijo.
+    return this.txManager.executeWithLock('SECUENCIA', 'pedido', async (tx) => {
       const pedido = await this.pedidoRepo.findById(PedidoId.from(input.pedidoId), tx)
       if (!pedido) throw new Error('PEDIDO_NOT_FOUND')
+
+      // FASE 1 (ADR-IDEMPOTENCIA-001): dedup por clave idempotente persistida.
+      // Un replay con el mismo offlineId retorna deduped:true aunque el estado
+      // ya no sea ENTREGADO (más robusto que el dedup por estado, que depende
+      // de que el estado no se haya revertido por un camino intermedio).
+      if (input.offlineId && pedido.entregaOfflineId === input.offlineId) {
+        return {
+          pedido: PedidoDTOMapper.toResumen(pedido),
+          deduped: true,
+        }
+      }
 
       // F-N7: dedup check DENTRO del lock. Si el pedido ya está
       // ENTREGADO, devolvemos el estado actual sin hacer trabajo.
@@ -69,6 +85,7 @@ export class EntregarPedidoUseCase {
           entregadoConGps: input.entregadoConGps,
           entregadoAt: input.entregadoAt ? new Date(input.entregadoAt) : undefined,
           codigoVisita: input.codigoVisita,
+          entregaOfflineId: input.offlineId,
         },
       )
 
@@ -82,6 +99,19 @@ export class EntregarPedidoUseCase {
 
       // Persist pedido
       const updated = await this.pedidoRepo.update(pedido, tx)
+
+      // FASE FINAL (ADR-MONETARIO-001, §12): proyección de auditoría de los pagos.
+      if (input.pagos && input.pagos.length > 0) {
+        const montoPagadoEnEntrega = input.pagos.reduce((sum, p) => sum + p.monto, 0)
+        await registrarReceivableEntry(tx, {
+          pedidoId: updated.id.get(),
+          clienteId: updated.clienteId,
+          tipo: 'PAGO',
+          monto: montoPagadoEnEntrega,
+          saldoResultante: updated.saldo.toDecimal(),
+          totalPagadoResultante: updated.totalPagado.toDecimal(),
+        })
+      }
 
       // Update factura
       const factura = await this.facturaRepo.findByPedidoId(pedido.id.get(), tx)
@@ -145,12 +175,12 @@ export class EntregarPedidoUseCase {
         }
       }
 
-      logAudit({
+      await logAudit({
         entidad: 'Pedido',
         registroId: updated.id.get(),
         accion: 'UPDATE',
         datos: { accion: 'ENTREGA', estadoEntrega: updated.estadoEntrega.get(), estadoPago: updated.estadoPago.get() },
-      })
+      }, tx)
 
       return {
         pedido: PedidoDTOMapper.toResumen(updated),

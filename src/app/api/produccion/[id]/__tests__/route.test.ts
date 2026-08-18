@@ -45,6 +45,7 @@ describe('FASE F: PUT /api/produccion/[id] solo ADMIN + auditoría', () => {
   })
 
   it('usa advisory lock para serializar vs POST concurrentes', () => {
-    expect(putSource).toMatch(/pg_advisory_xact_lock/)
+    expect(putSource).toMatch(/acquireAdvisoryLockTx\(/)
+    expect(putSource).toMatch(/SECUENCIA/)
   })
 })

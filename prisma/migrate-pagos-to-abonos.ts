@@ -66,7 +66,7 @@ async function main() {
       }
 
       // Create abono using advisory lock for sequential numbering
-      await withAdvisoryLock('ABONO', async (tx) => {
+      await withAdvisoryLock('CARTERA', pedido.clienteId, async (tx) => {
         const nextNum = await getNextNumero(tx, { model: 'abono', field: 'numero' })
         await tx.abono.create({
           data: {

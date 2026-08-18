@@ -27,7 +27,12 @@ export class CrearEmbarqueUseCase {
   private readonly validation = new EmbarqueValidationService()
 
   async execute(input: CrearEmbarqueInput): Promise<EmbarqueDetalleDTO> {
-    return this.txManager.executeWithLock('EMBARQUE', async (tx) => {
+    // FASE 0 (ADR-CONCURRENCIA-001, §6 "Carga activa"): lock por trabajador-día.
+    // `numeroDia` se genera con getNextNumeroDia (MAX+1 por trabajador+fecha),
+    // por lo que el agregado concurrente es el slot del trabajador en el día,
+    // no el embarque global. Distintos trabajadores ya no se serializan entre sí.
+    const fechaStr = startOfDayBogota().toISOString().slice(0, 10)
+    return this.txManager.executeWithLock('EMBARQUE_CARGA', `${input.trabajadorId}:${fechaStr}`, async (tx) => {
       // 1. Validate worker has moto
       const trabajador = await this.trabajadorRepo.findById(input.trabajadorId, tx)
       if (!trabajador) {
@@ -111,6 +116,28 @@ export class CrearEmbarqueUseCase {
           )
         }
       }
+
+      // FASE 8 (dual-write, ADR-STOCK-001 / ADR-FISICO-001): registrar la carga
+      // en el ledger físico. EmbarqueCargaProducto.cantidad es el HECHO FÍSICO
+      // de la carga; availabilityBasis es metadata de validación (§10), NO stock.
+      await tx.embarqueCarga.create({
+        data: {
+          embarqueId: embarque.id.value,
+          // No inventar vehículo histórico (§15): el vehículo real no se
+          // registra hoy; se deja null.
+          vehiculo: null,
+          capacidadKg,
+          availabilityBasis: input.availabilityBasis ?? 'ESTIMATED',
+          productos: {
+            create: Object.entries(input.carga)
+              .filter(([, cant]) => cant > 0)
+              .map(([producto, cantidad]) => ({
+                producto,
+                cantidad,
+              })),
+          },
+        },
+      })
 
       // Re-fetch embarque with productos
       const embarqueConProductos = await this.embarqueRepo.findById(embarque.id.value, tx)

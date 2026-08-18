@@ -1,75 +1,52 @@
 import { describe, it, expect } from 'vitest'
-import { LOCK_IDS, withAdvisoryLock } from '@/lib/locks'
+import {
+  LOCK_NAMESPACES,
+  advisoryLockKey,
+  withAdvisoryLock,
+  withAdvisoryLockTx,
+  acquireAdvisoryLockTx,
+} from '@/lib/locks'
 
-describe('LOCK_IDS', () => {
-  it('defines all expected lock keys', () => {
-    expect(LOCK_IDS).toHaveProperty('PEDIDO')
-    expect(LOCK_IDS).toHaveProperty('FACTURA')
-    expect(LOCK_IDS).toHaveProperty('EMBARQUE')
-    expect(LOCK_IDS).toHaveProperty('ABONO')
-    expect(LOCK_IDS).toHaveProperty('COMPRA')
-    expect(LOCK_IDS).toHaveProperty('FACTURA_NUM')
-    expect(LOCK_IDS).toHaveProperty('CIERRE')
-    expect(LOCK_IDS).toHaveProperty('NC')
+describe('LOCK_NAMESPACES (contrato §5/§6)', () => {
+  it('define todos los namespaces del contrato', () => {
+    expect(LOCK_NAMESPACES).toContain('CARTERA')
+    expect(LOCK_NAMESPACES).toContain('PEDIDO')
+    expect(LOCK_NAMESPACES).toContain('RECOVERY_SOURCE')
+    expect(LOCK_NAMESPACES).toContain('OBLIGACION')
+    expect(LOCK_NAMESPACES).toContain('EMBARQUE_CARGA')
+    expect(LOCK_NAMESPACES).toContain('CIERRE')
+    expect(LOCK_NAMESPACES).toContain('SECUENCIA')
   })
 
-  it('has exactly 8 entries', () => {
-    expect(Object.keys(LOCK_IDS)).toHaveLength(8)
-  })
-
-  it('all values are unique', () => {
-    const values = Object.values(LOCK_IDS)
-    const uniqueValues = new Set(values)
-    expect(uniqueValues.size).toBe(values.length)
-  })
-
-  it('all values are positive integers', () => {
-    const values = Object.values(LOCK_IDS)
-    for (const value of values) {
-      expect(Number.isInteger(value)).toBe(true)
-      expect(value).toBeGreaterThan(0)
-    }
-  })
-
-  it('has sequential values from 1 to 8', () => {
-    const values = Object.values(LOCK_IDS).sort((a, b) => a - b)
-    expect(values).toEqual([1, 2, 3, 4, 5, 6, 7, 8])
-  })
-
-  it('PEDIDO lock has ID 1', () => {
-    expect(LOCK_IDS.PEDIDO).toBe(1)
-  })
-
-  it('CIERRE lock has ID 7', () => {
-    expect(LOCK_IDS.CIERRE).toBe(7)
-  })
-
-  it('NC lock has ID 8', () => {
-    expect(LOCK_IDS.NC).toBe(8)
-  })
-
-  it('all keys are valid input for withAdvisoryLock type', () => {
-    const keys = Object.keys(LOCK_IDS) as (keyof typeof LOCK_IDS)[]
-    for (const key of keys) {
-      expect(LOCK_IDS[key]).toBeDefined()
-    }
+  it('tiene exactamente 7 namespaces', () => {
+    expect(LOCK_NAMESPACES).toHaveLength(7)
   })
 })
 
-describe('withAdvisoryLock', () => {
-  it('is a function', () => {
-    expect(typeof withAdvisoryLock).toBe('function')
+describe('advisoryLockKey', () => {
+  it('deriva "namespace:entityKey" determinista', () => {
+    expect(advisoryLockKey('CARTERA', 'cliente-1')).toBe('CARTERA:cliente-1')
+    expect(advisoryLockKey('CIERRE', 'embarque-9')).toBe('CIERRE:embarque-9')
   })
+})
 
-  it('is an async function', () => {
+describe('API de locks', () => {
+  it('withAdvisoryLock es una función async', () => {
+    expect(typeof withAdvisoryLock).toBe('function')
     expect(withAdvisoryLock.constructor.name).toBe('AsyncFunction')
   })
 
-  it('is named withAdvisoryLock', () => {
-    expect(withAdvisoryLock.name).toBe('withAdvisoryLock')
+  it('withAdvisoryLock recibe (namespace, entityKey, fn)', () => {
+    expect(withAdvisoryLock.length).toBe(3)
   })
 
-  it('accepts a lock name and a callback function', () => {
-    expect(withAdvisoryLock.length).toBe(2)
+  it('withAdvisoryLockTx es la variante explícita con tx ya abierta', () => {
+    expect(typeof withAdvisoryLockTx).toBe('function')
+    expect(withAdvisoryLockTx.length).toBe(4)
+  })
+
+  it('acquireAdvisoryLockTx es el primitivo de bajo nivel', () => {
+    expect(typeof acquireAdvisoryLockTx).toBe('function')
+    expect(acquireAdvisoryLockTx.length).toBe(3)
   })
 })

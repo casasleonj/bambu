@@ -14,8 +14,8 @@ const source = readFileSync(routePath, 'utf-8')
 
 describe('F-N12: TODOS los checks pre-tx están DENTRO del lock EMBARQUE', () => {
   it('FIX: el currentEmbarque.findUnique está dentro del callback del lock', () => {
-    // El lock abre con withAdvisoryLock('EMBARQUE', async (tx) => {
-    const lockOpen = source.indexOf("withAdvisoryLock('EMBARQUE'")
+    // El lock abre con withAdvisoryLock('EMBARQUE_CARGA', async (tx) => {
+    const lockOpen = source.indexOf("withAdvisoryLock('EMBARQUE_CARGA'")
     const currentRead = source.indexOf('currentEmbarque = await tx.embarque.findUnique')
     const lockClose = source.lastIndexOf('})')  // cierre del callback del lock
 
@@ -25,7 +25,7 @@ describe('F-N12: TODOS los checks pre-tx están DENTRO del lock EMBARQUE', () =>
   })
 
   it('FIX: el dedup por offlineId está dentro del lock', () => {
-    const lockOpen = source.indexOf("withAdvisoryLock('EMBARQUE'")
+    const lockOpen = source.indexOf("withAdvisoryLock('EMBARQUE_CARGA'")
     const dedupCheck = source.indexOf('currentEmbarque.offlineId === offlineId')
     const lockClose = source.lastIndexOf('})')
 
@@ -34,7 +34,7 @@ describe('F-N12: TODOS los checks pre-tx están DENTRO del lock EMBARQUE', () =>
   })
 
   it('FIX: el check de estado (CERRADO/CANCELADO inmutable + EN_RUTA restricciones) está dentro del lock', () => {
-    const lockOpen = source.indexOf("withAdvisoryLock('EMBARQUE'")
+    const lockOpen = source.indexOf("withAdvisoryLock('EMBARQUE_CARGA'")
     const stateCheck = source.indexOf("currentEmbarque.estado === 'CERRADO' || currentEmbarque.estado === 'CANCELADO'")
     const lockClose = source.lastIndexOf('})')
 
@@ -43,7 +43,7 @@ describe('F-N12: TODOS los checks pre-tx están DENTRO del lock EMBARQUE', () =>
   })
 
   it('FIX: la validación de carga (totalUnidades ≤ maxUnidades configurable) está dentro del lock', () => {
-    const lockOpen = source.indexOf("withAdvisoryLock('EMBARQUE'")
+    const lockOpen = source.indexOf("withAdvisoryLock('EMBARQUE_CARGA'")
     const cargaCheck = source.indexOf('totalUnidades > maxUnidades')
     const lockClose = source.lastIndexOf('})')
 
@@ -53,7 +53,7 @@ describe('F-N12: TODOS los checks pre-tx están DENTRO del lock EMBARQUE', () =>
   })
 
   it('FIX: la validación de peso del trabajador está dentro del lock', () => {
-    const lockOpen = source.indexOf("withAdvisoryLock('EMBARQUE'")
+    const lockOpen = source.indexOf("withAdvisoryLock('EMBARQUE_CARGA'")
     const pesoCheck = source.indexOf('pesoKg > capacidadKg * 1.1')
     const lockClose = source.lastIndexOf('})')
 
@@ -62,7 +62,7 @@ describe('F-N12: TODOS los checks pre-tx están DENTRO del lock EMBARQUE', () =>
   })
 
   it('FIX: la validación de stock está dentro del lock', () => {
-    const lockOpen = source.indexOf("withAdvisoryLock('EMBARQUE'")
+    const lockOpen = source.indexOf("withAdvisoryLock('EMBARQUE_CARGA'")
     const stockCheck = source.indexOf('STOCK_EXCEDIDO')
     const lockClose = source.lastIndexOf('})')
 
@@ -71,7 +71,7 @@ describe('F-N12: TODOS los checks pre-tx están DENTRO del lock EMBARQUE', () =>
   })
 
   it('FIX: la validación de trabajadorId (moto) está dentro del lock', () => {
-    const lockOpen = source.indexOf("withAdvisoryLock('EMBARQUE'")
+    const lockOpen = source.indexOf("withAdvisoryLock('EMBARQUE_CARGA'")
     const motoCheck = source.indexOf('TRABAJADOR_SIN_MOTO')
     const lockClose = source.lastIndexOf('})')
 
@@ -80,7 +80,7 @@ describe('F-N12: TODOS los checks pre-tx están DENTRO del lock EMBARQUE', () =>
   })
 
   it('FIX: la validación de pedidoIds (unidades) está dentro del lock', () => {
-    const lockOpen = source.indexOf("withAdvisoryLock('EMBARQUE'")
+    const lockOpen = source.indexOf("withAdvisoryLock('EMBARQUE_CARGA'")
     const pedidoCheck = source.indexOf('unidadesActuales + unidadesNuevas')
     const lockClose = source.lastIndexOf('})')
 
@@ -96,19 +96,19 @@ describe('F-N12: NO hay checks pre-tx con prisma.* global en PUT', () => {
 
   it('FIX: no hay prisma.embarque.findUnique para currentEmbarque pre-lock', () => {
     // Encontrar el lock DEL PUT (no el del DELETE)
-    const lockOpen = putSource.indexOf("withAdvisoryLock('EMBARQUE'")
+    const lockOpen = putSource.indexOf("withAdvisoryLock('EMBARQUE_CARGA'")
     const preLockPart = putSource.substring(0, lockOpen)
     expect(preLockPart).not.toMatch(/prisma\.embarque\.findUnique/)
   })
 
   it('FIX: no hay prisma.trabajador.findUnique para validar trabajador pre-lock', () => {
-    const lockOpen = putSource.indexOf("withAdvisoryLock('EMBARQUE'")
+    const lockOpen = putSource.indexOf("withAdvisoryLock('EMBARQUE_CARGA'")
     const preLockPart = putSource.substring(0, lockOpen)
     expect(preLockPart).not.toMatch(/prisma\.trabajador\.findUnique/)
   })
 
   it('FIX: no hay prisma.pedido.findMany para validar pedidoIds pre-lock', () => {
-    const lockOpen = putSource.indexOf("withAdvisoryLock('EMBARQUE'")
+    const lockOpen = putSource.indexOf("withAdvisoryLock('EMBARQUE_CARGA'")
     const preLockPart = putSource.substring(0, lockOpen)
     expect(preLockPart).not.toMatch(/prisma\.pedido\.findMany/)
   })
@@ -169,7 +169,7 @@ describe('F-N12: el response distingue deduped vs camino normal', () => {
 
 describe('F-N12: la route sigue trabajando (no rompe flujo normal)', () => {
   it('FIX: el lock EMBARQUE sigue envolviendo toda la operación', () => {
-    expect(source).toMatch(/withAdvisoryLock\(['"]EMBARQUE['"]/)
+    expect(source).toMatch(/withAdvisoryLock\(['"]EMBARQUE_CARGA['"]/)
   })
 
   it('FIX: el update de embarque sigue al final del lock', () => {
@@ -177,7 +177,7 @@ describe('F-N12: la route sigue trabajando (no rompe flujo normal)', () => {
   })
 
   it('FIX: el updateMany de pedido (asignar al embarque) sigue dentro del lock', () => {
-    const lockOpen = source.indexOf("withAdvisoryLock('EMBARQUE'")
+    const lockOpen = source.indexOf("withAdvisoryLock('EMBARQUE_CARGA'")
     const pedidoUpdate = source.indexOf('tx.pedido.updateMany')
     const lockClose = source.lastIndexOf('})')
 
@@ -186,7 +186,7 @@ describe('F-N12: la route sigue trabajando (no rompe flujo normal)', () => {
   })
 
   it('FIX: el deleteMany + createMany de EmbarqueProducto sigue dentro del lock', () => {
-    const lockOpen = source.indexOf("withAdvisoryLock('EMBARQUE'")
+    const lockOpen = source.indexOf("withAdvisoryLock('EMBARQUE_CARGA'")
     const deleteMany = source.indexOf('tx.embarqueProducto.deleteMany')
     const lockClose = source.lastIndexOf('})')
 

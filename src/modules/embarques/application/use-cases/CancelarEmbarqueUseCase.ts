@@ -21,7 +21,10 @@ export class CancelarEmbarqueUseCase {
   ) {}
 
   async execute(input: CancelarEmbarqueInput): Promise<{ id: string; estado: string }> {
-    return this.txManager.execute(async (tx) => {
+    // FASE 0 (ADR-CONCURRENCIA-001, §6 "Carga activa"): lock `EMBARQUE_CARGA:{embarqueId}`.
+    // Antes corría sin lock (execute), permitiendo races con la cancelación
+    // inline de DELETE /api/embarques/[id] sobre el mismo embarque.
+    return this.txManager.executeWithLock('EMBARQUE_CARGA', input.id, async (tx) => {
       const embarque = await this.embarqueRepo.findById(input.id, tx)
       if (!embarque) {
         throw new Error('EMBARQUE_NOT_FOUND')
