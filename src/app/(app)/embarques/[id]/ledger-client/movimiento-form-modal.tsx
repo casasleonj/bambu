@@ -104,6 +104,7 @@ export function MovimientoFormModal({ open, onClose, onCreated, embarqueId }: Mo
               <button
                 key={t.value}
                 type="button"
+                data-testid={`movimiento-tipo-${t.value}`}
                 onClick={() => setTipo(t.value)}
                 className={`text-left px-3 py-2 rounded-lg border text-sm transition ${
                   tipo === t.value ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:bg-gray-50'
@@ -134,6 +135,7 @@ export function MovimientoFormModal({ open, onClose, onCreated, embarqueId }: Mo
             <input
               type="number"
               min={1}
+              data-testid="movimiento-cantidad-input"
               value={cantidad}
               onChange={(e) => setCantidad(e.target.value)}
               placeholder="0"
@@ -145,14 +147,14 @@ export function MovimientoFormModal({ open, onClose, onCreated, embarqueId }: Mo
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Origen (opcional)</label>
-            <select value={origen} onChange={(e) => setOrigen(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm">
+            <select data-testid="movimiento-origen-select" value={origen} onChange={(e) => setOrigen(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm">
               <option value="">—</option>
               {CUSTODIAS.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Destino (opcional)</label>
-            <select value={destino} onChange={(e) => setDestino(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm">
+            <select data-testid="movimiento-destino-select" value={destino} onChange={(e) => setDestino(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm">
               <option value="">—</option>
               {CUSTODIAS.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
@@ -199,6 +201,7 @@ export function MovimientoFormModal({ open, onClose, onCreated, embarqueId }: Mo
           Cancelar
         </button>
         <button
+          data-testid="movimiento-submit-button"
           onClick={handleSubmit}
           disabled={!puedeEnviar || submitting}
           className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"

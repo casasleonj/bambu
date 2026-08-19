@@ -89,12 +89,14 @@ export function BotellonesPanel({ embarqueId, movimientos, onCreated, canRegiste
       {!canRegister ? null : !accion ? (
         <div className="flex gap-2">
           <button
+            data-testid="botellon-recogida-button"
             onClick={() => setAccion('RECOGIDA')}
             className="flex-1 px-3 py-2.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 text-sm font-medium hover:bg-blue-100 transition"
           >
             + Registrar recogida
           </button>
           <button
+            data-testid="botellon-entrega-button"
             onClick={() => setAccion('ENTREGA')}
             className="flex-1 px-3 py-2.5 rounded-lg border border-green-200 bg-green-50 text-green-700 text-sm font-medium hover:bg-green-100 transition"
           >
@@ -111,6 +113,7 @@ export function BotellonesPanel({ embarqueId, movimientos, onCreated, canRegiste
               type="number"
               min={1}
               autoFocus
+              data-testid="botellon-cantidad-input"
               value={cantidad}
               onChange={(e) => setCantidad(e.target.value)}
               placeholder="0"
@@ -118,6 +121,7 @@ export function BotellonesPanel({ embarqueId, movimientos, onCreated, canRegiste
             />
           </div>
           <button
+            data-testid="botellon-confirmar-button"
             onClick={handleSubmit}
             disabled={!cantidadValida || submitting}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"

@@ -2,6 +2,7 @@
 
 import type { RecoveryDecision } from './types'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
+import { TIPO_STYLES } from './movimiento-timeline'
 
 function formatHora(iso: string): string {
   return new Date(iso).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
@@ -36,7 +37,7 @@ export function RecoveryPanel({ recovery }: { recovery: RecoveryDecision[] }) {
             </p>
             {esSobrante && r.sourceEvent && (
               <p className="text-xs text-gray-500 mt-0.5">
-                Origen: {r.sourceEvent.tipo} de {r.sourceEvent.cantidad} {getProductoIconConfig(r.sourceEvent.producto).label} ({formatHora(r.sourceEvent.createdAt)})
+                Origen: {TIPO_STYLES[r.sourceEvent.tipo]?.label ?? r.sourceEvent.tipo} de {r.sourceEvent.cantidad} {getProductoIconConfig(r.sourceEvent.producto).label} ({formatHora(r.sourceEvent.createdAt)})
               </p>
             )}
             <p className="text-xs text-gray-600 mt-1">{r.reason}</p>

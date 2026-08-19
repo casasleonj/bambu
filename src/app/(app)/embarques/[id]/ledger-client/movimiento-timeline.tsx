@@ -3,7 +3,7 @@
 import { getProductoIconConfig } from '@/lib/producto-iconos'
 import type { Movimiento, TipoMovimiento } from './types'
 
-const TIPO_STYLES: Record<TipoMovimiento, { label: string; badge: string; sign: '+' | '-' | '·' }> = {
+export const TIPO_STYLES: Record<TipoMovimiento, { label: string; badge: string; sign: '+' | '-' | '·' }> = {
   CARGA: { label: 'Carga', badge: 'bg-green-100 text-green-800', sign: '+' },
   RECARGA: { label: 'Recarga', badge: 'bg-green-100 text-green-800', sign: '+' },
   ENTREGA: { label: 'Entrega', badge: 'bg-blue-100 text-blue-800', sign: '-' },

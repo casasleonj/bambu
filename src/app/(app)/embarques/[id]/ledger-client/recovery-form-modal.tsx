@@ -6,6 +6,7 @@ import { Modal } from '@/components/modal'
 import { fetchResilient } from '@/lib/fetch-resilient'
 import { generateUUID } from '@/lib/uuid'
 import { PRODUCTO_ICONOS } from '@/lib/producto-iconos'
+import { TIPO_STYLES } from './movimiento-timeline'
 import type { Movimiento, RecoveryDecision, RecoveryTipo, PedidoOption } from './types'
 
 const ORIGEN_TIPOS_SOBRANTE = ['CARGA', 'RECARGA', 'CUSTODY_TRANSFER'] as const
@@ -122,6 +123,7 @@ export function RecoveryFormModal({ open, onClose, onCreated, embarqueId, movimi
         <div className="flex gap-2">
           <button
             type="button"
+            data-testid="recovery-tipo-sobrante"
             onClick={() => setTipo('SOBRANTE')}
             className={`flex-1 px-3 py-2.5 rounded-lg border text-sm font-medium ${tipo === 'SOBRANTE' ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-200'}`}
           >
@@ -129,6 +131,7 @@ export function RecoveryFormModal({ open, onClose, onCreated, embarqueId, movimi
           </button>
           <button
             type="button"
+            data-testid="recovery-tipo-faltante"
             onClick={() => setTipo('FALTANTE')}
             className={`flex-1 px-3 py-2.5 rounded-lg border text-sm font-medium ${tipo === 'FALTANTE' ? 'border-amber-500 bg-amber-50 text-amber-700' : 'border-gray-200'}`}
           >
@@ -145,6 +148,7 @@ export function RecoveryFormModal({ open, onClose, onCreated, embarqueId, movimi
               </p>
             ) : (
               <select
+                data-testid="recovery-source-select"
                 value={sourceEventId}
                 onChange={(e) => setSourceEventId(e.target.value)}
                 className="w-full px-3 py-2 border rounded-lg text-sm"
@@ -152,7 +156,7 @@ export function RecoveryFormModal({ open, onClose, onCreated, embarqueId, movimi
                 <option value="">Seleccionar...</option>
                 {candidatosSobrante.map(({ movimiento, disponible }) => (
                   <option key={movimiento.id} value={movimiento.id}>
-                    {movimiento.tipo} · {getProductoLabel(movimiento.producto)} · disponible: {disponible} de {movimiento.cantidad}
+                    {TIPO_STYLES[movimiento.tipo]?.label ?? movimiento.tipo} · {getProductoLabel(movimiento.producto)} · disponible: {disponible} de {movimiento.cantidad}
                   </option>
                 ))}
               </select>
@@ -179,6 +183,7 @@ export function RecoveryFormModal({ open, onClose, onCreated, embarqueId, movimi
             <input
               type="number"
               min={1}
+              data-testid="recovery-cantidad-input"
               value={cantidad}
               onChange={(e) => {
                 setCantidad(e.target.value)
@@ -195,6 +200,7 @@ export function RecoveryFormModal({ open, onClose, onCreated, embarqueId, movimi
           <input
             type="number"
             min={0}
+            data-testid="recovery-cantidad-aplicada-input"
             max={tipo === 'SOBRANTE' ? sourceSeleccionado?.disponible : undefined}
             value={cantidadAplicada}
             onChange={(e) => setCantidadAplicada(e.target.value)}
@@ -228,6 +234,7 @@ export function RecoveryFormModal({ open, onClose, onCreated, embarqueId, movimi
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Motivo</label>
           <textarea
+            data-testid="recovery-reason-input"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             rows={2}
@@ -242,6 +249,7 @@ export function RecoveryFormModal({ open, onClose, onCreated, embarqueId, movimi
           Cancelar
         </button>
         <button
+          data-testid="recovery-submit-button"
           onClick={handleSubmit}
           disabled={!puedeEnviar || submitting}
           className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"

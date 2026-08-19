@@ -80,6 +80,7 @@ export function LedgerTab({ embarqueId, canManage, canRegisterBotellon, pedidos 
             <h3 className="text-sm font-semibold text-gray-800">Movimientos físicos ({movimientos.length})</h3>
             {canManage && (
               <button
+                data-testid="registrar-movimiento-button"
                 onClick={() => setShowMovimientoModal(true)}
                 className="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-1 rounded hover:bg-blue-50"
               >
@@ -87,7 +88,7 @@ export function LedgerTab({ embarqueId, canManage, canRegisterBotellon, pedidos 
               </button>
             )}
           </div>
-          <div className="max-h-[28rem] overflow-y-auto">
+          <div data-testid="movimientos-timeline" className="max-h-[28rem] overflow-y-auto">
             <MovimientoTimeline movimientos={movimientos} />
           </div>
         </div>
@@ -97,6 +98,7 @@ export function LedgerTab({ embarqueId, canManage, canRegisterBotellon, pedidos 
             <h3 className="text-sm font-semibold text-gray-800">Sobrantes / Faltantes ({recovery.length})</h3>
             {canManage && (
               <button
+                data-testid="nueva-recovery-decision-button"
                 onClick={() => setShowRecoveryModal(true)}
                 className="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-1 rounded hover:bg-blue-50"
               >
@@ -104,7 +106,7 @@ export function LedgerTab({ embarqueId, canManage, canRegisterBotellon, pedidos 
               </button>
             )}
           </div>
-          <div className="max-h-[28rem] overflow-y-auto">
+          <div data-testid="recovery-panel" className="max-h-[28rem] overflow-y-auto">
             <RecoveryPanel recovery={recovery} />
           </div>
         </div>
