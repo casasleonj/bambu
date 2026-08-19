@@ -74,4 +74,26 @@ describe('endpoints del ledger/plan maestro', () => {
     expect(getBody).toMatch(/recoveryDecision\.findMany/)
     expect(getBody).toMatch(/sourceEvent: \{ select/)
   })
+
+  it('POST /api/embarques/[id]/movimientos deduplica por offlineId antes de crear (ADR-IDEMPOTENCIA-001)', () => {
+    const s = read('src/app/api/embarques/[id]/movimientos/route.ts')
+    const postStart = s.indexOf('const MovimientoSchema')
+    const postBody = s.slice(postStart)
+    const findIdx = postBody.indexOf('embarqueMovimiento.findUnique')
+    const createIdx = postBody.indexOf('embarqueMovimiento.create')
+    expect(findIdx).toBeGreaterThan(-1)
+    expect(createIdx).toBeGreaterThan(-1)
+    expect(findIdx).toBeLessThan(createIdx)
+    expect(postBody).toMatch(/deduped: true/)
+  })
+
+  it('POST /api/embarques/[id]/botellones deduplica por offlineId antes de crear (ADR-IDEMPOTENCIA-001)', () => {
+    const s = read('src/app/api/embarques/[id]/botellones/route.ts')
+    const findIdx = s.indexOf('embarqueMovimiento.findUnique')
+    const createIdx = s.indexOf('embarqueMovimiento.create')
+    expect(findIdx).toBeGreaterThan(-1)
+    expect(createIdx).toBeGreaterThan(-1)
+    expect(findIdx).toBeLessThan(createIdx)
+    expect(s).toMatch(/deduped: true/)
+  })
 })

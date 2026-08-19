@@ -216,7 +216,13 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
   })
 
   const canManage = userRole === 'ADMIN' || userRole === 'ASISTENTE'
-  const canRegisterBotellon = canManage || userRole === 'REPARTIDOR'
+  // POST /api/embarques/[id]/botellones acepta ADMIN/ASISTENTE/REPARTIDOR,
+  // pero `/embarques/[id]` está bloqueado para REPARTIDOR a nivel de proxy
+  // (view:embarques no está en su matriz de permisos — ver src/lib/permissions.ts).
+  // REPARTIDOR nunca llega a esta página, así que el botón de botellones
+  // se limita a canManage aquí. Una vista de botellones para REPARTIDOR
+  // requeriría una ruta dedicada bajo /repartidor, no reusar esta página.
+  const canRegisterBotellon = canManage
   const isEditable = embarque.estado === 'ABIERTO' || embarque.estado === 'EN_RUTA'
   const isOpen = embarque.estado === 'ABIERTO'
   const isEnRuta = embarque.estado === 'EN_RUTA'

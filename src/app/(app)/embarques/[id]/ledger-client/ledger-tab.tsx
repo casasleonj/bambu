@@ -66,7 +66,7 @@ export function LedgerTab({ embarqueId, canManage, canRegisterBotellon, pedidos 
   }
 
   return (
-    <div className="p-4 space-y-4">
+    <div data-testid="tab-fisico-panel" className="p-4 space-y-4">
       <BotellonesPanel
         embarqueId={embarqueId}
         movimientos={movimientos}
@@ -82,7 +82,7 @@ export function LedgerTab({ embarqueId, canManage, canRegisterBotellon, pedidos 
               <button
                 data-testid="registrar-movimiento-button"
                 onClick={() => setShowMovimientoModal(true)}
-                className="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-1 rounded hover:bg-blue-50"
+                className="min-h-[44px] flex items-center text-xs text-blue-600 hover:text-blue-800 font-medium px-3 rounded hover:bg-blue-50"
               >
                 + Registrar
               </button>
@@ -100,7 +100,7 @@ export function LedgerTab({ embarqueId, canManage, canRegisterBotellon, pedidos 
               <button
                 data-testid="nueva-recovery-decision-button"
                 onClick={() => setShowRecoveryModal(true)}
-                className="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-1 rounded hover:bg-blue-50"
+                className="min-h-[44px] flex items-center text-xs text-blue-600 hover:text-blue-800 font-medium px-3 rounded hover:bg-blue-50"
               >
                 + Nueva decisión
               </button>

@@ -91,14 +91,14 @@ export function BotellonesPanel({ embarqueId, movimientos, onCreated, canRegiste
           <button
             data-testid="botellon-recogida-button"
             onClick={() => setAccion('RECOGIDA')}
-            className="flex-1 px-3 py-2.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 text-sm font-medium hover:bg-blue-100 transition"
+            className="flex-1 min-h-[44px] px-3 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 text-sm font-medium hover:bg-blue-100 transition"
           >
             + Registrar recogida
           </button>
           <button
             data-testid="botellon-entrega-button"
             onClick={() => setAccion('ENTREGA')}
-            className="flex-1 px-3 py-2.5 rounded-lg border border-green-200 bg-green-50 text-green-700 text-sm font-medium hover:bg-green-100 transition"
+            className="flex-1 min-h-[44px] px-3 rounded-lg border border-green-200 bg-green-50 text-green-700 text-sm font-medium hover:bg-green-100 transition"
           >
             + Registrar entrega
           </button>
@@ -124,14 +124,14 @@ export function BotellonesPanel({ embarqueId, movimientos, onCreated, canRegiste
             data-testid="botellon-confirmar-button"
             onClick={handleSubmit}
             disabled={!cantidadValida || submitting}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+            className="min-h-[44px] min-w-[44px] px-4 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
           >
             {submitting ? '...' : 'Confirmar'}
           </button>
           <button
             onClick={() => { setAccion(null); setCantidad('') }}
             disabled={submitting}
-            className="px-3 py-2 border rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"
+            className="min-h-[44px] min-w-[44px] px-3 border rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"
           >
             ✕
           </button>
