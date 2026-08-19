@@ -17,6 +17,7 @@ import { generateUUID } from '@/lib/uuid'
 import { getCapacidadInfo, PESOS_KG } from '@/lib/embarque-capacidad'
 import { startOfDayBogota } from '@/lib/dates'
 import { EmbarqueFormModal } from '../embarques-client/embarque-form-modal'
+import { LedgerTab } from './ledger-client/ledger-tab'
 import type { EmbarqueDetalle, PedidoResumen } from './types'
 import type { Trabajador, Ruta, EmbarqueEditable, Pedido } from '../embarques-client/types'
 
@@ -202,7 +203,7 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
   const [pedidos, setPedidos] = useState(embarque.pedidos)
   const [removingId, setRemovingId] = useState<string | null>(null)
   const [submittingAction, setSubmittingAction] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'pedidos' | 'clientes'>('pedidos')
+  const [activeTab, setActiveTab] = useState<'pedidos' | 'clientes' | 'fisico'>('pedidos')
   const [showAssignModal, setShowAssignModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [availablePedidos, setAvailablePedidos] = useState<Pedido[]>([])
@@ -215,6 +216,7 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
   })
 
   const canManage = userRole === 'ADMIN' || userRole === 'ASISTENTE'
+  const canRegisterBotellon = canManage || userRole === 'REPARTIDOR'
   const isEditable = embarque.estado === 'ABIERTO' || embarque.estado === 'EN_RUTA'
   const isOpen = embarque.estado === 'ABIERTO'
   const isEnRuta = embarque.estado === 'EN_RUTA'
@@ -629,9 +631,27 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
             >
               Clientes ({clientesUnicos.length})
             </button>
+            <button
+              data-testid="tab-fisico"
+              onClick={() => setActiveTab('fisico')}
+              className={`px-6 py-3 text-sm font-medium transition ${
+                activeTab === 'fisico'
+                  ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              Físico
+            </button>
           </div>
 
-          {activeTab === 'pedidos' ? (
+          {activeTab === 'fisico' ? (
+            <LedgerTab
+              embarqueId={embarque.id}
+              canManage={canManage}
+              canRegisterBotellon={canRegisterBotellon}
+              pedidos={pedidos.map((p) => ({ id: p.id, numero: p.numero }))}
+            />
+          ) : activeTab === 'pedidos' ? (
             <>
               {/* Desktop table */}
               <div className="hidden md:block overflow-x-auto">

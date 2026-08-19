@@ -54,4 +54,24 @@ describe('endpoints del ledger/plan maestro', () => {
     expect(s).toMatch(/validarMovimientoFisico/)
     expect(s).toMatch(/AJUSTE_AUTORIZADO/)
   })
+
+  it('GET /api/embarques/[id]/movimientos exige requireOwnership antes de listar', () => {
+    const s = read('src/app/api/embarques/[id]/movimientos/route.ts')
+    const getStart = s.indexOf('export async function GET')
+    const getBody = s.slice(getStart)
+    expect(getBody).toMatch(/requireAuth\(\)/)
+    expect(getBody).toMatch(/requireOwnership\('embarque', id/)
+    expect(getBody).toMatch(/embarqueMovimiento\.findMany/)
+    expect(getBody).toMatch(/orderBy: \{ createdAt: 'desc' \}/)
+  })
+
+  it('GET /api/embarques/[id]/recovery exige requireOwnership antes de listar', () => {
+    const s = read('src/app/api/embarques/[id]/recovery/route.ts')
+    const getStart = s.indexOf('export async function GET')
+    const getBody = s.slice(getStart)
+    expect(getBody).toMatch(/requireAuth\(\)/)
+    expect(getBody).toMatch(/requireOwnership\('embarque', id/)
+    expect(getBody).toMatch(/recoveryDecision\.findMany/)
+    expect(getBody).toMatch(/sourceEvent: \{ select/)
+  })
 })
