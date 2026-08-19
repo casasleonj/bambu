@@ -1,11 +1,43 @@
 import { z } from 'zod'
 import { NextRequest } from 'next/server'
-import { requireAuth, requireRole } from '@/lib/auth-check'
+import { prisma } from '@/lib/prisma'
+import { requireAuth, requireRole, requireOwnership } from '@/lib/auth-check'
 import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { formatZodError } from '@/lib/utils'
 import { logger } from '@/lib/logger'
 import { CrearRecoveryDecisionUseCase } from '@/modules/embarques/application/use-cases/CrearRecoveryDecisionUseCase'
+
+/**
+ * GET /api/embarques/[id]/recovery — lista las RecoveryDecision del embarque
+ * (contrato §3/§4), más reciente primero. Mismo control de acceso que
+ * GET /api/embarques/[id].
+ */
+export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const authResult = await requireAuth()
+  if (authResult instanceof Response) return authResult
+  const { id } = await params
+  const session = authResult as { user?: { id?: string; role?: string } }
+  const hasAccess = await requireOwnership('embarque', id, { id: session.user?.id || '', role: session.user?.role })
+  if (!hasAccess) return apiError('Forbidden', 403)
+
+  try {
+    const recovery = await prisma.recoveryDecision.findMany({
+      where: { embarqueId: id },
+      include: {
+        sourceEvent: { select: { id: true, tipo: true, producto: true, cantidad: true, createdAt: true } },
+        pedidoOrigen: { select: { id: true, numero: true } },
+        pedidoDestino: { select: { id: true, numero: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+
+    return apiSuccess({ recovery })
+  } catch (error) {
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error listando recovery decisions')
+    return apiError('Error listando recovery decisions', 500)
+  }
+}
 
 const RecoverySchema = z.object({
   tipo: z.enum(['SOBRANTE', 'FALTANTE']),

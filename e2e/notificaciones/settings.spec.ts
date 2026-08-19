@@ -11,8 +11,8 @@ test.describe('push settings page', () => {
   })
 
   test('muestra seccion de notificaciones push', async ({ page }) => {
-    await expect(page.locator('h2:has-text("Notificaciones push")')).toBeVisible()
     await expect(page.locator('[data-testid="push-settings"]')).toBeVisible()
+    await expect(page.locator('[data-testid="push-settings"] h2:has-text("Notificaciones")')).toBeVisible()
   })
 
   test('no muestra banner de notificaciones en el header', async ({ page }) => {

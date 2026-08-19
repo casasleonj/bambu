@@ -51,6 +51,18 @@ export async function POST(
       return apiError(errores.join('; '), 400)
     }
 
+    // Idempotencia (ADR-IDEMPOTENCIA-001, contrato §14): un retry con el
+    // mismo offlineId debe devolver el resultado ya creado, no un 500 por
+    // violación del constraint único de offlineId.
+    if (parsed.data.offlineId) {
+      const existente = await prisma.embarqueMovimiento.findUnique({
+        where: { offlineId: parsed.data.offlineId },
+      })
+      if (existente) {
+        return apiSuccess({ movimiento: existente, deduped: true })
+      }
+    }
+
     const creado = await prisma.embarqueMovimiento.create({
       data: {
         embarqueId: id,

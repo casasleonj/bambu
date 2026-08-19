@@ -106,7 +106,7 @@ describe('usePushOptIn', () => {
     await waitFor(() => expect(result.current.shouldShow).toBe(false))
   })
 
-  it('dismiss persiste flag y oculta toast', async () => {
+  it('dismiss persiste flag permanente y oculta toast', async () => {
     const { result } = renderHook(() => usePushOptIn())
     await waitFor(() => expect(result.current.shouldShow).toBe(true))
     act(() => {
@@ -115,6 +115,31 @@ describe('usePushOptIn', () => {
     await waitFor(() => expect(result.current.shouldShow).toBe(false))
     expect(localStorage.getItem('push-opt-in-dismissed')).toBe('1')
     expect(sessionStorage.getItem('push-opt-in-shown-this-session')).toBe('1')
+  })
+
+  it('remindLater NO persiste flag permanente, solo oculta el toast por esta sesión', async () => {
+    const { result } = renderHook(() => usePushOptIn())
+    await waitFor(() => expect(result.current.shouldShow).toBe(true))
+    act(() => {
+      result.current.remindLater()
+    })
+    await waitFor(() => expect(result.current.shouldShow).toBe(false))
+    expect(localStorage.getItem('push-opt-in-dismissed')).toBeNull()
+    expect(sessionStorage.getItem('push-opt-in-shown-this-session')).toBe('1')
+  })
+
+  it('tras remindLater, el toast vuelve a poder mostrarse en una sesión nueva', async () => {
+    const { result } = renderHook(() => usePushOptIn())
+    await waitFor(() => expect(result.current.shouldShow).toBe(true))
+    act(() => {
+      result.current.remindLater()
+    })
+    await waitFor(() => expect(result.current.shouldShow).toBe(false))
+
+    // Simula una sesión nueva: sessionStorage se limpia, localStorage no.
+    sessionStorage.clear()
+    const { result: result2 } = renderHook(() => usePushOptIn())
+    await waitFor(() => expect(result2.current.shouldShow).toBe(true))
   })
 
   it('no muestra toast si fue dismissed previamente', async () => {

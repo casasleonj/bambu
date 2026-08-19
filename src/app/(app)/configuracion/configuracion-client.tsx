@@ -529,7 +529,7 @@ export default function ConfiguracionClient({ initialData }: ConfiguracionClient
       </Tabs>
 
       {/* Push notifications */}
-      <Card>
+      <Card data-testid="push-settings">
         <CardContent className="p-6">
           <div className="flex items-center gap-2 mb-4">
             <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">

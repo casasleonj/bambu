@@ -46,7 +46,10 @@ function safeSessionSet(key: string, value: string): void {
 export interface UsePushOptInReturn {
   shouldShow: boolean
   accept: () => Promise<void>
+  /** Descarte permanente (botón "Cerrar"): no vuelve a mostrarse en ninguna sesión futura. */
   dismiss: () => void
+  /** Descarte de esta sesión (botón "Más tarde" / auto-dismiss): puede reaparecer en la próxima sesión. */
+  remindLater: () => void
   loading: boolean
   error: string | null
 }
@@ -107,10 +110,20 @@ export function usePushOptIn(): UsePushOptInReturn {
     setShownThisSession(true)
   }, [])
 
+  // "Más tarde": solo oculta el toast por lo que resta de esta sesión
+  // (sessionStorage). A diferencia de dismiss(), NO escribe el flag
+  // permanente en localStorage, para que el opt-in pueda volver a
+  // ofrecerse en la próxima sesión (spec §7.1, paso 9).
+  const remindLater = useCallback(() => {
+    safeSessionSet(SHOWN_SESSION_KEY, '1')
+    setShownThisSession(true)
+  }, [])
+
   return {
     shouldShow,
     accept,
     dismiss,
+    remindLater,
     loading,
     error,
   }
