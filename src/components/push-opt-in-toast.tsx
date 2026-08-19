@@ -6,20 +6,22 @@ import { usePushOptIn } from '@/hooks/use-push-opt-in'
 const AUTO_DISMISS_MS = 8000
 
 export function PushOptInToast() {
-  const { shouldShow, accept, dismiss, loading, error } = usePushOptIn()
+  const { shouldShow, accept, dismiss, remindLater, loading, error } = usePushOptIn()
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (!shouldShow) return
+    // Un toast ignorado no es un rechazo explícito: se comporta como
+    // "Más tarde" (puede reaparecer la próxima sesión), no como "Cerrar".
     timeoutRef.current = setTimeout(() => {
-      dismiss()
+      remindLater()
     }, AUTO_DISMISS_MS)
     return () => {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current)
       }
     }
-  }, [shouldShow, dismiss])
+  }, [shouldShow, remindLater])
 
   if (!shouldShow) return null
 
@@ -66,7 +68,8 @@ export function PushOptInToast() {
         </button>
         <button
           type="button"
-          onClick={dismiss}
+          onClick={remindLater}
+          data-testid="push-opt-in-later"
           className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
         >
           Más tarde

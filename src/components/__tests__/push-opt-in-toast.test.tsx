@@ -16,6 +16,7 @@ describe('PushOptInToast', () => {
       shouldShow: true,
       accept: vi.fn(),
       dismiss: vi.fn(),
+      remindLater: vi.fn(),
       loading: false,
       error: null,
     })
@@ -29,6 +30,7 @@ describe('PushOptInToast', () => {
       shouldShow: false,
       accept: vi.fn(),
       dismiss: vi.fn(),
+      remindLater: vi.fn(),
       loading: false,
       error: null,
     })
@@ -42,6 +44,7 @@ describe('PushOptInToast', () => {
       shouldShow: true,
       accept,
       dismiss: vi.fn(),
+      remindLater: vi.fn(),
       loading: false,
       error: null,
     })
@@ -50,18 +53,38 @@ describe('PushOptInToast', () => {
     expect(accept).toHaveBeenCalled()
   })
 
-  it('llama dismiss al hacer clic en Mas tarde', () => {
+  it('llama remindLater (no dismiss) al hacer clic en Más tarde', () => {
     const dismiss = vi.fn()
+    const remindLater = vi.fn()
     mockedUsePushOptIn.mockReturnValue({
       shouldShow: true,
       accept: vi.fn(),
       dismiss,
+      remindLater,
       loading: false,
       error: null,
     })
     render(<PushOptInToast />)
     fireEvent.click(screen.getByText('Más tarde'))
+    expect(remindLater).toHaveBeenCalled()
+    expect(dismiss).not.toHaveBeenCalled()
+  })
+
+  it('llama dismiss (no remindLater) al hacer clic en Cerrar', () => {
+    const dismiss = vi.fn()
+    const remindLater = vi.fn()
+    mockedUsePushOptIn.mockReturnValue({
+      shouldShow: true,
+      accept: vi.fn(),
+      dismiss,
+      remindLater,
+      loading: false,
+      error: null,
+    })
+    render(<PushOptInToast />)
+    fireEvent.click(screen.getByLabelText('Cerrar'))
     expect(dismiss).toHaveBeenCalled()
+    expect(remindLater).not.toHaveBeenCalled()
   })
 
   it('deshabilita el boton y muestra texto de carga cuando loading es true', () => {
@@ -69,6 +92,7 @@ describe('PushOptInToast', () => {
       shouldShow: true,
       accept: vi.fn(),
       dismiss: vi.fn(),
+      remindLater: vi.fn(),
       loading: true,
       error: null,
     })
@@ -83,10 +107,30 @@ describe('PushOptInToast', () => {
       shouldShow: true,
       accept: vi.fn(),
       dismiss: vi.fn(),
+      remindLater: vi.fn(),
       loading: false,
       error: 'Error de conexión',
     })
     render(<PushOptInToast />)
     expect(screen.getByText('Error de conexión')).toBeInTheDocument()
+  })
+
+  it('auto-dismiss por timeout llama remindLater, no dismiss', () => {
+    vi.useFakeTimers()
+    const dismiss = vi.fn()
+    const remindLater = vi.fn()
+    mockedUsePushOptIn.mockReturnValue({
+      shouldShow: true,
+      accept: vi.fn(),
+      dismiss,
+      remindLater,
+      loading: false,
+      error: null,
+    })
+    render(<PushOptInToast />)
+    vi.advanceTimersByTime(8000)
+    expect(remindLater).toHaveBeenCalled()
+    expect(dismiss).not.toHaveBeenCalled()
+    vi.useRealTimers()
   })
 })
