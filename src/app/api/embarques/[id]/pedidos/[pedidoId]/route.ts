@@ -47,7 +47,12 @@ export async function DELETE(
         select: { id: true, embarqueId: true, numero: true, estadoEntrega: true },
       })
       if (!pedido) throw new Error('PEDIDO_NOT_FOUND')
-      if (pedido.embarqueId !== id) throw new Error('PEDIDO_NO_PERTENECE')
+      if (pedido.embarqueId !== id) {
+        // Idempotencia offline-first: el pedido ya no está en este embarque
+        // (removido en un intento previo, o reasignado a otro). Retornar éxito,
+        // no un 400 que dejaría la request atascada en la cola de sync.
+        return { embarque, pedido, alreadyRemoved: true as const }
+      }
       if (pedido.estadoEntrega === 'ENTREGADO' || pedido.estadoEntrega === 'ANULADO' || pedido.estadoEntrega === 'CANCELADO') {
         throw new Error('PEDIDO_TERMINAL')
       }
@@ -62,8 +67,12 @@ export async function DELETE(
         select: { id: true, numero: true, estadoEntrega: true },
       })
 
-      return { embarque, pedido: updated }
+      return { embarque, pedido: updated, alreadyRemoved: false as const }
     })
+
+    if (result.alreadyRemoved) {
+      return apiSuccess({ embarqueId: id, pedidoId, estadoEntrega: result.pedido.estadoEntrega, deduped: true })
+    }
 
     logAudit({
       entidad: 'Embarque',
@@ -96,7 +105,6 @@ export async function DELETE(
     if (message === 'EMBARQUE_NOT_FOUND') return apiError('Embarque no encontrado', 404)
     if (message === 'EMBARQUE_NOT_EDITABLE') return apiError('El embarque está cerrado o cancelado', 400)
     if (message === 'PEDIDO_NOT_FOUND') return apiError('Pedido no encontrado', 404)
-    if (message === 'PEDIDO_NO_PERTENECE') return apiError('El pedido no pertenece a este embarque', 400)
     if (message === 'PEDIDO_TERMINAL') return apiError('No se puede remover un pedido ya entregado/anulado/cancelado', 400)
     logger.error({ err: message, embarqueId: id, pedidoId }, 'Error removiendo pedido de embarque')
     return apiError('Error removiendo pedido del embarque', 500)

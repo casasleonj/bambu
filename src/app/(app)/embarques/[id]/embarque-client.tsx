@@ -256,23 +256,20 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
     if (!ok) return
 
     setRemovingId(pedido.id)
-    try {
-      const res = await fetch(`/api/embarques/${embarque.id}/pedidos/${pedido.id}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      })
-      const data = await res.json()
-      if (data.success) {
-        toast.success(`Pedido #${pedido.numero} removido del embarque`)
-        setPedidos((prev) => prev.filter((p) => p.id !== pedido.id))
-      } else {
-        toast.error(data.error?.message || 'Error removiendo pedido')
-      }
-    } catch {
-      toast.error('Error de conexión')
-    } finally {
-      setRemovingId(null)
+    const result = await fetchResilient<{ success: boolean }>(
+      `/api/embarques/${embarque.id}/pedidos/${pedido.id}`,
+      { method: 'DELETE', localEndpoint: 'quitar-pedido-embarque' }
+    )
+    if (result.status === 'offline') {
+      toast.info('Sin conexión. La remoción se guardó y se aplicará al recuperar la red.')
+      setPedidos((prev) => prev.filter((p) => p.id !== pedido.id))
+    } else if (result.status === 'error') {
+      toast.error(result.error)
+    } else {
+      toast.success(`Pedido #${pedido.numero} removido del embarque`)
+      setPedidos((prev) => prev.filter((p) => p.id !== pedido.id))
     }
+    setRemovingId(null)
   }, [canManage, isEditable, confirm, embarque.id, embarque.numero, embarque.numeroDia])
 
   const handleEnviar = async () => {
