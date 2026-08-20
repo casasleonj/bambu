@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
       totalPages: result.totalPages,
       page: result.page,
     })
-  } catch (error) {
+  } catch (_error) {
     return apiError('Error cargando clientes')
   }
 }

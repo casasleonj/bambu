@@ -38,7 +38,7 @@ export async function GET(
     if (!caso) return apiError('Caso no encontrado', 404)
 
     return apiSuccess({ caso })
-  } catch (error) {
+  } catch (_error) {
     return apiError('Error cargando caso')
   }
 }

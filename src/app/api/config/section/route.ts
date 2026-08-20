@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
     revalidateConfigCache()
 
     return apiSuccess({ configs }, 200)
-  } catch (error) {
+  } catch (_error) {
     return apiError('Error guardando configuración', 500)
   }
 }

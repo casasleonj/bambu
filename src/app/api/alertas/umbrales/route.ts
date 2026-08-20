@@ -25,7 +25,7 @@ export async function GET(_request: NextRequest) {
   try {
     const umbrales = await getUmbralesAlertas()
     return apiSuccess(umbrales)
-  } catch (error) {
+  } catch (_error) {
     return apiError('Error leyendo umbrales', 500)
   }
 }

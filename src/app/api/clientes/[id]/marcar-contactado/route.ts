@@ -77,7 +77,7 @@ export async function POST(
       ultimaLlamada: new Date().toISOString(),
       mensaje: 'Marcado como contactado. El score sigue acumulando si no hay pedido nuevo.',
     })
-  } catch (err) {
+  } catch (_err) {
     return apiError('Error al marcar contactado', 500)
   }
 }

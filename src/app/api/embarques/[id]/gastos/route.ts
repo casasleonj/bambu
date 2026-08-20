@@ -154,7 +154,7 @@ export async function DELETE(
     })
 
     return apiSuccess({ message: 'Gasto eliminado' })
-  } catch (error) {
+  } catch (_error) {
     return apiError('Error eliminando gasto', 500)
   }
 }

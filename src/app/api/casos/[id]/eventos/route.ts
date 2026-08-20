@@ -57,7 +57,7 @@ export async function POST(
     })
 
     return apiSuccess({ evento }, 201)
-  } catch (error) {
+  } catch (_error) {
     return apiError('Error agregando evento')
   }
 }

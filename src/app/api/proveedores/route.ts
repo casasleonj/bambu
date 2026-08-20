@@ -16,7 +16,7 @@ export async function GET(_request: NextRequest) {
       orderBy: { nombre: 'asc' },
     })
     return apiSuccess({ proveedores })
-  } catch (error) {
+  } catch (_error) {
     return apiError('Error cargando proveedores')
   }
 }
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
     }).catch(() => {})
 
     return apiSuccess({ proveedor }, 201)
-  } catch (error) {
+  } catch (_error) {
     return apiError('Error creando proveedor')
   }
 }

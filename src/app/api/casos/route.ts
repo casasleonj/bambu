@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
     })
 
     return apiSuccess({ casos })
-  } catch (error) {
+  } catch (_error) {
     return apiError('Error cargando casos')
   }
 }
@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
     })
 
     return apiSuccess({ caso }, 201)
-  } catch (error) {
+  } catch (_error) {
     return apiError('Error creando caso')
   }
 }

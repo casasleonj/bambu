@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
     })
 
     return apiSuccess({ cierres })
-  } catch (error) {
+  } catch (_error) {
     return apiError('Error', 500)
   }
 }

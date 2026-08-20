@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
 
     const coords = parseGoogleMapsLink(expanded)
     return apiSuccess({ url: expanded, coords })
-  } catch (error) {
+  } catch (_error) {
     return apiError('Error expandiendo link')
   }
 }

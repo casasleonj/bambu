@@ -65,7 +65,7 @@ export async function GET(_request: NextRequest) {
     }
 
     return apiSuccess(stats)
-  } catch (error) {
+  } catch (_error) {
     return apiError('Error cargando estadisticas de casos')
   }
 }

@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
     
     const configs = await prisma.config.findMany()
     return apiSuccess({ configs })
-  } catch (error) {
+  } catch (_error) {
     return apiError('Error', 500)
   }
 }
@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
     publishRealtimeEvent('config.updated', config.id).catch(() => {})
 
     return apiSuccess({ config }, 201)
-  } catch (error) {
+  } catch (_error) {
     return apiError('Error', 500)
   }
 }
