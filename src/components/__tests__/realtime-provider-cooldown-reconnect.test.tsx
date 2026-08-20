@@ -28,7 +28,7 @@ function installMock() {
 }
 function uninstallMock() {
   MockEventSource.reset()
-  // @ts-expect-error
+  // @ts-expect-error -- restaura a estado sin EventSource entre tests
   globalThis.EventSource = undefined
 }
 

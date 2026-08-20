@@ -245,6 +245,11 @@ export default function ConfiguracionClient({ initialData }: ConfiguracionClient
         setSectionState(prev => ({ ...prev, [sectionId]: 'saved' }))
         setLastSavedAt(new Date())
         try {
+          // saveSection es un closure async invocado solo tras un await
+          // fetch() (evento/timer debounced), nunca durante render; el
+          // compilador no puede probar eso a través de la cadena de
+          // closures scheduleSave/setTimeout.
+          // eslint-disable-next-line react-hooks/purity
           localStorage.setItem('configLastSaved', Date.now().toString())
         } catch {
           // localStorage may be unavailable (incognito, full storage)

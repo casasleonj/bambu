@@ -21,9 +21,17 @@ interface FiadoRow {
   telefonoCli: string
   deudaTotal: number
   pedidosFiados: Pedido[]
-  diasFiado: number
+  masAntiguoFecha: Date
   ultimoPedido: Date
   limitePedidosFiados?: number | null
+}
+
+/** Días transcurridos desde `fecha`. Se calcula en cada render (no
+ *  memoizado) para que nunca quede stale mientras la pestaña sigue
+ *  abierta -- calcularlo dentro de un useMemo dependiente solo de los
+ *  datos del pedido lo congelaría en el valor del momento del cálculo. */
+export function diasFiadoDesde(fecha: Date): number {
+  return Math.floor((Date.now() - fecha.getTime()) / (1000 * 60 * 60 * 24))
 }
 
 interface FiadosTableProps {
@@ -98,20 +106,19 @@ export function FiadosTable({
             telefonoCli: p.telefonoCli,
             deudaTotal: Number(p.saldo),
             pedidosFiados: [p],
-            diasFiado: 0,
+            masAntiguoFecha: new Date(p.fecha),
             ultimoPedido: new Date(p.fecha),
             limitePedidosFiados: cliente?.limitePedidosFiados,
           })
         }
       })
 
-    // Calcular días fiado (desde el pedido más antiguo)
+    // Fecha del pedido más antiguo (para calcular días fiado en cada render)
     clientesMap.forEach((row) => {
-      const masAntiguo = row.pedidosFiados.reduce((min, p) =>
+      row.masAntiguoFecha = row.pedidosFiados.reduce((min, p) =>
         new Date(p.fecha) < min ? new Date(p.fecha) : min,
         new Date(row.pedidosFiados[0].fecha)
       )
-      row.diasFiado = Math.floor((Date.now() - masAntiguo.getTime()) / (1000 * 60 * 60 * 24))
     })
 
     return Array.from(clientesMap.values())
@@ -125,10 +132,11 @@ export function FiadosTable({
       row.telefonoCli?.includes(searchTerm)
     const matchMin = !minDeuda || row.deudaTotal >= Number(minDeuda)
     const matchMax = !maxDeuda || row.deudaTotal <= Number(maxDeuda)
+    const rowDiasFiado = diasFiadoDesde(row.masAntiguoFecha)
     const matchDias = diasFiado === 'todos' ||
-      (diasFiado === '0-7' && row.diasFiado <= 7) ||
-      (diasFiado === '8-30' && row.diasFiado > 7 && row.diasFiado <= 30) ||
-      (diasFiado === '30+' && row.diasFiado > 30)
+      (diasFiado === '0-7' && rowDiasFiado <= 7) ||
+      (diasFiado === '8-30' && rowDiasFiado > 7 && rowDiasFiado <= 30) ||
+      (diasFiado === '30+' && rowDiasFiado > 30)
     return matchSearch && matchMin && matchMax && matchDias
   })
 
@@ -446,8 +454,8 @@ export function FiadosTable({
                       })()}
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <span className={`text-sm font-medium ${row.diasFiado > 30 ? 'text-red-600' : row.diasFiado > 7 ? 'text-amber-600' : 'text-green-600'}`}>
-                        {row.diasFiado} días
+                      <span className={`text-sm font-medium ${diasFiadoDesde(row.masAntiguoFecha) > 30 ? 'text-red-600' : diasFiadoDesde(row.masAntiguoFecha) > 7 ? 'text-amber-600' : 'text-green-600'}`}>
+                        {diasFiadoDesde(row.masAntiguoFecha)} días
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">
@@ -642,8 +650,8 @@ export function FiadosTable({
                         : 'text-gray-500'
                     return <p className={`text-xs ${badgeColor}`}>{estado.count}/{estado.limite} fiados</p>
                   })()}
-                  <p className={`text-xs ${row.diasFiado > 30 ? 'text-red-600' : row.diasFiado > 7 ? 'text-amber-600' : 'text-green-600'}`}>
-                    {row.diasFiado} días
+                  <p className={`text-xs ${diasFiadoDesde(row.masAntiguoFecha) > 30 ? 'text-red-600' : diasFiadoDesde(row.masAntiguoFecha) > 7 ? 'text-amber-600' : 'text-green-600'}`}>
+                    {diasFiadoDesde(row.masAntiguoFecha)} días
                   </p>
                 </div>
               </div>
