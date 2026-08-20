@@ -526,7 +526,7 @@ export default function CerrarEmbarqueClient() {
               <p className="text-sm text-gray-500">
                 {embarque.trabajador.nombre}
                 {embarque.ruta && ` · ${embarque.ruta.nombre}`}
-                {embarque.horaSalida && ` · Salió: ${new Date(embarque.horaSalida).toLocaleTimeString()}`}
+                {embarque.horaSalida && ` · Salió: ${new Date(embarque.horaSalida).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}`}
               </p>
             </div>
             <div className={`px-3 py-1.5 rounded-lg border text-sm ${capacidad.color}`}>

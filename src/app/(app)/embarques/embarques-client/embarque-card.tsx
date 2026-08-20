@@ -76,7 +76,7 @@ export function EmbarqueCard({ embarque }: { embarque: Embarque }) {
           <p>{embarque.pedidos?.length || 0} pedidos asignados</p>
         )}
         {embarque.horaSalida && (
-          <p>Salida: {new Date(embarque.horaSalida).toLocaleTimeString()}</p>
+          <p>Salida: {new Date(embarque.horaSalida).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}</p>
         )}
         {embarque.baseDinero > 0 && (
           <p className="text-xs text-amber-600">Base: ${embarque.baseDinero.toLocaleString()}</p>

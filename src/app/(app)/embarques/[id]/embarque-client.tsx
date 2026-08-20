@@ -605,7 +605,7 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
                 <p className="text-sm font-medium text-gray-800">Embarque cerrado</p>
                 <p className="text-xs text-gray-500">
                   {embarque.horaLlegada
-                    ? `Llegada: ${new Date(embarque.horaLlegada).toLocaleTimeString()}`
+                    ? `Llegada: ${new Date(embarque.horaLlegada).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}`
                     : 'Cierre registrado'}
                   {embarque.dineroEntregado > 0 && ` · Dinero entregado: `}
                   {embarque.dineroEntregado > 0 && (
