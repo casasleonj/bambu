@@ -48,7 +48,6 @@ export function addFinding(f) {
   const id = `F-${String(findingsCounter).padStart(3, '0')}`
   const finding = { ...f, id, timestamp: new Date().toISOString() }
   appendFileSync(FINDINGS_FILE, JSON.stringify(finding) + '\n', 'utf-8')
-  // eslint-disable-next-line no-console
   console.log(`[${id}] [${f.severity}] [${f.module}] ${f.title}`)
   return id
 }

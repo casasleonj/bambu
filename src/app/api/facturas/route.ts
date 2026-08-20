@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     const hasta = searchParams.get('hasta')
     const all = searchParams.get('all')
 
-    let where: Record<string, unknown> = pendiente ? { saldo: { gt: 0 } } : {}
+    const where: Record<string, unknown> = pendiente ? { saldo: { gt: 0 } } : {}
     if (all !== 'true') {
       const dateFilter = buildDateRangeFilter(desde, hasta)
       if (dateFilter) {

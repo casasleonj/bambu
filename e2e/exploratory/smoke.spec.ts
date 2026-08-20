@@ -115,8 +115,6 @@ for (const role of ROLES) {
 }
 
 test.afterAll(async () => {
-  // eslint-disable-next-line no-console
   console.log(`\n[smoke] Findings file: ${FINDINGS_FILE}`)
-  // eslint-disable-next-line no-console
   console.log(`[smoke] Screenshots: ${SCREENSHOTS_DIR}`)
 })

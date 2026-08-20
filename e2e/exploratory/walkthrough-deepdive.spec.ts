@@ -641,6 +641,5 @@ test.describe('F10. Jornada típica de ASISTENTE', () => {
 })
 
 test.afterAll(async () => {
-  // eslint-disable-next-line no-console
   console.log(`\n[F5-F10] Deep dive completo. Screenshots: ${SCREENSHOTS_DIR}`)
 })

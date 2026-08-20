@@ -74,7 +74,7 @@ function generateResumenNumber(): string {
     return `RES-${datePart}-${fallback}`
   }
   const storageKey = `resumen-counter-${datePart}`
-  let counter = parseInt(sessionStorage.getItem(storageKey) || '0', 10) + 1
+  const counter = parseInt(sessionStorage.getItem(storageKey) || '0', 10) + 1
   sessionStorage.setItem(storageKey, counter.toString())
   return `RES-${datePart}-${counter.toString().padStart(3, '0')}`
 }

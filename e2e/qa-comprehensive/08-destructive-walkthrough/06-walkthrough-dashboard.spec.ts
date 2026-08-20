@@ -162,6 +162,5 @@ test('asistente mobile: dashboard touch targets OK', async ({ page }) => {
 })
 
 test.afterAll(async () => {
-  // eslint-disable-next-line no-console
   console.log(`\n[06-walkthrough-dashboard] Walkthrough Dashboard completo.`)
 })

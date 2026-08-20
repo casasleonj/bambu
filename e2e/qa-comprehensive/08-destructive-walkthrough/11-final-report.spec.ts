@@ -149,9 +149,7 @@ npx playwright test e2e/qa-comprehensive/08-destructive-walkthrough/ --project=c
   const reportPath = join(REPORTS_DIR, `destructive-walkthrough-${latest.replace('walkthrough-', '').replace('.jsonl', '')}.md`)
   writeFileSync(reportPath, md, 'utf-8')
 
-  // eslint-disable-next-line no-console
   console.log(`\n[11-final-report] Reporte generado: ${reportPath}`)
-  // eslint-disable-next-line no-console
   console.log(`Findings: P0=${bySeverity.P0 || 0}, P1=${bySeverity.P1 || 0}, P2=${bySeverity.P2 || 0}, P3=${bySeverity.P3 || 0}`)
 })
 
@@ -185,6 +183,5 @@ test('11.3: falla si hay P0 sin documentar', async () => {
 
   const p0Count = findings.filter((f) => f.severity === 'P0').length
   // Solo registramos el conteo, no fallamos (es informativo)
-  // eslint-disable-next-line no-console
   console.log(`\n[11.3] P0 findings: ${p0Count}`)
 })

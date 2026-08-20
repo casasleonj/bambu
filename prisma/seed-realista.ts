@@ -617,10 +617,10 @@ async function main() {
 
       let cPacaAguaEnt = cPacaAguaPed
       let cPacaHieloEnt = cPacaHieloPed
-      let cBotellonFabEnt = cBotellonFabPed
-      let cBotellonDomEnt = cBotellonDomPed
-      let cBolsaAguaEnt = cBolsaAguaPed
-      let cBolsaHieloEnt = cBolsaHieloPed
+      const cBotellonFabEnt = cBotellonFabPed
+      const cBotellonDomEnt = cBotellonDomPed
+      const cBolsaAguaEnt = cBolsaAguaPed
+      const cBolsaHieloEnt = cBolsaHieloPed
 
       if (estado === EstadoPedido.ENTREGADO && Math.random() < 0.05) {
         // 5% de devoluciones parciales

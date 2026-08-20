@@ -300,6 +300,5 @@ test('repartidor mobile: solo ve sus embarques', async ({ page }) => {
 })
 
 test.afterAll(async () => {
-  // eslint-disable-next-line no-console
   console.log(`\n[05-walkthrough-embarques] Walkthrough Embarques completo.`)
 })

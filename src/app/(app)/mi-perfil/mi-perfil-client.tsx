@@ -43,6 +43,15 @@ interface UserProfile {
 
 type FieldState = 'idle' | 'saving' | 'saved' | 'error'
 
+function DirtyBadge({ dirty }: { dirty: boolean }) {
+  return dirty ? (
+    <span className="text-xs text-amber-600 font-medium flex items-center gap-1">
+      <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+      Modificado
+    </span>
+  ) : null
+}
+
 export default function MiPerfilClient({ user }: { user: UserProfile }) {
   const { update: updateSession } = useSession()
 
@@ -165,14 +174,6 @@ export default function MiPerfilClient({ user }: { user: UserProfile }) {
       setSubmitting(false)
     }
   }
-
-  const DirtyBadge = ({ dirty }: { dirty: boolean }) =>
-    dirty ? (
-      <span className="text-xs text-amber-600 font-medium flex items-center gap-1">
-        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-        Modificado
-      </span>
-    ) : null
 
   return (
     <div className="p-4 max-w-2xl mx-auto space-y-6">

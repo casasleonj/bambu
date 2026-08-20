@@ -242,7 +242,7 @@ export default function NominaPage() {
   }
 
   const nominasFiltradas = useMemo(() => {
-    let filtradas = nominas.filter(nom => {
+    const filtradas = nominas.filter(nom => {
       if (estadoFilter !== 'TODAS' && nom.estado !== estadoFilter) return false
       if (trabajadorFilter && nom.trabajadorId !== trabajadorFilter) return false
       if (busqueda && !(nom.trabajador?.nombre?.toLowerCase() || '').includes(busqueda.toLowerCase())) return false

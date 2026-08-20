@@ -288,7 +288,6 @@ test.describe('A5. Transición entre roles', () => {
 })
 
 test.afterAll(async () => {
-  // eslint-disable-next-line no-console
   console.log(`\n[A1-A5] Tests fixes completos.`)
 })
 

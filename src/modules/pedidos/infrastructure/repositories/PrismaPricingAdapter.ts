@@ -49,8 +49,8 @@ export class PrismaPricingAdapter implements IPricingPort {
     }
 
     // 2. Batch load tiers and product configs
-    let tiersByCode: Record<string, PrecioTier[]> = {}
-    let productosByCode: Record<string, ProductoPricingConfig> = {}
+    const tiersByCode: Record<string, PrecioTier[]> = {}
+    const productosByCode: Record<string, ProductoPricingConfig> = {}
 
     if (activeCodes.length > 0) {
       const [allTiers, allProductos] = await Promise.all([

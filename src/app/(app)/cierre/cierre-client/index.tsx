@@ -172,11 +172,9 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
     if (abortControllerRef.current) abortControllerRef.current.abort()
     const ctrl = new AbortController()
     abortControllerRef.current = ctrl
-    /* eslint-disable react-hooks/set-state-in-effect */
     fetchCierre(fecha, ctrl.signal)
     loadBaseDia(fecha, ctrl.signal)
     checkLastCierre(fecha, ctrl.signal)
-    /* eslint-enable react-hooks/set-state-in-effect */
     return () => ctrl.abort()
   }, [fecha, fetchCierre, loadBaseDia, checkLastCierre])
 

@@ -34,22 +34,17 @@ async function main() {
     select: { id: true, nombre: true, activo: true, telefono: true },
   })
 
-  // eslint-disable-next-line no-console
   console.log(`Cliente canónico: ${canonico ? 'OK' : 'FALTANTE'}`)
   if (canonico) {
-    // eslint-disable-next-line no-console
     console.log(`  id=${canonico.id}, nombre=${canonico.nombre}, activo=${canonico.activo}, telefono="${canonico.telefono}"`)
   }
 
-  // eslint-disable-next-line no-console
   console.log(`Duplicados encontrados: ${duplicados.length}`)
   for (const d of duplicados) {
-    // eslint-disable-next-line no-console
     console.log(`  - ${d.id}: ${d._count.pedidos} pedidos, ${d._count.facturas} facturas`)
   }
 
   if (DRY_RUN) {
-    // eslint-disable-next-line no-console
     console.log('Modo dry-run: no se realizaron cambios.')
     return
   }
@@ -75,13 +70,11 @@ async function main() {
     })
   }
 
-  // eslint-disable-next-line no-console
   console.log(`Limpieza completada: ${duplicados.length} duplicado(s) eliminado(s), ${reasignados} registro(s) reasignado(s).`)
 }
 
 main()
   .catch((error) => {
-    // eslint-disable-next-line no-console
     console.error('Error en limpieza:', error)
     process.exit(1)
   })

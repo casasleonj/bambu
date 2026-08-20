@@ -447,6 +447,5 @@ test.describe('T6. RBAC verificación rigurosa', () => {
 })
 
 test.afterAll(async () => {
-  // eslint-disable-next-line no-console
   console.log(`\n[T1-T6] Closure + recurrentes temporal completo.`)
 })

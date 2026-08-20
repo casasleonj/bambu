@@ -37,7 +37,7 @@ describe('M5: rate-limit behavior', () => {
     for (let i = 0; i < 300; i++) {
       await checkRateLimit(IP, 'api')
     }
-    let blocked = await checkRateLimit(IP, 'api')
+    const blocked = await checkRateLimit(IP, 'api')
     expect(blocked.allowed).toBe(false)
 
     await resetRateLimit(IP, 'api')
@@ -55,6 +55,51 @@ describe('M5: rate-limit behavior', () => {
 
   it('LIMITS.api tiene la configuración esperada', () => {
     expect(LIMITS.api).toEqual({ points: 300, duration: 60, blockDuration: 0 })
+  })
+})
+
+describe('M5: fallback de memoria en timeout de Redis comparte estado entre requests', () => {
+  const ORIGINAL_ENV = process.env
+
+  beforeEach(() => {
+    vi.resetModules()
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    process.env = ORIGINAL_ENV
+    vi.useRealTimers()
+    vi.doUnmock('redis')
+  })
+
+  it('dos requests durante el mismo timeout de Redis decrementan el mismo bucket (no crean un limiter nuevo cada vez)', async () => {
+    process.env.REDIS_URL = 'redis://fake-host:6379'
+
+    // Simula un connect() de Redis que nunca resuelve (cold start severo /
+    // datacenter lento) para forzar la rama REDIS_TIMEOUT de checkRateLimit.
+    vi.doMock('redis', () => ({
+      createClient: () => ({
+        on: () => {},
+        connect: () => new Promise(() => {}),
+      }),
+    }))
+
+    const { checkRateLimit } = await import('@/lib/rate-limit')
+
+    const firstPromise = checkRateLimit('740.740.740.740', 'api')
+    await vi.advanceTimersByTimeAsync(3000)
+    const first = await firstPromise
+    expect(first.allowed).toBe(true)
+    expect(first.remaining).toBe(299)
+
+    const secondPromise = checkRateLimit('740.740.740.740', 'api')
+    await vi.advanceTimersByTimeAsync(3000)
+    const second = await secondPromise
+    expect(second.allowed).toBe(true)
+    // Antes del fix esto también daba 299 (cada request creaba su propio
+    // RateLimiterMemory sin estado compartido, así que el límite nunca se
+    // aplicaba de verdad durante el timeout).
+    expect(second.remaining).toBe(298)
   })
 })
 

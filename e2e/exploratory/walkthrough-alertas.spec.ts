@@ -286,6 +286,5 @@ test.describe('B. Casos manuales', () => {
 })
 
 test.afterAll(async () => {
-  // eslint-disable-next-line no-console
   console.log(`\n[A-B] Alertas + casos completo.`)
 })

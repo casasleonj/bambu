@@ -365,6 +365,5 @@ test('admin: submit con Enter en form de cliente funciona', async ({ page }) => 
 })
 
 test.afterAll(async () => {
-  // eslint-disable-next-line no-console
   console.log(`\n[09-destructive-patterns] Patrones destructivos completos.`)
 })

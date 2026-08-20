@@ -939,8 +939,6 @@ test.describe('H. Fiados / Deudas', () => {
 })
 
 test.afterAll(async () => {
-  // eslint-disable-next-line no-console
   console.log(`\n[priority] Findings: ${BASE}/reports/walkthrough-*.jsonl`)
-  // eslint-disable-next-line no-console
   console.log(`[priority] Screenshots: ${SCREENSHOTS_DIR}`)
 })

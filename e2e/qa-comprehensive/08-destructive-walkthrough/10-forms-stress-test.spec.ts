@@ -263,6 +263,5 @@ test('admin desktop: cliente form con email inválido muestra error', async ({ p
 })
 
 test.afterAll(async () => {
-  // eslint-disable-next-line no-console
   console.log(`\n[10-forms-stress-test] Forms stress test completo.`)
 })
