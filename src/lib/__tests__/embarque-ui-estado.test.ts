@@ -3,7 +3,7 @@
 // cliente a partir de datos reales (estado + pedidos + carga), nunca se
 // persiste como estado nuevo en `Embarque.estado`.
 import { describe, it, expect } from 'vitest'
-import { derivarEstadoUI } from '@/lib/embarque-ui-estado'
+import { derivarEstadoUI, toUIEstadoInput, contarPorFase } from '@/lib/embarque-ui-estado'
 
 describe('derivarEstadoUI — estados derivados del Command Center', () => {
   describe('ABIERTO → fases derivadas por precedencia', () => {
@@ -72,6 +72,66 @@ describe('derivarEstadoUI — estados derivados del Command Center', () => {
       const r = derivarEstadoUI({ estado: 'ESTADO_FUTURO' })
       expect(r.label).toBe('ESTADO_FUTURO')
       expect(r.badgeClass.length).toBeGreaterThan(0)
+    })
+  })
+
+  describe('toUIEstadoInput — puente desde la fuente real', () => {
+    it('mapea pedidos y carga desde productos', () => {
+      const input = toUIEstadoInput({
+        estado: 'ABIERTO',
+        pedidos: [{ id: '1' }],
+        productos: [{ cargadas: 3 }, { cargadas: 2 }],
+      })
+      expect(input.tienePedidos).toBe(true)
+      expect(input.totalUnidadesCarga).toBe(5)
+    })
+
+    it('usa totalPacas si está presente (prevalece sobre productos)', () => {
+      const input = toUIEstadoInput({
+        estado: 'ABIERTO',
+        totalPacas: 7,
+        productos: [{ cargadas: 3 }],
+      })
+      expect(input.totalUnidadesCarga).toBe(7)
+    })
+
+    it('sin datos → sin pedidos y sin carga', () => {
+      const input = toUIEstadoInput({ estado: 'ABIERTO' })
+      expect(input.tienePedidos).toBe(false)
+      expect(input.totalUnidadesCarga).toBe(0)
+    })
+  })
+
+  describe('contarPorFase', () => {
+    it('cuenta cada fase correctamente', () => {
+      const conteo = contarPorFase([
+        toUIEstadoInput({ estado: 'ABIERTO' }),                                // BORRADOR
+        toUIEstadoInput({ estado: 'ABIERTO', productos: [{ cargadas: 1 }] }),  // PREPARANDO
+        toUIEstadoInput({ estado: 'ABIERTO', pedidos: [{}] }),                 // CONFIRMADO
+        toUIEstadoInput({ estado: 'ABIERTO', pedidos: [{}] }),                 // CONFIRMADO
+        toUIEstadoInput({ estado: 'EN_RUTA' }),                                // EN_RUTA
+        toUIEstadoInput({ estado: 'CERRADO' }),                                // CERRADO
+        toUIEstadoInput({ estado: 'CANCELADO' }),                              // CANCELADO
+      ])
+      expect(conteo).toEqual({
+        BORRADOR: 1,
+        PREPARANDO: 1,
+        CONFIRMADO: 2,
+        EN_RUTA: 1,
+        CERRADO: 1,
+        CANCELADO: 1,
+      })
+    })
+
+    it('lista vacía → todo cero', () => {
+      expect(contarPorFase([])).toEqual({
+        BORRADOR: 0,
+        PREPARANDO: 0,
+        CONFIRMADO: 0,
+        EN_RUTA: 0,
+        CERRADO: 0,
+        CANCELADO: 0,
+      })
     })
   })
 })

@@ -46,7 +46,7 @@ export interface EstadoUIDerivado {
   badgeClass: string
 }
 
-const BADGES: Record<FaseUIEmbarque, string> = {
+export const BADGES: Record<FaseUIEmbarque, string> = {
   BORRADOR: 'bg-slate-100 text-slate-700',
   PREPARANDO: 'bg-amber-100 text-amber-800',
   CONFIRMADO: 'bg-green-100 text-green-800',
@@ -55,7 +55,7 @@ const BADGES: Record<FaseUIEmbarque, string> = {
   CANCELADO: 'bg-red-100 text-red-800',
 }
 
-const LABELS: Record<FaseUIEmbarque, string> = {
+export const LABELS: Record<FaseUIEmbarque, string> = {
   BORRADOR: 'Borrador',
   PREPARANDO: 'Preparando',
   CONFIRMADO: 'Confirmado',
@@ -90,4 +90,60 @@ export function derivarEstadoUI(input: EmbarqueUIEstadoInput): EstadoUIDerivado 
       // Estado futuro/desconocido: no romper la lista, mostrar crudo.
       return { estadoReal: 'ABIERTO', fase: 'BORRADOR', label: String(estado), badgeClass: BADGES.BORRADOR }
   }
+}
+
+/** Fuente mínima para derivar el estado UI sin acoplar a un tipo de cliente. */
+export interface EmbarqueUIEstadoSource {
+  estado: string
+  pedidos?: readonly unknown[] | null
+  totalPacas?: number | null
+  productos?: ReadonlyArray<{ cargadas?: number }> | null
+}
+
+/** Convierte una fuente real (Embarque) al input canónico de derivación. */
+export function toUIEstadoInput(source: EmbarqueUIEstadoSource): EmbarqueUIEstadoInput {
+  const totalUnidadesCarga =
+    source.totalPacas ??
+    source.productos?.reduce((sum, p) => sum + (p.cargadas ?? 0), 0) ??
+    0
+  return {
+    estado: source.estado,
+    tienePedidos: (source.pedidos?.length ?? 0) > 0,
+    totalUnidadesCarga,
+  }
+}
+
+export interface ConteoFasesUI {
+  BORRADOR: number
+  PREPARANDO: number
+  CONFIRMADO: number
+  EN_RUTA: number
+  CERRADO: number
+  CANCELADO: number
+}
+
+/** Orden canónico de presentación de las fases en el Command Center. */
+export const FASES_ORDEN: FaseUIEmbarque[] = [
+  'BORRADOR',
+  'PREPARANDO',
+  'CONFIRMADO',
+  'EN_RUTA',
+  'CERRADO',
+  'CANCELADO',
+]
+
+/** Cuenta embarques por fase derivada (para el resumen del Command Center). */
+export function contarPorFase(inputs: EmbarqueUIEstadoInput[]): ConteoFasesUI {
+  const conteo: ConteoFasesUI = {
+    BORRADOR: 0,
+    PREPARANDO: 0,
+    CONFIRMADO: 0,
+    EN_RUTA: 0,
+    CERRADO: 0,
+    CANCELADO: 0,
+  }
+  for (const input of inputs) {
+    conteo[derivarEstadoUI(input).fase]++
+  }
+  return conteo
 }

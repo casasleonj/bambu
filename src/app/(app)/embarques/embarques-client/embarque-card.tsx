@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { derivarEstadoUI } from '@/lib/embarque-ui-estado'
+import { derivarEstadoUI, toUIEstadoInput } from '@/lib/embarque-ui-estado'
 import type { Embarque, Pedido } from './types'
 
 function getDeficitBadge(embarque: Embarque): React.ReactNode {
@@ -33,14 +33,7 @@ function ClosedPedidosSummary({ pedidos }: { pedidos: Pedido[] }) {
 
 export function EmbarqueCard({ embarque }: { embarque: Embarque }) {
   const cap = embarque.capacidadInfo
-  const uiEstado = derivarEstadoUI({
-    estado: embarque.estado,
-    tienePedidos: (embarque.pedidos?.length ?? 0) > 0,
-    totalUnidadesCarga:
-      embarque.totalPacas ??
-      embarque.productos?.reduce((sum, p) => sum + p.cargadas, 0) ??
-      0,
-  })
+  const uiEstado = derivarEstadoUI(toUIEstadoInput(embarque))
 
   return (
     <Link

@@ -11,6 +11,7 @@ import { DateRangeFilter } from '@/components/date-range-filter'
 import { Modal } from '@/components/modal'
 import type { Embarque, Trabajador, Ruta } from './types'
 import { EmbarqueCard } from './embarque-card'
+import { ResumenEstados } from './resumen-estados'
 import { EmbarqueFormModal } from './embarque-form-modal'
 import { AutoGenerarPreviewModal } from './auto-generar-preview-modal'
 import { StatsTab } from './stats-tab'
@@ -447,6 +448,8 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
           <span className="text-xs">⛔ {'>'}100% Excedido</span>
         </div>
       </InfoBanner>
+
+      <ResumenEstados embarques={embarques} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {embarques.map((embarque) => (
