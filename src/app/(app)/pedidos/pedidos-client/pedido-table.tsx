@@ -20,16 +20,29 @@ function getPagoVisual(pedido: Pedido) {
 
 const BOGOTA_TZ = 'America/Bogota'
 
-function formatFechaPedido(fecha: string): string {
+export function formatFechaPedido(fecha: string): string {
   const d = new Date(fecha)
   if (Number.isNaN(d.getTime())) return ''
-  return d.toLocaleString('es-CO', {
+  const fechaCorta = d.toLocaleDateString('es-CO', {
     timeZone: BOGOTA_TZ,
     day: 'numeric',
     month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
   })
+  // Hora AM/PM construida a mano en vez de toLocaleString con hour:'2-digit':
+  // el marcador "a. m."/"p. m." que agrega ICU usa un espacio distinto
+  // (narrow no-break space U+202F vs espacio normal) según la versión de
+  // ICU/motor JS. Node (SSR) y el motor del navegador (hidratación) pueden
+  // diferir, causando un hydration mismatch reproducible en cada carga.
+  // hour12:false evita por completo el marcador AM/PM dependiente de ICU;
+  // el resto se arma con aritmética simple, así el resultado es siempre
+  // idéntico entre servidor y cliente.
+  const [horaStr, minStr] = d
+    .toLocaleTimeString('en-GB', { timeZone: BOGOTA_TZ, hour: '2-digit', minute: '2-digit', hour12: false })
+    .split(':')
+  const hora24 = Number(horaStr)
+  const periodo = hora24 < 12 ? 'a. m.' : 'p. m.'
+  const hora12 = hora24 % 12 === 0 ? 12 : hora24 % 12
+  return `${fechaCorta}, ${String(hora12).padStart(2, '0')}:${minStr} ${periodo}`
 }
 
 /** Días de atraso (Bogotá) de un pedido PENDIENTE cuya fecha es anterior a
