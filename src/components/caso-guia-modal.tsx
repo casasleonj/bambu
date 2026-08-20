@@ -222,6 +222,10 @@ export function CasoGuiaModal({ caso, contextData, usuarios, onClose, onStatusCh
     }
 
     if (accionId === 'llamar_cliente' && caso.cliente?.telefono) {
+      // handleAccion solo se invoca desde onClick (línea ~527), nunca
+      // durante render; el compilador no puede probar eso y trata la
+      // asignación a window.location.href como mutación insegura.
+      // eslint-disable-next-line react-hooks/immutability
       window.location.href = `tel:${caso.cliente.telefono}`
       return
     }

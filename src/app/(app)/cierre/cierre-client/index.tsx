@@ -752,7 +752,7 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
             <form onSubmit={handleCerrar} className="space-y-2">
               <Button
                 type="submit"
-                disabled={cerrando || statusCierre === 'INCOMPLETO' || baseDia === 0 || arqueoRef.current.totalContado === 0}
+                disabled={cerrando || statusCierre === 'INCOMPLETO' || baseDia === 0 || arqueoData.totalContado === 0}
                 className="w-full py-6 text-lg"
               >
                 {cerrando ? 'Cerrando...' : 'Cerrar Día'}
