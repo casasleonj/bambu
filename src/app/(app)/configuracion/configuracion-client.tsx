@@ -324,7 +324,10 @@ export default function ConfiguracionClient({ initialData }: ConfiguracionClient
     }
   }, [])
 
-  // Ctrl+S force save — stable listener (uses refs internally, no re-registration)
+  // Ctrl+S force save — stable listener (uses refs internally, no re-registration).
+  // flushPendingSave/saveSection solo leen refs (dataRef, timersRef) y setters
+  // estables, así que su comportamiento no cambia entre renders aunque el
+  // compilador no pueda probarlo por la cadena de closures.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
@@ -334,6 +337,7 @@ export default function ConfiguracionClient({ initialData }: ConfiguracionClient
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // beforeunload protection
@@ -348,11 +352,15 @@ export default function ConfiguracionClient({ initialData }: ConfiguracionClient
     return () => window.removeEventListener('beforeunload', handler)
   }, [hasChanges])
 
-  // Cleanup timers on unmount
+  // Cleanup timers on unmount — la cleanup function solo corre al desmontar
+  // (deps []), así que leer timersRef.current/clearTimersRef.current ahí
+  // captura correctamente el valor más reciente, no uno stale.
   useEffect(() => {
     return () => {
       isMountedRef.current = false
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       Object.values(timersRef.current).forEach(t => clearTimeout(t))
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       Object.values(clearTimersRef.current).forEach(t => clearTimeout(t))
     }
   }, [])

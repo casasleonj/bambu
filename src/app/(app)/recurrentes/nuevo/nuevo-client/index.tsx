@@ -172,7 +172,13 @@ export default function NuevoRecurrenteClient() {
     }, 300)
 
     return () => { if (resolverTimeoutRef.current) clearTimeout(resolverTimeoutRef.current) }
-  }, [formData.canal, formData.pacaAgua, formData.pacaHielo, formData.botellon, formData.bolsaAgua, formData.bolsaHielo, selectedCliente?.id, configsLoading, productosVisibles])
+    // formData[p.key] es acceso dinámico -- el linter pide el objeto formData
+    // completo, pero p.key solo puede ser una de las 5 claves de
+    // PRODUCTOS_CONFIG_BASE (array fijo), todas ya listadas arriba
+    // explícitamente. Agregar el objeto completo dispararía el efecto en
+    // cambios de campos no relacionados (notas, horaPreferida, etc).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.canal, formData.pacaAgua, formData.pacaHielo, formData.botellon, formData.bolsaAgua, formData.bolsaHielo, selectedCliente?.id, configsLoading, productosVisibles, productConfigs])
 
   // Clear quantities for products not available in new canal
   useEffect(() => {
@@ -193,7 +199,12 @@ export default function NuevoRecurrenteClient() {
         toast.info(`${unavailable.length} producto(s) no disponible(s) para domicilio`)
       }
     }
-  }, [formData.canal])
+    // Mismo caso que el efecto anterior: formData[prod.key] está acotado a
+    // las 5 claves fijas de PRODUCTOS_CONFIG_BASE, ya cubiertas por
+    // formData.canal; el objeto completo dispararía el efecto en cambios de
+    // campos no relacionados.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.canal, productConfigs])
 
   useEffect(() => {
     return () => {
