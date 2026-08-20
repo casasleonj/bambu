@@ -27,7 +27,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     })
     if (!proveedor) return apiError('Proveedor no encontrado', 404)
     return apiSuccess({ proveedor: JSON.parse(JSON.stringify(proveedor)) })
-  } catch (error) {
+  } catch (_error) {
     return apiError('Error cargando proveedor')
   }
 }
@@ -58,7 +58,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }).catch(() => {})
 
     return apiSuccess({ proveedor })
-  } catch (error) {
+  } catch (_error) {
     return apiError('Error actualizando proveedor')
   }
 }
@@ -84,7 +84,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
     }).catch(() => {})
 
     return apiSuccess({})
-  } catch (error) {
+  } catch (_error) {
     return apiError('Error eliminando proveedor')
   }
 }

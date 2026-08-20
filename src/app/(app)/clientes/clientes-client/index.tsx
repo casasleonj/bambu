@@ -1114,7 +1114,7 @@ export default function ClientesClient({
           void loadAllClientes()
         })()
       }
-    } catch (error) {
+    } catch (_error) {
       setFormError('Error de conexión al guardar')
       toast.error('Error de conexión al guardar')
     } finally {
@@ -1203,7 +1203,7 @@ export default function ClientesClient({
       } else {
         toast.error('Error desactivando cliente')
       }
-    } catch (error) {
+    } catch (_error) {
       toast.error('Error desactivando cliente')
     }
   }

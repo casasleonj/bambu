@@ -30,7 +30,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     })
     if (!user) return apiError('Usuario no encontrado', 404)
     return apiSuccess({ user: JSON.parse(JSON.stringify(user)) })
-  } catch (error) {
+  } catch (_error) {
     return apiError('Error cargando usuario')
   }
 }
@@ -179,7 +179,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
     }).catch(() => {})
 
     return apiSuccess({})
-  } catch (error) {
+  } catch (_error) {
     return apiError('Error desactivando usuario')
   }
 }

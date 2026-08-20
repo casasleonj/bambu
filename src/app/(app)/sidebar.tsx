@@ -17,6 +17,7 @@ import {
   useSensors,
   type DragEndEvent,
   type DraggableAttributes,
+  type DraggableSyntheticListeners,
   DragOverlay,
 } from '@dnd-kit/core'
 import {
@@ -268,7 +269,7 @@ function DragHandle({
   listeners,
   attributes,
 }: {
-  listeners?: Record<string, Function>
+  listeners?: DraggableSyntheticListeners
   attributes?: DraggableAttributes
 }) {
   return (

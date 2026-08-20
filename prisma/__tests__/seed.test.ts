@@ -77,7 +77,7 @@ skipIf('seed idempotency', () => {
         env: process.env,
       })
       countsAfterSecond = await getCounts()
-    } catch (e) {
+    } catch (_e) {
       // El seed falló (probablemente por FK conflictiva con datos
       // dejados por otros tests). En este caso no podemos
       // verificar idempotencia. Saltamos con mensaje claro.
@@ -114,7 +114,7 @@ skipIf('seed idempotency', () => {
           env: process.env,
         })
       }
-    } catch (e) {
+    } catch (_e) {
       console.warn(
         '[seed.test] seed.ts no pudo ejecutarse 3 veces (FK conflictiva probable). ' +
           'Duplicación no verificable. Test aislado: npm run test -- prisma/__tests__/seed.test.ts',

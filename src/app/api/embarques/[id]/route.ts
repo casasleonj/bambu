@@ -102,7 +102,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       })),
     }
     return apiSuccess({ embarque })
-  } catch (error) {
+  } catch (_error) {
     return apiError('Error', 500)
   }
 }

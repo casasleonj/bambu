@@ -18,7 +18,7 @@ export async function GET(_request: NextRequest) {
       .filter(Boolean) as string[]
 
     return apiSuccess({ tipos: fuentesFiltradas })
-  } catch (error) {
+  } catch (_error) {
     return apiError('Error al obtener fuentes', 500)
   }
 }

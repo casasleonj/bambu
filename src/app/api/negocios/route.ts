@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
     })
 
     return apiList(negocios)
-  } catch (error) {
+  } catch (_error) {
     return apiError('Error al obtener negocios', 500)
   }
 }
@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
     })
 
     return apiSuccess({ negocio, message: 'Negocio creado exitosamente' })
-  } catch (error) {
+  } catch (_error) {
     return apiError('Error al crear negocio', 500)
   }
 }

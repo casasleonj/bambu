@@ -453,6 +453,7 @@ export default function NuevoRecurrenteClient() {
                   onChange={(e) => handleSearchChange(e.target.value)}
                   onKeyDown={handleKeyDown}
                   className={cn(inputBase, fieldErrors.clienteId ? inputError : inputNormal, 'pl-10')}
+                  role="combobox"
                   aria-expanded={dropdownOpen}
                   aria-controls="cliente-results"
                   aria-autocomplete="list"

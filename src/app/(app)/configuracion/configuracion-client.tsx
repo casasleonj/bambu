@@ -260,7 +260,7 @@ export default function ConfiguracionClient({ initialData }: ConfiguracionClient
         setSectionState(prev => ({ ...prev, [sectionId]: 'error' }))
         toast.error(body.error?.message || 'Error guardando configuración')
       }
-    } catch (e) {
+    } catch (_e) {
       setSectionState(prev => ({ ...prev, [sectionId]: 'error' }))
       toast.error('Error de red guardando configuración')
     }
