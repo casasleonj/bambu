@@ -196,11 +196,24 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
   const [availablePedidos, setAvailablePedidos] = useState<Pedido[]>([])
   const [selectedPedidoIds, setSelectedPedidoIds] = useState<string[]>([])
   const [loadingAvailable, setLoadingAvailable] = useState(false)
+  const [maxUnidades, setMaxUnidades] = useState(70)
   const [historialModal, setHistorialModal] = useState<{ open: boolean; clienteId: string; clienteNombre: string }>({
     open: false,
     clienteId: '',
     clienteNombre: '',
   })
+
+  // A.3.5: el límite de unidades se lee de config (mismo criterio que el modal
+  // de creación). El "asignar pedidos" del detalle tenía 70 hardcodeado.
+  useEffect(() => {
+    fetch('/api/config?keys=MAX_UNIDADES_EMBARQUE', { credentials: 'include' })
+      .then((r) => r.json())
+      .then((data) => {
+        const n = Number(data?.MAX_UNIDADES_EMBARQUE)
+        if (Number.isInteger(n) && n > 0) setMaxUnidades(n)
+      })
+      .catch(() => {})
+  }, [])
 
   const canManage = userRole === 'ADMIN' || userRole === 'ASISTENTE'
   // POST /api/embarques/[id]/botellones acepta ADMIN/ASISTENTE/REPARTIDOR,
@@ -390,7 +403,7 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
   const proyectadaTotal = currentPacas + selectedNuevosPacas
   const proyectadaPeso = currentPeso + selectedNuevosPeso
   const capacidadProyectada = getCapacidadInfo(proyectadaTotal, proyectadaPeso, capacidadKg)
-  const excedeUnidades = proyectadaTotal > 70
+  const excedeUnidades = proyectadaTotal > maxUnidades
 
   const handleAsignar = async () => {
     if (!canManage || !isEditable || selectedPedidoIds.length === 0) return
@@ -991,7 +1004,7 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
           <div className={`mt-4 p-3 rounded-lg text-sm ${capacidadProyectada.color} bg-opacity-10`}>
             <p className="font-medium">Proyección: {proyectadaTotal} u. · {proyectadaPeso.toFixed(1)}kg</p>
             <p className="text-xs">{capacidadProyectada.label} ({capacidadProyectada.porcentaje.toFixed(0)}%)</p>
-            {excedeUnidades && <p className="text-xs text-red-600 font-medium">Excede límite operativo de 70 unidades</p>}
+            {excedeUnidades && <p className="text-xs text-red-600 font-medium">Excede límite operativo de {maxUnidades} unidades</p>}
           </div>
         )}
         <div className="flex gap-3 mt-6">
