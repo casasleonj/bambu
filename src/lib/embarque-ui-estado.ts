@@ -147,3 +147,19 @@ export function contarPorFase(inputs: EmbarqueUIEstadoInput[]): ConteoFasesUI {
   }
   return conteo
 }
+
+/**
+ * Mapea una fase UI al estado real que el backend entiende.
+ * Las sub-fases de ABIERTO (BORRADOR/PREPARANDO/CONFIRMADO) colapsan a
+ * 'ABIERTO'; el resto es 1:1.
+ */
+export function estadoBackendParaFase(fase: FaseUIEmbarque): EstadoEmbarqueReal {
+  switch (fase) {
+    case 'BORRADOR':
+    case 'PREPARANDO':
+    case 'CONFIRMADO':
+      return 'ABIERTO'
+    default:
+      return fase
+  }
+}

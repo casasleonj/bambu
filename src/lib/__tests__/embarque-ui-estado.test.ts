@@ -3,7 +3,7 @@
 // cliente a partir de datos reales (estado + pedidos + carga), nunca se
 // persiste como estado nuevo en `Embarque.estado`.
 import { describe, it, expect } from 'vitest'
-import { derivarEstadoUI, toUIEstadoInput, contarPorFase } from '@/lib/embarque-ui-estado'
+import { derivarEstadoUI, toUIEstadoInput, contarPorFase, estadoBackendParaFase } from '@/lib/embarque-ui-estado'
 
 describe('derivarEstadoUI — estados derivados del Command Center', () => {
   describe('ABIERTO → fases derivadas por precedencia', () => {
@@ -132,6 +132,20 @@ describe('derivarEstadoUI — estados derivados del Command Center', () => {
         CERRADO: 0,
         CANCELADO: 0,
       })
+    })
+  })
+
+  describe('estadoBackendParaFase', () => {
+    it('colapsa las sub-fases de ABIERTO a "ABIERTO"', () => {
+      expect(estadoBackendParaFase('BORRADOR')).toBe('ABIERTO')
+      expect(estadoBackendParaFase('PREPARANDO')).toBe('ABIERTO')
+      expect(estadoBackendParaFase('CONFIRMADO')).toBe('ABIERTO')
+    })
+
+    it('el resto es 1:1', () => {
+      expect(estadoBackendParaFase('EN_RUTA')).toBe('EN_RUTA')
+      expect(estadoBackendParaFase('CERRADO')).toBe('CERRADO')
+      expect(estadoBackendParaFase('CANCELADO')).toBe('CANCELADO')
     })
   })
 })
