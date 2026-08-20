@@ -7,7 +7,7 @@
 // F9. Cierre: verificar si comisiones son auto o manuales
 // F10. Walkthrough real como ASISTENTE (jornada típica)
 
-import { test, expect, loginAs, shoot, addFinding, isVisible, dbCount, dbQuery, BASE, RUN_ID, SCREENSHOTS_DIR } from './walkthrough-helpers'
+import { test, shoot, addFinding, isVisible, dbCount, dbQuery, BASE, SCREENSHOTS_DIR } from './walkthrough-helpers'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // F5. EMBARQUES END-TO-END
@@ -195,7 +195,6 @@ test.describe('F6. Producción wizard', () => {
     await shoot(page, 'F6.1-step1')
 
     // ¿Es un wizard de 4 pasos? Buscar el indicador
-    const stepIndicator = await isVisible(page, 'text=1 / 4, text=1/4, text=Paso 1')
     const hasWizard = await isVisible(page, 'button:has-text("Siguiente")')
 
     if (hasWizard) {
@@ -365,12 +364,10 @@ test.describe('F7. Recurrentes end-to-end', () => {
     ]
 
     let executedOk = false
-    let execEndpoint = ''
     for (const ep of endpoints) {
       const r = await page.request.post(`${BASE}${ep}`, { data: {} })
       if (r.ok()) {
         executedOk = true
-        execEndpoint = ep
         addFinding({ severity: 'P3', module: 'recurrentes', title: `Plantilla ejecutada vía ${ep}`, description: '' })
         break
       }
@@ -635,7 +632,7 @@ test.describe('F10. Jornada típica de ASISTENTE', () => {
       severity: 'P3',
       module: 'auth',
       title: 'Accesos de CONTADOR',
-      description: `Ve /reportes: ${accessChecks.reportes}. Acceso a otras pantallas: ${Object.entries(accessChecks).filter(([k, v]) => k !== 'reportes').map(([k, v]) => `${k}=${v}`).join(', ')}`,
+      description: `Ve /reportes: ${accessChecks.reportes}. Acceso a otras pantallas: ${Object.entries(accessChecks).filter(([k]) => k !== 'reportes').map(([k, v]) => `${k}=${v}`).join(', ')}`,
     })
   })
 })

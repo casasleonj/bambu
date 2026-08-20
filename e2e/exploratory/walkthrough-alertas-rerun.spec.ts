@@ -3,7 +3,7 @@
 // Si F-003 (cliente 3+ pedidos) desaparece → era timing
 // Si persiste → bug real
 
-import { test, loginAs, shoot, addFinding, isVisible, BASE, RUN_ID, SCREENSHOTS_DIR } from './walkthrough-helpers'
+import { test, shoot, addFinding, BASE } from './walkthrough-helpers'
 
 test.describe('Fase 3. Re-test alertas con más wait', () => {
   test('F3.1: Cliente con 3+ pedidos mismo día aparece con 15s de wait', async ({ page }) => {

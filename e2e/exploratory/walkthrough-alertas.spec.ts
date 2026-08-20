@@ -2,7 +2,7 @@
 // Item 6: Alertas (auto + casos) — walkthrough de las alertas automáticas y casos manuales
 // Cubre: detección automática en /pedidos?tab=alertas, creación de casos, gestión en /casos
 
-import { test, expect, loginAs, shoot, addFinding, isVisible, dbCount, dbQuery, BASE, RUN_ID, SCREENSHOTS_DIR } from './walkthrough-helpers'
+import { test, shoot, addFinding, isVisible, dbCount, dbQuery, BASE } from './walkthrough-helpers'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ALERTAS — detección automática
@@ -84,7 +84,6 @@ test.describe('A. Alertas automáticas', () => {
     })
 
     // Verificar severidad
-    const hasMedia = bodyText.includes('MEDIA')
     addFinding({
       severity: 'P3',
       module: 'alertas',
@@ -221,7 +220,6 @@ test.describe('B. Casos manuales', () => {
     await shoot(page, 'B.1-casos-lista')
 
     const bodyText = (await page.locator('body').textContent()) ?? ''
-    const hasCasos = bodyText.length > 500
 
     // Filtros
     const hasFilter = await isVisible(page, 'select, button:has-text("Filtro"), input[placeholder*="Buscar" i]')
@@ -273,7 +271,7 @@ test.describe('B. Casos manuales', () => {
     })
   })
 
-  test('B.3: Verificar workflow: ABIERTO → EN_PROCESO → RESUELTO → CERRADO', async ({ page }) => {
+  test('B.3: Verificar workflow: ABIERTO → EN_PROCESO → RESUELTO → CERRADO', async () => {
     // Ver schema del enum
     const enumValues = dbQuery(`SELECT enumlabel FROM pg_enum WHERE enumtypid = '"CasoStatus"'::regtype ORDER BY enumsortorder`)
     addFinding({

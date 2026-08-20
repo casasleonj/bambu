@@ -2,7 +2,7 @@
 // Item 7: Walkthrough por persona — cada rol hace su jornada típica
 // Ejecutar en paralelo con --workers=4
 
-import { test, expect, loginAs, shoot, addFinding, isVisible, dbCount, dbQuery, BASE, RUN_ID, SCREENSHOTS_DIR } from './walkthrough-helpers'
+import { test, shoot, addFinding, BASE } from './walkthrough-helpers'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PERSONA: ADMIN — supervisa todo

@@ -6,7 +6,7 @@
 // A4. Síntesis de día
 // A5. Transición de roles
 
-import { test, expect, loginAs, shoot, addFinding, isVisible, dbCount, dbQuery, BASE, RUN_ID, SCREENSHOTS_DIR } from './walkthrough-helpers'
+import { test, loginAs, shoot, addFinding, BASE } from './walkthrough-helpers'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // A1. T1.1 MEJORADO — crear plantilla desde UI real con force
