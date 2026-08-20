@@ -58,6 +58,51 @@ describe('M5: rate-limit behavior', () => {
   })
 })
 
+describe('M5: fallback de memoria en timeout de Redis comparte estado entre requests', () => {
+  const ORIGINAL_ENV = process.env
+
+  beforeEach(() => {
+    vi.resetModules()
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    process.env = ORIGINAL_ENV
+    vi.useRealTimers()
+    vi.doUnmock('redis')
+  })
+
+  it('dos requests durante el mismo timeout de Redis decrementan el mismo bucket (no crean un limiter nuevo cada vez)', async () => {
+    process.env.REDIS_URL = 'redis://fake-host:6379'
+
+    // Simula un connect() de Redis que nunca resuelve (cold start severo /
+    // datacenter lento) para forzar la rama REDIS_TIMEOUT de checkRateLimit.
+    vi.doMock('redis', () => ({
+      createClient: () => ({
+        on: () => {},
+        connect: () => new Promise(() => {}),
+      }),
+    }))
+
+    const { checkRateLimit } = await import('@/lib/rate-limit')
+
+    const firstPromise = checkRateLimit('740.740.740.740', 'api')
+    await vi.advanceTimersByTimeAsync(3000)
+    const first = await firstPromise
+    expect(first.allowed).toBe(true)
+    expect(first.remaining).toBe(299)
+
+    const secondPromise = checkRateLimit('740.740.740.740', 'api')
+    await vi.advanceTimersByTimeAsync(3000)
+    const second = await secondPromise
+    expect(second.allowed).toBe(true)
+    // Antes del fix esto también daba 299 (cada request creaba su propio
+    // RateLimiterMemory sin estado compartido, así que el límite nunca se
+    // aplicaba de verdad durante el timeout).
+    expect(second.remaining).toBe(298)
+  })
+})
+
 describe('M5: realtime env vars', () => {
   const ORIGINAL_ENV = process.env
 

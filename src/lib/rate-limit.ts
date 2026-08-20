@@ -34,6 +34,25 @@ export type RateLimitType = keyof typeof LIMITS
 type AnyLimiter = RateLimiterMemory | RateLimiterRedis
 const limiters = new Map<string, AnyLimiter>()
 
+// Fallback usado específicamente cuando getLimiter() no resuelve dentro de
+// TIMEOUT_MS (ver checkRateLimit). Debe ser un singleton por type -- si se
+// crea una instancia nueva en cada request, cada una arranca con el bucket
+// lleno y el límite nunca se aplica de verdad durante la ventana en que
+// Redis está lento/inalcanzable.
+const timeoutFallbackLimiters = new Map<string, RateLimiterMemory>()
+function getTimeoutFallbackLimiter(type: RateLimitType): RateLimiterMemory {
+  const cached = timeoutFallbackLimiters.get(type)
+  if (cached) return cached
+  const cfg = LIMITS[type]
+  const limiter = new RateLimiterMemory({
+    keyPrefix: `rl_${type}_fallback`,
+    points: cfg.points,
+    duration: cfg.duration,
+  })
+  timeoutFallbackLimiters.set(type, limiter)
+  return limiter
+}
+
 // Lazy Redis client — only imported when REDIS_URL is set
 // Using a minimal interface that matches what rate-limiter-flexible needs
 type RedisStoreClient = {
@@ -163,11 +182,7 @@ export async function checkRateLimit(
       // el proxy. El usuario no nota diferencia (memoria tiene los mismos
       // límites). Log para monitoreo.
       logger.warn({ type }, 'checkRateLimit: Redis timeout, usando fallback de memoria')
-      const fallback = new RateLimiterMemory({
-        keyPrefix: `rl_${type}_fallback`,
-        points: cfg.points,
-        duration: cfg.duration,
-      })
+      const fallback = getTimeoutFallbackLimiter(type)
       try {
         const res = await fallback.consume(identifier, 1)
         return {
