@@ -153,26 +153,32 @@ describe('derivarEstadoUI — estados derivados del Command Center', () => {
     it('BORRADOR → registrar carga y asignar pedidos', () => {
       const r = derivarSiguientePaso({ estado: 'ABIERTO' })
       expect(r.label).toBeTruthy()
+      expect(r.accion).toBe('REGISTRAR_CARGA')
     })
 
     it('PREPARANDO → asignar pedidos', () => {
       const r = derivarSiguientePaso({ estado: 'ABIERTO', totalUnidadesCarga: 5 })
       expect(r.label).toContain('pedidos')
+      expect(r.accion).toBe('ASIGNAR_PEDIDOS')
     })
 
     it('CONFIRMADO → listo para enviar', () => {
       const r = derivarSiguientePaso({ estado: 'ABIERTO', tienePedidos: true })
       expect(r.label).toContain('envía')
+      expect(r.accion).toBe('ENVIAR')
     })
 
     it('EN_RUTA → cerrar al retornar', () => {
       const r = derivarSiguientePaso({ estado: 'EN_RUTA' })
       expect(r.label).toContain('cierra')
+      expect(r.accion).toBe('CERRAR')
     })
 
     it('CERRADO y CANCELADO → sin siguiente paso (null)', () => {
       expect(derivarSiguientePaso({ estado: 'CERRADO' }).label).toBeNull()
+      expect(derivarSiguientePaso({ estado: 'CERRADO' }).accion).toBeNull()
       expect(derivarSiguientePaso({ estado: 'CANCELADO' }).label).toBeNull()
+      expect(derivarSiguientePaso({ estado: 'CANCELADO' }).accion).toBeNull()
     })
   })
 })

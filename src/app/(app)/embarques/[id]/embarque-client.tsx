@@ -448,6 +448,25 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
       (embarque.productos || []).reduce((s, p) => s + p.cargadas, 0),
   })
 
+  const ejecutarSiguientePaso = () => {
+    switch (siguientePaso.accion) {
+      case 'REGISTRAR_CARGA':
+        handleEditar()
+        break
+      case 'ASIGNAR_PEDIDOS':
+        setShowAssignModal(true)
+        break
+      case 'ENVIAR':
+        void handleEnviar()
+        break
+      case 'CERRAR':
+        router.push(`/embarques/${embarque.id}/cerrar`)
+        break
+      default:
+        break
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 pb-10">
       <div className="max-w-6xl mx-auto p-4 md:p-6 space-y-6">
@@ -486,13 +505,19 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
         </div>
 
         {siguientePaso.label && (
-          <div
+          <button
             data-testid="preparacion-siguiente-paso"
-            className="flex items-center gap-2 px-4 py-3 rounded-xl border bg-blue-50 border-blue-200 text-blue-800 text-sm"
+            onClick={canManage ? ejecutarSiguientePaso : undefined}
+            disabled={!canManage}
+            className={`flex items-center gap-2 px-4 py-3 rounded-xl border text-sm w-full text-left transition ${
+              canManage
+                ? 'bg-blue-50 border-blue-200 text-blue-800 hover:bg-blue-100 cursor-pointer'
+                : 'bg-gray-50 border-gray-200 text-gray-600 cursor-default'
+            }`}
           >
             <span aria-hidden="true">➜</span>
             <span>Siguiente paso: {siguientePaso.label}</span>
-          </div>
+          </button>
         )}
 
         {/* Action bar */}

@@ -170,25 +170,29 @@ export function estadoBackendParaFase(fase: FaseUIEmbarque): EstadoEmbarqueReal 
  * Guía al usuario a través de crear → asignar pedidos → preparar → enviar,
  * derivado de datos reales (nunca persistido). `label` es el siguiente paso
  * recomendado, o `null` si el embarque ya está en un estado terminal.
+ * `accion` es la acción concreta que ejecuta ese paso (para la UI guiada).
  */
+export type AccionPreparacion = 'REGISTRAR_CARGA' | 'ASIGNAR_PEDIDOS' | 'ENVIAR' | 'CERRAR' | null
+
 export interface SiguientePaso {
   fase: FaseUIEmbarque
   label: string | null
+  accion: AccionPreparacion
 }
 
 export function derivarSiguientePaso(input: EmbarqueUIEstadoInput): SiguientePaso {
   const { fase } = derivarEstadoUI(input)
   switch (fase) {
     case 'BORRADOR':
-      return { fase, label: 'Registra la carga y asigna pedidos para preparar el embarque' }
+      return { fase, accion: 'REGISTRAR_CARGA', label: 'Registra la carga y asigna pedidos para preparar el embarque' }
     case 'PREPARANDO':
-      return { fase, label: 'Asigna pedidos al embarque para completar la preparación' }
+      return { fase, accion: 'ASIGNAR_PEDIDOS', label: 'Asigna pedidos al embarque para completar la preparación' }
     case 'CONFIRMADO':
-      return { fase, label: 'Todo listo — envía el embarque en ruta' }
+      return { fase, accion: 'ENVIAR', label: 'Todo listo — envía el embarque en ruta' }
     case 'EN_RUTA':
-      return { fase, label: 'En ruta — cierra el embarque al retornar' }
+      return { fase, accion: 'CERRAR', label: 'En ruta — cierra el embarque al retornar' }
     case 'CERRADO':
     case 'CANCELADO':
-      return { fase, label: null }
+      return { fase, accion: null, label: null }
   }
 }
