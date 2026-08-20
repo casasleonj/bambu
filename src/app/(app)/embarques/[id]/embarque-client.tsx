@@ -15,7 +15,7 @@ import { calcularEstadoPagoVisual } from '@/modules/pedidos/presentation/visual-
 import { fetchResilient } from '@/lib/fetch-resilient'
 import { generateUUID } from '@/lib/uuid'
 import { getCapacidadInfo, PESOS_KG } from '@/lib/embarque-capacidad'
-import { derivarSiguientePaso } from '@/lib/embarque-ui-estado'
+import { derivarSiguientePaso, BADGES, LABELS } from '@/lib/embarque-ui-estado'
 import { startOfDayBogota } from '@/lib/dates'
 import { EmbarqueFormModal } from '../embarques-client/embarque-form-modal'
 import { LedgerTab } from './ledger-client/ledger-tab'
@@ -65,20 +65,6 @@ function pacasCount(p: PedidoResumen | Pedido) {
     (p.cBotellonDomPed || 0) +
     (p.cBolsaAguaPed || 0) +
     (p.cBolsaHieloPed || 0)
-  )
-}
-
-function getEstadoBadge(estado: string) {
-  const styles: Record<string, string> = {
-    ABIERTO: 'bg-green-100 text-green-800',
-    EN_RUTA: 'bg-blue-100 text-blue-800',
-    CERRADO: 'bg-gray-100 text-gray-800',
-    CANCELADO: 'bg-red-100 text-red-800',
-  }
-  return (
-    <span className={`px-2 py-1 rounded-full text-xs font-medium ${styles[estado] || 'bg-gray-100 text-gray-600'}`}>
-      {estado === 'EN_RUTA' ? 'En Ruta' : estado}
-    </span>
   )
 }
 
@@ -483,7 +469,9 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
               <h1 className="text-2xl font-bold text-gray-800">
                 Embarque #{embarque.numeroDia > 0 ? embarque.numeroDia : embarque.numero}
               </h1>
-              {getEstadoBadge(embarque.estado)}
+              <span className={`px-2 py-1 rounded-full text-xs font-medium ${BADGES[siguientePaso.fase]}`}>
+                {LABELS[siguientePaso.fase]}
+              </span>
             </div>
             <p className="text-gray-500 mt-1">
               {embarque.trabajador.nombre}
