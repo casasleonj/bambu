@@ -290,23 +290,23 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
     if (!ok) return
 
     setSubmittingAction('enviar')
-    try {
-      const res = await fetch(`/api/embarques/${embarque.id}/enviar`, {
+    const result = await fetchResilient<{ success: boolean; deduped?: boolean }>(
+      `/api/embarques/${embarque.id}/enviar`,
+      {
         method: 'POST',
-        credentials: 'include',
-      })
-      const data = await res.json()
-      if (data.success) {
-        toast.success('Embarque enviado en ruta')
-        await refresh()
-      } else {
-        toast.error(data.error?.message || 'Error enviando embarque')
+        body: { offlineId: generateUUID() },
+        localEndpoint: 'enviar-embarque',
       }
-    } catch {
-      toast.error('Error de conexión')
-    } finally {
-      setSubmittingAction(null)
+    )
+    if (result.status === 'offline') {
+      toast.info('Sin conexión. El envío se guardó y se aplicará al recuperar la red.')
+    } else if (result.status === 'error') {
+      toast.error(result.error)
+    } else {
+      toast.success('Embarque enviado en ruta')
+      await refresh()
     }
+    setSubmittingAction(null)
   }
 
   const handleCancelar = async () => {

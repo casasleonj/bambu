@@ -90,3 +90,24 @@ describe('F-N1: logAudit queda fuera de la tx (fire-and-forget)', () => {
     expect(logAuditPos).toBeGreaterThan(txCallbackEnd)
   })
 })
+
+describe('A.3.2: dedup offline-first por offlineId en enviar', () => {
+  it('lee el body de la request para extraer offlineId', () => {
+    expect(source).toMatch(/request\.json\(\)/)
+    expect(source).toMatch(/const\s+offlineId\s*=/)
+  })
+
+  it('persiste offlineId al hacer el update a EN_RUTA', () => {
+    expect(source).toMatch(/offlineId\s*\?\s*\{\s*offlineId\s*\}\s*:\s*\{\}/)
+  })
+
+  it('retorna kind deduped cuando el embarque ya fue enviado con el mismo offlineId', () => {
+    expect(source).toMatch(/kind:\s*['"]deduped['"]/)
+    expect(source).toMatch(/deduped:\s*true/)
+  })
+
+  it('el dedup está DENTRO del callback serializable (usa tx)', () => {
+    // El findFirst de dedup debe usar `tx`, no prisma global.
+    expect(source).toMatch(/tx\.embarque\.findFirst\(\s*\{\s*where:\s*\{\s*id,\s*offlineId\s*\}/)
+  })
+})

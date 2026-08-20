@@ -16,6 +16,7 @@ type EmbarqueConRelaciones = Prisma.EmbarqueGetPayload<{
 
 type EnviarResult =
   | { kind: 'not_found' }
+  | { kind: 'deduped'; embarque: EmbarqueConRelaciones }
   | { kind: 'not_abierto'; estado: EstadoEmbarque }
   | { kind: 'empty_embarque_repartidor' }
   | { kind: 'repartidor_en_ruta'; numero: number; nombre: string }
@@ -38,7 +39,7 @@ type EnviarResult =
  * y serializa correctamente. logAudit queda fuera (fire-and-forget).
  */
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const authResult = await requireAuth()
@@ -50,6 +51,11 @@ export async function POST(
   const hasAccess = await requireOwnership('embarque', id, { id: session.user?.id || '', role: session.user?.role })
   if (!hasAccess) return apiError('Forbidden', 403)
 
+  // Offline-first (ADR-OFFLINE-001): un retry con el mismo offlineId debe
+  // devolver el embarque ya enviado, no un 400 "not_abierto".
+  const body = await request.json().catch(() => ({}))
+  const offlineId = typeof body?.offlineId === 'string' && body.offlineId ? body.offlineId : undefined
+
   try {
     const result = await executeSerializableWithRetry<EnviarResult>(
       async (tx) => {
@@ -60,6 +66,17 @@ export async function POST(
         })
 
         if (!embarque) return { kind: 'not_found' }
+
+        // Dedup offline-first: si este embarque ya fue enviado con el mismo
+        // offlineId, devolvemos el resultado existente (no re-transicionar).
+        if (offlineId && embarque.offlineId === offlineId) {
+          const existente = await tx.embarque.findFirst({
+            where: { id, offlineId },
+            include: { trabajador: true, ruta: true, productos: true },
+          })
+          if (existente) return { kind: 'deduped', embarque: existente }
+        }
+
         if (embarque.estado !== EstadoEmbarque.ABIERTO) {
           return { kind: 'not_abierto', estado: embarque.estado }
         }
@@ -101,6 +118,7 @@ export async function POST(
           data: {
             estado: EstadoEmbarque.EN_RUTA,
             horaSalida: embarque.horaSalida || new Date(),
+            ...(offlineId ? { offlineId } : {}),
           },
           include: {
             trabajador: true,
@@ -126,6 +144,9 @@ export async function POST(
 
     // Mapear kind-based result a HTTP response
     if (result.kind === 'not_found') return apiError('Embarque no encontrado', 404)
+    if (result.kind === 'deduped') {
+      return apiSuccess({ embarque: result.embarque, deduped: true })
+    }
     if (result.kind === 'not_abierto') {
       return apiError(
         `Solo se pueden enviar embarques abiertos (estado actual: ${result.estado})`,
