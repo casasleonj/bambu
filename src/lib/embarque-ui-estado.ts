@@ -163,3 +163,32 @@ export function estadoBackendParaFase(fase: FaseUIEmbarque): EstadoEmbarqueReal 
       return fase
   }
 }
+
+/**
+ * Siguiente paso del Preparation Flow (Fase 4).
+ *
+ * Guía al usuario a través de crear → asignar pedidos → preparar → enviar,
+ * derivado de datos reales (nunca persistido). `label` es el siguiente paso
+ * recomendado, o `null` si el embarque ya está en un estado terminal.
+ */
+export interface SiguientePaso {
+  fase: FaseUIEmbarque
+  label: string | null
+}
+
+export function derivarSiguientePaso(input: EmbarqueUIEstadoInput): SiguientePaso {
+  const { fase } = derivarEstadoUI(input)
+  switch (fase) {
+    case 'BORRADOR':
+      return { fase, label: 'Registra la carga y asigna pedidos para preparar el embarque' }
+    case 'PREPARANDO':
+      return { fase, label: 'Asigna pedidos al embarque para completar la preparación' }
+    case 'CONFIRMADO':
+      return { fase, label: 'Todo listo — envía el embarque en ruta' }
+    case 'EN_RUTA':
+      return { fase, label: 'En ruta — cierra el embarque al retornar' }
+    case 'CERRADO':
+    case 'CANCELADO':
+      return { fase, label: null }
+  }
+}

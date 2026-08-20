@@ -15,6 +15,7 @@ import { calcularEstadoPagoVisual } from '@/modules/pedidos/presentation/visual-
 import { fetchResilient } from '@/lib/fetch-resilient'
 import { generateUUID } from '@/lib/uuid'
 import { getCapacidadInfo, PESOS_KG } from '@/lib/embarque-capacidad'
+import { derivarSiguientePaso } from '@/lib/embarque-ui-estado'
 import { startOfDayBogota } from '@/lib/dates'
 import { EmbarqueFormModal } from '../embarques-client/embarque-form-modal'
 import { LedgerTab } from './ledger-client/ledger-tab'
@@ -439,6 +440,14 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
     ? { label: 'Cerrar y Cuadrar →', action: () => router.push(`/embarques/${embarque.id}/cerrar`), testId: 'cerrar-embarque-button' }
     : null
 
+  const siguientePaso = derivarSiguientePaso({
+    estado: embarque.estado,
+    tienePedidos: pedidos.length > 0,
+    totalUnidadesCarga:
+      embarque.totalPacas ??
+      (embarque.productos || []).reduce((s, p) => s + p.cargadas, 0),
+  })
+
   return (
     <div className="min-h-screen bg-gray-50 pb-10">
       <div className="max-w-6xl mx-auto p-4 md:p-6 space-y-6">
@@ -475,6 +484,16 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
             </div>
           )}
         </div>
+
+        {siguientePaso.label && (
+          <div
+            data-testid="preparacion-siguiente-paso"
+            className="flex items-center gap-2 px-4 py-3 rounded-xl border bg-blue-50 border-blue-200 text-blue-800 text-sm"
+          >
+            <span aria-hidden="true">➜</span>
+            <span>Siguiente paso: {siguientePaso.label}</span>
+          </div>
+        )}
 
         {/* Action bar */}
         {canManage && primaryAction && (

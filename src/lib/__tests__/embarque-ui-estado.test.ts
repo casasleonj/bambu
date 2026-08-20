@@ -3,7 +3,7 @@
 // cliente a partir de datos reales (estado + pedidos + carga), nunca se
 // persiste como estado nuevo en `Embarque.estado`.
 import { describe, it, expect } from 'vitest'
-import { derivarEstadoUI, toUIEstadoInput, contarPorFase, estadoBackendParaFase } from '@/lib/embarque-ui-estado'
+import { derivarEstadoUI, toUIEstadoInput, contarPorFase, estadoBackendParaFase, derivarSiguientePaso } from '@/lib/embarque-ui-estado'
 
 describe('derivarEstadoUI — estados derivados del Command Center', () => {
   describe('ABIERTO → fases derivadas por precedencia', () => {
@@ -146,6 +146,33 @@ describe('derivarEstadoUI — estados derivados del Command Center', () => {
       expect(estadoBackendParaFase('EN_RUTA')).toBe('EN_RUTA')
       expect(estadoBackendParaFase('CERRADO')).toBe('CERRADO')
       expect(estadoBackendParaFase('CANCELADO')).toBe('CANCELADO')
+    })
+  })
+
+  describe('derivarSiguientePaso — Preparation Flow (Fase 4)', () => {
+    it('BORRADOR → registrar carga y asignar pedidos', () => {
+      const r = derivarSiguientePaso({ estado: 'ABIERTO' })
+      expect(r.label).toBeTruthy()
+    })
+
+    it('PREPARANDO → asignar pedidos', () => {
+      const r = derivarSiguientePaso({ estado: 'ABIERTO', totalUnidadesCarga: 5 })
+      expect(r.label).toContain('pedidos')
+    })
+
+    it('CONFIRMADO → listo para enviar', () => {
+      const r = derivarSiguientePaso({ estado: 'ABIERTO', tienePedidos: true })
+      expect(r.label).toContain('envía')
+    })
+
+    it('EN_RUTA → cerrar al retornar', () => {
+      const r = derivarSiguientePaso({ estado: 'EN_RUTA' })
+      expect(r.label).toContain('cierra')
+    })
+
+    it('CERRADO y CANCELADO → sin siguiente paso (null)', () => {
+      expect(derivarSiguientePaso({ estado: 'CERRADO' }).label).toBeNull()
+      expect(derivarSiguientePaso({ estado: 'CANCELADO' }).label).toBeNull()
     })
   })
 })
