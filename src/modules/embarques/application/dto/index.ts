@@ -24,23 +24,6 @@ export interface CrearEmbarqueInput {
   availabilityBasis?: 'CONFIRMED_STOCK' | 'PRODUCTION_CONFIRMED' | 'ESTIMATED' | 'MIXED'
 }
 
-export interface ActualizarEmbarqueInput {
-  id: string
-  trabajadorId?: string
-  rutaId?: string
-  horaSalida?: Date
-  carga?: Record<ProductCode, number>
-  tipoMoto?: string
-  baseDinero?: number
-  codigoVisita?: string
-  obs?: string
-  maxUnidades?: number
-}
-
-export interface EnviarEmbarqueInput {
-  id: string
-}
-
 export interface CancelarEmbarqueInput {
   id: string
 }
@@ -110,15 +93,6 @@ export interface GestionarGastoInput {
   responsable?: string
   notas?: string
   createdById?: string
-}
-
-export interface ListarEmbarquesInput {
-  fechaDesde?: Date
-  fechaHasta?: Date
-  estado?: EstadoEmbarqueValue
-  trabajadorId?: string
-  rutaId?: string
-  all?: boolean
 }
 
 // --- Output DTOs ---
