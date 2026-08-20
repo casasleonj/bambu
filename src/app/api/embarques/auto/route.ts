@@ -6,7 +6,7 @@ import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
-import { PESOS_KG } from '@/lib/embarque-capacidad'
+import { unidadesPedido, pesoPedido, splitPedidosByCapacity } from '@/lib/embarque-auto'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { startOfDayBogota, endOfDayBogota, todayStringBogota } from '@/lib/dates'
 import { getConfigInt } from '@/lib/config'
@@ -48,42 +48,6 @@ function horaSalidaToDate(horaSalida: string): Date {
   return new Date(`${todayStringBogota()}T${horaSalida}:00-05:00`)
 }
 
-function unidadesPedido(p: {
-  cPacaAguaPed?: number | null
-  cPacaHieloPed?: number | null
-  cBotellonFabPed?: number | null
-  cBotellonDomPed?: number | null
-  cBolsaAguaPed?: number | null
-  cBolsaHieloPed?: number | null
-}): number {
-  return (
-    (p.cPacaAguaPed || 0) +
-    (p.cPacaHieloPed || 0) +
-    (p.cBotellonFabPed || 0) +
-    (p.cBotellonDomPed || 0) +
-    (p.cBolsaAguaPed || 0) +
-    (p.cBolsaHieloPed || 0)
-  )
-}
-
-function pesoPedido(p: {
-  cPacaAguaPed?: number | null
-  cPacaHieloPed?: number | null
-  cBotellonFabPed?: number | null
-  cBotellonDomPed?: number | null
-  cBolsaAguaPed?: number | null
-  cBolsaHieloPed?: number | null
-}): number {
-  return (
-    (p.cPacaAguaPed || 0) * PESOS_KG.PACA_AGUA +
-    (p.cPacaHieloPed || 0) * PESOS_KG.PACA_HIELO +
-    (p.cBotellonFabPed || 0) * PESOS_KG.BOTELLON +
-    (p.cBotellonDomPed || 0) * PESOS_KG.BOTELLON +
-    (p.cBolsaAguaPed || 0) * PESOS_KG.BOLSA_AGUA +
-    (p.cBolsaHieloPed || 0) * PESOS_KG.BOLSA_HIELO
-  )
-}
-
 type PedidoConRuta = {
   id: string
   cPacaAguaPed?: number | null
@@ -94,41 +58,6 @@ type PedidoConRuta = {
   cBolsaHieloPed?: number | null
   cliente?: { rutaId?: string | null; barrio?: string | null; nombre?: string | null } | null
   negocio?: { rutaId?: string | null; barrio?: string | null; nombre?: string | null } | null
-}
-
-/**
- * Split a group of pedidos into chunks that don't exceed maxUnidades.
- * Uses a greedy approach: adds pedidos to current chunk until adding the next
- * would exceed the limit, then starts a new chunk.
- */
-function splitPedidosByCapacity(pedidos: PedidoConRuta[], maxUnidades: number): PedidoConRuta[][] {
-  const chunks: PedidoConRuta[][] = []
-  let chunkActual: PedidoConRuta[] = []
-  let unidadesChunk = 0
-
-  for (const pedido of pedidos) {
-    const unidades = unidadesPedido(pedido)
-    if (unidades > maxUnidades) {
-      if (chunkActual.length > 0) {
-        chunks.push(chunkActual)
-        chunkActual = []
-        unidadesChunk = 0
-      }
-      chunks.push([pedido])
-      continue
-    }
-    if (unidadesChunk + unidades > maxUnidades && chunkActual.length > 0) {
-      chunks.push(chunkActual)
-      chunkActual = []
-      unidadesChunk = 0
-    }
-    chunkActual.push(pedido)
-    unidadesChunk += unidades
-  }
-  if (chunkActual.length > 0) {
-    chunks.push(chunkActual)
-  }
-  return chunks
 }
 
 interface PreviewChunk {
