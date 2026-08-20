@@ -20,19 +20,22 @@ export default defineConfig({
   // Was pinned to 1: hundreds of tests each doing a real UI/CSRF login hit
   // Auth.js's Credentials provider concurrently, producing intermittent
   // CredentialsSignin/403s (see e2e/fixtures.ts "Per-worker auth cache").
-  // Fixed by authenticating once per (worker, role) and caching the session
-  // — see AGENTS.md Known Issue #20 for the fix and its measured evidence.
-  // Kept conservative at 2 (not higher): resetDatabase()/resetTestDatabase()
-  // truncates SesionActiva, which invalidates every currently-active
-  // session cluster-wide, not just the resetting test's own data. A
-  // Postgres advisory lock (prisma/reset-locked.ts) prevents two resets
-  // from corrupting each other, but does not stop a completed reset from
-  // 401ing another worker's already-authenticated page — that residual
-  // risk grows with worker count, so 2 was chosen over 4/8 pending the
-  // fuller fix (DB-per-worker isolation, still open — see AGENTS.md #20).
-  // PW_WORKERS wins when set (manual override, e.g. to trial 4 in CI via
-  // workflow_dispatch); otherwise CI runs 2, local dev stays at 1.
-  workers: process.env.PW_WORKERS ? Number(process.env.PW_WORKERS) : (process.env.CI ? 2 : 1),
+  // The login-race itself is fixed by authenticating once per (worker,
+  // role) and caching the session — see AGENTS.md Known Issue #20.
+  // REVERTED to 1 in CI (ago 2026): a real 2-worker CI run still showed
+  // recurring CredentialsSignin errors and an elevated flaky-test count
+  // on the exact same shards that ran clean at workers:1 — consistent
+  // with the residual, still-unfixed risk documented in AGENTS.md #20:
+  // resetDatabase()/resetTestDatabase() truncates SesionActiva (session
+  // table), and a completed reset from ANY worker can 401 another
+  // worker's already-authenticated page (sharedPageLogin pattern). The
+  // advisory lock in prisma/reset-locked.ts only serializes concurrent
+  // resets against each other; it does not stop that cross-worker
+  // invalidation. Real DB-per-worker isolation (AGENTS.md #20) is the
+  // prerequisite for safely raising this again — not attempted here.
+  // PW_WORKERS wins when set (manual override, e.g. to re-trial 2+ in CI
+  // via workflow_dispatch once the DB-per-worker fix lands).
+  workers: process.env.PW_WORKERS ? Number(process.env.PW_WORKERS) : (process.env.CI ? 1 : 1),
   reporter: 'html',
   // Specs exploratorios y QA comprehensivo son scripts manuales/auditores
   // que registran hallazgos, no tests CI. Los excluimos de la ejecución
