@@ -22,6 +22,8 @@ import { ClienteTable } from './cliente-table'
 import { ClienteForm } from './cliente-form'
 import { fetchResilient } from '@/lib/fetch-resilient'
 import { fetchWithTimeout, FetchTimeoutError } from '@/lib/fetch-timeout'
+import { offlineDb } from '@/lib/db/offline'
+import { SYNC_ITEM_DONE_EVENT } from '@/lib/db/sync'
 import { ClienteHistorial } from './cliente-historial'
 import { ClienteStats } from './cliente-stats'
 import { NegocioForm } from '@/components/negocio-form'
@@ -205,6 +207,42 @@ function clienteMatchesSearch(cliente: Cliente, term: string): boolean {
   return false
 }
 
+/**
+ * Construye una fila optimista para un cliente creado offline (aun en
+ * requestQueue, sin id real de servidor). `id`/`clienteId` usan un prefijo
+ * `offline-` para no colisionar con ids reales ni disparar acciones que
+ * requieren un cliente ya persistido (ver render condicional en ClienteTable).
+ */
+function buildPendingCliente(offlineId: string, body: Record<string, unknown>): Cliente {
+  return {
+    id: `offline-${offlineId}`,
+    clienteId: `offline-${offlineId}`,
+    nombre: typeof body.nombre === 'string' ? body.nombre : '',
+    apellido: typeof body.apellido === 'string' ? body.apellido : undefined,
+    telefono: typeof body.telefono === 'string' ? body.telefono : '',
+    barrio: typeof body.barrio === 'string' ? body.barrio : undefined,
+    direccion: typeof body.direccion === 'string' ? body.direccion : undefined,
+    frecuencia: 'NINGUNA',
+    activo: true,
+    _pendingSync: true,
+    _pendingOfflineId: offlineId,
+  }
+}
+
+/** Lee requestQueue y reconstruye las filas pendientes de "crear-cliente". */
+async function loadPendingClientesFromQueue(): Promise<Cliente[]> {
+  const items = await offlineDb.requestQueue.where('localEndpoint').equals('crear-cliente').toArray()
+  return items.map((item) => {
+    let body: Record<string, unknown> = {}
+    try {
+      body = JSON.parse(item.body)
+    } catch {
+      // body corrupto: fila pendiente igual se muestra con campos vacíos
+    }
+    return buildPendingCliente(item.offlineId, body)
+  })
+}
+
 export default function ClientesClient({
   initialClientes,
   initialTotal = 0,
@@ -230,6 +268,45 @@ export default function ClientesClient({
   // Cache client-side: lista completa para búsqueda instantánea sin round-trip.
   const [allClientes, setAllClientes] = useState<Cliente[]>([])
   const [allClientesLoading, setAllClientesLoading] = useState(false)
+
+  // Clientes creados offline (2G/3G rural) que siguen encolados en
+  // IndexedDB esperando sync. Sin esto, el usuario cierra el modal, no ve
+  // el cliente en la lista y asume que "se borró" — reingresándolo varias
+  // veces (ver AGENTS.md issue Aponte). Se reconstruyen al montar desde
+  // requestQueue (sobreviven a un refresh) y se reconcilian cuando
+  // syncWithServer() termina de procesar ese item.
+  const [pendingClientes, setPendingClientes] = useState<Cliente[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    loadPendingClientesFromQueue()
+      .then((rows) => {
+        if (!cancelled) setPendingClientes(rows)
+      })
+      .catch((error) => {
+        // IndexedDB puede no estar disponible (Safari privado, algunos
+        // entornos de test) — degradar sin romper el resto de la página.
+        console.warn('[pendingClientes] error leyendo requestQueue', error)
+      })
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
+    function handleSyncItemDone(e: Event) {
+      const detail = (e as CustomEvent<{ offlineId: string; localEndpoint: string; status: string }>).detail
+      if (!detail || detail.localEndpoint !== 'crear-cliente') return
+      setPendingClientes((prev) => prev.filter((c) => c._pendingOfflineId !== detail.offlineId))
+      // El item pudo haber creado un cliente nuevo en el server (synced) o
+      // deduplicado contra uno existente (conflict) — en ambos casos hay
+      // que refrescar para que aparezca la fila real.
+      if (detail.status === 'synced' || detail.status === 'conflict') {
+        void loadAllClientes()
+      }
+    }
+    window.addEventListener(SYNC_ITEM_DONE_EVENT, handleSyncItemDone)
+    return () => window.removeEventListener(SYNC_ITEM_DONE_EVENT, handleSyncItemDone)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Sincronizar input de búsqueda cuando la URL cambia por navegación
   // externa (back/forward) o carga inicial con ?search=... en el URL.
@@ -689,6 +766,20 @@ export default function ClientesClient({
     displayPage = page
   }
 
+  // Filas pendientes (offline, aun en requestQueue): se muestran siempre
+  // arriba de la página 1 / resultado de búsqueda, para que el usuario
+  // tenga confirmación visual inmediata de que el cliente no se perdió.
+  const pendingDisplayList = useMemo(() => {
+    const term = searchInput.trim()
+    if (!term) return pendingClientes
+    return pendingClientes.filter((c) => clienteMatchesSearch(c, term))
+  }, [pendingClientes, searchInput])
+
+  if (displayPage === 1 && pendingDisplayList.length > 0) {
+    displayList = [...pendingDisplayList, ...displayList]
+    displayTotal += pendingDisplayList.length
+  }
+
   function openCreateModal() {
     setFormData({
       nombre: '',
@@ -1027,7 +1118,11 @@ export default function ClientesClient({
           }
           // Offline real (mobile sin señal): toast info y modal-cierra
           // como antes. La request queda en IndexedDB y se sincroniza
-          // cuando vuelve la conexión.
+          // cuando vuelve la conexión. Se agrega una fila optimista para
+          // que el usuario vea el cliente en la lista de inmediato — sin
+          // esto no hay ninguna confirmación visual hasta que sincronice,
+          // y el usuario asume que el cliente "se borró" y lo reingresa.
+          setPendingClientes((prev) => [...prev, buildPendingCliente(offlineId, body)])
           toast.info('Sin conexión. Cliente guardado localmente. Se creará al recuperar la red.')
           setShowModal(false)
           return

@@ -48,6 +48,17 @@ vi.mock('@/lib/fetch-resilient', () => ({
   fetchResilient: vi.fn(),
 }))
 
+// Mock de Dexie/IndexedDB: jsdom no implementa IndexedDB, y estos tests
+// no ejercitan sync real — solo la reconstrucción de filas pendientes
+// (ver describe "clientes pendientes de sync offline" al final del archivo).
+vi.mock('@/lib/db/offline', () => ({
+  offlineDb: {
+    requestQueue: {
+      where: vi.fn(() => ({ equals: vi.fn(() => ({ toArray: vi.fn(async () => []) })) })),
+    },
+  },
+}))
+
 // Inline mock de ClienteTable: renderiza una fila clickable por cliente.
 // Necesitamos el row clickable para disparar viewCliente (el bug #2
 // es del flow de click). Si mockearamos con un div vacio, no podriamos
@@ -149,6 +160,8 @@ import { __resetDetailCache } from '@/app/(app)/clientes/clientes-client'
 import { __resetPanelCaches } from '@/app/(app)/clientes/clientes-client/panel-prefetch'
 import type { Cliente } from '@/app/(app)/clientes/clientes-client/types'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { offlineDb } from '@/lib/db/offline'
+import { SYNC_ITEM_DONE_EVENT } from '@/lib/db/sync'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
@@ -1172,5 +1185,148 @@ describe('ClientesClient — sync búsqueda URL/input', () => {
     expect(input.value).toBe('Juan ')
     await act(async () => { vi.advanceTimersByTime(500) })
     expect(pushMock).not.toHaveBeenCalled()
+  })
+})
+
+// Bug reportado: "el cliente Aponte se borra, hay que volver a ingresarlo".
+// Causa raíz: fetchResilient encola la creación en IndexedDB cuando no hay
+// señal (2G/3G rural) y cierra el modal sin dejar ningún rastro visible en
+// la lista — el usuario asume que el cliente se perdió y lo reingresa varias
+// veces. Estos tests cubren la reconciliación de esas filas "pendientes":
+// reconstrucción desde requestQueue al montar, y remoción cuando el evento
+// de sync confirma que el server ya procesó el item.
+describe('ClientesClient — clientes pendientes de sync offline (bug Aponte)', () => {
+  let originalFetch: typeof fetch
+
+  beforeEach(() => {
+    originalFetch = global.fetch
+    vi.mocked(useRouter).mockReset().mockReturnValue(createMockRouter() as unknown as ReturnType<typeof useRouter>)
+    vi.mocked(useSearchParams).mockReset().mockReturnValue(new URLSearchParams() as unknown as ReturnType<typeof useSearchParams>)
+  })
+
+  afterEach(() => {
+    cleanup()
+    global.fetch = originalFetch
+    __resetDetailCache()
+    __resetPanelCaches()
+  })
+
+  function mockQueueWith(items: Array<{ offlineId: string; localEndpoint: string; body: string }>) {
+    vi.mocked(offlineDb.requestQueue.where).mockReturnValue({
+      equals: vi.fn().mockReturnValue({ toArray: vi.fn().mockResolvedValue(items) }),
+    } as unknown as ReturnType<typeof offlineDb.requestQueue.where>)
+  }
+
+  it('reconstruye una fila pendiente desde requestQueue al montar (sobrevive a un refresh)', async () => {
+    mockQueueWith([
+      {
+        offlineId: 'off-aponte-1',
+        localEndpoint: 'crear-cliente',
+        body: JSON.stringify({ nombre: 'Yenifer', apellido: 'Aponte', telefono: '3103704219' }),
+      },
+    ])
+    const { mock } = createFetchMock()
+    global.fetch = mock as unknown as typeof fetch
+
+    await act(async () => {
+      render(
+        <ClientesClient
+          initialClientes={[mockCliente]}
+          filtrosActivos={{ mostrarNegocio: 'todos', ubicacionMaps: 'todos' }}
+          openClienteId={undefined}
+          filtroActivo={null}
+        />,
+      )
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('cliente-row-offline-off-aponte-1')).toBeTruthy()
+    })
+    // El mock de ClienteTable solo renderiza `nombre` (ver arriba); el
+    // apellido va en el objeto Cliente construido pero no en este stub.
+    expect(screen.getByText('Yenifer')).toBeTruthy()
+  })
+
+  it('quita la fila pendiente y refresca la lista cuando llega bambu:sync-item-done', async () => {
+    mockQueueWith([
+      {
+        offlineId: 'off-aponte-2',
+        localEndpoint: 'crear-cliente',
+        body: JSON.stringify({ nombre: 'Yenifer', apellido: 'Aponte', telefono: '3103704219' }),
+      },
+    ])
+    const { mock, calls } = createFetchMock()
+    global.fetch = mock as unknown as typeof fetch
+
+    await act(async () => {
+      render(
+        <ClientesClient
+          initialClientes={[mockCliente]}
+          filtrosActivos={{ mostrarNegocio: 'todos', ubicacionMaps: 'todos' }}
+          openClienteId={undefined}
+          filtroActivo={null}
+        />,
+      )
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('cliente-row-offline-off-aponte-2')).toBeTruthy()
+    })
+
+    const callsBefore = calls.length
+    await act(async () => {
+      window.dispatchEvent(
+        new CustomEvent(SYNC_ITEM_DONE_EVENT, {
+          detail: { offlineId: 'off-aponte-2', localEndpoint: 'crear-cliente', status: 'synced' },
+        }),
+      )
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('cliente-row-offline-off-aponte-2')).toBeNull()
+    })
+    // Reconciliación: al confirmarse el sync, se refresca la lista para
+    // traer el cliente real creado por el server.
+    await waitFor(() => {
+      expect(calls.length).toBeGreaterThan(callsBefore)
+    })
+  })
+
+  it('ignora eventos de sync de otros endpoints (ej. pedidos offline)', async () => {
+    mockQueueWith([
+      {
+        offlineId: 'off-aponte-3',
+        localEndpoint: 'crear-cliente',
+        body: JSON.stringify({ nombre: 'Yenifer', apellido: 'Aponte', telefono: '3103704219' }),
+      },
+    ])
+    const { mock } = createFetchMock()
+    global.fetch = mock as unknown as typeof fetch
+
+    await act(async () => {
+      render(
+        <ClientesClient
+          initialClientes={[mockCliente]}
+          filtrosActivos={{ mostrarNegocio: 'todos', ubicacionMaps: 'todos' }}
+          openClienteId={undefined}
+          filtroActivo={null}
+        />,
+      )
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('cliente-row-offline-off-aponte-3')).toBeTruthy()
+    })
+
+    await act(async () => {
+      window.dispatchEvent(
+        new CustomEvent(SYNC_ITEM_DONE_EVENT, {
+          detail: { offlineId: 'off-otro-pedido', localEndpoint: 'venta-libre', status: 'synced' },
+        }),
+      )
+    })
+
+    // La fila de Aponte sigue pendiente — el evento era de otro item.
+    expect(screen.getByTestId('cliente-row-offline-off-aponte-3')).toBeTruthy()
   })
 })
