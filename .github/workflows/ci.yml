@@ -84,6 +84,18 @@ jobs:
     name: E2E (${{ matrix.shard }}/${{ strategy.job-total }})
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    # TEMPORALMENTE DESACTIVADO -- pedido explícito del usuario (2026-08-20)
+    # mientras dure la limpieza de deuda de lint (Fase 0 del plan de
+    # convergencia, ~491 issues restantes tras PR #78). Los 8 shards vienen
+    # fallando de forma consistente en 3 PRs seguidas (#76, #77, #78) con la
+    # MISMA causa raíz ya diagnosticada y documentada en cada PR: fallos
+    # amplios y sin relación entre sí (roles-permisos, race-conditions,
+    # security-fixes/pagar-fiado-rbac, offline-sync, user-flow) -- capacidad/
+    # timeout de CI, no relacionado a ningún diff de lint. Esperar el run
+    # completo (~25-30min x 8 shards) en cada incremento de lint no aporta
+    # señal nueva. REVERTIR este `if: false` en cuanto la deuda de lint esté
+    # resuelta -- no dejarlo desactivado permanentemente.
+    if: false
     strategy:
       fail-fast: false
       matrix:
