@@ -60,7 +60,7 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
   const [editingEmbarque, setEditingEmbarque] = useState<Embarque | null>(null)
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [dateRange, setDateRange] = useState<{ desde: string | null; hasta: string | null }>({ desde: null, hasta: null })
-  const [filtroFase, setFiltroFase] = useState<FaseUIEmbarque | ''>('')
+  const [filtroFase, setFiltroFase] = useState<'' | 'ABIERTO' | FaseUIEmbarque>('')
   const [activeTab, setActiveTab] = useState<'embarques' | 'stats'>('embarques')
   const [stockEstimado, setStockEstimado] = useState<{ agua: number; hielo: number } | null>(initialData?.stockEstimado || null)
   const [showStockModal, setShowStockModal] = useState(false)
@@ -80,7 +80,7 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
       const params = new URLSearchParams()
       if (dateRange.desde) params.set('desde', dateRange.desde)
       if (dateRange.hasta) params.set('hasta', dateRange.hasta)
-      if (filtroFase) params.set('estado', estadoBackendParaFase(filtroFase))
+      if (filtroFase) params.set('estado', filtroFase === 'ABIERTO' ? 'ABIERTO' : estadoBackendParaFase(filtroFase))
       // FIX prod-performance: evitar la llamada pesada `all=true&stock=true` en
       // cada cambio de filtro. El stock bajo solo importa para la vista default
       // (hoy); se recalcula cuando no hay rango activo (initial load + polling).
@@ -225,9 +225,20 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
   // Filtro client-side por fase derivada: el backend solo entiende los 4
   // estados reales; las sub-fases de ABIERTO se filtran acá sobre la lista
   // ya cargada (regla central: granularidad derivada, nunca persistida).
-  const embarquesVisibles = filtroFase
+  // 'ABIERTO' es el agregado (el backend ya filtra por ese estado). Solo las
+  // sub-fases derivadas (BORRADOR/PREPARANDO/CONFIRMADO) se filtran en cliente.
+  const esSubFaseAbierta =
+    filtroFase === 'BORRADOR' || filtroFase === 'PREPARANDO' || filtroFase === 'CONFIRMADO'
+  const embarquesVisibles = esSubFaseAbierta
     ? embarques.filter((e) => derivarEstadoUI(toUIEstadoInput(e)).fase === filtroFase)
     : embarques
+
+  const filtroLabel =
+    filtroFase === 'ABIERTO'
+      ? 'Abiertos'
+      : filtroFase
+        ? LABELS[filtroFase as FaseUIEmbarque]
+        : ''
 
   if (fetchError) {
     return (
@@ -312,13 +323,14 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
         <div className="flex flex-wrap gap-2 mt-3">
           {([
             { key: '', label: 'Todos' },
+            { key: 'ABIERTO', label: 'Abiertos' },
             { key: 'BORRADOR', label: 'Borradores' },
             { key: 'PREPARANDO', label: 'Preparando' },
             { key: 'CONFIRMADO', label: 'Confirmados' },
             { key: 'EN_RUTA', label: 'En Ruta' },
             { key: 'CERRADO', label: 'Cerrados' },
             { key: 'CANCELADO', label: 'Cancelados' },
-          ] as Array<{ key: FaseUIEmbarque | ''; label: string }>).map(({ key, label }) => (
+          ] as Array<{ key: '' | 'ABIERTO' | FaseUIEmbarque; label: string }>).map(({ key, label }) => (
             <button
               key={key}
               onClick={() => setFiltroFase(key)}
@@ -486,7 +498,7 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
           <div className="col-span-full">
             <EmptyState
               icon={<svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m0 0a2 2 0 104 0m0 0a2 2 0 104 0" /></svg>}
-              title={filtroFase ? `Sin embarques en fase "${LABELS[filtroFase]}"` : 'No hay embarques hoy'}
+              title={filtroFase ? `Sin embarques en "${filtroLabel}"` : 'No hay embarques hoy'}
               description={
                 !dateRange.desde && !dateRange.hasta
                   ? 'Los embarques agrupan pedidos por zona para optimizar las rutas de entrega. Si buscás embarques de días anteriores, probá "Ver últimos 30 días" arriba.'
