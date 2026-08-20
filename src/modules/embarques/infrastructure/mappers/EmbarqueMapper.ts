@@ -161,6 +161,7 @@ export class EmbarqueMapper {
     createdById?: string
     numero: number
     numeroDia: number
+    offlineId?: string
   }): Record<string, unknown> {
     const cargaJson = embarque.carga.toJSON()
 
@@ -176,6 +177,7 @@ export class EmbarqueMapper {
       createdById: embarque.createdById ?? null,
       numero: embarque.numero,
       numeroDia: embarque.numeroDia,
+      offlineId: embarque.offlineId ?? null,
       // Legacy fields
       pacasAgua: cargaJson.PACA_AGUA,
       pacasHielo: cargaJson.PACA_HIELO,

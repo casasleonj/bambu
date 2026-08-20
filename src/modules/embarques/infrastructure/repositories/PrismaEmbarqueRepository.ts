@@ -39,6 +39,21 @@ export class PrismaEmbarqueRepository implements IEmbarqueRepository {
     return EmbarqueMapper.fromPrisma(raw)
   }
 
+  async findByOfflineId(offlineId: string, tx?: unknown): Promise<Embarque | null> {
+    const client = getTx(tx)
+    const raw = await client.embarque.findFirst({
+      where: { offlineId },
+      include: {
+        trabajador: { select: { nombre: true, usaMoto: true, capacidadKg: true } },
+        ruta: { select: { nombre: true } },
+        productos: true,
+        gastos: true,
+      },
+    })
+    if (!raw) return null
+    return EmbarqueMapper.fromPrisma(raw)
+  }
+
   async findByTrabajadorAndFecha(trabajadorId: string, fecha: Date, tx?: unknown): Promise<Embarque | null> {
     const client = getTx(tx)
     // FIX Fase 2 §3.3: antes setHours(0,0,0,0) naive (UTC en Vercel).
@@ -168,6 +183,7 @@ export class PrismaEmbarqueRepository implements IEmbarqueRepository {
       createdById?: string
       numero: number
       numeroDia: number
+      offlineId?: string
     },
     tx?: unknown,
   ): Promise<Embarque> {

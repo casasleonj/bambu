@@ -480,6 +480,8 @@ export const EmbarqueCreateSchema = z.object({
   obs: z.string().max(500).optional(),
   carga: z.array(EmbarqueProductoSchema).min(1, 'Agrega al menos un producto'),
   overrideMotivo: z.string().max(500).optional(),
+  // Offline-first: dedup key (ADR-OFFLINE-001).
+  offlineId: z.string().optional(),
 })
 
 export const EmbarqueUpdateSchema = z.object({

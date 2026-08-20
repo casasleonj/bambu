@@ -21,6 +21,12 @@ export interface EmbarqueFilter {
 export interface IEmbarqueRepository {
   findById(id: string, tx?: unknown): Promise<Embarque | null>
   /**
+   * Devuelve el embarque creado con un `offlineId` determinado (dedup
+   * offline-first). `Embarque.offlineId` no es unique en schema, así que
+   * se busca con findFirst; el caller (use case) lo invoca dentro de su lock.
+   */
+  findByOfflineId(offlineId: string, tx?: unknown): Promise<Embarque | null>
+  /**
    * Devuelve el embarque de `fecha` del trabajador sólo si está ABIERTO o
    * EN_RUTA (activo); ignora CERRADO y CANCELADO. Permite que un trabajador
    * tenga múltiples embarques el mismo día (recargas) mientras no tenga más
@@ -46,6 +52,7 @@ export interface IEmbarqueRepository {
     createdById?: string
     numero: number
     numeroDia: number
+    offlineId?: string
   }, tx?: unknown): Promise<Embarque>
   update(id: string, data: Partial<{
     estado: EstadoEmbarque

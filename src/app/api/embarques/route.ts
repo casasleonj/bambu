@@ -225,6 +225,7 @@ export async function POST(request: NextRequest) {
       createdById: session.user?.id,
       verificarStock: true,
       maxUnidades,
+      offlineId: parsed.data.offlineId,
     })
 
     logAudit({

@@ -3,6 +3,8 @@ import { toast } from 'sonner'
 import { Modal } from '@/components/modal'
 import { PESOS_KG, calcularPesoDesdeCarga, getCapacidadInfo, type CargaSnapshot } from '@/lib/embarque-capacidad'
 import { useProductosDomicilio, getProductoEmoji } from '@/hooks/use-productos-domicilio'
+import { fetchResilient } from '@/lib/fetch-resilient'
+import { generateUUID } from '@/lib/uuid'
 import type { Trabajador, Ruta, EmbarqueEditable } from './types'
 
 interface StockDisponible {
@@ -182,14 +184,11 @@ export function EmbarqueFormModal({
       toast.warning('Base dinero: $0 — ¿Seguro que no necesita cambio?')
     }
     setSubmitting(true)
-    try {
-      const url = isEdit ? `/api/embarques/${embarque!.id}` : '/api/embarques'
-      const method = isEdit ? 'PUT' : 'POST'
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
+    const result = await fetchResilient<{ success: boolean }>(
+      isEdit ? `/api/embarques/${embarque!.id}` : '/api/embarques',
+      {
+        method: isEdit ? 'PUT' : 'POST',
+        body: {
           trabajadorId: selectedTrabajadorId,
           rutaId: selectedRutaId || undefined,
           tipoMoto: tipoMoto || undefined,
@@ -198,23 +197,24 @@ export function EmbarqueFormModal({
           obs,
           carga: cargaArr,
           overrideMotivo: overrideMotivo || undefined,
-        }),
-      })
-      const data = await res.json()
-      if (data.success) {
-        resetForm()
-        onClose()
-        onSaved()
-        toast.success(isEdit ? 'Embarque actualizado' : 'Embarque creado')
-      } else {
-        toast.error(data.error?.message || (isEdit ? 'Error actualizando embarque' : 'Error creando embarque'))
+          offlineId: generateUUID(),
+        },
+        localEndpoint: isEdit ? 'editar-embarque' : 'crear-embarque',
       }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : (isEdit ? 'Error actualizando embarque' : 'Error creando embarque')
-      toast.error(msg)
-    } finally {
-      setSubmitting(false)
+    )
+    if (result.status === 'offline') {
+      toast.info('Sin conexión. Guardado, se aplicará al recuperar la red.')
+      resetForm()
+      onClose()
+    } else if (result.status === 'error') {
+      toast.error(result.error)
+    } else {
+      resetForm()
+      onClose()
+      onSaved()
+      toast.success(isEdit ? 'Embarque actualizado' : 'Embarque creado')
     }
+    setSubmitting(false)
   }
 
   function resetForm() {

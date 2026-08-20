@@ -33,6 +33,16 @@ export class CrearEmbarqueUseCase {
     // no el embarque global. Distintos trabajadores ya no se serializan entre sí.
     const fechaStr = startOfDayBogota().toISOString().slice(0, 10)
     return this.txManager.executeWithLock('EMBARQUE_CARGA', `${input.trabajadorId}:${fechaStr}`, async (tx) => {
+      // 0. Dedup offline-first (ADR-OFFLINE-001): si ya existe un embarque
+      // creado con el mismo offlineId (replay tras reconexión), devolvemos el
+      // existente en vez de crear un duplicado.
+      if (input.offlineId) {
+        const existente = await this.embarqueRepo.findByOfflineId(input.offlineId, tx)
+        if (existente) {
+          return EmbarqueDTOMapper.toDetalle(existente)
+        }
+      }
+
       // 1. Validate worker has moto
       const trabajador = await this.trabajadorRepo.findById(input.trabajadorId, tx)
       if (!trabajador) {
@@ -96,6 +106,7 @@ export class CrearEmbarqueUseCase {
           createdById: input.createdById,
           numero: numeroDia,
           numeroDia,
+          offlineId: input.offlineId,
         },
         tx,
       )

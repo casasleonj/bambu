@@ -20,6 +20,9 @@ export interface CrearEmbarqueInput {
   createdById?: string
   verificarStock?: boolean
   maxUnidades?: number
+  // Offline-first dedup (ADR-OFFLINE-001): si llega un retry con el mismo
+  // offlineId de un embarque ya creado, se devuelve el existente.
+  offlineId?: string
   // FASE 8 (ADR-STOCK-001, §10): metadata de validación al crear la carga.
   availabilityBasis?: 'CONFIRMED_STOCK' | 'PRODUCTION_CONFIRMED' | 'ESTIMATED' | 'MIXED'
 }
