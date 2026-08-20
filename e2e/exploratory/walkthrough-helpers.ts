@@ -74,7 +74,7 @@ export async function skipBaseCaja(page) {
     localStorage.setItem('baseDiaDate', date)
     localStorage.setItem('baseDia', '100000')
     localStorage.setItem(`baseDia_${date}`, '100000')
-    // @ts-ignore
+    // @ts-expect-error -- flag de test, no declarado en el tipo Window
     window.__PLAYWRIGHT_TEST__ = true
   }, { date: today })
 }
