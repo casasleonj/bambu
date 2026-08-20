@@ -122,7 +122,7 @@ export function FiadosTable({
     })
 
     return Array.from(clientesMap.values())
-  }, [pedidosFiltrados])
+  }, [pedidosFiltrados, clientes])
 
   const filtrados = fiadoRows.filter((row) => {
     const matchSearch = !searchTerm ||
