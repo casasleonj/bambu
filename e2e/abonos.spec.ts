@@ -1,6 +1,6 @@
 // @tests api/abonos
-import { test, expect, type Page } from '@playwright/test'
-import { resetDatabase, handleBaseCaja, openFabPedidoEnvio } from './fixtures'
+import { test, expect } from '@playwright/test'
+import { resetDatabase, handleBaseCaja, openFabPedidoEnvio, loginAs } from './fixtures'
 
 test.describe('Abonos', () => {
   test.describe.configure({ mode: 'serial' })
@@ -11,16 +11,8 @@ test.describe('Abonos', () => {
     resetDatabase()
   })
 
-  async function login(page: Page, username: string, password: string) {
-    await page.goto('/login')
-    await page.fill('input[placeholder="Ingrese usuario"]', username)
-    await page.fill('input[placeholder="Ingrese contraseña"]', password)
-    await page.click('button[type="submit"]')
-    await page.waitForURL('**/dashboard')
-  }
-
   test('page loads with heading', async ({ page }) => {
-    await login(page, 'admin', 'admin123')
+    await loginAs(page, 'admin')
     await handleBaseCaja(page)
 
     await page.goto('/facturas')
@@ -32,7 +24,7 @@ test.describe('Abonos', () => {
 
   test('register abono and cancel abono on factura with saldo', async ({ page }) => {
     test.setTimeout(120000)
-    await login(page, 'admin', 'admin123')
+    await loginAs(page, 'admin')
 
     // Step 1: Create a pedido without payment → generates factura
     await page.goto('/pedidos')

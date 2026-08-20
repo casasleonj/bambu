@@ -1,9 +1,8 @@
 // @tests embarques module - comprehensive E2E coverage
-import {test, expect, loginAs, apiPost, apiGet, apiPut, apiDelete, createTrabajador, createCliente, skipBaseCaja, login, BASE,  resetDatabase} from './fixtures'
+import {test, expect, loginAs, apiPost, apiGet, apiPut, apiDelete, createTrabajador, createCliente, BASE,  resetDatabase} from './fixtures'
 
 /** Login that skips base caja modal to avoid redirect to /cierre */
 async function embarquesLogin(page: any) {
-  await skipBaseCaja(page)
   // Intercept cierre/last to return yesterday's cierre, preventing redirect
   const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
   await page.route('**/api/cierre/last', async (route: any) => {
@@ -13,8 +12,9 @@ async function embarquesLogin(page: any) {
       body: JSON.stringify({ cierre: { fecha: yesterday } }),
     })
   })
-  await login(page, 'admin', 'admin123')
-  // Keep route active for the rest of the test
+  // loginAs() already does skipBaseCaja() internally; the route above stays
+  // active through its dashboard navigation and for the rest of the test.
+  await loginAs(page, 'admin')
 }
 
 /** Navigate to embarques without base caja interference */

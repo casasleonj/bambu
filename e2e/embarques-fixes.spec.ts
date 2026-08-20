@@ -1,12 +1,12 @@
 // @tests embarques module - tests for critical fixes applied
 // Covers: Fix #1, #2, #5, #7, #8, #9, #12, #16, #17, #21, #22, #24, #25, #26
-import { test, expect, loginAs, apiPost, apiGet, apiDelete, createTrabajador, createCliente, skipBaseCaja, login, BASE } from './fixtures'
+import { test, expect, loginAs, apiPost, apiGet, apiDelete, createTrabajador, createCliente, BASE } from './fixtures'
+
 import { PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()
 
 async function embarquesLogin(page: any) {
-  await skipBaseCaja(page)
   const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
   await page.route('**/api/cierre/last', async (route: any) => {
     await route.fulfill({
@@ -15,7 +15,8 @@ async function embarquesLogin(page: any) {
       body: JSON.stringify({ cierre: { fecha: yesterday } }),
     })
   })
-  await login(page, 'admin', 'admin123')
+  // loginAs() already does skipBaseCaja() internally.
+  await loginAs(page, 'admin')
 }
 
 // ─── Fix #1: Discrepancy prices per product ─────────────────────────────────
@@ -147,12 +148,7 @@ test.describe('Embarques — Fix #2: REPARTIDOR no puede override precios', () =
     const originalPrice = Number(pedido.precioPacaAgua)
 
     // Step 2: Login as REPARTIDOR and try to close with inflated price
-    await skipBaseCaja(page)
-    await page.goto(`${BASE}/login`)
-    await page.fill('input[placeholder="Ingrese usuario"]', 'repartidor')
-    await page.fill('input[placeholder="Ingrese contraseña"]', 'rep123')
-    await page.click('button[type="submit"]')
-    await page.waitForURL('**/repartidor', { timeout: 15000 })
+    await loginAs(page, 'repartidor')
 
     // Try to close with inflated price (REPARTIDOR should not be able to override)
     const inflatedPrice = originalPrice + 10000
@@ -626,13 +622,7 @@ test.describe('Embarques — Fix #22: Gastos ownership check', () => {
     if (!embarqueId) { test.skip(); return }
 
     // Login as repartidor (different from the embarque owner)
-    await page.goto(`${BASE}/login`)
-    await page.fill('input[placeholder="Ingrese usuario"]', 'repartidor')
-    await page.fill('input[placeholder="Ingrese contraseña"]', 'rep123')
-    await page.click('button[type="submit"]')
-    await page.waitForURL('**/repartidor', { timeout: 15000 })
-    // Wait for session cookie to propagate to request context
-    await page.waitForTimeout(500)
+    await loginAs(page, 'repartidor')
 
     // Try to add gasto to another repartidor's embarque
     const gastoRes = await apiPost(page, `/api/embarques/${embarqueId}/gastos`, {

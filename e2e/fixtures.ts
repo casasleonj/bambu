@@ -1,6 +1,7 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, request, type Page, type Cookie } from '@playwright/test'
 import { execSync } from 'child_process'
 import { resolve } from 'path'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 
 declare global {
   interface Window {
@@ -14,21 +15,135 @@ export const BASE = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:30
 
 export function resetTestDatabase() {
   const root = resolve(__dirname, '..')
-  execSync('npx tsx prisma/clean.ts', { cwd: root, stdio: 'ignore' })
-  execSync('npx tsx prisma/seed-test.ts', { cwd: root, stdio: 'ignore' })
+  // Routed through reset-locked.ts (Postgres advisory lock) so that two
+  // workers' beforeAll/beforeEach hooks never interleave their clean+seed
+  // sequences. See prisma/reset-locked.ts for the full rationale.
+  execSync('npx tsx prisma/reset-locked.ts test', { cwd: root, stdio: 'ignore' })
 }
 
 // ─── Database Cleanup ────────────────────────────────────────────────────────
 
 export function resetDatabase() {
   const root = resolve(__dirname, '..')
-  execSync('npx tsx prisma/clean.ts', { cwd: root, stdio: 'ignore' })
-  execSync('npx tsx prisma/seed.ts', { cwd: root, stdio: 'ignore' })
+  execSync('npx tsx prisma/reset-locked.ts full', { cwd: root, stdio: 'ignore' })
 }
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
 const LOGIN_TIMEOUT = BASE.startsWith('http://localhost') ? 15000 : 60000
+
+type Role = 'admin' | 'asistente' | 'contador' | 'repartidor'
+
+const ROLE_CREDENTIALS: Record<Role, { user: string; pass: string }> = {
+  admin: { user: 'admin', pass: 'admin123' },
+  asistente: { user: 'asistente', pass: 'asist123' },
+  contador: { user: 'contador', pass: 'cont123' },
+  repartidor: { user: 'repartidor', pass: 'rep123' },
+}
+
+// ─── Per-worker auth cache ───────────────────────────────────────────────────
+//
+// Playwright workers are separate OS processes, so with workers>1 every test
+// that logged in independently was a real POST to Auth.js's Credentials
+// provider — hundreds of them, concurrently, which is what produced the
+// intermittent CredentialsSignin/403s that pinned playwright.config.ts to
+// workers:1. This follows Playwright's documented "reuse signed in state"
+// pattern (playwright.dev/docs/auth): authenticate once per (worker, role)
+// via a browser-less APIRequestContext, cache the resulting cookies to disk
+// under /.auth (already gitignored), and inject them into each test's page
+// context instead of re-authenticating. Cross-worker collisions on the same
+// file are impossible (each worker uses its own file, suffixed by
+// parallelIndex); same-worker races between two beforeAll hooks that want the
+// same role concurrently are serialized by `inflightLogins`.
+//
+// Cached cookies can go stale independently of expiry: any resetDatabase()/
+// resetTestDatabase() call — from ANY worker — truncates `SesionActiva`
+// (and `User`), which invalidates every currently-active session
+// cluster-wide (see AGENTS.md Known Issue #20). A cache that blindly trusted
+// a same-worker file would silently 401 for the rest of that worker's run
+// the moment any other worker resets the DB. `validateCachedCookies` checks
+// liveness via a cheap GET (no bcrypt/Credentials load) before reuse and
+// re-authenticates on a miss.
+const AUTH_CACHE_DIR = resolve(__dirname, '..', '.auth')
+const inflightLogins = new Map<string, Promise<Cookie[]>>()
+
+function authCacheFile(role: Role, workerIndex: number): string {
+  return resolve(AUTH_CACHE_DIR, `${role}-${workerIndex}.json`)
+}
+
+async function validateCachedCookies(cookies: Cookie[]): Promise<boolean> {
+  const ctx = await request.newContext({ baseURL: BASE, storageState: { cookies, origins: [] } })
+  try {
+    // NOT /api/auth/session: empirically (scripts run against a local dev
+    // server) that endpoint kept reporting a valid user from a JWT that
+    // decodes fine even after resetDatabase() truncated SesionActiva —
+    // it doesn't exercise this app's `sessionExists()` check in the jwt
+    // callback. /api/config only calls requireAuth() (no role gate), so
+    // it exercises the real auth path for all four roles and is cheap.
+    const res = await ctx.get('/api/config')
+    return res.ok()
+  } catch {
+    return false
+  } finally {
+    await ctx.dispose()
+  }
+}
+
+async function liveRoleLogin(role: Role): Promise<Cookie[]> {
+  const { user, pass } = ROLE_CREDENTIALS[role]
+  const ctx = await request.newContext({ baseURL: BASE })
+  try {
+    const csrfRes = await ctx.get('/api/auth/csrf')
+    const { csrfToken } = await csrfRes.json()
+    await ctx.post('/api/auth/callback/credentials', {
+      data: { csrfToken, username: user, password: pass, redirect: false, json: true },
+    })
+    return (await ctx.storageState()).cookies
+  } finally {
+    await ctx.dispose()
+  }
+}
+
+async function getCachedRoleCookies(role: Role, workerIndex: number): Promise<Cookie[]> {
+  const file = authCacheFile(role, workerIndex)
+  const key = `${role}-${workerIndex}`
+
+  if (existsSync(file)) {
+    const cached = JSON.parse(readFileSync(file, 'utf-8')) as Cookie[]
+    if (await validateCachedCookies(cached)) return cached
+    // Stale — most likely another worker's resetDatabase()/resetTestDatabase()
+    // wiped SesionActiva since this file was written. Fall through to a
+    // fresh login below.
+  }
+
+  const existing = inflightLogins.get(key)
+  if (existing) return existing
+
+  const promise = (async () => {
+    const cookies = await liveRoleLogin(role)
+    mkdirSync(AUTH_CACHE_DIR, { recursive: true })
+    writeFileSync(file, JSON.stringify(cookies))
+    return cookies
+  })()
+  inflightLogins.set(key, promise)
+  try {
+    return await promise
+  } finally {
+    inflightLogins.delete(key)
+  }
+}
+
+/**
+ * Authenticates `page` as `role` using the per-worker cached session instead
+ * of a live Credentials POST (see AUTH_CACHE_DIR above). Safe to call many
+ * times per test/worker — only the first call per (worker, role) hits the
+ * network.
+ */
+export async function applyCachedRoleAuth(page: Page, role: Role): Promise<void> {
+  const workerIndex = test.info().parallelIndex
+  const cookies = await getCachedRoleCookies(role, workerIndex)
+  await page.context().addCookies(cookies)
+}
 
 export async function login(page: Page, user: string, pass: string) {
   await page.goto(`${BASE}/login`, { timeout: LOGIN_TIMEOUT })
@@ -107,12 +222,26 @@ export async function skipBaseCaja(page: Page) {
   }, { dates: [utcDate, bogotaDate] })
 }
 
+const USERNAME_TO_ROLE: Record<string, Role> = {
+  admin: 'admin',
+  asistente: 'asistente',
+  contador: 'contador',
+  repartidor: 'repartidor',
+}
+
 export async function fullLogin(page: Page, user = 'admin', pass = 'admin123') {
   await skipBaseCaja(page)
 
-  // CSRF-based login (~3s vs ~9s for UI form filling).
-  // Avoids the slow page.fill/click/waitForURL round-trip through /login.
-  await csrfLogin(page, user, pass)
+  const role = USERNAME_TO_ROLE[user]
+  if (role) {
+    // Worker-cached login: reuses the (worker, role) session instead of a
+    // live Credentials POST. See applyCachedRoleAuth above.
+    await applyCachedRoleAuth(page, role)
+  } else {
+    // Non-canonical credentials (e.g. one-off users): fall back to a real,
+    // uncached CSRF login rather than guessing a role.
+    await csrfLogin(page, user, pass)
+  }
 
   // Navigate to dashboard to establish session cookie in the browser context.
   await page.goto(`${BASE}/dashboard`, { timeout: 15000 })
@@ -147,43 +276,34 @@ export async function sharedPageLogin(browser: { newPage: () => Promise<Page> },
   await page.goto(`${BASE}/login`, { timeout: 15000 })
   await page.evaluate(() => localStorage.clear())
   await skipBaseCaja(page)
-  await csrfLogin(page, user, pass)
+  const role = USERNAME_TO_ROLE[user]
+  if (role) {
+    await applyCachedRoleAuth(page, role)
+  } else {
+    await csrfLogin(page, user, pass)
+  }
   await page.goto(`${BASE}/dashboard`, { timeout: 15000 })
   await page.waitForLoadState('networkidle')
   await handleBaseCaja(page)
   return page
 }
 
-export async function loginAs(page: Page, role: 'admin' | 'asistente' | 'contador' | 'repartidor') {
-  const credentials: Record<string, { user: string; pass: string }> = {
-    admin: { user: 'admin', pass: 'admin123' },
-    asistente: { user: 'asistente', pass: 'asist123' },
-    contador: { user: 'contador', pass: 'cont123' },
-    repartidor: { user: 'repartidor', pass: 'rep123' },
-  }
-  const { user, pass } = credentials[role]
+export async function loginAs(page: Page, role: Role) {
   await skipBaseCaja(page)
-  await csrfLogin(page, user, pass)
+  await applyCachedRoleAuth(page, role)
   await page.goto(`${BASE}/dashboard`, { timeout: 15000 })
   await page.waitForLoadState('networkidle')
   await handleBaseCaja(page)
 }
 
 /** Role-aware shared page login. */
-export async function sharedLoginAs(browser: { newPage: () => Promise<Page> }, role: 'admin' | 'asistente' | 'contador' | 'repartidor') {
-  const credentials: Record<string, { user: string; pass: string }> = {
-    admin: { user: 'admin', pass: 'admin123' },
-    asistente: { user: 'asistente', pass: 'asist123' },
-    contador: { user: 'contador', pass: 'cont123' },
-    repartidor: { user: 'repartidor', pass: 'rep123' },
-  }
-  const { user, pass } = credentials[role]
+export async function sharedLoginAs(browser: { newPage: () => Promise<Page> }, role: Role) {
   const page = await browser.newPage()
   await page.context().clearCookies()
   await page.goto(`${BASE}/login`, { timeout: 15000 })
   await page.evaluate(() => localStorage.clear())
   await skipBaseCaja(page)
-  await csrfLogin(page, user, pass)
+  await applyCachedRoleAuth(page, role)
   await page.goto(`${BASE}/dashboard`, { timeout: 15000 })
   await page.waitForLoadState('networkidle')
   await handleBaseCaja(page)

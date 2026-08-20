@@ -2,6 +2,7 @@ import { test, expect, type Page, type APIRequestContext } from '@playwright/tes
 import { PrismaClient } from '@prisma/client'
 import { execSync } from 'child_process'
 import { resolve } from 'path'
+import { applyCachedRoleAuth } from './fixtures'
 
 declare global {
   interface Window {
@@ -52,6 +53,9 @@ export function reportBug(finding: BugFinding): void {
 
 const LOGIN_TIMEOUT = BASE.startsWith('http://localhost') ? 15000 : 60000
 
+/** Raw UI-form login (real Server Action round-trip). Not worker-cached on
+ * purpose — kept for the rare test whose actual subject is the login form
+ * itself. Prefer `loginAs`/`fullLogin` for "log in and proceed" tests. */
 export async function login(page: Page, user: string, pass: string) {
   await page.goto(`${BASE}/login`, { timeout: LOGIN_TIMEOUT })
   await page.fill('input[placeholder="Ingrese usuario"]', user)
@@ -60,24 +64,34 @@ export async function login(page: Page, user: string, pass: string) {
   await page.waitForURL(/.*\/(dashboard|repartidor|reportes)/, { timeout: LOGIN_TIMEOUT })
 }
 
-export async function loginAs(
-  page: Page,
-  role: 'admin' | 'asistente' | 'contador' | 'repartidor'
-) {
-  const credentials = {
-    admin: { user: 'admin', pass: 'admin123' },
-    asistente: { user: 'asistente', pass: 'asist123' },
-    contador: { user: 'contador', pass: 'cont123' },
-    repartidor: { user: 'repartidor', pass: 'rep123' },
-  }
-  const { user, pass } = credentials[role]
+type Role = 'admin' | 'asistente' | 'contador' | 'repartidor'
+
+const USERNAME_TO_ROLE: Record<string, Role> = {
+  admin: 'admin',
+  asistente: 'asistente',
+  contador: 'contador',
+  repartidor: 'repartidor',
+}
+
+/** Worker-cached login (see e2e/fixtures.ts `applyCachedRoleAuth`) — reuses
+ * the same per-worker, per-role session as the main fixtures module. */
+export async function loginAs(page: Page, role: Role) {
   await skipBaseCajaParanoid(page)
-  await login(page, user, pass)
+  await applyCachedRoleAuth(page, role)
+  await page.goto(`${BASE}/dashboard`, { timeout: LOGIN_TIMEOUT })
+  await page.waitForLoadState('networkidle')
 }
 
 export async function fullLogin(page: Page, user = 'admin', pass = 'admin123') {
-  await skipBaseCajaParanoid(page)
-  await login(page, user, pass)
+  const role = USERNAME_TO_ROLE[user]
+  if (!role) {
+    // Unknown/non-canonical credentials (e.g. 'sellador'): fall back to a
+    // real, uncached UI login rather than guessing.
+    await skipBaseCajaParanoid(page)
+    await login(page, user, pass)
+    return
+  }
+  await loginAs(page, role)
 }
 
 // ─── API Call Helper ─────────────────────────────────────────────────────────
@@ -348,8 +362,9 @@ export async function skipBaseCajaParanoid(page: Page): Promise<void> {
 
 export function resetTestDatabase() {
   const root = resolve(__dirname, '..')
-  execSync('npx tsx prisma/clean.ts', { cwd: root, stdio: 'ignore' })
-  execSync('npx tsx prisma/seed-test.ts', { cwd: root, stdio: 'ignore' })
+  // Routed through reset-locked.ts (Postgres advisory lock) — see
+  // e2e/fixtures.ts and prisma/reset-locked.ts for the full rationale.
+  execSync('npx tsx prisma/reset-locked.ts test', { cwd: root, stdio: 'ignore' })
 }
 
 // ─── Screenshot on failure ───────────────────────────────────────────────────

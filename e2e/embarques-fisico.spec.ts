@@ -3,7 +3,7 @@
 // límites de permisos por rol, idempotencia offline (retry con mismo offlineId)
 // y responsive/mobile. No solo el camino feliz — también los casos límite que
 // el propio contrato del plan maestro exige (ver docs/adr/ADR-*).
-import { test, expect, login, loginAs, goto, skipBaseCaja, createTrabajador, createEmbarque, apiPost, apiGet, BASE, waitForToast, checkHorizontalOverflow } from './fixtures'
+import { test, expect, loginAs, goto, skipBaseCaja, createTrabajador, createEmbarque, apiPost, apiGet, BASE, waitForToast, checkHorizontalOverflow } from './fixtures'
 import type { Page } from '@playwright/test'
 
 // checkTouchTargets() de fixtures.ts revisa los primeros 20 elementos
@@ -29,12 +29,11 @@ async function checkTouchTargetsIn(page: Page, containerTestId: string, minSize 
 }
 
 async function setup(page: Page, actingRole: 'admin' | 'asistente' = 'admin') {
-  await skipBaseCaja(page)
   // POST /api/trabajadores es ADMIN-only — la creación de datos de setup
   // siempre corre como admin, independientemente del rol que interactúe
   // luego con la UI (así el test de ASISTENTE prueba su acceso real a la
   // pantalla, no si puede crear un trabajador, que no puede).
-  await login(page, 'admin', 'admin123')
+  await loginAs(page, 'admin')
   const t = await createTrabajador(page)
   const trabajadorId = t.trabajador?.id || t.data?.id
   const e = await createEmbarque(page, trabajadorId)

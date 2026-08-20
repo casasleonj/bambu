@@ -121,9 +121,7 @@ test.describe('Facturas', () => {
   })
 
   test('contador puede acceder a facturas', async ({ page }) => {
-    const { login, handleBaseCaja } = await import('./fixtures')
-    await login(page, 'contador', 'cont123')
-    await handleBaseCaja(page)
+    await loginAs(page, 'contador')
     await goto(page, '/facturas')
     await expect(page.getByRole('heading', { name: 'Facturas', exact: true })).toBeVisible({ timeout: 10000 })
   })

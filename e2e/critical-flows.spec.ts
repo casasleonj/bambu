@@ -1,15 +1,11 @@
 // @tests api/cliente, api/pedido
 import { test, expect, type Page } from '@playwright/test'
-import { handleBaseCaja, openFabPedidoEnvio, openSidebarIfMobile } from './fixtures'
+import { handleBaseCaja, openFabPedidoEnvio, openSidebarIfMobile, loginAs } from './fixtures'
 
 const BASE_URL = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000'
 
-async function login(page: any) {
-  await page.goto(`${BASE_URL}/login`)
-  await page.fill('input[type="text"]', 'admin')
-  await page.fill('input[type="password"]', 'admin123')
-  await page.click('button:has-text("Ingresar")')
-  await page.waitForURL(/.*dashboard/, { timeout: 15000 })
+async function login(page: Page) {
+  await loginAs(page, 'admin')
 }
 
 // pedidos-client fetches the full clientes list in the background with an
