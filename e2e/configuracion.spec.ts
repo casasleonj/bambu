@@ -1,15 +1,11 @@
 // @tests api/config
 import { test, expect } from '@playwright/test'
-import { resetDatabase } from './fixtures'
+import { resetDatabase, loginAs } from './fixtures'
 
 const BASE_URL = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000'
 
-async function login(page: any) {
-  await page.goto(`${BASE_URL}/login`)
-  await page.fill('input[type="text"]', 'admin')
-  await page.fill('input[type="password"]', 'admin123')
-  await page.click('button:has-text("Ingresar")')
-  await page.waitForURL(/.*dashboard/, { timeout: 15000 })
+async function login(page: Parameters<typeof loginAs>[0]) {
+  await loginAs(page, 'admin')
 }
 
 test.describe('Configuración', () => {

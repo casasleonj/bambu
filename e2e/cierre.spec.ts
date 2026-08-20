@@ -1,5 +1,5 @@
 // @tests api/cierre, api/cierre-dia, api/embarque, api/pedido, api/trabajador
-import { test, expect, login, handleBaseCaja, loginAs, goto, apiPost, apiGet, resetDatabase } from './fixtures'
+import { test, expect, loginAs, goto, apiPost, apiGet, resetDatabase } from './fixtures'
 
 let _uniqueDateOffset = 0
 function getUniqueFutureDate(): string {
@@ -39,8 +39,7 @@ test.describe('Cierre', () => {
   })
 
   test('asistente can access cierre', async ({ page }) => {
-    await login(page, 'asistente', 'asist123')
-    await handleBaseCaja(page)
+    await loginAs(page, 'asistente')
     await page.waitForTimeout(300)
     await goto(page, '/cierre')
     await expect(page.locator('h1:has-text("Cierre del Día")')).toBeVisible({ timeout: 10000 })

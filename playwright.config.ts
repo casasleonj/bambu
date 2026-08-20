@@ -17,10 +17,25 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  // Workers reduced to 1 while Auth.js credential sign-in via Server Action
-  // shows concurrency issues in dev mode (intermittent CredentialsSignin / 403).
-  // See discussion: e2e clientes.spec.ts passes 61/61 with workers=1.
-  workers: 1,
+  // Was pinned to 1: hundreds of tests each doing a real UI/CSRF login hit
+  // Auth.js's Credentials provider concurrently, producing intermittent
+  // CredentialsSignin/403s (see e2e/fixtures.ts "Per-worker auth cache").
+  // The login-race itself is fixed by authenticating once per (worker,
+  // role) and caching the session — see AGENTS.md Known Issue #20.
+  // REVERTED to 1 in CI (ago 2026): a real 2-worker CI run still showed
+  // recurring CredentialsSignin errors and an elevated flaky-test count
+  // on the exact same shards that ran clean at workers:1 — consistent
+  // with the residual, still-unfixed risk documented in AGENTS.md #20:
+  // resetDatabase()/resetTestDatabase() truncates SesionActiva (session
+  // table), and a completed reset from ANY worker can 401 another
+  // worker's already-authenticated page (sharedPageLogin pattern). The
+  // advisory lock in prisma/reset-locked.ts only serializes concurrent
+  // resets against each other; it does not stop that cross-worker
+  // invalidation. Real DB-per-worker isolation (AGENTS.md #20) is the
+  // prerequisite for safely raising this again — not attempted here.
+  // PW_WORKERS wins when set (manual override, e.g. to re-trial 2+ in CI
+  // via workflow_dispatch once the DB-per-worker fix lands).
+  workers: process.env.PW_WORKERS ? Number(process.env.PW_WORKERS) : (process.env.CI ? 1 : 1),
   reporter: 'html',
   // Specs exploratorios y QA comprehensivo son scripts manuales/auditores
   // que registran hallazgos, no tests CI. Los excluimos de la ejecución

@@ -1,6 +1,6 @@
 // @tests api/cliente, api/compra, api/gasto, api/insumo, api/proveedor, api/trabajador
 import { test, expect, Page } from '@playwright/test'
-import { skipBaseCaja, handleBaseCaja, openFabPedidoEnvio, openSidebarIfMobile, dismissInstallBanner } from './fixtures'
+import { skipBaseCaja, handleBaseCaja, openFabPedidoEnvio, openSidebarIfMobile, dismissInstallBanner, loginAs } from './fixtures'
 
 const BASE = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000'
 
@@ -26,12 +26,25 @@ async function ensureTestData(page: Page) {
   })
 }
 
+const USERNAME_TO_ROLE: Record<string, 'admin' | 'asistente' | 'contador' | 'repartidor'> = {
+  admin: 'admin',
+  asistente: 'asistente',
+  contador: 'contador',
+  repartidor: 'repartidor',
+}
+
 async function login(page: Page, user = 'admin', pass = 'admin123') {
-  await page.goto(`${BASE}/login`)
-  await page.fill('input[type="text"]', user)
-  await page.fill('input[type="password"]', pass)
-  await page.click('button:has-text("Ingresar")')
-  await page.waitForURL(/.*dashboard/, { timeout: 30000 })
+  const role = USERNAME_TO_ROLE[user]
+  if (!role) {
+    // Non-canonical credentials: fall back to a real, uncached UI login.
+    await page.goto(`${BASE}/login`)
+    await page.fill('input[type="text"]', user)
+    await page.fill('input[type="password"]', pass)
+    await page.click('button:has-text("Ingresar")')
+    await page.waitForURL(/.*dashboard/, { timeout: 30000 })
+    return
+  }
+  await loginAs(page, role)
 }
 
 async function dismissBaseCaja(page: Page) {

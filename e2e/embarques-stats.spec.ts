@@ -1,8 +1,7 @@
 // @tests embarques stats module - comprehensive E2E coverage
-import { test, expect, loginAs, apiPost, apiGet, apiDelete, createCliente, skipBaseCaja, login, BASE } from './fixtures'
+import { test, expect, loginAs, apiPost, apiGet, apiDelete, createCliente, BASE } from './fixtures'
 
 async function embarquesLogin(page: any) {
-  await skipBaseCaja(page)
   const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
   await page.route('**/api/cierre/last', async (route: any) => {
     await route.fulfill({
@@ -15,7 +14,8 @@ async function embarquesLogin(page: any) {
   await page.route('**/cierre', async (route: any) => {
     await route.continue()
   })
-  await login(page, 'admin', 'admin123')
+  // loginAs() already does skipBaseCaja() internally.
+  await loginAs(page, 'admin')
 }
 
 async function gotoEmbarques(page: any) {
@@ -711,13 +711,7 @@ test.describe('Embarques Stats — UI Filtro de Fecha', () => {
 test.describe('Embarques Stats — Acceso por Rol', () => {
 
   test('REPARTIDOR can access stats endpoint', async ({ page }) => {
-    await skipBaseCaja(page)
-    await page.goto(`${BASE}/login`)
-    await page.waitForLoadState('domcontentloaded')
-    await page.fill('input[placeholder="Ingrese usuario"]', 'repartidor')
-    await page.fill('input[placeholder="Ingrese contraseña"]', 'rep123')
-    await page.click('button[type="submit"]')
-    await page.waitForURL('**/repartidor', { timeout: 15000 })
+    await loginAs(page, 'repartidor')
     const res = await apiGet(page, '/api/embarques/stats')
     expect(res.status()).toBe(200)
     const data = await res.json()
