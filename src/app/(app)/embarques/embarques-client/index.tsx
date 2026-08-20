@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { useConfirm } from '@/components/confirm-modal'
 import { EmptyState } from '@/components/empty-state'
@@ -18,6 +19,7 @@ import { StatsTab } from './stats-tab'
 import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 import { useRepartidoresYRutas } from '@/hooks/use-repartidores-y-rutas'
 import { useRealtimeListener } from '@/hooks/use-realtime-listener'
+import { useShallowSearchParams } from '@/hooks/use-shallow-search-params'
 import { getFechaOffset, getTodayString } from '@/lib/dates'
 import { derivarEstadoUI, toUIEstadoInput, estadoBackendParaFase, LABELS, type FaseUIEmbarque } from '@/lib/embarque-ui-estado'
 
@@ -36,6 +38,18 @@ interface EmbarquesClientProps {
 
 export default function EmbarquesClient({ initialData, isAdmin = false }: EmbarquesClientProps) {
   const [embarques, setEmbarques] = useState<Embarque[]>(initialData?.embarques || [])
+  const router = useRouter()
+  const shallowParams = useShallowSearchParams()
+
+  // Deep link: la notificación push de cierre apunta a
+  // /embarques?openEmbarque={id}. Navegamos al detalle con replace para no
+  // dejar el param en el historial (evita re-abrir al volver atrás).
+  const openEmbarqueParam = shallowParams.get('openEmbarque')
+  useEffect(() => {
+    if (!openEmbarqueParam) return
+    router.replace(`/embarques/${openEmbarqueParam}`)
+  }, [openEmbarqueParam, router])
+
   const { trabajadores, rutas } = useRepartidoresYRutas(
     initialData ? { trabajadores: initialData.trabajadores, rutas: initialData.rutas } : undefined
   )
