@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { useConfirm } from '@/components/confirm-modal'
+import { useRealtimeListener } from '@/hooks/use-realtime-listener'
 import { Modal } from '@/components/modal'
 import { MoneyDisplay } from '@/components/money-display'
 import { ClienteHistorialModal } from '@/components/cliente-historial-modal'
@@ -242,6 +243,20 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
       // Silently ignore refresh failures; the page remains usable
     }
   }, [embarque.id])
+
+  // Realtime en detalle (Fase 5): antes solo la lista escuchaba embarque.*.
+  // El detalle refresca cuando este embarque cambia (estado, asignación, etc.)
+  // o cuando un pedido suyo cambia (entrega, pago, etc. desde otra sesión).
+  useRealtimeListener(['embarque.updated', 'embarque.deleted'], (event) => {
+    if (event.id === embarque.id) {
+      refresh()
+    }
+  })
+  useRealtimeListener(['pedido.updated', 'pedido.created'], (event) => {
+    if (pedidos.some((p) => p.id === event.id)) {
+      refresh()
+    }
+  })
 
   const handleRemove = useCallback(async (pedido: PedidoResumen) => {
     if (!canManage || !isEditable) return
