@@ -25,7 +25,9 @@ export function TipoNegocioSelect({
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const queryRef = useRef(query)
-  queryRef.current = query
+  useEffect(() => {
+    queryRef.current = query
+  }, [query])
   const skipFocusRef = useRef(false)
 
   useEffect(() => {

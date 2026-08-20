@@ -115,11 +115,19 @@ export function RepartidorClient({ trabajador, embarque: initialEmbarque, userRo
   const productosDomicilioIds = getProductosForCanal('DOMICILIO', productosConfig)
   const productosDomicilio = new Set(productosDomicilioIds.map(id => PRODUCTO_INFO[id].codigo))
 
+  const updatePendingCount = useCallback(async () => {
+    const [pedidoCount, failedCount] = await Promise.all([
+      offlineDb.pedidos.where('syncStatus').equals('pending').count(),
+      offlineDb.failedItems.count(),
+    ])
+    setPendingCount(pedidoCount + failedCount)
+  }, [])
+
   useEffect(() => {
     updatePendingCount()
     const interval = setInterval(updatePendingCount, 5000)
     return () => clearInterval(interval)
-  }, [])
+  }, [updatePendingCount])
 
   // State-driven embarque: start from SSR prop, then refresh client-side via API.
   // Avoids router.refresh() which in Next.js 16 eagerly refetches all visible
@@ -142,14 +150,6 @@ export function RepartidorClient({ trabajador, embarque: initialEmbarque, userRo
       // Silently retry next cycle
     }
   }, 30_000)
-
-  const updatePendingCount = useCallback(async () => {
-    const [pedidoCount, failedCount] = await Promise.all([
-      offlineDb.pedidos.where('syncStatus').equals('pending').count(),
-      offlineDb.failedItems.count(),
-    ])
-    setPendingCount(pedidoCount + failedCount)
-  }, [])
 
   const handleSync = async () => {
     if (!online) {
