@@ -43,6 +43,7 @@ yarn-error.log*
 /scripts/debug/
 next-env.d.ts
 .worktrees/
+.claude/worktrees/
 
 # databases
 *.db
