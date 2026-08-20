@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
       }
 
       // 3. Resolver cliente
-      let clienteFinalId = clienteId
+      const clienteFinalId = clienteId
       const esAnonimo = isConsumidorFinalCanonical(clienteId)
       const cliente = await tx.cliente.findUnique({ where: { id: clienteId } })
 

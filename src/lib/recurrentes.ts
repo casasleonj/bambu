@@ -452,7 +452,7 @@ export async function generarPedidosRecurrentes(
       if (!clienteForCheck) return { skipped: true }
 
       // 2. Auto-fix Sunday: if proxGeneracion lands on Sunday, shift to Monday
-      let prox = pt.proxGeneracion!
+      const prox = pt.proxGeneracion!
       if (prox.getDay() === 0) {
         const lunes = calcularProxGeneracion(prox, 1)
         await tx.plantillaRecurrente.update({

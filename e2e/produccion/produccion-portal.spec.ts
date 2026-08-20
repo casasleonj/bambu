@@ -430,7 +430,6 @@ function printSummary() {
     }
   }
 
-  // eslint-disable-next-line no-console
   console.log(lines.join('\n'))
 }
 

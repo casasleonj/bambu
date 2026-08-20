@@ -155,6 +155,5 @@ test.describe('F3. Walkthrough general — todos los módulos', () => {
 })
 
 test.afterAll(async () => {
-  // eslint-disable-next-line no-console
   console.log(`\n[F3] General walkthrough completo. Screenshots: ${SCREENSHOTS_DIR}`)
 })

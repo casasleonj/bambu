@@ -56,7 +56,6 @@ export function useInstallPrompt(): UseInstallPromptReturn {
   const install = useCallback(async () => {
     if (!deferredPrompt) return
     await deferredPrompt.prompt()
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { outcome } = await deferredPrompt.userChoice
     setDeferredPrompt(null)
     if (outcome === 'accepted') {

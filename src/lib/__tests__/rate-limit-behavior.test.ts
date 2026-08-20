@@ -37,7 +37,7 @@ describe('M5: rate-limit behavior', () => {
     for (let i = 0; i < 300; i++) {
       await checkRateLimit(IP, 'api')
     }
-    let blocked = await checkRateLimit(IP, 'api')
+    const blocked = await checkRateLimit(IP, 'api')
     expect(blocked.allowed).toBe(false)
 
     await resetRateLimit(IP, 'api')

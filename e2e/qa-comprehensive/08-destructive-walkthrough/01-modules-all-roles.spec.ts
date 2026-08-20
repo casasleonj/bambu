@@ -183,7 +183,6 @@ for (const combo of ALL_COMBOS) {
 }
 
 test.afterAll(async () => {
-  // eslint-disable-next-line no-console
   console.log(`\n[01-modules-all-roles] Matriz completa ejecutada.`)
   console.log(`Ver: reports/walkthrough-*.jsonl para findings.`)
 })

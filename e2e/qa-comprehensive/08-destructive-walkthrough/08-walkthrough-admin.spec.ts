@@ -209,6 +209,5 @@ for (const role of ['asistente', 'contador', 'repartidor'] as TestRole[]) {
 }
 
 test.afterAll(async () => {
-  // eslint-disable-next-line no-console
   console.log(`\n[08-walkthrough-admin] Walkthrough Admin completo.`)
 })

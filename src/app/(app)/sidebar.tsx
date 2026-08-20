@@ -573,7 +573,6 @@ export function Sidebar() {
     if (!isDesktop && mobileDrawerOpen) {
       useAppStore.getState().setMobileDrawerOpen(false)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname, isDesktop])
 
   // FIX §6.4: scroll-lock del body mientras el drawer móvil está abierto

@@ -404,6 +404,5 @@ test('admin desktop: inputs maliciosos (XSS, SQL injection) no rompen la app', a
 import { createClienteFull } from '../00-fixtures'
 
 test.afterAll(async () => {
-  // eslint-disable-next-line no-console
   console.log(`\n[02-walkthrough-clientes] Walkthrough Clientes completo.`)
 })

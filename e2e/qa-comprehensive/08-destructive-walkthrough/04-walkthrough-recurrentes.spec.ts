@@ -338,6 +338,5 @@ test('admin desktop: eliminar plantilla via UI', async ({ page }) => {
 })
 
 test.afterAll(async () => {
-  // eslint-disable-next-line no-console
   console.log(`\n[04-walkthrough-recurrentes] Walkthrough Recurrentes completo.`)
 })

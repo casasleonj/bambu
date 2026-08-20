@@ -423,7 +423,6 @@ export class ProcesarPedidoService {
           barrioEntrega: pedido.barrioEntrega,
           tipo: pedido.tipo,
           canal: pedido.canal,
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           origen: pedido.origen as never,
           estadoEntrega: 'PENDIENTE',
           estadoPago: 'PENDIENTE',

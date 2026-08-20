@@ -395,6 +395,5 @@ test('asistente mobile: pedido list tiene touch targets OK', async ({ page }) =>
 })
 
 test.afterAll(async () => {
-  // eslint-disable-next-line no-console
   console.log(`\n[03-walkthrough-pedidos] Walkthrough Pedidos completo.`)
 })

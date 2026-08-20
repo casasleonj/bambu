@@ -145,6 +145,5 @@ test('admin desktop: salud-antifraude renderiza métricas', async ({ page }) => 
 })
 
 test.afterAll(async () => {
-  // eslint-disable-next-line no-console
   console.log(`\n[07-walkthrough-reportes] Walkthrough Reportes completo.`)
 })

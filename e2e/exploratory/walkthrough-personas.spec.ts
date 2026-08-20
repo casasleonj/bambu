@@ -278,6 +278,5 @@ test.describe('Persona REPARTIDOR', () => {
 })
 
 test.afterAll(async () => {
-  // eslint-disable-next-line no-console
   console.log(`\n[Personas] Walkthrough por rol completo.`)
 })
