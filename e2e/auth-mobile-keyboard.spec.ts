@@ -13,9 +13,13 @@ import { test, expect, devices } from '@playwright/test'
 
 // iPhone 13 viewport (390x844, isMobile true, hasTouch true, deviceScaleFactor 3).
 // Pixel 7 es similar (412x915). Cubrimos el peor caso (mas pequeno).
+// devices['iPhone 13'] trae defaultBrowserType: 'webkit' (como un iPhone
+// real) — CI solo instala chromium (ver playwright.config.ts, mismo motivo:
+// "no WebKit, que requiere binarios adicionales que no están en este
+// entorno"), asi que forzamos chromium mantenieno el resto del perfil movil.
 const MOBILE_VIEWPORT = devices['iPhone 13']
 
-test.use({ ...MOBILE_VIEWPORT })
+test.use({ ...MOBILE_VIEWPORT, defaultBrowserType: 'chromium' })
 
 test.describe('Mobile keyboard visibility — auth pages', () => {
   test('login: input activo queda visible cuando el viewport se reduce (teclado)', async ({ page }) => {

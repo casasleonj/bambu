@@ -179,8 +179,22 @@ jobs:
       - name: Seed test data
         run: npx tsx prisma/seed-test.ts
 
-      - name: Install Playwright browsers + system deps
-        run: npx playwright install --with-deps chromium
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-browsers-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      # Los binarios de browser sí cachean (~200-400MB por run sin cache),
+      # las libs de sistema (apt) NO — no hay forma de cachearlas entre VMs
+      # efímeras de GitHub Actions, así que install-deps corre siempre.
+      - name: Install Playwright browsers (chromium)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install chromium
+
+      - name: Install Playwright system dependencies
+        run: npx playwright install-deps chromium
 
       - name: Run Playwright tests (shard ${{ matrix.shard }})
         run: npx playwright test --shard=${{ matrix.shard }}/${{ strategy.job-total }} --reporter=html
