@@ -105,7 +105,7 @@ export function SemanticSearchInput({
         }
       }, debounceMs)
     },
-    [searchEndpoint, queryParam, maxResults, debounceMs, meetsMinLength]
+    [searchEndpoint, queryParam, maxResults, debounceMs]
   )
 
   const handleInputChange = useCallback(

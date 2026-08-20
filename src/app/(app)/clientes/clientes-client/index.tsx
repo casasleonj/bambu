@@ -341,7 +341,7 @@ export default function ClientesClient({
   // Carga al montar y cuando los valores de filtro realmente cambian.
   useEffect(() => {
     void loadAllClientes()
-  }, [filtrosKey])
+  }, [filtrosKey, loadAllClientes])
 
   const { confirm, modal } = useConfirm()
   const [loading, setLoading] = useState(false)

@@ -158,6 +158,14 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   const [cacheLoadedOnce, setCacheLoadedOnce] = useState(false)
   const allPedidosLoadingRef = useRef(false)
 
+  const redirectIfAuthError = useCallback((res: Response): boolean => {
+    if (res.status === 401 || res.status === 403) {
+      router.push('/login?reason=expired')
+      return true
+    }
+    return false
+  }, [router])
+
   const loadAllPedidos = useCallback(async () => {
     if (allPedidosLoadingRef.current) return
     allPedidosLoadingRef.current = true
@@ -182,7 +190,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       allPedidosLoadingRef.current = false
       setCacheLoadedOnce(true)
     }
-  }, [])
+  }, [redirectIfAuthError])
 
   useEffect(() => { void loadAllPedidos() }, [loadAllPedidos])
 
@@ -394,14 +402,6 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       all: 'true',
     })
   }, [syncUrl])
-
-  function redirectIfAuthError(res: Response): boolean {
-    if (res.status === 401 || res.status === 403) {
-      router.push('/login?reason=expired')
-      return true
-    }
-    return false
-  }
 
   async function fetchClientes(): Promise<Cliente[]> {
     try {

@@ -38,7 +38,7 @@ export function GpsCaptureModal({
       reset()
       setJustificacion('')
     }
-  }, [open])
+  }, [open, capture, reset])
 
   const handleConfirm = useCallback(() => {
     onConfirm(coordinates, justificacion || undefined)

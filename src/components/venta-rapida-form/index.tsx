@@ -138,7 +138,7 @@ export function VentaRapidaForm({ clientes, onSubmit }: VentaRapidaFormProps) {
     } catch {
       // fallback to defaults
     }
-  }, [productosActuales, clienteSeleccionado?.id])
+  }, [productosActuales])
 
   // Price sync: detectar cambios de precios via polling
   const handlePriceRefresh = useCallback(async () => {
