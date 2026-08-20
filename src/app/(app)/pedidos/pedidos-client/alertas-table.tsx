@@ -283,7 +283,7 @@ export function AlertasTable({
               <li>Necesitas 2+ pedidos del mismo cliente en el mismo día</li>
               <li>O un pedido con valor mayor al doble del promedio habitual</li>
               <li>O 2+ pedidos fiados en los últimos 7 días</li>
-              <li>O un cliente con estado de pago "VENCIDO"</li>
+              <li>O un cliente con estado de pago &quot;VENCIDO&quot;</li>
               <li>O una disputa abierta sin resolver</li>
               <li>O un cliente con 3+ reclamaciones acumuladas</li>
             </ul>

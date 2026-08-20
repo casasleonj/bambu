@@ -146,7 +146,7 @@ export default function AdminUsuariosClient({ users: initialUsers }: { users: Ad
           </div>
         ) : filtered.length === 0 ? (
           <div className="col-span-full text-center py-12 text-gray-500">
-            <p className="text-lg font-medium">No se encontraron resultados para "{search}"</p>
+            <p className="text-lg font-medium">No se encontraron resultados para &quot;{search}&quot;</p>
             <button onClick={() => setSearch('')} className="mt-2 text-sm text-blue-600 hover:underline">
               Limpiar busqueda
             </button>
