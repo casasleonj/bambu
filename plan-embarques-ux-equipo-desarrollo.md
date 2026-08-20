@@ -28,7 +28,7 @@ La auditoría de Fase 0 (Parte B) no solo confirma esta decisión — la refuerz
 | Plan original asumía | Auditoría (Parte B) encontró | Ajuste |
 |---|---|---|
 | Máquina conceptual de 9 estados (`BORRADOR→...→CERRADO`) | 4 estados reales: `ABIERTO→EN_RUTA→CERRADO`\|`CANCELADO`, sin reversibilidad | Los 9 conceptos del plan mapean a **estado de UI derivado**, nunca a un campo nuevo en `Embarque.estado` (A.4) |
-| El módulo DDD (`src/modules/embarques/`) es la fuente de verdad de comportamiento | 3 de 7 use cases (`ActualizarEmbarqueUseCase`, `EnviarEmbarqueUseCase`, `ListarEmbarquesUseCase`) **no están conectados a ningún endpoint** — la lógica real vive inline en los `route.ts` | Antes de construir el Preparation Flow sobre "crear/asignar/enviar", decidir per A.3.1 |
+| El módulo DDD (`src/modules/embarques/`) es la fuente de verdad de comportamiento | De 9 use cases del directorio, 6 sí están cableados a un endpoint (`Crear`, `Cancelar`, `Cerrar`, `CrearRecoveryDecision`, `ResolverResponsibilityCase`, `AsignarActividad`). Los otros 3 —`ActualizarEmbarqueUseCase`, `EnviarEmbarqueUseCase`, `ListarEmbarquesUseCase`— **no están conectados a ningún endpoint** — la lógica real vive inline en los `route.ts` | Antes de construir el Preparation Flow sobre "crear/asignar/enviar", decidir per A.3.1 |
 | Offline-first ya es consistente en todo el feature | Mezcla real: cerrar/recovery/movimientos/botellones/cancelar/asignar usan `fetchResilient`+`offlineId`; **crear, editar, enviar-a-ruta, auto-generar, quitar-pedido, stock-estimado no** | Unificar antes de que el Preparation Flow dependa de estas rutas (A.3.2) |
 | Botellones/Físico/Recovery es una funcionalidad completa | Sustitución (`RECEPCION_DEFECTUOSA`+`ENTREGA` separados) está modelada en dominio+schema+tests pero **no tiene endpoint** — inalcanzable desde cualquier UI | Si el Mission Detail necesita exponer sustituciones, es trabajo de API antes que de UI (A.3.3) |
 | El cuadre de caja se calcula una vez, en el backend | El cliente de cierre (`cerrar-client/index.tsx`) **recalcula el cuadre completo en un `useMemo`** como preview no autoritativo — puede divergir de lo que el backend decide | La pantalla de Reconciliation debe pedir el preview al backend (dry-run), no reimplementarlo (A.3.4) |
@@ -73,7 +73,9 @@ La pantalla de Reconciliation (Fase 7) debe llamar a un modo dry-run de `CerrarE
 
 Eliminar la reimplementación de `PESOS_KG` y niveles de capacidad en `src/lib/embarque-capacidad.ts`; hacer que ese archivo importe del value object de dominio (`Carga`/`CapacidadInfo`) en vez de duplicarlo. Mismo trabajo para el límite `MAX_UNIDADES_EMBARQUE`: el modal de "asignar pedidos" en el detalle debe leerlo de `/api/config` igual que el modal de creación (hoy tiene `70` hardcodeado).
 
-**Riesgos de autorización a corregir en el mismo PR que toque cada endpoint** (no bloquean UI, pero deben entrar en el alcance de Fase 2 — Contratos dominio/API): `POST /movimientos`, `POST /recovery`, `POST /botellones` deberían validar `requireOwnership` igual que sus `GET`; `botellones` en particular permite a un `REPARTIDOR` operar sobre un embarque ajeno. `DELETE /api/embarques?id=` (solo ADMIN) y `DELETE /api/embarques/[id]` (ADMIN+ASISTENTE) deben unificarse a un solo rol para la misma acción.
+**Riesgo de autorización real (bug de seguridad, corregir con prioridad):** `POST /api/embarques/[id]/botellones` es el único endpoint de escritura de sub-recursos que acepta rol `REPARTIDOR` **sin** `requireOwnership`. `requireOwnership('embarque', ...)` (`auth-check.ts:100-119`) retorna `true` incondicional para `ADMIN`/`CONTADOR` y para `ASISTENTE`, y solo hace el chequeo real (`trabajador.userId === user.id`) cuando el rol es `REPARTIDOR` — que es exactamente el único rol que `botellones` deja pasar sin ese chequeo. Un repartidor puede hoy registrar botellones sobre un embarque ajeno.
+
+**Riesgo cosmético, sin impacto (no priorizar como seguridad):** `POST /movimientos` y `POST /recovery` también omiten `requireOwnership`, pero ambos están restringidos a `ADMIN`+`ASISTENTE` — roles para los que `requireOwnership` siempre devuelve `true` de todas formas. Agregar la llamada ahí es consistencia de patrón (todo `GET`/`POST` hermano debería verse igual), no un fix de vulnerabilidad. `DELETE /api/embarques?id=` (solo ADMIN) y `DELETE /api/embarques/[id]` (ADMIN+ASISTENTE) siguen debiendo unificarse a un solo rol para la misma acción — eso sí es una inconsistencia real, aunque tampoco de seguridad (ambos roles son de escritura confiable).
 
 ---
 
@@ -213,6 +215,10 @@ Las 10 del plan original siguen vigentes. Se agregan, con evidencia de esta audi
 
 ## A.12 Próxima acción concreta
 
+Este documento fue verificado con una revisión independiente de solo-lectura contra el código (spot-check de ~15 afirmaciones, casi todas exactas con cita archivo:línea). Corrigió dos imprecisiones ya incorporadas arriba: el conteo real de use cases es 9, con 6 cableados —no 3 de 7— (A.1, B.2, B.3); y de los tres endpoints señalados con gap de autorización, solo `botellones POST` es un bug de seguridad real, mientras `movimientos`/`recovery POST` son inconsistencia de patrón sin impacto porque `requireOwnership` siempre pasa para `ADMIN`/`ASISTENTE` (A.3.5, B.6, B.8). El hallazgo de fondo —los 3 use cases muertos como único bloqueante real— se mantiene intacto.
+
+Esa misma revisión señaló un riesgo estructural válido: este plan es documentación-pesado (2 documentos más antes de tocar código, 10 fases, gates de aprobación en cada una) y puede convertirse en parálisis por análisis si el equipo lo trata como una lista de tareas en vez de una sola decisión desbloqueante. **De todo lo que sigue, solo A.3.1 bloquea el resto.** Command Center, Preparation Flow, Mission Detail y Reconciliation pueden avanzar en paralelo una vez tomada esa decisión; los demás puntos de A.3 (offline, sustitución, cuadre de caja, capacidad/peso) se resuelven cada uno dentro del PR de la fase que los necesita, no antes ni como bloque separado.
+
 Con Fase 0 cerrada y este documento como contrato de convergencia, la siguiente acción del equipo es:
 
 1. Tomar la decisión de A.3.1 (use cases muertos) — es la única decisión de esta lista que bloquea el resto.
@@ -292,7 +298,7 @@ CANCELADO (terminal)
 
 ## B.3 Use cases DDD: cuáles están realmente cableados
 
-El módulo `src/modules/embarques/application/use-cases/` tiene 7 use cases + 1 helper. **Solo 3 están invocados desde algún route real**: `CrearEmbarqueUseCase`, `CancelarEmbarqueUseCase`, `CerrarEmbarqueUseCase`. Los otros 3 existen, compilan, tienen tests de "forma" (verifican imports/delegación por regex, no ejecutan comportamiento), pero **ningún endpoint los llama**:
+El módulo `src/modules/embarques/application/use-cases/` tiene 9 use cases + 1 helper (`cerrar-embarque-caja.helper.ts`). **6 están invocados desde algún route real**: `CrearEmbarqueUseCase` y `CancelarEmbarqueUseCase` (`src/app/api/embarques/route.ts`), `CerrarEmbarqueUseCase` (`.../[id]/cerrar/route.ts`), `CrearRecoveryDecisionUseCase` (`.../[id]/recovery/route.ts`), `ResolverResponsibilityCaseUseCase` (`src/app/api/responsabilidades/[id]/resolver/route.ts`) y `AsignarActividadUseCase` (`src/app/api/obligaciones/[id]/asignar/route.ts`) — estos dos últimos fuera del namespace `/api/embarques` pero dentro del mismo módulo DDD. Los otros 3 existen, compilan, tienen tests de "forma" (verifican imports/delegación por regex, no ejecutan comportamiento), pero **ningún endpoint los llama**:
 
 - `ActualizarEmbarqueUseCase` — la lógica real vive inline en `PUT /api/embarques/[id]/route.ts`.
 - `EnviarEmbarqueUseCase` — la lógica real vive inline en `POST /api/embarques/[id]/enviar/route.ts` (y contiene una regla de negocio que el use case ni siquiera modela: el bloqueo de doble EN_RUTA por trabajador).
@@ -339,7 +345,7 @@ Hoy, completar un embarque de punta a punta exige: 1 modal de creación → nave
 - **Sustitución no es alcanzable desde ningún endpoint ni UI.** `construirMovimientosSustitucion` y el modelo `Sustitucion` existen y están bien testeados en aislamiento, pero un grep completo del repo no encontró ningún caller fuera de dominio/tests — no hay `POST /api/embarques/[id]/sustituciones` ni equivalente. Si el Mission Detail del plan de UX (sección 12/13, "sustituciones parciales o completas" está listado en el alcance del contrato §0.2) necesita exponer esta operación, el backend requiere ese endpoint antes de que el frontend pueda construir la pantalla — no es solo trabajo de UI.
 - **Flujo FALTANTE incompleto respecto al propio plan maestro.** El contrato (§4) describe el flujo como `...determinar faltante → crear decisión → registrar consecuencia → COMMIT`, pero `CrearRecoveryDecisionUseCase.ejecutarFaltante` solo crea el `RecoveryDecision`; no hay paso de "registrar consecuencia" visible en el código auditado (puede ser deuda diferida a otro ADR, pero hoy hay una discrepancia prosa↔código).
 - **Botellones sin endpoint de agregación server-side.** "Recogidos/Entregados/En custodia" se derivan siempre client-side filtrando `GET /movimientos`. Si el Mission Detail (o un futuro cliente API) necesita el mismo dato, hoy tendría que reimplementar la agregación.
-- **Botellones permite `REPARTIDOR` sin `requireOwnership`.** Es el único endpoint de escritura de sub-recursos que no verifica que el embarque pertenezca al repartidor que llama.
+- **Botellones permite `REPARTIDOR` sin `requireOwnership`.** Es el único endpoint de escritura de sub-recursos que no verifica que el embarque pertenezca al repartidor que llama — bug de seguridad real, no cosmético (ver A.3.5 para el detalle de por qué `requireOwnership` sí importa aquí específicamente).
 
 ---
 
@@ -367,7 +373,7 @@ De la matriz mínima del plan de UX (sección 30), con evidencia real de este re
 
 ## B.8 Riesgos transversales (para revisar antes de Fase 1)
 
-1. **Autorización inconsistente entre endpoints hermanos**: `movimientos POST`, `recovery POST` y `botellones POST` omiten `requireOwnership` mientras sus `GET` sí lo exigen; `botellones` además habilita `REPARTIDOR` sin verificar dueño. `GET /optimizar-orden` no valida ownership mientras su `POST` sí.
+1. **Autorización**: `botellones POST` habilita `REPARTIDOR` sin `requireOwnership` — bug real, único caso donde ese chequeo tiene efecto práctico (ver A.3.5). `movimientos POST` y `recovery POST` también omiten `requireOwnership` frente a sus `GET`, pero ambos están acotados a `ADMIN`+`ASISTENTE`, para quienes el chequeo siempre pasa — inconsistencia de patrón, no vulnerabilidad. `GET /optimizar-orden` no valida ownership mientras su `POST` sí.
 2. **Rol distinto para la misma acción**: cancelar vía `DELETE /api/embarques?id=` exige solo `ADMIN`; vía `DELETE /api/embarques/[id]` exige `ADMIN`+`ASISTENTE`.
 3. **Mezcla de mecanismos de concurrencia sin criterio único documentado**: `withAdvisoryLock` (`[id]` PUT/DELETE, recovery), `executeSerializableWithRetry` (enviar, gastos POST), transacción simple sin lock (`pedidos/[pedidoId]` DELETE), o **ningún lock** (`optimizar-orden`, `gastos` DELETE, `movimientos` POST más allá del unique de `offlineId`).
 4. **Zod fragmentado y duplicado**: `GastoEmbarqueSchema`, `MovimientoSchema`, `RecoverySchema`, `BotellonesSchema`, `EmbarqueAutoSchema` viven locales a cada `route.ts` en vez de en `validators.ts`; `GastoEmbarqueSchema` tiene además una definición **distinta** duplicada en `validators.ts`.
