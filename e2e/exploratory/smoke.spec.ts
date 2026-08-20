@@ -2,7 +2,7 @@
 // F1: Smoke test — verifica que la app levanta y los 4 roles × 2 viewports pueden loguearse.
 // Si esto falla, NO tiene sentido seguir con el walkthrough. Aborta con mensaje claro.
 
-import { test, expect, loginAs, shoot, addFinding, isVisible, BASE, RUN_ID, FINDINGS_FILE, SCREENSHOTS_DIR } from './walkthrough-helpers'
+import { test, shoot, addFinding, BASE, RUN_ID, FINDINGS_FILE, SCREENSHOTS_DIR } from './walkthrough-helpers'
 
 const ROLES = ['admin', 'asistente', 'contador', 'repartidor'] as const
 const VIEWPORTS = [

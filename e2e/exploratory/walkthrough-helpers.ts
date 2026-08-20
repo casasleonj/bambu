@@ -2,8 +2,8 @@
 // Helpers compartidos para el walkthrough exploratorio multi-rol × multi-viewport.
 // Los hallazgos se vuelcan a un archivo JSON para consolidación posterior.
 
-import { test as base, expect, type Page } from '@playwright/test'
-import { existsSync, mkdirSync, appendFileSync, readFileSync, writeFileSync } from 'fs'
+import { test as base, expect } from '@playwright/test'
+import { existsSync, mkdirSync, appendFileSync } from 'fs'
 import { join } from 'path'
 import { execSync } from 'child_process'
 

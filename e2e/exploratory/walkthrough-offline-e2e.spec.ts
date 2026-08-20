@@ -2,7 +2,7 @@
 // Fase 8: Offline E2E con cola pre-poblada
 // Test alternativo: poblar la cola Dexie directamente y verificar el sync
 
-import { test, loginAs, shoot, addFinding, dbCount, BASE } from './walkthrough-helpers'
+import { test, loginAs, addFinding, dbCount, BASE } from './walkthrough-helpers'
 
 test.describe('Fase 8. Offline E2E', () => {
   test('C8.1: Sincronización de cola offline pre-poblada', async ({ page }) => {

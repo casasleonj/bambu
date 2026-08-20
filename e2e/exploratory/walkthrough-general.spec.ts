@@ -3,7 +3,7 @@
 // Para cada uno: login admin → ir a /<modulo> → verificar que renderiza,
 // botones principales presentes, no hay errores visibles.
 
-import { test, loginAs, shoot, addFinding, isVisible, BASE, RUN_ID, SCREENSHOTS_DIR } from './walkthrough-helpers'
+import { test, loginAs, shoot, addFinding, isVisible, BASE, SCREENSHOTS_DIR } from './walkthrough-helpers'
 
 interface ModuleDef {
   name: string
