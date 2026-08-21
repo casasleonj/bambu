@@ -162,7 +162,7 @@ export function EditarRecurrenteClient({ plantilla }: { plantilla: PlantillaSeri
     }, 300)
 
     return () => { if (resolverTimeoutRef.current) clearTimeout(resolverTimeoutRef.current) }
-  }, [canal, cantidades, configsLoading, productosVisibles, plantilla.clienteId])
+  }, [canal, cantidades, configsLoading, productosVisibles, plantilla.clienteId, productConfigs])
 
   // Clear quantities for products not available in new canal
   useEffect(() => {
@@ -183,7 +183,7 @@ export function EditarRecurrenteClient({ plantilla }: { plantilla: PlantillaSeri
         toast.info(`${unavailable.length} producto(s) no disponible(s) para domicilio`)
       }
     }
-  }, [canal])
+  }, [canal, cantidades, productConfigs])
 
   const updateCantidad = (key: keyof typeof cantidades, value: number) => {
     setCantidades(prev => ({ ...prev, [key]: Math.max(0, value) }))

@@ -1,7 +1,7 @@
 'use client'
 
 import { generateUUID } from '@/lib/uuid'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { formatCurrency } from '@/lib/utils'
@@ -65,7 +65,7 @@ export default function ProduccionClient() {
 
   const selectedTrabajador = trabajadores.find((t) => t.id === formData.trabajadorId)
 
-  const fetchTrabajadores = async (signal?: AbortSignal) => {
+  const fetchTrabajadores = useCallback(async (signal?: AbortSignal) => {
     try {
       const res = await fetch('/api/trabajadores?rol=SELLADOR&activo=true', { signal })
       if (res.status === 401 || res.status === 403) {
@@ -80,7 +80,7 @@ export default function ProduccionClient() {
     } finally {
       setLoadingTrabajadores(false)
     }
-  }
+  }, [router])
 
   const fetchProfile = async (signal?: AbortSignal) => {
     try {
@@ -94,7 +94,7 @@ export default function ProduccionClient() {
     }
   }
 
-  const fetchProducciones = async (signal?: AbortSignal) => {
+  const fetchProducciones = useCallback(async (signal?: AbortSignal) => {
     try {
       const res = await fetch('/api/produccion', { signal })
       if (res.status === 401 || res.status === 403) {
@@ -109,9 +109,9 @@ export default function ProduccionClient() {
     } finally {
       setLoadingProducciones(false)
     }
-  }
+  }, [router])
 
-  const fetchPreview = async (signal?: AbortSignal) => {
+  const fetchPreview = useCallback(async (signal?: AbortSignal) => {
     try {
       const res = await fetch('/api/produccion/preview', { signal })
       if (res.status === 401 || res.status === 403) {
@@ -134,7 +134,7 @@ export default function ProduccionClient() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [router])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -143,7 +143,7 @@ export default function ProduccionClient() {
     fetchProfile(controller.signal)
     fetchProducciones(controller.signal)
     return () => controller.abort()
-  }, [])
+  }, [fetchPreview, fetchTrabajadores, fetchProducciones])
 
   // Polling: refresh preview every 60s.
   usePollingRefetch(() => {
