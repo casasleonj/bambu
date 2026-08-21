@@ -15,8 +15,8 @@ test.describe('ConnectivityIndicator — pending sync counter', () => {
     const clienteId = c.cliente?.id || c.data?.id
     if (!clienteId) { test.skip(); return }
 
-    await page.waitForFunction(() => (window as any).__bambu !== undefined, { timeout: 10000 })
-    await page.evaluate(() => (window as any).__bambu.clearQueues())
+    await page.waitForFunction(() => window.__bambu !== undefined, { timeout: 10000 })
+    await page.evaluate(() => window.__bambu!.clearQueues())
 
     // Bloquear red
     await page.route('**/api/pedidos', (route) => {
@@ -29,7 +29,7 @@ test.describe('ConnectivityIndicator — pending sync counter', () => {
       const offlineId = crypto.randomUUID()
       await page.evaluate(
         async ({ url, offlineId, clienteId }) => {
-          await (window as any).__bambu.fetchResilient(url, {
+          await window.__bambu!.fetchResilient(url, {
             method: 'POST',
             body: {
               clienteId,
@@ -60,7 +60,7 @@ test.describe('ConnectivityIndicator — pending sync counter', () => {
     await page.unroute('**/api/pedidos')
 
     // Disparar un sync
-    await page.evaluate(() => (window as any).__bambu.syncWithServer())
+    await page.evaluate(() => window.__bambu!.syncWithServer())
 
     // Esperar a que el componente refleje el cambio (React re-render)
     // El counter debería estar en 0 después del sync exitoso.
@@ -77,8 +77,8 @@ test.describe('ConnectivityIndicator — pending sync counter', () => {
   test('No muestra el counter cuando la cola está vacía', async ({ page }) => {
     await loginAs(page, 'admin')
 
-    await page.waitForFunction(() => (window as any).__bambu !== undefined, { timeout: 10000 })
-    await page.evaluate(() => (window as any).__bambu.clearQueues())
+    await page.waitForFunction(() => window.__bambu !== undefined, { timeout: 10000 })
+    await page.evaluate(() => window.__bambu!.clearQueues())
 
     // El counter no debe existir si no hay items
     const counter = page.locator('[data-testid="pending-sync-counter"]')
@@ -92,8 +92,8 @@ test.describe('ConnectivityIndicator — pending sync counter', () => {
     const clienteId = c.cliente?.id || c.data?.id
     if (!clienteId) { test.skip(); return }
 
-    await page.waitForFunction(() => (window as any).__bambu !== undefined, { timeout: 10000 })
-    await page.evaluate(() => (window as any).__bambu.clearQueues())
+    await page.waitForFunction(() => window.__bambu !== undefined, { timeout: 10000 })
+    await page.evaluate(() => window.__bambu!.clearQueues())
 
     // Bloquear red y encolar 1 item
     await page.route('**/api/pedidos', (route) => {
@@ -104,7 +104,7 @@ test.describe('ConnectivityIndicator — pending sync counter', () => {
     const offlineId = crypto.randomUUID()
     await page.evaluate(
       async ({ url, offlineId, clienteId }) => {
-        await (window as any).__bambu.fetchResilient(url, {
+        await window.__bambu!.fetchResilient(url, {
           method: 'POST',
           body: {
             clienteId,
@@ -120,7 +120,7 @@ test.describe('ConnectivityIndicator — pending sync counter', () => {
     )
 
     // Verificar que el item está encolado
-    const queueBefore = await page.evaluate(() => (window as any).__bambu.getRequestQueue())
+    const queueBefore = await page.evaluate(() => window.__bambu!.getRequestQueue())
     expect(queueBefore).toHaveLength(1)
 
     // Restaurar red
