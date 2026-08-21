@@ -179,12 +179,12 @@ test.describe('Productos', () => {
 
     const prodRes = await apiGet(page, '/api/productos')
     const prodBody = await prodRes.json()
-    const producto = prodBody.productos?.find((p: any) => p.precios?.length > 0)
+    const producto = (prodBody.productos as Array<{ precios?: Array<{ id: string }> }> | undefined)?.find((p) => (p.precios?.length ?? 0) > 0)
     if (!producto) {
       test.skip()
       return
     }
-    const precioVolumenId = producto.precios[0].id
+    const precioVolumenId = producto.precios![0].id
 
     const res = await apiPost(page, '/api/precios', {
       precioVolumenId,

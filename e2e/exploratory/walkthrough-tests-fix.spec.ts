@@ -6,6 +6,7 @@
 // A4. Síntesis de día
 // A5. Transición de roles
 
+import type { Page } from '@playwright/test'
 import { test, loginAs, shoot, addFinding, BASE } from './walkthrough-helpers'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -291,7 +292,7 @@ test.afterAll(async () => {
   console.log(`\n[A1-A5] Tests fixes completos.`)
 })
 
-async function hasHorizontalOverflow(page: any): Promise<boolean> {
+async function hasHorizontalOverflow(page: Page): Promise<boolean> {
   return await page.evaluate(() => {
     return document.documentElement.scrollWidth > document.documentElement.clientWidth + 2
   })

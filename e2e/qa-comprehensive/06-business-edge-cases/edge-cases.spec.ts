@@ -116,8 +116,8 @@ test.describe('Business Edge - Date & Timezone', () => {
 
     // Get list
     const listRes = await apiGet(page, '/api/pedidos?all=true')
-    const list = (await listRes.json()).pedidos || []
-    const found = list.find((p: any) => p.id === pedido.id)
+    const list = ((await listRes.json()).pedidos || []) as Array<{ id: string }>
+    const found = list.find((p) => p.id === pedido.id)
     expect(found).toBeDefined()
   })
 

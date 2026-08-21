@@ -126,7 +126,7 @@ test.describe('Compras', () => {
 
     const stockAntesRes = await apiGet(page, `/api/insumos`)
     const stockAntesData = await stockAntesRes.json()
-    const insumoAntes = (stockAntesData.insumos || []).find((i: any) => i.id === insumoId)
+    const insumoAntes = ((stockAntesData.insumos || []) as Array<{ id: string; stock: number | string }>).find((i) => i.id === insumoId)
     const stockAntes = insumoAntes ? Number(insumoAntes.stock) : 0
 
     const res = await apiPost(page, '/api/compras', {
@@ -141,7 +141,7 @@ test.describe('Compras', () => {
 
       const stockDespuesRes = await apiGet(page, `/api/insumos`)
       const stockDespuesData = await stockDespuesRes.json()
-      const insumoDespues = (stockDespuesData.insumos || []).find((i: any) => i.id === insumoId)
+      const insumoDespues = ((stockDespuesData.insumos || []) as Array<{ id: string; stock: number | string }>).find((i) => i.id === insumoId)
       const stockDespues = insumoDespues ? Number(insumoDespues.stock) : stockAntes
 
       expect(stockDespues).toBeGreaterThanOrEqual(stockAntes + 10)

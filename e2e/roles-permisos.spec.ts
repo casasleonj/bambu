@@ -497,7 +497,7 @@ test.describe('7. Flujo completo: ASISTENTE', () => {
     const listRes = await apiGet(page, '/api/pedidos')
     const listBody = await listRes.json()
     const pedidos = listBody.pedidos || listBody.data?.pedidos || []
-    const found = pedidos.find((p: any) => p.id === pedido.pedido.id)
+    const found = (pedidos as Array<{ id: string }>).find((p) => p.id === pedido.pedido.id)
     expect(found).toBeDefined()
   })
 })
@@ -523,7 +523,7 @@ test.describe('7. Flujo completo: CONTADOR', () => {
     const verifyRes = await apiGet(page, '/api/facturas')
     const verifyBody = await verifyRes.json()
     const facturas = verifyBody.facturas || verifyBody.data?.facturas || []
-    const facturaUpdated = facturas.find((f: any) => f.id === factura.id)
+    const facturaUpdated = (facturas as Array<{ id: string; saldo: number | string }>).find((f) => f.id === factura.id)
 
     if (facturaUpdated) {
       const nuevoSaldo = Number(facturaUpdated.saldo)

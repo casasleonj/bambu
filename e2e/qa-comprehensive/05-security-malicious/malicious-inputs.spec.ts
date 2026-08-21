@@ -157,7 +157,7 @@ test.describe('Security - Malicious Inputs', () => {
 
   // ─── Null/Undefined/Empty edge cases ──────────────────────────────────────
   test('SEC-NULL-01: null body', async ({ page }) => {
-    const res = await apiPost(page, '/api/clientes', null as any)
+    const res = await apiPost(page, '/api/clientes', null)
     expect([400, 422]).toContain(res.status())
   })
 
@@ -167,7 +167,7 @@ test.describe('Security - Malicious Inputs', () => {
   })
 
   test('SEC-NULL-03: array instead of object', async ({ page }) => {
-    const res = await apiPost(page, '/api/clientes', [] as any)
+    const res = await apiPost(page, '/api/clientes', [])
     expect([400, 422]).toContain(res.status())
   })
 
