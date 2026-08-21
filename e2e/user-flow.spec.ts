@@ -8,7 +8,7 @@ test.describe('Flujo completo de usuario', () => {
   test.beforeEach(async ({ page }) => {
     // Disable connectivity polling to avoid networkidle timeout
     await page.addInitScript(() => {
-      (window as any).__PLAYWRIGHT_TEST__ = true
+      window.__PLAYWRIGHT_TEST__ = true
     })
   })
 
@@ -52,7 +52,7 @@ test.describe('Flujo completo de usuario', () => {
   test('No hay errores de hydration ni consola en flujo principal', async ({ page }) => {
     // Disable connectivity polling
     await page.addInitScript(() => {
-      (window as any).__PLAYWRIGHT_TEST__ = true
+      window.__PLAYWRIGHT_TEST__ = true
     })
 
     const consoleErrors: string[] = []

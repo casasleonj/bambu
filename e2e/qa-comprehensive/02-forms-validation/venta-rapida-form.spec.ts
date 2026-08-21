@@ -181,8 +181,8 @@ test.describe('Form Validation - Venta Rápida', () => {
         const r = await fetch('/api/clientes?all=true', { credentials: 'include' })
         return r.json()
       })
-      const consumidoresFinal = (data.clientes || []).filter(
-        (c: any) => c.nombre === 'Consumidor Final',
+      const consumidoresFinal = ((data.clientes || []) as Array<{ nombre: string }>).filter(
+        (c) => c.nombre === 'Consumidor Final',
       )
       expect(consumidoresFinal).toHaveLength(0)
     })

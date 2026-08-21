@@ -22,8 +22,7 @@ test.describe('M7 offline venta libre sync', () => {
 
     // Verificar que la cola se vació
     const queue = await page.evaluate(async () => {
-      const bambu = (window as any).__bambu
-      return await bambu.getRequestQueue()
+      return await window.__bambu!.getRequestQueue()
     })
     expect(queue.length).toBe(0)
   })

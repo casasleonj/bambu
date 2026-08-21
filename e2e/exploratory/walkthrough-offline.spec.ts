@@ -160,9 +160,9 @@ test.describe('Fase 5. Flujos offline', () => {
     await page.evaluate(async () => {
       // Trigger sync manualmente si la función existe
       try {
-        const w = window as any
-        if (w.__syncOfflineQueue) await w.__syncOfflineQueue()
-        if (w.syncOfflineQueue) await w.syncOfflineQueue()
+        const w = window as unknown as Record<string, (() => Promise<void>) | undefined>
+        if (w.__syncOfflineQueue) await w.__syncOfflineQueue!()
+        if (w.syncOfflineQueue) await w.syncOfflineQueue!()
       } catch {}
     })
 

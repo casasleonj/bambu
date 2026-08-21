@@ -15,7 +15,7 @@ async function apiGetAuth(page: Page, path: string) {
   return page.request.get(`${BASE}${path}`)
 }
 
-async function apiPutAuth(page: Page, path: string, data: any) {
+async function apiPutAuth(page: Page, path: string, data: unknown) {
   return page.request.put(`${BASE}${path}`, { data })
 }
 

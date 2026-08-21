@@ -91,9 +91,9 @@ test.describe('Form Validation - Admin User', () => {
   test('TC-AU-08: Reset password generates new password', async ({ page }) => {
     // Get any user
     const listRes = await page.request.get(`${BASE}/api/users`)
-    const users = (await listRes.json()).users || []
+    const users = ((await listRes.json()).users || []) as Array<{ id: string; username: string }>
     if (users.length === 0) { test.skip(); return }
-    const user = users.find((u: any) => u.username !== 'admin') // Don't reset admin
+    const user = users.find((u) => u.username !== 'admin') // Don't reset admin
 
     if (!user) { test.skip(); return }
 

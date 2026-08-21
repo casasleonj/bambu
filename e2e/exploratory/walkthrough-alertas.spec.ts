@@ -187,7 +187,7 @@ test.describe('A. Alertas automáticas', () => {
       '/api/alertas/umbrales',
       '/api/alertas/notas-credito-count',
     ]
-    const results: { endpoint: string; status: number; data?: any }[] = []
+    const results: { endpoint: string; status: number; data?: unknown }[] = []
     for (const ep of endpoints) {
       const r = await page.request.get(`${BASE}${ep}`).catch(() => null)
       if (r) {

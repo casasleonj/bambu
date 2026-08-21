@@ -187,8 +187,8 @@ test.describe('T2. Recurrentes temporal', () => {
     // Llamar al endpoint manual de generación (preview)
     const prevRes = await page.request.get(`${BASE}/api/pedidos/recurrentes`)
     const prevData = await prevRes.json()
-    const previewList = prevData.preview || []
-    const foundInPreview = previewList.find((p: any) => p.recurrenteId === planId)
+    const previewList = (prevData.preview || []) as Array<{ recurrenteId: string }>
+    const foundInPreview = previewList.find((p) => p.recurrenteId === planId)
     addFinding({
       severity: foundInPreview ? 'P3' : 'P1',
       module: 'recurrentes',

@@ -174,8 +174,8 @@ test.describe('Security - Race Conditions', () => {
   })
 
   test('SEC-RACE-05: Two abonos on same factura', async ({ page }) => {
-    const list = (await (await apiGet(page, '/api/facturas')).json()).facturas || []
-    const f = list.find((f: any) => Number(f.saldo) > 10000)
+    const list = ((await (await apiGet(page, '/api/facturas')).json()).facturas || []) as Array<{ id: string; clienteId: string; saldo: number | string }>
+    const f = list.find((f) => Number(f.saldo) > 10000)
     if (!f) { test.skip(); return }
 
     const body = {
@@ -205,7 +205,7 @@ test.describe('Security - Session & Cookie Attacks', () => {
 
     // Get cookies
     const cookies = await context.cookies()
-    const authCookie = cookies.find((c: any) => c.name.includes('authjs') || c.name.includes('next-auth'))
+    const authCookie = cookies.find((c) => c.name.includes('authjs') || c.name.includes('next-auth'))
     expect(authCookie).toBeDefined()
 
     // Logout

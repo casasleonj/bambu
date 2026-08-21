@@ -164,7 +164,7 @@ async function cleanupQaClientesBestEffort(page: Page): Promise<{ ok: boolean; d
     if (!res.ok()) return { ok: false, deleted: 0, found: 0, error: `status=${res.status()}` }
     const body = await res.json().catch(() => ({}))
     const all = body.clientes || body.data || []
-    const qa = all.filter((c: any) => (c.nombre || '').startsWith('QA Test'))
+    const qa = (all as Array<{ id?: string; nombre?: string }>).filter((c) => (c.nombre || '').startsWith('QA Test'))
     let deleted = 0
     for (const c of qa) {
       if (!c.id) continue
@@ -296,7 +296,7 @@ async function runScenario(page: Page, viewport: 'desktop' | 'mobile', testInfo:
       if (apiRes.ok()) {
         const body = await apiRes.json().catch(() => ({}))
         const all = body.clientes || body.data || []
-        findings.clienteCreatedOnServer = !!all.find((c: any) => (c.nombre || '').startsWith('QA Test'))
+        findings.clienteCreatedOnServer = !!(all as Array<{ nombre?: string }>).find((c) => (c.nombre || '').startsWith('QA Test'))
       }
     } catch (e) {
       findings.clienteCreatedOnServer = false
