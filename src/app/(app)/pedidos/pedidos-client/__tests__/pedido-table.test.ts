@@ -2,8 +2,19 @@ import { describe, it, expect } from 'vitest'
 import { getDiasAtraso, formatFechaPedido } from '../pedido-table'
 
 describe('getDiasAtraso', () => {
-  it('null si el pedido no está PENDIENTE', () => {
+  it('null si el pedido no está PENDIENTE ni NO_ENTREGADO', () => {
     expect(getDiasAtraso('2020-01-01T00:00:00-05:00', 'ENTREGADO')).toBeNull()
+  })
+
+  // FIX: un pedido despachado que no se pudo entregar queda NO_ENTREGADO
+  // (no vuelve a PENDIENTE por sí solo — ver ADR-REASIGNACION-001), y antes
+  // no mostraba ningún indicio de días de atraso pese a llevar días sin
+  // resolverse.
+  it('FIX: calcula días de atraso para un NO_ENTREGADO de días anteriores', () => {
+    const hoyStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+    const hoy = new Date(`${hoyStr}T00:00:00-05:00`)
+    const hace2Dias = new Date(hoy.getTime() - 2 * 86_400_000)
+    expect(getDiasAtraso(hace2Dias.toISOString(), 'NO_ENTREGADO')).toBe(2)
   })
 
   it('null si la fecha es de hoy', () => {

@@ -198,7 +198,8 @@ export default function FacturasPage() {
         }
         toast.success('Abono registrado')
       } else {
-        toast.error('Error registrando abono')
+        const data = await res.json().catch(() => null)
+        toast.error(data?.error?.message || 'Error registrando abono')
       }
     } catch (e) {
       console.error(e)
@@ -562,7 +563,7 @@ export default function FacturasPage() {
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                             </svg>
                           </button>
-                          {tieneSaldo && factura.estado !== 'ANULADA' && (
+                          {tieneSaldo && factura.estado !== 'ANULADA' && factura.pedido?.estadoEntrega === 'ENTREGADO' && (
                             <button
                               onClick={(e) => {
                                 e.stopPropagation()
@@ -679,7 +680,7 @@ export default function FacturasPage() {
                       </svg>
                       Ver detalle
                     </button>
-                    {tieneSaldo && factura.estado !== 'ANULADA' && (
+                    {tieneSaldo && factura.estado !== 'ANULADA' && factura.pedido?.estadoEntrega === 'ENTREGADO' && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation()

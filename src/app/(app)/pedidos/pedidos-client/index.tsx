@@ -1401,7 +1401,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
             <InfoBanner type="tip" className="mb-4">
               <span>
                 ⚠️ {atrasadosCount} pedido{atrasadosCount === 1 ? '' : 's'} de días anteriores sin
-                asignar a un viaje — riesgo de incumplir la entrega.{' '}
+                asignar o sin entregar — riesgo de incumplir la entrega.{' '}
                 <Link href="/pedidos?atrasados=true" className="font-semibold underline hover:no-underline">
                   Verlos →
                 </Link>

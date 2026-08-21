@@ -62,6 +62,22 @@ export async function POST(request: NextRequest) {
         throw new Error('FACTURA_NOT_FOUND')
       }
 
+      // FIX: la Factura se crea al mismo tiempo que el Pedido (ver
+      // CrearPedidoUseCase / recurrentes.ts), no cuando se entrega — un
+      // pedido PENDIENTE/EN_RUTA/NO_ENTREGADO ya tiene factura EMITIDA.
+      // Sin este guard se podía registrar abono (dinero cobrado) sobre
+      // mercancía que nunca salió de bodega.
+      const pedido = await tx.pedido.findUnique({
+        where: { id: factura.pedidoId },
+        select: { estadoEntrega: true },
+      })
+      if (!pedido) {
+        throw new Error('PEDIDO_NOT_FOUND')
+      }
+      if (pedido.estadoEntrega !== 'ENTREGADO') {
+        throw new Error('PEDIDO_NO_ENTREGADO')
+      }
+
       // Calcular siguiente número
       const nextNum = await getNextNumero(tx, { model: 'abono', field: 'numero' })
 
@@ -136,6 +152,12 @@ export async function POST(request: NextRequest) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error creating abono:')
     if (error instanceof Error && error.message === 'FACTURA_NOT_FOUND') {
       return apiError('Factura no encontrada', 404)
+    }
+    if (error instanceof Error && error.message === 'PEDIDO_NOT_FOUND') {
+      return apiError('Pedido asociado a la factura no encontrado', 404)
+    }
+    if (error instanceof Error && error.message === 'PEDIDO_NO_ENTREGADO') {
+      return apiError('No se puede registrar abono: el pedido aun no ha sido entregado', 400)
     }
     if (error instanceof Error && error.message === 'Abono excede saldo de factura') {
       return apiError(error.message, 400)

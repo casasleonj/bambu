@@ -106,7 +106,11 @@ export async function GET(request: NextRequest) {
     // URL — atrasados=true es una vista autocontenida (mismo criterio que
     // ya siguen scope=fiados/alertas), no se combina con otros filtros.
     if (atrasadosMode) {
-      filter.estadoEntrega = ['PENDIENTE']
+      // FIX: incluir NO_ENTREGADO — mismo criterio que whereAtrasadosSinAsignar
+      // en pedidos-sin-asignar.ts (un pedido despachado y no entregado, sin
+      // reasignar, queda embarqueId:null y nunca vuelve a PENDIENTE por sí
+      // solo, así que quedaba invisible en esta vista).
+      filter.estadoEntrega = ['PENDIENTE', 'NO_ENTREGADO']
       filter.embarqueId = null
       filter.desde = undefined
       filter.hasta = startOfDayBogota()
