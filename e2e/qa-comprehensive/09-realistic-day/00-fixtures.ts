@@ -211,14 +211,21 @@ export async function waitForSync(page: Page, timeoutMs: number = 30_000) {
  * Cuenta items en la requestQueue de Dexie ejecutando JS en el browser.
  * Devuelve { count, items: [{ offlineId, url, method }] }
  */
-export async function getQueueSize(page: Page): Promise<{ count: number; items: any[] }> {
+interface QueueItemSummary {
+  offlineId: string
+  url: string
+  method: string
+  localEndpoint: string
+}
+
+export async function getQueueSize(page: Page): Promise<{ count: number; items: QueueItemSummary[] }> {
   return page.evaluate(async () => {
     if (typeof window === 'undefined' || !window.indexedDB) {
       return { count: 0, items: [] }
     }
     // Abrir la DB manualmente porque no tenemos acceso al módulo offlineDb
     const dbReq = indexedDB.open('AguaBambuOfflineDB')
-    return new Promise<{ count: number; items: any[] }>((resolve) => {
+    return new Promise<{ count: number; items: QueueItemSummary[] }>((resolve) => {
       dbReq.onsuccess = () => {
         const db = dbReq.result
         if (!db.objectStoreNames.contains('requestQueue')) {
@@ -230,7 +237,7 @@ export async function getQueueSize(page: Page): Promise<{ count: number; items: 
         const store = tx.objectStore('requestQueue')
         const req = store.getAll()
         req.onsuccess = () => {
-          const items = (req.result || []).map((it: any) => ({
+          const items = (req.result || []).map((it) => ({
             offlineId: it.offlineId,
             url: it.url,
             method: it.method,
@@ -302,7 +309,7 @@ export async function simulateDay(page: Page, date: string | Date) {
     const RealDate = Date
     // @ts-expect-error - patching global
     globalThis.Date = class extends RealDate {
-      constructor(...args: any[]) {
+      constructor(...args: unknown[]) {
         if (args.length === 0) {
           super(fakeNow)
         } else {
@@ -466,9 +473,9 @@ export async function createEmbarqueReal(
 export async function getRepartidorSeed(page: Page) {
   const res = await apiGet(page, '/api/trabajadores?rol=REPARTIDOR&activo=true')
   const body = await res.json()
-  const trabajadores = body.trabajadores || []
+  const trabajadores = (body.trabajadores as Array<{ id: string; userId: string | null }> | undefined) ?? []
   // Buscar el que tenga userId (linkeado al User 'repartidor' del seed)
-  const linked = trabajadores.find((t: any) => t.userId)
+  const linked = trabajadores.find((t) => t.userId)
   return linked || trabajadores[0]
 }
 
