@@ -12,8 +12,11 @@ export function useBaseCaja() {
   const [baseDia, setBaseDiaState] = useState<string | null>(null)
 
   useEffect(() => {
+    // localStorage no existe en el servidor, no se puede leer durante el
+    // render.
     const todayKey = getTodayKey()
     const saved = localStorage.getItem(`baseDia_${todayKey}`)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (saved) setBaseDiaState(saved)
 
     const handler = (e: StorageEvent) => {

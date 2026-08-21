@@ -74,10 +74,12 @@ export function usePushOptIn(): UsePushOptInReturn {
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     setDismissed(safeLocalGet(DISMISSED_KEY) === '1')
     setShownThisSession(safeSessionGet(SHOWN_SESSION_KEY) === '1')
     setIsIosWithoutStandalone(isIosDevice() && !isStandaloneMode())
     setMounted(true)
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [])
 
   const role = (session?.user as { role?: string } | undefined)?.role

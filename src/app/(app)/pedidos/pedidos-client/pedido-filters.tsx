@@ -59,8 +59,11 @@ export function PedidoFilters({
   const [expanded, setExpanded] = useState(false)
 
   useEffect(() => {
+    // localStorage no existe en el servidor, no se puede leer durante el
+    // render.
     if (typeof window === 'undefined') return
     const stored = window.localStorage.getItem(FILTERS_KEY) === 'true'
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setExpanded(stored)
   }, [])
 
