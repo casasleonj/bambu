@@ -21,9 +21,9 @@ describe('executeSerializableWithRetry (helper compartido)', () => {
     expect(source).toMatch(/isolationLevel:\s*Prisma\.TransactionIsolationLevel\.Serializable/)
   })
 
-  it('detecta P2034 tanto por err.code como por err.message.includes (compatibilidad)', () => {
-    expect(source).toMatch(/err\?\.code\s*===\s*['"]P2034['"]/)
-    expect(source).toMatch(/err\.message\.includes\(['"]P2034['"]\)/)
+  it('detecta P2034 tanto por instanceof PrismaClientKnownRequestError como por lastError.message.includes (compatibilidad)', () => {
+    expect(source).toMatch(/err instanceof Prisma\.PrismaClientKnownRequestError\s*&&\s*err\.code\s*===\s*['"]P2034['"]/)
+    expect(source).toMatch(/lastError\.message\.includes\(['"]P2034['"]\)/)
   })
 
   it('implementa backoff exponencial (50ms * 2^attempt)', () => {

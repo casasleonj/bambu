@@ -45,14 +45,15 @@ export async function executeSerializableWithRetry<T>(
         maxWait: 5000,
         timeout: 15000,
       })
-    } catch (err: any) {
+    } catch (err: unknown) {
       lastError = err instanceof Error ? err : new Error(String(err))
       // Prisma mapea write conflicts y deadlocks a P2034.
-      // Aceptamos tanto err.code como err.message.includes por compatibilidad
-      // con versiones que envuelven el error en un wrapper custom.
+      // Aceptamos tanto el code tipado como lastError.message.includes por
+      // compatibilidad con versiones que envuelven el error en un wrapper
+      // custom (no siempre es una PrismaClientKnownRequestError directa).
       const isSerializableConflict =
-        err?.code === 'P2034' ||
-        (typeof err?.message === 'string' && err.message.includes('P2034'))
+        (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034') ||
+        lastError.message.includes('P2034')
       if (isSerializableConflict && attempt < SERIALIZABLE_MAX_RETRIES - 1) {
         logger.warn(
           { attempt: attempt + 1, context, err: lastError.message },
