@@ -44,7 +44,7 @@ describe('calcularPacasEmbarque', () => {
   })
 
   it('treats null fields as 0', () => {
-    const result = calcularPacasEmbarque([{ cPacaAguaPed: null as any, cPacaHieloPed: 3 }])
+    const result = calcularPacasEmbarque([{ cPacaAguaPed: null as unknown as number, cPacaHieloPed: 3 }])
     expect(result).toBe(3)
   })
 
@@ -147,7 +147,7 @@ describe('calcularPesoEmbarque', () => {
   })
 
   it('treats null fields as 0', () => {
-    const result = calcularPesoEmbarque([{ cPacaAguaPed: null as any, cBotellonFabPed: 2 }])
+    const result = calcularPesoEmbarque([{ cPacaAguaPed: null as unknown as number, cBotellonFabPed: 2 }])
     expect(result).toBe(40)
   })
 

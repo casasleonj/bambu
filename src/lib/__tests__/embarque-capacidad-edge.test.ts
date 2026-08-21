@@ -136,7 +136,7 @@ describe('embarque-capacidad — edge cases', () => {
   describe('calcularPesoDesdeCarga — inválidos', () => {
     it('campos undefined se tratan como 0', () => {
       const carga = {
-        PACA_AGUA: undefined as any,
+        PACA_AGUA: undefined as unknown as number,
         PACA_HIELO: 2,
         BOTELLON: 0,
         BOLSA_AGUA: 0,
@@ -172,7 +172,7 @@ describe('embarque-capacidad — edge cases', () => {
     it('campos undefined → 0', () => {
       const carga = {
         PACA_AGUA: 5,
-        PACA_HIELO: undefined as any,
+        PACA_HIELO: undefined as unknown as number,
         BOTELLON: 0,
         BOLSA_AGUA: 0,
         BOLSA_HIELO: 0,

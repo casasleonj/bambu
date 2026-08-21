@@ -26,7 +26,7 @@ describe('getNextNumero — concurrencia de numeración de factura', () => {
       // Usamos prisma directamente (no la app) para que cada llamada
       // tenga su propia tx y la promesa no se acople al event loop.
       const tx = await testPrisma.$transaction(async (t) => {
-        return getNextNumero(t as any, { model: 'factura', field: 'numero' })
+        return getNextNumero(t, { model: 'factura', field: 'numero' })
       })
       return tx
     })
@@ -54,7 +54,7 @@ describe('getNextNumero — concurrencia de numeración de factura', () => {
     const N = 100
     const promises = Array.from({ length: N }, async () => {
       return testPrisma.$transaction(async (t) => {
-        return getNextNumero(t as any, { model: 'factura', field: 'numero' })
+        return getNextNumero(t, { model: 'factura', field: 'numero' })
       })
     })
     const numeros = await Promise.all(promises)
@@ -68,7 +68,7 @@ describe('getNextNumero — concurrencia de numeración de factura', () => {
     const seq: number[] = []
     for (let i = 0; i < 5; i++) {
       const n = await testPrisma.$transaction(async (t) =>
-        getNextNumero(t as any, { model: 'factura', field: 'numero' }),
+        getNextNumero(t, { model: 'factura', field: 'numero' }),
       )
       seq.push(n)
     }

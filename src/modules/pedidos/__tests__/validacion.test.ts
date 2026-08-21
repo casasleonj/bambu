@@ -35,7 +35,7 @@ describe('puedeCrearPedido', () => {
       { id: 'p2', numero: 2, saldo: 2000 },
       { id: 'p3', numero: 3, saldo: 3000 },
     ]
-    const result = puedeCrearPedido(baseCliente, pendientes as any, 3)
+    const result = puedeCrearPedido(baseCliente, pendientes, 3)
     expect(result).toMatch(/límite/)
   })
 
@@ -43,7 +43,7 @@ describe('puedeCrearPedido', () => {
     const pendientes = [
       { id: 'p1', numero: 1, saldo: 1000 },
     ]
-    const result = puedeCrearPedido(baseCliente, pendientes as any, 3)
+    const result = puedeCrearPedido(baseCliente, pendientes, 3)
     expect(result).toBeNull()
   })
 
@@ -53,7 +53,7 @@ describe('puedeCrearPedido', () => {
       { id: 'p2', numero: 2, saldo: 2000 },
     ]
     // Con límite 2, ya está al límite
-    const result = puedeCrearPedido(baseCliente, pendientes as any, 2)
+    const result = puedeCrearPedido(baseCliente, pendientes, 2)
     expect(result).toMatch(/límite/)
   })
 
