@@ -71,8 +71,14 @@ export async function getNextNumero(
     if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(seqName)) {
       throw new Error(`Invalid sequence name: ${seqName}`)
     }
-    const queryRawUnsafe = (tx as unknown as { $queryRawUnsafe: (query: string, ...values: unknown[]) => Promise<unknown[]> }).$queryRawUnsafe
-    const rows = await queryRawUnsafe(
+    // No desestructurar $queryRawUnsafe antes de llamarlo: el cliente/proxy
+    // de Prisma (6.19.3) depende de `this` internamente (usa
+    // `this._createPrismaPromise`), así que un método desatado de `tx`
+    // revienta en runtime con "Cannot read properties of undefined
+    // (reading '_createPrismaPromise')". Se castea el objeto y se invoca
+    // como método (tx.$queryRawUnsafe(...)) para preservar el binding.
+    const client = tx as unknown as { $queryRawUnsafe: (query: string, ...values: unknown[]) => Promise<unknown[]> }
+    const rows = await client.$queryRawUnsafe(
       `SELECT nextval('${seqName}')`,
     ) as Array<{ nextval: bigint }>
     return Number(rows[0].nextval)
