@@ -368,9 +368,19 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
     }
   }, [embarque.id])
 
+  const [prevShowAssignModal, setPrevShowAssignModal] = useState(showAssignModal)
+  // Limpia la selección al abrir el modal, durante el render en vez de en
+  // el efecto.
+  if (showAssignModal !== prevShowAssignModal) {
+    setPrevShowAssignModal(showAssignModal)
+    if (showAssignModal) setSelectedPedidoIds([])
+  }
+
   useEffect(() => {
+    // Fetch de pedidos disponibles al abrir el modal — side effect de red
+    // real, no derivable durante el render.
     if (showAssignModal) {
-      setSelectedPedidoIds([])
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       loadAvailablePedidos()
     }
   }, [showAssignModal, loadAvailablePedidos])
