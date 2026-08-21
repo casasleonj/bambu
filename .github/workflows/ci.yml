@@ -80,6 +80,93 @@ jobs:
       - name: Lint
         run: npm run lint -- --max-warnings 999
 
+  integration:
+    name: Integration tests (non-blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # No bloquea merges todavía -- es la primera vez que este suite corre
+    # en CI (antes solo se ejecutaba localmente contra Postgres real, si
+    # el desarrollador lo hacía). Igual que Lint cuando se introdujo:
+    # queda non-blocking hasta confirmar que el suite completo es estable
+    # en un entorno de CI fresco, antes de promoverlo a gate obligatorio.
+    continue-on-error: true
+
+    env:
+      DATABASE_URL: postgresql://bambu:bambu_dev@localhost:5432/bambu
+      DIRECT_URL: postgresql://bambu:bambu_dev@localhost:5432/bambu
+      REDIS_URL: redis://localhost:6379
+      TZ: America/Bogota
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Start service containers (PostgreSQL + Redis)
+        run: |
+          docker run -d \
+            --name postgres \
+            -e POSTGRES_USER=bambu \
+            -e POSTGRES_PASSWORD=bambu_dev \
+            -e POSTGRES_DB=bambu \
+            -p 5432:5432 \
+            postgres:17.10-alpine
+          docker run -d \
+            --name redis \
+            -p 6379:6379 \
+            redis:8-alpine
+
+          for i in $(seq 1 30); do
+            if docker exec postgres pg_isready -U bambu &>/dev/null; then
+              echo "PostgreSQL is ready"
+              break
+            fi
+            sleep 1
+          done
+
+          for i in $(seq 1 15); do
+            if docker exec redis redis-cli ping 2>/dev/null | grep -q PONG; then
+              echo "Redis is ready"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Push schema to CI database
+        run: npx prisma db push
+
+      - name: Apply raw-SQL sequence migrations (not covered by db push)
+        # Mismo motivo/patrón que el job E2E: `prisma db push` no crea las
+        # secuencias raw-SQL (factura/abono/embarque/compra_insumo numero_seq)
+        # que getNextNumero() necesita. Ver comentario del job e2e para el
+        # detalle completo.
+        run: |
+          export PGPASSWORD=bambu_dev
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -c "
+            DO \$\$ BEGIN
+              IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'app_write') THEN
+                CREATE ROLE app_write;
+              END IF;
+            END \$\$;
+          "
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260610_add_factura_numero_seq/migration.sql
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260611_add_abono_embarque_seqs/migration.sql
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260619_import_fase2_proveedor_compra_seq/migration.sql
+
+      - name: Run integration tests
+        run: npm run test:integration
+
   e2e:
     name: E2E (${{ matrix.shard }}/${{ strategy.job-total }})
     runs-on: ubuntu-latest
