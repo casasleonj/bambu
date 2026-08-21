@@ -291,6 +291,53 @@ export default function ClientesClient({
     return () => { cancelled = true }
   }, [])
 
+  // Movido antes de su primer uso (handleSyncItemDone más abajo) -- estaba
+  // declarado más abajo (línea ~377 original) pero ya se usaba acá arriba,
+  // "funcionaba" en runtime porque handleSyncItemDone solo corre como
+  // listener de evento (después de que el render completo, incluida esta
+  // declaración, ya ejecutó), pero React Compiler lo señala como riesgo de
+  // análisis estático ("accessed before declared"). Reordenado, no cambia
+  // comportamiento.
+  const allClientesLoadingRef = useRef(false)
+  const filtrosActivosRef = useRef(filtrosActivos)
+  useEffect(() => { filtrosActivosRef.current = filtrosActivos }, [filtrosActivos])
+  const filtroActivoRef = useRef(filtroActivo)
+  useEffect(() => { filtroActivoRef.current = filtroActivo }, [filtroActivo])
+
+  const loadAllClientes = useCallback(async () => {
+    if (allClientesLoadingRef.current) return
+    allClientesLoadingRef.current = true
+    setAllClientesLoading(true)
+    try {
+      const fa = filtroActivoRef.current
+      const fsa = filtrosActivosRef.current
+      const params = new URLSearchParams()
+      params.set('all', 'true')
+      params.set('pageSize', '500')
+      if (fa === 'bloqueado') params.set('bloqueado', 'true')
+      else if (fa === 'reclamaciones') params.set('reclamaciones', 'gte3')
+      else if (fa === 'noVerificado') params.set('noVerificado', 'true')
+      if (fsa.mostrarNegocio !== 'todos') {
+        params.set('mostrarNegocio', fsa.mostrarNegocio)
+      }
+      if (fsa.ubicacionMaps !== 'todos') {
+        params.set('ubicacionMaps', fsa.ubicacionMaps)
+      }
+      const res = await fetch(`/api/clientes?${params.toString()}`)
+      if (!res.ok) throw new Error('Error cargando clientes')
+      const data = await res.json()
+      const next = data.success
+        ? (data.data || data.clientes || [])
+        : (data.clientes || [])
+      setAllClientes(next as Cliente[])
+    } catch (error) {
+      console.warn('[loadAllClientes] error', error)
+    } finally {
+      allClientesLoadingRef.current = false
+      setAllClientesLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     function handleSyncItemDone(e: Event) {
       const detail = (e as CustomEvent<{ offlineId: string; localEndpoint: string; status: string }>).detail
@@ -305,8 +352,7 @@ export default function ClientesClient({
     }
     window.addEventListener(SYNC_ITEM_DONE_EVENT, handleSyncItemDone)
     return () => window.removeEventListener(SYNC_ITEM_DONE_EVENT, handleSyncItemDone)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [loadAllClientes])
 
   // Sincronizar input de búsqueda cuando la URL cambia por navegación
   // externa (back/forward) o carga inicial con ?search=... en el URL.
@@ -363,50 +409,6 @@ export default function ClientesClient({
   useEffect(() => {
     setClientes(initialClientes)
   }, [initialClientes])
-
-  // Carga en background la lista completa de clientes para búsqueda
-  // instantánea client-side. El ref evita requests concurrentes.
-  // Usamos refs para los filtros y dependencia estable (filtrosKey) para evitar
-  // que se dispare en cada render de useSearchParams (ej: cada tecla en búsqueda).
-  const allClientesLoadingRef = useRef(false)
-  const filtrosActivosRef = useRef(filtrosActivos)
-  useEffect(() => { filtrosActivosRef.current = filtrosActivos }, [filtrosActivos])
-  const filtroActivoRef = useRef(filtroActivo)
-  useEffect(() => { filtroActivoRef.current = filtroActivo }, [filtroActivo])
-
-  const loadAllClientes = useCallback(async () => {
-    if (allClientesLoadingRef.current) return
-    allClientesLoadingRef.current = true
-    setAllClientesLoading(true)
-    try {
-      const fa = filtroActivoRef.current
-      const fsa = filtrosActivosRef.current
-      const params = new URLSearchParams()
-      params.set('all', 'true')
-      params.set('pageSize', '500')
-      if (fa === 'bloqueado') params.set('bloqueado', 'true')
-      else if (fa === 'reclamaciones') params.set('reclamaciones', 'gte3')
-      else if (fa === 'noVerificado') params.set('noVerificado', 'true')
-      if (fsa.mostrarNegocio !== 'todos') {
-        params.set('mostrarNegocio', fsa.mostrarNegocio)
-      }
-      if (fsa.ubicacionMaps !== 'todos') {
-        params.set('ubicacionMaps', fsa.ubicacionMaps)
-      }
-      const res = await fetch(`/api/clientes?${params.toString()}`)
-      if (!res.ok) throw new Error('Error cargando clientes')
-      const data = await res.json()
-      const next = data.success
-        ? (data.data || data.clientes || [])
-        : (data.clientes || [])
-      setAllClientes(next as Cliente[])
-    } catch (error) {
-      console.warn('[loadAllClientes] error', error)
-    } finally {
-      allClientesLoadingRef.current = false
-      setAllClientesLoading(false)
-    }
-  }, [])
 
   // Clave estable para detectar cambio real en filtros (evita refetch en
   // renders donde los objetos prop tienen distinta identidad pero mismos valores).
@@ -513,6 +515,77 @@ export default function ClientesClient({
     return source.find(c => c.id === id || c.clienteId === id)
   }, [allClientes, clientes])
 
+  // Movida antes de su primer uso (deep-link ?openCliente=ID más abajo) y
+  // envuelta en useCallback para que ese efecto pueda listarla como
+  // dependencia real sin recrearse en cada render -- solo depende de
+  // findClienteById (el resto de lo que lee -- viewSeqRef, los setters de
+  // estado, y prefetchClientePanel/detailCache/isFresh/mergeDetailWithRow/
+  // fetchAndCacheDetail/optimisticClienteFromRow -- son refs, setters o
+  // utilidades a nivel de módulo, todos estables).
+  const viewCliente = useCallback(async (id: string) => {
+    const seq = ++viewSeqRef.current
+    setDetailLoading(true)
+    setDetailError(null)
+
+    // Prefetch de stats/historial en background: mientras el usuario lee la
+    // pestaña Info, ambas cargas corren (cold start de Vercel oculto) y al
+    // cambiar de pestaña los datos ya están en caché → render instantáneo.
+    prefetchClientePanel(id)
+
+    const row = findClienteById(id)
+    // Apertura optimista: si la fila está cargada, mostrar el modal al
+    // instante con los datos de la lista. El detalle completo se hidrata
+    // cuando llegue (o desde caché).
+    if (row) {
+      setSelectedCliente(optimisticClienteFromRow(row))
+      setShowDetail(true)
+      setActiveTab('info')
+    }
+
+    const entry = detailCache.get(id)
+    if (entry?.data && isFresh(entry) && !entry.promise) {
+      if (seq === viewSeqRef.current) {
+        setSelectedCliente(mergeDetailWithRow(entry.data, row))
+        setDetailLoading(false)
+        setDetailError(null)
+      }
+      return
+    }
+
+    const promise = entry?.promise ?? fetchAndCacheDetail(id)
+    if (!entry?.promise) {
+      detailCache.set(id, { data: entry?.data, ts: Date.now(), promise })
+    }
+
+    const result = await promise
+    if (seq !== viewSeqRef.current) return
+
+    if (result.ok) {
+      const merged = row ? mergeDetailWithRow(result.cliente, row) : result.cliente
+      setSelectedCliente(merged)
+      setShowDetail(true)
+      setActiveTab('info')
+      setDetailLoading(false)
+      setDetailError(null)
+    } else {
+      // Si no hay fila, mostrar stub como fallback (deep-link cliente no visible).
+      if (!row) {
+        setSelectedCliente({
+          id,
+          clienteId: id,
+          nombre: 'No se pudo cargar el cliente',
+          telefono: '',
+          frecuencia: 'IRREGULAR',
+          activo: true,
+        } as Cliente)
+        setShowDetail(true)
+        setActiveTab('info')
+      }
+      setDetailError(result.error)
+      setDetailLoading(false)
+    }
+  }, [findClienteById])
+
   // Deep-link ?openCliente=ID: carga detalle completo (igual que click en fila)
   // para garantizar la shape completa incluyendo negocios.
   useEffect(() => {
@@ -522,7 +595,7 @@ export default function ClientesClient({
     // Si el cliente ya está cargado con el mismo id, no re-fetch; si no, cargar.
     if (selectedCliente?.id === cliente.id && showDetail) return
     void viewCliente(cliente.id)
-  }, [openClienteId, clientes, selectedCliente, showDetail, findClienteById])
+  }, [openClienteId, clientes, selectedCliente, showDetail, findClienteById, viewCliente])
 
   // Los negocios del panel vienen directamente del detalle del cliente,
   // eliminando el fetch secuencial y la ventana stale del cliente anterior.
@@ -1214,70 +1287,6 @@ export default function ClientesClient({
       toast.error('Error de conexión al guardar')
     } finally {
       setSaving(false)
-    }
-  }
-
-  async function viewCliente(id: string) {
-    const seq = ++viewSeqRef.current
-    setDetailLoading(true)
-    setDetailError(null)
-
-    // Prefetch de stats/historial en background: mientras el usuario lee la
-    // pestaña Info, ambas cargas corren (cold start de Vercel oculto) y al
-    // cambiar de pestaña los datos ya están en caché → render instantáneo.
-    prefetchClientePanel(id)
-
-    const row = findClienteById(id)
-    // Apertura optimista: si la fila está cargada, mostrar el modal al
-    // instante con los datos de la lista. El detalle completo se hidrata
-    // cuando llegue (o desde caché).
-    if (row) {
-      setSelectedCliente(optimisticClienteFromRow(row))
-      setShowDetail(true)
-      setActiveTab('info')
-    }
-
-    const entry = detailCache.get(id)
-    if (entry?.data && isFresh(entry) && !entry.promise) {
-      if (seq === viewSeqRef.current) {
-        setSelectedCliente(mergeDetailWithRow(entry.data, row))
-        setDetailLoading(false)
-        setDetailError(null)
-      }
-      return
-    }
-
-    const promise = entry?.promise ?? fetchAndCacheDetail(id)
-    if (!entry?.promise) {
-      detailCache.set(id, { data: entry?.data, ts: Date.now(), promise })
-    }
-
-    const result = await promise
-    if (seq !== viewSeqRef.current) return
-
-    if (result.ok) {
-      const merged = row ? mergeDetailWithRow(result.cliente, row) : result.cliente
-      setSelectedCliente(merged)
-      setShowDetail(true)
-      setActiveTab('info')
-      setDetailLoading(false)
-      setDetailError(null)
-    } else {
-      // Si no hay fila, mostrar stub como fallback (deep-link cliente no visible).
-      if (!row) {
-        setSelectedCliente({
-          id,
-          clienteId: id,
-          nombre: 'No se pudo cargar el cliente',
-          telefono: '',
-          frecuencia: 'IRREGULAR',
-          activo: true,
-        } as Cliente)
-        setShowDetail(true)
-        setActiveTab('info')
-      }
-      setDetailError(result.error)
-      setDetailLoading(false)
     }
   }
 
