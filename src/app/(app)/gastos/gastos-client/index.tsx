@@ -46,6 +46,9 @@ export default function GastosPage() {
   }, [])
 
   useEffect(() => {
+    // Fetch de datos al montar / cambiar dateRange — side effect de red
+    // real, no derivable durante el render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchGastos()
   }, [fetchGastos])
 

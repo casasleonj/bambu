@@ -77,9 +77,18 @@ export function SmartDateFilter({ onDateChange }: SmartDateFilterProps) {
     [params]
   )
 
-  useEffect(() => {
+  // Sincroniza el estado local desde la URL durante el render cuando
+  // cambian los params relevantes, en vez de en un efecto — syncFromUrl
+  // solo llama setState local, no tiene otros side effects.
+  const [prevDesdeUrl, setPrevDesdeUrl] = useState(desdeUrl)
+  const [prevHastaUrl, setPrevHastaUrl] = useState(hastaUrl)
+  const [prevAllUrl, setPrevAllUrl] = useState(allUrl)
+  if (desdeUrl !== prevDesdeUrl || hastaUrl !== prevHastaUrl || allUrl !== prevAllUrl) {
+    setPrevDesdeUrl(desdeUrl)
+    setPrevHastaUrl(hastaUrl)
+    setPrevAllUrl(allUrl)
     syncFromUrl()
-  }, [syncFromUrl])
+  }
 
   // Default a "Turno" (ayer + hoy) al montar si no hay filtro de fecha en la URL
   // y no se ha pedido explícitamente "Todos" con ?all=true.
