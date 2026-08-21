@@ -240,23 +240,30 @@ test.describe('Recurrentes', () => {
     const previewData = await previewRes.json()
     expect(previewData.success).toBe(true)
 
-    const item = previewData.preview.find((p: any) => p.clienteId === cliente.id)
+    const previewItems = previewData.preview as Array<{
+      clienteId: string
+      recurrenteId: string
+      pedidosPagados: unknown[]
+      pedidosConDeuda: unknown[]
+      sugerencias: Array<{ tipo: string; disabled?: boolean }>
+    }>
+    const item = previewItems.find((p) => p.clienteId === cliente.id)
     expect(item).toBeDefined()
 
     // Verificar que hay pedidos pagados y NO hay deuda
-    expect(item.pedidosPagados.length).toBeGreaterThan(0)
-    expect(item.pedidosConDeuda.length).toBe(0)
+    expect(item!.pedidosPagados.length).toBeGreaterThan(0)
+    expect(item!.pedidosConDeuda.length).toBe(0)
 
     // Verificar que la sugerencia APLICAR_CREDITO existe
-    const creditoSug = item.sugerencias.find((s: any) => s.tipo === 'APLICAR_CREDITO')
+    const creditoSug = item!.sugerencias.find((s) => s.tipo === 'APLICAR_CREDITO')
     expect(creditoSug).toBeDefined()
-    expect(creditoSug.disabled).toBeFalsy()
+    expect(creditoSug!.disabled).toBeFalsy()
 
     // 5. Generar con APLICAR_CREDITO vía API
     const genRes = await page.request.post(`${BASE}/api/pedidos/recurrentes`, {
       data: {
         decisiones: [{
-          recurrenteId: item.recurrenteId,
+          recurrenteId: item!.recurrenteId,
           decision: 'APLICAR_CREDITO',
         }],
       },
@@ -271,15 +278,23 @@ test.describe('Recurrentes', () => {
     const pedidosData = await pedidosRes.json()
     expect(pedidosData.success).toBe(true)
 
-    const pedidoRecurrente = pedidosData.data?.find((p: any) => p.origen === 'RECURRENTE')
+    const pedidosDataList = pedidosData.data as Array<{
+      origen: string
+      numero: number
+      total: number | string
+      totalPagado: number | string
+      saldo: number | string
+      estadoEntrega: string
+    }> | undefined
+    const pedidoRecurrente = pedidosDataList?.find((p) => p.origen === 'RECURRENTE')
     expect(pedidoRecurrente).toBeDefined()
-    expect(Number(pedidoRecurrente.total)).toBeGreaterThan(0)
-    expect(Number(pedidoRecurrente.totalPagado)).toBe(11200)
-    expect(Number(pedidoRecurrente.saldo)).toBe(Number(pedidoRecurrente.total) - 11200)
+    expect(Number(pedidoRecurrente!.total)).toBeGreaterThan(0)
+    expect(Number(pedidoRecurrente!.totalPagado)).toBe(11200)
+    expect(Number(pedidoRecurrente!.saldo)).toBe(Number(pedidoRecurrente!.total) - 11200)
 
     // 7. Verificar pedido viejo marcado como ENTREGADO
-    const pedidoViejo = pedidosData.data?.find((p: any) => p.numero === pedidoExtraData.pedido.numero)
-    expect(pedidoViejo.estadoEntrega).toBe('ENTREGADO')
+    const pedidoViejo = pedidosDataList?.find((p) => p.numero === pedidoExtraData.pedido.numero)
+    expect(pedidoViejo!.estadoEntrega).toBe('ENTREGADO')
   })
 })
 
