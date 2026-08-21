@@ -53,7 +53,8 @@ test.describe('12: Nómina + cálculo de comisiones', () => {
     // Obtener un trabajador (repartidor del seed)
     const trabRes = await apiGet(page, '/api/trabajadores?rol=REPARTIDOR&activo=true')
     const trabBody = await trabRes.json()
-    const repartidor = trabBody.trabajadores?.find((t: any) => t.userId)
+    const trabajadores = (trabBody.trabajadores as Array<{ id: string; userId: string | null }> | undefined) ?? []
+    const repartidor = trabajadores.find((t) => t.userId)!
     expect(repartidor).toBeTruthy()
 
     const fechaInicio = daysAgoISO(30)
@@ -73,7 +74,8 @@ test.describe('12: Nómina + cálculo de comisiones', () => {
 
     const trabRes = await apiGet(page, '/api/trabajadores?rol=REPARTIDOR&activo=true')
     const trabBody = await trabRes.json()
-    const repartidor = trabBody.trabajadores?.find((t: any) => t.userId)
+    const trabajadores = (trabBody.trabajadores as Array<{ id: string; userId: string | null }> | undefined) ?? []
+    const repartidor = trabajadores.find((t) => t.userId)!
     expect(repartidor).toBeTruthy()
 
     const fechaInicio = daysAgoISO(60)
@@ -97,7 +99,8 @@ test.describe('12: Nómina + cálculo de comisiones', () => {
     await fullLoginRealistic(page, 'admin', 100_000)
     const trabRes = await apiGet(page, '/api/trabajadores?rol=REPARTIDOR&activo=true')
     const trabBody = await trabRes.json()
-    const repartidor = trabBody.trabajadores?.find((t: any) => t.userId)
+    const trabajadores = (trabBody.trabajadores as Array<{ id: string; userId: string | null }> | undefined) ?? []
+    const repartidor = trabajadores.find((t) => t.userId)!
 
     const fechaInicio = todayISO()
     const fechaFin = daysAgoISO(30) // fechaFin < fechaInicio
@@ -127,7 +130,8 @@ test.describe('12: Nómina + cálculo de comisiones', () => {
     // Setup: crear nómina MANUAL primero
     const trabRes = await apiGet(page, '/api/trabajadores?rol=REPARTIDOR&activo=true')
     const trabBody = await trabRes.json()
-    const repartidor = trabBody.trabajadores?.find((t: any) => t.userId)
+    const trabajadores = (trabBody.trabajadores as Array<{ id: string; userId: string | null }> | undefined) ?? []
+    const repartidor = trabajadores.find((t) => t.userId)!
 
     const fechaInicio = daysAgoISO(90)
     const fechaFin = daysAgoISO(61)
@@ -154,7 +158,7 @@ test.describe('12: Nómina + cálculo de comisiones', () => {
         const gastosRes = await apiGet(page, '/api/gastos')
         const gastosBody = await gastosRes.json()
         const nominaGasto = (gastosBody.gastos || []).find(
-          (g: any) => g.categoria === 'NOMINA' && Math.abs(Number(g.monto) - 51700) < 1
+          (g: { categoria: string; monto: number | string }) => g.categoria === 'NOMINA' && Math.abs(Number(g.monto) - 51700) < 1
         )
         // El gasto puede existir o no (depende de si ya hay otros pagos)
         // No fallamos si no está, solo verificamos que la API responde
@@ -169,7 +173,8 @@ test.describe('12: Nómina + cálculo de comisiones', () => {
 
     const trabRes = await apiGet(page, '/api/trabajadores?rol=REPARTIDOR&activo=true')
     const trabBody = await trabRes.json()
-    const repartidor = trabBody.trabajadores?.find((t: any) => t.userId)
+    const trabajadores = (trabBody.trabajadores as Array<{ id: string; userId: string | null }> | undefined) ?? []
+    const repartidor = trabajadores.find((t) => t.userId)!
 
     const fechaInicio = daysAgoISO(120)
     const fechaFin = daysAgoISO(91)
@@ -201,7 +206,8 @@ test.describe('12: Nómina + cálculo de comisiones', () => {
 
     const trabRes = await apiGet(page, '/api/trabajadores?rol=REPARTIDOR&activo=true')
     const trabBody = await trabRes.json()
-    const repartidor = trabBody.trabajadores?.find((t: any) => t.userId)
+    const trabajadores = (trabBody.trabajadores as Array<{ id: string; userId: string | null }> | undefined) ?? []
+    const repartidor = trabajadores.find((t) => t.userId)!
 
     const fechaInicio = daysAgoISO(150)
     const fechaFin = daysAgoISO(121)
@@ -247,7 +253,8 @@ test.describe('12: Nómina + cálculo de comisiones', () => {
     await fullLoginRealistic(page, 'admin', 100_000)
     const trabRes = await apiGet(page, '/api/trabajadores?rol=REPARTIDOR&activo=true')
     const trabBody = await trabRes.json()
-    const repartidor = trabBody.trabajadores?.find((t: any) => t.userId)
+    const trabajadores = (trabBody.trabajadores as Array<{ id: string; userId: string | null }> | undefined) ?? []
+    const repartidor = trabajadores.find((t) => t.userId)!
 
     // Rango muy antiguo (antes del seed)
     const fechaInicio = '2020-01-01'
@@ -291,7 +298,8 @@ test.describe('12: Nómina + cálculo de comisiones', () => {
     await fullLoginRealistic(page, 'asistente', 50_000)
     const trabRes = await apiGet(page, '/api/trabajadores?rol=REPARTIDOR&activo=true')
     const trabBody = await trabRes.json()
-    const repartidor = trabBody.trabajadores?.find((t: any) => t.userId)
+    const trabajadores = (trabBody.trabajadores as Array<{ id: string; userId: string | null }> | undefined) ?? []
+    const repartidor = trabajadores.find((t) => t.userId)!
 
     const res = await apiPost(page, '/api/nomina', {
       trabajadorId: repartidor.id,
