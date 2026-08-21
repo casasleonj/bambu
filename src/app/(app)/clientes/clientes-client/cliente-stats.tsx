@@ -15,21 +15,31 @@ export function ClienteStats({ clienteId }: ClienteStatsProps) {
   const [stats, setStats] = useState<ClienteStats | null>(() => peekClienteStats(clienteId))
   const [loading, setLoading] = useState(() => peekClienteStats(clienteId) === null)
   const [error, setError] = useState('')
+  const [prevClienteId, setPrevClienteId] = useState(clienteId)
+
+  // Sincroniza stats/loading/error durante el render cuando cambia el
+  // cliente, en vez de en el efecto — ver
+  // https://react.dev/learn/you-might-not-need-an-effect
+  if (clienteId !== prevClienteId) {
+    setPrevClienteId(clienteId)
+    const cachedNow = peekClienteStats(clienteId)
+    if (cachedNow) {
+      // Cache-first: dato fresco dentro del TTL → sin fetch, sin revalidación
+      // en background (evita un request extra por cada cambio de pestaña,
+      // crítico en 2G/3G).
+      setStats(cachedNow)
+      setLoading(false)
+      setError('')
+    } else {
+      setLoading(true)
+      setError('')
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
     const cached = peekClienteStats(clienteId)
-    if (cached) {
-      // Cache-first: dato fresco dentro del TTL → sin fetch, sin revalidación
-      // en background (evita un request extra por cada cambio de pestaña,
-      // crítico en 2G/3G).
-      setStats(cached)
-      setLoading(false)
-      setError('')
-      return
-    }
-    setLoading(true)
-    setError('')
+    if (cached) return
     // Comparte la promesa en vuelo del prefetch si existe (cero duplicados).
     void loadClienteStats(clienteId).then((data) => {
       if (cancelled) return

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useId, useCallback } from 'react'
+import { useState, useId, useCallback } from 'react'
 import {
   normalizarTelefono,
   extraerDigitos,
@@ -52,10 +52,15 @@ export function TelefonoInput({
   const [localDigits, setLocalDigits] = useState(() => extraerDigitosLocales(value))
   const [touched, setTouched] = useState(false)
   const [focused, setFocused] = useState(false)
+  const [prevValue, setPrevValue] = useState(value)
 
-  useEffect(() => {
+  // Resincroniza los dígitos locales durante el render cuando cambia el
+  // value externo, en vez de en un efecto — ver
+  // https://react.dev/learn/you-might-not-need-an-effect
+  if (value !== prevValue) {
+    setPrevValue(value)
     setLocalDigits(extraerDigitosLocales(value))
-  }, [value])
+  }
 
   const normalizado = normalizarTelefono(localDigits)
   const hasError = touched && !esTelefonoValido(normalizado) && required
