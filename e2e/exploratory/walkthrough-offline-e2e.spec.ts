@@ -26,11 +26,11 @@ test.describe('Fase 8. Offline E2E', () => {
     const offlineId = `c8-test-${Date.now()}`
     const putResult = await page.evaluate(async ({ cid, oid }) => {
       const dbs = await indexedDB.databases()
-      const bambu = dbs.find((d: any) => d.name?.toLowerCase().includes('bambu') || d.name?.toLowerCase().includes('offline'))
+      const bambu = dbs.find((d) => d.name?.toLowerCase().includes('bambu') || d.name?.toLowerCase().includes('offline'))
       if (!bambu) return { error: 'No BambuOffline DB found' }
 
-      return new Promise<any>((resolve) => {
-        const req = indexedDB.open(bambu.name)
+      return new Promise<{ error: string } | { added: boolean; id: IDBValidKey }>((resolve) => {
+        const req = indexedDB.open(bambu.name!)
         req.onsuccess = () => {
           const db = req.result
           if (!db.objectStoreNames.contains('requestQueue')) {
@@ -72,10 +72,10 @@ test.describe('Fase 8. Offline E2E', () => {
     // Contar cola
     const queueSize = await page.evaluate(async () => {
       const dbs = await indexedDB.databases()
-      const bambu = dbs.find((d: any) => d.name?.toLowerCase().includes('bambu') || d.name?.toLowerCase().includes('offline'))
+      const bambu = dbs.find((d) => d.name?.toLowerCase().includes('bambu') || d.name?.toLowerCase().includes('offline'))
       if (!bambu) return -1
       return new Promise<number>((resolve) => {
-        const req = indexedDB.open(bambu.name)
+        const req = indexedDB.open(bambu.name!)
         req.onsuccess = () => {
           const db = req.result
           if (!db.objectStoreNames.contains('requestQueue')) { resolve(-1); return }
@@ -105,10 +105,10 @@ test.describe('Fase 8. Offline E2E', () => {
     const pedDespues = dbCount('Pedido')
     const queueDespues = await page.evaluate(async () => {
       const dbs = await indexedDB.databases()
-      const bambu = dbs.find((d: any) => d.name?.toLowerCase().includes('bambu') || d.name?.toLowerCase().includes('offline'))
+      const bambu = dbs.find((d) => d.name?.toLowerCase().includes('bambu') || d.name?.toLowerCase().includes('offline'))
       if (!bambu) return -1
       return new Promise<number>((resolve) => {
-        const req = indexedDB.open(bambu.name)
+        const req = indexedDB.open(bambu.name!)
         req.onsuccess = () => {
           const db = req.result
           if (!db.objectStoreNames.contains('requestQueue')) { resolve(-1); return }

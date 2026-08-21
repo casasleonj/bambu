@@ -422,7 +422,7 @@ test.describe('Producción — E2E Exhaustivo', () => {
     // Seleccionar sellador FIJO
     const selladores = await apiGet(page, '/api/trabajadores?rol=SELLADOR&activo=true')
     const body = await selladores.json()
-    const fijo = body.trabajadores?.find((t: any) => t.tipoPago === 'FIJO')
+    const fijo = (body.trabajadores as Array<{ id: string; tipoPago: string }> | undefined)?.find((t) => t.tipoPago === 'FIJO')
     if (fijo) {
       await page.locator('label:has-text("Sellador")').locator('..').locator('select').selectOption(fijo.id)
     }
@@ -627,8 +627,8 @@ test.describe('Producción — E2E Exhaustivo', () => {
 
     const verifyRes = await apiGet(page, `/api/produccion?fecha=${today}`)
     const verifyBody = await verifyRes.json()
-    const nuevo = (verifyBody.produccion || []).find(
-      (p: any) => p.trabajadorId === selladorId && p.turno === 'NOCHE',
+    const nuevo = ((verifyBody.produccion as Array<{ trabajadorId: string; turno: string; fecha: string }> | undefined) || []).find(
+      (p) => p.trabajadorId === selladorId && p.turno === 'NOCHE',
     )
     if (nuevo) {
       // La fecha debe ser YYYY-MM-DDT05:00:00.000Z (= 00:00 Bogotá -05:00)
@@ -670,10 +670,11 @@ test.describe('Producción — E2E Exhaustivo', () => {
     expect(putRes.status()).toBe(200)
     const putBody = await putRes.json()
     expect(putBody.produccion).toBeDefined()
-    const aguaItem = putBody.produccion.items.find((i: any) => i.producto === 'PACA_AGUA')
-    expect(aguaItem.producido).toBe(60) // (60+60)/2
-    const hieloItem = putBody.produccion.items.find((i: any) => i.producto === 'PACA_HIELO')
-    expect(hieloItem.producido).toBe(30)
+    const items = putBody.produccion.items as Array<{ producto: string; producido: number }>
+    const aguaItem = items.find((i) => i.producto === 'PACA_AGUA')
+    expect(aguaItem!.producido).toBe(60) // (60+60)/2
+    const hieloItem = items.find((i) => i.producto === 'PACA_HIELO')
+    expect(hieloItem!.producido).toBe(30)
   })
 
   test('PUT con diferencia y obs vacío → 400 (FIX 1.5)', async ({ page }) => {
