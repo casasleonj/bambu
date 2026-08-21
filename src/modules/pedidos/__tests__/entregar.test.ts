@@ -75,7 +75,7 @@ describe('Pedido.entregar', () => {
   it('lanza error si el producto no está en el pedido', () => {
     const pedido = makePedido({ estadoEntrega: 'EN_RUTA' })
     expect(() =>
-      pedido.entregar([{ producto: 'BOTELLON' as any, cantidad: 1 }])
+      pedido.entregar([{ producto: 'BOTELLON', cantidad: 1 }])
     ).toThrow(/no encontrado en pedido/)
   })
 
@@ -90,28 +90,28 @@ describe('Pedido.entregar', () => {
 describe('Pedido.registrarPago', () => {
   it('incrementa totalPagado y actualiza estadoPago a PARCIAL', () => {
     const pedido = makePedido({ estadoEntrega: 'PENDIENTE', total: 10000 })
-    pedido.registrarPago({ metodo: 'EFECTIVO' as any, monto: 3000 })
+    pedido.registrarPago({ metodo: 'EFECTIVO', monto: 3000 })
     expect(pedido.totalPagado.toDecimal()).toBe(3000)
     expect(pedido.estadoPago.get()).toBe('PARCIAL')
   })
 
   it('cambia estadoPago a PAGADO cuando totalPagado === total', () => {
     const pedido = makePedido({ estadoEntrega: 'PENDIENTE', total: 10000 })
-    pedido.registrarPago({ metodo: 'EFECTIVO' as any, monto: 10000 })
+    pedido.registrarPago({ metodo: 'EFECTIVO', monto: 10000 })
     expect(pedido.estadoPago.get()).toBe('PAGADO')
   })
 
   it('rechaza pago en pedido ANULADO (estado terminal)', () => {
     const pedido = makePedido({ estadoEntrega: 'ANULADO' })
     expect(() =>
-      pedido.registrarPago({ metodo: 'EFECTIVO' as any, monto: 1000 })
+      pedido.registrarPago({ metodo: 'EFECTIVO', monto: 1000 })
     ).toThrow(/No se puede registrar pago en pedido/)
   })
 
   it('rechaza pago en pedido CANCELADO (estado terminal)', () => {
     const pedido = makePedido({ estadoEntrega: 'CANCELADO' })
     expect(() =>
-      pedido.registrarPago({ metodo: 'EFECTIVO' as any, monto: 1000 })
+      pedido.registrarPago({ metodo: 'EFECTIVO', monto: 1000 })
     ).toThrow(/No se puede registrar pago en pedido/)
   })
 })
@@ -133,7 +133,7 @@ describe('Pedido.anular', () => {
 
   it('retorna true en tuvoPagos y monto pagado si había pagos', () => {
     const pedido = makePedido({ estadoEntrega: 'ENTREGADO', total: 10000 })
-    pedido.registrarPago({ metodo: 'EFECTIVO' as any, monto: 1000 })
+    pedido.registrarPago({ metodo: 'EFECTIVO', monto: 1000 })
     const { tuvoPagos, totalPagado } = pedido.anular()
     expect(tuvoPagos).toBe(true)
     expect(totalPagado).toBe(1000)
@@ -151,14 +151,14 @@ describe('Pedido.cancelar', () => {
 
   it('resetea totalPagado a 0 al cancelar', () => {
     const pedido = makePedido({ estadoEntrega: 'PENDIENTE' })
-    pedido.registrarPago({ metodo: 'EFECTIVO' as any, monto: 1000 })
+    pedido.registrarPago({ metodo: 'EFECTIVO', monto: 1000 })
     pedido.cancelar()
     expect(pedido.totalPagado.toDecimal()).toBe(0)
   })
 
   it('FIX C-BIZ-1: preserva totalPagado para NotaCredito (solo lo cobrado)', () => {
     const pedido = makePedido({ estadoEntrega: 'PENDIENTE', total: 5000 })
-    pedido.registrarPago({ metodo: 'EFECTIVO' as any, monto: 3000 })
+    pedido.registrarPago({ metodo: 'EFECTIVO', monto: 3000 })
     const { totalPagado } = pedido.cancelar()
     // La NC debe ser solo por lo pagado, no por el total con fiado.
     expect(totalPagado).toBe(3000)
