@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
+import Image from 'next/image'
 import { Modal } from './modal'
 import { toast } from 'sonner'
 import { compressImage } from '@/lib/image-compress'
@@ -105,11 +106,13 @@ export function FotoEntregaModal({
 
         {/* Preview or placeholder */}
         {fotoBase64 ? (
-          <div className="relative">
-            <img
+          <div className="relative h-72 w-full rounded-lg border bg-gray-50 overflow-hidden">
+            <Image
               src={fotoBase64}
               alt="Preview de foto de entrega"
-              className="w-full max-h-72 object-contain rounded-lg border bg-gray-50"
+              fill
+              unoptimized
+              className="object-contain"
             />
             <button
               type="button"
