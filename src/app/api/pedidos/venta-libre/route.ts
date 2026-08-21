@@ -5,7 +5,8 @@ import { requireAuth, requireRole } from '@/lib/auth-check'
 import { VentaLibreSchema } from '@/lib/validators'
 import { withAdvisoryLock, acquireAdvisoryLockTx } from '@/lib/locks'
 import { getNextNumero } from '@/lib/sequence'
-import { resolverPreciosPedido, type Canal } from '@/lib/pricing'
+import { resolverPreciosPedido, type Canal, type ProductCode } from '@/lib/pricing'
+import type { MetodoPago } from '@prisma/client'
 import { calcularEstadoPago, puedeFiar, puedeCrearPedido, resolverLimiteFiados } from '@/lib/pedido-utils'
 import { buildPedidoLegacyFields } from '@/lib/pedido-legacy'
 import { logAudit } from '@/lib/audit'
@@ -126,7 +127,7 @@ export async function POST(request: NextRequest) {
       const itemsParaPrecios = items
         .filter(i => i.cantidad > 0)
         .map(i => ({
-          codigo: i.producto as any,
+          codigo: i.producto as ProductCode,
           cantidad: i.cantidad,
           precioManual: i.precioManual,
         }))
@@ -190,7 +191,7 @@ export async function POST(request: NextRequest) {
       // Antes: 18 líneas hardcoded con split incorrecto del botellón
       // (siempre iba a Dom aunque el canal fuera PUNTO).
       const itemsParaLegacy = itemsParaPrecios.map(i => ({
-        producto: i.codigo as any,
+        producto: i.codigo,
         cantidad: i.cantidad,
         precio: precioMap[i.codigo] || 0,
       }))
@@ -241,7 +242,7 @@ export async function POST(request: NextRequest) {
         await tx.pago.create({
           data: {
             pedidoId: pedido.id,
-            metodo: pago.metodo as any,
+            metodo: pago.metodo as MetodoPago,
             monto: pago.monto,
           },
         })
