@@ -1,8 +1,19 @@
 import { startOfDayBogota, endOfDayBogota } from './dates'
 
+// Sin index signature: los accesos dinámicos ($queryRawUnsafe, tx[model])
+// se castean localmente en cada sitio de uso (ver abajo). Un index
+// signature acá rompería la asignabilidad de un PrismaClient real pasado
+// directamente (no via cast) -- ver src/lib/__tests__/sequence-runtime.test.ts.
 interface TxLike {
   $queryRaw: (query: TemplateStringsArray, ...values: unknown[]) => Promise<unknown[]>
-  [model: string]: any
+}
+
+// Forma mínima de un model delegate de Prisma para el fallback MAX+1 de
+// getNextNumero() -- solo se necesita .aggregate({ _max: {...} }), acceso
+// dinámico por nombre de modelo (options.model), no se puede tipar más
+// específico sin conocer el modelo en tiempo de compilación.
+type AggregatableModel = {
+  aggregate: (args: { _max: Record<string, boolean>; where?: Record<string, unknown> }) => Promise<{ _max: Record<string, number | string | null> }>
 }
 
 /**
@@ -60,14 +71,15 @@ export async function getNextNumero(
     if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(seqName)) {
       throw new Error(`Invalid sequence name: ${seqName}`)
     }
-    const rows = await tx.$queryRawUnsafe(
+    const queryRawUnsafe = (tx as unknown as { $queryRawUnsafe: (query: string, ...values: unknown[]) => Promise<unknown[]> }).$queryRawUnsafe
+    const rows = await queryRawUnsafe(
       `SELECT nextval('${seqName}')`,
     ) as Array<{ nextval: bigint }>
     return Number(rows[0].nextval)
   }
 
   // Fallback: MAX + 1 (usado para Abono, Embarque y otros no-fiscales)
-  const model = (tx as any)[options.model]
+  const model = (tx as unknown as Record<string, AggregatableModel>)[options.model]
   const field = options.field || 'numero'
   const result = await model.aggregate({
     _max: { [field]: true },
@@ -103,7 +115,7 @@ export async function getNextNumeroDia(
   const startOfDay = startOfDayBogota(fechaStr)
   const endOfDay = endOfDayBogota(fechaStr)
 
-  const embarqueModel = (tx as any).embarque
+  const embarqueModel = (tx as unknown as { embarque: AggregatableModel }).embarque
   const result = await embarqueModel.aggregate({
     _max: { numeroDia: true },
     where: {
@@ -112,7 +124,7 @@ export async function getNextNumeroDia(
     },
   })
 
-  return (result._max?.numeroDia || 0) + 1
+  return Number(result._max?.numeroDia || 0) + 1
 }
 
 export function formatWithPadding(template: string, nextNum: number): string {

@@ -233,14 +233,14 @@ export function FiadosTable({
       const montoAplicado = data.montoAplicado || Number(montoPago)
 
       let resumenHtml = `<div class="space-y-1">`
-      pagosAplicados.forEach((p: any) => {
+      pagosAplicados.forEach((p) => {
         const estado = p.saldoRestante <= 0 ? '✅ Pagado completo' : `⏳ Saldo restante: ${formatCurrency(p.saldoRestante)}`
         resumenHtml += `<div class="text-sm">Pedido <a href="/pedidos?openPedido=${p.pedidoId}" class="text-blue-600 hover:underline font-medium">#${p.numero}</a>: <b>${formatCurrency(p.montoAplicado)}</b> <span class="text-xs text-gray-500">${estado}</span></div>`
       })
       if (montoSobrante > 0) {
         resumenHtml += `<div class="text-sm text-blue-600">💰 Sobrante: ${formatCurrency(montoSobrante)}</div>`
       }
-      const facturaIds = [...new Set(pagosAplicados.filter((p: any) => p.facturaId).map((p: any) => p.facturaId))]
+      const facturaIds = [...new Set(pagosAplicados.filter((p) => p.facturaId).map((p) => p.facturaId))]
       if (facturaIds.length > 0) {
         resumenHtml += `<div class="text-sm text-green-600">📄 ${facturaIds.length} abono(s) generado(s) en <a href="/facturas?openFactura=${facturaIds[0]}" class="text-green-700 hover:underline font-medium">factura(s)</a></div>`
       }
