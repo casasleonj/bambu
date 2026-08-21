@@ -1,4 +1,4 @@
-import { PrismaClient, RolUsuario } from '@prisma/client'
+import { PrismaClient, Prisma, RolUsuario } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 
 const prisma = new PrismaClient()
@@ -54,9 +54,9 @@ async function main() {
   for (const t of trabajadores) {
     const existing = t.userId ? await prisma.trabajador.findUnique({ where: { userId: t.userId } }) : null
     if (existing) {
-      await prisma.trabajador.update({ where: { id: existing.id }, data: t as any })
+      await prisma.trabajador.update({ where: { id: existing.id }, data: t as Prisma.TrabajadorUpdateInput })
     } else {
-      await prisma.trabajador.create({ data: t as any })
+      await prisma.trabajador.create({ data: t as Prisma.TrabajadorCreateInput })
     }
   }
   console.log('✅ Trabajadores seeded')

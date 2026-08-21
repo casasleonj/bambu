@@ -92,4 +92,8 @@ export interface EmbarqueEditable {
   baseDinero: number
   obs: string | null
   productos: EmbarqueProducto[]
+  // Campos legacy (pre-EmbarqueProducto) — fallback cuando productos está
+  // vacío, ver embarque-form-modal.tsx. No siempre vienen en la respuesta.
+  pacasAgua?: number
+  pacasHielo?: number
 }

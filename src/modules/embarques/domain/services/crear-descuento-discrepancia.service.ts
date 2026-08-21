@@ -15,11 +15,12 @@
  */
 
 import { resolverPrecio } from '@/lib/pricing'
+import type { PrismaClient } from '@prisma/client'
 import type { ProductCode } from '../../domain/value-objects/Carga'
 
 type TxOrPrisma = {
   $queryRaw: (query: TemplateStringsArray, ...values: unknown[]) => Promise<unknown[]>
-  [model: string]: any
+  [model: string]: unknown
 }
 
 export class CrearDescuentoDiscrepanciaService {
@@ -41,7 +42,7 @@ export class CrearDescuentoDiscrepanciaService {
     const precioMap: Record<string, number> = {}
     for (const disc of discrepancias) {
       if (disc.discrepancia > 0) {
-        const precioResult = await resolverPrecio(disc.producto as ProductCode, 1, 'DOMICILIO', null, null, client as any)
+        const precioResult = await resolverPrecio(disc.producto as ProductCode, 1, 'DOMICILIO', null, null, client as unknown as PrismaClient)
         precioMap[disc.producto] = precioResult.precio
       }
     }
