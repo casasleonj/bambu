@@ -23,8 +23,8 @@ test.describe('Full-flow offline-resilience (abort → enqueue → drain)', () =
     if (!clienteId) { test.skip(); return }
 
     // Esperar a que ConnectivityIndicator monte y exponga window.__bambu
-    await page.waitForFunction(() => (window as any).__bambu !== undefined, { timeout: 10000 })
-    await page.evaluate(() => (window as any).__bambu.clearQueues())
+    await page.waitForFunction(() => window.__bambu !== undefined, { timeout: 10000 })
+    await page.evaluate(() => window.__bambu!.clearQueues())
 
     // Snapshot del conteo de pedidos ANTES de cualquier acción
     const countBefore = await page.evaluate(async () => {
@@ -45,7 +45,7 @@ test.describe('Full-flow offline-resilience (abort → enqueue → drain)', () =
     const offlineId = crypto.randomUUID()
     const offlineResult = await page.evaluate(
       async ({ url, offlineId, clienteId }) => {
-        const bambú = (window as any).__bambu
+        const bambú = window.__bambu!
         return await bambú.fetchResilient(url, {
           method: 'POST',
           body: {
@@ -65,7 +65,7 @@ test.describe('Full-flow offline-resilience (abort → enqueue → drain)', () =
     expect(offlineResult.status).toBe('offline')
 
     // ── 3. Verificar que el item está en requestQueue ─────────────────────
-    const queueAfterAbort = await page.evaluate(() => (window as any).__bambu.getRequestQueue())
+    const queueAfterAbort = await page.evaluate(() => window.__bambu!.getRequestQueue())
     expect(queueAfterAbort).toHaveLength(1)
     expect(queueAfterAbort[0].offlineId).toBe(offlineId)
     expect(queueAfterAbort[0].method).toBe('POST')
@@ -75,12 +75,12 @@ test.describe('Full-flow offline-resilience (abort → enqueue → drain)', () =
     await page.unroute('**/api/pedidos')
 
     // ── 5. Disparar sync (drenar la cola) ─────────────────────────────────
-    const syncResult = await page.evaluate(() => (window as any).__bambu.syncWithServer())
+    const syncResult = await page.evaluate(() => window.__bambu!.syncWithServer())
     expect(syncResult.synced).toBeGreaterThanOrEqual(1)
     expect(syncResult.failed).toBe(0)
 
     // ── 6. Verificar que la cola está vacía ───────────────────────────────
-    const queueAfterDrain = await page.evaluate(() => (window as any).__bambu.getRequestQueue())
+    const queueAfterDrain = await page.evaluate(() => window.__bambu!.getRequestQueue())
     expect(queueAfterDrain).toHaveLength(0)
 
     // ── 7. Verificar que el pedido EXISTE en el server ────────────────────
@@ -104,8 +104,8 @@ test.describe('Full-flow offline-resilience (abort → enqueue → drain)', () =
     const clienteId = c.cliente?.id || c.data?.id
     if (!clienteId) { test.skip(); return }
 
-    await page.waitForFunction(() => (window as any).__bambu !== undefined, { timeout: 10000 })
-    await page.evaluate(() => (window as any).__bambu.clearQueues())
+    await page.waitForFunction(() => window.__bambu !== undefined, { timeout: 10000 })
+    await page.evaluate(() => window.__bambu!.clearQueues())
 
     // Bloquear /api/pedidos
     await page.route('**/api/pedidos', (route) => {
@@ -126,7 +126,7 @@ test.describe('Full-flow offline-resilience (abort → enqueue → drain)', () =
     for (let i = 0; i < 2; i++) {
       const result = await page.evaluate(
         async ({ url, offlineId, clienteId }) => {
-          return await (window as any).__bambu.fetchResilient(url, {
+          return await window.__bambu!.fetchResilient(url, {
             method: 'POST',
             body: {
               clienteId,
@@ -144,20 +144,20 @@ test.describe('Full-flow offline-resilience (abort → enqueue → drain)', () =
     }
 
     // Ambos encolados (Dexie no deduplica — eso lo hace el server)
-    const queueFull = await page.evaluate(() => (window as any).__bambu.getRequestQueue())
+    const queueFull = await page.evaluate(() => window.__bambu!.getRequestQueue())
     expect(queueFull).toHaveLength(2)
-    expect(queueFull.every((q: any) => q.offlineId === offlineId)).toBe(true)
+    expect(queueFull.every((q) => q.offlineId === offlineId)).toBe(true)
 
     // Restaurar red y sincronizar
     await page.unroute('**/api/pedidos')
-    const syncResult = await page.evaluate(() => (window as any).__bambu.syncWithServer())
+    const syncResult = await page.evaluate(() => window.__bambu!.syncWithServer())
 
     // sync puede reportar 1 synced (200) + 1 conflict (409 dedup) — ambos OK
     expect(syncResult.synced + syncResult.conflicts).toBeGreaterThanOrEqual(1)
     expect(syncResult.failed).toBe(0)
 
     // Cola vacía
-    const queueAfterDrain = await page.evaluate(() => (window as any).__bambu.getRequestQueue())
+    const queueAfterDrain = await page.evaluate(() => window.__bambu!.getRequestQueue())
     expect(queueAfterDrain).toHaveLength(0)
 
     // Solo UN pedido creado en el server (dedup funcionó)
@@ -177,8 +177,8 @@ test.describe('Full-flow offline-resilience (abort → enqueue → drain)', () =
     const clienteId = c.cliente?.id || c.data?.id
     if (!clienteId) { test.skip(); return }
 
-    await page.waitForFunction(() => (window as any).__bambu !== undefined, { timeout: 10000 })
-    await page.evaluate(() => (window as any).__bambu.clearQueues())
+    await page.waitForFunction(() => window.__bambu !== undefined, { timeout: 10000 })
+    await page.evaluate(() => window.__bambu!.clearQueues())
 
     // Responder con 400 Bad Request (error de lógica, no de red)
     await page.route('**/api/pedidos', (route) => {
@@ -194,7 +194,7 @@ test.describe('Full-flow offline-resilience (abort → enqueue → drain)', () =
     const offlineId = crypto.randomUUID()
     const result = await page.evaluate(
       async ({ url, offlineId, clienteId }) => {
-        return await (window as any).__bambu.fetchResilient(url, {
+        return await window.__bambu!.fetchResilient(url, {
           method: 'POST',
           body: {
             clienteId,
@@ -213,7 +213,7 @@ test.describe('Full-flow offline-resilience (abort → enqueue → drain)', () =
     expect(result.status).toBe('error')
 
     // Y la cola NO debe tener el item (errores lógicos no se reencolan)
-    const queue = await page.evaluate(() => (window as any).__bambu.getRequestQueue())
+    const queue = await page.evaluate(() => window.__bambu!.getRequestQueue())
     expect(queue).toHaveLength(0)
 
     await page.unroute('**/api/pedidos')
