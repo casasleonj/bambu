@@ -49,7 +49,19 @@ export default defineConfig({
   },
 
   webServer: {
-    command: 'npm run dev',
+    // En CI corremos contra el build de producción (`next build` + el
+    // server standalone ya armado por un step previo del workflow), no
+    // contra `next dev`. Next.js recomienda esto explícitamente para E2E
+    // (node_modules/next/dist/docs/.../testing/playwright.md) y coincide
+    // con el diagnóstico de AGENTS.md Known Issue #25: `next dev` sostenido
+    // por 20-40min por shard bajo carga real de browser (workers:1, cientos
+    // de tests seriales) degradaba progresivamente, dejando cada vez más
+    // tests con timeouts amplios/sin relación entre sí y una cola creciente
+    // de "N did not run". `next start` no sirve acá porque next.config.ts
+    // usa `output: 'standalone'` (next start lo rechaza explícitamente) —
+    // se usa el server.js standalone en su lugar. Local dev sigue en
+    // `npm run dev` sin cambios.
+    command: process.env.CI ? 'node .next/standalone/server.js' : 'npm run dev',
     url: process.env.PLAYWRIGHT_TEST_BASE_URL
       ? `${process.env.PLAYWRIGHT_TEST_BASE_URL}/api/health`
       : 'http://localhost:3001/api/health',

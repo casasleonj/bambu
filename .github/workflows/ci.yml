@@ -261,6 +261,34 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
 
+      - name: Build application (E2E runs against a production build)
+        # Next.js's own docs (node_modules/next/dist/docs/01-app/02-guides/testing/playwright.md)
+        # recommend testing against `next build && next start`, not `next dev`,
+        # to closely resemble real app behavior. This repo's E2E job used
+        # `next dev` (via `npm run dev` → scripts/dev-with-lan.mjs) for the
+        # full ~20-40min duration of each shard's run — investigated as the
+        # likely root cause of AGENTS.md Known Issue #25 (broad, shard-wide,
+        # unrelated-spec E2E failures with growing "N did not run" tails):
+        # `next dev` does on-demand per-route compilation and keeps much more
+        # in memory than a production build, which degrades under the
+        # sustained real-browser load of hundreds of serial tests
+        # (workers:1) on a 2-core CI runner. Build doesn't need a live DB —
+        # verified locally: succeeds before Postgres/Redis are even started.
+        run: npm run build
+
+      - name: Copy static assets into standalone build
+        # next.config.ts sets `output: 'standalone'`. With that config,
+        # `next start` refuses to run ("next start does not work with
+        # output: standalone — use node .next/standalone/server.js instead",
+        # confirmed by actually running `next start` against this build).
+        # The standalone server.js doesn't include `public/` or
+        # `.next/static/` by default (meant for CDN-served assets in a real
+        # deploy) — copy them in, per Next.js's own `output` doc.
+        run: |
+          cp -r public .next/standalone/
+          mkdir -p .next/standalone/.next
+          cp -r .next/static .next/standalone/.next/
+
       - name: Push schema to CI database
         run: npx prisma db push
 
