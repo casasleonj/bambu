@@ -35,10 +35,15 @@ export function CajaBaseHeader() {
     state.status === 'con_base' ? state.valor : state.status === 'cerrado' ? state.valor ?? '' : ''
   const [optimisticValue, setOptimisticValue] = useOptimistic(originalValue)
 
-  // Cuando se carga el state y entra en edit por primera vez, sincronizamos
-  // el draft con el valor del server.
+  // Catch-up: si `state` (async, de useBaseCajaEditor) termina de cargar
+  // DESPUÉS de que el usuario ya entró en modo edición (startEditing ya
+  // seteó draftValue con el valor disponible en ese momento, que puede
+  // haber sido '' si el state aún no estaba en 'con_base'), este efecto
+  // sincroniza el draft una vez que el valor real llega. Guard contra
+  // `draftValue === ''` evita pisar lo que el usuario ya empezó a escribir.
   useEffect(() => {
     if (editing && state.status === 'con_base' && draftValue === '') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDraftValue(state.valor)
     }
   }, [editing, state, draftValue])

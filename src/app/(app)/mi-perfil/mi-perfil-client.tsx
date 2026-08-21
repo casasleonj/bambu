@@ -80,12 +80,15 @@ export default function MiPerfilClient({ user }: { user: UserProfile }) {
   const hasDirtyAccount = isDirtyUsername
   const canSave = hasDirtyPersonal || hasDirtyAccount || (showPasswordFields && hasPasswordFields)
 
-  // Auto-expand password when user starts typing
-  useEffect(() => {
+  // Auto-expand password when user starts typing — durante el render (no
+  // en un efecto) al detectar el cambio de currentPassword.
+  const [prevCurrentPassword, setPrevCurrentPassword] = useState(currentPassword)
+  if (currentPassword !== prevCurrentPassword) {
+    setPrevCurrentPassword(currentPassword)
     if (currentPassword && !showPasswordFields) {
       setShowPasswordFields(true)
     }
-  }, [currentPassword, showPasswordFields])
+  }
 
   // Ctrl+S keyboard shortcut
   useEffect(() => {

@@ -45,17 +45,26 @@ export function NegocioSelector({
   // principal o un negocio puntual), no la lista completa de opciones a la
   // vez. Evita el ruido visual de ver ambas direcciones simultáneamente.
   const [expanded, setExpanded] = useState(false)
+  const [prevClienteId, setPrevClienteId] = useState(clienteId)
 
-  useEffect(() => {
+  // Colapsa el selector y resetea el estado de carga durante el render
+  // cuando cambia el cliente, en vez de en el efecto — ver
+  // https://react.dev/learn/you-might-not-need-an-effect
+  if (clienteId !== prevClienteId) {
+    setPrevClienteId(clienteId)
     setExpanded(false)
     if (!clienteId) {
       setNegocios([])
       setLoading(false)
-      return
+      setError(null)
+    } else {
+      setLoading(true)
+      setError(null)
     }
+  }
 
-    setLoading(true)
-    setError(null)
+  useEffect(() => {
+    if (!clienteId) return
 
     fetch(`/api/negocios?clienteId=${clienteId}`)
       .then((res) => {
