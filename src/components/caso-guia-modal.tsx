@@ -119,9 +119,14 @@ export function CasoGuiaModal({ caso, contextData, usuarios, onClose, onStatusCh
   const soluciones = useMemo(() => getSolucionesFiltradas(tipo, contextData), [tipo, contextData])
   const acciones = useMemo(() => getAcciones(tipo), [tipo])
 
-  useEffect(() => {
+  const [prevSolucionesLength, setPrevSolucionesLength] = useState(soluciones.length)
+  // Reinicia los checks durante el render cuando cambia la lista de
+  // soluciones, en vez de en un efecto — ver
+  // https://react.dev/learn/you-might-not-need-an-effect
+  if (soluciones.length !== prevSolucionesLength) {
+    setPrevSolucionesLength(soluciones.length)
     setCheckedSteps(new Array(soluciones.length).fill(false))
-  }, [soluciones.length])
+  }
 
   useEffect(() => {
     if (toast) {
