@@ -189,7 +189,10 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   const [modalKey, setModalKey] = useState(0)
 
   useEffect(() => {
+    // window.matchMedia no existe en el servidor, no se puede leer
+    // durante el render.
     const mq = window.matchMedia('(hover: hover) and (pointer: fine)')
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFabHoverable(mq.matches)
     const handler = (e: MediaQueryListEvent) => setFabHoverable(e.matches)
     mq.addEventListener('change', handler)
@@ -299,7 +302,12 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     }
   }, [redirectIfAuthError])
 
-  useEffect(() => { void loadAllPedidos() }, [loadAllPedidos])
+  useEffect(() => {
+    // Fetch de datos al montar — side effect de red real, no derivable
+    // durante el render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadAllPedidos()
+  }, [loadAllPedidos])
 
   // cacheActive: el cache trajo el dataset completo (no truncado por el tope
   // de 500). Si el negocio supera el tope, cae a fallback server-filtrado.
@@ -521,6 +529,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   // fuente de verdad y el input como borrador (AGENTS.md #22): el effect de
   // debounce solo navega si el input difiere del ref, no de la prop stale.
   const lastCommittedSearchRef = useRef(search)
+  const [prevSearchProp, setPrevSearchProp] = useState(search)
 
   const clearAllFilters = useCallback(() => {
     setSearchInput('')
@@ -568,10 +577,13 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     }
   }
 
-  useEffect(() => {
+  // Sincroniza searchInput desde la prop search durante el render en vez
+  // de en un efecto (mismo mecanismo de lastCommittedSearchRef, AGENTS.md #22).
+  if (search !== prevSearchProp) {
+    setPrevSearchProp(search)
     setSearchInput(search)
     lastCommittedSearchRef.current = search
-  }, [search])
+  }
 
   useEffect(() => {
     if (searchInput === lastCommittedSearchRef.current) return

@@ -170,6 +170,9 @@ export function VentaRapidaForm({ clientes, onSubmit }: VentaRapidaFormProps) {
     for (const id of productosActuales) {
       allProducts[id] = cantidades[id] || 1
     }
+    // Resuelve precios reales via API — side effect de red, no derivable
+    // durante el render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     resolverPrecios(allProducts, canal, clienteSeleccionado.id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clienteSeleccionado?.id, productosActuales, canal, resolverPrecios])

@@ -261,6 +261,9 @@ export default function ClientesClient({
   const [clientes, setClientes] = useState<Cliente[]>(initialClientes)
   const [total, setTotal] = useState<number>(initialTotal)
   const [totalPages, setTotalPages] = useState<number>(initialTotalPages)
+  const [prevInitialTotal, setPrevInitialTotal] = useState(initialTotal)
+  const [prevInitialTotalPages, setPrevInitialTotalPages] = useState(initialTotalPages)
+  const [prevInitialClientes, setPrevInitialClientes] = useState(initialClientes)
   const [searchInput, setSearchInput] = useState<string>(initialSearch)
   const searchInputRef = useRef(searchInput)
   useEffect(() => { searchInputRef.current = searchInput }, [searchInput])
@@ -374,11 +377,14 @@ export default function ClientesClient({
     lastCommittedSearchRef.current = urlSearch
   }, [searchParams])
 
-  // Sincronizar total/paginación cuando el Server Component re-renderiza.
-  useEffect(() => {
+  // Sincronizar total/paginación cuando el Server Component re-renderiza,
+  // durante el render en vez de en un efecto.
+  if (initialTotal !== prevInitialTotal || initialTotalPages !== prevInitialTotalPages) {
+    setPrevInitialTotal(initialTotal)
+    setPrevInitialTotalPages(initialTotalPages)
     setTotal(initialTotal)
     setTotalPages(initialTotalPages)
-  }, [initialTotal, initialTotalPages])
+  }
 
   // Sincroniza la URL con el término de búsqueda usando la History API
   // nativa (replaceState). Esto actualiza la barra de direcciones y sincroniza
@@ -405,10 +411,12 @@ export default function ClientesClient({
 
   // FIX: sincronizar estado del cliente cuando el Server Component
   // re-renderiza con nuevos searchParams (ej: cambio de filtro en URL).
-  // Sin esto, los filtros server-side no actualizan la UI.
-  useEffect(() => {
+  // Sin esto, los filtros server-side no actualizan la UI. Durante el
+  // render en vez de en un efecto.
+  if (initialClientes !== prevInitialClientes) {
+    setPrevInitialClientes(initialClientes)
     setClientes(initialClientes)
-  }, [initialClientes])
+  }
 
   // Clave estable para detectar cambio real en filtros (evita refetch en
   // renders donde los objetos prop tienen distinta identidad pero mismos valores).
@@ -417,8 +425,10 @@ export default function ClientesClient({
     [filtroActivo, filtrosActivos],
   )
 
-  // Carga al montar y cuando los valores de filtro realmente cambian.
+  // Carga al montar y cuando los valores de filtro realmente cambian —
+  // side effect de red real, no derivable durante el render.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadAllClientes()
   }, [filtrosKey, loadAllClientes])
 
@@ -462,6 +472,7 @@ export default function ClientesClient({
 
   // Negocios state
   const [negocios, setNegocios] = useState<NegocioDetail[]>([])
+  const [prevSelectedClienteForNegocios, setPrevSelectedClienteForNegocios] = useState(selectedCliente)
 
   // Guard contra respuestas stale de viewCliente (clicks rápidos A→B).
   const viewSeqRef = useRef(0)
@@ -594,19 +605,24 @@ export default function ClientesClient({
     if (!cliente) return
     // Si el cliente ya está cargado con el mismo id, no re-fetch; si no, cargar.
     if (selectedCliente?.id === cliente.id && showDetail) return
+    // viewCliente dispara un fetch real (detalle completo) — side effect
+    // de red, no derivable durante el render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void viewCliente(cliente.id)
   }, [openClienteId, clientes, selectedCliente, showDetail, findClienteById, viewCliente])
 
   // Los negocios del panel vienen directamente del detalle del cliente,
   // eliminando el fetch secuencial y la ventana stale del cliente anterior.
-  useEffect(() => {
+  // Durante el render en vez de en un efecto.
+  if (selectedCliente !== prevSelectedClienteForNegocios) {
+    setPrevSelectedClienteForNegocios(selectedCliente)
     if (!selectedCliente) {
       setNegocios([])
-      return
+    } else {
+      const incoming = selectedCliente.negocios ?? []
+      setNegocios(incoming as NegocioDetail[])
     }
-    const incoming = selectedCliente.negocios ?? []
-    setNegocios(incoming as NegocioDetail[])
-  }, [selectedCliente])
+  }
 
   // Escape closes side panel — registered in modal stack so it only fires
   // when no nested modal (NegocioForm, GuiaAlerta, etc.) is on top.
