@@ -314,10 +314,12 @@ export default function ConfiguracionClient({ initialData }: ConfiguracionClient
      Effects
      -------------------------------------------------------------- */
 
-  // Load last saved timestamp from localStorage
+  // Load last saved timestamp from localStorage — localStorage no existe
+  // en el servidor, no se puede derivar durante el render.
   useEffect(() => {
     try {
       const ts = localStorage.getItem('configLastSaved')
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (ts) setLastSavedAt(new Date(Number(ts)))
     } catch {
       // localStorage may be unavailable

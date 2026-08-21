@@ -137,11 +137,15 @@ export default function ProduccionClient() {
   }, [router])
 
   useEffect(() => {
+    // Fetch de datos al montar — side effects de red reales, no
+    // derivables durante el render.
+    /* eslint-disable react-hooks/set-state-in-effect */
     const controller = new AbortController()
     fetchPreview(controller.signal)
     fetchTrabajadores(controller.signal)
     fetchProfile(controller.signal)
     fetchProducciones(controller.signal)
+    /* eslint-enable react-hooks/set-state-in-effect */
     return () => controller.abort()
   }, [fetchPreview, fetchTrabajadores, fetchProducciones])
 

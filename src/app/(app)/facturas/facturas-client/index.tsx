@@ -108,6 +108,9 @@ export default function FacturasPage() {
     if (!openFacturaParam || facturas.length === 0 || hasAutoOpened) return
     const factura = facturas.find(f => f.id === openFacturaParam || f.numero === openFacturaParam)
     if (factura) {
+      // Abre el detalle de la factura desde el query param — dispara un
+      // fetch real (side effect de red), no derivable durante el render.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       openFacturaDetail(factura.id)
       setHasAutoOpened(true)
       params.set({ openFactura: undefined }, { history: 'replace' })
@@ -134,7 +137,12 @@ export default function FacturasPage() {
     }
   }, [dateRange, page, pageSize])
 
-  useEffect(() => { fetchFacturas() }, [fetchFacturas])
+  useEffect(() => {
+    // Fetch de datos al montar / cambiar page-pageSize-dateRange — side
+    // effect de red real, no derivable durante el render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchFacturas()
+  }, [fetchFacturas])
 
   const closeFacturaDetail = () => {
     setSelectedFactura(null)
