@@ -26,13 +26,15 @@ describe('FASE FINAL — ajuste de pedido (§6)', () => {
     const pedido = await testPrisma.pedido.create({
       data: { clienteId, canal: 'DOMICILIO' },
     })
+    await testPrisma.pedidoItem.create({
+      data: { pedidoId: pedido.id, producto: 'PACA_AGUA', cantPedido: 10 },
+    })
     const useCase = new AjustarPedidoCantidadUseCase()
 
     const resultados = await Promise.allSettled([
       useCase.execute({
         pedidoId: pedido.id,
         producto: 'PACA_AGUA',
-        cantidadOriginal: 10,
         cantidadNueva: 12,
         motivo: 'ajuste 1',
         autorizadoPorId: adminId,
@@ -41,7 +43,6 @@ describe('FASE FINAL — ajuste de pedido (§6)', () => {
       useCase.execute({
         pedidoId: pedido.id,
         producto: 'PACA_AGUA',
-        cantidadOriginal: 10,
         cantidadNueva: 11,
         motivo: 'ajuste 2',
         autorizadoPorId: adminId,
@@ -55,8 +56,35 @@ describe('FASE FINAL — ajuste de pedido (§6)', () => {
       where: { pedidoId: pedido.id },
     })
     expect(ajustes).toHaveLength(2)
+    // Ambos leen cantidadOriginal=10 del PedidoItem real (ninguno la fabrica).
+    expect(ajustes.every((a) => a.cantidadOriginal === 10)).toBe(true)
     const deltas = ajustes.map((a) => a.delta).sort((a, b) => a - b)
     expect(deltas).toEqual([1, 2])
+  })
+
+  it('cantidadOriginal se lee del PedidoItem real, no del cliente', async () => {
+    const pedido = await testPrisma.pedido.create({
+      data: { clienteId, canal: 'DOMICILIO' },
+    })
+    await testPrisma.pedidoItem.create({
+      data: { pedidoId: pedido.id, producto: 'PACA_HIELO', cantPedido: 7 },
+    })
+    const useCase = new AjustarPedidoCantidadUseCase()
+
+    const result = await useCase.execute({
+      pedidoId: pedido.id,
+      producto: 'PACA_HIELO',
+      cantidadNueva: 9,
+      motivo: 'ajuste',
+      autorizadoPorId: adminId,
+      offlineId: uniqueId('ajuste-real'),
+    })
+
+    const ajuste = await testPrisma.pedidoCantidadAjuste.findUnique({
+      where: { id: result.ajusteId },
+    })
+    expect(ajuste?.cantidadOriginal).toBe(7)
+    expect(ajuste?.delta).toBe(2)
   })
 
   it('retry con el mismo offlineId no duplica el ajuste', async () => {
@@ -69,7 +97,6 @@ describe('FASE FINAL — ajuste de pedido (§6)', () => {
     const input = {
       pedidoId: pedido.id,
       producto: 'PACA_AGUA',
-      cantidadOriginal: 5,
       cantidadNueva: 6,
       motivo: 'retry',
       autorizadoPorId: adminId,
@@ -95,7 +122,6 @@ describe('FASE FINAL — ajuste de pedido (§6)', () => {
       useCase.execute({
         pedidoId: pedido.id,
         producto: 'PACA_AGUA',
-        cantidadOriginal: 5,
         cantidadNueva: 6,
         motivo: 'sin autorizacion',
         autorizadoPorId: '',
