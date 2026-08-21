@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Modal } from '@/components/modal'
 import { getGuiaAlerta, getBadgeColor, type AlertaTipo, type SeveridadAlerta } from '@/lib/alertas-config'
 
-interface Caso {
+export interface Caso {
   id: string
   alertaTipo: string
   severidad: string
