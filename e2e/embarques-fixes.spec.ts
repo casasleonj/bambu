@@ -1,14 +1,15 @@
 // @tests embarques module - tests for critical fixes applied
 // Covers: Fix #1, #2, #5, #7, #8, #9, #12, #16, #17, #21, #22, #24, #25, #26
+import type { Page } from '@playwright/test'
 import { test, expect, loginAs, apiPost, apiGet, apiDelete, createTrabajador, createCliente, BASE } from './fixtures'
 
 import { PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()
 
-async function embarquesLogin(page: any) {
+async function embarquesLogin(page: Page) {
   const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
-  await page.route('**/api/cierre/last', async (route: any) => {
+  await page.route('**/api/cierre/last', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -675,7 +676,7 @@ test.describe('Embarques — Fix #24: Stats incluye EN_RUTA', () => {
     const detalles = (statsData.data ?? statsData).embarquesDetalle
 
     // Should include the EN_RUTA embarque
-    const enRutaEmbarques = detalles.filter((d: any) => d.estado === 'EN_RUTA')
+    const enRutaEmbarques = (detalles as Array<{ estado: string }>).filter((d) => d.estado === 'EN_RUTA')
     expect(enRutaEmbarques.length).toBeGreaterThanOrEqual(1)
   })
 })
