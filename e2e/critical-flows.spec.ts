@@ -48,10 +48,10 @@ test.describe('Flujos críticos de negocio', () => {
     await handleBaseCaja(page)
 
     // Intercept API response
-    let apiResponse: any = null
+    let apiResponseRaw: unknown = null
     await page.route('/api/clientes', async (route) => {
       const response = await route.fetch()
-      apiResponse = await response.json().catch(() => null)
+      apiResponseRaw = await response.json().catch(() => null)
       await route.fulfill({ response })
     })
 
@@ -70,6 +70,7 @@ test.describe('Flujos críticos de negocio', () => {
     await page.waitForTimeout(1500)
 
     // Check for API errors
+    const apiResponse = apiResponseRaw as { error?: string } | null
     if (apiResponse?.error) {
       console.log('API Error:', apiResponse.error)
     }
@@ -95,10 +96,10 @@ test.describe('Flujos críticos de negocio', () => {
     await handleBaseCaja(page)
 
     // Intercept API request to verify items array
-    let requestBody: any = null
+    let requestBodyRaw: unknown = null
     await page.route('/api/pedidos', async (route) => {
       if (route.request().method() === 'POST') {
-        requestBody = await route.request().postDataJSON()
+        requestBodyRaw = await route.request().postDataJSON()
       }
       await route.continue()
     })
@@ -124,7 +125,7 @@ test.describe('Flujos críticos de negocio', () => {
 
     // Submit
     let alertMsg = null
-    page.on('dialog', async (dialog: any) => {
+    page.on('dialog', async (dialog) => {
       alertMsg = dialog.message()
       await dialog.accept()
     })
@@ -139,12 +140,13 @@ test.describe('Flujos críticos de negocio', () => {
     await expect(page.locator('body')).toContainText('Pedidos')
 
     // Verify API received items array
+    const requestBody = requestBodyRaw as { items?: Array<{ producto: string; cantidad: number }> } | null
     expect(requestBody).not.toBeNull()
-    expect(requestBody.items).toBeDefined()
-    expect(Array.isArray(requestBody.items)).toBe(true)
-    expect(requestBody.items.length).toBeGreaterThan(0)
-    expect(requestBody.items[0]).toHaveProperty('producto')
-    expect(requestBody.items[0]).toHaveProperty('cantidad')
+    expect(requestBody!.items).toBeDefined()
+    expect(Array.isArray(requestBody!.items)).toBe(true)
+    expect(requestBody!.items!.length).toBeGreaterThan(0)
+    expect(requestBody!.items![0]).toHaveProperty('producto')
+    expect(requestBody!.items![0]).toHaveProperty('cantidad')
   })
 
   test('Dashboard muestra secciones principales', async ({ page }) => {
@@ -178,10 +180,10 @@ test.describe('Flujos críticos de negocio', () => {
     await handleBaseCaja(page)
 
     // Intercept to verify items array
-    let requestBody: any = null
+    let requestBodyRaw: unknown = null
     await page.route('/api/pedidos', async (route) => {
       if (route.request().method() === 'POST') {
-        requestBody = await route.request().postDataJSON()
+        requestBodyRaw = await route.request().postDataJSON()
       }
       await route.continue()
     })
@@ -210,8 +212,9 @@ test.describe('Flujos críticos de negocio', () => {
     await expect(page.getByText('PENDIENTE').first()).toBeVisible()
 
     // Verify API used items array
+    const requestBody = requestBodyRaw as { items?: Array<{ producto: string; cantidad: number }> } | null
     expect(requestBody).not.toBeNull()
-    expect(requestBody.items).toBeDefined()
-    expect(Array.isArray(requestBody.items)).toBe(true)
+    expect(requestBody!.items).toBeDefined()
+    expect(Array.isArray(requestBody!.items)).toBe(true)
   })
 })
