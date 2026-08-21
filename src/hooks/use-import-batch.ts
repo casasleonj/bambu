@@ -77,7 +77,10 @@ export function useImportBatch(initialBatchId?: string): UseImportBatchState & U
   }, [batch?.id, initialBatchId, deriveStep])
 
   useEffect(() => {
+    // Fetch de datos al montar si hay un batch inicial — side effect de
+    // red real, no derivable durante el render.
     if (initialBatchId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       void refresh()
     }
   }, [initialBatchId, refresh])

@@ -185,6 +185,9 @@ export function usePedidos(
       didInitialFetchRef.current = true
       lastParamsKeyRef.current = paramsKey
       if (options?.autoFetch !== false) {
+        // Fetch inicial — side effect de red real, no derivable durante
+        // el render.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         fetchPedidos()
       }
       return
