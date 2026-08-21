@@ -423,7 +423,10 @@ function AuditoriaSection({ casoId }: { casoId: string }) {
   const [expanded, setExpanded] = useState(false)
 
   useEffect(() => {
+    // Fetch de datos al montar / cambiar casoId — side effect de red
+    // real, no derivable durante el render.
     let cancelled = false
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true)
     fetch(`/api/casos/${casoId}/auditoria`)
       .then((r) => r.json())
