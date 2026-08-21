@@ -32,8 +32,8 @@ test.describe('H3-1: Pedido offline → reconectar → sync (iPhone 13)', () => 
     expect(clienteId).toBeTruthy()
 
     // 2. Esperar a que ConnectivityIndicator monte
-    await page.waitForFunction(() => (window as any).__bambu !== undefined, { timeout: 10000 })
-    await page.evaluate(() => (window as any).__bambu.clearQueues())
+    await page.waitForFunction(() => window.__bambu !== undefined, { timeout: 10000 })
+    await page.evaluate(() => window.__bambu!.clearQueues())
 
     // 3. Snapshot del conteo de pedidos ANTES
     const countBefore = await page.evaluate(async () => {
@@ -56,7 +56,7 @@ test.describe('H3-1: Pedido offline → reconectar → sync (iPhone 13)', () => 
     const offlineId = crypto.randomUUID()
     const offlineResult = await page.evaluate(
       async ({ url, offlineId, clienteId }) => {
-        const api = (window as any).__bambu
+        const api = window.__bambu!
         return await api.fetchResilient(url, {
           method: 'POST',
           body: {
@@ -76,7 +76,7 @@ test.describe('H3-1: Pedido offline → reconectar → sync (iPhone 13)', () => 
     expect(offlineResult.status).toBe('offline')
 
     // 6. Verificar que la cola tiene el item
-    const queueAfterAbort = await page.evaluate(() => (window as any).__bambu.getRequestQueue())
+    const queueAfterAbort = await page.evaluate(() => window.__bambu!.getRequestQueue())
     expect(queueAfterAbort.length).toBe(1)
     expect(queueAfterAbort[0].offlineId).toBe(offlineId)
     expect(queueAfterAbort[0].method).toBe('POST')
@@ -86,14 +86,14 @@ test.describe('H3-1: Pedido offline → reconectar → sync (iPhone 13)', () => 
     await page.unroute('**/api/pedidos')
 
     // 8. Sincronizar
-    const syncResult = await page.evaluate(() => (window as any).__bambu.syncWithServer())
+    const syncResult = await page.evaluate(() => window.__bambu!.syncWithServer())
     // Verificamos que al menos 1 item se sincronizó y 0 fallaron
     // (conflict puede no estar en el resultado, no asumimos su presencia)
     expect(syncResult.synced).toBeGreaterThanOrEqual(1)
     expect(syncResult.failed).toBe(0)
 
     // 9. La cola debe estar vacía
-    const queueAfterDrain = await page.evaluate(() => (window as any).__bambu.getRequestQueue())
+    const queueAfterDrain = await page.evaluate(() => window.__bambu!.getRequestQueue())
     expect(queueAfterDrain.length).toBe(0)
 
     // 10. El pedido debe existir en el server (1 fila, no más)
@@ -112,8 +112,8 @@ test.describe('H3-1: Pedido offline → reconectar → sync (iPhone 13)', () => 
     const clienteId = c.cliente?.id || c.data?.id
     expect(clienteId).toBeTruthy()
 
-    await page.waitForFunction(() => (window as any).__bambu !== undefined, { timeout: 10000 })
-    await page.evaluate(() => (window as any).__bambu.clearQueues())
+    await page.waitForFunction(() => window.__bambu !== undefined, { timeout: 10000 })
+    await page.evaluate(() => window.__bambu!.clearQueues())
 
     const countBefore = await page.evaluate(async () => {
       const res = await fetch('/api/pedidos?all=true&pageSize=1', { credentials: 'include' })
@@ -132,7 +132,7 @@ test.describe('H3-1: Pedido offline → reconectar → sync (iPhone 13)', () => 
     // Dos POSTs con el mismo offlineId mientras está offline
     const r1 = await page.evaluate(
       async ({ url, offlineId, clienteId }) => {
-        return await (window as any).__bambu.fetchResilient(url, {
+        return await window.__bambu!.fetchResilient(url, {
           method: 'POST',
           body: {
             clienteId, canal: 'PUNTO', ventaRapida: true,
@@ -146,7 +146,7 @@ test.describe('H3-1: Pedido offline → reconectar → sync (iPhone 13)', () => 
     )
     const r2 = await page.evaluate(
       async ({ url, offlineId, clienteId }) => {
-        return await (window as any).__bambu.fetchResilient(url, {
+        return await window.__bambu!.fetchResilient(url, {
           method: 'POST',
           body: {
             clienteId, canal: 'PUNTO', ventaRapida: true,
@@ -165,7 +165,7 @@ test.describe('H3-1: Pedido offline → reconectar → sync (iPhone 13)', () => 
 
     // La cola debe tener 2 items (el offlineId está en el body, no es
     // dedup en cliente — la dedup real se hace en server al sincronizar)
-    const queue = await page.evaluate(() => (window as any).__bambu.getRequestQueue())
+    const queue = await page.evaluate(() => window.__bambu!.getRequestQueue())
     expect(queue.length).toBe(2)
 
     await page.unroute('**/api/pedidos')
@@ -174,12 +174,12 @@ test.describe('H3-1: Pedido offline → reconectar → sync (iPhone 13)', () => 
     const syncResult = await page.evaluate(async () => {
       // Forzar sync (normalmente el ConnectivityIndicator lo hace solo,
       // pero acá lo disparamos manualmente para que el test sea determinista)
-      return await (window as any).__bambu.syncWithServer()
+      return await window.__bambu!.syncWithServer()
     })
     // synced puede ser 1 (uno se creó) y conflict 1 (el otro fue rechazado por P2002/offlineId)
     // O ambos sync OK y el server dedupea el segundo
     // Lo importante: NO más de 1 pedido nuevo
-    const created = (syncResult.synced ?? 0) + (syncResult.conflict ?? 0)
+    const created = (syncResult.synced ?? 0) + (syncResult.conflicts ?? 0)
     expect(created).toBe(2)
 
     const countAfter = await page.evaluate(async () => {
