@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Image from 'next/image'
 import { Button } from '@/components/ui/button'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
@@ -260,9 +261,11 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono }: Fact
           <div className="flex items-start justify-between gap-4">
             {/* Logo + Empresa */}
             <div className="flex items-center gap-4">
-              <img
+              <Image
                 src="/logo-agua-bambu.jpg"
                 alt="Agua Bambú"
+                width={1280}
+                height={652}
                 className="h-20 w-auto object-contain"
               />
               {/* Datos de empresa se muestran en columna derecha */}

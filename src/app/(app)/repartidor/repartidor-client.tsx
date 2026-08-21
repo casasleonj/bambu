@@ -2,6 +2,7 @@
 
 import { generateUUID } from '@/lib/uuid'
 import { useState, useEffect, useCallback, useRef } from 'react'
+import Image from 'next/image'
 import { toast } from 'sonner'
 import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 import { formatCurrency } from '@/lib/utils'
@@ -716,7 +717,9 @@ export function RepartidorClient({ trabajador, embarque: initialEmbarque, userRo
               {fotoBase64 ? '📷 Foto capturada' : '📷 Toma una foto'}
             </button>
             {fotoBase64 && (
-              <img src={fotoBase64} alt="Entrega" className="mt-2 w-full h-32 object-cover rounded-lg" />
+              <div className="relative mt-2 w-full h-32 rounded-lg overflow-hidden">
+                <Image src={fotoBase64} alt="Entrega" fill unoptimized className="object-cover" />
+              </div>
             )}
           </div>
 
