@@ -4,6 +4,7 @@ import { resolve } from 'path'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import type { fetchResilient } from '@/lib/fetch-resilient'
 import type { syncWithServer } from '@/lib/db/sync'
+import type { OfflineRequest, SyncQueueItem } from '@/lib/db/offline'
 
 declare global {
   interface Window {
@@ -20,8 +21,8 @@ declare global {
     __bambu?: {
       fetchResilient: typeof fetchResilient
       syncWithServer: typeof syncWithServer
-      getRequestQueue: () => Promise<unknown[]>
-      getSyncQueue: () => Promise<unknown[]>
+      getRequestQueue: () => Promise<OfflineRequest[]>
+      getSyncQueue: () => Promise<SyncQueueItem[]>
       clearQueues: () => Promise<void>
     }
   }
