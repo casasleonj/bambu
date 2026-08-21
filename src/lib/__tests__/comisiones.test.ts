@@ -45,7 +45,7 @@ describe('calcComSellador', () => {
   })
 
   it('multiplica pacas de agua por comPacaAgua', () => {
-    const t = makeTrabajador({ comPacaAgua: 250 as any })
+    const t = makeTrabajador({ comPacaAgua: 250 as unknown as Trabajador['comPacaAgua'] })
     const r = calcComSellador(10, 0, t)
     expect(r.comAgua).toBe(2500)
     expect(r.comHielo).toBe(0)
@@ -53,7 +53,7 @@ describe('calcComSellador', () => {
   })
 
   it('multiplica pacas de hielo por comPacaHielo', () => {
-    const t = makeTrabajador({ comPacaHielo: 300 as any })
+    const t = makeTrabajador({ comPacaHielo: 300 as unknown as Trabajador['comPacaHielo'] })
     const r = calcComSellador(0, 5, t)
     expect(r.comAgua).toBe(0)
     expect(r.comHielo).toBe(1500)
@@ -62,8 +62,8 @@ describe('calcComSellador', () => {
 
   it('suma agua + hielo independientemente', () => {
     const t = makeTrabajador({
-      comPacaAgua: 200 as any,
-      comPacaHielo: 250 as any,
+      comPacaAgua: 200 as unknown as Trabajador['comPacaAgua'],
+      comPacaHielo: 250 as unknown as Trabajador['comPacaHielo'],
     })
     const r = calcComSellador(7, 4, t)
     expect(r.comAgua).toBe(1400)
@@ -72,7 +72,7 @@ describe('calcComSellador', () => {
   })
 
   it('tolera producción negativa (devoluciones) sin explotar', () => {
-    const t = makeTrabajador({ comPacaAgua: 200 as any })
+    const t = makeTrabajador({ comPacaAgua: 200 as unknown as Trabajador['comPacaAgua'] })
     const r = calcComSellador(5, 0, t)
     expect(r.comAgua).toBe(1000)
     // Función no valida — solo verifica que la multiplicación funcione
@@ -83,15 +83,15 @@ describe('calcComSellador', () => {
 
   it('maneja comisión cero explícita', () => {
     const t = makeTrabajador({
-      comPacaAgua: 0 as any,
-      comPacaHielo: 0 as any,
+      comPacaAgua: 0 as unknown as Trabajador['comPacaAgua'],
+      comPacaHielo: 0 as unknown as Trabajador['comPacaHielo'],
     })
     const r = calcComSellador(100, 50, t)
     expect(r.total).toBe(0)
   })
 
   it('preserva precisión para producción grande (1000 pacas)', () => {
-    const t = makeTrabajador({ comPacaAgua: 350.5 as any })
+    const t = makeTrabajador({ comPacaAgua: 350.5 as unknown as Trabajador['comPacaAgua'] })
     const r = calcComSellador(1000, 1000, t)
     // 1000 * 350.5 = 350500
     expect(r.comAgua).toBe(350500)
@@ -104,7 +104,7 @@ describe('calcComSellador', () => {
 describe('calcComRepartidor', () => {
   it('retorna 0 cuando no hay repartidores con moto', () => {
     const r = calcComRepartidor(50, 30, [
-      makeTrabajador({ usaMoto: false, comRepartAgua: 100 as any }),
+      makeTrabajador({ usaMoto: false, comRepartAgua: 100 as unknown as Trabajador['comRepartAgua'] }),
     ])
     expect(r).toEqual({ comAgua: 0, comHielo: 0, total: 0 })
   })
@@ -117,8 +117,8 @@ describe('calcComRepartidor', () => {
   it('usa comRepartAgua para repartidores con moto', () => {
     const t = makeTrabajador({
       usaMoto: true,
-      comRepartAgua: 150 as any,
-      comPacaAgua: 200 as any, // no debe usarse
+      comRepartAgua: 150 as unknown as Trabajador['comRepartAgua'],
+      comPacaAgua: 200 as unknown as Trabajador['comPacaAgua'], // no debe usarse
     })
     const r = calcComRepartidor(10, 0, [t])
     // 10 ventas * 150 = 1500
@@ -128,8 +128,8 @@ describe('calcComRepartidor', () => {
   it('no hace fallback a comPacaAgua cuando comRepartAgua es 0', () => {
     const t = makeTrabajador({
       usaMoto: true,
-      comRepartAgua: 0 as any,
-      comPacaAgua: 200 as any,
+      comRepartAgua: 0 as unknown as Trabajador['comRepartAgua'],
+      comPacaAgua: 200 as unknown as Trabajador['comPacaAgua'],
     })
     const r = calcComRepartidor(5, 0, [t])
     // 5 * 0 = 0 (sin fallback)
@@ -140,12 +140,12 @@ describe('calcComRepartidor', () => {
     const t1 = makeTrabajador({
       id: 'r1',
       usaMoto: true,
-      comRepartAgua: 100 as any,
+      comRepartAgua: 100 as unknown as Trabajador['comRepartAgua'],
     })
     const t2 = makeTrabajador({
       id: 'r2',
       usaMoto: true,
-      comRepartAgua: 200 as any,
+      comRepartAgua: 200 as unknown as Trabajador['comRepartAgua'],
     })
     // Promedio = (100 + 200) / 2 = 150
     // 20 ventas * 150 = 3000
@@ -157,12 +157,12 @@ describe('calcComRepartidor', () => {
     const moto = makeTrabajador({
       id: 'r1',
       usaMoto: true,
-      comRepartAgua: 100 as any,
+      comRepartAgua: 100 as unknown as Trabajador['comRepartAgua'],
     })
     const sinMoto = makeTrabajador({
       id: 'r2',
       usaMoto: false,
-      comRepartAgua: 500 as any, // no debe contar
+      comRepartAgua: 500 as unknown as Trabajador['comRepartAgua'], // no debe contar
     })
     // Solo el primero cuenta: promedio = 100
     const r = calcComRepartidor(10, 0, [moto, sinMoto])
@@ -172,8 +172,8 @@ describe('calcComRepartidor', () => {
   it('calcula total = comAgua + comHielo', () => {
     const t = makeTrabajador({
       usaMoto: true,
-      comRepartAgua: 100 as any,
-      comRepartHielo: 150 as any,
+      comRepartAgua: 100 as unknown as Trabajador['comRepartAgua'],
+      comRepartHielo: 150 as unknown as Trabajador['comRepartHielo'],
     })
     const r = calcComRepartidor(10, 5, [t])
     expect(r.comAgua).toBe(1000)
@@ -184,7 +184,7 @@ describe('calcComRepartidor', () => {
   it('maneja ventas cero (retorna 0 total)', () => {
     const t = makeTrabajador({
       usaMoto: true,
-      comRepartAgua: 500 as any,
+      comRepartAgua: 500 as unknown as Trabajador['comRepartAgua'],
     })
     const r = calcComRepartidor(0, 0, [t])
     expect(r).toEqual({ comAgua: 0, comHielo: 0, total: 0 })
