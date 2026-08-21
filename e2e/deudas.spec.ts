@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import {loginAs,
   goto,
   apiPost,
@@ -13,7 +13,7 @@ import {loginAs,
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-async function createDeuda(page: any, data: {
+async function createDeuda(page: Page, data: {
   trabajadorId: string
   tipo: string
   monto: number
@@ -22,7 +22,7 @@ async function createDeuda(page: any, data: {
   return apiPost(page, '/api/deudas', data)
 }
 
-async function abonarDeuda(page: any, deudaId: string, data: {
+async function abonarDeuda(page: Page, deudaId: string, data: {
   monto: number
   nota?: string
 }) {
@@ -194,9 +194,10 @@ test.describe('Deudas API', () => {
     expect(body.trabajadoresConDeuda).toBeGreaterThanOrEqual(2)
     expect(body.totalGeneral).toBeGreaterThanOrEqual(100000)
 
-    const resumenT1 = body.resumen.find((r: any) => r.trabajadorId === t1.trabajador.id)
-    expect(resumenT1.totalPendiente).toBe(80000)
-    expect(resumenT1.cantidadDeudas).toBe(2)
+    const resumen = body.resumen as Array<{ trabajadorId: string; totalPendiente: number; cantidadDeudas: number }>
+    const resumenT1 = resumen.find((r) => r.trabajadorId === t1.trabajador.id)
+    expect(resumenT1!.totalPendiente).toBe(80000)
+    expect(resumenT1!.cantidadDeudas).toBe(2)
   })
 
   test('obtener detalle de deuda con abonos', async ({ page }) => {

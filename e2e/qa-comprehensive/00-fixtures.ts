@@ -3,7 +3,7 @@
  * Shared helpers for the exhaustive test suite.
  * Re-exports from parent fixtures + adds QA-specific utilities.
  */
-import { test, expect, type Page, type APIRequestContext } from '@playwright/test'
+import { test, expect, type Page, type APIRequestContext, type APIResponse } from '@playwright/test'
 import { randomUUID } from 'crypto'
 import {
   login,
@@ -90,7 +90,7 @@ export { login, loginAsLegacy as loginAs, fullLogin }
 
 // ─── API helpers with role context ──────────────────────────────────────────
 
-export async function apiAs(page: Page, method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, data?: any) {
+export async function apiAs(page: Page, method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, data?: unknown) {
   const r = page.request
   switch (method) {
     case 'GET': return r.get(`${BASE}${path}`)
@@ -102,7 +102,7 @@ export async function apiAs(page: Page, method: 'GET' | 'POST' | 'PUT' | 'PATCH'
   return r.get(`${BASE}${path}`)
 }
 
-export async function expectStatus(response: any, expected: number | number[]) {
+export async function expectStatus(response: APIResponse, expected: number | number[]) {
   const expectedArr = Array.isArray(expected) ? expected : [expected]
   if (!expectedArr.includes(response.status())) {
     const body = await response.text().catch(() => '<no body>')
@@ -212,13 +212,19 @@ export interface BugFinding {
 const _findings: BugFinding[] = []
 
 export function reportBug(finding: Omit<BugFinding, 'testFile' | 'testName'>) {
-  // Get current test info from Playwright
-  const testInfo = (test as any).info?.() || {}
-  _findings.push({
-    ...finding,
-    testFile: testInfo.file || 'unknown',
-    testName: testInfo.title || 'unknown',
-  })
+  // Get current test info from Playwright. test.info() throws when called
+  // outside a running test, so fall back like the previous (test as
+  // any).info?.() || {} did.
+  let testFile = 'unknown'
+  let testName = 'unknown'
+  try {
+    const testInfo = test.info()
+    testFile = testInfo.file || 'unknown'
+    testName = testInfo.title || 'unknown'
+  } catch {
+    // no test running — keep defaults
+  }
+  _findings.push({ ...finding, testFile, testName })
 }
 
 export function getAllFindings(): BugFinding[] {

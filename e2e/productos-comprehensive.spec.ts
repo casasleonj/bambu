@@ -339,7 +339,7 @@ test.describe('Productos - Comprehensive', () => {
       // Get product ID via API first
       const prodRes = await apiGet(page, '/api/productos')
       const prodBody = await prodRes.json()
-      const pacaAgua = prodBody.productos?.find((p: any) => p.codigo === 'PACA_AGUA')
+      const pacaAgua = (prodBody.productos as Array<{ id: string; codigo: string; precios?: unknown[] }> | undefined)?.find((p) => p.codigo === 'PACA_AGUA')
       if (!pacaAgua) {
         test.skip()
         return
@@ -363,8 +363,8 @@ test.describe('Productos - Comprehensive', () => {
 
       const verifyRes = await apiGet(page, '/api/productos')
       const verifyBody = await verifyRes.json()
-      const verifyPacaAgua = verifyBody.productos?.find((p: any) => p.codigo === 'PACA_AGUA')
-      expect(verifyPacaAgua.precios?.length).toBeGreaterThanOrEqual(initialTierCount)
+      const verifyPacaAgua = (verifyBody.productos as Array<{ id: string; codigo: string; precios?: unknown[] }> | undefined)?.find((p) => p.codigo === 'PACA_AGUA')
+      expect(verifyPacaAgua!.precios?.length).toBeGreaterThanOrEqual(initialTierCount)
     })
 
     test('crear tier sin cantMax (sin limite)', async ({ page }) => {
@@ -488,7 +488,7 @@ test.describe('Productos - Comprehensive', () => {
 
       const prodRes = await apiGet(page, '/api/productos')
       const prodBody = await prodRes.json()
-      const pacaAgua = prodBody.productos?.find((p2: any) => p2.codigo === 'PACA_AGUA')
+      const pacaAgua = (prodBody.productos as Array<{ id: string; codigo: string; precios?: unknown[] }> | undefined)?.find((p2) => p2.codigo === 'PACA_AGUA')
       if (pacaAgua) {
         await apiPost(page, '/api/precios', {
           productoId: pacaAgua.id,

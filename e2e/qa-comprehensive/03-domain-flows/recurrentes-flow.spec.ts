@@ -46,11 +46,11 @@ test.describe('Domain Flow - Recurrentes', () => {
   test('TC-DR-04: POST /api/pedidos/recurrentes generates pedidos for today', async ({ page }) => {
     // Get plantillas due today
     const listRes = await apiGet(page, '/api/recurrentes')
-    const list = (await listRes.json()).plantillas || []
+    const list = ((await listRes.json()).plantillas || []) as Array<{ id: string }>
     if (list.length === 0) { test.skip(); return }
 
     // Get decisions (mock)
-    const decisiones = list.slice(0, 2).map((p: any) => ({
+    const decisiones = list.slice(0, 2).map((p) => ({
       plantillaId: p.id,
       accion: 'NORMAL',
     }))
@@ -111,14 +111,14 @@ test.describe('Domain Flow - Recurrentes', () => {
   test('TC-DR-08: Recurrente for bloqueado cliente is rejected when generating', async ({ page }) => {
     // Find a bloqueado cliente
     const cl = await apiGet(page, '/api/clientes')
-    const list = (await cl.json()).clientes || []
-    const bloqueado = list.find((c: any) => c.bloqueado === true)
+    const list = ((await cl.json()).clientes || []) as Array<{ id: string; bloqueado: boolean }>
+    const bloqueado = list.find((c) => c.bloqueado === true)
     if (!bloqueado) { test.skip(); return }
 
     // Try to generate for this cliente
     const listRes = await apiGet(page, '/api/recurrentes')
-    const plantillas = (await listRes.json()).plantillas || []
-    const blockedPlantilla = plantillas.find((p: any) => p.clienteId === bloqueado.id)
+    const plantillas = ((await listRes.json()).plantillas || []) as Array<{ id: string; clienteId: string }>
+    const blockedPlantilla = plantillas.find((p) => p.clienteId === bloqueado.id)
     if (!blockedPlantilla) { test.skip(); return }
 
     const res = await apiPost(page, '/api/pedidos/recurrentes', {

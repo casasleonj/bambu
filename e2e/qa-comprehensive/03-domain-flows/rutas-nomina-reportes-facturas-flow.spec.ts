@@ -76,8 +76,8 @@ test.describe('Domain Flow - Nómina', () => {
   })
 
   test('TC-DNM-04: Nomina PENDIENTE can be PAGADA', async ({ page }) => {
-    const list = (await (await apiGet(page, '/api/nomina')).json()).nominas || []
-    const pendiente = list.find((n: any) => n.estado === 'PENDIENTE')
+    const list = ((await (await apiGet(page, '/api/nomina')).json()).nominas || []) as Array<{ id: string; estado: string }>
+    const pendiente = list.find((n) => n.estado === 'PENDIENTE')
     if (!pendiente) { test.skip(); return }
 
     const res = await apiPut(page, `/api/nomina/${pendiente.id}`, {
@@ -157,7 +157,7 @@ test.describe('Domain Flow - Facturas', () => {
   test('TC-DFA-04: Abonar factura reduces saldo', async ({ page }) => {
     // Get a factura with saldo > 0
     const list = (await (await apiGet(page, '/api/facturas')).json()).facturas || []
-    const f = list.find((f: any) => Number(f.saldo) > 0)
+    const f = (list as Array<{ id: string; clienteId: string; saldo: number | string }>).find((f) => Number(f.saldo) > 0)
     if (!f) { test.skip(); return }
 
     const res = await apiPost(page, '/api/abonos', {
@@ -171,7 +171,7 @@ test.describe('Domain Flow - Facturas', () => {
 
   test('TC-DFA-05: Abono with monto > saldo is rejected', async ({ page }) => {
     const list = (await (await apiGet(page, '/api/facturas')).json()).facturas || []
-    const f = list.find((f: any) => Number(f.saldo) > 0)
+    const f = (list as Array<{ id: string; clienteId: string; saldo: number | string }>).find((f) => Number(f.saldo) > 0)
     if (!f) { test.skip(); return }
 
     const res = await apiPost(page, '/api/abonos', {
