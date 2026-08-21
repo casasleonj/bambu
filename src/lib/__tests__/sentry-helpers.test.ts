@@ -1,11 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import type { Scope } from '@sentry/nextjs'
+
+// Scope mock mínimo -- solo los 4 métodos que captureApiError/withSentryScope
+// realmente invocan (Scope real tiene muchos más miembros). withScope está
+// overloaded en @sentry/nextjs (dos firmas), lo que hace que
+// mockImplementationOnce infiera mal el tipo de `fn` si se deja implícito
+// (mismo patrón de bug ya visto esta sesión con `auth` de NextAuth v5) --
+// se tipa `fn` explícitamente y se castea el implementation completo al
+// tipo real vía `as unknown as typeof Sentry.withScope`.
+type MockScope = Pick<Scope, 'setTag' | 'setExtra' | 'setUser' | 'setLevel'>
 
 // Mock Sentry
 vi.mock('@sentry/nextjs', () => {
   const captureException = vi.fn()
   const captureMessage = vi.fn()
   const addBreadcrumb = vi.fn()
-  const withScope = vi.fn((fn: (scope: any) => any) =>
+  const withScope = vi.fn((fn: (scope: MockScope) => unknown) =>
     fn({
       setTag: vi.fn(),
       setExtra: vi.fn(),
@@ -42,13 +52,13 @@ describe('captureApiError', () => {
 
   it('derives feature tag from endpoint (produccion.POST → produccion)', () => {
     const setTagMock = vi.fn()
-    vi.mocked(Sentry.withScope).mockImplementationOnce((fn: any) =>
+    vi.mocked(Sentry.withScope).mockImplementationOnce(((fn: (scope: MockScope) => unknown) =>
       fn({
         setTag: setTagMock,
         setExtra: vi.fn(),
         setUser: vi.fn(),
         setLevel: vi.fn(),
-      }),
+      })) as unknown as typeof Sentry.withScope,
     )
     captureApiError(new Error('x'), { endpoint: 'produccion.POST' })
     expect(setTagMock).toHaveBeenCalledWith('feature', 'produccion')
@@ -64,13 +74,13 @@ describe('captureApiError', () => {
 
   it('attaches extras as Sentry context', () => {
     const setExtraMock = vi.fn()
-    vi.mocked(Sentry.withScope).mockImplementationOnce((fn: any) =>
+    vi.mocked(Sentry.withScope).mockImplementationOnce(((fn: (scope: MockScope) => unknown) =>
       fn({
         setTag: vi.fn(),
         setExtra: setExtraMock,
         setUser: vi.fn(),
         setLevel: vi.fn(),
-      }),
+      })) as unknown as typeof Sentry.withScope,
     )
     captureApiError(new Error('x'), {
       endpoint: 'produccion.POST',
@@ -82,13 +92,13 @@ describe('captureApiError', () => {
 
   it('respects custom severity level', () => {
     const setLevelMock = vi.fn()
-    vi.mocked(Sentry.withScope).mockImplementationOnce((fn: any) =>
+    vi.mocked(Sentry.withScope).mockImplementationOnce(((fn: (scope: MockScope) => unknown) =>
       fn({
         setTag: vi.fn(),
         setExtra: vi.fn(),
         setUser: vi.fn(),
         setLevel: setLevelMock,
-      }),
+      })) as unknown as typeof Sentry.withScope,
     )
     captureApiError(new Error('x'), { endpoint: 'x', level: 'warning' })
     expect(setLevelMock).toHaveBeenCalledWith('warning')
@@ -97,13 +107,13 @@ describe('captureApiError', () => {
   it('skips rol/userId if not provided', () => {
     const setTagMock = vi.fn()
     const setUserMock = vi.fn()
-    vi.mocked(Sentry.withScope).mockImplementationOnce((fn: any) =>
+    vi.mocked(Sentry.withScope).mockImplementationOnce(((fn: (scope: MockScope) => unknown) =>
       fn({
         setTag: setTagMock,
         setExtra: vi.fn(),
         setUser: setUserMock,
         setLevel: vi.fn(),
-      }),
+      })) as unknown as typeof Sentry.withScope,
     )
     captureApiError(new Error('x'), { endpoint: 'produccion.GET' })
     // Should not call setTag for rol (only endpoint and feature)
