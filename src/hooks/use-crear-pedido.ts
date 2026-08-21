@@ -48,6 +48,11 @@ export interface CrearPedidoResult {
 export interface UseCrearPedidoOptions {
   onSuccess?: (result: CrearPedidoResult) => void
   onError?: (error: string) => void
+  /** Se encoló offline (sin señal). El caller puede insertar una fila
+   *  optimista en su lista usando `payload` — sin esto, el pedido no deja
+   *  ningún rastro visible hasta que sincronice, y el usuario asume que no
+   *  se guardó (mismo bug reportado con clientes, ver bug Aponte). */
+  onOffline?: (info: { localId: string; payload: CrearPedidoPayload }) => void
 }
 
 export function useCrearPedido(options?: UseCrearPedidoOptions) {
@@ -83,6 +88,7 @@ export function useCrearPedido(options?: UseCrearPedidoOptions) {
         // navegación hasta que el sync complete. Exponemos el localId.
         setPendingOffline(prev => [...prev, result.localId])
         toast.info('Sin conexión. Pedido guardado, se enviará al recuperar la red.')
+        options?.onOffline?.({ localId: result.localId, payload })
         return null
       }
 
