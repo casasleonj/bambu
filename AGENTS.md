@@ -32,7 +32,7 @@ ERP system for water & ice delivery business. 6 concurrent users, rural 2G/3G co
 - Sentry 10.55.0 (error tracking)
 - Pino 10.3.1 (structured logging)
 - Zod 4.3.6 (validation)
-- Serwist 9.5.7 (PWA service worker)
+- Serwist 9.5.12 (PWA service worker)
 
 **ALL dependency versions are pinned (no `^` or `~`).**
 
@@ -170,7 +170,7 @@ vercel --prod
 - **Tags de deploy**: `deploy/1fn-fase1-expand`, `deploy/1fn-fase2-migrate`, `deploy/1fn-fase3-contract`.
 
 ### Service Worker (PWA)
-- Serwist 9.5.7 genera el service worker en build a partir de `src/app/sw.ts`.
+- Serwist 9.5.12 genera el service worker en build a partir de `src/app/sw.ts`.
 - El SW se sirve en `/serwist/sw.js` vía `src/app/serwist/[path]/route.ts`.
 - Estrategia: Network-first para navegación, cache-first para assets estáticos; las APIs no se cachean.
 - `SerwistProvider` (en `src/app/layout.tsx`) usa `swUrl="/serwist/sw.js"` y `reloadOnOnline={false}` para evitar recargas automáticas que pierdan estado no sincronizado.
