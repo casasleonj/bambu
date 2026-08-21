@@ -177,7 +177,7 @@ describe('Money — fuzzing sobre inputs hostiles', () => {
           fc.constant(-Infinity),
         ),
         (v) => {
-          expect(Money.fromDecimal(v as any).cents).toBe(0)
+          expect(Money.fromDecimal(v).cents).toBe(0)
           return true
         },
       ),
@@ -195,8 +195,8 @@ describe('Money — fuzzing sobre inputs hostiles', () => {
           fc.dictionary(fc.string(), fc.anything()),
         ),
         (v) => {
-          expect(() => Money.fromDecimal(v as any)).not.toThrow()
-          expect(Money.fromDecimal(v as any).cents).toBe(0)
+          expect(() => Money.fromDecimal(v)).not.toThrow()
+          expect(Money.fromDecimal(v).cents).toBe(0)
           return true
         },
       ),
