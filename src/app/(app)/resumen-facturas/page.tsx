@@ -136,7 +136,12 @@ export default function ResumenFacturasPage() {
     }
   }, [clienteId, desde, hasta])
 
-  useEffect(() => { fetchData() }, [fetchData])
+  useEffect(() => {
+    // Fetch de datos al montar / cambiar clienteId-desde-hasta — side
+    // effect de red real, no derivable durante el render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchData()
+  }, [fetchData])
 
   const handlePrint = () => { window.print() }
   const handleRetry = () => { fetchData() }

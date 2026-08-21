@@ -50,6 +50,9 @@ export default function DeudasTab({ trabajadorId }: { trabajadorId: string }) {
   }, [trabajadorId])
 
   useEffect(() => {
+    // Fetch de datos al montar / cambiar trabajadorId — side effect de
+    // red real, no derivable durante el render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchDeudas()
   }, [fetchDeudas])
 
