@@ -30,7 +30,7 @@ import { NegocioForm } from '@/components/negocio-form'
 import { NegocioDetailModal, type NegocioDetail } from '@/components/negocio-detail-modal'
 import { calcularAlertasCliente } from '@/app/(app)/pedidos/pedidos-client/alertas-utils'
 import { GuiaAlertaModal } from '@/components/guia-alerta-modal'
-import { CasoGuiaModal } from '@/components/caso-guia-modal'
+import { CasoGuiaModal, type Caso } from '@/components/caso-guia-modal'
 import type { AlertaTipo } from '@/lib/alertas-config'
 import { getBadgeColor, ignorarAlerta } from '@/lib/alertas-config'
 import { useEscapeGuard } from '@/hooks/use-escape-guard'
@@ -456,7 +456,7 @@ export default function ClientesClient({
   const [filterFrecuencia, setFilterFrecuencia] = useState(false)
   const [guiaTipo, setGuiaTipo] = useState<AlertaTipo | null>(null)
   const [guiaOpen, setGuiaOpen] = useState(false)
-  const [casoCreado, setCasoCreado] = useState<any>(null)
+  const [casoCreado, setCasoCreado] = useState<Caso | null>(null)
   const [usuarios, setUsuarios] = useState<Array<{ id: string; username: string; rol: string }>>([])
   const [userRole, setUserRole] = useState<string | null>(null)
 
@@ -487,9 +487,9 @@ export default function ClientesClient({
       .then(r => r.json())
       .then(d => {
         if (d.success) {
-          const users = d.trabajadores
-            .filter((t: any) => t.userId)
-            .map((t: any) => ({ id: t.userId, username: t.nombre, rol: t.rol }))
+          const users = (d.trabajadores as Array<{ userId: string | null; nombre: string; rol: string }>)
+            .filter((t) => t.userId)
+            .map((t) => ({ id: t.userId as string, username: t.nombre, rol: t.rol }))
           setUsuarios(users)
         }
       })
@@ -713,16 +713,17 @@ export default function ClientesClient({
   // para refrescar la lista despues de cambios.
 
   const loadPreciosBase = useCallback(async () => {
+    type PriceTier = { cantMin: number; cantMax: number | null; precio: number; precioMinimo: number | null }
     for (const canal of ['DOMICILIO', 'PUNTO'] as Canal[]) {
       try {
         const res = await fetch(`/api/precios/tabla?canal=${canal}`)
         const data = await res.json()
-        const tabla = data.tabla || {}
+        const tabla = (data.tabla || {}) as Record<string, PriceTier[]>
         const baseMap: Record<string, number> = {}
         for (const prod of PRODUCTOS_PRECIO) {
           const tiers = tabla[prod.codigo] || []
           if (tiers.length > 0) {
-            const baseTier = tiers.reduce((min: any, t: any) => t.cantMin < min.cantMin ? t : min, tiers[0])
+            const baseTier = tiers.reduce((min, t) => t.cantMin < min.cantMin ? t : min, tiers[0])
             baseMap[prod.codigo] = Number(baseTier.precio)
           }
         }
@@ -890,7 +891,7 @@ export default function ClientesClient({
       barrio: selectedCliente.barrio || '',
       direccion: selectedCliente.direccion || '',
       linkUbicacion: selectedCliente.linkUbicacion || '',
-      contactos: (selectedCliente.contactos as any[]) || [],
+      contactos: selectedCliente.contactos || [],
       preciosEspeciales: selectedCliente.preciosEspeciales || '',
       notas: selectedCliente.notas || '',
       limitePedidosFiados: selectedCliente.limitePedidosFiados || undefined,
@@ -2024,13 +2025,13 @@ export default function ClientesClient({
                         </div>
                       )}
                       {/* Bloque 1: mostrar coords si ya están calculadas */}
-                      {(selectedCliente as any).lat != null && (selectedCliente as any).lng != null && (
+                      {selectedCliente.lat != null && selectedCliente.lng != null && (
                         <div className="flex items-center justify-between text-xs text-gray-500 bg-gray-50 -mx-2 px-2 py-1 rounded" data-testid="coords-internas">
                           <span>Coords internas</span>
                           <span className="font-mono">
-                            {(selectedCliente as any).lat}, {(selectedCliente as any).lng}
+                            {selectedCliente.lat}, {selectedCliente.lng}
                             <span className="ml-1.5 px-1.5 py-0.5 bg-white border border-gray-200 rounded text-[10px] uppercase tracking-wide">
-                              {(selectedCliente as any).geocodeOrigen || 'MANUAL'}
+                              {selectedCliente.geocodeOrigen || 'MANUAL'}
                             </span>
                           </span>
                         </div>
@@ -2061,7 +2062,7 @@ export default function ClientesClient({
                         <div className="pt-3 border-t border-gray-200">
                           <p className="text-xs font-semibold text-gray-400 uppercase mb-2">Contactos adicionales</p>
                           <div className="space-y-2">
-                            {(selectedCliente.contactos as any[]).map((contacto, idx) => (
+                            {selectedCliente.contactos.map((contacto, idx) => (
                               <div key={idx} className="flex items-center justify-between gap-2 bg-white rounded-lg p-2 border border-gray-100">
                                 <div className="min-w-0">
                                   <p className="text-sm font-medium text-gray-700 truncate">{contacto.nombre}</p>
@@ -2449,8 +2450,8 @@ export default function ClientesClient({
           caso={casoCreado}
           contextData={{
             clienteVerificado: selectedCliente?.verificado,
-            pedidoDisputa: selectedCliente?.pedidos?.some((p: any) => p.disputaAbierta),
-            clienteConSaldo: selectedCliente?.pedidos?.some((p: any) => Number(p.saldo) > 0),
+            pedidoDisputa: selectedCliente?.pedidos?.some((p) => p.disputaAbierta),
+            clienteConSaldo: selectedCliente?.pedidos?.some((p) => Number(p.saldo) > 0),
           }}
           usuarios={usuarios}
           onClose={() => setCasoCreado(null)}

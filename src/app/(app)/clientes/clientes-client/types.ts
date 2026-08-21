@@ -18,6 +18,11 @@ export interface Cliente {
   direccion?: string
   referencia?: string | null
   contactos?: ContactoAlternativo[]
+  /** Bloque 1: lat/lng calculadas (link / GPS / Negocio). Decimal serializado -> string. */
+  lat?: number | string | null
+  lng?: number | string | null
+  geocodeOrigen?: string | null
+  geocodeAt?: string | null
   frecuencia: string
   cadaNDias?: number
   proxEntrega?: string
