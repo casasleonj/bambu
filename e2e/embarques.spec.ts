@@ -1,11 +1,12 @@
 // @tests embarques module - comprehensive E2E coverage
+import type { Page } from '@playwright/test'
 import {test, expect, loginAs, apiPost, apiGet, apiPut, apiDelete, createTrabajador, createCliente, BASE,  resetDatabase} from './fixtures'
 
 /** Login that skips base caja modal to avoid redirect to /cierre */
-async function embarquesLogin(page: any) {
+async function embarquesLogin(page: Page) {
   // Intercept cierre/last to return yesterday's cierre, preventing redirect
   const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
-  await page.route('**/api/cierre/last', async (route: any) => {
+  await page.route('**/api/cierre/last', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -18,7 +19,7 @@ async function embarquesLogin(page: any) {
 }
 
 /** Navigate to embarques without base caja interference */
-async function gotoEmbarques(page: any) {
+async function gotoEmbarques(page: Page) {
   await page.goto(`${BASE}/embarques`)
   await page.waitForLoadState('domcontentloaded')
   await page.waitForTimeout(500)
@@ -35,7 +36,7 @@ function cierrePayload(partial: Record<string, unknown> = {}) {
 }
 
 /** Move embarque to EN_RUTA and close it (schema requires EN_RUTA -> CERRADO) */
-async function cerrarEmbarqueTest(page: any, embarqueId: string, payload: Record<string, unknown> = cierrePayload()) {
+async function cerrarEmbarqueTest(page: Page, embarqueId: string, payload: Record<string, unknown> = cierrePayload()) {
   await apiPut(page, `/api/embarques/${embarqueId}`, { estado: 'EN_RUTA' })
   return apiPost(page, `/api/embarques/${embarqueId}/cerrar`, payload)
 }
