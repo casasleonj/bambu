@@ -487,7 +487,7 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
 
       <ResumenEstados embarques={embarques} />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="embarques-grid">
         {embarquesVisibles.map((embarque) => (
           <EmbarqueCard
             key={embarque.id}

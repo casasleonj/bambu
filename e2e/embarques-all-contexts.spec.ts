@@ -57,10 +57,12 @@ test.describe('Embarques — Contexto ASISTENTE', () => {
 
 test.describe('Embarques — Contexto REPARTIDOR', () => {
 
-  test('REPARTIDOR accede a /embarques', async ({ page }) => {
+  test('REPARTIDOR es redirigido de /embarques a /repartidor', async ({ page }) => {
     await loginAs(page, 'repartidor')
     await goto(page, '/embarques')
-    await expect(page.getByRole('heading', { name: 'Embarques del Día' })).toBeVisible()
+    // REPARTIDOR no tiene view:embarques (permissions.ts): el proxy lo
+    // redirige a /repartidor, su vista canónica.
+    await expect(page).toHaveURL(/\/repartidor/)
   })
 
   test('REPARTIDOR accede a /repartidor y ve su vista', async ({ page }) => {
@@ -376,8 +378,8 @@ test.describe('Embarques — Desktop Viewport', () => {
     await loginAs(page, 'admin')
     await gotoEmbarques(page)
     await expect(page.getByRole('heading', { name: 'Embarques del Día' })).toBeVisible()
-    const grid = page.locator('.grid')
-    await expect(grid).toBeVisible()
+    // Selector específico: `.grid` genérico colisiona con el banner de stock.
+    await expect(page.locator('[data-testid="embarques-grid"]')).toBeVisible()
   })
 })
 
