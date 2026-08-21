@@ -15,7 +15,7 @@ const source = readFileSync(routePath, 'utf-8')
 describe('GET /api/facturas — query optimizada', () => {
   it('FIX: usa select en lugar de include:true para cliente/pedido', () => {
     expect(source).toMatch(/select:\s*\{[\s\S]*cliente:\s*\{[\s\S]*?select:/)
-    expect(source).toMatch(/pedido:\s*\{[\s\S]*?select:\s*\{\s*id:\s*true,\s*numero:\s*true\s*\}/)
+    expect(source).toMatch(/pedido:\s*\{[\s\S]*?select:\s*\{\s*id:\s*true,\s*numero:\s*true,\s*estadoEntrega:\s*true\s*\}/)
   })
 
   it('FIX: no incluye abonos en la query de lista', () => {

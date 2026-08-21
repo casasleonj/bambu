@@ -231,3 +231,113 @@ describe('BAMBU-LOG-004: crearPedidoHijo hereda negocioId y dirección del padre
     expect(createArgs.barrioEntrega).toBeNull()
   })
 })
+
+// FIX: Factura.fecha se fijaba una sola vez al crear el Pedido y nunca se
+// resincronizaba con la entrega real — un pedido que nace un día y se
+// entrega otro (quedó NO_ENTREGADO/atrapado y se resolvió después) mostraba
+// la factura con la fecha de creación, no la de la entrega real.
+describe('FIX factura-fecha-entrega: la factura se resincroniza al cerrar ENTREGADO', () => {
+  function makePedidoRaw(overrides: Partial<PedidoRawInput> = {}): PedidoRawInput {
+    return {
+      id: 'ped_1',
+      numero: 10,
+      clienteId: 'cli_1',
+      negocioId: null,
+      direccionEntrega: null,
+      barrioEntrega: null,
+      embarqueId: 'emb_1',
+      estadoEntrega: 'EN_RUTA',
+      estado: 'EN_RUTA',
+      tipo: 'ENVIO',
+      canal: 'DOMICILIO',
+      origen: 'PEDIDO',
+      precioPacaAgua: 10000,
+      precioPacaHielo: 0,
+      precioBotellonFab: 0,
+      precioBotellonDom: 0,
+      precioBolsaAgua: 0,
+      precioBolsaHielo: 0,
+      cPacaAguaPed: 5,
+      cPacaHieloPed: 0,
+      cBotellonFabPed: 0,
+      cBotellonDomPed: 0,
+      cBolsaAguaPed: 0,
+      cBolsaHieloPed: 0,
+      cPacaAguaEnt: 0,
+      cPacaHieloEnt: 0,
+      cBotellonFabEnt: 0,
+      cBotellonDomEnt: 0,
+      cBolsaAguaEnt: 0,
+      cBolsaHieloEnt: 0,
+      total: 50000,
+      obs: null,
+      createdById: null,
+      items: [{ producto: 'PACA_AGUA' }],
+      factura: { id: 'fac_1' },
+      ...overrides,
+    }
+  }
+
+  function makeClient() {
+    return {
+      $queryRaw: vi.fn(),
+      pedido: { update: vi.fn() },
+      pago: { create: vi.fn() },
+      factura: { update: vi.fn() },
+      pedidoItem: { updateMany: vi.fn() },
+      historial: { create: vi.fn() },
+      embarque: { findUnique: vi.fn() },
+    }
+  }
+
+  it('FIX: factura.update recibe fecha=Date (nueva) al procesar ENTREGADO', async () => {
+    const client = makeClient()
+    const pedido = makePedidoRaw()
+    const cuadre: CerrarEmbarqueInput['pedidos'][number] = {
+      pedidoId: pedido.id,
+      entregado: 'COMPLETO',
+      productosEntregados: {
+        cPacaAguaEnt: 5,
+        cPacaHieloEnt: 0,
+        cBotellonFabEnt: 0,
+        cBotellonDomEnt: 0,
+        cBolsaAguaEnt: 0,
+        cBolsaHieloEnt: 0,
+      },
+      pagos: [],
+    }
+
+    const antes = new Date()
+    const service = new ProcesarPedidoService()
+    await service.execute(client as never, pedido, cuadre, 'ADMIN', 'user_1', [], [])
+
+    expect(client.factura.update).toHaveBeenCalledTimes(1)
+    const updateArgs = client.factura.update.mock.calls[0][0]
+    expect(updateArgs.where).toEqual({ id: 'fac_1' })
+    expect(updateArgs.data.fecha).toBeInstanceOf(Date)
+    expect((updateArgs.data.fecha as Date).getTime()).toBeGreaterThanOrEqual(antes.getTime())
+  })
+
+  it('sin factura vinculada, no se llama a factura.update (no regresión)', async () => {
+    const client = makeClient()
+    const pedido = makePedidoRaw({ factura: null })
+    const cuadre: CerrarEmbarqueInput['pedidos'][number] = {
+      pedidoId: pedido.id,
+      entregado: 'COMPLETO',
+      productosEntregados: {
+        cPacaAguaEnt: 5,
+        cPacaHieloEnt: 0,
+        cBotellonFabEnt: 0,
+        cBotellonDomEnt: 0,
+        cBolsaAguaEnt: 0,
+        cBolsaHieloEnt: 0,
+      },
+      pagos: [],
+    }
+
+    const service = new ProcesarPedidoService()
+    await service.execute(client as never, pedido, cuadre, 'ADMIN', 'user_1', [], [])
+
+    expect(client.factura.update).not.toHaveBeenCalled()
+  })
+})

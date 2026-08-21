@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
             },
           },
           pedido: {
-            select: { id: true, numero: true },
+            select: { id: true, numero: true, estadoEntrega: true },
           },
         },
         ...prismaPagination,

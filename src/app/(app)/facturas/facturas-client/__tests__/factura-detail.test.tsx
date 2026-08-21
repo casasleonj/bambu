@@ -109,6 +109,71 @@ describe('FacturaDetail — estado ANULADA', () => {
   })
 })
 
+// FIX abono-sin-entrega: la Factura se crea junto con el Pedido, antes de
+// la entrega — el botón "Registrar Abono" no debe aparecer mientras el
+// pedido vinculado no esté ENTREGADO, sin importar que tenga saldo.
+describe('FacturaDetail — FIX abono requiere pedido ENTREGADO', () => {
+  it('no muestra "Registrar Abono" si el pedido está PENDIENTE', async () => {
+    render(
+      <FacturaDetail
+        factura={buildFactura({
+          estado: 'EMITIDA',
+          saldo: 100000,
+          montoPagado: 0,
+          pedido: { id: 'pedido-1', numero: 1, estadoEntrega: 'PENDIENTE' },
+        })}
+        empresaConfig={empresaConfig}
+        onRegistrarAbono={() => {}}
+      />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText(/aun no ha sido entregado/)).toBeInTheDocument()
+    })
+    expect(screen.queryByText('Registrar Abono')).not.toBeInTheDocument()
+  })
+
+  it('no muestra "Registrar Abono" si el pedido está NO_ENTREGADO', async () => {
+    render(
+      <FacturaDetail
+        factura={buildFactura({
+          estado: 'EMITIDA',
+          saldo: 100000,
+          montoPagado: 0,
+          pedido: { id: 'pedido-1', numero: 1, estadoEntrega: 'NO_ENTREGADO' },
+        })}
+        empresaConfig={empresaConfig}
+        onRegistrarAbono={() => {}}
+      />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText(/aun no ha sido entregado/)).toBeInTheDocument()
+    })
+    expect(screen.queryByText('Registrar Abono')).not.toBeInTheDocument()
+  })
+
+  it('sí muestra "Registrar Abono" si el pedido está ENTREGADO', async () => {
+    render(
+      <FacturaDetail
+        factura={buildFactura({
+          estado: 'EMITIDA',
+          saldo: 100000,
+          montoPagado: 0,
+          pedido: { id: 'pedido-1', numero: 1, estadoEntrega: 'ENTREGADO' },
+        })}
+        empresaConfig={empresaConfig}
+        onRegistrarAbono={() => {}}
+      />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Registrar Abono')).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/aun no ha sido entregado/)).not.toBeInTheDocument()
+  })
+})
+
 describe('FacturaDetail — estado PAGADA (sanity)', () => {
   it('renderiza "PAGADA" en el card de Saldo/Estado cuando no está anulada', async () => {
     render(

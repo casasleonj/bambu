@@ -45,10 +45,14 @@ export function formatFechaPedido(fecha: string): string {
   return `${fechaCorta}, ${String(hora12).padStart(2, '0')}:${minStr} ${periodo}`
 }
 
-/** Días de atraso (Bogotá) de un pedido PENDIENTE cuya fecha es anterior a
- *  hoy. `null` si no aplica (no pendiente, o es de hoy/futuro). */
+/** Días de atraso (Bogotá) de un pedido PENDIENTE o NO_ENTREGADO cuya fecha
+ *  es anterior a hoy. `null` si no aplica (resuelto, o es de hoy/futuro).
+ *  NO_ENTREGADO se incluye porque es el estado en el que queda un pedido
+ *  despachado que no se pudo entregar y no se reasignó a otro embarque —
+ *  sin este badge, esos pedidos solo mostraban la fecha pelada, sin ningún
+ *  indicio de cuántos días llevan sin resolverse. */
 export function getDiasAtraso(fecha: string, estadoEntrega: string): number | null {
-  if (estadoEntrega !== 'PENDIENTE') return null
+  if (estadoEntrega !== 'PENDIENTE' && estadoEntrega !== 'NO_ENTREGADO') return null
   const d = new Date(fecha)
   if (Number.isNaN(d.getTime())) return null
   const hoyStr = new Date().toLocaleDateString('en-CA', { timeZone: BOGOTA_TZ })
