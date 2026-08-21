@@ -151,6 +151,30 @@ jobs:
         # secuencias raw-SQL (factura/abono/embarque/compra_insumo numero_seq)
         # que getNextNumero() necesita. Ver comentario del job e2e para el
         # detalle completo.
+        #
+        # También aplica (bug #2 y #3 encontrados en la primera corrida real
+        # de este job, PR #120):
+        #   - pg_trgm: la extensión solo se crea vía migration.sql
+        #     (20260530_add_pg_trgm_search, 20260618_add_import_staging);
+        #     `db push` no ejecuta CREATE EXTENSION. Sin ella, similarity()/
+        #     word_similarity() (usadas por src/lib/import/matcher.ts,
+        #     supplier-matcher.ts, worker-matcher.ts) fallan con
+        #     "function similarity(text, text) does not exist" — root cause
+        #     de los fallos en import-historico.test.ts.
+        #   - 20260817_plan_maestro_ledgers: migración consolidada e
+        #     idempotente (CREATE TABLE/INDEX/CONSTRAINT IF NOT EXISTS, DO $$
+        #     IF NOT EXISTS por cada CHECK/FK) que agrega, entre otras cosas,
+        #     los CHECK constraints del ledger físico (chk_embarque_movimiento_*,
+        #     chk_obligacion_*, chk_recovery_*) y las secuencias
+        #     pedido_numero_seq/nota_credito_numero_seq — ninguna de las dos
+        #     cosas es expresable en schema.prisma, así que `db push` no las
+        #     crea. Root cause de los fallos en ledger-fisico-constraints.test.ts
+        #     y de parte de los fallos de secuencias-atomicas.test.ts (además
+        #     del bug de this-binding en sequence.ts, ya corregido aparte).
+        #     Las tablas que este archivo declara con CREATE TABLE IF NOT
+        #     EXISTS ya existen (creadas por `db push` desde schema.prisma),
+        #     así que esos statements son no-ops aquí; solo aplican los CHECK/
+        #     índices parciales/secuencias que sí son exclusivos del SQL.
         run: |
           export PGPASSWORD=bambu_dev
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -c "
@@ -160,9 +184,11 @@ jobs:
               END IF;
             END \$\$;
           "
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260610_add_factura_numero_seq/migration.sql
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260611_add_abono_embarque_seqs/migration.sql
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260619_import_fase2_proveedor_compra_seq/migration.sql
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260817_plan_maestro_ledgers/migration.sql
 
       - name: Run integration tests
         run: npm run test:integration
@@ -259,9 +285,11 @@ jobs:
               END IF;
             END \$\$;
           "
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260610_add_factura_numero_seq/migration.sql
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260611_add_abono_embarque_seqs/migration.sql
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260619_import_fase2_proveedor_compra_seq/migration.sql
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260817_plan_maestro_ledgers/migration.sql
 
       - name: Seed test data
         run: npx tsx prisma/seed-test.ts
