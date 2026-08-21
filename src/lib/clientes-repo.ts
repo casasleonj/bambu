@@ -5,7 +5,12 @@
  */
 import { prisma } from '@/lib/prisma'
 import { Prisma } from '@prisma/client'
-import { buildClientesWhere, buildClientesRawWhere } from '@/lib/cliente-filters'
+import {
+  buildClientesWhere,
+  buildClientesRawWhere,
+  type MostrarNegocio,
+  type UbicacionMapsFilter,
+} from '@/lib/cliente-filters'
 import { getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
 import { CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
 
@@ -69,8 +74,8 @@ export async function fetchClientesList(params: ClienteListParams): Promise<Clie
       bloqueado: bloqueado || undefined,
       reclamaciones: reclamaciones || undefined,
       noVerificado: noVerificado || undefined,
-      mostrarNegocio: (mostrarNegocio || undefined) as any,
-      ubicacionMaps: (ubicacionMaps || undefined) as any,
+      mostrarNegocio: (mostrarNegocio || undefined) as MostrarNegocio | undefined,
+      ubicacionMaps: (ubicacionMaps || undefined) as UbicacionMapsFilter | undefined,
       todosNegociosConLink: todosNegociosConLink === 'true' ? 'true' : undefined,
       clienteConLink: clienteConLink === 'true' ? 'true' : undefined,
     })
@@ -118,8 +123,8 @@ export async function fetchClientesList(params: ClienteListParams): Promise<Clie
 
 type PaginationInfo = { page: number; pageSize: number; all: boolean }
 
-async function fetchPrismaList({ where, pagination }: { where: any; pagination: PaginationInfo }) {
-  const prismaPagination = getPrismaPagination(pagination as any)
+async function fetchPrismaList({ where, pagination }: { where: Record<string, unknown>; pagination: PaginationInfo }) {
+  const prismaPagination = getPrismaPagination(pagination)
   const [clientesRaw, total] = await Promise.all([
     prisma.cliente.findMany({
       where,
@@ -149,7 +154,7 @@ async function fetchPrismaList({ where, pagination }: { where: any; pagination: 
   const clientes = clientesRaw.map(c => ({
     ...c,
     clienteId: c.id,
-    saldoPendiente: c.pedidos.reduce((sum: number, p: any) => sum + Number(p.saldo), 0),
+    saldoPendiente: c.pedidos.reduce((sum, p) => sum + Number(p.saldo), 0),
   }))
 
   // Serialize for server component (Prisma Decimal → Number, Date → string)
@@ -162,11 +167,57 @@ async function fetchPrismaList({ where, pagination }: { where: any; pagination: 
   return { clientes: paged.data, total: paged.total, totalPages: paged.totalPages, page: paged.page }
 }
 
+// Shape de la fila devuelta por el SELECT crudo de fetchSearchRaw. Los tipos
+// de columna reflejan lo que retorna el driver pg para cada tipo de Postgres
+// (numeric -> string, timestamptz -> Date, boolean -> boolean); el resultado
+// completo se JSON.stringify en el mapeo final, nunca se accede campo por
+// campo salvo `id`.
+interface ClienteSearchRawRow {
+  id: string
+  nombre: string
+  apellido: string | null
+  telefono: string
+  direccion: string | null
+  barrio: string | null
+  notas: string | null
+  fuente: string | null
+  frecuencia: string
+  cadaNDias: number | null
+  ultEntrega: Date | null
+  proxEntrega: Date | null
+  habAgua: boolean
+  habHielo: boolean
+  habBotellon: boolean
+  habBolsaAgua: boolean
+  habBolsaHielo: boolean
+  verificado: boolean
+  verificadoEn: Date | null
+  creadoPorRol: string
+  bloqueado: boolean
+  reclamaciones: number
+  limitePedidosFiados: number | null
+  negocioDefaultId: string | null
+  activo: boolean
+  createdAt: Date
+  updatedAt: Date
+  createdById: string | null
+  rutaId: string | null
+  referencia: string | null
+  linkUbicacion: string | null
+  preciosEspeciales: string | null
+  lat: string | null
+  lng: string | null
+  geocodeOrigen: string | null
+  geocodeAt: Date | null
+  contactos: Array<{ nombre: string; telefono: string; relacion: string | null }>
+  similarity_score: number
+}
+
 async function fetchSearchRaw({
   search, where: _where, mostrarNegocio, ubicacionMaps, todosNegociosConLink, clienteConLink, pagination,
 }: {
   search: string
-  where: any
+  where: Record<string, unknown>
   mostrarNegocio?: string
   ubicacionMaps?: string
   todosNegociosConLink?: string
@@ -176,8 +227,8 @@ async function fetchSearchRaw({
   const adminFilter = Prisma.sql`AND c.id != ${CANONICAL_CONSUMIDOR_FINAL_ID}`
   const filtrosNegocioRaw = Prisma.raw(
     buildClientesRawWhere({
-      mostrarNegocio: (mostrarNegocio || undefined) as any,
-      ubicacionMaps: (ubicacionMaps || undefined) as any,
+      mostrarNegocio: (mostrarNegocio || undefined) as MostrarNegocio | undefined,
+      ubicacionMaps: (ubicacionMaps || undefined) as UbicacionMapsFilter | undefined,
       todosNegociosConLink: todosNegociosConLink === 'true' ? 'true' : undefined,
       clienteConLink: clienteConLink === 'true' ? 'true' : undefined,
     })
@@ -219,7 +270,7 @@ async function fetchSearchRaw({
   `
 
   const [clientesRaw, totalRaw] = await Promise.all([
-    prisma.$queryRaw<unknown[]>`
+    prisma.$queryRaw<ClienteSearchRawRow[]>`
       SELECT DISTINCT ON (c.id)
         c.id, c.nombre, c.apellido, c.telefono, c.direccion, c.barrio,
         c.notas, c.fuente, c.frecuencia,
@@ -250,7 +301,7 @@ async function fetchSearchRaw({
       LIMIT ${take}
       OFFSET ${skip}
     `,
-    prisma.$queryRaw<unknown[]>`
+    prisma.$queryRaw<Array<{ total: bigint | number | string }>>`
       SELECT COUNT(DISTINCT c.id) as total
       FROM "Cliente" c
       WHERE c.activo = true
@@ -260,13 +311,13 @@ async function fetchSearchRaw({
     `,
   ])
 
-  const clienteIds = clientesRaw.map((c: any) => c.id)
+  const clienteIds = clientesRaw.map((c) => c.id)
   const [negociosMap, countsMap] = await Promise.all([
     prisma.negocio.findMany({
       where: { clienteId: { in: clienteIds }, activo: true },
       select: { id: true, nombre: true, tipoNegocio: true, direccion: true, barrio: true, referencia: true, linkUbicacion: true, clienteId: true },
     }).then(negs => {
-      const map = new Map<string, any[]>()
+      const map = new Map<string, (typeof negs)[number][]>()
       for (const n of negs) {
         const existing = map.get(n.clienteId) || []
         existing.push(n)
@@ -286,9 +337,9 @@ async function fetchSearchRaw({
     }),
   ])
 
-  const total = Number((totalRaw[0] as any)?.total ?? 0)
+  const total = Number(totalRaw[0]?.total ?? 0)
   const clientes = JSON.parse(JSON.stringify(
-    clientesRaw.map((c: any) => ({
+    clientesRaw.map((c) => ({
       ...c,
       clienteId: c.id,
       saldoPendiente: countsMap.get(c.id) || 0,
