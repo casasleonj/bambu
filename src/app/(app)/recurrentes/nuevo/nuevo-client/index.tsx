@@ -159,7 +159,7 @@ export default function NuevoRecurrenteClient() {
             for (const [codigo, info] of Object.entries(data.precios)) {
               const config = productConfigs.find(c => c.codigo === codigo)
               nuevos[codigo] = {
-                precio: (info as any).precio,
+                precio: (info as { precio: number }).precio,
                 aplicaDomicilio: config?.aplicaDomicilio ?? false,
                 sobreCosto: config?.sobreCostoDomicilio ? Number(config.sobreCostoDomicilio) : 0,
               }

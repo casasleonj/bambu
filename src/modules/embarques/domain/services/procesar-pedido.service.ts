@@ -33,7 +33,7 @@ import type { MetodoPago } from '@prisma/client'
 // Reutilizamos la misma técnica que el use case
 type TxOrPrisma = {
   $queryRaw: (query: TemplateStringsArray, ...values: unknown[]) => Promise<unknown[]>
-  [model: string]: any
+  [model: string]: unknown
 }
 
 export interface PedidoRawInput {

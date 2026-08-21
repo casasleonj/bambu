@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Modal } from '@/components/modal'
-import { getGuiaAlerta, getBadgeColor, type AlertaTipo } from '@/lib/alertas-config'
+import { getGuiaAlerta, getBadgeColor, type AlertaTipo, type SeveridadAlerta } from '@/lib/alertas-config'
 
 interface Caso {
   id: string
@@ -430,7 +430,7 @@ export function CasoGuiaModal({ caso, contextData, usuarios, onClose, onStatusCh
         <div className="flex items-start justify-between">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border uppercase tracking-wide ${getBadgeColor(caso.severidad as any)}`}>
+              <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border uppercase tracking-wide ${getBadgeColor(caso.severidad as SeveridadAlerta)}`}>
                 {caso.severidad}
               </span>
               <span className="text-sm font-bold text-gray-800">{TIPO_LABELS[tipo] || tipo}</span>
