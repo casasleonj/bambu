@@ -154,4 +154,26 @@ describe('FASE 6 — responsabilidad (contrato §13)', () => {
     const persisted = await testPrisma.responsibilityCase.findUnique({ where: { id: caso.id } })
     expect(persisted?.estado).toBe('RESUELTA_CON_CARGO')
   })
+
+  it('un caso de fiado vencido es investigable solo con clienteId (sin embarque ni trabajador)', async () => {
+    const cliente = await testPrisma.cliente.findFirst()
+    if (!cliente) throw new Error('No cliente — ¿corriste seed-test?')
+
+    const caso = await testPrisma.responsibilityCase.create({
+      data: {
+        embarqueId: null,
+        trabajadorId: null,
+        clienteId: cliente.id,
+        tipo: 'FIADO_NO_COBRADO',
+        descripcion: 'fiado vencido detectado días después del cierre',
+        montoEstimado: 12000,
+      },
+    })
+
+    expect(caso.clienteId).toBe(cliente.id)
+    expect(caso.embarqueId).toBeNull()
+
+    const persisted = await testPrisma.responsibilityCase.findUnique({ where: { id: caso.id } })
+    expect(persisted?.clienteId).toBe(cliente.id)
+  })
 })

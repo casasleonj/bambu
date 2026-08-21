@@ -13,7 +13,7 @@ import { notifyEvent } from '@/lib/notifications/notify-event'
 import { NotificationEventType } from '@/lib/notifications/event-types'
 import { prisma } from '@/lib/prisma'
 import { Money, calcularSaldo } from '@/shared/domain'
-import { registrarReceivableEntry } from '@/lib/receivable-entry'
+import { registrarReceivableEntry, detectarDivergencia, registrarDivergencia } from '@/lib/receivable-entry'
 
 export async function POST(request: NextRequest) {
   // FIX C-1: solo ADMIN/ASISTENTE pueden registrar pagos de fiado.
@@ -156,6 +156,27 @@ export async function POST(request: NextRequest) {
           totalPagadoResultante: nuevoTotalPagado,
           offlineId,
         })
+
+        // Contrato §12: verifica que Pedido.saldo (canónico) y la proyección
+        // recién escrita realmente coincidan -- guarda contra un bug futuro
+        // que desincronice el `tx.pedido.update` de arriba de lo que se
+        // registró en ReceivableEntry.
+        const pedidoActualizado = await tx.pedido.findUnique({
+          where: { id: pedido.id },
+          select: { saldo: true },
+        })
+        const { divergencia, diferencia } = detectarDivergencia(
+          Number(pedidoActualizado?.saldo ?? 0),
+          nuevoSaldo,
+        )
+        if (divergencia) {
+          registrarDivergencia({
+            pedidoId: pedido.id,
+            canonico: Number(pedidoActualizado?.saldo ?? 0),
+            proyeccion: nuevoSaldo,
+            diferencia,
+          })
+        }
 
         if (shouldFireCulminado(pedido.estadoEntrega, nuevoEstadoPago)) {
           culminados.push({ pedidoId: pedido.id, numero: pedido.numero })

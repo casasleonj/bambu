@@ -17,6 +17,7 @@
 import {
   UMBRAL_MINIMO_FALTANTE_CAJA,
 } from '@/lib/constants'
+import { validarContextoResponsibilityCase } from './responsibility.service'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TxOrPrisma = any
@@ -51,6 +52,13 @@ export class CrearDeudaFaltanteCajaService {
       where: { id: embarqueId },
       select: { numero: true },
     })
+
+    // Contrato §13: exige al menos una referencia de contexto (embarqueId
+    // aquí, siempre presente en este flujo).
+    const errores = validarContextoResponsibilityCase({ embarqueId, trabajadorId })
+    if (errores.length > 0) {
+      throw new Error(errores.join('; '))
+    }
 
     // FASE 6 (§13): detectar y crear el caso, NO la deuda económica.
     const caso = await client.responsibilityCase.create({

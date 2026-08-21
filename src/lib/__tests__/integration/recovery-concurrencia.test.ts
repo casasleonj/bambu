@@ -76,6 +76,39 @@ describe('FASE 4 — recovery: concurrencia (contrato §3/§4)', () => {
     expect(sum._sum.cantidadAplicada).toBe(4)
   })
 
+  it('FALTANTE: dos decisiones concurrentes sobre la misma discrepancia no exceden lo declarado', async () => {
+    const embarqueId = await crearEmbarque()
+    const useCase = new CrearRecoveryDecisionUseCase()
+
+    const base = {
+      embarqueId,
+      tipo: 'FALTANTE' as const,
+      producto: 'PACA_AGUA',
+      cantidad: 3,
+      cantidadAplicada: 3,
+      actorId: 'actor-1',
+      reason: 'faltante detectado',
+    }
+
+    // 2 decisiones de 3 c/u sobre una discrepancia declarada de 3 → solo 1 gana.
+    const resultados = await Promise.allSettled([
+      useCase.execute(base),
+      useCase.execute(base),
+    ])
+
+    const ganadas = resultados.filter((r) => r.status === 'fulfilled')
+    const fallidas = resultados.filter((r) => r.status === 'rejected')
+    expect(ganadas).toHaveLength(1)
+    expect(fallidas).toHaveLength(1)
+
+    const sum = await testPrisma.recoveryDecision.aggregate({
+      where: { embarqueId, producto: 'PACA_AGUA', tipo: 'FALTANTE' },
+      _sum: { cantidadAplicada: true },
+    })
+    expect(sum._sum.cantidadAplicada).toBeLessThanOrEqual(3)
+    expect(sum._sum.cantidadAplicada).toBe(3)
+  })
+
   it('retry con el mismo offlineId no duplica la decisión', async () => {
     const { embarqueId, sourceEventId } = await crearContexto(10)
     const useCase = new CrearRecoveryDecisionUseCase()

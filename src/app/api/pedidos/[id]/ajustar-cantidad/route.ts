@@ -9,7 +9,6 @@ import { AjustarPedidoCantidadUseCase } from '@/modules/pedidos/application/use-
 
 const AjusteSchema = z.object({
   producto: z.string().min(1),
-  cantidadOriginal: z.number().int().min(0),
   cantidadNueva: z.number().int().min(0),
   motivo: z.string().min(1),
   obligacionId: z.string().optional(),
@@ -41,7 +40,6 @@ export async function POST(
     const result = await useCase.execute({
       pedidoId: id,
       producto: parsed.data.producto,
-      cantidadOriginal: parsed.data.cantidadOriginal,
       cantidadNueva: parsed.data.cantidadNueva,
       motivo: parsed.data.motivo,
       autorizadoPorId: auth.user?.id ?? '',

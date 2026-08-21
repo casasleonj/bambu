@@ -139,6 +139,30 @@ export class CrearRecoveryDecisionUseCase {
         }
       }
 
+      // FALTANTE no tiene sourceEventId (no hay evento físico de origen), pero
+      // sigue necesitando protección contra doble consumo: sin esto, dos
+      // decisiones sobre la MISMA discrepancia (mismo embarque/producto/
+      // pedidoDestino) podrían resolverla dos veces. No hay un identificador
+      // único de "discrepancia" en el schema actual, así que se usa
+      // embarqueId+producto+pedidoDestinoId (ya bajo el lock EMBARQUE_CARGA)
+      // como agrupación práctica, con `input.cantidad` de esta misma llamada
+      // como techo declarado -- mismo patrón que SOBRANTE (sumar aplicado
+      // previo, validar restante, rechazar si excede).
+      const previasFaltante = await tx.recoveryDecision.aggregate({
+        where: {
+          embarqueId: input.embarqueId,
+          producto: input.producto,
+          tipo: 'FALTANTE',
+          pedidoDestinoId: input.pedidoDestinoId ?? null,
+        },
+        _sum: { cantidadAplicada: true },
+      })
+      const aplicadaPreviaFaltante = previasFaltante._sum.cantidadAplicada ?? 0
+      if (aplicadaPreviaFaltante + input.cantidadAplicada > input.cantidad) {
+        incrementMetric('recovery_decision_double_consumption_rejected_count')
+        throw new Error('DOBLE_CONSUMO: excede la cantidad declarada del faltante')
+      }
+
       const decision = await tx.recoveryDecision.create({
         data: {
           embarqueId: input.embarqueId,

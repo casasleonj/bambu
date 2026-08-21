@@ -8,7 +8,7 @@ import { getNextNumero } from '@/lib/sequence'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
-import { registrarReceivableEntry } from '@/lib/receivable-entry'
+import { registrarReceivableEntry, detectarDivergencia, registrarDivergencia } from '@/lib/receivable-entry'
 
 export async function GET(request: NextRequest) {
   // FIX CRITICAL (C-SEC-2): Only ADMIN/CONTADOR can read abonos
@@ -135,6 +135,27 @@ export async function POST(request: NextRequest) {
         saldoResultante: Number(updatedFactura.saldo),
         totalPagadoResultante: Number(updatedFactura.montoPagado),
       })
+
+      // Contrato §12: verifica que Pedido.saldo (canónico) y la proyección
+      // recién escrita realmente coincidan -- guarda contra un bug futuro
+      // que desincronice los dos "Sincronizar Pedido.saldo con Factura.saldo"
+      // (línea de arriba) de lo que se registró en ReceivableEntry.
+      const pedidoSincronizado = await tx.pedido.findUnique({
+        where: { id: factura.pedidoId },
+        select: { saldo: true },
+      })
+      const { divergencia, diferencia } = detectarDivergencia(
+        Number(pedidoSincronizado?.saldo ?? 0),
+        Number(updatedFactura.saldo),
+      )
+      if (divergencia) {
+        registrarDivergencia({
+          pedidoId: factura.pedidoId,
+          canonico: Number(pedidoSincronizado?.saldo ?? 0),
+          proyeccion: Number(updatedFactura.saldo),
+          diferencia,
+        })
+      }
 
       return { abono }
     })

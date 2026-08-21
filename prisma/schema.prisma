@@ -411,6 +411,9 @@ model Cliente {
   // FASE 5 (cartera)
   receivableEntries ReceivableEntry[]
 
+  // FASE 6 (responsabilidad): contexto alternativo sin embarque activo.
+  responsibilityCases ResponsibilityCase[]
+
   createdAt DateTime @default(now()) @db.Timestamptz()
   updatedAt DateTime @updatedAt @db.Timestamptz()
 
@@ -1265,6 +1268,12 @@ model ResponsibilityCase {
   embarque     Embarque? @relation(fields: [embarqueId], references: [id], onDelete: SetNull)
   trabajadorId String?
   trabajador   Trabajador? @relation(fields: [trabajadorId], references: [id], onDelete: SetNull)
+  // Contexto alternativo cuando NO hay una operación (embarque) activa —
+  // ej. investigación de fiado vencido días después del cierre. Al menos
+  // una referencia de contexto (embarqueId | clienteId | trabajadorId) se
+  // valida en aplicación (validarContextoResponsibilityCase), no en BD.
+  clienteId    String?
+  cliente      Cliente? @relation(fields: [clienteId], references: [id], onDelete: SetNull)
 
   // DISCREPANCIA_INVENTARIO | FALTANTE_CAJA | FIADO_NO_COBRADO
   tipo          String
@@ -1289,6 +1298,7 @@ model ResponsibilityCase {
 
   @@index([embarqueId])
   @@index([trabajadorId])
+  @@index([clienteId])
   @@index([estado])
 }
 
