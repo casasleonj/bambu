@@ -40,22 +40,22 @@ test.describe('Mobile Offline Comprehensive', () => {
   test.describe.configure({ mode: 'serial' })
 
   async function waitForBambu(page: import('@playwright/test').Page) {
-    await page.waitForFunction(() => (window as any).__bambu !== undefined, {
+    await page.waitForFunction(() => window.__bambu !== undefined, {
       timeout: 10000,
     })
   }
 
   async function clearQueues(page: import('@playwright/test').Page) {
-    await page.evaluate(() => (window as any).__bambu.clearQueues())
+    await page.evaluate(() => window.__bambu!.clearQueues())
   }
 
   async function getQueueSize(page: import('@playwright/test').Page) {
-    const q = await page.evaluate(() => (window as any).__bambu.getRequestQueue())
+    const q = await page.evaluate(() => window.__bambu!.getRequestQueue())
     return q.length as number
   }
 
   async function sync(page: import('@playwright/test').Page) {
-    return page.evaluate(() => (window as any).__bambu.syncWithServer())
+    return page.evaluate(() => window.__bambu!.syncWithServer())
   }
 
   async function countPedidos(page: import('@playwright/test').Page) {
@@ -95,7 +95,7 @@ test.describe('Mobile Offline Comprehensive', () => {
 
     const result = await page.evaluate(
       async ({ url, body }) => {
-        return await (window as any).__bambu.fetchResilient(url, {
+        return await window.__bambu!.fetchResilient(url, {
           method: 'POST',
           body,
           localEndpoint: 'crear-pedido-m1',
@@ -140,7 +140,7 @@ test.describe('Mobile Offline Comprehensive', () => {
 
     const result = await page.evaluate(
       async ({ url, body }) => {
-        return await (window as any).__bambu.fetchResilient(url, {
+        return await window.__bambu!.fetchResilient(url, {
           method: 'POST',
           body,
           localEndpoint: 'crear-cliente-m2',
@@ -189,7 +189,7 @@ test.describe('Mobile Offline Comprehensive', () => {
 
     const result = await page.evaluate(
       async ({ url, body }) => {
-        return await (window as any).__bambu.fetchResilient(url, {
+        return await window.__bambu!.fetchResilient(url, {
           method: 'POST',
           body,
           localEndpoint: 'venta-libre-m3',
@@ -244,18 +244,18 @@ test.describe('Mobile Offline Comprehensive', () => {
     const pedidoBefore = await page.evaluate(async (cid) => {
       const r = await fetch(`/api/pedidos?clienteId=${cid}&estadoPago=PENDIENTE&all=true`, { credentials: 'include' })
       const data = await r.json()
-      const pedidos = data.pedidos || data.items || Object.values(data).filter((v: any) => v?.id)
-      return (pedidos as any[]).find((p) => p.clienteId === cid)
+      const pedidos = data.pedidos || data.items || Object.values(data).filter((v) => (v as { id?: string })?.id)
+      return (pedidos as Array<{ clienteId: string; saldo: number }>).find((p) => p.clienteId === cid)
     }, clienteId)
     expect(pedidoBefore).toBeTruthy()
-    expect(Number(pedidoBefore.saldo)).toBeGreaterThan(0)
+    expect(Number(pedidoBefore!.saldo)).toBeGreaterThan(0)
 
     const offlineId = crypto.randomUUID()
     await page.route('**/api/pedidos/pagar-fiado', (route) => route.abort('failed'))
 
     const result = await page.evaluate(
       async ({ url, body }) => {
-        return await (window as any).__bambu.fetchResilient(url, {
+        return await window.__bambu!.fetchResilient(url, {
           method: 'POST',
           body,
           localEndpoint: 'pagar-fiado-m4',
@@ -280,10 +280,10 @@ test.describe('Mobile Offline Comprehensive', () => {
     const pedidoAfter = await page.evaluate(async (cid) => {
       const r = await fetch(`/api/pedidos?clienteId=${cid}&all=true`, { credentials: 'include' })
       const data = await r.json()
-      const pedidos = data.pedidos || data.items || Object.values(data).filter((v: any) => v?.id)
-      return (pedidos as any[]).find((p) => p.clienteId === cid)
+      const pedidos = data.pedidos || data.items || Object.values(data).filter((v) => (v as { id?: string })?.id)
+      return (pedidos as Array<{ clienteId: string; saldo: number }>).find((p) => p.clienteId === cid)
     }, clienteId)
-    expect(Number(pedidoAfter.saldo)).toBeLessThan(Number(pedidoBefore.saldo))
+    expect(Number(pedidoAfter!.saldo)).toBeLessThan(Number(pedidoBefore!.saldo))
   })
 
   test('M5: Repartidor entrega pedido offline → sync → estado ENTREGADO', async ({ page }) => {
@@ -322,7 +322,7 @@ test.describe('Mobile Offline Comprehensive', () => {
 
     const result = await page.evaluate(
       async ({ url, body }) => {
-        return await (window as any).__bambu.fetchResilient(url, {
+        return await window.__bambu!.fetchResilient(url, {
           method: 'POST',
           body,
           localEndpoint: 'entregar-pedido-m5',
@@ -352,7 +352,7 @@ test.describe('Mobile Offline Comprehensive', () => {
     const pedidoAfter = await page.evaluate(async (pid) => {
       const r = await fetch(`/api/pedidos/${pid}`, { credentials: 'include' })
       const data = await r.json()
-      return data.pedido as any
+      return data.pedido
     }, pedidoId)
     expect(pedidoAfter.estadoEntrega).toBe('ENTREGADO')
   })
@@ -380,10 +380,10 @@ test.describe('Mobile Offline Comprehensive', () => {
 
     const results = await page.evaluate(
       async ({ clienteId }) => {
-        const api = (window as any).__bambu
+        const api = window.__bambu!
         const clienteOfflineId = crypto.randomUUID()
         const pedidoOfflineId = crypto.randomUUID()
-        const r1 = await api.fetchResilient(`${(window as any).__TEST_BASE_URL || ''}/api/clientes`, {
+        const r1 = await api.fetchResilient(`${window.__TEST_BASE_URL || ''}/api/clientes`, {
           method: 'POST',
           body: {
             nombre: 'M6 Cliente',
@@ -392,7 +392,7 @@ test.describe('Mobile Offline Comprehensive', () => {
           },
           localEndpoint: 'crear-cliente-m6',
         })
-        const r2 = await api.fetchResilient(`${(window as any).__TEST_BASE_URL || ''}/api/pedidos`, {
+        const r2 = await api.fetchResilient(`${window.__TEST_BASE_URL || ''}/api/pedidos`, {
           method: 'POST',
           body: {
             clienteId,
@@ -440,7 +440,7 @@ test.describe('Mobile Offline Comprehensive', () => {
     const offlineId = crypto.randomUUID()
     await page.evaluate(
       async ({ url, body }) => {
-        return await (window as any).__bambu.fetchResilient(url, {
+        return await window.__bambu!.fetchResilient(url, {
           method: 'POST',
           body,
           localEndpoint: 'crear-pedido-m7',
