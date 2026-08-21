@@ -74,8 +74,8 @@ export function EmbarqueFormModal({
         }
         // Fallback to legacy fields if no productos
         if (embarque.productos?.length === 0) {
-          cargaInit.PACA_AGUA = (embarque as any).pacasAgua || 0
-          cargaInit.PACA_HIELO = (embarque as any).pacasHielo || 0
+          cargaInit.PACA_AGUA = embarque.pacasAgua || 0
+          cargaInit.PACA_HIELO = embarque.pacasHielo || 0
         }
         setCarga(cargaInit)
       } else {

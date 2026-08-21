@@ -1,4 +1,5 @@
 import { auth } from "./auth";
+import type { Session } from "next-auth";
 import { prisma } from "./prisma";
 import { PRIVILEGED_READ_ROLES, type Role } from "./constants";
 import { apiError } from "./api-response";
@@ -54,7 +55,7 @@ export async function requireAuthWithoutMustChangePassword() {
  * Optionally accepts an existing session to avoid calling auth() twice.
  * Returns the session if authorized, or a 403 Response if not.
  */
-export async function requireRole(role: Role | Role[], existingSession?: any) {
+export async function requireRole(role: Role | Role[], existingSession?: Session | null) {
   const session = existingSession || await auth();
   if (!session) {
     return apiError("No autorizado", 401);
@@ -76,7 +77,7 @@ export async function requireRole(role: Role | Role[], existingSession?: any) {
  * Optionally accepts an existing session to avoid calling auth() twice.
  * Returns the session if authorized, or a 403 Response if not.
  */
-export async function requirePermission(permission: Permission, existingSession?: any) {
+export async function requirePermission(permission: Permission, existingSession?: Session | null) {
   const session = existingSession || await auth();
   if (!session) {
     return apiError("No autorizado", 401);

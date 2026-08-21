@@ -1,4 +1,4 @@
-import { PrismaClient, RolUsuario, EstadoPedido, EstadoEmbarque, EstadoFactura, TipoPagoTrabajador, Turno, MetodoPago } from '@prisma/client'
+import { PrismaClient, RolUsuario, EstadoPedido, EstadoEmbarque, EstadoFactura, TipoPagoTrabajador, Turno, MetodoPago, type Producto, type Embarque } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 
 const prisma = new PrismaClient()
@@ -140,7 +140,7 @@ async function main() {
     { codigo: 'BOLSA_HIELO', nombre: 'Bolsa de Hielo 600ml', unidad: 'unidad', contenido: '600ml', aplicaDomicilio: true, sobreCostoDomicilio: 0, precioBase: PRECIO_BASE['BOLSA_HIELO'] },
   ]
 
-  const productos: Record<string, any> = {}
+  const productos: Record<string, Producto> = {}
   for (const prod of productosData) {
     const p = await prisma.producto.create({ data: prod })
     productos[prod.codigo] = p
@@ -446,7 +446,7 @@ async function main() {
 
   // ─── Embarques ───────────────────────────────────────────────────────────
   console.log('🚚 Creating embarques...')
-  const embarques: any[] = []
+  const embarques: Embarque[] = []
   const repartidoresEmbarque = repartidores.slice(0, 5)
 
   for (let day = 0; day < 7; day++) {

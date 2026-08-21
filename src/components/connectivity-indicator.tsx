@@ -103,7 +103,7 @@ export function ConnectivityIndicator() {
   }, [mounted, syncing])
 
   // Skip polling when in Playwright test mode (avoids networkidle timeout)
-  const isPlaywright = typeof window !== 'undefined' && (window as any).__PLAYWRIGHT_TEST__
+  const isPlaywright = typeof window !== 'undefined' && (window as unknown as { __PLAYWRIGHT_TEST__?: boolean }).__PLAYWRIGHT_TEST__
 
   // Poll queue sizes for the UI counter (one read on mount, then interval)
   useEffect(() => {
@@ -138,7 +138,15 @@ export function ConnectivityIndicator() {
   // sin tener que reproducir el comportamiento del usuario por la UI.
   useEffect(() => {
     if (!isPlaywright || typeof window === 'undefined') return
-    ;(window as any).__bambu = {
+    ;(window as unknown as {
+      __bambu: {
+        fetchResilient: typeof fetchResilient
+        syncWithServer: typeof syncWithServer
+        getRequestQueue: () => Promise<unknown[]>
+        getSyncQueue: () => Promise<unknown[]>
+        clearQueues: () => Promise<void>
+      }
+    }).__bambu = {
       fetchResilient,
       syncWithServer,
       getRequestQueue: () => offlineDb.requestQueue.toArray(),
