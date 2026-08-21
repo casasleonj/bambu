@@ -32,7 +32,6 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
   const [cerrando, setCerrando] = useState(false)
   const [yaCerrado, setYaCerrado] = useState(false)
   const [lastCierreDate, setLastCierreDate] = useState<string | null>(null)
-  const [hasGap, setHasGap] = useState(false)
   const [fecha, setFecha] = useState(() => {
     const today = getTodayString()
     return initialFecha ?? today
@@ -54,17 +53,15 @@ export default function CierreClient({ initialFecha }: { initialFecha: string | 
   const arqueoRef = useRef(arqueoData)
   useEffect(() => { arqueoRef.current = arqueoData }, [arqueoData])
 
-  // Check for gap days between last cierre and selected fecha
-  useEffect(() => {
-    if (!lastCierreDate || !fecha) {
-      setHasGap(false)
-      return
-    }
+  // Gap days between last cierre and selected fecha — derivado durante el
+  // render, no requiere estado propio ni efecto.
+  const hasGap = (() => {
+    if (!lastCierreDate || !fecha) return false
     const last = new Date(lastCierreDate + 'T00:00:00-05:00')
     const selected = new Date(fecha + 'T00:00:00-05:00')
     const diffDays = Math.floor((selected.getTime() - last.getTime()) / (1000 * 60 * 60 * 24))
-    setHasGap(diffDays > 1)
-  }, [lastCierreDate, fecha])
+    return diffDays > 1
+  })()
   const [netoEnArqueo, setNetoEnArqueo] = useState(0)
   const abortControllerRef = useRef<AbortController | null>(null)
   const fetchedDateRef = useRef<string | null>(null)

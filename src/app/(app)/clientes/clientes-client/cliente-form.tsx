@@ -73,6 +73,7 @@ export function ClienteForm({
 }: ClienteFormProps) {
   const [activeSection, setActiveSection] = useState<'basico' | 'ubicacion' | 'contactos' | 'frecuencia' | 'precios'>('basico')
   const [productosConfig, setProductosConfig] = useState<Array<{ codigo: string; aplicaDomicilio: boolean }>>([])
+  const [prevOpen, setPrevOpen] = useState(open)
 
   useEffect(() => {
     fetch(`/api/productos/configs`)
@@ -81,9 +82,12 @@ export function ClienteForm({
       .catch(() => {})
   }, [])
 
-  useEffect(() => {
+  // Vuelve a la sección básica cada vez que se reabre el modal, durante el
+  // render en vez de en un efecto.
+  if (open !== prevOpen) {
+    setPrevOpen(open)
     if (open) setActiveSection('basico')
-  }, [open])
+  }
 
   const productosFiltrados = canalActivo === 'DOMICILIO'
     ? PRODUCTOS_PRECIO.filter(prod => {
