@@ -23,11 +23,18 @@ import {
   resolverPreciosPedido,
   getPriceTable,
 } from '@/lib/pricing'
+import type { Cliente, PrecioVolumen, Producto, PrismaClient } from '@prisma/client'
+
+// Shape mockeado de prisma.precioVolumen.findFirst/findMany con el
+// include: { producto: true } real (solo el subconjunto de campos que los
+// tests necesitan; bridge-cast "as unknown as" porque los objetos de test
+// son deliberadamente parciales frente al modelo Prisma completo).
+type PrecioVolumenRow = PrecioVolumen & { producto: { codigo: string } }
 
 beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(prisma.producto.findMany).mockResolvedValue([])
-  vi.mocked(prisma.producto.findUnique).mockResolvedValue({ aplicaDomicilio: false, sobreCostoDomicilio: 0, precioBase: 0 } as any)
+  vi.mocked(prisma.producto.findUnique).mockResolvedValue({ aplicaDomicilio: false, sobreCostoDomicilio: 0, precioBase: 0 } as unknown as Producto)
 })
 
 // ─── parsePreciosEspeciales ──────────────────────────────────────────
@@ -107,33 +114,33 @@ describe('resolverPrecio', () => {
 
   it('returns client override for matching canal (new format)', async () => {
     const overrides = { DOMICILIO: { PACA_AGUA: 7000 }, PUNTO: { PACA_AGUA: 6000 } }
-    const result = await resolverPrecio('PACA_AGUA', 10, 'PUNTO', overrides as any)
+    const result = await resolverPrecio('PACA_AGUA', 10, 'PUNTO', overrides as unknown as Record<string, number>)
     expect(result).toEqual({ precio: 6000, origen: 'cliente' })
   })
 
   it('returns client override for matching canal (new format, DOMICILIO)', async () => {
     const overrides = { DOMICILIO: { PACA_AGUA: 7000 }, PUNTO: { PACA_AGUA: 6000 } }
-    const result = await resolverPrecio('PACA_AGUA', 10, 'DOMICILIO', overrides as any)
+    const result = await resolverPrecio('PACA_AGUA', 10, 'DOMICILIO', overrides as unknown as Record<string, number>)
     expect(result).toEqual({ precio: 7000, origen: 'cliente' })
   })
 
   it('applies legacy flat override to both canals', async () => {
     const overrides = { PACA_AGUA: 8000 }
-    const result = await resolverPrecio('PACA_AGUA', 10, 'PUNTO', overrides as any)
+    const result = await resolverPrecio('PACA_AGUA', 10, 'PUNTO', overrides as unknown as Record<string, number>)
     expect(result).toEqual({ precio: 8000, origen: 'cliente' })
   })
 
   it('skips override when value is 0', async () => {
     vi.mocked(prisma.precioVolumen.findFirst).mockResolvedValue(null)
     const overrides = { PUNTO: { PACA_AGUA: 0 } }
-    const result = await resolverPrecio('PACA_AGUA', 10, 'PUNTO', overrides as any)
+    const result = await resolverPrecio('PACA_AGUA', 10, 'PUNTO', overrides as unknown as Record<string, number>)
     expect(result).toEqual({ precio: 0, origen: 'base' })
   })
 
   it('skips override when code not present for canal', async () => {
     vi.mocked(prisma.precioVolumen.findFirst).mockResolvedValue(null)
     const overrides = { PUNTO: { PACA_HIELO: 6000 } }
-    const result = await resolverPrecio('PACA_AGUA', 10, 'PUNTO', overrides as any)
+    const result = await resolverPrecio('PACA_AGUA', 10, 'PUNTO', overrides as unknown as Record<string, number>)
     expect(result).toEqual({ precio: 0, origen: 'base' })
   })
 
@@ -145,14 +152,14 @@ describe('resolverPrecio', () => {
 
   it('handles clienteOverrides as JSON string', async () => {
     const overrides = JSON.stringify({ PUNTO: { BOTELLON: 15000 } })
-    const result = await resolverPrecio('BOTELLON', 5, 'PUNTO', overrides as any)
+    const result = await resolverPrecio('BOTELLON', 5, 'PUNTO', overrides as unknown as Record<string, number>)
     expect(result).toEqual({ precio: 15000, origen: 'cliente' })
   })
 
   it('returns volume tier when no manual/override', async () => {
     vi.mocked(prisma.precioVolumen.findFirst).mockResolvedValue({
       precio: 5500,
-    } as any)
+    } as unknown as PrecioVolumen)
     const result = await resolverPrecio('PACA_AGUA', 10, 'PUNTO')
     expect(result).toEqual({ precio: 5500, origen: 'volumen' })
     expect(prisma.precioVolumen.findFirst).toHaveBeenCalledWith(
@@ -170,7 +177,7 @@ describe('resolverPrecio', () => {
   it('picks highest cantMin tier when multiple match', async () => {
     vi.mocked(prisma.precioVolumen.findFirst).mockResolvedValue({
       precio: 4500,
-    } as any)
+    } as unknown as PrecioVolumen)
     const result = await resolverPrecio('PACA_AGUA', 50, 'PUNTO')
     expect(result).toEqual({ precio: 4500, origen: 'volumen' })
   })
@@ -178,7 +185,7 @@ describe('resolverPrecio', () => {
   it('matches tier with null cantMax (unlimited upper bound)', async () => {
     vi.mocked(prisma.precioVolumen.findFirst).mockResolvedValue({
       precio: 4000,
-    } as any)
+    } as unknown as PrecioVolumen)
     const result = await resolverPrecio('PACA_AGUA', 500, 'PUNTO')
     expect(result).toEqual({ precio: 4000, origen: 'volumen' })
   })
@@ -191,14 +198,14 @@ describe('resolverPrecio', () => {
 
   it('returns base when no tiers exist at all', async () => {
     vi.mocked(prisma.precioVolumen.findFirst).mockResolvedValue(null)
-    vi.mocked(prisma.producto.findUnique).mockResolvedValue({ aplicaDomicilio: false, sobreCostoDomicilio: 0, precioBase: 0 } as any)
+    vi.mocked(prisma.producto.findUnique).mockResolvedValue({ aplicaDomicilio: false, sobreCostoDomicilio: 0, precioBase: 0 } as unknown as Producto)
     const result = await resolverPrecio('BOLSA_HIELO', 5, 'DOMICILIO')
     expect(result).toEqual({ precio: 0, origen: 'base' })
   })
 
   it('falls back to precioBase when no tiers match and precioBase > 0', async () => {
     vi.mocked(prisma.precioVolumen.findFirst).mockResolvedValue(null)
-    vi.mocked(prisma.producto.findUnique).mockResolvedValue({ aplicaDomicilio: false, sobreCostoDomicilio: 0, precioBase: 6500 } as any)
+    vi.mocked(prisma.producto.findUnique).mockResolvedValue({ aplicaDomicilio: false, sobreCostoDomicilio: 0, precioBase: 6500 } as unknown as Producto)
     const result = await resolverPrecio('PACA_AGUA', 1, 'PUNTO')
     expect(result).toEqual({ precio: 6500, origen: 'base' })
   })
@@ -206,23 +213,23 @@ describe('resolverPrecio', () => {
   it('falls back to precioBase even when quantity is below minimum tier', async () => {
     // Tier starts at cantMin=10, but quantity is 1
     vi.mocked(prisma.precioVolumen.findFirst).mockResolvedValue(null)
-    vi.mocked(prisma.producto.findUnique).mockResolvedValue({ aplicaDomicilio: false, sobreCostoDomicilio: 0, precioBase: 7500 } as any)
+    vi.mocked(prisma.producto.findUnique).mockResolvedValue({ aplicaDomicilio: false, sobreCostoDomicilio: 0, precioBase: 7500 } as unknown as Producto)
     const result = await resolverPrecio('BOTELLON', 1, 'PUNTO')
     expect(result).toEqual({ precio: 7500, origen: 'base' })
   })
 
   it('precioBase is overridden by manual price', async () => {
     vi.mocked(prisma.precioVolumen.findFirst).mockResolvedValue(null)
-    vi.mocked(prisma.producto.findUnique).mockResolvedValue({ aplicaDomicilio: false, sobreCostoDomicilio: 0, precioBase: 6500 } as any)
+    vi.mocked(prisma.producto.findUnique).mockResolvedValue({ aplicaDomicilio: false, sobreCostoDomicilio: 0, precioBase: 6500 } as unknown as Producto)
     const result = await resolverPrecio('PACA_AGUA', 1, 'PUNTO', null, 5000)
     expect(result).toEqual({ precio: 5000, origen: 'manual' })
   })
 
   it('precioBase is overridden by client override', async () => {
     vi.mocked(prisma.precioVolumen.findFirst).mockResolvedValue(null)
-    vi.mocked(prisma.producto.findUnique).mockResolvedValue({ aplicaDomicilio: false, sobreCostoDomicilio: 0, precioBase: 6500 } as any)
+    vi.mocked(prisma.producto.findUnique).mockResolvedValue({ aplicaDomicilio: false, sobreCostoDomicilio: 0, precioBase: 6500 } as unknown as Producto)
     const overrides = { DOMICILIO: { PACA_AGUA: 7000 }, PUNTO: { PACA_AGUA: 6000 } }
-    const result = await resolverPrecio('PACA_AGUA', 1, 'PUNTO', overrides as any)
+    const result = await resolverPrecio('PACA_AGUA', 1, 'PUNTO', overrides as unknown as Record<string, number>)
     expect(result).toEqual({ precio: 6000, origen: 'cliente' })
   })
 
@@ -230,17 +237,17 @@ describe('resolverPrecio', () => {
     const overrides = { PUNTO: { PACA_AGUA: 6000 } }
     vi.mocked(prisma.precioVolumen.findFirst).mockResolvedValue({
       precio: 5500,
-    } as any)
-    const result = await resolverPrecio('PACA_AGUA', 10, 'PUNTO', overrides as any, 9999)
+    } as unknown as PrecioVolumen)
+    const result = await resolverPrecio('PACA_AGUA', 10, 'PUNTO', overrides as unknown as Record<string, number>, 9999)
     expect(result).toEqual({ precio: 9999, origen: 'manual' })
     expect(prisma.precioVolumen.findFirst).not.toHaveBeenCalled()
   })
 
   it('uses custom db client when provided', async () => {
     const mockDb = {
-      precioVolumen: { findFirst: vi.fn().mockResolvedValue({ precio: 3200 } as any) },
-      producto: { findUnique: vi.fn().mockResolvedValue({ aplicaDomicilio: false, sobreCostoDomicilio: 0, precioBase: 0 } as any) },
-    } as any
+      precioVolumen: { findFirst: vi.fn().mockResolvedValue({ precio: 3200 } as unknown as PrecioVolumen) },
+      producto: { findUnique: vi.fn().mockResolvedValue({ aplicaDomicilio: false, sobreCostoDomicilio: 0, precioBase: 0 } as unknown as Producto) },
+    } as unknown as PrismaClient
     const result = await resolverPrecio('PACA_HIELO', 5, 'DOMICILIO', null, null, mockDb)
     expect(result).toEqual({ precio: 3200, origen: 'volumen' })
     expect(mockDb.precioVolumen.findFirst).toHaveBeenCalled()
@@ -300,7 +307,7 @@ describe('resolverPreciosPedido', () => {
   it('resolves client overrides from DB when clienteId provided', async () => {
     vi.mocked(prisma.cliente.findUnique).mockResolvedValue({
       preciosEspeciales: JSON.stringify({ PUNTO: { PACA_AGUA: 7000 } }),
-    } as any)
+    } as unknown as Cliente)
     vi.mocked(prisma.precioVolumen.findMany).mockResolvedValue([])
 
     const result = await resolverPreciosPedido(
@@ -320,7 +327,7 @@ describe('resolverPreciosPedido', () => {
   it('applies legacy client override to both canals', async () => {
     vi.mocked(prisma.cliente.findUnique).mockResolvedValue({
       preciosEspeciales: JSON.stringify({ PACA_AGUA: 8000 }),
-    } as any)
+    } as unknown as Cliente)
     vi.mocked(prisma.precioVolumen.findMany).mockResolvedValue([])
 
     const result = await resolverPreciosPedido(
@@ -340,7 +347,7 @@ describe('resolverPreciosPedido', () => {
   it('falls through to volume tiers when no override match', async () => {
     vi.mocked(prisma.cliente.findUnique).mockResolvedValue({
       preciosEspeciales: JSON.stringify({ PUNTO: { PACA_HIELO: 5000 } }),
-    } as any)
+    } as unknown as Cliente)
     vi.mocked(prisma.precioVolumen.findMany).mockResolvedValue([
       {
         producto: { codigo: 'PACA_AGUA' },
@@ -348,7 +355,7 @@ describe('resolverPreciosPedido', () => {
         cantMax: 50,
         precio: 5500,
       },
-    ] as any)
+    ] as unknown as PrecioVolumenRow[])
 
     const result = await resolverPreciosPedido(
       [{ codigo: 'PACA_AGUA' as const, cantidad: 10 }],
@@ -365,7 +372,7 @@ describe('resolverPreciosPedido', () => {
   })
 
   it('falls through to volume tiers when clienteId but no preciosEspeciales', async () => {
-    vi.mocked(prisma.cliente.findUnique).mockResolvedValue({ preciosEspeciales: null } as any)
+    vi.mocked(prisma.cliente.findUnique).mockResolvedValue({ preciosEspeciales: null } as unknown as Cliente)
     vi.mocked(prisma.precioVolumen.findMany).mockResolvedValue([
       {
         producto: { codigo: 'PACA_HIELO' },
@@ -373,7 +380,7 @@ describe('resolverPreciosPedido', () => {
         cantMax: 20,
         precio: 8000,
       },
-    ] as any)
+    ] as unknown as PrecioVolumenRow[])
 
     const result = await resolverPreciosPedido(
       [{ codigo: 'PACA_HIELO' as const, cantidad: 3 }],
@@ -394,7 +401,7 @@ describe('resolverPreciosPedido', () => {
       { producto: { codigo: 'PACA_AGUA' }, cantMin: 1, cantMax: 50, precio: 5500 },
       { producto: { codigo: 'PACA_AGUA' }, cantMin: 51, cantMax: 100, precio: 5000 },
       { producto: { codigo: 'PACA_HIELO' }, cantMin: 1, cantMax: 30, precio: 8000 },
-    ] as any)
+    ] as unknown as PrecioVolumenRow[])
 
     const result = await resolverPreciosPedido(
       [
@@ -413,7 +420,7 @@ describe('resolverPreciosPedido', () => {
     vi.mocked(prisma.precioVolumen.findMany).mockResolvedValue([
       { producto: { codigo: 'PACA_AGUA' }, cantMin: 1, cantMax: 50, precio: 5500 },
       { producto: { codigo: 'PACA_AGUA' }, cantMin: 51, cantMax: 100, precio: 5000 },
-    ] as any)
+    ] as unknown as PrecioVolumenRow[])
 
     const result = await resolverPreciosPedido(
       [{ codigo: 'PACA_AGUA' as const, cantidad: 60 }],
@@ -426,7 +433,7 @@ describe('resolverPreciosPedido', () => {
     vi.mocked(prisma.precioVolumen.findMany).mockResolvedValue([
       { producto: { codigo: 'PACA_AGUA' }, cantMin: 1, cantMax: 50, precio: 5500 },
       { producto: { codigo: 'PACA_AGUA' }, cantMin: 51, cantMax: null, precio: 4500 },
-    ] as any)
+    ] as unknown as PrecioVolumenRow[])
 
     const result = await resolverPreciosPedido(
       [{ codigo: 'PACA_AGUA' as const, cantidad: 200 }],
@@ -438,10 +445,10 @@ describe('resolverPreciosPedido', () => {
   it('falls back to base when no tier matches cantidad', async () => {
     vi.mocked(prisma.precioVolumen.findMany).mockResolvedValue([
       { producto: { codigo: 'PACA_AGUA' }, cantMin: 10, cantMax: 50, precio: 5500 },
-    ] as any)
+    ] as unknown as PrecioVolumenRow[])
     vi.mocked(prisma.producto.findMany).mockResolvedValue([
       { codigo: 'PACA_AGUA', aplicaDomicilio: false, sobreCostoDomicilio: 0, precioBase: 0 },
-    ] as any)
+    ] as unknown as Producto[])
 
     const result = await resolverPreciosPedido(
       [{ codigo: 'PACA_AGUA' as const, cantidad: 1 }],
@@ -459,10 +466,10 @@ describe('resolverPreciosPedido', () => {
   it('falls back to precioBase when no tier matches and precioBase > 0', async () => {
     vi.mocked(prisma.precioVolumen.findMany).mockResolvedValue([
       { producto: { codigo: 'PACA_AGUA' }, cantMin: 10, cantMax: 50, precio: 5500 },
-    ] as any)
+    ] as unknown as PrecioVolumenRow[])
     vi.mocked(prisma.producto.findMany).mockResolvedValue([
       { codigo: 'PACA_AGUA', aplicaDomicilio: false, sobreCostoDomicilio: 0, precioBase: 6500 },
-    ] as any)
+    ] as unknown as Producto[])
 
     const result = await resolverPreciosPedido(
       [{ codigo: 'PACA_AGUA' as const, cantidad: 1 }],
@@ -482,7 +489,7 @@ describe('resolverPreciosPedido', () => {
     vi.mocked(prisma.producto.findMany).mockResolvedValue([
       { codigo: 'PACA_AGUA', aplicaDomicilio: false, sobreCostoDomicilio: 0, precioBase: 6500 },
       { codigo: 'BOTELLON', aplicaDomicilio: true, sobreCostoDomicilio: 2500, precioBase: 7500 },
-    ] as any)
+    ] as unknown as Producto[])
 
     const result = await resolverPreciosPedido(
       [
@@ -501,7 +508,7 @@ describe('resolverPreciosPedido', () => {
     vi.mocked(prisma.precioVolumen.findMany).mockResolvedValue([
       { producto: { codigo: 'PACA_AGUA' }, cantMin: 1, cantMax: 50, precio: 5500 },
       { producto: { codigo: 'PACA_HIELO' }, cantMin: 1, cantMax: 30, precio: 8000 },
-    ] as any)
+    ] as unknown as PrecioVolumenRow[])
 
     const result = await resolverPreciosPedido(
       [
@@ -527,7 +534,7 @@ describe('resolverPreciosPedido', () => {
     vi.mocked(prisma.cliente.findUnique).mockResolvedValue(null)
     vi.mocked(prisma.precioVolumen.findMany).mockResolvedValue([
       { producto: { codigo: 'PACA_AGUA' }, cantMin: 1, cantMax: 50, precio: 5500 },
-    ] as any)
+    ] as unknown as PrecioVolumenRow[])
 
     const result = await resolverPreciosPedido(
       [{ codigo: 'PACA_AGUA' as const, cantidad: 10 }],
@@ -560,14 +567,14 @@ describe('resolverPreciosPedido', () => {
       precioVolumen: {
         findMany: vi.fn().mockResolvedValue([
           { producto: { codigo: 'PACA_AGUA' }, cantMin: 1, cantMax: 50, precio: 3000 },
-        ] as any),
+        ] as unknown as PrecioVolumenRow[]),
       },
       producto: {
         findMany: vi.fn().mockResolvedValue([
           { codigo: 'PACA_AGUA', aplicaDomicilio: false, sobreCostoDomicilio: 0, precioBase: 0 },
-        ] as any),
+        ] as unknown as Producto[]),
       },
-    } as any
+    } as unknown as PrismaClient
 
     const result = await resolverPreciosPedido(
       [{ codigo: 'PACA_AGUA' as const, cantidad: 10 }],
@@ -590,7 +597,7 @@ describe('resolverPreciosPedido', () => {
   it('calculates subtotal correctly', async () => {
     vi.mocked(prisma.precioVolumen.findMany).mockResolvedValue([
       { producto: { codigo: 'BOTELLON' }, cantMin: 1, cantMax: 100, precio: 12000 },
-    ] as any)
+    ] as unknown as PrecioVolumenRow[])
 
     const result = await resolverPreciosPedido(
       [{ codigo: 'BOTELLON' as const, cantidad: 3 }],
@@ -614,7 +621,7 @@ describe('getPriceTable', () => {
       { producto: { codigo: 'PACA_AGUA' }, cantMin: 1, cantMax: 50, precio: 5500 },
       { producto: { codigo: 'PACA_AGUA' }, cantMin: 51, cantMax: 100, precio: 5000 },
       { producto: { codigo: 'PACA_HIELO' }, cantMin: 1, cantMax: 30, precio: 8000 },
-    ] as any)
+    ] as unknown as PrecioVolumenRow[])
 
     const table = await getPriceTable()
     expect(Object.keys(table)).toHaveLength(2)
@@ -635,7 +642,7 @@ describe('getPriceTable', () => {
   it('converts Decimal precio to Number', async () => {
     vi.mocked(prisma.precioVolumen.findMany).mockResolvedValue([
       { producto: { codigo: 'BOTELLON' }, cantMin: 1, cantMax: null, precio: 12000 },
-    ] as any)
+    ] as unknown as PrecioVolumenRow[])
 
     const table = await getPriceTable()
     expect(typeof table['BOTELLON'][0].precio).toBe('number')
