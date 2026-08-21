@@ -285,6 +285,9 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
   }, [productosConfig, clienteSeleccionado?.id, productosActuales, resolverPrecios, pedidoInicial?.id, negocioSeleccionado])
 
   useEffect(() => {
+    // Resuelve precios reales via API — side effect de red, no derivable
+    // durante el render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     resolverPreciosCliente()
   }, [resolverPreciosCliente])
 
@@ -297,6 +300,10 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
   // 363-364 más abajo), así que este efecto no necesita re-ejecutarse ahí.
   useEffect(() => {
     if (!clienteSeleccionado) return
+    /* eslint-disable react-hooks/set-state-in-effect -- ver nota arriba:
+       keyed deliberadamente en clienteSeleccionado?.id, no en el objeto
+       completo, para no re-ejecutar en cambios de referencia sin cambio
+       de contenido real. */
     if (negocioData) {
       // Use negocio's address if it has one, otherwise fall back to client's
       setEditDireccion(negocioData.direccion || clienteSeleccionado.direccion || '')
@@ -306,11 +313,15 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
       setEditDireccion(clienteSeleccionado.direccion || '')
       setEditBarrio(clienteSeleccionado.barrio || '')
     }
+    /* eslint-enable react-hooks/set-state-in-effect */
     // eslint-disable-next-line react-hooks/exhaustive-deps -- ver nota arriba
   }, [negocioData, clienteSeleccionado?.id])
 
   useEffect(() => {
     if (!clienteSeleccionado?.id) {
+      // Parte del mismo efecto de fetch abortable (fiado-status) que
+      // sigue abajo — no aislable de forma segura al render.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setFiadosStatus(null)
       return
     }
@@ -343,12 +354,16 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
 
   useEffect(() => {
     if (!pedidoInicial) return
+    /* eslint-disable react-hooks/set-state-in-effect */
     setCanal(pedidoInicial.canal)
     setObservaciones(pedidoInicial.obs || '')
     setSoloParaEstePedido(false)
     if (pedidoInicial.cliente) {
       setClienteSeleccionado(pedidoInicial.cliente as Cliente)
     }
+    /* eslint-enable react-hooks/set-state-in-effect */
+    // Puebla el form desde pedidoInicial (keyed en .id, ver revalidación
+    // con red más abajo en este mismo efecto).
     // Revalidación silenciosa de campos de despacho para pedido NUEVO con
     // cliente pre-seleccionado (deep-link ?new=1&clienteId=... desde
     // /clientes). El cliente pudo venir de un caché de hasta 60s

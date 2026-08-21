@@ -125,6 +125,9 @@ export function RepartidorClient({ trabajador, embarque: initialEmbarque, userRo
   }, [])
 
   useEffect(() => {
+    // Lectura de IndexedDB (Dexie) al montar — side effect real, no
+    // derivable durante el render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     updatePendingCount()
     const interval = setInterval(updatePendingCount, 5000)
     return () => clearInterval(interval)
