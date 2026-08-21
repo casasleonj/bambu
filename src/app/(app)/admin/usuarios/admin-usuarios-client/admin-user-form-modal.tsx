@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Modal } from '@/components/modal'
 import type { AdminUser } from './types'
 
@@ -31,8 +31,15 @@ export function AdminUserFormModal({
   const [password, setPassword] = useState('')
   const [formError, setFormError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [prevUser, setPrevUser] = useState(user)
+  const [prevOpen, setPrevOpen] = useState(open)
 
-  useEffect(() => {
+  // Reinicia el form cuando cambia el usuario a editar o se reabre el modal.
+  // Se hace durante el render (no en un efecto) para evitar setState
+  // síncrono en efecto — ver https://react.dev/learn/you-might-not-need-an-effect
+  if (user !== prevUser || open !== prevOpen) {
+    setPrevUser(user)
+    setPrevOpen(open)
     if (!user) {
       setIsCreate(true)
       setNombre('')
@@ -51,7 +58,7 @@ export function AdminUserFormModal({
       setPassword('')
     }
     setFormError('')
-  }, [user, open])
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

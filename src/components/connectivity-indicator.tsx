@@ -40,6 +40,11 @@ export function ConnectivityIndicator() {
   const { status: sseStatus, disabled: realtimeDisabled } = useRealtimeStatus()
 
   useEffect(() => {
+    // Bandera de hidratación SSR-safe: no se puede derivar durante el
+    // render (el primer render de cliente debe coincidir con el del
+    // servidor). navigator.onLine tampoco existe en el servidor. Ver
+    // convención ya establecida en use-shallow-search-params.ts.
+    /* eslint-disable-next-line react-hooks/set-state-in-effect */
     setMounted(true)
     setOnline(isOnline())
   }, [])
@@ -130,6 +135,11 @@ export function ConnectivityIndicator() {
   }, [mounted, doSync, isPlaywright])
 
   useEffect(() => {
+    // Patrón de evento derivado (reaccionar a la transición offline→online
+    // para disparar un sync) — no es derivable durante el render porque
+    // dispara side effects de red, ver
+    // https://react.dev/learn/you-might-not-need-an-effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (mounted && online && !isPlaywright) doSync()
   }, [online, isPlaywright]) // eslint-disable-line react-hooks/exhaustive-deps
 

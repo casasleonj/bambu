@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Modal } from '@/components/modal'
 import type { TrabajadorFormData } from './types'
 import { rolOptions, rolLabels, tipoPagoOptions, tipoPagoLabels } from './types'
@@ -23,11 +23,17 @@ export function TrabajadorFormModal({
   const [formData, setFormData] = useState<TrabajadorFormData>(initialData)
   const [formError, setFormError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [prevInitialData, setPrevInitialData] = useState(initialData)
+  const [prevOpen, setPrevOpen] = useState(open)
 
-  useEffect(() => {
+  // Reinicia el form durante el render cuando cambia initialData/open, en
+  // vez de en un efecto — ver https://react.dev/learn/you-might-not-need-an-effect
+  if (initialData !== prevInitialData || open !== prevOpen) {
+    setPrevInitialData(initialData)
+    setPrevOpen(open)
     setFormData(initialData)
     setFormError('')
-  }, [initialData, open])
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

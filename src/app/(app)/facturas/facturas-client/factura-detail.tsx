@@ -36,6 +36,10 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono }: Fact
   const [printReady, setPrintReady] = useState(false)
 
   useEffect(() => {
+    // Bandera de hidratación SSR-safe: no se puede derivar durante el
+    // render (el primer render de cliente debe coincidir con el del
+    // servidor, que renderiza null hasta que el efecto corra).
+    /* eslint-disable-next-line react-hooks/set-state-in-effect */
     setPrintReady(true)
   }, [])
 
