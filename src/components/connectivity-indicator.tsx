@@ -76,15 +76,22 @@ export function ConnectivityIndicator() {
     }
   }, [mounted])
 
-  const doSync = useCallback(async (manual = false) => {
+  const doSync = useCallback(async () => {
     if (!mounted || !isOnline() || syncing) return
     setSyncing(true)
     try {
       const result = await syncWithServer()
       logger.info({ ...result }, 'Sync result')
-      if (manual && result.failedPermanently > 0 && !sessionStorage.getItem('bambu:dlq-notified')) {
-        toast.error(`Hay ${result.failedPermanently} cambio(s) que no se pudieron sincronizar. Revisá con el admin.`)
-        sessionStorage.setItem('bambu:dlq-notified', '1')
+      // FIX: antes solo avisaba en sync manual y una única vez por sesión
+      // (sessionStorage guard). Un rechazo permanente (ej. límite de fiado
+      // excedido en un pedido) durante el poll automático de 30s o al
+      // reconectar quedaba completamente silencioso — el usuario nunca se
+      // enteraba de que algo se perdió. `failedPermanently` ya cuenta solo
+      // los items recién movidos a DLQ EN ESTA corrida (no el acumulado),
+      // así que avisar siempre que sea > 0 no genera toasts repetidos por
+      // los mismos items.
+      if (result.failedPermanently > 0) {
+        toast.error(`Hay ${result.failedPermanently} cambio(s) que no se pudieron sincronizar. Revisá los detalles en la lista.`)
       }
     } finally {
       setSyncing(false)
@@ -214,7 +221,7 @@ export function ConnectivityIndicator() {
   const canSync = online && !syncing && pendingCount > 0
 
   const handleClick = () => {
-    if (canSync) doSync(true)
+    if (canSync) doSync()
   }
 
   // El botón es hover/clickeable SIEMPRE (aunque no haya syncing pendiente)

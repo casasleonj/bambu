@@ -294,4 +294,44 @@ describe('syncWithServer', () => {
       expect.objectContaining({ syncStatus: 'conflict' })
     )
   })
+
+  // Fix pedidos offline (post bug Aponte): un rechazo permanente (ej.
+  // límite de fiado) debe llevar el motivo real del servidor en el evento
+  // bambu:sync-item-done, para que la fila pendiente pueda mostrar POR QUÉ
+  // se rechazó en vez de simplemente desaparecer.
+  it('4xx: el evento bambu:sync-item-done lleva el reason del error real del server', async () => {
+    const req = {
+      id: 1,
+      url: '/api/pedidos',
+      method: 'POST',
+      body: '{}',
+      offlineId: 'local-fiado-1',
+      localEndpoint: 'crear-pedido',
+      createdAt: new Date(),
+      attempts: 0,
+    }
+    mockOrderByToArray(mockDb.requestQueue, [req])
+    mockWhereFirst(mockDb.pedidos, undefined)
+    mockWhereFirst(mockDb.clientes, undefined)
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: async () => ({ error: { message: 'El cliente ya debe 3 pedidos fiados' } }),
+    })
+
+    const events: CustomEvent[] = []
+    const handler = (e: Event) => events.push(e as CustomEvent)
+    window.addEventListener('bambu:sync-item-done', handler)
+
+    await syncWithServer()
+
+    window.removeEventListener('bambu:sync-item-done', handler)
+    expect(events).toHaveLength(1)
+    expect(events[0].detail).toEqual({
+      offlineId: 'local-fiado-1',
+      localEndpoint: 'crear-pedido',
+      status: 'dlq',
+      reason: 'El cliente ya debe 3 pedidos fiados',
+    })
+  })
 })

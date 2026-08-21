@@ -103,6 +103,86 @@ interface PedidoTableProps {
   onDetail: (pedido: Pedido) => void
   onCambiarEstado: (id: string, nuevoEstado: string) => void
   onCreateClick: () => void
+  /** Descarta un pedido offline que el server rechazó permanentemente
+   *  (ej. límite de fiado excedido). Opcional: solo se usa si hay filas
+   *  pendientes fallidas en `pedidos`. */
+  onDiscardFailed?: (offlineId: string) => void
+}
+
+function pedidoItemsResumen(pedido: Pedido): string {
+  const items = getItemsFromPedido(pedido)
+  if (items.length === 0) return 'Sin productos'
+  return items.map((i) => `${i.cantPedido} ${getProductoIconConfig(i.producto).label ?? i.producto}`).join(', ')
+}
+
+function PendingPedidoDesktopRow({ pedido, onDiscardFailed }: { pedido: Pedido; onDiscardFailed?: (offlineId: string) => void }) {
+  const failed = pedido._pendingFailed
+  return (
+    <tr className={failed ? 'bg-red-50/60' : 'bg-amber-50/60'}>
+      <td className="px-4 py-3 text-sm text-gray-400" colSpan={2}>
+        <div className="font-medium text-gray-700">{pedido.nombreCli}</div>
+        <div className="text-xs text-gray-500">{pedidoItemsResumen(pedido)}</div>
+      </td>
+      <td className="px-4 py-3" colSpan={5}>
+        {failed ? (
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs font-medium text-red-700">
+              No se pudo crear: {pedido._pendingFailReason || 'motivo desconocido'}
+            </span>
+            {pedido._pendingOfflineId && onDiscardFailed && (
+              <button
+                onClick={() => onDiscardFailed(pedido._pendingOfflineId!)}
+                className="text-xs font-semibold text-red-700 hover:text-red-900 px-2 py-1 rounded hover:bg-red-100 transition shrink-0"
+              >
+                Descartar
+              </button>
+            )}
+          </div>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+            <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            Sin conexión — guardado en el celular, se creará al recuperar la señal
+          </span>
+        )}
+      </td>
+    </tr>
+  )
+}
+
+function PendingPedidoMobileCard({ pedido, onDiscardFailed }: { pedido: Pedido; onDiscardFailed?: (offlineId: string) => void }) {
+  const failed = pedido._pendingFailed
+  return (
+    <div className={`p-4 border rounded-lg border-dashed ${failed ? 'bg-red-50/60 border-red-200' : 'bg-amber-50/60 border-amber-200'}`}>
+      <div className="font-medium text-gray-700 text-sm">{pedido.nombreCli}</div>
+      <div className="text-xs text-gray-500 mb-2">{pedidoItemsResumen(pedido)}</div>
+      {failed ? (
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-medium text-red-700">
+            No se pudo crear: {pedido._pendingFailReason || 'motivo desconocido'}
+          </span>
+          {pedido._pendingOfflineId && onDiscardFailed && (
+            <button
+              onClick={() => onDiscardFailed(pedido._pendingOfflineId!)}
+              className="text-xs font-semibold text-red-700 hover:text-red-900 px-2 py-1 rounded hover:bg-red-100 transition shrink-0"
+            >
+              Descartar
+            </button>
+          )}
+        </div>
+      ) : (
+        <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+          <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          Sincronizando…
+        </span>
+      )}
+    </div>
+  )
 }
 
 function DesktopRow({
@@ -411,9 +491,14 @@ export function PedidoTable({
   onDetail,
   onCambiarEstado,
   onCreateClick,
+  onDiscardFailed,
 }: PedidoTableProps) {
   const rowProps = { updatingId, userRole, renderOrigenBadge, renderEstadoEntregaBadge, renderEstadoPagoBadge, getAlertasPedido, tieneFiado, onDetail, onCambiarEstado }
-  const { pinned, unpinned } = splitPinned(pedidos)
+  // Filas pendientes (offline, sin id/numero real de servidor): se excluyen
+  // de splitPinned (no participan de la sección "con horario preferido") y
+  // se renderizan aparte, siempre arriba.
+  const pendingRows = pedidos.filter(p => p._pendingSync)
+  const { pinned, unpinned } = splitPinned(pedidos.filter(p => !p._pendingSync))
 
   function renderPinnedRows() {
     if (pinned.length === 0) return null
@@ -431,7 +516,7 @@ export function PedidoTable({
   function renderMobileSections() {
     const sections: Array<{ label: string; items: Pedido[] }> = []
     if (pinned.length > 0) sections.push({ label: `Con horario preferido (${pinned.length})`, items: pinned })
-    sections.push({ label: `Sin horario (${pedidos.length - pinned.length})`, items: unpinned })
+    sections.push({ label: `Sin horario (${unpinned.length})`, items: unpinned })
     return sections
   }
 
@@ -498,6 +583,9 @@ export function PedidoTable({
               </tr>
             ) : (
               <>
+                {pendingRows.map((pedido) => (
+                  <PendingPedidoDesktopRow key={pedido.id} pedido={pedido} onDiscardFailed={onDiscardFailed} />
+                ))}
                 {renderPinnedRows()}
                 {unpinned.map((pedido) => (
                   <DesktopRow key={pedido.id} pedido={pedido} {...rowProps} />
@@ -518,16 +606,25 @@ export function PedidoTable({
             onAction={onCreateClick}
           />
         ) : (
-          renderMobileSections().map((section) => (
-            <div key={section.label} className="space-y-3">
-              <MobileSectionHeader label={section.label} />
-              {section.items.map((pedido) => (
-                <div key={pedido.id} className="bg-white border border-gray-200 rounded-lg shadow-sm">
-                  <MobileCard pedido={pedido} {...rowProps} />
-                </div>
-              ))}
-            </div>
-          ))
+          <>
+            {pendingRows.length > 0 && (
+              <div className="space-y-3">
+                {pendingRows.map((pedido) => (
+                  <PendingPedidoMobileCard key={pedido.id} pedido={pedido} onDiscardFailed={onDiscardFailed} />
+                ))}
+              </div>
+            )}
+            {(pinned.length > 0 || unpinned.length > 0) && renderMobileSections().map((section) => (
+              <div key={section.label} className="space-y-3">
+                <MobileSectionHeader label={section.label} />
+                {section.items.map((pedido) => (
+                  <div key={pedido.id} className="bg-white border border-gray-200 rounded-lg shadow-sm">
+                    <MobileCard pedido={pedido} {...rowProps} />
+                  </div>
+                ))}
+              </div>
+            ))}
+          </>
         )}
       </div>
     </div>

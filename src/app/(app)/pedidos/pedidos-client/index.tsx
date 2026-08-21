@@ -28,7 +28,9 @@ import { getPresetDate, getTodayString, buildDateRangeFilter, getTodayRange } fr
 import { usePedidos } from '@/hooks/use-pedidos'
 import { usePedidosCounts } from '@/hooks/use-pedidos-counts'
 import { LIMITE_FIADOS_DEFAULT } from '@/lib/constants'
-import { useCrearPedido } from '@/hooks/use-crear-pedido'
+import { useCrearPedido, type CrearPedidoPayload } from '@/hooks/use-crear-pedido'
+import { offlineDb } from '@/lib/db/offline'
+import { SYNC_ITEM_DONE_EVENT } from '@/lib/db/sync'
 import { useAnularPedido } from '@/hooks/use-anular-pedido'
 import { useCancelarPedido } from '@/hooks/use-cancelar-pedido'
 import { useAsignarEmbarque } from '@/hooks/use-asignar-embarque'
@@ -47,6 +49,67 @@ interface PedidosClientProps {
    *  before usePedidos hook returns data. Se elimina el waterfall de API calls
    *  iniciales y reduce cold starts. */
   initialPedidos?: Pedido[]
+}
+
+/**
+ * Construye una fila optimista para un pedido creado offline (aun en
+ * requestQueue, sin id ni numero real de servidor). Mismo patrón que
+ * buildPendingCliente en clientes-client/index.tsx (bug Aponte) — sin esto,
+ * el pedido no deja rastro visible hasta sincronizar y el usuario asume
+ * que no se guardó.
+ */
+function buildPendingPedido(offlineId: string, payload: CrearPedidoPayload, clienteNombre: string): Pedido {
+  return {
+    id: `offline-${offlineId}`,
+    numero: 0,
+    clienteId: payload.clienteId || '',
+    negocioId: payload.negocioId,
+    nombreCli: clienteNombre,
+    apellidoCli: null,
+    telefonoCli: '',
+    zonaCli: '',
+    barrioCli: '',
+    tipo: payload.canal === 'PUNTO' ? 'PUNTO' : 'ENVIO',
+    canal: payload.canal,
+    estado: 'PENDIENTE',
+    origen: payload.ventaRapida ? 'VENTA_RAPIDA' : 'PEDIDO',
+    estadoEntrega: 'PENDIENTE',
+    estadoPago: 'PENDIENTE',
+    items: (payload.items || []).map(i => ({
+      producto: i.producto,
+      cantPedido: i.cantidad,
+      cantEntrega: 0,
+      precio: 0,
+      subtotal: 0,
+    })),
+    cPacaAguaPed: 0, cPacaHieloPed: 0, cBotellonFabPed: 0, cBotellonDomPed: 0, cBolsaAguaPed: 0, cBolsaHieloPed: 0,
+    cPacaAguaEnt: 0, cPacaHieloEnt: 0, cBotellonFabEnt: 0, cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0,
+    precioPacaAgua: 0, precioPacaHielo: 0, precioBotellonFab: 0, precioBotellonDom: 0, precioBolsaAgua: 0, precioBolsaHielo: 0,
+    totalPagado: 0,
+    total: 0,
+    saldo: 0,
+    fecha: new Date().toISOString(),
+    _pendingSync: true,
+    _pendingOfflineId: offlineId,
+  }
+}
+
+/** Lee requestQueue y reconstruye las filas pendientes de "crear-pedido". */
+async function loadPendingPedidosFromQueue(clientes: Cliente[]): Promise<Pedido[]> {
+  const items = await offlineDb.requestQueue.where('localEndpoint').equals('crear-pedido').toArray()
+  return items.map((item) => {
+    let payload: CrearPedidoPayload
+    try {
+      payload = JSON.parse(item.body)
+    } catch {
+      payload = { clienteId: '', canal: 'DOMICILIO', items: [] }
+    }
+    const clienteNombre =
+      payload.clienteNuevo?.nombre ??
+      clientes.find(c => c.id === payload.clienteId)?.nombre ??
+      'Cliente'
+    return buildPendingPedido(item.offlineId, payload, clienteNombre)
+  })
 }
 
 export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
@@ -69,6 +132,50 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [preciosActuales, setPreciosActuales] = useState<Record<string, { precio: number; origen: string }>>({})
   const [clientes, setClientes] = useState<Cliente[]>([])
+
+  // Pedidos creados offline (2G/3G rural) que siguen encolados en IndexedDB
+  // esperando sync. Mismo mecanismo que clientes-client/index.tsx (bug
+  // Aponte): sin esto, el pedido no aparece en la lista hasta sincronizar y
+  // el usuario asume que no se guardó — con el riesgo agravado de que el
+  // modal quedaba abierto invitando a un doble-submit real (pedido pagado
+  // duplicado). Se reconstruyen desde requestQueue al montar (sobreviven a
+  // un refresh) y se reconcilian con el evento bambu:sync-item-done.
+  const [pendingPedidos, setPendingPedidos] = useState<Pedido[]>([])
+  const clientesLoadedRef = useRef(false)
+
+  useEffect(() => {
+    let cancelled = false
+    loadPendingPedidosFromQueue(clientes)
+      .then((rows) => { if (!cancelled) setPendingPedidos(rows) })
+      .catch((error) => {
+        console.warn('[pendingPedidos] error leyendo requestQueue', error)
+      })
+    return () => { cancelled = true }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cuando `clientes` pasa de vacío a poblado, re-resolvemos los nombres de
+  // las filas pendientes que hayan quedado con el fallback genérico
+  // 'Cliente' (reconstruidas antes de que fetchClientes() terminara).
+  useEffect(() => {
+    if (clientesLoadedRef.current || clientes.length === 0) return
+    clientesLoadedRef.current = true
+    setPendingPedidos((prev) => {
+      if (prev.length === 0) return prev
+      return prev.map((p) => {
+        if (!p._pendingOfflineId || p.nombreCli !== 'Cliente') return p
+        const nombre = clientes.find(c => c.id === p.clienteId)?.nombre
+        return nombre ? { ...p, nombreCli: nombre } : p
+      })
+    })
+  }, [clientes])
+
+  const discardFailedPedido = useCallback((offlineId: string) => {
+    setPendingPedidos((prev) => prev.filter((p) => p._pendingOfflineId !== offlineId))
+    void offlineDb.failedItems.where('offlineId').equals(offlineId).delete().catch((error) => {
+      console.warn('[pendingPedidos] error descartando failedItem', error)
+    })
+  }, [])
+
   const [embarques, setEmbarques] = useState<Embarque[]>([])
   const [showEmbarqueModal, setShowEmbarqueModal] = useState(false)
   const [selectedPedidoForEmbarque, setSelectedPedidoForEmbarque] = useState<string | null>(null)
@@ -311,6 +418,38 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       await fallbackRefetch()
     }
   }, [cacheActive, loadAllPedidos, fallbackRefetch])
+
+  // Reconcilia las filas pendientes (offline) contra el resultado real del
+  // sync. Declarado después de refreshPedidos/refetchFiados/refetchAlertas/
+  // refetchCounts (no antes: son useCallback con deps propias, referenciarlos
+  // en el array de deps de este efecto antes de su declaración sería un
+  // acceso en temporal dead zone).
+  useEffect(() => {
+    function handleSyncItemDone(e: Event) {
+      const detail = (e as CustomEvent<{ offlineId: string; localEndpoint: string; status: string; reason?: string }>).detail
+      if (!detail || detail.localEndpoint !== 'crear-pedido') return
+      if (detail.status === 'dlq') {
+        // Rechazo permanente (ej. límite de fiado excedido): NO desaparece
+        // en silencio — se marca como fallido con el motivo real del
+        // servidor, y el usuario decide si reintenta o descarta.
+        setPendingPedidos((prev) => prev.map((p) =>
+          p._pendingOfflineId === detail.offlineId
+            ? { ...p, _pendingFailed: true, _pendingFailReason: detail.reason || 'No se pudo crear el pedido.' }
+            : p
+        ))
+        return
+      }
+      setPendingPedidos((prev) => prev.filter((p) => p._pendingOfflineId !== detail.offlineId))
+      if (detail.status === 'synced' || detail.status === 'conflict') {
+        refreshPedidos()
+        refetchFiados()
+        refetchAlertas()
+        refetchCounts()
+      }
+    }
+    window.addEventListener(SYNC_ITEM_DONE_EVENT, handleSyncItemDone)
+    return () => window.removeEventListener(SYNC_ITEM_DONE_EVENT, handleSyncItemDone)
+  }, [refreshPedidos, refetchFiados, refetchAlertas, refetchCounts])
 
   // Polling: refetch active tab dataset + counts every 60s.
   // Fiados/alertas datasets are lazy-loaded and only polled when their tab is active.
@@ -611,6 +750,22 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       refetchCounts()
       fetchClientes()
     },
+    onOffline: ({ localId, payload }) => {
+      // Antes: el modal se quedaba abierto con el botón reactivado, sin
+      // ninguna fila visible en la lista — el usuario asumía que el pedido
+      // no se guardó y podía reenviar el mismo form (pedido duplicado real,
+      // con cobro real). Ahora: cerramos el modal igual que en un submit
+      // exitoso, y la fila pendiente queda visible arriba de la lista.
+      const clienteNombre =
+        payload.clienteNuevo?.nombre ??
+        clientes.find(c => c.id === payload.clienteId)?.nombre ??
+        'Cliente'
+      setPendingPedidos((prev) => [...prev, buildPendingPedido(localId, payload, clienteNombre)])
+      setShowModal(false)
+      setShowVentaRapida(false)
+      setPedidoInicial(undefined)
+      setPedidoEditando(null)
+    },
   })
 
   const { anular: anularPedido } = useAnularPedido({
@@ -745,6 +900,24 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       p.numero.toString().includes(term)
     )
   }, [pedidosSinSearch, search])
+
+  // Filas pendientes (offline, aun en requestQueue) filtradas por el mismo
+  // término de búsqueda, prependeadas a la vista principal "hoy". No se
+  // inyectan en pedidosSinSearch/pedidosSource: esas listas alimentan
+  // filtros de fecha/tipo/estado y un pending item no tiene esos campos
+  // reales — se agregan después de todo el filtrado, como en clientes.
+  const pendingPedidosVisibles = useMemo(() => {
+    if (!search) return pendingPedidos
+    const term = search.toLowerCase()
+    return pendingPedidos.filter((p) =>
+      p.nombreCli?.toLowerCase().includes(term) || p.telefonoCli?.includes(search)
+    )
+  }, [pendingPedidos, search])
+
+  const pedidosVisiblesConPendientes = useMemo(
+    () => (pendingPedidosVisibles.length > 0 ? [...pendingPedidosVisibles, ...pedidosVisibles] : pedidosVisibles),
+    [pendingPedidosVisibles, pedidosVisibles],
+  )
 
   const hoyStr = useMemo(() => getTodayString(), [])
   const stats = useMemo(() => {
@@ -1460,7 +1633,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
         )
       })()}
       {activeTab === 'hoy' && !atrasadosParam && !enRiesgoParam && (
-        !hasLoadedOnce && loading && pedidosVisibles.length === 0 ? (
+        !hasLoadedOnce && loading && pedidosVisiblesConPendientes.length === 0 ? (
           <div className="space-y-4">
             {Array.from({ length: 4 }).map((_, i) => (
               <SkeletonCard key={i} />
@@ -1468,7 +1641,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
           </div>
         ) : (
           <PedidoTable
-            pedidos={pedidosVisibles}
+            pedidos={pedidosVisiblesConPendientes}
             updatingId={updatingId}
             hasActiveFilters={hasActiveFilters}
             hasDateFilter={hasDateFilter}
@@ -1481,6 +1654,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
             onDetail={handleDetail}
             onCambiarEstado={cambiarEstado}
             onCreateClick={() => setShowModal(true)}
+            onDiscardFailed={discardFailedPedido}
           />
         )
       )}
