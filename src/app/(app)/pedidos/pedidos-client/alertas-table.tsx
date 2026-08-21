@@ -3,8 +3,8 @@
 import { useState, useMemo, useEffect } from 'react'
 import { calcularAlertas, REGLAS_ALERTAS } from './alertas-utils'
 import { GuiaAlertaModal } from '@/components/guia-alerta-modal'
-import { CasoGuiaModal } from '@/components/caso-guia-modal'
-import type { AlertaTipo, AlertaItem } from '@/lib/alertas-config'
+import { CasoGuiaModal, type Caso } from '@/components/caso-guia-modal'
+import type { AlertaTipo, AlertaItem, SeveridadAlerta } from '@/lib/alertas-config'
 import { ignorarAlerta, getGuiaAlerta } from '@/lib/alertas-config'
 import type { Pedido } from './types'
 
@@ -31,7 +31,7 @@ export function AlertasTable({
   const [guiaContexto, setGuiaContexto] = useState<{ pedidoId?: string; clienteId?: string }>({})
   const [reglasOpen, setReglasOpen] = useState(false)
   const [creandoCaso, setCreandoCaso] = useState<string | null>(null)
-  const [casoCreado, setCasoCreado] = useState<any>(null)
+  const [casoCreado, setCasoCreado] = useState<(Caso & { status: string; descripcion?: string }) | null>(null)
   const [usuarios, setUsuarios] = useState<Array<{ id: string; username: string; rol: string }>>([])
 
   useEffect(() => {
@@ -44,8 +44,8 @@ export function AlertasTable({
             .then(d => {
               if (d.success) {
                 const users = d.trabajadores
-                  .filter((t: any) => t.userId)
-                  .map((t: any) => ({ id: t.userId, username: t.nombre, rol: t.rol }))
+                  .filter((t: { userId?: string; nombre: string; rol: string }) => t.userId)
+                  .map((t: { userId?: string; nombre: string; rol: string }) => ({ id: t.userId, username: t.nombre, rol: t.rol }))
                 setUsuarios(users)
               }
             })
@@ -255,7 +255,7 @@ export function AlertasTable({
           />
           <select
             value={filtroSeveridad}
-            onChange={(e) => setFiltroSeveridad(e.target.value as any)}
+            onChange={(e) => setFiltroSeveridad(e.target.value as 'TODAS' | 'ALTA' | 'MEDIA' | 'BAJA')}
             className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
           >
             <option value="TODAS">Todas las severidades</option>
@@ -456,7 +456,7 @@ export function AlertasTable({
       {casoCreado && (
         <CasoGuiaModal
           caso={casoCreado}
-          contextData={casoCreado.alertaTipo ? getContextData(casoCreado.clienteId || '', { tipo: casoCreado.alertaTipo, severidad: casoCreado.severidad, detalle: casoCreado.descripcion || '', fecha: new Date().toISOString(), pedidoId: casoCreado.pedidoId }) : undefined}
+          contextData={casoCreado.alertaTipo ? getContextData(casoCreado.clienteId || '', { tipo: casoCreado.alertaTipo as AlertaTipo, severidad: casoCreado.severidad as SeveridadAlerta, detalle: casoCreado.descripcion || '', fecha: new Date().toISOString(), pedidoId: casoCreado.pedidoId ?? undefined }) : undefined}
           usuarios={usuarios}
           onClose={() => setCasoCreado(null)}
           onStatusChange={handleStatusChange}

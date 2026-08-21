@@ -843,7 +843,11 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
         }
       } else {
         // Create uses the hook
-        const result = await crearPedido(data as any)
+        // PedidoUnifiedData.clienteId es opcional (venta rápida sin cliente
+        // aún no valida contra CONSUMIDOR_FINAL en el tipo del form), pero
+        // CrearPedidoPayload lo exige -- el servidor resuelve/crea el
+        // canónico si falta (ver CrearPedidoUseCase lookup-or-create).
+        const result = await crearPedido(data as unknown as CrearPedidoPayload)
         if (!result) return
         setShowModal(false)
         setShowVentaRapida(false)
@@ -1459,7 +1463,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
             <button
               key={tab.key}
               data-testid={`tab-${tab.key}`}
-              onClick={() => setActiveTab(tab.key as any)}
+              onClick={() => setActiveTab(tab.key as 'hoy' | 'fiados' | 'alertas')}
               className={`px-4 py-2.5 text-sm font-medium border-b-2 transition ${
                 activeTab === tab.key
                   ? 'border-blue-600 text-blue-600'
@@ -2011,7 +2015,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
                           <div className="flex items-center gap-2 flex-wrap">
                             <Icon size={20} />
                             <span className="text-sm font-medium">{meta.label}</span>
-                            {(item as any).precioOrigen === 'manual' && (
+                            {(item as { precioOrigen?: string }).precioOrigen === 'manual' && (
                               <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-medium">manual</span>
                             )}
                             {showDiff && (
@@ -2227,7 +2231,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
         // defensivo si por algún motivo el cliente no está en la lista.
         const clienteRaw = clientes.find(c => c.id === pedidoEditando.clienteId)
         const itemsArray = pedidoEditando.items && pedidoEditando.items.length > 0
-          ? pedidoEditando.items.map((i: any) => ({
+          ? pedidoEditando.items.map((i) => ({
               producto: i.producto,
               cantidad: i.cantPedido,
               precioManual: i.precioOrigen === 'manual' ? Number(i.precio) : undefined,

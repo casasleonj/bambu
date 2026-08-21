@@ -15,11 +15,11 @@ import { resolverPrecio } from '@/lib/pricing'
 import { calcularEstadoPago } from '@/lib/pedido-utils'
 import { getNextNumero } from '@/lib/sequence'
 import type { CerrarEmbarqueInput } from '../../application/dto'
-import type { MetodoPago } from '@prisma/client'
+import type { MetodoPago, PrismaClient } from '@prisma/client'
 
 type TxOrPrisma = {
   $queryRaw: (query: TemplateStringsArray, ...values: unknown[]) => Promise<unknown[]>
-  [model: string]: any
+  [model: string]: unknown
 }
 
 export class CrearVentasLibresService {
@@ -51,11 +51,11 @@ export class CrearVentasLibresService {
 
       const botellonCant = (venta.cBotellonFab || 0) + (venta.cBotellonDom || 0)
       const [precioAgua, precioHielo, precioBot, precioBolAgua, precioBolHielo] = await Promise.all([
-        resolverPrecio('PACA_AGUA', venta.cPacaAgua || 0, 'DOMICILIO', null, null, client as any),
-        resolverPrecio('PACA_HIELO', venta.cPacaHielo || 0, 'DOMICILIO', null, null, client as any),
-        resolverPrecio('BOTELLON', botellonCant, 'DOMICILIO', null, null, client as any),
-        resolverPrecio('BOLSA_AGUA', venta.cBolsaAgua || 0, 'DOMICILIO', null, null, client as any),
-        resolverPrecio('BOLSA_HIELO', venta.cBolsaHielo || 0, 'DOMICILIO', null, null, client as any),
+        resolverPrecio('PACA_AGUA', venta.cPacaAgua || 0, 'DOMICILIO', null, null, client as unknown as PrismaClient),
+        resolverPrecio('PACA_HIELO', venta.cPacaHielo || 0, 'DOMICILIO', null, null, client as unknown as PrismaClient),
+        resolverPrecio('BOTELLON', botellonCant, 'DOMICILIO', null, null, client as unknown as PrismaClient),
+        resolverPrecio('BOLSA_AGUA', venta.cBolsaAgua || 0, 'DOMICILIO', null, null, client as unknown as PrismaClient),
+        resolverPrecio('BOLSA_HIELO', venta.cBolsaHielo || 0, 'DOMICILIO', null, null, client as unknown as PrismaClient),
       ])
 
       const totalVenta =

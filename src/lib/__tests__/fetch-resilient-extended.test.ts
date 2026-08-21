@@ -7,7 +7,7 @@ beforeEach(() => {
   vi.restoreAllMocks()
   // Limpiar queue entre tests
   vi.spyOn(offlineDb.requestQueue, 'count').mockResolvedValue(0)
-  vi.spyOn(offlineDb.requestQueue, 'add').mockResolvedValue(undefined as any)
+  vi.spyOn(offlineDb.requestQueue, 'add').mockResolvedValue(undefined as unknown as number)
 })
 
 describe('fetchResilient — comportamiento offline', () => {
@@ -29,7 +29,7 @@ describe('fetchResilient — comportamiento offline', () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({ data: 'success' }),
-    } as any)
+    } as unknown as Response)
 
     const { fetchResilient } = await import('@/lib/fetch-resilient')
     const result = await fetchResilient('/api/pedidos', {
@@ -46,7 +46,7 @@ describe('fetchResilient — comportamiento offline', () => {
       ok: false,
       status: 400,
       json: () => Promise.resolve({ error: 'Bad Request' }),
-    } as any)
+    } as unknown as Response)
 
     const { fetchResilient } = await import('@/lib/fetch-resilient')
     const result = await fetchResilient('/api/pedidos', {
@@ -63,7 +63,7 @@ describe('fetchResilient — comportamiento offline', () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({ data: 'ok' }),
-    } as any)
+    } as unknown as Response)
 
     const { fetchResilient } = await import('@/lib/fetch-resilient')
     const myOfflineId = 'test-offline-id-123'
@@ -75,8 +75,8 @@ describe('fetchResilient — comportamiento offline', () => {
     })
 
     // El body enviado al server debe incluir el offlineId
-    const fetchMock = global.fetch as any
-    const sentBody = JSON.parse(fetchMock.mock.calls[0][1].body)
+    const fetchMock = vi.mocked(global.fetch)
+    const sentBody = JSON.parse(fetchMock.mock.calls[0][1]!.body as string)
     expect(sentBody.offlineId).toBe(myOfflineId)
   })
 })
