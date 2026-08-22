@@ -27,10 +27,17 @@ test.describe('PWA offline page', () => {
     // En producción/build este check valida el registro real.
     if (swState === 'activated' || swState === 'activating') {
       const offlineReachable = await page.evaluate(async () => {
+        // src/app/serwist/[path]/route.ts precachea /offline con
+        // `revision` (git SHA) via additionalPrecacheEntries. Serwist
+        // versiona la cache key como '/offline?__WB_REVISION__=<hash>'
+        // (ver node_modules/serwist/src/Serwist.ts:690, comentario de
+        // matchPrecache()) -- un cache.match('/offline') exacto nunca la
+        // encuentra. ignoreSearch (CacheQueryOptions estándar) es la forma
+        // correcta de buscarla sin conocer el hash de revisión exacto.
         const cacheNames = await caches.keys()
         for (const name of cacheNames) {
           const cache = await caches.open(name)
-          const response = await cache.match('/offline')
+          const response = await cache.match('/offline', { ignoreSearch: true })
           if (response) return true
         }
         return false
