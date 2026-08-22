@@ -342,6 +342,31 @@ jobs:
       - name: Run Playwright tests (shard ${{ matrix.shard }})
         run: npx playwright test --shard=${{ matrix.shard }}/${{ strategy.job-total }} --reporter=html
 
+      - name: Dump Postgres/Redis container logs and resource usage
+        # Investigación de capacidad de CI (continuación de Known Issue #25):
+        # runs-on: ubuntu-latest es 2 vCPU/7GB (docs.github.com/actions/using
+        # -github-hosted-runners/about-github-hosted-runners), y el job corre
+        # Postgres + Redis + el server Next.js + Chromium simultáneos en esa
+        # misma máquina. Los contenedores se arrancan con `docker run -d` sin
+        # ningún step que capture su stdout/stderr — hasta ahora, si Postgres
+        # rechazaba conexiones o algún proceso moría por OOM, no quedaba
+        # ningún rastro en el log de CI. `if: always()` (no solo on failure)
+        # para poder comparar corridas sanas vs. degradadas.
+        if: always()
+        run: |
+          echo "::group::docker stats (snapshot al final del run)"
+          docker stats --no-stream || true
+          echo "::endgroup::"
+          echo "::group::free -h"
+          free -h || true
+          echo "::endgroup::"
+          echo "::group::postgres container logs"
+          docker logs postgres 2>&1 | tail -300 || true
+          echo "::endgroup::"
+          echo "::group::redis container logs"
+          docker logs redis 2>&1 | tail -100 || true
+          echo "::endgroup::"
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
