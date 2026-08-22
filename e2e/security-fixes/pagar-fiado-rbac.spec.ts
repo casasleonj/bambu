@@ -32,14 +32,19 @@ test.describe('Security Fix: Pagar Fiado requiere rol ADMIN/ASISTENTE', () => {
     await loginAs(page, 'admin')
     const cliente = await createCliente(page)
 
-    // FIX: el login manual por UI (fill + click + waitForTimeout fijo) no
-    // garantizaba que la sesión de 'admin' (recién establecida arriba, para
-    // crear el cliente) ya estuviera reemplazada por la de 'sellador' antes
-    // del apiPost de abajo -- si la sesión seguía siendo 'admin', requireRole
-    // pasaba y el request caía en "sin deudas pendientes" (400) en vez de
-    // rechazarse por rol (403). csrfLogin() acepta cualquier username/password
-    // (no está limitado a los 4 roles cacheados de Role) y ya es el patrón
-    // usado para credenciales no-canónicas en loginAs() mismo.
+    // FIX (2 capas, la primera no alcanzó -- confirmado con un segundo run
+    // real de CI mostrando el mismo síntoma tras cambiar solo a csrfLogin):
+    // 1) el login manual por UI (fill + click + waitForTimeout fijo) no
+    //    garantizaba que la sesión de 'admin' (recién establecida arriba,
+    //    para crear el cliente) quedara reemplazada por la de 'sellador'.
+    // 2) csrfLogin() por sí solo tampoco alcanza cuando la page YA tiene una
+    //    cookie de sesión activa de OTRO usuario -- mismo patrón ya resuelto
+    //    en sharedPageLogin()/sharedLoginAs() (fixtures.ts), que limpian
+    //    cookies antes de loguear una identidad distinta en la misma page.
+    //    Sin esto, requireRole([ADMIN,ASISTENTE]) seguía pasando (sesión
+    //    todavía 'admin') y el request caía en "sin deudas pendientes"
+    //    (400) en vez de rechazarse por rol (403).
+    await page.context().clearCookies()
     await csrfLogin(page, 'sellador', 'sell123')
 
     const res = await apiPost(page, '/api/pedidos/pagar-fiado', {
