@@ -92,15 +92,32 @@ export async function POST(request: NextRequest) {
     // FASE 0 (ADR-CONCURRENCIA-001, §6 "Cierre"): lock por día. La clave se
     // deriva del inicio del día en Bogotá para que /api/cierre y
     // /api/cierre-dia se serialicen entre sí para el MISMO día (misma key).
-    const lockKey = startOfDayInBogota(
-      fecha ? new Date(fecha).toISOString() : new Date().toISOString(),
-    ).toISOString()
+    //
+    // FIX bug real (Known Issue #25, backlog post-#123): startOfDayInBogota/
+    // endOfDayInBogota (src/lib/date-helpers.ts) exigen un string YYYY-MM-DD
+    // plano — su propio docstring lo dice explícitamente. Este endpoint les
+    // pasaba un datetime ISO completo (`new Date(...).toISOString()`, con
+    // hora/milisegundos/"Z"), que la función concatena como
+    // `${fechaStr}T00:00:00-05:00` → produce un string con dos marcadores de
+    // timezone (ej. "...648ZT00:00:00-05:00"), un `Date` inválido, y
+    // `.toISOString()` tira `RangeError: Invalid time value`. Resultado: TODO
+    // POST /api/cierre-dia devolvía 500, con o sin `fecha` explícita —
+    // reproducido en Node y confirmado contra los logs reales de CI
+    // ("Error creating cierre: Invalid time value").
+    // Fix: convertir el instante a fecha calendario de Bogotá (YYYY-MM-DD)
+    // con el mismo patrón ya usado en src/lib/dates.ts (toLocaleDateString
+    // 'en-CA', evita el bug de "hoy en UTC" de Known Issue #17) ANTES de
+    // pasarlo a startOfDayInBogota/endOfDayInBogota.
+    const fechaBogota = (fecha ? new Date(fecha) : new Date()).toLocaleDateString('en-CA', {
+      timeZone: 'America/Bogota',
+    })
+    const lockKey = startOfDayInBogota(fechaBogota).toISOString()
 
     const cierre = await withAdvisoryLock('CIERRE', lockKey, async (tx) => {
       // Re-leer y re-validar dentro del lock
       const targetDate = fecha ? new Date(fecha) : new Date()
-      const start = startOfDayInBogota(targetDate.toISOString())
-      const end = endOfDayInBogota(targetDate.toISOString())
+      const start = startOfDayInBogota(fechaBogota)
+      const end = endOfDayInBogota(fechaBogota)
 
       const existente = await tx.cierreDia.findFirst({
         where: {
