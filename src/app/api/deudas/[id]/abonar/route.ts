@@ -7,6 +7,7 @@ import { AbonoDeudaSchema } from '@/lib/validators'
 import { ROLES } from '@/lib/constants'
 import { logger } from '@/lib/logger'
 import { apiSuccess, apiError } from '@/lib/api-response'
+import { decimalsToNumbers } from '../../serialize'
 
 export async function POST(
   request: NextRequest,
@@ -74,7 +75,7 @@ export async function POST(
       return { abono, deuda: updatedDeuda }
     })
 
-    return apiSuccess(result, 201)
+    return apiSuccess(decimalsToNumbers(result), 201)
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown'
     logger.error({ err: msg }, 'Error abonando deuda:')
