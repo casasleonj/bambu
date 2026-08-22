@@ -82,8 +82,12 @@ test.describe('2. ADMIN — acceso total', () => {
 
     const res = await apiPost(page, '/api/nomina', {
       trabajadorId: trabajador.id,
-      fechaInicio: hace7.toISOString(),
-      fechaFin: hoy.toISOString(),
+      // FIX: NominaCreateSchema exige YYYY-MM-DD (ver src/lib/validators.ts)
+      // -- toISOString() manda el datetime completo, que la regex anclada
+      // rechaza con 400. La app siempre trabajó bien; el request de este
+      // test estaba mal formado.
+      fechaInicio: hace7.toISOString().split('T')[0],
+      fechaFin: hoy.toISOString().split('T')[0],
       tipoCalculo: 'MANUAL',
       comEntregasAgua: 10000,
       comEntregasHielo: 5000,
@@ -313,8 +317,10 @@ test.describe('4. CONTADOR — acceso financiero', () => {
 
     const res = await apiPost(page, '/api/nomina', {
       trabajadorId: trabajador.id,
-      fechaInicio: hace7.toISOString(),
-      fechaFin: hoy.toISOString(),
+      // FIX: mismo motivo que el test "Crea nómina" del bloque ADMIN --
+      // NominaCreateSchema exige YYYY-MM-DD, no un datetime ISO completo.
+      fechaInicio: hace7.toISOString().split('T')[0],
+      fechaFin: hoy.toISOString().split('T')[0],
       tipoCalculo: 'MANUAL',
       comEntregasAgua: 15000,
       comEntregasHielo: 8000,
