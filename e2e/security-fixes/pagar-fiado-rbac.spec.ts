@@ -8,9 +8,13 @@ test.describe('Security Fix: Pagar Fiado requiere rol ADMIN/ASISTENTE', () => {
   })
 
   test('REPARTIDOR recibe 403 al intentar pagar fiado', async ({ page }) => {
-    await loginAs(page, 'repartidor')
+    // POST /api/clientes requiere ADMIN/ASISTENTE (ver src/app/api/clientes/route.ts) --
+    // el cliente de prueba se crea con esa sesión antes de cambiar al rol bajo prueba,
+    // para no confundir "createCliente() rechazado" con el fix bajo test.
+    await loginAs(page, 'admin')
     const cliente = await createCliente(page)
 
+    await loginAs(page, 'repartidor')
     const res = await apiPost(page, '/api/pedidos/pagar-fiado', {
       clienteId: cliente.cliente.id,
       monto: 10000,
@@ -23,6 +27,11 @@ test.describe('Security Fix: Pagar Fiado requiere rol ADMIN/ASISTENTE', () => {
   })
 
   test('SELLADOR recibe 403 al intentar pagar fiado', async ({ page }) => {
+    // Mismo motivo que el test anterior: crear el cliente como ADMIN antes
+    // de loguear como SELLADOR (que no puede crear clientes via API).
+    await loginAs(page, 'admin')
+    const cliente = await createCliente(page)
+
     // Login custom porque no hay helper
     await page.goto(`${BASE}/login`)
     await page.fill('input[placeholder="Ingrese usuario"]', 'sellador')
@@ -30,7 +39,6 @@ test.describe('Security Fix: Pagar Fiado requiere rol ADMIN/ASISTENTE', () => {
     await page.click('button[type="submit"]')
     await page.waitForTimeout(2000)
 
-    const cliente = await createCliente(page)
     const res = await apiPost(page, '/api/pedidos/pagar-fiado', {
       clienteId: cliente.cliente.id,
       monto: 10000,
