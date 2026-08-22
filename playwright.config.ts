@@ -86,6 +86,17 @@ export default defineConfig({
     // ya debe estar corriendo manualmente en la IP LAN esperada).
     reuseExistingServer: true,
     timeout: 120000,
+    // FIX (investigación de capacidad de CI, continuación de Known Issue
+    // #25): por defecto Playwright ignora el stdout del webServer
+    // (node_modules/playwright/types/test.d.ts: `stdout` default "ignore",
+    // solo `stderr` se pipea). Pino (src/lib/logger.ts) escribe a stdout
+    // por defecto (node_modules/pino/docs/api.md:628), así que cualquier
+    // logger.error()/logger.warn() de la app durante el run quedaba
+    // completamente invisible en el log de CI. Sin esto no hay forma de
+    // diagnosticar los 500 reales detrás de failures como el TypeError de
+    // createTrabajador() en deudas.spec.ts. Solo en CI (local ya se ve en
+    // la terminal de `npm run dev`, pipearlo ahí sería ruido redundante).
+    stdout: process.env.CI ? 'pipe' : 'ignore',
     env: {
       PORT: '3001',
       // Relajar el límite de conexiones SSE en tests E2E para que múltiples
