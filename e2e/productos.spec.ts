@@ -37,14 +37,21 @@ test.describe('Productos', () => {
     await priceDisplay.click()
     await page.waitForTimeout(300)
 
-    const priceInput = page.locator('input[type="number"]').first()
+    // FIX 3: input[type="number"].first() matcheaba el input de "Sobrecosto
+    // domicilio" o "Precio base" (productos-client/index.tsx:482-509) --
+    // ambos son type="number" y se renderizan ANTES que el input de edición
+    // del precio del rango en el DOM de la misma card. El test llenaba "999"
+    // en el campo equivocado; el precio del rango quedaba sin tocar y se
+    // reguardaba con su valor original. Fix: usar el data-testid específico
+    // (mismo patrón que ya funciona en productos-comprehensive.spec.ts).
+    const priceInput = page.locator('[data-testid^="price-input-"]').first()
     await expect(priceInput).toBeVisible({ timeout: 3000 })
 
     await priceInput.fill('')
     await priceInput.fill('999')
     await page.waitForTimeout(300)
 
-    const okBtn = page.locator('button:has-text("OK")').first()
+    const okBtn = page.locator('[data-testid^="price-save-"]').first()
     if (await okBtn.count() > 0) {
       await okBtn.click()
     } else {
