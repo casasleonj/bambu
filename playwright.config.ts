@@ -46,6 +46,22 @@ export default defineConfig({
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     serviceWorkers: 'block',
+    // FIX: page.request.*() (el APIRequestContext de Node usado por los
+    // helpers apiPost/apiPut/apiPatch/apiDelete de fixtures.ts, y por
+    // decenas de specs que llaman page.request.post/put/delete
+    // directamente) NO setea Origin/Referer como un fetch() real del
+    // browser -- es una limitación conocida de Playwright, no un gap de
+    // seguridad real (la UI real de la app siempre usa fetch() del browser,
+    // que sí estampa Origin correctamente). src/lib/csrf.ts's validateCsrf()
+    // sólo corre cuando NODE_ENV !== 'development' (nunca bajo `next dev`,
+    // que enmascaró esto en todos los runs de E2E hasta ahora) y rechaza
+    // con 403 cualquier POST/PUT/DELETE/PATCH sin Origin/Referer válido.
+    // extraHTTPHeaders se aplica a nivel de browser context, incluyendo
+    // page.request (confirmado: mismo Origin real que ya tendría cualquier
+    // fetch() same-origin del browser en este setup, no afecta nada más).
+    extraHTTPHeaders: {
+      origin: process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3001',
+    },
   },
 
   webServer: {
