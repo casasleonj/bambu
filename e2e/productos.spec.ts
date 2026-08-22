@@ -58,9 +58,18 @@ test.describe('Productos', () => {
     // "Impacto de cambio de precio" que exige click en "Confirmar cambio"
     // para completar el guardado real. El click en OK/Enter de arriba solo
     // abre ese modal cuando hay impacto -- no persiste el precio por sí solo.
+    // FIX 2: Locator.isVisible({timeout}) NO espera -- la opción está
+    // deprecada y documentada como ignorada (node_modules/playwright-core/
+    // types/types.d.ts: "does not wait for the element to become visible
+    // and returns immediately"). Con eso, el chequeo corría antes de que
+    // React renderizara el modal y siempre daba false. waitFor() sí hace
+    // polling real.
     const confirmarBtn = page.getByRole('button', { name: 'Confirmar cambio' })
-    if (await confirmarBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+    try {
+      await confirmarBtn.waitFor({ state: 'visible', timeout: 2000 })
       await confirmarBtn.click()
+    } catch {
+      // No hubo impacto significativo -- el precio ya se guardó directo.
     }
     await page.waitForTimeout(1500)
 
