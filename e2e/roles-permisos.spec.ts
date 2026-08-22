@@ -596,6 +596,15 @@ test.describe('7. Flujo completo: ADMIN', () => {
     })
     expect(enviarRes.ok()).toBe(true)
 
+    // FIX: cerrar exige que el EMBARQUE esté EN_RUTA -- "Transicion invalida:
+    // ABIERTO -> CERRADO. Permitidas: EN_RUTA, CANCELADO" (ver logs de
+    // src/app/api/embarques/[id]/cerrar/route.ts). /api/pedidos/[id]/enviar
+    // (arriba) solo asigna el PEDIDO al embarque; el embarque en sí sigue
+    // ABIERTO hasta despacharlo con POST /api/embarques/[id]/enviar (sin
+    // body, ver e2e/embarques-fixes.spec.ts) -- paso que faltaba en este test.
+    const enviarEmbarqueRes = await apiPost(page, `/api/embarques/${embarque.embarque.id}/enviar`, {})
+    expect(enviarEmbarqueRes.ok()).toBe(true)
+
     // FIX: CerrarEmbarqueSchema (src/lib/validators.ts) exige `productos`
     // (array `{producto, devueltas, cambios, rotas}`, min 1) -- el payload
     // mandaba devueltasAgua/devueltasHielo/rotasAgua/rotasHielo sueltos,
