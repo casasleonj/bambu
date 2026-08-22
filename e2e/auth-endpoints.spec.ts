@@ -67,6 +67,6 @@ test.describe('Auth Endpoints', () => {
     })
     expect(res.status()).toBe(400)
     const body = await res.json()
-    expect(body.error).toContain('No se requiere cambio')
+    expect(body.error.message).toContain('No se requiere cambio')
   })
 })

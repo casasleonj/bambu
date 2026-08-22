@@ -7,6 +7,7 @@ import { DeudaUpdateSchema } from '@/lib/validators'
 import { ROLES } from '@/lib/constants'
 import { logger } from '@/lib/logger'
 import { apiSuccess, apiError } from '@/lib/api-response'
+import { decimalsToNumbers } from '../serialize'
 
 export async function GET(
   _request: NextRequest,
@@ -33,7 +34,7 @@ export async function GET(
 
     if (!deuda) return apiError('Deuda no encontrada', 404)
 
-    return apiSuccess({ deuda })
+    return apiSuccess({ deuda: decimalsToNumbers(deuda) })
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching deuda:')
     return apiError('Error fetching deuda', 500)
@@ -98,10 +99,10 @@ export async function PATCH(
     // Si no hay campos para actualizar, retornar la deuda actual
     if (Object.keys(updateData).length === 0) {
       return apiSuccess({
-        deuda: {
+        deuda: decimalsToNumbers({
           ...deuda,
           trabajador: { id: '', nombre: '', rol: '' },  // incluye vacío
-        },
+        }),
       })
     }
 
@@ -141,7 +142,7 @@ export async function PATCH(
       usuarioId: userId,
     }).catch(() => {})
 
-    return apiSuccess({ deuda: updated })
+    return apiSuccess({ deuda: decimalsToNumbers(updated) })
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error updating deuda:')
     return apiError('Error actualizando deuda', 500)

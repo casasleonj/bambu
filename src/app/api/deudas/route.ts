@@ -7,6 +7,7 @@ import { DeudaCreateSchema } from '@/lib/validators'
 import { ROLES } from '@/lib/constants'
 import { logger } from '@/lib/logger'
 import { apiSuccess, apiError } from '@/lib/api-response'
+import { decimalsToNumbers } from './serialize'
 
 export async function GET(request: NextRequest) {
   // FIX CRITICAL (C-SEC-5): Only ADMIN/CONTADOR can read deudas
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    return apiSuccess({ deudas })
+    return apiSuccess({ deudas: decimalsToNumbers(deudas) })
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching deudas:')
     return apiError('Error fetching deudas', 500)
@@ -95,7 +96,7 @@ export async function POST(request: NextRequest) {
       return deuda
     })
 
-    return apiSuccess({ deuda: result }, 201)
+    return apiSuccess({ deuda: decimalsToNumbers(result) }, 201)
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown'
     logger.error({ err: msg }, 'Error creating deuda:')

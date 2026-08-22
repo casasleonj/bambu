@@ -7,7 +7,12 @@ import { userCan, type Permission } from "./permissions";
 
 export async function requireAuth() {
   const session = await auth();
-  if (!session) {
+  // CVE-2026-73421: Auth.js <=5.0.0-beta.31 puede devolver un objeto de
+  // error de configuración (truthy) en vez de null cuando falta una env var
+  // (ej. AUTH_SECRET) o un provider está mal configurado. `if (!session)`
+  // no lo detecta porque el objeto de error existe; hay que exigir
+  // session.user.id explícitamente.
+  if (!session?.user?.id) {
     return apiError("No autorizado", 401);
   }
 
@@ -43,7 +48,8 @@ export async function requireAuth() {
  */
 export async function requireAuthWithoutMustChangePassword() {
   const session = await auth();
-  if (!session) {
+  // CVE-2026-73421: ver nota en requireAuth().
+  if (!session?.user?.id) {
     return apiError("No autorizado", 401);
   }
   return session;
@@ -57,7 +63,8 @@ export async function requireAuthWithoutMustChangePassword() {
  */
 export async function requireRole(role: Role | Role[], existingSession?: Session | null) {
   const session = existingSession || await auth();
-  if (!session) {
+  // CVE-2026-73421: ver nota en requireAuth().
+  if (!session?.user?.id) {
     return apiError("No autorizado", 401);
   }
 
@@ -79,7 +86,8 @@ export async function requireRole(role: Role | Role[], existingSession?: Session
  */
 export async function requirePermission(permission: Permission, existingSession?: Session | null) {
   const session = existingSession || await auth();
-  if (!session) {
+  // CVE-2026-73421: ver nota en requireAuth().
+  if (!session?.user?.id) {
     return apiError("No autorizado", 401);
   }
 
