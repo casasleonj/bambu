@@ -28,8 +28,15 @@ export function validateCsrf(req: NextRequest): NextResponse | null {
     return null
   }
 
+  // FIX: hardcodear "https" acá rompía todo POST/PUT/DELETE/PATCH en
+  // cualquier entorno servido por HTTP directo (CI, producción sin TLS
+  // termination visible) — el Origin real nunca podía matchear. Mismo
+  // fallback que Auth.js ya usa (node_modules/@auth/core/lib/utils/env.js):
+  // x-forwarded-proto (seteado por Vercel/proxies TLS-terminating) primero,
+  // el protocolo real de la request después.
+  const scheme = req.headers.get('x-forwarded-proto') || req.nextUrl.protocol.replace(':', '')
   const allowedOrigins = [
-    `https://${host}`,
+    `${scheme}://${host}`,
     ...(process.env.ALLOWED_ORIGINS?.split(',') || []),
   ]
 
