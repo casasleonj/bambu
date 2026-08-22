@@ -1,5 +1,5 @@
 // @tests api/abono, api/caso, api/cierre-dia, api/cliente, api/config, api/embarque, api/factura, api/nomina, api/pedido, api/ruta
-import {test, expect, BASE, loginAs, goto, apiPost, apiGet, apiDelete, createCliente, createTrabajador, createPedido, createEmbarque, getFirstTrabajador, getFirstFacturaConSaldo,  resetDatabase} from './fixtures'
+import {test, expect, BASE, loginAs, goto, apiPost, apiPut, apiGet, apiDelete, createCliente, createTrabajador, createPedido, createEmbarque, getFirstTrabajador, getFirstFacturaConSaldo,  resetDatabase} from './fixtures'
 
 const PROTECTED_PAGES = [
   '/dashboard', '/pedidos', '/clientes', '/embarques', '/produccion',
@@ -496,7 +496,12 @@ test.describe('7. Flujo completo: ASISTENTE', () => {
 
     const listRes = await apiGet(page, '/api/pedidos')
     const listBody = await listRes.json()
-    const pedidos = listBody.pedidos || listBody.data?.pedidos || []
+    // Sin all=true, GET /api/pedidos pagina via buildPaginationResponse():
+    // el array va directo en "data" (PaginatedResult<T>), no anidado bajo
+    // "data.pedidos" -- ese shape solo existe para all=true (que devuelve
+    // {pedidos, total} plano). listBody.data?.pedidos daba siempre
+    // undefined -> [] -> el pedido "no se encontraba" pase lo que pase.
+    const pedidos = listBody.pedidos || listBody.data || []
     const found = (pedidos as Array<{ id: string }>).find((p) => p.id === pedido.pedido.id)
     expect(found).toBeDefined()
   })
@@ -562,6 +567,12 @@ test.describe('7. Flujo completo: ADMIN', () => {
     })
     expect(enviarRes.ok()).toBe(true)
 
+    // /enviar solo mueve el PEDIDO a EN_RUTA -- el EMBARQUE sigue ABIERTO.
+    // cerrar() exige la transicion EN_RUTA->CERRADO (ver EstadoEmbarque.ts),
+    // asi que hay que mover el embarque explicitamente antes de cerrar
+    // (mismo patron que cerrarEmbarqueTest() en ciclo-pedido-completo.spec.ts).
+    await apiPut(page, `/api/embarques/${embarque.embarque.id}`, { estado: 'EN_RUTA' })
+
     const cerrarRes = await apiPost(page, `/api/embarques/${embarque.embarque.id}/cerrar`, {
       pedidos: [{
         pedidoId: pedido.pedido.id,
@@ -577,10 +588,17 @@ test.describe('7. Flujo completo: ADMIN', () => {
         pagado: 'COMPLETO',
         pagos: [{ metodo: 'EFECTIVO', monto: 5600 }],
       }],
-      devueltasAgua: 0,
-      devueltasHielo: 0,
-      rotasAgua: 0,
-      rotasHielo: 0,
+      // "productos" (conciliacion por producto) es requerido por
+      // CerrarEmbarqueSchema -- los campos planos devueltasAgua/rotasAgua
+      // etc. no existen en el schema actual.
+      productos: [
+        { producto: 'PACA_AGUA', devueltas: 0, cambios: 0, rotas: 0 },
+        { producto: 'PACA_HIELO', devueltas: 0, cambios: 0, rotas: 0 },
+        { producto: 'BOTELLON', devueltas: 0, cambios: 0, rotas: 0 },
+        { producto: 'BOLSA_AGUA', devueltas: 0, cambios: 0, rotas: 0 },
+        { producto: 'BOLSA_HIELO', devueltas: 0, cambios: 0, rotas: 0 },
+      ],
+      dineroEntregado: 5600,
     })
     expect(cerrarRes.ok()).toBe(true)
   })
