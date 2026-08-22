@@ -32,8 +32,9 @@ test.describe('Security Fix: Pagar Fiado requiere rol ADMIN/ASISTENTE', () => {
     await loginAs(page, 'admin')
     const cliente = await createCliente(page)
 
-    // FIX (2 capas, la primera no alcanzó -- confirmado con un segundo run
-    // real de CI mostrando el mismo síntoma tras cambiar solo a csrfLogin):
+    // FIX (3 capas -- la causa raíz real era la 3ra, encontrada tras 2 runs
+    // de CI mostrando síntomas parciales distintos que enmascaraban el bug
+    // real):
     // 1) el login manual por UI (fill + click + waitForTimeout fijo) no
     //    garantizaba que la sesión de 'admin' (recién establecida arriba,
     //    para crear el cliente) quedara reemplazada por la de 'sellador'.
@@ -44,6 +45,15 @@ test.describe('Security Fix: Pagar Fiado requiere rol ADMIN/ASISTENTE', () => {
     //    Sin esto, requireRole([ADMIN,ASISTENTE]) seguía pasando (sesión
     //    todavía 'admin') y el request caía en "sin deudas pendientes"
     //    (400) en vez de rechazarse por rol (403).
+    // 3) CAUSA RAÍZ REAL: tras agregar clearCookies(), el síntoma cambió a
+    //    401 (no autenticado) en vez de 403 -- porque el usuario
+    //    'sellador'/'sell123' NUNCA existió en prisma/seed-test.ts (el seed
+    //    que usa resetTestDatabase(), ver prisma/reset-locked.ts modo
+    //    'test'). Solo existe en prisma/seed.ts (dev/prod). authorize() en
+    //    src/lib/auth.ts hace prisma.user.findUnique({username}) sin match
+    //    -> credenciales inválidas -> csrfLogin() nunca establece sesión ->
+    //    cualquier request autenticado posterior es 401. Fix real: agregar
+    //    el usuario 'sellador'/'sell123' a prisma/seed-test.ts.
     await page.context().clearCookies()
     await csrfLogin(page, 'sellador', 'sell123')
 
