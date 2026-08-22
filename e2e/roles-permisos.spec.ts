@@ -207,13 +207,23 @@ test.describe('3. ASISTENTE — acceso limitado', () => {
   })
 
   test('SÍ puede crear embarque (API) → 201', async ({ page }) => {
-    const res = await apiGet(page, '/api/trabajadores?rol=REPARTIDOR&activo=true&usaMoto=true')
-    const body = await res.json()
-    const trabajador = body.trabajadores?.[0]
-    if (!trabajador) { test.skip(); return }
+    // FIX: buscar `usaMoto=true&[0]` reusaba el MISMO trabajador que el test
+    // "Crea embarque (API) → 200" de la sección ADMIN de este archivo (mismo
+    // filtro, mismo [0]) — ese test corre antes y ya le deja un embarque
+    // abierto hoy. POST /api/embarques devolvía 409 "El trabajador ya tiene
+    // un embarque abierto hoy" (real y correcto de negocio, no un bug de la
+    // app) en vez del 201 esperado. Fix: crear un trabajador dedicado como
+    // admin (POST /api/trabajadores exige ADMIN, ver src/app/api/trabajadores/route.ts)
+    // para que este test no compita por el mismo recurso con el de ADMIN.
+    await loginAs(page, 'admin')
+    const nuevoTrabajador = await createTrabajador(page, {
+      nombre: `Embarque Asistente Test ${Date.now() % 10000}`,
+      usaMoto: true,
+    })
+    await loginAs(page, 'asistente')
 
     const embarqueRes = await apiPost(page, '/api/embarques', {
-      trabajadorId: trabajador.id,
+      trabajadorId: nuevoTrabajador.trabajador.id,
       horaSalida: '08:00',
       carga: [{ producto: 'PACA_AGUA', cargadas: 1 }],
     })
@@ -367,9 +377,16 @@ test.describe('5. REPARTIDOR — acceso a propia ruta', () => {
     expect(page.url()).toContain('/repartidor')
   })
 
-  test('Accede a /dashboard', async ({ page }) => {
+  // FIX: REPARTIDOR NO tiene view:dashboard (ver src/lib/permissions.ts,
+  // "BLOQUEAR_PRECIOS_REPARTIDOR = Opción C" -- /dashboard manda precios
+  // crudos en el payload). getRedirectForRole(REPARTIDOR) devuelve
+  // '/repartidor', no '/dashboard' -- ya cubierto por
+  // src/lib/__tests__/permissions.test.ts. Este test esperaba lo contrario
+  // (acceso permitido); estaba desactualizado respecto a esa política ya
+  // implementada e intencional.
+  test('NO puede acceder a /dashboard → redirect a /repartidor', async ({ page }) => {
     await goto(page, '/dashboard')
-    expect(page.url()).toContain('/dashboard')
+    expect(page.url()).toContain('/repartidor')
   })
 
   test('Sus embarques visibles en GET /api/embarques', async ({ page }) => {
@@ -380,14 +397,18 @@ test.describe('5. REPARTIDOR — acceso a propia ruta', () => {
     expect(Array.isArray(embarques)).toBe(true)
   })
 
+  // FIX: getRedirectForRole(REPARTIDOR) === '/repartidor', no '/dashboard'
+  // (mismo motivo que el test de arriba). Los otros roles sí redirigen a
+  // /dashboard (default del switch en permissions.ts) -- REPARTIDOR es el
+  // único caso especial.
   test('NO puede acceder a /trabajadores → redirect', async ({ page }) => {
     await goto(page, '/trabajadores')
-    expect(page.url()).toContain('/dashboard')
+    expect(page.url()).toContain('/repartidor')
   })
 
   test('NO puede acceder a /cierre → redirect', async ({ page }) => {
     await goto(page, '/cierre')
-    expect(page.url()).toContain('/dashboard')
+    expect(page.url()).toContain('/repartidor')
   })
 
   test('NO puede crear cliente (API) → 403', async ({ page }) => {
@@ -500,9 +521,16 @@ test.describe('7. Flujo completo: ASISTENTE', () => {
     })
     expect(pedido.pedido).toBeDefined()
 
-    const listRes = await apiGet(page, '/api/pedidos')
+    // FIX: sin all=true, GET /api/pedidos devuelve buildPaginationResponse()
+    // (src/lib/pagination.ts) -- el array queda en `data` directo, no en
+    // `data.pedidos`. `listBody.pedidos || listBody.data?.pedidos` nunca
+    // matcheaba esa forma (`listBody.data` ya es el array; `array.pedidos`
+    // es undefined) y siempre caía a `[]`. Con all=true la respuesta es
+    // `{pedidos: [...], total}` (ver src/app/api/pedidos/route.ts), que sí
+    // matchea `listBody.pedidos` directamente.
+    const listRes = await apiGet(page, '/api/pedidos?all=true')
     const listBody = await listRes.json()
-    const pedidos = listBody.pedidos || listBody.data?.pedidos || []
+    const pedidos = listBody.pedidos || listBody.data || []
     const found = (pedidos as Array<{ id: string }>).find((p) => p.id === pedido.pedido.id)
     expect(found).toBeDefined()
   })
@@ -568,6 +596,13 @@ test.describe('7. Flujo completo: ADMIN', () => {
     })
     expect(enviarRes.ok()).toBe(true)
 
+    // FIX: CerrarEmbarqueSchema (src/lib/validators.ts) exige `productos`
+    // (array `{producto, devueltas, cambios, rotas}`, min 1) -- el payload
+    // mandaba devueltasAgua/devueltasHielo/rotasAgua/rotasHielo sueltos,
+    // un shape legacy que el schema ya no reconoce (quedan como keys extra
+    // ignoradas por Zod). Sin `productos`, safeParse rechaza con "Agrega
+    // al menos un producto en conciliación" -> 400. Mismo shape ya usado en
+    // e2e/ciclo-pedido-completo.spec.ts para este mismo endpoint.
     const cerrarRes = await apiPost(page, `/api/embarques/${embarque.embarque.id}/cerrar`, {
       pedidos: [{
         pedidoId: pedido.pedido.id,
@@ -583,10 +618,7 @@ test.describe('7. Flujo completo: ADMIN', () => {
         pagado: 'COMPLETO',
         pagos: [{ metodo: 'EFECTIVO', monto: 5600 }],
       }],
-      devueltasAgua: 0,
-      devueltasHielo: 0,
-      rotasAgua: 0,
-      rotasHielo: 0,
+      productos: [{ producto: 'PACA_AGUA', devueltas: 0, cambios: 0, rotas: 0 }],
     })
     expect(cerrarRes.ok()).toBe(true)
   })
