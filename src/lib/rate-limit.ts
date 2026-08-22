@@ -16,7 +16,22 @@ import { logger } from './logger'
 const redisUrl = process.env.REDIS_URL
 
 export const LIMITS = {
-  api: { points: 300, duration: 60, blockDuration: 0 },
+  // Configurable via env (mismo patrón que 'realtime' abajo): en producción
+  // el default (300/60s) protege el presupuesto de comandos Redis por IP real
+  // (ver AGENTS.md Known Issue #21). En E2E, checkRateLimit(ip, 'api') usa la
+  // IP del runner de CI (127.0.0.1) como key -- TODOS los tests de un shard
+  // comparten ese único balde, sin relación con cuántos usuarios reales
+  // habría en producción. Confirmado en CI de PR #127 (shard 4/8, commit
+  // c3b53cb): 4 tests de roles-permisos.spec.ts que esperaban 403 recibieron
+  // 429 -- no es una regresión de permisos, es agotamiento real del balde
+  // compartido por IP, expuesto porque productos.spec.ts empezó a ejecutar
+  // más requests reales (tests que antes fallaban temprano o quedaban
+  // auto-skipped por el modo serial).
+  api: {
+    points: Math.max(1, Number(process.env.API_RATE_LIMIT_POINTS ?? 300) || 300),
+    duration: Math.max(1, Number(process.env.API_RATE_LIMIT_DURATION_SEC ?? 60) || 60),
+    blockDuration: 0,
+  },
   // SSE realtime: allow a small number of connections per user to prevent
   // runaway consumption from many tabs or aggressive reconnects.
   // Each refresh consumes one point; 6 points per minute is enough for normal

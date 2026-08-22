@@ -90,40 +90,32 @@ test.describe('Productos', () => {
     await loginAs(page, 'admin')
     await goto(page, '/productos')
 
-    const addBtn = page.locator('button:has-text("Agregar rango")').first()
+    // FIX: los selectores anteriores (button:has-text, input[placeholder=...],
+    // button[type="submit"]) no matcheaban el componente real
+    // (productos-client/index.tsx:461-462, 708-733). El modal usa
+    // data-testid en vez de placeholders ("Desde"/"Hasta"/"Precio" no
+    // existen en el DOM), y el botón "Guardar" es un <Button> sin
+    // type="submit" explícito fuera de un <form> -- el atributo type no
+    // está presente en el HTML renderizado, por lo que
+    // button[type="submit"] matcheaba 0 elementos y el test colgaba hasta
+    // el timeout de 30s esperando a que apareciera. Además, el fallback de
+    // input[type="number"] buscaba en TODA la página, no solo en el modal,
+    // pudiendo llenar "Sobrecosto domicilio"/"Precio base" de una card en
+    // vez de los campos del modal.
+    const addBtn = page.locator('[data-testid^="add-range-btn-"]').first()
     if (await addBtn.count() === 0) {
-      const addAlt = page.locator('button:has-text("+ Agregar rango")').first()
-      if (await addAlt.count() === 0) {
-        test.skip()
-        return
-      }
-      await addAlt.click()
-    } else {
-      await addBtn.click()
+      test.skip()
+      return
     }
-    await page.waitForTimeout(400)
+    await addBtn.click()
 
-    const minInput = page.locator('input[placeholder="Desde"]').first()
-    if (await minInput.count() === 0) {
-      const numeroInputs = page.locator('input[type="number"]')
-      if (await numeroInputs.count() >= 3) {
-        await numeroInputs.nth(0).fill('9999')
-        await numeroInputs.nth(1).fill('99999')
-        await numeroInputs.nth(2).fill('5000')
-      } else {
-        test.skip()
-        return
-      }
-    } else {
-      await minInput.fill('9999')
-      const maxInput = page.locator('input[placeholder="Hasta"]').first()
-      await maxInput.fill('99999')
-      const precioInput = page.locator('input[placeholder="Precio"]').first()
-      await precioInput.fill('5000')
-    }
+    const minInput = page.locator('[data-testid="modal-cant-min"]')
+    await expect(minInput).toBeVisible({ timeout: 3000 })
+    await minInput.fill('9999')
+    await page.locator('[data-testid="modal-cant-max"]').fill('99999')
+    await page.locator('[data-testid="modal-precio"]').fill('5000')
 
-    const submitBtn = page.locator('button[type="submit"]').first()
-    await submitBtn.click()
+    await page.locator('[data-testid="modal-save"]').click()
     await page.waitForTimeout(1500)
 
     await expect(page.locator('h1').first()).toBeVisible({ timeout: 5000 })
