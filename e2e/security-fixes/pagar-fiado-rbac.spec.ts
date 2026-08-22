@@ -1,6 +1,6 @@
 // @tests C-1: REPARTIDOR NO debe poder usar /api/pedidos/pagar-fiado
 // Hallazgo: el endpoint solo tenía requireAuth, sin rol/ownership
-import { test, expect, fullLogin, loginAs, apiPost, createCliente, resetTestDatabase, BASE } from '../fixtures'
+import { test, expect, fullLogin, loginAs, csrfLogin, apiPost, createCliente, resetTestDatabase } from '../fixtures'
 
 test.describe('Security Fix: Pagar Fiado requiere rol ADMIN/ASISTENTE', () => {
   test.beforeAll(() => {
@@ -32,12 +32,15 @@ test.describe('Security Fix: Pagar Fiado requiere rol ADMIN/ASISTENTE', () => {
     await loginAs(page, 'admin')
     const cliente = await createCliente(page)
 
-    // Login custom porque no hay helper
-    await page.goto(`${BASE}/login`)
-    await page.fill('input[placeholder="Ingrese usuario"]', 'sellador')
-    await page.fill('input[placeholder="Ingrese contraseña"]', 'sell123')
-    await page.click('button[type="submit"]')
-    await page.waitForTimeout(2000)
+    // FIX: el login manual por UI (fill + click + waitForTimeout fijo) no
+    // garantizaba que la sesión de 'admin' (recién establecida arriba, para
+    // crear el cliente) ya estuviera reemplazada por la de 'sellador' antes
+    // del apiPost de abajo -- si la sesión seguía siendo 'admin', requireRole
+    // pasaba y el request caía en "sin deudas pendientes" (400) en vez de
+    // rechazarse por rol (403). csrfLogin() acepta cualquier username/password
+    // (no está limitado a los 4 roles cacheados de Role) y ya es el patrón
+    // usado para credenciales no-canónicas en loginAs() mismo.
+    await csrfLogin(page, 'sellador', 'sell123')
 
     const res = await apiPost(page, '/api/pedidos/pagar-fiado', {
       clienteId: cliente.cliente.id,
