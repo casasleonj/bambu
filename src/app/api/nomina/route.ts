@@ -8,6 +8,7 @@ import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
 import { executeSerializableWithRetry } from '@/lib/serializable'
 import { calcularDeduccionesDeuda } from '@/lib/nomina-deudas'
+import { decimalsToNumbers } from '@/lib/decimal-json'
 
 export async function GET(request: NextRequest) {
   // FIX CRITICAL (C-SEC-3): Only ADMIN/CONTADOR can read nominas
@@ -23,7 +24,7 @@ export async function GET(request: NextRequest) {
       orderBy: { fechaFin: 'desc' },
       include: { trabajador: true },
     })
-    return apiSuccess({ nominas })
+    return apiSuccess(decimalsToNumbers({ nominas }))
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching nominas:')
     return apiError('Error fetching nominas', 500)
@@ -281,7 +282,7 @@ export async function POST(request: NextRequest) {
         usuarioId: userId,
       }).catch(() => {})
 
-      return apiSuccess({
+      return apiSuccess(decimalsToNumbers({
         nomina: result.nomina,
         detalles: {
           entregasAgua: result.entregasAgua,
@@ -295,7 +296,7 @@ export async function POST(request: NextRequest) {
           descuentoDeudas: result.descuentoDeudas,
           salarioFijo: result.nomina.salario,
         },
-      })
+      }))
     }
 
     // Crear nomina manual
@@ -326,7 +327,7 @@ export async function POST(request: NextRequest) {
       usuarioId: userId,
     }).catch(() => {})
 
-    return apiSuccess({ nomina: result }, 201)
+    return apiSuccess(decimalsToNumbers({ nomina: result }), 201)
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown'
     logger.error({ err: msg }, 'Error creating nomina:')

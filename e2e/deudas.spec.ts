@@ -403,12 +403,15 @@ test.describe('Deudas UI', () => {
       descripcion: 'Pendiente'})
     await res1.json()
 
-    // Create and pay off another
+    // Create and pay off another. Descripcion != 'Pagada': la card ya
+    // renderiza su propio badge <span>Pagada</span> cuando montoPendiente
+    // === 0 (deudas-tab.tsx) -- si la descripcion repite ese texto, el
+    // assert exact:true de abajo choca en strict mode contra 2 nodos.
     const res2 = await createDeuda(page, {
       trabajadorId: tid,
       tipo: 'OTRO',
       monto: 20000,
-      descripcion: 'Pagada'})
+      descripcion: 'Deuda saldada'})
     const body2 = await res2.json()
     await abonarDeuda(page, body2.deuda.id, { monto: 20000 })
 

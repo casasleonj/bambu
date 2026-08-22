@@ -19,7 +19,7 @@ describe('F-N13: bloque AUTO usa executeSerializableWithRetry', () => {
 
   it('FIX: el bloque AUTO usa executeSerializableWithRetry (no prisma.$transaction)', () => {
     // Extraer el bloque AUTO (entre tipoCalculo === 'AUTO' y el final)
-    const autoMatch = source.match(/if\s*\(tipoCalculo\s*===\s*['"]AUTO['"]\)[\s\S]+?return apiSuccess\(\{[\s\S]+?\}\)/)
+    const autoMatch = source.match(/if\s*\(tipoCalculo\s*===\s*['"]AUTO['"]\)[\s\S]+?return apiSuccess\(decimalsToNumbers\(\{[\s\S]+?\}\)\)/)
     expect(autoMatch).not.toBeNull()
     const autoBlock = autoMatch![0]
 
@@ -35,7 +35,7 @@ describe('F-N13: bloque AUTO usa executeSerializableWithRetry', () => {
   })
 
   it('FIX: el callback de Serializable tiene tipo de retorno explícito', () => {
-    const autoMatch = source.match(/if\s*\(tipoCalculo\s*===\s*['"]AUTO['"]\)[\s\S]+?return apiSuccess\(\{[\s\S]+?\}\)/)
+    const autoMatch = source.match(/if\s*\(tipoCalculo\s*===\s*['"]AUTO['"]\)[\s\S]+?return apiSuccess\(decimalsToNumbers\(\{[\s\S]+?\}\)\)/)
     const autoBlock = autoMatch![0]
 
     // Debe tener executeSerializableWithRetry<{...}>(async (tx) => { ... })
@@ -43,7 +43,7 @@ describe('F-N13: bloque AUTO usa executeSerializableWithRetry', () => {
   })
 
   it('FIX: se pasa context "nomina.POST:AUTO" para logging', () => {
-    const autoMatch = source.match(/if\s*\(tipoCalculo\s*===\s*['"]AUTO['"]\)[\s\S]+?return apiSuccess\(\{[\s\S]+?\}\)/)
+    const autoMatch = source.match(/if\s*\(tipoCalculo\s*===\s*['"]AUTO['"]\)[\s\S]+?return apiSuccess\(decimalsToNumbers\(\{[\s\S]+?\}\)\)/)
     const autoBlock = autoMatch![0]
 
     expect(autoBlock).toMatch(/['"]nomina\.POST:AUTO['"]/)
@@ -52,7 +52,7 @@ describe('F-N13: bloque AUTO usa executeSerializableWithRetry', () => {
 
 describe('F-N13: el check de duplicados sigue funcionando dentro de Serializable', () => {
   it('FIX: el findFirst de duplicados está dentro del callback del Serializable', () => {
-    const autoMatch = source.match(/if\s*\(tipoCalculo\s*===\s*['"]AUTO['"]\)[\s\S]+?return apiSuccess\(\{[\s\S]+?\}\)/)
+    const autoMatch = source.match(/if\s*\(tipoCalculo\s*===\s*['"]AUTO['"]\)[\s\S]+?return apiSuccess\(decimalsToNumbers\(\{[\s\S]+?\}\)\)/)
     const autoBlock = autoMatch![0]
 
     // El findFirst está dentro del callback
@@ -66,7 +66,7 @@ describe('F-N13: el check de duplicados sigue funcionando dentro de Serializable
   })
 
   it('FIX: el findFirst usa tx (no prisma global)', () => {
-    const autoMatch = source.match(/if\s*\(tipoCalculo\s*===\s*['"]AUTO['"]\)[\s\S]+?return apiSuccess\(\{[\s\S]+?\}\)/)
+    const autoMatch = source.match(/if\s*\(tipoCalculo\s*===\s*['"]AUTO['"]\)[\s\S]+?return apiSuccess\(decimalsToNumbers\(\{[\s\S]+?\}\)\)/)
     const autoBlock = autoMatch![0]
 
     expect(autoBlock).toMatch(/tx\.nomina\.findFirst/)
@@ -74,7 +74,7 @@ describe('F-N13: el check de duplicados sigue funcionando dentro de Serializable
   })
 
   it('FIX: si existe nómina, throw con mensaje específico', () => {
-    const autoMatch = source.match(/if\s*\(tipoCalculo\s*===\s*['"]AUTO['"]\)[\s\S]+?return apiSuccess\(\{[\s\S]+?\}\)/)
+    const autoMatch = source.match(/if\s*\(tipoCalculo\s*===\s*['"]AUTO['"]\)[\s\S]+?return apiSuccess\(decimalsToNumbers\(\{[\s\S]+?\}\)\)/)
     const autoBlock = autoMatch![0]
 
     expect(autoBlock).toMatch(/Ya existe una nómina/)
@@ -99,7 +99,7 @@ describe('F-N13: el catch maneja el error de duplicado', () => {
 
 describe('F-N13: el response del AUTO sigue trabajando (no rompe backward compat)', () => {
   it('FIX: el response final sigue retornando nomina + detalles', () => {
-    const autoMatch = source.match(/if\s*\(tipoCalculo\s*===\s*['"]AUTO['"]\)[\s\S]+?return apiSuccess\(\{[\s\S]+?\}\)/)
+    const autoMatch = source.match(/if\s*\(tipoCalculo\s*===\s*['"]AUTO['"]\)[\s\S]+?return apiSuccess\(decimalsToNumbers\(\{[\s\S]+?\}\)\)/)
     const autoBlock = autoMatch![0]
 
     expect(autoBlock).toMatch(/nomina:\s*result\.nomina/)
@@ -108,7 +108,7 @@ describe('F-N13: el response del AUTO sigue trabajando (no rompe backward compat
   })
 
   it('FIX: el logAudit sigue funcionando (fuera de tx)', () => {
-    const autoMatch = source.match(/if\s*\(tipoCalculo\s*===\s*['"]AUTO['"]\)[\s\S]+?return apiSuccess\(\{[\s\S]+?\}\)/)
+    const autoMatch = source.match(/if\s*\(tipoCalculo\s*===\s*['"]AUTO['"]\)[\s\S]+?return apiSuccess\(decimalsToNumbers\(\{[\s\S]+?\}\)\)/)
     const autoBlock = autoMatch![0]
 
     expect(autoBlock).toMatch(/logAudit\(/)

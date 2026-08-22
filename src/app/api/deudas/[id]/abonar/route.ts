@@ -7,7 +7,7 @@ import { AbonoDeudaSchema } from '@/lib/validators'
 import { ROLES } from '@/lib/constants'
 import { logger } from '@/lib/logger'
 import { apiSuccess, apiError } from '@/lib/api-response'
-import { decimalsToNumbers } from '../../serialize'
+import { decimalsToNumbers } from '@/lib/decimal-json'
 
 export async function POST(
   request: NextRequest,
