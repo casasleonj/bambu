@@ -50,6 +50,18 @@ test.describe('Productos', () => {
     } else {
       await priceInput.press('Enter')
     }
+
+    // FIX: savePrice() (productos-client/index.tsx) siempre corre GET
+    // /api/precios/impacto antes de guardar -- si el cambio tiene impacto
+    // (precio difiere mucho del precio base, hay clientes con precios
+    // especiales o pedidos pendientes con el producto), muestra un modal
+    // "Impacto de cambio de precio" que exige click en "Confirmar cambio"
+    // para completar el guardado real. El click en OK/Enter de arriba solo
+    // abre ese modal cuando hay impacto -- no persiste el precio por sí solo.
+    const confirmarBtn = page.getByRole('button', { name: 'Confirmar cambio' })
+    if (await confirmarBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await confirmarBtn.click()
+    }
     await page.waitForTimeout(1500)
 
     const bodyText = await page.locator('body').innerText()

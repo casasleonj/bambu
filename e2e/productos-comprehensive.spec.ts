@@ -147,6 +147,16 @@ test.describe('Productos - Comprehensive', () => {
       const saveBtn = p.locator('[data-testid^="price-save-"]').first()
       await saveBtn.click()
 
+      // FIX: savePrice() (productos-client/index.tsx) siempre corre GET
+      // /api/precios/impacto antes de guardar -- si hay impacto (precio
+      // difiere mucho del precio base, clientes con precios especiales o
+      // pedidos pendientes), muestra un modal "Impacto de cambio de precio"
+      // que exige click en "Confirmar cambio" para persistir el precio.
+      const confirmarBtn = p.getByRole('button', { name: 'Confirmar cambio' })
+      if (await confirmarBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await confirmarBtn.click()
+      }
+
       // Wait for toast
       await waitForToast(p, 'Precio actualizado')
 
@@ -164,6 +174,13 @@ test.describe('Productos - Comprehensive', () => {
       await expect(priceInput).toBeVisible()
       await priceInput.fill('888')
       await priceInput.press('Enter')
+
+      // FIX: mismo modal de impacto que el test anterior -- Enter también
+      // pasa por savePrice(), que puede requerir confirmación.
+      const confirmarBtn = p.getByRole('button', { name: 'Confirmar cambio' })
+      if (await confirmarBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await confirmarBtn.click()
+      }
 
       await waitForToast(p, 'Precio actualizado')
     })
