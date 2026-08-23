@@ -72,14 +72,13 @@ test.describe('Compras', () => {
 
     await page.locator('#compra-proveedor').selectOption('')
 
-    await page.locator('button:has-text("Guardar")').click()
-    await page.waitForTimeout(1000)
-
-    const toastEl = page.locator('[data-sonner-toast]')
-    const form = page.locator('h3:has-text("Registrar Compra")')
-    const toastVisible = await toastEl.isVisible({ timeout: 3000 }).catch(() => false)
-    const formVisible = await form.isVisible({ timeout: 3000 }).catch(() => false)
-    expect(toastVisible || formVisible).toBeTruthy()
+    // FIX: el botón Guardar está deshabilitado mientras falte proveedor
+    // (compras-client/index.tsx:171, disabled={... || !proveedorId || ...}
+    // -- validación del lado del cliente, no permite ni intentar el
+    // submit). El test intentaba forzar un click sobre un botón
+    // disabled, agotando el timeout completo del test (30s) en vez de
+    // verificar la validación real: que el botón quede deshabilitado.
+    await expect(page.locator('button:has-text("Guardar")')).toBeDisabled()
   })
 
   test('validacion: sin insumo', async ({ page }) => {
@@ -91,14 +90,10 @@ test.describe('Compras', () => {
 
     await page.locator('#compra-insumo').selectOption('')
 
-    await page.locator('button:has-text("Guardar")').click()
-    await page.waitForTimeout(1000)
-
-    const toastEl = page.locator('[data-sonner-toast]')
-    const form = page.locator('h3:has-text("Registrar Compra")')
-    const toastVisible = await toastEl.isVisible({ timeout: 3000 }).catch(() => false)
-    const formVisible = await form.isVisible({ timeout: 3000 }).catch(() => false)
-    expect(toastVisible || formVisible).toBeTruthy()
+    // FIX: mismo caso que "validacion: sin proveedor" -- el botón Guardar
+    // está deshabilitado mientras falte insumo (validación del lado del
+    // cliente), forzar el click agotaba el timeout del test.
+    await expect(page.locator('button:has-text("Guardar")')).toBeDisabled()
   })
 
   test('API crear compra', async ({ page }) => {

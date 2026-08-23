@@ -94,15 +94,14 @@ test.describe('Insumos', () => {
     await page.click('button:has-text("+ Nuevo Insumo")')
     await page.waitForTimeout(500)
 
-    await page.locator('button:has-text("Guardar")').click()
-    await page.waitForTimeout(1000)
+    // FIX: mismo patrón que compras.spec.ts -- el botón Guardar está
+    // deshabilitado mientras falte nombre (validación del lado del
+    // cliente), forzar el click agotaba el timeout del test.
+    const guardarBtn = page.locator('button:has-text("Guardar")')
+    await expect(guardarBtn).toBeDisabled()
 
     const form = page.locator('h3:has-text("Crear Insumo")')
     await expect(form).toBeVisible({ timeout: 5000 }).catch(() => null)
-
-    const guardarBtn = page.locator('button:has-text("Guardar")')
-    const isDisabled = await guardarBtn.isDisabled()
-    expect(isDisabled || true).toBeTruthy()
   })
 
   test('API crear insumo', async ({ page }) => {

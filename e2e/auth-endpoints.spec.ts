@@ -67,6 +67,9 @@ test.describe('Auth Endpoints', () => {
     })
     expect(res.status()).toBe(400)
     const body = await res.json()
-    expect(body.error).toContain('No se requiere cambio')
+    // FIX: apiError() (src/lib/api-response.ts) devuelve
+    // { success: false, error: { message, ...details } } -- un objeto, no
+    // un string. toContain() sobre un objeto lanza "c is not iterable".
+    expect(body.error.message).toContain('No se requiere cambio')
   })
 })
