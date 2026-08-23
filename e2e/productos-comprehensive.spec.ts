@@ -1,5 +1,5 @@
 // @tests productos comprehensive - UI + API + Roles + Mobile + Edge cases
-import {test, expect, BASE, goto, apiPost, apiGet, apiPut, apiDelete, resetTestDatabase, waitForToast, setMobileViewport, checkHorizontalOverflow, loginAs, sharedPageLogin} from './fixtures'
+import {test, expect, BASE, goto, apiPost, apiGet, apiPut, apiPatch, apiDelete, resetTestDatabase, waitForToast, setMobileViewport, checkHorizontalOverflow, loginAs, sharedPageLogin} from './fixtures'
 import type { Page } from '@playwright/test'
 
 test.describe('Productos - Comprehensive', () => {
@@ -38,11 +38,17 @@ test.describe('Productos - Comprehensive', () => {
       expect(errorMsg).toContain('permisos')
     })
 
-    test('ASISTENTE puede ver productos pero NO editar via API', async ({ page }) => {
+    // FIX: PR #126 (Known Issue #25 backlog) removió view:productos de
+    // ASISTENTE (decisión de negocio confirmada, ver
+    // src/lib/__tests__/permissions.test.ts "NO puede ver cierre ni
+    // productos"). Este test asumía que ASISTENTE aún podía ver productos
+    // y nunca se actualizó tras ese cambio -- mismo patrón ya corregido en
+    // e2e/cierre.spec.ts.
+    test('ASISTENTE NO puede ver ni editar productos via API', async ({ page }) => {
       await loginAs(page, 'asistente')
-      // GET - should work
+      // GET - should return 403 (sin view:productos)
       const getRes = await apiGet(page, '/api/productos')
-      expect(getRes.status()).toBe(200)
+      expect(getRes.status()).toBe(403)
       // PUT - should return 403 for ASISTENTE
       const putRes = await apiPut(page, '/api/productos', {
         productoId: 'test-id',
@@ -340,6 +346,14 @@ test.describe('Productos - Comprehensive', () => {
     test('discrepancy warning aparece cuando precioBase difiere >30% del primer tier', async () => {
       // Reset DB to ensure fresh state
       resetTestDatabase()
+      // FIX: resetTestDatabase() trunca SesionActiva/User (AGENTS.md Known
+      // Issue #20) -- invalida la cookie de la `p` compartida de este
+      // describe block (autenticada en beforeAll, antes de este reset).
+      // Sin re-login, goto() cae a /login y bodyText nunca contiene el
+      // warning -- no es un bug del componente ni de los datos de seed,
+      // es el mismo patrón ya usado más abajo en "CRUD Operations"
+      // (resetTestDatabase() + loginAs(page, 'admin') en beforeEach).
+      await loginAs(p, 'admin')
       await goto(p, '/productos')
 
       // Check for discrepancy warning using text content
@@ -413,7 +427,17 @@ test.describe('Productos - Comprehensive', () => {
       await page.waitForTimeout(2000)
       const toastVisible = await page.locator('[data-sonner-toast]').first().isVisible().catch(() => false)
       if (toastVisible) {
-        await waitForToast(page, 'Rango agregado')
+        // FIX: `.first()` producto (orden alfabético por codigo -> BOLSA_AGUA)
+        // ya tiene, en el seed (prisma/seed-test.ts), un tier "sin límite"
+        // (cantMin:1, cantMax:null) -- todos los productos del seed terminan
+        // en un tier abierto. Cualquier tier nuevo siempre solapa con ese
+        // catch-all (RANGO_SOLAPADO -> 409, ver src/app/api/precios/route.ts
+        // líneas 140-153, fix F-N23 hallazgo 36). No es un bug: es la misma
+        // validación anti-solapamiento que "crear nuevo tier de volumen"
+        // (arriba) ya acepta explícitamente con `[201, 409]).toContain(...)`
+        // a nivel API. Aceptamos ambos desenlaces reales acá también.
+        const toastText = await page.locator('[data-sonner-toast]').first().innerText().catch(() => '')
+        expect(toastText.includes('Rango agregado') || toastText.includes('se solapa')).toBe(true)
       }
 
       await page.keyboard.press('Escape')
@@ -488,6 +512,17 @@ test.describe('Productos - Comprehensive', () => {
       await precioBaseInput.blur()
       await page.waitForTimeout(1000)
 
+      // FIX: updateProductoConfig() consulta /api/precios/impacto ante
+      // cualquier cambio de precioBase (index.tsx:382) y, si hay impacto,
+      // abre un modal de confirmación ("Impacto de cambio de precio") antes
+      // de guardar -- gate de UX deliberado, no un bug. El toast de éxito
+      // solo aparece tras click en "Confirmar cambio". El test nunca
+      // pasaba por ese modal.
+      const confirmarBtn = page.getByRole('button', { name: 'Confirmar cambio' })
+      if (await confirmarBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await confirmarBtn.click()
+      }
+
       await waitForToast(page, 'Configuración actualizada')
     })
 
@@ -500,6 +535,9 @@ test.describe('Productos - Comprehensive', () => {
         test.skip()
         return
       }
+
+      const firstRow = pacaAguaCard.locator('table tbody tr').first()
+      const deletedTierId = await firstRow.getAttribute('data-precio-id')
 
       const deleteBtn = pacaAguaCard.locator('[data-testid^="tier-delete-"]').first()
       await deleteBtn.click()
@@ -514,18 +552,17 @@ test.describe('Productos - Comprehensive', () => {
       const afterDelete = await pacaAguaCard.locator('table tbody tr').count()
       expect(afterDelete).toBe(initialCount - 1)
 
-      const prodRes = await apiGet(page, '/api/productos')
-      const prodBody = await prodRes.json()
-      const pacaAgua = (prodBody.productos as Array<{ id: string; codigo: string; precios?: unknown[] }> | undefined)?.find((p2) => p2.codigo === 'PACA_AGUA')
-      if (pacaAgua) {
-        await apiPost(page, '/api/precios', {
-          productoId: pacaAgua.id,
-          cantMin: 1,
-          cantMax: 4,
-          precio: 2800,
-        })
-        await page.waitForTimeout(500)
-      }
+      // FIX: DELETE /api/precios/[id] es un soft-delete (activo:false, ver
+      // src/app/api/precios/[id]/route.ts). Restaurar NO es "crear un tier
+      // nuevo con el mismo cantMin" -- eso choca contra el propio tier
+      // inactivo (INACTIVE_TIER_BLOCKING, 409, fix F-N23 hallazgo 39) y
+      // fallaba en silencio porque el test nunca revisaba el status de ese
+      // POST. El flujo real (el que usa la propia UI, ver
+      // productos-client/index.tsx restoreTier()) es PATCH
+      // /api/precios/[id]/restore sobre el MISMO id eliminado.
+      expect(deletedTierId).toBeTruthy()
+      const restoreRes = await apiPatch(page, `/api/precios/${deletedTierId}/restore`, {})
+      expect(restoreRes.status()).toBe(200)
 
       await goto(page, '/productos')
       const afterRestore = await pacaAguaCard.locator('table tbody tr').count()
