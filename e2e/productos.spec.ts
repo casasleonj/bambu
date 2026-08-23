@@ -37,18 +37,46 @@ test.describe('Productos', () => {
     await priceDisplay.click()
     await page.waitForTimeout(300)
 
-    const priceInput = page.locator('input[type="number"]').first()
+    // FIX 3: input[type="number"].first() matcheaba el input de "Sobrecosto
+    // domicilio" o "Precio base" (productos-client/index.tsx:482-509) --
+    // ambos son type="number" y se renderizan ANTES que el input de edición
+    // del precio del rango en el DOM de la misma card. El test llenaba "999"
+    // en el campo equivocado; el precio del rango quedaba sin tocar y se
+    // reguardaba con su valor original. Fix: usar el data-testid específico
+    // (mismo patrón que ya funciona en productos-comprehensive.spec.ts).
+    const priceInput = page.locator('[data-testid^="price-input-"]').first()
     await expect(priceInput).toBeVisible({ timeout: 3000 })
 
     await priceInput.fill('')
     await priceInput.fill('999')
     await page.waitForTimeout(300)
 
-    const okBtn = page.locator('button:has-text("OK")').first()
+    const okBtn = page.locator('[data-testid^="price-save-"]').first()
     if (await okBtn.count() > 0) {
       await okBtn.click()
     } else {
       await priceInput.press('Enter')
+    }
+
+    // FIX: savePrice() (productos-client/index.tsx) siempre corre GET
+    // /api/precios/impacto antes de guardar -- si el cambio tiene impacto
+    // (precio difiere mucho del precio base, hay clientes con precios
+    // especiales o pedidos pendientes con el producto), muestra un modal
+    // "Impacto de cambio de precio" que exige click en "Confirmar cambio"
+    // para completar el guardado real. El click en OK/Enter de arriba solo
+    // abre ese modal cuando hay impacto -- no persiste el precio por sí solo.
+    // FIX 2: Locator.isVisible({timeout}) NO espera -- la opción está
+    // deprecada y documentada como ignorada (node_modules/playwright-core/
+    // types/types.d.ts: "does not wait for the element to become visible
+    // and returns immediately"). Con eso, el chequeo corría antes de que
+    // React renderizara el modal y siempre daba false. waitFor() sí hace
+    // polling real.
+    const confirmarBtn = page.getByRole('button', { name: 'Confirmar cambio' })
+    try {
+      await confirmarBtn.waitFor({ state: 'visible', timeout: 2000 })
+      await confirmarBtn.click()
+    } catch {
+      // No hubo impacto significativo -- el precio ya se guardó directo.
     }
     await page.waitForTimeout(1500)
 
@@ -62,40 +90,32 @@ test.describe('Productos', () => {
     await loginAs(page, 'admin')
     await goto(page, '/productos')
 
-    const addBtn = page.locator('button:has-text("Agregar rango")').first()
+    // FIX: los selectores anteriores (button:has-text, input[placeholder=...],
+    // button[type="submit"]) no matcheaban el componente real
+    // (productos-client/index.tsx:461-462, 708-733). El modal usa
+    // data-testid en vez de placeholders ("Desde"/"Hasta"/"Precio" no
+    // existen en el DOM), y el botón "Guardar" es un <Button> sin
+    // type="submit" explícito fuera de un <form> -- el atributo type no
+    // está presente en el HTML renderizado, por lo que
+    // button[type="submit"] matcheaba 0 elementos y el test colgaba hasta
+    // el timeout de 30s esperando a que apareciera. Además, el fallback de
+    // input[type="number"] buscaba en TODA la página, no solo en el modal,
+    // pudiendo llenar "Sobrecosto domicilio"/"Precio base" de una card en
+    // vez de los campos del modal.
+    const addBtn = page.locator('[data-testid^="add-range-btn-"]').first()
     if (await addBtn.count() === 0) {
-      const addAlt = page.locator('button:has-text("+ Agregar rango")').first()
-      if (await addAlt.count() === 0) {
-        test.skip()
-        return
-      }
-      await addAlt.click()
-    } else {
-      await addBtn.click()
+      test.skip()
+      return
     }
-    await page.waitForTimeout(400)
+    await addBtn.click()
 
-    const minInput = page.locator('input[placeholder="Desde"]').first()
-    if (await minInput.count() === 0) {
-      const numeroInputs = page.locator('input[type="number"]')
-      if (await numeroInputs.count() >= 3) {
-        await numeroInputs.nth(0).fill('9999')
-        await numeroInputs.nth(1).fill('99999')
-        await numeroInputs.nth(2).fill('5000')
-      } else {
-        test.skip()
-        return
-      }
-    } else {
-      await minInput.fill('9999')
-      const maxInput = page.locator('input[placeholder="Hasta"]').first()
-      await maxInput.fill('99999')
-      const precioInput = page.locator('input[placeholder="Precio"]').first()
-      await precioInput.fill('5000')
-    }
+    const minInput = page.locator('[data-testid="modal-cant-min"]')
+    await expect(minInput).toBeVisible({ timeout: 3000 })
+    await minInput.fill('9999')
+    await page.locator('[data-testid="modal-cant-max"]').fill('99999')
+    await page.locator('[data-testid="modal-precio"]').fill('5000')
 
-    const submitBtn = page.locator('button[type="submit"]').first()
-    await submitBtn.click()
+    await page.locator('[data-testid="modal-save"]').click()
     await page.waitForTimeout(1500)
 
     await expect(page.locator('h1').first()).toBeVisible({ timeout: 5000 })
@@ -135,9 +155,18 @@ test.describe('Productos', () => {
     const res = await apiGet(page, '/api/precios/tabla')
     expect(res.status()).toBe(200)
     const body = await res.json()
+    // FIX: este test nunca se había ejecutado en CI real -- vive en el mismo
+    // describe.configure({mode:'serial'}) que "editar precio inline", que
+    // fallaba en cada run previo (Playwright auto-skipea el resto del bloque
+    // serial tras el primer fallo). Al arreglarse ese test se expuso este:
+    // getPriceTable() (src/lib/pricing.ts:325) devuelve
+    // Record<ProductCode, Array<...>> -- un objeto keyed por código de
+    // producto ({PACA_AGUA: [...], ...}), no un array. Array.isArray(body.tabla)
+    // siempre daba false.
     expect(body).toHaveProperty('tabla')
-    expect(Array.isArray(body.tabla)).toBe(true)
-    expect(body.tabla.length).toBeGreaterThan(0)
+    expect(typeof body.tabla).toBe('object')
+    expect(Array.isArray(body.tabla)).toBe(false)
+    expect(Object.keys(body.tabla).length).toBeGreaterThan(0)
   })
 
   // ─── 6. API resolver precios ────────────────────────────────────────────────

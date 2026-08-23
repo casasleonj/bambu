@@ -147,6 +147,23 @@ test.describe('Productos - Comprehensive', () => {
       const saveBtn = p.locator('[data-testid^="price-save-"]').first()
       await saveBtn.click()
 
+      // FIX: savePrice() (productos-client/index.tsx) siempre corre GET
+      // /api/precios/impacto antes de guardar -- si hay impacto (precio
+      // difiere mucho del precio base, clientes con precios especiales o
+      // pedidos pendientes), muestra un modal "Impacto de cambio de precio"
+      // que exige click en "Confirmar cambio" para persistir el precio.
+      // FIX 2: Locator.isVisible({timeout}) NO espera -- opción deprecada e
+      // ignorada (node_modules/playwright-core/types/types.d.ts), así que el
+      // chequeo corría antes de que React renderizara el modal y siempre
+      // daba false. waitFor() sí hace polling real.
+      const confirmarBtn = p.getByRole('button', { name: 'Confirmar cambio' })
+      try {
+        await confirmarBtn.waitFor({ state: 'visible', timeout: 2000 })
+        await confirmarBtn.click()
+      } catch {
+        // No hubo impacto significativo -- el precio ya se guardó directo.
+      }
+
       // Wait for toast
       await waitForToast(p, 'Precio actualizado')
 
@@ -164,6 +181,17 @@ test.describe('Productos - Comprehensive', () => {
       await expect(priceInput).toBeVisible()
       await priceInput.fill('888')
       await priceInput.press('Enter')
+
+      // FIX: mismo modal de impacto que el test anterior -- Enter también
+      // pasa por savePrice(), que puede requerir confirmación. waitFor()
+      // en vez de isVisible({timeout}) -- ver comentario del test anterior.
+      const confirmarBtn = p.getByRole('button', { name: 'Confirmar cambio' })
+      try {
+        await confirmarBtn.waitFor({ state: 'visible', timeout: 2000 })
+        await confirmarBtn.click()
+      } catch {
+        // No hubo impacto significativo -- el precio ya se guardó directo.
+      }
 
       await waitForToast(p, 'Precio actualizado')
     })
