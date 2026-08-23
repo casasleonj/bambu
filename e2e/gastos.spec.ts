@@ -78,7 +78,14 @@ test.describe('Gastos', () => {
     expect(bodyText).toContain('Admin Test')
   })
 
-  test('validacion: sin categoria', async ({ page }) => {
+  test('sin tocar categoria, usa la categoria por defecto', async ({ page }) => {
+    // FIX: el `<select id="gasto-categoria">` de gastos-client/index.tsx
+    // siempre arranca con un valor (la primera categoría del objeto `cats`,
+    // nunca una opción vacía), y el botón Guardar solo se deshabilita por
+    // falta de descripción/monto (`!descripcion.trim() || !monto`) --
+    // "sin categoria" no es un estado alcanzable desde la UI, así que no
+    // dispara ningún error de validación. El submit usa la categoría por
+    // defecto y tiene éxito.
     await loginAs(page, 'admin')
     await goto(page, '/gastos')
 
@@ -88,15 +95,20 @@ test.describe('Gastos', () => {
     await page.locator('#gasto-descripcion').fill('Test sin categoria')
     await page.locator('#gasto-monto').fill('5000')
 
-    await page.locator('button:has-text("Guardar")').click()
-    await page.waitForTimeout(1000)
+    const [response] = await Promise.all([
+      page.waitForResponse(
+        r => r.url().includes('/api/gastos') && r.request().method() === 'POST',
+        { timeout: 10000 }
+      ),
+      page.locator('button:has-text("Guardar")').click(),
+    ])
 
-    const toastEl = page.locator('[data-sonner-toast]')
-    if (await toastEl.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await expect(toastEl).toContainText(/error|Error/i)
-    }
+    expect(response.status()).toBe(201)
+    await expect(page.locator('[data-sonner-toast]')).toContainText('Gasto registrado')
+    // El form se cierra tras un submit exitoso (setShowCrear(false)).
+    await expect(page.locator('h3:has-text("Registrar Gasto")')).not.toBeVisible()
 
-    await expect(page.locator('h3:has-text("Registrar Gasto")')).toBeVisible()
+    await expect(page.locator('body')).toContainText('Test sin categoria', { timeout: 5000 })
   })
 
   test('validacion: monto vacio', async ({ page }) => {
@@ -108,14 +120,11 @@ test.describe('Gastos', () => {
 
     await page.locator('#gasto-descripcion').fill('Sin monto')
 
-    await page.locator('button:has-text("Guardar")').click()
-    await page.waitForTimeout(1000)
-
-    const toastEl = page.locator('[data-sonner-toast]')
-    if (await toastEl.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await expect(toastEl).toContainText(/obligatorio|monto|descripción/i)
-    }
-
+    // FIX: mismo patrón que compras.spec.ts/insumos.spec.ts -- el botón
+    // Guardar está deshabilitado mientras falte monto
+    // (disabled={... || !monto}), validación del lado del cliente. Forzar
+    // el click agotaba el timeout completo del test.
+    await expect(page.locator('button:has-text("Guardar")')).toBeDisabled()
     await expect(page.locator('h3:has-text("Registrar Gasto")')).toBeVisible()
   })
 

@@ -625,17 +625,16 @@ test.describe('Dia completo de usuario', () => {
   // ═══════════════════════════════════════════
   // 20. ROLES — asistente no puede cerrar dia
   // ═══════════════════════════════════════════
-  test('20. Asistente no ve boton Cerrar Dia', async ({ page }) => {
+  test('20. Asistente es redirigido de /cierre (sin permiso view:cierre)', async ({ page }) => {
+    // FIX: src/lib/permissions.ts no incluye 'view:cierre' en la lista de
+    // ASISTENTE -- src/proxy.ts redirige a /dashboard (getRedirectForRole)
+    // antes de que la página de cierre llegue a renderizar. No hay boton
+    // "Cerrar Dia" que verificar porque ASISTENTE nunca ve esa página.
     await login(page, 'asistente', 'asist123')
     await dismissBaseCaja(page)
     await nav(page, '/cierre')
 
-    // The "Cerrar Dia" button should NOT be visible for non-admin
-    // Wait a moment for page to fully render
-    await page.waitForTimeout(2000)
-
-    // It may or may not be visible depending on implementation,
-    // but at minimum we verify the page loads for asistente
-    await expect(page.locator('body')).toContainText('Cierre', { timeout: 5000 })
+    await page.waitForURL(/\/dashboard/, { timeout: 5000 })
+    await expect(page.locator('body')).not.toContainText('Cerrar Día')
   })
 })
