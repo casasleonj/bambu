@@ -28,8 +28,11 @@ test.describe('Nomina', () => {
     await page.click('button:has-text("Nueva Nómina")')
     await page.waitForTimeout(500)
 
-    await expect(page.locator('h3:has-text("Calcular Nómina")')).toBeVisible()
-
+    // FIX: el form de "Nueva Nómina" (nomina-client/index.tsx:292-315) no
+    // tiene ningún h3 "Calcular Nómina" -- nunca lo tuvo en el código
+    // actual, solo un Label "Trabajador *" seguido del select. El check
+    // real de que el form abrió es el select #nomina-trabajador visible
+    // (línea siguiente), que ya existía.
     const select = page.locator('#nomina-trabajador')
     await select.waitFor({ state: 'visible' })
     await page.waitForTimeout(500)
@@ -51,7 +54,7 @@ test.describe('Nomina', () => {
       const hasNomina = await page.locator('text=Período').count()
       expect(hasResult + hasNomina).toBeGreaterThan(0)
     } else {
-      await expect(page.locator('h3:has-text("Calcular Nómina")')).toBeVisible()
+      await expect(select).toBeVisible()
     }
   })
 
