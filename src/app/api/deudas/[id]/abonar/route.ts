@@ -74,7 +74,15 @@ export async function POST(
       return { abono, deuda: updatedDeuda }
     })
 
-    return apiSuccess(result, 201)
+    // FIX: Known Issue #1 -- Prisma.Decimal serializa a string via toJSON().
+    return apiSuccess({
+      abono: { ...result.abono, monto: Number(result.abono.monto) },
+      deuda: {
+        ...result.deuda,
+        montoOriginal: Number(result.deuda.montoOriginal),
+        montoPendiente: Number(result.deuda.montoPendiente),
+      },
+    }, 201)
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown'
     logger.error({ err: msg }, 'Error abonando deuda:')

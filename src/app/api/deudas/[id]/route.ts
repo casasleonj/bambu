@@ -33,7 +33,20 @@ export async function GET(
 
     if (!deuda) return apiError('Deuda no encontrada', 404)
 
-    return apiSuccess({ deuda })
+    // FIX: Known Issue #1 -- Prisma.Decimal serializa a string via toJSON().
+    return apiSuccess({
+      deuda: {
+        ...deuda,
+        montoOriginal: Number(deuda.montoOriginal),
+        montoPendiente: Number(deuda.montoPendiente),
+        abonos: deuda.abonos.map((a) => ({ ...a, monto: Number(a.monto) })),
+        deducciones: deuda.deducciones.map((x) => ({
+          ...x,
+          monto: Number(x.monto),
+          nomina: x.nomina ? { ...x.nomina, total: Number(x.nomina.total) } : x.nomina,
+        })),
+      },
+    })
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching deuda:')
     return apiError('Error fetching deuda', 500)
@@ -100,6 +113,8 @@ export async function PATCH(
       return apiSuccess({
         deuda: {
           ...deuda,
+          montoOriginal: Number(deuda.montoOriginal),
+          montoPendiente: Number(deuda.montoPendiente),
           trabajador: { id: '', nombre: '', rol: '' },  // incluye vacío
         },
       })
@@ -141,7 +156,13 @@ export async function PATCH(
       usuarioId: userId,
     }).catch(() => {})
 
-    return apiSuccess({ deuda: updated })
+    return apiSuccess({
+      deuda: {
+        ...updated,
+        montoOriginal: Number(updated.montoOriginal),
+        montoPendiente: Number(updated.montoPendiente),
+      },
+    })
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error updating deuda:')
     return apiError('Error actualizando deuda', 500)

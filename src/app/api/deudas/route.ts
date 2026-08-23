@@ -35,7 +35,19 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    return apiSuccess({ deudas })
+    // FIX: Prisma.Decimal serializa a string via toJSON() en NextResponse.json()
+    // (Known Issue #1). montoOriginal/montoPendiente/abonos[].monto/
+    // deducciones[].monto deben castearse a Number antes de responder, o el
+    // cliente recibe "50000" en vez de 50000.
+    return apiSuccess({
+      deudas: deudas.map((d) => ({
+        ...d,
+        montoOriginal: Number(d.montoOriginal),
+        montoPendiente: Number(d.montoPendiente),
+        abonos: d.abonos.map((a) => ({ ...a, monto: Number(a.monto) })),
+        deducciones: d.deducciones.map((x) => ({ ...x, monto: Number(x.monto) })),
+      })),
+    })
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching deudas:')
     return apiError('Error fetching deudas', 500)
@@ -95,7 +107,14 @@ export async function POST(request: NextRequest) {
       return deuda
     })
 
-    return apiSuccess({ deuda: result }, 201)
+    // FIX: mismo Known Issue #1 -- castear Decimal a Number antes de responder.
+    return apiSuccess({
+      deuda: {
+        ...result,
+        montoOriginal: Number(result.montoOriginal),
+        montoPendiente: Number(result.montoPendiente),
+      },
+    }, 201)
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown'
     logger.error({ err: msg }, 'Error creating deuda:')

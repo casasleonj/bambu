@@ -38,11 +38,19 @@ test.describe('Cierre', () => {
     await expect(cerrarBtn).toBeVisible({ timeout: 5000 })
   })
 
-  test('asistente can access cierre', async ({ page }) => {
+  // FIX: PR #126 (Known Issue #25 backlog) removió view:cierre de ASISTENTE
+  // (decisión de negocio confirmada por el usuario, ver
+  // src/lib/__tests__/permissions.test.ts "NO puede ver cierre ni productos").
+  // src/proxy.ts redirige cualquier ruta no permitida a getRedirectForRole(role),
+  // que para ASISTENTE es '/dashboard' -- este test asumía lo contrario y
+  // nunca se actualizó tras ese cambio, bloqueando (mode: 'serial') los 7
+  // tests siguientes de este archivo.
+  test('asistente NO puede acceder a cierre -> redirect a /dashboard', async ({ page }) => {
     await loginAs(page, 'asistente')
     await page.waitForTimeout(300)
     await goto(page, '/cierre')
-    await expect(page.locator('h1:has-text("Cierre del Día")')).toBeVisible({ timeout: 10000 })
+    await page.waitForURL('**/dashboard', { timeout: 10000 })
+    expect(page.url()).toContain('/dashboard')
   })
 
   test('admin can input stock', async ({ page }) => {
