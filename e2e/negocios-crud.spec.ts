@@ -207,7 +207,12 @@ test.describe('Negocios CRUD UI - admin', () => {
 
     await page.waitForURL(/\/pedidos\?clienteId=.+/)
     await expect(page).toHaveURL(new RegExp(`/pedidos\\?clienteId=${cliente.id}`))
-    await expect(page.getByRole('heading', { name: 'Pedidos', exact: true })).toBeVisible()
+    // FIX: sin desde/hasta explícitos en la URL, /pedidos usa el preset
+    // "Turno" por defecto (getTituloFecha() en pedidos-client/index.tsx),
+    // así que el heading real es "Pedidos del Turno", no "Pedidos" exacto.
+    // Se matchea el prefijo -- el título varía según el preset activo
+    // (Hoy/Ayer/Turno/Mañana/rango), pero siempre empieza con "Pedidos".
+    await expect(page.getByRole('heading', { name: /^Pedidos/ })).toBeVisible()
     // Regresión: antes el mismo link abría el formulario de nuevo pedido.
     await expect(page.getByRole('heading', { name: 'Nuevo Pedido' })).toBeHidden()
   })

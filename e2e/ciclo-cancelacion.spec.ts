@@ -120,10 +120,17 @@ test.describe('Ciclo de Cancelación', () => {
       devolverStock: false,
     })
 
-    expect(anular2.status()).toBe(400)
-    const errBody = await anular2.json()
-    const errorMsg = typeof errBody.error === 'string' ? errBody.error : (errBody.error?.message || errBody.message || '')
-    expect(errorMsg).toMatch(/YA_ANULADO|anulado/i)
+    // FIX F-N21 (hallazgo 2, ver AnularPedidoUseCase.ts): el dedup por
+    // estado ANULADO se movió DENTRO del lock -- un segundo anular sobre
+    // un pedido ya anulado ahora es 200 idempotente ({deduped:true}), no
+    // 400. Antes del fix, dos requests casi simultáneos pasaban el check
+    // (fuera del lock) y el segundo recibía 400 YA_ANULADO en vez de un
+    // resultado idempotente. Este test nunca se actualizó tras ese
+    // cambio deliberado y documentado.
+    expect(anular2.status()).toBe(200)
+    const body2 = await anular2.json()
+    expect(body2.deduped).toBe(true)
+    expect(body2.pedido.estado).toBe('ANULADO')
   })
 
   // ─── 4. Pedido con hijos ────────────────────────────────────────────────────

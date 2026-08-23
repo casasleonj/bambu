@@ -20,7 +20,11 @@ export class AnularPedidoUseCase {
     private txManager: ITransactionManager,
   ) {}
 
-  async execute(input: AnularPedidoInput): Promise<{ pedido: import('../dto').PedidoResumenDTO; deduped?: boolean }> {
+  async execute(input: AnularPedidoInput): Promise<{
+    pedido: import('../dto').PedidoResumenDTO
+    deduped?: boolean
+    notaCredito?: { numero: string; pedidoId: string; monto: number; motivo: string }
+  }> {
     // FASE 0 (ADR-CONCURRENCIA-001): lock `SECUENCIA:notaCredito`. La NC se
     // genera con getNextNumero(model:'notaCredito') MAX+1, por lo que exige
     // serialización global de la numeración. Resuelve la colisión histórica
@@ -64,14 +68,23 @@ export class AnularPedidoUseCase {
       // Create nota crédito if there were payments.
       // FIX: usar totalPagado (lo efectivamente cobrado), no updated.total
       // que puede incluir fiado no pagado.
+      // FIX: la nota crédito se creaba pero nunca se devolvía en la
+      // respuesta -- notaCreditoRepo.create() retorna void, así que se
+      // arma el resumen localmente con los mismos datos ya calculados
+      // acá (no requiere cambiar la interfaz del repo ni volver a leer
+      // de la DB).
+      let notaCredito: { numero: string; pedidoId: string; monto: number; motivo: string } | undefined
       if (tuvoPagos) {
         const nextNum = await getNextNumero(tx, { model: 'notaCredito' })
+        const numero = `NC-${nextNum.toString().padStart(5, '0')}`
+        const motivo = input.motivo || 'ANULADO'
         await this.notaCreditoRepo.create({
-          numero: `NC-${nextNum.toString().padStart(5, '0')}`,
+          numero,
           pedidoId: pedido.id.get(),
           monto: totalPagado,
-          motivo: input.motivo || 'ANULADO',
+          motivo,
         }, tx)
+        notaCredito = { numero, pedidoId: pedido.id.get(), monto: totalPagado, motivo }
       }
 
       await logAudit({
@@ -81,7 +94,7 @@ export class AnularPedidoUseCase {
         datos: { motivo: input.motivo, notaCredito: tuvoPagos },
       }, tx)
 
-      return { pedido: PedidoDTOMapper.toResumen(updated) }
+      return { pedido: PedidoDTOMapper.toResumen(updated), notaCredito }
     })
   }
 }

@@ -83,7 +83,7 @@ export default function AbonoDeudaDialog({
 
         <div className="p-4 bg-amber-50 border-b border-amber-200">
           <p className="text-sm text-amber-700">
-            Deuda pendiente: <span className="font-bold">{formatCurrency(maxMonto)}</span>
+            Deuda pendiente: <span className="font-bold" data-testid="abono-dialog-max-monto">{formatCurrency(maxMonto)}</span>
           </p>
         </div>
 

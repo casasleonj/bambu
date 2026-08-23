@@ -44,7 +44,11 @@ test.describe('Ciclo de Crédito', () => {
       const facturasGet = await apiGet(page, `/api/facturas?pedidoId=${pedidoId}`)
       const facturasBody = await facturasGet.json()
       const facturas = facturasBody.facturas || facturasBody.data || []
-      const facturaExistente = (facturas as Array<{ id: string; pedidoId: string; estado: string; saldo: number | string }>).find((f) => f.pedidoId === pedidoId)
+      // FIX: GET /api/facturas anida la referencia al pedido como
+      // `factura.pedido.id`, no un `factura.pedidoId` de nivel superior
+      // (ver la forma real devuelta por el endpoint). El .find() nunca
+      // matcheaba nada aunque la factura sí existiera.
+      const facturaExistente = (facturas as Array<{ id: string; pedido?: { id: string }; pedidoId?: string; estado: string; saldo: number | string }>).find((f) => (f.pedido?.id ?? f.pedidoId) === pedidoId)
       if (!facturaExistente) {
         throw new Error('No se encontró factura para el pedido')
       }
@@ -53,7 +57,7 @@ test.describe('Ciclo de Crédito', () => {
     const facturasGet = await apiGet(page, `/api/facturas?pedidoId=${pedidoId}`)
     const facturasBody = await facturasGet.json()
     const facturas = facturasBody.facturas || facturasBody.data || []
-    const factura = (facturas as Array<{ id: string; pedidoId: string; estado: string; saldo: number | string }>).find((f) => f.pedidoId === pedidoId)
+    const factura = (facturas as Array<{ id: string; pedido?: { id: string }; pedidoId?: string; estado: string; saldo: number | string }>).find((f) => (f.pedido?.id ?? f.pedidoId) === pedidoId)
 
     if (!factura) {
       test.skip()
@@ -231,7 +235,7 @@ test.describe('Ciclo de Crédito', () => {
     const facturasGet = await apiGet(page, `/api/facturas?pedidoId=${pedidoId}`)
     const facturasBody = await facturasGet.json()
     const facturas = facturasBody.facturas || facturasBody.data || []
-    const factura = (facturas as Array<{ id: string; pedidoId: string; estado: string; saldo: number | string }>).find((f) => f.pedidoId === pedidoId)
+    const factura = (facturas as Array<{ id: string; pedido?: { id: string }; pedidoId?: string; estado: string; saldo: number | string }>).find((f) => (f.pedido?.id ?? f.pedidoId) === pedidoId)
 
     if (!factura || saldoPedido <= 0) {
       test.skip()

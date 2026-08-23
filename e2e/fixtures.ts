@@ -423,7 +423,14 @@ export async function goto(page: Page, path: string) {
 export async function dismissInstallBanner(page: Page) {
   const closeBtn = page.locator('[aria-label="Cerrar banner de instalación"]').first()
   if (await closeBtn.isVisible().catch(() => false)) {
-    await closeBtn.click()
+    // FIX: isVisible() is true even when the banner is obscured by another
+    // on-top overlay (e.g. a client-detail side panel or a page's own
+    // sticky footer opened via a deep-link, both z-50 vs. the banner's
+    // z-40) -- .click() then burns the entire test timeout (default 30s)
+    // retrying a click that can never land. If something else is already
+    // covering the banner, it's already effectively hidden and doesn't
+    // need dismissing; a short timeout + swallow lets the test move on.
+    await closeBtn.click({ timeout: 3000 }).catch(() => {})
   }
 }
 
@@ -648,7 +655,13 @@ export async function createProveedor(page: Page) {
     nombre: `Proveedor Test ${Date.now() % 10000}`,
     telefono: `3${String(Date.now()).slice(-9)}`,
   })
-  return res.json()
+  const body = await res.json()
+  // FIX: POST /api/proveedores devuelve { success, proveedor: {...} }
+  // (apiSuccess({ proveedor }, 201), ver src/app/api/proveedores/route.ts)
+  // -- ninguna call site del repo esperaba correctamente esa forma
+  // anidada (todas asumían proveedor.id plano), así que se desenvuelve
+  // acá una sola vez en vez de repetir el fix en cada test.
+  return body.proveedor ?? body
 }
 
 export async function createInsumo(page: Page) {
@@ -659,7 +672,10 @@ export async function createInsumo(page: Page) {
     stockMin: 10,
     precioUnit: 5000,
   })
-  return res.json()
+  const body = await res.json()
+  // FIX: mismo caso que createProveedor -- POST /api/insumos devuelve
+  // { success, insumo: {...} } anidado.
+  return body.insumo ?? body
 }
 
 // ─── Get first from list ─────────────────────────────────────────────────────
