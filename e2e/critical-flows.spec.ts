@@ -1,6 +1,6 @@
 // @tests api/cliente, api/pedido
 import { test, expect, type Page } from '@playwright/test'
-import { handleBaseCaja, openFabPedidoEnvio, openSidebarIfMobile, loginAs } from './fixtures'
+import { handleBaseCaja, openFabPedidoEnvio, openSidebarIfMobile, loginAs, createCliente } from './fixtures'
 
 const BASE_URL = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000'
 
@@ -15,12 +15,23 @@ async function login(page: Page) {
 // the only way to give it a fresh 8s budget is to reload and reopen the
 // modal. DOMICILIO pedidos require a client (handleSubmit validation), so
 // unlike abonos.spec.ts this can't just be skipped when empty.
-async function searchAndSelectCliente(page: Page) {
+//
+// FIX: the real, deterministic root cause (found by repro) wasn't the
+// timing race described above -- it was `.fill('a')`. matchCliente()
+// (src/lib/cliente-search.ts) requires MIN_SEARCH_CHARS=2; a 1-char query
+// always scores 0 and never matches ANY client, regardless of how fast or
+// slow the background fetch is. 'te' is virtually guaranteed to match
+// (createCliente()'s default fixture name is `Cliente Test <timestamp>`,
+// and CONSUMIDOR_FINAL/seeded clients also commonly contain it). The
+// retry-with-reload loop is kept as a defensive fallback for the
+// documented timing race, now that the search term itself can actually
+// match once the list has loaded.
+async function searchAndSelectCliente(page: Page, searchTerm = 'te') {
   const modal = page.locator('form').filter({ hasText: 'Cliente' })
   const clientBtn = page.getByTestId('cliente-search-result').first()
   const maxAttempts = 3
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    await modal.locator('input[placeholder="Buscar cliente por nombre o teléfono..."]').fill('a')
+    await modal.locator('input[placeholder="Buscar cliente por nombre o teléfono..."]').fill(searchTerm)
     if (await clientBtn.isVisible({ timeout: 15000 }).catch(() => false)) {
       await clientBtn.click()
       return modal
@@ -33,7 +44,7 @@ async function searchAndSelectCliente(page: Page) {
       await page.waitForTimeout(800)
     }
   }
-  await clientBtn.click()
+  await clientBtn.click({ timeout: 5000 })
   return modal
 }
 
@@ -104,12 +115,22 @@ test.describe('Flujos críticos de negocio', () => {
       await route.continue()
     })
 
+    // FIX: buscar con un término genérico ('te') podía matchear "Cliente
+    // E2E Test" (creado por el test sibling "Crear un nuevo cliente" en
+    // este mismo archivo, sin dirección/barrio) -- el flujo de domicilio
+    // exige dirección+barrio, y ese cliente en particular no los tiene,
+    // bloqueando el submit con "Dirección y barrio son obligatorios".
+    // Se crea acá un cliente propio con dirección completa y se busca
+    // por un nombre que no colisiona con el de otros tests del archivo.
+    const cliente = await createCliente(page, { nombre: 'ClientePedidoDomZ1' })
+    expect(cliente.cliente.id).toBeTruthy()
+
     // Open create modal
     await openFabPedidoEnvio(page)
     await page.waitForTimeout(800)
 
-    // Search and select first client
-    const modal = await searchAndSelectCliente(page)
+    // Search and select the dedicated client
+    const modal = await searchAndSelectCliente(page, 'DomZ1')
 
     // Add product
     const aguaInput = modal.locator('input[type="number"]').first()
@@ -188,11 +209,17 @@ test.describe('Flujos críticos de negocio', () => {
       await route.continue()
     })
 
+    // FIX: mismo caso que el test anterior -- se crea un cliente propio
+    // con dirección completa para no depender de cuál cliente matchea
+    // primero un término de búsqueda genérico.
+    const cliente = await createCliente(page, { nombre: 'ClientePedidoDomZ2' })
+    expect(cliente.cliente.id).toBeTruthy()
+
     await openFabPedidoEnvio(page)
     await page.waitForTimeout(800)
 
     // Select client
-    const modal = await searchAndSelectCliente(page)
+    const modal = await searchAndSelectCliente(page, 'DomZ2')
 
     // Add product
     await modal.locator('input[type="number"]').first().fill('1')
