@@ -86,6 +86,30 @@ describe('ADMIN permissions', () => {
   })
 })
 
+// FIX (backlog post-#123, Known Issue #25): ROLE_PERMISSIONS[ASISTENTE] tenía
+// view:cierre y view:productos (páginas que e2e/roles-permisos.spec.ts espera
+// bloqueadas para ASISTENTE) pero le faltaban view:facturas y view:gastos
+// (páginas que ese mismo test espera permitidas) — 4 contradicciones directas
+// entre el matrix real y el contrato de negocio ya documentado en el test.
+describe('ASISTENTE permissions (contrato de negocio en e2e/roles-permisos.spec.ts)', () => {
+  it('puede ver facturas y gastos', () => {
+    expect(userCan(ROLES.ASISTENTE, 'view:facturas')).toBe(true)
+    expect(userCan(ROLES.ASISTENTE, 'view:gastos')).toBe(true)
+  })
+
+  it('NO puede ver cierre ni productos (páginas restringidas)', () => {
+    expect(userCan(ROLES.ASISTENTE, 'view:cierre')).toBe(false)
+    expect(userCan(ROLES.ASISTENTE, 'view:productos')).toBe(false)
+  })
+
+  it('isRouteAllowed refleja el mismo contrato', () => {
+    expect(isRouteAllowed('/facturas', ROLES.ASISTENTE)).toBe(true)
+    expect(isRouteAllowed('/gastos', ROLES.ASISTENTE)).toBe(true)
+    expect(isRouteAllowed('/cierre', ROLES.ASISTENTE)).toBe(false)
+    expect(isRouteAllowed('/productos', ROLES.ASISTENTE)).toBe(false)
+  })
+})
+
 describe('SELLADOR permissions', () => {
   it('has only dashboard, produccion, mi-perfil', () => {
     const perms = getUserPermissions(ROLES.SELLADOR)
