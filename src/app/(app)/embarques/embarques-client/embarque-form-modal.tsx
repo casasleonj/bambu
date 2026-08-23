@@ -51,9 +51,16 @@ export function EmbarqueFormModal({
   const [overrideMotivo, setOverrideMotivo] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const { productos: productosDomicilio, loading: loadingProductos } = useProductosDomicilio()
+  const [prevOpen, setPrevOpen] = useState(open)
+  const [prevIsEdit, setPrevIsEdit] = useState(isEdit)
+  const [prevEmbarque, setPrevEmbarque] = useState(embarque)
 
-  // Initialize form on open
-  useEffect(() => {
+  // Reinicia el form durante el render cuando cambia open/isEdit/embarque, en
+  // vez de en el efecto — ver https://react.dev/learn/you-might-not-need-an-effect
+  if (open !== prevOpen || isEdit !== prevIsEdit || embarque !== prevEmbarque) {
+    setPrevOpen(open)
+    setPrevIsEdit(isEdit)
+    setPrevEmbarque(embarque)
     if (open) {
       if (isEdit && embarque) {
         setSelectedTrabajadorId(embarque.trabajador.id)
@@ -76,8 +83,8 @@ export function EmbarqueFormModal({
         }
         // Fallback to legacy fields if no productos
         if (embarque.productos?.length === 0) {
-          cargaInit.PACA_AGUA = (embarque as any).pacasAgua || 0
-          cargaInit.PACA_HIELO = (embarque as any).pacasHielo || 0
+          cargaInit.PACA_AGUA = embarque.pacasAgua || 0
+          cargaInit.PACA_HIELO = embarque.pacasHielo || 0
         }
         setCarga(cargaInit)
       } else {
@@ -94,23 +101,26 @@ export function EmbarqueFormModal({
       }
       setConfirmOverride(false)
       setOverrideMotivo('')
-
-      fetch('/api/embarques?all=true&stock=true', { credentials: 'include' })
-        .then(r => r.json())
-        .then(data => {
-          if (data.stock) setStockDisponible(data.stock)
-          if (data.tieneStockEstimado) setTieneStockEstimado(data.tieneStockEstimado)
-        })
-        .catch(() => {})
-
-      fetch('/api/config?keys=MAX_UNIDADES_EMBARQUE', { credentials: 'include' })
-        .then(r => r.json())
-        .then(data => {
-          const n = Number(data?.MAX_UNIDADES_EMBARQUE)
-          if (Number.isInteger(n) && n > 0) setMaxUnidades(n)
-        })
-        .catch(() => {})
     }
+  }
+
+  useEffect(() => {
+    if (!open) return
+    fetch('/api/embarques?all=true&stock=true', { credentials: 'include' })
+      .then(r => r.json())
+      .then(data => {
+        if (data.stock) setStockDisponible(data.stock)
+        if (data.tieneStockEstimado) setTieneStockEstimado(data.tieneStockEstimado)
+      })
+      .catch(() => {})
+
+    fetch('/api/config?keys=MAX_UNIDADES_EMBARQUE', { credentials: 'include' })
+      .then(r => r.json())
+      .then(data => {
+        const n = Number(data?.MAX_UNIDADES_EMBARQUE)
+        if (Number.isInteger(n) && n > 0) setMaxUnidades(n)
+      })
+      .catch(() => {})
   }, [open, isEdit, embarque])
 
   const PRODUCTOS = productosDomicilio.map(p => ({

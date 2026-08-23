@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
       orderBy: { nombre: 'asc' },
     })
     return apiSuccess({ trabajadores })
-  } catch (error) {
+  } catch (_error) {
     return apiError('Error cargando trabajadores')
   }
 }

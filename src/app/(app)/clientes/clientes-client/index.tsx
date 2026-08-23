@@ -22,13 +22,15 @@ import { ClienteTable } from './cliente-table'
 import { ClienteForm } from './cliente-form'
 import { fetchResilient } from '@/lib/fetch-resilient'
 import { fetchWithTimeout, FetchTimeoutError } from '@/lib/fetch-timeout'
+import { offlineDb } from '@/lib/db/offline'
+import { SYNC_ITEM_DONE_EVENT } from '@/lib/db/sync'
 import { ClienteHistorial } from './cliente-historial'
 import { ClienteStats } from './cliente-stats'
 import { NegocioForm } from '@/components/negocio-form'
 import { NegocioDetailModal, type NegocioDetail } from '@/components/negocio-detail-modal'
 import { calcularAlertasCliente } from '@/app/(app)/pedidos/pedidos-client/alertas-utils'
 import { GuiaAlertaModal } from '@/components/guia-alerta-modal'
-import { CasoGuiaModal } from '@/components/caso-guia-modal'
+import { CasoGuiaModal, type Caso } from '@/components/caso-guia-modal'
 import type { AlertaTipo } from '@/lib/alertas-config'
 import { getBadgeColor, ignorarAlerta } from '@/lib/alertas-config'
 import { useEscapeGuard } from '@/hooks/use-escape-guard'
@@ -205,6 +207,42 @@ function clienteMatchesSearch(cliente: Cliente, term: string): boolean {
   return false
 }
 
+/**
+ * Construye una fila optimista para un cliente creado offline (aun en
+ * requestQueue, sin id real de servidor). `id`/`clienteId` usan un prefijo
+ * `offline-` para no colisionar con ids reales ni disparar acciones que
+ * requieren un cliente ya persistido (ver render condicional en ClienteTable).
+ */
+function buildPendingCliente(offlineId: string, body: Record<string, unknown>): Cliente {
+  return {
+    id: `offline-${offlineId}`,
+    clienteId: `offline-${offlineId}`,
+    nombre: typeof body.nombre === 'string' ? body.nombre : '',
+    apellido: typeof body.apellido === 'string' ? body.apellido : undefined,
+    telefono: typeof body.telefono === 'string' ? body.telefono : '',
+    barrio: typeof body.barrio === 'string' ? body.barrio : undefined,
+    direccion: typeof body.direccion === 'string' ? body.direccion : undefined,
+    frecuencia: 'NINGUNA',
+    activo: true,
+    _pendingSync: true,
+    _pendingOfflineId: offlineId,
+  }
+}
+
+/** Lee requestQueue y reconstruye las filas pendientes de "crear-cliente". */
+async function loadPendingClientesFromQueue(): Promise<Cliente[]> {
+  const items = await offlineDb.requestQueue.where('localEndpoint').equals('crear-cliente').toArray()
+  return items.map((item) => {
+    let body: Record<string, unknown> = {}
+    try {
+      body = JSON.parse(item.body)
+    } catch {
+      // body corrupto: fila pendiente igual se muestra con campos vacíos
+    }
+    return buildPendingCliente(item.offlineId, body)
+  })
+}
+
 export default function ClientesClient({
   initialClientes,
   initialTotal = 0,
@@ -223,6 +261,9 @@ export default function ClientesClient({
   const [clientes, setClientes] = useState<Cliente[]>(initialClientes)
   const [total, setTotal] = useState<number>(initialTotal)
   const [totalPages, setTotalPages] = useState<number>(initialTotalPages)
+  const [prevInitialTotal, setPrevInitialTotal] = useState(initialTotal)
+  const [prevInitialTotalPages, setPrevInitialTotalPages] = useState(initialTotalPages)
+  const [prevInitialClientes, setPrevInitialClientes] = useState(initialClientes)
   const [searchInput, setSearchInput] = useState<string>(initialSearch)
   const searchInputRef = useRef(searchInput)
   useEffect(() => { searchInputRef.current = searchInput }, [searchInput])
@@ -231,66 +272,35 @@ export default function ClientesClient({
   const [allClientes, setAllClientes] = useState<Cliente[]>([])
   const [allClientesLoading, setAllClientesLoading] = useState(false)
 
-  // Sincronizar input de búsqueda cuando la URL cambia por navegación
-  // externa (back/forward) o carga inicial con ?search=... en el URL.
-  // NO sincronizar desde initialSearch (prop del RSC) porque llega después
-  // que searchParams y sobreescribe lo que el usuario está escribiendo,
-  // causando el parpadeo "escribe → desaparece → reaparece".
-  // Usamos lastCommittedSearchRef para distinguir un cambio real de URL
-  // (que sí debe reflejarse en el input) de una transición pendiente que
-  // aún no cometió el valor.
-  const lastCommittedSearchRef = useRef(initialSearch)
+  // Clientes creados offline (2G/3G rural) que siguen encolados en
+  // IndexedDB esperando sync. Sin esto, el usuario cierra el modal, no ve
+  // el cliente en la lista y asume que "se borró" — reingresándolo varias
+  // veces (ver AGENTS.md issue Aponte). Se reconstruyen al montar desde
+  // requestQueue (sobreviven a un refresh) y se reconcilian cuando
+  // syncWithServer() termina de procesar ese item.
+  const [pendingClientes, setPendingClientes] = useState<Cliente[]>([])
 
   useEffect(() => {
-    const urlSearch = searchParams?.get('search') || ''
-    const url = urlSearch.trim()
-    const input = searchInputRef.current.trim()
-    if (url !== input && url !== lastCommittedSearchRef.current.trim()) {
-      setSearchInput(urlSearch)
-    }
-    lastCommittedSearchRef.current = urlSearch
-  }, [searchParams])
+    let cancelled = false
+    loadPendingClientesFromQueue()
+      .then((rows) => {
+        if (!cancelled) setPendingClientes(rows)
+      })
+      .catch((error) => {
+        // IndexedDB puede no estar disponible (Safari privado, algunos
+        // entornos de test) — degradar sin romper el resto de la página.
+        console.warn('[pendingClientes] error leyendo requestQueue', error)
+      })
+    return () => { cancelled = true }
+  }, [])
 
-  // Sincronizar total/paginación cuando el Server Component re-renderiza.
-  useEffect(() => {
-    setTotal(initialTotal)
-    setTotalPages(initialTotalPages)
-  }, [initialTotal, initialTotalPages])
-
-  // Sincroniza la URL con el término de búsqueda usando la History API
-  // nativa (replaceState). Esto actualiza la barra de direcciones y sincroniza
-  // useSearchParams SIN disparar una navegación RSC — cero tráfico al servidor
-  // por cada tecla. La lista se filtra client-side.
-  // Typing: search=term + page=1 (F5-safe). Clear: solo borra search, page intacta.
-  useEffect(() => {
-    const currentSearch = searchParams?.get('search') || ''
-    if (searchInput.trim() === currentSearch.trim()) return
-    const t = setTimeout(() => {
-      const nextParams = new URLSearchParams(searchParams?.toString() || '')
-      if (searchInput.trim()) {
-        nextParams.set('search', searchInput.trim())
-        nextParams.set('page', '1')
-      } else {
-        nextParams.delete('search')
-      }
-      const nextUrl = `${pathname}?${nextParams.toString()}`
-      lastCommittedSearchRef.current = searchInput.trim()
-      window.history.replaceState(null, '', nextUrl)
-    }, 100)
-    return () => clearTimeout(t)
-  }, [searchInput, searchParams, pathname])
-
-  // FIX: sincronizar estado del cliente cuando el Server Component
-  // re-renderiza con nuevos searchParams (ej: cambio de filtro en URL).
-  // Sin esto, los filtros server-side no actualizan la UI.
-  useEffect(() => {
-    setClientes(initialClientes)
-  }, [initialClientes])
-
-  // Carga en background la lista completa de clientes para búsqueda
-  // instantánea client-side. El ref evita requests concurrentes.
-  // Usamos refs para los filtros y dependencia estable (filtrosKey) para evitar
-  // que se dispare en cada render de useSearchParams (ej: cada tecla en búsqueda).
+  // Movido antes de su primer uso (handleSyncItemDone más abajo) -- estaba
+  // declarado más abajo (línea ~377 original) pero ya se usaba acá arriba,
+  // "funcionaba" en runtime porque handleSyncItemDone solo corre como
+  // listener de evento (después de que el render completo, incluida esta
+  // declaración, ya ejecutó), pero React Compiler lo señala como riesgo de
+  // análisis estático ("accessed before declared"). Reordenado, no cambia
+  // comportamiento.
   const allClientesLoadingRef = useRef(false)
   const filtrosActivosRef = useRef(filtrosActivos)
   useEffect(() => { filtrosActivosRef.current = filtrosActivos }, [filtrosActivos])
@@ -331,6 +341,83 @@ export default function ClientesClient({
     }
   }, [])
 
+  useEffect(() => {
+    function handleSyncItemDone(e: Event) {
+      const detail = (e as CustomEvent<{ offlineId: string; localEndpoint: string; status: string }>).detail
+      if (!detail || detail.localEndpoint !== 'crear-cliente') return
+      setPendingClientes((prev) => prev.filter((c) => c._pendingOfflineId !== detail.offlineId))
+      // El item pudo haber creado un cliente nuevo en el server (synced) o
+      // deduplicado contra uno existente (conflict) — en ambos casos hay
+      // que refrescar para que aparezca la fila real.
+      if (detail.status === 'synced' || detail.status === 'conflict') {
+        void loadAllClientes()
+      }
+    }
+    window.addEventListener(SYNC_ITEM_DONE_EVENT, handleSyncItemDone)
+    return () => window.removeEventListener(SYNC_ITEM_DONE_EVENT, handleSyncItemDone)
+  }, [loadAllClientes])
+
+  // Sincronizar input de búsqueda cuando la URL cambia por navegación
+  // externa (back/forward) o carga inicial con ?search=... en el URL.
+  // NO sincronizar desde initialSearch (prop del RSC) porque llega después
+  // que searchParams y sobreescribe lo que el usuario está escribiendo,
+  // causando el parpadeo "escribe → desaparece → reaparece".
+  // Usamos lastCommittedSearchRef para distinguir un cambio real de URL
+  // (que sí debe reflejarse en el input) de una transición pendiente que
+  // aún no cometió el valor.
+  const lastCommittedSearchRef = useRef(initialSearch)
+
+  useEffect(() => {
+    const urlSearch = searchParams?.get('search') || ''
+    const url = urlSearch.trim()
+    const input = searchInputRef.current.trim()
+    if (url !== input && url !== lastCommittedSearchRef.current.trim()) {
+      setSearchInput(urlSearch)
+    }
+    lastCommittedSearchRef.current = urlSearch
+  }, [searchParams])
+
+  // Sincronizar total/paginación cuando el Server Component re-renderiza,
+  // durante el render en vez de en un efecto.
+  if (initialTotal !== prevInitialTotal || initialTotalPages !== prevInitialTotalPages) {
+    setPrevInitialTotal(initialTotal)
+    setPrevInitialTotalPages(initialTotalPages)
+    setTotal(initialTotal)
+    setTotalPages(initialTotalPages)
+  }
+
+  // Sincroniza la URL con el término de búsqueda usando la History API
+  // nativa (replaceState). Esto actualiza la barra de direcciones y sincroniza
+  // useSearchParams SIN disparar una navegación RSC — cero tráfico al servidor
+  // por cada tecla. La lista se filtra client-side.
+  // Typing: search=term + page=1 (F5-safe). Clear: solo borra search, page intacta.
+  useEffect(() => {
+    const currentSearch = searchParams?.get('search') || ''
+    if (searchInput.trim() === currentSearch.trim()) return
+    const t = setTimeout(() => {
+      const nextParams = new URLSearchParams(searchParams?.toString() || '')
+      if (searchInput.trim()) {
+        nextParams.set('search', searchInput.trim())
+        nextParams.set('page', '1')
+      } else {
+        nextParams.delete('search')
+      }
+      const nextUrl = `${pathname}?${nextParams.toString()}`
+      lastCommittedSearchRef.current = searchInput.trim()
+      window.history.replaceState(null, '', nextUrl)
+    }, 100)
+    return () => clearTimeout(t)
+  }, [searchInput, searchParams, pathname])
+
+  // FIX: sincronizar estado del cliente cuando el Server Component
+  // re-renderiza con nuevos searchParams (ej: cambio de filtro en URL).
+  // Sin esto, los filtros server-side no actualizan la UI. Durante el
+  // render en vez de en un efecto.
+  if (initialClientes !== prevInitialClientes) {
+    setPrevInitialClientes(initialClientes)
+    setClientes(initialClientes)
+  }
+
   // Clave estable para detectar cambio real en filtros (evita refetch en
   // renders donde los objetos prop tienen distinta identidad pero mismos valores).
   const filtrosKey = useMemo(
@@ -338,10 +425,12 @@ export default function ClientesClient({
     [filtroActivo, filtrosActivos],
   )
 
-  // Carga al montar y cuando los valores de filtro realmente cambian.
+  // Carga al montar y cuando los valores de filtro realmente cambian —
+  // side effect de red real, no derivable durante el render.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadAllClientes()
-  }, [filtrosKey])
+  }, [filtrosKey, loadAllClientes])
 
   const { confirm, modal } = useConfirm()
   const [loading, setLoading] = useState(false)
@@ -377,12 +466,13 @@ export default function ClientesClient({
   const [filterFrecuencia, setFilterFrecuencia] = useState(false)
   const [guiaTipo, setGuiaTipo] = useState<AlertaTipo | null>(null)
   const [guiaOpen, setGuiaOpen] = useState(false)
-  const [casoCreado, setCasoCreado] = useState<any>(null)
+  const [casoCreado, setCasoCreado] = useState<Caso | null>(null)
   const [usuarios, setUsuarios] = useState<Array<{ id: string; username: string; rol: string }>>([])
   const [userRole, setUserRole] = useState<string | null>(null)
 
   // Negocios state
   const [negocios, setNegocios] = useState<NegocioDetail[]>([])
+  const [prevSelectedClienteForNegocios, setPrevSelectedClienteForNegocios] = useState(selectedCliente)
 
   // Guard contra respuestas stale de viewCliente (clicks rápidos A→B).
   const viewSeqRef = useRef(0)
@@ -408,9 +498,9 @@ export default function ClientesClient({
       .then(r => r.json())
       .then(d => {
         if (d.success) {
-          const users = d.trabajadores
-            .filter((t: any) => t.userId)
-            .map((t: any) => ({ id: t.userId, username: t.nombre, rol: t.rol }))
+          const users = (d.trabajadores as Array<{ userId: string | null; nombre: string; rol: string }>)
+            .filter((t) => t.userId)
+            .map((t) => ({ id: t.userId as string, username: t.nombre, rol: t.rol }))
           setUsuarios(users)
         }
       })
@@ -436,6 +526,77 @@ export default function ClientesClient({
     return source.find(c => c.id === id || c.clienteId === id)
   }, [allClientes, clientes])
 
+  // Movida antes de su primer uso (deep-link ?openCliente=ID más abajo) y
+  // envuelta en useCallback para que ese efecto pueda listarla como
+  // dependencia real sin recrearse en cada render -- solo depende de
+  // findClienteById (el resto de lo que lee -- viewSeqRef, los setters de
+  // estado, y prefetchClientePanel/detailCache/isFresh/mergeDetailWithRow/
+  // fetchAndCacheDetail/optimisticClienteFromRow -- son refs, setters o
+  // utilidades a nivel de módulo, todos estables).
+  const viewCliente = useCallback(async (id: string) => {
+    const seq = ++viewSeqRef.current
+    setDetailLoading(true)
+    setDetailError(null)
+
+    // Prefetch de stats/historial en background: mientras el usuario lee la
+    // pestaña Info, ambas cargas corren (cold start de Vercel oculto) y al
+    // cambiar de pestaña los datos ya están en caché → render instantáneo.
+    prefetchClientePanel(id)
+
+    const row = findClienteById(id)
+    // Apertura optimista: si la fila está cargada, mostrar el modal al
+    // instante con los datos de la lista. El detalle completo se hidrata
+    // cuando llegue (o desde caché).
+    if (row) {
+      setSelectedCliente(optimisticClienteFromRow(row))
+      setShowDetail(true)
+      setActiveTab('info')
+    }
+
+    const entry = detailCache.get(id)
+    if (entry?.data && isFresh(entry) && !entry.promise) {
+      if (seq === viewSeqRef.current) {
+        setSelectedCliente(mergeDetailWithRow(entry.data, row))
+        setDetailLoading(false)
+        setDetailError(null)
+      }
+      return
+    }
+
+    const promise = entry?.promise ?? fetchAndCacheDetail(id)
+    if (!entry?.promise) {
+      detailCache.set(id, { data: entry?.data, ts: Date.now(), promise })
+    }
+
+    const result = await promise
+    if (seq !== viewSeqRef.current) return
+
+    if (result.ok) {
+      const merged = row ? mergeDetailWithRow(result.cliente, row) : result.cliente
+      setSelectedCliente(merged)
+      setShowDetail(true)
+      setActiveTab('info')
+      setDetailLoading(false)
+      setDetailError(null)
+    } else {
+      // Si no hay fila, mostrar stub como fallback (deep-link cliente no visible).
+      if (!row) {
+        setSelectedCliente({
+          id,
+          clienteId: id,
+          nombre: 'No se pudo cargar el cliente',
+          telefono: '',
+          frecuencia: 'IRREGULAR',
+          activo: true,
+        } as Cliente)
+        setShowDetail(true)
+        setActiveTab('info')
+      }
+      setDetailError(result.error)
+      setDetailLoading(false)
+    }
+  }, [findClienteById])
+
   // Deep-link ?openCliente=ID: carga detalle completo (igual que click en fila)
   // para garantizar la shape completa incluyendo negocios.
   useEffect(() => {
@@ -444,19 +605,24 @@ export default function ClientesClient({
     if (!cliente) return
     // Si el cliente ya está cargado con el mismo id, no re-fetch; si no, cargar.
     if (selectedCliente?.id === cliente.id && showDetail) return
+    // viewCliente dispara un fetch real (detalle completo) — side effect
+    // de red, no derivable durante el render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void viewCliente(cliente.id)
-  }, [openClienteId, clientes, selectedCliente, showDetail, findClienteById])
+  }, [openClienteId, clientes, selectedCliente, showDetail, findClienteById, viewCliente])
 
   // Los negocios del panel vienen directamente del detalle del cliente,
   // eliminando el fetch secuencial y la ventana stale del cliente anterior.
-  useEffect(() => {
+  // Durante el render en vez de en un efecto.
+  if (selectedCliente !== prevSelectedClienteForNegocios) {
+    setPrevSelectedClienteForNegocios(selectedCliente)
     if (!selectedCliente) {
       setNegocios([])
-      return
+    } else {
+      const incoming = selectedCliente.negocios ?? []
+      setNegocios(incoming as NegocioDetail[])
     }
-    const incoming = selectedCliente.negocios ?? []
-    setNegocios(incoming as NegocioDetail[])
-  }, [selectedCliente])
+  }
 
   // Escape closes side panel — registered in modal stack so it only fires
   // when no nested modal (NegocioForm, GuiaAlerta, etc.) is on top.
@@ -563,16 +729,17 @@ export default function ClientesClient({
   // para refrescar la lista despues de cambios.
 
   const loadPreciosBase = useCallback(async () => {
+    type PriceTier = { cantMin: number; cantMax: number | null; precio: number; precioMinimo: number | null }
     for (const canal of ['DOMICILIO', 'PUNTO'] as Canal[]) {
       try {
         const res = await fetch(`/api/precios/tabla?canal=${canal}`)
         const data = await res.json()
-        const tabla = data.tabla || {}
+        const tabla = (data.tabla || {}) as Record<string, PriceTier[]>
         const baseMap: Record<string, number> = {}
         for (const prod of PRODUCTOS_PRECIO) {
           const tiers = tabla[prod.codigo] || []
           if (tiers.length > 0) {
-            const baseTier = tiers.reduce((min: any, t: any) => t.cantMin < min.cantMin ? t : min, tiers[0])
+            const baseTier = tiers.reduce((min, t) => t.cantMin < min.cantMin ? t : min, tiers[0])
             baseMap[prod.codigo] = Number(baseTier.precio)
           }
         }
@@ -689,6 +856,20 @@ export default function ClientesClient({
     displayPage = page
   }
 
+  // Filas pendientes (offline, aun en requestQueue): se muestran siempre
+  // arriba de la página 1 / resultado de búsqueda, para que el usuario
+  // tenga confirmación visual inmediata de que el cliente no se perdió.
+  const pendingDisplayList = useMemo(() => {
+    const term = searchInput.trim()
+    if (!term) return pendingClientes
+    return pendingClientes.filter((c) => clienteMatchesSearch(c, term))
+  }, [pendingClientes, searchInput])
+
+  if (displayPage === 1 && pendingDisplayList.length > 0) {
+    displayList = [...pendingDisplayList, ...displayList]
+    displayTotal += pendingDisplayList.length
+  }
+
   function openCreateModal() {
     setFormData({
       nombre: '',
@@ -726,7 +907,7 @@ export default function ClientesClient({
       barrio: selectedCliente.barrio || '',
       direccion: selectedCliente.direccion || '',
       linkUbicacion: selectedCliente.linkUbicacion || '',
-      contactos: (selectedCliente.contactos as any[]) || [],
+      contactos: selectedCliente.contactos || [],
       preciosEspeciales: selectedCliente.preciosEspeciales || '',
       notas: selectedCliente.notas || '',
       limitePedidosFiados: selectedCliente.limitePedidosFiados || undefined,
@@ -1027,7 +1208,11 @@ export default function ClientesClient({
           }
           // Offline real (mobile sin señal): toast info y modal-cierra
           // como antes. La request queda en IndexedDB y se sincroniza
-          // cuando vuelve la conexión.
+          // cuando vuelve la conexión. Se agrega una fila optimista para
+          // que el usuario vea el cliente en la lista de inmediato — sin
+          // esto no hay ninguna confirmación visual hasta que sincronice,
+          // y el usuario asume que el cliente "se borró" y lo reingresa.
+          setPendingClientes((prev) => [...prev, buildPendingCliente(offlineId, body)])
           toast.info('Sin conexión. Cliente guardado localmente. Se creará al recuperar la red.')
           setShowModal(false)
           return
@@ -1114,75 +1299,11 @@ export default function ClientesClient({
           void loadAllClientes()
         })()
       }
-    } catch (error) {
+    } catch (_error) {
       setFormError('Error de conexión al guardar')
       toast.error('Error de conexión al guardar')
     } finally {
       setSaving(false)
-    }
-  }
-
-  async function viewCliente(id: string) {
-    const seq = ++viewSeqRef.current
-    setDetailLoading(true)
-    setDetailError(null)
-
-    // Prefetch de stats/historial en background: mientras el usuario lee la
-    // pestaña Info, ambas cargas corren (cold start de Vercel oculto) y al
-    // cambiar de pestaña los datos ya están en caché → render instantáneo.
-    prefetchClientePanel(id)
-
-    const row = findClienteById(id)
-    // Apertura optimista: si la fila está cargada, mostrar el modal al
-    // instante con los datos de la lista. El detalle completo se hidrata
-    // cuando llegue (o desde caché).
-    if (row) {
-      setSelectedCliente(optimisticClienteFromRow(row))
-      setShowDetail(true)
-      setActiveTab('info')
-    }
-
-    const entry = detailCache.get(id)
-    if (entry?.data && isFresh(entry) && !entry.promise) {
-      if (seq === viewSeqRef.current) {
-        setSelectedCliente(mergeDetailWithRow(entry.data, row))
-        setDetailLoading(false)
-        setDetailError(null)
-      }
-      return
-    }
-
-    const promise = entry?.promise ?? fetchAndCacheDetail(id)
-    if (!entry?.promise) {
-      detailCache.set(id, { data: entry?.data, ts: Date.now(), promise })
-    }
-
-    const result = await promise
-    if (seq !== viewSeqRef.current) return
-
-    if (result.ok) {
-      const merged = row ? mergeDetailWithRow(result.cliente, row) : result.cliente
-      setSelectedCliente(merged)
-      setShowDetail(true)
-      setActiveTab('info')
-      setDetailLoading(false)
-      setDetailError(null)
-    } else {
-      // Si no hay fila, mostrar stub como fallback (deep-link cliente no visible).
-      if (!row) {
-        setSelectedCliente({
-          id,
-          clienteId: id,
-          nombre: 'No se pudo cargar el cliente',
-          telefono: '',
-          frecuencia: 'IRREGULAR',
-          activo: true,
-        } as Cliente)
-        setShowDetail(true)
-        setActiveTab('info')
-      }
-      setDetailError(result.error)
-      setDetailLoading(false)
     }
   }
 
@@ -1203,7 +1324,7 @@ export default function ClientesClient({
       } else {
         toast.error('Error desactivando cliente')
       }
-    } catch (error) {
+    } catch (_error) {
       toast.error('Error desactivando cliente')
     }
   }
@@ -1920,13 +2041,13 @@ export default function ClientesClient({
                         </div>
                       )}
                       {/* Bloque 1: mostrar coords si ya están calculadas */}
-                      {(selectedCliente as any).lat != null && (selectedCliente as any).lng != null && (
+                      {selectedCliente.lat != null && selectedCliente.lng != null && (
                         <div className="flex items-center justify-between text-xs text-gray-500 bg-gray-50 -mx-2 px-2 py-1 rounded" data-testid="coords-internas">
                           <span>Coords internas</span>
                           <span className="font-mono">
-                            {(selectedCliente as any).lat}, {(selectedCliente as any).lng}
+                            {selectedCliente.lat}, {selectedCliente.lng}
                             <span className="ml-1.5 px-1.5 py-0.5 bg-white border border-gray-200 rounded text-[10px] uppercase tracking-wide">
-                              {(selectedCliente as any).geocodeOrigen || 'MANUAL'}
+                              {selectedCliente.geocodeOrigen || 'MANUAL'}
                             </span>
                           </span>
                         </div>
@@ -1957,7 +2078,7 @@ export default function ClientesClient({
                         <div className="pt-3 border-t border-gray-200">
                           <p className="text-xs font-semibold text-gray-400 uppercase mb-2">Contactos adicionales</p>
                           <div className="space-y-2">
-                            {(selectedCliente.contactos as any[]).map((contacto, idx) => (
+                            {selectedCliente.contactos.map((contacto, idx) => (
                               <div key={idx} className="flex items-center justify-between gap-2 bg-white rounded-lg p-2 border border-gray-100">
                                 <div className="min-w-0">
                                   <p className="text-sm font-medium text-gray-700 truncate">{contacto.nombre}</p>
@@ -2345,8 +2466,8 @@ export default function ClientesClient({
           caso={casoCreado}
           contextData={{
             clienteVerificado: selectedCliente?.verificado,
-            pedidoDisputa: selectedCliente?.pedidos?.some((p: any) => p.disputaAbierta),
-            clienteConSaldo: selectedCliente?.pedidos?.some((p: any) => Number(p.saldo) > 0),
+            pedidoDisputa: selectedCliente?.pedidos?.some((p) => p.disputaAbierta),
+            clienteConSaldo: selectedCliente?.pedidos?.some((p) => Number(p.saldo) > 0),
           }}
           usuarios={usuarios}
           onClose={() => setCasoCreado(null)}

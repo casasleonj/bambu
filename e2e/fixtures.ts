@@ -2,10 +2,29 @@ import { test, expect, request, type Page, type Cookie } from '@playwright/test'
 import { execSync } from 'child_process'
 import { resolve } from 'path'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import type { fetchResilient } from '@/lib/fetch-resilient'
+import type { syncWithServer } from '@/lib/db/sync'
+import type { OfflineRequest, SyncQueueItem } from '@/lib/db/offline'
 
 declare global {
   interface Window {
     __PLAYWRIGHT_TEST__?: boolean
+    // Nunca seteado en la app real; algunos specs lo leen como fallback
+    // defensivo (`window.__TEST_BASE_URL || ''`), que hoy siempre resuelve
+    // a ''. Tipado para permitir la lectura sin any, no para implicar que
+    // algo lo asigna.
+    __TEST_BASE_URL?: string
+    // Expuesto solo en contexto Playwright por connectivity-indicator.tsx
+    // (guardado tras __PLAYWRIGHT_TEST__) — usado por los specs offline
+    // para forzar fetchResilient/syncWithServer y leer las colas de Dexie
+    // directamente vía page.evaluate().
+    __bambu?: {
+      fetchResilient: typeof fetchResilient
+      syncWithServer: typeof syncWithServer
+      getRequestQueue: () => Promise<OfflineRequest[]>
+      getSyncQueue: () => Promise<SyncQueueItem[]>
+      clearQueues: () => Promise<void>
+    }
   }
 }
 

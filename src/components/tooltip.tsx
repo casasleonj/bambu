@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 
 interface TooltipProps {
   children: React.ReactNode
@@ -40,7 +40,7 @@ export function Tooltip({
     setVisible(false)
   }
 
-  const updatePosition = () => {
+  const updatePosition = useCallback(() => {
     if (!triggerRef.current) return
     const rect = triggerRef.current.getBoundingClientRect()
     const scrollX = window.scrollX || window.pageXOffset
@@ -66,7 +66,7 @@ export function Tooltip({
         break
     }
     setCoords({ x, y })
-  }
+  }, [position])
 
   useEffect(() => {
     if (visible) updatePosition()
@@ -76,7 +76,7 @@ export function Tooltip({
       window.removeEventListener('scroll', updatePosition, true)
       window.removeEventListener('resize', updatePosition)
     }
-  }, [visible])
+  }, [visible, updatePosition])
 
   const positionStyles: Record<string, React.CSSProperties> = {
     top: { left: coords.x, top: coords.y, transform: 'translate(-50%, -100%)' },

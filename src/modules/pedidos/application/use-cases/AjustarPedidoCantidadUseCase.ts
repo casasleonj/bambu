@@ -14,7 +14,6 @@ import { incrementMetric } from '@/lib/metrics'
 export interface AjustarPedidoCantidadInput {
   pedidoId: string
   producto: string
-  cantidadOriginal: number
   cantidadNueva: number
   motivo: string
   autorizadoPorId: string
@@ -47,14 +46,24 @@ export class AjustarPedidoCantidadUseCase {
         throw new Error('AJUSTE_EXIGE_AUTORIZACION')
       }
 
-      const delta = input.cantidadNueva - input.cantidadOriginal
+      // cantidadOriginal se lee del estado real DENTRO del lock -- nunca del
+      // cliente. El lock solo protege contra registros duplicados si además
+      // protege que el "antes" registrado sea el "antes" verdadero (contrato
+      // §6): sin esto, dos ajustes concurrentes podrían partir de la misma
+      // cantidadOriginal fabricada en vez de encadenarse correctamente.
+      const item = await tx.pedidoItem.findFirst({
+        where: { pedidoId: input.pedidoId, producto: input.producto },
+        select: { cantPedido: true },
+      })
+      const cantidadOriginal = item?.cantPedido ?? 0
+      const delta = input.cantidadNueva - cantidadOriginal
 
       const ajuste = await tx.pedidoCantidadAjuste.create({
         data: {
           pedidoId: input.pedidoId,
           obligacionId: input.obligacionId ?? null,
           producto: input.producto,
-          cantidadOriginal: input.cantidadOriginal,
+          cantidadOriginal,
           cantidadNueva: input.cantidadNueva,
           delta,
           motivo: input.motivo,

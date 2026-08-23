@@ -7,7 +7,7 @@
 // T5. Cierre crear uno nuevo + verificar comision calculada
 // T6. RBAC: capturar primer response (no final) para distinguir 200 vs 307
 
-import { test, expect, loginAs, shoot, addFinding, isVisible, dbCount, dbQuery, BASE, RUN_ID, SCREENSHOTS_DIR } from './walkthrough-helpers'
+import { test, shoot, addFinding, isVisible, dbCount, dbQuery, BASE } from './walkthrough-helpers'
 
 const CRON_SECRET = process.env.CRON_SECRET || 'dev-cron-secret-change-in-production'
 
@@ -181,14 +181,14 @@ test.describe('T2. Recurrentes temporal', () => {
     }
 
     // Forzar proxGeneracion al pasado
-    const dbRes = dbQuery(`UPDATE "PlantillaRecurrente" SET "proxGeneracion" = NOW() - INTERVAL '1 day' WHERE id = '${planId}'`)
+    dbQuery(`UPDATE "PlantillaRecurrente" SET "proxGeneracion" = NOW() - INTERVAL '1 day' WHERE id = '${planId}'`)
     addFinding({ severity: 'P3', module: 'recurrentes', title: `proxGeneracion forzado al pasado para ${planId.slice(-6)}`, description: '' })
 
     // Llamar al endpoint manual de generación (preview)
     const prevRes = await page.request.get(`${BASE}/api/pedidos/recurrentes`)
     const prevData = await prevRes.json()
-    const previewList = prevData.preview || []
-    const foundInPreview = previewList.find((p: any) => p.recurrenteId === planId)
+    const previewList = (prevData.preview || []) as Array<{ recurrenteId: string }>
+    const foundInPreview = previewList.find((p) => p.recurrenteId === planId)
     addFinding({
       severity: foundInPreview ? 'P3' : 'P1',
       module: 'recurrentes',
@@ -374,7 +374,6 @@ test.describe('T6. RBAC verificación rigurosa', () => {
 
     // La response clave es la de /admin/usuarios (NO la del redirect target)
     const adminResponse = responses.find(r => r.url === '/admin/usuarios')
-    const finalResponse = responses[responses.length - 1]
 
     addFinding({
       severity: adminResponse && adminResponse.status === 307 ? 'P3' : 'P1',

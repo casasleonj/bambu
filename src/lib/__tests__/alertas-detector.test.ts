@@ -412,7 +412,7 @@ describe('calcularAlertas — pedidos invalidos / vacios', () => {
 
   it('maneja pedidos con total como string o number', () => {
     const pedidos = [
-      makePedido({ id: '1', clienteId: 'c1', total: '10000' as any }),
+      makePedido({ id: '1', clienteId: 'c1', total: '10000' as unknown as number }),
       makePedido({ id: '2', clienteId: 'c1', total: 20000 }),
     ]
     expect(() => calcularAlertas(pedidos)).not.toThrow()

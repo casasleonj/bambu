@@ -40,6 +40,11 @@ export function ConnectivityIndicator() {
   const { status: sseStatus, disabled: realtimeDisabled } = useRealtimeStatus()
 
   useEffect(() => {
+    // Bandera de hidratación SSR-safe: no se puede derivar durante el
+    // render (el primer render de cliente debe coincidir con el del
+    // servidor). navigator.onLine tampoco existe en el servidor. Ver
+    // convención ya establecida en use-shallow-search-params.ts.
+    /* eslint-disable-next-line react-hooks/set-state-in-effect */
     setMounted(true)
     setOnline(isOnline())
   }, [])
@@ -76,15 +81,22 @@ export function ConnectivityIndicator() {
     }
   }, [mounted])
 
-  const doSync = useCallback(async (manual = false) => {
+  const doSync = useCallback(async () => {
     if (!mounted || !isOnline() || syncing) return
     setSyncing(true)
     try {
       const result = await syncWithServer()
       logger.info({ ...result }, 'Sync result')
-      if (manual && result.failedPermanently > 0 && !sessionStorage.getItem('bambu:dlq-notified')) {
-        toast.error(`Hay ${result.failedPermanently} cambio(s) que no se pudieron sincronizar. Revisá con el admin.`)
-        sessionStorage.setItem('bambu:dlq-notified', '1')
+      // FIX: antes solo avisaba en sync manual y una única vez por sesión
+      // (sessionStorage guard). Un rechazo permanente (ej. límite de fiado
+      // excedido en un pedido) durante el poll automático de 30s o al
+      // reconectar quedaba completamente silencioso — el usuario nunca se
+      // enteraba de que algo se perdió. `failedPermanently` ya cuenta solo
+      // los items recién movidos a DLQ EN ESTA corrida (no el acumulado),
+      // así que avisar siempre que sea > 0 no genera toasts repetidos por
+      // los mismos items.
+      if (result.failedPermanently > 0) {
+        toast.error(`Hay ${result.failedPermanently} cambio(s) que no se pudieron sincronizar. Revisá los detalles en la lista.`)
       }
     } finally {
       setSyncing(false)
@@ -96,7 +108,7 @@ export function ConnectivityIndicator() {
   }, [mounted, syncing])
 
   // Skip polling when in Playwright test mode (avoids networkidle timeout)
-  const isPlaywright = typeof window !== 'undefined' && (window as any).__PLAYWRIGHT_TEST__
+  const isPlaywright = typeof window !== 'undefined' && (window as unknown as { __PLAYWRIGHT_TEST__?: boolean }).__PLAYWRIGHT_TEST__
 
   // Poll queue sizes for the UI counter (one read on mount, then interval)
   useEffect(() => {
@@ -123,6 +135,11 @@ export function ConnectivityIndicator() {
   }, [mounted, doSync, isPlaywright])
 
   useEffect(() => {
+    // Patrón de evento derivado (reaccionar a la transición offline→online
+    // para disparar un sync) — no es derivable durante el render porque
+    // dispara side effects de red, ver
+    // https://react.dev/learn/you-might-not-need-an-effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (mounted && online && !isPlaywright) doSync()
   }, [online, isPlaywright]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -131,7 +148,15 @@ export function ConnectivityIndicator() {
   // sin tener que reproducir el comportamiento del usuario por la UI.
   useEffect(() => {
     if (!isPlaywright || typeof window === 'undefined') return
-    ;(window as any).__bambu = {
+    ;(window as unknown as {
+      __bambu: {
+        fetchResilient: typeof fetchResilient
+        syncWithServer: typeof syncWithServer
+        getRequestQueue: () => Promise<unknown[]>
+        getSyncQueue: () => Promise<unknown[]>
+        clearQueues: () => Promise<void>
+      }
+    }).__bambu = {
       fetchResilient,
       syncWithServer,
       getRequestQueue: () => offlineDb.requestQueue.toArray(),
@@ -214,7 +239,7 @@ export function ConnectivityIndicator() {
   const canSync = online && !syncing && pendingCount > 0
 
   const handleClick = () => {
-    if (canSync) doSync(true)
+    if (canSync) doSync()
   }
 
   // El botón es hover/clickeable SIEMPRE (aunque no haya syncing pendiente)

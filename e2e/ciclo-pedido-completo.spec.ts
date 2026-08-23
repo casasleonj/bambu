@@ -1,4 +1,5 @@
 // @tests api/abono, api/cierre, api/embarque, api/factura, api/pedido, api/reporte
+import type { Page } from '@playwright/test'
 import { test, expect, loginAs, apiPost, apiGet, apiPut, createCliente, createTrabajador, createEmbarque, resetTestDatabase } from './fixtures'
 
 function cierrePayload(partial: Record<string, unknown> = {}) {
@@ -10,7 +11,7 @@ function cierrePayload(partial: Record<string, unknown> = {}) {
   }
 }
 
-async function cerrarEmbarqueTest(page: any, embarqueId: string, payload: Record<string, unknown> = cierrePayload()) {
+async function cerrarEmbarqueTest(page: Page, embarqueId: string, payload: Record<string, unknown> = cierrePayload()) {
   await apiPut(page, `/api/embarques/${embarqueId}`, { estado: 'EN_RUTA' })
   return apiPost(page, `/api/embarques/${embarqueId}/cerrar`, payload)
 }
@@ -80,7 +81,7 @@ test.describe('Ciclo Completo Pedido', () => {
     expect(facturasRes.status()).toBe(200)
     const facturasBody = await facturasRes.json()
     const facturas = facturasBody.facturas || facturasBody.data || []
-    const facturaDelPedido = facturas.find((f: any) => f.pedidoId === pedidoId)
+    const facturaDelPedido = (facturas as Array<{ pedidoId: string; estado: string }>).find((f) => f.pedidoId === pedidoId)
     if (facturaDelPedido) {
       expect(facturaDelPedido.estado).toMatch(/EMITIDA|PAGADA|PARCIAL/)
     }
@@ -231,7 +232,7 @@ test.describe('Ciclo Completo Pedido', () => {
     const facturasRes = await apiGet(page, `/api/facturas?pedidoId=${pedidoId}`)
     const facturasBody = await facturasRes.json()
     const facturas = facturasBody.facturas || facturasBody.data || []
-    const factura = facturas.find((f: any) => f.pedidoId === pedidoId)
+    const factura = (facturas as Array<{ id: string; pedidoId: string; saldo: number | string }>).find((f) => f.pedidoId === pedidoId)
     if (!factura) {
       test.skip(true, 'No se generó factura para pago parcial; flujo de abono no aplica')
       return

@@ -37,6 +37,7 @@ vi.mock('@/lib/auth-check', () => ({
 }))
 
 import { prisma } from '@/lib/prisma'
+import type { Producto } from '@prisma/client'
 const { POST } = await import('@/app/api/precios/resolver/route')
 
 function makeRequest(body: unknown): NextRequest {
@@ -54,7 +55,7 @@ beforeEach(() => {
     { codigo: 'PACA_AGUA', aplicaDomicilio: false, sobreCostoDomicilio: 0, precioBase: 5000 },
     { codigo: 'PACA_HIELO', aplicaDomicilio: false, sobreCostoDomicilio: 0, precioBase: 8000 },
     { codigo: 'BOTELLON', aplicaDomicilio: false, sobreCostoDomicilio: 0, precioBase: 4000 },
-  ] as any)
+  ] as unknown as Producto[])
 })
 
 describe('POST /api/precios/resolver — modo batch usa exactamente 2 queries', () => {

@@ -341,7 +341,7 @@ export async function getPriceTable(): Promise<Record<ProductCode, Array<{ cantM
     })
   }
 
-  return table as any
+  return table as Record<ProductCode, Array<{ cantMin: number; cantMax: number | null; precio: number; precioMinimo: number | null }>>
 }
 
 /**

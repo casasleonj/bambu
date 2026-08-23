@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { calcularStock, determinarStockInicial, type StockInput } from '@/modules/dashboard/domain/stock.service'
-import type { ProduccionDiaria, StockSnapshot } from '@/modules/dashboard/domain/types'
+import type { ProduccionDiaria, StockSnapshot, PedidoRaw } from '@/modules/dashboard/domain/types'
 
 describe('calcularStock (Bloque 3 — passthrough botellones)', () => {
   const produccionVacia: ProduccionDiaria = {
@@ -104,7 +104,7 @@ describe('VendidosHoy (sin cambios en ventas — botellones siguen contándose c
     const { calcularVendidos } = await import('@/modules/dashboard/domain/ventas.service')
     const pedidos = [
       { estadoEntrega: 'ENTREGADO', cBotellonFabEnt: 5, cBotellonDomEnt: 3 },
-    ] as any
+    ] as unknown as PedidoRaw[]
     const vendidos = calcularVendidos(pedidos)
     expect(vendidos.botellon).toBe(8)
   })

@@ -4,7 +4,7 @@
 // C2. Sync on reconnect → request llega al server
 // C3. Dedup: mismo offlineId dos veces → no duplica
 
-import { test, expect, loginAs, shoot, addFinding, isVisible, dbCount, BASE, RUN_ID } from './walkthrough-helpers'
+import { test, loginAs, addFinding, dbCount, BASE } from './walkthrough-helpers'
 
 test.describe('Fase 5. Flujos offline', () => {
   test('C1.1: Crear pedido offline → se encola en Dexie', async ({ page, context }) => {
@@ -129,7 +129,7 @@ test.describe('Fase 5. Flujos offline', () => {
     await context.setOffline(true)
 
     // fetchResilient llamado desde el contexto offline
-    const result = await page.evaluate(async (cid) => {
+    await page.evaluate(async (cid) => {
       // Usar la función fetchResilient directamente (si está expuesta)
       // Si no, simular con fetch y esperar que fetchResilient encole
       const offlineId = crypto.randomUUID()
@@ -160,9 +160,9 @@ test.describe('Fase 5. Flujos offline', () => {
     await page.evaluate(async () => {
       // Trigger sync manualmente si la función existe
       try {
-        const w = window as any
-        if (w.__syncOfflineQueue) await w.__syncOfflineQueue()
-        if (w.syncOfflineQueue) await w.syncOfflineQueue()
+        const w = window as unknown as Record<string, (() => Promise<void>) | undefined>
+        if (w.__syncOfflineQueue) await w.__syncOfflineQueue!()
+        if (w.syncOfflineQueue) await w.syncOfflineQueue!()
       } catch {}
     })
 

@@ -138,7 +138,7 @@ export function VentaRapidaForm({ clientes, onSubmit }: VentaRapidaFormProps) {
     } catch {
       // fallback to defaults
     }
-  }, [productosActuales, clienteSeleccionado?.id])
+  }, [productosActuales])
 
   // Price sync: detectar cambios de precios via polling
   const handlePriceRefresh = useCallback(async () => {
@@ -159,15 +159,23 @@ export function VentaRapidaForm({ clientes, onSubmit }: VentaRapidaFormProps) {
 
   const { stale: preciosStale, refresh: refreshPrecios } = usePriceSync(handlePriceRefresh)
 
-  // Re-resolver precios cuando cambia la selección de cliente
+  // Re-resolver precios cuando cambia la selección de cliente o el canal.
+  // cantidades se omite deliberadamente: cada cambio de cantidad ya dispara
+  // su propio resolverPrecios vía handleCantidadChange (con el valor exacto
+  // recién escrito); agregarla aquí duplicaría el fetch a
+  // /api/precios/resolver en cada tecla, indeseable en conexiones 2G/3G.
   useEffect(() => {
     if (!clienteSeleccionado?.id) return
     const allProducts: Record<string, number> = {}
     for (const id of productosActuales) {
       allProducts[id] = cantidades[id] || 1
     }
+    // Resuelve precios reales via API — side effect de red, no derivable
+    // durante el render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     resolverPrecios(allProducts, canal, clienteSeleccionado.id)
-  }, [clienteSeleccionado?.id, productosActuales])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clienteSeleccionado?.id, productosActuales, canal, resolverPrecios])
 
   const handleCantidadChange = (id: string, value: string) => {
     const cant = parseInt(value) || 0

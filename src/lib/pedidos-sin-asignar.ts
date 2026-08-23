@@ -34,7 +34,14 @@ import type { Prisma } from '@prisma/client'
 
 export function whereAtrasadosSinAsignar(): Prisma.PedidoWhereInput {
   return {
-    estadoEntrega: 'PENDIENTE',
+    // FIX: incluye NO_ENTREGADO además de PENDIENTE. Un pedido que se
+    // despachó y no se pudo entregar (y no se reasignó a otro embarque en
+    // el cierre — ver ADR-REASIGNACION-001) queda estadoEntrega=NO_ENTREGADO
+    // con embarqueId=null, y ese estado NUNCA vuelve a PENDIENTE por sí
+    // solo. Antes esta vista solo miraba PENDIENTE, así que esos pedidos
+    // "atrapados" quedaban invisibles para siempre en ambos banners de
+    // riesgo (ver también findPedidosHoyEnRiesgoIds más abajo).
+    estadoEntrega: { in: ['PENDIENTE', 'NO_ENTREGADO'] },
     embarqueId: null,
     fecha: { lt: startOfDayBogota() },
   }
@@ -86,15 +93,17 @@ async function getTurnosYUmbralRiesgo(): Promise<{ turnos: Turno[]; umbralHoras:
  * EN_RUTA atascado de cualquier día). Dos sub-reglas independientes unidas
  * con OR — ver comentario de cabecera del archivo.
  *
- * IMPORTANTE — un pedido asignado a un embarque y luego marcado
- * NO_ENTREGADO al cerrar ese embarque NO vuelve a PENDIENTE (queda en
- * estadoEntrega=NO_ENTREGADO, ver procesar-pedido.service.ts), así que la
- * sub-regla (a) solo puede detectar pedidos NUNCA asignados hoy pese a N
- * ciclos cerrados de su ruta — no pedidos "ya saltados" explícitamente. La
- * sub-regla (b), en cambio, sí cubre pedidos EN_RUTA atascados, sin límite
- * de días — confirmado necesario en producción: se encontraron pedidos
- * EN_RUTA de hasta ~2 meses de antigüedad, invisibles para cualquier otra
- * regla (ver hallazgo en sesión del 2026-08-15).
+ * IMPORTANTE (cerrado — antes era un gap) — un pedido asignado a un
+ * embarque y luego marcado NO_ENTREGADO al cerrar ese embarque NO vuelve a
+ * PENDIENTE (queda en estadoEntrega=NO_ENTREGADO, ver
+ * procesar-pedido.service.ts). Ambas sub-reglas de esta función y
+ * `whereAtrasadosSinAsignar` ahora tratan NO_ENTREGADO igual que PENDIENTE
+ * (mismo `embarqueId: null`), así que un pedido "atrapado" sin reasignar sí
+ * se detecta — de HOY vía la sub-regla (a), de días anteriores vía
+ * `whereAtrasadosSinAsignar`. La sub-regla (b) cubre además EN_RUTA
+ * atascado, sin límite de días — confirmado necesario en producción: se
+ * encontraron pedidos EN_RUTA de hasta ~2 meses de antigüedad, invisibles
+ * para cualquier otra regla (ver hallazgo en sesión del 2026-08-15).
  *
  * IMPORTANTE — `Cliente.rutaId` no tiene flujo de escritura en la UI (solo
  * `Negocio.rutaId` es editable), así que la mayoría de pedidos de domicilio
@@ -112,7 +121,11 @@ export async function findPedidosHoyEnRiesgoIds(): Promise<string[]> {
   const [candidatosPendientes, candidatosEnRuta, { turnos, umbralHoras }] = await Promise.all([
     prisma.pedido.findMany({
       where: {
-        estadoEntrega: 'PENDIENTE',
+        // FIX: mismo motivo que whereAtrasadosSinAsignar — un NO_ENTREGADO
+        // de HOY sin reasignar es tan "sin gestionar" como un PENDIENTE sin
+        // asignar de hoy, y whereAtrasadosSinAsignar solo cubre días
+        // anteriores (fecha < hoy).
+        estadoEntrega: { in: ['PENDIENTE', 'NO_ENTREGADO'] },
         embarqueId: null,
         fecha: { gte: desde, lte: hasta },
       },

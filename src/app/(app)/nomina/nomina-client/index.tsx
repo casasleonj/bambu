@@ -88,16 +88,6 @@ export default function NominaPage() {
   const [confirmPayNomina, setConfirmPayNomina] = useState<Nomina | null>(null)
   const [confirmAnularNomina, setConfirmAnularNomina] = useState<Nomina | null>(null)
 
-  useEffect(() => {
-    fetchData()
-  }, [])
-
-  const resetForm = () => {
-    setTrabajadorId('')
-    setFechaInicio('')
-    setFechaFin('')
-  }
-
   const fetchData = async () => {
     try {
       const [nRes, tRes] = await Promise.all([
@@ -115,6 +105,19 @@ export default function NominaPage() {
       console.error(e)
       toast.error('Error cargando nóminas')
     }
+  }
+
+  useEffect(() => {
+    // Fetch de datos al montar — side effect de red real, no derivable
+    // durante el render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchData()
+  }, [])
+
+  const resetForm = () => {
+    setTrabajadorId('')
+    setFechaInicio('')
+    setFechaFin('')
   }
 
   const crearNomina = async (e?: React.FormEvent) => {

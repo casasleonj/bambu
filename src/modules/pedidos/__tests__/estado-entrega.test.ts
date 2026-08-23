@@ -60,6 +60,6 @@ describe('EstadoEntregaVO.from (parsing)', () => {
     expect(EstadoEntregaVO.from('PENDIENTE').get()).toBe('PENDIENTE')
   })
   it('lanza error con string inválido', () => {
-    expect(() => EstadoEntregaVO.from('XYZ' as any)).toThrow(/inválido/)
+    expect(() => EstadoEntregaVO.from('XYZ')).toThrow(/inválido/)
   })
 })

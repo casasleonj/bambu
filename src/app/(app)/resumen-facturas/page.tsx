@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import './print.css'
@@ -135,7 +136,12 @@ export default function ResumenFacturasPage() {
     }
   }, [clienteId, desde, hasta])
 
-  useEffect(() => { fetchData() }, [fetchData])
+  useEffect(() => {
+    // Fetch de datos al montar / cambiar clienteId-desde-hasta — side
+    // effect de red real, no derivable durante el render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchData()
+  }, [fetchData])
 
   const handlePrint = () => { window.print() }
   const handleRetry = () => { fetchData() }
@@ -272,7 +278,7 @@ export default function ResumenFacturasPage() {
             <div className="border-b-2 border-gray-800 pb-4 mb-4 doc-header">
               <div className="flex justify-between items-start">
                 <div className="flex items-start gap-4">
-                  <img src="/logo-agua-bambu.jpg" alt="Logo" className="h-14 w-auto object-contain print:h-20" />
+                  <Image src="/logo-agua-bambu.jpg" alt="Logo" width={1280} height={652} className="h-14 w-auto object-contain print:h-20" />
                   <div>
                     <h2 className="text-xl font-bold text-gray-900">{empresa.nombre}</h2>
                     <p className="text-sm text-gray-600">NIT: {empresa.nit}</p>

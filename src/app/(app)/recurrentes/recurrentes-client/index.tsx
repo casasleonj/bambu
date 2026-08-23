@@ -79,6 +79,9 @@ export default function RecurrentesClient({ initialRecurrentes }: { initialRecur
   }, [initialRecurrentes])
 
   useEffect(() => {
+    // Fetch de datos al montar / cambiar deps — side effect de red real,
+    // no derivable durante el render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchData()
     return () => { abortRef.current?.abort() }
   }, [fetchData])

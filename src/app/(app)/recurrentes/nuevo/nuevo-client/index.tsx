@@ -140,6 +140,11 @@ export default function NuevoRecurrenteClient() {
       .map(p => ({ codigo: p.codigo, cantidad: formData[p.key] || 0 }))
 
     if (items.length === 0) {
+      // Limpia precios resueltos cuando no hay items seleccionados —
+      // parte del mismo efecto de resolución debounced que sigue abajo
+      // (fetch real con setTimeout + cleanup), no es aislable de forma
+      // segura al render sin romper el debounce.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPreciosResueltos(prev => Object.keys(prev).length > 0 ? {} : prev)
       return
     }
@@ -159,7 +164,7 @@ export default function NuevoRecurrenteClient() {
             for (const [codigo, info] of Object.entries(data.precios)) {
               const config = productConfigs.find(c => c.codigo === codigo)
               nuevos[codigo] = {
-                precio: (info as any).precio,
+                precio: (info as { precio: number }).precio,
                 aplicaDomicilio: config?.aplicaDomicilio ?? false,
                 sobreCosto: config?.sobreCostoDomicilio ? Number(config.sobreCostoDomicilio) : 0,
               }
@@ -172,7 +177,13 @@ export default function NuevoRecurrenteClient() {
     }, 300)
 
     return () => { if (resolverTimeoutRef.current) clearTimeout(resolverTimeoutRef.current) }
-  }, [formData.canal, formData.pacaAgua, formData.pacaHielo, formData.botellon, formData.bolsaAgua, formData.bolsaHielo, selectedCliente?.id, configsLoading, productosVisibles])
+    // formData[p.key] es acceso dinámico -- el linter pide el objeto formData
+    // completo, pero p.key solo puede ser una de las 5 claves de
+    // PRODUCTOS_CONFIG_BASE (array fijo), todas ya listadas arriba
+    // explícitamente. Agregar el objeto completo dispararía el efecto en
+    // cambios de campos no relacionados (notas, horaPreferida, etc).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.canal, formData.pacaAgua, formData.pacaHielo, formData.botellon, formData.bolsaAgua, formData.bolsaHielo, selectedCliente?.id, configsLoading, productosVisibles, productConfigs])
 
   // Clear quantities for products not available in new canal
   useEffect(() => {
@@ -189,11 +200,20 @@ export default function NuevoRecurrenteClient() {
         }
       }
       if (Object.keys(updates).length > 0) {
+        // Limpia cantidades de productos no disponibles en el nuevo canal
+        // y notifica — el toast es un side effect real, no derivable
+        // durante el render.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setFormData(prev => ({ ...prev, ...updates }))
         toast.info(`${unavailable.length} producto(s) no disponible(s) para domicilio`)
       }
     }
-  }, [formData.canal])
+    // Mismo caso que el efecto anterior: formData[prod.key] está acotado a
+    // las 5 claves fijas de PRODUCTOS_CONFIG_BASE, ya cubiertas por
+    // formData.canal; el objeto completo dispararía el efecto en cambios de
+    // campos no relacionados.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.canal, productConfigs])
 
   useEffect(() => {
     return () => {
@@ -453,6 +473,7 @@ export default function NuevoRecurrenteClient() {
                   onChange={(e) => handleSearchChange(e.target.value)}
                   onKeyDown={handleKeyDown}
                   className={cn(inputBase, fieldErrors.clienteId ? inputError : inputNormal, 'pl-10')}
+                  role="combobox"
                   aria-expanded={dropdownOpen}
                   aria-controls="cliente-results"
                   aria-autocomplete="list"

@@ -95,3 +95,47 @@ describe('F-N15: validación de fecha usa helpers de Bogotá', () => {
     expect(postSource).toMatch(/fecha:\s*\{\s*gte:\s*start,\s*lte:\s*end\s*\}/)
   })
 })
+
+// @tests bug real post-#123: startOfDayInBogota/endOfDayInBogota (src/lib/
+// date-helpers.ts) exigen un string YYYY-MM-DD plano — su propio docstring
+// lo dice. El POST les pasaba `new Date(...).toISOString()` (datetime
+// completo con hora/ms/"Z"), que la función concatena como
+// `${fechaStr}T00:00:00-05:00` → un string con dos timezones, un Date
+// inválido, y `.toISOString()` tira `RangeError: Invalid time value`.
+// Resultado real: TODO POST /api/cierre-dia devolvía 500, con o sin
+// `fecha` explícita — confirmado contra los logs de CI reales
+// ("Error creating cierre: Invalid time value").
+describe('FIX bug real: no pasar datetime ISO completo a startOfDayInBogota', () => {
+  const postStart = source.indexOf('export async function POST')
+  const postSource = source.substring(postStart)
+
+  it('FIX: el POST ya no pasa .toISOString() directo a startOfDayInBogota/endOfDayInBogota', () => {
+    // El patrón buggy exacto que causaba el crash:
+    expect(postSource).not.toMatch(/startOfDayInBogota\(\s*\n?\s*fecha \? new Date\(fecha\)\.toISOString/)
+    expect(postSource).not.toMatch(/startOfDayInBogota\(targetDate\.toISOString\(\)\)/)
+    expect(postSource).not.toMatch(/endOfDayInBogota\(targetDate\.toISOString\(\)\)/)
+  })
+
+  it('FIX: el POST convierte a fecha calendario de Bogotá (toLocaleDateString en-CA) antes de usar los helpers', () => {
+    expect(postSource).toMatch(/toLocaleDateString\(\s*['"]en-CA['"]/)
+    expect(postSource).toMatch(/timeZone:\s*['"]America\/Bogota['"]/)
+  })
+
+  it('REPRO: el patrón buggy (datetime ISO completo → startOfDayInBogota) produce un Date inválido', () => {
+    // Reproduce exactamente el bug: concatenar un datetime ISO completo
+    // (con "Z") como si fuera un YYYY-MM-DD, igual que hacía el código viejo.
+    const buggyIsoDatetime = new Date().toISOString() // ej. "2026-08-22T21:24:04.374Z"
+    const malformed = new Date(`${buggyIsoDatetime}T00:00:00-05:00`)
+    expect(isNaN(malformed.getTime())).toBe(true)
+    expect(() => malformed.toISOString()).toThrow('Invalid time value')
+  })
+
+  it('FIX: el patrón corregido (toLocaleDateString en-CA → startOfDayInBogota) siempre produce un Date válido', () => {
+    const now = new Date()
+    const fechaBogota = now.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+    expect(fechaBogota).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    const valid = new Date(`${fechaBogota}T00:00:00-05:00`)
+    expect(isNaN(valid.getTime())).toBe(false)
+    expect(() => valid.toISOString()).not.toThrow()
+  })
+})

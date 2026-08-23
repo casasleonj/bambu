@@ -149,6 +149,10 @@ export default function BaseCajaModal() {
   useEffect(() => {
     if (sessionStatus === 'loading') return
     if (sessionStatus === 'unauthenticated') {
+      // Reacciona a la transición de sesión — parte del mismo efecto que
+      // dispara checkBaseDia() (chequeo real de red) más abajo, no es
+      // aislable de forma segura al render.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setStatus('ready')
       return
     }
@@ -161,6 +165,9 @@ export default function BaseCajaModal() {
   useEffect(() => {
     const pendingValue = (window as unknown as { __OPEN_BASE_CAJA_MODAL_VALUE?: string }).__OPEN_BASE_CAJA_MODAL_VALUE
     if (pendingValue !== undefined) {
+      // Lee/limpia una señal global en window seteada imperativamente
+      // desde el dashboard — no derivable durante el render.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       openModal(pendingValue)
       ;(window as unknown as { __OPEN_BASE_CAJA_MODAL_VALUE?: string }).__OPEN_BASE_CAJA_MODAL_VALUE = undefined
     }

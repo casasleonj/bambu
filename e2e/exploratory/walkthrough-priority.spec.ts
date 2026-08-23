@@ -12,7 +12,7 @@
 // G. Cierre - comisiones
 // H. Fiados / Deudas
 
-import { test, expect, loginAs, shoot, addFinding, isVisible, hasHorizontalOverflow, hasGarbageText, dbCount, dbQuery, BASE, RUN_ID, SCREENSHOTS_DIR } from './walkthrough-helpers'
+import { test, shoot, addFinding, isVisible, dbCount, dbQuery, BASE, SCREENSHOTS_DIR } from './walkthrough-helpers'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // A. BASE DE CAJA
@@ -218,7 +218,6 @@ test.describe('B. Transición Cliente → Pedido', () => {
     }
 
     // Verificar que el cliente está pre-seleccionado en el form de pedido
-    const clientePreSelect = await isVisible(page, 'select[name="clienteId"] option[selected]')
     const clienteInForm = await page.locator('text=Cliente Test').first().isVisible({ timeout: 2000 }).catch(() => false)
     if (!clienteInForm) {
       addFinding({
@@ -485,7 +484,6 @@ test.describe('E. Embarques', () => {
     await page.waitForTimeout(2000)
     await shoot(page, 'E1-embarques-lista')
 
-    const bodyText = (await page.locator('body').textContent()) ?? ''
     const hasEmbarquesHeader = await isVisible(page, 'h1:has-text("Embarques")')
     if (!hasEmbarquesHeader) {
       addFinding({ severity: 'P1', module: 'embarques', title: 'Header "Embarques del Día" no visible', description: '' })
@@ -909,7 +907,6 @@ test.describe('H. Fiados / Deudas', () => {
     await shoot(page, 'H4-nomina')
 
     const bodyText = (await page.locator('body').textContent()) ?? ''
-    const hasNominaContent = bodyText.length > 100
 
     // ¿Hay UI para "deudas del trabajador" o "descuentos"?
     const hasDeudaSection = await isVisible(page, 'text=Deuda, text=Deudas, text=Préstamo, text=Descuento')

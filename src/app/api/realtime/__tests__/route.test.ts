@@ -29,9 +29,10 @@ vi.mock('@/lib/realtime', () => ({
 
 import { auth } from '@/lib/auth'
 import { checkRateLimit } from '@/lib/rate-limit'
+import type { Session } from 'next-auth'
 
 describe('M5: /api/realtime rate-limit contract', () => {
-  const mockedAuth = vi.mocked(auth as unknown as () => Promise<any>)
+  const mockedAuth = vi.mocked(auth as unknown as () => Promise<Session | null>)
   const mockedCheckRateLimit = vi.mocked(checkRateLimit)
 
   beforeEach(() => {
@@ -50,7 +51,7 @@ describe('M5: /api/realtime rate-limit contract', () => {
   })
 
   it('retorna 503 cuando no hay REDIS_URL y rate limit permite', async () => {
-    mockedAuth.mockResolvedValue({ user: { id: 'user-1' } } as any)
+    mockedAuth.mockResolvedValue({ user: { id: 'user-1' } } as unknown as Session)
     mockedCheckRateLimit.mockResolvedValue({
       allowed: true,
       limit: 6,
@@ -65,7 +66,7 @@ describe('M5: /api/realtime rate-limit contract', () => {
   })
 
   it('retorna 200 SSE con evento rate_limited cuando checkRateLimit bloquea', async () => {
-    mockedAuth.mockResolvedValue({ user: { id: 'user-1' } } as any)
+    mockedAuth.mockResolvedValue({ user: { id: 'user-1' } } as unknown as Session)
     mockedCheckRateLimit.mockResolvedValue({
       allowed: false,
       limit: 6,
@@ -86,7 +87,7 @@ describe('M5: /api/realtime rate-limit contract', () => {
   })
 
   it('usa user.id como identificador de rate limit', async () => {
-    mockedAuth.mockResolvedValue({ user: { id: 'user-42' } } as any)
+    mockedAuth.mockResolvedValue({ user: { id: 'user-42' } } as unknown as Session)
     mockedCheckRateLimit.mockResolvedValue({
       allowed: false,
       limit: 6,

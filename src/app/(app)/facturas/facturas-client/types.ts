@@ -24,6 +24,7 @@ export interface Factura {
   pedido?: {
     id: string
     numero: number
+    estadoEntrega?: string
     items?: PedidoItem[]
     pagos?: Pago[]
   }

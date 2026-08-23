@@ -8,7 +8,7 @@ test.describe('Flujo completo de usuario', () => {
   test.beforeEach(async ({ page }) => {
     // Disable connectivity polling to avoid networkidle timeout
     await page.addInitScript(() => {
-      (window as any).__PLAYWRIGHT_TEST__ = true
+      window.__PLAYWRIGHT_TEST__ = true
     })
   })
 
@@ -36,7 +36,7 @@ test.describe('Flujo completo de usuario', () => {
 
     // 4. Precios
     await page.goto(`${BASE_URL}/productos`)
-    await expect(page.locator('body')).toContainText('Configuracion de Precios', { timeout: 10000 })
+    await expect(page.locator('body')).toContainText('Gestiona productos y sus precios por volumen', { timeout: 10000 })
 
     // 5. Producción
     await page.goto(`${BASE_URL}/produccion`)
@@ -52,7 +52,7 @@ test.describe('Flujo completo de usuario', () => {
   test('No hay errores de hydration ni consola en flujo principal', async ({ page }) => {
     // Disable connectivity polling
     await page.addInitScript(() => {
-      (window as any).__PLAYWRIGHT_TEST__ = true
+      window.__PLAYWRIGHT_TEST__ = true
     })
 
     const consoleErrors: string[] = []

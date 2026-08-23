@@ -21,6 +21,9 @@ export function ProduccionPendingBadge() {
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
+    // Bandera de hidratación SSR-safe: Dexie/IndexedDB no existe en el
+    // servidor, no se puede derivar durante el render.
+    /* eslint-disable-next-line react-hooks/set-state-in-effect */
     setMounted(true)
     const updateCount = async () => {
       try {

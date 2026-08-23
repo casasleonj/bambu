@@ -88,6 +88,10 @@ export function ClienteHistorial({ clienteId }: ClienteHistorialProps) {
   }, [clienteId, meses])
 
   useEffect(() => {
+    // Fetch de datos al montar / cuando cambian clienteId o meses
+    // (fetchEvents ya está memoizado con esas deps) — side effect de red
+    // real, no derivable durante el render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchEvents(1, false)
   }, [fetchEvents])
 

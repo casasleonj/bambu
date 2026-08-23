@@ -42,6 +42,9 @@ export default function ComprasPage() {
   }, [])
 
   useEffect(() => {
+    // Fetch de datos al montar — side effect de red real, no derivable
+    // durante el render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchData()
   }, [fetchData])
 

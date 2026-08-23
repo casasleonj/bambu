@@ -511,6 +511,36 @@ export const ClienteTable = React.memo(function ClienteTable({
         ) : (
           <div className="space-y-3">
             {clientes.map((cliente) => {
+              if (cliente._pendingSync) {
+                return (
+                  <div
+                    key={cliente.id}
+                    data-testid="cliente-row-pending"
+                    className="grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-4 p-4 bg-amber-50/60 border border-amber-200 border-dashed rounded-lg"
+                  >
+                    <div className="md:col-span-3 flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white bg-amber-400">
+                        {(cliente.nombre || '?').charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-semibold text-gray-800 truncate">
+                          {cliente.nombre} {cliente.apellido}
+                        </p>
+                        <p className="text-xs text-amber-700">{formatearTelefonoParaInput(cliente.telefono)}</p>
+                      </div>
+                    </div>
+                    <div className="md:col-span-9 flex items-center">
+                      <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                        <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Sin conexión — guardado en el celular, se creará al recuperar la señal
+                      </span>
+                    </div>
+                  </div>
+                )
+              }
               return (
                 <div
                   key={cliente.id}

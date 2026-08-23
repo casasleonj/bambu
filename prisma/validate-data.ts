@@ -1,4 +1,4 @@
-import { PrismaClient, EstadoPedido, EstadoEmbarque, EstadoFactura } from '@prisma/client'
+import { PrismaClient, EstadoPedido, EstadoEmbarque, EstadoFactura, type Prisma } from '@prisma/client'
 
 const prisma = new PrismaClient()
 
@@ -7,18 +7,33 @@ interface ValidationResult {
   status: 'PASS' | 'FAIL' | 'WARN'
   details: string
   count?: number
-  samples?: any[]
+  samples?: unknown[]
 }
 
 const results: ValidationResult[] = []
 
-function addResult(check: string, status: 'PASS' | 'FAIL' | 'WARN', details: string, count?: number, samples?: any[]) {
+function addResult(check: string, status: 'PASS' | 'FAIL' | 'WARN', details: string, count?: number, samples?: unknown[]) {
   results.push({ check, status, details, count, samples })
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function calcPedidoTotal(p: any): number {
+interface PedidoTotalFields {
+  cPacaAguaPed: number
+  precioPacaAgua: Prisma.Decimal
+  cPacaHieloPed: number
+  precioPacaHielo: Prisma.Decimal
+  cBotellonFabPed: number
+  precioBotellonFab: Prisma.Decimal
+  cBotellonDomPed: number
+  precioBotellonDom: Prisma.Decimal
+  cBolsaAguaPed: number
+  precioBolsaAgua: Prisma.Decimal
+  cBolsaHieloPed: number
+  precioBolsaHielo: Prisma.Decimal
+}
+
+function calcPedidoTotal(p: PedidoTotalFields): number {
   return (
     p.cPacaAguaPed * Number(p.precioPacaAgua) +
     p.cPacaHieloPed * Number(p.precioPacaHielo) +
@@ -46,7 +61,7 @@ async function checkPedidoTotals() {
   })
 
   let mismatches = 0
-  const samples: any[] = []
+  const samples: unknown[] = []
 
   for (const p of pedidos) {
     const expected = calcPedidoTotal(p)
@@ -74,7 +89,7 @@ async function checkSaldoConsistency() {
   })
 
   let mismatches = 0
-  const samples: any[] = []
+  const samples: unknown[] = []
 
   for (const p of pedidos) {
     const expectedSaldo = Number(p.total) - Number(p.totalPagado)
@@ -108,7 +123,7 @@ async function checkPagosMatchTotalPagado() {
   })
 
   let mismatches = 0
-  const samples: any[] = []
+  const samples: unknown[] = []
 
   for (const p of pedidos) {
     const sumaPagos = p.pagos.reduce((sum, pago) => sum + Number(pago.monto), 0)
@@ -136,7 +151,7 @@ async function checkFacturaSaldo() {
   })
 
   let mismatches = 0
-  const samples: any[] = []
+  const samples: unknown[] = []
 
   for (const f of facturas) {
     const sumaAbonos = f.abonos.reduce((sum, a) => sum + Number(a.monto), 0)
@@ -174,7 +189,7 @@ async function checkAbonoExceedsFactura() {
   })
 
   let exceed = 0
-  const samples: any[] = []
+  const samples: unknown[] = []
 
   for (const f of facturas) {
     const totalPagado = Number(f.montoPagado) + f.abonos.reduce((sum, a) => sum + Number(a.monto), 0)
@@ -208,7 +223,7 @@ async function checkEmbarqueCapacity() {
   })
 
   let issues = 0
-  const samples: any[] = []
+  const samples: unknown[] = []
 
   for (const e of embarques) {
     const aguaPedidos = e.pedidos.reduce((sum, p) => sum + p.cPacaAguaPed, 0)
@@ -262,7 +277,7 @@ async function checkProduccionStock() {
   })
 
   let mismatches = 0
-  const samples: any[] = []
+  const samples: unknown[] = []
 
   for (const p of producciones) {
     const itemAgua = p.items.find(i => i.producto === 'PACA_AGUA')

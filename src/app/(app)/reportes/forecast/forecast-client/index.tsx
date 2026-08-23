@@ -64,6 +64,9 @@ export function ForecastClient() {
   }, [semanas])
 
   useEffect(() => {
+    // Fetch de datos al montar / cambiar semanas — side effect de red
+    // real, no derivable durante el render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchForecast()
   }, [fetchForecast])
 

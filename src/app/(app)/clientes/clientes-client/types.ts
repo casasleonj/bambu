@@ -18,6 +18,11 @@ export interface Cliente {
   direccion?: string
   referencia?: string | null
   contactos?: ContactoAlternativo[]
+  /** Bloque 1: lat/lng calculadas (link / GPS / Negocio). Decimal serializado -> string. */
+  lat?: number | string | null
+  lng?: number | string | null
+  geocodeOrigen?: string | null
+  geocodeAt?: string | null
   frecuencia: string
   cadaNDias?: number
   proxEntrega?: string
@@ -32,6 +37,10 @@ export interface Cliente {
   creadoPorRol?: string
   createdAt?: string
   saldoPendiente?: number
+  /** Fila optimista: creado offline, aun encolado en requestQueue esperando sync. */
+  _pendingSync?: boolean
+  /** offlineId de la request encolada — usado para reconciliar contra bambu:sync-item-done. */
+  _pendingOfflineId?: string
   _count?: { pedidos: number }
   pedidos?: Pedido[]
   facturas?: Factura[]

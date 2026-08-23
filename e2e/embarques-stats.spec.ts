@@ -1,9 +1,10 @@
 // @tests embarques stats module - comprehensive E2E coverage
+import type { Page } from '@playwright/test'
 import { test, expect, loginAs, apiPost, apiGet, apiDelete, createCliente, BASE } from './fixtures'
 
-async function embarquesLogin(page: any) {
+async function embarquesLogin(page: Page) {
   const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
-  await page.route('**/api/cierre/last', async (route: any) => {
+  await page.route('**/api/cierre/last', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -11,14 +12,14 @@ async function embarquesLogin(page: any) {
     })
   })
   // Also intercept /cierre page redirect
-  await page.route('**/cierre', async (route: any) => {
+  await page.route('**/cierre', async (route) => {
     await route.continue()
   })
   // loginAs() already does skipBaseCaja() internally.
   await loginAs(page, 'admin')
 }
 
-async function gotoEmbarques(page: any) {
+async function gotoEmbarques(page: Page) {
   await page.goto(`${BASE}/embarques`)
   await page.waitForLoadState('domcontentloaded')
   await page.waitForTimeout(500)
@@ -34,7 +35,7 @@ async function gotoEmbarques(page: any) {
 /**
  * Create a proper repartidor with usaMoto and capacidadKg for embarque tests.
  */
-async function createStatsRepartidor(page: any): Promise<string | null> {
+async function createStatsRepartidor(page: Page): Promise<string | null> {
   const res = await page.request.post(`${BASE}/api/trabajadores`, {
     data: {
       nombre: `Stats Repartidor ${Date.now()}`,
@@ -62,7 +63,7 @@ async function createStatsRepartidor(page: any): Promise<string | null> {
  * Create an embarque and close it. Returns { embarqueId, success, error? }.
  * Always returns an object so tests can assert on the result.
  */
-async function createAndCloseEmbarque(page: any, trabajadorId: string, clienteId: string | null, items: Array<{ producto: string; cantidad: number }>, entregado: string): Promise<{ embarqueId: string | null; success: boolean; error?: string }> {
+async function createAndCloseEmbarque(page: Page, trabajadorId: string, clienteId: string | null, items: Array<{ producto: string; cantidad: number }>, entregado: string): Promise<{ embarqueId: string | null; success: boolean; error?: string }> {
   const eRes = await apiPost(page, '/api/embarques', { trabajadorId, horaSalida: new Date().toISOString(), baseDinero: 0, carga: [{ producto: 'PACA_AGUA', cargadas: 1 }] })
   const eData = await eRes.json()
   const embarqueId = eData.data?.id || eData.embarque?.id || eData.trabajador?.embarque?.id
@@ -333,8 +334,8 @@ test.describe('Embarques Stats — API Calculos con Datos Reales', () => {
     const data = await res.json()
     const kpi = (data.data ?? data).kpiGeneral
     expect(kpi.totalEmbarques).toBe(0)
-    const detalles = (data.data ?? data).embarquesDetalle
-    const openOnes = detalles.filter((d: any) => d.estado === 'ABIERTO')
+    const detalles = (data.data ?? data).embarquesDetalle as Array<{ estado: string }>
+    const openOnes = detalles.filter((d) => d.estado === 'ABIERTO')
     expect(openOnes.length).toBeGreaterThanOrEqual(1)
   })
 
@@ -373,8 +374,8 @@ test.describe('Embarques Stats — API Calculos con Datos Reales', () => {
     expect(result.success).toBe(true)
     const res = await apiGet(page, '/api/embarques/stats')
     const data = await res.json()
-    const workers = (data.data ?? data).porTrabajador
-    const worker = workers.find((w: any) => w.trabajadorId === trabajadorId)
+    const workers = (data.data ?? data).porTrabajador as Array<{ trabajadorId: string; tasaEntrega: number; tasaNoEntrega: number }>
+    const worker = workers.find((w) => w.trabajadorId === trabajadorId)!
     expect(worker).toBeDefined()
     expect(worker.tasaEntrega).toBe(1)
     expect(worker.tasaNoEntrega).toBe(0)
@@ -395,8 +396,8 @@ test.describe('Embarques Stats — API Calculos con Datos Reales', () => {
     expect(result.success).toBe(true)
     const res = await apiGet(page, '/api/embarques/stats')
     const data = await res.json()
-    const workers = (data.data ?? data).porTrabajador
-    const worker = workers.find((w: any) => w.trabajadorId === trabajadorId)
+    const workers = (data.data ?? data).porTrabajador as Array<{ trabajadorId: string; tasaEntrega: number; tasaNoEntrega: number }>
+    const worker = workers.find((w) => w.trabajadorId === trabajadorId)!
     expect(worker).toBeDefined()
     expect(worker.tasaEntrega).toBe(0)
     expect(worker.tasaNoEntrega).toBe(1)
@@ -639,7 +640,7 @@ test.describe('Embarques Stats — UI Loading State', () => {
 
   test('shows loading skeleton before data arrives', async ({ page }) => {
     await embarquesLogin(page)
-    await page.route('**/api/embarques/stats*', async (route: any) => {
+    await page.route('**/api/embarques/stats*', async (route) => {
       await new Promise(resolve => setTimeout(resolve, 2000))
       await route.fulfill({
         status: 200,
@@ -670,7 +671,7 @@ test.describe('Embarques Stats — UI Error State', () => {
 
   test('shows error message and retry button when API fails', async ({ page }) => {
     await embarquesLogin(page)
-    await page.route('**/api/embarques/stats*', async (route: any) => {
+    await page.route('**/api/embarques/stats*', async (route) => {
       await route.fulfill({
         status: 500,
         contentType: 'application/json',

@@ -102,7 +102,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       })),
     }
     return apiSuccess({ embarque })
-  } catch (error) {
+  } catch (_error) {
     return apiError('Error', 500)
   }
 }
@@ -259,7 +259,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         const pedidosActuales = await tx.pedido.findMany({
           where: { embarqueId: id },
         })
-        const unidadesActuales = pedidosActuales.reduce((s: number, p: any) =>
+        const unidadesActuales = pedidosActuales.reduce((s, p) =>
           s + (p.cPacaAguaPed || 0) + (p.cPacaHieloPed || 0) +
               (p.cBotellonFabPed || 0) + (p.cBotellonDomPed || 0) +
               (p.cBolsaAguaPed || 0) + (p.cBolsaHieloPed || 0), 0)
@@ -267,7 +267,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         const nuevosPedidos = await tx.pedido.findMany({
           where: { id: { in: pedidoIds } },
         })
-        const unidadesNuevas = nuevosPedidos.reduce((s: number, p: any) =>
+        const unidadesNuevas = nuevosPedidos.reduce((s, p) =>
           s + (p.cPacaAguaPed || 0) + (p.cPacaHieloPed || 0) +
               (p.cBotellonFabPed || 0) + (p.cBotellonDomPed || 0) +
               (p.cBolsaAguaPed || 0) + (p.cBolsaHieloPed || 0), 0)
@@ -499,7 +499,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   }
 
   try {
-    const result = await withAdvisoryLock('EMBARQUE_CARGA', id, async (tx: any) => {
+    const result = await withAdvisoryLock('EMBARQUE_CARGA', id, async (tx) => {
       const embarque = await tx.embarque.findUnique({
         where: { id },
         include: { pedidos: { select: { id: true } } },
@@ -512,7 +512,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       // Offline-first: dedup — si el embarque ya está CANCELADO, devolver OK
       // (idempotente, no se re-asignan pedidos a PENDIENTE).
       if (embarque.estado === 'CANCELADO') {
-        return { deduped: true as const, embarque }
+        return { deduped: true as const, embarque, id: embarque.id, numero: embarque.numero }
       }
 
       // Solo embarques ABIERTOS pueden cancelarse. EN_RUTA/CERRADO ya tienen
@@ -539,6 +539,12 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       return { ...updated, pedidoIds: embarque.pedidos.map((p: { id: string }) => p.id) }
     })
 
+    // Antes de tipar el callback de withAdvisoryLock, el path deduped
+    // (embarque ya CANCELADO) devolvía { deduped: true, embarque } SIN
+    // id/numero top-level -- registroId/numero quedaban undefined en el
+    // audit log de ese path sin que tsc lo detectara, oculto por el
+    // `tx: any` original. El callback ahora siempre incluye id/numero
+    // top-level en ambos paths de retorno.
     logAudit({
       entidad: 'Embarque',
       registroId: result.id,

@@ -33,7 +33,7 @@ import type { MetodoPago } from '@prisma/client'
 // Reutilizamos la misma técnica que el use case
 type TxOrPrisma = {
   $queryRaw: (query: TemplateStringsArray, ...values: unknown[]) => Promise<unknown[]>
-  [model: string]: any
+  [model: string]: unknown
 }
 
 export interface PedidoRawInput {
@@ -231,10 +231,19 @@ export class ProcesarPedidoService {
     }
 
     // Update factura
+    // FIX: Factura.fecha se fijaba una sola vez con @default(now()) al
+    // crear el Pedido (CrearPedidoUseCase paso 9), y nunca se volvía a
+    // tocar. Si el pedido nace un día y termina de entregarse otro (quedó
+    // NO_ENTREGADO/atrapado en un embarque y se resuelve después), la
+    // factura actualizaba montos/estado con los datos reales del cierre
+    // pero mostraba la fecha de creación del pedido, no la de la entrega
+    // real. Se sincroniza acá, en el único punto donde el pedido pasa a
+    // ENTREGADO de forma definitiva.
     if (pedido.factura) {
       await tx.factura.update({
         where: { id: pedido.factura.id },
         data: {
+          fecha: new Date(),
           total: totalReal,
           saldo: totalReal - montoPagado,
           estado: montoPagado >= totalReal ? 'PAGADA' : (montoPagado > 0 ? 'PARCIAL' : 'EMITIDA'),

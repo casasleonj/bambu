@@ -88,9 +88,9 @@ test.describe('Produccion — offline-first (Bloque 5)', () => {
     const getRes = await apiGet(page, `/api/produccion?fecha=${today}`)
     expect(getRes.status()).toBe(200)
     const body = await getRes.json()
-    const found = (body.produccion || []).find((p: any) => p.offlineId === offlineId)
+    const found = ((body.produccion || []) as Array<{ offlineId: string; trabajadorId: string }>).find((p) => p.offlineId === offlineId)
     expect(found).toBeDefined()
-    expect(found.trabajadorId).toBe(selladorId)
+    expect(found!.trabajadorId).toBe(selladorId)
   })
 
   test('POST sin offlineId → 201 normal (backward compat)', async ({ page }) => {

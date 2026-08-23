@@ -27,7 +27,7 @@ interface InitialData {
   embarques: Embarque[]
   trabajadores: Trabajador[]
   rutas: Ruta[]
-  stockEstimado: { agua: number; hielo: number } | null
+  stockEstimado: { agua: number; hielo: number; botellon: number } | null
   stockBajo: boolean
 }
 
@@ -62,7 +62,7 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
   const [dateRange, setDateRange] = useState<{ desde: string | null; hasta: string | null }>({ desde: null, hasta: null })
   const [filtroFase, setFiltroFase] = useState<'' | 'ABIERTO' | FaseUIEmbarque>('')
   const [activeTab, setActiveTab] = useState<'embarques' | 'stats'>('embarques')
-  const [stockEstimado, setStockEstimado] = useState<{ agua: number; hielo: number } | null>(initialData?.stockEstimado || null)
+  const [stockEstimado, setStockEstimado] = useState<{ agua: number; hielo: number; botellon: number } | null>(initialData?.stockEstimado || null)
   const [showStockModal, setShowStockModal] = useState(false)
   const [estimadoAgua, setEstimadoAgua] = useState("")
   const [estimadoHielo, setEstimadoHielo] = useState("")
@@ -162,7 +162,7 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
   const openStockModal = () => {
     setEstimadoAgua(stockEstimado?.agua ? String(stockEstimado.agua) : "")
     setEstimadoHielo(stockEstimado?.hielo ? String(stockEstimado.hielo) : "")
-    setEstimadoBotellon((stockEstimado as any)?.botellon ? String((stockEstimado as any).botellon) : "")
+    setEstimadoBotellon(stockEstimado?.botellon ? String(stockEstimado.botellon) : "")
     setShowStockModal(true)
   }
 
@@ -185,7 +185,7 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
           agua: Number(estimadoAgua) || 0,
           hielo: Number(estimadoHielo) || 0,
           botellon: Number(estimadoBotellon) || 0,
-        } as any)
+        })
         setBannerDismissed(false)
         setShowStockModal(false)
         toast.success('Stock estimado actualizado')
@@ -272,7 +272,7 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
               >
                 <span className="text-sm">📋</span>
                 <span className="text-sm font-medium hidden sm:inline">
-                  {stockEstimado ? `Stock: ${stockEstimado.agua}/${stockEstimado.hielo}/${(stockEstimado as any).botellon || 0}` : 'Stock Estimado'}
+                  {stockEstimado ? `Stock: ${stockEstimado.agua}/${stockEstimado.hielo}/${stockEstimado.botellon || 0}` : 'Stock Estimado'}
                 </span>
               </button>
             </Tooltip>
@@ -381,7 +381,7 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
               <div>
                 <p className="text-sm font-semibold text-amber-800">Stock estimado activo</p>
                 <p className="text-xs text-amber-700">
-                  Agua: {stockEstimado.agua} pacas · Hielo: {stockEstimado.hielo} pacas · Botellón: {(stockEstimado as any).botellon || 0}
+                  Agua: {stockEstimado.agua} pacas · Hielo: {stockEstimado.hielo} pacas · Botellón: {stockEstimado.botellon || 0}
                 </p>
               </div>
             </div>
@@ -389,7 +389,7 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
               {isAdmin && (
                 <>
                   <button
-                    onClick={() => { setEstimadoAgua(String(stockEstimado.agua)); setEstimadoHielo(String(stockEstimado.hielo)); setEstimadoBotellon((stockEstimado as any).botellon ? String((stockEstimado as any).botellon) : ""); setShowStockModal(true) }}
+                    onClick={() => { setEstimadoAgua(String(stockEstimado.agua)); setEstimadoHielo(String(stockEstimado.hielo)); setEstimadoBotellon(stockEstimado.botellon ? String(stockEstimado.botellon) : ""); setShowStockModal(true) }}
                     className="text-xs text-amber-600 hover:text-amber-800 font-medium"
                   >
                     Editar

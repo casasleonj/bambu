@@ -9,6 +9,7 @@ vi.mock('@/lib/prisma', () => ({
 
 import { prisma } from '@/lib/prisma'
 import { enrichPedidosWithNegocio, type PedidoParaEnriquecer } from '@/lib/embarque-pedido-enrich'
+import type { Negocio, Cliente } from '@prisma/client'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -21,7 +22,7 @@ describe('enrichPedidosWithNegocio', () => {
       { id: 'c1', nombre: 'Ana', apellido: null },
       { id: 'c2', nombre: 'Beto', apellido: null },
       { id: 'c3', nombre: 'Caro', apellido: null },
-    ] as any)
+    ] as unknown as Cliente[])
 
     const pedidos: PedidoParaEnriquecer[] = [
       { id: 'p1', numero: 1, clienteId: 'c3' },
@@ -37,10 +38,10 @@ describe('enrichPedidosWithNegocio', () => {
   it('resolves negocio name when negocioId present, falls back to cliente barrio-less display otherwise', async () => {
     vi.mocked(prisma.negocio.findMany).mockResolvedValue([
       { id: 'n1', nombre: 'Tienda Uno' },
-    ] as any)
+    ] as unknown as Negocio[])
     vi.mocked(prisma.cliente.findMany).mockResolvedValue([
       { id: 'c1', nombre: 'Ana', apellido: 'Gómez' },
-    ] as any)
+    ] as unknown as Cliente[])
 
     const pedidos: PedidoParaEnriquecer[] = [
       { id: 'p1', numero: 1, clienteId: 'c1', negocioId: 'n1' },
@@ -52,8 +53,8 @@ describe('enrichPedidosWithNegocio', () => {
   })
 
   it('dedupes negocioIds/clienteIds into a single batch query regardless of how many pedidos share them', async () => {
-    vi.mocked(prisma.negocio.findMany).mockResolvedValue([{ id: 'n1', nombre: 'Tienda' }] as any)
-    vi.mocked(prisma.cliente.findMany).mockResolvedValue([{ id: 'c1', nombre: 'Ana', apellido: null }] as any)
+    vi.mocked(prisma.negocio.findMany).mockResolvedValue([{ id: 'n1', nombre: 'Tienda' }] as unknown as Negocio[])
+    vi.mocked(prisma.cliente.findMany).mockResolvedValue([{ id: 'c1', nombre: 'Ana', apellido: null }] as unknown as Cliente[])
 
     const pedidos: PedidoParaEnriquecer[] = Array.from({ length: 10 }, (_, i) => ({
       id: `p${i}`,
@@ -73,11 +74,11 @@ describe('enrichPedidosWithNegocio', () => {
   // must produce the exact same per-embarque results as calling it once
   // PER embarque (the old, un-batched behavior).
   it('flatten-across-embarques + reslice by boundary produces the same result as per-embarque calls', async () => {
-    vi.mocked(prisma.negocio.findMany).mockResolvedValue([{ id: 'n1', nombre: 'Tienda' }] as any)
+    vi.mocked(prisma.negocio.findMany).mockResolvedValue([{ id: 'n1', nombre: 'Tienda' }] as unknown as Negocio[])
     vi.mocked(prisma.cliente.findMany).mockResolvedValue([
       { id: 'c1', nombre: 'Ana', apellido: null },
       { id: 'c2', nombre: 'Beto', apellido: null },
-    ] as any)
+    ] as unknown as Cliente[])
 
     const embarqueA: PedidoParaEnriquecer[] = [
       { id: 'p1', numero: 1, clienteId: 'c1', negocioId: 'n1' },

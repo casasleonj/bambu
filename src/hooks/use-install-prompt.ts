@@ -30,9 +30,13 @@ export function useInstallPrompt(): UseInstallPromptReturn {
   useEffect(() => {
     if (typeof window === 'undefined') return
 
+    // Detección de plataforma/localStorage: APIs browser-only, no
+    // derivables durante el render en SSR.
+    /* eslint-disable react-hooks/set-state-in-effect */
     setIsIos(isIosDevice())
     setIsStandalone(isStandaloneMode())
     setDismissed(localStorage.getItem(DISMISS_KEY) === 'true')
+    /* eslint-enable react-hooks/set-state-in-effect */
 
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault()

@@ -1,6 +1,27 @@
 import { offlineDb } from './offline'
 import { logger } from '@/lib/logger'
 
+export const SYNC_ITEM_DONE_EVENT = 'bambu:sync-item-done'
+
+export type SyncItemDoneStatus = 'synced' | 'conflict' | 'dlq'
+
+/**
+ * Notifica a componentes montados (ej. filas optimistas de clientes/pedidos
+ * creados offline) que un item de requestQueue terminó de procesarse, para
+ * que puedan reconciliar su estado local sin esperar al próximo poll/refresh.
+ */
+function dispatchSyncItemDone(
+  offlineId: string | undefined,
+  localEndpoint: string,
+  status: SyncItemDoneStatus,
+  reason?: string,
+): void {
+  if (typeof window === 'undefined' || !offlineId) return
+  window.dispatchEvent(
+    new CustomEvent(SYNC_ITEM_DONE_EVENT, { detail: { offlineId, localEndpoint, status, reason } }),
+  )
+}
+
 const BATCH_SIZE = 25 // Drain N items per batch to avoid long blocking sync
 const SYNC_TIMEOUT_MS = 60_000 // 1 minuto máximo por request
 
@@ -208,6 +229,7 @@ async function doSyncWithServer(): Promise<SyncResult> {
     if (shouldMoveToDLQ({ ...req, attempts: newAttempts })) {
       await moveToDLQ(req, 'Excedido MAX_ATTEMPTS o MAX_AGE')
       await markOfflineItemConflict(req.offlineId)
+      dispatchSyncItemDone(req.offlineId, req.localEndpoint, 'dlq', 'Excedido el número de reintentos')
       failedPermanently++
       continue
     }
@@ -241,6 +263,7 @@ async function doSyncWithServer(): Promise<SyncResult> {
       if (res.ok) {
         const data = await res.json().catch(() => ({}))
         await finalizeRequestQueueItem(req, data, 'synced')
+        dispatchSyncItemDone(req.offlineId, req.localEndpoint, 'synced')
         synced++
         logger.info(
           { localId: req.offlineId, endpoint: req.localEndpoint, attempts: newAttempts },
@@ -249,6 +272,7 @@ async function doSyncWithServer(): Promise<SyncResult> {
       } else if (res.status === 409) {
         const data = await res.json().catch(() => ({}))
         await finalizeRequestQueueItem(req, data, 'synced')
+        dispatchSyncItemDone(req.offlineId, req.localEndpoint, 'conflict')
         conflicts++
         logger.warn(
           { localId: req.offlineId, endpoint: req.localEndpoint, status: 409 },
@@ -265,14 +289,22 @@ async function doSyncWithServer(): Promise<SyncResult> {
           'Sync: 429 rate limit, mantener en cola con backoff',
         )
       } else if (!isRetryableStatus(res.status)) {
+        // Extraer el mensaje real del servidor (ej. "El cliente ya debe...")
+        // para que la UI pueda mostrar POR QUÉ se rechazó, no solo que falló.
+        const data = await res.json().catch(() => ({}))
+        const serverMessage =
+          (data as { error?: { message?: string; formErrors?: string[] } })?.error?.message
+          ?? (data as { error?: { formErrors?: string[] } })?.error?.formErrors?.[0]
+        const reason = serverMessage || `HTTP ${res.status}: error de cliente`
         await moveToDLQ(
           { ...req, attempts: newAttempts, lastAttemptAt: new Date() },
-          `HTTP ${res.status}: error de cliente`,
+          reason,
         )
         await markOfflineItemConflict(req.offlineId)
+        dispatchSyncItemDone(req.offlineId, req.localEndpoint, 'dlq', reason)
         failedPermanently++
         logger.error(
-          { localId: req.offlineId, endpoint: req.localEndpoint, status: res.status },
+          { localId: req.offlineId, endpoint: req.localEndpoint, status: res.status, reason },
           'Sync: 4xx error de lógica, movido a DLQ',
         )
       } else {

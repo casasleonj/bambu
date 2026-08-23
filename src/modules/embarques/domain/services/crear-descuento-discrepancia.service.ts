@@ -15,11 +15,13 @@
  */
 
 import { resolverPrecio } from '@/lib/pricing'
+import type { PrismaClient } from '@prisma/client'
 import type { ProductCode } from '../../domain/value-objects/Carga'
+import { validarContextoResponsibilityCase } from './responsibility.service'
 
 type TxOrPrisma = {
   $queryRaw: (query: TemplateStringsArray, ...values: unknown[]) => Promise<unknown[]>
-  [model: string]: any
+  [model: string]: unknown
 }
 
 export class CrearDescuentoDiscrepanciaService {
@@ -41,7 +43,7 @@ export class CrearDescuentoDiscrepanciaService {
     const precioMap: Record<string, number> = {}
     for (const disc of discrepancias) {
       if (disc.discrepancia > 0) {
-        const precioResult = await resolverPrecio(disc.producto as ProductCode, 1, 'DOMICILIO', null, null, client as any)
+        const precioResult = await resolverPrecio(disc.producto as ProductCode, 1, 'DOMICILIO', null, null, client as unknown as PrismaClient)
         precioMap[disc.producto] = precioResult.precio
       }
     }
@@ -54,6 +56,13 @@ export class CrearDescuentoDiscrepanciaService {
         montoTotal += disc.discrepancia * precio
         motivos.push(`${disc.discrepancia} ${disc.producto}`)
       }
+    }
+
+    // Contrato §13: exige al menos una referencia de contexto (embarqueId
+    // aquí, siempre presente en este flujo).
+    const errores = validarContextoResponsibilityCase({ embarqueId, trabajadorId })
+    if (errores.length > 0) {
+      throw new Error(errores.join('; '))
     }
 
     // FASE 6 (§13): detectar y crear el caso, NO el cargo económico.

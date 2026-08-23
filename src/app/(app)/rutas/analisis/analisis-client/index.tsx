@@ -33,7 +33,12 @@ export default function RutasAnalisisClient() {
     }
   }
 
-  useEffect(() => { cargarAnalisis() }, [])
+  useEffect(() => {
+    // Fetch de datos al montar — side effect de red real, no derivable
+    // durante el render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    cargarAnalisis()
+  }, [])
 
   async function crearRutaDesdeSugerencia(nombre: string, repartidorId?: string) {
     try {

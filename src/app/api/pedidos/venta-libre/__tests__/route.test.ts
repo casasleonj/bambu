@@ -53,7 +53,7 @@ vi.mock('@/lib/auth-check', () => ({
     const session = await mockAuth()
     return session ?? new Response('No autorizado', { status: 401 })
   },
-  requireRole: async (_roles: unknown, existing: any) => {
+  requireRole: async (_roles: unknown, existing: unknown) => {
     if (existing instanceof Response) return existing
     return existing
   },
@@ -95,7 +95,7 @@ vi.mock('@/lib/logger', () => ({
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
 }))
 vi.mock('@/lib/locks', () => ({
-  withAdvisoryLock: async (_namespace: string, _entityKey: string, fn: any) => {
+  withAdvisoryLock: async (_namespace: string, _entityKey: string, fn: (tx: unknown) => Promise<unknown>) => {
     // Build a tx object that has all the prisma models the route touches.
     // The route uses tx.embarque, tx.cliente, tx.pedido, tx.pago, tx.factura, tx.config, tx.trabajador.
     const tx = {

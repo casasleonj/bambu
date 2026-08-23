@@ -6,7 +6,8 @@
 // A4. Síntesis de día
 // A5. Transición de roles
 
-import { test, expect, loginAs, shoot, addFinding, isVisible, dbCount, dbQuery, BASE, RUN_ID, SCREENSHOTS_DIR } from './walkthrough-helpers'
+import type { Page } from '@playwright/test'
+import { test, loginAs, shoot, addFinding, BASE } from './walkthrough-helpers'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // A1. T1.1 MEJORADO — crear plantilla desde UI real con force
@@ -291,7 +292,7 @@ test.afterAll(async () => {
   console.log(`\n[A1-A5] Tests fixes completos.`)
 })
 
-async function hasHorizontalOverflow(page: any): Promise<boolean> {
+async function hasHorizontalOverflow(page: Page): Promise<boolean> {
   return await page.evaluate(() => {
     return document.documentElement.scrollWidth > document.documentElement.clientWidth + 2
   })

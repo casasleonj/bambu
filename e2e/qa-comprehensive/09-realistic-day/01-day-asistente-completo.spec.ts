@@ -137,8 +137,8 @@ test.describe('Día del Asistente — mobile-first', () => {
     const listRes = await page.request.get('/api/pedidos')
     expect(listRes.ok()).toBe(true)
     const list = await listRes.json()
-    const allPedidos = list.pedidos || list.data || []
-    const found = allPedidos.find((x: any) => (x.id || x.pedido?.id) === pedidoId)
+    const allPedidos = (list.pedidos || list.data || []) as Array<{ id?: string; pedido?: { id: string } }>
+    const found = allPedidos.find((x) => (x.id || x.pedido?.id) === pedidoId)
     expect(found).toBeTruthy()
 
     // Ir a /pedidos y verificar que la página carga sin error

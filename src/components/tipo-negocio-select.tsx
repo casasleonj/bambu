@@ -20,29 +20,30 @@ export function TipoNegocioSelect({
   const [isOpen, setIsOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [highlightedIndex, setHighlightedIndex] = useState(-1)
-  const [allOptions, setAllOptions] = useState<string[]>(options)
+  const [fetchedOptions, setFetchedOptions] = useState<string[] | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const queryRef = useRef(query)
-  queryRef.current = query
+  useEffect(() => {
+    queryRef.current = query
+  }, [query])
   const skipFocusRef = useRef(false)
 
   useEffect(() => {
-    if (!apiUrl) {
-      setAllOptions(options)
-      return
-    }
+    if (!apiUrl) return
     fetch(apiUrl)
       .then(r => r.json())
       .then(data => {
         if (data.success && data.tipos) {
           const merged = Array.from(new Set([...options, ...data.tipos])).sort()
-          setAllOptions(merged)
+          setFetchedOptions(merged)
         }
       })
       .catch(() => {})
   }, [options, apiUrl])
+
+  const allOptions = apiUrl ? (fetchedOptions ?? options) : options
 
   const filteredOptions = query === ''
     ? allOptions

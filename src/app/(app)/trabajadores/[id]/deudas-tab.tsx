@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
 import { formatCurrency } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
@@ -35,7 +35,7 @@ export default function DeudasTab({ trabajadorId }: { trabajadorId: string }) {
   const [showAbono, setShowAbono] = useState<string | null>(null)
   const [filter, setFilter] = useState<'todas' | 'pendientes' | 'pagadas'>('pendientes')
 
-  async function fetchDeudas() {
+  const fetchDeudas = useCallback(async () => {
     setLoading(true)
     try {
       const res = await fetch(`/api/deudas?trabajadorId=${trabajadorId}`)
@@ -47,11 +47,14 @@ export default function DeudasTab({ trabajadorId }: { trabajadorId: string }) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [trabajadorId])
 
   useEffect(() => {
+    // Fetch de datos al montar / cambiar trabajadorId — side effect de
+    // red real, no derivable durante el render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchDeudas()
-  }, [trabajadorId])
+  }, [fetchDeudas])
 
   const deudasFiltradas = deudas.filter(d => {
     if (filter === 'pendientes') return d.montoPendiente > 0

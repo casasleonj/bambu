@@ -80,8 +80,8 @@ export async function POST(request: NextRequest) {
     )
 
     // 3. Crear deudas nuevas
-    const nuevasDeudas: any[] = []
-    const saltados: any[] = []
+    const nuevasDeudas: Array<{ id: string; pedidoId: string; trabajadorId: string; monto: number }> = []
+    const saltados: Array<{ pedidoId: string; motivo: string }> = []
     for (const p of pedidosCandidatos) {
       if (!p.embarqueId || !p.embarque) {
         saltados.push({ pedidoId: p.id, motivo: 'sin embarque' })

@@ -177,6 +177,21 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
 
   const resolverSeqRef = useRef(0)
 
+  // Nota sobre clienteSeleccionado?.id en las deps de resolverPrecios/
+  // handlePriceRefresh/resolverPreciosCliente y en el efecto de sync de
+  // editDireccion/editBarrio más abajo: clienteSeleccionado es state local,
+  // pero la revalidación silenciosa de contacto (más abajo, "Revalidación
+  // silenciosa de campos de despacho") reemplaza el objeto completo vía
+  // setClienteSeleccionado(prev => ({...prev, telefono, direccion, barrio}))
+  // preservando el mismo `.id` -- a propósito, para NO disparar estos
+  // callbacks/efectos en cada revalidación de background (evitaría un
+  // fetch redundante a /api/precios/resolver). React Compiler infiere que
+  // debería depender del objeto completo porque en otras partes del
+  // componente sí se lee clienteSeleccionado.direccion/.barrio, pero ese
+  // sync ya se hace explícitamente aparte (setEditDireccion/setEditBarrio
+  // en la revalidación silenciosa) -- seguir la sugerencia del compiler acá
+  // reintroduciría el fetch redundante que este narrowing evita.
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization -- ver nota arriba
   const resolverPrecios = useCallback(async (prods: Record<string, number>, canalVal: 'PUNTO' | 'DOMICILIO', clienteId?: string, negocioId?: string | null) => {
     const items = productosActuales
       .filter(id => (prods[id] || 0) > 0)
@@ -227,6 +242,7 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
   }, [productosActuales, clienteSeleccionado?.id, negocioSeleccionado])
 
   // Price sync: detectar cambios de precios via polling
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization -- ver nota arriba de resolverPrecios
   const handlePriceRefresh = useCallback(async () => {
     try {
       const res = await fetch('/api/precios/tabla')
@@ -251,6 +267,7 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
   // sin esperar a que el usuario modifique la cantidad.
   // En edición usamos las cantidades actuales del pedido para no perder
   // la resolución por volumen que ya tenía.
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization -- ver nota arriba de resolverPrecios
   const resolverPreciosCliente = useCallback(() => {
     if (productosConfig.length === 0) return
     if (!clienteSeleccionado?.id) {
@@ -268,14 +285,25 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
   }, [productosConfig, clienteSeleccionado?.id, productosActuales, resolverPrecios, pedidoInicial?.id, negocioSeleccionado])
 
   useEffect(() => {
+    // Resuelve precios reales via API — side effect de red, no derivable
+    // durante el render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     resolverPreciosCliente()
   }, [resolverPreciosCliente])
 
   // Sync direccion/barrio when negocio selection changes.
   // Use clienteSeleccionado?.id to avoid re-running when the parent
-  // passes a fresh object reference on every render.
+  // passes a fresh object reference on every render -- ver nota arriba de
+  // resolverPrecios: la revalidación silenciosa de contacto reemplaza el
+  // objeto preservando el `.id` a propósito, y ya sincroniza
+  // editDireccion/editBarrio directamente en ese mismo flujo (líneas
+  // 363-364 más abajo), así que este efecto no necesita re-ejecutarse ahí.
   useEffect(() => {
     if (!clienteSeleccionado) return
+    /* eslint-disable react-hooks/set-state-in-effect -- ver nota arriba:
+       keyed deliberadamente en clienteSeleccionado?.id, no en el objeto
+       completo, para no re-ejecutar en cambios de referencia sin cambio
+       de contenido real. */
     if (negocioData) {
       // Use negocio's address if it has one, otherwise fall back to client's
       setEditDireccion(negocioData.direccion || clienteSeleccionado.direccion || '')
@@ -285,10 +313,15 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
       setEditDireccion(clienteSeleccionado.direccion || '')
       setEditBarrio(clienteSeleccionado.barrio || '')
     }
+    /* eslint-enable react-hooks/set-state-in-effect */
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ver nota arriba
   }, [negocioData, clienteSeleccionado?.id])
 
   useEffect(() => {
     if (!clienteSeleccionado?.id) {
+      // Parte del mismo efecto de fetch abortable (fiado-status) que
+      // sigue abajo — no aislable de forma segura al render.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setFiadosStatus(null)
       return
     }
@@ -321,12 +354,16 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
 
   useEffect(() => {
     if (!pedidoInicial) return
+    /* eslint-disable react-hooks/set-state-in-effect */
     setCanal(pedidoInicial.canal)
     setObservaciones(pedidoInicial.obs || '')
     setSoloParaEstePedido(false)
     if (pedidoInicial.cliente) {
       setClienteSeleccionado(pedidoInicial.cliente as Cliente)
     }
+    /* eslint-enable react-hooks/set-state-in-effect */
+    // Puebla el form desde pedidoInicial (keyed en .id, ver revalidación
+    // con red más abajo en este mismo efecto).
     // Revalidación silenciosa de campos de despacho para pedido NUEVO con
     // cliente pre-seleccionado (deep-link ?new=1&clienteId=... desde
     // /clientes). El cliente pudo venir de un caché de hasta 60s

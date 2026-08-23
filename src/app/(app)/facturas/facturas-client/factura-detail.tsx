@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Image from 'next/image'
 import { Button } from '@/components/ui/button'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
@@ -35,6 +36,10 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono }: Fact
   const [printReady, setPrintReady] = useState(false)
 
   useEffect(() => {
+    // Bandera de hidratación SSR-safe: no se puede derivar durante el
+    // render (el primer render de cliente debe coincidir con el del
+    // servidor, que renderiza null hasta que el efecto corra).
+    /* eslint-disable-next-line react-hooks/set-state-in-effect */
     setPrintReady(true)
   }, [])
 
@@ -239,7 +244,7 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono }: Fact
           </svg>
           Imprimir / Descargar PDF
         </Button>
-        {saldo > 0 && factura.estado !== 'ANULADA' && onRegistrarAbono && (
+        {saldo > 0 && factura.estado !== 'ANULADA' && onRegistrarAbono && factura.pedido?.estadoEntrega === 'ENTREGADO' && (
           <Button onClick={onRegistrarAbono} size="sm" style={{ backgroundColor: BRAND.green }} className="hover:opacity-90 text-white border-0">
             <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -248,6 +253,11 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono }: Fact
           </Button>
         )}
       </div>
+      {saldo > 0 && factura.estado !== 'ANULADA' && factura.pedido && factura.pedido.estadoEntrega !== 'ENTREGADO' && (
+        <div className="max-w-3xl mx-auto mb-4 -mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          No se puede registrar abono todavia: el pedido #{factura.pedido.numero} aun no ha sido entregado.
+        </div>
+      )}
 
       {/* Contenido de la factura */}
       <div className="factura-content bg-white border rounded-lg overflow-hidden max-w-3xl mx-auto">
@@ -260,9 +270,11 @@ export function FacturaDetail({ factura, empresaConfig, onRegistrarAbono }: Fact
           <div className="flex items-start justify-between gap-4">
             {/* Logo + Empresa */}
             <div className="flex items-center gap-4">
-              <img
+              <Image
                 src="/logo-agua-bambu.jpg"
                 alt="Agua Bambú"
+                width={1280}
+                height={652}
                 className="h-20 w-auto object-contain"
               />
               {/* Datos de empresa se muestran en columna derecha */}

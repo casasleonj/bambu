@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { fetchResilient } from '@/lib/fetch-resilient'
@@ -149,7 +149,7 @@ export default function CerrarEmbarqueClient() {
       }
     }
     fetchData()
-  }, [embarqueId])
+  }, [embarqueId, router])
 
   function updateCuadre(pedidoId: string, updates: Partial<CuadrePedido>) {
     setCuadres((prev) => ({ ...prev, [pedidoId]: { ...prev[pedidoId], ...updates } }))
@@ -258,6 +258,41 @@ export default function CerrarEmbarqueClient() {
   function removeGasto(index: number) {
     setGastos((prev) => prev.filter((_, idx) => idx !== index))
   }
+
+  const ventasLibreTotal = useCallback((v: VentaLibre): number => {
+    if (!embarque || embarque.pedidos.length === 0) return 0
+    const avgPrices = {
+      pacaAgua: embarque.pedidos.reduce((sum, p) => sum + Number(p.precioPacaAgua || 0), 0) / embarque.pedidos.length,
+      pacaHielo: embarque.pedidos.reduce((sum, p) => sum + Number(p.precioPacaHielo || 0), 0) / embarque.pedidos.length,
+      botellonFab: embarque.pedidos.reduce((sum, p) => sum + Number(p.precioBotellonFab || 0), 0) / embarque.pedidos.length,
+      botellonDom: embarque.pedidos.reduce((sum, p) => sum + Number(p.precioBotellonDom || 0), 0) / embarque.pedidos.length,
+      bolsaAgua: embarque.pedidos.reduce((sum, p) => sum + Number(p.precioBolsaAgua || 0), 0) / embarque.pedidos.length,
+      bolsaHielo: embarque.pedidos.reduce((sum, p) => sum + Number(p.precioBolsaHielo || 0), 0) / embarque.pedidos.length,
+    }
+    return (
+      v.cPacaAgua * avgPrices.pacaAgua +
+      v.cPacaHielo * avgPrices.pacaHielo +
+      v.cBotellonFab * avgPrices.botellonFab +
+      v.cBotellonDom * avgPrices.botellonDom +
+      v.cBolsaAgua * avgPrices.bolsaAgua +
+      v.cBolsaHielo * avgPrices.bolsaHielo
+    )
+  }, [embarque])
+
+  const calcularEfectivoRecibido = useCallback((): number => {
+    let total = 0
+    for (const cuadre of Object.values(cuadres)) {
+      for (const pago of cuadre.pagos) {
+        if (pago.metodo === 'EFECTIVO' && pago.monto > 0) total += pago.monto
+      }
+    }
+    for (const v of ventasLibres) {
+      for (const pago of v.pagos) {
+        if (pago.metodo === 'EFECTIVO' && pago.monto > 0 && v.clienteId) total += pago.monto
+      }
+    }
+    return total
+  }, [cuadres, ventasLibres])
 
   // ─── Cálculos del preview ───
   const calculos = useMemo(() => {
@@ -379,7 +414,7 @@ export default function CerrarEmbarqueClient() {
       pagosPorMetodo,
       noEntregados, parciales,
     }
-  }, [embarque, cuadres, ventasLibres, retornos, gastos, dineroEntregado, justificacionFaltante])
+  }, [embarque, cuadres, ventasLibres, retornos, gastos, dineroEntregado, justificacionFaltante, ventasLibreTotal, calcularEfectivoRecibido])
 
   // A.3.4: shape del payload compartido entre el envío real y el preview
   // dry-run — evita que ambos diverjan por copy-paste.
@@ -464,41 +499,6 @@ export default function CerrarEmbarqueClient() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSection, embarque, cuadres, ventasLibres, retornos, gastos, dineroEntregado, justificacionFaltante, justificacion, obsGeneral])
-
-  function ventasLibreTotal(v: VentaLibre): number {
-    if (!embarque || embarque.pedidos.length === 0) return 0
-    const avgPrices = {
-      pacaAgua: embarque.pedidos.reduce((sum, p) => sum + Number(p.precioPacaAgua || 0), 0) / embarque.pedidos.length,
-      pacaHielo: embarque.pedidos.reduce((sum, p) => sum + Number(p.precioPacaHielo || 0), 0) / embarque.pedidos.length,
-      botellonFab: embarque.pedidos.reduce((sum, p) => sum + Number(p.precioBotellonFab || 0), 0) / embarque.pedidos.length,
-      botellonDom: embarque.pedidos.reduce((sum, p) => sum + Number(p.precioBotellonDom || 0), 0) / embarque.pedidos.length,
-      bolsaAgua: embarque.pedidos.reduce((sum, p) => sum + Number(p.precioBolsaAgua || 0), 0) / embarque.pedidos.length,
-      bolsaHielo: embarque.pedidos.reduce((sum, p) => sum + Number(p.precioBolsaHielo || 0), 0) / embarque.pedidos.length,
-    }
-    return (
-      v.cPacaAgua * avgPrices.pacaAgua +
-      v.cPacaHielo * avgPrices.pacaHielo +
-      v.cBotellonFab * avgPrices.botellonFab +
-      v.cBotellonDom * avgPrices.botellonDom +
-      v.cBolsaAgua * avgPrices.bolsaAgua +
-      v.cBolsaHielo * avgPrices.bolsaHielo
-    )
-  }
-
-  function calcularEfectivoRecibido(): number {
-    let total = 0
-    for (const cuadre of Object.values(cuadres)) {
-      for (const pago of cuadre.pagos) {
-        if (pago.metodo === 'EFECTIVO' && pago.monto > 0) total += pago.monto
-      }
-    }
-    for (const v of ventasLibres) {
-      for (const pago of v.pagos) {
-        if (pago.metodo === 'EFECTIVO' && pago.monto > 0 && v.clienteId) total += pago.monto
-      }
-    }
-    return total
-  }
 
   async function handleCerrar() {
     if (!embarque || !calculos) return

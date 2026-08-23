@@ -2,6 +2,7 @@
 
 import { generateUUID } from '@/lib/uuid'
 import { useState, useEffect, useCallback, useRef } from 'react'
+import Image from 'next/image'
 import { toast } from 'sonner'
 import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 import { formatCurrency } from '@/lib/utils'
@@ -115,11 +116,22 @@ export function RepartidorClient({ trabajador, embarque: initialEmbarque, userRo
   const productosDomicilioIds = getProductosForCanal('DOMICILIO', productosConfig)
   const productosDomicilio = new Set(productosDomicilioIds.map(id => PRODUCTO_INFO[id].codigo))
 
+  const updatePendingCount = useCallback(async () => {
+    const [pedidoCount, failedCount] = await Promise.all([
+      offlineDb.pedidos.where('syncStatus').equals('pending').count(),
+      offlineDb.failedItems.count(),
+    ])
+    setPendingCount(pedidoCount + failedCount)
+  }, [])
+
   useEffect(() => {
+    // Lectura de IndexedDB (Dexie) al montar — side effect real, no
+    // derivable durante el render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     updatePendingCount()
     const interval = setInterval(updatePendingCount, 5000)
     return () => clearInterval(interval)
-  }, [])
+  }, [updatePendingCount])
 
   // State-driven embarque: start from SSR prop, then refresh client-side via API.
   // Avoids router.refresh() which in Next.js 16 eagerly refetches all visible
@@ -142,14 +154,6 @@ export function RepartidorClient({ trabajador, embarque: initialEmbarque, userRo
       // Silently retry next cycle
     }
   }, 30_000)
-
-  const updatePendingCount = useCallback(async () => {
-    const [pedidoCount, failedCount] = await Promise.all([
-      offlineDb.pedidos.where('syncStatus').equals('pending').count(),
-      offlineDb.failedItems.count(),
-    ])
-    setPendingCount(pedidoCount + failedCount)
-  }, [])
 
   const handleSync = async () => {
     if (!online) {
@@ -716,7 +720,9 @@ export function RepartidorClient({ trabajador, embarque: initialEmbarque, userRo
               {fotoBase64 ? '📷 Foto capturada' : '📷 Toma una foto'}
             </button>
             {fotoBase64 && (
-              <img src={fotoBase64} alt="Entrega" className="mt-2 w-full h-32 object-cover rounded-lg" />
+              <div className="relative mt-2 w-full h-32 rounded-lg overflow-hidden">
+                <Image src={fotoBase64} alt="Entrega" fill unoptimized className="object-cover" />
+              </div>
             )}
           </div>
 

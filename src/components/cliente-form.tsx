@@ -5,14 +5,16 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
+interface ClienteFormData {
+  nombre?: string
+  telefono?: string
+  direccion?: string
+  barrio?: string
+}
+
 interface ClienteFormProps {
-  onSubmit?: (data: any) => void
-  initialData?: {
-    nombre?: string
-    telefono?: string
-    direccion?: string
-    barrio?: string
-  }
+  onSubmit?: (data: ClienteFormData) => void
+  initialData?: ClienteFormData
 }
 
 export function ClienteForm({ onSubmit, initialData }: ClienteFormProps) {

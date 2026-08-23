@@ -29,11 +29,22 @@ export function ProveedorDetailModal({
   const [detail, setDetail] = useState<ProveedorDetail | null>(null)
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('info')
+  const [prevOpen, setPrevOpen] = useState(open)
+  const [prevProveedor, setPrevProveedor] = useState(proveedor)
+
+  // Reinicia tab/loading durante el render cuando cambia open/proveedor, en
+  // vez de en el efecto — ver https://react.dev/learn/you-might-not-need-an-effect
+  if (open !== prevOpen || proveedor !== prevProveedor) {
+    setPrevOpen(open)
+    setPrevProveedor(proveedor)
+    if (open && proveedor) {
+      setActiveTab('info')
+      setLoading(true)
+    }
+  }
 
   useEffect(() => {
     if (!open || !proveedor) return
-    setActiveTab('info')
-    setLoading(true)
     fetch(`/api/proveedores/${proveedor.id}`)
       .then(r => {
         if (!r.ok) throw new Error(`Error ${r.status}`)

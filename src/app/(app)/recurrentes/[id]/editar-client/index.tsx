@@ -130,6 +130,11 @@ export function EditarRecurrenteClient({ plantilla }: { plantilla: PlantillaSeri
       .map(p => ({ codigo: p.codigo, cantidad: cantidades[p.key] || 0 }))
 
     if (items.length === 0) {
+      // Limpia precios resueltos cuando no hay items seleccionados —
+      // parte del mismo efecto de resolución debounced que sigue abajo
+      // (fetch real con setTimeout + cleanup), no es aislable de forma
+      // segura al render sin romper el debounce.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPreciosResueltos(prev => Object.keys(prev).length > 0 ? {} : prev)
       return
     }
@@ -149,7 +154,7 @@ export function EditarRecurrenteClient({ plantilla }: { plantilla: PlantillaSeri
             for (const [codigo, info] of Object.entries(data.precios)) {
               const config = productConfigs.find(c => c.codigo === codigo)
               nuevos[codigo] = {
-                precio: (info as any).precio,
+                precio: (info as { precio: number }).precio,
                 aplicaDomicilio: config?.aplicaDomicilio ?? false,
                 sobreCosto: config?.sobreCostoDomicilio ? Number(config.sobreCostoDomicilio) : 0,
               }
@@ -162,7 +167,7 @@ export function EditarRecurrenteClient({ plantilla }: { plantilla: PlantillaSeri
     }, 300)
 
     return () => { if (resolverTimeoutRef.current) clearTimeout(resolverTimeoutRef.current) }
-  }, [canal, cantidades, configsLoading, productosVisibles, plantilla.clienteId])
+  }, [canal, cantidades, configsLoading, productosVisibles, plantilla.clienteId, productConfigs])
 
   // Clear quantities for products not available in new canal
   useEffect(() => {
@@ -179,11 +184,15 @@ export function EditarRecurrenteClient({ plantilla }: { plantilla: PlantillaSeri
         }
       }
       if (Object.keys(updates).length > 0) {
+        // Limpia cantidades de productos no disponibles en el nuevo canal
+        // y notifica — el toast es un side effect real, no derivable
+        // durante el render.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setCantidades(prev => ({ ...prev, ...updates }))
         toast.info(`${unavailable.length} producto(s) no disponible(s) para domicilio`)
       }
     }
-  }, [canal])
+  }, [canal, cantidades, productConfigs])
 
   const updateCantidad = (key: keyof typeof cantidades, value: number) => {
     setCantidades(prev => ({ ...prev, [key]: Math.max(0, value) }))

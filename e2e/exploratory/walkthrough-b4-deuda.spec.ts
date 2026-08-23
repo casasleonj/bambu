@@ -2,7 +2,7 @@
 // Unit test: B4 Fiado → DeudaTrabajador automático
 // Crea un fiado entregado con embarque, fuerza createdAt al pasado, llama al endpoint, verifica deuda creada
 
-import { test, expect, loginAs, addFinding, dbCount, dbQuery, BASE, RUN_ID, CRON_SECRET, hasHorizontalOverflow } from './walkthrough-helpers'
+import { test, loginAs, addFinding, dbCount, dbQuery, BASE, CRON_SECRET } from './walkthrough-helpers'
 
 test.describe('Fase 4. B4 Deuda automática', () => {
   test('B4.1: Forzar fiado antiguo con embarque → deuda se crea automáticamente', async ({ page }) => {
@@ -146,7 +146,7 @@ test.describe('Fase 4. B4 Deuda automática', () => {
     })
   })
 
-  test('B4.4: Cron funciona con auth context (curl-like)', async ({ page, request }) => {
+  test('B4.4: Cron funciona con auth context (curl-like)', async ({ request }) => {
     // Crear un request nuevo sin contexto de Playwright (sin cookies)
     const resp = await request.post(`${BASE}/api/cron/generar-deudas-trabajador`, {
       data: {},

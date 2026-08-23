@@ -29,16 +29,24 @@ export function GpsCaptureModal({
 }: GpsCaptureModalProps) {
   const { coordinates, error, loading, capture, reset } = useGpsCapture()
   const [justificacion, setJustificacion] = useState('')
+  const [prevOpen, setPrevOpen] = useState(open)
+
+  // Reinicia la justificación durante el render cuando cambia open, en vez
+  // de en el efecto — ver https://react.dev/learn/you-might-not-need-an-effect
+  if (open !== prevOpen) {
+    setPrevOpen(open)
+    setJustificacion('')
+  }
 
   useEffect(() => {
+    // capture()/reset() disparan la API de geolocalización (side effect
+    // real, no derivable durante el render).
     if (open) {
-      setJustificacion('')
       capture()
     } else {
       reset()
-      setJustificacion('')
     }
-  }, [open])
+  }, [open, capture, reset])
 
   const handleConfirm = useCallback(() => {
     onConfirm(coordinates, justificacion || undefined)

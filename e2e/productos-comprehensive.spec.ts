@@ -147,6 +147,23 @@ test.describe('Productos - Comprehensive', () => {
       const saveBtn = p.locator('[data-testid^="price-save-"]').first()
       await saveBtn.click()
 
+      // FIX: savePrice() (productos-client/index.tsx) siempre corre GET
+      // /api/precios/impacto antes de guardar -- si hay impacto (precio
+      // difiere mucho del precio base, clientes con precios especiales o
+      // pedidos pendientes), muestra un modal "Impacto de cambio de precio"
+      // que exige click en "Confirmar cambio" para persistir el precio.
+      // FIX 2: Locator.isVisible({timeout}) NO espera -- opción deprecada e
+      // ignorada (node_modules/playwright-core/types/types.d.ts), así que el
+      // chequeo corría antes de que React renderizara el modal y siempre
+      // daba false. waitFor() sí hace polling real.
+      const confirmarBtn = p.getByRole('button', { name: 'Confirmar cambio' })
+      try {
+        await confirmarBtn.waitFor({ state: 'visible', timeout: 2000 })
+        await confirmarBtn.click()
+      } catch {
+        // No hubo impacto significativo -- el precio ya se guardó directo.
+      }
+
       // Wait for toast
       await waitForToast(p, 'Precio actualizado')
 
@@ -164,6 +181,17 @@ test.describe('Productos - Comprehensive', () => {
       await expect(priceInput).toBeVisible()
       await priceInput.fill('888')
       await priceInput.press('Enter')
+
+      // FIX: mismo modal de impacto que el test anterior -- Enter también
+      // pasa por savePrice(), que puede requerir confirmación. waitFor()
+      // en vez de isVisible({timeout}) -- ver comentario del test anterior.
+      const confirmarBtn = p.getByRole('button', { name: 'Confirmar cambio' })
+      try {
+        await confirmarBtn.waitFor({ state: 'visible', timeout: 2000 })
+        await confirmarBtn.click()
+      } catch {
+        // No hubo impacto significativo -- el precio ya se guardó directo.
+      }
 
       await waitForToast(p, 'Precio actualizado')
     })
@@ -339,7 +367,7 @@ test.describe('Productos - Comprehensive', () => {
       // Get product ID via API first
       const prodRes = await apiGet(page, '/api/productos')
       const prodBody = await prodRes.json()
-      const pacaAgua = prodBody.productos?.find((p: any) => p.codigo === 'PACA_AGUA')
+      const pacaAgua = (prodBody.productos as Array<{ id: string; codigo: string; precios?: unknown[] }> | undefined)?.find((p) => p.codigo === 'PACA_AGUA')
       if (!pacaAgua) {
         test.skip()
         return
@@ -363,8 +391,8 @@ test.describe('Productos - Comprehensive', () => {
 
       const verifyRes = await apiGet(page, '/api/productos')
       const verifyBody = await verifyRes.json()
-      const verifyPacaAgua = verifyBody.productos?.find((p: any) => p.codigo === 'PACA_AGUA')
-      expect(verifyPacaAgua.precios?.length).toBeGreaterThanOrEqual(initialTierCount)
+      const verifyPacaAgua = (verifyBody.productos as Array<{ id: string; codigo: string; precios?: unknown[] }> | undefined)?.find((p) => p.codigo === 'PACA_AGUA')
+      expect(verifyPacaAgua!.precios?.length).toBeGreaterThanOrEqual(initialTierCount)
     })
 
     test('crear tier sin cantMax (sin limite)', async ({ page }) => {
@@ -488,7 +516,7 @@ test.describe('Productos - Comprehensive', () => {
 
       const prodRes = await apiGet(page, '/api/productos')
       const prodBody = await prodRes.json()
-      const pacaAgua = prodBody.productos?.find((p2: any) => p2.codigo === 'PACA_AGUA')
+      const pacaAgua = (prodBody.productos as Array<{ id: string; codigo: string; precios?: unknown[] }> | undefined)?.find((p2) => p2.codigo === 'PACA_AGUA')
       if (pacaAgua) {
         await apiPost(page, '/api/precios', {
           productoId: pacaAgua.id,

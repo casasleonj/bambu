@@ -1,4 +1,4 @@
-import { PrismaClient, RolUsuario } from '@prisma/client'
+import { PrismaClient, Prisma, RolUsuario } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 
 const prisma = new PrismaClient()
@@ -13,6 +13,7 @@ async function main() {
     { username: 'asistente', password: 'asist123', rol: RolUsuario.ASISTENTE, nombre: 'Asistente', apellido: 'General' },
     { username: 'contador', password: 'cont123', rol: RolUsuario.CONTADOR, nombre: 'Contador', apellido: 'Principal' },
     { username: 'repartidor', password: 'rep123', rol: RolUsuario.REPARTIDOR, nombre: 'Repartidor', apellido: 'Movil' },
+    { username: 'sellador', password: 'sell123', rol: RolUsuario.SELLADOR, nombre: 'Sellador', apellido: 'Test' },
   ]
   for (const u of users) {
     const hashed = await bcrypt.hash(u.password, SALT)
@@ -22,6 +23,7 @@ async function main() {
 
   // 2. Trabajadores
   const repartidorUser = await prisma.user.findUnique({ where: { username: 'repartidor' } })
+  const selladorUser = await prisma.user.findUnique({ where: { username: 'sellador' } })
   // // const asistenteUser = await prisma.user.findUnique({ where: { username: 'asistente' } })
   const trabajadores = [
     {
@@ -42,6 +44,7 @@ async function main() {
       rol: 'SELLADOR',
       tipoPago: 'FIJO',
       usaMoto: false,
+      userId: selladorUser?.id,
       salarioFijo: 800000,
       comPacaAgua: 0,
       comPacaHielo: 0,
@@ -54,9 +57,9 @@ async function main() {
   for (const t of trabajadores) {
     const existing = t.userId ? await prisma.trabajador.findUnique({ where: { userId: t.userId } }) : null
     if (existing) {
-      await prisma.trabajador.update({ where: { id: existing.id }, data: t as any })
+      await prisma.trabajador.update({ where: { id: existing.id }, data: t as Prisma.TrabajadorUpdateInput })
     } else {
-      await prisma.trabajador.create({ data: t as any })
+      await prisma.trabajador.create({ data: t as Prisma.TrabajadorCreateInput })
     }
   }
   console.log('✅ Trabajadores seeded')

@@ -408,7 +408,7 @@ test.describe('Casos', () => {
     const data = await res.json()
     expect(data.success).toBe(true)
     // Should find at least one case matching the client name
-    const matchingCaso = data.casos.find((c: any) => c.cliente?.nombre === uniqueClientName)
+    const matchingCaso = (data.casos as Array<{ cliente?: { nombre: string } }>).find((c) => c.cliente?.nombre === uniqueClientName)
     expect(matchingCaso).toBeDefined()
   })
 
@@ -676,7 +676,7 @@ test.describe('Casos', () => {
     const eventos = getData.eventos || []
     expect(eventos.length).toBeGreaterThanOrEqual(3)
 
-    const acciones = eventos.map((e: any) => e.accion)
+    const acciones = (eventos as Array<{ accion: string }>).map((e) => e.accion)
     expect(acciones).toContain('creado')
     expect(acciones).toContain('status_change')
     expect(acciones).toContain('asignado')

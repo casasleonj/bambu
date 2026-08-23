@@ -49,7 +49,7 @@ async function cleanupQaClientes(page: Page) {
     if (!res.ok()) return
     const body = await res.json().catch(() => ({}))
     const all = body.clientes || body.data || []
-    const qa = all.filter((c: any) => (c.nombre || '').startsWith('QA Fix'))
+    const qa = (all as Array<{ id?: string; nombre?: string }>).filter((c) => (c.nombre || '').startsWith('QA Fix'))
     for (const c of qa) {
       if (c.id) await page.request.delete(`${BASE}/api/clientes/${c.id}`, { timeout: 15_000 }).catch(() => {})
     }
@@ -100,7 +100,7 @@ test.describe('Fix: crear cliente no dice "guardado en el celular" en desktop on
     if (apiRes.ok()) {
       const body = await apiRes.json().catch(() => ({}))
       const all = body.clientes || body.data || []
-      created = !!all.find((c: any) => (c.nombre || '').startsWith('QA Fix Test'))
+      created = !!(all as Array<{ nombre?: string }>).find((c) => (c.nombre || '').startsWith('QA Fix Test'))
     }
     expect(created).toBe(true)
 

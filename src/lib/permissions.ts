@@ -40,9 +40,10 @@ const ALL_PERMISSIONS: Permission[] = [
 const ROLE_PERMISSIONS: Record<string, Permission[]> = {
   [ROLES.ADMIN]: ALL_PERMISSIONS,
   [ROLES.ASISTENTE]: [
-    'view:dashboard', 'view:clientes', 'view:pedidos', 'view:productos',
+    'view:dashboard', 'view:clientes', 'view:pedidos',
     'view:casos', 'view:produccion', 'view:insumos', 'view:embarques',
-    'view:rutas', 'view:cierre', 'view:mi-perfil', 'view:recurrentes',
+    'view:rutas', 'view:facturas', 'view:gastos', 'view:mi-perfil',
+    'view:recurrentes',
   ],
   [ROLES.CONTADOR]: [
     'view:dashboard', 'view:clientes', 'view:pedidos', 'view:productos',

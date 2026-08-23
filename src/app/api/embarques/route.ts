@@ -184,7 +184,7 @@ export async function GET(request: NextRequest) {
     }
 
     return apiSuccess({ embarques, total })
-  } catch (error) {
+  } catch (_error) {
     return apiError('Error cargando embarques')
   }
 }

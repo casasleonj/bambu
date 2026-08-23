@@ -86,7 +86,7 @@ export function SemanticSearchInput({
           // Adapt response format based on endpoint
           let items: SearchResult[] = []
           if (json.data?.clientes) {
-            items = json.data.clientes.map((c: any) => ({
+            items = json.data.clientes.map((c: { id: string; nombre: string; apellido?: string; telefono?: string; barrio?: string; direccion?: string; similarity_score?: number }) => ({
               id: c.id,
               label: `${c.nombre}${c.apellido ? ` ${c.apellido}` : ''}`,
               subtitle: [c.telefono, c.barrio, c.direccion].filter(Boolean).join(' · '),
@@ -105,7 +105,7 @@ export function SemanticSearchInput({
         }
       }, debounceMs)
     },
-    [searchEndpoint, queryParam, maxResults, debounceMs, meetsMinLength]
+    [searchEndpoint, queryParam, maxResults, debounceMs]
   )
 
   const handleInputChange = useCallback(

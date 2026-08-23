@@ -245,6 +245,11 @@ export default function ConfiguracionClient({ initialData }: ConfiguracionClient
         setSectionState(prev => ({ ...prev, [sectionId]: 'saved' }))
         setLastSavedAt(new Date())
         try {
+          // saveSection es un closure async invocado solo tras un await
+          // fetch() (evento/timer debounced), nunca durante render; el
+          // compilador no puede probar eso a través de la cadena de
+          // closures scheduleSave/setTimeout.
+          // eslint-disable-next-line react-hooks/purity
           localStorage.setItem('configLastSaved', Date.now().toString())
         } catch {
           // localStorage may be unavailable (incognito, full storage)
@@ -260,7 +265,7 @@ export default function ConfiguracionClient({ initialData }: ConfiguracionClient
         setSectionState(prev => ({ ...prev, [sectionId]: 'error' }))
         toast.error(body.error?.message || 'Error guardando configuración')
       }
-    } catch (e) {
+    } catch (_e) {
       setSectionState(prev => ({ ...prev, [sectionId]: 'error' }))
       toast.error('Error de red guardando configuración')
     }
@@ -309,17 +314,22 @@ export default function ConfiguracionClient({ initialData }: ConfiguracionClient
      Effects
      -------------------------------------------------------------- */
 
-  // Load last saved timestamp from localStorage
+  // Load last saved timestamp from localStorage — localStorage no existe
+  // en el servidor, no se puede derivar durante el render.
   useEffect(() => {
     try {
       const ts = localStorage.getItem('configLastSaved')
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (ts) setLastSavedAt(new Date(Number(ts)))
     } catch {
       // localStorage may be unavailable
     }
   }, [])
 
-  // Ctrl+S force save — stable listener (uses refs internally, no re-registration)
+  // Ctrl+S force save — stable listener (uses refs internally, no re-registration).
+  // flushPendingSave/saveSection solo leen refs (dataRef, timersRef) y setters
+  // estables, así que su comportamiento no cambia entre renders aunque el
+  // compilador no pueda probarlo por la cadena de closures.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
@@ -329,6 +339,7 @@ export default function ConfiguracionClient({ initialData }: ConfiguracionClient
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // beforeunload protection
@@ -343,11 +354,15 @@ export default function ConfiguracionClient({ initialData }: ConfiguracionClient
     return () => window.removeEventListener('beforeunload', handler)
   }, [hasChanges])
 
-  // Cleanup timers on unmount
+  // Cleanup timers on unmount — la cleanup function solo corre al desmontar
+  // (deps []), así que leer timersRef.current/clearTimersRef.current ahí
+  // captura correctamente el valor más reciente, no uno stale.
   useEffect(() => {
     return () => {
       isMountedRef.current = false
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       Object.values(timersRef.current).forEach(t => clearTimeout(t))
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       Object.values(clearTimersRef.current).forEach(t => clearTimeout(t))
     }
   }, [])

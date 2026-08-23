@@ -74,6 +74,25 @@ describe('Pedidos atrasados sin asignar — corte exacto a medianoche Bogotá', 
     await testPrisma.pedido.delete({ where: { id: p.id } })
   })
 
+  it('FIX: un NO_ENTREGADO sin embarque de AYER cuenta como atrasado (pedido "atrapado" sin reasignar)', async () => {
+    const before = await countPedidosAtrasadosSinAsignar()
+    const p = await testPrisma.pedido.create({
+      data: {
+        clienteId,
+        canal: 'DOMICILIO',
+        offlineId: uniqueId('no-entregado-atrasado'),
+        fecha: ayerBogota(),
+        embarqueId: null,
+        estadoEntrega: 'NO_ENTREGADO',
+      },
+    })
+
+    const after = await countPedidosAtrasadosSinAsignar()
+    expect(after).toBe(before + 1)
+
+    await testPrisma.pedido.delete({ where: { id: p.id } })
+  })
+
   it('un pendiente sin embarque de HOY NO cuenta (todavía visible en las vistas de "hoy")', async () => {
     const before = await countPedidosAtrasadosSinAsignar()
     const p = await crearPedido({ fecha: new Date() })

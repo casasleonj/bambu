@@ -58,6 +58,14 @@ export interface Pedido {
   lng?: number | null
   disputaAbierta?: boolean
   promesaPagoFecha?: string
+  /** Fila optimista: pedido creado offline, aun encolado en requestQueue. */
+  _pendingSync?: boolean
+  /** offlineId de la request encolada — para reconciliar contra bambu:sync-item-done. */
+  _pendingOfflineId?: string
+  /** El sync intentó enviarlo y el server lo rechazó de forma permanente
+   *  (ej. límite de fiado excedido) — no se reintentará más. */
+  _pendingFailed?: boolean
+  _pendingFailReason?: string
   factura?: {
     id: string
     numero: string

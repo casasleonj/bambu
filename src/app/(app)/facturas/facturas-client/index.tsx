@@ -108,6 +108,9 @@ export default function FacturasPage() {
     if (!openFacturaParam || facturas.length === 0 || hasAutoOpened) return
     const factura = facturas.find(f => f.id === openFacturaParam || f.numero === openFacturaParam)
     if (factura) {
+      // Abre el detalle de la factura desde el query param — dispara un
+      // fetch real (side effect de red), no derivable durante el render.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       openFacturaDetail(factura.id)
       setHasAutoOpened(true)
       params.set({ openFactura: undefined }, { history: 'replace' })
@@ -134,7 +137,12 @@ export default function FacturasPage() {
     }
   }, [dateRange, page, pageSize])
 
-  useEffect(() => { fetchFacturas() }, [fetchFacturas])
+  useEffect(() => {
+    // Fetch de datos al montar / cambiar page-pageSize-dateRange — side
+    // effect de red real, no derivable durante el render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchFacturas()
+  }, [fetchFacturas])
 
   const closeFacturaDetail = () => {
     setSelectedFactura(null)
@@ -198,7 +206,8 @@ export default function FacturasPage() {
         }
         toast.success('Abono registrado')
       } else {
-        toast.error('Error registrando abono')
+        const data = await res.json().catch(() => null)
+        toast.error(data?.error?.message || 'Error registrando abono')
       }
     } catch (e) {
       console.error(e)
@@ -562,7 +571,7 @@ export default function FacturasPage() {
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                             </svg>
                           </button>
-                          {tieneSaldo && factura.estado !== 'ANULADA' && (
+                          {tieneSaldo && factura.estado !== 'ANULADA' && factura.pedido?.estadoEntrega === 'ENTREGADO' && (
                             <button
                               onClick={(e) => {
                                 e.stopPropagation()
@@ -679,7 +688,7 @@ export default function FacturasPage() {
                       </svg>
                       Ver detalle
                     </button>
-                    {tieneSaldo && factura.estado !== 'ANULADA' && (
+                    {tieneSaldo && factura.estado !== 'ANULADA' && factura.pedido?.estadoEntrega === 'ENTREGADO' && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
