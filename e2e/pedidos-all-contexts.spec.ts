@@ -971,7 +971,12 @@ test.describe('Pedidos — Edge Cases', () => {
   test('tab Pedidos muestra filtros y Fiados NO los muestra', async () => {
     await gotoPedidos(p)
     // Pedidos tab has SmartDateFilter
-    await expect(p.locator('button:has-text("Hoy")')).toBeVisible()
+    // FIX: 'button:has-text("Hoy")' matchea por substring -- las stat
+    // cards "Entregados Hoy"/"Ventas Hoy" (agregadas después de que este
+    // test se escribió) también contienen "Hoy", volviendo el locator
+    // ambiguo (strict mode violation, 3 elementos). El botón real del
+    // SmartDateFilter tiene el texto exacto "Hoy".
+    await expect(p.getByRole('button', { name: 'Hoy', exact: true })).toBeVisible()
     // Switch to Fiados
     await tabButton(p, 'Fiados').click()
     await p.waitForTimeout(500)
