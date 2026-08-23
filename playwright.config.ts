@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test'
+import { CI_API_RATE_LIMIT_POINTS } from './e2e/ci-rate-limit-config'
 
 // Exponer el override al test runner para que specs que validan los límites
 // default (ej. session-limits.spec.ts) puedan skippear o adaptarse.
@@ -103,16 +104,11 @@ export default defineConfig({
       // pestañas / reconexiones del RealtimeProvider no provoquen rate-limit
       // durante las pruebas de entrega de eventos (M6).
       REALTIME_RATE_LIMIT_POINTS: '100',
-      // Relajar el límite de /api/* en tests E2E. checkRateLimit(ip, 'api')
-      // (src/proxy.ts) usa la IP del request como key -- en CI/local E2E
-      // TODOS los tests de un shard comparten esa única IP (127.0.0.1),
-      // así que el balde de 300/60s pensado para una IP real de producción
-      // se agota con el volumen agregado de cientos de tests seriales sin
-      // relación con abuso real. Confirmado en CI de PR #127: tests de
-      // roles-permisos.spec.ts que esperaban 403 recibían 429 por este
-      // motivo. El default de producción (300/60s) no cambia -- ver
-      // src/lib/rate-limit.ts.
-      API_RATE_LIMIT_POINTS: '3000',
+      // Relajar el límite de /api/* en tests E2E -- ver e2e/ci-rate-limit-config.ts
+      // para el detalle completo (por qué existe y por qué el número vive ahí,
+      // no hardcodeado acá ni en zzz-api-stress.spec.ts). El default de
+      // producción (300/60s) no cambia -- ver src/lib/rate-limit.ts.
+      API_RATE_LIMIT_POINTS: String(CI_API_RATE_LIMIT_POINTS),
       // Relajar el límite de sesiones activas en tests E2E. Playwright corre
       // múltiples workers y varios tests requieren login con el mismo rol en
       // paralelo; sin este override los logins concurrentes se evitan mutuamente
