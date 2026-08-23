@@ -278,11 +278,21 @@ test.describe('Deudas UI', () => {
     await goto(page, '/deudas')
 
     // Total should be visible
-    await expect(page.getByText('$ 75.000')).toBeVisible()
+    // FIX: getByText('$ 75.000') era ambiguo (strict mode violation) --
+    // con un solo trabajador con deuda, el mismo monto aparece 3 veces
+    // (total general, columna Pendiente de la fila, columna Original de
+    // la fila). Además, esta describe usa beforeAll (un solo reset para
+    // todo el archivo, serial) -- el total GENERAL de la página acumula
+    // deudas de otros tests que ya corrieron antes en el mismo archivo,
+    // así que no es un valor determinístico contra el que comparar. Se
+    // verifica en su lugar la fila de ESTE trabajador específico.
+    await expect(page.getByTestId(`deuda-resumen-pendiente-${trabajador.trabajador.id}`)).toHaveText('$ 75.000')
     // Worker name should appear
     await expect(page.getByText(trabajador.trabajador.nombre)).toBeVisible()
     // Link to worker detail
-    const link = page.locator(`a[href="/trabajadores/${trabajador.trabajador.id}"]`)
+    // FIX: ambiguo -- el nombre del trabajador y el link "Ver detalle" de
+    // la fila apuntan al mismo href.
+    const link = page.locator(`a[href="/trabajadores/${trabajador.trabajador.id}"]`).first()
     await expect(link).toBeVisible()
   })
 
@@ -317,7 +327,11 @@ test.describe('Deudas UI', () => {
 
     // Fill form
     await page.locator('select').first().selectOption('PRESTAMO')
-    await page.locator('input[type="number"]').fill('45000')
+    // FIX: input[type="number"] es ambiguo -- PRESTAMO activa
+    // requierePlanPago() (nueva-deuda-dialog.tsx), que agrega 2 inputs
+    // number más ("Plazo (nominas)", "Tope % por nomina"). El campo Monto
+    // tiene placeholder="0" único.
+    await page.getByPlaceholder('0', { exact: true }).fill('45000')
     await page.locator('textarea').fill('Prestamo desde UI dialog')
 
     // Submit
@@ -327,7 +341,10 @@ test.describe('Deudas UI', () => {
 
     // Verify debt appears
     await expect(page.getByText('Prestamo desde UI dialog')).toBeVisible()
-    await expect(page.getByText('$ 45.000')).toBeVisible()
+    // FIX: getByText('$ 45.000') es ambiguo -- con una sola deuda nueva,
+    // el mismo monto aparece en el resumen "Total Pendiente" Y en la
+    // card de la deuda (pendiente == original recién creada).
+    await expect(page.getByTestId('deudas-tab-total-pendiente')).toHaveText('$ 45.000')
   })
 
   test('registrar abono desde UI dialog', async ({ page }) => {
@@ -351,7 +368,10 @@ test.describe('Deudas UI', () => {
     await page.getByRole('button', { name: 'Registrar Abono' }).click()
 
     // Verify max amount shown
-    await expect(page.getByText('$ 80.000')).toBeVisible()
+    // FIX: getByText('$ 80.000') era ambiguo -- con la deuda recién
+    // creada (pendiente == original), el mismo monto aparece también en
+    // el resumen/card detrás del dialog. Se apunta al texto del dialog.
+    await expect(page.getByTestId('abono-dialog-max-monto')).toHaveText('$ 80.000')
 
     // Fill abono
     const numberInputs = page.locator('input[type="number"]')
@@ -359,12 +379,16 @@ test.describe('Deudas UI', () => {
     await page.locator('textarea').fill('Abono parcial desde UI')
 
     // Submit
-    await page.getByRole('button', { name: 'Registrar Abono' }).click()
+    // FIX: ambiguo -- coexiste con el botón "Registrar Abono" de la card
+    // que abre el dialog. Se apunta al submit del form del dialog.
+    await page.locator('form').getByRole('button', { name: 'Registrar Abono' }).click()
 
     await waitForToast(page, 'Abono registrado exitosamente')
 
     // Verify remaining amount
-    await expect(page.getByText('$ 50.000')).toBeVisible()
+    // FIX: getByText('$ 50.000') era ambiguo -- el resumen "Total
+    // Pendiente" y la card de la deuda muestran el mismo monto restante.
+    await expect(page.getByTestId('deudas-tab-total-pendiente')).toHaveText('$ 50.000')
   })
 
   test('badge de deuda en card de trabajador', async ({ page }) => {
@@ -392,12 +416,25 @@ test.describe('Deudas UI', () => {
     const trabajador = await createTrabajador(page, { nombre: `FilterWorker ${Date.now()}` })
     const tid = trabajador.trabajador.id
 
+    // FIX: las descripciones eran literalmente 'Pendiente'/'Pagada',
+    // usadas como proxy de "la deuda aparece". Eso siempre fue frágil
+    // (getByText('Pendiente') dependía de que NINGÚN otro texto de la UI
+    // contuviera "Pendiente") y quedó roto cuando deudas-tab.tsx sumó
+    // "Total Pendiente" (resumen) y el botón "Pendientes" -- ambos
+    // contienen "Pendiente" como substring, violando strict mode. Se usan
+    // descripciones únicas que no colisionan con ningún texto de la UI.
+    // Sin substrings "Pendiente"/"Pagada"/"Pendientes"/"Pagadas" -- de lo
+    // contrario siguen colisionando con esos textos de la UI (getByText
+    // matchea por substring, no exacto).
+    const DESC_PEND = 'DescripcionDeudaUnoXYZ'
+    const DESC_PAG = 'DescripcionDeudaDosXYZ'
+
     // Create one pending debt
     const res1 = await createDeuda(page, {
       trabajadorId: tid,
       tipo: 'PRESTAMO',
       monto: 40000,
-      descripcion: 'Pendiente'})
+      descripcion: DESC_PEND})
     await res1.json()
 
     // Create and pay off another
@@ -405,7 +442,7 @@ test.describe('Deudas UI', () => {
       trabajadorId: tid,
       tipo: 'OTRO',
       monto: 20000,
-      descripcion: 'Pagada'})
+      descripcion: DESC_PAG})
     const body2 = await res2.json()
     await abonarDeuda(page, body2.deuda.id, { monto: 20000 })
 
@@ -413,18 +450,20 @@ test.describe('Deudas UI', () => {
     await page.getByRole('button', { name: 'Deudas' }).click()
 
     // Default filter: pendientes
-    await expect(page.getByText('Pendiente')).toBeVisible()
-    await expect(page.getByText('Pagada')).not.toBeVisible()
+    await expect(page.getByText(DESC_PEND)).toBeVisible()
+    await expect(page.getByText(DESC_PAG)).not.toBeVisible()
 
     // Switch to pagadas
     await page.getByRole('button', { name: 'Pagadas' }).click()
-    await expect(page.getByText('Pagada')).toBeVisible()
-    await expect(page.getByText('Pendiente')).not.toBeVisible()
+    await expect(page.getByText(DESC_PAG)).toBeVisible()
+    await expect(page.getByText(DESC_PEND)).not.toBeVisible()
 
     // Switch to todas
     await page.getByRole('button', { name: 'Todas' }).click()
-    await expect(page.getByText('Pendiente')).toBeVisible()
-    await expect(page.getByText('Pagada')).toBeVisible()
+    await expect(page.getByText(DESC_PEND)).toBeVisible()
+    // FIX: 'Pagada' (sin exact) matchea también el botón "Pagadas" (filtro,
+    // substring). El badge de estado real es el único con texto exacto.
+    await expect(page.getByText('Pagada', { exact: true })).toBeVisible()
   })
 
   test('progress bar en deuda card', async ({ page }) => {
@@ -447,7 +486,10 @@ test.describe('Deudas UI', () => {
     await expect(progressBar).toBeVisible()
 
     // Should show abono history
-    await expect(page.getByText('$ 50.000')).toBeVisible()
+    // FIX: getByText('$ 50.000') era ambiguo -- el mismo monto restante
+    // aparece en el resumen, la card, y la entrada de historial de abono.
+    // Se apunta específicamente a la entrada de historial.
+    await expect(page.locator('[data-testid^="deuda-abono-"]', { hasText: '$ 50.000' })).toBeVisible()
   })
 })
 

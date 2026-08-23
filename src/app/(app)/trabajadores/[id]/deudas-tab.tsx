@@ -75,7 +75,7 @@ export default function DeudasTab({ trabajadorId }: { trabajadorId: string }) {
         <div className="flex items-center gap-4">
           <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2">
             <span className="text-xs text-red-600 font-medium">Total Pendiente</span>
-            <p className="text-lg font-bold text-red-700">{formatCurrency(totalPendiente)}</p>
+            <p className="text-lg font-bold text-red-700" data-testid="deudas-tab-total-pendiente">{formatCurrency(totalPendiente)}</p>
           </div>
           <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-2">
             <span className="text-xs text-green-600 font-medium">Deudas Activas</span>
@@ -184,7 +184,7 @@ function DeudaCard({
           </p>
         </div>
         <div className="text-right">
-          <p className="text-lg font-bold text-gray-800">{formatCurrency(deuda.montoPendiente)}</p>
+          <p className="text-lg font-bold text-gray-800" data-testid={`deuda-card-pendiente-${deuda.id}`}>{formatCurrency(deuda.montoPendiente)}</p>
           <p className="text-xs text-gray-400">de {formatCurrency(deuda.montoOriginal)}</p>
         </div>
       </div>
@@ -221,7 +221,7 @@ function DeudaCard({
           <p className="text-xs font-medium text-gray-500 mb-1">Abonos ({deuda.abonos.length})</p>
           <div className="flex flex-wrap gap-1">
             {deuda.abonos.slice(0, 3).map(a => (
-              <span key={a.id} className="text-xs bg-gray-100 px-2 py-0.5 rounded">
+              <span key={a.id} className="text-xs bg-gray-100 px-2 py-0.5 rounded" data-testid={`deuda-abono-${a.id}`}>
                 {formatCurrency(a.monto)} - {new Date(a.fecha).toLocaleDateString('es-CO')}
               </span>
             ))}

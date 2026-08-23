@@ -39,7 +39,7 @@ export default function DeudasGlobalClient({
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm text-red-600 font-medium">Total Deudas Pendientes</p>
-            <p className="text-2xl font-bold text-red-700">{formatCurrency(totalGeneral)}</p>
+            <p className="text-2xl font-bold text-red-700" data-testid="deudas-total-general">{formatCurrency(totalGeneral)}</p>
           </div>
           <div className="text-right">
             <p className="text-sm text-red-600 font-medium">Trabajadores con Deuda</p>
@@ -81,7 +81,7 @@ export default function DeudasGlobalClient({
                   </td>
                   <td className="px-4 py-3 text-right text-sm text-gray-600">{r.cantidadDeudas}</td>
                   <td className="px-4 py-3 text-right">
-                    <span className="font-bold text-red-600">{formatCurrency(r.totalPendiente)}</span>
+                    <span className="font-bold text-red-600" data-testid={`deuda-resumen-pendiente-${r.trabajadorId}`}>{formatCurrency(r.totalPendiente)}</span>
                   </td>
                   <td className="px-4 py-3 text-right text-sm text-gray-500">{formatCurrency(r.totalOriginal)}</td>
                   <td className="px-4 py-3 text-center">
