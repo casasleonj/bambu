@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import type { Prisma } from '@prisma/client'
-import { requireAuth, requireRole } from '@/lib/auth-check'
+import { requireAuth, requireRole, requireOwnership } from '@/lib/auth-check'
 import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { formatZodError } from '@/lib/utils'
@@ -33,6 +33,9 @@ export async function POST(
   const role = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE, ROLES.REPARTIDOR], auth)
   if (role instanceof Response) return role
   const { id } = await params
+  const session = auth as { user?: { id?: string; role?: string } }
+  const hasAccess = await requireOwnership('embarque', id, { id: session.user?.id || '', role: session.user?.role })
+  if (!hasAccess) return apiError('Forbidden', 403)
 
   try {
     const body = await request.json()
