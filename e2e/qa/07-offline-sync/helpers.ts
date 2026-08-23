@@ -1,7 +1,19 @@
 import { type Page } from '@playwright/test'
 import { fullLogin, prisma, createEmbarque } from '../../fixtures-paranoid'
 
-export const TEST_PHOTO = '/tmp/opencode/1x1.jpg'
+// FIX: apuntaba a una ruta absoluta ('/tmp/opencode/1x1.jpg') que nunca se
+// genera en ningún setup del repo -- ENOENT garantizado en cualquier entorno
+// fresco (sandbox local o CI), no solo el sandbox donde se escribió
+// originalmente. page.setInputFiles() acepta un FilePayload inline (name +
+// mimeType + buffer), así que no hace falta tocar el filesystem: un PNG
+// transparente de 1x1 embebido en base64.
+const TEST_PHOTO_1X1_PNG_BASE64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+export const TEST_PHOTO = {
+  name: '1x1.png',
+  mimeType: 'image/png',
+  buffer: Buffer.from(TEST_PHOTO_1X1_PNG_BASE64, 'base64'),
+}
 
 export async function getRepartidorTrabajadorId() {
   const repartidorUser = await prisma.user.findUnique({ where: { username: 'repartidor' } })
