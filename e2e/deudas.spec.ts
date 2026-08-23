@@ -257,6 +257,15 @@ test.describe('Deudas UI', () => {
     await expect(page.getByRole('heading', { name: 'Deudas Pendientes' })).toBeVisible()
   })
 
+  // FIX: los 6 tests de este describe fallaban en cascada por un mismatch de
+  // formato, no relacionado al bug de Decimal-a-string de /api/deudas.
+  // formatCurrency() (src/lib/utils.ts) fija minimumFractionDigits/
+  // maximumFractionDigits en 0 deliberadamente (comentario propio: evita un
+  // hydration mismatch "$ 17.600" server vs "$ 17.600,00" client) usando
+  // Intl.NumberFormat('es-CO', {style:'currency',...}), que en es-CO
+  // antepone el símbolo con un espacio real ("$ 75.000"), no "$75.000".
+  // Los tests hardcodeaban el formato sin espacio -- getByText('$75.000')
+  // nunca matcheaba el texto real renderizado.
   test('deudas globales muestra resumen con datos', async ({ page }) => {
     // Create a worker with debt
     const trabajador = await createTrabajador(page, { nombre: `UIWorker ${Date.now()}` })
@@ -269,7 +278,7 @@ test.describe('Deudas UI', () => {
     await goto(page, '/deudas')
 
     // Total should be visible
-    await expect(page.getByText('$75.000')).toBeVisible()
+    await expect(page.getByText('$ 75.000')).toBeVisible()
     // Worker name should appear
     await expect(page.getByText(trabajador.trabajador.nombre)).toBeVisible()
     // Link to worker detail
@@ -318,7 +327,7 @@ test.describe('Deudas UI', () => {
 
     // Verify debt appears
     await expect(page.getByText('Prestamo desde UI dialog')).toBeVisible()
-    await expect(page.getByText('$45.000')).toBeVisible()
+    await expect(page.getByText('$ 45.000')).toBeVisible()
   })
 
   test('registrar abono desde UI dialog', async ({ page }) => {
@@ -342,7 +351,7 @@ test.describe('Deudas UI', () => {
     await page.getByRole('button', { name: 'Registrar Abono' }).click()
 
     // Verify max amount shown
-    await expect(page.getByText('$80.000')).toBeVisible()
+    await expect(page.getByText('$ 80.000')).toBeVisible()
 
     // Fill abono
     const numberInputs = page.locator('input[type="number"]')
@@ -355,7 +364,7 @@ test.describe('Deudas UI', () => {
     await waitForToast(page, 'Abono registrado exitosamente')
 
     // Verify remaining amount
-    await expect(page.getByText('$50.000')).toBeVisible()
+    await expect(page.getByText('$ 50.000')).toBeVisible()
   })
 
   test('badge de deuda en card de trabajador', async ({ page }) => {
@@ -372,7 +381,7 @@ test.describe('Deudas UI', () => {
 
     // Badge should show debt
     await expect(page.getByText('Deuda pendiente')).toBeVisible()
-    await expect(page.getByText('$60.000')).toBeVisible()
+    await expect(page.getByText('$ 60.000')).toBeVisible()
 
     // Click on worker name should navigate to detail
     await page.locator(`a[href="/trabajadores/${tid}"]`).first().click()
@@ -438,7 +447,7 @@ test.describe('Deudas UI', () => {
     await expect(progressBar).toBeVisible()
 
     // Should show abono history
-    await expect(page.getByText('$50.000')).toBeVisible()
+    await expect(page.getByText('$ 50.000')).toBeVisible()
   })
 })
 
@@ -751,11 +760,19 @@ test.describe('Embarque Cash Reconciliation', () => {
 // ─── Permissions / RBAC ──────────────────────────────────────────────────────
 
 test.describe('Deudas Permissions', () => {
+  // FIX: POST /api/trabajadores exige ADMIN (src/app/api/trabajadores/route.ts:47)
+  // -- crear el trabajador de prueba mientras el page ya estaba logueado como
+  // CONTADOR/ASISTENTE devolvía 403 en el propio setup, dejando
+  // trabajador.trabajador undefined y un TypeError al leer .id, antes de
+  // siquiera llegar al POST /api/deudas que el test realmente valida. Mismo
+  // patron ya establecido en roles-permisos.spec.ts:209 "SÍ puede crear
+  // embarque": crear como admin, luego cambiar de sesion al rol bajo prueba.
   test('contador no puede crear deuda', async ({ page }) => {
+    await loginAs(page, 'admin')
+    const trabajador = await createTrabajador(page, { nombre: `PermWorker ${Date.now()}` })
+
     await loginAs(page, 'contador')
     await goto(page, '/dashboard')
-
-    const trabajador = await createTrabajador(page, { nombre: `PermWorker ${Date.now()}` })
 
     const res = await apiPost(page, '/api/deudas', {
       trabajadorId: trabajador.trabajador.id,
@@ -780,10 +797,11 @@ test.describe('Deudas Permissions', () => {
   })
 
   test('asistente puede crear deuda', async ({ page }) => {
+    await loginAs(page, 'admin')
+    const trabajador = await createTrabajador(page, { nombre: `AsistWorker ${Date.now()}` })
+
     await loginAs(page, 'asistente')
     await goto(page, '/dashboard')
-
-    const trabajador = await createTrabajador(page, { nombre: `AsistWorker ${Date.now()}` })
 
     const res = await apiPost(page, '/api/deudas', {
       trabajadorId: trabajador.trabajador.id,
