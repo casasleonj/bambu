@@ -334,6 +334,14 @@ test.describe('Mobile Offline Comprehensive', () => {
           tipo: 'COMPLETO',
           itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: 1 }],
           pagos: [{ metodo: 'EFECTIVO', monto: 2800 }],
+          // FIX: REQUIERE_FOTO_ENTREGA=true es el default de seed.ts y aplica
+          // a ADMIN/REPARTIDOR/trabajadores con moto -- sin este campo el
+          // replay del sync devolvía 400 y syncResult.synced se quedaba en 0.
+          // No necesita ser base64 real (isBase64Image en storage.ts solo
+          // activa el upload si empieza con "data:image/"; cualquier string
+          // no vacío pasa el chequeo `!fotoEntrega`), mismo patrón que
+          // ciclo-repartidor.spec.ts.
+          fotoEntrega: 'e2e-test',
           offlineId,
         },
       },
