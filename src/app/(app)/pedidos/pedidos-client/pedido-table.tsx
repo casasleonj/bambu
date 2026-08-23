@@ -622,7 +622,7 @@ export function PedidoTable({
               <div key={section.label} className="space-y-3">
                 <MobileSectionHeader label={section.label} />
                 {section.items.map((pedido) => (
-                  <div key={pedido.id} className="bg-white border border-gray-200 rounded-lg shadow-sm">
+                  <div key={pedido.id} data-testid="pedido-mobile-card" className="bg-white border border-gray-200 rounded-lg shadow-sm">
                     <MobileCard pedido={pedido} {...rowProps} />
                   </div>
                 ))}

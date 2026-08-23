@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { loginAs, goto, apiPost, createCliente } from './fixtures'
+import { loginAs, goto, apiPost, createCliente, responsiveContainer } from './fixtures'
 
 test.describe('Pedidos - detalle muestra nombre', () => {
   test.describe.configure({ mode: 'serial' })
@@ -26,11 +26,18 @@ test.describe('Pedidos - detalle muestra nombre', () => {
     if (!pedidoId) { test.skip(); return }
 
     await goto(page, '/pedidos')
-    // Wait for the table to render instead of networkidle (SSE keeps connection open)
-    await page.waitForSelector('table tbody tr', { timeout: 10000 })
+    // FIX: "table tbody tr" matchea la tabla desktop (data-testid
+    // "pedidos-desktop"), oculta en viewport mobile (`hidden md:block`) --
+    // la vista real ahí es "pedidos-mobile" (cards, no <table>), AGENTS.md
+    // #24. responsiveContainer() elige el contenedor correcto según el
+    // viewport; el row-locator dentro de él difiere por vista.
+    const container = responsiveContainer(page, 'pedidos-mobile', 'pedidos-desktop')
+    await expect(container).toBeVisible({ timeout: 10000 })
+    const isMobile = (page.viewportSize()?.width ?? 1280) < 768
+    const rowLocator = isMobile ? '[data-testid="pedido-mobile-card"]' : 'tbody tr'
 
     // Click on the row that contains the client name
-    const row = page.locator('table tbody tr').filter({ hasText: `Detalle Nombre ${unique}` }).first()
+    const row = container.locator(rowLocator).filter({ hasText: `Detalle Nombre ${unique}` }).first()
     await expect(row).toBeVisible({ timeout: 10000 })
     await row.click()
 

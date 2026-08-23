@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { loginAs, goto, apiPost, createCliente } from './fixtures'
+import { loginAs, goto, apiPost, createCliente, responsiveContainer } from './fixtures'
 
 test.describe('Dos ventas rapidas mismo cliente', () => {
   test.describe.configure({ mode: 'serial' })
@@ -33,11 +33,20 @@ test.describe('Dos ventas rapidas mismo cliente', () => {
     })
 
     await goto(page, '/pedidos')
-    // Wait for the table to render instead of networkidle (SSE keeps connection open)
-    await page.waitForSelector('table tbody tr', { timeout: 10000 })
+    // FIX: "table tbody tr" matchea la tabla desktop (data-testid
+    // "pedidos-desktop"), que en viewport mobile queda oculta (`hidden
+    // md:block`) mientras la vista real es "pedidos-mobile" (cards, no
+    // <table>) -- AGENTS.md #24. responsiveContainer() elige el contenedor
+    // correcto según el viewport; dentro de él, las filas/cards tienen su
+    // propio testid en cada vista.
+    const container = responsiveContainer(page, 'pedidos-mobile', 'pedidos-desktop')
+    await expect(container).toBeVisible({ timeout: 10000 })
+    const isMobile = (page.viewportSize()?.width ?? 1280) < 768
+    const rowLocator = isMobile ? '[data-testid="pedido-mobile-card"]' : 'tbody tr'
+    await page.waitForSelector(`[data-testid="${isMobile ? 'pedidos-mobile' : 'pedidos-desktop'}"] ${rowLocator}`, { timeout: 10000 })
 
     // Both pedidos should appear in the list
-    const rows = page.locator('table tbody tr').filter({ hasText: `Dos Ventas ${unique}` })
+    const rows = container.locator(rowLocator).filter({ hasText: `Dos Ventas ${unique}` })
     await expect(rows).toHaveCount(2, { timeout: 10000 })
   })
 

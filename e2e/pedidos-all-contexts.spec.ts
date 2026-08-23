@@ -831,8 +831,15 @@ test.describe('Pedidos — Tab Alertas', () => {
     await tabButton(p, 'Alertas').click()
     await p.waitForTimeout(1000)
     // Severidad badge
-    const severidadBadge = p.locator('span:has-text("BAJA"), span:has-text("MEDIA"), span:has-text("ALTA")')
-    expect(await severidadBadge.first().isVisible({ timeout: 3000 }).catch(() => false)).toBe(true)
+    // FIX: isVisible({timeout}) no espera (el timeout está deprecado/
+    // ignorado por Playwright), Y el locator sin ":visible" puede resolver
+    // primero a una instancia oculta del badge (ej. dentro de un panel de
+    // detalle todavía colapsado/otro cliente de la lista) antes que a la
+    // fila-resumen visible -- confirmado: 9 matches en DOM, el primero
+    // "hidden". ":visible" filtra a las instancias realmente renderizadas
+    // en pantalla; expect().toBeVisible({timeout}) hace polling real.
+    const severidadBadge = p.locator('span:visible:has-text("BAJA"), span:visible:has-text("MEDIA"), span:visible:has-text("ALTA")')
+    await expect(severidadBadge.first()).toBeVisible({ timeout: 5000 })
   })
 })
 
