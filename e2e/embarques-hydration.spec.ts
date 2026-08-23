@@ -48,12 +48,30 @@ test.describe('Embarques — Hidratación sin refetch espurio', () => {
       data: { fecha: hace2 },
     })
 
-    // Navegar a embarques: el SSR ya pintó ambos embarques
+    // FIX: el SSR de /embarques está deliberadamente scopeado a "hoy"
+    // (src/app/(app)/embarques/page.tsx: `where = { fecha: { gte: startOfDay,
+    // lt: endOfDay } }`, comentario "FIX SSR: la vista default es hoy... para
+    // coincidir con el cliente"), así que el embarque de hace 2 días NUNCA
+    // aparece en el render inicial -- la premisa original de este test ("el
+    // SSR ya pintó ambos embarques") ya no es cierta desde que ese default
+    // se implementó. Para ver el historial hay que ampliar el rango de
+    // fechas explícitamente, igual que haría un usuario real.
     await page.goto(`${BASE}/embarques`)
     await expect(page.locator('[data-testid="embarque-card"]').first()).toBeVisible({ timeout: 10000 })
+    await expect(page.locator('[data-testid="embarque-card"]')).toHaveCount(1)
 
-    // Con el bug, /api/embarques retornaría solo el de hoy y el count bajaría.
-    // Con el fix, no hay request de refetch al mount, así que el count se queda en 2.
+    const hace7 = new Date()
+    hace7.setDate(hace7.getDate() - 7)
+    const desdeStr = hace7.toISOString().slice(0, 10)
+    const hastaStr = new Date().toISOString().slice(0, 10)
+    const dateInputs = page.locator('input[type="date"]')
+    await dateInputs.first().fill(desdeStr)
+    await dateInputs.nth(1).fill(hastaStr)
+    await expect(page.locator('[data-testid="embarque-card"]')).toHaveCount(2, { timeout: 10000 })
+
+    // Con el bug (un efecto espurio que resetea el filtro tras montar/
+    // hidratar), el count volvería a bajar solo. Con el comportamiento
+    // correcto, el filtro ampliado por el usuario se mantiene estable.
     await page.waitForTimeout(1500)
     const countAfterHydration = await page.locator('[data-testid="embarque-card"]').count()
     expect(countAfterHydration).toBe(2)

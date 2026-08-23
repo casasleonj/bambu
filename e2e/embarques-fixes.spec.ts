@@ -90,9 +90,17 @@ test.describe('Embarques — Fix #1: Discrepancia valora productos individualmen
     const closeData = await closeRes.json()
     expect(closeData.success).toBe(true)
 
-    // Discount should be created for the discrepancy
-    expect(closeData.descuento).toBeDefined()
-    const monto = Number(closeData.descuento.monto)
+    // FIX: FASE 6 (§13, CierrePresenter.ts) -- el cierre ya no crea un
+    // descuento/cargo económico automático por discrepancia. `descuento`
+    // queda siempre `null`; en su lugar se crea un `ResponsibilityCase`
+    // pendiente de resolución autorizada (tipo DISCREPANCIA_INVENTARIO),
+    // expuesto en `responsibilityCases`. Ver AGENTS.md plan de convergencia,
+    // invariante 20: detección puede ser automática, el cargo nunca lo es.
+    expect(closeData.descuento).toBeNull()
+    const caso = (closeData.responsibilityCases as Array<{ tipo: string; montoEstimado: number }>)
+      .find((c) => c.tipo === 'DISCREPANCIA_INVENTARIO')
+    expect(caso).toBeDefined()
+    const monto = Number(caso!.montoEstimado)
     expect(monto).toBeGreaterThan(0)
     // The monto should reflect individual product prices, not all at PACA_AGUA price
     // If bug existed: 6 * ~2600 = ~15600

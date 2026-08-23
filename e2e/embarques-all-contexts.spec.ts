@@ -57,10 +57,16 @@ test.describe('Embarques — Contexto ASISTENTE', () => {
 
 test.describe('Embarques — Contexto REPARTIDOR', () => {
 
-  test('REPARTIDOR accede a /embarques', async ({ page }) => {
+  test('REPARTIDOR es redirigido de /embarques a /repartidor', async ({ page }) => {
+    // FIX: src/lib/permissions.ts restringe REPARTIDOR a
+    // view:repartidor/view:mi-perfil únicamente (Opción C de
+    // BLOQUEAR_PRECIOS_REPARTIDOR: "ningún precio en ningún lado" -- /embarques
+    // envía precios crudos). src/proxy.ts redirige a /repartidor si intenta
+    // acceder. Comportamiento intencional, no un bug.
     await loginAs(page, 'repartidor')
     await goto(page, '/embarques')
-    await expect(page.getByRole('heading', { name: 'Embarques del Día' })).toBeVisible()
+    await expect(page).toHaveURL(/\/repartidor/)
+    await expect(page.getByRole('heading', { name: 'Mi Ruta' })).toBeVisible()
   })
 
   test('REPARTIDOR accede a /repartidor y ve su vista', async ({ page }) => {
@@ -288,9 +294,13 @@ test.describe('Embarques — Stock Estimado UI', () => {
     const saveBtn = p.locator('button:has-text("Crear"), button:has-text("Actualizar")').first()
     if (await saveBtn.isVisible().catch(() => false)) {
       await saveBtn.click()
+      // FIX: Locator.isVisible({timeout}) NO espera -- el `timeout` está
+      // deprecado/ignorado (retorna de inmediato, ver types.d.ts). El toast
+      // de éxito llega poco después del click (fetch + setState), así que
+      // el chequeo inmediato corría antes de que apareciera. expect(...).
+      // toBeVisible({timeout}) sí hace polling real.
       const toast = p.locator('[data-sonner-toast]')
-      const hasToast = await toast.first().isVisible({ timeout: 3000 }).catch(() => false)
-      expect(hasToast).toBe(true)
+      await expect(toast.first()).toBeVisible({ timeout: 3000 })
     }
   })
 
@@ -315,7 +325,9 @@ test.describe('Embarques — Stock Estimado UI', () => {
     await apiPost(p, '/api/stock-estimado', { agua: 50, hielo: 30, botellon: 10 })
     const res = await apiGet(p, '/api/stock-estimado')
     const data = await res.json()
-    expect(data.data?.estimado?.botellon).toBe(10)
+    // FIX: apiSuccess({estimado}) spreads top-level (src/lib/api-response.ts)
+    // -- la respuesta es {success:true, estimado:{...}}, sin wrapper .data.
+    expect(data.estimado?.botellon).toBe(10)
   })
 })
 
@@ -376,7 +388,10 @@ test.describe('Embarques — Desktop Viewport', () => {
     await loginAs(page, 'admin')
     await gotoEmbarques(page)
     await expect(page.getByRole('heading', { name: 'Embarques del Día' })).toBeVisible()
-    const grid = page.locator('.grid')
+    // FIX: la página tiene 2 elementos ".grid" (el filtro de fechas y la
+    // grilla de tarjetas de embarque) -- scoping a .first() para evitar
+    // el strict-mode violation.
+    const grid = page.locator('.grid').first()
     await expect(grid).toBeVisible()
   })
 })
