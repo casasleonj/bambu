@@ -298,6 +298,29 @@ test.describe('Recurrentes', () => {
   })
 })
 
+// FIX: `new Date().toISOString()` caía en domingo cuando el test corría un
+// domingo (ej. 2026-08-23), disparando la regla A3 del preview
+// (src/lib/recurrentes.ts: esDomingo -> solo se agrega sugerencia SALTAR,
+// se saltea el bloque entero de CON_PENDIENTES/SOLO_PENDIENTES/
+// APLICAR_CREDITO). No es un bug de la app -- es la regla de negocio real
+// ("domingo se pospone a lunes") aplicándose correctamente -- pero hacía que
+// "aplicar crédito de pedido pagado al recurrente" fallara de forma
+// determinística cualquier domingo.
+//
+// Se retrocede a sábado en vez de avanzar a lunes: POST /api/pedidos/
+// recurrentes tiene un race-guard (route.ts) que rechaza con 409 si
+// `plantilla.proxGeneracion > fecha` (fecha = "ahora" al momento del POST
+// de generación, que ocurre más tarde en el mismo test) -- avanzar al lunes
+// hubiera dejado proxGeneracion en el FUTURO respecto a ese "ahora" y
+// disparado ese guard. Un día en el pasado (sábado) nunca es domingo y
+// nunca es fecha futura, así que no rompe ninguno de los dos checks,
+// cualquiera sea el día real en que corra el test.
+function nonSundayPastOrTodayISO(): string {
+  const d = new Date()
+  if (d.getDay() === 0) d.setDate(d.getDate() - 1)
+  return d.toISOString()
+}
+
 async function generateRecurrente(page: import('@playwright/test').Page, clienteId: string) {
   const res = await page.request.post(`${BASE}/api/recurrentes`, {
     data: {
@@ -305,7 +328,7 @@ async function generateRecurrente(page: import('@playwright/test').Page, cliente
       tipo: 'ENVIO',
       canal: 'DOMICILIO',
       cadaNDias: 1,
-      proxGeneracion: new Date().toISOString(),
+      proxGeneracion: nonSundayPastOrTodayISO(),
       productos: { pacaAgua: 5 }, // 5 pacas para superar el crédito de 4 pacas
     },
   })
