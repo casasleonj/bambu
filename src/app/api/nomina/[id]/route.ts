@@ -4,6 +4,7 @@ import { requireAuth, requireRole } from '@/lib/auth-check'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
+import { decimalsToNumbers } from '@/lib/decimal-json'
 
 export async function PUT(
   request: NextRequest,
@@ -75,7 +76,7 @@ export async function PUT(
         usuarioId: userId,
       }).catch(() => {})
 
-      return apiSuccess({ nomina: result })
+      return apiSuccess(decimalsToNumbers({ nomina: result }))
     }
 
     if (body.action === 'ANULAR') {
@@ -158,7 +159,7 @@ export async function PUT(
         usuarioId: userId,
       }).catch(() => {})
 
-      return apiSuccess({ nomina: result })
+      return apiSuccess(decimalsToNumbers({ nomina: result }))
     }
 
     return apiError('Acción no válida', 400)

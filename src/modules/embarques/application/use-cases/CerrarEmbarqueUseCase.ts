@@ -183,7 +183,7 @@ export class CerrarEmbarqueUseCase {
       })
 
       // 9. Reconcile cash before closing to detect faltante de caja.
-      const pagosColeccionados = coleccionarPagos(pedidosRaw, input.ventasLibres ?? [])
+      const pagosColeccionados = coleccionarPagos(input.pedidos, input.ventasLibres ?? [])
       const gastosTotal = (input.gastos ?? []).reduce((sum, g) => sum + (g.monto || 0), 0)
       const caja = calcularCajaFinal(
         this.cierreService,

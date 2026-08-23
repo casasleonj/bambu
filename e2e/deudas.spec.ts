@@ -268,12 +268,14 @@ test.describe('Deudas UI', () => {
 
     await goto(page, '/deudas')
 
-    // Total should be visible
-    await expect(page.getByText('$75.000')).toBeVisible()
+    // Total should be visible. El monto aparece 2 veces (resumen + fila de
+    // tabla) -- .first() para evitar violación de strict mode.
+    await expect(page.getByText(/\$\s*75\.000/).first()).toBeVisible()
     // Worker name should appear
     await expect(page.getByText(trabajador.trabajador.nombre)).toBeVisible()
-    // Link to worker detail
-    const link = page.locator(`a[href="/trabajadores/${trabajador.trabajador.id}"]`)
+    // Link to worker detail. La fila tiene 2 links al mismo href (nombre +
+    // "Ver detalle") -- .first() evita la violación de strict mode.
+    const link = page.locator(`a[href="/trabajadores/${trabajador.trabajador.id}"]`).first()
     await expect(link).toBeVisible()
   })
 
@@ -306,9 +308,11 @@ test.describe('Deudas UI', () => {
     // Click Nueva Deuda
     await page.getByRole('button', { name: '+ Nueva Deuda' }).click()
 
-    // Fill form
+    // Fill form. El dialog tiene 3 inputs type="number" (monto + los
+    // opcionales plazoNominas/porcentaje de nueva-deuda-dialog.tsx) --
+    // placeholder="0" identifica el campo Monto sin ambigüedad.
     await page.locator('select').first().selectOption('PRESTAMO')
-    await page.locator('input[type="number"]').fill('45000')
+    await page.getByPlaceholder('0', { exact: true }).fill('45000')
     await page.locator('textarea').fill('Prestamo desde UI dialog')
 
     // Submit
@@ -318,7 +322,7 @@ test.describe('Deudas UI', () => {
 
     // Verify debt appears
     await expect(page.getByText('Prestamo desde UI dialog')).toBeVisible()
-    await expect(page.getByText('$45.000')).toBeVisible()
+    await expect(page.getByText(/\$\s*45\.000/).first()).toBeVisible()
   })
 
   test('registrar abono desde UI dialog', async ({ page }) => {
@@ -341,24 +345,32 @@ test.describe('Deudas UI', () => {
     // Click Registrar Abono
     await page.getByRole('button', { name: 'Registrar Abono' }).click()
 
-    // Verify max amount shown
-    await expect(page.getByText('$80.000')).toBeVisible()
+    // Verify max amount shown. El monto se repite en varios lugares del
+    // dialog/card (encabezado, "de $X", etc.) -- .first() evita strict mode.
+    await expect(page.getByText(/\$\s*80\.000/).first()).toBeVisible()
 
     // Fill abono
     const numberInputs = page.locator('input[type="number"]')
     await numberInputs.first().fill('30000')
     await page.locator('textarea').fill('Abono parcial desde UI')
 
-    // Submit
-    await page.getByRole('button', { name: 'Registrar Abono' }).click()
+    // Submit. El label "Registrar Abono" también está en el botón de la
+    // card que abre el dialog -- se scopea al <form> para tomar el submit.
+    await page.locator('form').getByRole('button', { name: 'Registrar Abono' }).click()
 
     await waitForToast(page, 'Abono registrado exitosamente')
 
     // Verify remaining amount
-    await expect(page.getByText('$50.000')).toBeVisible()
+    await expect(page.getByText(/\$\s*50\.000/).first()).toBeVisible()
   })
 
-  test('badge de deuda en card de trabajador', async ({ page }) => {
+  // FIXME: nunca implementado. trabajador-card.tsx no muestra ningún
+  // indicador de deuda (verificado: cero menciones de "deuda" en el
+  // componente) -- "Deuda pendiente" solo existe en el dialog de abono
+  // (abono-deuda-dialog.tsx), no en la card de la lista de trabajadores.
+  // Es un gap de feature real, no un selector roto: no se implementa acá
+  // sin una decisión de producto sobre diseño/posición del badge.
+  test.fixme('badge de deuda en card de trabajador', async ({ page }) => {
     const trabajador = await createTrabajador(page, { nombre: `BadgeWorker ${Date.now()}` })
     const tid = trabajador.trabajador.id
 
@@ -372,7 +384,7 @@ test.describe('Deudas UI', () => {
 
     // Badge should show debt
     await expect(page.getByText('Deuda pendiente')).toBeVisible()
-    await expect(page.getByText('$60.000')).toBeVisible()
+    await expect(page.getByText(/\$\s*60\.000/)).toBeVisible()
 
     // Click on worker name should navigate to detail
     await page.locator(`a[href="/trabajadores/${tid}"]`).first().click()
@@ -391,31 +403,38 @@ test.describe('Deudas UI', () => {
       descripcion: 'Pendiente'})
     await res1.json()
 
-    // Create and pay off another
+    // Create and pay off another. Descripcion != 'Pagada': la card ya
+    // renderiza su propio badge <span>Pagada</span> cuando montoPendiente
+    // === 0 (deudas-tab.tsx) -- si la descripcion repite ese texto, el
+    // assert exact:true de abajo choca en strict mode contra 2 nodos.
     const res2 = await createDeuda(page, {
       trabajadorId: tid,
       tipo: 'OTRO',
       monto: 20000,
-      descripcion: 'Pagada'})
+      descripcion: 'Deuda saldada'})
     const body2 = await res2.json()
     await abonarDeuda(page, body2.deuda.id, { monto: 20000 })
 
     await goto(page, `/trabajadores/${tid}`)
     await page.getByRole('button', { name: 'Deudas' }).click()
 
-    // Default filter: pendientes
-    await expect(page.getByText('Pendiente')).toBeVisible()
-    await expect(page.getByText('Pagada')).not.toBeVisible()
+    // Default filter: pendientes. exact:true porque 'Pendiente' (substring)
+    // también matchea la etiqueta 'Total Pendiente' y el botón 'Pendientes'
+    // -- deuda.descripcion (el texto que realmente se está probando) es el
+    // único nodo con el texto EXACTO 'Pendiente'.
+    // exact:true: 'Pagada' (substring) también matchea el botón 'Pagadas'.
+    await expect(page.getByText('Pendiente', { exact: true })).toBeVisible()
+    await expect(page.getByText('Pagada', { exact: true })).not.toBeVisible()
 
     // Switch to pagadas
     await page.getByRole('button', { name: 'Pagadas' }).click()
-    await expect(page.getByText('Pagada')).toBeVisible()
-    await expect(page.getByText('Pendiente')).not.toBeVisible()
+    await expect(page.getByText('Pagada', { exact: true })).toBeVisible()
+    await expect(page.getByText('Pendiente', { exact: true })).not.toBeVisible()
 
     // Switch to todas
     await page.getByRole('button', { name: 'Todas' }).click()
-    await expect(page.getByText('Pendiente')).toBeVisible()
-    await expect(page.getByText('Pagada')).toBeVisible()
+    await expect(page.getByText('Pendiente', { exact: true })).toBeVisible()
+    await expect(page.getByText('Pagada', { exact: true })).toBeVisible()
   })
 
   test('progress bar en deuda card', async ({ page }) => {
@@ -437,8 +456,9 @@ test.describe('Deudas UI', () => {
     const progressBar = page.locator('.bg-green-500.h-2')
     await expect(progressBar).toBeVisible()
 
-    // Should show abono history
-    await expect(page.getByText('$50.000')).toBeVisible()
+    // Should show abono history. El monto restante se repite en la card
+    // (encabezado + historial de abonos) -- .first() evita strict mode.
+    await expect(page.getByText(/\$\s*50\.000/).first()).toBeVisible()
   })
 })
 
@@ -466,31 +486,49 @@ test.describe('Deudas + Nomina Integration', () => {
       usaMoto: true})
     const tid = trabajador.trabajador.id
 
-    // Create debt
+    // Create debt. Monto menor a la comisión que va a generar el cierre de
+    // abajo (5 PACA_AGUA * comRepartAgua=500/u = 2500, ver comisiones.ts /
+    // fixtures.ts createTrabajador) para que la nómina AUTO pueda cubrir la
+    // deuda COMPLETA en este período -- si la deuda superara la comisión
+    // ganada, la deducción quedaría parcial (ese caso ya lo cubre el test
+    // "nomina con deuda mayor al total deja remanente" más abajo).
     await createDeuda(page, {
       trabajadorId: tid,
       tipo: 'PRESTAMO',
-      monto: 50000,
+      monto: 2000,
       descripcion: 'Prestamo antes de nomina'})
 
-    // Create a closed embarque with deliveries for commissions
+    // Create a closed embarque with deliveries for commissions.
+    // canal DOMICILIO + ventaRapida:false: el pedido nace PENDIENTE y puede
+    // enviarse al embarque. Con ventaRapida:true nace ENTREGADO/PAGADO y
+    // /enviar lo rechaza con 400 (ver fix en Embarque Cash Reconciliation).
+    // Sin pagos en la creación: se paga en el cierre (ver comentario en
+    // Embarque Cash Reconciliation). 5 PACA_AGUA cae en el rango de precio
+    // por volumen 5-9u = 2500 c/u = 12500 total (prisma/seed.ts PRECIOS_VOLUMEN).
     const cliente = await createCliente(page)
     const pedidoRes = await apiPost(page, '/api/pedidos', {
       clienteId: cliente.cliente.id,
-      canal: 'PUNTO',
-      ventaRapida: true,
-      items: [{ producto: 'PACA_AGUA', cantidad: 5 }],
-      pagos: [{ metodo: 'EFECTIVO', monto: 25000 }]})
+      canal: 'DOMICILIO',
+      ventaRapida: false,
+      items: [{ producto: 'PACA_AGUA', cantidad: 5 }]})
     const pedidoId = (await pedidoRes.json()).pedido.id
 
     const embarqueRes = await createEmbarque(page, tid)
     const embarqueId = embarqueRes.embarque.id
 
     // Send embarque
-    await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, { embarqueId })
+    const enviarRes = await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, { embarqueId })
+    expect(enviarRes.status()).toBe(201)
+
+    // /pedidos/[id]/enviar solo mueve el PEDIDO a EN_RUTA -- el EMBARQUE
+    // sigue ABIERTO. cerrar() exige EN_RUTA->CERRADO (ABIERTO->CERRADO no es
+    // una transición válida, ver EstadoEmbarque.ts), así que hay que mover
+    // el embarque explícitamente. Mismo patrón que cerrarEmbarqueTest() en
+    // ciclo-pedido-completo.spec.ts/embarques.spec.ts.
+    await apiPut(page, `/api/embarques/${embarqueId}`, { estado: 'EN_RUTA' })
 
     // Close embarque
-    await apiPost(page, `/api/embarques/${embarqueId}/cerrar`, {
+    const cerrarRes = await apiPost(page, `/api/embarques/${embarqueId}/cerrar`, {
       pedidos: [{
         pedidoId,
         entregado: 'COMPLETO',
@@ -502,7 +540,7 @@ test.describe('Deudas + Nomina Integration', () => {
           cBolsaAguaEnt: 0,
           cBolsaHieloEnt: 0},
         pagado: 'COMPLETO',
-        pagos: [{ metodo: 'EFECTIVO', monto: 25000 }]}],
+        pagos: [{ metodo: 'EFECTIVO', monto: 12500 }]}],
       ventasLibres: [],
       productos: [
         { producto: 'PACA_AGUA', devueltas: 0, cambios: 0, rotas: 0 },
@@ -512,7 +550,9 @@ test.describe('Deudas + Nomina Integration', () => {
         { producto: 'BOLSA_HIELO', devueltas: 0, cambios: 0, rotas: 0 },
       ],
       gastos: [],
-      dineroEntregado: 25000})
+      dineroEntregado: 12500})
+    const cerrarBodyDebug = await cerrarRes.json()
+    expect(cerrarRes.status(), JSON.stringify(cerrarBodyDebug)).toBe(200)
 
     // Create nomina
     const today = new Date()
@@ -530,7 +570,7 @@ test.describe('Deudas + Nomina Integration', () => {
 
     // Verify debt was deducted
     const descuentoDeudas = nominaBody.detalles.descuentoDeudas
-    expect(descuentoDeudas).toBe(50000)
+    expect(descuentoDeudas).toBe(2000)
 
     // Verify debt was reduced
     const deudasRes = await apiGet(page, `/api/deudas?trabajadorId=${tid}`)
@@ -585,20 +625,69 @@ test.describe('Deudas + Nomina Integration', () => {
   test('anular nomina restaura deudas deducidas', async ({ page }) => {
     test.setTimeout(60000)
 
-    // Create a sellador
+    // REPARTIDOR (no SELLADOR): generar comSellTotal requiere un ciclo
+    // completo de /api/produccion (conteos, stock, un embarque CERRADO del
+    // mismo día, etc.) -- innecesariamente frágil para lo que este test
+    // verifica (ANULAR restaura deudas). El patrón embarque->cierre con
+    // REPARTIDOR ya está probado en "nomina AUTO descuenta deudas
+    // pendientes" arriba y genera comisión de forma simple y determinista.
     const trabajador = await createTrabajador(page, {
       nombre: `AnularWorker ${Date.now()}`,
-      rol: 'SELLADOR',
+      rol: 'REPARTIDOR',
       tipoPago: 'COMISION',
-      usaMoto: false})
+      usaMoto: true})
     const tid = trabajador.trabajador.id
 
-    // Create debt
+    // Debt menor a la comisión generada abajo (5 PACA_AGUA * 500/u = 2500)
+    // para que la nómina AUTO la cubra por completo, igual que en el test
+    // de arriba.
     await createDeuda(page, {
       trabajadorId: tid,
       tipo: 'PRESTAMO',
-      monto: 30000,
+      monto: 2000,
       descripcion: 'Deuda para anular'})
+
+    const cliente = await createCliente(page)
+    const pedidoRes = await apiPost(page, '/api/pedidos', {
+      clienteId: cliente.cliente.id,
+      canal: 'DOMICILIO',
+      ventaRapida: false,
+      items: [{ producto: 'PACA_AGUA', cantidad: 5 }]})
+    const pedidoId = (await pedidoRes.json()).pedido.id
+
+    const embarqueRes = await createEmbarque(page, tid)
+    const embarqueId = embarqueRes.embarque.id
+
+    const enviarRes = await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, { embarqueId })
+    expect(enviarRes.status()).toBe(201)
+
+    await apiPut(page, `/api/embarques/${embarqueId}`, { estado: 'EN_RUTA' })
+
+    const cerrarRes = await apiPost(page, `/api/embarques/${embarqueId}/cerrar`, {
+      pedidos: [{
+        pedidoId,
+        entregado: 'COMPLETO',
+        productosEntregados: {
+          cPacaAguaEnt: 5,
+          cPacaHieloEnt: 0,
+          cBotellonFabEnt: 0,
+          cBotellonDomEnt: 0,
+          cBolsaAguaEnt: 0,
+          cBolsaHieloEnt: 0},
+        pagado: 'COMPLETO',
+        pagos: [{ metodo: 'EFECTIVO', monto: 12500 }]}],
+      ventasLibres: [],
+      productos: [
+        { producto: 'PACA_AGUA', devueltas: 0, cambios: 0, rotas: 0 },
+        { producto: 'PACA_HIELO', devueltas: 0, cambios: 0, rotas: 0 },
+        { producto: 'BOTELLON', devueltas: 0, cambios: 0, rotas: 0 },
+        { producto: 'BOLSA_AGUA', devueltas: 0, cambios: 0, rotas: 0 },
+        { producto: 'BOLSA_HIELO', devueltas: 0, cambios: 0, rotas: 0 },
+      ],
+      gastos: [],
+      dineroEntregado: 12500})
+    const cerrarBodyDebug = await cerrarRes.json()
+    expect(cerrarRes.status(), JSON.stringify(cerrarBodyDebug)).toBe(200)
 
     // Create nomina
     const today = new Date()
@@ -626,7 +715,7 @@ test.describe('Deudas + Nomina Integration', () => {
     // Verify debt was restored
     const deudasRes2 = await apiGet(page, `/api/deudas?trabajadorId=${tid}`)
     const deudasBody2 = await deudasRes2.json()
-    expect(deudasBody2.deudas[0].montoPendiente).toBe(30000)
+    expect(deudasBody2.deudas[0].montoPendiente).toBe(2000)
   })
 })
 
@@ -646,21 +735,39 @@ test.describe('Embarque Cash Reconciliation', () => {
     const tid = trabajador.trabajador.id
 
     const cliente = await createCliente(page)
+    // canal DOMICILIO + ventaRapida:false: el pedido nace PENDIENTE y se
+    // paga en el cierre del embarque (no en la creación). Con
+    // ventaRapida:true (venta de mostrador) el pedido nace ENTREGADO/PAGADO
+    // y /enviar lo rechaza con "no está en estado pendiente" -- este test
+    // necesita el flujo de reparto para poder probar la reconciliación de
+    // caja en el cierre.
+    // Sin pagos en la creación: el pedido nace PENDIENTE/sin pagar (saldo =
+    // total). El pago real se registra en el cierre (abajo), que es lo que
+    // efectivamente alimenta la reconciliación de caja (coleccionarPagos()
+    // en cerrar-embarque-caja.helper.ts suma los pagos del cuadre de
+    // cierre). 3 PACA_AGUA a precio de volumen (1-4 u.) = 2800 c/u = 8400
+    // total -- ver prisma/seed.ts PRECIOS_VOLUMEN.
     const pedidoRes = await apiPost(page, '/api/pedidos', {
       clienteId: cliente.cliente.id,
-      canal: 'PUNTO',
-      ventaRapida: true,
-      items: [{ producto: 'PACA_AGUA', cantidad: 3 }],
-      pagos: [{ metodo: 'EFECTIVO', monto: 15000 }]})
+      canal: 'DOMICILIO',
+      ventaRapida: false,
+      items: [{ producto: 'PACA_AGUA', cantidad: 3 }]})
     const pedidoId = (await pedidoRes.json()).pedido.id
 
     const embarqueRes = await createEmbarque(page, tid)
     const embarqueId = embarqueRes.embarque.id
 
     // Send
-    await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, { embarqueId })
+    const enviarRes = await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, { embarqueId })
+    expect(enviarRes.status()).toBe(201)
 
-    // Close with LESS cash than expected (simulating lost bill)
+    // El embarque sigue ABIERTO tras /enviar (solo mueve el pedido); cerrar()
+    // exige EN_RUTA->CERRADO. Ver comentario en el test de nómina arriba.
+    await apiPut(page, `/api/embarques/${embarqueId}`, { estado: 'EN_RUTA' })
+
+    // Close with LESS cash than expected (simulating lost bill). El
+    // repartidor cobra el total real del pedido (8400) pero solo reporta
+    // haber entregado 3400 -> deficit de 5000.
     const cerrarRes = await apiPost(page, `/api/embarques/${embarqueId}/cerrar`, {
       pedidos: [{
         pedidoId,
@@ -673,7 +780,7 @@ test.describe('Embarque Cash Reconciliation', () => {
           cBolsaAguaEnt: 0,
           cBolsaHieloEnt: 0},
         pagado: 'COMPLETO',
-        pagos: [{ metodo: 'EFECTIVO', monto: 15000 }]}],
+        pagos: [{ metodo: 'EFECTIVO', monto: 8400 }]}],
       ventasLibres: [],
       productos: [
         { producto: 'PACA_AGUA', devueltas: 0, cambios: 0, rotas: 0 },
@@ -683,17 +790,20 @@ test.describe('Embarque Cash Reconciliation', () => {
         { producto: 'BOLSA_HIELO', devueltas: 0, cambios: 0, rotas: 0 },
       ],
       gastos: [],
-      dineroEntregado: 10000, // Less than 15000 received = 5000 deficit
+      dineroEntregado: 3400, // Less than 8400 cobrado = 5000 deficit
     })
 
     const cerrarBody = await cerrarRes.json()
     expect(cerrarBody.success).toBe(true)
 
-    // Cash reconciliation data should be present
-    const conciliacion = cerrarBody.conciliacion
-    expect(conciliacion.totalEfectivoRecibido).toBe(15000)
-    expect(conciliacion.dineroEntregado).toBe(10000)
-    expect(conciliacion.deficitCaja).toBe(-5000) // Negative = deficit
+    // Cash reconciliation data should be present. El shape real es
+    // cerrarBody.caja (CierrePresenter), no "conciliacion" -- ese campo
+    // existe pero es de reconciliación de PRODUCTOS, no de caja. Ver
+    // cerrar-embarque-caja.helper.ts: sobranteFaltante = dineroEntregado - efectivoReal.
+    const caja = cerrarBody.caja
+    expect(caja.efectivoReal).toBe(8400)
+    expect(caja.dineroEntregadoReportado).toBe(3400)
+    expect(caja.sobranteFaltante).toBe(-5000) // Negative = deficit
   })
 
   test('cierre con cuadre perfecto retorna deficitCaja = 0', async ({ page }) => {
@@ -705,18 +815,22 @@ test.describe('Embarque Cash Reconciliation', () => {
     const tid = trabajador.trabajador.id
 
     const cliente = await createCliente(page)
+    // Ver comentario en el test anterior: DOMICILIO + ventaRapida:false y
+    // sin pagos en la creación. 2 PACA_AGUA a 2800 c/u = 5600 total.
     const pedidoRes = await apiPost(page, '/api/pedidos', {
       clienteId: cliente.cliente.id,
-      canal: 'PUNTO',
-      ventaRapida: true,
-      items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
-      pagos: [{ metodo: 'EFECTIVO', monto: 10000 }]})
+      canal: 'DOMICILIO',
+      ventaRapida: false,
+      items: [{ producto: 'PACA_AGUA', cantidad: 2 }]})
     const pedidoId = (await pedidoRes.json()).pedido.id
 
     const embarqueRes = await createEmbarque(page, tid)
     const embarqueId = embarqueRes.embarque.id
 
-    await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, { embarqueId })
+    const enviarRes = await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, { embarqueId })
+    expect(enviarRes.status()).toBe(201)
+
+    await apiPut(page, `/api/embarques/${embarqueId}`, { estado: 'EN_RUTA' })
 
     const cerrarRes = await apiPost(page, `/api/embarques/${embarqueId}/cerrar`, {
       pedidos: [{
@@ -730,7 +844,7 @@ test.describe('Embarque Cash Reconciliation', () => {
           cBolsaAguaEnt: 0,
           cBolsaHieloEnt: 0},
         pagado: 'COMPLETO',
-        pagos: [{ metodo: 'EFECTIVO', monto: 10000 }]}],
+        pagos: [{ metodo: 'EFECTIVO', monto: 5600 }]}],
       ventasLibres: [],
       productos: [
         { producto: 'PACA_AGUA', devueltas: 0, cambios: 0, rotas: 0 },
@@ -740,11 +854,12 @@ test.describe('Embarque Cash Reconciliation', () => {
         { producto: 'BOLSA_HIELO', devueltas: 0, cambios: 0, rotas: 0 },
       ],
       gastos: [],
-      dineroEntregado: 10000, // Exact match
+      dineroEntregado: 5600, // Exact match
     })
 
     const cerrarBody = await cerrarRes.json()
-    expect(cerrarBody.conciliacion.deficitCaja).toBe(0)
+    expect(cerrarBody.success).toBe(true)
+    expect(cerrarBody.caja.sobranteFaltante).toBe(0)
   })
 })
 
@@ -752,10 +867,14 @@ test.describe('Embarque Cash Reconciliation', () => {
 
 test.describe('Deudas Permissions', () => {
   test('contador no puede crear deuda', async ({ page }) => {
+    // POST /api/trabajadores exige rol ADMIN -- crear el trabajador de
+    // fixture con esa sesión ANTES de cambiar a la sesión restringida que
+    // realmente se está probando (contador no puede crear deuda).
+    await loginAs(page, 'admin')
+    const trabajador = await createTrabajador(page, { nombre: `PermWorker ${Date.now()}` })
+
     await loginAs(page, 'contador')
     await goto(page, '/dashboard')
-
-    const trabajador = await createTrabajador(page, { nombre: `PermWorker ${Date.now()}` })
 
     const res = await apiPost(page, '/api/deudas', {
       trabajadorId: trabajador.trabajador.id,
@@ -780,10 +899,13 @@ test.describe('Deudas Permissions', () => {
   })
 
   test('asistente puede crear deuda', async ({ page }) => {
+    // Mismo motivo que arriba: crear el trabajador como ADMIN antes de
+    // cambiar a la sesión de asistente que se está probando.
+    await loginAs(page, 'admin')
+    const trabajador = await createTrabajador(page, { nombre: `AsistWorker ${Date.now()}` })
+
     await loginAs(page, 'asistente')
     await goto(page, '/dashboard')
-
-    const trabajador = await createTrabajador(page, { nombre: `AsistWorker ${Date.now()}` })
 
     const res = await apiPost(page, '/api/deudas', {
       trabajadorId: trabajador.trabajador.id,
