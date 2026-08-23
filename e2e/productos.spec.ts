@@ -155,9 +155,18 @@ test.describe('Productos', () => {
     const res = await apiGet(page, '/api/precios/tabla')
     expect(res.status()).toBe(200)
     const body = await res.json()
+    // FIX: este test nunca se había ejecutado en CI real -- vive en el mismo
+    // describe.configure({mode:'serial'}) que "editar precio inline", que
+    // fallaba en cada run previo (Playwright auto-skipea el resto del bloque
+    // serial tras el primer fallo). Al arreglarse ese test se expuso este:
+    // getPriceTable() (src/lib/pricing.ts:325) devuelve
+    // Record<ProductCode, Array<...>> -- un objeto keyed por código de
+    // producto ({PACA_AGUA: [...], ...}), no un array. Array.isArray(body.tabla)
+    // siempre daba false.
     expect(body).toHaveProperty('tabla')
-    expect(Array.isArray(body.tabla)).toBe(true)
-    expect(body.tabla.length).toBeGreaterThan(0)
+    expect(typeof body.tabla).toBe('object')
+    expect(Array.isArray(body.tabla)).toBe(false)
+    expect(Object.keys(body.tabla).length).toBeGreaterThan(0)
   })
 
   // ─── 6. API resolver precios ────────────────────────────────────────────────
