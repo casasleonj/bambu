@@ -17,7 +17,7 @@ test.use({
 })
 
 test.describe('H3-3: Embarque despachado es inmutable (iPhone 13)', () => {
-  test('PUT a embarque CERRADO es rechazado', async ({ page }) => {
+  test('PUT con campos no permitidos a embarque EN_RUTA es rechazado', async ({ page }) => {
     await loginAs(page, 'admin')
 
     // 1. Crear un trabajdor y embarque (usando helpers que sí conocen el shape correcto)
@@ -41,15 +41,21 @@ test.describe('H3-3: Embarque despachado es inmutable (iPhone 13)', () => {
     }
 
     // 3. Intentar editar (PUT con datos nuevos)
-    // FIX H3-3: el server ahora rechaza con 409 — embarque CERRADO es inmutable.
+    // FIX: src/app/api/embarques/[id]/route.ts -- en EN_RUTA solo se permite
+    // editar pedidoIds/offlineId (comentario H3-3: "flexibilidad operativa
+    // sin comprometer datos contables"), no es full-inmutable como
+    // CERRADO/CANCELADO (eso sí devuelve 409, EMBARQUE_DESPACHADO_INMUTABLE).
+    // El check lanzaba FORBIDDEN_FIELDS_EN_RUTA:, pero el catch-block de la
+    // ruta no tenía handler para ese prefijo (solo para FORBIDDEN_FIELDS: a
+    // secas) y caía al 500 genérico -- bug real, corregido junto con este test.
     const editRes = await apiPut(page, `/api/embarques/${embarqueId}`, {
       obs: 'Intento de editar despachado',
     })
-    expect(editRes.status()).toBe(409)
+    expect(editRes.status()).toBe(400)
 
     // 4. Verificar que la edición NO se aplicó
-    // FIX H3-3: el server rechazó con 409, así que la edición
-    // no persistió. La obs sigue siendo la original.
+    // El server rechazó con 400, así que la edición no persistió. La obs
+    // sigue siendo la original.
     const checkRes = await apiGet(page, `/api/embarques/${embarqueId}`)
     expect(checkRes.status()).toBe(200)
     const checkBody = await checkRes.json()

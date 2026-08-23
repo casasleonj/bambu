@@ -463,6 +463,16 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         const [, key, max] = msg.split(':')
         return apiError(`${key} excede límite de stock (${max} máximo)`, 400)
       }
+      if (msg.startsWith('FORBIDDEN_FIELDS_EN_RUTA:')) {
+        // FIX: este prefijo (lanzado en el chequeo de campos permitidos
+        // durante EN_RUTA) nunca tenía un handler propio -- caía al catch-all
+        // genérico de abajo y devolvía 500 en vez de un 400 controlado.
+        const [, fields] = msg.split(':')
+        return apiError(
+          `Solo se pueden editar pedidos mientras el embarque está EN_RUTA: ${fields}`,
+          400
+        )
+      }
       if (msg.startsWith('FORBIDDEN_FIELDS:')) {
         const [, fields, estado] = msg.split(':')
         return apiError(`No se pueden editar estos campos en estado ${estado}: ${fields}`, 400)
