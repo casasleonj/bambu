@@ -28,14 +28,32 @@ test.describe('Producción — E2E Exhaustivo', () => {
     await goto(page, '/produccion')
 
     await expect(page.getByRole('heading', { name: 'Registro de Producción' })).toBeVisible()
-    await expect(page.getByText('Stock Inicial')).toBeVisible()
-    await expect(page.getByText('Conteos')).toBeVisible()
-    await expect(page.getByText('Datos del Turno')).toBeVisible()
-    await expect(page.getByText('Conciliar')).toBeVisible()
+    // FIX: las 4 etiquetas de texto del stepper ("Stock Inicial",
+    // "Conteos", "Datos del Turno", "Conciliar") comparten la misma clase
+    // `hidden sm:block` (produccion-client/index.tsx) -- ocultas a
+    // propósito por debajo del breakpoint sm (640px) para dejar solo los
+    // círculos numerados en mobile. Con "Stock Inicial" ya arreglado (era
+    // la única que corría, porque el test paraba ahí al fallar), quedó
+    // expuesto que las otras 3 tenían exactamente el mismo problema. Se
+    // scopean todas a viewports >= 640px, el mismo breakpoint del
+    // componente.
+    const isDesktopWidth = (page.viewportSize()?.width ?? 1280) >= 640
+    if (isDesktopWidth) {
+      await expect(page.getByText('Stock Inicial')).toBeVisible()
+      await expect(page.getByText('Conteos')).toBeVisible()
+      await expect(page.getByText('Datos del Turno')).toBeVisible()
+      await expect(page.getByText('Conciliar')).toBeVisible()
+    }
 
     await expect(page.getByText('AGUA').first()).toBeVisible()
     await expect(page.getByText('HIELO').first()).toBeVisible()
-    await expect(page.getByText('Balance del día').first()).toBeVisible()
+    // FIX: renderBalanceCard() se renderiza dos veces (index.tsx) -- una
+    // copia en el sidebar `hidden lg:block` (desktop) y otra en `lg:hidden`
+    // (mobile, debajo del contenido). .first() siempre agarra la del
+    // sidebar en orden de DOM, oculta en mobile. Scopeado a :visible en
+    // vez de first() para tomar la instancia realmente renderizada en
+    // cualquiera de los dos viewports.
+    await expect(page.locator('h4:visible', { hasText: 'Balance del día' }).first()).toBeVisible()
   })
 
   // ─── 2. Navegación de steps ───────────────────────────────────────────────
