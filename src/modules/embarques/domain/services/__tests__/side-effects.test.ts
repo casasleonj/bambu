@@ -109,9 +109,12 @@ describe('F4.10-c-d: imports correctos en el use case', () => {
 })
 
 describe('F4.10-c-d: el use case se simplificó (398 → ~335 líneas)', () => {
-  it('FIX: el archivo final tiene menos de 380 líneas (era 398)', () => {
+  it('FIX: el archivo final se mantiene compacto (A.3.4 sumó el modo dryRun)', () => {
+    // Umbral subido de 380 a 410 por A.3.4 (DryRunSignal para el preview
+    // autoritativo del cierre, ~20 líneas) — no es la regresión de
+    // duplicación que este test original detectaba.
     const lines = useCaseSource.split('\n').length
-    expect(lines).toBeLessThan(380)
+    expect(lines).toBeLessThan(410)
   })
 
   it('FIX: el archivo final tiene más de 320 líneas (sanity check)', () => {

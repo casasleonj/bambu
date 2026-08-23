@@ -80,8 +80,8 @@ Arquitectura: Command Center → Preparation Flow → Mission Detail → Reconci
 ### 5.4 Reconciliation (Fase 7) — reemplaza `/embarques/[id]/cerrar`
 
 - **Propósito:** cierre guiado con preview autoritativo; hoy el wizard tiene 5 secciones no forzadas y el cliente recalcula el cuadre en un `useMemo` (puede divergir del backend).
-- **Depende de A.3.4:** el preview del cuadre debe pedirse al backend en modo dry-run de `CerrarEmbarqueUseCase` (o endpoint de preview), **no** reimplementar `calcularCaja`/`conciliarProductos` en el cliente.
-- **Reutiliza:** `CerrarEmbarqueUseCase` (controller thin real), dedup por `offlineId`.
+- **A.3.4 resuelto:** `POST /api/embarques/[id]/cerrar/preview` corre `CerrarEmbarqueUseCase.execute({ ..., dryRun: true })` — mismo cálculo, misma transacción, rollback garantizado (ver `DryRunSignal` en el use case; cubierto por `src/lib/__tests__/integration/cierre-preview-dry-run.test.ts` contra Postgres real). El wizard actual (`cerrar-client`) ya lo consume en su sección de Preview como número autoritativo, con `calculos` local como fallback si el preview falla/está offline. Pendiente: extender este mismo patrón al Reconciliation screen dedicado (wizard forzado + 4 estados de red) que reemplace el wizard actual — la pieza de backend/datos ya no bloquea eso.
+- **Reutiliza:** `CerrarEmbarqueUseCase` (controller thin real), dedup por `offlineId`, `POST .../cerrar/preview` (dry-run, A.3.4).
 - **Estados de red:** el envío del cierre ya usa `fetchResilient` (BAMBU-LOG-006); el preview nuevo hereda el mismo contrato.
 - **Desktop/mobile:** ídem §5.3.
 

@@ -81,6 +81,11 @@ export interface CerrarEmbarqueInput {
   // offlineId de un embarque ya CERRADO, se devuelve el resultado
   // existente en vez de fallar con EMBARQUE_YA_CERRADO.
   offlineId?: string
+  // A.3.4: si true, el use case corre el mismo cálculo y los mismos
+  // side effects dentro de la transacción, pero nunca hace commit — ver
+  // DryRunSignal en CerrarEmbarqueUseCase. Garantiza que el preview de
+  // Reconciliation vea exactamente lo que el cierre real decidiría.
+  dryRun?: boolean
 }
 
 export interface AutoGenerarEmbarquesInput {

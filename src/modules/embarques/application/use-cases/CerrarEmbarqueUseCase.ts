@@ -43,6 +43,22 @@ import { coleccionarPagos, calcularCajaFinal } from './cerrar-embarque-caja.help
 
 type TxOrPrisma = Parameters<Parameters<typeof prisma.$transaction>[0]>[0]
 
+/**
+ * A.3.4: señal interna para abortar el commit de un cierre en modo
+ * `dryRun`. Se lanza DESPUÉS de calcular el resultado completo (mismos
+ * side effects, misma lógica que un cierre real) pero ANTES de que
+ * `execute()` retorne — Prisma hace rollback automático de la tx al
+ * ver un throw dentro del callback de `$transaction`, y re-lanza el
+ * mismo error sin envolverlo. `execute()` la captura y devuelve
+ * `result` como si fuera un retorno normal. Ningún dato del dry-run
+ * llega a persistirse.
+ */
+class DryRunSignal extends Error {
+  constructor(public readonly result: CierreResultadoDTO) {
+    super('DRY_RUN_ROLLBACK')
+  }
+}
+
 export class CerrarEmbarqueUseCase {
   private readonly transitions = new EmbarqueTransitionsService()
 
@@ -90,7 +106,8 @@ export class CerrarEmbarqueUseCase {
     // (ventas libres + hijos) con numeración MAX+1 no atómica, por lo que se
     // adquiere `SECUENCIA:pedido` en la MISMA tx (orden CIERRE → SECUENCIA,
     // anti-deadlock); se elimina en FASE 8 con secuencia atómica de pedido.
-    return this.txManager.executeWithLock('CIERRE', input.id, async (tx) => {
+    try {
+      return await this.txManager.executeWithLock('CIERRE', input.id, async (tx) => {
       const client = this.getTx(tx)
 
       await acquireAdvisoryLockTx(client, 'SECUENCIA', 'pedido')
@@ -234,7 +251,7 @@ export class CerrarEmbarqueUseCase {
         usuarioId: this.userId,
       }, tx)
 
-      return {
+      const finalResult: CierreResultadoDTO = {
         embarqueId: input.id,
         estado: 'CERRADO',
         pedidosProcesados: pedidosActualizados.length,
@@ -259,7 +276,21 @@ export class CerrarEmbarqueUseCase {
         // Reutilizamos el objeto `caja` calculado en el paso 9.
         caja,
       }
+
+      // A.3.4: en dry-run, todo lo de arriba (pedidos hijos, ventas libres,
+      // gastos, deuda, audit log, update del embarque) ya se ejecutó dentro
+      // de esta tx para que el cálculo sea idéntico al de un cierre real —
+      // pero se aborta el commit lanzando la señal en vez de retornar.
+      if (input.dryRun) {
+        throw new DryRunSignal(finalResult)
+      }
+
+      return finalResult
     })
+    } catch (err) {
+      if (err instanceof DryRunSignal) return err.result
+      throw err
+    }
   }
 
   /**

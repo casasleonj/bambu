@@ -45,6 +45,13 @@ export default function CerrarEmbarqueClient() {
   const [obsGeneral, setObsGeneral] = useState('')
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [activeSection, setActiveSection] = useState(0)
+  // A.3.4: preview autoritativo del cierre (dry-run del backend).
+  const [preview, setPreview] = useState<{
+    caja: { efectivoEsperado: number; efectivoReal: number; diferencia: number; otrosPagos: number; sobranteFaltante: number }
+    conciliacion: { totalDiscrepancy: number }
+  } | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState(false)
 
   useEffect(() => {
     async function fetchData() {
@@ -374,6 +381,90 @@ export default function CerrarEmbarqueClient() {
     }
   }, [embarque, cuadres, ventasLibres, retornos, gastos, dineroEntregado, justificacionFaltante])
 
+  // A.3.4: shape del payload compartido entre el envío real y el preview
+  // dry-run — evita que ambos diverjan por copy-paste.
+  function buildCierrePayload() {
+    const productosRetorno = Object.entries(retornos).map(([producto, val]) => ({
+      producto,
+      devueltas: val.devueltas,
+      cambios: val.cambios,
+      rotas: val.rotas,
+    }))
+
+    return {
+      pedidos: Object.values(cuadres).map((c) => ({
+        ...c,
+        pagos: c.pagos.filter((p) => p.monto > 0),
+      })),
+      ventasLibres: ventasLibres
+        .filter((v) => v.clienteId)
+        .map((v) => ({
+          clienteId: v.clienteId,
+          cPacaAgua: v.cPacaAgua,
+          cPacaHielo: v.cPacaHielo,
+          cBotellonFab: v.cBotellonFab,
+          cBotellonDom: v.cBotellonDom,
+          cBolsaAgua: v.cBolsaAgua,
+          cBolsaHielo: v.cBolsaHielo,
+          pagos: v.pagos.filter((p) => p.monto > 0),
+          obs: v.obs,
+        })),
+      productos: productosRetorno,
+      gastos: gastos.filter(g => g.monto > 0).map(g => ({
+        categoria: g.categoria,
+        monto: g.monto,
+        nota: g.nota,
+      })),
+      dineroEntregado,
+      justificacionDiscrepancia: justificacion || undefined,
+      justificacionFaltante: justificacionFaltante || undefined,
+      obs: obsGeneral,
+    }
+  }
+
+  // A.3.4: preview autoritativo del cuadre de caja — pide el mismo cálculo
+  // que hará el backend al cerrar (dry-run, sin persistir nada) en vez de
+  // confiar solo en `calculos` (recalculado en el cliente, puede divergir).
+  // Best-effort: si falla (offline, error), la UI sigue funcionando con
+  // `calculos` como estimado local — el cierre real sigue siendo la
+  // fuente de verdad final vía POST /cerrar.
+  useEffect(() => {
+    if (activeSection !== 4 || !embarque) return
+    let cancelled = false
+    const timer = setTimeout(async () => {
+      setPreviewLoading(true)
+      try {
+        const res = await fetch(`/api/embarques/${embarqueId}/cerrar/preview`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(buildCierrePayload()),
+        })
+        if (cancelled) return
+        if (res.ok) {
+          const json = await res.json()
+          setPreview({ caja: json.caja, conciliacion: json.conciliacion })
+          setPreviewError(false)
+        } else {
+          setPreview(null)
+          setPreviewError(true)
+        }
+      } catch {
+        if (!cancelled) {
+          setPreview(null)
+          setPreviewError(true)
+        }
+      } finally {
+        if (!cancelled) setPreviewLoading(false)
+      }
+    }, 500)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSection, embarque, cuadres, ventasLibres, retornos, gastos, dineroEntregado, justificacionFaltante, justificacion, obsGeneral])
+
   function ventasLibreTotal(v: VentaLibre): number {
     if (!embarque || embarque.pedidos.length === 0) return 0
     const avgPrices = {
@@ -413,41 +504,8 @@ export default function CerrarEmbarqueClient() {
     if (!embarque || !calculos) return
     setSubmitting(true)
     try {
-      const productosRetorno = Object.entries(retornos).map(([producto, val]) => ({
-        producto,
-        devueltas: val.devueltas,
-        cambios: val.cambios,
-        rotas: val.rotas,
-      }))
-
       const payload = {
-        pedidos: Object.values(cuadres).map((c) => ({
-          ...c,
-          pagos: c.pagos.filter((p) => p.monto > 0),
-        })),
-        ventasLibres: ventasLibres
-          .filter((v) => v.clienteId)
-          .map((v) => ({
-            clienteId: v.clienteId,
-            cPacaAgua: v.cPacaAgua,
-            cPacaHielo: v.cPacaHielo,
-            cBotellonFab: v.cBotellonFab,
-            cBotellonDom: v.cBotellonDom,
-            cBolsaAgua: v.cBolsaAgua,
-            cBolsaHielo: v.cBolsaHielo,
-            pagos: v.pagos.filter((p) => p.monto > 0),
-            obs: v.obs,
-          })),
-        productos: productosRetorno,
-        gastos: gastos.filter(g => g.monto > 0).map(g => ({
-          categoria: g.categoria,
-          monto: g.monto,
-          nota: g.nota,
-        })),
-        dineroEntregado,
-        justificacionDiscrepancia: justificacion || undefined,
-        justificacionFaltante: justificacionFaltante || undefined,
-        obs: obsGeneral,
+        ...buildCierrePayload(),
         // BAMBU-LOG-006: offline-first dedup — mismo offlineId en la cola
         // y en el body para que el server deduplique un replay.
         offlineId: generateUUID(),
@@ -503,6 +561,21 @@ export default function CerrarEmbarqueClient() {
     calculos.pesoKg,
     calculos.capacidadKg
   )
+
+  // A.3.4: los números de decisión (cuadre de caja, deuda, discrepancia)
+  // priorizan el preview autoritativo del backend cuando está disponible;
+  // `calculos` (local) es solo el fallback mientras carga o si falló
+  // (offline/error) — nunca la fuente de verdad final, esa es siempre el
+  // POST /cerrar real.
+  const faltanteSobrante = preview ? preview.caja.sobranteFaltante : calculos.faltanteSobrante
+  const faltanteEfectivo = faltanteSobrante < 0 ? Math.abs(faltanteSobrante) : 0
+  const authoritative = {
+    debeEntregar: preview ? preview.caja.efectivoReal : calculos.debeEntregar,
+    faltanteSobrante,
+    faltanteEfectivo,
+    generaraDeuda: faltanteEfectivo >= UMBRAL_MINIMO_FALTANTE_CAJA && !justificacionFaltante.trim(),
+    totalDiscrepancia: preview ? preview.conciliacion.totalDiscrepancy : calculos.totalDiscrepancia,
+  }
 
   const sections = [
     { label: 'Pedidos', count: embarque.pedidos.length },
@@ -793,7 +866,18 @@ export default function CerrarEmbarqueClient() {
 
             {/* Cuadre de Caja */}
             <div className="bg-white rounded-lg shadow-sm border p-4">
-              <h2 className="text-lg font-semibold mb-3">📊 Cuadre de Caja</h2>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-semibold">📊 Cuadre de Caja</h2>
+                {previewLoading ? (
+                  <span className="text-xs text-gray-400">Verificando con backend…</span>
+                ) : preview ? (
+                  <span className="text-xs text-green-600">✓ Verificado con backend</span>
+                ) : previewError ? (
+                  <span className="text-xs text-amber-600" title="No se pudo confirmar con el backend (sin conexión o error). Mostrando estimado local.">
+                    ⚠️ Estimado local (sin verificar)
+                  </span>
+                ) : null}
+              </div>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between py-1">
                   <span className="text-gray-600">Total vendido (efectivo)</span>
@@ -813,7 +897,7 @@ export default function CerrarEmbarqueClient() {
                 </div>
                 <div className="border-t pt-2 flex justify-between font-bold text-base">
                   <span>Debió entregar en efectivo</span>
-                  <span>{formatCurrency(calculos.debeEntregar)}</span>
+                  <span>{formatCurrency(authoritative.debeEntregar)}</span>
                 </div>
               </div>
 
@@ -830,22 +914,22 @@ export default function CerrarEmbarqueClient() {
 
               {dineroEntregado > 0 && (
                 <div className={`mt-3 p-4 rounded-lg border-2 ${
-                  calculos.faltanteSobrante < 0
+                  authoritative.faltanteSobrante < 0
                     ? 'bg-red-50 border-red-300'
-                    : calculos.faltanteSobrante > 0
+                    : authoritative.faltanteSobrante > 0
                     ? 'bg-green-50 border-green-300'
                     : 'bg-blue-50 border-blue-300'
                 }`}>
                   <p className="text-lg font-bold text-center">
-                    {calculos.faltanteSobrante < 0
-                      ? `⚠️ FALTANTE: ${formatCurrency(calculos.faltanteSobrante)}`
-                      : calculos.faltanteSobrante > 0
-                      ? `✅ SOBRANTE: ${formatCurrency(calculos.faltanteSobrante)}`
+                    {authoritative.faltanteSobrante < 0
+                      ? `⚠️ FALTANTE: ${formatCurrency(authoritative.faltanteSobrante)}`
+                      : authoritative.faltanteSobrante > 0
+                      ? `✅ SOBRANTE: ${formatCurrency(authoritative.faltanteSobrante)}`
                       : `✅ CUADRE PERFECTO`}
                   </p>
-                  {calculos.faltanteSobrante < 0 && (
+                  {authoritative.faltanteSobrante < 0 && (
                     <p className="text-xs text-red-600 text-center mt-1">
-                      {calculos.generaraDeuda
+                      {authoritative.generaraDeuda
                         ? 'Se creará deuda al trabajador si no se justifica'
                         : 'No genera deuda (por debajo del umbral o justificado)'}
                     </p>
@@ -853,13 +937,13 @@ export default function CerrarEmbarqueClient() {
                 </div>
               )}
 
-              {calculos.generaraDeuda && (
+              {authoritative.generaraDeuda && (
                 <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
                   <div className="flex items-start gap-3">
                     <span className="text-xl shrink-0">💳</span>
                     <div className="flex-1">
                       <p className="text-sm font-semibold text-amber-900">
-                        Se generará una deuda de {formatCurrency(calculos.faltanteEfectivo)} a {embarque.trabajador.nombre}
+                        Se generará una deuda de {formatCurrency(authoritative.faltanteEfectivo)} a {embarque.trabajador.nombre}
                       </p>
                       <p className="text-xs text-amber-700 mt-1">
                         Plan de pago: {DEUDA_FALTANTE_CAJA_PLAZO_NOMINAS_DEFAULT} nóminas, máximo {DEUDA_FALTANTE_CAJA_PORCENTAJE_NOMINA_DEFAULT}% por nómina.
@@ -910,7 +994,7 @@ export default function CerrarEmbarqueClient() {
                 <span>↩️ Devueltas: {calculos.totalDevueltas}</span>
                 <span>🔄 Cambios: {calculos.totalCambios}</span>
                 <span>💔 Filtradas: {calculos.totalRotas}</span>
-                {calculos.totalDiscrepancia > 0 && <span className="text-red-600 font-medium">⚠️ Discrepancia: {calculos.totalDiscrepancia}</span>}
+                {authoritative.totalDiscrepancia > 0 && <span className="text-red-600 font-medium">⚠️ Discrepancia: {authoritative.totalDiscrepancia}</span>}
               </div>
             </div>
 
@@ -940,14 +1024,14 @@ export default function CerrarEmbarqueClient() {
             onClick={() => setShowConfirmModal(true)}
             disabled={submitting}
             className={`flex-1 px-4 py-3 rounded-lg transition font-medium disabled:opacity-50 ${
-              calculos?.generaraDeuda
+              authoritative.generaraDeuda
                 ? 'bg-amber-600 text-white hover:bg-amber-700'
                 : 'bg-blue-600 text-white hover:bg-blue-700'
             }`}
           >
             {submitting
               ? 'Cerrando...'
-              : calculos?.generaraDeuda
+              : authoritative.generaraDeuda
               ? 'Cerrar y generar deuda'
               : 'Confirmar Cierre'}
           </button>
@@ -966,10 +1050,10 @@ export default function CerrarEmbarqueClient() {
             totalGastos: calculos?.totalGastos || 0,
             noEntregados: calculos?.noEntregados || 0,
             parciales: calculos?.parciales || 0,
-            faltante: calculos?.faltanteSobrante || 0,
-            discrepancia: calculos?.totalDiscrepancia || 0,
-            faltanteEfectivo: calculos?.faltanteEfectivo || 0,
-            generaraDeuda: calculos?.generaraDeuda || false,
+            faltante: authoritative.faltanteSobrante || 0,
+            discrepancia: authoritative.totalDiscrepancia || 0,
+            faltanteEfectivo: authoritative.faltanteEfectivo || 0,
+            generaraDeuda: authoritative.generaraDeuda || false,
             nombreTrabajador: embarque?.trabajador?.nombre,
           }}
         />
