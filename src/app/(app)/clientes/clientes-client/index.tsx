@@ -93,6 +93,16 @@ function optimisticClienteFromRow(row: Cliente): Cliente {
     pedidos: row.pedidos ?? [],
     frecuenciaSugerida: null,
     productosSugeridos: [],
+    // FIX: row.negocios viene de la lista (fetchClientesList en
+    // clientes-repo.ts), que selecciona un shape más liviano -- sin
+    // horaApertura/ruta/lat/lng/_count -- solo para badges y búsqueda. Si
+    // el panel/modal de negocios se abre durante la ventana optimista
+    // (antes de que llegue el detalle completo de /api/clientes/[id]),
+    // esos campos faltantes quedaban expuestos como null/vacíos en el
+    // modal de detalle y en el form de edición. Se omite acá para que el
+    // panel muestre "cargando" (negocios=[]) hasta que llegue la data
+    // completa, en vez de datos parciales operables.
+    negocios: undefined,
   }
 }
 
@@ -480,7 +490,28 @@ export default function ClientesClient({
   const pageSeqRef = useRef(0)
   const [negocioFormOpen, setNegocioFormOpen] = useState(false)
   const [negocioEditData, setNegocioEditData] = useState<{ id: string; nombre: string; tipoNegocio: string | null; direccion: string | null; barrio: string | null; referencia: string | null; linkUbicacion: string | null; horaApertura: string | null; rutaId: string | null } | null>(null)
-  const [viewNegocioData, setViewNegocioData] = useState<NegocioDetail | null>(null)
+  // FIX: viewNegocioData ya NO es solo el snapshot congelado tomado al
+  // hacer click. viewCliente() abre el panel de forma optimista con la
+  // fila de /api/clientes (lista) -- cuyo `negocios` select es más liviano
+  // (sin horaApertura/ruta/lat/lng, ver src/lib/clientes-repo.ts) -- y
+  // recién después llega el detalle completo (/api/clientes/[id]). Si el
+  // modal de detalle de negocio se abre en esa ventana (un click
+  // automatizado, o simplemente una red lenta), el snapshot fijo quedaba
+  // permanentemente con datos incompletos aunque `negocios` ya se hubiera
+  // actualizado con la data completa.
+  // viewNegocioDataBase guarda lo que se pasó al hacer click (necesario
+  // porque NegocioSearchMatch arma un negocio "standalone" que NO siempre
+  // está en el panel `negocios` del cliente abierto -- ver
+  // negocio-search-match.tsx, que ni siquiera abre el panel del cliente).
+  // Si esa misma entidad SÍ está en `negocios` (caso normal: se abrió
+  // desde una card del panel), se prefiere esa versión -- más fresca y
+  // completa -- sobre el snapshot; si no está, se usa el snapshot tal
+  // cual. Mismo patrón "derivar durante el render" ya usado para
+  // `negocios`, sin agregar un useEffect con setState.
+  const [viewNegocioDataBase, setViewNegocioDataBase] = useState<NegocioDetail | null>(null)
+  const viewNegocioData = viewNegocioDataBase
+    ? (negocios.find(n => n.id === viewNegocioDataBase.id) ?? viewNegocioDataBase)
+    : null
   const [showNegocioDetail, setShowNegocioDetail] = useState(false)
 
   const puedeDesactivar = userRole === 'ADMIN' || userRole === 'CONTADOR'
@@ -1330,17 +1361,17 @@ export default function ClientesClient({
   }
 
   function viewNegocio(neg: NegocioDetail) {
-    setViewNegocioData(neg)
+    setViewNegocioDataBase(neg)
     setShowNegocioDetail(true)
   }
 
   function closeNegocioDetail() {
-    setViewNegocioData(null)
+    setViewNegocioDataBase(null)
     setShowNegocioDetail(false)
   }
 
   function handleEditNegocioFromDetail(neg: NegocioDetail) {
-    setViewNegocioData(null)
+    setViewNegocioDataBase(null)
     setShowNegocioDetail(false)
     setNegocioEditData({
       id: neg.id,
@@ -1356,11 +1387,14 @@ export default function ClientesClient({
     setNegocioFormOpen(true)
   }
 
-  // Tras geocodificar un negocio (POST /api/negocios/[id]/geocode) el modal
-  // actualiza la fila de coords y el panel de negocios del cliente seleccionado
-  // se re-deriva vía el effect [selectedCliente] → setNegocios.
+  // Tras geocodificar un negocio (POST /api/negocios/[id]/geocode): si el
+  // negocio está en el panel del cliente abierto, viewNegocioData (fusión
+  // con `negocios`, ver su declaración) se re-deriva solo al actualizar
+  // selectedCliente. Se parchea también viewNegocioDataBase para el caso
+  // standalone (abierto vía NegocioSearchMatch sin panel de cliente
+  // cargado, ver negocio-search-match.tsx), donde no hay match en `negocios`.
   function handleNegocioGeocoded(negocioId: string, coords: { lat: number; lng: number }) {
-    setViewNegocioData(prev =>
+    setViewNegocioDataBase(prev =>
       prev && prev.id === negocioId ? { ...prev, lat: coords.lat, lng: coords.lng } : prev,
     )
     setSelectedCliente(prev => {
