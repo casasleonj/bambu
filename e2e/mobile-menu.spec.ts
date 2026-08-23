@@ -81,7 +81,12 @@ test.describe('Drawer (menu lateral) mobile', () => {
     await page.waitForLoadState('domcontentloaded')
     await page.waitForTimeout(500)
 
-    const hamburger = page.getByRole('button', { name: /men[uú]/i })
+    // FIX: /men[uú]/i ahora matchea 2 botones ("Abrir menú" y "Opciones del
+    // menú", este último visible una vez el drawer abre) -- strict mode
+    // violation. El aria-label del hamburger se mantiene "Abrir menú" en
+    // ambos estados (abierto/cerrado, confirmado via aria-expanded), así
+    // que se puede scopear al texto exacto sin depender del estado.
+    const hamburger = page.getByRole('button', { name: /abrir men[uú]/i })
     const aside = page.getByRole('complementary', { name: /navegaci[oó]n principal/i })
 
     // Inicial: cerrado.

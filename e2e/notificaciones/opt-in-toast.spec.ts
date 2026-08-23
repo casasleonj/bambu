@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { handleBaseCaja } from '../fixtures'
 
 test.describe('push opt-in toast', () => {
   test.beforeEach(async ({ page }, testInfo) => {
@@ -17,6 +18,12 @@ test.describe('push opt-in toast', () => {
     await page.fill('input[type="password"]', 'admin123')
     await page.click('button:has-text("Ingresar")')
     await expect(page).toHaveURL('/dashboard', { timeout: 5000 })
+    // FIX: sin esto, el modal de "Base de Caja" (Sin base registrada) puede
+    // aparecer mientras el test intenta clickear los botones del toast
+    // ("fixed inset-0 bg-black/50 ... z-50" intercepta el pointer event),
+    // colgando el test hasta su timeout. Timing-dependiente -- por eso solo
+    // fallaba en algunos de los tests del describe, no en todos.
+    await handleBaseCaja(page)
   })
 
   test('muestra el toast de opt-in al iniciar sesion', async ({ page }) => {

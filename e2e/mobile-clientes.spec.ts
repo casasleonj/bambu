@@ -3,7 +3,7 @@
 // lista de clientes y abrir el detalle al hacer click.
 
 import { test, expect } from '@playwright/test'
-import { loginAs } from './fixtures'
+import { loginAs, createCliente } from './fixtures'
 
 // Viewport mobile iPhone 13 (390x844) sin forzar webkit (que no esta
 // instalado en este entorno). Usamos chromium con viewport mobile,
@@ -51,6 +51,11 @@ test.describe('Clientes en mobile', () => {
 
   test('click en cliente abre el modal de detalle', async ({ page }) => {
     await loginAs(page, 'admin')
+    // FIX: este spec dependia de que hubiera clientes "seeded" ya
+    // renderizados en la lista, sin crear ninguno propio -- fragil, depende
+    // de que otro spec haya dejado datos en la DB antes de este archivo.
+    // Crea un cliente propio via API para que la fila exista siempre.
+    await createCliente(page, { nombre: 'ClienteMobileDetalle' })
     await page.goto('/clientes')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(800)
@@ -78,6 +83,9 @@ test.describe('Clientes en mobile', () => {
 
   test('modal de detalle muestra informacion del cliente (no error)', async ({ page }) => {
     await loginAs(page, 'admin')
+    // FIX: mismo motivo que el test anterior -- no depender de clientes
+    // dejados por otro spec.
+    await createCliente(page, { nombre: 'ClienteMobileInfo' })
     await page.goto('/clientes')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(800)

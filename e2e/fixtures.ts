@@ -481,8 +481,35 @@ export async function openFabPedidoEnvio(page: Page) {
  * `chromium-mobile` projects.
  */
 export async function openSidebarIfMobile(page: Page) {
+  // FIX: idempotente -- si el aside ya está en el DOM (drawer ya abierto en
+  // mobile, o siempre presente en desktop) no tocar el hamburger. Es un
+  // toggle: llamarlo de nuevo con el drawer ya abierto lo CERRABA en vez de
+  // ser un no-op, rompiendo callers que invocan esto más de una vez por test
+  // (ej. reabrir el drawer tras una acción que no lo cierra).
+  //
+  // FIX: `.isVisible({timeout})` NO espera (el timeout está deprecado/
+  // ignorado, ver Locator.isVisible en types.d.ts) -- retorna de inmediato.
+  // header.tsx's useIsDesktop() arranca en `false` y recién se resuelve en
+  // un useEffect post-hidratación, así que justo después de un goto() en
+  // DESKTOP el botón todavía trae aria-label "Abrir menú" (el de mobile)
+  // por una fracción de segundo. Un chequeo inmediato podía "verlo" ahí,
+  // hacer click(), y para cuando la acción se ejecutaba el label ya había
+  // cambiado a "Colapsar/expandir menú" -- el locator dejaba de resolver
+  // y el click colgaba hasta el timeout del test. waitFor() sí hace polling
+  // real, dejando que la hidratación se asiente antes de decidir.
+  const aside = page.getByRole('complementary', { name: /navegaci[oó]n principal/i })
+  const asideVisible = await aside
+    .waitFor({ state: 'visible', timeout: 1500 })
+    .then(() => true)
+    .catch(() => false)
+  if (asideVisible) return
+
   const hamburger = page.getByRole('button', { name: /abrir men[uú]/i })
-  if (await hamburger.isVisible({ timeout: 1000 }).catch(() => false)) {
+  const hamburgerVisible = await hamburger
+    .waitFor({ state: 'visible', timeout: 1500 })
+    .then(() => true)
+    .catch(() => false)
+  if (hamburgerVisible) {
     await hamburger.click()
   }
 }

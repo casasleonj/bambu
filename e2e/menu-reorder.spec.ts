@@ -1,5 +1,5 @@
 import type { Page, Locator } from '@playwright/test'
-import { test, expect, loginAs, BASE } from './fixtures'
+import { test, expect, loginAs, BASE, openSidebarIfMobile } from './fixtures'
 
 async function dragHandleAbove(page: Page, sourceHandle: Locator, targetHandle: Locator) {
   const sourceBox = await sourceHandle.boundingBox()
@@ -37,6 +37,10 @@ test.describe('Menú reorganizable', () => {
     await page.goto(`${BASE}/dashboard`)
 
     // Entrar en modo edición via el botón de opciones del sidebar.
+    // FIX: en mobile el sidebar (aside) no está en el DOM hasta abrir el
+    // drawer con el botón hamburguesa (AGENTS.md #24 -- mismo patrón que
+    // openSidebarIfMobile usa en otros specs).
+    await openSidebarIfMobile(page)
     const optionsBtn = page.getByTestId('sidebar-menu-options')
     await expect(optionsBtn).toBeVisible()
     await optionsBtn.click()
@@ -103,6 +107,7 @@ test.describe('Menú reorganizable', () => {
     await page.goto(`${BASE}/dashboard`)
 
     // Entrar en modo edición y mover Productos arriba de Clientes.
+    await openSidebarIfMobile(page)
     await page.getByTestId('sidebar-menu-options').click()
     await page.getByRole('menuitem', { name: 'Personalizar menú' }).click()
     await expect(page.getByTestId('sidebar-menu-done')).toBeVisible({ timeout: 10000 })
@@ -119,6 +124,7 @@ test.describe('Menú reorganizable', () => {
     expect(productosIdx).toBeLessThan(clientesIdx)
 
     // Volver a entrar en modo edición y restablecer.
+    await openSidebarIfMobile(page)
     await page.getByTestId('sidebar-menu-options').click()
     await page.getByRole('menuitem', { name: 'Personalizar menú' }).click()
     await page.getByRole('button', { name: 'Restablecer' }).click()
