@@ -93,7 +93,15 @@ export function usePedidos(
     if (params?.atrasados) url.searchParams.set('atrasados', 'true')
     if (params?.enRiesgo) url.searchParams.set('enRiesgo', 'true')
     return url.toString()
-  }, [params, options?.all])
+    // paramsKey (no params/options?.all) es deliberado: params es un objeto
+    // nuevo en cada render en varios consumidores (ej. usePedidos({ atrasados: true }, ...)),
+    // por lo que depender de su referencia recrea buildUrl -> fetchPedidos -> refetch
+    // en cada render y causa loops de fetch en consumidores que gatillan refetch()
+    // desde un efecto propio keyed en la identidad de esa función (ver incidente
+    // "bucle de requests en Pedidos"). paramsKey serializa el mismo contenido y
+    // es un string estable por valor entre renders con params equivalentes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paramsKey])
 
   const fetchPedidos = useCallback(async () => {
     // Cancel previous request and mark this generation as current.
