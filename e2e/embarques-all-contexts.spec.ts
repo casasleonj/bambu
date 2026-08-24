@@ -259,7 +259,18 @@ test.describe('Embarques — Stock Estimado UI', () => {
   let p: Page
 
   test.beforeAll(async ({ browser }) => { p = await sharedPageLogin(browser) })
-  test.afterAll(async () => { await p?.close() })
+  test.afterAll(async () => {
+    // FIX: sin este cleanup, stock_estimado_hoy queda seteado con valores
+    // bajos (agua:50, hielo:30) en el Config global -- cualquier OTRO spec
+    // del mismo shard que cree embarques con PACA_AGUA hoy hereda ese techo
+    // compartido (src/lib/stock.ts getStockDisponible: stockBase.PACA_AGUA =
+    // max(cierre, stockEstimado) y se resta por cada embarque creado), y
+    // puede agotarse -> "Stock insuficiente" (400) en tests que no tienen
+    // nada que ver con Stock Estimado. Repro real: embarques-fisico.spec.ts
+    // empezó a fallar en cadena tras correr esta suite en la misma DB.
+    await apiDelete(p, '/api/stock-estimado').catch(() => {})
+    await p?.close()
+  })
 
   test('ADMIN ve botón de stock estimado en header', async () => {
     await gotoEmbarques(p)
@@ -277,7 +288,7 @@ test.describe('Embarques — Stock Estimado UI', () => {
   test('click en stock estimado abre modal', async () => {
     await gotoEmbarques(p)
     await p.locator('button:has-text("Stock Estimado"), button:has-text("Stock:")').first().click()
-    await expect(p.locator('text=Stock Estimado').first()).toBeVisible()
+    await expect(p.locator('[role="dialog"] :text("Stock Estimado")').first()).toBeVisible()
   })
 
   test('crear stock estimado via modal', async () => {
@@ -291,7 +302,12 @@ test.describe('Embarques — Stock Estimado UI', () => {
       await inputs.nth(1).fill('50')
     }
     // Click Crear/Actualizar button
-    const saveBtn = p.locator('button:has-text("Crear"), button:has-text("Actualizar")').first()
+    // FIX: sin scoping al dialog, "Crear" hace substring-match también con
+    // el botón "+ Crear Embarque" del EmptyState (visible detrás del modal
+    // cuando no hay embarques para el filtro activo), que queda primero en
+    // el DOM. .first() resolvía a ese botón de fondo, tapado por el overlay
+    // del modal -> "element intercepts pointer events" hasta timeout.
+    const saveBtn = p.locator('[role="dialog"] button:has-text("Crear"), [role="dialog"] button:has-text("Actualizar")').first()
     if (await saveBtn.isVisible().catch(() => false)) {
       await saveBtn.click()
       // FIX: Locator.isVisible({timeout}) NO espera -- el `timeout` está
@@ -311,7 +327,7 @@ test.describe('Embarques — Stock Estimado UI', () => {
     // Click the stock button (shows "Stock: 80/40" when active)
     const stockBtn = p.locator('button:has-text("Stock")').first()
     await stockBtn.click()
-    await expect(p.locator('text=Stock Estimado').first()).toBeVisible()
+    await expect(p.locator('[role="dialog"] :text("Stock Estimado")').first()).toBeVisible()
   })
 
   test('crear stock estimado con botellon via API', async () => {

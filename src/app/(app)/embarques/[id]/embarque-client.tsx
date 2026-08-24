@@ -204,6 +204,7 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
   const [removingId, setRemovingId] = useState<string | null>(null)
   const [submittingAction, setSubmittingAction] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'pedidos' | 'clientes' | 'fisico'>('pedidos')
+  const [actionsMenuOpen, setActionsMenuOpen] = useState(false)
   const [showAssignModal, setShowAssignModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [availablePedidos, setAvailablePedidos] = useState<Pedido[]>([])
@@ -500,52 +501,67 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
             >
               {submittingAction === 'enviar' ? 'Enviando...' : primaryAction.label}
             </button>
-            <div className="relative group">
+            <div className="relative">
               <button
                 data-testid="embarque-actions-menu"
+                onClick={() => setActionsMenuOpen(!actionsMenuOpen)}
                 className="px-3 py-2.5 border rounded-lg hover:bg-gray-50 transition"
                 aria-label="Más acciones"
               >
                 ⋯
               </button>
-              <div className="absolute right-0 top-full mt-1 w-56 bg-white rounded-lg shadow-lg border py-1 hidden group-hover:block hover:block z-10">
-                {isOpen && (
-                  <>
-                    <button
-                      data-testid="asignar-pedidos-button"
-                      onClick={() => setShowAssignModal(true)}
-                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition"
-                    >
-                      Asignar pedidos
-                    </button>
-                    <button
-                      data-testid="editar-embarque-button"
-                      onClick={handleEditar}
-                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition"
-                    >
-                      Editar
-                    </button>
-                    <hr className="my-1" />
-                    <button
-                      data-testid="cancelar-embarque-button"
-                      onClick={handleCancelar}
-                      disabled={submittingAction === 'cancelar'}
-                      className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition disabled:opacity-50"
-                    >
-                      {submittingAction === 'cancelar' ? 'Cancelando...' : 'Cancelar embarque'}
-                    </button>
-                  </>
-                )}
-                {isEnRuta && (
-                  <button
-                    data-testid="asignar-pedidos-button"
-                    onClick={() => setShowAssignModal(true)}
-                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition"
-                  >
-                    Asignar pedidos
-                  </button>
-                )}
-              </div>
+              {actionsMenuOpen && (
+                <>
+                  {/* Click catcher: cierra el menú al tocar/click fuera, sin
+                      listener global en `document` (mismo patrón que el
+                      dropdown de usuario en header.tsx -- ese comentario
+                      documenta por qué un listener global de mousedown/click
+                      falla en React 19 + Playwright mobile emulation). */}
+                  <div
+                    className="fixed inset-0 z-10"
+                    onClick={() => setActionsMenuOpen(false)}
+                    aria-hidden="true"
+                  />
+                  <div className="absolute right-0 top-full mt-1 w-56 bg-white rounded-lg shadow-lg border py-1 z-20">
+                    {isOpen && (
+                      <>
+                        <button
+                          data-testid="asignar-pedidos-button"
+                          onClick={() => { setShowAssignModal(true); setActionsMenuOpen(false) }}
+                          className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition"
+                        >
+                          Asignar pedidos
+                        </button>
+                        <button
+                          data-testid="editar-embarque-button"
+                          onClick={() => { handleEditar(); setActionsMenuOpen(false) }}
+                          className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition"
+                        >
+                          Editar
+                        </button>
+                        <hr className="my-1" />
+                        <button
+                          data-testid="cancelar-embarque-button"
+                          onClick={() => { handleCancelar(); setActionsMenuOpen(false) }}
+                          disabled={submittingAction === 'cancelar'}
+                          className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition disabled:opacity-50"
+                        >
+                          {submittingAction === 'cancelar' ? 'Cancelando...' : 'Cancelar embarque'}
+                        </button>
+                      </>
+                    )}
+                    {isEnRuta && (
+                      <button
+                        data-testid="asignar-pedidos-button"
+                        onClick={() => { setShowAssignModal(true); setActionsMenuOpen(false) }}
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition"
+                      >
+                        Asignar pedidos
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}

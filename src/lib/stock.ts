@@ -44,7 +44,7 @@ export async function getStockEstimadoHoy(): Promise<StockEstimado | null> {
 }
 
 export async function setStockEstimadoHoy(agua: number, hielo: number, botellon: number): Promise<void> {
-  const today = new Date().toISOString().split('T')[0]
+  const today = getTodayString()
   await prisma.config.upsert({
     where: { clave: 'stock_estimado_hoy' },
     update: { valor: JSON.stringify({ agua, hielo, botellon, fecha: today }) },
