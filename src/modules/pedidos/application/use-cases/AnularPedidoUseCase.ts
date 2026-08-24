@@ -24,6 +24,13 @@ export class AnularPedidoUseCase {
     pedido: import('../dto').PedidoResumenDTO
     deduped?: boolean
     notaCredito?: { numero: string; pedidoId: string; monto: number; motivo: string }
+    // Siempre 0: este use case no cascadea la anulación a pedidos hijos
+    // (creados por entregas parciales vía crearPedidoHijo()) -- cascade
+    // cancelation es trabajo futuro (Plan Maestro, Fase 7). El campo
+    // existe para que los clientes de la API (offline sync, UI) tengan
+    // un contrato estable ahora; cuando se implemente el cascade real,
+    // este valor deja de ser una constante.
+    hijosAnulados: number
   }> {
     // FASE 0 (ADR-CONCURRENCIA-001): lock `SECUENCIA:notaCredito`. La NC se
     // genera con getNextNumero(model:'notaCredito') MAX+1, por lo que exige
@@ -39,6 +46,7 @@ export class AnularPedidoUseCase {
         return {
           pedido: PedidoDTOMapper.toResumen(pedido),
           deduped: true,
+          hijosAnulados: 0,
         }
       }
 
@@ -51,6 +59,7 @@ export class AnularPedidoUseCase {
         return {
           pedido: PedidoDTOMapper.toResumen(pedido),
           deduped: true,
+          hijosAnulados: 0,
         }
       }
 
@@ -94,7 +103,7 @@ export class AnularPedidoUseCase {
         datos: { motivo: input.motivo, notaCredito: tuvoPagos },
       }, tx)
 
-      return { pedido: PedidoDTOMapper.toResumen(updated), notaCredito }
+      return { pedido: PedidoDTOMapper.toResumen(updated), notaCredito, hijosAnulados: 0 }
     })
   }
 }

@@ -183,7 +183,15 @@ export class CerrarEmbarqueUseCase {
       })
 
       // 9. Reconcile cash before closing to detect faltante de caja.
-      const pagosColeccionados = coleccionarPagos(pedidosRaw, input.ventasLibres ?? [])
+      // FIX: `pedidosRaw` (paso 2) se leyó ANTES del loop de procesamiento
+      // (paso 3), que es donde ProcesarPedidoService realmente crea los
+      // `Pago` de este cierre (tx.pago.create, procesar-pedido.service.ts).
+      // Usar `pedidosRaw` acá tomaba un snapshot de pagos previo al cierre
+      // -- para un pedido DOMICILIO normal (se paga a la entrega, no antes)
+      // eso siempre daba efectivoEsperado=0 y sobranteFaltante=dineroEntregado
+      // completo, como si no se hubiera cobrado nada. Se re-lee fresco.
+      const pedidosConPagosFrescos = await this.fetchPedidosForEmbarque(input.id, client)
+      const pagosColeccionados = coleccionarPagos(pedidosConPagosFrescos, input.ventasLibres ?? [])
       const gastosTotal = (input.gastos ?? []).reduce((sum, g) => sum + (g.monto || 0), 0)
       const caja = calcularCajaFinal(
         this.cierreService,

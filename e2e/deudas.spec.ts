@@ -518,27 +518,56 @@ test.describe('Deudas + Nomina Integration', () => {
     const tid = trabajador.trabajador.id
 
     // Create debt
+    // FIX: la deuda debe caber dentro de lo pagable en el período (comisión
+    // de 5 PACA_AGUA * comRepartAgua=500 = 2500 -- ver createTrabajador en
+    // fixtures.ts) para que este test (que verifica pago COMPLETO,
+    // montoPendiente=0) sea alcanzable. calcularDeduccionesDeuda() nunca
+    // descuenta más de lo disponible (src/lib/nomina-deudas.ts); el caso de
+    // deuda mayor al disponible ya lo cubre el siguiente test ("nomina con
+    // deuda mayor al total deja remanente").
     await createDeuda(page, {
       trabajadorId: tid,
       tipo: 'PRESTAMO',
-      monto: 50000,
+      monto: 2000,
       descripcion: 'Prestamo antes de nomina'})
 
     // Create a closed embarque with deliveries for commissions
     const cliente = await createCliente(page)
     const pedidoRes = await apiPost(page, '/api/pedidos', {
       clienteId: cliente.cliente.id,
-      canal: 'PUNTO',
-      ventaRapida: true,
-      items: [{ producto: 'PACA_AGUA', cantidad: 5 }],
-      pagos: [{ metodo: 'EFECTIVO', monto: 25000 }]})
-    const pedidoId = (await pedidoRes.json()).pedido.id
+      // FIX: canal PUNTO + ventaRapida:true crea un pedido ya ENTREGADO al
+      // crearse (venta de mostrador -- Pedido.estado se sincroniza a
+      // estadoEntrega='ENTREGADO' en la creación, ver
+      // PedidoMapper.toPrismaCreate). Un pedido así nunca puede pasar por
+      // /enviar (exige estado=PENDIENTE) -- rechaza con PEDIDO_NOT_PENDIENTE
+      // silenciosamente porque el test no verificaba el status de esa
+      // respuesta, dejando el embarque sin pedidos y el cierre posterior con
+      // conciliacion/comisiones en 0/undefined. DOMICILIO + ventaRapida:false
+      // es el patrón real de un pedido que se despacha por embarque, usado
+      // consistentemente en embarques-fixes.spec.ts/embarques-dedicado.spec.ts.
+      canal: 'DOMICILIO',
+      ventaRapida: false,
+      // FIX: sin pagos al crear -- un pedido DOMICILIO se cobra en el
+      // cierre del embarque (ver pedidos[0].pagos abajo), no al crearse.
+      // Pagar acá también duplicaba el monto y excedía el total real del
+      // pedido (PAGOS_EXCEDIDOS).
+      items: [{ producto: 'PACA_AGUA', cantidad: 5 }]})
+    const pedidoJson = (await pedidoRes.json()).pedido
+    const pedidoId = pedidoJson.id
+    const totalReal = Number(pedidoJson.total)
 
     const embarqueRes = await createEmbarque(page, tid)
     const embarqueId = embarqueRes.embarque.id
 
     // Send embarque
     await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, { embarqueId })
+    // FIX: adjuntar un pedido al embarque no transiciona el EMBARQUE mismo a
+    // EN_RUTA -- son dos operaciones distintas. cerrar() exige que el
+    // embarque esté EN_RUTA (transicion ABIERTO->CERRADO directa está
+    // prohibida: "Transicion invalida: ABIERTO -> CERRADO. Permitidas:
+    // EN_RUTA, CANCELADO"). Sin esta llamada, cerrar() fallaba con 400 y el
+    // test no lo notaba porque no verificaba el status de esa respuesta.
+    await apiPost(page, `/api/embarques/${embarqueId}/enviar`, {})
 
     // Close embarque
     await apiPost(page, `/api/embarques/${embarqueId}/cerrar`, {
@@ -553,7 +582,7 @@ test.describe('Deudas + Nomina Integration', () => {
           cBolsaAguaEnt: 0,
           cBolsaHieloEnt: 0},
         pagado: 'COMPLETO',
-        pagos: [{ metodo: 'EFECTIVO', monto: 25000 }]}],
+        pagos: [{ metodo: 'EFECTIVO', monto: totalReal }]}],
       ventasLibres: [],
       productos: [
         { producto: 'PACA_AGUA', devueltas: 0, cambios: 0, rotas: 0 },
@@ -563,7 +592,7 @@ test.describe('Deudas + Nomina Integration', () => {
         { producto: 'BOLSA_HIELO', devueltas: 0, cambios: 0, rotas: 0 },
       ],
       gastos: [],
-      dineroEntregado: 25000})
+      dineroEntregado: totalReal})
 
     // Create nomina
     const today = new Date()
@@ -581,7 +610,7 @@ test.describe('Deudas + Nomina Integration', () => {
 
     // Verify debt was deducted
     const descuentoDeudas = nominaBody.detalles.descuentoDeudas
-    expect(descuentoDeudas).toBe(50000)
+    expect(descuentoDeudas).toBe(2000)
 
     // Verify debt was reduced
     const deudasRes = await apiGet(page, `/api/deudas?trabajadorId=${tid}`)
@@ -699,17 +728,29 @@ test.describe('Embarque Cash Reconciliation', () => {
     const cliente = await createCliente(page)
     const pedidoRes = await apiPost(page, '/api/pedidos', {
       clienteId: cliente.cliente.id,
-      canal: 'PUNTO',
-      ventaRapida: true,
-      items: [{ producto: 'PACA_AGUA', cantidad: 3 }],
-      pagos: [{ metodo: 'EFECTIVO', monto: 15000 }]})
-    const pedidoId = (await pedidoRes.json()).pedido.id
+      canal: 'DOMICILIO',
+      ventaRapida: false,
+      items: [{ producto: 'PACA_AGUA', cantidad: 3 }]})
+    const pedidoJson = (await pedidoRes.json()).pedido
+    const pedidoId = pedidoJson.id
+    // FIX: el precio real depende del tier de volumen (ver
+    // src/modules/pedidos/.../precio-volumen), no es un monto fijo -- usar
+    // el total que la API realmente calculó en vez de un monto hardcodeado
+    // evita PAGOS_EXCEDIDOS si el pricing cambia.
+    const totalReal = Number(pedidoJson.total)
 
     const embarqueRes = await createEmbarque(page, tid)
     const embarqueId = embarqueRes.embarque.id
 
     // Send
     await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, { embarqueId })
+    // FIX: adjuntar un pedido al embarque no transiciona el EMBARQUE mismo a
+    // EN_RUTA -- son dos operaciones distintas. cerrar() exige que el
+    // embarque esté EN_RUTA (transicion ABIERTO->CERRADO directa está
+    // prohibida: "Transicion invalida: ABIERTO -> CERRADO. Permitidas:
+    // EN_RUTA, CANCELADO"). Sin esta llamada, cerrar() fallaba con 400 y el
+    // test no lo notaba porque no verificaba el status de esa respuesta.
+    await apiPost(page, `/api/embarques/${embarqueId}/enviar`, {})
 
     // Close with LESS cash than expected (simulating lost bill)
     const cerrarRes = await apiPost(page, `/api/embarques/${embarqueId}/cerrar`, {
@@ -724,7 +765,7 @@ test.describe('Embarque Cash Reconciliation', () => {
           cBolsaAguaEnt: 0,
           cBolsaHieloEnt: 0},
         pagado: 'COMPLETO',
-        pagos: [{ metodo: 'EFECTIVO', monto: 15000 }]}],
+        pagos: [{ metodo: 'EFECTIVO', monto: totalReal }]}],
       ventasLibres: [],
       productos: [
         { producto: 'PACA_AGUA', devueltas: 0, cambios: 0, rotas: 0 },
@@ -734,17 +775,23 @@ test.describe('Embarque Cash Reconciliation', () => {
         { producto: 'BOLSA_HIELO', devueltas: 0, cambios: 0, rotas: 0 },
       ],
       gastos: [],
-      dineroEntregado: 10000, // Less than 15000 received = 5000 deficit
+      dineroEntregado: totalReal - 5000, // Less than received = 5000 deficit
     })
 
     const cerrarBody = await cerrarRes.json()
     expect(cerrarBody.success).toBe(true)
 
-    // Cash reconciliation data should be present
-    const conciliacion = cerrarBody.conciliacion
-    expect(conciliacion.totalEfectivoRecibido).toBe(15000)
-    expect(conciliacion.dineroEntregado).toBe(10000)
-    expect(conciliacion.deficitCaja).toBe(-5000) // Negative = deficit
+    // FIX: la data de reconciliación de caja vive en `caja`, no en
+    // `conciliacion` (ese campo es para discrepancias de PRODUCTO --
+    // totalCargado/totalEntregado/discrepancias -- ver CierrePresenter.ts).
+    // `caja` usa otros nombres: efectivoEsperado (= pagos EFECTIVO
+    // recibidos), dineroEntregadoReportado, sobranteFaltante (=
+    // dineroEntregado - efectivoReal, mismo signo que el "deficitCaja"
+    // negativo que este test espera -- ver cerrar-embarque-caja.helper.ts).
+    const caja = cerrarBody.caja
+    expect(caja.efectivoEsperado).toBe(totalReal)
+    expect(caja.dineroEntregadoReportado).toBe(totalReal - 5000)
+    expect(caja.sobranteFaltante).toBe(-5000) // Negative = deficit
   })
 
   test('cierre con cuadre perfecto retorna deficitCaja = 0', async ({ page }) => {
@@ -758,16 +805,24 @@ test.describe('Embarque Cash Reconciliation', () => {
     const cliente = await createCliente(page)
     const pedidoRes = await apiPost(page, '/api/pedidos', {
       clienteId: cliente.cliente.id,
-      canal: 'PUNTO',
-      ventaRapida: true,
-      items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
-      pagos: [{ metodo: 'EFECTIVO', monto: 10000 }]})
-    const pedidoId = (await pedidoRes.json()).pedido.id
+      canal: 'DOMICILIO',
+      ventaRapida: false,
+      items: [{ producto: 'PACA_AGUA', cantidad: 2 }]})
+    const pedidoJson = (await pedidoRes.json()).pedido
+    const pedidoId = pedidoJson.id
+    const totalReal = Number(pedidoJson.total)
 
     const embarqueRes = await createEmbarque(page, tid)
     const embarqueId = embarqueRes.embarque.id
 
     await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, { embarqueId })
+    // FIX: adjuntar un pedido al embarque no transiciona el EMBARQUE mismo a
+    // EN_RUTA -- son dos operaciones distintas. cerrar() exige que el
+    // embarque esté EN_RUTA (transicion ABIERTO->CERRADO directa está
+    // prohibida: "Transicion invalida: ABIERTO -> CERRADO. Permitidas:
+    // EN_RUTA, CANCELADO"). Sin esta llamada, cerrar() fallaba con 400 y el
+    // test no lo notaba porque no verificaba el status de esa respuesta.
+    await apiPost(page, `/api/embarques/${embarqueId}/enviar`, {})
 
     const cerrarRes = await apiPost(page, `/api/embarques/${embarqueId}/cerrar`, {
       pedidos: [{
@@ -781,7 +836,7 @@ test.describe('Embarque Cash Reconciliation', () => {
           cBolsaAguaEnt: 0,
           cBolsaHieloEnt: 0},
         pagado: 'COMPLETO',
-        pagos: [{ metodo: 'EFECTIVO', monto: 10000 }]}],
+        pagos: [{ metodo: 'EFECTIVO', monto: totalReal }]}],
       ventasLibres: [],
       productos: [
         { producto: 'PACA_AGUA', devueltas: 0, cambios: 0, rotas: 0 },
@@ -791,11 +846,11 @@ test.describe('Embarque Cash Reconciliation', () => {
         { producto: 'BOLSA_HIELO', devueltas: 0, cambios: 0, rotas: 0 },
       ],
       gastos: [],
-      dineroEntregado: 10000, // Exact match
+      dineroEntregado: totalReal, // Exact match
     })
 
     const cerrarBody = await cerrarRes.json()
-    expect(cerrarBody.conciliacion.deficitCaja).toBe(0)
+    expect(cerrarBody.caja.sobranteFaltante).toBe(0)
   })
 })
 
