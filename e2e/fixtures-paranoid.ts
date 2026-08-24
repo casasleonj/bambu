@@ -364,7 +364,9 @@ export function resetTestDatabase() {
   const root = resolve(__dirname, '..')
   // Routed through reset-locked.ts (Postgres advisory lock) — see
   // e2e/fixtures.ts and prisma/reset-locked.ts for the full rationale.
-  execSync('npx tsx prisma/reset-locked.ts test', { cwd: root, stdio: 'ignore' })
+  // DIAGNOSTIC (temporal, ver AGENTS.md Known Issue #20) — mismo motivo que
+  // e2e/fixtures.ts: stdio 'inherit' para ver el output de clean.ts en CI.
+  execSync('npx tsx prisma/reset-locked.ts test', { cwd: root, stdio: 'inherit' })
 }
 
 // ─── Screenshot on failure ───────────────────────────────────────────────────

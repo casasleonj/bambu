@@ -37,14 +37,22 @@ export function resetTestDatabase() {
   // Routed through reset-locked.ts (Postgres advisory lock) so that two
   // workers' beforeAll/beforeEach hooks never interleave their clean+seed
   // sequences. See prisma/reset-locked.ts for the full rationale.
-  execSync('npx tsx prisma/reset-locked.ts test', { cwd: root, stdio: 'ignore' })
+  // DIAGNOSTIC (temporal, ver AGENTS.md Known Issue #20): stdio 'inherit' en
+  // vez de 'ignore' para que el output de clean.ts (incluido el retry de
+  // lock_timeout del fix b3162bbf: "Cleaned X"/"Lock contention on X,
+  // retrying...") aparezca en los logs de CI. Sin esto no hay forma de saber
+  // si ese retry se dispara. Revertir a 'ignore' una vez recolectada evidencia
+  // de un run real, para no inflar el log de cada test con ruido permanente.
+  execSync('npx tsx prisma/reset-locked.ts test', { cwd: root, stdio: 'inherit' })
 }
 
 // ─── Database Cleanup ────────────────────────────────────────────────────────
 
 export function resetDatabase() {
   const root = resolve(__dirname, '..')
-  execSync('npx tsx prisma/reset-locked.ts full', { cwd: root, stdio: 'ignore' })
+  // DIAGNOSTIC (temporal, ver AGENTS.md Known Issue #20) — mismo motivo que
+  // resetTestDatabase() arriba.
+  execSync('npx tsx prisma/reset-locked.ts full', { cwd: root, stdio: 'inherit' })
 }
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
