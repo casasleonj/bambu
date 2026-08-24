@@ -23,8 +23,13 @@ test.describe('Flujo completo de usuario', () => {
     await page.waitForURL(/.*dashboard/, { timeout: 30000 })
     await expect(page.locator('body')).toContainText('Dashboard', { timeout: 10000 })
 
-    // Esperar a que todas las requests del dashboard terminen
-    await page.waitForLoadState('networkidle', { timeout: 10000 })
+    // FIX: 'networkidle' nunca resuelve de forma confiable en páginas
+    // autenticadas -- RealtimeProvider mantiene una conexión SSE persistente
+    // a /api/realtime (mismo motivo ya documentado en otros specs, ej.
+    // dos-ventas-rapidas-mismo-cliente.spec.ts: "SSE keeps connection
+    // open"). Confirmado en CI real: timeout consistente en mobile aunque
+    // pasaba la mayoría de las veces en desktop (dependía de timing).
+    await page.waitForLoadState('domcontentloaded')
 
     // 2. Clientes
     await page.goto(`${BASE_URL}/clientes`)
@@ -90,13 +95,25 @@ test.describe('Flujo completo de usuario', () => {
     await page.fill('input[type="password"]', 'admin123')
     await page.click('button:has-text("Ingresar")')
     await page.waitForURL(/.*dashboard/, { timeout: 30000 })
-    await page.waitForLoadState('networkidle', { timeout: 15000 })
+    // FIX: ver comentario del test anterior -- 'networkidle' no resuelve de
+    // forma confiable con la conexión SSE de RealtimeProvider abierta, así
+    // que un `await` directo puede colgarse hasta agotar el timeout
+    // completo. Pero un timeout fijo corto tampoco alcanza: si se navega a
+    // la siguiente página ANTES de que el fetch de datos de la página
+    // actual (useEffect post-mount, ej. FacturasPage.fetchFacturas)
+    // termine, el navegador aborta ese fetch a mitad de camino -- "TypeError:
+    // Failed to fetch" real en consola, no un falso positivo del test.
+    // Se usa 'networkidle' igual, pero con un timeout acotado y un catch:
+    // si SÍ llega a estar idle (caso común, sin la conexión SSE
+    // bloqueando), resuelve rápido; si no, el timeout igual da la misma
+    // ventana de asentamiento sin colgar el test.
+    await page.waitForLoadState('networkidle', { timeout: 4000 }).catch(() => {})
 
     // Navegar por páginas clave
     const pages = ['/pedidos', '/clientes', '/facturas', '/cierre', '/productos']
     for (const path of pages) {
       await page.goto(`${BASE_URL}${path}`)
-      await page.waitForLoadState('networkidle', { timeout: 10000 })
+      await page.waitForLoadState('networkidle', { timeout: 4000 }).catch(() => {})
     }
 
     expect(consoleErrors).toHaveLength(0)

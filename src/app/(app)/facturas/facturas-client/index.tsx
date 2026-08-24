@@ -223,7 +223,7 @@ export default function FacturasPage() {
   }
 
   const handleDateChange = useCallback((desde: string | null, hasta: string | null) => {
-    setDateRange({ desde, hasta })
+    setDateRange(prev => (prev.desde === desde && prev.hasta === hasta) ? prev : { desde, hasta })
     setPage(1)
   }, [])
 

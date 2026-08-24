@@ -99,3 +99,4 @@ screenshots/
 # PWA screenshots referenced by manifest.json
 !public/screenshots/
 !public/screenshots/*.png
+dump.rdb
