@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useBaseCaja } from '@/hooks/use-base-caja'
 import { todayInBogota } from '@/lib/date-helpers'
 import { fetchResilient } from '@/lib/fetch-resilient'
+import { fetchBaseCajaStatus } from '@/lib/client/base-caja-status'
 import { logger } from '@/lib/logger'
 
 export type CajaBaseEditorState =
@@ -45,24 +46,18 @@ export function useBaseCajaEditor() {
     async function load() {
       const today = todayInBogota()
       try {
-        const [cierreRes, configRes] = await Promise.all([
-          fetch('/api/cierre/last'),
-          fetch(`/api/config?clave=BASE_DIA_${today}`),
-        ])
+        const { cierre, configHoy } = await fetchBaseCajaStatus(today)
 
         if (cancelled) return
 
-        const cierreData = cierreRes.ok ? await cierreRes.json() : { cierre: null }
-        const cierreDate = cierreData.cierre
-          ? new Date(cierreData.cierre.fecha).toLocaleDateString('en-CA', {
+        const cierreDate = cierre
+          ? new Date(cierre.fecha).toLocaleDateString('en-CA', {
               timeZone: 'America/Bogota',
             })
           : null
         const todayClosed = cierreDate === today
 
-        const baseValue: string | null = configRes.ok
-          ? (await configRes.json()).config?.valor ?? null
-          : null
+        const baseValue: string | null = configHoy?.valor ?? null
 
         if (cancelled) return
 
