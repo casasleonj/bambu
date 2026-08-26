@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { useBaseCaja } from '@/hooks/use-base-caja'
 import { todayInBogota, startOfDayInBogota } from '@/lib/date-helpers'
+import { fetchBaseCajaStatus } from '@/lib/client/base-caja-status'
 
 export default function BaseCajaModal() {
   const router = useRouter()
@@ -81,56 +82,53 @@ export default function BaseCajaModal() {
         }
       }
 
-      const [cierreRes, configRes, defaultRes] = await Promise.all([
-        fetch('/api/cierre/last'),
-        fetch(`/api/config?clave=BASE_DIA_${today}`),
-        fetch('/api/config?clave=BASE_DIA'),
-      ])
+      // Mismo fetch (cierre/last + config del día) que usa CajaBaseHeader —
+      // deduplicado vía fetchBaseCajaStatus para no pagar 2 round-trips
+      // redundantes cada vez que carga una página con sidebar.
+      const { cierre, configHoy } = await fetchBaseCajaStatus(today)
 
-      if (cierreRes.ok) {
-        const cierreData = await cierreRes.json()
-        if (cierreData.cierre) {
-          const cierreDate = new Date(cierreData.cierre.fecha).toLocaleDateString('en-CA', {
-            timeZone: 'America/Bogota',
-          })
+      if (cierre) {
+        const cierreDate = new Date(cierre.fecha).toLocaleDateString('en-CA', {
+          timeZone: 'America/Bogota',
+        })
 
-          if (cierreDate === today) {
-            // Today already closed — do not prompt for base.
-            setStatus('ready')
-            return
-          }
-
-          const yesterdayDate = new Date(startOfDayInBogota(today))
-          yesterdayDate.setDate(yesterdayDate.getDate() - 1)
-          const yesterday = yesterdayDate.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
-
-          if (cierreDate !== yesterday) {
-            const nextUnclosed = new Date(cierreData.cierre.fecha)
-            nextUnclosed.setDate(nextUnclosed.getDate() + 1)
-            const targetDate = nextUnclosed.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
-            toast.warning(`Hay cierres pendientes desde ${cierreDate}. Revisá /cierre?fecha=${targetDate}`, {
-              duration: 8000,
-              action: {
-                label: 'Ir →',
-                onClick: () => router.push(`/cierre?fecha=${targetDate}`),
-              },
-            })
-            // Continue to base prompt; do not force redirect.
-          }
-        }
-      }
-
-      if (configRes.ok) {
-        const configData = await configRes.json()
-        if (configData.config) {
-          persistBaseDia(configData.config.valor)
+        if (cierreDate === today) {
+          // Today already closed — do not prompt for base.
           setStatus('ready')
           return
         }
+
+        const yesterdayDate = new Date(startOfDayInBogota(today))
+        yesterdayDate.setDate(yesterdayDate.getDate() - 1)
+        const yesterday = yesterdayDate.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+
+        if (cierreDate !== yesterday) {
+          const nextUnclosed = new Date(cierre.fecha)
+          nextUnclosed.setDate(nextUnclosed.getDate() + 1)
+          const targetDate = nextUnclosed.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+          toast.warning(`Hay cierres pendientes desde ${cierreDate}. Revisá /cierre?fecha=${targetDate}`, {
+            duration: 8000,
+            action: {
+              label: 'Ir →',
+              onClick: () => router.push(`/cierre?fecha=${targetDate}`),
+            },
+          })
+          // Continue to base prompt; do not force redirect.
+        }
       }
 
-      // No base for today yet. Use the global default as the initial value if available.
+      if (configHoy) {
+        persistBaseDia(configHoy.valor)
+        setStatus('ready')
+        return
+      }
+
+      // No base for today yet. Use the global default as the initial value
+      // if available — fetched solo acá (lazy), no en el Promise.all de
+      // arriba: en el caso común (ya hay base para hoy) esta request nunca
+      // hace falta.
       let defaultValue = ''
+      const defaultRes = await fetch('/api/config?clave=BASE_DIA')
       if (defaultRes.ok) {
         const defaultData = await defaultRes.json()
         if (defaultData.config?.valor) {

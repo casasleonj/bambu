@@ -303,11 +303,18 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   }, [redirectIfAuthError])
 
   useEffect(() => {
+    // Vistas autocontenidas atrasados/enRiesgo (ej. clic en "Verlos" del
+    // banner del dashboard) no usan `allPedidos` — tienen su propio hook
+    // más abajo. Pedir hasta 500 filas que nadie va a leer solo agrega
+    // tráfico en una red 2G/3G rural (ver AGENTS.md, perf de /pedidos).
+    // Al salir de esa vista (atrasadosParam/enRiesgoParam vuelven a false)
+    // este mismo efecto se re-ejecuta y sí dispara la carga.
+    if (atrasadosParam || enRiesgoParam) return
     // Fetch de datos al montar — side effect de red real, no derivable
     // durante el render.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadAllPedidos()
-  }, [loadAllPedidos])
+  }, [loadAllPedidos, atrasadosParam, enRiesgoParam])
 
   // cacheActive: el cache trajo el dataset completo (no truncado por el tope
   // de 500). Si el negocio supera el tope, cae a fallback server-filtrado.
@@ -355,16 +362,19 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   const loading = !hasLoadedOnce
 
   // Independent datasets for Fiados and Alertas tabs.
-  // Eager background fetch on mount (not blocking the main list render).
-  // The hooks fire on mount with autoFetch=true, but since the main list hook
-  // is independent, the initial page render is not blocked by these fetches.
-  // refetchOnParamsChange=false is only for the main list hook (it uses RSC).
+  // Eager background fetch (not blocking the main list render), pero NO en
+  // el mount mismo: autoFetch:false + trigger explícito más abajo, gateado
+  // en !atrasadosParam && !enRiesgoParam. Si el usuario entra directo a la
+  // vista "Verlos" (atrasados/enRiesgo), ninguna de las dos tabs es visible
+  // ahí — cargarlas de entrada solo suma tráfico en 2G/3G rural. Se cargan
+  // en cuanto el usuario vuelve a la vista normal (mismo idioma que el
+  // efecto de atrasados/enRiesgo unas líneas más abajo).
   const {
     pedidos: pedidosFiadosRaw,
     loading: loadingFiados,
     error: errorFiados,
     refetch: refetchFiados,
-  } = usePedidos({ scope: 'fiados' }, { all: true, autoFetch: true, refetchOnParamsChange: true })
+  } = usePedidos({ scope: 'fiados' }, { all: true, autoFetch: false, refetchOnParamsChange: true })
   const pedidosFiados = pedidosFiadosRaw as Pedido[]
 
   const {
@@ -372,8 +382,15 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     loading: loadingAlertas,
     error: errorAlertas,
     refetch: refetchAlertas,
-  } = usePedidos({ scope: 'alertas' }, { all: true, autoFetch: true, refetchOnParamsChange: true })
+  } = usePedidos({ scope: 'alertas' }, { all: true, autoFetch: false, refetchOnParamsChange: true })
   const pedidosAlertas = pedidosAlertasRaw as Pedido[]
+
+  useEffect(() => {
+    if (!atrasadosParam && !enRiesgoParam) {
+      refetchFiados()
+      refetchAlertas()
+    }
+  }, [atrasadosParam, enRiesgoParam, refetchFiados, refetchAlertas])
 
   // Vistas autocontenidas "atrasados"/"en riesgo": a diferencia de fiados/
   // alertas (siempre visibles vía badge), estas solo se piden cuando el
@@ -610,7 +627,14 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   // GET /api/clientes?all=true, un scan sin paginar de toda la tabla con 4
   // relaciones — antes bloqueaba la apertura del modal solo para encontrar
   // el ÚNICO cliente que ya se conocía por id.
+  // Se salta en las vistas autocontenidas atrasados/enRiesgo ("Verlos" del
+  // dashboard): el modal de nuevo pedido no es el foco de esa vista. Se
+  // carga en cuanto el usuario vuelve a la vista normal (mismo efecto,
+  // re-ejecutado por el cambio de atrasadosParam/enRiesgoParam), y como red
+  // de seguridad también al abrir el modal de nuevo pedido directamente
+  // desde ahí (ver efecto de showModal/showVentaRapida más abajo).
   useEffect(() => {
+    if (atrasadosParam || enRiesgoParam) return
     let cancelled = false
     ;(async () => {
       await Promise.all([fetchClientes(), fetchEmbarques()])
@@ -618,7 +642,19 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     })()
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [atrasadosParam, enRiesgoParam])
+
+  // Red de seguridad: si el usuario abre el modal de nuevo pedido/venta
+  // rápida directo desde la vista atrasados/enRiesgo (sin haber vuelto antes
+  // a la vista normal), clientes/embarques todavía pueden estar vacíos
+  // porque el efecto de arriba los saltó. Cargarlos on-demand en ese caso.
+  useEffect(() => {
+    if (!showModal && !showVentaRapida) return
+    if (clientes.length > 0) return
+    void fetchClientes()
+    void fetchEmbarques()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showModal, showVentaRapida])
 
   // Apertura del modal de "Nuevo Pedido" con cliente pre-seleccionado
   // (?new=1&clienteId=X, deep-link desde /clientes). Fetch targeted de un

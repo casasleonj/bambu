@@ -31,6 +31,19 @@ export default async function PedidosPage({
     }
   }
 
+  // Vistas autocontenidas "atrasados"/"enRiesgo" (clic en "Verlos" del banner
+  // del dashboard): PedidosClient las resuelve 100% client-side vía su propio
+  // usePedidos({atrasados|enRiesgo: true}) — igual que scope=fiados/alertas,
+  // este SSR nunca las usa como `initialPedidos` (ver render condicionado a
+  // atrasadosParam/enRiesgoParam en pedidos-client/index.tsx). Sin este
+  // early-return, cada clic en "Verlos" pagaba una query completa (+
+  // enriquecimiento de clientes/negocios) para el listado normal de "hoy"
+  // que se descartaba enterito — puro trabajo de servidor desperdiciado en
+  // una app pensada para 6 usuarios en 2G/3G rural.
+  if (params.get('atrasados') === 'true' || params.get('enRiesgo') === 'true') {
+    return <PedidosClient />
+  }
+
   const pagination = getPaginationParams(params)
   const desde = params.get('desde')
   const hasta = params.get('hasta')
