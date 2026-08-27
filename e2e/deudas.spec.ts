@@ -287,8 +287,9 @@ test.describe('Deudas UI', () => {
     await expect(row.locator('.text-red-600')).toHaveText('$ 75.000')
     // Worker name should appear
     await expect(page.getByText(trabajador.trabajador.nombre)).toBeVisible()
-    // Link to worker detail
-    const link = page.locator(`a[href="/trabajadores/${trabajador.trabajador.id}"]`)
+    // Link to worker detail. .first() -- the row has 2 links to the same
+    // href (the worker name and the "Ver detalle" action).
+    const link = page.locator(`a[href="/trabajadores/${trabajador.trabajador.id}"]`).first()
     await expect(link).toBeVisible()
   })
 
