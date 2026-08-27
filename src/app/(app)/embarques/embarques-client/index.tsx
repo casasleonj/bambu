@@ -550,6 +550,7 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
         rutas={rutas}
         mode={formMode}
         embarque={editingEmbarque}
+        guided={EMBARQUES_V2 && formMode === 'create'}
       />
 
       <AutoGenerarPreviewModal

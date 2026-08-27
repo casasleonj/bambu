@@ -3,7 +3,7 @@
 // cliente a partir de datos reales (estado + pedidos + carga), nunca se
 // persiste como estado nuevo en `Embarque.estado`.
 import { describe, it, expect } from 'vitest'
-import { derivarEstadoUI, toUIEstadoInput, contarPorFase, estadoBackendParaFase, derivarSiguientePaso } from '@/lib/embarque-ui-estado'
+import { derivarEstadoUI, toUIEstadoInput, contarPorFase, estadoBackendParaFase, derivarSiguientePaso, stepParaAccion } from '@/lib/embarque-ui-estado'
 
 describe('derivarEstadoUI — estados derivados del Command Center', () => {
   describe('ABIERTO → fases derivadas por precedencia', () => {
@@ -179,6 +179,31 @@ describe('derivarEstadoUI — estados derivados del Command Center', () => {
       expect(derivarSiguientePaso({ estado: 'CERRADO' }).accion).toBeNull()
       expect(derivarSiguientePaso({ estado: 'CANCELADO' }).label).toBeNull()
       expect(derivarSiguientePaso({ estado: 'CANCELADO' }).accion).toBeNull()
+    })
+  })
+
+  describe('stepParaAccion — deep-link del Preparation Flow (Fase 4)', () => {
+    it('mapea cada acción a su query param', () => {
+      expect(stepParaAccion('REGISTRAR_CARGA')).toBe('editar')
+      expect(stepParaAccion('ASIGNAR_PEDIDOS')).toBe('asignar')
+      expect(stepParaAccion('ENVIAR')).toBe('enviar')
+      expect(stepParaAccion('CERRAR')).toBe('cerrar')
+    })
+
+    it('null cuando no hay acción deep-linkeable', () => {
+      expect(stepParaAccion(null)).toBeNull()
+    })
+
+    it('la cadena de fases produce un step válido en cada paso no-terminal', () => {
+      for (const estado of [
+        { estado: 'ABIERTO', tienePedidos: false, totalUnidadesCarga: 0 }, // BORRADOR
+        { estado: 'ABIERTO', tienePedidos: false, totalUnidadesCarga: 5 }, // PREPARANDO
+        { estado: 'ABIERTO', tienePedidos: true }, // CONFIRMADO
+        { estado: 'EN_RUTA' }, // EN_RUTA
+      ]) {
+        const paso = derivarSiguientePaso(estado)
+        expect(stepParaAccion(paso.accion)).not.toBeNull()
+      }
     })
   })
 })

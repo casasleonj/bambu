@@ -196,3 +196,25 @@ export function derivarSiguientePaso(input: EmbarqueUIEstadoInput): SiguientePas
       return { fase, accion: null, label: null }
   }
 }
+
+/**
+ * Preparation Flow (Fase 4) — valor del query param `?step=` que deep-linkea
+ * a la acción del siguiente paso en el detalle del embarque. `null` si la
+ * acción no es deep-linkeable.
+ */
+export type StepParam = 'editar' | 'asignar' | 'enviar' | 'cerrar'
+
+export function stepParaAccion(accion: AccionPreparacion): StepParam | null {
+  switch (accion) {
+    case 'REGISTRAR_CARGA':
+      return 'editar'
+    case 'ASIGNAR_PEDIDOS':
+      return 'asignar'
+    case 'ENVIAR':
+      return 'enviar'
+    case 'CERRAR':
+      return 'cerrar'
+    default:
+      return null
+  }
+}

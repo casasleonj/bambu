@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { derivarEstadoUI, derivarSiguientePaso, toUIEstadoInput } from '@/lib/embarque-ui-estado'
+import { derivarEstadoUI, derivarSiguientePaso, stepParaAccion, toUIEstadoInput } from '@/lib/embarque-ui-estado'
 import type { Embarque, Pedido } from '../types'
 import { derivarActividad } from './activity'
 
@@ -27,9 +27,14 @@ export function CommandCard({ embarque }: { embarque: Embarque }) {
   const siguiente = derivarSiguientePaso(uiInput)
   const actividad = derivarActividad(embarque)
 
+  // Preparation Flow (Fase 4): la tarjeta enlaza directo a ejecutar el
+  // siguiente paso (`?step=`). Sin acción pendiente → link plano al detalle.
+  const step = stepParaAccion(siguiente.accion)
+  const href = step ? `/embarques/${embarque.id}?step=${step}` : `/embarques/${embarque.id}`
+
   return (
     <Link
-      href={`/embarques/${embarque.id}`}
+      href={href}
       className="block bg-white p-4 rounded-xl shadow hover:shadow-md transition border"
       data-testid="embarque-card"
     >

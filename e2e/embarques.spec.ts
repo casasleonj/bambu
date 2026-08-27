@@ -144,6 +144,24 @@ test.describe('Embarques — CRUD', () => {
     expect(res.status()).toBeGreaterThanOrEqual(400)
   })
 
+  test('Preparation Flow: ?step=asignar abre el modal de asignar en el detalle', async ({ page }) => {
+    await loginAs(page, 'admin')
+    const t = await createTrabajador(page)
+    const trabajadorId = t.trabajador?.id || t.data?.id
+    if (!trabajadorId) { test.skip(); return }
+    const res = await apiPost(page, '/api/embarques', { trabajadorId, horaSalida: '08:00', carga: [{ producto: 'PACA_AGUA', cargadas: 1 }] })
+    const data = await res.json()
+    const id = (data.data || data.embarque)?.id
+    if (!id) { test.skip(); return }
+
+    await page.goto(`${BASE}/embarques/${id}?step=asignar`)
+    await page.waitForLoadState('domcontentloaded')
+    // El deep-link abre el modal de asignación y limpia el ?step de la URL.
+    await expect(page.getByRole('heading', { name: 'Asignar pedidos' })).toBeVisible()
+    await expect(page).toHaveURL(new RegExp(`/embarques/${id}(\\?|$)`))
+    await expect(page).not.toHaveURL(/step=/)
+  })
+
   test('auto-generar embarques', async ({ page }) => {
     await loginAs(page, 'admin')
     await createTrabajador(page)

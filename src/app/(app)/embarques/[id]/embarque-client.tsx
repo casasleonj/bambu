@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { useConfirm } from '@/components/confirm-modal'
 import { useRealtimeListener } from '@/hooks/use-realtime-listener'
@@ -186,6 +186,7 @@ function toEmbarqueEditable(embarque: EmbarqueDetalle): EmbarqueEditable {
 
 export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas, userRole }: EmbarqueClientProps) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { confirm, modal } = useConfirm()
   const [embarque, setEmbarque] = useState(initialEmbarque)
   const [pedidos, setPedidos] = useState(embarque.pedidos)
@@ -257,6 +258,35 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
       refresh()
     }
   })
+
+  // Preparation Flow (Fase 4): `?step=` deep-linkea a la acción del siguiente
+  // paso (desde el Command Center o tras crear un embarque). Se ejecuta una
+  // vez y se limpia de la URL (mismo patrón que `?openEmbarque`), así un
+  // refresh no la re-dispara.
+  const stepParam = searchParams.get('step')
+  const [stepHandled, setStepHandled] = useState<string | null>(null)
+  // Abrir el modal correspondiente es un ajuste de estado durante el render
+  // (guardado por `stepHandled`), no un efecto — mismo patrón que
+  // `prevShowAssignModal` más abajo.
+  if (stepParam && stepParam !== stepHandled && canManage) {
+    setStepHandled(stepParam)
+    if (stepParam === 'asignar') setShowAssignModal(true)
+    else if (stepParam === 'editar' || stepParam === 'carga') setShowEditModal(true)
+  }
+  useEffect(() => {
+    // Efectos externos (DOM / navegación), no React state:
+    if (!stepParam) return
+    if (stepParam === 'cerrar') {
+      router.replace(`/embarques/${embarque.id}/cerrar`)
+      return
+    }
+    if (stepParam === 'enviar' && canManage) {
+      const btn = document.querySelector<HTMLButtonElement>('[data-testid="enviar-embarque-button"]')
+      btn?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      btn?.focus()
+    }
+    router.replace(`/embarques/${embarque.id}`)
+  }, [stepParam, canManage, embarque.id, router])
 
   const handleRemove = useCallback(async (pedido: PedidoResumen) => {
     if (!canManage || !isEditable) return

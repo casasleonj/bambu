@@ -108,9 +108,26 @@ describe('CommandCard', () => {
     expect(screen.getByTestId('command-card-actividad')).toHaveTextContent('2 movimientos')
   })
 
-  it('muestra el CTA de siguiente paso y enlaza al detalle', () => {
+  it('muestra el CTA de siguiente paso y enlaza al detalle con ?step=', () => {
     render(<CommandCard embarque={mkEmbarque({ estado: 'EN_RUTA' })} />)
     expect(screen.getByTestId('command-card-cta')).toHaveTextContent(/cierra el embarque/i)
+    // Fase 4: la tarjeta enlaza a ejecutar el siguiente paso (EN_RUTA → cerrar).
+    expect(screen.getByTestId('embarque-card').closest('a')).toHaveAttribute(
+      'href',
+      '/embarques/e1?step=cerrar',
+    )
+  })
+
+  it('CONFIRMADO enlaza a ?step=enviar; sin acción → link plano', () => {
+    const { rerender } = render(
+      <CommandCard embarque={mkEmbarque({ estado: 'ABIERTO', pedidos: [{ id: 'p1' } as never] })} />,
+    )
+    expect(screen.getByTestId('embarque-card').closest('a')).toHaveAttribute(
+      'href',
+      '/embarques/e1?step=enviar',
+    )
+
+    rerender(<CommandCard embarque={mkEmbarque({ estado: 'CERRADO' })} />)
     expect(screen.getByTestId('embarque-card').closest('a')).toHaveAttribute('href', '/embarques/e1')
   })
 })

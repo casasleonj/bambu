@@ -157,7 +157,11 @@ Detalle de ejecución y decisiones en `docs/embarques/fase3-command-center.md`. 
 
 ---
 
-#### FASE 4 — Preparation Flow (wizard crear → asignar → preparar → enviar) (1 PR)
+#### FASE 4 — Preparation Flow (1 PR) ✅ IMPLEMENTADO
+
+Detalle en `docs/embarques/fase4-preparation-flow.md`. **Se reconsideró el wizard de 4 pasos** a favor de un flujo guiado por deep-link (`?step=`) que conecta crear→asignar→enviar reusando el form existente — mismo valor ("nunca un dead-end"), sin regresión sobre la lógica de override de stock. El wizard forzado se aplica en el cierre (Fase 7), donde el PO lo pidió.
+
+Plan original (referencia): "wizard crear → asignar → preparar → enviar"
 
 **Qué es:** convierte la secuencia actual (modal crear → navegar → menú hover → asignar → editar carga → enviar) en un flujo guiado con "siguiente paso" siempre visible.
 
