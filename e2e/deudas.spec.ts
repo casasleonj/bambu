@@ -277,10 +277,14 @@ test.describe('Deudas UI', () => {
 
     await goto(page, '/deudas')
 
-    // Total should be visible. Scoped to the summary card: the table row's
-    // "Pendiente"/"Original" columns show the same amount for a fresh loan
-    // with no abonos yet, so an unscoped getByText matches both.
-    await expect(page.locator('.bg-red-50').getByText('$ 75.000')).toBeVisible()
+    // Amount should be visible in this worker's row specifically. This page's
+    // "Total Deudas Pendientes" summary sums ALL workers with debt (other
+    // tests/leftover data included), so it won't reliably equal this test's
+    // single 75.000 loan; the row's own "Pendiente"/"Original" columns also
+    // coincide for a fresh loan with no abonos -- .text-red-600 picks the
+    // Pendiente column specifically.
+    const row = page.locator('tr').filter({ hasText: trabajador.trabajador.nombre })
+    await expect(row.locator('.text-red-600')).toHaveText('$ 75.000')
     // Worker name should appear
     await expect(page.getByText(trabajador.trabajador.nombre)).toBeVisible()
     // Link to worker detail
@@ -365,8 +369,10 @@ test.describe('Deudas UI', () => {
     await numberInputs.first().fill('30000')
     await page.locator('textarea').fill('Abono parcial desde UI')
 
-    // Submit
-    await page.getByRole('button', { name: 'Registrar Abono' }).click()
+    // Submit. Scoped to the dialog's form: the card's own "Registrar Abono"
+    // trigger button stays mounted underneath the dialog overlay and shares
+    // the exact same accessible name.
+    await page.locator('form').getByRole('button', { name: 'Registrar Abono' }).click()
 
     await waitForToast(page, 'Abono registrado exitosamente')
 
