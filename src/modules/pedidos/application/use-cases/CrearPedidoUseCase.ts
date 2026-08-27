@@ -112,23 +112,7 @@ export class CrearPedidoUseCase {
         throw new Error('CLIENTE_NOT_FOUND')
       }
 
-      // 3. Validate credit limit
-      const pedidosPendientes = await this.pedidoRepo.findPendingByCliente(clienteId, tx)
-      const configLimite = await tx.config.findUnique({
-        where: { clave: 'LIMITE_PEDIDOS_FIADOS_DEFAULT' },
-        select: { valor: true },
-      })
-      const limite = resolverLimiteFiados(cliente ?? {}, configLimite?.valor ?? null)
-      const errorDeuda = puedeCrearPedido(
-        { id: clienteId, bloqueado: cliente?.bloqueado ?? false, verificado: cliente?.verificado ?? false, creadoPorRol: cliente?.creadoPorRol || '' },
-        pedidosPendientes,
-        limite,
-      )
-      if (errorDeuda) {
-        throw new Error(`CLIENTE_DEBE: ${errorDeuda}`)
-      }
-
-      // 4. Update cliente address if needed
+      // 3. Update cliente address if needed
       // NUNCA aplicar si el destino del pedido es un negocio/sucursal: en ese
       // caso actualizarCliente traería la dirección del negocio, no una
       // edición real de la dirección propia del cliente (ver bug silencioso
@@ -149,7 +133,7 @@ export class CrearPedidoUseCase {
         cliente.barrio = input.actualizarCliente.barrio
       }
 
-      // 4b. Snapshot de dirección puntual del pedido (Pedido.direccionEntrega/
+      // 3b. Snapshot de dirección puntual del pedido (Pedido.direccionEntrega/
       // barrioEntrega). Nunca toca Cliente/Negocio — es un dato propio del
       // pedido. Se persiste SOLO si el texto tipeado difiere de la dirección
       // resuelta en vivo (negocio gana, fallback cliente vía
@@ -176,7 +160,7 @@ export class CrearPedidoUseCase {
         }
       }
 
-      // 5. Resolve prices
+      // 4. Resolve prices
       const activeCodes = input.items.filter(i => i.cantidad > 0).map(i => i.producto)
       const pricingData = await this.pricingPort.loadPricingContext(clienteId, input.negocioId, activeCodes, tx)
       const preciosResueltos = await this.pricingPort.resolverPrecios(
@@ -189,7 +173,7 @@ export class CrearPedidoUseCase {
         pricingData,
       )
 
-      // 6. Build domain entities
+      // 5. Build domain entities
       const canal = CanalVO.create(input.canal)
       const origen = input.ventaRapida ? OrigenPedidoVO.create('VENTA_RAPIDA') : OrigenPedidoVO.create(input.origen || 'PEDIDO')
       const estadoEntrega = origen.isVentaRapida() ? EstadoEntregaVO.create('ENTREGADO') : EstadoEntregaVO.create('PENDIENTE')
@@ -209,6 +193,32 @@ export class CrearPedidoUseCase {
       const { pagosAplicados: pagosNormalizados, excedente } = normalizarPagos(input.pagos || [], totalDespuesCredito)
       const totalPagado = pagosNormalizados.reduce((sum, p) => sum + p.monto, 0) + montoCredito
       const estadoPago = EstadoPagoVO.fromTotals(total, totalPagado)
+
+      // 6. Validate credit limit — solo si el pedido va a quedar con saldo
+      // pendiente (fiado real). Un pedido pagado de contado (o cubierto por
+      // saldo a favor, ver montoCredito arriba) no debe bloquearse por el
+      // límite de fiados histórico del cliente: bloquear ventas ya pagadas
+      // contradice el propósito del límite (evitar más deuda) y rompe Venta
+      // Rápida ("paga en el momento") para clientes que ya están al límite.
+      // Mismo criterio que /api/pedidos/venta-libre. Se evalúa acá (no antes
+      // de calcular totalPagado) porque recién en este punto se sabe si el
+      // pedido quedará fiado.
+      if (totalPagado < total) {
+        const pedidosPendientes = await this.pedidoRepo.findPendingByCliente(clienteId, tx)
+        const configLimite = await tx.config.findUnique({
+          where: { clave: 'LIMITE_PEDIDOS_FIADOS_DEFAULT' },
+          select: { valor: true },
+        })
+        const limite = resolverLimiteFiados(cliente ?? {}, configLimite?.valor ?? null)
+        const errorDeuda = puedeCrearPedido(
+          { id: clienteId, bloqueado: cliente?.bloqueado ?? false, verificado: cliente?.verificado ?? false, creadoPorRol: cliente?.creadoPorRol || '' },
+          pedidosPendientes,
+          limite,
+        )
+        if (errorDeuda) {
+          throw new Error(`CLIENTE_DEBE: ${errorDeuda}`)
+        }
+      }
 
       // FIX Fase 2 §3.4: si hay excedente sobre el saldo restante, se acredita al cliente
       if (excedente > 0) {

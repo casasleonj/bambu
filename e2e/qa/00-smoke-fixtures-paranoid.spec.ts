@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { apiCall, ensureSelladorUser, assertNoUnexpectedConsoleErrors, assertUx, skipBaseCajaParanoid } from '../fixtures-paranoid'
-import { resetTestDatabase, loginAs } from '../fixtures'
+import { resetTestDatabase, loginAs, openSidebarIfMobile } from '../fixtures'
 
 test.describe('fixtures-paranoid smoke', () => {
   test.beforeEach(async () => {
@@ -41,6 +41,9 @@ test.describe('fixtures-paranoid smoke', () => {
     await skipBaseCajaParanoid(page)
     await loginAs(page, 'admin')
     await page.goto('/dashboard')
+    // FIX: en mobile el sidebar (aside, donde vive el nav-item activo) no
+    // está en el DOM hasta abrir el drawer (AGENTS.md #24).
+    await openSidebarIfMobile(page)
     await expect(page.locator('[data-testid="nav-item-active"], [aria-current="page"]')).toBeVisible()
     await assertUx(page, 'where-am-i')
   })

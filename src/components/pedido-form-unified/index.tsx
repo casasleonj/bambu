@@ -1236,7 +1236,7 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
           type="button"
           onClick={() => handleSubmit()}
           data-testid="submit-pedido"
-          disabled={submitting || preciosLoading || total <= 0 || fiadosStatus?.nivel === 'limite'}
+          disabled={submitting || preciosLoading || total <= 0 || (fiadosStatus?.nivel === 'limite' && saldoPendiente > 0)}
           className={`w-full py-3 rounded-xl text-white font-bold text-lg shadow-lg transition ${
             canal === 'PUNTO'
               ? 'bg-green-600 hover:bg-green-700'

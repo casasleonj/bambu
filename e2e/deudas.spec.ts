@@ -277,12 +277,19 @@ test.describe('Deudas UI', () => {
 
     await goto(page, '/deudas')
 
-    // Total should be visible
-    await expect(page.getByText('$ 75.000')).toBeVisible()
+    // Amount should be visible in this worker's row specifically. This page's
+    // "Total Deudas Pendientes" summary sums ALL workers with debt (other
+    // tests/leftover data included), so it won't reliably equal this test's
+    // single 75.000 loan; the row's own "Pendiente"/"Original" columns also
+    // coincide for a fresh loan with no abonos -- .text-red-600 picks the
+    // Pendiente column specifically.
+    const row = page.locator('tr').filter({ hasText: trabajador.trabajador.nombre })
+    await expect(row.locator('.text-red-600')).toHaveText('$ 75.000')
     // Worker name should appear
     await expect(page.getByText(trabajador.trabajador.nombre)).toBeVisible()
-    // Link to worker detail
-    const link = page.locator(`a[href="/trabajadores/${trabajador.trabajador.id}"]`)
+    // Link to worker detail. .first() -- the row has 2 links to the same
+    // href (the worker name and the "Ver detalle" action).
+    const link = page.locator(`a[href="/trabajadores/${trabajador.trabajador.id}"]`).first()
     await expect(link).toBeVisible()
   })
 
@@ -315,9 +322,10 @@ test.describe('Deudas UI', () => {
     // Click Nueva Deuda
     await page.getByRole('button', { name: '+ Nueva Deuda' }).click()
 
-    // Fill form
+    // Fill form. PRESTAMO shows 2 extra optional number inputs (plazo/tope
+    // % por nomina) besides Monto -- .first() targets Monto (rendered first).
     await page.locator('select').first().selectOption('PRESTAMO')
-    await page.locator('input[type="number"]').fill('45000')
+    await page.locator('input[type="number"]').first().fill('45000')
     await page.locator('textarea').fill('Prestamo desde UI dialog')
 
     // Submit
@@ -325,9 +333,12 @@ test.describe('Deudas UI', () => {
 
     await waitForToast(page, 'Deuda creada exitosamente')
 
-    // Verify debt appears
+    // Verify debt appears. The amount is scoped to this debt's own card:
+    // with a single fresh debt, the page summary ("Total Pendiente") shows
+    // the exact same amount as a standalone text node too.
     await expect(page.getByText('Prestamo desde UI dialog')).toBeVisible()
-    await expect(page.getByText('$ 45.000')).toBeVisible()
+    const card = page.locator('.rounded-xl.shadow-sm.p-5').filter({ hasText: 'Prestamo desde UI dialog' })
+    await expect(card.getByText('$ 45.000', { exact: true })).toBeVisible()
   })
 
   test('registrar abono desde UI dialog', async ({ page }) => {
@@ -350,21 +361,26 @@ test.describe('Deudas UI', () => {
     // Click Registrar Abono
     await page.getByRole('button', { name: 'Registrar Abono' }).click()
 
-    // Verify max amount shown
-    await expect(page.getByText('$ 80.000')).toBeVisible()
+    // Verify max amount shown. Scoped to the dialog's "Deuda pendiente" box:
+    // once the abono form renders, other amounts on the page can coincide.
+    await expect(page.locator('.bg-amber-50').getByText('$ 80.000')).toBeVisible()
 
     // Fill abono
     const numberInputs = page.locator('input[type="number"]')
     await numberInputs.first().fill('30000')
     await page.locator('textarea').fill('Abono parcial desde UI')
 
-    // Submit
-    await page.getByRole('button', { name: 'Registrar Abono' }).click()
+    // Submit. Scoped to the dialog's form: the card's own "Registrar Abono"
+    // trigger button stays mounted underneath the dialog overlay and shares
+    // the exact same accessible name.
+    await page.locator('form').getByRole('button', { name: 'Registrar Abono' }).click()
 
     await waitForToast(page, 'Abono registrado exitosamente')
 
-    // Verify remaining amount
-    await expect(page.getByText('$ 50.000')).toBeVisible()
+    // Verify remaining amount. Scoped to this debt's card -- with a single
+    // debt on the page, the "Total Pendiente" summary shows the same amount.
+    const card = page.locator('.rounded-xl.shadow-sm.p-5').filter({ hasText: 'Prestamo para abono UI' })
+    await expect(card.getByText('$ 50.000', { exact: true })).toBeVisible()
   })
 
   test('badge de deuda en card de trabajador', async ({ page }) => {
@@ -392,12 +408,17 @@ test.describe('Deudas UI', () => {
     const trabajador = await createTrabajador(page, { nombre: `FilterWorker ${Date.now()}` })
     const tid = trabajador.trabajador.id
 
-    // Create one pending debt
+    // Create one pending debt. Descripcion is a unique marker, NOT literally
+    // "Pendiente"/"Pagada" -- those words already appear elsewhere on this
+    // page as UI chrome (the "Total Pendiente" summary label, the "Pendientes"/
+    // "Pagadas" filter buttons, and -- only once a debt IS paid off -- a
+    // literal "Pagada" status badge on its card). Using them as descriptions
+    // made every assertion below ambiguous regardless of exact:true.
     const res1 = await createDeuda(page, {
       trabajadorId: tid,
       tipo: 'PRESTAMO',
       monto: 40000,
-      descripcion: 'Pendiente'})
+      descripcion: 'DeudaPendienteTest'})
     await res1.json()
 
     // Create and pay off another
@@ -405,7 +426,7 @@ test.describe('Deudas UI', () => {
       trabajadorId: tid,
       tipo: 'OTRO',
       monto: 20000,
-      descripcion: 'Pagada'})
+      descripcion: 'DeudaPagadaTest'})
     const body2 = await res2.json()
     await abonarDeuda(page, body2.deuda.id, { monto: 20000 })
 
@@ -413,18 +434,18 @@ test.describe('Deudas UI', () => {
     await page.getByRole('button', { name: 'Deudas' }).click()
 
     // Default filter: pendientes
-    await expect(page.getByText('Pendiente')).toBeVisible()
-    await expect(page.getByText('Pagada')).not.toBeVisible()
+    await expect(page.getByText('DeudaPendienteTest')).toBeVisible()
+    await expect(page.getByText('DeudaPagadaTest')).not.toBeVisible()
 
     // Switch to pagadas
     await page.getByRole('button', { name: 'Pagadas' }).click()
-    await expect(page.getByText('Pagada')).toBeVisible()
-    await expect(page.getByText('Pendiente')).not.toBeVisible()
+    await expect(page.getByText('DeudaPagadaTest')).toBeVisible()
+    await expect(page.getByText('DeudaPendienteTest')).not.toBeVisible()
 
     // Switch to todas
     await page.getByRole('button', { name: 'Todas' }).click()
-    await expect(page.getByText('Pendiente')).toBeVisible()
-    await expect(page.getByText('Pagada')).toBeVisible()
+    await expect(page.getByText('DeudaPendienteTest')).toBeVisible()
+    await expect(page.getByText('DeudaPagadaTest')).toBeVisible()
   })
 
   test('progress bar en deuda card', async ({ page }) => {
@@ -446,8 +467,10 @@ test.describe('Deudas UI', () => {
     const progressBar = page.locator('.bg-green-500.h-2')
     await expect(progressBar).toBeVisible()
 
-    // Should show abono history
-    await expect(page.getByText('$ 50.000')).toBeVisible()
+    // Should show abono history. Scoped to the history line item (has a
+    // trailing date) -- an unscoped match also hits the pendiente/original
+    // summary numbers, which coincide at 50% paid of a 100.000 loan.
+    await expect(page.getByText(/\$ 50\.000 - /)).toBeVisible()
   })
 })
 

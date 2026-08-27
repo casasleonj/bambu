@@ -66,7 +66,7 @@ describe('CrearPedidoUseCase: snapshot de dirección puntual', () => {
 
   it('si actualizarCliente corre, el objeto cliente en memoria se actualiza ANTES del snapshot (evita comparar contra el valor viejo)', () => {
     const updateIdx = crearSource.indexOf('await this.clienteRepo.updateDireccion(')
-    const snapshotIdx = crearSource.indexOf('// 4b. Snapshot')
+    const snapshotIdx = crearSource.indexOf('// 3b. Snapshot')
     const mutationIdx = crearSource.indexOf('cliente.direccion = input.actualizarCliente.direccion')
     expect(updateIdx).toBeGreaterThan(-1)
     expect(snapshotIdx).toBeGreaterThan(-1)
