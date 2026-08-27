@@ -26,14 +26,15 @@ _Actualizado: 2026-08-27_
 | 3 | Command Center | ✅ PR #135 |
 | 4 | Preparation Flow (deep-links `?step=`) | ✅ PR #136 |
 | 6a | Endpoint `POST/GET /api/embarques/[id]/sustituciones` | ✅ PR #137 |
-| **5** | Mission Detail | ⏳ Pendiente |
-| **6b** | UI de sustituciones | ⏳ Pendiente (depende de 5) |
+| **5** | Mission Detail | ✅ branch `feat/embarques-fase5-mission-detail` |
+| **6b** | UI de sustituciones | ⏳ Pendiente |
 | **7** | Reconciliation (cierre = wizard forzado) | ⏳ Pendiente |
 | **8** | Test hardening + bugs preexistentes | ⏳ Pendiente |
 | **9-10** | Flag a default ON + verificación + retiro de legacy | ⏳ Pendiente |
 
 ### Bloqueante inmediato
 - [ ] PO revisa y mergea PRs **#134, #135, #136, #137** a `main`. Probar en `localhost:3001`.
+- [ ] PO revisa la branch **`feat/embarques-fase5-mission-detail`** (Mission Detail, Fase 5) antes de abrir su PR.
 
 ---
 
