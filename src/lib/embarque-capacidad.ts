@@ -1,19 +1,16 @@
 /**
- * Real weights per product unit (in KG)
- * Based on actual measurements:
- * - Paca agua: 40 bolsas × 300ml ≈ 10.0 kg (measured 9.5-10.5kg)
- * - Paca hielo: 20 bolsas × 650ml ≈ 11.0 kg (proportional to water)
- * - Botellón: 20L water + container ≈ 20.0 kg
- * - Bolsa agua: 10.0 / 40 ≈ 0.25 kg
- * - Bolsa hielo: 11.0 / 20 ≈ 0.55 kg
+ * Pesos reales por unidad de producto (KG).
+ *
+ * Fuente ÚNICA: el value object de dominio `Carga`
+ * (`src/modules/embarques/domain/value-objects/Carga.ts`). Antes este archivo
+ * declaraba su propia copia 1:1 de la tabla — deuda de duplicación señalada por
+ * la auditoría (B.4 / B.8): cambiar un peso obligaba a editar en dos sitios.
+ * Ahora se re-exporta para no romper los ~10 consumidores que lo importan
+ * desde acá.
  */
-export const PESOS_KG = {
-  PACA_AGUA: 10.0,
-  PACA_HIELO: 11.0,
-  BOTELLON: 20.0,
-  BOLSA_AGUA: 0.25,
-  BOLSA_HIELO: 0.55,
-} as const
+import { PESOS_KG } from '@/modules/embarques/domain/value-objects/Carga'
+
+export { PESOS_KG }
 
 export type ProductCode = keyof typeof PESOS_KG
 

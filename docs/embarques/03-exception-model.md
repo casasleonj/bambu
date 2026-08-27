@@ -1,7 +1,7 @@
 # Modelo de excepciones — Embarques (Fase 1)
 
-- Estado: BORRADOR para aprobación
-- Fecha: 2026-08-20
+- Estado: **APROBADO** (PO, 2026-08-27)
+- Fecha: 2026-08-20 · Aprobado: 2026-08-27
 - Base: tabla A.6 del plan de convergencia. Cada tipo de excepción de UI mapea a un **origen real y verificable** en backend; no se inventa una taxonomía nueva en el frontend.
 
 ## Tabla de mapeo
@@ -16,6 +16,7 @@
 | `DELIVERY_FAILED` | Rama `NO_ENTREGADO` de `ProcesarPedidoService` |
 | `MISSING_DATA` | Cualquier 400 de validación Zod no cubierto arriba |
 | `DOBLE_CONSUMO` | `CrearRecoveryDecisionUseCase` — un SOBRANTE ya fue consumido por otra decisión concurrente |
+| `SUSTITUCION_INVALIDA` | `validarMovimientoFisico` sobre los 2 movimientos de `construirMovimientosSustitucion` (Fase 6) — cantidad ≤ 0, producto desconocido, o el par recepción/entrega no cuadra |
 
 ## Reglas de presentación
 

@@ -1,9 +1,9 @@
 # Contrato UX — Embarques (Fase 1)
 
-- Estado: BORRADOR para aprobación (no se construyen pantallas hasta aprobar)
-- Fecha: 2026-08-20
+- Estado: **APROBADO** (PO, 2026-08-27) — habilita Fases 3–7. Ver `00-plan-frontend-completo.md` para el plan de ejecución y las decisiones D1–D7.
+- Fecha: 2026-08-20 · Aprobado: 2026-08-27
 - Base: `plan-maestro-embarques-autocontenido-equipo-desarrollo.md` (contrato backend congelado) + `ADR-ARQUITECTURA-001`
-- Alcance: define el contrato de experiencia y composición; **no** modifica el contrato de backend.
+- Alcance: define el contrato de experiencia y composición; **no** modifica el contrato de backend (salvo la excepción additiva de §4, cubierta por ADR propio).
 
 ---
 
@@ -38,9 +38,18 @@ ABIERTO ──► EN_RUTA ──► CERRADO
 
 Implicación para este contrato: las pantallas que crean/editan/en vían/listan embarques deben tratar a los `route.ts` correspondientes como su contrato de API, no a un use case.
 
-## 4. Alcance de sustitución (A.3.3) — decidido
+## 4. Alcance de sustitución (A.3.3) — DENTRO DE ALCANCE (revisado 2026-08-27)
 
-**Fuera de alcance en esta ronda.** Registrar una sustitución de producto defectuoso requiere un endpoint de backend nuevo (`POST /api/embarques/[id]/sustituciones` sobre `construirMovimientosSustitucion`), lo que es un cambio del contrato congelado. Se excluye explícitamente de Fases 3–7; el tab "Físico" del detalle ya muestra movimientos (`GET /movimientos`) y no se construirá UI de sustitución hasta que el backend la exponga. Re-evaluar en Fase 6 si el Mission Detail la necesita.
+**Revierte la decisión original de "fuera de alcance".** El PO confirmó que la UI de sustitución de producto defectuoso es necesaria. Es un cambio **additivo, no una ruptura del contrato congelado**:
+
+- `construirMovimientosSustitucion` (en `ledger-fisico.service.ts`) y el modelo `Sustitucion` **ya existen** en dominio + schema + tests. Solo faltaba cablearlos a un endpoint HTTP — gap que la propia auditoría señaló (B.6).
+- No se agrega ninguna tabla, columna, lock ni fuente de verdad nueva. Por eso no requiere reabrir el contrato de backend, pero **sí** un ADR propio: `ADR-SUSTITUCION-001` (flujo §26 del plan maestro).
+
+Ejecución en **Fase 6** de `00-plan-frontend-completo.md`:
+- **PR-6a:** `ADR-SUSTITUCION-001` + `POST/GET /api/embarques/[id]/sustituciones` (thin controller, 2 `EmbarqueMovimiento` `RECEPCION_DEFECTUOSA`+`ENTREGA` separados + 1 `Sustitucion`, idempotente por `offlineId`).
+- **PR-6b:** `mission-detail/sustitucion-form-modal.tsx` en el tab "Físico", patrón de `recovery-form-modal.tsx`.
+
+Regla inviolable que se mantiene: una sustitución produce **dos** movimientos físicos dirigidos separados (ADR-FISICO-001 / §9 del plan maestro), nunca un movimiento ambiguo con doble efecto.
 
 ## 5. Pantallas objetivo y su contrato
 
@@ -72,8 +81,9 @@ Arquitectura: Command Center → Preparation Flow → Mission Detail → Reconci
 
 - **Propósito:** vista "viva" de la misión en curso; hoy el detalle no se entera de cambios de otros usuarios (sin realtime).
 - **Depende de A.3.2 resuelto** para el botón "Enviar en Ruta" (`POST /api/embarques/[id]/enviar`, hoy `fetch` crudo sin encolar).
-- **Reutiliza:** tabs actuales (Pedidos/Clientes/Físico), `LedgerTab` + `RecoveryFormModal` + `BotellonesPanel` (movimientos/recovery/botellones), `optimizar-orden` (TSP).
-- **Gaps a cerrar en esta pantalla (documentados, no silenciosos):** realtime en detalle (hoy solo en lista), deep link `?openEmbarque={id}` roto (la notificación push cae a la lista), `70` hardcodeado en "asignar pedidos" (debe leer `/api/config`).
+- **Reutiliza:** tabs actuales (Pedidos/Clientes/Físico), `LedgerTab` + `RecoveryFormModal` + `BotellonesPanel` (movimientos/recovery/botellones), `optimizar-orden` (TSP). Añade sustituciones al tab Físico (§4).
+- **Gaps ya cerrados desde la redacción de este contrato:** realtime en detalle (`f1e73866`), deep link `?openEmbarque={id}` (`31a0c7de`), `70` hardcodeado → lee `/api/config` (`459d1141`), `botellones` sin `requireOwnership` (`374d5503`).
+- **Gap que queda:** el menú de acciones usa `hidden group-hover:block` (poco confiable en touch) → reemplazar por menú controlado por estado en la Fase 5.
 - **Estados de red:** ídem; el botón "Enviar" debe encolarse offline.
 - **Desktop/mobile:** tabs en desktop; accordion/segmented en mobile.
 
@@ -92,4 +102,4 @@ Arquitectura: Command Center → Preparation Flow → Mission Detail → Reconci
 
 ## 7. Gate de aprobación
 
-Este contrato se presenta al product owner para aprobación explícita antes de construir pantallas (Fases 3–7). Las decisiones de §3 y §4 son vinculantes para las fases siguientes salvo que el PO las revierta por escrito.
+**APROBADO por el PO el 2026-08-27.** Habilita Fases 3–7 (y Fase 6 additiva, §4). Las decisiones de ejecución (convivencia in-place + flag, wizard forzado de cierre, orden de PRs) están en `00-plan-frontend-completo.md` §2.1. Cualquier reversión, por escrito.

@@ -270,7 +270,10 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
-  const roleCheck = await requireRole([ROLES.ADMIN], authResult)
+  // Misma acción que DELETE /api/embarques/[id] (cancelar embarque) → mismo rol.
+  // Antes exigía solo ADMIN, mientras el endpoint por-id acepta ADMIN+ASISTENTE:
+  // una inconsistencia real señalada por la auditoría (B.8 #2 / plan A.3.6).
+  const roleCheck = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE], authResult)
   if (roleCheck instanceof Response) return roleCheck
 
   try {

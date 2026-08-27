@@ -6,14 +6,11 @@ import { ROLES } from '@/lib/constants'
 import { EstadoEmbarque } from '@prisma/client'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
-import { z } from 'zod'
 import { executeSerializableWithRetry } from '@/lib/serializable'
-
-const GastoEmbarqueSchema = z.object({
-  categoria: z.string().min(1),
-  monto: z.coerce.number().positive(),
-  nota: z.string().max(500).optional(),
-})
+import { GastoEmbarqueSchema } from '@/lib/validators'
+// GastoEmbarqueSchema vive en @/lib/validators (fuente única). Antes había una
+// copia local idéntica — deuda de Zod fragmentado señalada por la auditoría
+// (B.8 #4).
 
 type CrearGastoResult =
   | { kind: 'not_found' }
