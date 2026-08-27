@@ -58,19 +58,20 @@ describe('CommandCenter — agrupación por fase derivada', () => {
     ]
     render(<CommandCenter embarques={embarques} onNuevo={vi.fn()} />)
 
-    const desktop = screen.getByTestId('command-center-desktop')
-    expect(within(within(desktop).getByTestId('fase-section-BORRADOR')).getByText('#1')).toBeInTheDocument()
-    expect(within(desktop).getByTestId('fase-section-CONFIRMADO')).toBeInTheDocument()
-    expect(within(desktop).getByTestId('fase-section-EN_RUTA')).toBeInTheDocument()
-    expect(within(desktop).getByTestId('fase-section-CERRADO')).toBeInTheDocument()
+    const grid = screen.getByTestId('command-center-grid')
+    expect(within(within(grid).getByTestId('fase-section-BORRADOR')).getByText('#1')).toBeInTheDocument()
+    expect(within(grid).getByTestId('fase-section-CONFIRMADO')).toBeInTheDocument()
+    expect(within(grid).getByTestId('fase-section-EN_RUTA')).toBeInTheDocument()
+    expect(within(grid).getByTestId('fase-section-CERRADO')).toBeInTheDocument()
     // fases sin embarques no renderizan sección
-    expect(within(desktop).queryByTestId('fase-section-CANCELADO')).toBeNull()
+    expect(within(grid).queryByTestId('fase-section-CANCELADO')).toBeNull()
   })
 
-  it('renderiza ambas vistas responsive con data-testid propio', () => {
+  it('renderiza un solo árbol (sin duplicar tarjetas desktop/mobile)', () => {
     render(<CommandCenter embarques={[mkEmbarque()]} onNuevo={vi.fn()} />)
-    expect(screen.getByTestId('command-center-desktop')).toBeInTheDocument()
-    expect(screen.getByTestId('command-center-mobile')).toBeInTheDocument()
+    // AGENTS.md #24: una tarjeta = un solo data-testid="embarque-card".
+    expect(screen.getAllByTestId('embarque-card')).toHaveLength(1)
+    expect(screen.getByTestId('command-center-grid')).toBeInTheDocument()
   })
 
   it('muestra empty state y dispara onNuevo', () => {

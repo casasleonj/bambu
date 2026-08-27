@@ -1,8 +1,5 @@
 import { test, expect, loginAs, createEmbarque, createTrabajador, BASE, resetDatabase } from './fixtures'
-import { PrismaClient } from '@prisma/client'
 import type { Page } from '@playwright/test'
-
-const prisma = new PrismaClient()
 
 async function embarquesLogin(page: Page) {
   // Evitar que el modal/banner de base caja bloquee el test.
@@ -24,42 +21,34 @@ test.describe('Embarques — Hidratación sin refetch espurio', () => {
     resetDatabase()
   })
 
-  test('embarques de fechas pasadas no desaparecen tras hidratación', async ({ page }) => {
+  test('la hidratación no dispara un refetch espurio que borre los datos del SSR', async ({ page }) => {
     await embarquesLogin(page)
 
-    const trabajadorHoy = await createTrabajador(page)
-    expect(trabajadorHoy.trabajador?.id).toBeTruthy()
+    // 2 embarques de HOY (el SSR de /embarques filtra a "hoy" desde 6531a68b,
+    // así que el escenario de "fechas pasadas" del test original ya no aplica —
+    // eso lo cubre embarques-fixes.spec.ts "Ver últimos 30 días").
+    const t1 = await createTrabajador(page)
+    const t2 = await createTrabajador(page)
+    expect(t1.trabajador?.id).toBeTruthy()
+    expect(t2.trabajador?.id).toBeTruthy()
+    expect((await createEmbarque(page, t1.trabajador.id)).embarque?.id).toBeTruthy()
+    expect((await createEmbarque(page, t2.trabajador.id)).embarque?.id).toBeTruthy()
 
-    const trabajadorPasado = await createTrabajador(page)
-    expect(trabajadorPasado.trabajador?.id).toBeTruthy()
-
-    // 1 embarque de HOY (via API)
-    const hoy = await createEmbarque(page, trabajadorHoy.trabajador.id)
-    expect(hoy.embarque?.id).toBeTruthy()
-
-    // 1 embarque de HACE 2 DÍAS (via API + backdate directo, la API no acepta fecha custom)
-    const pasado = await createEmbarque(page, trabajadorPasado.trabajador.id)
-    expect(pasado.embarque?.id).toBeTruthy()
-
-    const hace2 = new Date()
-    hace2.setDate(hace2.getDate() - 2)
-    await prisma.embarque.update({
-      where: { id: pasado.embarque.id },
-      data: { fecha: hace2 },
+    let refetchesAlMontar = 0
+    page.on('request', (r) => {
+      if (r.method() === 'GET' && /\/api\/embarques\?/.test(r.url())) refetchesAlMontar++
     })
 
-    // Navegar a embarques: el SSR ya pintó ambos embarques
+    // El SSR pinta ambos; al montar NO debe haber un GET /api/embarques que
+    // los reemplace (bug original: `isFirstRun` no gateaba el fetch inicial).
     await page.goto(`${BASE}/embarques`)
-    await expect(page.locator('[data-testid="embarque-card"]').first()).toBeVisible({ timeout: 10000 })
-
-    // Con el bug, /api/embarques retornaría solo el de hoy y el count bajaría.
-    // Con el fix, no hay request de refetch al mount, así que el count se queda en 2.
+    await expect(page.locator('[data-testid="embarque-card"]')).toHaveCount(2, { timeout: 10000 })
     await page.waitForTimeout(1500)
-    const countAfterHydration = await page.locator('[data-testid="embarque-card"]').count()
-    expect(countAfterHydration).toBe(2)
+    await expect(page.locator('[data-testid="embarque-card"]')).toHaveCount(2)
+    expect(refetchesAlMontar).toBe(0)
 
-    // Regresión: el filtro "Hoy" del DateRangeFilter sigue funcionando
+    // El filtro "Hoy" del DateRangeFilter sí dispara un fetch y sigue operativo.
     await page.locator('button').filter({ hasText: /^Hoy$/ }).first().click()
-    await expect(page.locator('[data-testid="embarque-card"]')).toHaveCount(1, { timeout: 10000 })
+    await expect(page.locator('[data-testid="embarque-card"]')).toHaveCount(2, { timeout: 10000 })
   })
 })

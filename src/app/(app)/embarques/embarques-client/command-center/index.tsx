@@ -71,20 +71,14 @@ export function CommandCenter({
 
       <KpiRow embarques={embarques} />
 
-      {/* Desktop: columnas por fase */}
+      {/* Un solo árbol: columnas por fase en desktop (`lg:grid-cols-3`),
+          secciones apiladas en mobile. Sin duplicación desktop/mobile. */}
       <div
-        data-testid="command-center-desktop"
-        className="hidden lg:grid lg:grid-cols-3 gap-4 items-start"
+        data-testid="command-center-grid"
+        className="grid gap-4 lg:grid-cols-3 items-start"
       >
         {FASES_ORDEN.map((fase) => (
-          <FaseSection key={fase} fase={fase} embarques={porFase.get(fase)!} variant="desktop" />
-        ))}
-      </div>
-
-      {/* Mobile: secciones apiladas colapsables */}
-      <div data-testid="command-center-mobile" className="lg:hidden space-y-4">
-        {FASES_ORDEN.map((fase) => (
-          <FaseSection key={fase} fase={fase} embarques={porFase.get(fase)!} variant="mobile" />
+          <FaseSection key={fase} fase={fase} embarques={porFase.get(fase)!} />
         ))}
       </div>
     </div>
