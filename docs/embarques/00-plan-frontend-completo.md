@@ -130,7 +130,9 @@ Helpers UI ya existentes y reutilizables:
 
 ---
 
-#### FASE 3 — Command Center (reemplaza la tab "Embarques" de `/embarques`) (1 PR)
+#### FASE 3 — Command Center (reemplaza la tab "Embarques" de `/embarques`) (1 PR) ✅ IMPLEMENTADO
+
+Detalle de ejecución y decisiones en `docs/embarques/fase3-command-center.md`. Flag `NEXT_PUBLIC_EMBARQUES_V2` (default ON). CTA de tarjeta = rótulo en el link al detalle (mutación real en Fases 4/5).
 
 **Qué es:** vista de conjunto con las 6 fases derivadas, agrupada, con acción rápida por tarjeta y KPIs arriba. Sustituye la lista plana + los 8 botones de filtro actuales.
 

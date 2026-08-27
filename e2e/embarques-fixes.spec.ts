@@ -806,9 +806,8 @@ test.describe('Embarques — Fix #27: "Todos" incluye Cancelados', () => {
     await page.waitForLoadState('domcontentloaded')
     await page.waitForTimeout(1000)
 
-    // Filtro default es "Todos" (sin chip activo) — el embarque cancelado
-    // debe verse sin necesidad de pedir explícitamente "Cancelados".
-    await expect(page.locator('button:has-text("Todos")')).toHaveClass(/bg-blue-600/)
+    // Command Center (Fase 3): sin filtro de fase — un embarque cancelado
+    // aparece en su sección "Cancelado", no desaparece de la vista.
     await expect(page.locator('[data-testid="embarque-card"]', { hasText: nombreUnico })).toHaveCount(1)
   })
 })
@@ -852,7 +851,7 @@ test.describe('Embarques — Fix #28: indicador "Mostrando: Hoy"', () => {
 
 test.describe('Embarques — Fix #29: fetches paralelos', () => {
 
-  test('cambiar de filtro de estado no serializa las llamadas de red', async ({ page }) => {
+  test('cambiar de rango de fecha no serializa las llamadas de red', async ({ page }) => {
     await embarquesLogin(page)
     await page.goto(`${BASE}/embarques`)
     await page.waitForLoadState('domcontentloaded')
@@ -876,7 +875,9 @@ test.describe('Embarques — Fix #29: fetches paralelos', () => {
     )
 
     const start = Date.now()
-    await page.locator('button:has-text("Abiertos")').click()
+    // Fase 3: los botones de filtro por fase se reemplazaron por el agrupado
+    // del Command Center; cualquier cambio de rango dispara el mismo fetchData.
+    await page.locator('[data-testid="ver-ultimos-30-dias"]').click()
     await Promise.all([embarquesResponse, stockResponse])
     const elapsed = Date.now() - start
 

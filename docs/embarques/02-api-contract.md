@@ -35,7 +35,7 @@ trabajador: { id, nombre, capacidadKg, com* },
 ruta: { id, nombre } | null,
 tipoMoto, baseDinero, obs,
 productos: EmbarqueProducto[],            // ledger de carga/retorno por producto
-_count: { pedidos },
+_count: { pedidos, movimientos, recoveries, sustituciones, responsibilityCases },  // Fase 3: fila de actividad
 pedidos: PedidoEnEmbarque[]  (take 50, enriquecidos con negocio),
 // derivados por el backend en la respuesta:
 totalPacas, pesoKg, capacidadKg, capacidadInfo: CapacidadInfo

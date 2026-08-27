@@ -44,6 +44,16 @@ export default async function EmbarquesPage() {
           },
         },
         productos: true,
+        // Command Center (Fase 3): misma "fila de actividad" que el GET /api/embarques.
+        _count: {
+          select: {
+            pedidos: true,
+            movimientos: true,
+            recoveries: true,
+            sustituciones: true,
+            responsibilityCases: true,
+          },
+        },
       },
     }),
     prisma.trabajador.findMany({

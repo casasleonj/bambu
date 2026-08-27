@@ -64,20 +64,20 @@ test.describe('Embarques — Navegación y Carga', () => {
     await expect(page.locator('button:has-text("Auto-Generar")')).toBeVisible()
   })
 
-  test('filters section is present', async ({ page }) => {
+  test('command center renders (grouped by derived phase)', async ({ page }) => {
     await embarquesLogin(page)
     await gotoEmbarques(page)
-    await expect(page.locator('button:has-text("Todos")')).toBeVisible()
-    await expect(page.locator('button:has-text("Abiertos")')).toBeVisible()
-    await expect(page.locator('button:has-text("Cerrados")')).toBeVisible()
+    // Fase 3: la lista plana + botones de filtro por fase se reemplazan por el
+    // Command Center, que agrupa por fase derivada.
+    await expect(page.getByTestId('command-center')).toBeVisible()
   })
 
   test('info banner shows capacity legend', async ({ page }) => {
     await embarquesLogin(page)
     await gotoEmbarques(page)
     await expect(page.getByText('Capacidad máxima:')).toBeVisible()
-    await expect(page.getByText('Ideal')).toBeVisible()
-    await expect(page.getByText('Excedido')).toBeVisible()
+    await expect(page.getByText('≤75% Ideal')).toBeVisible()
+    await expect(page.getByText('>100% Excedido')).toBeVisible()
   })
 
   test('invalid embarque id redirects gracefully', async ({ page }) => {
@@ -92,36 +92,35 @@ test.describe('Embarques — Navegación y Carga', () => {
   })
 })
 
-test.describe('Embarques — Filtros y Rangos', () => {
+test.describe('Embarques — Command Center (fases derivadas) y rangos', () => {
 
-  test('filter by ABIERTO state', async ({ page }) => {
+  test('un embarque ABIERTO con carga y sin pedidos cae en la sección Preparando', async ({ page }) => {
     await embarquesLogin(page)
     const t = await createTrabajador(page)
     const trabajadorId = t.trabajador?.id || t.data?.id
     if (!trabajadorId) { test.skip(); return }
     await apiPost(page, '/api/embarques', { trabajadorId, horaSalida: '08:00', carga: [{ producto: 'PACA_AGUA', cargadas: 1 }] })
     await gotoEmbarques(page)
-    await page.locator('button:has-text("Abiertos")').click()
-    await page.waitForTimeout(500)
-    // Page should still be visible
-    await expect(page.getByRole('heading', { name: 'Embarques del Día' })).toBeVisible()
+    // Fase derivada: ABIERTO + carga > 0 + 0 pedidos → PREPARANDO.
+    await expect(page.getByTestId('fase-section-PREPARANDO').first()).toBeVisible()
   })
 
-  test('filter by CERRADO state', async ({ page }) => {
+  test('el Command Center muestra los KPIs cuando hay embarques', async ({ page }) => {
     await embarquesLogin(page)
+    const t = await createTrabajador(page)
+    const trabajadorId = t.trabajador?.id || t.data?.id
+    if (!trabajadorId) { test.skip(); return }
+    await apiPost(page, '/api/embarques', { trabajadorId, horaSalida: '08:00', carga: [{ producto: 'PACA_AGUA', cargadas: 1 }] })
     await gotoEmbarques(page)
-    await page.locator('button:has-text("Cerrados")').click()
-    await page.waitForTimeout(500)
-    await expect(page.getByRole('heading', { name: 'Embarques del Día' })).toBeVisible()
+    await expect(page.getByTestId('command-center-kpis')).toBeVisible()
+    await expect(page.getByTestId('kpi-total')).toBeVisible()
   })
 
-  test('reset filter to Todos', async ({ page }) => {
+  test('el filtro de rango "Ver últimos 30 días" sigue disponible', async ({ page }) => {
     await embarquesLogin(page)
     await gotoEmbarques(page)
-    await page.locator('button:has-text("Cerrados")').click()
+    await page.getByTestId('ver-ultimos-30-dias').click()
     await page.waitForTimeout(500)
-    await page.locator('button:has-text("Todos")').click()
-    await page.waitForTimeout(800)
     await expect(page.getByRole('heading', { name: 'Embarques del Día' })).toBeVisible()
   })
 })

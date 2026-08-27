@@ -13,6 +13,7 @@ import { Modal } from '@/components/modal'
 import type { Embarque, Trabajador, Ruta } from './types'
 import { EmbarqueCard } from './embarque-card'
 import { ResumenEstados } from './resumen-estados'
+import { CommandCenter } from './command-center'
 import { EmbarqueFormModal } from './embarque-form-modal'
 import { AutoGenerarPreviewModal } from './auto-generar-preview-modal'
 import { StatsTab } from './stats-tab'
@@ -30,6 +31,13 @@ interface InitialData {
   stockEstimado: { agua: number; hielo: number; botellon: number } | null
   stockBajo: boolean
 }
+
+/**
+ * Command Center (Fase 3). Habilitado por default; se apaga con
+ * `NEXT_PUBLIC_EMBARQUES_V2=false` (mismo patrón que NEXT_PUBLIC_REALTIME_ENABLED).
+ * OFF → la tab "Embarques" renderiza la lista plana histórica sin cambios.
+ */
+const EMBARQUES_V2 = process.env.NEXT_PUBLIC_EMBARQUES_V2 !== 'false'
 
 interface EmbarquesClientProps {
   initialData?: InitialData
@@ -320,30 +328,34 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
             </>
           )}
         </div>
-        <div className="flex flex-wrap gap-2 mt-3">
-          {([
-            { key: '', label: 'Todos' },
-            { key: 'ABIERTO', label: 'Abiertos' },
-            { key: 'BORRADOR', label: 'Borradores' },
-            { key: 'PREPARANDO', label: 'Preparando' },
-            { key: 'CONFIRMADO', label: 'Confirmados' },
-            { key: 'EN_RUTA', label: 'En Ruta' },
-            { key: 'CERRADO', label: 'Cerrados' },
-            { key: 'CANCELADO', label: 'Cancelados' },
-          ] as Array<{ key: '' | 'ABIERTO' | FaseUIEmbarque; label: string }>).map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => setFiltroFase(key)}
-              className={`px-4 py-1.5 min-h-[40px] md:min-h-0 rounded-full text-sm font-medium transition ${
-                filtroFase === key
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        {/* Command Center (V2) agrupa por fase: los botones de filtro de fase
+            se reemplazan por las secciones. En V1 se conservan. */}
+        {!EMBARQUES_V2 && (
+          <div className="flex flex-wrap gap-2 mt-3">
+            {([
+              { key: '', label: 'Todos' },
+              { key: 'ABIERTO', label: 'Abiertos' },
+              { key: 'BORRADOR', label: 'Borradores' },
+              { key: 'PREPARANDO', label: 'Preparando' },
+              { key: 'CONFIRMADO', label: 'Confirmados' },
+              { key: 'EN_RUTA', label: 'En Ruta' },
+              { key: 'CERRADO', label: 'Cerrados' },
+              { key: 'CANCELADO', label: 'Cancelados' },
+            ] as Array<{ key: '' | 'ABIERTO' | FaseUIEmbarque; label: string }>).map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setFiltroFase(key)}
+                className={`px-4 py-1.5 min-h-[40px] md:min-h-0 rounded-full text-sm font-medium transition ${
+                  filtroFase === key
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Tabs: Embarques / Estadísticas */}
@@ -485,37 +497,46 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
         </div>
       </InfoBanner>
 
-      <ResumenEstados embarques={embarques} />
+      {EMBARQUES_V2 ? (
+        <CommandCenter
+          embarques={embarques}
+          onNuevo={() => { setFormMode('create'); setEditingEmbarque(null); setShowFormModal(true) }}
+        />
+      ) : (
+        <>
+          <ResumenEstados embarques={embarques} />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="embarques-grid">
-        {embarquesVisibles.map((embarque) => (
-          <EmbarqueCard
-            key={embarque.id}
-            embarque={embarque}
-          />
-        ))}
-        {embarquesVisibles.length === 0 && (
-          <div className="col-span-full">
-            <EmptyState
-              icon={<svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m0 0a2 2 0 104 0m0 0a2 2 0 104 0" /></svg>}
-              title={filtroFase ? `Sin embarques en "${filtroLabel}"` : 'No hay embarques hoy'}
-              description={
-                !dateRange.desde && !dateRange.hasta
-                  ? 'Los embarques agrupan pedidos por zona para optimizar las rutas de entrega. Si buscás embarques de días anteriores, probá "Ver últimos 30 días" arriba.'
-                  : 'Los embarques agrupan pedidos por zona para optimizar las rutas de entrega'
-              }
-              actionLabel="+ Crear Embarque"
-              onAction={() => { setFormMode('create'); setEditingEmbarque(null); setShowFormModal(true) }}
-              guidedSteps={[
-                { label: 'Crear un embarque', description: 'Selecciona repartidor y ruta', onClick: () => { setFormMode('create'); setEditingEmbarque(null); setShowFormModal(true) } },
-                { label: 'Asignar pedidos', description: 'Los pedidos pendientes se muestran automáticamente' },
-                { label: 'Enviar repartidor', description: 'El repartidor recibe la ruta en su app' },
-                { label: 'Cerrar embarque', description: 'Registra las entregas y cobros al finalizar' },
-              ]}
-            />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="embarques-grid">
+            {embarquesVisibles.map((embarque) => (
+              <EmbarqueCard
+                key={embarque.id}
+                embarque={embarque}
+              />
+            ))}
+            {embarquesVisibles.length === 0 && (
+              <div className="col-span-full">
+                <EmptyState
+                  icon={<svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m0 0a2 2 0 104 0m0 0a2 2 0 104 0" /></svg>}
+                  title={filtroFase ? `Sin embarques en "${filtroLabel}"` : 'No hay embarques hoy'}
+                  description={
+                    !dateRange.desde && !dateRange.hasta
+                      ? 'Los embarques agrupan pedidos por zona para optimizar las rutas de entrega. Si buscás embarques de días anteriores, probá "Ver últimos 30 días" arriba.'
+                      : 'Los embarques agrupan pedidos por zona para optimizar las rutas de entrega'
+                  }
+                  actionLabel="+ Crear Embarque"
+                  onAction={() => { setFormMode('create'); setEditingEmbarque(null); setShowFormModal(true) }}
+                  guidedSteps={[
+                    { label: 'Crear un embarque', description: 'Selecciona repartidor y ruta', onClick: () => { setFormMode('create'); setEditingEmbarque(null); setShowFormModal(true) } },
+                    { label: 'Asignar pedidos', description: 'Los pedidos pendientes se muestran automáticamente' },
+                    { label: 'Enviar repartidor', description: 'El repartidor recibe la ruta en su app' },
+                    { label: 'Cerrar embarque', description: 'Registra las entregas y cobros al finalizar' },
+                  ]}
+                />
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </>
+      )}
       </>
       ) : (
         <StatsTab dateRange={dateRange} />
