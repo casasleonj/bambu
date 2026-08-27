@@ -193,17 +193,19 @@ totalPacas, pesoKg, capacidadKg, capacidadInfo: CapacidadInfo
 
 ---
 
-## 9. Sustituciones — `/api/embarques/[id]/sustituciones` (Fase 6 — NO EXISTE AÚN)
+## 9. Sustituciones — `/api/embarques/[id]/sustituciones` (Fase 6a — ✅ IMPLEMENTADO)
+
+Autoridad: `docs/adr/ADR-SUSTITUCION-001.md`.
 
 | | |
 |---|---|
-| Estado | **A construir en PR-6a.** Requiere `ADR-SUSTITUCION-001`. |
-| Auth | `ADMIN`, `ASISTENTE` + `requireOwnership` |
-| Offline | ✅ `offlineId` |
-| Body (propuesto) | `{ productoDefectuoso, productoReemplazo, cantidad>0, pedidoId?, motivo, offlineId? }` |
-| Delega | `construirMovimientosSustitucion` (ya existe en `ledger-fisico.service.ts`) → persiste **2 `EmbarqueMovimiento`** (`RECEPCION_DEFECTUOSA` + `ENTREGA`) + **1 `Sustitucion`** que los vincula, en una transacción. |
-| OK | `201 { sustitucion, movimientos: [2] }` · replay → `deduped: true` |
-| `GET` | `{ sustituciones: Sustitucion[] }` para el tab Físico. |
+| Auth | GET: `requireAuth` + `requireOwnership` · POST: `ADMIN`, `ASISTENTE` + `requireOwnership` |
+| Offline | ✅ `offlineId` (unique en `Sustitucion`) |
+| Body POST | `SustitucionEmbarqueSchema`: `{ producto, cantidad>0, pedidoId?, motivo?≤500, offlineId? }` — **mismo producto** (unidad defectuosa → unidad fresca del mismo producto; cross-producto está fuera de alcance, ver ADR). |
+| Delega | `construirMovimientosSustitucion({ producto, cantidad })` (dominio) → valida ambos con `validarMovimientoFisico` → persiste en una transacción: **2 `EmbarqueMovimiento`** (`RETORNO` VEHICULO→INSPECCION + `ENTREGA` VEHICULO→CLIENTE) + **1 `Sustitucion`** (`movimientoRecepcionId`/`movimientoEntregaId`, `autorizadoPorId`). `logAudit` en la misma tx. Realtime `embarque.updated`. |
+| OK | `201 { sustitucion }` (con `movimientoRecepcion`/`movimientoEntrega`/`autorizadoPor` incluidos) · replay → `200 { sustitucion, deduped: true }` |
+| Errores | `400` Zod / embarque `CERRADO`\|`CANCELADO` / pedido ajeno al embarque · `404` embarque no encontrado · `409` `offlineId` reusado en otro embarque |
+| `GET` | `{ sustituciones: Sustitucion[] }` (con movimientos incluidos, más reciente primero) — para el tab Físico. |
 
 ---
 

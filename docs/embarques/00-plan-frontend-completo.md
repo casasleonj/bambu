@@ -218,7 +218,10 @@ Plan original (referencia): "wizard crear → asignar → preparar → enviar"
 
 #### FASE 6 — Physical + Recovery + Sustitución (2 PRs) — DENTRO DE ALCANCE (D3 = "la necesito")
 
-**PR-6a (backend, additivo — NO cambia schema):**
+**PR-6a (backend, additivo — NO cambia schema): ✅ IMPLEMENTADO**
+- `docs/adr/ADR-SUSTITUCION-001.md` + `POST/GET /api/embarques/[id]/sustituciones` + `SustitucionEmbarqueSchema`. Tests: 10 unit + 2 E2E (2 movimientos separados, idempotencia). `02-api-contract.md` §9 actualizado. Alcance: **mismo producto** (cross-producto → ADR futuro).
+
+**Plan original de PR-6a (referencia):**
 - `docs/adr/ADR-SUSTITUCION-001.md` — decisión de exponer la operación ya modelada. `construirMovimientosSustitucion` (en `ledger-fisico.service.ts`) y el modelo `Sustitucion` **ya existen en dominio + schema + tests**; esto solo los cablea a un endpoint. No es un cambio del contrato congelado (no hay tabla/columna/lock nuevos); es cerrar un gap señalado por la propia auditoría (B.6).
 - `POST /api/embarques/[id]/sustituciones` — thin controller: valida Zod, `requireRole([ADMIN, ASISTENTE])` + `requireOwnership`, llama `construirMovimientosSustitucion`, persiste 2 `EmbarqueMovimiento` (`RECEPCION_DEFECTUOSA` + `ENTREGA`) + 1 `Sustitucion` en una transacción, `logAudit`, realtime `embarque.updated`. Idempotente por `offlineId`.
 - `GET /api/embarques/[id]/sustituciones` — lista para el detalle.

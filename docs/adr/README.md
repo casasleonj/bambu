@@ -21,6 +21,7 @@ Contrato técnico congelado (plan-maestro-embarques-autocontenido-equipo-desarro
 | `ADR-REASIGNACION-001` | §0.2 (reasignación) | FASE 3 |
 | `ADR-BOTELLONES-001` | §16 (recogido ≠ entregado) | FASE 8 |
 | `ADR-RECUPERACION-001` | §3, §4 (RecoveryDecision) | FASE 4 |
+| `ADR-SUSTITUCION-001` | §9 (endpoint HTTP para sustituciones) | FASE 6a (frontend) |
 | `ADR-COMUNICACIONES-001` | §0.2 (WhatsApp opcional) | FASE 8 |
 | `ADR-MIGRACION-001` | §15, §23, §25 (histórico, expand-contract) | FASE 8 / FINAL |
 | `ADR-PRECIO-VOLUMEN-001` | §0.2 (antifraude volumen) | FASE 7 |
