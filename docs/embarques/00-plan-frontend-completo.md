@@ -8,6 +8,15 @@
 
 ---
 
+## FUERA DE ALCANCE — diferido (2026-08-27, confirmado con el PO)
+
+**Rediseño del formulario de "Nuevo Embarque" + "Auto-Generar" hacia un flujo "pedidos primero".**
+
+- Dirección de producto: Auto-Generar debe ser el **flujo por defecto** (el sistema agrupa los pedidos del día por zona y arma los embarques; el humano solo revisa/confirma). Principio: el humano toca lo mínimo.
+- **Bloqueante:** el módulo de **rutas** ("redactor de rutas") no está implementado. Embarques se alimenta de rutas. El PO tiene el plan de rutas hecho, falta implementarlo.
+- Este plan (Fases 2–10) trabaja sobre los **flujos actuales** de creación. El form de crear y Auto-Generar quedan **casi sin tocar** (Fase 4 solo agregó `?step=` post-creación). El rediseño se retoma después del módulo de rutas, con su propio spec.
+- No es deuda técnica — es trabajo de producto con dependencia externa.
+
 ## PARTE 1 — RONDA 1: hallazgos (qué es el código hoy)
 
 ### 1.1 Rutas y componentes reales
