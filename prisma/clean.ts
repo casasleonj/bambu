@@ -25,6 +25,38 @@ const prisma = new PrismaClient({
 const TRUNCATE_LOCK_TIMEOUT_MS = 3_000
 const TRUNCATE_MAX_RETRIES = 4
 
+// FIX: causa raíz del lock-contention (no solo el síntoma). El lock_timeout
+// de arriba acotaba la espera, pero seguía dependiendo del timeout propio
+// (15s) de la transacción bloqueante para liberar el lock. Esto ataca la
+// causa directamente: antes de truncar, mata cualquier conexión de OTRO
+// backend sobre esta misma base que lleve "idle in transaction" o "active"
+// más de 2s — el patrón exacto de una request de un test anterior (ej.
+// POST /api/clientes con transacción Serializable) que quedó en vuelo sin
+// cerrarse cuando el siguiente spec dispara resetDatabase(). Postgres hace
+// rollback automático de lo que esa conexión tuviera abierto — no hay
+// pérdida de datos reales porque esto solo corre contra la DB de test.
+// Patrón estándar de CI (pg_terminate_backend sobre pg_stat_activity,
+// excluyendo el propio backend vía pg_backend_pid()).
+async function terminateStaleConnections(): Promise<void> {
+  try {
+    const terminated = await prisma.$queryRawUnsafe<{ pid: number; terminated: boolean }[]>(`
+      SELECT pid, pg_terminate_backend(pid) AS terminated
+      FROM pg_stat_activity
+      WHERE datname = current_database()
+        AND pid <> pg_backend_pid()
+        AND state IN ('idle in transaction', 'active')
+        AND now() - state_change > interval '2 seconds'
+    `)
+    if (terminated.length > 0) {
+      console.log(`Terminated ${terminated.length} stale connection(s): ${terminated.map((t) => t.pid).join(', ')}`)
+    }
+  } catch (e) {
+    // No crítico: si esto falla (ej. permisos), el flujo de lock_timeout +
+    // retry de abajo sigue funcionando como red de seguridad.
+    console.log(`terminateStaleConnections error (non-fatal): ${e instanceof Error ? e.message : 'unknown'}`)
+  }
+}
+
 function isLockTimeoutError(err: unknown): boolean {
   if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2010') {
     const meta = err.meta as { code?: string; message?: string } | undefined
@@ -48,8 +80,9 @@ async function truncateWithRetry(table: string): Promise<void> {
       return
     } catch (e) {
       if (isLockTimeoutError(e) && attempt < TRUNCATE_MAX_RETRIES - 1) {
-        const backoffMs = 500 * (attempt + 1)
-        console.log(`Lock contention on ${table}, retrying in ${backoffMs}ms (${attempt + 1}/${TRUNCATE_MAX_RETRIES})...`)
+        console.log(`Lock contention on ${table}, terminating stale connections and retrying (${attempt + 1}/${TRUNCATE_MAX_RETRIES})...`)
+        await terminateStaleConnections()
+        const backoffMs = 200 * (attempt + 1)
         await new Promise((r) => setTimeout(r, backoffMs))
         continue
       }
@@ -60,6 +93,12 @@ async function truncateWithRetry(table: string): Promise<void> {
 }
 
 async function clean() {
+  // Mata cualquier conexión colgada de un spec anterior ANTES de arrancar
+  // el loop — el caso más común documentado en AGENTS.md #20 es que la
+  // contención ya existe al momento de llamar a clean.ts, no que aparezca
+  // a mitad del loop.
+  await terminateStaleConnections()
+
   // Orden: tablas hijas primero, luego padres. TRUNCATE CASCADE mitiga
   // dependencias circulares (p. ej. Cliente <-> Negocio).
   const tables = [
