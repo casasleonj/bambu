@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { fetchResilient } from '@/lib/fetch-resilient'
 import { generateUUID } from '@/lib/uuid'
 import { formatCurrency } from '@/lib/utils'
-import { UMBRAL_MINIMO_FALTANTE_CAJA, DEUDA_FALTANTE_CAJA_PLAZO_NOMINAS_DEFAULT, DEUDA_FALTANTE_CAJA_PORCENTAJE_NOMINA_DEFAULT } from '@/lib/constants'
+import { UMBRAL_MINIMO_FALTANTE_CAJA } from '@/lib/constants'
 import { getCapacidadInfo, calcularPesoDesdeCarga, type CargaSnapshot, emptyStock, type StockSnapshot } from '@/lib/embarque-capacidad'
 import { useProductosDomicilio, getProductoEmoji } from '@/hooks/use-productos-domicilio'
 import type { Cliente, PagoItem, Embarque, EmbarqueAbierto, CuadrePedido, VentaLibre, ProductoRetorno, GastoItem } from './types'
@@ -14,6 +14,7 @@ import { calcularMontoPagado, calcularTotalEntregado } from './types'
 import { PedidoCuadre } from './pedido-cuadre'
 import { VentaLibreRow } from './venta-libre-row'
 import { ConfirmModal } from './confirm-modal'
+import { pasoPedidosValido, pasoFisicoValido, pasoConfirmarValido } from './wizard-gating'
 
 const GASTO_CATEGORIAS = ['Gasolina', 'Alimentación', 'Peajes', 'Parqueadero', 'Mantenimiento', 'Otros']
 
@@ -49,6 +50,7 @@ export default function CerrarEmbarqueClient() {
   const [preview, setPreview] = useState<{
     caja: { efectivoEsperado: number; efectivoReal: number; diferencia: number; otrosPagos: number; sobranteFaltante: number }
     conciliacion: { totalDiscrepancy: number }
+    responsibilityCases: Array<{ id: string; tipo: string; montoEstimado: number }>
   } | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState(false)
@@ -478,7 +480,7 @@ export default function CerrarEmbarqueClient() {
         if (cancelled) return
         if (res.ok) {
           const json = await res.json()
-          setPreview({ caja: json.caja, conciliacion: json.conciliacion })
+          setPreview({ caja: json.caja, conciliacion: json.conciliacion, responsibilityCases: json.responsibilityCases || [] })
           setPreviewError(false)
         } else {
           setPreview(null)
@@ -511,19 +513,19 @@ export default function CerrarEmbarqueClient() {
         offlineId: generateUUID(),
       }
 
-      const result = await fetchResilient<{ deudaCreada?: { id: string; monto: number } | null }>(
+      const result = await fetchResilient<{ responsibilityCases?: Array<{ id: string; tipo: string; montoEstimado: number }> }>(
         `/api/embarques/${embarqueId}/cerrar`,
         { method: 'POST', body: payload, localEndpoint: 'cerrar-embarque' }
       )
 
       if (result.status === 'ok') {
-        const deuda = result.data.deudaCreada
-        if (deuda && deuda.id) {
+        const casos = result.data.responsibilityCases || []
+        if (casos.length > 0) {
+          // ADR-RESPONSABILIDAD-001: el cargo económico NUNCA es automático.
+          // El cierre detecta responsabilidades que quedan PENDIENTES de
+          // resolución autorizada (no se crea deuda/descuento directo).
           toast.success(
-            <div className="space-y-1">
-              <p className="font-semibold">Embarque cerrado</p>
-              <p className="text-sm">Se creó deuda por {formatCurrency(deuda.monto)} al trabajador.</p>
-            </div>,
+            `Embarque cerrado. ${casos.length} responsabilidad(es) quedaron pendientes de resolución autorizada.`,
             { duration: 6000 }
           )
         } else {
@@ -577,6 +579,19 @@ export default function CerrarEmbarqueClient() {
     totalDiscrepancia: preview ? preview.conciliacion.totalDiscrepancy : calculos.totalDiscrepancia,
   }
 
+  // Fase 7 (D7): wizard forzado. `pasoValidez[i].valido` controla si se puede
+  // avanzar desde el paso i; la UI deshabilita "Siguiente" y muestra el motivo.
+  // Ventas Libres (1) y Gastos (3) son opcionales y siempre válidos.
+  // Cómputo inline (5 llamadas puras baratas), no useMemo: vive después de los
+  // early-returns de `loading`/`!embarque`, donde un hook violaría rules-of-hooks.
+  const pasoValidez = [
+    pasoPedidosValido(cuadres),
+    { valido: true, motivos: [] as string[] },
+    pasoFisicoValido(calculos.totalDiscrepancia, justificacion),
+    { valido: true, motivos: [] as string[] },
+    pasoConfirmarValido(!!preview && !previewError, previewLoading),
+  ]
+
   const sections = [
     { label: 'Pedidos', count: embarque.pedidos.length },
     { label: 'Ventas Libres', count: ventasLibres.length },
@@ -607,28 +622,36 @@ export default function CerrarEmbarqueClient() {
             </div>
           </div>
 
-          {/* Section tabs */}
+          {/* Wizard steps (Fase 7): se puede retroceder, no saltar hacia adelante */}
           <div className="flex gap-1 overflow-x-auto">
-            {sections.map((sec, i) => (
-              <button
-                key={i}
-                onClick={() => setActiveSection(i)}
-                className={`px-4 py-2 rounded-t-lg text-sm font-medium whitespace-nowrap transition ${
-                  activeSection === i
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                {sec.label}
-                {sec.count !== null && (
-                  <span className={`ml-1 px-1.5 py-0.5 rounded-full text-xs ${
-                    activeSection === i ? 'bg-blue-500 text-blue-100' : 'bg-gray-200 text-gray-500'
-                  }`}>
-                    {sec.count}
-                  </span>
-                )}
-              </button>
-            ))}
+            {sections.map((sec, i) => {
+              const isPast = i < activeSection
+              const isCurrent = i === activeSection
+              return (
+                <button
+                  key={i}
+                  onClick={() => { if (isPast) setActiveSection(i) }}
+                  disabled={!isPast && !isCurrent}
+                  className={`px-4 py-2 rounded-t-lg text-sm font-medium whitespace-nowrap transition ${
+                    isCurrent
+                      ? 'bg-blue-600 text-white'
+                      : isPast
+                      ? 'bg-green-50 text-green-700 hover:bg-green-100'
+                      : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                  }`}
+                >
+                  {isPast && <span className="mr-1">✓</span>}
+                  {sec.label}
+                  {sec.count !== null && (
+                    <span className={`ml-1 px-1.5 py-0.5 rounded-full text-xs ${
+                      isCurrent ? 'bg-blue-500 text-blue-100' : 'bg-gray-200 text-gray-500'
+                    }`}>
+                      {sec.count}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
           </div>
         </div>
       </div>
@@ -930,8 +953,8 @@ export default function CerrarEmbarqueClient() {
                   {authoritative.faltanteSobrante < 0 && (
                     <p className="text-xs text-red-600 text-center mt-1">
                       {authoritative.generaraDeuda
-                        ? 'Se creará deuda al trabajador si no se justifica'
-                        : 'No genera deuda (por debajo del umbral o justificado)'}
+                        ? 'Se detectará una responsabilidad por faltante si no se justifica'
+                        : 'No genera responsabilidad (por debajo del umbral o justificado)'}
                     </p>
                   )}
                 </div>
@@ -940,13 +963,13 @@ export default function CerrarEmbarqueClient() {
               {authoritative.generaraDeuda && (
                 <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
                   <div className="flex items-start gap-3">
-                    <span className="text-xl shrink-0">💳</span>
+                    <span className="text-xl shrink-0">⚠️</span>
                     <div className="flex-1">
                       <p className="text-sm font-semibold text-amber-900">
-                        Se generará una deuda de {formatCurrency(authoritative.faltanteEfectivo)} a {embarque.trabajador.nombre}
+                        Faltante de {formatCurrency(authoritative.faltanteEfectivo)} — se detectará una responsabilidad, pendiente de resolución autorizada (nunca un cargo automático).
                       </p>
                       <p className="text-xs text-amber-700 mt-1">
-                        Plan de pago: {DEUDA_FALTANTE_CAJA_PLAZO_NOMINAS_DEFAULT} nóminas, máximo {DEUDA_FALTANTE_CAJA_PORCENTAJE_NOMINA_DEFAULT}% por nómina.
+                        ADR-RESPONSABILIDAD-001: el cargo económico al trabajador solo se materializa tras una resolución autorizada.
                       </p>
                       <label className="block text-xs font-medium text-amber-800 mt-3 mb-1">
                         Justificación del faltante (opcional)
@@ -959,10 +982,26 @@ export default function CerrarEmbarqueClient() {
                         rows={2}
                       />
                       {justificacionFaltante.trim() && (
-                        <p className="text-xs text-green-700 mt-1">✅ Con esta justificación no se creará la deuda.</p>
+                        <p className="text-xs text-green-700 mt-1">✅ Con esta justificación no se detectará la responsabilidad.</p>
                       )}
                     </div>
                   </div>
+                </div>
+              )}
+
+              {preview && preview.responsibilityCases.length > 0 && (
+                <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg" data-testid="responsability-cases-preview">
+                  <p className="text-sm font-semibold text-amber-900 mb-2">
+                    Responsabilidades detectadas (quedarán pendientes de resolución autorizada):
+                  </p>
+                  <ul className="space-y-1 text-sm text-amber-800">
+                    {preview.responsibilityCases.map((c) => (
+                      <li key={c.id} className="flex justify-between">
+                        <span>{c.tipo}</span>
+                        <span className="font-semibold">{formatCurrency(c.montoEstimado)}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               )}
             </div>
@@ -1012,29 +1051,49 @@ export default function CerrarEmbarqueClient() {
           </div>
         )}
 
-        {/* Actions */}
-        <div className="flex gap-3 pb-8 sticky bottom-0 bg-white border-t pt-4">
-          <button
-            onClick={() => router.push('/embarques')}
-            className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition font-medium"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={() => setShowConfirmModal(true)}
-            disabled={submitting}
-            className={`flex-1 px-4 py-3 rounded-lg transition font-medium disabled:opacity-50 ${
-              authoritative.generaraDeuda
-                ? 'bg-amber-600 text-white hover:bg-amber-700'
-                : 'bg-blue-600 text-white hover:bg-blue-700'
-            }`}
-          >
-            {submitting
-              ? 'Cerrando...'
-              : authoritative.generaraDeuda
-              ? 'Cerrar y generar deuda'
-              : 'Confirmar Cierre'}
-          </button>
+        {/* Wizard navigation (Fase 7) */}
+        <div className="flex flex-col gap-3 pb-8 sticky bottom-0 bg-white border-t pt-4">
+          {pasoValidez[activeSection].motivos.length > 0 && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+              <p className="font-medium">Para continuar:</p>
+              <ul className="list-disc pl-5 mt-1 space-y-0.5">
+                {pasoValidez[activeSection].motivos.map((m, i) => <li key={i}>{m}</li>)}
+              </ul>
+            </div>
+          )}
+          <div className="flex gap-3">
+            <button
+              onClick={() => router.push('/embarques')}
+              className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition font-medium"
+            >
+              Cancelar
+            </button>
+            {activeSection > 0 && (
+              <button
+                onClick={() => setActiveSection(activeSection - 1)}
+                className="flex-1 px-4 py-3 border rounded-lg hover:bg-gray-50 transition font-medium"
+              >
+                ← Volver
+              </button>
+            )}
+            {activeSection < 4 ? (
+              <button
+                onClick={() => setActiveSection(activeSection + 1)}
+                disabled={!pasoValidez[activeSection].valido}
+                className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Siguiente →
+              </button>
+            ) : (
+              <button
+                onClick={() => setShowConfirmModal(true)}
+                disabled={submitting || !pasoValidez[4].valido}
+                className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {submitting ? 'Cerrando...' : 'Confirmar Cierre'}
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
