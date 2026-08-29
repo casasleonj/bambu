@@ -39,7 +39,7 @@ Tests §20 "Fuente de verdad": saldo canónico, ReceivableEntry no competidor, d
 
 ## Estado de implementación (FASE 5)
 
-- ✅ Modelo `ReceivableEntry` (proyección de auditoría): `saldoResultante` + `totalPagadoResultante` snapshots, `tipo` PAGO|ABONO, `offlineId @unique`.
+- ✅ Modelo `ReceivableEntry` (proyección de auditoría): `saldoResultante` + `totalPagadoResultante` snapshots, `tipo` PAGO|ABONO, `offlineId` indexado (NO `@unique`: un `pagar-fiado` reparte el abono FIFO sobre N pedidos y genera una proyección por pedido, todas con el mismo `offlineId` del batch — igual que `Pago.offlineId`. La idempotencia de replay la da el check de `Pago` dentro del lock CARTERA).
 - ✅ `registrarReceivableEntry(tx, input)` — genera la proyección en la MISMA transacción del Pago/Abono (contrato §12).
 - ✅ Integrado en `POST /api/pedidos/pagar-fiado`, `POST /api/abonos` y `CrearPedidoUseCase`.
 - ✅ `detectarDivergencia` (proyección vs canónico) + `registrarDivergencia` → log `DUAL_WRITE_DIVERGENCE` + métrica `dual_write_divergence_count` (no autocorrige, no inventa, no altera histórico).
