@@ -28,7 +28,7 @@ _Actualizado: 2026-08-27_
 | 6a | Endpoint `POST/GET /api/embarques/[id]/sustituciones` | ✅ PR #137 |
 | **5** | Mission Detail | ✅ branch `feat/embarques-fase5-mission-detail` |
 | **6b** | UI de sustituciones | ✅ branch `feat/embarques-fase6b-sustituciones-ui` |
-| **7** | Reconciliation (cierre = wizard forzado) | ⏳ Pendiente |
+| **7** | Reconciliation (cierre = wizard forzado) | ✅ branch `feat/embarques-fase7-reconciliation` (bloqueo por excepciones preexistentes diferido) |
 | **8** | Test hardening + bugs preexistentes | ⏳ Pendiente |
 | **9-10** | Flag a default ON + verificación + retiro de legacy | ⏳ Pendiente |
 
@@ -36,6 +36,7 @@ _Actualizado: 2026-08-27_
 - [ ] PO revisa y mergea PRs **#134, #135, #136, #137** a `main`. Probar en `localhost:3001`.
 - [ ] PO revisa la branch **`feat/embarques-fase5-mission-detail`** (Mission Detail, Fase 5) antes de abrir su PR.
 - [ ] PO revisa la branch **`feat/embarques-fase6b-sustituciones-ui`** (UI de sustituciones, Fase 6b) antes de abrir su PR.
+- [ ] PO revisa la branch **`feat/embarques-fase7-reconciliation`** (wizard de cierre forzado, Fase 7) antes de abrir su PR.
 
 ---
 
@@ -117,6 +118,14 @@ _Actualizado: 2026-08-27_
 ## FASE 7 — Reconciliation (cierre)
 
 **Objetivo:** cerrar un embarque es un **wizard forzado** (decisión D7) que no deja avanzar con cosas sin resolver, y muestra un preview del resultado antes de confirmar.
+
+> **Estado (2026-08-27):** implementado en `feat/embarques-fase7-reconciliation`.
+> Hecho: estructura de wizard secuencial (1), preview-gated confirm (2), cargo
+> por responsabilidad nunca automático (4), offline (5, ya estaba). **Diferido:
+> ítem 3 (bloqueo por excepciones preexistentes)** — requiere exponer
+> `ResponsibilityCase`/`ObligacionPendiente` pendientes (endpoint additivo o SSR
+> en `page.tsx`); hoy no hay endpoint de listado de casos de responsabilidad.
+> Se retoma junto a Fase 8.
 
 **Archivos a tocar:**
 - `src/app/(app)/embarques/[id]/cerrar/cerrar-client/index.tsx` (1063 líneas — reescritura)
