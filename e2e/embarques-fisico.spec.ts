@@ -139,6 +139,27 @@ test.describe('Embarques — Tab Físico — Happy path', () => {
     expect(recogidos).toBe(5)
     expect(entregados).toBe(2)
   })
+
+  test('Sustitución: registrar desde la UI genera RETORNO + ENTREGA (2 movimientos)', async ({ page }) => {
+    const { embarqueId } = await setup(page)
+    await abrirTabFisico(page, embarqueId)
+
+    await expect(page.getByText('Sin movimientos registrados todavía.')).toBeVisible()
+
+    await page.getByTestId('registrar-sustitucion-button').click()
+    await page.getByTestId('sustitucion-cantidad-input').fill('2')
+    await page.getByTestId('sustitucion-submit-button').click()
+    await waitForToast(page, 'Sustitución registrada')
+
+    // La lista de sustituciones muestra la nueva sustitución con sus 2 movimientos.
+    await expect(page.getByTestId('sustituciones-list')).toContainText('Sustitución')
+    await expect(page.getByTestId('sustituciones-list')).toContainText('Retorno')
+    await expect(page.getByTestId('sustituciones-list')).toContainText('Entrega')
+
+    // El ledger físico refleja exactamente esos 2 movimientos separados.
+    await expect(page.getByTestId('movimientos-timeline')).toContainText('Retorno')
+    await expect(page.getByTestId('movimientos-timeline')).toContainText('Entrega')
+  })
 })
 
 test.describe('Embarques — Tab Físico — Validaciones de formulario', () => {

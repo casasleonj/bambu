@@ -6,37 +6,47 @@ import { MovimientoFormModal } from './movimiento-form-modal'
 import { RecoveryPanel } from './recovery-panel'
 import { RecoveryFormModal } from './recovery-form-modal'
 import { BotellonesPanel } from './botellones-panel'
+import { SustitucionesList } from '../mission-detail/sustituciones-list'
+import { SustitucionFormModal } from '../mission-detail/sustitucion-form-modal'
 import type { Movimiento, RecoveryDecision, PedidoOption } from './types'
+import type { SustitucionUI } from '../mission-detail/sustituciones-list'
 
 interface LedgerTabProps {
   embarqueId: string
   canManage: boolean
   canRegisterBotellon: boolean
+  canRegisterSustitucion: boolean
   pedidos: PedidoOption[]
 }
 
-export function LedgerTab({ embarqueId, canManage, canRegisterBotellon, pedidos }: LedgerTabProps) {
+export function LedgerTab({ embarqueId, canManage, canRegisterBotellon, canRegisterSustitucion, pedidos }: LedgerTabProps) {
   const [movimientos, setMovimientos] = useState<Movimiento[]>([])
   const [recovery, setRecovery] = useState<RecoveryDecision[]>([])
+  const [sustituciones, setSustituciones] = useState<SustitucionUI[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showMovimientoModal, setShowMovimientoModal] = useState(false)
   const [showRecoveryModal, setShowRecoveryModal] = useState(false)
+  const [showSustitucionModal, setShowSustitucionModal] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const [movRes, recRes] = await Promise.all([
+      const [movRes, recRes, susRes] = await Promise.all([
         fetch(`/api/embarques/${embarqueId}/movimientos`, { credentials: 'include' }),
         fetch(`/api/embarques/${embarqueId}/recovery`, { credentials: 'include' }),
+        fetch(`/api/embarques/${embarqueId}/sustituciones`, { credentials: 'include' }),
       ])
       const movData = await movRes.json()
       const recData = await recRes.json()
+      const susData = await susRes.json()
       if (!movRes.ok || !movData.success) throw new Error(movData.error?.message || 'Error cargando movimientos')
       if (!recRes.ok || !recData.success) throw new Error(recData.error?.message || 'Error cargando recovery')
+      if (!susRes.ok || !susData.success) throw new Error(susData.error?.message || 'Error cargando sustituciones')
       setMovimientos(movData.movimientos || [])
       setRecovery(recData.recovery || [])
+      setSustituciones(susData.sustituciones || [])
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error cargando el ledger físico')
     } finally {
@@ -112,6 +122,24 @@ export function LedgerTab({ embarqueId, canManage, canRegisterBotellon, pedidos 
         </div>
       </div>
 
+      <div className="bg-white rounded-xl shadow overflow-hidden">
+        <div className="px-4 py-3 border-b flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-800">Sustituciones ({sustituciones.length})</h3>
+          {canRegisterSustitucion && (
+            <button
+              data-testid="registrar-sustitucion-button"
+              onClick={() => setShowSustitucionModal(true)}
+              className="min-h-[44px] flex items-center text-xs text-blue-600 hover:text-blue-800 font-medium px-3 rounded hover:bg-blue-50"
+            >
+              + Registrar sustitución
+            </button>
+          )}
+        </div>
+        <div data-testid="sustituciones-list" className="max-h-[28rem] overflow-y-auto">
+          <SustitucionesList sustituciones={sustituciones} />
+        </div>
+      </div>
+
       {canManage && (
         <>
           <MovimientoFormModal
@@ -127,6 +155,13 @@ export function LedgerTab({ embarqueId, canManage, canRegisterBotellon, pedidos 
             embarqueId={embarqueId}
             movimientos={movimientos}
             recovery={recovery}
+            pedidos={pedidos}
+          />
+          <SustitucionFormModal
+            open={showSustitucionModal}
+            onClose={() => setShowSustitucionModal(false)}
+            onCreated={load}
+            embarqueId={embarqueId}
             pedidos={pedidos}
           />
         </>

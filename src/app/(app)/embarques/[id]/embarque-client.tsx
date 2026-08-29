@@ -21,6 +21,7 @@ import { startOfDayBogota } from '@/lib/dates'
 import { EmbarqueFormModal } from '../embarques-client/embarque-form-modal'
 import { LedgerTab } from './ledger-client/ledger-tab'
 import { EstadoOperativo } from './mission-detail/estado-operativo'
+import { puedeRegistrarSustitucion } from './mission-detail/sustitucion-form-modal'
 import type { EmbarqueDetalle, PedidoResumen } from './types'
 import type { Trabajador, Ruta, EmbarqueEditable, Pedido } from '../embarques-client/types'
 
@@ -243,6 +244,7 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
   // se limita a canManage aquí. Una vista de botellones para REPARTIDOR
   // requeriría una ruta dedicada bajo /repartidor, no reusar esta página.
   const canRegisterBotellon = canManage
+  const canRegisterSustitucion = puedeRegistrarSustitucion(userRole, embarque.estado)
   const isEditable = embarque.estado === 'ABIERTO' || embarque.estado === 'EN_RUTA'
   const isOpen = embarque.estado === 'ABIERTO'
   const isEnRuta = embarque.estado === 'EN_RUTA'
@@ -800,6 +802,7 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
               embarqueId={embarque.id}
               canManage={canManage}
               canRegisterBotellon={canRegisterBotellon}
+              canRegisterSustitucion={canRegisterSustitucion}
               pedidos={pedidos.map((p) => ({ id: p.id, numero: p.numero }))}
             />
           ) : activeTab === 'pedidos' ? (
