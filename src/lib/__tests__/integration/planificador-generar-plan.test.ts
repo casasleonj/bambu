@@ -3,6 +3,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { testPrisma, resetAndSeed, disconnect } from './setup'
 import { GenerarPlanUseCase } from '@/modules/planificador/application/use-cases/GenerarPlanUseCase'
+import { ConfirmarPlanUseCase } from '@/modules/planificador/application/use-cases/ConfirmarPlanUseCase'
 
 const FECHA = '2026-08-30'
 
@@ -115,5 +116,57 @@ describe('GenerarPlanUseCase — integración', () => {
     expect(planes).toHaveLength(2)
     expect(planes[0].estado).toBe('SUPERSEDED')
     expect(planes[1].estado).toBe('PROPOSED')
+  })
+
+  it('confirmar → materializa embarques, pedidos EN_RUTA, plan CONFIRMED', async () => {
+    // Estado tras el test anterior: v2 PROPOSED es la vigente.
+    const vigente = await testPrisma.planDia.findFirst({
+      where: { fecha: new Date('2026-08-30T00:00:00-05:00'), estado: 'PROPOSED' },
+      orderBy: { version: 'desc' },
+      include: { grupos: { include: { paradas: { include: { actividades: true } } } } },
+    })
+    expect(vigente).toBeTruthy()
+
+    const confirmar = new ConfirmarPlanUseCase()
+    const res = await confirmar.execute({
+      planId: vigente!.id,
+      expectedVersion: vigente!.version,
+      maxUnidades: 70,
+    })
+
+    expect(res.materializacion.fallidos).toEqual([])
+    expect(res.estado).toBe('CONFIRMED')
+    expect(res.materializacion.creados.length).toBeGreaterThanOrEqual(1)
+
+    const plan = await testPrisma.planDia.findUnique({
+      where: { id: vigente!.id },
+      include: { grupos: true },
+    })
+    expect(plan!.estado).toBe('CONFIRMED')
+    expect(plan!.grupos.every((g) => g.embarqueId)).toBe(true)
+
+    // Los pedidos del plan quedaron EN_RUTA con embarqueId.
+    const pedidoIds = vigente!.grupos.flatMap((g) =>
+      g.paradas.flatMap((p) => p.actividades.flatMap((a) => a.pedidoIds)),
+    )
+    const pedidos = await testPrisma.pedido.findMany({ where: { id: { in: pedidoIds } } })
+    expect(pedidos.every((p) => p.embarqueId && p.estadoEntrega === 'EN_RUTA')).toBe(true)
+
+    // Se creó un embarque real por grupo materializado.
+    const embarques = await testPrisma.embarque.findMany({
+      where: { id: { in: res.materializacion.creados.map((c) => c.embarqueId) } },
+    })
+    expect(embarques.length).toBe(res.materializacion.creados.length)
+  })
+
+  it('re-confirmar con expectedVersion vieja → VERSION_CONFLICT', async () => {
+    const plan = await testPrisma.planDia.findFirst({
+      where: { fecha: new Date('2026-08-30T00:00:00-05:00'), estado: 'CONFIRMED' },
+      orderBy: { version: 'desc' },
+    })
+    const confirmar = new ConfirmarPlanUseCase()
+    await expect(
+      confirmar.execute({ planId: plan!.id, expectedVersion: 1, maxUnidades: 70 }),
+    ).rejects.toThrow('VERSION_CONFLICT')
   })
 })

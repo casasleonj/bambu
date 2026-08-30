@@ -1,3 +1,14 @@
+/**
+ * @deprecated — ADR-PLANIFICADOR-003 §3 (decisión del PO, 2026-08-30).
+ *
+ * Este endpoint (agrupación por `rutaId ?? barrio` + capacidad + repartidor) es
+ * REEMPLAZADO por el Planificador de Distribución (`POST /api/rutas/planes/generar`
+ * → `POST /api/rutas/planes/[id]/confirmar` → materialización a Embarques).
+ *
+ * Se mantiene funcional hasta F6, cuando el botón "Auto-Generar" de la UI de
+ * Embarques se re-apunte al flujo del plan. NO agregar features acá. Los helpers
+ * puros de `src/lib/embarque-auto.ts` sí sobreviven (el motor del plan los reusa).
+ */
 import { NextRequest } from 'next/server'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { logAudit } from '@/lib/audit'

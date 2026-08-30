@@ -6,11 +6,14 @@
  * PlanDia → PlanGrupo → PlanParada → PlanActividad + PlanExcepcion.
  */
 
+import type { $Enums } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { startOfDayBogota, endOfDayBogota } from '@/lib/dates'
 import { pickRutaId } from '@/lib/pedido-ruta'
 import { wherePedidosElegiblesPlan } from '../domain/services/elegibilidad.service'
 import type { CandidatoPedido, Propuesta } from '../application/construir-propuesta'
+
+type PlanEstado = $Enums.PlanEstado
 
 export interface DatosGeneracion {
   candidatos: CandidatoPedido[]
@@ -215,6 +218,101 @@ export class PrismaPlanificadorRepository {
       })
 
       return { id: plan.id, version: plan.version }
+    })
+  }
+
+  /** Plan completo con grupos/paradas/actividades/excepciones. */
+  async obtenerPlan(id: string) {
+    return prisma.planDia.findUnique({
+      where: { id },
+      include: {
+        grupos: {
+          orderBy: { secuencia: 'asc' },
+          include: {
+            paradas: {
+              orderBy: { secuencia: 'asc' },
+              include: { actividades: true },
+            },
+          },
+        },
+        excepciones: { orderBy: { createdAt: 'asc' } },
+      },
+    })
+  }
+
+  /** Plan vigente de una fecha (mayor version en estado no terminal). */
+  async obtenerVigentePorFecha(fecha: string) {
+    const plan = await prisma.planDia.findFirst({
+      where: {
+        fecha: startOfDayBogota(fecha),
+        estado: { in: ['PROPOSED', 'REVIEW', 'CONFIRMED', 'INTEGRATION_PARTIAL'] },
+      },
+      orderBy: { version: 'desc' },
+      select: { id: true },
+    })
+    return plan ? this.obtenerPlan(plan.id) : null
+  }
+
+  /**
+   * Transición de estado del plan con chequeo de versión optimista
+   * (ADR-PLANIFICADOR-005 §4). Lanza 'VERSION_CONFLICT' si `expectedVersion`
+   * no coincide, o 'ESTADO_INVALIDO' si la transición no aplica.
+   */
+  async transicionar(params: {
+    id: string
+    expectedVersion: number
+    desde: PlanEstado[]
+    hacia: PlanEstado
+    userId?: string
+    confirmOfflineId?: string
+  }): Promise<{ deduped: boolean }> {
+    return prisma.$transaction(async (tx) => {
+      const plan = await tx.planDia.findUnique({
+        where: { id: params.id },
+        select: { version: true, estado: true, confirmOfflineId: true },
+      })
+      if (!plan) throw new Error('PLAN_NOT_FOUND')
+
+      // Idempotencia: replay del confirmar con el mismo offlineId.
+      if (
+        params.confirmOfflineId &&
+        plan.confirmOfflineId === params.confirmOfflineId &&
+        ['CONFIRMED', 'INTEGRATION_PARTIAL'].includes(plan.estado)
+      ) {
+        return { deduped: true }
+      }
+
+      if (plan.version !== params.expectedVersion) throw new Error('VERSION_CONFLICT')
+      if (!params.desde.includes(plan.estado)) throw new Error('ESTADO_INVALIDO')
+
+      await tx.planDia.update({
+        where: { id: params.id },
+        data: {
+          estado: params.hacia,
+          ...(params.hacia === 'CONFIRMED'
+            ? { confirmadoEn: new Date(), confirmadoPorId: params.userId ?? null }
+            : {}),
+          ...(params.confirmOfflineId ? { confirmOfflineId: params.confirmOfflineId } : {}),
+        },
+      })
+      return { deduped: false }
+    })
+  }
+
+  async marcarEstado(id: string, estado: PlanEstado): Promise<void> {
+    await prisma.planDia.update({ where: { id }, data: { estado } })
+  }
+
+  async marcarGrupoMaterializado(grupoId: string, embarqueId: string): Promise<void> {
+    await prisma.planGrupo.update({ where: { id: grupoId }, data: { embarqueId } })
+  }
+
+  /** Grupos de un plan con sus pedidos (para materializar). */
+  async gruposParaMaterializar(planId: string) {
+    return prisma.planGrupo.findMany({
+      where: { planDiaId: planId },
+      orderBy: { secuencia: 'asc' },
+      include: { paradas: { include: { actividades: true } } },
     })
   }
 }
