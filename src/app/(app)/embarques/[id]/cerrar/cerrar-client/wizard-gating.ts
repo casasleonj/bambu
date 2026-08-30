@@ -14,6 +14,8 @@ import { calcularMontoPagado, calcularTotalEntregado, type CuadrePedido } from '
 export interface PasoValidez {
   valido: boolean
   motivos: string[]
+  /** No bloquean el avance; se muestran en ámbar como aviso. */
+  advertencias?: string[]
 }
 
 /**
@@ -48,16 +50,42 @@ export function pasoFisicoValido(totalDiscrepancia: number, justificacion: strin
 }
 
 /**
- * Paso 4 — Cuadre y Confirmar: solo se habilita "Confirmar cierre" cuando el
- * preview autoritativo del backend (dry-run del mismo `CerrarEmbarqueUseCase`)
- * terminó sin error. Sin preview verificado → no se puede confirmar.
+ * Paso 4 — Cuadre y Confirmar.
+ *
+ * El preview autoritativo (`POST /cerrar/preview`, dry-run del mismo
+ * `CerrarEmbarqueUseCase` con rollback) es **best-effort**: sirve para mostrar
+ * los números reales antes de confirmar, pero NO es un gate duro. Si falla
+ * (offline, timeout, 2G rural) NO se bloquea el cierre — el `POST /cerrar`
+ * real valida en el servidor y es la fuente de verdad; un cierre inválido se
+ * revierte sin efecto. Bloquear acá dejaría al asistente sin poder cerrar el
+ * embarque cuando la red está mala, justo el escenario para el que se diseñó
+ * el offline-first del proyecto.
+ *
+ * - `previewLoading` → bloquea (transitorio, se está verificando).
+ * - `previewError` → NO bloquea; muestra advertencia ámbar.
+ * - preview OK → habilita sin aviso.
  */
-export function pasoConfirmarValido(previewOk: boolean, previewLoading: boolean): PasoValidez {
+export function pasoConfirmarValido(
+  previewOk: boolean,
+  previewLoading: boolean,
+  previewError: boolean,
+): PasoValidez {
   if (previewLoading) {
-    return { valido: false, motivos: ['Verificando el cuadre con el backend…'] }
+    return { valido: false, motivos: ['Verificando el cuadre con el servidor…'] }
+  }
+  if (previewError) {
+    return {
+      valido: true,
+      motivos: [],
+      advertencias: [
+        'No se pudo verificar el cuadre con el servidor (sin conexión o error). ' +
+          'Al confirmar, el cierre se valida en el servidor; si algo no cuadra, se cancela sin efecto.',
+      ],
+    }
   }
   if (!previewOk) {
-    return { valido: false, motivos: ['El preview del cierre no se pudo verificar. Revisá los pasos anteriores.'] }
+    // Estado inicial al entrar al paso, antes de que arranque el fetch.
+    return { valido: false, motivos: ['Cargando verificación del cuadre…'] }
   }
   return { valido: true, motivos: [] }
 }

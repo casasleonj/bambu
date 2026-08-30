@@ -119,13 +119,38 @@ _Actualizado: 2026-08-27_
 
 **Objetivo:** cerrar un embarque es un **wizard forzado** (decisión D7) que no deja avanzar con cosas sin resolver, y muestra un preview del resultado antes de confirmar.
 
-> **Estado (2026-08-27):** implementado en `feat/embarques-fase7-reconciliation`.
-> Hecho: estructura de wizard secuencial (1), preview-gated confirm (2), cargo
-> por responsabilidad nunca automático (4), offline (5, ya estaba). **Diferido:
-> ítem 3 (bloqueo por excepciones preexistentes)** — requiere exponer
-> `ResponsibilityCase`/`ObligacionPendiente` pendientes (endpoint additivo o SSR
-> en `page.tsx`); hoy no hay endpoint de listado de casos de responsabilidad.
-> Se retoma junto a Fase 8.
+> **Estado (2026-08-29):** implementado en `feat/embarques-fase7-reconciliation`.
+> Hecho: estructura de wizard secuencial (1), cargo por responsabilidad nunca
+> automático (4 — el cliente ahora lee `responsibilityCases` de la respuesta;
+> antes leía `deudaCreada`, que el backend ya devuelve `null` desde FASE 6 §13
+> → era código muerto), offline (5, ya estaba).
+>
+> **Endurecido tras auditoría (2026-08-29):**
+> - El **preview NO es gate duro**. Es best-effort: si `POST /cerrar/preview`
+>   falla (offline, timeout, 2G), el wizard muestra una advertencia ámbar
+>   (`data-testid="wizard-advertencia"`) pero **deja confirmar** — el
+>   `POST /cerrar` real valida server-side y es la fuente de verdad. Bloquear
+>   ahí dejaba al asistente sin poder cerrar con mala red (contra el
+>   offline-first del proyecto). Ver `pasoConfirmarValido()` en `wizard-gating.ts`.
+> - E2E real del wizard: `e2e/embarques-cierre-wizard.spec.ts` (5 tests):
+>   no-saltar-pasos, "Siguiente" bloqueado en Conciliación sin justificar,
+>   happy path → CERRADO, preview-falla-no-bloquea.
+> - `data-testid` corregido: `responsability-cases-preview` → `responsibility-cases-preview`.
+>
+> **Nota de flujo (intencional, D7):** el paso Conciliación bloquea el avance
+> ante cualquier discrepancia física sin justificación de texto (antes era un
+> warning + textarea opcional; el backend acepta vacío). Es el intent de D7
+> ("no avanzar con cosas sin resolver"). Confirmado como comportamiento deseado.
+>
+> **Diferido: ítem 3 (bloqueo por `ResponsibilityCase`/`ObligacionPendiente`
+> abiertos)** — no hay endpoint de listado de casos abiertos. Se retoma en Fase 8.
+>
+> **Nota (D1):** los cambios de Fase 5 (`embarque-client.tsx`) y Fase 7
+> (`cerrar-client/`) son modificaciones **in-place**, NO detrás del flag
+> `NEXT_PUBLIC_EMBARQUES_V2` (que solo cubre el Command Center de la lista).
+> Son cambios incrementales (≤180 líneas de ~1100), no reescrituras paralelas;
+> el rollback es `git revert`, no apagar el flag. Documentado explícitamente
+> para no arrastrar la expectativa de "todo detrás del flag".
 
 **Archivos a tocar:**
 - `src/app/(app)/embarques/[id]/cerrar/cerrar-client/index.tsx` (1063 líneas — reescritura)

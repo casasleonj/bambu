@@ -14,7 +14,7 @@ import { calcularMontoPagado, calcularTotalEntregado } from './types'
 import { PedidoCuadre } from './pedido-cuadre'
 import { VentaLibreRow } from './venta-libre-row'
 import { ConfirmModal } from './confirm-modal'
-import { pasoPedidosValido, pasoFisicoValido, pasoConfirmarValido } from './wizard-gating'
+import { pasoPedidosValido, pasoFisicoValido, pasoConfirmarValido, type PasoValidez } from './wizard-gating'
 
 const GASTO_CATEGORIAS = ['Gasolina', 'Alimentación', 'Peajes', 'Parqueadero', 'Mantenimiento', 'Otros']
 
@@ -584,12 +584,12 @@ export default function CerrarEmbarqueClient() {
   // Ventas Libres (1) y Gastos (3) son opcionales y siempre válidos.
   // Cómputo inline (5 llamadas puras baratas), no useMemo: vive después de los
   // early-returns de `loading`/`!embarque`, donde un hook violaría rules-of-hooks.
-  const pasoValidez = [
+  const pasoValidez: PasoValidez[] = [
     pasoPedidosValido(cuadres),
-    { valido: true, motivos: [] as string[] },
+    { valido: true, motivos: [] },
     pasoFisicoValido(calculos.totalDiscrepancia, justificacion),
-    { valido: true, motivos: [] as string[] },
-    pasoConfirmarValido(!!preview && !previewError, previewLoading),
+    { valido: true, motivos: [] },
+    pasoConfirmarValido(!!preview && !previewError, previewLoading, previewError),
   ]
 
   const sections = [
@@ -630,6 +630,7 @@ export default function CerrarEmbarqueClient() {
               return (
                 <button
                   key={i}
+                  data-testid={`wizard-step-${i}`}
                   onClick={() => { if (isPast) setActiveSection(i) }}
                   disabled={!isPast && !isCurrent}
                   className={`px-4 py-2 rounded-t-lg text-sm font-medium whitespace-nowrap transition ${
@@ -786,6 +787,7 @@ export default function CerrarEmbarqueClient() {
                 <p className="text-sm text-red-700 font-medium">⚠️ Hay {calculos.totalDiscrepancia} unidades sin conciliar</p>
                 <p className="text-xs text-red-600 mt-1">Si no se justifica, se aplicará descuento al repartidor.</p>
                 <textarea
+                  data-testid="justificacion-discrepancia"
                   value={justificacion}
                   onChange={(e) => setJustificacion(e.target.value)}
                   placeholder="Justificar discrepancia..."
@@ -990,7 +992,7 @@ export default function CerrarEmbarqueClient() {
               )}
 
               {preview && preview.responsibilityCases.length > 0 && (
-                <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg" data-testid="responsability-cases-preview">
+                <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg" data-testid="responsibility-cases-preview">
                   <p className="text-sm font-semibold text-amber-900 mb-2">
                     Responsabilidades detectadas (quedarán pendientes de resolución autorizada):
                   </p>
@@ -1061,6 +1063,16 @@ export default function CerrarEmbarqueClient() {
               </ul>
             </div>
           )}
+          {(pasoValidez[activeSection].advertencias ?? []).length > 0 && (
+            <div
+              data-testid="wizard-advertencia"
+              className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800"
+            >
+              <ul className="list-disc pl-5 space-y-0.5">
+                {(pasoValidez[activeSection].advertencias ?? []).map((m, i) => <li key={i}>{m}</li>)}
+              </ul>
+            </div>
+          )}
           <div className="flex gap-3">
             <button
               onClick={() => router.push('/embarques')}
@@ -1078,6 +1090,7 @@ export default function CerrarEmbarqueClient() {
             )}
             {activeSection < 4 ? (
               <button
+                data-testid="siguiente-paso"
                 onClick={() => setActiveSection(activeSection + 1)}
                 disabled={!pasoValidez[activeSection].valido}
                 className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1086,6 +1099,7 @@ export default function CerrarEmbarqueClient() {
               </button>
             ) : (
               <button
+                data-testid="confirmar-cierre"
                 onClick={() => setShowConfirmModal(true)}
                 disabled={submitting || !pasoValidez[4].valido}
                 className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"

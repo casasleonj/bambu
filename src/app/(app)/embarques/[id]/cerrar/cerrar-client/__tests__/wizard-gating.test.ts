@@ -59,14 +59,23 @@ describe('pasoFisicoValido (paso 2)', () => {
 
 describe('pasoConfirmarValido (paso 4)', () => {
   it('bloquea mientras el preview carga', () => {
-    expect(pasoConfirmarValido(false, true).valido).toBe(false)
+    expect(pasoConfirmarValido(false, true, false).valido).toBe(false)
   })
 
-  it('bloquea si el preview no se verificó', () => {
-    expect(pasoConfirmarValido(false, false).valido).toBe(false)
+  it('bloquea en el estado inicial (preview aún no arrancó)', () => {
+    expect(pasoConfirmarValido(false, false, false).valido).toBe(false)
   })
 
-  it('habilita solo con preview verificado', () => {
-    expect(pasoConfirmarValido(true, false).valido).toBe(true)
+  it('habilita con preview verificado y sin advertencias', () => {
+    const res = pasoConfirmarValido(true, false, false)
+    expect(res.valido).toBe(true)
+    expect(res.advertencias ?? []).toHaveLength(0)
+  })
+
+  it('NO bloquea si el preview falló (best-effort) pero muestra advertencia', () => {
+    const res = pasoConfirmarValido(false, false, true)
+    expect(res.valido).toBe(true)
+    expect(res.motivos).toHaveLength(0)
+    expect(res.advertencias?.length).toBeGreaterThan(0)
   })
 })
