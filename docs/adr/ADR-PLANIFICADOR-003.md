@@ -65,11 +65,15 @@ existen, así que este paso solo ve `ENTREGA`.
 El Planificador **reemplaza** a `/api/embarques/auto`. No coexisten como
 alternativas permanentes.
 
-- **Ahora (F1):** el endpoint y su UI (`auto-generar-preview-modal.tsx`) se marcan
-  `@deprecated`. No se le agregan features. Sigue funcionando hasta que el
-  Planificador cubra el caso (no se rompe nada en el interín).
-- **F6 (integración):** el botón "Auto-Generar" de la UI de Embarques se
-  **re-apunta** al flujo del plan (`confirmar plan → MaterializarPlanUseCase`).
+- **F1:** el endpoint y su UI (`auto-generar-preview-modal.tsx`) marcados `@deprecated`. ✅
+- **F6 (hecho):** el botón de `/embarques` ahora dice **"Planificar día"** y navega
+  a `/rutas` (el plan se genera/revisa/confirma ahí; al confirmar
+  `MaterializarPlanUseCase` crea los embarques). El modal viejo +
+  `/api/embarques/auto` quedan detrás del flag `NEXT_PUBLIC_EMBARQUES_AUTO_LEGACY`
+  (`playwright.config.ts` lo pone en `true` para que las specs `e2e/embarques*.spec.ts`
+  que ejercitan el modal viejo sigan verdes hasta reescribirse). ✅
+- **Cleanup (post-validación):** reescribir esas specs al flujo del plan, quitar el
+  flag, eliminar `src/app/api/embarques/auto/route.ts` + `auto-generar-preview-modal.tsx`.
   `computePreview` deja de tener consumidores.
 - **Cleanup (post-validación del Planificador):** se elimina
   `src/app/api/embarques/auto/route.ts`, `src/lib/embarque-auto.ts` queda solo por

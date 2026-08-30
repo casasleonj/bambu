@@ -142,8 +142,14 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
     fetchData()
   })
 
+  // F6 (ADR-PLANIFICADOR-003 §3): "Auto-Generar" ahora lleva al Planificador de
+  // Distribución. El plan del día se genera/revisa/confirma en /rutas y al
+  // confirmar crea los embarques. El modal viejo (`AutoGenerarPreviewModal` +
+  // `/api/embarques/auto`) queda como fallback deprecado detrás de un flag.
+  const AUTO_LEGACY = process.env.NEXT_PUBLIC_EMBARQUES_AUTO_LEGACY === 'true'
   const handleAutoGenerate = () => {
-    setShowAutoGenerarModal(true)
+    if (AUTO_LEGACY) setShowAutoGenerarModal(true)
+    else router.push('/rutas')
   }
 
   const handleDateChange = useCallback((desde: string | null, hasta: string | null) => {
@@ -285,12 +291,12 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
               </button>
             </Tooltip>
           )}
-          <Tooltip content="Agrupa automáticamente los pedidos pendientes en embarques optimizados por zona" title="Auto-Generar" position="bottom">
+          <Tooltip content="Planificá la distribución del día: el sistema propone los grupos y al confirmar crea los embarques" title="Planificar día" position="bottom">
             <button
               onClick={handleAutoGenerate}
               className="px-4 py-2 min-h-[40px] md:min-h-0 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
             >
-              Auto-Generar
+              {AUTO_LEGACY ? 'Auto-Generar' : 'Planificar día'}
             </button>
           </Tooltip>
           <Tooltip content="Crea un embarque manual seleccionando repartidor y ruta" title="Nuevo Embarque" position="bottom">
