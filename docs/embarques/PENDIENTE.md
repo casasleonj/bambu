@@ -159,19 +159,18 @@ _Actualizado: 2026-08-27_
 > warning + textarea opcional; el backend acepta vacío). Es el intent de D7
 > ("no avanzar con cosas sin resolver"). Confirmado como comportamiento deseado.
 >
-> **Diferido: ítem 3 (bloqueo del cierre por `ResponsibilityCase`/`ObligacionPendiente`
-> abiertos)** — el detalle (Fase 5) YA muestra los `ResponsibilityCase` abiertos,
-> pero `cerrar/page.tsx` no los carga y, sobre todo, **es una decisión de negocio
-> sin cerrar**: ¿un caso abierto de un proceso anterior debe impedir cerrar un
-> embarque nuevo? Podría bloquear cierres legítimos. Se retoma en Fase 8 con
-> criterio explícito del PO.
+> **DECISIÓN DEL PO (2026-08-29): NO bloquear el cierre por casos abiertos.**
+> El cierre deja cerrar con advertencia visible (el detalle ya muestra los
+> `ResponsibilityCase` abiertos en el panel de estado operativo). Ítem 3 del
+> backlog de Fase 7 se cierra como "resuelto por decisión de producto — no se
+> implementa el bloqueo". `ObligacionPendiente` (§7) puede sumarse al panel más
+> adelante como aviso, nunca como bloqueo.
 >
-> **Nota (D1):** los cambios de Fase 5 (`embarque-client.tsx`) y Fase 7
-> (`cerrar-client/`) son modificaciones **in-place**, NO detrás del flag
-> `NEXT_PUBLIC_EMBARQUES_V2` (que solo cubre el Command Center de la lista).
-> Son cambios incrementales (≤180 líneas de ~1100), no reescrituras paralelas;
-> el rollback es `git revert`, no apagar el flag. Documentado explícitamente
-> para no arrastrar la expectativa de "todo detrás del flag".
+> **DECISIÓN DEL PO (2026-08-29) sobre D1 — opción 2:** los cambios de Fase 5
+> (`embarque-client.tsx`) y Fase 7 (`cerrar-client/`) van **in-place, sin flag**.
+> Solo el Command Center de la **lista** conserva el flag `NEXT_PUBLIC_EMBARQUES_V2`
+> como botón de pánico. Para detalle y cierre, el rollback ante un problema es
+> `git revert` del commit (minutos, no instantáneo). Aceptado explícitamente.
 
 **Archivos a tocar:**
 - `src/app/(app)/embarques/[id]/cerrar/cerrar-client/index.tsx` (1063 líneas — reescritura)
