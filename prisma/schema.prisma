@@ -1245,11 +1245,18 @@ model ReceivableEntry {
   totalPagadoResultante Decimal @db.Decimal(10, 2)
 
   createdAt DateTime @default(now()) @db.Timestamptz()
-  offlineId String?  @unique
+  // offlineId NO es @unique (igual que Pago.offlineId): un solo request de
+  // pagar-fiado reparte el monto FIFO sobre varios pedidos y genera UNA
+  // proyección por pedido tocado, todas con el mismo offlineId del batch.
+  // Un @unique acá rompía el pago con 500 apenas el abono cubría 2+ pedidos.
+  // La idempotencia de replay offline la garantiza el check de Pago dentro
+  // del lock CARTERA en /api/pedidos/pagar-fiado, no esta columna.
+  offlineId String?
 
   @@index([pedidoId])
   @@index([clienteId])
   @@index([facturaId])
+  @@index([offlineId])
 }
 
 // ====================

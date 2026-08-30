@@ -98,4 +98,51 @@ describe('FASE 5 — ReceivableEntry (proyección de auditoría)', () => {
     const d = detectarDivergencia(canonico, Number(entry!.saldoResultante))
     expect(d.divergencia).toBe(true)
   })
+
+  // Regresión: `POST /api/pedidos/pagar-fiado` reparte el abono FIFO sobre
+  // varios pedidos y genera UNA proyección por pedido, todas con el mismo
+  // `offlineId` del batch. Con `offlineId @unique` el 2do create tiraba
+  // "Unique constraint failed on the fields: (`offlineId`)" y toda la
+  // transacción del pago hacía rollback -> 500 "Error procesando el pago"
+  // apenas el abono cubría 2+ pedidos fiados.
+  it('permite varias proyecciones con el mismo offlineId en una tx (abono que cubre 2+ pedidos)', async () => {
+    const batchOfflineId = `batch-${Date.now()}`
+
+    const pedidoA = await testPrisma.pedido.create({
+      data: { clienteId, canal: 'DOMICILIO', total: 10000, totalPagado: 10000, saldo: 0 },
+    })
+    const pedidoB = await testPrisma.pedido.create({
+      data: { clienteId, canal: 'DOMICILIO', total: 10000, totalPagado: 5000, saldo: 5000 },
+    })
+
+    await expect(
+      testPrisma.$transaction(async (tx) => {
+        await registrarReceivableEntry(tx, {
+          pedidoId: pedidoA.id,
+          clienteId,
+          tipo: 'PAGO',
+          monto: 10000,
+          saldoResultante: 0,
+          totalPagadoResultante: 10000,
+          offlineId: batchOfflineId,
+        })
+        await registrarReceivableEntry(tx, {
+          pedidoId: pedidoB.id,
+          clienteId,
+          tipo: 'PAGO',
+          monto: 5000,
+          saldoResultante: 5000,
+          totalPagadoResultante: 5000,
+          offlineId: batchOfflineId,
+        })
+      }),
+    ).resolves.not.toThrow()
+
+    const entries = await testPrisma.receivableEntry.findMany({
+      where: { offlineId: batchOfflineId },
+      orderBy: { createdAt: 'asc' },
+    })
+    expect(entries).toHaveLength(2)
+    expect(entries.map((e) => e.pedidoId).sort()).toEqual([pedidoA.id, pedidoB.id].sort())
+  })
 })
