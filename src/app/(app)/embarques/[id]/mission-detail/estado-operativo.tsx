@@ -3,16 +3,20 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { getProductoIconConfig } from '@/lib/producto-iconos'
-import type { EmbarqueDeudaResumen, EmbarqueDetalle } from '../types'
+import type { EmbarqueDeudaResumen, EmbarqueResponsibilityCaseResumen, EmbarqueDetalle } from '../types'
 
 /**
  * Estado operativo (Fase 5) — panel de excepciones abiertas del embarque.
  *
  * Lee las excepciones de datos REALES del backend (taxonomía de
  * `docs/embarques/03-exception-model.md`), nunca inventa tipos:
- *  - `PHYSICAL_MISMATCH` ← RecoveryDecision SOBRANTE/FALTANTE + discrepancia
- *    de `EmbarqueProducto` (devueltas/cambios/rotas > 0).
- *  - `MONEY_MISMATCH`   ← deudas (faltante de caja) con `montoPendiente > 0`.
+ *  - `PHYSICAL_MISMATCH` ← `ResponsibilityCase` DISCREPANCIA_INVENTARIO abierto ·
+ *    `RecoveryDecision` SOBRANTE/FALTANTE · discrepancia de `EmbarqueProducto`
+ *    (devueltas/cambios/rotas > 0).
+ *  - `MONEY_MISMATCH`   ← `ResponsibilityCase` FALTANTE_CAJA / FIADO_NO_COBRADO
+ *    abierto (contrato §13: el cierre ya no crea deuda automática, deja el caso
+ *    PENDIENTE). `DeudaTrabajador` con saldo se mantiene como fuente legacy
+ *    (embarques pre-migración / deuda ya materializada).
  *
  * El panel se renderiza solo si hay ≥1 excepción (aceptación Fase 5 §1):
  * sin excepciones no aparece. Cada fila lleva un CTA accionable (touch ≥44px).
@@ -37,12 +41,35 @@ export interface RecoveryResumen {
 
 export interface DerivarExcepcionesInput {
   deudas?: EmbarqueDeudaResumen[]
+  responsibilityCases?: EmbarqueResponsibilityCaseResumen[]
   productos?: EmbarqueDetalle['productos']
   recovery?: RecoveryResumen[]
 }
 
+const RESPONSABILIDAD_LABEL: Record<string, string> = {
+  FALTANTE_CAJA: 'Faltante de caja',
+  DISCREPANCIA_INVENTARIO: 'Discrepancia de inventario',
+  FIADO_NO_COBRADO: 'Fiado sin cobrar',
+}
+
 export function derivarExcepciones(input: DerivarExcepcionesInput): ExcepcionUI[] {
   const excepciones: ExcepcionUI[] = []
+
+  // Casos de responsabilidad ABIERTOS (contrato §13). Es la fuente canónica de
+  // MONEY_MISMATCH y de la discrepancia de inventario elevada a caso.
+  for (const c of input.responsibilityCases ?? []) {
+    const esFisico = c.tipo === 'DISCREPANCIA_INVENTARIO'
+    const monto = c.montoEstimado != null && c.montoEstimado > 0
+      ? ` · estimado ${c.montoEstimado.toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 })}`
+      : ''
+    excepciones.push({
+      tipo: esFisico ? 'PHYSICAL_MISMATCH' : 'MONEY_MISMATCH',
+      titulo: RESPONSABILIDAD_LABEL[c.tipo] ?? 'Responsabilidad pendiente',
+      descripcion: `${c.descripcion || c.tipo}${monto} — pendiente de resolución autorizada`,
+      ctaLabel: esFisico ? 'Resolver en Físico' : 'Ver trabajador',
+      cta: esFisico ? 'fisico' : 'trabajador',
+    })
+  }
 
   // Discrepancia física desde la carga (EmbarqueProducto): unidades que no
   // volvieron enteras — devueltas / cambios / rotas.
@@ -78,12 +105,13 @@ export function derivarExcepciones(input: DerivarExcepcionesInput): ExcepcionUI[
     })
   }
 
-  // Faltante de caja (deuda del trabajador): money mismatch.
+  // Fuente legacy: DeudaTrabajador ya materializada con saldo pendiente
+  // (embarques pre-migración, o deuda creada por una resolución con cargo).
   for (const d of input.deudas ?? []) {
     if (d.montoPendiente <= 0) continue
     excepciones.push({
       tipo: 'MONEY_MISMATCH',
-      titulo: 'Faltante de caja',
+      titulo: 'Deuda del trabajador',
       descripcion: d.descripcion || d.tipo,
       ctaLabel: 'Ver trabajador',
       cta: 'trabajador',
@@ -96,12 +124,14 @@ export function derivarExcepciones(input: DerivarExcepcionesInput): ExcepcionUI[
 export function EstadoOperativo({
   embarqueId,
   deudas,
+  responsibilityCases,
   productos,
   trabajadorId,
   onGoFisico,
 }: {
   embarqueId: string
   deudas?: EmbarqueDeudaResumen[]
+  responsibilityCases?: EmbarqueResponsibilityCaseResumen[]
   productos?: EmbarqueDetalle['productos']
   trabajadorId: string
   onGoFisico?: () => void
@@ -132,7 +162,7 @@ export function EstadoOperativo({
     }
   }, [embarqueId])
 
-  const excepciones = derivarExcepciones({ deudas, productos, recovery })
+  const excepciones = derivarExcepciones({ deudas, responsibilityCases, productos, recovery })
 
   if (excepciones.length === 0) return null
 

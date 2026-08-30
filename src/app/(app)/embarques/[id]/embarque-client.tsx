@@ -601,6 +601,7 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
         <EstadoOperativo
           embarqueId={embarque.id}
           deudas={embarque.deudas}
+          responsibilityCases={embarque.responsibilityCases}
           productos={embarque.productos}
           trabajadorId={embarque.trabajador.id}
           onGoFisico={() => setActiveTab('fisico')}

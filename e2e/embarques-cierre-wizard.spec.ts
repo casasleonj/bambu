@@ -54,7 +54,7 @@ test.describe('Cierre — wizard forzado (Fase 7)', () => {
     await cierreLogin(page)
     const { embarqueId } = await seedEmbarqueEnRuta(page)
 
-    await page.goto(`${BASE}/embarques/${embarqueId}/cerrar`)
+    await page.goto(`${BASE}/embarques/${embarqueId}/cerrar`, { waitUntil: 'domcontentloaded' })
     await page.waitForLoadState('domcontentloaded')
 
     // Paso 0 activo; los pasos futuros están deshabilitados (no se saltan).
@@ -78,7 +78,7 @@ test.describe('Cierre — wizard forzado (Fase 7)', () => {
     // 5 cargadas, el pedido entrega 3 → discrepancia de 2 sin devoluciones.
     const { embarqueId } = await seedEmbarqueEnRuta(page, 5)
 
-    await page.goto(`${BASE}/embarques/${embarqueId}/cerrar`)
+    await page.goto(`${BASE}/embarques/${embarqueId}/cerrar`, { waitUntil: 'domcontentloaded' })
     await page.waitForLoadState('domcontentloaded')
 
     // Paso 0 → 1 → 2 (Conciliación).
@@ -98,7 +98,7 @@ test.describe('Cierre — wizard forzado (Fase 7)', () => {
     await cierreLogin(page)
     const { embarqueId } = await seedEmbarqueEnRuta(page)
 
-    await page.goto(`${BASE}/embarques/${embarqueId}/cerrar`)
+    await page.goto(`${BASE}/embarques/${embarqueId}/cerrar`, { waitUntil: 'domcontentloaded' })
     await page.waitForLoadState('domcontentloaded')
     for (let i = 0; i < 4; i++) await page.getByTestId('siguiente-paso').click()
 
@@ -123,7 +123,7 @@ test.describe('Cierre — wizard forzado (Fase 7)', () => {
     // Simular red mala solo para el preview (dry-run), no para el cierre real.
     await page.route('**/api/embarques/*/cerrar/preview', (route) => route.abort('failed'))
 
-    await page.goto(`${BASE}/embarques/${embarqueId}/cerrar`)
+    await page.goto(`${BASE}/embarques/${embarqueId}/cerrar`, { waitUntil: 'domcontentloaded' })
     await page.waitForLoadState('domcontentloaded')
     for (let i = 0; i < 4; i++) await page.getByTestId('siguiente-paso').click()
 

@@ -44,6 +44,23 @@ _Actualizado: 2026-08-27_
 
 **Objetivo:** el asistente entra al detalle de un embarque y ve de un vistazo qué falta resolver, sin cazar información entre tabs ni usar menús que no funcionan en touch.
 
+> **Estado (2026-08-29):** implementado en `feat/embarques-fase5-mission-detail`,
+> endurecido en `feat/embarques-fase7-reconciliation` tras auditoría:
+> - Panel `EstadoOperativo` ahora lee **`ResponsibilityCase` ABIERTOS** vía SSR
+>   (`page.tsx` los carga en el `Promise.all`, sin fetch client-side extra) —
+>   alineado con `03-exception-model.md` (`MONEY_MISMATCH ← ResponsibilityCase`).
+>   `DISCREPANCIA_INVENTARIO` → CTA a Físico; `FALTANTE_CAJA`/`FIADO_NO_COBRADO`
+>   → CTA a trabajador. `DeudaTrabajador` queda como fuente **legacy** (embarques
+>   pre-migración / deuda ya materializada).
+> - `RecoveryDecision` sigue vía fetch client-side en el panel (payload chico;
+>   `LedgerTab` necesita su propia copia fresca tras mutaciones). Doble fetch
+>   de `/recovery` = deuda menor conocida, no bloqueante.
+> - Menú hover→click, tabs apiladas en mobile, deep-links `?step=`: OK.
+> - E2E: `e2e/embarques-mission-detail.spec.ts` (4 tests) incl. ResponsibilityCase.
+> - **Pendiente**: `ObligacionPendiente` (contrato §7) aún no se surface — no hay
+>   endpoint ni se carga en SSR. Sumar al `Promise.all` de `page.tsx` cuando se
+>   defina la UX de resolución.
+
 **Archivos a tocar:**
 - `src/app/(app)/embarques/[id]/embarque-client.tsx` (1105 líneas — reescritura detrás del flag)
 - `src/app/(app)/embarques/[id]/ledger-client/ledger-tab.tsx`, `recovery-panel.tsx`, `recovery-form-modal.tsx`, `movimiento-timeline.tsx` (integrar a la estructura nueva)
@@ -142,8 +159,12 @@ _Actualizado: 2026-08-27_
 > warning + textarea opcional; el backend acepta vacío). Es el intent de D7
 > ("no avanzar con cosas sin resolver"). Confirmado como comportamiento deseado.
 >
-> **Diferido: ítem 3 (bloqueo por `ResponsibilityCase`/`ObligacionPendiente`
-> abiertos)** — no hay endpoint de listado de casos abiertos. Se retoma en Fase 8.
+> **Diferido: ítem 3 (bloqueo del cierre por `ResponsibilityCase`/`ObligacionPendiente`
+> abiertos)** — el detalle (Fase 5) YA muestra los `ResponsibilityCase` abiertos,
+> pero `cerrar/page.tsx` no los carga y, sobre todo, **es una decisión de negocio
+> sin cerrar**: ¿un caso abierto de un proceso anterior debe impedir cerrar un
+> embarque nuevo? Podría bloquear cierres legítimos. Se retoma en Fase 8 con
+> criterio explícito del PO.
 >
 > **Nota (D1):** los cambios de Fase 5 (`embarque-client.tsx`) y Fase 7
 > (`cerrar-client/`) son modificaciones **in-place**, NO detrás del flag

@@ -1,7 +1,10 @@
 // @tests Mission Detail (Fase 5) — menú por click (no hover), acordeón mobile y
 // panel de estado operativo (excepciones abiertas).
 import { test, expect } from '@playwright/test'
+import { PrismaClient } from '@prisma/client'
 import { loginAs, apiPost, createTrabajador, createEmbarque, BASE } from './fixtures'
+
+const prisma = new PrismaClient()
 
 async function seedEmbarqueAbierto(page: import('@playwright/test').Page) {
   const t = await createTrabajador(page, { rol: 'REPARTIDOR' })
@@ -53,6 +56,32 @@ test.describe('Mission Detail — panel estado operativo', () => {
     await expect(panel.first()).toBeVisible({ timeout: 8000 })
     await expect(panel).toContainText('Faltante: Botellón')
     await expect(page.getByTestId('estado-operativo-cta-fisico').first()).toBeVisible()
+  })
+
+  test('muestra un ResponsibilityCase FALTANTE_CAJA abierto con CTA a trabajador (contrato §13)', async ({ page }) => {
+    await loginAs(page, 'admin')
+    const embarqueId = await seedEmbarqueAbierto(page)
+
+    // El cierre con faltante deja un ResponsibilityCase PENDIENTE (nunca deuda
+    // automática). Se siembra directo para no depender del payload de cierre.
+    await prisma.responsibilityCase.create({
+      data: {
+        embarqueId,
+        tipo: 'FALTANTE_CAJA',
+        descripcion: 'Faltaron $8.000 en la caja al cierre (E2E)',
+        montoEstimado: 8000,
+        estado: 'ABIERTA',
+      },
+    })
+
+    await page.goto(`${BASE}/embarques/${embarqueId}`)
+    await page.waitForLoadState('domcontentloaded')
+
+    const panel = page.getByTestId('estado-operativo')
+    await expect(panel.first()).toBeVisible({ timeout: 8000 })
+    await expect(panel).toContainText('Faltante de caja')
+    await expect(panel).toContainText('pendiente de resolución autorizada')
+    await expect(page.getByTestId('estado-operativo-cta-trabajador').first()).toBeVisible()
   })
 })
 

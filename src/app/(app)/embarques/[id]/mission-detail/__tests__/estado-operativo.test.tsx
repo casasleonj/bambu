@@ -45,6 +45,27 @@ describe('derivarExcepciones', () => {
     expect(res.every((e) => e.tipo === 'PHYSICAL_MISMATCH')).toBe(true)
   })
 
+  it('mapea un ResponsibilityCase FALTANTE_CAJA abierto como MONEY_MISMATCH con CTA a trabajador', () => {
+    const res = derivarExcepciones({
+      responsibilityCases: [
+        { id: 'rc1', tipo: 'FALTANTE_CAJA', descripcion: 'Faltó plata en la caja', montoEstimado: 12000, estado: 'ABIERTA' },
+      ],
+    })
+    expect(res).toHaveLength(1)
+    expect(res[0]).toMatchObject({ tipo: 'MONEY_MISMATCH', cta: 'trabajador' })
+    expect(res[0].descripcion).toContain('pendiente de resolución autorizada')
+  })
+
+  it('mapea un ResponsibilityCase DISCREPANCIA_INVENTARIO como PHYSICAL_MISMATCH con CTA a Físico', () => {
+    const res = derivarExcepciones({
+      responsibilityCases: [
+        { id: 'rc2', tipo: 'DISCREPANCIA_INVENTARIO', descripcion: 'Faltan 3 botellones', montoEstimado: null, estado: 'EN_INVESTIGACION' },
+      ],
+    })
+    expect(res).toHaveLength(1)
+    expect(res[0]).toMatchObject({ tipo: 'PHYSICAL_MISMATCH', cta: 'fisico' })
+  })
+
   it('mapea deuda con montoPendiente > 0 como MONEY_MISMATCH y omite deudas saldadas', () => {
     const res = derivarExcepciones({
       deudas: [
@@ -89,7 +110,7 @@ describe('EstadoOperativo', () => {
       />,
     )
     expect(await screen.findByTestId('estado-operativo')).toBeTruthy()
-    expect(screen.getByText('Faltante de caja')).toBeTruthy()
+    expect(screen.getByText('Deuda del trabajador')).toBeTruthy()
     expect(screen.getByTestId('estado-operativo-cta-trabajador')).toBeTruthy()
   })
 })
