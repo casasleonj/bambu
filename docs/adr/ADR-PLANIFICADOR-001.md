@@ -19,25 +19,36 @@ generación.
 
 ### 1. Agregado nuevo, aditivo
 
-Tres entidades nuevas, ninguna toca dominios existentes:
+Cuatro entidades nuevas, ninguna toca dominios existentes:
 
 ```
-PlanDia (1) ── (N) PlanGrupo (1) ── (N) PlanParada
+PlanDia (1) ── (N) PlanGrupo (1) ── (N) PlanParada (1) ── (N) PlanActividad
 ```
 
 - **PlanDia:** `id, fecha, version, estado, generadoEn, generadoPorId, confirmadoEn, confirmadoPorId, causa`
 - **PlanGrupo:** `id, planDiaId, nombreLogico, secuencia, capacidadPlanificada, cargaPlanificada (json), trabajadorPropuestoId?, rutaId?, score, explicacion (json)`
-- **PlanParada:** `id, planGrupoId, secuencia, clienteId, negocioId?, pedidoIds (String[]), ubicacionUsada (json: lat/lng/fuente/calidad), snapshotCantidades (json), motivo`
+- **PlanParada:** `id, planGrupoId, secuencia, clienteId, negocioId?, ubicacionUsada (json: lat/lng/fuente/calidad), motivo`
+- **PlanActividad:** `id, planParadaId, tipo (PlanActividadTipo), pedidoIds (String[]), snapshotCantidades (json), estado`
 
-Nombres finales a confirmar (¿`PlanDia` / `PlanificacionDia` / `RoutePlan`?). El
-resto del ADR usa `PlanDia`.
+**`PlanActividadTipo` = `ENTREGA | COBRO | RECOGIDA_BOTELLON`.** El MVP **solo
+genera y materializa `ENTREGA`** (ADR-PLANIFICADOR-006). El enum y la tabla ya
+acomodan `COBRO`/`RECOGIDA_BOTELLON` para no retrofitear el schema cuando llegue
+ese epic (el PO confirmó que cobros se necesita pronto). Una parada = varias
+actividades del mismo cliente en la misma visita (v4 §18).
+
+`PlanActividad` es un concepto **de la capa de planificación** — NO es el modelo
+`Actividad` congelado de Embarques (Fase 3, cuelga de `ObligacionPendiente`). La
+relación con `Actividad` se decide en un ADR de Embarques cuando se implemente COBRO.
+
+Nombres finales a confirmar. El resto del ADR usa `PlanDia`.
 
 ### 2. Persistencia: relacional + JSON acotado
 
-- `PlanDia / PlanGrupo / PlanParada` = tablas relacionales (consultables, indexables).
+- `PlanDia / PlanGrupo / PlanParada / PlanActividad` = tablas relacionales
+  (consultables, indexables).
 - Campos `explicacion`, `cargaPlanificada`, `ubicacionUsada`, `snapshotCantidades`
   = JSON (no se consultan, solo se muestran/auditan).
-- `PlanParada.pedidoIds` = `String[]` (referencia, **no FK** — ver ADR-PLANIFICADOR-002).
+- `PlanActividad.pedidoIds` = `String[]` (referencia, **no FK** — ver ADR-PLANIFICADOR-002).
 
 ### 3. Generación: síncrona
 
@@ -91,14 +102,23 @@ PROPOSED ──► REVIEW ──► CONFIRMED ──► SUPERSEDED
 - Config keys nuevas: pesos del optimizador (ver ADR-PLANIFICADOR-005). Defaults
   documentados; calibración diferida a semanas de operación real (F0 §0.a punto 5).
 
+## Decisiones tomadas por delegación (PO, 2026-08-30)
+
+- **Nombres:** `PlanDia`, `PlanGrupo`, `PlanParada`, `PlanActividad`. Enum de estado
+  `PlanEstado`. Enum `PlanActividadTipo`. Prefijo de tabla `Plan*` (no `Route*`,
+  para no chocar con el inglés del resto del schema que es español).
+- **Un `PlanDia` vigente por fecha** + histórico de versiones (`PlanDia.version`,
+  la anterior pasa a `SUPERSEDED`). Sin borradores paralelos.
+- **Módulo:** `src/modules/planificador/` (DDD por capas, como `src/modules/embarques/`).
+- **API namespace:** `/api/rutas/planes/*` (consistente con la ruta de UI `/rutas`).
+
 ## Qué falta decidir / evidencia pendiente
 
-- Nombre final de las entidades.
-- ¿Un `PlanDia` "vigente" por fecha + histórico de versiones (recomendado), o
-  múltiples borradores paralelos?
-- Índices: `PlanDia(fecha, estado)`, `PlanParada` por `clienteId` y por `pedidoIds`
-  (GIN sobre el array).
+- Índices: `PlanDia(fecha, estado)`, `PlanActividad` GIN sobre `pedidoIds`,
+  `PlanParada(clienteId)`.
 - Confirmar el presupuesto de tiempo real del pipeline con datos de F2.
+- `PlanDiaVersion` como tabla separada vs. `PlanDia` inmutable por versión
+  (ADR-PLANIFICADOR-005 §3) — decidir en F2 por simplicidad de implementación.
 
 ## Consecuencias
 

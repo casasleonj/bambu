@@ -61,6 +61,24 @@ y el diseño):
 5. **Calibración de pesos del optimizador (v4 §17): diferida** hasta tener semanas
    de operación real. F2 arranca con pesos por defecto documentados en ADR-001.
 
+### 0.b — Decisiones del PO (2026-08-30) sobre los ADRs
+
+- **`/api/embarques/auto` → DEPRECADO.** El Planificador lo reemplaza, no coexisten.
+  Se marca `@deprecated` ahora; en F6 el botón "Auto-Generar" de Embarques se
+  re-apunta al flujo del plan; cleanup del endpoint post-validación. Esto
+  **desbloquea** el rework diferido de crear-embarque/auto-generar
+  (`memory/embarques-auto-generar-es-el-objetivo`). Ver ADR-PLANIFICADOR-003 §3.
+- **Cobros SÍ se va a necesitar** (no "si acaso"). El schema del MVP ya soporta
+  `PlanActividad tipo=COBRO|RECOGIDA_BOTELLON`; el código del MVP es entregas-only.
+  Epic de cobros = siguiente, con 2 ADRs prerequisito nombrados
+  (`ADR-EMBARQUES-ACTIVIDAD-PLAN`, `ADR-PLANIFICADOR-CARTERA`). Ver ADR-PLANIFICADOR-006.
+- **UI del MVP = reconstrucción completa** (v4 §35), no las 4 pantallas mínimas.
+  F5 rehace arquitectura de información, layouts, navegación, formularios,
+  tablas/listas, filtros, estados, mapa, interacciones, responsive, a11y.
+- **Motor marca-para-revisión** (no auto-recalcula) en el MVP. ADR-PLANIFICADOR-005.
+- Nombres: `PlanDia / PlanGrupo / PlanParada / PlanActividad`. Módulo
+  `src/modules/planificador/`. API `/api/rutas/planes/*`.
+
 **Disparador de recalibración:** re-correr §12 cada mes. Cuando `DOMICILIO`
 planificable pase de ~1/semana a decenas/día, subir la agresividad del motor
 (clustering, multi-grupo, penalización de estabilidad) y calibrar pesos.
@@ -452,6 +470,9 @@ Corrido vía MCP Supabase (`execute_sql`, read-only) contra el proyecto
 | **Rollout de la app a repartidores + verificar captura de GPS** | en paralelo — habilita el historial de ubicación |
 | Motor F2 con **degradación a bajo volumen** (2-3 paradas = orden simple, sin clustering pesado) | criterio de aceptación de F2 |
 | **Creación manual de plan/ruta como camino de primera clase** en "Hoy" | F2/F5 — el humano puede armar el plan a mano; el sistema propone, no obliga |
+| **Deprecar `/api/embarques/auto`** (`@deprecated` ahora → re-apuntar en F6 → cleanup) | decisión PO; desbloquea el rework diferido de Embarques |
+| **UI = reconstrucción completa** (v4 §35), no 4 pantallas | decisión PO; F5 |
+| Schema con `PlanActividad` (ENTREGA/COBRO/RECOGIDA) desde F2; código MVP = solo ENTREGA | decisión PO; cobros es el epic siguiente |
 | F7 = **modo sombra / dogfood** durante las primeras semanas de reparto real | no hay baseline histórico para comparar |
 | Re-correr §12 mensualmente; calibrar pesos del optimizador y subir agresividad del motor | cuando `DOMICILIO` pase de ~1/semana a decenas/día |
 

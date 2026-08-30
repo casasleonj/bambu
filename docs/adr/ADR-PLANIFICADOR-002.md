@@ -47,22 +47,24 @@ ya cubre parte) con un `wherePedidosElegiblesPlan(fecha)`.
 
 ### 2. Trazabilidad Plan ↔ Pedido: referencia por ID, no FK
 
-`PlanParada.pedidoIds String[]` — **referencia, sin foreign key**.
+`PlanActividad.pedidoIds String[]` (para `tipo=ENTREGA`) — **referencia, sin
+foreign key**. (`PlanActividad` cuelga de `PlanParada`; ver ADR-PLANIFICADOR-001 §1.)
 
 Opciones consideradas:
-- **A) FK `PlanParada.pedidoId`:** obliga a `onDelete` cascada/SetNull y complica
-  el movimiento entre versiones/grupos. Rechazada.
-- **B) Tabla join `PlanParadaPedido`:** integridad referencial pero mismo problema
-  de cascada + más superficie. Rechazada para el MVP.
+- **A) FK `PlanActividad.pedidoId`:** obliga a `onDelete` cascada/SetNull y
+  complica el movimiento entre versiones/grupos. Rechazada.
+- **B) Tabla join:** integridad referencial pero mismo problema de cascada + más
+  superficie. Rechazada para el MVP.
 - **C) `pedidoIds String[]` + validación en aplicación (elegida):** máxima
   fluidez. La integridad ("el pedido existe y sigue elegible") se valida **al
   generar y al confirmar**, no por constraint de BD.
 
 **Cardinalidad (invariante de aplicación):** dentro de **una versión** de `PlanDia`,
-un `pedidoId` aparece en **exactamente una** `PlanParada`. Entre versiones
-distintas, libre. Se valida al construir el plan y en un test de invariante.
+un `pedidoId` aparece en **exactamente una** `PlanActividad` de `tipo=ENTREGA`.
+Entre versiones distintas, libre. Se valida al construir el plan y en un test de
+invariante.
 
-Índice: GIN sobre `PlanParada.pedidoIds` para "¿en qué plan/parada está el pedido X?".
+Índice: GIN sobre `PlanActividad.pedidoIds` para "¿en qué plan/parada está el pedido X?".
 
 ### 3. Comportamiento ante cambios del pedido
 
@@ -74,9 +76,9 @@ se generó — es evidencia de "qué sabía el plan", no fuente de verdad.
 
 ### 4. Snapshot en la parada
 
-`PlanParada.snapshotCantidades` + `ubicacionUsada` guardan lo que el motor usó al
-generar (cantidades por producto, dirección/coords efectivas, calidad de
-ubicación). Propósito: reproducibilidad y diff claro en la replanificación. **No
+`PlanActividad.snapshotCantidades` + `PlanParada.ubicacionUsada` guardan lo que el
+motor usó al generar (cantidades por producto, dirección/coords efectivas, calidad
+de ubicación). Propósito: reproducibilidad y diff claro en la replanificación. **No
 es fuente de verdad** — la verdad de cantidades es `Pedido`/`PedidoItem`.
 
 ### 5. Materialización

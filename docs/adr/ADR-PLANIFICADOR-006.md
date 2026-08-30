@@ -2,7 +2,7 @@
 
 - Estado: **Aceptado** (gate F0/F1) — decisión delegada al asistente por el PO el 2026-08-30; revisable en cualquier momento
 - Fecha: 2026-08-30
-- Fuente: Plan Técnico v4 §25, §61 · F0 §1 (#24), tabla de capacidades
+- Fuente: Plan Técnico v4 §18, §25, §61 · F0 §1 (#24) · decisión del PO 2026-08-30 ("cobros sí se va a necesitar")
 - Fase: F1.
 
 ## Contexto
@@ -10,73 +10,79 @@
 Existe un modelo `Actividad` (`prisma/schema.prisma:1136`) de la **Fase 3 de
 Embarques (dominio congelado, ADR-ACTIVIDAD-001 / ADR-OBLIGACION-001)**:
 
-- `Actividad` **cuelga de `ObligacionPendiente`** (`obligacionId`, no de `Pedido`
-  directamente), opcional `embarqueId`.
+- `Actividad` **cuelga de `ObligacionPendiente`** (`obligacionId`, no de `Pedido`),
+  opcional `embarqueId`.
 - `ActividadTipo { ENTREGA, RECOGIDA_BOTELLON, COBRO }`, `ActividadEstado
   { ASIGNADA, EN_PROGRESO, CUMPLIDA, CANCELADA }`.
-- **En producción, todas las `Actividad` creadas son `tipo: 'ENTREGA'`.**
-  `COBRO` y `RECOGIDA_BOTELLON` están en el enum pero **nunca se producen**.
-- Único consumidor: `AsignarActividadUseCase` (`src/modules/embarques/application/`).
+- **En producción, todas las `Actividad` son `tipo: 'ENTREGA'`.** `COBRO` y
+  `RECOGIDA_BOTELLON` están en el enum pero **nunca se producen**.
 
-El v4 §25 plantea que una visita de cobro *podría* representarse como actividad,
-pero **Cartera queda fuera del MVP**. El v4 §61 pide verificar las estructuras
-existentes y decidir si hay integración necesaria, **sin absorber Cartera**.
+**El PO confirmó (2026-08-30) que planificar visitas de cobro se va a necesitar**
+— no es un "si el negocio lo pide". Es un epic comprometido, inmediatamente
+después del MVP de entregas.
 
 ## Decisión
 
-### 1. El MVP del planificador es puramente "entregas"
+### 1. Diseñar el schema para cobros ahora; implementar solo entregas en el MVP
 
-`PlanParada` referencia `pedidoIds` (ADR-PLANIFICADOR-002). **No crea ni referencia
-`Actividad`.** La "actividad" en el MVP es implícita: parada de pedido = entrega.
+- `PlanParada` tiene hijos `PlanActividad` (`tipo: ENTREGA | COBRO |
+  RECOGIDA_BOTELLON`) desde el inicio (ADR-PLANIFICADOR-001 §1). El enum y las
+  tablas ya acomodan cobro/recogida.
+- **El MVP genera y materializa solo `PlanActividad tipo=ENTREGA`.** El motor no
+  produce actividades de cobro; la materialización solo mira `ENTREGA`
+  (ADR-PLANIFICADOR-003 §2).
+- Esto evita retrofitear el schema cuando llegue el epic de cobros.
 
-### 2. `RECOGIDA_BOTELLON` y `COBRO` → fuera del MVP
+### 2. `PlanActividad` NO es el modelo `Actividad` de Embarques
 
-- No se planifican visitas de cobro ni de recogida en v1 (v4 §25, §64 Epic D).
-- La lista de sugerencias de llamadas (`scoreLlamada` + `/sugerencias`) sigue
-  **independiente** del planificador (F0 §16 / v4 §11).
+`PlanActividad` es un concepto **de la capa de planificación**. `Actividad`
+(congelado) cuelga de `ObligacionPendiente` y es del dominio de Embarques. Son
+cosas distintas. El MVP no crea ni referencia `Actividad`.
 
-### 3. Advertencia de acoplamiento para el futuro
+### 3. Epic "Cobros en el plan" (post-MVP inmediato) — prerequisitos
 
-Si en un epic posterior el planificador necesita crear/planificar `Actividad`
-(entrega + cobro en una parada, o recogida de botellón):
+Antes de implementar `PlanActividad tipo=COBRO` hacen falta **dos ADRs nuevos**:
 
-- **`Actividad` está atada a `ObligacionPendiente`** (dominio congelado). Agregarle
-  un `planParadaId`, o desacoplarla de `ObligacionPendiente`, o crear un tipo de
-  actividad "de plan" → **requiere un ADR de Embarques aprobado primero.**
-- **No hacerlo por la vía rápida** (no `db push` de un campo nuevo en un modelo
-  congelado sin ADR).
-- La integración de cobro además necesita: leer una señal `COBRO_CANDIDATO` de
-  Cartera (**solo lectura**), sin calcular saldo, sin registrar pago, sin conciliar
-  (v4 §25). Eso es un ADR de integración Planificador↔Cartera separado.
+| ADR | Decide | Dominio |
+|---|---|---|
+| `ADR-EMBARQUES-ACTIVIDAD-PLAN` (nuevo) | cómo se materializa una actividad de cobro planificada: ¿extiende `Actividad` con un origen "plan"? ¿la desacopla de `ObligacionPendiente`? ¿un modelo nuevo? Toca **dominio congelado** → requiere el flujo de ADR de Embarques. | Embarques |
+| `ADR-PLANIFICADOR-CARTERA` (nuevo) | qué señal lee el planificador de Cartera (`COBRO_CANDIDATO` = cliente con deuda vencida elegible para visita), **solo lectura**. Sin calcular saldo, sin registrar pago, sin conciliar (v4 §25). | Planificador ↔ Cartera |
 
-### 4. Qué SÍ puede leer el planificador de estos dominios (contexto, no propiedad)
+Estos ADRs se abren **al arrancar el epic de cobros**, no ahora — pero quedan
+nombrados como parte del roadmap comprometido (no "si acaso").
 
-Para **mostrar contexto** en la UI de revisión (no para decidir):
-- que un cliente del plan tiene deuda vencida (badge informativo) — lectura de un
-  campo ya expuesto, sin lógica financiera.
+### 4. Qué SÍ puede leer el planificador en el MVP (contexto, no decisión)
 
-Nada de esto entra en la función objetivo del motor en el MVP.
+- Badge informativo "este cliente tiene deuda vencida" en la UI de revisión —
+  lectura de un campo ya expuesto, sin lógica financiera. No entra en la función
+  objetivo del motor.
+
+### 5. `RECOGIDA_BOTELLON`
+
+Mismo tratamiento que `COBRO`: schema preparado (`PlanActividadTipo`), fuera del
+MVP, epic posterior. Probablemente más simple que cobro (no toca Cartera; sí
+podría tocar el ledger físico de botellones de Embarques → ADR-BOTELLONES).
 
 ## Qué falta decidir / evidencia pendiente
 
-- ¿`ObligacionPendiente` con entregas parciales pendientes debe verse como
-  "demanda" para el planificador? Hoy el planificador mira `Pedido`, no
-  `ObligacionPendiente`. Si un pedido quedó parcialmente entregado y tiene saldo
-  pendiente, ¿ese saldo es un candidato a planificar? → **Propuesta MVP: no** — el
-  planificador mira pedidos con `estadoEntrega IN (PENDIENTE, NO_ENTREGADO)`; los
-  parciales los maneja el flujo de Embarques/Obligaciones. Revisar con datos reales.
-- El orden de los epics post-MVP (Cartera antes o después de afinidad
-  cliente↔cliente) — decisión de producto, no técnica.
+- ¿`ObligacionPendiente` con entregas parciales pendientes es "demanda" para el
+  planificador? **Propuesta MVP: no** — el planificador mira `Pedido`
+  (`estadoEntrega IN (PENDIENTE, NO_ENTREGADO)`); los parciales los maneja
+  Embarques/Obligaciones. Revisar con datos reales del piloto.
+- Orden exacto del epic de cobros vs. el de afinidad cliente↔cliente — producto.
+- El diseño fino de `COBRO_CANDIDATO` (¿lo expone Cartera hoy? probablemente hay
+  que agregarlo) — al abrir `ADR-PLANIFICADOR-CARTERA`.
 
 ## Consecuencias
 
-- El MVP no toca el dominio congelado de Embarques ni el de Cartera.
-- Cobros y recogidas son epics post-MVP, cada uno con su propio ADR de integración.
-- Riesgo: si el negocio pide "planificar cobros" temprano, hay que hacer el ADR de
-  Embarques + el de Cartera antes — no es un add-on trivial.
+- El **schema** del MVP ya soporta cobros (tabla `PlanActividad` + enum). El
+  **código** del MVP es entregas-only.
+- Cobros deja de ser "epic difuso post-MVP" y pasa a ser el siguiente epic
+  concreto, con sus 2 ADRs prerequisito nombrados.
+- El MVP no toca dominio congelado de Embarques ni de Cartera.
 
 ## Verificación (cuando se implemente)
 
-N/A para el MVP (no hay integración). El test relevante es negativo: el
-planificador **no** escribe `Actividad` ni `ObligacionPendiente` ni toca cartera
-(revisión de que ningún repo/use-case del planificador los importe para escritura).
+MVP: test negativo — ningún repo/use-case del planificador importa `Actividad` /
+`ObligacionPendiente` / cartera para escritura; el motor solo emite
+`PlanActividad tipo=ENTREGA`; `MaterializarPlanUseCase` ignora otros tipos.

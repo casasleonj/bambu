@@ -45,20 +45,43 @@ asignar PlanParada.pedidoIds al embarque (mecanismo existente)
 
 Entrada: `PlanDia` en estado `CONFIRMED` + `idempotencyKey`.
 Por cada `PlanGrupo` sin `embarqueId`:
-1. `carga` = suma de `snapshotCantidades` de las paradas del grupo.
+1. `pedidoIds` del grupo = unión de `PlanActividad.pedidoIds` donde `tipo=ENTREGA`
+   (en el MVP son todas). `carga` = suma de `snapshotCantidades` de esas actividades.
 2. `offlineId = hash(planId, version, grupoId)` — determinista.
 3. Invoca `CrearEmbarqueUseCase.execute({ trabajadorId: grupo.trabajadorFinalId,
    rutaId: grupo.rutaId ?? null, carga, horaSalida: grupo.horaSalidaPropuesta,
    obs: 'Plan ' + planId, offlineId, maxUnidades, verificarStock: true })`.
    - Replay (mismo `offlineId`) → devuelve el embarque ya creado. Idempotente.
 4. Persiste `PlanGrupo.embarqueId = result.id`.
-5. Asigna los pedidos del grupo al embarque (vía repo/uso-case de asignación
-   existente), que los pone `EN_RUTA`.
+5. Asigna los `pedidoIds` al embarque (vía repo/use-case de asignación existente),
+   que los pone `EN_RUTA`.
 
-### 3. `/api/embarques/auto` queda como legacy/compat — NO se toca
+Actividades `tipo=COBRO`/`RECOGIDA_BOTELLON` (post-MVP): su materialización se
+define en un ADR de Embarques + uno de Cartera (ADR-PLANIFICADOR-006). En el MVP no
+existen, así que este paso solo ve `ENTREGA`.
 
-(v4 §23, §67.11.) No lo consume el plan. Cuando el Planificador esté en régimen y
-validado, su deprecación se decide en un ADR posterior — **no ahora**.
+### 3. `/api/embarques/auto` → DEPRECADO (decisión del PO, 2026-08-30)
+
+El Planificador **reemplaza** a `/api/embarques/auto`. No coexisten como
+alternativas permanentes.
+
+- **Ahora (F1):** el endpoint y su UI (`auto-generar-preview-modal.tsx`) se marcan
+  `@deprecated`. No se le agregan features. Sigue funcionando hasta que el
+  Planificador cubra el caso (no se rompe nada en el interín).
+- **F6 (integración):** el botón "Auto-Generar" de la UI de Embarques se
+  **re-apunta** al flujo del plan (`confirmar plan → MaterializarPlanUseCase`).
+  `computePreview` deja de tener consumidores.
+- **Cleanup (post-validación del Planificador):** se elimina
+  `src/app/api/embarques/auto/route.ts`, `src/lib/embarque-auto.ts` queda solo por
+  sus helpers puros (`splitPedidosByCapacity`, `pesoPedido`, `unidadesPedido`) que
+  el motor del planificador reutiliza (ver F0 §1 #5).
+- **El flujo manual "Nuevo Embarque"** (crear un embarque sin plan) **se
+  conserva** — es válido para casos fuera del plan del día.
+
+Esto además **desbloquea** el rework diferido de "crear embarque / auto-generar"
+que hoy espera al módulo de rutas (ver `memory/embarques-auto-generar-es-el-objetivo`
+y `docs/embarques/PENDIENTE.md` §"Diferido"): ese rework pasa a ser el consumidor
+del Planificador en F6, no un flujo propio.
 
 ### 4. Fallo parcial → saga simple, sin rollback destructivo
 
@@ -104,8 +127,10 @@ El planificador **lee**: `Pedido`, `Cliente`, `Negocio`, `Trabajador`, `Ruta`.
 - Cero cambios en el dominio congelado de Embarques.
 - `MaterializarPlanUseCase` es la única superficie de acoplamiento — testeable en
   aislamiento con un fake de `CrearEmbarqueUseCase`.
-- Deuda: `/api/embarques/auto` y el planificador coexisten hasta un ADR de
-  deprecación futuro.
+- `/api/embarques/auto` deprecado: sin coexistencia permanente. El rework diferido
+  de crear-embarque/auto-generar se re-apunta al Planificador en F6.
+- Los helpers puros de `src/lib/embarque-auto.ts` (`splitPedidosByCapacity`, etc.)
+  sobreviven — el motor del planificador los reutiliza.
 
 ## Verificación (cuando se implemente)
 
