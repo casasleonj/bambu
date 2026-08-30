@@ -90,15 +90,19 @@ test.describe('Embarques — Fix #1: Discrepancia valora productos individualmen
     const closeData = await closeRes.json()
     expect(closeData.success).toBe(true)
 
-    // Discount should be created for the discrepancy
-    expect(closeData.descuento).toBeDefined()
-    const monto = Number(closeData.descuento.monto)
+    // FASE 6 (§13): el cierre ya NO crea `descuento` automático — deja un
+    // ResponsibilityCase DISCREPANCIA_INVENTARIO pendiente, con `montoEstimado`
+    // valorado por producto individual (no todo a precio de PACA_AGUA).
+    expect(Array.isArray(closeData.responsibilityCases)).toBe(true)
+    const discCase = closeData.responsibilityCases.find(
+      (c: { tipo: string }) => c.tipo === 'DISCREPANCIA_INVENTARIO',
+    )
+    expect(discCase).toBeTruthy()
+    const monto = Number(discCase.montoEstimado)
     expect(monto).toBeGreaterThan(0)
-    // The monto should reflect individual product prices, not all at PACA_AGUA price
-    // If bug existed: 6 * ~2600 = ~15600
-    // With fix: 3 * ~2600 + 3 * ~20000 (botellon is much more expensive) = much higher
-    // We can't assert exact value since pricing engine resolves dynamically,
-    // but we can verify the discount exists and is non-zero
+    // El monto refleja precios por producto, no todo a precio de PACA_AGUA:
+    //   bug: 6 * ~2600 = ~15600 · fix: 3 * ~2600 + 3 * ~20000 (botellón) = mucho más.
+    // No se asserta el valor exacto (el pricing engine resuelve dinámico).
   })
 })
 

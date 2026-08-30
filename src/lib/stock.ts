@@ -44,7 +44,11 @@ export async function getStockEstimadoHoy(): Promise<StockEstimado | null> {
 }
 
 export async function setStockEstimadoHoy(agua: number, hielo: number, botellon: number): Promise<void> {
-  const today = new Date().toISOString().split('T')[0]
+  // Bogotá, NO UTC: `getStockEstimadoHoy` compara contra `getTodayString()`
+  // (America/Bogota). Con `new Date().toISOString()` (UTC) el registro se
+  // guardaba con fecha = mañana entre las 19:00 y 23:59 Bogotá, y el GET lo
+  // descartaba por fecha != hoy → devolvía null toda la noche (AGENTS.md #17).
+  const today = getTodayString()
   await prisma.config.upsert({
     where: { clave: 'stock_estimado_hoy' },
     update: { valor: JSON.stringify({ agua, hielo, botellon, fecha: today }) },

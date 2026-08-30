@@ -317,7 +317,10 @@ test.describe('Embarques — Stock Estimado UI', () => {
     await apiPost(p, '/api/stock-estimado', { agua: 50, hielo: 30, botellon: 10 })
     const res = await apiGet(p, '/api/stock-estimado')
     const data = await res.json()
-    expect(data.data?.estimado?.botellon).toBe(10)
+    // `apiSuccess({ estimado })` esparce las claves al top level: `data.estimado`,
+    // no `data.data.estimado` (ese era el bug del test, no del endpoint).
+    expect(data.estimado?.botellon).toBe(10)
+    expect(data.estimado?.agua).toBe(50)
   })
 })
 

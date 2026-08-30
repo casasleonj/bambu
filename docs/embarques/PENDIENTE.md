@@ -28,8 +28,8 @@ _Actualizado: 2026-08-27_
 | 6a | Endpoint `POST/GET /api/embarques/[id]/sustituciones` | ✅ PR #137 |
 | **5** | Mission Detail | ✅ branch `feat/embarques-fase5-mission-detail` |
 | **6b** | UI de sustituciones | ✅ branch `feat/embarques-fase6b-sustituciones-ui` |
-| **7** | Reconciliation (cierre = wizard forzado) | ✅ branch `feat/embarques-fase7-reconciliation` (bloqueo por excepciones preexistentes diferido) |
-| **8** | Test hardening + bugs preexistentes | ⏳ Pendiente |
+| **7** | Reconciliation (cierre = wizard forzado) | ✅ branch `feat/embarques-fase7-reconciliation` (+ endurecido tras auditoría: preview best-effort, E2E del wizard) |
+| **8** | Test hardening + bugs preexistentes | 🟡 bugs #1 y #2 resueltos; ítems 4-5 (matriz de tests, 4 roles) pendientes |
 | **9-10** | Flag a default ON + verificación + retiro de legacy | ⏳ Pendiente |
 
 ### Bloqueante inmediato
@@ -199,7 +199,8 @@ _Actualizado: 2026-08-27_
 - Unit: `cerrar-client/__tests__/wizard-gating.test.tsx` (no avanza con pasos incompletos), `preview.test.tsx`.
 - E2E: reescribir `e2e/embarques-fixes.spec.ts` parte de cierre — wizard completo happy path + caso de bloqueo.
 
-**Ojo:** el bug preexistente #2 (cierre devuelve 500 en vez de 400 con pagos > total) hay que arreglarlo o el paso Monetario mostrará un error genérico. Ver Fase 8.
+**Ojo:** ~~el bug preexistente #2 (cierre devuelve 500 en vez de 400 con pagos > total)~~
+→ resuelto en Fase 8 (mapeo de la CHECK de Postgres a 400 en el route).
 
 ---
 
@@ -207,19 +208,35 @@ _Actualizado: 2026-08-27_
 
 **Ítems:**
 
-1. **Arreglar bug preexistente #1** — `POST /api/stock-estimado` no persiste/devuelve `botellon`.
-   - Archivo: buscar el handler de `stock-estimado`. E2E que falla: `e2e/embarques-all-contexts.spec.ts:309` y `:316`.
+1. ✅ **Bug #1 (stock estimado `botellon`)** — resuelto (2026-08-29). Eran **dos** cosas:
+   - Test mal escrito: leía `data.data.estimado` cuando `apiSuccess({estimado})` esparce
+     al top level (`data.estimado`). Corregido en `embarques-all-contexts.spec.ts`.
+   - Bug latente real: `setStockEstimadoHoy` guardaba `fecha` con `new Date().toISOString()`
+     (UTC) mientras `getStockEstimadoHoy` compara contra `getTodayString()` (Bogotá) →
+     el estimado "desaparecía" entre 19:00 y 23:59 Bogotá (AGENTS.md #17). Fix en
+     `src/lib/stock.ts` + test de regresión en `stock.test.ts`.
 
-2. **Arreglar bug preexistente #2** — `POST /api/embarques/[id]/cerrar` devuelve **500** en vez de **400** cuando pagos > total.
-   - Viola el CHECK `chk_pedido_montopagado_le_total`. El error sale de `CerrarEmbarqueUseCase` / `ProcesarPedidoService` (`src/modules/embarques/domain/services/procesar-pedido.service.ts`).
-   - **Esto sí toca dominio** → necesita ADR o, si es solo mapeo de excepción, alcanza con capturar el `PrismaClientKnownRequestError` en el route handler y devolver 400 (additivo, sin ADR).
-    - E2E: `e2e/embarques-fixes.spec.ts:514` (test "pagos que exceden totalReal retorna 400") y assert en `:570`.
+2. ✅ **Bug #2 (cierre 500 vs 400 con pagos > total)** — resuelto (2026-08-29) **sin tocar
+   dominio**. Causa: el guard `PAGOS_EXCEDIDOS` de `procesar-pedido.service.ts:218` corre
+   DESPUÉS del `pedido.update` que persiste `totalPagado`, así que la CHECK de Postgres
+   (`chk_pedido_montopagado_le_total`, SQLSTATE 23514) lo ataja primero. Verificado que
+   el `PrismaClientUnknownRequestError` incluye el nombre de la constraint en el mensaje.
+   Fix: `src/app/api/embarques/[id]/cerrar/route.ts` mapea ese mensaje → 400 con texto
+   claro ("Los pagos registrados exceden el total…"). El wizard de Fase 7 además ya
+   bloquea este caso antes de llegar al POST (`pasoPedidosValido`).
+   - **Deuda técnica opcional (necesita ADR):** mover el guard de dominio ANTES del
+     `pedido.update` para que el 400 salga de la capa correcta. No urgente — el mapeo
+     de route cubre el síntoma.
 
-3. **Cascada de `full-user-day.spec.ts`** — es infra (AGENTS.md #20: reset de DB invalida sesiones del cluster). No es bug de embarques. Documentar; el fix real es aislamiento de DB por worker (trabajo aparte).
+3. **Cascada de `full-user-day.spec.ts`** — infra (AGENTS.md #20). No es bug de embarques.
 
 4. **Completar la matriz de tests** (4 ítems parciales del plan maestro §"test hardening").
 
 5. **Cobertura E2E de los 4 roles** sobre el flujo V2 (ADMIN, ASISTENTE, CONTADOR, REPARTIDOR).
+
+**Pendiente menor:** `embarques-all-contexts.spec.ts:279` ("crear stock estimado via modal")
+sigue flaky — es un test de UI con `sharedPageLogin` y selectores laxos (`if count>=2`),
+no relacionado al backend. Reescribir con testids o quitar.
 
 ---
 
@@ -237,11 +254,11 @@ _Actualizado: 2026-08-27_
 
 ## Bugs preexistentes (referencia rápida)
 
-| # | Síntoma | Dónde | E2E que falla |
-|---|---|---|---|
-| 1 | `/api/stock-estimado` no devuelve `botellon` | handler stock-estimado | `embarques-all-contexts.spec.ts:309/:316` |
-| 2 | cierre → 500 en vez de 400 con pagos > total | `procesar-pedido.service.ts` + route `cerrar` | `embarques-fixes.spec.ts:514/:570` |
-| 3 | cascada por reset de DB (sesiones invalidadas) | infra E2E, AGENTS.md #20 | `full-user-day.spec.ts` |
+| # | Síntoma | Estado |
+|---|---|---|
+| 1 | `/api/stock-estimado` `botellon` no aparece en GET | ✅ resuelto (test path + tz en `stock.ts`) |
+| 2 | cierre → 500 en vez de 400 con pagos > total | ✅ resuelto (mapeo CHECK→400 en route `cerrar`) |
+| 3 | cascada por reset de DB (sesiones invalidadas) | infra E2E, AGENTS.md #20 — trabajo aparte |
 
 ---
 
