@@ -14,6 +14,55 @@ DB (ver §12).
 
 ## 0. Resumen ejecutivo
 
+### 0.a — HALLAZGO QUE CAMBIA LA DECISIÓN (datos de producción, 2026-08-30)
+
+Las queries de §12 corridas contra Supabase producción muestran que **la demanda
+route-planificable hoy es de ~3-8 pedidos por MES y está bajando**:
+
+| Mes (2026) | Pedidos totales | Domicilio planificable (`PEDIDO`+`RECURRENTE`) | Venta rápida (mostrador) |
+|---|---|---|---|
+| Junio (desde 23/06) | 35 | 8 | 27 |
+| Julio | 47 | **4** | 43 |
+| Agosto | 41 | **3** | 38 |
+
+- **123 pedidos en toda la historia** (la operación real arranca 23/06/2026). De
+  esos: **104 son `VENTA_RAPIDA / PUNTO`** (venta de mostrador en la planta, 89 a
+  `CONSUMIDOR_FINAL`) — **no son planificables** (no hay entrega a domicilio).
+- **Solo 13 `PEDIDO / DOMICILIO`** en toda la historia (7 con negocio, 7 clientes
+  reales) + 2 `RECURRENTE`. Eso es **~1 pedido de reparto por semana**.
+- **7 embarques en total**, alguna vez. **3 rutas** definidas, **0 clientes/negocios
+  asignados** a ellas.
+- Geo: **1.1%** de clientes activos con coordenadas (2 de 179). **0** pedidos con
+  GPS de entrega capturado. **41%** con barrio. **0%** con `rutaId`.
+
+**Recomendación:** **NO iniciar F2–F7 del Planificador ahora.** Construir
+clustering + TSP + capacidad + excepciones + versionado + replanificación +
+reconstrucción total de UI + 6 ADRs + piloto, para ~1 reparto/semana, no se
+justifica. El documento v4 es una buena base arquitectónica — **guardarlo como
+blueprint** y activarlo cuando la demanda lo pida.
+
+**Disparador para retomar:** cuando la demanda `DOMICILIO` planificable sostenga
+**~10-15+ pedidos/día** (no /mes), o cuando el negocio decida pivotar
+explícitamente a reparto-first. Hasta entonces, `/rutas` + `/rutas/analisis` +
+`/api/clientes/cluster-preview` (ya existen) cubren esta escala.
+
+**Qué SÍ conviene hacer ahora** (chico, alto retorno, habilita el futuro):
+1. **Arreglar la captura de GPS en la entrega.** Hoy `Pedido.gpsLat/gpsLng` está
+   en **0** en toda la base — el historial de ubicación no se está acumulando.
+   Sin eso, cuando el reparto crezca no habrá datos para planificar.
+2. **Backfill de coords desde `linkUbicacion`.** 63 clientes (35%) tienen link de
+   Maps. `backfillClienteCoords` (PARSED_URL) ya existe → una corrida de script da
+   una base geográfica.
+3. Cerrar F1 (los 6 ADRs) **en papel** si se quiere dejar la decisión tomada, pero
+   sin abrir código.
+
+El resto de este inventario (§1–§15) sigue siendo válido como mapa de capacidades
+para cuando se retome. Detalle de los números en §16.
+
+---
+
+### 0.b — Inventario técnico (válido cuando se retome)
+
 **El motor MVP se construye por composición, no desde cero.** El ~60-70% de las
 piezas algorítmicas ya existen y están testeadas:
 
@@ -332,6 +381,67 @@ GROUP BY 1 ORDER BY pedidos_60d DESC LIMIT 30;
   `LOW_LOCATION_CONFIDENCE`.
 - Query 5 **< 60%** o Query 1 `pct_barrio` **< 85%** → **sprint de backfill primero**
   (query 6 prioriza qué barrios), usando `backfillClienteCoords` (§4).
+
+---
+
+## 16. RESULTADO REAL de §12 — Supabase producción (2026-08-30)
+
+Corrido vía MCP Supabase (`execute_sql`, read-only) contra el proyecto
+`wdttkrlbpcawulaaiapj`.
+
+### Cobertura de datos
+
+| Métrica | Valor |
+|---|---|
+| Clientes activos | **179** |
+| — con coordenadas | **2 (1.1%)** |
+| — con barrio | 73 (40.8%) |
+| — con `rutaId` | **0 (0.0%)** |
+| — sin geo útil (ni coords ni barrio) | 106 (59%) |
+| Barrios distintos | 42 |
+| Clientes con `linkUbicacion` (backfill posible) | **63 (35%)** |
+| Negocios activos | 76 — con coords: 5 (6.6%), con barrio: 51 (67%), con ruta: 0 |
+| Pedidos con GPS de entrega (`gpsLat`) | **0** (en toda la base) |
+| Clientes con historial GPS | **0** → el backfill "mediana GPS" **no funciona** hoy |
+
+### Volumen y naturaleza de la demanda
+
+| Métrica | Valor |
+|---|---|
+| Pedidos totales (toda la historia) | 123 |
+| Rango real de operación | 23/06/2026 → hoy (~2 meses) |
+| Pedidos por estado | 97 ENTREGADO · 11 ANULADO · 11 CANCELADO · 3 EN_RUTA · 1 PENDIENTE |
+| `VENTA_RAPIDA / PUNTO` (mostrador, no planificable) | **104** (89 a `CONSUMIDOR_FINAL`) |
+| `PEDIDO / DOMICILIO` (planificable) | **13** (7 con negocio, 7 clientes reales) |
+| `VENTA_RAPIDA / DOMICILIO` | 4 |
+| `RECURRENTE / DOMICILIO` | 2 |
+| **Demanda planificable / mes** | **Jun 8 · Jul 4 · Ago 3** (tendencia a la baja) |
+| Embarques totales (toda la historia) | 7 |
+| Rutas activas | 3 (con 0 clientes/negocios asignados) |
+
+### Lectura
+
+1. **El negocio hoy es venta de mostrador**, no reparto. El 85% de los pedidos son
+   `VENTA_RAPIDA / PUNTO` en la planta.
+2. **El reparto a domicilio es ~1 pedido/semana y decreciente.** No hay masa
+   crítica para un planificador.
+3. **La base geográfica está esencialmente vacía** (1% coords, 0% GPS histórico,
+   0% rutaId). Aunque hubiera demanda, el motor no tendría con qué trabajar sin un
+   backfill previo.
+4. **`linkUbicacion` (63 clientes) es la única palanca de backfill viable** hoy
+   (`backfillClienteCoords` vía `PARSED_URL`). La palanca "mediana GPS" está muerta
+   porque no se captura GPS en la entrega.
+
+### Recomendación (revisada con datos)
+
+| Acción | Cuándo |
+|---|---|
+| **NO abrir F2–F7 del Planificador** | ahora |
+| Guardar v4 como blueprint; opcionalmente cerrar los 6 ADRs en papel | ahora, si se quiere |
+| **Arreglar captura de GPS en la entrega** (`Pedido.gpsLat/gpsLng` llega en 0) | ahora — chico, habilita el futuro |
+| **Backfill de coords desde `linkUbicacion`** (script con `backfillClienteCoords`) | ahora — 1 corrida, base geográfica para 63 clientes |
+| Usar `/rutas` + `/rutas/analisis` + `cluster-preview` existentes | cubren esta escala |
+| Retomar el Planificador (F2+) | cuando `DOMICILIO` planificable sostenga ~10-15+ pedidos/**día**, o pivote estratégico a reparto |
 
 ---
 
