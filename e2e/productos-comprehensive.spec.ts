@@ -38,12 +38,14 @@ test.describe('Productos - Comprehensive', () => {
       expect(errorMsg).toContain('permisos')
     })
 
-    test('ASISTENTE puede ver productos pero NO editar via API', async ({ page }) => {
+    test('ASISTENTE NO puede ver ni editar productos via API', async ({ page }) => {
+      // Contrato de negocio (permissions.test.ts + roles-permisos.spec.ts,
+      // fix post-#123): ASISTENTE no tiene view:productos — no ve precios.
       await loginAs(page, 'asistente')
-      // GET - should work
+      // GET - 403: ASISTENTE no puede ver productos (precios)
       const getRes = await apiGet(page, '/api/productos')
-      expect(getRes.status()).toBe(200)
-      // PUT - should return 403 for ASISTENTE
+      expect(getRes.status()).toBe(403)
+      // PUT - 403: tampoco puede editar
       const putRes = await apiPut(page, '/api/productos', {
         productoId: 'test-id',
         aplicaDomicilio: true,
