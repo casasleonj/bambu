@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import RutaForm from '@/components/ruta-form'
+import { RutaResumen } from './ruta-resumen'
 
 export default async function EditarRutaPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -24,10 +25,11 @@ export default async function EditarRutaPage({ params }: { params: Promise<{ id:
 
   return (
     <div className="max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Editar Ruta</h1>
+      <h1 className="text-2xl font-bold text-gray-900 mb-6">Editar ruta habitual</h1>
       <div className="bg-white rounded-lg shadow-sm border p-6">
         <RutaForm initialData={initialData} rutaId={ruta.id} />
       </div>
+      <RutaResumen rutaId={ruta.id} repartidorId={ruta.repartidorId} />
     </div>
   )
 }

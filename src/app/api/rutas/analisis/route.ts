@@ -4,6 +4,7 @@ import {
   obtenerRepartidoresActivos,
   obtenerBarriosSinRuta,
 } from '@/lib/route-analysis'
+import { calcularCalidadDatosGeo } from '@/lib/rutas/calidad-datos'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { apiSuccess, apiError } from '@/lib/api-response'
@@ -26,16 +27,18 @@ export async function GET(request: Request) {
     if (!validation.success) {
       return apiError('Parámetros inválidos', 400, validation.error.flatten())
     }
-    const [analisis, repartidores, barriosSinRuta] = await Promise.all([
+    const [analisis, repartidores, barriosSinRuta, calidadDatos] = await Promise.all([
       analizarPatronesEntrega(),
       obtenerRepartidoresActivos(),
       obtenerBarriosSinRuta(),
+      calcularCalidadDatosGeo(),
     ])
 
     return apiSuccess({
       ...analisis,
       repartidores,
       barriosSinRuta,
+      calidadDatos,
     })
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error en análisis de rutas:')

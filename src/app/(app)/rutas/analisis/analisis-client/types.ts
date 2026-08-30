@@ -30,3 +30,24 @@ export interface Sugerencia {
   mensaje: string
   datos: Record<string, unknown>
 }
+
+export interface CalidadDatos {
+  clientesActivos: number
+  conCoords: number
+  conBarrio: number
+  conRuta: number
+  sinGeoUtil: number
+  barriosDistintos: number
+  conLinkUbicacion: number
+  negociosActivos: number
+  negociosConCoords: number
+  pctCoords: number
+  pctBarrio: number
+  demanda60d: {
+    pedidos: number
+    conCoordsEfectivas: number
+    conBarrioEfectivo: number
+    pctCoords: number
+  }
+  recomendacion: 'OK' | 'BACKFILL_SUGERIDO' | 'BACKFILL_NECESARIO'
+}

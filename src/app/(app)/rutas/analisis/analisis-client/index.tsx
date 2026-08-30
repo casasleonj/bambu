@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import type { BarrioAnalysis, RutaConflict, Sugerencia } from './types'
+import type { BarrioAnalysis, RutaConflict, Sugerencia, CalidadDatos } from './types'
+import { CalidadDatosPanel } from './calidad-datos-panel'
 
 export default function RutasAnalisisClient() {
   const router = useRouter()
@@ -12,6 +13,7 @@ export default function RutasAnalisisClient() {
   const [conflictos, setConflictos] = useState<RutaConflict[]>([])
   const [sugerencias, setSugerencias] = useState<Sugerencia[]>([])
   const [barriosSinRuta, setBarriosSinRuta] = useState<string[]>([])
+  const [calidadDatos, setCalidadDatos] = useState<CalidadDatos | null>(null)
 
   async function cargarAnalisis() {
     setLoading(true)
@@ -23,6 +25,7 @@ export default function RutasAnalisisClient() {
         setConflictos(data.conflictos || [])
         setSugerencias(data.sugerencias || [])
         setBarriosSinRuta(data.barriosSinRuta || [])
+        setCalidadDatos(data.calidadDatos ?? null)
       } else {
         toast.error(data.error?.message || 'Error al cargar analisis')
       }
@@ -82,6 +85,8 @@ export default function RutasAnalisisClient() {
         <div className="bg-white p-4 rounded-lg shadow-sm border"><div className="text-3xl font-bold text-yellow-600">{sugerencias.length}</div><div className="text-sm text-gray-600">Sugerencias</div></div>
         <div className="bg-white p-4 rounded-lg shadow-sm border"><div className="text-3xl font-bold text-green-600">{barriosSinRuta.length}</div><div className="text-sm text-gray-600">Barrios sin ruta</div></div>
       </div>
+
+      {calidadDatos && <CalidadDatosPanel d={calidadDatos} />}
 
       {conflictos.length > 0 && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
