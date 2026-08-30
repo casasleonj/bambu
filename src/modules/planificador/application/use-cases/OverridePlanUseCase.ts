@@ -18,6 +18,7 @@ import { prisma } from '@/lib/prisma'
 
 export type OverrideOp =
   | { tipo: 'moverPedido'; pedidoId: string; grupoDestinoId: string }
+  | { tipo: 'moverParada'; paradaId: string; grupoDestinoId: string }
   | { tipo: 'asignarRepartidor'; grupoId: string; trabajadorId: string | null }
   | { tipo: 'resolverExcepcion'; excepcionId: string; resolucion: 'RESUELTA' | 'IGNORADA' }
 
@@ -69,6 +70,18 @@ export class OverridePlanUseCase {
         }
         case 'moverPedido': {
           await this.moverPedido(input.planId, input.op.pedidoId, input.op.grupoDestinoId)
+          break
+        }
+        case 'moverParada': {
+          const parada = await prisma.planParada.findFirst({
+            where: { id: input.op.paradaId, planGrupo: { planDiaId: input.planId } },
+            select: { actividades: { where: { tipo: 'ENTREGA' }, select: { pedidoIds: true } } },
+          })
+          if (!parada) throw new Error('PARADA_NO_EN_PLAN')
+          const pedidoIds = parada.actividades.flatMap((a) => a.pedidoIds)
+          for (const pid of pedidoIds) {
+            await this.moverPedido(input.planId, pid, input.op.grupoDestinoId)
+          }
           break
         }
       }

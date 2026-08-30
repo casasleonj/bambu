@@ -159,7 +159,15 @@ export function HoyClient({ fecha, planInicial }: { fecha: string; planInicial: 
 
       <div className="space-y-3">
         {plan.grupos.map((g) => (
-          <GrupoCard key={g.id} grupo={g} confirmado={confirmado} />
+          <GrupoCard
+            key={g.id}
+            grupo={g}
+            grupos={plan.grupos}
+            planId={plan.id}
+            expectedUpdatedAt={plan.updatedAt}
+            confirmado={confirmado || !!busy}
+            onCambio={recargar}
+          />
         ))}
       </div>
 

@@ -43,6 +43,7 @@ const PatchSchema = z.object({
   expectedUpdatedAt: z.string().min(1),
   op: z.discriminatedUnion('tipo', [
     z.object({ tipo: z.literal('moverPedido'), pedidoId: z.string().min(1), grupoDestinoId: z.string().min(1) }),
+    z.object({ tipo: z.literal('moverParada'), paradaId: z.string().min(1), grupoDestinoId: z.string().min(1) }),
     z.object({ tipo: z.literal('asignarRepartidor'), grupoId: z.string().min(1), trabajadorId: z.string().min(1).nullable() }),
     z.object({ tipo: z.literal('resolverExcepcion'), excepcionId: z.string().min(1), resolucion: z.enum(['RESUELTA', 'IGNORADA']) }),
   ]),
@@ -84,7 +85,7 @@ export async function PATCH(
     if (msg === 'PLAN_NOT_FOUND') return apiError('Plan no encontrado', 404)
     if (msg === 'VERSION_CONFLICT') return apiError('El plan cambió. Recargá y volvé a intentar.', 409)
     if (msg === 'ESTADO_INVALIDO') return apiError('El plan no está en un estado editable.', 409)
-    if (['PEDIDO_NO_EN_PLAN', 'GRUPO_DESTINO_INVALIDO'].includes(msg)) return apiError(msg, 422)
+    if (['PEDIDO_NO_EN_PLAN', 'PARADA_NO_EN_PLAN', 'GRUPO_DESTINO_INVALIDO'].includes(msg)) return apiError(msg, 422)
     logger.error({ err: msg, id }, 'Error en override de plan')
     return apiError('Error al modificar el plan', 500)
   }

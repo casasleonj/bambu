@@ -253,6 +253,33 @@ describe('Replan / Override / Cancelar — integración', () => {
     expect(after[0].planParada.planGrupoId).toBe(destino.id)
   })
 
+  it('override moverParada: mueve todas las actividades de una parada', async () => {
+    const plan = await testPrisma.planDia.findFirst({
+      where: { fecha: dia, estado: 'REVIEW' },
+      orderBy: { version: 'desc' },
+      include: { grupos: { include: { paradas: { include: { actividades: true } } } } },
+    })
+    const origen = plan!.grupos.find((g) => g.paradas.length > 0)!
+    const destino = plan!.grupos.find((g) => g.id !== origen.id)!
+    const parada = origen.paradas[0]
+    const pedidoIds = parada.actividades.flatMap((a) => a.pedidoIds)
+
+    const fresh = await testPrisma.planDia.findUnique({ where: { id: plan!.id }, select: { updatedAt: true } })
+    await new OverridePlanUseCase().execute({
+      planId: plan!.id,
+      expectedUpdatedAt: fresh!.updatedAt.toISOString(),
+      op: { tipo: 'moverParada', paradaId: parada.id, grupoDestinoId: destino.id },
+    })
+
+    for (const pid of pedidoIds) {
+      const acts = await testPrisma.planActividad.findMany({
+        where: { pedidoIds: { has: pid }, planParada: { planGrupo: { planDiaId: plan!.id } } },
+        include: { planParada: true },
+      })
+      expect(acts[0]?.planParada.planGrupoId).toBe(destino.id)
+    }
+  })
+
   it('override con expectedUpdatedAt viejo → VERSION_CONFLICT', async () => {
     const plan = await testPrisma.planDia.findFirst({ where: { fecha: dia, estado: 'REVIEW' }, orderBy: { version: 'desc' } })
     await expect(
