@@ -35,6 +35,9 @@ export const LOCK_NAMESPACES = [
   'EMBARQUE_CARGA',
   'CIERRE',
   'SECUENCIA',
+  // Planificador de distribución (ADR-PLANIFICADOR-001 §6 / -005 §4):
+  // lock por fecha operativa en generar/replanificar/confirmar/override.
+  'PLAN',
 ] as const
 
 export type LockNamespace = (typeof LOCK_NAMESPACES)[number]
