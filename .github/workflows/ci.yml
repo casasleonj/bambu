@@ -189,6 +189,11 @@ jobs:
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260611_add_abono_embarque_seqs/migration.sql
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260619_import_fase2_proveedor_compra_seq/migration.sql
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260817_plan_maestro_ledgers/migration.sql
+          # 20260817 (arriba) crea ReceivableEntry_offlineId_key UNIQUE; esta
+          # migración posterior lo baja a índice normal (bug pagar-fiado con
+          # abonos que cubren 2+ pedidos). Se aplica acá para replicar el
+          # orden de `prisma migrate deploy` de prod.
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260829_receivable_entry_offlineid_not_unique/migration.sql
 
       - name: Run integration tests
         run: npm run test:integration
@@ -318,6 +323,11 @@ jobs:
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260611_add_abono_embarque_seqs/migration.sql
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260619_import_fase2_proveedor_compra_seq/migration.sql
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260817_plan_maestro_ledgers/migration.sql
+          # 20260817 (arriba) crea ReceivableEntry_offlineId_key UNIQUE; esta
+          # migración posterior lo baja a índice normal (bug pagar-fiado con
+          # abonos que cubren 2+ pedidos). Se aplica acá para replicar el
+          # orden de `prisma migrate deploy` de prod.
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260829_receivable_entry_offlineid_not_unique/migration.sql
 
       - name: Seed test data
         run: npx tsx prisma/seed-test.ts
