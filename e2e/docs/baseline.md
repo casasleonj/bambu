@@ -261,6 +261,13 @@ session-expiry.spec.ts:24 (flaky)   auth:expired event redirects to login with e
 
 ---
 
+## 5bis. Resultado de la Fase 1 (run `33307271423`) — resumen
+
+- **`unhandledRejection: DB_TIMEOUT` → 0** (era 2 en shards 1 y 5). Fix `fc949e6`. ✅
+- **Lock-contention del `TRUNCATE`: 0 ocurrencias** en los 8 shards. La hipótesis H1 del plan **queda refutada** para el estado actual de CI. Detalle en `failure-matrix.md` §0.
+- La instrumentación de la Fase 1 (`stdio: 'inherit'`) causó una regresión en shard 6 (+14 fallos por flood de stdout). Revertida en `a9e72020`. Ver `failure-matrix.md` §5.
+- Ver **`failure-matrix.md`** para la clasificación causal completa (Fase 2).
+
 ## 6. Estado previo ya documentado (no re-derivar)
 
 `AGENTS.md` Known Issues **#20** (E2E auth flakiness / DB-reset race / lock-contention — ~6 iteraciones de forense), **#24** (vistas mobile/desktop duplicadas), **#25** (job E2E reactivado, causa de capacidad no confirmada), **#26** (bucle de requests en `/pedidos`). Este baseline **confirma** que el mecanismo de #20 (lock-contention del `TRUNCATE` + `DB_TIMEOUT` + cascada) sigue vivo en `origin/main` al 2026-08-30.
