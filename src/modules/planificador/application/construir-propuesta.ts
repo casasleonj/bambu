@@ -288,6 +288,13 @@ export function construirPropuesta(input: ConstruirPropuestaInput): Propuesta {
   const totalParadas = grupos.reduce((s, g) => s + g.paradas.length, 0)
   const totalUnidades = grupos.reduce((s, g) => s + g.capacidadUnidades, 0)
 
+  // Pedidos que NO quedaron en ningún grupo (sin coords ni barrio → excepción).
+  const enGrupo = new Set(
+    grupos.flatMap((g) => g.paradas.flatMap((p) => p.actividades.flatMap((a) => a.pedidoIds))),
+  )
+  const pedidosSinUbicar = candidatos.filter((c) => !enGrupo.has(c.pedidoId)).length
+  void sinAgrupar
+
   return {
     fecha,
     grupos,
@@ -298,7 +305,7 @@ export function construirPropuesta(input: ConstruirPropuestaInput): Propuesta {
       grupos: grupos.length,
       unidades: totalUnidades,
       excepciones: excepciones.length,
-      pedidosSinUbicar: sinAgrupar.length + sinUbicacion.reduce((s, x) => s + x.pedidoIds.length, 0),
+      pedidosSinUbicar,
     },
   }
 }
