@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Modal } from '@/components/modal'
 import { PESOS_KG, calcularPesoDesdeCarga, getCapacidadInfo, type CargaSnapshot } from '@/lib/embarque-capacidad'
@@ -23,6 +24,12 @@ interface EmbarqueFormModalProps {
   rutas: Ruta[]
   mode: 'create' | 'edit'
   embarque?: EmbarqueEditable | null
+  /**
+   * Preparation Flow (Fase 4): tras crear online, navega al detalle del nuevo
+   * embarque con `?step=asignar` en vez de solo cerrar. No aplica a edición ni
+   * al camino offline (sin id de servidor). Default: false.
+   */
+  guided?: boolean
 }
 
 export function EmbarqueFormModal({
@@ -33,8 +40,10 @@ export function EmbarqueFormModal({
   rutas,
   mode,
   embarque,
+  guided = false,
 }: EmbarqueFormModalProps) {
   const isEdit = mode === 'edit'
+  const router = useRouter()
   const [selectedTrabajadorId, setSelectedTrabajadorId] = useState('')
   const [selectedRutaId, setSelectedRutaId] = useState('')
   const [tipoMoto, setTipoMoto] = useState('')
@@ -194,7 +203,7 @@ export function EmbarqueFormModal({
       toast.warning('Base dinero: $0 — ¿Seguro que no necesita cambio?')
     }
     setSubmitting(true)
-    const result = await fetchResilient<{ success: boolean }>(
+    const result = await fetchResilient<{ success: boolean; embarque?: { id?: string } }>(
       isEdit ? `/api/embarques/${embarque!.id}` : '/api/embarques',
       {
         method: isEdit ? 'PUT' : 'POST',
@@ -219,10 +228,15 @@ export function EmbarqueFormModal({
     } else if (result.status === 'error') {
       toast.error(result.error)
     } else {
+      const nuevoId = result.data?.embarque?.id
       resetForm()
       onClose()
       onSaved()
       toast.success(isEdit ? 'Embarque actualizado' : 'Embarque creado')
+      // Preparation Flow (Fase 4): guía al siguiente paso sin dead-end.
+      if (guided && !isEdit && nuevoId) {
+        router.push(`/embarques/${nuevoId}?step=asignar`)
+      }
     }
     setSubmitting(false)
   }

@@ -24,12 +24,11 @@ export default async function EmbarquePage({ params }: EmbarquePageProps) {
   })
   if (!hasAccess) return notFound()
 
-  // embarqueRaw, deudasRaw, trabajadoresRaw y rutasRaw son independientes
-  // entre sí (deudasRaw solo depende del `id` de la ruta, no del resultado
-  // de embarqueRaw) — se cargan en un solo Promise.all de 4 en vez de 2
-  // round trips secuenciales (antes: embarqueRaw+deudasRaw, luego
-  // Promise.all([trabajadoresRaw, rutasRaw])).
-  const [embarqueRaw, deudasRaw, trabajadoresRaw, rutasRaw] = await Promise.all([
+  // embarqueRaw, deudasRaw, responsibilityCasesRaw, trabajadoresRaw y rutasRaw
+  // son independientes entre sí (solo dependen del `id`, no del resultado de
+  // embarqueRaw) — se cargan en un solo Promise.all en vez de round trips
+  // secuenciales.
+  const [embarqueRaw, deudasRaw, responsibilityCasesRaw, trabajadoresRaw, rutasRaw] = await Promise.all([
     prisma.embarque.findUnique({
       where: { id },
       include: {
@@ -84,6 +83,14 @@ export default async function EmbarquePage({ params }: EmbarquePageProps) {
     prisma.deudaTrabajador.findMany({
       where: { embarqueId: id },
       select: { id: true, montoOriginal: true, montoPendiente: true, tipo: true, descripcion: true },
+      orderBy: { createdAt: 'desc' },
+    }),
+    // Casos de responsabilidad ABIERTOS del embarque (contrato §13 /
+    // 03-exception-model.md: MONEY_MISMATCH ← ResponsibilityCase). El cierre ya
+    // NO crea deuda automática; deja ResponsibilityCase PENDIENTE de resolución.
+    prisma.responsibilityCase.findMany({
+      where: { embarqueId: id, estado: { in: ['ABIERTA', 'EN_INVESTIGACION'] } },
+      select: { id: true, tipo: true, descripcion: true, montoEstimado: true, estado: true },
       orderBy: { createdAt: 'desc' },
     }),
     prisma.trabajador.findMany({
@@ -182,6 +189,13 @@ export default async function EmbarquePage({ params }: EmbarquePageProps) {
       montoPendiente: Number(d.montoPendiente),
       tipo: d.tipo,
       descripcion: d.descripcion,
+    })),
+    responsibilityCases: responsibilityCasesRaw.map((c) => ({
+      id: c.id,
+      tipo: c.tipo,
+      descripcion: c.descripcion,
+      montoEstimado: c.montoEstimado != null ? Number(c.montoEstimado) : null,
+      estado: c.estado,
     })),
     pedidos: embarqueRaw.pedidos.map((p) => {
       const negocioInfo = p.negocioId ? negocioMap.get(p.negocioId) : undefined

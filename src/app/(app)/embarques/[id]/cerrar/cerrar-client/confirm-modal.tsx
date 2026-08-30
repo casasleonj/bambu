@@ -1,6 +1,5 @@
 import type { CuadrePedido } from './types'
 import { formatCurrency } from '@/lib/utils'
-import { DEUDA_FALTANTE_CAJA_PLAZO_NOMINAS_DEFAULT, DEUDA_FALTANTE_CAJA_PORCENTAJE_NOMINA_DEFAULT } from '@/lib/constants'
 
 interface ConfirmModalProps {
   cuadres: Record<string, CuadrePedido>
@@ -64,10 +63,10 @@ export function ConfirmModal({ cuadres, submitting, onClose, onConfirm, resumen 
             {resumen.generaraDeuda && resumen.faltanteEfectivo && resumen.faltanteEfectivo > 0 && (
               <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-1">
                 <p className="text-sm font-semibold text-amber-900">
-                  Se creará una deuda de {formatCurrency(resumen.faltanteEfectivo)} a {resumen.nombreTrabajador || 'el trabajador'}
+                  Se detectará una responsabilidad por {formatCurrency(resumen.faltanteEfectivo)}, pendiente de resolución autorizada
                 </p>
                 <p className="text-xs text-amber-700">
-                  Plan: {DEUDA_FALTANTE_CAJA_PLAZO_NOMINAS_DEFAULT} nóminas, máximo {DEUDA_FALTANTE_CAJA_PORCENTAJE_NOMINA_DEFAULT}% por nómina.
+                  ADR-RESPONSABILIDAD-001: el cargo económico nunca es automático.
                 </p>
               </div>
             )}

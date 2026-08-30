@@ -40,6 +40,16 @@ export interface EmbarqueDeudaResumen {
   descripcion: string
 }
 
+export interface EmbarqueResponsibilityCaseResumen {
+  id: string
+  // DISCREPANCIA_INVENTARIO | FALTANTE_CAJA | FIADO_NO_COBRADO
+  tipo: string
+  descripcion: string
+  montoEstimado: number | null
+  // ABIERTA | EN_INVESTIGACION (solo se serializan los abiertos)
+  estado: string
+}
+
 export interface EmbarqueDetalle {
   id: string
   numero: number
@@ -53,6 +63,7 @@ export interface EmbarqueDetalle {
   dineroEntregado: number
   obs: string | null
   deudas?: EmbarqueDeudaResumen[]
+  responsibilityCases?: EmbarqueResponsibilityCaseResumen[]
   trabajador: {
     id: string
     nombre: string

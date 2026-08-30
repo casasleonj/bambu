@@ -343,10 +343,13 @@ test.describe('Dia completo de usuario', () => {
     await page.locator('[role="dialog"] button:has-text("Crear")').click()
     await page.waitForTimeout(2000)
 
+    // Fase 4 (Preparation Flow): tras crear, el flujo guiado navega al detalle
+    // del nuevo embarque (?step=asignar). Antes se quedaba en la lista.
     await page.reload()
     await dismissBaseCaja(page)
-    // Check if embarque was created or if page shows embarques
-    await expect(page.locator('body')).toContainText('Embarques', { timeout: 5000 })
+    // Sirve tanto para la lista ("Embarques del Día") como para el detalle
+    // ("Embarque #N") — lo que importa es que la creación no falló.
+    await expect(page.locator('body')).toContainText('Embarque', { timeout: 5000 })
   })
 
   // ═══════════════════════════════════════════

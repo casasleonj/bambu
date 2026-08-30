@@ -156,6 +156,13 @@ export async function POST(
     if (message.startsWith('PAGOS_EXCEDIDOS')) {
       return apiError(message.replace('PAGOS_EXCEDIDOS: ', ''), 400)
     }
+    // El guard de dominio `PAGOS_EXCEDIDOS` (procesar-pedido.service.ts) corre
+    // DESPUÉS del `pedido.update` que persiste `totalPagado`, así que un abono
+    // que excede el total lo ataja primero la CHECK de Postgres
+    // (`chk_pedido_montopagado_le_total`). Sin este map salía como 500 genérico.
+    if (message.includes('chk_pedido_montopagado_le_total')) {
+      return apiError('Los pagos registrados exceden el total del pedido. Revisá los montos.', 400)
+    }
     if (message.startsWith('EMBARQUE_DESTINO_NOT_FOUND')) {
       return apiError(message.replace('EMBARQUE_DESTINO_NOT_FOUND: ', ''), 404)
     }

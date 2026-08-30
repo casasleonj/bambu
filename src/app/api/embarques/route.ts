@@ -96,7 +96,18 @@ export async function GET(request: NextRequest) {
         include: {
           ruta: { select: { id: true, nombre: true } },
           productos: true,
-          _count: { select: { pedidos: true } },
+          // Command Center (Fase 3): conteo de actividad del ledger nuevo para
+          // la "fila de actividad" de la tarjeta. Mismo round-trip Prisma, sin
+          // N+1. Ver docs/embarques/02-api-contract.md §1.
+          _count: {
+            select: {
+              pedidos: true,
+              movimientos: true,
+              recoveries: true,
+              sustituciones: true,
+              responsibilityCases: true,
+            },
+          },
           trabajador: {
             select: { id: true, nombre: true, capacidadKg: true, comPacaAgua: true, comPacaHielo: true, comBotellon: true, comRepartAgua: true, comRepartHielo: true, comRepartBotellon: true },
           },

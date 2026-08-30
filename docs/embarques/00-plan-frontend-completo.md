@@ -8,6 +8,15 @@
 
 ---
 
+## FUERA DE ALCANCE — diferido (2026-08-27, confirmado con el PO)
+
+**Rediseño del formulario de "Nuevo Embarque" + "Auto-Generar" hacia un flujo "pedidos primero".**
+
+- Dirección de producto: Auto-Generar debe ser el **flujo por defecto** (el sistema agrupa los pedidos del día por zona y arma los embarques; el humano solo revisa/confirma). Principio: el humano toca lo mínimo.
+- **Bloqueante:** el módulo de **rutas** ("redactor de rutas") no está implementado. Embarques se alimenta de rutas. El PO tiene el plan de rutas hecho, falta implementarlo.
+- Este plan (Fases 2–10) trabaja sobre los **flujos actuales** de creación. El form de crear y Auto-Generar quedan **casi sin tocar** (Fase 4 solo agregó `?step=` post-creación). El rediseño se retoma después del módulo de rutas, con su propio spec.
+- No es deuda técnica — es trabajo de producto con dependencia externa.
+
 ## PARTE 1 — RONDA 1: hallazgos (qué es el código hoy)
 
 ### 1.1 Rutas y componentes reales
@@ -130,7 +139,9 @@ Helpers UI ya existentes y reutilizables:
 
 ---
 
-#### FASE 3 — Command Center (reemplaza la tab "Embarques" de `/embarques`) (1 PR)
+#### FASE 3 — Command Center (reemplaza la tab "Embarques" de `/embarques`) (1 PR) ✅ IMPLEMENTADO
+
+Detalle de ejecución y decisiones en `docs/embarques/fase3-command-center.md`. Flag `NEXT_PUBLIC_EMBARQUES_V2` (default ON). CTA de tarjeta = rótulo en el link al detalle (mutación real en Fases 4/5).
 
 **Qué es:** vista de conjunto con las 6 fases derivadas, agrupada, con acción rápida por tarjeta y KPIs arriba. Sustituye la lista plana + los 8 botones de filtro actuales.
 
@@ -155,7 +166,11 @@ Helpers UI ya existentes y reutilizables:
 
 ---
 
-#### FASE 4 — Preparation Flow (wizard crear → asignar → preparar → enviar) (1 PR)
+#### FASE 4 — Preparation Flow (1 PR) ✅ IMPLEMENTADO
+
+Detalle en `docs/embarques/fase4-preparation-flow.md`. **Se reconsideró el wizard de 4 pasos** a favor de un flujo guiado por deep-link (`?step=`) que conecta crear→asignar→enviar reusando el form existente — mismo valor ("nunca un dead-end"), sin regresión sobre la lógica de override de stock. El wizard forzado se aplica en el cierre (Fase 7), donde el PO lo pidió.
+
+Plan original (referencia): "wizard crear → asignar → preparar → enviar"
 
 **Qué es:** convierte la secuencia actual (modal crear → navegar → menú hover → asignar → editar carga → enviar) en un flujo guiado con "siguiente paso" siempre visible.
 
@@ -203,7 +218,10 @@ Helpers UI ya existentes y reutilizables:
 
 #### FASE 6 — Physical + Recovery + Sustitución (2 PRs) — DENTRO DE ALCANCE (D3 = "la necesito")
 
-**PR-6a (backend, additivo — NO cambia schema):**
+**PR-6a (backend, additivo — NO cambia schema): ✅ IMPLEMENTADO**
+- `docs/adr/ADR-SUSTITUCION-001.md` + `POST/GET /api/embarques/[id]/sustituciones` + `SustitucionEmbarqueSchema`. Tests: 10 unit + 2 E2E (2 movimientos separados, idempotencia). `02-api-contract.md` §9 actualizado. Alcance: **mismo producto** (cross-producto → ADR futuro).
+
+**Plan original de PR-6a (referencia):**
 - `docs/adr/ADR-SUSTITUCION-001.md` — decisión de exponer la operación ya modelada. `construirMovimientosSustitucion` (en `ledger-fisico.service.ts`) y el modelo `Sustitucion` **ya existen en dominio + schema + tests**; esto solo los cablea a un endpoint. No es un cambio del contrato congelado (no hay tabla/columna/lock nuevos); es cerrar un gap señalado por la propia auditoría (B.6).
 - `POST /api/embarques/[id]/sustituciones` — thin controller: valida Zod, `requireRole([ADMIN, ASISTENTE])` + `requireOwnership`, llama `construirMovimientosSustitucion`, persiste 2 `EmbarqueMovimiento` (`RECEPCION_DEFECTUOSA` + `ENTREGA`) + 1 `Sustitucion` en una transacción, `logAudit`, realtime `embarque.updated`. Idempotente por `offlineId`.
 - `GET /api/embarques/[id]/sustituciones` — lista para el detalle.

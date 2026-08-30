@@ -515,6 +515,20 @@ export const GastoEmbarqueSchema = z.object({
   nota: z.string().max(500).optional(),
 })
 
+/**
+ * Sustitución de producto defectuoso (ADR-SUSTITUCION-001, contrato §9).
+ * Mismo producto: la unidad defectuosa se recibe (RETORNO → inspección) y se
+ * entrega una unidad fresca del mismo producto (ENTREGA → cliente). Produce
+ * DOS movimientos físicos separados + una fila `Sustitucion` que los vincula.
+ */
+export const SustitucionEmbarqueSchema = z.object({
+  producto: z.string().min(1),
+  cantidad: z.number().int().positive(),
+  pedidoId: z.string().min(1).optional(),
+  motivo: z.string().max(500).optional(),
+  offlineId: z.string().optional(),
+})
+
 // ====================
 // GPS TRACK (Fase 2)
 // ====================

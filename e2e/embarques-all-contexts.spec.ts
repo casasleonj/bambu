@@ -220,11 +220,11 @@ test.describe('Embarques — Filters', () => {
   test.beforeAll(async ({ browser }) => { p = await sharedPageLogin(browser) })
   test.afterAll(async () => { await p?.close() })
 
-  test('filter buttons are visible', async () => {
+  test('command center groups by derived phase', async () => {
     await gotoEmbarques(p)
-    await expect(p.locator('button:has-text("Todos")')).toBeVisible()
-    await expect(p.locator('button:has-text("Abiertos")')).toBeVisible()
-    await expect(p.locator('button:has-text("Cerrados")')).toBeVisible()
+    // Fase 3: los botones de filtro por fase se reemplazan por el agrupado
+    // del Command Center (secciones por fase derivada).
+    await expect(p.getByTestId('command-center')).toBeVisible()
   })
 
   test('capacity legend banner is visible', async () => {
@@ -317,7 +317,10 @@ test.describe('Embarques — Stock Estimado UI', () => {
     await apiPost(p, '/api/stock-estimado', { agua: 50, hielo: 30, botellon: 10 })
     const res = await apiGet(p, '/api/stock-estimado')
     const data = await res.json()
-    expect(data.data?.estimado?.botellon).toBe(10)
+    // `apiSuccess({ estimado })` esparce las claves al top level: `data.estimado`,
+    // no `data.data.estimado` (ese era el bug del test, no del endpoint).
+    expect(data.estimado?.botellon).toBe(10)
+    expect(data.estimado?.agua).toBe(50)
   })
 })
 
@@ -378,8 +381,8 @@ test.describe('Embarques — Desktop Viewport', () => {
     await loginAs(page, 'admin')
     await gotoEmbarques(page)
     await expect(page.getByRole('heading', { name: 'Embarques del Día' })).toBeVisible()
-    // Selector específico: `.grid` genérico colisiona con el banner de stock.
-    await expect(page.locator('[data-testid="embarques-grid"]')).toBeVisible()
+    // Fase 3: el grid plano se reemplazó por el Command Center (columnas por fase).
+    await expect(page.getByTestId('command-center')).toBeVisible()
   })
 })
 

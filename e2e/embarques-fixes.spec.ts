@@ -90,15 +90,19 @@ test.describe('Embarques — Fix #1: Discrepancia valora productos individualmen
     const closeData = await closeRes.json()
     expect(closeData.success).toBe(true)
 
-    // Discount should be created for the discrepancy
-    expect(closeData.descuento).toBeDefined()
-    const monto = Number(closeData.descuento.monto)
+    // FASE 6 (§13): el cierre ya NO crea `descuento` automático — deja un
+    // ResponsibilityCase DISCREPANCIA_INVENTARIO pendiente, con `montoEstimado`
+    // valorado por producto individual (no todo a precio de PACA_AGUA).
+    expect(Array.isArray(closeData.responsibilityCases)).toBe(true)
+    const discCase = closeData.responsibilityCases.find(
+      (c: { tipo: string }) => c.tipo === 'DISCREPANCIA_INVENTARIO',
+    )
+    expect(discCase).toBeTruthy()
+    const monto = Number(discCase.montoEstimado)
     expect(monto).toBeGreaterThan(0)
-    // The monto should reflect individual product prices, not all at PACA_AGUA price
-    // If bug existed: 6 * ~2600 = ~15600
-    // With fix: 3 * ~2600 + 3 * ~20000 (botellon is much more expensive) = much higher
-    // We can't assert exact value since pricing engine resolves dynamically,
-    // but we can verify the discount exists and is non-zero
+    // El monto refleja precios por producto, no todo a precio de PACA_AGUA:
+    //   bug: 6 * ~2600 = ~15600 · fix: 3 * ~2600 + 3 * ~20000 (botellón) = mucho más.
+    // No se asserta el valor exacto (el pricing engine resuelve dinámico).
   })
 })
 
@@ -806,9 +810,8 @@ test.describe('Embarques — Fix #27: "Todos" incluye Cancelados', () => {
     await page.waitForLoadState('domcontentloaded')
     await page.waitForTimeout(1000)
 
-    // Filtro default es "Todos" (sin chip activo) — el embarque cancelado
-    // debe verse sin necesidad de pedir explícitamente "Cancelados".
-    await expect(page.locator('button:has-text("Todos")')).toHaveClass(/bg-blue-600/)
+    // Command Center (Fase 3): sin filtro de fase — un embarque cancelado
+    // aparece en su sección "Cancelado", no desaparece de la vista.
     await expect(page.locator('[data-testid="embarque-card"]', { hasText: nombreUnico })).toHaveCount(1)
   })
 })
@@ -852,7 +855,7 @@ test.describe('Embarques — Fix #28: indicador "Mostrando: Hoy"', () => {
 
 test.describe('Embarques — Fix #29: fetches paralelos', () => {
 
-  test('cambiar de filtro de estado no serializa las llamadas de red', async ({ page }) => {
+  test('cambiar de rango de fecha no serializa las llamadas de red', async ({ page }) => {
     await embarquesLogin(page)
     await page.goto(`${BASE}/embarques`)
     await page.waitForLoadState('domcontentloaded')
@@ -876,7 +879,9 @@ test.describe('Embarques — Fix #29: fetches paralelos', () => {
     )
 
     const start = Date.now()
-    await page.locator('button:has-text("Abiertos")').click()
+    // Fase 3: los botones de filtro por fase se reemplazaron por el agrupado
+    // del Command Center; cualquier cambio de rango dispara el mismo fetchData.
+    await page.locator('[data-testid="ver-ultimos-30-dias"]').click()
     await Promise.all([embarquesResponse, stockResponse])
     const elapsed = Date.now() - start
 

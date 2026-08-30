@@ -139,6 +139,27 @@ test.describe('Embarques — Tab Físico — Happy path', () => {
     expect(recogidos).toBe(5)
     expect(entregados).toBe(2)
   })
+
+  test('Sustitución: registrar desde la UI genera RETORNO + ENTREGA (2 movimientos)', async ({ page }) => {
+    const { embarqueId } = await setup(page)
+    await abrirTabFisico(page, embarqueId)
+
+    await expect(page.getByText('Sin movimientos registrados todavía.')).toBeVisible()
+
+    await page.getByTestId('registrar-sustitucion-button').click()
+    await page.getByTestId('sustitucion-cantidad-input').fill('2')
+    await page.getByTestId('sustitucion-submit-button').click()
+    await waitForToast(page, 'Sustitución registrada')
+
+    // La lista de sustituciones muestra la nueva sustitución con sus 2 movimientos.
+    await expect(page.getByTestId('sustituciones-list')).toContainText('Sustitución')
+    await expect(page.getByTestId('sustituciones-list')).toContainText('Retorno')
+    await expect(page.getByTestId('sustituciones-list')).toContainText('Entrega')
+
+    // El ledger físico refleja exactamente esos 2 movimientos separados.
+    await expect(page.getByTestId('movimientos-timeline')).toContainText('Retorno')
+    await expect(page.getByTestId('movimientos-timeline')).toContainText('Entrega')
+  })
 })
 
 test.describe('Embarques — Tab Físico — Validaciones de formulario', () => {
@@ -264,6 +285,50 @@ test.describe('Embarques — Tab Físico — Idempotencia (retry offline)', () =
     const listBody = await list.json()
     const matching = listBody.movimientos.filter((m: { offlineId: string | null }) => m.offlineId === offlineId)
     expect(matching.length).toBe(1)
+  })
+
+  // ADR-SUSTITUCION-001 / contrato §9
+  test('POST /sustituciones crea DOS movimientos físicos separados (RETORNO + ENTREGA)', async ({ page }) => {
+    await loginAs(page, 'admin')
+    const t = await createTrabajador(page)
+    const e = await createEmbarque(page, t.trabajador?.id || t.data?.id)
+    const embarqueId = e.embarque?.id || e.data?.id
+
+    const res = await apiPost(page, `/api/embarques/${embarqueId}/sustituciones`, {
+      producto: 'PACA_AGUA',
+      cantidad: 1,
+      motivo: 'Bolsa rota al descargar',
+    })
+    expect(res.status()).toBe(201)
+    const body = await res.json()
+    expect(body.sustitucion.movimientoRecepcion.tipo).toBe('RETORNO')
+    expect(body.sustitucion.movimientoRecepcion.destino).toBe('INSPECCION')
+    expect(body.sustitucion.movimientoEntrega.tipo).toBe('ENTREGA')
+    expect(body.sustitucion.movimientoEntrega.destino).toBe('CLIENTE')
+
+    // El ledger físico tiene exactamente esos 2 movimientos (no uno ambiguo).
+    const list = await apiGet(page, `/api/embarques/${embarqueId}/movimientos`)
+    const movs = (await list.json()).movimientos as Array<{ tipo: string; producto: string }>
+    expect(movs.filter((m) => m.producto === 'PACA_AGUA' && (m.tipo === 'RETORNO' || m.tipo === 'ENTREGA')).length).toBe(2)
+  })
+
+  test('POST /sustituciones con el mismo offlineId dos veces no duplica', async ({ page }) => {
+    await loginAs(page, 'admin')
+    const t = await createTrabajador(page)
+    const e = await createEmbarque(page, t.trabajador?.id || t.data?.id)
+    const embarqueId = e.embarque?.id || e.data?.id
+    const offlineId = `e2e-sust-${Date.now()}`
+    const body = { producto: 'PACA_HIELO', cantidad: 2, offlineId }
+
+    const r1 = await apiPost(page, `/api/embarques/${embarqueId}/sustituciones`, body)
+    expect(r1.status()).toBe(201)
+    const r2 = await apiPost(page, `/api/embarques/${embarqueId}/sustituciones`, body)
+    expect(r2.ok()).toBe(true)
+    expect((await r2.json()).deduped).toBe(true)
+
+    const list = await apiGet(page, `/api/embarques/${embarqueId}/sustituciones`)
+    const sustituciones = (await list.json()).sustituciones as Array<{ offlineId: string | null }>
+    expect(sustituciones.filter((s) => s.offlineId === offlineId).length).toBe(1)
   })
 })
 

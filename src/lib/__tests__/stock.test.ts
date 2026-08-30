@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { evaluarStock, emptyStock, getStockDisponible, getStockEstimadoHoy } from '@/lib/stock'
+import { evaluarStock, emptyStock, getStockDisponible, getStockEstimadoHoy, setStockEstimadoHoy } from '@/lib/stock'
 import { getTodayString } from '@/lib/dates'
 import { prisma } from '@/lib/prisma'
 
@@ -147,6 +147,22 @@ describe('getStockEstimadoHoy', () => {
     })
     const result = await getStockEstimadoHoy()
     expect(result).toBeNull()
+  })
+})
+
+describe('setStockEstimadoHoy', () => {
+  it('escribe la fecha con getTodayString() (Bogotá), no con la fecha UTC', async () => {
+    // Regresión AGENTS.md #17: `new Date().toISOString()` daba "mañana" entre
+    // las 19:00 y 23:59 Bogotá, y `getStockEstimadoHoy` lo descartaba por
+    // fecha != hoy → el estimado desaparecía toda la noche.
+    await setStockEstimadoHoy(50, 30, 10)
+    expect(mockPrisma.config.upsert).toHaveBeenCalledTimes(1)
+    const call = mockPrisma.config.upsert.mock.calls[0][0] as {
+      update: { valor: string }
+      create: { valor: string }
+    }
+    expect(JSON.parse(call.update.valor)).toEqual({ agua: 50, hielo: 30, botellon: 10, fecha: '2026-05-26' })
+    expect(JSON.parse(call.create.valor).fecha).toBe('2026-05-26')
   })
 })
 

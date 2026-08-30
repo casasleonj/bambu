@@ -37,7 +37,7 @@ test.describe('Embarques — Detail Page Actions', () => {
     await page.waitForLoadState('domcontentloaded')
     await page.waitForTimeout(1000)
 
-    await page.locator('[data-testid="embarque-actions-menu"]').first().hover()
+    await page.locator('[data-testid="embarque-actions-menu"]').first().click()
     await page.locator('[data-testid="asignar-pedidos-button"]').first().click()
     await page.waitForTimeout(500)
 
@@ -106,7 +106,7 @@ test.describe('Embarques — Detail Page Actions', () => {
     await page.waitForLoadState('domcontentloaded')
     await page.waitForTimeout(1000)
 
-    await page.locator('[data-testid="embarque-actions-menu"]').first().hover()
+    await page.locator('[data-testid="embarque-actions-menu"]').first().click()
     await page.locator('[data-testid="cancelar-embarque-button"]').first().click()
     await page.waitForTimeout(300)
     await page.locator('[role="dialog"] button:has-text("Cancelar Embarque")').click()
@@ -140,7 +140,7 @@ test.describe('Embarques — Detail Page Actions', () => {
     await page.waitForTimeout(1000)
 
     await expect(page.locator('[data-testid="cerrar-embarque-button"]').first()).toBeVisible()
-    await page.locator('[data-testid="embarque-actions-menu"]').first().hover()
+    await page.locator('[data-testid="embarque-actions-menu"]').first().click()
     await expect(page.locator('[data-testid="asignar-pedidos-button"]').first()).toBeVisible()
   })
 

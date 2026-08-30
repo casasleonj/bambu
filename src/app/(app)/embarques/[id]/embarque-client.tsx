@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { useConfirm } from '@/components/confirm-modal'
 import { useRealtimeListener } from '@/hooks/use-realtime-listener'
@@ -20,6 +20,8 @@ import { derivarSiguientePaso, BADGES, LABELS } from '@/lib/embarque-ui-estado'
 import { startOfDayBogota } from '@/lib/dates'
 import { EmbarqueFormModal } from '../embarques-client/embarque-form-modal'
 import { LedgerTab } from './ledger-client/ledger-tab'
+import { EstadoOperativo } from './mission-detail/estado-operativo'
+import { puedeRegistrarSustitucion } from './mission-detail/sustitucion-form-modal'
 import type { EmbarqueDetalle, PedidoResumen } from './types'
 import type { Trabajador, Ruta, EmbarqueEditable, Pedido } from '../embarques-client/types'
 
@@ -186,6 +188,7 @@ function toEmbarqueEditable(embarque: EmbarqueDetalle): EmbarqueEditable {
 
 export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas, userRole }: EmbarqueClientProps) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { confirm, modal } = useConfirm()
   const [embarque, setEmbarque] = useState(initialEmbarque)
   const [pedidos, setPedidos] = useState(embarque.pedidos)
@@ -203,6 +206,11 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
     clienteId: '',
     clienteNombre: '',
   })
+  // Fix #7 (Fase 5): el menú "Más acciones" era `hidden group-hover:block`
+  // (no usable en touch). Ahora es un menú controlado por estado, abierto por
+  // click y cerrado con click-outside (`pointerdown` cubre mouse + touch).
+  const [actionsOpen, setActionsOpen] = useState(false)
+  const actionsRef = useRef<HTMLDivElement>(null)
 
   // A.3.5: el límite de unidades se lee de config (mismo criterio que el modal
   // de creación). El "asignar pedidos" del detalle tenía 70 hardcodeado.
@@ -216,6 +224,18 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
       .catch(() => {})
   }, [])
 
+  // Cierra el menú de acciones al hacer click/tap fuera (side effect de DOM,
+  // no React state — el setState vive dentro del listener, no del effect body).
+  useEffect(() => {
+    function onPointerDown(e: PointerEvent) {
+      if (actionsRef.current && !actionsRef.current.contains(e.target as Node)) {
+        setActionsOpen(false)
+      }
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [])
+
   const canManage = userRole === 'ADMIN' || userRole === 'ASISTENTE'
   // POST /api/embarques/[id]/botellones acepta ADMIN/ASISTENTE/REPARTIDOR,
   // pero `/embarques/[id]` está bloqueado para REPARTIDOR a nivel de proxy
@@ -224,6 +244,7 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
   // se limita a canManage aquí. Una vista de botellones para REPARTIDOR
   // requeriría una ruta dedicada bajo /repartidor, no reusar esta página.
   const canRegisterBotellon = canManage
+  const canRegisterSustitucion = puedeRegistrarSustitucion(userRole, embarque.estado)
   const isEditable = embarque.estado === 'ABIERTO' || embarque.estado === 'EN_RUTA'
   const isOpen = embarque.estado === 'ABIERTO'
   const isEnRuta = embarque.estado === 'EN_RUTA'
@@ -257,6 +278,35 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
       refresh()
     }
   })
+
+  // Preparation Flow (Fase 4): `?step=` deep-linkea a la acción del siguiente
+  // paso (desde el Command Center o tras crear un embarque). Se ejecuta una
+  // vez y se limpia de la URL (mismo patrón que `?openEmbarque`), así un
+  // refresh no la re-dispara.
+  const stepParam = searchParams.get('step')
+  const [stepHandled, setStepHandled] = useState<string | null>(null)
+  // Abrir el modal correspondiente es un ajuste de estado durante el render
+  // (guardado por `stepHandled`), no un efecto — mismo patrón que
+  // `prevShowAssignModal` más abajo.
+  if (stepParam && stepParam !== stepHandled && canManage) {
+    setStepHandled(stepParam)
+    if (stepParam === 'asignar') setShowAssignModal(true)
+    else if (stepParam === 'editar' || stepParam === 'carga') setShowEditModal(true)
+  }
+  useEffect(() => {
+    // Efectos externos (DOM / navegación), no React state:
+    if (!stepParam) return
+    if (stepParam === 'cerrar') {
+      router.replace(`/embarques/${embarque.id}/cerrar`)
+      return
+    }
+    if (stepParam === 'enviar' && canManage) {
+      const btn = document.querySelector<HTMLButtonElement>('[data-testid="enviar-embarque-button"]')
+      btn?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      btn?.focus()
+    }
+    router.replace(`/embarques/${embarque.id}`)
+  }, [stepParam, canManage, embarque.id, router])
 
   const handleRemove = useCallback(async (pedido: PedidoResumen) => {
     if (!canManage || !isEditable) return
@@ -546,6 +596,17 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
           </button>
         )}
 
+        {/* Estado operativo (Fase 5): excepciones abiertas — recovery pendiente,
+            faltante de caja, discrepancia física. Se oculta solo si no hay nada. */}
+        <EstadoOperativo
+          embarqueId={embarque.id}
+          deudas={embarque.deudas}
+          responsibilityCases={embarque.responsibilityCases}
+          productos={embarque.productos}
+          trabajadorId={embarque.trabajador.id}
+          onGoFisico={() => setActiveTab('fisico')}
+        />
+
         {/* Action bar */}
         {canManage && primaryAction && (
           <div className="flex items-center gap-2">
@@ -557,52 +618,69 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
             >
               {submittingAction === 'enviar' ? 'Enviando...' : primaryAction.label}
             </button>
-            <div className="relative group">
+            <div className="relative" ref={actionsRef}>
               <button
                 data-testid="embarque-actions-menu"
                 className="px-3 py-2.5 border rounded-lg hover:bg-gray-50 transition"
                 aria-label="Más acciones"
+                aria-haspopup="menu"
+                aria-expanded={actionsOpen}
+                onClick={() => setActionsOpen((v) => !v)}
               >
                 ⋯
               </button>
-              <div className="absolute right-0 top-full mt-1 w-56 bg-white rounded-lg shadow-lg border py-1 hidden group-hover:block hover:block z-10">
-                {isOpen && (
-                  <>
+              {actionsOpen && (
+                <div className="absolute right-0 top-full mt-1 w-56 bg-white rounded-lg shadow-lg border py-1 z-10">
+                  {isOpen && (
+                    <>
+                      <button
+                        data-testid="asignar-pedidos-button"
+                        onClick={() => {
+                          setActionsOpen(false)
+                          setShowAssignModal(true)
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition"
+                      >
+                        Asignar pedidos
+                      </button>
+                      <button
+                        data-testid="editar-embarque-button"
+                        onClick={() => {
+                          setActionsOpen(false)
+                          handleEditar()
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition"
+                      >
+                        Editar
+                      </button>
+                      <hr className="my-1" />
+                      <button
+                        data-testid="cancelar-embarque-button"
+                        onClick={() => {
+                          setActionsOpen(false)
+                          handleCancelar()
+                        }}
+                        disabled={submittingAction === 'cancelar'}
+                        className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition disabled:opacity-50"
+                      >
+                        {submittingAction === 'cancelar' ? 'Cancelando...' : 'Cancelar embarque'}
+                      </button>
+                    </>
+                  )}
+                  {isEnRuta && (
                     <button
                       data-testid="asignar-pedidos-button"
-                      onClick={() => setShowAssignModal(true)}
+                      onClick={() => {
+                        setActionsOpen(false)
+                        setShowAssignModal(true)
+                      }}
                       className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition"
                     >
                       Asignar pedidos
                     </button>
-                    <button
-                      data-testid="editar-embarque-button"
-                      onClick={handleEditar}
-                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition"
-                    >
-                      Editar
-                    </button>
-                    <hr className="my-1" />
-                    <button
-                      data-testid="cancelar-embarque-button"
-                      onClick={handleCancelar}
-                      disabled={submittingAction === 'cancelar'}
-                      className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition disabled:opacity-50"
-                    >
-                      {submittingAction === 'cancelar' ? 'Cancelando...' : 'Cancelar embarque'}
-                    </button>
-                  </>
-                )}
-                {isEnRuta && (
-                  <button
-                    data-testid="asignar-pedidos-button"
-                    onClick={() => setShowAssignModal(true)}
-                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition"
-                  >
-                    Asignar pedidos
-                  </button>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -681,14 +759,15 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
           <div className="px-4 pt-4 pb-2 border-b">
             <h2 className="text-lg font-semibold text-gray-800">Pedidos asignados</h2>
           </div>
-          <div className="flex border-b">
+          <div className="flex flex-col md:flex-row border-b">
             <button
               data-testid="tab-pedidos"
               onClick={() => setActiveTab('pedidos')}
-              className={`px-6 py-3 text-sm font-medium transition ${
+              aria-expanded={activeTab === 'pedidos'}
+              className={`min-h-[44px] px-6 py-3 text-sm font-medium text-left transition border-l-4 md:border-l-0 md:border-b-2 ${
                 activeTab === 'pedidos'
-                  ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50'
-                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                  ? 'text-blue-600 border-blue-600 bg-blue-50/50'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50 border-transparent'
               }`}
             >
               Pedidos ({pedidos.length})
@@ -696,10 +775,11 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
             <button
               data-testid="tab-clientes"
               onClick={() => setActiveTab('clientes')}
-              className={`px-6 py-3 text-sm font-medium transition ${
+              aria-expanded={activeTab === 'clientes'}
+              className={`min-h-[44px] px-6 py-3 text-sm font-medium text-left transition border-l-4 md:border-l-0 md:border-b-2 ${
                 activeTab === 'clientes'
-                  ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50'
-                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                  ? 'text-blue-600 border-blue-600 bg-blue-50/50'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50 border-transparent'
               }`}
             >
               Clientes ({clientesUnicos.length})
@@ -707,10 +787,11 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
             <button
               data-testid="tab-fisico"
               onClick={() => setActiveTab('fisico')}
-              className={`px-6 py-3 text-sm font-medium transition ${
+              aria-expanded={activeTab === 'fisico'}
+              className={`min-h-[44px] px-6 py-3 text-sm font-medium text-left transition border-l-4 md:border-l-0 md:border-b-2 ${
                 activeTab === 'fisico'
-                  ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50'
-                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                  ? 'text-blue-600 border-blue-600 bg-blue-50/50'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50 border-transparent'
               }`}
             >
               Físico
@@ -722,6 +803,7 @@ export function EmbarqueClient({ embarque: initialEmbarque, trabajadores, rutas,
               embarqueId={embarque.id}
               canManage={canManage}
               canRegisterBotellon={canRegisterBotellon}
+              canRegisterSustitucion={canRegisterSustitucion}
               pedidos={pedidos.map((p) => ({ id: p.id, numero: p.numero }))}
             />
           ) : activeTab === 'pedidos' ? (

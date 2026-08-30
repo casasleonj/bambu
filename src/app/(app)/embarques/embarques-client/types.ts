@@ -81,6 +81,18 @@ export interface Embarque {
     capacidadKg: number
   }
   stockSnapshot?: unknown
+  /**
+   * Command Center (Fase 3): conteo de actividad del ledger físico/recovery.
+   * Lo provee `GET /api/embarques` y el SSR de `/embarques`. Opcional: payloads
+   * legacy o de otras rutas pueden no traerlo.
+   */
+  _count?: {
+    pedidos?: number
+    movimientos?: number
+    recoveries?: number
+    sustituciones?: number
+    responsibilityCases?: number
+  }
 }
 
 export interface EmbarqueEditable {
