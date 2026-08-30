@@ -30,6 +30,7 @@ export class PrismaPedidoRepository implements PedidoRepository {
       saldo: p.saldo,
       estadoEntrega: p.estadoEntrega,
       estadoPago: p.estadoPago,
+      canal: p.canal,
       cPacaAguaEnt: p.cPacaAguaEnt,
       cPacaHieloEnt: p.cPacaHieloEnt,
       cBotellonFabEnt: p.cBotellonFabEnt,

@@ -114,7 +114,7 @@ export default async function SaludAntifraudePage() {
       <div>
         <h1 className="text-2xl font-bold">Salud Antifraude</h1>
         <p className="text-sm text-muted-foreground">
-          Ultimos 30 dias — {now.toLocaleDateString('es-CO')}
+          Ultimos 30 dias — {now.toLocaleDateString('es-CO', { timeZone: 'America/Bogota' })}
         </p>
       </div>
 
