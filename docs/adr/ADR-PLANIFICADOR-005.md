@@ -1,6 +1,6 @@
 # ADR-PLANIFICADOR-005 — Replanificación, estabilidad y concurrencia
 
-- Estado: **Propuesta** — pendiente de sign-off del PO (gate F0/F1)
+- Estado: **Aceptado** (gate F0/F1) — decisión delegada al asistente por el PO el 2026-08-30; revisable en cualquier momento
 - Fecha: 2026-08-30
 - Fuente: Plan Técnico v4 §17, §18, §19, §24, §26, §30, §32, §33, §60 · F0 §7
 - Fase: F1. Bloquea F2/F3.
@@ -17,7 +17,7 @@ Infra existente (F0 §7): `withAdvisoryLock`, `executeSerializableWithRetry` (3
 retries P2034), optimistic lock por `updatedAt` (patrón `PUT /api/rutas`),
 `fetchResilient` + `requestQueue` Dexie v5.
 
-## Decisión propuesta
+## Decisión
 
 ### 1. Triggers → decisión del motor
 

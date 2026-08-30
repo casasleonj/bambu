@@ -1,6 +1,6 @@
 # ADR-PLANIFICADOR-004 — Modelo geográfico y calidad de ubicación
 
-- Estado: **Propuesta** — pendiente de sign-off del PO (gate F0/F1)
+- Estado: **Aceptado** (gate F0/F1) — decisión delegada al asistente por el PO el 2026-08-30; revisable en cualquier momento
 - Fecha: 2026-08-30
 - Fuente: Plan Técnico v4 §9-§15, §59 · F0 §3, §4, §16
 - Fase: F1. Bloquea F2.
@@ -21,7 +21,7 @@ Modelo existente (F0 §3):
 Datos de producción (F0 §16): **1.1%** de clientes con coords, **41%** con barrio,
 **0** pedidos con GPS histórico, **63 (35%)** con `linkUbicacion`.
 
-## Decisión propuesta
+## Decisión
 
 ### 1. Sin tabla geográfica nueva (v4 riesgo R3)
 

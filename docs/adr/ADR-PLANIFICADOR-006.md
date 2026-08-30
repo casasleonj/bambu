@@ -1,6 +1,6 @@
 # ADR-PLANIFICADOR-006 — Relación con Actividades / Obligaciones (y cobros/recogidas)
 
-- Estado: **Propuesta** — pendiente de sign-off del PO (gate F0/F1)
+- Estado: **Aceptado** (gate F0/F1) — decisión delegada al asistente por el PO el 2026-08-30; revisable en cualquier momento
 - Fecha: 2026-08-30
 - Fuente: Plan Técnico v4 §25, §61 · F0 §1 (#24), tabla de capacidades
 - Fase: F1.
@@ -22,7 +22,7 @@ El v4 §25 plantea que una visita de cobro *podría* representarse como activida
 pero **Cartera queda fuera del MVP**. El v4 §61 pide verificar las estructuras
 existentes y decidir si hay integración necesaria, **sin absorber Cartera**.
 
-## Decisión propuesta
+## Decisión
 
 ### 1. El MVP del planificador es puramente "entregas"
 

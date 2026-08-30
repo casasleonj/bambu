@@ -1,6 +1,6 @@
 # ADR-PLANIFICADOR-001 — Representación y generación del plan
 
-- Estado: **Propuesta** — pendiente de sign-off del PO (gate F0/F1)
+- Estado: **Aceptado** (gate F0/F1) — decisión delegada al asistente por el PO el 2026-08-30; revisable en cualquier momento
 - Fecha: 2026-08-30
 - Fuente: Plan Técnico Rutas + Planificador v4 §3, §5, §22, §28, §29, §56 · F0 `docs/rutas/INVENTARIO_CAPACIDADES_DISTRIBUCION.md`
 - Fase: F1 (contratos). Bloquea F2.
@@ -15,7 +15,7 @@ estable sin paradas ni secuencia. Escala actual: ~1 reparto/semana (artefacto de
 instrumentación, ver F0 §0.a); objetivo: decenas/día; 6 usuarios; ~4 grupos por
 generación.
 
-## Decisión propuesta
+## Decisión
 
 ### 1. Agregado nuevo, aditivo
 

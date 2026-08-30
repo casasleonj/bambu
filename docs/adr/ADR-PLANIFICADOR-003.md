@@ -1,6 +1,6 @@
 # ADR-PLANIFICADOR-003 — Contrato Planificador → Embarques
 
-- Estado: **Propuesta** — pendiente de sign-off del PO (gate F0/F1)
+- Estado: **Aceptado** (gate F0/F1) — decisión delegada al asistente por el PO el 2026-08-30; revisable en cualquier momento
 - Fecha: 2026-08-30
 - Fuente: Plan Técnico v4 §22, §23, §24, §58 · F0 §1 (#4, #25), §6
 - Fase: F1. Es el contrato P0.
@@ -23,7 +23,7 @@ Piezas existentes relevantes (F0):
 - Asignación de pedidos: `PUT /api/embarques/[id]` con `pedidoIds[]` (setea
   `estado='EN_RUTA'`).
 
-## Decisión propuesta
+## Decisión
 
 ### 1. Frontera: el plan produce, Embarques ejecuta
 

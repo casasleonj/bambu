@@ -1,6 +1,6 @@
 # ADR-PLANIFICADOR-002 — Elegibilidad y trazabilidad Pedido ↔ Plan
 
-- Estado: **Propuesta** — pendiente de sign-off del PO (gate F0/F1)
+- Estado: **Aceptado** (gate F0/F1) — decisión delegada al asistente por el PO el 2026-08-30; revisable en cualquier momento
 - Fecha: 2026-08-30
 - Fuente: Plan Técnico v4 §8, §20, §21, §57 · F0 §2 · precisión del PO (FK como propuesta, no hecho)
 - Fase: F1. Bloquea F2.
@@ -20,7 +20,7 @@ El PO fijó: **no asumir una FK dura Plan↔Pedido**; este ADR decide trazabilid
 quedar fuera de v2 → volver a ser elegible → terminar en un embarque. El plan no
 debe ser dueño de la vida del pedido.
 
-## Decisión propuesta
+## Decisión
 
 ### 1. "Pedido elegible para la fecha F"
 
