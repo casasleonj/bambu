@@ -27,15 +27,8 @@ async function main() {
 
   await prisma.$executeRawUnsafe(`SELECT pg_advisory_lock(${LOCK_KEY})`)
   try {
-    // DIAGNÓSTICO (temporal, Plan Fase 1 — docs/testing/PLAN_RECUPERACION_E2E_8_8.md):
-    // se propaga el stdio de clean.ts y del seed para que su salida (incluido
-    // el retry de lock_timeout y el snapshot de pg_stat_activity) llegue a los
-    // logs de CI. `e2e/fixtures.ts` ya corre este script con stdio:'inherit',
-    // pero acá se anulaba con 'ignore'. Revertir a 'ignore' una vez recolectada
-    // la evidencia de un run real (ver AGENTS.md Known Issue #20).
-    const childStdio = process.env.RESET_LOCKED_QUIET === '1' ? 'ignore' : 'inherit'
-    execSync('npx tsx prisma/clean.ts', { stdio: childStdio })
-    execSync(`npx tsx ${seedScript}`, { stdio: childStdio })
+    execSync('npx tsx prisma/clean.ts', { stdio: 'ignore' })
+    execSync(`npx tsx ${seedScript}`, { stdio: 'ignore' })
   } finally {
     await prisma.$executeRawUnsafe(`SELECT pg_advisory_unlock(${LOCK_KEY})`)
   }
