@@ -140,9 +140,17 @@ export class PrismaPlanificadorRepository {
    */
   async persistirPropuesta(
     propuesta: Propuesta,
-    opts: { generadoPorId?: string; causa: string },
+    opts: {
+      generadoPorId?: string
+      causa: string
+      /** Estado inicial. Default PROPOSED; los replan usan REVIEW (ADR-005 §1). */
+      estado?: PlanEstado
+      /** Diff legible contra la versión anterior (se guarda en PlanDiaVersion). */
+      diff?: unknown
+    },
   ): Promise<{ id: string; version: number }> {
     const fechaDate = startOfDayBogota(propuesta.fecha)
+    const estadoInicial: PlanEstado = opts.estado ?? 'PROPOSED'
 
     return prisma.$transaction(async (tx) => {
       const anterior = await tx.planDia.findFirst({
@@ -162,7 +170,7 @@ export class PrismaPlanificadorRepository {
         data: {
           fecha: fechaDate,
           version: (anterior?.version ?? 0) + 1,
-          estado: 'PROPOSED',
+          estado: estadoInicial,
           generadoPorId: opts.generadoPorId ?? null,
           causa: opts.causa,
           resumen: propuesta.resumen,
@@ -212,6 +220,7 @@ export class PrismaPlanificadorRepository {
           planDiaId: plan.id,
           version: plan.version,
           snapshot: JSON.parse(JSON.stringify(propuesta)),
+          diff: opts.diff !== undefined ? JSON.parse(JSON.stringify(opts.diff)) : undefined,
           actorId: opts.generadoPorId ?? null,
           causa: opts.causa,
         },
@@ -219,6 +228,21 @@ export class PrismaPlanificadorRepository {
 
       return { id: plan.id, version: plan.version }
     })
+  }
+
+  /** Versiones históricas de los planes de una fecha (para GET /versiones). */
+  async versionesDeFecha(fecha: string) {
+    const planes = await prisma.planDia.findMany({
+      where: { fecha: startOfDayBogota(fecha) },
+      orderBy: { version: 'asc' },
+      select: { id: true, version: true, estado: true, causa: true, generadoEn: true, confirmadoEn: true },
+    })
+    const versiones = await prisma.planDiaVersion.findMany({
+      where: { planDia: { fecha: startOfDayBogota(fecha) } },
+      orderBy: { version: 'asc' },
+      select: { version: true, diff: true, causa: true, actorId: true, createdAt: true },
+    })
+    return { planes, versiones }
   }
 
   /** Plan completo con grupos/paradas/actividades/excepciones. */

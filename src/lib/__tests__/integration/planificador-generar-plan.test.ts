@@ -4,6 +4,8 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { testPrisma, resetAndSeed, disconnect } from './setup'
 import { GenerarPlanUseCase } from '@/modules/planificador/application/use-cases/GenerarPlanUseCase'
 import { ConfirmarPlanUseCase } from '@/modules/planificador/application/use-cases/ConfirmarPlanUseCase'
+import { ReplanUseCase } from '@/modules/planificador/application/use-cases/ReplanUseCase'
+import { OverridePlanUseCase } from '@/modules/planificador/application/use-cases/OverridePlanUseCase'
 
 const FECHA = '2026-08-30'
 
@@ -168,5 +170,104 @@ describe('GenerarPlanUseCase — integración', () => {
     await expect(
       confirmar.execute({ planId: plan!.id, expectedVersion: 1, maxUnidades: 70 }),
     ).rejects.toThrow('VERSION_CONFLICT')
+  })
+})
+
+describe('Replan / Override / Cancelar — integración', () => {
+  const FECHA2 = '2026-09-15'
+  const dia = new Date('2026-09-15T00:00:00-05:00')
+
+  beforeAll(async () => {
+    await resetAndSeed()
+    // 2 racimos separados → 2 grupos.
+    for (const [pre, base] of [['a', { lat: 10.03, lng: -73.24 }], ['b', { lat: 10.07, lng: -73.19 }]] as const) {
+      for (let i = 0; i < 4; i++) {
+        const c = await testPrisma.cliente.create({
+          data: {
+            nombre: `R ${pre}${i}`, telefono: `380${pre === 'a' ? 1 : 2}0000${i}`,
+            barrio: pre === 'a' ? 'Norte' : 'Sur',
+            lat: base.lat + i * 0.0005, lng: base.lng + i * 0.0005, geocodeOrigen: 'MANUAL',
+          },
+        })
+        await testPrisma.pedido.create({
+          data: { clienteId: c.id, canal: 'DOMICILIO', origen: 'PEDIDO', fecha: new Date('2026-09-14T12:00:00-05:00'), cPacaAguaPed: 2 },
+        })
+      }
+    }
+    await new GenerarPlanUseCase().execute({ fecha: FECHA2, maxUnidades: 70 })
+  })
+
+  afterAll(async () => {
+    await testPrisma.planDia.deleteMany({})
+    await disconnect()
+  })
+
+  it('replan → nueva versión REVIEW; sin cambios en la demanda → diff.sinCambios', async () => {
+    const r = await new ReplanUseCase().execute({ fecha: FECHA2, maxUnidades: 70 })
+    expect(r.version).toBe(2)
+    expect(r.estado).toBe('REVIEW')
+    expect(r.diff.sinCambios).toBe(true)
+
+    const planes = await testPrisma.planDia.findMany({ where: { fecha: dia }, orderBy: { version: 'asc' } })
+    expect(planes[0].estado).toBe('SUPERSEDED')
+    expect(planes[1].estado).toBe('REVIEW')
+
+    const versiones = await testPrisma.planDiaVersion.findMany({ where: { planDiaId: planes[1].id } })
+    expect(versiones[0].diff).toBeTruthy()
+  })
+
+  it('replan tras cancelar un pedido → diff.pedidosQuitados no vacío', async () => {
+    const ped = await testPrisma.pedido.findFirst({
+      where: { canal: 'DOMICILIO', fecha: new Date('2026-09-14T12:00:00-05:00') },
+    })
+    await testPrisma.pedido.update({ where: { id: ped!.id }, data: { estadoEntrega: 'CANCELADO', estado: 'CANCELADO' } })
+
+    const r = await new ReplanUseCase().execute({ fecha: FECHA2, maxUnidades: 70, trigger: 'CANCELACION' })
+    expect(r.diff.pedidosQuitados).toContain(ped!.id)
+    expect(r.diff.sinCambios).toBe(false)
+  })
+
+  it('override moverPedido: mueve un pedido de un grupo a otro', async () => {
+    const plan = await testPrisma.planDia.findFirst({
+      where: { fecha: dia, estado: 'REVIEW' },
+      orderBy: { version: 'desc' },
+      include: { grupos: { include: { paradas: { include: { actividades: true } } } } },
+    })
+    expect(plan!.grupos.length).toBeGreaterThanOrEqual(2)
+    const origen = plan!.grupos[0]
+    const destino = plan!.grupos[1]
+    const pedidoId = origen.paradas.flatMap((p) => p.actividades.flatMap((a) => a.pedidoIds))[0]
+
+    const planFresh = await testPrisma.planDia.findUnique({ where: { id: plan!.id }, select: { updatedAt: true } })
+    await new OverridePlanUseCase().execute({
+      planId: plan!.id,
+      expectedUpdatedAt: planFresh!.updatedAt.toISOString(),
+      op: { tipo: 'moverPedido', pedidoId, grupoDestinoId: destino.id },
+    })
+
+    const after = await testPrisma.planActividad.findMany({
+      where: { pedidoIds: { has: pedidoId }, planParada: { planGrupo: { planDiaId: plan!.id } } },
+      include: { planParada: true },
+    })
+    expect(after).toHaveLength(1)
+    expect(after[0].planParada.planGrupoId).toBe(destino.id)
+  })
+
+  it('override con expectedUpdatedAt viejo → VERSION_CONFLICT', async () => {
+    const plan = await testPrisma.planDia.findFirst({ where: { fecha: dia, estado: 'REVIEW' }, orderBy: { version: 'desc' } })
+    await expect(
+      new OverridePlanUseCase().execute({
+        planId: plan!.id,
+        expectedUpdatedAt: new Date('2020-01-01').toISOString(),
+        op: { tipo: 'asignarRepartidor', grupoId: 'x', trabajadorId: null },
+      }),
+    ).rejects.toThrow('VERSION_CONFLICT')
+  })
+
+  it('cancelar plan no confirmado → CANCELLED', async () => {
+    const plan = await testPrisma.planDia.findFirst({ where: { fecha: dia, estado: 'REVIEW' }, orderBy: { version: 'desc' } })
+    await testPrisma.planDia.update({ where: { id: plan!.id }, data: { estado: 'CANCELLED' } })
+    const check = await testPrisma.planDia.findUnique({ where: { id: plan!.id } })
+    expect(check!.estado).toBe('CANCELLED')
   })
 })
