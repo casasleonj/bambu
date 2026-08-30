@@ -41,8 +41,12 @@ y el diseño):
 
 1. **La base geográfica es prerequisito duro de F2**, independiente del volumen.
    Con 1% de coords el motor no produce nada útil. Antes o en paralelo con F2:
-   - Backfill desde `linkUbicacion` (63 clientes, 35%) con `backfillClienteCoords`
-     (`PARSED_URL`) — 1 corrida de script.
+   - Backfill desde `linkUbicacion` (62 clientes activos con link; 58 con coords
+     inline + 2 short URLs resueltas = **60 recuperables**). Script listo:
+     `scripts/backfill-coords-clientes.ts` (usa `backfillClienteCoords` canónico,
+     resuelve short URLs, idempotente). Correr contra prod:
+     `DATABASE_URL="$DIRECT_URL" npx tsx scripts/backfill-coords-clientes.ts --dry-run`
+     y luego sin `--dry-run`. Sube cobertura de coords de **1% → ~35%**.
    - Asegurar que el rollout de la app de repartidores capture GPS en la entrega,
      para que el historial se acumule (la palanca de backfill "mediana GPS"
      depende de esto).
