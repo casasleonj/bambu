@@ -138,3 +138,6 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
 GRANT SELECT ON TABLE
   "PlanDia", "PlanDiaVersion", "PlanGrupo", "PlanParada", "PlanActividad", "PlanExcepcion"
   TO app_read;
+
+-- distanciaKm agregado durante F5 (UI) — recorrido estimado del grupo.
+ALTER TABLE "PlanGrupo" ADD COLUMN "distanciaKm" DOUBLE PRECISION NOT NULL DEFAULT 0;

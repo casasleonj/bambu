@@ -13,7 +13,7 @@ import { logger } from '@/lib/logger'
 import { logAudit } from '@/lib/audit'
 import { prisma } from '@/lib/prisma'
 import { PrismaPlanificadorRepository } from '@/modules/planificador/infrastructure/PrismaPlanificadorRepository'
-import { serializePlan } from '@/modules/planificador/presentation/serialize-plan'
+import { serializePlan, resolverNombresPlan } from '@/modules/planificador/presentation/serialize-plan'
 import { OverridePlanUseCase } from '@/modules/planificador/application/use-cases/OverridePlanUseCase'
 
 export async function GET(
@@ -29,7 +29,7 @@ export async function GET(
     const repo = new PrismaPlanificadorRepository()
     const plan = await repo.obtenerPlan(id)
     if (!plan) return apiError('Plan no encontrado', 404)
-    return apiSuccess({ plan: serializePlan(plan) })
+    return apiSuccess({ plan: serializePlan(plan, await resolverNombresPlan(plan)) })
   } catch (error) {
     logger.error(
       { err: error instanceof Error ? error.message : 'Unknown', id },
@@ -78,7 +78,7 @@ export async function PATCH(
       datos: { accion: 'override', op: parsed.data.op }, usuarioId: userId,
     })
     const plan = await new PrismaPlanificadorRepository().obtenerPlan(id)
-    return apiSuccess({ plan: plan ? serializePlan(plan) : null })
+    return apiSuccess({ plan: plan ? serializePlan(plan, await resolverNombresPlan(plan)) : null })
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown'
     if (msg === 'PLAN_NOT_FOUND') return apiError('Plan no encontrado', 404)

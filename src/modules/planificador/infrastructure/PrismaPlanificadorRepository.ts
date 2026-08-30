@@ -184,6 +184,7 @@ export class PrismaPlanificadorRepository {
               trabajadorFinalId: g.trabajadorPropuestoId,
               rutaId: g.rutaId,
               score: g.score,
+              distanciaKm: g.distanciaKm,
               explicacion: g.explicacion,
               paradas: {
                 create: g.paradas.map((p) => ({

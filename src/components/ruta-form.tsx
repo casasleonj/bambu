@@ -69,7 +69,7 @@ export default function RutaForm({ initialData, rutaId, onSuccess }: RutaFormPro
         if (onSuccess) {
           onSuccess()
         } else {
-          router.push('/rutas')
+          router.push('/rutas/habituales')
         }
       } else {
         toast.error(data.error?.message || 'Error al guardar')
@@ -212,7 +212,7 @@ export default function RutaForm({ initialData, rutaId, onSuccess }: RutaFormPro
         </button>
         <button
           type="button"
-          onClick={() => router.push('/rutas')}
+          onClick={() => router.push('/rutas/habituales')}
           className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
         >
           Cancelar

@@ -2318,6 +2318,7 @@ model PlanGrupo {
   horaSalidaPropuesta   String? // "HH:MM" local Bogotá
 
   score       Decimal @default(0) @db.Decimal(10, 4)
+  distanciaKm Float   @default(0) // distancia estimada del recorrido (secuencia TSP)
   explicacion Json? // señales usadas + texto operacional (ADR-PLANIFICADOR-001)
 
   // Materialización a Embarque (ADR-PLANIFICADOR-003). id, no FK.

@@ -50,7 +50,7 @@ export default function RutasAnalisisClient() {
       const data = await res.json()
       if (data.success) {
         toast.success(`Ruta ${nombre} creada`)
-        router.push('/rutas')
+        router.push('/rutas/habituales')
       } else {
         toast.error(data.error?.message || 'Error al crear ruta')
       }
@@ -72,7 +72,7 @@ export default function RutasAnalisisClient() {
         </div>
         <div className="flex gap-2">
           <button onClick={() => cargarAnalisis()} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition">Actualizar</button>
-          <button onClick={() => router.push('/rutas')} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">Ver Rutas</button>
+          <button onClick={() => router.push('/rutas/habituales')} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">Ver Rutas</button>
         </div>
       </div>
 
