@@ -387,6 +387,7 @@ export function DashboardClient({ data, userRole }: { data: DashboardData; userR
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Producto</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">Canal</th>
                   <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">Precio</th>
                   <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">Cantidad</th>
                   <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Subtotal</th>
@@ -403,6 +404,11 @@ export function DashboardClient({ data, userRole }: { data: DashboardData; userR
                           {item.producto}
                         </span>
                       </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${item.canal === 'PUNTO' ? 'bg-amber-100 text-amber-800' : 'bg-violet-100 text-violet-800'}`}>
+                          {item.canal === 'PUNTO' ? 'Punto' : 'Domicilio'}
+                        </span>
+                      </td>
                       <td className="px-4 py-3 text-center"><span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-semibold"><MoneyDisplay value={item.precio} userRole={userRole} /></span></td>
                       <td className="px-4 py-3 text-center"><span className="text-2xl font-bold text-gray-800">{item.cantidad}</span><span className="text-sm text-gray-400 ml-1">und</span></td>
                       <td className="px-4 py-3 text-right"><span className="font-semibold text-green-600"><MoneyDisplay value={item.subtotal} userRole={userRole} /></span></td>
@@ -411,7 +417,7 @@ export function DashboardClient({ data, userRole }: { data: DashboardData; userR
                 })}
               </tbody>
               <tfoot className="bg-gray-50">
-                <tr><td colSpan={3} className="px-4 py-3 text-right font-bold text-gray-800">TOTAL:</td><td className="px-4 py-3 text-right font-bold text-green-600 text-lg"><MoneyDisplay value={ventas} userRole={userRole} /></td></tr>
+                <tr><td colSpan={4} className="px-4 py-3 text-right font-bold text-gray-800">TOTAL:</td><td className="px-4 py-3 text-right font-bold text-green-600 text-lg"><MoneyDisplay value={ventas} userRole={userRole} /></td></tr>
               </tfoot>
             </table>
           </div>
@@ -425,6 +431,8 @@ export function DashboardClient({ data, userRole }: { data: DashboardData; userR
             const items = ventasPorPrecio.filter(v => v.producto === code)
             const totalCantidad = items.reduce((acc, v) => acc + v.cantidad, 0)
             const totalSubtotal = items.reduce((acc, v) => acc + v.subtotal, 0)
+            const cantPunto = items.filter(v => v.canal === 'PUNTO').reduce((acc, v) => acc + v.cantidad, 0)
+            const cantDomicilio = totalCantidad - cantPunto
             if (totalCantidad === 0) return null
             const { Icon } = getProductoIconConfig(code)
             const { bg, text } = PRODUCTO_COLOR[code]
@@ -435,6 +443,7 @@ export function DashboardClient({ data, userRole }: { data: DashboardData; userR
                 </div>
                 <p className="text-sm text-gray-500">{PRODUCT_LABELS[code]}</p>
                 <p className={`text-2xl font-bold ${text}`}>{totalCantidad}</p>
+                <p className="text-[11px] text-gray-400">Punto {cantPunto} · Dom {cantDomicilio}</p>
                 <p className="text-sm text-gray-400"><MoneyDisplay value={totalSubtotal} userRole={userRole} /></p>
               </div>
             )

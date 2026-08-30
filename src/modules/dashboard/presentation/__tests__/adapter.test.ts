@@ -93,7 +93,7 @@ describe('toLegacyDashboardData', () => {
   it('pasa franjas y ventasPorPrecio sin transformar', () => {
     const franjas = [{ label: 'Noche', range: [18, 23] as [number, number], count: 1 }]
     const ventasPorPrecio = [
-      { producto: 'PACA_AGUA' as const, precio: 6500, cantidad: 1, subtotal: 6500 },
+      { producto: 'PACA_AGUA' as const, canal: 'DOMICILIO' as const, precio: 6500, cantidad: 1, subtotal: 6500 },
     ]
     const legacy = toLegacyDashboardData(makeDDDData({ franjasHorarias: franjas, ventasPorPrecio }))
 

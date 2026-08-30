@@ -128,6 +128,7 @@ export async function getDashboardData(
 
   // ── Assemble result ───────────────────────────────────────────────────
   const fechaHoy = new Date().toLocaleDateString('es-CO', {
+    timeZone: 'America/Bogota',
     weekday: 'long',
     year: 'numeric',
     month: 'long',

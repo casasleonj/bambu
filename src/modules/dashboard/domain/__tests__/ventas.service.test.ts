@@ -112,4 +112,68 @@ describe('buildVentasPorPrecio', () => {
 
     expect(result).toHaveLength(0)
   })
+
+  it('separa mismo producto + precio en filas distintas por canal', () => {
+    const base = {
+      numero: 1,
+      fecha: new Date(),
+      total: 100,
+      saldo: 0,
+      estadoEntrega: 'ENTREGADO',
+      estadoPago: 'PAGADO',
+      cPacaAguaEnt: 0,
+      cPacaHieloEnt: 0,
+      cBotellonFabEnt: 0,
+      cBotellonDomEnt: 0,
+    }
+    const pedidos: PedidoRaw[] = [
+      {
+        ...base,
+        id: 'p1',
+        canal: 'DOMICILIO',
+        items: [{ producto: 'PACA_AGUA', cantEntrega: 12, precio: 6500 }],
+      },
+      {
+        ...base,
+        id: 'p2',
+        canal: 'PUNTO',
+        items: [{ producto: 'PACA_AGUA', cantEntrega: 5, precio: 6500 }],
+      },
+    ]
+
+    const result = buildVentasPorPrecio(pedidos)
+
+    expect(result).toHaveLength(2)
+    const dom = result.find(r => r.canal === 'DOMICILIO')
+    const punto = result.find(r => r.canal === 'PUNTO')
+    expect(dom?.cantidad).toBe(12)
+    expect(dom?.subtotal).toBe(78000)
+    expect(punto?.cantidad).toBe(5)
+    expect(punto?.subtotal).toBe(32500)
+  })
+
+  it('canal ausente o desconocido se trata como DOMICILIO', () => {
+    const pedidos: PedidoRaw[] = [
+      {
+        id: 'p1',
+        numero: 1,
+        fecha: new Date(),
+        total: 100,
+        saldo: 0,
+        estadoEntrega: 'ENTREGADO',
+        estadoPago: 'PAGADO',
+        canal: null,
+        cPacaAguaEnt: 0,
+        cPacaHieloEnt: 0,
+        cBotellonFabEnt: 0,
+        cBotellonDomEnt: 0,
+        items: [{ producto: 'PACA_AGUA', cantEntrega: 2, precio: 6500 }],
+      },
+    ]
+
+    const result = buildVentasPorPrecio(pedidos)
+
+    expect(result).toHaveLength(1)
+    expect(result[0].canal).toBe('DOMICILIO')
+  })
 })

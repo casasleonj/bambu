@@ -17,6 +17,7 @@ export interface PedidoRaw {
   saldo: number | string | { toNumber?: () => number; toString: () => string }
   estadoEntrega: string
   estadoPago: string
+  canal?: string | null
   cPacaAguaEnt: number | null
   cPacaHieloEnt: number | null
   cBotellonFabEnt: number | null
@@ -45,6 +46,7 @@ export interface FranjaHoraria {
 
 export interface VentaPorPrecio {
   producto: ProductCode
+  canal: 'PUNTO' | 'DOMICILIO'
   precio: number
   cantidad: number
   subtotal: number

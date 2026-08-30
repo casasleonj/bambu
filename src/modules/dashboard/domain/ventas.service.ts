@@ -49,8 +49,9 @@ export function buildVentasPorPrecio(pedidos: PedidoRaw[]): VentaPorPrecio[] {
   for (const pedido of pedidos) {
     if (pedido.estadoEntrega !== 'ENTREGADO') continue
     if (!pedido.items) continue
+    const canal: 'PUNTO' | 'DOMICILIO' = pedido.canal === 'PUNTO' ? 'PUNTO' : 'DOMICILIO'
     for (const item of pedido.items) {
-      const key = `${item.producto}-${Number(item.precio)}`
+      const key = `${item.producto}-${Number(item.precio)}-${canal}`
       const existing = map.get(key)
       if (existing) {
         existing.cantidad += item.cantEntrega
@@ -58,6 +59,7 @@ export function buildVentasPorPrecio(pedidos: PedidoRaw[]): VentaPorPrecio[] {
       } else {
         map.set(key, {
           producto: item.producto as ProductCode,
+          canal,
           precio: Number(item.precio),
           cantidad: item.cantEntrega,
           subtotal: item.cantEntrega * Number(item.precio),
@@ -66,7 +68,12 @@ export function buildVentasPorPrecio(pedidos: PedidoRaw[]): VentaPorPrecio[] {
     }
   }
 
-  return Array.from(map.values()).sort((a, b) => b.subtotal - a.subtotal)
+  return Array.from(map.values()).sort(
+    (a, b) =>
+      b.subtotal - a.subtotal ||
+      a.producto.localeCompare(b.producto) ||
+      a.canal.localeCompare(b.canal),
+  )
 }
 
 /**

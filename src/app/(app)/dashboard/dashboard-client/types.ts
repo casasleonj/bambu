@@ -1,5 +1,6 @@
 export interface VentaPorPrecio {
   producto: string
+  canal: 'PUNTO' | 'DOMICILIO'
   precio: number
   cantidad: number
   subtotal: number
