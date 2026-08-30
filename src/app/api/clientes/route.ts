@@ -48,9 +48,7 @@ export async function POST(request: NextRequest) {
   // (10s en Hobby, 60s en Pro). Esto evita que el cliente se quede
   // esperando indefinidamente sin respuesta.
   const TIMEOUT_MS = 25_000
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error('DB_TIMEOUT')), TIMEOUT_MS)
-  })
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
 
   try {
     const body = await request.json()
@@ -58,6 +56,16 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) {
       return apiError('Datos invalidos', 400, { formErrors: [formatZodError(parsed.error)] })
     }
+
+    // El timeout se arma DESPUÉS de validar el body (y se limpia en el
+    // `finally`). Si se armaba antes, cada early-return 400 dejaba un
+    // `setTimeout` huérfano cuyo reject no tenía handler y emergía ~25s
+    // después como `unhandledRejection: Error: DB_TIMEOUT` en el server
+    // (raíz del ruido en CI — ver AGENTS.md Known Issue #20). Los tests de
+    // validación disparan 2 POST inválidos seguidos → 2 rejects sin dueño.
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error('DB_TIMEOUT')), TIMEOUT_MS)
+    })
 
     // FIX F-N3: dedup por offlineId + dedup por teléfono + create corren
     // dentro de una transacción Serializable. Antes eran 3 operaciones
@@ -177,5 +185,10 @@ export async function POST(request: NextRequest) {
       return apiError('La base de datos tardó demasiado en responder. Reintentá en unos minutos.', 500)
     }
     return apiError('Error creando cliente')
+  } finally {
+    // Limpia el timer del timeout (o es no-op si nunca se armó por un
+    // early-return de validación). Evita que el `setTimeout` sobreviva a la
+    // request y rechace en el vacío.
+    clearTimeout(timeoutId)
   }
 }
