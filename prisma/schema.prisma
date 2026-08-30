@@ -321,7 +321,7 @@ model Cliente {
   telefono      String
   direccion     String?
   barrio        String?
-  referencia  String?
+  referencia    String?
   linkUbicacion String?
 
   // Geo coords — Bloque 1 (Ruta por Cercanía).
@@ -329,9 +329,9 @@ model Cliente {
   // Pedido.gpsLat/gpsLng confirmados, o desde Negocio. `geocodeOrigen`
   // audita de dónde salieron las coords para que el admin pueda
   // revalidarlas si cambian.
-  lat           Decimal? @db.Decimal(10, 6)
-  lng           Decimal? @db.Decimal(10, 6)
-  geocodeOrigen String?  // 'PARSED_URL' | 'GPS_HISTORIAL' | 'NEGOCIO' | 'MANUAL'
+  lat           Decimal?  @db.Decimal(10, 6)
+  lng           Decimal?  @db.Decimal(10, 6)
+  geocodeOrigen String? // 'PARSED_URL' | 'GPS_HISTORIAL' | 'NEGOCIO' | 'MANUAL'
   geocodeAt     DateTime? @db.Timestamptz()
 
   // Bloque 3 (predicción de demanda) — auto-computado por cron diario.
@@ -342,13 +342,13 @@ model Cliente {
   // `valorTipico` = promedio de los últimos 10 pedidos (moneda).
   // `scoreRecalculadoEn` = timestamp del último compute.
   // `ultimaLlamada` = timestamp del último "Marcar contactado".
-  intervaloMediano    Int?
-  proxEsperada        DateTime? @db.Timestamptz()
-  diasAtraso          Int?
-  scoreLlamada        Decimal?  @db.Decimal(8, 2)
-  valorTipico         Decimal?  @db.Decimal(10, 2)
-  scoreRecalculadoEn  DateTime? @db.Timestamptz()
-  ultimaLlamada       DateTime? @db.Timestamptz()
+  intervaloMediano   Int?
+  proxEsperada       DateTime? @db.Timestamptz()
+  diasAtraso         Int?
+  scoreLlamada       Decimal?  @db.Decimal(8, 2)
+  valorTipico        Decimal?  @db.Decimal(10, 2)
+  scoreRecalculadoEn DateTime? @db.Timestamptz()
+  ultimaLlamada      DateTime? @db.Timestamptz()
 
   // FASE 3 CONTRACT: contactos legacy eliminada. Ahora es relación.
   contactos ContactoCliente[]
@@ -457,10 +457,10 @@ model Negocio {
 
   // Geo coords — Bloque 1. Misma semántica que Cliente.lat/lng.
   // Si Negocio tiene coords propias, gana sobre Cliente. Si no, fallback a Cliente.
-  lat           Decimal? @db.Decimal(10, 6)
-  lng           Decimal? @db.Decimal(10, 6)
+  lat Decimal? @db.Decimal(10, 6)
+  lng Decimal? @db.Decimal(10, 6)
 
-  horaApertura  String?
+  horaApertura String?
 
   rutaId String?
   ruta   Ruta?   @relation("RutaNegocio", fields: [rutaId], references: [id])
@@ -510,11 +510,11 @@ model PlantillaRecurrente {
   activo           Boolean             @default(true)
   cadaNDias        Int                 @default(7)
   tipo             String              @default("ENVIO")
-  canal           String   @default("DOMICILIO")
-  horaPreferida   String?
+  canal            String              @default("DOMICILIO")
+  horaPreferida    String?
   // FASE 3 CONTRACT: productos legacy eliminada. Ahora es relación.
-  productos    PlantillaProducto[]
-  ultimaGeneracion DateTime? @db.Timestamptz()
+  productos        PlantillaProducto[]
+  ultimaGeneracion DateTime?           @db.Timestamptz()
   proxGeneracion   DateTime?           @db.Timestamptz()
   saltos           String[]
   pausaHasta       DateTime?           @db.Timestamptz()
@@ -664,47 +664,47 @@ model Pedido {
   fuente String?
 
   // NUEVOS — control y trazabilidad
-  promesaPagoFecha  DateTime? @db.Timestamptz()
-  fotoEntrega       String?
-  gpsLat            Decimal?  @db.Decimal(10, 6)
-  gpsLng            Decimal?  @db.Decimal(10, 6)
-  gpsAccuracy       Decimal?  @db.Decimal(10, 2)
-  gpsJustificacion  String?   @db.Text
-  entregadoConGps   Boolean   @default(true)
-  entregadoAt       DateTime? @db.Timestamptz()
-  adminOverrideNota String?   @db.Text
-  adminOverrideBy   String?
-  adminOverrideAt   DateTime? @db.Timestamptz()
-  offlineId         String?   @unique
-  recurrenteBatchId String? // batch id compartido por todos los pedidos de un batch de recurrentes
+  promesaPagoFecha      DateTime? @db.Timestamptz()
+  fotoEntrega           String?
+  gpsLat                Decimal?  @db.Decimal(10, 6)
+  gpsLng                Decimal?  @db.Decimal(10, 6)
+  gpsAccuracy           Decimal?  @db.Decimal(10, 2)
+  gpsJustificacion      String?   @db.Text
+  entregadoConGps       Boolean   @default(true)
+  entregadoAt           DateTime? @db.Timestamptz()
+  adminOverrideNota     String?   @db.Text
+  adminOverrideBy       String?
+  adminOverrideAt       DateTime? @db.Timestamptz()
+  offlineId             String?   @unique
+  recurrenteBatchId     String? // batch id compartido por todos los pedidos de un batch de recurrentes
   // FIX Fase 1: dedup key dedicado para POST /api/pedidos/[id]/enviar.
   // Antes el dedup se hacia por estado (embarqueId+EN_RUTA), fragil si el
   // check externo y la tx se desincronizan. Ahora: el server persiste el
   // offlineId y el retry con el mismo offlineId retorna deduped: true.
-  envioOfflineId    String?   @unique
+  envioOfflineId        String?   @unique
   // FASE 1 (ADR-IDEMPOTENCIA-001, §14): claves idempotentes dedicadas por
   // comando reintentable offline. El retry con el mismo offlineId retorna
   // deduped:true sin re-ejecutar. Paridad con envioOfflineId (enviar).
-  entregaOfflineId     String? @unique
-  anulacionOfflineId   String? @unique
-  cancelacionOfflineId String? @unique
+  entregaOfflineId      String?   @unique
+  anulacionOfflineId    String?   @unique
+  cancelacionOfflineId  String?   @unique
   // FASE 7 (ADR-OFFLINE-001, contrato §11): timestamps de venta libre.
   // occurredAt = cuándo ocurrió la venta según el operador.
   // capturedAt = cuándo el dispositivo generó el registro local.
   // serverReceivedAt = cuándo llegó al servidor (server-side).
   // clasificacionTemporal = NORMAL | TARDIA | SOSPECHOSA (derivada del server).
-  occurredAt           DateTime? @db.Timestamptz()
-  capturedAt           DateTime? @db.Timestamptz()
-  serverReceivedAt     DateTime? @db.Timestamptz()
+  occurredAt            DateTime? @db.Timestamptz()
+  capturedAt            DateTime? @db.Timestamptz()
+  serverReceivedAt      DateTime? @db.Timestamptz()
   clasificacionTemporal String?
-  disputaAbierta    Boolean   @default(false)
-  codigoVisita      String?
+  disputaAbierta        Boolean   @default(false)
+  codigoVisita          String?
   // Dirección de entrega puntual para ESTE pedido — null si no aplica
   // (se usa la dirección resuelta en vivo de negocio/cliente vía
   // pickDireccionTexto). Nunca modifica Cliente.direccion/barrio ni
   // Negocio.direccion/barrio; es un snapshot propio del pedido.
-  direccionEntrega String?
-  barrioEntrega    String?
+  direccionEntrega      String?
+  barrioEntrega         String?
 
   // LEGACY — se mantiene para compatibilidad
   estado EstadoPedido @default(PENDIENTE)
@@ -1012,9 +1012,9 @@ model EmbarqueCargaProducto {
 }
 
 model EmbarqueMovimiento {
-  id         String   @id @default(cuid())
+  id         String         @id @default(cuid())
   embarqueId String
-  embarque   Embarque @relation(fields: [embarqueId], references: [id], onDelete: Cascade)
+  embarque   Embarque       @relation(fields: [embarqueId], references: [id], onDelete: Cascade)
   cargaId    String?
   carga      EmbarqueCarga? @relation(fields: [cargaId], references: [id], onDelete: SetNull)
 
@@ -1033,14 +1033,14 @@ model EmbarqueMovimiento {
   metadata      Json?
   authorization String?
   userId        String?
-  autorizador   User? @relation("MovimientoAutorizador", fields: [userId], references: [id], onDelete: SetNull)
+  autorizador   User?   @relation("MovimientoAutorizador", fields: [userId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now()) @db.Timestamptz()
   offlineId String?  @unique
 
-  retornos             Retorno[]     @relation("RetornoMovimiento")
-  sustitucionRecepcion Sustitucion[] @relation("SustitucionRecepcion")
-  sustitucionEntrega   Sustitucion[] @relation("SustitucionEntrega")
+  retornos             Retorno[]          @relation("RetornoMovimiento")
+  sustitucionRecepcion Sustitucion[]      @relation("SustitucionRecepcion")
+  sustitucionEntrega   Sustitucion[]      @relation("SustitucionEntrega")
   recoveries           RecoveryDecision[]
 
   @@index([embarqueId])
@@ -1068,7 +1068,7 @@ model Sustitucion {
   movimientoEntrega   EmbarqueMovimiento @relation("SustitucionEntrega", fields: [movimientoEntregaId], references: [id], onDelete: Cascade)
 
   autorizadoPorId String?
-  autorizadoPor   User? @relation("SustitucionAutorizador", fields: [autorizadoPorId], references: [id], onDelete: SetNull)
+  autorizadoPor   User?   @relation("SustitucionAutorizador", fields: [autorizadoPorId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now()) @db.Timestamptz()
   offlineId String?  @unique
@@ -1085,7 +1085,7 @@ model Retorno {
   pedido     Pedido?  @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
 
   producto String
-  cantidad Int     // positivo (CHECK constraint)
+  cantidad Int // positivo (CHECK constraint)
   motivo   String? // EMPAQUE_ROTO, PACA_FILTRADA, DEFECTUOSA, CLIENTE_RECHAZA, ...
 
   movimientoId String?
@@ -1110,15 +1110,15 @@ model Retorno {
 // Máximo una asignación activa por obligación (partial unique index en SQL).
 
 model ObligacionPendiente {
-  id               String  @id @default(cuid())
-  pedidoId         String? @unique
-  pedido           Pedido? @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
+  id               String           @id @default(cuid())
+  pedidoId         String?          @unique
+  pedido           Pedido?          @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
   clienteId        String?
-  cliente          Cliente? @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+  cliente          Cliente?         @relation(fields: [clienteId], references: [id], onDelete: SetNull)
   producto         String
   cantidadOriginal Int
-  cantidadCumplida Int     @default(0)
-  cantidadAsignada Int     @default(0)
+  cantidadCumplida Int              @default(0)
+  cantidadAsignada Int              @default(0)
   estado           ObligacionEstado @default(ABIERTA)
 
   createdAt DateTime @default(now()) @db.Timestamptz()
@@ -1134,15 +1134,15 @@ model ObligacionPendiente {
 }
 
 model Actividad {
-  id           String  @id @default(cuid())
+  id           String              @id @default(cuid())
   obligacionId String
   obligacion   ObligacionPendiente @relation(fields: [obligacionId], references: [id], onDelete: Cascade)
   embarqueId   String?
-  embarque     Embarque? @relation(fields: [embarqueId], references: [id], onDelete: SetNull)
+  embarque     Embarque?           @relation(fields: [embarqueId], references: [id], onDelete: SetNull)
 
-  tipo             ActividadTipo  @default(ENTREGA)
+  tipo             ActividadTipo   @default(ENTREGA)
   cantidad         Int
-  cantidadCumplida Int            @default(0)
+  cantidadCumplida Int             @default(0)
   estado           ActividadEstado @default(ASIGNADA)
 
   createdAt DateTime @default(now()) @db.Timestamptz()
@@ -1154,9 +1154,9 @@ model Actividad {
 }
 
 model PedidoCantidadAjuste {
-  id           String @id @default(cuid())
+  id           String               @id @default(cuid())
   pedidoId     String
-  pedido       Pedido @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  pedido       Pedido               @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
   obligacionId String?
   obligacion   ObligacionPendiente? @relation(fields: [obligacionId], references: [id], onDelete: SetNull)
 
@@ -1166,7 +1166,7 @@ model PedidoCantidadAjuste {
   delta            Int
   motivo           String
   autorizadoPorId  String
-  autorizadoPor    User @relation("AjusteAutorizador", fields: [autorizadoPorId], references: [id], onDelete: Restrict)
+  autorizadoPor    User   @relation("AjusteAutorizador", fields: [autorizadoPorId], references: [id], onDelete: Restrict)
 
   createdAt DateTime @default(now()) @db.Timestamptz()
   offlineId String?  @unique
@@ -1184,9 +1184,9 @@ model PedidoCantidadAjuste {
 // 0 <= cantidadAplicada <= cantidad (CHECK constraint).
 
 model RecoveryDecision {
-  id            String   @id @default(cuid())
+  id            String              @id @default(cuid())
   embarqueId    String
-  embarque      Embarque @relation(fields: [embarqueId], references: [id], onDelete: Cascade)
+  embarque      Embarque            @relation(fields: [embarqueId], references: [id], onDelete: Cascade)
   sourceEventId String?
   sourceEvent   EmbarqueMovimiento? @relation(fields: [sourceEventId], references: [id], onDelete: SetNull)
 
@@ -1195,8 +1195,8 @@ model RecoveryDecision {
   cantidad                   Int
   cantidadAplicada           Int
   // SOBRANTE | FALTANTE (contrato §3; validado por CHECK constraint).
-  tipo     String
-  producto String
+  tipo                       String
+  producto                   String
 
   pedidoOrigenId  String?
   pedidoOrigen    Pedido? @relation("RecoveryPedidoOrigen", fields: [pedidoOrigenId], references: [id], onDelete: SetNull)
@@ -1228,13 +1228,13 @@ model RecoveryDecision {
 // generado en la MISMA transacción (contrato §12).
 
 model ReceivableEntry {
-  id        String  @id @default(cuid())
+  id        String   @id @default(cuid())
   pedidoId  String?
-  pedido    Pedido? @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
+  pedido    Pedido?  @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
   facturaId String?
   factura   Factura? @relation(fields: [facturaId], references: [id], onDelete: SetNull)
   clienteId String
-  cliente   Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  cliente   Cliente  @relation(fields: [clienteId], references: [id], onDelete: Cascade)
 
   // PAGO | ABONO — tipo del hecho monetario que originó esta proyección.
   tipo  String
@@ -1270,9 +1270,9 @@ model ReceivableEntry {
 // porque una investigación puede ocurrir días después de la operación.
 
 model ResponsibilityCase {
-  id           String   @id @default(cuid())
+  id           String      @id @default(cuid())
   embarqueId   String?
-  embarque     Embarque? @relation(fields: [embarqueId], references: [id], onDelete: SetNull)
+  embarque     Embarque?   @relation(fields: [embarqueId], references: [id], onDelete: SetNull)
   trabajadorId String?
   trabajador   Trabajador? @relation(fields: [trabajadorId], references: [id], onDelete: SetNull)
   // Contexto alternativo cuando NO hay una operación (embarque) activa —
@@ -1280,19 +1280,19 @@ model ResponsibilityCase {
   // una referencia de contexto (embarqueId | clienteId | trabajadorId) se
   // valida en aplicación (validarContextoResponsibilityCase), no en BD.
   clienteId    String?
-  cliente      Cliente? @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+  cliente      Cliente?    @relation(fields: [clienteId], references: [id], onDelete: SetNull)
 
   // DISCREPANCIA_INVENTARIO | FALTANTE_CAJA | FIADO_NO_COBRADO
   tipo          String
   descripcion   String
-  montoEstimado Decimal? @db.Decimal(10, 2)
+  montoEstimado Decimal?             @db.Decimal(10, 2)
   estado        ResponsibilityEstado @default(ABIERTA)
 
   // Resolución autorizada (§13): RESUELTA_CON_CARGO exige ambos.
   autorizadoPorId String?
-  autorizadoPor   User? @relation("ResponsibilityAutorizador", fields: [autorizadoPorId], references: [id], onDelete: SetNull)
+  autorizadoPor   User?     @relation("ResponsibilityAutorizador", fields: [autorizadoPorId], references: [id], onDelete: SetNull)
   resueltoPorId   String?
-  resueltoPor     User? @relation("ResponsibilityResolutor", fields: [resueltoPorId], references: [id], onDelete: SetNull)
+  resueltoPor     User?     @relation("ResponsibilityResolutor", fields: [resueltoPorId], references: [id], onDelete: SetNull)
   resueltoAt      DateTime? @db.Timestamptz()
 
   // Hecho económico materializado SOLO tras resolución con cargo.
@@ -1318,14 +1318,14 @@ model ResponsibilityCase {
 // (EmbarqueMovimiento tipo PROMOCION), no como un cobro ficticio.
 
 model PromotionRule {
-  id        String  @id @default(cuid())
-  nombre    String
-  producto  String
-  cantidad  Int     // unidades a regalar por aplicación
-  activo    Boolean @default(true)
+  id       String  @id @default(cuid())
+  nombre   String
+  producto String
+  cantidad Int // unidades a regalar por aplicación
+  activo   Boolean @default(true)
 
   autorizadoPorId String
-  autorizadoPor   User @relation("PromotionAutorizador", fields: [autorizadoPorId], references: [id], onDelete: Restrict)
+  autorizadoPor   User   @relation("PromotionAutorizador", fields: [autorizadoPorId], references: [id], onDelete: Restrict)
 
   createdAt DateTime @default(now()) @db.Timestamptz()
   offlineId String?  @unique
@@ -1891,18 +1891,18 @@ model NotaCredito {
 // pocos meses para privacidad). Por eso el upsert es por endpoint+userId.
 
 model PushSubscription {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation("PushSubscriptions", fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation("PushSubscriptions", fields: [userId], references: [id], onDelete: Cascade)
 
-  endpoint String   @unique
+  endpoint String @unique
   p256dh   String
   auth     String
 
   // Metadata
-  userAgent String?  @db.Text
-  createdAt DateTime @default(now()) @db.Timestamptz()
-  updatedAt DateTime @updatedAt @db.Timestamptz()
+  userAgent  String?  @db.Text
+  createdAt  DateTime @default(now()) @db.Timestamptz()
+  updatedAt  DateTime @updatedAt @db.Timestamptz()
   lastSeenAt DateTime @default(now()) @db.Timestamptz()
 
   @@index([userId])
@@ -2002,12 +2002,12 @@ model Caso {
 
   // Polimórfico: link al negocio. clienteId, pedidoId, negocioId y
   // repartidorId son mutuamente excluyentes (un caso es de UN sujeto).
-  clienteId String?
-  cliente   Cliente?  @relation("CasoCliente", fields: [clienteId], references: [id], onDelete: SetNull)
-  negocioId String?
-  negocio   Negocio?  @relation("CasoNegocio", fields: [negocioId], references: [id], onDelete: SetNull)
-  pedidoId  String?
-  pedido    Pedido?   @relation("CasoPedido", fields: [pedidoId], references: [id], onDelete: SetNull)
+  clienteId    String?
+  cliente      Cliente?    @relation("CasoCliente", fields: [clienteId], references: [id], onDelete: SetNull)
+  negocioId    String?
+  negocio      Negocio?    @relation("CasoNegocio", fields: [negocioId], references: [id], onDelete: SetNull)
+  pedidoId     String?
+  pedido       Pedido?     @relation("CasoPedido", fields: [pedidoId], references: [id], onDelete: SetNull)
   repartidorId String?
   repartidor   Trabajador? @relation("CasoRepartidor", fields: [repartidorId], references: [id], onDelete: SetNull)
 
@@ -2070,8 +2070,8 @@ model DeudaTrabajador {
   montoPendiente Decimal @db.Decimal(10, 2)
 
   // Plan de pago via nomina
-  plazoNominas        Int?    // cuantas nominas se reparte (null = hasta pagar)
-  porcentajePorNomina Int?    // tope % de la nomina a descontar por periodo (null = sin tope)
+  plazoNominas        Int? // cuantas nominas se reparte (null = hasta pagar)
+  porcentajePorNomina Int? // tope % de la nomina a descontar por periodo (null = sin tope)
 
   embarqueId  String?
   descripcion String   @db.Text
@@ -2152,11 +2152,11 @@ model PlantillaProducto {
 // ====================
 
 model ImportBatch {
-  id        String            @id @default(cuid())
+  id          String            @id @default(cuid())
   createdById String
-  createdBy   User            @relation("ImportBatchCreador", fields: [createdById], references: [id])
-  nombre    String
-  estado    ImportBatchEstado @default(DRAFT)
+  createdBy   User              @relation("ImportBatchCreador", fields: [createdById], references: [id])
+  nombre      String
+  estado      ImportBatchEstado @default(DRAFT)
 
   totalRows        Int @default(0)
   autoMergedRows   Int @default(0)
@@ -2215,4 +2215,191 @@ model ImportStagingContacto {
   relacion String?
 
   @@index([stagingRowId])
+}
+
+// ====================
+// PLANIFICADOR DE DISTRIBUCIÓN (Rutas — F2)
+// ====================
+//
+// Agregado nuevo, aditivo. NO usa FK a Cliente/Negocio/Trabajador/Ruta/Embarque/
+// Pedido — el planificador REFERENCIA esos dominios por id, no es dueño de su
+// vida (ADR-PLANIFICADOR-002). Solo las 3 relaciones internas
+// (PlanDia→Grupo→Parada→Actividad) tienen FK con cascade.
+//
+// Contratos: docs/adr/ADR-PLANIFICADOR-00{1..6}.md
+// F0: docs/rutas/INVENTARIO_CAPACIDADES_DISTRIBUCION.md
+
+enum PlanEstado {
+  PROPOSED
+  REVIEW
+  CONFIRMED
+  SUPERSEDED
+  CANCELLED
+  INTEGRATION_PARTIAL
+}
+
+enum PlanActividadTipo {
+  ENTREGA
+  COBRO
+  RECOGIDA_BOTELLON
+}
+
+model PlanDia {
+  id      String     @id @default(cuid())
+  // Fecha operativa (YYYY-MM-DD a medianoche Bogotá).
+  fecha   DateTime   @db.Timestamptz()
+  version Int        @default(1)
+  estado  PlanEstado @default(PROPOSED)
+
+  // Referencias de auditoría (ids, no FK — logAudit captura el detalle).
+  generadoPorId   String?
+  confirmadoPorId String?
+  // Causa de esta versión: 'GENERACION' | 'REPLAN:<trigger>' | 'OVERRIDE'.
+  causa           String?
+
+  // Resumen para la UI (contadores, capacidad total, etc.). No es fuente de verdad.
+  resumen Json?
+
+  generadoEn   DateTime  @default(now()) @db.Timestamptz()
+  confirmadoEn DateTime? @db.Timestamptz()
+  createdAt    DateTime  @default(now()) @db.Timestamptz()
+  updatedAt    DateTime  @updatedAt @db.Timestamptz()
+
+  // Idempotencia del confirmar (ADR-PLANIFICADOR-005 §4).
+  confirmOfflineId String? @unique
+
+  grupos      PlanGrupo[]
+  versiones   PlanDiaVersion[]
+  excepciones PlanExcepcion[]
+
+  // Un plan "vigente" por fecha se resuelve en aplicación (el de mayor version
+  // en estado no-SUPERSEDED). El índice soporta esa query.
+  @@index([fecha, estado])
+  @@index([fecha, version])
+}
+
+// Snapshot append-only de cada versión (ADR-PLANIFICADOR-005 §3).
+model PlanDiaVersion {
+  id        String  @id @default(cuid())
+  planDiaId String
+  planDia   PlanDia @relation(fields: [planDiaId], references: [id], onDelete: Cascade)
+
+  version  Int
+  // Snapshot lógico completo (grupos + paradas + actividades + señales).
+  snapshot Json
+  // Diff legible contra la versión anterior.
+  diff     Json?
+  actorId  String?
+  causa    String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+
+  @@unique([planDiaId, version])
+  @@index([planDiaId])
+}
+
+model PlanGrupo {
+  id        String  @id @default(cuid())
+  planDiaId String
+  planDia   PlanDia @relation(fields: [planDiaId], references: [id], onDelete: Cascade)
+
+  nombreLogico String
+  secuencia    Int    @default(0)
+
+  // Capacidad/carga planificada (unidades + kg). Metadata de planificación,
+  // NO carga física (esa la valida Embarques al materializar).
+  capacidadUnidades Int  @default(0)
+  cargaPlanificada  Json // { PACA_AGUA: n, PACA_HIELO: n, BOTELLON: n, ... }
+
+  // Recurso propuesto (id, no FK). El asistente puede cambiarlo antes de confirmar.
+  trabajadorPropuestoId String?
+  trabajadorFinalId     String?
+  rutaId                String?
+  horaSalidaPropuesta   String? // "HH:MM" local Bogotá
+
+  score       Decimal @default(0) @db.Decimal(10, 4)
+  explicacion Json? // señales usadas + texto operacional (ADR-PLANIFICADOR-001)
+
+  // Materialización a Embarque (ADR-PLANIFICADOR-003). id, no FK.
+  embarqueId String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
+
+  paradas PlanParada[]
+
+  @@index([planDiaId])
+  @@index([embarqueId])
+}
+
+model PlanParada {
+  id          String    @id @default(cuid())
+  planGrupoId String
+  planGrupo   PlanGrupo @relation(fields: [planGrupoId], references: [id], onDelete: Cascade)
+
+  secuencia Int     @default(0)
+  // Ancla de la parada (ids, no FK).
+  clienteId String
+  negocioId String?
+
+  // Ubicación efectiva usada por el motor: { lat, lng, fuente, calidad }.
+  // fuente: 'CLIENTE'|'NEGOCIO'|'BARRIO_CENTROIDE'|null. calidad: LocationQuality.
+  ubicacionUsada Json?
+  // Motivo de inclusión / por qué acá ('PROXIMIDAD'|'RUTA_HABITUAL'|'BARRIO'|'EXCEPCION_INCLUIDA').
+  motivo         String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
+
+  actividades PlanActividad[]
+
+  @@index([planGrupoId])
+  @@index([clienteId])
+}
+
+model PlanActividad {
+  id           String     @id @default(cuid())
+  planParadaId String
+  planParada   PlanParada @relation(fields: [planParadaId], references: [id], onDelete: Cascade)
+
+  tipo PlanActividadTipo @default(ENTREGA)
+
+  // Para tipo=ENTREGA: pedidos referenciados (ids, no FK — ADR-PLANIFICADOR-002).
+  // Invariante de aplicación: un pedidoId aparece en exactamente una PlanActividad
+  // tipo=ENTREGA por versión de PlanDia.
+  pedidoIds String[]
+
+  // Snapshot de cantidades por producto al generar. Evidencia, no fuente de verdad.
+  snapshotCantidades Json?
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
+
+  @@index([planParadaId])
+  @@index([pedidoIds], type: Gin)
+}
+
+// Bandeja de excepciones del planificador (ADR-PLANIFICADOR-001 §4 / v4 §21).
+model PlanExcepcion {
+  id        String  @id @default(cuid())
+  planDiaId String
+  planDia   PlanDia @relation(fields: [planDiaId], references: [id], onDelete: Cascade)
+
+  // OUTSIDE_USUAL_AREA | LOW_LOCATION_CONFIDENCE | ISOLATED_DEMAND |
+  // CAPACITY_CONFLICT | RESOURCE_CONFLICT | SCHEDULE_CONFLICT | NEW_DEMAND | MISSING_DATA
+  tipo          String
+  severidad     String  @default("MEDIA") // BAJA | MEDIA | ALTA
+  // Entidad afectada (ids sueltos): { pedidoIds?, clienteId?, grupoId? }.
+  entidad       Json?
+  explicacion   String
+  // Opciones que el sistema propone: [{ accion, label }].
+  opciones      Json?
+  estado        String  @default("ABIERTA") // ABIERTA | RESUELTA | IGNORADA
+  resueltaPorId String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
+
+  @@index([planDiaId])
+  @@index([planDiaId, estado])
 }
