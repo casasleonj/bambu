@@ -261,10 +261,13 @@ no relacionado al backend. Reescribir con testids o quitar.
 
 ---
 
-## Diferido — rediseño de crear embarque / auto-generar
+## Rediseño de crear embarque / auto-generar — DESBLOQUEADO (2026-08-30)
 
-Contexto adicional en `docs/embarques/ONBOARDING-EQUIPO.md` §10 (el archivo `memory/embarques-auto-generar-es-el-objetivo.md` referenciado antes no existe).
-
-- **Objetivo:** auto-generar como default; el humano hace lo mínimo.
-- **Bloqueado:** embarques se alimenta del módulo de **rutas**, no implementado (el plan de rutas existe, falta construirlo).
-- Hasta entonces: `embarque-form-modal.tsx` y `auto-generar-preview-modal.tsx` quedan **como están**. No rediseñar.
+- **Auto-Generar → ✅ hecho.** El módulo de Rutas / Planificador (PR #144, branch
+  `docs/rutas-planificador-f0`) reemplaza "Auto-Generar": el botón ahora es
+  "Planificar día" y navega a `/rutas`. `/api/embarques/auto` + `auto-generar-preview-modal.tsx`
+  eliminados. No rediseñar — su reemplazo UX es el Planificador.
+- **Formulario "Nuevo Embarque" manual → en diseño.** Sigue siendo el camino para
+  crear UN embarque suelto de último momento, fuera del plan (ADR-PLANIFICADOR-003 §3).
+  Diseño en `docs/embarques/2026-08-30-nuevo-embarque-form-diseno.md` (flujo
+  "pedidos-primero", wizard de 2 pasos). Prerequisito: PR #144 en `main`.
