@@ -96,11 +96,10 @@ Smoke por API (dev server corriendo, sesión admin):
 
 ## 8. Deuda / follow-ups
 
-- **Reescribir `e2e/embarques*.spec.ts`** (parte de "auto-generar") al flujo del
-  plan y quitar `NEXT_PUBLIC_EMBARQUES_AUTO_LEGACY` +
-  `src/app/api/embarques/auto/route.ts` + `auto-generar-preview-modal.tsx`. Necesita
-  entorno con chromium para correr E2E — no se hizo en la sesión de implementación.
-- **Correr `e2e/rutas-planificador.spec.ts` en CI** (idem, chromium).
+- **`/api/embarques/auto` eliminado** ✅ (route + modal + flag). Specs `e2e/embarques*`
+  de "auto-generar" reescritas al flujo del plan o removidas. Los helpers puros de
+  `src/lib/embarque-auto.ts` sobreviven (los usa `capacidad.service.ts`).
+- **`e2e/rutas-planificador.spec.ts`** — 3/3 verde en chromium local. Correr en CI.
 - Mapa contextual (v4 §42-44) — opcional, no bloquea el MVP.
 - `ConfirmarPlanUseCase` tiene tests de integración pero no unit con fakes (sí los
   tiene `MaterializarPlanUseCase`).

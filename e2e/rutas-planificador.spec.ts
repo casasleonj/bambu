@@ -15,7 +15,7 @@ test.describe('Rutas · Planificador (Hoy)', () => {
     await goto(page, '/rutas')
     await expect(page.locator('h1:has-text("Hoy")')).toBeVisible()
     await expect(page.getByTestId('rutas-hoy')).toBeVisible()
-    await expect(page.locator('button:has-text("Generar propuesta")')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Generar propuesta' }).first()).toBeVisible()
   })
 
   test('generar → propuesta con grupo + excepción; confirmar → embarque', async ({ page }) => {
@@ -50,7 +50,8 @@ test.describe('Rutas · Planificador (Hoy)', () => {
     expect(p2.ok(), await p2.text()).toBeTruthy()
 
     await goto(page, '/rutas')
-    await page.locator('button:has-text("Generar propuesta")').click({ force: true })
+    await page.getByTestId('rutas-hoy').waitFor()
+    await page.getByRole('button', { name: 'Generar propuesta' }).first().click()
 
     await expect(page.getByTestId('rutas-grupo').first()).toBeVisible({ timeout: 15000 })
     await expect(page.getByTestId('rutas-excepciones')).toBeVisible()
