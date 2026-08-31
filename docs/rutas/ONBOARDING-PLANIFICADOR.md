@@ -79,8 +79,9 @@ Smoke por API (dev server corriendo, sesión admin):
 |---|---|
 | F0 inventario · F1 ADRs | ✅ |
 | F2/F3/F4 dominio + persistencia + API | ✅ 8 endpoints, 47 tests, verificado en app corriendo |
-| F5 UI | 🟡 Hoy + Análisis (panel calidad de datos) + Ruta habitual (info derivada) operativos. **Falta:** detalle de grupo, mapa (opcional v4 §42-44), pulido responsive/a11y, correr el E2E en CI |
+| F5 UI | 🟢 Hoy (propuesta, excepciones, mover parada, reasignar repartidor, banner "demanda cambió", realtime) + Análisis (calidad de datos) + Ruta habitual (info derivada). **Falta:** mapa (opcional v4 §42-44), pulido responsive fino, correr el E2E en CI |
 | F6 botón "Auto-Generar" → "Planificar día" | ✅ (legacy detrás de `NEXT_PUBLIC_EMBARQUES_AUTO_LEGACY`) |
+| Realtime `route_plan.updated` | ✅ multi-sesión |
 | F7 piloto | ⏳ |
 
 ## 7. Antes del piloto — acción del PO
@@ -95,9 +96,14 @@ Smoke por API (dev server corriendo, sesión admin):
 
 ## 8. Deuda / follow-ups
 
-- Reescribir `e2e/embarques*.spec.ts` (parte de "auto-generar") al flujo del plan y
-  quitar `NEXT_PUBLIC_EMBARQUES_AUTO_LEGACY` + `src/app/api/embarques/auto/route.ts`.
-- Eventos realtime `route_plan.*` (hoy solo `logAudit`).
-- Detector de triggers en background para replan (hoy replan es manual desde la UI).
-- Tests con fakes de `ConfirmarPlanUseCase`/`MaterializarPlanUseCase` (además de la integración).
+- **Reescribir `e2e/embarques*.spec.ts`** (parte de "auto-generar") al flujo del
+  plan y quitar `NEXT_PUBLIC_EMBARQUES_AUTO_LEGACY` +
+  `src/app/api/embarques/auto/route.ts` + `auto-generar-preview-modal.tsx`. Necesita
+  entorno con chromium para correr E2E — no se hizo en la sesión de implementación.
+- **Correr `e2e/rutas-planificador.spec.ts` en CI** (idem, chromium).
+- Mapa contextual (v4 §42-44) — opcional, no bloquea el MVP.
+- `ConfirmarPlanUseCase` tiene tests de integración pero no unit con fakes (sí los
+  tiene `MaterializarPlanUseCase`).
 - `PlanDiaVersion` tabla separada vs. inmutable (ADR-005 §3, decidir con el patrón real).
+- Detector de triggers **en background** (cron/hook) para replan — hoy el aviso es
+  derivado (`estaDesactualizado` en el GET) + el usuario recalcula. Alcanza para el MVP.
