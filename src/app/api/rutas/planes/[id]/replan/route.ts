@@ -16,6 +16,7 @@ import { getConfigInt } from '@/lib/config'
 import { MAX_UNIDADES } from '@/modules/embarques/domain/services/embarque-validation.service'
 import { prisma } from '@/lib/prisma'
 import { ReplanUseCase } from '@/modules/planificador/application/use-cases/ReplanUseCase'
+import { publishRealtimeEvent } from '@/lib/realtime'
 
 const BodySchema = z.object({
   trigger: z.enum(['MANUAL', 'NUEVO_PEDIDO', 'CANCELACION', 'CAMBIO_CANTIDAD', 'RECURSO', 'CAPACIDAD']).optional(),
@@ -53,6 +54,8 @@ export async function POST(
       datos: { accion: 'replan', trigger: parsed.data.trigger ?? 'MANUAL', version: result.version, diff: result.diff },
       usuarioId: userId,
     })
+
+    publishRealtimeEvent('route_plan.updated', fecha).catch(() => {})
 
     return apiSuccess(
       { planId: result.planId, version: result.version, estado: result.estado, diff: result.diff, resumen: result.resumen },

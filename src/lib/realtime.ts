@@ -23,6 +23,9 @@ export type RealtimeEntity =
   | 'produccion'
   | 'trabajador'
   | 'config'
+  // Planificador de distribución (ADR-PLANIFICADOR-001 §6). `id` = fecha YYYY-MM-DD
+  // (el plan vigente se resuelve por fecha, no por planId).
+  | 'route_plan'
 
 export type RealtimeAction = 'created' | 'updated' | 'deleted'
 

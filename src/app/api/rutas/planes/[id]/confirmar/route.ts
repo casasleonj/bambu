@@ -17,6 +17,8 @@ import { logAudit } from '@/lib/audit'
 import { getConfigInt } from '@/lib/config'
 import { MAX_UNIDADES } from '@/modules/embarques/domain/services/embarque-validation.service'
 import { ConfirmarPlanUseCase } from '@/modules/planificador/application/use-cases/ConfirmarPlanUseCase'
+import { publishRealtimeEvent } from '@/lib/realtime'
+import { prisma } from '@/lib/prisma'
 
 const BodySchema = z.object({
   expectedVersion: z.number().int().positive(),
@@ -68,6 +70,9 @@ export async function POST(
       },
       usuarioId: userId,
     })
+
+    const pd = await prisma.planDia.findUnique({ where: { id }, select: { fecha: true } })
+    if (pd) publishRealtimeEvent('route_plan.updated', pd.fecha.toISOString().slice(0, 10)).catch(() => {})
 
     return apiSuccess({
       estado: result.estado,

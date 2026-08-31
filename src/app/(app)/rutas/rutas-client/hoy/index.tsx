@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { toast } from 'sonner'
 import { useConfirm } from '@/components/confirm-modal'
 import { EmptyState } from '@/components/empty-state'
+import { useRealtimeListener } from '@/hooks/use-realtime-listener'
 import { fetchResilient } from '@/lib/fetch-resilient'
 import type { PlanDia } from '../plan-types'
 import { ExcepcionesBay } from './excepciones-bay'
@@ -32,6 +33,11 @@ export function HoyClient({ fecha, planInicial }: { fecha: string; planInicial: 
       /* mantener el plan actual */
     }
   }, [fecha])
+
+  // Otro usuario tocó el plan de esta fecha → refetch (ADR-PLANIFICADOR-001 §6).
+  useRealtimeListener(['route_plan.updated'], (e) => {
+    if (e.id === fecha) recargar()
+  })
 
   const generar = useCallback(async () => {
     setBusy('generar')

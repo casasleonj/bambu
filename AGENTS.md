@@ -305,6 +305,7 @@ Actualizaciones en vivo entre sesiones/usuarios para cambios en clientes, pedido
 | Producción | `produccion.created` |
 | Trabajador | `trabajador.created`, `trabajador.updated`, `trabajador.deleted` |
 | Config | `config.updated` |
+| Plan de distribución | `route_plan.updated` (`id` = fecha `YYYY-MM-DD`; emitido al generar/confirmar/replanificar/override/cancelar un `PlanDia`) |
 
 ### Archivos relevantes
 

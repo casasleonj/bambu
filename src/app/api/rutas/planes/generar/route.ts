@@ -17,6 +17,7 @@ import { formatZodError } from '@/lib/utils'
 import { getConfigInt } from '@/lib/config'
 import { MAX_UNIDADES } from '@/modules/embarques/domain/services/embarque-validation.service'
 import { GenerarPlanUseCase } from '@/modules/planificador/application/use-cases/GenerarPlanUseCase'
+import { publishRealtimeEvent } from '@/lib/realtime'
 
 const BodySchema = z.object({
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -54,6 +55,8 @@ export async function POST(request: NextRequest) {
       datos: { fecha, version: result.version, grupos: result.grupos, excepciones: result.excepciones },
       usuarioId: userId,
     })
+
+    publishRealtimeEvent('route_plan.updated', fecha).catch(() => {})
 
     return apiSuccess(
       {

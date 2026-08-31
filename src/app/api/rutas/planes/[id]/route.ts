@@ -15,6 +15,7 @@ import { prisma } from '@/lib/prisma'
 import { PrismaPlanificadorRepository } from '@/modules/planificador/infrastructure/PrismaPlanificadorRepository'
 import { serializePlan, resolverNombresPlan } from '@/modules/planificador/presentation/serialize-plan'
 import { OverridePlanUseCase } from '@/modules/planificador/application/use-cases/OverridePlanUseCase'
+import { publishRealtimeEvent } from '@/lib/realtime'
 
 export async function GET(
   _request: NextRequest,
@@ -79,6 +80,7 @@ export async function PATCH(
       datos: { accion: 'override', op: parsed.data.op }, usuarioId: userId,
     })
     const plan = await new PrismaPlanificadorRepository().obtenerPlan(id)
+    if (plan) publishRealtimeEvent('route_plan.updated', plan.fecha.toISOString().slice(0, 10)).catch(() => {})
     return apiSuccess({ plan: plan ? serializePlan(plan, await resolverNombresPlan(plan)) : null })
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown'
@@ -110,7 +112,8 @@ export async function DELETE(
     if (!['PROPOSED', 'REVIEW'].includes(plan.estado)) {
       return apiError('Solo se puede cancelar un plan no confirmado', 409)
     }
-    await prisma.planDia.update({ where: { id }, data: { estado: 'CANCELLED' } })
+    const canc = await prisma.planDia.update({ where: { id }, data: { estado: 'CANCELLED' }, select: { fecha: true } })
+    publishRealtimeEvent('route_plan.updated', canc.fecha.toISOString().slice(0, 10)).catch(() => {})
     logAudit({ entidad: 'PlanDia', registroId: id, accion: 'DELETE', datos: { accion: 'cancelar' }, usuarioId: userId })
     return apiSuccess({ estado: 'CANCELLED' })
   } catch (error) {
