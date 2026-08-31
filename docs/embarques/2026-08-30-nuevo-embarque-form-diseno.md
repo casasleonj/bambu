@@ -1,6 +1,6 @@
 # Diseño — Rediseño del formulario "Nuevo Embarque"
 
-- **Estado:** BORRADOR — decisiones del PO incorporadas (2026-08-31); falta 1 respuesta (§8.8)
+- **Estado:** LISTO PARA PLAN — todas las decisiones del PO tomadas, verificaciones técnicas resueltas (2026-08-31)
 - **Fecha:** 2026-08-30 (rev. 2026-08-31)
 - **Autor:** sesión de rework de frontend de Embarques
 - **Depende de:** PR #144 (`feat(rutas): Planificador de Distribución`) mergeado a `main`
@@ -55,7 +55,7 @@ El caso de uso real es **"tengo estos pedidos, sáquenlos ya"** — el humano pa
 
 1. **Pedís la carga del camión antes de saber qué pedidos llevás.** Los 5 inputs de carga se llenan a mano *antes* de seleccionar los pedidos. Después hay que asignar los pedidos en otra pantalla y rezar que la carga tecleada alcance.
 2. **La asignación de pedidos es un segundo viaje** (otro modal, otra pantalla, otra llamada). Para 3 pedidos es fricción pura.
-3. **Campos que el humano no debería tener que pensar** en un embarque exprés: tipo de moto (texto libre), ruta (para un embarque fuera del plan casi nunca aplica), hora de salida (es "ahora"), base de dinero (casi siempre el mismo monto).
+3. **Campos que estorban en un embarque exprés:** tipo de moto (texto libre), ruta (para un embarque fuera del plan casi nunca aplica), hora de salida (casi siempre "ahora"). La base de dinero **sí** hay que ingresarla siempre a conciencia (§5.4) — pero está enterrada entre campos que no importan.
 4. **Densidad**: 8 grupos de campos + 3 paneles informativos en un modal con scroll. En móvil es una tira larga.
 5. **El form mezcla `create` y `edit`** en un componente de 495 líneas con `useState` disperso y `useEffect` de sincronización frágil (patrón que ya dio bugs en otros forms — ver AGENTS.md #22/#23).
 6. **No hay proyección de capacidad contra los pedidos elegidos** — la barra de capacidad reacciona a la carga tecleada, no a "lo que estos 3 pedidos necesitan".
@@ -63,7 +63,7 @@ El caso de uso real es **"tengo estos pedidos, sáquenlos ya"** — el humano pa
 ## 4. Objetivo del rediseño
 
 - **Pedidos primero.** El humano elige pedidos; la carga se **deriva** de esos pedidos (editable, pero pre-llenada correctamente).
-- **Menos decisiones.** Todo lo que se pueda defaultear con un valor sensato, se defaultea. El humano solo confirma o corrige.
+- **Menos decisiones.** Lo que tiene un default seguro (hora, carga derivada) se pre-llena. Lo que es sensible al contexto y propenso a error (repartidor, base de dinero) se pide explícito, sin autocompletar.
 - **Un camino, no dos pantallas.** Crear + asignar en un solo flujo.
 - **Móvil de primera clase** — el asistente puede estar en el depósito con el celular.
 - **Separar `create` de `edit`** — este rediseño es solo `create`. `edit` se queda como está (o se extrae a su propio componente sin cambios de comportamiento).
@@ -89,11 +89,11 @@ Un wizard corto de **2 pasos** (no 4), dentro del `<Modal>` actual (opción A, c
   (`pedido.updated`, `embarque.updated`). Si otro asistente asigna un pedido mientras
   este wizard está abierto, ese pedido se marca como "ya asignado por otro" y se
   deselecciona con aviso.
-- **Al seleccionar, en vivo:**
-  - Se suma la **carga derivada** (Σ productos de los pedidos elegidos).
-  - Proyección de capacidad contra el repartidor elegido en el Paso 2 (si aún no se
-    eligió, contra la capacidad media); usa `getCapacidadInfo`.
-- CTA: **"Siguiente" (N pedidos · M unidades · P kg)**.
+- **Al seleccionar, en vivo:** se suma la **carga derivada** (Σ productos de los pedidos
+  elegidos) y se muestra el total de unidades y peso. La **proyección de capacidad**
+  (`getCapacidadInfo`) aparece recién en el Paso 2, cuando ya hay repartidor elegido.
+- CTA: **"Siguiente" (N pedidos · M unidades · P kg)** — habilitada siempre (0 pedidos
+  también avanza, ver §8.8).
 
 ### Paso 2 — Confirmar
 
@@ -119,17 +119,20 @@ Dos asistentes (o el mismo en dos pestañas, o repartidores desde su vista) pued
 el wizard abierto a la vez y **elegir el mismo cliente/pedido**. Si ambos confirman, el
 segundo `PUT` intentaría re-asignar un pedido ya asignado.
 
-Mitigaciones (todas del lado del cliente + contrato existente, sin cambio de backend):
+**Buena noticia: el backend YA resuelve esto.** `PUT /api/embarques/[id]` (líneas 327-342
+de `route.ts`) asigna con `updateMany` filtrando `embarqueId: null` (solo lo libre) y, si
+`count < pedidoIds.length`, **devuelve 409 con la lista de pedidos que ya estaban
+asignados**. Nunca pisa. No hace falta cambio de backend.
 
-1. **Lista viva por realtime** (arriba): reduce la ventana, no la elimina.
-2. **El `PUT /api/embarques/[id] { pedidoIds }` debe manejar el 409/rechazo por pedido
-   ya asignado con gracia:** si N de M pedidos ya fueron tomados por otro embarque, el
-   embarque se crea igual con los M−N restantes y se muestra: *"{N} pedido(s) ya
-   fueron asignados a otro embarque y no se incluyeron: [nombres]. Revisá."* — no
-   falla todo el flujo, no re-asigna a la fuerza. **Verificar en implementación qué
-   devuelve hoy el PUT ante un pedido ya asignado** (¿lo ignora, lo pisa, tira 409?).
-3. **Offline (ver §5.6):** al sincronizar, si un pedido de la cola ya está asignado, se
-   marca como conflicto para revisión manual — **nunca** doble-asignación silenciosa.
+Lo que falta es del lado del cliente:
+
+1. **Lista viva por realtime** (arriba): reduce la ventana antes de confirmar.
+2. **Manejar el 409 del `PUT` con gracia:** el embarque ya se creó (paso 1 del POST);
+   ante 409 se muestra *"El embarque #N se creó. Estos pedidos ya estaban en otro
+   embarque y no se asignaron: [nombres]. Revisá."* y se navega igual al detalle. No
+   se cancela el embarque, no se reintenta a la fuerza.
+3. **Offline (ver §5.6):** el `syncWithServer()` aplica la misma regla — el 409 del PUT
+   en replay se traduce a un item de "conflictos para revisar", nunca doble-asignación.
 
 ### 5.4 — Base de dinero (riesgo señalado por el PO)
 
@@ -143,10 +146,12 @@ Por eso: **default $0, ingreso manual siempre, sin autocompletar con "último va
 (autocompletar acá induce el error de dejar la base del viaje anterior). Además:
 - Aviso claro cuando la base queda en $0 al confirmar (como hoy: *"Base $0 — ¿seguro que
   no necesita cambio?"*), pero **no bloquea**.
-- **Pregunta abierta para el equipo:** ¿la base debería quedar visible/editable también
-  desde el detalle del embarque mientras está `ABIERTO`, para corregir un error de carga
-  sin tener que cancelar y rehacer? (Hoy el `EmbarqueUpdateSchema` acepta editar campos
-  en estado ABIERTO — habría que confirmar si incluye `baseDinero`.)
+- **Corrección desde el detalle:** verificado — `EmbarqueUpdateSchema` **sí** acepta
+  `baseDinero` y `PUT /api/embarques/[id]` lo permite editar mientras el embarque está
+  `ABIERTO` (en `EN_RUTA` solo se permiten `pedidoIds`). O sea: si el asistente se
+  equivoca en la base, la corrige desde el modal "Editar" del detalle sin cancelar/rehacer.
+  El modal de edición ya tiene el campo. **No hay trabajo extra acá** — solo asegurar que
+  ese camino quede claro en la UI.
 
 ### 5.5 — Capacidad excedida: advertir + sugerir
 
@@ -197,7 +202,7 @@ Dos llamadas encadenadas del lado del cliente. **No requiere cambio de backend.*
 
 | Opción | Descripción | Trade-off |
 |---|---|---|
-| **A — Wizard de 2 pasos en modal** (recomendada) | Lo de §5, dentro del `<Modal>` actual. | Menor cambio de navegación, consistente con el resto de embarques (todo es modal). El modal se hace un poco alto en el Paso 1. |
+| **A — Wizard de 2 pasos en modal** ✅ elegida | Lo de §5, dentro del `<Modal>` actual. | Menor cambio de navegación, consistente con el resto de embarques (todo es modal). El modal se hace un poco alto en el Paso 1. |
 | **B — Pantalla dedicada** `/embarques/nuevo` | Ruta propia, SSR de pedidos pendientes, wizard a pantalla completa. | Mejor en móvil, más espacio, deep-link (`?pedidos=id,id`). Pero rompe el patrón "todo modal" y agrega una ruta. Más trabajo. |
 | **C — Un solo paso, pedidos arriba** | Sin wizard: la lista de pedidos arriba, los campos (con defaults) abajo, todo en una vista scrolleable. | Menos clicks, pero vuelve a la tira larga del form actual. Difícil en móvil. |
 | **D — No rediseñar, solo derivar la carga** | Dejar el form como está pero agregar "traer carga de pedidos seleccionados". | Mínimo esfuerzo. No resuelve el problema de fondo (asignación en dos viajes, densidad). |
@@ -235,11 +240,8 @@ Dos llamadas encadenadas del lado del cliente. **No requiere cambio de backend.*
 ### API
 
 - **Sin cambios de backend.** 2 llamadas cliente: `POST /api/embarques` → `PUT /api/embarques/[id] { pedidoIds }`.
-- **A verificar en implementación:** qué hace hoy `PUT /api/embarques/[id]` cuando un
-  `pedidoId` de la lista **ya está asignado a otro embarque** (¿lo ignora, lo pisa,
-  devuelve 409?). De eso depende cómo se implementa la detección de conflicto de §5.3
-  del lado del cliente. Si el PUT hoy pisa silenciosamente, **eso sí es un cambio de
-  backend necesario** (rechazar/reportar en vez de pisar) y necesita ADR.
+- `PUT` ya devuelve **409 con la lista de pedidos ya asignados** si hubo carrera (verificado
+  en `route.ts:327-342`). El cliente lo traduce al aviso de §5.3 — sin ADR.
 - Lista de pedidos del Paso 1: reusa `GET /api/pedidos?all=true` (como el modal de
   asignar) + filtro cliente por `fechaEntrega`. Si el volumen crece, considerar un
   query param `?entregarHasta=<fecha>` (additivo a la route, sin tocar dominio).
@@ -273,15 +275,16 @@ Dos llamadas encadenadas del lado del cliente. **No requiere cambio de backend.*
 | 5 | Ruta en ad-hoc | *(sin respuesta explícita)* → propuesta: colapsada tras "Más opciones", default ninguna. |
 | 6 | Filtro de la lista del Paso 1 | **Todos los pendientes cuya fecha de entrega sea hoy o esté vencida** (más los sin fecha). Los "entregar en 8 días" NO aparecen. Toggle para ver futuros. `horaPreferida` se muestra como dato. Ver §5 Paso 1. |
 | 7 | Capacidad excedida | **Solo advierte + sugiere la mejor opción** (otro repartidor / cuántas unidades quitar). Nunca bloquea (§5.5). |
-| 8 | ¿Crear con 0 pedidos? | **PENDIENTE** — ¿el wizard exige ≥1 pedido para avanzar, o se permite crear un embarque en blanco y asignarle en ruta? |
+| 8 | ¿Crear con 0 pedidos? | **Permitir, pero con confirmación.** Se puede confirmar con 0 pedidos; aparece *"Vas a crear un embarque sin pedidos asignados. ¿Seguro?"*. El "Siguiente" del Paso 1 no se bloquea por 0 selección. |
 
-### Pendientes de respuesta
+### Verificaciones técnicas — RESUELTAS
 
-- **§8.8** — ¿mínimo 1 pedido, o se permite crear en blanco?
-- **§5.4** — ¿la base de dinero se puede corregir desde el detalle del embarque `ABIERTO`
-  sin cancelar/rehacer? (hay que verificar si `EmbarqueUpdateSchema` ya lo permite).
-- **§5.3 / API** — ¿qué hace hoy `PUT /api/embarques/[id]` con un pedido ya asignado a
-  otro embarque? (define si la detección de conflicto es solo cliente o necesita ADR).
+- **§5.3** — `PUT /api/embarques/[id]` **ya** rechaza doble asignación (updateMany
+  `embarqueId: null` + 409 con la lista). Sin cambio de backend.
+- **§5.4** — `baseDinero` **ya** es editable desde el detalle en estado `ABIERTO`
+  (`EmbarqueUpdateSchema` + route lo permiten). Sin trabajo extra.
+
+Todas las decisiones necesarias para implementar están tomadas.
 
 ## 9. Fuera de alcance
 
@@ -302,19 +305,24 @@ Dos llamadas encadenadas del lado del cliente. **No requiere cambio de backend.*
 - Crear un embarque ad-hoc con 3 pedidos: **≤ 2 pantallas, ≤ 6 taps**, la carga sale pre-llenada correcta.
 - En móvil (375px) no hay scroll horizontal; los targets son ≥ 44px.
 - `npx tsc --noEmit` limpio, `npx eslint` limpio.
-- Unit: `derivar-carga.test.ts`, `defaults.test.ts`, test del wizard (pasos, gating, 2 llamadas al confirmar).
-- E2E `e2e/embarques.spec.ts` (o nuevo `embarques-nuevo.spec.ts`): flujo pedidos→confirmar→embarque creado con los pedidos asignados; caso offline; caso stock insuficiente + override.
+- Unit: `derivar-carga.test.ts`, `filtrar-pedidos-hoy.test.ts`, `sugerir-capacidad.test.ts`,
+  `defaults.test.ts`, test del wizard (navegación de pasos, gating del CTA por repartidor,
+  confirmación de "0 pedidos", las 2 llamadas al confirmar, manejo del 409).
+- E2E `e2e/embarques-nuevo.spec.ts` (nuevo): flujo pedidos→confirmar→embarque creado con
+  los pedidos asignados; crear con 0 pedidos (confirmación); caso offline; stock
+  insuficiente + override; capacidad excedida muestra sugerencia y deja seguir.
 - Con el flujo viejo desactivado, no queda `AutoGenerar*` ni `mode='create'` colgando en `EmbarqueFormModal`.
 
 ## 12. Estimación gruesa
 
 | Bloque | Tamaño |
 |---|---|
-| Extraer `editar-embarque-modal.tsx` + `useStockDisponible()` | S |
-| `derivar-carga.ts` + `defaults.ts` + tests | S |
-| `paso-pedidos.tsx` (lista + selección + proyección) | M |
-| `paso-confirmar.tsx` (campos + defaults + override) | M |
-| `NuevoEmbarqueWizard` (orquestación + 2 llamadas + offline) | M |
+| Extraer `editar-embarque-modal.tsx` + `useStockDisponible()` del form actual | S |
+| Funciones puras: `derivar-carga` · `filtrar-pedidos-hoy` · `sugerir-capacidad` · `defaults` + tests | S |
+| `paso-pedidos.tsx` (lista + filtro fecha + selección + realtime) | M |
+| `paso-confirmar.tsx` (campos + panel stock + override + sugerencia capacidad) | M |
+| `NuevoEmbarqueWizard` (orquestación + 2 llamadas + manejo 409) | M |
+| Offline: extender `syncWithServer()` para create→assign con conflictos | M — la parte más delicada |
 | Wiring en `index.tsx` + E2E | S |
 
-Total: ~1 unidad de trabajo mediana. Sin riesgo de backend.
+Total: ~1 unidad de trabajo mediana-grande. Sin cambios de backend.
