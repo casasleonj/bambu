@@ -74,17 +74,12 @@ alternativas permanentes.
   o removidas (cubiertas por `e2e/rutas-planificador.spec.ts`). Los helpers puros de
   `src/lib/embarque-auto.ts` (`splitPedidosByCapacity`, `pesoPedido`, `unidadesPedido`)
   **sobreviven** — el motor del planificador los reutiliza (`capacidad.service.ts`). ✅
-- **Cleanup (post-validación del Planificador):** se elimina
-  `src/app/api/embarques/auto/route.ts`, `src/lib/embarque-auto.ts` queda solo por
-  sus helpers puros (`splitPedidosByCapacity`, `pesoPedido`, `unidadesPedido`) que
-  el motor del planificador reutiliza (ver F0 §1 #5).
 - **El flujo manual "Nuevo Embarque"** (crear un embarque sin plan) **se
   conserva** — es válido para casos fuera del plan del día.
 
-Esto además **desbloquea** el rework diferido de "crear embarque / auto-generar"
-que hoy espera al módulo de rutas (ver `memory/embarques-auto-generar-es-el-objetivo`
-y `docs/embarques/PENDIENTE.md` §"Diferido"): ese rework pasa a ser el consumidor
-del Planificador en F6, no un flujo propio.
+Esto **desbloquea** el rework diferido de "crear embarque / auto-generar" que
+esperaba al módulo de rutas (`memory/embarques-auto-generar-es-el-objetivo`,
+`docs/embarques/PENDIENTE.md` §"Diferido").
 
 ### 4. Fallo parcial → saga simple, sin rollback destructivo
 
