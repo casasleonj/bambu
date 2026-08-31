@@ -14,6 +14,23 @@ DB (ver §12).
 
 ## 0. Resumen ejecutivo
 
+### 0.0 — Backfill de coordenadas EJECUTADO (2026-08-30)
+
+Corrido contra Supabase producción (extracción del pin desde `linkUbicacion`):
+
+| | Antes | Después |
+|---|---|---|
+| Clientes activos con coordenadas | 2 (1.1%) | **62 (34.6%)** |
+| Negocios activos con coordenadas | 5 (6.6%) | **26 (34%)** |
+| Clientes con alguna geo (coords o barrio) | ~75 (42%) | **97 (54%)** |
+| Clientes sin nada de geo | ~106 | **82** |
+
+Todas las coords quedaron dentro del casco urbano de Agustín Codazzi (lat
+10.022–10.044, lng −73.254 a −73.224), `geocodeOrigen='PARSED_URL'`. Cero
+`(0,0)`, cero outliers. Los ~82 clientes sin nada (sin link, sin coords, sin
+barrio) siguen requiriendo carga manual o esperar a que el GPS de entrega
+acumule (rollout de la app a repartidores).
+
 ### 0.a — Estado de los datos y decisión de alcance (2026-08-30)
 
 Las queries de §12 contra Supabase producción muestran **poca demanda de reparto
