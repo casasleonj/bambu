@@ -14,7 +14,7 @@ import type { Embarque, Trabajador, Ruta } from './types'
 import { EmbarqueCard } from './embarque-card'
 import { ResumenEstados } from './resumen-estados'
 import { CommandCenter } from './command-center'
-import { EmbarqueFormModal } from './embarque-form-modal'
+import { NuevoEmbarqueWizard } from './nuevo-embarque'
 import { StatsTab } from './stats-tab'
 import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 import { useRepartidoresYRutas } from '@/hooks/use-repartidores-y-rutas'
@@ -61,9 +61,7 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
     initialData ? { trabajadores: initialData.trabajadores, rutas: initialData.rutas } : undefined
   )
   const [loading, setLoading] = useState(!initialData)
-  const [showFormModal, setShowFormModal] = useState(false)
-  const [formMode, setFormMode] = useState<'create' | 'edit'>('create')
-  const [editingEmbarque, setEditingEmbarque] = useState<Embarque | null>(null)
+  const [showWizard, setShowWizard] = useState(false)
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [dateRange, setDateRange] = useState<{ desde: string | null; hasta: string | null }>({ desde: null, hasta: null })
   const [filtroFase, setFiltroFase] = useState<'' | 'ABIERTO' | FaseUIEmbarque>('')
@@ -293,7 +291,7 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
           </Tooltip>
           <Tooltip content="Crea un embarque manual seleccionando repartidor y ruta" title="Nuevo Embarque" position="bottom">
             <button
-              onClick={() => { setFormMode('create'); setEditingEmbarque(null); setShowFormModal(true) }}
+              onClick={() => setShowWizard(true)}
               className="px-4 py-2 min-h-[40px] md:min-h-0 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
             >
               + Nuevo Embarque
@@ -498,7 +496,7 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
       {EMBARQUES_V2 ? (
         <CommandCenter
           embarques={embarques}
-          onNuevo={() => { setFormMode('create'); setEditingEmbarque(null); setShowFormModal(true) }}
+          onNuevo={() => setShowWizard(true)}
         />
       ) : (
         <>
@@ -522,9 +520,9 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
                       : 'Los embarques agrupan pedidos por zona para optimizar las rutas de entrega'
                   }
                   actionLabel="+ Crear Embarque"
-                  onAction={() => { setFormMode('create'); setEditingEmbarque(null); setShowFormModal(true) }}
+                  onAction={() => setShowWizard(true)}
                   guidedSteps={[
-                    { label: 'Crear un embarque', description: 'Selecciona repartidor y ruta', onClick: () => { setFormMode('create'); setEditingEmbarque(null); setShowFormModal(true) } },
+                    { label: 'Crear un embarque', description: 'Selecciona repartidor y ruta', onClick: () => setShowWizard(true) },
                     { label: 'Asignar pedidos', description: 'Los pedidos pendientes se muestran automáticamente' },
                     { label: 'Enviar repartidor', description: 'El repartidor recibe la ruta en su app' },
                     { label: 'Cerrar embarque', description: 'Registra las entregas y cobros al finalizar' },
@@ -540,15 +538,12 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
         <StatsTab dateRange={dateRange} />
       )}
 
-      <EmbarqueFormModal
-        open={showFormModal}
-        onClose={() => setShowFormModal(false)}
-        onSaved={fetchData}
+      <NuevoEmbarqueWizard
+        open={showWizard}
+        onClose={() => setShowWizard(false)}
+        onCreated={fetchData}
         trabajadores={trabajadores}
         rutas={rutas}
-        mode={formMode}
-        embarque={editingEmbarque}
-        guided={EMBARQUES_V2 && formMode === 'create'}
       />
 
       {/* Stock Estimado Modal */}
