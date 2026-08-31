@@ -15,6 +15,7 @@ const CALIDAD_LABEL: Record<string, string> = {
 export function GrupoCard({
   grupo,
   grupos,
+  repartidores,
   planId,
   expectedUpdatedAt,
   confirmado,
@@ -22,6 +23,7 @@ export function GrupoCard({
 }: {
   grupo: PlanGrupo
   grupos: PlanGrupo[]
+  repartidores: Array<{ id: string; nombre: string }>
   planId: string
   expectedUpdatedAt: string
   confirmado: boolean
@@ -30,6 +32,28 @@ export function GrupoCard({
   const [abierto, setAbierto] = useState(false)
   const [porque, setPorque] = useState(false)
   const [moviendo, setMoviendo] = useState<string | null>(null)
+  const [reasignando, setReasignando] = useState(false)
+
+  async function asignarRepartidor(trabajadorId: string) {
+    setReasignando(true)
+    const r = await fetchResilient(`/api/rutas/planes/${planId}`, {
+      method: 'PATCH',
+      body: {
+        expectedUpdatedAt,
+        op: { tipo: 'asignarRepartidor', grupoId: grupo.id, trabajadorId: trabajadorId || null },
+      },
+      localEndpoint: 'rutas-plan-repartidor',
+    })
+    setReasignando(false)
+    if (r.status === 'ok') {
+      toast.success('Repartidor asignado')
+      await onCambio()
+    } else if (r.status === 'error' && r.statusCode === 409) {
+      toast.error('El plan cambió. Recargá la página.')
+    } else {
+      toast.error('No se pudo asignar el repartidor')
+    }
+  }
 
   const nPedidos = grupo.paradas.reduce(
     (s, p) => s + p.actividades.reduce((sa, a) => sa + a.pedidoIds.length, 0),
@@ -57,11 +81,8 @@ export function GrupoCard({
 
   return (
     <div className="bg-white rounded-lg border shadow-sm" data-testid="rutas-grupo">
-      <button
-        onClick={() => setAbierto((v) => !v)}
-        className="w-full flex items-start justify-between gap-3 p-4 text-left"
-      >
-        <div>
+      <div className="flex items-start justify-between gap-3 p-4">
+        <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="font-semibold text-lg">{grupo.nombreLogico}</h3>
             {grupo.embarqueId && (
@@ -73,13 +94,35 @@ export function GrupoCard({
             {grupo.paradas.length !== 1 ? 's' : ''} · {grupo.capacidadUnidades} unidades
             {grupo.distanciaKm > 0 && ` · ~${grupo.distanciaKm} km`}
           </p>
-          <p className="text-sm text-gray-500 mt-0.5">
-            {grupo.trabajadorNombre ? `Repartidor: ${grupo.trabajadorNombre}` : 'Sin repartidor asignado'}
-            {grupo.horaSalidaPropuesta && ` · sale ${grupo.horaSalidaPropuesta}`}
-          </p>
+          <div className="text-sm text-gray-500 mt-1 flex items-center gap-2 flex-wrap">
+            {confirmado ? (
+              <span>{grupo.trabajadorNombre ? `Repartidor: ${grupo.trabajadorNombre}` : 'Sin repartidor'}</span>
+            ) : (
+              <select
+                aria-label="Repartidor del grupo"
+                className="text-sm border rounded px-1.5 py-0.5 bg-white disabled:opacity-50"
+                disabled={reasignando}
+                value={grupo.trabajadorFinalId ?? ''}
+                onChange={(e) => asignarRepartidor(e.target.value)}
+              >
+                <option value="">Sin repartidor</option>
+                {repartidores.map((r) => (
+                  <option key={r.id} value={r.id}>{r.nombre}</option>
+                ))}
+              </select>
+            )}
+            {grupo.horaSalidaPropuesta && <span>· sale {grupo.horaSalidaPropuesta}</span>}
+          </div>
         </div>
-        <span className="text-gray-400 text-sm mt-1">{abierto ? '▲' : '▼'}</span>
-      </button>
+        <button
+          onClick={() => setAbierto((v) => !v)}
+          aria-expanded={abierto}
+          aria-label={abierto ? 'Ocultar paradas' : 'Ver paradas'}
+          className="text-gray-400 text-sm mt-1 px-2 py-1 rounded hover:bg-gray-100"
+        >
+          {abierto ? '▲' : '▼'}
+        </button>
+      </div>
 
       {grupo.explicacion && (
         <div className="px-4 pb-2">

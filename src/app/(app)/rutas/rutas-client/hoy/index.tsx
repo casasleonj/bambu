@@ -29,10 +29,12 @@ export function HoyClient({
   fecha,
   planInicial,
   desactualizadoInicial,
+  repartidores = [],
 }: {
   fecha: string
   planInicial: PlanDia | null
   desactualizadoInicial?: Desactualizado | null
+  repartidores?: Array<{ id: string; nombre: string }>
 }) {
   const [plan, setPlan] = useState<PlanDia | null>(planInicial)
   const [desac, setDesac] = useState<Desactualizado | null>(desactualizadoInicial ?? null)
@@ -207,6 +209,7 @@ export function HoyClient({
             key={g.id}
             grupo={g}
             grupos={plan.grupos}
+            repartidores={repartidores}
             planId={plan.id}
             expectedUpdatedAt={plan.updatedAt}
             confirmado={confirmado || !!busy}
