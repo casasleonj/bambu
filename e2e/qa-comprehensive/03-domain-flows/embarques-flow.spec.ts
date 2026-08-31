@@ -49,8 +49,8 @@ test.describe('Domain Flow - Embarques', () => {
     await expect(page).toHaveURL(/\/embarques\//)
   })
 
-  test('TC-DE-06: Auto-generate embarques button works', async ({ page }) => {
-    const res = await apiPost(page, '/api/embarques/auto', {})
+  test('TC-DE-06: generar propuesta de distribución responde', async ({ page }) => {
+    const res = await apiPost(page, '/api/rutas/planes/generar', {})
     expect([200, 201, 400]).toContain(res.status())
   })
 

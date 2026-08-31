@@ -30,7 +30,7 @@ test.describe('Embarques — Contexto ADMIN', () => {
     await gotoEmbarques(p)
     await expect(p.getByRole('heading', { name: 'Embarques del Día' })).toBeVisible()
     await expect(p.locator('button:has-text("+ Nuevo Embarque")')).toBeVisible()
-    await expect(p.locator('button:has-text("Auto-Generar")')).toBeVisible()
+    await expect(p.locator('button:has-text("Planificar día")')).toBeVisible()
   })
 
   test('ADMIN ve pedidos pendientes para asignar', async () => {
@@ -232,20 +232,6 @@ test.describe('Embarques — Filters', () => {
     await expect(p.getByText('Capacidad máxima:')).toBeVisible()
     await expect(p.getByText('≤75% Ideal')).toBeVisible()
     await expect(p.getByText('>100% Excedido')).toBeVisible()
-  })
-})
-
-// ─── Auto-Generate Tests ─────────────────────────────────────────────────────
-
-test.describe('Embarques — Auto-Generate', () => {
-
-  test('auto-generate via API returns valid response', async ({ page }) => {
-    await loginAs(page, 'admin')
-    await createTrabajador(page)
-    const res = await apiPost(page, '/api/embarques/auto', {})
-    const data = await res.json()
-    expect(data).toBeDefined()
-    expect(res.status()).toBeLessThan(500)
   })
 })
 

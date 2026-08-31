@@ -65,16 +65,15 @@ existen, así que este paso solo ve `ENTREGA`.
 El Planificador **reemplaza** a `/api/embarques/auto`. No coexisten como
 alternativas permanentes.
 
-- **F1:** el endpoint y su UI (`auto-generar-preview-modal.tsx`) marcados `@deprecated`. ✅
-- **F6 (hecho):** el botón de `/embarques` ahora dice **"Planificar día"** y navega
-  a `/rutas` (el plan se genera/revisa/confirma ahí; al confirmar
-  `MaterializarPlanUseCase` crea los embarques). El modal viejo +
-  `/api/embarques/auto` quedan detrás del flag `NEXT_PUBLIC_EMBARQUES_AUTO_LEGACY`
-  (`playwright.config.ts` lo pone en `true` para que las specs `e2e/embarques*.spec.ts`
-  que ejercitan el modal viejo sigan verdes hasta reescribirse). ✅
-- **Cleanup (post-validación):** reescribir esas specs al flujo del plan, quitar el
-  flag, eliminar `src/app/api/embarques/auto/route.ts` + `auto-generar-preview-modal.tsx`.
-  `computePreview` deja de tener consumidores.
+- **F6 (hecho):** el botón de `/embarques` dice **"Planificar día"** y navega a
+  `/rutas` (el plan se genera/revisa/confirma ahí; al confirmar
+  `MaterializarPlanUseCase` crea los embarques). ✅
+- **Cleanup (hecho):** eliminados `src/app/api/embarques/auto/route.ts`,
+  `auto-generar-preview-modal.tsx` y el flag `NEXT_PUBLIC_EMBARQUES_AUTO_LEGACY`.
+  Las specs `e2e/embarques*.spec.ts` de "auto-generar" reescritas al flujo del plan
+  o removidas (cubiertas por `e2e/rutas-planificador.spec.ts`). Los helpers puros de
+  `src/lib/embarque-auto.ts` (`splitPedidosByCapacity`, `pesoPedido`, `unidadesPedido`)
+  **sobreviven** — el motor del planificador los reutiliza (`capacidad.service.ts`). ✅
 - **Cleanup (post-validación del Planificador):** se elimina
   `src/app/api/embarques/auto/route.ts`, `src/lib/embarque-auto.ts` queda solo por
   sus helpers puros (`splitPedidosByCapacity`, `pesoPedido`, `unidadesPedido`) que

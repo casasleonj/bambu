@@ -100,12 +100,6 @@ export default defineConfig({
     stdout: process.env.CI ? 'pipe' : 'ignore',
     env: {
       PORT: '3001',
-      // F6 (ADR-PLANIFICADOR-003 §3): el botón "Auto-Generar" de /embarques ahora
-      // navega al Planificador (/rutas). Las specs de embarques que ejercitan el
-      // modal viejo + /api/embarques/auto (`e2e/embarques*.spec.ts`) siguen contra
-      // el path legacy hasta que se reescriban al flujo del plan. Quitar este flag
-      // (y esas specs) en el cleanup post-validación.
-      NEXT_PUBLIC_EMBARQUES_AUTO_LEGACY: 'true',
       // Relajar el límite de conexiones SSE en tests E2E para que múltiples
       // pestañas / reconexiones del RealtimeProvider no provoquen rate-limit
       // durante las pruebas de entrega de eventos (M6).

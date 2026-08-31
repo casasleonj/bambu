@@ -15,7 +15,6 @@ import { EmbarqueCard } from './embarque-card'
 import { ResumenEstados } from './resumen-estados'
 import { CommandCenter } from './command-center'
 import { EmbarqueFormModal } from './embarque-form-modal'
-import { AutoGenerarPreviewModal } from './auto-generar-preview-modal'
 import { StatsTab } from './stats-tab'
 import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 import { useRepartidoresYRutas } from '@/hooks/use-repartidores-y-rutas'
@@ -63,7 +62,6 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
   )
   const [loading, setLoading] = useState(!initialData)
   const [showFormModal, setShowFormModal] = useState(false)
-  const [showAutoGenerarModal, setShowAutoGenerarModal] = useState(false)
   const [formMode, setFormMode] = useState<'create' | 'edit'>('create')
   const [editingEmbarque, setEditingEmbarque] = useState<Embarque | null>(null)
   const [fetchError, setFetchError] = useState<string | null>(null)
@@ -142,15 +140,9 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
     fetchData()
   })
 
-  // F6 (ADR-PLANIFICADOR-003 §3): "Auto-Generar" ahora lleva al Planificador de
-  // Distribución. El plan del día se genera/revisa/confirma en /rutas y al
-  // confirmar crea los embarques. El modal viejo (`AutoGenerarPreviewModal` +
-  // `/api/embarques/auto`) queda como fallback deprecado detrás de un flag.
-  const AUTO_LEGACY = process.env.NEXT_PUBLIC_EMBARQUES_AUTO_LEGACY === 'true'
-  const handleAutoGenerate = () => {
-    if (AUTO_LEGACY) setShowAutoGenerarModal(true)
-    else router.push('/rutas')
-  }
+  // ADR-PLANIFICADOR-003 §3: la distribución del día se planifica en /rutas
+  // (el plan propone los grupos y al confirmar crea los embarques).
+  const handleAutoGenerate = () => router.push('/rutas')
 
   const handleDateChange = useCallback((desde: string | null, hasta: string | null) => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -296,7 +288,7 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
               onClick={handleAutoGenerate}
               className="px-4 py-2 min-h-[40px] md:min-h-0 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
             >
-              {AUTO_LEGACY ? 'Auto-Generar' : 'Planificar día'}
+              Planificar día
             </button>
           </Tooltip>
           <Tooltip content="Crea un embarque manual seleccionando repartidor y ruta" title="Nuevo Embarque" position="bottom">
@@ -557,12 +549,6 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
         mode={formMode}
         embarque={editingEmbarque}
         guided={EMBARQUES_V2 && formMode === 'create'}
-      />
-
-      <AutoGenerarPreviewModal
-        open={showAutoGenerarModal}
-        onClose={() => setShowAutoGenerarModal(false)}
-        onCreated={fetchData}
       />
 
       {/* Stock Estimado Modal */}

@@ -161,7 +161,7 @@ test.describe('Security - Privilege Escalation', () => {
     await astPage.close()
   })
 
-  test('SEC-09: CONTADOR cannot POST /api/embarques/auto (admin only)', async ({ context }) => {
+  test('SEC-09: CONTADOR cannot POST /api/rutas/planes/generar (ADMIN/ASISTENTE only)', async ({ context }) => {
     const ctxPage = await context.newPage()
     await ctxPage.goto(`${BASE}/login`)
     await ctxPage.fill('input[type="text"]', 'contador')
@@ -169,7 +169,7 @@ test.describe('Security - Privilege Escalation', () => {
     await ctxPage.click('button[type="submit"]')
     await expect(ctxPage).toHaveURL(/\/reportes/, { timeout: 10000 })
 
-    const res = await ctxPage.request.post(`${BASE}/api/embarques/auto`, {})
+    const res = await ctxPage.request.post(`${BASE}/api/rutas/planes/generar`, { data: {} })
     expect([401, 403, 404]).toContain(res.status())
     await ctxPage.close()
   })

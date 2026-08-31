@@ -195,11 +195,19 @@ const spec = {
         responses: { '200': { description: 'Ruta cerrada, pedidos actualizados' } },
       },
     },
-    '/api/embarques/auto': {
+    '/api/rutas/planes/generar': {
       post: {
-        tags: ['Embarques'], summary: 'Generar embarques automáticos (ADMIN)',
-        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', properties: { rutaId: { type: 'string' }, limit: { type: 'integer' } } } } } },
-        responses: { '201': { description: 'Embarques generados' } },
+        tags: ['Rutas'], summary: 'Generar la propuesta de distribución del día (ADMIN/ASISTENTE)',
+        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { fecha: { type: 'string' } } } } } },
+        responses: { '201': { description: 'PlanDia PROPOSED' } },
+      },
+    },
+    '/api/rutas/planes/{id}/confirmar': {
+      post: {
+        tags: ['Rutas'], summary: 'Confirmar el plan y materializar los embarques (ADMIN/ASISTENTE)',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['expectedVersion'], properties: { expectedVersion: { type: 'integer' }, idempotencyKey: { type: 'string' } } } } } },
+        responses: { '200': { description: 'CONFIRMED | INTEGRATION_PARTIAL' }, '409': { description: 'Conflicto de versión' } },
       },
     },
 
