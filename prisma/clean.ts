@@ -103,6 +103,13 @@ async function clean() {
   // dependencias circulares (p. ej. Cliente <-> Negocio).
   const tables = [
     'SesionActiva',
+    // Planificador de distribución (hijas → padre; TRUNCATE CASCADE igual las cubre).
+    'PlanActividad',
+    'PlanParada',
+    'PlanExcepcion',
+    'PlanDiaVersion',
+    'PlanGrupo',
+    'PlanDia',
     'ImportStagingContacto',
     'ImportStagingRow',
     'CasoEvento',

@@ -1,6 +1,6 @@
 // @tests planificador de distribución — flujo "Hoy" (F5)
 //   generar propuesta → revisar → resolver excepción → confirmar → embarque creado
-import { test, expect, loginAs, goto, apiPost, apiGet, apiPatch, resetDatabase } from './fixtures'
+import { test, expect, loginAs, goto, apiPost, apiGet, resetDatabase } from './fixtures'
 
 test.describe('Rutas · Planificador (Hoy)', () => {
   test.describe.configure({ mode: 'serial' })
@@ -25,8 +25,10 @@ test.describe('Rutas · Planificador (Hoy)', () => {
       nombre: 'Repa Planif', rol: 'REPARTIDOR', usaMoto: true, tipoPago: 'COMISION',
     })
 
+    // Cliente con ubicación (link de Maps → geocode) y cliente sin nada.
     const c1res = await apiPost(page, '/api/clientes', {
       nombre: 'Planif Con Geo', telefono: '3011112222', barrio: 'Centro',
+      linkUbicacion: 'https://www.google.com/maps?q=10.031,-73.241',
     })
     const c2res = await apiPost(page, '/api/clientes', {
       nombre: 'Planif Sin Geo', telefono: '3013334444',
@@ -36,10 +38,16 @@ test.describe('Rutas · Planificador (Hoy)', () => {
     const id1 = c1.cliente?.id ?? c1.id
     const id2 = c2.cliente?.id ?? c2.id
 
-    await apiPatch(page, `/api/clientes/${id1}`, { lat: 10.03, lng: -73.24, geocodeOrigen: 'MANUAL' })
+    await apiPost(page, `/api/clientes/${id1}/geocode`, {})
 
-    await apiPost(page, '/api/pedidos', { clienteId: id1, canal: 'DOMICILIO', productos: { PACA_AGUA: 4 } })
-    await apiPost(page, '/api/pedidos', { clienteId: id2, canal: 'DOMICILIO', productos: { PACA_AGUA: 2 } })
+    const p1 = await apiPost(page, '/api/pedidos', {
+      clienteId: id1, canal: 'DOMICILIO', items: [{ producto: 'PACA_AGUA', cantidad: 4 }],
+    })
+    const p2 = await apiPost(page, '/api/pedidos', {
+      clienteId: id2, canal: 'DOMICILIO', items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
+    })
+    expect(p1.ok(), await p1.text()).toBeTruthy()
+    expect(p2.ok(), await p2.text()).toBeTruthy()
 
     await goto(page, '/rutas')
     await page.locator('button:has-text("Generar propuesta")').click({ force: true })
@@ -47,10 +55,15 @@ test.describe('Rutas · Planificador (Hoy)', () => {
     await expect(page.getByTestId('rutas-grupo').first()).toBeVisible({ timeout: 15000 })
     await expect(page.getByTestId('rutas-excepciones')).toBeVisible()
 
-    page.on('dialog', (d) => d.accept())
     await page.getByTestId('btn-confirmar-plan').click({ force: true })
 
-    await expect(page.locator('text=/Plan confirmado/i')).toBeVisible({ timeout: 15000 })
+    // Hay excepción ALTA (cliente sin geo) → useConfirm pide confirmación.
+    const dialog = page.locator('[role="dialog"]')
+    await expect(dialog).toBeVisible({ timeout: 5000 })
+    await dialog.locator('button:has-text("Confirmar")').click()
+
+    await expect(page.getByText(/Plan confirmado/i).first()).toBeVisible({ timeout: 15000 })
+    await expect(page.getByTestId('rutas-hoy')).toContainText('Confirmado')
 
     const embRes = await apiGet(page, '/api/embarques')
     const emb = await embRes.json()
