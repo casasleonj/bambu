@@ -32,7 +32,12 @@ export async function GET(request: NextRequest) {
     const repo = new PrismaPlanificadorRepository()
     const plan = await repo.obtenerVigentePorFecha(fecha)
     const nombres = plan ? await resolverNombresPlan(plan) : undefined
-    return apiSuccess({ fecha, plan: plan ? serializePlan(plan, nombres) : null })
+    const estado = plan ? await repo.estaDesactualizado(plan.id) : null
+    return apiSuccess({
+      fecha,
+      plan: plan ? serializePlan(plan, nombres) : null,
+      desactualizado: estado,
+    })
   } catch (error) {
     logger.error(
       { err: error instanceof Error ? error.message : 'Unknown', fecha },

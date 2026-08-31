@@ -6,6 +6,7 @@ import { GenerarPlanUseCase } from '@/modules/planificador/application/use-cases
 import { ConfirmarPlanUseCase } from '@/modules/planificador/application/use-cases/ConfirmarPlanUseCase'
 import { ReplanUseCase } from '@/modules/planificador/application/use-cases/ReplanUseCase'
 import { OverridePlanUseCase } from '@/modules/planificador/application/use-cases/OverridePlanUseCase'
+import { PrismaPlanificadorRepository } from '@/modules/planificador/infrastructure/PrismaPlanificadorRepository'
 
 const FECHA = '2026-08-30'
 
@@ -118,6 +119,28 @@ describe('GenerarPlanUseCase — integración', () => {
     expect(planes).toHaveLength(2)
     expect(planes[0].estado).toBe('SUPERSEDED')
     expect(planes[1].estado).toBe('PROPOSED')
+  })
+
+  it('estaDesactualizado: false recién generado; true tras agregar un pedido elegible', async () => {
+    const repo = new PrismaPlanificadorRepository()
+    const plan = await testPrisma.planDia.findFirst({
+      where: { fecha: new Date('2026-08-30T00:00:00-05:00'), estado: 'PROPOSED' },
+      orderBy: { version: 'desc' },
+    })
+
+    const antes = await repo.estaDesactualizado(plan!.id)
+    expect(antes.desactualizado).toBe(false)
+
+    const c = await testPrisma.cliente.create({
+      data: { nombre: 'Desactualiza', telefono: '3990001234', barrio: 'Centro', lat: 10.031, lng: -73.241, geocodeOrigen: 'MANUAL' },
+    })
+    await testPrisma.pedido.create({
+      data: { clienteId: c.id, canal: 'DOMICILIO', origen: 'PEDIDO', fecha: new Date('2026-08-29T12:00:00-05:00'), cPacaAguaPed: 1 },
+    })
+
+    const despues = await repo.estaDesactualizado(plan!.id)
+    expect(despues.desactualizado).toBe(true)
+    expect(despues.nuevos).toBe(1)
   })
 
   it('confirmar → materializa embarques, pedidos EN_RUTA, plan CONFIRMED', async () => {

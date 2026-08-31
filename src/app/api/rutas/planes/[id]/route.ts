@@ -30,7 +30,10 @@ export async function GET(
     const repo = new PrismaPlanificadorRepository()
     const plan = await repo.obtenerPlan(id)
     if (!plan) return apiError('Plan no encontrado', 404)
-    return apiSuccess({ plan: serializePlan(plan, await resolverNombresPlan(plan)) })
+    return apiSuccess({
+      plan: serializePlan(plan, await resolverNombresPlan(plan)),
+      desactualizado: await repo.estaDesactualizado(id),
+    })
   } catch (error) {
     logger.error(
       { err: error instanceof Error ? error.message : 'Unknown', id },

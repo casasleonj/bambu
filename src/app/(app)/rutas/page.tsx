@@ -15,10 +15,11 @@ export default async function RutasHoyPage() {
   const planSerializado = plan
     ? (JSON.parse(JSON.stringify(serializePlan(plan, await resolverNombresPlan(plan)))) as PlanDia)
     : null
+  const desactualizado = plan ? await repo.estaDesactualizado(plan.id) : null
 
   return (
     <div className="max-w-3xl mx-auto">
-      <HoyClient fecha={fecha} planInicial={planSerializado} />
+      <HoyClient fecha={fecha} planInicial={planSerializado} desactualizadoInicial={desactualizado} />
     </div>
   )
 }

@@ -231,6 +231,49 @@ export class PrismaPlanificadorRepository {
     })
   }
 
+  /**
+   * ¿El plan está desactualizado respecto a la demanda actual?
+   * (ADR-PLANIFICADOR-005 §1 — "marca para revisión"). Compara el set de pedidos
+   * elegibles HOY contra los que el plan referencia. No auto-recalcula; solo avisa.
+   */
+  async estaDesactualizado(planId: string): Promise<{ desactualizado: boolean; nuevos: number; caidos: number }> {
+    const plan = await prisma.planDia.findUnique({
+      where: { id: planId },
+      select: {
+        fecha: true,
+        estado: true,
+        grupos: { select: { paradas: { select: { actividades: { select: { pedidoIds: true } } } } } },
+        excepciones: { select: { entidad: true } },
+      },
+    })
+    if (!plan) return { desactualizado: false, nuevos: 0, caidos: 0 }
+
+    const fecha = plan.fecha.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+    // "Conocidos" = en un grupo O ya reportados como excepción del plan (p. ej.
+    // MISSING_DATA). Un pedido inubicable no vuelve "desactualizado" al plan.
+    const enPlan = new Set([
+      ...plan.grupos.flatMap((g) => g.paradas.flatMap((p) => p.actividades.flatMap((a) => a.pedidoIds))),
+      ...plan.excepciones.flatMap((e) => ((e.entidad as { pedidoIds?: string[] } | null)?.pedidoIds ?? [])),
+    ])
+
+    const elegibles = await prisma.pedido.findMany({
+      where: wherePedidosElegiblesPlan(fecha),
+      select: { id: true },
+    })
+    const setElegibles = new Set(elegibles.map((p) => p.id))
+
+    const nuevos = [...setElegibles].filter((id) => !enPlan.has(id)).length
+    // "caídos" = pedidos del plan que ya NO son elegibles (cancelados, ya embarcados
+    // por otra vía, reprogramados). Si el plan ya está CONFIRMED sus pedidos tienen
+    // embarqueId → no son "elegibles" → no cuenta como caído.
+    const caidos =
+      plan.estado === 'CONFIRMED' || plan.estado === 'INTEGRATION_PARTIAL'
+        ? 0
+        : [...enPlan].filter((id) => !setElegibles.has(id)).length
+
+    return { desactualizado: nuevos > 0 || caidos > 0, nuevos, caidos }
+  }
+
   /** Versiones históricas de los planes de una fecha (para GET /versiones). */
   async versionesDeFecha(fecha: string) {
     const planes = await prisma.planDia.findMany({

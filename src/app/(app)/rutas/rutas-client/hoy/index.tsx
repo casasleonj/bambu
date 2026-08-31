@@ -19,8 +19,23 @@ const SEV_ORDER = { ALTA: 0, MEDIA: 1, BAJA: 2 } as const
  * Camino feliz: entrar → ver propuesta → resolver excepciones → confirmar.
  * El usuario no construye el plan; lo revisa.
  */
-export function HoyClient({ fecha, planInicial }: { fecha: string; planInicial: PlanDia | null }) {
+interface Desactualizado {
+  desactualizado: boolean
+  nuevos: number
+  caidos: number
+}
+
+export function HoyClient({
+  fecha,
+  planInicial,
+  desactualizadoInicial,
+}: {
+  fecha: string
+  planInicial: PlanDia | null
+  desactualizadoInicial?: Desactualizado | null
+}) {
   const [plan, setPlan] = useState<PlanDia | null>(planInicial)
+  const [desac, setDesac] = useState<Desactualizado | null>(desactualizadoInicial ?? null)
   const [busy, setBusy] = useState<null | 'generar' | 'replan' | 'confirmar' | 'cancelar'>(null)
   const { confirm, modal } = useConfirm()
 
@@ -28,7 +43,10 @@ export function HoyClient({ fecha, planInicial }: { fecha: string; planInicial: 
     try {
       const res = await fetch(`/api/rutas/planes?fecha=${fecha}`)
       const data = await res.json()
-      if (data.success) setPlan(data.plan ?? null)
+      if (data.success) {
+        setPlan(data.plan ?? null)
+        setDesac(data.desactualizado ?? null)
+      }
     } catch {
       /* mantener el plan actual */
     }
@@ -143,6 +161,26 @@ export function HoyClient({ fecha, planInicial }: { fecha: string; planInicial: 
         </span>
         <span className="text-xs text-gray-400">v{plan.version}</span>
       </Header>
+
+      {!confirmado && desac?.desactualizado && (
+        <div
+          className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 flex items-center justify-between gap-3 flex-wrap"
+          data-testid="rutas-desactualizado"
+        >
+          <span>
+            La demanda cambió desde que se generó el plan
+            {desac.nuevos > 0 && ` · ${desac.nuevos} pedido(s) nuevo(s)`}
+            {desac.caidos > 0 && ` · ${desac.caidos} ya no aplica(n)`}.
+          </span>
+          <button
+            onClick={replan}
+            disabled={!!busy}
+            className="text-xs px-2 py-1 bg-white border border-blue-300 rounded hover:bg-blue-100 disabled:opacity-50"
+          >
+            Recalcular ahora
+          </button>
+        </div>
+      )}
 
       {r && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
