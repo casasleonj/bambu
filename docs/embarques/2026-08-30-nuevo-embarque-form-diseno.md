@@ -1,7 +1,7 @@
 # Diseño — Rediseño del formulario "Nuevo Embarque"
 
-- **Estado:** BORRADOR para revisión del equipo técnico + PO
-- **Fecha:** 2026-08-30
+- **Estado:** BORRADOR — decisiones del PO incorporadas (2026-08-31); falta 1 respuesta (§8.8)
+- **Fecha:** 2026-08-30 (rev. 2026-08-31)
 - **Autor:** sesión de rework de frontend de Embarques
 - **Depende de:** PR #144 (`feat(rutas): Planificador de Distribución`) mergeado a `main`
 - **NO toca:** backend congelado de Embarques (`src/modules/embarques/**`, 23 ADRs), ni el Planificador (`src/modules/planificador/**`)
@@ -70,51 +70,128 @@ El caso de uso real es **"tengo estos pedidos, sáquenlos ya"** — el humano pa
 
 ## 5. Propuesta — flujo "pedidos-primero" en pasos
 
-Un wizard corto de **2 pasos** (no 4), dentro del mismo `<Modal>` o como pantalla dedicada (ver §6).
+Un wizard corto de **2 pasos** (no 4), dentro del `<Modal>` actual (opción A, confirmada por el PO).
 
 ### Paso 1 — Pedidos
 
-- Lista de **pedidos pendientes de asignar** (los que no están en ningún embarque abierto). Reusa la query/consumidor que ya alimenta el modal "Asignar pedidos" actual.
-- Cada fila: cliente/negocio, barrio, productos del pedido, indicador de fiado/pago.
+- Lista de **pedidos pendientes cuya fecha de entrega corresponde a hoy o está vencida**
+  (decisión del PO). Regla:
+  - `estadoEntrega ∈ {PENDIENTE, NO_ENTREGADO}` **y** `embarqueId = null` (no está en otro embarque).
+  - **y** (`fechaEntrega <= fin del día de hoy (Bogotá)` **o** `fechaEntrega = null`).
+    Los pedidos "entregar en 8 días" NO aparecen; los de "hoy antes de las 4pm", "mañana"
+    (si ya es mañana), y los vencidos, sí.
+  - Toggle **"Ver pedidos futuros"** para incluir los de fecha posterior (caso: adelantar una entrega).
+- Cada fila: cliente/negocio, barrio, productos del pedido, `horaPreferida` si tiene
+  ("antes 4pm"), fecha de entrega, indicador de fiado/pago.
+- Ordenados por urgencia: vencidos → hoy con hora → hoy sin hora → sin fecha.
 - Selección múltiple con checkbox. Buscador por nombre.
+- **Lista viva (evita doble asignación — ver §5.3):** la lista se refresca por realtime
+  (`pedido.updated`, `embarque.updated`). Si otro asistente asigna un pedido mientras
+  este wizard está abierto, ese pedido se marca como "ya asignado por otro" y se
+  deselecciona con aviso.
 - **Al seleccionar, en vivo:**
   - Se suma la **carga derivada** (Σ productos de los pedidos elegidos).
-  - Se muestra la **proyección de capacidad** contra el repartidor por defecto (peso kg / capacidad kg / %), usando `getCapacidadInfo` (ya existe).
-  - Aviso si excede las 70 unidades o el peso recomendado (misma lógica que hoy).
+  - Proyección de capacidad contra el repartidor elegido en el Paso 2 (si aún no se
+    eligió, contra la capacidad media); usa `getCapacidadInfo`.
 - CTA: **"Siguiente" (N pedidos · M unidades · P kg)**.
 
 ### Paso 2 — Confirmar
 
-Campos, todos con default, en una sola vista corta:
+Campos en una sola vista corta:
 
-| Campo | Default | Editable |
+| Campo | Comportamiento | Editable |
 |---|---|---|
-| **Repartidor** | El que tenga menos embarques abiertos hoy, o el último usado. Si hay 1 solo activo, ese. | Sí (select) |
-| **Carga** | Derivada de los pedidos del Paso 1. | Sí — inputs numéricos pre-llenados, con "restaurar a lo que piden los pedidos" |
-| **Hora de salida** | Ahora (`HH:MM` local Bogotá). | Sí (time) |
-| **Base de dinero** | Último valor usado / valor de config si existe. | Sí (número) |
-| **Ruta** | Ninguna (los embarques ad-hoc no suelen tener ruta del plan). | Sí (select, colapsado tras "Más opciones") |
-| **Tipo de moto** | Vacío. | Sí (colapsado tras "Más opciones") |
-| **Observaciones** | Vacío. | Sí (colapsado tras "Más opciones") |
+| **Repartidor** | **Sin default — siempre se elige** (decisión del PO). Select vacío, requerido. | Sí (select, requerido) |
+| **Carga** | Derivada de los pedidos del Paso 1. Botón "restaurar a lo que piden los pedidos". | Sí — inputs numéricos pre-llenados |
+| **Hora de salida** | Default: ahora (`HH:MM` local Bogotá). | Sí (time) |
+| **Base de dinero** | **Default $0, siempre ingreso manual** (decisión del PO — ver §5.4). NO se sugiere "último usado". | Sí (número) |
+| **Ruta** | Ninguna. Colapsada tras "Más opciones". | Sí (select) |
+| **Tipo de moto** | Vacío. Colapsado tras "Más opciones". | Sí |
+| **Observaciones** | Vacío. Colapsado tras "Más opciones". | Sí |
 
-- Panel de **stock disponible** + override de stock insuficiente: **igual que hoy** (misma lógica, mismo checkbox + motivo).
-- CTA: **"Crear embarque y asignar {N} pedidos"**.
+- Panel de **stock disponible** + override de stock insuficiente: **igual que hoy**.
+- **Capacidad excedida → solo advierte + sugiere** (decisión del PO — ver §5.5). Nunca bloquea.
+- CTA: **"Crear embarque y asignar {N} pedidos"** (habilitada solo con repartidor elegido).
+
+### 5.3 — Doble asignación de pedidos (riesgo señalado por el PO)
+
+Dos asistentes (o el mismo en dos pestañas, o repartidores desde su vista) pueden tener
+el wizard abierto a la vez y **elegir el mismo cliente/pedido**. Si ambos confirman, el
+segundo `PUT` intentaría re-asignar un pedido ya asignado.
+
+Mitigaciones (todas del lado del cliente + contrato existente, sin cambio de backend):
+
+1. **Lista viva por realtime** (arriba): reduce la ventana, no la elimina.
+2. **El `PUT /api/embarques/[id] { pedidoIds }` debe manejar el 409/rechazo por pedido
+   ya asignado con gracia:** si N de M pedidos ya fueron tomados por otro embarque, el
+   embarque se crea igual con los M−N restantes y se muestra: *"{N} pedido(s) ya
+   fueron asignados a otro embarque y no se incluyeron: [nombres]. Revisá."* — no
+   falla todo el flujo, no re-asigna a la fuerza. **Verificar en implementación qué
+   devuelve hoy el PUT ante un pedido ya asignado** (¿lo ignora, lo pisa, tira 409?).
+3. **Offline (ver §5.6):** al sincronizar, si un pedido de la cola ya está asignado, se
+   marca como conflicto para revisión manual — **nunca** doble-asignación silenciosa.
+
+### 5.4 — Base de dinero (riesgo señalado por el PO)
+
+El manejo de la base es propenso a errores en la operación real:
+- El primer embarque del día el repartidor **trae/entrega** una base; más tarde **vuelve
+  a salir con otra base** distinta.
+- A veces la base la ingresa el asistente, a veces el repartidor.
+- Distintos embarques del día tienen bases distintas.
+
+Por eso: **default $0, ingreso manual siempre, sin autocompletar con "último valor"**
+(autocompletar acá induce el error de dejar la base del viaje anterior). Además:
+- Aviso claro cuando la base queda en $0 al confirmar (como hoy: *"Base $0 — ¿seguro que
+  no necesita cambio?"*), pero **no bloquea**.
+- **Pregunta abierta para el equipo:** ¿la base debería quedar visible/editable también
+  desde el detalle del embarque mientras está `ABIERTO`, para corregir un error de carga
+  sin tener que cancelar y rehacer? (Hoy el `EmbarqueUpdateSchema` acepta editar campos
+  en estado ABIERTO — habría que confirmar si incluye `baseDinero`.)
+
+### 5.5 — Capacidad excedida: advertir + sugerir
+
+Cuando la carga derivada + editada excede las 70 unidades o el peso recomendado del
+repartidor elegido, **no se bloquea**. Se muestra un aviso con **la mejor sugerencia
+concreta**, en este orden:
+
+1. Si otro repartidor activo tiene capacidad para esta carga → *"La carga ({P} kg) excede
+   la moto de {repartidor} ({cap} kg). {OtroRepartidor} tiene capacidad para {P} kg."*
+2. Si no → *"Quitá ~{X} unidades para entrar en la capacidad de {repartidor}, o dividí en
+   dos embarques."*
+3. Si igual quiere seguir → puede; el backend ya valida el límite duro real y devuelve
+   400 si de verdad no entra (ese sí es tope).
 
 ### Qué pasa al confirmar
 
 ```
 1. POST /api/embarques { carga derivada/editada, trabajadorId, horaSalida, baseDinero, ... , offlineId: uuid }
 2. con el id de la respuesta → PUT /api/embarques/[id] { pedidoIds }
+   → si algún pedido ya fue asignado por otro → se avisa y se sigue con el resto (§5.3)
 3. toast "Embarque #N creado con {N} pedidos" → navegar a /embarques/[id]
 ```
 
 Dos llamadas encadenadas del lado del cliente. **No requiere cambio de backend.**
 
-### Estados de red (offline-first)
+### 5.6 — Estados de red (offline-first)
 
 - **Online:** el flujo de arriba.
-- **Offline:** `POST` se encola (`fetchResilient` → `requestQueue`). Como no hay id de servidor, el `PUT` de asignación **no puede encadenarse**. Opción propuesta: encolar el `POST` con los `pedidoIds` en el `metadata` del item de cola y **procesar la asignación en `syncWithServer()`** cuando el `POST` resuelva con un id real. Toast: *"Sin conexión — el embarque y sus {N} pedidos se crearán al recuperar la red."*
-  - **Alternativa más simple (recomendada para v1):** offline solo encola el `POST` del embarque; los pedidos quedan **sin asignar** y se avisa al usuario que los asigne cuando vuelva la red. Menos código, cubre el 95% (el asistente en el depósito suele tener algo de señal). **← pregunta abierta §8.**
+- **Offline (decisión del PO — encolar todo, con revisión de conflictos):**
+  - Se encola el `POST` del embarque **y** los `pedidoIds` juntos: el item de
+    `requestQueue` lleva `body` del embarque + `metadata: { pedidoIds }`.
+  - `syncWithServer()` procesa: (a) `POST` embarque → obtiene id real; (b) `PUT` los
+    `pedidoIds`; (c) **por cada pedido que ya esté asignado a otro embarque, NO lo
+    re-asigna** — lo agrega a una lista de conflictos que se le muestra al asistente
+    al reconectar: *"El embarque #N se creó, pero estos pedidos ya estaban en otro
+    embarque: [nombres]. Decidí qué hacer."*
+  - Toast al encolar: *"Sin conexión — el embarque y sus {N} pedidos se registrarán al
+    recuperar la red. Si otro repartidor tomó alguno, te avisamos."*
+  - **Motivo (PO):** dos repartidores pueden estar entregando en paralelo y ambos ver
+    el mismo cliente como pendiente; sin la revisión de conflicto, la sync silenciosa
+    generaría doble entrega. La regla es: **crear siempre, asignar solo lo libre,
+    reportar lo demás.**
+  - Requiere extender el `syncWithServer()` de `src/lib/db/sync.ts` para el paso de
+    asignación post-creación con detección de conflicto. Es la parte más delicada de
+    la implementación.
 
 ## 6. Alternativas consideradas
 
@@ -125,7 +202,7 @@ Dos llamadas encadenadas del lado del cliente. **No requiere cambio de backend.*
 | **C — Un solo paso, pedidos arriba** | Sin wizard: la lista de pedidos arriba, los campos (con defaults) abajo, todo en una vista scrolleable. | Menos clicks, pero vuelve a la tira larga del form actual. Difícil en móvil. |
 | **D — No rediseñar, solo derivar la carga** | Dejar el form como está pero agregar "traer carga de pedidos seleccionados". | Mínimo esfuerzo. No resuelve el problema de fondo (asignación en dos viajes, densidad). |
 
-**Recomendación: A.** Wizard de 2 pasos en modal. Si el equipo prefiere B por el móvil, es aceptable pero cuesta más.
+**Decisión del PO: A** — wizard de 2 pasos en modal.
 
 ## 7. Diseño técnico
 
@@ -137,7 +214,9 @@ Dos llamadas encadenadas del lado del cliente. **No requiere cambio de backend.*
 | `paso-pedidos.tsx` | Lista + selección de pedidos pendientes, cálculo en vivo de carga derivada + capacidad. |
 | `paso-confirmar.tsx` | Campos con default, panel de stock, override, CTA final. |
 | `derivar-carga.ts` | Función pura: `pedidos[] → Record<producto, cantidad>`. Testeable aislada. |
-| `defaults.ts` | Función pura: repartidor sugerido, base de dinero sugerida, hora actual. |
+| `filtrar-pedidos-hoy.ts` | Función pura: filtro por `fechaEntrega` (hoy/vencido/null) + orden por urgencia. |
+| `sugerir-capacidad.ts` | Función pura: dada la carga y los repartidores, devuelve el aviso + la mejor sugerencia (§5.5). |
+| `defaults.ts` | Función pura: hora actual `HH:MM` Bogotá. (Repartidor y base **no** tienen default — decisión del PO.) |
 
 ### Estado
 
@@ -156,7 +235,22 @@ Dos llamadas encadenadas del lado del cliente. **No requiere cambio de backend.*
 ### API
 
 - **Sin cambios de backend.** 2 llamadas cliente: `POST /api/embarques` → `PUT /api/embarques/[id] { pedidoIds }`.
-- **Optimización futura (requiere ADR):** aceptar `pedidoIds` en `EmbarqueCreateSchema` para hacerlo en una sola llamada atómica. Fuera de alcance de este rediseño.
+- **A verificar en implementación:** qué hace hoy `PUT /api/embarques/[id]` cuando un
+  `pedidoId` de la lista **ya está asignado a otro embarque** (¿lo ignora, lo pisa,
+  devuelve 409?). De eso depende cómo se implementa la detección de conflicto de §5.3
+  del lado del cliente. Si el PUT hoy pisa silenciosamente, **eso sí es un cambio de
+  backend necesario** (rechazar/reportar en vez de pisar) y necesita ADR.
+- Lista de pedidos del Paso 1: reusa `GET /api/pedidos?all=true` (como el modal de
+  asignar) + filtro cliente por `fechaEntrega`. Si el volumen crece, considerar un
+  query param `?entregarHasta=<fecha>` (additivo a la route, sin tocar dominio).
+- **Optimización futura (requiere ADR):** aceptar `pedidoIds` en `EmbarqueCreateSchema`
+  para crear+asignar en una llamada atómica. Fuera de alcance de este rediseño.
+
+### Realtime
+
+- El Paso 1 se suscribe a `pedido.updated` / `embarque.updated` (hook `use-realtime-listener`
+  ya existe) para mantener la lista de pedidos libres al día y desmarcar los que otro
+  asistente tomó (§5.3).
 
 ### `EmbarqueFormModal` (el archivo de 495 líneas)
 
@@ -168,16 +262,26 @@ Dos llamadas encadenadas del lado del cliente. **No requiere cambio de backend.*
 - El botón "Nuevo Embarque" del `embarques-client/index.tsx` abre el wizard en vez del modal viejo.
 - Las CTA de tarjetas en fase BORRADOR/PREPARANDO que hoy llevan a "registrar carga" se revisan (¿siguen teniendo sentido si el wizard ya crea con carga?).
 
-## 8. Preguntas abiertas para el equipo / PO
+## 8. Preguntas — respuestas del PO (2026-08-31)
 
-1. **¿Opción A (modal) u B (pantalla dedicada)?** A es menos trabajo y consistente; B es mejor en móvil.
-2. **Offline con pedidos:** ¿encolar create+assign encadenados (más código), o v1 encola solo el create y los pedidos se asignan al volver la red (más simple)?
-3. **Repartidor por defecto:** ¿"el que tiene menos embarques hoy", "el último usado", o **sin default** (siempre elegir)? Depende de cuántos repartidores activos hay en la práctica.
-4. **Base de dinero por defecto:** ¿existe un monto estándar de config, o el "último usado", o siempre $0? Hoy el form arranca en $0 y avisa.
-5. **Ruta en un embarque ad-hoc:** ¿alguna vez tiene sentido, o se puede sacar del todo del flujo rápido (solo en "Más opciones")?
-6. **¿La lista del Paso 1 muestra solo pedidos `DOMICILIO` sin asignar, o también otros canales?** ¿Filtra por fecha (hoy) o todos los pendientes?
-7. **Límite de 70 unidades / capacidad:** ¿bloquea la creación (como hoy con `excedeUnidades`) o solo advierte?
-8. **¿Se permite crear un embarque ad-hoc con 0 pedidos?** (repartidor sale "en blanco" y se le asignan cosas en ruta). Hoy el form no exige pedidos porque la asignación es aparte.
+| # | Pregunta | Respuesta |
+|---|---|---|
+| 1 | ¿Modal o pantalla dedicada? | **Modal** (opción A). |
+| 2 | Offline con pedidos | **Encolar todo junto** (embarque + pedidos), pero al sincronizar **detectar conflicto de doble asignación y reportarlo** — nunca doble-asignar en silencio (§5.6). |
+| 3 | Repartidor por defecto | **Sin default — siempre se elige.** |
+| 4 | Base de dinero por defecto | **$0, ingreso manual siempre.** NO autocompletar con "último usado" (induce el error de dejar la base del viaje anterior). Es un punto propenso a errores en la operación — ver §5.4. |
+| 5 | Ruta en ad-hoc | *(sin respuesta explícita)* → propuesta: colapsada tras "Más opciones", default ninguna. |
+| 6 | Filtro de la lista del Paso 1 | **Todos los pendientes cuya fecha de entrega sea hoy o esté vencida** (más los sin fecha). Los "entregar en 8 días" NO aparecen. Toggle para ver futuros. `horaPreferida` se muestra como dato. Ver §5 Paso 1. |
+| 7 | Capacidad excedida | **Solo advierte + sugiere la mejor opción** (otro repartidor / cuántas unidades quitar). Nunca bloquea (§5.5). |
+| 8 | ¿Crear con 0 pedidos? | **PENDIENTE** — ¿el wizard exige ≥1 pedido para avanzar, o se permite crear un embarque en blanco y asignarle en ruta? |
+
+### Pendientes de respuesta
+
+- **§8.8** — ¿mínimo 1 pedido, o se permite crear en blanco?
+- **§5.4** — ¿la base de dinero se puede corregir desde el detalle del embarque `ABIERTO`
+  sin cancelar/rehacer? (hay que verificar si `EmbarqueUpdateSchema` ya lo permite).
+- **§5.3 / API** — ¿qué hace hoy `PUT /api/embarques/[id]` con un pedido ya asignado a
+  otro embarque? (define si la detección de conflicto es solo cliente o necesita ADR).
 
 ## 9. Fuera de alcance
 
