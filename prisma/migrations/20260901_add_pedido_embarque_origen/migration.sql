@@ -15,10 +15,14 @@ DO $$ BEGIN
     SELECT 1 FROM information_schema.table_constraints
     WHERE constraint_name = 'Pedido_embarqueOrigenId_fkey'
   ) THEN
+    -- ON DELETE RESTRICT: `embarqueOrigenId` es un registro histórico inmutable.
+    -- Un hard-delete de un Embarque que originó ventas se bloquea a nivel DB.
+    -- El flujo normal (cancelar embarque = soft-delete estado=CANCELADO) no
+    -- dispara la FK.
     ALTER TABLE "Pedido"
       ADD CONSTRAINT "Pedido_embarqueOrigenId_fkey"
       FOREIGN KEY ("embarqueOrigenId") REFERENCES "Embarque"("id")
-      ON DELETE SET NULL ON UPDATE CASCADE;
+      ON DELETE RESTRICT ON UPDATE CASCADE;
   END IF;
 END $$;
 
