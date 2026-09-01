@@ -79,7 +79,14 @@ export class ActualizarPedidoUseCase {
   ) {}
 
   async execute(input: ActualizarPedidoInput) {
-    return this.txManager.execute(async (tx) => {
+    // F3 (INVENTARIO §F3): `PUT /api/pedidos/[id]` mutaba hechos críticos
+    // (total, factura, estado, dirección del cliente) en un `$transaction`
+    // plano, sin lock — dos ediciones concurrentes del mismo pedido podían
+    // pisarse. Ahora bajo `PEDIDO:{id}` (mismo agregado que AjustarPedidoCantidad,
+    // ADR-CONCURRENCIA-001 §6). El PUT es declarativo (reemplaza items, no
+    // incrementa), así que el lock cierra la exposición sin necesidad de una
+    // clave `offlineId` persistida — ésta queda como follow-up de Fase 2.
+    return this.txManager.executeWithLock('PEDIDO', input.pedidoId, async (tx) => {
       const pedido = await this.pedidoRepo.findById(PedidoId.from(input.pedidoId), tx)
       if (!pedido) throw new Error('PEDIDO_NOT_FOUND')
 
@@ -228,12 +235,14 @@ export class ActualizarPedidoUseCase {
           )
         }
 
-        logAudit({
+        // F3: auditoría dentro de la transacción del lock (rollback atómico
+        // si falla). Antes corría con el cliente global, sin await.
+        await logAudit({
           entidad: 'Pedido',
           registroId: saved.id.get(),
           accion: 'UPDATE',
           datos: { numero: saved.numero, estado: saved.estadoEntrega.get() },
-        })
+        }, tx)
 
         return { pedido: PedidoDTOMapper.toResumen(saved) }
       }

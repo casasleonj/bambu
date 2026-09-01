@@ -92,12 +92,21 @@ function makeUseCase(pedido: Pedido) {
     loadPricingContext: vi.fn().mockResolvedValue({}),
     resolverPrecios: vi.fn().mockResolvedValue(preciosResueltos),
   }
+  // F3: el use case ahora corre bajo `PEDIDO:{id}` y audita con `tx` —
+  // el fakeTx necesita un `historial.create` (patrón de EntregarPedidoUseCase.test).
+  const fakeTx = {
+    historial: { create: vi.fn().mockResolvedValue({}) },
+  } as unknown as TransactionClient
   const txManager: ITransactionManager = {
-    execute: (fn) => fn({} as TransactionClient),
-    executeWithLock: (_namespace, _entityKey, fn) => fn({} as TransactionClient),
+    execute: (fn) => fn(fakeTx),
+    executeWithLock: (_namespace, _entityKey, fn) => fn(fakeTx),
   }
+  const executeWithLock = vi.fn(
+    (_namespace: string, _entityKey: string, fn: (tx: TransactionClient) => Promise<unknown>) => fn(fakeTx),
+  )
+  txManager.executeWithLock = executeWithLock as unknown as ITransactionManager['executeWithLock']
   const useCase = new ActualizarPedidoUseCase(pedidoRepo, facturaRepo, clienteRepo, pricingPort, txManager)
-  return { useCase, pedidoRepo, facturaRepo }
+  return { useCase, pedidoRepo, facturaRepo, executeWithLock }
 }
 
 describe('ActualizarPedidoUseCase — validación de transición de estado', () => {
@@ -132,6 +141,15 @@ describe('ActualizarPedidoUseCase — validación de transición de estado', () 
 
     expect(pedidoRepo.update).toHaveBeenCalledTimes(1)
     expect(result.pedido.estadoEntrega).toBe('PENDIENTE')
+  })
+
+  it('F3: corre bajo el lock PEDIDO:{id} (no un $transaction plano)', async () => {
+    const pedido = makePedido('PENDIENTE')
+    const { useCase, executeWithLock } = makeUseCase(pedido)
+
+    await useCase.execute({ pedidoId: 'ped_1', obs: 'nota', usuarioId: 'user_1' })
+
+    expect(executeWithLock).toHaveBeenCalledWith('PEDIDO', 'ped_1', expect.any(Function))
   })
 })
 
