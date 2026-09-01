@@ -77,6 +77,11 @@ describe('F4.10-b: el service mantiene la lógica completa', () => {
   it('FIX: el service registra los pagos', () => {
     expect(serviceSource).toMatch(/pago\.create\(\s*\{[\s\S]+?pedidoId:/)
   })
+
+  // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001
+  it('el service persiste embarqueOrigenId = embarqueId (embarque de origen inmutable)', () => {
+    expect(serviceSource).toMatch(/embarqueOrigenId:\s*embarqueId/)
+  })
 })
 
 describe('F4.10-b: el use case importa correctamente el service', () => {
