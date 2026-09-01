@@ -65,6 +65,13 @@ si no                                          → PENDIENTE
 cuando `promesaPagoFecha < now` y el proyectado sería `PENDIENTE`/`PARCIAL`; se
 limpia (vuelve al proyectado) en el próximo pago.
 
+> **Interacción con `ADR-CORRECCION-MONETARIA-001` (G2):** una
+> `ReceivableEntry REVERSION` (corrección de abono o anulación de pedido pagado)
+> recalcula `totalPagado` a la baja → `proyectarEstadoPago` lo reclasifica
+> (`PAGADO`→`PARCIAL`, etc.) automáticamente. Tras anular/cancelar,
+> `estadoEntrega ∈ {ANULADO, CANCELADO}` → `estadoPago = ANULADO` por la primera
+> regla. El CHECK cubre ambos casos sin excepción nueva.
+
 **CHECK constraint** (patrón `chk_pedido_saldo_calc`, `NOT VALID` → `VALIDATE`):
 
 ```sql

@@ -40,15 +40,19 @@ enum EstadoConfirmacionPago {
 
 model Pago {
   // ...
-  confirmacion     EstadoConfirmacionPago @default(REPORTADO)
-  confirmadoPorId  String?
-  confirmadoPor    User?    @relation("PagoConfirmador", fields: [confirmadoPorId], references: [id], onDelete: SetNull)
-  confirmadoAt     DateTime? @db.Timestamptz()
-  discrepanciaNota String?   @db.Text
+  confirmacion    EstadoConfirmacionPago @default(REPORTADO)
+  confirmadoPorId String?
+  confirmadoPor   User?    @relation("PagoConfirmador", fields: [confirmadoPorId], references: [id], onDelete: SetNull)
+  confirmadoAt    DateTime? @db.Timestamptz()
 
   @@index([confirmacion])
 }
 ```
+
+**El detalle de la discrepancia (nota de investigación) vive en el
+`ResponsibilityCase`, NO en `Pago`.** `Pago` solo lleva el hecho financiero
+("¿este dinero fue verificado?"). El dominio de pagos ≠ el dominio antifraude
+(decisión del PO 2026-09-01, alineada con `ADR-CORRECCION-MONETARIA-001` D.7).
 
 ### 2. Qué métodos nacen `REPORTADO` vs `CONFIRMADO`
 
@@ -75,13 +79,17 @@ Configurable: `Config.METODOS_REQUIEREN_CONFIRMACION` (CSV, default `NEQUI,TRANS
 ### 4. Efecto de `DISCREPANTE`
 
 `resultado = DISCREPANTE` (el dinero no entró, o entró un monto distinto):
-- `Pago.confirmacion = DISCREPANTE` + `discrepanciaNota`.
+- `Pago.confirmacion = DISCREPANTE`.
 - **NO** se revierte el `Pago` automáticamente (P4 — hecho histórico no destructivo;
-  la reversión real es el flujo de G2 / corrección de abonos).
+  la reversión real es el flujo de `ADR-CORRECCION-MONETARIA-001`).
 - Se crea un `ResponsibilityCase` tipo `PAGO_NO_CONFIRMADO` (nuevo valor del enum
   `tipo` de `ResponsibilityCase`) — `embarqueId?` nullable, `montoEstimado = pago.monto`,
+  `descripcion` = la nota de la discrepancia (acá vive el detalle de investigación),
   pendiente de resolución autorizada (ADR-RESPONSABILIDAD-001: la transferencia
   económica de la deuda nunca es automática).
+- Si la resolución del caso determina que el `Pago` debe revertirse, se ejecuta
+  vía `ADR-CORRECCION-MONETARIA-001` (`CorreccionAbono`/`ReceivableEntry REVERSION`)
+  — un solo mecanismo de reversión monetaria.
 - Métrica `pago_discrepante_count`.
 
 ### 5. La UI nunca afirma "confirmado" sin evidencia (AC-05)
@@ -116,8 +124,9 @@ Configurable: `Config.METODOS_REQUIEREN_CONFIRMACION` (CSV, default `NEQUI,TRANS
 
 ## Migración
 
-1. `CREATE TYPE "EstadoConfirmacionPago"` + `ALTER TABLE "Pago" ADD COLUMN ...`
-   (default `REPORTADO`) + columnas nullable + índice. Aditiva, reversible.
+1. `CREATE TYPE "EstadoConfirmacionPago"` + `ALTER TABLE "Pago" ADD COLUMN
+   confirmacion` (default `REPORTADO`) + `confirmadoPorId`/`confirmadoAt` nullable
+   + índice. Aditiva, reversible. (3 columnas — el detalle de discrepancia NO va acá.)
 2. **Backfill** (ADR-MIGRACION-001): todos los `Pago` **anteriores a la migración**
    → `confirmacion = CONFIRMADO`, `confirmadoPorId = NULL`, `confirmadoAt = createdAt`.
    Racional: son pagos ya conciliados por cierres pasados; marcarlos `REPORTADO`
@@ -126,6 +135,8 @@ Configurable: `Config.METODOS_REQUIEREN_CONFIRMACION` (CSV, default `NEQUI,TRANS
    ausencia de `confirmadoPorId` deja claro que fue backfill, no una confirmación real.
 3. Agregar `PAGO_NO_CONFIRMADO` al enum/valores de `ResponsibilityCase.tipo`
    (hoy es `String` con `DISCREPANCIA_INVENTARIO | FALTANTE_CAJA | FIADO_NO_COBRADO`).
+   **Compartido con `ADR-CORRECCION-MONETARIA-001` D.7** — quien se implemente
+   primero lo agrega.
 4. `Config` seed opcional: `METODOS_REQUIEREN_CONFIRMACION = 'NEQUI,TRANSFERENCIA,DAVIPLATA'`.
    `USUARIO_CONFIRMA_PAGOS` se setea manualmente por el ADMIN (no seed).
 
@@ -140,7 +151,7 @@ Configurable: `Config.METODOS_REQUIEREN_CONFIRMACION` (CSV, default `NEQUI,TRANS
 
 ## Rollback
 
-`git revert` + `DROP COLUMN` × 4 + `DROP TYPE`. Feature flag
+`git revert` + `DROP COLUMN` × 3 + `DROP TYPE`. Feature flag
 `NEXT_PUBLIC_PAGO_CONFIRMACION` (default OFF): con OFF, no se crean las columnas
 de estado en la UI, los badges muestran "Pagado" como hoy, la cola no aparece.
 El backfill deja los datos consistentes si se reactiva.
