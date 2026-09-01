@@ -97,4 +97,8 @@ describe('BAMBU-LOG-003: guarda contra race entre dos asignaciones concurrentes'
     expect(block).toMatch(/assignResult\.count\s*===\s*0/)
     expect(block).toMatch(/throw new Error\('PEDIDO_YA_ASIGNADO'\)/)
   })
+
+  it('F6: PEDIDO_YA_ASIGNADO mapea a 409 (unificado con PUT /api/embarques/[id])', () => {
+    expect(source).toMatch(/PEDIDO_YA_ASIGNADO:\s*\[[^\]]*,\s*409\]/)
+  })
 })

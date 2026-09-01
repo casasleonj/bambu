@@ -226,7 +226,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const messages: Record<string, [string, number]> = {
         PEDIDO_NOT_FOUND: ['Pedido no encontrado', 404],
         PEDIDO_NOT_PENDIENTE: ['El pedido no está en estado pendiente', 400],
-        PEDIDO_YA_ASIGNADO: ['El pedido ya está asignado a un embarque', 400],
+        // F6 (INVENTARIO §F6): conflicto de asignación por concurrencia →
+        // 409, unificado con PUT /api/embarques/[id] (`PEDIDOS_YA_ASIGNADOS`).
+        // El replay offline de sync.ts trata 409 como conflicto-resuelto
+        // (drop + conflict++), no como fallo a DLQ.
+        PEDIDO_YA_ASIGNADO: ['El pedido ya está asignado a un embarque', 409],
         EMBARQUE_NOT_FOUND: ['Embarque no encontrado', 404],
         EMBARQUE_NOT_OPEN: ['El embarque no está abierto', 400],
         EMBARQUE_CAPACIDAD_EXCEDIDA: ['El embarque excede la capacidad de carga', 400],
