@@ -15,6 +15,14 @@ export interface CrearPedidoInput {
   obs?: string
   fechaEntrega?: Date
   ventaRapida?: boolean
+  /**
+   * ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: solo aplica a venta rápida.
+   * `undefined` / `true` → entrega inmediata (ENTREGADO, comportamiento histórico).
+   * `false` → "entregar después": el pedido queda PENDIENTE (entra al planificador)
+   * y `estadoPago` se proyecta a ANTICIPADO si vino prepago total. El route sólo
+   * lo propaga con el flag `NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR` activo.
+   */
+  entregado?: boolean
   clienteNuevo?: {
     nombre: string
     apellido?: string

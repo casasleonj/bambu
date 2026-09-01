@@ -83,6 +83,10 @@ export const PedidoCreateSchema = z.object({
   offlineId: z.string().optional(),
   // LEGACY (mantener durante transición)
   ventaRapida: z.boolean().optional(),
+  // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: solo aplica a venta rápida.
+  // `false` → "entregar después" (queda PENDIENTE + ANTICIPADO si va prepago).
+  // Gated por NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR en el route.
+  entregado: z.boolean().optional(),
   tipo: z.enum(['ENVIO', 'PUNTO']).optional(),
   productos: z.object({
     pacaAgua: z.coerce.number().int().min(0).optional(),

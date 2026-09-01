@@ -253,8 +253,15 @@ export async function POST(request: NextRequest) {
       barrioEntrega,
       origen,
       ventaRapida,
+      entregado,
       offlineId,
     } = parsed.data
+
+    // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: el toggle "entregar después" de la
+    // venta rápida solo se respeta con el flag activo; sin él, se ignora y la
+    // venta rápida fuerza ENTREGADO como siempre.
+    const entregadoInput =
+      process.env.NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR === 'true' ? entregado : undefined
 
     const pagosData = parsed.data.pagos || []
 
@@ -302,6 +309,7 @@ export async function POST(request: NextRequest) {
       obs,
       fechaEntrega: fechaEntrega ? new Date(fechaEntrega) : undefined,
       ventaRapida,
+      entregado: entregadoInput,
       offlineId,
       clienteNuevo: clienteNuevo ? {
         nombre: clienteNuevo.nombre,

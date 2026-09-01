@@ -23,6 +23,31 @@ Además, cuando un pedido `origen = VENTA_LIBRE` se reasigna (cae en `NO_ENTREGA
 
 ## Decisión
 
+### 0. Orden de implementación y regla de custodia del dinero (adición 2026-09-01)
+
+El paso 2 se parte en dos por dificultad muy distinta:
+
+- **venta-rápida** (`CrearPedidoUseCase`, `/api/pedidos`): limpio. No hay embarque
+  de por medio, el planificador ya incluye `VENTA_RAPIDA`, `estadoPago` ya se
+  proyecta. `entregado: false` → `PENDIENTE` + `ANTICIPADO`. **Implementado.**
+- **venta-libre en ruta** (`/api/pedidos/venta-libre`): el repartidor cobra dinero
+  (efectivo) sobre un embarque activo pero la entrega es posterior. Se difiere a
+  un PR propio con esta regla del PO (2026-09-01):
+
+  > **La custodia del dinero sigue al evento de cobro, no al evento de entrega.**
+  > Un `Pago` se concilia en el cierre del embarque en el que fue **recibido /
+  > capturado**, independientemente de cuándo se entregue físicamente el pedido.
+
+  Implicación de diseño para ese PR: el pedido diferido queda `PENDIENTE` +
+  `embarqueId = null` (planificable), pero la conciliación de caja del cierre
+  (`coleccionarPagos` / `reconciliarCaja`) debe contar los `Pago` de pedidos
+  cuyo **`embarqueOrigenId`** apunta a ese embarque — no solo los del
+  `embarqueId` actual. `embarqueOrigenId` (paso 1, ya en `main`) es exactamente
+  ese puente. Requiere tocar `src/modules/embarques/domain/**` (autorizado por
+  este ADR). Combinado con `ADR-PAGO-REPORTADO-CONFIRMADO-001`: el pago digital
+  queda `REPORTADO` asociado a ese embarque; la confirmación financiera ocurre
+  después, en escritorio.
+
 ### 1. La entrega de una venta en ruta / rápida es una dimensión, no un default del formulario
 
 `venta-libre` y `venta-rapida` dejan de hard-codear `ENTREGADO`. Aceptan explícitamente el resultado de entrega:
