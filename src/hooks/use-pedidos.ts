@@ -11,6 +11,9 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 export interface PedidoFilterParams {
   desde?: string
   hasta?: string
+  /** Canal canónico (`PUNTO` | `DOMICILIO`). G6. */
+  canal?: string[]
+  /** @deprecated legacy — usar `canal`. */
   tipo?: string[]
   origen?: string[]
   estadoEntrega?: string[]
@@ -84,6 +87,7 @@ export function usePedidos(
     if (params?.desde) url.searchParams.set('desde', params.desde)
     if (params?.hasta) url.searchParams.set('hasta', params.hasta)
     if (params?.clienteId) url.searchParams.set('clienteId', params.clienteId)
+    if (params?.canal) params.canal.forEach(c => url.searchParams.append('canal', c))
     if (params?.tipo) params.tipo.forEach(t => url.searchParams.append('tipo', t))
     if (params?.origen) params.origen.forEach(o => url.searchParams.append('origen', o))
     if (params?.estadoEntrega) params.estadoEntrega.forEach(e => url.searchParams.append('estadoEntrega', e))

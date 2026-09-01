@@ -13,14 +13,17 @@ import { join } from 'path'
 const repoPath = join(process.cwd(), 'src/modules/pedidos/infrastructure/repositories/PrismaPedidoRepository.ts')
 const source = readFileSync(repoPath, 'utf-8')
 
-describe('PrismaPedidoRepository: tipo filter', () => {
-  it('buildWhere references filter.tipo', () => {
+describe('PrismaPedidoRepository: filtro de canal (G6)', () => {
+  it('buildWhere usa filter.canal y traduce filter.tipo (legacy)', () => {
+    expect(source).toMatch(/filter\?\.canal/)
     expect(source).toMatch(/filter\?\.tipo/)
+    // legacy: PUNTO→PUNTO, resto→DOMICILIO
+    expect(source).toMatch(/'PUNTO'\s*\?\s*'PUNTO'\s*:\s*'DOMICILIO'/)
   })
 
-  it('buildWhere uses canal condition for PUNTO vs ENVIO', () => {
-    expect(source).toMatch(/where\.canal\s*=\s*['"]PUNTO['"]/)
-    expect(source).toMatch(/where\.canal\s*=\s*\{\s*not:\s*['"]PUNTO['"]\s*\}/)
+  it('buildWhere aplica where.canal (valor único o { in: [...] })', () => {
+    expect(source).toMatch(/where\.canal\s*=\s*\[\.\.\.canalValues\]\[0\]/)
+    expect(source).toMatch(/where\.canal\s*=\s*\{\s*in:\s*\[\.\.\.canalValues\]\s*\}/)
   })
 
   it('findByIdWithFactura is defined in the repository', () => {

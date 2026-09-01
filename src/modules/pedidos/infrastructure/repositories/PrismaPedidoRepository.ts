@@ -221,17 +221,16 @@ export class PrismaPedidoRepository implements IPedidoRepository {
         where.clienteId = { not: CANONICAL_CONSUMIDOR_FINAL_ID }
       }
     }
-    if (filter?.tipo && filter.tipo.length > 0) {
-      // Tipo es un derivado semántico de canal: PUNTO → 'PUNTO', cualquier otro → 'ENVIO'.
-      const canalCondition = filter.tipo.includes('PUNTO') ? ['PUNTO'] : []
-      const excludePunto = filter.tipo.includes('ENVIO')
-      if (canalCondition.length > 0 && excludePunto) {
-        where.canal = { not: 'PUNTO' }
-      } else if (canalCondition.length > 0) {
-        where.canal = 'PUNTO'
-      } else if (excludePunto) {
-        where.canal = { not: 'PUNTO' }
-      }
+    // G6: filtro por `canal` canónico. `filter.tipo` (legacy) se traduce:
+    // ENVIO→DOMICILIO, PUNTO→PUNTO.
+    const canalValues = new Set<string>([
+      ...(filter?.canal ?? []),
+      ...((filter?.tipo ?? []).map((t) => (t === 'PUNTO' ? 'PUNTO' : 'DOMICILIO'))),
+    ])
+    if (canalValues.size === 1) {
+      where.canal = [...canalValues][0]
+    } else if (canalValues.size > 1) {
+      where.canal = { in: [...canalValues] }
     }
     if (filter?.desde || filter?.hasta) {
       where.fecha = {}

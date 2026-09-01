@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { DateRangeFilter } from '@/components/date-range-filter'
 import { PedidosSearch, type ClienteSearchOption } from '@/components/pedidos-search'
-import { TIPOS, ORIGENES, ESTADOS_ENTREGA, ESTADOS_PAGO } from './types'
+import { CANALES, ORIGENES, ESTADOS_ENTREGA, ESTADOS_PAGO } from './types'
 
 interface PedidoFiltersProps {
   searchInput: string
@@ -11,7 +11,7 @@ interface PedidoFiltersProps {
   clientes: ClienteSearchOption[]
   selectedClienteId: string | null
   onClienteSelect: (clienteId: string | null) => void
-  filtroTipo: string[]
+  filtroCanal: string[]
   filtroOrigen: string[]
   filtroEstadoEntrega: string[]
   filtroEstadoPago: string[]
@@ -27,14 +27,14 @@ const filterGroups = [
   { key: 'origen', label: 'Origen', values: ORIGENES, active: (f: string[]) => f },
   { key: 'estadoEntrega', label: 'Entrega', values: ESTADOS_ENTREGA, active: (f: string[]) => f },
   { key: 'estadoPago', label: 'Pago', values: ESTADOS_PAGO, active: (f: string[]) => f },
-  { key: 'tipo', label: 'Tipo', values: TIPOS, active: (f: string[]) => f },
+  { key: 'canal', label: 'Canal', values: CANALES, active: (f: string[]) => f },
 ]
 
 const activeColors: Record<string, string> = {
   origen: 'bg-purple-600 text-white',
   estadoEntrega: 'bg-blue-600 text-white',
   estadoPago: 'bg-amber-600 text-white',
-  tipo: 'bg-emerald-600 text-white',
+  canal: 'bg-emerald-600 text-white',
 }
 
 function formatLabel(value: string) {
@@ -47,7 +47,7 @@ export function PedidoFilters({
   clientes,
   selectedClienteId,
   onClienteSelect,
-  filtroTipo,
+  filtroCanal,
   filtroOrigen,
   filtroEstadoEntrega,
   filtroEstadoPago,
@@ -73,7 +73,7 @@ export function PedidoFilters({
   }, [expanded])
 
   const activeFiltersCount =
-    filtroTipo.length +
+    filtroCanal.length +
     filtroOrigen.length +
     filtroEstadoEntrega.length +
     filtroEstadoPago.length +
@@ -84,7 +84,7 @@ export function PedidoFilters({
     origen: filtroOrigen,
     estadoEntrega: filtroEstadoEntrega,
     estadoPago: filtroEstadoPago,
-    tipo: filtroTipo,
+    canal: filtroCanal,
   }
 
   return (
