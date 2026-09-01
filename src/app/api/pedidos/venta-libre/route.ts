@@ -39,6 +39,13 @@ export async function POST(request: NextRequest) {
 
     const { clienteId, items, pagos, embarqueId, obs, fotoEntrega, gpsLat, gpsLng, offlineId } = parsed.data
 
+    // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: "entregar ahora" vs "entregar después".
+    // Gate por flag durante el rollout: con el flag OFF, `entregado` se ignora y
+    // la venta libre fuerza ENTREGADO como siempre.
+    const ventaRutaPosteriorHabilitado =
+      process.env.NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR === 'true'
+    const entregarAhora = !ventaRutaPosteriorHabilitado || parsed.data.entregado !== false
+
     // FASE 7 (ADR-OFFLINE-001, §11): timestamps de la venta espontánea.
     const serverReceivedAt = new Date()
     const occurredAt = parsed.data.occurredAt ? new Date(parsed.data.occurredAt) : null
@@ -148,7 +155,13 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      const estadoPago = calcularEstadoPago(total, totalPagado)
+      // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: la entrega define el estado.
+      const estadoEntregaFinal = entregarAhora
+        ? EstadoEntrega.ENTREGADO
+        : EstadoEntrega.PENDIENTE
+      // estadoPago se PROYECTA con el estado de entrega real: prepago + entrega
+      // pendiente → ANTICIPADO (G5.1); prepago + entregado → PAGADO.
+      const estadoPago = calcularEstadoPago(total, totalPagado, estadoEntregaFinal)
 
       // 6b. Verificar límite de fiados si el pedido va a quedar con saldo.
       // FIX C-FIADOS-1: solo pedidos ENTREGADOS con saldo > 0 cuentan.
@@ -194,6 +207,8 @@ export async function POST(request: NextRequest) {
       const itemsParaLegacy = itemsParaPrecios.map(i => ({
         producto: i.codigo,
         cantidad: i.cantidad,
+        // entrega posterior → nada entregado todavía (cXEnt = 0).
+        cantEntrega: entregarAhora ? i.cantidad : 0,
         precio: precioMap[i.codigo] || 0,
       }))
       const legacyFields = buildPedidoLegacyFields(
@@ -208,17 +223,20 @@ export async function POST(request: NextRequest) {
           tipo: 'ENVIO',
           canal,
           origen: OrigenPedido.VENTA_LIBRE,
-          estadoEntrega: EstadoEntrega.ENTREGADO,
+          estadoEntrega: estadoEntregaFinal,
           estadoPago,
-          estado: EstadoEntrega.ENTREGADO, // legacy
-          embarqueId,
+          estado: estadoEntregaFinal, // legacy (mirror de estadoEntrega)
+          // Entrega posterior → el pedido NO queda físicamente asignado a este
+          // embarque; entra al planificador como cualquier PENDIENTE. El vínculo
+          // con el embarque donde nació se conserva en `embarqueOrigenId`.
+          embarqueId: entregarAhora ? embarqueId : null,
           // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: embarque de origen inmutable.
           embarqueOrigenId: embarqueId,
           total,
           totalPagado,
           saldo: total - totalPagado,
-          obs: obs || 'Venta libre en ruta',
-          fotoEntrega: fotoUrl || null,
+          obs: obs || (entregarAhora ? 'Venta libre en ruta' : 'Venta libre en ruta (entrega posterior)'),
+          fotoEntrega: entregarAhora ? (fotoUrl || null) : null,
           gpsLat: gpsLat || null,
           gpsLng: gpsLng || null,
           offlineId: offlineId || null,
@@ -231,7 +249,7 @@ export async function POST(request: NextRequest) {
             create: itemsParaPrecios.map(i => ({
               producto: i.codigo,
               cantPedido: i.cantidad,
-              cantEntrega: i.cantidad,
+              cantEntrega: entregarAhora ? i.cantidad : 0,
               precio: precioMap[i.codigo] || 0,
               subtotal: (precioMap[i.codigo] || 0) * i.cantidad,
             })),

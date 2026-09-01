@@ -14,7 +14,10 @@ import { CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
 import { startOfDayBogota, endOfDayBogota } from '@/lib/dates'
 
 const CANALES_PLANIFICABLES = ['DOMICILIO'] as const
-const ORIGENES_PLANIFICABLES = ['PEDIDO', 'RECURRENTE', 'VENTA_RAPIDA'] as const
+// ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001 §consecuencias: una venta libre con
+// entrega posterior queda `estadoEntrega = PENDIENTE`, `embarqueId = null` y
+// debe poder planificarse como cualquier otro pendiente.
+const ORIGENES_PLANIFICABLES = ['PEDIDO', 'RECURRENTE', 'VENTA_RAPIDA', 'VENTA_LIBRE'] as const
 
 /**
  * Filtro Prisma para "pedidos elegibles para el plan de `fecha`".

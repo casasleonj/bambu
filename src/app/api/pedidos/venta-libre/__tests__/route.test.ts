@@ -7,7 +7,7 @@
  *   - ADMIN/ASISTENTE with BLOQUEAR=true CAN set precioManual (rule is repartidor-only)
  *   - REPARTIDOR without precioManual passes the check (other rules still apply)
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { NextRequest } from 'next/server'
 
 // ── Mocks ───────────────────────────────────────────────────────────────
@@ -124,8 +124,12 @@ vi.mock('@/lib/pricing', () => ({
   resolverPreciosPedido: (...args: unknown[]) => mockResolverPreciosPedido(...args),
 }))
 vi.mock('@/lib/pedido-utils', () => ({
-  calcularEstadoPago: (total: number, pagado: number) =>
-    pagado >= total ? 'PAGADO' : 'PENDIENTE',
+  calcularEstadoPago: (total: number, pagado: number, estadoEntrega = 'ENTREGADO') => {
+    if (pagado >= total) {
+      return estadoEntrega === 'PENDIENTE' || estadoEntrega === 'EN_RUTA' ? 'ANTICIPADO' : 'PAGADO'
+    }
+    return pagado > 0 ? 'PARCIAL' : 'PENDIENTE'
+  },
   puedeFiar: () => true,
   puedeCrearPedido: () => null,
   resolverLimiteFiados: (_cliente: { limitePedidosFiados?: number | null }, _configValor?: string | null) =>
@@ -362,6 +366,67 @@ describe('POST /api/pedidos/venta-libre — BLOQUEAR_PRECIOS_REPARTIDOR', () => 
       }))
       expect(res.status).toBe(201)
       expect(mockPrismaPago.create.mock.calls[0][0].data.confirmacion).toBe('REPORTADO')
+    })
+  })
+
+  describe('ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: entregar ahora vs después', () => {
+    beforeEach(() => {
+      mockAuth.mockResolvedValue({ user: { id: 'u-asis', role: 'ASISTENTE' } })
+      mockPrismaEmbarque.findUnique.mockResolvedValue({
+        id: 'emb1',
+        estado: 'ABIERTO',
+        trabajadorId: 't1',
+        trabajador: { user: null },
+      })
+    })
+
+    afterEach(() => vi.unstubAllEnvs())
+
+    it('flag OFF: `entregado: false` se ignora → ENTREGADO como siempre', async () => {
+      vi.stubEnv('NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR', 'false')
+      const res = await POST(makeRequest({ ...validBody, entregado: false, fotoEntrega: undefined }))
+      expect(res.status).toBe(201)
+      const data = mockPrismaPedido.create.mock.calls[0][0].data
+      expect(data.estadoEntrega).toBe('ENTREGADO')
+      expect(data.embarqueId).toBe('emb1')
+    })
+
+    it('flag ON + `entregado: false`: PENDIENTE, embarqueId null, cantEntrega 0, ANTICIPADO', async () => {
+      vi.stubEnv('NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR', 'true')
+      const res = await POST(makeRequest({ ...validBody, entregado: false, fotoEntrega: undefined }))
+      expect(res.status).toBe(201)
+      const data = mockPrismaPedido.create.mock.calls[0][0].data
+      expect(data.estadoEntrega).toBe('PENDIENTE')
+      expect(data.estado).toBe('PENDIENTE')
+      expect(data.embarqueId).toBeNull()
+      expect(data.embarqueOrigenId).toBe('emb1') // origen se conserva
+      expect(data.fotoEntrega).toBeNull()
+      expect(data.estadoPago).toBe('ANTICIPADO') // prepago total, entrega pendiente
+      expect(data.items.create.every((i: { cantEntrega: number }) => i.cantEntrega === 0)).toBe(true)
+      expect(data.items.create.every((i: { cantPedido: number }) => i.cantPedido > 0)).toBe(true)
+      expect(data.cPacaAguaEnt).toBe(0)
+      expect(data.cPacaAguaPed).toBe(2)
+    })
+
+    it('flag ON + `entregado: true`: ENTREGADO + PAGADO (comportamiento actual)', async () => {
+      vi.stubEnv('NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR', 'true')
+      const res = await POST(makeRequest({ ...validBody, entregado: true }))
+      expect(res.status).toBe(201)
+      const data = mockPrismaPedido.create.mock.calls[0][0].data
+      expect(data.estadoEntrega).toBe('ENTREGADO')
+      expect(data.embarqueId).toBe('emb1')
+      expect(data.estadoPago).toBe('PAGADO')
+    })
+
+    it('flag ON + `entregado: false` sin foto: OK (no se exige foto)', async () => {
+      vi.stubEnv('NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR', 'true')
+      const res = await POST(makeRequest({ ...validBody, entregado: false, fotoEntrega: undefined }))
+      expect(res.status).toBe(201)
+    })
+
+    it('`entregado: true` (o ausente) sin foto: 400 (foto obligatoria)', async () => {
+      const res = await POST(makeRequest({ ...validBody, fotoEntrega: undefined }))
+      expect(res.status).toBe(400)
     })
   })
 })
