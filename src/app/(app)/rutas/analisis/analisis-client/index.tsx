@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import type { BarrioAnalysis, RutaConflict, Sugerencia } from './types'
+import type { BarrioAnalysis, RutaConflict, Sugerencia, CalidadDatos } from './types'
+import { CalidadDatosPanel } from './calidad-datos-panel'
 
 export default function RutasAnalisisClient() {
   const router = useRouter()
@@ -12,6 +13,7 @@ export default function RutasAnalisisClient() {
   const [conflictos, setConflictos] = useState<RutaConflict[]>([])
   const [sugerencias, setSugerencias] = useState<Sugerencia[]>([])
   const [barriosSinRuta, setBarriosSinRuta] = useState<string[]>([])
+  const [calidadDatos, setCalidadDatos] = useState<CalidadDatos | null>(null)
 
   async function cargarAnalisis() {
     setLoading(true)
@@ -23,6 +25,7 @@ export default function RutasAnalisisClient() {
         setConflictos(data.conflictos || [])
         setSugerencias(data.sugerencias || [])
         setBarriosSinRuta(data.barriosSinRuta || [])
+        setCalidadDatos(data.calidadDatos ?? null)
       } else {
         toast.error(data.error?.message || 'Error al cargar analisis')
       }
@@ -50,7 +53,7 @@ export default function RutasAnalisisClient() {
       const data = await res.json()
       if (data.success) {
         toast.success(`Ruta ${nombre} creada`)
-        router.push('/rutas')
+        router.push('/rutas/habituales')
       } else {
         toast.error(data.error?.message || 'Error al crear ruta')
       }
@@ -72,7 +75,7 @@ export default function RutasAnalisisClient() {
         </div>
         <div className="flex gap-2">
           <button onClick={() => cargarAnalisis()} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition">Actualizar</button>
-          <button onClick={() => router.push('/rutas')} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">Ver Rutas</button>
+          <button onClick={() => router.push('/rutas/habituales')} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">Ver Rutas</button>
         </div>
       </div>
 
@@ -82,6 +85,8 @@ export default function RutasAnalisisClient() {
         <div className="bg-white p-4 rounded-lg shadow-sm border"><div className="text-3xl font-bold text-yellow-600">{sugerencias.length}</div><div className="text-sm text-gray-600">Sugerencias</div></div>
         <div className="bg-white p-4 rounded-lg shadow-sm border"><div className="text-3xl font-bold text-green-600">{barriosSinRuta.length}</div><div className="text-sm text-gray-600">Barrios sin ruta</div></div>
       </div>
+
+      {calidadDatos && <CalidadDatosPanel d={calidadDatos} />}
 
       {conflictos.length > 0 && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">

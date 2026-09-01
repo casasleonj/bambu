@@ -30,7 +30,7 @@ test.describe('Embarques — Contexto ADMIN', () => {
     await gotoEmbarques(p)
     await expect(p.getByRole('heading', { name: 'Embarques del Día' })).toBeVisible()
     await expect(p.locator('button:has-text("+ Nuevo Embarque")')).toBeVisible()
-    await expect(p.locator('button:has-text("Auto-Generar")')).toBeVisible()
+    await expect(p.locator('button:has-text("Planificar día")')).toBeVisible()
   })
 
   test('ADMIN ve pedidos pendientes para asignar', async () => {
@@ -235,20 +235,6 @@ test.describe('Embarques — Filters', () => {
   })
 })
 
-// ─── Auto-Generate Tests ─────────────────────────────────────────────────────
-
-test.describe('Embarques — Auto-Generate', () => {
-
-  test('auto-generate via API returns valid response', async ({ page }) => {
-    await loginAs(page, 'admin')
-    await createTrabajador(page)
-    const res = await apiPost(page, '/api/embarques/auto', {})
-    const data = await res.json()
-    expect(data).toBeDefined()
-    expect(res.status()).toBeLessThan(500)
-  })
-})
-
 // ─── Stock Estimado UI Tests ─────────────────────────────────────────────────
 
 test.describe('Embarques — Stock Estimado UI', () => {
@@ -279,21 +265,24 @@ test.describe('Embarques — Stock Estimado UI', () => {
   test('crear stock estimado via modal', async () => {
     await gotoEmbarques(p)
     await p.locator('button:has-text("Stock Estimado"), button:has-text("Stock:")').first().click()
-    // Fill values
-    const inputs = p.locator('#modal-title ~ div input[type="number"], .fixed input[type="number"]')
+    // Scope todo al modal (antes usaba `.fixed` / `button:has-text("Crear")`
+    // globales, que matcheaban el "+ Crear Embarque" del EmptyState detrás del
+    // modal → click interceptado, flake documentado en AGENTS.md #8).
+    const modal = p.locator('[role="dialog"]')
+    await expect(modal).toBeVisible()
+    const inputs = modal.locator('input[type="number"]')
     const count = await inputs.count()
     if (count >= 2) {
       await inputs.first().fill('100')
       await inputs.nth(1).fill('50')
     }
-    // Click Crear/Actualizar button
-    const saveBtn = p.locator('button:has-text("Crear"), button:has-text("Actualizar")').first()
-    if (await saveBtn.isVisible().catch(() => false)) {
-      await saveBtn.click()
-      const toast = p.locator('[data-sonner-toast]')
-      const hasToast = await toast.first().isVisible({ timeout: 3000 }).catch(() => false)
-      expect(hasToast).toBe(true)
-    }
+    const saveBtn = modal.locator('button:has-text("Crear"), button:has-text("Actualizar")').first()
+    await expect(saveBtn).toBeVisible()
+    await saveBtn.click()
+    // El guardado exitoso se refleja en el botón de stock del header (pasa a
+    // mostrar "Stock: 100/50/..."). Assert end-to-end, sin depender del timing
+    // del toast de sonner.
+    await expect(p.locator('button:has-text("Stock: 100/50")')).toBeVisible({ timeout: 10000 })
   })
 
   test('editar stock estimado via modal', async () => {

@@ -97,9 +97,17 @@ describe('M6: realtime events source audit', () => {
     expect(source).toMatch(/publishRealtimeEvent\(['"]embarque\.updated['"]/)
   })
 
-  it('embarque.updated se publica al generar embarque automático', () => {
-    const source = readRoute('embarques', 'auto')
-    expect(source).toMatch(/publishRealtimeEvent\(['"]embarque\.created['"]/)
+  it('route_plan.updated se publica al generar el plan de distribución', () => {
+    const source = readRoute('rutas', 'planes', 'generar')
+    expect(source).toMatch(/publishRealtimeEvent\(['"]route_plan\.updated['"]/)
+  })
+
+  it('embarque.created se publica al materializar el plan', () => {
+    const src = readFileSync(
+      join(process.cwd(), 'src/modules/planificador/application/use-cases/MaterializarPlanUseCase.ts'),
+      'utf-8',
+    )
+    expect(src).toMatch(/publishRealtimeEvent\(['"]embarque\.created['"]/)
   })
 
   it('produccion.created se publica al registrar produccion', () => {

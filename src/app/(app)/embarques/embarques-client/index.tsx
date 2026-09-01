@@ -15,7 +15,6 @@ import { EmbarqueCard } from './embarque-card'
 import { ResumenEstados } from './resumen-estados'
 import { CommandCenter } from './command-center'
 import { EmbarqueFormModal } from './embarque-form-modal'
-import { AutoGenerarPreviewModal } from './auto-generar-preview-modal'
 import { StatsTab } from './stats-tab'
 import { usePollingRefetch } from '@/hooks/use-polling-refetch'
 import { useRepartidoresYRutas } from '@/hooks/use-repartidores-y-rutas'
@@ -63,7 +62,6 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
   )
   const [loading, setLoading] = useState(!initialData)
   const [showFormModal, setShowFormModal] = useState(false)
-  const [showAutoGenerarModal, setShowAutoGenerarModal] = useState(false)
   const [formMode, setFormMode] = useState<'create' | 'edit'>('create')
   const [editingEmbarque, setEditingEmbarque] = useState<Embarque | null>(null)
   const [fetchError, setFetchError] = useState<string | null>(null)
@@ -142,9 +140,9 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
     fetchData()
   })
 
-  const handleAutoGenerate = () => {
-    setShowAutoGenerarModal(true)
-  }
+  // ADR-PLANIFICADOR-003 §3: la distribución del día se planifica en /rutas
+  // (el plan propone los grupos y al confirmar crea los embarques).
+  const handleAutoGenerate = () => router.push('/rutas')
 
   const handleDateChange = useCallback((desde: string | null, hasta: string | null) => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -285,12 +283,12 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
               </button>
             </Tooltip>
           )}
-          <Tooltip content="Agrupa automáticamente los pedidos pendientes en embarques optimizados por zona" title="Auto-Generar" position="bottom">
+          <Tooltip content="Planificá la distribución del día: el sistema propone los grupos y al confirmar crea los embarques" title="Planificar día" position="bottom">
             <button
               onClick={handleAutoGenerate}
               className="px-4 py-2 min-h-[40px] md:min-h-0 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
             >
-              Auto-Generar
+              Planificar día
             </button>
           </Tooltip>
           <Tooltip content="Crea un embarque manual seleccionando repartidor y ruta" title="Nuevo Embarque" position="bottom">
@@ -551,12 +549,6 @@ export default function EmbarquesClient({ initialData, isAdmin = false }: Embarq
         mode={formMode}
         embarque={editingEmbarque}
         guided={EMBARQUES_V2 && formMode === 'create'}
-      />
-
-      <AutoGenerarPreviewModal
-        open={showAutoGenerarModal}
-        onClose={() => setShowAutoGenerarModal(false)}
-        onCreated={fetchData}
       />
 
       {/* Stock Estimado Modal */}

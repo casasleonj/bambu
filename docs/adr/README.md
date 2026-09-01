@@ -28,3 +28,22 @@ Contrato técnico congelado (plan-maestro-embarques-autocontenido-equipo-desarro
 | `ADR-AUTORIZACION-REGALOS-001` | §1.1, §17 (autorizaciones) | FASE 8 |
 
 Gate de aprobación: [`GATE-APROBACION.md`](./GATE-APROBACION.md) (§21).
+
+---
+
+## Rutas + Planificador de Distribución (dominio nuevo — **Propuesta**, gate F0/F1)
+
+Base: `docs/rutas/INVENTARIO_CAPACIDADES_DISTRIBUCION.md` (F0) + Plan Técnico v4.
+Estos ADRs **no están aceptados** — son propuestas para el sign-off del PO.
+
+| ADR | Decide | Fase |
+|---|---|---|
+| `ADR-PLANIFICADOR-001` | representación del plan, persistencia, sync/async, estados, contrato HTTP | F1 → F2 |
+| `ADR-PLANIFICADOR-002` | elegibilidad de pedido, trazabilidad Plan↔Pedido (ref por ID, no FK), cardinalidad | F1 → F2 |
+| `ADR-PLANIFICADOR-003` | contrato Planificador → Embarques (materialización; `/api/embarques/auto` **deprecado**; fallo parcial) | F1 (P0) |
+| `ADR-PLANIFICADOR-004` | modelo geográfico, calidad de ubicación, proximidad de barrios, backfill | F1 → F2 |
+| `ADR-PLANIFICADOR-005` | replanificación, estabilidad, versionado, concurrencia, conflicto offline | F1 → F2/F3 |
+| `ADR-PLANIFICADOR-006` | `PlanActividad` (ENTREGA/COBRO/RECOGIDA) en schema; MVP solo ENTREGA; cobros = epic siguiente | F1 |
+
+ADRs prerequisito nombrados (se abren al arrancar el epic de cobros, no ahora):
+`ADR-EMBARQUES-ACTIVIDAD-PLAN`, `ADR-PLANIFICADOR-CARTERA`.

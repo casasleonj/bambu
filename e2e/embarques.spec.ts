@@ -57,11 +57,11 @@ test.describe('Embarques — Navegación y Carga', () => {
     await expect(page.getByRole('heading', { name: 'Embarques del Día' })).toBeVisible()
   })
 
-  test('buttons Nuevo Embarque and Auto-Generar are visible', async ({ page }) => {
+  test('buttons Nuevo Embarque and Planificar día are visible', async ({ page }) => {
     await embarquesLogin(page)
     await gotoEmbarques(page)
     await expect(page.locator('button:has-text("+ Nuevo Embarque")')).toBeVisible()
-    await expect(page.locator('button:has-text("Auto-Generar")')).toBeVisible()
+    await expect(page.locator('button:has-text("Planificar día")')).toBeVisible()
   })
 
   test('command center renders (grouped by derived phase)', async ({ page }) => {
@@ -160,15 +160,6 @@ test.describe('Embarques — CRUD', () => {
     await expect(page.getByRole('heading', { name: 'Asignar pedidos' })).toBeVisible()
     await expect(page).toHaveURL(new RegExp(`/embarques/${id}(\\?|$)`))
     await expect(page).not.toHaveURL(/step=/)
-  })
-
-  test('auto-generar embarques', async ({ page }) => {
-    await loginAs(page, 'admin')
-    await createTrabajador(page)
-    const res = await apiPost(page, '/api/embarques/auto', {})
-    const data = await res.json()
-    expect(data).toBeDefined()
-    expect(data.success || data.error).toBeDefined()
   })
 
   test('cancelar embarque via DELETE', async ({ page }) => {
@@ -512,26 +503,6 @@ test.describe('Embarques — Cierre Completo', () => {
 })
 
 test.describe('Embarques — Validaciones y Edge Cases', () => {
-
-  test('auto-generar sin repartidores activos returns 400', async ({ page }) => {
-    await loginAs(page, 'admin')
-    // Assuming no active repartidores exist (fresh state)
-    const res = await apiPost(page, '/api/embarques/auto', {})
-    await res.json()
-    // Should either succeed or return a business error, never 500
-    expect(res.status()).toBeLessThan(500)
-  })
-
-  test('auto-generar sin pedidos pendientes returns informative message', async ({ page }) => {
-    await loginAs(page, 'admin')
-    await createTrabajador(page)
-    const res = await apiPost(page, '/api/embarques/auto', {})
-    const data = await res.json()
-    expect(data).toBeDefined()
-    if (data.success && data.data) {
-      expect(data.data.created).toBeDefined()
-    }
-  })
 
   test('GET embarque not found returns 404', async ({ page }) => {
     await loginAs(page, 'admin')

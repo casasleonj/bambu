@@ -67,6 +67,8 @@ test.describe('Auth Endpoints', () => {
     })
     expect(res.status()).toBe(400)
     const body = await res.json()
-    expect(body.error).toContain('No se requiere cambio')
+    // apiError() serializa como { success: false, error: { message } }
+    const errMsg = typeof body.error === 'string' ? body.error : body.error?.message ?? ''
+    expect(errMsg).toContain('No se requiere cambio')
   })
 })

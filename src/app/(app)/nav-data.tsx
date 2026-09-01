@@ -83,7 +83,9 @@ export const navSections: NavSection[] = [
       { href: '/insumos', label: 'Insumos', icon: 'boxes', requiredPermission: 'view:insumos' },
       { href: '/embarques', label: 'Embarques', icon: 'truck', requiredPermission: 'view:embarques' },
       { href: '/rutas', label: 'Distribución', icon: 'truck', requiredPermission: 'view:rutas', subItems: [
-        { href: '/rutas', label: 'Planificación', icon: 'map', requiredPermission: 'view:rutas' },
+        { href: '/rutas', label: 'Hoy', icon: 'map', requiredPermission: 'view:rutas' },
+        { href: '/rutas/habituales', label: 'Rutas habituales', icon: 'map', requiredPermission: 'view:rutas' },
+        { href: '/rutas/analisis', label: 'Análisis', icon: 'map', requiredPermission: 'view:rutas' },
         { href: '/repartidor', label: 'Ejecución', icon: 'truck', requiredPermission: 'view:repartidor' }
       ]},
     ]

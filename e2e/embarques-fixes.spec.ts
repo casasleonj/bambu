@@ -312,18 +312,18 @@ test.describe('Embarques — Fix #5: DELETE resetea estadoEntrega', () => {
   })
 })
 
-// ─── Fix #7: Auto-generador crea EmbarqueProducto ───────────────────────────
+// ─── Planificador → Embarques: la materialización crea EmbarqueProducto ──────
 
-test.describe('Embarques — Fix #7: Auto-generador crea EmbarqueProducto', () => {
+test.describe('Embarques — materialización del plan crea productos', () => {
 
-  test('auto-generar crea embarque con productos desde pedidos', async ({ page }) => {
+  test('confirmar plan → embarque con productos desde los pedidos', async ({ page }) => {
     await loginAs(page, 'admin')
     const c = await createCliente(page)
     const clienteId = c.cliente?.id || c.data?.id
     if (!clienteId) { test.skip(); return }
     await createTrabajador(page)
+    await apiPost(page, `/api/clientes/${clienteId}`, { barrio: 'Centro' }).catch(() => null)
 
-    // Create pending pedidos
     await apiPost(page, '/api/pedidos', {
       clienteId, canal: 'DOMICILIO', ventaRapida: false,
       items: [{ producto: 'PACA_AGUA', cantidad: 3 }],
@@ -333,21 +333,21 @@ test.describe('Embarques — Fix #7: Auto-generador crea EmbarqueProducto', () =
       items: [{ producto: 'PACA_HIELO', cantidad: 2 }],
     })
 
-    // Auto-generate
-    const autoRes = await apiPost(page, '/api/embarques/auto', {})
-    const autoData = await autoRes.json()
+    const genRes = await apiPost(page, '/api/rutas/planes/generar', {})
+    const gen = await genRes.json()
+    expect(gen.success).toBeTruthy()
 
-    if (autoData.success && autoData.data?.created > 0) {
-      // Get the created embarque
-      const embRes = await apiGet(page, '/api/embarques?estado=ABIERTO&all=true')
-      const embData = await embRes.json()
-      const embarques = embData.embarques || []
-      if (embarques.length > 0) {
-        const emb = embarques[0]
-        // Should have productos array with length > 0
-        expect(emb.productos?.length).toBeGreaterThan(0)
-      }
-    }
+    const confRes = await apiPost(page, `/api/rutas/planes/${gen.planId}/confirmar`, {
+      expectedVersion: gen.version, idempotencyKey: `fix7-${gen.planId}`,
+    })
+    const conf = await confRes.json()
+    expect(conf.success).toBeTruthy()
+
+    const embRes = await apiGet(page, '/api/embarques?estado=ABIERTO&all=true')
+    const embData = await embRes.json()
+    const emb = (embData.embarques || [])[0]
+    expect(emb).toBeDefined()
+    expect(emb.productos?.length ?? 0).toBeGreaterThan(0)
   })
 })
 
