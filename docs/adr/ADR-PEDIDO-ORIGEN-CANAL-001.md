@@ -6,6 +6,26 @@
 - Fase de implementación: FASE 2 (Pedidos). Independiente de G5.
 - Sin decisión de producto pendiente — decisión técnica de contrato.
 
+## Estado de implementación (2026-09-01)
+
+- **G6.1 — ✅ hecho (PR #149, mergeado).** Migrados todos los lectores de
+  `Pedido.tipo` → `canal` en el flujo de Pedidos: filtro UI "Tipo" → "Canal"
+  (`?canal=`, con `?tipo=` legacy auto-migrado), detalle, `page.tsx`,
+  `/api/pedidos`, `usePedidos`, `ListarPedidosUseCase`, `PedidoFilter`,
+  `PrismaPedidoRepository`. Helper `src/lib/pedido-canal.ts`. Sin schema.
+- **Enum `CanalPedido` (§1) — se toma la alternativa de menor riesgo.** `canal`
+  se queda como `String`; `CanalVO` (dominio) es la única puerta de escritura +
+  `normalizeCanalFilter` valida en los bordes. Convertir a enum ahora aporta
+  poco y agrega una migración de tipo de columna coordinada con G5. Reevaluable.
+- **`Pedido.tipo` / `PlantillaRecurrente.tipo` — se dejan de escribir y se
+  dropean en el mismo pase de limpieza de schema que la fase D de G5**
+  (`ADR-PEDIDO-ESTADO-CANONICO-001`), para no tener dos migraciones de columna
+  de `Pedido` en vuelo a la vez. `PedidoMapper` sigue escribiendo `tipo`
+  (derivado, siempre consistente) hasta ese pase.
+- **`ventaRapida` / `tipo` en `PedidoCreateSchema` (§4) — pendiente**, va con
+  ese mismo pase (toca `CrearPedidoUseCase` + `venta-rapida-form`). Mientras
+  tanto siguen siendo aliases aceptados; el cliente ya puede mandar `origen`.
+
 ## Contexto
 
 `Pedido` tiene tres campos de clasificación con solape:
