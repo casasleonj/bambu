@@ -157,16 +157,19 @@ export async function POST(request: NextRequest) {
         })
       }
 
+      // F1 (ADR-CONCURRENCIA-001 / contrato §51): la auditoría se escribe en
+      // la MISMA transacción que creó el Abono. Antes corría post-commit con
+      // `.catch(() => {})` → un abono podía quedar registrado sin evidencia.
+      await logAudit({
+        entidad: 'Abono',
+        registroId: abono.id,
+        accion: 'CREATE',
+        datos: { monto, facturaId },
+        usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+      }, tx)
+
       return { abono }
     })
-
-    logAudit({
-      entidad: 'Abono',
-      registroId: result.abono.id,
-      accion: 'CREATE',
-      datos: { monto, facturaId },
-      usuarioId: (authResult.user as { id?: string } | undefined)?.id,
-    }).catch(() => {})
 
     return apiSuccess({ abono: result.abono }, 201)
   } catch (error) {
