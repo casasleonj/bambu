@@ -81,12 +81,20 @@ test.describe('10: Tabs + filtros de pedidos', () => {
       canal: 'DOMICILIO',
     })
 
-    for (const tipo of ['ENVIO', 'PUNTO']) {
-      await page.goto(`/pedidos?tipo=${tipo}`)
+    // G6: el filtro es `?canal=` (PUNTO/DOMICILIO). El legacy `?tipo=` se
+    // auto-migra a `?canal=` al montar (ENVIO→DOMICILIO).
+    for (const canal of ['PUNTO', 'DOMICILIO']) {
+      await page.goto(`/pedidos?canal=${canal}`)
       await page.waitForLoadState('domcontentloaded')
       await page.waitForTimeout(1500)
-      await expect(page).toHaveURL(new RegExp(`tipo=${tipo}`))
+      await expect(page).toHaveURL(new RegExp(`canal=${canal}`))
     }
+    // Legacy `?tipo=ENVIO` → se reescribe a `?canal=DOMICILIO`
+    await page.goto('/pedidos?tipo=ENVIO')
+    await page.waitForLoadState('domcontentloaded')
+    await page.waitForTimeout(1500)
+    await expect(page).toHaveURL(/canal=DOMICILIO/)
+    await expect(page).not.toHaveURL(/tipo=ENVIO/)
   })
 
   test('06: Filtro estadoEntrega via query param', async ({ page }) => {
@@ -149,13 +157,13 @@ test.describe('10: Tabs + filtros de pedidos', () => {
     await expect(page).toHaveURL(new RegExp(`hasta=${today}`))
   })
 
-  test('11: Combinación: tab=fiados + tipo=ENVIO + estadoPago=PENDIENTE', async ({ page }) => {
+  test('11: Combinación: tab=fiados + canal=DOMICILIO + estadoPago=PENDIENTE', async ({ page }) => {
     await fullLoginRealistic(page, 'asistente', 50_000)
-    await page.goto('/pedidos?tab=fiados&tipo=ENVIO&estadoPago=PENDIENTE')
+    await page.goto('/pedidos?tab=fiados&canal=DOMICILIO&estadoPago=PENDIENTE')
     await page.waitForLoadState('domcontentloaded')
     await page.waitForTimeout(2000)
     await expect(page).toHaveURL(/tab=fiados/)
-    await expect(page).toHaveURL(/tipo=ENVIO/)
+    await expect(page).toHaveURL(/canal=DOMICILIO/)
     await expect(page).toHaveURL(/estadoPago=PENDIENTE/)
   })
 

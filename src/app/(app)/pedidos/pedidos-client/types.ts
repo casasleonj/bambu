@@ -123,11 +123,9 @@ export interface Cliente {
   limitePedidosFiados?: number | null
 }
 
-// G6 (ADR-PEDIDO-ORIGEN-CANAL-001): el filtro pasa de "Tipo" (ENVIO/PUNTO,
-// derivado) a "Canal" (PUNTO/DOMICILIO, canónico). `TIPOS` se mantiene solo
-// para normalizar params legacy `?tipo=` (ver normalizeCanalParam).
-export const CANALES = ['PUNTO', 'DOMICILIO']
-export const TIPOS = ['ENVIO', 'PUNTO']
+// G6 (ADR-PEDIDO-ORIGEN-CANAL-001): el filtro es "Canal" (PUNTO/DOMICILIO).
+// `CANALES` vive en `@/lib/pedido-canal` (fuente única). `TIPOS` (ENVIO/PUNTO)
+// se retira acá — la normalización legacy vive en `normalizeCanalFilter`.
 export const ORIGENES = ['PEDIDO', 'VENTA_RAPIDA', 'VENTA_LIBRE', 'RECURRENTE']
 export const ESTADOS_ENTREGA = ['PENDIENTE', 'EN_RUTA', 'ENTREGADO', 'NO_ENTREGADO', 'CANCELADO', 'ANULADO']
 export const ESTADOS_PAGO = ['PENDIENTE', 'PARCIAL', 'PAGADO', 'ANTICIPADO', 'VENCIDO', 'ANULADO']

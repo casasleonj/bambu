@@ -10,14 +10,9 @@
 export const CANALES = ['PUNTO', 'DOMICILIO'] as const
 export type CanalPedido = (typeof CANALES)[number]
 
-/** `Pedido.tipo` derivado de `canal` (regla de `PedidoMapper`). */
+/** `Pedido.tipo` (legacy) derivado de `canal` (regla de `PedidoMapper`). */
 export function tipoDesdeCanal(canal: string): 'PUNTO' | 'ENVIO' {
   return canal === 'PUNTO' ? 'PUNTO' : 'ENVIO'
-}
-
-/** `canal` a partir de un valor de `tipo` legacy. */
-export function canalDesdeTipo(tipo: string): CanalPedido {
-  return tipo === 'PUNTO' ? 'PUNTO' : 'DOMICILIO'
 }
 
 /**

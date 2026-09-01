@@ -18,7 +18,7 @@ import { SkeletonPage, SkeletonCard } from '@/components/skeleton'
 import { Tooltip, InfoBanner } from '@/components/tooltip'
 import { useConfirm } from '@/components/confirm-modal'
 import { SmartDateFilter } from '@/components/smart-date-filter'
-import { normalizeCanalFilter } from '@/lib/pedido-canal'
+import { normalizeCanalFilter, tipoDesdeCanal } from '@/lib/pedido-canal'
 import { PedidoFilters } from './pedido-filters'
 import { PedidoTable } from './pedido-table'
 import { FiadosTable } from './fiados-table'
@@ -70,7 +70,7 @@ function buildPendingPedido(offlineId: string, payload: CrearPedidoPayload, clie
     telefonoCli: '',
     zonaCli: '',
     barrioCli: '',
-    tipo: payload.canal === 'PUNTO' ? 'PUNTO' : 'ENVIO',
+    tipo: tipoDesdeCanal(payload.canal),
     canal: payload.canal,
     estado: 'PENDIENTE',
     origen: payload.ventaRapida ? 'VENTA_RAPIDA' : 'PEDIDO',
@@ -557,7 +557,10 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     const next = current.includes(value)
       ? current.filter(v => v !== value)
       : [...current, value]
-    syncUrl({ [key]: next.length > 0 ? next : undefined })
+    // G6: al togglear "Canal", limpiar también el param legacy `?tipo=` para
+    // que no quede un filtro fantasma si el efecto de migración aún no corrió.
+    const extra = key === 'canal' ? { tipo: undefined } : {}
+    syncUrl({ [key]: next.length > 0 ? next : undefined, ...extra })
   }, [shallowParams, syncUrl])
 
   const setSingleFilter = useCallback((key: string, value: string) => {

@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react'
 import { DateRangeFilter } from '@/components/date-range-filter'
 import { PedidosSearch, type ClienteSearchOption } from '@/components/pedidos-search'
-import { CANALES, ORIGENES, ESTADOS_ENTREGA, ESTADOS_PAGO } from './types'
+import { CANALES } from '@/lib/pedido-canal'
+import { ORIGENES, ESTADOS_ENTREGA, ESTADOS_PAGO } from './types'
 
 interface PedidoFiltersProps {
   searchInput: string
@@ -27,7 +28,7 @@ const filterGroups = [
   { key: 'origen', label: 'Origen', values: ORIGENES, active: (f: string[]) => f },
   { key: 'estadoEntrega', label: 'Entrega', values: ESTADOS_ENTREGA, active: (f: string[]) => f },
   { key: 'estadoPago', label: 'Pago', values: ESTADOS_PAGO, active: (f: string[]) => f },
-  { key: 'canal', label: 'Canal', values: CANALES, active: (f: string[]) => f },
+  { key: 'canal', label: 'Canal', values: [...CANALES], active: (f: string[]) => f },
 ]
 
 const activeColors: Record<string, string> = {

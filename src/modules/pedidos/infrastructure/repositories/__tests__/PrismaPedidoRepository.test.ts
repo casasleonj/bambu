@@ -14,16 +14,13 @@ const repoPath = join(process.cwd(), 'src/modules/pedidos/infrastructure/reposit
 const source = readFileSync(repoPath, 'utf-8')
 
 describe('PrismaPedidoRepository: filtro de canal (G6)', () => {
-  it('buildWhere usa filter.canal y traduce filter.tipo (legacy)', () => {
-    expect(source).toMatch(/filter\?\.canal/)
-    expect(source).toMatch(/filter\?\.tipo/)
-    // legacy: PUNTO→PUNTO, resto→DOMICILIO
-    expect(source).toMatch(/'PUNTO'\s*\?\s*'PUNTO'\s*:\s*'DOMICILIO'/)
+  it('buildWhere normaliza filter.canal + filter.tipo con el helper compartido', () => {
+    expect(source).toMatch(/normalizeCanalFilter\(\[\.\.\.\(filter\?\.canal\s*\?\?\s*\[\]\),\s*\.\.\.\(filter\?\.tipo\s*\?\?\s*\[\]\)\]\)/)
   })
 
   it('buildWhere aplica where.canal (valor único o { in: [...] })', () => {
-    expect(source).toMatch(/where\.canal\s*=\s*\[\.\.\.canalValues\]\[0\]/)
-    expect(source).toMatch(/where\.canal\s*=\s*\{\s*in:\s*\[\.\.\.canalValues\]\s*\}/)
+    expect(source).toMatch(/where\.canal\s*=\s*canalValues\[0\]/)
+    expect(source).toMatch(/where\.canal\s*=\s*\{\s*in:\s*canalValues\s*\}/)
   })
 
   it('findByIdWithFactura is defined in the repository', () => {

@@ -1,19 +1,12 @@
 // @tests G6 (ADR-PEDIDO-ORIGEN-CANAL-001) — helpers de canal
 import { describe, it, expect } from 'vitest'
-import { tipoDesdeCanal, canalDesdeTipo, normalizeCanalFilter } from '@/lib/pedido-canal'
+import { tipoDesdeCanal, normalizeCanalFilter } from '@/lib/pedido-canal'
 
 describe('tipoDesdeCanal', () => {
   it('PUNTO → PUNTO, DOMICILIO → ENVIO', () => {
     expect(tipoDesdeCanal('PUNTO')).toBe('PUNTO')
     expect(tipoDesdeCanal('DOMICILIO')).toBe('ENVIO')
     expect(tipoDesdeCanal('cualquier-cosa')).toBe('ENVIO')
-  })
-})
-
-describe('canalDesdeTipo', () => {
-  it('PUNTO → PUNTO, ENVIO → DOMICILIO', () => {
-    expect(canalDesdeTipo('PUNTO')).toBe('PUNTO')
-    expect(canalDesdeTipo('ENVIO')).toBe('DOMICILIO')
   })
 })
 
