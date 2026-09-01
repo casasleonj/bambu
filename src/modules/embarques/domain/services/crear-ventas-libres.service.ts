@@ -79,6 +79,8 @@ export class CrearVentasLibresService {
           estadoPago,
           estado: 'ENTREGADO',
           embarqueId,
+          // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: embarque de origen inmutable.
+          embarqueOrigenId: embarqueId,
           precioPacaAgua: precioAgua.precio,
           precioPacaHielo: precioHielo.precio,
           precioBotellonFab: 0,

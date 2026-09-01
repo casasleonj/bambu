@@ -670,7 +670,17 @@ model Pedido {
   negocioId   String?
   negocio     Negocio?  @relation(fields: [negocioId], references: [id])
   embarqueId  String?
-  embarque    Embarque? @relation(fields: [embarqueId], references: [id])
+  embarque    Embarque? @relation("PedidoEmbarqueActual", fields: [embarqueId], references: [id])
+
+  /// Embarque en el que se ORIGINÓ la operación (venta en ruta). Inmutable una
+  /// vez seteado — NUNCA se limpia al reasignar el pedido (a diferencia de
+  /// `embarqueId`, que es la asignación física actual). Null para pedidos que
+  /// no nacieron dentro de un embarque. ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001.
+  /// `onDelete: Restrict` protege ese invariante: un hard-delete de un
+  /// `Embarque` que originó ventas se bloquea a nivel DB (el flujo normal de
+  /// cancelar embarque es soft-delete `estado=CANCELADO`, que no dispara la FK).
+  embarqueOrigenId String?
+  embarqueOrigen   Embarque? @relation("PedidoEmbarqueOrigen", fields: [embarqueOrigenId], references: [id], onDelete: Restrict)
 
   tipo  String @default("ENVIO")
   canal String @default("DOMICILIO")
@@ -799,6 +809,7 @@ model Pedido {
   @@index([clienteId])
   @@index([negocioId])
   @@index([embarqueId])
+  @@index([embarqueOrigenId])
   @@index([fecha])
   @@index([estado])
   @@index([createdById])
@@ -946,9 +957,10 @@ model Embarque {
   ordenVisita  Json?
   optimizadoEn DateTime?
 
-  pedidos   Pedido[]
-  gpsTracks GpsTrack[]
-  productos EmbarqueProducto[]
+  pedidos       Pedido[]          @relation("PedidoEmbarqueActual")
+  pedidosOrigen Pedido[]          @relation("PedidoEmbarqueOrigen")
+  gpsTracks     GpsTrack[]
+  productos     EmbarqueProducto[]
   gastos    Gasto[]
 
   // FASE 2 (ledger físico)

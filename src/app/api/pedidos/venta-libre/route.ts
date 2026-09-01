@@ -212,6 +212,8 @@ export async function POST(request: NextRequest) {
           estadoPago,
           estado: EstadoEntrega.ENTREGADO, // legacy
           embarqueId,
+          // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: embarque de origen inmutable.
+          embarqueOrigenId: embarqueId,
           total,
           totalPagado,
           saldo: total - totalPagado,
