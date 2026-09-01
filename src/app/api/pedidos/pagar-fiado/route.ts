@@ -75,6 +75,7 @@ export async function POST(request: NextRequest) {
             })),
             montoAplicado: montoAplicadoPrevio,
             montoSobrante: Math.max(0, monto - montoAplicadoPrevio),
+            saldoFavorAcreditado: Math.max(0, monto - montoAplicadoPrevio),
             mensaje: 'Pago ya aplicado previamente (dedup offline)',
           }
         }
@@ -236,6 +237,19 @@ export async function POST(request: NextRequest) {
         montoRestante -= montoAplicar
       }
 
+      // ADR-CORRECCION-MONETARIA-001 D.6 / Fase 2 §3.4: el sobrante tras aplicar
+      // FIFO deja de "reportarse y perderse" — se acredita al `Cliente.saldoFavor`
+      // dentro de la misma transacción, así queda disponible para el próximo
+      // pedido (lo consume `CrearPedidoUseCase` vía `getSaldoFavor`).
+      let saldoFavorAcreditado = 0
+      if (montoRestante > 0) {
+        await tx.cliente.update({
+          where: { id: clienteId },
+          data: { saldoFavor: { increment: montoRestante } },
+        })
+        saldoFavorAcreditado = montoRestante
+      }
+
       // F1 (ADR-CONCURRENCIA-001 / contrato §51): la auditoría del hecho
       // financiero se escribe en la MISMA transacción que aplicó los pagos.
       // Antes corría post-commit, sin `await` y tragando el error → un fallo
@@ -245,11 +259,11 @@ export async function POST(request: NextRequest) {
         entidad: 'Pedido',
         registroId: clienteId,
         accion: 'UPDATE',
-        datos: { monto, metodo, pagosAplicados },
+        datos: { monto, metodo, pagosAplicados, saldoFavorAcreditado },
         usuarioId: authResult.user?.id,
       }, tx)
 
-      return { pagosAplicados, montoRestante, culminados }
+      return { pagosAplicados, montoRestante, culminados, saldoFavorAcreditado }
     })
 
     if (!resultado.deduped && resultado.pagosAplicados.length > 0) {
@@ -290,14 +304,16 @@ export async function POST(request: NextRequest) {
             pagosAplicados: resultado.pagosAplicados,
             montoAplicado: resultado.montoAplicado,
             montoSobrante: resultado.montoSobrante,
+            saldoFavorAcreditado: resultado.saldoFavorAcreditado,
             mensaje: resultado.mensaje,
           }
         : {
             pagosAplicados: resultado.pagosAplicados,
             montoAplicado: monto - resultado.montoRestante,
             montoSobrante: resultado.montoRestante,
+            saldoFavorAcreditado: resultado.saldoFavorAcreditado,
             mensaje: resultado.montoRestante > 0
-              ? `Pagado $${(monto - resultado.montoRestante).toLocaleString()}. Sobrante: $${resultado.montoRestante.toLocaleString()}`
+              ? `Pagado $${(monto - resultado.montoRestante).toLocaleString()}. Sobrante $${resultado.montoRestante.toLocaleString()} acreditado a saldo a favor.`
               : `Pagado completo $${monto.toLocaleString()}`,
           }),
     })

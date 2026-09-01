@@ -238,7 +238,7 @@ export function FiadosTable({
         resumenHtml += `<div class="text-sm">Pedido <a href="/pedidos?openPedido=${p.pedidoId}" class="text-blue-600 hover:underline font-medium">#${p.numero}</a>: <b>${formatCurrency(p.montoAplicado)}</b> <span class="text-xs text-gray-500">${estado}</span></div>`
       })
       if (montoSobrante > 0) {
-        resumenHtml += `<div class="text-sm text-blue-600">💰 Sobrante: ${formatCurrency(montoSobrante)}</div>`
+        resumenHtml += `<div class="text-sm text-blue-600">💰 Sobrante ${formatCurrency(montoSobrante)} acreditado a saldo a favor del cliente</div>`
       }
       const facturaIds = [...new Set(pagosAplicados.filter((p) => p.facturaId).map((p) => p.facturaId))]
       if (facturaIds.length > 0) {
