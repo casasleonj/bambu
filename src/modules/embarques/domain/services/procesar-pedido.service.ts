@@ -26,7 +26,7 @@
 import { EstadoEmbarque } from '@prisma/client'
 import { calcularEstadoPago } from '@/lib/pedido-utils'
 import { getNextNumero } from '@/lib/sequence'
-import { confirmacionInicial } from '@/lib/pago-confirmacion'
+import { datosConfirmacionInicial } from '@/lib/pago-confirmacion'
 import type { CerrarEmbarqueInput } from '../../application/dto'
 import type { MetodoPago } from '@prisma/client'
 
@@ -231,7 +231,7 @@ export class ProcesarPedidoService {
             pedidoId: pedido.id,
             metodo: pago.metodo as MetodoPago,
             monto: pago.monto,
-            confirmacion: confirmacionInicial(pago.metodo),
+            ...datosConfirmacionInicial(pago.metodo),
           },
         })
       }

@@ -353,6 +353,7 @@ async function commitPago(
       // históricos ya conciliados → CONFIRMADO (mismo criterio que el backfill;
       // `confirmadoPorId = NULL` deja claro que no fue una confirmación humana).
       confirmacion: 'CONFIRMADO',
+      confirmadoAt: new Date(),
     },
   })
 

@@ -3,6 +3,7 @@ import {
   METODOS_REQUIEREN_CONFIRMACION_DEFAULT,
   parseMetodosRequierenConfirmacion,
   confirmacionInicial,
+  datosConfirmacionInicial,
 } from '@/lib/pago-confirmacion'
 
 describe('pago-confirmacion — ADR-PAGO-REPORTADO-CONFIRMADO-001', () => {
@@ -52,6 +53,29 @@ describe('pago-confirmacion — ADR-PAGO-REPORTADO-CONFIRMADO-001', () => {
       const metodos = parseMetodosRequierenConfirmacion('EFECTIVO')
       expect(confirmacionInicial('EFECTIVO', metodos)).toBe('REPORTADO')
       expect(confirmacionInicial('NEQUI', metodos)).toBe('CONFIRMADO')
+    })
+  })
+
+  describe('datosConfirmacionInicial (coherente con el backfill de la migración)', () => {
+    it('CONFIRMADO lleva confirmadoAt seteado (como las filas históricas)', () => {
+      const datos = datosConfirmacionInicial('EFECTIVO')
+      expect(datos.confirmacion).toBe('CONFIRMADO')
+      expect(datos.confirmadoAt).toBeInstanceOf(Date)
+    })
+
+    it('REPORTADO NO lleva confirmadoAt', () => {
+      const datos = datosConfirmacionInicial('NEQUI')
+      expect(datos.confirmacion).toBe('REPORTADO')
+      expect(datos.confirmadoAt).toBeUndefined()
+    })
+
+    it('nunca setea confirmadoPorId (eso solo lo hace el endpoint de confirmación)', () => {
+      expect(datosConfirmacionInicial('EFECTIVO')).not.toHaveProperty('confirmadoPorId')
+      expect(datosConfirmacionInicial('NEQUI')).not.toHaveProperty('confirmadoPorId')
+    })
+
+    it('respeta la lista custom', () => {
+      expect(datosConfirmacionInicial('EFECTIVO', ['EFECTIVO']).confirmacion).toBe('REPORTADO')
     })
   })
 })

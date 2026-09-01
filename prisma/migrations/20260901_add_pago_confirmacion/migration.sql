@@ -4,7 +4,8 @@
 --   Señal ORTOGONAL al saldo: "¿este dinero fue verificado?" El detalle de una
 --   discrepancia NO va acá (vive en el ResponsibilityCase).
 --
--- Aditiva, reversible (DROP COLUMN x3 + DROP TYPE). Idempotente.
+-- Aditiva, reversible (DROP COLUMN x3 + DROP TYPE). Idempotente: el backfill
+-- solo corre en la PRIMERA aplicación (gateado por "la columna no existía").
 
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'EstadoConfirmacionPago') THEN
@@ -12,10 +13,31 @@ DO $$ BEGIN
   END IF;
 END $$;
 
-ALTER TABLE "Pago"
-  ADD COLUMN IF NOT EXISTS "confirmacion" "EstadoConfirmacionPago" NOT NULL DEFAULT 'REPORTADO',
-  ADD COLUMN IF NOT EXISTS "confirmadoPorId" TEXT,
-  ADD COLUMN IF NOT EXISTS "confirmadoAt" TIMESTAMPTZ;
+-- ADD COLUMN + backfill en un solo bloque gateado: si la columna ya existe
+-- (re-aplicación), NO se toca ninguna fila. Esto evita que un segundo `psql -f`
+-- marque CONFIRMADO pagos digitales que están legítimamente pendientes de
+-- verificación humana (CLAUDE.md Known Issue #12: en dev las migraciones se
+-- corren a mano y pueden repetirse).
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'Pago' AND column_name = 'confirmacion'
+  ) THEN
+    ALTER TABLE "Pago"
+      ADD COLUMN "confirmacion" "EstadoConfirmacionPago" NOT NULL DEFAULT 'REPORTADO',
+      ADD COLUMN "confirmadoPorId" TEXT,
+      ADD COLUMN "confirmadoAt" TIMESTAMPTZ;
+
+    -- Backfill (ADR-MIGRACION-001): todo `Pago` anterior a la migración →
+    -- CONFIRMADO. Son pagos ya conciliados por cierres pasados; marcarlos
+    -- REPORTADO inundaría la cola de confirmación con historia sin valor.
+    -- `confirmadoPorId = NULL` deja explícito que fue backfill, no una
+    -- confirmación humana real.
+    UPDATE "Pago"
+    SET "confirmacion" = 'CONFIRMADO',
+        "confirmadoAt" = "createdAt";
+  END IF;
+END $$;
 
 DO $$ BEGIN
   IF NOT EXISTS (
@@ -30,16 +52,6 @@ DO $$ BEGIN
 END $$;
 
 CREATE INDEX IF NOT EXISTS "Pago_confirmacion_idx" ON "Pago"("confirmacion");
-
--- Backfill (ADR-MIGRACION-001): todo `Pago` anterior a la migración → CONFIRMADO.
--- Racional: son pagos ya conciliados por cierres pasados; marcarlos REPORTADO
--- inundaría la cola de confirmación con historia sin valor. `confirmadoPorId = NULL`
--- deja explícito que fue backfill, no una confirmación humana real.
--- Idempotente: tras correr, no quedan filas REPORTADO pre-migración que re-tocar.
-UPDATE "Pago"
-SET "confirmacion" = 'CONFIRMADO',
-    "confirmadoAt" = "createdAt"
-WHERE "confirmacion" = 'REPORTADO';
 
 -- GRANT para el rol de runtime (app_write en Docker; no-op si no existe).
 DO $$ BEGIN

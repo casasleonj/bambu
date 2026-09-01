@@ -6,9 +6,12 @@
  * billete físico entra a la custodia del repartidor y su conciliación es el
  * cierre de embarque + `FALTANTE_CAJA`, no este flujo.
  *
- * La lista de métodos que requieren confirmación es configurable vía
- * `Config.METODOS_REQUIEREN_CONFIRMACION` (CSV). El default coincide con la
- * tabla del ADR §2.
+ * El override `Config.METODOS_REQUIEREN_CONFIRMACION` (CSV) descrito en el ADR
+ * §2 se cableará junto con el endpoint de confirmación (`/api/pagos/[id]/confirmar`),
+ * donde leer `Config` es natural. Hasta entonces todos los sitios de creación
+ * usan el default del ADR vía `confirmacionInicial(metodo)` — así el route de
+ * venta libre y el cierre de embarque no divergen. `parseMetodosRequierenConfirmacion`
+ * ya está listo para ese cableado.
  */
 
 export type ConfirmacionInicial = 'REPORTADO' | 'CONFIRMADO'
@@ -45,4 +48,24 @@ export function confirmacionInicial(
   metodosRequieren: string[] = [...METODOS_REQUIEREN_CONFIRMACION_DEFAULT],
 ): ConfirmacionInicial {
   return metodosRequieren.includes(metodo.toUpperCase()) ? 'REPORTADO' : 'CONFIRMADO'
+}
+
+/**
+ * Campos de confirmación para el `data` de `pago.create` / `createMany`.
+ *
+ * Coherente con el backfill de la migración: un pago que nace `CONFIRMADO`
+ * (efectivo/bono, auto-confirmado por regla de método) lleva `confirmadoAt`
+ * seteado y `confirmadoPorId` NULL — igual que las filas históricas. Así
+ * cualquier consulta "confirmados en el período X" por `confirmadoAt` incluye
+ * tanto lo histórico como las ventas de contado posteriores.
+ * `confirmadoPorId` solo se llena cuando un humano confirma vía el endpoint.
+ */
+export function datosConfirmacionInicial(
+  metodo: string,
+  metodosRequieren?: string[],
+): { confirmacion: ConfirmacionInicial; confirmadoAt?: Date } {
+  const confirmacion = confirmacionInicial(metodo, metodosRequieren)
+  return confirmacion === 'CONFIRMADO'
+    ? { confirmacion, confirmadoAt: new Date() }
+    : { confirmacion }
 }

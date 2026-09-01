@@ -4,7 +4,7 @@
 
 import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { confirmacionInicial } from '@/lib/pago-confirmacion'
+import { datosConfirmacionInicial } from '@/lib/pago-confirmacion'
 import type { IPagoRepository } from '../../domain/repositories/IPagoRepository'
 import type { PagoData } from '../../domain/types'
 import type { TransactionClient } from '../transactions/PrismaTransactionManager'
@@ -30,7 +30,7 @@ export class PrismaPagoRepository implements IPagoRepository {
         pedidoId,
         metodo: p.metodo,
         monto: p.monto,
-        confirmacion: confirmacionInicial(p.metodo),
+        ...datosConfirmacionInicial(p.metodo),
       })) as unknown as Prisma.PagoCreateManyInput[],
     })
   }

@@ -21,7 +21,7 @@ import { getFacturaEmpresaSnapshot } from '@/lib/factura-empresa'
 import { clasificarVentaLibre } from '@/lib/venta-libre-clasificacion'
 import { incrementMetric } from '@/lib/metrics'
 import { registrarReceivableEntry } from '@/lib/receivable-entry'
-import { confirmacionInicial } from '@/lib/pago-confirmacion'
+import { datosConfirmacionInicial } from '@/lib/pago-confirmacion'
 import { OrigenPedido, EstadoEntrega } from '@prisma/client'
 
 export async function POST(request: NextRequest) {
@@ -248,7 +248,7 @@ export async function POST(request: NextRequest) {
             pedidoId: pedido.id,
             metodo: pago.metodo as MetodoPago,
             monto: pago.monto,
-            confirmacion: confirmacionInicial(pago.metodo),
+            ...datosConfirmacionInicial(pago.metodo),
           },
         })
       }

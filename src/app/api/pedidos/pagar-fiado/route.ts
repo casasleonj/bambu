@@ -14,7 +14,7 @@ import { NotificationEventType } from '@/lib/notifications/event-types'
 import { prisma } from '@/lib/prisma'
 import { Money, calcularSaldo } from '@/shared/domain'
 import { registrarReceivableEntry, detectarDivergencia, registrarDivergencia } from '@/lib/receivable-entry'
-import { confirmacionInicial } from '@/lib/pago-confirmacion'
+import { datosConfirmacionInicial } from '@/lib/pago-confirmacion'
 
 export async function POST(request: NextRequest) {
   // FIX C-1: solo ADMIN/ASISTENTE pueden registrar pagos de fiado.
@@ -128,7 +128,7 @@ export async function POST(request: NextRequest) {
             metodo,
             monto: montoAplicar,
             offlineId: offlineId || null, // dedup offline-first
-            confirmacion: confirmacionInicial(metodo),
+            ...datosConfirmacionInicial(metodo),
           },
         })
 
