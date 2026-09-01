@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { requirePagePermission } from '@/lib/auth-guard'
-import { EstadoPedido } from '@prisma/client'
+import { EstadoEntrega } from '@prisma/client'
 import { startOfDayBogota, endOfDayBogota, getTodayString, parseDateParam } from '@/lib/dates'
 import Link from 'next/link'
 
@@ -49,7 +49,7 @@ export default async function ReporteVentasPage({
 
   const where = {
     fecha: dateFilter,
-    estado: { not: EstadoPedido.CANCELADO },
+    estadoEntrega: { not: EstadoEntrega.CANCELADO },
   }
 
   const [pedidos, total, ventasAgg, pagosPorMetodo, fiadoAgg] = await Promise.all([
@@ -79,7 +79,7 @@ export default async function ReporteVentasPage({
       where: {
         pedido: {
           fecha: dateFilter,
-          estado: { not: EstadoPedido.CANCELADO },
+          estadoEntrega: { not: EstadoEntrega.CANCELADO },
         },
       },
       _sum: { monto: true },

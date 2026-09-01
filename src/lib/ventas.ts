@@ -20,7 +20,7 @@ export async function getVentasDelDia(fecha?: Date): Promise<VentasDelDia> {
   const pedidos = await prisma.pedido.findMany({
     where: {
       fecha: { gte: start, lt: end },
-      estado: 'ENTREGADO',
+      estadoEntrega: 'ENTREGADO',
     },
     select: {
       cPacaAguaEnt: true,

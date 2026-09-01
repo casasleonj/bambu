@@ -3,7 +3,7 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { CierreCreateSchema } from '@/lib/validators'
-import { EstadoPedido, EstadoEmbarque, EstadoEntrega, EstadoFactura, MetodoPago } from '@prisma/client'
+import { EstadoEmbarque, EstadoEntrega, EstadoFactura, MetodoPago } from '@prisma/client'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { getTodayString } from '@/lib/dates'
@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
           prisma.pedido.findMany({
             where: {
               fecha: { gte: hc, lt: endOfDay },
-              estado: { notIn: [EstadoPedido.CANCELADO, EstadoPedido.ANULADO] },
+              estadoEntrega: { notIn: [EstadoEntrega.CANCELADO, EstadoEntrega.ANULADO] },
             },
             include: { pagos: true, cliente: { select: { nombre: true } } },
           }),
@@ -161,7 +161,7 @@ export async function GET(request: NextRequest) {
       prisma.pedido.findMany({
         where: {
           fecha: dateRange,
-          estado: { notIn: [EstadoPedido.CANCELADO, EstadoPedido.ANULADO] },
+          estadoEntrega: { notIn: [EstadoEntrega.CANCELADO, EstadoEntrega.ANULADO] },
         },
         include: { pagos: true },
       }),
@@ -200,20 +200,20 @@ export async function GET(request: NextRequest) {
         },
       }),
       prisma.pedido.findMany({
-        where: { fecha: dateRange, estado: EstadoPedido.CANCELADO },
+        where: { fecha: dateRange, estadoEntrega: EstadoEntrega.CANCELADO },
       }),
       prisma.pedido.findMany({
         where: { fecha: dateRange, estadoEntrega: EstadoEntrega.NO_ENTREGADO },
       }),
       prisma.pedido.findMany({
-        where: { fecha: dateRange, estado: EstadoPedido.ANULADO },
+        where: { fecha: dateRange, estadoEntrega: EstadoEntrega.ANULADO },
       }),
       prisma.cliente.count({ where: { createdAt: dateRange } }),
       prisma.pedido.groupBy({
         by: ['origen'],
         where: {
           fecha: dateRange,
-          estado: { notIn: [EstadoPedido.CANCELADO, EstadoPedido.ANULADO] },
+          estadoEntrega: { notIn: [EstadoEntrega.CANCELADO, EstadoEntrega.ANULADO] },
         },
         orderBy: { origen: 'asc' },
         _sum: { total: true },
@@ -493,7 +493,7 @@ export async function POST(request: NextRequest) {
         // 5. Recalculate ALL totals server-side
         const [pedidos, gastosAgg, abonos, notasCredito] = await Promise.all([
           tx.pedido.findMany({
-            where: { fecha: { gte: startOfDay, lt: nextDay }, estado: { notIn: [EstadoPedido.CANCELADO, EstadoPedido.ANULADO] } },
+            where: { fecha: { gte: startOfDay, lt: nextDay }, estadoEntrega: { notIn: [EstadoEntrega.CANCELADO, EstadoEntrega.ANULADO] } },
             include: { pagos: true },
           }),
           tx.gasto.aggregate({ where: { fecha: { gte: startOfDay, lt: nextDay } }, _sum: { monto: true } }),

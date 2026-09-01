@@ -99,7 +99,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         }
       }
 
-      if (current.estado !== 'PENDIENTE') {
+      if (current.estadoEntrega !== 'PENDIENTE') {
         throw new Error('PEDIDO_NOT_PENDIENTE')
       }
       if (current.embarqueId) {

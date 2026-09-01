@@ -39,9 +39,9 @@ export async function GET(request: NextRequest) {
 
   const pedidos = await prisma.pedido.findMany({
     where: {
-      estado: { in: ['ENTREGADO', 'PENDIENTE', 'EN_RUTA'] },
+      estadoEntrega: { in: ['ENTREGADO', 'PENDIENTE', 'EN_RUTA'] },
     },
-    select: { fecha: true, total: true, estado: true },
+    select: { fecha: true, total: true, estadoEntrega: true },
     orderBy: { fecha: 'desc' },
     take: 5000, // cap para performance; ajustar si la app crece
   })
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
   const input: PedidoParaPronostico[] = pedidos.map(p => ({
     fecha: p.fecha,
     total: Number(p.total),
-    estado: p.estado,
+    estado: p.estadoEntrega,
   }))
 
   const r = pronosticarPorDiaSemana(input, semanas)
