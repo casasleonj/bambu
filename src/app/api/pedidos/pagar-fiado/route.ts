@@ -133,7 +133,9 @@ export async function POST(request: NextRequest) {
           Money.fromDecimal(Number(pedido.total)),
           Money.fromDecimal(nuevoTotalPagado)
         ).toDecimal()
-        const nuevoEstadoPago = calcularEstadoPago(Number(pedido.total), nuevoTotalPagado)
+        // G5.1: si el pedido fiado aún no se entregó y este cobro lo deja
+        // pagado completo → ANTICIPADO (no PAGADO).
+        const nuevoEstadoPago = calcularEstadoPago(Number(pedido.total), nuevoTotalPagado, pedido.estadoEntrega)
 
         // Actualizar pedido
         await tx.pedido.update({

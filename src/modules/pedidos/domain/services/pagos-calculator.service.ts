@@ -8,10 +8,17 @@ import type { EstadoPago, PagoData } from '../types'
 import { EstadoPagoVO } from '../value-objects/EstadoPago'
 
 /**
- * Calculate payment state from total and amount paid.
+ * Calculate payment state from total, amount paid, and delivery state.
+ * G5.1: si `estadoEntrega` indica que la entrega aún no ocurrió y el pedido
+ * está pagado completo → `ANTICIPADO`. Default `'ENTREGADO'` preserva el
+ * comportamiento previo para callers que no pasan el estado de entrega.
  */
-export function calcularEstadoPago(total: number, totalPagado: number): EstadoPago {
-  return EstadoPagoVO.fromTotals(total, totalPagado).get()
+export function calcularEstadoPago(
+  total: number,
+  totalPagado: number,
+  estadoEntrega: string = 'ENTREGADO',
+): EstadoPago {
+  return EstadoPagoVO.proyectar(total, totalPagado, estadoEntrega).get()
 }
 
 /**

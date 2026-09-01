@@ -95,8 +95,14 @@ describe('Pedido.registrarPago', () => {
     expect(pedido.estadoPago.get()).toBe('PARCIAL')
   })
 
-  it('cambia estadoPago a PAGADO cuando totalPagado === total', () => {
+  it('G5.1: pago completo de pedido no-entregado → ANTICIPADO', () => {
     const pedido = makePedido({ estadoEntrega: 'PENDIENTE', total: 10000 })
+    pedido.registrarPago({ metodo: 'EFECTIVO', monto: 10000 })
+    expect(pedido.estadoPago.get()).toBe('ANTICIPADO')
+  })
+
+  it('G5.1: pago completo de pedido ENTREGADO → PAGADO', () => {
+    const pedido = makePedido({ estadoEntrega: 'ENTREGADO', total: 10000 })
     pedido.registrarPago({ metodo: 'EFECTIVO', monto: 10000 })
     expect(pedido.estadoPago.get()).toBe('PAGADO')
   })

@@ -13,18 +13,18 @@ function make(partial: Partial<PedidoSaldoInput>): PedidoSaldoInput {
 }
 
 describe('calcularEstadoPagoVisual', () => {
-  it('retorna PAGADO cuando totalPagado >= total', () => {
-    const estado = calcularEstadoPagoVisual(make({ totalPagado: 100_000 }))
+  it('G5.1: pagado completo + ENTREGADO → PAGADO', () => {
+    const estado = calcularEstadoPagoVisual(make({ totalPagado: 100_000, estadoEntrega: 'ENTREGADO' }))
     expect(estado.key).toBe('PAGADO')
     expect(estado.label).toBe('Pagado')
     expect(estado.color).toBe('green')
     expect(estado.isMoney).toBe(false)
   })
 
-  it('retorna PAGADO cuando estadoPago es PAGADO', () => {
-    const estado = calcularEstadoPagoVisual(make({ estadoPago: 'PAGADO', saldo: 10_000 }))
+  it('G5.1: pagado completo + entrega pendiente → label Anticipado (derivado, aunque la columna diga PAGADO)', () => {
+    const estado = calcularEstadoPagoVisual(make({ estadoPago: 'PAGADO', totalPagado: 100_000, estadoEntrega: 'PENDIENTE' }))
     expect(estado.key).toBe('PAGADO')
-    expect(estado.label).toBe('Pagado')
+    expect(estado.label).toBe('Anticipado')
   })
 
   it('retorna PAGADO con label Anticipado cuando estadoPago es ANTICIPADO', () => {

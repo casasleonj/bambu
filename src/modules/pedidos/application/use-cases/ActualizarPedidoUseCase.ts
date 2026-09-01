@@ -203,7 +203,12 @@ export class ActualizarPedidoUseCase {
           estadoEntrega: input.estadoEntrega
             ? EstadoEntregaVO.from(input.estadoEntrega)
             : pedido.estadoEntrega,
-          estadoPago: EstadoPagoVO.fromTotals(nuevoTotal, totalPagadoActual),
+          // G5.1: proyección desde el estadoEntrega resuelto de esta edición.
+          estadoPago: EstadoPagoVO.proyectar(
+            nuevoTotal,
+            totalPagadoActual,
+            input.estadoEntrega ?? pedido.estadoEntrega.get(),
+          ),
           items: nuevosItems,
           total: Money.fromDecimal(nuevoTotal),
           totalPagado: pedido.totalPagado,

@@ -192,7 +192,9 @@ export class CrearPedidoUseCase {
       // FIX Fase 2 §3.4: el normalizarPagos ahora devuelve { pagosAplicados, excedente }
       const { pagosAplicados: pagosNormalizados, excedente } = normalizarPagos(input.pagos || [], totalDespuesCredito)
       const totalPagado = pagosNormalizados.reduce((sum, p) => sum + p.monto, 0) + montoCredito
-      const estadoPago = EstadoPagoVO.fromTotals(total, totalPagado)
+      // G5.1: un pedido normal pagado completo pero aún no entregado →
+      // ANTICIPADO (venta rápida sí es ENTREGADO → PAGADO).
+      const estadoPago = EstadoPagoVO.proyectar(total, totalPagado, estadoEntrega.get())
 
       // 6. Validate credit limit — solo si el pedido va a quedar con saldo
       // pendiente (fiado real). Un pedido pagado de contado (o cubierto por
