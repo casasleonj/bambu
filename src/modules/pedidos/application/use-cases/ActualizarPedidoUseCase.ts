@@ -90,6 +90,20 @@ export class ActualizarPedidoUseCase {
       const pedido = await this.pedidoRepo.findById(PedidoId.from(input.pedidoId), tx)
       if (!pedido) throw new Error('PEDIDO_NOT_FOUND')
 
+      // F3: auditoría única, dentro de la transacción del lock, para TODAS las
+      // ramas que mutan el pedido (antes: solo la rama de items auditaba, y el
+      // route.ts hacía otra auditoría post-commit fire-and-forget → filas
+      // duplicadas + ramas sin auditar). `casoId` (antifraude) viaja acá.
+      const auditar = (saved: PedidoEntity) =>
+        logAudit({
+          entidad: 'Pedido',
+          registroId: saved.id.get(),
+          accion: 'UPDATE',
+          datos: { numero: saved.numero, estado: saved.estadoEntrega.get() },
+          usuarioId: input.usuarioId,
+          casoId: input.casoId,
+        }, tx)
+
       // Update items if provided
       if (input.items && input.items.length > 0) {
         // FIX BAMBU-LOG-001: validar la transición de estado también en esta
@@ -235,15 +249,7 @@ export class ActualizarPedidoUseCase {
           )
         }
 
-        // F3: auditoría dentro de la transacción del lock (rollback atómico
-        // si falla). Antes corría con el cliente global, sin await.
-        await logAudit({
-          entidad: 'Pedido',
-          registroId: saved.id.get(),
-          accion: 'UPDATE',
-          datos: { numero: saved.numero, estado: saved.estadoEntrega.get() },
-        }, tx)
-
+        await auditar(saved)
         return { pedido: PedidoDTOMapper.toResumen(saved) }
       }
 
@@ -281,6 +287,7 @@ export class ActualizarPedidoUseCase {
             }, tx)
           }
 
+          await auditar(saved)
           return { pedido: PedidoDTOMapper.toResumen(saved) }
         } else {
           // Rebuild with new state
@@ -292,6 +299,7 @@ export class ActualizarPedidoUseCase {
           })
 
           const saved = await this.pedidoRepo.update(updated, tx)
+          await auditar(saved)
           return { pedido: PedidoDTOMapper.toResumen(saved) }
         }
       }
@@ -303,9 +311,11 @@ export class ActualizarPedidoUseCase {
           obs: input.obs,
         })
         const saved = await this.pedidoRepo.update(updated, tx)
+        await auditar(saved)
         return { pedido: PedidoDTOMapper.toResumen(saved) }
       }
 
+      // Sin cambios reales → no se audita.
       return { pedido: PedidoDTOMapper.toResumen(pedido) }
     })
   }

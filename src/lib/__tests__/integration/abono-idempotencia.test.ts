@@ -97,6 +97,18 @@ describe('G1 — Abono.offlineId (idempotencia)', () => {
     await expect(Promise.all([mk(1), mk(2), mk(3)])).resolves.toHaveLength(3)
   })
 
+  it('offlineId "" (string vacío) normalizado a NULL por el route no colisiona', async () => {
+    // El route usa `offlineId || null` (no `?? null`): un "" — válido para
+    // z.string().optional() — se persiste como NULL y no entra al índice UNIQUE.
+    const norm = (v: string) => v || null
+    await expect(
+      Promise.all([
+        testPrisma.abono.create({ data: { numero: `ABO-E1-${Date.now()}`, facturaId, clienteId, monto: 1000, metodoPago: 'EFECTIVO', offlineId: norm('') } }),
+        testPrisma.abono.create({ data: { numero: `ABO-E2-${Date.now()}`, facturaId, clienteId, monto: 1000, metodoPago: 'EFECTIVO', offlineId: norm('') } }),
+      ]),
+    ).resolves.toHaveLength(2)
+  })
+
   it('existe el índice UNIQUE Abono_offlineId_key', async () => {
     const rows = await testPrisma.$queryRaw<Array<{ indexname: string }>>`
       SELECT indexname FROM pg_indexes

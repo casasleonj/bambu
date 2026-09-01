@@ -56,6 +56,8 @@ export interface ActualizarPedidoInput {
   /** Quién dispara la actualización — usado para auditar cambios de dirección. */
   usuarioId?: string
   offlineId?: string
+  /** Metadata forense: vincula la actualización a un Caso de antifraude. */
+  casoId?: string
 }
 
 export interface EntregarPedidoInput {

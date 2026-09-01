@@ -98,7 +98,11 @@ export async function POST(request: NextRequest) {
           pedidoId,
           monto,
           metodoPago,
-          offlineId: offlineId ?? null,
+          // `|| null` (no `?? null`): un offlineId "" (string vacío, válido para
+          // z.string().optional()) debe persistirse como NULL, no como "" —
+          // si no, dos abonos con offlineId "" colisionan en el índice UNIQUE.
+          // Consistente con pagar-fiado/route.ts.
+          offlineId: offlineId || null,
         },
       })
 

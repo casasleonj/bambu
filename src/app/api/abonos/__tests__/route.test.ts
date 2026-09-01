@@ -64,7 +64,8 @@ describe('G1: dedup por offlineId (idempotencia de POST /api/abonos)', () => {
   it('el create persiste offlineId', () => {
     const createBlock = source.match(/tx\.abono\.create\(\{[\s\S]*?\}\)/)
     expect(createBlock).not.toBeNull()
-    expect(createBlock![0]).toMatch(/offlineId:\s*offlineId\s*\?\?\s*null/)
+    // `|| null` (no `?? null`): un offlineId "" se persiste como NULL.
+    expect(createBlock![0]).toMatch(/offlineId:\s*offlineId\s*\|\|\s*null/)
   })
 
   it('el replay responde 200 (no 201)', () => {

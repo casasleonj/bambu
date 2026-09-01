@@ -94,8 +94,9 @@ function makeUseCase(pedido: Pedido) {
   }
   // F3: el use case ahora corre bajo `PEDIDO:{id}` y audita con `tx` —
   // el fakeTx necesita un `historial.create` (patrón de EntregarPedidoUseCase.test).
+  const historialCreate = vi.fn().mockResolvedValue({})
   const fakeTx = {
-    historial: { create: vi.fn().mockResolvedValue({}) },
+    historial: { create: historialCreate },
   } as unknown as TransactionClient
   const txManager: ITransactionManager = {
     execute: (fn) => fn(fakeTx),
@@ -106,7 +107,7 @@ function makeUseCase(pedido: Pedido) {
   )
   txManager.executeWithLock = executeWithLock as unknown as ITransactionManager['executeWithLock']
   const useCase = new ActualizarPedidoUseCase(pedidoRepo, facturaRepo, clienteRepo, pricingPort, txManager)
-  return { useCase, pedidoRepo, facturaRepo, executeWithLock }
+  return { useCase, pedidoRepo, facturaRepo, executeWithLock, historialCreate }
 }
 
 describe('ActualizarPedidoUseCase — validación de transición de estado', () => {
@@ -150,6 +151,38 @@ describe('ActualizarPedidoUseCase — validación de transición de estado', () 
     await useCase.execute({ pedidoId: 'ped_1', obs: 'nota', usuarioId: 'user_1' })
 
     expect(executeWithLock).toHaveBeenCalledWith('PEDIDO', 'ped_1', expect.any(Function))
+  })
+
+  it('F3 (review): audita 1 sola vez, con tx, en la rama de solo-obs', async () => {
+    const pedido = makePedido('PENDIENTE')
+    const { useCase, historialCreate } = makeUseCase(pedido)
+
+    await useCase.execute({ pedidoId: 'ped_1', obs: 'nueva nota', usuarioId: 'user_1', casoId: 'caso_9' })
+
+    expect(historialCreate).toHaveBeenCalledTimes(1)
+    const arg = historialCreate.mock.calls[0][0].data
+    expect(arg.entidad).toBe('Pedido')
+    expect(arg.accion).toBe('UPDATE')
+    // casoId viaja embebido en `datos` (metadata forense — ver logAudit)
+    expect(JSON.parse(arg.datos)._casoId).toBe('caso_9')
+  })
+
+  it('F3 (review): audita en la rama de transición de estado (antes no auditaba)', async () => {
+    const pedido = makePedido('EN_RUTA')
+    const { useCase, historialCreate } = makeUseCase(pedido)
+
+    await useCase.execute({ pedidoId: 'ped_1', estadoEntrega: 'PENDIENTE', usuarioId: 'user_1' })
+
+    expect(historialCreate).toHaveBeenCalledTimes(1)
+  })
+
+  it('F3 (review): NO audita si no hubo cambios', async () => {
+    const pedido = makePedido('PENDIENTE')
+    const { useCase, historialCreate } = makeUseCase(pedido)
+
+    await useCase.execute({ pedidoId: 'ped_1', usuarioId: 'user_1' })
+
+    expect(historialCreate).not.toHaveBeenCalled()
   })
 })
 

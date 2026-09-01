@@ -452,7 +452,25 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   useEffect(() => {
     function handleSyncItemDone(e: Event) {
       const detail = (e as CustomEvent<{ offlineId: string; localEndpoint: string; status: string; reason?: string }>).detail
-      if (!detail || detail.localEndpoint !== 'crear-pedido') return
+      if (!detail) return
+
+      // Asignación de pedido a embarque hecha offline: al sincronizar puede
+      // volver `conflict` (409) si el pedido ya estaba en OTRO embarque. El
+      // pedido no se pierde, pero el usuario debe enterarse de que su
+      // asignación no se aplicó tal cual (review PR #147, hallazgo F6).
+      if (detail.localEndpoint === 'asignar-embarque') {
+        if (detail.status === 'conflict') {
+          toast.info('Un pedido que asignaste sin conexión ya estaba en otro embarque. Revisá la lista.')
+        }
+        if (detail.status === 'dlq') {
+          toast.error(detail.reason || 'No se pudo asignar un pedido a su embarque.')
+        }
+        refreshPedidos()
+        refetchCounts()
+        return
+      }
+
+      if (detail.localEndpoint !== 'crear-pedido') return
       if (detail.status === 'dlq') {
         // Rechazo permanente (ej. límite de fiado excedido): NO desaparece
         // en silencio — se marca como fallido con el motivo real del

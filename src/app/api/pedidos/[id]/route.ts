@@ -117,15 +117,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       direccionEntrega: parsed.data.direccionEntrega,
       barrioEntrega: parsed.data.barrioEntrega,
       usuarioId: getUserFromSession(authResult).id,
-    })
-
-    logAudit({
-      entidad: 'Pedido',
-      registroId: id,
-      accion: 'UPDATE',
-      datos: { numero: result.pedido.numero, estado: result.pedido.estadoEntrega },
-      usuarioId: getUserFromSession(authResult).id,
-      casoId,
+      // La auditoría (incluido casoId) la hace el use case DENTRO de la
+      // transacción del lock — una sola fila, todas las ramas, rollback
+      // atómico. Ya no se audita post-commit acá (F3, review PR #147).
+      casoId: casoId ?? undefined,
     })
 
     publishRealtimeEvent('pedido.updated', id).catch(() => {})
