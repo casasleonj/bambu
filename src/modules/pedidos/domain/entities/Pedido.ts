@@ -269,9 +269,11 @@ export class Pedido {
       ...this.props,
       pagos: nuevosPagos,
       totalPagado: nuevoTotalPagado,
-      estadoPago: EstadoPagoVO.fromTotals(
+      // G5.1: pagar un pedido no-entregado por su total → ANTICIPADO.
+      estadoPago: EstadoPagoVO.proyectar(
         this.props.total.toDecimal(),
         nuevoTotalPagado.toDecimal(),
+        this.props.estadoEntrega.get(),
       ),
     }
   }

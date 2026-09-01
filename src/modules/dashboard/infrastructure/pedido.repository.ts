@@ -51,7 +51,7 @@ export class PrismaPedidoRepository implements PedidoRepository {
     return prisma.pedido.count({
       where: {
         promesaPagoFecha: { gte: new Date(), lte: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000) },
-        estadoPago: { notIn: ['PAGADO', 'ANULADO'] },
+        estadoPago: { notIn: ['PAGADO', 'ANTICIPADO', 'ANULADO'] },
       },
     })
   }

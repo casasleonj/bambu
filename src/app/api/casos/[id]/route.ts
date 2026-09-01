@@ -7,6 +7,7 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
 import { logger } from '@/lib/logger'
+import { calcularEstadoPago } from '@/lib/pedido-utils'
 
 export async function GET(
   _request: NextRequest,
@@ -334,9 +335,23 @@ async function aplicarAccionCorrectiva(
             status: 400,
           }
         }
+        // G5.1: `estadoPago` es una proyección — NO se fuerza a 'PAGADO'. Se
+        // recalcula desde los totales reales del pedido; si los pagos no
+        // cubren el total, queda PARCIAL (correcto, sin enmascarar la deuda).
+        const pedido = await prisma.pedido.findUnique({
+          where: { id: pedidoId },
+          select: { total: true, totalPagado: true, estadoEntrega: true },
+        })
+        if (!pedido) return { ok: false, error: 'Pedido no encontrado', status: 404 }
         await prisma.pedido.update({
           where: { id: pedidoId },
-          data: { estadoPago: 'PAGADO' },
+          data: {
+            estadoPago: calcularEstadoPago(
+              Number(pedido.total),
+              Number(pedido.totalPagado),
+              pedido.estadoEntrega,
+            ),
+          },
         })
         return { ok: true }
       }

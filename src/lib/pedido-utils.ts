@@ -51,11 +51,16 @@ export type { BadgeInfo }
 // ====================
 
 /**
- * Estado de pago derivado de los totales. Delega en `EstadoPagoVO.fromTotals`
- * (F2: sin lógica duplicada). Firma legacy: `(number, number) => string`.
+ * Estado de pago proyectado desde `(total, totalPagado, estadoEntrega)`. Delega
+ * en `EstadoPagoVO.proyectar` (F2/G5.1: sin lógica duplicada). `estadoEntrega`
+ * default `'ENTREGADO'` preserva el comportamiento legacy.
  */
-export function calcularEstadoPago(total: number, totalPagado: number): EstadoPago {
-  return EstadoPagoVO.fromTotals(total, totalPagado).get() as EstadoPago
+export function calcularEstadoPago(
+  total: number,
+  totalPagado: number,
+  estadoEntrega: string = 'ENTREGADO',
+): EstadoPago {
+  return EstadoPagoVO.proyectar(total, totalPagado, estadoEntrega).get() as EstadoPago
 }
 
 export function calcularSaldo(total: number, totalPagado: number): number {

@@ -27,20 +27,25 @@ export interface PedidoSaldoInput {
 /**
  * Determines the visual payment state for a Pedido row.
  *
- * Rules:
- *  - ANULADO → estadoEntrega is ANULADO OR estadoPago is ANULADO
- *  - PAGADO  → estadoPago is PAGADO/ANTICIPADO OR totalPagado >= total
- *  - FIADO   → estadoEntrega is ENTREGADO AND saldo > 0
- *  - PENDIENTE → everything else (including partial payments before delivery)
- *
- * This prevents showing a green checkmark for a pedido that is still pending.
+ * Rules (G5.1: el badge se DERIVA de `(total, totalPagado, estadoEntrega)`,
+ * no solo de la columna `estadoPago` — así un pedido prepago-pendiente viejo
+ * con la columna aún en `PAGADO` igual muestra "Anticipado"):
+ *  - ANULADO → estadoEntrega ANULADO/CANCELADO OR estadoPago ANULADO
+ *  - ANTICIPADO → pagado completo Y la entrega aún no ocurrió (PENDIENTE/EN_RUTA/NO_ENTREGADO)
+ *  - PAGADO  → pagado completo Y ya entregado
+ *  - FIADO   → estadoEntrega ENTREGADO AND saldo > 0
+ *  - PENDIENTE → resto
  */
 export function calcularEstadoPagoVisual(pedido: PedidoSaldoInput): EstadoPagoVisual {
   const saldo = Number(pedido.saldo || 0)
   const total = Number(pedido.total || 0)
   const totalPagado = Number(pedido.totalPagado || 0)
 
-  if (pedido.estadoEntrega === 'ANULADO' || pedido.estadoPago === 'ANULADO') {
+  if (
+    pedido.estadoEntrega === 'ANULADO' ||
+    pedido.estadoEntrega === 'CANCELADO' ||
+    pedido.estadoPago === 'ANULADO'
+  ) {
     return {
       key: 'ANULADO',
       label: 'Anulado',
@@ -49,15 +54,16 @@ export function calcularEstadoPagoVisual(pedido: PedidoSaldoInput): EstadoPagoVi
     }
   }
 
-  const isPagado =
-    pedido.estadoPago === 'PAGADO' ||
-    pedido.estadoPago === 'ANTICIPADO' ||
-    totalPagado >= total
+  const pagadoCompleto = totalPagado >= total || pedido.estadoPago === 'PAGADO' || pedido.estadoPago === 'ANTICIPADO'
 
-  if (isPagado) {
+  if (pagadoCompleto) {
+    const preEntrega =
+      pedido.estadoEntrega === 'PENDIENTE' ||
+      pedido.estadoEntrega === 'EN_RUTA' ||
+      pedido.estadoEntrega === 'NO_ENTREGADO'
     return {
       key: 'PAGADO',
-      label: pedido.estadoPago === 'ANTICIPADO' ? 'Anticipado' : 'Pagado',
+      label: preEntrega ? 'Anticipado' : 'Pagado',
       color: 'green',
       isMoney: false,
     }

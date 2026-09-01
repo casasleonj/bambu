@@ -4,7 +4,7 @@
  * Encapsulates payment state transitions and validation.
  */
 
-import type { EstadoPago } from '../types'
+import type { EstadoPago, EstadoEntrega } from '../types'
 import { ESTADOS_PAGO } from '../types'
 
 /**
@@ -36,10 +36,38 @@ export class EstadoPagoVO {
     return new EstadoPagoVO(estado)
   }
 
-  static fromTotals(total: number, totalPagado: number): EstadoPagoVO {
-    if (totalPagado >= total) return new EstadoPagoVO('PAGADO')
+  /**
+   * Proyecta `estadoPago` desde la fuente de verdad: `(total, totalPagado,
+   * estadoEntrega)`. G5.1 / ADR-PEDIDO-ESTADO-CANONICO-001 §2.
+   *
+   * `ANTICIPADO` = el pago total se recibió ANTES de la entrega comprometida.
+   * Para un pedido totalmente pagado eso equivale a `estadoEntrega ∈
+   * {PENDIENTE, EN_RUTA}` (la entrega aún no ocurrió → el pago la antecede).
+   * `VENCIDO` NO lo produce este helper — es un override del cron.
+   */
+  static proyectar(total: number, totalPagado: number, estadoEntrega: EstadoEntrega | string): EstadoPagoVO {
+    if (estadoEntrega === 'CANCELADO' || estadoEntrega === 'ANULADO') {
+      return new EstadoPagoVO('ANULADO')
+    }
+    if (totalPagado >= total) {
+      // Entrega aún no ocurrida ⇒ el pago la antecede ⇒ ANTICIPADO.
+      const preEntrega =
+        estadoEntrega === 'PENDIENTE' ||
+        estadoEntrega === 'EN_RUTA' ||
+        estadoEntrega === 'NO_ENTREGADO'
+      return new EstadoPagoVO(preEntrega ? 'ANTICIPADO' : 'PAGADO')
+    }
     if (totalPagado > 0) return new EstadoPagoVO('PARCIAL')
     return new EstadoPagoVO('PENDIENTE')
+  }
+
+  /**
+   * @deprecated Usar `proyectar(total, totalPagado, estadoEntrega)`. `fromTotals`
+   * asume que la entrega ya ocurrió (nunca da `ANTICIPADO`) — solo correcto
+   * para callers donde `estadoEntrega === 'ENTREGADO'`.
+   */
+  static fromTotals(total: number, totalPagado: number): EstadoPagoVO {
+    return EstadoPagoVO.proyectar(total, totalPagado, 'ENTREGADO')
   }
 
   get(): EstadoPago {
