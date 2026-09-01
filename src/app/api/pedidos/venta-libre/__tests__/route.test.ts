@@ -314,4 +314,24 @@ describe('POST /api/pedidos/venta-libre — BLOQUEAR_PRECIOS_REPARTIDOR', () => 
 
 
   })
+
+  describe('ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: embarqueOrigenId', () => {
+    beforeEach(() => {
+      mockAuth.mockResolvedValue({ user: { id: 'u-asis', role: 'ASISTENTE' } })
+      mockPrismaEmbarque.findUnique.mockResolvedValue({
+        id: 'emb1',
+        estado: 'ABIERTO',
+        trabajadorId: 't1',
+        trabajador: { user: null },
+      })
+    })
+
+    it('persiste embarqueOrigenId = embarqueId al crear la venta libre', async () => {
+      const res = await POST(makeRequest(validBody))
+      expect(res.status).toBe(201)
+      const pedidoData = mockPrismaPedido.create.mock.calls[0][0].data
+      expect(pedidoData.embarqueId).toBe('emb1')
+      expect(pedidoData.embarqueOrigenId).toBe('emb1')
+    })
+  })
 })
