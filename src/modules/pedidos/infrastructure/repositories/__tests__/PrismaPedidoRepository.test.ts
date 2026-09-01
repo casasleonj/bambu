@@ -13,14 +13,14 @@ import { join } from 'path'
 const repoPath = join(process.cwd(), 'src/modules/pedidos/infrastructure/repositories/PrismaPedidoRepository.ts')
 const source = readFileSync(repoPath, 'utf-8')
 
-describe('PrismaPedidoRepository: tipo filter', () => {
-  it('buildWhere references filter.tipo', () => {
-    expect(source).toMatch(/filter\?\.tipo/)
+describe('PrismaPedidoRepository: filtro de canal (G6)', () => {
+  it('buildWhere normaliza filter.canal + filter.tipo con el helper compartido', () => {
+    expect(source).toMatch(/normalizeCanalFilter\(\[\.\.\.\(filter\?\.canal\s*\?\?\s*\[\]\),\s*\.\.\.\(filter\?\.tipo\s*\?\?\s*\[\]\)\]\)/)
   })
 
-  it('buildWhere uses canal condition for PUNTO vs ENVIO', () => {
-    expect(source).toMatch(/where\.canal\s*=\s*['"]PUNTO['"]/)
-    expect(source).toMatch(/where\.canal\s*=\s*\{\s*not:\s*['"]PUNTO['"]\s*\}/)
+  it('buildWhere aplica where.canal (valor único o { in: [...] })', () => {
+    expect(source).toMatch(/where\.canal\s*=\s*canalValues\[0\]/)
+    expect(source).toMatch(/where\.canal\s*=\s*\{\s*in:\s*canalValues\s*\}/)
   })
 
   it('findByIdWithFactura is defined in the repository', () => {

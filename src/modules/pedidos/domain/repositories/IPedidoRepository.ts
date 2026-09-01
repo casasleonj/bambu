@@ -19,6 +19,9 @@ export interface PedidoFilter {
   origen?: string[]
   /** `null` filtra explícitamente "sin embarque asignado". */
   embarqueId?: string | null
+  /** Canal canónico (`PUNTO` | `DOMICILIO`). G6. */
+  canal?: string[]
+  /** @deprecated legacy — usar `canal`. `ENVIO`↔`DOMICILIO`, `PUNTO`↔`PUNTO`. */
   tipo?: string[]
   /** Server-side tab scope: isolates Pedidos/Fiados/Alertas datasets. */
   scope?: 'fiados' | 'alertas'

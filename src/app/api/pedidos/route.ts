@@ -6,6 +6,7 @@ import { requireAuth, requireRole } from '@/lib/auth-check'
 import { PedidoCreateSchema } from '@/lib/validators'
 import { getPaginationParams, buildPaginationResponse } from '@/lib/pagination'
 import { getTodayRange, buildDateRangeFilter, startOfDayBogota } from '@/lib/dates'
+import { normalizeCanalFilter } from '@/lib/pedido-canal'
 import { ROLES } from '@/lib/constants'
 import { getAnonymousClientDisplayName } from '@/lib/cliente-canonical'
 import { apiSuccess, apiError } from '@/lib/api-response'
@@ -36,7 +37,8 @@ export async function GET(request: NextRequest) {
     const estadoEntregaFilter = searchParams.getAll('estadoEntrega')
     const estadoPagoFilter = searchParams.getAll('estadoPago')
     const origenFilter = searchParams.getAll('origen')
-    const tipoFilter = searchParams.getAll('tipo')
+    // G6: filtro por `canal`; acepta el param legacy `?tipo=ENVIO|PUNTO`.
+    const canalFilter = normalizeCanalFilter([...searchParams.getAll('canal'), ...searchParams.getAll('tipo')])
     const scopeFilter = searchParams.get('scope')
     // "Sin asignar de días anteriores" — ver src/lib/pedidos-sin-asignar.ts.
     // No aplica a REPARTIDOR (solo ve pedidos ya asignados a él por diseño,
@@ -95,8 +97,8 @@ export async function GET(request: NextRequest) {
     if (origenFilter.length > 0) {
       filter.origen = origenFilter
     }
-    if (tipoFilter.length > 0) {
-      filter.tipo = tipoFilter
+    if (canalFilter.length > 0) {
+      filter.canal = canalFilter
     }
     if (scopeFilter === 'fiados' || scopeFilter === 'alertas') {
       filter.scope = scopeFilter

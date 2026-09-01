@@ -2,6 +2,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { listarPedidosUseCase } from '@/modules/pedidos'
 import { buildDateRangeFilter, getTodayRange } from '@/lib/dates'
+import { normalizeCanalFilter } from '@/lib/pedido-canal'
 import { getAnonymousClientDisplayName } from '@/lib/cliente-canonical'
 import { getPaginationParams } from '@/lib/pagination'
 import { pickCoords } from '@/lib/geo/pedido-coords'
@@ -96,8 +97,10 @@ export default async function PedidosPage({
   const origenFilter = params.getAll('origen')
   if (origenFilter.length > 0) filter.origen = origenFilter
 
-  const tipoFilter = params.getAll('tipo')
-  if (tipoFilter.length > 0) filter.tipo = tipoFilter
+  // G6 (ADR-PEDIDO-ORIGEN-CANAL-001): filtro por `canal`; acepta el param
+  // legacy `?tipo=ENVIO|PUNTO` normalizándolo (ENVIO→DOMICILIO).
+  const canalFilter = normalizeCanalFilter([...params.getAll('canal'), ...params.getAll('tipo')])
+  if (canalFilter.length > 0) filter.canal = canalFilter
 
   const scopeFilter = params.get('scope')
   if (scopeFilter === 'fiados' || scopeFilter === 'alertas') {

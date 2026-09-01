@@ -552,7 +552,7 @@ export function PedidoTable({
             </div>
             <p className="text-sm text-blue-700">
               Aquí ves todos los pedidos con sus estados de entrega y pago. 
-              Usa los filtros arriba para buscar por cliente, estado o tipo.
+              Usa los filtros arriba para buscar por cliente, estado o canal.
             </p>
           </div>
         </div>

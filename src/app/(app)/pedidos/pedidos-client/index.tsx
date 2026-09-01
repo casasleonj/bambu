@@ -18,6 +18,7 @@ import { SkeletonPage, SkeletonCard } from '@/components/skeleton'
 import { Tooltip, InfoBanner } from '@/components/tooltip'
 import { useConfirm } from '@/components/confirm-modal'
 import { SmartDateFilter } from '@/components/smart-date-filter'
+import { normalizeCanalFilter, tipoDesdeCanal } from '@/lib/pedido-canal'
 import { PedidoFilters } from './pedido-filters'
 import { PedidoTable } from './pedido-table'
 import { FiadosTable } from './fiados-table'
@@ -69,7 +70,7 @@ function buildPendingPedido(offlineId: string, payload: CrearPedidoPayload, clie
     telefonoCli: '',
     zonaCli: '',
     barrioCli: '',
-    tipo: payload.canal === 'PUNTO' ? 'PUNTO' : 'ENVIO',
+    tipo: tipoDesdeCanal(payload.canal),
     canal: payload.canal,
     estado: 'PENDIENTE',
     origen: payload.ventaRapida ? 'VENTA_RAPIDA' : 'PEDIDO',
@@ -221,7 +222,14 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   const desdeUrl = shallowParams.get('desde')
   const hastaUrl = shallowParams.get('hasta')
 
-  const filtroTipo = shallowParams.getAll('tipo')
+  // G6 (ADR-PEDIDO-ORIGEN-CANAL-001): el filtro es "Canal" (PUNTO/DOMICILIO).
+  // Se acepta el param legacy `?tipo=ENVIO|PUNTO` y se normaliza (ENVIO→DOMICILIO).
+  const canalParamKey = shallowParams.getAll('canal').join(',') + '|' + shallowParams.getAll('tipo').join(',')
+  const filtroCanal = useMemo(
+    () => normalizeCanalFilter([...shallowParams.getAll('canal'), ...shallowParams.getAll('tipo')]),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [canalParamKey],
+  )
   const filtroOrigen = shallowParams.getAll('origen')
   const filtroEstadoEntrega = shallowParams.getAll('estadoEntrega')
   const filtroEstadoPago = shallowParams.getAll('estadoPago')
@@ -247,13 +255,13 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   const pedidoFilterParams = useMemo(() => ({
     desde: desdeUrl || undefined,
     hasta: hastaUrl || undefined,
-    tipo: filtroTipo.length > 0 ? filtroTipo : undefined,
+    canal: filtroCanal.length > 0 ? filtroCanal : undefined,
     origen: filtroOrigen.length > 0 ? filtroOrigen : undefined,
     estadoEntrega: filtroEstadoEntrega.length > 0 ? filtroEstadoEntrega : undefined,
     estadoPago: filtroEstadoPago.length > 0 ? filtroEstadoPago : undefined,
     search: search || undefined,
     clienteId: clienteIdFromUrl || undefined,
-  }), [desdeUrl, hastaUrl, filtroTipo, filtroOrigen, filtroEstadoEntrega, filtroEstadoPago, search, clienteIdFromUrl])
+  }), [desdeUrl, hastaUrl, filtroCanal, filtroOrigen, filtroEstadoEntrega, filtroEstadoPago, search, clienteIdFromUrl])
 
   // --- Cache-driven pedidos (P0 fix: filtros en memoria, sin RSC round-trip) ---
   // Igual patrón que clientes-client/index.tsx (loadAllClientes): se carga el
@@ -420,6 +428,16 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     if (enRiesgoParam) refetchEnRiesgo()
   }, [enRiesgoParam, refetchEnRiesgo])
 
+  // G6: migrar el param legacy `?tipo=ENVIO|PUNTO` → `?canal=DOMICILIO|PUNTO`
+  // una sola vez, para que los toggles del filtro operen sobre un solo param.
+  const tipoParamRaw = shallowParams.getAll('tipo')
+  useEffect(() => {
+    if (tipoParamRaw.length === 0) return
+    const canal = normalizeCanalFilter([...shallowParams.getAll('canal'), ...tipoParamRaw])
+    syncUrl({ canal: canal.length > 0 ? canal : undefined, tipo: undefined })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tipoParamRaw.join(',')])
+
   const volverAPedidosDeHoy = useCallback(() => {
     syncUrl({ atrasados: undefined, enRiesgo: undefined })
   }, [syncUrl])
@@ -539,7 +557,10 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     const next = current.includes(value)
       ? current.filter(v => v !== value)
       : [...current, value]
-    syncUrl({ [key]: next.length > 0 ? next : undefined })
+    // G6: al togglear "Canal", limpiar también el param legacy `?tipo=` para
+    // que no quede un filtro fantasma si el efecto de migración aún no corrió.
+    const extra = key === 'canal' ? { tipo: undefined } : {}
+    syncUrl({ [key]: next.length > 0 ? next : undefined, ...extra })
   }, [shallowParams, syncUrl])
 
   const setSingleFilter = useCallback((key: string, value: string) => {
@@ -579,7 +600,8 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       origen: undefined,
       estadoEntrega: undefined,
       estadoPago: undefined,
-      tipo: undefined,
+      canal: undefined,
+      tipo: undefined, // legacy — limpiar ambos
       desde: undefined,
       hasta: undefined,
       all: 'true',
@@ -949,7 +971,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
         })())
     return pedidosSource.filter((p) => {
       if (clienteIdFromUrl && p.clienteId !== clienteIdFromUrl) return false
-      if (filtroTipo.length > 0 && !filtroTipo.includes(p.tipo)) return false
+      if (filtroCanal.length > 0 && !(filtroCanal as string[]).includes(p.canal)) return false
       if (filtroOrigen.length > 0 && !filtroOrigen.includes(p.origen)) return false
       if (filtroEstadoEntrega.length > 0 && !filtroEstadoEntrega.includes(p.estadoEntrega)) return false
       if (filtroEstadoPago.length > 0 && !filtroEstadoPago.includes(p.estadoPago)) return false
@@ -959,7 +981,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       if (hasta && fecha > hasta) return false
       return true
     })
-  }, [pedidosSource, allFromUrl, desdeUrl, hastaUrl, clienteIdFromUrl, filtroTipo, filtroOrigen, filtroEstadoEntrega, filtroEstadoPago])
+  }, [pedidosSource, allFromUrl, desdeUrl, hastaUrl, clienteIdFromUrl, filtroCanal, filtroOrigen, filtroEstadoEntrega, filtroEstadoPago])
 
   const pedidosVisibles = useMemo(() => {
     if (!search) return pedidosSinSearch
@@ -1017,7 +1039,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     }
   }, [pedidosSinSearch, hoyStr])
 
-  const hasActiveFilters = !!(search || clienteIdFromUrl || filtroTipo.length > 0 || filtroOrigen.length > 0 || filtroEstadoEntrega.length > 0 || filtroEstadoPago.length > 0 || desdeUrl || hastaUrl)
+  const hasActiveFilters = !!(search || clienteIdFromUrl || filtroCanal.length > 0 || filtroOrigen.length > 0 || filtroEstadoEntrega.length > 0 || filtroEstadoPago.length > 0 || desdeUrl || hastaUrl)
   const hasDateFilter = !!(desdeUrl || hastaUrl)
 
   function getOrigenBadge(origen: string) {
@@ -1070,15 +1092,15 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     )
   }
 
-  function getTipoBadge(tipo: string) {
+  function getCanalBadge(canal: string) {
     const styles: Record<string, string> = {
-      ENVIO: 'bg-indigo-100 text-indigo-700',
+      DOMICILIO: 'bg-indigo-100 text-indigo-700',
       PUNTO: 'bg-emerald-100 text-emerald-700',
     }
-    const labels: Record<string, string> = { ENVIO: 'Envío', PUNTO: 'Punto' }
+    const labels: Record<string, string> = { DOMICILIO: 'Domicilio', PUNTO: 'Punto' }
     return (
-      <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${styles[tipo] || 'bg-gray-100 text-gray-500'}`}>
-        {labels[tipo] || tipo}
+      <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${styles[canal] || 'bg-gray-100 text-gray-500'}`}>
+        {labels[canal] || canal}
       </span>
     )
   }
@@ -1623,7 +1645,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
             clientes={clientes.map(c => ({ ...c, direccion: c.direccion ?? null, barrio: c.barrio ?? null }))}
             selectedClienteId={clienteIdFromUrl}
             onClienteSelect={updateClienteId}
-            filtroTipo={filtroTipo}
+            filtroCanal={filtroCanal}
             filtroOrigen={filtroOrigen}
             filtroEstadoEntrega={filtroEstadoEntrega}
             filtroEstadoPago={filtroEstadoPago}
@@ -1960,7 +1982,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-sm text-gray-400">#{selectedPedido.numero}</span>
                   {getEstadoEntregaBadge(selectedPedido.estadoEntrega)}
-                  {getTipoBadge(selectedPedido.tipo)}
+                  {getCanalBadge(selectedPedido.canal)}
                 </div>
                 <PedidoClienteDisplay
                   clienteId={selectedPedido.clienteId}
@@ -2011,8 +2033,8 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
 
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div className="bg-white border rounded-lg p-2.5">
-                  <div className="text-xs text-gray-400 mb-0.5">Tipo</div>
-                  <div className="font-medium text-gray-700">{selectedPedido.tipo}</div>
+                  <div className="text-xs text-gray-400 mb-0.5">Canal</div>
+                  <div className="font-medium text-gray-700">{selectedPedido.canal === 'PUNTO' ? 'Punto' : 'Domicilio'}</div>
                 </div>
                 <div className="bg-white border rounded-lg p-2.5">
                   <div className="text-xs text-gray-400 mb-0.5">Fecha</div>

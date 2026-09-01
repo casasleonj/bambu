@@ -13,6 +13,7 @@ import type { IPedidoRepository, PedidoFilter } from '../../domain/repositories/
 import { PedidoMapper } from '../mappers/PedidoMapper'
 import type { TransactionClient } from '../transactions/PrismaTransactionManager'
 import { CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
+import { normalizeCanalFilter } from '@/lib/pedido-canal'
 
 export class PrismaPedidoRepository implements IPedidoRepository {
   async findById(id: PedidoId, tx?: TransactionClient): Promise<Pedido | null> {
@@ -221,17 +222,13 @@ export class PrismaPedidoRepository implements IPedidoRepository {
         where.clienteId = { not: CANONICAL_CONSUMIDOR_FINAL_ID }
       }
     }
-    if (filter?.tipo && filter.tipo.length > 0) {
-      // Tipo es un derivado semántico de canal: PUNTO → 'PUNTO', cualquier otro → 'ENVIO'.
-      const canalCondition = filter.tipo.includes('PUNTO') ? ['PUNTO'] : []
-      const excludePunto = filter.tipo.includes('ENVIO')
-      if (canalCondition.length > 0 && excludePunto) {
-        where.canal = { not: 'PUNTO' }
-      } else if (canalCondition.length > 0) {
-        where.canal = 'PUNTO'
-      } else if (excludePunto) {
-        where.canal = { not: 'PUNTO' }
-      }
+    // G6: filtro por `canal` canónico. `filter.tipo` (legacy) se normaliza con
+    // el mismo helper que usan los callers (evita divergencia).
+    const canalValues = normalizeCanalFilter([...(filter?.canal ?? []), ...(filter?.tipo ?? [])])
+    if (canalValues.length === 1) {
+      where.canal = canalValues[0]
+    } else if (canalValues.length > 1) {
+      where.canal = { in: canalValues }
     }
     if (filter?.desde || filter?.hasta) {
       where.fecha = {}

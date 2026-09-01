@@ -19,6 +19,7 @@ export class ListarPedidosUseCase {
       estadoPago: input.estadoPago,
       origen: input.origen,
       embarqueId: input.embarqueId,
+      canal: input.canal,
       tipo: input.tipo,
       scope: input.scope,
     }
