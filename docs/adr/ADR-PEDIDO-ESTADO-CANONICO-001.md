@@ -148,13 +148,33 @@ confirmación de `ADR-PAGO-REPORTADO-CONFIRMADO-001`.
 
 ## Orden de PRs
 
-| PR | Contenido | Riesgo |
+| PR | Contenido | Estado |
 |---|---|---|
-| **G5.1** | Helper `proyectarEstadoPago` (dominio) + migrar los ~6 escritores raw de `estadoPago` a usarlo + `visual-states.ts`/`getEstadoPagoBadge` derivan con la misma regla + fix `casos/[id]/route.ts:339` (registra el `Pago`, no fuerza el enum). **Escritura hacia adelante, sin backfill, sin CHECK.** | Medio — nuevo valor `ANTICIPADO` visible en pedidos nuevos/re-guardados |
-| **G5.2** | Fase B: migrar los ~8 lectores de `Pedido.estado` → `estadoEntrega`. Verificar `estado == estadoEntrega` = 0 divergencias. | Bajo — código puro |
-| **G5.3** | Fase C: dejar de escribir `estado` + default DB. | Bajo |
-| **G5.4** | Fase D: `DROP COLUMN "Pedido".estado` + `DROP TYPE "EstadoPedido"`. Bundle con el drop de `Pedido.tipo`/`PlantillaRecurrente.tipo` de G6 y la limpieza de `PedidoCreateSchema` (`ventaRapida`/`tipo`). | Bajo (cleanup) tras N días de C verde |
-| **G5.5** (condicional) | Backfill de `ANTICIPADO` + CHECK `chk_pedido_estadopago_proyectado`. **Decisión de rollout aparte.** | Medio — reclasifica datos existentes |
+| **G5.2** | Migrar los lectores de queries Prisma de `Pedido.estado` → `estadoEntrega` + backfill idempotente + índices `[estadoEntrega, fecha]` / `[embarqueId, estadoEntrega]`. | ✅ **hecho (PR #152)** |
+| **G5.1** | Helper `proyectarEstadoPago` (dominio) + migrar los ~6 escritores raw de `estadoPago` + `visual-states.ts`/`getEstadoPagoBadge` derivan con la misma regla + fix `casos/[id]/route.ts:339`. **Escritura hacia adelante, sin backfill, sin CHECK.** | Pendiente — **medio riesgo** (`ANTICIPADO` visible en pedidos nuevos/re-guardados) |
+| **G5.3 + G5.4** | Dejar de escribir + `DROP COLUMN "Pedido".estado` + `DROP TYPE "EstadoPedido"`. | **Reevaluado — desprioritizado, ver abajo** |
+| **G5.5** (condicional) | Backfill de `ANTICIPADO` + CHECK `chk_pedido_estadopago_proyectado`. | Decisión de rollout aparte |
+
+### Reevaluación del retiro de `Pedido.estado` (2026-09-01)
+
+El intento de `DROP COLUMN` reveló que `Pedido.estado` está mucho más acoplado
+que el "~8 lectores" que estimaba este ADR: **~20 archivos** — rutas de API
+(`clientes/[id]`, `clientes/[id]/historial`, `nomina`, `embarques/[id]`,
+`embarques`), tipos del payload de `embarques/[id]` (`EmbarqueDetalle` /
+`PedidoEnriquecido` propagan `estado`), scripts de `prisma/` (`seed-realista`,
+`validate-data`, `create-pedido-fiado`), `scripts/crear-factura-demo.ts`,
+`test-fixes.ts` (raíz), y varios tests de integración.
+
+**Decisión: el `DROP COLUMN` se desprioriza.** `estado` y `estadoEntrega` son
+enums idénticos, siempre en sync (dual-write de `PedidoMapper` + backfill de
+G5.2), verificado a 0 divergencias en prod. El "problema de dos fuentes" es
+cosmético mientras el invariante se mantenga. El valor real de G5 está en
+**G5.1** (`proyectarEstadoPago`).
+
+Si se retoma el drop, es un PR dedicado grande (~20 archivos, migración de los
+tipos del payload de embarques) con su propia revisión — no un "cleanup" chico.
+Mientras tanto: **ningún código nuevo debe leer `Pedido.estado`** — usar
+`estadoEntrega`.
 
 ## Alcance
 
