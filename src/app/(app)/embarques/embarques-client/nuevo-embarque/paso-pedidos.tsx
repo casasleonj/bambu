@@ -77,11 +77,15 @@ export function PasoPedidos({ state, dispatch, onCancel }: PasoPedidosProps) {
   return (
     <>
       <div className="px-5 pt-3 pb-2 space-y-2 border-b">
+        <p className="text-xs text-gray-500">
+          Elegí los pedidos que van en este embarque. Aparecen los pendientes con
+          entrega para hoy o vencida.
+        </p>
         <input
           type="search"
           value={data.buscar}
           onChange={(e) => dispatch({ type: 'SET_BUSCAR', value: e.target.value })}
-          placeholder="Buscar cliente o negocio…"
+          placeholder="Filtrar la lista por cliente o negocio…"
           data-testid="pedidos-buscar"
           className="w-full px-3 py-2 border rounded-lg text-sm"
         />
@@ -101,6 +105,8 @@ export function PasoPedidos({ state, dispatch, onCancel }: PasoPedidosProps) {
           <p className="text-sm text-gray-500 text-center py-8">
             No hay pedidos pendientes para hoy.
             {!data.verFuturos && ' Activá "Ver pedidos futuros" para adelantar una entrega.'}
+            <br />
+            <span className="text-xs">Los pedidos se crean en la sección Pedidos, no acá.</span>
           </p>
         ) : (
           <ul className="divide-y divide-gray-100">
