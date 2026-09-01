@@ -180,6 +180,12 @@ export class CrearPedidoUseCase {
       // ENTREGADO. `entregado === false` → entrega posterior (queda PENDIENTE +
       // ANTICIPADO si va prepago). Solo aplica a venta rápida; el resto de
       // orígenes ya nacen PENDIENTE.
+      //
+      // Nota de canal: una venta rápida `PUNTO` + entrega posterior es un
+      // "para recoger" — queda PENDIENTE pero el planificador solo toma
+      // `canal = DOMICILIO`, así que se cierra marcándola entregada a mano
+      // cuando el cliente pasa. Para que entre a ruta, el cliente de la API
+      // debe mandar `canal = DOMICILIO` (compra en punto con envío).
       const entregaInmediata = origen.isVentaRapida() && input.entregado !== false
       const estadoEntrega = entregaInmediata
         ? EstadoEntregaVO.create('ENTREGADO')
