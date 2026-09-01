@@ -6,8 +6,13 @@
  */
 
 import type { EstadoEntrega, EstadoPago, OrigenPedido } from '../types'
-import { EstadoEntregaVO } from '../value-objects/EstadoEntrega'
-import { EstadoPagoVO } from '../value-objects/EstadoPago'
+import { EstadoEntregaVO, TRANSICIONES_ENTREGA } from '../value-objects/EstadoEntrega'
+import { EstadoPagoVO, TRANSICIONES_PAGO } from '../value-objects/EstadoPago'
+
+// Re-export de las tablas canónicas (definidas junto a su VO). Este servicio
+// es el punto de entrada canónico de transiciones; la fachada legacy
+// `src/lib/pedido-utils` re-exporta desde aquí (F2, INVENTARIO §F2).
+export { TRANSICIONES_ENTREGA, TRANSICIONES_PAGO }
 
 export interface BadgeInfo {
   label: string
