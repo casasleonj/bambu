@@ -64,6 +64,12 @@ export interface OfflineRequest {
   attempts?: number
   lastAttemptAt?: Date
   lastError?: string
+  // "Nuevo Embarque" offline: operación compuesta crear-embarque + asignar-pedidos.
+  // Cuando `localEndpoint === 'embarque-con-pedidos'`, `body` es el POST del
+  // embarque y `pedidoIds` los pedidos a asignar tras obtener el id real. El
+  // sync hace POST → PUT y reporta los pedidos que otro ya tomó (nunca los pisa).
+  // Campo NO indexado (Dexie lo persiste igual, sin bump de versión).
+  pedidoIds?: string[]
 }
 
 /**

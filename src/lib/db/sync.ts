@@ -234,6 +234,37 @@ async function doSyncWithServer(): Promise<SyncResult> {
       continue
     }
 
+    // "Nuevo Embarque" offline: operación compuesta crear-embarque + asignar-pedidos.
+    // El replay HTTP crudo no puede encadenar POST→PUT, así que se procesa aparte:
+    // POST embarque → PUT pedidoIds → reportar los que otro ya tomó (nunca pisar).
+    if (req.localEndpoint === 'embarque-con-pedidos') {
+      const r = await procesarEmbarqueConPedidos(req)
+      if (r.outcome === 'sessionExpired') {
+        sessionExpired = true
+        logger.error({ localId: req.offlineId }, 'Sync: 401 en embarque-con-pedidos, sesión expirada')
+        if (typeof window !== 'undefined') window.location.href = '/login?reason=expired'
+        return { synced, failed, conflicts, remaining: 0, drained: true, failedPermanently, sessionExpired }
+      }
+      if (r.outcome === 'synced') {
+        await finalizeRequestQueueItem(req, {}, 'synced')
+        dispatchSyncItemDone(req.offlineId, req.localEndpoint, 'synced', r.reason)
+        synced++
+      } else if (r.outcome === 'conflict') {
+        await finalizeRequestQueueItem(req, {}, 'synced')
+        dispatchSyncItemDone(req.offlineId, req.localEndpoint, 'conflict', r.reason)
+        conflicts++
+      } else if (r.outcome === 'dlq') {
+        await moveToDLQ({ ...req, attempts: newAttempts, lastAttemptAt: new Date() }, r.reason ?? 'error')
+        await markOfflineItemConflict(req.offlineId)
+        dispatchSyncItemDone(req.offlineId, req.localEndpoint, 'dlq', r.reason)
+        failedPermanently++
+      } else {
+        await offlineDb.requestQueue.update(req.id!, { lastError: r.reason ?? 'retry' })
+        failed++
+      }
+      continue
+    }
+
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), SYNC_TIMEOUT_MS)
 
@@ -356,6 +387,71 @@ async function doSyncWithServer(): Promise<SyncResult> {
     failedPermanently,
     sessionExpired,
   }
+}
+
+type EmbarquePedidosOutcome = 'synced' | 'conflict' | 'failed' | 'dlq' | 'sessionExpired'
+
+/**
+ * Procesa un item `embarque-con-pedidos` de la cola: crea el embarque y asigna
+ * los pedidos que sigan libres. Un pedido que otro asistente ya tomó NO se
+ * pisa — se reporta. El POST del embarque deduplica por `offlineId` en el
+ * server, así que un replay es seguro.
+ */
+async function procesarEmbarqueConPedidos(req: {
+  offlineId: string
+  body: string
+  pedidoIds?: string[]
+}): Promise<{ outcome: EmbarquePedidosOutcome; reason?: string }> {
+  let postRes: Response
+  try {
+    postRes = await fetch('/api/embarques', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: req.body,
+    })
+  } catch {
+    return { outcome: 'failed', reason: 'error de red' }
+  }
+  if (postRes.status === 401) return { outcome: 'sessionExpired' }
+
+  const postData = await postRes.json().catch(() => ({}))
+  if (!postRes.ok) {
+    if (isRetryableStatus(postRes.status)) return { outcome: 'failed', reason: `HTTP ${postRes.status}` }
+    const msg = (postData as { error?: { message?: string } })?.error?.message ?? `HTTP ${postRes.status}`
+    return { outcome: 'dlq', reason: msg }
+  }
+
+  const embarqueId = (postData as { embarque?: { id?: string } })?.embarque?.id
+  if (!embarqueId) return { outcome: 'dlq', reason: 'el servidor no devolvió el embarque' }
+
+  const pedidoIds = req.pedidoIds ?? []
+  if (pedidoIds.length === 0) return { outcome: 'synced' }
+
+  let putRes: Response
+  try {
+    putRes = await fetch(`/api/embarques/${embarqueId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ pedidoIds, offlineId: req.offlineId }),
+    })
+  } catch {
+    return { outcome: 'synced', reason: 'Embarque creado; asigná los pedidos desde el detalle.' }
+  }
+  if (putRes.status === 401) return { outcome: 'sessionExpired' }
+  if (putRes.ok) return { outcome: 'synced' }
+  if (putRes.status === 409) {
+    const j = await putRes.json().catch(() => ({}))
+    const m = (j as { error?: { message?: string } })?.error?.message ?? ''
+    const ids = m.match(/embarque:\s*([^.]+)\./)?.[1]?.trim() ?? ''
+    return {
+      outcome: 'conflict',
+      reason: `El embarque se creó. Estos pedidos ya estaban en otro embarque y no se asignaron: ${ids}.`,
+    }
+  }
+  // Otro error del PUT: el embarque YA existe — no reintentar el POST.
+  return { outcome: 'synced', reason: 'Embarque creado; algunos pedidos no se asignaron, revisá el detalle.' }
 }
 
 async function finalizeRequestQueueItem(
