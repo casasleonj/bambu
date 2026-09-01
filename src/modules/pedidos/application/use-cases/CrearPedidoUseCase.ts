@@ -176,7 +176,14 @@ export class CrearPedidoUseCase {
       // 5. Build domain entities
       const canal = CanalVO.create(input.canal)
       const origen = input.ventaRapida ? OrigenPedidoVO.create('VENTA_RAPIDA') : OrigenPedidoVO.create(input.origen || 'PEDIDO')
-      const estadoEntrega = origen.isVentaRapida() ? EstadoEntregaVO.create('ENTREGADO') : EstadoEntregaVO.create('PENDIENTE')
+      // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: la venta rápida deja de forzar
+      // ENTREGADO. `entregado === false` → entrega posterior (queda PENDIENTE +
+      // ANTICIPADO si va prepago). Solo aplica a venta rápida; el resto de
+      // orígenes ya nacen PENDIENTE.
+      const entregaInmediata = origen.isVentaRapida() && input.entregado !== false
+      const estadoEntrega = entregaInmediata
+        ? EstadoEntregaVO.create('ENTREGADO')
+        : EstadoEntregaVO.create('PENDIENTE')
       const total = preciosResueltos.reduce((sum, pr) => sum + pr.subtotal, 0)
 
       // FIX Fase 2 §3.4: aplicar saldo a favor disponible del cliente
@@ -192,8 +199,8 @@ export class CrearPedidoUseCase {
       // FIX Fase 2 §3.4: el normalizarPagos ahora devuelve { pagosAplicados, excedente }
       const { pagosAplicados: pagosNormalizados, excedente } = normalizarPagos(input.pagos || [], totalDespuesCredito)
       const totalPagado = pagosNormalizados.reduce((sum, p) => sum + p.monto, 0) + montoCredito
-      // G5.1: un pedido normal pagado completo pero aún no entregado →
-      // ANTICIPADO (venta rápida sí es ENTREGADO → PAGADO).
+      // G5.1: un pedido pagado completo pero aún no entregado → ANTICIPADO.
+      // Cubre venta rápida con entrega posterior (estadoEntrega = PENDIENTE).
       const estadoPago = EstadoPagoVO.proyectar(total, totalPagado, estadoEntrega.get())
 
       // 6. Validate credit limit — solo si el pedido va a quedar con saldo
@@ -233,7 +240,8 @@ export class CrearPedidoUseCase {
           pr.cantidad,
           Money.fromDecimal(pr.precio),
           pr.origen,
-          origen.isVentaRapida() ? pr.cantidad : 0,
+          // entrega posterior → nada entregado todavía (cantEntrega = 0).
+          entregaInmediata ? pr.cantidad : 0,
         ),
       )
 

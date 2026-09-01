@@ -78,6 +78,28 @@ describe('PedidoCreateSchema', () => {
     })
     expect(result.success).toBe(true)
   })
+
+  // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001
+  it('accepts optional `entregado` boolean', () => {
+    for (const entregado of [true, false, undefined]) {
+      const result = PedidoCreateSchema.safeParse({
+        clienteId: 'test-cliente-id',
+        items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
+        ventaRapida: true,
+        ...(entregado === undefined ? {} : { entregado }),
+      })
+      expect(result.success).toBe(true)
+    }
+  })
+
+  it('rejects non-boolean `entregado`', () => {
+    const result = PedidoCreateSchema.safeParse({
+      clienteId: 'test-cliente-id',
+      items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
+      entregado: 'nope',
+    })
+    expect(result.success).toBe(false)
+  })
 })
 
 describe('ClienteCreateSchema', () => {
