@@ -798,6 +798,10 @@ model Pedido {
   @@index([origen])
   @@index([estadoEntrega])
   @@index([estadoPago])
+  // G5.2 (ADR-PEDIDO-ESTADO-CANONICO-001): reemplazan a [estado, fecha] /
+  // [embarqueId, estado] para las queries que migraron de `estado` a `estadoEntrega`.
+  @@index([estadoEntrega, fecha])
+  @@index([embarqueId, estadoEntrega])
   @@index([offlineId])
   @@index([recurrenteBatchId])
   @@index([envioOfflineId])

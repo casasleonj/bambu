@@ -28,7 +28,7 @@ export async function recomputeClienteScore(clienteId: string): Promise<void> {
 
   // Traer los últimos N pedidos ENTREGADOS
   const pedidos = await prisma.pedido.findMany({
-    where: { clienteId, estado: 'ENTREGADO' },
+    where: { clienteId, estadoEntrega: 'ENTREGADO' },
     select: { id: true, fecha: true, total: true, estadoEntrega: true },
     orderBy: { fecha: 'desc' },
     take: MAX_PEDIDOS_HISTORIAL,
@@ -37,7 +37,7 @@ export async function recomputeClienteScore(clienteId: string): Promise<void> {
   // También considerar pedidos PENDIENTES/EN_RUTA recientes (la persona
   // pidió pero no se entregó aún, lo que importa para el patrón).
   const pedidosNoEntregados = await prisma.pedido.findMany({
-    where: { clienteId, estado: { in: ['PENDIENTE', 'EN_RUTA'] } },
+    where: { clienteId, estadoEntrega: { in: ['PENDIENTE', 'EN_RUTA'] } },
     select: { id: true, fecha: true, total: true },
     orderBy: { fecha: 'desc' },
     take: 10,

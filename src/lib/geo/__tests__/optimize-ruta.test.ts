@@ -80,7 +80,7 @@ describe('optimizeEmbarqueOrden', () => {
     await optimizeEmbarqueOrden('e1')
     const where = mockPedido.findMany.mock.calls[0][0].where
     expect(where.embarqueId).toBe('e1')
-    expect(where.estado).toEqual({ in: ['PENDIENTE', 'EN_RUTA'] })
+    expect(where.estadoEntrega).toEqual({ in: ['PENDIENTE', 'EN_RUTA'] })
   })
 
   it('sin pedidos con coords → resultado vacío y NO llama al TSP', async () => {

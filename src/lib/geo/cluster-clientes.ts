@@ -42,7 +42,7 @@ export async function previewClusters(
     activo: true,
   }
   if (onlyWithPedidos) {
-    where.pedidos = { some: { estado: { in: ['PENDIENTE', 'EN_RUTA'] } } }
+    where.pedidos = { some: { estadoEntrega: { in: ['PENDIENTE', 'EN_RUTA'] } } }
   }
 
   const clientes = await prisma.cliente.findMany({

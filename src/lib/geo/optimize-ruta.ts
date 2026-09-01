@@ -22,7 +22,7 @@ export interface OptimizeResult {
 
 export async function optimizeEmbarqueOrden(embarqueId: string): Promise<OptimizeResult> {
   const pedidos = await prisma.pedido.findMany({
-    where: { embarqueId, estado: { in: ['PENDIENTE', 'EN_RUTA'] } },
+    where: { embarqueId, estadoEntrega: { in: ['PENDIENTE', 'EN_RUTA'] } },
     select: {
       id: true,
       cliente: { select: { lat: true, lng: true } },

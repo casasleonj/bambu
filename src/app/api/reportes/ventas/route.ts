@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { getPrismaPagination, buildPaginationResponse } from '@/lib/pagination'
 import { z } from 'zod'
-import { EstadoPedido } from '@prisma/client'
+import { EstadoEntrega } from '@prisma/client'
 import { logger } from '@/lib/logger'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { startOfDayInBogota, endOfDayInBogota } from '@/lib/date-helpers'
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
 
     const where = {
       fecha: dateFilter,
-      estado: { not: EstadoPedido.CANCELADO },
+      estadoEntrega: { not: EstadoEntrega.CANCELADO },
     }
 
     const pagination = all ? { all: true } : { page: page ?? 1, pageSize: pageSize ?? 10 }
@@ -84,7 +84,7 @@ export async function GET(request: NextRequest) {
         where: {
           pedido: {
             fecha: dateFilter,
-            estado: { not: EstadoPedido.CANCELADO },
+            estadoEntrega: { not: EstadoEntrega.CANCELADO },
           },
         },
         _sum: { monto: true },

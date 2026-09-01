@@ -22,9 +22,9 @@ export default async function ReportesPage({ searchParams }: { searchParams: Pro
   const dateRange = { gte: startDate, lte: endDate }
 
   const [pedidosCount, ventasAgg, facturasPendientes, facturasSaldoAgg, pagosAgg, gastosAgg] = await Promise.all([
-    prisma.pedido.count({ where: { estado: { not: 'CANCELADO' }, fecha: dateRange } }),
+    prisma.pedido.count({ where: { estadoEntrega: { not: 'CANCELADO' }, fecha: dateRange } }),
     prisma.pedido.aggregate({
-      where: { estado: { not: 'CANCELADO' }, fecha: dateRange },
+      where: { estadoEntrega: { not: 'CANCELADO' }, fecha: dateRange },
       _sum: { total: true },
     }),
     prisma.factura.count({ where: { saldo: { gt: 0 }, fecha: dateRange } }),

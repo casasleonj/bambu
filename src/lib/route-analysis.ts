@@ -39,7 +39,7 @@ export async function analizarPatronesEntrega(): Promise<{
   // Obtener pedidos ENTREGADOS que tengan embarque con repartidor
   const pedidos = await prisma.pedido.findMany({
     where: {
-      estado: 'ENTREGADO',
+      estadoEntrega: 'ENTREGADO',
       embarqueId: { not: null },
     },
     include: {
