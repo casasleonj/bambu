@@ -54,6 +54,14 @@ enum MetodoPago {
   BONO
 }
 
+/// Categoría de trabajador (`Trabajador.rol`, nómina, comisiones). NO todos
+/// inician sesión: solo ADMIN/ASISTENTE/CONTADOR/REPARTIDOR/SELLADOR tienen
+/// acceso a la app (ver `ROLES` en `src/lib/constants.ts` y el gate
+/// `isLoginCapableRole` en `src/lib/session-limits.ts`, aplicado en
+/// `src/lib/auth.ts`). EMPACADOR y ENTUBADOR son categorías de planilla:
+/// existen para nómina/producción pero no tienen `User` ni login (G10,
+/// docs/pedidos/INVENTARIO_PEDIDOS_OPERACION_COMERCIAL.md). Un `Trabajador`
+/// SELLADOR/REPARTIDOR tampoco inicia sesión salvo que se le cree un `User`.
 enum RolUsuario {
   ADMIN
   ASISTENTE
@@ -1529,6 +1537,13 @@ model Abono {
   monto      Decimal  @db.Decimal(10, 2)
   metodoPago String
   fecha      DateTime @default(now()) @db.Timestamptz()
+
+  // G1 (docs/pedidos/INVENTARIO_PEDIDOS_OPERACION_COMERCIAL.md): clave
+  // idempotente de POST /api/abonos. Retry/doble-submit con el mismo
+  // offlineId retorna el abono existente (deduped) sin re-aplicar dinero.
+  // Nullable: abonos históricos y los creados por pagar-fiado (FIFO
+  // multi-factura) quedan NULL — el índice UNIQUE de PG permite múltiples NULL.
+  offlineId String? @unique
 
   createdAt DateTime @default(now()) @db.Timestamptz()
 

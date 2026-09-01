@@ -1,143 +1,94 @@
-# Spec: Módulo Embarques — Agua Bambú v2
+# Spec: Módulo Embarques — Agua Bambú
 
-## Architecture
+> **Estado:** reescrito 2026-08-31 (G9 del INVENTARIO de Fase 0). La spec "v2"
+> anterior estaba obsoleta (schema sin ledgers, sin `EN_RUTA`, sin recovery/
+> responsabilidad, body de cierre viejo).
+>
+> **Documentos autoritativos** (esta spec es solo un mapa; ante duda, ganan estos):
+> - Contrato de dominio congelado: `plan-maestro-v11.1-equipo-desarrollo.md` + `docs/adr/*.md`
+> - UX: `docs/embarques/01-ux-contract.md`
+> - API: `docs/embarques/02-api-contract.md`  ← **fuente de verdad de endpoints**
+> - Excepciones: `docs/embarques/03-exception-model.md`
+> - Frontend rework (fases 3–10): `docs/embarques/00-plan-frontend-completo.md`, `PENDIENTE.md`
+> - El código: `src/app/api/embarques/**`, `src/modules/embarques/**`
 
-**Pattern**: Server Component page + Client Component for closing (`page.tsx` → `cerrar/page.tsx`).
+---
 
-## Data Model
+## Estados reales
 
-```prisma
-model Embarque {
-  id            String   @id @default(cuid())
-  numero        Int      @default(autoincrement())
-  trabajadorId  String
-  trabajador    Trabajador @relation(...)
-  rutaId        String?
-  ruta          Ruta?    @relation(...)
-  estado        EstadoEmbarque @default(ABIERTO)  // ABIERTO, CERRADO, CANCELADO
-  horaSalida    DateTime?
-  horaLlegada   DateTime?
-  pacasAgua     Int      @default(0)
-  pacasHielo    Int      @default(0)
-  devueltasAgua Int      @default(0)
-  devueltasHielo Int     @default(0)
-  rotasAgua     Int      @default(0)
-  rotasHielo    Int      @default(0)
-  obs           String?
-  pedidos       Pedido[]
-}
-```
-
-## State Machine
+`EstadoEmbarque` (`src/modules/embarques/domain/value-objects/EstadoEmbarque.ts`):
 
 ```
-ABIERTO --[cerrar]--> CERRADO
-   |
-   |--[cancelar]
-   v
-CANCELADO (terminal)
+ABIERTO → EN_RUTA → CERRADO
+   └───────────────→ CANCELADO
 ```
 
-## API Endpoints
+Solo 4 estados persistidos. Toda la granularidad de UX (`BORRADOR`, `CONFIRMADO`,
+`PREPARANDO`, `RETORNADO`…) se **deriva en cliente** con `derivarEstadoUI`, nunca se persiste.
 
-### `GET /api/embarques`
-Returns all embarques. Role: ADMIN, REPARTIDOR.
+Transición: `EN_RUTA → CERRADO` es la única que permite el VO para cerrar
+(cerrar un `ABIERTO` lanza "Transición inválida" → 400).
 
-### `POST /api/embarques`
-Creates new embarque. Role: ADMIN.
+## Los 4 ledgers (contrato §1 del plan maestro)
 
-### `GET /api/embarques/[id]`
-Returns single embarque with pedidos.
-
-### `PUT /api/embarques/[id]`
-Updates embarque. Role: ADMIN.
-
-### `POST /api/embarques/[id]/cerrar` ⭐
-
-Cierra embarque, procesa entregas, registra pagos.
-
-**Request body:**
-```typescript
-{
-  pedidos: [{
-    pedidoId: string,
-    entregado: 'COMPLETO' | 'PARCIAL' | 'NO_ENTREGADO',
-    productosEntregados: { cPacaAguaEnt: number, ... },
-    preciosReales: { pacaAgua: number, pacaHielo: number, ... },  // precios reales de venta
-    pagado: 'COMPLETO' | 'PARCIAL' | 'NO_PAGADO',
-    pagos: [{ metodo: string, monto: number }],
-    nuevoEmbarqueId?: string,  // reasignar si NO_ENTREGADO
-  }],
-  ventasLibres: [{ ... }],  // ventas ad-hoc en ruta
-  devueltasAgua: number,
-  devueltasHielo: number,
-  rotasAgua: number,
-  rotasHielo: number,
-  obs: string,
-}
-```
-
-**Procesamiento por pedido:**
-
-| entregado | Acción |
-|-----------|--------|
-| COMPLETO | estado → ENTREGADO, cXEnt = cXPed, total = suma(cantidad × precioReal) |
-| PARCIAL | estado → ENTREGADO, cXEnt = lo entregado, total recalculado, **crea pedido hijo PENDIENTE** con faltante |
-| NO_ENTREGADO | estado → PENDIENTE, embarqueId = null. Si hay `nuevoEmbarqueId` → EN_RUTA + reasignado |
-
-**Precios reales:**
-- El repartidor puede editar el precio unitario de cada producto al cerrar
-- Se guardan en campos existentes: `precioPacaAgua`, `precioPacaHielo`, etc.
-- Default = precio cotizado original del pedido
-- `totalReal = suma(cantidadEntregada × precioReal)` para cada producto
-- `saldo = totalReal - totalPagado`
-
-**Ventas libres:**
-- Pedidos creados en ruta sin pedido previo
-- Estado: ENTREGADO directamente
-- Precios resueltos por el pricing engine (canal DOMICILIO)
-
-## UI Components
-
-### Lista Embarques (`/embarques`)
-| Elemento | Acción |
+| Ledger | Modelos |
 |---|---|
-| Tabla desktop / Cards mobile | Lista de embarques con estado |
-| Botón "+ Nuevo" | Crear embarque |
-| Botón "Cerrar" | Navega a `/embarques/[id]/cerrar` |
+| Obligaciones comerciales | `Pedido`, `Actividad`, `ObligacionPendiente`, `PedidoCantidadAjuste`, `PromotionRule` |
+| Físico | `EmbarqueCarga`, `EmbarqueCargaProducto`, `EmbarqueMovimiento` (canónico), `Retorno`, `Sustitucion`, `RecoveryDecision` |
+| Monetario | `Pago`, `Abono`, `Gasto`; `ReceivableEntry` = proyección |
+| Responsabilidad | `ResponsibilityCase` → `DescuentoRepartidor` / `DeudaTrabajador` (solo tras resolución autorizada) |
 
-### Cierre de Embarque (`/embarques/[id]/cerrar`)
-| Sección | Contenido |
-|---|---|
-| Header | #número, repartidor, ruta, capacidad |
-| Pedidos | Uno por uno con: entrega (COMPLETO/PARCIAL/NO_ENTREGADO), tabla de productos, pagos |
-| Tabla productos | Producto \| Pedido \| Entregó \| Precio \| Subtotal |
-| Ventas Libres | Agregar ventas ad-hoc en ruta |
-| Retornos | Devueltas y rotas (agua/hielo) |
-| Resumen | Total cobrado, entregado, no entregados, parciales |
-| Confirmación | Modal si hay NO_ENTREGADO o PARCIALES |
+`EmbarqueProducto` (ints `cargadas/devueltas/rotas/cambios`) es mirror legacy,
+todavía fuente de conciliación del cierre. `Embarque.offlineId` es `@index`
+(single-slot), no `@unique`.
 
-### Tabla de Productos (por pedido)
+## Asignación de pedidos → embarque
 
-```
-Producto     | Pedido | Entregó | Precio | Subtotal
--------------|--------|---------|--------|----------
-🍶 Paca Agua | 4      | [ 4  ]  | $2600  | $10,400
-🧊 Paca Hielo| 0      | [ 5  ]  | $2500  | $12,500  ← ad-hoc
-...
-```
+`Pedido.embarqueId` (FK única). Dos mecanismos, ambos ponen `estado='EN_RUTA'`:
+- `POST /api/pedidos/[id]/enviar` (un pedido) — guard `updateMany({where:{embarqueId:null}})`; conflicto → **409** (F6).
+- `PUT /api/embarques/[id]` con `pedidoIds[]` (masivo) — lock `EMBARQUE_CARGA:{id}`, conflicto → **409** (`PEDIDOS_YA_ASIGNADOS`).
 
-- **Entregó**: editable, sin máximo (permite ad-hoc)
-- **Precio**: editable, default = precio cotizado original
-- **Subtotal**: auto-calculado = entregó × precio
-- **Total**: suma de todos los subtotales
+El wizard "Nuevo Embarque" (`src/app/(app)/embarques/embarques-client/nuevo-embarque/`)
+selecciona pedidos existentes (`estadoEntrega ∈ {PENDIENTE, NO_ENTREGADO}`, sin
+`embarqueId`) y llama `POST /api/embarques` + `PUT /api/embarques/[id]`. **No crea pedidos.**
 
-## Known Issues
+## Planificador → Embarque
 
-1. **console.error en error handlers** — Línea 370 en `cerrar/route.ts`. Debería sanitizarse.
-2. **No hay confirmación visual antes de cerrar** — Solo modal si hay parciales/no entregados. Pedidos 100% completos se cierran sin confirmación.
+`PlanDia CONFIRMED` → `MaterializarPlanUseCase` → por cada `PlanGrupo` llama
+`CrearEmbarqueUseCase` (existente) + asigna `PlanActividad.pedidoIds`. Un
+`PlanGrupo` = un `Embarque`. El planificador nunca toca el ledger físico.
+Ver `docs/adr/ADR-PLANIFICADOR-001..006`.
 
-## Implementation TODO
+## Cierre — `POST /api/embarques/[id]/cerrar`
 
-- [ ] Sanitize console.error in production
-- [ ] Add confirmation modal for all closes (not just partials)
+`CerrarEmbarqueUseCase`. Roles ADMIN/ASISTENTE + ownership. Doble lock
+`CIERRE:{id}` → `SECUENCIA:pedido`. Idempotente por `offlineId` + `CierreDedupService`.
+`POST .../cerrar/preview` = mismo use case con `dryRun: true` (rollback antes del commit), sin `offlineId`.
+
+Por pedido (`ProcesarPedidoService`): `COMPLETO` → `ENTREGADO`; `PARCIAL` →
+`ENTREGADO` + pedido-hijo `PENDIENTE` del faltante; `NO_ENTREGADO` → `NO_ENTREGADO`
++ `embarqueId=null` (o reasignado a `nuevoEmbarqueId` ABIERTO/EN_RUTA).
+`preciosReales` solo si `userRole === 'ADMIN'`. Guard `PAGOS_EXCEDIDOS` (tolerancia 1%).
+
+El cierre escribe directo en la misma tx: `Pedido`, `Pago`, `Factura`,
+`ReceivableEntry`, `EmbarqueMovimiento` (dual-write), `Gasto`, `EmbarqueProducto`,
+`ResponsibilityCase`. **NO** crea `DeudaTrabajador`/`DescuentoRepartidor` (eso es
+`ResolverResponsibilityCaseUseCase` con `autorizadoPorId`). **NO** toca `CierreDia`
+(cierre de día es otro dominio).
+
+## Excepciones (`03-exception-model.md`)
+
+`STOCK_INSUFFICIENT`, `CAPACITY_EXCEEDED` (MAX 70 unidades, `Config.MAX_UNIDADES_EMBARQUE`),
+`NO_DRIVER_AVAILABLE`, `PHYSICAL_MISMATCH`, `MONEY_MISMATCH` (→ `ResponsibilityCase`
+`FALTANTE_CAJA` si `> UMBRAL_MINIMO_FALTANTE_CAJA` y sin justificación),
+`DELIVERY_FAILED`, `DOBLE_CONSUMO` (recovery concurrente → 409), `SUSTITUCION_INVALIDA`.
+
+## Otros endpoints
+
+`/api/embarques/[id]/{movimientos,recovery,sustituciones,botellones,gastos,optimizar-orden,enviar}`
+y `/api/embarques/stats`, `/api/embarques/auto` (reemplazado por el Planificador en UI).
+Detalle en `docs/embarques/02-api-contract.md`.
+
+## Deuda conocida
+
+Ver `docs/embarques/02-api-contract.md §14` (8 ítems) y `docs/embarques/PENDIENTE.md`.

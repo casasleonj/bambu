@@ -550,7 +550,7 @@ export async function POST(request: NextRequest) {
         reporteData.totalNotasCredito = totalNC
 
         // 8. Create cierre
-        return tx.cierreDia.create({
+        const nuevoCierre = await tx.cierreDia.create({
           data: {
             fecha: startOfDay,
             numPedidos: pedidos.length,
@@ -583,20 +583,25 @@ export async function POST(request: NextRequest) {
             reporte: reporteData as Prisma.InputJsonValue,
           },
         })
+
+        // 9. Audit — F1 (ADR-CONCURRENCIA-001 / contrato §51): dentro de la
+        // MISMA transacción del cierre. Antes corría post-commit con
+        // `.catch(console.error)` → un cierre podía quedar sin evidencia.
+        // Si la auditoría falla, el cierre hace rollback atómico.
+        await logAudit({
+          entidad: 'CierreDia',
+          registroId: nuevoCierre.id,
+          accion: 'CREATE',
+          datos: { fecha: nuevoCierre.fecha, totalVentas: nuevoCierre.totalVentas, cerradoPor: userId },
+          usuarioId: userId,
+        }, tx)
+
+        return nuevoCierre
       }, {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
         maxWait: 5000,
         timeout: 15000,
       })
-
-      // 9. Audit log (outside transaction)
-      logAudit({
-        entidad: 'CierreDia',
-        registroId: cierre.id,
-        accion: 'CREATE',
-        datos: { fecha: cierre.fecha, totalVentas: cierre.totalVentas, cerradoPor: userId },
-        usuarioId: userId,
-      }).catch((e) => console.error('[cierre] Audit log failed:', e))
 
       void notifyEvent(NotificationEventType.CIERRE_DIA_COMPLETADO, {
         title: 'Cierre del día completado',

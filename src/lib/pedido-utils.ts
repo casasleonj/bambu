@@ -1,53 +1,61 @@
-import { EstadoEntrega, EstadoPago, OrigenPedido } from '@prisma/client'
+/**
+ * Fachada legacy de utilidades de pedido.
+ *
+ * F2 (docs/pedidos/INVENTARIO_PEDIDOS_OPERACION_COMERCIAL.md §F2): este
+ * archivo NO define máquinas de estado. La lógica canónica de transiciones
+ * y badges vive en el dominio de pedidos:
+ *   - `src/modules/pedidos/domain/value-objects/EstadoEntrega.ts` / `EstadoPago.ts`
+ *   - `src/modules/pedidos/domain/services/pedido-transitions.service.ts`
+ *
+ * Acá solo se re-exporta para consumidores legacy fuera de `src/modules`,
+ * más un puñado de helpers de negocio que aún no tienen equivalente en el
+ * dominio (fiados, alertas del día).
+ */
+
+import {
+  TRANSICIONES_ENTREGA,
+  TRANSICIONES_PAGO,
+  puedeTransicionarEntrega,
+  puedeTransicionarPago,
+  legacyToNewState,
+  getBadgeEntrega,
+  getBadgePago,
+  getBadgeOrigen,
+  type BadgeInfo,
+} from '@/modules/pedidos/domain/services/pedido-transitions.service'
+import { EstadoPagoVO } from '@/modules/pedidos/domain/value-objects/EstadoPago'
+import { resolverLimiteFiados } from '@/modules/pedidos/domain/services/pedido-validation.service'
+import type { EstadoPago } from '@prisma/client'
 import { LIMITE_FIADOS_DEFAULT } from './constants'
 
 // ====================
-// TRANSICIONES VÁLIDAS
+// RE-EXPORTS DEL DOMINIO (fuente única de verdad)
 // ====================
 
-export const TRANSICIONES_ENTREGA: Record<EstadoEntrega, EstadoEntrega[]> = {
-  PENDIENTE: ['EN_RUTA', 'CANCELADO'],
-  EN_RUTA: ['ENTREGADO', 'NO_ENTREGADO', 'PENDIENTE', 'CANCELADO'],
-  ENTREGADO: ['ANULADO'],
-  NO_ENTREGADO: ['PENDIENTE', 'EN_RUTA', 'CANCELADO'],
-  CANCELADO: [],
-  ANULADO: [],
+export {
+  TRANSICIONES_ENTREGA,
+  TRANSICIONES_PAGO,
+  puedeTransicionarEntrega,
+  puedeTransicionarPago,
+  legacyToNewState,
+  getBadgeEntrega,
+  getBadgePago,
+  getBadgeOrigen,
+  // FIX MEDIUM (C-VAL-7): límite de fiados con fallback consistente (dominio).
+  resolverLimiteFiados,
 }
-
-export const TRANSICIONES_PAGO: Record<EstadoPago, EstadoPago[]> = {
-  PENDIENTE: ['PARCIAL', 'PAGADO', 'ANTICIPADO', 'ANULADO'],
-  PARCIAL: ['PAGADO', 'ANTICIPADO', 'ANULADO'],
-  PAGADO: ['ANULADO'],
-  ANTICIPADO: ['PAGADO', 'ANULADO'],
-  VENCIDO: ['PAGADO', 'PARCIAL', 'ANULADO'],
-  ANULADO: [],
-}
-
-export function puedeTransicionarEntrega(
-  actual: EstadoEntrega,
-  nuevo: EstadoEntrega
-): boolean {
-  return TRANSICIONES_ENTREGA[actual]?.includes(nuevo) ?? false
-}
-
-export function puedeTransicionarPago(
-  actual: EstadoPago,
-  nuevo: EstadoPago
-): boolean {
-  return TRANSICIONES_PAGO[actual]?.includes(nuevo) ?? false
-}
+export type { BadgeInfo }
 
 // ====================
-// CÁLCULOS
+// CÁLCULOS (delegan al dominio; firma legacy number→string)
 // ====================
 
-export function calcularEstadoPago(
-  total: number,
-  totalPagado: number
-): EstadoPago {
-  if (totalPagado >= total) return 'PAGADO'
-  if (totalPagado > 0) return 'PARCIAL'
-  return 'PENDIENTE'
+/**
+ * Estado de pago derivado de los totales. Delega en `EstadoPagoVO.fromTotals`
+ * (F2: sin lógica duplicada). Firma legacy: `(number, number) => string`.
+ */
+export function calcularEstadoPago(total: number, totalPagado: number): EstadoPago {
+  return EstadoPagoVO.fromTotals(total, totalPagado).get() as EstadoPago
 }
 
 export function calcularSaldo(total: number, totalPagado: number): number {
@@ -59,84 +67,38 @@ export function calcularSaldo(total: number, totalPagado: number): number {
  * totalidad) — usado para disparar PEDIDO_CULMINADO desde dos endpoints
  * mutuamente excluyentes (entrega/route.ts y pagar-fiado/route.ts).
  *
- * Ambos call sites solo invocan esto sobre una transición RECIÉN
- * ocurrida (nunca sobre un estado "ya así desde antes"): el use case
- * de entrega corta temprano si el pedido ya estaba ENTREGADO, y el
- * query FIFO de pagar-fiado solo trae pedidos con saldo > 0 (nunca ya
- * PAGADO). Por construcción, un `true` acá es siempre una transición
- * fresca — no hace falta ninguna columna de control adicional para
- * evitar doble disparo.
+ * Ambos call sites solo invocan esto sobre una transición RECIÉN ocurrida
+ * (nunca sobre un estado "ya así desde antes"): el use case de entrega corta
+ * temprano si el pedido ya estaba ENTREGADO, y el query FIFO de pagar-fiado
+ * solo trae pedidos con saldo > 0 (nunca ya PAGADO). Por construcción, un
+ * `true` acá es siempre una transición fresca.
  */
 export function shouldFireCulminado(
-  estadoEntrega: EstadoEntrega | string,
-  estadoPago: EstadoPago | string,
+  estadoEntrega: string,
+  estadoPago: string,
 ): boolean {
   return estadoEntrega === 'ENTREGADO' && estadoPago === 'PAGADO'
 }
 
 // ====================
-// BADGES VISUALES
+// BADGES — solo el helper legacy sin equivalente en el dominio
 // ====================
 
-export interface BadgeInfo {
-  label: string
-  className: string
-}
-
-export function getBadgeEntrega(estado: EstadoEntrega): BadgeInfo {
-  const map: Record<EstadoEntrega, BadgeInfo> = {
-    PENDIENTE: { label: 'Pendiente', className: 'bg-amber-100 text-amber-800 border border-amber-200' },
-    EN_RUTA: { label: 'En Ruta', className: 'bg-blue-100 text-blue-800 border border-blue-200' },
-    ENTREGADO: { label: 'Entregado', className: 'bg-emerald-100 text-emerald-800 border border-emerald-200' },
-    NO_ENTREGADO: { label: 'No Entregado', className: 'bg-orange-100 text-orange-800 border border-orange-200' },
-    CANCELADO: { label: 'Cancelado', className: 'bg-slate-100 text-slate-600 border border-slate-200' },
-    ANULADO: { label: 'Anulado', className: 'bg-rose-100 text-rose-700 border border-rose-200' },
+export function getBadgeLegacy(estado: string): { label: string; className: string } {
+  const conocidos = ['PENDIENTE', 'EN_RUTA', 'ENTREGADO', 'NO_ENTREGADO', 'CANCELADO', 'ANULADO']
+  if (conocidos.includes(estado)) {
+    return getBadgeEntrega(estado as Parameters<typeof getBadgeEntrega>[0])
   }
-  return map[estado]
-}
-
-export function getBadgePago(estado: EstadoPago): BadgeInfo {
-  const map: Record<EstadoPago, BadgeInfo> = {
-    PENDIENTE: { label: 'Por Cobrar', className: 'bg-red-100 text-red-800 border border-red-200' },
-    PARCIAL: { label: 'Parcial', className: 'bg-yellow-100 text-yellow-800 border border-yellow-200' },
-    PAGADO: { label: 'Pagado', className: 'bg-emerald-100 text-emerald-800 border border-emerald-200' },
-    ANTICIPADO: { label: 'Anticipado', className: 'bg-indigo-100 text-indigo-800 border border-indigo-200' },
-    VENCIDO: { label: 'Vencido', className: 'bg-rose-100 text-rose-800 border border-rose-200' },
-    ANULADO: { label: 'Anulado', className: 'bg-gray-100 text-gray-500 border border-gray-300' },
-  }
-  return map[estado]
-}
-
-export function getBadgeOrigen(origen: OrigenPedido): BadgeInfo {
-  const map: Record<OrigenPedido, BadgeInfo> = {
-    PEDIDO: { label: 'Pedido', className: 'border border-blue-300 text-blue-700 bg-transparent' },
-    VENTA_RAPIDA: { label: 'Venta Rápida', className: 'border border-emerald-300 text-emerald-700 bg-transparent' },
-    VENTA_LIBRE: { label: 'Venta Libre', className: 'border border-purple-300 text-purple-700 bg-transparent' },
-    RECURRENTE: { label: 'Recurrente', className: 'border border-orange-300 text-orange-700 bg-transparent' },
-  }
-  return map[origen]
-}
-
-export function getBadgeLegacy(estado: string): BadgeInfo {
-  // Para compatibilidad con estado antiguo
-  const map: Record<string, BadgeInfo> = {
-    PENDIENTE: getBadgeEntrega('PENDIENTE'),
-    EN_RUTA: getBadgeEntrega('EN_RUTA'),
-    ENTREGADO: getBadgeEntrega('ENTREGADO'),
-    NO_ENTREGADO: getBadgeEntrega('NO_ENTREGADO'),
-    CANCELADO: getBadgeEntrega('CANCELADO'),
-    ANULADO: getBadgeEntrega('ANULADO'),
-  }
-  return map[estado] || { label: estado, className: 'bg-gray-100 text-gray-600' }
+  return { label: estado, className: 'bg-gray-100 text-gray-600' }
 }
 
 // ====================
-// VALIDACIONES DE NEGOCIO
+// VALIDACIONES DE NEGOCIO (fiados / alertas — sin equivalente en el dominio)
 // ====================
 
 /**
- * Verifica si un cliente puede crear nuevos pedidos
- * Retorna null si puede, o string con el mensaje de error
+ * Verifica si un cliente puede crear nuevos pedidos.
+ * Retorna null si puede, o un string con el mensaje de error.
  */
 export function puedeCrearPedido(
   cliente: {
@@ -144,7 +106,7 @@ export function puedeCrearPedido(
     id: string
   },
   pedidosPendientes: Array<{ id: string; numero: number; saldo: number }>,
-  limite: number = LIMITE_FIADOS_DEFAULT
+  limite: number = LIMITE_FIADOS_DEFAULT,
 ): string | null {
   // Ventas anónimas (CONSUMIDOR_FINAL) nunca se bloquean por deudas previas
   if (cliente.id === 'CONSUMIDOR_FINAL') return null
@@ -161,19 +123,11 @@ export function puedeCrearPedido(
 }
 
 /**
- * FIX MEDIUM (C-VAL-7): Resuelve el límite de fiados con fallback consistente.
- * La implementación vive en el dominio de pedidos para poder usarla desde
- * CrearPedidoUseCase sin romper la arquitectura DDD. Se re-exporta aquí
- * para mantener compatibilidad con consumidores legacy.
- */
-export { resolverLimiteFiados } from '@/modules/pedidos/domain/services/pedido-validation.service'
-
-/**
- * Retorna el estado de fiados de un cliente para mostrar en UI
+ * Retorna el estado de fiados de un cliente para mostrar en UI.
  */
 export function getEstadoFiados(
   pedidosPendientes: Array<{ id: string; numero: number; saldo: number }>,
-  limite: number = LIMITE_FIADOS_DEFAULT
+  limite: number = LIMITE_FIADOS_DEFAULT,
 ): { count: number; limite: number; porcentaje: number; nivel: 'ok' | 'cerca' | 'limite' } {
   const count = pedidosPendientes.length
   const porcentaje = limite > 0 ? (count / limite) * 100 : 100
@@ -184,10 +138,10 @@ export function getEstadoFiados(
 }
 
 /**
- * Alerta por múltiples pedidos del mismo día
+ * Alerta por múltiples pedidos del mismo día.
  */
 export function getAlertaPedidoDia(
-  countPedidosHoy: number
+  countPedidosHoy: number,
 ): { tipo: 'ninguna' | 'amarilla' | 'roja'; mensaje: string } {
   if (countPedidosHoy >= 3) {
     return { tipo: 'roja', mensaje: `${countPedidosHoy} pedidos hoy` }
@@ -199,7 +153,7 @@ export function getAlertaPedidoDia(
 }
 
 /**
- * Determina si un repartidor puede fiar a un cliente
+ * Determina si un repartidor puede fiar a un cliente.
  */
 export function puedeFiar(
   cliente: {
@@ -207,7 +161,7 @@ export function puedeFiar(
     creadoPorRol: string
     id: string
   },
-  esAnonimo: boolean
+  esAnonimo: boolean,
 ): boolean {
   if (esAnonimo) return false
   if (cliente.verificado) return true
@@ -215,30 +169,4 @@ export function puedeFiar(
   if (cliente.creadoPorRol === 'ADMIN' || cliente.creadoPorRol === 'ASISTENTE') return true
   // Cliente creado por repartidor y no verificado = NO fiar
   return false
-}
-
-// ====================
-// MAPEO LEGACY → NUEVO
-// ====================
-
-/**
- * Convierte estado antiguo a nuevo estadoEntrega + estadoPago
- */
-export function legacyToNewState(
-  estado: string,
-  saldo: number,
-  totalPagado: number
-): { estadoEntrega: EstadoEntrega; estadoPago: EstadoPago } {
-  const estadoEntrega = (estado as EstadoEntrega) || 'PENDIENTE'
-  let estadoPago: EstadoPago = 'PENDIENTE'
-
-  if (estadoEntrega === 'ENTREGADO') {
-    if (saldo <= 0) estadoPago = 'PAGADO'
-    else if (totalPagado > 0) estadoPago = 'PARCIAL'
-    else estadoPago = 'PENDIENTE'
-  } else if (estadoEntrega === 'CANCELADO' || estadoEntrega === 'ANULADO') {
-    estadoPago = 'ANULADO'
-  }
-
-  return { estadoEntrega, estadoPago }
 }

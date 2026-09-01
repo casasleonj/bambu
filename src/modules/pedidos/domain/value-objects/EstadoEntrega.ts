@@ -8,7 +8,12 @@
 import type { EstadoEntrega } from '../types'
 import { ESTADOS_ENTREGA } from '../types'
 
-const TRANSICIONES: Record<EstadoEntrega, EstadoEntrega[]> = {
+/**
+ * Tabla canónica de transiciones de entrega. Fuente única de verdad —
+ * `pedido-transitions.service` y la fachada legacy `src/lib/pedido-utils`
+ * la re-exportan; nadie más la redefine (F2, INVENTARIO §F2).
+ */
+export const TRANSICIONES_ENTREGA: Record<EstadoEntrega, EstadoEntrega[]> = {
   PENDIENTE: ['EN_RUTA', 'CANCELADO'],
   EN_RUTA: ['ENTREGADO', 'NO_ENTREGADO', 'PENDIENTE', 'CANCELADO'],
   ENTREGADO: ['ANULADO'],
@@ -37,7 +42,7 @@ export class EstadoEntregaVO {
   }
 
   canTransitionTo(next: EstadoEntregaVO): boolean {
-    return TRANSICIONES[this.value]?.includes(next.value) ?? false
+    return TRANSICIONES_ENTREGA[this.value]?.includes(next.value) ?? false
   }
 
   isTerminal(): boolean {

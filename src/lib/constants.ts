@@ -1,4 +1,12 @@
-// Role constants — single source of truth for authorization checks
+// Role constants — single source of truth for authorization checks.
+//
+// Este es el subconjunto de `RolUsuario` (Prisma) que PUEDE iniciar sesión y
+// tiene permisos en la app (`User.role`). `RolUsuario` además incluye
+// EMPACADOR y ENTUBADOR: son categorías de planilla (nómina/producción) sin
+// `User` ni acceso a la app. El gate está en `isLoginCapableRole`
+// (src/lib/session-limits.ts), aplicado por `src/lib/auth.ts`. Si en el
+// futuro EMPACADOR/ENTUBADOR necesitan login, agregarlos aquí + a
+// `ROLE_PERMISSIONS` (src/lib/permissions.ts) + a `SESSION_LIMITS`.
 export const ROLES = {
   ADMIN: 'ADMIN',
   CONTADOR: 'CONTADOR',

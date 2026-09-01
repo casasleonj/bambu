@@ -7,7 +7,12 @@
 import type { EstadoPago } from '../types'
 import { ESTADOS_PAGO } from '../types'
 
-const TRANSICIONES_PAGO: Record<EstadoPago, EstadoPago[]> = {
+/**
+ * Tabla canónica de transiciones de pago. Fuente única de verdad —
+ * `pedido-transitions.service` y la fachada legacy `src/lib/pedido-utils`
+ * la re-exportan; nadie más la redefine (F2, INVENTARIO §F2).
+ */
+export const TRANSICIONES_PAGO: Record<EstadoPago, EstadoPago[]> = {
   PENDIENTE: ['PARCIAL', 'PAGADO', 'ANTICIPADO', 'ANULADO'],
   PARCIAL: ['PAGADO', 'ANTICIPADO', 'ANULADO'],
   PAGADO: ['ANULADO'],

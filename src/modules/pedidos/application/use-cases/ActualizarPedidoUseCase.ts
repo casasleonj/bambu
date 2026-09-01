@@ -79,9 +79,30 @@ export class ActualizarPedidoUseCase {
   ) {}
 
   async execute(input: ActualizarPedidoInput) {
-    return this.txManager.execute(async (tx) => {
+    // F3 (INVENTARIO §F3): `PUT /api/pedidos/[id]` mutaba hechos críticos
+    // (total, factura, estado, dirección del cliente) en un `$transaction`
+    // plano, sin lock — dos ediciones concurrentes del mismo pedido podían
+    // pisarse. Ahora bajo `PEDIDO:{id}` (mismo agregado que AjustarPedidoCantidad,
+    // ADR-CONCURRENCIA-001 §6). El PUT es declarativo (reemplaza items, no
+    // incrementa), así que el lock cierra la exposición sin necesidad de una
+    // clave `offlineId` persistida — ésta queda como follow-up de Fase 2.
+    return this.txManager.executeWithLock('PEDIDO', input.pedidoId, async (tx) => {
       const pedido = await this.pedidoRepo.findById(PedidoId.from(input.pedidoId), tx)
       if (!pedido) throw new Error('PEDIDO_NOT_FOUND')
+
+      // F3: auditoría única, dentro de la transacción del lock, para TODAS las
+      // ramas que mutan el pedido (antes: solo la rama de items auditaba, y el
+      // route.ts hacía otra auditoría post-commit fire-and-forget → filas
+      // duplicadas + ramas sin auditar). `casoId` (antifraude) viaja acá.
+      const auditar = (saved: PedidoEntity) =>
+        logAudit({
+          entidad: 'Pedido',
+          registroId: saved.id.get(),
+          accion: 'UPDATE',
+          datos: { numero: saved.numero, estado: saved.estadoEntrega.get() },
+          usuarioId: input.usuarioId,
+          casoId: input.casoId,
+        }, tx)
 
       // Update items if provided
       if (input.items && input.items.length > 0) {
@@ -228,13 +249,7 @@ export class ActualizarPedidoUseCase {
           )
         }
 
-        logAudit({
-          entidad: 'Pedido',
-          registroId: saved.id.get(),
-          accion: 'UPDATE',
-          datos: { numero: saved.numero, estado: saved.estadoEntrega.get() },
-        })
-
+        await auditar(saved)
         return { pedido: PedidoDTOMapper.toResumen(saved) }
       }
 
@@ -272,6 +287,7 @@ export class ActualizarPedidoUseCase {
             }, tx)
           }
 
+          await auditar(saved)
           return { pedido: PedidoDTOMapper.toResumen(saved) }
         } else {
           // Rebuild with new state
@@ -283,6 +299,7 @@ export class ActualizarPedidoUseCase {
           })
 
           const saved = await this.pedidoRepo.update(updated, tx)
+          await auditar(saved)
           return { pedido: PedidoDTOMapper.toResumen(saved) }
         }
       }
@@ -294,9 +311,11 @@ export class ActualizarPedidoUseCase {
           obs: input.obs,
         })
         const saved = await this.pedidoRepo.update(updated, tx)
+        await auditar(saved)
         return { pedido: PedidoDTOMapper.toResumen(saved) }
       }
 
+      // Sin cambios reales → no se audita.
       return { pedido: PedidoDTOMapper.toResumen(pedido) }
     })
   }

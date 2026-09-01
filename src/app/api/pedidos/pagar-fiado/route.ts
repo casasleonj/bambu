@@ -230,15 +230,20 @@ export async function POST(request: NextRequest) {
         montoRestante -= montoAplicar
       }
 
-      return { pagosAplicados, montoRestante, culminados }
-    })
+      // F1 (ADR-CONCURRENCIA-001 / contrato §51): la auditoría del hecho
+      // financiero se escribe en la MISMA transacción que aplicó los pagos.
+      // Antes corría post-commit, sin `await` y tragando el error → un fallo
+      // de auditoría dejaba dinero movido sin evidencia. Ahora, si la
+      // auditoría falla, todo el pago hace rollback atómico.
+      await logAudit({
+        entidad: 'Pedido',
+        registroId: clienteId,
+        accion: 'UPDATE',
+        datos: { monto, metodo, pagosAplicados },
+        usuarioId: authResult.user?.id,
+      }, tx)
 
-    logAudit({
-      entidad: 'Pedido',
-      registroId: clienteId,
-      accion: 'UPDATE',
-      datos: { monto, metodo, pagosAplicados: resultado.pagosAplicados },
-      usuarioId: authResult.user?.id,
+      return { pagosAplicados, montoRestante, culminados }
     })
 
     if (!resultado.deduped && resultado.pagosAplicados.length > 0) {

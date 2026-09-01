@@ -110,7 +110,7 @@ describe('POST /api/pedidos/[id]/enviar — BAMBU-LOG-003', () => {
     )
   })
 
-  it('FIX BAMBU-LOG-003: race ganada por otra transacción (updateMany count=0) responde error, NO 201', async () => {
+  it('FIX BAMBU-LOG-003: race ganada por otra transacción (updateMany count=0) responde 409, NO 201', async () => {
     // Simula: otra transacción ya asignó el pedido entre el findUnique
     // (que todavía leyó embarqueId: null) y este updateMany.
     mockPedidoUpdateMany.mockResolvedValue({ count: 0 })
@@ -119,7 +119,8 @@ describe('POST /api/pedidos/[id]/enviar — BAMBU-LOG-003', () => {
     const res = await POST(makeRequest({ embarqueId: 'emb_1' }), { params: Promise.resolve({ id: 'ped_1' }) })
 
     expect(res.status).not.toBe(201)
-    expect(res.status).toBe(400)
+    // F6: conflicto de asignación por concurrencia → 409 (unificado con PUT /api/embarques/[id]).
+    expect(res.status).toBe(409)
     const body = await res.json()
     expect(body.error?.message ?? JSON.stringify(body)).toMatch(/ya está asignado/i)
   })

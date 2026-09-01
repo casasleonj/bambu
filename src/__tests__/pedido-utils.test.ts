@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'fs'
+import { join } from 'path'
 import {
   puedeCrearPedido,
   getEstadoFiados,
@@ -6,7 +8,45 @@ import {
   getAlertaPedidoDia,
   resolverLimiteFiados,
   shouldFireCulminado,
+  calcularEstadoPago,
+  TRANSICIONES_ENTREGA,
+  puedeTransicionarEntrega,
 } from '@/lib/pedido-utils'
+import {
+  TRANSICIONES_ENTREGA as DOMAIN_TRANSICIONES_ENTREGA,
+  TRANSICIONES_PAGO as DOMAIN_TRANSICIONES_PAGO,
+} from '@/modules/pedidos/domain/services/pedido-transitions.service'
+
+describe('F2: pedido-utils es fachada del dominio (sin segunda máquina de estados)', () => {
+  const source = readFileSync(join(process.cwd(), 'src/lib/pedido-utils.ts'), 'utf-8')
+
+  it('NO define la tabla de transiciones como objeto literal local', () => {
+    // Debe re-exportar, no redeclarar `TRANSICIONES_ENTREGA: Record<...> = {`
+    expect(source).not.toMatch(/const\s+TRANSICIONES_ENTREGA[^=]*=\s*\{/)
+    expect(source).not.toMatch(/const\s+TRANSICIONES_PAGO[^=]*=\s*\{/)
+  })
+
+  it('re-exporta la MISMA referencia de tabla que el dominio', () => {
+    expect(TRANSICIONES_ENTREGA).toBe(DOMAIN_TRANSICIONES_ENTREGA)
+  })
+
+  it('la tabla de pago del dominio sigue teniendo los 6 estados', () => {
+    expect(Object.keys(DOMAIN_TRANSICIONES_PAGO).sort()).toEqual(
+      ['ANTICIPADO', 'ANULADO', 'PAGADO', 'PARCIAL', 'PENDIENTE', 'VENCIDO'].sort(),
+    )
+  })
+
+  it('puedeTransicionarEntrega sigue funcionando vía re-export', () => {
+    expect(puedeTransicionarEntrega('PENDIENTE', 'EN_RUTA')).toBe(true)
+    expect(puedeTransicionarEntrega('ENTREGADO', 'PENDIENTE')).toBe(false)
+  })
+
+  it('calcularEstadoPago delega en EstadoPagoVO.fromTotals', () => {
+    expect(calcularEstadoPago(100, 100)).toBe('PAGADO')
+    expect(calcularEstadoPago(100, 40)).toBe('PARCIAL')
+    expect(calcularEstadoPago(100, 0)).toBe('PENDIENTE')
+  })
+})
 
 describe('puedeCrearPedido', () => {
   const pedidosPendientes = [

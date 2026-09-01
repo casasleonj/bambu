@@ -50,9 +50,17 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) {
       return apiError(formatZodError(parsed.error), 400)
     }
-    const { facturaId, clienteId, pedidoId, monto, metodoPago } = parsed.data
+    const { facturaId, clienteId, pedidoId, monto, metodoPago, offlineId } = parsed.data
 
     const result = await withAdvisoryLock('CARTERA', clienteId, async (tx) => {
+      // G1 (ADR-IDEMPOTENCIA-001): dedup por offlineId DENTRO del lock CARTERA
+      // (mismo patrón que pagar-fiado). Un retry / doble-submit con el mismo
+      // offlineId retorna el abono ya creado, sin re-aplicar dinero.
+      if (offlineId) {
+        const previo = await tx.abono.findUnique({ where: { offlineId } })
+        if (previo) return { abono: previo, deduped: true as const }
+      }
+
       // Verificar que la factura existe
       const factura = await tx.factura.findUnique({
         where: { id: facturaId },
@@ -90,6 +98,11 @@ export async function POST(request: NextRequest) {
           pedidoId,
           monto,
           metodoPago,
+          // `|| null` (no `?? null`): un offlineId "" (string vacío, válido para
+          // z.string().optional()) debe persistirse como NULL, no como "" —
+          // si no, dos abonos con offlineId "" colisionan en el índice UNIQUE.
+          // Consistente con pagar-fiado/route.ts.
+          offlineId: offlineId || null,
         },
       })
 
@@ -157,18 +170,24 @@ export async function POST(request: NextRequest) {
         })
       }
 
-      return { abono }
+      // F1 (ADR-CONCURRENCIA-001 / contrato §51): la auditoría se escribe en
+      // la MISMA transacción que creó el Abono. Antes corría post-commit con
+      // `.catch(() => {})` → un abono podía quedar registrado sin evidencia.
+      await logAudit({
+        entidad: 'Abono',
+        registroId: abono.id,
+        accion: 'CREATE',
+        datos: { monto, facturaId },
+        usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+      }, tx)
+
+      return { abono, deduped: false as const }
     })
 
-    logAudit({
-      entidad: 'Abono',
-      registroId: result.abono.id,
-      accion: 'CREATE',
-      datos: { monto, facturaId },
-      usuarioId: (authResult.user as { id?: string } | undefined)?.id,
-    }).catch(() => {})
-
-    return apiSuccess({ abono: result.abono }, 201)
+    return apiSuccess(
+      result.deduped ? { abono: result.abono, deduped: true } : { abono: result.abono },
+      result.deduped ? 200 : 201,
+    )
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error creating abono:')
     if (error instanceof Error && error.message === 'FACTURA_NOT_FOUND') {

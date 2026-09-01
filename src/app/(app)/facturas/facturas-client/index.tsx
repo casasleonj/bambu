@@ -15,6 +15,7 @@ import { Modal } from '@/components/modal'
 import { FacturaDetail } from './factura-detail'
 import './factura-print.css'
 import { getAnonymousClientDisplayName } from '@/lib/cliente-canonical'
+import { generateUUID } from '@/lib/uuid'
 import type { Factura, EmpresaConfig } from './types'
 import { SkeletonPage } from '@/components/skeleton'
 
@@ -35,6 +36,13 @@ export default function FacturasPage() {
   const [facturas, setFacturas] = useState<Factura[]>([])
   const [abonoFactura, setAbonoFactura] = useState<Factura | null>(null)
   const [montoAbono, setMontoAbono] = useState('')
+  // G1: offlineId estable por sesión de modal — reutilizado en cada reintento
+  // del mismo abono para que un doble-submit / retry de red no cree dos abonos.
+  const abonoOfflineIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    // Nueva factura (o cierre del modal) → nuevo offlineId en el próximo submit.
+    abonoOfflineIdRef.current = null
+  }, [abonoFactura?.id])
   const [metodoPago, setMetodoPago] = useState('EFECTIVO')
   const [submitting, setSubmitting] = useState(false)
 
@@ -176,6 +184,11 @@ export default function FacturasPage() {
       toast.error('Ingresa un monto')
       return
     }
+    // Un offlineId por sesión de modal: se genera al primer intento y se
+    // reutiliza en los reintentos (el server deduplica por él).
+    if (!abonoOfflineIdRef.current) {
+      abonoOfflineIdRef.current = generateUUID()
+    }
     const monto = parseFloat(montoAbono)
     if (isNaN(monto) || monto <= 0) {
       toast.error('El monto debe ser mayor a 0')
@@ -195,9 +208,11 @@ export default function FacturasPage() {
           clienteId: factura.cliente?.id || '',
           monto,
           metodoPago,
+          offlineId: abonoOfflineIdRef.current,
         }),
       })
       if (res.ok) {
+        abonoOfflineIdRef.current = null
         setAbonoFactura(null)
         setMontoAbono('')
         fetchFacturas()

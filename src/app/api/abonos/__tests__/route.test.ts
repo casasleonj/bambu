@@ -39,3 +39,36 @@ describe('FIX abono-sin-entrega: guard de estadoEntrega dentro del lock', () => 
     expect(block![0]).toMatch(/apiError\([\s\S]*?,\s*400\)/)
   })
 })
+
+describe('G1: dedup por offlineId (idempotencia de POST /api/abonos)', () => {
+  it('el schema acepta offlineId opcional', () => {
+    const validators = readFileSync(join(process.cwd(), 'src/lib/validators.ts'), 'utf-8')
+    const schema = validators.match(/AbonoCreateSchema\s*=\s*z\.object\(\{[\s\S]*?\}\)/)
+    expect(schema).not.toBeNull()
+    expect(schema![0]).toMatch(/offlineId:\s*z\.string\(\)\.optional\(\)/)
+  })
+
+  it('el dedup corre DENTRO del lock CARTERA y ANTES del lookup de factura', () => {
+    const lockOpen = source.indexOf("withAdvisoryLock('CARTERA'")
+    const dedup = source.indexOf('tx.abono.findUnique({ where: { offlineId } })')
+    const facturaLookup = source.indexOf('tx.factura.findUnique')
+    expect(lockOpen).toBeGreaterThan(-1)
+    expect(dedup).toBeGreaterThan(lockOpen)
+    expect(dedup).toBeLessThan(facturaLookup)
+  })
+
+  it('el replay retorna deduped y NO crea un abono nuevo', () => {
+    expect(source).toMatch(/return\s*\{\s*abono:\s*previo,\s*deduped:\s*true\s*as\s*const\s*\}/)
+  })
+
+  it('el create persiste offlineId', () => {
+    const createBlock = source.match(/tx\.abono\.create\(\{[\s\S]*?\}\)/)
+    expect(createBlock).not.toBeNull()
+    // `|| null` (no `?? null`): un offlineId "" se persiste como NULL.
+    expect(createBlock![0]).toMatch(/offlineId:\s*offlineId\s*\|\|\s*null/)
+  })
+
+  it('el replay responde 200 (no 201)', () => {
+    expect(source).toMatch(/result\.deduped\s*\?\s*200\s*:\s*201/)
+  })
+})

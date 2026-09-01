@@ -76,8 +76,8 @@ const spec = {
       post: {
         tags: ['Pedidos'], summary: 'Asignar pedido a embarque',
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
-        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['embarqueId'], properties: { embarqueId: { type: 'string' } } } } } },
-        responses: { '201': { description: 'Asignado' } },
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['embarqueId'], properties: { embarqueId: { type: 'string' }, offlineId: { type: 'string' } } } } } },
+        responses: { '201': { description: 'Asignado' }, '200': { description: 'Replay idempotente (deduped)' }, '409': { description: 'El pedido ya está asignado a un embarque (conflicto de concurrencia)' } },
       },
     },
     '/api/pedidos/recurrentes': {
