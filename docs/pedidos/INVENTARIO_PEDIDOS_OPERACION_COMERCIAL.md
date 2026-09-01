@@ -12,6 +12,21 @@
 > anular/cancelar no revierten `Pago`/`ReceivableEntry`; (C3) la rama del plan de abonos está
 > desactualizada; (C4) `estadoPago` se reclasifica de GAP a VERIFICAR.
 
+> **Estado de Fase 1 (2026-08-31, rama `docs/pedidos-fase0-contraste`).** Cerrada.
+>
+> | Ítem | Commit | Nota |
+> |---|---|---|
+> | F1 auditoría transaccional | `fix(pedidos): F1` | `logAudit(entry, tx)` en pagar-fiado/abonos/cierre |
+> | G1 idempotencia `/api/abonos` | `fix(pedidos): G1` | `Abono.offlineId @unique` + migración `20260831_add_abono_offline_id` + cliente |
+> | F2 consolidar transiciones | `refactor(pedidos): F2` | `pedido-utils.ts` es fachada; tabla canónica en los VO |
+> | F3 (parte concurrente) | `fix(pedidos): F3 (parte 1)` | `ActualizarPedidoUseCase` bajo `PEDIDO:{id}`. Resto de F3 (writes crudos en `enviar`/`venta-libre`/`recurrentes`) → **Fase 2 con G5** (necesita la decisión de estado canónico) |
+> | F6 unificar 409 | `fix(pedidos): F6` | `enviar` `PEDIDO_YA_ASIGNADO` 400→409. C1 resuelto: no hace falta constraint DB extra (`embarqueId` es una sola columna FK) |
+> | G10 roles | `docs(pedidos): G10` | No era decisión — `isLoginCapableRole` ya excluye EMPACADOR/ENTUBADOR. Solo se documentó |
+> | G9 specs | `docs(pedidos): G9` | `.claude/specs/pedidos.md` reescrito; `embarques.md` → mapa que redirige a los docs autoritativos |
+>
+> **Pendiente de Fase 2:** F4, F5, F7, G2, G3, G4, G5, G6, G7 (VERIFICAR), G11 (VERIFICAR),
+> más la parte de F3 diferida.
+
 ---
 
 ## 0. Decisión de alcance
