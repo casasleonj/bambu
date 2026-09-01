@@ -54,6 +54,18 @@ enum MetodoPago {
   BONO
 }
 
+/// Confirmación de un `Pago` — señal ORTOGONAL al saldo (`EstadoPago`).
+/// ADR-PAGO-REPORTADO-CONFIRMADO-001. Un pago digital (Nequi/transferencia)
+/// nace `REPORTADO` ("alguien dijo que pagó") y solo pasa a `CONFIRMADO`
+/// cuando el usuario designado (`Config.USUARIO_CONFIRMA_PAGOS`) verifica
+/// que el dinero entró. `DISCREPANTE` = se verificó y NO cuadra → abre un
+/// `ResponsibilityCase PAGO_NO_CONFIRMADO` (no revierte el Pago).
+enum EstadoConfirmacionPago {
+  REPORTADO
+  CONFIRMADO
+  DISCREPANTE
+}
+
 /// Categoría de trabajador (`Trabajador.rol`, nómina, comisiones). NO todos
 /// inician sesión: solo ADMIN/ASISTENTE/CONTADOR/REPARTIDOR/SELLADOR tienen
 /// acceso a la app (ver `ROLES` en `src/lib/constants.ts` y el gate
@@ -253,6 +265,9 @@ model User {
   notificationTargets NotificationRuleTargetUser[] @relation("NotificationRuleTargetUser")
 
   deudasCreadas DeudaTrabajador[] @relation("DeudaCreador")
+
+  // ADR-PAGO-REPORTADO-CONFIRMADO-001: pagos que este usuario confirmó/marcó discrepantes.
+  pagosConfirmados Pago[] @relation("PagoConfirmador")
 
   importBatchesCreadas ImportBatch[] @relation("ImportBatchCreador")
 
@@ -876,8 +891,16 @@ model Pago {
   offlineId String? // batch id para dedup offline-first (pagos del mismo batch comparten offlineId)
   createdAt DateTime   @default(now()) @db.Timestamptz()
 
+  // ADR-PAGO-REPORTADO-CONFIRMADO-001: ¿este dinero fue verificado?
+  // El detalle de una discrepancia vive en el `ResponsibilityCase`, NO acá.
+  confirmacion    EstadoConfirmacionPago @default(REPORTADO)
+  confirmadoPorId String?
+  confirmadoPor   User?                  @relation("PagoConfirmador", fields: [confirmadoPorId], references: [id], onDelete: SetNull)
+  confirmadoAt    DateTime?              @db.Timestamptz()
+
   @@index([pedidoId])
   @@index([offlineId])
+  @@index([confirmacion])
 }
 
 // ====================
@@ -1306,7 +1329,9 @@ model ResponsibilityCase {
   clienteId    String?
   cliente      Cliente?    @relation(fields: [clienteId], references: [id], onDelete: SetNull)
 
-  // DISCREPANCIA_INVENTARIO | FALTANTE_CAJA | FIADO_NO_COBRADO
+  // DISCREPANCIA_INVENTARIO | FALTANTE_CAJA | FIADO_NO_COBRADO | PAGO_NO_CONFIRMADO
+  // PAGO_NO_CONFIRMADO (ADR-PAGO-REPORTADO-CONFIRMADO-001 / ADR-CORRECCION-MONETARIA-001 D.7):
+  // puede no tener embarqueId (pago digital discrepante detectado en escritorio).
   tipo          String
   descripcion   String
   montoEstimado Decimal?             @db.Decimal(10, 2)

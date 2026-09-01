@@ -334,4 +334,34 @@ describe('POST /api/pedidos/venta-libre — BLOQUEAR_PRECIOS_REPARTIDOR', () => 
       expect(pedidoData.embarqueOrigenId).toBe('emb1')
     })
   })
+
+  describe('ADR-PAGO-REPORTADO-CONFIRMADO-001: confirmacion inicial del pago', () => {
+    beforeEach(() => {
+      mockAuth.mockResolvedValue({ user: { id: 'u-asis', role: 'ASISTENTE' } })
+      mockPrismaEmbarque.findUnique.mockResolvedValue({
+        id: 'emb1',
+        estado: 'ABIERTO',
+        trabajadorId: 't1',
+        trabajador: { user: null },
+      })
+    })
+
+    it('EFECTIVO nace CONFIRMADO', async () => {
+      const res = await POST(makeRequest(validBody))
+      expect(res.status).toBe(201)
+      expect(mockPrismaPago.create.mock.calls[0][0].data.confirmacion).toBe('CONFIRMADO')
+    })
+
+    it('NEQUI nace REPORTADO', async () => {
+      mockResolverPreciosPedido.mockResolvedValue([
+        { codigo: 'PACA_AGUA', precio: 6500, subtotal: 13000 },
+      ])
+      const res = await POST(makeRequest({
+        ...validBody,
+        pagos: [{ metodo: 'NEQUI', monto: 13000 }],
+      }))
+      expect(res.status).toBe(201)
+      expect(mockPrismaPago.create.mock.calls[0][0].data.confirmacion).toBe('REPORTADO')
+    })
+  })
 })
