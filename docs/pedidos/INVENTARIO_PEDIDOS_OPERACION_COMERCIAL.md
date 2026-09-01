@@ -24,8 +24,15 @@
 > | G10 roles | `docs(pedidos): G10` | No era decisión — `isLoginCapableRole` ya excluye EMPACADOR/ENTUBADOR. Solo se documentó |
 > | G9 specs | `docs(pedidos): G9` | `.claude/specs/pedidos.md` reescrito; `embarques.md` → mapa que redirige a los docs autoritativos |
 >
-> **Pendiente de Fase 2:** F4, F5, F7, G2, G3, G4, G5, G6, G7 (VERIFICAR), G11 (VERIFICAR),
-> más la parte de F3 diferida.
+> **Fase 2 — ADRs aprobados (PO 2026-09-01), orden de implementación:**
+> 1. `ADR-PEDIDO-ORIGEN-CANAL-001` (G6) — `canal` enum, `tipo` eliminado. Menor riesgo.
+> 2. `ADR-PEDIDO-ESTADO-CANONICO-001` (G5, G7) — `estadoEntrega` canónico, `estadoPago` proyección. Habilita el resto de F3 y G2.
+> 3. `ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001` (F4, F5, G8) — entrega posterior, `embarqueOrigenId`, escritor de `ANTICIPADO`.
+> 4. `ADR-PAGO-REPORTADO-CONFIRMADO-001` (G4) — confirmación de pago (usuario designado).
+> 5. `ADR-CORRECCION-MONETARIA-001` (G2, F7) — depende de G5. `CorreccionAbono` + `ReceivableTipo.REVERSION`.
+>
+> **PRs independientes (fuera de los ADR):** PR-A `pagar-fiado` → `saldoFavor` (D.6).
+> **VERIFICAR:** G7 (resuelto por G5), G11 (`AjustarPedidoCantidad` — decidir corrección declarada vs demanda nueva).
 
 ---
 
@@ -257,13 +264,26 @@ No existen `/api/pagos/[id]/revertir` ni `/api/pagos/[id]/reaplicar` (grep-confi
 
 El modelo `CorreccionAbono` append-only + extensión de `ReceivableTipo` debe resolverse contra ese corpus (7 decisiones de producto abiertas + 3 bloqueantes) **antes** de modificar schema. Incluye el scope de F7 `[C2]`. Fase 2.
 
+**Estado (2026-09-01): CERRADO — `ADR-CORRECCION-MONETARIA-001` (Aceptado).** El PO convergió D.1–D.7:
+- **D.1** v1 = corrección de **abono individual** (no multi-factura como una operación; revertir un batch FIFO = N correcciones).
+- **D.2** roles **ADMIN + CONTADOR**; reconciliar `pagar-fiado` (hoy ADMIN+ASISTENTE).
+- **D.3** modelo `CorreccionAbono` append-only, numerado, vínculo obligatorio al `Abono`. No abono negativo, no reusar `NotaCredito`, no `DELETE`.
+- **D.4** el **mismo mecanismo** cubre la reversión al anular/cancelar pedido pagado, vía `ReceivableTipo.REVERSION` (resuelve F7 `[C2]`). G2 no es "una pantalla", es "reversión monetaria unificada".
+- **D.5** sección **"Cartera"** nueva, permiso `view:cartera`, ADMIN + CONTADOR.
+- **D.6** el fix `pagar-fiado` → `saldoFavor` es **PR independiente** (PR-A), fuera de G2 (PR-B).
+- **D.7** "pago no recibido" reutiliza **`ResponsibilityCase PAGO_NO_CONFIRMADO`** (compartido con `ADR-PAGO-REPORTADO-CONFIRMADO-001`). El dominio de pagos ≠ el dominio antifraude.
+
+Depende de G5 (`proyectarEstadoPago` para el recálculo de `estadoPago`).
+
 ---
 
 ## G3 — commandId / batchId
 
 No existe un `commandId` genérico. Sí existe `offlineId` dedicado por comando (columnas `@unique` en `Pedido`) y batch específico (`Pedido.recurrenteBatchId`, `offlineId` compartido no-unique en `Pago`/`ReceivableEntry` para el batch FIFO).
 
-**Conclusión:** esto NO es automáticamente un gap de schema. Antes de agregar `commandId`, debe demostrarse un caso de dominio que `offlineId + batch específico` no pueda representar. Evaluar dentro del ADR de corrección de abonos. Fase 2 (condicional).
+**Conclusión:** esto NO es automáticamente un gap de schema. Antes de agregar `commandId`, debe demostrarse un caso de dominio que `offlineId + batch específico` no pueda representar.
+
+**Estado (2026-09-01): CERRADO — no se agrega `commandId`/`batchId` genérico.** `ADR-CORRECCION-MONETARIA-001` D.1 evita el caso que lo motivaba: la corrección es **por abono individual** (`correccionOfflineId @unique` por comando), no una operación multi-obligación. Si en el futuro se prioriza la corrección multi-factura como una sola operación, esa extensión del ADR añadirá `Abono.grupoCorrelacionId` — pero eso es un batch específico, no un `commandId` genérico.
 
 ---
 
@@ -363,11 +383,11 @@ Dos mecanismos que deben distinguirse:
 | ADR-MONETARIO-001 | Ledger/proyección monetaria | Existente | PASS |
 | ADR-MIGRACION-001 | Expand-contract / histórico | Existente (aplica a G5) | F2 |
 | ADR-REASIGNACION-001 | Reasignación por incidencia | Existente (aplica a G8) | F2 |
-| **ADR-PEDIDO-ESTADO-CANONICO-001** | Estado canónico (G5, G7) | NUEVO | F2 |
-| **ADR-PEDIDO-ORIGEN-CANAL-001** | Origen/canal/tipo (G6) | NUEVO | F2 |
-| **ADR-PAGO-REPORTADO-CONFIRMADO-001** | Pago reportado/confirmado (G4) | NUEVO | F2 |
-| **ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001** | Venta en ruta + `embarqueOrigenId` (F4, F5, G8) | NUEVO | F2 |
-| Corrección de abonos | Reversión/reaplicación (G2, F7) | Adoptar corpus existente; **NO** ADR paralelo | F2 |
+| **ADR-PEDIDO-ORIGEN-CANAL-001** | Origen/canal/tipo (G6) | **Aceptado** (PO 2026-09-01) | F2 — orden 1 |
+| **ADR-PEDIDO-ESTADO-CANONICO-001** | Estado canónico (G5, G7) | **Aceptado** (PO 2026-09-01) | F2 — orden 2 |
+| **ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001** | Venta en ruta + `embarqueOrigenId` (F4, F5, G8) | **Aceptado** (PO 2026-09-01) | F2 — orden 3 |
+| **ADR-PAGO-REPORTADO-CONFIRMADO-001** | Pago reportado/confirmado (G4) | **Aceptado** (PO 2026-09-01) | F2 — orden 4 |
+| **ADR-CORRECCION-MONETARIA-001** | Corrección de abono individual + `ReceivableTipo.REVERSION` (G2, F7) | **Aceptado** (PO 2026-09-01, D.1–D.7). Depende de G5 | F2 |
 | Botellón: actividad/pedido/obligación | Solo si G11 resulta GAP real | Condicional | F2 |
 
 ---
