@@ -42,16 +42,20 @@ Una venta pagada de contado con entrega posterior queda:
 
 ```
 estadoEntrega = PENDIENTE
-estadoPago    = ANTICIPADO   (totalPagado >= total AND estadoEntrega != ENTREGADO)
+estadoPago    = ANTICIPADO   (pago recibido ANTES de la entrega)
 ```
 
-Regla en `EstadoPagoVO.fromTotals` (o su caller): si `totalPagado >= total`:
-- `estadoEntrega === ENTREGADO` → `PAGADO`
-- si no → `ANTICIPADO`
+**`ANTICIPADO` = el pago total se recibió antes de la entrega comprometida**
+(no simplemente "pagado + no entregado"). Semántica completa + tabla de casos
+en `ADR-PEDIDO-ESTADO-CANONICO-001` §2 (decisión del PO 2026-09-01). El helper
+canónico es `proyectarEstadoPago(total, totalPagado, estadoEntrega)` de ese ADR;
+este ADR (venta en ruta) **consume** ese helper, no define la regla.
 
-Al entregar (`EntregarPedidoUseCase`), `ANTICIPADO → PAGADO` (transición ya permitida por `TRANSICIONES_PAGO`).
+Regla operativa: `totalPagado >= total ∧ estadoEntrega ∈ {PENDIENTE, EN_RUTA}` →
+`ANTICIPADO`. Al entregar (`EntregarPedidoUseCase`), `ANTICIPADO → PAGADO`.
 
-> Esto resuelve la sub-pregunta de G7 "¿quién escribe `ANTICIPADO`?". La pregunta
+> G5.1 (helper) se implementa **antes** que este ADR. Esto resuelve además la
+> sub-pregunta de G7 "¿quién escribe `ANTICIPADO`?". La pregunta
 > mayor de G7 (¿`estadoPago` es canónico o proyección?) se decide en
 > `ADR-PEDIDO-ESTADO-CANONICO-001` (G5).
 
