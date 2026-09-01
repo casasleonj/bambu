@@ -609,8 +609,16 @@ export function RepartidorClient({ trabajador, embarque: initialEmbarque, userRo
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${pedido.estadoEntrega === 'ENTREGADO' ? 'bg-green-100 text-green-700' : pedido.estadoEntrega === 'EN_RUTA' ? 'bg-sky-100 text-sky-700' : 'bg-yellow-100 text-yellow-700'}`}>
                       {pedido.estadoEntrega.replace('_', ' ')}
                     </span>
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${pedido.estadoPago === 'PAGADO' ? 'bg-green-100 text-green-700' : pedido.estadoPago === 'PARCIAL' ? 'bg-amber-100 text-amber-700' : pedido.estadoPago === 'ANULADO' ? 'bg-gray-100 text-gray-500' : 'bg-red-100 text-red-700'}`}>
-                      {pedido.estadoPago}
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                      pedido.estadoPago === 'PAGADO' || pedido.estadoPago === 'ANTICIPADO'
+                        ? 'bg-green-100 text-green-700'
+                        : pedido.estadoPago === 'PARCIAL'
+                        ? 'bg-amber-100 text-amber-700'
+                        : pedido.estadoPago === 'ANULADO'
+                        ? 'bg-gray-100 text-gray-500'
+                        : 'bg-red-100 text-red-700'
+                    }`}>
+                      {pedido.estadoPago === 'ANTICIPADO' ? 'Anticipado' : pedido.estadoPago}
                     </span>
                   </div>
                 </div>

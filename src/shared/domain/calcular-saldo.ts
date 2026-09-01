@@ -46,7 +46,11 @@ export function calcularSaldo(
     return new Money(0)
   }
 
-  if (options?.context?.estadoPago === 'PAGADO' && saldo.cents > 0) {
+  // G5.1: ANTICIPADO también es "pagado completo" — misma inconsistencia si saldo > 0.
+  if (
+    (options?.context?.estadoPago === 'PAGADO' || options?.context?.estadoPago === 'ANTICIPADO') &&
+    saldo.cents > 0
+  ) {
     options.callbacks?.onInconsistencia?.(saldo)
   }
 

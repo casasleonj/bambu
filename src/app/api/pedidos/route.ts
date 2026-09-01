@@ -332,7 +332,9 @@ export async function POST(request: NextRequest) {
         tag: `pedido-${result.pedido.id}`,
       })
 
-      if (result.pedido.estadoPago !== 'PAGADO') {
+      // G5.1: "fiado" = queda saldo pendiente. Un pedido ANTICIPADO (pagado
+      // completo, entrega posterior) NO es fiado.
+      if (Number(result.pedido.saldo) > 0) {
         void notifyEvent(NotificationEventType.FIADO_GENERADO, {
           title: 'Fiado generado',
           body: `Pedido #${result.pedido.numero} quedó fiado (pendiente de pago).`,

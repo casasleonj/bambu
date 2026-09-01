@@ -300,6 +300,13 @@ export class ActualizarPedidoUseCase {
           const updated = Pedido.create({
             ...cloneProps(pedido),
             estadoEntrega: nuevoEstado,
+            // G5.1: al cambiar el estado de entrega, re-proyectar estadoPago
+            // (p.ej. → CANCELADO/ANULADO ⇒ ANULADO; → ENTREGADO ⇒ PAGADO).
+            estadoPago: EstadoPagoVO.proyectar(
+              pedido.total.toDecimal(),
+              pedido.totalPagado.toDecimal(),
+              nuevoEstado.get(),
+            ),
             obs: input.obs !== undefined ? input.obs : pedido.obs,
           })
 
