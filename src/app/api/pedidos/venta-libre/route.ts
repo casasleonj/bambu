@@ -46,6 +46,13 @@ export async function POST(request: NextRequest) {
       process.env.NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR === 'true'
     const entregarAhora = !ventaRutaPosteriorHabilitado || parsed.data.entregado !== false
 
+    // Guard autoritativo de foto: el `superRefine` del schema la salta cuando
+    // `entregado === false`, pero si el flag está OFF ese `false` se ignora y el
+    // pedido SÍ se entrega ahora → la foto vuelve a ser obligatoria.
+    if (entregarAhora && (!fotoEntrega || fotoEntrega.length === 0)) {
+      return apiError('Foto de entrega obligatoria', 400)
+    }
+
     // FASE 7 (ADR-OFFLINE-001, §11): timestamps de la venta espontánea.
     const serverReceivedAt = new Date()
     const occurredAt = parsed.data.occurredAt ? new Date(parsed.data.occurredAt) : null
@@ -156,9 +163,13 @@ export async function POST(request: NextRequest) {
       }
 
       // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: la entrega define el estado.
+      // "Entregar después" → EN_RUTA (no PENDIENTE): el pedido SIGUE asignado a
+      // este embarque, así el efectivo cobrado en ruta se concilia en el cierre.
+      // Si no se entrega en esta vuelta, el flujo NO_ENTREGADO del cierre lo
+      // desasigna y reprograma como cualquier otro (sin cambios en el planificador).
       const estadoEntregaFinal = entregarAhora
         ? EstadoEntrega.ENTREGADO
-        : EstadoEntrega.PENDIENTE
+        : EstadoEntrega.EN_RUTA
       // estadoPago se PROYECTA con el estado de entrega real: prepago + entrega
       // pendiente → ANTICIPADO (G5.1); prepago + entregado → PAGADO.
       const estadoPago = calcularEstadoPago(total, totalPagado, estadoEntregaFinal)
@@ -226,10 +237,10 @@ export async function POST(request: NextRequest) {
           estadoEntrega: estadoEntregaFinal,
           estadoPago,
           estado: estadoEntregaFinal, // legacy (mirror de estadoEntrega)
-          // Entrega posterior → el pedido NO queda físicamente asignado a este
-          // embarque; entra al planificador como cualquier PENDIENTE. El vínculo
-          // con el embarque donde nació se conserva en `embarqueOrigenId`.
-          embarqueId: entregarAhora ? embarqueId : null,
+          // El pedido queda asignado a este embarque tanto si se entrega ahora
+          // (ENTREGADO) como si se entrega después (EN_RUTA) — el cierre lo
+          // reconcilia y, si no se entregó, lo reprograma vía NO_ENTREGADO.
+          embarqueId,
           // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: embarque de origen inmutable.
           embarqueOrigenId: embarqueId,
           total,

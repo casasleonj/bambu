@@ -382,24 +382,26 @@ describe('POST /api/pedidos/venta-libre — BLOQUEAR_PRECIOS_REPARTIDOR', () => 
 
     afterEach(() => vi.unstubAllEnvs())
 
-    it('flag OFF: `entregado: false` se ignora → ENTREGADO como siempre', async () => {
+    it('flag OFF: `entregado: false` se ignora → ENTREGADO, foto sigue obligatoria', async () => {
       vi.stubEnv('NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR', 'false')
-      const res = await POST(makeRequest({ ...validBody, entregado: false, fotoEntrega: undefined }))
-      expect(res.status).toBe(201)
-      const data = mockPrismaPedido.create.mock.calls[0][0].data
-      expect(data.estadoEntrega).toBe('ENTREGADO')
-      expect(data.embarqueId).toBe('emb1')
+      // con foto: entrega ahora normal
+      const ok = await POST(makeRequest({ ...validBody, entregado: false }))
+      expect(ok.status).toBe(201)
+      expect(mockPrismaPedido.create.mock.calls[0][0].data.estadoEntrega).toBe('ENTREGADO')
+      // sin foto: 400 aunque mande entregado:false (el flag OFF lo ignora)
+      const bad = await POST(makeRequest({ ...validBody, entregado: false, fotoEntrega: undefined }))
+      expect(bad.status).toBe(400)
     })
 
-    it('flag ON + `entregado: false`: PENDIENTE, embarqueId null, cantEntrega 0, ANTICIPADO', async () => {
+    it('flag ON + `entregado: false`: EN_RUTA, sigue en el embarque, cantEntrega 0, ANTICIPADO', async () => {
       vi.stubEnv('NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR', 'true')
       const res = await POST(makeRequest({ ...validBody, entregado: false, fotoEntrega: undefined }))
       expect(res.status).toBe(201)
       const data = mockPrismaPedido.create.mock.calls[0][0].data
-      expect(data.estadoEntrega).toBe('PENDIENTE')
-      expect(data.estado).toBe('PENDIENTE')
-      expect(data.embarqueId).toBeNull()
-      expect(data.embarqueOrigenId).toBe('emb1') // origen se conserva
+      expect(data.estadoEntrega).toBe('EN_RUTA')
+      expect(data.estado).toBe('EN_RUTA')
+      expect(data.embarqueId).toBe('emb1') // sigue asignado → efectivo se concilia en el cierre
+      expect(data.embarqueOrigenId).toBe('emb1')
       expect(data.fotoEntrega).toBeNull()
       expect(data.estadoPago).toBe('ANTICIPADO') // prepago total, entrega pendiente
       expect(data.items.create.every((i: { cantEntrega: number }) => i.cantEntrega === 0)).toBe(true)

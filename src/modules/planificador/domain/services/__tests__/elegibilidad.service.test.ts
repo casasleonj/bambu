@@ -38,16 +38,8 @@ describe('esPedidoElegible', () => {
     expect(esPedidoElegible(base({ canal: 'PUNTO' }), FECHA)).toBe(false)
   })
 
-  // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: una venta libre con entrega posterior
-  // queda PENDIENTE + embarqueId null → se planifica como cualquier pendiente.
-  it('origen VENTA_LIBRE PENDIENTE sin embarque → elegible (entrega posterior)', () => {
-    expect(esPedidoElegible(base({ origen: 'VENTA_LIBRE' }), FECHA)).toBe(true)
-  })
-
-  it('origen VENTA_LIBRE ya ENTREGADO → no elegible', () => {
-    expect(
-      esPedidoElegible(base({ origen: 'VENTA_LIBRE', estadoEntrega: 'ENTREGADO' }), FECHA),
-    ).toBe(false)
+  it('origen VENTA_LIBRE → no elegible', () => {
+    expect(esPedidoElegible(base({ origen: 'VENTA_LIBRE' }), FECHA)).toBe(false)
   })
 
   it('VENTA_RAPIDA a domicilio → elegible', () => {

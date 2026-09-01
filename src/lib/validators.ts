@@ -152,9 +152,10 @@ export const VentaLibreSchema = z.object({
   obs: z.string().optional(),
   // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: la entrega es una dimensión, no un
   // default. `true` (o ausente) = "entregar ahora" (comportamiento histórico);
-  // `false` = "entregar después" → el pedido queda PENDIENTE + ANTICIPADO si
-  // vino prepago. El gate real es el flag NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR
-  // en el route: con el flag OFF, este campo se ignora.
+  // `false` = "entregar después" → el pedido queda EN_RUTA + ANTICIPADO si vino
+  // prepago, sigue asignado al embarque para conciliar caja. El gate real es el
+  // flag NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR en el route: con el flag OFF,
+  // este campo se ignora.
   entregado: z.boolean().optional(),
   // fotoEntrega: obligatoria SOLO si se entrega ahora (size cap anti-DoS).
   // Con `entregado: false` no hubo entrega → no se exige foto.
