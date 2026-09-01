@@ -349,6 +349,10 @@ async function commitPago(
       pedidoId,
       metodo: data.metodo as MetodoPago,
       monto: new Prisma.Decimal(data.monto),
+      // ADR-PAGO-REPORTADO-CONFIRMADO-001: los pagos importados son hechos
+      // históricos ya conciliados → CONFIRMADO (mismo criterio que el backfill;
+      // `confirmadoPorId = NULL` deja claro que no fue una confirmación humana).
+      confirmacion: 'CONFIRMADO',
     },
   })
 

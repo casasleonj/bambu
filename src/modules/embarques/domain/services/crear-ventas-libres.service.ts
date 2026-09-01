@@ -14,6 +14,7 @@
 import { resolverPrecio } from '@/lib/pricing'
 import { calcularEstadoPago } from '@/lib/pedido-utils'
 import { getNextNumero } from '@/lib/sequence'
+import { confirmacionInicial } from '@/lib/pago-confirmacion'
 import type { CerrarEmbarqueInput } from '../../application/dto'
 import type { MetodoPago, PrismaClient } from '@prisma/client'
 
@@ -115,8 +116,14 @@ export class CrearVentasLibresService {
 
       for (const pago of venta.pagos) {
         if (pago.monto > 0) {
+          // ADR-PAGO-REPORTADO-CONFIRMADO-001: digital cobrado en ruta nace REPORTADO.
           await tx.pago.create({
-            data: { pedidoId: nuevaVenta.id, metodo: pago.metodo as MetodoPago, monto: pago.monto },
+            data: {
+              pedidoId: nuevaVenta.id,
+              metodo: pago.metodo as MetodoPago,
+              monto: pago.monto,
+              confirmacion: confirmacionInicial(pago.metodo),
+            },
           })
         }
       }

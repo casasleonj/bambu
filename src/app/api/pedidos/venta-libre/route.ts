@@ -21,6 +21,7 @@ import { getFacturaEmpresaSnapshot } from '@/lib/factura-empresa'
 import { clasificarVentaLibre } from '@/lib/venta-libre-clasificacion'
 import { incrementMetric } from '@/lib/metrics'
 import { registrarReceivableEntry } from '@/lib/receivable-entry'
+import { confirmacionInicial } from '@/lib/pago-confirmacion'
 import { OrigenPedido, EstadoEntrega } from '@prisma/client'
 
 export async function POST(request: NextRequest) {
@@ -238,12 +239,16 @@ export async function POST(request: NextRequest) {
       })
 
       // 9. Crear pagos
+      // ADR-PAGO-REPORTADO-CONFIRMADO-001: un pago digital cobrado en ruta
+      // nace REPORTADO (el escritorio verifica que el dinero entró); efectivo
+      // nace CONFIRMADO (custodia física → cierre de embarque).
       for (const pago of pagosData) {
         await tx.pago.create({
           data: {
             pedidoId: pedido.id,
             metodo: pago.metodo as MetodoPago,
             monto: pago.monto,
+            confirmacion: confirmacionInicial(pago.metodo),
           },
         })
       }

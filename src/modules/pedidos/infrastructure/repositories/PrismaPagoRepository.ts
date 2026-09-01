@@ -4,6 +4,7 @@
 
 import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
+import { confirmacionInicial } from '@/lib/pago-confirmacion'
 import type { IPagoRepository } from '../../domain/repositories/IPagoRepository'
 import type { PagoData } from '../../domain/types'
 import type { TransactionClient } from '../transactions/PrismaTransactionManager'
@@ -24,10 +25,12 @@ export class PrismaPagoRepository implements IPagoRepository {
     const client = tx || prisma
     if (pagos.length === 0) return
     await client.pago.createMany({
+      // ADR-PAGO-REPORTADO-CONFIRMADO-001: clasificación inicial por método.
       data: pagos.map(p => ({
         pedidoId,
         metodo: p.metodo,
         monto: p.monto,
+        confirmacion: confirmacionInicial(p.metodo),
       })) as unknown as Prisma.PagoCreateManyInput[],
     })
   }
