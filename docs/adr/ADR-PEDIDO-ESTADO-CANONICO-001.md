@@ -49,48 +49,95 @@ rollback de cada fase es `git revert` + (fase D) recrear columna + backfill
 
 Fuente de verdad: `(total, totalPagado, estadoEntrega)` + `promesaPagoFecha`.
 `estadoPago` sigue siendo una columna (no se rompe ninguna API ni query), pero
-su valor queda **definido** por una regla única y protegido por CHECK.
+su valor queda **definido** por una regla única.
+
+#### Semántica de `ANTICIPADO` (decisión del PO, 2026-09-01)
+
+> **`ANTICIPADO` = el pago total se recibió ANTES de que ocurriera la entrega
+> comprometida.** Es la *naturaleza temporal del pago*, NO simplemente
+> "pagado y todavía no entregado".
+
+Son tres dimensiones distintas, no una: **¿está pagado?** ≠ **¿está entregado?**
+≠ **¿el pago precedió a la entrega?**. `ANTICIPADO` responde la tercera.
+
+| Situación | Pago | Entrega | `estadoPago` |
+|---|---|---|---|
+| Cliente paga hoy un domicilio para mañana | Completo | Pendiente | **ANTICIPADO** |
+| Cliente paga antes de que el repartidor salga | Completo | Pendiente / En ruta | **ANTICIPADO** |
+| Cliente compra en punto y se lleva todo | Completo | Completa | PAGADO |
+| Cliente paga después de recibir | Completo | Completa | PAGADO |
+| Compra 10, lleva 5 hoy, deja 5 para mañana | Completo | Parcial | PAGADO (el padre queda ENTREGADO; el faltante es un **pedido-hijo** PENDIENTE sin pago — no hay ambigüedad) |
+| Pedido fiado | Parcial / ninguno | cualquiera | PENDIENTE / PARCIAL (nunca ANTICIPADO por esta razón) |
+
+**Regla operativa.** Para un pedido con `totalPagado >= total`, "el pago precedió
+a la entrega" es equivalente a **`estadoEntrega ∈ {PENDIENTE, EN_RUTA}`** (la
+entrega aún no ocurrió ⇒ el pago necesariamente la antecede). En cuanto
+`estadoEntrega` llega a `ENTREGADO`, el pago deja de ser "anticipado" → `PAGADO`.
+El caso de entrega parcial se resuelve por el pedido-hijo (fila de arriba), no
+por un estado intermedio.
 
 **Regla `proyectarEstadoPago(total, totalPagado, estadoEntrega)`** (helper único en el dominio):
 
 ```
-estadoEntrega ∈ {CANCELADO, ANULADO}          → ANULADO
-totalPagado >= total  ∧  estadoEntrega=ENTREGADO → PAGADO
-totalPagado >= total  ∧  estadoEntrega≠ENTREGADO → ANTICIPADO   (← escritor de ANTICIPADO, cierra G7)
-totalPagado > 0                                → PARCIAL
-si no                                          → PENDIENTE
+estadoEntrega ∈ {CANCELADO, ANULADO}                 → ANULADO
+totalPagado >= total  ∧  estadoEntrega ∈ {PENDIENTE, EN_RUTA} → ANTICIPADO  (pago antes de la entrega)
+totalPagado >= total                                → PAGADO       (entrega ya ocurrió, o NO_ENTREGADO)
+totalPagado > 0                                     → PARCIAL
+si no                                               → PENDIENTE
 ```
 
 **`VENCIDO`** es el único override: el cron `vencimiento-promesas` lo aplica
 cuando `promesaPagoFecha < now` y el proyectado sería `PENDIENTE`/`PARCIAL`; se
 limpia (vuelve al proyectado) en el próximo pago.
 
+#### Rollout — sin backfill forzado (decisión del PO)
+
+El PO **descartó** "proyección completa + backfill" tal como estaba redactada.
+Se adopta:
+
+1. **Escritura hacia adelante:** todos los writers (`CrearPedidoUseCase`,
+   `EntregarPedidoUseCase`, `pagar-fiado`, `procesar-pedido`, crons, `PedidoMapper`)
+   pasan a llamar `proyectarEstadoPago(...)`. Los pedidos nuevos y cualquiera que
+   se re-guarde quedan con el valor correcto.
+2. **La UI deriva el badge con la misma regla** (`visual-states.ts` /
+   `getEstadoPagoBadge`), de modo que un pedido prepago-pendiente **viejo** (con
+   la columna aún en `PAGADO` stale) igual muestra "Anticipado". UX consistente
+   sin tocar datos.
+3. **CHECK constraint `chk_pedido_estadopago_proyectado` — DIFERIDO.** No se
+   puede añadir sin backfill (las filas viejas con `PAGADO` stale lo violarían).
+   Queda como sub-decisión aparte: (a) backfill puntual
+   `UPDATE ... SET estadoPago='ANTICIPADO' WHERE totalPagado>=total AND estadoEntrega IN ('PENDIENTE','EN_RUTA')`
+   — que NO inventa historia, solo re-etiqueta pagos que sí fueron anticipados —
+   y entonces el CHECK; o (b) sin CHECK, confiando en el helper único.
+   **Recomendación:** (a), en un PR propio, después de que el helper esté en
+   producción y se verifique el conteo de filas afectadas.
+
 > **Interacción con `ADR-CORRECCION-MONETARIA-001` (G2):** una
 > `ReceivableEntry REVERSION` (corrección de abono o anulación de pedido pagado)
 > recalcula `totalPagado` a la baja → `proyectarEstadoPago` lo reclasifica
-> (`PAGADO`→`PARCIAL`, etc.) automáticamente. Tras anular/cancelar,
+> (`PAGADO`/`ANTICIPADO` → `PARCIAL`, etc.) automáticamente. Tras anular/cancelar,
 > `estadoEntrega ∈ {ANULADO, CANCELADO}` → `estadoPago = ANULADO` por la primera
-> regla. El CHECK cubre ambos casos sin excepción nueva.
+> regla. G2 se implementa **después** de G5.1 para usar el helper.
 
-**CHECK constraint** (patrón `chk_pedido_saldo_calc`, `NOT VALID` → `VALIDATE`):
+**CHECK constraint** (si se adopta el rollout (a) de arriba — patrón
+`chk_pedido_saldo_calc`, `NOT VALID` → backfill → `VALIDATE`):
 
 ```sql
 ALTER TABLE "Pedido" ADD CONSTRAINT chk_pedido_estadopago_proyectado CHECK (
   "estadoPago" = 'VENCIDO'
   OR "estadoPago" = (CASE
      WHEN "estadoEntrega" IN ('CANCELADO','ANULADO') THEN 'ANULADO'
-     WHEN "totalPagado" >= total THEN (CASE WHEN "estadoEntrega" = 'ENTREGADO' THEN 'PAGADO' ELSE 'ANTICIPADO' END)
+     WHEN "totalPagado" >= total AND "estadoEntrega" IN ('PENDIENTE','EN_RUTA') THEN 'ANTICIPADO'
+     WHEN "totalPagado" >= total THEN 'PAGADO'
      WHEN "totalPagado" > 0 THEN 'PARCIAL'
      ELSE 'PENDIENTE' END)::"EstadoPago"
 ) NOT VALID;
 ```
 
-Esto **hace fallar** el `data: { estadoPago: 'PAGADO' }` de `casos/[id]/route.ts:339`
-si no ajusta `totalPagado` — es el objetivo (surface del bug). Fase B corrige ese
-caller para que use el helper o ajuste los totales antes de `VALIDATE`.
-
-Todos los escritores (`pagar-fiado`, `procesar-pedido`, crons, PedidoMapper,
-use-cases) pasan a llamar `proyectarEstadoPago(...)` en vez de calcular a mano.
+El CHECK **hace fallar** el `data: { estadoPago: 'PAGADO' }` de
+`casos/[id]/route.ts:339` si no ajusta `totalPagado` — es el objetivo (surface
+del bug). Ese caller se corrige **antes** del `VALIDATE` (o antes, si se va por
+el rollout (b) sin CHECK).
 
 ### 3. La UI
 
@@ -99,23 +146,32 @@ y `Pedido.estadoPago`. `visual-states.ts` / `getEstadoPagoBadge` (que hoy deriva
 un 4º estado de presentación) se alinean con `proyectarEstadoPago` + la señal de
 confirmación de `ADR-PAGO-REPORTADO-CONFIRMADO-001`.
 
+## Orden de PRs
+
+| PR | Contenido | Riesgo |
+|---|---|---|
+| **G5.1** | Helper `proyectarEstadoPago` (dominio) + migrar los ~6 escritores raw de `estadoPago` a usarlo + `visual-states.ts`/`getEstadoPagoBadge` derivan con la misma regla + fix `casos/[id]/route.ts:339` (registra el `Pago`, no fuerza el enum). **Escritura hacia adelante, sin backfill, sin CHECK.** | Medio — nuevo valor `ANTICIPADO` visible en pedidos nuevos/re-guardados |
+| **G5.2** | Fase B: migrar los ~8 lectores de `Pedido.estado` → `estadoEntrega`. Verificar `estado == estadoEntrega` = 0 divergencias. | Bajo — código puro |
+| **G5.3** | Fase C: dejar de escribir `estado` + default DB. | Bajo |
+| **G5.4** | Fase D: `DROP COLUMN "Pedido".estado` + `DROP TYPE "EstadoPedido"`. Bundle con el drop de `Pedido.tipo`/`PlantillaRecurrente.tipo` de G6 y la limpieza de `PedidoCreateSchema` (`ventaRapida`/`tipo`). | Bajo (cleanup) tras N días de C verde |
+| **G5.5** (condicional) | Backfill de `ANTICIPADO` + CHECK `chk_pedido_estadopago_proyectado`. **Decisión de rollout aparte.** | Medio — reclasifica datos existentes |
+
 ## Alcance
 
-- **Dentro:** retiro de `Pedido.estado` (4 fases), `proyectarEstadoPago` helper +
-  CHECK, migración de los ~6 escritores raw de `estadoPago`, corrección de
-  `casos/[id]/route.ts:339`, `.claude/specs/pedidos.md`.
-- **Fuera:** `EstadoPago` como enum vs string (se queda enum). `PlantillaRecurrente.tipo`
-  (ADR-PEDIDO-ORIGEN-CANAL-001). El rediseño de badges de UI (Fase 3).
+- **Dentro:** todo lo de la tabla de arriba. `.claude/specs/pedidos.md`.
+- **Fuera:** `EstadoPago`/`canal` como enum vs string. El rediseño de badges de UI (Fase 3).
+  El backfill + CHECK (G5.5) es condicional a una decisión de rollout explícita.
 
 ## Migración
 
-- Fase B/C: cero DDL, solo código. Fase D: `DROP COLUMN` + `DROP TYPE` (reversible
-  recreando + backfill trivial, `estado := estadoEntrega`).
-- CHECK de `estadoPago`: `NOT VALID` primero (no bloquea inserts existentes),
-  `VALIDATE` después de corregir los datos que violen (query de detección incluida).
-- Backfill de `ANTICIPADO`: `UPDATE "Pedido" SET "estadoPago" = 'ANTICIPADO'
-  WHERE "totalPagado" >= total AND "estadoEntrega" NOT IN ('ENTREGADO','CANCELADO','ANULADO')
-  AND "estadoPago" <> 'VENCIDO'` — no inventa nada, reclasifica lo que ya era `PAGADO` mal puesto.
+- G5.1: cero DDL, solo código.
+- G5.2/G5.3: cero DDL. G5.4: `DROP COLUMN`/`DROP TYPE` (reversible recreando +
+  backfill trivial `estado := estadoEntrega`).
+- G5.5: `NOT VALID` → backfill
+  `UPDATE "Pedido" SET "estadoPago" = 'ANTICIPADO' WHERE "totalPagado" >= total
+  AND "estadoEntrega" IN ('PENDIENTE','EN_RUTA') AND "estadoPago" <> 'VENCIDO'`
+  → `VALIDATE`. El backfill **no inventa historia** — re-etiqueta pagos que
+  genuinamente fueron anticipados.
 
 ## Concurrencia / idempotencia
 
@@ -125,18 +181,23 @@ comando.
 
 ## Tests obligatorios
 
-- `estado` == `estadoEntrega` para todo `Pedido` (invariante durante A–C).
-- Cada lector migrado en Fase B: mismo resultado leyendo `estadoEntrega`.
-- `proyectarEstadoPago`: los 5 casos + `VENCIDO` override + limpieza de `VENCIDO` al pagar.
-- CHECK rechaza `estadoPago='PAGADO'` con `saldo>0`; acepta `VENCIDO`.
-- Regresión: `pagar-fiado`, entrega, cierre, crons — `estadoPago` resultante idéntico
-  al actual salvo los casos `ANTICIPADO` nuevos.
-- `casos/[id]` que resolvía marcando `PAGADO`: ahora ajusta `totalPagado` (o falla claro).
+- `proyectarEstadoPago`: cada fila de la tabla de semántica de `ANTICIPADO`
+  (§2) + `VENCIDO` override + limpieza de `VENCIDO` al pagar.
+- `ANTICIPADO` ⟺ `totalPagado >= total ∧ estadoEntrega ∈ {PENDIENTE, EN_RUTA}`.
+  Al entregar → `PAGADO`. Al anular/cancelar → `ANULADO`.
+- Regresión: `pagar-fiado`, entrega, cierre, crons — `estadoPago` resultante
+  idéntico al actual **salvo** los pedidos prepago-pendientes, que ahora dan
+  `ANTICIPADO` (esperado).
+- La UI muestra "Anticipado" para un pedido prepago-pendiente aunque su columna
+  esté aún en `PAGADO` (badge derivado).
+- `estado` == `estadoEntrega` para todo `Pedido` (invariante durante G5.2–G5.3).
+- Cada lector migrado en G5.2: mismo resultado leyendo `estadoEntrega`.
+- `casos/[id]` que resolvía marcando `PAGADO`: ahora registra el `Pago`.
 
 ## Consecuencias
 
 - Una fuente menos: `estado` desaparece; `estadoPago` deja de ser "otra cosa que
-  alguien puede escribir mal" y pasa a ser proyección verificada por DB.
+  alguien puede escribir mal" y pasa a ser proyección de una regla única.
 - `casos/[id]/route.ts` necesita un fix real (no un `if`): resolver un caso que
   implica "el cliente ya pagó" debe registrar el `Pago`, no forzar el enum.
 - `EstadoPedido` (enum Prisma) se elimina — cualquier import de `@prisma/client`
