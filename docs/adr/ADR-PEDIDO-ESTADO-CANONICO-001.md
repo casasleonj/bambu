@@ -1,7 +1,7 @@
 # ADR-PEDIDO-ESTADO-CANONICO-001 — `estadoEntrega` canónico, `estadoPago` proyectado
 
-- Estado: **Propuesto** (borrador — pendiente de aprobación del PO / Gate 2)
-- Fecha: 2026-08-31
+- Estado: **Aceptado** (aprobado por el PO el 2026-09-01)
+- Fecha: 2026-08-31 (aprobado 2026-09-01)
 - Fuente: ALS Operación Comercial §7–§8, §50.3.B; Plan Técnico §16; INVENTARIO §G5, §G7 (VERIFICAR), §F3 (parte diferida)
 - Fase de implementación: FASE 2 (Pedidos). Es el linchpin: desbloquea el resto de F3 y cierra G7.
 - Sin decisión de producto pendiente — es una decisión técnica de fuente de verdad.

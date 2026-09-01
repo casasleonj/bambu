@@ -1,7 +1,7 @@
 # ADR-PAGO-REPORTADO-CONFIRMADO-001 — Pago reportado vs. confirmado
 
-- Estado: **Propuesto** (borrador — pendiente de aprobación del PO / Gate 2)
-- Fecha: 2026-08-31
+- Estado: **Aceptado** (aprobado por el PO el 2026-09-01, incluida la decisión "confirma un usuario designado vía Config")
+- Fecha: 2026-08-31 (aprobado 2026-09-01)
 - Fuente: ALS Operación Comercial §9; Plan Técnico §17; AC-05; INVENTARIO §G4
 - Fase de implementación: FASE 2 (Pedidos). Aditivo — no bloquea Fase 1.
 - Decisión de producto tomada (PO, 2026-08-31): **confirma un usuario designado**, definido en `Config` (`USUARIO_CONFIRMA_PAGOS` = `userId`). No es "cualquier ADMIN" ni un rol.

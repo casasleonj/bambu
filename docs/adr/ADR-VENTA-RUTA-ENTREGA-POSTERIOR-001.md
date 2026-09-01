@@ -1,7 +1,7 @@
 # ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001 — Venta en ruta / rápida con entrega posterior
 
-- Estado: **Propuesto** (borrador — pendiente de aprobación del PO / Gate 2)
-- Fecha: 2026-08-31
+- Estado: **Aceptado** (aprobado por el PO el 2026-09-01 — "si apruebo el orden lo decides tú")
+- Fecha: 2026-08-31 (aprobado 2026-09-01)
 - Fuente: ALS Operación Comercial §11–§12, §24, §35; Plan Técnico §21–§22, §35; INVENTARIO §F4, §F5, §G8
 - Fase de implementación: FASE 2 (Pedidos). Bloquea el cambio de comportamiento de `venta-libre` / `venta-rapida`.
 - Decisión de producto tomada (PO, 2026-08-31): **sí**, tanto Venta Rápida como Venta Libre pueden originar una operación cuya entrega ocurre después, con el pago ya cobrado.

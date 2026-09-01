@@ -1,7 +1,7 @@
 # ADR-PEDIDO-ORIGEN-CANAL-001 — `canal` canónico, `tipo` eliminado, `origen` = procedencia
 
-- Estado: **Propuesto** (borrador — pendiente de aprobación del PO / Gate 2)
-- Fecha: 2026-08-31
+- Estado: **Aceptado** (aprobado por el PO el 2026-09-01)
+- Fecha: 2026-08-31 (aprobado 2026-09-01)
 - Fuente: ALS Operación Comercial §5, §50.3.A, §50.3.D; Plan Técnico §22; INVENTARIO §G6
 - Fase de implementación: FASE 2 (Pedidos). Independiente de G5.
 - Sin decisión de producto pendiente — decisión técnica de contrato.
