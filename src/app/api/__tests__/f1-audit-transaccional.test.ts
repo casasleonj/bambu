@@ -57,9 +57,10 @@ describe('F1: abonos audita dentro del lock CARTERA', () => {
   it('logAudit corre DESPUÉS de crear el abono y ANTES de cerrar el callback', () => {
     const abonoCreate = source.indexOf('tx.abono.create')
     const auditCall = source.indexOf('await logAudit({')
-    const lockReturn = source.indexOf('return { abono }')
+    const lockReturn = source.indexOf('return { abono, deduped: false as const }')
 
     expect(abonoCreate).toBeGreaterThan(-1)
+    expect(lockReturn).toBeGreaterThan(-1)
     expect(auditCall).toBeGreaterThan(abonoCreate)
     expect(auditCall).toBeLessThan(lockReturn)
   })

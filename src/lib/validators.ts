@@ -315,6 +315,9 @@ export const AbonoCreateSchema = z.object({
   pedidoId: z.string().min(1).optional(),
   monto: z.coerce.number().positive(),
   metodoPago: z.enum(["EFECTIVO", "TRANSFERENCIA", "NEQUI", "DAVIPLATA", "BONO"]),
+  // G1: dedup key. Un retry / doble-submit con el mismo offlineId retorna el
+  // abono ya creado (deduped) sin re-aplicar dinero.
+  offlineId: z.string().optional(),
 });
 
 export const GastoCreateSchema = z.object({

@@ -50,9 +50,17 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) {
       return apiError(formatZodError(parsed.error), 400)
     }
-    const { facturaId, clienteId, pedidoId, monto, metodoPago } = parsed.data
+    const { facturaId, clienteId, pedidoId, monto, metodoPago, offlineId } = parsed.data
 
     const result = await withAdvisoryLock('CARTERA', clienteId, async (tx) => {
+      // G1 (ADR-IDEMPOTENCIA-001): dedup por offlineId DENTRO del lock CARTERA
+      // (mismo patrón que pagar-fiado). Un retry / doble-submit con el mismo
+      // offlineId retorna el abono ya creado, sin re-aplicar dinero.
+      if (offlineId) {
+        const previo = await tx.abono.findUnique({ where: { offlineId } })
+        if (previo) return { abono: previo, deduped: true as const }
+      }
+
       // Verificar que la factura existe
       const factura = await tx.factura.findUnique({
         where: { id: facturaId },
@@ -90,6 +98,7 @@ export async function POST(request: NextRequest) {
           pedidoId,
           monto,
           metodoPago,
+          offlineId: offlineId ?? null,
         },
       })
 
@@ -168,10 +177,13 @@ export async function POST(request: NextRequest) {
         usuarioId: (authResult.user as { id?: string } | undefined)?.id,
       }, tx)
 
-      return { abono }
+      return { abono, deduped: false as const }
     })
 
-    return apiSuccess({ abono: result.abono }, 201)
+    return apiSuccess(
+      result.deduped ? { abono: result.abono, deduped: true } : { abono: result.abono },
+      result.deduped ? 200 : 201,
+    )
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error creating abono:')
     if (error instanceof Error && error.message === 'FACTURA_NOT_FOUND') {

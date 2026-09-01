@@ -1530,6 +1530,13 @@ model Abono {
   metodoPago String
   fecha      DateTime @default(now()) @db.Timestamptz()
 
+  // G1 (docs/pedidos/INVENTARIO_PEDIDOS_OPERACION_COMERCIAL.md): clave
+  // idempotente de POST /api/abonos. Retry/doble-submit con el mismo
+  // offlineId retorna el abono existente (deduped) sin re-aplicar dinero.
+  // Nullable: abonos históricos y los creados por pagar-fiado (FIFO
+  // multi-factura) quedan NULL — el índice UNIQUE de PG permite múltiples NULL.
+  offlineId  String?  @unique
+
   createdAt DateTime @default(now()) @db.Timestamptz()
 
   @@index([facturaId])
