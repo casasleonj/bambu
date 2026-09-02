@@ -97,6 +97,8 @@ export const navSections: NavSection[] = [
         { href: '/facturas', label: 'Facturas', icon: 'receipt', requiredPermission: 'view:facturas' },
         { href: '/cierre', label: 'Cierre de Caja', icon: 'chart-bar', requiredPermission: 'view:cierre' }
       ]},
+      // ADR-CORRECCION-MONETARIA-001 D.5: abonos + centro de corrección. ADMIN + CONTADOR.
+      { href: '/cartera', label: 'Cartera', icon: 'wallet', requiredPermission: 'view:cartera' },
       { href: '/gastos', label: 'Gastos', icon: 'wallet', requiredPermission: 'view:gastos', subItems: [
         { href: '/gastos', label: 'Gastos', icon: 'wallet', requiredPermission: 'view:gastos' },
         { href: '/compras', label: 'Compras', icon: 'shopping-cart', requiredPermission: 'view:compras' }
