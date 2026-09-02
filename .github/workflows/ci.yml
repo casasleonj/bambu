@@ -194,6 +194,10 @@ jobs:
           # abonos que cubren 2+ pedidos). Se aplica acá para replicar el
           # orden de `prisma migrate deploy` de prod.
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260829_receivable_entry_offlineid_not_unique/migration.sql
+          # ADR-CORRECCION-MONETARIA-001 g2.1: el CHECK `chk_correccion_monto_pos`
+          # y los GRANT no son expresables en schema.prisma, así que `db push`
+          # no los crea. Idempotente (IF NOT EXISTS por tabla/índice/FK/CHECK).
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260901_add_correccion_abono/migration.sql
 
       - name: Run integration tests
         run: npm run test:integration
@@ -328,6 +332,8 @@ jobs:
           # abonos que cubren 2+ pedidos). Se aplica acá para replicar el
           # orden de `prisma migrate deploy` de prod.
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260829_receivable_entry_offlineid_not_unique/migration.sql
+          # ADR-CORRECCION-MONETARIA-001 g2.1 — CHECK + GRANT no expresables en schema.prisma.
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260901_add_correccion_abono/migration.sql
 
       - name: Seed test data
         run: npx tsx prisma/seed-test.ts

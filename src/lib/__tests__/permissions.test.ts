@@ -110,6 +110,23 @@ describe('ASISTENTE permissions (contrato de negocio en e2e/roles-permisos.spec.
   })
 })
 
+describe('view:cartera (ADR-CORRECCION-MONETARIA-001 D.5) — solo ADMIN + CONTADOR', () => {
+  it('ADMIN y CONTADOR pueden; ASISTENTE, REPARTIDOR y SELLADOR no', () => {
+    expect(userCan(ROLES.ADMIN, 'view:cartera')).toBe(true)
+    expect(userCan(ROLES.CONTADOR, 'view:cartera')).toBe(true)
+    expect(userCan(ROLES.ASISTENTE, 'view:cartera')).toBe(false)
+    expect(userCan(ROLES.REPARTIDOR, 'view:cartera')).toBe(false)
+    expect(userCan(ROLES.SELLADOR, 'view:cartera')).toBe(false)
+  })
+
+  it('/cartera está en el route map → el proxy lo gatea (no queda abierto a todos)', () => {
+    expect(isRouteAllowed('/cartera', ROLES.CONTADOR)).toBe(true)
+    expect(isRouteAllowed('/cartera', ROLES.ADMIN)).toBe(true)
+    expect(isRouteAllowed('/cartera', ROLES.ASISTENTE)).toBe(false)
+    expect(isRouteAllowed('/cartera', ROLES.REPARTIDOR)).toBe(false)
+  })
+})
+
 describe('SELLADOR permissions', () => {
   it('has only dashboard, produccion, mi-perfil', () => {
     const perms = getUserPermissions(ROLES.SELLADOR)
