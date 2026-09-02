@@ -140,4 +140,19 @@ describe('pago-confirmado.2', () => {
       (await POST(postReq({ resultado: 'CONFIRMADO' }), { params: Promise.resolve({ id: uniqueId('nope') }) })).status,
     ).toBe(404)
   })
+
+  // ADR-PAGO-REPORTADO-CONFIRMADO-001 §6 (pago-confirmado.4)
+  it('cierre: expone `porConfirmar` (informativo) sin alterar netoCaja/cobroCartera', async () => {
+    await testPrisma.cierreDia.deleteMany({})
+    await seedPagoReportado(11000) // NEQUI, REPORTADO, pedido de hoy
+    const { GET: cierreGet } = await import('@/app/api/cierre/route')
+    const nextReq = { nextUrl: { searchParams: new URLSearchParams() } } as unknown as import('next/server').NextRequest
+    const json = await (await cierreGet(nextReq)).json()
+    const pc = json.cierre?.porConfirmar
+    expect(pc).toBeDefined()
+    expect(pc.count).toBeGreaterThanOrEqual(1)
+    expect(pc.porMetodo.NEQUI).toBeGreaterThanOrEqual(11000)
+    // netoCaja/cobroCartera NO cambian por esto: el pago igual suma en `nequi`.
+    expect(json.cierre.nequi).toBeGreaterThanOrEqual(11000)
+  })
 })

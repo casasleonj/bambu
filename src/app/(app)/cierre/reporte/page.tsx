@@ -82,8 +82,20 @@ function ReporteContent() {
             <tr><td className="py-1 font-medium">Recaudo Cartera</td><td className="text-right">{formatMoney(data.cobroCartera)}</td></tr>
             <tr><td className="py-1 font-medium">Fiado</td><td className="text-right">{formatMoney(data.fiado)}</td></tr>
             <tr><td className="py-1 font-medium">Notas Crédito</td><td className="text-right">{formatMoney(data.totalNotasCredito)}</td></tr>
+            {process.env.NEXT_PUBLIC_PAGO_CONFIRMACION === 'true' && (data.porConfirmar?.count ?? 0) > 0 && (
+              <tr className="text-amber-700">
+                <td className="py-1 font-medium">Pagos sin confirmar (informativo)</td>
+                <td className="text-right">{formatMoney(data.porConfirmar!.total)} · {data.porConfirmar!.count}</td>
+              </tr>
+            )}
           </tbody>
         </table>
+        {process.env.NEXT_PUBLIC_PAGO_CONFIRMACION === 'true' && (data.porConfirmar?.diasPreviosCount ?? 0) > 0 && (
+          <p className="mt-2 text-xs text-amber-700">
+            ⚠ {data.porConfirmar!.diasPreviosCount} pago(s) de días anteriores siguen sin confirmar
+            ({formatMoney(data.porConfirmar!.diasPreviosTotal)}). No bloquea el cierre.
+          </p>
+        )}
       </section>
 
       <section className="mb-6">

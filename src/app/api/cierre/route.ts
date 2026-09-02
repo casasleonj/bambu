@@ -37,6 +37,7 @@ export async function GET(request: NextRequest) {
       const reporte = {
         cobroVentasHoy: 0,
         cobroCartera: 0,
+        porConfirmar: { total: 0, count: 0, porMetodo: {}, diasPreviosCount: 0, diasPreviosTotal: 0 },
         totalNotasCredito: 0,
         ventasPorOrigen: [],
         facturasEmitidas: 0,
@@ -154,6 +155,7 @@ export async function GET(request: NextRequest) {
       ventasPorOrigenRaw,
       descuentos,
       correccionesAbonoAgg,
+      reportadosDiasPreviosAgg,
     ] = await prisma.$transaction([
       prisma.embarque.findMany({
         where: { fecha: dateRange, estado: EstadoEmbarque.ABIERTO },
@@ -234,6 +236,12 @@ export async function GET(request: NextRequest) {
         where: { abono: { fecha: dateRange } },
         _sum: { montoRevertido: true },
       }),
+      // ADR-PAGO-REPORTADO-CONFIRMADO-001 §6: pagos REPORTADO de días anteriores.
+      prisma.pago.aggregate({
+        where: { confirmacion: 'REPORTADO', createdAt: { lt: startOfDay } },
+        _sum: { monto: true },
+        _count: true,
+      }),
     ])
 
     const totalNC = notasCredito.reduce((sum, nc) => sum + Number(nc.monto), 0)
@@ -275,6 +283,26 @@ export async function GET(request: NextRequest) {
       abonos.reduce((sum, a) => sum + Number(a.monto), 0) -
       Number(correccionesAbonoAgg._sum.montoRevertido ?? 0)
     const cobroVentasHoy = efectivo + transferencia + nequi + daviplata + bono
+
+    // ADR-PAGO-REPORTADO-CONFIRMADO-001 §6: desglose INFORMATIVO de pagos del día
+    // aún REPORTADO (sin verificar que el dinero entró). NO altera netoCaja —
+    // el cierre suma todos los pagos por método como siempre.
+    const pagosReportadosHoy = pedidos.flatMap(p => p.pagos).filter(p => p.confirmacion === 'REPORTADO')
+    const porConfirmar = {
+      total: pagosReportadosHoy.reduce((s, p) => s + Number(p.monto), 0),
+      count: pagosReportadosHoy.length,
+      porMetodo: {
+        EFECTIVO: pagosReportadosHoy.filter(p => p.metodo === MetodoPago.EFECTIVO).reduce((s, p) => s + Number(p.monto), 0),
+        TRANSFERENCIA: pagosReportadosHoy.filter(p => p.metodo === MetodoPago.TRANSFERENCIA).reduce((s, p) => s + Number(p.monto), 0),
+        NEQUI: pagosReportadosHoy.filter(p => p.metodo === MetodoPago.NEQUI).reduce((s, p) => s + Number(p.monto), 0),
+        DAVIPLATA: pagosReportadosHoy.filter(p => p.metodo === MetodoPago.DAVIPLATA).reduce((s, p) => s + Number(p.monto), 0),
+        BONO: pagosReportadosHoy.filter(p => p.metodo === MetodoPago.BONO).reduce((s, p) => s + Number(p.monto), 0),
+      },
+      // Advertencia (D7 de embarques): pagos REPORTADO de días anteriores sin
+      // resolver. NO bloquea el cierre — solo lo señala.
+      diasPreviosCount: reportadosDiasPreviosAgg._count,
+      diasPreviosTotal: Number(reportadosDiasPreviosAgg._sum.monto ?? 0),
+    }
 
     const facturasPagadas = facturas.filter(f => f.estado === EstadoFactura.PAGADA)
     const facturasParcial = facturas.filter(f => f.estado === EstadoFactura.PARCIAL)
@@ -338,6 +366,9 @@ export async function GET(request: NextRequest) {
         cobroCartera,
         fiado,
         totalNotasCredito: totalNC,
+
+        // ADR-PAGO-REPORTADO-CONFIRMADO-001 §6 — informativo, no altera netoCaja.
+        porConfirmar,
 
         // Métodos de pago
         efectivo,
@@ -504,7 +535,7 @@ export async function POST(request: NextRequest) {
         }
 
         // 5. Recalculate ALL totals server-side
-        const [pedidos, gastosAgg, abonos, notasCredito, correccionesAbonoAgg] = await Promise.all([
+        const [pedidos, gastosAgg, abonos, notasCredito, correccionesAbonoAgg, reportadosDiasPreviosAgg] = await Promise.all([
           tx.pedido.findMany({
             where: { fecha: { gte: startOfDay, lt: nextDay }, estadoEntrega: { notIn: [EstadoEntrega.CANCELADO, EstadoEntrega.ANULADO] } },
             include: { pagos: true },
@@ -517,6 +548,12 @@ export async function POST(request: NextRequest) {
           tx.correccionAbono.aggregate({
             where: { abono: { fecha: { gte: startOfDay, lt: nextDay } } },
             _sum: { montoRevertido: true },
+          }),
+          // ADR-PAGO-REPORTADO-CONFIRMADO-001 §6: pagos REPORTADO de días previos.
+          tx.pago.aggregate({
+            where: { confirmacion: 'REPORTADO', createdAt: { lt: startOfDay } },
+            _sum: { monto: true },
+            _count: true,
           }),
         ])
 
@@ -554,6 +591,24 @@ export async function POST(request: NextRequest) {
           Number(correccionesAbonoAgg._sum.montoRevertido ?? 0)
         const gastosTotal = Number(gastosAgg._sum.monto) || 0
 
+        // ADR-PAGO-REPORTADO-CONFIRMADO-001 §6: desglose informativo (no altera netoCaja).
+        const pagosReportadosHoy = pedidos.flatMap(p => p.pagos).filter(p => p.confirmacion === 'REPORTADO')
+        const mReport = (m: MetodoPago) =>
+          pagosReportadosHoy.filter(p => p.metodo === m).reduce((s, p) => s + Number(p.monto), 0)
+        const porConfirmar = {
+          total: pagosReportadosHoy.reduce((s, p) => s + Number(p.monto), 0),
+          count: pagosReportadosHoy.length,
+          porMetodo: {
+            EFECTIVO: mReport(MetodoPago.EFECTIVO),
+            TRANSFERENCIA: mReport(MetodoPago.TRANSFERENCIA),
+            NEQUI: mReport(MetodoPago.NEQUI),
+            DAVIPLATA: mReport(MetodoPago.DAVIPLATA),
+            BONO: mReport(MetodoPago.BONO),
+          },
+          diasPreviosCount: reportadosDiasPreviosAgg._count,
+          diasPreviosTotal: Number(reportadosDiasPreviosAgg._sum.monto ?? 0),
+        }
+
         // 6. Calculate netoCaja server-side
         const netoCaja = Number(parsed.data.baseDia) + cobroVentasHoy + cobroCartera - gastosTotal - Number(parsed.data.comisiones) - Number(parsed.data.salarios)
 
@@ -567,6 +622,7 @@ export async function POST(request: NextRequest) {
         reporteData._version = '2.0'
         reporteData.cobroVentasHoy = cobroVentasHoy
         reporteData.cobroCartera = cobroCartera
+        reporteData.porConfirmar = porConfirmar
         reporteData.totalVentas = totalVentas
         reporteData.totalNotasCredito = totalNC
 
