@@ -284,8 +284,8 @@ export class CrearPedidoUseCase {
 
       // 8. Persist pagos
       if (pagosNormalizados.length > 0) {
-        // ADR-PAGO-REPORTADO-CONFIRMADO-001 §2 — lectura única de Config acá
-        // (no una por cada createMany dentro de la tx).
+        // ADR-PAGO-REPORTADO-CONFIRMADO-001 §2: una lectura de Config por pedido
+        // (helper vía tx — `unstable_cache` no corre fuera de un request).
         const metodosConfirmacion = await leerMetodosRequierenConfirmacion(
           tx as unknown as Parameters<typeof leerMetodosRequierenConfirmacion>[0],
         )

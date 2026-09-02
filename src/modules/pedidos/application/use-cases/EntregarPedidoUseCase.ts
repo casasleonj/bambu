@@ -95,7 +95,9 @@ export class EntregarPedidoUseCase {
         for (const p of input.pagos) {
           pedido.registrarPago(p)
         }
-        // ADR-PAGO-REPORTADO-CONFIRMADO-001 §2 — lectura única de Config.
+        // ADR-PAGO-REPORTADO-CONFIRMADO-001 §2: una lectura de Config por
+        // entrega (helper vía tx — `getConfig`/`unstable_cache` no funciona
+        // fuera de un request context, rompe los unit tests del use case).
         const metodosConfirmacion = await leerMetodosRequierenConfirmacion(
           tx as unknown as Parameters<typeof leerMetodosRequierenConfirmacion>[0],
         )

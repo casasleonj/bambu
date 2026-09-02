@@ -130,8 +130,9 @@ export class CerrarEmbarqueUseCase {
       const pedidosActualizados: Array<{ id: string; estado: string }> = []
       let totalVentas = 0
 
-      // ADR-PAGO-REPORTADO-CONFIRMADO-001 §2: una sola lectura de Config para
-      // todo el cierre (no una por pedido dentro del lock).
+      // ADR-PAGO-REPORTADO-CONFIRMADO-001 §2: UNA lectura de Config para todo el
+      // cierre (no una por pedido dentro del lock). Vía tx: `unstable_cache` no
+      // corre fuera de un request y rompería los tests del use case.
       const metodosConfirmacion = await leerMetodosRequierenConfirmacion(
         client as unknown as Parameters<typeof leerMetodosRequierenConfirmacion>[0],
       )

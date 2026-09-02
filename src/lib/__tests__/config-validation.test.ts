@@ -151,3 +151,21 @@ describe('validateConfigBatch', () => {
     expect(errors.has('VARIACION_PRECIO_BRUSCO_PCT')).toBe(true)
   })
 })
+
+describe('METODOS_REQUIEREN_CONFIRMACION (ADR-PAGO-REPORTADO-CONFIRMADO-001 §2)', () => {
+  it('CSV de métodos válidos → OK', () => {
+    expect(validateConfigValue('METODOS_REQUIEREN_CONFIRMACION', 'NEQUI,TRANSFERENCIA,DAVIPLATA')).toBeNull()
+    expect(validateConfigValue('METODOS_REQUIEREN_CONFIRMACION', 'efectivo, nequi')).toBeNull()
+  })
+
+  it('vacío / whitespace → OK (cae al default del ADR)', () => {
+    expect(validateConfigValue('METODOS_REQUIEREN_CONFIRMACION', '')).toBeNull()
+    expect(validateConfigValue('METODOS_REQUIEREN_CONFIRMACION', '   ')).toBeNull()
+  })
+
+  it('typo en un método → error (no clasificaría ese método como REPORTADO)', () => {
+    const err = validateConfigValue('METODOS_REQUIEREN_CONFIRMACION', 'NEQUII,TRANSFERENCIA')
+    expect(err).not.toBeNull()
+    expect(err).toContain('NEQUII')
+  })
+})
