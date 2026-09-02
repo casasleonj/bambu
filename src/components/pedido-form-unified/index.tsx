@@ -89,9 +89,22 @@ export interface PedidoUnifiedData {
   direccionEntrega?: string
   barrioEntrega?: string
   ventaRapida: boolean
+  /**
+   * ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: solo para venta rápida. `false` =
+   * "entregar después" (el cliente paga ahora y retira/recibe luego) → el
+   * pedido queda PENDIENTE + ANTICIPADO. `undefined` = comportamiento
+   * histórico (venta rápida entrega en el acto). Gated por
+   * `NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR` en la UI y en el route.
+   */
+  entregado?: boolean
   isEdit?: boolean
   pedidoId?: string
 }
+
+// ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: el toggle "entregar después" de la
+// venta rápida solo aparece con este flag. Con el flag OFF la UI no cambia.
+const VENTA_RUTA_ENTREGA_POSTERIOR_ON =
+  process.env.NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR === 'true'
 
 // `productosSugeridos[].codigo` (de GET /api/clientes/[id]) usa los nombres
 // de columna legacy de Pedido, no el ProductCode canónico de PRODUCTO_INFO.
@@ -138,6 +151,9 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
   // dirección del domicilio principal se guarda. Marcarlo es el opt-out
   // explícito para "solo por esta vez, no toques el dato guardado".
   const [soloParaEstePedido, setSoloParaEstePedido] = useState(false)
+  // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: toggle "entregar después" para venta
+  // rápida. Solo visible con el flag activo; default = entregar en el acto.
+  const [entregarDespues, setEntregarDespues] = useState(false)
   const resolverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [productosConfig, setProductosConfig] = useState<Array<{ codigo: string; aplicaDomicilio: boolean; sobreCostoDomicilio: number }>>([])
   const [fiadosStatus, setFiadosStatus] = useState<FiadoStatus | null>(null)
@@ -598,6 +614,8 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
     }
     setCantidades(nuevasCantidades)
     setCanal(nuevoCanal)
+    // El toggle "entregar después" es exclusivo de venta rápida (PUNTO).
+    if (nuevoCanal !== 'PUNTO') setEntregarDespues(false)
     if (!pedidoInicial?.id) {
       setPreciosResueltos({})
       setPreciosOrigen({})
@@ -717,6 +735,12 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
       direccionEntrega: canal === 'DOMICILIO' ? editDireccion || undefined : undefined,
       barrioEntrega: canal === 'DOMICILIO' ? editBarrio || undefined : undefined,
       ventaRapida: canal === 'PUNTO',
+      // Solo se envía `false` explícito (entregar después); `undefined` deja el
+      // comportamiento histórico. El route lo ignora sin el flag activo.
+      entregado:
+        VENTA_RUTA_ENTREGA_POSTERIOR_ON && canal === 'PUNTO' && entregarDespues
+          ? false
+          : undefined,
       isEdit: !!pedidoInicial?.id,
       pedidoId: pedidoInicial?.id,
     }
@@ -1230,6 +1254,37 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
             </div>
           )}
         </div>
+
+        {/* ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: entrega diferida para venta
+            rápida (el cliente paga ahora y retira/recibe después). */}
+        {VENTA_RUTA_ENTREGA_POSTERIOR_ON && canal === 'PUNTO' && !pedidoInicial?.id && (
+          <div className="bg-white border rounded-xl p-4 shadow-sm">
+            <h3 className="font-semibold text-gray-700 text-sm mb-2">📦 Entrega</h3>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setEntregarDespues(false)}
+                data-testid="entrega-ahora"
+                className={`flex-1 py-2 rounded-lg border text-sm transition ${!entregarDespues ? 'bg-green-600 text-white border-green-600' : 'bg-white hover:bg-gray-50'}`}
+              >
+                Entregar ahora
+              </button>
+              <button
+                type="button"
+                onClick={() => setEntregarDespues(true)}
+                data-testid="entrega-despues"
+                className={`flex-1 py-2 rounded-lg border text-sm transition ${entregarDespues ? 'bg-amber-500 text-white border-amber-500' : 'bg-white hover:bg-gray-50'}`}
+              >
+                Entregar después
+              </button>
+            </div>
+            {entregarDespues && (
+              <p className="text-xs text-amber-700 mt-2">
+                El pedido queda <strong>pendiente</strong>{saldoPendiente <= 0 ? ' y anticipado (pagado)' : ''}. Se entrega en una visita posterior.
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Botón Submit */}
         <button

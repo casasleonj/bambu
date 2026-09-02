@@ -24,6 +24,12 @@ export interface CrearPedidoPayload {
   obs?: string
   fechaEntrega?: string
   ventaRapida?: boolean
+  /**
+   * ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: `false` en una venta rápida =
+   * "entregar después" (queda PENDIENTE + ANTICIPADO si va prepago). El route
+   * lo respeta solo con `NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR` activo.
+   */
+  entregado?: boolean
   clienteNuevo?: {
     nombre: string
     apellido?: string

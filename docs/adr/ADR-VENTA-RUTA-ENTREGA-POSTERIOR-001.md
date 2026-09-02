@@ -29,7 +29,10 @@ El paso 2 se parte en dos por dificultad muy distinta:
 
 - **venta-rápida** (`CrearPedidoUseCase`, `/api/pedidos`): limpio. No hay embarque
   de por medio, el planificador ya incluye `VENTA_RAPIDA`, `estadoPago` ya se
-  proyecta. `entregado: false` → `PENDIENTE` + `ANTICIPADO`. **Implementado.**
+  proyecta. `entregado: false` → `PENDIENTE` + `ANTICIPADO`. **Implementado**
+  (backend #158; UI: toggle "Entregar ahora / Entregar después" en
+  `pedido-form-unified`, gated por el flag, solo `canal === 'PUNTO'`, solo al
+  crear — `data-testid` `entrega-ahora`/`entrega-despues`).
 - **venta-libre en ruta** (`/api/pedidos/venta-libre`): el repartidor cobra dinero
   (efectivo) sobre un embarque activo pero la entrega es posterior. Regla del PO
   (2026-09-01):
