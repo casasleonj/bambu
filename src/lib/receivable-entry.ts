@@ -14,7 +14,10 @@ import type { Prisma } from '@prisma/client'
 import { incrementMetric } from './metrics'
 import { logger } from './logger'
 
-export type ReceivableTipo = 'PAGO' | 'ABONO'
+// ADR-CORRECCION-MONETARIA-001: REVERSION compensa un PAGO/ABONO previo
+// (corrección de abono, o anulación/cancelación de pedido pagado). Toda
+// agregación de cartera que sume PAGO|ABONO debe restar REVERSION.
+export type ReceivableTipo = 'PAGO' | 'ABONO' | 'REVERSION'
 
 export interface ReceivableEntryInput {
   pedidoId?: string | null

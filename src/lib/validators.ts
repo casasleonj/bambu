@@ -205,6 +205,21 @@ export const CancelarSchema = z.object({
 })
 
 // ====================
+// CORRECCIÓN DE ABONO (ADR-CORRECCION-MONETARIA-001)
+// ====================
+
+export const CorreccionAbonoSchema = z.object({
+  tipo: z.enum(['MONTO', 'CLIENTE', 'FACTURA', 'NO_RECIBIDO']),
+  // Solo relevante para tipo=MONTO (reversión parcial). Para el resto, el
+  // servidor revierte el monto completo del abono. `> 0` y `<= abono.monto`
+  // se validan en el route contra la fila real.
+  montoRevertido: z.coerce.number().positive().optional(),
+  motivo: z.string().trim().min(1, 'El motivo es obligatorio').max(1000),
+  // Idempotencia offline-first (dedup real por DB vía correccionOfflineId @unique).
+  correccionOfflineId: z.string().optional(),
+})
+
+// ====================
 // ACTUALIZAR PEDIDO (actualizado)
 // ====================
 

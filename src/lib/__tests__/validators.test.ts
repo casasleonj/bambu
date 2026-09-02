@@ -9,6 +9,7 @@ import {
   EmbarqueProductoSchema,
   CerrarEmbarqueSchema,
   GastoEmbarqueSchema,
+  CorreccionAbonoSchema,
   normalizeTrabajador,
 } from '@/lib/validators'
 
@@ -410,6 +411,25 @@ describe('GastoEmbarqueSchema', () => {
   it('rejects empty categoria', () => {
     const result = GastoEmbarqueSchema.safeParse({ categoria: '', monto: 15000 })
     expect(result.success).toBe(false)
+  })
+})
+
+describe('CorreccionAbonoSchema (ADR-CORRECCION-MONETARIA-001)', () => {
+  it('acepta los 4 tipos con motivo', () => {
+    for (const tipo of ['MONTO', 'CLIENTE', 'FACTURA', 'NO_RECIBIDO']) {
+      expect(CorreccionAbonoSchema.safeParse({ tipo, motivo: 'x' }).success).toBe(true)
+    }
+  })
+
+  it('rechaza tipo desconocido y motivo vacío', () => {
+    expect(CorreccionAbonoSchema.safeParse({ tipo: 'OTRO', motivo: 'x' }).success).toBe(false)
+    expect(CorreccionAbonoSchema.safeParse({ tipo: 'MONTO', motivo: '  ' }).success).toBe(false)
+  })
+
+  it('montoRevertido debe ser positivo si se envía', () => {
+    expect(CorreccionAbonoSchema.safeParse({ tipo: 'MONTO', motivo: 'x', montoRevertido: 0 }).success).toBe(false)
+    expect(CorreccionAbonoSchema.safeParse({ tipo: 'MONTO', motivo: 'x', montoRevertido: -5 }).success).toBe(false)
+    expect(CorreccionAbonoSchema.safeParse({ tipo: 'MONTO', motivo: 'x', montoRevertido: 1500 }).success).toBe(true)
   })
 })
 
