@@ -155,4 +155,29 @@ describe('pago-confirmado.2', () => {
     // netoCaja/cobroCartera NO cambian por esto: el pago igual suma en `nequi`.
     expect(json.cierre.nequi).toBeGreaterThanOrEqual(11000)
   })
+
+  it('cierre `porConfirmar`: cuenta un pago REPORTADO de HOY sobre un pedido VIEJO (por createdAt)', async () => {
+    await testPrisma.cierreDia.deleteMany({})
+    const cliente = await testPrisma.cliente.create({
+      data: { nombre: 'Cli Viejo', telefono: `3${Math.floor(Math.random() * 1e9).toString().padStart(9, '0')}`, direccion: 'x', activo: true },
+    })
+    // pedido de la semana pasada, entregado + fiado
+    const pedido = await testPrisma.pedido.create({
+      data: {
+        clienteId: cliente.id, canal: 'DOMICILIO', total: 8000, totalPagado: 0, saldo: 8000,
+        estadoEntrega: 'ENTREGADO', estado: 'ENTREGADO', estadoPago: 'PENDIENTE',
+        fecha: new Date(Date.now() - 7 * 86400_000),
+      },
+    })
+    // pago Nequi REPORTADO cobrado HOY (createdAt = now por default)
+    await testPrisma.pago.create({ data: { pedidoId: pedido.id, metodo: 'NEQUI', monto: 8000, confirmacion: 'REPORTADO' } })
+
+    const { GET: cierreGet } = await import('@/app/api/cierre/route')
+    const nextReq = { nextUrl: { searchParams: new URLSearchParams() } } as unknown as import('next/server').NextRequest
+    const json = await (await cierreGet(nextReq)).json()
+    // aparece en `porConfirmar` de HOY (por createdAt), aunque el pedido sea viejo
+    expect(json.cierre.porConfirmar.porMetodo.NEQUI).toBeGreaterThanOrEqual(8000)
+    // y NO en la advertencia de días previos (createdAt es de hoy)
+    // (no aserción estricta del total previo — puede haber otros de tests anteriores)
+  })
 })
