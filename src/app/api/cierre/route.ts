@@ -153,6 +153,7 @@ export async function GET(request: NextRequest) {
       clientesNuevos,
       ventasPorOrigenRaw,
       descuentos,
+      correccionesAbonoAgg,
     ] = await prisma.$transaction([
       prisma.embarque.findMany({
         where: { fecha: dateRange, estado: EstadoEmbarque.ABIERTO },
@@ -223,6 +224,12 @@ export async function GET(request: NextRequest) {
         where: { fecha: dateRange },
         include: { trabajador: { select: { nombre: true } } },
       }),
+      // ADR-CORRECCION-MONETARIA-001: las reversiones de abono del día restan
+      // del cobro de cartera (mismo día = se detectó y corrigió en la jornada).
+      prisma.correccionAbono.aggregate({
+        where: { createdAt: dateRange },
+        _sum: { montoRevertido: true },
+      }),
     ])
 
     const totalNC = notasCredito.reduce((sum, nc) => sum + Number(nc.monto), 0)
@@ -260,7 +267,9 @@ export async function GET(request: NextRequest) {
     const bolsaAguaVendida = pedidos.reduce((acc, p) => acc + p.cBolsaAguaEnt, 0)
     const bolsaHieloVendida = pedidos.reduce((acc, p) => acc + p.cBolsaHieloEnt, 0)
 
-    const cobroCartera = abonos.reduce((sum, a) => sum + Number(a.monto), 0)
+    const cobroCartera =
+      abonos.reduce((sum, a) => sum + Number(a.monto), 0) -
+      Number(correccionesAbonoAgg._sum.montoRevertido ?? 0)
     const cobroVentasHoy = efectivo + transferencia + nequi + daviplata + bono
 
     const facturasPagadas = facturas.filter(f => f.estado === EstadoFactura.PAGADA)
@@ -491,7 +500,7 @@ export async function POST(request: NextRequest) {
         }
 
         // 5. Recalculate ALL totals server-side
-        const [pedidos, gastosAgg, abonos, notasCredito] = await Promise.all([
+        const [pedidos, gastosAgg, abonos, notasCredito, correccionesAbonoAgg] = await Promise.all([
           tx.pedido.findMany({
             where: { fecha: { gte: startOfDay, lt: nextDay }, estadoEntrega: { notIn: [EstadoEntrega.CANCELADO, EstadoEntrega.ANULADO] } },
             include: { pagos: true },
@@ -499,6 +508,11 @@ export async function POST(request: NextRequest) {
           tx.gasto.aggregate({ where: { fecha: { gte: startOfDay, lt: nextDay } }, _sum: { monto: true } }),
           tx.abono.findMany({ where: { fecha: { gte: startOfDay, lt: nextDay } } }),
           tx.notaCredito.findMany({ where: { fecha: { gte: startOfDay, lt: nextDay } } }),
+          // ADR-CORRECCION-MONETARIA-001: reversiones de abono del día → restan del cobro de cartera.
+          tx.correccionAbono.aggregate({
+            where: { createdAt: { gte: startOfDay, lt: nextDay } },
+            _sum: { montoRevertido: true },
+          }),
         ])
 
         const totalNC = notasCredito.reduce((sum, nc) => sum + Number(nc.monto), 0)
@@ -530,7 +544,9 @@ export async function POST(request: NextRequest) {
         const daviplata = totalesPorMetodo[MetodoPago.DAVIPLATA]
         const bono = totalesPorMetodo[MetodoPago.BONO]
         const cobroVentasHoy = efectivo + transferencia + nequi + daviplata + bono
-        const cobroCartera = abonos.reduce((sum, a) => sum + Number(a.monto), 0)
+        const cobroCartera =
+          abonos.reduce((sum, a) => sum + Number(a.monto), 0) -
+          Number(correccionesAbonoAgg._sum.montoRevertido ?? 0)
         const gastosTotal = Number(gastosAgg._sum.monto) || 0
 
         // 6. Calculate netoCaja server-side
