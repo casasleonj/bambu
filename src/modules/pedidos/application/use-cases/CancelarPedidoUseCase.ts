@@ -4,6 +4,7 @@
 
 import { getNextNumero } from '@/lib/sequence'
 import { logAudit } from '@/lib/audit'
+import { registrarReceivableEntry } from '@/lib/receivable-entry'
 import { PedidoId } from '../../domain/value-objects/PedidoId'
 import type { IPedidoRepository } from '../../domain/repositories/IPedidoRepository'
 import type { IFacturaRepository } from '../../domain/repositories/IFacturaRepository'
@@ -74,13 +75,26 @@ export class CancelarPedidoUseCase {
           monto: totalPagado,
           motivo: input.motivo || 'CANCELADO',
         }, tx)
+
+        // ADR-CORRECCION-MONETARIA-001 D.4 (cierra F7): las filas `Pago` NO se
+        // borran; se compensan con una `ReceivableEntry` tipo REVERSION por lo
+        // efectivamente cobrado, en la MISMA tx (suma PAGO - REVERSION = 0).
+        await registrarReceivableEntry(tx, {
+          pedidoId: pedido.id.get(),
+          clienteId: pedido.clienteId,
+          tipo: 'REVERSION',
+          monto: totalPagado,
+          saldoResultante: 0,
+          totalPagadoResultante: 0,
+          offlineId: null,
+        })
       }
 
       await logAudit({
         entidad: 'Pedido',
         registroId: pedido.id.get(),
         accion: 'UPDATE',
-        datos: { motivo: input.motivo, estado: updated.estadoEntrega.get(), notaCredito: tuvoPagos },
+        datos: { motivo: input.motivo, estado: updated.estadoEntrega.get(), notaCredito: tuvoPagos, reversion: tuvoPagos ? totalPagado : 0 },
       }, tx)
 
       return { pedido: PedidoDTOMapper.toResumen(updated) }
