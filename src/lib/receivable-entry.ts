@@ -51,6 +51,46 @@ export async function registrarReceivableEntry(
   })
 }
 
+/**
+ * ADR-CORRECCION-MONETARIA-001 D.4 — al anular/cancelar un pedido pagado, emite
+ * UNA `ReceivableEntry REVERSION` que compensa EXACTAMENTE lo que quedaba
+ * proyectado para ese pedido: `sum(PAGO + ABONO) - sum(REVERSION previas)`.
+ *
+ * Revertir por ese neto (y no por `Pedido.totalPagado`) es lo correcto porque
+ * hay caminos de cobro que mueven `totalPagado` SIN emitir un `PAGO`
+ * (`ProcesarPedidoService` en el cierre de embarque, `import/commit.ts`): para
+ * esos, no hay proyección que revertir y el neto ya es 0.
+ *
+ * No-op (retorna 0) si no hay nada proyectado pendiente.
+ *
+ * @returns el monto revertido (0 si no hubo).
+ */
+export async function registrarReversionPedido(
+  tx: Prisma.TransactionClient,
+  input: { pedidoId: string; clienteId: string; saldoResultante: number },
+): Promise<number> {
+  const entries = await tx.receivableEntry.findMany({
+    where: { pedidoId: input.pedidoId },
+    select: { tipo: true, monto: true },
+  })
+  const neto = entries.reduce(
+    (sum, e) => sum + (e.tipo === 'REVERSION' ? -Number(e.monto) : Number(e.monto)),
+    0,
+  )
+  if (neto <= 0) return 0
+
+  await registrarReceivableEntry(tx, {
+    pedidoId: input.pedidoId,
+    clienteId: input.clienteId,
+    tipo: 'REVERSION',
+    monto: neto,
+    saldoResultante: input.saldoResultante,
+    totalPagadoResultante: 0,
+    offlineId: null,
+  })
+  return neto
+}
+
 export interface DivergenciaResult {
   divergencia: boolean
   diferencia: number

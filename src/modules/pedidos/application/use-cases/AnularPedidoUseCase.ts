@@ -4,7 +4,7 @@
 
 import { getNextNumero } from '@/lib/sequence'
 import { logAudit } from '@/lib/audit'
-import { registrarReceivableEntry } from '@/lib/receivable-entry'
+import { registrarReversionPedido } from '@/lib/receivable-entry'
 import { PedidoId } from '../../domain/value-objects/PedidoId'
 import type { IPedidoRepository } from '../../domain/repositories/IPedidoRepository'
 import type { IFacturaRepository } from '../../domain/repositories/IFacturaRepository'
@@ -55,6 +55,16 @@ export class AnularPedidoUseCase {
 
       const updated = await this.pedidoRepo.update(pedido, tx)
 
+      // ADR-CORRECCION-MONETARIA-001 D.4 (cierra F7): las filas `Pago` NO se
+      // borran (hecho histórico); se compensa la proyección de cartera con una
+      // `ReceivableEntry` tipo REVERSION por el neto pendiente, en la MISMA tx.
+      // El helper es no-op si no hay nada proyectado (pago vía cierre/import).
+      const montoRevertido = await registrarReversionPedido(tx, {
+        pedidoId: pedido.id.get(),
+        clienteId: pedido.clienteId,
+        saldoResultante: Number(updated.saldo.toDecimal()),
+      })
+
       // FIX H-21: pasar tx a anularByPedidoId para mantener atomicidad.
       // Antes: la factura se anulaba en una transacción SEPARADA (auto-commit).
       // Si el rollback del outer transaction afectaba algo más, la factura
@@ -73,27 +83,13 @@ export class AnularPedidoUseCase {
           monto: totalPagado,
           motivo: input.motivo || 'ANULADO',
         }, tx)
-
-        // ADR-CORRECCION-MONETARIA-001 D.4 (cierra F7): las filas `Pago` NO se
-        // borran (hecho histórico); se compensan con una `ReceivableEntry`
-        // tipo REVERSION por lo efectivamente cobrado, en la MISMA tx. Así la
-        // suma `PAGO - REVERSION` del pedido anulado da 0.
-        await registrarReceivableEntry(tx, {
-          pedidoId: pedido.id.get(),
-          clienteId: pedido.clienteId,
-          tipo: 'REVERSION',
-          monto: totalPagado,
-          saldoResultante: 0,
-          totalPagadoResultante: 0,
-          offlineId: null,
-        })
       }
 
       await logAudit({
         entidad: 'Pedido',
         registroId: pedido.id.get(),
         accion: 'UPDATE',
-        datos: { motivo: input.motivo, notaCredito: tuvoPagos, reversion: tuvoPagos ? totalPagado : 0 },
+        datos: { motivo: input.motivo, notaCredito: tuvoPagos, reversion: montoRevertido },
       }, tx)
 
       return { pedido: PedidoDTOMapper.toResumen(updated) }
