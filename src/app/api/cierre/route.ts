@@ -224,10 +224,14 @@ export async function GET(request: NextRequest) {
         where: { fecha: dateRange },
         include: { trabajador: { select: { nombre: true } } },
       }),
-      // ADR-CORRECCION-MONETARIA-001: las reversiones de abono del día restan
-      // del cobro de cartera (mismo día = se detectó y corrigió en la jornada).
+      // ADR-CORRECCION-MONETARIA-001: las reversiones restan del cobro de
+      // cartera del día AL QUE PERTENECE EL ABONO (por `abono.fecha`, no por
+      // `createdAt` de la corrección). Así `cobroCartera` de hoy nunca queda
+      // negativo (corrección <= abono, ambos del mismo día) y una corrección
+      // de un abono viejo se refleja en el cierre de ESE día (al recomputarlo),
+      // no descuadra el de hoy.
       prisma.correccionAbono.aggregate({
-        where: { createdAt: dateRange },
+        where: { abono: { fecha: dateRange } },
         _sum: { montoRevertido: true },
       }),
     ])
@@ -508,9 +512,10 @@ export async function POST(request: NextRequest) {
           tx.gasto.aggregate({ where: { fecha: { gte: startOfDay, lt: nextDay } }, _sum: { monto: true } }),
           tx.abono.findMany({ where: { fecha: { gte: startOfDay, lt: nextDay } } }),
           tx.notaCredito.findMany({ where: { fecha: { gte: startOfDay, lt: nextDay } } }),
-          // ADR-CORRECCION-MONETARIA-001: reversiones de abono del día → restan del cobro de cartera.
+          // ADR-CORRECCION-MONETARIA-001: reversiones de abonos de ESTE día
+          // (por `abono.fecha`) → restan del cobro de cartera. Ver nota en el GET.
           tx.correccionAbono.aggregate({
-            where: { createdAt: { gte: startOfDay, lt: nextDay } },
+            where: { abono: { fecha: { gte: startOfDay, lt: nextDay } } },
             _sum: { montoRevertido: true },
           }),
         ])

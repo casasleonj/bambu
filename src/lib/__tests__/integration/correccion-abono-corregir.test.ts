@@ -172,4 +172,40 @@ describe('POST /api/cartera/abonos/[id]/corregir', () => {
     })
     expect(res.status).toBe(404)
   })
+
+  it('reusar correccionOfflineId para OTRO abono → 409', async () => {
+    const a1 = await seedAbono(4000)
+    const a2 = await seedAbono(4000)
+    const { POST } = await import('@/app/api/cartera/abonos/[id]/corregir/route')
+    const off = uniqueId('shared-off')
+    const r1 = await POST(req({ tipo: 'CLIENTE', motivo: 'x', correccionOfflineId: off }) as never, {
+      params: Promise.resolve({ id: a1.abono.id }),
+    })
+    expect(r1.status).toBe(201)
+    const r2 = await POST(req({ tipo: 'CLIENTE', motivo: 'x', correccionOfflineId: off }) as never, {
+      params: Promise.resolve({ id: a2.abono.id }),
+    })
+    expect(r2.status).toBe(409)
+  })
+
+  it('cierre: cobroCartera del día resta la corrección de un abono de ese día', async () => {
+    // limpiar CierreDia de hoy para forzar el cálculo (no el snapshot)
+    await testPrisma.cierreDia.deleteMany({})
+    const { abono } = await seedAbono(15000)
+    // el abono se sembró con fecha now() → cuenta en el cobroCartera de hoy
+    const { GET: cierreGet } = await import('@/app/api/cierre/route')
+    const nextReq = { nextUrl: { searchParams: new URLSearchParams() } } as unknown as import('next/server').NextRequest
+
+    const before = await (await cierreGet(nextReq)).json()
+    const cobroAntes = before.cierre?.cobroCartera ?? before.cobroCartera ?? 0
+
+    const { POST } = await import('@/app/api/cartera/abonos/[id]/corregir/route')
+    await POST(req({ tipo: 'MONTO', montoRevertido: 5000, motivo: 'de más' }) as never, {
+      params: Promise.resolve({ id: abono.id }),
+    })
+
+    const after = await (await cierreGet(nextReq)).json()
+    const cobroDespues = after.cierre?.cobroCartera ?? after.cobroCartera ?? 0
+    expect(cobroAntes - cobroDespues).toBe(5000)
+  })
 })

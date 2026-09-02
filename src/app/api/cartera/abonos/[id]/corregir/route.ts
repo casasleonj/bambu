@@ -11,6 +11,7 @@ import { logger } from '@/lib/logger'
 import { calcularEstadoPago } from '@/lib/pedido-utils'
 import { registrarReceivableEntry } from '@/lib/receivable-entry'
 import { publishRealtimeEvent } from '@/lib/realtime'
+import { prisma } from '@/lib/prisma'
 
 /**
  * POST /api/cartera/abonos/[id]/corregir — ADR-CORRECCION-MONETARIA-001.
@@ -44,17 +45,23 @@ export async function POST(
     const { tipo, montoRevertido, motivo, correccionOfflineId } = parsed.data
 
     // Lectura fuera del lock solo para conocer el clienteId (clave del lock).
-    const abonoPre = await (await import('@/lib/prisma')).prisma.abono.findUnique({
+    const abonoPre = await prisma.abono.findUnique({
       where: { id: abonoId },
       select: { clienteId: true },
     })
     if (!abonoPre) return apiError('Abono no encontrado', 404)
 
     const result = await withAdvisoryLock('CARTERA', abonoPre.clienteId, async (tx) => {
-      // Dedup real por DB (además del lock).
+      // Dedup real por DB (además del lock). El `correccionOfflineId` es único
+      // por comando: si ya existe pero para OTRO abono, es un bug del cliente
+      // (reusó el id) — devolvemos 409 en vez de deduplicar en silencio la
+      // corrección equivocada.
       if (correccionOfflineId) {
         const previa = await tx.correccionAbono.findUnique({ where: { correccionOfflineId } })
-        if (previa) return { correccion: previa, deduped: true as const }
+        if (previa) {
+          if (previa.abonoId !== abonoId) throw new Error('OFFLINE_ID_REUSADO')
+          return { correccion: previa, deduped: true as const }
+        }
       }
 
       const abono = await tx.abono.findUnique({
@@ -128,7 +135,8 @@ export async function POST(
       let facturaActualizada = null
       if (factura) {
         const nuevoMontoPagado = Math.max(0, Number(factura.montoPagado) - revertir)
-        const nuevoSaldoFactura = Number(factura.total) - nuevoMontoPagado
+        // clamp a >= 0 (paridad con `calcularSaldo` del resto del código).
+        const nuevoSaldoFactura = Math.max(0, Number(factura.total) - nuevoMontoPagado)
         const nuevoEstadoFactura =
           nuevoSaldoFactura <= 0 ? 'PAGADA' : nuevoMontoPagado > 0 ? 'PARCIAL' : 'EMITIDA'
         facturaActualizada = await tx.factura.update({
@@ -141,7 +149,7 @@ export async function POST(
       let pedidoActualizado = null
       if (pedido) {
         const nuevoTotalPagado = Math.max(0, Number(pedido.totalPagado) - revertir)
-        const nuevoSaldoPedido = Number(pedido.total) - nuevoTotalPagado
+        const nuevoSaldoPedido = Math.max(0, Number(pedido.total) - nuevoTotalPagado)
         const nuevoEstadoPago = calcularEstadoPago(
           Number(pedido.total),
           nuevoTotalPagado,
@@ -216,6 +224,9 @@ export async function POST(
     }
     if (msg === 'MONTO_INVALIDO') return apiError('El monto a revertir debe ser mayor a 0', 400)
     if (msg === 'EXCEDE_ABONO') return apiError('El monto a revertir excede el saldo no revertido del abono', 400)
+    if (msg === 'OFFLINE_ID_REUSADO') {
+      return apiError('El correccionOfflineId ya se usó para corregir otro abono', 409)
+    }
     logger.error({ err: msg, abonoId }, 'Error corrigiendo abono')
     return apiError('Error procesando la corrección', 500)
   }
