@@ -4,6 +4,7 @@
 
 import { getNextNumero } from '@/lib/sequence'
 import { logAudit } from '@/lib/audit'
+import { registrarReversionPedido } from '@/lib/receivable-entry'
 import { PedidoId } from '../../domain/value-objects/PedidoId'
 import type { IPedidoRepository } from '../../domain/repositories/IPedidoRepository'
 import type { IFacturaRepository } from '../../domain/repositories/IFacturaRepository'
@@ -54,6 +55,16 @@ export class AnularPedidoUseCase {
 
       const updated = await this.pedidoRepo.update(pedido, tx)
 
+      // ADR-CORRECCION-MONETARIA-001 D.4 (cierra F7): las filas `Pago` NO se
+      // borran (hecho histórico); se compensa la proyección de cartera con una
+      // `ReceivableEntry` tipo REVERSION por el neto pendiente, en la MISMA tx.
+      // El helper es no-op si no hay nada proyectado (pago vía cierre/import).
+      const montoRevertido = await registrarReversionPedido(tx, {
+        pedidoId: pedido.id.get(),
+        clienteId: pedido.clienteId,
+        saldoResultante: Number(updated.saldo.toDecimal()),
+      })
+
       // FIX H-21: pasar tx a anularByPedidoId para mantener atomicidad.
       // Antes: la factura se anulaba en una transacción SEPARADA (auto-commit).
       // Si el rollback del outer transaction afectaba algo más, la factura
@@ -78,7 +89,7 @@ export class AnularPedidoUseCase {
         entidad: 'Pedido',
         registroId: pedido.id.get(),
         accion: 'UPDATE',
-        datos: { motivo: input.motivo, notaCredito: tuvoPagos },
+        datos: { motivo: input.motivo, notaCredito: tuvoPagos, reversion: montoRevertido },
       }, tx)
 
       return { pedido: PedidoDTOMapper.toResumen(updated) }
