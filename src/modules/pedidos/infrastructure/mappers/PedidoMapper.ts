@@ -60,6 +60,7 @@ interface PrismaPedido {
   pagos: Array<{
     metodo: string
     monto: number | { toNumber: () => number }
+    confirmacion?: string
   }>
   factura?: {
     id: string
@@ -96,6 +97,7 @@ export class PedidoMapper {
     const pagos: PagoData[] = (raw.pagos || []).map(p => ({
       metodo: p.metodo as PagoData['metodo'],
       monto: toNumber(p.monto),
+      ...(p.confirmacion ? { confirmacion: p.confirmacion } : {}),
     }))
 
     return Pedido.create({

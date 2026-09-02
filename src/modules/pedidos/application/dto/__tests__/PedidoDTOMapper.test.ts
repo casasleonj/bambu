@@ -39,6 +39,39 @@ function makePedidoFixture(canal: 'PUNTO' | 'DOMICILIO' = 'DOMICILIO'): Pedido {
   })
 }
 
+describe('PedidoDTOMapper.toResumen — pagoReportadoPendiente (ADR-PAGO-REPORTADO-CONFIRMADO-001 §5)', () => {
+  function conPagos(pagos: Array<{ metodo: 'NEQUI' | 'EFECTIVO'; monto: number; confirmacion?: string }>): Pedido {
+    return Pedido.create({
+      id: PedidoId.from('ped_x'),
+      numero: 1,
+      clienteId: 'c',
+      canal: CanalVO.from('DOMICILIO'),
+      origen: OrigenPedidoVO.from('PEDIDO'),
+      estadoEntrega: EstadoEntregaVO.from('ENTREGADO'),
+      estadoPago: EstadoPagoVO.from('PAGADO'),
+      items: [new PedidoItem('PACA_AGUA' as ProductCode, 1, Money.fromDecimal(10000), 'base', 1)],
+      total: Money.fromDecimal(10000),
+      totalPagado: Money.fromDecimal(10000),
+      pagos,
+      fecha: new Date(),
+    })
+  }
+
+  it('true si algún pago está REPORTADO', () => {
+    const dto = PedidoDTOMapper.toResumen(conPagos([{ metodo: 'NEQUI', monto: 10000, confirmacion: 'REPORTADO' }]))
+    expect(dto.pagoReportadoPendiente).toBe(true)
+  })
+
+  it('false si todos CONFIRMADO (o sin confirmacion)', () => {
+    expect(PedidoDTOMapper.toResumen(conPagos([{ metodo: 'EFECTIVO', monto: 10000, confirmacion: 'CONFIRMADO' }])).pagoReportadoPendiente).toBe(false)
+    expect(PedidoDTOMapper.toResumen(conPagos([{ metodo: 'EFECTIVO', monto: 10000 }])).pagoReportadoPendiente).toBe(false)
+  })
+
+  it('false si no hay pagos', () => {
+    expect(PedidoDTOMapper.toResumen(conPagos([])).pagoReportadoPendiente).toBe(false)
+  })
+})
+
 describe('PedidoDTOMapper.toResumen — issue 4: campo tipo', () => {
   it('incluye tipo="ENVIO" cuando canal=DOMICILIO', () => {
     const pedido = makePedidoFixture('DOMICILIO')

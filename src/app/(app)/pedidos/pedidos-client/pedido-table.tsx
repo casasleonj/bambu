@@ -8,6 +8,22 @@ import { PedidoClienteDisplay } from '@/components/pedido-cliente-display'
 import { calcularEstadoPagoVisual } from '@/modules/pedidos/presentation/visual-states'
 import type { Pedido } from './types'
 
+// ADR-PAGO-REPORTADO-CONFIRMADO-001 §5 — el badge "Reportado" solo con el flag ON.
+const PAGO_CONFIRMACION_ON = process.env.NEXT_PUBLIC_PAGO_CONFIRMACION === 'true'
+
+/** Chip "sin confirmar" cuando el pedido tiene algún Pago REPORTADO (AC-05). */
+function ReportadoChip({ pedido }: { pedido: Pedido }) {
+  if (!PAGO_CONFIRMACION_ON || !pedido.pagoReportadoPendiente) return null
+  return (
+    <span
+      className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-800"
+      title="Pago digital reportado — falta verificar que el dinero entró"
+    >
+      ⏳ Sin confirmar
+    </span>
+  )
+}
+
 function getPagoVisual(pedido: Pedido) {
   return calcularEstadoPagoVisual({
     estadoPago: pedido.estadoPago,
@@ -15,6 +31,7 @@ function getPagoVisual(pedido: Pedido) {
     saldo: Number(pedido.saldo),
     total: Number(pedido.total),
     totalPagado: Number(pedido.totalPagado),
+    pagoReportado: PAGO_CONFIRMACION_ON ? pedido.pagoReportadoPendiente : undefined,
   })
 }
 
@@ -283,6 +300,9 @@ function DesktopRow({
           if (visual.key === 'FIADO') {
             return <span className="text-sm font-semibold text-red-600"><MoneyDisplay value={Number(pedido.saldo)} userRole={userRole} /></span>
           }
+          if (visual.key === 'REPORTADO') {
+            return <span className="text-xs text-amber-600 font-medium" title="Pago reportado, sin confirmar">⏳</span>
+          }
           if (visual.key === 'PAGADO') {
             return <span className="text-xs text-green-600 font-medium">✓</span>
           }
@@ -295,6 +315,7 @@ function DesktopRow({
       <td className="px-4 py-3 text-center space-y-1">
         {renderEstadoEntregaBadge(pedido.estadoEntrega)}
         {renderEstadoPagoBadge(pedido.estadoPago)}
+        <ReportadoChip pedido={pedido} />
       </td>
       <td className="px-4 py-3">
         <div className="flex gap-2 justify-end">
@@ -400,9 +421,10 @@ function MobileCard({
           {pedido.horaPreferida && (
             <p className="text-xs text-amber-600 font-medium">{pedido.horaPreferida}</p>
           )}
-          <div className="flex gap-1 mt-1">
+          <div className="flex gap-1 mt-1 flex-wrap">
             {renderEstadoEntregaBadge(pedido.estadoEntrega)}
             {renderEstadoPagoBadge(pedido.estadoPago)}
+            <ReportadoChip pedido={pedido} />
           </div>
         </div>
         <div className="text-right ml-2">

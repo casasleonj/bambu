@@ -23,6 +23,9 @@ export interface Pedido {
   origen: string
   estadoEntrega: string
   estadoPago: string
+  // ADR-PAGO-REPORTADO-CONFIRMADO-001 §5 — algún Pago está REPORTADO (digital
+  // sin verificar). Ortogonal a estadoPago.
+  pagoReportadoPendiente?: boolean
   embarqueId?: string
   items: PedidoItem[]
   // Legacy fields (still present during transition)

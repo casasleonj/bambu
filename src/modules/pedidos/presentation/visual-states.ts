@@ -6,12 +6,12 @@
  * Domain layer must NOT depend on this file.
  */
 
-export type EstadoPagoVisualKey = 'PAGADO' | 'FIADO' | 'PENDIENTE' | 'ANULADO'
+export type EstadoPagoVisualKey = 'PAGADO' | 'FIADO' | 'PENDIENTE' | 'ANULADO' | 'REPORTADO'
 
 export interface EstadoPagoVisual {
   key: EstadoPagoVisualKey
   label: string
-  color: 'green' | 'red' | 'gray'
+  color: 'green' | 'red' | 'gray' | 'amber'
   /** Whether the cell should render the outstanding amount as money. */
   isMoney: boolean
 }
@@ -22,15 +22,24 @@ export interface PedidoSaldoInput {
   saldo: number
   total: number
   totalPagado: number
+  /**
+   * ADR-PAGO-REPORTADO-CONFIRMADO-001 §5: algún `Pago` del pedido está
+   * `REPORTADO` (dinero digital sin verificar). Lo pasa el caller SOLO cuando el
+   * flag `NEXT_PUBLIC_PAGO_CONFIRMACION` está activo — así con el flag OFF el
+   * badge no cambia. Ortogonal al saldo: un pedido pagado completo con un pago
+   * reportado NO se muestra como "Pagado" sino como "Reportado".
+   */
+  pagoReportado?: boolean
 }
 
 /**
  * Determines the visual payment state for a Pedido row.
  *
  * Rules (G5.1: el badge se DERIVA de `(total, totalPagado, estadoEntrega)`,
- * no solo de la columna `estadoPago` — así un pedido prepago-pendiente viejo
- * con la columna aún en `PAGADO` igual muestra "Anticipado"):
+ * no solo de la columna `estadoPago`):
  *  - ANULADO → estadoEntrega ANULADO/CANCELADO OR estadoPago ANULADO
+ *  - REPORTADO → pagado completo (o parcial) Y `pagoReportado` (AC-05: nunca
+ *    mostrar "confirmado" sin evidencia)
  *  - ANTICIPADO → pagado completo Y la entrega aún no ocurrió (PENDIENTE/EN_RUTA/NO_ENTREGADO)
  *  - PAGADO  → pagado completo Y ya entregado
  *  - FIADO   → estadoEntrega ENTREGADO AND saldo > 0
@@ -50,6 +59,16 @@ export function calcularEstadoPagoVisual(pedido: PedidoSaldoInput): EstadoPagoVi
       key: 'ANULADO',
       label: 'Anulado',
       color: 'gray',
+      isMoney: false,
+    }
+  }
+
+  // AC-05: si hay dinero reportado sin confirmar, gana sobre "Pagado"/"Anticipado".
+  if (pedido.pagoReportado && totalPagado > 0) {
+    return {
+      key: 'REPORTADO',
+      label: 'Reportado',
+      color: 'amber',
       isMoney: false,
     }
   }

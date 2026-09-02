@@ -92,4 +92,37 @@ describe('calcularEstadoPagoVisual', () => {
     expect(estado.key).toBe('ANULADO')
     expect(estado.color).toBe('gray')
   })
+
+  // ADR-PAGO-REPORTADO-CONFIRMADO-001 §5 / AC-05
+  describe('pagoReportado', () => {
+    it('un pedido PAGADO con pago reportado → REPORTADO ámbar (no "Pagado")', () => {
+      const estado = calcularEstadoPagoVisual(
+        make({ estadoPago: 'PAGADO', estadoEntrega: 'ENTREGADO', total: 100_000, totalPagado: 100_000, saldo: 0, pagoReportado: true }),
+      )
+      expect(estado.key).toBe('REPORTADO')
+      expect(estado.label).toBe('Reportado')
+      expect(estado.color).toBe('amber')
+    })
+
+    it('sin `pagoReportado` (flag OFF) → comportamiento normal (Pagado)', () => {
+      const estado = calcularEstadoPagoVisual(
+        make({ estadoPago: 'PAGADO', estadoEntrega: 'ENTREGADO', total: 100_000, totalPagado: 100_000, saldo: 0 }),
+      )
+      expect(estado.key).toBe('PAGADO')
+    })
+
+    it('un pedido ANULADO gana sobre REPORTADO', () => {
+      const estado = calcularEstadoPagoVisual(
+        make({ estadoEntrega: 'ANULADO', totalPagado: 100_000, pagoReportado: true }),
+      )
+      expect(estado.key).toBe('ANULADO')
+    })
+
+    it('sin pagos (totalPagado 0) no muestra REPORTADO aunque el flag pase true', () => {
+      const estado = calcularEstadoPagoVisual(
+        make({ estadoPago: 'PENDIENTE', estadoEntrega: 'PENDIENTE', total: 100_000, totalPagado: 0, saldo: 100_000, pagoReportado: true }),
+      )
+      expect(estado.key).toBe('PENDIENTE')
+    })
+  })
 })
