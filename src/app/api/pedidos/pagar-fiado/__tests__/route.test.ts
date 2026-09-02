@@ -33,7 +33,7 @@ describe('F-N11: dedup DENTRO del lock ABONO', () => {
   })
 
   it('FIX: el bloque deduped retorna deduped: true y propaga pagosAplicados', () => {
-    const dedupBlock = source.match(/pagosPrevios = await[\s\S]{0,1500}/)
+    const dedupBlock = source.match(/pagosPrevios = await[\s\S]{0,2000}/)
     expect(dedupBlock).not.toBeNull()
     expect(dedupBlock![0]).toMatch(/deduped:\s*true\s+as\s+const/)
     expect(dedupBlock![0]).toMatch(/pagosAplicados:/)
@@ -82,7 +82,7 @@ describe('F-N11: el response final distingue deduped vs camino normal', () => {
   })
 
   it('FIX: el camino deduped propaga el response original', () => {
-    const responseBlock = source.match(/return\s+apiSuccess\(\{[\s\S]{0,800}\}\)/)
+    const responseBlock = source.match(/return\s+apiSuccess\(\{[\s\S]{0,1400}\}\)/)
     expect(responseBlock).not.toBeNull()
     // Cuando deduped, propaga: deduped, pagosAplicados, montoAplicado, montoSobrante, mensaje
     expect(responseBlock![0]).toMatch(/deduped:\s*true/)
@@ -90,7 +90,7 @@ describe('F-N11: el response final distingue deduped vs camino normal', () => {
   })
 
   it('FIX: el camino normal calcula montoSobrante y mensaje de éxito', () => {
-    const responseBlock = source.match(/return\s+apiSuccess\(\{[\s\S]{0,800}\}\)/)
+    const responseBlock = source.match(/return\s+apiSuccess\(\{[\s\S]{0,1400}\}\)/)
     expect(responseBlock).not.toBeNull()
     expect(responseBlock![0]).toMatch(/montoAplicado:\s*monto\s*-\s*resultado\.montoRestante/)
     expect(responseBlock![0]).toMatch(/montoSobrante:\s*resultado\.montoRestante/)
@@ -111,5 +111,40 @@ describe('F-N11: la route sigue trabajando (no rompe flujo normal)', () => {
 
   it('FIX: el lock ABONO sigue envolviendo toda la operación', () => {
     expect(source).toMatch(/withAdvisoryLock\(['"]CARTERA['"]/)
+  })
+})
+
+describe('ADR-CORRECCION-MONETARIA-001 D.6: el sobrante se acredita a Cliente.saldoFavor', () => {
+  it('el sobrante (redondeado a centavos) incrementa saldoFavor con tx.cliente.update', () => {
+    expect(source).toMatch(/const sobrante = Math\.round\(montoRestante \* 100\) \/ 100/)
+    const idx = source.indexOf('if (sobrante > 0')
+    expect(idx).toBeGreaterThan(-1)
+    const block = source.slice(idx, idx + 320)
+    expect(block).toMatch(/tx\.cliente\.update/)
+    expect(block).toMatch(/saldoFavor:\s*\{\s*increment:\s*sobrante\s*\}/)
+  })
+
+  it('excluye el canónico CONSUMIDOR_FINAL (no acumula crédito compartido)', () => {
+    expect(source).toMatch(/if \(sobrante > 0 && !isConsumidorFinalCanonical\(clienteId\)\)/)
+  })
+
+  it('el incremento corre DENTRO del lock CARTERA, antes del return del callback', () => {
+    const lockIdx = source.indexOf("withAdvisoryLock('CARTERA'")
+    const incrementIdx = source.indexOf('saldoFavor: { increment: sobrante }')
+    const returnIdx = source.indexOf('return { pagosAplicados, montoRestante, culminados')
+    expect(lockIdx).toBeGreaterThan(-1)
+    expect(incrementIdx).toBeGreaterThan(lockIdx)
+    expect(returnIdx).toBeGreaterThan(incrementIdx)
+  })
+
+  it('el incremento corre ANTES de logAudit (auditoría atómica del hecho)', () => {
+    const incrementIdx = source.indexOf('saldoFavor: { increment: sobrante }')
+    const auditIdx = source.indexOf('await logAudit(', incrementIdx - 1)
+    expect(auditIdx).toBeGreaterThan(incrementIdx)
+  })
+
+  it('la respuesta expone saldoFavorAcreditado (normal y deduped)', () => {
+    expect(source).toMatch(/saldoFavorAcreditado:\s*resultado\.saldoFavorAcreditado/)
+    expect(source).toMatch(/saldoFavorAcreditado: isConsumidorFinalCanonical\(clienteId\)/)
   })
 })

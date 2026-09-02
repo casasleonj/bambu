@@ -33,7 +33,7 @@ describe('F1: pagar-fiado audita dentro del lock CARTERA', () => {
     const auditCall = source.indexOf('await logAudit({')
     // el `return { pagosAplicados, montoRestante, culminados }` marca el fin
     // del trabajo dentro del lock
-    const lockReturn = source.indexOf('return { pagosAplicados, montoRestante, culminados }')
+    const lockReturn = source.indexOf('return { pagosAplicados, montoRestante, culminados')
 
     expect(lockOpen).toBeGreaterThan(-1)
     expect(auditCall).toBeGreaterThan(lockOpen)

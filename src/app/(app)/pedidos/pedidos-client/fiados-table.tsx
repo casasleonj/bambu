@@ -199,6 +199,7 @@ export function FiadosTable({
         pagosAplicados: Array<{ pedidoId: string; numero: number; montoAplicado: number; saldoRestante: number; facturaId?: string; facturaNumero?: string }>
         montoAplicado: number
         montoSobrante: number
+        saldoFavorAcreditado?: number
         deduped?: boolean
       }>(
         '/api/pedidos/pagar-fiado',
@@ -229,7 +230,7 @@ export function FiadosTable({
       // status === 'ok' — proceder con el resumen
       const data = result.data
       const pagosAplicados = data.pagosAplicados || []
-      const montoSobrante = data.montoSobrante || 0
+      const montoSobrante = data.saldoFavorAcreditado ?? data.montoSobrante ?? 0
       const montoAplicado = data.montoAplicado || Number(montoPago)
 
       let resumenHtml = `<div class="space-y-1">`
@@ -238,7 +239,7 @@ export function FiadosTable({
         resumenHtml += `<div class="text-sm">Pedido <a href="/pedidos?openPedido=${p.pedidoId}" class="text-blue-600 hover:underline font-medium">#${p.numero}</a>: <b>${formatCurrency(p.montoAplicado)}</b> <span class="text-xs text-gray-500">${estado}</span></div>`
       })
       if (montoSobrante > 0) {
-        resumenHtml += `<div class="text-sm text-blue-600">💰 Sobrante: ${formatCurrency(montoSobrante)}</div>`
+        resumenHtml += `<div class="text-sm text-blue-600">💰 Sobrante ${formatCurrency(montoSobrante)} acreditado a saldo a favor del cliente</div>`
       }
       const facturaIds = [...new Set(pagosAplicados.filter((p) => p.facturaId).map((p) => p.facturaId))]
       if (facturaIds.length > 0) {
