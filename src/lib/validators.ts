@@ -205,6 +205,26 @@ export const CancelarSchema = z.object({
 })
 
 // ====================
+// CONFIRMACIÓN DE PAGO (ADR-PAGO-REPORTADO-CONFIRMADO-001)
+// ====================
+
+export const ConfirmarPagoSchema = z
+  .object({
+    resultado: z.enum(['CONFIRMADO', 'DISCREPANTE']),
+    // Nota de investigación — vive en el ResponsibilityCase, no en Pago.
+    nota: z.string().trim().max(1000).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.resultado === 'DISCREPANTE' && (!data.nota || data.nota.length === 0)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'La nota es obligatoria cuando el resultado es DISCREPANTE',
+        path: ['nota'],
+      })
+    }
+  })
+
+// ====================
 // CORRECCIÓN DE ABONO (ADR-CORRECCION-MONETARIA-001)
 // ====================
 
