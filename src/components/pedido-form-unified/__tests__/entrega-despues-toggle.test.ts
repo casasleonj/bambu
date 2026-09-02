@@ -54,4 +54,10 @@ describe('FIX: toggle "entregar después" — flag-gated, solo venta rápida', (
   it('PedidoUnifiedData declara `entregado?: boolean`', () => {
     expect(source).toMatch(/entregado\?:\s*boolean/)
   })
+
+  it('"entregar después" exige cliente (no se puede diferir una venta anónima)', () => {
+    const idx = source.indexOf('const requiereCliente =')
+    const block = source.slice(idx, idx + 200)
+    expect(block).toMatch(/canal === 'PUNTO' && entregarDespues/)
+  })
 })

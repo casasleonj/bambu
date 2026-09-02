@@ -943,8 +943,13 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
         setPedidoEditando(null)
         refreshPedidos()
         fetchClientes()
+        // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: "entregar después" deja una
+        // entrega/retiro pendiente — el toast debe decirlo (no confundir con
+        // una venta de mostrador ya entregada).
         const msg = data.ventaRapida
-          ? (data.pagos?.length === 0 ? 'Venta registrada (pendiente)' : 'Venta cobrada')
+          ? data.entregado === false
+            ? (data.pagos?.length === 0 ? 'Venta registrada — entrega pendiente' : 'Venta cobrada — entrega pendiente')
+            : (data.pagos?.length === 0 ? 'Venta registrada (pendiente)' : 'Venta cobrada')
           : 'Pedido creado exitosamente'
         toast.success(msg)
       }

@@ -498,7 +498,11 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
     Money.fromDecimal(total),
     Money.fromDecimal(totalPagado)
   ).toDecimal()
-  const requiereCliente = canal === 'DOMICILIO' || saldoPendiente > 0
+  // "Entregar después" crea un pedido PENDIENTE que hay que poder atribuir a
+  // alguien cuando se cumple (ruta o mostrador) — igual que DOMICILIO, exige
+  // cliente (uno nuevo rápido con solo nombre/teléfono sirve).
+  const requiereCliente =
+    canal === 'DOMICILIO' || saldoPendiente > 0 || (canal === 'PUNTO' && entregarDespues)
 
   // Ruta única para aplicar un nuevo objeto `cantidades` (cambio manual de
   // un input O aplicar la sugerencia de patrón de consumo). Centralizada a
@@ -676,7 +680,13 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
     }
     if (total <= 0) { toast.error('Agrega al menos un producto'); return }
     if (requiereCliente && !clienteSeleccionado && !mostrarNuevo) {
-      toast.error(canal === 'DOMICILIO' ? 'Selecciona un cliente para el envío' : 'Selecciona un cliente para registrar el fiado')
+      toast.error(
+        canal === 'DOMICILIO'
+          ? 'Selecciona un cliente para el envío'
+          : entregarDespues
+            ? 'Selecciona un cliente para la entrega posterior'
+            : 'Selecciona un cliente para registrar el fiado',
+      )
       return
     }
     if (mostrarNuevo && (!nuevoCliente.nombre || !nuevoCliente.telefono)) {
@@ -1280,7 +1290,7 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
             </div>
             {entregarDespues && (
               <p className="text-xs text-amber-700 mt-2">
-                El pedido queda <strong>pendiente</strong>{saldoPendiente <= 0 ? ' y anticipado (pagado)' : ''}. Se entrega en una visita posterior.
+                El pedido queda <strong>pendiente</strong>{saldoPendiente <= 0 ? ' y anticipado (pagado)' : ''}. Se entrega o se retira en una visita posterior.
               </p>
             )}
           </div>
