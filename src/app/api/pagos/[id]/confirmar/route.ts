@@ -37,7 +37,12 @@ export async function POST(
   const { id: pagoId } = await params
 
   try {
-    const body = await request.json()
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch {
+      return apiError('Body inválido', 400)
+    }
     const parsed = ConfirmarPagoSchema.safeParse(body)
     if (!parsed.success) return apiError(formatZodError(parsed.error), 400)
     const { resultado, nota } = parsed.data
@@ -71,7 +76,6 @@ export async function POST(
           },
         })
         responsibilityCaseId = caso.id
-        incrementMetric('pago_discrepante_count')
       }
 
       const updated = await tx.pago.update({
@@ -99,6 +103,8 @@ export async function POST(
     })
 
     if (!result.deduped) {
+      // Métrica DESPUÉS del commit — dentro de la tx sobre-cuenta en rollbacks.
+      if (result.responsibilityCaseId) incrementMetric('pago_discrepante_count')
       publishRealtimeEvent('pago.created', result.pago.pedido.clienteId).catch(() => {})
       publishRealtimeEvent('pedido.updated', result.pago.pedido.id).catch(() => {})
     }

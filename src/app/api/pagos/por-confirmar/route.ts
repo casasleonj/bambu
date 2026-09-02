@@ -34,7 +34,10 @@ export async function GET(request: NextRequest) {
     const [pagos, total, agg] = await Promise.all([
       prisma.pago.findMany({
         where,
-        orderBy: { createdAt: 'asc' }, // más viejos primero
+        // más viejos primero; `id` como desempate estable (pagos del mismo
+        // batch offline comparten `createdAt` → sin tiebreaker se duplican /
+        // saltan filas al paginar).
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
         select: {
           id: true,
           monto: true,
@@ -56,7 +59,11 @@ export async function GET(request: NextRequest) {
       prisma.pago.aggregate({ where, _sum: { monto: true } }),
     ])
 
-    const items = pagos.map((p) => ({ ...p, monto: Number(p.monto) }))
+    const items = pagos.map((p) => ({
+      ...p,
+      monto: Number(p.monto),
+      pedido: { ...p.pedido, total: Number(p.pedido.total) },
+    }))
     const totales = { montoPendiente: Number(agg._sum.monto ?? 0), count: total }
 
     return apiSuccess(
