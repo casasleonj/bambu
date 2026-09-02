@@ -21,12 +21,18 @@ export class PrismaPagoRepository implements IPagoRepository {
     }))
   }
 
-  async createMany(pedidoId: string, pagos: PagoData[], tx?: TransactionClient): Promise<void> {
+  async createMany(
+    pedidoId: string,
+    pagos: PagoData[],
+    tx?: TransactionClient,
+    metodosRequieren?: string[],
+  ): Promise<void> {
     const client = tx || prisma
     if (pagos.length === 0) return
-    // ADR-PAGO-REPORTADO-CONFIRMADO-001 §2: clasificación inicial por método,
-    // con override configurable (`Config.METODOS_REQUIEREN_CONFIRMACION`).
-    const metodosConfirmacion = await leerMetodosRequierenConfirmacion(client)
+    // ADR-PAGO-REPORTADO-CONFIRMADO-001 §2: clasificación inicial por método, con
+    // override configurable. El caller (use case) puede pasar la lista ya
+    // resuelta para evitar una lectura de Config dentro de la tx.
+    const metodosConfirmacion = metodosRequieren ?? (await leerMetodosRequierenConfirmacion(client))
     await client.pago.createMany({
       data: pagos.map(p => ({
         pedidoId,

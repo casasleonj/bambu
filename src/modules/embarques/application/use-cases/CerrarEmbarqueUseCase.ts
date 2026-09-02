@@ -21,6 +21,7 @@
 import { prisma } from '@/lib/prisma'
 import { logAudit } from '@/lib/audit'
 import { acquireAdvisoryLockTx } from '@/lib/locks'
+import { leerMetodosRequierenConfirmacion } from '@/lib/pago-confirmacion'
 
 import type { IEmbarqueRepository } from '../../domain/repositories/IEmbarqueRepository'
 import type { IGastoEmbarqueRepository } from '../../domain/repositories/IGastoEmbarqueRepository'
@@ -129,6 +130,12 @@ export class CerrarEmbarqueUseCase {
       const pedidosActualizados: Array<{ id: string; estado: string }> = []
       let totalVentas = 0
 
+      // ADR-PAGO-REPORTADO-CONFIRMADO-001 §2: una sola lectura de Config para
+      // todo el cierre (no una por pedido dentro del lock).
+      const metodosConfirmacion = await leerMetodosRequierenConfirmacion(
+        client as unknown as Parameters<typeof leerMetodosRequierenConfirmacion>[0],
+      )
+
       // 3. Process each pedido (delegate to ProcesarPedidoService)
       for (const cuadre of input.pedidos) {
         const pedido = pedidosRaw.find((p) => p.id === cuadre.pedidoId)
@@ -142,6 +149,7 @@ export class CerrarEmbarqueUseCase {
           this.userId,
           pedidosHijosCreados,
           pedidosActualizados,
+          metodosConfirmacion,
         )
         totalVentas += totalReal
       }
@@ -151,6 +159,7 @@ export class CerrarEmbarqueUseCase {
         input.ventasLibres ?? [],
         input.id,
         this.userId,
+        metodosConfirmacion,
       )
 
       // 5. Reconcile products

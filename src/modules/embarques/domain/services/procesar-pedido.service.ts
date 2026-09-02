@@ -125,6 +125,9 @@ export class ProcesarPedidoService {
     userId: string | undefined,
     pedidosHijosCreados: Array<{ id: string; numero: number }>,
     pedidosActualizados: Array<{ id: string; estado: string }>,
+    // ADR-PAGO-REPORTADO-CONFIRMADO-001 §2: lista ya resuelta (el use case la lee
+    // una vez, no una por pedido dentro del lock del cierre). Fallback al default.
+    metodosRequieren?: string[],
   ): Promise<number> {
     const entProd = cuadre.productosEntregados ?? {
       cPacaAguaEnt: 0,
@@ -224,10 +227,13 @@ export class ProcesarPedidoService {
 
     // Register payments
     // ADR-PAGO-REPORTADO-CONFIRMADO-001: digital cobrado en ruta nace REPORTADO
-    // (§2: métodos configurables vía Config.METODOS_REQUIEREN_CONFIRMACION).
-    const metodosConfirmacion = await leerMetodosRequierenConfirmacion(
-      client as unknown as Parameters<typeof leerMetodosRequierenConfirmacion>[0],
-    )
+    // (§2: métodos configurables). El use case pasa la lista resuelta; si no,
+    // se lee acá (fallback para llamadas directas al service).
+    const metodosConfirmacion =
+      metodosRequieren ??
+      (await leerMetodosRequierenConfirmacion(
+        client as unknown as Parameters<typeof leerMetodosRequierenConfirmacion>[0],
+      ))
     for (const pago of cuadre.pagos) {
       if (pago.monto > 0) {
         await tx.pago.create({
