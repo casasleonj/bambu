@@ -46,6 +46,14 @@ export interface CierreData {
   cobroCartera: number
   fiado: number
   totalNotasCredito: number
+  // ADR-PAGO-REPORTADO-CONFIRMADO-001 §6 — informativo, no altera netoCaja.
+  porConfirmar?: {
+    total: number
+    count: number
+    porMetodo: Partial<Record<'EFECTIVO' | 'TRANSFERENCIA' | 'NEQUI' | 'DAVIPLATA' | 'BONO', number>>
+    diasPreviosCount: number
+    diasPreviosTotal: number
+  }
 
   // Métodos
   efectivo: number
