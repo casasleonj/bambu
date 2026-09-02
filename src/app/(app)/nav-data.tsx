@@ -99,6 +99,12 @@ export const navSections: NavSection[] = [
       ]},
       // ADR-CORRECCION-MONETARIA-001 D.5: abonos + centro de corrección. ADMIN + CONTADOR.
       { href: '/cartera', label: 'Cartera', icon: 'wallet', requiredPermission: 'view:cartera' },
+      // ADR-PAGO-REPORTADO-CONFIRMADO-001 §3 — cola de confirmación. Visible solo
+      // con el flag ON; SIN `requiredPermission` porque el confirmador puede ser
+      // de cualquier rol (Config.USUARIO_CONFIRMA_PAGOS). La página 403ea al resto.
+      ...(process.env.NEXT_PUBLIC_PAGO_CONFIRMACION === 'true'
+        ? [{ href: '/pagos-confirmar', label: 'Pagos por confirmar', icon: 'wallet' }]
+        : []),
       { href: '/gastos', label: 'Gastos', icon: 'wallet', requiredPermission: 'view:gastos', subItems: [
         { href: '/gastos', label: 'Gastos', icon: 'wallet', requiredPermission: 'view:gastos' },
         { href: '/compras', label: 'Compras', icon: 'shopping-cart', requiredPermission: 'view:compras' }

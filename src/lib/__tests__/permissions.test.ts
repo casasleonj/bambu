@@ -125,6 +125,14 @@ describe('view:cartera (ADR-CORRECCION-MONETARIA-001 D.5) — solo ADMIN + CONTA
     expect(isRouteAllowed('/cartera', ROLES.ASISTENTE)).toBe(false)
     expect(isRouteAllowed('/cartera', ROLES.REPARTIDOR)).toBe(false)
   })
+
+  it('/pagos-confirmar NO se gatea por rol — el confirmador es un userId, no un rol (ADR §3)', () => {
+    // Sin entrada en ROUTE_PERMISSION_MAP: cualquier rol autenticado puede
+    // navegar; el endpoint valida `userId === Config.USUARIO_CONFIRMA_PAGOS`.
+    expect(isRouteAllowed('/pagos-confirmar', ROLES.CONTADOR)).toBe(true)
+    expect(isRouteAllowed('/pagos-confirmar', ROLES.ASISTENTE)).toBe(true)
+    expect(isRouteAllowed('/pagos-confirmar', ROLES.ADMIN)).toBe(true)
+  })
 })
 
 describe('SELLADOR permissions', () => {
