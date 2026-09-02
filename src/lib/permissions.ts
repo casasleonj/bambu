@@ -113,6 +113,9 @@ const ROUTE_PERMISSION_MAP: Record<string, Permission> = {
   // ADR-CORRECCION-MONETARIA-001 D.5 — la página llega en g2.4; el mapeo va acá
   // desde ya para que el proxy NUNCA sirva /cartera sin permiso.
   '/cartera': 'view:cartera',
+  // ADR-PAGO-REPORTADO-CONFIRMADO-001 §3 — cola de confirmación de pagos.
+  // El endpoint además valida `userId === Config.USUARIO_CONFIRMA_PAGOS`.
+  '/pagos-confirmar': 'view:cartera',
 }
 
 export function getRoutePermission(pathname: string): Permission | null {
