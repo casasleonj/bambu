@@ -31,22 +31,31 @@ El paso 2 se parte en dos por dificultad muy distinta:
   de por medio, el planificador ya incluye `VENTA_RAPIDA`, `estadoPago` ya se
   proyecta. `entregado: false` → `PENDIENTE` + `ANTICIPADO`. **Implementado.**
 - **venta-libre en ruta** (`/api/pedidos/venta-libre`): el repartidor cobra dinero
-  (efectivo) sobre un embarque activo pero la entrega es posterior. Se difiere a
-  un PR propio con esta regla del PO (2026-09-01):
+  (efectivo) sobre un embarque activo pero la entrega es posterior. Regla del PO
+  (2026-09-01):
 
   > **La custodia del dinero sigue al evento de cobro, no al evento de entrega.**
   > Un `Pago` se concilia en el cierre del embarque en el que fue **recibido /
   > capturado**, independientemente de cuándo se entregue físicamente el pedido.
 
-  Implicación de diseño para ese PR: el pedido diferido queda `PENDIENTE` +
-  `embarqueId = null` (planificable), pero la conciliación de caja del cierre
-  (`coleccionarPagos` / `reconciliarCaja`) debe contar los `Pago` de pedidos
-  cuyo **`embarqueOrigenId`** apunta a ese embarque — no solo los del
-  `embarqueId` actual. `embarqueOrigenId` (paso 1, ya en `main`) es exactamente
-  ese puente. Requiere tocar `src/modules/embarques/domain/**` (autorizado por
-  este ADR). Combinado con `ADR-PAGO-REPORTADO-CONFIRMADO-001`: el pago digital
-  queda `REPORTADO` asociado a ese embarque; la confirmación financiera ocurre
-  después, en escritorio.
+  **Implementado** (`feat/venta-libre-entrega-posterior`). Diseño final:
+  - `entregado: false` (gated por `NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR` en el
+    route, igual que `/api/pedidos`) → el pedido queda `estadoEntrega=PENDIENTE`,
+    `estadoPago` proyectado (`ANTICIPADO` si va prepago), `embarqueId=null`
+    (planificable), `embarqueOrigenId=<embarque>`, `cantEntrega=0`, sin
+    `fotoEntrega` (el `superRefine` del schema solo exige foto si `entregado !== false`).
+  - `elegibilidad.service.ts`: `VENTA_LIBRE` se suma a `ORIGENES_PLANIFICABLES`
+    (las ventas entregadas en el acto no matchean porque están `ENTREGADO`).
+  - Conciliación de caja del cierre (`coleccionarPagos` + `CerrarEmbarqueUseCase`):
+    (a) suma los `Pago` de pedidos con `embarqueOrigenId = <embarque que cierra>`
+    aunque ya no estén asignados a él (`fetchPagosOrigenDiferido`); (b) EXCLUYE
+    los `Pago` de pedidos físicamente en el embarque cuyo `embarqueOrigenId`
+    apunta a otro (evita doble conteo y falso faltante de caja al repartidor).
+  - Combinado con `ADR-PAGO-REPORTADO-CONFIRMADO-001`: el pago digital queda
+    `REPORTADO`; la confirmación financiera ocurre después, en escritorio.
+  - **Fuera de alcance (follow-up):** `totalVentas`/comisión del cierre no incluye
+    las ventas diferidas cobradas en ese embarque (se contabilizan al entregarse).
+    El ADR §0 solo norma la custodia del dinero (caja), no la comisión.
 
 ### 1. La entrega de una venta en ruta / rápida es una dimensión, no un default del formulario
 
@@ -165,6 +174,7 @@ con OFF, `venta-libre`/`venta-rapida` fuerzan `ENTREGADO` como hoy.
 - `/api/cierre` y reportes: una venta en ruta con entrega posterior cuenta como
   venta (dinero cobrado) pero NO como unidad entregada ese día — revisar
   `aguaVendida`/`hieloVendido` del `CierreDia` (usan `cXEnt`, que será 0 → correcto).
-- El planificador ya incluye `origen ∈ {PEDIDO, RECURRENTE, VENTA_RAPIDA}` como
-  elegible (`elegibilidad.service.ts`); habría que sumar `VENTA_LIBRE` con
-  `estadoEntrega = PENDIENTE` a esa lista.
+- El planificador ahora incluye `origen ∈ {PEDIDO, RECURRENTE, VENTA_RAPIDA,
+  VENTA_LIBRE}` como elegible (`elegibilidad.service.ts`). Las ventas libres
+  entregadas en el acto quedan `ENTREGADO` y no matchean; solo las diferidas
+  (`PENDIENTE`, sin embarque) entran al plan.

@@ -154,10 +154,15 @@ export const VentaLibreSchema = z.object({
   })).optional(),
   embarqueId: z.string().min(1),
   obs: z.string().optional(),
-  // fotoEntrega: required for venta-libre + size cap to prevent DoS.
+  // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: `true` (o ausente) = "entregar ahora"
+  // (histórico); `false` = "entregar después" → el pedido queda PENDIENTE +
+  // ANTICIPADO (si va prepago) y `embarqueId=null` (entra al planificador). El
+  // gate real es el flag NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR en el route.
+  entregado: z.boolean().optional(),
+  // fotoEntrega: obligatoria SOLO si se entrega ahora (size cap anti-DoS).
   fotoEntrega: z.string()
-    .min(1, 'Foto de entrega obligatoria')
-    .max(15 * 1024 * 1024, 'Foto demasiado grande (máx 15MB)'),
+    .max(15 * 1024 * 1024, 'Foto demasiado grande (máx 15MB)')
+    .optional(),
   gpsLat: z.number(),
   gpsLng: z.number(),
   offlineId: z.string(),
@@ -181,6 +186,11 @@ export const VentaLibreSchema = z.object({
     direccion: z.string().max(200).optional(),
     barrio: z.string().max(100).optional(),
   }).optional(),
+}).superRefine((data, ctx) => {
+  // "Entregar ahora" exige foto (contrato histórico); "entregar después" no.
+  if (data.entregado !== false && (!data.fotoEntrega || data.fotoEntrega.length === 0)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Foto de entrega obligatoria', path: ['fotoEntrega'] })
+  }
 })
 
 // ====================

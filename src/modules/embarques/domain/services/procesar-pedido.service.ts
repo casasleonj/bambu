@@ -50,6 +50,10 @@ export interface PedidoRawInput {
   direccionEntrega: string | null
   barrioEntrega: string | null
   embarqueId: string | null
+  // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001 §0: embarque en el que se originó el
+  // pedido (venta en ruta). Inmutable ante reasignaciones. Usado por el cierre
+  // para conciliar el `Pago` en el embarque correcto.
+  embarqueOrigenId: string | null
   estadoEntrega: string
   estado: string
   tipo: string

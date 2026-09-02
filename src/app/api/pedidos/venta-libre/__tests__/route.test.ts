@@ -7,7 +7,7 @@
  *   - ADMIN/ASISTENTE with BLOQUEAR=true CAN set precioManual (rule is repartidor-only)
  *   - REPARTIDOR without precioManual passes the check (other rules still apply)
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { NextRequest } from 'next/server'
 
 // ── Mocks ───────────────────────────────────────────────────────────────
@@ -125,8 +125,10 @@ vi.mock('@/lib/pricing', () => ({
   resolverPreciosPedido: (...args: unknown[]) => mockResolverPreciosPedido(...args),
 }))
 vi.mock('@/lib/pedido-utils', () => ({
-  calcularEstadoPago: (total: number, pagado: number) =>
-    pagado >= total ? 'PAGADO' : 'PENDIENTE',
+  calcularEstadoPago: (total: number, pagado: number, estadoEntrega?: string) =>
+    pagado >= total
+      ? (estadoEntrega && estadoEntrega !== 'ENTREGADO' ? 'ANTICIPADO' : 'PAGADO')
+      : 'PENDIENTE',
   puedeFiar: () => true,
   puedeCrearPedido: () => null,
   resolverLimiteFiados: (_cliente: { limitePedidosFiados?: number | null }, _configValor?: string | null) =>
@@ -363,6 +365,80 @@ describe('POST /api/pedidos/venta-libre — BLOQUEAR_PRECIOS_REPARTIDOR', () => 
       }))
       expect(res.status).toBe(201)
       expect(mockPrismaPago.create.mock.calls[0][0].data.confirmacion).toBe('REPORTADO')
+    })
+  })
+
+  describe('ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: entrega posterior (venta en ruta)', () => {
+    const OLD = process.env.NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR
+
+    beforeEach(() => {
+      mockAuth.mockResolvedValue({ user: { id: 'u-asis', role: 'ASISTENTE' } })
+      mockPrismaEmbarque.findUnique.mockResolvedValue({
+        id: 'emb1',
+        estado: 'ABIERTO',
+        trabajadorId: 't1',
+        trabajador: { user: null },
+      })
+    })
+
+    afterEach(() => {
+      if (OLD === undefined) delete process.env.NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR
+      else process.env.NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR = OLD
+    })
+
+    it('flag ON + entregado:false + prepago → PENDIENTE/ANTICIPADO, embarqueId null, embarqueOrigenId conservado, sin foto, cantEntrega 0', async () => {
+      process.env.NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR = 'true'
+      const res = await POST(makeRequest({
+        ...validBody,
+        entregado: false,
+        fotoEntrega: undefined,
+      }))
+      expect(res.status).toBe(201)
+      const data = mockPrismaPedido.create.mock.calls[0][0].data
+      expect(data.estadoEntrega).toBe('PENDIENTE')
+      expect(data.estado).toBe('PENDIENTE')
+      expect(data.estadoPago).toBe('ANTICIPADO')
+      expect(data.embarqueId).toBeNull()
+      expect(data.embarqueOrigenId).toBe('emb1')
+      expect(data.fotoEntrega).toBeNull()
+      expect(data.items.create[0].cantEntrega).toBe(0)
+      expect(data.items.create[0].cantPedido).toBe(2)
+      expect(data.cPacaAguaEnt).toBe(0)
+      expect(data.cPacaAguaPed).toBe(2)
+    })
+
+    it('flag ON + entregado:false SIN prepago → PENDIENTE (no ANTICIPADO)', async () => {
+      process.env.NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR = 'true'
+      const res = await POST(makeRequest({
+        ...validBody,
+        clienteId: 'c1',
+        entregado: false,
+        fotoEntrega: undefined,
+        pagos: [],
+      }))
+      expect(res.status).toBe(201)
+      const data = mockPrismaPedido.create.mock.calls[0][0].data
+      expect(data.estadoEntrega).toBe('PENDIENTE')
+      expect(data.estadoPago).toBe('PENDIENTE')
+    })
+
+    it('flag OFF → entregado:false se ignora, foto obligatoria (400 sin foto)', async () => {
+      delete process.env.NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR
+      const res = await POST(makeRequest({
+        ...validBody,
+        entregado: false,
+        fotoEntrega: undefined,
+      }))
+      expect(res.status).toBe(400)
+    })
+
+    it('flag ON + entregado ausente → ENTREGADO (comportamiento histórico)', async () => {
+      process.env.NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR = 'true'
+      const res = await POST(makeRequest(validBody))
+      expect(res.status).toBe(201)
+      const data = mockPrismaPedido.create.mock.calls[0][0].data
+      expect(data.estadoEntrega).toBe('ENTREGADO')
+      expect(data.embarqueId).toBe('emb1')
     })
   })
 })
