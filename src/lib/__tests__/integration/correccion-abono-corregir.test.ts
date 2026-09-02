@@ -208,4 +208,48 @@ describe('POST /api/cartera/abonos/[id]/corregir', () => {
     const cobroDespues = after.cierre?.cobroCartera ?? after.cobroCartera ?? 0
     expect(cobroAntes - cobroDespues).toBe(5000)
   })
+
+  it('historial del cliente: la corrección aparece como evento CORRECCION_ABONO (D.5)', async () => {
+    const { cliente, abono } = await seedAbono(9000)
+    const { POST } = await import('@/app/api/cartera/abonos/[id]/corregir/route')
+    const r = await POST(req({ tipo: 'FACTURA', motivo: 'aplicado a la factura equivocada' }) as never, {
+      params: Promise.resolve({ id: abono.id }),
+    })
+    expect(r.status).toBe(201)
+
+    const { GET: historialGet } = await import('@/app/api/clientes/[id]/historial/route')
+    const hres = await historialGet(
+      { url: 'http://localhost/api/clientes/x/historial', nextUrl: { searchParams: new URLSearchParams() } } as unknown as import('next/server').NextRequest,
+      { params: Promise.resolve({ id: cliente.id }) },
+    )
+    expect(hres.status).toBe(200)
+    const json = await hres.json()
+    const evt = json.events.find((e: { tipo: string }) => e.tipo === 'CORRECCION_ABONO')
+    expect(evt).toBeDefined()
+    expect(evt.titulo).toMatch(/^Corrección COR-\d+ — FACTURA/)
+    expect(evt.monto).toBe(-9000)
+    expect(evt.metadata.abono).toBe(abono.numero)
+  })
+
+  it('historial: una corrección de HOY sobre una factura VIEJA aparece en la vista de 12 meses', async () => {
+    const { cliente, factura, abono } = await seedAbono(6000)
+    // envejecer la factura y el abono 14 meses
+    const vieja = new Date(Date.now() - 425 * 86400_000)
+    await testPrisma.factura.update({ where: { id: factura.id }, data: { fecha: vieja } })
+    await testPrisma.abono.update({ where: { id: abono.id }, data: { fecha: vieja } })
+
+    const { POST } = await import('@/app/api/cartera/abonos/[id]/corregir/route')
+    await POST(req({ tipo: 'MONTO', montoRevertido: 2000, motivo: 'de más' }) as never, {
+      params: Promise.resolve({ id: abono.id }),
+    })
+
+    const { GET: historialGet } = await import('@/app/api/clientes/[id]/historial/route')
+    const hres = await historialGet(
+      { url: 'http://localhost/api/clientes/x/historial?meses=12', nextUrl: { searchParams: new URLSearchParams('meses=12') } } as unknown as import('next/server').NextRequest,
+      { params: Promise.resolve({ id: cliente.id }) },
+    )
+    const json = await hres.json()
+    // la factura vieja NO aparece (fuera de ventana), pero la corrección SÍ
+    expect(json.events.some((e: { tipo: string; monto?: number }) => e.tipo === 'CORRECCION_ABONO' && e.monto === -2000)).toBe(true)
+  })
 })

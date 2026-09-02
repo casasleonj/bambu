@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth-check'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { getPaginationParams, getPrismaPagination } from '@/lib/pagination'
+import { formatCurrency } from '@/lib/utils'
 import type { TimelineEvent } from '@/app/(app)/clientes/clientes-client/types'
 
 function getDesdeDate(meses: string | null): Date | undefined {
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const fechaFilter = desde ? { gte: desde } : undefined
 
   try {
-    const [pedidos, facturas, casos, notasCredito, auditoria, embarques] = await Promise.all([
+    const [pedidos, facturas, casos, notasCredito, auditoria, embarques, correcciones] = await Promise.all([
       prisma.pedido.findMany({
         where: { clienteId: id, ...(fechaFilter ? { fecha: fechaFilter } : {}) },
         orderBy: { fecha: 'desc' },
@@ -44,7 +45,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         where: { clienteId: id, ...(fechaFilter ? { fecha: fechaFilter } : {}) },
         orderBy: { fecha: 'desc' },
         take: 200,
-        include: { abonos: true },
+        // ADR-CORRECCION-MONETARIA-001 D.5: se incluyen las correcciones para
+        // anotar el abono como "revertido"; los eventos CORRECCION_ABONO en sí
+        // vienen de una query aparte (keyed por `correccion.createdAt`, no por
+        // `factura.fecha`) para que una corrección de hoy sobre una factura
+        // vieja igual aparezca en la vista de "últimos N meses".
+        include: { abonos: { include: { correcciones: true } } },
       }),
       prisma.caso.findMany({
         where: { clienteId: id, ...(fechaFilter ? { createdAt: fechaFilter } : {}) },
@@ -81,6 +87,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             where: { clienteId: id },
             select: { id: true, numero: true, estadoEntrega: true },
           },
+        },
+      }),
+      // ADR-CORRECCION-MONETARIA-001 D.5: correcciones de abono del cliente,
+      // filtradas por SU PROPIA fecha (`createdAt`), no por la de la factura.
+      prisma.correccionAbono.findMany({
+        where: { abono: { clienteId: id }, ...(fechaFilter ? { createdAt: fechaFilter } : {}) },
+        orderBy: { createdAt: 'desc' },
+        take: 200,
+        include: {
+          abono: { select: { numero: true, factura: { select: { id: true, numero: true } } } },
+          autorizadoPor: { select: { username: true } },
         },
       }),
     ])
@@ -144,17 +161,41 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       })
 
       for (const abono of f.abonos || []) {
+        const revertido = (abono.correcciones || []).reduce((s, c) => s + Number(c.montoRevertido), 0)
         events.push({
           id: `abono-${abono.id}`,
           tipo: 'ABONO',
           fecha: abono.fecha.toISOString(),
           titulo: `Abono Factura #${f.numero}`,
+          descripcion:
+            revertido > 0
+              ? `Revertido ${formatCurrency(revertido)} · neto ${formatCurrency(Number(abono.monto) - revertido)}`
+              : undefined,
           monto: Number(abono.monto),
           metodo: abono.metodoPago,
           numero: f.numero,
           link: `/facturas?openFactura=${f.id}`,
         })
       }
+    }
+
+    // ADR-CORRECCION-MONETARIA-001 D.5: correcciones como eventos propios.
+    for (const c of correcciones) {
+      events.push({
+        id: `correccion-${c.id}`,
+        tipo: 'CORRECCION_ABONO',
+        fecha: c.createdAt.toISOString(),
+        titulo: `Corrección ${c.numero} — ${c.tipo}`,
+        descripcion: c.motivo,
+        monto: -Number(c.montoRevertido),
+        numero: c.numero,
+        link: c.abono.factura ? `/facturas?openFactura=${c.abono.factura.id}` : undefined,
+        metadata: {
+          abono: c.abono.numero,
+          autorizadoPor: c.autorizadoPor?.username ?? null,
+          responsibilityCaseId: c.responsibilityCaseId ?? null,
+        },
+      })
     }
 
     // Casos
