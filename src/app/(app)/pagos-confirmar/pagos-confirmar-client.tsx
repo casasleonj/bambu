@@ -5,7 +5,7 @@
 // resto). Gated por NEXT_PUBLIC_PAGO_CONFIRMACION en el nav; la página en sí
 // también muestra un aviso si el flag está OFF.
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { formatCurrency } from '@/lib/utils'
 import { Modal } from '@/components/modal'
@@ -28,44 +28,62 @@ interface PagoRow {
 
 export default function PagosConfirmarClient() {
   const [rows, setRows] = useState<PagoRow[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [montoPendiente, setMontoPendiente] = useState(0)
+  const [totalCount, setTotalCount] = useState(0)
+  const [totalPages, setTotalPages] = useState(1)
+  const [page, setPage] = useState(1)
   const [confirmando, setConfirmando] = useState<PagoRow | null>(null)
 
+  const seqRef = useRef(0)
+
   const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
+    const seq = ++seqRef.current
     try {
-      const res = await fetch('/api/pagos/por-confirmar?page=1&pageSize=50', {
+      const res = await fetch(`/api/pagos/por-confirmar?page=${page}&pageSize=50`, {
         credentials: 'include',
         cache: 'no-store',
         signal: AbortSignal.timeout(8_000),
       })
+      if (seq !== seqRef.current) return // respuesta stale — descartar
       if (res.status === 403) {
         setError('Solo el usuario designado para confirmar pagos puede ver esta cola.')
         setRows([])
+        setLoaded(true)
         return
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const json = await res.json()
+      if (seq !== seqRef.current) return
       setRows(json.data ?? [])
       setMontoPendiente(json.totales?.montoPendiente ?? 0)
+      setTotalCount(json.totales?.count ?? json.total ?? 0)
+      setTotalPages(json.totalPages ?? 1)
+      setError(null)
+      setLoaded(true)
     } catch {
-      setError('No se pudo cargar la cola de pagos.')
-    } finally {
-      setLoading(false)
+      if (seq !== seqRef.current) return
+      // Refetch en background: si ya había datos, NO los borramos — solo un toast.
+      if (loaded && rows.length > 0) {
+        toast.error('No se pudo refrescar la cola (se muestran los últimos datos)')
+      } else {
+        setError('No se pudo cargar la cola de pagos.')
+        setLoaded(true)
+      }
     }
-  }, [])
+  }, [page, loaded, rows.length])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load()
   }, [load])
 
+  // `pago.*` se emite por cada pago de fiado del sistema → debounce alto para no
+  // recargar la tabla constantemente.
   useRealtimeListener(['pago.*'], () => {
     load()
-  })
+  }, { debounceMs: 4000 })
 
   if (!FLAG_ON) {
     return (
@@ -83,7 +101,7 @@ export default function PagosConfirmarClient() {
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <h1 className="text-xl font-semibold">Pagos por confirmar</h1>
         <div className="text-sm text-gray-600">
-          Pendiente de verificar: <b>{formatCurrency(montoPendiente)}</b>
+          {totalCount} pendiente{totalCount === 1 ? '' : 's'} · a verificar: <b>{formatCurrency(montoPendiente)}</b>
         </div>
       </div>
 
@@ -94,9 +112,9 @@ export default function PagosConfirmarClient() {
       </p>
 
       {error && <div className="text-sm text-red-600">{error}</div>}
-      {loading && <div className="text-sm text-gray-500">Cargando…</div>}
+      {!loaded && !error && <div className="text-sm text-gray-500">Cargando…</div>}
 
-      {!loading && !error && (
+      {loaded && !error && (
         <div className="overflow-x-auto border rounded">
           <table className="min-w-full text-sm">
             <thead className="bg-gray-50 text-left">
@@ -139,6 +157,22 @@ export default function PagosConfirmarClient() {
               )}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {loaded && !error && totalPages > 1 && (
+        <div className="flex items-center gap-2 text-sm">
+          <button className="border rounded px-2 py-1 disabled:opacity-40" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+            ←
+          </button>
+          <span>{page} / {totalPages}</span>
+          <button
+            className="border rounded px-2 py-1 disabled:opacity-40"
+            disabled={page >= totalPages}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            →
+          </button>
         </div>
       )}
 
