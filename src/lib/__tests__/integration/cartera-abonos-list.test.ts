@@ -78,4 +78,21 @@ describe('GET /api/cartera/abonos', () => {
     expect(p1.data).toHaveLength(2)
     expect(p1.totalPages).toBe(2)
   })
+
+  it('totales: totalNeto = totalAbonado - totalRevertido', async () => {
+    const { GET } = await import('@/app/api/cartera/abonos/route')
+    const json = await (await GET(req(`clienteId=${clienteId}`))).json()
+    expect(json.totales.totalAbonado).toBe(30000)
+    expect(json.totales.totalRevertido).toBe(3000)
+    expect(json.totales.totalNeto).toBe(27000)
+  })
+
+  it('q filtra en TODO el set (no solo la página): busca por nº de factura', async () => {
+    const { GET } = await import('@/app/api/cartera/abonos/route')
+    const alguno = await testPrisma.abono.findFirst({ where: { clienteId }, include: { factura: true } })
+    const numFactura = alguno!.factura.numero
+    const json = await (await GET(req(`q=${encodeURIComponent(numFactura)}`))).json()
+    expect(json.data.length).toBeGreaterThanOrEqual(1)
+    expect(json.data.every((a: { factura: { numero: string } | null }) => a.factura?.numero === numFactura)).toBe(true)
+  })
 })

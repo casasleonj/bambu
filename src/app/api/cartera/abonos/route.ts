@@ -29,6 +29,7 @@ export async function GET(request: NextRequest) {
     const facturaId = sp.get('facturaId')
     const metodo = sp.get('metodo')
     const estado = sp.get('estado')
+    const q = sp.get('q')?.trim()
     const dateFilter = buildDateRangeFilter(sp.get('desde'), sp.get('hasta'))
 
     const where: Prisma.AbonoWhereInput = {}
@@ -38,8 +39,16 @@ export async function GET(request: NextRequest) {
     if (dateFilter) where.fecha = dateFilter
     if (estado === 'corregido') where.correcciones = { some: {} }
     if (estado === 'sin-corregir') where.correcciones = { none: {} }
+    // búsqueda libre server-side: nº abono / nombre cliente / nº factura.
+    if (q) {
+      where.OR = [
+        { numero: { contains: q, mode: 'insensitive' } },
+        { cliente: { nombre: { contains: q, mode: 'insensitive' } } },
+        { factura: { numero: { contains: q, mode: 'insensitive' } } },
+      ]
+    }
 
-    const [abonos, total, agg] = await Promise.all([
+    const [abonos, total, agg, revAgg] = await Promise.all([
       prisma.abono.findMany({
         where,
         orderBy: { fecha: 'desc' },
@@ -70,6 +79,7 @@ export async function GET(request: NextRequest) {
       }),
       prisma.abono.count({ where }),
       prisma.abono.aggregate({ where, _sum: { monto: true } }),
+      prisma.correccionAbono.aggregate({ where: { abono: where }, _sum: { montoRevertido: true } }),
     ])
 
     // enriquecer con el neto revertido por abono (para la UI)
@@ -85,8 +95,12 @@ export async function GET(request: NextRequest) {
       }
     })
 
+    const totalAbonado = Number(agg._sum.monto ?? 0)
+    const totalRevertido = Number(revAgg._sum.montoRevertido ?? 0)
     const totales = {
-      totalAbonado: Number(agg._sum.monto ?? 0),
+      totalAbonado,
+      totalRevertido,
+      totalNeto: totalAbonado - totalRevertido,
       count: total,
     }
 

@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 import { formatCurrency } from '@/lib/utils'
 import { Modal } from '@/components/modal'
 import { generateUUID } from '@/lib/uuid'
+import { useRealtimeListener } from '@/hooks/use-realtime-listener'
 
 interface Correccion {
   id: string
@@ -48,11 +49,22 @@ export default function CarteraClient() {
   const [error, setError] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
-  const [totalAbonado, setTotalAbonado] = useState(0)
+  const [totalNeto, setTotalNeto] = useState(0)
   const [estado, setEstado] = useState<'' | 'corregido' | 'sin-corregir'>('')
   const [search, setSearch] = useState('')
+  const [q, setQ] = useState('') // valor debounced que va al server
 
   const [corrigiendo, setCorrigiendo] = useState<AbonoRow | null>(null)
+
+  // debounce del texto de búsqueda → param `q` server-side (filtra TODO el set,
+  // no solo la página actual).
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setPage(1)
+      setQ(search.trim())
+    }, 350)
+    return () => clearTimeout(t)
+  }, [search])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -60,7 +72,12 @@ export default function CarteraClient() {
     try {
       const params = new URLSearchParams({ page: String(page), pageSize: '20' })
       if (estado) params.set('estado', estado)
-      const res = await fetch(`/api/cartera/abonos?${params}`)
+      if (q) params.set('q', q)
+      const res = await fetch(`/api/cartera/abonos?${params}`, {
+        credentials: 'include',
+        cache: 'no-store',
+        signal: AbortSignal.timeout(8_000),
+      })
       if (res.status === 403) {
         setError('No tenés permiso para ver la cartera.')
         return
@@ -69,36 +86,34 @@ export default function CarteraClient() {
       const json = await res.json()
       setRows(json.data ?? [])
       setTotalPages(json.totalPages ?? 1)
-      setTotalAbonado(json.totales?.totalAbonado ?? 0)
+      setTotalNeto(json.totales?.totalNeto ?? 0)
     } catch {
       setError('No se pudo cargar la lista de abonos.')
     } finally {
       setLoading(false)
     }
-  }, [page, estado])
+  }, [page, estado, q])
 
   useEffect(() => {
-    // Fetch de datos al montar / cambiar page-estado — side effect de red real,
+    // Fetch de datos al montar / cambiar page-estado-q — side effect de red real,
     // no derivable durante el render.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load()
   }, [load])
 
-  const filtered = search
-    ? rows.filter(
-        (r) =>
-          r.numero.toLowerCase().includes(search.toLowerCase()) ||
-          (r.cliente?.nombre ?? '').toLowerCase().includes(search.toLowerCase()) ||
-          (r.factura?.numero ?? '').toLowerCase().includes(search.toLowerCase()),
-      )
-    : rows
+  // Otro usuario aplicó una corrección → refrescar (el corregir route emite pago.created).
+  useRealtimeListener(['pago.*'], () => {
+    load()
+  })
+
+  const filtered = rows
 
   return (
     <div className="p-4 space-y-4" data-testid="cartera-page">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <h1 className="text-xl font-semibold">Cartera — Abonos</h1>
         <div className="text-sm text-gray-600">
-          Total abonado (filtro actual): <b>{formatCurrency(totalAbonado)}</b>
+          Total neto (filtro actual): <b>{formatCurrency(totalNeto)}</b>
         </div>
       </div>
 
@@ -242,6 +257,8 @@ function CorregirModal({
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),
+        credentials: 'include',
+        signal: AbortSignal.timeout(10_000),
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) {
