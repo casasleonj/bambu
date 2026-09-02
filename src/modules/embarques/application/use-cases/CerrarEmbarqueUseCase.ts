@@ -324,9 +324,22 @@ export class CerrarEmbarqueUseCase {
 
   /**
    * ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001 §0: pagos de pedidos originados como
-   * venta en ruta en este embarque cuya entrega quedó pendiente (ya no están
-   * asignados a él, o fueron reasignados a otro). Su dinero se concilia en el
-   * cierre de este embarque —donde se cobró— sin importar dónde se entreguen.
+   * venta en ruta en este embarque cuya entrega quedó PENDIENTE (aún no
+   * entregados; ya no están asignados a este embarque). Su dinero se concilia
+   * en el cierre de este embarque —donde se cobró— sin importar dónde se
+   * entreguen finalmente.
+   *
+   * Se excluyen los ya ENTREGADO/ANULADO/CANCELADO:
+   *  - ENTREGADO: el cierre del embarque que los entregó ya procesó su cuadre
+   *    (`procesarPedidoService`) y es el responsable de su conciliación; traer
+   *    acá sus pagos posteriores (saldo cobrado en la entrega) los duplicaría.
+   *  - ANULADO/CANCELADO: `AnularPedidoUseCase` no revierte las filas `Pago`
+   *    (deuda de G2/C2); contarlas infla el efectivo esperado y genera un
+   *    falso faltante de caja contra el repartidor.
+   *
+   * Limitación conocida (follow-up en el ADR): la conciliación es a
+   * granularidad de pedido, no de `Pago`. El fix correcto es un tag
+   * `Pago.embarqueId` con el embarque donde se capturó cada pago.
    */
   private async fetchPagosOrigenDiferido(
     embarqueId: string,
@@ -335,7 +348,9 @@ export class CerrarEmbarqueUseCase {
     const rows = await client.pedido.findMany({
       where: {
         embarqueOrigenId: embarqueId,
+        // Prisma `not` no matchea NULL → hay que enumerar el caso null aparte.
         OR: [{ embarqueId: null }, { embarqueId: { not: embarqueId } }],
+        estadoEntrega: { notIn: ['ENTREGADO', 'ANULADO', 'CANCELADO'] },
       },
       select: { pagos: { select: { metodo: true, monto: true } } },
     })

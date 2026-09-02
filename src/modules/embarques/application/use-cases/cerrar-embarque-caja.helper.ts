@@ -36,6 +36,13 @@ export function coleccionarPagos(
     }
     // §0: pedido reasignado desde otro embarque de origen → su dinero se
     // concilia allá, no acá. Evita doble conteo y falsos faltantes de caja.
+    //
+    // INVARIANTE (frágil, follow-up en el ADR): hoy `embarqueOrigenId` SOLO lo
+    // escriben los flujos de venta en ruta (`venta-libre` route +
+    // `crear-ventas-libres.service`). Si en el futuro se usara para pedidos
+    // normales reasignados, este `continue` omitiría sus pagos silenciosamente.
+    // El fix correcto es un tag `Pago.embarqueId` (conciliar por pago, no por
+    // pedido).
     if (
       opts?.embarqueId &&
       pedidoConPagos.embarqueOrigenId &&

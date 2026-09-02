@@ -105,6 +105,46 @@ describe('CerrarEmbarqueUseCase — venta en ruta con entrega posterior (§0 cus
     await testPrisma.trabajador.delete({ where: { id: embarque.trabajadorId } })
   })
 
+  it('un pedido diferido ANULADO no aporta su Pago al cierre del origen (evita falso faltante)', async () => {
+    const { embarque } = await crearEmbarque(30_000)
+
+    const pedido = await testPrisma.pedido.create({
+      data: {
+        clienteId,
+        canal: 'DOMICILIO',
+        origen: 'VENTA_LIBRE',
+        total: 18_000,
+        totalPagado: 0, // AnularPedidoUseCase pone totalPagado=0
+        saldo: 18_000, // chk_pedido_saldo_calc: saldo = total - totalPagado
+        estadoEntrega: 'ANULADO',
+        estado: 'ANULADO',
+        estadoPago: 'ANULADO',
+        embarqueId: null,
+        embarqueOrigenId: embarque.id,
+      },
+    })
+    // AnularPedidoUseCase NO borra las filas Pago (deuda G2/C2).
+    await testPrisma.pago.create({
+      data: { pedidoId: pedido.id, metodo: 'EFECTIVO', monto: 18_000, confirmacion: 'CONFIRMADO' },
+    })
+
+    const result = await buildUseCase().execute({
+      id: embarque.id,
+      pedidos: [],
+      gastos: [],
+      dineroEntregado: 30_000,
+      dryRun: true,
+    })
+
+    expect(result.caja.efectivoEsperado).toBe(0)
+    expect(result.caja.efectivoReal).toBe(30_000)
+
+    await testPrisma.pago.deleteMany({ where: { pedidoId: pedido.id } })
+    await testPrisma.pedido.delete({ where: { id: pedido.id } })
+    await testPrisma.embarque.delete({ where: { id: embarque.id } })
+    await testPrisma.trabajador.delete({ where: { id: embarque.trabajadorId } })
+  })
+
   it('un pedido físicamente en el embarque pero originado en OTRO no aporta su Pago (evita doble conteo)', async () => {
     const origen = await crearEmbarque(0, 'ABIERTO')
     const { embarque } = await crearEmbarque(30_000)

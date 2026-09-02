@@ -53,9 +53,23 @@ El paso 2 se parte en dos por dificultad muy distinta:
     apunta a otro (evita doble conteo y falso faltante de caja al repartidor).
   - Combinado con `ADR-PAGO-REPORTADO-CONFIRMADO-001`: el pago digital queda
     `REPORTADO`; la confirmación financiera ocurre después, en escritorio.
-  - **Fuera de alcance (follow-up):** `totalVentas`/comisión del cierre no incluye
-    las ventas diferidas cobradas en ese embarque (se contabilizan al entregarse).
-    El ADR §0 solo norma la custodia del dinero (caja), no la comisión.
+  - **Fuera de alcance (follow-ups):**
+    - `totalVentas`/comisión del cierre no incluye las ventas diferidas cobradas
+      en ese embarque (se contabilizan al entregarse). El ADR §0 solo norma la
+      custodia del dinero (caja), no la comisión.
+    - **Conciliación por pedido, no por `Pago`.** `fetchPagosOrigenDiferido` +
+      el `continue` de `coleccionarPagos` operan a granularidad de pedido
+      (`embarqueOrigenId`). Casos borde no cubiertos: (a) el saldo de un fiado
+      diferido cobrado en un embarque distinto al de la venta se atribuye por
+      pedido, no por pago; (b) si el embarque de origen nunca se cierra, ese
+      dinero no se concilia en ningún cierre. Mitigación aplicada:
+      `fetchPagosOrigenDiferido` excluye pedidos `ENTREGADO/ANULADO/CANCELADO`
+      (el cierre que los entregó, o la anulación, ya son responsables). **Fix
+      correcto (no hecho): tag `Pago.embarqueId`** con el embarque donde se
+      capturó cada pago → conciliar `sum(Pago WHERE embarqueId = E)` sin
+      depender del pedido. Requiere migración + backfill + set en los ~3 sitios
+      de captura con contexto de embarque (`venta-libre`, `crear-ventas-libres`,
+      `procesar-pedido`).
 
 ### 1. La entrega de una venta en ruta / rápida es una dimensión, no un default del formulario
 
