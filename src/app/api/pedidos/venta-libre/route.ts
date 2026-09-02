@@ -39,6 +39,16 @@ export async function POST(request: NextRequest) {
 
     const { clienteId, items, pagos, embarqueId, obs, fotoEntrega, gpsLat, gpsLng, offlineId } = parsed.data
 
+    // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: "entregar ahora" vs "después". Gate
+    // por flag durante el rollout: con el flag OFF, `entregado` se ignora.
+    const ventaRutaPosteriorOn = process.env.NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR === 'true'
+    const entregarAhora = !ventaRutaPosteriorOn || parsed.data.entregado !== false
+    // Guard autoritativo de foto: el schema la salta si `entregado === false`,
+    // pero con el flag OFF ese `false` se ignora → la foto vuelve a ser obligatoria.
+    if (entregarAhora && (!fotoEntrega || fotoEntrega.length === 0)) {
+      return apiError('Foto de entrega obligatoria', 400)
+    }
+
     // FASE 7 (ADR-OFFLINE-001, §11): timestamps de la venta espontánea.
     const serverReceivedAt = new Date()
     const occurredAt = parsed.data.occurredAt ? new Date(parsed.data.occurredAt) : null
@@ -154,7 +164,10 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      const estadoPago = calcularEstadoPago(total, totalPagado)
+      // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: la entrega define el estado.
+      const estadoEntregaFinal = entregarAhora ? EstadoEntrega.ENTREGADO : EstadoEntrega.PENDIENTE
+      // estadoPago PROYECTADO con el estado real: prepago + entrega pendiente → ANTICIPADO (G5.1).
+      const estadoPago = calcularEstadoPago(total, totalPagado, estadoEntregaFinal)
 
       // 6b. Verificar límite de fiados si el pedido va a quedar con saldo.
       // FIX C-FIADOS-1: solo pedidos ENTREGADOS con saldo > 0 cuentan.
@@ -200,6 +213,9 @@ export async function POST(request: NextRequest) {
       const itemsParaLegacy = itemsParaPrecios.map(i => ({
         producto: i.codigo,
         cantidad: i.cantidad,
+        // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: si la entrega queda pendiente,
+        // no hay unidades entregadas todavía (cantEntrega = 0).
+        cantEntrega: entregarAhora ? i.cantidad : 0,
         precio: precioMap[i.codigo] || 0,
       }))
       const legacyFields = buildPedidoLegacyFields(
@@ -214,17 +230,19 @@ export async function POST(request: NextRequest) {
           tipo: 'ENVIO',
           canal,
           origen: OrigenPedido.VENTA_LIBRE,
-          estadoEntrega: EstadoEntrega.ENTREGADO,
+          estadoEntrega: estadoEntregaFinal,
           estadoPago,
-          estado: EstadoEntrega.ENTREGADO, // legacy
-          embarqueId,
-          // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: embarque de origen inmutable.
+          estado: estadoEntregaFinal, // legacy
+          // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: si se entrega después, el pedido
+          // NO queda asignado a un embarque (queda planificable); pero el embarque
+          // de origen se conserva para conciliar el `Pago` en su cierre (§0).
+          embarqueId: entregarAhora ? embarqueId : null,
           embarqueOrigenId: embarqueId,
           total,
           totalPagado,
           saldo: total - totalPagado,
-          obs: obs || 'Venta libre en ruta',
-          fotoEntrega: fotoUrl || null,
+          obs: obs || (entregarAhora ? 'Venta libre en ruta' : 'Venta libre en ruta (entrega posterior)'),
+          fotoEntrega: entregarAhora ? (fotoUrl || null) : null,
           gpsLat: gpsLat || null,
           gpsLng: gpsLng || null,
           offlineId: offlineId || null,
@@ -237,7 +255,7 @@ export async function POST(request: NextRequest) {
             create: itemsParaPrecios.map(i => ({
               producto: i.codigo,
               cantPedido: i.cantidad,
-              cantEntrega: i.cantidad,
+              cantEntrega: entregarAhora ? i.cantidad : 0,
               precio: precioMap[i.codigo] || 0,
               subtotal: (precioMap[i.codigo] || 0) * i.cantidad,
             })),
@@ -305,7 +323,7 @@ export async function POST(request: NextRequest) {
       entidad: 'Pedido',
       registroId: result.id,
       accion: 'CREATE',
-      datos: { numero: result.numero, origen: 'VENTA_LIBRE', total: Number(result.total), embarqueId },
+      datos: { numero: result.numero, origen: 'VENTA_LIBRE', total: Number(result.total), embarqueId, entregado: entregarAhora },
       usuarioId: authResult.user?.id,
     })
 

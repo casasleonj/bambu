@@ -38,12 +38,20 @@ describe('esPedidoElegible', () => {
     expect(esPedidoElegible(base({ canal: 'PUNTO' }), FECHA)).toBe(false)
   })
 
-  it('origen VENTA_LIBRE → no elegible', () => {
-    expect(esPedidoElegible(base({ origen: 'VENTA_LIBRE' }), FECHA)).toBe(false)
-  })
-
   it('VENTA_RAPIDA a domicilio → elegible', () => {
     expect(esPedidoElegible(base({ origen: 'VENTA_RAPIDA' }), FECHA)).toBe(true)
+  })
+
+  // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: venta libre con "entregar después"
+  // queda PENDIENTE + sin embarque → debe entrar al plan.
+  it('VENTA_LIBRE pendiente sin embarque (entrega posterior) → elegible', () => {
+    expect(esPedidoElegible(base({ origen: 'VENTA_LIBRE' }), FECHA)).toBe(true)
+  })
+
+  it('VENTA_LIBRE ya entregada en el acto → no elegible (estadoEntrega ENTREGADO)', () => {
+    expect(
+      esPedidoElegible(base({ origen: 'VENTA_LIBRE', estadoEntrega: 'ENTREGADO' }), FECHA),
+    ).toBe(false)
   })
 
   it('fecha futura > F → no elegible', () => {
