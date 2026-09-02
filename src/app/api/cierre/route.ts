@@ -12,6 +12,32 @@ import { notifyEvent } from '@/lib/notifications/notify-event'
 import { NotificationEventType } from '@/lib/notifications/event-types'
 import { acquireAdvisoryLockTx } from '@/lib/locks'
 
+type PagoMetodoMonto = { metodo: MetodoPago; monto: unknown }
+type DiasPreviosAgg = { _count: number; _sum: { monto: unknown } }
+
+/**
+ * ADR-PAGO-REPORTADO-CONFIRMADO-001 §6 — desglose informativo de pagos sin
+ * confirmar para el reporte de cierre. Una sola pasada sobre los pagos.
+ */
+function buildPorConfirmar(pagosHoy: PagoMetodoMonto[], diasPrevios: DiasPreviosAgg) {
+  const porMetodo: Record<string, number> = {
+    EFECTIVO: 0, TRANSFERENCIA: 0, NEQUI: 0, DAVIPLATA: 0, BONO: 0,
+  }
+  let total = 0
+  for (const p of pagosHoy) {
+    const m = Number(p.monto)
+    total += m
+    if (p.metodo in porMetodo) porMetodo[p.metodo] += m
+  }
+  return {
+    total,
+    count: pagosHoy.length,
+    porMetodo,
+    diasPreviosCount: diasPrevios._count,
+    diasPreviosTotal: Number(diasPrevios._sum.monto ?? 0),
+  }
+}
+
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
@@ -37,6 +63,7 @@ export async function GET(request: NextRequest) {
       const reporte = {
         cobroVentasHoy: 0,
         cobroCartera: 0,
+        porConfirmar: { total: 0, count: 0, porMetodo: {}, diasPreviosCount: 0, diasPreviosTotal: 0 },
         totalNotasCredito: 0,
         ventasPorOrigen: [],
         facturasEmitidas: 0,
@@ -154,6 +181,8 @@ export async function GET(request: NextRequest) {
       ventasPorOrigenRaw,
       descuentos,
       correccionesAbonoAgg,
+      pagosReportadosHoyRaw,
+      reportadosDiasPreviosAgg,
     ] = await prisma.$transaction([
       prisma.embarque.findMany({
         where: { fecha: dateRange, estado: EstadoEmbarque.ABIERTO },
@@ -234,6 +263,19 @@ export async function GET(request: NextRequest) {
         where: { abono: { fecha: dateRange } },
         _sum: { montoRevertido: true },
       }),
+      // ADR-PAGO-REPORTADO-CONFIRMADO-001 §6: pagos REPORTADO cobrados HOY (por
+      // `pago.createdAt`, no por `pedido.fecha` — un pago de fiado de hoy sobre
+      // un pedido viejo también cuenta).
+      prisma.pago.findMany({
+        where: { confirmacion: 'REPORTADO', createdAt: dateRange },
+        select: { metodo: true, monto: true },
+      }),
+      // ...y los REPORTADO de días anteriores (advertencia, no bloquea).
+      prisma.pago.aggregate({
+        where: { confirmacion: 'REPORTADO', createdAt: { lt: startOfDay } },
+        _sum: { monto: true },
+        _count: true,
+      }),
     ])
 
     const totalNC = notasCredito.reduce((sum, nc) => sum + Number(nc.monto), 0)
@@ -275,6 +317,11 @@ export async function GET(request: NextRequest) {
       abonos.reduce((sum, a) => sum + Number(a.monto), 0) -
       Number(correccionesAbonoAgg._sum.montoRevertido ?? 0)
     const cobroVentasHoy = efectivo + transferencia + nequi + daviplata + bono
+
+    // ADR-PAGO-REPORTADO-CONFIRMADO-001 §6: desglose INFORMATIVO de pagos aún
+    // REPORTADO cobrados HOY. NO altera netoCaja — el cierre suma todos los
+    // pagos por método como siempre.
+    const porConfirmar = buildPorConfirmar(pagosReportadosHoyRaw, reportadosDiasPreviosAgg)
 
     const facturasPagadas = facturas.filter(f => f.estado === EstadoFactura.PAGADA)
     const facturasParcial = facturas.filter(f => f.estado === EstadoFactura.PARCIAL)
@@ -338,6 +385,9 @@ export async function GET(request: NextRequest) {
         cobroCartera,
         fiado,
         totalNotasCredito: totalNC,
+
+        // ADR-PAGO-REPORTADO-CONFIRMADO-001 §6 — informativo, no altera netoCaja.
+        porConfirmar,
 
         // Métodos de pago
         efectivo,
@@ -466,6 +516,22 @@ export async function POST(request: NextRequest) {
 
   const userId = (authResult.user as { id?: string } | undefined)?.id
 
+  // ADR-PAGO-REPORTADO-CONFIRMADO-001 §6: info de pagos sin confirmar (solo
+  // warning) — lectura FUERA de la tx Serializable del cierre para no ampliar
+  // su predicate-lock set (esta consulta escanea todo el histórico REPORTADO).
+  const [pagosReportadosHoyRaw, reportadosDiasPreviosAgg] = await Promise.all([
+    prisma.pago.findMany({
+      where: { confirmacion: 'REPORTADO', createdAt: { gte: startOfDay, lt: nextDay } },
+      select: { metodo: true, monto: true },
+    }),
+    prisma.pago.aggregate({
+      where: { confirmacion: 'REPORTADO', createdAt: { lt: startOfDay } },
+      _sum: { monto: true },
+      _count: true,
+    }),
+  ])
+  const porConfirmar = buildPorConfirmar(pagosReportadosHoyRaw, reportadosDiasPreviosAgg)
+
   const MAX_RETRIES = 3
   let lastError: Error | null = null
 
@@ -553,6 +619,8 @@ export async function POST(request: NextRequest) {
           abonos.reduce((sum, a) => sum + Number(a.monto), 0) -
           Number(correccionesAbonoAgg._sum.montoRevertido ?? 0)
         const gastosTotal = Number(gastosAgg._sum.monto) || 0
+        // ADR-PAGO-REPORTADO-CONFIRMADO-001 §6 — `porConfirmar` calculado arriba,
+        // fuera de la tx (informativo, no altera netoCaja).
 
         // 6. Calculate netoCaja server-side
         const netoCaja = Number(parsed.data.baseDia) + cobroVentasHoy + cobroCartera - gastosTotal - Number(parsed.data.comisiones) - Number(parsed.data.salarios)
@@ -567,6 +635,7 @@ export async function POST(request: NextRequest) {
         reporteData._version = '2.0'
         reporteData.cobroVentasHoy = cobroVentasHoy
         reporteData.cobroCartera = cobroCartera
+        reporteData.porConfirmar = porConfirmar
         reporteData.totalVentas = totalVentas
         reporteData.totalNotasCredito = totalNC
 
