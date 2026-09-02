@@ -15,6 +15,7 @@ import { prisma } from '@/lib/prisma'
 import { Money, calcularSaldo } from '@/shared/domain'
 import { registrarReceivableEntry, detectarDivergencia, registrarDivergencia } from '@/lib/receivable-entry'
 import { datosConfirmacionInicial } from '@/lib/pago-confirmacion'
+import { isConsumidorFinalCanonical } from '@/lib/cliente-canonical'
 
 export async function POST(request: NextRequest) {
   // FIX C-1: solo ADMIN/ASISTENTE pueden registrar pagos de fiado.
@@ -75,7 +76,9 @@ export async function POST(request: NextRequest) {
             })),
             montoAplicado: montoAplicadoPrevio,
             montoSobrante: Math.max(0, monto - montoAplicadoPrevio),
-            saldoFavorAcreditado: Math.max(0, monto - montoAplicadoPrevio),
+            saldoFavorAcreditado: isConsumidorFinalCanonical(clienteId)
+              ? 0
+              : Math.round(Math.max(0, monto - montoAplicadoPrevio) * 100) / 100,
             mensaje: 'Pago ya aplicado previamente (dedup offline)',
           }
         }
@@ -241,13 +244,26 @@ export async function POST(request: NextRequest) {
       // FIFO deja de "reportarse y perderse" — se acredita al `Cliente.saldoFavor`
       // dentro de la misma transacción, así queda disponible para el próximo
       // pedido (lo consume `CrearPedidoUseCase` vía `getSaldoFavor`).
+      //
+      // Redondeo a centavos: el loop resta Numbers de 2 decimales y puede dejar
+      // un residuo de coma flotante (~1e-13) cuando el pago cubre la deuda exacta.
+      // Sin redondear, `> 0` dispararía un increment de sub-centavo y un mensaje
+      // "Sobrante $0".
+      //
+      // Nota de trazabilidad de caja: este crédito NO genera fila `Pago`/`Abono`,
+      // así que el efectivo extra recibido no aparece en `CierreDia` (mismo
+      // comportamiento que el sobrante de un pedido normal, "FIX Fase 2 §3.4").
+      // Cerrar ese gap es parte del rediseño de cartera (PR-B), no de PR-A.
       let saldoFavorAcreditado = 0
-      if (montoRestante > 0) {
+      const sobrante = Math.round(montoRestante * 100) / 100
+      // El canónico CONSUMIDOR_FINAL es compartido por todas las ventas anónimas
+      // — acreditarle saldo a favor lo filtraría a la próxima venta anónima ajena.
+      if (sobrante > 0 && !isConsumidorFinalCanonical(clienteId)) {
         await tx.cliente.update({
           where: { id: clienteId },
-          data: { saldoFavor: { increment: montoRestante } },
+          data: { saldoFavor: { increment: sobrante } },
         })
-        saldoFavorAcreditado = montoRestante
+        saldoFavorAcreditado = sobrante
       }
 
       // F1 (ADR-CONCURRENCIA-001 / contrato §51): la auditoría del hecho
@@ -312,8 +328,8 @@ export async function POST(request: NextRequest) {
             montoAplicado: monto - resultado.montoRestante,
             montoSobrante: resultado.montoRestante,
             saldoFavorAcreditado: resultado.saldoFavorAcreditado,
-            mensaje: resultado.montoRestante > 0
-              ? `Pagado $${(monto - resultado.montoRestante).toLocaleString()}. Sobrante $${resultado.montoRestante.toLocaleString()} acreditado a saldo a favor.`
+            mensaje: resultado.saldoFavorAcreditado > 0
+              ? `Pagado $${(monto - resultado.saldoFavorAcreditado).toLocaleString()}. Sobrante $${resultado.saldoFavorAcreditado.toLocaleString()} acreditado a saldo a favor.`
               : `Pagado completo $${monto.toLocaleString()}`,
           }),
     })

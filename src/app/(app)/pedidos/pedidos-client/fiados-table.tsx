@@ -199,6 +199,7 @@ export function FiadosTable({
         pagosAplicados: Array<{ pedidoId: string; numero: number; montoAplicado: number; saldoRestante: number; facturaId?: string; facturaNumero?: string }>
         montoAplicado: number
         montoSobrante: number
+        saldoFavorAcreditado?: number
         deduped?: boolean
       }>(
         '/api/pedidos/pagar-fiado',
@@ -229,7 +230,7 @@ export function FiadosTable({
       // status === 'ok' — proceder con el resumen
       const data = result.data
       const pagosAplicados = data.pagosAplicados || []
-      const montoSobrante = data.montoSobrante || 0
+      const montoSobrante = data.saldoFavorAcreditado ?? data.montoSobrante ?? 0
       const montoAplicado = data.montoAplicado || Number(montoPago)
 
       let resumenHtml = `<div class="space-y-1">`

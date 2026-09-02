@@ -115,17 +115,22 @@ describe('F-N11: la route sigue trabajando (no rompe flujo normal)', () => {
 })
 
 describe('ADR-CORRECCION-MONETARIA-001 D.6: el sobrante se acredita a Cliente.saldoFavor', () => {
-  it('el sobrante (montoRestante > 0) incrementa saldoFavor con tx.cliente.update', () => {
-    const idx = source.indexOf('if (montoRestante > 0)')
+  it('el sobrante (redondeado a centavos) incrementa saldoFavor con tx.cliente.update', () => {
+    expect(source).toMatch(/const sobrante = Math\.round\(montoRestante \* 100\) \/ 100/)
+    const idx = source.indexOf('if (sobrante > 0')
     expect(idx).toBeGreaterThan(-1)
     const block = source.slice(idx, idx + 320)
     expect(block).toMatch(/tx\.cliente\.update/)
-    expect(block).toMatch(/saldoFavor:\s*\{\s*increment:\s*montoRestante\s*\}/)
+    expect(block).toMatch(/saldoFavor:\s*\{\s*increment:\s*sobrante\s*\}/)
   })
 
-  it('el incremento corre DENTRO del lock CARTERA (antes del return del callback)', () => {
+  it('excluye el canónico CONSUMIDOR_FINAL (no acumula crédito compartido)', () => {
+    expect(source).toMatch(/if \(sobrante > 0 && !isConsumidorFinalCanonical\(clienteId\)\)/)
+  })
+
+  it('el incremento corre DENTRO del lock CARTERA, antes del return del callback', () => {
     const lockIdx = source.indexOf("withAdvisoryLock('CARTERA'")
-    const incrementIdx = source.indexOf('saldoFavor: { increment: montoRestante }')
+    const incrementIdx = source.indexOf('saldoFavor: { increment: sobrante }')
     const returnIdx = source.indexOf('return { pagosAplicados, montoRestante, culminados')
     expect(lockIdx).toBeGreaterThan(-1)
     expect(incrementIdx).toBeGreaterThan(lockIdx)
@@ -133,13 +138,13 @@ describe('ADR-CORRECCION-MONETARIA-001 D.6: el sobrante se acredita a Cliente.sa
   })
 
   it('el incremento corre ANTES de logAudit (auditoría atómica del hecho)', () => {
-    const incrementIdx = source.indexOf('saldoFavor: { increment: montoRestante }')
+    const incrementIdx = source.indexOf('saldoFavor: { increment: sobrante }')
     const auditIdx = source.indexOf('await logAudit(', incrementIdx - 1)
     expect(auditIdx).toBeGreaterThan(incrementIdx)
   })
 
   it('la respuesta expone saldoFavorAcreditado (normal y deduped)', () => {
     expect(source).toMatch(/saldoFavorAcreditado:\s*resultado\.saldoFavorAcreditado/)
-    expect(source).toMatch(/saldoFavorAcreditado:\s*Math\.max\(0,\s*monto\s*-\s*montoAplicadoPrevio\)/)
+    expect(source).toMatch(/saldoFavorAcreditado: isConsumidorFinalCanonical\(clienteId\)/)
   })
 })
