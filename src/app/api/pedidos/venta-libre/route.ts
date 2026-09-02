@@ -15,13 +15,13 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 import { ensureConsumidorFinalCanonical, isConsumidorFinalCanonical } from '@/lib/cliente-canonical'
 import { logger } from '@/lib/logger'
 import { uploadBase64Foto, isBase64Image } from '@/lib/storage'
-import { getConfigBool } from '@/lib/config'
+import { getConfigBool, getConfig } from '@/lib/config'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { getFacturaEmpresaSnapshot } from '@/lib/factura-empresa'
 import { clasificarVentaLibre } from '@/lib/venta-libre-clasificacion'
 import { incrementMetric } from '@/lib/metrics'
 import { registrarReceivableEntry } from '@/lib/receivable-entry'
-import { datosConfirmacionInicial } from '@/lib/pago-confirmacion'
+import { datosConfirmacionInicial, parseMetodosRequierenConfirmacion } from '@/lib/pago-confirmacion'
 import { OrigenPedido, EstadoEntrega } from '@prisma/client'
 
 export async function POST(request: NextRequest) {
@@ -65,6 +65,12 @@ export async function POST(request: NextRequest) {
     }
     const pagosData = pagos || []
     const totalPagado = pagosData.reduce((sum, p) => sum + p.monto, 0)
+
+    // ADR-PAGO-REPORTADO-CONFIRMADO-001 §2: qué métodos nacen REPORTADO (override
+    // de `Config.METODOS_REQUIEREN_CONFIRMACION`; default = tabla del ADR).
+    const metodosConfirmacion = parseMetodosRequierenConfirmacion(
+      await getConfig('METODOS_REQUIEREN_CONFIRMACION'),
+    )
 
     // Snapshot de datos de empresa: lectura simple fuera del lock.
     // Se guarda en la factura para que quede inmutable al momento de emisión.
@@ -250,7 +256,7 @@ export async function POST(request: NextRequest) {
             pedidoId: pedido.id,
             metodo: pago.metodo as MetodoPago,
             monto: pago.monto,
-            ...datosConfirmacionInicial(pago.metodo),
+            ...datosConfirmacionInicial(pago.metodo, metodosConfirmacion),
           },
         })
       }

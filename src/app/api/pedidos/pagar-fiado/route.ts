@@ -14,7 +14,8 @@ import { NotificationEventType } from '@/lib/notifications/event-types'
 import { prisma } from '@/lib/prisma'
 import { Money, calcularSaldo } from '@/shared/domain'
 import { registrarReceivableEntry, detectarDivergencia, registrarDivergencia } from '@/lib/receivable-entry'
-import { datosConfirmacionInicial } from '@/lib/pago-confirmacion'
+import { datosConfirmacionInicial, parseMetodosRequierenConfirmacion } from '@/lib/pago-confirmacion'
+import { getConfig } from '@/lib/config'
 import { isConsumidorFinalCanonical } from '@/lib/cliente-canonical'
 
 export async function POST(request: NextRequest) {
@@ -33,6 +34,11 @@ export async function POST(request: NextRequest) {
     }
 
     const { clienteId, monto, metodo, offlineId } = parsed.data
+
+    // ADR-PAGO-REPORTADO-CONFIRMADO-001 §2: métodos que nacen REPORTADO.
+    const metodosConfirmacion = parseMetodosRequierenConfirmacion(
+      await getConfig('METODOS_REQUIEREN_CONFIRMACION'),
+    )
 
     // FIX F-N11: dedup por offlineId DENTRO del lock ABONO.
     // Antes: el check de pagos previos estaba AQUÍ (líneas 30-61 antes
@@ -132,7 +138,7 @@ export async function POST(request: NextRequest) {
             metodo,
             monto: montoAplicar,
             offlineId: offlineId || null, // dedup offline-first
-            ...datosConfirmacionInicial(metodo),
+            ...datosConfirmacionInicial(metodo, metodosConfirmacion),
           },
         })
 

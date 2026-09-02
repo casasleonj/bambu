@@ -6,12 +6,10 @@
  * billete físico entra a la custodia del repartidor y su conciliación es el
  * cierre de embarque + `FALTANTE_CAJA`, no este flujo.
  *
- * El override `Config.METODOS_REQUIEREN_CONFIRMACION` (CSV) descrito en el ADR
- * §2 se cableará junto con el endpoint de confirmación (`/api/pagos/[id]/confirmar`),
- * donde leer `Config` es natural. Hasta entonces todos los sitios de creación
- * usan el default del ADR vía `confirmacionInicial(metodo)` — así el route de
- * venta libre y el cierre de embarque no divergen. `parseMetodosRequierenConfirmacion`
- * ya está listo para ese cableado.
+ * El override `Config.METODOS_REQUIEREN_CONFIRMACION` (CSV) del ADR §2 está
+ * cableado en los 6 sitios de creación de `Pago`: los route handlers leen
+ * `getConfig(...)` (cacheado) y los que ya tienen un `tx` en mano usan
+ * `leerMetodosRequierenConfirmacion(tx)`. Sin el config, cae al default del ADR.
  */
 
 export type ConfirmacionInicial = 'REPORTADO' | 'CONFIRMADO'
@@ -34,6 +32,19 @@ export function parseMetodosRequierenConfirmacion(csv?: string | null): string[]
     .map((s) => s.trim().toUpperCase())
     .filter(Boolean)
   return parsed.length > 0 ? parsed : [...METODOS_REQUIEREN_CONFIRMACION_DEFAULT]
+}
+
+/**
+ * Lee `Config.METODOS_REQUIEREN_CONFIRMACION` desde una tx/cliente Prisma.
+ * Para código que ya tiene un `tx` en mano (domain services, repos) y no debe
+ * importar el helper cacheado `getConfig` (framework). Los route handlers usan
+ * `parseMetodosRequierenConfirmacion(await getConfig(...))` directamente.
+ */
+export async function leerMetodosRequierenConfirmacion(tx: {
+  config: { findUnique: (args: { where: { clave: string } }) => Promise<{ valor: string } | null> }
+}): Promise<string[]> {
+  const row = await tx.config.findUnique({ where: { clave: 'METODOS_REQUIEREN_CONFIRMACION' } })
+  return parseMetodosRequierenConfirmacion(row?.valor)
 }
 
 /**

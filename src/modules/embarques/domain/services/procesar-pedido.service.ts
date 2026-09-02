@@ -26,7 +26,7 @@
 import { EstadoEmbarque } from '@prisma/client'
 import { calcularEstadoPago } from '@/lib/pedido-utils'
 import { getNextNumero } from '@/lib/sequence'
-import { datosConfirmacionInicial } from '@/lib/pago-confirmacion'
+import { datosConfirmacionInicial, leerMetodosRequierenConfirmacion } from '@/lib/pago-confirmacion'
 import type { CerrarEmbarqueInput } from '../../application/dto'
 import type { MetodoPago } from '@prisma/client'
 
@@ -223,7 +223,11 @@ export class ProcesarPedidoService {
     pedidosActualizados.push({ id: pedido.id, estado: 'ENTREGADO' })
 
     // Register payments
-    // ADR-PAGO-REPORTADO-CONFIRMADO-001: digital cobrado en ruta nace REPORTADO.
+    // ADR-PAGO-REPORTADO-CONFIRMADO-001: digital cobrado en ruta nace REPORTADO
+    // (§2: métodos configurables vía Config.METODOS_REQUIEREN_CONFIRMACION).
+    const metodosConfirmacion = await leerMetodosRequierenConfirmacion(
+      client as unknown as Parameters<typeof leerMetodosRequierenConfirmacion>[0],
+    )
     for (const pago of cuadre.pagos) {
       if (pago.monto > 0) {
         await tx.pago.create({
@@ -231,7 +235,7 @@ export class ProcesarPedidoService {
             pedidoId: pedido.id,
             metodo: pago.metodo as MetodoPago,
             monto: pago.monto,
-            ...datosConfirmacionInicial(pago.metodo),
+            ...datosConfirmacionInicial(pago.metodo, metodosConfirmacion),
           },
         })
       }

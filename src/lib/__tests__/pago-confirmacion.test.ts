@@ -1,9 +1,10 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
   METODOS_REQUIEREN_CONFIRMACION_DEFAULT,
   parseMetodosRequierenConfirmacion,
   confirmacionInicial,
   datosConfirmacionInicial,
+  leerMetodosRequierenConfirmacion,
 } from '@/lib/pago-confirmacion'
 
 describe('pago-confirmacion — ADR-PAGO-REPORTADO-CONFIRMADO-001', () => {
@@ -76,6 +77,19 @@ describe('pago-confirmacion — ADR-PAGO-REPORTADO-CONFIRMADO-001', () => {
 
     it('respeta la lista custom', () => {
       expect(datosConfirmacionInicial('EFECTIVO', ['EFECTIVO']).confirmacion).toBe('REPORTADO')
+    })
+  })
+
+  describe('leerMetodosRequierenConfirmacion (lee Config vía tx)', () => {
+    it('sin config → default del ADR', async () => {
+      const tx = { config: { findUnique: vi.fn().mockResolvedValue(null) } }
+      expect(await leerMetodosRequierenConfirmacion(tx)).toEqual([...METODOS_REQUIEREN_CONFIRMACION_DEFAULT])
+    })
+
+    it('con config → parsea el CSV (override)', async () => {
+      const tx = { config: { findUnique: vi.fn().mockResolvedValue({ valor: 'EFECTIVO, NEQUI' }) } }
+      expect(await leerMetodosRequierenConfirmacion(tx)).toEqual(['EFECTIVO', 'NEQUI'])
+      expect(tx.config.findUnique).toHaveBeenCalledWith({ where: { clave: 'METODOS_REQUIEREN_CONFIRMACION' } })
     })
   })
 })

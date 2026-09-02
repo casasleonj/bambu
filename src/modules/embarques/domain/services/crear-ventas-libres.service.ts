@@ -14,7 +14,7 @@
 import { resolverPrecio } from '@/lib/pricing'
 import { calcularEstadoPago } from '@/lib/pedido-utils'
 import { getNextNumero } from '@/lib/sequence'
-import { datosConfirmacionInicial } from '@/lib/pago-confirmacion'
+import { datosConfirmacionInicial, leerMetodosRequierenConfirmacion } from '@/lib/pago-confirmacion'
 import type { CerrarEmbarqueInput } from '../../application/dto'
 import type { MetodoPago, PrismaClient } from '@prisma/client'
 
@@ -42,6 +42,11 @@ export class CrearVentasLibresService {
     }
 
     let count = 0
+    // ADR-PAGO-REPORTADO-CONFIRMADO-001 §2: override configurable de qué métodos
+    // nacen REPORTADO (default = tabla del ADR).
+    const metodosConfirmacion = await leerMetodosRequierenConfirmacion(
+      client as unknown as Parameters<typeof leerMetodosRequierenConfirmacion>[0],
+    )
 
     for (const venta of ventas) {
       const totalItems = (venta.cPacaAgua || 0) + (venta.cPacaHielo || 0) + (venta.cBotellonFab || 0) + (venta.cBotellonDom || 0) + (venta.cBolsaAgua || 0) + (venta.cBolsaHielo || 0)
@@ -124,7 +129,7 @@ export class CrearVentasLibresService {
               pedidoId: nuevaVenta.id,
               metodo: pago.metodo as MetodoPago,
               monto: pago.monto,
-              ...datosConfirmacionInicial(pago.metodo),
+              ...datosConfirmacionInicial(pago.metodo, metodosConfirmacion),
             },
           })
         }

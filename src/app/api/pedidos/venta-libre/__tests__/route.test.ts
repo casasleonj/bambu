@@ -60,6 +60,7 @@ vi.mock('@/lib/auth-check', () => ({
 }))
 vi.mock('@/lib/config', () => ({
   getConfigBool: (...args: unknown[]) => mockGetConfigBool(...args),
+  getConfig: async () => null, // METODOS_REQUIEREN_CONFIRMACION → default del ADR
 }))
 vi.mock('@/lib/storage', () => ({
   uploadBase64Foto: (...args: unknown[]) => mockUploadBase64Foto(...args),

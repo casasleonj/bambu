@@ -5,7 +5,10 @@ import type { TransactionClient } from '../../transactions/PrismaTransactionMana
 describe('PrismaPagoRepository.createMany — ADR-PAGO-REPORTADO-CONFIRMADO-001', () => {
   it('clasifica cada pago por método (NEQUI → REPORTADO, EFECTIVO → CONFIRMADO)', async () => {
     const createMany = vi.fn().mockResolvedValue({ count: 2 })
-    const tx = { pago: { createMany } } as unknown as TransactionClient
+    const tx = {
+      pago: { createMany },
+      config: { findUnique: vi.fn().mockResolvedValue(null) }, // METODOS_REQUIEREN_CONFIRMACION → default
+    } as unknown as TransactionClient
     const repo = new PrismaPagoRepository()
 
     await repo.createMany(
@@ -27,7 +30,10 @@ describe('PrismaPagoRepository.createMany — ADR-PAGO-REPORTADO-CONFIRMADO-001'
 
   it('no llama a createMany con lista vacía', async () => {
     const createMany = vi.fn()
-    const tx = { pago: { createMany } } as unknown as TransactionClient
+    const tx = {
+      pago: { createMany },
+      config: { findUnique: vi.fn().mockResolvedValue(null) }, // METODOS_REQUIEREN_CONFIRMACION → default
+    } as unknown as TransactionClient
     await new PrismaPagoRepository().createMany('ped_1', [], tx)
     expect(createMany).not.toHaveBeenCalled()
   })
