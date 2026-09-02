@@ -23,6 +23,9 @@ export interface Pedido {
   origen: string
   estadoEntrega: string
   estadoPago: string
+  // ADR-PAGO-REPORTADO-CONFIRMADO-001 §5 — señales ortogonales a estadoPago.
+  pagoReportadoPendiente?: boolean
+  pagoDiscrepante?: boolean
   embarqueId?: string
   items: PedidoItem[]
   // Legacy fields (still present during transition)

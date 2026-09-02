@@ -62,6 +62,12 @@ export type MetodoPago = typeof METODOS_PAGO[number]
 export interface PagoData {
   metodo: MetodoPago
   monto: number
+  /**
+   * ADR-PAGO-REPORTADO-CONFIRMADO-001: estado de confirmación del pago. Solo lo
+   * hidrata `PedidoMapper.fromPrisma` (lectura); los comandos que crean pagos no
+   * lo setean acá (lo decide `datosConfirmacionInicial` en la infra).
+   */
+  confirmacion?: string
 }
 
 export interface ItemPedidoInput {

@@ -109,6 +109,9 @@ export class PedidoDTOMapper {
         metodo: p.metodo,
         monto: p.monto,
       })),
+      // ADR-PAGO-REPORTADO-CONFIRMADO-001 §5.
+      pagoReportadoPendiente: pedido.pagos.some(p => p.confirmacion === 'REPORTADO'),
+      pagoDiscrepante: pedido.pagos.some(p => p.confirmacion === 'DISCREPANTE'),
       factura: raw?.factura ? mapFacturaToDTO(raw.factura) : null,
     }
   }

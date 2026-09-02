@@ -8,6 +8,35 @@ import { PedidoClienteDisplay } from '@/components/pedido-cliente-display'
 import { calcularEstadoPagoVisual } from '@/modules/pedidos/presentation/visual-states'
 import type { Pedido } from './types'
 
+// ADR-PAGO-REPORTADO-CONFIRMADO-001 §5 — el badge "Reportado" solo con el flag ON.
+const PAGO_CONFIRMACION_ON = process.env.NEXT_PUBLIC_PAGO_CONFIRMACION === 'true'
+
+/** Chip de confirmación de pago (AC-05): discrepancia (rojo) o sin confirmar (ámbar). */
+function ReportadoChip({ pedido }: { pedido: Pedido }) {
+  if (!PAGO_CONFIRMACION_ON) return null
+  if (pedido.pagoDiscrepante) {
+    return (
+      <span
+        className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-800"
+        title="Un pago fue marcado como discrepante — el dinero no entró como se reportó"
+      >
+        ⚠ Discrepancia
+      </span>
+    )
+  }
+  if (pedido.pagoReportadoPendiente) {
+    return (
+      <span
+        className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-800"
+        title="Pago digital reportado — falta verificar que el dinero entró"
+      >
+        ⏳ Sin confirmar
+      </span>
+    )
+  }
+  return null
+}
+
 function getPagoVisual(pedido: Pedido) {
   return calcularEstadoPagoVisual({
     estadoPago: pedido.estadoPago,
@@ -15,6 +44,8 @@ function getPagoVisual(pedido: Pedido) {
     saldo: Number(pedido.saldo),
     total: Number(pedido.total),
     totalPagado: Number(pedido.totalPagado),
+    pagoReportado: PAGO_CONFIRMACION_ON ? pedido.pagoReportadoPendiente : undefined,
+    pagoDiscrepante: PAGO_CONFIRMACION_ON ? pedido.pagoDiscrepante : undefined,
   })
 }
 
@@ -283,6 +314,12 @@ function DesktopRow({
           if (visual.key === 'FIADO') {
             return <span className="text-sm font-semibold text-red-600"><MoneyDisplay value={Number(pedido.saldo)} userRole={userRole} /></span>
           }
+          if (visual.key === 'DISCREPANTE') {
+            return <span className="text-xs text-red-600 font-medium" title="Pago con discrepancia">⚠</span>
+          }
+          if (visual.key === 'REPORTADO') {
+            return <span className="text-xs text-amber-600 font-medium" title="Pago reportado, sin confirmar">⏳</span>
+          }
           if (visual.key === 'PAGADO') {
             return <span className="text-xs text-green-600 font-medium">✓</span>
           }
@@ -295,6 +332,7 @@ function DesktopRow({
       <td className="px-4 py-3 text-center space-y-1">
         {renderEstadoEntregaBadge(pedido.estadoEntrega)}
         {renderEstadoPagoBadge(pedido.estadoPago)}
+        <ReportadoChip pedido={pedido} />
       </td>
       <td className="px-4 py-3">
         <div className="flex gap-2 justify-end">
@@ -400,9 +438,10 @@ function MobileCard({
           {pedido.horaPreferida && (
             <p className="text-xs text-amber-600 font-medium">{pedido.horaPreferida}</p>
           )}
-          <div className="flex gap-1 mt-1">
+          <div className="flex gap-1 mt-1 flex-wrap">
             {renderEstadoEntregaBadge(pedido.estadoEntrega)}
             {renderEstadoPagoBadge(pedido.estadoPago)}
+            <ReportadoChip pedido={pedido} />
           </div>
         </div>
         <div className="text-right ml-2">
