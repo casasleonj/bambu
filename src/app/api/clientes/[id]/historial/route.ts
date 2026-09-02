@@ -44,7 +44,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         where: { clienteId: id, ...(fechaFilter ? { fecha: fechaFilter } : {}) },
         orderBy: { fecha: 'desc' },
         take: 200,
-        include: { abonos: true },
+        // ADR-CORRECCION-MONETARIA-001 D.5: el timeline muestra también las
+        // correcciones de abono (reversiones trazables COR-…).
+        include: { abonos: { include: { correcciones: { include: { autorizadoPor: { select: { username: true } } } } } } },
       }),
       prisma.caso.findMany({
         where: { clienteId: id, ...(fechaFilter ? { createdAt: fechaFilter } : {}) },
@@ -144,6 +146,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       })
 
       for (const abono of f.abonos || []) {
+        const revertido = (abono.correcciones || []).reduce((s, c) => s + Number(c.montoRevertido), 0)
         events.push({
           id: `abono-${abono.id}`,
           tipo: 'ABONO',
@@ -153,7 +156,26 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           metodo: abono.metodoPago,
           numero: f.numero,
           link: `/facturas?openFactura=${f.id}`,
+          ...(revertido > 0 ? { metadata: { montoRevertido: revertido, montoNeto: Number(abono.monto) - revertido } } : {}),
         })
+        // ADR-CORRECCION-MONETARIA-001 D.5: cada corrección es su propio evento.
+        for (const c of abono.correcciones || []) {
+          events.push({
+            id: `correccion-${c.id}`,
+            tipo: 'CORRECCION_ABONO',
+            fecha: c.createdAt.toISOString(),
+            titulo: `Corrección ${c.numero} — ${c.tipo}`,
+            descripcion: c.motivo,
+            monto: -Number(c.montoRevertido),
+            numero: c.numero,
+            link: `/cartera?q=${encodeURIComponent(abono.numero)}`,
+            metadata: {
+              abono: abono.numero,
+              autorizadoPor: c.autorizadoPor?.username ?? null,
+              responsibilityCaseId: c.responsibilityCaseId ?? null,
+            },
+          })
+        }
       }
     }
 

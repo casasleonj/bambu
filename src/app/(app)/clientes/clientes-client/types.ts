@@ -198,6 +198,7 @@ export type TimelineEventType =
   | 'PAGO'
   | 'FACTURA'
   | 'ABONO'
+  | 'CORRECCION_ABONO'
   | 'CASO'
   | 'NOTA_CREDITO'
   | 'AUDITORIA'
