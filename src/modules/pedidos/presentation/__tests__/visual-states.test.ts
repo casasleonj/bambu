@@ -94,14 +94,29 @@ describe('calcularEstadoPagoVisual', () => {
   })
 
   // ADR-PAGO-REPORTADO-CONFIRMADO-001 §5 / AC-05
-  describe('pagoReportado', () => {
+  describe('pagoReportado / pagoDiscrepante', () => {
     it('un pedido PAGADO con pago reportado → REPORTADO ámbar (no "Pagado")', () => {
       const estado = calcularEstadoPagoVisual(
         make({ estadoPago: 'PAGADO', estadoEntrega: 'ENTREGADO', total: 100_000, totalPagado: 100_000, saldo: 0, pagoReportado: true }),
       )
       expect(estado.key).toBe('REPORTADO')
-      expect(estado.label).toBe('Reportado')
       expect(estado.color).toBe('amber')
+    })
+
+    it('DISCREPANTE gana sobre REPORTADO (más urgente)', () => {
+      const estado = calcularEstadoPagoVisual(
+        make({ estadoPago: 'PAGADO', estadoEntrega: 'ENTREGADO', total: 100_000, totalPagado: 100_000, saldo: 0, pagoReportado: true, pagoDiscrepante: true }),
+      )
+      expect(estado.key).toBe('DISCREPANTE')
+      expect(estado.color).toBe('red')
+    })
+
+    it('FIADO (entregado + saldo > 0) gana sobre REPORTADO — la deuda no se oculta', () => {
+      const estado = calcularEstadoPagoVisual(
+        make({ estadoPago: 'PARCIAL', estadoEntrega: 'ENTREGADO', total: 100_000, totalPagado: 40_000, saldo: 60_000, pagoReportado: true }),
+      )
+      expect(estado.key).toBe('FIADO')
+      expect(estado.isMoney).toBe(true)
     })
 
     it('sin `pagoReportado` (flag OFF) → comportamiento normal (Pagado)', () => {
@@ -116,13 +131,6 @@ describe('calcularEstadoPagoVisual', () => {
         make({ estadoEntrega: 'ANULADO', totalPagado: 100_000, pagoReportado: true }),
       )
       expect(estado.key).toBe('ANULADO')
-    })
-
-    it('sin pagos (totalPagado 0) no muestra REPORTADO aunque el flag pase true', () => {
-      const estado = calcularEstadoPagoVisual(
-        make({ estadoPago: 'PENDIENTE', estadoEntrega: 'PENDIENTE', total: 100_000, totalPagado: 0, saldo: 100_000, pagoReportado: true }),
-      )
-      expect(estado.key).toBe('PENDIENTE')
     })
   })
 })

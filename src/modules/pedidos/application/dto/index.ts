@@ -192,11 +192,11 @@ export interface PedidoResumenDTO {
     monto: number
   }>
   /**
-   * ADR-PAGO-REPORTADO-CONFIRMADO-001 §5 — true si algún `Pago` del pedido está
-   * `REPORTADO` (dinero digital sin verificar). Señal ORTOGONAL a `estadoPago`:
-   * un pedido puede estar `PAGADO` (saldo 0) y aún así tener esto en true.
+   * ADR-PAGO-REPORTADO-CONFIRMADO-001 §5 — señales ORTOGONALES a `estadoPago`:
+   * un pedido puede estar `PAGADO` (saldo 0) y aún así tener alguna de estas.
    */
   pagoReportadoPendiente: boolean
+  pagoDiscrepante: boolean
   factura?: FacturaDTOSnapshot | null
 }
 

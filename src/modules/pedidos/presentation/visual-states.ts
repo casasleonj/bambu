@@ -6,7 +6,7 @@
  * Domain layer must NOT depend on this file.
  */
 
-export type EstadoPagoVisualKey = 'PAGADO' | 'FIADO' | 'PENDIENTE' | 'ANULADO' | 'REPORTADO'
+export type EstadoPagoVisualKey = 'PAGADO' | 'FIADO' | 'PENDIENTE' | 'ANULADO' | 'REPORTADO' | 'DISCREPANTE'
 
 export interface EstadoPagoVisual {
   key: EstadoPagoVisualKey
@@ -26,10 +26,12 @@ export interface PedidoSaldoInput {
    * ADR-PAGO-REPORTADO-CONFIRMADO-001 §5: algún `Pago` del pedido está
    * `REPORTADO` (dinero digital sin verificar). Lo pasa el caller SOLO cuando el
    * flag `NEXT_PUBLIC_PAGO_CONFIRMACION` está activo — así con el flag OFF el
-   * badge no cambia. Ortogonal al saldo: un pedido pagado completo con un pago
-   * reportado NO se muestra como "Pagado" sino como "Reportado".
+   * badge no cambia. Ortogonal al saldo: SOLO cambia el estado "pagado completo"
+   * a "Reportado" — un pedido FIADO (con deuda) sigue mostrando la deuda.
    */
   pagoReportado?: boolean
+  /** Algún `Pago` quedó `DISCREPANTE` (verificado, no cuadra). Más urgente. */
+  pagoDiscrepante?: boolean
 }
 
 /**
@@ -38,11 +40,12 @@ export interface PedidoSaldoInput {
  * Rules (G5.1: el badge se DERIVA de `(total, totalPagado, estadoEntrega)`,
  * no solo de la columna `estadoPago`):
  *  - ANULADO → estadoEntrega ANULADO/CANCELADO OR estadoPago ANULADO
- *  - REPORTADO → pagado completo (o parcial) Y `pagoReportado` (AC-05: nunca
- *    mostrar "confirmado" sin evidencia)
- *  - ANTICIPADO → pagado completo Y la entrega aún no ocurrió (PENDIENTE/EN_RUTA/NO_ENTREGADO)
+ *  - FIADO   → estadoEntrega ENTREGADO AND saldo > 0 (la deuda gana; el chip de
+ *    "sin confirmar" lo pone el caller aparte si además hay un pago reportado)
+ *  - DISCREPANTE → pagado completo Y `pagoDiscrepante` (más urgente que reportado)
+ *  - REPORTADO → pagado completo Y `pagoReportado` (AC-05)
+ *  - ANTICIPADO → pagado completo Y la entrega aún no ocurrió
  *  - PAGADO  → pagado completo Y ya entregado
- *  - FIADO   → estadoEntrega ENTREGADO AND saldo > 0
  *  - PENDIENTE → resto
  */
 export function calcularEstadoPagoVisual(pedido: PedidoSaldoInput): EstadoPagoVisual {
@@ -63,17 +66,26 @@ export function calcularEstadoPagoVisual(pedido: PedidoSaldoInput): EstadoPagoVi
     }
   }
 
-  // AC-05: si hay dinero reportado sin confirmar, gana sobre "Pagado"/"Anticipado".
-  if (pedido.pagoReportado && totalPagado > 0) {
+  // FIADO va ANTES: si el pedido entregado tiene deuda, la deuda es la señal
+  // principal — la confirmación del pago parcial la muestra el chip del caller.
+  if (pedido.estadoEntrega === 'ENTREGADO' && saldo > 0) {
     return {
-      key: 'REPORTADO',
-      label: 'Reportado',
-      color: 'amber',
-      isMoney: false,
+      key: 'FIADO',
+      label: 'Fiado',
+      color: 'red',
+      isMoney: true,
     }
   }
 
   const pagadoCompleto = totalPagado >= total || pedido.estadoPago === 'PAGADO' || pedido.estadoPago === 'ANTICIPADO'
+
+  // AC-05: sobre un pedido pagado completo, la confirmación gana sobre "Pagado".
+  if (pagadoCompleto && pedido.pagoDiscrepante) {
+    return { key: 'DISCREPANTE', label: 'Discrepancia', color: 'red', isMoney: false }
+  }
+  if (pagadoCompleto && pedido.pagoReportado) {
+    return { key: 'REPORTADO', label: 'Reportado', color: 'amber', isMoney: false }
+  }
 
   if (pagadoCompleto) {
     const preEntrega =
@@ -85,15 +97,6 @@ export function calcularEstadoPagoVisual(pedido: PedidoSaldoInput): EstadoPagoVi
       label: preEntrega ? 'Anticipado' : 'Pagado',
       color: 'green',
       isMoney: false,
-    }
-  }
-
-  if (pedido.estadoEntrega === 'ENTREGADO' && saldo > 0) {
-    return {
-      key: 'FIADO',
-      label: 'Fiado',
-      color: 'red',
-      isMoney: true,
     }
   }
 

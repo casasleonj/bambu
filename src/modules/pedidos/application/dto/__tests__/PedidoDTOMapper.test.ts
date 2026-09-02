@@ -57,17 +57,21 @@ describe('PedidoDTOMapper.toResumen — pagoReportadoPendiente (ADR-PAGO-REPORTA
     })
   }
 
-  it('true si algún pago está REPORTADO', () => {
+  it('reportadoPendiente true si algún pago está REPORTADO', () => {
     const dto = PedidoDTOMapper.toResumen(conPagos([{ metodo: 'NEQUI', monto: 10000, confirmacion: 'REPORTADO' }]))
     expect(dto.pagoReportadoPendiente).toBe(true)
+    expect(dto.pagoDiscrepante).toBe(false)
   })
 
-  it('false si todos CONFIRMADO (o sin confirmacion)', () => {
+  it('pagoDiscrepante true si algún pago está DISCREPANTE', () => {
+    const dto = PedidoDTOMapper.toResumen(conPagos([{ metodo: 'NEQUI', monto: 10000, confirmacion: 'DISCREPANTE' }]))
+    expect(dto.pagoDiscrepante).toBe(true)
+    expect(dto.pagoReportadoPendiente).toBe(false)
+  })
+
+  it('ambos false si todos CONFIRMADO (o sin confirmacion) o sin pagos', () => {
     expect(PedidoDTOMapper.toResumen(conPagos([{ metodo: 'EFECTIVO', monto: 10000, confirmacion: 'CONFIRMADO' }])).pagoReportadoPendiente).toBe(false)
-    expect(PedidoDTOMapper.toResumen(conPagos([{ metodo: 'EFECTIVO', monto: 10000 }])).pagoReportadoPendiente).toBe(false)
-  })
-
-  it('false si no hay pagos', () => {
+    expect(PedidoDTOMapper.toResumen(conPagos([{ metodo: 'EFECTIVO', monto: 10000 }])).pagoDiscrepante).toBe(false)
     expect(PedidoDTOMapper.toResumen(conPagos([])).pagoReportadoPendiente).toBe(false)
   })
 })
