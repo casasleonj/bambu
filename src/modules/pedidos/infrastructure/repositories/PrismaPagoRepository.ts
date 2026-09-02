@@ -4,7 +4,7 @@
 
 import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { datosConfirmacionInicial } from '@/lib/pago-confirmacion'
+import { datosConfirmacionInicial, leerMetodosRequierenConfirmacion } from '@/lib/pago-confirmacion'
 import type { IPagoRepository } from '../../domain/repositories/IPagoRepository'
 import type { PagoData } from '../../domain/types'
 import type { TransactionClient } from '../transactions/PrismaTransactionManager'
@@ -21,16 +21,24 @@ export class PrismaPagoRepository implements IPagoRepository {
     }))
   }
 
-  async createMany(pedidoId: string, pagos: PagoData[], tx?: TransactionClient): Promise<void> {
+  async createMany(
+    pedidoId: string,
+    pagos: PagoData[],
+    tx?: TransactionClient,
+    metodosRequieren?: string[],
+  ): Promise<void> {
     const client = tx || prisma
     if (pagos.length === 0) return
+    // ADR-PAGO-REPORTADO-CONFIRMADO-001 §2: clasificación inicial por método, con
+    // override configurable. El caller (use case) puede pasar la lista ya
+    // resuelta para evitar una lectura de Config dentro de la tx.
+    const metodosConfirmacion = metodosRequieren ?? (await leerMetodosRequierenConfirmacion(client))
     await client.pago.createMany({
-      // ADR-PAGO-REPORTADO-CONFIRMADO-001: clasificación inicial por método.
       data: pagos.map(p => ({
         pedidoId,
         metodo: p.metodo,
         monto: p.monto,
-        ...datosConfirmacionInicial(p.metodo),
+        ...datosConfirmacionInicial(p.metodo, metodosConfirmacion),
       })) as unknown as Prisma.PagoCreateManyInput[],
     })
   }

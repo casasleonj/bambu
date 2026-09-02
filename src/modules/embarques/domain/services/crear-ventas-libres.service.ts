@@ -14,7 +14,7 @@
 import { resolverPrecio } from '@/lib/pricing'
 import { calcularEstadoPago } from '@/lib/pedido-utils'
 import { getNextNumero } from '@/lib/sequence'
-import { datosConfirmacionInicial } from '@/lib/pago-confirmacion'
+import { datosConfirmacionInicial, leerMetodosRequierenConfirmacion } from '@/lib/pago-confirmacion'
 import type { CerrarEmbarqueInput } from '../../application/dto'
 import type { MetodoPago, PrismaClient } from '@prisma/client'
 
@@ -33,6 +33,9 @@ export class CrearVentasLibresService {
     ventas: NonNullable<CerrarEmbarqueInput['ventasLibres']>,
     embarqueId: string,
     userId: string | undefined,
+    // ADR-PAGO-REPORTADO-CONFIRMADO-001 §2: lista ya resuelta (el use case la
+    // lee una vez para todo el cierre). Fallback a Config si se omite.
+    metodosRequieren?: string[],
   ): Promise<number> {
     const tx = client as unknown as {
       pedido: { create: (args: { data: Record<string, unknown> }) => Promise<{ id: string; numero: number }> }
@@ -42,6 +45,13 @@ export class CrearVentasLibresService {
     }
 
     let count = 0
+    // ADR-PAGO-REPORTADO-CONFIRMADO-001 §2: override configurable de qué métodos
+    // nacen REPORTADO (default = tabla del ADR).
+    const metodosConfirmacion =
+      metodosRequieren ??
+      (await leerMetodosRequierenConfirmacion(
+        client as unknown as Parameters<typeof leerMetodosRequierenConfirmacion>[0],
+      ))
 
     for (const venta of ventas) {
       const totalItems = (venta.cPacaAgua || 0) + (venta.cPacaHielo || 0) + (venta.cBotellonFab || 0) + (venta.cBotellonDom || 0) + (venta.cBolsaAgua || 0) + (venta.cBolsaHielo || 0)
@@ -124,7 +134,7 @@ export class CrearVentasLibresService {
               pedidoId: nuevaVenta.id,
               metodo: pago.metodo as MetodoPago,
               monto: pago.monto,
-              ...datosConfirmacionInicial(pago.metodo),
+              ...datosConfirmacionInicial(pago.metodo, metodosConfirmacion),
             },
           })
         }

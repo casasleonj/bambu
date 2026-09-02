@@ -166,6 +166,8 @@ const CONFIGS: Array<{ clave: string; valor: string; descripcion?: string }> = [
   // Reglas de negocio activables
   { clave: 'BLOQUEAR_PRECIOS_REPARTIDOR', valor: 'true', descripcion: 'Si true, REPARTIDOR no ve ni modifica precios' },
   { clave: 'REQUIERE_FOTO_ENTREGA', valor: 'true', descripcion: 'Si true, REPARTIDOR y trabajadores con moto deben tomar foto' },
+  { clave: 'METODOS_REQUIEREN_CONFIRMACION', valor: 'NEQUI,TRANSFERENCIA,DAVIPLATA', descripcion: 'ADR-PAGO-REPORTADO-CONFIRMADO-001: CSV de métodos cuyo Pago nace REPORTADO (hay que verificar que el dinero entró). EFECTIVO/BONO nacen CONFIRMADO.' },
+  // USUARIO_CONFIRMA_PAGOS lo setea el ADMIN manualmente (userId del que revisa el banco).
 
   // GPS repartidor (Fase 2)
   { clave: 'umbralGpsEntregaMetros', valor: '30', descripcion: 'Distancia máxima en metros entre GPS del repartidor y la ubicación del cliente para considerar entrega válida' },

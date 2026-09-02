@@ -95,6 +95,25 @@ const VALIDATORS: Record<string, Validator> = {
     if (isNaN(n) || n <= 0) return 'Debe ser un número mayor a 0'
     return null
   },
+
+  // ADR-PAGO-REPORTADO-CONFIRMADO-001 §2: CSV de MetodoPago cuyo Pago nace
+  // REPORTADO. Cada entrada debe ser un método válido; un typo dejaría ese
+  // método clasificado como CONFIRMADO en silencio.
+  METODOS_REQUIEREN_CONFIRMACION: (v) => {
+    if (v.trim() === '') return null // vacío → default del ADR
+    const validos = new Set(['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA', 'BONO'])
+    const items = v.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean)
+    if (items.length === 0) return null
+    const invalidos = items.filter((m) => !validos.has(m))
+    if (invalidos.length > 0) {
+      return `Métodos de pago inválidos: ${invalidos.join(', ')}. Válidos: EFECTIVO, TRANSFERENCIA, NEQUI, DAVIPLATA, BONO`
+    }
+    return null
+  },
+
+  // ADR-PAGO-REPORTADO-CONFIRMADO-001 §3: userId del usuario designado para
+  // confirmar pagos. Vacío = nadie ve la cola (válido).
+  USUARIO_CONFIRMA_PAGOS: (v) => (v.trim().length > 200 ? 'ID de usuario inválido' : null),
 }
 
 /**

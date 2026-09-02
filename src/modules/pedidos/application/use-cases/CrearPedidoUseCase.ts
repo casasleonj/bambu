@@ -26,6 +26,7 @@ import type { IClienteRepository } from '../../domain/repositories/IClienteRepos
 import type { IPricingPort } from '../../domain/repositories/IPricingPort'
 import { puedeCrearPedido, resolverLimiteFiados } from '../../domain/services/pedido-validation.service'
 import { normalizarPagos } from '../../domain/services/pagos-calculator.service'
+import { leerMetodosRequierenConfirmacion } from '@/lib/pago-confirmacion'
 import type { ITransactionManager } from '../../infrastructure/transactions/PrismaTransactionManager'
 import type { CrearPedidoInput, CrearPedidoResult } from '../dto'
 import { PedidoDTOMapper } from '../dto/PedidoDTOMapper'
@@ -283,7 +284,12 @@ export class CrearPedidoUseCase {
 
       // 8. Persist pagos
       if (pagosNormalizados.length > 0) {
-        await this.pagoRepo.createMany(saved.id.get(), pagosNormalizados, tx)
+        // ADR-PAGO-REPORTADO-CONFIRMADO-001 §2: una lectura de Config por pedido
+        // (helper vía tx — `unstable_cache` no corre fuera de un request).
+        const metodosConfirmacion = await leerMetodosRequierenConfirmacion(
+          tx as unknown as Parameters<typeof leerMetodosRequierenConfirmacion>[0],
+        )
+        await this.pagoRepo.createMany(saved.id.get(), pagosNormalizados, tx, metodosConfirmacion)
       }
 
       // 9. Create factura

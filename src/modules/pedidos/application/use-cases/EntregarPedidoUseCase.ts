@@ -11,6 +11,7 @@ import type { IFacturaRepository } from '../../domain/repositories/IFacturaRepos
 import type { IPagoRepository } from '../../domain/repositories/IPagoRepository'
 import type { ITransactionManager } from '../../infrastructure/transactions/PrismaTransactionManager'
 import { registrarReceivableEntry } from '@/lib/receivable-entry'
+import { leerMetodosRequierenConfirmacion } from '@/lib/pago-confirmacion'
 import type { EntregarPedidoInput, EntregarPedidoResult } from '../dto'
 import { PedidoDTOMapper } from '../dto/PedidoDTOMapper'
 
@@ -94,7 +95,13 @@ export class EntregarPedidoUseCase {
         for (const p of input.pagos) {
           pedido.registrarPago(p)
         }
-        await this.pagoRepo.createMany(pedido.id.get(), input.pagos, tx)
+        // ADR-PAGO-REPORTADO-CONFIRMADO-001 §2: una lectura de Config por
+        // entrega (helper vía tx — `getConfig`/`unstable_cache` no funciona
+        // fuera de un request context, rompe los unit tests del use case).
+        const metodosConfirmacion = await leerMetodosRequierenConfirmacion(
+          tx as unknown as Parameters<typeof leerMetodosRequierenConfirmacion>[0],
+        )
+        await this.pagoRepo.createMany(pedido.id.get(), input.pagos, tx, metodosConfirmacion)
       }
 
       // Persist pedido
