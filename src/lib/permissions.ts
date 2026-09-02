@@ -110,6 +110,9 @@ const ROUTE_PERMISSION_MAP: Record<string, Permission> = {
   '/deudas': 'view:deudas',
   '/recurrentes': 'view:recurrentes',
   '/resumen-facturas': 'view:resumen-facturas',
+  // ADR-CORRECCION-MONETARIA-001 D.5 — la página llega en g2.4; el mapeo va acá
+  // desde ya para que el proxy NUNCA sirva /cartera sin permiso.
+  '/cartera': 'view:cartera',
 }
 
 export function getRoutePermission(pathname: string): Permission | null {

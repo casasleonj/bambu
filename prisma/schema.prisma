@@ -1358,6 +1358,10 @@ model ResponsibilityCase {
   updatedAt DateTime @updatedAt @db.Timestamptz()
   offlineId String?  @unique
 
+  // ADR-CORRECCION-MONETARIA-001 D.7: correcciones de abono NO_RECIBIDO que
+  // abrieron este caso.
+  correccionesAbono CorreccionAbono[]
+
   @@index([embarqueId])
   @@index([trabajadorId])
   @@index([clienteId])
@@ -1620,12 +1624,15 @@ model CorreccionAbono {
   autorizadoPorId String
   autorizadoPor   User   @relation("CorreccionAbonoAutorizador", fields: [autorizadoPorId], references: [id], onDelete: Restrict)
   /// Si tipo = NO_RECIBIDO (D.7): investigación vía ResponsibilityCase PAGO_NO_CONFIRMADO.
+  /// `SetNull` — la corrección es un hecho histórico que sobrevive al caso.
   responsibilityCaseId String?
+  responsibilityCase   ResponsibilityCase? @relation(fields: [responsibilityCaseId], references: [id], onDelete: SetNull)
   /// Idempotencia offline-first (dedup real por DB, no solo por el lock).
   correccionOfflineId  String? @unique
   createdAt      DateTime @default(now()) @db.Timestamptz()
 
   @@index([abonoId])
+  @@index([responsibilityCaseId])
 }
 
 // ====================

@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS "CorreccionAbono" (
 CREATE UNIQUE INDEX IF NOT EXISTS "CorreccionAbono_numero_key" ON "CorreccionAbono"("numero");
 CREATE UNIQUE INDEX IF NOT EXISTS "CorreccionAbono_correccionOfflineId_key" ON "CorreccionAbono"("correccionOfflineId");
 CREATE INDEX IF NOT EXISTS "CorreccionAbono_abonoId_idx" ON "CorreccionAbono"("abonoId");
+CREATE INDEX IF NOT EXISTS "CorreccionAbono_responsibilityCaseId_idx" ON "CorreccionAbono"("responsibilityCaseId");
 
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'CorreccionAbono_abonoId_fkey') THEN
@@ -38,6 +39,11 @@ DO $$ BEGIN
       ADD CONSTRAINT "CorreccionAbono_autorizadoPorId_fkey"
       FOREIGN KEY ("autorizadoPorId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
   END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'CorreccionAbono_responsibilityCaseId_fkey') THEN
+    ALTER TABLE "CorreccionAbono"
+      ADD CONSTRAINT "CorreccionAbono_responsibilityCaseId_fkey"
+      FOREIGN KEY ("responsibilityCaseId") REFERENCES "ResponsibilityCase"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
 END $$;
 
 -- ADR §"Concurrencia": montoRevertido > 0 y no puede exceder el monto del abono
@@ -49,9 +55,14 @@ DO $$ BEGIN
   END IF;
 END $$;
 
--- GRANT para el rol de runtime (app_write en Docker; no-op si no existe).
+-- Grants (mismo patrón que las demás migraciones que crean tablas).
+-- app_write recibe UPDATE/DELETE aunque el modelo sea append-only a nivel app:
+-- g2.2 setea `responsibilityCaseId` post-creación en el flujo NO_RECIBIDO.
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_write') THEN
-    GRANT SELECT, INSERT ON "CorreccionAbono" TO app_write;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON "CorreccionAbono" TO app_write;
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_read') THEN
+    GRANT SELECT ON "CorreccionAbono" TO app_read;
   END IF;
 END $$;

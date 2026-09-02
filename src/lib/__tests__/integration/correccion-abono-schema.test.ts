@@ -120,4 +120,40 @@ describe('CorreccionAbono — schema', () => {
   it('onDelete Restrict: no se puede borrar un Abono con correcciones', async () => {
     await expect(testPrisma.abono.delete({ where: { id: abonoId } })).rejects.toThrow()
   })
+
+  it('responsibilityCaseId es FK real con onDelete SetNull (D.7)', async () => {
+    const caso = await testPrisma.responsibilityCase.create({
+      data: { tipo: 'PAGO_NO_CONFIRMADO', descripcion: 'pago Nequi no confirmado', montoEstimado: 12000 },
+    })
+    const cor = await testPrisma.correccionAbono.create({
+      data: {
+        numero: `COR-${uniqueId('nr').slice(0, 8)}`,
+        abonoId,
+        tipo: 'NO_RECIBIDO',
+        montoRevertido: 12000,
+        motivo: 'El cliente niega haber pagado',
+        autorizadoPorId: adminId,
+        responsibilityCaseId: caso.id,
+      },
+    })
+    // FK inválida → rechazada
+    await expect(
+      testPrisma.correccionAbono.create({
+        data: {
+          numero: `COR-${uniqueId('bad').slice(0, 8)}`,
+          abonoId,
+          tipo: 'NO_RECIBIDO',
+          montoRevertido: 100,
+          motivo: 'x',
+          autorizadoPorId: adminId,
+          responsibilityCaseId: 'no-existe',
+        },
+      }),
+    ).rejects.toThrow()
+    // borrar el caso → la corrección sobrevive con responsibilityCaseId = null
+    await testPrisma.responsibilityCase.delete({ where: { id: caso.id } })
+    const post = await testPrisma.correccionAbono.findUnique({ where: { id: cor.id } })
+    expect(post).not.toBeNull()
+    expect(post?.responsibilityCaseId).toBeNull()
+  })
 })

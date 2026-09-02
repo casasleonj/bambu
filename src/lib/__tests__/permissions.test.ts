@@ -118,6 +118,13 @@ describe('view:cartera (ADR-CORRECCION-MONETARIA-001 D.5) — solo ADMIN + CONTA
     expect(userCan(ROLES.REPARTIDOR, 'view:cartera')).toBe(false)
     expect(userCan(ROLES.SELLADOR, 'view:cartera')).toBe(false)
   })
+
+  it('/cartera está en el route map → el proxy lo gatea (no queda abierto a todos)', () => {
+    expect(isRouteAllowed('/cartera', ROLES.CONTADOR)).toBe(true)
+    expect(isRouteAllowed('/cartera', ROLES.ADMIN)).toBe(true)
+    expect(isRouteAllowed('/cartera', ROLES.ASISTENTE)).toBe(false)
+    expect(isRouteAllowed('/cartera', ROLES.REPARTIDOR)).toBe(false)
+  })
 })
 
 describe('SELLADOR permissions', () => {
