@@ -269,6 +269,9 @@ model User {
   // ADR-PAGO-REPORTADO-CONFIRMADO-001: pagos que este usuario confirmó/marcó discrepantes.
   pagosConfirmados Pago[] @relation("PagoConfirmador")
 
+  // ADR-CORRECCION-MONETARIA-001: correcciones de abono que este usuario autorizó.
+  correccionesAbonoAutorizadas CorreccionAbono[] @relation("CorreccionAbonoAutorizador")
+
   importBatchesCreadas ImportBatch[] @relation("ImportBatchCreador")
 
   // Session tracking for concurrent device limits (NOT NextAuth adapter Session table)
@@ -1283,7 +1286,10 @@ model ReceivableEntry {
   clienteId String
   cliente   Cliente  @relation(fields: [clienteId], references: [id], onDelete: Cascade)
 
-  // PAGO | ABONO — tipo del hecho monetario que originó esta proyección.
+  // PAGO | ABONO | REVERSION — tipo del hecho monetario que originó esta
+  // proyección. REVERSION (ADR-CORRECCION-MONETARIA-001): compensa un PAGO/ABONO
+  // previo (corrección de abono, o anulación/cancelación de pedido pagado).
+  // Toda query de cartera que sume PAGO|ABONO debe restar REVERSION.
   tipo  String
   monto Decimal @db.Decimal(10, 2)
 
@@ -1588,12 +1594,38 @@ model Abono {
 
   createdAt DateTime @default(now()) @db.Timestamptz()
 
+  correcciones CorreccionAbono[]
+
   @@index([facturaId])
   @@index([clienteId])
   @@index([negocioId])
   @@index([fecha])
   @@index([facturaId, fecha])
   @@index([pedidoId])
+}
+
+/// ADR-CORRECCION-MONETARIA-001 D.3 — reversión append-only de un `Abono` mal
+/// aplicado (monto/cliente/factura equivocados, o pago no recibido). NUNCA se
+/// edita ni borra el `Abono` original; esto lo compensa vía una
+/// `ReceivableEntry` tipo `REVERSION`. `montoRevertido` siempre > 0 (es una
+/// reversión, no un abono negativo — `chk_abono_monto_pos` lo prohíbe).
+model CorreccionAbono {
+  id             String  @id @default(cuid())
+  numero         String  @unique // COR-00000
+  abonoId        String
+  abono          Abono   @relation(fields: [abonoId], references: [id], onDelete: Restrict)
+  tipo           String // MONTO | CLIENTE | FACTURA | NO_RECIBIDO
+  montoRevertido Decimal @db.Decimal(10, 2)
+  motivo         String  @db.Text
+  autorizadoPorId String
+  autorizadoPor   User   @relation("CorreccionAbonoAutorizador", fields: [autorizadoPorId], references: [id], onDelete: Restrict)
+  /// Si tipo = NO_RECIBIDO (D.7): investigación vía ResponsibilityCase PAGO_NO_CONFIRMADO.
+  responsibilityCaseId String?
+  /// Idempotencia offline-first (dedup real por DB, no solo por el lock).
+  correccionOfflineId  String? @unique
+  createdAt      DateTime @default(now()) @db.Timestamptz()
+
+  @@index([abonoId])
 }
 
 // ====================

@@ -26,6 +26,9 @@ export type Permission =
   | 'view:deudas'
   | 'view:recurrentes'
   | 'view:resumen-facturas'
+  // ADR-CORRECCION-MONETARIA-001 D.5: sección "Cartera" (lista de abonos,
+  // historial por cliente, centro de corrección). Solo ADMIN + CONTADOR.
+  | 'view:cartera'
 
 const ALL_PERMISSIONS: Permission[] = [
   'view:dashboard', 'view:clientes', 'view:pedidos', 'view:productos',
@@ -34,7 +37,7 @@ const ALL_PERMISSIONS: Permission[] = [
   'view:gastos', 'view:compras', 'view:nomina', 'view:reportes',
   'view:trabajadores', 'view:proveedores', 'view:usuarios',
   'view:configuracion', 'view:mi-perfil', 'view:deudas',
-  'view:recurrentes', 'view:resumen-facturas',
+  'view:recurrentes', 'view:resumen-facturas', 'view:cartera',
 ]
 
 const ROLE_PERMISSIONS: Record<string, Permission[]> = {
@@ -51,7 +54,7 @@ const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     'view:facturas', 'view:cierre', 'view:gastos', 'view:compras',
     'view:nomina', 'view:reportes', 'view:trabajadores', 'view:proveedores',
     'view:configuracion', 'view:mi-perfil', 'view:deudas',
-    'view:recurrentes', 'view:resumen-facturas',
+    'view:recurrentes', 'view:resumen-facturas', 'view:cartera',
   ],
   // REPARTIDOR is restricted to the delivery view + their profile.
   // Per BLOQUEAR_PRECIOS_REPARTIDOR = Opción C: "ningún precio en ningún lado",

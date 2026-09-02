@@ -110,6 +110,16 @@ describe('ASISTENTE permissions (contrato de negocio en e2e/roles-permisos.spec.
   })
 })
 
+describe('view:cartera (ADR-CORRECCION-MONETARIA-001 D.5) — solo ADMIN + CONTADOR', () => {
+  it('ADMIN y CONTADOR pueden; ASISTENTE, REPARTIDOR y SELLADOR no', () => {
+    expect(userCan(ROLES.ADMIN, 'view:cartera')).toBe(true)
+    expect(userCan(ROLES.CONTADOR, 'view:cartera')).toBe(true)
+    expect(userCan(ROLES.ASISTENTE, 'view:cartera')).toBe(false)
+    expect(userCan(ROLES.REPARTIDOR, 'view:cartera')).toBe(false)
+    expect(userCan(ROLES.SELLADOR, 'view:cartera')).toBe(false)
+  })
+})
+
 describe('SELLADOR permissions', () => {
   it('has only dashboard, produccion, mi-perfil', () => {
     const perms = getUserPermissions(ROLES.SELLADOR)
