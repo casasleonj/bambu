@@ -1,7 +1,7 @@
 # ADR-PAGO-EMBARQUE-CAPTURA-001 — `Pago.embarqueId` (contexto de captura del pago)
 
-- Estado: **DECISIÓN PROPUESTA** — rev.3 tras 2º review del PO (2026-09-03), pendiente de re-aprobación. **NO es decisión vigente.** No tocar código hasta que el ADR esté Aceptado.
-- Fecha: 2026-09-03 (rev.3)
+- Estado: **DECISIÓN PROPUESTA** — rev.4 tras revisión adversarial (2026-09-03), pendiente de aprobación. **NO es decisión vigente.** No tocar código hasta que el ADR esté Aceptado.
+- Fecha: 2026-09-03 (rev.4)
 - Fuente: `docs/pedidos/CUMPLIMIENTO_PARCIAL_{PLAN,ALS}_v2.md` §8/§20; `PR1_INTEGRIDAD_ENTREGA_PARCIAL_v3` §13/§18; `docs/pedidos/CUMPLIMIENTO_PARCIAL_AUDITORIA_TECNICA.md` §7; follow-up de `ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001` §0.
 - Fase de implementación: PR-2 (cierre monetario). Bloquea la implementación del campo.
 - Cruza: `ADR-CUSTODIA-001`, `ADR-CIERRE-001`, `ADR-MONETARIO-001`, `ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001`, `ADR-PAGO-REPORTADO-CONFIRMADO-001`.
@@ -152,33 +152,60 @@ regla para cuando aparezca la feature.)
 El `embarqueId` del payload **no se acepta a ciegas**. El servidor valida:
 
 1. **Existe** — es un `Embarque` real.
-2. **Autorización** — si el actor es `REPARTIDOR`, el embarque debe ser suyo
-   (`embarque.trabajadorId` = el trabajador del usuario). Mismo guard que
-   `venta-libre` (`EMBARQUE_NO_PERTENECE` → `403`).
-3. **Coherencia** — el pedido de ese `Pago` está (o estuvo) asignado a ese
-   embarque, o es una venta libre de ese embarque. Un pago de misión para un
-   pedido que nunca tocó ese embarque es sospechoso → `400`.
-4. **Estado** — NO se valida que el embarque esté `EN_RUTA`/`ABIERTO`: un sync
-   offline tardío puede llegar cuando el embarque ya está `CERRADO`. En ese caso
-   el `Pago` se crea con su `embarqueId` real (la verdad del evento) y aparece
-   como **discrepancia post-cierre**, que el flujo de conciliación /
-   `porConfirmar` ya maneja. Nunca se descarta dinero real ni se le cambia el
-   `embarqueId` para "encajarlo".
-
-App single-tenant (una sola empresa): no hay check de "negocio" —
-`Negocio`/sucursal es del cliente, no del tenant. La protección relevante es
-(2) autorización del repartidor + (3) coherencia pedido↔embarque.
+2. **Autorización (garantía principal — A3/A5)**
+   - Actor `REPARTIDOR`: el embarque debe ser suyo
+     (`embarque.trabajadorId` = el trabajador del usuario). Mismo guard que
+     `venta-libre` (`EMBARQUE_NO_PERTENECE` → `403`). "Es su embarque" ya
+     implica que él estuvo físicamente ahí capturando el dinero.
+   - Actor `ADMIN` / `ASISTENTE`: **puede atribuir el pago a cualquier embarque
+     válido** (carga/corrección de datos por un operador de confianza). Queda
+     auditado (`logAudit` del pago con `embarqueId` + `usuarioId`).
+3. **Coherencia (advisory, no bloqueante — A3)** — idealmente el pedido está o
+   estuvo asignado a ese embarque. Pero "estuvo" **no es verificable**: no
+   existe una tabla de historial de asignación pedido↔embarque
+   (`embarqueOrigenId` es solo origen de venta libre, no un log). Un sync
+   offline legítimo (entrega en E70, el pedido reasignado a E78 antes del sync)
+   fallaría un check estricto. Por tanto: **la coherencia NO se valida como
+   condición de rechazo**; la autorización del repartinador (punto 2) es la
+   garantía. Si se quiere, se registra una alerta/métrica cuando el
+   `pedido.embarqueId` actual difiere del `embarqueId` del pago, pero no se
+   rechaza.
+4. **Estado — NO se valida (A2)** — que el embarque esté `EN_RUTA`/`ABIERTO`.
+   El `Pago` puede llegar cuando el embarque ya está `CERRADO`, por dos vías:
+   - **sync offline tardío**: el pago ocurrió durante la misión, el dispositivo
+     sincronizó después del cierre;
+   - **carrera online**: la entrega (lock `PEDIDO:{id}`) y el cierre (lock
+     `CIERRE:{embarqueId}`) **no comparten lock**; el cierre puede leer
+     `Σ Pago WHERE embarqueId = E` antes de que la entrega commitee su `Pago`.
+   En **ambos** casos el `Pago` se crea con su `embarqueId` **real** (la verdad
+   del evento de captura) y el faltante aparece como **discrepancia post-cierre**
+   que el flujo de conciliación / `porConfirmar` maneja. **Nunca** se descarta
+   dinero real, ni se le cambia el `embarqueId` para "encajarlo" en el estado
+   actual, ni se bloquea la entrega. La carrera online tiene la misma naturaleza
+   y la misma resolución que el sync tardío (caso E2E 12/13).
 
 ### 5. Uso en el cierre (PR-2)
 
 El cierre del embarque `E` cuenta como **"cobrado en la misión"**:
 
 ```
-Σ Pago WHERE embarqueId = E
+Σ Pago
+  WHERE embarqueId = E
+    AND pedido.estadoEntrega NOT IN ('ANULADO', 'CANCELADO')   ← A1
 ```
 
+**A1 — regresión a evitar:** `AnularPedidoUseCase` / `CancelarPedidoUseCase`
+ponen `Pedido.totalPagado = 0` + emiten `ReceivableEntry REVERSION`, pero **NO
+borran las filas `Pago`**. Un pago anulado que quedó con `embarqueId = E`
+(dinero devuelto al cliente) NO debe contar como `efectivoEsperado` en el
+cierre de `E` — sería un falso faltante contra el repartidor. La conciliación
+vieja (`fetchPagosOrigenDiferido`) ya excluía `ANULADO/CANCELADO`; la nueva
+**debe mantener esa exclusión** (por estado del pedido, o restando las
+`REVERSION` asociadas al `Pago` — se elige en PR-2, con test).
+
 - `coleccionarPagos()` deja de leer `pedidosRaw[].pagos` / `ventasLibres[].pagos`
-  y pasa a `client.pago.findMany({ where: { embarqueId: E } })` (lectura viva).
+  y pasa a `client.pago.findMany({ where: { embarqueId: E, pedido: { estadoEntrega: { notIn: ['ANULADO', 'CANCELADO'] } } } })`
+  (lectura viva).
 - El guard `PAGOS_EXCEDIDOS` compara contra el cobro de la misión, **no** contra
   el total histórico del pedido.
 - **Se retira** `embarqueOrigenId` de la conciliación de caja
@@ -188,6 +215,24 @@ El cierre del embarque `E` cuenta como **"cobrado en la misión"**:
 - **Condición:** la lógica vieja NO se elimina hasta que **toda** la matriz E2E
   (§Tests) esté verde. PR-2 puede aterrizar el campo + los sitios de captura y
   remover la lógica vieja **en el mismo PR** solo con la matriz demostrada.
+
+### 5b. Cancelar / reabrir un embarque (A4)
+
+Existe el flujo de **cancelar embarque** (`CERRADO → CANCELADO`, fix QA-prod
+#29). Al cancelar o reabrir un embarque:
+
+- `Pago.embarqueId` **NO se toca** (inmutabilidad, §3). Los pagos siguen
+  apuntando a `E`.
+- El re-cierre de `E` los vuelve a contar en `efectivoEsperado`. **Esto es
+  correcto SÓLO SI** `cancelar-embarque` revirtió los efectos de caja del cierre
+  anterior (deudas de faltante, movimientos, `CierreDia`). Si `cancelar-embarque`
+  ya hace esa reversión → no hay doble conteo. **PR-2 verifica esta invariante
+  con un test** (cerrar E → cancelar E → re-cerrar E → caja consistente, sin
+  duplicar cobro). Si `cancelar-embarque` NO revierte la caja, es un bug
+  preexistente que PR-2 documenta pero no necesariamente arregla.
+- La idempotencia de replay del cierre (`CierreDedupService` por `offlineId`)
+  sigue aplicando: un re-cierre con el **mismo** `offlineId` que el cierre
+  cancelado es un no-op; uno con datos/`offlineId` nuevos re-ejecuta.
 
 ### 6. Prepago prellenado en el asistente de cierre
 
@@ -237,10 +282,26 @@ rechace embarques `CERRADO`.
 
 ## Concurrencia / idempotencia
 
-Sin locks nuevos. `Pago.embarqueId` se setea en el mismo `create` del `Pago`,
-dentro de la transacción que ya lo crea (cierre bajo `CIERRE:{embarqueId}`,
-venta-libre bajo `SECUENCIA:pedido`, entrega bajo `PEDIDO:{id}`). El dedup por
-`offlineId` del `Pago` no cambia.
+`Pago.embarqueId` se setea en el mismo `create` del `Pago`, dentro de la
+transacción que ya lo crea (cierre bajo `CIERRE:{embarqueId}`, venta-libre bajo
+`SECUENCIA:pedido`, entrega bajo `PEDIDO:{id}`). El dedup por `offlineId` del
+`Pago` / `entregaOfflineId` del pedido no cambia.
+
+**No se agregan locks nuevos** (decisión deliberada, A2):
+
+- La entrega (`PEDIDO:{id}`) y el cierre (`CIERRE:{embarqueId}`) **no comparten
+  lock**. Un `Pago` de entrega puede commitear después de que el cierre leyó
+  `Σ Pago WHERE embarqueId = E`. Serializar entrega↔cierre exigiría que la
+  entrega tomara `CIERRE:{embarqueId}` (o el cierre tomara `PEDIDO:{id}` de cada
+  pedido), lo que acopla dos agregados y no elimina la carrera con offline.
+- **Resolución aceptada:** el `Pago` queda con su `embarqueId` real; el faltante
+  es una **discrepancia post-cierre** (misma naturaleza que el sync offline
+  tardío). No se pierde dinero, no se miente en la contabilidad. Ver §4.3
+  punto 4 y E2E 12/13.
+- Dos entregas-con-pago concurrentes sobre el **mismo pedido** SÍ serializan
+  (`PEDIDO:{id}`): la 2ª ve el `Pago` de la 1ª y `pedido.registrarPago` rechaza
+  el sobrepago (`C-BIZ-6`). El `Pago` de la 2ª nunca se persiste (misma tx que
+  el reject). E2E A6.
 
 ---
 
@@ -284,8 +345,12 @@ La lógica vieja (`fetchPagosOrigenDiferido` + `continue` + guard `entregaPrevia
 | 8 | Venta en ruta + entrega posterior | el dinero pertenece al embarque de **captura**; reemplaza los tests de `cierre-venta-ruta-entrega-posterior.test.ts` |
 | 9 | Regresión: cierre normal (fresco, cobro en la entrega, un embarque) | caja idéntica a hoy |
 | **10** | Entrega con `pagos: [{monto: 100000}]` **sin** `embarqueId` en el payload | **`400` `PAGO_MISION_SIN_EMBARQUE`** — nunca `null` silencioso |
-| **11** | Repartidor A envía un pago con `embarqueId` de un embarque de repartidor B | **`403`** (`EMBARQUE_NO_PERTENECE`) |
-| **12** | Sync offline tardío de un pago cuyo `embarqueId` ya está `CERRADO` | el `Pago` se crea con su `embarqueId` real; aparece como discrepancia post-cierre (no se descarta, no se re-etiqueta) |
+| **11** | Repartidor A envía un pago con `embarqueId` de un embarque de repartidor B | **`403`** (`EMBARQUE_NO_PERTENECE`). ADMIN/ASISTENTE → permitido, auditado (A5) |
+| **12** | Sync offline tardío de un pago cuyo `embarqueId` ya está `CERRADO` | el `Pago` se crea con su `embarqueId` real; discrepancia post-cierre (no se descarta, no se re-etiqueta) |
+| **13** | **Carrera online (A2):** el cierre de E lee sus pagos; una entrega-con-pago de E commitea justo después; el cierre commitea | el `Pago` queda con `embarqueId = E`; el cierre no lo contó → discrepancia post-cierre (misma resolución que 12); la entrega NO se bloquea |
+| **14** | **A1 — regresión:** pedido con `Pago` `embarqueId = E`, luego el pedido se **anula** (Pago no se borra), luego cierra E | el cierre de E **NO** cuenta ese `Pago` en `efectivoEsperado`; sin falso faltante |
+| **15** | **A6 — concurrencia:** dos entregas-con-pago concurrentes sobre el mismo pedido | serializan bajo `PEDIDO:{id}`; la 2ª → reject por sobrepago; nunca se persiste un `Pago` de más |
+| **16** | **A4 — cancelar/reabrir:** cerrar E (con pagos de misión) → cancelar E → re-cerrar E | `Pago.embarqueId` intacto; caja del re-cierre consistente, sin duplicar cobro (asumiendo que `cancelar-embarque` revierte la caja del cierre previo) |
 
 ---
 
@@ -300,11 +365,32 @@ La lógica vieja (`fetchPagosOrigenDiferido` + `continue` + guard `entregaPrevia
 **rev.3 (2026-09-03, 2º review):**
 5. **Pago de misión sin `embarqueId` → `400`, nunca `null` silencioso** (§4.1). `null` = "fuera de misión", no "desconocido".
 6. Concepto explícito de **contexto de captura** (`EN_MISIÓN` / `FUERA_DE_MISIÓN`); cada caso de uso lo declara, no es `?? null` (§2).
-7. **Validación server-side del `embarqueId`** recibido: existe · autorización del repartidor · coherencia pedido↔embarque · no valida estado (sync tardío) (§4.3).
+7. **Validación server-side del `embarqueId`** recibido: existe · autorización del repartidor · no valida estado (sync tardío) (§4.3). *(La coherencia pedido↔embarque de rev.3 se degradó a advisory en rev.4 — A3.)*
 8. `pagar-fiado`/`abono` **en ruta** como frontera explícita — clasifica el evento de captura, no el concepto contable (§4.2).
 9. PR-2 **retira** el guard `entregaPrevia` de PR-1 (§7).
 10. `onDelete: SetNull` documentado + condición: no borrar embarque `CERRADO` con dinero conciliado (referencia a `ADR-CIERRE-001`, sin regla paralela).
 11. Matriz E2E ampliada: casos 5 (prueba definitiva multi-embarque), 10 (rechazo sin `embarqueId`), 11 (autorización), 12 (sync tardío a `CERRADO`).
+
+**rev.4 (2026-09-03, revisión adversarial):**
+- **A1 (regresión):** el cálculo de "cobrado en la misión" **excluye** los `Pago`
+  de pedidos `ANULADO/CANCELADO` (la conciliación vieja ya lo hacía; la nueva
+  debe mantenerlo). §5 + E2E 14.
+- **A2 (carrera online):** entrega (`PEDIDO:{id}`) y cierre (`CIERRE:{embarqueId}`)
+  no comparten lock; un `Pago` puede llegar después de que el cierre leyó. **No
+  se agregan locks**; resolución = discrepancia post-cierre (misma que el sync
+  offline). §4.3 punto 4, §Concurrencia, E2E 13.
+- **A3 (coherencia no verificable):** "el pedido estuvo asignado a E" no se puede
+  validar (no hay historial de asignación). La coherencia pasa a **advisory, no
+  bloqueante**; la garantía es la autorización del repartidor (§4.3 punto 2).
+- **A4 (cancelar/reabrir):** `Pago.embarqueId` intacto; el re-cierre re-cuenta,
+  correcto sólo si `cancelar-embarque` revierte la caja previa. §5b + E2E 16.
+- **A5 (ADMIN/ASISTENTE):** pueden atribuir el pago a cualquier embarque válido,
+  auditado. §4.3 punto 2.
+- **Modelo de autorización:** el único control sobre el `embarqueId` de un pago
+  es **repartidor ↔ embarque** (el repartidor solo puede atribuir a un embarque
+  suyo; ADMIN/ASISTENTE a cualquiera, auditado). No hay ningún concepto de
+  aislamiento por empresa/organización — la app opera para una sola empresa;
+  `Negocio` es la sucursal de un cliente, no una frontera de datos.
 
 ---
 
@@ -316,3 +402,5 @@ La lógica vieja (`fetchPagosOrigenDiferido` + `continue` + guard `entregaPrevia
   (`Pago.embarqueId` + `Embarque.fecha`).
 - La app del repartidor debe enviar `embarqueId` en la entrega cuando hay cobro
   — cambio de contrato del endpoint `/api/pedidos/[id]/entrega` (PR-2).
+- El cálculo del cierre pasa a filtrar por estado del pedido (`ANULADO/CANCELADO`)
+  además de por `embarqueId`.
