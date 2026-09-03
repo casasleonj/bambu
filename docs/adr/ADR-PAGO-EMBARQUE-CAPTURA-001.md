@@ -509,8 +509,23 @@ USUARIO → ROL/IDENTIDAD → ¿puede ejecutar esta operación?
 | F9 — rama PARCIAL registra pagos con `embarqueId=E` | **RESUELTO en rev.6** |
 | Matriz E2E (16 casos) | **CRITERIO DE ACEPTACIÓN de PR-2** |
 | multitenancy | **NO APLICA — eliminada del diseño** |
-| PR #176 (ADR documental) | **A MERGEAR** |
-| Código de PR-2 | **AUTORIZADO** — disciplina "corregir en el camino sin perder trazabilidad" |
+| PR #176 (ADR documental) | **MERGEADO** |
+| Código de PR-2 | **IMPLEMENTADO** — PR-2a #177 (aditivo) + PR-2b #178 (comportamiento) |
+
+---
+
+## Implementación (registro)
+
+- **PR-2a #177 (mergeado 2026-09-03):** puramente aditivo. `Pago.embarqueId String?` + relación `Embarque.pagos` (`onDelete: SetNull`) + `@@index` + migración `20260903_add_pago_embarque_captura` (idempotente, sin backfill, sin `GRANT` — F11). Sitios de captura poblados: `venta-libre`, `crear-ventas-libres`, `procesar-pedido` (COMPLETO), `EntregarPedidoUseCase` (payload). `EntregaSchema.superRefine`: cobro sin `embarqueId` → `400 PAGO_MISION_SIN_EMBARQUE`. Route valida existencia + no `CANCELADO` + REPARTIDOR dueño (`403`). Nadie leía el campo todavía.
+- **PR-2b #178 (mergeado 2026-09-03):** el cambio de comportamiento.
+  - `coleccionarPagos(pedidosRaw,…)` → `coleccionarPagosDeMision(client, E)`: query viva `Pago.findMany({ where: { embarqueId: E, pedido: { estadoEntrega: { notIn: ['ANULADO','CANCELADO'] } } } })` dentro de la tx del cierre.
+  - `fetchPagosOrigenDiferido` **eliminado**; `embarqueOrigenId` fuera de todo cálculo monetario (la columna queda, la escribe `venta-libre`).
+  - COMPLETO: sin `entregaPrevia`/`totalPagadoEfectivo`; `totalPagado` se **incrementa** (`Math.min(total, previo + montoNuevo)`), nunca se pisa.
+  - PARCIAL (F9): registra `cuadre.pagos` con `embarqueId = E` + incrementa `totalPagado`; campos de dinero sólo si hubo cobro nuevo (obligación intacta byte a byte si no).
+  - **Guard F7 refinado en review (#178):** exacto, sin tolerancia porcentual — `montoNuevo > saldoPendientePrevio + 0.01`. `total` ya no se recalcula (PR-1) → la tolerancia % no tenía propósito, y `chk_pedido_montopagado_le_total` es exacta: un guard laxo dejaba pasar montos que abortaban toda la tx del cierre por constraint violation.
+  - `cerrar-client`: retirado el prellenado histórico de `cuadre.pagos` (§6); resumen del cuadre muestra obligación / ya pagado / cobrado ahora / saldo pendiente.
+  - Matriz E2E: subset crítico (2, 5, 7, 8, 14 + 10/11 de PR-2a) cubierto como tests de integración contra Postgres real (`pr2b-conciliacion-captura.test.ts`, `cierre-venta-ruta-entrega-posterior.test.ts` reescrito, `procesar-pedido.service.test.ts`). Casos 6/12/13 (offline tardío / carrera SSE-cierre) son discrepancia post-cierre por diseño (§4.3), territorio E2E.
+  - **Runbook de deploy (finding 1 del review):** sin backfill → verificar que ningún embarque esté a mitad de misión al desplegar, o reconciliar su caja a mano. Ventana chica (PR-2a se mergeó el mismo día).
 
 ---
 
