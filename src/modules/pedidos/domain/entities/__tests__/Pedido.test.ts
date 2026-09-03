@@ -90,10 +90,11 @@ describe('Pedido.entregar()', () => {
     expect(pedido.gpsLng).toBe(0)
   })
 
-  it('recalculates total based on delivered quantities', () => {
+  it('PR-1: una entrega parcial NO recalcula el total (obligación económica intacta)', () => {
     const pedido = makePedido() // 5 x 6500 = 32500
     pedido.entregar([{ producto: 'PACA_AGUA', cantidad: 3 }], { fotoEntrega: 'x' })
-    expect(Number(pedido.total.toDecimal())).toBe(19500) // 3 x 6500
+    expect(Number(pedido.total.toDecimal())).toBe(32500) // sin cambio
+    expect(pedido.estadoEntrega.get()).toBe('PENDIENTE') // falta cantidad
   })
 
   it('persists gpsAccuracy, gpsJustificacion, entregadoConGps and entregadoAt when provided', () => {
@@ -134,5 +135,92 @@ describe('Pedido.entregar()', () => {
     expect(pedido.adminOverrideAt).toBeDefined()
     expect(pedido.adminOverrideAt!.getTime()).toBeGreaterThanOrEqual(before.getTime())
     expect(pedido.adminOverrideAt!.getTime()).toBeLessThanOrEqual(after.getTime())
+  })
+})
+
+// ADR PR-1 — Integridad de entrega parcial (docs/pedidos/CUMPLIMIENTO_PARCIAL_*)
+describe('Pedido.entregar() — PR-1: integridad de entrega parcial', () => {
+  // 10 unidades x $1.000 = $10.000
+  function make10(over: { totalPagado?: number; cantEntrega?: number } = {}): Pedido {
+    return Pedido.create({
+      id: PedidoId.from('p1'),
+      numero: 1,
+      clienteId: 'c1',
+      canal: CanalVO.create('DOMICILIO'),
+      origen: OrigenPedidoVO.create('PEDIDO'),
+      estadoEntrega: EstadoEntregaVO.create('EN_RUTA'),
+      estadoPago: EstadoPagoVO.create('PENDIENTE'),
+      items: [new PedidoItem('PACA_AGUA', 10, Money.fromDecimal(1000), 'base', over.cantEntrega ?? 0)],
+      total: Money.fromDecimal(10_000),
+      totalPagado: Money.fromDecimal(over.totalPagado ?? 0),
+      pagos: [],
+      fecha: new Date('2026-09-03T10:00:00Z'),
+    })
+  }
+
+  it('1/2/3: parcial no reduce total ni totalPagado; saldo = total - totalPagado', () => {
+    const prepago = make10({ totalPagado: 10_000 })
+    prepago.entregar([{ producto: 'PACA_AGUA', cantidad: 6 }])
+    expect(Number(prepago.total.toDecimal())).toBe(10_000)
+    expect(Number(prepago.totalPagado.toDecimal())).toBe(10_000)
+    expect(Number(prepago.saldo.toDecimal())).toBe(0)
+    expect(prepago.estadoEntrega.get()).toBe('PENDIENTE')
+
+    const parcial = make10({ totalPagado: 6_000 })
+    parcial.entregar([{ producto: 'PACA_AGUA', cantidad: 6 }])
+    expect(Number(parcial.total.toDecimal())).toBe(10_000)
+    expect(Number(parcial.totalPagado.toDecimal())).toBe(6_000)
+    expect(Number(parcial.saldo.toDecimal())).toBe(4_000)
+
+    const sinPago = make10({ totalPagado: 0 })
+    sinPago.entregar([{ producto: 'PACA_AGUA', cantidad: 6 }])
+    expect(Number(sinPago.total.toDecimal())).toBe(10_000)
+    expect(Number(sinPago.totalPagado.toDecimal())).toBe(0)
+    expect(Number(sinPago.saldo.toDecimal())).toBe(10_000)
+  })
+
+  it('5: cantEntrega acumula (6 + 4 = 10) y al completar pasa a ENTREGADO', () => {
+    const pedido = make10({ totalPagado: 10_000, cantEntrega: 6 })
+    expect(pedido.items[0].cantEntrega).toBe(6)
+    pedido.entregar([{ producto: 'PACA_AGUA', cantidad: 4 }])
+    expect(pedido.items[0].cantEntrega).toBe(10)
+    expect(pedido.estadoEntrega.get()).toBe('ENTREGADO')
+    expect(Number(pedido.total.toDecimal())).toBe(10_000)
+    expect(Number(pedido.saldo.toDecimal())).toBe(0)
+  })
+
+  it('6: no se puede superar cantPedido (acumulado)', () => {
+    const pedido = make10({ cantEntrega: 6 })
+    expect(() => pedido.entregar([{ producto: 'PACA_AGUA', cantidad: 5 }])).toThrow(/solo se pidieron 10/)
+  })
+
+  it('7: cantidad negativa se rechaza', () => {
+    const pedido = make10()
+    expect(() => pedido.entregar([{ producto: 'PACA_AGUA', cantidad: -1 }])).toThrow(/no puede ser negativa/)
+  })
+
+  it('9: mientras falte cantidad el pedido queda PENDIENTE (prepago → ANTICIPADO)', () => {
+    const pedido = make10({ totalPagado: 10_000 })
+    pedido.entregar([{ producto: 'PACA_AGUA', cantidad: 6 }])
+    expect(pedido.estadoEntrega.get()).toBe('PENDIENTE')
+    expect(pedido.estadoPago.get()).toBe('ANTICIPADO')
+  })
+
+  it('golden: 10 comprado / 10 pagado → entregar 6 (parcial) → re-planificar → entregar 4 (completo)', () => {
+    const pedido = make10({ totalPagado: 10_000 })
+    pedido.entregar([{ producto: 'PACA_AGUA', cantidad: 6 }])
+    expect(pedido.estadoEntrega.get()).toBe('PENDIENTE')
+    expect(pedido.items[0].cantEntrega).toBe(6)
+    expect(Number(pedido.total.toDecimal())).toBe(10_000)
+    expect(Number(pedido.totalPagado.toDecimal())).toBe(10_000)
+    expect(Number(pedido.saldo.toDecimal())).toBe(0)
+
+    // El faltante se re-planifica: PENDIENTE → EN_RUTA (asignar a un embarque)
+    // antes de la segunda entrega, igual que en producción.
+    pedido.asignarEmbarque('emb-2')
+    pedido.entregar([{ producto: 'PACA_AGUA', cantidad: 4 }])
+    expect(pedido.estadoEntrega.get()).toBe('ENTREGADO')
+    expect(pedido.items[0].cantEntrega).toBe(10)
+    expect(Number(pedido.saldo.toDecimal())).toBe(0)
   })
 })

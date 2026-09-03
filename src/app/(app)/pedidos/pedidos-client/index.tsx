@@ -1392,10 +1392,12 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     const id = pedidoParaEntregar.id
     setUpdatingId(id)
     try {
+      // PR-1: `entregar()` acumula → se envía el RESTO por línea
+      // (`cantPedido − cantEntrega`). En un pedido fresco eso es `cantPedido`;
+      // en uno parcialmente entregado completa el faltante.
       const itemsEntregados = (pedidoParaEntregar.items || []).flatMap((i) => {
-        const entries: Array<{ producto: string; cantidad: number }> = []
-        if (i.cantPedido > 0) entries.push({ producto: i.producto, cantidad: i.cantPedido })
-        return entries
+        const resto = i.cantPedido - (i.cantEntrega || 0)
+        return resto > 0 ? [{ producto: i.producto, cantidad: resto }] : []
       })
 
       await entregar({

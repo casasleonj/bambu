@@ -2,8 +2,6 @@
  * EntregarPedidoUseCase.
  */
 
-import { Money } from '@/shared/domain'
-import { getNextNumero } from '@/lib/sequence'
 import { logAudit } from '@/lib/audit'
 import { PedidoId } from '../../domain/value-objects/PedidoId'
 import type { IPedidoRepository } from '../../domain/repositories/IPedidoRepository'
@@ -120,9 +118,12 @@ export class EntregarPedidoUseCase {
         })
       }
 
-      // Update factura
+      // PR-1 (integridad de entrega parcial): la factura solo se sincroniza
+      // cuando el cumplimiento es total. Una entrega parcial deja el pedido
+      // PENDIENTE y no debe tocar la factura (montos/estado) ni fijar su fecha.
+      const entregaCompleta = updated.estadoEntrega.get() === 'ENTREGADO'
       const factura = await this.facturaRepo.findByPedidoId(pedido.id.get(), tx)
-      if (factura) {
+      if (factura && entregaCompleta) {
         await this.facturaRepo.update({
           ...factura,
           total: updated.total.toDecimal(),
@@ -134,64 +135,26 @@ export class EntregarPedidoUseCase {
         }, tx)
       }
 
-      // Create child order for partial delivery
-      let hijo = undefined
-      const itemsActualizados = updated.items
-      const tieneFaltantes = itemsActualizados.some(i => i.faltante > 0)
-
-      if (tieneFaltantes) {
-        const numeroHijo = await getNextNumero(tx, { model: 'pedido', field: 'numero' })
-        const hijoData = updated.crearPedidoHijo(numeroHijo)
-        if (hijoData) {
-          // Build and save child order
-          const { Pedido } = await import('../../domain/entities/Pedido')
-          const { PedidoItem } = await import('../../domain/entities/PedidoItem')
-          const { CanalVO } = await import('../../domain/value-objects/Canal')
-          const { OrigenPedidoVO } = await import('../../domain/value-objects/OrigenPedido')
-          const { EstadoEntregaVO } = await import('../../domain/value-objects/EstadoEntrega')
-          const { EstadoPagoVO } = await import('../../domain/value-objects/EstadoPago')
-          const { PedidoId } = await import('../../domain/value-objects/PedidoId')
-
-          const hijoPedido = Pedido.create({
-            id: PedidoId.from(''),
-            numero: hijoData.numero,
-            clienteId: hijoData.clienteId,
-            // FIX BAMBU-LOG-004: heredar negocioId y snapshot de dirección
-            // del padre — si no, el hijo resuelve su dirección/coords
-            // contra el Cliente en vez del Negocio/sucursal original.
-            negocioId: hijoData.negocioId,
-            direccionEntrega: hijoData.direccionEntrega,
-            barrioEntrega: hijoData.barrioEntrega,
-            canal: CanalVO.create(hijoData.canal),
-            origen: OrigenPedidoVO.create(hijoData.origen),
-            estadoEntrega: EstadoEntregaVO.create('PENDIENTE'),
-            estadoPago: EstadoPagoVO.create('PENDIENTE'),
-            items: hijoData.items.map(i =>
-              new PedidoItem(i.producto, i.cantidad, Money.fromDecimal(i.precio), 'base'),
-            ),
-            total: Money.fromDecimal(hijoData.total),
-            totalPagado: new Money(0),
-            pagos: [],
-            fecha: new Date(),
-            idOrigen: updated.id.get(),
-            obs: `Faltante de pedido #${updated.numero}`,
-          })
-
-          const savedHijo = await this.pedidoRepo.save(hijoPedido, tx)
-          hijo = PedidoDTOMapper.toResumen(savedHijo)
-        }
-      }
+      // PR-1: NO se crea pedido hijo para el faltante. La cantidad pendiente
+      // vive en el propio pedido (`cantEntrega < cantPedido`, estado PENDIENTE)
+      // y se cumple con una entrega posterior. `crearPedidoHijo()` queda como
+      // legacy hasta la migración (ADR PR-1 §8).
 
       await logAudit({
         entidad: 'Pedido',
         registroId: updated.id.get(),
         accion: 'UPDATE',
-        datos: { accion: 'ENTREGA', estadoEntrega: updated.estadoEntrega.get(), estadoPago: updated.estadoPago.get() },
+        datos: {
+          accion: 'ENTREGA',
+          estadoEntrega: updated.estadoEntrega.get(),
+          estadoPago: updated.estadoPago.get(),
+          parcial: !entregaCompleta,
+        },
       }, tx)
 
       return {
         pedido: PedidoDTOMapper.toResumen(updated),
-        hijo,
+        hijo: undefined,
       }
     })
   }

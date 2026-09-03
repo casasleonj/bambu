@@ -265,12 +265,15 @@ export class ActualizarPedidoUseCase {
           throw new Error(`Transición inválida: ${pedido.estadoEntrega.get()} → ${nuevoEstado.get()}`)
         }
 
-        // Handle ENTREGADO without items (copiar cantidades pedidas a entregadas)
+        // Handle ENTREGADO without items (entregar lo que falte de cada línea).
+        // PR-1: `entregar()` acumula, así que se pasa el RESTO (`cantPedido -
+        // cantEntrega`); en un pedido fresco eso es `cantPedido` (sin cambio),
+        // en uno parcialmente entregado completa el faltante.
         if (nuevoEstado.get() === 'ENTREGADO') {
-          for (const item of pedido.items) {
-            item.entregar(item.cantPedido)
-          }
-          pedido.entregar(pedido.items.map(i => ({ producto: i.producto, cantidad: i.cantPedido })))
+          pedido.entregar(pedido.items.map(i => ({
+            producto: i.producto,
+            cantidad: i.cantPedido - i.cantEntrega,
+          })))
 
           // FIX BAMBU-LOG-017: pedido.entregar() solo muta el agregado en
           // memoria. Antes, este branch terminaba sin llamar a

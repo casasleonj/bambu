@@ -36,12 +36,19 @@ export class PedidoItem {
     return this.cantPedido - this._cantEntrega
   }
 
+  /**
+   * PR-1 (integridad de entrega parcial): `cantidad` es la cantidad ENTREGADA
+   * AHORA (delta), que se ACUMULA sobre lo ya entregado. Antes se sobreescribía,
+   * lo que impedía representar entregas sucesivas (6 ahora + 4 después = 10).
+   * La entrega física NO toca precio ni pago.
+   */
   entregar(cantidad: number): void {
     if (cantidad < 0) throw new Error('cantidad entregada no puede ser negativa')
-    if (cantidad > this.cantPedido) {
-      throw new Error(`No se pueden entregar ${cantidad} unidades de ${this.producto} cuando solo se pidieron ${this.cantPedido}`)
+    const acumulado = this._cantEntrega + cantidad
+    if (acumulado > this.cantPedido) {
+      throw new Error(`No se pueden entregar ${acumulado} unidades de ${this.producto} cuando solo se pidieron ${this.cantPedido}`)
     }
-    this._cantEntrega = cantidad
+    this._cantEntrega = acumulado
   }
 
   cloneWithPrecio(nuevoPrecio: Money, nuevoOrigen: string): PedidoItem {

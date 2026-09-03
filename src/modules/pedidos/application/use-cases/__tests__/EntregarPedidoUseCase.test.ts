@@ -1,11 +1,8 @@
 /**
- * BAMBU-LOG-004: el pedido hijo creado por una entrega PARCIAL individual
- * (vía POST /api/pedidos/[id]/entrega, no el cierre de embarque) debe
- * heredar negocioId y el snapshot de dirección del padre. Antes, solo se
- * copiaba clienteId (Pedido.crearPedidoHijo() en el dominio no incluía
- * negocioId/direccionEntrega/barrioEntrega) — mismo bug que en
- * ProcesarPedidoService (cierre), pero en la implementación paralela
- * usada por la entrega individual.
+ * PR-1 (integridad de entrega parcial): `EntregarPedidoUseCase` ya NO crea un
+ * pedido hijo para el faltante. Una entrega parcial deja el pedido PENDIENTE
+ * con `cantEntrega` acumulado; `total`/`totalPagado` intactos.
+ * (Antes: BAMBU-LOG-004 verificaba que el hijo heredara negocioId/dirección.)
  */
 import { describe, it, expect, vi } from 'vitest'
 import { EntregarPedidoUseCase } from '../EntregarPedidoUseCase'
@@ -45,10 +42,10 @@ function makePedidoConNegocio(): Pedido {
   })
 }
 
-describe('EntregarPedidoUseCase — BAMBU-LOG-004: hijo hereda negocioId/dirección', () => {
-  it('entrega PARCIAL crea un hijo con el mismo negocioId y dirección del padre', async () => {
-    const pedido = makePedidoConNegocio()
-    let hijoGuardado: Pedido | undefined
+describe('EntregarPedidoUseCase — PR-1: entrega parcial no crea hijo', () => {
+  it('entrega parcial (3 de 5): NO crea hijo, deja PENDIENTE, total/totalPagado intactos', async () => {
+    const pedido = makePedidoConNegocio() // total 50.000, sin pagar
+    let guardado: Pedido | undefined
 
     const pedidoRepo: IPedidoRepository = {
       findById: vi.fn().mockResolvedValue(pedido),
@@ -60,10 +57,10 @@ describe('EntregarPedidoUseCase — BAMBU-LOG-004: hijo hereda negocioId/direcci
       findMany: vi.fn(),
       count: vi.fn(),
       save: vi.fn().mockImplementation(async (p: Pedido) => {
-        hijoGuardado = p
+        guardado = p
         return p
       }),
-      update: vi.fn().mockImplementation(async (p: Pedido) => p),
+      update: vi.fn().mockImplementation(async (p: Pedido) => { guardado = p; return p }),
       findPendingByCliente: vi.fn(),
       countByClienteAndDate: vi.fn(),
     }
@@ -97,10 +94,17 @@ describe('EntregarPedidoUseCase — BAMBU-LOG-004: hijo hereda negocioId/direcci
 
     const result = await useCase.execute(input)
 
-    expect(result.hijo).toBeDefined()
-    expect(hijoGuardado).toBeDefined()
-    expect(hijoGuardado!.negocioId).toBe('neg_1')
-    expect(hijoGuardado!.direccionEntrega).toBe('Cra 10 #20-30')
-    expect(hijoGuardado!.barrioEntrega).toBe('Centro')
+    // NO se crea pedido hijo.
+    expect(result.hijo).toBeUndefined()
+    expect(pedidoRepo.save).not.toHaveBeenCalled()
+
+    // El pedido persistido (update) queda PENDIENTE con 3/5 entregadas y la
+    // obligación económica intacta.
+    expect(guardado).toBeDefined()
+    expect(guardado!.estadoEntrega.get()).toBe('PENDIENTE')
+    expect(guardado!.items[0].cantEntrega).toBe(3)
+    expect(Number(guardado!.total.toDecimal())).toBe(50000)
+    expect(Number(guardado!.totalPagado.toDecimal())).toBe(0)
+    expect(Number(guardado!.saldo.toDecimal())).toBe(50000)
   })
 })
