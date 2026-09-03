@@ -96,7 +96,9 @@ describe('PR-1 — golden: entrega parcial no destruye el prepago ni crea hijo',
           cPacaAguaEnt: 6, cPacaHieloEnt: 0, cBotellonFabEnt: 0,
           cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0,
         },
-        pagos: [{ metodo: 'EFECTIVO', monto: 10_000 }], // el wizard precarga el prepago
+        // PR-2b: el wizard ya NO precarga el prepago. `pagos` = solo dinero
+        // nuevo; este pedido ya está pagado → lista vacía.
+        pagos: [],
       }],
       gastos: [],
       dineroEntregado: 0,
@@ -142,7 +144,7 @@ describe('PR-1 — golden: entrega parcial no destruye el prepago ni crea hijo',
           cPacaAguaEnt: 4, cPacaHieloEnt: 0, cBotellonFabEnt: 0,
           cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0,
         },
-        pagos: [{ metodo: 'EFECTIVO', monto: 10_000 }],
+        pagos: [],
       }],
       gastos: [],
       dineroEntregado: 0,
@@ -158,7 +160,7 @@ describe('PR-1 — golden: entrega parcial no destruye el prepago ni crea hijo',
     expect(await testPrisma.pedido.count()).toBe(pedidosAntes) // nunca hubo hijo
   })
 
-  it('re-cierre vía COMPLETO sin línea de pago (repartidor la quita) → prepago NO se destruye', async () => {
+  it('re-cierre vía COMPLETO sin línea de pago (pedido ya prepago) → prepago NO se destruye', async () => {
     const emb1 = await crearEmbarque()
     const pedido = await crearPedido10Prepago(emb1.id)
 
@@ -178,7 +180,7 @@ describe('PR-1 — golden: entrega parcial no destruye el prepago ni crea hijo',
     const emb2 = await crearEmbarque()
     await testPrisma.pedido.update({ where: { id: pedido.id }, data: { embarqueId: emb2.id, estadoEntrega: 'EN_RUTA', estado: 'EN_RUTA' } })
 
-    // Cierre 2: COMPLETO con `pagos: []` (el repartidor quitó la línea prellenada)
+    // Cierre 2: COMPLETO con `pagos: []` (nada nuevo por cobrar — ya está prepago)
     await buildUseCase().execute({
       id: emb2.id,
       pedidos: [{

@@ -155,7 +155,7 @@ export class ProcesarPedidoService {
     // pedido hijo y NO registra pagos (eso es PR-2). Solo acumula lo entregado
     // físicamente y deja el pendiente re-planificable.
     if (cuadre.entregado === 'PARCIAL') {
-      return this.procesarEntregaParcial(client, pedido, entProd, cuadre, userRole, userId, pedidosActualizados)
+      return this.procesarEntregaParcial(client, pedido, entProd, cuadre, userRole, userId, pedidosActualizados, metodosRequieren)
     }
 
     // Resolve prices (frozen original prices, ADMIN override only)
@@ -193,17 +193,12 @@ export class ProcesarPedidoService {
     // entregado. `total` se conserva; `saldo = total - totalPagado`.
     const totalObligacion = toNumber(pedido.total)
 
-    // ¿Es un RE-cierre (el pedido ya tuvo una entrega parcial en un embarque
-    // previo)? En ese caso el dinero ya se contabilizó/prepagó: NO se toca
-    // `totalPagado` ni se crean filas `Pago` (el cobro de misión duplicado /
-    // el double-count del prepago prellenado es exactamente lo que PR-2
-    // resuelve con `Pago.embarqueId`). En un cierre fresco se mantiene el
-    // comportamiento actual.
-    const entregaPrevia =
-      (pedido.cPacaAguaEnt || 0) + (pedido.cPacaHieloEnt || 0) +
-      (pedido.cBotellonFabEnt || 0) + (pedido.cBotellonDomEnt || 0) +
-      (pedido.cBolsaAguaEnt || 0) + (pedido.cBolsaHieloEnt || 0) > 0
-    const totalPagadoEfectivo = entregaPrevia ? toNumber(pedido.totalPagado) : montoPagado
+    // PR-2 (ADR-PAGO-EMBARQUE-CAPTURA-001): `cuadre.pagos` = SOLO dinero NUEVO de
+    // esta misión (el asistente ya no prellena con los pagos previos). El
+    // `totalPagado` del pedido se INCREMENTA por ese monto — nunca se pisa ni se
+    // recorta. El guard `entregaPrevia` de PR-1 (defensa contra el prellenado)
+    // desaparece.
+    const totalPagadoPrevio = toNumber(pedido.totalPagado)
 
     // Acumular lo entregado sobre lo ya entregado (pedido re-planificado que
     // completa su faltante). En un pedido fresco `pedido.cXEnt` es 0.
@@ -216,7 +211,22 @@ export class ProcesarPedidoService {
       cBolsaHieloEnt: (pedido.cBolsaHieloEnt || 0) + (entProd.cBolsaHieloEnt || 0),
     }
 
-    const estadoPago = calcularEstadoPago(totalObligacion, totalPagadoEfectivo)
+    // Guard F7 (ADR-PAGO-EMBARQUE-CAPTURA-001 §5): el cobro NUEVO de esta misión
+    // no puede exceder el saldo pendiente ANTES de aplicarlo. Lo ya pagado en
+    // misiones/prepagos previos NO cuenta contra este tope — sólo el delta de
+    // este cierre. Sin tolerancia porcentual: `total` ya NO se recalcula (PR-1),
+    // así que no hay drift de redondeo que absorber, y la CHECK de Postgres
+    // `chk_pedido_montopagado_le_total` es exacta — un guard más laxo dejaría
+    // pasar montos que luego abortan toda la tx del cierre por constraint.
+    const saldoPendientePrevio = totalObligacion - totalPagadoPrevio
+    if (montoPagado > saldoPendientePrevio + 0.01) {
+      throw new Error(`PAGOS_EXCEDIDOS: el cobro de misión ($${montoPagado}) excede el saldo pendiente ($${saldoPendientePrevio}) del pedido #${pedido.numero}`)
+    }
+    // Clamp defensivo al centavo: garantiza `totalPagado <= total` aunque el
+    // epsilon del guard deje pasar una fracción.
+    const nuevoTotalPagado = Math.min(totalObligacion, totalPagadoPrevio + montoPagado)
+
+    const estadoPago = calcularEstadoPago(totalObligacion, nuevoTotalPagado)
 
     // Update pedido
     const tx = client as unknown as {
@@ -249,8 +259,8 @@ export class ProcesarPedidoService {
         precioBolsaAgua: precios.bolsaAgua,
         precioBolsaHielo: precios.bolsaHielo,
         total: totalObligacion,
-        totalPagado: totalPagadoEfectivo,
-        saldo: totalObligacion - totalPagadoEfectivo,
+        totalPagado: nuevoTotalPagado,
+        saldo: totalObligacion - nuevoTotalPagado,
       },
     })
 
@@ -260,44 +270,36 @@ export class ProcesarPedidoService {
     // Log price changes (audita el delta de precio en el cierre)
     await this.logPrecioCierre(client, pedido, totalReal, userId)
 
-    // Validate payments (1% tolerance) contra la obligación del pedido.
-    const montoPagadoTotal = cuadre.pagos.reduce((sum, p) => sum + p.monto, 0)
-    if (montoPagadoTotal > totalObligacion * 1.01) {
-      throw new Error(`PAGOS_EXCEDIDOS: Pagos ($${montoPagadoTotal}) exceden el total del pedido ($${totalObligacion}) para pedido #${pedido.numero}`)
-    }
-
     pedidosActualizados.push({ id: pedido.id, estado: 'ENTREGADO' })
 
-    // Register payments
+    // Register payments (PR-2, ADR-PAGO-EMBARQUE-CAPTURA-001 §7): `cuadre.pagos`
+    // es SIEMPRE dinero nuevo de esta misión (se retiró el prellenado histórico
+    // del cierre y el guard `entregaPrevia` de PR-1). Se registran siempre, con
+    // `embarqueId` = el embarque que se cierra.
     // ADR-PAGO-REPORTADO-CONFIRMADO-001: digital cobrado en ruta nace REPORTADO
     // (§2: métodos configurables). El use case pasa la lista resuelta; si no,
     // se lee acá (fallback para llamadas directas al service).
-    // En un re-cierre NO se registran pagos: el dinero ya se contabilizó en el
-    // primer cierre / prepago. Registrar `cuadre.pagos` (prellenados con los
-    // pagos existentes) duplicaría el ledger.
-    if (!entregaPrevia) {
-      const metodosConfirmacion =
-        metodosRequieren ??
-        (await leerMetodosRequierenConfirmacion(
-          client as unknown as Parameters<typeof leerMetodosRequierenConfirmacion>[0],
-        ))
-      for (const pago of cuadre.pagos) {
-        if (pago.monto > 0) {
-          await tx.pago.create({
-            data: {
-              pedidoId: pedido.id,
-              metodo: pago.metodo as MetodoPago,
-              monto: pago.monto,
-              // ADR-PAGO-EMBARQUE-CAPTURA-001: cobro registrado en el cierre →
-              // capturado EN ese embarque. `pedido.embarqueId` acá ES el embarque
-              // que se cierra (fetchPedidosForEmbarque filtra por él), no un proxy
-              // de asignación — la invariante "no derivar de Pedido.embarqueId"
-              // aplica al flujo del repartidor, no a este.
-              embarqueId: pedido.embarqueId,
-              ...datosConfirmacionInicial(pago.metodo, metodosConfirmacion),
-            },
-          })
-        }
+    const metodosConfirmacion =
+      metodosRequieren ??
+      (await leerMetodosRequierenConfirmacion(
+        client as unknown as Parameters<typeof leerMetodosRequierenConfirmacion>[0],
+      ))
+    for (const pago of cuadre.pagos) {
+      if (pago.monto > 0) {
+        await tx.pago.create({
+          data: {
+            pedidoId: pedido.id,
+            metodo: pago.metodo as MetodoPago,
+            monto: pago.monto,
+            // ADR-PAGO-EMBARQUE-CAPTURA-001: cobro registrado en el cierre →
+            // capturado EN ese embarque. `pedido.embarqueId` acá ES el embarque
+            // que se cierra (fetchPedidosForEmbarque filtra por él), no un proxy
+            // de asignación — la invariante "no derivar de Pedido.embarqueId"
+            // aplica al flujo del repartidor, no a este.
+            embarqueId: pedido.embarqueId,
+            ...datosConfirmacionInicial(pago.metodo, metodosConfirmacion),
+          },
+        })
       }
     }
 
@@ -316,8 +318,8 @@ export class ProcesarPedidoService {
         data: {
           fecha: new Date(),
           total: totalObligacion,
-          saldo: totalObligacion - totalPagadoEfectivo,
-          estado: totalPagadoEfectivo >= totalObligacion ? 'PAGADA' : (totalPagadoEfectivo > 0 ? 'PARCIAL' : 'EMITIDA'),
+          saldo: totalObligacion - nuevoTotalPagado,
+          estado: nuevoTotalPagado >= totalObligacion ? 'PAGADA' : (nuevoTotalPagado > 0 ? 'PARCIAL' : 'EMITIDA'),
         },
       })
     }
@@ -329,10 +331,12 @@ export class ProcesarPedidoService {
   }
 
   /**
-   * PARCIAL (PR-1): cierre con entrega incompleta. Interino, sin N2.
+   * PARCIAL (PR-1 + PR-2): cierre con entrega incompleta. Interino, sin N2.
    *  - acumula lo entregado físicamente sobre lo ya entregado;
-   *  - NO toca `total` / `totalPagado` / `saldo` (obligación económica intacta);
-   *  - NO registra pagos (PR-2 posee el cobro de misión);
+   *  - NO recalcula `total` (obligación económica intacta — PR-1);
+   *  - SÍ registra `cuadre.pagos` (dinero nuevo de esta misión) con
+   *    `embarqueId` = el embarque que se cierra, e INCREMENTA `totalPagado`
+   *    (ADR-PAGO-EMBARQUE-CAPTURA-001 §7 / F9 — simétrico con la rama COMPLETO);
    *  - NO crea pedido hijo;
    *  - deja el pedido `PENDIENTE` + `embarqueId = null` (re-planificable);
    *  - si la acumulación completa lo pedido, lo marca `ENTREGADO`.
@@ -347,10 +351,12 @@ export class ProcesarPedidoService {
     userRole: string | undefined,
     userId: string | undefined,
     pedidosActualizados: Array<{ id: string; estado: string }>,
+    metodosRequieren?: string[],
   ): Promise<number> {
     const tx = client as unknown as {
       pedido: { update: (args: { where: { id: string }; data: Record<string, unknown> }) => Promise<unknown> }
       pedidoItem: { updateMany: (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => Promise<unknown> }
+      pago: { create: (args: { data: Record<string, unknown> }) => Promise<unknown> }
       factura: { update: (args: { where: { id: string }; data: Record<string, unknown> }) => Promise<unknown> }
       historial: { create: (args: { data: Record<string, unknown> }) => Promise<unknown> }
     }
@@ -384,6 +390,26 @@ export class ProcesarPedidoService {
       acum.cBotellonDomEnt + acum.cBolsaAguaEnt + acum.cBolsaHieloEnt
     const completo = totalEntregadoAcum >= totalPedido && totalPedido > 0
 
+    // PR-2 (ADR-PAGO-EMBARQUE-CAPTURA-001 §7 / F9): cobro nuevo de esta misión.
+    const montoPagado = cuadre.pagos.reduce((sum, p) => sum + p.monto, 0)
+    const totalObligacionPed = toNumber(pedido.total)
+    const totalPagadoPrevio = toNumber(pedido.totalPagado)
+    const saldoPendientePrevio = totalObligacionPed - totalPagadoPrevio
+    // Mismo guard F7 exacto que la rama COMPLETO (ver comentario allá).
+    if (montoPagado > saldoPendientePrevio + 0.01) {
+      throw new Error(`PAGOS_EXCEDIDOS: el cobro de misión ($${montoPagado}) excede el saldo pendiente ($${saldoPendientePrevio}) del pedido #${pedido.numero}`)
+    }
+    const nuevoTotalPagado = Math.min(totalObligacionPed, totalPagadoPrevio + montoPagado)
+    // Los campos de dinero SOLO se escriben si hubo cobro nuevo en esta misión
+    // (F9). Sin cobro, la obligación económica queda intacta byte a byte (PR-1).
+    const camposDinero = montoPagado > 0
+      ? {
+          estadoPago: calcularEstadoPago(totalObligacionPed, nuevoTotalPagado),
+          totalPagado: nuevoTotalPagado,
+          saldo: totalObligacionPed - nuevoTotalPagado,
+        }
+      : {}
+
     // ADMIN puede corregir precios congelados también en un cierre parcial;
     // se persisten para el registro pero NO alteran `total` (PR-1).
     const precios = (cuadre.preciosReales && userRole === 'ADMIN')
@@ -409,10 +435,34 @@ export class ProcesarPedidoService {
         estadoEntrega: completo ? 'ENTREGADO' : 'PENDIENTE',
         estado: completo ? 'ENTREGADO' : 'PENDIENTE',
         embarqueId: completo ? pedido.embarqueId : null,
+        ...camposDinero,
         ...precios,
-        // total / totalPagado / saldo: NO SE TOCAN.
+        // total: NO SE RECALCULA (obligación económica intacta — PR-1).
+        // totalPagado: se INCREMENTA por el cobro de misión (PR-2 / F9), nunca se pisa.
       },
     })
+
+    // Registrar el cobro nuevo de esta misión (ADR-PAGO-EMBARQUE-CAPTURA-001 §7).
+    if (montoPagado > 0) {
+      const metodosConfirmacion =
+        metodosRequieren ??
+        (await leerMetodosRequierenConfirmacion(
+          client as unknown as Parameters<typeof leerMetodosRequierenConfirmacion>[0],
+        ))
+      for (const pago of cuadre.pagos) {
+        if (pago.monto > 0) {
+          await tx.pago.create({
+            data: {
+              pedidoId: pedido.id,
+              metodo: pago.metodo as MetodoPago,
+              monto: pago.monto,
+              embarqueId: pedido.embarqueId,
+              ...datosConfirmacionInicial(pago.metodo, metodosConfirmacion),
+            },
+          })
+        }
+      }
+    }
 
     const itemAcum: Record<string, number> = {
       PACA_AGUA: acum.cPacaAguaEnt,
@@ -435,15 +485,13 @@ export class ProcesarPedidoService {
     // estado) igual que la rama ENTREGADO — sin tocar el dinero (obligación
     // intacta): `saldo = total - totalPagado` con los valores ya persistidos.
     if (completo && pedido.factura) {
-      const totalObligacion = toNumber(pedido.total)
-      const pagado = toNumber(pedido.totalPagado)
       await tx.factura.update({
         where: { id: pedido.factura.id },
         data: {
           fecha: new Date(),
-          total: totalObligacion,
-          saldo: totalObligacion - pagado,
-          estado: pagado >= totalObligacion ? 'PAGADA' : (pagado > 0 ? 'PARCIAL' : 'EMITIDA'),
+          total: totalObligacionPed,
+          saldo: totalObligacionPed - nuevoTotalPagado,
+          estado: nuevoTotalPagado >= totalObligacionPed ? 'PAGADA' : (nuevoTotalPagado > 0 ? 'PARCIAL' : 'EMITIDA'),
         },
       })
     }
@@ -458,6 +506,8 @@ export class ProcesarPedidoService {
           entregadoAcumulado: totalEntregadoAcum,
           totalPedido,
           completo,
+          cobradoMision: montoPagado,
+          totalPagado: nuevoTotalPagado,
           usuario: userId || 'unknown',
         }),
         usuarioId: userId,

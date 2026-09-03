@@ -40,7 +40,7 @@ import { Carga, type ProductCode } from '../../domain/value-objects/Carga'
 import { EstadoEmbarque as EstadoEmbarqueVO } from '../../domain/value-objects/EstadoEmbarque'
 import type { CerrarEmbarqueInput, CierreResultadoDTO } from '../dto'
 import type { ITransactionManager } from '../../infrastructure/transactions/PrismaTransactionManager'
-import { coleccionarPagos, calcularCajaFinal } from './cerrar-embarque-caja.helper'
+import { coleccionarPagosDeMision, calcularCajaFinal } from './cerrar-embarque-caja.helper'
 
 type TxOrPrisma = Parameters<Parameters<typeof prisma.$transaction>[0]>[0]
 
@@ -210,15 +210,12 @@ export class CerrarEmbarqueUseCase {
       })
 
       // 9. Reconcile cash before closing to detect faltante de caja.
-      // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001 §0: sumar los pagos de las ventas en
-      // ruta que nacieron en ESTE embarque pero cuya entrega quedó pendiente
-      // (ya no están en `pedidosRaw` porque `embarqueId` es null / otro). Su
-      // dinero se concilia acá, donde fue cobrado.
-      const pagosOrigenDiferido = await this.fetchPagosOrigenDiferido(input.id, client)
-      const pagosColeccionados = coleccionarPagos(pedidosRaw, input.ventasLibres ?? [], {
-        embarqueId: input.id,
-        pagosOrigenDiferido,
-      })
+      // ADR-PAGO-EMBARQUE-CAPTURA-001 §5: "cobrado en la misión" = efecto neto de
+      // los `Pago` CAPTURADOS en este embarque (los creados arriba en los pasos
+      // 3-4 + los previos de entregas parciales / ventas libres de esta misión).
+      // Se excluyen los `Pago` de pedidos ANULADO/CANCELADO (dinero devuelto →
+      // efecto neto $0 — regla A1). `embarqueOrigenId` YA NO participa.
+      const pagosColeccionados = await coleccionarPagosDeMision(client, input.id)
       const gastosTotal = (input.gastos ?? []).reduce((sum, g) => sum + (g.monto || 0), 0)
       const caja = calcularCajaFinal(
         this.cierreService,
@@ -322,45 +319,6 @@ export class CerrarEmbarqueUseCase {
     return raw as unknown as PedidoRawInput[]
   }
 
-  /**
-   * ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001 §0: pagos de pedidos originados como
-   * venta en ruta en este embarque cuya entrega quedó PENDIENTE (aún no
-   * entregados; ya no están asignados a este embarque). Su dinero se concilia
-   * en el cierre de este embarque —donde se cobró— sin importar dónde se
-   * entreguen finalmente.
-   *
-   * Se excluyen los ya ENTREGADO/ANULADO/CANCELADO:
-   *  - ENTREGADO: el cierre del embarque que los entregó ya procesó su cuadre
-   *    (`procesarPedidoService`) y es el responsable de su conciliación; traer
-   *    acá sus pagos posteriores (saldo cobrado en la entrega) los duplicaría.
-   *  - ANULADO/CANCELADO: `AnularPedidoUseCase` no revierte las filas `Pago`
-   *    (deuda de G2/C2); contarlas infla el efectivo esperado y genera un
-   *    falso faltante de caja contra el repartidor.
-   *
-   * Limitación conocida (follow-up en el ADR): la conciliación es a
-   * granularidad de pedido, no de `Pago`. El fix correcto es un tag
-   * `Pago.embarqueId` con el embarque donde se capturó cada pago.
-   */
-  private async fetchPagosOrigenDiferido(
-    embarqueId: string,
-    client: TxOrPrisma,
-  ): Promise<Array<{ metodo: string; monto: number }>> {
-    const rows = await client.pedido.findMany({
-      where: {
-        embarqueOrigenId: embarqueId,
-        // Prisma `not` no matchea NULL → hay que enumerar el caso null aparte.
-        OR: [{ embarqueId: null }, { embarqueId: { not: embarqueId } }],
-        estadoEntrega: { notIn: ['ENTREGADO', 'ANULADO', 'CANCELADO'] },
-      },
-      select: { pagos: { select: { metodo: true, monto: true } } },
-    })
-    return rows.flatMap((p) =>
-      p.pagos.map((pg) => ({
-        metodo: pg.metodo as string,
-        monto: typeof pg.monto === 'number' ? pg.monto : pg.monto.toNumber(),
-      })),
-    )
-  }
 
 
   /**

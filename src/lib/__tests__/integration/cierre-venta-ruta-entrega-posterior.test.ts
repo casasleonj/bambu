@@ -1,14 +1,17 @@
 // @tests CerrarEmbarqueUseCase — conciliación de caja con venta en ruta de
-// entrega posterior. ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001 §0: "la custodia del
-// dinero sigue al evento de cobro, no al de entrega". Un `Pago` se concilia en
-// el cierre del embarque en el que fue recibido (`embarqueOrigenId`),
-// independientemente de dónde/cuándo se entregue el pedido.
+// entrega posterior. ADR-PAGO-EMBARQUE-CAPTURA-001 §5: "cobrado en la misión"
+// del embarque `E` = efecto neto de los `Pago` CAPTURADOS en `E`
+// (`Pago.embarqueId = E`), independientemente de dónde/cuándo se entregue el
+// pedido y de a qué embarque esté asignado físicamente. `embarqueOrigenId` ya
+// NO participa en la conciliación.
 //
 // Verifica contra Postgres real:
-//   1. Un pedido con entrega diferida (embarqueId=null, embarqueOrigenId=E) SÍ
-//      aporta su Pago EFECTIVO a la caja del cierre de E.
-//   2. Un pedido físicamente en E pero originado en OTRO embarque (F) NO aporta
-//      su Pago a la caja de E (evita doble conteo / falso faltante de caja).
+//   1. Un pedido de entrega diferida (embarqueId=null, PENDIENTE) cuyo `Pago`
+//      fue capturado en `E` SÍ aporta ese efectivo a la caja del cierre de `E`.
+//   2. Ese mismo pedido, si queda ANULADO, NO aporta su `Pago` (dinero devuelto
+//      → efecto neto $0 — regla A1).
+//   3. Un pedido físicamente asignado a `E` pero cuyo `Pago` se capturó en OTRO
+//      embarque (`F`) NO aporta su `Pago` a la caja de `E` (evita doble conteo).
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { testPrisma, resetAndSeed, disconnect, getAdminUser } from './setup'
 import { CerrarEmbarqueUseCase } from '@/modules/embarques/application/use-cases/CerrarEmbarqueUseCase'
@@ -40,7 +43,7 @@ async function crearEmbarque(baseDinero: number, estado: 'EN_RUTA' | 'ABIERTO' =
   return { trabajador, embarque }
 }
 
-describe('CerrarEmbarqueUseCase — venta en ruta con entrega posterior (§0 custodia del dinero)', () => {
+describe('CerrarEmbarqueUseCase — venta en ruta con entrega posterior (§5 contexto de captura)', () => {
   let clienteId: string
 
   beforeAll(async () => {
@@ -62,11 +65,12 @@ describe('CerrarEmbarqueUseCase — venta en ruta con entrega posterior (§0 cus
     await disconnect()
   })
 
-  it('un pedido de entrega diferida aporta su Pago EFECTIVO a la caja de su embarque de origen', async () => {
+  it('un pedido de entrega diferida aporta a la caja el Pago capturado en ESE embarque', async () => {
     const { embarque } = await crearEmbarque(30_000)
 
     // Venta libre cobrada en ruta pero "entregar después": queda PENDIENTE,
-    // sin embarque asignado, con el origen apuntando a este embarque.
+    // sin embarque asignado. El `Pago` declara `embarqueId = E` (contexto real
+    // de captura).
     const pedido = await testPrisma.pedido.create({
       data: {
         clienteId,
@@ -83,7 +87,7 @@ describe('CerrarEmbarqueUseCase — venta en ruta con entrega posterior (§0 cus
       },
     })
     await testPrisma.pago.create({
-      data: { pedidoId: pedido.id, metodo: 'EFECTIVO', monto: 20_000, confirmacion: 'CONFIRMADO' },
+      data: { pedidoId: pedido.id, metodo: 'EFECTIVO', monto: 20_000, confirmacion: 'CONFIRMADO', embarqueId: embarque.id },
     })
 
     const result = await buildUseCase().execute({
@@ -94,7 +98,7 @@ describe('CerrarEmbarqueUseCase — venta en ruta con entrega posterior (§0 cus
       dryRun: true,
     })
 
-    // base 30k + efectivo diferido 20k - gastos 0 = 50k
+    // base 30k + efectivo capturado 20k - gastos 0 = 50k
     expect(result.caja.efectivoEsperado).toBe(20_000)
     expect(result.caja.efectivoReal).toBe(50_000)
     expect(result.caja.sobranteFaltante).toBe(0)
@@ -105,7 +109,7 @@ describe('CerrarEmbarqueUseCase — venta en ruta con entrega posterior (§0 cus
     await testPrisma.trabajador.delete({ where: { id: embarque.trabajadorId } })
   })
 
-  it('un pedido diferido ANULADO no aporta su Pago al cierre del origen (evita falso faltante)', async () => {
+  it('un pedido diferido ANULADO no aporta su Pago al cierre (efecto neto $0 — A1)', async () => {
     const { embarque } = await crearEmbarque(30_000)
 
     const pedido = await testPrisma.pedido.create({
@@ -123,9 +127,9 @@ describe('CerrarEmbarqueUseCase — venta en ruta con entrega posterior (§0 cus
         embarqueOrigenId: embarque.id,
       },
     })
-    // AnularPedidoUseCase NO borra las filas Pago (deuda G2/C2).
+    // AnularPedidoUseCase NO borra las filas Pago; `Pago.embarqueId` es inmutable.
     await testPrisma.pago.create({
-      data: { pedidoId: pedido.id, metodo: 'EFECTIVO', monto: 18_000, confirmacion: 'CONFIRMADO' },
+      data: { pedidoId: pedido.id, metodo: 'EFECTIVO', monto: 18_000, confirmacion: 'CONFIRMADO', embarqueId: embarque.id },
     })
 
     const result = await buildUseCase().execute({
@@ -136,6 +140,7 @@ describe('CerrarEmbarqueUseCase — venta en ruta con entrega posterior (§0 cus
       dryRun: true,
     })
 
+    // El Pago se excluye por el estado del pedido (ANULADO).
     expect(result.caja.efectivoEsperado).toBe(0)
     expect(result.caja.efectivoReal).toBe(30_000)
 
@@ -145,12 +150,12 @@ describe('CerrarEmbarqueUseCase — venta en ruta con entrega posterior (§0 cus
     await testPrisma.trabajador.delete({ where: { id: embarque.trabajadorId } })
   })
 
-  it('un pedido físicamente en el embarque pero originado en OTRO no aporta su Pago (evita doble conteo)', async () => {
-    const origen = await crearEmbarque(0, 'ABIERTO')
+  it('un pedido físicamente en el embarque pero con el Pago capturado en OTRO no aporta a esta caja', async () => {
+    const origen = await crearEmbarque(0, 'EN_RUTA')
     const { embarque } = await crearEmbarque(30_000)
 
-    // Pedido que nació en `origen` (su dinero se concilia allá) y ahora viaja
-    // físicamente en `embarque` para ser entregado.
+    // Pedido cuyo dinero se capturó en `origen` y ahora viaja físicamente en
+    // `embarque` para ser entregado.
     const pedido = await testPrisma.pedido.create({
       data: {
         clienteId,
@@ -167,7 +172,7 @@ describe('CerrarEmbarqueUseCase — venta en ruta con entrega posterior (§0 cus
       },
     })
     await testPrisma.pago.create({
-      data: { pedidoId: pedido.id, metodo: 'EFECTIVO', monto: 15_000, confirmacion: 'CONFIRMADO' },
+      data: { pedidoId: pedido.id, metodo: 'EFECTIVO', monto: 15_000, confirmacion: 'CONFIRMADO', embarqueId: origen.embarque.id },
     })
 
     const result = await buildUseCase().execute({
@@ -178,9 +183,19 @@ describe('CerrarEmbarqueUseCase — venta en ruta con entrega posterior (§0 cus
       dryRun: true,
     })
 
-    // El Pago del pedido foráneo NO cuenta: efectivoEsperado sigue en 0.
+    // El Pago capturado en `origen` NO cuenta acá: efectivoEsperado sigue en 0.
     expect(result.caja.efectivoEsperado).toBe(0)
     expect(result.caja.efectivoReal).toBe(30_000)
+
+    // ...y SÍ cuenta en el cierre de `origen`.
+    const resultOrigen = await buildUseCase().execute({
+      id: origen.embarque.id,
+      pedidos: [],
+      gastos: [],
+      dineroEntregado: 15_000,
+      dryRun: true,
+    })
+    expect(resultOrigen.caja.efectivoEsperado).toBe(15_000)
 
     await testPrisma.pago.deleteMany({ where: { pedidoId: pedido.id } })
     await testPrisma.pedido.delete({ where: { id: pedido.id } })
