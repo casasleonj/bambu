@@ -15,6 +15,10 @@ export interface EntregarPedidoPayload {
   pedidoId: string
   itemsEntregados?: Array<{ producto: string; cantidad: number }>
   pagos?: Array<{ metodo: string; monto: number }>
+  // ADR-PAGO-EMBARQUE-CAPTURA-001: embarque de captura del cobro. Obligatorio
+  // (400) si `pagos` trae montos. La app captura el embarque de la ruta en el
+  // momento de la entrega y lo congela (incluso al encolar offline).
+  embarqueId?: string
   fotoEntrega?: string
   gpsLat?: number
   gpsLng?: number

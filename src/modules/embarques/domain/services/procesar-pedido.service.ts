@@ -288,6 +288,12 @@ export class ProcesarPedidoService {
               pedidoId: pedido.id,
               metodo: pago.metodo as MetodoPago,
               monto: pago.monto,
+              // ADR-PAGO-EMBARQUE-CAPTURA-001: cobro registrado en el cierre →
+              // capturado EN ese embarque. `pedido.embarqueId` acá ES el embarque
+              // que se cierra (fetchPedidosForEmbarque filtra por él), no un proxy
+              // de asignación — la invariante "no derivar de Pedido.embarqueId"
+              // aplica al flujo del repartidor, no a este.
+              embarqueId: pedido.embarqueId,
               ...datosConfirmacionInicial(pago.metodo, metodosConfirmacion),
             },
           })

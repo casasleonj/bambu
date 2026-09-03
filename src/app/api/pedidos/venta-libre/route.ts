@@ -274,6 +274,9 @@ export async function POST(request: NextRequest) {
             pedidoId: pedido.id,
             metodo: pago.metodo as MetodoPago,
             monto: pago.monto,
+            // ADR-PAGO-EMBARQUE-CAPTURA-001: la venta libre se cobra EN la misión
+            // `embarqueId` (embarque validado como del contexto de esta venta).
+            embarqueId,
             ...datosConfirmacionInicial(pago.metodo, metodosConfirmacion),
           },
         })

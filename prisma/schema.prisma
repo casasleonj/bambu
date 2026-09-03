@@ -901,9 +901,17 @@ model Pago {
   confirmadoPor   User?                  @relation("PagoConfirmador", fields: [confirmadoPorId], references: [id], onDelete: SetNull)
   confirmadoAt    DateTime?              @db.Timestamptz()
 
+  // ADR-PAGO-EMBARQUE-CAPTURA-001: contexto físico de captura del pago.
+  // = el embarque en el que se recibió el dinero (NO el del pedido).
+  // `null` = pago no capturado dentro de un embarque (mostrador / prepago /
+  // cartera desde escritorio / histórico). INMUTABLE tras crearse.
+  embarqueId String?
+  embarque   Embarque? @relation("PagoEmbarque", fields: [embarqueId], references: [id], onDelete: SetNull)
+
   @@index([pedidoId])
   @@index([offlineId])
   @@index([confirmacion])
+  @@index([embarqueId])
 }
 
 // ====================
@@ -962,6 +970,7 @@ model Embarque {
 
   pedidos       Pedido[]          @relation("PedidoEmbarqueActual")
   pedidosOrigen Pedido[]          @relation("PedidoEmbarqueOrigen")
+  pagos         Pago[]            @relation("PagoEmbarque") // ADR-PAGO-EMBARQUE-CAPTURA-001
   gpsTracks     GpsTrack[]
   productos     EmbarqueProducto[]
   gastos    Gasto[]

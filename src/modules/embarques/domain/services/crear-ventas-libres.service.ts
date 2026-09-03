@@ -134,6 +134,9 @@ export class CrearVentasLibresService {
               pedidoId: nuevaVenta.id,
               metodo: pago.metodo as MetodoPago,
               monto: pago.monto,
+              // ADR-PAGO-EMBARQUE-CAPTURA-001: venta libre creada en el cierre →
+              // el dinero se capturó en la misión que se está cerrando.
+              embarqueId,
               ...datosConfirmacionInicial(pago.metodo, metodosConfirmacion),
             },
           })

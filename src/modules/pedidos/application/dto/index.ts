@@ -72,6 +72,9 @@ export interface EntregarPedidoInput {
   pedidoId: string
   itemsEntregados: Array<{ producto: ProductCode; cantidad: number }>
   pagos?: PagoData[]
+  // ADR-PAGO-EMBARQUE-CAPTURA-001: embarque de captura del cobro. Obligatorio
+  // si `pagos` trae montos; nunca se deriva de `Pedido.embarqueId`.
+  embarqueId?: string
   fotoEntrega?: string
   gpsLat?: number
   gpsLng?: number

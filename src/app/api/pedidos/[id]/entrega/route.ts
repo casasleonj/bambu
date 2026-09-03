@@ -43,6 +43,7 @@ export async function POST(
     const {
       itemsEntregados,
       pagos,
+      embarqueId,
       fotoEntrega,
       gpsLat,
       gpsLng,
@@ -53,6 +54,22 @@ export async function POST(
       codigoVisita,
       offlineId,
     } = parsed.data
+
+    // ADR-PAGO-EMBARQUE-CAPTURA-001 §4.3: si el payload trae un `embarqueId`
+    // (cobro en la misión), validar que existe y que el actor tiene autoridad
+    // sobre él. El `superRefine` del schema ya garantiza que un cobro trae
+    // `embarqueId`; acá se valida el valor. ADMIN/ASISTENTE: cualquier embarque
+    // válido (auditado). REPARTIDOR: solo el suyo.
+    if (embarqueId) {
+      const emb = await prisma.embarque.findUnique({
+        where: { id: embarqueId },
+        select: { id: true, trabajador: { select: { userId: true } } },
+      })
+      if (!emb) return apiError('Embarque de captura no válido', 400)
+      if (user?.role === 'REPARTIDOR' && emb.trabajador?.userId !== user.id) {
+        return apiError('EMBARQUE_NO_PERTENECE: no puede atribuir un cobro a un embarque ajeno', 403)
+      }
+    }
 
     // Rule: REQUIERE_GPS_PARA_ENTREGA
     // If GPS is required, the delivery must include coordinates OR a justification.
@@ -131,6 +148,7 @@ export async function POST(
       pedidoId: id,
       itemsEntregados: entregas,
       pagos: pagosInput,
+      embarqueId,
       fotoEntrega: fotoUrl,
       gpsLat,
       gpsLng,

@@ -126,6 +126,10 @@ export const EntregaSchema = z.object({
     metodo: z.string(),
     monto: z.number().min(0),
   })).optional(),
+  // ADR-PAGO-EMBARQUE-CAPTURA-001: embarque en el que el repartidor capturó
+  // físicamente el pago. OBLIGATORIO si `pagos` trae montos > 0 (ver
+  // superRefine). `null`/ausente solo válido cuando no hay cobro.
+  embarqueId: z.string().optional(),
   // fotoEntrega size cap: 15MB covers a 10MB file with ~33% base64 overhead + buffer.
   // DoS protection: prevents a malicious client from sending 100MB+ payloads that
   // would crash JSON parsing or bloat the Postgres TEXT column.
@@ -139,6 +143,17 @@ export const EntregaSchema = z.object({
   codigoVisita: z.string().optional(),
   // Offline-first: dedup si la request se encola y se reintenta
   offlineId: z.string().optional(),
+}).superRefine((data, ctx) => {
+  // ADR-PAGO-EMBARQUE-CAPTURA-001 §4.1: un pago de misión DEBE declarar el
+  // embarque de captura. Nunca `null` silencioso.
+  const tieneCobro = (data.pagos ?? []).some((p) => p.monto > 0)
+  if (tieneCobro && !data.embarqueId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'PAGO_MISION_SIN_EMBARQUE: un cobro en la entrega debe declarar el embarque de captura',
+      path: ['embarqueId'],
+    })
+  }
 })
 
 // ====================
