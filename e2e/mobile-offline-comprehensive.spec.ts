@@ -310,8 +310,9 @@ test.describe('Mobile Offline Comprehensive', () => {
     const pedidoId = pedidoBody.pedido?.id || pedidoBody.id
     expect(pedidoId).toBeTruthy()
 
+    const embId = embarque.embarque.id
     const enviarRes = await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, {
-      embarqueId: embarque.embarque.id,
+      embarqueId: embId,
     })
     expect(enviarRes.status()).toBeGreaterThanOrEqual(200)
     expect(enviarRes.status()).toBeLessThan(300)
@@ -334,6 +335,9 @@ test.describe('Mobile Offline Comprehensive', () => {
           tipo: 'COMPLETO',
           itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: 1 }],
           pagos: [{ metodo: 'EFECTIVO', monto: 2800 }],
+          // ADR-PAGO-EMBARQUE-CAPTURA-001 §4.1: la app congela el embarque de la
+          // ruta al capturar el cobro (incluso al encolar offline).
+          embarqueId: embId,
           offlineId,
         },
       },

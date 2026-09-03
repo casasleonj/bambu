@@ -63,9 +63,15 @@ export async function POST(
     if (embarqueId) {
       const emb = await prisma.embarque.findUnique({
         where: { id: embarqueId },
-        select: { id: true, trabajador: { select: { userId: true } } },
+        select: { id: true, estado: true, trabajador: { select: { userId: true } } },
       })
       if (!emb) return apiError('Embarque de captura no válido', 400)
+      // ADR §4.3: NO se valida ABIERTO/EN_RUTA/CERRADO (un sync tardío a un
+      // embarque ya cerrado es una discrepancia post-cierre válida). Pero
+      // CANCELADO nunca fue una misión real → no puede ser contexto de captura.
+      if (emb.estado === 'CANCELADO') {
+        return apiError('El embarque de captura está cancelado', 400)
+      }
       if (user?.role === 'REPARTIDOR' && emb.trabajador?.userId !== user.id) {
         return apiError('EMBARQUE_NO_PERTENECE: no puede atribuir un cobro a un embarque ajeno', 403)
       }
