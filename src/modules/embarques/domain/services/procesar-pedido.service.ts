@@ -199,7 +199,6 @@ export class ProcesarPedidoService {
     // recorta. El guard `entregaPrevia` de PR-1 (defensa contra el prellenado)
     // desaparece.
     const totalPagadoPrevio = toNumber(pedido.totalPagado)
-    const nuevoTotalPagado = totalPagadoPrevio + montoPagado
 
     // Acumular lo entregado sobre lo ya entregado (pedido re-planificado que
     // completa su faltante). En un pedido fresco `pedido.cXEnt` es 0.
@@ -213,13 +212,19 @@ export class ProcesarPedidoService {
     }
 
     // Guard F7 (ADR-PAGO-EMBARQUE-CAPTURA-001 §5): el cobro NUEVO de esta misión
-    // no puede exceder el saldo pendiente ANTES de aplicarlo (con 1% de
-    // tolerancia). Lo ya pagado en misiones/prepagos previos NO cuenta contra
-    // este tope — sólo el delta de este cierre.
+    // no puede exceder el saldo pendiente ANTES de aplicarlo. Lo ya pagado en
+    // misiones/prepagos previos NO cuenta contra este tope — sólo el delta de
+    // este cierre. Sin tolerancia porcentual: `total` ya NO se recalcula (PR-1),
+    // así que no hay drift de redondeo que absorber, y la CHECK de Postgres
+    // `chk_pedido_montopagado_le_total` es exacta — un guard más laxo dejaría
+    // pasar montos que luego abortan toda la tx del cierre por constraint.
     const saldoPendientePrevio = totalObligacion - totalPagadoPrevio
-    if (montoPagado > saldoPendientePrevio * 1.01 + 0.01) {
+    if (montoPagado > saldoPendientePrevio + 0.01) {
       throw new Error(`PAGOS_EXCEDIDOS: el cobro de misión ($${montoPagado}) excede el saldo pendiente ($${saldoPendientePrevio}) del pedido #${pedido.numero}`)
     }
+    // Clamp defensivo al centavo: garantiza `totalPagado <= total` aunque el
+    // epsilon del guard deje pasar una fracción.
+    const nuevoTotalPagado = Math.min(totalObligacion, totalPagadoPrevio + montoPagado)
 
     const estadoPago = calcularEstadoPago(totalObligacion, nuevoTotalPagado)
 
@@ -389,11 +394,12 @@ export class ProcesarPedidoService {
     const montoPagado = cuadre.pagos.reduce((sum, p) => sum + p.monto, 0)
     const totalObligacionPed = toNumber(pedido.total)
     const totalPagadoPrevio = toNumber(pedido.totalPagado)
-    const nuevoTotalPagado = totalPagadoPrevio + montoPagado
     const saldoPendientePrevio = totalObligacionPed - totalPagadoPrevio
-    if (montoPagado > saldoPendientePrevio * 1.01 + 0.01) {
+    // Mismo guard F7 exacto que la rama COMPLETO (ver comentario allá).
+    if (montoPagado > saldoPendientePrevio + 0.01) {
       throw new Error(`PAGOS_EXCEDIDOS: el cobro de misión ($${montoPagado}) excede el saldo pendiente ($${saldoPendientePrevio}) del pedido #${pedido.numero}`)
     }
+    const nuevoTotalPagado = Math.min(totalObligacionPed, totalPagadoPrevio + montoPagado)
     // Los campos de dinero SOLO se escriben si hubo cobro nuevo en esta misión
     // (F9). Sin cobro, la obligación económica queda intacta byte a byte (PR-1).
     const camposDinero = montoPagado > 0

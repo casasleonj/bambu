@@ -259,6 +259,75 @@ describe('PR-1: el cierre PARCIAL no crea hijo y preserva la obligación económ
       service.execute(client as never, pedido, cuadre, 'ADMIN', 'user_1', [], []),
     ).rejects.toThrow(/ENTREGA_EXCEDE_PEDIDO/)
   })
+
+  // PR-2b (F7): el guard es EXACTO (sin tolerancia %) porque la CHECK
+  // `chk_pedido_montopagado_le_total` de Postgres es exacta; un guard laxo
+  // dejaría pasar montos que abortan toda la tx del cierre por constraint.
+  it('COMPLETO: cobro nuevo > saldo pendiente previo → PAGOS_EXCEDIDOS (antes del update)', async () => {
+    const client = makeClient(vi.fn())
+    const pedido = makePedidoRaw({ total: 100_000, totalPagado: 60_000 }) // saldo 40k
+    const cuadre: CerrarEmbarqueInput['pedidos'][number] = {
+      pedidoId: pedido.id,
+      entregado: 'COMPLETO',
+      productosEntregados: { cPacaAguaEnt: 5, cPacaHieloEnt: 0, cBotellonFabEnt: 0, cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0 },
+      pagos: [{ metodo: 'EFECTIVO', monto: 45_000 }], // 45k > saldo 40k
+    }
+    await expect(
+      new ProcesarPedidoService().execute(client as never, pedido, cuadre, 'ADMIN', 'user_1', [], []),
+    ).rejects.toThrow(/PAGOS_EXCEDIDOS/)
+    expect(client.pedido.update).not.toHaveBeenCalled()
+    expect(client.pago.create).not.toHaveBeenCalled()
+  })
+
+  it('COMPLETO: cobra exactamente el saldo pendiente previo → totalPagado = total, saldo 0', async () => {
+    const client = makeClient(vi.fn())
+    const pedido = makePedidoRaw({ total: 100_000, totalPagado: 60_000 })
+    const cuadre: CerrarEmbarqueInput['pedidos'][number] = {
+      pedidoId: pedido.id,
+      entregado: 'COMPLETO',
+      productosEntregados: { cPacaAguaEnt: 5, cPacaHieloEnt: 0, cBotellonFabEnt: 0, cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0 },
+      pagos: [{ metodo: 'EFECTIVO', monto: 40_000 }],
+    }
+    await new ProcesarPedidoService().execute(client as never, pedido, cuadre, 'ADMIN', 'user_1', [], [])
+    const upd = (client.pedido.update as ReturnType<typeof vi.fn>).mock.calls[0][0].data
+    expect(upd.totalPagado).toBe(100_000)
+    expect(upd.saldo).toBe(0)
+    expect(client.pago.create).toHaveBeenCalledTimes(1)
+    expect((client.pago.create as ReturnType<typeof vi.fn>).mock.calls[0][0].data.embarqueId).toBe('emb_1')
+  })
+
+  it('PARCIAL: cobro nuevo > saldo pendiente previo → PAGOS_EXCEDIDOS', async () => {
+    const client = makeClient(vi.fn())
+    const pedido = makePedidoRaw({ total: 50_000, totalPagado: 0 })
+    const cuadre: CerrarEmbarqueInput['pedidos'][number] = {
+      pedidoId: pedido.id,
+      entregado: 'PARCIAL',
+      productosEntregados: { cPacaAguaEnt: 3, cPacaHieloEnt: 0, cBotellonFabEnt: 0, cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0 },
+      pagos: [{ metodo: 'EFECTIVO', monto: 50_300 }], // 0.6% over — dentro del viejo total*1.01
+    }
+    await expect(
+      new ProcesarPedidoService().execute(client as never, pedido, cuadre, 'ADMIN', 'user_1', [], []),
+    ).rejects.toThrow(/PAGOS_EXCEDIDOS/)
+    expect(client.pedido.update).not.toHaveBeenCalled()
+  })
+
+  it('PARCIAL con cobro parcial: registra Pago con embarqueId e incrementa totalPagado', async () => {
+    const client = makeClient(vi.fn())
+    const pedido = makePedidoRaw({ total: 50_000, totalPagado: 0 })
+    const cuadre: CerrarEmbarqueInput['pedidos'][number] = {
+      pedidoId: pedido.id,
+      entregado: 'PARCIAL',
+      productosEntregados: { cPacaAguaEnt: 3, cPacaHieloEnt: 0, cBotellonFabEnt: 0, cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0 },
+      pagos: [{ metodo: 'EFECTIVO', monto: 30_000 }],
+    }
+    await new ProcesarPedidoService().execute(client as never, pedido, cuadre, 'ADMIN', 'user_1', [], [])
+    const upd = (client.pedido.update as ReturnType<typeof vi.fn>).mock.calls[0][0].data
+    expect(upd.totalPagado).toBe(30_000)
+    expect(upd.saldo).toBe(20_000)
+    expect(upd.estadoEntrega).toBe('PENDIENTE')
+    expect(client.pago.create).toHaveBeenCalledTimes(1)
+    expect((client.pago.create as ReturnType<typeof vi.fn>).mock.calls[0][0].data.embarqueId).toBe('emb_1')
+  })
 })
 
 // FIX: Factura.fecha se fijaba una sola vez al crear el Pedido y nunca se
