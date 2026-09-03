@@ -111,12 +111,12 @@ describe('F4.10-c-d: imports correctos en el use case', () => {
 describe('F4.10-c-d: el use case se simplificó (398 → ~335 líneas)', () => {
   it('FIX: el archivo final se mantiene compacto (A.3.4 sumó el modo dryRun)', () => {
     // Umbral subido de 380 a 410 por A.3.4 (DryRunSignal para el preview
-    // autoritativo del cierre, ~20 líneas) y a 470 por
-    // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001 §0 (fetchPagosOrigenDiferido +
-    // su documentación de la limitación conocida) — no es la regresión de
+    // autoritativo del cierre, ~20 líneas). PR-2b (ADR-PAGO-EMBARQUE-CAPTURA-001)
+    // retiró `fetchPagosOrigenDiferido` — la conciliación de caja ahora es una
+    // sola query por `Pago.embarqueId` en el helper. No es la regresión de
     // duplicación que este test original detectaba.
     const lines = useCaseSource.split('\n').length
-    expect(lines).toBeLessThan(470)
+    expect(lines).toBeLessThan(440)
   })
 
   it('FIX: el archivo final tiene más de 320 líneas (sanity check)', () => {

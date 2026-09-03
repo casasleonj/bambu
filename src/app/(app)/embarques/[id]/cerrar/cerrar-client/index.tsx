@@ -131,9 +131,12 @@ export default function CerrarEmbarqueClient() {
                 bolsaHielo: p.precioBolsaHielo,
               },
               pagado: p.totalPagado >= p.total ? 'COMPLETO' : p.totalPagado > 0 ? 'PARCIAL' : 'NO_PAGADO',
-              pagos: p.pagos && p.pagos.length > 0
-                ? p.pagos.map((pago: { metodo: string; monto: unknown }) => ({ metodo: pago.metodo, monto: Number(pago.monto) }))
-                : (p.totalPagado > 0 ? [{ metodo: 'EFECTIVO', monto: p.totalPagado }] : []),
+              // PR-2 (ADR-PAGO-EMBARQUE-CAPTURA-001 §6): se retira el prellenado
+              // histórico. `cuadre.pagos` representa SOLO el dinero NUEVO cobrado
+              // en esta misión; el asistente lo agrega manualmente. Lo ya pagado
+              // (prepago / entregas parciales previas) vive en `pedido.totalPagado`
+              // y el cierre lo INCREMENTA, no lo pisa.
+              pagos: [],
             }
           }
           setCuadres(initialCuadres)

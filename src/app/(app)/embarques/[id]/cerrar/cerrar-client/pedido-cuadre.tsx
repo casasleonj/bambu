@@ -327,9 +327,10 @@ export function PedidoCuadre({
             </button>
           </div>
           <div className="mt-2 text-sm text-gray-600 bg-gray-50 p-2 rounded">
-            Total entregado: {formatCurrency(totalReal)} |
-            Cobrado: {formatCurrency(montoPagado)} |
-            Saldo: {formatCurrency(totalReal - montoPagado)}
+            Obligación: {formatCurrency(Number(pedido.total))} |
+            Ya pagado: {formatCurrency(Number(pedido.totalPagado))} |
+            Cobrado ahora: {formatCurrency(montoPagado)} |
+            Saldo pendiente: {formatCurrency(Number(pedido.total) - Number(pedido.totalPagado) - montoPagado)}
           </div>
         </div>
       )}

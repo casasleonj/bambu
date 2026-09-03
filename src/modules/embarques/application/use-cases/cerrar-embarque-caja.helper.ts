@@ -1,73 +1,44 @@
-import type { PedidoRawInput } from '../../domain/services/procesar-pedido.service'
 import type { CierreEmbarqueService } from '../../domain/services/cierre-embarque.service'
-import type { CerrarEmbarqueInput } from '../dto'
 
-/**
- * Une pagos de pedidos del embarque con pagos de ventas libres en un solo
- * array para calcular caja. Los montos de Prisma Decimal se normalizan a number.
- */
-export interface ColeccionarPagosOpts {
-  /**
-   * Id del embarque que se está cerrando. Si se pasa, los pagos de un pedido
-   * cuyo `embarqueOrigenId` apunta a OTRO embarque se EXCLUYEN: su dinero se
-   * concilió (o se conciliará) en el cierre de ese embarque de origen
-   * (ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001 §0 — la custodia sigue al evento de
-   * cobro, no al de entrega).
-   */
-  embarqueId?: string
-  /**
-   * Pagos de pedidos que NACIERON como venta en ruta en este embarque pero cuya
-   * entrega quedó pendiente (ya no están físicamente en él). Su dinero SÍ
-   * pertenece a este cierre aunque el pedido se entregue en otro embarque.
-   */
-  pagosOrigenDiferido?: Array<{ metodo: string; monto: number }>
+type PagoRow = { metodo: string; monto: number | { toNumber: () => number } }
+
+type TxOrPrisma = {
+  pago: {
+    findMany: (args: {
+      where: Record<string, unknown>
+      select: Record<string, boolean>
+    }) => Promise<unknown[]>
+  }
 }
 
-export function coleccionarPagos(
-  pedidosRaw: PedidoRawInput[],
-  ventasLibres: NonNullable<CerrarEmbarqueInput['ventasLibres']>,
-  opts?: ColeccionarPagosOpts,
-): Array<{ metodo: string; monto: number }> {
-  const out: Array<{ metodo: string; monto: number }> = []
-  for (const p of pedidosRaw) {
-    const pedidoConPagos = p as unknown as {
-      embarqueOrigenId?: string | null
-      pagos?: Array<{ metodo: string; monto: number | { toNumber: () => number } }>
-    }
-    // §0: pedido reasignado desde otro embarque de origen → su dinero se
-    // concilia allá, no acá. Evita doble conteo y falsos faltantes de caja.
-    //
-    // INVARIANTE (frágil, follow-up en el ADR): hoy `embarqueOrigenId` SOLO lo
-    // escriben los flujos de venta en ruta (`venta-libre` route +
-    // `crear-ventas-libres.service`). Si en el futuro se usara para pedidos
-    // normales reasignados, este `continue` omitiría sus pagos silenciosamente.
-    // El fix correcto es un tag `Pago.embarqueId` (conciliar por pago, no por
-    // pedido).
-    if (
-      opts?.embarqueId &&
-      pedidoConPagos.embarqueOrigenId &&
-      pedidoConPagos.embarqueOrigenId !== opts.embarqueId
-    ) {
-      continue
-    }
-    if (Array.isArray(pedidoConPagos.pagos)) {
-      for (const pg of pedidoConPagos.pagos) {
-        const monto = typeof pg.monto === 'number' ? pg.monto : pg.monto.toNumber()
-        out.push({ metodo: pg.metodo, monto })
-      }
-    }
-  }
-  for (const v of ventasLibres) {
-    if (Array.isArray(v.pagos)) {
-      for (const pg of v.pagos) {
-        out.push({ metodo: pg.metodo, monto: pg.monto || 0 })
-      }
-    }
-  }
-  for (const pg of opts?.pagosOrigenDiferido ?? []) {
-    out.push({ metodo: pg.metodo, monto: pg.monto || 0 })
-  }
-  return out
+/**
+ * ADR-PAGO-EMBARQUE-CAPTURA-001 §5: "cobrado en la misión" del embarque `E` =
+ * efecto neto de los `Pago` **capturados** en `E` (`Pago.embarqueId = E`).
+ *
+ *  - Lectura viva (dentro de la tx del cierre) → ve los `Pago` recién creados
+ *    en este cierre (cuadre + ventas libres) y los previos de esta misión
+ *    (entregas parciales, venta libre en ruta).
+ *  - **A1 (regla de efecto monetario neto):** se excluyen los `Pago` de pedidos
+ *    `ANULADO`/`CANCELADO` — el dinero se devolvió, efecto neto sobre la caja de
+ *    la misión = $0. (No hay anulación parcial de pedidos, así que excluir por
+ *    estado es exacto.)
+ *  - `embarqueOrigenId` **ya NO participa** — una sola fuente de verdad.
+ */
+export async function coleccionarPagosDeMision(
+  client: TxOrPrisma,
+  embarqueId: string,
+): Promise<Array<{ metodo: string; monto: number }>> {
+  const rows = await client.pago.findMany({
+    where: {
+      embarqueId,
+      pedido: { estadoEntrega: { notIn: ['ANULADO', 'CANCELADO'] } },
+    },
+    select: { metodo: true, monto: true },
+  })
+  return (rows as PagoRow[]).map((pg) => ({
+    metodo: pg.metodo,
+    monto: typeof pg.monto === 'number' ? pg.monto : pg.monto.toNumber(),
+  }))
 }
 
 /**
