@@ -141,7 +141,7 @@ describe('Pedido.entregar()', () => {
 // ADR PR-1 — Integridad de entrega parcial (docs/pedidos/CUMPLIMIENTO_PARCIAL_*)
 describe('Pedido.entregar() — PR-1: integridad de entrega parcial', () => {
   // 10 unidades x $1.000 = $10.000
-  function make10(over: { totalPagado?: number; cantEntrega?: number } = {}): Pedido {
+  function make10(over: { totalPagado?: number; cantEntrega?: number; embarqueId?: string } = {}): Pedido {
     return Pedido.create({
       id: PedidoId.from('p1'),
       numero: 1,
@@ -150,6 +150,7 @@ describe('Pedido.entregar() — PR-1: integridad de entrega parcial', () => {
       origen: OrigenPedidoVO.create('PEDIDO'),
       estadoEntrega: EstadoEntregaVO.create('EN_RUTA'),
       estadoPago: EstadoPagoVO.create('PENDIENTE'),
+      embarqueId: over.embarqueId,
       items: [new PedidoItem('PACA_AGUA', 10, Money.fromDecimal(1000), 'base', over.cantEntrega ?? 0)],
       total: Money.fromDecimal(10_000),
       totalPagado: Money.fromDecimal(over.totalPagado ?? 0),
@@ -204,6 +205,17 @@ describe('Pedido.entregar() — PR-1: integridad de entrega parcial', () => {
     pedido.entregar([{ producto: 'PACA_AGUA', cantidad: 6 }])
     expect(pedido.estadoEntrega.get()).toBe('PENDIENTE')
     expect(pedido.estadoPago.get()).toBe('ANTICIPADO')
+  })
+
+  it('una entrega parcial libera el embarque (re-planificable); una completa lo conserva', () => {
+    const parcial = make10({ embarqueId: 'emb-1' })
+    expect(parcial.embarqueId).toBe('emb-1')
+    parcial.entregar([{ producto: 'PACA_AGUA', cantidad: 6 }])
+    expect(parcial.embarqueId).toBeUndefined()
+
+    const completo = make10({ embarqueId: 'emb-1' })
+    completo.entregar([{ producto: 'PACA_AGUA', cantidad: 10 }])
+    expect(completo.embarqueId).toBe('emb-1')
   })
 
   it('golden: 10 comprado / 10 pagado → entregar 6 (parcial) → re-planificar → entregar 4 (completo)', () => {

@@ -272,7 +272,7 @@ export class ActualizarPedidoUseCase {
         if (nuevoEstado.get() === 'ENTREGADO') {
           pedido.entregar(pedido.items.map(i => ({
             producto: i.producto,
-            cantidad: i.cantPedido - i.cantEntrega,
+            cantidad: Math.max(0, i.cantPedido - i.cantEntrega),
           })))
 
           // FIX BAMBU-LOG-017: pedido.entregar() solo muta el agregado en

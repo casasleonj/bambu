@@ -77,6 +77,7 @@ export interface PedidoRawInput {
   cBolsaAguaEnt: number
   cBolsaHieloEnt: number
   total: number | { toNumber: () => number }
+  totalPagado: number | { toNumber: () => number }
   obs: string | null
   createdById: string | null
   items: Array<{ producto: string }>
@@ -192,6 +193,18 @@ export class ProcesarPedidoService {
     // entregado. `total` se conserva; `saldo = total - totalPagado`.
     const totalObligacion = toNumber(pedido.total)
 
+    // ¿Es un RE-cierre (el pedido ya tuvo una entrega parcial en un embarque
+    // previo)? En ese caso el dinero ya se contabilizó/prepagó: NO se toca
+    // `totalPagado` ni se crean filas `Pago` (el cobro de misión duplicado /
+    // el double-count del prepago prellenado es exactamente lo que PR-2
+    // resuelve con `Pago.embarqueId`). En un cierre fresco se mantiene el
+    // comportamiento actual.
+    const entregaPrevia =
+      (pedido.cPacaAguaEnt || 0) + (pedido.cPacaHieloEnt || 0) +
+      (pedido.cBotellonFabEnt || 0) + (pedido.cBotellonDomEnt || 0) +
+      (pedido.cBolsaAguaEnt || 0) + (pedido.cBolsaHieloEnt || 0) > 0
+    const totalPagadoEfectivo = entregaPrevia ? toNumber(pedido.totalPagado) : montoPagado
+
     // Acumular lo entregado sobre lo ya entregado (pedido re-planificado que
     // completa su faltante). En un pedido fresco `pedido.cXEnt` es 0.
     const entAcum: ProductosEntregados = {
@@ -203,7 +216,7 @@ export class ProcesarPedidoService {
       cBolsaHieloEnt: (pedido.cBolsaHieloEnt || 0) + (entProd.cBolsaHieloEnt || 0),
     }
 
-    const estadoPago = calcularEstadoPago(totalObligacion, montoPagado)
+    const estadoPago = calcularEstadoPago(totalObligacion, totalPagadoEfectivo)
 
     // Update pedido
     const tx = client as unknown as {
@@ -236,8 +249,8 @@ export class ProcesarPedidoService {
         precioBolsaAgua: precios.bolsaAgua,
         precioBolsaHielo: precios.bolsaHielo,
         total: totalObligacion,
-        totalPagado: montoPagado,
-        saldo: totalObligacion - montoPagado,
+        totalPagado: totalPagadoEfectivo,
+        saldo: totalObligacion - totalPagadoEfectivo,
       },
     })
 
@@ -259,21 +272,26 @@ export class ProcesarPedidoService {
     // ADR-PAGO-REPORTADO-CONFIRMADO-001: digital cobrado en ruta nace REPORTADO
     // (§2: métodos configurables). El use case pasa la lista resuelta; si no,
     // se lee acá (fallback para llamadas directas al service).
-    const metodosConfirmacion =
-      metodosRequieren ??
-      (await leerMetodosRequierenConfirmacion(
-        client as unknown as Parameters<typeof leerMetodosRequierenConfirmacion>[0],
-      ))
-    for (const pago of cuadre.pagos) {
-      if (pago.monto > 0) {
-        await tx.pago.create({
-          data: {
-            pedidoId: pedido.id,
-            metodo: pago.metodo as MetodoPago,
-            monto: pago.monto,
-            ...datosConfirmacionInicial(pago.metodo, metodosConfirmacion),
-          },
-        })
+    // En un re-cierre NO se registran pagos: el dinero ya se contabilizó en el
+    // primer cierre / prepago. Registrar `cuadre.pagos` (prellenados con los
+    // pagos existentes) duplicaría el ledger.
+    if (!entregaPrevia) {
+      const metodosConfirmacion =
+        metodosRequieren ??
+        (await leerMetodosRequierenConfirmacion(
+          client as unknown as Parameters<typeof leerMetodosRequierenConfirmacion>[0],
+        ))
+      for (const pago of cuadre.pagos) {
+        if (pago.monto > 0) {
+          await tx.pago.create({
+            data: {
+              pedidoId: pedido.id,
+              metodo: pago.metodo as MetodoPago,
+              monto: pago.monto,
+              ...datosConfirmacionInicial(pago.metodo, metodosConfirmacion),
+            },
+          })
+        }
       }
     }
 
@@ -292,8 +310,8 @@ export class ProcesarPedidoService {
         data: {
           fecha: new Date(),
           total: totalObligacion,
-          saldo: totalObligacion - montoPagado,
-          estado: montoPagado >= totalObligacion ? 'PAGADA' : (montoPagado > 0 ? 'PARCIAL' : 'EMITIDA'),
+          saldo: totalObligacion - totalPagadoEfectivo,
+          estado: totalPagadoEfectivo >= totalObligacion ? 'PAGADA' : (totalPagadoEfectivo > 0 ? 'PARCIAL' : 'EMITIDA'),
         },
       })
     }
@@ -327,6 +345,7 @@ export class ProcesarPedidoService {
     const tx = client as unknown as {
       pedido: { update: (args: { where: { id: string }; data: Record<string, unknown> }) => Promise<unknown> }
       pedidoItem: { updateMany: (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => Promise<unknown> }
+      factura: { update: (args: { where: { id: string }; data: Record<string, unknown> }) => Promise<unknown> }
       historial: { create: (args: { data: Record<string, unknown> }) => Promise<unknown> }
     }
 
@@ -404,6 +423,23 @@ export class ProcesarPedidoService {
           data: { cantEntrega: c },
         })
       }
+    }
+
+    // Si la acumulación completa el pedido, se sincroniza la factura (fecha /
+    // estado) igual que la rama ENTREGADO — sin tocar el dinero (obligación
+    // intacta): `saldo = total - totalPagado` con los valores ya persistidos.
+    if (completo && pedido.factura) {
+      const totalObligacion = toNumber(pedido.total)
+      const pagado = toNumber(pedido.totalPagado)
+      await tx.factura.update({
+        where: { id: pedido.factura.id },
+        data: {
+          fecha: new Date(),
+          total: totalObligacion,
+          saldo: totalObligacion - pagado,
+          estado: pagado >= totalObligacion ? 'PAGADA' : (pagado > 0 ? 'PARCIAL' : 'EMITIDA'),
+        },
+      })
     }
 
     await tx.historial.create({

@@ -157,4 +157,48 @@ describe('PR-1 — golden: entrega parcial no destruye el prepago ni crea hijo',
     expect(Number(p2.saldo)).toBe(0)
     expect(await testPrisma.pedido.count()).toBe(pedidosAntes) // nunca hubo hijo
   })
+
+  it('re-cierre vía COMPLETO sin línea de pago (repartidor la quita) → prepago NO se destruye', async () => {
+    const emb1 = await crearEmbarque()
+    const pedido = await crearPedido10Prepago(emb1.id)
+
+    // Cierre 1: parcial 6/10
+    await buildUseCase().execute({
+      id: emb1.id,
+      pedidos: [{
+        pedidoId: pedido.id,
+        entregado: 'PARCIAL',
+        productosEntregados: { cPacaAguaEnt: 6, cPacaHieloEnt: 0, cBotellonFabEnt: 0, cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0 },
+        pagos: [],
+      }],
+      gastos: [], dineroEntregado: 0,
+    })
+
+    // Re-planificar
+    const emb2 = await crearEmbarque()
+    await testPrisma.pedido.update({ where: { id: pedido.id }, data: { embarqueId: emb2.id, estadoEntrega: 'EN_RUTA', estado: 'EN_RUTA' } })
+
+    // Cierre 2: COMPLETO con `pagos: []` (el repartidor quitó la línea prellenada)
+    await buildUseCase().execute({
+      id: emb2.id,
+      pedidos: [{
+        pedidoId: pedido.id,
+        entregado: 'COMPLETO',
+        productosEntregados: { cPacaAguaEnt: 4, cPacaHieloEnt: 0, cBotellonFabEnt: 0, cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0 },
+        pagos: [],
+      }],
+      gastos: [], dineroEntregado: 0,
+    })
+
+    const p = await testPrisma.pedido.findUniqueOrThrow({ where: { id: pedido.id } })
+    expect(p.estadoEntrega).toBe('ENTREGADO')
+    expect(p.cPacaAguaEnt).toBe(10)
+    expect(Number(p.total)).toBe(10_000)
+    expect(Number(p.totalPagado)).toBe(10_000) // prepago intacto (no se pisó con 0)
+    expect(Number(p.saldo)).toBe(0)
+    // No se duplicó el Pago.
+    expect(await testPrisma.pago.count({ where: { pedidoId: pedido.id } })).toBe(1)
+    const f = await testPrisma.factura.findFirstOrThrow({ where: { pedidoId: pedido.id } })
+    expect(f.estado).toBe('PAGADA')
+  })
 })

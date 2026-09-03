@@ -196,6 +196,9 @@ export class Pedido {
     this.props = {
       ...this.props,
       estadoEntrega: nuevoEstadoEntrega,
+      // Una entrega parcial deja el pedido re-planificable: se desasigna del
+      // embarque (mismo criterio que `procesarEntregaParcial` en el cierre).
+      embarqueId: completo ? this.props.embarqueId : undefined,
       estadoPago: EstadoPagoVO.proyectar(
         this.props.total.toDecimal(),
         this.props.totalPagado.toDecimal(),

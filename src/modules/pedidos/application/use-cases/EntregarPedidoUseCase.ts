@@ -35,13 +35,12 @@ export class EntregarPedidoUseCase {
     // ENTREGADO, devolvemos { deduped: true } con el pedido actual.
     // El segundo request no hace trabajo wasted.
     //
-    // FASE 0 (ADR-CONCURRENCIA-001): lock `SECUENCIA:pedido`. La entrega
-    // crea un pedido hijo con getNextNumero(model:'pedido') MAX+1, por lo que
-    // necesita compartir el lock de secuencia de pedido con el resto de
-    // creadores (CrearPedido, venta-libre, cierre). En FASE 1/8, cuando la
-    // numeración sea atómica, se refina a `PEDIDO:{pedidoId}` (transición de
-    // estado del pedido, §6) más `SECUENCIA:pedido` solo para el hijo.
-    return this.txManager.executeWithLock('SECUENCIA', 'pedido', async (tx) => {
+    // FASE 0 (ADR-CONCURRENCIA-001): lock `PEDIDO:{pedidoId}`. Tras PR-1 la
+    // entrega ya NO crea un pedido hijo (getNextNumero), así que no necesita el
+    // lock global de secuencia — solo serializar las transiciones de ESTE
+    // pedido (§6 del contrato). El faltante de una entrega parcial vive en el
+    // propio pedido.
+    return this.txManager.executeWithLock('PEDIDO', input.pedidoId, async (tx) => {
       const pedido = await this.pedidoRepo.findById(PedidoId.from(input.pedidoId), tx)
       if (!pedido) throw new Error('PEDIDO_NOT_FOUND')
 
@@ -69,12 +68,17 @@ export class EntregarPedidoUseCase {
         throw new Error('TRANSICION_INVALIDA')
       }
 
-      // Register delivery quantities + metadata (photo, GPS, visit code)
+      // Register delivery quantities + metadata (photo, GPS, visit code).
+      // PR-1: `entregar()` acumula. La cantidad se CLAMPEA al resto pendiente de
+      // la línea — así un replay offline con un delta calculado sobre un
+      // `cantEntrega` viejo (p.ej. una entrega encolada antes de un cierre
+      // parcial) nunca sobrepasa `cantPedido` ni queda atascado en la cola.
       pedido.entregar(
-        input.itemsEntregados.map(ie => ({
-          producto: ie.producto,
-          cantidad: ie.cantidad,
-        })),
+        input.itemsEntregados.map(ie => {
+          const item = pedido.items.find(i => i.producto === ie.producto)
+          const resto = item ? item.cantPedido - item.cantEntrega : ie.cantidad
+          return { producto: ie.producto, cantidad: Math.max(0, Math.min(ie.cantidad, resto)) }
+        }),
         {
           fotoEntrega: input.fotoEntrega,
           gpsLat: input.gpsLat,
