@@ -10,6 +10,7 @@ import {
   CerrarEmbarqueSchema,
   GastoEmbarqueSchema,
   CorreccionAbonoSchema,
+  EntregaSchema,
   normalizeTrabajador,
 } from '@/lib/validators'
 
@@ -629,6 +630,41 @@ describe('CerrarEmbarqueSchema', () => {
       expect(pe?.cPacaHieloEnt).toBe(0)
       expect(pe?.cBotellonFabEnt).toBe(0)
     }
+  })
+})
+
+describe('EntregaSchema — ADR-PAGO-EMBARQUE-CAPTURA-001 §4.1', () => {
+  it('entrega sin pagos: no exige embarqueId', () => {
+    const r = EntregaSchema.safeParse({ itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: 3 }] })
+    expect(r.success).toBe(true)
+  })
+
+  it('entrega con pagos (monto > 0) SIN embarqueId → falla (PAGO_MISION_SIN_EMBARQUE)', () => {
+    const r = EntregaSchema.safeParse({
+      itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: 3 }],
+      pagos: [{ metodo: 'EFECTIVO', monto: 100000 }],
+    })
+    expect(r.success).toBe(false)
+    if (!r.success) {
+      expect(JSON.stringify(r.error.issues)).toContain('PAGO_MISION_SIN_EMBARQUE')
+    }
+  })
+
+  it('entrega con pagos + embarqueId → ok', () => {
+    const r = EntregaSchema.safeParse({
+      itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: 3 }],
+      pagos: [{ metodo: 'EFECTIVO', monto: 100000 }],
+      embarqueId: 'emb_70',
+    })
+    expect(r.success).toBe(true)
+  })
+
+  it('entrega con pagos de monto 0 sin embarqueId → ok (no es un cobro real)', () => {
+    const r = EntregaSchema.safeParse({
+      itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: 3 }],
+      pagos: [{ metodo: 'EFECTIVO', monto: 0 }],
+    })
+    expect(r.success).toBe(true)
   })
 })
 

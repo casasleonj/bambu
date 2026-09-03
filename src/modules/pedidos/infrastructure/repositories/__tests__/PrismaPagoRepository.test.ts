@@ -21,11 +21,26 @@ describe('PrismaPagoRepository.createMany — ADR-PAGO-REPORTADO-CONFIRMADO-001'
     )
 
     const data = createMany.mock.calls[0][0].data
-    expect(data[0]).toEqual({ pedidoId: 'ped_1', metodo: 'NEQUI', monto: 5000, confirmacion: 'REPORTADO' })
-    expect(data[1]).toMatchObject({ pedidoId: 'ped_1', metodo: 'EFECTIVO', monto: 3000, confirmacion: 'CONFIRMADO' })
+    // ADR-PAGO-EMBARQUE-CAPTURA-001: sin `embarqueId` explícito → null (fuera de misión).
+    expect(data[0]).toEqual({ pedidoId: 'ped_1', metodo: 'NEQUI', monto: 5000, confirmacion: 'REPORTADO', embarqueId: null })
+    expect(data[1]).toMatchObject({ pedidoId: 'ped_1', metodo: 'EFECTIVO', monto: 3000, confirmacion: 'CONFIRMADO', embarqueId: null })
     // CONFIRMADO auto → confirmadoAt seteado, coherente con el backfill.
     expect(data[1].confirmadoAt).toBeInstanceOf(Date)
     expect(data[0]).not.toHaveProperty('confirmadoAt')
+  })
+
+  it('ADR-PAGO-EMBARQUE-CAPTURA-001: propaga el embarqueId de captura al batch', async () => {
+    const createMany = vi.fn().mockResolvedValue({ count: 1 })
+    const tx = {
+      pago: { createMany },
+      config: { findUnique: vi.fn().mockResolvedValue(null) },
+    } as unknown as TransactionClient
+    const repo = new PrismaPagoRepository()
+
+    await repo.createMany('ped_1', [{ metodo: 'EFECTIVO', monto: 3000 }], tx, undefined, 'emb_70')
+
+    const data = createMany.mock.calls[0][0].data
+    expect(data[0].embarqueId).toBe('emb_70')
   })
 
   it('no llama a createMany con lista vacía', async () => {

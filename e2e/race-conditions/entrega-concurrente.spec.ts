@@ -69,12 +69,15 @@ test.describe('Race Condition: Entrega Concurrente del Mismo Pedido', () => {
         return
       }
 
-      // Ahora sí: dos entregas concurrentes
+      // Ahora sí: dos entregas concurrentes.
+      // ADR-PAGO-EMBARQUE-CAPTURA-001 §4.1: un cobro en la entrega debe declarar
+      // el embarque de captura (si no → 400 PAGO_MISION_SIN_EMBARQUE).
       const [res1, res2] = await Promise.all([
         apiPost(page1, `/api/pedidos/${pedidoId}/entrega`, {
           tipo: 'COMPLETO',
           itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: 2 }],
           pagos: [{ metodo: 'EFECTIVO', monto: 10000 }],
+          embarqueId,
           gpsLat: 4.7110,
           gpsLng: -74.0721,
         }),
@@ -82,6 +85,7 @@ test.describe('Race Condition: Entrega Concurrente del Mismo Pedido', () => {
           tipo: 'COMPLETO',
           itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: 2 }],
           pagos: [{ metodo: 'EFECTIVO', monto: 10000 }],
+          embarqueId,
           gpsLat: 4.7110,
           gpsLng: -74.0721,
         }),
@@ -154,14 +158,16 @@ test.describe('Race Condition: Entrega Concurrente del Mismo Pedido', () => {
       carga: [{ producto: 'PACA_AGUA', cargadas: 5 }],
     })
     const embarqueJson = await embarque.json()
+    const embId = embarqueJson.embarque.id
     await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, {
-      embarqueId: embarqueJson.embarque.id,
+      embarqueId: embId,
     })
 
     const entregaRes = await apiPost(page, `/api/pedidos/${pedidoId}/entrega`, {
       tipo: 'COMPLETO',
       itemsEntregados: [{ producto: 'PACA_AGUA', cantidad: 1 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 5000 }],
+      embarqueId: embId, // ADR-PAGO-EMBARQUE-CAPTURA-001 §4.1
       gpsLat: 4.7110,
       gpsLng: -74.0721,
     })

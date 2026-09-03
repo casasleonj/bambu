@@ -103,7 +103,10 @@ export class EntregarPedidoUseCase {
         const metodosConfirmacion = await leerMetodosRequierenConfirmacion(
           tx as unknown as Parameters<typeof leerMetodosRequierenConfirmacion>[0],
         )
-        await this.pagoRepo.createMany(pedido.id.get(), input.pagos, tx, metodosConfirmacion)
+        // ADR-PAGO-EMBARQUE-CAPTURA-001: el cobro de la entrega se capturó en el
+        // embarque que declara el payload (validado en el route). Nunca se
+        // deriva de `pedido.embarqueId`.
+        await this.pagoRepo.createMany(pedido.id.get(), input.pagos, tx, metodosConfirmacion, input.embarqueId ?? null)
       }
 
       // Persist pedido
