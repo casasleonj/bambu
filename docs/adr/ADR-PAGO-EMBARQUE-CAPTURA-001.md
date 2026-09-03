@@ -524,8 +524,14 @@ USUARIO → ROL/IDENTIDAD → ¿puede ejecutar esta operación?
   - PARCIAL (F9): registra `cuadre.pagos` con `embarqueId = E` + incrementa `totalPagado`; campos de dinero sólo si hubo cobro nuevo (obligación intacta byte a byte si no).
   - **Guard F7 refinado en review (#178):** exacto, sin tolerancia porcentual — `montoNuevo > saldoPendientePrevio + 0.01`. `total` ya no se recalcula (PR-1) → la tolerancia % no tenía propósito, y `chk_pedido_montopagado_le_total` es exacta: un guard laxo dejaba pasar montos que abortaban toda la tx del cierre por constraint violation.
   - `cerrar-client`: retirado el prellenado histórico de `cuadre.pagos` (§6); resumen del cuadre muestra obligación / ya pagado / cobrado ahora / saldo pendiente.
-  - Matriz E2E: subset crítico (2, 5, 7, 8, 14 + 10/11 de PR-2a) cubierto como tests de integración contra Postgres real (`pr2b-conciliacion-captura.test.ts`, `cierre-venta-ruta-entrega-posterior.test.ts` reescrito, `procesar-pedido.service.test.ts`). Casos 6/12/13 (offline tardío / carrera SSE-cierre) son discrepancia post-cierre por diseño (§4.3), territorio E2E.
   - **Runbook de deploy (finding 1 del review):** sin backfill → verificar que ningún embarque esté a mitad de misión al desplegar, o reconciliar su caja a mano. Ventana chica (PR-2a se mergeó el mismo día).
+- **Matriz de captura (§383) — cobertura (#181, #182):** los 16 casos se verifican como tests de integración contra Postgres real (el subset UI/carrera se acepta como integración por decisión previa del equipo — ver [[cumplimiento-parcial-obligacion-actividad]]):
+  - **2, 5, 7, 8, 14** + 10/11 (de PR-2a) → `pr2b-conciliacion-captura.test.ts`, `cierre-venta-ruta-entrega-posterior.test.ts` (reescrito), `procesar-pedido.service.test.ts`.
+  - **1, 3, 4, 9, 15** → `pr2-matriz-captura-restante.test.ts` (#182). Caso 1 = prepago mostrador, cobro de misión $0. Caso 15 (A6) = dos entregas-con-pago concurrentes serializan bajo `PEDIDO:{id}`, invariante `Σ Pago == totalPagado <= total`.
+  - **6** = dedup por `offlineId` (cubierto en esencia por `pedido-idempotencia.test.ts`).
+  - **12, 13** = discrepancia post-cierre **por diseño** (§4.3): el `Pago` se crea con su `embarqueId` real, el cierre ya commiteado no lo re-etiqueta ni lo descarta; resolución = misma que el sync offline tardío. No hay comportamiento que "arreglar", el test sería sólo documentación del diseño.
+  - **16** = ciclo cerrar → cancelar/reabrir → re-cerrar. `Pago.embarqueId` es inmutable (garantizado por que ningún comando lo reescribe); la consistencia de la caja del re-cierre depende de que `cancelar-embarque` revierta la caja del cierre previo — regla de `ADR-CIERRE-001`, **fuera del alcance de este ADR**. Pendiente de un test que cruce ambos ADRs.
+  - **Lógica vieja retirada:** `fetchPagosOrigenDiferido` + el prellenado de `cuadre.pagos` + el guard `entregaPrevia` ya no existen (#178). El gate "no retirar hasta matriz verde" se cumple para lo que este ADR controla; 12/13/16 no bloquean porque no ejercen código que se haya retirado.
 
 ---
 
