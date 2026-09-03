@@ -1,7 +1,7 @@
 # ADR-PAGO-EMBARQUE-CAPTURA-001 — `Pago.embarqueId` (contexto de captura del pago)
 
-- Estado: **DECISIÓN PROPUESTA** — rev.5 tras revisión adversarial + refinamiento del PO (2026-09-03), pendiente de aprobación. **NO es decisión vigente.** No tocar código hasta que el ADR esté Aceptado.
-- Fecha: 2026-09-03 (rev.5)
+- Estado: **ACEPTADO** — aprobado para implementación por el PO (2026-09-03, "Adelante con PR-2"), tras 5 rondas de review del PO + revisión adversarial final (rev.6 cierra F6/F7/F9 sin cambiar la dirección). PR-2 se implementa con la disciplina "corregir en el camino sin perder trazabilidad".
+- Fecha: 2026-09-03 (rev.6 — ACEPTADO)
 - Fuente: `docs/pedidos/CUMPLIMIENTO_PARCIAL_{PLAN,ALS}_v2.md` §8/§20; `PR1_INTEGRIDAD_ENTREGA_PARCIAL_v3` §13/§18; `docs/pedidos/CUMPLIMIENTO_PARCIAL_AUDITORIA_TECNICA.md` §7; follow-up de `ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001` §0.
 - Fase de implementación: PR-2 (cierre monetario). Bloquea la implementación del campo.
 - Cruza: `ADR-CUSTODIA-001`, `ADR-CIERRE-001`, `ADR-MONETARIO-001`, `ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001`, `ADR-PAGO-REPORTADO-CONFIRMADO-001`.
@@ -120,10 +120,17 @@ un `UPDATE` silencioso).
 | `CrearPedidoUseCase` (prepago al crear) | FUERA_DE_MISIÓN | `null` |
 | `import/commit` (histórico) | FUERA_DE_MISIÓN | `null` |
 
-**Invariante de implementación:** en ningún sitio de captura la expresión que
-produce `Pago.embarqueId` puede leer `pedido.embarqueId`. El valor viene de:
-(a) el contexto del cierre, (b) el contexto de la venta libre, o (c) el payload
-explícito de la entrega. Nunca del estado de asignación del pedido.
+**Invariante de implementación:** en ningún sitio de captura del flujo del
+**repartidor** la expresión que produce `Pago.embarqueId` puede leer
+`pedido.embarqueId`. El valor viene de: (a) el contexto del cierre, (b) el
+contexto de la venta libre, o (c) el payload explícito de la entrega.
+
+**Excepción (rev.6 — F1):** un actor `ADMIN`/`ASISTENTE` que registre una
+entrega **con cobro** en nombre de un repartidor (flujo de escritorio) **sí**
+puede pasar el `embarqueId` actual del pedido — el operador está atribuyendo el
+cobro a la misión donde está el repartidor. Queda auditado. Hoy es hipotético:
+el flujo de escritorio (`/pedidos` "marcar entregado") envía `pagos: []`, así
+que no crea `Pago`. Se documenta para cuando gane captura de pago.
 
 #### 4.1 `EntregarPedidoUseCase` — rechazo, nunca `null` silencioso
 
@@ -216,19 +223,32 @@ pedido cancelado → devolución $60.000 → REVERSION
 efecto neto sobre la caja de E70 = $0
 ```
 
-**El mecanismo concreto lo determina PR-2 mirando la semántica exacta de
-`REVERSION`** (`ADR-MONETARIO-001` / `ADR-CORRECCION-MONETARIA-001`): puede ser
-"restar las `REVERSION` cuyo `Pago` original está en E" o "excluir pagos de
-pedidos `ANULADO/CANCELADO`" — lo que sea **consistente con el modelo monetario
-existente**. **No se crea una segunda contabilidad dentro de `Pago`.** Test
-obligatorio (E2E 14): captura en E70 → anulación → devolución → cierre E70 con
-efecto neto $0.
+**Mecanismo concreto (rev.6 — F6):** **exclusión por estado del pedido.**
+
+```sql
+Σ Pago
+  WHERE embarqueId = E
+    AND pedido.estadoEntrega NOT IN ('ANULADO', 'CANCELADO')
+```
+
+La alternativa "restar las `REVERSION` del `Pago`" **no es viable**:
+`ReceivableEntry REVERSION` es **por pedido, no por pago** (no tiene `pagoId`);
+si un pedido tuvo pagos en E70 y E78, la `REVERSION` no se puede repartir por
+embarque. La exclusión por estado del pedido es segura (no hay anulación
+parcial de pedidos — es todo-o-nada + `NotaCredito`) y **consistente con el
+modelo monetario existente** (`fetchPagosOrigenDiferido` ya excluía
+`ANULADO/CANCELADO`). **No se crea una segunda contabilidad dentro de `Pago`.**
+Test obligatorio (E2E 14).
 
 - `coleccionarPagos()` deja de leer `pedidosRaw[].pagos` / `ventasLibres[].pagos`
-  y pasa a una lectura viva de los `Pago` con `embarqueId = E`, aplicando la
-  regla de efecto neto A1.
-- El guard `PAGOS_EXCEDIDOS` compara contra el cobro de la misión, **no** contra
-  el total histórico del pedido.
+  y pasa a una lectura viva de los `Pago` con `embarqueId = E` y el filtro de
+  estado del pedido de arriba.
+- **Guard `PAGOS_EXCEDIDOS` (rev.6 — F7):** el pago **nuevo** de misión para un
+  pedido se compara contra el **saldo pendiente** de ese pedido
+  (`pedido.total − pedido.totalPagado` **antes** de aplicar el pago), NO contra
+  un total recalculado desde lo entregado ni contra "el cobro de la misión"
+  (que sería circular). Nadie puede cobrar en la misión más de lo que el pedido
+  debe.
 - **Se retira** `embarqueOrigenId` de la conciliación de caja
   (`fetchPagosOrigenDiferido` + el `continue` de `coleccionarPagos`).
   `embarqueOrigenId` queda solo como metadato histórico del pedido — **no
@@ -262,18 +282,25 @@ existentes del pedido. El asistente solo captura los pagos **nuevos** recibidos
 en esta misión. Los pagos previos (prepago, `embarqueId=null` o de otro
 embarque) no entran al cuadre ni a `efectivoEsperado`.
 
-### 7. PR-2 supersede el guard provisional de PR-1
+### 7. PR-2 supersede el guard provisional de PR-1 + la rama PARCIAL registra pagos
 
-PR-1 agregó en `procesar-pedido.service.ts` un guard `entregaPrevia` (si el
-pedido ya tuvo una entrega parcial → no crear `Pago` / no tocar `totalPagado`
-en el re-cierre). Era una **defensa provisional** contra el prellenado de
-`cuadre.pagos`.
+PR-1 dejó dos medidas provisionales en `procesar-pedido.service.ts`:
+1. Guard `entregaPrevia` (re-cierre → no crear `Pago` / no tocar `totalPagado`).
+2. `procesarEntregaParcial` **NO registra** `cuadre.pagos` ("eso es PR-2").
 
-**PR-2 retira ese prellenado (§6), por lo que PR-2 debe también retirar el guard
-`entregaPrevia`.** Con `Pago.embarqueId` y sin prellenado, `cuadre.pagos` = solo
-dinero nuevo de la misión → siempre seguro crear `Pago` con `embarqueId = E`.
-Dejar el guard después de PR-2 sería código muerto o, peor, una regla que
-alguien podría creer necesaria.
+Ambas eran defensa contra el prellenado de `cuadre.pagos`.
+
+**PR-2 (rev.6 — F9):**
+- Retira el prellenado (§6) → `cuadre.pagos` = solo dinero nuevo de la misión.
+- Retira el guard `entregaPrevia` (sería código muerto / regla engañosa).
+- **`procesarEntregaParcial` SÍ registra `cuadre.pagos`** con `embarqueId = E`
+  (el embarque que se cierra). Con el prellenado fuera, no hay duplicación:
+  un cobro parcial en el cierre de E70 crea un `Pago` de $60k con
+  `embarqueId = E70`, y el cierre de E70 lo cuenta (E2E 5). El `totalPagado`
+  del pedido se **incrementa** por el monto nuevo (nunca se pisa ni se recorta).
+- La rama COMPLETO y la rama PARCIAL quedan simétricas en el manejo de dinero:
+  ambas registran los pagos del cuadre con `embarqueId = E`, ambas incrementan
+  `totalPagado`, ninguna recalcula `total` (PR-1 §invariante).
 
 ---
 
@@ -281,7 +308,11 @@ alguien podría creer necesaria.
 
 1. `ALTER TABLE "Pago" ADD COLUMN IF NOT EXISTS "embarqueId" TEXT;` + FK
    `ON DELETE SET NULL` + `CREATE INDEX IF NOT EXISTS`.
-2. `GRANT` para el usuario de runtime (`app_write` / `postgres`).
+2. `GRANT`: **verificar si hace falta (rev.6 — F11).** Una columna nueva
+   nullable en `Pago` normalmente **no** requiere un `GRANT` nuevo — el usuario
+   de runtime (`app_write` / `postgres`) ya tiene `INSERT`/`UPDATE` sobre `Pago`.
+   La FK a `Embarque` se crea con el usuario de migración, no el de runtime. Si
+   la verificación confirma que no hace falta, se omite este paso.
 3. **Backfill: ninguno.** Todos los `Pago` históricos quedan `embarqueId = null`.
    Los cierres pasados ya están `CERRADO` y conciliados; re-atribuir no cambia
    nada cerrado y arriesga inconsistencias.
@@ -428,6 +459,21 @@ La lógica vieja (`fetchPagosOrigenDiferido` + `continue` + guard `entregaPrevia
 - **A5 (ADMIN/ASISTENTE):** autorización administrativa dentro de la única
   empresa, con auditoría — no aislamiento de tenants. §4.3 pt.2.
 
+**rev.6 (2026-09-03, revisión adversarial final — ADR ACEPTADO):**
+- **F6:** el mecanismo de A1 se congela como **exclusión por estado del pedido**
+  (`ANULADO/CANCELADO`). "Restar `REVERSION`" se descarta — es por-pedido, no
+  por-pago (`ReceivableEntry` no tiene `pagoId`). §5/A1.
+- **F7:** el guard `PAGOS_EXCEDIDOS` compara el pago nuevo de misión contra el
+  **saldo pendiente del pedido** (`total − totalPagado`), no contra "el cobro de
+  la misión" (circular). §5.
+- **F9:** `procesarEntregaParcial` (rama PARCIAL) **sí registra** `cuadre.pagos`
+  con `embarqueId = E` en PR-2 — simétrico con la rama COMPLETO; ambas
+  incrementan `totalPagado`, ninguna recalcula `total`. §7.
+- **F1 (nota):** excepción a la invariante "no derivar de `pedido.embarqueId`"
+  para ADMIN/ASISTENTE registrando entrega+cobro de escritorio (hipotético hoy).
+- **F11 (nota):** el `GRANT` de la migración probablemente no hace falta —
+  verificar. §Migración.
+
 ### Modelo de datos y autorización — Agua Bambú NO es multitenant
 
 **HECHO / estado arquitectónico actual:** Agua Bambú opera como una aplicación
@@ -451,18 +497,20 @@ USUARIO → ROL/IDENTIDAD → ¿puede ejecutar esta operación?
 
 | Elemento | Clasificación |
 |---|---|
-| `Pago.embarqueId` como contexto de captura inmutable | **DECISIÓN PROPUESTA** |
-| Captura ≠ obligación ≠ ejecución logística | **DECISIÓN PROPUESTA** |
-| A1 — efecto monetario neto de pagos revertidos | **BRECHA ARQUITECTÓNICA BLOQUEANTE** |
-| A2 — carrera entrega/cierre (invariante de concurrencia) | **BRECHA ARQUITECTÓNICA BLOQUEANTE** |
-| A3 — eliminar la regla de coherencia histórica no verificable | **BRECHA ARQUITECTÓNICA BLOQUEANTE** |
-| A4 — cancelar/reabrir embarque | **BRECHA ARQUITECTÓNICA BLOQUEANTE** |
-| A5 — ADMIN/ASISTENTE + auditoría | **CONDICIÓN DE ACEPTACIÓN** |
+| `Pago.embarqueId` como contexto de captura inmutable | **DECISIÓN ACEPTADA** |
+| Captura ≠ obligación ≠ ejecución logística | **DECISIÓN ACEPTADA** |
+| A1 — efecto monetario neto (mecanismo: exclusión por estado del pedido) | **RESUELTO en rev.6 (F6)** |
+| A2 — carrera entrega/cierre → discrepancia post-cierre, sin locks nuevos | **RESUELTO en rev.5** |
+| A3 — regla de coherencia histórica no verificable → eliminada | **RESUELTO en rev.5** |
+| A4 — cancelar/reabrir embarque → `Pago.embarqueId` inmutable | **RESUELTO en rev.4/5** |
+| A5 — ADMIN/ASISTENTE + auditoría | **RESUELTO en rev.4** |
 | A6 — concurrencia sobre el mismo pedido | **CONDICIÓN DE IMPLEMENTACIÓN (E2E 15)** |
-| Matriz E2E (16 casos) | **CRITERIO DE ACEPTACIÓN** |
+| F7 — guard `PAGOS_EXCEDIDOS` vs saldo pendiente | **RESUELTO en rev.6** |
+| F9 — rama PARCIAL registra pagos con `embarqueId=E` | **RESUELTO en rev.6** |
+| Matriz E2E (16 casos) | **CRITERIO DE ACEPTACIÓN de PR-2** |
 | multitenancy | **NO APLICA — eliminada del diseño** |
-| PR #176 | **ABIERTO / NO MERGEADO** |
-| Código de PR-2 | **NO INICIAR** hasta ADR Aceptado |
+| PR #176 (ADR documental) | **A MERGEAR** |
+| Código de PR-2 | **AUTORIZADO** — disciplina "corregir en el camino sin perder trazabilidad" |
 
 ---
 
