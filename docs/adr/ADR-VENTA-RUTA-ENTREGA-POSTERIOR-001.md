@@ -68,11 +68,11 @@ El paso 2 se parte en dos por dificultad muy distinta:
       dinero no se concilia en ningún cierre. Mitigación aplicada:
       `fetchPagosOrigenDiferido` excluye pedidos `ENTREGADO/ANULADO/CANCELADO`
       (el cierre que los entregó, o la anulación, ya son responsables). **Fix
-      correcto (no hecho): tag `Pago.embarqueId`** con el embarque donde se
-      capturó cada pago → conciliar `sum(Pago WHERE embarqueId = E)` sin
-      depender del pedido. Requiere migración + backfill + set en los ~3 sitios
-      de captura con contexto de embarque (`venta-libre`, `crear-ventas-libres`,
-      `procesar-pedido`).
+      correcto: `ADR-PAGO-EMBARQUE-CAPTURA-001`** (propuesto 2026-09-03, PR de
+      cierre monetario PR-2) — tag `Pago.embarqueId` = embarque donde se capturó
+      cada pago; el cierre concilia `Σ Pago WHERE embarqueId = E` y se **retira**
+      `fetchPagosOrigenDiferido` + el `continue` de `coleccionarPagos`.
+      `embarqueOrigenId` se conserva solo como contexto histórico del pedido.
 
 ### 1. La entrega de una venta en ruta / rápida es una dimensión, no un default del formulario
 
