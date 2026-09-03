@@ -131,13 +131,22 @@ ALTER TABLE "PlanParada" ADD CONSTRAINT "PlanParada_planGrupoId_fkey" FOREIGN KE
 ALTER TABLE "PlanActividad" ADD CONSTRAINT "PlanActividad_planParadaId_fkey" FOREIGN KEY ("planParadaId") REFERENCES "PlanParada"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "PlanExcepcion" ADD CONSTRAINT "PlanExcepcion_planDiaId_fkey" FOREIGN KEY ("planDiaId") REFERENCES "PlanDia"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
--- Grants (runtime usa app_write en Docker, postgres en Supabase).
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
-  "PlanDia", "PlanDiaVersion", "PlanGrupo", "PlanParada", "PlanActividad", "PlanExcepcion"
-  TO app_write;
-GRANT SELECT ON TABLE
-  "PlanDia", "PlanDiaVersion", "PlanGrupo", "PlanParada", "PlanActividad", "PlanExcepcion"
-  TO app_read;
+-- Grants (runtime usa app_write en Docker; postgres en Supabase, donde estos
+-- roles no existen). Guardado con pg_roles para que sea no-op sin los roles
+-- -- mismo patron que el resto de migraciones (ej. 20260901_add_correccion_abono).
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_write') THEN
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
+      "PlanDia", "PlanDiaVersion", "PlanGrupo", "PlanParada", "PlanActividad", "PlanExcepcion"
+      TO app_write;
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_read') THEN
+    GRANT SELECT ON TABLE
+      "PlanDia", "PlanDiaVersion", "PlanGrupo", "PlanParada", "PlanActividad", "PlanExcepcion"
+      TO app_read;
+  END IF;
+END $$;
 
 -- distanciaKm agregado durante F5 (UI) — recorrido estimado del grupo.
 ALTER TABLE "PlanGrupo" ADD COLUMN "distanciaKm" DOUBLE PRECISION NOT NULL DEFAULT 0;
