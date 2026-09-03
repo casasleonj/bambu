@@ -88,6 +88,28 @@ El PLAN describe el concepto ("dinero recibido" vs "cobrado en la misión") pero
 
 Alternativa sin schema: contar solo `Pago.createdAt` dentro de la ventana del embarque. Más frágil (pagos offline con `createdAt` desfasado).
 
-## 8. Estado de `#171` (toggle "Entregar después")
+## 8. Hallazgo adicional D — CRÍTICO PARA EL ALCANCE DE PR-1
+
+**El PLAN v2 §6-7 y la ALS v2 §7 apuntan a `Pedido.entregar()` / `EntregarPedidoUseCase`, pero ahí NO está el bug que sufren los usuarios.**
+
+`Pedido.entregar()` (`domain/entities/Pedido.ts:155`) solo se invoca con cantidades **completas** en producción:
+- `pedidos-client/index.tsx:1395-1399` → `cantidad: i.cantPedido` (full).
+- `ActualizarPedidoUseCase.ts:271-273` → `item.entregar(item.cantPedido)` (full).
+
+Su rama parcial (`crearPedidoHijo` cuando `tieneFaltantes`) es **código muerto en producción**.
+
+El bug **activo** de entrega parcial vive 100% en **`procesar-pedido.service.ts` — rama PARCIAL** (`execute()`, comentario `:119` "PARCIAL: idem ENTREGADO + crea pedido hijo"):
+- **No usa el agregado de dominio.** Toma `PedidoRawInput` (shape Prisma cruda) y hace `tx.pedido.update` directo (`:194-216`) con `estadoEntrega: 'ENTREGADO'`, `total: totalReal` (recalculado a lo entregado), `totalPagado: montoPagado` (solo pagos del cuadre — descarta el prepago).
+- Luego `crearPedidoHijo` (`:277`) con `totalPagado: 0`.
+- Vive en `src/modules/embarques/domain/services/` pese a no ser dominio puro.
+
+**Implicación de alcance:** arreglar solo `Pedido.entregar()` (el objetivo literal del PLAN v2) **no corrige nada de lo que está roto en vivo**. PR-1 tiene que tocar la rama PARCIAL de `procesarPedidoService`, y eso abre la pregunta *"¿qué representa las 4 pendientes después de que el embarque cierra?"*:
+
+- **Opción interina (sin N2):** PARCIAL en el cierre → padre vuelve a `PENDIENTE`, `embarqueId = null`, `cantEntrega` preservado (6/10), `total`/`totalPagado` intactos, **sin hijo**. El padre queda re-planificable; al re-entregarlo, `procesarPedidoService` suma 6→10. Requiere que `cantEntrega` sea **acumulativo** en el cuadre (hoy se sobreescribe). Es más que "quitar el `min()`" pero NO es N2 (sin entidades nuevas).
+- **Opción N2:** las 4 pendientes → `ObligacionPendiente` + nueva `Actividad`. Modelo completo.
+
+Decisión de alcance de PR-1 **pendiente** (no inventar el requisito): ¿PR-1 = `Pedido.entregar()` + rama PARCIAL de `procesarPedidoService` con la opción interina? ¿o se separa la rama PARCIAL a un PR-1b?
+
+## 9. Estado de `#171` (toggle "Entregar después")
 
 `NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR` OFF → el toggle no renderiza, `entregado` siempre `undefined` → inerte. **No revertir, pero NO activar el flag hasta que PR-1 + PR-2 estén.** Documentado en `docs/adr/ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001.md` (§ follow-ups).
