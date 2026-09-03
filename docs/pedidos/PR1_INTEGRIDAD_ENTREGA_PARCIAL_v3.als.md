@@ -216,7 +216,10 @@ Conservar:
 - transacción;
 - idempotencia.
 
-No permitir manipulación cross-tenant mediante IDs.
+No permitir manipulación mediante IDs ajenos al contexto (un actor no puede
+operar sobre pedidos/embarques que no le corresponden). La app NO es
+multitenant: no hay `tenant_id` ni aislamiento multiempresa — la autorización
+es por rol y por pertenencia repartidor↔embarque.
 
 ## 16. Prohibiciones
 
