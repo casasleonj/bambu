@@ -1,7 +1,7 @@
 # ADR-PAGO-EMBARQUE-CAPTURA-001 — `Pago.embarqueId` (contexto de captura del pago)
 
-- Estado: **PROPUESTO** — pendiente de aprobación del PO
-- Fecha: 2026-09-03
+- Estado: **DECISIÓN PROPUESTA** — corregido tras review del PO (2026-09-03), pendiente de re-aprobación. NO es decisión vigente.
+- Fecha: 2026-09-03 (rev. 2 tras review del PO)
 - Fuente: `docs/pedidos/CUMPLIMIENTO_PARCIAL_{PLAN,ALS}_v2.md` §8/§20; `PR1_INTEGRIDAD_ENTREGA_PARCIAL_v3` §13/§18; `docs/pedidos/CUMPLIMIENTO_PARCIAL_AUDITORIA_TECNICA.md` §7 (hallazgo C); follow-up de `ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001` §0.
 - Fase de implementación: PR-2 (cierre monetario). Bloquea la implementación del campo.
 - Cruza: `ADR-CUSTODIA-001`, `ADR-CIERRE-001`, `ADR-MONETARIO-001`, `ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001`, `ADR-PAGO-REPORTADO-CONFIRMADO-001`.
@@ -51,19 +51,31 @@ model Pago {
 
 ### 2. Semántica congelada
 
-`Pago.embarqueId` = **el embarque en el que el pago fue física­mente capturado /
-recibido por Agua Bambú** (el repartidor recibió el efectivo, o el asistente
-registró el reporte digital, durante esa misión).
+`Pago.embarqueId` = **el embarque en el que el pago fue físicamente capturado /
+recibido por Agua Bambú** — el evento de captura (el repartidor recibió el
+efectivo, o el asistente registró el reporte digital, durante esa misión).
 
-**NO significa** "el embarque al que pertenece el pedido de este pago". Un
-pedido puede viajar en varios embarques (reasignación, entrega parcial
-re-planificada); sus pagos NO se re-atribuyen.
+**Regla dura (review PO):**
 
-- `embarqueId = null` ⇔ el pago **no** se capturó en una misión logística:
-  - prepago / pago en el mostrador / oficina;
-  - `pagar-fiado` (cartera, escritorio);
-  - `abonos` (cartera);
-  - importación histórica.
+> `Pago.embarqueId` identifica el **contexto físico de captura del pago**. Es
+> inmutable. NUNCA se deriva de `Pedido.embarqueId`.
+
+Consecuencias de la regla:
+
+- **NO significa** "el embarque al que pertenece el pedido". Un pedido puede
+  viajar en varios embarques (reasignación, entrega parcial re-planificada);
+  sus pagos NO se re-atribuyen. Ejemplo canónico:
+  ```
+  Pago capturado en Embarque #70 → el Pedido pasa a Embarque #78
+      → el Pago SIGUE perteneciendo a #70.
+  ```
+- **`null` NO es un "tipo de pago".** `null` significa *"el pago no fue
+  físicamente capturado dentro de un Embarque"*. El **método de pago**
+  (efectivo / Nequi / transferencia / datáfono / cualquier método futuro)
+  **NUNCA determina `embarqueId`** — solo el evento de captura lo hace.
+  - Ejemplos de captura fuera de misión (→ `null`): prepago al crear el pedido;
+    pago en el mostrador / oficina; `pagar-fiado` y `abonos` (flujos de cartera,
+    escritorio); importación histórica. Son *ejemplos*, no la definición.
 - `embarqueId = E` ⇔ el pago se recibió durante el embarque `E`.
 
 ### 3. Inmutabilidad
@@ -83,11 +95,17 @@ reutilice el campo para otra cosa.
 |---|---|
 | `POST /api/pedidos/venta-libre` (venta en ruta) | el embarque del contexto |
 | `CrearVentasLibresService` (venta libre creada en el cierre) | el embarque que se cierra |
-| `procesar-pedido.service.ts` — pagos del `cuadre` (cobro en la entrega) | el embarque que se cierra |
-| `EntregarPedidoUseCase` — `input.pagos` (cobro al entregar) | el `embarqueId` actual del pedido (si tiene) |
+| `procesar-pedido.service.ts` — pagos del `cuadre` (cobro en la entrega) | el embarque que se **está cerrando** (el que ejecuta el cierre) |
+| `EntregarPedidoUseCase` — `input.pagos` (cobro al entregar vía `/api/pedidos/[id]/entrega`) | el `embarqueId` que **el cliente envía en el payload de la entrega** (la app del repartidor sabe en qué ruta está). PR-2 agrega `embarqueId` a `EntregaSchema` / `EntregarPedidoInput`. **Prohibido derivarlo de `Pedido.embarqueId`.** Si el payload no lo trae → `null` (pago sin misión). |
 | `CrearPedidoUseCase` (prepago al crear) | `null` |
 | `pagar-fiado`, `abonos` (cartera) | `null` |
 | `import/commit` (histórico) | `null` |
+
+**Invariante de implementación (review PO):** en ningún sitio de captura la
+expresión que produce `Pago.embarqueId` puede leer `pedido.embarqueId`. El
+valor viene de: (a) el contexto del cierre, (b) el contexto de la venta libre,
+o (c) el payload explícito de la entrega. Nunca del estado de asignación del
+pedido.
 
 ### 5. Uso en el cierre (PR-2)
 
@@ -108,6 +126,14 @@ El cierre del embarque `E` cuenta como **"cobrado en la misión"**:
   caja se concilia por `Pago.embarqueId`, no por pedido.
   (`ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001` §0 se actualiza: la regla "la custodia
   sigue al evento de cobro" ahora se implementa a nivel de `Pago`.)
+  - **NO se mantienen dos fuentes de verdad.** `Pago.embarqueId` es la única
+    base de la conciliación de caja del cierre; `embarqueOrigenId` deja de
+    participar en cálculos monetarios (queda solo como metadato histórico).
+  - **Condición (review PO): la lógica vieja NO se elimina hasta que toda la
+    matriz E2E de la sección "Tests obligatorios" esté verde.** El PR-2 puede
+    aterrizar el campo + los sitios de captura primero y remover
+    `fetchPagosOrigenDiferido`/el `continue` en el mismo PR solo con la matriz
+    demostrada.
 
 ### 6. Prepago prellenado en el asistente de cierre
 
@@ -139,9 +165,11 @@ venta-libre bajo `SECUENCIA:pedido`, entrega bajo `PEDIDO:{id}`). El dedup por
 
 ## Alcance
 
-- **Dentro (PR-2):** el campo + los 4 sitios de captura + `coleccionarPagos` /
-  `calcularCaja` / guard `PAGOS_EXCEDIDOS` / quitar el prellenado del asistente
-  + retirar la conciliación por `embarqueOrigenId`.
+- **Dentro (PR-2):** el campo (schema + migración + GRANT) · `embarqueId` en
+  `EntregaSchema` / `EntregarPedidoInput` + la app del repartidor que lo envía ·
+  los 4 sitios de captura · `coleccionarPagos` / `calcularCaja` / guard
+  `PAGOS_EXCEDIDOS` · quitar el prellenado de `cuadre.pagos` en el asistente ·
+  retirar la conciliación por `embarqueOrigenId` (con la matriz E2E verde).
 - **Fuera:** PUNTO→DOMICILIO, diferencial, fiscal, wiring `Obligación`/`Actividad`
   (N2/N3). El mecanismo de corrección auditada de `embarqueId` (solo si aparece
   un caso real).
@@ -152,17 +180,36 @@ Revertir el PR-2 + `DROP COLUMN "Pago"."embarqueId"`. El cierre vuelve a
 `coleccionarPagos` sobre `pedidosRaw`. Como no hubo backfill, no hay datos que
 migrar de vuelta.
 
-## Tests obligatorios (PR-2)
+## Tests obligatorios (PR-2) — matriz de captura (review PO)
 
-- Prepago total antes del embarque → cierre → `cobro de misión = 0`, el cierre
-  no exige tocar el pago histórico, no hay `PAGOS_EXCEDIDOS`.
-- Fiado cobrado en la entrega → `Pago.embarqueId = E`, cuenta en la caja de `E`.
-- Venta en ruta con entrega posterior: el `Pago` se concilia en el embarque
-  donde se cobró, aunque el pedido se entregue en otro (reemplaza los tests de
-  `cierre-venta-ruta-entrega-posterior.test.ts` que hoy validan la lógica por
-  `embarqueOrigenId`).
-- Reasignación de un pedido con prepago: el `Pago` mantiene su `embarqueId`.
-- Regresión: cierre normal (fresco, cobro en la entrega) → caja idéntica a hoy.
+La lógica vieja (`fetchPagosOrigenDiferido` + `continue`) **no se retira** hasta
+que esta matriz completa esté verde (E2E / integración):
+
+| # | Caso | Resultado esperado |
+|---|---|---|
+| 1 | Prepago $100k (mostrador) → Embarque entrega 60% | `Pago.embarqueId = null`; cobro de misión del cierre = **$0**; sin `PAGOS_EXCEDIDOS`; no se toca el pago histórico |
+| 2 | Fiado $100k → repartidor cobra $100k en la entrega | `Pago.embarqueId = E`; caja de `E` += $100k |
+| 3 | Prepago → pedido reasignado a otro embarque | el `Pago` conserva `embarqueId = null` |
+| 4 | Pago capturado en E70 → el pedido pasa a E78 | el `Pago` sigue con `embarqueId = E70` |
+| 5 | Pago parcial capturado en E70 + otro pago en E78 (misma línea de pedido) | cada `Pago` pertenece a su embarque de captura; el cierre de E70 cuenta solo el suyo, el de E78 solo el suyo |
+| 6 | Entrega con pago, offline + reintento (mismo `offlineId`) | no se duplica el `Pago` ni el cobro |
+| 7 | Cierre repetido del mismo embarque (replay) | no se duplica el cobro de misión |
+| 8 | Venta en ruta + entrega posterior (`ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001`) | el dinero pertenece al embarque donde fue **capturado**, no donde se entrega; reemplaza los tests de `cierre-venta-ruta-entrega-posterior.test.ts` que hoy validan por `embarqueOrigenId` |
+| 9 | Regresión: cierre normal (pedido fresco, cobro en la entrega, un solo embarque) | caja idéntica a hoy |
+
+## Correcciones aplicadas tras el review del PO (2026-09-03)
+
+1. **Semántica de captura en `EntregarPedidoUseCase`** (era: "el `embarqueId`
+   actual del pedido"). Corregido: el `embarqueId` viene del **payload
+   explícito** de la entrega; prohibido derivarlo de `Pedido.embarqueId`.
+   Invariante de implementación: ningún sitio de captura lee `pedido.embarqueId`.
+2. **`null` reformulado**: no es "tipo de pago" ni depende del método; significa
+   "el pago no se capturó dentro de un Embarque".
+3. **`embarqueOrigenId`**: se retira de todo cálculo monetario (una sola fuente
+   de verdad). Condición: la matriz E2E verde antes de borrar la lógica vieja.
+4. **Clasificación en la matriz del proyecto**: `Pago.embarqueId` pasa de
+   "PROPUESTA" a **"DECISIÓN PROPUESTA — pendiente de aprobación del PO"** (no a
+   "decisión vigente").
 
 ## Consecuencias
 
