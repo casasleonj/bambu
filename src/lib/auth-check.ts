@@ -7,7 +7,15 @@ import { userCan, type Permission } from "./permissions";
 
 export async function requireAuth() {
   const session = await auth();
-  if (!session) {
+  // FIX C-9 (defensa en profundidad): validar session?.user?.id, no solo
+  // `!session`. El callback session() de src/lib/auth.ts devuelve un objeto
+  // Session con session.user poblado por los defaults de NextAuth (name,
+  // email, image) incluso cuando token.sub es undefined — caso de una
+  // sesión revocada/invalidada a mitad de vuelo (auth.ts:201/215). `!session`
+  // NUNCA es true en ese caso, así que el guard dejaba pasar la request con
+  // session.user.id === undefined. src/proxy.ts:109 y src/lib/auth-guard.ts:17
+  // ya usan este patrón; estos 4 guards de API eran los únicos sin él.
+  if (!session?.user?.id) {
     return apiError("No autorizado", 401);
   }
 
@@ -43,7 +51,7 @@ export async function requireAuth() {
  */
 export async function requireAuthWithoutMustChangePassword() {
   const session = await auth();
-  if (!session) {
+  if (!session?.user?.id) {
     return apiError("No autorizado", 401);
   }
   return session;
@@ -57,7 +65,7 @@ export async function requireAuthWithoutMustChangePassword() {
  */
 export async function requireRole(role: Role | Role[], existingSession?: Session | null) {
   const session = existingSession || await auth();
-  if (!session) {
+  if (!session?.user?.id) {
     return apiError("No autorizado", 401);
   }
 
@@ -79,7 +87,7 @@ export async function requireRole(role: Role | Role[], existingSession?: Session
  */
 export async function requirePermission(permission: Permission, existingSession?: Session | null) {
   const session = existingSession || await auth();
-  if (!session) {
+  if (!session?.user?.id) {
     return apiError("No autorizado", 401);
   }
 
