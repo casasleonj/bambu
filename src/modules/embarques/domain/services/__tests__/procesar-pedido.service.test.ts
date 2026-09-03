@@ -82,8 +82,9 @@ describe('F4.10-a: el service mantiene las responsabilidades', () => {
     expect(serviceSource).toMatch(/this\.logPrecioCierre\(/)
   })
 
-  it('FIX: el service llama a crearPedidoHijo cuando es PARCIAL', () => {
-    expect(serviceSource).toMatch(/this\.crearPedidoHijo\(/)
+  it('PR-1: la rama PARCIAL NO crea pedido hijo — tiene su propio branch', () => {
+    expect(serviceSource).not.toMatch(/this\.crearPedidoHijo\(/)
+    expect(serviceSource).toMatch(/this\.procesarEntregaParcial\(/)
   })
 })
 
@@ -110,13 +111,13 @@ describe('F4.10-a: import correcto en el use case', () => {
   })
 })
 
-// BAMBU-LOG-004: el pedido hijo (faltante de una entrega PARCIAL) debe
-// heredar negocioId y el snapshot de dirección del padre. Antes, solo se
-// copiaba clienteId — si el pedido original era de un Negocio/sucursal,
-// el hijo resolvía su dirección/coords contra el Cliente. Estos son tests
-// de comportamiento reales (ejecutan execute() con un client mockeado),
-// no regex sobre el código fuente como los de arriba.
-describe('BAMBU-LOG-004: crearPedidoHijo hereda negocioId y dirección del padre', () => {
+// PR-1 (integridad de entrega parcial): el cierre PARCIAL ya NO crea un pedido
+// hijo para el faltante. El pendiente vive en el propio pedido: `cantEntrega`
+// acumula, el pedido queda PENDIENTE y `embarqueId` se libera para
+// re-planificación. `total`/`totalPagado`/`saldo` no se tocan.
+// (Antes: BAMBU-LOG-004 verificaba que el hijo heredara negocioId/dirección —
+// moot ahora, no hay hijo.)
+describe('PR-1: el cierre PARCIAL no crea hijo y preserva la obligación económica', () => {
   function makePedidoRaw(overrides: Partial<PedidoRawInput> = {}): PedidoRawInput {
     return {
       id: 'ped_padre',
@@ -151,6 +152,7 @@ describe('BAMBU-LOG-004: crearPedidoHijo hereda negocioId y dirección del padre
       cBolsaAguaEnt: 0,
       cBolsaHieloEnt: 0,
       total: 50000,
+      totalPagado: 0,
       obs: null,
       createdById: null,
       items: [{ producto: 'PACA_AGUA' }],
@@ -178,15 +180,15 @@ describe('BAMBU-LOG-004: crearPedidoHijo hereda negocioId y dirección del padre
     }
   }
 
-  it('el hijo creado por CIERRE DE EMBARQUE (entrega PARCIAL) incluye negocioId y dirección del padre', async () => {
+  it('cierre PARCIAL: NO crea hijo; acumula cantEntrega, deja PENDIENTE, libera embarqueId, no toca total', async () => {
     const hijoCreateSpy = vi.fn().mockResolvedValue({ id: 'hijo_1', numero: 101 })
     const client = makeClient(hijoCreateSpy)
-    const pedido = makePedidoRaw()
+    const pedido = makePedidoRaw({ total: 50000 }) // 5 pacas x 10.000
     const cuadre: CerrarEmbarqueInput['pedidos'][number] = {
       pedidoId: pedido.id,
       entregado: 'PARCIAL',
       productosEntregados: {
-        cPacaAguaEnt: 3, // 5 pedidas, 3 entregadas -> 2 de faltante
+        cPacaAguaEnt: 3, // 5 pedidas, 3 entregadas -> 2 pendientes
         cPacaHieloEnt: 0,
         cBotellonFabEnt: 0,
         cBotellonDomEnt: 0,
@@ -199,27 +201,33 @@ describe('BAMBU-LOG-004: crearPedidoHijo hereda negocioId y dirección del padre
     const service = new ProcesarPedidoService()
     await service.execute(client as never, pedido, cuadre, 'ADMIN', 'user_1', [], [])
 
-    expect(hijoCreateSpy).toHaveBeenCalledTimes(1)
-    const createArgs = hijoCreateSpy.mock.calls[0][0].data
-    expect(createArgs.negocioId).toBe('neg_1')
-    expect(createArgs.direccionEntrega).toBe('Cra 10 #20-30')
-    expect(createArgs.barrioEntrega).toBe('Centro')
+    // NO se crea pedido hijo.
+    expect(hijoCreateSpy).not.toHaveBeenCalled()
+
+    // El pedido se actualiza: cantEntrega acumulado, PENDIENTE, embarqueId null.
+    expect(client.pedido.update).toHaveBeenCalledTimes(1)
+    const upd = (client.pedido.update as ReturnType<typeof vi.fn>).mock.calls[0][0].data
+    expect(upd.cPacaAguaEnt).toBe(3)
+    expect(upd.estadoEntrega).toBe('PENDIENTE')
+    expect(upd.embarqueId).toBeNull()
+    // La obligación económica NO se toca.
+    expect(upd.total).toBeUndefined()
+    expect(upd.totalPagado).toBeUndefined()
+    expect(upd.saldo).toBeUndefined()
+    // No se registran pagos en la rama PARCIAL (PR-2 posee el cobro de misión).
+    expect(client.pago.create).not.toHaveBeenCalled()
   })
 
-  it('sin negocioId en el padre, el hijo tampoco lo tiene (no regresión — no inventa datos)', async () => {
-    const hijoCreateSpy = vi.fn().mockResolvedValue({ id: 'hijo_2', numero: 102 })
+  it('cierre PARCIAL que completa lo pedido → ENTREGADO (acumulado 3 previas + 2 ahora = 5)', async () => {
+    const hijoCreateSpy = vi.fn().mockResolvedValue({ id: 'x', numero: 1 })
     const client = makeClient(hijoCreateSpy)
-    const pedido = makePedidoRaw({ negocioId: null, direccionEntrega: null, barrioEntrega: null })
+    const pedido = makePedidoRaw({ cPacaAguaEnt: 3 }) // re-planificado: ya 3/5
     const cuadre: CerrarEmbarqueInput['pedidos'][number] = {
       pedidoId: pedido.id,
       entregado: 'PARCIAL',
       productosEntregados: {
-        cPacaAguaEnt: 3,
-        cPacaHieloEnt: 0,
-        cBotellonFabEnt: 0,
-        cBotellonDomEnt: 0,
-        cBolsaAguaEnt: 0,
-        cBolsaHieloEnt: 0,
+        cPacaAguaEnt: 2, cPacaHieloEnt: 0, cBotellonFabEnt: 0,
+        cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0,
       },
       pagos: [],
     }
@@ -227,10 +235,29 @@ describe('BAMBU-LOG-004: crearPedidoHijo hereda negocioId y dirección del padre
     const service = new ProcesarPedidoService()
     await service.execute(client as never, pedido, cuadre, 'ADMIN', 'user_1', [], [])
 
-    const createArgs = hijoCreateSpy.mock.calls[0][0].data
-    expect(createArgs.negocioId).toBeNull()
-    expect(createArgs.direccionEntrega).toBeNull()
-    expect(createArgs.barrioEntrega).toBeNull()
+    const upd = (client.pedido.update as ReturnType<typeof vi.fn>).mock.calls[0][0].data
+    expect(upd.cPacaAguaEnt).toBe(5) // 3 + 2
+    expect(upd.estadoEntrega).toBe('ENTREGADO')
+    expect(hijoCreateSpy).not.toHaveBeenCalled()
+  })
+
+  it('cierre PARCIAL que excede lo pedido (acumulado > cantPedido) → rechaza', async () => {
+    const client = makeClient(vi.fn())
+    const pedido = makePedidoRaw({ cPacaAguaEnt: 4 }) // ya 4/5
+    const cuadre: CerrarEmbarqueInput['pedidos'][number] = {
+      pedidoId: pedido.id,
+      entregado: 'PARCIAL',
+      productosEntregados: {
+        cPacaAguaEnt: 3, cPacaHieloEnt: 0, cBotellonFabEnt: 0,
+        cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0,
+      },
+      pagos: [],
+    }
+
+    const service = new ProcesarPedidoService()
+    await expect(
+      service.execute(client as never, pedido, cuadre, 'ADMIN', 'user_1', [], []),
+    ).rejects.toThrow(/ENTREGA_EXCEDE_PEDIDO/)
   })
 })
 
@@ -273,6 +300,7 @@ describe('FIX factura-fecha-entrega: la factura se resincroniza al cerrar ENTREG
       cBolsaAguaEnt: 0,
       cBolsaHieloEnt: 0,
       total: 50000,
+      totalPagado: 0,
       obs: null,
       createdById: null,
       items: [{ producto: 'PACA_AGUA' }],

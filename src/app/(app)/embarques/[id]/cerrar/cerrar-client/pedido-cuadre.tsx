@@ -36,6 +36,16 @@ const PEDIDO_KEYS: Record<string, keyof Pedido> = {
   cBolsaHieloEnt: 'cBolsaHieloPed',
 }
 
+// PR-1: unidades ya entregadas de un pedido re-planificado (cierre parcial previo).
+const ENT_KEYS: Record<string, keyof Pedido> = {
+  cPacaAguaEnt: 'cPacaAguaEnt',
+  cPacaHieloEnt: 'cPacaHieloEnt',
+  cBotellonFabEnt: 'cBotellonFabEnt',
+  cBotellonDomEnt: 'cBotellonDomEnt',
+  cBolsaAguaEnt: 'cBolsaAguaEnt',
+  cBolsaHieloEnt: 'cBolsaHieloEnt',
+}
+
 interface ProductoCampo {
   key: keyof CuadrePedido['productosEntregados']
   precioKey: keyof CuadrePedido['preciosReales']
@@ -110,14 +120,15 @@ export function PedidoCuadre({
               onClick={() => {
                 onUpdateCuadre(pedido.id, { entregado: opt })
                 if (opt === 'COMPLETO') {
+                  // PR-1: "Entregó" es el delta de este cierre → el resto pendiente.
                   onUpdateCuadre(pedido.id, {
                     productosEntregados: {
-                      cPacaAguaEnt: pedido.cPacaAguaPed,
-                      cPacaHieloEnt: pedido.cPacaHieloPed,
-                      cBotellonFabEnt: pedido.cBotellonFabPed,
-                      cBotellonDomEnt: pedido.cBotellonDomPed,
-                      cBolsaAguaEnt: pedido.cBolsaAguaPed,
-                      cBolsaHieloEnt: pedido.cBolsaHieloPed,
+                      cPacaAguaEnt: Math.max(0, pedido.cPacaAguaPed - (pedido.cPacaAguaEnt || 0)),
+                      cPacaHieloEnt: Math.max(0, pedido.cPacaHieloPed - (pedido.cPacaHieloEnt || 0)),
+                      cBotellonFabEnt: Math.max(0, pedido.cBotellonFabPed - (pedido.cBotellonFabEnt || 0)),
+                      cBotellonDomEnt: Math.max(0, pedido.cBotellonDomPed - (pedido.cBotellonDomEnt || 0)),
+                      cBolsaAguaEnt: Math.max(0, pedido.cBolsaAguaPed - (pedido.cBolsaAguaEnt || 0)),
+                      cBolsaHieloEnt: Math.max(0, pedido.cBolsaHieloPed - (pedido.cBolsaHieloEnt || 0)),
                     },
                   })
                 }
@@ -193,6 +204,7 @@ export function PedidoCuadre({
                   const precio = cuadre.preciosReales[prod.precioKey]
                   const pedidoKey = PEDIDO_KEYS[prod.key]
                   const pedidoCant = pedido[pedidoKey] as number
+                  const yaEntregado = (pedido[ENT_KEYS[prod.key]] as number) || 0
                   const subtotal = cant * precio
 
                   // Precio original del pedido (congelado)
@@ -209,10 +221,17 @@ export function PedidoCuadre({
                         <Icon size={16} className="inline-block align-text-bottom" />
                         <span className="ml-1 text-xs font-medium">{prod.label}</span>
                       </td>
-                      <td className="px-2 py-1.5 text-center text-xs text-gray-400">{pedidoCant}</td>
+                      <td className="px-2 py-1.5 text-center text-xs text-gray-400">
+                        {pedidoCant}
+                        {yaEntregado > 0 && (
+                          <span className="block text-[10px] text-amber-600" title="Ya entregado en un cierre anterior">
+                            ya {yaEntregado}
+                          </span>
+                        )}
+                      </td>
                       <td className="px-2 py-1.5">
                         <input
-                          type="number" min={0}
+                          type="number" min={0} max={Math.max(0, pedidoCant - yaEntregado)}
                           value={cant}
                           onChange={(e) => onUpdateProductoEntregado(pedido.id, prod.key, parseInt(e.target.value) || 0)}
                           className="w-14 text-center px-1 py-0.5 border rounded text-sm"

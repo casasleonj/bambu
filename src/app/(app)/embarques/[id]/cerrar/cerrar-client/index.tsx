@@ -111,13 +111,16 @@ export default function CerrarEmbarqueClient() {
             initialCuadres[p.id] = {
               pedidoId: p.id,
               entregado: 'COMPLETO',
+              // PR-1: "Entregó" = lo entregado EN ESTE cierre. Default = el
+              // RESTO (pedido − ya entregado). En un pedido fresco eso es el
+              // total pedido; en uno re-planificado, solo el faltante.
               productosEntregados: {
-                cPacaAguaEnt: p.cPacaAguaPed,
-                cPacaHieloEnt: p.cPacaHieloPed,
-                cBotellonFabEnt: p.cBotellonFabPed,
-                cBotellonDomEnt: p.cBotellonDomPed,
-                cBolsaAguaEnt: p.cBolsaAguaPed,
-                cBolsaHieloEnt: p.cBolsaHieloPed,
+                cPacaAguaEnt: Math.max(0, p.cPacaAguaPed - (p.cPacaAguaEnt || 0)),
+                cPacaHieloEnt: Math.max(0, p.cPacaHieloPed - (p.cPacaHieloEnt || 0)),
+                cBotellonFabEnt: Math.max(0, p.cBotellonFabPed - (p.cBotellonFabEnt || 0)),
+                cBotellonDomEnt: Math.max(0, p.cBotellonDomPed - (p.cBotellonDomEnt || 0)),
+                cBolsaAguaEnt: Math.max(0, p.cBolsaAguaPed - (p.cBolsaAguaEnt || 0)),
+                cBolsaHieloEnt: Math.max(0, p.cBolsaHieloPed - (p.cBolsaHieloEnt || 0)),
               },
               preciosReales: {
                 pacaAgua: p.precioPacaAgua,

@@ -25,7 +25,6 @@
 
 import { EstadoEmbarque } from '@prisma/client'
 import { calcularEstadoPago } from '@/lib/pedido-utils'
-import { getNextNumero } from '@/lib/sequence'
 import { datosConfirmacionInicial, leerMetodosRequierenConfirmacion } from '@/lib/pago-confirmacion'
 import type { CerrarEmbarqueInput } from '../../application/dto'
 import type { MetodoPago } from '@prisma/client'
@@ -78,6 +77,7 @@ export interface PedidoRawInput {
   cBolsaAguaEnt: number
   cBolsaHieloEnt: number
   total: number | { toNumber: () => number }
+  totalPagado: number | { toNumber: () => number }
   obs: string | null
   createdById: string | null
   items: Array<{ producto: string }>
@@ -127,7 +127,9 @@ export class ProcesarPedidoService {
     cuadre: CerrarEmbarqueInput['pedidos'][number],
     userRole: string | undefined,
     userId: string | undefined,
-    pedidosHijosCreados: Array<{ id: string; numero: number }>,
+    // PR-1: la rama PARCIAL ya no crea pedido hijo. El param se conserva por
+    // compatibilidad posicional con el call site; siempre queda vacío.
+    _pedidosHijosCreados: Array<{ id: string; numero: number }>,
     pedidosActualizados: Array<{ id: string; estado: string }>,
     // ADR-PAGO-REPORTADO-CONFIRMADO-001 §2: lista ya resuelta (el use case la lee
     // una vez, no una por pedido dentro del lock del cierre). Fallback al default.
@@ -146,6 +148,14 @@ export class ProcesarPedidoService {
     // NO_ENTREGADO case
     if (cuadre.entregado === 'NO_ENTREGADO') {
       return this.procesarNoEntregado(client, pedido, cuadre, pedidosActualizados)
+    }
+
+    // PARCIAL (PR-1, integridad de entrega parcial): entrega interina que NO
+    // toca la obligación económica (`total`/`totalPagado`/`saldo`), NO crea
+    // pedido hijo y NO registra pagos (eso es PR-2). Solo acumula lo entregado
+    // físicamente y deja el pendiente re-planificable.
+    if (cuadre.entregado === 'PARCIAL') {
+      return this.procesarEntregaParcial(client, pedido, entProd, cuadre, userRole, userId, pedidosActualizados)
     }
 
     // Resolve prices (frozen original prices, ADMIN override only)
@@ -169,6 +179,8 @@ export class ProcesarPedidoService {
         }
       : preciosOriginales
 
+    // Valor entregado EN ESTE cierre (comisión / totalVentas / auditoría de
+    // precio). NO es la obligación económica del pedido — ver más abajo.
     const totalReal =
       precios.pacaAgua * (entProd.cPacaAguaEnt || 0) +
       precios.pacaHielo * (entProd.cPacaHieloEnt || 0) +
@@ -177,7 +189,34 @@ export class ProcesarPedidoService {
       precios.bolsaAgua * (entProd.cBolsaAguaEnt || 0) +
       precios.bolsaHielo * (entProd.cBolsaHieloEnt || 0)
 
-    const estadoPago = calcularEstadoPago(totalReal, montoPagado)
+    // PR-1: la obligación económica del pedido NO se recalcula desde lo
+    // entregado. `total` se conserva; `saldo = total - totalPagado`.
+    const totalObligacion = toNumber(pedido.total)
+
+    // ¿Es un RE-cierre (el pedido ya tuvo una entrega parcial en un embarque
+    // previo)? En ese caso el dinero ya se contabilizó/prepagó: NO se toca
+    // `totalPagado` ni se crean filas `Pago` (el cobro de misión duplicado /
+    // el double-count del prepago prellenado es exactamente lo que PR-2
+    // resuelve con `Pago.embarqueId`). En un cierre fresco se mantiene el
+    // comportamiento actual.
+    const entregaPrevia =
+      (pedido.cPacaAguaEnt || 0) + (pedido.cPacaHieloEnt || 0) +
+      (pedido.cBotellonFabEnt || 0) + (pedido.cBotellonDomEnt || 0) +
+      (pedido.cBolsaAguaEnt || 0) + (pedido.cBolsaHieloEnt || 0) > 0
+    const totalPagadoEfectivo = entregaPrevia ? toNumber(pedido.totalPagado) : montoPagado
+
+    // Acumular lo entregado sobre lo ya entregado (pedido re-planificado que
+    // completa su faltante). En un pedido fresco `pedido.cXEnt` es 0.
+    const entAcum: ProductosEntregados = {
+      cPacaAguaEnt: (pedido.cPacaAguaEnt || 0) + (entProd.cPacaAguaEnt || 0),
+      cPacaHieloEnt: (pedido.cPacaHieloEnt || 0) + (entProd.cPacaHieloEnt || 0),
+      cBotellonFabEnt: (pedido.cBotellonFabEnt || 0) + (entProd.cBotellonFabEnt || 0),
+      cBotellonDomEnt: (pedido.cBotellonDomEnt || 0) + (entProd.cBotellonDomEnt || 0),
+      cBolsaAguaEnt: (pedido.cBolsaAguaEnt || 0) + (entProd.cBolsaAguaEnt || 0),
+      cBolsaHieloEnt: (pedido.cBolsaHieloEnt || 0) + (entProd.cBolsaHieloEnt || 0),
+    }
+
+    const estadoPago = calcularEstadoPago(totalObligacion, totalPagadoEfectivo)
 
     // Update pedido
     const tx = client as unknown as {
@@ -197,34 +236,34 @@ export class ProcesarPedidoService {
         estadoEntrega: 'ENTREGADO',
         estado: 'ENTREGADO',
         estadoPago,
-        cPacaAguaEnt: entProd.cPacaAguaEnt || 0,
-        cPacaHieloEnt: entProd.cPacaHieloEnt || 0,
-        cBotellonFabEnt: entProd.cBotellonFabEnt || 0,
-        cBotellonDomEnt: entProd.cBotellonDomEnt || 0,
-        cBolsaAguaEnt: entProd.cBolsaAguaEnt || 0,
-        cBolsaHieloEnt: entProd.cBolsaHieloEnt || 0,
+        cPacaAguaEnt: entAcum.cPacaAguaEnt,
+        cPacaHieloEnt: entAcum.cPacaHieloEnt,
+        cBotellonFabEnt: entAcum.cBotellonFabEnt,
+        cBotellonDomEnt: entAcum.cBotellonDomEnt,
+        cBolsaAguaEnt: entAcum.cBolsaAguaEnt,
+        cBolsaHieloEnt: entAcum.cBolsaHieloEnt,
         precioPacaAgua: precios.pacaAgua,
         precioPacaHielo: precios.pacaHielo,
         precioBotellonFab: precios.botellonFab,
         precioBotellonDom: precios.botellonDom,
         precioBolsaAgua: precios.bolsaAgua,
         precioBolsaHielo: precios.bolsaHielo,
-        total: totalReal,
-        totalPagado: montoPagado,
-        saldo: totalReal - montoPagado,
+        total: totalObligacion,
+        totalPagado: totalPagadoEfectivo,
+        saldo: totalObligacion - totalPagadoEfectivo,
       },
     })
 
-    // Update PedidoItems
-    await this.updatePedidoItems(client, pedido.id, entProd, precios)
+    // Update PedidoItems (cantidad acumulada)
+    await this.updatePedidoItems(client, pedido.id, entAcum, precios)
 
-    // Log price changes
+    // Log price changes (audita el delta de precio en el cierre)
     await this.logPrecioCierre(client, pedido, totalReal, userId)
 
-    // Validate payments (1% tolerance)
+    // Validate payments (1% tolerance) contra la obligación del pedido.
     const montoPagadoTotal = cuadre.pagos.reduce((sum, p) => sum + p.monto, 0)
-    if (montoPagadoTotal > totalReal * 1.01) {
-      throw new Error(`PAGOS_EXCEDIDOS: Pagos ($${montoPagadoTotal}) exceden total real ($${totalReal}) para pedido #${pedido.numero}`)
+    if (montoPagadoTotal > totalObligacion * 1.01) {
+      throw new Error(`PAGOS_EXCEDIDOS: Pagos ($${montoPagadoTotal}) exceden el total del pedido ($${totalObligacion}) para pedido #${pedido.numero}`)
     }
 
     pedidosActualizados.push({ id: pedido.id, estado: 'ENTREGADO' })
@@ -233,21 +272,26 @@ export class ProcesarPedidoService {
     // ADR-PAGO-REPORTADO-CONFIRMADO-001: digital cobrado en ruta nace REPORTADO
     // (§2: métodos configurables). El use case pasa la lista resuelta; si no,
     // se lee acá (fallback para llamadas directas al service).
-    const metodosConfirmacion =
-      metodosRequieren ??
-      (await leerMetodosRequierenConfirmacion(
-        client as unknown as Parameters<typeof leerMetodosRequierenConfirmacion>[0],
-      ))
-    for (const pago of cuadre.pagos) {
-      if (pago.monto > 0) {
-        await tx.pago.create({
-          data: {
-            pedidoId: pedido.id,
-            metodo: pago.metodo as MetodoPago,
-            monto: pago.monto,
-            ...datosConfirmacionInicial(pago.metodo, metodosConfirmacion),
-          },
-        })
+    // En un re-cierre NO se registran pagos: el dinero ya se contabilizó en el
+    // primer cierre / prepago. Registrar `cuadre.pagos` (prellenados con los
+    // pagos existentes) duplicaría el ledger.
+    if (!entregaPrevia) {
+      const metodosConfirmacion =
+        metodosRequieren ??
+        (await leerMetodosRequierenConfirmacion(
+          client as unknown as Parameters<typeof leerMetodosRequierenConfirmacion>[0],
+        ))
+      for (const pago of cuadre.pagos) {
+        if (pago.monto > 0) {
+          await tx.pago.create({
+            data: {
+              pedidoId: pedido.id,
+              metodo: pago.metodo as MetodoPago,
+              monto: pago.monto,
+              ...datosConfirmacionInicial(pago.metodo, metodosConfirmacion),
+            },
+          })
+        }
       }
     }
 
@@ -265,19 +309,166 @@ export class ProcesarPedidoService {
         where: { id: pedido.factura.id },
         data: {
           fecha: new Date(),
-          total: totalReal,
-          saldo: totalReal - montoPagado,
-          estado: montoPagado >= totalReal ? 'PAGADA' : (montoPagado > 0 ? 'PARCIAL' : 'EMITIDA'),
+          total: totalObligacion,
+          saldo: totalObligacion - totalPagadoEfectivo,
+          estado: totalPagadoEfectivo >= totalObligacion ? 'PAGADA' : (totalPagadoEfectivo > 0 ? 'PARCIAL' : 'EMITIDA'),
         },
       })
     }
 
-    // Create child pedido if PARCIAL
-    if (cuadre.entregado === 'PARCIAL') {
-      await this.crearPedidoHijo(client, pedido, entProd, precios, pedidosHijosCreados, userId)
-    }
+    // PR-1: el faltante ya NO genera pedido hijo — el pendiente vive en el
+    // propio pedido. La rama PARCIAL se procesa en `procesarEntregaParcial`.
 
     return totalReal
+  }
+
+  /**
+   * PARCIAL (PR-1): cierre con entrega incompleta. Interino, sin N2.
+   *  - acumula lo entregado físicamente sobre lo ya entregado;
+   *  - NO toca `total` / `totalPagado` / `saldo` (obligación económica intacta);
+   *  - NO registra pagos (PR-2 posee el cobro de misión);
+   *  - NO crea pedido hijo;
+   *  - deja el pedido `PENDIENTE` + `embarqueId = null` (re-planificable);
+   *  - si la acumulación completa lo pedido, lo marca `ENTREGADO`.
+   *
+   * @returns el valor entregado EN ESTE cierre (para comisión / totalVentas).
+   */
+  private async procesarEntregaParcial(
+    client: TxOrPrisma,
+    pedido: PedidoRawInput,
+    entProd: ProductosEntregados,
+    cuadre: CerrarEmbarqueInput['pedidos'][number],
+    userRole: string | undefined,
+    userId: string | undefined,
+    pedidosActualizados: Array<{ id: string; estado: string }>,
+  ): Promise<number> {
+    const tx = client as unknown as {
+      pedido: { update: (args: { where: { id: string }; data: Record<string, unknown> }) => Promise<unknown> }
+      pedidoItem: { updateMany: (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => Promise<unknown> }
+      factura: { update: (args: { where: { id: string }; data: Record<string, unknown> }) => Promise<unknown> }
+      historial: { create: (args: { data: Record<string, unknown> }) => Promise<unknown> }
+    }
+
+    const acum: ProductosEntregados = {
+      cPacaAguaEnt: (pedido.cPacaAguaEnt || 0) + (entProd.cPacaAguaEnt || 0),
+      cPacaHieloEnt: (pedido.cPacaHieloEnt || 0) + (entProd.cPacaHieloEnt || 0),
+      cBotellonFabEnt: (pedido.cBotellonFabEnt || 0) + (entProd.cBotellonFabEnt || 0),
+      cBotellonDomEnt: (pedido.cBotellonDomEnt || 0) + (entProd.cBotellonDomEnt || 0),
+      cBolsaAguaEnt: (pedido.cBolsaAguaEnt || 0) + (entProd.cBolsaAguaEnt || 0),
+      cBolsaHieloEnt: (pedido.cBolsaHieloEnt || 0) + (entProd.cBolsaHieloEnt || 0),
+    }
+
+    if (
+      acum.cPacaAguaEnt > (pedido.cPacaAguaPed || 0) ||
+      acum.cPacaHieloEnt > (pedido.cPacaHieloPed || 0) ||
+      acum.cBotellonFabEnt > (pedido.cBotellonFabPed || 0) ||
+      acum.cBotellonDomEnt > (pedido.cBotellonDomPed || 0) ||
+      acum.cBolsaAguaEnt > (pedido.cBolsaAguaPed || 0) ||
+      acum.cBolsaHieloEnt > (pedido.cBolsaHieloPed || 0)
+    ) {
+      throw new Error(`ENTREGA_EXCEDE_PEDIDO: la entrega acumulada supera lo pedido en #${pedido.numero}`)
+    }
+
+    const totalPedido =
+      (pedido.cPacaAguaPed || 0) + (pedido.cPacaHieloPed || 0) +
+      (pedido.cBotellonFabPed || 0) + (pedido.cBotellonDomPed || 0) +
+      (pedido.cBolsaAguaPed || 0) + (pedido.cBolsaHieloPed || 0)
+    const totalEntregadoAcum =
+      acum.cPacaAguaEnt + acum.cPacaHieloEnt + acum.cBotellonFabEnt +
+      acum.cBotellonDomEnt + acum.cBolsaAguaEnt + acum.cBolsaHieloEnt
+    const completo = totalEntregadoAcum >= totalPedido && totalPedido > 0
+
+    // ADMIN puede corregir precios congelados también en un cierre parcial;
+    // se persisten para el registro pero NO alteran `total` (PR-1).
+    const precios = (cuadre.preciosReales && userRole === 'ADMIN')
+      ? {
+          precioPacaAgua: cuadre.preciosReales['pacaAgua'] ?? toNumber(pedido.precioPacaAgua),
+          precioPacaHielo: cuadre.preciosReales['pacaHielo'] ?? toNumber(pedido.precioPacaHielo),
+          precioBotellonFab: cuadre.preciosReales['botellonFab'] ?? toNumber(pedido.precioBotellonFab),
+          precioBotellonDom: cuadre.preciosReales['botellonDom'] ?? toNumber(pedido.precioBotellonDom),
+          precioBolsaAgua: cuadre.preciosReales['bolsaAgua'] ?? toNumber(pedido.precioBolsaAgua),
+          precioBolsaHielo: cuadre.preciosReales['bolsaHielo'] ?? toNumber(pedido.precioBolsaHielo),
+        }
+      : {}
+
+    await tx.pedido.update({
+      where: { id: pedido.id },
+      data: {
+        cPacaAguaEnt: acum.cPacaAguaEnt,
+        cPacaHieloEnt: acum.cPacaHieloEnt,
+        cBotellonFabEnt: acum.cBotellonFabEnt,
+        cBotellonDomEnt: acum.cBotellonDomEnt,
+        cBolsaAguaEnt: acum.cBolsaAguaEnt,
+        cBolsaHieloEnt: acum.cBolsaHieloEnt,
+        estadoEntrega: completo ? 'ENTREGADO' : 'PENDIENTE',
+        estado: completo ? 'ENTREGADO' : 'PENDIENTE',
+        embarqueId: completo ? pedido.embarqueId : null,
+        ...precios,
+        // total / totalPagado / saldo: NO SE TOCAN.
+      },
+    })
+
+    const itemAcum: Record<string, number> = {
+      PACA_AGUA: acum.cPacaAguaEnt,
+      PACA_HIELO: acum.cPacaHieloEnt,
+      BOTELLON: acum.cBotellonFabEnt + acum.cBotellonDomEnt,
+      BOLSA_AGUA: acum.cBolsaAguaEnt,
+      BOLSA_HIELO: acum.cBolsaHieloEnt,
+    }
+    for (const item of pedido.items) {
+      const c = itemAcum[item.producto]
+      if (c !== undefined) {
+        await tx.pedidoItem.updateMany({
+          where: { pedidoId: pedido.id, producto: item.producto },
+          data: { cantEntrega: c },
+        })
+      }
+    }
+
+    // Si la acumulación completa el pedido, se sincroniza la factura (fecha /
+    // estado) igual que la rama ENTREGADO — sin tocar el dinero (obligación
+    // intacta): `saldo = total - totalPagado` con los valores ya persistidos.
+    if (completo && pedido.factura) {
+      const totalObligacion = toNumber(pedido.total)
+      const pagado = toNumber(pedido.totalPagado)
+      await tx.factura.update({
+        where: { id: pedido.factura.id },
+        data: {
+          fecha: new Date(),
+          total: totalObligacion,
+          saldo: totalObligacion - pagado,
+          estado: pagado >= totalObligacion ? 'PAGADA' : (pagado > 0 ? 'PARCIAL' : 'EMITIDA'),
+        },
+      })
+    }
+
+    await tx.historial.create({
+      data: {
+        entidad: 'Pedido',
+        registroId: pedido.id,
+        accion: 'ENTREGA_PARCIAL_CIERRE',
+        datos: JSON.stringify({
+          pedidoNumero: pedido.numero,
+          entregadoAcumulado: totalEntregadoAcum,
+          totalPedido,
+          completo,
+          usuario: userId || 'unknown',
+        }),
+        usuarioId: userId,
+      },
+    })
+
+    pedidosActualizados.push({ id: pedido.id, estado: completo ? 'ENTREGADO' : 'PENDIENTE' })
+
+    // Comisión / totalVentas: solo el valor entregado EN ESTE cierre.
+    return (
+      toNumber(pedido.precioPacaAgua) * (entProd.cPacaAguaEnt || 0) +
+      toNumber(pedido.precioPacaHielo) * (entProd.cPacaHieloEnt || 0) +
+      toNumber(pedido.precioBotellonFab) * (entProd.cBotellonFabEnt || 0) +
+      toNumber(pedido.precioBotellonDom) * (entProd.cBotellonDomEnt || 0) +
+      toNumber(pedido.precioBolsaAgua) * (entProd.cBolsaAguaEnt || 0) +
+      toNumber(pedido.precioBolsaHielo) * (entProd.cBolsaHieloEnt || 0)
+    )
   }
 
   /**
@@ -408,75 +599,8 @@ export class ProcesarPedidoService {
     }
   }
 
-  private async crearPedidoHijo(
-    client: TxOrPrisma,
-    pedido: PedidoRawInput,
-    entProd: ProductosEntregados,
-    precios: PreciosPedido,
-    pedidosHijosCreados: Array<{ id: string; numero: number }>,
-    userId: string | undefined,
-  ): Promise<void> {
-    const tx = client as unknown as {
-      pedido: { create: (args: { data: Record<string, unknown> }) => Promise<{ id: string; numero: number }> }
-    }
-
-    const faltanteAgua = (pedido.cPacaAguaPed || 0) - (entProd.cPacaAguaEnt || 0)
-    const faltanteHielo = (pedido.cPacaHieloPed || 0) - (entProd.cPacaHieloEnt || 0)
-    const faltanteBotFab = (pedido.cBotellonFabPed || 0) - (entProd.cBotellonFabEnt || 0)
-    const faltanteBotDom = (pedido.cBotellonDomPed || 0) - (entProd.cBotellonDomEnt || 0)
-    const faltanteBolAgua = (pedido.cBolsaAguaPed || 0) - (entProd.cBolsaAguaEnt || 0)
-    const faltanteBolHielo = (pedido.cBolsaHieloPed || 0) - (entProd.cBolsaHieloEnt || 0)
-
-    const hayFaltante =
-      faltanteAgua > 0 || faltanteHielo > 0 || faltanteBotFab > 0 ||
-      faltanteBotDom > 0 || faltanteBolAgua > 0 || faltanteBolHielo > 0
-
-    if (hayFaltante) {
-      const numeroHijo = await getNextNumero(client, { model: 'pedido' })
-      const totalHijo =
-        precios.pacaAgua * faltanteAgua +
-        precios.pacaHielo * faltanteHielo +
-        precios.botellonFab * faltanteBotFab +
-        precios.botellonDom * faltanteBotDom +
-        precios.bolsaAgua * faltanteBolAgua +
-        precios.bolsaHielo * faltanteBolHielo
-
-      const hijo = await tx.pedido.create({
-        data: {
-          numero: numeroHijo,
-          clienteId: pedido.clienteId,
-          // FIX BAMBU-LOG-004: heredar negocioId y snapshot de dirección
-          // del padre — si no, el hijo resuelve su dirección/coords
-          // contra el Cliente en vez del Negocio/sucursal original.
-          negocioId: pedido.negocioId,
-          direccionEntrega: pedido.direccionEntrega,
-          barrioEntrega: pedido.barrioEntrega,
-          tipo: pedido.tipo,
-          canal: pedido.canal,
-          origen: pedido.origen as never,
-          estadoEntrega: 'PENDIENTE',
-          estadoPago: 'PENDIENTE',
-          estado: 'PENDIENTE',
-          idOrigen: pedido.id,
-          total: totalHijo,
-          saldo: totalHijo,
-          totalPagado: 0,
-          obs: `Faltante de pedido #${pedido.numero}`,
-          createdById: userId,
-          items: {
-            create: [
-              ...(faltanteAgua > 0 ? [{ producto: 'PACA_AGUA', cantPedido: faltanteAgua, cantEntrega: 0, precio: precios.pacaAgua, subtotal: precios.pacaAgua * faltanteAgua }] : []),
-              ...(faltanteHielo > 0 ? [{ producto: 'PACA_HIELO', cantPedido: faltanteHielo, cantEntrega: 0, precio: precios.pacaHielo, subtotal: precios.pacaHielo * faltanteHielo }] : []),
-              ...(faltanteBotFab > 0 ? [{ producto: 'BOTELLON_FAB', cantPedido: faltanteBotFab, cantEntrega: 0, precio: precios.botellonFab, subtotal: precios.botellonFab * faltanteBotFab }] : []),
-              ...(faltanteBotDom > 0 ? [{ producto: 'BOTELLON_DOM', cantPedido: faltanteBotDom, cantEntrega: 0, precio: precios.botellonDom, subtotal: precios.botellonDom * faltanteBotDom }] : []),
-              ...(faltanteBolAgua > 0 ? [{ producto: 'BOLSA_AGUA', cantPedido: faltanteBolAgua, cantEntrega: 0, precio: precios.bolsaAgua, subtotal: precios.bolsaAgua * faltanteBolAgua }] : []),
-              ...(faltanteBolHielo > 0 ? [{ producto: 'BOLSA_HIELO', cantPedido: faltanteBolHielo, cantEntrega: 0, precio: precios.bolsaHielo, subtotal: precios.bolsaHielo * faltanteBolHielo }] : []),
-            ],
-          },
-        },
-      })
-
-      pedidosHijosCreados.push({ id: hijo.id, numero: hijo.numero })
-    }
-  }
+  // PR-1: `crearPedidoHijo` (copia productiva del cierre) se elimina — la rama
+  // PARCIAL ya no materializa el faltante como un pedido nuevo. La versión
+  // canónica sigue disponible en el agregado de dominio
+  // (`Pedido.crearPedidoHijo()`) para el inventario/migración legacy (ADR PR-1 §8).
 }

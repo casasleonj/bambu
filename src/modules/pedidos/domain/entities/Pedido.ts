@@ -178,31 +178,31 @@ export class Pedido {
       item.entregar(e.cantidad)
     }
 
-    const nuevoTotal = this.props.items.reduce(
-      (sum, i) => sum.add(i.subtotalEntregado),
-      new Money(0),
-    )
+    // PR-1 (integridad de entrega parcial): la entrega FÍSICA no modifica la
+    // obligación económica. `total` y `totalPagado` se conservan intactos; el
+    // saldo canónico sigue siendo `total - totalPagado`. Antes se recalculaba
+    // `total` con el valor de lo entregado y se recortaba `totalPagado` con
+    // `min()` — eso destruía el prepago del faltante (ADR PR-1, docs/pedidos).
+    const totalPedido = this.props.items.reduce((sum, i) => sum + i.cantPedido, 0)
+    const totalEntregado = this.props.items.reduce((sum, i) => sum + i.cantEntrega, 0)
+    const completo = totalEntregado >= totalPedido
 
-    // FIX C-BIZ-5: Forzar source-of-truth en totalPagado.
-    // Si por algún cálculo raro totalPagado > nuevoTotal (overpayment
-    // preexistente), clipamos a nuevoTotal. La fórmula canónica es:
-    //   total = subtotals de items entregados
-    //   totalPagado = min(pagos aplicados, total)
-    //   saldo = total - totalPagado
-    const nuevoTotalPagadoCents = Math.min(
-      this.props.totalPagado.cents,
-      nuevoTotal.cents,
-    )
-    const nuevoTotalPagado = new Money(nuevoTotalPagadoCents)
+    // Mientras falte cantidad el pedido NO está entregado: queda PENDIENTE
+    // (re-planificable). Solo el cumplimiento total lo pasa a ENTREGADO.
+    const nuevoEstadoEntrega = completo
+      ? EstadoEntregaVO.create('ENTREGADO')
+      : EstadoEntregaVO.create('PENDIENTE')
 
     this.props = {
       ...this.props,
-      estadoEntrega: EstadoEntregaVO.create('ENTREGADO'),
-      total: nuevoTotal,
-      totalPagado: nuevoTotalPagado,
-      estadoPago: EstadoPagoVO.fromTotals(
-        nuevoTotal.toDecimal(),
-        nuevoTotalPagado.toDecimal(),
+      estadoEntrega: nuevoEstadoEntrega,
+      // Una entrega parcial deja el pedido re-planificable: se desasigna del
+      // embarque (mismo criterio que `procesarEntregaParcial` en el cierre).
+      embarqueId: completo ? this.props.embarqueId : undefined,
+      estadoPago: EstadoPagoVO.proyectar(
+        this.props.total.toDecimal(),
+        this.props.totalPagado.toDecimal(),
+        nuevoEstadoEntrega.get(),
       ),
       fotoEntrega: metadata?.fotoEntrega || this.props.fotoEntrega,
       gpsLat: metadata?.gpsLat ?? this.props.gpsLat,

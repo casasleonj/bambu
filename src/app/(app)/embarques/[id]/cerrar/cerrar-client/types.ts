@@ -23,6 +23,15 @@ export interface Pedido {
   cBotellonDomPed: number
   cBolsaAguaPed: number
   cBolsaHieloPed: number
+  // PR-1: unidades ya entregadas (un pedido re-planificado que completa su
+  // faltante llega con cXEnt > 0). El wizard muestra "ya entregado" y el
+  // input "Entregó" se interpreta como lo entregado EN ESTE cierre (delta).
+  cPacaAguaEnt: number
+  cPacaHieloEnt: number
+  cBotellonFabEnt: number
+  cBotellonDomEnt: number
+  cBolsaAguaEnt: number
+  cBolsaHieloEnt: number
   precioPacaAgua: number
   precioPacaHielo: number
   precioBotellonFab: number
