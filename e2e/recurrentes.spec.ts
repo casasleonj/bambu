@@ -289,12 +289,19 @@ test.describe('Recurrentes', () => {
     const pedidoRecurrente = pedidosDataList?.find((p) => p.origen === 'RECURRENTE')
     expect(pedidoRecurrente).toBeDefined()
     expect(Number(pedidoRecurrente!.total)).toBeGreaterThan(0)
-    expect(Number(pedidoRecurrente!.totalPagado)).toBe(11200)
-    expect(Number(pedidoRecurrente!.saldo)).toBe(Number(pedidoRecurrente!.total) - 11200)
+    // El crédito parqueado ($11.200) se consume contra el pedido nuevo.
+    const creditoAplicado = Math.min(11200, Number(pedidoRecurrente!.total))
+    expect(Number(pedidoRecurrente!.totalPagado)).toBe(creditoAplicado)
+    expect(Number(pedidoRecurrente!.saldo)).toBe(Number(pedidoRecurrente!.total) - creditoAplicado)
 
-    // 7. Verificar pedido viejo marcado como ENTREGADO
+    // 7. F-A (auditoría #181): el pedido viejo prepagado NO se entrega —
+    // se CANCELA (su mercancía se refunde en el pedido recurrente) y su
+    // dinero se traspasa por NotaCredito + saldoFavor.
     const pedidoViejo = pedidosDataList?.find((p) => p.numero === pedidoExtraData.pedido.numero)
-    expect(pedidoViejo!.estadoEntrega).toBe('ENTREGADO')
+    expect(pedidoViejo).toBeDefined()
+    expect(pedidoViejo!.estadoEntrega).toBe('CANCELADO')
+    expect(Number(pedidoViejo!.total)).toBe(0)
+    expect(Number(pedidoViejo!.totalPagado)).toBe(0)
   })
 })
 
