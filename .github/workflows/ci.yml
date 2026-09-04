@@ -218,6 +218,7 @@ jobs:
       AUTH_TRUST_HOST: 'true'
       TZ: America/Bogota
       PLAYWRIGHT_TEST_BASE_URL: http://localhost:3001
+      CLIENTES_POST_TIMEOUT_MS: 60000
 
     steps:
       - name: Checkout repository
