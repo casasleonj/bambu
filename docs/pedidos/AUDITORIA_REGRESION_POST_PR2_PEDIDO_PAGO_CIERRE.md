@@ -15,7 +15,7 @@ contra Postgres real. NO cambia comportamiento — es diagnóstico.
 | # | Título | Severidad | Origen | Estado |
 |---|--------|-----------|--------|--------|
 | F-A | `generarPedidosRecurrentes` (APLICAR_CREDITO) hace `PENDIENTE → ENTREGADO`, transición que la máquina canónica prohíbe | Media | Pre-existe; F2/F3 lo dejan visible | **✅ RESUELTO** — ver "Resolución F-A" al final |
-| F-B | El cierre de día (`/api/cierre`) no ve el efectivo cobrado en un cierre de embarque sobre un pedido de fecha anterior | Media-alta | Pre-existe para COMPLETO; **PR-2b F9 lo extiende a entregas PARCIALES** | **Documentado — requiere confirmación de diseño** |
+| F-B | El cierre de día (`/api/cierre`) no ve el efectivo cobrado en un cierre de embarque sobre un pedido de fecha anterior | Media-alta | Pre-existe para COMPLETO; **PR-2b F9 lo extiende a entregas PARCIALES** | **✅ RESUELTO** — ver "Resolución F-B" al final |
 | F-C | `cobrado` (Σ `totalPagado`) vs `cobroVentasHoy` (Σ `Pago` por método) pueden divergir dentro del mismo día para prepagos de cartera | Baja | Pre-existe | Documentado |
 | F-D | `Pedido.embarqueOrigenId` quedó como columna escrita por `venta-libre` pero sin lector en cálculos monetarios | Info | PR-2b (por diseño del ADR) | OK — es la decisión del ADR §9 |
 
@@ -261,5 +261,50 @@ transferirse/consumirse mediante una operación monetaria explícita y auditable
 (4, Postgres real) + `src/lib/__tests__/auditoria-post-pr2-recurrentes-transicion.test.ts`
 (actualizado).
 
-**Sigue pendiente:** F3 parte 2 — añadir `canTransitionTo` a los `tx.pedido.update` crudos
-que quedan en `recurrentes.ts` (rama CON_PENDIENTES y esta) como defensa en profundidad.
+**F3 parte 2** — ✅ hecho (PR #185): `puedeTransicionarEntrega(p.estadoEntrega, 'CANCELADO')`
+antes de los 2 `tx.pedido.update` crudos que quedan en `recurrentes.ts` (rama CON_PENDIENTES
+y APLICAR_CREDITO); `select += estadoEntrega`. **F3 completo.**
+
+**E2E** — ✅ alineado (PR #186): `e2e/recurrentes.spec.ts` asertaba el prepago viejo
+`ENTREGADO`; ahora `CANCELADO` + `total 0`.
+
+---
+
+## Resolución F-B (2026-09-03)
+
+**Decisión del equipo:** el Cierre de Día **debe conciliar caja física por fecha de captura
+del pago**; ventas / entregas / cartera mantienen su propia fecha/semántica. **NO** es
+sustituir `pedido.fecha` por `pago.createdAt` en todo `/api/cierre` — es un refactor
+selectivo. NO abre `ADR-CIERRE-001` (aplicación de una decisión ya convergida).
+
+**Implementado** (`src/app/api/cierre/route.ts`, GET + POST):
+
+1. Query nueva `pagosCapturadosHoy` = `pago.findMany({ where: { createdAt: <día>,
+   pedido: { estadoEntrega: { notIn: [CANCELADO, ANULADO] } } } })`. Excluye pagos de
+   pedidos ANULADO/CANCELADO (efecto neto $0 — misma regla A1 del cierre de embarque).
+2. **`efectivo` / `transferencia` / `nequi` / `daviplata` / `bono`** → se agrupan desde
+   `pagosCapturadosHoy` (antes: `pedido.pagos` de la query por `pedido.fecha`).
+   `cobroVentasHoy` = suma de los 5 (fórmula intacta). `netoCaja` (POST) queda corregido
+   automáticamente (usa `cobroVentasHoy`).
+3. **Sin tocar** (siguen por `pedido.fecha`): `totalVentas`, `cobrado` (Σ `totalPagado`,
+   métrica de ventas), `fiado`, conteos de producto, facturas, `ventasPorOrigen`,
+   `pedidosCancelados/NoEntregados/Anulados`.
+4. `cobroCartera` sigue por `abono.fecha` (ya era correcto).
+5. `include: { pagos: true }` de la query de pedidos removido (ya no lo usa nadie en esa
+   rama) — pequeña mejora de payload.
+
+**Compat:** el GET devuelve el snapshot de `CierreDia.reporte` verbatim para días ya
+cerrados (no recomputa) → los cierres v1.0/v2.0 ya guardados no cambian. Solo el preview en
+vivo y los cierres nuevos usan la lógica de captura.
+
+**Escenario que ahora cuadra:** pedido fiado del día 1, entregado y cobrado $100k efectivo
+en el cierre de un embarque del día 3 → el cierre del **día 3** ahora reporta esos $100k en
+`efectivo` / `cobroVentasHoy` / `netoCaja` (antes: invisible porque `pedido.fecha` = día 1).
+
+**Tests:** `src/lib/__tests__/integration/auditoria-post-pr2-cierre-dia.test.ts` (reescrito:
+la query de caja ve el pago cross-día, la de ventas no; excluye ANULADO) +
+`src/app/api/cierre/__tests__/p1.test.ts` (actualizado).
+
+**Follow-up menor (no bloqueante):** el label "Cobrado (ventas de hoy)" en
+`cierre/reporte/page.tsx` para `cobroVentasHoy` ahora significa "efectivo+digital capturado
+hoy". Ajuste de copy opcional; no se toca en este PR (refactor de cómputo, no de UI).

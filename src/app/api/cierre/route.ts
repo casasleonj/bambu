@@ -183,6 +183,7 @@ export async function GET(request: NextRequest) {
       correccionesAbonoAgg,
       pagosReportadosHoyRaw,
       reportadosDiasPreviosAgg,
+      pagosCapturadosHoy,
     ] = await prisma.$transaction([
       prisma.embarque.findMany({
         where: { fecha: dateRange, estado: EstadoEmbarque.ABIERTO },
@@ -193,7 +194,7 @@ export async function GET(request: NextRequest) {
           fecha: dateRange,
           estadoEntrega: { notIn: [EstadoEntrega.CANCELADO, EstadoEntrega.ANULADO] },
         },
-        include: { pagos: true },
+        // F-B: los métodos de pago ya no salen de aquí (ver `pagosCapturadosHoy`).
       }),
       prisma.produccion.findFirst({
         where: { fecha: dateRange },
@@ -276,6 +277,20 @@ export async function GET(request: NextRequest) {
         _sum: { monto: true },
         _count: true,
       }),
+      // F-B (auditoría #181): la CAJA del día se concilia por FECHA DE CAPTURA
+      // del pago (`Pago.createdAt`), no por `pedido.fecha`. Un efectivo cobrado
+      // hoy en un cierre de embarque sobre un pedido de días anteriores entró
+      // físicamente a la caja de hoy. Ventas/producto/facturas siguen por
+      // `pedido.fecha` (más abajo). Se excluyen los pagos de pedidos
+      // ANULADO/CANCELADO (efecto neto $0 — misma regla que el cierre de
+      // embarque).
+      prisma.pago.findMany({
+        where: {
+          createdAt: dateRange,
+          pedido: { estadoEntrega: { notIn: [EstadoEntrega.CANCELADO, EstadoEntrega.ANULADO] } },
+        },
+        select: { metodo: true, monto: true },
+      }),
     ])
 
     const totalNC = notasCredito.reduce((sum, nc) => sum + Number(nc.monto), 0)
@@ -283,26 +298,23 @@ export async function GET(request: NextRequest) {
     const cobrado = pedidos.reduce((acc, p) => acc + Number(p.totalPagado), 0)
     const fiado = pedidos.reduce((acc, p) => acc + Number(p.saldo), 0)
 
-    const efectivo = pedidos
-      .flatMap(p => p.pagos)
-      .filter(p => p.metodo === MetodoPago.EFECTIVO)
-      .reduce((acc, p) => acc + Number(p.monto), 0)
-    const transferencia = pedidos
-      .flatMap(p => p.pagos)
-      .filter(p => p.metodo === MetodoPago.TRANSFERENCIA)
-      .reduce((acc, p) => acc + Number(p.monto), 0)
-    const nequi = pedidos
-      .flatMap(p => p.pagos)
-      .filter(p => p.metodo === MetodoPago.NEQUI)
-      .reduce((acc, p) => acc + Number(p.monto), 0)
-    const daviplata = pedidos
-      .flatMap(p => p.pagos)
-      .filter(p => p.metodo === MetodoPago.DAVIPLATA)
-      .reduce((acc, p) => acc + Number(p.monto), 0)
-    const bono = pedidos
-      .flatMap(p => p.pagos)
-      .filter(p => p.metodo === MetodoPago.BONO)
-      .reduce((acc, p) => acc + Number(p.monto), 0)
+    // F-B: métodos de pago = CAJA, por fecha de captura (`pagosCapturadosHoy`),
+    // no por `pedido.pagos` (que sería por `pedido.fecha`).
+    const cajaPorMetodo: Record<string, number> = {
+      [MetodoPago.EFECTIVO]: 0,
+      [MetodoPago.TRANSFERENCIA]: 0,
+      [MetodoPago.NEQUI]: 0,
+      [MetodoPago.DAVIPLATA]: 0,
+      [MetodoPago.BONO]: 0,
+    }
+    for (const pg of pagosCapturadosHoy) {
+      if (pg.metodo in cajaPorMetodo) cajaPorMetodo[pg.metodo] += Number(pg.monto)
+    }
+    const efectivo = cajaPorMetodo[MetodoPago.EFECTIVO]
+    const transferencia = cajaPorMetodo[MetodoPago.TRANSFERENCIA]
+    const nequi = cajaPorMetodo[MetodoPago.NEQUI]
+    const daviplata = cajaPorMetodo[MetodoPago.DAVIPLATA]
+    const bono = cajaPorMetodo[MetodoPago.BONO]
 
     const aguaVendida = pedidos.reduce((acc, p) => acc + p.cPacaAguaEnt, 0)
     const hieloVendido = pedidos.reduce((acc, p) => acc + p.cPacaHieloEnt, 0)
@@ -570,10 +582,10 @@ export async function POST(request: NextRequest) {
         }
 
         // 5. Recalculate ALL totals server-side
-        const [pedidos, gastosAgg, abonos, notasCredito, correccionesAbonoAgg] = await Promise.all([
+        const [pedidos, gastosAgg, abonos, notasCredito, correccionesAbonoAgg, pagosCapturadosHoy] = await Promise.all([
           tx.pedido.findMany({
             where: { fecha: { gte: startOfDay, lt: nextDay }, estadoEntrega: { notIn: [EstadoEntrega.CANCELADO, EstadoEntrega.ANULADO] } },
-            include: { pagos: true },
+            // F-B: los métodos de pago ya no salen de aquí (ver `pagosCapturadosHoy`).
           }),
           tx.gasto.aggregate({ where: { fecha: { gte: startOfDay, lt: nextDay } }, _sum: { monto: true } }),
           tx.abono.findMany({ where: { fecha: { gte: startOfDay, lt: nextDay } } }),
@@ -584,6 +596,15 @@ export async function POST(request: NextRequest) {
             where: { abono: { fecha: { gte: startOfDay, lt: nextDay } } },
             _sum: { montoRevertido: true },
           }),
+          // F-B (auditoría #181): la CAJA se concilia por fecha de captura del
+          // pago (`Pago.createdAt`), no por `pedido.fecha`. Ver nota en el GET.
+          tx.pago.findMany({
+            where: {
+              createdAt: { gte: startOfDay, lt: nextDay },
+              pedido: { estadoEntrega: { notIn: [EstadoEntrega.CANCELADO, EstadoEntrega.ANULADO] } },
+            },
+            select: { metodo: true, monto: true },
+          }),
         ])
 
         const totalNC = notasCredito.reduce((sum, nc) => sum + Number(nc.monto), 0)
@@ -591,10 +612,7 @@ export async function POST(request: NextRequest) {
         const cobrado = pedidos.reduce((acc, p) => acc + Number(p.totalPagado), 0)
         const fiado = pedidos.reduce((acc, p) => acc + Number(p.saldo), 0)
 
-        // P-1 (performance optimization): single pass over pagos to compute
-        // totals per method, instead of 5 separate flatMap+filter+reduce
-        // iterations. For a day with N pedidos × M pagos, this is O(N*M)
-        // instead of O(5*N*M).
+        // F-B: métodos de pago = CAJA, por fecha de captura (`pagosCapturadosHoy`).
         const totalesPorMetodo: Record<string, number> = {
           [MetodoPago.EFECTIVO]: 0,
           [MetodoPago.TRANSFERENCIA]: 0,
@@ -602,11 +620,9 @@ export async function POST(request: NextRequest) {
           [MetodoPago.DAVIPLATA]: 0,
           [MetodoPago.BONO]: 0,
         }
-        for (const pedido of pedidos) {
-          for (const pago of pedido.pagos) {
-            if (pago.metodo in totalesPorMetodo) {
-              totalesPorMetodo[pago.metodo] = (totalesPorMetodo[pago.metodo] || 0) + Number(pago.monto)
-            }
+        for (const pago of pagosCapturadosHoy) {
+          if (pago.metodo in totalesPorMetodo) {
+            totalesPorMetodo[pago.metodo] = (totalesPorMetodo[pago.metodo] || 0) + Number(pago.monto)
           }
         }
         const efectivo = totalesPorMetodo[MetodoPago.EFECTIVO]

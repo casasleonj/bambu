@@ -1,18 +1,16 @@
-// @tests Auditoría post-PR-2 — F-B: caracterización del blind spot del cierre de día.
+// @tests F-B — docs/pedidos/AUDITORIA_REGRESION_POST_PR2_PEDIDO_PAGO_CIERRE.md §F-B
 //
-// docs/pedidos/AUDITORIA_REGRESION_POST_PR2_PEDIDO_PAGO_CIERRE.md §F-B
+// Decisión del equipo (2026-09-03): el Cierre de Día concilia CAJA FÍSICA por
+// FECHA DE CAPTURA del pago (`Pago.createdAt`); ventas/producto/facturas siguen
+// por `pedido.fecha`.
 //
-// El cierre de día (`/api/cierre`) deriva TODAS sus cifras financieras de
-// `prisma.pedido.findMany({ where: { fecha: dateRange }, include: { pagos: true } })`
-// — o sea, de la fecha de CREACIÓN del pedido. Un `Pago` capturado durante el
-// cierre de un embarque, sobre un pedido creado un día anterior (caso que
-// PR-2b F9 hizo frecuente al re-habilitar el registro de pagos en la rama
-// PARCIAL), NO aparece en ese query y por lo tanto es invisible a `cobrado` /
-// `efectivo` / `cobroVentasHoy` del día de la entrega.
+// Antes de F-B: `/api/cierre` derivaba `efectivo/transferencia/…` de
+// `pedido.findMany({ where: { fecha } }).pagos` — un efectivo cobrado hoy en un
+// cierre de embarque sobre un pedido de días anteriores era invisible a la caja
+// del día de la entrega (aunque el dinero físico entró hoy).
 //
-// Este test NO afirma que sea un bug a corregir ya — fija el comportamiento
-// actual con evidencia para que el equipo decida si el cierre de día concilia
-// caja física o es un reporte por fecha de venta (ver el doc, "Clasificación").
+// Este test fija la nueva query de caja (`pago.findMany({ where: { createdAt } })`)
+// y confirma que la de ventas (`pedido.findMany({ where: { fecha } })`) NO cambió.
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { testPrisma, resetAndSeed, disconnect, getAdminUser } from './setup'
@@ -24,7 +22,7 @@ function ymd(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
 
-describe('Auditoría post-PR-2 — F-B: cierre de día vs efectivo cobrado en ruta', () => {
+describe('F-B — cierre de día concilia caja por fecha de captura del pago', () => {
   beforeAll(async () => {
     await resetAndSeed()
     await getAdminUser()
@@ -44,7 +42,7 @@ describe('Auditoría post-PR-2 — F-B: cierre de día vs efectivo cobrado en ru
     await disconnect()
   })
 
-  it('un Pago EFECTIVO capturado hoy sobre un pedido creado hace 3 días NO entra al query del cierre de HOY', async () => {
+  it('un Pago EFECTIVO capturado hoy sobre un pedido de hace 3 días: CAJA lo ve, VENTAS no', async () => {
     const hoy = new Date()
     const hace3dias = new Date(hoy.getTime() - 3 * 24 * 60 * 60 * 1000)
 
@@ -55,7 +53,6 @@ describe('Auditoría post-PR-2 — F-B: cierre de día vs efectivo cobrado en ru
       data: { trabajadorId: trab.id, fecha: hoy, estado: 'CERRADO', baseDinero: 0 },
     })
 
-    // Pedido fiado creado hace 3 días, entregado y cobrado $100k HOY en el cierre del embarque.
     const pedido = await testPrisma.pedido.create({
       data: {
         clienteId,
@@ -85,47 +82,58 @@ describe('Auditoría post-PR-2 — F-B: cierre de día vs efectivo cobrado en ru
       },
     })
 
-    // --- Query EXACTO del cierre de día (src/app/api/cierre/route.ts:191-197) ---
     const dateRange = { gte: startOfDayInBogota(ymd(hoy)), lt: endOfDayInBogota(ymd(hoy)) }
-    const pedidosDelDia = await testPrisma.pedido.findMany({
-      where: { fecha: dateRange, estadoEntrega: { notIn: ['CANCELADO', 'ANULADO'] } },
-      include: { pagos: true },
-    })
 
-    // El pedido NO está (su fecha es de hace 3 días).
-    expect(pedidosDelDia.some((p) => p.id === pedido.id)).toBe(false)
-
-    // Y por lo tanto el efectivo del día calculado como lo hace el cierre
-    // (route.ts:286-289) NO incluye los $100k realmente cobrados hoy.
-    const efectivoDelDia = pedidosDelDia
-      .flatMap((p) => p.pagos)
-      .filter((pg) => pg.metodo === 'EFECTIVO')
-      .reduce((acc, pg) => acc + Number(pg.monto), 0)
-    expect(efectivoDelDia).toBe(0)
-
-    // --- En cambio, el cierre de EMBARQUE sí lo ve (coleccionarPagosDeMision) ---
-    const pagosMision = await testPrisma.pago.findMany({
+    // --- CAJA: query nueva de F-B (src/app/api/cierre/route.ts) ---
+    const pagosCapturadosHoy = await testPrisma.pago.findMany({
       where: {
-        embarqueId: emb.id,
-        pedido: { estadoEntrega: { notIn: ['ANULADO', 'CANCELADO'] } },
+        createdAt: dateRange,
+        pedido: { estadoEntrega: { notIn: ['CANCELADO', 'ANULADO'] } },
       },
       select: { metodo: true, monto: true },
     })
-    const efectivoMision = pagosMision
-      .filter((pg) => pg.metodo === 'EFECTIVO')
-      .reduce((acc, pg) => acc + Number(pg.monto), 0)
-    expect(efectivoMision).toBe(100_000)
+    const efectivoCaja = pagosCapturadosHoy
+      .filter((p) => p.metodo === 'EFECTIVO')
+      .reduce((acc, p) => acc + Number(p.monto), 0)
+    // El dinero físico entró HOY → la caja de hoy lo ve.
+    expect(efectivoCaja).toBe(100_000)
+
+    // --- VENTAS: query de siempre, por `pedido.fecha` (NO cambia con F-B) ---
+    const pedidosDelDia = await testPrisma.pedido.findMany({
+      where: { fecha: dateRange, estadoEntrega: { notIn: ['CANCELADO', 'ANULADO'] } },
+    })
+    // El pedido nació hace 3 días → su VENTA no se cuenta hoy (correcto).
+    expect(pedidosDelDia.some((p) => p.id === pedido.id)).toBe(false)
   })
 
-  it('el cruce por `createdAt` del cierre de día (pagosReportadosHoyRaw) tampoco lo captura — el efectivo nace CONFIRMADO', async () => {
+  it('la query de caja excluye pagos de pedidos ANULADO/CANCELADO (efecto neto $0)', async () => {
     const hoy = new Date()
-    // Query de route.ts:269-272: solo confirmacion REPORTADO.
+    const pedidoAnulado = await testPrisma.pedido.create({
+      data: {
+        clienteId,
+        canal: 'DOMICILIO',
+        origen: 'PEDIDO',
+        fecha: hoy,
+        total: 0,
+        totalPagado: 0,
+        saldo: 0,
+        estadoEntrega: 'ANULADO',
+        estado: 'ANULADO',
+        estadoPago: 'ANULADO',
+      },
+    })
+    await testPrisma.pago.create({
+      data: { pedidoId: pedidoAnulado.id, metodo: 'EFECTIVO', monto: 40_000, confirmacion: 'CONFIRMADO', createdAt: hoy },
+    })
+
     const dateRange = { gte: startOfDayInBogota(ymd(hoy)), lt: endOfDayInBogota(ymd(hoy)) }
-    const reportadosHoy = await testPrisma.pago.findMany({
-      where: { confirmacion: 'REPORTADO', createdAt: dateRange },
+    const pagosCapturadosHoy = await testPrisma.pago.findMany({
+      where: {
+        createdAt: dateRange,
+        pedido: { estadoEntrega: { notIn: ['CANCELADO', 'ANULADO'] } },
+      },
       select: { metodo: true, monto: true },
     })
-    // El pago del test anterior es EFECTIVO/CONFIRMADO → no está en este set.
-    expect(reportadosHoy.some((p) => p.metodo === 'EFECTIVO' && Number(p.monto) === 100_000)).toBe(false)
+    expect(pagosCapturadosHoy.some((p) => Number(p.monto) === 40_000)).toBe(false)
   })
 })
