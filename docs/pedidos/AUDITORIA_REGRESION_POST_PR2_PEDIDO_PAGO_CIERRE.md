@@ -14,7 +14,7 @@ contra Postgres real. NO cambia comportamiento — es diagnóstico.
 
 | # | Título | Severidad | Origen | Estado |
 |---|--------|-----------|--------|--------|
-| F-A | `generarPedidosRecurrentes` (APLICAR_CREDITO) hace `PENDIENTE → ENTREGADO`, transición que la máquina canónica prohíbe | Media | Pre-existe; F2/F3 lo dejan visible | **Contradicción — requiere decisión de producto** |
+| F-A | `generarPedidosRecurrentes` (APLICAR_CREDITO) hace `PENDIENTE → ENTREGADO`, transición que la máquina canónica prohíbe | Media | Pre-existe; F2/F3 lo dejan visible | **✅ RESUELTO** — ver "Resolución F-A" al final |
 | F-B | El cierre de día (`/api/cierre`) no ve el efectivo cobrado en un cierre de embarque sobre un pedido de fecha anterior | Media-alta | Pre-existe para COMPLETO; **PR-2b F9 lo extiende a entregas PARCIALES** | **Documentado — requiere confirmación de diseño** |
 | F-C | `cobrado` (Σ `totalPagado`) vs `cobroVentasHoy` (Σ `Pago` por método) pueden divergir dentro del mismo día para prepagos de cartera | Baja | Pre-existe | Documentado |
 | F-D | `Pedido.embarqueOrigenId` quedó como columna escrita por `venta-libre` pero sin lector en cálculos monetarios | Info | PR-2b (por diseño del ADR) | OK — es la decisión del ADR §9 |
@@ -217,12 +217,49 @@ trazabilidad ("¿en qué embarque nació esta venta?"). Sin acción.
 
 ## Acciones propuestas (para el PO / equipo)
 
-1. **F-A** → decidir opción (a) y meterla en G2 o "F3 parte 2". Es un bug de trazabilidad
-   con ripple a reportes de producto.
-2. **F-B** → decisión de diseño: ¿el cierre de día concilia caja física o es reporte por
-   fecha de venta? Según la respuesta:
-   - conciliación → refactor de `/api/cierre` para sumar `Pago` por fecha de captura (cruza
-     `ADR-CIERRE-001`, no trivial);
-   - reporte → documentar + renombrar/acompañar las cifras "de hoy" y añadir panel
-     informativo de cobros en ruta de pedidos previos.
+1. **F-A** → ✅ resuelto (abajo).
+2. **F-B** → **decisión del equipo (2026-09-03):** el Cierre de Día **debe conciliar caja
+   física por fecha de captura del pago**; ventas / entregas / cartera mantienen su propia
+   fecha/semántica. NO es sustituir `pedido.fecha` por `pago.createdAt` en todo `/api/cierre`
+   — es un **refactor selectivo**: `efectivo/transferencia/nequi/daviplata/bono` +
+   `cobroVentasHoy` pasan a salir de `prisma.pago.findMany({ where: { createdAt: dateRange } })`
+   agrupado por método (extendiendo la semántica que el código ya usa para
+   `pagosReportadosHoyRaw`); `totalVentas` se queda por `pedido.fecha`. Revisar: qué estados
+   de `Pago` cuentan, interacción con el snapshot de `CierreDia` y el path de recompute
+   (`POST`, ~línea 495), compat con snapshots v1.0. **PR aparte, después de F-A.** No abre
+   `ADR-CIERRE-001` (es aplicación de una decisión ya convergida).
 3. **F-C / F-D** → sin acción, notas para revisores de PRs futuros.
+
+---
+
+## Resolución F-A (2026-09-03)
+
+**Decisión del equipo:** confirmado como defecto de integridad. NO basta `PENDIENTE →
+CANCELADO`: el pedido anterior no debe fabricar una entrega **y** el crédito debe
+transferirse/consumirse mediante una operación monetaria explícita y auditable, no copiando
+`totalPagado`.
+
+**Implementado** (`src/lib/recurrentes.ts`, rama `APLICAR_CREDITO`):
+
+1. Los prepagos consolidados → **`CANCELADO`** (transición válida `PENDIENTE → CANCELADO`),
+   `estadoPago = ANULADO`, `total/totalPagado/saldo → 0`. Los `PedidoItem` **no se tocan**
+   (`cantEntrega` queda en 0 — sin entrega fabricada). `fechaEntrega` queda `null`.
+2. Por cada prepago: `registrarReversionPedido(tx, …)` (paridad con `CancelarPedidoUseCase`,
+   compensa la proyección de cartera) + `Factura → ANULADA` + `NotaCredito` por el monto
+   prepagado.
+3. El prepago se parquea como crédito del cliente: **`Cliente.saldoFavor += monto`** — la
+   operación monetaria explícita y auditable (mismo mecanismo que `#159` / `pagar-fiado`).
+4. El pedido recurrente nuevo **consume** ese crédito: `montoCredito = min(saldoFavor
+   parqueado, total)`, `saldoFavor -= montoCredito`, `totalPagado = montoCredito`,
+   `estadoPago` proyectado (`calcularEstadoPago(total, montoCredito, 'PENDIENTE')` → ANTICIPADO
+   o PARCIAL). El **excedente** (crédito > total del pedido nuevo) — antes descartado por
+   `Math.min` y perdido — ahora queda disponible en `saldoFavor`.
+
+**Conservación del dinero:** `Σ NotaCredito == pedido_nuevo.totalPagado + Cliente.saldoFavor`.
+
+**Tests:** `src/lib/__tests__/integration/recurrentes-aplicar-credito-integridad.test.ts`
+(4, Postgres real) + `src/lib/__tests__/auditoria-post-pr2-recurrentes-transicion.test.ts`
+(actualizado).
+
+**Sigue pendiente:** F3 parte 2 — añadir `canTransitionTo` a los `tx.pedido.update` crudos
+que quedan en `recurrentes.ts` (rama CON_PENDIENTES y esta) como defensa en profundidad.
