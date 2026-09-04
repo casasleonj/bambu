@@ -55,4 +55,12 @@ describe('F-A: recurrentes.ts APLICAR_CREDITO ya no fabrica una entrega', () => 
     expect(bloque).toMatch(/saldoFavor:\s*\{\s*decrement/)
     expect(bloque).toMatch(/registrarReversionPedido/)
   })
+
+  it('F3 parte 2: valida la transición (puedeTransicionarEntrega) antes de cada tx.pedido.update crudo', () => {
+    // Ambas ramas que cancelan pedidos (APLICAR_CREDITO y CON_PENDIENTES).
+    const guardas = source.match(/puedeTransicionarEntrega\(p\.estadoEntrega,\s*'CANCELADO'\)/g) ?? []
+    expect(guardas.length).toBe(2)
+    // El select de pedidosPendientes trae estadoEntrega para poder validar.
+    expect(source).toMatch(/estadoEntrega:\s*true,/)
+  })
 })
