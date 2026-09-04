@@ -173,3 +173,58 @@ La Fase 3 original (aislamiento namespaced) **ya no es la prioridad** — no hay
 6. **Familia E:** requiere decisión de contrato del PO — listar y escalar.
 7. **Fase 3 (aislamiento) — degradada a "nice to have":** solo si tras A-E aparece contaminación real. El ruido `Sesión invalidada` se puede atacar por separado (no truncar `SesionActiva`, o seed de sesión).
 8. Fases 5-7 del plan original (observabilidad, paralelismo, repetibilidad) sin cambios.
+
+---
+
+## 9. Actualización post-rebase (run `33894758903`, 2026-09-04, sobre `main` actual)
+
+Tras el rebase de esta rama sobre `main` (que había avanzado ~10 PRs mergeados en los días
+intermedios — embarques, recurrentes, cierre de caja) y los fixes de las Fases 2-4 aplicados
+en esta misma rama, se disparó un run de CI fresco. Resultado (comparado contra la matriz
+original de §7):
+
+### Confirmado arreglado (ya no aparecen en la lista de fallos)
+- `auth-endpoints.spec.ts:62` (envelope de error)
+- `ciclo-credito.spec.ts:12` (factura no encontrada — fix `?pedidoId=`)
+- `ciclo-cancelacion.spec.ts:12` (notaCredito — fix del use case)
+- `productos-comprehensive.spec.ts:41` (RBAC ASISTENTE)
+- `fiado-status-ui.spec.ts:34` (fab-main duplicado)
+- `mobile-menu.spec.ts:78` (regex de hamburguesa)
+- `flujo-embarque-despachado-mobile.spec.ts:20` (409 en vez de 500)
+- `embarques-all-contexts.spec.ts:279,316` (dependían del fix de EN_RUTA)
+- `insumos.spec.ts:51`, `proveedores.spec.ts:80` (envelope de fixtures)
+- `compras.spec.ts:66,85` (disabled button — commit `382a695f`, aún sin correr en CI)
+
+### Progreso parcial — nueva causa raíz revelada
+- `deudas.spec.ts:676,738` (antes `:672,731`): el fix de EN_RUTA **funcionó** — ya no falla
+  con `Transicion invalida`. Ahora falla en `conciliacion.totalEfectivoRecibido` (`undefined`).
+  **`POST /api/embarques/[id]/cerrar` no construye ni devuelve un objeto `conciliacion`**
+  (`totalEfectivoRecibido`/`dineroEntregado`/`deficitCaja`) en absoluto — no es un bug de
+  cálculo, es una feature que el endpoint nunca implementó. **Brecha PLAN↔CÓDIGO — requiere
+  decisión de negocio**: ¿la conciliación de caja por embarque vive en `cerrar` o en el flujo
+  de `/api/cierre` (caja diaria, con trabajo activo de otro agente en paralelo — PRs
+  `fix/cierre-caja-fecha-captura` recién mergeado)? **No se inventa el cálculo financiero
+  sin esa decisión.**
+
+### Fallos nuevos (no estaban en la matriz original — o bien specs nuevos del trabajo
+### upstream de los últimos días, o tests que antes quedaban en "did not run" por la
+### cascada y ahora corren de verdad)
+```
+ciclo-pedido-completo.spec.ts:111   embarques-nuevo.spec.ts:32,65   embarques.spec.ts:355
+embarques-fixes.spec.ts:192,692,730,789,907   full-user-day.spec.ts:320
+roles-permisos.spec.ts:570   rutas.spec.ts:201
+qa/07-offline-sync/{dlq-4xx,offline-venta-libre-sync,queue-persistence-reload,session-expiry-preserve-queue}.spec.ts:13
+```
+Sin clasificar todavía — requieren la misma disciplina (Fase 2) que el resto. Los
+`qa/07-offline-sync/*` son sospechosos de ser específicos del entorno CI (offline
+simulation) más que contrato/UI.
+
+### Aún sin tocar (fuera de alcance de esta sesión)
+`notificaciones/opt-in-toast.spec.ts` (×5 — SW bloqueado en Playwright, ver §investigación
+previa), `recurrentes.spec.ts:209` (puede estar ya resuelto por el trabajo upstream de
+recurrentes — sin confirmar), `productos-comprehensive.spec.ts:342,400`, familia mobile
+restante (`embarques-fixes`, `menu-reorder`, `mobile-clientes`, `mobile-offline-comprehensive`).
+
+**Conclusión:** la hipótesis de "una causa raíz dominante" sigue sin sostenerse. Cada fix
+revela la siguiente capa (estado→contrato→feature faltante). El patrón se mantiene: no hay
+atajo, es remediación mecánica spec-por-spec guiada por evidencia real de CI.
