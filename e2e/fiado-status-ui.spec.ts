@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
-import { loginAs, createCliente, apiPost, apiPut, resetDatabase, BASE } from './fixtures'
+import { loginAs, createCliente, apiPost, apiPut, resetDatabase, BASE, openFabPedidoEnvio } from './fixtures'
 
 async function createPedidoEntregado(page: Page, clienteId: string) {
   return apiPost(page, '/api/pedidos', {
@@ -20,8 +20,9 @@ async function openNuevoPedidoModal(page: Page) {
   await page.goto(`${BASE}/pedidos`)
   await page.waitForLoadState('domcontentloaded')
 
-  await page.getByTestId('fab-main').click()
-  await page.getByTestId('fab-pedido-envio').click()
+  // Helper compartido: .first() sobre fab-main (que en CI a veces resuelve a
+  // 2 elementos, uno oculto — AGENTS.md #24) + manejo de base-caja / banner.
+  await openFabPedidoEnvio(page)
 }
 
 test.describe.configure({ mode: 'serial' })

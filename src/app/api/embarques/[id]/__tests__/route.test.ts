@@ -140,8 +140,11 @@ describe('F-N12: los errores thrown se mapean a HTTP responses (en PUT)', () => 
     expect(putCatch).toMatch(/STOCK_EXCEDIDO/)
   })
 
-  it('FIX: FORBIDDEN_FIELDS / FORBIDDEN_FIELDS_EN_RUTA → 400 con estado y campos', () => {
-    expect(putCatch).toMatch(/FORBIDDEN_FIELDS/)
+  it('FIX: FORBIDDEN_FIELDS_EN_RUTA → 409 (conflicto de estado, no 500 genérico)', () => {
+    // El branch debe matchear el prefijo REAL que se lanza (con sufijo
+    // _EN_RUTA); antes matcheaba `FORBIDDEN_FIELDS:` y el error caía al 500.
+    expect(putCatch).toMatch(/FORBIDDEN_FIELDS_EN_RUTA:/)
+    expect(putCatch).toMatch(/FORBIDDEN_FIELDS_EN_RUTA[\s\S]{0,400}?409/)
   })
 })
 
