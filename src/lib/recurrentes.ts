@@ -4,7 +4,7 @@ import { resolverPreciosPedido, type Canal, type ProductCode } from "@/lib/prici
 import { getDateRange } from "@/lib/dates";
 import { executeSerializableWithRetry } from "@/lib/serializable";
 import { hydrateProductos } from "@/lib/cliente-hydrate";
-import { resolverLimiteFiados, calcularEstadoPago } from "@/lib/pedido-utils";
+import { resolverLimiteFiados, calcularEstadoPago, puedeTransicionarEntrega } from "@/lib/pedido-utils";
 import { registrarReversionPedido } from "@/lib/receivable-entry";
 
 type ProductosMap = {
@@ -542,6 +542,8 @@ export async function generarPedidosRecurrentes(
             // FIX F-4: usar `select` para no cargar columnas innecesarias
             select: {
               id: true, numero: true, total: true, saldo: true, totalPagado: true,
+              // F3 parte 2: se valida la transición antes de cancelar.
+              estadoEntrega: true,
               cPacaAguaPed: true, cPacaHieloPed: true, cBotellonFabPed: true,
               cBotellonDomPed: true, cBolsaAguaPed: true, cBolsaHieloPed: true,
             },
@@ -649,6 +651,17 @@ export async function generarPedidosRecurrentes(
       if (decision.decision === 'APLICAR_CREDITO') {
         for (const p of pedidosPagados) {
           const prepagado = Number(p.totalPagado)
+
+          // F3 parte 2: validar la transición contra la máquina de estados
+          // canónica antes del write crudo (defensa en profundidad; la tx
+          // Serializable + el `where estadoEntrega: 'PENDIENTE'` ya lo
+          // garantizan, pero ningún `tx.pedido.update` debe transicionar sin
+          // pasar por acá).
+          if (!puedeTransicionarEntrega(p.estadoEntrega, 'CANCELADO')) {
+            throw new Error(
+              `Transición inválida al consolidar recurrente: pedido #${p.numero} en ${p.estadoEntrega} → CANCELADO`,
+            )
+          }
 
           // Cancelar el pedido viejo (PENDIENTE -> CANCELADO, transición
           // válida). Los items NO se tocan: cantEntrega queda en 0.
@@ -785,6 +798,14 @@ export async function generarPedidosRecurrentes(
       // 10. NC para pedidos consolidados
       if (decision.decision === 'CON_PENDIENTES' || decision.decision === 'SOLO_PENDIENTES') {
         for (const p of pedidosPendientes) {
+          // F3 parte 2: validar la transición antes del write crudo (ver nota
+          // en la rama APLICAR_CREDITO).
+          if (!puedeTransicionarEntrega(p.estadoEntrega, 'CANCELADO')) {
+            throw new Error(
+              `Transición inválida al consolidar recurrente: pedido #${p.numero} en ${p.estadoEntrega} → CANCELADO`,
+            )
+          }
+
           await tx.pedido.update({
             where: { id: p.id },
             // FIX F-7: estado legacy se mantiene redundante con estadoEntrega
