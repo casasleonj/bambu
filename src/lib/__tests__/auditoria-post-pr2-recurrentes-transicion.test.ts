@@ -32,20 +32,27 @@ describe('F-A: la máquina de estados canónica prohíbe PENDIENTE → ENTREGADO
   })
 })
 
-describe('F-A: recurrentes.ts todavía hace la transición cruda prohibida', () => {
+describe('F-A: recurrentes.ts APLICAR_CREDITO ya no fabrica una entrega', () => {
   const source = readFileSync(
     join(process.cwd(), 'src/lib/recurrentes.ts'),
     'utf-8',
   )
+  // El bloque desde el primer `APLICAR_CREDITO` hasta el `return { skipped: false`.
+  const bloque = source.slice(
+    source.indexOf("decision.decision === 'APLICAR_CREDITO'"),
+    source.indexOf('return { skipped: false as const, creado }'),
+  )
 
-  it('la rama APLICAR_CREDITO marca los pedidos consolidados como ENTREGADO sin validar', () => {
-    // pedidosPagados se consulta con estadoEntrega: 'PENDIENTE' y luego se
-    // updatea a 'ENTREGADO'. Si este assert falla porque el string cambió,
-    // revisar si F-A fue resuelto (y actualizar/eliminar este test).
-    const aplicarCredito = source.slice(source.indexOf("decision.decision === 'APLICAR_CREDITO'"))
-    expect(aplicarCredito).toMatch(/estadoEntrega:\s*'ENTREGADO'/)
-    // No hay guardia canTransitionTo cerca del update.
-    const bloque = aplicarCredito.slice(0, 800)
-    expect(bloque).not.toMatch(/canTransitionTo/)
+  it('cancela los prepagos consolidados (nunca ENTREGADO)', () => {
+    expect(bloque).toMatch(/estadoEntrega:\s*'CANCELADO'/)
+    expect(bloque).not.toMatch(/estadoEntrega:\s*'ENTREGADO'/)
+    expect(bloque).not.toMatch(/cantEntrega:\s*item\.cantPedido/)
+  })
+
+  it('traspasa el dinero por NotaCredito + saldoFavor, no copiando totalPagado a ciegas', () => {
+    expect(bloque).toMatch(/notaCredito\.create/)
+    expect(bloque).toMatch(/saldoFavor:\s*\{\s*increment/)
+    expect(bloque).toMatch(/saldoFavor:\s*\{\s*decrement/)
+    expect(bloque).toMatch(/registrarReversionPedido/)
   })
 })

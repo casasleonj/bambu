@@ -4,7 +4,8 @@ import { resolverPreciosPedido, type Canal, type ProductCode } from "@/lib/prici
 import { getDateRange } from "@/lib/dates";
 import { executeSerializableWithRetry } from "@/lib/serializable";
 import { hydrateProductos } from "@/lib/cliente-hydrate";
-import { resolverLimiteFiados } from "@/lib/pedido-utils";
+import { resolverLimiteFiados, calcularEstadoPago } from "@/lib/pedido-utils";
+import { registrarReversionPedido } from "@/lib/receivable-entry";
 
 type ProductosMap = {
   PACA_AGUA: number
@@ -634,11 +635,79 @@ export async function generarPedidosRecurrentes(
 
       const total = preciosResueltos.reduce((sum, pr) => sum + pr.subtotal, 0)
 
-      // FIX F-9: validar que el crédito no supere el total
-      const totalCreditoSinValidar = decision.decision === 'APLICAR_CREDITO'
-        ? pedidosPagados.reduce((sum, p) => sum + Number(p.totalPagado), 0)
-        : 0
-      const totalCredito = Math.min(totalCreditoSinValidar, total)
+      // F-A (docs/pedidos/AUDITORIA_REGRESION_POST_PR2_...md): APLICAR_CREDITO
+      // NO fabrica una entrega. Los pedidos prepagados que se consolidan se
+      // CANCELAN (nunca se entregaron físicamente — su mercancía se refunde en
+      // el pedido nuevo) y su dinero se traspasa por una operación monetaria
+      // explícita y auditable: NotaCredito + `Cliente.saldoFavor`, el mismo
+      // ciclo de crédito que usan CancelarPedidoUseCase (#162) y
+      // CrearPedidoUseCase (#159). Antes: `estadoEntrega = ENTREGADO` +
+      // `cantEntrega = cantPedido` + `totalPagado` copiado sin `Pago` ni NC →
+      // entrega inexistente, doble conteo de producto en el cierre de día, y
+      // el dinero representado dos veces.
+      let creditoParqueado = 0
+      if (decision.decision === 'APLICAR_CREDITO') {
+        for (const p of pedidosPagados) {
+          const prepagado = Number(p.totalPagado)
+
+          // Cancelar el pedido viejo (PENDIENTE -> CANCELADO, transición
+          // válida). Los items NO se tocan: cantEntrega queda en 0.
+          await tx.pedido.update({
+            where: { id: p.id },
+            data: {
+              estadoEntrega: 'CANCELADO',
+              estado: 'CANCELADO',
+              estadoPago: 'ANULADO',
+              total: 0,
+              totalPagado: 0,
+              saldo: 0,
+            },
+          })
+
+          // Paridad con CancelarPedidoUseCase: compensar la proyección de
+          // cartera (no-op si el pedido no tenía ReceivableEntry).
+          await registrarReversionPedido(tx, {
+            pedidoId: p.id,
+            clienteId: effectiveClienteId,
+            saldoResultante: 0,
+          })
+
+          // Anular la factura del pedido viejo.
+          await tx.factura.updateMany({
+            where: { pedidoId: p.id },
+            data: { estado: 'ANULADA', saldo: 0 },
+          })
+
+          if (prepagado > 0) {
+            const ncNum = await getNextNumero(tx, { model: 'notaCredito', field: 'numero' })
+            await tx.notaCredito.create({
+              data: {
+                numero: `NC-${ncNum.toString().padStart(5, '0')}`,
+                pedidoId: p.id,
+                monto: prepagado,
+                motivo: `Consolidado en pedido recurrente — crédito de $${prepagado.toLocaleString()} traspasado a saldo a favor`,
+              },
+            })
+            // Parquear el prepago como crédito del cliente.
+            await tx.cliente.update({
+              where: { id: effectiveClienteId },
+              data: { saldoFavor: { increment: prepagado } },
+            })
+            creditoParqueado += prepagado
+          }
+        }
+      }
+
+      // Consumir el crédito recién parqueado contra el pedido nuevo (idéntico
+      // patrón a CrearPedidoUseCase:196-203). El excedente — antes descartado
+      // por `Math.min` — queda disponible en `saldoFavor`.
+      const totalCredito = Math.min(creditoParqueado, total)
+      if (totalCredito > 0) {
+        await tx.cliente.update({
+          where: { id: effectiveClienteId },
+          data: { saldoFavor: { decrement: totalCredito } },
+        })
+      }
 
       // 7. Crear pedido (dentro de la tx Serializable)
       const creado = await tx.pedido.create({
@@ -649,7 +718,9 @@ export async function generarPedidosRecurrentes(
           canal: pt.canal,
           origen: 'RECURRENTE',
           estadoEntrega: 'PENDIENTE',
-          estadoPago: 'PENDIENTE',
+          // G5.1: proyección desde el estado real. Con crédito aplicado y
+          // entrega pendiente → ANTICIPADO (pagado completo) o PARCIAL.
+          estadoPago: calcularEstadoPago(total, totalCredito, 'PENDIENTE'),
           recurrenteBatchId: options?.recurrenteBatchId ?? null,
           cPacaAguaPed: cantidades.cPacaAgua,
           cPacaHieloPed: cantidades.cPacaHielo,
@@ -667,7 +738,7 @@ export async function generarPedidosRecurrentes(
           saldo: total - totalCredito,
           totalPagado: totalCredito,
           obs: totalCredito > 0
-            ? `Crédito de $${totalCredito.toLocaleString()} aplicado de pedidos: ${pedidosPagados.map(p => '#' + p.numero).join(', ')}`
+            ? `Crédito de $${totalCredito.toLocaleString()} (saldo a favor) aplicado; pedidos consolidados y cancelados: ${pedidosPagados.map(p => '#' + p.numero).join(', ')}`
             : undefined,
           idOrigen: pt.id,
           horaPreferida: pt.horaPreferida,
@@ -696,7 +767,9 @@ export async function generarPedidosRecurrentes(
           pedidoId: creado.id,
           subtotal: total,
           total,
+          montoPagado: totalCredito,
           saldo: total - totalCredito,
+          estado: totalCredito >= total ? 'PAGADA' : (totalCredito > 0 ? 'PARCIAL' : 'EMITIDA'),
         },
       })
 
@@ -735,31 +808,9 @@ export async function generarPedidosRecurrentes(
         }
       }
 
-      // 11. APLICAR_CREDITO: marcar pedidos pagados como ENTREGADO
-      if (decision.decision === 'APLICAR_CREDITO') {
-        for (const p of pedidosPagados) {
-          await tx.pedido.update({
-            where: { id: p.id },
-            // FIX F-8: estado legacy redundante (issue F5.x)
-            data: {
-              estadoEntrega: 'ENTREGADO',
-              estado: 'ENTREGADO',
-              fechaEntrega: new Date(),
-            },
-          })
-
-          // Actualizar items del pedido viejo: cantEntrega = cantPedido
-          const itemsViejo = await tx.pedidoItem.findMany({
-            where: { pedidoId: p.id },
-          })
-          for (const item of itemsViejo) {
-            await tx.pedidoItem.update({
-              where: { id: item.id },
-              data: { cantEntrega: item.cantPedido },
-            })
-          }
-        }
-      }
+      // (F-A) La consolidación de APLICAR_CREDITO se hace ANTES de crear el
+      // pedido nuevo — cancelar prepagos + NC + saldoFavor. Ya no se marca
+      // ENTREGADO ningún pedido acá.
 
       return { skipped: false as const, creado }
     }, `generarPedidosRecurrentes:${decision.recurrenteId}`)
