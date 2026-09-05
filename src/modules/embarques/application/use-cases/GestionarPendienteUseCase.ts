@@ -100,6 +100,15 @@ export class GestionarPendienteUseCase {
         throw new Error(`OBLIGACION_YA_ACTIVA: ya existe una gestión abierta de ${input.producto} para este pedido`)
       }
 
+      // FIX (encontrado al implementar LiberarActividadUseCase): la Actividad
+      // creada abajo reclama de inmediato `input.cantidad` completa — la
+      // ObligacionPendiente debe nacer con `cantidadAsignada = input.cantidad`,
+      // no 0, o el invariante `cantidadCumplida + cantidadAsignada <=
+      // cantidadOriginal` queda mintiendo desde el primer instante (y
+      // decrementarla luego, p.ej. al liberar, viola
+      // `chk_obligacion_cantidades_no_negativas`). Mismo patrón que
+      // `AsignarActividadUseCase`, que sí incrementa `cantidadAsignada` al
+      // crear una Actividad.
       const obligacion = await tx.obligacionPendiente.create({
         data: {
           pedidoId: input.pedidoId,
@@ -107,7 +116,7 @@ export class GestionarPendienteUseCase {
           producto: input.producto,
           cantidadOriginal: input.cantidad,
           cantidadCumplida: 0,
-          cantidadAsignada: 0,
+          cantidadAsignada: input.cantidad,
           estado: 'ABIERTA',
           offlineId: input.offlineId ?? null,
         },

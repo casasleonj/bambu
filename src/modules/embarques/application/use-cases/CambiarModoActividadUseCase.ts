@@ -35,7 +35,7 @@
 import { withAdvisoryLock } from '@/lib/locks'
 import { logAudit } from '@/lib/audit'
 import { calcularDiferencial } from '../../domain/services/diferencial.service'
-import { aplicarConsecuenciaEconomicaDiferencial } from '../services/aplicar-diferencial-economico.service'
+import { aplicarConsecuenciaEconomicaDiferencial, revertirDiferencialEnPedido } from '../services/aplicar-diferencial-economico.service'
 import type { Canal, ProductCode } from '@/lib/pricing'
 
 export interface CambiarModoActividadInput {
@@ -94,46 +94,14 @@ export class CambiarModoActividadUseCase {
 
       // Revertir lo que un cambio de modo ANTERIOR haya sumado a Pedido.total
       // (nunca lo que se acreditó a saldoFavor — ver límite documentado arriba).
-      const ajustesPrevios = await tx.pedidoCantidadAjuste.findMany({
-        where: { obligacionId: obligacion.id },
-        select: { montoDiferencial: true },
+      await revertirDiferencialEnPedido(tx, {
+        pedidoId: pedido.id,
+        obligacionId: obligacion.id,
+        producto: obligacion.producto,
+        cantidadPendiente: actual.cantidad,
+        motivo: `Reversión del diferencial del modo anterior (${modoAnterior}) al cambiar a ${input.modoDestino}`,
+        autorizadoPorId: input.actorId,
       })
-      const totalYaAplicadoAPedido = ajustesPrevios
-        .map((a) => Number(a.montoDiferencial ?? 0))
-        .filter((m) => m > 0)
-        .reduce((sum, m) => sum + m, 0)
-      if (totalYaAplicadoAPedido > 0) {
-        await tx.pedido.update({
-          where: { id: pedido.id },
-          data: { total: { decrement: totalYaAplicadoAPedido }, saldo: { decrement: totalYaAplicadoAPedido } },
-        })
-        const factura = await tx.factura.findUnique({ where: { pedidoId: pedido.id } })
-        if (factura) {
-          const nuevoTotal = Number(factura.total) - totalYaAplicadoAPedido
-          const nuevoSaldo = Number(factura.saldo) - totalYaAplicadoAPedido
-          await tx.factura.update({
-            where: { id: factura.id },
-            data: {
-              total: nuevoTotal,
-              saldo: nuevoSaldo,
-              estado: nuevoSaldo <= 0 ? 'PAGADA' : (Number(factura.montoPagado) > 0 ? 'PARCIAL' : 'EMITIDA'),
-            },
-          })
-        }
-        await tx.pedidoCantidadAjuste.create({
-          data: {
-            pedidoId: pedido.id,
-            obligacionId: obligacion.id,
-            producto: obligacion.producto,
-            cantidadOriginal: actual.cantidad,
-            cantidadNueva: actual.cantidad,
-            delta: 0,
-            motivo: `Reversión del diferencial del modo anterior (${modoAnterior}) al cambiar a ${input.modoDestino}`,
-            autorizadoPorId: input.actorId,
-            montoDiferencial: -totalYaAplicadoAPedido,
-          },
-        })
-      }
 
       // Recalcular FRESCO contra el modo destino — nunca reusar un valor de preview.
       const calculo = await calcularDiferencial({
