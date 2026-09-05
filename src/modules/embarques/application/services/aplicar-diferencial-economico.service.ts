@@ -95,3 +95,66 @@ export async function aplicarConsecuenciaEconomicaDiferencial(
 
   return { pedidoCantidadAjusteId: ajuste.id }
 }
+
+/**
+ * Revierte lo que quedó reflejado en `Pedido.total`/`Factura` por diferenciales
+ * POSITIVOS previos de una `ObligacionPendiente` (nunca lo acreditado a
+ * `Cliente.saldoFavor` — ver nota de `CambiarModoActividadUseCase` y
+ * `LiberarActividadUseCase`: un balance de propósito general no se reclama de
+ * vuelta automáticamente, sería autocorrección silenciosa).
+ *
+ * Usado por `CambiarModoActividadUseCase` (antes de aplicar el diferencial del
+ * nuevo modo) y por `LiberarActividadUseCase` (Caso J, al cancelar la gestión).
+ * Es no-op (retorna 0) si nunca se aplicó nada a `Pedido.total` para esta
+ * obligación.
+ */
+export async function revertirDiferencialEnPedido(
+  tx: TransactionClient,
+  input: { pedidoId: string; obligacionId: string; producto: string; cantidadPendiente: number; motivo: string; autorizadoPorId: string },
+): Promise<number> {
+  const ajustesPrevios = await tx.pedidoCantidadAjuste.findMany({
+    where: { obligacionId: input.obligacionId },
+    select: { montoDiferencial: true },
+  })
+  const totalYaAplicadoAPedido = ajustesPrevios
+    .map((a) => Number(a.montoDiferencial ?? 0))
+    .filter((m) => m > 0)
+    .reduce((sum, m) => sum + m, 0)
+
+  if (totalYaAplicadoAPedido <= 0) return 0
+
+  await tx.pedido.update({
+    where: { id: input.pedidoId },
+    data: { total: { decrement: totalYaAplicadoAPedido }, saldo: { decrement: totalYaAplicadoAPedido } },
+  })
+
+  const factura = await tx.factura.findUnique({ where: { pedidoId: input.pedidoId } })
+  if (factura) {
+    const nuevoTotal = Number(factura.total) - totalYaAplicadoAPedido
+    const nuevoSaldo = Number(factura.saldo) - totalYaAplicadoAPedido
+    await tx.factura.update({
+      where: { id: factura.id },
+      data: {
+        total: nuevoTotal,
+        saldo: nuevoSaldo,
+        estado: nuevoSaldo <= 0 ? 'PAGADA' : (Number(factura.montoPagado) > 0 ? 'PARCIAL' : 'EMITIDA'),
+      },
+    })
+  }
+
+  await tx.pedidoCantidadAjuste.create({
+    data: {
+      pedidoId: input.pedidoId,
+      obligacionId: input.obligacionId,
+      producto: input.producto,
+      cantidadOriginal: input.cantidadPendiente,
+      cantidadNueva: input.cantidadPendiente,
+      delta: 0,
+      motivo: input.motivo,
+      autorizadoPorId: input.autorizadoPorId,
+      montoDiferencial: -totalYaAplicadoAPedido,
+    },
+  })
+
+  return totalYaAplicadoAPedido
+}

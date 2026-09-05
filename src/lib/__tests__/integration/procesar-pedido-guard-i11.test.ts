@@ -94,8 +94,11 @@ describe('N2 — guard I-11 en el cierre de embarque (procesar-pedido.service.ts
     ).rejects.toThrow('SOBREPOSICION_CON_OBLIGACION_ACTIVA')
 
     // La ObligacionPendiente/Actividad no se tocaron por el intento fallido.
+    // cantidadAsignada=3 (no 0): la Actividad creada por GestionarPendienteUseCase
+    // reclama la cantidad completa de inmediato (fix de cantidadAsignada, ver
+    // GestionarPendienteUseCase.ts) — el intento fallido de cierre no la altera.
     const obligacion = await testPrisma.obligacionPendiente.findFirstOrThrow({ where: { pedidoId: pedido.id } })
-    expect(obligacion.cantidadAsignada).toBe(0)
+    expect(obligacion.cantidadAsignada).toBe(3)
     expect(obligacion.cantidadCumplida).toBe(0)
   })
 

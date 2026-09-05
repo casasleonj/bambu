@@ -93,6 +93,12 @@ describe('N2 — GestionarPendienteUseCase', () => {
     const obligacion = await testPrisma.obligacionPendiente.findUniqueOrThrow({ where: { id: result.obligacionId } })
     expect(obligacion.cantidadOriginal).toBe(4)
     expect(obligacion.estado).toBe('ABIERTA')
+    // Regresión (encontrada al implementar LiberarActividadUseCase): la
+    // Actividad creada reclama la cantidad completa de inmediato —
+    // cantidadAsignada debe reflejarlo desde el instante de creación, no
+    // quedar en 0 (violaría el invariante y chk_obligacion_cantidades_no_negativas
+    // al liberar/decrementar más tarde).
+    expect(obligacion.cantidadAsignada).toBe(4)
 
     const actividad = await testPrisma.actividad.findUniqueOrThrow({ where: { id: result.actividadId } })
     expect(actividad.modo).toBe('PUNTO')
