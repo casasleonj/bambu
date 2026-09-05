@@ -258,7 +258,7 @@ Ninguna migración destructiva. Ninguna tabla nueva (se reutiliza `PedidoCantida
 | `GestionarPendienteUseCase` | `offlineId` en `ObligacionPendiente` y en `Actividad` (ambos ya `@unique` en el schema) |
 | `CambiarModoActividadUseCase` | `offlineId` nuevo — requiere campo en el evento de auditoría o una tabla de eventos con `offlineId @unique` (ver §12) |
 | `LiberarActividadUseCase` | `offlineId` nuevo, mismo mecanismo |
-| Aplicación del diferencial | El propio `PedidoCantidadAjuste` no tiene `offlineId` hoy — **brecha a resolver**: agregar `offlineId String? @unique` a `PedidoCantidadAjuste` (aditivo) para que un replay de `CambiarModoActividadUseCase` no aplique el diferencial dos veces |
+| Aplicación del diferencial | **Corrección (2026-09-05): `PedidoCantidadAjuste.offlineId String? @unique` YA EXISTE en el schema** (`schema.prisma:1231`, verificado antes de implementar). El error estaba en la verificación de este mismo documento — no hace falta migrarlo. Cada `PedidoCantidadAjuste` que aplica un diferencial usa ese campo para dedup, igual que `ObligacionPendiente`/`Actividad`. |
 
 **Regla del Plan Maestro V11.1 §14 aplicada:** el `offlineId` de "Gestionar pendiente" NO se reutiliza para "cambiar modo" ni para "liberar" — son comandos semánticamente distintos, cada uno con su propia clave.
 
@@ -336,12 +336,13 @@ Ver `AGUA_BAMBU_N2_MATRIZ_PRUEBAS_v1.0.md` para el detalle caso-por-caso. Resume
 ## 14. Migraciones
 
 ```sql
--- Aditiva, reversible
+-- Aditiva, reversible. PedidoCantidadAjuste.offlineId YA EXISTE — no se migra.
+CREATE TYPE "ModoActividad" AS ENUM ('PUNTO', 'DOMICILIO');
 ALTER TABLE "Actividad" ADD COLUMN "modo" "ModoActividad";
 ALTER TABLE "PedidoCantidadAjuste" ADD COLUMN "montoDiferencial" DECIMAL(10,2);
-ALTER TABLE "PedidoCantidadAjuste" ADD COLUMN "offlineId" TEXT UNIQUE;  -- ver §7
-CREATE TYPE "ModoActividad" AS ENUM ('PUNTO', 'DOMICILIO');
 ```
+
+Aplicada en `prisma/migrations/20260905_add_actividad_modo_diferencial/migration.sql`.
 
 Sin backfill: no hay `Actividad` en producción hoy (verificado, cero callers), así que no hay filas históricas que requieran un valor de `modo`.
 

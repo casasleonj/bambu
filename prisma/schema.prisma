@@ -147,6 +147,16 @@ enum ActividadEstado {
   CANCELADA
 }
 
+// N2 (docs/pedidos/AGUA_BAMBU_N2_ALS_v2.0.md §2.1): modo operativo ACTUAL de
+// cumplimiento de una Actividad — distinto de `Pedido.canal` (histórico,
+// inmutable, ADR-PEDIDO-ORIGEN-CANAL-001). Solo se escribe vía
+// GestionarPendienteUseCase (creación) o CambiarModoActividadUseCase (cambio
+// explícito, auditado) — nunca inferido automáticamente.
+enum ModoActividad {
+  PUNTO
+  DOMICILIO
+}
+
 // FASE 6 (ADR-RESPONSABILIDAD-001, contrato §13):
 enum ResponsibilityEstado {
   ABIERTA
@@ -1203,6 +1213,11 @@ model Actividad {
   cantidad         Int
   cantidadCumplida Int             @default(0)
   estado           ActividadEstado @default(ASIGNADA)
+  // N2: nullable durante la ventana de migración (sin Actividad histórica en
+  // producción hoy — ver AGUA_BAMBU_N2_MATRIZ_PLAN_CODIGO_v1.0.md). Toda
+  // Actividad creada por GestionarPendienteUseCase la exige a nivel de
+  // aplicación.
+  modo             ModoActividad?
 
   createdAt DateTime @default(now()) @db.Timestamptz()
   updatedAt DateTime @updatedAt @db.Timestamptz()
@@ -1226,6 +1241,12 @@ model PedidoCantidadAjuste {
   motivo           String
   autorizadoPorId  String
   autorizadoPor    User   @relation("AjusteAutorizador", fields: [autorizadoPorId], references: [id], onDelete: Restrict)
+  // N2 (AGUA_BAMBU_N2_ALS_v2.0.md §2.2): monto del diferencial económico
+  // aplicado por este ajuste. Null si el ajuste es puramente de cantidad, sin
+  // diferencial. Positivo = cargo adicional al Pedido; negativo = crédito a
+  // Cliente.saldoFavor; 0 = evaluado, sin ajuste (se registra igual para
+  // trazabilidad — ver Especificación Funcional §5.2, Caso H).
+  montoDiferencial Decimal? @db.Decimal(10, 2)
 
   createdAt DateTime @default(now()) @db.Timestamptz()
   offlineId String?  @unique
