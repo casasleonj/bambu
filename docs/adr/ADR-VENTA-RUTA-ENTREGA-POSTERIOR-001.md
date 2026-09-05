@@ -147,7 +147,16 @@ crea una entidad "fiado de ruta" (guardrail).
 - **Fuera:** rediseño de la UI de captura (Fase 3); `estadoPago` canónico vs
   proyección (G5); corrección de pagos (G2). El repartidor eligiendo "entregar
   parcial ahora, resto después" en la misma captura → usa el flujo de entrega
-  parcial existente (pedido-hijo), no es nuevo.
+  parcial existente (pedido-hijo)~~, no es nuevo~~.
+  > **Corrección (2026-09-05, detectada en auditoría `#189`):** el mecanismo
+  > "pedido-hijo" referenciado acá fue **retirado por PR-1 (`#175`, 2026-09-03)**.
+  > Desde PR-1, la entrega parcial en la misma captura ya no crea un pedido hijo:
+  > el pendiente queda implícito en el propio `Pedido`/`PedidoItem`
+  > (`cantEntrega` acumulativo, `total`/`totalPagado` intactos), tal como
+  > documenta `docs/pedidos/AGUA_BAMBU_N2_ESPECIFICACION_FUNCIONAL_v1.0.md` §1.3.
+  > No cambia el alcance de este ADR (`venta-libre`/`venta-rapida` con entrega
+  > posterior sigue igual) — solo el mecanismo interno de la entrega parcial al
+  > que remite esta línea.
 
 ## Migración
 
