@@ -18,8 +18,15 @@ import { startOfDayInBogota, endOfDayInBogota } from '@/lib/date-helpers'
 
 let clienteId: string
 
+// FIX: `toISOString().slice(0, 10)` da la fecha en UTC. Bogotá es UTC-5, así
+// que entre las 19:00 y las 23:59 hora Bogotá (00:00-04:59 UTC) el día UTC ya
+// es "mañana" — exactamente el bug documentado en AGENTS.md #17. Con eso,
+// `dateRange` (Bogotá) no incluía el `Pago.createdAt = hoy` real, y
+// `efectivoCaja` daba 0 en vez de 100_000 (flake dependiente de la hora en que
+// corre CI). Usar el mismo patrón Bogotá-aware que `formatDateISO` en
+// src/lib/recurrentes.ts.
 function ymd(d: Date): string {
-  return d.toISOString().slice(0, 10)
+  return d.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
 }
 
 describe('F-B — cierre de día concilia caja por fecha de captura del pago', () => {
