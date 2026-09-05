@@ -17,6 +17,7 @@
  */
 
 import type { TransactionClient } from '@/lib/locks'
+import { calcularEstadoPago } from '@/modules/pedidos/domain/services/pagos-calculator.service'
 
 export interface AplicarDiferencialInput {
   pedidoId: string
@@ -43,11 +44,22 @@ export async function aplicarConsecuenciaEconomicaDiferencial(
   }
 
   if (input.diferencial > 0) {
+    // G5.5 (chk_pedido_estadopago_proyectado): subir `total` sin recalcular
+    // `estadoPago` deja la fila mintiendo (p.ej. un pedido ANTICIPADO que
+    // pasa a deber saldo por el diferencial debe volver a PARCIAL). Se lee
+    // el pedido fresco DENTRO de la tx (ya bajo lock OBLIGACION del caller)
+    // para proyectar el nuevo estado con el total ya incrementado.
+    const pedidoActual = await tx.pedido.findUniqueOrThrow({
+      where: { id: input.pedidoId },
+      select: { total: true, totalPagado: true, estadoEntrega: true },
+    })
+    const nuevoTotal = Number(pedidoActual.total) + input.diferencial
     await tx.pedido.update({
       where: { id: input.pedidoId },
       data: {
-        total: { increment: input.diferencial },
+        total: nuevoTotal,
         saldo: { increment: input.diferencial },
+        estadoPago: calcularEstadoPago(nuevoTotal, Number(pedidoActual.totalPagado), pedidoActual.estadoEntrega),
       },
     })
 
@@ -123,9 +135,22 @@ export async function revertirDiferencialEnPedido(
 
   if (totalYaAplicadoAPedido <= 0) return 0
 
+  // G5.5 (chk_pedido_estadopago_proyectado): mismo motivo que en
+  // `aplicarConsecuenciaEconomicaDiferencial` — bajar `total` sin recalcular
+  // `estadoPago` puede dejar la fila mintiendo (p.ej. vuelve a quedar
+  // totalmente pagada y debería proyectar ANTICIPADO/PAGADO, no PARCIAL).
+  const pedidoActual = await tx.pedido.findUniqueOrThrow({
+    where: { id: input.pedidoId },
+    select: { total: true, totalPagado: true, estadoEntrega: true },
+  })
+  const nuevoTotalPedido = Number(pedidoActual.total) - totalYaAplicadoAPedido
   await tx.pedido.update({
     where: { id: input.pedidoId },
-    data: { total: { decrement: totalYaAplicadoAPedido }, saldo: { decrement: totalYaAplicadoAPedido } },
+    data: {
+      total: nuevoTotalPedido,
+      saldo: { decrement: totalYaAplicadoAPedido },
+      estadoPago: calcularEstadoPago(nuevoTotalPedido, Number(pedidoActual.totalPagado), pedidoActual.estadoEntrega),
+    },
   })
 
   const factura = await tx.factura.findUnique({ where: { pedidoId: input.pedidoId } })

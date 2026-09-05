@@ -37,6 +37,8 @@ describe('GenerarPlanUseCase — integración', () => {
           origen: 'PEDIDO',
           fecha: new Date('2026-08-29T12:00:00-05:00'),
           cPacaAguaPed: 3,
+          // chk_pedido_estadopago_proyectado: total=0/totalPagado=0 + PENDIENTE (default) → ANTICIPADO.
+          estadoPago: 'ANTICIPADO',
         },
       })
     }
@@ -50,6 +52,7 @@ describe('GenerarPlanUseCase — integración', () => {
         origen: 'PEDIDO',
         fecha: new Date('2026-08-29T12:00:00-05:00'),
         cPacaAguaPed: 1,
+        estadoPago: 'ANTICIPADO',
       },
     })
 
@@ -58,7 +61,7 @@ describe('GenerarPlanUseCase — integración', () => {
       data: { nombre: 'Mostrador', telefono: '3990000100' },
     })
     await testPrisma.pedido.create({
-      data: { clienteId: mostrador.id, canal: 'PUNTO', origen: 'VENTA_RAPIDA', cPacaAguaPed: 5 },
+      data: { clienteId: mostrador.id, canal: 'PUNTO', origen: 'VENTA_RAPIDA', cPacaAguaPed: 5, estadoPago: 'ANTICIPADO' },
     })
   })
 
@@ -135,7 +138,7 @@ describe('GenerarPlanUseCase — integración', () => {
       data: { nombre: 'Desactualiza', telefono: '3990001234', barrio: 'Centro', lat: 10.031, lng: -73.241, geocodeOrigen: 'MANUAL' },
     })
     await testPrisma.pedido.create({
-      data: { clienteId: c.id, canal: 'DOMICILIO', origen: 'PEDIDO', fecha: new Date('2026-08-29T12:00:00-05:00'), cPacaAguaPed: 1 },
+      data: { clienteId: c.id, canal: 'DOMICILIO', origen: 'PEDIDO', fecha: new Date('2026-08-29T12:00:00-05:00'), cPacaAguaPed: 1, estadoPago: 'ANTICIPADO' },
     })
 
     const despues = await repo.estaDesactualizado(plan!.id)
@@ -213,7 +216,7 @@ describe('Replan / Override / Cancelar — integración', () => {
           },
         })
         await testPrisma.pedido.create({
-          data: { clienteId: c.id, canal: 'DOMICILIO', origen: 'PEDIDO', fecha: new Date('2026-09-14T12:00:00-05:00'), cPacaAguaPed: 2 },
+          data: { clienteId: c.id, canal: 'DOMICILIO', origen: 'PEDIDO', fecha: new Date('2026-09-14T12:00:00-05:00'), cPacaAguaPed: 2, estadoPago: 'ANTICIPADO' },
         })
       }
     }
@@ -243,7 +246,8 @@ describe('Replan / Override / Cancelar — integración', () => {
     const ped = await testPrisma.pedido.findFirst({
       where: { canal: 'DOMICILIO', fecha: new Date('2026-09-14T12:00:00-05:00') },
     })
-    await testPrisma.pedido.update({ where: { id: ped!.id }, data: { estadoEntrega: 'CANCELADO', estado: 'CANCELADO' } })
+    // chk_pedido_estadopago_proyectado: estadoEntrega CANCELADO → estadoPago = ANULADO.
+    await testPrisma.pedido.update({ where: { id: ped!.id }, data: { estadoEntrega: 'CANCELADO', estado: 'CANCELADO', estadoPago: 'ANULADO' } })
 
     const r = await new ReplanUseCase().execute({ fecha: FECHA2, maxUnidades: 70, trigger: 'CANCELACION' })
     expect(r.diff.pedidosQuitados).toContain(ped!.id)

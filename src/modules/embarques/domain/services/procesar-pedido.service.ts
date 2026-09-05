@@ -435,15 +435,25 @@ export class ProcesarPedidoService {
       throw new Error(`PAGOS_EXCEDIDOS: el cobro de misión ($${montoPagado}) excede el saldo pendiente ($${saldoPendientePrevio}) del pedido #${pedido.numero}`)
     }
     const nuevoTotalPagado = Math.min(totalObligacionPed, totalPagadoPrevio + montoPagado)
-    // Los campos de dinero SOLO se escriben si hubo cobro nuevo en esta misión
-    // (F9). Sin cobro, la obligación económica queda intacta byte a byte (PR-1).
+    // Los campos de dinero (totalPagado/saldo) SOLO se escriben si hubo cobro
+    // nuevo en esta misión (F9). Sin cobro, la obligación económica queda
+    // intacta byte a byte (PR-1).
     const camposDinero = montoPagado > 0
       ? {
-          estadoPago: calcularEstadoPago(totalObligacionPed, nuevoTotalPagado),
           totalPagado: nuevoTotalPagado,
           saldo: totalObligacionPed - nuevoTotalPagado,
         }
       : {}
+    // G5.5 (bug encontrado al preparar `chk_pedido_estadopago_proyectado`):
+    // `estadoPago` SIEMPRE se recalcula, no solo cuando hay cobro nuevo —
+    // `estadoEntrega` puede pasar de PENDIENTE a ENTREGADO en este mismo
+    // update (variable `completo`, unas líneas abajo) sin que haya habido
+    // ningún pago en ESTA misión (p.ej. un pedido ya prepago-completo que
+    // termina de entregarse). Si `estadoPago` solo se tocara dentro de
+    // `camposDinero`, esa fila quedaba mintiendo (ANTICIPADO con
+    // estadoEntrega=ENTREGADO, en vez de PAGADO) — exactamente lo que
+    // `chk_pedido_estadopago_proyectado` fue diseñado para atrapar.
+    const estadoPago = calcularEstadoPago(totalObligacionPed, nuevoTotalPagado, completo ? 'ENTREGADO' : 'PENDIENTE')
 
     // ADMIN puede corregir precios congelados también en un cierre parcial;
     // se persisten para el registro pero NO alteran `total` (PR-1).
@@ -470,6 +480,7 @@ export class ProcesarPedidoService {
         estadoEntrega: completo ? 'ENTREGADO' : 'PENDIENTE',
         estado: completo ? 'ENTREGADO' : 'PENDIENTE',
         embarqueId: completo ? pedido.embarqueId : null,
+        estadoPago,
         ...camposDinero,
         ...precios,
         // total: NO SE RECALCULA (obligación económica intacta — PR-1).

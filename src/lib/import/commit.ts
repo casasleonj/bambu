@@ -18,6 +18,7 @@ import type {
 import type { CommitResult } from './application'
 import type { OrigenPedido, MetodoPago, Turno } from '@prisma/client'
 import { getNextNumero } from '@/lib/sequence'
+import { calcularEstadoPago } from '@/modules/pedidos/domain/services/pagos-calculator.service'
 
 /**
  * Commit de un batch: transforma las filas de staging en registros reales.
@@ -283,7 +284,12 @@ async function commitPedido(
       fechaEntrega: data.fechaEntrega ?? null,
       origen: (data.origen as OrigenPedido | undefined) ?? 'PEDIDO',
       estadoEntrega: 'ENTREGADO',
-      estadoPago: (data.totalPagado ?? 0) >= total ? 'PAGADO' : total > 0 ? 'PENDIENTE' : 'PAGADO',
+      // G5.5 (bug encontrado al preparar `chk_pedido_estadopago_proyectado`):
+      // el ternario anterior no cubría el caso PARCIAL — un pedido histórico
+      // importado con pago parcial (0 < totalPagado < total) quedaba
+      // etiquetado 'PENDIENTE' en vez de 'PARCIAL'. Se reemplaza por el
+      // helper único de proyección (misma regla que el resto de writers).
+      estadoPago: calcularEstadoPago(total, data.totalPagado ?? 0, 'ENTREGADO'),
       total,
       totalPagado: data.totalPagado ?? 0,
       saldo: Math.max(0, total - (data.totalPagado ?? 0)),

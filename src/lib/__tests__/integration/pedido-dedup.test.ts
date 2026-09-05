@@ -188,11 +188,16 @@ describe('CrearPedidoUseCase — dedup por offlineId', () => {
     // Insertar un pedido con un offlineId, después intentar otro con
     // el mismo. El segundo debe fallar.
     const dedupId = uniqueId('unique-test')
+    // chk_pedido_estadopago_proyectado: total=0/totalPagado=0 (default) +
+    // PENDIENTE (default estadoEntrega) → ANTICIPADO. Se fija explícito para
+    // que el 2do insert falle por la unique constraint que este test
+    // verifica, no por el CHECK.
     await testPrisma.pedido.create({
       data: {
         clienteId,
         canal: 'DOMICILIO',
         offlineId: dedupId,
+        estadoPago: 'ANTICIPADO',
       },
     })
     await expect(
@@ -201,6 +206,7 @@ describe('CrearPedidoUseCase — dedup por offlineId', () => {
           clienteId,
           canal: 'DOMICILIO',
           offlineId: dedupId,
+          estadoPago: 'ANTICIPADO',
         },
       }),
     ).rejects.toThrow()

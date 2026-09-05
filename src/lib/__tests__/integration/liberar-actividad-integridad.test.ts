@@ -15,7 +15,9 @@ async function crearPedidoConBotellonesPendientes() {
     data: {
       clienteId, canal: 'PUNTO', origen: 'PEDIDO', tipo: 'PUNTO',
       total, totalPagado: total, saldo: 0,
-      estadoEntrega: 'PENDIENTE', estado: 'PENDIENTE', estadoPago: 'PAGADO',
+      // chk_pedido_estadopago_proyectado: pagado completo + PENDIENTE (aún
+      // no entregado) → ANTICIPADO, no PAGADO.
+      estadoEntrega: 'PENDIENTE', estado: 'PENDIENTE', estadoPago: 'ANTICIPADO',
       cBotellonFabPed: 10, cBotellonFabEnt: 6, precioBotellonFab: 6_500,
       items: { create: [{ producto: 'BOTELLON', cantPedido: 10, cantEntrega: 6, precio: 6_500, subtotal: total }] },
     },

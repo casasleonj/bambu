@@ -60,6 +60,9 @@ describe('Pedidos atrasados sin asignar — corte exacto a medianoche Bogotá', 
         offlineId: uniqueId('atrasado'),
         fecha: overrides.fecha,
         embarqueId: overrides.embarqueId ?? null,
+        // total=0/totalPagado=0 (default) → PENDIENTE (default estadoEntrega)
+        // proyecta ANTICIPADO (chk_pedido_estadopago_proyectado).
+        estadoPago: 'ANTICIPADO',
       },
     })
   }
@@ -84,6 +87,9 @@ describe('Pedidos atrasados sin asignar — corte exacto a medianoche Bogotá', 
         fecha: ayerBogota(),
         embarqueId: null,
         estadoEntrega: 'NO_ENTREGADO',
+        // total=0/totalPagado=0 → NO_ENTREGADO proyecta ANTICIPADO
+        // (chk_pedido_estadopago_proyectado).
+        estadoPago: 'ANTICIPADO',
       },
     })
 
@@ -158,6 +164,9 @@ describe('Pedidos de hoy en riesgo (3+ embarques CERRADO de su ruta, nunca asign
         fecha: new Date(),
         embarqueId: null,
         estadoEntrega: 'PENDIENTE',
+        // total=0/totalPagado=0 → PENDIENTE proyecta ANTICIPADO
+        // (chk_pedido_estadopago_proyectado).
+        estadoPago: 'ANTICIPADO',
       },
     })
   }
@@ -288,6 +297,7 @@ describe('Pedidos de hoy en riesgo — sub-regla de horas hábiles transcurridas
         fecha: hace10min,
         embarqueId: null,
         estadoEntrega: 'PENDIENTE',
+        estadoPago: 'ANTICIPADO',
       },
     })
 
@@ -308,6 +318,7 @@ describe('Pedidos de hoy en riesgo — sub-regla de horas hábiles transcurridas
         fecha: new Date(),
         embarqueId: null,
         estadoEntrega: 'PENDIENTE',
+        estadoPago: 'ANTICIPADO',
       },
     })
 
@@ -335,6 +346,7 @@ describe('Pedidos de hoy en riesgo — sub-regla de horas hábiles transcurridas
         fecha: hace10min,
         embarqueId: embarque.id,
         estadoEntrega: 'EN_RUTA',
+        estadoPago: 'ANTICIPADO',
       },
     })
 
@@ -368,6 +380,9 @@ describe('Pedidos de hoy en riesgo — sub-regla de horas hábiles transcurridas
         fecha: hace5dias,
         embarqueId: embarque.id,
         estadoEntrega: 'EN_RUTA',
+        // total=0/totalPagado=0 (default) → "totalPagado >= total" es
+        // trivialmente cierto, y con EN_RUTA proyecta ANTICIPADO (chk_pedido_estadopago_proyectado).
+        estadoPago: 'ANTICIPADO',
       },
     })
 
@@ -391,6 +406,9 @@ describe('Pedidos de hoy en riesgo — sub-regla de horas hábiles transcurridas
         fecha: hace10min,
         embarqueId: null,
         estadoEntrega: 'ENTREGADO',
+        // total=0/totalPagado=0 (default) → proyecta PAGADO con ENTREGADO
+        // (chk_pedido_estadopago_proyectado).
+        estadoPago: 'PAGADO',
       },
     })
 
