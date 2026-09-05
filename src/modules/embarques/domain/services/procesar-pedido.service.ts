@@ -26,6 +26,7 @@
 import { EstadoEmbarque } from '@prisma/client'
 import { calcularEstadoPago } from '@/lib/pedido-utils'
 import { datosConfirmacionInicial, leerMetodosRequierenConfirmacion } from '@/lib/pago-confirmacion'
+import { validarSinSobreposicionConObligacionActiva, type EntregaAValidar } from '@/lib/obligacion-guard'
 import type { CerrarEmbarqueInput } from '../../application/dto'
 import type { MetodoPago } from '@prisma/client'
 
@@ -112,6 +113,26 @@ function toNumber(value: number | { toNumber: () => number } | null | undefined)
   return typeof value === 'number' ? value : value.toNumber()
 }
 
+// N2, guard I-11 (docs/pedidos/AGUA_BAMBU_N2_ALS_v2.0.md §3.4bis): traduce las
+// columnas legacy per-producto (cXPed/cXEnt) al shape genérico que espera el
+// guard compartido con EntregarPedidoUseCase. `BOTELLON` suma Fab+Dom porque
+// `ObligacionPendiente.producto` es un único código genérico, sin distinguir
+// canal de entrega (eso lo captura `Actividad.modo`, no el producto).
+function construirEntregasAValidar(pedido: PedidoRawInput, entProd: ProductosEntregados): EntregaAValidar[] {
+  return [
+    { producto: 'PACA_AGUA', cantPedido: pedido.cPacaAguaPed, cantEntregaActual: pedido.cPacaAguaEnt, cantidadAEntregar: entProd.cPacaAguaEnt || 0 },
+    { producto: 'PACA_HIELO', cantPedido: pedido.cPacaHieloPed, cantEntregaActual: pedido.cPacaHieloEnt, cantidadAEntregar: entProd.cPacaHieloEnt || 0 },
+    {
+      producto: 'BOTELLON',
+      cantPedido: pedido.cBotellonFabPed + pedido.cBotellonDomPed,
+      cantEntregaActual: pedido.cBotellonFabEnt + pedido.cBotellonDomEnt,
+      cantidadAEntregar: (entProd.cBotellonFabEnt || 0) + (entProd.cBotellonDomEnt || 0),
+    },
+    { producto: 'BOLSA_AGUA', cantPedido: pedido.cBolsaAguaPed, cantEntregaActual: pedido.cBolsaAguaEnt, cantidadAEntregar: entProd.cBolsaAguaEnt || 0 },
+    { producto: 'BOLSA_HIELO', cantPedido: pedido.cBolsaHieloPed, cantEntregaActual: pedido.cBolsaHieloEnt, cantidadAEntregar: entProd.cBolsaHieloEnt || 0 },
+  ].filter((e) => e.cantidadAEntregar > 0)
+}
+
 export class ProcesarPedidoService {
   /**
    * Procesa un pedido individual según su estado de entrega:
@@ -149,6 +170,20 @@ export class ProcesarPedidoService {
     if (cuadre.entregado === 'NO_ENTREGADO') {
       return this.procesarNoEntregado(client, pedido, cuadre, pedidosActualizados)
     }
+
+    // Guard I-11 (N2, AGUA_BAMBU_N2_ALS_v2.0.md §3.4bis): ni PARCIAL ni
+    // COMPLETO pueden entregar cantidad que ya está bajo gestión de una
+    // ObligacionPendiente ABIERTA — evita doble cumplimiento físico (una vez
+    // por el cierre de embarque, otra por el cumplimiento de la Actividad que
+    // la tiene reservada). `client` acá es `TxOrPrisma` (tipado laxo por
+    // diseño del service, ver comentario del tipo arriba); el modelo real
+    // sigue siendo el mismo Prisma.TransactionClient que usa el resto del
+    // cierre, así que el cast es seguro.
+    await validarSinSobreposicionConObligacionActiva(
+      client as unknown as Parameters<typeof validarSinSobreposicionConObligacionActiva>[0],
+      pedido.id,
+      construirEntregasAValidar(pedido, entProd),
+    )
 
     // PARCIAL (PR-1, integridad de entrega parcial): entrega interina que NO
     // toca la obligación económica (`total`/`totalPagado`/`saldo`), NO crea

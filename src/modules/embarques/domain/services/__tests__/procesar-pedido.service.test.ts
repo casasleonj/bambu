@@ -177,6 +177,8 @@ describe('PR-1: el cierre PARCIAL no crea hijo y preserva la obligación económ
       pedidoItem: { updateMany: vi.fn() },
       historial: { create: vi.fn() },
       embarque: { findUnique: vi.fn() },
+      // N2, guard I-11: sin ObligacionPendiente activa en estos escenarios.
+      obligacionPendiente: { findMany: vi.fn().mockResolvedValue([]) },
     }
   }
 
@@ -388,6 +390,8 @@ describe('FIX factura-fecha-entrega: la factura se resincroniza al cerrar ENTREG
       pedidoItem: { updateMany: vi.fn() },
       historial: { create: vi.fn() },
       embarque: { findUnique: vi.fn() },
+      // N2, guard I-11: sin ObligacionPendiente activa en estos escenarios.
+      obligacionPendiente: { findMany: vi.fn().mockResolvedValue([]) },
     }
   }
 
