@@ -4,6 +4,12 @@
 
 Clasificación de "Código actual" según el vocabulario pedido: **ya implementado** / **parcialmente implementado** / **no implementado** / **implementado de forma diferente** / **obsoleto**.
 
+## Estado de implementación (actualizado a medida que aportan PRs)
+
+Esta sección se actualiza; la matriz de abajo queda como snapshot histórico de `#192` (con la corrección de `offlineId` ya aplicada inline).
+
+- **Schema (`Actividad.modo`, `PedidoCantidadAjuste.montoDiferencial`) + `ModoActividadVO`** — ✅ implementado. Migración `prisma/migrations/20260905_add_actividad_modo_diferencial/`. La fila "`Actividad.modo`" de la matriz pasa a **ya implementado** (solo el campo de schema; los use cases que lo escriben siguen pendientes, ver filas correspondientes).
+
 | Elemento | Decisión | Fuente | Código actual | Brecha | Acción |
 |---|---|---|---|---|---|
 | `Actividad.modo` | `PUNTO`/`DOMICILIO`, 1 campo | Decisión N2 (2026-09-05), consistente con `ALS_v2.md §16` | **No implementado** — `Actividad` no tiene columna `modo` (verificado, `schema.prisma:1195-1213`) | Sí | Migración aditiva (`AGUA_BAMBU_N2_ALS_v2.0.md §2.1`) |
@@ -22,7 +28,7 @@ Clasificación de "Código actual" según el vocabulario pedido: **ya implementa
 | Lock `OBLIGACION:{id}` | Cumplimiento/asignación bajo este lock | `ADR-OBLIGACION-001` (congelado) | **Ya implementado** (`AsignarActividadUseCase`) | No | Reutilizar para `CambiarModoActividadUseCase`/`LiberarActividadUseCase` |
 | Lock `PEDIDO:{id}` para creación de Obligación | Nuevo en este ALS | Plan Maestro V11.1 §6 (patrón general), aplicado aquí por primera vez a `GestionarPendienteUseCase` | **Patrón ya implementado en otros casos de uso** (`ActualizarPedidoUseCase`), **no implementado para este flujo específico** | Sí | §3.1 ALS |
 | Idempotencia `offlineId` en `ObligacionPendiente`/`Actividad` | Ya soportado por el schema | `ADR-OBLIGACION-001`/`ADR-ACTIVIDAD-001` | **Ya implementado** (columnas `offlineId @unique` existen) | No | Ninguna |
-| Idempotencia `offlineId` en `PedidoCantidadAjuste` | Necesaria para no duplicar el cobro del diferencial en un replay | Nuevo, derivado de Plan Maestro V11.1 §14 | **No implementado** — `PedidoCantidadAjuste` no tiene `offlineId` hoy (verificado, `schema.prisma:1215-1230`) | Sí | Migración aditiva §7/§14 ALS |
+| Idempotencia `offlineId` en `PedidoCantidadAjuste` | Necesaria para no duplicar el cobro del diferencial en un replay | Nuevo, derivado de Plan Maestro V11.1 §14 | **Corrección (2026-09-05): Ya implementado.** `PedidoCantidadAjuste.offlineId String? @unique` ya existe (`schema.prisma:1231`) — la verificación original de esta matriz no vio la columna completa. Sin migración pendiente. | No | Ninguna |
 | `PlanActividad ↔ Actividad` | Deliberadamente separadas para el MVP de entregas | `ADR-PLANIFICADOR-006 §2` (congelado) | **Ya implementado** — sin cambios de este ALS | No | Ninguna. Este ALS **no** toca el planificador |
 | Materialización del camino "Gestionar pendiente" | `Actividad → Embarque` (vía asignación existente) | Decisión N2 + `ALS_v2.md §13` | **No implementado** (el comando de asignación de Actividad→Embarque ya existe genéricamente en `ADR-ACTIVIDAD-001`, pero nada de este flujo lo invoca todavía) | Sí | Cablear `GestionarPendienteUseCase`/`CambiarModoActividadUseCase` a la asignación existente |
 | Motor de precios para "valor actual" | `resolverPreciosPedido` | N/A (verificación técnica) | **Ya implementado**, soporta especiales de cliente/negocio, precio por volumen y sobrecosto de domicilio (`src/lib/pricing.ts:275+`) | No | Ninguna — se reutiliza sin cambios |
@@ -37,10 +43,10 @@ Clasificación de "Código actual" según el vocabulario pedido: **ya implementa
 
 | Clasificación | Cuenta | Elementos |
 |---|---|---|
-| Ya implementado | 9 | `Pedido.canal`, pendiente ordinario (PR-1), lock `OBLIGACION:{id}`, `offlineId` en Obligación/Actividad, `ObligacionEstado`/`ActividadEstado` (sin cambios), `PlanActividad≠Actividad`, motor de precios, snapshot histórico, patrón de reversión general |
+| Ya implementado | 10 | `Pedido.canal`, pendiente ordinario (PR-1), lock `OBLIGACION:{id}`, `offlineId` en Obligación/Actividad/`PedidoCantidadAjuste`, `ObligacionEstado`/`ActividadEstado` (sin cambios), `PlanActividad≠Actividad`, motor de precios, snapshot histórico, patrón de reversión general |
 | Ya implementado — decisión cumplida por ausencia de código | 1 | `ObligacionPendiente` bajo demanda (se cumple porque nada la crea automáticamente hoy) |
 | Implementado de forma diferente | 1 | `saldoFavor` (existe y probado, pero sin llamador para diferencial) |
 | Parcialmente implementado | 1 | Modo original/actual (mitad = `Pedido.canal`, mitad = `Actividad.modo` falta) |
-| No implementado | 13 | `Actividad.modo`, auditoría de cambio de modo, flujo de diferencial (mecánica), positivo/negativo/cero como flujo, `GestionarPendienteUseCase`, `CambiarModoActividadUseCase`, `LiberarActividadUseCase`, múltiples parciales, `offlineId` en `PedidoCantidadAjuste`, materialización Actividad→Embarque del camino nuevo, reversión específica del diferencial, E2E, **guard `I-11` (bloqueante)** |
+| No implementado | 12 | `Actividad.modo` (schema), auditoría de cambio de modo, flujo de diferencial (mecánica), positivo/negativo/cero como flujo, `GestionarPendienteUseCase`, `CambiarModoActividadUseCase`, `LiberarActividadUseCase`, múltiples parciales, materialización Actividad→Embarque del camino nuevo, reversión específica del diferencial, E2E, **guard `I-11` (bloqueante)** |
 | Obsoleto | 0 | — |
 | N/A (bloqueo externo) | 1 | Fiscalidad |
