@@ -79,6 +79,8 @@ describe('EntregarPedidoUseCase — PR-1: entrega parcial no crea hijo', () => {
       historial: { create: vi.fn().mockResolvedValue({}) },
       // FASE 8: getNextNumero ahora usa secuencia atómica (nextval).
       $queryRawUnsafe: vi.fn().mockResolvedValue([{ nextval: BigInt(101) }]),
+      // N2, guard I-11: sin ObligacionPendiente activa en este escenario.
+      obligacionPendiente: { findMany: vi.fn().mockResolvedValue([]) },
     } as unknown as TransactionClient
     const txManager: ITransactionManager = {
       execute: (fn) => fn(fakeTx),

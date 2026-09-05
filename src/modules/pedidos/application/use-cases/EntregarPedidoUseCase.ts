@@ -10,6 +10,7 @@ import type { IPagoRepository } from '../../domain/repositories/IPagoRepository'
 import type { ITransactionManager } from '../../infrastructure/transactions/PrismaTransactionManager'
 import { registrarReceivableEntry } from '@/lib/receivable-entry'
 import { leerMetodosRequierenConfirmacion } from '@/lib/pago-confirmacion'
+import { validarSinSobreposicionConObligacionActiva } from '@/lib/obligacion-guard'
 import type { EntregarPedidoInput, EntregarPedidoResult } from '../dto'
 import { PedidoDTOMapper } from '../dto/PedidoDTOMapper'
 
@@ -73,12 +74,24 @@ export class EntregarPedidoUseCase {
       // la línea — así un replay offline con un delta calculado sobre un
       // `cantEntrega` viejo (p.ej. una entrega encolada antes de un cierre
       // parcial) nunca sobrepasa `cantPedido` ni queda atascado en la cola.
+      const entregasClampeadas = input.itemsEntregados.map(ie => {
+        const item = pedido.items.find(i => i.producto === ie.producto)
+        const resto = item ? item.cantPedido - item.cantEntrega : ie.cantidad
+        return {
+          producto: ie.producto,
+          cantPedido: item?.cantPedido ?? 0,
+          cantEntregaActual: item?.cantEntrega ?? 0,
+          cantidadAEntregar: Math.max(0, Math.min(ie.cantidad, resto)),
+        }
+      })
+
+      // Guard I-11 (N2, AGUA_BAMBU_N2_ALS_v2.0.md §3.4bis): no entregar por la
+      // vía ordinaria cantidad que ya está bajo gestión de una
+      // ObligacionPendiente ABIERTA (evita doble cumplimiento físico).
+      await validarSinSobreposicionConObligacionActiva(tx, input.pedidoId, entregasClampeadas)
+
       pedido.entregar(
-        input.itemsEntregados.map(ie => {
-          const item = pedido.items.find(i => i.producto === ie.producto)
-          const resto = item ? item.cantPedido - item.cantEntrega : ie.cantidad
-          return { producto: ie.producto, cantidad: Math.max(0, Math.min(ie.cantidad, resto)) }
-        }),
+        entregasClampeadas.map(e => ({ producto: e.producto, cantidad: e.cantidadAEntregar })),
         {
           fotoEntrega: input.fotoEntrega,
           gpsLat: input.gpsLat,
