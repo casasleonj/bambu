@@ -16,7 +16,6 @@ interface PlantillaSerialized {
   clienteId: string
   activo: boolean
   cadaNDias: number
-  tipo: string
   canal: string
   horaPreferida: string | null
   productos: Record<string, number>
@@ -35,7 +34,6 @@ interface PlantillaSerialized {
 }
 
 type FormCanal = 'DOMICILIO' | 'PUNTO'
-type FormTipo = 'ENVIO' | 'PUNTO'
 
 interface ProductoConfig {
   codigo: string
@@ -43,11 +41,6 @@ interface ProductoConfig {
   aplicaDomicilio: boolean
   sobreCostoDomicilio: number
 }
-
-const TIPO_OPTIONS = [
-  { value: 'ENVIO', label: 'Pedido remoto', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg> },
-  { value: 'PUNTO', label: 'En mostrador', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg> },
-]
 
 const CANAL_OPTIONS = [
   { value: 'DOMICILIO', label: 'Domicilio', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg> },
@@ -77,7 +70,6 @@ export function EditarRecurrenteClient({ plantilla }: { plantilla: PlantillaSeri
 
   const [cadaNDias, setCadaNDias] = useState(plantilla.cadaNDias)
   const [cadaNDiasDisplay, setCadaNDiasDisplay] = useState(String(plantilla.cadaNDias))
-  const [tipo, setTipo] = useState<FormTipo>(plantilla.tipo as FormTipo)
   const [canal, setCanal] = useState<FormCanal>(plantilla.canal as FormCanal)
   const [horaPreferida, setHoraPreferida] = useState(plantilla.horaPreferida || '')
   const [activo, setActivo] = useState(plantilla.activo)
@@ -213,7 +205,6 @@ export function EditarRecurrenteClient({ plantilla }: { plantilla: PlantillaSeri
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           cadaNDias,
-          tipo,
           canal,
           horaPreferida: horaPreferida || null,
           productos: { pacaAgua: cantidades.pacaAgua, pacaHielo: cantidades.pacaHielo, botellon: cantidades.botellon, bolsaAgua: cantidades.bolsaAgua, bolsaHielo: cantidades.bolsaHielo },
@@ -327,13 +318,10 @@ export function EditarRecurrenteClient({ plantilla }: { plantilla: PlantillaSeri
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <ChipGroup
-                label="Origen del pedido"
-                options={TIPO_OPTIONS}
-                value={tipo}
-                onChange={(v: string) => setTipo(v as FormTipo)}
-              />
+            <div className="grid grid-cols-1 gap-4">
+              {/* G6 (ADR-PEDIDO-ORIGEN-CANAL-001): ver nota equivalente en
+                  nuevo-client/index.tsx — se colapsó el 2do ChipGroup
+                  redundante ("Origen del pedido" / tipo) a un solo control. */}
               <ChipGroup
                 label="Entrega"
                 options={CANAL_OPTIONS}

@@ -142,7 +142,6 @@ export interface PedidoResumenDTO {
   negocioId?: string
   embarqueId?: string | null
   canal: string
-  tipo: string
   origen: string
   estado: string
   estadoEntrega: string

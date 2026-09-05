@@ -12,13 +12,11 @@ export interface Cliente {
 }
 
 export type CanalRecurrente = 'DOMICILIO' | 'PUNTO'
-export type TipoRecurrente = 'ENVIO' | 'PUNTO'
 
 export interface NuevoRecurrenteForm {
   clienteId: string
   cadaNDias: number
   canal: CanalRecurrente
-  tipo: TipoRecurrente
   horaPreferida: string
   proxGeneracion: string
   pacaAgua: number

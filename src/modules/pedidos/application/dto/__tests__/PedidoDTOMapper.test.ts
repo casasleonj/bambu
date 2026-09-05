@@ -2,10 +2,12 @@
  * Tests para PedidoDTOMapper.
  *
  * Cubre:
- *  - Issue 4: el DTO debe incluir `tipo` derivado de `canal` (PUNTO→'PUNTO', otro→'ENVIO'),
- *    sin depender de un campo raw.
  *  - Issue 3: el DTO debe incluir `factura` (con id, numero, estado, total, saldo, abonos)
  *    cuando el repo la devuelve, o `null` cuando no hay factura asociada.
+ *
+ * G6 (ADR-PEDIDO-ORIGEN-CANAL-001): el campo `tipo` (derivado de `canal`,
+ * antes cubierto acá como "issue 4") salió del contrato del DTO — `canal`
+ * es el campo canónico, `tipo` no tenía ningún consumidor real.
  */
 
 import { describe, it, expect } from 'vitest'
@@ -73,20 +75,6 @@ describe('PedidoDTOMapper.toResumen — pagoReportadoPendiente (ADR-PAGO-REPORTA
     expect(PedidoDTOMapper.toResumen(conPagos([{ metodo: 'EFECTIVO', monto: 10000, confirmacion: 'CONFIRMADO' }])).pagoReportadoPendiente).toBe(false)
     expect(PedidoDTOMapper.toResumen(conPagos([{ metodo: 'EFECTIVO', monto: 10000 }])).pagoDiscrepante).toBe(false)
     expect(PedidoDTOMapper.toResumen(conPagos([])).pagoReportadoPendiente).toBe(false)
-  })
-})
-
-describe('PedidoDTOMapper.toResumen — issue 4: campo tipo', () => {
-  it('incluye tipo="ENVIO" cuando canal=DOMICILIO', () => {
-    const pedido = makePedidoFixture('DOMICILIO')
-    const dto = PedidoDTOMapper.toResumen(pedido)
-    expect(dto.tipo).toBe('ENVIO')
-  })
-
-  it('incluye tipo="PUNTO" cuando canal=PUNTO', () => {
-    const pedido = makePedidoFixture('PUNTO')
-    const dto = PedidoDTOMapper.toResumen(pedido)
-    expect(dto.tipo).toBe('PUNTO')
   })
 })
 

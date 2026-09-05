@@ -60,8 +60,9 @@ describe('F4.10-b: el service mantiene la lógica completa', () => {
     expect(serviceSource).toMatch(/import\s+\{\s*getNextNumero\s*\}\s+from\s+['"]@\/lib\/sequence['"]/)
   })
 
-  it('FIX: el service crea un Pedido con tipo=ENVIO, canal=DOMICILIO, origen=VENTA_LIBRE', () => {
-    expect(serviceSource).toMatch(/tipo:\s*['"]ENVIO['"]/)
+  it('FIX: el service crea un Pedido con canal=DOMICILIO, origen=VENTA_LIBRE', () => {
+    // `tipo` salió del contrato (G6, ADR-PEDIDO-ORIGEN-CANAL-001) — 100%
+    // derivado de `canal`, sin consumidor real; se dejó de escribir.
     expect(serviceSource).toMatch(/canal:\s*['"]DOMICILIO['"]/)
     expect(serviceSource).toMatch(/origen:\s*['"]VENTA_LIBRE['"]/)
   })

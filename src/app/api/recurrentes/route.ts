@@ -12,7 +12,10 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 
 const RecurrenteCreateSchema = z.object({
   clienteId: z.string().min(1),
-  tipo: z.enum(['ENVIO', 'PUNTO']).default('ENVIO'),
+  // `tipo` removido del contrato (G6, ADR-PEDIDO-ORIGEN-CANAL-001):
+  // `canal` es el campo canónico. Antes el form aceptaba ambos como
+  // controles independientes sin sincronizar, permitiendo combinaciones
+  // contradictorias (p.ej. tipo=PUNTO + canal=DOMICILIO).
   canal: z.enum(['PUNTO', 'DOMICILIO']).default('DOMICILIO'),
   cadaNDias: z.coerce.number().int().min(1).default(7),
   proxGeneracion: z.string().datetime().optional(),
@@ -43,7 +46,6 @@ const RecurrenteCreateSchema = z.object({
 
 const RecurrenteUpdateSchema = z.object({
   cadaNDias: z.coerce.number().int().min(1).optional(),
-  tipo: z.enum(['ENVIO', 'PUNTO']).optional(),
   canal: z.enum(['PUNTO', 'DOMICILIO']).optional(),
   horaPreferida: z.string().regex(/^\d{2}:\d{2}$/, 'Formato HH:mm').optional().nullable(),
   productos: z.object({
@@ -116,7 +118,7 @@ export async function POST(request: NextRequest) {
       return apiError(formatZodError(parsed.error), 400)
     }
 
-    const { clienteId, tipo, canal, cadaNDias, proxGeneracion: proxGeneracionInput, horaPreferida, productos, notas } = parsed.data
+    const { clienteId, canal, cadaNDias, proxGeneracion: proxGeneracionInput, horaPreferida, productos, notas } = parsed.data
 
     const proxGeneracion = proxGeneracionInput
       ? new Date(proxGeneracionInput)
@@ -143,7 +145,6 @@ export async function POST(request: NextRequest) {
       const nuevaPlantilla = await tx.plantillaRecurrente.create({
         data: {
           clienteId,
-          tipo,
           canal,
           cadaNDias,
           horaPreferida: horaPreferida ?? null,
@@ -245,7 +246,6 @@ export async function PUT(request: NextRequest) {
       const base = existente.ultimaGeneracion ? new Date(existente.ultimaGeneracion) : new Date()
       data.proxGeneracion = calcularProxGeneracion(base, parsed.data.cadaNDias)
     }
-    if (parsed.data.tipo) data.tipo = parsed.data.tipo
     if (parsed.data.canal) data.canal = parsed.data.canal
     if (parsed.data.horaPreferida !== undefined) data.horaPreferida = parsed.data.horaPreferida
     if (parsed.data.notas !== undefined) data.notas = parsed.data.notas
