@@ -46,9 +46,11 @@ async function crearPedido10Prepago(embarqueId: string) {
       total: 10_000,
       totalPagado: 10_000,
       saldo: 0,
+      // chk_pedido_estadopago_proyectado: pagado completo + EN_RUTA (aún no
+      // entregado) → ANTICIPADO, no PAGADO.
       estadoEntrega: 'EN_RUTA',
       estado: 'EN_RUTA',
-      estadoPago: 'PAGADO',
+      estadoPago: 'ANTICIPADO',
       embarqueId,
       cPacaAguaPed: 10,
       cPacaAguaEnt: 0,

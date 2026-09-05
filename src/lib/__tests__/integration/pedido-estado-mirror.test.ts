@@ -25,7 +25,9 @@ describe('G5.2 — Pedido.estado == estadoEntrega (invariante de mirror)', () =>
       data: { clienteId, canal: 'DOMICILIO', total: 1000, saldo: 1000, estado: 'ENTREGADO', estadoEntrega: 'ENTREGADO' },
     })
     await testPrisma.pedido.create({
-      data: { clienteId, canal: 'DOMICILIO', total: 1000, saldo: 1000, estado: 'CANCELADO', estadoEntrega: 'CANCELADO' },
+      // chk_pedido_estadopago_proyectado: estadoEntrega CANCELADO → estadoPago
+      // debe ser ANULADO (no el default PENDIENTE).
+      data: { clienteId, canal: 'DOMICILIO', total: 1000, saldo: 1000, estado: 'CANCELADO', estadoEntrega: 'CANCELADO', estadoPago: 'ANULADO' },
     })
 
     const rows = await testPrisma.$queryRaw<Array<{ n: bigint }>>`

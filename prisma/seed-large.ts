@@ -131,7 +131,9 @@ async function seedPedidos(count: number) {
       clienteId,
       origen: Math.random() > 0.5 ? OrigenPedido.PEDIDO : OrigenPedido.VENTA_RAPIDA,
       estadoEntrega: EstadoEntrega.PENDIENTE,
-      estadoPago: pagado ? EstadoPago.PAGADO : EstadoPago.PENDIENTE,
+      // G5.5: pagado=true + estadoEntrega=PENDIENTE → ANTICIPADO, no PAGADO
+      // (el pago antecede a la entrega, ADR-PEDIDO-ESTADO-CANONICO-001 §2).
+      estadoPago: pagado ? EstadoPago.ANTICIPADO : EstadoPago.PENDIENTE,
       canal: Math.random() > 0.5 ? 'DOMICILIO' : 'PUNTO',
       total,
       totalPagado: pagado ? total : 0,

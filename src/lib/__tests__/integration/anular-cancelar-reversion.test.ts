@@ -9,6 +9,7 @@ import { PrismaPedidoRepository } from '@/modules/pedidos/infrastructure/reposit
 import { PrismaFacturaRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaFacturaRepository'
 import { PrismaNotaCreditoRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaNotaCreditoRepository'
 import { PrismaTransactionManager } from '@/modules/pedidos/infrastructure/transactions/PrismaTransactionManager'
+import { calcularEstadoPago } from '@/modules/pedidos/domain/services/pagos-calculator.service'
 
 let clienteId: string
 
@@ -20,7 +21,9 @@ async function pedidoPagado(estado: 'ENTREGADO' | 'PENDIENTE', pagado: number) {
       origen: 'PEDIDO',
       estadoEntrega: estado,
       estado: estado,
-      estadoPago: pagado >= 20000 ? 'PAGADO' : 'PARCIAL',
+      // chk_pedido_estadopago_proyectado: pagado completo + PENDIENTE (aún
+      // no entregado) → ANTICIPADO, no PAGADO.
+      estadoPago: calcularEstadoPago(20000, pagado, estado),
       total: 20000,
       totalPagado: pagado,
       saldo: 20000 - pagado,

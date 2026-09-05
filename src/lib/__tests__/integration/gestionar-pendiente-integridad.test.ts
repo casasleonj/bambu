@@ -12,6 +12,7 @@ import { PrismaPedidoRepository } from '@/modules/pedidos/infrastructure/reposit
 import { PrismaFacturaRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaFacturaRepository'
 import { PrismaPagoRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaPagoRepository'
 import { PrismaTransactionManager } from '@/modules/pedidos/infrastructure/transactions/PrismaTransactionManager'
+import { calcularEstadoPago } from '@/modules/pedidos/domain/services/pagos-calculator.service'
 
 let adminId: string
 let clienteId: string
@@ -40,7 +41,9 @@ async function crearPedidoConBotellonesPendientes(
       saldo: 0,
       estadoEntrega,
       estado: estadoEntrega,
-      estadoPago: 'PAGADO',
+      // chk_pedido_estadopago_proyectado: pagado completo + entrega aún no
+      // ocurrida (PENDIENTE/EN_RUTA) → ANTICIPADO, no PAGADO.
+      estadoPago: calcularEstadoPago(total, total, estadoEntrega),
       cBotellonFabPed: pedidos,
       cBotellonFabEnt: entregados,
       precioBotellonFab: precioHistorico,
@@ -138,7 +141,7 @@ describe('N2 — GestionarPendienteUseCase', () => {
       data: {
         clienteId, canal: 'PUNTO', origen: 'PEDIDO', tipo: 'PUNTO',
         total, totalPagado: total, saldo: 0,
-        estadoEntrega: 'PENDIENTE', estado: 'PENDIENTE', estadoPago: 'PAGADO',
+        estadoEntrega: 'PENDIENTE', estado: 'PENDIENTE', estadoPago: 'ANTICIPADO',
         cBotellonFabPed: 10, cBotellonFabEnt: 6, precioBotellonFab: 9500,
         items: { create: [{ producto: 'BOTELLON', cantPedido: 10, cantEntrega: 6, precio: 9500, subtotal: total }] },
       },

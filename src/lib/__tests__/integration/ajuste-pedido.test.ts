@@ -24,7 +24,9 @@ describe('FASE FINAL — ajuste de pedido (§6)', () => {
 
   it('dos ajustes concurrentes del mismo pedido se serializan (2 registros)', async () => {
     const pedido = await testPrisma.pedido.create({
-      data: { clienteId, canal: 'DOMICILIO' },
+      // total=0/totalPagado=0 (default) → PENDIENTE (default estadoEntrega)
+      // proyecta ANTICIPADO (chk_pedido_estadopago_proyectado).
+      data: { clienteId, canal: 'DOMICILIO', estadoPago: 'ANTICIPADO' },
     })
     await testPrisma.pedidoItem.create({
       data: { pedidoId: pedido.id, producto: 'PACA_AGUA', cantPedido: 10 },
@@ -64,7 +66,9 @@ describe('FASE FINAL — ajuste de pedido (§6)', () => {
 
   it('cantidadOriginal se lee del PedidoItem real, no del cliente', async () => {
     const pedido = await testPrisma.pedido.create({
-      data: { clienteId, canal: 'DOMICILIO' },
+      // total=0/totalPagado=0 (default) → PENDIENTE (default estadoEntrega)
+      // proyecta ANTICIPADO (chk_pedido_estadopago_proyectado).
+      data: { clienteId, canal: 'DOMICILIO', estadoPago: 'ANTICIPADO' },
     })
     await testPrisma.pedidoItem.create({
       data: { pedidoId: pedido.id, producto: 'PACA_HIELO', cantPedido: 7 },
@@ -89,7 +93,9 @@ describe('FASE FINAL — ajuste de pedido (§6)', () => {
 
   it('retry con el mismo offlineId no duplica el ajuste', async () => {
     const pedido = await testPrisma.pedido.create({
-      data: { clienteId, canal: 'DOMICILIO' },
+      // total=0/totalPagado=0 (default) → PENDIENTE (default estadoEntrega)
+      // proyecta ANTICIPADO (chk_pedido_estadopago_proyectado).
+      data: { clienteId, canal: 'DOMICILIO', estadoPago: 'ANTICIPADO' },
     })
     const useCase = new AjustarPedidoCantidadUseCase()
     const offlineId = uniqueId('ajuste-retry')
@@ -114,7 +120,9 @@ describe('FASE FINAL — ajuste de pedido (§6)', () => {
 
   it('rechaza ajuste sin autorización', async () => {
     const pedido = await testPrisma.pedido.create({
-      data: { clienteId, canal: 'DOMICILIO' },
+      // total=0/totalPagado=0 (default) → PENDIENTE (default estadoEntrega)
+      // proyecta ANTICIPADO (chk_pedido_estadopago_proyectado).
+      data: { clienteId, canal: 'DOMICILIO', estadoPago: 'ANTICIPADO' },
     })
     const useCase = new AjustarPedidoCantidadUseCase()
 

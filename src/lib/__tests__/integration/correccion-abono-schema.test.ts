@@ -23,7 +23,9 @@ describe('CorreccionAbono — schema', () => {
       },
     })
     const pedido = await testPrisma.pedido.create({
-      data: { clienteId: cliente.id, canal: 'DOMICILIO', total: 20000, totalPagado: 20000, saldo: 0 },
+      // chk_pedido_estadopago_proyectado: pagado completo + PENDIENTE
+      // (default estadoEntrega) → ANTICIPADO.
+      data: { clienteId: cliente.id, canal: 'DOMICILIO', total: 20000, totalPagado: 20000, saldo: 0, estadoPago: 'ANTICIPADO' },
     })
     const factura = await testPrisma.factura.create({
       data: {

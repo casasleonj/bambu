@@ -114,11 +114,13 @@ describe('IDOR / permisos a nivel de query', () => {
       const otroEmbarque = await testPrisma.embarque.create({
         data: { trabajadorId: otroTrabajador.id, fecha: new Date(), estado: 'ABIERTO' },
       })
+      // chk_pedido_estadopago_proyectado: total=0/totalPagado=0 (default) +
+      // PENDIENTE (default estadoEntrega) → ANTICIPADO.
       const miPedido = await testPrisma.pedido.create({
-        data: { clienteId: c.id, embarqueId: miEmbarque.id, canal: 'DOMICILIO' },
+        data: { clienteId: c.id, embarqueId: miEmbarque.id, canal: 'DOMICILIO', estadoPago: 'ANTICIPADO' },
       })
       const otroPedido = await testPrisma.pedido.create({
-        data: { clienteId: c.id, embarqueId: otroEmbarque.id, canal: 'DOMICILIO' },
+        data: { clienteId: c.id, embarqueId: otroEmbarque.id, canal: 'DOMICILIO', estadoPago: 'ANTICIPADO' },
       })
 
       const misPedidos = await testPrisma.pedido.findMany({

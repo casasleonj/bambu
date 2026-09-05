@@ -1550,6 +1550,15 @@ model Factura {
 //   chk_compra_cantidad / chk_compra_monto
 //   chk_insumo_stockmin
 //
+// Aplicado en 20260905_add_pedido_estadopago_check (G5.5,
+// ADR-PEDIDO-ESTADO-CANONICO-001 §2 — estadoPago es proyección, no fuente):
+//   chk_pedido_estadopago_proyectado  estadoPago = f(total, totalPagado, estadoEntrega),
+//                                     salvo el override 'VENCIDO' del cron
+//                                     vencimiento-promesas. Ver el .sql para
+//                                     la fórmula completa (incluye NO_ENTREGADO
+//                                     en la rama ANTICIPADO, corrigiendo el
+//                                     borrador original del ADR).
+//
 // ====================
 // SECUENCIA PARA Factura.numero (Fase 3 §2.3)
 // ====================

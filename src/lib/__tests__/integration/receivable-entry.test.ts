@@ -28,6 +28,7 @@ describe('FASE 5 — ReceivableEntry (proyección de auditoría)', () => {
         total: 20000,
         totalPagado: 5000,
         saldo: 15000,
+        estadoPago: 'PARCIAL',
       },
     })
 
@@ -85,7 +86,7 @@ describe('FASE 5 — ReceivableEntry (proyección de auditoría)', () => {
     // - totalPagado): saldo pasa de 10000 a 9500.
     await testPrisma.pedido.update({
       where: { id: pedido.id },
-      data: { totalPagado: 500, saldo: 9500 },
+      data: { totalPagado: 500, saldo: 9500, estadoPago: 'PARCIAL' },
     })
 
     const canonico = Number(
@@ -109,10 +110,10 @@ describe('FASE 5 — ReceivableEntry (proyección de auditoría)', () => {
     const batchOfflineId = `batch-${Date.now()}`
 
     const pedidoA = await testPrisma.pedido.create({
-      data: { clienteId, canal: 'DOMICILIO', total: 10000, totalPagado: 10000, saldo: 0 },
+      data: { clienteId, canal: 'DOMICILIO', total: 10000, totalPagado: 10000, saldo: 0, estadoPago: 'ANTICIPADO' },
     })
     const pedidoB = await testPrisma.pedido.create({
-      data: { clienteId, canal: 'DOMICILIO', total: 10000, totalPagado: 5000, saldo: 5000 },
+      data: { clienteId, canal: 'DOMICILIO', total: 10000, totalPagado: 5000, saldo: 5000, estadoPago: 'PARCIAL' },
     })
 
     await expect(

@@ -47,9 +47,11 @@ async function crearPedidoConBotellonesPendientes(embarqueId: string) {
       total: 65_000,
       totalPagado: 65_000,
       saldo: 0,
+      // chk_pedido_estadopago_proyectado: pagado completo + EN_RUTA (aún no
+      // entregado) → ANTICIPADO, no PAGADO.
       estadoEntrega: 'EN_RUTA',
       estado: 'EN_RUTA',
-      estadoPago: 'PAGADO',
+      estadoPago: 'ANTICIPADO',
       embarqueId,
       cBotellonFabPed: 10,
       cBotellonFabEnt: 6,

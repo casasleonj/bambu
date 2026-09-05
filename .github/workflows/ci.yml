@@ -198,6 +198,11 @@ jobs:
           # y los GRANT no son expresables en schema.prisma, así que `db push`
           # no los crea. Idempotente (IF NOT EXISTS por tabla/índice/FK/CHECK).
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260901_add_correccion_abono/migration.sql
+          # G5.5 (ADR-PEDIDO-ESTADO-CANONICO-001 §2): CHECK `chk_pedido_estadopago_proyectado`
+          # no expresable en schema.prisma. `db push` no la crea; sin esta línea
+          # los tests de `pedido-estadopago-check.test.ts` (y cualquier otro que
+          # dependa del CHECK) correrían en CI sin el constraint presente.
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260905_add_pedido_estadopago_check/migration.sql
 
       - name: Run integration tests
         run: npm run test:integration
@@ -334,6 +339,8 @@ jobs:
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260829_receivable_entry_offlineid_not_unique/migration.sql
           # ADR-CORRECCION-MONETARIA-001 g2.1 — CHECK + GRANT no expresables en schema.prisma.
           psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260901_add_correccion_abono/migration.sql
+          # G5.5 — CHECK `chk_pedido_estadopago_proyectado`, no expresable en schema.prisma.
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260905_add_pedido_estadopago_check/migration.sql
 
       - name: Seed test data
         run: npx tsx prisma/seed-test.ts
