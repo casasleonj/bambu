@@ -727,7 +727,6 @@ export async function generarPedidosRecurrentes(
         data: {
           clienteId: effectiveClienteId,
           negocioId: pt.negocioId,
-          tipo: pt.tipo,
           canal: pt.canal,
           origen: 'RECURRENTE',
           estadoEntrega: 'PENDIENTE',

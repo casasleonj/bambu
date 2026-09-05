@@ -313,7 +313,7 @@ export class CrearPedidoUseCase {
         entidad: 'Pedido',
         registroId: saved.id.get(),
         accion: 'CREATE',
-        datos: { numero: saved.numero, origen: origen.get(), tipo: canal.get(), total, clienteId },
+        datos: { numero: saved.numero, origen: origen.get(), canal: canal.get(), total, clienteId },
         usuarioId: input.createdById,
       }, tx)
 

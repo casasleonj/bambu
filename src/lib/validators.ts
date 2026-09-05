@@ -87,7 +87,8 @@ export const PedidoCreateSchema = z.object({
   // `false` → "entregar después" (queda PENDIENTE + ANTICIPADO si va prepago).
   // Gated por NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR en el route.
   entregado: z.boolean().optional(),
-  tipo: z.enum(['ENVIO', 'PUNTO']).optional(),
+  // `tipo` removido (G6, ADR-PEDIDO-ORIGEN-CANAL-001 — sale del contrato,
+  // 100% derivado de `canal`, ningún caller vivo lo enviaba ni CrearPedidoUseCase lo leía).
   productos: z.object({
     pacaAgua: z.coerce.number().int().min(0).optional(),
     pacaHielo: z.coerce.number().int().min(0).optional(),
@@ -188,10 +189,10 @@ export const VentaLibreSchema = z.object({
   // sends. The form is currently an orphan (no page in production uses it),
   // but extending the schema ensures the form is "API-compatible" if
   // wired in the future. The server uses the values from the original
-  // `items`/`pagos` fields; `canal`/`tipo`/`ventaRapida` are stored
-  // in the obs if needed but otherwise ignored server-side.
+  // `items`/`pagos` fields; `canal`/`ventaRapida` are stored in the obs if
+  // needed but otherwise ignored server-side. `tipo` removed (G6,
+  // ADR-PEDIDO-ORIGEN-CANAL-001 — sale del contrato, 100% derivado de canal).
   canal: z.enum(['PUNTO', 'DOMICILIO']).optional(),
-  tipo: z.enum(['ENVIO', 'PUNTO']).optional(),
   ventaRapida: z.boolean().optional(),
   preciosManuales: z.record(z.string(), z.number()).optional(),
   total: z.number().optional(),

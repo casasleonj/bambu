@@ -151,7 +151,11 @@ export class PedidoMapper {
       estadoEntrega: pedido.estadoEntrega.get(),
       estadoPago: pedido.estadoPago.get(),
       estado: pedido.estadoEntrega.get(), // legacy sync
-      tipo: pedido.canal.get() === 'PUNTO' ? 'PUNTO' : 'ENVIO',
+      // G6 (ADR-PEDIDO-ORIGEN-CANAL-001): `tipo` es 100% derivado de `canal`
+      // y sale del contrato — se deja de escribir (columna con default DB
+      // 'ENVIO', nadie la lee ya en producción). El drop de la columna en sí
+      // queda para la fase D, junto con `Pedido.estado` (ver ADR, sección
+      // "Reevaluación" — acoplamiento de ~20 archivos, soak period propio).
       total: pedido.total.toDecimal(),
       totalPagado: pedido.totalPagado.toDecimal(),
       saldo: pedido.saldo.toDecimal(),

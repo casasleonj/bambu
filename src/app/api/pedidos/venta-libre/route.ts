@@ -227,7 +227,6 @@ export async function POST(request: NextRequest) {
         data: {
           clienteId: clienteFinalId,
           createdById: authResult.user?.id,
-          tipo: 'ENVIO',
           canal,
           origen: OrigenPedido.VENTA_LIBRE,
           estadoEntrega: estadoEntregaFinal,

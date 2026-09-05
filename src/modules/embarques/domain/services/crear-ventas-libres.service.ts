@@ -82,7 +82,6 @@ export class CrearVentasLibresService {
         data: {
           numero: numeroVenta,
           clienteId: venta.clienteId,
-          tipo: 'ENVIO',
           canal: 'DOMICILIO',
           origen: 'VENTA_LIBRE',
           estadoEntrega: 'ENTREGADO',

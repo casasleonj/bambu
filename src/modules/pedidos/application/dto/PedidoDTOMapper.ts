@@ -57,7 +57,6 @@ export class PedidoDTOMapper {
       negocioId: pedido.negocioId,
       embarqueId: pedido.embarqueId ?? null,
       canal: pedido.canal.get(),
-      tipo: pedido.canal.get() === 'PUNTO' ? 'PUNTO' : 'ENVIO',
       origen: pedido.origen.get(),
       estado: estadoEntrega, // Backward compat: legacy 'estado' mirrors estadoEntrega
       estadoEntrega,
