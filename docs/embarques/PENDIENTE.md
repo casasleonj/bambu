@@ -1,19 +1,18 @@
 # Embarques Frontend — Backlog pendiente
 
-_Actualizado: 2026-09-06 — corrección: las Fases 2-9 (incluidas 5/6b/7, que
-este doc marcaba como "branch sin PR") ya están mergeadas a `main` desde
-hace más de una semana (`main`, PR #143 y anteriores). El flag
-`NEXT_PUBLIC_EMBARQUES_V2` ya es default ON en código
-(`!== 'false'`). El "Bloqueante inmediato" de abajo quedó obsoleto — se
-deja tachado, no borrado, para no perder el historial. Único pendiente
-real: Fase 10._
+_Actualizado: 2026-09-06 — el rework completo (Fases 2-10) está cerrado.
+Fases 2-9 ya estaban mergeadas a `main` desde antes de esta corrección
+(el estado previo de este doc, que las marcaba "branch sin PR", quedó
+obsoleto). Fase 10 (retiro del flag `NEXT_PUBLIC_EMBARQUES_V2` y la UI
+legacy) se cerró en PR #203. El "Bloqueante inmediato" de abajo queda
+tachado, no borrado, para no perder el historial._
 
 - Contexto y mental model: `docs/embarques/ONBOARDING-EQUIPO.md`
 - Plan maestro y decisiones D1-D7: `docs/embarques/00-plan-frontend-completo.md`
 - Contrato de endpoints: `docs/embarques/02-api-contract.md`
 - Autoridad de producto: `planembarquesuxequipodesarrollo(1).md`
 
-**Workflow:** trunk-based. Commits directos a `main` detrás del flag `NEXT_PUBLIC_EMBARQUES_V2` (default ON en dev; OFF revierte a la UI vieja). Rollback = apagar el flag. Backend congelado: no tocar `src/modules/embarques/domain/**` ni use-cases sin ADR.
+**Workflow:** trunk-based, commits directos a `main`. El flag `NEXT_PUBLIC_EMBARQUES_V2` y la UI legacy que controlaba se retiraron en Fase 10 (PR #203) — el Command Center es ahora la única UI de `/embarques`, sin flag. Backend congelado: no tocar `src/modules/embarques/domain/**` ni use-cases sin ADR.
 
 **Definición de "hecho" (aplica a toda fase):**
 - `npx tsc --noEmit` limpio
@@ -37,7 +36,9 @@ real: Fase 10._
 | **7** | Reconciliation (cierre = wizard forzado) | ✅ PR #143 mergeado a `main` (preview best-effort, E2E del wizard) |
 | **8** | Test hardening + bugs preexistentes | ✅ bugs #1 y #2 resueltos (`ec36c663`); ítems 4-5 (roles) cubiertos por `e2e/embarques-all-contexts.spec.ts` (admin/asistente/repartidor) — no confirmado como la matriz formal exacta original, pero cobertura real existe |
 | **9** | Flag a default ON | ✅ `NEXT_PUBLIC_EMBARQUES_V2` es default ON en código desde antes de esta corrección |
-| **10** | Retiro de código legacy pre-V2 | ⏳ **Único pendiente real.** `embarques-client/index.tsx` todavía tiene ambas ramas (`{!EMBARQUES_V2 && ...}` / `{EMBARQUES_V2 ? ... : ...}`) — el flag sigue existiendo, la UI vieja no se borró |
+| **10** | Retiro de código legacy pre-V2 | ✅ PR #203 mergeado a `main` — flag y UI legacy borrados (`embarque-card.tsx`, `resumen-estados.tsx` eliminados) |
+
+**Rework completo (Fases 2-10) cerrado.** Notas menores sin verificar, no bloqueantes: `ObligacionPendiente` (§7) como aviso en el panel de estado operativo; mover el guard `PAGOS_EXCEDIDOS` antes del `pedido.update` (necesita ADR propio).
 
 ### ~~Bloqueante inmediato~~ (obsoleto — ya resuelto, se deja como historial)
 - [x] ~~PO revisa y mergea PRs #134, #135, #136, #137 a `main`.~~
