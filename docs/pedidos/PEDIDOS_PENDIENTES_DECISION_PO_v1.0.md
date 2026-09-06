@@ -1,6 +1,7 @@
 # Pedidos — Pendientes de Decisión PO (depuración final)
 
 - Estado: entregable de depuración, por instrucción del equipo (2026-09-05)
+- **Actualización 2026-09-06**: el PO tomó dos decisiones de producto nuevas, fundamentadas en la evidencia de este mismo documento — `ventaRapida → origen` (§5.5) y G11 corrección-vs-nueva-demanda (§2). Ambas ya están implementadas y mergeadas (PR #205, PR #206). Se actualiza este documento en el lugar en vez de reabrir uno nuevo, siguiendo el mismo patrón ya usado para G6 (§5.1): la sección original se conserva como registro del estado en que se tomó la decisión, y se agrega la resolución explícitamente.
 - Regla aplicada: Contexto Maestro → Plan Maestro → ADR → decisiones posteriores → evidencia histórica → código actual. Ninguna decisión ya tomada se re-presenta como pendiente.
 - Método de esta depuración: cada punto se contrastó contra ADRs `Aceptado`, el Plan Maestro V11.1, memoria del proyecto y el estado real del código/producción (verificado con `grep`/`tsc`/queries directas a Supabase donde aplica) — no se asume nada por inferencia.
 
@@ -40,11 +41,23 @@ Ninguna — donde hay texto recuperado, coincide con decisiones ya implementadas
 
 ---
 
-## 2. G11 — `PedidoCantidadAjuste` / pedido-hijo (decisión de producto, NO resuelta acá)
+## 2. G11 — `PedidoCantidadAjuste` / pedido-hijo — 🟢 DECIDIDO (PO, 2026-09-06)
 
-Se mantiene abierto, exactamente como instruyó el equipo. Esto NO es una implementación — es la organización del problema para que el PO decida con información completa.
+### 2.0 Resolución (PR #206, mergeado)
 
-### 2.1 El problema en sus propios términos
+El PO tomó la decisión sobre la organización presentada en §2.1-2.4 (conservada abajo tal como se entregó, sin editar retroactivamente):
+
+- **A. Corrección** (caso A de §2.2): exclusiva de `PedidoCantidadAjuste`/`AjustarPedidoCantidadUseCase`. Nunca destructiva, conserva `cantidadOriginal`. Se aplica en vivo (no solo auditoría) con 3 guards nuevos: `CORRECCION_PEDIDO_CERRADO`, `CORRECCION_SOBRE_CANTIDAD_YA_ENTREGADA`, `CORRECCION_GENERARIA_SOBREPAGO`.
+- **B. Nueva demanda** (caso B de §2.2): SIEMPRE un `Pedido` nuevo e independiente (número, items, pagos, factura propios) — nunca `PedidoCantidadAjuste`. Se enlaza al pedido que originó la demanda vía `Pedido.pedidoOrigenId` (FK simple, self-referencial, `onDelete: Restrict`) exclusivamente para trazabilidad — no comparte ciclo de vida ni estado con el original. Esto corresponde a la alternativa 2 de §2.4, acotada: no crea un mecanismo de "pedido-hijo", crea una relación pedido↔pedido explícita y auditable.
+- **C. Cantidad ya entregada** = histórico, nunca se toca retroactivamente (guard `CORRECCION_SOBRE_CANTIDAD_YA_ENTREGADA`).
+- **D. Pedido cerrado** (`ENTREGADO`/`CANCELADO`/`ANULADO`) no se reabre silenciosamente vía corrección (guard `CORRECCION_PEDIDO_CERRADO`).
+- **E. Pedido-hijo NO se reintroduce.** `crearPedidoHijo()` (`Pedido.ts:337`) permanece sin callers, sin redefinir, sin usar.
+
+De los 9 "casos mixtos" de §2.2/C, quedan resueltos por la decisión: aumento/disminución de cantidad sobre lo pendiente (→ A si es corrección, → B si es demanda nueva), corrección post-entrega-parcial (→ siempre B, por el guard C), pedido pagado/parcialmente pagado (→ A recalcula `total`/`saldo`/`estadoPago` y rechaza si generaría sobrepago; B es una obligación nueva con su propio ciclo de pago), pedido facturado (→ A sincroniza la `Factura` existente; B crea su propia `Factura`), pedido en ejecución/cerrado (→ ver D).
+
+**Implementación**: PR #206 (`feat/pedidos-g11-correccion-nueva-demanda`). Ver commit para el detalle completo de guards, migración (`prisma/migrations/20260906_add_pedido_origen_id`) y pruebas (`ajuste-pedido.test.ts` +4 tests, `pedido-nueva-demanda-relacionado.test.ts` nuevo, 3 tests).
+
+### 2.1 El problema en sus propios términos (histórico, conservado tal como se entregó — no se re-presenta como pendiente)
 
 Hoy, cuando la cantidad de un pedido cambia después de creado, el código tiene **dos mecanismos que ya existen y funcionan, pero nunca se decidió formalmente cuál aplica a cuál caso**:
 - `PedidoCantidadAjuste` (tabla, usada hoy por N2 para registrar diferenciales de precio — `delta: 0` siempre en esos casos, el campo `delta` para cambio de CANTIDAD real está definido en el schema pero sin un caso de uso de dominio que lo escriba con valor != 0 fuera del ajuste manual de `ajuste-pedido.test.ts`/`FASE FINAL — ajuste de pedido §6`).
@@ -88,6 +101,8 @@ Hoy, cuando la cantidad de un pedido cambia después de creado, el código tiene
 3. **Ninguno de los dos — todo cambio de cantidad post-creación es un pedido nuevo independiente**, sin relación formal, y el vínculo comercial (mismo cliente, mismo día) se resuelve por reporte, no por dato relacional. Ventaja: cero mecanismo nuevo. Riesgo: pierde trazabilidad de "esto era una corrección de aquello".
 
 **No se recomienda ninguna de las tres** — es exactamente la decisión que el equipo pidió no tomar por inferencia técnica.
+
+**Resolución (2026-09-06, ver §2.0)**: el PO eligió la alternativa 2, acotada — pedido-hijo como tal (compartiendo ciclo de vida/estado con el original) no se crea nunca; en su lugar, la nueva demanda es un `Pedido` genuinamente independiente con una FK de trazabilidad (`pedidoOrigenId`) hacia el original.
 
 ---
 
@@ -200,12 +215,14 @@ El propio ADR secuencia el drop de columnas **deliberadamente junto con** la fas
 **Ya hecho (G6.1):**
 - Lectores de `pedidos-client`, `/api/pedidos`, `ListarPedidosUseCase`, `PrismaPedidoRepository` migrados a `canal`. ✅
 
+**Ya hecho (2026-09-06, PR #201):**
+- Escritores de `Pedido.tipo` (11 sitios) eliminados: `PedidoMapper.ts`, `PedidoDTOMapper.ts`, `venta-libre/route.ts`, `crear-ventas-libres.service.ts`, `src/lib/recurrentes.ts`, `validators.ts`, `openapi.json/route.ts` ya no derivan ni escriben `tipo`. Lectores residuales (`alertas-table.tsx`/`pedido-table.tsx` vía `p.estado`, `api/clientes/[id]/route.ts`) simplificados a `estadoEntrega` únicamente. Dual control de "Origen del pedido" (`tipo`) removido de la UI de recurrentes (`nuevo-client`/`editar-client`) — quedó solo "Entrega" (`canal`), cerrando además un bug real de doble captura redundante encontrado durante la implementación.
+
 **Brecha real — todavía sin hacer:**
-- **Escritores de `Pedido.tipo`** (11 sitios, verificado por grep 2026-09-05): `PedidoMapper.ts`, `PedidoDTOMapper.ts`, `CrearPedidoUseCase.ts`, `venta-libre/route.ts`, `crear-ventas-libres.service.ts`, `recurrentes/route.ts`, `nuevo-client/index.tsx`, `venta-rapida-form/{index.tsx,types.ts}`, `validators.ts`, `openapi.json/route.ts` — todos siguen derivando y escribiendo `tipo` en paralelo a `canal`.
-- **Lectores residuales de `tipo`**: `alertas-table.tsx`, `pedido-table.tsx`, `api/pedidos/recurrentes/route.ts`.
-- **`ventaRapida` en `PedidoCreateSchema`** (`validators.ts:85,195`): sigue siendo alias aceptado.
 - **`Pedido.tipo`/`PlantillaRecurrente.tipo` (columnas)**: siguen en el schema, sin drop.
 - **Dependencia declarada por el ADR**: el drop de columna real está bloqueado en el mismo lugar que `ADR-PEDIDO-ESTADO-CANONICO-001` fase D (`DROP COLUMN Pedido.estado`) — reevaluado y **desprioritizado en PR #153** por acoplamiento real de ~20 archivos (rutas de API, tipos de payload de embarques, scripts de `prisma/`, tests de integración), no por falta de decisión.
+
+**`ventaRapida`**: no era parte de esta brecha de G6 — era un mecanismo activo sin relación con `Pedido.tipo` (confundido inicialmente con un alias legacy). Resuelto por separado, ver §5.5.
 
 ### 5.4 Acción
 
@@ -213,14 +230,39 @@ Conforme a la instrucción del equipo ("continuar la implementación conforme al
 
 ---
 
+## 5.5. `ventaRapida` → `origen` — 🟢 DECIDIDO (PO, 2026-09-06)
+
+### 5.5.1 El problema
+
+`ventaRapida: canal === 'PUNTO'` (`pedido-form-unified/index.tsx`, previo a la resolución) mezclaba dos ejes ortogonales: `canal` (PUNTO|DOMICILIO, forma de entrega) y el origen comercial de la venta (con/sin cliente real). El propio `ADR-PEDIDO-ORIGEN-CANAL-001` exige que `origen: 'VENTA_RAPIDA' + canal: 'DOMICILIO'` sea una combinación válida y creable — con la lógica vieja, esa combinación era **inalcanzable** desde el formulario principal (toda venta por domicilio se clasificaba como `origen: 'PEDIDO'` sin importar si tenía cliente real o no). Esto no era deuda técnica cosmética: era una contradicción directa entre el ADR ya aprobado y el código en producción.
+
+### 5.5.2 Decisión
+
+`origen` se deriva de si hay un cliente real, nunca de `canal`:
+- Cliente real seleccionado (o cliente nuevo capturado en el formulario) → `origen: 'PEDIDO'`.
+- Sin cliente real, usando el cliente canónico `CONSUMIDOR_FINAL` → `origen: 'VENTA_RAPIDA'`.
+- `canal` (PUNTO|DOMICILIO) se envía y se decide de forma completamente independiente — las 4 combinaciones `origen × canal` son válidas y creables, incluyendo `VENTA_RAPIDA + DOMICILIO` (la que antes era inalcanzable).
+- `ventaRapida: boolean` sale del contrato (`PedidoCreateSchema`, `CrearPedidoInput`, payloads de formulario/hook) — reemplazado por `origen: 'PEDIDO' | 'VENTA_RAPIDA'` explícito.
+
+### 5.5.3 Implementación
+
+PR #205 (`feat/pedidos-ventarapida-origen`, mergeado en `main` `85c37f6f`): `pedido-form-unified`, `use-crear-pedido`, `pedidos-client`, `CrearPedidoUseCase`, `validators.ts` (`PedidoCreateSchema`, `VentaLibreSchema`), `venta-rapida-form` (componente huérfano, actualizado por consistencia), `openapi.json`. Test nuevo `pedido-origen-canal-independientes.test.ts` (5 tests, Postgres real): las 4 combinaciones origen×canal explícitas + default cuando se omite `origen`.
+
+### 5.5.4 Revisión de reportes/queries que asumían `canal === 'PUNTO'` ⇒ venta rápida
+
+Verificado (grep + lectura) que ningún reporte/query de `src/app/api/reportes/**` ni `src/lib/embarque-stats.ts` deriva "venta rápida" a partir de `canal` — todos los que distinguen origen comercial ya leían `Pedido.origen` directamente (introducido junto con `OrigenPedidoVO`, antes de esta corrección). No se encontraron consumidores adicionales a corregir fuera de los listados en §5.5.3.
+
+---
+
 ## 6. Matriz final de decisiones
 
 | Punto | Estado | Autoridad | Acción |
 |---|---|---|---|
-| G6 — `canal` canónico, `tipo` eliminado | 🟢 **DECIDIDO** (ADR Aceptado 2026-09-01) | ADR vigente | Implementar brecha (§5.4) — PR de schema dedicado, sin re-consultar al PO |
+| G6 — `canal` canónico, `tipo` eliminado | 🟢 **DECIDIDO** (ADR Aceptado 2026-09-01) | ADR vigente | Escritores/lectores de `tipo` ya migrados (PR #201, 2026-09-06) — pendiente solo el `DROP COLUMN` (§5.4), junto con `Pedido.estado` fase D |
 | G6.1 (lectores → canal) | ✅ Implementado | — | Ninguna |
 | Enum `CanalPedido` vs `String`+VO | 🟢 **DECIDIDO** (el ADR elige `String`+VO) | ADR vigente | Ninguna — no reabrir |
-| G11 — semántica de `PedidoCantidadAjuste`/pedido-hijo | 🔴 **DECISIÓN PO** | PO | No implementar. Usar §2 como insumo |
+| `ventaRapida` → `origen` | 🟢 **DECIDIDO E IMPLEMENTADO** (PO 2026-09-06, PR #205) | — | Ninguna — ver §5.5 |
+| G11 — semántica de `PedidoCantidadAjuste`/pedido-hijo | 🟢 **DECIDIDO E IMPLEMENTADO** (PO 2026-09-06, PR #206) | — | Ninguna — ver §2.0 |
 | Fase 3 — UX/UI de Pedidos (A vs B) | 🔴 **DECISIÓN PO** | PO | Usar §3 como insumo. Nota: exponer N2 a UI puede ser su propia mini-decisión (§3.3) |
 | Diferencial — mecanismo comercial | 🟢 **DECIDIDO E IMPLEMENTADO** (N2, #195-199) | ADR/Plan Maestro | Ninguna |
 | Diferencial — representación fiscal | 🔴 **BLOQUEO EXTERNO** | Contador + FE + DIAN | Consulta exacta en §4.3, no implementar mecanismo fiscal hasta respuesta |
@@ -249,4 +291,11 @@ Verificado explícitamente, uno por uno, contra el contenido de este documento:
 - **¿Errores de fechas/offline?** Fuera del alcance de este documento (no se tocó código de fechas/offline en esta depuración).
 - **¿Dependencias ocultas entre Pedido, Pago, Entrega, Cartera y Facturación?** La única detectada durante esta depuración (hallazgo operativo, no parte del encargo original): el `estadoPago` de `Pedido` no se recalculaba en 3 sitios reales de producción al cambiar `Pedido.total`/`estadoEntrega` desde otro flujo (cierre de embarque, diferencial N2, importación histórica) — ya corregido y verificado (PR #199 + migraciones de producción aplicadas).
 
-**Ambigüedad evitable remanente**: cero. Toda incertidumbre que queda (G11, Fase 3 A/B, fiscalidad, los 19 IDs de OC) está explícitamente identificada, clasificada, y asignada a su autoridad (PO o externo) en la matriz de §6.
+**Ambigüedad evitable remanente**: cero. Toda incertidumbre que queda (Fase 3 A/B, fiscalidad, los 19 IDs de OC) está explícitamente identificada, clasificada, y asignada a su autoridad (PO o externo) en la matriz de §6.
+
+### 7.1 Revisión adversarial de la actualización 2026-09-06
+
+- **¿Se re-presentan G11 o `ventaRapida` como pendientes en algún lugar del documento?** No — ambos quedaron 🟢 en la matriz (§6), con la sección original conservada como registro histórico (§2.1-2.4) y la resolución explícita antepuesta (§2.0, §5.5), siguiendo el mismo patrón ya usado para G6.
+- **¿Se resolvió alguna de las 4 decisiones restantes (Fase 3, OC-01-24, fiscal) por inferencia técnica, contradiciendo la instrucción de mantenerlas abiertas?** No — ninguna de las tres tiene cambios en esta actualización; siguen exactamente como en la versión anterior de este documento.
+- **¿La implementación de G11/`ventaRapida` contradice algo que el propio documento ya había señalado?** No — G11 implementa la alternativa 2 de §2.4 tal como estaba descrita (acotada a "sin pedido-hijo"); `ventaRapida`→`origen` resuelve exactamente la contradicción con `ADR-PEDIDO-ORIGEN-CANAL-001` señalada en el propio ADR (combinación `VENTA_RAPIDA`+`DOMICILIO` antes inalcanzable).
+- **¿Queda algo de la implementación sin verificar?** No — ambos PRs (#205, #206) verificados con `tsc --noEmit` limpio, suite unitaria completa (2820 tests) y suite de integración completa (229 tests) en verde, antes de mergear.
