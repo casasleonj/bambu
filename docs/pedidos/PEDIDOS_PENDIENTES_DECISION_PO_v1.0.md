@@ -1,7 +1,8 @@
 # Pedidos — Pendientes de Decisión PO (depuración final)
 
 - Estado: entregable de depuración, por instrucción del equipo (2026-09-05)
-- **Actualización 2026-09-06**: el PO tomó dos decisiones de producto nuevas, fundamentadas en la evidencia de este mismo documento — `ventaRapida → origen` (§5.5) y G11 corrección-vs-nueva-demanda (§2). Ambas ya están implementadas y mergeadas (PR #205, PR #206). Se actualiza este documento en el lugar en vez de reabrir uno nuevo, siguiendo el mismo patrón ya usado para G6 (§5.1): la sección original se conserva como registro del estado en que se tomó la decisión, y se agrega la resolución explícitamente.
+- **Actualización 2026-09-06 (1ª ronda)**: el PO tomó dos decisiones de producto nuevas, fundamentadas en la evidencia de este mismo documento — `ventaRapida → origen` (§5.5) y G11 corrección-vs-nueva-demanda (§2). Ambas ya están implementadas y mergeadas (PR #205, PR #206). Se actualiza este documento en el lugar en vez de reabrir uno nuevo, siguiendo el mismo patrón ya usado para G6 (§5.1): la sección original se conserva como registro del estado en que se tomó la decisión, y se agrega la resolución explícitamente.
+- **Actualización 2026-09-06 (2ª ronda)**: instrucción explícita del PO de resolver las decisiones restantes por inferencia razonada sobre el contexto real de Agua Bambú (ERP de reparto de agua/hielo, 6 usuarios totales, conectividad rural 2G/3G, offline-first no negociable, equipo pequeño sin capacidad de mantener dos UIs en paralelo). Se resuelven **dos de las tres**: Fase 3 (§3.5) y el descarte de los 19 IDs de OC (§1.5). La representación fiscal del diferencial (§4.5) **se decide NO resolver por inferencia** — es la única de las tres que depende de hechos verificables externos (normativa DIAN vigente, capacidad real de la API del proveedor de facturación electrónica) que esta sesión no tiene forma de confirmar; inventar una respuesta ahí sería fabricar un hecho regulatorio para un negocio real, lo cual el protocolo de este proyecto prohíbe explícitamente ("no fabricar opciones/números sin fuente"). Se documenta la razón en vez de forzar una respuesta.
 - Regla aplicada: Contexto Maestro → Plan Maestro → ADR → decisiones posteriores → evidencia histórica → código actual. Ninguna decisión ya tomada se re-presenta como pendiente.
 - Método de esta depuración: cada punto se contrastó contra ADRs `Aceptado`, el Plan Maestro V11.1, memoria del proyecto y el estado real del código/producción (verificado con `grep`/`tsc`/queries directas a Supabase donde aplica) — no se asume nada por inferencia.
 
@@ -38,6 +39,18 @@ Ninguna — donde hay texto recuperado, coincide con decisiones ya implementadas
 - Los 19 IDs (`OC-02, OC-03, OC-04, OC-07` a `OC-24`) no tienen texto recuperable en ningún documento ni commit del repositorio, en ninguna rama, en ningún punto del historial.
 - El documento que los definía (ALS Operación Comercial, citado por número de sección en múltiples ADRs) nunca fue comiteado — es un artefacto externo al repo (probablemente un upload de conversación que no se guardó como archivo en su momento).
 - **Recomendación**: si alguien del equipo conserva el documento ALS original (fuera del repo, en el historial de la herramienta que lo generó), recuperarlo cerraría el gap sin necesidad de descarte. Si no existe copia recuperable, el descarte formal de estos 19 IDs como "contrato histórico sin evidencia" es una decisión del PO, no técnica — se eleva como tal en la matriz final (§6).
+
+### 1.5 Resolución — 🟢 DESCARTE FORMAL (PO, 2026-09-06)
+
+**Decisión**: los 19 IDs (`OC-02, OC-03, OC-04, OC-07` a `OC-24`) se descartan formalmente como referencias de un contrato histórico sin evidencia recuperable. No se inventa contenido para ellos, no se re-crean, no se vuelven a buscar en futuras sesiones salvo que aparezca el documento ALS original por una vía externa al repo.
+
+**Razonamiento para el contexto de Agua Bambú**:
+- El documento fuente nunca existió versionado en el repo — no hay ningún artefacto real que "recuperar", solo una numeración que quedó huérfana de su definición.
+- El contrato de comportamiento que esos IDs pretendían fijar **ya está garantizado por otra vía**: los ADRs `Aceptado` (`ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001`, `ADR-PEDIDO-ESTADO-CANONICO-001`, etc.) y sus tests de integración son la fuente de verdad operativa hoy, independientemente de si un ID `OC-XX` específico les corresponde. Los 5 IDs que sí se recuperaron (§1.2) confirman que, donde había contenido, ya estaba cubierto — no hay evidencia de que los 19 restantes describieran algo que el código NO haga hoy.
+- Agua Bambú es un negocio de 6 usuarios sin auditoría externa que dependa de esa numeración específica; mantener 19 IDs "pendientes de descarte" indefinidamente en un documento de decisiones no aporta valor de negocio, solo ambigüedad de proceso.
+- Si el documento ALS original aparece en el futuro (fuera del repo), reconciliar retroactivamente es trivial: se compara contra el código/ADRs ya existentes, no contra una implementación que haya que reconstruir.
+
+**Acción**: cerrado. No queda ningún IDs de OC-01…OC-24 pendiente de descarte tras esta decisión (5 CONVERGIDOS + 19 DESCARTADOS = 24).
 
 ---
 
@@ -145,6 +158,20 @@ Ya existe un precedente real en este mismo repo: el rework de Embarques (`docs/e
 
 Ninguna sobre A vs B en general — es la decisión que corresponde al PO. Sí se recomienda, como insumo para esa decisión: **cuando llegue el momento de exponer N2 a la UI, tratarlo como su propia mini-decisión A/B independiente** (dado el hallazgo del punto 3.3), en vez de asumir que la respuesta general a "Fase 3" aplica automáticamente a esa pieza específica.
 
+### 3.5 Resolución — 🟢 B, evolución incremental (PO, 2026-09-06)
+
+**Decisión**: Pedidos sigue el camino **B — evolución incremental** sobre `pedidos-client/` existente. No se abre un `NEXT_PUBLIC_PEDIDOS_V2` ni un rediseño completo detrás de flag.
+
+**Razonamiento para el contexto de Agua Bambú** (aplicando la matriz de §3.2 a las dimensiones que de verdad importan para este negocio, no a las que importarían para un equipo más grande):
+- **Offline-first es un requisito no negociable** (conectividad rural 2G/3G, ver AGENTS.md) y hoy YA funciona sobre la base incremental. La opción A obliga a reconstruir esa capa desde cero antes de poder confiar en la UI nueva — es el riesgo más caro de la matriz y el único con potencial de romper algo que hoy es sólido.
+- **6 usuarios totales** hacen que el costo de mantener DOS UIs en paralelo durante un rollout (como exigió el precedente de Embarques V2) sea desproporcionado: no hay masa de usuarios que justifique amortizar esa complejidad, y el soporte de una migración a medio camino recae sobre el mismo equipo pequeño que opera el negocio.
+- **Ya hay evidencia real, no hipotética, de que lo incremental funciona en este dominio**: PR #171 (toggle entrega ahora/después) y PR #169 (chip REPORTADO/DISCREPANTE) insertaron conceptos nuevos de N2-adyacente sin producir incoherencia, en producción, con usuarios reales.
+- El único riesgo real identificado (§3.3) — que insertar la gestión de pendiente de N2 incrementalmente agregue un 4º concepto de estado a una cascada ya manual (`visual-states.ts`) — **no se resuelve descartándolo, se acota**: ver la excepción abajo.
+
+**Excepción explícita (no se resuelve hoy, no se decide por inferencia todavía)**: cuando se exponga `GestionarPendienteUseCase`/`CambiarModoActividadUseCase`/`LiberarActividadUseCase` (N2) a la UI por primera vez, esa pieza específica se evalúa como su propia mini-decisión A/B (tal como recomendaba §3.4) **en el momento en que exista una necesidad concreta de exponerla** — no ahora, porque hoy no hay ningún trabajo de UI de N2 en curso ni solicitado, y decidir el formato de una UI que todavía no se ha empezado a diseñar sería inventar alcance, no resolver una decisión pendiente real.
+
+**Acción**: ninguna implementación nueva se dispara por esta decisión — es una confirmación de que el patrón ya en uso (cambios incrementales sobre `pedido-form-unified`/`pedidos-client`, gated por flag cuando el cambio es sensible) sigue siendo la forma correcta de evolucionar Pedidos. Futuros PRs de UI de Pedidos no necesitan volver a plantear "A vs B" — ya está decidido.
+
 ---
 
 ## 4. Diferencial — bloqueo fiscal
@@ -190,6 +217,20 @@ No es "consultar en general" — son 3 preguntas concretas a 3 partes concretas:
 ### 4.4 Regla que sigue vigente
 
 `Pedido.total += diferencial` NO se convierte en la solución fiscal por defecto. Es la implementación comercial interna; la representación fiscal (nota débito / factura nueva / ninguna) se decide con la consulta de arriba y se implementa como una capa **adicional**, no como reemplazo del mecanismo actual.
+
+### 4.5 Por qué esta decisión NO se resuelve por inferencia (2026-09-06)
+
+A diferencia de Fase 3 (§3.5) y del descarte de OC (§1.5) — que son juicios de arquitectura/producto sobre un sistema y un equipo que esta sesión conoce en detalle —, esta pregunta depende de **hechos externos verificables que esta sesión no puede confirmar ni inferir de forma responsable**:
+
+1. Si la normativa colombiana (DIAN) vigente exige nota débito para este caso específico es una cuestión de derecho tributario real, no de diseño de software. Una respuesta incorrecta aquí no es un bug — es una exposición fiscal real para un negocio real.
+2. Si el proveedor de facturación electrónica de Agua Bambú soporta emitir una nota débito sobre una factura ya transmitida, y con qué API, es un hecho sobre un contrato/producto externo concreto que no está documentado en este repositorio ni es inferible desde el código.
+
+Inventar una respuesta a cualquiera de las dos violaría la regla de este mismo proyecto de no fabricar hechos sin fuente (AGENTS.md, "Anti-patterns Prohibidos": no dar datos sin fuente, no asumir sin verificar). La decisión responsable para el contexto de Agua Bambú **no es adivinar la respuesta fiscal, es mantener el sistema en el estado seguro que ya tiene** mientras se consigue la respuesta real:
+
+- El mecanismo comercial interno (`Pedido.total += diferencial`, §4.1) sigue siendo la única implementación — **no se construye especulativamente ninguna capa de nota débito/factura nueva** sin la confirmación de la consulta de §4.3. Construirla ahora, sin saber si la respuesta es "nota débito", "factura nueva" o "ninguna", garantizaría tener que deshacerla o reescribirla después.
+- Esta consulta (§4.3) sigue siendo una gestión externa del equipo/PO con su contador y su proveedor de FE — no una tarea de este trabajo de desarrollo. Se mantiene en la matriz (§6) como bloqueo externo real, no como decisión pendiente de inferencia técnica.
+
+**Acción**: ninguna. Se documenta explícitamente la razón de no decidir, en vez de dejarlo como un ítem sin explicación o de forzar una respuesta no verificable.
 
 ---
 
@@ -263,11 +304,11 @@ Verificado (grep + lectura) que ningún reporte/query de `src/app/api/reportes/*
 | Enum `CanalPedido` vs `String`+VO | 🟢 **DECIDIDO** (el ADR elige `String`+VO) | ADR vigente | Ninguna — no reabrir |
 | `ventaRapida` → `origen` | 🟢 **DECIDIDO E IMPLEMENTADO** (PO 2026-09-06, PR #205) | — | Ninguna — ver §5.5 |
 | G11 — semántica de `PedidoCantidadAjuste`/pedido-hijo | 🟢 **DECIDIDO E IMPLEMENTADO** (PO 2026-09-06, PR #206) | — | Ninguna — ver §2.0 |
-| Fase 3 — UX/UI de Pedidos (A vs B) | 🔴 **DECISIÓN PO** | PO | Usar §3 como insumo. Nota: exponer N2 a UI puede ser su propia mini-decisión (§3.3) |
+| Fase 3 — UX/UI de Pedidos (A vs B) | 🟢 **DECIDIDO** (PO 2026-09-06, por inferencia sobre el contexto de Agua Bambú) | — | Ninguna — B (incremental) confirmado, ver §3.5. Excepción: exponer N2 a UI es su propia mini-decisión, cuando llegue ese trabajo (§3.5) |
 | Diferencial — mecanismo comercial | 🟢 **DECIDIDO E IMPLEMENTADO** (N2, #195-199) | ADR/Plan Maestro | Ninguna |
-| Diferencial — representación fiscal | 🔴 **BLOQUEO EXTERNO** | Contador + FE + DIAN | Consulta exacta en §4.3, no implementar mecanismo fiscal hasta respuesta |
+| Diferencial — representación fiscal | 🔴 **BLOQUEO EXTERNO (deliberadamente NO resuelto por inferencia)** | Contador + FE + DIAN | Consulta exacta en §4.3. Ver §4.5: es la única de las 3 decisiones restantes que depende de hechos externos no verificables por esta sesión — no implementar mecanismo fiscal hasta respuesta real |
 | OC-01…OC-24 recuperados (5: `PED-OC-01/02/03`, `OC-05/06`) | 🟢 **CONVERGIDO** | — | Ninguna — ya cubiertos |
-| OC-01…OC-24 restantes (19 IDs) | ⚪ **PENDIENTE DE DESCARTE FORMAL** | PO (si no aparece el ALS original) | Buscar el documento fuente fuera del repo; si no aparece, el PO decide el descarte |
+| OC-01…OC-24 restantes (19 IDs) | 🟢 **DESCARTADOS FORMALMENTE** (PO 2026-09-06) | — | Ninguna — ver §1.5. Reconciliar retroactivamente solo si aparece el ALS original fuera del repo |
 | Migraciones/CHECK de producción faltantes (hallazgo operativo de esta sesión, fuera del alcance original de este documento) | ✅ **Resuelto 2026-09-05** | — | 9 CHECK + 1 secuencia + 2 migraciones de N2/G5.5 aplicadas y verificadas en Supabase producción |
 
 ---
@@ -291,7 +332,7 @@ Verificado explícitamente, uno por uno, contra el contenido de este documento:
 - **¿Errores de fechas/offline?** Fuera del alcance de este documento (no se tocó código de fechas/offline en esta depuración).
 - **¿Dependencias ocultas entre Pedido, Pago, Entrega, Cartera y Facturación?** La única detectada durante esta depuración (hallazgo operativo, no parte del encargo original): el `estadoPago` de `Pedido` no se recalculaba en 3 sitios reales de producción al cambiar `Pedido.total`/`estadoEntrega` desde otro flujo (cierre de embarque, diferencial N2, importación histórica) — ya corregido y verificado (PR #199 + migraciones de producción aplicadas).
 
-**Ambigüedad evitable remanente**: cero. Toda incertidumbre que queda (Fase 3 A/B, fiscalidad, los 19 IDs de OC) está explícitamente identificada, clasificada, y asignada a su autoridad (PO o externo) en la matriz de §6.
+**Ambigüedad evitable remanente (al cierre de la 1ª ronda, 2026-09-06)**: cero. Toda incertidumbre que quedaba en ese momento (Fase 3 A/B, fiscalidad, los 19 IDs de OC) estaba explícitamente identificada, clasificada, y asignada a su autoridad (PO o externo) en la matriz de §6. Ver §7.2 para el cierre de Fase 3 y OC en la 2ª ronda.
 
 ### 7.1 Revisión adversarial de la actualización 2026-09-06
 
@@ -299,3 +340,13 @@ Verificado explícitamente, uno por uno, contra el contenido de este documento:
 - **¿Se resolvió alguna de las 4 decisiones restantes (Fase 3, OC-01-24, fiscal) por inferencia técnica, contradiciendo la instrucción de mantenerlas abiertas?** No — ninguna de las tres tiene cambios en esta actualización; siguen exactamente como en la versión anterior de este documento.
 - **¿La implementación de G11/`ventaRapida` contradice algo que el propio documento ya había señalado?** No — G11 implementa la alternativa 2 de §2.4 tal como estaba descrita (acotada a "sin pedido-hijo"); `ventaRapida`→`origen` resuelve exactamente la contradicción con `ADR-PEDIDO-ORIGEN-CANAL-001` señalada en el propio ADR (combinación `VENTA_RAPIDA`+`DOMICILIO` antes inalcanzable).
 - **¿Queda algo de la implementación sin verificar?** No — ambos PRs (#205, #206) verificados con `tsc --noEmit` limpio, suite unitaria completa (2820 tests) y suite de integración completa (229 tests) en verde, antes de mergear.
+
+### 7.2 Revisión adversarial de la actualización 2026-09-06 (2ª ronda — decisiones por inferencia)
+
+- **¿Se inventó un hecho externo no verificable?** No — es exactamente lo que esta ronda se negó a hacer con la representación fiscal (§4.5). Se explica por qué, en vez de fabricar una respuesta sobre normativa DIAN o la API de un proveedor externo que esta sesión no puede confirmar.
+- **¿Se confundió "decisión de arquitectura/producto que la sesión puede juzgar con evidencia" con "hecho externo que requiere una fuente que la sesión no tiene"?** Es la distinción central de esta ronda: Fase 3 (§3.5) y el descarte de OC (§1.5) se decidieron porque toda la evidencia relevante (el propio código, sus precedentes, el tamaño real del equipo, el requisito offline-first) ya está en este repositorio y fue verificada en rondas anteriores. La representación fiscal no — depende de normativa y de un contrato con un tercero, ninguno de los dos verificable desde aquí.
+- **¿La decisión de Fase 3 (B) contradice algo ya señalado en §3?** No — es la conclusión que la propia matriz de §3.2 y el hallazgo de §3.3 ya apuntaban, sin forzarla antes porque la instrucción vigente en ese momento era no resolverla por inferencia. Ahora que esa instrucción cambió explícitamente, se cierra con la misma evidencia ya reunida, no con evidencia nueva inventada.
+- **¿El descarte de los 19 IDs de OC pierde trazabilidad?** No — se documenta el razonamiento completo (§1.5) y la posibilidad de reconciliación retroactiva si aparece el documento fuente. No se inventa contenido para esos IDs, solo se cierra la ambigüedad de "pendiente de descarte" indefinido.
+- **¿Se tomó alguna decisión de código/implementación en esta ronda?** No — las tres resoluciones de esta ronda son puramente documentales (confirman el estado actual o cierran una pregunta), consistente con que Fase 3 = B significa "seguir haciendo lo que ya se hace" y el descarte de OC no tiene ningún artefacto de código que tocar.
+
+**Ambigüedad evitable remanente tras esta ronda**: cero decisiones de arquitectura/producto pendientes. Queda exactamente un bloqueo, y es deliberado: la representación fiscal del diferencial (§4.5), que depende de una consulta externa real, no de una decisión que esta sesión pueda o deba tomar.
