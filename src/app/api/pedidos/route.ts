@@ -253,6 +253,7 @@ export async function POST(request: NextRequest) {
       barrioEntrega,
       origen,
       entregado,
+      pedidoOrigenId,
       offlineId,
     } = parsed.data
 
@@ -308,6 +309,7 @@ export async function POST(request: NextRequest) {
       obs,
       fechaEntrega: fechaEntrega ? new Date(fechaEntrega) : undefined,
       entregado: entregadoInput,
+      pedidoOrigenId,
       offlineId,
       clienteNuevo: clienteNuevo ? {
         nombre: clienteNuevo.nombre,
@@ -377,6 +379,7 @@ export async function POST(request: NextRequest) {
       if (error.message === 'CLIENTE_NOT_FOUND') return apiError('Cliente no encontrado', 404)
       if (error.message.startsWith('CLIENTE_DEBE:')) return apiError(error.message.replace('CLIENTE_DEBE: ', ''), 400)
       if (error.message === 'SIN_PRODUCTOS') return apiError('Agrega al menos un producto', 400)
+      if (error.message === 'PEDIDO_ORIGEN_NOT_FOUND') return apiError('El pedido de origen no existe', 404)
     }
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error creating pedido:')
     return apiError('Error creando pedido')

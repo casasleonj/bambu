@@ -38,7 +38,7 @@ export interface IPedidoRepository {
   findByCancelacionOfflineId(offlineId: string, tx?: TransactionClient): Promise<Pedido | null>
   findMany(filter?: PedidoFilter, options?: { take?: number; skip?: number; orderBy?: 'asc' | 'desc' }, tx?: TransactionClient): Promise<Pedido[]>
   count(filter?: PedidoFilter, tx?: TransactionClient): Promise<number>
-  save(pedido: Pedido, tx?: TransactionClient, options?: { offlineId?: string }): Promise<Pedido>
+  save(pedido: Pedido, tx?: TransactionClient, options?: { offlineId?: string; pedidoOrigenId?: string }): Promise<Pedido>
   update(pedido: Pedido, tx?: TransactionClient): Promise<Pedido>
 
   /**

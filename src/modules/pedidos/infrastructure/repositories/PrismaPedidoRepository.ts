@@ -133,12 +133,18 @@ export class PrismaPedidoRepository implements IPedidoRepository {
     return client.pedido.count({ where })
   }
 
-  async save(pedido: Pedido, tx?: TransactionClient, options?: { offlineId?: string }): Promise<Pedido> {
+  async save(pedido: Pedido, tx?: TransactionClient, options?: { offlineId?: string; pedidoOrigenId?: string }): Promise<Pedido> {
     const client = tx || prisma
     const data = PedidoMapper.toPrismaCreate(pedido)
     // Offline-first: si viene offlineId, se persiste para dedup al reenviar
     if (options?.offlineId) {
       data.offlineId = options.offlineId
+    }
+    // G11 (decisión PO 2026-09-06, "B. Nueva demanda"): referencia al Pedido
+    // que originó esta nueva demanda, para trazabilidad. Inmutable — solo se
+    // setea al crear, nunca se actualiza después.
+    if (options?.pedidoOrigenId) {
+      data.pedidoOrigenId = options.pedidoOrigenId
     }
     const raw = await client.pedido.create({
       data: data as unknown as Parameters<typeof client.pedido.create>[0]['data'],

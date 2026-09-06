@@ -695,6 +695,18 @@ model Pedido {
   embarqueOrigenId String?
   embarqueOrigen   Embarque? @relation("PedidoEmbarqueOrigen", fields: [embarqueOrigenId], references: [id], onDelete: Restrict)
 
+  /// G11 (decisión PO 2026-09-06, "B. Nueva demanda"): cuando el cliente pide
+  /// unidades adicionales sobre un Pedido existente, NO se corrige el Pedido
+  /// original (eso es `PedidoCantidadAjuste`, para errores de captura) — se
+  /// crea un Pedido nuevo e independiente, con esta referencia relacional
+  /// para trazabilidad. NO es un "pedido-hijo" (sin estado compartido, sin
+  /// herencia de cantidad/pago — es un Pedido completo con su propio ciclo
+  /// de vida). `onDelete: Restrict` preserva la trazabilidad: nunca se puede
+  /// borrar el Pedido original mientras exista un relacionado apuntándolo.
+  pedidoOrigenId       String?
+  pedidoOrigen         Pedido?  @relation("PedidoRelacionado", fields: [pedidoOrigenId], references: [id], onDelete: Restrict)
+  pedidosRelacionados  Pedido[] @relation("PedidoRelacionado")
+
   tipo  String @default("ENVIO")
   canal String @default("DOMICILIO")
 

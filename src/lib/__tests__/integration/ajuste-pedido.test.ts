@@ -56,12 +56,21 @@ describe('FASE FINAL — ajuste de pedido (§6)', () => {
 
     const ajustes = await testPrisma.pedidoCantidadAjuste.findMany({
       where: { pedidoId: pedido.id },
+      orderBy: { createdAt: 'asc' },
     })
     expect(ajustes).toHaveLength(2)
-    // Ambos leen cantidadOriginal=10 del PedidoItem real (ninguno la fabrica).
-    expect(ajustes.every((a) => a.cantidadOriginal === 10)).toBe(true)
-    const deltas = ajustes.map((a) => a.delta).sort((a, b) => a - b)
-    expect(deltas).toEqual([1, 2])
+    // El lock serializa: el que corre PRIMERO lee cantidadOriginal=10 (el
+    // real, sin fabricar). El que corre SEGUNDO debe encadenarse sobre el
+    // resultado real del primero (ya aplicado en vivo) — NUNCA los dos
+    // partiendo del mismo 10, porque eso significaría que el segundo no vio
+    // la corrección del primero.
+    expect(ajustes[0].cantidadOriginal).toBe(10)
+    expect(ajustes[1].cantidadOriginal).toBe(ajustes[0].cantidadNueva)
+    expect(ajustes[1].cantidadOriginal).not.toBe(10)
+
+    // El estado final de PedidoItem.cantPedido es el del último ajuste aplicado.
+    const item = await testPrisma.pedidoItem.findFirstOrThrow({ where: { pedidoId: pedido.id } })
+    expect(item.cantPedido).toBe(ajustes[1].cantidadNueva)
   })
 
   it('cantidadOriginal se lee del PedidoItem real, no del cliente', async () => {
@@ -96,6 +105,9 @@ describe('FASE FINAL — ajuste de pedido (§6)', () => {
       // total=0/totalPagado=0 (default) → PENDIENTE (default estadoEntrega)
       // proyecta ANTICIPADO (chk_pedido_estadopago_proyectado).
       data: { clienteId, canal: 'DOMICILIO', estadoPago: 'ANTICIPADO' },
+    })
+    await testPrisma.pedidoItem.create({
+      data: { pedidoId: pedido.id, producto: 'PACA_AGUA', cantPedido: 4 },
     })
     const useCase = new AjustarPedidoCantidadUseCase()
     const offlineId = uniqueId('ajuste-retry')
@@ -135,5 +147,118 @@ describe('FASE FINAL — ajuste de pedido (§6)', () => {
         autorizadoPorId: '',
       }),
     ).rejects.toThrow(/AJUSTE_EXIGE_AUTORIZACION/)
+  })
+
+  // G11 (decisión PO 2026-09-06, "A. Corrección"): la corrección se aplica
+  // en vivo (PedidoItem/Pedido/Factura), no solo se registra el audit trail.
+  it('aplica la corrección en vivo: PedidoItem, Pedido.total/saldo y Factura se sincronizan', async () => {
+    const total = 10 * 6_500
+    const pedido = await testPrisma.pedido.create({
+      data: {
+        clienteId, canal: 'DOMICILIO', total, totalPagado: 6_500, saldo: total - 6_500,
+        estadoPago: 'PARCIAL',
+      },
+    })
+    await testPrisma.pedidoItem.create({
+      data: { pedidoId: pedido.id, producto: 'PACA_AGUA', cantPedido: 10, precio: 6_500, subtotal: total },
+    })
+    const facturaNum = `FAC-T${Math.floor(Math.random() * 1e7)}`
+    await testPrisma.factura.create({
+      data: { numero: facturaNum, clienteId, pedidoId: pedido.id, subtotal: total, total, saldo: total - 6_500, montoPagado: 6_500, estado: 'PARCIAL' },
+    })
+
+    const useCase = new AjustarPedidoCantidadUseCase()
+    // Corrección: en realidad eran 8, no 10 (error de captura). Precio
+    // histórico ($6.500/u) NUNCA cambia, solo la cantidad.
+    await useCase.execute({
+      pedidoId: pedido.id,
+      producto: 'PACA_AGUA',
+      cantidadNueva: 8,
+      motivo: 'error de captura: eran 8, no 10',
+      autorizadoPorId: adminId,
+      offlineId: uniqueId('ajuste-vivo'),
+    })
+
+    const item = await testPrisma.pedidoItem.findFirstOrThrow({ where: { pedidoId: pedido.id } })
+    expect(item.cantPedido).toBe(8)
+    expect(Number(item.precio)).toBe(6_500) // precio histórico intacto
+    expect(Number(item.subtotal)).toBe(8 * 6_500)
+
+    const pedidoActualizado = await testPrisma.pedido.findUniqueOrThrow({ where: { id: pedido.id } })
+    expect(Number(pedidoActualizado.total)).toBe(8 * 6_500)
+    expect(Number(pedidoActualizado.saldo)).toBe(8 * 6_500 - 6_500)
+    expect(pedidoActualizado.estadoPago).toBe('PARCIAL')
+
+    const factura = await testPrisma.factura.findUniqueOrThrow({ where: { pedidoId: pedido.id } })
+    expect(Number(factura.total)).toBe(8 * 6_500)
+    expect(Number(factura.saldo)).toBe(8 * 6_500 - 6_500)
+  })
+
+  // G11 "C": la cantidad ya entregada es cumplimiento histórico, nunca se
+  // toca retroactivamente. No es un error de captura corregible — es
+  // demanda nueva (nuevo Pedido con pedidoOrigenId).
+  it('rechaza corrección sobre un producto con cantidad ya entregada', async () => {
+    const pedido = await testPrisma.pedido.create({
+      data: { clienteId, canal: 'DOMICILIO', estadoPago: 'PARCIAL', totalPagado: 6_500, total: 65_000, saldo: 58_500 },
+    })
+    await testPrisma.pedidoItem.create({
+      data: { pedidoId: pedido.id, producto: 'PACA_AGUA', cantPedido: 10, cantEntrega: 6, precio: 6_500, subtotal: 65_000 },
+    })
+    const useCase = new AjustarPedidoCantidadUseCase()
+
+    await expect(
+      useCase.execute({
+        pedidoId: pedido.id,
+        producto: 'PACA_AGUA',
+        cantidadNueva: 12,
+        motivo: 'el cliente pide más',
+        autorizadoPorId: adminId,
+      }),
+    ).rejects.toThrow('CORRECCION_SOBRE_CANTIDAD_YA_ENTREGADA')
+  })
+
+  // G11 "D": un Pedido cerrado no se reabre silenciosamente.
+  it('rechaza corrección sobre un Pedido ya ENTREGADO (cerrado)', async () => {
+    const pedido = await testPrisma.pedido.create({
+      data: { clienteId, canal: 'DOMICILIO', estadoEntrega: 'ENTREGADO', estado: 'ENTREGADO', estadoPago: 'PAGADO', totalPagado: 65_000, total: 65_000, saldo: 0 },
+    })
+    await testPrisma.pedidoItem.create({
+      data: { pedidoId: pedido.id, producto: 'PACA_AGUA', cantPedido: 10, cantEntrega: 10, precio: 6_500, subtotal: 65_000 },
+    })
+    const useCase = new AjustarPedidoCantidadUseCase()
+
+    await expect(
+      useCase.execute({
+        pedidoId: pedido.id,
+        producto: 'PACA_AGUA',
+        cantidadNueva: 8,
+        motivo: 'intento de corrección tardía',
+        autorizadoPorId: adminId,
+      }),
+    ).rejects.toThrow('CORRECCION_PEDIDO_CERRADO')
+  })
+
+  // Protege chk_pedido_montopagado_le_total: una corrección a la baja no
+  // puede dejar totalPagado > total sin una reversión monetaria primero.
+  it('rechaza una corrección a la baja que dejaría totalPagado > total', async () => {
+    const pedido = await testPrisma.pedido.create({
+      // total=totalPagado (pagado completo) + estadoEntrega PENDIENTE
+      // (default) → ANTICIPADO, no PAGADO (chk_pedido_estadopago_proyectado).
+      data: { clienteId, canal: 'DOMICILIO', estadoPago: 'ANTICIPADO', totalPagado: 65_000, total: 65_000, saldo: 0 },
+    })
+    await testPrisma.pedidoItem.create({
+      data: { pedidoId: pedido.id, producto: 'PACA_AGUA', cantPedido: 10, precio: 6_500, subtotal: 65_000 },
+    })
+    const useCase = new AjustarPedidoCantidadUseCase()
+
+    await expect(
+      useCase.execute({
+        pedidoId: pedido.id,
+        producto: 'PACA_AGUA',
+        cantidadNueva: 5, // 5*6500=32500 < totalPagado 65000
+        motivo: 'en realidad eran solo 5',
+        autorizadoPorId: adminId,
+      }),
+    ).rejects.toThrow('CORRECCION_GENERARIA_SOBREPAGO')
   })
 })

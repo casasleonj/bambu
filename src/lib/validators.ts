@@ -89,6 +89,9 @@ export const PedidoCreateSchema = z.object({
   entregado: z.boolean().optional(),
   // `tipo` removido (G6, ADR-PEDIDO-ORIGEN-CANAL-001 — sale del contrato,
   // 100% derivado de `canal`, ningún caller vivo lo enviaba ni CrearPedidoUseCase lo leía).
+  // G11 (decisión PO 2026-09-06, "B. Nueva demanda"): referencia opcional al
+  // Pedido que originó esta nueva demanda, para trazabilidad.
+  pedidoOrigenId: z.string().optional(),
   productos: z.object({
     pacaAgua: z.coerce.number().int().min(0).optional(),
     pacaHielo: z.coerce.number().int().min(0).optional(),
