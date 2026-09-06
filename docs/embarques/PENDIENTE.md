@@ -1,6 +1,12 @@
 # Embarques Frontend — Backlog pendiente
 
-_Actualizado: 2026-08-27_
+_Actualizado: 2026-09-06 — corrección: las Fases 2-9 (incluidas 5/6b/7, que
+este doc marcaba como "branch sin PR") ya están mergeadas a `main` desde
+hace más de una semana (`main`, PR #143 y anteriores). El flag
+`NEXT_PUBLIC_EMBARQUES_V2` ya es default ON en código
+(`!== 'false'`). El "Bloqueante inmediato" de abajo quedó obsoleto — se
+deja tachado, no borrado, para no perder el historial. Único pendiente
+real: Fase 10._
 
 - Contexto y mental model: `docs/embarques/ONBOARDING-EQUIPO.md`
 - Plan maestro y decisiones D1-D7: `docs/embarques/00-plan-frontend-completo.md`
@@ -22,21 +28,22 @@ _Actualizado: 2026-08-27_
 
 | Fase | Descripción | Estado |
 |---|---|---|
-| 2 | Contrato de API + fixes de plomería | ✅ PR #134 |
-| 3 | Command Center | ✅ PR #135 |
-| 4 | Preparation Flow (deep-links `?step=`) | ✅ PR #136 |
-| 6a | Endpoint `POST/GET /api/embarques/[id]/sustituciones` | ✅ PR #137 |
-| **5** | Mission Detail | ✅ branch `feat/embarques-fase5-mission-detail` |
-| **6b** | UI de sustituciones | ✅ branch `feat/embarques-fase6b-sustituciones-ui` |
-| **7** | Reconciliation (cierre = wizard forzado) | ✅ branch `feat/embarques-fase7-reconciliation` (+ endurecido tras auditoría: preview best-effort, E2E del wizard) |
-| **8** | Test hardening + bugs preexistentes | 🟡 bugs #1 y #2 resueltos; ítems 4-5 (matriz de tests, 4 roles) pendientes |
-| **9-10** | Flag a default ON + verificación + retiro de legacy | ⏳ Pendiente |
+| 2 | Contrato de API + fixes de plomería | ✅ PR #134 mergeado a `main` |
+| 3 | Command Center | ✅ PR #135 mergeado a `main` |
+| 4 | Preparation Flow (deep-links `?step=`) | ✅ PR #136 mergeado a `main` |
+| 6a | Endpoint `POST/GET /api/embarques/[id]/sustituciones` | ✅ PR #137 mergeado a `main` |
+| **5** | Mission Detail | ✅ mergeado a `main` (endurecido junto con Fase 7) |
+| **6b** | UI de sustituciones | ✅ mergeado a `main` |
+| **7** | Reconciliation (cierre = wizard forzado) | ✅ PR #143 mergeado a `main` (preview best-effort, E2E del wizard) |
+| **8** | Test hardening + bugs preexistentes | ✅ bugs #1 y #2 resueltos (`ec36c663`); ítems 4-5 (roles) cubiertos por `e2e/embarques-all-contexts.spec.ts` (admin/asistente/repartidor) — no confirmado como la matriz formal exacta original, pero cobertura real existe |
+| **9** | Flag a default ON | ✅ `NEXT_PUBLIC_EMBARQUES_V2` es default ON en código desde antes de esta corrección |
+| **10** | Retiro de código legacy pre-V2 | ⏳ **Único pendiente real.** `embarques-client/index.tsx` todavía tiene ambas ramas (`{!EMBARQUES_V2 && ...}` / `{EMBARQUES_V2 ? ... : ...}`) — el flag sigue existiendo, la UI vieja no se borró |
 
-### Bloqueante inmediato
-- [ ] PO revisa y mergea PRs **#134, #135, #136, #137** a `main`. Probar en `localhost:3001`.
-- [ ] PO revisa la branch **`feat/embarques-fase5-mission-detail`** (Mission Detail, Fase 5) antes de abrir su PR.
-- [ ] PO revisa la branch **`feat/embarques-fase6b-sustituciones-ui`** (UI de sustituciones, Fase 6b) antes de abrir su PR.
-- [ ] PO revisa la branch **`feat/embarques-fase7-reconciliation`** (wizard de cierre forzado, Fase 7) antes de abrir su PR.
+### ~~Bloqueante inmediato~~ (obsoleto — ya resuelto, se deja como historial)
+- [x] ~~PO revisa y mergea PRs #134, #135, #136, #137 a `main`.~~
+- [x] ~~PO revisa la branch `feat/embarques-fase5-mission-detail` antes de abrir su PR.~~
+- [x] ~~PO revisa la branch `feat/embarques-fase6b-sustituciones-ui` antes de abrir su PR.~~
+- [x] ~~PO revisa la branch `feat/embarques-fase7-reconciliation` antes de abrir su PR.~~
 
 ---
 
