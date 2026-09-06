@@ -110,6 +110,92 @@ function makeUseCase(pedido: Pedido) {
   return { useCase, pedidoRepo, facturaRepo, executeWithLock, historialCreate }
 }
 
+describe('ActualizarPedidoUseCase — bypass de G11 vía PUT (hallazgo antifraude 2026-09-06)', () => {
+  it('rechaza editar items de un pedido ya ENTREGADO (sin cambiar estadoEntrega en el mismo request)', async () => {
+    const pedido = makePedido('ENTREGADO')
+    const { useCase, pedidoRepo } = makeUseCase(pedido)
+
+    const input: ActualizarPedidoInput = {
+      pedidoId: 'ped_1',
+      items: [{ producto: 'PACA_AGUA' as ProductCode, cantidad: 1, precioManual: 1 }],
+      usuarioId: 'user_1',
+    }
+
+    await expect(useCase.execute(input)).rejects.toThrow('PEDIDO_CERRADO_USE_AJUSTAR_CANTIDAD')
+    expect(pedidoRepo.update).not.toHaveBeenCalled()
+  })
+
+  it('rechaza editar items de un pedido CANCELADO', async () => {
+    const pedido = makePedido('CANCELADO')
+    const { useCase, pedidoRepo } = makeUseCase(pedido)
+
+    await expect(
+      useCase.execute({
+        pedidoId: 'ped_1',
+        items: [{ producto: 'PACA_AGUA' as ProductCode, cantidad: 1 }],
+        usuarioId: 'user_1',
+      }),
+    ).rejects.toThrow('PEDIDO_CERRADO_USE_AJUSTAR_CANTIDAD')
+    expect(pedidoRepo.update).not.toHaveBeenCalled()
+  })
+
+  it('rechaza editar items de un pedido ANULADO', async () => {
+    const pedido = makePedido('ANULADO')
+    const { useCase, pedidoRepo } = makeUseCase(pedido)
+
+    await expect(
+      useCase.execute({
+        pedidoId: 'ped_1',
+        items: [{ producto: 'PACA_AGUA' as ProductCode, cantidad: 1 }],
+        usuarioId: 'user_1',
+      }),
+    ).rejects.toThrow('PEDIDO_CERRADO_USE_AJUSTAR_CANTIDAD')
+    expect(pedidoRepo.update).not.toHaveBeenCalled()
+  })
+
+  it('rechaza editar items cuando ya hay cantidad entregada (aunque el pedido siga PENDIENTE/parcial)', async () => {
+    const pedido = Pedido.create({
+      id: PedidoId.from('ped_1'),
+      numero: 1,
+      clienteId: 'cli_1',
+      canal: CanalVO.from('DOMICILIO'),
+      origen: OrigenPedidoVO.from('PEDIDO'),
+      estadoEntrega: EstadoEntregaVO.from('PENDIENTE'),
+      estadoPago: EstadoPagoVO.from('PARCIAL'),
+      // cantEntrega=1 de 2 — entrega parcial ya registrada (PR-1).
+      items: [new PedidoItem('PACA_AGUA' as ProductCode, 2, Money.fromDecimal(10000), 'base', 1)],
+      total: Money.fromDecimal(20000),
+      totalPagado: Money.fromDecimal(10000),
+      pagos: [],
+      fecha: new Date('2026-06-30T10:00:00Z'),
+    })
+    const { useCase, pedidoRepo } = makeUseCase(pedido)
+
+    await expect(
+      useCase.execute({
+        pedidoId: 'ped_1',
+        items: [{ producto: 'PACA_AGUA' as ProductCode, cantidad: 1 }],
+        usuarioId: 'user_1',
+      }),
+    ).rejects.toThrow('CANTIDAD_YA_ENTREGADA_USE_AJUSTAR_CANTIDAD')
+    expect(pedidoRepo.update).not.toHaveBeenCalled()
+  })
+
+  it('no regresión: sigue permitiendo editar items de un pedido abierto sin entrega parcial', async () => {
+    const pedido = makePedido('PENDIENTE')
+    const { useCase, pedidoRepo } = makeUseCase(pedido)
+
+    const result = await useCase.execute({
+      pedidoId: 'ped_1',
+      items: [{ producto: 'PACA_AGUA' as ProductCode, cantidad: 2 }],
+      usuarioId: 'user_1',
+    })
+
+    expect(pedidoRepo.update).toHaveBeenCalledTimes(1)
+    expect(result.pedido.estadoEntrega).toBe('PENDIENTE')
+  })
+})
+
 describe('ActualizarPedidoUseCase — validación de transición de estado', () => {
   it('BAMBU-LOG-001: rechaza una transición inválida cuando el body incluye items', async () => {
     const pedido = makePedido('PENDIENTE')

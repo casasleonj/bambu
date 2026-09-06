@@ -103,8 +103,8 @@ export async function requirePermission(permission: Permission, existingSession?
 /**
  * Verify that the user has permission to access a specific resource.
  * ADMIN and CONTADOR can access all resources.
+ * ASISTENTE can access all embarques and pedidos (operational role).
  * REPARTIDOR can only access their own embarques and associated pedidos.
- * ASISTENTE has limited access (no ownership checks pass by default).
  */
 export async function requireOwnership(
   entity: 'embarque' | 'pedido',
@@ -116,8 +116,15 @@ export async function requireOwnership(
   // blocked at the route handler level via requireRole([ADMIN, ASISTENTE]).
   if (PRIVILEGED_READ_ROLES.includes(user.role as Role)) return true;
 
-  // ASISTENTE puede gestionar todos los embarques (rol operativo)
-  if (user.role === 'ASISTENTE' && entity === 'embarque') return true;
+  // ASISTENTE puede gestionar todos los embarques y pedidos (rol operativo).
+  // FIX (hallazgo antifraude 2026-09-06, revisión ALS/Plan Técnico UX de
+  // Pedidos): faltaba el equivalente para `pedido` — sin esta línea,
+  // ASISTENTE recibía 403 de `requireOwnership` en CUALQUIER
+  // GET/PUT /api/pedidos/[id] (la comprobación de fallback exige que el
+  // usuario sea el `Trabajador` dueño del embarque del pedido, lo cual
+  // nunca es cierto para un ASISTENTE), pese a que la UI de `/pedidos`
+  // permite editar pedidos para ese rol sin distinción.
+  if (user.role === 'ASISTENTE' && (entity === 'embarque' || entity === 'pedido')) return true;
 
   if (entity === 'embarque') {
     // Find the trabajador linked to this user, then check if it matches the embarque's trabajador

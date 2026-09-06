@@ -106,6 +106,26 @@ export class ActualizarPedidoUseCase {
 
       // Update items if provided
       if (input.items && input.items.length > 0) {
+        // FIX (hallazgo antifraude 2026-09-06, revisión ALS/Plan Técnico UX
+        // de Pedidos, G11): este PUT declarativo reemplazaba `items` de
+        // CUALQUIER pedido sin pasar por ninguno de los guards de
+        // AjustarPedidoCantidadUseCase (G11 — PR #206). Un request que solo
+        // enviara `items` (sin `estadoEntrega`) sobre un pedido ya cerrado o
+        // con cantidad ya entregada bypaseaba por completo la corrección
+        // guardada, con auditoría genérica sin diff — exactamente el vector
+        // de "modificación posterior de pedidos" / "alteración de
+        // cantidades para ocultar faltantes" del modelo antifraude. Se
+        // exigen los mismos 2 guards que G11 ya aplica (mismos códigos de
+        // error, mapeados en route.ts) — la corrección sobre un pedido
+        // cerrado o con entrega parcial debe pasar por
+        // POST /api/pedidos/[id]/ajustar-cantidad, no por este endpoint.
+        if (['ENTREGADO', 'CANCELADO', 'ANULADO'].includes(pedido.estadoEntrega.get())) {
+          throw new Error('PEDIDO_CERRADO_USE_AJUSTAR_CANTIDAD')
+        }
+        if (pedido.items.some(i => i.cantEntrega > 0)) {
+          throw new Error('CANTIDAD_YA_ENTREGADA_USE_AJUSTAR_CANTIDAD')
+        }
+
         // FIX BAMBU-LOG-001: validar la transición de estado también en esta
         // rama. Antes, un cambio de estado enviado junto con items se
         // aplicaba sin pasar por canTransitionTo() (solo se validaba el
