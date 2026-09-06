@@ -14,7 +14,6 @@ export interface CrearPedidoInput {
   pagos?: PagoData[]
   obs?: string
   fechaEntrega?: Date
-  ventaRapida?: boolean
   /**
    * ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: solo aplica a venta rápida.
    * `undefined` / `true` → entrega inmediata (ENTREGADO, comportamiento histórico).

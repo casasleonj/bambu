@@ -23,7 +23,13 @@ export interface CrearPedidoPayload {
   pagos?: Array<{ metodo: string; monto: number }>
   obs?: string
   fechaEntrega?: string
-  ventaRapida?: boolean
+  /**
+   * G6/ventaRapida→origen (decisión PO 2026-09-06): responde a si hay un
+   * cliente real detrás de la operación, independiente de `canal`.
+   * `ventaRapida: boolean` salió del contrato — ver
+   * `PedidoUnifiedData.origen` en `pedido-form-unified`.
+   */
+  origen?: 'PEDIDO' | 'VENTA_RAPIDA'
   /**
    * ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: `false` en una venta rápida =
    * "entregar después" (queda PENDIENTE + ANTICIPADO si va prepago). El route

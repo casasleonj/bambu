@@ -333,7 +333,7 @@ export function VentaRapidaForm({ clientes, onSubmit }: VentaRapidaFormProps) {
       clienteNuevo,
       tipo,
       canal,
-      ventaRapida: true,
+      origen: 'VENTA_RAPIDA',
       preciosManuales: Object.keys(preciosManuales).length > 0 ? preciosManuales : undefined,
       items,
       pagos: pagosNormalizados,

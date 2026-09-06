@@ -252,7 +252,6 @@ export async function POST(request: NextRequest) {
       direccionEntrega,
       barrioEntrega,
       origen,
-      ventaRapida,
       entregado,
       offlineId,
     } = parsed.data
@@ -308,7 +307,6 @@ export async function POST(request: NextRequest) {
       })),
       obs,
       fechaEntrega: fechaEntrega ? new Date(fechaEntrega) : undefined,
-      ventaRapida,
       entregado: entregadoInput,
       offlineId,
       clienteNuevo: clienteNuevo ? {

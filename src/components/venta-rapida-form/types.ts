@@ -29,7 +29,7 @@ export interface VentaRapidaData {
   clienteNuevo?: { nombre: string; apellido?: string; telefono: string; direccion: string; barrio?: string }
   tipo: 'PUNTO' | 'ENVIO'
   canal: 'PUNTO' | 'DOMICILIO'
-  ventaRapida: true
+  origen: 'VENTA_RAPIDA'
   preciosManuales?: Record<string, number>
   items: VentaRapidaItem[]
   pagos: { metodo: string; monto: number }[]
