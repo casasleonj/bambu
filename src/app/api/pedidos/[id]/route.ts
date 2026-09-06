@@ -85,6 +85,18 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
+  // FIX (hallazgo antifraude 2026-09-06, revisión ALS/Plan Técnico UX de
+  // Pedidos): esta ruta editaba items/precio/estado sin `requireRole` — el
+  // comentario de `requireOwnership` (auth-check.ts) documentaba desde
+  // antes que "write operations are still blocked at the route handler
+  // level via requireRole([ADMIN, ASISTENTE])", pero esa llamada nunca
+  // existió acá. Sin este check, cualquier rol que superara
+  // `requireOwnership` (p.ej. un REPARTIDOR dueño del embarque del
+  // pedido) podía editar cantidades/precio vía este endpoint genérico —
+  // el mismo vector ya corregido una vez para resolver-disputa (commit
+  // 3.1 plan antifraude).
+  const roleCheck = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE], authResult)
+  if (roleCheck instanceof Response) return roleCheck
   const { id } = await params
   const hasAccess = await requireOwnership('pedido', id, getUserFromSession(authResult))
   if (!hasAccess) return apiError('Forbidden', 403)
@@ -129,6 +141,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   } catch (error) {
     if (error instanceof Error && error.message === 'PEDIDO_NOT_FOUND') {
       return apiError('Pedido no encontrado', 404)
+    }
+    if (error instanceof Error && error.message === 'PEDIDO_CERRADO_USE_AJUSTAR_CANTIDAD') {
+      return apiError('El pedido ya está cerrado (entregado/cancelado/anulado) — use el flujo de corrección de cantidad', 409)
+    }
+    if (error instanceof Error && error.message === 'CANTIDAD_YA_ENTREGADA_USE_AJUSTAR_CANTIDAD') {
+      return apiError('Ya se entregó cantidad de este pedido — use el flujo de corrección de cantidad', 409)
     }
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error updating pedido:')
     return apiError('Error updating', 500)
