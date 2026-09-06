@@ -1,11 +1,21 @@
 # Plan de ejecución — Rediseño integral de Pedidos
 
 - **Estado:** ITERACIÓN 1 · RONDA 2 — pendiente de aprobación del equipo/PO (protocolo AGENTS.md)
-- **Fecha:** 2026-09-06
+- **Fecha:** 2026-09-06 (actualizado tras adopción de ALS + Plan Técnico UX/Antifraude del equipo)
 - **Autoridad de producto:** corrección formal del equipo (2026-09-06), registrada en `docs/pedidos/PEDIDOS_PENDIENTES_DECISION_PO_v1.0.md` §3.7 (SUPERSEDE la resolución incremental de §3.5)
+- **Autoridad de UX/interacción/antifraude (nueva, verificada y adoptada 2026-09-06):** `AGUA_BAMBU_PEDIDOS_UX_ARCHITECTURE_LEVEL_SPECIFICATION_v1.0.als.md` + `AGUA_BAMBU_PEDIDOS_PLAN_TECNICO_UX_ANTIFRAUDE_v1.0.md` (mismo directorio) — definen el modelo de interacción (intent→context→proposal→review→commit), los invariantes A1-A8, el modelo antifraude y los 7 gates de aceptación. Este plan (`00-*`) sigue siendo la autoridad de **fases/migración/PRs**; los dos documentos nuevos son la autoridad de **qué se construye y cómo se protege**. Ver §0 más abajo para la reconciliación entre ambos.
 - **Autoridad de dominio (congelada, no se toca):** ADRs `Aceptado` de Pedidos (`ADR-PEDIDO-ORIGEN-CANAL-001`, `ADR-PEDIDO-ESTADO-CANONICO-001`, `ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001`, `ADR-PAGO-REPORTADO-CONFIRMADO-001`, `ADR-CORRECCION-MONETARIA-001`, `ADR-OBLIGACION-001`), G6/G11/`ventaRapida→origen`/diferencial comercial (§2, §5, §5.5 del mismo doc) — **no se reabren**, este plan los consume como dados.
 - **Precedente de ejecución (mismo repo):** `docs/embarques/00-plan-frontend-completo.md` — mismo formato, mismo patrón de flag+fases+gates. Este plan lo replica deliberadamente, no reinventa el proceso.
 - **Objetivo:** reconceptualizar integralmente la experiencia de Pedidos — dominio → modelo mental → arquitectura de información → flujos → interacción → UI → implementación → pruebas — reemplazando la UI actual, que es el punto de partida técnico, no el modelo a conservar.
+
+## §0. Verificación de la ALS + Plan Técnico del equipo (2026-09-06)
+
+Ambos documentos fueron verificados contra el código real, contra el dominio ya decidido, y contra este plan antes de adoptarlos — no se incorporan sin revisión. Resultado: coherentes con G6/G11/`ventaRapida→origen`, sin contradicciones con lo ya decidido, citas externas (OWASP Business Logic Security, ACFE Fraud Tree) verificadas contra fuente primaria. Dos hallazgos reales, verificados en el código (no en el documento), que validan y elevan la prioridad del modelo antifraude propuesto:
+
+1. **`precioManual` se acepta del cliente sin autorización, umbral ni diff auditado.** `pricing-algorithm.service.ts:68-69` — si el request trae `precioManual > 0`, se usa tal cual; `POST /api/pedidos` y `PUT /api/pedidos/[id]` (ADMIN/ASISTENTE/CONTADOR) lo aceptan sin restricción (solo `venta-libre` lo bloquea para REPARTIDOR, `BLOQUEAR_PRECIOS_REPARTIDOR`). Existe una alerta *detectiva* (`PRECIO_POR_DEBAJO_TABLA`, revisable en `/casos`) pero ningún control *preventivo*. Coincide exactamente con la amenaza #3/#23 del Plan Técnico §6.1 — no es hipotética.
+2. **`PUT /api/pedidos/[id]` puede modificar cantidad/precio de un pedido ya `ENTREGADO` sin pasar por ninguno de los 3 guards de G11.** Verificado en `ActualizarPedidoUseCase.ts`: la rama que reemplaza `items` solo valida `estadoEntrega` si el mismo request también lo cambia — un request que solo envía `items` sobre un pedido cerrado bypasea `CORRECCION_PEDIDO_CERRADO`/`CORRECCION_SOBRE_CANTIDAD_YA_ENTREGADA`/`CORRECCION_GENERARIA_SOBREPAGO` por completo, con auditoría genérica sin diff. **Corregido de forma independiente y urgente** (no se espera al rediseño de UI) — ver PR de fix, referenciado en Fase 2.
+
+**Infraestructura antifraude que YA EXISTE y el rediseño debe reusar, no duplicar** (guardrail INVENTARIO §8, reutilizar→adaptar→extender→construir): `src/lib/alertas-detector.ts` + `src/lib/alertas-config.ts` (20 `AlertaTipo` ya codificados, incluyendo `DESCUENTO_NO_JUSTIFICADO`, `PRECIO_POR_DEBAJO_TABLA`, `CAMBIO_PRECIO_BRUSCO`, `MULTIPLES_PEDIDOS_RAPIDO`, `NOTA_CREDITO_FRECUENTE` — gran parte de la "detección de anomalías" del §9 del Plan Técnico) + `/casos` (`ResponsibilityCase`, ya implementa "señal → evidencia → revisión humana" con `autorizadoPorId`/`resueltoPorId`). El modelo antifraude del rediseño (`PedidoRiskSignals`, `PedidoExceptionPanel`) debe consumir/extender este sistema — no construir uno paralelo.
 
 ---
 
@@ -131,13 +141,14 @@ La causa raíz de por qué esto no puede ser incremental (confirmado por la inve
 
 ---
 
-#### FASE 2 — Fundamentos: `01-ux-contract-pedidos.md` + `02-api-contract-pedidos.md` + flag (1 PR)
+#### FASE 2 — Fundamentos: `02-api-contract-pedidos.md` + flag + endpoints N2 (1 PR)
+
+**Nota**: la arquitectura de UX/interacción (lo que hubiera sido `01-ux-contract-pedidos.md`) ya está cubierta por la ALS adoptada (§0) — no se duplica. El fix del bypass de G11 (hallazgo #2 de §0) se ejecuta **independiente de esta fase**, no espera el gate de Ronda 2 — es un bug de integridad, no trabajo de rediseño.
 
 **Entregables:**
-- `docs/pedidos/01-ux-contract-pedidos.md` — arquitectura de información propuesta (mapa de pantallas/secciones), reglas de §2.0/§3.6 fijadas como contrato (no re-litigar por pantalla), taxonomía de estados/microcopy que reemplaza la cascada de badges de `visual-states.ts` **en presentación, no en lógica**.
-- `docs/pedidos/02-api-contract-pedidos.md` — la tabla de §1.2 formalizada, shapes de request/response, mapeo de errores a mensajes humanos (mismo rol que `03-exception-model.md` tuvo en Embarques).
+- `docs/pedidos/02-api-contract-pedidos.md` — la tabla de §1.2 formalizada, shapes de request/response, mapeo de errores a mensajes humanos (mismo rol que `03-exception-model.md` tuvo en Embarques), más el shape de `PricingPreview`/`SensitiveActionPreview`/`allowedActions`/`riskSignals` que exige la ALS §9-10.
 - Flag `NEXT_PUBLIC_PEDIDOS_V2` (default `false` en prod, `true` en dev).
-- Los 3 endpoints de N2 faltantes (D4) — backend puro, sin UI todavía, con tests de integración (mismo rigor que `ajuste-pedido.test.ts`).
+- Los 3 endpoints de N2 faltantes (D4) — backend puro, sin UI todavía, con tests de integración (mismo rigor que `ajuste-pedido.test.ts`). Sus `warnings`/`riskSignals` de respuesta deben poder alimentarse desde `alertas-detector.ts`/`ResponsibilityCase` (§0), no un motor nuevo.
 
 **Criterios de éxito:**
 - `npx tsc --noEmit` + `npm run test` + `npx eslint` verdes.
