@@ -22,6 +22,13 @@ export interface CrearPedidoInput {
    * lo propaga con el flag `NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR` activo.
    */
   entregado?: boolean
+  /**
+   * G11 (decisión PO 2026-09-06, "B. Nueva demanda"): id del Pedido que
+   * originó esta nueva demanda, cuando corresponde. Puramente de
+   * trazabilidad — este Pedido nace independiente, con su propio ciclo de
+   * vida (no hereda cantidad/pago/estado del original).
+   */
+  pedidoOrigenId?: string
   clienteNuevo?: {
     nombre: string
     apellido?: string

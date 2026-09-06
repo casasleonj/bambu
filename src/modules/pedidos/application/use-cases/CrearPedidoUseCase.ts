@@ -78,6 +78,17 @@ export class CrearPedidoUseCase {
         }
       }
 
+      // G11 (decisión PO 2026-09-06, "B. Nueva demanda"): si viene
+      // `pedidoOrigenId`, debe referenciar un Pedido real — falla con un
+      // mensaje claro en vez de dejar que la FK de Postgres tire un error
+      // genérico más adelante.
+      if (input.pedidoOrigenId) {
+        const origenPedido = await this.pedidoRepo.findById(PedidoId.from(input.pedidoOrigenId), tx)
+        if (!origenPedido) {
+          throw new Error('PEDIDO_ORIGEN_NOT_FOUND')
+        }
+      }
+
       // 1. Resolve/create cliente
       let clienteId = input.clienteId
 
@@ -279,7 +290,7 @@ export class CrearPedidoUseCase {
       })
 
       // 7. Persist
-      const saved = await this.pedidoRepo.save(pedido, tx, { offlineId: input.offlineId })
+      const saved = await this.pedidoRepo.save(pedido, tx, { offlineId: input.offlineId, pedidoOrigenId: input.pedidoOrigenId })
       logger.info(
         { pedidoId: saved.id.get(), numero: saved.numero, clienteId, total, offlineId: input.offlineId ?? null },
         'Pedido created'
