@@ -4,6 +4,7 @@
 - **Actualización 2026-09-06 (1ª ronda)**: el PO tomó dos decisiones de producto nuevas, fundamentadas en la evidencia de este mismo documento — `ventaRapida → origen` (§5.5) y G11 corrección-vs-nueva-demanda (§2). Ambas ya están implementadas y mergeadas (PR #205, PR #206). Se actualiza este documento en el lugar en vez de reabrir uno nuevo, siguiendo el mismo patrón ya usado para G6 (§5.1): la sección original se conserva como registro del estado en que se tomó la decisión, y se agrega la resolución explícitamente.
 - **Actualización 2026-09-06 (2ª ronda)**: instrucción explícita del PO de resolver las decisiones restantes por inferencia razonada sobre el contexto real de Agua Bambú (ERP de reparto de agua/hielo, 6 usuarios totales, conectividad rural 2G/3G, offline-first no negociable, equipo pequeño sin capacidad de mantener dos UIs en paralelo). Se resuelven **dos de las tres**: Fase 3 (§3.5) y el descarte de los 19 IDs de OC (§1.5). La representación fiscal del diferencial (§4.5) **se decide NO resolver por inferencia** — es la única de las tres que depende de hechos verificables externos (normativa DIAN vigente, capacidad real de la API del proveedor de facturación electrónica) que esta sesión no tiene forma de confirmar; inventar una respuesta ahí sería fabricar un hecho regulatorio para un negocio real, lo cual el protocolo de este proyecto prohíbe explícitamente ("no fabricar opciones/números sin fuente"). Se documenta la razón en vez de forzar una respuesta.
 - **Actualización 2026-09-06 (3ª ronda — investigación de mercado)**: instrucción explícita de investigar en fuentes reales (normativa DIAN oficial, prácticas de ERPs grandes como SAP) cómo se resuelven casos similares, para reducir sesgo y ambigüedad, y de aplicar el mismo proceso a la dirección de diseño de Fase 3 (contemporánea, sin clichés). Resultado: la doctrina DIAN sobre el diferencial fiscal **sí se encontró y se documenta con fuente oficial primaria cruzada** (§4.6) — reduce la ambigüedad legal a cero, deja solo 2 hechos operativos de Agua Bambú sin poder verificarse desde este repositorio (no una laguna legal). Fase 3 recibe una dirección de diseño investigada y sourced (§3.6, SAP Fiori/Stripe/Linear/dashboards de última milla) sin reabrir la decisión B ya tomada.
+- **Actualización 2026-09-06 (4ª ronda — corrección formal del equipo)**: el equipo/PO envió una comunicación formal corrigiendo explícitamente §3.5 — **Fase 3 no es incremental, es un rediseño integral** de dominio→modelo mental→arquitectura de información→flujos→interacción→UI→implementación→pruebas (ver §3.7, que SUPERSEDE §3.5). El mismo mensaje reafirma que G6/G11/`ventaRapida→origen`/diferencial comercial NO se reabren, precisa que el descarte de OC-01-24 no prohíbe comportamiento futuro (§1.5), y confirma que la implementación de `ventaRapida→origen` ya satisface el mandato de no ser un simple rename (§5.5.5, con evidencia). El punto fiscal (§4) se reafirma exactamente como quedó documentado — el equipo pide explícitamente NO convertir la doctrina DIAN general en una conclusión específica sin validación profesional, que es justamente lo que este documento ya hace.
 - Regla aplicada: Contexto Maestro → Plan Maestro → ADR → decisiones posteriores → evidencia histórica → código actual. Ninguna decisión ya tomada se re-presenta como pendiente.
 - Método de esta depuración: cada punto se contrastó contra ADRs `Aceptado`, el Plan Maestro V11.1, memoria del proyecto y el estado real del código/producción (verificado con `grep`/`tsc`/queries directas a Supabase donde aplica) — no se asume nada por inferencia.
 
@@ -52,6 +53,8 @@ Ninguna — donde hay texto recuperado, coincide con decisiones ya implementadas
 - Si el documento ALS original aparece en el futuro (fuera del repo), reconciliar retroactivamente es trivial: se compara contra el código/ADRs ya existentes, no contra una implementación que haya que reconstruir.
 
 **Acción**: cerrado. No queda ningún IDs de OC-01…OC-24 pendiente de descarte tras esta decisión (5 CONVERGIDOS + 19 DESCARTADOS = 24).
+
+**Precisión del equipo (2026-09-06, para evitar una lectura demasiado amplia de "descartado")**: descartar estos 19 IDs **no significa que un comportamiento futuro relacionado esté prohibido** — significa específicamente que esos IDs ya no pueden invocarse como *requisitos históricos con evidencia* (no se puede decir "esto hay que hacerlo porque lo pedía OC-14", porque no hay texto que lo respalde). Si en el futuro surge una necesidad de negocio real que coincida con lo que un ID descartado pudo haber pedido, se evalúa como una necesidad nueva, con su propia evidencia — no se reabre el ID descartado ni se le asigna retroactivamente el contenido de la necesidad nueva.
 
 ---
 
@@ -159,9 +162,11 @@ Ya existe un precedente real en este mismo repo: el rework de Embarques (`docs/e
 
 Ninguna sobre A vs B en general — es la decisión que corresponde al PO. Sí se recomienda, como insumo para esa decisión: **cuando llegue el momento de exponer N2 a la UI, tratarlo como su propia mini-decisión A/B independiente** (dado el hallazgo del punto 3.3), en vez de asumir que la respuesta general a "Fase 3" aplica automáticamente a esa pieza específica.
 
-### 3.5 Resolución — 🟢 B, evolución incremental (PO, 2026-09-06)
+### 3.5 Resolución — 🟢 B, evolución incremental (PO, 2026-09-06) — ⚠️ CORREGIDA por el equipo el mismo día, ver §3.7
 
-**Decisión**: Pedidos sigue el camino **B — evolución incremental** sobre `pedidos-client/` existente. No se abre un `NEXT_PUBLIC_PEDIDOS_V2` ni un rediseño completo detrás de flag.
+**Esta sección quedó SUPERSEDIDA por §3.7 unas horas después de escribirse** (misma fecha). Se conserva íntegra, sin editar, como registro honesto de la decisión que se tomó por inferencia con la evidencia disponible en ese momento — siguiendo el mismo principio de trazabilidad que rige todo este documento (nunca borrar una decisión superada, solo anteponer su corrección). **No usar esta sección como la decisión vigente — ir a §3.7.**
+
+**Decisión (histórica, superada)**: Pedidos sigue el camino **B — evolución incremental** sobre `pedidos-client/` existente. No se abre un `NEXT_PUBLIC_PEDIDOS_V2` ni un rediseño completo detrás de flag.
 
 **Razonamiento para el contexto de Agua Bambú** (aplicando la matriz de §3.2 a las dimensiones que de verdad importan para este negocio, no a las que importarían para un equipo más grande):
 - **Offline-first es un requisito no negociable** (conectividad rural 2G/3G, ver AGENTS.md) y hoy YA funciona sobre la base incremental. La opción A obliga a reconstruir esa capa desde cero antes de poder confiar en la UI nueva — es el riesgo más caro de la matriz y el único con potencial de romper algo que hoy es sólido.
@@ -193,6 +198,43 @@ Instrucción explícita: que Fase 3 sea "novedoso, contemporáneo, sin clichés"
 5. **Disciplina de color reservada a estado.** Regla explícita para PRs futuros de UI de Pedidos: color solo para señalar estado real (pagado/pendiente/atrasado/discrepante), nunca decorativo — evita el otro cliché común ("dashboard arcoíris").
 
 **Acción**: esto es una guía de dirección de diseño para PRs incrementales futuros, sourced y con precedentes reales — no dispara ninguna implementación ahora mismo (no hay ningún PR de UI de Pedidos en curso que necesite esta guía todavía). Se documenta para que, cuando llegue el próximo incremento de UI de Pedidos (o el momento de exponer N2, §3.5), no se resuelva por defecto con el cliché genérico de tabla+badges+modal sin pensarlo, sino con estos principios ya investigados y aplicables al stack real del proyecto.
+
+**Nota de vigencia (ver §3.7)**: esta guía de dirección de diseño (SAP Fiori/Stripe/Linear/última milla) **sigue vigente y se vuelve MÁS relevante**, no menos, tras la corrección de §3.7 — un rediseño integral tiene más libertad para aplicar estos principios desde el modelo de dominio hacia arriba que un incremento parcial sobre UI heredada. No se descarta nada de §3.6, se reusa como insumo del rediseño.
+
+### 3.7 CORRECCIÓN DEL EQUIPO (2026-09-06) — Fase 3 = **A, rediseño integral**. SUPERSEDE §3.5.
+
+El equipo corrigió explícitamente la resolución de §3.5: Fase 3 **sí contempla un rediseño completo** de la UI/UX de Pedidos — no debe tratarse como evolución incremental de las pantallas actuales ni como una sucesión de ajustes pequeños.
+
+**Por qué esta corrección es legítima y no una contradicción de proceso**: §3.5 fue una decisión tomada por esta sesión, por inferencia, con la autorización explícita del usuario de decidir en nombre del PO. El equipo/PO real tiene contexto de negocio que esta sesión no tiene acceso a evaluar completo (p.ej. cuánto la reconceptualización de dominio N2 ya justifica por sí sola repensar el modelo mental completo, no solo parchearlo). Cuando la autoridad real corrige una inferencia con una decisión explícita y mejor informada, la corrección se aplica — no se defiende la inferencia original. Es exactamente el mismo principio que ya rige este documento para cualquier BRECHA PLAN↔CÓDIGO: no resolver por suposición cuando hay una fuente de mayor autoridad disponible.
+
+**Alcance del rediseño (verbatim del mandato del equipo, para no re-interpretar)**: reconceptualizar integralmente la experiencia de Pedidos, llevándola desde:
+
+`modelo de dominio → modelo mental → arquitectura de información → flujos → interacción → UI → implementación → pruebas`
+
+cubriendo, entre otros:
+- creación y consulta de pedidos;
+- `PEDIDO` vs `VENTA_RAPIDA`;
+- `origen` independiente de `canal`;
+- estados y ciclo de vida;
+- pendientes;
+- cumplimiento parcial;
+- correcciones vs. nueva demanda;
+- relación Pedido → Embarque → Entrega → Cartera;
+- recurrentes;
+- cambios de modalidad;
+- situaciones excepcionales;
+- errores, vacíos, loading y estados operativos;
+- responsive/mobile;
+- offline/sincronización cuando corresponda.
+
+**Regla explícita del mandato**: la UI actual **no es una restricción de diseño** — es el punto de partida técnico, no el modelo a conservar. No se debe preservar `pedidos-client/` como forma, solo como referencia de lo que ya funciona técnicamente (offline-first, permisos, auditoría) y que el rediseño no puede permitirse perder.
+
+**Qué NO cambia con esta corrección** (para evitar que se lea como "reabrir todo"):
+- Las decisiones de **dominio** ya convergidas (G6, G11, `ventaRapida→origen`, diferencial comercial) **no se reabren** — el mandato del equipo es explícito en esto (§8 de su mensaje: "no debemos reabrir las decisiones de dominio ya convergidas"). El rediseño de Fase 3 es de **UI/UX**, consume esas decisiones de dominio como dadas, no las vuelve a cuestionar.
+- La guía de dirección de diseño investigada en §3.6 (SAP Fiori/Stripe/Linear) sigue siendo el insumo de diseño aplicable — de hecho más relevante en un rediseño integral que en un parche incremental.
+- La matriz A vs B de §3.2 y el hallazgo de riesgo de §3.3 no se invalidan — de hecho, el argumento de §3.3 (la reconceptualización de N2 hace que insertar incrementalmente conceptos nuevos en una UI que ya muestra 3 estados con una cascada manual se vuelva cada vez más difícil de razonar) es precisamente la evidencia que, vista con el contexto completo del equipo, inclina la balanza hacia A en vez de hacia B. No es que la matriz estuviera mal — es que el peso relativo de sus filas se pondera distinto con más contexto de negocio.
+
+**Acción**: el siguiente paso concreto NO es escribir código de UI directamente. Conforme al protocolo de este proyecto (`AGENTS.md`: investigación antes de código, aprobación explícita antes de implementar en trabajo de este tamaño) y al precedente real ya existente en este mismo repo (`docs/embarques/00-plan-frontend-completo.md`, el rediseño de Embarques ejecutado en fases con gates), el siguiente entregable es un **Plan Técnico de rediseño de Pedidos** — arquitectura de información, flujos, fases de ejecución (probablemente detrás de `NEXT_PUBLIC_PEDIDOS_V2`, igual que Embarques V2), y gates de verificación — antes de tocar un solo componente. Ese plan es el próximo trabajo, no está incluido en esta actualización del documento de decisiones.
 
 ---
 
@@ -339,6 +381,16 @@ PR #205 (`feat/pedidos-ventarapida-origen`, mergeado en `main` `85c37f6f`): `ped
 
 Verificado (grep + lectura) que ningún reporte/query de `src/app/api/reportes/**` ni `src/lib/embarque-stats.ts` deriva "venta rápida" a partir de `canal` — todos los que distinguen origen comercial ya leían `Pedido.origen` directamente (introducido junto con `OrigenPedidoVO`, antes de esta corrección). No se encontraron consumidores adicionales a corregir fuera de los listados en §5.5.3.
 
+### 5.5.5 Confirmación explícita (2026-09-06): esto NO fue un rename que conservó la lógica incorrecta
+
+El equipo señaló, correctamente como principio general, que un simple rename de `ventaRapida` a `origen` que conservara la misma lógica (`canal === 'PUNTO'`) sería inaceptable. Se confirma, con evidencia verificable, que la implementación real de PR #205 no hizo eso:
+
+- La condición que decide `origen` **ya no lee `canal` en absoluto** — lee si hay un cliente real (`clienteSeleccionado || mostrarNuevo`) vs. el cliente canónico `CONSUMIDOR_FINAL`. `canal` se sigue enviando, pero como un campo completamente independiente.
+- Las 4 combinaciones (`PEDIDO`+`PUNTO`, `PEDIDO`+`DOMICILIO`, `VENTA_RAPIDA`+`PUNTO`, `VENTA_RAPIDA`+`DOMICILIO`) están cubiertas por test de integración real contra Postgres (`pedido-origen-canal-independientes.test.ts`, 5 tests) — incluyendo específicamente `VENTA_RAPIDA`+`DOMICILIO`, la combinación que la lógica vieja hacía **inalcanzable** y que era la prueba de que el bug era real, no cosmético.
+- `CONSUMIDOR_FINAL` se trata exactamente como el equipo lo especifica: **ausencia de cliente real**, no un tipo comercial nuevo — es el mismo id canónico ya establecido en el proyecto (ver AGENTS.md, sección "Cliente canónico `CONSUMIDOR_FINAL`"), reutilizado como señal, no reinventado.
+
+No se requiere ninguna acción adicional sobre este punto — el mandato del equipo ya está satisfecho por la implementación existente.
+
 ---
 
 ## 6. Matriz final de decisiones
@@ -350,7 +402,7 @@ Verificado (grep + lectura) que ningún reporte/query de `src/app/api/reportes/*
 | Enum `CanalPedido` vs `String`+VO | 🟢 **DECIDIDO** (el ADR elige `String`+VO) | ADR vigente | Ninguna — no reabrir |
 | `ventaRapida` → `origen` | 🟢 **DECIDIDO E IMPLEMENTADO** (PO 2026-09-06, PR #205) | — | Ninguna — ver §5.5 |
 | G11 — semántica de `PedidoCantidadAjuste`/pedido-hijo | 🟢 **DECIDIDO E IMPLEMENTADO** (PO 2026-09-06, PR #206) | — | Ninguna — ver §2.0 |
-| Fase 3 — UX/UI de Pedidos (A vs B) | 🟢 **DECIDIDO** (PO 2026-09-06, por inferencia sobre el contexto de Agua Bambú) | — | Ninguna — B (incremental) confirmado, ver §3.5. Excepción: exponer N2 a UI es su propia mini-decisión, cuando llegue ese trabajo (§3.5) |
+| Fase 3 — UX/UI de Pedidos (A vs B) | 🟢 **DECIDIDO — A, rediseño integral** (equipo, 2026-09-06, CORRIGE la inferencia previa de §3.5) | Equipo/PO | Ver §3.7 (alcance completo, dominio→UI→pruebas). Próximo entregable: Plan Técnico de rediseño (estilo `docs/embarques/00-plan-frontend-completo.md`) antes de tocar código. §3.6 (dirección de diseño SAP Fiori/Stripe/Linear) sigue vigente como insumo |
 | Diferencial — mecanismo comercial | 🟢 **DECIDIDO E IMPLEMENTADO** (N2, #195-199) | ADR/Plan Maestro | Ninguna |
 | Diferencial — representación fiscal | 🟡 **DOCTRINA CONFIRMADA, 2 HECHOS OPERATIVOS PENDIENTES** (investigación 2026-09-06, §4.6) | Agua Bambú (hecho operativo) + Contador (confirmación puntual) | La ley ya no es la ambigüedad — Oficio DIAN 906781/2022 + Concepto 9156/2024 (fuente oficial) exigen Nota Débito + Factura nueva por el mayor valor. Falta confirmar si Agua Bambú ya emite facturas DIAN reales hoy (pregunta 0, §4.3) — sin eso, no implementar nada fiscal |
 | OC-01…OC-24 recuperados (5: `PED-OC-01/02/03`, `OC-05/06`) | 🟢 **CONVERGIDO** | — | Ninguna — ya cubiertos |
@@ -404,3 +456,12 @@ Verificado explícitamente, uno por uno, contra el contenido de este documento:
 - **¿La investigación de UI/UX llevó a reabrir la decisión A vs B ya tomada en §3.5?** No — §3.6 es explícito en que es una dirección de diseño para los incrementos que ya se iban a hacer bajo B, no una justificación para reconsiderar A. Ninguna de las 5 traducciones concretas (densidad con jerarquía, microcopy de estado, vista por rol, paleta de comandos, disciplina de color) requiere abandonar la base incremental existente.
 - **¿Se inventó una implementación de UI no solicitada?** No — §3.6 termina explícitamente en "no dispara ninguna implementación ahora mismo"; es guía documentada para cuando exista el próximo PR de UI de Pedidos, no un PR en sí.
 - **¿La recomendación de paleta de comandos contradice la ausencia de Radix/shadcn/cmdk en el stack actual (verificado en `package.json`)?** No — se señala explícitamente que es aditivo, de bajo riesgo, y no requiere una dependencia pesada (`cmdk` es ~5kb, o implementable a mano); no se asume una migración de stack que no se ha decidido.
+
+### 7.4 Revisión adversarial de la actualización 2026-09-06 (4ª ronda — corrección formal del equipo)
+
+- **¿Se defendió la decisión de §3.5 (B, incremental) en vez de aplicar la corrección del equipo?** No — §3.7 aplica la corrección tal como fue mandatada, sin reinterpretarla a la baja ni negociarla. Se explica POR QUÉ es legítimo corregir una inferencia con una decisión de mayor autoridad (mismo principio de BRECHA PLAN↔CÓDIGO que ya rige el resto del documento), pero no se cuestiona el contenido de la corrección.
+- **¿Se reabrieron decisiones de dominio que el propio mensaje del equipo dice que NO se deben reabrir?** No — §3.7 es explícito en que G6, G11, `ventaRapida→origen` y el diferencial comercial quedan exactamente como estaban; el rediseño es de UI/UX, consume esas decisiones como dadas.
+- **¿Se empezó a escribir código de UI sin plan ni aprobación, violando el protocolo de investigación de `AGENTS.md`?** No — §3.7 termina explícitamente en que el siguiente entregable es un Plan Técnico (no código), seguido del precedente real ya usado en este mismo repo para un rediseño de este tamaño (Embarques V2).
+- **¿Se perdió el trabajo de investigación de diseño ya hecho (§3.6) al corregir la decisión de alcance?** No — se agregó una nota de vigencia explícita: la guía de SAP Fiori/Stripe/Linear no solo sigue aplicando, se vuelve más relevante en un rediseño integral que en un parche incremental.
+- **¿La precisión sobre el descarte de OC (§1.5) diluye la decisión ya tomada?** No — aclara su alcance exacto (no se puede citar un ID descartado como requisito histórico) sin revertir el descarte ni reabrir los 19 IDs.
+- **¿Se resolvió la pregunta fiscal (§4) por inferencia, contradiciendo el mandato explícito del equipo de no convertir doctrina general en conclusión específica sin validación profesional?** No — no hay cambios de contenido en §4 en esta ronda; el mensaje del equipo confirma que el enfoque ya documentado (doctrina investigada + 2 hechos operativos pendientes de confirmación del negocio, no de esta sesión) es correcto tal como está.
