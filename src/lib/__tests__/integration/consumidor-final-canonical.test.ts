@@ -50,7 +50,7 @@ describe('CrearPedidoUseCase — cliente canónico CONSUMIDOR_FINAL', () => {
     const baseInput = {
       clienteId: 'CONSUMIDOR_FINAL',
       canal: 'PUNTO' as const,
-      ventaRapida: true,
+      origen: 'VENTA_RAPIDA' as const,
       items: [{ producto: 'PACA_AGUA' as const, cantidad: 1 }],
       pagos: [{ metodo: 'EFECTIVO' as const, monto: 5000 }],
       createdById: adminId,
@@ -90,7 +90,7 @@ describe('CrearPedidoUseCase — cliente canónico CONSUMIDOR_FINAL', () => {
     const r1 = await useCase.execute({
       clienteId: 'CONSUMIDOR_FINAL',
       canal: 'PUNTO' as const,
-      ventaRapida: true,
+      origen: 'VENTA_RAPIDA' as const,
       items: [{ producto: 'PACA_AGUA' as const, cantidad: 1 }],
       pagos: [{ metodo: 'EFECTIVO' as const, monto: 5000 }],
       offlineId: uniqueId('vr-fallback'),

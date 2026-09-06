@@ -88,7 +88,15 @@ export interface PedidoUnifiedData {
    */
   direccionEntrega?: string
   barrioEntrega?: string
-  ventaRapida: boolean
+  /**
+   * G6/ventaRapida→origen (decisión PO 2026-09-06): `origen` responde CÓMO
+   * se originó la operación, independiente de `canal` (cómo se entrega).
+   * `VENTA_RAPIDA` = ausencia de cliente real (CONSUMIDOR_FINAL), no
+   * "canal === PUNTO" — antes se derivaba de canal, lo que clasificaba mal
+   * un pedido normal de un cliente real recogido en mostrador. Ver el
+   * cálculo en `handleSubmit`.
+   */
+  origen: 'PEDIDO' | 'VENTA_RAPIDA'
   /**
    * ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: solo para venta rápida. `false` =
    * "entregar después" (el cliente paga ahora y retira/recibe luego) → el
@@ -744,7 +752,11 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
       actualizarCliente,
       direccionEntrega: canal === 'DOMICILIO' ? editDireccion || undefined : undefined,
       barrioEntrega: canal === 'DOMICILIO' ? editBarrio || undefined : undefined,
-      ventaRapida: canal === 'PUNTO',
+      // G6/ventaRapida→origen (decisión PO 2026-09-06): origen responde a si
+      // hay un cliente real detrás de la operación (seleccionado o nuevo),
+      // NUNCA a canal. Antes `ventaRapida: canal === 'PUNTO'` clasificaba
+      // como venta rápida a un cliente real que recoge en mostrador.
+      origen: (clienteSeleccionado || mostrarNuevo) ? 'PEDIDO' : 'VENTA_RAPIDA',
       // Solo se envía `false` explícito (entregar después); `undefined` deja el
       // comportamiento histórico. El route lo ignora sin el flag activo.
       entregado:

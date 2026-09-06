@@ -176,7 +176,10 @@ export class CrearPedidoUseCase {
 
       // 5. Build domain entities
       const canal = CanalVO.create(input.canal)
-      const origen = input.ventaRapida ? OrigenPedidoVO.create('VENTA_RAPIDA') : OrigenPedidoVO.create(input.origen || 'PEDIDO')
+      // G6/ventaRapida→origen (decisión PO 2026-09-06): `origen` es explícito
+      // desde el caller, nunca inferido de otro campo. `ventaRapida: boolean`
+      // salió del contrato — el frontend manda `origen` directamente.
+      const origen = OrigenPedidoVO.create(input.origen || 'PEDIDO')
       // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: la venta rápida deja de forzar
       // ENTREGADO. `entregado === false` → entrega posterior (queda PENDIENTE +
       // ANTICIPADO si va prepago). Solo aplica a venta rápida; el resto de

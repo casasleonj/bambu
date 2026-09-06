@@ -73,7 +73,7 @@ function buildPendingPedido(offlineId: string, payload: CrearPedidoPayload, clie
     tipo: tipoDesdeCanal(payload.canal),
     canal: payload.canal,
     estado: 'PENDIENTE',
-    origen: payload.ventaRapida ? 'VENTA_RAPIDA' : 'PEDIDO',
+    origen: payload.origen ?? 'PEDIDO',
     estadoEntrega: 'PENDIENTE',
     estadoPago: 'PENDIENTE',
     items: (payload.items || []).map(i => ({
@@ -946,7 +946,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
         // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: "entregar después" deja una
         // entrega/retiro pendiente — el toast debe decirlo (no confundir con
         // una venta de mostrador ya entregada).
-        const msg = data.ventaRapida
+        const msg = data.origen === 'VENTA_RAPIDA'
           ? data.entregado === false
             ? (data.pagos?.length === 0 ? 'Venta registrada — entrega pendiente' : 'Venta cobrada — entrega pendiente')
             : (data.pagos?.length === 0 ? 'Venta registrada (pendiente)' : 'Venta cobrada')

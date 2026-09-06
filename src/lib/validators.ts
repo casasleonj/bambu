@@ -81,8 +81,8 @@ export const PedidoCreateSchema = z.object({
   barrioEntrega: z.string().max(100).optional(),
   // Offline-first: id generado por el cliente para dedup si se encola
   offlineId: z.string().optional(),
-  // LEGACY (mantener durante transición)
-  ventaRapida: z.boolean().optional(),
+  // G6/ventaRapida→origen (decisión PO 2026-09-06): `ventaRapida: boolean`
+  // salió del contrato — el cliente manda `origen` explícito (arriba).
   // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: solo aplica a venta rápida.
   // `false` → "entregar después" (queda PENDIENTE + ANTICIPADO si va prepago).
   // Gated por NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR en el route.
@@ -189,11 +189,13 @@ export const VentaLibreSchema = z.object({
   // sends. The form is currently an orphan (no page in production uses it),
   // but extending the schema ensures the form is "API-compatible" if
   // wired in the future. The server uses the values from the original
-  // `items`/`pagos` fields; `canal`/`ventaRapida` are stored in the obs if
+  // `items`/`pagos` fields; `canal`/`origen` are stored in the obs if
   // needed but otherwise ignored server-side. `tipo` removed (G6,
   // ADR-PEDIDO-ORIGEN-CANAL-001 — sale del contrato, 100% derivado de canal).
+  // `ventaRapida: boolean` removido (G6/ventaRapida→origen, decisión PO
+  // 2026-09-06) — reemplazado por `origen` explícito.
   canal: z.enum(['PUNTO', 'DOMICILIO']).optional(),
-  ventaRapida: z.boolean().optional(),
+  origen: z.enum(['PEDIDO', 'VENTA_RAPIDA']).optional(),
   preciosManuales: z.record(z.string(), z.number()).optional(),
   total: z.number().optional(),
   clienteNuevo: z.object({

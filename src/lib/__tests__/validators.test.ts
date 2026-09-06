@@ -87,7 +87,7 @@ describe('PedidoCreateSchema', () => {
       const result = PedidoCreateSchema.safeParse({
         clienteId: 'test-cliente-id',
         items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
-        ventaRapida: true,
+        origen: 'VENTA_RAPIDA',
         ...(entregado === undefined ? {} : { entregado }),
       })
       expect(result.success).toBe(true)
