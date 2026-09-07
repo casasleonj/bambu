@@ -114,6 +114,33 @@ export const PedidoCreateSchema = z.object({
 });
 
 // ====================
+// PREVIEW DE PEDIDO (Fase 4 — prerequisito del blueprint, BRECHA §9.1)
+// ====================
+
+/**
+ * Subconjunto de PedidoCreateSchema para POST /api/pedidos/preview.
+ * SIN campos de persistencia. origen ∈ {PEDIDO, VENTA_RAPIDA} — VENTA_LIBRE
+ * queda fuera de esta brecha (docs/pedidos/02-api-contract-pedidos.md).
+ * z.object() descarta claves desconocidas por defecto — eso cubre el test
+ * "descarta campos de persistencia".
+ */
+export const PreviewPedidoSchema = z.object({
+  clienteId: z.string().trim().min(1),
+  negocioId: z.string().trim().min(1).optional(),
+  canal: z.enum(['PUNTO', 'DOMICILIO']).optional().default('DOMICILIO'),
+  origen: z.enum(['PEDIDO', 'VENTA_RAPIDA']).optional().default('PEDIDO'),
+  items: z.array(PedidoItemSchema).min(1, 'Agrega al menos un producto'),
+  pagos: z.array(
+    z.object({
+      metodo: z.enum(['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA', 'BONO']),
+      monto: z.number().min(0),
+    }),
+  ).optional(),
+  entregado: z.boolean().optional(),
+  pedidoOrigenId: z.string().optional(),
+});
+
+// ====================
 // ENTREGA (nuevo)
 // ====================
 

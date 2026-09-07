@@ -19,6 +19,8 @@ import { AnularPedidoUseCase } from './use-cases/AnularPedidoUseCase'
 import { CancelarPedidoUseCase } from './use-cases/CancelarPedidoUseCase'
 import { ActualizarPedidoUseCase } from './use-cases/ActualizarPedidoUseCase'
 import { GetFiadoStatusUseCase, ClienteNotFoundError } from './use-cases/GetFiadoStatusUseCase'
+import { PreviewPedidoUseCase } from './use-cases/PreviewPedidoUseCase'
+import { getPrecioMinimos } from '@/lib/pricing'
 
 const txManager = new PrismaTransactionManager()
 const pedidoRepo = new PrismaPedidoRepository()
@@ -69,6 +71,14 @@ export const actualizarPedidoUseCase = new ActualizarPedidoUseCase(
 )
 
 export const getFiadoStatusUseCase = new GetFiadoStatusUseCase(pedidoRepo, clienteRepo)
+
+export const previewPedidoUseCase = new PreviewPedidoUseCase({
+  pricingPort: pricingAdapter,
+  clienteRepo,
+  pedidoRepo,
+  getFiadoStatusUseCase,
+  getPrecioMinimos,
+})
 
 export { PedidoDTOMapper } from './dto/PedidoDTOMapper'
 export type * from './dto'
