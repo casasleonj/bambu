@@ -258,7 +258,8 @@ Conteos para la cabecera de focos del Pedido Hub (blueprint §2.2). **Aditivo** 
 // Response 200 (campos nuevos)
 {
   // ...previos...
-  enRutaCount: number            // pedidos con estadoEntrega EN_RUTA
+  porPlanificarCount: number      // PENDIENTE con embarqueId null (hoy o atrasados)
+  enRutaCount: number             // pedidos con estadoEntrega EN_RUTA
   esperandoPagoTotal: number      // Σ saldo de ENTREGADO con saldo > 0 (excluye CONSUMIDOR_FINAL)
   pendientesN2Count: number       // ObligacionPendiente con estado ABIERTA
 }

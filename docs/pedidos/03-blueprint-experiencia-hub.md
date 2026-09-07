@@ -554,7 +554,8 @@ El blueprint es holístico; la implementación sigue el `00-plan` por fases.
 | Fase | Qué construye | Depende de | Gates que debe pasar |
 |---|---|---|---|
 | **Backend preview** (BRECHA §9.1) | `POST /api/pedidos/preview` conforme al contrato del Plan Técnico §13 | — | contrato definido y probado (integración Postgres) |
-| **Fase 4** | Pedido Hub: shell + focos + lista adaptativa + peek + command menu (§2, §4) | preview | G2, G4, G5, G6, G9, G10 |
+| **Fase 4a** ✅ | Pedido Hub: shell + focos + lista adaptativa (§2, §4) — flag `NEXT_PUBLIC_PEDIDOS_V2` | preview | G2, G5, G6, G9 |
+| **Fase 4b** | peek/detalle contextual + command menu (§3.5–3.7) — necesita `GET /api/pedidos/[id]` extendido (§9.2) | Fase 4a | G4, G10 |
 | **Composición** | `PedidosWorkspace` recompone Fase 3 con reducer/orquestador + `PedidoProposal`/`PedidoReview`/`PedidoRiskSignals`/`PedidoCommitBar` (§3, §5.3) | preview | G1, G3, G7, G8 |
 | **Fase 5** | N2 en el flujo — `PedidoExceptionPanel`, gestión de pendiente (§5.1) | endpoints N2 (Fase 2, hechos) | G4, G7 |
 | **Fase 6** | G11 — punto de decisión + ramas A/B (§5.2) | Composición | G7, G8 |

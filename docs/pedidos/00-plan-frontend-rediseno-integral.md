@@ -194,6 +194,8 @@ La causa raíz de por qué esto no puede ser incremental (confirmado por la inve
 
 #### FASE 4 — Consulta y detalle: Pedido Hub (reemplaza `/pedidos`) (2 PRs)
 
+> **Fase 4a ✅ IMPLEMENTADA** (rama `feat/pedidos-hub-4a`, detrás de `NEXT_PUBLIC_PEDIDOS_V2` OFF): shell + cabecera de focos (5, filtros de un clic) + lista adaptativa (responsive table, 5 columnas, microcopy de estado, acción destacada derivada) + `GET /api/pedidos/counts` extendido. `derive-operacion` reusa `visual-states`/`pedido-transitions` (G7). Verificado: +27 unit, tsc/eslint limpios, Playwright en vivo (Hub monta, 0 tabs, microcopy, filtro de foco). Plan: `docs/pedidos/fase4a-hub-plan.md`. **Fase 4b** (peek/detalle contextual + command menu) es el siguiente PR.
+
 > **Blueprint de experiencia (Secciones 1–6) aprobado por el PO 2026-09-07 — `docs/pedidos/03-blueprint-experiencia-hub.md`.** Ese documento es la autoridad de QUÉ se construye para el Hub, la captura, el peek, N2, G11, riesgo, Recurrentes y los gates de aceptación (G1–G11). Esta sección del `00-*` sigue siendo la autoridad de fases/PRs. El blueprint agrega: un prerequisito de backend (`POST /api/pedidos/preview` — BRECHA §9.1), 3 PENDIENTES DE NEGOCIO (SLA de entrega, umbrales de precio manual, consolidación de `/repartidor`) y la fase "Composición" (recompone Fase 3 con el reducer/orquestador del workspace).
 
 **Qué es:** reemplaza `pedidos-client/index.tsx` (2520 líneas) — lista + detalle con la jerarquía de información de Stripe (tabla densa, microcopy de estado) y el principio de vista-por-rol de Fiori.
