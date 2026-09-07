@@ -58,7 +58,14 @@ export function PedidoCommandMenu({
   }, [open])
 
   useEffect(() => {
-    if (open) { setQuery(''); setCursor(0); inputRef.current?.focus() }
+    if (open) {
+      // reset del estado efímero del menú al abrir — no derivable en render.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setQuery('')
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setCursor(0)
+      inputRef.current?.focus()
+    }
   }, [open])
 
   const items: CommandItem[] = useMemo(() => {
@@ -110,15 +117,15 @@ export function PedidoCommandMenu({
           className="w-full border-b px-4 py-3 text-sm outline-none"
           data-testid="command-menu-input"
         />
-        <ul className="max-h-80 overflow-y-auto py-1">
+        <ul className="max-h-80 overflow-y-auto py-1" role="listbox" aria-label="Comandos">
           {filtered.length === 0 && <li className="px-4 py-2 text-sm text-gray-400">Sin comandos</li>}
           {filtered.map((item, i) => (
-            <li key={item.id}>
+            <li key={item.id} role="option" aria-selected={i === cursor}>
               <button
                 type="button"
                 onClick={() => activate(item)}
                 data-testid={`command-${item.id}`}
-                aria-selected={i === cursor}
+                data-active={i === cursor}
                 className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm ${i === cursor ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
               >
                 <span>{item.label}</span>
