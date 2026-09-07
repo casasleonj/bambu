@@ -221,3 +221,70 @@ export interface EntregarPedidoResult {
   // FIX F-N7: indica si la entrega fue dedup'd (pedido ya estaba ENTREGADO)
   deduped?: boolean
 }
+
+// ─── Preview (Fase 4, prerequisito del blueprint — BRECHA §9.1) ───────────────
+// Read-only. NUNCA persiste ni modifica ninguna entidad.
+// Contrato normativo: docs/pedidos/02-api-contract-pedidos.md.
+
+export interface PreviewPedidoInput {
+  clienteId: string
+  negocioId?: string
+  canal?: 'PUNTO' | 'DOMICILIO'
+  origen?: 'PEDIDO' | 'VENTA_RAPIDA'
+  items: Array<{ producto: ProductCode; cantidad: number; precioManual?: number }>
+  pagos?: Array<{ metodo: 'EFECTIVO' | 'TRANSFERENCIA' | 'NEQUI' | 'DAVIPLATA' | 'BONO'; monto: number }>
+  entregado?: boolean
+  pedidoOrigenId?: string
+  /** userId de la sesión — lo inyecta la route, no viene del body. */
+  actorId: string
+}
+
+export interface PreviewCalculationItem {
+  producto: string
+  cantidad: number
+  /** Precio final de Pricing — ya incluye recargo de domicilio si aplica. */
+  precioUnitario: number
+  /** precioUnitario × cantidad. */
+  subtotal: number
+  precioOrigen: 'manual' | 'cliente' | 'volumen' | 'base'
+}
+
+export interface PreviewPedidoResult {
+  calculation: {
+    items: PreviewCalculationItem[]
+    /** total − recargoDomicilio. */
+    subtotal: number
+    recargoDomicilio: number
+    /** Σ items[].subtotal. */
+    total: number
+    /** Σ normalizarPagos(request.pagos, total).pagosAplicados. */
+    totalPagado: number
+    /** calcularSaldo(total, totalPagado). */
+    saldoProyectado: number
+    /** normalizarPagos(request.pagos, total).excedente — iría a Cliente.saldoFavor en el commit. */
+    saldoFavorProyectado: number
+    estadoEntregaProyectado: 'PENDIENTE' | 'ENTREGADO'
+    estadoPagoProyectado: 'PENDIENTE' | 'PARCIAL' | 'PAGADO' | 'ANTICIPADO'
+  }
+  permissions: {
+    canCreate: boolean
+    canSetManualPrice: boolean
+  }
+  allowedActions: Array<'crear' | 'crear-y-enviar-a-ruta'>
+  warnings: Array<{ code: string; message: string; field?: string }>
+  riskSignals: Array<{ tipo: string; severidad: 'BAJA' | 'MEDIA' | 'ALTA'; detalle: string }>
+  requiresAuthorization: boolean
+  authorizationPolicy?: string
+  auditPreview: {
+    actor: string
+    accion: 'CREAR_PEDIDO'
+    recurso: 'Pedido (nuevo)'
+    valoresRelevantes: {
+      total: number
+      clienteId: string
+      canal: string
+      origen: string
+      tienePrecioManual: boolean
+    }
+  }
+}
