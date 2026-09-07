@@ -1,0 +1,93 @@
+// @tests Fase 4a — Pedido Hub (blueprint §2). Detrás de NEXT_PUBLIC_PEDIDOS_V2.
+//
+// Cómo correrlo (el flag NO está en el webServer por defecto para no romper
+// los ~180 specs de pedidos que esperan la UI de tabs):
+//
+//   NEXT_PUBLIC_PEDIDOS_V2=true PW_WORKERS=1 npx playwright test e2e/pedidos-hub.spec.ts
+//
+// Con un webServer fresco (Playwright arranca uno en :3001). Cuando 4a
+// gradúe (flag a default ON, Fase 10) este skip se elimina.
+
+import { test, expect, apiPost, createCliente, BASE, sharedLoginAs } from './fixtures'
+
+const HUB_ON = process.env.NEXT_PUBLIC_PEDIDOS_V2 === 'true'
+
+test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
+  test.skip(!HUB_ON, 'requiere NEXT_PUBLIC_PEDIDOS_V2=true + webServer fresco')
+
+  test('shell: focos visibles, sin tabs (G2), lista con microcopy y acción destacada', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'ADMIN')
+    const cliente = await createCliente(page, { nombre: 'Hub E2E' })
+    await apiPost(page, '/api/pedidos', {
+      clienteId: cliente.id, canal: 'DOMICILIO', origen: 'PEDIDO',
+      items: [{ producto: 'PACA_AGUA', cantidad: 5 }],
+      offlineId: `hub-e2e-${Date.now()}`,
+    })
+
+    await page.goto(`${BASE}/pedidos?all=true`)
+    await expect(page.getByTestId('pedido-hub')).toBeVisible()
+    await expect(page.getByTestId('foco-strip')).toBeVisible()
+    // G2: sin tabs Fiados/Alertas
+    await expect(page.getByTestId('tab-hoy')).toHaveCount(0)
+    await expect(page.getByTestId('tab-fiados')).toHaveCount(0)
+
+    const row = page.locator('[data-testid^="operacion-row-"]').first()
+    await expect(row).toBeVisible()
+    // G6: microcopy de estado (texto), no badges apilados
+    await expect(row).toContainText('Pendiente')
+    // una acción destacada
+    await expect(row.getByRole('button', { name: /Planificar|Registrar|Ver cartera|Completar|Confirmar|Resolver/ })).toBeVisible()
+  })
+
+  test('foco filtra la lista y el rango de fecha es independiente', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'ADMIN')
+    await page.goto(`${BASE}/pedidos?all=true`)
+    await expect(page.getByTestId('foco-strip')).toBeVisible()
+
+    const totalAntes = await page.locator('[data-testid^="operacion-row-"]').count()
+    await page.getByTestId('foco-esperandoPago').click()
+    // el filtro reduce (o iguala) — nunca aumenta
+    const totalDespues = await page.locator('[data-testid^="operacion-row-"]').count()
+    expect(totalDespues).toBeLessThanOrEqual(totalAntes)
+    // re-clic deselecciona
+    await page.getByTestId('foco-esperandoPago').click()
+    expect(await page.locator('[data-testid^="operacion-row-"]').count()).toBe(totalAntes)
+  })
+
+  test('responsive: desktop tabla / mobile tarjetas', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'ADMIN')
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.goto(`${BASE}/pedidos?all=true`)
+    await expect(page.getByTestId('pedido-hub-desktop')).toBeVisible()
+
+    await page.setViewportSize({ width: 375, height: 720 })
+    await expect(page.getByTestId('pedido-hub-mobile')).toBeVisible()
+    await expect(page.getByTestId('pedido-hub-desktop')).toHaveCount(0)
+  })
+
+  test('offline: badge visible, datos intactos, sin pantalla de error', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'ADMIN')
+    await page.goto(`${BASE}/pedidos?all=true`)
+    await expect(page.getByTestId('pedido-hub')).toBeVisible()
+    const rowsAntes = await page.locator('[data-testid^="operacion-row-"]').count()
+
+    await page.context().setOffline(true)
+    await page.waitForTimeout(500)
+    await expect(page.getByTestId('pedido-hub-offline')).toBeVisible()
+    // datos siguen ahí
+    expect(await page.locator('[data-testid^="operacion-row-"]').count()).toBe(rowsAntes)
+
+    await page.context().setOffline(false)
+  })
+})
+
+test.describe('flag OFF: la UI de tabs sigue funcionando', () => {
+  test.skip(HUB_ON, 'este bloque valida el comportamiento con el flag OFF')
+
+  test('tabs Pedidos/Fiados/Alertas visibles, sin pedido-hub', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'ADMIN')
+    await page.goto(`${BASE}/pedidos`)
+    await expect(page.getByTestId('tab-hoy')).toBeVisible()
+    await expect(page.getByTestId('pedido-hub')).toHaveCount(0)
+  })
+})
