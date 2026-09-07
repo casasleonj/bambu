@@ -126,7 +126,7 @@ Cancela una gestión de pendiente antes de que se ejecute. Revierte lo aplicado 
 
 ### `POST /api/pedidos/preview`
 
-**Estado:** contrato definido (2026-09-07, correcciones PO PR #220) — **sin implementar todavía**. Prerequisito de la captura rediseñada (`PedidosWorkspace`) y del Pedido Hub. Plan de implementación TDD: `docs/pedidos/fase4-preview-endpoint-plan.md`.
+**Estado:** ✅ **implementado** (rama `feat/pedidos-preview-endpoint`, stack sobre PR #220). Ruta: `src/app/api/pedidos/preview/route.ts`; use case: `src/modules/pedidos/application/use-cases/PreviewPedidoUseCase.ts` (compuesto en `previewPedidoUseCase`). Plan ejecutado: `docs/pedidos/fase4-preview-endpoint-plan.md`. Verificado: 28 unit + 2 integración (read-only comportamental + proyección == commit campo a campo) + smoke en vivo contra el dev server.
 
 Prepara una operación de **creación de pedido** sin persistir: calcula precios/total, proyecta virtualmente pagos/saldo/estado usando las reglas existentes, evalúa permisos y acciones disponibles, corre las reglas de riesgo detectivas contra el draft, y determina si requiere autorización. **No** crea `Pedido`/`PedidoItem`/`Factura`/`Pago` ni ninguna fila; **no** crea ni modifica `Cliente`; **no** toma lock; **no** abre transacción de escritura; **no** usa `offlineId` (read-only). El commit real (`POST /api/pedidos`) sigue siendo la autoridad final y recalcula/revalida todo.
 
