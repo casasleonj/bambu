@@ -141,19 +141,22 @@ La causa raíz de por qué esto no puede ser incremental (confirmado por la inve
 
 ---
 
-#### FASE 2 — Fundamentos: `02-api-contract-pedidos.md` + flag + endpoints N2 (1 PR)
+#### FASE 2 — Fundamentos: `02-api-contract-pedidos.md` + flag + endpoints N2 (1 PR) ✅ IMPLEMENTADO
 
 **Nota**: la arquitectura de UX/interacción (lo que hubiera sido `01-ux-contract-pedidos.md`) ya está cubierta por la ALS adoptada (§0) — no se duplica. El fix del bypass de G11 (hallazgo #2 de §0) ya se ejecutó de forma independiente, sin esperar el gate de Ronda 2 (PR #214, mergeado) — era un bug de integridad, no trabajo de rediseño.
 
-**Entregables:**
-- `docs/pedidos/02-api-contract-pedidos.md` — la tabla de §1.2 formalizada, shapes de request/response, mapeo de errores a mensajes humanos (mismo rol que `03-exception-model.md` tuvo en Embarques), más el shape de `PricingPreview`/`SensitiveActionPreview`/`allowedActions`/`riskSignals` que exige la ALS §9-10.
-- Flag `NEXT_PUBLIC_PEDIDOS_V2` (default `false` en prod, `true` en dev).
-- Los 3 endpoints de N2 faltantes (D4) — backend puro, sin UI todavía, con tests de integración (mismo rigor que `ajuste-pedido.test.ts`). Sus `warnings`/`riskSignals` de respuesta deben poder alimentarse desde `alertas-detector.ts`/`ResponsibilityCase` (§0), no un motor nuevo.
+**Entregables (ejecutados):**
+- `docs/pedidos/02-api-contract-pedidos.md` — tabla de §1.2 referenciada + shapes completos de los 3 endpoints nuevos de N2 (request/response/mapeo de errores).
+- `NEXT_PUBLIC_PEDIDOS_V2` documentado en `.env.example` (default OFF; Fase 2 es backend puro, no depende del flag — las fases de UI sí lo usarán).
+- Los 3 endpoints de N2 (D4), thin controllers sobre casos de uso ya probados contra Postgres real:
+  - `POST /api/pedidos/[id]/gestionar-pendiente` → `GestionarPendienteUseCase`
+  - `POST /api/actividades/[id]/cambiar-modo` → `CambiarModoActividadUseCase`
+  - `POST /api/actividades/[id]/liberar` → `LiberarActividadUseCase`
 
-**Criterios de éxito:**
-- `npx tsc --noEmit` + `npm run test` + `npx eslint` verdes.
-- `02-api-contract-pedidos.md` cubre el 100% de los endpoints de §1.2, incluyendo los 3 nuevos de N2.
-- Los 3 endpoints nuevos de N2 tienen test de integración real (Postgres) que ejercita cada guard de sus use cases ya existentes.
+**Criterios de éxito (verificados):**
+- `npx tsc --noEmit` + `npm run test` (2842/2842) + `npx eslint` (0 warnings en los archivos tocados) + `npx prisma validate` — todos verdes.
+- `02-api-contract-pedidos.md` cubre los 3 endpoints nuevos con shape completo + tabla de errores.
+- **Ajuste sobre el criterio original**: en vez de un test de integración Postgres end-to-end por endpoint (que hubiera vuelto a ejercitar guards YA cubiertos por `gestionar-pendiente-integridad.test.ts`/`cambiar-modo-actividad-integridad.test.ts`/`liberar-actividad-integridad.test.ts` a nivel de caso de uso), cada ruta tiene un test de contrato (rol, forma del Zod, delegación correcta, mapeo de errores) — mismo patrón ya establecido en este repo para thin controllers (`resolver-disputa/__tests__/route.test.ts`). Evita duplicar cobertura sin perder verificación de la única pieza genuinamente nueva: el wiring HTTP.
 
 **Rollback:** los endpoints son aditivos; el flag por defecto en `false` no cambia nada visible.
 
@@ -314,9 +317,10 @@ Ninguna fase se cierra por "compila". Cada una demuestra: componente + estados d
 
 ### 2.6 Gate de esta Ronda 2
 
-- [ ] Equipo/PO aprueba las decisiones D1–D7.
-- [ ] Equipo/PO aprueba el orden de fases y el alcance (§2.2/§2.4).
-- [ ] Con el OK, se ejecuta PR-1 (Fase 2) y se vuelve a pedir gate antes de PR-2, siguiendo el mismo ritmo de aprobación por fase que usó Embarques.
+- [x] Decisiones D1–D7 adoptadas (2026-09-06) — bajo la autorización explícita "decide tú"/"continúa" vigente durante toda esta sesión para decisiones de alcance técnico ya razonadas (no ambigüedades de negocio nuevas). Las 7 propuestas de §2.1 se adoptan tal como quedaron escritas — ninguna requería una decisión de negocio que esta sesión no pudiera fundamentar con el código/precedentes ya verificados.
+- [x] Orden de fases y alcance (§2.2/§2.4) confirmado sin cambios respecto a lo escrito.
+- [x] PR-1 (Fase 2) ejecutado — ver estado ✅ en la sección de Fase 2 arriba.
+- [ ] Antes de PR-2 (Fase 3, creación de pedido — la primera fase que toca UI real), se recomienda una confirmación explícita del equipo/PO si el ritmo de "decide tú" debe seguir aplicando a fases de UI visibles a los 6 usuarios, o si en ese punto prefieren revisar antes de cada PR — el trabajo de Fase 2 fue deliberadamente backend-only y de bajo riesgo (aditivo, flag en OFF) precisamente para no forzar esa pregunta todavía.
 
 ---
 
