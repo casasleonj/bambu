@@ -215,6 +215,30 @@ export interface CrearPedidoResult {
   deduped?: boolean
 }
 
+// ─── Peek (Fase 4b del Hub) — datos de la capa 2 del peek contextual ─────────
+// Se añaden a la respuesta de GET /api/pedidos/[id] (aditivo). Solo lectura.
+
+export interface PedidoPeekExtras {
+  pendienteN2: {
+    id: string
+    producto: string
+    remanente: number
+    estado: string
+    actividades: Array<{
+      id: string
+      tipo: string
+      cantidad: number
+      cantidadCumplida: number
+      estado: string
+      modo: string | null
+      embarqueId: string | null
+    }>
+  } | null
+  embarqueResumen: { id: string; numeroDia: number; estado: string; repartidor: string | null } | null
+  pedidosVinculados: Array<{ id: string; numero: number; rol: 'demanda' | 'origen'; total: number; estadoEntrega: string }>
+  casosAbiertos: Array<{ id: string; alertaTipo: string; severidad: string; status: string }>
+}
+
 export interface EntregarPedidoResult {
   pedido: PedidoResumenDTO
   hijo?: PedidoResumenDTO
