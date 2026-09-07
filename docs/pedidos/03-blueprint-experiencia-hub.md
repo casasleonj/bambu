@@ -5,7 +5,7 @@
 - **Autoridad de UX/interacción:** `AGUA_BAMBU_PEDIDOS_UX_ARCHITECTURE_LEVEL_SPECIFICATION_v1.0.als.md` (ALS) + `AGUA_BAMBU_PEDIDOS_PLAN_TECNICO_UX_ANTIFRAUDE_v1.0.md` (Plan Técnico). Este documento **materializa** ambos para el Pedido Hub; no los reemplaza.
 - **Autoridad de fases/migración/PRs:** `00-plan-frontend-rediseno-integral.md`.
 - **Autoridad de contratos de API:** el código real (`route.ts`) + `02-api-contract-pedidos.md`.
-- **Autoridad de dominio (congelada, no se reabre):** ADRs `Aceptado` de Pedidos, G6 (`canal` canónico), G11 (corrección vs nueva demanda), `ventaRapida→origen`, independencia `origen × canal`, `CONSUMIDOR_FINAL` como ausencia de cliente real.
+- **Autoridad de dominio (congelada, no se reabre):** ADRs `Aceptado` de Pedidos (incl. `ADR-OBLIGACION-001`), G6 (`canal` canónico), G11 (corrección vs nueva demanda), **N2 (Obligación/Actividad/diferencial — backend cerrado #194–#198)**, `ventaRapida→origen`, independencia `origen × canal`, `CONSUMIDOR_FINAL` como ausencia de cliente real. El blueprint los **consume**; no altera ninguno.
 
 ## §0. Cómo leer este documento
 
