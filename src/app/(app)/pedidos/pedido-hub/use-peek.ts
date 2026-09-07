@@ -80,9 +80,14 @@ export function usePeek(pedidos: Pedido[]): UsePeekResult {
   }, [pedidos, fetchLayer2])
 
   // Si el peek está abierto y su operación desaparece de la lista (filtro
-  // cambió, se anuló), cerrar.
+  // cambió, se anuló), cerrar. Es una sincronización de estado efímero de UI
+  // con un cambio de prop — no es lógica derivable en render (hay que resetear
+  // varios pedazos de estado y cancelar el request en vuelo).
   useEffect(() => {
-    if (activeId && !pedidos.some((p) => p.id === activeId)) close()
+    if (activeId && !pedidos.some((p) => p.id === activeId)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      close()
+    }
   }, [activeId, pedidos, close])
 
   return { activeId, layer1, layer2, loadingLayer2, errorLayer2, open, close, nav }

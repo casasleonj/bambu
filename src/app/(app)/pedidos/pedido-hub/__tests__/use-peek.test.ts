@@ -32,7 +32,7 @@ describe('usePeek', () => {
     expect(result.current.activeId).toBe('p1')
     expect(result.current.layer1?.id).toBe('p1')       // instantáneo
     await waitFor(() => expect(result.current.layer2).toBeTruthy())
-    expect((result.current.layer2 as { marker: string }).marker).toBe('layer2-p1')
+    expect((result.current.layer2 as unknown as { marker: string }).marker).toBe('layer2-p1')
     expect((fetch as ReturnType<typeof vi.fn>)).toHaveBeenCalledTimes(1)
   })
 
@@ -52,7 +52,7 @@ describe('usePeek', () => {
     await waitFor(() => expect(result.current.layer2).toBeTruthy())
     act(() => result.current.nav('next'))
     expect(result.current.activeId).toBe('p2')
-    await waitFor(() => expect((result.current.layer2 as { marker: string })?.marker).toBe('layer2-p2'))
+    await waitFor(() => expect((result.current.layer2 as unknown as { marker: string })?.marker).toBe('layer2-p2'))
     act(() => result.current.nav('prev'))
     expect(result.current.activeId).toBe('p1')
   })
