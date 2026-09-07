@@ -583,7 +583,8 @@ PENDIENTE de validación UX/arquitectónica. El Pedido representa la obligación
 ## §9. BRECHAS PLAN ↔ CÓDIGO
 
 ### 9.1 `POST /api/pedidos/preview` no existe
-El Plan Técnico §13 recomienda una operación de preview server-side que devuelva `{ calculation, permissions, allowedActions, warnings, riskSignals, requiresAuthorization, auditPreview }`. Hoy solo existe `/api/precios/resolver` (precio) + derivación client-side de transiciones. **Clasificación: BRECHA PLAN ↔ CÓDIGO.** Se construye conforme al contrato del Plan Técnico §13, antes de la captura rediseñada y el Hub. Es prerequisito de las Fases 4 y Composición.
+El Plan Técnico §13 recomienda una operación de preview server-side que devuelva `{ calculation, permissions, allowedActions, warnings, riskSignals, requiresAuthorization, auditPreview }`. Hoy solo existe `/api/precios/resolver` (precio) + derivación client-side de transiciones. **Clasificación: BRECHA PLAN ↔ CÓDIGO.** Es prerequisito de las Fases 4 y Composición.
+**Contrato definido (2026-09-07) en `02-api-contract-pedidos.md` § "Endpoint nuevo (Fase 4)"** — request/response completos, autoridad reutilizada (cero lógica nueva), read-only garantizado, `requiresAuthorization` siempre `false` hasta que exista la política de §8.2. Pendiente: aprobación del contrato → plan de implementación (writing-plans) → código.
 
 ### 9.2 `GET /api/pedidos/[id]` no incluye N2 ni relaciones completas
 Hoy incluye `factura` (lazy) + enriquecimiento de cliente/negocio. La capa 2 del peek necesita además `ObligacionPendiente`/`Actividad`, resumen de embarque y pedidos vinculados por `pedidoOrigenId`. **Clasificación: gap de contrato, additivo.** Se extiende el endpoint (o se crea uno dedicado para el peek) en la Fase 4/7. Sin cambio de schema.

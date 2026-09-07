@@ -119,3 +119,96 @@ Cancela una gestión de pendiente antes de que se ejecute. Revierte lo aplicado 
 - Ninguno es destructivo — `liberar` cancela (no borra), `cambiar-modo` conserva el histórico de la actividad original.
 - Los 3 exigen rol ADMIN/ASISTENTE — no hay acción de N2 accesible a REPARTIDOR/CONTADOR/CONSUMIDOR_FINAL en esta fase.
 - Los 3 son idempotentes por `offlineId`, listos para offline-first (`fetchResilient`) cuando se cableen a UI en Fase 5.
+
+---
+
+## Endpoint nuevo (Fase 4 / prerequisito del blueprint — BRECHA §9.1 de `03-blueprint-experiencia-hub.md`)
+
+### `POST /api/pedidos/preview`
+
+**Estado:** contrato definido (2026-09-07) — **sin implementar todavía**. Prerequisito de la captura rediseñada (`PedidosWorkspace`) y del Pedido Hub.
+
+Prepara una operación de **creación de pedido** sin persistir: calcula precios/total, evalúa permisos y acciones disponibles, corre las reglas de riesgo detectivas contra el draft, proyecta el estado, y determina si requiere autorización. **No** crea `Pedido`/`Factura`/`Pago` ni ninguna fila; **no** toma lock; **no** abre transacción de escritura; **no** usa `offlineId` (read-only, idempotente por naturaleza).
+
+- **Rol:** ADMIN, ASISTENTE (idéntico a `POST /api/pedidos`). El preview de venta rápida/libre para REPARTIDOR queda fuera del alcance de esta brecha; se agrega cuando esas capturas se rediseñen.
+- **Lock:** ninguno.
+- **Autoridad reutilizada (cero lógica de negocio nueva):**
+  - precios → `IPricingPort.resolverPrecios` (el mismo que usa `CrearPedidoUseCase`; internamente = `lib/pricing`)
+  - proyección de estado → `EstadoPagoVO.proyectar(total, totalPagado, estadoEntregaProyectado)` (`src/modules/pedidos/domain/value-objects/EstadoPago.ts`)
+  - crédito/fiado → `puedeCrearPedido` + `resolverLimiteFiados` (`src/modules/pedidos/domain/services/pedido-validation.service.ts`)
+  - acciones → `pedido-transitions.service.ts`
+  - riesgo → `calcularAlertasCliente(cliente, [...pedidosDelCliente, draftSintetico], { precioMinimos })` (`src/lib/alertas-detector.ts` — no toca Prisma)
+
+```ts
+// Request — subconjunto de PedidoCreateSchema, SIN campos de persistencia
+// (offlineId, clienteNuevo, actualizarCliente, direccionEntrega, productos legacy)
+{
+  clienteId: string                         // requerido; 'CONSUMIDOR_FINAL' válido
+  negocioId?: string
+  canal?: 'PUNTO' | 'DOMICILIO'             // default 'DOMICILIO'
+  origen?: 'PEDIDO' | 'VENTA_RAPIDA' | 'VENTA_LIBRE'   // default 'PEDIDO'
+  items: Array<{ producto: 'PACA_AGUA'|'PACA_HIELO'|'BOTELLON'|'BOLSA_AGUA'|'BOLSA_HIELO'; cantidad: number; precioManual?: number }>   // min 1
+  pagos?: Array<{ metodo: 'EFECTIVO'|'TRANSFERENCIA'|'NEQUI'|'DAVIPLATA'|'BONO'; monto: number }>
+  entregado?: boolean                       // venta rápida: proyecta ANTICIPADO vs PAGADO
+  pedidoOrigenId?: string                   // G11.B: valida existencia (404 si no)
+}
+```
+
+```ts
+// Response 200 — forma del Plan Técnico §13
+{
+  calculation: {
+    items: Array<{
+      producto: string
+      cantidad: number
+      precioUnitario: number
+      subtotal: number
+      precioOrigen: 'manual' | 'cliente' | 'volumen' | 'base'
+    }>
+    subtotal: number
+    recargoDomicilio: number
+    total: number
+    totalPagado: number                     // Σ pagos del request
+    saldoProyectado: number                 // total - totalPagado
+    estadoEntregaProyectado: 'PENDIENTE' | 'ENTREGADO'   // ENTREGADO solo si entregado===true
+    estadoPagoProyectado: 'PENDIENTE' | 'PARCIAL' | 'PAGADO' | 'ANTICIPADO'
+  }
+  permissions: {
+    canCreate: boolean                      // rol OK && puedeCrearPedido (fiado dentro de límite, cliente no bloqueado)
+    canSetManualPrice: boolean              // según rol / BLOQUEAR_PRECIOS_REPARTIDOR
+  }
+  allowedActions: Array<'crear' | 'crear-y-enviar-a-ruta'>   // derivado de estado proyectado + permisos
+  warnings: Array<{ code: string; message: string; field?: string }>
+    // FIADO_SOBRE_LIMITE, CLIENTE_BLOQUEADO, DIRECCION_FALTANTE (DOMICILIO sin dirección resuelta), PRECIO_MANUAL_APLICADO
+  riskSignals: Array<{ tipo: string; severidad: 'BAJA' | 'MEDIA' | 'ALTA'; detalle: string }>
+    // de calcularAlertasCliente: PRECIO_POR_DEBAJO_TABLA, MONTO_ANOMALO, CAMBIO_PRECIO_BRUSCO, MULTIPLES_PEDIDOS_RAPIDO, etc.
+  requiresAuthorization: boolean            // SIEMPRE false hoy — se activa cuando exista política de umbral (PENDIENTE §8.2 del blueprint)
+  authorizationPolicy?: string
+  auditPreview: {
+    actor: string                          // userId de la sesión
+    accion: 'CREAR_PEDIDO'
+    recurso: 'Pedido (nuevo)'
+    valoresRelevantes: {
+      total: number
+      clienteId: string
+      canal: string
+      origen: string
+      tienePrecioManual: boolean
+    }
+  }
+}
+```
+
+| Error | HTTP | Causa |
+|---|---|---|
+| datos inválidos (Zod) | 400 | forma del request |
+| no autenticado / rol | 401 / 403 | sesión / `requireRole` |
+| `CLIENTE_NOT_FOUND` | 404 | `clienteId` no existe |
+| `PEDIDO_ORIGEN_NOT_FOUND` | 404 | `pedidoOrigenId` no existe (G11.B) |
+
+**Principios del contrato:**
+
+- **Read-only garantizado.** El route no importa ningún repositorio de escritura, `PrismaTransactionManager` ni `withAdvisoryLock`. Test de contrato: `grep` del archivo + asserción de que no se llama `prisma.$transaction`.
+- **`requiresAuthorization` es `false` hoy** para toda creación normal — no se inventa un umbral (PENDIENTE §8.2). El campo está en el contrato para que el frontend ya lo consuma; se activa cuando negocio defina la política de precio manual / doble control.
+- **`riskSignals` ≠ bloqueo.** Una señal nunca quita `'crear'` de `allowedActions`. Solo `warnings` derivados de `puedeCrearPedido` (`FIADO_SOBRE_LIMITE`, `CLIENTE_BLOQUEADO`) pueden hacerlo — y esa decisión la toma el backend, no el preview (ALS: señal ≠ bloqueo ≠ autorización).
+- **El commit real (`POST /api/pedidos`) revalida todo.** El preview no es autoritativo sobre nada — recalcula en el commit dentro del lock (OWASP Transaction Authorization: no confiar en datos preparados entre preview y commit).
