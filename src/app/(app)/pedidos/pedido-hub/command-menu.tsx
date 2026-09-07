@@ -42,13 +42,20 @@ export function PedidoCommandMenu({
   const [cursor, setCursor] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // ⌘/Ctrl+K global — no captura si el foco está en un input/textarea ajeno.
+  // ⌘/Ctrl+K global. Los handlers de evento pueden hacer varios setState
+  // (React los batchea) — no es el caso que la regla set-state-in-effect cubre.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const k = e.key.toLowerCase()
       if ((e.metaKey || e.ctrlKey) && k === 'k') {
         e.preventDefault()
-        setOpen((v) => !v)
+        if (open) {
+          setOpen(false)
+        } else {
+          setQuery('')
+          setCursor(0)
+          setOpen(true)
+        }
       } else if (e.key === 'Escape' && open) {
         setOpen(false)
       }
@@ -57,13 +64,9 @@ export function PedidoCommandMenu({
     return () => window.removeEventListener('keydown', onKey)
   }, [open])
 
+  // Focus del input al abrir — side-effect de DOM.
   useEffect(() => {
-    if (open) {
-      // reset del estado efímero del menú al abrir.
-      setQuery('')
-      setCursor(0)
-      inputRef.current?.focus()
-    }
+    if (open) inputRef.current?.focus()
   }, [open])
 
   const items: CommandItem[] = useMemo(() => {
