@@ -582,9 +582,9 @@ PENDIENTE de validación UX/arquitectónica. El Pedido representa la obligación
 
 ## §9. BRECHAS PLAN ↔ CÓDIGO
 
-### 9.1 `POST /api/pedidos/preview` no existe
+### 9.1 `POST /api/pedidos/preview` — ✅ construido (rama `feat/pedidos-preview-endpoint`)
 El Plan Técnico §13 recomienda una operación de preview server-side que devuelva `{ calculation, permissions, allowedActions, warnings, riskSignals, requiresAuthorization, auditPreview }`. Hoy solo existe `/api/precios/resolver` (precio) + derivación client-side de transiciones. **Clasificación: BRECHA PLAN ↔ CÓDIGO.** Es prerequisito de las Fases 4 y Composición.
-**Contrato definido (2026-09-07, correcciones PO PR #220) en `02-api-contract-pedidos.md` § "Endpoint nuevo (Fase 4)"** + **plan de implementación TDD en `docs/pedidos/fase4-preview-endpoint-plan.md`** (11 tareas, sin open items). Alcance: `origen ∈ {PEDIDO, VENTA_RAPIDA}` — `VENTA_LIBRE` fuera de esta brecha, tipo de dominio intacto. Read-only verificado por comportamiento (snapshots de todas las entidades), no solo por `grep`. `requiresAuthorization` siempre `false` hasta que exista la política de §8.2. Pendiente: aprobación de PR #220 → ejecución del plan tarea por tarea en `feat/pedidos-preview-endpoint`.
+**Contrato definido (2026-09-07, correcciones PO PR #220) en `02-api-contract-pedidos.md` § "Endpoint nuevo (Fase 4)"** + **plan de implementación TDD en `docs/pedidos/fase4-preview-endpoint-plan.md`** (11 tareas, sin open items). Alcance: `origen ∈ {PEDIDO, VENTA_RAPIDA}` — `VENTA_LIBRE` fuera de esta brecha, tipo de dominio intacto. Read-only verificado por comportamiento (snapshots de todas las entidades), no solo por `grep`. `requiresAuthorization` siempre `false` hasta que exista la política de §8.2. **Implementado y verificado** (28 unit + 2 integración + smoke en vivo). Mergea después de PR #220.
 
 ### 9.2 `GET /api/pedidos/[id]` no incluye N2 ni relaciones completas
 Hoy incluye `factura` (lazy) + enriquecimiento de cliente/negocio. La capa 2 del peek necesita además `ObligacionPendiente`/`Actividad`, resumen de embarque y pedidos vinculados por `pedidoOrigenId`. **Clasificación: gap de contrato, additivo.** Se extiende el endpoint (o se crea uno dedicado para el peek) en la Fase 4/7. Sin cambio de schema.
@@ -601,7 +601,7 @@ Pasada de auditoría pedida por el PO (2026-09-07). Contradicciones, ambigüedad
 | # | Hallazgo | Clasificación | Resolución en este documento |
 |---|---|---|---|
 | C1 | La ALS §6 describe la máquina de estados como secuencia lineal; el blueprint la hace adaptativa | Refinamiento aprobado, no contradicción | §3.2 lo declara explícito: la secuencia de la ALS es la ruta máxima; el flujo adaptativo omite REVIEW/AUTHORIZATION cuando la política no los exige |
-| C2 | `POST /api/pedidos/preview` asumido por el blueprint, no existe | BRECHA PLAN ↔ CÓDIGO | §9.1 — se construye conforme al Plan Técnico §13 antes de Fase 4 |
+| C2 | `POST /api/pedidos/preview` asumido por el blueprint, no existía | BRECHA PLAN ↔ CÓDIGO — **RESUELTA** | §9.1 — construido en `feat/pedidos-preview-endpoint` conforme al contrato de `02-api-contract-pedidos.md`; 28 unit + 2 integración |
 | C3 | El peek capa 2 necesita datos que `GET /api/pedidos/[id]` no devuelve (N2, relaciones) | Gap de contrato additivo | §9.2 — se extiende el endpoint, sin schema |
 | C4 | Foco "En ruta" rojo requería un umbral temporal inexistente | Regla que se evitó inventar | §2.2 + §8.1 — sin color hasta que negocio defina el SLA |
 | C5 | Umbral de precio manual / doble control | Regla que se evitó inventar | §5.3 + §8.2 — advertencia + motivo + auditoría, sin umbral |
