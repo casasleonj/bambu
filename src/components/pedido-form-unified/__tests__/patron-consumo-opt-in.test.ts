@@ -13,6 +13,12 @@ import { resolve } from 'node:path'
 describe('pedido-form-unified: patrón de consumo es opt-in', () => {
   const sourcePath = resolve(__dirname, '../index.tsx')
   const source = readFileSync(sourcePath, 'utf-8')
+  // Fase 3b: el banner/botón de patrón de consumo se extrajo a
+  // PedidoContextPanel — mismo JSX, ahora recibe los handlers del padre
+  // (aplicarSugerenciaConsumo/verPatronConsumo) como props en vez de
+  // closures directas.
+  const contextPanelPath = resolve(__dirname, '../pedido-context-panel.tsx')
+  const contextPanelSource = readFileSync(contextPanelPath, 'utf-8')
 
   it('el efecto que consume pedidoInicial nunca llama a setCantidades con productosSugeridos', () => {
     const start = source.indexOf('useEffect(() => {\n    if (!pedidoInicial) return')
@@ -41,17 +47,23 @@ describe('pedido-form-unified: patrón de consumo es opt-in', () => {
   })
 
   it('el botón "Aplicar sugerencia" es un <button type="button"> explícito, no se auto-dispara', () => {
-    const idx = source.indexOf('aplicar-sugerencia-btn')
+    const idx = contextPanelSource.indexOf('aplicar-sugerencia-btn')
     expect(idx).toBeGreaterThan(-1)
-    const nearby = source.slice(idx - 300, idx + 300)
-    expect(nearby).toContain('onClick={aplicarSugerenciaConsumo}')
+    const nearby = contextPanelSource.slice(idx - 300, idx + 300)
+    expect(nearby).toContain('onClick={onAplicarSugerencia}')
     expect(nearby).toContain("type=\"button\"")
+    // El padre pasa el handler real (mismo comportamiento, ahora vía prop).
+    const wireIdx = source.indexOf('onAplicarSugerencia={aplicarSugerenciaConsumo}')
+    expect(wireIdx).toBeGreaterThan(-1)
   })
 
   it('el botón "Aplicar sugerencia" se deshabilita hasta que productosConfig cargue', () => {
-    const idx = source.indexOf('aplicar-sugerencia-btn')
-    const nearby = source.slice(idx, idx + 400)
-    expect(nearby).toContain('disabled={productosConfig.length === 0}')
+    const idx = contextPanelSource.indexOf('aplicar-sugerencia-btn')
+    const nearby = contextPanelSource.slice(idx, idx + 400)
+    expect(nearby).toContain('disabled={aplicarSugerenciaDisabled}')
+    // El padre deriva ese boolean de la misma condición original.
+    const wireIdx = source.indexOf('aplicarSugerenciaDisabled={productosConfig.length === 0}')
+    expect(wireIdx).toBeGreaterThan(-1)
   })
 
   it('la revalidación silenciosa de dirección/barrio solo corre para pedido NUEVO (no en edición)', () => {
@@ -67,10 +79,18 @@ describe('pedido-form-unified: patrón de consumo es opt-in', () => {
     const selectBody = source.slice(selectStart, selectEnd)
     expect(selectBody).toContain('setSugerenciaConsumo(null)')
 
-    const quitarIdx = source.indexOf('title="Quitar cliente"')
+    // Fase 3b: el onClick inline de "Quitar cliente" se extrajo a
+    // `handleQuitarCliente` (mismo reset exacto, ver comentario en el
+    // handler); el botón en PedidoContextPanel ahora invoca esa función vía
+    // prop (`onQuitarCliente`).
+    const quitarIdx = source.indexOf('const handleQuitarCliente')
     expect(quitarIdx).toBeGreaterThan(-1)
-    const before = source.slice(Math.max(0, quitarIdx - 600), quitarIdx)
-    expect(before).toContain('setSugerenciaConsumo(null)')
+    const quitarEnd = source.indexOf('\n  }', quitarIdx)
+    const quitarBody = source.slice(quitarIdx, quitarEnd)
+    expect(quitarBody).toContain('setSugerenciaConsumo(null)')
+
+    expect(contextPanelSource).toContain('title="Quitar cliente"')
+    expect(contextPanelSource).toContain('onClick={onQuitarCliente}')
   })
 
   it('la selección manual de cliente (verPatronConsumo) no se dispara automáticamente: requiere clic', () => {
@@ -78,7 +98,11 @@ describe('pedido-form-unified: patrón de consumo es opt-in', () => {
     expect(idx).toBeGreaterThan(-1)
     // No debe existir un useEffect que llame a verPatronConsumo automáticamente.
     expect(source).not.toMatch(/useEffect\(\(\) => \{\s*verPatronConsumo/)
-    const buttonIdx = source.indexOf('onClick={verPatronConsumo}')
+    // El botón real (dentro de PedidoContextPanel) invoca el handler vía
+    // prop; el padre lo pasa sin envolverlo en ningún efecto.
+    const buttonIdx = contextPanelSource.indexOf('onClick={onVerPatronConsumo}')
     expect(buttonIdx).toBeGreaterThan(-1)
+    const wireIdx = source.indexOf('onVerPatronConsumo={verPatronConsumo}')
+    expect(wireIdx).toBeGreaterThan(-1)
   })
 })
