@@ -6,6 +6,7 @@ import { getProductoIconConfig } from '@/lib/producto-iconos'
 import { MoneyDisplay } from '@/components/money-display'
 import { PedidoClienteDisplay } from '@/components/pedido-cliente-display'
 import { calcularEstadoPagoVisual } from '@/modules/pedidos/presentation/visual-states'
+import { getItemsFromPedido, pedidoItemsResumen } from '../pedido-items'
 import type { Pedido } from './types'
 
 // ADR-PAGO-REPORTADO-CONFIRMADO-001 §5 — el badge "Reportado" solo con el flag ON.
@@ -108,21 +109,6 @@ function FechaPedido({ pedido }: { pedido: Pedido }) {
   )
 }
 
-function getItemsFromPedido(pedido: Pedido) {
-  if (pedido.items && pedido.items.length > 0) {
-    return pedido.items.filter(i => i.cantPedido > 0)
-  }
-  // Fallback to legacy fields
-  const legacy: { producto: string; cantPedido: number }[] = []
-  if (pedido.cPacaAguaPed > 0) legacy.push({ producto: 'PACA_AGUA', cantPedido: pedido.cPacaAguaPed })
-  if (pedido.cPacaHieloPed > 0) legacy.push({ producto: 'PACA_HIELO', cantPedido: pedido.cPacaHieloPed })
-  const botellonTotal = (pedido.cBotellonFabPed || 0) + (pedido.cBotellonDomPed || 0)
-  if (botellonTotal > 0) legacy.push({ producto: 'BOTELLON', cantPedido: botellonTotal })
-  if (pedido.cBolsaAguaPed > 0) legacy.push({ producto: 'BOLSA_AGUA', cantPedido: pedido.cBolsaAguaPed })
-  if (pedido.cBolsaHieloPed > 0) legacy.push({ producto: 'BOLSA_HIELO', cantPedido: pedido.cBolsaHieloPed })
-  return legacy
-}
-
 interface PedidoTableProps {
   pedidos: Pedido[]
   updatingId: string | null
@@ -144,11 +130,6 @@ interface PedidoTableProps {
   onDiscardFailed?: (offlineId: string) => void
 }
 
-function pedidoItemsResumen(pedido: Pedido): string {
-  const items = getItemsFromPedido(pedido)
-  if (items.length === 0) return 'Sin productos'
-  return items.map((i) => `${i.cantPedido} ${getProductoIconConfig(i.producto).label ?? i.producto}`).join(', ')
-}
 
 function PendingPedidoDesktopRow({ pedido, onDiscardFailed }: { pedido: Pedido; onDiscardFailed?: (offlineId: string) => void }) {
   const failed = pedido._pendingFailed

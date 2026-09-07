@@ -1,4 +1,7 @@
+import { pedidosV2Enabled } from '@/lib/flags'
+
 export default function PedidosLoading() {
+  if (pedidosV2Enabled()) return <PedidoHubLoading />
   return (
     <div className="p-4 space-y-4 animate-pulse">
       {/* Header */}
@@ -43,6 +46,30 @@ export default function PedidosLoading() {
             <div className="col-span-2 h-4 bg-gray-200 rounded"></div>
             <div className="col-span-1 h-4 bg-gray-200 rounded"></div>
           </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function PedidoHubLoading() {
+  return (
+    <div className="p-4 space-y-3 animate-pulse">
+      {/* Header + rango de fecha */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="h-7 bg-gray-200 rounded w-40" />
+        <div className="h-9 bg-gray-200 rounded w-44" />
+      </div>
+      {/* Foco strip */}
+      <div className="flex gap-2">
+        {[...Array(5)].map((_, i) => (
+          <div key={i} className="h-14 w-28 shrink-0 rounded-xl bg-gray-200" />
+        ))}
+      </div>
+      {/* Lista */}
+      <div className="space-y-2">
+        {[...Array(8)].map((_, i) => (
+          <div key={i} className="h-12 rounded-lg bg-gray-100" />
         ))}
       </div>
     </div>

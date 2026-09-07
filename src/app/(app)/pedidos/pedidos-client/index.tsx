@@ -23,6 +23,8 @@ import { PedidoFilters } from './pedido-filters'
 import { PedidoTable } from './pedido-table'
 import { FiadosTable } from './fiados-table'
 import { AlertasTable } from './alertas-table'
+import { PedidoHub } from '../pedido-hub'
+import { pedidosV2Enabled } from '@/lib/flags'
 
 import type { Pedido, Embarque, Cliente } from './types'
 import { getPresetDate, getTodayString, buildDateRangeFilter, getTodayRange } from '@/lib/dates'
@@ -449,8 +451,16 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     alertasCount,
     atrasadosCount,
     enRiesgoCount,
+    porPlanificarCount,
+    enRutaCount,
+    esperandoPagoTotal,
+    pendientesN2Count,
     refetch: refetchCounts,
   } = usePedidosCounts(true)
+
+  // Fase 4a — Pedido Hub detrás del flag. OFF: la vista de consulta es la
+  // actual (tabs). Ver docs/pedidos/fase4a-hub-plan.md.
+  const hubMode = pedidosV2Enabled()
 
   // Refresca el dataset activo: el cache completo (modo normal) o el
   // fallback server-filtrado (negocio con más pedidos que el tope del cache).
@@ -1548,7 +1558,8 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
           </h1>
         </div>
 
-        {/* Tabs */}
+        {/* Tabs — ocultas en hubMode (los focos del Hub reemplazan Fiados/Alertas) */}
+        {!hubMode && (
         <div className="flex border-b border-gray-200">
           {[
             { key: 'hoy', label: 'Pedidos', count: pedidosVisibles.length },
@@ -1574,10 +1585,26 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
             </button>
           ))}
         </div>
+        )}
       </div>
 
+      {/* Fase 4a — Pedido Hub (flag ON). Reemplaza la vista "hoy" de tabs;
+          atrasados/enRiesgo y todos los modales siguen compartidos. */}
+      {hubMode && !atrasadosParam && !enRiesgoParam && (
+        <PedidoHub
+          pedidos={pedidosVisiblesConPendientes}
+          counts={{ porPlanificarCount, atrasadosCount, enRutaCount, esperandoPagoTotal, pendientesN2Count }}
+          loading={!hasLoadedOnce && loading}
+          error={fetchError}
+          onOpen={handleDetail}
+          onAccion={(pedido) => handleDetail(pedido)}
+          dateFilterSlot={<SmartDateFilter />}
+          onRetry={refreshPedidos}
+        />
+      )}
+
       {/* Stats - solo en Hoy (siempre sobre todos los pedidos, ignoran filtros activos) */}
-      {activeTab === 'hoy' && !atrasadosParam && !enRiesgoParam && (
+      {!hubMode && activeTab === 'hoy' && !atrasadosParam && !enRiesgoParam && (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
           <button
             onClick={() => setSingleFilter('estadoEntrega', 'PENDIENTE')}
@@ -1643,7 +1670,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       )}
 
       {/* Filtros - solo en Hoy (fuente de verdad URL) */}
-      {activeTab === 'hoy' && !atrasadosParam && !enRiesgoParam && (
+      {!hubMode && activeTab === 'hoy' && !atrasadosParam && !enRiesgoParam && (
         <div className="bg-white p-4 rounded-xl shadow mb-6 space-y-4">
           <SmartDateFilter />
           <PedidoFilters
@@ -1731,7 +1758,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
           </>
         )
       })()}
-      {activeTab === 'hoy' && !atrasadosParam && !enRiesgoParam && (
+      {!hubMode && activeTab === 'hoy' && !atrasadosParam && !enRiesgoParam && (
         !hasLoadedOnce && loading && pedidosVisiblesConPendientes.length === 0 ? (
           <div className="space-y-4">
             {Array.from({ length: 4 }).map((_, i) => (
@@ -1757,7 +1784,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
           />
         )
       )}
-      {activeTab === 'fiados' && (
+      {!hubMode && activeTab === 'fiados' && (
         <FiadosTable
           clientes={clientes}
           limiteGlobal={limiteGlobalFiados}
@@ -1769,7 +1796,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
           userRole={userRole}
         />
       )}
-      {activeTab === 'alertas' && (
+      {!hubMode && activeTab === 'alertas' && (
         <AlertasTable
           pedidos={pedidosAlertas}
           loading={loadingAlertas}
