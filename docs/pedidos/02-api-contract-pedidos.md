@@ -126,33 +126,59 @@ Cancela una gestión de pendiente antes de que se ejecute. Revierte lo aplicado 
 
 ### `POST /api/pedidos/preview`
 
-**Estado:** contrato definido (2026-09-07) — **sin implementar todavía**. Prerequisito de la captura rediseñada (`PedidosWorkspace`) y del Pedido Hub.
+**Estado:** contrato definido (2026-09-07, correcciones PO PR #220) — **sin implementar todavía**. Prerequisito de la captura rediseñada (`PedidosWorkspace`) y del Pedido Hub. Plan de implementación TDD: `docs/pedidos/fase4-preview-endpoint-plan.md`.
 
-Prepara una operación de **creación de pedido** sin persistir: calcula precios/total, evalúa permisos y acciones disponibles, corre las reglas de riesgo detectivas contra el draft, proyecta el estado, y determina si requiere autorización. **No** crea `Pedido`/`Factura`/`Pago` ni ninguna fila; **no** toma lock; **no** abre transacción de escritura; **no** usa `offlineId` (read-only, idempotente por naturaleza).
+Prepara una operación de **creación de pedido** sin persistir: calcula precios/total, proyecta virtualmente pagos/saldo/estado usando las reglas existentes, evalúa permisos y acciones disponibles, corre las reglas de riesgo detectivas contra el draft, y determina si requiere autorización. **No** crea `Pedido`/`PedidoItem`/`Factura`/`Pago` ni ninguna fila; **no** crea ni modifica `Cliente`; **no** toma lock; **no** abre transacción de escritura; **no** usa `offlineId` (read-only). El commit real (`POST /api/pedidos`) sigue siendo la autoridad final y recalcula/revalida todo.
 
-- **Rol:** ADMIN, ASISTENTE (idéntico a `POST /api/pedidos`). El preview de venta rápida/libre para REPARTIDOR queda fuera del alcance de esta brecha; se agrega cuando esas capturas se rediseñen.
+- **Rol:** ADMIN, ASISTENTE (idéntico a `POST /api/pedidos`).
 - **Lock:** ninguno.
+- **Alcance:** cubre la **creación de `Pedido`** (`origen ∈ {PEDIDO, VENTA_RAPIDA}`). **`VENTA_LIBRE` queda fuera de esta brecha** — su captura se rediseñará cuando corresponda; el tipo histórico `VENTA_LIBRE` del dominio **no se toca ni se altera** por esto. El preview de venta rápida/libre para REPARTIDOR también queda fuera.
 - **Autoridad reutilizada (cero lógica de negocio nueva):**
-  - precios → `IPricingPort.resolverPrecios` (el mismo que usa `CrearPedidoUseCase`; internamente = `lib/pricing`)
-  - proyección de estado → `EstadoPagoVO.proyectar(total, totalPagado, estadoEntregaProyectado)` (`src/modules/pedidos/domain/value-objects/EstadoPago.ts`)
-  - crédito/fiado → `puedeCrearPedido` + `resolverLimiteFiados` (`src/modules/pedidos/domain/services/pedido-validation.service.ts`)
-  - acciones → `pedido-transitions.service.ts`
-  - riesgo → `calcularAlertasCliente(cliente, [...pedidosDelCliente, draftSintetico], { precioMinimos })` (`src/lib/alertas-detector.ts` — no toca Prisma)
+  - precios → `IPricingPort.loadPricingContext` + `resolverPrecios` (el mismo que usa `CrearPedidoUseCase`)
+  - pagos / saldo / excedente → `normalizarPagos`, `calcularSaldo`, `calcularEstadoPago` (`src/modules/pedidos/domain/services/pagos-calculator.service.ts`)
+  - proyección de `estadoPago` → `EstadoPagoVO.proyectar(total, totalPagado, estadoEntregaProyectado)`, accessor `.get()` (`src/modules/pedidos/domain/value-objects/EstadoPago.ts`)
+  - crédito/fiado → `getFiadoStatusUseCase` (ya compuesto y exportado en `src/modules/pedidos`), que internamente usa `resolverLimiteFiados` + `getEstadoFiados`
+  - acciones → derivadas de permisos + estado proyectado (heurística §1.3 del blueprint)
+  - riesgo → `calcularAlertasCliente(cliente, [...últimos5PedidosVálidos, draftSintetico], { precioMinimos })` (`src/lib/alertas-detector.ts` — no toca Prisma; **ya excluye `CONSUMIDOR_FINAL` explícitamente** — se reutiliza esa autoridad)
 
 ```ts
 // Request — subconjunto de PedidoCreateSchema, SIN campos de persistencia
-// (offlineId, clienteNuevo, actualizarCliente, direccionEntrega, productos legacy)
+// (offlineId, clienteNuevo, actualizarCliente, direccionEntrega, barrioEntrega, productos legacy)
 {
-  clienteId: string                         // requerido; 'CONSUMIDOR_FINAL' válido
+  clienteId: string                         // requerido; 'CONSUMIDOR_FINAL' válido (= ausencia de cliente real)
   negocioId?: string
   canal?: 'PUNTO' | 'DOMICILIO'             // default 'DOMICILIO'
-  origen?: 'PEDIDO' | 'VENTA_RAPIDA' | 'VENTA_LIBRE'   // default 'PEDIDO'
+  origen?: 'PEDIDO' | 'VENTA_RAPIDA'         // default 'PEDIDO' — VENTA_LIBRE fuera de alcance
   items: Array<{ producto: 'PACA_AGUA'|'PACA_HIELO'|'BOTELLON'|'BOLSA_AGUA'|'BOLSA_HIELO'; cantidad: number; precioManual?: number }>   // min 1
   pagos?: Array<{ metodo: 'EFECTIVO'|'TRANSFERENCIA'|'NEQUI'|'DAVIPLATA'|'BONO'; monto: number }>
   entregado?: boolean                       // venta rápida: proyecta ANTICIPADO vs PAGADO
   pedidoOrigenId?: string                   // G11.B: valida existencia (404 si no)
 }
 ```
+
+#### Semántica de cálculo (definición normativa)
+
+| Campo | Definición |
+|---|---|
+| `precioUnitario` | precio final resuelto por Pricing — **ya incluye el recargo de domicilio** cuando `canal=DOMICILIO` y el producto `aplicaDomicilio` |
+| `subtotalItem` (`items[].subtotal`) | `precioUnitario × cantidad` |
+| `total` | `Σ subtotalItem` |
+| `recargoDomicilio` | `Σ (sobreCostoDomicilio_producto × cantidad)` sobre los productos con `aplicaDomicilio=true`, **solo cuando `canal=DOMICILIO`**; `0` en `PUNTO` |
+| `subtotal` | `total − recargoDomicilio` (el monto equivalente sin el recargo) |
+| identidad | `total = subtotal + recargoDomicilio` |
+
+El recargo **no se suma otra vez** sobre el precio ya resuelto: `precioUnitario` lo trae incorporado; `recargoDomicilio` es solo el desglose informativo de cuánto de ese total corresponde al recargo.
+
+Pagos (proyección virtual, sin efecto):
+
+| Campo | Definición |
+|---|---|
+| `pagosNormalizados` | `normalizarPagos(request.pagos, total).pagosAplicados` |
+| `totalPagado` | `Σ pagosNormalizados.monto` |
+| `saldoProyectado` | `calcularSaldo(total, totalPagado)` = `max(0, total − totalPagado)` |
+| `saldoFavorProyectado` | `normalizarPagos(request.pagos, total).excedente` — lo que en el commit iría a `Cliente.saldoFavor` |
+| `estadoEntregaProyectado` | `'ENTREGADO'` sólo si `entregado === true`; si no `'PENDIENTE'` |
+| `estadoPagoProyectado` | `calcularEstadoPago(total, totalPagado, estadoEntregaProyectado)` |
 
 ```ts
 // Response 200 — forma del Plan Técnico §13
@@ -161,31 +187,32 @@ Prepara una operación de **creación de pedido** sin persistir: calcula precios
     items: Array<{
       producto: string
       cantidad: number
-      precioUnitario: number
-      subtotal: number
+      precioUnitario: number                 // ya incluye recargo domicilio si aplica
+      subtotal: number                       // precioUnitario × cantidad
       precioOrigen: 'manual' | 'cliente' | 'volumen' | 'base'
     }>
-    subtotal: number
+    subtotal: number                         // total − recargoDomicilio
     recargoDomicilio: number
-    total: number
-    totalPagado: number                     // Σ pagos del request
-    saldoProyectado: number                 // total - totalPagado
-    estadoEntregaProyectado: 'PENDIENTE' | 'ENTREGADO'   // ENTREGADO solo si entregado===true
+    total: number                            // Σ items[].subtotal
+    totalPagado: number                      // Σ normalizarPagos(...).pagosAplicados
+    saldoProyectado: number                  // calcularSaldo(total, totalPagado)
+    saldoFavorProyectado: number             // normalizarPagos(...).excedente
+    estadoEntregaProyectado: 'PENDIENTE' | 'ENTREGADO'
     estadoPagoProyectado: 'PENDIENTE' | 'PARCIAL' | 'PAGADO' | 'ANTICIPADO'
   }
   permissions: {
-    canCreate: boolean                      // rol OK && puedeCrearPedido (fiado dentro de límite, cliente no bloqueado)
-    canSetManualPrice: boolean              // según rol / BLOQUEAR_PRECIOS_REPARTIDOR
+    canCreate: boolean                       // rol OK && cliente no bloqueado && fiado dentro de límite
+    canSetManualPrice: boolean               // hoy: true para ADMIN/ASISTENTE (sin política de umbral — PENDIENTE §8.2)
   }
-  allowedActions: Array<'crear' | 'crear-y-enviar-a-ruta'>   // derivado de estado proyectado + permisos
+  allowedActions: Array<'crear' | 'crear-y-enviar-a-ruta'>
   warnings: Array<{ code: string; message: string; field?: string }>
-    // FIADO_SOBRE_LIMITE, CLIENTE_BLOQUEADO, DIRECCION_FALTANTE (DOMICILIO sin dirección resuelta), PRECIO_MANUAL_APLICADO
+    // FIADO_SOBRE_LIMITE, CLIENTE_BLOQUEADO, DIRECCION_FALTANTE (DOMICILIO sin dirección), PRECIO_MANUAL_APLICADO
   riskSignals: Array<{ tipo: string; severidad: 'BAJA' | 'MEDIA' | 'ALTA'; detalle: string }>
-    // de calcularAlertasCliente: PRECIO_POR_DEBAJO_TABLA, MONTO_ANOMALO, CAMBIO_PRECIO_BRUSCO, MULTIPLES_PEDIDOS_RAPIDO, etc.
-  requiresAuthorization: boolean            // SIEMPRE false hoy — se activa cuando exista política de umbral (PENDIENTE §8.2 del blueprint)
+    // de calcularAlertasCliente. Vacío para CONSUMIDOR_FINAL (el detector lo excluye).
+  requiresAuthorization: boolean             // SIEMPRE false hoy — se activa cuando exista política de umbral (PENDIENTE §8.2)
   authorizationPolicy?: string
   auditPreview: {
-    actor: string                          // userId de la sesión
+    actor: string                            // userId de la sesión
     accion: 'CREAR_PEDIDO'
     recurso: 'Pedido (nuevo)'
     valoresRelevantes: {
@@ -206,9 +233,14 @@ Prepara una operación de **creación de pedido** sin persistir: calcula precios
 | `CLIENTE_NOT_FOUND` | 404 | `clienteId` no existe |
 | `PEDIDO_ORIGEN_NOT_FOUND` | 404 | `pedidoOrigenId` no existe (G11.B) |
 
+#### Historial para riesgo
+
+El preview obtiene los **últimos 5 pedidos válidos** del cliente vía `IPedidoRepository.findMany({ clienteId, estadoEntrega: ['PENDIENTE','EN_RUTA','ENTREGADO','NO_ENTREGADO'] }, { take: 5, orderBy: 'desc' })` (excluye `ANULADO`/`CANCELADO` por inclusión de los estados válidos) y los mapea a la forma legacy que lee `calcularAlertasCliente` vía `Pedido.toLegacyFields()`. **No se crea `findRecentByCliente`.** El límite de 5 coincide con la lógica actual del detector (trabaja con los últimos 5; requiere ≥3 para la mediana de `MONTO_ANOMALO`).
+
 **Principios del contrato:**
 
-- **Read-only garantizado.** El route no importa ningún repositorio de escritura, `PrismaTransactionManager` ni `withAdvisoryLock`. Test de contrato: `grep` del archivo + asserción de que no se llama `prisma.$transaction`.
-- **`requiresAuthorization` es `false` hoy** para toda creación normal — no se inventa un umbral (PENDIENTE §8.2). El campo está en el contrato para que el frontend ya lo consuma; se activa cuando negocio defina la política de precio manual / doble control.
-- **`riskSignals` ≠ bloqueo.** Una señal nunca quita `'crear'` de `allowedActions`. Solo `warnings` derivados de `puedeCrearPedido` (`FIADO_SOBRE_LIMITE`, `CLIENTE_BLOQUEADO`) pueden hacerlo — y esa decisión la toma el backend, no el preview (ALS: señal ≠ bloqueo ≠ autorización).
-- **El commit real (`POST /api/pedidos`) revalida todo.** El preview no es autoritativo sobre nada — recalcula en el commit dentro del lock (OWASP Transaction Authorization: no confiar en datos preparados entre preview y commit).
+- **Read-only garantizado — verificado por comportamiento, no solo por `grep`.** Además del guardrail estático (el route no importa repos de escritura, `PrismaTransactionManager` ni `withAdvisoryLock` ni llama `$transaction`), el test de integración captura el estado de `Pedido`, `PedidoItem`, `Pago`, `Factura` y `Cliente` **antes y después** de `preview` y verifica que no cambió ninguna fila ni ningún campo.
+- **`requiresAuthorization` es `false` hoy** para toda creación — no se inventa un umbral (PENDIENTE §8.2). El campo está en el contrato para que el frontend lo consuma; se activa cuando negocio defina la política de precio manual / doble control.
+- **`riskSignals` ≠ bloqueo ≠ autorización.** Una señal nunca quita `'crear'` de `allowedActions`. Solo `warnings` derivados del estado de fiado/bloqueo del cliente pueden hacerlo — decisión del backend, no del preview.
+- **`CONSUMIDOR_FINAL`** = ausencia de cliente real: sin historial/riesgo antifraude, sin comportamiento comercial de cliente real, sin crear ni modificar cliente. El preview reutiliza la exclusión que `calcularAlertasCliente` ya hace, no la reimplementa.
+- **El commit real (`POST /api/pedidos`) revalida y recalcula todo** dentro del lock (OWASP Transaction Authorization: no confiar en datos preparados entre preview y commit). El preview proyecta virtualmente `saldoFavor`, la normalización de pagos y el excedente con las **mismas reglas**, pero **sin ejecutar ningún efecto**.

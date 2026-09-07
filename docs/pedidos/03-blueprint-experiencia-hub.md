@@ -199,7 +199,7 @@ Transiciones, pricing y riesgo **no se duplican por viewport ni por rol**.
 | Intención del picker | `origen` derivado | Cómo se lanza |
 |---|---|---|
 | Tomar un pedido | `PEDIDO` | picker |
-| Vender ahora (mostrador / ruta) | `VENTA_RAPIDA` (oficina) / `VENTA_LIBRE` (repartidor, sin cliente real) | picker / modo repartidor |
+| Vender ahora (mostrador / ruta) | `VENTA_RAPIDA` (oficina). `VENTA_LIBRE` (repartidor, sin cliente real) **diferido** — su captura y su preview se rediseñan cuando corresponda, junto con el modo REPARTIDOR (§2.5, PENDIENTE §8.3); el preview de Fase 4 cubre `origen ∈ {PEDIDO, VENTA_RAPIDA}` | picker / modo repartidor |
 | Repetir lo de un cliente | `PEDIDO` o `RECURRENTE` según fuente del patrón | picker / command menu / peek del cliente |
 | Registrar nueva demanda (G11.B) | `PEDIDO` con `pedidoOrigenId` | desde una operación existente |
 | Gestionar un pendiente (N2) | — (no crea Pedido) | desde una operación con remanente |
@@ -584,7 +584,7 @@ PENDIENTE de validación UX/arquitectónica. El Pedido representa la obligación
 
 ### 9.1 `POST /api/pedidos/preview` no existe
 El Plan Técnico §13 recomienda una operación de preview server-side que devuelva `{ calculation, permissions, allowedActions, warnings, riskSignals, requiresAuthorization, auditPreview }`. Hoy solo existe `/api/precios/resolver` (precio) + derivación client-side de transiciones. **Clasificación: BRECHA PLAN ↔ CÓDIGO.** Es prerequisito de las Fases 4 y Composición.
-**Contrato definido (2026-09-07) en `02-api-contract-pedidos.md` § "Endpoint nuevo (Fase 4)"** — request/response completos, autoridad reutilizada (cero lógica nueva), read-only garantizado, `requiresAuthorization` siempre `false` hasta que exista la política de §8.2. Pendiente: aprobación del contrato → plan de implementación (writing-plans) → código.
+**Contrato definido (2026-09-07, correcciones PO PR #220) en `02-api-contract-pedidos.md` § "Endpoint nuevo (Fase 4)"** + **plan de implementación TDD en `docs/pedidos/fase4-preview-endpoint-plan.md`** (11 tareas, sin open items). Alcance: `origen ∈ {PEDIDO, VENTA_RAPIDA}` — `VENTA_LIBRE` fuera de esta brecha, tipo de dominio intacto. Read-only verificado por comportamiento (snapshots de todas las entidades), no solo por `grep`. `requiresAuthorization` siempre `false` hasta que exista la política de §8.2. Pendiente: aprobación de PR #220 → ejecución del plan tarea por tarea en `feat/pedidos-preview-endpoint`.
 
 ### 9.2 `GET /api/pedidos/[id]` no incluye N2 ni relaciones completas
 Hoy incluye `factura` (lazy) + enriquecimiento de cliente/negocio. La capa 2 del peek necesita además `ObligacionPendiente`/`Actividad`, resumen de embarque y pedidos vinculados por `pedidoOrigenId`. **Clasificación: gap de contrato, additivo.** Se extiende el endpoint (o se crea uno dedicado para el peek) en la Fase 4/7. Sin cambio de schema.

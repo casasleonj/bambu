@@ -2,15 +2,26 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the read-only `POST /api/pedidos/preview` endpoint that prepares a pedido-creation operation (prices, projected state, permissions, allowed actions, warnings, risk signals, audit preview) without persisting anything — the prerequisite for the redesigned capture (`PedidosWorkspace`) and the Pedido Hub.
+**Goal:** Build the read-only `POST /api/pedidos/preview` endpoint that prepares a **Pedido creation** operation (prices, virtually-projected payments/balance/state, permissions, allowed actions, warnings, risk signals, audit preview) without persisting or mutating anything — the prerequisite for the redesigned capture (`PedidosWorkspace`) and the Pedido Hub.
 
-**Architecture:** A new `PreviewPedidoUseCase` in `src/modules/pedidos/application/use-cases/` composes existing domain services and read-only repositories — it never writes, never takes a lock, never opens a write transaction. It reuses `IPricingPort.resolverPrecios` (same as `CrearPedidoUseCase`), `EstadoPagoVO.proyectar`, `getFiadoStatusUseCase`, `pedido-transitions.service.ts`, and `calcularAlertasCliente` (`src/lib/alertas-detector.ts`, no Prisma). A thin route controller (`src/app/api/pedidos/preview/route.ts`) validates a Zod subset of `PedidoCreateSchema`, delegates, and maps errors — mirroring the pattern of the N2 endpoints (`gestionar-pendiente/route.ts`). The real commit (`POST /api/pedidos`) revalidates everything; the preview is authoritative over nothing.
+**Architecture:** A new `PreviewPedidoUseCase` in `src/modules/pedidos/application/use-cases/` composes **existing** domain services and **read-only** repository methods. It never writes, never takes a lock, never opens a write transaction, never creates or modifies a `Cliente`. It reuses `IPricingPort` (same as `CrearPedidoUseCase`), `pagos-calculator.service.ts` (`normalizarPagos`/`calcularSaldo`/`calcularEstadoPago`), `getFiadoStatusUseCase` (already composed), and `calcularAlertasCliente` (`src/lib/alertas-detector.ts`, no Prisma). A thin route controller validates a Zod subset of `PedidoCreateSchema`, delegates, and maps errors — mirroring the N2 endpoints (`gestionar-pendiente/route.ts`). The real commit (`POST /api/pedidos`) revalidates and recomputes everything; the preview is authoritative over nothing.
 
 **Tech Stack:** Next.js 16 App Router route handlers, Zod 4, Vitest 3, Prisma 6 (read-only queries), the project's DDD `src/modules/pedidos/` structure.
 
-**Contract:** `docs/pedidos/02-api-contract-pedidos.md` § "Endpoint nuevo (Fase 4 / prerequisito del blueprint — BRECHA §9.1)". Do not diverge from it without updating that file.
+**Contract (normative):** `docs/pedidos/02-api-contract-pedidos.md` § "Endpoint nuevo (Fase 4 / prerequisito del blueprint — BRECHA §9.1)". Do not diverge from it. All calculation semantics, the `origen ∈ {PEDIDO, VENTA_RAPIDA}` scope, the `CONSUMIDOR_FINAL` rules, and the "last 5 valid orders" risk history are defined there.
 
-**Gate:** This plan is not executed until PR #220 (blueprint + contract) is approved.
+**Gate:** This plan is NOT executed until PR #220 (blueprint + contract) is approved. After approval, create `feat/pedidos-preview-endpoint` and execute task-by-task.
+
+**Verified against `main` (no open decisions for the implementer):**
+- `EstadoPagoVO.proyectar(total, totalPagado, estadoEntrega)` exists; public accessor is `.get()`.
+- `pagos-calculator.service.ts` exports `normalizarPagos(pagos, total) → { pagosAplicados, excedente }`, `calcularSaldo(total, totalPagado)`, `calcularEstadoPago(total, totalPagado, estadoEntrega?)`.
+- `IPedidoRepository.findMany(filter?, { take?, skip?, orderBy? }, tx?)` exists; `PedidoFilter` has `clienteId` and `estadoEntrega?: string[]`. Returns domain `Pedido[]`.
+- `Pedido` entity exposes `.clienteId`, `.total` (Money), `.totalPagado` (Money), `.estadoEntrega` (VO), `.estadoPago` (VO), `.fecha` (Date), `.items`, `.toLegacyFields()`.
+- `IClienteRepository.findById(id)` returns a client with `id, nombre, apellido, telefono, direccion, barrio, bloqueado, verificado, creadoPorRol, limitePedidosFiados, preciosEspeciales`. **Do not widen this contract.**
+- `getFiadoStatusUseCase` is composed and exported from `src/modules/pedidos`; returns `{ count, limite, nivel, pedidos }`.
+- `calcularAlertasCliente(cliente, pedidos, { precioMinimos })` from `src/lib/alertas-detector.ts` works on the last 5 orders and excludes `CONSUMIDOR_FINAL` and `ANULADO`/`CANCELADO` internally.
+- `getPrecioMinimos()` is exported from `src/lib/pricing.ts`.
+- `CANONICAL_CONSUMIDOR_FINAL_ID` is exported from `src/lib/constants`.
 
 ---
 
@@ -18,19 +29,20 @@
 
 | File | Responsibility | Action |
 |---|---|---|
-| `src/modules/pedidos/application/dto/index.ts` | add `PreviewPedidoInput` / `PreviewPedidoResult` types | Modify |
-| `src/lib/validators.ts` | add `PreviewPedidoSchema` (Zod subset of `PedidoCreateSchema`) | Modify |
-| `src/modules/pedidos/application/use-cases/draft-to-pedido-base.ts` | pure mapper: preview draft + resolved prices → synthetic `PedidoBase` for the risk detector | Create |
-| `src/modules/pedidos/application/use-cases/PreviewPedidoUseCase.ts` | the use case: compose pricing + projection + permissions + warnings + risk + actions + audit, read-only | Create |
+| `src/modules/pedidos/application/dto/index.ts` | `PreviewPedidoInput` / `PreviewPedidoResult` types | Modify |
+| `src/lib/validators.ts` | `PreviewPedidoSchema` (Zod subset of `PedidoCreateSchema`, `origen ∈ {PEDIDO, VENTA_RAPIDA}`) | Modify |
+| `src/modules/pedidos/application/use-cases/pedido-to-pedido-base.ts` | pure mappers: draft + resolved prices → synthetic `PedidoBaseLike`; and `Pedido` entity → `PedidoBaseLike` | Create |
+| `src/modules/pedidos/application/use-cases/PreviewPedidoUseCase.ts` | the use case — read-only composition | Create |
 | `src/modules/pedidos/application/index.ts` | wire `previewPedidoUseCase` in the composition root | Modify |
-| `src/modules/pedidos/index.ts` | export `previewPedidoUseCase` + `PreviewPedidoInput`/`PreviewPedidoResult` | Modify |
-| `src/app/api/pedidos/preview/route.ts` | thin controller: auth → role → Zod → delegate → map errors | Create |
-| `src/modules/pedidos/application/use-cases/__tests__/draft-to-pedido-base.test.ts` | unit tests for the mapper | Create |
+| `src/modules/pedidos/index.ts` | export `previewPedidoUseCase` | Modify |
+| `src/app/api/pedidos/preview/route.ts` | thin controller | Create |
+| `src/modules/pedidos/application/use-cases/__tests__/pedido-to-pedido-base.test.ts` | unit tests for the mappers | Create |
 | `src/modules/pedidos/application/use-cases/__tests__/PreviewPedidoUseCase.test.ts` | unit tests for the use case (mocked deps) | Create |
-| `src/app/api/pedidos/preview/__tests__/route.test.ts` | route contract test (source inspection + runtime with mock) | Create |
-| `src/lib/__tests__/integration/preview-pedido-integridad.test.ts` | Postgres: preview total == what `CrearPedidoUseCase` would compute | Create |
+| `src/app/api/pedidos/preview/__tests__/route.test.ts` | route contract test (source inspection — auxiliary guardrail) | Create |
+| `src/lib/__tests__/integration/preview-pedido-integridad.test.ts` | Postgres: behavioral read-only + full preview-vs-commit comparison | Create |
+| `src/lib/__tests__/validators-preview.test.ts` | schema unit tests | Create |
 | `docs/pedidos/02-api-contract-pedidos.md` | flip "sin implementar todavía" → implemented | Modify |
-| `docs/pedidos/03-blueprint-experiencia-hub.md` | §9.1: mark preview as built | Modify |
+| `docs/pedidos/03-blueprint-experiencia-hub.md` | §9.1 / §10 C2: mark preview as built | Modify |
 
 ---
 
@@ -39,17 +51,23 @@
 **Files:**
 - Modify: `src/modules/pedidos/application/dto/index.ts` (append near the other `*Input`/`*Result` interfaces)
 
-- [ ] **Step 1: Add the types**
+- [ ] **Step 1: Confirm `ProductCode` is imported**
+
+Run: `grep -n "import type { ProductCode }" src/modules/pedidos/application/dto/index.ts`
+Expected: it is already imported (used by `CrearPedidoInput`). If not, add `import type { ProductCode } from '@/shared/domain'` at the top.
+
+- [ ] **Step 2: Add the types**
 
 ```ts
 // ─── Preview (Fase 4, prerequisito del blueprint — BRECHA §9.1) ───────────────
-// Read-only. NUNCA persiste. Ver docs/pedidos/02-api-contract-pedidos.md.
+// Read-only. NUNCA persiste ni modifica ninguna entidad.
+// Contrato normativo: docs/pedidos/02-api-contract-pedidos.md.
 
 export interface PreviewPedidoInput {
   clienteId: string
   negocioId?: string
   canal?: 'PUNTO' | 'DOMICILIO'
-  origen?: 'PEDIDO' | 'VENTA_RAPIDA' | 'VENTA_LIBRE'
+  origen?: 'PEDIDO' | 'VENTA_RAPIDA'
   items: Array<{ producto: ProductCode; cantidad: number; precioManual?: number }>
   pagos?: Array<{ metodo: 'EFECTIVO' | 'TRANSFERENCIA' | 'NEQUI' | 'DAVIPLATA' | 'BONO'; monto: number }>
   entregado?: boolean
@@ -61,7 +79,9 @@ export interface PreviewPedidoInput {
 export interface PreviewCalculationItem {
   producto: string
   cantidad: number
+  /** Precio final de Pricing — ya incluye recargo de domicilio si aplica. */
   precioUnitario: number
+  /** precioUnitario × cantidad. */
   subtotal: number
   precioOrigen: 'manual' | 'cliente' | 'volumen' | 'base'
 }
@@ -69,11 +89,17 @@ export interface PreviewCalculationItem {
 export interface PreviewPedidoResult {
   calculation: {
     items: PreviewCalculationItem[]
+    /** total − recargoDomicilio. */
     subtotal: number
     recargoDomicilio: number
+    /** Σ items[].subtotal. */
     total: number
+    /** Σ normalizarPagos(request.pagos, total).pagosAplicados. */
     totalPagado: number
+    /** calcularSaldo(total, totalPagado). */
     saldoProyectado: number
+    /** normalizarPagos(request.pagos, total).excedente — iría a Cliente.saldoFavor en el commit. */
+    saldoFavorProyectado: number
     estadoEntregaProyectado: 'PENDIENTE' | 'ENTREGADO'
     estadoPagoProyectado: 'PENDIENTE' | 'PARCIAL' | 'PAGADO' | 'ANTICIPADO'
   }
@@ -101,18 +127,16 @@ export interface PreviewPedidoResult {
 }
 ```
 
-Verify `ProductCode` is already imported at the top of the file (it is used by `CrearPedidoInput`). If not, add `import type { ProductCode } from '@/shared/domain'`.
-
-- [ ] **Step 2: Type-check**
+- [ ] **Step 3: Type-check**
 
 Run: `npx tsc --noEmit`
 Expected: PASS (types only, no consumers yet)
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add src/modules/pedidos/application/dto/index.ts
-git commit -m "feat(pedidos): PreviewPedidoInput/Result DTOs para el endpoint de preview"
+git commit -m "feat(pedidos): PreviewPedidoInput/Result DTOs (origen PEDIDO|VENTA_RAPIDA, saldoFavorProyectado)"
 ```
 
 ---
@@ -131,53 +155,52 @@ import { describe, it, expect } from 'vitest'
 import { PreviewPedidoSchema } from '../validators'
 
 describe('PreviewPedidoSchema', () => {
-  it('acepta el caso mínimo (clienteId + 1 item)', () => {
+  it('acepta el caso mínimo (clienteId + 1 item) con defaults', () => {
     const r = PreviewPedidoSchema.safeParse({
       clienteId: 'c1',
       items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
     })
     expect(r.success).toBe(true)
     if (r.success) {
-      expect(r.data.canal).toBe('DOMICILIO') // default
-      expect(r.data.origen).toBe('PEDIDO') // default
+      expect(r.data.canal).toBe('DOMICILIO')
+      expect(r.data.origen).toBe('PEDIDO')
     }
   })
 
-  it('rechaza items vacío', () => {
-    const r = PreviewPedidoSchema.safeParse({ clienteId: 'c1', items: [] })
-    expect(r.success).toBe(false)
+  it('acepta origen VENTA_RAPIDA pero NO VENTA_LIBRE (fuera de alcance)', () => {
+    expect(PreviewPedidoSchema.safeParse({
+      clienteId: 'c1', origen: 'VENTA_RAPIDA', items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
+    }).success).toBe(true)
+    expect(PreviewPedidoSchema.safeParse({
+      clienteId: 'c1', origen: 'VENTA_LIBRE', items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
+    }).success).toBe(false)
   })
 
-  it('rechaza clienteId en blanco', () => {
-    const r = PreviewPedidoSchema.safeParse({
-      clienteId: '   ',
-      items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
-    })
-    expect(r.success).toBe(false)
+  it('rechaza items vacío y clienteId en blanco', () => {
+    expect(PreviewPedidoSchema.safeParse({ clienteId: 'c1', items: [] }).success).toBe(false)
+    expect(PreviewPedidoSchema.safeParse({ clienteId: '  ', items: [{ producto: 'PACA_AGUA', cantidad: 1 }] }).success).toBe(false)
   })
 
-  it('NO acepta campos de persistencia (offlineId, clienteNuevo)', () => {
+  it('descarta campos de persistencia (offlineId, clienteNuevo, direccionEntrega)', () => {
     const r = PreviewPedidoSchema.safeParse({
       clienteId: 'c1',
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
-      offlineId: 'x',
-      clienteNuevo: { nombre: 'x', telefono: '1234567' },
+      offlineId: 'x', clienteNuevo: { nombre: 'x', telefono: '1234567' }, direccionEntrega: 'Calle 1',
     })
-    // strip mode: parse succeeds but the extra keys are not in data
     expect(r.success).toBe(true)
     if (r.success) {
       expect('offlineId' in r.data).toBe(false)
       expect('clienteNuevo' in r.data).toBe(false)
+      expect('direccionEntrega' in r.data).toBe(false)
     }
   })
 
-  it('acepta pagos, entregado, pedidoOrigenId', () => {
+  it('acepta pagos, entregado, pedidoOrigenId, precioManual', () => {
     const r = PreviewPedidoSchema.safeParse({
       clienteId: 'c1',
       items: [{ producto: 'PACA_AGUA', cantidad: 1, precioManual: 5000 }],
       pagos: [{ metodo: 'EFECTIVO', monto: 5000 }],
-      entregado: true,
-      pedidoOrigenId: 'p99',
+      entregado: true, pedidoOrigenId: 'p99',
     })
     expect(r.success).toBe(true)
   })
@@ -196,15 +219,16 @@ Add to `src/lib/validators.ts` after `PedidoCreateSchema`:
 ```ts
 /**
  * Subconjunto de PedidoCreateSchema para POST /api/pedidos/preview.
- * SIN campos de persistencia (offlineId, clienteNuevo, actualizarCliente,
- * direccionEntrega, barrioEntrega, productos legacy, preciosManuales record).
- * El preview es read-only: ver docs/pedidos/02-api-contract-pedidos.md.
+ * SIN campos de persistencia. origen ∈ {PEDIDO, VENTA_RAPIDA} — VENTA_LIBRE
+ * queda fuera de esta brecha (docs/pedidos/02-api-contract-pedidos.md).
+ * z.object() descarta claves desconocidas por defecto — eso cubre el test
+ * "descarta campos de persistencia".
  */
 export const PreviewPedidoSchema = z.object({
   clienteId: z.string().trim().min(1),
   negocioId: z.string().trim().min(1).optional(),
   canal: z.enum(['PUNTO', 'DOMICILIO']).optional().default('DOMICILIO'),
-  origen: OrigenPedidoSchema.optional().default('PEDIDO'),
+  origen: z.enum(['PEDIDO', 'VENTA_RAPIDA']).optional().default('PEDIDO'),
   items: z.array(PedidoItemSchema).min(1, 'Agrega al menos un producto'),
   pagos: z
     .array(
@@ -219,8 +243,6 @@ export const PreviewPedidoSchema = z.object({
 })
 ```
 
-Note: `z.object` defaults to stripping unknown keys, which is what the "NO acepta campos de persistencia" test asserts.
-
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npm run test -- src/lib/__tests__/validators-preview.test.ts`
@@ -230,25 +252,30 @@ Expected: PASS (5 tests)
 
 ```bash
 git add src/lib/validators.ts src/lib/__tests__/validators-preview.test.ts
-git commit -m "feat(pedidos): PreviewPedidoSchema (Zod subset de PedidoCreateSchema)"
+git commit -m "feat(pedidos): PreviewPedidoSchema (origen PEDIDO|VENTA_RAPIDA, sin persistencia)"
 ```
 
 ---
 
-## Task 3: draft → PedidoBase mapper (for the risk detector)
+## Task 3: mappers → `PedidoBaseLike` (for the risk detector)
 
-`calcularAlertasCliente` consumes `PedidoBase[]` with **legacy per-product columns** (`cPacaAguaPed`, `precioPacaAgua`, …). The preview draft has the new `items[]` shape. This pure mapper bridges them so the draft can be fed to the detector alongside the client's real orders.
+`calcularAlertasCliente` consumes objects with **legacy per-product columns** (`cPacaAguaPed`, `precioPacaAgua`, …). Two sources need bridging: the preview draft (new `items[]` shape) and the client's real orders (`Pedido` domain entities). Both map to `PedidoBaseLike`.
 
 **Files:**
-- Create: `src/modules/pedidos/application/use-cases/draft-to-pedido-base.ts`
-- Test: `src/modules/pedidos/application/use-cases/__tests__/draft-to-pedido-base.test.ts`
+- Create: `src/modules/pedidos/application/use-cases/pedido-to-pedido-base.ts`
+- Test: `src/modules/pedidos/application/use-cases/__tests__/pedido-to-pedido-base.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Verify the exact legacy column names**
+
+Run: `sed -n '96,132p' src/lib/alertas-detector.ts`
+Expected: the `PedidoBase` interface. Note the exact field names (`cPacaAguaPed`, `cBotellonFabPed`, `cBotellonDomPed`, `precioPacaAgua`, `precioBotellonFab`, `precioBotellonDom`, `clienteId`, `fecha`, `total`, `estadoEntrega`, `estadoPago`, …). If any differ from what Step 3 uses, adjust Step 3 to match and re-run Step 4.
+
+- [ ] **Step 2: Write the failing test**
 
 ```ts
-// src/modules/pedidos/application/use-cases/__tests__/draft-to-pedido-base.test.ts
+// src/modules/pedidos/application/use-cases/__tests__/pedido-to-pedido-base.test.ts
 import { describe, it, expect } from 'vitest'
-import { draftToPedidoBase } from '../draft-to-pedido-base'
+import { draftToPedidoBase, pedidoEntityToPedidoBase } from '../pedido-to-pedido-base'
 
 describe('draftToPedidoBase', () => {
   const resolved = [
@@ -256,65 +283,62 @@ describe('draftToPedidoBase', () => {
     { producto: 'BOTELLON', cantidad: 3, precio: 9000, subtotal: 27000, origen: 'base' as const },
   ]
 
-  it('mapea items[] a las columnas legacy que el detector lee', () => {
-    const pb = draftToPedidoBase({
-      clienteId: 'c1',
-      canal: 'DOMICILIO',
-      resolvedItems: resolved,
-      total: 73000,
-      nowIso: '2026-09-07T10:00:00.000Z',
-    })
+  it('mapea items[] a las columnas legacy; BOTELLON a la columna del canal', () => {
+    const pb = draftToPedidoBase({ clienteId: 'c1', canal: 'DOMICILIO', resolvedItems: resolved, total: 73000, nowIso: '2026-09-07T10:00:00.000Z' })
     expect(pb.clienteId).toBe('c1')
     expect(pb.cPacaAguaPed).toBe(20)
     expect(pb.precioPacaAgua).toBe(2300)
-    expect(pb.cBotellonDomPed).toBe(3) // DOMICILIO → columna dom
+    expect(pb.cBotellonDomPed).toBe(3)
     expect(pb.cBotellonFabPed).toBe(0)
     expect(pb.precioBotellonDom).toBe(9000)
     expect(Number(pb.total)).toBe(73000)
-    expect(pb.fecha).toBe('2026-09-07T10:00:00.000Z')
+    expect(pb.estadoEntrega).toBe('PENDIENTE')
+    expect(pb.id).toBe('__preview__')
   })
 
   it('canal PUNTO manda BOTELLON a la columna de fábrica', () => {
-    const pb = draftToPedidoBase({
-      clienteId: 'c1',
-      canal: 'PUNTO',
-      resolvedItems: [{ producto: 'BOTELLON', cantidad: 5, precio: 8000, subtotal: 40000, origen: 'base' as const }],
-      total: 40000,
-      nowIso: '2026-09-07T10:00:00.000Z',
-    })
+    const pb = draftToPedidoBase({ clienteId: 'c1', canal: 'PUNTO', resolvedItems: [{ producto: 'BOTELLON', cantidad: 5, precio: 8000, subtotal: 40000, origen: 'base' as const }], total: 40000, nowIso: '2026-09-07T10:00:00.000Z' })
     expect(pb.cBotellonFabPed).toBe(5)
     expect(pb.cBotellonDomPed).toBe(0)
     expect(pb.precioBotellonFab).toBe(8000)
   })
+})
 
-  it('el pedido sintético tiene estadoEntrega PENDIENTE y un id sentinela', () => {
-    const pb = draftToPedidoBase({
+describe('pedidoEntityToPedidoBase', () => {
+  it('mapea una entidad Pedido usando toLegacyFields() + getters', () => {
+    const fakeEntity = {
       clienteId: 'c1',
-      canal: 'DOMICILIO',
-      resolvedItems: resolved,
-      total: 73000,
-      nowIso: '2026-09-07T10:00:00.000Z',
-    })
-    expect(pb.estadoEntrega).toBe('PENDIENTE')
-    expect(pb.id).toBe('__preview__')
+      fecha: new Date('2026-09-01T08:00:00.000Z'),
+      total: { toDecimal: () => 50000 },
+      estadoEntrega: { get: () => 'ENTREGADO' },
+      estadoPago: { get: () => 'PAGADO' },
+      toLegacyFields: () => ({ cPacaAguaPed: 10, precioPacaAgua: 2500, cBotellonDomPed: 2, precioBotellonDom: 9000 }),
+    } as never
+    const pb = pedidoEntityToPedidoBase(fakeEntity, 'p-123')
+    expect(pb.id).toBe('p-123')
+    expect(pb.clienteId).toBe('c1')
+    expect(pb.cPacaAguaPed).toBe(10)
+    expect(pb.precioPacaAgua).toBe(2500)
+    expect(pb.cBotellonDomPed).toBe(2)
+    expect(Number(pb.total)).toBe(50000)
+    expect(pb.estadoEntrega).toBe('ENTREGADO')
+    expect(pb.fecha).toBe('2026-09-01T08:00:00.000Z')
   })
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `npm run test -- src/modules/pedidos/application/use-cases/__tests__/draft-to-pedido-base.test.ts`
-Expected: FAIL — module not found
-
-- [ ] **Step 3: Implement the mapper**
+- [ ] **Step 3: Implement**
 
 ```ts
-// src/modules/pedidos/application/use-cases/draft-to-pedido-base.ts
+// src/modules/pedidos/application/use-cases/pedido-to-pedido-base.ts
 /**
- * Mapea un draft de preview (items[] resueltos) a la forma `PedidoBase`
- * legacy que consume `calcularAlertasCliente` (src/lib/alertas-detector.ts).
- * Pura, sin I/O. El pedido sintético usa el id sentinela `__preview__` y
- * estadoEntrega PENDIENTE para que el detector lo trate como el pedido "de hoy".
+ * Mappers a la forma `PedidoBaseLike` que consume `calcularAlertasCliente`
+ * (src/lib/alertas-detector.ts). Puros, sin I/O.
+ *  - draftToPedidoBase: el draft del preview (items[] resueltos) → pedido
+ *    sintético con id sentinela `__preview__` y estadoEntrega PENDIENTE.
+ *  - pedidoEntityToPedidoBase: una entidad de dominio Pedido → PedidoBaseLike,
+ *    reutilizando Pedido.toLegacyFields() (que ya hace el split de BOTELLON
+ *    por canal) + los getters de total/fecha/estado.
  */
 
 interface ResolvedItem {
@@ -325,15 +349,6 @@ interface ResolvedItem {
   origen: 'manual' | 'cliente' | 'volumen' | 'base'
 }
 
-export interface DraftToPedidoBaseInput {
-  clienteId: string
-  canal: 'PUNTO' | 'DOMICILIO'
-  resolvedItems: ResolvedItem[]
-  total: number
-  nowIso: string
-}
-
-// Shape que el detector lee (subset relevante de PedidoBase).
 export interface PedidoBaseLike {
   id: string
   clienteId: string
@@ -355,202 +370,227 @@ export interface PedidoBaseLike {
   precioBolsaHielo: number
 }
 
-export function draftToPedidoBase(input: DraftToPedidoBaseInput): PedidoBaseLike {
-  const pb: PedidoBaseLike = {
-    id: '__preview__',
-    clienteId: input.clienteId,
-    fecha: input.nowIso,
-    total: input.total,
-    estadoEntrega: 'PENDIENTE',
-    estadoPago: 'PENDIENTE',
-    cPacaAguaPed: 0,
-    cPacaHieloPed: 0,
-    cBotellonFabPed: 0,
-    cBotellonDomPed: 0,
-    cBolsaAguaPed: 0,
-    cBolsaHieloPed: 0,
-    precioPacaAgua: 0,
-    precioPacaHielo: 0,
-    precioBotellonFab: 0,
-    precioBotellonDom: 0,
-    precioBolsaAgua: 0,
-    precioBolsaHielo: 0,
+function emptyBase(id: string, clienteId: string, fecha: string, total: number, estadoEntrega: string, estadoPago: string): PedidoBaseLike {
+  return {
+    id, clienteId, fecha, total, estadoEntrega, estadoPago,
+    cPacaAguaPed: 0, cPacaHieloPed: 0, cBotellonFabPed: 0, cBotellonDomPed: 0,
+    cBolsaAguaPed: 0, cBolsaHieloPed: 0,
+    precioPacaAgua: 0, precioPacaHielo: 0, precioBotellonFab: 0, precioBotellonDom: 0,
+    precioBolsaAgua: 0, precioBolsaHielo: 0,
   }
+}
 
+export interface DraftToPedidoBaseInput {
+  clienteId: string
+  canal: 'PUNTO' | 'DOMICILIO'
+  resolvedItems: ResolvedItem[]
+  total: number
+  nowIso: string
+}
+
+export function draftToPedidoBase(input: DraftToPedidoBaseInput): PedidoBaseLike {
+  const pb = emptyBase('__preview__', input.clienteId, input.nowIso, input.total, 'PENDIENTE', 'PENDIENTE')
   for (const it of input.resolvedItems) {
     switch (it.producto) {
-      case 'PACA_AGUA':
-        pb.cPacaAguaPed = it.cantidad
-        pb.precioPacaAgua = it.precio
-        break
-      case 'PACA_HIELO':
-        pb.cPacaHieloPed = it.cantidad
-        pb.precioPacaHielo = it.precio
-        break
+      case 'PACA_AGUA': pb.cPacaAguaPed = it.cantidad; pb.precioPacaAgua = it.precio; break
+      case 'PACA_HIELO': pb.cPacaHieloPed = it.cantidad; pb.precioPacaHielo = it.precio; break
       case 'BOTELLON':
-        if (input.canal === 'DOMICILIO') {
-          pb.cBotellonDomPed = it.cantidad
-          pb.precioBotellonDom = it.precio
-        } else {
-          pb.cBotellonFabPed = it.cantidad
-          pb.precioBotellonFab = it.precio
-        }
+        if (input.canal === 'DOMICILIO') { pb.cBotellonDomPed = it.cantidad; pb.precioBotellonDom = it.precio }
+        else { pb.cBotellonFabPed = it.cantidad; pb.precioBotellonFab = it.precio }
         break
-      case 'BOLSA_AGUA':
-        pb.cBolsaAguaPed = it.cantidad
-        pb.precioBolsaAgua = it.precio
-        break
-      case 'BOLSA_HIELO':
-        pb.cBolsaHieloPed = it.cantidad
-        pb.precioBolsaHielo = it.precio
-        break
+      case 'BOLSA_AGUA': pb.cBolsaAguaPed = it.cantidad; pb.precioBolsaAgua = it.precio; break
+      case 'BOLSA_HIELO': pb.cBolsaHieloPed = it.cantidad; pb.precioBolsaHielo = it.precio; break
     }
   }
+  return pb
+}
 
+// Estructura mínima que necesitamos de la entidad Pedido (sin acoplarnos a toda la clase).
+interface PedidoEntityLike {
+  clienteId: string
+  fecha: Date
+  total: { toDecimal(): number }
+  estadoEntrega: { get(): string }
+  estadoPago: { get(): string }
+  toLegacyFields(): Record<string, number>
+}
+
+export function pedidoEntityToPedidoBase(p: PedidoEntityLike, id: string): PedidoBaseLike {
+  const legacy = p.toLegacyFields()
+  const pb = emptyBase(id, p.clienteId, p.fecha.toISOString(), p.total.toDecimal(), p.estadoEntrega.get(), p.estadoPago.get())
+  pb.cPacaAguaPed = legacy.cPacaAguaPed ?? 0
+  pb.cPacaHieloPed = legacy.cPacaHieloPed ?? 0
+  pb.cBotellonFabPed = legacy.cBotellonFabPed ?? 0
+  pb.cBotellonDomPed = legacy.cBotellonDomPed ?? 0
+  pb.cBolsaAguaPed = legacy.cBolsaAguaPed ?? 0
+  pb.cBolsaHieloPed = legacy.cBolsaHieloPed ?? 0
+  pb.precioPacaAgua = legacy.precioPacaAgua ?? 0
+  pb.precioPacaHielo = legacy.precioPacaHielo ?? 0
+  pb.precioBotellonFab = legacy.precioBotellonFab ?? 0
+  pb.precioBotellonDom = legacy.precioBotellonDom ?? 0
+  pb.precioBolsaAgua = legacy.precioBolsaAgua ?? 0
+  pb.precioBolsaHielo = legacy.precioBolsaHielo ?? 0
   return pb
 }
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm run test -- src/modules/pedidos/application/use-cases/__tests__/draft-to-pedido-base.test.ts`
+Run: `npm run test -- src/modules/pedidos/application/use-cases/__tests__/pedido-to-pedido-base.test.ts`
 Expected: PASS (3 tests)
 
-- [ ] **Step 5: Verify the field names match the real `PedidoBase`**
-
-Run: `grep -nE "cPaca|cBotellon|cBolsa|precioPaca|precioBotellon|precioBolsa|clienteId|estadoEntrega" src/lib/alertas-detector.ts | head -30`
-Expected: the interface `PedidoBase` around line 96 lists exactly these column names. If any differ (e.g. `cBotellonFab` vs `cBotellonFabPed`), fix `PedidoBaseLike` and the mapper to match, and re-run Step 4.
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add src/modules/pedidos/application/use-cases/draft-to-pedido-base.ts src/modules/pedidos/application/use-cases/__tests__/draft-to-pedido-base.test.ts
-git commit -m "feat(pedidos): mapper draft→PedidoBase para alimentar el detector de riesgo en el preview"
+git add src/modules/pedidos/application/use-cases/pedido-to-pedido-base.ts src/modules/pedidos/application/use-cases/__tests__/pedido-to-pedido-base.test.ts
+git commit -m "feat(pedidos): mappers draft/entidad → PedidoBaseLike para el detector de riesgo"
 ```
 
 ---
 
-## Task 4: `PreviewPedidoUseCase` — pricing + projection
+## Task 4: `PreviewPedidoUseCase` — pricing + payment projection
 
-Build the use case incrementally. This task covers price resolution and state projection only; permissions/warnings/risk come in Tasks 5–6.
+Covers price resolution, the calculation semantics (contract § "Semántica de cálculo"), and the virtual payment projection via `pagos-calculator.service.ts`. Permissions/warnings/risk come in Tasks 5–6.
 
 **Files:**
 - Create: `src/modules/pedidos/application/use-cases/PreviewPedidoUseCase.ts`
 - Test: `src/modules/pedidos/application/use-cases/__tests__/PreviewPedidoUseCase.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Confirm `IPedidoRepository.findById` argument type**
+
+Run: `grep -n "findById" src/modules/pedidos/domain/repositories/IPedidoRepository.ts`
+Expected: `findById(id: PedidoId, tx?)`. It takes a `PedidoId` value object — import `PedidoId` from `../../domain/value-objects/PedidoId` and wrap: `PedidoId.create(input.pedidoOrigenId)`.
+
+- [ ] **Step 2: Write the failing test**
 
 ```ts
 // src/modules/pedidos/application/use-cases/__tests__/PreviewPedidoUseCase.test.ts
 import { describe, it, expect, vi } from 'vitest'
 import { PreviewPedidoUseCase, ClienteNotFoundError, PedidoOrigenNotFoundError } from '../PreviewPedidoUseCase'
+import type { PreviewPedidoDeps } from '../PreviewPedidoUseCase'
 
-function makeDeps(overrides: Partial<Parameters<typeof PreviewPedidoUseCase.prototype.constructor>[0]> = {}) {
-  // Minimal fakes — only the methods the use case calls.
-  const pricingPort = {
-    loadPricingContext: vi.fn().mockResolvedValue({
-      clienteOverrides: null,
-      tiersByCode: {},
-      productosByCode: {
-        PACA_AGUA: { aplicaDomicilio: true, sobreCostoDomicilio: 200, precioBase: 2500 },
-      },
-    }),
-    resolverPrecios: vi.fn().mockResolvedValue([
-      { producto: 'PACA_AGUA', cantidad: 10, precio: 2700, subtotal: 27000, origen: 'base' },
-    ]),
+function makeDeps(): PreviewPedidoDeps {
+  return {
+    pricingPort: {
+      loadPricingContext: vi.fn().mockResolvedValue({
+        clienteOverrides: null,
+        tiersByCode: {},
+        productosByCode: {
+          PACA_AGUA: { aplicaDomicilio: true, sobreCostoDomicilio: 200, precioBase: 2500 },
+        },
+      }),
+      // precio 2700 = base 2500 + recargo 200 (canal DOMICILIO)
+      resolverPrecios: vi.fn().mockResolvedValue([
+        { producto: 'PACA_AGUA', cantidad: 10, precio: 2700, subtotal: 27000, origen: 'base' },
+      ]),
+    } as never,
+    clienteRepo: {
+      findById: vi.fn().mockResolvedValue({
+        id: 'c1', nombre: 'Tienda X', apellido: null, telefono: '3001112233',
+        direccion: 'Calle 1', barrio: 'Centro', bloqueado: false, verificado: true,
+        creadoPorRol: 'ADMIN', limitePedidosFiados: null, preciosEspeciales: null,
+      }),
+    } as never,
+    pedidoRepo: {
+      findById: vi.fn().mockResolvedValue({ id: 'p99' }),
+      findMany: vi.fn().mockResolvedValue([]),
+    } as never,
+    getFiadoStatusUseCase: {
+      execute: vi.fn().mockResolvedValue({ count: 0, limite: 2, nivel: 'ok', pedidos: [] }),
+    } as never,
+    getPrecioMinimos: vi.fn().mockResolvedValue([]),
   }
-  const clienteRepo = {
-    findById: vi.fn().mockResolvedValue({
-      id: 'c1', nombre: 'Tienda X', telefono: '3001112233',
-      bloqueado: false, verificado: true, creadoPorRol: 'ADMIN',
-      limitePedidosFiados: null, direccion: 'Calle 1', barrio: 'Centro',
-      preciosEspeciales: null, createdAt: new Date('2025-01-01'),
-    }),
-  }
-  const pedidoRepo = {
-    findById: vi.fn().mockResolvedValue({ id: 'p99', numero: 99 }),
-    findPendingByCliente: vi.fn().mockResolvedValue([]),
-    findRecentByCliente: vi.fn().mockResolvedValue([]),
-  }
-  const getFiadoStatusUseCase = {
-    execute: vi.fn().mockResolvedValue({ count: 0, limite: 2, nivel: 'ok', pedidos: [] }),
-  }
-  const getPrecioMinimos = vi.fn().mockResolvedValue([])
-  return { pricingPort, clienteRepo, pedidoRepo, getFiadoStatusUseCase, getPrecioMinimos, ...overrides } as never
 }
 
-describe('PreviewPedidoUseCase — pricing + projection', () => {
-  it('calcula subtotal/total desde los precios resueltos por el port', async () => {
+describe('PreviewPedidoUseCase — pricing + payment projection', () => {
+  it('total = Σ (precio × cantidad); subtotal = total − recargoDomicilio', async () => {
     const uc = new PreviewPedidoUseCase(makeDeps())
     const r = await uc.execute({
       clienteId: 'c1', canal: 'DOMICILIO', origen: 'PEDIDO',
-      items: [{ producto: 'PACA_AGUA', cantidad: 10 }],
-      actorId: 'u1',
+      items: [{ producto: 'PACA_AGUA', cantidad: 10 }], actorId: 'u1',
     })
-    expect(r.calculation.subtotal).toBe(27000)
     expect(r.calculation.total).toBe(27000)
+    expect(r.calculation.recargoDomicilio).toBe(2000) // 200 × 10
+    expect(r.calculation.subtotal).toBe(25000)         // 27000 − 2000
+    expect(r.calculation.total).toBe(r.calculation.subtotal + r.calculation.recargoDomicilio)
+    expect(r.calculation.items[0].precioUnitario).toBe(2700)
+    expect(r.calculation.items[0].subtotal).toBe(27000)
     expect(r.calculation.items[0].precioOrigen).toBe('base')
   })
 
-  it('proyecta estadoEntrega ENTREGADO cuando entregado===true', async () => {
+  it('canal PUNTO → recargoDomicilio 0, subtotal = total', async () => {
+    const deps = makeDeps()
+    ;(deps.pricingPort.resolverPrecios as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { producto: 'PACA_AGUA', cantidad: 10, precio: 2500, subtotal: 25000, origen: 'base' },
+    ])
+    const uc = new PreviewPedidoUseCase(deps)
+    const r = await uc.execute({ clienteId: 'c1', canal: 'PUNTO', items: [{ producto: 'PACA_AGUA', cantidad: 10 }], actorId: 'u1' })
+    expect(r.calculation.recargoDomicilio).toBe(0)
+    expect(r.calculation.subtotal).toBe(25000)
+    expect(r.calculation.total).toBe(25000)
+  })
+
+  it('pago exacto + entregado → PAGADO, saldo 0, saldoFavor 0', async () => {
     const uc = new PreviewPedidoUseCase(makeDeps())
     const r = await uc.execute({
-      clienteId: 'c1', canal: 'PUNTO', origen: 'VENTA_RAPIDA', entregado: true,
+      clienteId: 'c1', canal: 'DOMICILIO', entregado: true,
       items: [{ producto: 'PACA_AGUA', cantidad: 10 }],
-      pagos: [{ metodo: 'EFECTIVO', monto: 27000 }],
-      actorId: 'u1',
+      pagos: [{ metodo: 'EFECTIVO', monto: 27000 }], actorId: 'u1',
     })
     expect(r.calculation.estadoEntregaProyectado).toBe('ENTREGADO')
-    expect(r.calculation.estadoPagoProyectado).toBe('PAGADO')
+    expect(r.calculation.totalPagado).toBe(27000)
     expect(r.calculation.saldoProyectado).toBe(0)
+    expect(r.calculation.saldoFavorProyectado).toBe(0)
+    expect(r.calculation.estadoPagoProyectado).toBe('PAGADO')
   })
 
   it('prepago total + entrega posterior → ANTICIPADO', async () => {
     const uc = new PreviewPedidoUseCase(makeDeps())
     const r = await uc.execute({
-      clienteId: 'c1', canal: 'PUNTO', origen: 'PEDIDO', entregado: false,
+      clienteId: 'c1', canal: 'DOMICILIO', entregado: false,
       items: [{ producto: 'PACA_AGUA', cantidad: 10 }],
-      pagos: [{ metodo: 'EFECTIVO', monto: 27000 }],
-      actorId: 'u1',
+      pagos: [{ metodo: 'EFECTIVO', monto: 27000 }], actorId: 'u1',
     })
     expect(r.calculation.estadoEntregaProyectado).toBe('PENDIENTE')
     expect(r.calculation.estadoPagoProyectado).toBe('ANTICIPADO')
   })
 
+  it('sobrepago → excedente proyectado a saldoFavor, pago aplicado = total', async () => {
+    const uc = new PreviewPedidoUseCase(makeDeps())
+    const r = await uc.execute({
+      clienteId: 'c1', canal: 'DOMICILIO', entregado: true,
+      items: [{ producto: 'PACA_AGUA', cantidad: 10 }],
+      pagos: [{ metodo: 'EFECTIVO', monto: 30000 }], actorId: 'u1',
+    })
+    expect(r.calculation.totalPagado).toBe(27000)       // normalizado al total
+    expect(r.calculation.saldoFavorProyectado).toBe(3000)
+    expect(r.calculation.saldoProyectado).toBe(0)
+  })
+
   it('lanza ClienteNotFoundError si el cliente no existe', async () => {
     const deps = makeDeps()
-    ;(deps as { clienteRepo: { findById: ReturnType<typeof vi.fn> } }).clienteRepo.findById.mockResolvedValue(null)
-    const uc = new PreviewPedidoUseCase(deps)
+    ;(deps.clienteRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(null)
     await expect(
-      uc.execute({ clienteId: 'nope', items: [{ producto: 'PACA_AGUA', cantidad: 1 }], actorId: 'u1' }),
+      new PreviewPedidoUseCase(deps).execute({ clienteId: 'nope', items: [{ producto: 'PACA_AGUA', cantidad: 1 }], actorId: 'u1' }),
     ).rejects.toThrow(ClienteNotFoundError)
   })
 
   it('lanza PedidoOrigenNotFoundError si pedidoOrigenId no existe', async () => {
     const deps = makeDeps()
-    ;(deps as { pedidoRepo: { findById: ReturnType<typeof vi.fn> } }).pedidoRepo.findById.mockResolvedValue(null)
-    const uc = new PreviewPedidoUseCase(deps)
+    ;(deps.pedidoRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(null)
     await expect(
-      uc.execute({
-        clienteId: 'c1', pedidoOrigenId: 'ghost',
-        items: [{ producto: 'PACA_AGUA', cantidad: 1 }], actorId: 'u1',
-      }),
+      new PreviewPedidoUseCase(deps).execute({ clienteId: 'c1', pedidoOrigenId: 'ghost', items: [{ producto: 'PACA_AGUA', cantidad: 1 }], actorId: 'u1' }),
     ).rejects.toThrow(PedidoOrigenNotFoundError)
   })
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 3: Run test to verify it fails**
 
 Run: `npm run test -- src/modules/pedidos/application/use-cases/__tests__/PreviewPedidoUseCase.test.ts`
 Expected: FAIL — module not found
 
-- [ ] **Step 3: Check the real repo method names before implementing**
-
-Run: `grep -nE "findById|findPendingByCliente|findRecent|findMany|findByCliente" src/modules/pedidos/domain/repositories/IPedidoRepository.ts`
-Expected: confirms `findById` and `findPendingByCliente` exist. For the client's recent orders (risk detector input) there may be no ready method — if `findRecentByCliente` does not exist, add it to `IPedidoRepository` + `PrismaPedidoRepository` as a **read-only** method returning the legacy shape the detector needs (last ~10 non-cancelled orders of the client), and add a sub-step here. Mirror `findPendingByCliente`'s implementation.
-
-- [ ] **Step 4: Implement the use case (pricing + projection only)**
+- [ ] **Step 4: Implement the use case (pricing + payment projection)**
 
 ```ts
 // src/modules/pedidos/application/use-cases/PreviewPedidoUseCase.ts
@@ -560,7 +600,8 @@ import type { IPedidoRepository } from '../../domain/repositories/IPedidoReposit
 import type { GetFiadoStatusUseCase } from './GetFiadoStatusUseCase'
 import type { PreviewPedidoInput, PreviewPedidoResult, PreviewCalculationItem } from '../dto'
 import type { ProductCode } from '@/shared/domain'
-import { EstadoPagoVO } from '../../domain/value-objects/EstadoPago'
+import { PedidoId } from '../../domain/value-objects/PedidoId'
+import { normalizarPagos, calcularSaldo, calcularEstadoPago } from '../../domain/services/pagos-calculator.service'
 
 export class ClienteNotFoundError extends Error {
   constructor(id: string) { super(`CLIENTE_NOT_FOUND: ${id}`); this.name = 'ClienteNotFoundError' }
@@ -588,15 +629,13 @@ export class PreviewPedidoUseCase {
     if (!cliente) throw new ClienteNotFoundError(input.clienteId)
 
     if (input.pedidoOrigenId) {
-      const origenPedido = await this.deps.pedidoRepo.findById(input.pedidoOrigenId)
+      const origenPedido = await this.deps.pedidoRepo.findById(PedidoId.create(input.pedidoOrigenId))
       if (!origenPedido) throw new PedidoOrigenNotFoundError(input.pedidoOrigenId)
     }
 
     // ── Pricing (mismo port que CrearPedidoUseCase) ──
     const activeCodes = [...new Set(input.items.map(i => i.producto))] as ProductCode[]
-    const pricingData = await this.deps.pricingPort.loadPricingContext(
-      input.clienteId, input.negocioId ?? null, activeCodes,
-    )
+    const pricingData = await this.deps.pricingPort.loadPricingContext(input.clienteId, input.negocioId ?? null, activeCodes)
     const resueltos = await this.deps.pricingPort.resolverPrecios(
       input.items.map(i => ({ codigo: i.producto as ProductCode, cantidad: i.cantidad, precioManual: i.precioManual })),
       canal, pricingData,
@@ -605,25 +644,31 @@ export class PreviewPedidoUseCase {
     const items: PreviewCalculationItem[] = resueltos.map(r => ({
       producto: r.producto,
       cantidad: r.cantidad,
-      precioUnitario: r.precio,
-      subtotal: r.subtotal,
+      precioUnitario: r.precio,        // ya incluye recargo domicilio si aplica
+      subtotal: r.subtotal,            // = r.precio × r.cantidad
       precioOrigen: r.origen,
     }))
-    const subtotal = items.reduce((s, i) => s + i.subtotal, 0)
-    // recargoDomicilio = diferencia contra el precio base cuando canal===DOMICILIO.
+
+    // Semántica de cálculo (contrato):
+    const total = items.reduce((s, i) => s + i.subtotal, 0)
     const recargoDomicilio = canal === 'DOMICILIO'
       ? resueltos.reduce((acc, r) => {
           const cfg = pricingData.productosByCode[r.producto]
           return acc + (cfg?.aplicaDomicilio ? cfg.sobreCostoDomicilio * r.cantidad : 0)
         }, 0)
       : 0
-    const total = subtotal
+    const subtotal = total - recargoDomicilio
 
-    const totalPagado = (input.pagos ?? []).reduce((s, p) => s + p.monto, 0)
+    // ── Pagos: proyección virtual con las reglas existentes ──
+    const { pagosAplicados, excedente } = normalizarPagos(
+      (input.pagos ?? []).map(p => ({ metodo: p.metodo, monto: p.monto })),
+      total,
+    )
+    const totalPagado = pagosAplicados.reduce((s, p) => s + p.monto, 0)
     const estadoEntregaProyectado: 'PENDIENTE' | 'ENTREGADO' = input.entregado === true ? 'ENTREGADO' : 'PENDIENTE'
-    const estadoPagoProyectado = EstadoPagoVO.proyectar(total, totalPagado, estadoEntregaProyectado).get() as
+    const saldoProyectado = calcularSaldo(total, totalPagado)
+    const estadoPagoProyectado = calcularEstadoPago(total, totalPagado, estadoEntregaProyectado) as
       'PENDIENTE' | 'PARCIAL' | 'PAGADO' | 'ANTICIPADO'
-    const saldoProyectado = Math.max(0, total - totalPagado)
 
     const tienePrecioManual = resueltos.some(r => r.origen === 'manual')
 
@@ -631,7 +676,8 @@ export class PreviewPedidoUseCase {
     return {
       calculation: {
         items, subtotal, recargoDomicilio, total,
-        totalPagado, saldoProyectado, estadoEntregaProyectado, estadoPagoProyectado,
+        totalPagado, saldoProyectado, saldoFavorProyectado: excedente,
+        estadoEntregaProyectado, estadoPagoProyectado,
       },
       permissions: { canCreate: true, canSetManualPrice: true },
       allowedActions: ['crear'],
@@ -649,18 +695,16 @@ export class PreviewPedidoUseCase {
 }
 ```
 
-Adjust `EstadoPagoVO.proyectar(...).get()` if the VO's accessor is named differently — check with `grep -nE "get\(\)|value|toString" src/modules/pedidos/domain/value-objects/EstadoPago.ts`.
-
 - [ ] **Step 5: Run test to verify it passes**
 
 Run: `npm run test -- src/modules/pedidos/application/use-cases/__tests__/PreviewPedidoUseCase.test.ts`
-Expected: PASS (5 tests)
+Expected: PASS (7 tests)
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add src/modules/pedidos/application/use-cases/PreviewPedidoUseCase.ts src/modules/pedidos/application/use-cases/__tests__/PreviewPedidoUseCase.test.ts
-git commit -m "feat(pedidos): PreviewPedidoUseCase — pricing + proyección de estado (read-only)"
+git commit -m "feat(pedidos): PreviewPedidoUseCase — pricing + proyección virtual de pagos (read-only)"
 ```
 
 ---
@@ -669,18 +713,20 @@ git commit -m "feat(pedidos): PreviewPedidoUseCase — pricing + proyección de 
 
 **Files:**
 - Modify: `src/modules/pedidos/application/use-cases/PreviewPedidoUseCase.ts`
-- Modify: `src/modules/pedidos/application/use-cases/__tests__/PreviewPedidoUseCase.test.ts`
+- Modify: its test file
 
 - [ ] **Step 1: Add failing tests**
 
 ```ts
+import { CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
+
 describe('PreviewPedidoUseCase — permissions + warnings', () => {
-  it('fiado sobre el límite → canCreate false + warning FIADO_SOBRE_LIMITE', async () => {
+  it('fiado sobre el límite → canCreate false + warning FIADO_SOBRE_LIMITE, sin acción crear', async () => {
     const deps = makeDeps()
-    ;(deps as { getFiadoStatusUseCase: { execute: ReturnType<typeof vi.fn> } }).getFiadoStatusUseCase.execute
-      .mockResolvedValue({ count: 2, limite: 2, nivel: 'limite', pedidos: [{ id: 'a', numero: 1, saldo: 100 }, { id: 'b', numero: 2, saldo: 200 }] })
-    const uc = new PreviewPedidoUseCase(deps)
-    const r = await uc.execute({ clienteId: 'c1', items: [{ producto: 'PACA_AGUA', cantidad: 1 }], actorId: 'u1' })
+    ;(deps.getFiadoStatusUseCase.execute as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 2, limite: 2, nivel: 'limite', pedidos: [{ id: 'a', numero: 1, saldo: 100 }, { id: 'b', numero: 2, saldo: 200 }],
+    })
+    const r = await new PreviewPedidoUseCase(deps).execute({ clienteId: 'c1', items: [{ producto: 'PACA_AGUA', cantidad: 1 }], actorId: 'u1' })
     expect(r.permissions.canCreate).toBe(false)
     expect(r.warnings.some(w => w.code === 'FIADO_SOBRE_LIMITE')).toBe(true)
     expect(r.allowedActions).not.toContain('crear')
@@ -688,50 +734,45 @@ describe('PreviewPedidoUseCase — permissions + warnings', () => {
 
   it('cliente bloqueado → canCreate false + warning CLIENTE_BLOQUEADO', async () => {
     const deps = makeDeps()
-    ;(deps as { clienteRepo: { findById: ReturnType<typeof vi.fn> } }).clienteRepo.findById.mockResolvedValue({
-      id: 'c1', nombre: 'X', telefono: '3001112233', bloqueado: true, verificado: true,
-      creadoPorRol: 'ADMIN', limitePedidosFiados: null, direccion: 'Calle 1', barrio: 'Centro',
-      preciosEspeciales: null, createdAt: new Date('2025-01-01'),
+    ;(deps.clienteRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'c1', nombre: 'X', apellido: null, telefono: '3001112233', direccion: 'Calle 1', barrio: 'Centro',
+      bloqueado: true, verificado: true, creadoPorRol: 'ADMIN', limitePedidosFiados: null, preciosEspeciales: null,
     })
-    const uc = new PreviewPedidoUseCase(deps)
-    const r = await uc.execute({ clienteId: 'c1', items: [{ producto: 'PACA_AGUA', cantidad: 1 }], actorId: 'u1' })
+    const r = await new PreviewPedidoUseCase(deps).execute({ clienteId: 'c1', items: [{ producto: 'PACA_AGUA', cantidad: 1 }], actorId: 'u1' })
     expect(r.permissions.canCreate).toBe(false)
     expect(r.warnings.some(w => w.code === 'CLIENTE_BLOQUEADO')).toBe(true)
   })
 
-  it('canal DOMICILIO sin dirección resuelta → warning DIRECCION_FALTANTE (no bloquea)', async () => {
+  it('DOMICILIO sin dirección → warning DIRECCION_FALTANTE (no bloquea, crear sigue disponible)', async () => {
     const deps = makeDeps()
-    ;(deps as { clienteRepo: { findById: ReturnType<typeof vi.fn> } }).clienteRepo.findById.mockResolvedValue({
-      id: 'c1', nombre: 'X', telefono: '3001112233', bloqueado: false, verificado: true,
-      creadoPorRol: 'ADMIN', limitePedidosFiados: null, direccion: null, barrio: null,
-      preciosEspeciales: null, createdAt: new Date('2025-01-01'),
+    ;(deps.clienteRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'c1', nombre: 'X', apellido: null, telefono: '3001112233', direccion: null, barrio: null,
+      bloqueado: false, verificado: true, creadoPorRol: 'ADMIN', limitePedidosFiados: null, preciosEspeciales: null,
     })
-    const uc = new PreviewPedidoUseCase(deps)
-    const r = await uc.execute({ clienteId: 'c1', canal: 'DOMICILIO', items: [{ producto: 'PACA_AGUA', cantidad: 1 }], actorId: 'u1' })
+    const r = await new PreviewPedidoUseCase(deps).execute({ clienteId: 'c1', canal: 'DOMICILIO', items: [{ producto: 'PACA_AGUA', cantidad: 1 }], actorId: 'u1' })
     expect(r.warnings.some(w => w.code === 'DIRECCION_FALTANTE' && w.field === 'direccion')).toBe(true)
     expect(r.permissions.canCreate).toBe(true)
     expect(r.allowedActions).toContain('crear')
   })
 
-  it('precio manual aplicado → warning PRECIO_MANUAL_APLICADO', async () => {
+  it('precio manual → warning PRECIO_MANUAL_APLICADO', async () => {
     const deps = makeDeps()
-    ;(deps as { pricingPort: { resolverPrecios: ReturnType<typeof vi.fn> } }).pricingPort.resolverPrecios
-      .mockResolvedValue([{ producto: 'PACA_AGUA', cantidad: 10, precio: 1000, subtotal: 10000, origen: 'manual' }])
-    const uc = new PreviewPedidoUseCase(deps)
-    const r = await uc.execute({ clienteId: 'c1', items: [{ producto: 'PACA_AGUA', cantidad: 10, precioManual: 1000 }], actorId: 'u1' })
+    ;(deps.pricingPort.resolverPrecios as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { producto: 'PACA_AGUA', cantidad: 10, precio: 1000, subtotal: 10000, origen: 'manual' },
+    ])
+    const r = await new PreviewPedidoUseCase(deps).execute({ clienteId: 'c1', items: [{ producto: 'PACA_AGUA', cantidad: 10, precioManual: 1000 }], actorId: 'u1' })
     expect(r.warnings.some(w => w.code === 'PRECIO_MANUAL_APLICADO')).toBe(true)
   })
 
-  it('CONSUMIDOR_FINAL nunca dispara warnings de fiado', async () => {
+  it('CONSUMIDOR_FINAL: sin warnings de fiado, sin consulta de fiado', async () => {
     const deps = makeDeps()
-    ;(deps as { clienteRepo: { findById: ReturnType<typeof vi.fn> } }).clienteRepo.findById.mockResolvedValue({
-      id: 'CONSUMIDOR_FINAL', nombre: 'Consumidor Final', telefono: '', bloqueado: false, verificado: true,
-      creadoPorRol: 'ADMIN', limitePedidosFiados: null, direccion: null, barrio: null,
-      preciosEspeciales: null, createdAt: new Date('2025-01-01'),
+    ;(deps.clienteRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: CANONICAL_CONSUMIDOR_FINAL_ID, nombre: 'Consumidor Final', apellido: null, telefono: '', direccion: null, barrio: null,
+      bloqueado: false, verificado: true, creadoPorRol: 'ADMIN', limitePedidosFiados: null, preciosEspeciales: null,
     })
-    const uc = new PreviewPedidoUseCase(deps)
-    const r = await uc.execute({ clienteId: 'CONSUMIDOR_FINAL', canal: 'PUNTO', items: [{ producto: 'PACA_AGUA', cantidad: 1 }], actorId: 'u1' })
+    const r = await new PreviewPedidoUseCase(deps).execute({ clienteId: CANONICAL_CONSUMIDOR_FINAL_ID, canal: 'PUNTO', items: [{ producto: 'PACA_AGUA', cantidad: 1 }], actorId: 'u1' })
     expect(r.warnings.some(w => w.code === 'FIADO_SOBRE_LIMITE')).toBe(false)
+    expect(deps.getFiadoStatusUseCase.execute).not.toHaveBeenCalled()
   })
 })
 ```
@@ -739,17 +780,22 @@ describe('PreviewPedidoUseCase — permissions + warnings', () => {
 - [ ] **Step 2: Run to verify new tests fail**
 
 Run: `npm run test -- src/modules/pedidos/application/use-cases/__tests__/PreviewPedidoUseCase.test.ts`
-Expected: FAIL — 5 new tests fail (warnings always `[]`, canCreate always true)
+Expected: FAIL — warnings always `[]`, canCreate always true
 
 - [ ] **Step 3: Implement permissions + warnings**
 
-In `PreviewPedidoUseCase.execute`, replace the hard-coded `permissions`/`warnings`/`allowedActions` with:
+In `PreviewPedidoUseCase.ts` add the import:
+
+```ts
+import { CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
+```
+
+Replace the hard-coded `permissions`/`warnings`/`allowedActions` in the return with:
 
 ```ts
     // ── Permissions + warnings ──
     const warnings: PreviewPedidoResult['warnings'] = []
-    const esAnonimo = input.clienteId === 'CONSUMIDOR_FINAL'
-
+    const esAnonimo = input.clienteId === CANONICAL_CONSUMIDOR_FINAL_ID
     let canCreate = true
 
     if (!esAnonimo && cliente.bloqueado) {
@@ -781,18 +827,14 @@ In `PreviewPedidoUseCase.execute`, replace the hard-coded `permissions`/`warning
       allowedActions.push('crear')
       if (estadoEntregaProyectado === 'PENDIENTE') allowedActions.push('crear-y-enviar-a-ruta')
     }
-
-    const canSetManualPrice = true // TODO cuando exista política (§8.2); hoy no se restringe para ADMIN/ASISTENTE
 ```
 
-And use `canCreate`, `warnings`, `allowedActions`, `canSetManualPrice` in the returned object (replace the placeholders).
-
-> `IClienteRepository.findById` must return `bloqueado` and `direccion`. Verify: `grep -nE "bloqueado|direccion|verificado" src/modules/pedidos/domain/repositories/IClienteRepository.ts`. If the domain `Cliente` type omits them, widen it (read-only fields) and update `PrismaClienteRepository.findById`'s `select`.
+And use `canCreate`, `warnings`, `allowedActions` in the returned object. Keep `canSetManualPrice: true` (comment: hoy no se restringe para ADMIN/ASISTENTE — política es PENDIENTE §8.2 del blueprint).
 
 - [ ] **Step 4: Run to verify all pass**
 
 Run: `npm run test -- src/modules/pedidos/application/use-cases/__tests__/PreviewPedidoUseCase.test.ts`
-Expected: PASS (10 tests)
+Expected: PASS (12 tests)
 
 - [ ] **Step 5: Commit**
 
@@ -803,7 +845,7 @@ git commit -m "feat(pedidos): preview — permissions + warnings (fiado, bloquea
 
 ---
 
-## Task 6: `PreviewPedidoUseCase` — riskSignals + auditPreview finalization
+## Task 6: `PreviewPedidoUseCase` — riskSignals
 
 **Files:**
 - Modify: `src/modules/pedidos/application/use-cases/PreviewPedidoUseCase.ts`
@@ -813,40 +855,57 @@ git commit -m "feat(pedidos): preview — permissions + warnings (fiado, bloquea
 
 ```ts
 describe('PreviewPedidoUseCase — riskSignals', () => {
-  it('precio por debajo de la tabla → riskSignal PRECIO_POR_DEBAJO_TABLA', async () => {
+  it('precio por debajo de la tabla → riskSignal PRECIO_POR_DEBAJO_TABLA; señal ≠ bloqueo', async () => {
     const deps = makeDeps()
-    ;(deps as { pricingPort: { resolverPrecios: ReturnType<typeof vi.fn> } }).pricingPort.resolverPrecios
-      .mockResolvedValue([{ producto: 'PACA_AGUA', cantidad: 20, precio: 1500, subtotal: 30000, origen: 'manual' }])
-    ;(deps as { getPrecioMinimos: ReturnType<typeof vi.fn> }).getPrecioMinimos
-      .mockResolvedValue([{ producto: 'PACA_AGUA', cantMin: 1, cantMax: null, precioMinimo: 2300 }])
-    const uc = new PreviewPedidoUseCase(deps)
-    const r = await uc.execute({ clienteId: 'c1', canal: 'PUNTO', items: [{ producto: 'PACA_AGUA', cantidad: 20, precioManual: 1500 }], actorId: 'u1' })
+    ;(deps.pricingPort.resolverPrecios as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { producto: 'PACA_AGUA', cantidad: 20, precio: 1500, subtotal: 30000, origen: 'manual' },
+    ])
+    ;(deps.getPrecioMinimos as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { producto: 'PACA_AGUA', cantMin: 1, cantMax: null, precioMinimo: 2300 },
+    ])
+    const r = await new PreviewPedidoUseCase(deps).execute({
+      clienteId: 'c1', canal: 'PUNTO', items: [{ producto: 'PACA_AGUA', cantidad: 20, precioManual: 1500 }], actorId: 'u1',
+    })
     expect(r.riskSignals.some(s => s.tipo === 'PRECIO_POR_DEBAJO_TABLA')).toBe(true)
-    // señal ≠ bloqueo: 'crear' sigue disponible
-    expect(r.allowedActions).toContain('crear')
+    expect(r.allowedActions).toContain('crear') // no bloquea
   })
 
-  it('sin señales → riskSignals vacío y no bloquea', async () => {
-    const uc = new PreviewPedidoUseCase(makeDeps())
-    const r = await uc.execute({ clienteId: 'c1', canal: 'PUNTO', items: [{ producto: 'PACA_AGUA', cantidad: 1 }], actorId: 'u1' })
-    expect(r.riskSignals).toEqual([])
-  })
-
-  it('requiresAuthorization es SIEMPRE false hoy (sin política de umbral)', async () => {
+  it('pide los últimos 5 pedidos válidos del cliente (excluye ANULADO/CANCELADO por inclusión)', async () => {
     const deps = makeDeps()
-    ;(deps as { pricingPort: { resolverPrecios: ReturnType<typeof vi.fn> } }).pricingPort.resolverPrecios
-      .mockResolvedValue([{ producto: 'PACA_AGUA', cantidad: 100, precio: 1, subtotal: 100, origen: 'manual' }])
-    const uc = new PreviewPedidoUseCase(deps)
-    const r = await uc.execute({ clienteId: 'c1', items: [{ producto: 'PACA_AGUA', cantidad: 100, precioManual: 1 }], actorId: 'u1' })
+    await new PreviewPedidoUseCase(deps).execute({ clienteId: 'c1', canal: 'PUNTO', items: [{ producto: 'PACA_AGUA', cantidad: 1 }], actorId: 'u1' })
+    expect(deps.pedidoRepo.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ clienteId: 'c1', estadoEntrega: ['PENDIENTE', 'EN_RUTA', 'ENTREGADO', 'NO_ENTREGADO'] }),
+      expect.objectContaining({ take: 5, orderBy: 'desc' }),
+    )
+  })
+
+  it('CONSUMIDOR_FINAL → riskSignals vacío y NO consulta historial', async () => {
+    const deps = makeDeps()
+    ;(deps.clienteRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'CONSUMIDOR_FINAL', nombre: 'Consumidor Final', apellido: null, telefono: '', direccion: null, barrio: null,
+      bloqueado: false, verificado: true, creadoPorRol: 'ADMIN', limitePedidosFiados: null, preciosEspeciales: null,
+    })
+    const r = await new PreviewPedidoUseCase(deps).execute({ clienteId: 'CONSUMIDOR_FINAL', canal: 'PUNTO', items: [{ producto: 'PACA_AGUA', cantidad: 1 }], actorId: 'u1' })
+    expect(r.riskSignals).toEqual([])
+    expect(deps.pedidoRepo.findMany).not.toHaveBeenCalled()
+    expect(deps.getPrecioMinimos).not.toHaveBeenCalled()
+  })
+
+  it('requiresAuthorization SIEMPRE false (sin política de umbral)', async () => {
+    const deps = makeDeps()
+    ;(deps.pricingPort.resolverPrecios as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { producto: 'PACA_AGUA', cantidad: 100, precio: 1, subtotal: 100, origen: 'manual' },
+    ])
+    const r = await new PreviewPedidoUseCase(deps).execute({ clienteId: 'c1', items: [{ producto: 'PACA_AGUA', cantidad: 100, precioManual: 1 }], actorId: 'u1' })
     expect(r.requiresAuthorization).toBe(false)
   })
 
   it('auditPreview refleja actor + total + tienePrecioManual', async () => {
     const deps = makeDeps()
-    ;(deps as { pricingPort: { resolverPrecios: ReturnType<typeof vi.fn> } }).pricingPort.resolverPrecios
-      .mockResolvedValue([{ producto: 'PACA_AGUA', cantidad: 2, precio: 3000, subtotal: 6000, origen: 'manual' }])
-    const uc = new PreviewPedidoUseCase(deps)
-    const r = await uc.execute({ clienteId: 'c1', canal: 'PUNTO', items: [{ producto: 'PACA_AGUA', cantidad: 2, precioManual: 3000 }], actorId: 'u-audit' })
+    ;(deps.pricingPort.resolverPrecios as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { producto: 'PACA_AGUA', cantidad: 2, precio: 3000, subtotal: 6000, origen: 'manual' },
+    ])
+    const r = await new PreviewPedidoUseCase(deps).execute({ clienteId: 'c1', canal: 'PUNTO', items: [{ producto: 'PACA_AGUA', cantidad: 2, precioManual: 3000 }], actorId: 'u-audit' })
     expect(r.auditPreview.actor).toBe('u-audit')
     expect(r.auditPreview.valoresRelevantes.total).toBe(6000)
     expect(r.auditPreview.valoresRelevantes.tienePrecioManual).toBe(true)
@@ -857,64 +916,67 @@ describe('PreviewPedidoUseCase — riskSignals', () => {
 - [ ] **Step 2: Run to verify new tests fail**
 
 Run: `npm run test -- src/modules/pedidos/application/use-cases/__tests__/PreviewPedidoUseCase.test.ts`
-Expected: FAIL — `PRECIO_POR_DEBAJO_TABLA` signal test fails (riskSignals always `[]`)
+Expected: FAIL — riskSignals always `[]`, `findMany` never called
 
 - [ ] **Step 3: Implement riskSignals**
 
-Add near the top of `PreviewPedidoUseCase.ts`:
+Add imports to `PreviewPedidoUseCase.ts`:
 
 ```ts
 import { calcularAlertasCliente } from '@/lib/alertas-detector'
-import { draftToPedidoBase } from './draft-to-pedido-base'
+import { draftToPedidoBase, pedidoEntityToPedidoBase } from './pedido-to-pedido-base'
 ```
 
-In `execute`, before building the return object:
+In `execute`, after computing `total`/`recargoDomicilio` and before the return, add:
 
 ```ts
-    // ── Risk signals (detector detectivo, no bloquea) ──
-    const [pedidosRecientes, precioMinimos] = await Promise.all([
-      this.deps.pedidoRepo.findRecentByCliente(input.clienteId),
-      this.deps.getPrecioMinimos(),
-    ])
-    const draftPedido = draftToPedidoBase({
-      clienteId: input.clienteId,
-      canal,
-      resolvedItems: resueltos,
-      total,
-      nowIso: new Date().toISOString(),
-    })
-    const alertas = calcularAlertasCliente(
-      {
-        id: cliente.id, nombre: cliente.nombre ?? '', telefono: cliente.telefono ?? '',
-        verificado: cliente.verificado, bloqueado: cliente.bloqueado,
-        creadoPorRol: cliente.creadoPorRol,
-        createdAt: cliente.createdAt ? new Date(cliente.createdAt).toISOString() : undefined,
-      },
-      [...pedidosRecientes, draftPedido] as never,
-      { precioMinimos },
-    )
-    const riskSignals = alertas.map(a => ({ tipo: a.tipo, severidad: a.severidad, detalle: a.detalle }))
+    // ── Risk signals (detector detectivo — señal ≠ bloqueo). CONSUMIDOR_FINAL excluido. ──
+    let riskSignals: PreviewPedidoResult['riskSignals'] = []
+    if (!esAnonimo) {
+      const [pedidosRecientes, precioMinimos] = await Promise.all([
+        this.deps.pedidoRepo.findMany(
+          { clienteId: input.clienteId, estadoEntrega: ['PENDIENTE', 'EN_RUTA', 'ENTREGADO', 'NO_ENTREGADO'] },
+          { take: 5, orderBy: 'desc' },
+        ),
+        this.deps.getPrecioMinimos(),
+      ])
+      const historial = pedidosRecientes.map(p => pedidoEntityToPedidoBase(p as never, (p as { id?: { get(): string } | string }).id
+        ? typeof (p as { id: unknown }).id === 'string' ? (p as unknown as { id: string }).id : ((p as unknown as { id: { get(): string } }).id).get()
+        : '__real__'))
+      const draft = draftToPedidoBase({ clienteId: input.clienteId, canal, resolvedItems: resueltos, total, nowIso: new Date().toISOString() })
+      const alertas = calcularAlertasCliente(
+        {
+          id: cliente.id, nombre: cliente.nombre ?? '', telefono: cliente.telefono ?? '',
+          verificado: cliente.verificado, bloqueado: cliente.bloqueado, creadoPorRol: cliente.creadoPorRol,
+        },
+        [...historial, draft] as never,
+        { precioMinimos },
+      )
+      riskSignals = alertas.map(a => ({ tipo: a.tipo, severidad: a.severidad, detalle: a.detalle }))
+    }
 ```
 
-Use `riskSignals` in the returned object. Keep `requiresAuthorization: false` (comment: activates with §8.2 policy).
+> Note on the entity `id`: check whether `IPedidoRepository.findMany` returns entities whose `id` is a `PedidoId` VO (`.get()`) or a plain string, via `grep -n "get id" src/modules/pedidos/domain/entities/Pedido.ts`. Simplify the `historial` mapping to the real accessor once known — the risk detector only needs a **unique, stable id** per order, so any of `p.id.get()` / `p.id` works.
 
-> If `IPedidoRepository` has no `findRecentByCliente`, add it (Task 4 Step 3 flagged this). It returns the last ~10 non-cancelled orders of the client in the legacy `PedidoBase` shape the detector reads. Read-only; mirror `findPendingByCliente`.
+Use `riskSignals` in the returned object. `requiresAuthorization` stays `false`.
+
+`esAnonimo` is defined in Task 5's block — make sure that block runs before this one (it does, both are in `execute`).
 
 - [ ] **Step 4: Run to verify all pass**
 
 Run: `npm run test -- src/modules/pedidos/application/use-cases/__tests__/PreviewPedidoUseCase.test.ts`
-Expected: PASS (14 tests)
+Expected: PASS (17 tests)
 
-- [ ] **Step 5: Full unit suite + typecheck**
+- [ ] **Step 5: Full module suite + typecheck**
 
-Run: `npx tsc --noEmit && npm run test -- src/modules/pedidos`
+Run: `npx tsc --noEmit && npm run test -- src/modules/pedidos src/lib/__tests__/validators-preview.test.ts`
 Expected: PASS, 0 regressions
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add src/modules/pedidos/application/use-cases/PreviewPedidoUseCase.ts src/modules/pedidos/application/use-cases/__tests__/PreviewPedidoUseCase.test.ts
-git commit -m "feat(pedidos): preview — riskSignals via calcularAlertasCliente (señal ≠ bloqueo)"
+git commit -m "feat(pedidos): preview — riskSignals via calcularAlertasCliente (últimos 5, CONSUMIDOR_FINAL excluido)"
 ```
 
 ---
@@ -924,11 +986,10 @@ git commit -m "feat(pedidos): preview — riskSignals via calcularAlertasCliente
 **Files:**
 - Modify: `src/modules/pedidos/application/index.ts`
 - Modify: `src/modules/pedidos/index.ts`
-- Modify: `src/lib/pricing.ts` — confirm `getPrecioMinimos` is exported (it is, per grep); no change expected
 
 - [ ] **Step 1: Add to the composition root**
 
-In `src/modules/pedidos/application/index.ts`, after `getFiadoStatusUseCase` is created:
+In `src/modules/pedidos/application/index.ts`, confirm `getFiadoStatusUseCase` const exists (the export implies it). After it:
 
 ```ts
 import { PreviewPedidoUseCase } from './use-cases/PreviewPedidoUseCase'
@@ -943,11 +1004,9 @@ export const previewPedidoUseCase = new PreviewPedidoUseCase({
 })
 ```
 
-(Place the `getFiadoStatusUseCase` const definition before this if it is not already there — check the file; the export exists so the const does too.)
-
 - [ ] **Step 2: Export from the module barrel**
 
-In `src/modules/pedidos/index.ts`, add `previewPedidoUseCase` to the `export { … } from './application'` list, and add to the DTO re-export coverage (already covered by `export type * from './application/dto'`).
+In `src/modules/pedidos/index.ts`, add `previewPedidoUseCase` to the `export { … } from './application'` list.
 
 - [ ] **Step 3: Type-check**
 
@@ -982,11 +1041,11 @@ import { PreviewPedidoSchema } from '@/lib/validators'
 import { previewPedidoUseCase } from '@/modules/pedidos'
 
 /**
- * POST /api/pedidos/preview — prepara una creación de pedido SIN persistir.
- * BRECHA §9.1 del blueprint (docs/pedidos/03-blueprint-experiencia-hub.md).
- * Contrato: docs/pedidos/02-api-contract-pedidos.md.
- * Read-only: sin lock, sin transacción de escritura, sin offlineId.
- * El commit real (POST /api/pedidos) revalida todo.
+ * POST /api/pedidos/preview — prepara una creación de Pedido SIN persistir ni
+ * mutar nada. BRECHA §9.1 del blueprint (docs/pedidos/03-blueprint-experiencia-hub.md).
+ * Contrato normativo: docs/pedidos/02-api-contract-pedidos.md.
+ * Read-only: sin lock, sin transacción de escritura, sin offlineId, sin crear
+ * ni modificar Cliente. El commit real (POST /api/pedidos) revalida todo.
  */
 export async function POST(request: NextRequest) {
   const auth = await requireAuth()
@@ -1021,14 +1080,13 @@ export async function POST(request: NextRequest) {
 Run: `npx tsc --noEmit`
 Expected: PASS
 
-- [ ] **Step 3: Manual smoke via dev server**
+- [ ] **Step 3: Manual smoke via dev server** (`docker compose up -d`, dev server up)
 
-Run (dev server up, `docker compose up -d`):
 ```bash
-curl -s -X POST http://localhost:3000/api/pedidos/preview -H 'Content-Type: application/json' -b <cookie-de-sesión-admin> \
+curl -s -X POST http://localhost:3000/api/pedidos/preview -H 'Content-Type: application/json' -b <cookie-admin> \
   -d '{"clienteId":"CONSUMIDOR_FINAL","canal":"PUNTO","items":[{"producto":"PACA_AGUA","cantidad":2}]}' | jq
 ```
-Expected: `{ "success": true, "calculation": { ... }, "permissions": { ... }, ... }`
+Expected: `{ "success": true, "calculation": { "total": …, "subtotal": …, "recargoDomicilio": 0, … }, "riskSignals": [], … }`
 
 - [ ] **Step 4: Commit**
 
@@ -1039,7 +1097,9 @@ git commit -m "feat(pedidos): POST /api/pedidos/preview (thin controller, read-o
 
 ---
 
-## Task 9: Route contract test
+## Task 9: Route contract test (auxiliary static guardrail)
+
+Source-inspection test — same pattern as the N2 routes. This is a **guardrail auxiliary**, not the primary read-only proof (that is Task 10, behavioral).
 
 **Files:**
 - Create: `src/app/api/pedidos/preview/__tests__/route.test.ts`
@@ -1048,25 +1108,18 @@ git commit -m "feat(pedidos): POST /api/pedidos/preview (thin controller, read-o
 
 ```ts
 // src/app/api/pedidos/preview/__tests__/route.test.ts
-// Contract test del thin controller: rol, delegación, mapeo de errores, y
-// la garantía read-only (el archivo no importa repos de escritura ni lock).
-// El PreviewPedidoUseCase en sí está cubierto en su propio test unitario.
-
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 
-const routeSource = readFileSync(
-  join(process.cwd(), 'src/app/api/pedidos/preview/route.ts'),
-  'utf-8',
-)
+const routeSource = readFileSync(join(process.cwd(), 'src/app/api/pedidos/preview/route.ts'), 'utf-8')
 
-describe('POST /api/pedidos/preview', () => {
+describe('POST /api/pedidos/preview — contract (guardrail estático)', () => {
   it('exige requireRole([ADMIN, ASISTENTE])', () => {
     expect(routeSource).toMatch(/requireRole\(\[ROLES\.ADMIN,\s*ROLES\.ASISTENTE\]/)
   })
 
-  it('delega en previewPedidoUseCase (no reimplementa lógica)', () => {
+  it('delega en previewPedidoUseCase', () => {
     expect(routeSource).toMatch(/previewPedidoUseCase\.execute\(/)
   })
 
@@ -1076,7 +1129,7 @@ describe('POST /api/pedidos/preview', () => {
 
   it('inyecta actorId desde la sesión, no desde el body', () => {
     expect(routeSource).toMatch(/actorId\s*=\s*role\.user\?\.id/)
-    expect(routeSource).toMatch(/\{\s*\.\.\.parsed\.data,\s*actorId\s*\}/)
+    expect(routeSource).toMatch(/actorId\s*\}/)
   })
 
   it('mapea CLIENTE_NOT_FOUND y PEDIDO_ORIGEN_NOT_FOUND a 404', () => {
@@ -1084,11 +1137,11 @@ describe('POST /api/pedidos/preview', () => {
     expect(routeSource).toMatch(/PEDIDO_ORIGEN_NOT_FOUND[\s\S]{0,120}404/)
   })
 
-  it('READ-ONLY: no importa repos de escritura, TransactionManager ni advisory lock', () => {
+  it('READ-ONLY: no importa repos de escritura, TransactionManager, lock ni $transaction', () => {
     expect(routeSource).not.toMatch(/TransactionManager/)
-    expect(routeSource).not.toMatch(/withAdvisoryLock|withLock|SECUENCIA:|CARTERA:/)
+    expect(routeSource).not.toMatch(/withAdvisoryLock|withLock|SECUENCIA:|CARTERA:|PEDIDO:/)
     expect(routeSource).not.toMatch(/\$transaction/)
-    expect(routeSource).not.toMatch(/crearPedidoUseCase|Repository\b/)
+    expect(routeSource).not.toMatch(/crearPedidoUseCase|actualizarPedidoUseCase|Repository\b/)
   })
 })
 ```
@@ -1096,38 +1149,44 @@ describe('POST /api/pedidos/preview', () => {
 - [ ] **Step 2: Run**
 
 Run: `npm run test -- src/app/api/pedidos/preview/__tests__/route.test.ts`
-Expected: PASS (6 tests). If the "inyecta actorId" regex is too strict for the exact formatting, relax it to match your final code — keep the intent (actorId comes from `role.user`, not `parsed.data`).
+Expected: PASS (6 tests). If a regex is over-strict vs your final formatting, relax it while keeping the intent.
 
 - [ ] **Step 3: Commit**
 
 ```bash
 git add src/app/api/pedidos/preview/__tests__/route.test.ts
-git commit -m "test(pedidos): contract test de POST /api/pedidos/preview (rol, delegación, read-only)"
+git commit -m "test(pedidos): guardrail estático de POST /api/pedidos/preview (rol, delegación, read-only)"
 ```
 
 ---
 
-## Task 10: Integration test (Postgres) — preview matches the real commit
+## Task 10: Integration test (Postgres) — behavioral read-only + preview vs commit
 
-Proves the preview's `total` and projected state equal what `CrearPedidoUseCase` would actually compute, against real data. This is the one place the composition is verified end-to-end.
+The primary proof. Two things: (a) `preview` mutates **nothing**, verified by full before/after snapshots of every reachable entity; (b) `preview`'s projected operation equals what `crearPedidoUseCase` actually persists, field by field.
 
 **Files:**
 - Create: `src/lib/__tests__/integration/preview-pedido-integridad.test.ts`
 
-- [ ] **Step 1: Write the test**
+- [ ] **Step 1: Confirm the `CrearPedidoResult` shape**
+
+Run: `grep -nE "CrearPedidoResult|pedido:|hijo\?:" src/modules/pedidos/application/dto/index.ts`
+Expected: `result.pedido` is a `PedidoResumenDTO` with `total`, `totalPagado`, `saldo`, `estadoEntrega`, `estadoPago`, `canal`, `origen`, `items[]` (`producto`, `cantPedido`, `precio`, `subtotal`, `precioOrigen`). Align the assertions below if names differ.
+
+- [ ] **Step 2: Write the test**
 
 ```ts
 // src/lib/__tests__/integration/preview-pedido-integridad.test.ts
-// @integration — corre contra el Postgres de docker-compose (puerto 5433).
-// Verifica que POST /api/pedidos/preview calcula el MISMO total/estado que
-// POST /api/pedidos realmente persiste, para el mismo input.
+// @integration — Postgres de docker-compose (puerto 5433).
+// (a) preview no muta NADA (snapshots antes/después de cada entidad alcanzable).
+// (b) la operación proyectada por preview == la que crearPedidoUseCase persiste.
 
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { previewPedidoUseCase, crearPedidoUseCase } from '@/modules/pedidos'
 import { prisma } from '@/lib/prisma'
 
-describe('preview vs commit — integridad', () => {
+describe('preview — read-only + integridad vs commit', () => {
   let clienteId: string
+  let clienteSnapshotAntes: string
 
   beforeAll(async () => {
     const cliente = await prisma.cliente.findFirst({
@@ -1138,56 +1197,113 @@ describe('preview vs commit — integridad', () => {
     clienteId = cliente.id
   })
 
-  it('el total y el estado proyectado del preview == los del pedido creado', async () => {
+  it('(a) preview no crea ni modifica ninguna fila', async () => {
+    const before = {
+      pedidos: await prisma.pedido.count(),
+      items: await prisma.pedidoItem.count(),
+      pagos: await prisma.pago.count(),
+      facturas: await prisma.factura.count(),
+      notasCredito: await prisma.notaCredito.count(),
+      clientes: await prisma.cliente.count(),
+      cliente: JSON.stringify(await prisma.cliente.findUnique({ where: { id: clienteId } })),
+    }
+
+    await previewPedidoUseCase.execute({
+      clienteId, canal: 'DOMICILIO', origen: 'PEDIDO',
+      items: [{ producto: 'PACA_AGUA', cantidad: 5 }, { producto: 'BOTELLON', cantidad: 2 }],
+      pagos: [{ metodo: 'EFECTIVO', monto: 999_999 }], // sobrepago deliberado
+      actorId: 'test',
+    })
+
+    const after = {
+      pedidos: await prisma.pedido.count(),
+      items: await prisma.pedidoItem.count(),
+      pagos: await prisma.pago.count(),
+      facturas: await prisma.factura.count(),
+      notasCredito: await prisma.notaCredito.count(),
+      clientes: await prisma.cliente.count(),
+      cliente: JSON.stringify(await prisma.cliente.findUnique({ where: { id: clienteId } })),
+    }
+
+    expect(after).toEqual(before)
+  })
+
+  it('(b) proyección del preview == pedido realmente creado (campo por campo)', async () => {
     const input = {
-      clienteId,
-      canal: 'DOMICILIO' as const,
-      origen: 'PEDIDO' as const,
-      items: [{ producto: 'PACA_AGUA' as const, cantidad: 5 }],
+      clienteId, canal: 'DOMICILIO' as const, origen: 'PEDIDO' as const,
+      items: [{ producto: 'PACA_AGUA' as const, cantidad: 5 }, { producto: 'BOTELLON' as const, cantidad: 2 }],
+      pagos: [{ metodo: 'EFECTIVO' as const, monto: 3000 }],
     }
 
     const preview = await previewPedidoUseCase.execute({ ...input, actorId: 'test' })
 
-    const created = await crearPedidoUseCase.execute({
-      ...input,
-      createdById: undefined,
-      createdByRole: 'ADMIN',
-    })
+    let createdId: string | undefined
+    try {
+      const created = await crearPedidoUseCase.execute({ ...input, createdByRole: 'ADMIN' })
+      createdId = created.pedido.id
+      const p = created.pedido
 
-    expect(preview.calculation.total).toBe(Number(created.pedido.total))
-    expect(preview.calculation.estadoEntregaProyectado).toBe(created.pedido.estadoEntrega)
-    expect(preview.calculation.estadoPagoProyectado).toBe(created.pedido.estadoPago)
+      expect(preview.calculation.total).toBe(Number(p.total))
+      expect(preview.calculation.totalPagado).toBe(Number(p.totalPagado))
+      expect(preview.calculation.saldoProyectado).toBe(Number(p.saldo))
+      expect(preview.calculation.estadoEntregaProyectado).toBe(p.estadoEntrega)
+      expect(preview.calculation.estadoPagoProyectado).toBe(p.estadoPago)
+      expect(preview.calculation.subtotal + preview.calculation.recargoDomicilio).toBe(preview.calculation.total)
 
-    // limpieza
-    await prisma.pedido.delete({ where: { id: created.pedido.id } }).catch(() => {})
+      // items: mismo producto / cantidad / precio unitario / subtotal / origen
+      const byProd = (arr: Array<{ producto: string }>) => Object.fromEntries(arr.map(i => [i.producto, i]))
+      const pv = byProd(preview.calculation.items)
+      const cr = byProd(p.items.map(i => ({ producto: i.producto, cantidad: i.cantPedido, precioUnitario: Number(i.precio), subtotal: Number(i.subtotal), precioOrigen: i.precioOrigen })) as never)
+      for (const prod of Object.keys(pv)) {
+        expect(pv[prod].cantidad).toBe(cr[prod].cantidad)
+        expect(pv[prod].precioUnitario).toBe(cr[prod].precioUnitario)
+        expect(pv[prod].subtotal).toBe(cr[prod].subtotal)
+        expect(pv[prod].precioOrigen).toBe(cr[prod].precioOrigen)
+      }
+    } finally {
+      // cleanup explícito — no depender de cascadas
+      if (createdId) {
+        await prisma.pago.deleteMany({ where: { pedidoId: createdId } })
+        await prisma.notaCredito.deleteMany({ where: { pedidoId: createdId } })
+        const fact = await prisma.factura.findFirst({ where: { pedidoId: createdId }, select: { id: true } })
+        if (fact) {
+          await prisma.abono.deleteMany({ where: { facturaId: fact.id } })
+          await prisma.factura.delete({ where: { id: fact.id } })
+        }
+        await prisma.pedidoItem.deleteMany({ where: { pedidoId: createdId } })
+        await prisma.pedido.delete({ where: { id: createdId } })
+      }
+    }
   })
 
-  it('el preview no creó ninguna fila', async () => {
-    const before = await prisma.pedido.count()
-    await previewPedidoUseCase.execute({
-      clienteId, canal: 'PUNTO', origen: 'VENTA_RAPIDA',
-      items: [{ producto: 'PACA_AGUA', cantidad: 3 }], actorId: 'test',
-    })
-    const after = await prisma.pedido.count()
-    expect(after).toBe(before)
+  afterAll(async () => {
+    // el pedido creado ya se limpió en su finally; nada más que deshacer
+    // (preview no toca Cliente; el commit del test (b) no genera saldoFavor
+    //  porque el pago 3000 < total). Verificación defensiva:
+    void clienteSnapshotAntes
   })
 })
 ```
 
-- [ ] **Step 2: Run**
+- [ ] **Step 3: Run**
 
 Run: `npm run test -- --config vitest.integration.config.ts src/lib/__tests__/integration/preview-pedido-integridad.test.ts`
-Expected: PASS (2 tests). If `crearPedidoUseCase.execute`'s input signature differs (check `CrearPedidoInput`), align the `created` call — the point is same items/canal/origen.
+Expected: PASS (2 tests). If `crearPedidoUseCase.execute`'s input signature differs, align — the invariant is same `items`/`canal`/`origen`. If the schema for `factura`/`abono`/`notaCredito` FK names differ, adjust the cleanup queries (verify with `grep -nE "model (Factura|Abono|NotaCredito|Pago|PedidoItem)" prisma/schema.prisma` and the relation fields).
 
-- [ ] **Step 3: Register the migration-independent test in CI**
+- [ ] **Step 4: Verify the DB is back to baseline**
 
-The integration test needs no migration. Confirm `src/lib/__tests__/integration/**` is already globbed by `vitest.integration.config.ts` (it is — other files live there). No CI list edit needed.
+Run:
+```bash
+PGPASSWORD=bambu_dev psql -h localhost -p 5433 -U bambu -d bambu -c \
+  "SELECT (SELECT count(*) FROM \"Pedido\") pedidos, (SELECT count(*) FROM \"PedidoItem\") items, (SELECT count(*) FROM \"Pago\") pagos, (SELECT count(*) FROM \"Factura\") facturas;"
+```
+Expected: same counts as before running the test file (run once before, once after).
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add src/lib/__tests__/integration/preview-pedido-integridad.test.ts
-git commit -m "test(pedidos): integración preview vs commit (mismo total/estado, cero filas creadas)"
+git commit -m "test(pedidos): integración — preview read-only (snapshots) + proyección == commit (campo a campo)"
 ```
 
 ---
@@ -1200,14 +1316,11 @@ git commit -m "test(pedidos): integración preview vs commit (mismo total/estado
 
 - [ ] **Step 1: Flip the contract status**
 
-In `02-api-contract-pedidos.md`, change:
-`**Estado:** contrato definido (2026-09-07) — **sin implementar todavía**.`
-→
-`**Estado:** implementado (PR #<n>). Ruta: \`src/app/api/pedidos/preview/route.ts\`, use case: \`PreviewPedidoUseCase\`.`
+In `02-api-contract-pedidos.md`, change `**Estado:** contrato definido (2026-09-07, correcciones PO PR #220) — **sin implementar todavía**.` → `**Estado:** implementado (PR #<n>). Ruta: \`src/app/api/pedidos/preview/route.ts\`; use case: \`PreviewPedidoUseCase\`.`
 
-- [ ] **Step 2: Update blueprint §9.1**
+- [ ] **Step 2: Update blueprint §9.1 and §10 C2**
 
-In `03-blueprint-experiencia-hub.md` §9.1, change "Pendiente: aprobación del contrato → plan de implementación → código." to note it's built, and update §10 row C2 accordingly.
+In `03-blueprint-experiencia-hub.md`, §9.1: replace the "Pendiente: aprobación…" line with "✅ Implementado en PR #<n>." Update §10 row C2 to `RESUELTO`.
 
 - [ ] **Step 3: Full verification (protocolo AGENTS.md)**
 
@@ -1215,47 +1328,52 @@ In `03-blueprint-experiencia-hub.md` §9.1, change "Pendiente: aprobación del c
 npx tsc --noEmit
 npm run test
 npm run test -- --config vitest.integration.config.ts
-npx eslint src/app/api/pedidos/preview src/modules/pedidos/application/use-cases/PreviewPedidoUseCase.ts src/modules/pedidos/application/use-cases/draft-to-pedido-base.ts --max-warnings 0
+npx eslint src/app/api/pedidos/preview src/modules/pedidos/application/use-cases/PreviewPedidoUseCase.ts src/modules/pedidos/application/use-cases/pedido-to-pedido-base.ts src/lib/validators.ts --max-warnings 0
 ```
-Expected: all green, 0 regressions vs the pre-task baseline count.
+Expected: all green; unit test count = pre-task baseline + (5 schema + 3 mappers + 17 use case + 6 route) = baseline + 31; integration + 2. 0 regressions.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: Commit + push + PR**
 
 ```bash
 git add docs/pedidos/02-api-contract-pedidos.md docs/pedidos/03-blueprint-experiencia-hub.md
 git commit -m "docs(pedidos): marcar POST /api/pedidos/preview como implementado"
-```
-
-- [ ] **Step 5: Push + PR**
-
-```bash
 git push -u origin feat/pedidos-preview-endpoint
-gh pr create --base main --title "feat(pedidos): POST /api/pedidos/preview (prerequisito Fase 4)" --body "Implementa el endpoint de preview definido en 02-api-contract-pedidos.md. Read-only (contract test lo verifica). Cierra la BRECHA §9.1 del blueprint. Depende conceptualmente de PR #220 (blueprint) — mergear después."
+gh pr create --base main --title "feat(pedidos): POST /api/pedidos/preview (prerequisito Fase 4)" \
+  --body "Implementa el endpoint de preview definido en 02-api-contract-pedidos.md. Read-only verificado por comportamiento (snapshots de todas las entidades) + guardrail estático. Proyección == commit verificada campo a campo. Cierra la BRECHA §9.1 del blueprint. Stack sobre PR #220."
 ```
 
 ---
 
 ## Self-Review
 
-**Spec coverage** (against `02-api-contract-pedidos.md` § preview):
-- Request shape → Task 2 (`PreviewPedidoSchema`). ✅
-- `calculation` (items/subtotal/recargo/total/totalPagado/saldo/estados) → Task 4. ✅
-- `permissions` (canCreate/canSetManualPrice) → Task 5. ✅
-- `allowedActions` → Task 5 (derived from canCreate + projected state). ✅
-- `warnings` (FIADO_SOBRE_LIMITE, CLIENTE_BLOQUEADO, DIRECCION_FALTANTE, PRECIO_MANUAL_APLICADO) → Task 5. ✅
-- `riskSignals` via `calcularAlertasCliente` → Task 6. ✅
-- `requiresAuthorization` always `false` today → Task 6 (test asserts it). ✅
+**Spec coverage** (against `02-api-contract-pedidos.md` § preview, post-correcciones PO):
+- `origen ∈ {PEDIDO, VENTA_RAPIDA}`, VENTA_LIBRE excluido → Task 1 (DTO), Task 2 (schema + test que rechaza VENTA_LIBRE). ✅
+- Semántica de cálculo (`precioUnitario` incluye recargo; `total = Σ subtotalItem`; `recargoDomicilio` desglose; `subtotal = total − recargoDomicilio`) → Task 4 + tests explícitos de la identidad. ✅
+- Proyección virtual de pagos (`normalizarPagos`/`calcularSaldo`/`calcularEstadoPago`) + `saldoFavorProyectado` → Task 4 + test de sobrepago. ✅
+- `permissions` + `warnings` (FIADO_SOBRE_LIMITE, CLIENTE_BLOQUEADO, DIRECCION_FALTANTE, PRECIO_MANUAL_APLICADO) → Task 5. ✅
+- `allowedActions` derivadas → Task 5. ✅
+- `riskSignals` vía `calcularAlertasCliente`, **últimos 5 pedidos válidos** vía `findMany` (no `findRecentByCliente`), excluye ANULADO/CANCELADO por inclusión de estados → Task 6 + test que verifica el `findMany` call. ✅
+- CONSUMIDOR_FINAL: sin historial/riesgo, sin crear/modificar cliente, reutiliza la exclusión del detector → Task 5 + Task 6 tests. ✅
+- `requiresAuthorization` siempre `false` → Task 6 test. ✅
 - `auditPreview` → Task 4 (shape) + Task 6 (test). ✅
-- Errors 400/401/403/404×2 → Task 8 (route) + Task 9 (contract test). ✅
-- Read-only guarantee → Task 9 (grep assertions) + Task 10 (row count unchanged). ✅
-- "commit revalidates" → Task 10 (preview total == created total). ✅
+- Errores 400/401/403/404×2 → Task 8 + Task 9. ✅
+- Read-only **comportamental** (snapshots de Pedido/PedidoItem/Pago/Factura/NotaCredito/Cliente) → Task 10 (a). Guardrail estático auxiliar → Task 9. ✅
+- Preview vs commit campo a campo → Task 10 (b). ✅
+- Cleanup explícito sin depender de cascadas → Task 10 (b) `finally` + Task 10 Step 4 verificación en psql. ✅
+- `IClienteRepository` / `EstadoPagoVO` **no se modifican** — usados como están. ✅
 
-**Placeholder scan:** one intentional `TODO` in Task 5 Step 3 (`canSetManualPrice` policy) — it is tied to PENDIENTE §8.2 of the blueprint and the value is defined (`true`), not left blank. Acceptable.
+**Placeholder scan:** no `TBD`/`TODO` sin resolver. `canSetManualPrice: true` está documentado y atado a PENDIENTE §8.2 (valor definido, no en blanco).
 
-**Type consistency:** `PreviewPedidoResult` (Task 1) is the return type used in Tasks 4/5/6. `precioOrigen` union `'manual'|'cliente'|'volumen'|'base'` matches `ItemPedidoResuelto['origen']` (verify in `src/modules/pedidos/domain/types` during Task 4). `EstadoPagoVO.proyectar(...).get()` accessor to be confirmed in Task 4 Step 4. `findRecentByCliente` is flagged as possibly-new in Tasks 4 and 6 with instructions to add it read-only.
+**Type consistency:** `PreviewPedidoResult` (Task 1) es el tipo de retorno en Tasks 4/5/6. `PreviewPedidoDeps` exportado desde `PreviewPedidoUseCase.ts` y usado por el test (Task 4) y el composition root (Task 7). `PedidoBaseLike` (Task 3) consumido por Task 6. `precioOrigen` union `'manual'|'cliente'|'volumen'|'base'` = `ItemPedidoResuelto['origen']` (verificar en Task 4 Step 1 area si `resolverPrecios` devuelve exactamente esa union).
 
-## Open items surfaced by this plan (resolve during execution, not by inventing)
+**No open items.** Los 3 que existían en la versión anterior de este plan quedaron resueltos por la corrección del PO:
+1. `findRecentByCliente` → **no se crea**; se usa `findMany({ clienteId, estadoEntrega: [...] }, { take: 5, orderBy: 'desc' })`.
+2. Ancho del tipo `Cliente` → **no se toca** `IClienteRepository`; se usan los campos que ya expone `findById`.
+3. Accessor de `EstadoPagoVO` → es `.get()`, verificado en `main`; se usa vía `calcularEstadoPago` del servicio de pagos, que ya lo encapsula.
 
-1. `IPedidoRepository.findRecentByCliente` likely does not exist — add it read-only (Tasks 4/6 flag it). If adding a repo method feels out of scope, an alternative is a direct `prisma.pedido.findMany` inside the composition root wrapper — but prefer the repo method for consistency.
-2. `IClienteRepository.findById` return type must expose `bloqueado`, `direccion`, `verificado`, `creadoPorRol`, `createdAt` — widen if needed (Task 5).
-3. `EstadoPagoVO` accessor name (`.get()` vs `.value`) — confirm in Task 4.
+**Micro-verificaciones que el implementador hace en el momento (no son decisiones de producto — son confirmaciones de nombres):**
+- Task 3 Step 1: nombres exactos de columnas legacy en la interfaz `PedidoBase`.
+- Task 4 Step 1: `IPedidoRepository.findById(id: PedidoId)`.
+- Task 6 Step 3 note: `id` de la entidad `Pedido` (VO `.get()` vs string).
+- Task 10 Step 1: forma de `CrearPedidoResult`; Step 3: nombres de relaciones FK para el cleanup.
+Ninguna cambia el comportamiento especificado — solo cómo se referencia en código.
