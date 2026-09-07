@@ -194,6 +194,8 @@ La causa raíz de por qué esto no puede ser incremental (confirmado por la inve
 
 #### FASE 4 — Consulta y detalle: Pedido Hub (reemplaza `/pedidos`) (2 PRs)
 
+> **Blueprint de experiencia (Secciones 1–6) aprobado por el PO 2026-09-07 — `docs/pedidos/03-blueprint-experiencia-hub.md`.** Ese documento es la autoridad de QUÉ se construye para el Hub, la captura, el peek, N2, G11, riesgo, Recurrentes y los gates de aceptación (G1–G11). Esta sección del `00-*` sigue siendo la autoridad de fases/PRs. El blueprint agrega: un prerequisito de backend (`POST /api/pedidos/preview` — BRECHA §9.1), 3 PENDIENTES DE NEGOCIO (SLA de entrega, umbrales de precio manual, consolidación de `/repartidor`) y la fase "Composición" (recompone Fase 3 con el reducer/orquestador del workspace).
+
 **Qué es:** reemplaza `pedidos-client/index.tsx` (2520 líneas) — lista + detalle con la jerarquía de información de Stripe (tabla densa, microcopy de estado) y el principio de vista-por-rol de Fiori.
 
 **Composición:**
