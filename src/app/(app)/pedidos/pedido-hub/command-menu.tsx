@@ -59,10 +59,8 @@ export function PedidoCommandMenu({
 
   useEffect(() => {
     if (open) {
-      // reset del estado efímero del menú al abrir — no derivable en render.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+      // reset del estado efímero del menú al abrir.
       setQuery('')
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setCursor(0)
       inputRef.current?.focus()
     }
