@@ -451,6 +451,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     alertasCount,
     atrasadosCount,
     enRiesgoCount,
+    porPlanificarCount,
     enRutaCount,
     esperandoPagoTotal,
     pendientesN2Count,
@@ -1592,7 +1593,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       {hubMode && !atrasadosParam && !enRiesgoParam && (
         <PedidoHub
           pedidos={pedidosVisiblesConPendientes}
-          counts={{ atrasadosCount, enRutaCount, esperandoPagoTotal, pendientesN2Count }}
+          counts={{ porPlanificarCount, atrasadosCount, enRutaCount, esperandoPagoTotal, pendientesN2Count }}
           loading={!hasLoadedOnce && loading}
           error={fetchError}
           onOpen={handleDetail}

@@ -74,9 +74,11 @@ export async function GET(_request: NextRequest) {
       orderBy: { fecha: 'desc' },
     })
 
-    const [atrasadosCount, enRiesgoCount, enRutaCount, esperandoPagoAgg, pendientesN2Count] = await Promise.all([
+    const [atrasadosCount, enRiesgoCount, porPlanificarCount, enRutaCount, esperandoPagoAgg, pendientesN2Count] = await Promise.all([
       countPedidosAtrasadosSinAsignar(),
       countPedidosHoyEnRiesgo(),
+      // Foco "Por planificar" — PENDIENTE sin embarque (hoy o atrasados) (blueprint §2.2)
+      prisma.pedido.count({ where: { estadoEntrega: 'PENDIENTE', embarqueId: null } }),
       // Foco "En ruta" (blueprint §2.2)
       prisma.pedido.count({ where: { estadoEntrega: 'EN_RUTA' } }),
       // Foco "Esperando pago" — $ total de saldo pendiente de pedidos entregados
@@ -131,6 +133,7 @@ export async function GET(_request: NextRequest) {
       alertasCount: alertas.length,
       atrasadosCount,
       enRiesgoCount,
+      porPlanificarCount,
       enRutaCount,
       esperandoPagoTotal: Number(esperandoPagoAgg._sum.saldo ?? 0),
       pendientesN2Count,

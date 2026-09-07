@@ -10,6 +10,7 @@ const src = readFileSync(join(process.cwd(), 'src/app/api/pedidos/counts/route.t
 
 describe('GET /api/pedidos/counts — focos del Hub', () => {
   it('el response incluye los conteos nuevos y conserva los previos', () => {
+    expect(src).toMatch(/porPlanificarCount/)
     expect(src).toMatch(/enRutaCount/)
     expect(src).toMatch(/esperandoPagoTotal/)
     expect(src).toMatch(/pendientesN2Count/)

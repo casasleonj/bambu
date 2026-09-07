@@ -10,6 +10,9 @@ import { deriveOperacion } from './derive-operacion'
 import type { AccionKey, FocoCount, FocoKey, Pedido } from './types'
 
 export interface PedidoHubCounts {
+  /** PENDIENTE sin embarque (hoy o atrasados). */
+  porPlanificarCount: number
+  /** solo atrasados de días anteriores — dispara el tono ámbar del foco. */
   atrasadosCount: number
   enRutaCount: number
   esperandoPagoTotal: number
@@ -66,7 +69,7 @@ export function PedidoHub({
   )
 
   const focos: FocoCount[] = [
-    { key: 'porPlanificar', label: 'Por planificar', value: counts.atrasadosCount, tone: counts.atrasadosCount > 0 ? 'amber' : 'none' },
+    { key: 'porPlanificar', label: 'Por planificar', value: counts.porPlanificarCount, tone: counts.atrasadosCount > 0 ? 'amber' : 'none' },
     { key: 'enRuta', label: 'En ruta', value: counts.enRutaCount, tone: 'none' },
     { key: 'esperandoPago', label: 'Esperando pago', value: countEsperandoPago(pedidos, focosByPedido), amount: counts.esperandoPagoTotal, tone: counts.esperandoPagoTotal > 0 ? 'red' : 'none' },
     { key: 'pendientesN2', label: 'Pendientes', value: counts.pendientesN2Count, tone: counts.pendientesN2Count > 0 ? 'amber' : 'none' },

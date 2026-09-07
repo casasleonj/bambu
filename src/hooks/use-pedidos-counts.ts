@@ -8,6 +8,7 @@ export interface UsePedidosCountsResult {
   enRiesgoCount: number
   /** Fase 4a — focos del Hub. */
   enRutaCount: number
+  porPlanificarCount: number
   esperandoPagoTotal: number
   pendientesN2Count: number
   loading: boolean
@@ -20,6 +21,7 @@ export function usePedidosCounts(autoFetch = true): UsePedidosCountsResult {
   const [alertasCount, setAlertasCount] = useState(0)
   const [atrasadosCount, setAtrasadosCount] = useState(0)
   const [enRiesgoCount, setEnRiesgoCount] = useState(0)
+  const [porPlanificarCount, setPorPlanificarCount] = useState(0)
   const [enRutaCount, setEnRutaCount] = useState(0)
   const [esperandoPagoTotal, setEsperandoPagoTotal] = useState(0)
   const [pendientesN2Count, setPendientesN2Count] = useState(0)
@@ -56,6 +58,7 @@ export function usePedidosCounts(autoFetch = true): UsePedidosCountsResult {
         setAlertasCount(data.data?.alertasCount ?? data.alertasCount ?? 0)
         setAtrasadosCount(data.data?.atrasadosCount ?? data.atrasadosCount ?? 0)
         setEnRiesgoCount(data.data?.enRiesgoCount ?? data.enRiesgoCount ?? 0)
+        setPorPlanificarCount(data.data?.porPlanificarCount ?? data.porPlanificarCount ?? 0)
         setEnRutaCount(data.data?.enRutaCount ?? data.enRutaCount ?? 0)
         setEsperandoPagoTotal(data.data?.esperandoPagoTotal ?? data.esperandoPagoTotal ?? 0)
         setPendientesN2Count(data.data?.pendientesN2Count ?? data.pendientesN2Count ?? 0)
@@ -89,7 +92,7 @@ export function usePedidosCounts(autoFetch = true): UsePedidosCountsResult {
 
   return {
     fiadosCount, alertasCount, atrasadosCount, enRiesgoCount,
-    enRutaCount, esperandoPagoTotal, pendientesN2Count,
+    porPlanificarCount, enRutaCount, esperandoPagoTotal, pendientesN2Count,
     loading, error, refetch: fetchCounts,
   }
 }
