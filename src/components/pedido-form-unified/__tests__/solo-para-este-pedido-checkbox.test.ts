@@ -14,6 +14,12 @@ const source = readFileSync(
   join(process.cwd(), 'src/components/pedido-form-unified/index.tsx'),
   'utf-8',
 )
+// Fase 3b: el checkbox se extrajo a PedidoContextPanel — mismo JSX exacto
+// (mismo nombre de prop, sin renombrar), solo cambió de archivo.
+const contextPanelSource = readFileSync(
+  join(process.cwd(), 'src/components/pedido-form-unified/pedido-context-panel.tsx'),
+  'utf-8',
+)
 
 describe('FIX: checkbox "solo para este pedido" — default false, visible solo sin negocio', () => {
   it('el state arranca en false', () => {
@@ -27,8 +33,9 @@ describe('FIX: checkbox "solo para este pedido" — default false, visible solo 
   })
 
   it('el checkbox en el JSX solo se renderiza cuando !negocioSeleccionado', () => {
-    const idx = source.indexOf('checked={soloParaEstePedido}')
-    const nearby = source.slice(Math.max(0, idx - 400), idx + 100)
+    const idx = contextPanelSource.indexOf('checked={soloParaEstePedido}')
+    expect(idx).toBeGreaterThan(-1)
+    const nearby = contextPanelSource.slice(Math.max(0, idx - 400), idx + 100)
     expect(nearby).toMatch(/!negocioSeleccionado\s*&&/)
     expect(nearby).toMatch(/type="checkbox"/)
   })

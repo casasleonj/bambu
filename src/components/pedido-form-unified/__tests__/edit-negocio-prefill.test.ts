@@ -14,6 +14,13 @@ const source = readFileSync(
   join(process.cwd(), 'src/components/pedido-form-unified/index.tsx'),
   'utf-8',
 )
+// Fase 3b: el JSX de <NegocioSelector> se extrajo a PedidoContextPanel —
+// mismo componente, mismo prop, ahora recibe `pedidoInicialId` (derivado de
+// `pedidoInicial?.id` en el padre, ver PedidoContextPanel={...} más abajo).
+const contextPanelSource = readFileSync(
+  join(process.cwd(), 'src/components/pedido-form-unified/pedido-context-panel.tsx'),
+  'utf-8',
+)
 
 describe('FIX: negocioData se inicializa correctamente al editar un pedido a negocio', () => {
   it('el efecto de init desde pedidoInicial setea negocioData cuando hay negocioId', () => {
@@ -25,10 +32,17 @@ describe('FIX: negocioData se inicializa correctamente al editar un pedido a neg
     expect(initBlock).toMatch(/pedidoInicial\.negocioDireccion/)
   })
 
-  it('NegocioSelector recibe readOnly basado en si es edición (pedidoInicial?.id)', () => {
-    const idx = source.indexOf('<NegocioSelector')
+  it('PedidoContextPanel recibe pedidoInicialId (derivado de pedidoInicial?.id)', () => {
+    const idx = source.indexOf('<PedidoContextPanel')
     const end = source.indexOf('/>', idx)
     const block = source.slice(idx, end)
-    expect(block).toMatch(/readOnly=\{Boolean\(pedidoInicial\?\.id\)\}/)
+    expect(block).toMatch(/pedidoInicialId=\{pedidoInicial\?\.id\}/)
+  })
+
+  it('NegocioSelector (dentro de PedidoContextPanel) recibe readOnly basado en pedidoInicialId', () => {
+    const idx = contextPanelSource.indexOf('<NegocioSelector')
+    const end = contextPanelSource.indexOf('/>', idx)
+    const block = contextPanelSource.slice(idx, end)
+    expect(block).toMatch(/readOnly=\{Boolean\(pedidoInicialId\)\}/)
   })
 })
