@@ -74,9 +74,22 @@ export async function GET(_request: NextRequest) {
       orderBy: { fecha: 'desc' },
     })
 
-    const [atrasadosCount, enRiesgoCount] = await Promise.all([
+    const [atrasadosCount, enRiesgoCount, enRutaCount, esperandoPagoAgg, pendientesN2Count] = await Promise.all([
       countPedidosAtrasadosSinAsignar(),
       countPedidosHoyEnRiesgo(),
+      // Foco "En ruta" (blueprint §2.2)
+      prisma.pedido.count({ where: { estadoEntrega: 'EN_RUTA' } }),
+      // Foco "Esperando pago" — $ total de saldo pendiente de pedidos entregados
+      prisma.pedido.aggregate({
+        _sum: { saldo: true },
+        where: {
+          estadoEntrega: 'ENTREGADO',
+          saldo: { gt: 0 },
+          clienteId: { not: CANONICAL_CONSUMIDOR_FINAL_ID },
+        },
+      }),
+      // Foco "Pendientes (N2)" — obligaciones de cumplimiento parcial activas
+      prisma.obligacionPendiente.count({ where: { estado: 'ABIERTA' } }),
     ])
 
     const alertas = calcularAlertas(
@@ -118,6 +131,9 @@ export async function GET(_request: NextRequest) {
       alertasCount: alertas.length,
       atrasadosCount,
       enRiesgoCount,
+      enRutaCount,
+      esperandoPagoTotal: Number(esperandoPagoAgg._sum.saldo ?? 0),
+      pendientesN2Count,
     })
   } catch (error) {
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error fetching pedidos counts:')

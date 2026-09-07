@@ -244,3 +244,22 @@ El preview obtiene los **últimos 5 pedidos válidos** del cliente vía `IPedido
 - **`riskSignals` ≠ bloqueo ≠ autorización.** Una señal nunca quita `'crear'` de `allowedActions`. Solo `warnings` derivados del estado de fiado/bloqueo del cliente pueden hacerlo — decisión del backend, no del preview.
 - **`CONSUMIDOR_FINAL`** = ausencia de cliente real: sin historial/riesgo antifraude, sin comportamiento comercial de cliente real, sin crear ni modificar cliente. El preview reutiliza la exclusión que `calcularAlertasCliente` ya hace, no la reimplementa.
 - **El commit real (`POST /api/pedidos`) revalida y recalcula todo** dentro del lock (OWASP Transaction Authorization: no confiar en datos preparados entre preview y commit). El preview proyecta virtualmente `saldoFavor`, la normalización de pagos y el excedente con las **mismas reglas**, pero **sin ejecutar ningún efecto**.
+
+---
+
+## `GET /api/pedidos/counts` — extendido (Fase 4a del Hub)
+
+Conteos para la cabecera de focos del Pedido Hub (blueprint §2.2). **Aditivo** — los 4 campos previos (`fiadosCount`, `alertasCount`, `atrasadosCount`, `enRiesgoCount`) no cambian.
+
+- **Rol:** ADMIN, ASISTENTE, CONTADOR, REPARTIDOR
+- **Un solo request** — todos los conteos en un `Promise.all` (contrato §4.2: máximo un request adicional para conteos).
+
+```ts
+// Response 200 (campos nuevos)
+{
+  // ...previos...
+  enRutaCount: number            // pedidos con estadoEntrega EN_RUTA
+  esperandoPagoTotal: number      // Σ saldo de ENTREGADO con saldo > 0 (excluye CONSUMIDOR_FINAL)
+  pendientesN2Count: number       // ObligacionPendiente con estado ABIERTA
+}
+```
