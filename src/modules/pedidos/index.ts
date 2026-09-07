@@ -13,6 +13,7 @@ export {
   cancelarPedidoUseCase,
   actualizarPedidoUseCase,
   getFiadoStatusUseCase,
+  previewPedidoUseCase,
   ClienteNotFoundError,
   PedidoDTOMapper,
 } from './application'
