@@ -10,6 +10,7 @@ import { TipoNegocioSelect } from '@/components/tipo-negocio-select'
 import { matchCliente } from '@/lib/cliente-search'
 import { NegocioSelector } from '@/components/negocio-selector'
 import { resolveActualizarCliente } from './resolve-actualizar-cliente'
+import { PedidoPricingSummary } from './pedido-pricing-summary'
 import { usePriceSync } from '@/hooks/use-price-sync'
 import { Money, calcularSaldo } from '@/shared/domain'
 import type { FiadoStatus } from '@/modules/pedidos/domain/types'
@@ -1155,46 +1156,13 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
 
       {/* COLUMNA DERECHA - STICKY */}
       <div className="lg:sticky lg:top-0 lg:h-fit space-y-4 mt-4 lg:mt-0">
-        {/* Ticket / Resumen */}
-        <div className="bg-white border rounded-xl p-4 shadow-sm">
-          <h3 className="font-semibold text-gray-700 text-sm mb-3">🧾 Resumen</h3>
-          <div className="space-y-1.5 mb-3">
-            {productosActuales.filter(id => (cantidades[id] || 0) > 0).map(id => {
-              const info = PRODUCTO_INFO[id]
-              const cant = cantidades[id] || 0
-              const precio = getPrecio(info.codigo)
-              const Icon = getProductoIconConfig(info.codigo).Icon
-              return (
-                <div key={id} className="flex justify-between text-sm">
-                  <span className="text-gray-600"><Icon size={16} className="inline-block align-text-bottom" /> {cant} x {info.nombre}</span>
-                  <span className="font-medium">${(cant * precio).toLocaleString()}</span>
-                </div>
-              )
-            })}
-            {productosActuales.filter(id => (cantidades[id] || 0) > 0).length === 0 && (
-              <p className="text-sm text-gray-400 text-center py-2">Sin productos seleccionados</p>
-            )}
-          </div>
-          <div className="border-t pt-2 space-y-1">
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-500">Total:</span>
-              <span className="font-bold text-lg">${total.toLocaleString()}</span>
-            </div>
-            {totalPagado > 0 && (
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Pagado:</span>
-                <span className="font-medium text-green-600">${totalPagado.toLocaleString()}</span>
-              </div>
-            )}
-            {saldoPendiente > 0 && (
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Saldo:</span>
-                <span className="font-medium text-red-600">${saldoPendiente.toLocaleString()}</span>
-              </div>
-            )}
-
-          </div>
-        </div>
+        {/* Ticket / Resumen (extraído a PedidoPricingSummary, ALS §5 — Fase 3) */}
+        <PedidoPricingSummary
+          lineas={productosActuales.map(id => ({ prodId: id, cantidad: cantidades[id] || 0, precio: getPrecio(PRODUCTO_INFO[id].codigo) }))}
+          total={total}
+          totalPagado={totalPagado}
+          saldoPendiente={saldoPendiente}
+        />
 
         {/* Pagos */}
         <div className="bg-white border rounded-xl p-4 shadow-sm">

@@ -162,22 +162,29 @@ La causa raíz de por qué esto no puede ser incremental (confirmado por la inve
 
 ---
 
-#### FASE 3 — Creación de pedido: captura unificada (1–2 PRs)
+#### FASE 3 — Creación de pedido: captura unificada (1–2 PRs) ⏳ EN CURSO (3a hecha)
 
 **Qué es:** rediseño de la captura (reemplaza `pedido-form-unified/index.tsx`, 1334 líneas) para que `PEDIDO` vs `VENTA_RAPIDA`, `origen` independiente de `canal`, y "entregar ahora/después" sean explícitos en la interacción, no flags internos de un componente monolítico.
 
-**Composición (a detallar en `docs/pedidos/fase3-creacion.md`):**
-- Separar la captura en piezas reusables (cliente, productos/precio, modalidad de entrega, pago) en vez de un único componente con ramas condicionales por los 6 flujos de entrada.
-- Aplicar D5: sin wizard forzado para el flujo ordinario.
+**Hallazgo al arrancar la implementación (2026-09-06), reescala el riesgo de esta fase**: la entrada intent-driven que el ALS pide (Plan Técnico §4: "+Nuevo → la intención determina la interfaz") **ya existe** — el FAB de `/pedidos` (`fab-container`) es un speed-dial con 2 intenciones explícitas y tooltips claros: "📦 Pedido con Envío" (`fab-pedido-envio`) y "💰 Venta Rápida" (`fab-venta-rapida`). No se reconstruye desde cero. El gap real no es la ausencia de intent-picker — es que `pedido-form-unified` es un monolito de 1334 líneas con lógica stateful densa (debounce de precios, revalidación silenciosa de contacto, patrón de consumo, negocio selector, guards de fiado) que un refactor grande, sin QA humano en vivo disponible en esta sesión, arriesgaría regresionar en un formulario que maneja dinero real.
+
+**Decisión de alcance (2026-09-06)**: dado ese riesgo, esta fase se ejecuta en slices verificables en vez de un solo PR grande:
+- **3a (✅ hecho, este PR)**: primera extracción del monolito — `PedidoPricingSummary` (ALS §5), componente puramente presentacional (sin estado, sin fetch) extraído tal cual, cero cambio de comportamiento. Elegido primero por ser la pieza de MENOR riesgo (nada de debounce/refs/async). Verificado con: suite de tests existente del formulario (41/41 sin cambios) + test unitario nuevo del componente (6/6) + verificación visual real contra el dev server (Playwright, screenshot confirmando el ticket renderiza idéntico).
+- **3b, 3c... (pendiente, sesiones futuras)**: extraer `PedidoContextPanel` (cliente/negocio/fiado/patrón de consumo) y el editor de productos como componentes propios, cada uno en su propio PR verificado igual de estrictamente (tests existentes en verde + tests nuevos + verificación visual). Estas piezas SÍ tienen estado/efectos — requieren más cuidado, idealmente con QA humano disponible antes de fusionar.
+- **No incluido en Fase 3** (ya cubierto o corresponde a otra fase): intent picker (ya existe, ver arriba), `PedidoRiskSignals`/`PedidoExceptionPanel` (dependen de exponer N2/G11 en la UI — Fases 5/6), preview/review/commit como flujo separado (ALS §14: "Normal → flujo inmediato"; forzar preview en una operación normal violaría el propio ALS §21 "no confirmaciones para acciones triviales").
+
+**Composición (resto, sesiones futuras):**
+- Extraer piezas reusables restantes (cliente, editor de items) en vez de un único componente con ramas condicionales.
+- Aplicar D5: sin wizard forzado para el flujo ordinario (ya es así).
 - Aplicar §3.6: microcopy específico en vez de solo badges, disciplina de color.
 
 **Criterios de éxito:**
-- Las 4 combinaciones `origen×canal` (ya probadas en backend, `pedido-origen-canal-independientes.test.ts`) son accesibles y explícitas en la UI — ningún caso oculto detrás de una condición implícita.
-- Offline: crear pedido sin red encola y muestra estado, igual que hoy.
-- `data-testid` desktop/mobile.
-- Tests: unit del/los componente(s) nuevo(s) + E2E de creación actualizado.
+- Las 4 combinaciones `origen×canal` (ya probadas en backend, `pedido-origen-canal-independientes.test.ts`) son accesibles y explícitas en la UI — ningún caso oculto detrás de una condición implícita. ✅ ya cumplido (PR #205 + FAB existente).
+- Offline: crear pedido sin red encola y muestra estado, igual que hoy. Sin cambios en 3a.
+- `data-testid` desktop/mobile. Sin cambios en 3a (ya existía en el monolito).
+- Tests: unit del/los componente(s) nuevo(s) + E2E de creación actualizado. 3a: unit ✅. E2E se revisa cuando el refactor cubra más superficie (3b+).
 
-**Rollback:** flag `NEXT_PUBLIC_PEDIDOS_V2=false` → `pedido-form-unified` actual sigue montado hasta Fase 10.
+**Rollback:** flag `NEXT_PUBLIC_PEDIDOS_V2=false` → sin efecto en 3a (no está gated por flag, es un refactor interno sin cambio de comportamiento). Fases 3b+ si tocan comportamiento visible sí quedarán detrás del flag.
 
 ---
 
