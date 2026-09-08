@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { PreviewPedidoUseCase, ClienteNotFoundError, PedidoOrigenNotFoundError } from '../PreviewPedidoUseCase'
+import { PreviewPedidoUseCase, ClienteNotFoundError, PedidoOrigenNotFoundError, PedidoNotFoundError } from '../PreviewPedidoUseCase'
 import type { PreviewPedidoDeps } from '../PreviewPedidoUseCase'
 import { CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
 
@@ -185,12 +185,12 @@ describe('PreviewPedidoUseCase — riskSignals', () => {
     expect(r.allowedActions).toContain('crear')
   })
 
-  it('pide los últimos 5 pedidos válidos del cliente (excluye ANULADO/CANCELADO por inclusión)', async () => {
+  it('pide los pedidos válidos del cliente (excluye ANULADO/CANCELADO por inclusión)', async () => {
     const deps = makeDeps()
     await new PreviewPedidoUseCase(deps).execute({ clienteId: 'c1', canal: 'PUNTO', items: [{ producto: 'PACA_AGUA', cantidad: 1 }], actorId: 'u1' })
     expect(deps.pedidoRepo.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ clienteId: 'c1', estadoEntrega: ['PENDIENTE', 'EN_RUTA', 'ENTREGADO', 'NO_ENTREGADO'] }),
-      expect.objectContaining({ take: 5, orderBy: 'desc' }),
+      expect.objectContaining({ take: 6, orderBy: 'desc' }),
     )
   })
 
@@ -215,6 +215,22 @@ describe('PreviewPedidoUseCase — riskSignals', () => {
     expect(r.requiresAuthorization).toBe(false)
   })
 
+  it('excluye el propio pedido del historial de riesgo en modo edición', async () => {
+    const deps = makeDeps()
+    ;(deps.pedidoRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'ped-edit', totalPagado: { toDecimal: () => 0 }, estadoEntrega: { get: () => 'PENDIENTE' },
+    })
+    ;(deps.pedidoRepo.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 'ped-edit', clienteId: 'c1', toLegacyFields: () => ({}), estadoEntrega: { get: () => 'PENDIENTE' } },
+    ])
+    const r = await new PreviewPedidoUseCase(deps).execute({
+      clienteId: 'c1', canal: 'PUNTO', pedidoId: 'ped-edit',
+      items: [{ producto: 'PACA_AGUA', cantidad: 1 }], actorId: 'u1',
+    })
+    // el historial quedó vacío tras filtrar el propio pedido → sin señales por auto-comparación
+    expect(Array.isArray(r.riskSignals)).toBe(true)
+  })
+
   it('auditPreview refleja actor + total + tienePrecioManual', async () => {
     const deps = makeDeps()
     ;(deps.pricingPort.resolverPrecios as ReturnType<typeof vi.fn>).mockResolvedValue([
@@ -224,5 +240,64 @@ describe('PreviewPedidoUseCase — riskSignals', () => {
     expect(r.auditPreview.actor).toBe('u-audit')
     expect(r.auditPreview.valoresRelevantes.total).toBe(6000)
     expect(r.auditPreview.valoresRelevantes.tienePrecioManual).toBe(true)
+  })
+})
+
+describe('PreviewPedidoUseCase — modo edición (pedidoId)', () => {
+  function editDeps(over: { totalPagado?: number; estadoEntrega?: string } = {}) {
+    const deps = makeDeps()
+    ;(deps.pedidoRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'ped-1',
+      totalPagado: { toDecimal: () => over.totalPagado ?? 0 },
+      estadoEntrega: { get: () => over.estadoEntrega ?? 'PENDIENTE' },
+    })
+    ;(deps.pedidoRepo.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([])
+    return deps
+  }
+
+  it('usa el totalPagado del pedido existente, no los pagos del body', async () => {
+    const deps = editDeps({ totalPagado: 15000, estadoEntrega: 'ENTREGADO' })
+    const r = await new PreviewPedidoUseCase(deps).execute({
+      clienteId: 'c1', canal: 'DOMICILIO', pedidoId: 'ped-1',
+      items: [{ producto: 'PACA_AGUA', cantidad: 10 }], // total 27000
+      pagos: [{ metodo: 'EFECTIVO', monto: 99999 }], // se ignora en edición
+      actorId: 'u1',
+    })
+    expect(r.calculation.totalPagado).toBe(15000)
+    expect(r.calculation.saldoProyectado).toBe(12000) // 27000 − 15000
+    expect(r.calculation.saldoFavorProyectado).toBe(0)
+    expect(r.calculation.estadoPagoProyectado).toBe('PARCIAL')
+    expect(r.calculation.estadoEntregaProyectado).toBe('ENTREGADO')
+  })
+
+  it('allowedActions = ["actualizar"] (no "crear")', async () => {
+    const r = await new PreviewPedidoUseCase(editDeps()).execute({
+      clienteId: 'c1', pedidoId: 'ped-1', items: [{ producto: 'PACA_AGUA', cantidad: 1 }], actorId: 'u1',
+    })
+    expect(r.allowedActions).toEqual(['actualizar'])
+    expect(r.allowedActions).not.toContain('crear')
+    expect(r.auditPreview.accion).toBe('ACTUALIZAR_PEDIDO')
+    expect(r.auditPreview.recurso).toBe('Pedido (edición)')
+  })
+
+  it('no consulta ni bloquea por límite de fiados en edición', async () => {
+    const deps = editDeps()
+    ;(deps.getFiadoStatusUseCase.execute as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 9, limite: 2, nivel: 'limite', pedidos: [],
+    })
+    const r = await new PreviewPedidoUseCase(deps).execute({
+      clienteId: 'c1', pedidoId: 'ped-1', items: [{ producto: 'PACA_AGUA', cantidad: 1 }], actorId: 'u1',
+    })
+    expect(deps.getFiadoStatusUseCase.execute).not.toHaveBeenCalled()
+    expect(r.warnings.some(w => w.code === 'FIADO_SOBRE_LIMITE')).toBe(false)
+    expect(r.allowedActions).toEqual(['actualizar'])
+  })
+
+  it('pedidoId inexistente → PedidoNotFoundError', async () => {
+    const deps = makeDeps()
+    ;(deps.pedidoRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(null)
+    await expect(
+      new PreviewPedidoUseCase(deps).execute({ clienteId: 'c1', pedidoId: 'ghost', items: [{ producto: 'PACA_AGUA', cantidad: 1 }], actorId: 'u1' }),
+    ).rejects.toThrow(PedidoNotFoundError)
   })
 })

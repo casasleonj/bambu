@@ -153,8 +153,16 @@ Prepara una operación de **creación de pedido** sin persistir: calcula precios
   pagos?: Array<{ metodo: 'EFECTIVO'|'TRANSFERENCIA'|'NEQUI'|'DAVIPLATA'|'BONO'; monto: number }>
   entregado?: boolean                       // venta rápida: proyecta ANTICIPADO vs PAGADO
   pedidoOrigenId?: string                   // G11.B: valida existencia (404 si no)
+  pedidoId?: string                         // modo EDICIÓN: preview de un PUT declarativo de items (404 si no existe)
 }
 ```
+
+**Modo edición (`pedidoId` presente) — Composición C4:** el PUT `/api/pedidos/[id]` (`ActualizarPedidoUseCase`) es **declarativo de items** y conserva los pagos existentes. En este modo el preview:
+- carga el pedido existente; `totalPagado` sale de **ahí**, no de `pagos` (que se **ignoran**); `saldoFavorProyectado = 0`.
+- proyecta `estadoPago` contra el **`estadoEntrega` actual** del pedido (no `'PENDIENTE'`) — igual que el PUT.
+- **no consulta ni bloquea por límite de fiados** (es un guard de alta, no de edición).
+- mantiene `riskSignals` (cambiar precio/cantidad en un pedido existente ES un vector), pero **excluye el propio pedido** del historial de comparación.
+- `allowedActions = ['actualizar']` (nunca `'crear'`); `auditPreview.accion = 'ACTUALIZAR_PEDIDO'`, `recurso = 'Pedido (edición)'`.
 
 #### Semántica de cálculo (definición normativa)
 
@@ -204,7 +212,7 @@ Pagos (proyección virtual, sin efecto):
     canCreate: boolean                       // rol OK && cliente no bloqueado && fiado dentro de límite
     canSetManualPrice: boolean               // hoy: true para ADMIN/ASISTENTE (sin política de umbral — PENDIENTE §8.2)
   }
-  allowedActions: Array<'crear' | 'crear-y-enviar-a-ruta'>
+  allowedActions: Array<'crear' | 'crear-y-enviar-a-ruta' | 'actualizar'>  // 'actualizar' en modo edición
   warnings: Array<{ code: string; message: string; field?: string }>
     // FIADO_SOBRE_LIMITE, CLIENTE_BLOQUEADO, DIRECCION_FALTANTE (DOMICILIO sin dirección), PRECIO_MANUAL_APLICADO
   riskSignals: Array<{ tipo: string; severidad: 'BAJA' | 'MEDIA' | 'ALTA'; detalle: string }>
@@ -232,6 +240,7 @@ Pagos (proyección virtual, sin efecto):
 | no autenticado / rol | 401 / 403 | sesión / `requireRole` |
 | `CLIENTE_NOT_FOUND` | 404 | `clienteId` no existe |
 | `PEDIDO_ORIGEN_NOT_FOUND` | 404 | `pedidoOrigenId` no existe (G11.B) |
+| `PEDIDO_NOT_FOUND` | 404 | `pedidoId` (modo edición) no existe |
 
 #### Historial para riesgo
 

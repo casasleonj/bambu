@@ -21,6 +21,7 @@ import { testPrisma, resetAndSeed, disconnect, getAdminUser, createTestCliente }
 import { PreviewPedidoUseCase } from '@/modules/pedidos/application/use-cases/PreviewPedidoUseCase'
 import { GetFiadoStatusUseCase } from '@/modules/pedidos/application/use-cases/GetFiadoStatusUseCase'
 import { CrearPedidoUseCase } from '@/modules/pedidos/application/use-cases/CrearPedidoUseCase'
+import { ActualizarPedidoUseCase } from '@/modules/pedidos/application/use-cases/ActualizarPedidoUseCase'
 import { PrismaPedidoRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaPedidoRepository'
 import { PrismaFacturaRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaFacturaRepository'
 import { PrismaPagoRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaPagoRepository'
@@ -46,6 +47,16 @@ function makeCrearUseCase() {
     new PrismaPedidoRepository(),
     new PrismaFacturaRepository(),
     new PrismaPagoRepository(),
+    new PrismaClienteRepository(),
+    new PrismaPricingAdapter(),
+    new PrismaTransactionManager(),
+  )
+}
+
+function makeActualizarUseCase() {
+  return new ActualizarPedidoUseCase(
+    new PrismaPedidoRepository(),
+    new PrismaFacturaRepository(),
     new PrismaClienteRepository(),
     new PrismaPricingAdapter(),
     new PrismaTransactionManager(),
@@ -136,6 +147,56 @@ describe('preview — read-only comportamental + integridad vs commit', () => {
       }
     } finally {
       // cleanup explícito — sin depender de cascadas
+      if (createdId) {
+        await testPrisma.pago.deleteMany({ where: { pedidoId: createdId } })
+        await testPrisma.notaCredito.deleteMany({ where: { pedidoId: createdId } })
+        const fact = await testPrisma.factura.findFirst({ where: { pedidoId: createdId }, select: { id: true } })
+        if (fact) {
+          await testPrisma.abono.deleteMany({ where: { facturaId: fact.id } })
+          await testPrisma.factura.delete({ where: { id: fact.id } })
+        }
+        await testPrisma.pedidoItem.deleteMany({ where: { pedidoId: createdId } })
+        await testPrisma.pedido.delete({ where: { id: createdId } })
+      }
+    }
+  })
+
+  it('(c) modo edición: preview({pedidoId}) == el pedido tras el PUT declarativo', async () => {
+    let createdId: string | undefined
+    try {
+      // pedido con pago parcial
+      const { pedido } = await makeCrearUseCase().execute({
+        clienteId, canal: 'DOMICILIO', origen: 'PEDIDO',
+        items: [{ producto: 'PACA_AGUA', cantidad: 5 }],
+        pagos: [{ metodo: 'EFECTIVO', monto: 3000 }],
+        createdById: adminId, createdByRole: 'ADMIN',
+        offlineId: `preview-edit-${Date.now()}`,
+      })
+      createdId = pedido.id
+
+      // items nuevos (más cantidad)
+      const nuevosItems = [
+        { producto: 'PACA_AGUA' as const, cantidad: 8 },
+        { producto: 'BOTELLON' as const, cantidad: 1 },
+      ]
+
+      const preview = await makePreviewUseCase().execute({
+        clienteId, canal: 'DOMICILIO', pedidoId: createdId,
+        items: nuevosItems, actorId: adminId,
+      })
+      expect(preview.allowedActions).toEqual(['actualizar'])
+
+      await makeActualizarUseCase().execute({
+        pedidoId: createdId, items: nuevosItems, usuarioId: adminId,
+      })
+      const actualizado = await testPrisma.pedido.findUniqueOrThrow({ where: { id: createdId } })
+
+      expect(preview.calculation.total).toBe(Number(actualizado.total))
+      expect(preview.calculation.totalPagado).toBe(Number(actualizado.totalPagado))
+      expect(preview.calculation.saldoProyectado).toBe(Number(actualizado.saldo))
+      expect(preview.calculation.estadoPagoProyectado).toBe(actualizado.estadoPago)
+      expect(preview.calculation.estadoEntregaProyectado).toBe(actualizado.estadoEntrega)
+    } finally {
       if (createdId) {
         await testPrisma.pago.deleteMany({ where: { pedidoId: createdId } })
         await testPrisma.notaCredito.deleteMany({ where: { pedidoId: createdId } })
