@@ -4,6 +4,7 @@ import { useCallback, useMemo, useReducer, useState } from 'react'
 import { PRODUCTO_INFO, getProductosForCanal } from '@/lib/prices'
 import { matchCliente } from '@/lib/cliente-search'
 import { PedidoPricingSummary } from '@/components/pedido-form-unified/pedido-pricing-summary'
+import { PedidoRiskSignals } from './pedido-risk-signals'
 import { PedidoItemEditor, type PedidoItemEditorItem } from '@/components/pedido-form-unified/pedido-item-editor'
 import { PedidoContextPanel, type NuevoClienteForm } from '@/components/pedido-form-unified/pedido-context-panel'
 import { resolveActualizarCliente } from '@/components/pedido-form-unified/resolve-actualizar-cliente'
@@ -314,12 +315,11 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, onSubmit, onC
         )}
       </section>
 
-      {/* ── Zona: Señales (C2) ── warnings del preview, mínimo en C1 ── */}
-      {(state.preview?.warnings.length ?? 0) > 0 && (
-        <section data-testid="workspace-warnings" className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
-          {state.preview!.warnings.map((w) => <div key={w.code}>{w.message}</div>)}
-        </section>
-      )}
+      {/* ── Zona: Señales de riesgo (blueprint §5.3) ── */}
+      <PedidoRiskSignals
+        warnings={state.preview?.warnings ?? []}
+        riskSignals={state.preview?.riskSignals ?? []}
+      />
 
       {/* ── Zona: Commit ── */}
       <div className="flex items-center justify-between border-t pt-3" data-testid="workspace-commit-bar">
