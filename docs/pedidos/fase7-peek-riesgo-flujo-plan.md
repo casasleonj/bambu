@@ -90,7 +90,7 @@ Read-only. Se arma en el mismo `Promise.all` del route; sin queries nuevas pesad
 
 **Criterio:** una operación sin casos → no renderiza nada. Con un caso → explica qué/por qué/qué hacer con el texto de `GUIA_ALERTAS`, tono por severidad, y un cross-link que **navega** a `/casos` (no abre modal). Cero juicio ("fraude", "culpable").
 
-### F7-ii — entrega en el peek
+### F7-ii — entrega en el peek ✅ IMPLEMENTADO
 **Archivos:**
 - Modificar `src/modules/pedidos/application/dto/index.ts` — `PedidoPeekExtras += entregaResumen`.
 - Modificar `src/app/api/pedidos/[id]/route.ts` — armar `entregaResumen` (solo si `estadoEntrega === 'ENTREGADO'`), read-only.
@@ -101,7 +101,7 @@ Read-only. Se arma en el mismo `Promise.all` del route; sin queries nuevas pesad
 
 **Criterio:** un pedido ENTREGADO con GPS/foto muestra el bloque en el peek con links que abren en pestaña nueva; sin datos o no entregado → no aparece. `GET /api/pedidos/[id]` no muta nada.
 
-### F7-iii — realtime + verificación E2E
+### F7-iii — realtime + verificación E2E ✅ IMPLEMENTADO
 **Archivos:**
 - Modificar `src/app/(app)/pedidos/pedido-hub/index.tsx` — si existe un evento realtime de `caso.*` / `alerta.*` (verificar en `src/lib/realtime.ts`), agregarlo a `useRealtimeListener` para invalidar el peek activo. Si **no** existe, documentar el límite en un comentario (no se inventa el evento — P6).
 - E2E `e2e/pedidos-peek-riesgo.spec.ts` (gated `NEXT_PUBLIC_PEDIDOS_V2`):

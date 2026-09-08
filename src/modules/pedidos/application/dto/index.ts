@@ -237,6 +237,16 @@ export interface PedidoPeekExtras {
   embarqueResumen: { id: string; numeroDia: number; estado: string; repartidor: string | null } | null
   pedidosVinculados: Array<{ id: string; numero: number; rol: 'demanda' | 'origen'; total: number; estadoEntrega: string }>
   casosAbiertos: Array<{ id: string; alertaTipo: string; severidad: string; status: string }>
+  /**
+   * Evidencia de la entrega — dato PROPIO del Pedido (§6.2, Fase 7-ii).
+   * `null` salvo que `estadoEntrega === 'ENTREGADO'`. Solo lectura.
+   */
+  entregaResumen: {
+    fecha: string | null
+    gpsLat: number | null
+    gpsLng: number | null
+    fotoUrl: string | null
+  } | null
 }
 
 export interface EntregarPedidoResult {

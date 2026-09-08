@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { PedidoExceptionPanel } from './pedido-exception-panel'
 import { PedidoCambioCantidad } from './pedido-cambio-cantidad'
 import { PedidoPeekRiesgo } from './pedido-peek-riesgo'
+import { PeekEntrega } from './peek-entrega'
 import type { PeekLayer2 } from './peek-cache'
 import type { Pedido } from './types'
 
@@ -54,6 +55,8 @@ export function PeekRelaciones({
           <a href={`/facturas?openFactura=${pedido.factura.id}`} className="text-blue-600 hover:underline" data-testid="peek-rel-factura">Ver →</a>
         </RelRow>
       )}
+
+      <PeekEntrega entrega={data.entregaResumen} />
 
       {/* Cartera = deuda del CLIENTE (agregada), distinta del saldo de arriba */}
       {saldoOperacion > 0 && pedido.clienteId !== 'CONSUMIDOR_FINAL' && (

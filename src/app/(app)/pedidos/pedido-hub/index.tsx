@@ -110,6 +110,13 @@ export function PedidoHub({
     // route_plan.updated no toca el peek de un pedido concreto, pero el foco
     // "Por planificar" sí depende del plan del día → la lista/counts se
     // refetchean para todos los eventos escuchados.
+    //
+    // Fase 7-iii (P6): NO hay evento realtime `caso.*` (`RealtimeEntity` en
+    // `src/lib/realtime.ts` no lo incluye). Un `Caso` creado en el flujo de un
+    // pedido llega vía el `pedido.*` de ese flujo; uno creado por el cron
+    // `alertas-batch` (detección periódica) NO empuja al peek abierto — límite
+    // conocido y aceptable (el cron es detectivo, no en vivo). No se inventa
+    // el evento acá.
     onRefetch?.()
   }, { debounceMs: 500 })
 
