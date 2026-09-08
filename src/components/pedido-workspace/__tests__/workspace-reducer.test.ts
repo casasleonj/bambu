@@ -52,6 +52,29 @@ describe('workspaceReducer — máquina de UI adaptativa', () => {
     expect(canCommit(s)).toBe(false)
   })
 
+  it('ACKNOWLEDGE_REVIEW exige motivo; con motivo → PREVIEW_READY y guarda el motivo (trim)', () => {
+    let s: WorkspaceState = { ...s0(), phase: 'REVIEW_REQUIRED', draft: { ...EMPTY_DRAFT, clienteId: 'c1', items: [{ producto: 'PACA_AGUA', cantidad: 10 }] }, preview: previewOk({ requiresAuthorization: true }) }
+    // sin motivo → no-op
+    expect(workspaceReducer(s, { type: 'ACKNOWLEDGE_REVIEW', motivo: '   ' }).phase).toBe('REVIEW_REQUIRED')
+    s = workspaceReducer(s, { type: 'ACKNOWLEDGE_REVIEW', motivo: '  cliente mayorista habitual  ' })
+    expect(s.phase).toBe('PREVIEW_READY')
+    expect(s.reviewMotivo).toBe('cliente mayorista habitual')
+    expect(canCommit(s)).toBe(true)
+  })
+
+  it('RETURN_TO_DRAFTING vuelve a DRAFTING desde REVIEW_REQUIRED y limpia el motivo', () => {
+    let s: WorkspaceState = { ...s0(), phase: 'REVIEW_REQUIRED', reviewMotivo: 'x', draft: { ...EMPTY_DRAFT, clienteId: 'c1', items: [{ producto: 'PACA_AGUA', cantidad: 10 }] }, preview: previewOk({ requiresAuthorization: true }) }
+    s = workspaceReducer(s, { type: 'RETURN_TO_DRAFTING' })
+    expect(s.phase).toBe('DRAFTING')
+    expect(s.reviewMotivo).toBe('')
+  })
+
+  it('un cambio de item tras acknowledge limpia el reviewMotivo', () => {
+    let s: WorkspaceState = { ...s0(), phase: 'PREVIEW_READY', reviewMotivo: 'ok', draft: { ...EMPTY_DRAFT, clienteId: 'c1', items: [{ producto: 'PACA_AGUA', cantidad: 10 }] }, preview: previewOk() }
+    s = workspaceReducer(s, { type: 'SET_ITEM_CANTIDAD', producto: 'PACA_AGUA', cantidad: 11 })
+    expect(s.reviewMotivo).toBe('')
+  })
+
   it('un cambio de item tras PREVIEW_READY vuelve a DRAFTING (preview stale)', () => {
     let s: WorkspaceState = { ...s0(), phase: 'PREVIEW_READY', draft: { ...EMPTY_DRAFT, clienteId: 'c1', items: [{ producto: 'PACA_AGUA', cantidad: 10 }] }, preview: previewOk() }
     s = workspaceReducer(s, { type: 'SET_ITEM_CANTIDAD', producto: 'PACA_AGUA', cantidad: 12 })

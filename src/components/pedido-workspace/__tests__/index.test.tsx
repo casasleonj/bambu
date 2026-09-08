@@ -18,7 +18,7 @@ function routedFetch() {
     if (url.includes('/api/negocios')) return { ok: true, json: async () => ({ success: true, data: [] }) }
     if (url.includes('/api/precios/tabla')) return { ok: true, json: async () => ({ success: true, tabla: {} }) }
     if (url.includes('/api/productos/configs')) return { ok: true, json: async () => ({ success: true, productos: [] }) }
-    if (/\/api\/clientes\/[^/]+$/.test(url)) return { ok: true, json: async () => ({ success: true, cliente: { id: 'c1', frecuenciaSugerida: null, productosSugeridos: [] } }) }
+    if (/\/api\/clientes\/[^/]+$/.test(url)) return { ok: true, json: async () => ({ success: true, cliente: { id: 'c1', frecuenciaSugerida: null, productosSugeridos: [], pedidos: [{ estadoEntrega: 'ENTREGADO', canal: 'DOMICILIO', items: [{ producto: 'PACA_AGUA', cantPedido: 3 }] }] } }) }
     return { ok: true, json: async () => ({ success: true }) }
   })
 }
@@ -93,6 +93,49 @@ describe('PedidosWorkspace (Composición)', () => {
     await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeEnabled(), { timeout: 3000 })
     fireEvent.click(screen.getByTestId('workspace-inc-PACA_AGUA'))
     expect(screen.getByTestId('workspace-commit')).toBeDisabled()
+  })
+
+  it('"Repetir el pedido anterior" aplica los items del último pedido al draft', async () => {
+    render(<PedidosWorkspace clientes={clientes} onSubmit={vi.fn()} />)
+    await elegirCliente()
+    fireEvent.click(screen.getByTestId('proposal-pedir'))
+    await waitFor(() => expect(screen.getByTestId('proposal-usar-ultima')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('proposal-usar-ultima'))
+    expect((screen.getByTestId('workspace-cant-PACA_AGUA') as HTMLInputElement).value).toBe('3')
+    await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeEnabled(), { timeout: 3000 })
+  })
+
+  it('preview con requiresAuthorization → PedidoReview; motivo obligatorio; luego commit y obs con [Revisión]', async () => {
+    const authPreview = { ...previewBody(9000), requiresAuthorization: true, authorizationPolicy: 'Requiere revisión' }
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/api/pedidos/preview')) return { ok: true, json: async () => authPreview }
+      if (url.includes('/fiado-status')) return { ok: true, json: async () => ({ success: true, status: { nivel: 'ok', count: 0, limite: 3 } }) }
+      if (url.includes('/api/negocios')) return { ok: true, json: async () => ({ success: true, data: [] }) }
+      if (url.includes('/api/precios/tabla')) return { ok: true, json: async () => ({ success: true, tabla: {} }) }
+      if (url.includes('/api/productos/configs')) return { ok: true, json: async () => ({ success: true, productos: [] }) }
+      if (/\/api\/clientes\/[^/]+$/.test(url)) return { ok: true, json: async () => ({ success: true, cliente: { id: 'c1', productosSugeridos: [], pedidos: [] } }) }
+      return { ok: true, json: async () => ({ success: true }) }
+    }))
+    const onSubmit = vi.fn()
+    render(<PedidosWorkspace clientes={clientes} onSubmit={onSubmit} />)
+    await elegirCliente()
+    fireEvent.click(screen.getByTestId('workspace-inc-PACA_AGUA'))
+    fireEvent.click(screen.getByTestId('workspace-inc-PACA_AGUA'))
+    fireEvent.click(screen.getByTestId('workspace-inc-PACA_AGUA'))
+
+    await waitFor(() => expect(screen.getByTestId('workspace-review')).toBeInTheDocument(), { timeout: 3000 })
+    expect(screen.getByTestId('workspace-commit')).toBeDisabled()
+
+    // sin motivo, confirmar no avanza
+    fireEvent.click(screen.getByTestId('review-confirmar'))
+    expect(screen.getByTestId('workspace-review')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByTestId('review-motivo'), { target: { value: 'cliente mayorista' } })
+    fireEvent.click(screen.getByTestId('review-confirmar'))
+
+    await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeEnabled())
+    fireEvent.click(screen.getByTestId('workspace-commit'))
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ obs: '[Revisión: cliente mayorista]' }))
   })
 
   it('el banner de fiados aparece cuando el cliente está al límite', async () => {

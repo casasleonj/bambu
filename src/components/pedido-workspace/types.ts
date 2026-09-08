@@ -66,6 +66,8 @@ export interface WorkspaceState {
   previewPending: boolean
   /** códigos con precio manual muy bajo ya confirmado por el usuario (ALS §5). */
   precioBajoConfirmado: Record<string, boolean>
+  /** motivo capturado en el paso REVIEW_REQUIRED (flujo de acción sensible, ALS §10). */
+  reviewMotivo: string
   error: { kind: WorkspaceErrorKind; message: string } | null
 }
 
@@ -91,5 +93,7 @@ export type WorkspaceAction =
   | { type: 'COMMIT_SUCCESS' }
   | { type: 'COMMIT_CONFLICT'; message: string }
   | { type: 'COMMIT_ERROR'; message: string }
-  | { type: 'ACKNOWLEDGE_REVIEW' }
+  | { type: 'ACKNOWLEDGE_REVIEW'; motivo: string }
+  /** "Volver a editar" desde REVIEW_REQUIRED — sin aplicar la revisión. */
+  | { type: 'RETURN_TO_DRAFTING' }
   | { type: 'RESET'; draft?: Partial<DraftPedido> }
