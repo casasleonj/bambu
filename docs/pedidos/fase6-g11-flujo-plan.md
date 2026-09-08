@@ -178,7 +178,7 @@ El mensaje **describe la situación y ofrece alternativas que el usuario elige**
 
 **Implementado:** `WorkspaceProps += modo?: 'crear' | 'nueva-demanda'` + `pedidoOrigenNumero?`. En modo nueva-demanda: bloque read-only `workspace-nueva-demanda` (cliente + canal del origen, inmutables), **sin** `PedidoContextPanel` ni toggle de canal; `handleCommit` emite `pedidoOrigenId: state.draft.pedidoOrigenId` + fuerza `origen: 'PEDIDO'`. `usePreview` ya enviaba `pedidoOrigenId` (validado read-only por `PreviewPedidoUseCase` → `PedidoOrigenNotFoundError`). `CrearPedidoPayload` + `PedidoUnifiedData` += `pedidoOrigenId?`; el route ya lo pasa a `CrearPedidoUseCase` (`route.ts:256,312`). `pedidos-client`: estado `nuevaDemanda` + `case 'nueva-demanda'` arma `{ pedidoOrigenId: pedido.id, numeroOrigen, clienteId, canal }` y monta el workspace con `initialDraft`; se limpia en todos los cierres/submits. Independencia P6 ya cubierta por `pedido-nueva-demanda-relacionado.test.ts` (backend). 12 unit nuevos (workspace nueva-demanda 2 + frontera source-check 2 + los existentes). tsc + eslint limpios.
 
-### F6-iii — vínculo cruzado + verificación E2E
+### F6-iii — vínculo cruzado + verificación E2E ✅ IMPLEMENTADO
 **Archivos:**
 - Verificar/ajustar `peek-relaciones.tsx` — el bloque "Pedidos vinculados (G11)" ya existe; confirmar que muestra ambos sentidos (`rol: 'origen'` en la nueva demanda, `rol: 'demanda'` en el original)
 - E2E `e2e/pedidos-g11.spec.ts` (cubre G11-01..G11-08 de §6):
@@ -190,6 +190,14 @@ El mensaje **describe la situación y ofrece alternativas que el usuario elige**
 - Tests unit del mapeo `code → mensaje` (los 3) + del punto de decisión (2 opciones, sin "no sé").
 
 **Criterio (blueprint §5.2):** imposible llegar a un estado ambiguo; los pedidos vinculados son visibles desde el peek del original y viceversa. Un guard rechazado nunca reinterpreta la intención. La prueba del usuario (G11 gate): si al probarlo dice *"es la misma pantalla, pero más ordenada"* → no cumple. El punto de decisión debe sentirse como una pregunta real, no un paso de más.
+
+**Implementado:** el vínculo cruzado **ya estaba** — `GET /api/pedidos/[id]` (`route.ts:69-98`) consulta `OR: [{ pedidoOrigenId: id }, { id: pedidoOrigenId }]` y marca `rol: p.pedidoOrigenId === id ? 'demanda' : 'origen'`; `peek-relaciones.tsx` lo renderiza ("Nueva demanda: #124" / "Origen: #98") con `onOpenVinculado` (acceso, no fusión). F6-iii sólo agrega verificación: `peek-relaciones.test.tsx` (4 unit — ambos sentidos, click, gating de "Cambiar cantidades") + `e2e/pedidos-g11.spec.ts`:
+- **G11-01** (API): preview coincide con el commit; el pedido no cambia por la proyección.
+- **G11-03** (API): pedido CANCELADO → 409 `CORRECCION_PEDIDO_CERRADO`, sin mutación, sin pedido nuevo.
+- **G11-04** (API): prepago completo → preview marca `CORRECCION_GENERARIA_SOBREPAGO`; commit 409; total intacto.
+- **G11-05 + G11-06** (API): pedido nuevo con `pedidoOrigenId`; el peek del original lo ve con rol `demanda` y el de la nueva demanda ve el origen con rol `origen`; corregir la nueva demanda no toca el original.
+- **UI smoke** (gated `NEXT_PUBLIC_PEDIDOS_V2`): peek → "Cambiar cantidades" → "¿Qué pasó?" con 2 opciones, sin Venta Libre; elegir corrección → form con confirmar deshabilitado sin motivo.
+- G11-02 / G11-07 / G11-08 quedan cubiertos por `ajuste-pedido.test.ts` (integración) y `hub-accion-frontera.test.ts` (unit) — anotado en el spec.
 
 ---
 
