@@ -556,7 +556,8 @@ El blueprint es holístico; la implementación sigue el `00-plan` por fases.
 | **Backend preview** (BRECHA §9.1) | `POST /api/pedidos/preview` conforme al contrato del Plan Técnico §13 | — | contrato definido y probado (integración Postgres) |
 | **Fase 4a** ✅ | Pedido Hub: shell + focos + lista adaptativa (§2, §4) — flag `NEXT_PUBLIC_PEDIDOS_V2` | preview | G2, G5, G6, G9 |
 | **Fase 4b** ✅ | peek/detalle contextual por capas + command menu (§3.4–3.7); `GET /api/pedidos/[id]` extendido (§9.2 resuelta) | Fase 4a | G4, G7, G10 |
-| **Composición** | `PedidosWorkspace` recompone Fase 3 con reducer/orquestador + `PedidoProposal`/`PedidoReview`/`PedidoRiskSignals`/`PedidoCommitBar` (§3, §5.3) | preview | G1, G3, G7, G8 |
+| **Composición C1** ✅ | `PedidosWorkspace` shell + `workspaceReducer` (máquina de UI adaptativa, estado efímero) + `usePreview` (debounce → `POST /api/pedidos/preview`) + `PedidoPricingSummary` del backend + commit. Zonas por `state.phase`, no un `<form>`. Sliced: ver `docs/pedidos/fase-composicion-plan.md`. | preview | G1, G7, G8 (parcial) |
+| **Composición C1b/C2/C3** | recomposición completa de `PedidoContextPanel`/`PedidoItemEditor` (fiado/patrón/tiers) · `PedidoRiskSignals` · `PedidoProposal` (Repetir) · `PedidoReview` + `PedidoCommitBar` adaptativo + acción sensible | C1 | G3, G8 |
 | **Fase 5** | N2 en el flujo — `PedidoExceptionPanel`, gestión de pendiente (§5.1) | endpoints N2 (Fase 2, hechos) | G4, G7 |
 | **Fase 6** | G11 — punto de decisión + ramas A/B (§5.2) | Composición | G7, G8 |
 | **Fase 7** | Relación cruzada + `PedidoExceptionPanel` + riesgo en el peek (§5.3, §6.2) | Hub | G4, G7 |
