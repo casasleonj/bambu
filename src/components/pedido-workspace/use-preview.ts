@@ -17,7 +17,7 @@ function isPreviewable(draft: DraftPedido): boolean {
   return !!draft.clienteId && draft.items.some((i) => i.cantidad > 0)
 }
 
-function toRequestBody(draft: DraftPedido) {
+function toRequestBody(draft: DraftPedido, pedidoId?: string) {
   return {
     clienteId: draft.clienteId,
     negocioId: draft.negocioId ?? undefined,
@@ -26,9 +26,11 @@ function toRequestBody(draft: DraftPedido) {
     items: draft.items
       .filter((i) => i.cantidad > 0)
       .map((i) => ({ producto: i.producto, cantidad: i.cantidad, precioManual: i.precioManual })),
-    pagos: draft.pagos.length > 0 ? draft.pagos : undefined,
+    // modo edición: el PUT es declarativo de items, los pagos no se re-envían.
+    pagos: pedidoId ? undefined : (draft.pagos.length > 0 ? draft.pagos : undefined),
     entregado: draft.entregado,
     pedidoOrigenId: draft.pedidoOrigenId,
+    pedidoId,
   }
 }
 
@@ -40,14 +42,14 @@ function toRequestBody(draft: DraftPedido) {
  * Fetch plano (lectura, no encolar en Dexie). Offline → `NETWORK_ERROR`; el
  * draft local persiste igual (ALS §13).
  */
-export function usePreview(draft: DraftPedido, cb: UsePreviewCallbacks): void {
+export function usePreview(draft: DraftPedido, cb: UsePreviewCallbacks, opts?: { pedidoId?: string }): void {
   const cbRef = useRef(cb)
   useEffect(() => { cbRef.current = cb }, [cb])
 
   const abortRef = useRef<AbortController | null>(null)
   const reqRef = useRef(0)
-  // serialización estable del subconjunto que afecta el preview
-  const key = JSON.stringify(toRequestBody(draft))
+  // serialización estable del subconjunto que afecta el preview (incluye pedidoId)
+  const key = JSON.stringify(toRequestBody(draft, opts?.pedidoId))
 
   useEffect(() => {
     if (!isPreviewable(draft)) return

@@ -175,7 +175,7 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
 }
 
 /** ¿el commit está permitido en el estado actual? (se cruza con allowedActions del preview) */
-export function canCommit(state: WorkspaceState): boolean {
+export function canCommit(state: WorkspaceState, accion: 'crear' | 'actualizar' = 'crear'): boolean {
   if (state.phase !== 'PREVIEW_READY') return false
-  return state.preview?.allowedActions.includes('crear') ?? false
+  return state.preview?.allowedActions.includes(accion) ?? false
 }

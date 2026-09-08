@@ -48,11 +48,31 @@ const EMPTY_NUEVO_CLIENTE: NuevoClienteForm = {
   nombre: '', apellido: '', telefono: '', direccion: '', barrio: '', fuente: '',
 }
 
+/** Pedido existente para el modo edición (Composición C4). Subconjunto de `pedidoEditando`. */
+export interface WorkspacePedidoInicial {
+  id: string
+  numero?: number
+  clienteId: string
+  clienteNombre: string
+  clienteTelefono?: string
+  clienteDireccion?: string | null
+  clienteBarrio?: string | null
+  negocioId?: string | null
+  /** dirección/barrio del NEGOCIO cuando `negocioId` está seteado (ya resueltos por el caller). */
+  negocioDireccion?: string | null
+  negocioBarrio?: string | null
+  canal: 'PUNTO' | 'DOMICILIO'
+  items: Array<{ producto: ProductoCodigo; cantidad: number; precioManual?: number }>
+  obs?: string | null
+}
+
 export interface PedidosWorkspaceProps {
   clientes: Cliente[]
   /** intención inicial — determina el origen del draft. */
   intent?: 'pedido' | 'venta-rapida'
   initialDraft?: Partial<DraftPedido>
+  /** modo edición: pedido existente a editar (cliente/negocio/canal inmutables). */
+  pedidoInicial?: WorkspacePedidoInicial
   /** mismo contrato que `PedidoFormUnified.onSubmit` — reusa `handlePedidoSubmit` de pedidos-client. */
   onSubmit: (data: PedidoUnifiedData) => void
   onCancel?: () => void
@@ -71,12 +91,26 @@ export interface PedidosWorkspaceProps {
  * "aplicada" del patrón) vive como `useState` local — igual que en el
  * monolito, no es parte del "draft" que se envía.
  */
-export function PedidosWorkspace({ clientes, intent, initialDraft, onSubmit, onCancel }: PedidosWorkspaceProps) {
+export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial, onSubmit, onCancel }: PedidosWorkspaceProps) {
+  const modoEdicion = Boolean(pedidoInicial)
+
   const [state, dispatch] = useReducer(
     workspaceReducer,
-    intent === 'venta-rapida'
-      ? { ...EMPTY_DRAFT, origen: 'VENTA_RAPIDA' as const, clienteId: 'CONSUMIDOR_FINAL', ...initialDraft }
-      : { ...EMPTY_DRAFT, origen: 'PEDIDO' as const, ...initialDraft },
+    pedidoInicial
+      ? {
+          ...EMPTY_DRAFT,
+          origen: pedidoInicial.clienteId === 'CONSUMIDOR_FINAL' ? 'VENTA_RAPIDA' as const : 'PEDIDO' as const,
+          clienteId: pedidoInicial.clienteId,
+          negocioId: pedidoInicial.negocioId ?? null,
+          canal: pedidoInicial.canal,
+          items: pedidoInicial.items.map((i) => ({ producto: i.producto, cantidad: i.cantidad, precioManual: i.precioManual })),
+          obs: pedidoInicial.obs ?? undefined,
+          direccionEntrega: (pedidoInicial.negocioId ? pedidoInicial.negocioDireccion : pedidoInicial.clienteDireccion) ?? '',
+          barrioEntrega: (pedidoInicial.negocioId ? pedidoInicial.negocioBarrio : pedidoInicial.clienteBarrio) ?? '',
+        }
+      : intent === 'venta-rapida'
+        ? { ...EMPTY_DRAFT, origen: 'VENTA_RAPIDA' as const, clienteId: 'CONSUMIDOR_FINAL', ...initialDraft }
+        : { ...EMPTY_DRAFT, origen: 'PEDIDO' as const, ...initialDraft },
     initWorkspace,
   )
 
@@ -90,7 +124,7 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, onSubmit, onC
   const onReceived = useCallback((preview: PreviewPedidoResult) => dispatch({ type: 'PREVIEW_RECEIVED', preview }), [])
   const onError = useCallback((kind: WorkspaceErrorKind, message: string) => dispatch({ type: 'PREVIEW_ERROR', kind, message }), [])
 
-  usePreview(state.draft, { onPending, onReceived, onError })
+  usePreview(state.draft, { onPending, onReceived, onError }, { pedidoId: pedidoInicial?.id })
 
   const { tabla, configs, loading: pricingLoading, precioBaseFor } = useItemPricing()
   const { fiadoStatus, patron, patronLoading, loadPatron } = useClienteContext(state.draft.clienteId)
@@ -101,8 +135,20 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, onSubmit, onC
   const clienteSeleccionado: Cliente | null = useMemo(() => {
     const id = state.draft.clienteId
     if (!id || id === 'CONSUMIDOR_FINAL') return null
-    return clientes.find((c) => c.id === id) ?? null
-  }, [state.draft.clienteId, clientes])
+    const enLista = clientes.find((c) => c.id === id)
+    if (enLista) return enLista
+    // modo edición: si el cliente no está en la lista, sintetizarlo del pedido.
+    if (pedidoInicial && pedidoInicial.clienteId === id) {
+      return {
+        id,
+        nombre: pedidoInicial.clienteNombre,
+        telefono: pedidoInicial.clienteTelefono ?? '',
+        direccion: pedidoInicial.clienteDireccion ?? undefined,
+        barrio: pedidoInicial.clienteBarrio ?? undefined,
+      }
+    }
+    return null
+  }, [state.draft.clienteId, clientes, pedidoInicial])
 
   const filteredClientes = useMemo(
     () => (searchTerm ? clientes.filter((c) => matchCliente(c, searchTerm)) : []),
@@ -196,11 +242,12 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, onSubmit, onC
     setSugerenciaAplicada(true)
   }
 
+  const accionCommit = modoEdicion ? 'actualizar' : 'crear'
   const hasDraftItems = state.draft.items.some((i) => i.cantidad > 0)
-  const commitEnabled = canCommit(state) && state.phase === 'PREVIEW_READY'
+  const commitEnabled = canCommit(state, accionCommit) && state.phase === 'PREVIEW_READY'
   const blockedReason =
-    state.preview && !state.preview.allowedActions.includes('crear')
-      ? (state.preview.warnings[0]?.message ?? 'El backend no permite crear este pedido.')
+    state.preview && !state.preview.allowedActions.includes(accionCommit)
+      ? (state.preview.warnings[0]?.message ?? `El backend no permite ${modoEdicion ? 'guardar' : 'crear'} este pedido.`)
       : null
 
   const handleConfirmReview = () => {
@@ -252,6 +299,8 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, onSubmit, onC
       actualizarCliente,
       direccionEntrega: state.draft.canal === 'DOMICILIO' ? (state.draft.direccionEntrega || undefined) : undefined,
       barrioEntrega: state.draft.canal === 'DOMICILIO' ? (state.draft.barrioEntrega || undefined) : undefined,
+      // modo edición: el PUT /api/pedidos/[id] (handlePedidoSubmit bifurca en isEdit).
+      ...(modoEdicion ? { isEdit: true, pedidoId: pedidoInicial!.id } : {}),
     })
   }
 
@@ -265,6 +314,8 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, onSubmit, onC
           </div>
         ) : (
           <PedidoContextPanel
+            readOnly={modoEdicion}
+            pedidoInicialId={pedidoInicial?.id}
             canal={state.draft.canal}
             clienteSeleccionado={clienteSeleccionado}
             onQuitarCliente={handleQuitarCliente}
@@ -301,25 +352,32 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, onSubmit, onC
             onNuevoClienteChange={setNuevoCliente}
           />
         )}
-        <div className="flex gap-2">
-          {(['DOMICILIO', 'PUNTO'] as const).map((ch) => (
-            <button
-              key={ch}
-              type="button"
-              data-testid={`workspace-canal-${ch}`}
-              onClick={() => dispatch({ type: 'SET_CANAL', canal: ch })}
-              className={`rounded-lg border px-3 py-1.5 text-xs ${state.draft.canal === ch ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200'}`}
-            >
-              {ch === 'DOMICILIO' ? '🚚 Domicilio' : '🏪 Punto'}
-            </button>
-          ))}
-        </div>
+        {/* canal: inmutable en edición (el PUT no lo cambia) */}
+        {modoEdicion ? (
+          <p className="text-xs text-gray-400" data-testid="workspace-canal-fijo">
+            {state.draft.canal === 'DOMICILIO' ? '🚚 Domicilio' : '🏪 Punto'} · no se puede cambiar al editar
+          </p>
+        ) : (
+          <div className="flex gap-2">
+            {(['DOMICILIO', 'PUNTO'] as const).map((ch) => (
+              <button
+                key={ch}
+                type="button"
+                data-testid={`workspace-canal-${ch}`}
+                onClick={() => dispatch({ type: 'SET_CANAL', canal: ch })}
+                className={`rounded-lg border px-3 py-1.5 text-xs ${state.draft.canal === ch ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200'}`}
+              >
+                {ch === 'DOMICILIO' ? '🚚 Domicilio' : '🏪 Punto'}
+              </button>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* ── Zona: Operación ── */}
       <section data-testid="workspace-operacion" className="space-y-2">
-        {/* "Repetir" (blueprint §3) — solo con cliente real y sin items aún */}
-        {!esVentaRapida && clienteSeleccionado && !hasDraftItems && (
+        {/* "Repetir" (blueprint §3) — solo al crear, con cliente real y sin items aún */}
+        {!modoEdicion && !esVentaRapida && clienteSeleccionado && !hasDraftItems && (
           <PedidoProposal
             propuestas={propuesta.propuestas}
             loading={propuesta.loading}
@@ -388,6 +446,7 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, onSubmit, onC
         previewPending={state.previewPending}
         canCommit={commitEnabled}
         blockedReason={blockedReason}
+        modoEdicion={modoEdicion}
         onCommit={handleCommit}
         onCancel={onCancel}
       />

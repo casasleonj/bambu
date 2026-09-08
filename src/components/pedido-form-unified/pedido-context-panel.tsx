@@ -54,6 +54,13 @@ export interface PedidoContextPanelProps {
   onCerrarNuevo: () => void
   nuevoCliente: NuevoClienteForm
   onNuevoClienteChange: (updater: (prev: NuevoClienteForm) => NuevoClienteForm) => void
+
+  /**
+   * Modo edición (Composición C4): el cliente de un pedido existente no se
+   * puede cambiar. Se muestra fijo — sin buscador, sin "quitar", sin
+   * "cliente nuevo". Requiere `clienteSeleccionado` no nulo.
+   */
+  readOnly?: boolean
 }
 
 /**
@@ -102,10 +109,11 @@ export function PedidoContextPanel({
   onCerrarNuevo,
   nuevoCliente,
   onNuevoClienteChange,
+  readOnly = false,
 }: PedidoContextPanelProps) {
   return (
     <div className="bg-white border rounded-xl p-4">
-      <h3 className="font-semibold text-gray-700 text-sm mb-3">{canal === 'DOMICILIO' ? 'Cliente *' : 'Cliente (opcional)'}</h3>
+      <h3 className="font-semibold text-gray-700 text-sm mb-3">{readOnly ? 'Cliente' : (canal === 'DOMICILIO' ? 'Cliente *' : 'Cliente (opcional)')}</h3>
       {clienteSeleccionado ? (
         <div className="space-y-2">
           <div className="flex items-center justify-between bg-blue-50 rounded-lg px-3 py-2">
@@ -113,14 +121,16 @@ export function PedidoContextPanel({
               <span className="font-medium text-sm">{clienteSeleccionado.nombre}{clienteSeleccionado.apellido ? ` ${clienteSeleccionado.apellido}` : ''}</span>
               <span className="text-xs text-gray-500 ml-2">{clienteSeleccionado.telefono}</span>
             </div>
-            <button
-              type="button"
-              onClick={onQuitarCliente}
-              className="p-1 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition"
-              title="Quitar cliente"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>
+            {!readOnly && (
+              <button
+                type="button"
+                onClick={onQuitarCliente}
+                className="p-1 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition"
+                title="Quitar cliente"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            )}
           </div>
 
           {/* Banner de fiados */}

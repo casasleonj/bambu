@@ -24,7 +24,7 @@ import { PedidoTable } from './pedido-table'
 import { FiadosTable } from './fiados-table'
 import { AlertasTable } from './alertas-table'
 import { PedidoHub } from '../pedido-hub'
-import { PedidosWorkspace } from '@/components/pedido-workspace'
+import { PedidosWorkspace, type WorkspacePedidoInicial } from '@/components/pedido-workspace'
 import { pedidosV2Enabled } from '@/lib/flags'
 
 import type { Pedido, Embarque, Cliente } from './types'
@@ -2417,34 +2417,58 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
               </button>
             </div>
             <div className="p-4 overflow-y-auto flex-1">
-              <PedidoFormUnified
-                key={`edit-${pedidoEditando.id}`}
-                contexto={pedidoEditando.canal as 'PUNTO' | 'DOMICILIO'}
-                clientes={clientes}
-                onSubmit={handlePedidoSubmit}
-                onClose={() => setPedidoEditando(null)}
-                pedidoInicial={{
-                  id: pedidoEditando.id,
-                  canal: pedidoEditando.canal as 'PUNTO' | 'DOMICILIO',
-                  cliente: pedidoEditando.clienteId !== 'CONSUMIDOR_FINAL'
-                    ? {
-                        id: pedidoEditando.clienteId,
-                        nombre: pedidoEditando.nombreCli,
-                        telefono: pedidoEditando.telefonoCli,
-                        direccion: clienteRaw?.direccion ?? pedidoEditando.zonaCli,
-                        barrio: clienteRaw?.barrio ?? pedidoEditando.barrioCli,
-                      }
-                    : null,
-                  negocioId: pedidoEditando.negocioId,
-                  // zonaCli/barrioCli YA están resueltos con prioridad negocio
-                  // cuando el pedido tiene negocioId — son la dirección del
-                  // negocio en ese caso, no la del cliente.
-                  negocioDireccion: pedidoEditando.negocioId ? pedidoEditando.zonaCli : null,
-                  negocioBarrio: pedidoEditando.negocioId ? pedidoEditando.barrioCli : null,
-                  items: itemsArray,
-                  obs: pedidoEditando.obs,
-                }}
-              />
+              {hubMode ? (
+                <PedidosWorkspace
+                  key={`edit-ws-${pedidoEditando.id}`}
+                  clientes={clientes}
+                  onSubmit={handlePedidoSubmit}
+                  onCancel={() => setPedidoEditando(null)}
+                  pedidoInicial={{
+                    id: pedidoEditando.id,
+                    numero: pedidoEditando.numero,
+                    clienteId: pedidoEditando.clienteId,
+                    clienteNombre: pedidoEditando.nombreCli,
+                    clienteTelefono: pedidoEditando.telefonoCli,
+                    clienteDireccion: clienteRaw?.direccion ?? pedidoEditando.zonaCli,
+                    clienteBarrio: clienteRaw?.barrio ?? pedidoEditando.barrioCli,
+                    negocioId: pedidoEditando.negocioId,
+                    negocioDireccion: pedidoEditando.negocioId ? pedidoEditando.zonaCli : null,
+                    negocioBarrio: pedidoEditando.negocioId ? pedidoEditando.barrioCli : null,
+                    canal: pedidoEditando.canal as 'PUNTO' | 'DOMICILIO',
+                    items: itemsArray as WorkspacePedidoInicial['items'],
+                    obs: pedidoEditando.obs,
+                  }}
+                />
+              ) : (
+                <PedidoFormUnified
+                  key={`edit-${pedidoEditando.id}`}
+                  contexto={pedidoEditando.canal as 'PUNTO' | 'DOMICILIO'}
+                  clientes={clientes}
+                  onSubmit={handlePedidoSubmit}
+                  onClose={() => setPedidoEditando(null)}
+                  pedidoInicial={{
+                    id: pedidoEditando.id,
+                    canal: pedidoEditando.canal as 'PUNTO' | 'DOMICILIO',
+                    cliente: pedidoEditando.clienteId !== 'CONSUMIDOR_FINAL'
+                      ? {
+                          id: pedidoEditando.clienteId,
+                          nombre: pedidoEditando.nombreCli,
+                          telefono: pedidoEditando.telefonoCli,
+                          direccion: clienteRaw?.direccion ?? pedidoEditando.zonaCli,
+                          barrio: clienteRaw?.barrio ?? pedidoEditando.barrioCli,
+                        }
+                      : null,
+                    negocioId: pedidoEditando.negocioId,
+                    // zonaCli/barrioCli YA están resueltos con prioridad negocio
+                    // cuando el pedido tiene negocioId — son la dirección del
+                    // negocio en ese caso, no la del cliente.
+                    negocioDireccion: pedidoEditando.negocioId ? pedidoEditando.zonaCli : null,
+                    negocioBarrio: pedidoEditando.negocioId ? pedidoEditando.barrioCli : null,
+                    items: itemsArray,
+                    obs: pedidoEditando.obs,
+                  }}
+                />
+              )}
             </div>
           </Modal>
         )

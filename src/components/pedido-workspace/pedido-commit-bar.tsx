@@ -10,6 +10,8 @@ export interface PedidoCommitBarProps {
   canCommit: boolean
   /** si el preview llegó pero el backend no permite crear, el motivo legible. */
   blockedReason: string | null
+  /** modo edición: "Guardar cambios" en vez de "Crear pedido". */
+  modoEdicion?: boolean
   onCommit: () => void
   onCancel?: () => void
 }
@@ -27,10 +29,12 @@ export function PedidoCommitBar({
   previewPending,
   canCommit,
   blockedReason,
+  modoEdicion = false,
   onCommit,
   onCancel,
 }: PedidoCommitBarProps) {
   const totalLabel = total != null ? ` $${total.toLocaleString()}` : ''
+  const verbo = modoEdicion ? 'Guardar cambios' : `Crear pedido${totalLabel}`
 
   let label: string
   let enabled = false
@@ -38,10 +42,10 @@ export function PedidoCommitBar({
 
   switch (phase) {
     case 'COMMITTING':
-      label = 'Creando…'
+      label = modoEdicion ? 'Guardando…' : 'Creando…'
       break
     case 'COMMITTED':
-      label = 'Creado ✓'
+      label = modoEdicion ? 'Guardado ✓' : 'Creado ✓'
       break
     case 'REVIEW_REQUIRED':
       label = 'Revisá arriba para continuar'
@@ -53,15 +57,15 @@ export function PedidoCommitBar({
       break
     case 'PREVIEW_READY':
       if (canCommit) {
-        label = `Crear pedido${totalLabel}`
+        label = verbo
         enabled = true
       } else {
-        label = 'No se puede crear'
+        label = modoEdicion ? 'No se puede guardar' : 'No se puede crear'
         hint = blockedReason ?? 'Revisá las señales de arriba.'
       }
       break
     default:
-      label = previewPending ? 'Calculando…' : `Crear pedido${totalLabel}`
+      label = previewPending ? 'Calculando…' : verbo
   }
 
   return (
