@@ -34,6 +34,7 @@ export function initWorkspace(draft?: Partial<DraftPedido>): WorkspaceState {
     valueOrigins: {},
     preview: null,
     previewPending: false,
+    precioBajoConfirmado: {},
     error: null,
   }
 }
@@ -80,10 +81,19 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
     }
     case 'CLEAR_CLIENTE':
       return afterDraftChange(state, { ...state.draft, clienteId: null, negocioId: null })
-    case 'SET_NEGOCIO':
-      return afterDraftChange(state, { ...state.draft, negocioId: action.negocioId })
+    case 'SET_NEGOCIO': {
+      const draft = { ...state.draft, negocioId: action.negocioId }
+      // el selector de negocio resuelve la dirección de entrega efectiva
+      if (action.direccion !== undefined) draft.direccionEntrega = action.direccion ?? ''
+      if (action.barrio !== undefined) draft.barrioEntrega = action.barrio ?? ''
+      // con negocio, "solo para este pedido" no aplica (nunca se persiste al Cliente)
+      if (action.negocioId) draft.soloParaEstePedido = false
+      return afterDraftChange(state, draft)
+    }
     case 'SET_CANAL':
       return afterDraftChange(state, { ...state.draft, canal: action.canal })
+    case 'SET_SOLO_PARA_ESTE_PEDIDO':
+      return { ...state, draft: { ...state.draft, soloParaEstePedido: action.value } }
     case 'SET_ITEM_CANTIDAD':
       return afterDraftChange(state, {
         ...state.draft,
@@ -97,8 +107,15 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
       return {
         ...s,
         valueOrigins: { ...s.valueOrigins, [`item.${action.producto}.precio`]: 'USER' },
+        // cambiar el precio manual invalida cualquier confirmación previa de "precio bajo"
+        precioBajoConfirmado: { ...s.precioBajoConfirmado, [action.producto]: false },
       }
     }
+    case 'CONFIRMAR_PRECIO_BAJO':
+      return {
+        ...state,
+        precioBajoConfirmado: { ...state.precioBajoConfirmado, [action.producto]: true },
+      }
     case 'SET_PAGOS':
       return afterDraftChange(state, { ...state.draft, pagos: action.pagos })
     case 'SET_ENTREGADO':

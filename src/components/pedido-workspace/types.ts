@@ -28,6 +28,8 @@ export interface DraftPedido {
   obs?: string
   direccionEntrega?: string
   barrioEntrega?: string
+  /** DOMICILIO sin negocio: si true, la dirección puntual NO se persiste al Cliente. */
+  soloParaEstePedido?: boolean
   /** G11.B — trazabilidad cuando el flujo es "nueva demanda". */
   pedidoOrigenId?: string
 }
@@ -62,16 +64,20 @@ export interface WorkspaceState {
   preview: PreviewPedidoResult | null
   /** true mientras el preview está en vuelo. */
   previewPending: boolean
+  /** códigos con precio manual muy bajo ya confirmado por el usuario (ALS §5). */
+  precioBajoConfirmado: Record<string, boolean>
   error: { kind: WorkspaceErrorKind; message: string } | null
 }
 
 export type WorkspaceAction =
   | { type: 'SET_CLIENTE'; clienteId: string; negocioId?: string | null }
   | { type: 'CLEAR_CLIENTE' }
-  | { type: 'SET_NEGOCIO'; negocioId: string | null }
+  | { type: 'SET_NEGOCIO'; negocioId: string | null; direccion?: string | null; barrio?: string | null }
   | { type: 'SET_CANAL'; canal: 'PUNTO' | 'DOMICILIO' }
+  | { type: 'SET_SOLO_PARA_ESTE_PEDIDO'; value: boolean }
   | { type: 'SET_ITEM_CANTIDAD'; producto: ProductoCodigo; cantidad: number }
   | { type: 'SET_ITEM_PRECIO_MANUAL'; producto: ProductoCodigo; precioManual: number | undefined }
+  | { type: 'CONFIRMAR_PRECIO_BAJO'; producto: ProductoCodigo }
   | { type: 'SET_PAGOS'; pagos: DraftPago[] }
   | { type: 'SET_ENTREGADO'; entregado: boolean }
   | { type: 'SET_OBS'; obs: string }
