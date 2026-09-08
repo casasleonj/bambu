@@ -18,11 +18,13 @@ export function PeekRelaciones({
   data,
   onOpenVinculado,
   onAccionN2,
+  onMutadoN2,
 }: {
   pedido: Pedido
   data: PeekLayer2
   onOpenVinculado: (id: string) => void
   onAccionN2?: (key: 'completar-pendiente' | 'nueva-demanda' | 'venta-libre') => void
+  onMutadoN2?: () => void
 }) {
   const saldoOperacion = Number(pedido.saldo) || 0
 
@@ -75,7 +77,7 @@ export function PeekRelaciones({
       <PedidoExceptionPanel
         pedido={pedido}
         layer2={data}
-        onGestionar={onAccionN2 ? () => onAccionN2('completar-pendiente') : undefined}
+        onMutado={onMutadoN2}
         onNuevaDemanda={onAccionN2 ? () => onAccionN2('nueva-demanda') : undefined}
         onVentaLibre={onAccionN2 ? () => onAccionN2('venta-libre') : undefined}
       />

@@ -1,6 +1,8 @@
 'use client'
 
+import { useState } from 'react'
 import { clasificarN2 } from './n2-naturaleza'
+import { CompletarPendienteForm } from './completar-pendiente-form'
 import type { PeekLayer2 } from './peek-cache'
 import type { Pedido } from '../pedidos-client/types'
 
@@ -23,8 +25,9 @@ export interface PedidoExceptionPanelProps {
   layer2: PeekLayer2
   /** conflicto 409 en curso (lo setea el flujo de F5-ii/iii). */
   conflictoEnCurso?: boolean
-  /** abre el flujo "completar el pendiente" (F5-ii). */
-  onGestionar?: (producto: string, remanente: number) => void
+  /** tras una mutación N2: recargar el peek + refetch. Si falta, el CTA
+   *  "Completar el pendiente" no se muestra (modo display puro / degradado). */
+  onMutado?: () => void
   /** navega al workspace con pedidoOrigenId (G11.B) — declaración explícita, no inferencia. */
   onNuevaDemanda?: () => void
   /** navega al flujo de Venta Libre (contexto de Embarque). */
@@ -49,14 +52,16 @@ export function PedidoExceptionPanel({
   pedido,
   layer2,
   conflictoEnCurso,
-  onGestionar,
+  onMutado,
   onNuevaDemanda,
   onVentaLibre,
   onActividadAccion,
 }: PedidoExceptionPanelProps) {
+  const [gestionando, setGestionando] = useState<{ producto: string; remanente: number } | null>(null)
   const pendiente = layer2.pendienteN2
   const remanentes = remanentePorProducto(pedido)
   const pedidoCerrado = ESTADOS_CERRADOS.includes(pedido.estadoEntrega)
+  const canalPedido = pedido.canal === 'PUNTO' ? 'PUNTO' : 'DOMICILIO'
 
   // Nada que mostrar.
   if (!pendiente && remanentes.length === 0) return null
@@ -125,13 +130,24 @@ export function PedidoExceptionPanel({
         ))}
       </div>
 
-      {!pedidoCerrado && (
+      {!pedidoCerrado && gestionando && onMutado && (
+        <CompletarPendienteForm
+          pedidoId={pedido.id}
+          pedidoCanal={canalPedido}
+          producto={gestionando.producto}
+          remanente={gestionando.remanente}
+          onCancel={() => setGestionando(null)}
+          onMutado={() => { setGestionando(null); onMutado() }}
+        />
+      )}
+
+      {!pedidoCerrado && !gestionando && (
         <div className="mt-2 space-y-1.5" data-testid="n2-frontera">
           <p className="text-[11px] text-gray-500">¿Qué corresponde hacer? (elegí — el sistema no lo asume)</p>
-          {onGestionar && (
+          {onMutado && (
             <button
               type="button"
-              onClick={() => onGestionar(remanentes[0].producto, remanentes[0].remanente)}
+              onClick={() => setGestionando({ producto: remanentes[0].producto, remanente: remanentes[0].remanente })}
               data-testid="n2-cta-completar"
               className="block w-full rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
             >

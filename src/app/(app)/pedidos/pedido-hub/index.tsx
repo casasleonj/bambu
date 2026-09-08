@@ -142,6 +142,15 @@ export function PedidoHub({
         const target = pedidos.find((p) => p.id === id)
         if (target) peek.open(target)
       }}
+      onMutadoN2={() => {
+        // tras una mutación N2: recargar el peek + refetch de lista/counts.
+        if (peek.activeId) {
+          invalidatePeek(peek.activeId)
+          const p = pedidos.find((x) => x.id === peek.activeId)
+          if (p) peek.open(p)
+        }
+        onRefetch?.()
+      }}
     />
   ) : null
 

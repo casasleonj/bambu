@@ -23,6 +23,8 @@ interface PeekPanelProps {
   onNav: (dir: 'prev' | 'next') => void
   onAccion: (pedido: Pedido, key: AccionKey) => void
   onOpenVinculado: (id: string) => void
+  /** Fase 5-ii: tras una mutación N2, recargar el peek + refetch. */
+  onMutadoN2?: () => void
 }
 
 /**
@@ -32,7 +34,7 @@ interface PeekPanelProps {
  */
 export function PeekPanel({
   pedido, layer2, loadingLayer2, errorLayer2, viewport, userRole, hoyBogota,
-  onClose, onNav, onAccion, onOpenVinculado,
+  onClose, onNav, onAccion, onOpenVinculado, onMutadoN2,
 }: PeekPanelProps) {
   const canSeePrecioOrigen = userRole === 'ADMIN' || userRole === 'ASISTENTE'
 
@@ -150,6 +152,7 @@ export function PeekPanel({
               data={layer2}
               onOpenVinculado={onOpenVinculado}
               onAccionN2={(key) => onAccion(pedido, key)}
+              onMutadoN2={onMutadoN2}
             />
           </>
         )}

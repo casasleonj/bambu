@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { PedidoExceptionPanel, remanentePorProducto } from '../pedido-exception-panel'
 
@@ -25,6 +25,19 @@ describe('remanentePorProducto', () => {
 })
 
 describe('PedidoExceptionPanel — F5-i (display)', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        success: true, accion: 'gestionar', remanente: 5,
+        diferencial: { valorHistorico: 15000, valorActual: 15000, diferencial: 0 },
+        consecuencia: { pedidoTotalAntes: 76000, pedidoTotalDespues: 76000, pedidoSaldoAntes: 76000, pedidoSaldoDespues: 76000, clienteSaldoFavorAntes: 0, clienteSaldoFavorDespues: 0, tipo: 'sin_ajuste' },
+        allowedActions: ['gestionar'], warnings: [],
+      }),
+    })))
+  })
+  afterEach(() => vi.unstubAllGlobals())
+
   it('sin remanente y sin obligación → no renderiza nada', () => {
     const p = pedido({ items: [{ producto: 'PACA_AGUA', cantPedido: 5, cantEntrega: 5, precio: 3000, subtotal: 15000 }] })
     const { container } = render(<PedidoExceptionPanel pedido={p} layer2={layer2()} />)
@@ -35,7 +48,7 @@ describe('PedidoExceptionPanel — F5-i (display)', () => {
     render(
       <PedidoExceptionPanel
         pedido={pedido()} layer2={layer2()}
-        onGestionar={vi.fn()} onNuevaDemanda={vi.fn()} onVentaLibre={vi.fn()}
+        onMutado={vi.fn()} onNuevaDemanda={vi.fn()} onVentaLibre={vi.fn()}
       />,
     )
     expect(screen.getByTestId('n2-remanente-PACA_AGUA')).toHaveTextContent('5 paca agua · entregado 15 de 20')
@@ -45,19 +58,25 @@ describe('PedidoExceptionPanel — F5-i (display)', () => {
     expect(screen.getByTestId('n2-frontera')).toHaveTextContent(/no lo asume/)
   })
 
-  it('los CTA disparan el callback correcto (declaración explícita)', () => {
-    const onGestionar = vi.fn(); const onNuevaDemanda = vi.fn(); const onVentaLibre = vi.fn()
-    render(<PedidoExceptionPanel pedido={pedido()} layer2={layer2()} onGestionar={onGestionar} onNuevaDemanda={onNuevaDemanda} onVentaLibre={onVentaLibre} />)
-    fireEvent.click(screen.getByTestId('n2-cta-completar'))
+  it('"Completar" abre el formulario inline; "Nueva demanda"/"Venta libre" son callbacks', () => {
+    const onNuevaDemanda = vi.fn(); const onVentaLibre = vi.fn()
+    render(<PedidoExceptionPanel pedido={pedido()} layer2={layer2()} onMutado={vi.fn()} onNuevaDemanda={onNuevaDemanda} onVentaLibre={onVentaLibre} />)
     fireEvent.click(screen.getByTestId('n2-cta-nueva-demanda'))
     fireEvent.click(screen.getByTestId('n2-cta-venta-libre'))
-    expect(onGestionar).toHaveBeenCalledWith('PACA_AGUA', 5)
     expect(onNuevaDemanda).toHaveBeenCalledOnce()
     expect(onVentaLibre).toHaveBeenCalledOnce()
+    fireEvent.click(screen.getByTestId('n2-cta-completar'))
+    expect(screen.getByTestId('completar-pendiente-form')).toBeInTheDocument()
+  })
+
+  it('sin onMutado → no muestra el CTA "Completar" (modo display puro)', () => {
+    render(<PedidoExceptionPanel pedido={pedido()} layer2={layer2()} onNuevaDemanda={vi.fn()} />)
+    expect(screen.queryByTestId('n2-cta-completar')).not.toBeInTheDocument()
+    expect(screen.getByTestId('n2-cta-nueva-demanda')).toBeInTheDocument()
   })
 
   it('pedido CANCELADO con remanente → no ofrece gestión, explica el cierre', () => {
-    render(<PedidoExceptionPanel pedido={pedido({ estadoEntrega: 'CANCELADO' })} layer2={layer2()} onGestionar={vi.fn()} />)
+    render(<PedidoExceptionPanel pedido={pedido({ estadoEntrega: 'CANCELADO' })} layer2={layer2()} onMutado={vi.fn()} />)
     expect(screen.queryByTestId('n2-cta-completar')).not.toBeInTheDocument()
     expect(screen.getByTestId('pedido-exception-panel')).toHaveTextContent(/no admite gestión/)
   })
