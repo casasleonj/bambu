@@ -62,6 +62,14 @@ export interface WorkspacePedidoInicial {
   negocioDireccion?: string | null
   negocioBarrio?: string | null
   canal: 'PUNTO' | 'DOMICILIO'
+  /**
+   * Origen PERSISTIDO del pedido — se usa tal cual, NUNCA se re-deriva del
+   * cliente (origen y canal son independientes; CONSUMIDOR_FINAL = ausencia
+   * de cliente real, no un tipo comercial — decisión PO G6/ventaRapida→origen).
+   * El caller solo debe montar el workspace de edición para `PEDIDO`/`VENTA_RAPIDA`
+   * (VENTA_LIBRE/RECURRENTE siguen en el form legacy — §8.3 PENDIENTE).
+   */
+  origen: 'PEDIDO' | 'VENTA_RAPIDA'
   items: Array<{ producto: ProductoCodigo; cantidad: number; precioManual?: number }>
   obs?: string | null
 }
@@ -99,7 +107,8 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
     pedidoInicial
       ? {
           ...EMPTY_DRAFT,
-          origen: pedidoInicial.clienteId === 'CONSUMIDOR_FINAL' ? 'VENTA_RAPIDA' as const : 'PEDIDO' as const,
+          // origen PERSISTIDO — no se re-deriva del cliente (G6/ventaRapida→origen).
+          origen: pedidoInicial.origen,
           clienteId: pedidoInicial.clienteId,
           negocioId: pedidoInicial.negocioId ?? null,
           canal: pedidoInicial.canal,
@@ -281,7 +290,8 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
       clienteId: clienteSeleccionado ? clienteSeleccionado.id : (clienteNuevo ? undefined : 'CONSUMIDOR_FINAL'),
       negocioId: state.draft.negocioId ?? undefined,
       canal: state.draft.canal,
-      origen: tieneClienteReal ? 'PEDIDO' : 'VENTA_RAPIDA',
+      // edición: origen persistido (inmutable); creación: derivado de si hay cliente real.
+      origen: modoEdicion ? state.draft.origen : (tieneClienteReal ? 'PEDIDO' : 'VENTA_RAPIDA'),
       items: state.draft.items
         .filter((i) => i.cantidad > 0)
         .map((i) => ({ producto: i.producto, cantidad: i.cantidad, precioManual: i.precioManual })),

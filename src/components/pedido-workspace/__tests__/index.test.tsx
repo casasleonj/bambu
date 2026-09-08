@@ -156,7 +156,7 @@ describe('PedidosWorkspace (Composición)', () => {
         onSubmit={onSubmit}
         pedidoInicial={{
           id: 'ped-9', numero: 42, clienteId: 'c1', clienteNombre: 'Tienda X', clienteTelefono: '3001112222',
-          clienteDireccion: 'Cra 1', clienteBarrio: 'Centro', negocioId: null, canal: 'DOMICILIO',
+          clienteDireccion: 'Cra 1', clienteBarrio: 'Centro', negocioId: null, canal: 'DOMICILIO', origen: 'PEDIDO',
           items: [{ producto: 'PACA_AGUA', cantidad: 4 }], obs: 'urgente',
         }}
       />,
@@ -175,10 +175,30 @@ describe('PedidosWorkspace (Composición)', () => {
 
     fireEvent.click(screen.getByTestId('workspace-commit'))
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
-      isEdit: true, pedidoId: 'ped-9',
+      isEdit: true, pedidoId: 'ped-9', origen: 'PEDIDO',
       items: [{ producto: 'PACA_AGUA', cantidad: 4, precioManual: undefined }],
       obs: 'urgente',
     }))
+  })
+
+  it('modo edición: el origen se toma de pedidoInicial, NO se re-deriva del cliente', async () => {
+    const onSubmit = vi.fn()
+    // pedido VENTA_RAPIDA con un cliente real (caso donde el viejo initializer
+    // `clienteId === CONSUMIDOR_FINAL ? VENTA_RAPIDA : PEDIDO` daría MAL 'PEDIDO')
+    render(
+      <PedidosWorkspace
+        clientes={clientes}
+        onSubmit={onSubmit}
+        pedidoInicial={{
+          id: 'ped-vr', clienteId: 'c1', clienteNombre: 'Tienda X', negocioId: null,
+          canal: 'PUNTO', origen: 'VENTA_RAPIDA',
+          items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
+        }}
+      />,
+    )
+    await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeEnabled(), { timeout: 3000 })
+    fireEvent.click(screen.getByTestId('workspace-commit'))
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ origen: 'VENTA_RAPIDA', isEdit: true }))
   })
 
   it('modo edición: cambiar cantidad dispara un nuevo preview de edición', async () => {
@@ -187,7 +207,7 @@ describe('PedidosWorkspace (Composición)', () => {
         clientes={clientes}
         onSubmit={vi.fn()}
         pedidoInicial={{
-          id: 'ped-9', clienteId: 'c1', clienteNombre: 'Tienda X', negocioId: null, canal: 'DOMICILIO',
+          id: 'ped-9', clienteId: 'c1', clienteNombre: 'Tienda X', negocioId: null, canal: 'DOMICILIO', origen: 'PEDIDO',
           items: [{ producto: 'PACA_AGUA', cantidad: 4 }],
         }}
       />,

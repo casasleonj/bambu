@@ -80,9 +80,34 @@
 
 ---
 
+## Revisión del equipo (PR #229) — correcciones aplicadas
+
+1. **`totalPagado` en edición** — aprobado conceptualmente, sin cambios. `totalPagado` viene EXCLUSIVAMENTE del `Pedido` existente; los `pagos` del body se ignoran (no generan captura/excedente); `saldo = max(0, nuevoTotal − totalPagadoExistente)`. Coincide con `ActualizarPedidoUseCase`.
+2. **Preview read-only estricto** — `preview-pedido-integridad.test.ts` (c) ahora hace `deepSnapshot` (JSON verbatim, no counts) de `Pedido`/`PedidoItem`/`Pago`/`Factura`/`Abono`/`NotaCredito`/`Cliente` + conteos globales **antes y después** de `preview({pedidoId})` y exige igualdad exacta: PREVIEW → cero mutaciones, verificado **antes** del PUT.
+3. **Preview ↔ PUT — comparación fuerte** — el test (c) compara por item (`producto`/`cantidad`/`precioUnitario`/`subtotal`/`precioOrigen`) + `subtotal`/`recargoDomicilio`/`total`/`totalPagado`/`saldo`/`estadoEntrega`/`estadoPago`/`origen`/`canal`, y demuestra que los `Pago` existentes se conservan EXACTOS (mismos `id`/`monto`/`metodo`) tras el PUT.
+4. **Origen NO se infiere del cliente** — `WorkspacePedidoInicial.origen` es obligatorio; el initializer usa `pedidoInicial.origen` tal cual (origen persistido del `Pedido`), nunca `clienteId === 'CONSUMIDOR_FINAL' ? 'VENTA_RAPIDA' : 'PEDIDO'`. `handleCommit` en edición emite `state.draft.origen` (= persistido). El caller (`pedidos-client`) solo monta el workspace de edición para `origen ∈ {PEDIDO, VENTA_RAPIDA}`.
+5. **G11 sin cambios** — la edición corrige un `Pedido` existente (G11.A). Nueva demanda sigue siendo G11.B → `Pedido` nuevo con `pedidoOrigenId`. C4 NO absorbe demanda posterior: el PUT es declarativo de items del MISMO pedido, no crea nada.
+6. **VENTA_LIBRE / repartidor** — fuera de alcance; esos orígenes siguen en `pedido-form-unified` (rama `else` del modal de editar). No se inventa nada.
+8. **Sin ampliación de alcance** — C4 no introduce política de precios manuales, umbrales de autorización, doble control, separación de funciones, ni nueva lógica antifraude/financiera.
+
+## Gates verificables para Fase 10 (retiro de `pedido-form-unified`)
+
+"Soak period" NO es criterio subjetivo. `pedido-form-unified` se retira solo cuando **todos** estos gates pasan (evidencia concreta, no impresión):
+
+| # | Gate | Evidencia requerida |
+|---|---|---|
+| F10-1 | **C4 (#229) mergeado** + flag `NEXT_PUBLIC_PEDIDOS_V2` ON por defecto en un deploy | commit del flag; deploy verde |
+| F10-2 | **Cobertura funcional**: crear (`PEDIDO`/`VENTA_RAPIDA`), editar (`PEDIDO`/`VENTA_RAPIDA`), venta rápida entregar-después — todos por el workspace | E2E `pedidos-hub.spec.ts` cubre los 5 flujos con flag ON, verde N runs consecutivos |
+| F10-3 | **Integridad financiera**: preview↔commit y preview↔PUT campo a campo (ya en `preview-pedido-integridad.test.ts`); `chk_pedido_*` sin violaciones tras crear/editar por el workspace | test de integración verde |
+| F10-4 | **Permisos**: el workspace (crear + editar) respeta `requireRole([ADMIN, ASISTENTE])` igual que el legacy; REPARTIDOR/CONTADOR no acceden | test de ruta + E2E de rol |
+| F10-5 | **Auditoría**: `logAudit` / `PedidoAuditDiff` de una edición por el workspace == la de una edición por el legacy (mismos campos `antes`/`despues`) | test comportamental |
+| F10-6 | **Sin regresión**: suite unit + integración + E2E completa verde con el flag ON, ≥ N runs; 0 nuevos errores de consola en los flujos de captura | CI |
+| F10-7 | **VENTA_LIBRE / repartidor**: decisión tomada — o el workspace los cubre (nuevo alcance aprobado), o el modal de repartidor deja de usar `pedido-form-unified` por otra vía | ADR / nota de decisión |
+| F10-8 | **Rollback probado**: poner el flag OFF restaura el form legacy sin pérdida de datos ni estado inconsistente | prueba manual documentada |
+
+Solo con F10-1..F10-8 verdes se abre el PR que borra `src/components/pedido-form-unified/` y sus imports.
+
 ## Fuera de alcance de C4 (no reabrir)
 
-- **Fase 10** (retiro de `pedido-form-unified`): requiere C4 + flip del flag a ON por defecto + soak period. Decisión de producto.
-- Captura de venta libre / modo repartidor (§8.3 del blueprint, PENDIENTE).
-- Cambiar cliente/negocio/canal de un pedido existente (el backend no lo permite; no se agrega).
+- Cambiar cliente/negocio/canal/origen de un pedido existente (el backend no lo permite; no se agrega).
 - Fases 5-9 del blueprint (N2 en flujo, G11, relación cruzada, Recurrentes) — trabajo paralelo, no bloquea C4.

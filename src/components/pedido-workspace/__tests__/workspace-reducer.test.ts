@@ -43,6 +43,14 @@ describe('workspaceReducer — máquina de UI adaptativa', () => {
     expect(s.phase).toBe('PREVIEW_READY')
     expect(s.preview?.calculation.total).toBe(27000)
     expect(canCommit(s)).toBe(true)
+    expect(canCommit(s, 'actualizar')).toBe(false) // el preview solo permite 'crear'
+  })
+
+  it('canCommit(state, "actualizar") — cruza con allowedActions del preview de edición', () => {
+    let s: WorkspaceState = { ...s0(), phase: 'DRAFTING', draft: { ...EMPTY_DRAFT, clienteId: 'c1', items: [{ producto: 'PACA_AGUA', cantidad: 10 }] } }
+    s = workspaceReducer(s, { type: 'PREVIEW_RECEIVED', preview: previewOk({ allowedActions: ['actualizar'] }) })
+    expect(canCommit(s, 'actualizar')).toBe(true)
+    expect(canCommit(s, 'crear')).toBe(false)
   })
 
   it('PREVIEW_RECEIVED con requiresAuthorization → REVIEW_REQUIRED (no commiteable)', () => {

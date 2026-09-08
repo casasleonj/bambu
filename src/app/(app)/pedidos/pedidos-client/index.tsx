@@ -2417,7 +2417,9 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
               </button>
             </div>
             <div className="p-4 overflow-y-auto flex-1">
-              {hubMode ? (
+              {/* C4: el workspace de edición solo cubre PEDIDO / VENTA_RAPIDA.
+                  VENTA_LIBRE / RECURRENTE siguen en el form legacy (§8.3 PENDIENTE). */}
+              {hubMode && (pedidoEditando.origen === 'PEDIDO' || pedidoEditando.origen === 'VENTA_RAPIDA') ? (
                 <PedidosWorkspace
                   key={`edit-ws-${pedidoEditando.id}`}
                   clientes={clientes}
@@ -2435,6 +2437,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
                     negocioDireccion: pedidoEditando.negocioId ? pedidoEditando.zonaCli : null,
                     negocioBarrio: pedidoEditando.negocioId ? pedidoEditando.barrioCli : null,
                     canal: pedidoEditando.canal as 'PUNTO' | 'DOMICILIO',
+                    origen: pedidoEditando.origen as 'PEDIDO' | 'VENTA_RAPIDA',
                     items: itemsArray as WorkspacePedidoInicial['items'],
                     obs: pedidoEditando.obs,
                   }}
