@@ -24,6 +24,7 @@ import { PedidoTable } from './pedido-table'
 import { FiadosTable } from './fiados-table'
 import { AlertasTable } from './alertas-table'
 import { PedidoHub } from '../pedido-hub'
+import { PedidosWorkspace } from '@/components/pedido-workspace'
 import { pedidosV2Enabled } from '@/lib/flags'
 
 import type { Pedido, Embarque, Cliente } from './types'
@@ -1851,14 +1852,24 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
           </button>
         </div>
         <div className="p-4 overflow-y-auto flex-1">
-          <PedidoFormUnified
-            key={`${pedidoInicial?.id || 'new'}-${modalKey}`}
-            contexto={showVentaRapida ? 'PUNTO' : 'DOMICILIO'}
-            clientes={clientes}
-            onSubmit={handlePedidoSubmit}
-            onClose={() => { setShowModal(false); setShowVentaRapida(false); setPedidoInicial(undefined) }}
-            pedidoInicial={pedidoInicial}
-          />
+          {hubMode && !pedidoInicial ? (
+            <PedidosWorkspace
+              key={`ws-${modalKey}`}
+              clientes={clientes}
+              intent={showVentaRapida ? 'venta-rapida' : 'pedido'}
+              onSubmit={handlePedidoSubmit}
+              onCancel={() => { setShowModal(false); setShowVentaRapida(false); setPedidoInicial(undefined) }}
+            />
+          ) : (
+            <PedidoFormUnified
+              key={`${pedidoInicial?.id || 'new'}-${modalKey}`}
+              contexto={showVentaRapida ? 'PUNTO' : 'DOMICILIO'}
+              clientes={clientes}
+              onSubmit={handlePedidoSubmit}
+              onClose={() => { setShowModal(false); setShowVentaRapida(false); setPedidoInicial(undefined) }}
+              pedidoInicial={pedidoInicial}
+            />
+          )}
         </div>
       </Modal>
 
