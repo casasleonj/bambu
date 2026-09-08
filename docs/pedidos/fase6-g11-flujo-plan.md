@@ -151,7 +151,7 @@ El mensaje **describe la situación y ofrece alternativas que el usuario elige**
 
 **Criterio:** la proyección replica exactamente los números del use case sin escribir nada. El commit devuelve 409+code estable para los 3 guards y **re-valida el estado fresco** aunque exista un preview previo.
 
-### F6-i — punto de decisión + rama A (formulario de corrección)
+### F6-i — punto de decisión + rama A (formulario de corrección) ✅ IMPLEMENTADO
 **Archivos:**
 - Crear `src/app/(app)/pedidos/pedido-hub/pedido-cambio-cantidad-decision.tsx` — "¿Qué pasó?" → `'correccion' | 'nueva-demanda'`. **Exactamente dos** opciones. Sin default. Sin "no sé". Sin Venta Libre (P9). Ayuda expandible que explica la distinción (P2).
 - Crear `src/app/(app)/pedidos/pedido-hub/correccion-cantidad-form.tsx` — producto + `cantidadNueva` + `motivo` obligatorio → proyecta on change → `<AjusteImpacto>` → `[Confirmar corrección]`. Si `bloqueadoPor` != null: muestra el mensaje del guard + las alternativas **como botones que el usuario elige** (P5) — nunca navega/convierte solo.
@@ -161,6 +161,8 @@ El mensaje **describe la situación y ofrece alternativas que el usuario elige**
 - Tests: `pedido-cambio-cantidad-decision.test.tsx` (dos opciones, sin "no sé", explica la distinción, sin Venta Libre), `correccion-cantidad-form.test.tsx` (motivo obligatorio; guard `SOBRE_CANTIDAD_YA_ENTREGADA` → muestra mensaje + botón "Nueva demanda" que **no** se dispara solo), `ajuste-impacto.test.tsx` (todos los campos), `use-ajuste-cantidad.test.ts` (stale-guard, 409+code).
 
 **Criterio:** imposible confirmar una corrección sin motivo. Un guard rechazado muestra su mensaje + alternativas que el usuario elige (P5) — **nunca** convierte la intención. El impacto mostrado == el de la proyección (no recalculado en cliente).
+
+**Implementado:** `use-ajuste-cantidad.ts` (proyectar plano + stale-guard, confirmar via `fetchResilient`, `guardFromMessage` extrae el `code` del 409 sin reinterpretar la intención), `ajuste-impacto.tsx`, `pedido-cambio-cantidad-decision.tsx` (2 opciones, sin "no sé", sin Venta Libre, ayuda expandible), `correccion-cantidad-form.tsx` (motivo obligatorio; guard proyectado **o** del commit → mensaje + alternativas como botones que el usuario elige; `commitGuard` atado a la firma de inputs, sin set-state-in-effect), `pedido-cambio-cantidad.tsx` (contenedor: decisión → rama A inline / rama B `onNuevaDemanda`). Wireado en `peek-relaciones.tsx` (`puedeAjustar` = `canSeePrecioOrigen` de `peek-panel.tsx`, sólo ADMIN/ASISTENTE). 33 unit (decision 6 · impacto 5 · hook 6 · form 5 · contenedor 5 + regresión peek). tsc + eslint limpios.
 
 ### F6-ii — rama B (nueva demanda reusa el workspace)
 **Archivos:**

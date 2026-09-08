@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { PedidoExceptionPanel } from './pedido-exception-panel'
+import { PedidoCambioCantidad } from './pedido-cambio-cantidad'
 import type { PeekLayer2 } from './peek-cache'
 import type { Pedido } from './types'
 
@@ -19,12 +20,15 @@ export function PeekRelaciones({
   onOpenVinculado,
   onAccionN2,
   onMutadoN2,
+  puedeAjustar,
 }: {
   pedido: Pedido
   data: PeekLayer2
   onOpenVinculado: (id: string) => void
   onAccionN2?: (key: 'completar-pendiente' | 'nueva-demanda' | 'venta-libre') => void
   onMutadoN2?: () => void
+  /** G11 (Fase 6-i): sólo ADMIN/ASISTENTE pueden abrir "Cambiar cantidades". */
+  puedeAjustar?: boolean
 }) {
   const saldoOperacion = Number(pedido.saldo) || 0
 
@@ -81,6 +85,14 @@ export function PeekRelaciones({
         onNuevaDemanda={onAccionN2 ? () => onAccionN2('nueva-demanda') : undefined}
         onVentaLibre={onAccionN2 ? () => onAccionN2('venta-libre') : undefined}
       />
+
+      {puedeAjustar && onMutadoN2 && onAccionN2 && (
+        <PedidoCambioCantidad
+          pedido={pedido}
+          onMutado={onMutadoN2}
+          onNuevaDemanda={() => onAccionN2('nueva-demanda')}
+        />
+      )}
 
       {data.casosAbiertos.length > 0 && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2" data-testid="peek-rel-casos">
