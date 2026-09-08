@@ -1338,8 +1338,12 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
         setShowModal(true)
         break
       case 'venta-libre':
-        // frontera N2 ↔ Venta Libre (P4): operación en contexto de Embarque.
-        router.push('/embarques')
+        // Frontera N2 ↔ Venta Libre (P4 / contrato de cierre VENTA_LIBRE §4):
+        // el Pedido Hub **NO crea** una Venta Libre. Esta opción SOLO NAVEGA
+        // al contexto de Embarques (donde se registra: repartidor en ruta, o
+        // Admin/Asistente durante la conciliación de ESE embarque). Cero
+        // creación desde Pedidos, cero segunda implementación.
+        router.push(pedido.embarqueId ? `/embarques/${pedido.embarqueId}` : '/embarques')
         break
       default:
         // registrar-entrega / registrar-pago / resolver-excepcion /

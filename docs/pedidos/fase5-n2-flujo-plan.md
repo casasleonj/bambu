@@ -91,11 +91,15 @@ La interfaz **no** asume que esa solicitud es "completar el pendiente". Ofrece *
 |---|---|---|
 | **Completar el pendiente** | cumplir la obligación existente de 5 | `gestionar-pendiente` (o cumplimiento de la actividad) |
 | **Nueva demanda** | el cliente pide MÁS (independiente del pendiente) | `Pedido` nuevo con `pedidoOrigenId` (G11.B) — reusa el workspace |
-| **Venta durante la ruta** | operación surgida en contexto de Embarque | flujo de Venta Libre (Embarques — §doc VENTA_LIBRE_EXPERIENCIA_HUB) |
+| **Venta durante la ruta** | venta emergente sin pedido previo, en contexto de Embarque | **SOLO NAVEGA** a Embarques (`/embarques/{embarqueId}` o `/embarques`). El Pedido Hub **NO crea** la Venta Libre. |
 
-**Recordatorios que la UX debe respetar:** corrección ≠ nueva demanda · nueva demanda = nuevo Pedido · Venta Libre = operación en contexto de Embarque · Venta Libre **no** modifica silenciosamente el Pedido ni completa artificialmente un pendiente. La distinción es **una declaración explícita del usuario**, nunca una inferencia del sistema.
+**Contrato de cierre VENTA_LIBRE (§4/§15) — vinculante:** el **Pedido Hub NO crea Venta Libre**. La opción "Venta durante la ruta →" es **navegación**, no un flujo de creación. La Venta Libre se registra **solo** desde Embarques: el repartidor asignado mientras el embarque está en ruta, o Admin/Asistente durante la **conciliación de ese embarque** (venta reportada por el repartidor). No hay creación genérica desde Administración ni desde Pedidos. **Cero segunda implementación de Venta Libre en Pedidos.**
 
-En F5, el `PedidoExceptionPanel` que gestiona el pendiente incluye, junto a "Completar el pendiente", accesos claros a "Nueva demanda" y "Venta durante la ruta" (los dos últimos navegan a su flujo, no ejecutan — igual que el command menu de Fase 4b).
+**Recordatorios que la UX debe respetar:** corrección ≠ nueva demanda · nueva demanda = nuevo Pedido · Venta Libre = venta emergente sin pedido previo, se registra en Embarques · Venta Libre **no** modifica silenciosamente el Pedido ni completa artificialmente un pendiente · una diferencia de conciliación **no** constituye por sí misma una Venta Libre. La distinción es **una declaración explícita del usuario**, nunca una inferencia del sistema.
+
+En F5, el `PedidoExceptionPanel` incluye, junto a "Completar el pendiente", accesos a "Nueva demanda" (abre el workspace, G11.B) y "Venta durante la ruta → (se registra en Embarques)" (navega a Embarques, **no ejecuta ninguna creación**). Verificado por `hub-accion-frontera.test.ts` (source-check: el `case 'venta-libre'` solo hace `router.push` y ningún componente del hub llama a `/api/pedidos/venta-libre`).
+
+Contrato completo: `docs/pedidos/VENTA_LIBRE_EXPERIENCIA_HUB_v1.0.md` + `VENTA_LIBRE_AUDITORIA_CONTRATO_CODIGO_v1.0.md` (PR #230).
 
 ### P5 — `modoInicial` es una **PROPUESTA**, no una decisión
 
@@ -146,7 +150,8 @@ Se distingue:
 | N2-13 | Pedido que **ya no admite** la operación | El panel **no ofrece** "Completar el pendiente" (o lo deshabilita con el motivo) según `estadoEntrega` | F5-i |
 | N2-14 | Pedido **cerrado/cancelado/anulado** con obligación abierta | Inconsistencia (P1): el panel lo marca "revisar", no ofrece gestión | F5-i |
 | N2-15 | Relación con nueva demanda | "Nueva demanda" navega al workspace con `pedidoOrigenId` — declaración explícita, no inferencia | F5-ii |
-| N2-16 | Relación con Venta Libre | "Venta durante la ruta" navega a su flujo — no modifica el pedido | F5-ii |
+| N2-16 | Relación con Venta Libre | "Venta durante la ruta →" **solo navega** a Embarques (`/embarques/{id}` o `/embarques`). El Pedido Hub **NO crea** la Venta Libre — sin segunda implementación. Verificado por source-check (`hub-accion-frontera.test.ts`). | F5-i |
+| N2-17b | Diferencia de conciliación ≠ Venta Libre | (frontera con Embarques) una diferencia de inventario/caja del cierre **no** genera una Venta Libre; sigue el flujo de reconciliación/investigación. El Hub no interviene. | — (contrato, no código de F5) |
 | N2-17 | Reutilización de datos conocidos | producto/cantidad/modo se pre-rellenan del remanente y del pedido (propuesta), no se re-piden | F5-ii |
 | N2-18 | Error de backend (5xx) | Mensaje neutro + "reintentá"; el panel no queda en estado inconsistente | F5-ii/iii |
 | N2-19 | Estado stale / realtime | `pedido.updated` del mismo id → el peek invalida y recarga; una acción sobre datos stale → `409` → §N2-11 | F5-i (P6) |

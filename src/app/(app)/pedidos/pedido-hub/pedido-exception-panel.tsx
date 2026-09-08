@@ -177,12 +177,12 @@ export function PedidoExceptionPanel({
             )}
             {onVentaLibre && (
               <button type="button" onClick={onVentaLibre} data-testid="n2-cta-venta-libre" className="text-blue-600 hover:underline">
-                Venta durante la ruta →
+                Venta durante la ruta → (se registra en Embarques)
               </button>
             )}
           </div>
           <p className="text-[10px] text-gray-400">
-            Completar = cumplir esta obligación · Nueva demanda = pedido nuevo · Venta durante la ruta = operación en contexto de Embarque.
+            Completar = cumplir esta obligación · Nueva demanda = pedido nuevo · Venta durante la ruta = venta emergente sin pedido previo; <b>se registra desde Embarques</b> (repartidor en ruta o Admin/Asistente en la conciliación de ese embarque), no desde acá.
           </p>
         </div>
       )}
