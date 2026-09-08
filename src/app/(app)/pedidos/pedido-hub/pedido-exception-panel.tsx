@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { clasificarN2 } from './n2-naturaleza'
 import { CompletarPendienteForm } from './completar-pendiente-form'
+import { ActividadAcciones } from './actividad-acciones'
 import type { PeekLayer2 } from './peek-cache'
 import type { Pedido } from '../pedidos-client/types'
 
@@ -32,8 +33,6 @@ export interface PedidoExceptionPanelProps {
   onNuevaDemanda?: () => void
   /** navega al flujo de Venta Libre (contexto de Embarque). */
   onVentaLibre?: () => void
-  /** acciones sobre una actividad (F5-iii). */
-  onActividadAccion?: (actividadId: string, accion: 'cambiar-modo' | 'liberar') => void
 }
 
 /**
@@ -55,9 +54,9 @@ export function PedidoExceptionPanel({
   onMutado,
   onNuevaDemanda,
   onVentaLibre,
-  onActividadAccion,
 }: PedidoExceptionPanelProps) {
   const [gestionando, setGestionando] = useState<{ producto: string; remanente: number } | null>(null)
+  const [actividadEnAccion, setActividadEnAccion] = useState<{ id: string; modo: 'PUNTO' | 'DOMICILIO' | null; accion: 'cambiar-modo' | 'liberar' } | null>(null)
   const pendiente = layer2.pendienteN2
   const remanentes = remanentePorProducto(pedido)
   const pedidoCerrado = ESTADOS_CERRADOS.includes(pedido.estadoEntrega)
@@ -97,19 +96,35 @@ export function PedidoExceptionPanel({
 
         {pendiente.actividades.length > 0 && (
           <div className="mt-1.5 space-y-1" data-testid="n2-actividades">
-            {pendiente.actividades.map((a) => (
-              <div key={a.id} className="flex items-center justify-between rounded border border-gray-200 bg-white px-2 py-1 text-[11px]" data-testid={`n2-actividad-${a.id}`}>
-                <span className="text-gray-700">
-                  {a.cantidad} {prod(pendiente.producto)} · {a.tipo.toLowerCase()} · {a.modo ? a.modo.toLowerCase() : 'sin modo'} · {a.estado.toLowerCase()}
-                </span>
-                {onActividadAccion && (a.estado === 'ASIGNADA' || a.estado === 'EN_PROGRESO') && (
-                  <span className="flex gap-1">
-                    <button type="button" onClick={() => onActividadAccion(a.id, 'cambiar-modo')} data-testid={`n2-actividad-${a.id}-cambiar-modo`} className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-700 hover:bg-gray-200">Cambiar modo</button>
-                    <button type="button" onClick={() => onActividadAccion(a.id, 'liberar')} data-testid={`n2-actividad-${a.id}-liberar`} className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-700 hover:bg-gray-200">Liberar</button>
-                  </span>
-                )}
-              </div>
-            ))}
+            {pendiente.actividades.map((a) => {
+              const modo = a.modo === 'PUNTO' ? 'PUNTO' : a.modo === 'DOMICILIO' ? 'DOMICILIO' : null
+              const enAccion = actividadEnAccion?.id === a.id
+              return (
+                <div key={a.id} data-testid={`n2-actividad-${a.id}`}>
+                  <div className="flex items-center justify-between rounded border border-gray-200 bg-white px-2 py-1 text-[11px]">
+                    <span className="text-gray-700">
+                      {a.cantidad} {prod(pendiente.producto)} · {a.tipo.toLowerCase()} · {modo ? modo.toLowerCase() : 'sin modo'} · {a.estado.toLowerCase()}
+                    </span>
+                    {onMutado && !enAccion && (a.estado === 'ASIGNADA' || a.estado === 'EN_PROGRESO') && (
+                      <span className="flex gap-1">
+                        <button type="button" onClick={() => setActividadEnAccion({ id: a.id, modo, accion: 'cambiar-modo' })} data-testid={`n2-actividad-${a.id}-cambiar-modo`} className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-700 hover:bg-gray-200">Cambiar modo</button>
+                        <button type="button" onClick={() => setActividadEnAccion({ id: a.id, modo, accion: 'liberar' })} data-testid={`n2-actividad-${a.id}-liberar`} className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-700 hover:bg-gray-200">Liberar</button>
+                      </span>
+                    )}
+                  </div>
+                  {enAccion && onMutado && (
+                    <ActividadAcciones
+                      pedidoId={pedido.id}
+                      actividadId={a.id}
+                      modoActual={actividadEnAccion.modo}
+                      accion={actividadEnAccion.accion}
+                      onCancel={() => setActividadEnAccion(null)}
+                      onMutado={() => { setActividadEnAccion(null); onMutado() }}
+                    />
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
       </div>
