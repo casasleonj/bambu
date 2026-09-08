@@ -109,6 +109,31 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     await page.getByTestId('command-planificacion').click()
     await expect(page).toHaveURL(/\/rutas/)
   })
+
+  test('workspace (Composición C1): crear un pedido — el total viene del preview, el commit crea', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const cliente = await createCliente(page, { nombre: 'WS C1 E2E' })
+    await page.goto(`${BASE}/pedidos`)
+
+    // + Nueva operación → workspace
+    await page.getByTestId('fab-main').click()
+    await page.getByTestId('fab-pedido-envio').click()
+    await expect(page.getByTestId('pedidos-workspace')).toBeVisible()
+    // G1: no es un <form>
+    expect(await page.locator('[data-testid="pedidos-workspace"] form').count()).toBe(0)
+
+    await page.getByTestId('workspace-cliente').selectOption(cliente.id)
+    await page.getByTestId('workspace-inc-PACA_AGUA').click()
+    await page.getByTestId('workspace-inc-PACA_AGUA').click()
+
+    // el commit se habilita cuando el preview del backend llega
+    await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 5000 })
+    await expect(page.getByTestId('workspace-commit')).toContainText(/Crear pedido \$/)
+
+    await page.getByTestId('workspace-commit').click()
+    await expect(page.getByTestId('pedidos-workspace')).toHaveCount(0) // modal cerró
+    await expect(page.locator('[data-testid^="operacion-row-"]').filter({ hasText: 'WS C1 E2E' })).toBeVisible()
+  })
 })
 
 test.describe('flag OFF: la UI de tabs sigue funcionando', () => {
