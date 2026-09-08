@@ -47,7 +47,9 @@ export async function POST(request: NextRequest) {
   // devuelve 500 inmediato en lugar de colgar hasta el timeout de Vercel
   // (10s en Hobby, 60s en Pro). Esto evita que el cliente se quede
   // esperando indefinidamente sin respuesta.
-  const TIMEOUT_MS = 25_000
+  // En CI (PostgreSQL en contenedor con cold start) se permite sobreescribir
+  // via env var para dar margen a la transacción Serializable con retries.
+  const TIMEOUT_MS = Number(process.env.CLIENTES_POST_TIMEOUT_MS) || 25_000
   const timeoutPromise = new Promise<never>((_, reject) => {
     setTimeout(() => reject(new Error('DB_TIMEOUT')), TIMEOUT_MS)
   })
