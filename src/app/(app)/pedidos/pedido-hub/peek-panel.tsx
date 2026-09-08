@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { deriveOperacion, origenLabel } from './derive-operacion'
 import { pedidoItemsResumen, getItemsFromPedido } from '../pedido-items'
 import { PeekRelaciones } from './peek-relaciones'
+import { remanentePorProducto } from './pedido-exception-panel'
 import type { PeekLayer2 } from './peek-cache'
 import type { AccionKey, DeriveContext, Pedido } from './types'
 
@@ -43,6 +44,12 @@ export function PeekPanel({
   const d = deriveOperacion(pedido, ctx)
   const items = getItemsFromPedido(pedido)
   const origen = origenLabel(pedido.origen)
+
+  // Capa 1 — resumen de entrega parcial (N2-01), sin abrir nada.
+  const remanentes = remanentePorProducto(pedido)
+  const totalRemanente = remanentes.reduce((s, r) => s + r.remanente, 0)
+  const totalPedido = (pedido.items ?? []).reduce((s, i) => s + i.cantPedido, 0)
+  const totalEntregado = (pedido.items ?? []).reduce((s, i) => s + i.cantEntrega, 0)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -94,6 +101,11 @@ export function PeekPanel({
         <div>
           <div className="text-xs font-semibold uppercase text-gray-400">Qué</div>
           <div className="text-sm text-gray-700">{pedidoItemsResumen(pedido)}</div>
+          {totalRemanente > 0 && (
+            <div className="mt-0.5 text-xs text-gray-500" data-testid="peek-entrega-parcial">
+              Entregado {totalEntregado} de {totalPedido} · {totalRemanente} pendiente{totalRemanente === 1 ? '' : 's'}
+            </div>
+          )}
         </div>
 
         {/* Acción destacada */}
@@ -133,7 +145,12 @@ export function PeekPanel({
                 ))}
               </div>
             )}
-            <PeekRelaciones pedido={pedido} data={layer2} onOpenVinculado={onOpenVinculado} />
+            <PeekRelaciones
+              pedido={pedido}
+              data={layer2}
+              onOpenVinculado={onOpenVinculado}
+              onAccionN2={(key) => onAccion(pedido, key)}
+            />
           </>
         )}
 

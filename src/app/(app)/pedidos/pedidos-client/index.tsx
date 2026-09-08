@@ -1330,6 +1330,17 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       case 'ver-cartera':
         router.push(pedido.clienteId === 'CONSUMIDOR_FINAL' ? '/cartera' : `/cartera?clienteId=${pedido.clienteId}`)
         break
+      case 'nueva-demanda':
+        // frontera N2 ↔ nueva demanda (P4): pedido nuevo relacionado (G11.B).
+        // Declaración explícita del usuario, no inferencia.
+        setPedidoInicial(undefined)
+        setShowVentaRapida(false)
+        setShowModal(true)
+        break
+      case 'venta-libre':
+        // frontera N2 ↔ Venta Libre (P4): operación en contexto de Embarque.
+        router.push('/embarques')
+        break
       default:
         // registrar-entrega / registrar-pago / resolver-excepcion /
         // completar-pendiente → el modal de detalle tiene la acción según estado.

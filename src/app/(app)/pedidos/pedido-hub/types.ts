@@ -16,6 +16,8 @@ export type AccionKey =
   | 'planificar'
   | 'registrar-entrega'
   | 'completar-pendiente'
+  | 'nueva-demanda'
+  | 'venta-libre'
   | 'registrar-pago'
   | 'confirmar-pago'
   | 'resolver-excepcion'

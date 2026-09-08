@@ -45,7 +45,8 @@ describe('PeekPanel', () => {
     expect(screen.getByTestId('peek-rel-factura')).toBeInTheDocument()
     expect(screen.getByTestId('peek-rel-cartera')).toBeInTheDocument()
     expect(screen.getByTestId('peek-rel-vinculado-p9')).toBeInTheDocument()
-    expect(screen.getByTestId('peek-rel-pendiente-n2')).toBeInTheDocument()
+    // Fase 5-i: el stub `peek-rel-pendiente-n2` fue reemplazado por PedidoExceptionPanel.
+    expect(screen.getByTestId('pedido-exception-panel')).toBeInTheDocument()
   })
 
   it('distingue saldo de la operación de la cartera del cliente', () => {
