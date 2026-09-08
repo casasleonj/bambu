@@ -35,6 +35,7 @@ export function initWorkspace(draft?: Partial<DraftPedido>): WorkspaceState {
     preview: null,
     previewPending: false,
     precioBajoConfirmado: {},
+    reviewMotivo: '',
     error: null,
   }
 }
@@ -64,7 +65,8 @@ function afterDraftChange(state: WorkspaceState, draft: DraftPedido): WorkspaceS
   if (!draft.clienteId) phase = 'EMPTY'
   else if (hasItems(draft)) phase = 'DRAFTING'
   else phase = 'CONTEXT_READY'
-  return { ...state, phase, draft, preview: null, error: null }
+  // un cambio en el draft invalida también el motivo de revisión capturado.
+  return { ...state, phase, draft, preview: null, reviewMotivo: '', error: null }
 }
 
 export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction): WorkspaceState {
@@ -145,9 +147,17 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
     }
     case 'PREVIEW_ERROR':
       return { ...state, previewPending: false, error: { kind: action.kind, message: action.message } }
-    case 'ACKNOWLEDGE_REVIEW':
-      if (state.phase !== 'REVIEW_REQUIRED') return state
-      return { ...state, phase: state.preview?.requiresAuthorization ? 'AUTHORIZATION_REQUIRED' : 'PREVIEW_READY' }
+    case 'ACKNOWLEDGE_REVIEW': {
+      // motivo obligatorio (ALS A8 — nada se muta silenciosamente). El motivo
+      // + `auditPreview` del backend son la traza; el paso AUTHORIZATION real
+      // (aprobación de un tercero) es trabajo futuro con su propia acción y
+      // política (PENDIENTE DE NEGOCIO §8.2) — no lo simula el acknowledge.
+      if (state.phase !== 'REVIEW_REQUIRED' || action.motivo.trim().length === 0) return state
+      return { ...state, reviewMotivo: action.motivo.trim(), phase: 'PREVIEW_READY' }
+    }
+    case 'RETURN_TO_DRAFTING':
+      if (state.phase !== 'REVIEW_REQUIRED' && state.phase !== 'AUTHORIZATION_REQUIRED') return state
+      return { ...state, phase: hasItems(state.draft) ? 'DRAFTING' : 'CONTEXT_READY', reviewMotivo: '' }
     case 'COMMIT_START':
       if (state.phase !== 'PREVIEW_READY' && state.phase !== 'AUTHORIZATION_REQUIRED') return state
       return { ...state, phase: 'COMMITTING', error: null }
@@ -166,6 +176,6 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
 
 /** ¿el commit está permitido en el estado actual? (se cruza con allowedActions del preview) */
 export function canCommit(state: WorkspaceState): boolean {
-  if (state.phase !== 'PREVIEW_READY' && state.phase !== 'AUTHORIZATION_REQUIRED') return false
+  if (state.phase !== 'PREVIEW_READY') return false
   return state.preview?.allowedActions.includes('crear') ?? false
 }

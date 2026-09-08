@@ -6,6 +6,8 @@ import { matchCliente } from '@/lib/cliente-search'
 import { PedidoPricingSummary } from '@/components/pedido-form-unified/pedido-pricing-summary'
 import { PedidoRiskSignals } from './pedido-risk-signals'
 import { PedidoProposal } from './pedido-proposal'
+import { PedidoReview } from './pedido-review'
+import { PedidoCommitBar } from './pedido-commit-bar'
 import { PedidoItemEditor, type PedidoItemEditorItem } from '@/components/pedido-form-unified/pedido-item-editor'
 import { PedidoContextPanel, type NuevoClienteForm } from '@/components/pedido-form-unified/pedido-context-panel'
 import { resolveActualizarCliente } from '@/components/pedido-form-unified/resolve-actualizar-cliente'
@@ -82,6 +84,7 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, onSubmit, onC
   const [mostrarNuevo, setMostrarNuevo] = useState(false)
   const [nuevoCliente, setNuevoCliente] = useState<NuevoClienteForm>(EMPTY_NUEVO_CLIENTE)
   const [sugerenciaAplicada, setSugerenciaAplicada] = useState(false)
+  const [reviewMotivo, setReviewMotivo] = useState('')
 
   const onPending = useCallback(() => dispatch({ type: 'PREVIEW_PENDING' }), [])
   const onReceived = useCallback((preview: PreviewPedidoResult) => dispatch({ type: 'PREVIEW_RECEIVED', preview }), [])
@@ -195,6 +198,14 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, onSubmit, onC
 
   const hasDraftItems = state.draft.items.some((i) => i.cantidad > 0)
   const commitEnabled = canCommit(state) && state.phase === 'PREVIEW_READY'
+  const blockedReason =
+    state.preview && !state.preview.allowedActions.includes('crear')
+      ? (state.preview.warnings[0]?.message ?? 'El backend no permite crear este pedido.')
+      : null
+
+  const handleConfirmReview = () => {
+    dispatch({ type: 'ACKNOWLEDGE_REVIEW', motivo: reviewMotivo })
+  }
 
   const handleCommit = () => {
     dispatch({ type: 'COMMIT_START' })
@@ -231,7 +242,11 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, onSubmit, onC
         state.draft.items.filter((i) => i.precioManual).map((i) => [i.producto, i.precioManual as number]),
       ),
       pagos: state.draft.pagos,
-      obs: state.draft.obs,
+      // el motivo de revisión (flujo de acción sensible) se persiste en obs
+      // hasta que el commit acepte un campo dedicado (política PENDIENTE DE NEGOCIO).
+      obs: state.reviewMotivo
+        ? `[Revisión: ${state.reviewMotivo}]${state.draft.obs ? ` ${state.draft.obs}` : ''}`
+        : state.draft.obs,
       entregado: state.draft.entregado,
       clienteNuevo,
       actualizarCliente,
@@ -355,19 +370,27 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, onSubmit, onC
         riskSignals={state.preview?.riskSignals ?? []}
       />
 
-      {/* ── Zona: Commit ── */}
-      <div className="flex items-center justify-between border-t pt-3" data-testid="workspace-commit-bar">
-        {onCancel && <button type="button" onClick={onCancel} className="text-sm text-gray-500">Cancelar</button>}
-        <button
-          type="button"
-          data-testid="workspace-commit"
-          disabled={!commitEnabled}
-          onClick={handleCommit}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-40"
-        >
-          {state.phase === 'COMMITTING' ? 'Creando…' : `Crear pedido${calc ? ` $${calc.total.toLocaleString()}` : ''}`}
-        </button>
-      </div>
+      {/* ── Zona: Revisión (acción sensible, ALS §10) ── */}
+      {state.phase === 'REVIEW_REQUIRED' && state.preview && (
+        <PedidoReview
+          preview={state.preview}
+          motivo={reviewMotivo}
+          onMotivoChange={setReviewMotivo}
+          onConfirm={handleConfirmReview}
+          onVolver={() => { setReviewMotivo(''); dispatch({ type: 'RETURN_TO_DRAFTING' }) }}
+        />
+      )}
+
+      {/* ── Zona: Commit (adaptativo) ── */}
+      <PedidoCommitBar
+        phase={state.phase}
+        total={calc?.total ?? null}
+        previewPending={state.previewPending}
+        canCommit={commitEnabled}
+        blockedReason={blockedReason}
+        onCommit={handleCommit}
+        onCancel={onCancel}
+      />
     </div>
   )
 }
