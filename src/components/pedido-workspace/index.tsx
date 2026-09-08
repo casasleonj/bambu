@@ -5,6 +5,7 @@ import { PRODUCTO_INFO, getProductosForCanal } from '@/lib/prices'
 import { matchCliente } from '@/lib/cliente-search'
 import { PedidoPricingSummary } from '@/components/pedido-form-unified/pedido-pricing-summary'
 import { PedidoRiskSignals } from './pedido-risk-signals'
+import { PedidoProposal } from './pedido-proposal'
 import { PedidoItemEditor, type PedidoItemEditorItem } from '@/components/pedido-form-unified/pedido-item-editor'
 import { PedidoContextPanel, type NuevoClienteForm } from '@/components/pedido-form-unified/pedido-context-panel'
 import { resolveActualizarCliente } from '@/components/pedido-form-unified/resolve-actualizar-cliente'
@@ -12,6 +13,9 @@ import { workspaceReducer, initWorkspace, canCommit, EMPTY_DRAFT } from './works
 import { usePreview } from './use-preview'
 import { useItemPricing } from './use-item-pricing'
 import { useClienteContext } from './use-cliente-context'
+import { usePedidoPropuesta } from './use-pedido-propuesta'
+import type { Propuesta } from './build-propuestas'
+import type { ValueOrigin } from './types'
 import type { DraftPedido, ProductoCodigo, WorkspaceErrorKind } from './types'
 import type { PreviewPedidoResult } from '@/modules/pedidos/application/dto'
 import type { PedidoUnifiedData } from '@/components/pedido-form-unified'
@@ -87,6 +91,7 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, onSubmit, onC
 
   const { tabla, configs, loading: pricingLoading, precioBaseFor } = useItemPricing()
   const { fiadoStatus, patron, patronLoading, loadPatron } = useClienteContext(state.draft.clienteId)
+  const propuesta = usePedidoPropuesta()
 
   const esVentaRapida = state.draft.origen === 'VENTA_RAPIDA'
 
@@ -153,6 +158,7 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, onSubmit, onC
     setSearchTerm('')
     setMostrarNuevo(false)
     setSugerenciaAplicada(false)
+    propuesta.clear()
   }
 
   const handleQuitarCliente = () => {
@@ -160,6 +166,22 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, onSubmit, onC
     setSearchTerm('')
     setMostrarNuevo(false)
     setSugerenciaAplicada(false)
+    propuesta.clear()
+  }
+
+  const handleUsarPropuesta = (p: Propuesta) => {
+    const origins: Record<string, ValueOrigin> = {}
+    for (const l of p.lineas) origins[`item.${l.producto}.cantidad`] = p.origin
+    if (p.canal) origins['canal'] = p.origin
+    dispatch({
+      type: 'APPLY_PROPOSAL',
+      draft: {
+        items: p.lineas.map((l) => ({ producto: l.producto, cantidad: l.cantidad })),
+        canal: p.canal ?? state.draft.canal,
+      },
+      origins,
+    })
+    propuesta.clear()
   }
 
   const handleAplicarSugerencia = () => {
@@ -171,6 +193,7 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, onSubmit, onC
     setSugerenciaAplicada(true)
   }
 
+  const hasDraftItems = state.draft.items.some((i) => i.cantidad > 0)
   const commitEnabled = canCommit(state) && state.phase === 'PREVIEW_READY'
 
   const handleCommit = () => {
@@ -279,7 +302,18 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, onSubmit, onC
       </section>
 
       {/* ── Zona: Operación ── */}
-      <section data-testid="workspace-operacion">
+      <section data-testid="workspace-operacion" className="space-y-2">
+        {/* "Repetir" (blueprint §3) — solo con cliente real y sin items aún */}
+        {!esVentaRapida && clienteSeleccionado && !hasDraftItems && (
+          <PedidoProposal
+            propuestas={propuesta.propuestas}
+            loading={propuesta.loading}
+            cargado={propuesta.cargado}
+            onPedir={() => state.draft.clienteId && propuesta.load(state.draft.clienteId)}
+            onUsar={handleUsarPropuesta}
+            onDescartar={propuesta.clear}
+          />
+        )}
         <PedidoItemEditor
           testIdPrefix="workspace"
           items={editorItems}
