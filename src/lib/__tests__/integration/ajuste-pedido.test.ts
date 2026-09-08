@@ -4,6 +4,8 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { testPrisma, resetAndSeed, disconnect, getAdminUser, uniqueId } from './setup'
 import { AjustarPedidoCantidadUseCase } from '@/modules/pedidos/application/use-cases/AjustarPedidoCantidadUseCase'
+import { ProyectarAjusteCantidadUseCase } from '@/modules/pedidos/application/use-cases/ProyectarAjusteCantidadUseCase'
+import { calcularEstadoPago } from '@/modules/pedidos/domain/services/pagos-calculator.service'
 
 describe('FASE FINAL — ajuste de pedido (§6)', () => {
   let adminId: string
@@ -260,5 +262,114 @@ describe('FASE FINAL — ajuste de pedido (§6)', () => {
         autorizadoPorId: adminId,
       }),
     ).rejects.toThrow('CORRECCION_GENERARIA_SOBREPAGO')
+  })
+})
+
+// Fase 6-0 (docs/pedidos/fase6-g11-flujo-plan.md §2/§3): proyección read-only
+// del ajuste. La proyección replica la aritmética del commit sin mutar; el
+// commit re-valida el estado fresco aunque exista un preview previo.
+describe('Fase 6-0 — ProyectarAjusteCantidadUseCase (proyección read-only)', () => {
+  let adminId: string
+  let clienteId: string
+
+  beforeAll(async () => {
+    await resetAndSeed()
+    adminId = (await getAdminUser()).id
+    const cliente = await testPrisma.cliente.findFirst()
+    if (!cliente) throw new Error('No cliente — ¿corriste seed-test?')
+    clienteId = cliente.id
+  })
+  afterAll(async () => { await disconnect() })
+
+  async function crearPedido(cantPedido: number, precio: number, totalPagado: number) {
+    const total = cantPedido * precio
+    const pedido = await testPrisma.pedido.create({
+      data: {
+        clienteId, canal: 'DOMICILIO', total, totalPagado, saldo: total - totalPagado,
+        estadoPago: calcularEstadoPago(total, totalPagado, 'PENDIENTE'),
+      },
+    })
+    await testPrisma.pedidoItem.create({
+      data: { pedidoId: pedido.id, producto: 'PACA_AGUA', cantPedido, precio, subtotal: total },
+    })
+    return pedido
+  }
+
+  async function snapshot(pedidoId: string) {
+    const [pedido, items, factura] = await Promise.all([
+      testPrisma.pedido.findUnique({ where: { id: pedidoId } }),
+      testPrisma.pedidoItem.findMany({ where: { pedidoId }, orderBy: { producto: 'asc' } }),
+      testPrisma.factura.findUnique({ where: { pedidoId } }),
+    ])
+    return JSON.stringify({ pedido, items, factura })
+  }
+
+  it('proyección == commit real campo a campo (subir cantidad)', async () => {
+    const pedido = await crearPedido(10, 6_500, 6_500)
+    const proy = await new ProyectarAjusteCantidadUseCase().execute({
+      pedidoId: pedido.id, producto: 'PACA_AGUA', cantidadNueva: 12,
+    })
+    expect(proy.bloqueadoPor).toBeNull()
+    expect(proy.puedeCorregir).toBe(true)
+
+    await new AjustarPedidoCantidadUseCase().execute({
+      pedidoId: pedido.id, producto: 'PACA_AGUA', cantidadNueva: 12,
+      motivo: 'proyección vs commit', autorizadoPorId: adminId, offlineId: uniqueId('f60-a'),
+    })
+    const item = await testPrisma.pedidoItem.findFirstOrThrow({ where: { pedidoId: pedido.id } })
+    const ped = await testPrisma.pedido.findUniqueOrThrow({ where: { id: pedido.id } })
+    expect(Number(item.subtotal)).toBe(proy.subtotalDespues)
+    expect(Number(item.precio)).toBe(proy.precioHistorico)
+    expect(Number(ped.total)).toBe(proy.totalDespues)
+    expect(Number(ped.saldo)).toBe(proy.saldoDespues)
+    expect(ped.estadoPago).toBe(proy.estadoPagoDespues)
+  })
+
+  it('read-only: N proyecciones consecutivas no cambian nada', async () => {
+    const pedido = await crearPedido(8, 6_500, 0)
+    const antes = await snapshot(pedido.id)
+    const p = new ProyectarAjusteCantidadUseCase()
+    for (const q of [10, 3, 20, 8]) {
+      await p.execute({ pedidoId: pedido.id, producto: 'PACA_AGUA', cantidadNueva: q })
+    }
+    expect(await snapshot(pedido.id)).toBe(antes)
+  })
+
+  it('proyecta el guard SOBREPAGO sin tocar el pedido', async () => {
+    const pedido = await crearPedido(10, 6_500, 65_000) // pagado completo
+    const antes = await snapshot(pedido.id)
+    const proy = await new ProyectarAjusteCantidadUseCase().execute({
+      pedidoId: pedido.id, producto: 'PACA_AGUA', cantidadNueva: 5,
+    })
+    expect(proy.bloqueadoPor).toBe('CORRECCION_GENERARIA_SOBREPAGO')
+    expect(proy.sobrepagoProyectado).toBe(65_000 - 5 * 6_500)
+    expect(await snapshot(pedido.id)).toBe(antes)
+  })
+
+  it('concurrencia (P8): un preview obsoleto no dirige la mutación — el commit parte del estado fresco', async () => {
+    const pedido = await crearPedido(10, 6_500, 6_500)
+
+    // Preview cuando cantPedido = 10.
+    const proyObsoleta = await new ProyectarAjusteCantidadUseCase().execute({
+      pedidoId: pedido.id, producto: 'PACA_AGUA', cantidadNueva: 8,
+    })
+    expect(proyObsoleta.cantidadOriginal).toBe(10)
+
+    // Otro usuario corrige a 6 mientras tanto.
+    await new AjustarPedidoCantidadUseCase().execute({
+      pedidoId: pedido.id, producto: 'PACA_AGUA', cantidadNueva: 6,
+      motivo: 'otro ajuste', autorizadoPorId: adminId, offlineId: uniqueId('f60-mid'),
+    })
+
+    // El commit original (cantidadNueva 8) se encadena sobre 6, no sobre 10.
+    const r = await new AjustarPedidoCantidadUseCase().execute({
+      pedidoId: pedido.id, producto: 'PACA_AGUA', cantidadNueva: 8,
+      motivo: 'commit tras preview obsoleto', autorizadoPorId: adminId, offlineId: uniqueId('f60-late'),
+    })
+    const ajuste = await testPrisma.pedidoCantidadAjuste.findUniqueOrThrow({ where: { id: r.ajusteId } })
+    expect(ajuste.cantidadOriginal).toBe(6) // estado fresco, no el 10 de la proyección
+    expect(ajuste.delta).toBe(2)
+    const ped = await testPrisma.pedido.findUniqueOrThrow({ where: { id: pedido.id } })
+    expect(Number(ped.total)).toBe(8 * 6_500)
   })
 })
