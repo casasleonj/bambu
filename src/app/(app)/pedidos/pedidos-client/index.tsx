@@ -203,6 +203,11 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     return () => mq.removeEventListener('change', handler)
   }, [])
   const [pedidoInicial, setPedidoInicial] = useState<PedidoInicial | undefined>(undefined)
+  // G11.B (Fase 6-ii) — "nueva demanda": el workspace se monta con cliente +
+  // canal del pedido origen (inmutables) y `pedidoOrigenId` seteado.
+  const [nuevaDemanda, setNuevaDemanda] = useState<
+    { pedidoOrigenId: string; numeroOrigen: number; clienteId: string; canal: 'PUNTO' | 'DOMICILIO' } | null
+  >(null)
   const anularMotivoRef = useRef<string>('')
   const anularDevolverStockRef = useRef<boolean>(false)
   // Foto entrega (admin) — when REQUIERE_FOTO_ENTREGA is on, ENTREGADO flow shows the modal first.
@@ -841,6 +846,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       setShowModal(false)
       setShowVentaRapida(false)
       setPedidoInicial(undefined)
+      setNuevaDemanda(null)
       setPedidoEditando(null)
       setShowDetailModal(false)
       refreshPedidos()
@@ -863,6 +869,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       setShowModal(false)
       setShowVentaRapida(false)
       setPedidoInicial(undefined)
+      setNuevaDemanda(null)
       setPedidoEditando(null)
     },
   })
@@ -951,6 +958,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
         setShowModal(false)
         setShowVentaRapida(false)
         setPedidoInicial(undefined)
+        setNuevaDemanda(null)
         setPedidoEditando(null)
         refreshPedidos()
         fetchClientes()
@@ -1331,10 +1339,17 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
         router.push(pedido.clienteId === 'CONSUMIDOR_FINAL' ? '/cartera' : `/cartera?clienteId=${pedido.clienteId}`)
         break
       case 'nueva-demanda':
-        // frontera N2 ↔ nueva demanda (P4): pedido nuevo relacionado (G11.B).
-        // Declaración explícita del usuario, no inferencia.
+        // G11.B — pedido nuevo e independiente, vinculado por `pedidoOrigenId`
+        // (declaración explícita del usuario, no inferencia). Cliente y canal
+        // vienen del origen y son inmutables; items en blanco.
         setPedidoInicial(undefined)
         setShowVentaRapida(false)
+        setNuevaDemanda({
+          pedidoOrigenId: pedido.id,
+          numeroOrigen: pedido.numero,
+          clienteId: pedido.clienteId,
+          canal: pedido.canal === 'PUNTO' ? 'PUNTO' : 'DOMICILIO',
+        })
         setShowModal(true)
         break
       case 'venta-libre':
@@ -1847,19 +1862,21 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       )}
 
       {/* Modal Formulario Unificado */}
-      <Modal open={showModal || showVentaRapida} onClose={() => { setShowModal(false); setShowVentaRapida(false); setPedidoInicial(undefined) }} className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[95vh] overflow-hidden flex flex-col">
+      <Modal open={showModal || showVentaRapida} onClose={() => { setShowModal(false); setShowVentaRapida(false); setPedidoInicial(undefined); setNuevaDemanda(null) }} className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[95vh] overflow-hidden flex flex-col">
         <div className={`p-4 border-b flex justify-between items-center ${showVentaRapida ? 'bg-green-50' : 'bg-blue-50'}`}>
           <div>
             <h2 className={`text-xl font-bold ${showVentaRapida ? 'text-green-800' : 'text-blue-800'}`}>
-              {showVentaRapida ? '💰 Venta Rápida' : '📦 Nuevo Pedido'}
+              {showVentaRapida ? '💰 Venta Rápida' : nuevaDemanda ? '📦 Nueva demanda' : '📦 Nuevo Pedido'}
             </h2>
-            <InfoBanner type="info" className="mt-2 text-xs">
-              <strong>Venta Rápida</strong> = cliente conocido, paga en el momento.
-              <strong> Venta Libre</strong> = consumidor final sin registro (mostrador).
-            </InfoBanner>
+            {!nuevaDemanda && (
+              <InfoBanner type="info" className="mt-2 text-xs">
+                <strong>Venta Rápida</strong> = cliente conocido, paga en el momento.
+                <strong> Venta Libre</strong> = consumidor final sin registro (mostrador).
+              </InfoBanner>
+            )}
           </div>
           <button
-            onClick={() => { setShowModal(false); setShowVentaRapida(false); setPedidoInicial(undefined) }}
+            onClick={() => { setShowModal(false); setShowVentaRapida(false); setPedidoInicial(undefined); setNuevaDemanda(null) }}
             className="text-gray-500 hover:text-gray-700 p-1 rounded-lg hover:bg-gray-100 transition"
             aria-label="Cerrar"
           >
@@ -1867,13 +1884,27 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
           </button>
         </div>
         <div className="p-4 overflow-y-auto flex-1">
-          {hubMode && !pedidoInicial ? (
+          {hubMode && nuevaDemanda ? (
+            <PedidosWorkspace
+              key={`ws-nd-${nuevaDemanda.pedidoOrigenId}-${modalKey}`}
+              clientes={clientes}
+              modo="nueva-demanda"
+              pedidoOrigenNumero={nuevaDemanda.numeroOrigen}
+              initialDraft={{
+                clienteId: nuevaDemanda.clienteId,
+                canal: nuevaDemanda.canal,
+                pedidoOrigenId: nuevaDemanda.pedidoOrigenId,
+              }}
+              onSubmit={handlePedidoSubmit}
+              onCancel={() => { setShowModal(false); setShowVentaRapida(false); setPedidoInicial(undefined); setNuevaDemanda(null) }}
+            />
+          ) : hubMode && !pedidoInicial ? (
             <PedidosWorkspace
               key={`ws-${modalKey}`}
               clientes={clientes}
               intent={showVentaRapida ? 'venta-rapida' : 'pedido'}
               onSubmit={handlePedidoSubmit}
-              onCancel={() => { setShowModal(false); setShowVentaRapida(false); setPedidoInicial(undefined) }}
+              onCancel={() => { setShowModal(false); setShowVentaRapida(false); setPedidoInicial(undefined); setNuevaDemanda(null) }}
             />
           ) : (
             <PedidoFormUnified
@@ -1881,7 +1912,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
               contexto={showVentaRapida ? 'PUNTO' : 'DOMICILIO'}
               clientes={clientes}
               onSubmit={handlePedidoSubmit}
-              onClose={() => { setShowModal(false); setShowVentaRapida(false); setPedidoInicial(undefined) }}
+              onClose={() => { setShowModal(false); setShowVentaRapida(false); setPedidoInicial(undefined); setNuevaDemanda(null) }}
               pedidoInicial={pedidoInicial}
             />
           )}

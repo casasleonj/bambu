@@ -81,6 +81,14 @@ export interface PedidosWorkspaceProps {
   initialDraft?: Partial<DraftPedido>
   /** modo edición: pedido existente a editar (cliente/negocio/canal inmutables). */
   pedidoInicial?: WorkspacePedidoInicial
+  /**
+   * `nueva-demanda` (G11.B): el cliente y el canal vienen del pedido origen
+   * y son **inmutables**; los items nacen en blanco. `initialDraft` debe
+   * traer `clienteId`, `canal` y `pedidoOrigenId`.
+   */
+  modo?: 'crear' | 'nueva-demanda'
+  /** número del pedido origen — sólo para el encabezado en modo nueva-demanda. */
+  pedidoOrigenNumero?: number
   /** mismo contrato que `PedidoFormUnified.onSubmit` — reusa `handlePedidoSubmit` de pedidos-client. */
   onSubmit: (data: PedidoUnifiedData) => void
   onCancel?: () => void
@@ -99,8 +107,9 @@ export interface PedidosWorkspaceProps {
  * "aplicada" del patrón) vive como `useState` local — igual que en el
  * monolito, no es parte del "draft" que se envía.
  */
-export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial, onSubmit, onCancel }: PedidosWorkspaceProps) {
+export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial, modo = 'crear', pedidoOrigenNumero, onSubmit, onCancel }: PedidosWorkspaceProps) {
   const modoEdicion = Boolean(pedidoInicial)
+  const esNuevaDemanda = modo === 'nueva-demanda'
 
   const [state, dispatch] = useReducer(
     workspaceReducer,
@@ -290,8 +299,10 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
       clienteId: clienteSeleccionado ? clienteSeleccionado.id : (clienteNuevo ? undefined : 'CONSUMIDOR_FINAL'),
       negocioId: state.draft.negocioId ?? undefined,
       canal: state.draft.canal,
-      // edición: origen persistido (inmutable); creación: derivado de si hay cliente real.
-      origen: modoEdicion ? state.draft.origen : (tieneClienteReal ? 'PEDIDO' : 'VENTA_RAPIDA'),
+      // edición: origen persistido (inmutable). nueva-demanda: siempre PEDIDO.
+      // creación normal: derivado de si hay cliente real.
+      origen: modoEdicion ? state.draft.origen : ((esNuevaDemanda || tieneClienteReal) ? 'PEDIDO' : 'VENTA_RAPIDA'),
+      pedidoOrigenId: state.draft.pedidoOrigenId,
       items: state.draft.items
         .filter((i) => i.cantidad > 0)
         .map((i) => ({ producto: i.producto, cantidad: i.cantidad, precioManual: i.precioManual })),
@@ -318,7 +329,17 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
     <div className="space-y-4" data-testid="pedidos-workspace">
       {/* ── Zona: Contexto ── */}
       <section data-testid="workspace-contexto" className="space-y-2">
-        {esVentaRapida ? (
+        {esNuevaDemanda ? (
+          <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm" data-testid="workspace-nueva-demanda">
+            <div className="font-medium text-blue-900">
+              Nueva demanda{clienteSeleccionado ? ` de ${clienteSeleccionado.nombre}` : ''}
+            </div>
+            <div className="text-[11px] text-blue-700">
+              {pedidoOrigenNumero != null && <>Pedido origen #{pedidoOrigenNumero} · </>}
+              Cliente y canal ({state.draft.canal === 'DOMICILIO' ? 'Domicilio' : 'Punto'}) vienen del pedido original y no se cambian acá. Es un pedido nuevo e independiente.
+            </div>
+          </div>
+        ) : esVentaRapida ? (
           <div className="rounded-lg bg-gray-50 border px-3 py-2 text-sm text-gray-600" data-testid="workspace-venta-rapida">
             Venta rápida — Consumidor Final
           </div>
@@ -362,12 +383,13 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
             onNuevoClienteChange={setNuevoCliente}
           />
         )}
-        {/* canal: inmutable en edición (el PUT no lo cambia) */}
+        {/* canal: inmutable en edición (el PUT no lo cambia); en nueva-demanda
+            viene del pedido origen y ya se muestra en el banner. */}
         {modoEdicion ? (
           <p className="text-xs text-gray-400" data-testid="workspace-canal-fijo">
             {state.draft.canal === 'DOMICILIO' ? '🚚 Domicilio' : '🏪 Punto'} · no se puede cambiar al editar
           </p>
-        ) : (
+        ) : esNuevaDemanda ? null : (
           <div className="flex gap-2">
             {(['DOMICILIO', 'PUNTO'] as const).map((ch) => (
               <button

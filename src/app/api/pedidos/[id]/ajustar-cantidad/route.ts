@@ -50,7 +50,21 @@ export async function POST(
     return apiSuccess(result, result.deduped ? 200 : 201)
   } catch (error) {
     if (error instanceof Error) {
-      if (error.message === 'AJUSTE_EXIGE_AUTORIZACION') return apiError('El ajuste exige autorización', 403)
+      const msg = error.message
+      if (msg === 'AJUSTE_EXIGE_AUTORIZACION') return apiError('El ajuste exige autorización', 403)
+      if (msg === 'PEDIDO_NOT_FOUND') return apiError('Pedido no encontrado', 404)
+      if (msg.startsWith('PEDIDO_ITEM_NOT_FOUND')) return apiError(msg, 404)
+      // Guards de G11 (AjustarPedidoCantidadUseCase) — mensaje estable para la
+      // UI (Fase 6): 409 + code machine-readable. El mensaje del use case lleva
+      // detalle tras ':' — el code es el prefijo antes de ':'.
+      const guardCode = msg.split(':')[0]
+      if (
+        guardCode === 'CORRECCION_SOBRE_CANTIDAD_YA_ENTREGADA' ||
+        guardCode === 'CORRECCION_PEDIDO_CERRADO' ||
+        guardCode === 'CORRECCION_GENERARIA_SOBREPAGO'
+      ) {
+        return apiError(msg, 409, { code: guardCode })
+      }
     }
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error ajustando cantidad de pedido')
     return apiError('Error ajustando cantidad de pedido', 500)

@@ -153,6 +153,7 @@ export function PeekPanel({
               onOpenVinculado={onOpenVinculado}
               onAccionN2={(key) => onAccion(pedido, key)}
               onMutadoN2={onMutadoN2}
+              puedeAjustar={canSeePrecioOrigen}
             />
           </>
         )}

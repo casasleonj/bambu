@@ -25,13 +25,25 @@ describe('frontera N2 ↔ Venta Libre — Pedidos NO crea Venta Libre', () => {
     expect(caso).not.toMatch(/setShowModal\(true\)|crearPedido|\/api\/pedidos\/venta-libre|fetch\(/)
   })
 
-  it('handleHubAccion: "nueva-demanda" abre el workspace de creación (G11.B), distinto de venta-libre', () => {
+  it('handleHubAccion: "nueva-demanda" arma el workspace con pedidoOrigenId del pedido origen (G11.B), no en blanco', () => {
     const caso = clientSource.slice(
       clientSource.indexOf("case 'nueva-demanda':"),
       clientSource.indexOf('break', clientSource.indexOf("case 'nueva-demanda':")),
     )
+    expect(caso).toMatch(/setNuevaDemanda\(\{/)
+    expect(caso).toMatch(/pedidoOrigenId:\s*pedido\.id/)
+    expect(caso).toMatch(/clienteId:\s*pedido\.clienteId/)
     expect(caso).toMatch(/setShowModal\(true\)/)
     expect(caso).not.toMatch(/venta-libre|VENTA_LIBRE/)
+  })
+
+  it('el workspace de nueva demanda recibe pedidoOrigenId en initialDraft y modo="nueva-demanda"', () => {
+    const nd = clientSource.slice(
+      clientSource.indexOf('hubMode && nuevaDemanda ?'),
+      clientSource.indexOf('hubMode && !pedidoInicial ?'),
+    )
+    expect(nd).toMatch(/modo="nueva-demanda"/)
+    expect(nd).toMatch(/pedidoOrigenId:\s*nuevaDemanda\.pedidoOrigenId/)
   })
 
   it('ningún componente del pedido-hub llama al endpoint de creación de Venta Libre', () => {
