@@ -6,6 +6,47 @@
 
 **Autoridad.** Este documento es la autoridad de **mentalidad + casos + criterios de éxito de VENTA_LIBRE en Pedidos**. El blueprint sigue siendo la autoridad del Hub en general; `00-plan-frontend-rediseno-integral.md` la de fases/PRs; los ADRs la de dominio.
 
+**Instrucción de cierre del equipo (2026-09-08) — incorporada.** La §0 (definición canónica), la §0bis (matriz de autorización), la §3 refinada y la §3bis ("Pedidos NO crea Venta Libre") recogen la instrucción de cierre. Verificación de código asociada: la opción de Fase 5 "Venta durante la ruta →" **solo navega** al contexto de Embarques y **no** ejecuta creación desde Pedidos (`src/app/(app)/pedidos/pedidos-client/__tests__/hub-accion-frontera.test.ts`, rama `feat/pedidos-fase5-n2`).
+
+---
+
+## 0. Definición canónica de referencia (vinculante — no reabrir)
+
+> **VENTA_LIBRE** representa una **venta que no estaba respaldada previamente por un Pedido y que ocurre dentro del contexto de un Embarque.**
+
+**Se registra ÚNICAMENTE por dos vías, ambas ancladas a un Embarque concreto:**
+
+- **(A) En ruta — repartidor asignado.** El repartidor que ejecuta ese Embarque registra una venta emergente mientras el Embarque está activo/en ruta. **El backend valida esta autorización** (repartidor asignado a ese Embarque); no basta con ocultar el botón en el frontend.
+- **(B) En conciliación — Admin/Asistente autorizado.** Durante la conciliación de **ese Embarque específico**, Administración/Asistencia registra una venta que el repartidor reportó. **No** es un "Crear Venta Libre" genérico: está acotada a la conciliación de ese Embarque y a su repartidor responsable.
+
+**NO existe** un mecanismo genérico de "Crear Venta Libre" desde Administración fuera de la conciliación de un Embarque. **El Pedido Hub NO crea VENTA_LIBRE** — solo puede mostrarla, consultarla y contextualizarla (`mostrar ≠ crear`).
+
+**Trazabilidad mínima e inequívoca — siempre distinguibles:**
+
+| Dimensión | Qué es |
+|---|---|
+| **Comprador** | para quién fue la venta (cliente existente / cliente nuevo / consumidor final) |
+| **Repartidor responsable** | quién ejecutaba el Embarque |
+| **Usuario registrador** | quién capturó la operación en el sistema |
+| **Momento de ocurrencia** | cuándo se produjo la venta |
+| **Momento de registro** | cuándo se capturó en el sistema |
+| **Contexto de captura** | ruta vs conciliación |
+
+**Una diferencia de conciliación (faltante) NO es, por sí sola, una Venta Libre.** La venta libre solo se registra ante una **operación comercial real**.
+
+---
+
+## 0bis. Matriz de autorización (vinculante)
+
+| Acción | Contexto requerido | Quién puede | Backend lo valida |
+|---|---|---|---|
+| **Registrar Venta Libre** | Embarque activo / en ruta | **Repartidor asignado a ese Embarque** | Sí — `EMBARQUE_NO_PERTENECE` para REPARTIDOR |
+| **Registrar Venta Libre reportada** | Conciliación de **ese** Embarque | **Admin / Asistente autorizado** (sobre ese Embarque y su repartidor) | ⚠️ **parcial — ver BRECHA-8 en la auditoría** |
+| **Crear desde el Pedido Hub** | cualquier contexto | **NO PERMITIDO** | Sí — Pedidos no expone endpoint de creación de VL; verificado por `hub-accion-frontera.test.ts` |
+| **Crear genérica desde Administración** | fuera de conciliación | **NO PERMITIDO** | ⚠️ **BRECHA-8** — `POST /api/pedidos/venta-libre` hoy acepta ADMIN/ASISTENTE contra cualquier Embarque `ABIERTO` sin gate de conciliación |
+
+> La fila 2 y la fila 4 comparten la **BRECHA-8** (auditoría §2.18): el path A del endpoint permite a ADMIN/ASISTENTE crear una VL sobre cualquier Embarque abierto sin ser el repartidor asignado y sin contexto de conciliación. La regla canónica exige que ADMIN/ASISTENTE solo registren VL **dentro de la conciliación de un Embarque**. Corrección = requisito, no rediseño.
+
 ---
 
 ## 1. Mentalidad fundamental del Hub (precisión)
@@ -45,13 +86,37 @@ El repartidor ejecuta un Embarque y registra una venta no respaldada por un Pedi
 
 ### B. Durante la conciliación (Administración / Asistencia)
 ```
-Embarque → Conciliación → Admin/Asistente → registra Venta Libre perteneciente al Embarque/repartidor
+Embarque → Conciliación de ESE embarque → Admin/Asistente autorizado → registra Venta Libre reportada por el repartidor
 ```
-El Embarque terminó; el repartidor entregó reporte, dinero, mercancía. Durante la conciliación se registra una venta libre que pertenece a esa ruta.
+El Embarque terminó; el repartidor entregó reporte, dinero, mercancía. Durante la conciliación **de ese Embarque** se registra una venta libre que pertenece a esa ruta y a ese repartidor.
+
+**No es un "Crear Venta Libre" genérico.** Está acotada a:
+- la **conciliación de un Embarque concreto** (no un formulario de alta suelto en Administración);
+- el **repartidor responsable** de ese Embarque (la venta se atribuye a su ruta, no al registrador);
+- una venta que el repartidor **reportó** (la conciliación registra lo reportado, no inventa operaciones).
 
 > **Corrección de una trampa que estábamos a punto de introducir:** "VENTA_LIBRE nace en Embarques" es correcto como **pertenencia operacional**. "Solo puede capturarla el repartidor en ruta" **no** lo es. La conciliación es un segundo punto de captura legítimo. El diseño **no** debe asumir "Venta Libre = venta creada por repartidor".
 >
-> Estado en `main`: ambos caminos existen (auditoría §1 — A = `POST /api/pedidos/venta-libre`, B = `CrearVentasLibresService` desde el cierre). El diseño de experiencia debe representar los dos **sin confundirlos**.
+> Pero el converso también es una trampa: **la conciliación no habilita un alta libre**. Admin/Asistente registra VL **solo dentro de la conciliación de un Embarque**, nunca como una acción genérica "en cualquier momento". El backend debe hacer cumplir esto (hoy no del todo — auditoría BRECHA-8).
+>
+> Estado en `main`: ambos caminos existen (auditoría §1 — A = `POST /api/pedidos/venta-libre`, B = `CrearVentasLibresService` desde el cierre). El path A, sin embargo, acepta ADMIN/ASISTENTE contra cualquier Embarque `ABIERTO` sin gate de conciliación (BRECHA-8). El diseño de experiencia debe representar los dos caminos **sin confundirlos** y el backend debe cerrar la brecha de autorización.
+
+---
+
+## 3bis. Pedidos **NO crea** Venta Libre
+
+**`mostrar ≠ crear`.** El Pedido Hub:
+
+- **puede** mostrar una VL en la lista, abrir su Peek, explicar su contexto, cruzarla con un Pedido relacionado;
+- **no puede** — y no debe tener acción que lo haga — crear una VL, ni en el path del repartidor ni en el del admin.
+
+**La opción de Fase 5 "Venta durante la ruta →"** (que aparece en el panel de frontera N2 cuando hay remanente sin obligación) **es navegación, no un flujo de creación.** Lleva al contexto de Embarques (`/embarques/[id]` si el pedido tiene embarque, `/embarques` si no) y **no ejecuta** ninguna creación de VENTA_LIBRE desde Pedidos.
+
+- No existe un `POST /api/pedidos/venta-libre` invocado desde ningún componente del Pedido Hub.
+- No hay una segunda implementación de Venta Libre dentro de Pedidos.
+- Verificación: `src/app/(app)/pedidos/pedidos-client/__tests__/hub-accion-frontera.test.ts` (source-check: `case 'venta-libre'` solo hace `router.push(...)` a `/embarques`, nunca `setShowModal`/`fetch`/`/api/pedidos/venta-libre`).
+
+Si la revisión de UX decide que "Venta durante la ruta →" confunde (parece ofrecer creación), la mitigación es de **copy/ubicación** (moverla, renombrarla "Ver en Embarques →", o quitarla), **nunca** convertirla en un flujo de alta.
 
 ---
 
@@ -237,6 +302,33 @@ La interfaz **no** obliga a convertir una venta emergente en un cliente formal c
 | **VL-14** | Subdeclaración (se declara menos de lo entregado) | El sistema contempla el riesgo de declarar menos mercancía vendida que la realmente entregada | ⚠️ solo el descuadre de stock del cierre lo revela, agregado | Correlación mercancía declarada en ventas libres vs mercancía faltante en el cierre |
 | **VL-15** | Captura offline | Respeta idempotencia · sincronización · concurrencia · auditoría · confirmación de pago; **no** asume que `navigator.onLine` demuestra conectividad real | ✅ `fetchResilient` + `requestQueue` + `offlineId @unique` + `clasificacionTemporal`; ❌ sin validación de stock offline (BRECHA-2) | Validación de stock en el replay (cuando exista la política) |
 
+### 12bis. Casos de autorización y frontera (instrucción de cierre)
+
+`criterio de éxito` = qué debe garantizar el sistema (experiencia **y** backend). Estos casos complementan la matriz de experiencia de §12 y son la referencia para las pruebas E2E de autorización.
+
+| ID | Caso | Criterio de éxito | `main` |
+|---|---|---|---|
+| **VL-A01** | Repartidor asignado registra VL en ruta | Se permite; queda anclada al Embarque y al repartidor; visible luego en Pedidos con su contexto | ✅ (path A) |
+| **VL-A02** | Usuario **no** asignado a ese Embarque intenta registrar VL en ruta | Backend rechaza (no solo el frontend). Para REPARTIDOR: `EMBARQUE_NO_PERTENECE` | ✅ para REPARTIDOR / ❌ para ADMIN-ASISTENTE (**BRECHA-8**) |
+| **VL-A03** | Admin/Asistente registra VL **reportada** dentro de la conciliación de ese Embarque | Se permite; se conserva repartidor responsable ≠ registrador; se marca "registrada en conciliación" | ✅ (path B, `CrearVentasLibresService`) |
+| **VL-A04** | Admin/Asistente intenta registrar VL **fuera** de una conciliación (alta genérica) | **NO PERMITIDO** — no debe existir el mecanismo | ❌ path A lo permite contra cualquier Embarque `ABIERTO` (**BRECHA-8**) |
+| **VL-A05** | Cualquier usuario intenta crear VL **desde el Pedido Hub** | **NO PERMITIDO** — Pedidos no ofrece creación; "Venta durante la ruta →" solo navega | ✅ verificado (`hub-accion-frontera.test.ts`) |
+| **VL-A06** | Una VL ya registrada aparece en la lista de Pedidos | Se muestra como "venta durante la ruta" con su contexto; **no** como una fila de pedido más | ⚠️ hoy es una fila más (§5/§6 lo resuelven) |
+| **VL-A07** | El Peek de una VL | Permite comprender qué/para quién/qué ruta/qué repartidor/quién registró/cuándo ocurrió/cuándo se registró/pago/entrega/relaciones/atención — sin conceptos técnicos | ⚠️ Peek genérico; §6 define la variante VL |
+| **VL-A08** | Distinguir comprador / repartidor / registrador | Las tres nunca se colapsan; el registrador jamás se presenta como quien hizo la venta | ⚠️ dato existe, distinción visual falta (§4) |
+| **VL-A09** | Pedido + VL adicional en la misma ruta | El Pedido original no se modifica retroactivamente; la VL es independiente; la relación se puede explicar | ✅ no se modifica / ❌ sin vínculo (BRECHA-3) |
+| **VL-A10** | Pendiente N2 de un pedido | **No** se convierte automáticamente en VL; completar N2 y registrar una VL son decisiones distintas y explícitas del usuario | ✅ (Fase 5 — frontera explícita, sin inferencia) |
+| **VL-A11** | Diferencia de conciliación (faltante) | **No** genera una VL automáticamente ni la UI de conciliación la sugiere; sigue el flujo de reconciliación/investigación | ✅ caminos distintos en el cierre / ⚠️ requisito UX de conciliación (§9) |
+| **VL-A12** | Consumidor final | Se puede registrar sin crear cliente formal; es una **elección** explícita, no un default forzado | ⚠️ hoy default forzado en path A (BRECHA-4) |
+| **VL-A13** | Trazabilidad completa | Embarque + usuario registrador + repartidor + momento de ocurrencia + momento de registro + mercancía quedan siempre reconstruibles | ✅ path A (timestamps + `clasificacionTemporal`) / ⚠️ path B sin timestamps |
+| **VL-A14** | Offline / concurrencia | Idempotencia (`offlineId @unique`), sincronización, confirmación de pago REPORTADO→CONFIRMADO; `navigator.onLine` no se toma como prueba de conectividad | ✅ (`fetchResilient` + `requestQueue`) |
+| **VL-A15** | Señal antifraude sobre una VL | Es una **señal para revisión administrativa**, no una acusación ni un bloqueo automático; nunca se convierte sola en deuda del cliente | ✅ principio (`clasificacionTemporal` señala, no bloquea) / ⚠️ detector no ve VLs anónimas (BRECHA-6) |
+| **VL-A16** | Corrección de una VL | Vía auditable que preserva la historia; no se borra ni se reescribe el registro original | ⚠️ hoy VL `ENTREGADO` solo se corrige anulando (BRECHA-7) |
+
+> **Regla transversal (instrucción de cierre):** una señal de diferencia o de fraude **no equivale automáticamente a una deuda del cliente**. Para convertir una diferencia en obligación de cobro hay que determinar la causa (error de Agua Bambú / modificación legítima / error del cliente / operación irregular / otra) y pasar por el flujo de revisión/autorización correspondiente. Ver `docs/pedidos/POLITICA_SALDO_FAVOR_Y_DIFERENCIAL_NEGATIVO_v1.0.md`.
+
+---
+
 ### 13. Fraude de volumen — caso explícito
 
 **No** limitar el análisis a "¿se creó una venta libre?". El problema puede ser:
@@ -289,6 +381,23 @@ No se optimiza para que "registrar una venta libre sea rápido". Se optimiza par
 
 Se verifica que la experiencia permite comprender una venta libre **tanto** cuando fue registrada en ruta por el repartidor **como** cuando fue registrada durante la conciliación por Administración/Asistencia, **sin** confundir al registrador con el responsable operativo y **sin** que la venta libre sea una vía para modificar Pedidos o cuadrar diferencias.
 
+### Pruebas (unit + E2E) que deben cubrir esta parte
+
+**Autorización (backend — no solo UI):**
+- Repartidor asignado registra VL en ruta → OK; VL queda anclada al Embarque (`VL-A01`).
+- Repartidor **no** asignado → `EMBARQUE_NO_PERTENECE` (`VL-A02`, ya cubierto: `venta-libre/route.ts` tests).
+- ADMIN/ASISTENTE POSTea VL a un Embarque `ABIERTO` que no está en conciliación → **debe rechazarse** una vez cerrada BRECHA-8 (`VL-A04`). Hoy: test de regresión que documenta el comportamiento actual + `@todo` BRECHA-8.
+- Ningún componente de `pedido-hub/**` ni `pedidos-client` llama a `/api/pedidos/venta-libre` (`VL-A05`) — source-check `hub-accion-frontera.test.ts` (ya existe, rama `feat/pedidos-fase5-n2`).
+- "Venta durante la ruta →" hace `router.push('/embarques...')` y **no** abre modal ni hace fetch (`VL-A05`) — `hub-accion-frontera.test.ts`.
+
+**Experiencia:**
+- Lista: una VL se muestra como "venta durante la ruta" con contexto (ruta, repartidor, momento), no como fila de pedido (`VL-A06`, §5).
+- Peek de VL: capa 1 (instantánea) muestra comprador/embarque/repartidor/registrador/momento; capa 2 (lazy) mercancía/pago/ejecución/relaciones/atención (`VL-A07`, §6).
+- Peek distingue "registrada en ruta" vs "registrada en conciliación" y registrador ≠ responsable operativo (`VL-A03`, `VL-A08`).
+- Frontera N2: completar pendiente y "Venta durante la ruta →" son acciones distintas y explícitas; N2 no se convierte en VL por inferencia (`VL-A10`, Fase 5).
+
+**Regla transversal:** ningún test debe asumir que una señal antifraude o una diferencia de conciliación genera una `Deuda`/CxC automáticamente (`VL-A15`; política de saldo a favor).
+
 ---
 
 ## 16. Estado de las decisiones
@@ -304,6 +413,10 @@ Se verifica que la experiencia permite comprender una venta libre **tanto** cuan
 - Antifraude: reutilizar `alertas-detector`/`/casos`, no segundo sistema.
 - Pedidos no absorbe Embarques.
 - La captura de VENTA_LIBRE **no** entra en `POST /api/pedidos/preview` ni en el flujo estándar del Hub en esta fase.
+- **El Pedido Hub NO crea VENTA_LIBRE** (instrucción de cierre 2026-09-08). `mostrar ≠ crear`. "Venta durante la ruta →" solo navega a Embarques.
+- **Autorización canónica**: VL solo la registra (A) el repartidor asignado en ruta — validado en backend — o (B) Admin/Asistente **dentro de la conciliación de ese Embarque**. No hay alta genérica.
+- Una **señal** de diferencia/fraude no se convierte automáticamente en **deuda** del cliente ni en bloqueo.
+- Un **diferencial negativo** que acreditó saldo a favor es un efecto económico real y trazable; si la operación cambia luego, se **compensa con un ajuste nuevo trazable**, no se borra la historia (ver `POLITICA_SALDO_FAVOR_Y_DIFERENCIAL_NEGATIVO_v1.0.md`).
 
 ### PENDIENTE de negocio (no se inventa en esta fase)
 - **PENDIENTE-VL-INV-1** — validación de disponibilidad: ¿preventiva o detectiva? (§10)
@@ -345,5 +458,8 @@ Al cerrar esta parte, el artefacto debe reflejar explícitamente:
 13. Qué NO es una venta libre. → §7, §9
 14. Cómo se diferencia una venta libre real de una diferencia de conciliación. → §9
 15. Cómo se integran señales antifraude sin convertirlas automáticamente en bloqueos. → §13, RD-2
-16. Qué casos normales y excepcionales deben pasar las pruebas. → §12
+16. Qué casos normales y excepcionales deben pasar las pruebas. → §12, §12bis
 17. Qué decisiones están cerradas y cuáles siguen PENDIENTES. → §16
+18. Quién puede registrar una VL y en qué contexto. → §0, §0bis, §12bis (VL-A01..A05)
+19. Que el Pedido Hub no crea VL (solo muestra/consulta). → §0, §3bis, VL-A05
+20. Que una diferencia/señal no es automáticamente una deuda del cliente. → §12bis (VL-A15), regla transversal, `POLITICA_SALDO_FAVOR_Y_DIFERENCIAL_NEGATIVO_v1.0.md`

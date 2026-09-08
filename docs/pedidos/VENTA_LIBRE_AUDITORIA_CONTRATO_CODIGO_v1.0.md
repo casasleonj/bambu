@@ -30,6 +30,23 @@ Consume **mercancía física del Embarque** y debe conservar trazabilidad sobre,
 
 **Estado del contrato:** VENTA_LIBRE **NO está pendiente de definición de producto.** Fue definido en el diseño de Embarques/Ruta y tuvo línea de implementación (PRs #155, #158, #170; ADRs `ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001`, `ADR-PAGO-EMBARQUE-CAPTURA-001`, `ADR-PAGO-REPORTADO-CONFIRMADO-001`, `ADR-OFFLINE-001`). La decisión de mantenerlo fuera de `POST /api/pedidos/preview` y del Pedido Hub **en esta fase** sigue vigente y **no** implica que esté sin definir.
 
+### 0.1 Autorización canónica (instrucción de cierre 2026-09-08 — vinculante)
+
+VENTA_LIBRE se registra **únicamente** por dos vías, ambas ancladas a un Embarque concreto:
+
+| Acción | Contexto | Quién | Backend valida |
+|---|---|---|---|
+| Registrar VL | Embarque activo / en ruta | Repartidor **asignado** a ese Embarque | Sí (`EMBARQUE_NO_PERTENECE`) |
+| Registrar VL reportada | Conciliación de **ese** Embarque | Admin / Asistente autorizado | ⚠️ parcial — **BRECHA-8** |
+| Crear desde el Pedido Hub | cualquiera | **NO PERMITIDO** | Sí (Pedidos no expone creación) |
+| Crear genérica desde Administración | fuera de conciliación | **NO PERMITIDO** | ❌ — **BRECHA-8** |
+
+**`mostrar ≠ crear`.** El Pedido Hub muestra/consulta/contextualiza una VL; no la crea. La opción de Fase 5 "Venta durante la ruta →" **solo navega** a Embarques (`hub-accion-frontera.test.ts`). No debe existir una segunda implementación de Venta Libre dentro de Pedidos.
+
+**Una diferencia de conciliación (faltante) no es, por sí sola, una Venta Libre** (§2.7, §9 del doc de experiencia). Y una **señal** de diferencia o fraude **no equivale automáticamente a una deuda del cliente** — requiere determinar causa + flujo de autorización (ver `POLITICA_SALDO_FAVOR_Y_DIFERENCIAL_NEGATIVO_v1.0.md`).
+
+Ver la matriz de autorización completa en `docs/pedidos/VENTA_LIBRE_EXPERIENCIA_HUB_v1.0.md` §0bis. Verificación de código en §2.18.
+
 ---
 
 ## 1. Hallazgo estructural: **tres** superficies, dos activas, una inerte
@@ -253,6 +270,24 @@ Clasificaciones: `HECHO` · `DECISIÓN` · `ESTADO TÉCNICO ACTUAL` · `BRECHA P
 > - Riesgo → bajo; la traza existe vía NC. Molesto operativamente si el error es frecuente.
 > - Corrección → probablemente ninguna (es coherente con G11.A: no corregir lo ya entregado). Confirmar con producto → `EVIDENCIA HISTÓRICA A RECUPERAR` (bajo).
 
+### 2.18 Autorización de creación (instrucción de cierre 2026-09-08)
+
+Contrato canónico: VL solo la registra **(A)** el repartidor **asignado** a ese Embarque mientras está activo/en ruta, o **(B)** Admin/Asistente **dentro de la conciliación de ese Embarque específico**. **No** hay alta genérica de VL desde Administración fuera de conciliación. **El Pedido Hub no crea VL.**
+
+| Área | Contrato | `main` actual | Evidencia | Estado |
+|---|---|---|---|---|
+| Repartidor asignado, en ruta (path A) | Solo el dueño del Embarque | `POST /api/pedidos/venta-libre`: si `role === REPARTIDOR`, valida `embarque.trabajadorId === trabajador.id` → `EMBARQUE_NO_PERTENECE` | `venta-libre/route.ts:114-122` | **HECHO (para REPARTIDOR)** |
+| Admin/Asistente solo en conciliación de ese Embarque (path B) | El alta de VL por admin ocurre **dentro** del cierre/conciliación de un Embarque concreto | `CrearVentasLibresService` corre dentro de `CerrarEmbarqueUseCase` (embarque + repartidor ya en contexto) | `crear-ventas-libres.service.ts`; `CerrarEmbarqueUseCase` | **HECHO (path B)** |
+| Admin/Asistente **no** puede hacer alta genérica de VL | No debe existir el mecanismo | `POST /api/pedidos/venta-libre` acepta `requireRole([ADMIN, ASISTENTE, REPARTIDOR])` y **solo** valida pertenencia para REPARTIDOR. Un ADMIN/ASISTENTE puede crear una VL contra **cualquier** Embarque `ABIERTO`, sin ser el repartidor asignado y sin contexto de conciliación | `venta-libre/route.ts:30`, `:112-122` (el `if (userRole === 'REPARTIDOR')` no tiene rama equivalente para admin) | **BRECHA-8** |
+| El Pedido Hub no crea VL | `mostrar ≠ crear` | Ningún componente de `src/app/(app)/pedidos/pedido-hub/**` ni `pedidos-client` invoca `/api/pedidos/venta-libre`; la acción `venta-libre` de Fase 5 solo hace `router.push` a `/embarques` | `hub-accion-frontera.test.ts` (rama `feat/pedidos-fase5-n2`) | **HECHO** |
+
+> **BRECHA-8 (media-alta):** `POST /api/pedidos/venta-libre` permite a ADMIN/ASISTENTE crear una Venta Libre contra cualquier Embarque `ABIERTO` sin ser el repartidor asignado y sin gate de conciliación.
+> - Debería ocurrir → ADMIN/ASISTENTE solo registran VL **dentro de la conciliación de un Embarque** (path B). El path A (endpoint en vivo) es del repartidor asignado.
+> - Ocurre → el endpoint acepta los 3 roles y solo valida `embarqueOrigenId`↔repartidor para REPARTIDOR; un admin puede POSTear una VL a cualquier embarque abierto.
+> - Evidencia → `venta-libre/route.ts:30` (`requireRole([ROLES.ADMIN, ROLES.ASISTENTE, ROLES.REPARTIDOR])`) y `:112-122` (validación de pertenencia solo en la rama `userRole === 'REPARTIDOR'`).
+> - Riesgo → habilita exactamente el "alta genérica de VL por Administración" que la instrucción de cierre prohíbe; sin ancla a una conciliación, la VL de admin pierde el contexto (repartidor responsable, reporte que la origina) que la hace legítima.
+> - Corrección → (a) restringir el endpoint a `REPARTIDOR` + validar pertenencia siempre; **o** (b) si se conserva una vía para ADMIN/ASISTENTE, exigir un contexto de conciliación explícito (embarque en estado de cierre/conciliación + el admin autorizado sobre ese embarque). Decisión de producto sobre cuál; **no** es rediseño de VENTA_LIBRE. No inventar el gate sin confirmar con la matriz de autorización de `VENTA_LIBRE_EXPERIENCIA_HUB_v1.0.md` §0bis.
+
 ---
 
 ## 3. Índice de brechas (qué debería ocurrir → qué ocurre → evidencia → riesgo → corrección)
@@ -266,6 +301,7 @@ Clasificaciones: `HECHO` · `DECISIÓN` · `ESTADO TÉCNICO ACTUAL` · `BRECHA P
 | **BRECHA-5** | Media | Precio cobrado ≠ precio registrado no es verificable (inherente al offline) | Backstop de cierre (caja). Mitigación posible: señales de patrón (BRECHA-6). |
 | **BRECHA-6** | **Alta** | El detector antifraude no observa las VLs (anónimas → filtradas); sin regla de VL por repartilo | Rama del detector que mire VLs por `embarqueOrigenId`/repartidor + reglas en `alertas-config.ts`. **Reusar `alertas-detector`/`/casos`. Diseño histórico de controles de VL = EVIDENCIA HISTÓRICA A RECUPERAR.** |
 | **BRECHA-7** | Baja | VL `ENTREGADO` mal capturada solo se corrige anulando | Probablemente correcto (coherente con G11.A). Confirmar. |
+| **BRECHA-8** | **Media-alta** | `POST /api/pedidos/venta-libre` deja a ADMIN/ASISTENTE crear VL contra cualquier Embarque `ABIERTO` sin gate de conciliación (alta genérica que la instrucción de cierre prohíbe) | Restringir a REPARTIDOR + validar pertenencia siempre, **o** exigir contexto de conciliación explícito para ADMIN/ASISTENTE. Decisión de producto según §0bis del doc de experiencia. |
 | — | Media | `totalVentas`/comisión del cierre no cuenta ventas diferidas | Ya documentada en `ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001` §0. |
 | — | Media | Conciliación de caja por pedido vs por pago; embarque de origen nunca cerrado | `ADR-PAGO-EMBARQUE-CAPTURA-001` es el cierre; migración en curso. |
 
@@ -287,6 +323,9 @@ Clasificaciones: `HECHO` · `DECISIÓN` · `ESTADO TÉCNICO ACTUAL` · `BRECHA P
 4. **No** inventar umbrales de inventario, de precio manual, de doble control, de límite de VLs. Esos puntos son `EVIDENCIA HISTÓRICA A RECUPERAR` o `PENDIENTE` de negocio — se parametrizan y se deciden por producto.
 5. **No** tocar `src/modules/embarques/domain/**` ni `src/modules/planificador/**` sin ADR (guardrail INVENTARIO §8).
 6. **No** cambiar la semántica de `embarqueOrigenId` / `Pago.embarqueId` / `entregado` — están cerradas por ADR.
+7. **No** crear un flujo de alta de Venta Libre dentro de Pedidos. `mostrar ≠ crear`. La opción "Venta durante la ruta →" de Fase 5 **solo navega** a Embarques; si confunde, se mueve/renombra/quita, nunca se convierte en creación.
+8. **No** convertir una diferencia de conciliación ni una señal antifraude en deuda del cliente automáticamente. Requiere causa + flujo de autorización (`POLITICA_SALDO_FAVOR_Y_DIFERENCIAL_NEGATIVO_v1.0.md`).
+9. **No** cerrar BRECHA-8 inventando el gate de conciliación: la decisión (restringir a REPARTIDOR vs. exigir contexto de conciliación para admin) es de producto, contra la matriz §0bis.
 
 ---
 
@@ -306,7 +345,7 @@ El documento fuente (ALS Operación Comercial) **nunca se comiteó** — solo qu
 
 ## 6b. Insumo para el diseño de experiencia
 
-Este documento (auditoría técnica) es el **insumo** de `docs/pedidos/VENTA_LIBRE_EXPERIENCIA_HUB_v1.0.md`, que cierra la **mentalidad + casos (VL-01..VL-15) + criterios de éxito** de cómo VENTA_LIBRE aparece en el Pedido Hub. Ahí, BRECHA-2/3/4/6 pasan de "hallazgos" a **requisitos de diseño** (RD-1..RD-5) y se contemplan explícitamente los **dos puntos de captura** (ruta / conciliación) y las **cuatro dimensiones** (comprador / responsable operativo / registrador / momento).
+Este documento (auditoría técnica) es el **insumo** de `docs/pedidos/VENTA_LIBRE_EXPERIENCIA_HUB_v1.0.md`, que cierra la **mentalidad + casos (VL-01..VL-15 de experiencia + VL-A01..VL-A16 de autorización, §12bis) + criterios de éxito** de cómo VENTA_LIBRE aparece en el Pedido Hub. Ahí, BRECHA-2/3/4/6 pasan de "hallazgos" a **requisitos de diseño** (RD-1..RD-5); la **definición canónica** (§0), la **matriz de autorización** (§0bis) y "**Pedidos NO crea VL**" (§3bis) recogen la instrucción de cierre. Se contemplan explícitamente los **dos puntos de captura** (ruta / conciliación) y las **cuatro dimensiones** (comprador / responsable operativo / registrador / momento).
 
 ---
 
@@ -314,6 +353,6 @@ Este documento (auditoría técnica) es el **insumo** de `docs/pedidos/VENTA_LIB
 
 - El **contrato de producto de VENTA_LIBRE está definido** y mayormente implementado: origen, embarque de origen inmutable, entrega inmediata/posterior, cobro con contexto de captura, reportado/confirmado, timestamps, offline, concurrencia de numeración, conciliación de producto y (en transición) de caja.
 - **No hay una segunda implementación funcional** — la entidad `VentaLibre` es un esqueleto muerto (BRECHA-1).
-- Las **dos brechas serias** son: **BRECHA-4** (el repartidor no identifica al comprador → toda VL en vivo es anónima) y **BRECHA-6** (el antifraude no observa las VLs, en parte *por* BRECHA-4). Ambas tienen raíz común y ambas dependen de recuperar diseño histórico (EH-2, EH-4).
-- **BRECHA-2** (inventario en el momento de la venta) es la tercera prioridad y también necesita EH-1.
+- Las **brechas serias** son: **BRECHA-4** (el repartidor no identifica al comprador → toda VL en vivo es anónima), **BRECHA-6** (el antifraude no observa las VLs, en parte *por* BRECHA-4) y **BRECHA-8** (ADMIN/ASISTENTE pueden hacer alta genérica de VL sin gate de conciliación — viola la autorización canónica §0.1). BRECHA-4 y BRECHA-6 tienen raíz común y dependen de recuperar diseño histórico (EH-2, EH-4); BRECHA-8 es un ajuste de autorización, decidible con la matriz §0bis en mano.
+- **BRECHA-2** (inventario en el momento de la venta) es la siguiente prioridad y también necesita EH-1.
 - El vector de fraude *literal* del equipo (fusionar VLs en un pedido de volumen) **está estructuralmente impedido**. Lo que falta cubrir es el registro de cantidades/precios que no corresponden a la venta real, hoy solo visible por descuadre agregado al cierre.
