@@ -82,7 +82,7 @@ Read-only. Se arma en el mismo `Promise.all` del route; sin queries nuevas pesad
 
 ## 3. Slices
 
-### F7-i — `PedidoPeekRiesgo` (excepciones con guía)
+### F7-i — `PedidoPeekRiesgo` (excepciones con guía) ✅ IMPLEMENTADO
 **Archivos:**
 - Crear `src/app/(app)/pedidos/pedido-hub/pedido-peek-riesgo.tsx` — props `{ casos: PedidoPeekExtras['casosAbiertos'] }`. Por cada caso: `getGuiaAlerta(alertaTipo)` → `icono + nombre`, tono por severidad, `<details>` con `definicion` + `soluciones[0]`. Footer P1. Link "Ver en Casos →" a `/casos` (uno global, no por caso). Fallback neutro si no hay guía.
 - Modificar `src/app/(app)/pedidos/pedido-hub/peek-relaciones.tsx` — reemplazar el bloque `data.casosAbiertos.length > 0 && (...)` por `<PedidoPeekRiesgo casos={data.casosAbiertos} />`.
