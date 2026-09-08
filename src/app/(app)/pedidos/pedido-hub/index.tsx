@@ -89,9 +89,27 @@ export function PedidoHub({
 
   const peek = usePeek(pedidosFiltrados)
 
-  // Realtime: invalidación selectiva del peek + refetch de la lista.
+  // Realtime SELECTIVO (plan Fase 5, P6): invalidar el peek solo ante eventos
+  // que cambian los datos de un pedido concreto; refetch de la lista/counts
+  // solo ante eventos que pueden mover focos.
   useRealtimeListener(['pedido.*', 'pago.*', 'embarque.*', 'route_plan.updated'], (evt) => {
-    if (evt.id) invalidatePeek(evt.id)
+    const t = evt.type
+    // pedido.*/pago.* con id → ese pedido (pendienteN2, total/saldo/estadoPago, factura).
+    if ((t.startsWith('pedido.') || t.startsWith('pago.')) && evt.id) {
+      invalidatePeek(evt.id)
+    }
+    // embarque.updated → invalidar solo el peek abierto si su pedido usa ese
+    // embarque (como asignación o como embarque de una Actividad N2).
+    if (t.startsWith('embarque.') && evt.id && peek.activeId) {
+      const usaEmbarque =
+        peek.layer1?.embarqueId === evt.id ||
+        (peek.layer2?.embarqueResumen?.id === evt.id) ||
+        (peek.layer2?.pendienteN2?.actividades?.some((a) => a.embarqueId === evt.id) ?? false)
+      if (usaEmbarque) invalidatePeek(peek.activeId)
+    }
+    // route_plan.updated no toca el peek de un pedido concreto, pero el foco
+    // "Por planificar" sí depende del plan del día → la lista/counts se
+    // refetchean para todos los eventos escuchados.
     onRefetch?.()
   }, { debounceMs: 500 })
 
@@ -123,6 +141,15 @@ export function PedidoHub({
       onOpenVinculado={(id) => {
         const target = pedidos.find((p) => p.id === id)
         if (target) peek.open(target)
+      }}
+      onMutadoN2={() => {
+        // tras una mutación N2: recargar el peek + refetch de lista/counts.
+        if (peek.activeId) {
+          invalidatePeek(peek.activeId)
+          const p = pedidos.find((x) => x.id === peek.activeId)
+          if (p) peek.open(p)
+        }
+        onRefetch?.()
       }}
     />
   ) : null

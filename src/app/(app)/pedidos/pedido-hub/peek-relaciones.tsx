@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { PedidoExceptionPanel } from './pedido-exception-panel'
 import type { PeekLayer2 } from './peek-cache'
 import type { Pedido } from './types'
 
@@ -16,10 +17,14 @@ export function PeekRelaciones({
   pedido,
   data,
   onOpenVinculado,
+  onAccionN2,
+  onMutadoN2,
 }: {
   pedido: Pedido
   data: PeekLayer2
   onOpenVinculado: (id: string) => void
+  onAccionN2?: (key: 'completar-pendiente' | 'nueva-demanda' | 'venta-libre') => void
+  onMutadoN2?: () => void
 }) {
   const saldoOperacion = Number(pedido.saldo) || 0
 
@@ -69,15 +74,13 @@ export function PeekRelaciones({
         </div>
       )}
 
-      {data.pendienteN2 && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2" data-testid="peek-rel-pendiente-n2">
-          <div className="text-xs font-medium text-amber-800">Pendiente (N2)</div>
-          <div className="text-amber-900">
-            {data.pendienteN2.remanente} {data.pendienteN2.producto} · {data.pendienteN2.estado}
-          </div>
-          <div className="mt-1 text-[11px] text-amber-700">La gestión del pendiente se hace desde el detalle (Fase 5).</div>
-        </div>
-      )}
+      <PedidoExceptionPanel
+        pedido={pedido}
+        layer2={data}
+        onMutado={onMutadoN2}
+        onNuevaDemanda={onAccionN2 ? () => onAccionN2('nueva-demanda') : undefined}
+        onVentaLibre={onAccionN2 ? () => onAccionN2('venta-libre') : undefined}
+      />
 
       {data.casosAbiertos.length > 0 && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2" data-testid="peek-rel-casos">

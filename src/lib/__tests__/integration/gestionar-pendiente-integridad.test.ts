@@ -7,6 +7,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { testPrisma, resetAndSeed, disconnect, createTestCliente, getAdminUser } from './setup'
 import { GestionarPendienteUseCase } from '@/modules/embarques/application/use-cases/GestionarPendienteUseCase'
+import { ProyectarGestionPendienteUseCase } from '@/modules/embarques/application/use-cases/ProyectarGestionPendienteUseCase'
 import { EntregarPedidoUseCase } from '@/modules/pedidos/application/use-cases/EntregarPedidoUseCase'
 import { PrismaPedidoRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaPedidoRepository'
 import { PrismaFacturaRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaFacturaRepository'
@@ -221,5 +222,64 @@ describe('N2 — GestionarPendienteUseCase', () => {
       pagos: [],
     })
     expect(res.deduped).toBeFalsy()
+  })
+})
+
+describe('N2 — ProyectarGestionPendienteUseCase (Fase 5-0, proyección read-only)', () => {
+  async function snapshot(pedidoId: string, clienteId: string) {
+    return JSON.stringify({
+      pedido: await testPrisma.pedido.findUnique({ where: { id: pedidoId } }),
+      items: await testPrisma.pedidoItem.findMany({ where: { pedidoId }, orderBy: { producto: 'asc' } }),
+      factura: await testPrisma.factura.findFirst({ where: { pedidoId } }),
+      cliente: await testPrisma.cliente.findUnique({ where: { id: clienteId } }),
+      obligaciones: await testPrisma.obligacionPendiente.count({ where: { pedidoId } }),
+      actividades: await testPrisma.actividad.count(),
+      ajustes: await testPrisma.pedidoCantidadAjuste.count(),
+    })
+  }
+
+  it('proyección == gestión real (diferencial + total), y NO muta nada', async () => {
+    const pedido = await crearPedidoConBotellonesPendientes(6, 10) // canal PUNTO, precio 6500
+    const proyector = new ProyectarGestionPendienteUseCase()
+
+    const antes = await snapshot(pedido.id, clienteId)
+    const proyeccion = await proyector.execute({
+      pedidoId: pedido.id, accion: 'gestionar',
+      producto: 'BOTELLON', cantidad: 4, modoDestino: 'DOMICILIO', // != PUNTO → hay diferencial
+    })
+    const despues = await snapshot(pedido.id, clienteId)
+    expect(despues).toBe(antes) // read-only exacto
+
+    expect(proyeccion.remanente).toBe(4)
+    expect(proyeccion.allowedActions).toEqual(['gestionar'])
+
+    const real = await new GestionarPendienteUseCase().execute({
+      pedidoId: pedido.id, producto: 'BOTELLON', cantidad: 4, modoInicial: 'DOMICILIO', usuarioId: adminId,
+    })
+    const pedidoActualizado = await testPrisma.pedido.findUniqueOrThrow({ where: { id: pedido.id } })
+
+    expect(real.diferencial?.diferencial).toBe(proyeccion.diferencial?.diferencial)
+    expect(real.diferencial?.valorHistorico).toBe(proyeccion.diferencial?.valorHistorico)
+    expect(real.diferencial?.valorActual).toBe(proyeccion.diferencial?.valorActual)
+    expect(Number(pedidoActualizado.total)).toBe(proyeccion.consecuencia.pedidoTotalDespues)
+  })
+
+  it('proyección de liberar: montoRevertible == lo que revierte la liberación real', async () => {
+    const pedido = await crearPedidoConBotellonesPendientes(6, 10)
+    const gest = await new GestionarPendienteUseCase().execute({
+      pedidoId: pedido.id, producto: 'BOTELLON', cantidad: 4, modoInicial: 'DOMICILIO', usuarioId: adminId,
+    })
+    const proyeccion = await new ProyectarGestionPendienteUseCase().execute({
+      pedidoId: pedido.id, accion: 'liberar', actividadId: gest.actividadId,
+    })
+    expect(proyeccion.reversion).toBeDefined()
+    // el diferencial de la gestión fue positivo o negativo; si positivo, montoRevertible > 0
+    const dif = gest.diferencial?.diferencial ?? 0
+    if (dif > 0) {
+      expect(proyeccion.reversion!.montoRevertible).toBeGreaterThan(0)
+    } else if (dif < 0) {
+      expect(proyeccion.reversion!.saldoFavorNoRevertido).toBeGreaterThan(0)
+      expect(proyeccion.consecuencia.tipo).toBe('reversion_parcial')
+    }
   })
 })

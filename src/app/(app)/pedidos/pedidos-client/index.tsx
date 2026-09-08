@@ -1330,6 +1330,21 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       case 'ver-cartera':
         router.push(pedido.clienteId === 'CONSUMIDOR_FINAL' ? '/cartera' : `/cartera?clienteId=${pedido.clienteId}`)
         break
+      case 'nueva-demanda':
+        // frontera N2 ↔ nueva demanda (P4): pedido nuevo relacionado (G11.B).
+        // Declaración explícita del usuario, no inferencia.
+        setPedidoInicial(undefined)
+        setShowVentaRapida(false)
+        setShowModal(true)
+        break
+      case 'venta-libre':
+        // Frontera N2 ↔ Venta Libre (P4 / contrato de cierre VENTA_LIBRE §4):
+        // el Pedido Hub **NO crea** una Venta Libre. Esta opción SOLO NAVEGA
+        // al contexto de Embarques (donde se registra: repartidor en ruta, o
+        // Admin/Asistente durante la conciliación de ESE embarque). Cero
+        // creación desde Pedidos, cero segunda implementación.
+        router.push(pedido.embarqueId ? `/embarques/${pedido.embarqueId}` : '/embarques')
+        break
       default:
         // registrar-entrega / registrar-pago / resolver-excepcion /
         // completar-pendiente → el modal de detalle tiene la acción según estado.
