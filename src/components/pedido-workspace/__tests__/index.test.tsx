@@ -10,10 +10,20 @@ const previewBody = (total: number) => ({
   auditPreview: { actor: 'u', accion: 'CREAR_PEDIDO', recurso: 'Pedido (nuevo)', valoresRelevantes: { total, clienteId: 'c1', canal: 'DOMICILIO', origen: 'PEDIDO', tienePrecioManual: false } },
 })
 
+const previewEdit = (total: number) => ({
+  ...previewBody(total),
+  allowedActions: ['actualizar'],
+  calculation: { ...previewBody(total).calculation, totalPagado: 3000, saldoProyectado: total - 3000, estadoPagoProyectado: 'PARCIAL' },
+  auditPreview: { ...previewBody(total).auditPreview, accion: 'ACTUALIZAR_PEDIDO', recurso: 'Pedido (edición)' },
+})
+
 /** stub de fetch enrutado por URL — el workspace hace varios GET además del preview. */
 function routedFetch() {
-  return vi.fn(async (url: string) => {
-    if (url.includes('/api/pedidos/preview')) return { ok: true, json: async () => previewBody(9000) }
+  return vi.fn(async (url: string, init?: { body?: string }) => {
+    if (url.includes('/api/pedidos/preview')) {
+      const body = init?.body ? JSON.parse(init.body) : {}
+      return { ok: true, json: async () => (body.pedidoId ? previewEdit(9000) : previewBody(9000)) }
+    }
     if (url.includes('/fiado-status')) return { ok: true, json: async () => ({ success: true, status: { nivel: 'ok', count: 0, limite: 3 } }) }
     if (url.includes('/api/negocios')) return { ok: true, json: async () => ({ success: true, data: [] }) }
     if (url.includes('/api/precios/tabla')) return { ok: true, json: async () => ({ success: true, tabla: {} }) }
@@ -136,6 +146,77 @@ describe('PedidosWorkspace (Composición)', () => {
     await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeEnabled())
     fireEvent.click(screen.getByTestId('workspace-commit'))
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ obs: '[Revisión: cliente mayorista]' }))
+  })
+
+  it('modo edición: items precargados, sin buscador de cliente, canal fijo, "Guardar cambios"', async () => {
+    const onSubmit = vi.fn()
+    render(
+      <PedidosWorkspace
+        clientes={clientes}
+        onSubmit={onSubmit}
+        pedidoInicial={{
+          id: 'ped-9', numero: 42, clienteId: 'c1', clienteNombre: 'Tienda X', clienteTelefono: '3001112222',
+          clienteDireccion: 'Cra 1', clienteBarrio: 'Centro', negocioId: null, canal: 'DOMICILIO', origen: 'PEDIDO',
+          items: [{ producto: 'PACA_AGUA', cantidad: 4 }], obs: 'urgente',
+        }}
+      />,
+    )
+    // sin buscador de cliente
+    expect(screen.queryByTestId('cliente-search-input')).not.toBeInTheDocument()
+    // canal fijo (no toggle)
+    expect(screen.getByTestId('workspace-canal-fijo')).toBeInTheDocument()
+    expect(screen.queryByTestId('workspace-canal-PUNTO')).not.toBeInTheDocument()
+    // items precargados
+    expect((screen.getByTestId('workspace-cant-PACA_AGUA') as HTMLInputElement).value).toBe('4')
+
+    // el preview de edición llega → "Guardar cambios" habilitado
+    await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeEnabled(), { timeout: 3000 })
+    expect(screen.getByTestId('workspace-commit')).toHaveTextContent('Guardar cambios')
+
+    fireEvent.click(screen.getByTestId('workspace-commit'))
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+      isEdit: true, pedidoId: 'ped-9', origen: 'PEDIDO',
+      items: [{ producto: 'PACA_AGUA', cantidad: 4, precioManual: undefined }],
+      obs: 'urgente',
+    }))
+  })
+
+  it('modo edición: el origen se toma de pedidoInicial, NO se re-deriva del cliente', async () => {
+    const onSubmit = vi.fn()
+    // pedido VENTA_RAPIDA con un cliente real (caso donde el viejo initializer
+    // `clienteId === CONSUMIDOR_FINAL ? VENTA_RAPIDA : PEDIDO` daría MAL 'PEDIDO')
+    render(
+      <PedidosWorkspace
+        clientes={clientes}
+        onSubmit={onSubmit}
+        pedidoInicial={{
+          id: 'ped-vr', clienteId: 'c1', clienteNombre: 'Tienda X', negocioId: null,
+          canal: 'PUNTO', origen: 'VENTA_RAPIDA',
+          items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
+        }}
+      />,
+    )
+    await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeEnabled(), { timeout: 3000 })
+    fireEvent.click(screen.getByTestId('workspace-commit'))
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ origen: 'VENTA_RAPIDA', isEdit: true }))
+  })
+
+  it('modo edición: cambiar cantidad dispara un nuevo preview de edición', async () => {
+    render(
+      <PedidosWorkspace
+        clientes={clientes}
+        onSubmit={vi.fn()}
+        pedidoInicial={{
+          id: 'ped-9', clienteId: 'c1', clienteNombre: 'Tienda X', negocioId: null, canal: 'DOMICILIO', origen: 'PEDIDO',
+          items: [{ producto: 'PACA_AGUA', cantidad: 4 }],
+        }}
+      />,
+    )
+    await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeEnabled(), { timeout: 3000 })
+    fireEvent.click(screen.getByTestId('workspace-inc-PACA_AGUA'))
+    expect(screen.getByTestId('workspace-commit')).toBeDisabled() // preview stale
+    await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeEnabled(), { timeout: 3000 })
+    expect(screen.getByTestId('workspace-commit')).toHaveTextContent('Guardar cambios')
   })
 
   it('el banner de fiados aparece cuando el cliente está al límite', async () => {

@@ -26,6 +26,9 @@ export class ClienteNotFoundError extends Error {
 export class PedidoOrigenNotFoundError extends Error {
   constructor(id: string) { super(`PEDIDO_ORIGEN_NOT_FOUND: ${id}`); this.name = 'PedidoOrigenNotFoundError' }
 }
+export class PedidoNotFoundError extends Error {
+  constructor(id: string) { super(`PEDIDO_NOT_FOUND: ${id}`); this.name = 'PedidoNotFoundError' }
+}
 
 export interface PreviewPedidoDeps {
   pricingPort: IPricingPort
@@ -44,6 +47,7 @@ export class PreviewPedidoUseCase {
     const canal = input.canal ?? 'DOMICILIO'
     const origen = input.origen ?? 'PEDIDO'
     const esAnonimo = input.clienteId === CANONICAL_CONSUMIDOR_FINAL_ID
+    const esEdicion = Boolean(input.pedidoId)
 
     const cliente = await this.deps.clienteRepo.findById(input.clienteId)
     if (!cliente) throw new ClienteNotFoundError(input.clienteId)
@@ -51,6 +55,19 @@ export class PreviewPedidoUseCase {
     if (input.pedidoOrigenId) {
       const origenPedido = await this.deps.pedidoRepo.findById(PedidoId.from(input.pedidoOrigenId))
       if (!origenPedido) throw new PedidoOrigenNotFoundError(input.pedidoOrigenId)
+    }
+
+    // ── Modo edición: el PUT /api/pedidos/[id] es declarativo de items y
+    // conserva los pagos existentes. `totalPagado` NO viene del body, y el
+    // `estadoEntrega` no cambia (el PUT proyecta el estadoPago contra el
+    // estadoEntrega actual, no contra 'PENDIENTE'). ──
+    let totalPagadoBase = 0
+    let estadoEntregaExistente: string | null = null
+    if (esEdicion) {
+      const existente = await this.deps.pedidoRepo.findById(PedidoId.from(input.pedidoId as string))
+      if (!existente) throw new PedidoNotFoundError(input.pedidoId as string)
+      totalPagadoBase = existente.totalPagado.toDecimal()
+      estadoEntregaExistente = existente.estadoEntrega.get()
     }
 
     // ── Pricing (mismo port que CrearPedidoUseCase) ──
@@ -80,16 +97,25 @@ export class PreviewPedidoUseCase {
       : 0
     const subtotal = total - recargoDomicilio
 
-    // ── Pagos: proyección virtual con las reglas existentes ──
+    // ── Pagos ──
+    // Creación: proyección virtual de `input.pagos` con las reglas existentes.
+    // Edición: el PUT es declarativo de items y conserva los pagos → `totalPagado`
+    // es el del pedido existente; el saldo a favor no cambia en este flujo.
     const { pagosAplicados, excedente } = normalizarPagos(
-      (input.pagos ?? []).map(p => ({ metodo: p.metodo, monto: p.monto })),
+      (esEdicion ? [] : (input.pagos ?? [])).map(p => ({ metodo: p.metodo, monto: p.monto })),
       total,
     )
-    const totalPagado = pagosAplicados.reduce((s, p) => s + p.monto, 0)
-    const estadoEntregaProyectado: 'PENDIENTE' | 'ENTREGADO' = input.entregado === true ? 'ENTREGADO' : 'PENDIENTE'
+    const totalPagado = esEdicion ? totalPagadoBase : pagosAplicados.reduce((s, p) => s + p.monto, 0)
+    const saldoFavorProyectado = esEdicion ? 0 : excedente
+    // Edición: el estadoEntrega no cambia — se proyecta el estadoPago contra el
+    // actual (igual que ActualizarPedidoUseCase). Creación: PENDIENTE/ENTREGADO.
+    const estadoEntregaProyectado = (esEdicion && estadoEntregaExistente
+      ? estadoEntregaExistente
+      : input.entregado === true ? 'ENTREGADO' : 'PENDIENTE'
+    ) as PreviewPedidoResult['calculation']['estadoEntregaProyectado']
     const saldoProyectado = calcularSaldo(total, totalPagado)
     const estadoPagoProyectado = calcularEstadoPago(total, totalPagado, estadoEntregaProyectado) as
-      'PENDIENTE' | 'PARCIAL' | 'PAGADO' | 'ANTICIPADO'
+      PreviewPedidoResult['calculation']['estadoPagoProyectado']
 
     const tienePrecioManual = resueltos.some(r => r.origen === 'manual')
 
@@ -102,7 +128,9 @@ export class PreviewPedidoUseCase {
       warnings.push({ code: 'CLIENTE_BLOQUEADO', message: 'Cliente bloqueado por deuda vencida. Pague primero.' })
     }
 
-    if (!esAnonimo && !cliente.bloqueado) {
+    // El límite de fiados es un guard de ALTA — editar un pedido existente no
+    // crea un nuevo fiado, así que no aplica en modo edición.
+    if (!esAnonimo && !cliente.bloqueado && !esEdicion) {
       const fiado = await this.deps.getFiadoStatusUseCase.execute({ clienteId: input.clienteId })
       if (fiado.count >= fiado.limite) {
         canCreate = false
@@ -123,8 +151,12 @@ export class PreviewPedidoUseCase {
 
     const allowedActions: PreviewPedidoResult['allowedActions'] = []
     if (canCreate) {
-      allowedActions.push('crear')
-      if (estadoEntregaProyectado === 'PENDIENTE') allowedActions.push('crear-y-enviar-a-ruta')
+      if (esEdicion) {
+        allowedActions.push('actualizar')
+      } else {
+        allowedActions.push('crear')
+        if (estadoEntregaProyectado === 'PENDIENTE') allowedActions.push('crear-y-enviar-a-ruta')
+      }
     }
 
     // hoy no se restringe para ADMIN/ASISTENTE — la política de umbral es
@@ -135,13 +167,18 @@ export class PreviewPedidoUseCase {
     // CONSUMIDOR_FINAL = ausencia de cliente real: sin historial ni riesgo. ──
     let riskSignals: PreviewPedidoResult['riskSignals'] = []
     if (!esAnonimo) {
-      const [pedidosRecientes, precioMinimos] = await Promise.all([
+      const [pedidosRecientesRaw, precioMinimos] = await Promise.all([
         this.deps.pedidoRepo.findMany(
           { clienteId: input.clienteId, estadoEntrega: ESTADOS_ENTREGA_VALIDOS },
-          { take: 5, orderBy: 'desc' },
+          { take: 6, orderBy: 'desc' },
         ),
         this.deps.getPrecioMinimos(),
       ])
+      // en edición, el propio pedido no debe compararse contra sí mismo.
+      const pedidosRecientes = (esEdicion
+        ? pedidosRecientesRaw.filter(p => readEntityId(p) !== input.pedidoId)
+        : pedidosRecientesRaw
+      ).slice(0, 5)
       const historial = pedidosRecientes.map((p, idx) =>
         pedidoEntityToPedidoBase(p as never, readEntityId(p) ?? `__real_${idx}__`),
       )
@@ -176,7 +213,7 @@ export class PreviewPedidoUseCase {
         total,
         totalPagado,
         saldoProyectado,
-        saldoFavorProyectado: excedente,
+        saldoFavorProyectado,
         estadoEntregaProyectado,
         estadoPagoProyectado,
       },
@@ -187,8 +224,8 @@ export class PreviewPedidoUseCase {
       requiresAuthorization: false,
       auditPreview: {
         actor: input.actorId,
-        accion: 'CREAR_PEDIDO',
-        recurso: 'Pedido (nuevo)',
+        accion: esEdicion ? 'ACTUALIZAR_PEDIDO' : 'CREAR_PEDIDO',
+        recurso: esEdicion ? 'Pedido (edición)' : 'Pedido (nuevo)',
         valoresRelevantes: { total, clienteId: input.clienteId, canal, origen, tienePrecioManual },
       },
     }

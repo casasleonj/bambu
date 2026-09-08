@@ -45,4 +45,11 @@ describe('PedidoCommitBar', () => {
     renderBar({ phase: 'DRAFTING', previewPending: true })
     expect(screen.getByTestId('workspace-commit')).toHaveTextContent('Calculando…')
   })
+
+  it('modoEdicion → "Guardar cambios" / "Guardando…"', () => {
+    const { rerender } = renderBar({ phase: 'PREVIEW_READY', canCommit: true, modoEdicion: true })
+    expect(screen.getByTestId('workspace-commit')).toHaveTextContent('Guardar cambios')
+    rerender(<PedidoCommitBar phase={'COMMITTING' as WorkspacePhase} {...base} modoEdicion />)
+    expect(screen.getByTestId('workspace-commit')).toHaveTextContent('Guardando…')
+  })
 })

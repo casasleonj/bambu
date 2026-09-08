@@ -138,6 +138,8 @@ export const PreviewPedidoSchema = z.object({
   ).optional(),
   entregado: z.boolean().optional(),
   pedidoOrigenId: z.string().optional(),
+  /** modo edición: preview de un PUT declarativo sobre un pedido existente. */
+  pedidoId: z.string().trim().min(1).optional(),
 });
 
 // ====================

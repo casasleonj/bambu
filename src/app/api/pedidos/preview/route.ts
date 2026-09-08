@@ -39,6 +39,9 @@ export async function POST(request: NextRequest) {
       if (error.message.startsWith('PEDIDO_ORIGEN_NOT_FOUND')) {
         return apiError('Pedido de origen no encontrado', 404, { code: 'PEDIDO_ORIGEN_NOT_FOUND' })
       }
+      if (error.message.startsWith('PEDIDO_NOT_FOUND')) {
+        return apiError('Pedido no encontrado', 404, { code: 'PEDIDO_NOT_FOUND' })
+      }
     }
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error en preview de pedido')
     return apiError('Error preparando el pedido', 500)

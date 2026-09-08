@@ -259,6 +259,8 @@ export interface PreviewPedidoInput {
   pagos?: Array<{ metodo: 'EFECTIVO' | 'TRANSFERENCIA' | 'NEQUI' | 'DAVIPLATA' | 'BONO'; monto: number }>
   entregado?: boolean
   pedidoOrigenId?: string
+  /** modo edición: preview de un PUT declarativo de items sobre un pedido existente. */
+  pedidoId?: string
   /** userId de la sesión — lo inyecta la route, no viene del body. */
   actorId: string
 }
@@ -285,24 +287,25 @@ export interface PreviewPedidoResult {
     totalPagado: number
     /** calcularSaldo(total, totalPagado). */
     saldoProyectado: number
-    /** normalizarPagos(request.pagos, total).excedente — iría a Cliente.saldoFavor en el commit. */
+    /** normalizarPagos(request.pagos, total).excedente — iría a Cliente.saldoFavor en el commit. Edición: 0. */
     saldoFavorProyectado: number
-    estadoEntregaProyectado: 'PENDIENTE' | 'ENTREGADO'
-    estadoPagoProyectado: 'PENDIENTE' | 'PARCIAL' | 'PAGADO' | 'ANTICIPADO'
+    /** Creación: PENDIENTE/ENTREGADO. Edición: el estadoEntrega actual del pedido (no cambia). */
+    estadoEntregaProyectado: 'PENDIENTE' | 'EN_RUTA' | 'ENTREGADO' | 'NO_ENTREGADO'
+    estadoPagoProyectado: 'PENDIENTE' | 'PARCIAL' | 'PAGADO' | 'ANTICIPADO' | 'VENCIDO'
   }
   permissions: {
     canCreate: boolean
     canSetManualPrice: boolean
   }
-  allowedActions: Array<'crear' | 'crear-y-enviar-a-ruta'>
+  allowedActions: Array<'crear' | 'crear-y-enviar-a-ruta' | 'actualizar'>
   warnings: Array<{ code: string; message: string; field?: string }>
   riskSignals: Array<{ tipo: string; severidad: 'BAJA' | 'MEDIA' | 'ALTA'; detalle: string }>
   requiresAuthorization: boolean
   authorizationPolicy?: string
   auditPreview: {
     actor: string
-    accion: 'CREAR_PEDIDO'
-    recurso: 'Pedido (nuevo)'
+    accion: 'CREAR_PEDIDO' | 'ACTUALIZAR_PEDIDO'
+    recurso: 'Pedido (nuevo)' | 'Pedido (edición)'
     valoresRelevantes: {
       total: number
       clienteId: string
