@@ -79,6 +79,36 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
 
     await page.context().setOffline(false)
   })
+
+  test('peek: abre sin navegar (G4), ↑/↓ recorren, Escape cierra', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const cliente = await createCliente(page, { nombre: 'Hub Peek E2E' })
+    await apiPost(page, '/api/pedidos', {
+      clienteId: cliente.id, canal: 'DOMICILIO', origen: 'PEDIDO',
+      items: [{ producto: 'PACA_AGUA', cantidad: 4 }], offlineId: `hub-peek-${Date.now()}`,
+    })
+    await page.goto(`${BASE}/pedidos?all=true`)
+
+    const urlAntes = page.url()
+    await page.locator('[data-testid^="operacion-row-"]').first().click()
+    await expect(page.getByTestId('peek-desktop')).toBeVisible()
+    expect(page.url()).toBe(urlAntes) // G4: no navegó
+
+    await expect(page.getByTestId('peek-accion-destacada')).toBeVisible()
+    await page.keyboard.press('ArrowDown')
+    await expect(page.getByTestId('peek-desktop')).toBeVisible() // sigue abierto en otra operación
+    await page.keyboard.press('Escape')
+    await expect(page.getByTestId('peek-desktop')).toHaveCount(0)
+  })
+
+  test('command menu: ⌘/Ctrl+K abre; "Abrir planificación de hoy" navega, no ejecuta', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    await page.goto(`${BASE}/pedidos?all=true`)
+    await page.keyboard.press('Control+k')
+    await expect(page.getByTestId('command-menu')).toBeVisible()
+    await page.getByTestId('command-planificacion').click()
+    await expect(page).toHaveURL(/\/rutas/)
+  })
 })
 
 test.describe('flag OFF: la UI de tabs sigue funcionando', () => {

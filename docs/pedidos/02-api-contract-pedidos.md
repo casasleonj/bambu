@@ -264,3 +264,24 @@ Conteos para la cabecera de focos del Pedido Hub (blueprint §2.2). **Aditivo** 
   pendientesN2Count: number       // ObligacionPendiente con estado ABIERTA
 }
 ```
+
+---
+
+## `GET /api/pedidos/[id]` — extendido (Fase 4b del Hub — BRECHA §9.2 resuelta)
+
+Aditivo a la respuesta existente (`{ pedido: { ...PedidoResumenDTO, enrichment } }`). Solo lectura — el GET no toca use cases de escritura ni `$transaction`. Sigue exigiendo `requireOwnership('pedido', id)`.
+
+```ts
+// pedido: { ...previo, + }
+{
+  pendienteN2: {
+    id: string; producto: string; remanente: number; estado: string
+    actividades: Array<{ id, tipo, cantidad, cantidadCumplida, estado, modo, embarqueId }>
+  } | null                                 // ObligacionPendiente (@unique pedidoId)
+  embarqueResumen: { id, numeroDia, estado, repartidor } | null
+  pedidosVinculados: Array<{ id, numero, rol: 'demanda' | 'origen', total, estadoEntrega }>  // G11.B
+  casosAbiertos: Array<{ id, alertaTipo, severidad, status }>   // Caso status ABIERTO|EN_PROCESO
+}
+```
+
+Tipo: `PedidoPeekExtras` en `src/modules/pedidos/application/dto/index.ts`.

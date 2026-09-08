@@ -54,6 +54,59 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     const horaApertura = negocio?.horaApertura || null
     const rutaNombre = negocio?.ruta?.nombre || cliente?.ruta?.nombre
 
+    // Fase 4b — datos de la capa 2 del peek (blueprint §9.2). Solo lectura.
+    const selfRow = await prisma.pedido.findUnique({ where: { id }, select: { pedidoOrigenId: true } })
+    const pedidoOrigenId = selfRow?.pedidoOrigenId ?? null
+    const [obligacion, vinculados, casosAbiertos] = await Promise.all([
+      prisma.obligacionPendiente.findUnique({
+        where: { pedidoId: id },
+        include: {
+          actividades: {
+            select: { id: true, tipo: true, cantidad: true, cantidadCumplida: true, estado: true, modo: true, embarqueId: true },
+          },
+        },
+      }),
+      prisma.pedido.findMany({
+        where: {
+          OR: [{ pedidoOrigenId: id }, ...(pedidoOrigenId ? [{ id: pedidoOrigenId }] : [])],
+        },
+        select: { id: true, numero: true, pedidoOrigenId: true, total: true, estadoEntrega: true },
+      }),
+      prisma.caso.findMany({
+        where: { pedidoId: id, status: { in: ['ABIERTO', 'EN_PROCESO'] } },
+        select: { id: true, alertaTipo: true, severidad: true, status: true, createdAt: true },
+      }),
+    ])
+
+    let embarqueResumen: { id: string; numeroDia: number; estado: string; repartidor: string | null } | null = null
+    if (found.pedido.embarqueId) {
+      const e = await prisma.embarque.findUnique({
+        where: { id: found.pedido.embarqueId },
+        select: { id: true, numeroDia: true, estado: true, trabajador: { select: { nombre: true } } },
+      })
+      if (e) embarqueResumen = { id: e.id, numeroDia: e.numeroDia, estado: e.estado, repartidor: e.trabajador?.nombre ?? null }
+    }
+
+    const pedidosVinculados = vinculados
+      .filter((p) => p.id !== id)
+      .map((p) => ({
+        id: p.id,
+        numero: p.numero,
+        rol: (p.pedidoOrigenId === id ? 'demanda' : 'origen') as 'demanda' | 'origen',
+        total: Number(p.total),
+        estadoEntrega: p.estadoEntrega,
+      }))
+
+    const pendienteN2 = obligacion
+      ? {
+          id: obligacion.id,
+          producto: obligacion.producto,
+          remanente: obligacion.cantidadOriginal - obligacion.cantidadCumplida,
+          estado: obligacion.estado,
+          actividades: obligacion.actividades,
+        }
+      : null
+
     const dto = PedidoDTOMapper.toResumen(found.pedido, { factura: found.factura })
     // Dirección de texto efectiva (regla única pickDireccionTexto): el
     // snapshot propio del pedido gana sobre negocio, que gana sobre cliente.
@@ -74,6 +127,16 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         nombreNegocioCli: nombreNegocio,
         horaAperturaCli: horaApertura,
         rutaNombre,
+        // Fase 4b — capa 2 del peek
+        pendienteN2,
+        embarqueResumen,
+        pedidosVinculados,
+        casosAbiertos: casosAbiertos.map((c) => ({
+          id: c.id,
+          alertaTipo: c.alertaTipo,
+          severidad: c.severidad,
+          status: c.status,
+        })),
       },
     })
   } catch (error) {

@@ -4,9 +4,14 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { EmptyState } from '@/components/empty-state'
 import { getTodayString } from '@/lib/dates'
 import { useOnlineStatus } from '@/hooks/use-online-status'
+import { useRealtimeListener } from '@/hooks/use-realtime-listener'
 import { FocoStrip } from './foco-strip'
 import { OperacionList } from './operacion-list'
+import { PeekPanel } from './peek-panel'
+import { PedidoCommandMenu } from './command-menu'
 import { deriveOperacion } from './derive-operacion'
+import { usePeek } from './use-peek'
+import { invalidatePeek } from './peek-cache'
 import type { AccionKey, FocoCount, FocoKey, Pedido } from './types'
 
 export interface PedidoHubCounts {
@@ -26,13 +31,16 @@ interface PedidoHubProps {
   counts: PedidoHubCounts
   loading: boolean
   error: string | null
-  /** callback: abrir el detalle (modal legacy en 4a; peek en 4b). */
-  onOpen: (pedido: Pedido) => void
-  /** callback: ejecutar la acción destacada (mapea a las mutaciones existentes). */
+  userRole: string | null
+  /** ejecutar la acción destacada (mapea a las mutaciones existentes de pedidos-client). */
   onAccion: (pedido: Pedido, key: AccionKey) => void
+  /** abrir el flujo de creación (modal de pedidos-client). */
+  onNuevaOperacion?: () => void
   /** el control de rango de fecha existente de pedidos-client (independiente de los focos). */
   dateFilterSlot?: ReactNode
   onRetry?: () => void
+  /** dispara un refetch de la lista/counts (para realtime). */
+  onRefetch?: () => void
 }
 
 function useViewport(): 'desktop' | 'mobile' {
@@ -48,15 +56,13 @@ function useViewport(): 'desktop' | 'mobile' {
 }
 
 export function PedidoHub({
-  pedidos, counts, loading, error, onOpen, onAccion, dateFilterSlot, onRetry,
+  pedidos, counts, loading, error, userRole, onAccion, onNuevaOperacion, dateFilterSlot, onRetry, onRefetch,
 }: PedidoHubProps) {
   const isOnline = useOnlineStatus()
   const viewport = useViewport()
   const [activeFoco, setActiveFoco] = useState<FocoKey | null>(null)
   const hoyBogota = getTodayString()
 
-  // Focos por pedido de la página cargada (para el filtro client-side y para
-  // derivar "excepciones" cuando counts no lo trae).
   const focosByPedido = useMemo(() => {
     const map = new Map<string, ReturnType<typeof deriveOperacion>['focos']>()
     for (const p of pedidos) map.set(p.id, deriveOperacion(p, { hoyBogota }).focos)
@@ -71,7 +77,7 @@ export function PedidoHub({
   const focos: FocoCount[] = [
     { key: 'porPlanificar', label: 'Por planificar', value: counts.porPlanificarCount, tone: counts.atrasadosCount > 0 ? 'amber' : 'none' },
     { key: 'enRuta', label: 'En ruta', value: counts.enRutaCount, tone: 'none' },
-    { key: 'esperandoPago', label: 'Esperando pago', value: countEsperandoPago(pedidos, focosByPedido), amount: counts.esperandoPagoTotal, tone: counts.esperandoPagoTotal > 0 ? 'red' : 'none' },
+    { key: 'esperandoPago', label: 'Esperando pago', value: countByFoco(pedidos, focosByPedido, 'esperandoPago'), amount: counts.esperandoPagoTotal, tone: counts.esperandoPagoTotal > 0 ? 'red' : 'none' },
     { key: 'pendientesN2', label: 'Pendientes', value: counts.pendientesN2Count, tone: counts.pendientesN2Count > 0 ? 'amber' : 'none' },
     { key: 'excepciones', label: 'Excepciones', value: counts.excepcionesCount ?? excepcionesEnPagina, tone: (counts.excepcionesCount ?? excepcionesEnPagina) > 0 ? 'red' : 'none' },
   ]
@@ -81,8 +87,45 @@ export function PedidoHub({
     return pedidos.filter((p) => focosByPedido.get(p.id)?.includes(activeFoco))
   }, [pedidos, activeFoco, focosByPedido])
 
+  const peek = usePeek(pedidosFiltrados)
+
+  // Realtime: invalidación selectiva del peek + refetch de la lista.
+  useRealtimeListener(['pedido.*', 'pago.*', 'embarque.*', 'route_plan.updated'], (evt) => {
+    if (evt.id) invalidatePeek(evt.id)
+    onRefetch?.()
+  }, { debounceMs: 500 })
+
   const offlineConDatos = !isOnline && pedidos.length > 0
   const errorSinDatos = error && pedidos.length === 0
+
+  const listNode = errorSinDatos ? (
+    <EmptyState title="No se pudieron cargar las operaciones" description={error ?? undefined} actionLabel={onRetry ? 'Reintentar' : undefined} onAction={onRetry} />
+  ) : loading && pedidos.length === 0 ? (
+    <div className="animate-pulse space-y-2" data-testid="pedido-hub-skeleton">
+      {Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-12 rounded-lg bg-gray-100" />)}
+    </div>
+  ) : (
+    <OperacionList pedidos={pedidosFiltrados} viewport={viewport} hoyBogota={hoyBogota} onAccion={onAccion} onOpen={peek.open} />
+  )
+
+  const peekNode = peek.activeId && peek.layer1 ? (
+    <PeekPanel
+      pedido={peek.layer1}
+      layer2={peek.layer2}
+      loadingLayer2={peek.loadingLayer2}
+      errorLayer2={peek.errorLayer2}
+      viewport={viewport}
+      userRole={userRole}
+      hoyBogota={hoyBogota}
+      onClose={peek.close}
+      onNav={peek.nav}
+      onAccion={onAccion}
+      onOpenVinculado={(id) => {
+        const target = pedidos.find((p) => p.id === id)
+        if (target) peek.open(target)
+      }}
+    />
+  ) : null
 
   return (
     <div className="space-y-3" data-testid="pedido-hub">
@@ -103,35 +146,34 @@ export function PedidoHub({
         </p>
       )}
 
-      {errorSinDatos ? (
-        <EmptyState
-          title="No se pudieron cargar las operaciones"
-          description={error ?? undefined}
-          actionLabel={onRetry ? 'Reintentar' : undefined}
-          onAction={onRetry}
-        />
-      ) : loading && pedidos.length === 0 ? (
-        <div className="animate-pulse space-y-2" data-testid="pedido-hub-skeleton">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-12 rounded-lg bg-gray-100" />
-          ))}
+      {/* desktop: lista + peek lado a lado; mobile: lista + peek como bottom sheet */}
+      {viewport === 'desktop' && peekNode ? (
+        <div className="grid grid-cols-[1fr_24rem] gap-3">
+          <div>{listNode}</div>
+          <div className="sticky top-4 self-start">{peekNode}</div>
         </div>
       ) : (
-        <OperacionList
-          pedidos={pedidosFiltrados}
-          viewport={viewport}
-          hoyBogota={hoyBogota}
-          onAccion={onAccion}
-          onOpen={onOpen}
-        />
+        <>
+          {listNode}
+          {peekNode}
+        </>
       )}
+
+      <PedidoCommandMenu
+        selected={peek.layer1}
+        hoyBogota={hoyBogota}
+        onNuevaOperacion={() => onNuevaOperacion?.()}
+        onBuscarCliente={() => { window.location.href = '/clientes' }}
+        onAccion={onAccion}
+      />
     </div>
   )
 }
 
-function countEsperandoPago(
+function countByFoco(
   pedidos: Pedido[],
   focosByPedido: Map<string, ReturnType<typeof deriveOperacion>['focos']>,
+  foco: FocoKey,
 ): number {
-  return pedidos.filter((p) => focosByPedido.get(p.id)?.includes('esperandoPago')).length
+  return pedidos.filter((p) => focosByPedido.get(p.id)?.includes(foco)).length
 }
