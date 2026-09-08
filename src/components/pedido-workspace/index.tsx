@@ -7,31 +7,20 @@ import { workspaceReducer, initWorkspace, canCommit, EMPTY_DRAFT } from './works
 import { usePreview } from './use-preview'
 import type { DraftPedido, ProductoCodigo, WorkspaceErrorKind } from './types'
 import type { PreviewPedidoResult } from '@/modules/pedidos/application/dto'
+import type { PedidoUnifiedData } from '@/components/pedido-form-unified'
 
 const CODIGO_TO_PRODID: Record<string, string> = Object.fromEntries(
   Object.entries(PRODUCTO_INFO).map(([prodId, info]) => [info.codigo, prodId]),
 )
 const PRODUCTOS: ProductoCodigo[] = ['PACA_AGUA', 'PACA_HIELO', 'BOTELLON', 'BOLSA_AGUA', 'BOLSA_HIELO']
 
-export interface WorkspaceSubmitPayload {
-  clienteId?: string
-  negocioId?: string
-  canal: 'PUNTO' | 'DOMICILIO'
-  origen: 'PEDIDO' | 'VENTA_RAPIDA'
-  items: Array<{ producto: string; cantidad: number; precioManual?: number }>
-  preciosManuales: Record<string, number>
-  pagos: Array<{ metodo: string; monto: number }>
-  obs?: string
-  entregado?: boolean
-  pedidoOrigenId?: string
-}
-
 export interface PedidosWorkspaceProps {
   clientes: Array<{ id: string; nombre: string; apellido?: string }>
   /** intención inicial — determina el origen del draft. */
   intent?: 'pedido' | 'venta-rapida'
   initialDraft?: Partial<DraftPedido>
-  onSubmit: (data: WorkspaceSubmitPayload) => void
+  /** mismo contrato que `PedidoFormUnified.onSubmit` — reusa `handlePedidoSubmit` de pedidos-client. */
+  onSubmit: (data: PedidoUnifiedData) => void
   onCancel?: () => void
 }
 
@@ -95,7 +84,6 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, onSubmit, onC
       pagos: state.draft.pagos,
       obs: state.draft.obs,
       entregado: state.draft.entregado,
-      pedidoOrigenId: state.draft.pedidoOrigenId,
     })
   }
 
