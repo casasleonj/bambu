@@ -304,6 +304,12 @@ El documento fuente (ALS Operación Comercial) **nunca se comiteó** — solo qu
 
 ---
 
+## 6b. Insumo para el diseño de experiencia
+
+Este documento (auditoría técnica) es el **insumo** de `docs/pedidos/VENTA_LIBRE_EXPERIENCIA_HUB_v1.0.md`, que cierra la **mentalidad + casos (VL-01..VL-15) + criterios de éxito** de cómo VENTA_LIBRE aparece en el Pedido Hub. Ahí, BRECHA-2/3/4/6 pasan de "hallazgos" a **requisitos de diseño** (RD-1..RD-5) y se contemplan explícitamente los **dos puntos de captura** (ruta / conciliación) y las **cuatro dimensiones** (comprador / responsable operativo / registrador / momento).
+
+---
+
 ## 7. Conclusión
 
 - El **contrato de producto de VENTA_LIBRE está definido** y mayormente implementado: origen, embarque de origen inmutable, entrega inmediata/posterior, cobro con contexto de captura, reportado/confirmado, timestamps, offline, concurrencia de numeración, conciliación de producto y (en transición) de caja.

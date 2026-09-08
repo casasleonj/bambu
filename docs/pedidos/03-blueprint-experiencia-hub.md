@@ -580,6 +580,9 @@ PENDIENTE: umbrales monetarios · cuándo un precio manual requiere autorizació
 ### 8.3 Consolidación de `/repartidor` dentro del Hub
 PENDIENTE de validación UX/arquitectónica. El Pedido representa la obligación comercial; Embarque/Ruta representa la ejecución logística. El blueprint solo define los puntos de contacto (una operación creada/corregida en el Hub fluye a la cola del repartidor con dirección-snapshot, señales de riesgo y pendientes N2). La fusión no está aprobada.
 
+### 8.4 Captura de VENTA_LIBRE
+PENDIENTE de negocio (no de blueprint): validación de disponibilidad de mercancía (preventiva vs detectiva) · qué cuenta como "comprometido" · venta preferencial a empleado. Y **EVIDENCIA HISTÓRICA A RECUPERAR** (EH-1..EH-5). La **mentalidad + casos + criterios de éxito** de cómo VENTA_LIBRE aparece en el Hub (aparece pero no nace ahí; dos puntos de captura — ruta y conciliación; 4 dimensiones que no se colapsan; VL-01..VL-15) están cerrados en **`docs/pedidos/VENTA_LIBRE_EXPERIENCIA_HUB_v1.0.md`** (insumo: `docs/pedidos/VENTA_LIBRE_AUDITORIA_CONTRATO_CODIGO_v1.0.md`). Requisitos de diseño derivados: RD-1 (identificar comprador en ruta), RD-2 (antifraude observa las ventas libres), RD-3 (disponibilidad real en el punto de captura), RD-4 (borrar la entidad inerte), RD-5 (vincular venta libre de "más demanda" al pedido original).
+
 ---
 
 ## §9. BRECHAS PLAN ↔ CÓDIGO
