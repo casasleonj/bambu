@@ -15,8 +15,10 @@ const TIPO_TITULO: Record<string, string> = {
 /**
  * Impacto económico proyectado de una acción N2 (plan Fase 5, P2/P3).
  * Lenguaje explícito: qué sube/baja, qué pasa con `Cliente.saldoFavor`, y —
- * cuando aplica — qué **permanece** (el negativo ya acreditado NO se revierte).
- * NO aparenta una reversión completa cuando no existe.
+ * cuando aplica — qué **permanece** (el crédito ya acreditado es un efecto
+ * económico real; esta acción no lo revierte). NO aparenta una reversión
+ * completa cuando no existe. NO sugiere que el cliente "queda debiendo".
+ * Política de dominio: docs/pedidos/POLITICA_SALDO_FAVOR_Y_DIFERENCIAL_NEGATIVO_v1.0.md
  */
 export function N2Impacto({ proyeccion }: { proyeccion: ProyectarGestionPendienteResult }) {
   const c = proyeccion.consecuencia
@@ -43,7 +45,7 @@ export function N2Impacto({ proyeccion }: { proyeccion: ProyectarGestionPendient
           <p>Se revierten <b>{money(proyeccion.reversion.montoRevertible)}</b> del total del pedido.</p>
           {proyeccion.reversion.saldoFavorNoRevertido > 0 && (
             <p className="text-amber-800" data-testid="n2-impacto-no-revertido">
-              Los <b>{money(proyeccion.reversion.saldoFavorNoRevertido)}</b> ya acreditados al saldo a favor del cliente <b>permanecen</b> — no se revierten automáticamente.
+              Los <b>{money(proyeccion.reversion.saldoFavorNoRevertido)}</b> ya acreditados al saldo a favor del cliente <b>permanecen</b>: son un crédito real del cliente y esta acción no los revierte. El cliente no queda debiendo por esto.
             </p>
           )}
         </div>

@@ -28,7 +28,7 @@
 - **`diferencial > 0`** → `Pedido.total` += diferencial · `saldo` += diferencial · `Factura` actualizada · `estadoPago` reproyectado. El cobro usa el flujo existente (cartera / pagar-fiado).
 - **`diferencial < 0`** → `Cliente.saldoFavor` += `|diferencial|`. **`Pedido.total` NO baja.**
 - **`diferencial === 0`** → solo un `PedidoCantidadAjuste` (trazabilidad: "se evaluó, sin ajuste").
-- **Liberar / cambiar-modo** revierten lo reflejado en `Pedido.total` (el caso positivo). **El crédito negativo ya en `Cliente.saldoFavor` NO se revierte automáticamente** (`CambiarModoActividadUseCase` lo documenta explícitamente).
+- **Liberar / cambiar-modo** revierten lo reflejado en `Pedido.total` (el caso positivo). El crédito negativo ya en `Cliente.saldoFavor` **hoy NO se revierte automáticamente** (`CambiarModoActividadUseCase`). **Esto ya NO es política definitiva del producto** (equipo, 2026-09-08): es una **BRECHA PLAN↔CÓDIGO**. La regla de dominio ahora es *compensación trazable, no borrado de historia* — ver `docs/pedidos/POLITICA_SALDO_FAVOR_Y_DIFERENCIAL_NEGATIVO_v1.0.md`. **F5 no implementa esa compensación** (es dominio compartido N2 + Cartera); F5 solo **muestra el estado real sin aparentar una reversión total** y refiere a la política como la definición vigente.
 
 ### `GET /api/pedidos/[id]` (Fase 4b, PR #224 — ya extendido)
 
@@ -78,6 +78,8 @@ El blueprint plantea mostrar el impacto **antes** de confirmar. `gestionar-pendi
 - **la consecuencia económica final** (saldo del pedido después, saldo a favor del cliente después)
 
 Regla: **no aparentar una reversión completa cuando no existe.** Si el negativo a `saldoFavor` es material, se muestra **antes o durante** la decisión, y el resultado (tras la mutación) es **inequívoco** (§criterios: "resultado final inequívoco después de cada mutación").
+
+El copy del negativo no revertido debe encuadrarlo como lo que es según la política de dominio: el crédito acreditado **permanece** (es un efecto económico real y trazable) y su compensación es un ajuste trazable futuro, **no** una reversión que F5 ejecute. Ver `POLITICA_SALDO_FAVOR_Y_DIFERENCIAL_NEGATIVO_v1.0.md`. Nunca sugerir que el cliente "queda debiendo" por esto.
 
 `cambiar-modo` — igual: muestra la reversión del modo anterior + el nuevo diferencial + la consecuencia neta, y el mismo aviso del negativo no revertido.
 
@@ -246,6 +248,6 @@ Y que la interfaz **nunca** fusiona completar-pendiente / corregir / nueva-deman
 ## 5. Fuera de alcance (no reabrir)
 
 - Los endpoints N2 (`gestionar-pendiente`/`cambiar-modo`/`liberar`) — fijos.
-- Política del diferencial negativo no revertido — PENDIENTE de negocio (blueprint §8.2). F5 lo **muestra**, no lo resuelve.
+- Política del diferencial negativo no revertido — **cerrada como regla de dominio** (`POLITICA_SALDO_FAVOR_Y_DIFERENCIAL_NEGATIVO_v1.0.md`, equipo 2026-09-08): compensación trazable, no borrado de historia; señal ≠ deuda; causa + autorización antes de CxC. La implementación de la compensación es **dominio compartido N2 + Cartera** (BRECHA PLAN↔CÓDIGO), **no F5**. F5 solo lo **muestra** sin aparentar reversión total.
 - N2 en `/repartidor` — alcance explícito fuera (P7); la capacidad existe en el dominio.
 - `AsignarActividadUseCase` y su endpoint (`POST /api/obligaciones/[id]/asignar`) — no se integra en F5 (es asignación a embarque, otro flujo).
