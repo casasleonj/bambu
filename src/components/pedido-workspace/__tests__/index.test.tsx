@@ -94,6 +94,45 @@ describe('PedidosWorkspace (Composición)', () => {
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ origen: 'VENTA_RAPIDA', clienteId: 'CONSUMIDOR_FINAL' }))
   })
 
+  it('modo nueva-demanda (G11.B): cliente y canal fijos, sin panel de cliente ni toggle de canal', async () => {
+    render(
+      <PedidosWorkspace
+        clientes={clientes}
+        modo="nueva-demanda"
+        pedidoOrigenNumero={42}
+        initialDraft={{ clienteId: 'c1', canal: 'DOMICILIO', pedidoOrigenId: 'orig-1' }}
+        onSubmit={vi.fn()}
+      />,
+    )
+    expect(screen.getByTestId('workspace-nueva-demanda')).toHaveTextContent('Nueva demanda de Tienda X')
+    expect(screen.getByTestId('workspace-nueva-demanda')).toHaveTextContent('Pedido origen #42')
+    expect(screen.queryByTestId('cliente-search-input')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('workspace-canal-DOMICILIO')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('workspace-canal-PUNTO')).not.toBeInTheDocument()
+  })
+
+  it('modo nueva-demanda: el commit emite pedidoOrigenId + origen PEDIDO + items nuevos', async () => {
+    const onSubmit = vi.fn()
+    render(
+      <PedidosWorkspace
+        clientes={clientes}
+        modo="nueva-demanda"
+        pedidoOrigenNumero={42}
+        initialDraft={{ clienteId: 'c1', canal: 'DOMICILIO', pedidoOrigenId: 'orig-1' }}
+        onSubmit={onSubmit}
+      />,
+    )
+    fireEvent.click(screen.getByTestId('workspace-inc-PACA_AGUA'))
+    fireEvent.click(screen.getByTestId('workspace-inc-PACA_AGUA'))
+    fireEvent.click(screen.getByTestId('workspace-inc-PACA_AGUA'))
+    await waitFor(() => expect(screen.getByTestId('workspace-commit')).toBeEnabled(), { timeout: 3000 })
+    fireEvent.click(screen.getByTestId('workspace-commit'))
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+      clienteId: 'c1', canal: 'DOMICILIO', origen: 'PEDIDO', pedidoOrigenId: 'orig-1',
+      items: [{ producto: 'PACA_AGUA', cantidad: 3, precioManual: undefined }],
+    }))
+  })
+
   it('un cambio de cantidad tras el preview vuelve a deshabilitar el commit (preview stale)', async () => {
     render(<PedidosWorkspace clientes={clientes} onSubmit={vi.fn()} />)
     await elegirCliente()

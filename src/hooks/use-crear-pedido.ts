@@ -50,6 +50,13 @@ export interface CrearPedidoPayload {
   }
   direccionEntrega?: string
   barrioEntrega?: string
+  /**
+   * G11.B (decisión PO 2026-09-06): trazabilidad "nueva demanda" — este
+   * Pedido nace de una operación existente (el cliente pidió más/otra cosa
+   * después). El vínculo es la ÚNICA relación persistida; la inversa se
+   * obtiene por consulta. Ver `docs/pedidos/fase6-g11-flujo-plan.md` P6.
+   */
+  pedidoOrigenId?: string
 }
 
 export interface CrearPedidoResult {

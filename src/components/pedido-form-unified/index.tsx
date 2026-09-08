@@ -102,6 +102,8 @@ export interface PedidoUnifiedData {
   entregado?: boolean
   isEdit?: boolean
   pedidoId?: string
+  /** G11.B — "nueva demanda": este Pedido nace de una operación existente. */
+  pedidoOrigenId?: string
 }
 
 // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: el toggle "entregar después" de la

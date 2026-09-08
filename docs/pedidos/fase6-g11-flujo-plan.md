@@ -164,7 +164,7 @@ El mensaje **describe la situación y ofrece alternativas que el usuario elige**
 
 **Implementado:** `use-ajuste-cantidad.ts` (proyectar plano + stale-guard, confirmar via `fetchResilient`, `guardFromMessage` extrae el `code` del 409 sin reinterpretar la intención), `ajuste-impacto.tsx`, `pedido-cambio-cantidad-decision.tsx` (2 opciones, sin "no sé", sin Venta Libre, ayuda expandible), `correccion-cantidad-form.tsx` (motivo obligatorio; guard proyectado **o** del commit → mensaje + alternativas como botones que el usuario elige; `commitGuard` atado a la firma de inputs, sin set-state-in-effect), `pedido-cambio-cantidad.tsx` (contenedor: decisión → rama A inline / rama B `onNuevaDemanda`). Wireado en `peek-relaciones.tsx` (`puedeAjustar` = `canSeePrecioOrigen` de `peek-panel.tsx`, sólo ADMIN/ASISTENTE). 33 unit (decision 6 · impacto 5 · hook 6 · form 5 · contenedor 5 + regresión peek). tsc + eslint limpios.
 
-### F6-ii — rama B (nueva demanda reusa el workspace)
+### F6-ii — rama B (nueva demanda reusa el workspace) ✅ IMPLEMENTADO
 **Archivos:**
 - Modificar `src/components/pedido-workspace/types.ts` — `WorkspaceModo` += `'nueva-demanda'` (o reusar `pedidoInicial` con un flag)
 - Modificar `PedidosWorkspace` — modo nueva demanda: cliente + canal precargados **read-only**, items en blanco, `pedidoOrigenId` en el payload de preview y de commit; copy "Nueva demanda de {cliente} · Pedido origen #{n}"
@@ -175,6 +175,8 @@ El mensaje **describe la situación y ofrece alternativas que el usuario elige**
   - **independencia (P6, integración):** `pedido-nueva-demanda-relacionado.test.ts` extendido — tras crear la nueva demanda, `ActualizarPedidoUseCase`/`AjustarPedidoCantidadUseCase` sobre el **nuevo** no cambia ningún campo del **original** (`total`/`saldo`/`items`/`estadoPago`), y viceversa. Solo existe `pedidoOrigenId` persistido; la relación inversa se resuelve por query (`GET /api/pedidos/[original]` → `pedidosVinculados` incluye el nuevo).
 
 **Criterio:** el pedido creado tiene `pedidoOrigenId` = id del original; cliente y canal == los del original y no editables; **modificar uno no modifica el otro**; el resto del flujo de creación es el normal (misma fricción). No se persiste una segunda relación para la UI.
+
+**Implementado:** `WorkspaceProps += modo?: 'crear' | 'nueva-demanda'` + `pedidoOrigenNumero?`. En modo nueva-demanda: bloque read-only `workspace-nueva-demanda` (cliente + canal del origen, inmutables), **sin** `PedidoContextPanel` ni toggle de canal; `handleCommit` emite `pedidoOrigenId: state.draft.pedidoOrigenId` + fuerza `origen: 'PEDIDO'`. `usePreview` ya enviaba `pedidoOrigenId` (validado read-only por `PreviewPedidoUseCase` → `PedidoOrigenNotFoundError`). `CrearPedidoPayload` + `PedidoUnifiedData` += `pedidoOrigenId?`; el route ya lo pasa a `CrearPedidoUseCase` (`route.ts:256,312`). `pedidos-client`: estado `nuevaDemanda` + `case 'nueva-demanda'` arma `{ pedidoOrigenId: pedido.id, numeroOrigen, clienteId, canal }` y monta el workspace con `initialDraft`; se limpia en todos los cierres/submits. Independencia P6 ya cubierta por `pedido-nueva-demanda-relacionado.test.ts` (backend). 12 unit nuevos (workspace nueva-demanda 2 + frontera source-check 2 + los existentes). tsc + eslint limpios.
 
 ### F6-iii — vínculo cruzado + verificación E2E
 **Archivos:**
