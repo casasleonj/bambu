@@ -34,6 +34,7 @@ export function initWorkspace(draft?: Partial<DraftPedido>): WorkspaceState {
     valueOrigins: {},
     preview: null,
     previewPending: false,
+    precioBajoConfirmado: {},
     error: null,
   }
 }
@@ -97,8 +98,15 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
       return {
         ...s,
         valueOrigins: { ...s.valueOrigins, [`item.${action.producto}.precio`]: 'USER' },
+        // cambiar el precio manual invalida cualquier confirmación previa de "precio bajo"
+        precioBajoConfirmado: { ...s.precioBajoConfirmado, [action.producto]: false },
       }
     }
+    case 'CONFIRMAR_PRECIO_BAJO':
+      return {
+        ...state,
+        precioBajoConfirmado: { ...state.precioBajoConfirmado, [action.producto]: true },
+      }
     case 'SET_PAGOS':
       return afterDraftChange(state, { ...state.draft, pagos: action.pagos })
     case 'SET_ENTREGADO':

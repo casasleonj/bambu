@@ -86,6 +86,17 @@ describe('workspaceReducer — máquina de UI adaptativa', () => {
     expect(s.phase).toBe('DRAFTING')
   })
 
+  it('CONFIRMAR_PRECIO_BAJO marca el código; cambiar el precio manual lo revierte', () => {
+    let s = workspaceReducer(s0(), { type: 'SET_CLIENTE', clienteId: 'c1' })
+    s = workspaceReducer(s, { type: 'SET_ITEM_CANTIDAD', producto: 'PACA_AGUA', cantidad: 3 })
+    s = workspaceReducer(s, { type: 'SET_ITEM_PRECIO_MANUAL', producto: 'PACA_AGUA', precioManual: 500 })
+    s = workspaceReducer(s, { type: 'CONFIRMAR_PRECIO_BAJO', producto: 'PACA_AGUA' })
+    expect(s.precioBajoConfirmado['PACA_AGUA']).toBe(true)
+    s = workspaceReducer(s, { type: 'SET_ITEM_PRECIO_MANUAL', producto: 'PACA_AGUA', precioManual: 400 })
+    expect(s.precioBajoConfirmado['PACA_AGUA']).toBe(false)
+    expect(s.valueOrigins['item.PACA_AGUA.precio']).toBe('USER')
+  })
+
   it('el reducer NO calcula precios ni valida límites — el total solo llega por PREVIEW_RECEIVED', () => {
     let s = workspaceReducer(s0(), { type: 'SET_CLIENTE', clienteId: 'c1' })
     s = workspaceReducer(s, { type: 'SET_ITEM_CANTIDAD', producto: 'PACA_AGUA', cantidad: 100 })

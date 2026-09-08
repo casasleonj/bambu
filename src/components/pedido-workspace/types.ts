@@ -62,6 +62,8 @@ export interface WorkspaceState {
   preview: PreviewPedidoResult | null
   /** true mientras el preview está en vuelo. */
   previewPending: boolean
+  /** códigos con precio manual muy bajo ya confirmado por el usuario (ALS §5). */
+  precioBajoConfirmado: Record<string, boolean>
   error: { kind: WorkspaceErrorKind; message: string } | null
 }
 
@@ -72,6 +74,7 @@ export type WorkspaceAction =
   | { type: 'SET_CANAL'; canal: 'PUNTO' | 'DOMICILIO' }
   | { type: 'SET_ITEM_CANTIDAD'; producto: ProductoCodigo; cantidad: number }
   | { type: 'SET_ITEM_PRECIO_MANUAL'; producto: ProductoCodigo; precioManual: number | undefined }
+  | { type: 'CONFIRMAR_PRECIO_BAJO'; producto: ProductoCodigo }
   | { type: 'SET_PAGOS'; pagos: DraftPago[] }
   | { type: 'SET_ENTREGADO'; entregado: boolean }
   | { type: 'SET_OBS'; obs: string }

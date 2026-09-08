@@ -26,6 +26,8 @@ export interface PedidoItemEditorProps {
   onCantidadChange: (prodId: string, value: string) => void
   onPrecioManualChange: (codigo: string, valor: number) => void
   onConfirmarPrecioBajo: (codigo: string) => void
+  /** prefijo de los `data-testid` de cada control (`<prefix>-inc-<codigo>`, etc.). */
+  testIdPrefix?: string
 }
 
 /**
@@ -54,6 +56,7 @@ export function PedidoItemEditor({
   onCantidadChange,
   onPrecioManualChange,
   onConfirmarPrecioBajo,
+  testIdPrefix = 'item',
 }: PedidoItemEditorProps) {
   return (
     <div className="bg-white border rounded-xl p-4">
@@ -89,11 +92,11 @@ export function PedidoItemEditor({
               </div>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1">
-                  <button type="button" onClick={() => onDecrement(prodId)} className="w-8 h-8 rounded-full bg-white border flex items-center justify-center text-gray-600" disabled={cant === 0}>
+                  <button type="button" data-testid={`${testIdPrefix}-dec-${info.codigo}`} onClick={() => onDecrement(prodId)} className="w-8 h-8 rounded-full bg-white border flex items-center justify-center text-gray-600" disabled={cant === 0}>
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" /></svg>
                   </button>
-                  <Input type="number" min="0" value={cant || ''} onChange={(e) => onCantidadChange(prodId, e.target.value)} className="w-14 text-center p-1 h-8 text-sm bg-white" placeholder="0" />
-                  <button type="button" onClick={() => onIncrement(prodId)} className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-700">
+                  <Input type="number" min="0" data-testid={`${testIdPrefix}-cant-${info.codigo}`} value={cant || ''} onChange={(e) => onCantidadChange(prodId, e.target.value)} className="w-14 text-center p-1 h-8 text-sm bg-white" placeholder="0" />
+                  <button type="button" data-testid={`${testIdPrefix}-inc-${info.codigo}`} onClick={() => onIncrement(prodId)} className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-700">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
                   </button>
                 </div>

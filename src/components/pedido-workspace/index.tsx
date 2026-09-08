@@ -1,10 +1,12 @@
 'use client'
 
 import { useCallback, useMemo, useReducer } from 'react'
-import { PRODUCTO_INFO } from '@/lib/prices'
+import { PRODUCTO_INFO, getProductosForCanal } from '@/lib/prices'
 import { PedidoPricingSummary } from '@/components/pedido-form-unified/pedido-pricing-summary'
+import { PedidoItemEditor, type PedidoItemEditorItem } from '@/components/pedido-form-unified/pedido-item-editor'
 import { workspaceReducer, initWorkspace, canCommit, EMPTY_DRAFT } from './workspace-reducer'
 import { usePreview } from './use-preview'
+import { useItemPricing } from './use-item-pricing'
 import type { DraftPedido, ProductoCodigo, WorkspaceErrorKind } from './types'
 import type { PreviewPedidoResult } from '@/modules/pedidos/application/dto'
 import type { PedidoUnifiedData } from '@/components/pedido-form-unified'
@@ -12,7 +14,6 @@ import type { PedidoUnifiedData } from '@/components/pedido-form-unified'
 const CODIGO_TO_PRODID: Record<string, string> = Object.fromEntries(
   Object.entries(PRODUCTO_INFO).map(([prodId, info]) => [info.codigo, prodId]),
 )
-const PRODUCTOS: ProductoCodigo[] = ['PACA_AGUA', 'PACA_HIELO', 'BOTELLON', 'BOLSA_AGUA', 'BOLSA_HIELO']
 
 export interface PedidosWorkspaceProps {
   clientes: Array<{ id: string; nombre: string; apellido?: string }>
@@ -48,7 +49,42 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, onSubmit, onC
 
   usePreview(state.draft, { onPending, onReceived, onError })
 
+  const { tabla, configs, loading: pricingLoading, precioBaseFor } = useItemPricing()
+
   const calc = state.preview?.calculation
+
+  const cantOf = useCallback(
+    (codigo: ProductoCodigo) => state.draft.items.find((i) => i.producto === codigo)?.cantidad ?? 0,
+    [state.draft.items],
+  )
+
+  const editorItems: PedidoItemEditorItem[] = useMemo(() => {
+    const prodIds = getProductosForCanal(state.draft.canal, configs)
+    return prodIds.map((prodId) => {
+      const codigo = PRODUCTO_INFO[prodId].codigo as ProductoCodigo
+      const draftItem = state.draft.items.find((i) => i.producto === codigo)
+      const previewItem = calc?.items.find((c) => c.producto === codigo)
+      const precioBase = precioBaseFor(codigo, state.draft.canal)
+      return {
+        prodId,
+        cantidad: draftItem?.cantidad ?? 0,
+        precio: previewItem?.precioUnitario ?? draftItem?.precioManual ?? precioBase,
+        precioBase,
+        precioManual: draftItem?.precioManual,
+        precioOrigen: previewItem?.precioOrigen,
+        tiers: tabla[codigo] ?? [],
+        precioBajoConfirmado: Boolean(state.precioBajoConfirmado[codigo]),
+      }
+    })
+  }, [state.draft.canal, state.draft.items, state.precioBajoConfirmado, calc, configs, tabla, precioBaseFor])
+
+  const setCantidad = useCallback(
+    (prodId: string, cantidad: number) => {
+      const codigo = PRODUCTO_INFO[prodId].codigo as ProductoCodigo
+      dispatch({ type: 'SET_ITEM_CANTIDAD', producto: codigo, cantidad })
+    },
+    [],
+  )
   const pricingLineas = useMemo(
     () => state.draft.items
       .filter((i) => i.cantidad > 0)
@@ -63,8 +99,6 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, onSubmit, onC
       }),
     [state.draft.items, calc],
   )
-
-  const cantidad = (p: ProductoCodigo) => state.draft.items.find((i) => i.producto === p)?.cantidad ?? 0
 
   const commitEnabled = canCommit(state) && state.phase === 'PREVIEW_READY'
 
@@ -121,19 +155,25 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, onSubmit, onC
 
       {/* ── Zona: Operación ── */}
       <section data-testid="workspace-operacion">
-        <label className="mb-1 block text-xs font-semibold uppercase text-gray-400">Productos</label>
-        <div className="space-y-1.5">
-          {PRODUCTOS.map((p) => (
-            <div key={p} className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
-              <span>{PRODUCTO_INFO[CODIGO_TO_PRODID[p]]?.nombre ?? p}</span>
-              <div className="flex items-center gap-2">
-                <button type="button" data-testid={`workspace-dec-${p}`} onClick={() => dispatch({ type: 'SET_ITEM_CANTIDAD', producto: p, cantidad: cantidad(p) - 1 })} className="h-7 w-7 rounded border">−</button>
-                <span data-testid={`workspace-cant-${p}`} className="w-8 text-center">{cantidad(p)}</span>
-                <button type="button" data-testid={`workspace-inc-${p}`} onClick={() => dispatch({ type: 'SET_ITEM_CANTIDAD', producto: p, cantidad: cantidad(p) + 1 })} className="h-7 w-7 rounded border">+</button>
-              </div>
-            </div>
-          ))}
-        </div>
+        <PedidoItemEditor
+          testIdPrefix="workspace"
+          items={editorItems}
+          preciosLoading={state.previewPending || pricingLoading}
+          onIncrement={(prodId) => setCantidad(prodId, cantOf(PRODUCTO_INFO[prodId].codigo as ProductoCodigo) + 1)}
+          onDecrement={(prodId) => setCantidad(prodId, cantOf(PRODUCTO_INFO[prodId].codigo as ProductoCodigo) - 1)}
+          onCantidadChange={(prodId, value) => {
+            const n = parseInt(value, 10)
+            setCantidad(prodId, Number.isNaN(n) ? 0 : n)
+          }}
+          onPrecioManualChange={(codigo, valor) =>
+            dispatch({
+              type: 'SET_ITEM_PRECIO_MANUAL',
+              producto: codigo as ProductoCodigo,
+              precioManual: valor > 0 ? valor : undefined,
+            })
+          }
+          onConfirmarPrecioBajo={(codigo) => dispatch({ type: 'CONFIRMAR_PRECIO_BAJO', producto: codigo as ProductoCodigo })}
+        />
       </section>
 
       {/* ── Zona: Cálculo (del backend) ── */}
