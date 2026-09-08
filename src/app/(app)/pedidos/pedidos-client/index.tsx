@@ -1313,6 +1313,29 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   // Pattern: identical to clientes-client viewSeqRef.
   const detailSeqRef = useRef(0)
 
+  // Fase 4b — la acción destacada del Hub enruta al flujo existente
+  // correspondiente. Las mutaciones inline desde el peek son alcance de
+  // Composición (no de 4b): acá abrimos el modal/flujo que ya maneja la
+  // mutación con sus confirmaciones + estados offline.
+  function handleHubAccion(pedido: Pedido, key: string) {
+    switch (key) {
+      case 'planificar':
+        setSelectedPedidoForEmbarque(pedido.id)
+        setShowEmbarqueModal(true)
+        break
+      case 'confirmar-pago':
+        router.push('/pagos-confirmar')
+        break
+      case 'ver-cartera':
+        router.push(pedido.clienteId === 'CONSUMIDOR_FINAL' ? '/cartera' : `/cartera?clienteId=${pedido.clienteId}`)
+        break
+      default:
+        // registrar-entrega / registrar-pago / resolver-excepcion /
+        // completar-pendiente → el modal de detalle tiene la acción según estado.
+        handleDetail(pedido)
+    }
+  }
+
   async function handleDetail(pedido: Pedido) {
     const seq = ++detailSeqRef.current
     setSelectedPedido(pedido)
@@ -1596,10 +1619,12 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
           counts={{ porPlanificarCount, atrasadosCount, enRutaCount, esperandoPagoTotal, pendientesN2Count }}
           loading={!hasLoadedOnce && loading}
           error={fetchError}
-          onOpen={handleDetail}
-          onAccion={(pedido) => handleDetail(pedido)}
+          userRole={userRole}
+          onAccion={handleHubAccion}
+          onNuevaOperacion={() => setShowModal(true)}
           dateFilterSlot={<SmartDateFilter />}
           onRetry={refreshPedidos}
+          onRefetch={() => { refreshPedidos(); refetchCounts() }}
         />
       )}
 
