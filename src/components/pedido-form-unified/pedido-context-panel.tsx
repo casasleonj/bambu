@@ -252,6 +252,7 @@ export function PedidoContextPanel({
         <div className="space-y-2">
           <input
             type="text"
+            data-testid="cliente-search-input"
             placeholder="Buscar cliente por nombre o teléfono..."
             value={searchTerm}
             onChange={(e) => onSearchTermChange(e.target.value)}

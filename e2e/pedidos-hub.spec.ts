@@ -113,6 +113,7 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
   test('workspace (Composición C1): crear un pedido — el total viene del preview, el commit crea', async ({ browser }) => {
     const page = await sharedLoginAs(browser, 'admin')
     const cliente = await createCliente(page, { nombre: 'WS C1 E2E' })
+    const nombreCliente = cliente.nombre ?? 'WS C1 E2E'
     await page.goto(`${BASE}/pedidos`)
 
     // + Nueva operación → workspace
@@ -122,7 +123,8 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     // G1: no es un <form>
     expect(await page.locator('[data-testid="pedidos-workspace"] form').count()).toBe(0)
 
-    await page.getByTestId('workspace-cliente').selectOption(cliente.id)
+    await page.getByTestId('cliente-search-input').fill(nombreCliente)
+    await page.getByTestId('cliente-search-result').first().click()
     await page.getByTestId('workspace-inc-PACA_AGUA').click()
     await page.getByTestId('workspace-inc-PACA_AGUA').click()
 
