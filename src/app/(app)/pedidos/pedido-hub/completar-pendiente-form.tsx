@@ -94,7 +94,7 @@ export function CompletarPendienteForm({
       {g.proyeccion && !g.proyectando && <div className="mt-2"><N2Impacto proyeccion={g.proyeccion} /></div>}
       {conflicto ? (
         <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px]" data-testid="completar-conflicto" role="status">
-          <p className="text-amber-900">Esta operación cambió mientras la editabas. Revisá el estado actual antes de reintentar.</p>
+          <p className="text-amber-900">El estado en el servidor ya no coincide con lo que ves acá. Revisá el estado actual antes de reintentar.</p>
           <button type="button" onClick={onMutado} data-testid="completar-ver-estado" className="mt-1 text-blue-600 hover:underline">
             Ver estado actual →
           </button>

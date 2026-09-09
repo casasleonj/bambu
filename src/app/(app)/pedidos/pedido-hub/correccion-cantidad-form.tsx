@@ -152,7 +152,7 @@ export function CorreccionCantidadForm({
 
       {conflicto && !guard && (
         <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px]" data-testid="correccion-conflicto" role="status">
-          <p className="text-amber-900">Este pedido cambió mientras corregías. Revisá el estado actual antes de reintentar.</p>
+          <p className="text-amber-900">El estado de este pedido en el servidor ya no coincide con lo que ves acá. Revisá el estado actual antes de reintentar.</p>
           <button type="button" onClick={onMutado} data-testid="correccion-ver-estado" className="mt-1 text-blue-600 hover:underline">
             Ver estado actual →
           </button>

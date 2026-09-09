@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from 'react'
 import { fetchResilient } from '@/lib/fetch-resilient'
 import { generateUUID } from '@/lib/uuid'
+import { es409DeConflictoDeEstado, es409DeReglaDeNegocio } from './conflicto-409'
 import type {
   ProyectarGestionPendienteResult,
   AccionN2,
@@ -18,20 +19,12 @@ export interface ProyectarInput {
   actividadId?: string
 }
 
-/**
- * 409 que el backend ya explica como **regla de negocio** — el mensaje
- * contextual basta, NO es un conflicto de concurrencia (Fase 9 F9-iii, P5).
- * Cualquier otro 409 (estado cambió, obligación creada por otra sesión, …)
- * se trata como conflicto → recovery contextual.
- */
-const N2_REGLA_NEGOCIO_409 = ['CANTIDAD_EXCEDE_PENDIENTE', 'ACTIVIDAD_SIN_MODO'] as const
-
 export interface MutarResultado {
   ok: boolean
   offline?: boolean
-  /** 409 de concurrencia/estado: algo cambió mientras editabas → hay que
-   *  revisar el estado actual antes de reintentar. NO es éxito, NO se
-   *  auto-reintenta (F9-iii, P5.A). */
+  /** 409 de conflicto de estado: el estado del servidor ya no coincide con el
+   *  estado sobre el que operabas → hay que revisar el estado actual antes de
+   *  reintentar. NO es éxito, NO se auto-reintenta (F9-iii, P5.A). */
   conflicto?: boolean
   /** 409 de una regla ya explicada por el backend → el mensaje contextual
    *  basta; no se generaliza a "conflicto" (F9-iii, P5.B). */
@@ -94,11 +87,11 @@ export function useGestionPendiente(pedidoId: string, onMutado: () => void) {
     setConfirmando(false)
     if (r.status === 'ok') { limpiar(); onMutado(); return { ok: true } }
     if (r.status === 'offline') { limpiar(); onMutado(); return { ok: true, offline: true } }
-    // status === 'error'. Distinguir A (concurrencia) de B (regla de negocio
-    // ya explicada) — no todo 409 es un conflicto (F9-iii, P5).
-    const es409 = r.statusCode === 409
-    const reglaNegocio = es409 && N2_REGLA_NEGOCIO_409.some((c) => (r.error ?? '').includes(c))
-    const conflicto = es409 && !reglaNegocio
+    // status === 'error'. Distinguir A (conflicto de estado) de B (regla de
+    // negocio ya explicada) — no todo 409 es un conflicto (F9-iii, P5).
+    // Clasificación centralizada en `./conflicto-409`.
+    const conflicto = es409DeConflictoDeEstado(r.statusCode, r.error)
+    const reglaNegocio = es409DeReglaDeNegocio(r.statusCode, r.error)
     setError(r.error || 'Error al aplicar la acción')
     return { ok: false, conflicto, reglaNegocio, error: r.error }
   }

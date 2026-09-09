@@ -103,14 +103,30 @@
 | cualquiera | 409 sin código reconocido | A (default seguro) |
 
 **Archivos:**
-- `use-gestion-pendiente.ts` — `MutarResultado += { conflicto?, reglaNegocio? }`. `N2_REGLA_NEGOCIO_409 = ['CANTIDAD_EXCEDE_PENDIENTE', 'ACTIVIDAD_SIN_MODO']`; `conflicto = es409 && !reglaNegocio` (default: 409 desconocido → conflicto). Antes: `conflicto = statusCode === 409` (todo 409 → genérico — violaba B).
-- `use-ajuste-cantidad.ts` — `ConfirmarCorreccionResultado += conflicto?` = `409 && !guard` (hoy inalcanzable; defensa simétrica).
-- `completar-pendiente-form.tsx` / `actividad-acciones.tsx` — prop `onConflicto?`; en `r.conflicto` → estado local `conflicto` + `onConflicto()`. Banner `data-testid="completar-conflicto"` / `"actividad-conflicto"` ("Esta operación/actividad cambió mientras la editabas…") con botón `"…-ver-estado"` → `onMutado` (refresca el contexto, **no** reintenta el commit). `puedeConfirmar && !conflicto`. El banner reemplaza al `…-error` crudo. Se limpia al cambiar cualquier input.
-- `correccion-cantidad-form.tsx` — `commitConflicto` atado a `sig` (mismo patrón que `commitGuard`); banner `data-testid="correccion-conflicto"` + `"correccion-ver-estado"`. Los 3 guards G11 siguen mostrando su mensaje + alternativas (B, sin cambios).
-- `pedido-exception-panel.tsx` — `conflictoLocal` state; `onConflicto={() => setConflictoLocal(true)}` a ambos forms; `enConflicto = conflictoEnCurso || conflictoLocal` → `clasificarN2({ conflictoEnCurso: enConflicto })` → naturaleza `'conflicto'` (ámbar). El prop externo `conflictoEnCurso` deja de ser un prop muerto. `onMutado` de los sub-forms también hace `setConflictoLocal(false)`.
-- Tests: `use-gestion-pendiente.test.ts` (nuevo, 6: matriz A/B/500/ok/offline) · `use-ajuste-cantidad.test.ts` (+2: 409 sin guard → conflicto; 500 → nada) · `completar-pendiente-form.test.tsx` (+2: 409 concurrencia → recovery sin éxito sin auto-retry; 409 regla → mensaje contextual) · `actividad-acciones.test.tsx` (+1) · `correccion-cantidad-form.test.tsx` (+1) · `pedido-exception-panel.test.tsx` (+1: 409 en acción de actividad → naturaleza 'conflicto').
+- **`conflicto-409.ts` (nuevo) — clasificación CENTRALIZADA (criterio de cierre #1)**. `es409DeConflictoDeEstado(status, msg)` / `es409DeReglaDeNegocio(status, msg)` + `CODIGOS_409_REGLA_NEGOCIO` (los 5 de la tabla) + `CODIGOS_409_CONFLICTO_ESTADO` (documental). Única fuente de verdad; la usan los dos hooks. Default seguro: 409 con código no reconocido → conflicto de estado.
+- `use-gestion-pendiente.ts` — `MutarResultado += { conflicto?, reglaNegocio? }`, ambos derivados de `conflicto-409`. Antes: `conflicto = statusCode === 409` (todo 409 → genérico — violaba B).
+- `use-ajuste-cantidad.ts` — `ConfirmarCorreccionResultado += conflicto?` = `es409DeConflictoDeEstado(...)` (mismos códigos; los 3 guards G11 caen en B → `conflicto` false, `guard` set).
+- `completar-pendiente-form.tsx` / `actividad-acciones.tsx` — prop `onConflicto?`; en `r.conflicto` → estado local `conflicto` + `onConflicto()`. Banner `data-testid="completar-conflicto"` / `"actividad-conflicto"` con **lenguaje neutral de estado cambiado** (criterio #2: *"El estado en el servidor ya no coincide con lo que ves acá"* — NO se afirma "otro usuario"). Botón `"…-ver-estado"` → `onMutado` → (en el Hub) `invalidatePeek(activeId)` + `peek.open(p)` + `onRefetch()` = **recarga real del peek** (criterio #3). `puedeConfirmar && !conflicto` (criterio #4). El banner reemplaza al `…-error` crudo. Se limpia al cambiar cualquier input (criterio #4: nueva intención del usuario).
+- `correccion-cantidad-form.tsx` — `commitConflicto` atado a `sig`; banner `data-testid="correccion-conflicto"` + `"correccion-ver-estado"`. Los 3 guards G11 siguen con su mensaje + alternativas que el usuario elige (B, sin cambios — criterio #5).
+- `pedido-exception-panel.tsx` — `conflictoLocal` state; `onConflicto` a ambos forms; `enConflicto = conflictoEnCurso || conflictoLocal` → `clasificarN2({ conflictoEnCurso: enConflicto })` → naturaleza `'conflicto'` (criterio #6). El prop externo `conflictoEnCurso` deja de ser un prop muerto. `onMutado` de los sub-forms también hace `setConflictoLocal(false)`.
+- `n2-naturaleza.ts` — título/detalle de la naturaleza `'conflicto'` con lenguaje neutral de estado.
 
-**Criterio:** dos usuarios editan el mismo pendiente; el segundo commit → 409 `OBLIGACION_YA_ACTIVA` → el form muestra "cambió mientras la editabas · Ver estado actual", NO "aplicado", NO reintenta. El peek se refresca al pedirlo. Un 409 `CANTIDAD_EXCEDE_PENDIENTE` sigue mostrando su mensaje contextual, sin recovery.
+**Tests (criterio de cierre #7) — todos verdes:**
+| Demostración | Test |
+|---|---|
+| cada código A → conflicto (recovery) | `conflicto-409.test.ts` (`it.each` sobre `CODIGOS_409_CONFLICTO_ESTADO`) + `use-gestion-pendiente.test.ts` (`OBLIGACION_YA_ACTIVA`, `ACTIVIDAD_NO_MODIFICABLE`) |
+| cada código B → regla, sin recovery | `conflicto-409.test.ts` (`it.each` sobre `CODIGOS_409_REGLA_NEGOCIO`) + `use-gestion-pendiente.test.ts` (`CANTIDAD_EXCEDE_PENDIENTE`, `ACTIVIDAD_SIN_MODO`) |
+| 409 desconocido → recovery (default) | `conflicto-409.test.ts`, `use-gestion-pendiente.test.ts`, `use-ajuste-cantidad.test.ts` |
+| 500 / 403 → error técnico, no conflicto | `conflicto-409.test.ts`, `use-gestion-pendiente.test.ts`, `use-ajuste-cantidad.test.ts` |
+| recovery → recarga real del peek | `use-peek.test.ts` ("invalidatePeek + re-open → re-fetch, `estado-1`→`estado-2`, 2 fetch") |
+| recovery → nunca commit automático | `completar-pendiente-form.test.tsx`, `use-gestion-pendiente.test.ts` ("un 409 A NO dispara un segundo commit"), `correccion-cantidad-form.test.tsx` (`frMock` 1×) |
+| recovery → nunca success | `completar-pendiente-form.test.tsx` (`onMutado` no llamado hasta "Ver estado actual"), `use-gestion-pendiente.test.ts` |
+| dos operaciones concurrentes → 2ª recibe recovery | `use-gestion-pendiente.test.ts` (`OBLIGACION_YA_ACTIVA`), `completar-pendiente-form.test.tsx` |
+| conflicto bloquea el commit; input nuevo lo limpia | `completar-pendiente-form.test.tsx` ("al cambiar un input tras el conflicto → se limpia") |
+| G11 `CORRECCION_*` mantiene las alternativas | `correccion-cantidad-form.test.tsx` (guard proyectado + guard del commit; `onIrANuevaDemanda` solo con click explícito) |
+| ningún camino auto-convierte corrección en nueva demanda/Venta Libre | `correccion-cantidad-form.test.tsx` (`onIrANuevaDemanda`/`onMutado` no llamados en guard 409) |
+
+**Criterio:** commit → 409 `OBLIGACION_YA_ACTIVA` → el form muestra "El estado en el servidor ya no coincide… · Ver estado actual", NO "aplicado", NO reintenta; "Ver estado actual" invalida y recarga el peek con el estado del servidor. Un 409 `CANTIDAD_EXCEDE_PENDIENTE` sigue con su mensaje contextual, sin recovery. Un guard G11 mantiene sus alternativas y nunca convierte la intención.
 
 ### F9-iv — catálogo de estados como contrato + E2E
 **Archivos:**
