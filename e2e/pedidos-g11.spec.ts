@@ -67,7 +67,8 @@ test.describe('G11 — corrección (rama A)', () => {
     const pedido = await crearPedido(page, cliente.id, 5)
 
     const cancel = await apiPost(page, `/api/pedidos/${pedido.id}/cancelar`, { motivo: 'test G11-03', offlineId: `g11-03-cxl-${Date.now()}` })
-    expect(cancel.status()).toBe(201)
+    // `/api/pedidos/[id]/cancelar` → apiSuccess(result) = 200 (no 201; ver la route).
+    expect(cancel.status()).toBe(200)
 
     const res = await apiPost(page, `/api/pedidos/${pedido.id}/ajustar-cantidad`, {
       producto: 'PACA_AGUA', cantidadNueva: 3, motivo: 'intento tardío', offlineId: `g11-03-fix-${Date.now()}`,
@@ -78,7 +79,7 @@ test.describe('G11 — corrección (rama A)', () => {
 
     // no se creó ningún pedido nuevo relacionado
     const detail = await (await apiGet(page, `/api/pedidos/${pedido.id}`)).json()
-    expect(detail.pedidosVinculados ?? []).toHaveLength(0)
+    expect(detail.pedido?.pedidosVinculados ?? []).toHaveLength(0)
   })
 
   test('G11-04: corrección que generaría sobrepago → 409 CORRECCION_GENERARIA_SOBREPAGO, sin mutación', async ({ browser }) => {
@@ -126,14 +127,15 @@ test.describe('G11 — nueva demanda (rama B)', () => {
 
     expect(nd.id).not.toBe(original.id)
 
-    // peek del ORIGINAL → ve la nueva demanda con rol "demanda"
+    // peek del ORIGINAL → ve la nueva demanda con rol "demanda".
+    // `GET /api/pedidos/[id]` → `{ pedido: { …, pedidosVinculados } }` (anidado).
     const detOrig = await (await apiGet(page, `/api/pedidos/${original.id}`)).json()
-    const vinculadosOrig = detOrig.pedidosVinculados as Array<{ id: string; rol: string }>
+    const vinculadosOrig = detOrig.pedido.pedidosVinculados as Array<{ id: string; rol: string }>
     expect(vinculadosOrig.some((v) => v.id === nd.id && v.rol === 'demanda')).toBe(true)
 
     // peek de la NUEVA DEMANDA → ve el origen con rol "origen"
     const detNd = await (await apiGet(page, `/api/pedidos/${nd.id}`)).json()
-    const vinculadosNd = detNd.pedidosVinculados as Array<{ id: string; rol: string }>
+    const vinculadosNd = detNd.pedido.pedidosVinculados as Array<{ id: string; rol: string }>
     expect(vinculadosNd.some((v) => v.id === original.id && v.rol === 'origen')).toBe(true)
 
     // G11-06: corregir la nueva demanda NO toca el original
