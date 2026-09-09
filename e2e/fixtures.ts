@@ -300,8 +300,16 @@ export async function csrfLogin(page: Page, user: string, pass: string) {
 export async function sharedPageLogin(browser: { newPage: () => Promise<Page> }, user = 'admin', pass = 'admin123') {
   const page = await browser.newPage()
   await page.context().clearCookies()
+  // El banner PWA "Instalar aplicación" (fixed bottom-0, z-40) intercepta
+  // clicks sobre el FAB / elementos inferiores. addInitScript corre antes de
+  // los scripts de la página en cada navegación → el banner nunca aparece.
+  // Ningún spec lo prueba acá (ver e2e/fiado-status-ui, produccion-portal).
+  await page.addInitScript(() => localStorage.setItem('pwa-install-banner-dismissed', 'true'))
   await page.goto(`${BASE}/login`, { timeout: 15000 })
-  await page.evaluate(() => localStorage.clear())
+  await page.evaluate(() => {
+    localStorage.clear()
+    localStorage.setItem('pwa-install-banner-dismissed', 'true')
+  })
   await skipBaseCaja(page)
   const role = USERNAME_TO_ROLE[user]
   if (role) {
@@ -327,8 +335,16 @@ export async function loginAs(page: Page, role: Role) {
 export async function sharedLoginAs(browser: { newPage: () => Promise<Page> }, role: Role) {
   const page = await browser.newPage()
   await page.context().clearCookies()
+  // El banner PWA "Instalar aplicación" (fixed bottom-0, z-40) intercepta
+  // clicks sobre el FAB / elementos inferiores. addInitScript corre antes de
+  // los scripts de la página en cada navegación → el banner nunca aparece.
+  // Ningún spec lo prueba acá (ver e2e/fiado-status-ui, produccion-portal).
+  await page.addInitScript(() => localStorage.setItem('pwa-install-banner-dismissed', 'true'))
   await page.goto(`${BASE}/login`, { timeout: 15000 })
-  await page.evaluate(() => localStorage.clear())
+  await page.evaluate(() => {
+    localStorage.clear()
+    localStorage.setItem('pwa-install-banner-dismissed', 'true')
+  })
   await skipBaseCaja(page)
   await applyCachedRoleAuth(page, role)
   await page.goto(`${BASE}/dashboard`, { timeout: 15000 })
