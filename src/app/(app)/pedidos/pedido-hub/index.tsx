@@ -1,11 +1,13 @@
 'use client'
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { EmptyState } from '@/components/empty-state'
 import { getTodayString } from '@/lib/dates'
 import { useOnlineStatus } from '@/hooks/use-online-status'
 import { useRealtimeListener } from '@/hooks/use-realtime-listener'
 import { FocoStrip } from './foco-strip'
+import { RecurrentesDelDia } from './recurrentes-del-dia'
 import { OperacionList } from './operacion-list'
 import { PeekPanel } from './peek-panel'
 import { PedidoCommandMenu } from './command-menu'
@@ -60,8 +62,20 @@ export function PedidoHub({
 }: PedidoHubProps) {
   const isOnline = useOnlineStatus()
   const viewport = useViewport()
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const [activeFoco, setActiveFoco] = useState<FocoKey | null>(null)
   const hoyBogota = getTodayString()
+
+  // F8-i: faceta "solo habituales" — server-side (la lista no trae la
+  // recurrencia por fila), toggle vía query param.
+  const soloHabituales = searchParams.get('conRecurrencia') === 'true'
+  const toggleHabituales = () => {
+    const p = new URLSearchParams(searchParams.toString())
+    if (soloHabituales) p.delete('conRecurrencia')
+    else p.set('conRecurrencia', 'true')
+    router.push(`/pedidos${p.toString() ? `?${p.toString()}` : ''}`)
+  }
 
   const focosByPedido = useMemo(() => {
     const map = new Map<string, ReturnType<typeof deriveOperacion>['focos']>()
@@ -172,13 +186,27 @@ export function PedidoHub({
         )}
       </div>
 
-      <FocoStrip focos={focos} activeFoco={activeFoco} onSelect={setActiveFoco} />
+      <div className="flex flex-wrap items-center gap-2">
+        <FocoStrip focos={focos} activeFoco={activeFoco} onSelect={setActiveFoco} />
+        <button
+          type="button"
+          onClick={toggleHabituales}
+          data-testid="faceta-habituales"
+          aria-pressed={soloHabituales}
+          className={`rounded-full border px-2.5 py-1 text-xs ${soloHabituales ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-600'}`}
+        >
+          🔁 Solo habituales
+        </button>
+      </div>
 
       {activeFoco && pedidosFiltrados.length < pedidos.length && (
         <p className="text-xs text-gray-500" data-testid="foco-filtro-info">
           Mostrando {pedidosFiltrados.length} de {pedidos.length} en esta página
         </p>
       )}
+
+      {/* F8-iv: "Generar pedidos habituales de hoy" — CTA contextual (Q3) */}
+      <RecurrentesDelDia onGenerado={() => onRefetch?.()} />
 
       {/* desktop: lista + peek lado a lado; mobile: lista + peek como bottom sheet */}
       {viewport === 'desktop' && peekNode ? (

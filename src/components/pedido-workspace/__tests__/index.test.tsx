@@ -2,11 +2,17 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { PedidosWorkspace } from '../index'
 
+const ENTREGA_OK = {
+  estado: 'SUFICIENTE', via: 'TEXTO', direccion: 'Cra 1', barrio: 'Centro', referencia: null,
+  coords: null, linkUbicacion: null, linkResoluble: null, cobertura: 'no_evaluada',
+  faltaComplementario: [], faltaBloqueante: [],
+}
+
 const previewBody = (total: number) => ({
   success: true,
   calculation: { items: [{ producto: 'PACA_AGUA', cantidad: 3, precioUnitario: total / 3, subtotal: total, precioOrigen: 'base' }], subtotal: total, recargoDomicilio: 0, total, totalPagado: 0, saldoProyectado: total, saldoFavorProyectado: 0, estadoEntregaProyectado: 'PENDIENTE', estadoPagoProyectado: 'PENDIENTE' },
   permissions: { canCreate: true, canSetManualPrice: true },
-  allowedActions: ['crear'], warnings: [], riskSignals: [], requiresAuthorization: false,
+  allowedActions: ['crear'], warnings: [], riskSignals: [], entrega: ENTREGA_OK, requiresAuthorization: false,
   auditPreview: { actor: 'u', accion: 'CREAR_PEDIDO', recurso: 'Pedido (nuevo)', valoresRelevantes: { total, clienteId: 'c1', canal: 'DOMICILIO', origen: 'PEDIDO', tienePrecioManual: false } },
 })
 
@@ -80,6 +86,43 @@ describe('PedidosWorkspace (Composición)', () => {
       clienteId: 'c1', canal: 'DOMICILIO', origen: 'PEDIDO',
       items: [{ producto: 'PACA_AGUA', cantidad: 3, precioManual: undefined }],
     }))
+  })
+
+  it('F-ENTREGA-i: zona Entrega adaptativa por preview.entrega — SUFICIENTE compacta, sin inputs', async () => {
+    render(<PedidosWorkspace clientes={clientes} onSubmit={vi.fn()} />)
+    await elegirCliente()
+    fireEvent.click(screen.getByTestId('workspace-inc-PACA_AGUA'))
+    await waitFor(() => expect(screen.getByTestId('workspace-entrega')).toHaveAttribute('data-estado', 'SUFICIENTE'), { timeout: 3000 })
+    expect(screen.queryByTestId('workspace-entrega-direccion')).not.toBeInTheDocument()
+  })
+
+  it('F-ENTREGA-i: preview.entrega INSUFICIENTE → zona con inputs + commit deshabilitado', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/api/pedidos/preview')) {
+        const b = previewBody(9000)
+        return { ok: true, json: async () => ({ ...b, permissions: { ...b.permissions, canCreate: false }, allowedActions: [], warnings: [{ code: 'ENTREGA_INSUFICIENTE', message: 'Falta info de entrega' }], entrega: { ...ENTREGA_OK, estado: 'INSUFICIENTE', via: null, direccion: null, faltaBloqueante: ['direccion', 'ubicacion'] } }) }
+      }
+      if (url.includes('/fiado-status')) return { ok: true, json: async () => ({ success: true, status: { nivel: 'ok', count: 0, limite: 3 } }) }
+      if (url.includes('/api/negocios')) return { ok: true, json: async () => ({ success: true, data: [] }) }
+      if (url.includes('/api/precios/tabla')) return { ok: true, json: async () => ({ success: true, tabla: {} }) }
+      if (url.includes('/api/productos/configs')) return { ok: true, json: async () => ({ success: true, productos: [] }) }
+      if (/\/api\/clientes\/[^/]+$/.test(url)) return { ok: true, json: async () => ({ success: true, cliente: { id: 'c1', frecuenciaSugerida: null, productosSugeridos: [], pedidos: [] } }) }
+      return { ok: true, json: async () => ({ success: true }) }
+    }))
+    render(<PedidosWorkspace clientes={clientes} onSubmit={vi.fn()} />)
+    await elegirCliente()
+    fireEvent.click(screen.getByTestId('workspace-inc-PACA_AGUA'))
+    await waitFor(() => expect(screen.getByTestId('workspace-entrega-insuficiente')).toBeInTheDocument(), { timeout: 3000 })
+    expect(screen.getByTestId('workspace-entrega-direccion')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-commit')).toBeDisabled()
+  })
+
+  it('F-ENTREGA-i: PedidoContextPanel ya no muestra sus inputs "Dirección */Barrio *" en el workspace', async () => {
+    render(<PedidosWorkspace clientes={clientes} onSubmit={vi.fn()} />)
+    await elegirCliente()
+    // el panel de contexto no renderiza los inputs legacy de dirección de entrega
+    expect(screen.queryByPlaceholderText('Dirección *')).not.toBeInTheDocument()
+    expect(screen.queryByPlaceholderText('Barrio *')).not.toBeInTheDocument()
   })
 
   it('intent venta-rapida ⇒ origen VENTA_RAPIDA en el payload, sin panel de cliente', async () => {

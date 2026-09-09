@@ -14,12 +14,18 @@ const getBlock = src.slice(
 )
 
 describe('GET /api/pedidos/[id] — peek (Fase 4b)', () => {
-  it('el GET incluye pendienteN2 / embarqueResumen / pedidosVinculados / casosAbiertos / entregaResumen', () => {
+  it('el GET incluye pendienteN2 / embarqueResumen / pedidosVinculados / casosAbiertos / entregaResumen / recurrencia', () => {
     expect(getBlock).toMatch(/pendienteN2/)
     expect(getBlock).toMatch(/embarqueResumen/)
     expect(getBlock).toMatch(/pedidosVinculados/)
     expect(getBlock).toMatch(/casosAbiertos/)
     expect(getBlock).toMatch(/entregaResumen/)
+    expect(getBlock).toMatch(/recurrencia/)
+  })
+
+  it('recurrencia (F8-0) se resuelve por el CONTEXTO del pedido: negocio si hay negocioId, si no cliente (Q4)', () => {
+    expect(getBlock).toMatch(/found\.pedido\.negocioId\s*\?\s*\{\s*negocioId:\s*found\.pedido\.negocioId\s*\}\s*:\s*\{\s*clienteId:\s*found\.pedido\.clienteId\s*\}/)
+    expect(getBlock).toMatch(/plantillaRecurrente\.findFirst/)
   })
 
   it('entregaResumen (Fase 7-ii) es null salvo estadoEntrega ENTREGADO, y no hace queries nuevas', () => {

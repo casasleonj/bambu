@@ -60,7 +60,12 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       select: { pedidoOrigenId: true, estadoEntrega: true, fechaEntrega: true, fotoEntrega: true, gpsLat: true, gpsLng: true },
     })
     const pedidoOrigenId = selfRow?.pedidoOrigenId ?? null
-    const [obligacion, vinculados, casosAbiertos] = await Promise.all([
+    // Fase 8 F8-0 — "pedido habitual" del contexto (Q4: negocio si hay
+    // negocioId, si no cliente). Solo lectura.
+    const recurrenciaWhere = found.pedido.negocioId
+      ? { negocioId: found.pedido.negocioId }
+      : { clienteId: found.pedido.clienteId }
+    const [obligacion, vinculados, casosAbiertos, plantilla] = await Promise.all([
       prisma.obligacionPendiente.findUnique({
         where: { pedidoId: id },
         include: {
@@ -79,7 +84,24 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         where: { pedidoId: id, status: { in: ['ABIERTO', 'EN_PROCESO'] } },
         select: { id: true, alertaTipo: true, severidad: true, status: true, createdAt: true },
       }),
+      prisma.plantillaRecurrente.findFirst({
+        where: recurrenciaWhere,
+        select: {
+          id: true, cadaNDias: true, canal: true, activo: true, proxGeneracion: true,
+          productos: { select: { producto: true, cantidad: true } },
+        },
+      }),
     ])
+    const recurrencia = plantilla
+      ? {
+          id: plantilla.id,
+          cadaNDias: plantilla.cadaNDias,
+          canal: plantilla.canal,
+          activo: plantilla.activo,
+          proximaFecha: plantilla.proxGeneracion ? plantilla.proxGeneracion.toISOString() : null,
+          productos: plantilla.productos,
+        }
+      : null
 
     let embarqueResumen: { id: string; numeroDia: number; estado: string; repartidor: string | null } | null = null
     if (found.pedido.embarqueId) {
@@ -154,6 +176,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
           status: c.status,
         })),
         entregaResumen,
+        recurrencia,
       },
     })
   } catch (error) {
@@ -227,6 +250,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
     if (error instanceof Error && error.message === 'CANTIDAD_YA_ENTREGADA_USE_AJUSTAR_CANTIDAD') {
       return apiError('Ya se entregó cantidad de este pedido — use el flujo de corrección de cantidad', 409)
+    }
+    if (error instanceof Error && error.name === 'EntregaInsuficienteError') {
+      return apiError('Necesitamos información para localizar el domicilio: una dirección escrita o una ubicación.', 422, { code: 'ENTREGA_INSUFICIENTE' })
     }
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error updating pedido:')
     return apiError('Error updating', 500)

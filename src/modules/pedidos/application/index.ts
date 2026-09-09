@@ -21,6 +21,7 @@ import { ActualizarPedidoUseCase } from './use-cases/ActualizarPedidoUseCase'
 import { GetFiadoStatusUseCase, ClienteNotFoundError } from './use-cases/GetFiadoStatusUseCase'
 import { PreviewPedidoUseCase } from './use-cases/PreviewPedidoUseCase'
 import { getPrecioMinimos } from '@/lib/pricing'
+import { resolverCoordsDeLink } from '@/lib/geo/resolver-coords-de-link'
 
 const txManager = new PrismaTransactionManager()
 const pedidoRepo = new PrismaPedidoRepository()
@@ -78,6 +79,7 @@ export const previewPedidoUseCase = new PreviewPedidoUseCase({
   pedidoRepo,
   getFiadoStatusUseCase,
   getPrecioMinimos,
+  resolverCoordsDeLink,
 })
 
 export { PedidoDTOMapper } from './dto/PedidoDTOMapper'

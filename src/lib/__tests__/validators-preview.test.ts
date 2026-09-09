@@ -28,17 +28,20 @@ describe('PreviewPedidoSchema', () => {
     expect(PreviewPedidoSchema.safeParse({ clienteId: '  ', items: [{ producto: 'PACA_AGUA', cantidad: 1 }] }).success).toBe(false)
   })
 
-  it('descarta campos de persistencia (offlineId, clienteNuevo, direccionEntrega)', () => {
+  it('descarta campos de persistencia (offlineId, clienteNuevo) pero ACEPTA direccionEntrega/barrioEntrega (suficiencia de entrega)', () => {
     const r = PreviewPedidoSchema.safeParse({
       clienteId: 'c1',
       items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
-      offlineId: 'x', clienteNuevo: { nombre: 'x', telefono: '1234567' }, direccionEntrega: 'Calle 1',
+      offlineId: 'x', clienteNuevo: { nombre: 'x', telefono: '1234567' },
+      direccionEntrega: 'Calle 1', barrioEntrega: 'Centro',
     })
     expect(r.success).toBe(true)
     if (r.success) {
       expect('offlineId' in r.data).toBe(false)
       expect('clienteNuevo' in r.data).toBe(false)
-      expect('direccionEntrega' in r.data).toBe(false)
+      // direccionEntrega/barrioEntrega son input legítimo del preview (F-ENTREGA-0)
+      expect(r.data.direccionEntrega).toBe('Calle 1')
+      expect(r.data.barrioEntrega).toBe('Centro')
     }
   })
 

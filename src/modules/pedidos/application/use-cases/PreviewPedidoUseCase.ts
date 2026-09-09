@@ -19,6 +19,7 @@ import { normalizarPagos, calcularSaldo, calcularEstadoPago } from '../../domain
 import { CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
 import { calcularAlertasCliente } from '@/lib/alertas-detector'
 import { draftToPedidoBase, pedidoEntityToPedidoBase } from './pedido-to-pedido-base'
+import { resolverEntrega } from '../../domain/services/entrega-suficiencia.service'
 
 export class ClienteNotFoundError extends Error {
   constructor(id: string) { super(`CLIENTE_NOT_FOUND: ${id}`); this.name = 'ClienteNotFoundError' }
@@ -36,6 +37,8 @@ export interface PreviewPedidoDeps {
   pedidoRepo: IPedidoRepository
   getFiadoStatusUseCase: GetFiadoStatusUseCase
   getPrecioMinimos: () => Promise<Array<{ producto: string; cantMin: number; cantMax: number | null; precioMinimo: number | null }>>
+  /** `linkUbicacion → coords` server-only (best-effort). Solo se llama si no hay coords almacenadas. */
+  resolverCoordsDeLink: (link: string | null | undefined) => Promise<{ lat: number; lng: number } | null>
 }
 
 const ESTADOS_ENTREGA_VALIDOS = ['PENDIENTE', 'EN_RUTA', 'ENTREGADO', 'NO_ENTREGADO']
@@ -51,6 +54,10 @@ export class PreviewPedidoUseCase {
 
     const cliente = await this.deps.clienteRepo.findById(input.clienteId)
     if (!cliente) throw new ClienteNotFoundError(input.clienteId)
+
+    const negocio = input.negocioId
+      ? await this.deps.clienteRepo.findNegocioById(input.negocioId)
+      : null
 
     if (input.pedidoOrigenId) {
       const origenPedido = await this.deps.pedidoRepo.findById(PedidoId.from(input.pedidoOrigenId))
@@ -141,8 +148,46 @@ export class PreviewPedidoUseCase {
       }
     }
 
-    if (canal === 'DOMICILIO' && !cliente.direccion) {
-      warnings.push({ code: 'DIRECCION_FALTANTE', message: 'Domicilio sin dirección registrada.', field: 'direccion' })
+    // ── Suficiencia de la información de entrega (autoridad única de dominio).
+    // Si no hay coords almacenadas pero hay linkUbicacion → intentar resolverlo
+    // server-side (best-effort) para pasar coords ya resueltas a `resolverEntrega`.
+    const efectivoLink = (negocio?.linkUbicacion ?? cliente.linkUbicacion) || null
+    const hayCoordsAlmacenadas =
+      (negocio?.lat != null && negocio?.lng != null) || (cliente.lat != null && cliente.lng != null)
+    const coordsDeLink =
+      canal === 'DOMICILIO' && !hayCoordsAlmacenadas && efectivoLink
+        ? await this.deps.resolverCoordsDeLink(efectivoLink)
+        : null
+
+    const entrega = resolverEntrega({
+      canal,
+      overrideDireccion: input.direccionEntrega,
+      overrideBarrio: input.barrioEntrega,
+      cliente: {
+        direccion: cliente.direccion, barrio: cliente.barrio, referencia: cliente.referencia,
+        linkUbicacion: cliente.linkUbicacion, lat: cliente.lat, lng: cliente.lng, geocodeOrigen: cliente.geocodeOrigen,
+      },
+      negocio: negocio
+        ? { direccion: negocio.direccion, barrio: negocio.barrio, referencia: negocio.referencia, linkUbicacion: negocio.linkUbicacion, lat: negocio.lat, lng: negocio.lng }
+        : null,
+      coordsDeLink,
+    })
+
+    // La venta anónima (CONSUMIDOR_FINAL) no gatea por suficiencia de entrega
+    // — se sigue calculando `entrega` para mostrarla, pero no bloquea (paridad
+    // con CrearPedidoUseCase, que salta el guard para el canónico).
+    if (!esAnonimo && entrega.estado === 'INSUFICIENTE') {
+      canCreate = false
+      warnings.push({
+        code: 'ENTREGA_INSUFICIENTE',
+        message: 'Necesitamos información para localizar el domicilio: una dirección escrita o una ubicación.',
+        field: 'direccion',
+      })
+    } else if (!esAnonimo && entrega.estado === 'SUFICIENTE_COMPLEMENTARIA_FALTANTE') {
+      warnings.push({
+        code: 'ENTREGA_COMPLEMENTARIA',
+        message: 'Puedes continuar. Agregar ' + entrega.faltaComplementario.join(' y ') + ' puede facilitar la entrega.',
+      })
     }
 
     if (tienePrecioManual) {
@@ -221,6 +266,7 @@ export class PreviewPedidoUseCase {
       allowedActions,
       warnings,
       riskSignals,
+      entrega,
       requiresAuthorization: false,
       auditPreview: {
         actor: input.actorId,

@@ -25,6 +25,11 @@ export interface PedidoFilter {
   tipo?: string[]
   /** Server-side tab scope: isolates Pedidos/Fiados/Alertas datasets. */
   scope?: 'fiados' | 'alertas'
+  /** Fase 8 F8-i — faceta "Solo habituales": solo pedidos que SON realmente
+   *  recurrentes (`origen='RECURRENTE'`, generados por
+   *  `generarPedidosRecurrentes`). NO "el cliente/negocio tiene recurrencia
+   *  activa" — eso es otro concepto (contexto de recurrencia, ver el peek). */
+  conRecurrencia?: boolean
 }
 
 import type { TransactionClient } from '../../infrastructure/transactions/PrismaTransactionManager'

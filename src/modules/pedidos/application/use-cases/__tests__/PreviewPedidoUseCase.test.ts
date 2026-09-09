@@ -23,7 +23,9 @@ function makeDeps(): PreviewPedidoDeps {
         id: 'c1', nombre: 'Tienda X', apellido: null, telefono: '3001112233',
         direccion: 'Calle 1', barrio: 'Centro', bloqueado: false, verificado: true,
         creadoPorRol: 'ADMIN', limitePedidosFiados: null, preciosEspeciales: null,
+        referencia: undefined, linkUbicacion: undefined, lat: null, lng: null, geocodeOrigen: null,
       }),
+      findNegocioById: vi.fn().mockResolvedValue(null),
     } as never,
     pedidoRepo: {
       findById: vi.fn().mockResolvedValue({ id: 'p99' }),
@@ -33,6 +35,7 @@ function makeDeps(): PreviewPedidoDeps {
       execute: vi.fn().mockResolvedValue({ count: 0, limite: 2, nivel: 'ok', pedidos: [] }),
     } as never,
     getPrecioMinimos: vi.fn().mockResolvedValue([]),
+    resolverCoordsDeLink: vi.fn().mockResolvedValue(null),
   }
 }
 
@@ -136,14 +139,30 @@ describe('PreviewPedidoUseCase — permissions + warnings', () => {
     expect(r.warnings.some(w => w.code === 'CLIENTE_BLOQUEADO')).toBe(true)
   })
 
-  it('DOMICILIO sin dirección → warning DIRECCION_FALTANTE (no bloquea, crear sigue disponible)', async () => {
+  it('DOMICILIO sin dirección NI ubicación → ENTREGA_INSUFICIENTE, bloquea (suficiencia de entrega)', async () => {
     const deps = makeDeps()
     ;(deps.clienteRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: 'c1', nombre: 'X', apellido: null, telefono: '3001112233', direccion: null, barrio: null,
       bloqueado: false, verificado: true, creadoPorRol: 'ADMIN', limitePedidosFiados: null, preciosEspeciales: null,
+      referencia: undefined, linkUbicacion: undefined, lat: null, lng: null, geocodeOrigen: null,
     })
     const r = await new PreviewPedidoUseCase(deps).execute({ clienteId: 'c1', canal: 'DOMICILIO', items: [{ producto: 'PACA_AGUA', cantidad: 1 }], actorId: 'u1' })
-    expect(r.warnings.some(w => w.code === 'DIRECCION_FALTANTE' && w.field === 'direccion')).toBe(true)
+    expect(r.entrega?.estado).toBe('INSUFICIENTE')
+    expect(r.warnings.some(w => w.code === 'ENTREGA_INSUFICIENTE' && w.field === 'direccion')).toBe(true)
+    expect(r.permissions.canCreate).toBe(false)
+    expect(r.allowedActions).not.toContain('crear')
+  })
+
+  it('DOMICILIO con ubicación válida pero sin dirección escrita → SUFICIENTE_COMPLEMENTARIA_FALTANTE, NO bloquea', async () => {
+    const deps = makeDeps()
+    ;(deps.clienteRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'c1', nombre: 'X', apellido: null, telefono: '3001112233', direccion: null, barrio: 'Centro',
+      bloqueado: false, verificado: true, creadoPorRol: 'ADMIN', limitePedidosFiados: null, preciosEspeciales: null,
+      referencia: undefined, linkUbicacion: undefined, lat: 4.65, lng: -74.05, geocodeOrigen: 'MANUAL',
+    })
+    const r = await new PreviewPedidoUseCase(deps).execute({ clienteId: 'c1', canal: 'DOMICILIO', items: [{ producto: 'PACA_AGUA', cantidad: 1 }], actorId: 'u1' })
+    expect(r.entrega?.estado).toBe('SUFICIENTE_COMPLEMENTARIA_FALTANTE')
+    expect(r.warnings.some(w => w.code === 'ENTREGA_COMPLEMENTARIA')).toBe(true)
     expect(r.permissions.canCreate).toBe(true)
     expect(r.allowedActions).toContain('crear')
   })

@@ -537,10 +537,14 @@ model Negocio {
 
 model PlantillaRecurrente {
   id               String              @id @default(cuid())
-  // NUEVO: relación principal a Negocio
+  // Fase 8 (Q4): la recurrencia pertenece a UN contexto comercial concreto.
+  // Regla determinista única (creación, lectura, peek, generación, unicidad):
+  // si el Pedido/operación tiene `negocioId` → el contexto es el Negocio;
+  // si no → el Cliente. Exactamente uno de los dos se setea. Sin fallback
+  // silencioso cliente↔negocio. Ambos con `@unique` → una plantilla por
+  // contexto. Ver `docs/pedidos/fase8-recurrentes-flujo-plan.md` §1bis.
   negocioId        String?             @unique
   negocio          Negocio?            @relation(fields: [negocioId], references: [id])
-  // LEGACY: mantener para compatibilidad durante migración
   clienteId        String?             @unique
   cliente          Cliente?            @relation(fields: [clienteId], references: [id])
   activo           Boolean             @default(true)

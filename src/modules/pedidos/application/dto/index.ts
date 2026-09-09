@@ -4,6 +4,9 @@
 
 import type { ProductCode } from '@/shared/domain'
 import type { Canal, OrigenPedido, PagoData } from '../../domain/types'
+import type { EntregaResuelta } from '../../domain/services/entrega-suficiencia.service'
+
+export type { EntregaResuelta }
 
 export interface CrearPedidoInput {
   clienteId: string
@@ -121,6 +124,10 @@ export interface ListarPedidosInput {
   tipo?: string[]
   /** Server-side tab scope: isolates Pedidos/Fiados/Alertas datasets. */
   scope?: 'fiados' | 'alertas'
+  /** Fase 8 F8-i — faceta "Solo habituales": solo pedidos que SON realmente
+   *  recurrentes (`origen='RECURRENTE'`). No confundir con "el contexto tiene
+   *  recurrencia activa" (eso es el indicador del peek). */
+  conRecurrencia?: boolean
   page?: number
   pageSize?: number
   all?: boolean
@@ -247,6 +254,20 @@ export interface PedidoPeekExtras {
     gpsLng: number | null
     fotoUrl: string | null
   } | null
+  /**
+   * "Pedido habitual" del contexto de este pedido (Fase 8 F8-0). Resuelto por
+   * la regla Q4: negocio si `pedido.negocioId`, si no cliente. `null` si el
+   * contexto no tiene plantilla. Solo lectura — la palabra "plantilla" no se
+   * expone en la UI.
+   */
+  recurrencia: {
+    id: string
+    cadaNDias: number
+    canal: string
+    activo: boolean
+    proximaFecha: string | null
+    productos: Array<{ producto: string; cantidad: number }>
+  } | null
 }
 
 export interface EntregarPedidoResult {
@@ -268,6 +289,9 @@ export interface PreviewPedidoInput {
   items: Array<{ producto: ProductCode; cantidad: number; precioManual?: number }>
   pagos?: Array<{ metodo: 'EFECTIVO' | 'TRANSFERENCIA' | 'NEQUI' | 'DAVIPLATA' | 'BONO'; monto: number }>
   entregado?: boolean
+  /** snapshot de dirección/barrio que el usuario capturó para ESTE pedido (gana sobre negocio/cliente). */
+  direccionEntrega?: string | null
+  barrioEntrega?: string | null
   pedidoOrigenId?: string
   /** modo edición: preview de un PUT declarativo de items sobre un pedido existente. */
   pedidoId?: string
@@ -310,6 +334,12 @@ export interface PreviewPedidoResult {
   allowedActions: Array<'crear' | 'crear-y-enviar-a-ruta' | 'actualizar'>
   warnings: Array<{ code: string; message: string; field?: string }>
   riskSignals: Array<{ tipo: string; severidad: 'BAJA' | 'MEDIA' | 'ALTA'; detalle: string }>
+  /**
+   * Suficiencia de la información de entrega (docs/pedidos/entrega-suficiencia-plan.md).
+   * `PreviewPedidoUseCase` SIEMPRE la emite; opcional en el tipo solo para no
+   * romper fixtures parciales de test (un `undefined` = no bloquea).
+   */
+  entrega?: EntregaResuelta
   requiresAuthorization: boolean
   authorizationPolicy?: string
   auditPreview: {

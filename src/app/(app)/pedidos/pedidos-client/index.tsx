@@ -24,6 +24,7 @@ import { PedidoTable } from './pedido-table'
 import { FiadosTable } from './fiados-table'
 import { AlertasTable } from './alertas-table'
 import { PedidoHub } from '../pedido-hub'
+import { EstoSeRepite, type EstoSeRepiteContexto } from '../pedido-hub/esto-se-repite'
 import { PedidosWorkspace, type WorkspacePedidoInicial } from '@/components/pedido-workspace'
 import { pedidosV2Enabled } from '@/lib/flags'
 
@@ -207,6 +208,10 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   // canal del pedido origen (inmutables) y `pedidoOrigenId` seteado.
   const [nuevaDemanda, setNuevaDemanda] = useState<
     { pedidoOrigenId: string; numeroOrigen: number; clienteId: string; canal: 'PUNTO' | 'DOMICILIO' } | null
+  >(null)
+  // F8-ii — "esto se repite": propuesta post-commit (transacción separada).
+  const [proponerHabitual, setProponerHabitual] = useState<
+    { contexto: EstoSeRepiteContexto; canal: 'PUNTO' | 'DOMICILIO'; items: Array<{ producto: string; cantidad: number }> } | null
   >(null)
   const anularMotivoRef = useRef<string>('')
   const anularDevolverStockRef = useRef<boolean>(false)
@@ -962,6 +967,20 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
         setPedidoEditando(null)
         refreshPedidos()
         fetchClientes()
+        // F8-ii: "esto se repite" — propuesta POST-commit, transacción
+        // separada (Q5). Solo Hub + contexto real + >=3 productos +
+        // ADMIN/ASISTENTE. Nunca en el mismo paso que "Crear pedido".
+        const totalItems = (data.items ?? []).reduce((s, i) => s + (i.cantidad || 0), 0)
+        const contextoReal = data.clienteId && data.clienteId !== 'CONSUMIDOR_FINAL'
+        if (hubMode && contextoReal && totalItems >= 3 && (userRole === 'ADMIN' || userRole === 'ASISTENTE')) {
+          setProponerHabitual({
+            contexto: data.negocioId
+              ? { tipo: 'negocio', id: data.negocioId }
+              : { tipo: 'cliente', id: data.clienteId as string, nombre: clientes.find(c => c.id === data.clienteId)?.nombre },
+            canal: data.canal,
+            items: (data.items ?? []).map(i => ({ producto: i.producto, cantidad: i.cantidad })),
+          })
+        }
         // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: "entregar después" deja una
         // entrega/retiro pendiente — el toast debe decirlo (no confundir con
         // una venta de mostrador ya entregada).
@@ -1917,6 +1936,18 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
             />
           )}
         </div>
+      </Modal>
+
+      {/* F8-ii: "esto se repite" — propuesta post-commit, modal aparte */}
+      <Modal open={!!proponerHabitual} onClose={() => setProponerHabitual(null)} className="bg-white rounded-xl shadow-xl max-w-sm w-full">
+        {proponerHabitual && (
+          <EstoSeRepite
+            contexto={proponerHabitual.contexto}
+            canal={proponerHabitual.canal}
+            items={proponerHabitual.items}
+            onClose={() => setProponerHabitual(null)}
+          />
+        )}
       </Modal>
 
       {/* Modal Asignar Embarque */}

@@ -241,6 +241,16 @@ export class PrismaPedidoRepository implements IPedidoRepository {
       if (filter.desde) (where.fecha as Record<string, Date>).gte = filter.desde
       if (filter.hasta) (where.fecha as Record<string, Date>).lt = filter.hasta
     }
+    // F8-i: faceta "Solo habituales" = el Pedido ES realmente recurrente
+    // (relación canónica del dominio: lo generó `generarPedidosRecurrentes`
+    // con `origen='RECURRENTE'` + `recurrenteBatchId`). NO es "el cliente
+    // tiene una recurrencia activa" — un pedido histórico normal de un
+    // cliente que hoy tiene recurrencia NO es habitual. Toma precedencia
+    // sobre `filter.origen` (intención más específica); interseca con el
+    // resto de filtros vía los otros campos AND'd de `where`.
+    if (filter?.conRecurrencia) {
+      where.origen = 'RECURRENTE'
+    }
     return where
   }
 }

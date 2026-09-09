@@ -107,6 +107,11 @@ export default async function PedidosPage({
     filter.scope = scopeFilter
   }
 
+  // F8-i: faceta "con recurrencia" (solo pedidos habituales).
+  if (params.get('conRecurrencia') === 'true') {
+    filter.conRecurrencia = true
+  }
+
   let serialized: Pedido[] | null = null
   try {
     const result = await listarPedidosUseCase.execute({

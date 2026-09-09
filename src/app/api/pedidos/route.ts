@@ -380,6 +380,9 @@ export async function POST(request: NextRequest) {
       if (error.message.startsWith('CLIENTE_DEBE:')) return apiError(error.message.replace('CLIENTE_DEBE: ', ''), 400)
       if (error.message === 'SIN_PRODUCTOS') return apiError('Agrega al menos un producto', 400)
       if (error.message === 'PEDIDO_ORIGEN_NOT_FOUND') return apiError('El pedido de origen no existe', 404)
+      if (error.name === 'EntregaInsuficienteError') {
+        return apiError('Necesitamos información para localizar el domicilio: una dirección escrita o una ubicación.', 422, { code: 'ENTREGA_INSUFICIENTE' })
+      }
     }
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error creating pedido:')
     return apiError('Error creando pedido')

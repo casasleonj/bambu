@@ -5,6 +5,7 @@ import { PedidoExceptionPanel } from './pedido-exception-panel'
 import { PedidoCambioCantidad } from './pedido-cambio-cantidad'
 import { PedidoPeekRiesgo } from './pedido-peek-riesgo'
 import { PeekEntrega } from './peek-entrega'
+import { PeekRecurrencia } from './peek-recurrencia'
 import type { PeekLayer2 } from './peek-cache'
 import type { Pedido } from './types'
 
@@ -57,6 +58,8 @@ export function PeekRelaciones({
       )}
 
       <PeekEntrega entrega={data.entregaResumen} />
+
+      <PeekRecurrencia recurrencia={data.recurrencia} onMutado={onMutadoN2} />
 
       {/* Cartera = deuda del CLIENTE (agregada), distinta del saldo de arriba */}
       {saldoOperacion > 0 && pedido.clienteId !== 'CONSUMIDOR_FINAL' && (

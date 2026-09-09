@@ -8,6 +8,7 @@ import { PedidoRiskSignals } from './pedido-risk-signals'
 import { PedidoProposal } from './pedido-proposal'
 import { PedidoReview } from './pedido-review'
 import { PedidoCommitBar } from './pedido-commit-bar'
+import { WorkspaceEntrega } from './workspace-entrega'
 import { PedidoItemEditor, type PedidoItemEditorItem } from '@/components/pedido-form-unified/pedido-item-editor'
 import { PedidoContextPanel, type NuevoClienteForm } from '@/components/pedido-form-unified/pedido-context-panel'
 import { resolveActualizarCliente } from '@/components/pedido-form-unified/resolve-actualizar-cliente'
@@ -346,6 +347,7 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
         ) : (
           <PedidoContextPanel
             readOnly={modoEdicion}
+            ocultarInputsEntrega
             pedidoInicialId={pedidoInicial?.id}
             canal={state.draft.canal}
             clienteSeleccionado={clienteSeleccionado}
@@ -405,6 +407,19 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
           </div>
         )}
       </section>
+
+      {/* ── Zona: Entrega (adaptativa por suficiencia — F-ENTREGA-i) ── */}
+      {!esVentaRapida && (
+        <WorkspaceEntrega
+          entrega={state.preview?.entrega}
+          canal={state.draft.canal}
+          direccionEntrega={state.draft.direccionEntrega ?? ''}
+          barrioEntrega={state.draft.barrioEntrega ?? ''}
+          onDireccionChange={(v) => dispatch({ type: 'SET_DIRECCION', direccion: v, barrio: state.draft.barrioEntrega ?? '' })}
+          onBarrioChange={(v) => dispatch({ type: 'SET_DIRECCION', direccion: state.draft.direccionEntrega ?? '', barrio: v })}
+          previewPending={state.previewPending}
+        />
+      )}
 
       {/* ── Zona: Operación ── */}
       <section data-testid="workspace-operacion" className="space-y-2">

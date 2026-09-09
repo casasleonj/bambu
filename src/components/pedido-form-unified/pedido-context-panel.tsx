@@ -61,6 +61,14 @@ export interface PedidoContextPanelProps {
    * "cliente nuevo". Requiere `clienteSeleccionado` no nulo.
    */
   readOnly?: boolean
+
+  /**
+   * F-ENTREGA-i: el `PedidosWorkspace` renderiza su propia zona "Entrega"
+   * adaptativa (por suficiencia, no campos fijos obligatorios). Con esto,
+   * este panel NO muestra sus inputs de dirección/barrio de entrega. Default
+   * `false`: `pedido-form-unified` (legacy) sigue igual.
+   */
+  ocultarInputsEntrega?: boolean
 }
 
 /**
@@ -110,6 +118,7 @@ export function PedidoContextPanel({
   nuevoCliente,
   onNuevoClienteChange,
   readOnly = false,
+  ocultarInputsEntrega = false,
 }: PedidoContextPanelProps) {
   return (
     <div className="bg-white border rounded-xl p-4">
@@ -218,7 +227,7 @@ export function PedidoContextPanel({
             readOnly={Boolean(pedidoInicialId)}
           />
 
-          {canal === 'DOMICILIO' && (
+          {canal === 'DOMICILIO' && !ocultarInputsEntrega && (
             <div className="space-y-2">
               {/* La dirección de destino (negocio o domicilio principal) ya se
                   muestra en el selector de arriba una sola vez (resumen

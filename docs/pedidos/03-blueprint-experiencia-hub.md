@@ -574,6 +574,9 @@ Verificación por PR (protocolo AGENTS.md): `npx tsc --noEmit` · `npm run test`
 ### 8.1 SLA de entrega
 No existe hoy una regla que determine cuándo un pedido EN_RUTA lleva "demasiado" sin entregar. El foco "En ruta" es informativo (sin color) hasta que negocio defina el SLA. No se inventa un umbral desde UX.
 
+### 8.1bis Información de entrega — suficiencia (CERRADO 2026-09-08, ya no es PENDIENTE)
+Para un Pedido DOMICILIO el sistema exige información **suficiente** para identificar y ejecutar la entrega, **no** `dirección *` + `barrio *` universales. Definición formal (Vía A geo / Vía B textual; barrio-solo y `linkUbicacion`-solo nunca bastan), 3 estados (`SUFICIENTE` / `SUFICIENTE_COMPLEMENTARIA_FALTANTE` / `INSUFICIENTE`), UI adaptativa, **única autoridad de dominio para Preview y Commit**, 22 criterios de aceptación → **`docs/pedidos/entrega-suficiencia-plan.md`**. Prerrequisito de Fase 8. Solo queda PENDIENTE la política **cuantitativa** de geo (precisión mínima, polígono de cobertura formal, antigüedad de coords) — el punto de extensión existe, no se inventa.
+
 ### 8.2 Umbrales monetarios y política de control
 PENDIENTE: umbrales monetarios · cuándo un precio manual requiere autorización · cuándo aplica doble control · separación de funciones (quien prepara no aprueba). Hasta esa decisión: advertencia contextual + motivo obligatorio + auditoría. No se inventan valores ni políticas.
 
