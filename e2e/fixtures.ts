@@ -355,6 +355,29 @@ export async function sharedLoginAs(browser: { newPage: () => Promise<Page> }, r
 
 // ─── UI Helpers ──────────────────────────────────────────────────────────────
 
+/**
+ * Scope de locators a `<main>` para los specs del Pedido Hub (V2).
+ *
+ * Por qué: con `NEXT_PUBLIC_PEDIDOS_V2=true` la ruta `/pedidos` tiene un
+ * `loading.tsx`, que envuelve el segmento en un `<Suspense>`. Cuando la query
+ * de `page.tsx` es lenta (runner de CI: 2 vCPU + Postgres + Redis + Next en la
+ * misma máquina) el boundary no resuelve en el primer flush, así que React 19
+ * streamea el HTML resuelto dentro de un `<div hidden id="S:n">` — hermano de
+ * `<main>`, FUERA de él — y luego lo intercambia a su lugar con un script
+ * `$RC(...)`. Mientras dura ese swap (sub-frame local, cientos de ms en CI) el
+ * árbol del Hub existe DOS veces en el DOM y `page.getByTestId('pedido-hub' |
+ * 'fab-main' | 'faceta-habituales' | ...)` matchea 2 elementos → strict mode
+ * violation. Verificado en el DOM snapshot de un trace de CI: la copia vive en
+ * `<body> > <div hidden id="S:1">`, nunca dentro de `<main>`.
+ *
+ * No es un bug de producto: el árbol real (dentro del único `<main>`) siempre
+ * es uno solo. Scopear los locators a `<main>` selecciona determinísticamente
+ * la instancia real y descarta la copia de streaming.
+ */
+export function appMain(page: Page) {
+  return page.locator('main')
+}
+
 export async function waitForToast(page: Page, text: string, type: 'success' | 'error' = 'success') {
   const toast = page.locator('[data-sonner-toast]').filter({ hasText: text })
   await expect(toast).toBeVisible({ timeout: 10000 })

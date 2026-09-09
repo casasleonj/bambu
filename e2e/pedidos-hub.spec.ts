@@ -7,8 +7,17 @@
 //
 // Con un webServer fresco (Playwright arranca uno en :3001). Cuando 4a
 // gradúe (flag a default ON, Fase 10) este skip se elimina.
+//
+// NOTA sobre `appMain(page)`: los locators estructurales del Hub (los que se
+// evalúan justo después de `page.goto`, antes de cualquier interacción) van
+// scoped a `<main>`. Motivo en `fixtures.ts` → `appMain`: React 19 streaming
+// SSR deja una copia transitoria del segmento fuera de `<main>` mientras el
+// boundary de `loading.tsx` resuelve; en CI lento esa ventana hace que
+// `getByTestId` matchee 2 elementos. Los locators de UI que sólo aparecen tras
+// interacción (workspace, peek, command-menu, toasts) NO necesitan scope: para
+// entonces la hidratación ya terminó.
 
-import { test, expect, apiPost, apiGet, createCliente, BASE, sharedLoginAs } from './fixtures'
+import { test, expect, apiPost, apiGet, createCliente, BASE, sharedLoginAs, appMain } from './fixtures'
 
 const HUB_ON = process.env.NEXT_PUBLIC_PEDIDOS_V2 === 'true'
 
@@ -17,6 +26,7 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
 
   test('shell: focos visibles, sin tabs (G2), lista con microcopy y acción destacada', async ({ browser }) => {
     const page = await sharedLoginAs(browser, 'admin')
+    const app = appMain(page)
     const nombreCli = `Hub Shell ${Date.now()}`
     const { cliente } = await createCliente(page, { nombre: nombreCli })
     await apiPost(page, '/api/pedidos', {
@@ -26,15 +36,15 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     })
 
     await page.goto(`${BASE}/pedidos?all=true`)
-    await expect(page.getByTestId('pedido-hub')).toBeVisible()
-    await expect(page.getByTestId('foco-strip')).toBeVisible()
+    await expect(app.getByTestId('pedido-hub')).toBeVisible()
+    await expect(app.getByTestId('foco-strip')).toBeVisible()
     // G2: sin tabs Fiados/Alertas
-    await expect(page.getByTestId('tab-hoy')).toHaveCount(0)
-    await expect(page.getByTestId('tab-fiados')).toHaveCount(0)
+    await expect(app.getByTestId('tab-hoy')).toHaveCount(0)
+    await expect(app.getByTestId('tab-fiados')).toHaveCount(0)
 
     // La fila de ESTE test: la lista trae datos de seed + otros tests del
     // shard, `.first()` no garantiza que sea la recién creada.
-    const row = page.locator('[data-testid^="operacion-row-"]').filter({ hasText: nombreCli }).first()
+    const row = app.locator('[data-testid^="operacion-row-"]').filter({ hasText: nombreCli }).first()
     await expect(row).toBeVisible()
     // G6: microcopy de estado (texto), no badges apilados
     await expect(row).toContainText('Pendiente')
@@ -44,41 +54,44 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
 
   test('foco filtra la lista y el rango de fecha es independiente', async ({ browser }) => {
     const page = await sharedLoginAs(browser, 'admin')
+    const app = appMain(page)
     await page.goto(`${BASE}/pedidos?all=true`)
-    await expect(page.getByTestId('foco-strip')).toBeVisible()
+    await expect(app.getByTestId('foco-strip')).toBeVisible()
 
-    const totalAntes = await page.locator('[data-testid^="operacion-row-"]').count()
-    await page.getByTestId('foco-esperandoPago').click()
+    const totalAntes = await app.locator('[data-testid^="operacion-row-"]').count()
+    await app.getByTestId('foco-esperandoPago').click()
     // el filtro reduce (o iguala) — nunca aumenta
-    const totalDespues = await page.locator('[data-testid^="operacion-row-"]').count()
+    const totalDespues = await app.locator('[data-testid^="operacion-row-"]').count()
     expect(totalDespues).toBeLessThanOrEqual(totalAntes)
     // re-clic deselecciona
-    await page.getByTestId('foco-esperandoPago').click()
-    expect(await page.locator('[data-testid^="operacion-row-"]').count()).toBe(totalAntes)
+    await app.getByTestId('foco-esperandoPago').click()
+    expect(await app.locator('[data-testid^="operacion-row-"]').count()).toBe(totalAntes)
   })
 
   test('responsive: desktop tabla / mobile tarjetas', async ({ browser }) => {
     const page = await sharedLoginAs(browser, 'admin')
+    const app = appMain(page)
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.goto(`${BASE}/pedidos?all=true`)
-    await expect(page.getByTestId('pedido-hub-desktop')).toBeVisible()
+    await expect(app.getByTestId('pedido-hub-desktop')).toBeVisible()
 
     await page.setViewportSize({ width: 375, height: 720 })
-    await expect(page.getByTestId('pedido-hub-mobile')).toBeVisible()
-    await expect(page.getByTestId('pedido-hub-desktop')).toHaveCount(0)
+    await expect(app.getByTestId('pedido-hub-mobile')).toBeVisible()
+    await expect(app.getByTestId('pedido-hub-desktop')).toHaveCount(0)
   })
 
   test('offline: badge visible, datos intactos, sin pantalla de error', async ({ browser }) => {
     const page = await sharedLoginAs(browser, 'admin')
+    const app = appMain(page)
     await page.goto(`${BASE}/pedidos?all=true`)
-    await expect(page.getByTestId('pedido-hub')).toBeVisible()
-    const rowsAntes = await page.locator('[data-testid^="operacion-row-"]').count()
+    await expect(app.getByTestId('pedido-hub')).toBeVisible()
+    const rowsAntes = await app.locator('[data-testid^="operacion-row-"]').count()
 
     await page.context().setOffline(true)
     await page.waitForTimeout(500)
-    await expect(page.getByTestId('pedido-hub-offline')).toBeVisible()
+    await expect(app.getByTestId('pedido-hub-offline')).toBeVisible()
     // datos siguen ahí
-    expect(await page.locator('[data-testid^="operacion-row-"]').count()).toBe(rowsAntes)
+    expect(await app.locator('[data-testid^="operacion-row-"]').count()).toBe(rowsAntes)
 
     await page.context().setOffline(false)
   })
@@ -88,12 +101,13 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
   // confirmado sólo aparece tras la respuesta del servidor.
   test('G9: online confirmado → offline encolado ("pendiente", no "confirmado") → reconexión → sincroniza', async ({ browser }) => {
     const page = await sharedLoginAs(browser, 'admin')
+    const app = appMain(page)
     const nombreCliente = `G9 E2E ${Date.now()}`
     await createCliente(page, { nombre: nombreCliente })
     await page.goto(`${BASE}/pedidos`)
 
     async function abrirWorkspace() {
-      await page.getByTestId('fab-main').click()
+      await app.getByTestId('fab-main').click()
       await page.getByTestId('fab-pedido-envio').click()
       await expect(page.getByTestId('pedidos-workspace')).toBeVisible()
       await page.getByTestId('cliente-search-input').fill(nombreCliente)
@@ -106,7 +120,7 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     await abrirWorkspace()
     await page.getByTestId('workspace-commit').click()
     await expect(page.getByTestId('pedidos-workspace')).toHaveCount(0)
-    await expect(page.locator('[data-testid^="operacion-row-"]').filter({ hasText: nombreCliente })).toBeVisible()
+    await expect(app.locator('[data-testid^="operacion-row-"]').filter({ hasText: nombreCliente })).toBeVisible()
 
     // 2) OFFLINE → nueva mutación encolada: la UI dice "se enviará al
     //    recuperar la red", NUNCA "confirmado"/"creado".
@@ -127,6 +141,7 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
 
   test('peek: abre sin navegar (G4), ↑/↓ recorren, Escape cierra', async ({ browser }) => {
     const page = await sharedLoginAs(browser, 'admin')
+    const app = appMain(page)
     const nombreCli = `Hub Peek ${Date.now()}`
     const { cliente } = await createCliente(page, { nombre: nombreCli })
     await apiPost(page, '/api/pedidos', {
@@ -138,7 +153,7 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     const urlAntes = page.url()
     // La fila de ESTE test (PENDIENTE → tiene acción destacada); `.first()`
     // podría caer en un pedido viejo ya cerrado sin acción.
-    await page.locator('[data-testid^="operacion-row-"]').filter({ hasText: nombreCli }).first().click()
+    await app.locator('[data-testid^="operacion-row-"]').filter({ hasText: nombreCli }).first().click()
     await expect(page.getByTestId('peek-desktop')).toBeVisible()
     expect(page.url()).toBe(urlAntes) // G4: no navegó
 
@@ -151,7 +166,10 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
 
   test('command menu: ⌘/Ctrl+K abre; "Abrir planificación de hoy" navega, no ejecuta', async ({ browser }) => {
     const page = await sharedLoginAs(browser, 'admin')
+    const app = appMain(page)
     await page.goto(`${BASE}/pedidos?all=true`)
+    // asegura que la hidratación terminó antes del atajo de teclado
+    await expect(app.getByTestId('foco-strip')).toBeVisible()
     await page.keyboard.press('Control+k')
     await expect(page.getByTestId('command-menu')).toBeVisible()
     await page.getByTestId('command-planificacion').click()
@@ -160,12 +178,13 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
 
   test('workspace (Composición C1): crear un pedido — el total viene del preview, el commit crea', async ({ browser }) => {
     const page = await sharedLoginAs(browser, 'admin')
+    const app = appMain(page)
     const nombreCliente = `WS C1 ${Date.now()}`
     await createCliente(page, { nombre: nombreCliente })
     await page.goto(`${BASE}/pedidos`)
 
     // + Nueva operación → workspace
-    await page.getByTestId('fab-main').click()
+    await app.getByTestId('fab-main').click()
     await page.getByTestId('fab-pedido-envio').click()
     await expect(page.getByTestId('pedidos-workspace')).toBeVisible()
     // G1: no es un <form>
@@ -182,7 +201,7 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
 
     await page.getByTestId('workspace-commit').click()
     await expect(page.getByTestId('pedidos-workspace')).toHaveCount(0) // modal cerró
-    await expect(page.locator('[data-testid^="operacion-row-"]').filter({ hasText: 'WS C1 E2E' })).toBeVisible()
+    await expect(app.locator('[data-testid^="operacion-row-"]').filter({ hasText: nombreCliente })).toBeVisible()
   })
 })
 

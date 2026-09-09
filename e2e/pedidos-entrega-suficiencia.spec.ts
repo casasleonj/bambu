@@ -5,7 +5,7 @@
 //
 //   NEXT_PUBLIC_PEDIDOS_V2=true PW_WORKERS=1 npx playwright test e2e/pedidos-entrega-suficiencia.spec.ts
 
-import { test, expect, apiPost, apiGet, createClienteFull, BASE, sharedLoginAs } from './fixtures'
+import { test, expect, apiPost, apiGet, createClienteFull, BASE, sharedLoginAs, appMain } from './fixtures'
 
 const HUB_ON = process.env.NEXT_PUBLIC_PEDIDOS_V2 === 'true'
 const ITEMS = [{ producto: 'PACA_AGUA', cantidad: 3 }]
@@ -100,7 +100,7 @@ test.describe('F-ENTREGA — workspace adaptativo (NEXT_PUBLIC_PEDIDOS_V2)', () 
     await cliente(page, { barrio: 'Kennedy', nombre: 'Entrega Insuf UI' })
 
     await page.goto(`${BASE}/pedidos`)
-    await page.getByTestId('fab-main').click()
+    await appMain(page).getByTestId('fab-main').click()
     await page.getByTestId('fab-pedido-envio').click()
     await expect(page.getByTestId('pedidos-workspace')).toBeVisible()
     await page.getByTestId('cliente-search-input').fill('Entrega Insuf UI')
@@ -119,7 +119,7 @@ test.describe('F-ENTREGA — workspace adaptativo (NEXT_PUBLIC_PEDIDOS_V2)', () 
     await cliente(page, { direccion: 'Cra 7 # 40-15', barrio: 'Centro', nombre: 'Entrega OK UI' })
 
     await page.goto(`${BASE}/pedidos`)
-    await page.getByTestId('fab-main').click()
+    await appMain(page).getByTestId('fab-main').click()
     await page.getByTestId('fab-pedido-envio').click()
     await page.getByTestId('cliente-search-input').fill('Entrega OK UI')
     await page.getByTestId('cliente-search-result').first().click()
