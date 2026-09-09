@@ -152,11 +152,13 @@ test.describe('G11 — punto de decisión (UI, NEXT_PUBLIC_PEDIDOS_V2)', () => {
 
   test('"Cambiar cantidades" → "¿Qué pasó?" ofrece exactamente 2 opciones, sin Venta Libre', async ({ browser }) => {
     const page = await sharedLoginAs(browser, 'admin')
-    const { cliente } = await createCliente(page, { nombre: 'G11 UI' })
+    const nombreCli = `G11 UI ${Date.now()}`
+    const { cliente } = await createCliente(page, { nombre: nombreCli })
     await crearPedido(page, cliente.id, 6)
 
     await page.goto(`${BASE}/pedidos?all=true`)
-    await page.locator('[data-testid^="operacion-row-"]').first().click()
+    // La fila de ESTE test; `.first()` no garantiza que sea el recién creado.
+    await page.locator('[data-testid^="operacion-row-"]').filter({ hasText: nombreCli }).first().click()
     await expect(page.getByTestId('peek-desktop')).toBeVisible()
 
     await page.getByTestId('cambio-cantidad-abrir').click()
