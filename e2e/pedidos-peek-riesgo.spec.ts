@@ -5,7 +5,7 @@
 //
 //   NEXT_PUBLIC_PEDIDOS_V2=true PW_WORKERS=1 npx playwright test e2e/pedidos-peek-riesgo.spec.ts
 
-import { test, expect, apiPost, createCliente, BASE, sharedLoginAs } from './fixtures'
+import { test, expect, apiPost, createCliente, BASE, sharedLoginAs, appMain } from './fixtures'
 
 const HUB_ON = process.env.NEXT_PUBLIC_PEDIDOS_V2 === 'true'
 
@@ -29,7 +29,7 @@ test.describe('Fase 7 — riesgo en el peek (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     expect(casoRes.status()).toBeLessThan(300)
 
     await page.goto(`${BASE}/pedidos?all=true`)
-    await page.locator(`[data-testid="operacion-row-${pedido.id}"]`).click()
+    await appMain(page).locator(`[data-testid="operacion-row-${pedido.id}"]`).click()
     await expect(page.getByTestId('peek-desktop')).toBeVisible()
 
     const bloque = page.getByTestId('peek-rel-casos')
@@ -59,7 +59,7 @@ test.describe('Fase 7 — riesgo en el peek (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     const pedido = (await pRes.json()).pedido
 
     await page.goto(`${BASE}/pedidos?all=true`)
-    await page.locator(`[data-testid="operacion-row-${pedido.id}"]`).click()
+    await appMain(page).locator(`[data-testid="operacion-row-${pedido.id}"]`).click()
     await expect(page.getByTestId('peek-desktop')).toBeVisible()
     await expect(page.getByTestId('peek-rel-casos')).toHaveCount(0)
   })

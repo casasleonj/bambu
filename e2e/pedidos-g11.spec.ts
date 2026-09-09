@@ -11,7 +11,7 @@
 //   G11-07 (concurrencia: preview obsoleto no dirige la mutación) — ajuste-pedido.test.ts
 //   G11-08 (Venta Libre no se crea desde el Hub) — hub-accion-frontera.test.ts
 
-import { test, expect, apiPost, apiGet, createCliente, BASE, sharedLoginAs } from './fixtures'
+import { test, expect, apiPost, apiGet, createCliente, BASE, sharedLoginAs, appMain } from './fixtures'
 
 const HUB_ON = process.env.NEXT_PUBLIC_PEDIDOS_V2 === 'true'
 
@@ -154,20 +154,24 @@ test.describe('G11 — punto de decisión (UI, NEXT_PUBLIC_PEDIDOS_V2)', () => {
 
   test('"Cambiar cantidades" → "¿Qué pasó?" ofrece exactamente 2 opciones, sin Venta Libre', async ({ browser }) => {
     const page = await sharedLoginAs(browser, 'admin')
+    const app = appMain(page)
     const nombreCli = `G11 UI ${Date.now()}`
     const { cliente } = await createCliente(page, { nombre: nombreCli })
     await crearPedido(page, cliente.id, 6)
 
     await page.goto(`${BASE}/pedidos?all=true`)
     // La fila de ESTE test; `.first()` no garantiza que sea el recién creado.
-    await page.locator('[data-testid^="operacion-row-"]').filter({ hasText: nombreCli }).first().click()
+    await app.locator('[data-testid^="operacion-row-"]').filter({ hasText: nombreCli }).first().click()
     await expect(page.getByTestId('peek-desktop')).toBeVisible()
 
     await page.getByTestId('cambio-cantidad-abrir').click()
-    await expect(page.getByTestId('cambio-cantidad-decision')).toBeVisible()
+    const decision = page.getByTestId('cambio-cantidad-decision')
+    await expect(decision).toBeVisible()
     await expect(page.getByTestId('cambio-causa-correccion')).toBeVisible()
     await expect(page.getByTestId('cambio-causa-nueva-demanda')).toBeVisible()
-    await expect(page.getByText(/venta libre|venta durante la ruta/i)).toHaveCount(0)
+    // "sin Venta Libre" = dentro del panel de decisión (scoped: la copia de
+    // streaming SSR fuera de <main> puede contener el texto en otro contexto).
+    await expect(decision.getByText(/venta libre|venta durante la ruta/i)).toHaveCount(0)
 
     // elegir corrección → formulario inline con motivo obligatorio
     await page.getByTestId('cambio-causa-correccion').click()

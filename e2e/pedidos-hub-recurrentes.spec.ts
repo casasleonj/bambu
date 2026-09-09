@@ -4,7 +4,7 @@
 //
 //   NEXT_PUBLIC_PEDIDOS_V2=true PW_WORKERS=1 npx playwright test e2e/pedidos-hub-recurrentes.spec.ts
 
-import { test, expect, apiPost, apiGet, apiPut, createCliente, BASE, sharedLoginAs } from './fixtures'
+import { test, expect, apiPost, apiGet, apiPut, createCliente, BASE, sharedLoginAs, appMain } from './fixtures'
 
 const HUB_ON = process.env.NEXT_PUBLIC_PEDIDOS_V2 === 'true'
 
@@ -72,9 +72,10 @@ test.describe('F8 — recurrentes en el Hub (UI, NEXT_PUBLIC_PEDIDOS_V2)', () =>
 
   test('faceta "Solo habituales" visible en el Hub', async ({ browser }) => {
     const page = await sharedLoginAs(browser, 'admin')
+    const app = appMain(page)
     await page.goto(`${BASE}/pedidos?all=true`)
-    await expect(page.getByTestId('faceta-habituales')).toBeVisible()
-    await page.getByTestId('faceta-habituales').click()
+    await expect(app.getByTestId('faceta-habituales')).toBeVisible()
+    await app.getByTestId('faceta-habituales').click()
     await expect(page).toHaveURL(/conRecurrencia=true/)
   })
 
@@ -89,7 +90,7 @@ test.describe('F8 — recurrentes en el Hub (UI, NEXT_PUBLIC_PEDIDOS_V2)', () =>
     expect(rec.status()).toBe(201)
 
     await page.goto(`${BASE}/pedidos?all=true`)
-    const cta = page.getByTestId('recurrentes-del-dia-cta')
+    const cta = appMain(page).getByTestId('recurrentes-del-dia-cta')
     await expect(cta).toBeVisible({ timeout: 6000 })
     await cta.click()
     await expect(page.getByTestId('recurrentes-del-dia-panel')).toBeVisible()
