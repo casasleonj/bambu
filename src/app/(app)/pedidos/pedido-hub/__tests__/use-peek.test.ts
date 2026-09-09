@@ -77,6 +77,36 @@ describe('usePeek', () => {
     expect(result.current.activeId).toBe('p1')
   })
 
+  it('F9-iv ↑/↓: un fetch de capa 2 que resuelve TARDE (tras navegar) se descarta', async () => {
+    __resetPeekCache()
+    const resolvers = new Map<string, (v: unknown) => void>()
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      const id = String(url).split('/').pop() as string
+      return new Promise((resolve) => {
+        resolvers.set(id, (pedido) => resolve({ ok: true, json: async () => ({ success: true, pedido }) }))
+      })
+    }))
+
+    const { result } = renderHook(() => usePeek(list))
+    act(() => result.current.open(list[0]))          // pide p1 (queda colgado)
+    act(() => result.current.nav('next'))            // navega a p2 (pide p2)
+    expect(result.current.activeId).toBe('p2')
+
+    await act(async () => {
+      // p2 responde primero
+      resolvers.get('p2')!({ id: 'p2', pendienteN2: null, embarqueResumen: null, pedidosVinculados: [], casosAbiertos: [], marker: 'p2' })
+    })
+    await waitFor(() => expect((result.current.layer2 as unknown as { marker: string })?.marker).toBe('p2'))
+
+    await act(async () => {
+      // p1 responde DESPUÉS — debe descartarse (el usuario ya está en p2)
+      resolvers.get('p1')!({ id: 'p1', pendienteN2: null, embarqueResumen: null, pedidosVinculados: [], casosAbiertos: [], marker: 'p1-STALE' })
+    })
+    // el peek sigue mostrando p2, nunca el resultado stale de p1
+    expect((result.current.layer2 as unknown as { marker: string })?.marker).toBe('p2')
+    expect(result.current.activeId).toBe('p2')
+  })
+
   it('nav no se sale de los límites de la lista', () => {
     const { result } = renderHook(() => usePeek(list))
     act(() => result.current.open(list[0]))

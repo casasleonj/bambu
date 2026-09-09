@@ -8,7 +8,7 @@
 // Con un webServer fresco (Playwright arranca uno en :3001). Cuando 4a
 // gradúe (flag a default ON, Fase 10) este skip se elimina.
 
-import { test, expect, apiPost, createCliente, BASE, sharedLoginAs } from './fixtures'
+import { test, expect, apiPost, apiGet, createCliente, BASE, sharedLoginAs } from './fixtures'
 
 const HUB_ON = process.env.NEXT_PUBLIC_PEDIDOS_V2 === 'true'
 
@@ -78,6 +78,48 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     expect(await page.locator('[data-testid^="operacion-row-"]').count()).toBe(rowsAntes)
 
     await page.context().setOffline(false)
+  })
+
+  // G9 (blueprint §4.7 / §4.8): offline muestra estado real; una mutación
+  // encolada se ve como "pendiente", NUNCA como "confirmado". El estado
+  // confirmado sólo aparece tras la respuesta del servidor.
+  test('G9: online confirmado → offline encolado ("pendiente", no "confirmado") → reconexión → sincroniza', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const cliente = await createCliente(page, { nombre: `G9 E2E ${Date.now()}` })
+    const nombreCliente = cliente.nombre ?? 'G9 E2E'
+    await page.goto(`${BASE}/pedidos`)
+
+    async function abrirWorkspace() {
+      await page.getByTestId('fab-main').click()
+      await page.getByTestId('fab-pedido-envio').click()
+      await expect(page.getByTestId('pedidos-workspace')).toBeVisible()
+      await page.getByTestId('cliente-search-input').fill(nombreCliente)
+      await page.getByTestId('cliente-search-result').first().click()
+      await page.getByTestId('workspace-inc-PACA_AGUA').click()
+      await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 5000 })
+    }
+
+    // 1) ONLINE → commit confirmado por el servidor
+    await abrirWorkspace()
+    await page.getByTestId('workspace-commit').click()
+    await expect(page.getByTestId('pedidos-workspace')).toHaveCount(0)
+    await expect(page.locator('[data-testid^="operacion-row-"]').filter({ hasText: nombreCliente })).toBeVisible()
+
+    // 2) OFFLINE → nueva mutación encolada: la UI dice "se enviará al
+    //    recuperar la red", NUNCA "confirmado"/"creado".
+    await abrirWorkspace()
+    await page.context().setOffline(true)
+    await page.getByTestId('workspace-commit').click()
+    await expect(page.getByText(/se enviará al recuperar la red/i)).toBeVisible({ timeout: 5000 })
+    await expect(page.getByText(/pedido creado|confirmado/i)).toHaveCount(0)
+
+    // 3) RECONEXIÓN → el sync drena la cola; el pedido termina en el servidor.
+    await page.context().setOffline(false)
+    await expect(async () => {
+      const res = await apiGet(page, `/api/pedidos?all=true&search=${encodeURIComponent(nombreCliente)}`)
+      const body = await res.json()
+      expect((body.pedidos ?? body.data ?? []).length).toBeGreaterThanOrEqual(2)
+    }).toPass({ timeout: 20000 })
   })
 
   test('peek: abre sin navegar (G4), ↑/↓ recorren, Escape cierra', async ({ browser }) => {

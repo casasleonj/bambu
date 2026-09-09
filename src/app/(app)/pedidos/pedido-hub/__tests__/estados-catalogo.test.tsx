@@ -105,4 +105,33 @@ describe('Hub — catálogo de estados §4.7 (Fase 9)', () => {
     expect(screen.getByTestId('pedido-hub-actualizando')).toBeInTheDocument()
     expect(screen.queryByTestId('pedido-hub-error-datos')).not.toBeInTheDocument()
   })
+
+  it('empty (query válida, cero resultados) → mensaje + acción, nunca pantalla en blanco', () => {
+    onlineRef.current = true
+    render(<PedidoHub {...base} pedidos={[]} loading={false} error={null} refetching={false} onNuevaOperacion={vi.fn()} />)
+    // OperacionList → EmptyState "No hay operaciones …"
+    expect(screen.getByText(/No hay operaciones/i)).toBeInTheDocument()
+    expect(screen.queryByTestId('pedido-hub-skeleton')).not.toBeInTheDocument()
+  })
+
+  it('retry: el botón "Reintentar" del error-con-datos dispara onRetry (fila `retry` §4.7)', () => {
+    onlineRef.current = true
+    const onRetry = vi.fn()
+    render(<PedidoHub {...base} pedidos={[pedido()]} loading={false} error="timeout" refetching={false} onRetry={onRetry} />)
+    fireEvent.click(within(screen.getByTestId('pedido-hub-error-datos')).getByRole('button', { name: /Reintentar/i }))
+    expect(onRetry).toHaveBeenCalledTimes(1)
+  })
+
+  it('CONTRATO §4.7: sin estados inventados — el contenido principal es exactamente uno de {skeleton, empty, lista}', () => {
+    onlineRef.current = true
+    // con datos y sin error → lista, y NADA de skeleton/empty
+    const { rerender } = render(<PedidoHub {...base} pedidos={[pedido()]} loading={false} error={null} refetching={false} />)
+    expect(screen.queryByTestId('pedido-hub-skeleton')).not.toBeInTheDocument()
+    expect(screen.queryByText(/No hay operaciones/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/Tienda X/)).toBeInTheDocument()
+    // error + datos → NUNCA se reemplaza la lista por una "pantalla de error"
+    rerender(<PedidoHub {...base} pedidos={[pedido()]} loading={false} error="boom" refetching={false} onRetry={vi.fn()} />)
+    expect(screen.getByText(/Tienda X/)).toBeInTheDocument()
+    expect(screen.queryByText('No se pudieron cargar las operaciones')).not.toBeInTheDocument()
+  })
 })

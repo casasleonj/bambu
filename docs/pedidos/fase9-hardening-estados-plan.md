@@ -128,16 +128,19 @@
 
 **Criterio:** commit → 409 `OBLIGACION_YA_ACTIVA` → el form muestra "El estado en el servidor ya no coincide… · Ver estado actual", NO "aplicado", NO reintenta; "Ver estado actual" invalida y recarga el peek con el estado del servidor. Un 409 `CANTIDAD_EXCEDE_PENDIENTE` sigue con su mensaje contextual, sin recovery. Un guard G11 mantiene sus alternativas y nunca convierte la intención.
 
-### F9-iv — catálogo de estados como contrato + E2E
-**Archivos:**
-- `src/app/(app)/pedidos/pedido-hub/__tests__/estados-catalogo.test.tsx` — unit del catálogo: `offline` (con datos → badge, sin ErrorState) · `stale` (online + refetching → "actualizando", no error) · `error` con datos (chip+retry) vs sin datos (EmptyState) · `empty` (EmptyState con acción) · `loading` inicial (skeleton).
-- `src/app/(app)/pedidos/pedido-hub/__tests__/use-peek.test.ts` — extender: `nav('next')` mientras un fetch de capa 2 está en vuelo → el resultado del anterior se descarta (ya lo hace `reqRef`; test explícito).
-- `e2e/pedidos-hub-estados.spec.ts` (gated): (a) red cortada tras cargar → badge, filas intactas, sin pantalla de error; (b) mutación N2 encolada offline → la UI dice "se aplicará al reconectar" / "pendiente", **nunca** "confirmado"/"aplicado"; (c) `↑/↓` rápido en el peek no deja capa 2 de otra operación.
-- **Verificación (grep, §4.7):** cero `fetch(` por foco · el peek capa 1 no dispara fetch · un 409 swithout `offlineId` match muestra recovery no "éxito" · `stale` se representa como "actualizando" no como error.
+### F9-iv — catálogo de estados como contrato + E2E — ✅ IMPLEMENTADO
 
-**Criterio (G9):** E2E offline verde; el grep de verificación pasa; el catálogo de estados tiene un test por fila.
+**Archivos:**
+- `estados-catalogo.test.tsx` (+4 → 11) — contrato §4.7: `loading` (skeleton, sin "Actualizando…") · `stale`/`refetching` (online → "Actualizando…", no error; offline → no aparece) · `error` con datos (chip + Reintentar, lista intacta) vs sin datos (EmptyState) · `offline` con datos (badge, filas, sin ErrorState) · `empty` (query válida, 0 resultados → "No hay operaciones", nunca en blanco) · `retry` (botón dispara `onRetry`) · **guard "sin estados inventados"**: el contenido principal es exactamente uno de `{skeleton, empty, lista}`; con datos + error la lista NUNCA se reemplaza por una "pantalla de error".
+- `use-peek.test.ts` (+2) — (a) recovery: `invalidatePeek` + re-open → re-fetch real (`estado-1`→`estado-2`); (b) `↑/↓`: un fetch de capa 2 que **resuelve tarde** (tras `nav('next')`) se **descarta** — el peek nunca muestra el resultado stale (`p1-STALE`).
+- `e2e/pedidos-hub.spec.ts` (+1, gated `NEXT_PUBLIC_PEDIDOS_V2`) — **G9**: (1) online → commit confirmado por el servidor (fila visible); (2) offline → nueva mutación → *"se enviará al recuperar la red"* visible, **`toHaveCount(0)`** de `/pedido creado|confirmado/`; (3) reconexión → el sync drena la cola → el pedido termina en el servidor (`GET` con ≥2). El caso "offline: badge, datos intactos, sin pantalla de error" ya existía en este spec.
+- **Verificación (grep §4.8) — pasa:** ningún `fetch`/`refetch` atado a la selección de foco (filtro en memoria, `pedidosFiltrados` useMemo) · `use-peek` capa 1 = `pedidos.find(...)`, cero fetch · 409 sin `offlineId` coincidente → recovery no "éxito" (F9-iii) · `online + stale` → "Actualizando…", no error (F9-i).
+
+**Criterio (G9):** unit del catálogo con un test por fila + guard anti-estados-inventados · `↑/↓` cancela el fetch stale (test explícito) · E2E G9 con la secuencia completa online-confirmado → offline-pendiente → reconexión-sync. Suite `pedidos/` + `use-pedidos` = **218 verdes**, `tsc`/`eslint` limpios.
 
 ---
+
+> **Estado: Fase 9 COMPLETA** — F9-i (`refetching`), F9-ii (`error` con datos), F9-iii (recovery de conflicto 409, cierre con los 7 criterios del equipo), F9-iv (catálogo §4.7 + `↑/↓` + E2E G9). Rama `feat/pedidos-fase9-hardening`. Siguiente: Fase 10 (retiro legacy), **bloqueada por soak period**.
 
 ## 3. Criterios de éxito (globales)
 
