@@ -136,9 +136,10 @@ Read-only. Se resuelve por `clienteId`/`negocioId` del pedido (misma regla que e
 
 ### F8-i — indicador + faceta en el Hub ✅ IMPLEMENTADO
 **Archivos:**
-- `peek-relaciones.tsx` / un `PeekRecurrencia` — "Pedido habitual: {resumen} · cada {N} días · [Ajustar]" cuando `data.recurrencia`. Si `!activo` → "Habitual pausado".
-- Hub: faceta/filtro "con recurrencia" (query param) — `pedidos-client` + la query de la lista.
-- Tests: `peek-recurrencia.test.tsx`, filtro.
+- `peek-recurrencia.tsx` — "🔁 Pedido habitual · {resumen} · cada {N} días · próximo {fecha}" cuando `data.recurrencia`. `!activo` → "(pausado)" sin próximo. `[Ajustar]` solo si `onAjustar`. Wireado en `peek-relaciones.tsx`. **El indicador del peek usa el CONTEXTO** (la `PlantillaRecurrente` del cliente/negocio del pedido) — es correcto para "este contexto tiene recurrencia".
+- Faceta "🔁 Solo habituales" en `pedido-hub/index.tsx` (junto al foco-strip, `?conRecurrencia=true` server-side).
+- **Corrección semántica (revisión del equipo F8-i):** "Solo habituales" = el **Pedido ES realmente recurrente**, no "el contexto tiene recurrencia activa". Relación canónica del dominio: `Pedido.origen = 'RECURRENTE'` (lo setea `generarPedidosRecurrentes` junto con `recurrenteBatchId`). `buildWhere`: `if (filter.conRecurrencia) where.origen = 'RECURRENTE'` — **sin `where.OR`** (no colisiona con OR de otros filtros), interseca vía los campos AND'd. Un pedido histórico normal de un cliente que hoy tiene recurrencia **NO** aparece. Un pedido recurrente cuya plantilla luego se pausó **SÍ** aparece (fue habitual).
+- Tests: `peek-recurrencia.test.tsx` (5) · `PrismaPedidoRepository.test.ts` (origen RECURRENTE, sin OR) · **`listar-pedidos-recurrencia.test.ts` (8 integración funcional)**: contexto-con-recurrencia ≠ pedido-recurrente, composición con canal/clienteId, negocio, plantilla pausada.
 
 ### F8-ii — "esto se repite" en el workspace (reemplaza `/recurrentes/nuevo`)
 **Archivos:**

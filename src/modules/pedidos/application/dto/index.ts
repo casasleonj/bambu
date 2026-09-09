@@ -124,8 +124,9 @@ export interface ListarPedidosInput {
   tipo?: string[]
   /** Server-side tab scope: isolates Pedidos/Fiados/Alertas datasets. */
   scope?: 'fiados' | 'alertas'
-  /** Fase 8 F8-i: faceta "con recurrencia" — solo pedidos cuyo contexto
-   *  (cliente o negocio) tiene una `PlantillaRecurrente` activa. */
+  /** Fase 8 F8-i — faceta "Solo habituales": solo pedidos que SON realmente
+   *  recurrentes (`origen='RECURRENTE'`). No confundir con "el contexto tiene
+   *  recurrencia activa" (eso es el indicador del peek). */
   conRecurrencia?: boolean
   page?: number
   pageSize?: number

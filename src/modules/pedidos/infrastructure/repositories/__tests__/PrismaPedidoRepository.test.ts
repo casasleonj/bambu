@@ -34,10 +34,16 @@ describe('PrismaPedidoRepository: filtro de canal (G6)', () => {
   })
 })
 
-describe('PrismaPedidoRepository: faceta "con recurrencia" (F8-i)', () => {
-  it('buildWhere filtra por contexto cliente O negocio con PlantillaRecurrente activa', () => {
+describe('PrismaPedidoRepository: faceta "Solo habituales" (F8-i)', () => {
+  it('buildWhere filtra por origen RECURRENTE (el Pedido ES recurrente), NO por contexto', () => {
     expect(source).toMatch(/filter\?\.conRecurrencia/)
-    expect(source).toMatch(/cliente:\s*\{\s*plantillaRecurrente:\s*\{\s*activo:\s*true\s*\}\s*\}/)
-    expect(source).toMatch(/negocio:\s*\{\s*plantillaRecurrente:\s*\{\s*activo:\s*true\s*\}\s*\}/)
+    expect(source).toMatch(/where\.origen\s*=\s*['"]RECURRENTE['"]/)
+    // NO usa una relación de contexto para esto
+    expect(source).not.toMatch(/plantillaRecurrente:\s*\{\s*activo:\s*true\s*\}/)
+  })
+
+  it('el filtro conRecurrencia NO usa where.OR (no colisiona con OR de otros filtros)', () => {
+    const buildWhereSection = source.slice(source.indexOf('private buildWhere'))
+    expect(buildWhereSection).not.toMatch(/where\.OR\s*=/)
   })
 })

@@ -25,8 +25,10 @@ export interface PedidoFilter {
   tipo?: string[]
   /** Server-side tab scope: isolates Pedidos/Fiados/Alertas datasets. */
   scope?: 'fiados' | 'alertas'
-  /** Fase 8 F8-i: solo pedidos cuyo contexto (cliente o negocio) tiene una
-   *  `PlantillaRecurrente` activa. */
+  /** Fase 8 F8-i — faceta "Solo habituales": solo pedidos que SON realmente
+   *  recurrentes (`origen='RECURRENTE'`, generados por
+   *  `generarPedidosRecurrentes`). NO "el cliente/negocio tiene recurrencia
+   *  activa" — eso es otro concepto (contexto de recurrencia, ver el peek). */
   conRecurrencia?: boolean
 }
 
