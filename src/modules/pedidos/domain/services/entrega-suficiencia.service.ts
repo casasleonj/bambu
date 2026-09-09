@@ -9,8 +9,9 @@
  *
  * Principio: para un Pedido DOMICILIO el sistema exige información SUFICIENTE
  * para identificar y ejecutar la entrega, no un set fijo de campos.
- *   - Vía A: ubicación geográfica utilizable (lat/lng válidas + dentro de
- *     cobertura + fuente utilizable).
+ *   - Vía A: ubicación geográfica utilizable = lat/lng válidas (finitas, ≠(0,0)).
+ *     La "cobertura" y la "confiabilidad de la fuente" son PENDIENTE de negocio
+ *     (revisión 2026-09-08): NO se inventan acá. Coords válidas → utilizables.
  *   - Vía B: dirección textual (no vacía). El barrio SOLO nunca basta; el
  *     `linkUbicacion` SOLO nunca basta (debe resolverse a coords → Vía A).
  */

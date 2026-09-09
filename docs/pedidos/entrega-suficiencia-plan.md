@@ -39,10 +39,10 @@ Se cumple cuando **simultáneamente**:
 
 1. hay `lat` y `lng` **válidas** (`Number.isFinite`, no `(0,0)`);
 2. las coordenadas son **utilizables para navegación** (misma validación técnica que ya hace `pickCoords`);
-3. la posición está **dentro de la cobertura de entrega** de Agua Bambú;
-4. la posición proviene de una **fuente utilizable**.
+3. la posición está **dentro de la cobertura de entrega** de Agua Bambú — **PENDIENTE** (§7);
+4. la posición proviene de una **fuente utilizable** — **PENDIENTE** (ver abajo).
 
-**Fuente utilizable (criterio 4):** el efectivo `pickCoords` viene de negocio con coords propias, **o** de cliente con `geocodeOrigen ∈ {PARSED_URL, GPS_HISTORIAL, NEGOCIO, MANUAL}`, **o** de una resolución en vivo de `linkUbicacion` que produjo coords. Coords presentes sin `geocodeOrigen` conocido → se consideran utilizables (ya pasaron por un backfill), **no se inventa un rechazo**.
+**Criterio 4 — "fuente utilizable": PENDIENTE (revisión del equipo F-ENTREGA-0, 2026-09-08 §1/§8).** NO existe todavía una política formal de confiabilidad/procedencia de geolocalización, y **no se inventa por iniciativa técnica**. Hasta que negocio la defina: **coordenadas válidas (criterios 1-2) se consideran utilizables para suficiencia**, sin importar `geocodeOrigen`. El `EntregaResuelta.coords.origen` solo se expone como etiqueta informativa (`'NEGOCIO'` / el `geocodeOrigen` del cliente / `'PARSED_URL'` / `'DESCONOCIDO'`), nunca como gate. Si más adelante se define una política de confiabilidad, será una decisión nueva documentada.
 
 **Cobertura (criterio 3):** **NO hay política de cobertura formal** (revisión §8/§19 — PENDIENTE de negocio). Hasta que exista:
 - `dentroDeCobertura(lat, lng)` es un **stub que devuelve `'no_evaluada'`** y **nunca** produce INSUFICIENTE por sí solo.
@@ -175,7 +175,7 @@ ENTREGA
 - Resolución de `linkUbicacion` server-side en los callers (reusa `expandShortMapsUrl`).
 - Tests: unit del servicio (22 criterios §6), integración Preview↔Commit (misma autoridad; preview obsoleto no permite commit inválido).
 
-### F-ENTREGA-i — UI adaptativa del workspace
+### F-ENTREGA-i — UI adaptativa del workspace ✅ IMPLEMENTADO
 - Zona "Entrega" adaptativa por `preview.entrega.estado` (§4). Reemplaza el `dirección */barrio *`.
 - `[Ver ubicación]` (Maps, pestaña nueva — como `PeekEntrega` de Fase 7).
 - Tests: unit (los 3 estados renderizan lo correcto; `INSUFICIENTE` deshabilita commit; complementaria no).

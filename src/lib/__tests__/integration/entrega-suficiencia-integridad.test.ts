@@ -17,6 +17,7 @@ vi.mock('next/cache', () => ({
 import { testPrisma, resetAndSeed, disconnect, getAdminUser, uniqueId } from './setup'
 import { PreviewPedidoUseCase } from '@/modules/pedidos/application/use-cases/PreviewPedidoUseCase'
 import { CrearPedidoUseCase } from '@/modules/pedidos/application/use-cases/CrearPedidoUseCase'
+import { ActualizarPedidoUseCase } from '@/modules/pedidos/application/use-cases/ActualizarPedidoUseCase'
 import { GetFiadoStatusUseCase } from '@/modules/pedidos/application/use-cases/GetFiadoStatusUseCase'
 import { PrismaPedidoRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaPedidoRepository'
 import { PrismaFacturaRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaFacturaRepository'
@@ -41,6 +42,12 @@ function crear() {
   return new CrearPedidoUseCase(
     pedidoRepo, new PrismaFacturaRepository(), new PrismaPagoRepository(),
     clienteRepo, new PrismaPricingAdapter(), new PrismaTransactionManager(),
+  )
+}
+function actualizar() {
+  return new ActualizarPedidoUseCase(
+    pedidoRepo, new PrismaFacturaRepository(), clienteRepo,
+    new PrismaPricingAdapter(), new PrismaTransactionManager(),
   )
 }
 
@@ -127,5 +134,39 @@ describe('F-ENTREGA-0 — suficiencia de entrega (Preview ↔ Commit, misma auto
     })
     expect(p.entrega?.via).toBe('TEXTO')
     expect(p.permissions.canCreate).toBe(true)
+  })
+
+  it('edición: modificar el snapshot de entrega persiste en el Pedido y NO muta el Cliente', async () => {
+    const c = await testPrisma.cliente.create({
+      data: { nombre: 'Edit snapshot', telefono: uniqueId('t'), direccion: 'Cra 1 # 1-1', barrio: 'Uno', activo: true },
+    })
+    const { pedido } = await crear().execute({
+      clienteId: c.id, canal: 'DOMICILIO', origen: 'PEDIDO', items: ITEMS, pagos: [],
+      createdById: adminId, createdByRole: 'ADMIN', offlineId: uniqueId('e-edit-1'),
+    })
+    await actualizar().execute({
+      pedidoId: pedido.id, items: ITEMS,
+      direccionEntrega: 'Entrega hoy: bodega Cra 50', barrioEntrega: 'Industrial', usuarioId: adminId,
+    })
+    const row = await testPrisma.pedido.findUniqueOrThrow({ where: { id: pedido.id } })
+    expect(row.direccionEntrega).toBe('Entrega hoy: bodega Cra 50')
+    const cli = await testPrisma.cliente.findUniqueOrThrow({ where: { id: c.id } })
+    expect(cli.direccion).toBe('Cra 1 # 1-1') // Cliente intacto
+    expect(cli.barrio).toBe('Uno')
+  })
+
+  it('edición: vaciar el snapshot cuando el Cliente tampoco tiene dirección ni coords → rechaza (INSUFICIENTE)', async () => {
+    const c = await testPrisma.cliente.create({
+      data: { nombre: 'Edit a insuficiente', telefono: uniqueId('t'), direccion: null, barrio: null, activo: true },
+    })
+    // crear con override para poder crearlo, luego intentar vaciarlo
+    const { pedido } = await crear().execute({
+      clienteId: c.id, canal: 'DOMICILIO', origen: 'PEDIDO', items: ITEMS, pagos: [],
+      direccionEntrega: 'Cra 9 # 80-10', barrioEntrega: 'Norte',
+      createdById: adminId, createdByRole: 'ADMIN', offlineId: uniqueId('e-edit-2'),
+    })
+    await expect(
+      actualizar().execute({ pedidoId: pedido.id, items: ITEMS, direccionEntrega: '', barrioEntrega: '', usuarioId: adminId }),
+    ).rejects.toThrow('ENTREGA_INSUFICIENTE')
   })
 })

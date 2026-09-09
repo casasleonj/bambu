@@ -173,14 +173,17 @@ export class PreviewPedidoUseCase {
       coordsDeLink,
     })
 
-    if (entrega.estado === 'INSUFICIENTE') {
+    // La venta anónima (CONSUMIDOR_FINAL) no gatea por suficiencia de entrega
+    // — se sigue calculando `entrega` para mostrarla, pero no bloquea (paridad
+    // con CrearPedidoUseCase, que salta el guard para el canónico).
+    if (!esAnonimo && entrega.estado === 'INSUFICIENTE') {
       canCreate = false
       warnings.push({
         code: 'ENTREGA_INSUFICIENTE',
         message: 'Necesitamos información para localizar el domicilio: una dirección escrita o una ubicación.',
         field: 'direccion',
       })
-    } else if (entrega.estado === 'SUFICIENTE_COMPLEMENTARIA_FALTANTE') {
+    } else if (!esAnonimo && entrega.estado === 'SUFICIENTE_COMPLEMENTARIA_FALTANTE') {
       warnings.push({
         code: 'ENTREGA_COMPLEMENTARIA',
         message: 'Puedes continuar. Agregar ' + entrega.faltaComplementario.join(' y ') + ' puede facilitar la entrega.',
