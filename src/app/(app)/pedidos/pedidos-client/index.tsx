@@ -473,13 +473,23 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   // actual (tabs). Ver docs/pedidos/fase4a-hub-plan.md.
   const hubMode = pedidosV2Enabled()
 
+  // Fase 9 F9-i: un refetch de la lista (polling, realtime, post-mutación) con
+  // datos ya en pantalla no debe verse como carga inicial. `mainRefetching`
+  // alimenta el indicador sutil "Actualizando…" del Hub. NO bloquea la UI.
+  const [mainRefetching, setMainRefetching] = useState(false)
+
   // Refresca el dataset activo: el cache completo (modo normal) o el
   // fallback server-filtrado (negocio con más pedidos que el tope del cache).
   const refreshPedidos = useCallback(async () => {
-    if (cacheActive) {
-      await loadAllPedidos()
-    } else {
-      await fallbackRefetch()
+    setMainRefetching(true)
+    try {
+      if (cacheActive) {
+        await loadAllPedidos()
+      } else {
+        await fallbackRefetch()
+      }
+    } finally {
+      setMainRefetching(false)
     }
   }, [cacheActive, loadAllPedidos, fallbackRefetch])
 
@@ -1668,6 +1678,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
           pedidos={pedidosVisiblesConPendientes}
           counts={{ porPlanificarCount, atrasadosCount, enRutaCount, esperandoPagoTotal, pendientesN2Count }}
           loading={!hasLoadedOnce && loading}
+          refetching={mainRefetching}
           error={fetchError}
           userRole={userRole}
           onAccion={handleHubAccion}

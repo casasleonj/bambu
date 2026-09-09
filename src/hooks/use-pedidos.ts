@@ -45,7 +45,14 @@ export interface UsePedidosOptions {
 
 export interface UsePedidosResult {
   pedidos: unknown[]
+  /** Carga inicial: todavía no hay una respuesta utilizable. Mientras es true
+   *  el consumidor puede mostrar un skeleton. */
   loading: boolean
+  /** Actualización posterior mientras YA existen datos (refetch manual, polling,
+   *  realtime). `loading` permanece en false y la lista se conserva; el
+   *  consumidor solo debe mostrar un indicador sutil "Actualizando…".
+   *  Estado interno del hook — NO es un estado de dominio del Pedido. (Fase 9 F9-i) */
+  refetching: boolean
   error: string | null
   total: number
   fetchPedidos: () => Promise<void>
@@ -65,9 +72,15 @@ export function usePedidos(
 ): UsePedidosResult {
   const [pedidos, setPedidos] = useState<unknown[]>([])
   const [loading, setLoading] = useState(options?.autoFetch !== false)
+  const [refetching, setRefetching] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [total, setTotal] = useState(0)
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false)
+  // Espejo de hasLoadedOnce en ref: fetchPedidos decide loading-vs-refetching al
+  // arrancar sin re-crear su identidad (un cambio de identidad de fetchPedidos
+  // propaga a refetch y puede reactivar efectos externos keyed en refetch —
+  // ver incidente "bucle de requests en Pedidos").
+  const hasLoadedOnceRef = useRef(false)
   const abortRef = useRef<AbortController | null>(null)
   const didInitialFetchRef = useRef(false)
   const lastParamsKeyRef = useRef<string>('')
@@ -118,7 +131,13 @@ export function usePedidos(
     // If a newer request already started while we were setting up, bail out.
     if (!isCurrent()) return
 
-    setLoading(true)
+    // Carga inicial vs actualización: si ya hay datos utilizables, esto es un
+    // refetch — no bloquea, no skeleton, solo indicador sutil.
+    if (hasLoadedOnceRef.current) {
+      setRefetching(true)
+    } else {
+      setLoading(true)
+    }
     setError(null)
 
     // La API con ?all=true y COUNT(*) sin filtros puede tardar hasta 30s
@@ -146,6 +165,7 @@ export function usePedidos(
         appliedKeyRef.current = paramsKey
         setPedidos(data.pedidos || data.data || [])
         setTotal(data.total || 0)
+        hasLoadedOnceRef.current = true
         setHasLoadedOnce(true)
         setError(null)
       } else {
@@ -164,7 +184,12 @@ export function usePedidos(
       console.error('Error fetching pedidos:', err)
       setError('No se pudieron cargar los pedidos')
     } finally {
-      if (isCurrent()) setLoading(false)
+      // Guardado por isCurrent(): una respuesta stale/cancelada no puede
+      // resetear el estado visual de actualización de un request más nuevo.
+      if (isCurrent()) {
+        setLoading(false)
+        setRefetching(false)
+      }
     }
   }, [buildUrl, paramsKey])
 
@@ -217,5 +242,5 @@ export function usePedidos(
     }
   }, [])
 
-  return { pedidos, loading, error, total, fetchPedidos, refetch, hasLoadedOnce, paramsKey, appliedKeyRef }
+  return { pedidos, loading, refetching, error, total, fetchPedidos, refetch, hasLoadedOnce, paramsKey, appliedKeyRef }
 }
