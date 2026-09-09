@@ -418,3 +418,191 @@ jobs:
           name: playwright-traces-${{ matrix.shard }}
           path: test-results/
           retention-days: 7
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # e2e-hub — soak del Pedido Hub V2 (Fase 10-C).
+  #
+  # Job SEPARADO y transitorio: corre SOLO la suite del Hub con
+  # NEXT_PUBLIC_PEDIDOS_V2=true, mientras el job `e2e` de arriba se mantiene
+  # con el flag OFF y su suite legacy intacta. El objetivo es medir el soak
+  # del Hub sin mezclarlo con las ~180 pruebas que dependen deliberadamente de
+  # la UI legacy (ver docs/pedidos/fase-composicion-c4-edit-plan.md, gates
+  # F10-2/F10-6). Se elimina en F10b, cuando las dos suites se fusionen y el
+  # flag pase a default ON.
+  #
+  # Es una copia deliberada del job `e2e` (misma infra: contenedores, build de
+  # producción standalone, migraciones raw-SQL, seed) — la duplicación es
+  # aceptable para un job de vida corta y evita tocar el job legacy.
+  # ───────────────────────────────────────────────────────────────────────────
+  e2e-hub:
+    name: E2E Hub (V2 ON)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    env:
+      DATABASE_URL: postgresql://bambu:bambu_dev@localhost:5432/bambu
+      DIRECT_URL: postgresql://bambu:bambu_dev@localhost:5432/bambu
+      REDIS_URL: redis://localhost:6379
+      AUTH_TRUST_HOST: 'true'
+      TZ: America/Bogota
+      PLAYWRIGHT_TEST_BASE_URL: http://localhost:3001
+      # El flag: leído por el runner de Playwright (los `test.skip(!HUB_ON)`
+      # de los specs) y por el build de abajo (Next.js lo inlinea).
+      NEXT_PUBLIC_PEDIDOS_V2: 'true'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Start service containers (PostgreSQL + Redis)
+        run: |
+          docker run -d \
+            --name postgres \
+            -e POSTGRES_USER=bambu \
+            -e POSTGRES_PASSWORD=bambu_dev \
+            -e POSTGRES_DB=bambu \
+            -p 5432:5432 \
+            postgres:17.10-alpine
+          docker run -d \
+            --name redis \
+            -p 6379:6379 \
+            redis:8-alpine
+
+          for i in $(seq 1 30); do
+            if docker exec postgres pg_isready -U bambu &>/dev/null; then
+              echo "PostgreSQL is ready"
+              break
+            fi
+            sleep 1
+          done
+
+          for i in $(seq 1 15); do
+            if docker exec redis redis-cli ping 2>/dev/null | grep -q PONG; then
+              echo "Redis is ready"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Generate NEXTAUTH_SECRET
+        run: echo "NEXTAUTH_SECRET=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Build application (V2 ON — el flag NEXT_PUBLIC_PEDIDOS_V2 se inlinea acá)
+        # NEXT_PUBLIC_* se inlinea en build; el job-level env de arriba ya lo
+        # provee, se repite acá de forma explícita para que el propósito del
+        # job quede legible en el step.
+        run: npm run build
+        env:
+          NEXT_PUBLIC_PEDIDOS_V2: 'true'
+
+      - name: Copy static assets into standalone build
+        run: |
+          cp -r public .next/standalone/
+          mkdir -p .next/standalone/.next
+          cp -r .next/static .next/standalone/.next/
+
+      - name: Push schema to CI database
+        run: npx prisma db push
+
+      - name: Apply raw-SQL sequence migrations (not covered by db push)
+        run: |
+          export PGPASSWORD=bambu_dev
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -c "
+            DO \$\$ BEGIN
+              IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'app_write') THEN
+                CREATE ROLE app_write;
+              END IF;
+            END \$\$;
+          "
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260610_add_factura_numero_seq/migration.sql
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260611_add_abono_embarque_seqs/migration.sql
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260619_import_fase2_proveedor_compra_seq/migration.sql
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260817_plan_maestro_ledgers/migration.sql
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260829_receivable_entry_offlineid_not_unique/migration.sql
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260901_add_correccion_abono/migration.sql
+          psql -h localhost -U bambu -d bambu -v ON_ERROR_STOP=1 -f prisma/migrations/20260905_add_pedido_estadopago_check/migration.sql
+
+      - name: Seed test data
+        run: npx tsx prisma/seed-test.ts
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-browsers-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright browsers (chromium)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install chromium
+
+      - name: Install Playwright system dependencies
+        # Remover el APT source de Google Chrome antes de `install-deps` — ver
+        # el mismo step del job `e2e` (fix #239): su CDN sirve índices con
+        # `Hash Sum mismatch` que tumban `apt-get update`. Playwright usa su
+        # propio chromium; el source es irrelevante.
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list \
+                     /etc/apt/sources.list.d/google-chrome.sources
+          npx playwright install-deps chromium
+
+      - name: Run Playwright tests (suite del Hub, V2 ON)
+        # Solo los specs gated tras NEXT_PUBLIC_PEDIDOS_V2. Suite chica
+        # (~40 tests) → sin sharding. `--project=chromium` (desktop): la
+        # cobertura responsive del Hub tiene su propio test dedicado
+        # (`responsive: desktop tabla / mobile tarjetas`); correr toda la
+        # suite en viewport mobile además duplicaría el tiempo sin aportar
+        # señal de soak. Cuando el flag esté ON en `e2e` (F10b) estos specs
+        # se reintegran a la matriz general y este job se elimina.
+        run: >
+          npx playwright test --reporter=html --project=chromium
+          e2e/pedidos-hub.spec.ts
+          e2e/pedidos-hub-recurrentes.spec.ts
+          e2e/pedidos-entrega-suficiencia.spec.ts
+          e2e/pedidos-g11.spec.ts
+          e2e/pedidos-peek-riesgo.spec.ts
+
+      - name: Dump Postgres/Redis container logs and resource usage
+        if: always()
+        run: |
+          echo "::group::docker stats"
+          docker stats --no-stream || true
+          echo "::endgroup::"
+          echo "::group::free -h"
+          free -h || true
+          echo "::endgroup::"
+          echo "::group::postgres container logs"
+          docker logs postgres 2>&1 | tail -300 || true
+          echo "::endgroup::"
+          echo "::group::redis container logs"
+          docker logs redis 2>&1 | tail -100 || true
+          echo "::endgroup::"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-hub
+          path: playwright-report/
+          retention-days: 7
+
+      - name: Upload Playwright traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces-hub
+          path: test-results/
+          retention-days: 7

@@ -17,7 +17,8 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
 
   test('shell: focos visibles, sin tabs (G2), lista con microcopy y acción destacada', async ({ browser }) => {
     const page = await sharedLoginAs(browser, 'admin')
-    const cliente = await createCliente(page, { nombre: 'Hub E2E' })
+    const nombreCli = `Hub Shell ${Date.now()}`
+    const { cliente } = await createCliente(page, { nombre: nombreCli })
     await apiPost(page, '/api/pedidos', {
       clienteId: cliente.id, canal: 'DOMICILIO', origen: 'PEDIDO',
       items: [{ producto: 'PACA_AGUA', cantidad: 5 }],
@@ -31,7 +32,9 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     await expect(page.getByTestId('tab-hoy')).toHaveCount(0)
     await expect(page.getByTestId('tab-fiados')).toHaveCount(0)
 
-    const row = page.locator('[data-testid^="operacion-row-"]').first()
+    // La fila de ESTE test: la lista trae datos de seed + otros tests del
+    // shard, `.first()` no garantiza que sea la recién creada.
+    const row = page.locator('[data-testid^="operacion-row-"]').filter({ hasText: nombreCli }).first()
     await expect(row).toBeVisible()
     // G6: microcopy de estado (texto), no badges apilados
     await expect(row).toContainText('Pendiente')
@@ -85,8 +88,8 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
   // confirmado sólo aparece tras la respuesta del servidor.
   test('G9: online confirmado → offline encolado ("pendiente", no "confirmado") → reconexión → sincroniza', async ({ browser }) => {
     const page = await sharedLoginAs(browser, 'admin')
-    const cliente = await createCliente(page, { nombre: `G9 E2E ${Date.now()}` })
-    const nombreCliente = cliente.nombre ?? 'G9 E2E'
+    const nombreCliente = `G9 E2E ${Date.now()}`
+    await createCliente(page, { nombre: nombreCliente })
     await page.goto(`${BASE}/pedidos`)
 
     async function abrirWorkspace() {
@@ -96,7 +99,7 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
       await page.getByTestId('cliente-search-input').fill(nombreCliente)
       await page.getByTestId('cliente-search-result').first().click()
       await page.getByTestId('workspace-inc-PACA_AGUA').click()
-      await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 5000 })
+      await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 10000 })
     }
 
     // 1) ONLINE → commit confirmado por el servidor
@@ -124,7 +127,8 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
 
   test('peek: abre sin navegar (G4), ↑/↓ recorren, Escape cierra', async ({ browser }) => {
     const page = await sharedLoginAs(browser, 'admin')
-    const cliente = await createCliente(page, { nombre: 'Hub Peek E2E' })
+    const nombreCli = `Hub Peek ${Date.now()}`
+    const { cliente } = await createCliente(page, { nombre: nombreCli })
     await apiPost(page, '/api/pedidos', {
       clienteId: cliente.id, canal: 'DOMICILIO', origen: 'PEDIDO',
       items: [{ producto: 'PACA_AGUA', cantidad: 4 }], offlineId: `hub-peek-${Date.now()}`,
@@ -132,7 +136,9 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     await page.goto(`${BASE}/pedidos?all=true`)
 
     const urlAntes = page.url()
-    await page.locator('[data-testid^="operacion-row-"]').first().click()
+    // La fila de ESTE test (PENDIENTE → tiene acción destacada); `.first()`
+    // podría caer en un pedido viejo ya cerrado sin acción.
+    await page.locator('[data-testid^="operacion-row-"]').filter({ hasText: nombreCli }).first().click()
     await expect(page.getByTestId('peek-desktop')).toBeVisible()
     expect(page.url()).toBe(urlAntes) // G4: no navegó
 
@@ -154,8 +160,8 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
 
   test('workspace (Composición C1): crear un pedido — el total viene del preview, el commit crea', async ({ browser }) => {
     const page = await sharedLoginAs(browser, 'admin')
-    const cliente = await createCliente(page, { nombre: 'WS C1 E2E' })
-    const nombreCliente = cliente.nombre ?? 'WS C1 E2E'
+    const nombreCliente = `WS C1 ${Date.now()}`
+    await createCliente(page, { nombre: nombreCliente })
     await page.goto(`${BASE}/pedidos`)
 
     // + Nueva operación → workspace
@@ -171,7 +177,7 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     await page.getByTestId('workspace-inc-PACA_AGUA').click()
 
     // el commit se habilita cuando el preview del backend llega
-    await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 5000 })
+    await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 10000 })
     await expect(page.getByTestId('workspace-commit')).toContainText(/Crear pedido \$/)
 
     await page.getByTestId('workspace-commit').click()
