@@ -77,4 +77,27 @@ test.describe('F8 — recurrentes en el Hub (UI, NEXT_PUBLIC_PEDIDOS_V2)', () =>
     await page.getByTestId('faceta-habituales').click()
     await expect(page).toHaveURL(/conRecurrencia=true/)
   })
+
+  test('F8-iv: "Generar habituales de hoy" — CTA solo si hay pendientes; genera con decisión', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const { cliente } = await createCliente(page, { nombre: `Gen hoy ${Date.now()}` })
+    // recurrencia con proxGeneracion en el pasado → aparece en el preview de hoy
+    const rec = await apiPost(page, '/api/recurrentes', {
+      clienteId: cliente.id, canal: 'DOMICILIO', cadaNDias: 7, productos: { pacaAgua: 20 },
+      proxGeneracion: new Date(Date.now() - 86400000).toISOString(),
+    })
+    expect(rec.status()).toBe(201)
+
+    await page.goto(`${BASE}/pedidos?all=true`)
+    const cta = page.getByTestId('recurrentes-del-dia-cta')
+    await expect(cta).toBeVisible({ timeout: 6000 })
+    await cta.click()
+    await expect(page.getByTestId('recurrentes-del-dia-panel')).toBeVisible()
+    await page.getByTestId('recurrentes-del-dia-generar').click()
+    // un pedido origen RECURRENTE queda para ese cliente
+    await expect(async () => {
+      const r = await (await apiGet(page, `/api/pedidos?all=true&conRecurrencia=true&clienteId=${cliente.id}`)).json()
+      expect((r.pedidos ?? r.data ?? []).length).toBeGreaterThan(0)
+    }).toPass({ timeout: 10000 })
+  })
 })

@@ -7,6 +7,7 @@ import { getTodayString } from '@/lib/dates'
 import { useOnlineStatus } from '@/hooks/use-online-status'
 import { useRealtimeListener } from '@/hooks/use-realtime-listener'
 import { FocoStrip } from './foco-strip'
+import { RecurrentesDelDia } from './recurrentes-del-dia'
 import { OperacionList } from './operacion-list'
 import { PeekPanel } from './peek-panel'
 import { PedidoCommandMenu } from './command-menu'
@@ -203,6 +204,9 @@ export function PedidoHub({
           Mostrando {pedidosFiltrados.length} de {pedidos.length} en esta página
         </p>
       )}
+
+      {/* F8-iv: "Generar pedidos habituales de hoy" — CTA contextual (Q3) */}
+      <RecurrentesDelDia onGenerado={() => onRefetch?.()} />
 
       {/* desktop: lista + peek lado a lado; mobile: lista + peek como bottom sheet */}
       {viewport === 'desktop' && peekNode ? (

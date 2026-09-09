@@ -157,7 +157,7 @@ Read-only. Se resuelve por `clienteId`/`negocioId` del pedido (misma regla que e
 - Decidir en la implementación si reusa `PedidosWorkspace` (blueprint lo pide) o un panel más chico — la recurrencia no tiene pagos/entrega, así que puede que un subconjunto del workspace sea más limpio. **Anotar la decisión.**
 - Tests: unit del editor (PUT con el diff; pausar; reactivar).
 
-### F8-iv — acción "Generar recurrentes de hoy" en el Hub (reemplaza el botón de `/recurrentes`)
+### F8-iv — acción "Generar recurrentes de hoy" en el Hub ✅ IMPLEMENTADO
 **Archivos:**
 - Un `RecurrentesDelDia` — CTA contextual en el Hub cuando `GET /api/pedidos/recurrentes` devuelve items con `proximaFecha <= hoy`. Flujo: preview → por plantilla una decisión (`NORMAL` / `SALTAR` / ver sugerencias `CON_PENDIENTES`/`SOLO_PENDIENTES`/`APLICAR_CREDITO`) → `POST /api/pedidos/recurrentes` con `offlineId`. Dedup `recurrenteBatchId` sin cambios.
 - Reusa la lógica de `recurrentes-client` (decisiones + toast) pero en el contexto del Hub, sin la lista de plantillas.
