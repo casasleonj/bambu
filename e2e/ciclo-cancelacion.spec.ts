@@ -49,7 +49,11 @@ test.describe('Ciclo de Cancelación', () => {
 
     expect(anularRes.status()).toBe(200)
     const anularBody = await anularRes.json()
+    // El pedido tuvo pagos (50000) → anular debe generar una nota de crédito.
+    // La respuesta la incluye (numero + monto).
     expect(anularBody).toHaveProperty('notaCredito')
+    expect(anularBody.notaCredito).not.toBeNull()
+    expect(anularBody.notaCredito.numero).toMatch(/^NC-\d+/)
     expect(anularBody.pedido.estado).toBe('ANULADO')
 
     if (facturaId) {

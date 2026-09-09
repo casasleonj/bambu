@@ -1,5 +1,5 @@
 // @tests api/gasto
-import {test, expect, loginAs, goto, apiPost, apiGet,  resetDatabase} from './fixtures'
+import {test, expect, loginAs, goto, apiPost, apiGet,  resetDatabase, waitForToast} from './fixtures'
 
 test.describe('Gastos', () => {
   test.describe.configure({ mode: 'serial' })
@@ -78,25 +78,22 @@ test.describe('Gastos', () => {
     expect(bodyText).toContain('Admin Test')
   })
 
-  test('validacion: sin categoria', async ({ page }) => {
+  test('categoria tiene default (OTRO): guarda sin seleccionar categoria', async ({ page }) => {
+    // El form (gastos-client) inicializa categoria en 'OTRO' — no hay estado
+    // "sin categoria" posible desde la UI. Este test antes esperaba un error
+    // de validación; el contrato actual es "siempre hay categoría válida".
     await loginAs(page, 'admin')
     await goto(page, '/gastos')
 
     await page.click('button:has-text("Nuevo Gasto")')
     await page.waitForTimeout(500)
 
-    await page.locator('#gasto-descripcion').fill('Test sin categoria')
+    await page.locator('#gasto-descripcion').fill('Test categoria default')
     await page.locator('#gasto-monto').fill('5000')
 
     await page.locator('button:has-text("Guardar")').click()
-    await page.waitForTimeout(1000)
 
-    const toastEl = page.locator('[data-sonner-toast]')
-    if (await toastEl.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await expect(toastEl).toContainText(/error|Error/i)
-    }
-
-    await expect(page.locator('h3:has-text("Registrar Gasto")')).toBeVisible()
+    await waitForToast(page, 'Gasto registrado')
   })
 
   test('validacion: monto vacio', async ({ page }) => {

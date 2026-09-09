@@ -656,7 +656,10 @@ export async function createProveedor(page: Page) {
     nombre: `Proveedor Test ${Date.now() % 10000}`,
     telefono: `3${String(Date.now()).slice(-9)}`,
   })
-  return res.json()
+  // POST /api/proveedores responde { success, proveedor } (apiSuccess).
+  // Los call sites usan `proveedor.id` directo → desenvolvemos acá.
+  const body = await res.json()
+  return body.proveedor ?? body
 }
 
 export async function createInsumo(page: Page) {
@@ -667,7 +670,9 @@ export async function createInsumo(page: Page) {
     stockMin: 10,
     precioUnit: 5000,
   })
-  return res.json()
+  // POST /api/insumos responde { success, insumo } (apiSuccess).
+  const body = await res.json()
+  return body.insumo ?? body
 }
 
 // ─── Get first from list ─────────────────────────────────────────────────────

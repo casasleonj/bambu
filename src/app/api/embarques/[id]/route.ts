@@ -463,9 +463,18 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         const [, key, max] = msg.split(':')
         return apiError(`${key} excede límite de stock (${max} máximo)`, 400)
       }
-      if (msg.startsWith('FORBIDDEN_FIELDS:')) {
-        const [, fields, estado] = msg.split(':')
-        return apiError(`No se pueden editar estos campos en estado ${estado}: ${fields}`, 400)
+      if (msg.startsWith('FORBIDDEN_FIELDS_EN_RUTA:')) {
+        // El throw (arriba) usa el prefijo `FORBIDDEN_FIELDS_EN_RUTA:` seguido
+        // de los campos; antes este branch matcheaba `FORBIDDEN_FIELDS:` (nunca
+        // lanzado) y el error real caía al 500 genérico. Un embarque EN_RUTA
+        // solo admite pedidoIds/offlineId — editar otros campos es un conflicto
+        // de estado (409), consistente con EMBARQUE_DESPACHADO_INMUTABLE.
+        const fields = msg.slice('FORBIDDEN_FIELDS_EN_RUTA:'.length)
+        return apiError(
+          `No se pueden editar estos campos en un embarque EN_RUTA: ${fields}. ` +
+            'Solo se permite asignar o quitar pedidos.',
+          409,
+        )
       }
       if (msg.startsWith('PEDIDOS_YA_ASIGNADOS:')) {
         const [, count, ids] = msg.split(':')

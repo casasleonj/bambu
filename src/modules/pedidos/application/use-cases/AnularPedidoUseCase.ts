@@ -21,7 +21,14 @@ export class AnularPedidoUseCase {
     private txManager: ITransactionManager,
   ) {}
 
-  async execute(input: AnularPedidoInput): Promise<{ pedido: import('../dto').PedidoResumenDTO; deduped?: boolean }> {
+  async execute(input: AnularPedidoInput): Promise<{
+    pedido: import('../dto').PedidoResumenDTO
+    deduped?: boolean
+    // Referencia a la nota de crédito generada (solo si el pedido tenía pagos).
+    // `null` cuando no hubo pagos que reversar. El caller la usa para
+    // mostrar/imprimir el comprobante.
+    notaCredito?: { numero: string; monto: number } | null
+  }> {
     // FASE 0 (ADR-CONCURRENCIA-001): lock `SECUENCIA:notaCredito`. La NC se
     // genera con getNextNumero(model:'notaCredito') MAX+1, por lo que exige
     // serialización global de la numeración. Resuelve la colisión histórica
@@ -75,14 +82,17 @@ export class AnularPedidoUseCase {
       // Create nota crédito if there were payments.
       // FIX: usar totalPagado (lo efectivamente cobrado), no updated.total
       // que puede incluir fiado no pagado.
+      let notaCredito: { numero: string; monto: number } | null = null
       if (tuvoPagos) {
         const nextNum = await getNextNumero(tx, { model: 'notaCredito' })
+        const numero = `NC-${nextNum.toString().padStart(5, '0')}`
         await this.notaCreditoRepo.create({
-          numero: `NC-${nextNum.toString().padStart(5, '0')}`,
+          numero,
           pedidoId: pedido.id.get(),
           monto: totalPagado,
           motivo: input.motivo || 'ANULADO',
         }, tx)
+        notaCredito = { numero, monto: totalPagado }
       }
 
       await logAudit({
@@ -92,7 +102,7 @@ export class AnularPedidoUseCase {
         datos: { motivo: input.motivo, notaCredito: tuvoPagos, reversion: montoRevertido },
       }, tx)
 
-      return { pedido: PedidoDTOMapper.toResumen(updated) }
+      return { pedido: PedidoDTOMapper.toResumen(updated), notaCredito }
     })
   }
 }

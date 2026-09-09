@@ -521,6 +521,10 @@ test.describe('Deudas + Nomina Integration', () => {
     // Send embarque
     await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, { embarqueId })
 
+    // La máquina de estados exige ABIERTO → EN_RUTA antes de CERRADO
+    // (EstadoEmbarque.ts). Mismo patrón que embarques.spec.ts:cerrarEmbarqueTest.
+    await apiPut(page, `/api/embarques/${embarqueId}`, { estado: 'EN_RUTA' })
+
     // Close embarque
     await apiPost(page, `/api/embarques/${embarqueId}/cerrar`, {
       pedidos: [{
@@ -692,6 +696,9 @@ test.describe('Embarque Cash Reconciliation', () => {
     // Send
     await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, { embarqueId })
 
+    // ABIERTO → EN_RUTA antes de CERRADO (EstadoEmbarque.ts)
+    await apiPut(page, `/api/embarques/${embarqueId}`, { estado: 'EN_RUTA' })
+
     // Close with LESS cash than expected (simulating lost bill)
     const cerrarRes = await apiPost(page, `/api/embarques/${embarqueId}/cerrar`, {
       pedidos: [{
@@ -749,6 +756,9 @@ test.describe('Embarque Cash Reconciliation', () => {
     const embarqueId = embarqueRes.embarque.id
 
     await apiPost(page, `/api/pedidos/${pedidoId}/enviar`, { embarqueId })
+
+    // ABIERTO → EN_RUTA antes de CERRADO (EstadoEmbarque.ts)
+    await apiPut(page, `/api/embarques/${embarqueId}`, { estado: 'EN_RUTA' })
 
     const cerrarRes = await apiPost(page, `/api/embarques/${embarqueId}/cerrar`, {
       pedidos: [{

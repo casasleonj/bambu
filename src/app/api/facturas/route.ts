@@ -28,6 +28,10 @@ export async function GET(request: NextRequest) {
     const all = searchParams.get('all')
 
     const where: Record<string, unknown> = pendiente ? { saldo: { gt: 0 } } : {}
+    const pedidoId = searchParams.get('pedidoId')
+    if (pedidoId) {
+      where.pedidoId = pedidoId
+    }
     if (all !== 'true') {
       const dateFilter = buildDateRangeFilter(desde, hasta)
       if (dateFilter) {
@@ -49,6 +53,7 @@ export async function GET(request: NextRequest) {
           saldo: true,
           montoPagado: true,
           estado: true,
+          pedidoId: true,
           empresaNombre: true,
           empresaNit: true,
           empresaDireccion: true,
