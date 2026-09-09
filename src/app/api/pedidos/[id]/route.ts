@@ -55,7 +55,10 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     const rutaNombre = negocio?.ruta?.nombre || cliente?.ruta?.nombre
 
     // Fase 4b — datos de la capa 2 del peek (blueprint §9.2). Solo lectura.
-    const selfRow = await prisma.pedido.findUnique({ where: { id }, select: { pedidoOrigenId: true } })
+    const selfRow = await prisma.pedido.findUnique({
+      where: { id },
+      select: { pedidoOrigenId: true, estadoEntrega: true, fechaEntrega: true, fotoEntrega: true, gpsLat: true, gpsLng: true },
+    })
     const pedidoOrigenId = selfRow?.pedidoOrigenId ?? null
     const [obligacion, vinculados, casosAbiertos] = await Promise.all([
       prisma.obligacionPendiente.findUnique({
@@ -97,6 +100,19 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         estadoEntrega: p.estadoEntrega,
       }))
 
+    // Fase 7-ii — evidencia de entrega (dato propio del Pedido, §6.2). Solo
+    // si ya se entregó; sin queries nuevas (los campos vienen en `selfRow`).
+    const entregaResumen =
+      selfRow?.estadoEntrega === 'ENTREGADO' &&
+      (selfRow.fechaEntrega || selfRow.fotoEntrega || selfRow.gpsLat != null || selfRow.gpsLng != null)
+        ? {
+            fecha: selfRow.fechaEntrega ? selfRow.fechaEntrega.toISOString() : null,
+            gpsLat: selfRow.gpsLat != null ? Number(selfRow.gpsLat) : null,
+            gpsLng: selfRow.gpsLng != null ? Number(selfRow.gpsLng) : null,
+            fotoUrl: selfRow.fotoEntrega ?? null,
+          }
+        : null
+
     const pendienteN2 = obligacion
       ? {
           id: obligacion.id,
@@ -137,6 +153,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
           severidad: c.severidad,
           status: c.status,
         })),
+        entregaResumen,
       },
     })
   } catch (error) {

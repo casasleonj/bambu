@@ -3,6 +3,8 @@
 import Link from 'next/link'
 import { PedidoExceptionPanel } from './pedido-exception-panel'
 import { PedidoCambioCantidad } from './pedido-cambio-cantidad'
+import { PedidoPeekRiesgo } from './pedido-peek-riesgo'
+import { PeekEntrega } from './peek-entrega'
 import type { PeekLayer2 } from './peek-cache'
 import type { Pedido } from './types'
 
@@ -54,6 +56,8 @@ export function PeekRelaciones({
         </RelRow>
       )}
 
+      <PeekEntrega entrega={data.entregaResumen} />
+
       {/* Cartera = deuda del CLIENTE (agregada), distinta del saldo de arriba */}
       {saldoOperacion > 0 && pedido.clienteId !== 'CONSUMIDOR_FINAL' && (
         <RelRow label="Cartera del cliente">
@@ -94,16 +98,7 @@ export function PeekRelaciones({
         />
       )}
 
-      {data.casosAbiertos.length > 0 && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2" data-testid="peek-rel-casos">
-          <div className="text-xs font-medium text-red-800">Excepciones abiertas</div>
-          {data.casosAbiertos.map((c) => (
-            <div key={c.id} className="text-red-900">
-              {c.alertaTipo.replace(/_/g, ' ')} · {c.status}
-            </div>
-          ))}
-        </div>
-      )}
+      <PedidoPeekRiesgo casos={data.casosAbiertos} />
     </div>
   )
 }
