@@ -1,5 +1,7 @@
 'use client'
 
+import { useState } from 'react'
+import { RecurrenciaEditor } from './recurrencia-editor'
 import type { PeekLayer2 } from './peek-cache'
 
 const prod = (p: string) => p.replace(/_/g, ' ').toLowerCase()
@@ -20,12 +22,13 @@ function resumenProductos(items: Array<{ producto: string; cantidad: number }>):
  */
 export function PeekRecurrencia({
   recurrencia,
-  onAjustar,
+  onMutado,
 }: {
   recurrencia: PeekLayer2['recurrencia']
-  /** F8-iii: abre el editor de la recurrencia. Sin esto, solo se muestra. */
-  onAjustar?: () => void
+  /** F8-iii: tras editar la recurrencia, recargar el peek. Sin esto → solo muestra. */
+  onMutado?: () => void
 }) {
+  const [editando, setEditando] = useState(false)
   if (!recurrencia) return null
   const resumen = resumenProductos(recurrencia.productos)
 
@@ -39,10 +42,10 @@ export function PeekRecurrencia({
         <span className={`text-xs font-medium ${recurrencia.activo ? 'text-blue-800' : 'text-gray-600'}`}>
           {recurrencia.activo ? '🔁 Pedido habitual' : '⏸ Pedido habitual (pausado)'}
         </span>
-        {onAjustar && (
+        {onMutado && !editando && (
           <button
             type="button"
-            onClick={onAjustar}
+            onClick={() => setEditando(true)}
             data-testid="peek-recurrencia-ajustar"
             className="text-[11px] text-blue-600 hover:underline"
           >
@@ -56,6 +59,14 @@ export function PeekRecurrencia({
           <> · próximo {new Date(recurrencia.proximaFecha).toLocaleDateString('es-CO', { timeZone: 'America/Bogota', day: 'numeric', month: 'short' })}</>
         )}
       </div>
+
+      {editando && onMutado && (
+        <RecurrenciaEditor
+          recurrencia={recurrencia}
+          onCancel={() => setEditando(false)}
+          onGuardado={() => { setEditando(false); onMutado() }}
+        />
+      )}
     </div>
   )
 }

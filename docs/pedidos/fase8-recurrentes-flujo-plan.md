@@ -151,7 +151,7 @@ Read-only. Se resuelve por `clienteId`/`negocioId` del pedido (misma regla que e
 
 **Implementado:** `esto-se-repite.tsx` (`EstoSeRepite`, modal aparte tras el commit — 4 estados: form / ok / ya-existe / error). Body a `POST /api/recurrentes`: `{ canal, cadaNDias, productos: {pacaAgua,...} }` + `negocioId` **o** `clienteId` según `contexto.tipo`. offline → se trata como ok (encolado). 409 → "ya tiene un pedido habitual" + "Revisar el habitual" (`router.push('/recurrentes')`) — **1 sola llamada, sin auto-PUT**. error → "el pedido no se vio afectado" + "Reintentar". `pedidos-client`: `setProponerHabitual(...)` **después** de `crearPedido` (`if (!result) return` primero), gate `hubMode && clienteId!==CONSUMIDOR_FINAL && Σcantidades>=3 && (ADMIN|ASISTENTE)`, contexto Q4 (`data.negocioId ? negocio : cliente`). 13 unit (10 componente + 3 wiring source-check) + 5 schema behavioral XOR (`RecurrenteCreateSchema` exportado). Nunca "plantilla".
 
-### F8-iii — "Ajustar" desde el peek (reemplaza `/recurrentes/[id]/editar`)
+### F8-iii — "Ajustar" desde el peek (reemplaza `/recurrentes/[id]/editar`) ✅ IMPLEMENTADO
 **Archivos:**
 - `PeekRecurrencia` "[Ajustar]" → abre el workspace en `modo: 'recurrencia'` (o un mini-editor dedicado si el workspace no encaja): frecuencia + productos + activo/pausar. Commit → `PUT /api/recurrentes`.
 - Decidir en la implementación si reusa `PedidosWorkspace` (blueprint lo pide) o un panel más chico — la recurrencia no tiene pagos/entrega, así que puede que un subconjunto del workspace sea más limpio. **Anotar la decisión.**

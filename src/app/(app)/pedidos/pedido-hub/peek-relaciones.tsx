@@ -59,7 +59,7 @@ export function PeekRelaciones({
 
       <PeekEntrega entrega={data.entregaResumen} />
 
-      <PeekRecurrencia recurrencia={data.recurrencia} />
+      <PeekRecurrencia recurrencia={data.recurrencia} onMutado={onMutadoN2} />
 
       {/* Cartera = deuda del CLIENTE (agregada), distinta del saldo de arriba */}
       {saldoOperacion > 0 && pedido.clienteId !== 'CONSUMIDOR_FINAL' && (

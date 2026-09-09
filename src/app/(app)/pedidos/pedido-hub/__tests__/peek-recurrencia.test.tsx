@@ -36,13 +36,12 @@ describe('PeekRecurrencia (F8-i)', () => {
     expect(box).not.toHaveTextContent(/próximo/i)
   })
 
-  it('"Ajustar" solo si onAjustar; dispara el callback (F8-iii lo wirea)', () => {
-    const onAjustar = vi.fn()
+  it('"Ajustar" solo si onMutado; abre el editor inline (F8-iii)', () => {
     const { rerender } = render(<PeekRecurrencia recurrencia={rec()} />)
     expect(screen.queryByTestId('peek-recurrencia-ajustar')).not.toBeInTheDocument()
-    rerender(<PeekRecurrencia recurrencia={rec()} onAjustar={onAjustar} />)
+    rerender(<PeekRecurrencia recurrencia={rec()} onMutado={vi.fn()} />)
     fireEvent.click(screen.getByTestId('peek-recurrencia-ajustar'))
-    expect(onAjustar).toHaveBeenCalledOnce()
+    expect(screen.getByTestId('recurrencia-editor')).toBeInTheDocument()
   })
 
   it('cadaNDias 1 → "día" singular', () => {
