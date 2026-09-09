@@ -228,6 +228,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (error instanceof Error && error.message === 'CANTIDAD_YA_ENTREGADA_USE_AJUSTAR_CANTIDAD') {
       return apiError('Ya se entregó cantidad de este pedido — use el flujo de corrección de cantidad', 409)
     }
+    if (error instanceof Error && error.name === 'EntregaInsuficienteError') {
+      return apiError('Necesitamos información para localizar el domicilio: una dirección escrita o una ubicación.', 422, { code: 'ENTREGA_INSUFICIENTE' })
+    }
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error updating pedido:')
     return apiError('Error updating', 500)
   }

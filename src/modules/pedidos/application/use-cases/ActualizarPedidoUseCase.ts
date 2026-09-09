@@ -19,6 +19,8 @@ import type { Pedido as PedidoEntity, PedidoProps } from '../../domain/entities/
 import type { ActualizarPedidoInput } from '../dto'
 import { PedidoDTOMapper } from '../dto/PedidoDTOMapper'
 import { pickDireccionTexto } from '@/lib/geo/pedido-direccion'
+import { resolverEntrega } from '../../domain/services/entrega-suficiencia.service'
+import { EntregaInsuficienteError } from '../../domain/services/entrega-suficiencia.errors'
 
 // FIX BAMBU-LOG-018: `{...pedido}` sobre una instancia de la clase Pedido
 // NO copia sus campos — Pedido guarda todo en una única propiedad interna
@@ -207,6 +209,24 @@ export class ActualizarPedidoUseCase {
           } else {
             direccionEntregaSnapshot = undefined
             barrioEntregaSnapshot = undefined
+          }
+
+          // Suficiencia de entrega — MISMA autoridad que el preview (§16). El
+          // PUT no cambia cliente/negocio/canal, pero sí el snapshot de
+          // dirección; si el usuario lo vacía y no hay otra fuente → rechazar.
+          if (pedido.canal.get() === 'DOMICILIO' && pedido.clienteId !== 'CONSUMIDOR_FINAL') {
+            const entrega = resolverEntrega({
+              canal: 'DOMICILIO',
+              overrideDireccion: input.direccionEntrega,
+              overrideBarrio: input.barrioEntrega,
+              cliente: clienteActual
+                ? { direccion: clienteActual.direccion, barrio: clienteActual.barrio, referencia: clienteActual.referencia, linkUbicacion: clienteActual.linkUbicacion, lat: clienteActual.lat, lng: clienteActual.lng, geocodeOrigen: clienteActual.geocodeOrigen }
+                : null,
+              negocio: negocioActual
+                ? { direccion: negocioActual.direccion, barrio: negocioActual.barrio, referencia: negocioActual.referencia, linkUbicacion: negocioActual.linkUbicacion, lat: negocioActual.lat, lng: negocioActual.lng }
+                : null,
+            })
+            if (entrega.estado === 'INSUFICIENTE') throw new EntregaInsuficienteError()
           }
         }
 

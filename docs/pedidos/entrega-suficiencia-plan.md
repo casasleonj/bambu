@@ -168,7 +168,7 @@ ENTREGA
 
 ## 5. Slices
 
-### F-ENTREGA-0 — autoridad de dominio + Preview/Commit
+### F-ENTREGA-0 — autoridad de dominio + Preview/Commit ✅ IMPLEMENTADO
 - Crear `entrega-suficiencia.service.ts` + tests unit exhaustivos (matriz §6).
 - `PreviewPedidoUseCase` → usa `resolverEntrega`; expone `entrega: EntregaResuelta` en `PreviewPedidoResult`; `INSUFICIENTE` bloquea `'crear'`.
 - `CrearPedidoUseCase` / `ActualizarPedidoUseCase` → re-resuelven; `INSUFICIENTE` → rechazo.

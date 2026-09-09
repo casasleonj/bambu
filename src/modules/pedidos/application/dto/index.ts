@@ -4,6 +4,9 @@
 
 import type { ProductCode } from '@/shared/domain'
 import type { Canal, OrigenPedido, PagoData } from '../../domain/types'
+import type { EntregaResuelta } from '../../domain/services/entrega-suficiencia.service'
+
+export type { EntregaResuelta }
 
 export interface CrearPedidoInput {
   clienteId: string
@@ -268,6 +271,9 @@ export interface PreviewPedidoInput {
   items: Array<{ producto: ProductCode; cantidad: number; precioManual?: number }>
   pagos?: Array<{ metodo: 'EFECTIVO' | 'TRANSFERENCIA' | 'NEQUI' | 'DAVIPLATA' | 'BONO'; monto: number }>
   entregado?: boolean
+  /** snapshot de dirección/barrio que el usuario capturó para ESTE pedido (gana sobre negocio/cliente). */
+  direccionEntrega?: string | null
+  barrioEntrega?: string | null
   pedidoOrigenId?: string
   /** modo edición: preview de un PUT declarativo de items sobre un pedido existente. */
   pedidoId?: string
@@ -310,6 +316,12 @@ export interface PreviewPedidoResult {
   allowedActions: Array<'crear' | 'crear-y-enviar-a-ruta' | 'actualizar'>
   warnings: Array<{ code: string; message: string; field?: string }>
   riskSignals: Array<{ tipo: string; severidad: 'BAJA' | 'MEDIA' | 'ALTA'; detalle: string }>
+  /**
+   * Suficiencia de la información de entrega (docs/pedidos/entrega-suficiencia-plan.md).
+   * `PreviewPedidoUseCase` SIEMPRE la emite; opcional en el tipo solo para no
+   * romper fixtures parciales de test (un `undefined` = no bloquea).
+   */
+  entrega?: EntregaResuelta
   requiresAuthorization: boolean
   authorizationPolicy?: string
   auditPreview: {

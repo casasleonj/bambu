@@ -137,6 +137,9 @@ export const PreviewPedidoSchema = z.object({
     }),
   ).optional(),
   entregado: z.boolean().optional(),
+  /** snapshot de dirección/barrio del pedido → suficiencia de entrega. */
+  direccionEntrega: z.string().max(500).optional().nullable(),
+  barrioEntrega: z.string().max(200).optional().nullable(),
   pedidoOrigenId: z.string().optional(),
   /** modo edición: preview de un PUT declarativo sobre un pedido existente. */
   pedidoId: z.string().trim().min(1).optional(),

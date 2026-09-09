@@ -29,6 +29,9 @@ function toRequestBody(draft: DraftPedido, pedidoId?: string) {
     // modo edición: el PUT es declarativo de items, los pagos no se re-envían.
     pagos: pedidoId ? undefined : (draft.pagos.length > 0 ? draft.pagos : undefined),
     entregado: draft.entregado,
+    // snapshot de dirección del pedido → suficiencia de entrega (autoridad única).
+    direccionEntrega: draft.canal === 'DOMICILIO' ? (draft.direccionEntrega || undefined) : undefined,
+    barrioEntrega: draft.canal === 'DOMICILIO' ? (draft.barrioEntrega || undefined) : undefined,
     pedidoOrigenId: draft.pedidoOrigenId,
     pedidoId,
   }

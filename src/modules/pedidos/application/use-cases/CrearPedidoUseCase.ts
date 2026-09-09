@@ -31,6 +31,8 @@ import type { ITransactionManager } from '../../infrastructure/transactions/Pris
 import type { CrearPedidoInput, CrearPedidoResult } from '../dto'
 import { PedidoDTOMapper } from '../dto/PedidoDTOMapper'
 import { pickDireccionTexto } from '@/lib/geo/pedido-direccion'
+import { resolverEntrega } from '../../domain/services/entrega-suficiencia.service'
+import { EntregaInsuficienteError } from '../../domain/services/entrega-suficiencia.errors'
 import { ensureConsumidorFinalCanonical, isConsumidorFinalCanonical } from '@/lib/cliente-canonical'
 import { getFacturaEmpresaSnapshot } from '@/lib/factura-empresa'
 import { registrarReceivableEntry } from '@/lib/receivable-entry'
@@ -169,6 +171,33 @@ export class CrearPedidoUseCase {
         ) {
           direccionEntregaSnapshot = input.direccionEntrega
           barrioEntregaSnapshot = input.barrioEntrega
+        }
+      }
+
+      // 3c. Suficiencia de la información de entrega — MISMA autoridad que el
+      // preview (docs/pedidos/entrega-suficiencia-plan.md §16). El commit
+      // re-resuelve y valida; no confía en un preview que puede estar obsoleto.
+      // No se resuelve `linkUbicacion` en vivo acá (no hacer HTTP dentro de la
+      // tx): si un cliente solo tenía un link sin coords backfilleadas, ese
+      // caso borde se corrige cuando el backfill guarda las coords.
+      if (input.canal === 'DOMICILIO' && !isConsumidorFinalCanonical(clienteId)) {
+        const negocioEntrega = input.negocioId
+          ? await this.clienteRepo.findNegocioById(input.negocioId, tx)
+          : null
+        const entrega = resolverEntrega({
+          canal: 'DOMICILIO',
+          overrideDireccion: input.direccionEntrega,
+          overrideBarrio: input.barrioEntrega,
+          cliente: {
+            direccion: cliente.direccion, barrio: cliente.barrio, referencia: cliente.referencia,
+            linkUbicacion: cliente.linkUbicacion, lat: cliente.lat, lng: cliente.lng, geocodeOrigen: cliente.geocodeOrigen,
+          },
+          negocio: negocioEntrega
+            ? { direccion: negocioEntrega.direccion, barrio: negocioEntrega.barrio, referencia: negocioEntrega.referencia, linkUbicacion: negocioEntrega.linkUbicacion, lat: negocioEntrega.lat, lng: negocioEntrega.lng }
+            : null,
+        })
+        if (entrega.estado === 'INSUFICIENTE') {
+          throw new EntregaInsuficienteError()
         }
       }
 

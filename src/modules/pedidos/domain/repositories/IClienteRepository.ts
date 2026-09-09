@@ -4,7 +4,15 @@
  * Contract for Cliente data access needed by the Pedidos bounded context.
  */
 
-export interface ClienteBasico {
+/** Campos de geolocalización compartidos por Cliente y Negocio (suficiencia de entrega). */
+export interface GeoBasico {
+  referencia?: string
+  linkUbicacion?: string
+  lat?: number | null
+  lng?: number | null
+}
+
+export interface ClienteBasico extends GeoBasico {
   id: string
   nombre: string
   apellido?: string
@@ -16,9 +24,11 @@ export interface ClienteBasico {
   creadoPorRol: string
   limitePedidosFiados: number | null
   preciosEspeciales: string | null
+  /** procedencia de lat/lng: 'PARSED_URL' | 'GPS_HISTORIAL' | 'NEGOCIO' | 'MANUAL' | null */
+  geocodeOrigen?: string | null
 }
 
-export interface NegocioBasico {
+export interface NegocioBasico extends GeoBasico {
   id: string
   nombre: string
   direccion?: string
