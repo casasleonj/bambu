@@ -22,6 +22,8 @@ export interface PedidoFilterParams {
   clienteId?: string
   /** Server-side tab scope: isolates Pedidos/Fiados/Alertas datasets. */
   scope?: 'fiados' | 'alertas'
+  /** Fase 8 F8-i — faceta "Solo habituales": solo pedidos `origen=RECURRENTE`. */
+  conRecurrencia?: boolean
   /** Vista autocontenida: pedidos PENDIENTE sin embarque de días anteriores
    *  (ver src/lib/pedidos-sin-asignar.ts). Igual que `scope`, ignora
    *  desde/hasta/estadoEntrega y cualquier otro filtro cuando está activo. */
@@ -107,6 +109,7 @@ export function usePedidos(
     if (params?.estadoPago) params.estadoPago.forEach(e => url.searchParams.append('estadoPago', e))
     if (params?.search) url.searchParams.set('search', params.search)
     if (params?.scope) url.searchParams.set('scope', params.scope)
+    if (params?.conRecurrencia) url.searchParams.set('conRecurrencia', 'true')
     if (params?.atrasados) url.searchParams.set('atrasados', 'true')
     if (params?.enRiesgo) url.searchParams.set('enRiesgo', 'true')
     return url.toString()

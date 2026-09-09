@@ -40,6 +40,10 @@ export async function GET(request: NextRequest) {
     // G6: filtro por `canal`; acepta el param legacy `?tipo=ENVIO|PUNTO`.
     const canalFilter = normalizeCanalFilter([...searchParams.getAll('canal'), ...searchParams.getAll('tipo')])
     const scopeFilter = searchParams.get('scope')
+    // Fase 8 F8-i — faceta "Solo habituales": solo pedidos que SON realmente
+    // recurrentes (`origen='RECURRENTE'`). Misma autoridad que el SSR
+    // (`pedidos/page.tsx`) y el dominio (`PrismaPedidoRepository.buildWhere`).
+    const conRecurrenciaFilter = searchParams.get('conRecurrencia') === 'true'
     // "Sin asignar de días anteriores" — ver src/lib/pedidos-sin-asignar.ts.
     // No aplica a REPARTIDOR (solo ve pedidos ya asignados a él por diseño,
     // más arriba se fuerza embarqueId: { not: null } para ese rol).
@@ -102,6 +106,9 @@ export async function GET(request: NextRequest) {
     }
     if (scopeFilter === 'fiados' || scopeFilter === 'alertas') {
       filter.scope = scopeFilter
+    }
+    if (conRecurrenciaFilter) {
+      filter.conRecurrencia = true
     }
 
     // Gana sobre cualquier estadoEntrega/desde/hasta que haya llegado por
