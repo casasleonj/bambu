@@ -4,6 +4,8 @@ ANTES de escribir cualquier codigo, DEBES ejecutar las 3 iteraciones del protoco
 Lee el archivo `.opencode/prompts/protocolo.txt` para los detalles completos.
 NUNCA saltes directo a codigo. NUNCA implementes sin aprobacion tras cada Ronda 2.
 
+DESPUES de la aprobacion, la entrega sigue el **Flujo de Entrega** (ver seccion al final de este archivo): **una fase = una rama = un PR**, y cada fase entra a `main` ANTES de empezar la siguiente. NUNCA apilar ramas.
+
 <!-- BEGIN:nextjs-agent-rules -->
 # This is NOT the Next.js you know
 
@@ -552,4 +554,70 @@ Se ejecutan exactamente 3 iteraciones antes de presentar la solución final al u
 - Si la solución es experimental → etiquetar: **"EXPERIMENTAL - HIGH RISK"**.
 - NUNCA saltar directo a código sin completar las 3 iteraciones.
 - NUNCA implementar sin aprobación del usuario tras cada Ronda 2.
+
+---
+
+# Flujo de Entrega
+
+**Regla de oro: una fase = una rama = un PR. Cada fase entra a `main` ANTES de empezar la siguiente. NUNCA apilar ramas** (fase N+1 no ramifica de fase N sin mergear — eso genera los rebases con conflictos en código sensible que ya nos costaron caro).
+
+Aplica DESPUÉS de que el plan quedó aprobado (Ronda 2). El feature flag correspondiente (`NEXT_PUBLIC_*`) va **OFF** durante toda la fase: mergear a `main` con el flag OFF es seguro (código muerto para los 6 usuarios). El *flip* del flag a ON es su propia decisión, gated por soak period — no es parte de este flujo.
+
+## Los 10 pasos
+
+### 0. PLAN + APROBACIÓN
+- alcance · criterios de aceptación · riesgos · dependencias
+- aprobación explícita del equipo/PO tras la Ronda 2 (mensaje relatado por el usuario)
+
+### 1. IMPLEMENTAR FASE
+- slices TDD · incorporar las precisiones del equipo · commits coherentes (un cambio lógico por commit)
+- "terminar fase" = todos los slices + todas las precisiones incorporadas + el doc de plan actualizado
+
+### 2. VALIDACIÓN LOCAL
+- `npx tsc --noEmit` · `npx eslint .` (o los paths tocados) · `npm run test` (unit)
+- Integration / E2E relevantes cuando la fase toca flujos (login, creación, offline, cierre)
+
+### 3. SINCRONIZAR CON MAIN
+- `git fetch origin`
+- `git rebase origin/main`
+- resolver conflictos de forma **explícita** (nunca `-X ours/theirs` a ciegas en código de dinero/estado)
+- **revalidar completamente** (repetir paso 2) — el rebase pudo introducir un conflicto semántico que git no marcó
+
+### 4. ABRIR PR
+- PR basado en `main` actualizado · base = `main` (nunca otra rama de fase)
+- descripción de cambios · criterios de aceptación · evidencia de validación (output de tsc/eslint/tests)
+- cuerpo del PR termina con `🤖 Generated with [Claude Code](https://claude.com/claude-code)`
+
+### 5. CI / REVIEW
+- Typecheck · Lint · Unit · Integration → deben estar **verdes** (bloqueantes)
+- E2E: comparar contra el **baseline de `main`**. El job E2E está crónicamente rojo por infra (`Known Issues #20`), falla igual en `main`.
+  - obtener el baseline: `gh run list --branch main --workflow CI -L 1` → abrir el run → anotar qué specs E2E fallan
+  - **mismos specs que `main` → NO bloquea.** Spec **nuevo** en rojo → es una regresión introducida, **corregir**.
+  - identificar claramente en el PR: "E2E: N fallos, todos = baseline de main (run #…)" o "E2E: 1 regresión nueva en `foo.spec.ts`, corrigiendo".
+
+### 6. FALLAS
+- corregir · validar localmente (paso 2) · actualizar el PR · volver a 5
+
+### 7. MERGE
+- **el merge lo dispara el usuario** — el harness bloquea `gh pr merge` para el agente. El agente deja el PR listo y verde y pide el merge explícitamente.
+- squash merge · eliminar la rama (`--delete-branch`)
+- requiere la aprobación del paso 0 vigente + CI del paso 5 resuelto
+
+### 8. POST-MERGE INTEGRATION GATE
+- hacerlo desde un **worktree dedicado**, NO desde el checkout compartido `/home/cristof/Documents/bambu_demo_multimodelo` (hay otras sesiones Claude ahí; un `git checkout main` las rompe)
+- `git checkout main && git pull --ff-only` (el `--ff-only` falla ruidosamente si `main` local divergió — señal de que algo está mal)
+- `npx tsc --noEmit` · `npx eslint .` · `npm run test` · smoke / integration / E2E crítico
+- **confirmar `main` estable.** Si el gate falla (conflicto semántico que pasó CI del PR): `git revert` del merge commit inmediatamente, no dejar `main` roto, y reabrir el trabajo.
+
+### 9. CREAR SIGUIENTE RAMA
+- siempre desde el `main` recién verificado (paso 8), nunca desde la rama de la fase anterior
+
+### 10. INICIAR SIGUIENTE FASE
+- vuelve al paso 0
+
+## Notas
+
+- **Squash-merge es el default del repo.** Con ramas de vida corta el squash deja de causar el problema de rebase (ya no hay commits compartidos entre ramas).
+- Este flujo **no arregla** `Known Issues #20` (E2E flaky) — lo convive vía el baseline del paso 5.
+- Si por una razón excepcional hay que trabajar sobre algo aún no mergeado, es una **excepción documentada en el PR**, no el modo normal.
 
