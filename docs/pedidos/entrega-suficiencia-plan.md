@@ -180,7 +180,7 @@ ENTREGA
 - `[Ver ubicación]` (Maps, pestaña nueva — como `PeekEntrega` de Fase 7).
 - Tests: unit (los 3 estados renderizan lo correcto; `INSUFICIENTE` deshabilita commit; complementaria no).
 
-### F-ENTREGA-ii — snapshot + peek + verificación
+### F-ENTREGA-ii — snapshot + peek + verificación ✅ IMPLEMENTADO
 - Confirmar que editar la dirección en el workspace guarda snapshot y no toca Cliente/Negocio (ya es el comportamiento — añadir test de regresión).
 - El peek (Fase 7 `PeekEntrega`) ya muestra la entrega ejecutada; añadir que para un pedido **no** entregado el peek muestre el `estado` de suficiencia si es relevante.
 - E2E `e2e/pedidos-entrega-suficiencia.spec.ts` (gated): cliente con solo coords → workspace deja crear; cliente con solo barrio → bloqueado con explicación; cliente con dirección sin barrio → deja crear.
