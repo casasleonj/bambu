@@ -147,3 +147,18 @@ describe('Regresión E2E (auditoría performance /pedidos): all=true sin pageSiz
     expect(routeSource).toMatch(/pageSize:\s*effectivePageSize/)
   })
 })
+
+describe('F8-i: la route lee ?conRecurrencia (paridad con el SSR pedidos/page.tsx)', () => {
+  // Hallazgo (job e2e-hub, pedidos-hub-recurrentes.spec.ts:47): el SSR, el DTO,
+  // el use case y PrismaPedidoRepository.buildWhere ya honraban
+  // `conRecurrencia` (→ where.origen = 'RECURRENTE'), pero GET /api/pedidos
+  // nunca leía el query param, así que la faceta "Solo habituales" del Hub no
+  // filtraba vía API.
+  it('FIX: la route lee el query param conRecurrencia', () => {
+    expect(routeSource).toMatch(/searchParams\.get\('conRecurrencia'\)\s*===\s*'true'/)
+  })
+
+  it('FIX: la route propaga filter.conRecurrencia al use case', () => {
+    expect(routeSource).toMatch(/filter\.conRecurrencia\s*=\s*true/)
+  })
+})

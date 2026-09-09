@@ -244,6 +244,12 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     [canalParamKey],
   )
   const filtroOrigen = shallowParams.getAll('origen')
+  // F8-i: faceta "Solo habituales" del Hub — solo pedidos con `origen`
+  // RECURRENTE. Misma semántica que el SSR (`pedidos/page.tsx`) y el dominio
+  // (`PrismaPedidoRepository.buildWhere`); acá se resuelve en memoria sobre
+  // `pedidosSource` (el cache trae `origen` por fila), igual que el resto de
+  // los filtros persistentes.
+  const conRecurrenciaFromUrl = shallowParams.get('conRecurrencia') === 'true'
   const filtroEstadoEntrega = shallowParams.getAll('estadoEntrega')
   const filtroEstadoPago = shallowParams.getAll('estadoPago')
   const search = shallowParams.get('search') || ''
@@ -274,7 +280,8 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     estadoPago: filtroEstadoPago.length > 0 ? filtroEstadoPago : undefined,
     search: search || undefined,
     clienteId: clienteIdFromUrl || undefined,
-  }), [desdeUrl, hastaUrl, filtroCanal, filtroOrigen, filtroEstadoEntrega, filtroEstadoPago, search, clienteIdFromUrl])
+    conRecurrencia: conRecurrenciaFromUrl || undefined,
+  }), [desdeUrl, hastaUrl, filtroCanal, filtroOrigen, filtroEstadoEntrega, filtroEstadoPago, search, clienteIdFromUrl, conRecurrenciaFromUrl])
 
   // --- Cache-driven pedidos (P0 fix: filtros en memoria, sin RSC round-trip) ---
   // Igual patrón que clientes-client/index.tsx (loadAllClientes): se carga el
@@ -1026,6 +1033,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       if (clienteIdFromUrl && p.clienteId !== clienteIdFromUrl) return false
       if (filtroCanal.length > 0 && !(filtroCanal as string[]).includes(p.canal)) return false
       if (filtroOrigen.length > 0 && !filtroOrigen.includes(p.origen)) return false
+      if (conRecurrenciaFromUrl && p.origen !== 'RECURRENTE') return false
       if (filtroEstadoEntrega.length > 0 && !filtroEstadoEntrega.includes(p.estadoEntrega)) return false
       if (filtroEstadoPago.length > 0 && !filtroEstadoPago.includes(p.estadoPago)) return false
       if (!p.fecha) return false
@@ -1034,7 +1042,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       if (hasta && fecha > hasta) return false
       return true
     })
-  }, [pedidosSource, allFromUrl, desdeUrl, hastaUrl, clienteIdFromUrl, filtroCanal, filtroOrigen, filtroEstadoEntrega, filtroEstadoPago])
+  }, [pedidosSource, allFromUrl, desdeUrl, hastaUrl, clienteIdFromUrl, filtroCanal, filtroOrigen, conRecurrenciaFromUrl, filtroEstadoEntrega, filtroEstadoPago])
 
   const pedidosVisibles = useMemo(() => {
     if (!search) return pedidosSinSearch
