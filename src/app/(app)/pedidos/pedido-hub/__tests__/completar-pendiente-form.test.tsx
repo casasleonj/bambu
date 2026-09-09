@@ -62,4 +62,39 @@ describe('CompletarPendienteForm — F5-ii (semántica B: impacto → confirmar)
     await waitFor(() => expect(screen.getByTestId('n2-impacto-warnings')).toHaveTextContent('ya hay una'))
     expect(screen.getByTestId('completar-confirmar')).toBeDisabled()
   })
+
+  it('F9-iii: commit 409 de concurrencia → recovery ("Ver estado actual"), NO éxito, NO auto-retry', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/preview')) return { ok: true, json: async () => proj() }
+      return { ok: false, status: 409, json: async () => ({ error: { message: 'OBLIGACION_YA_ACTIVA: otra sesión la creó' } }) }
+    })
+    const onMutado = vi.fn(); const onConflicto = vi.fn()
+    render(<CompletarPendienteForm pedidoId="p1" pedidoCanal="DOMICILIO" producto="PACA_AGUA" remanente={5} onCancel={vi.fn()} onMutado={onMutado} onConflicto={onConflicto} />)
+    await waitFor(() => expect(screen.getByTestId('completar-confirmar')).toBeEnabled())
+    fireEvent.click(screen.getByTestId('completar-confirmar'))
+
+    await waitFor(() => expect(screen.getByTestId('completar-conflicto')).toBeInTheDocument())
+    expect(onConflicto).toHaveBeenCalled()
+    expect(onMutado).not.toHaveBeenCalled()          // no se trató como éxito
+    expect(screen.queryByTestId('completar-error')).not.toBeInTheDocument()
+    expect(screen.getByTestId('completar-confirmar')).toBeDisabled()
+
+    // "Ver estado actual" → refresca el contexto (no reintenta el commit)
+    const commitsBefore = fetchMock.mock.calls.filter((c) => String(c[0]).endsWith('/gestionar-pendiente')).length
+    fireEvent.click(screen.getByTestId('completar-ver-estado'))
+    expect(onMutado).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls.filter((c) => String(c[0]).endsWith('/gestionar-pendiente')).length).toBe(commitsBefore)
+  })
+
+  it('F9-iii: commit 409 de regla de negocio (CANTIDAD_EXCEDE_PENDIENTE) → mensaje contextual, NO recovery', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/preview')) return { ok: true, json: async () => proj() }
+      return { ok: false, status: 409, json: async () => ({ error: { message: 'CANTIDAD_EXCEDE_PENDIENTE: quedan 2' } }) }
+    })
+    render(<CompletarPendienteForm pedidoId="p1" pedidoCanal="DOMICILIO" producto="PACA_AGUA" remanente={5} onCancel={vi.fn()} onMutado={vi.fn()} onConflicto={vi.fn()} />)
+    await waitFor(() => expect(screen.getByTestId('completar-confirmar')).toBeEnabled())
+    fireEvent.click(screen.getByTestId('completar-confirmar'))
+    await waitFor(() => expect(screen.getByTestId('completar-error')).toHaveTextContent('CANTIDAD_EXCEDE_PENDIENTE'))
+    expect(screen.queryByTestId('completar-conflicto')).not.toBeInTheDocument()
+  })
 })

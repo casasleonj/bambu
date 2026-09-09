@@ -16,6 +16,9 @@ export interface CompletarPendienteFormProps {
   onCancel: () => void
   /** el peek se invalida/recarga tras la mutación. */
   onMutado: () => void
+  /** el commit devolvió un 409 de concurrencia (estado cambió) — el panel lo
+   *  refleja como naturaleza 'conflicto' (F9-iii, P5.A). */
+  onConflicto?: () => void
 }
 
 /**
@@ -24,11 +27,12 @@ export interface CompletarPendienteFormProps {
  * confirma. El backend revalida y recalcula todo en el commit.
  */
 export function CompletarPendienteForm({
-  pedidoId, pedidoCanal, producto, remanente, onCancel, onMutado,
+  pedidoId, pedidoCanal, producto, remanente, onCancel, onMutado, onConflicto,
 }: CompletarPendienteFormProps) {
   const [cantidad, setCantidad] = useState(remanente)
   const [modo, setModo] = useState<Modo>(pedidoCanal)
   const [offlineMsg, setOfflineMsg] = useState(false)
+  const [conflicto, setConflicto] = useState(false)
   const g = useGestionPendiente(pedidoId, onMutado)
 
   // Proyecta ante cualquier cambio de cantidad/modo (semántica B).
@@ -40,11 +44,13 @@ export function CompletarPendienteForm({
 
   const puedeConfirmar =
     !g.confirmando &&
+    !conflicto &&
     (g.proyeccion?.allowedActions.includes('gestionar') ?? false)
 
   const confirmar = async () => {
     const r = await g.confirmarGestion({ producto, cantidad, modoInicial: modo })
     if (r.offline) setOfflineMsg(true)
+    if (r.conflicto) { setConflicto(true); onConflicto?.() }
   }
 
   return (
@@ -58,7 +64,7 @@ export function CompletarPendienteForm({
           min={1}
           max={remanente}
           value={cantidad || ''}
-          onChange={(e) => setCantidad(Math.max(0, parseInt(e.target.value, 10) || 0))}
+          onChange={(e) => { setConflicto(false); setCantidad(Math.max(0, parseInt(e.target.value, 10) || 0)) }}
           data-testid="completar-cantidad"
           className="ml-2 w-16 rounded border border-gray-300 px-1.5 py-0.5 text-right"
         />
@@ -71,7 +77,7 @@ export function CompletarPendienteForm({
             <button
               key={m}
               type="button"
-              onClick={() => setModo(m)}
+              onClick={() => { setConflicto(false); setModo(m) }}
               data-testid={`completar-modo-${m}`}
               className={`rounded border px-2 py-0.5 ${modo === m ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-600'}`}
             >
@@ -86,7 +92,16 @@ export function CompletarPendienteForm({
 
       {g.proyectando && <p className="mt-2 text-[11px] text-gray-400" data-testid="completar-proyectando">Calculando impacto…</p>}
       {g.proyeccion && !g.proyectando && <div className="mt-2"><N2Impacto proyeccion={g.proyeccion} /></div>}
-      {g.error && <p className="mt-2 text-[11px] text-amber-700" data-testid="completar-error">{g.error}</p>}
+      {conflicto ? (
+        <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px]" data-testid="completar-conflicto" role="status">
+          <p className="text-amber-900">Esta operación cambió mientras la editabas. Revisá el estado actual antes de reintentar.</p>
+          <button type="button" onClick={onMutado} data-testid="completar-ver-estado" className="mt-1 text-blue-600 hover:underline">
+            Ver estado actual →
+          </button>
+        </div>
+      ) : g.error ? (
+        <p className="mt-2 text-[11px] text-amber-700" data-testid="completar-error">{g.error}</p>
+      ) : null}
       {offlineMsg && <p className="mt-2 text-[11px] text-blue-700" data-testid="completar-offline">Sin conexión — se aplicará al recuperar la red.</p>}
 
       <div className="mt-2 flex items-center justify-between">

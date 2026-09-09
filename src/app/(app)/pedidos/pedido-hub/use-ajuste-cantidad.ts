@@ -21,8 +21,12 @@ function guardFromMessage(msg: string): AjusteGuardCode | undefined {
 export interface ConfirmarCorreccionResultado {
   ok: boolean
   offline?: boolean
-  /** el commit rechazó por un guard de G11 (409 + code). */
+  /** el commit rechazó por un guard de G11 (409 + code) — regla de negocio
+   *  ya explicada, con alternativas que el usuario elige (P5.B). */
   guard?: AjusteGuardCode
+  /** 409 sin un guard reconocido → conflicto de concurrencia/estado:
+   *  revisar el estado actual antes de reintentar (F9-iii, P5.A). */
+  conflicto?: boolean
   error?: string
 }
 
@@ -94,8 +98,11 @@ export function useAjusteCantidad(pedidoId: string, onMutado: () => void) {
       // aplana el body a string, así que el code se extrae del prefijo — sin
       // reinterpretar la intención (P5), solo se identifica el guard.
       const guard = r.statusCode === 409 ? guardFromMessage(r.error) : undefined
+      // 409 que NO es uno de los 3 guards de G11 → conflicto de concurrencia
+      // (hoy no lo produce el backend; defensa simétrica con F5, P5.A).
+      const conflicto = r.statusCode === 409 && !guard
       setError(r.error || 'No se pudo aplicar la corrección')
-      return { ok: false, guard, error: r.error }
+      return { ok: false, guard, conflicto, error: r.error }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [pedidoId, onMutado],

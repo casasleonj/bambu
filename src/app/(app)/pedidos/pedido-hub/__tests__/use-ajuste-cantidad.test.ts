@@ -70,16 +70,30 @@ describe('useAjusteCantidad', () => {
     await act(async () => { r = await result.current.confirmar({ producto: 'PACA_AGUA', cantidadNueva: 12, motivo: 'x' }) })
     expect(r.ok).toBe(false)
     expect(r.guard).toBe('CORRECCION_SOBRE_CANTIDAD_YA_ENTREGADA')
+    expect(r.conflicto).toBeFalsy()
     expect(onMutado).not.toHaveBeenCalled()
   })
 
-  it('confirmar → error 500 (no 409) → sin guard', async () => {
+  it('F9-iii: 409 SIN guard reconocido → conflicto de concurrencia (no guard)', async () => {
+    frMock.mockResolvedValue({ status: 'error', statusCode: 409, error: 'ESTADO_CAMBIO: otro proceso modificó el pedido' })
+    const onMutado = vi.fn()
+    const { result } = renderHook(() => useAjusteCantidad('p1', onMutado))
+    let r!: Awaited<ReturnType<typeof result.current.confirmar>>
+    await act(async () => { r = await result.current.confirmar({ producto: 'PACA_AGUA', cantidadNueva: 12, motivo: 'x' }) })
+    expect(r.ok).toBe(false)
+    expect(r.guard).toBeUndefined()
+    expect(r.conflicto).toBe(true)
+    expect(onMutado).not.toHaveBeenCalled()
+  })
+
+  it('confirmar → error 500 (no 409) → sin guard, sin conflicto', async () => {
     frMock.mockResolvedValue({ status: 'error', statusCode: 500, error: 'Error ajustando cantidad de pedido' })
     const { result } = renderHook(() => useAjusteCantidad('p1', vi.fn()))
     let r!: Awaited<ReturnType<typeof result.current.confirmar>>
     await act(async () => { r = await result.current.confirmar({ producto: 'PACA_AGUA', cantidadNueva: 12, motivo: 'x' }) })
     expect(r.ok).toBe(false)
     expect(r.guard).toBeUndefined()
+    expect(r.conflicto).toBeFalsy()
   })
 
   it('confirmar offline → ok:true offline:true, llama onMutado', async () => {

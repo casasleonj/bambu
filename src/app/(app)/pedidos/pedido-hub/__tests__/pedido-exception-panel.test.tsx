@@ -103,6 +103,28 @@ describe('PedidoExceptionPanel — F5-i (display)', () => {
     expect(screen.getByTestId('n2-naturaleza-inconsistencia')).toHaveTextContent('⚠')
   })
 
+  it('F9-iii: un 409 de concurrencia en una acción de actividad → panel pasa a naturaleza "conflicto"', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (String(url).includes('/preview')) {
+        return { ok: true, json: async () => ({
+          success: true, accion: 'liberar',
+          reversion: { montoRevertible: 0, saldoFavorNoRevertido: 0 },
+          consecuencia: { pedidoTotalAntes: 76000, pedidoTotalDespues: 76000, pedidoSaldoAntes: 76000, pedidoSaldoDespues: 76000, clienteSaldoFavorAntes: 0, clienteSaldoFavorDespues: 0, tipo: 'sin_ajuste' },
+          allowedActions: ['liberar'], warnings: [],
+        }) }
+      }
+      return { ok: false, status: 409, json: async () => ({ error: { message: 'ACTIVIDAD_NO_MODIFICABLE: ya está cancelada' } }) }
+    }))
+    const l2 = layer2({
+      pendienteN2: { id: 'o1', producto: 'PACA_AGUA', remanente: 5, estado: 'ABIERTA', actividades: [{ id: 'a1', tipo: 'ENTREGA', cantidad: 5, cantidadCumplida: 0, estado: 'ASIGNADA', modo: 'DOMICILIO', embarqueId: null }] },
+    })
+    render(<PedidoExceptionPanel pedido={pedido()} layer2={l2} onMutado={vi.fn()} />)
+    fireEvent.click(screen.getByTestId('n2-actividad-a1-liberar'))
+    fireEvent.change(await screen.findByTestId('liberar-motivo'), { target: { value: 'x' } })
+    fireEvent.click(screen.getByTestId('actividad-confirmar'))
+    expect(await screen.findByTestId('n2-naturaleza-conflicto')).toBeInTheDocument()
+  })
+
   it('F5-i NO muta: sin onActividadAccion no muestra botones de actividad', () => {
     const l2 = layer2({
       pendienteN2: { id: 'o1', producto: 'PACA_AGUA', remanente: 5, estado: 'ABIERTA', actividades: [{ id: 'a1', tipo: 'ENTREGA', cantidad: 5, cantidadCumplida: 0, estado: 'ASIGNADA', modo: 'DOMICILIO', embarqueId: null }] },
