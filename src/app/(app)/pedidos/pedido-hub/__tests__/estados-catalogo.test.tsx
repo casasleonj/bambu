@@ -4,7 +4,7 @@
 // offline; la lista se conserva durante el refetch.
 
 import { describe, it, expect, vi, beforeAll } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 
 beforeAll(() => {
   if (!window.matchMedia) {
@@ -82,5 +82,27 @@ describe('Hub — catálogo de estados §4.7 (Fase 9)', () => {
     render(<PedidoHub {...base} pedidos={[]} loading={false} error="fallo" refetching={false} />)
     expect(screen.getByText('No se pudieron cargar las operaciones')).toBeInTheDocument()
     expect(screen.queryByTestId('pedido-hub-skeleton')).not.toBeInTheDocument()
+  })
+
+  it('F9-ii: error CON datos → chip "No se pudo actualizar · Reintentar", lista intacta (no EmptyState)', () => {
+    onlineRef.current = true
+    const onRetry = vi.fn()
+    render(<PedidoHub {...base} pedidos={[pedido()]} loading={false} error="timeout" refetching={false} onRetry={onRetry} />)
+
+    // la lista NO se reemplaza
+    expect(screen.getByText(/Tienda X/)).toBeInTheDocument()
+    expect(screen.queryByText('No se pudieron cargar las operaciones')).not.toBeInTheDocument()
+
+    const chip = screen.getByTestId('pedido-hub-error-datos')
+    expect(chip).toHaveTextContent(/No se pudo actualizar/i)
+    fireEvent.click(within(chip).getByRole('button', { name: /Reintentar/i }))
+    expect(onRetry).toHaveBeenCalledTimes(1)
+  })
+
+  it('F9-ii: error CON datos + refetch en curso → gana "Actualizando…", el chip de error se oculta', () => {
+    onlineRef.current = true
+    render(<PedidoHub {...base} pedidos={[pedido()]} loading={false} error="timeout" refetching onRetry={vi.fn()} />)
+    expect(screen.getByTestId('pedido-hub-actualizando')).toBeInTheDocument()
+    expect(screen.queryByTestId('pedido-hub-error-datos')).not.toBeInTheDocument()
   })
 })

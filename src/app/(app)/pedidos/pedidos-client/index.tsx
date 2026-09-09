@@ -1512,12 +1512,14 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   // Si ya tenemos datos cargados, un error posterior no debe bloquear la UI;
   // mostramos un toast y un banner ámbar persistente para que el usuario
   // sepa que ocurrió un error y pueda reintentar.
+  // En hubMode el Hub muestra un chip persistente ("No se pudo actualizar",
+  // F9-ii); el toast por cada poll fallido (cada 60s) sería ruido redundante.
   const showErrorBanner = fetchError && hasLoadedOnce
   useEffect(() => {
-    if (showErrorBanner) {
+    if (showErrorBanner && !hubMode) {
       toast.error(fetchError)
     }
-  }, [showErrorBanner, fetchError])
+  }, [showErrorBanner, fetchError, hubMode])
 
   if (fetchError && !hasLoadedOnce) {
     return (
@@ -1561,8 +1563,10 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
 
   return (
     <div>
-      {/* Banner de error persistente cuando hay datos cargados pero falló el refetch */}
-      {showErrorBanner && (
+      {/* Banner de error persistente cuando hay datos cargados pero falló el refetch.
+          En hubMode lo representa el propio Hub (chip "No se pudo actualizar",
+          Fase 9 F9-ii) — evitamos el doble mensaje. */}
+      {showErrorBanner && !hubMode && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <svg className="w-5 h-5 text-amber-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">

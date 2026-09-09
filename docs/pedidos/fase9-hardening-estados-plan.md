@@ -74,10 +74,14 @@
 
 **Criterios de aceptación (los 10 del equipo) — verificados:** primera carga→`loading`; cargada→ambos false; refetch con datos→`loading=false`/`refetching=true`; lista visible durante refetch; indicador visible; refetch OK→indicador desaparece; refetch fallido→lista intacta + `error` disponible para F9-ii; stale no pisa estado; offline no es refetching; sin nuevo estado de dominio.
 
-### F9-ii — `error` con datos previos
+### F9-ii — `error` con datos previos — ✅ IMPLEMENTADO
+
+**Precisión del equipo (#4):** con `pedidos.length > 0 && error` NO usar `ErrorState` ni borrar la lista; mostrar "No se pudo actualizar · Reintentar" conservando los datos.
+
 **Archivos:**
-- `pedido-hub/index.tsx` — cuando `error && pedidos.length > 0` (`errorConDatos`): chip `data-testid="pedido-hub-error-datos"` "No se pudo actualizar" + botón "Reintentar" (`onRetry`). La lista NO se reemplaza por `EmptyState`. `errorSinDatos` (error && sin datos) sigue → `EmptyState`.
-- Tests: Hub (error+datos → chip+retry, lista visible; error sin datos → EmptyState).
+- `pedido-hub/index.tsx` — `errorConDatos = Boolean(error) && pedidos.length > 0 && !mostrarActualizando` → chip `data-testid="pedido-hub-error-datos"` ("No se pudo actualizar" + botón "Reintentar" → `onRetry`), en la fila de estado del header. `listNode` sigue mostrando `OperacionList` (solo hay `EmptyState` con `errorSinDatos` = error **y** sin datos). Si hay un reintento en curso, `mostrarActualizando` gana y el chip de error se oculta (transición limpia: `usePedidos` limpia `error` al arrancar el fetch).
+- `pedidos-client/index.tsx` — el banner ámbar legacy (`showErrorBanner`) y su `toast.error` se suprimen en `hubMode` (`&& !hubMode`): el Hub es la única representación del estado, sin doble mensaje ni toast por cada poll fallido (cada 60s).
+- Tests (`estados-catalogo.test.tsx`, +2): error+datos → chip + Reintentar (llama `onRetry`), lista intacta, sin EmptyState · error+datos+refetch en curso → "Actualizando…" gana, chip de error oculto.
 
 **Criterio:** un refetch que falla teniendo datos → los datos quedan, aparece "No se pudo actualizar · Reintentar"; clic → reintenta.
 
