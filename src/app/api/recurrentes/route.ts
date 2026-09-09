@@ -11,7 +11,11 @@ import { logger } from '@/lib/logger'
 import { apiSuccess, apiError } from '@/lib/api-response'
 
 const RecurrenteCreateSchema = z.object({
-  clienteId: z.string().min(1),
+  // Fase 8 (Q4): la recurrencia pertenece a UN contexto comercial concreto —
+  // `clienteId` XOR `negocioId`. Regla determinista, sin fallback silencioso:
+  // si el Pedido tiene negocio → contexto = Negocio; si no → Cliente.
+  clienteId: z.string().min(1).optional(),
+  negocioId: z.string().min(1).optional(),
   // `tipo` removido del contrato (G6, ADR-PEDIDO-ORIGEN-CANAL-001):
   // `canal` es el campo canónico. Antes el form aceptaba ambos como
   // controles independientes sin sincronizar, permitiendo combinaciones
@@ -42,6 +46,10 @@ const RecurrenteCreateSchema = z.object({
     return total >= 3
   },
   { message: 'Mínimo 3 productos por entrega (suma de pacaAgua + pacaHielo + botellon + bolsaAgua + bolsaHielo)', path: ['productos'] }
+).refine(
+  // Q4: exactamente UNO de clienteId / negocioId.
+  (data) => Boolean(data.clienteId) !== Boolean(data.negocioId),
+  { message: 'Debe indicarse exactamente uno: clienteId o negocioId', path: ['clienteId'] },
 )
 
 const RecurrenteUpdateSchema = z.object({
@@ -79,15 +87,24 @@ function mapProductoKey(key: string): string | null {
   return map[key] ?? null
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
 
   try {
+    // Fase 8 (F8-0): filtro opcional por contexto — cliente XOR negocio.
+    const { searchParams } = new URL(request.url)
+    const clienteId = searchParams.get('clienteId')
+    const negocioId = searchParams.get('negocioId')
+    const where: { activo: true; clienteId?: string; negocioId?: string } = { activo: true }
+    if (negocioId) where.negocioId = negocioId
+    else if (clienteId) where.clienteId = clienteId
+
     const plantillas = await prisma.plantillaRecurrente.findMany({
-      where: { activo: true },
+      where,
       include: {
         cliente: { select: { id: true, nombre: true, telefono: true } },
+        negocio: { select: { id: true, nombre: true } },
         productos: true,
       },
       orderBy: { createdAt: 'desc' },
@@ -108,7 +125,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
-  const roleCheck = await requireRole([ROLES.ADMIN, ROLES.CONTADOR], authResult)
+  const roleCheck = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE, ROLES.CONTADOR], authResult)
   if (roleCheck instanceof Response) return roleCheck
 
   try {
@@ -118,7 +135,11 @@ export async function POST(request: NextRequest) {
       return apiError(formatZodError(parsed.error), 400)
     }
 
-    const { clienteId, canal, cadaNDias, proxGeneracion: proxGeneracionInput, horaPreferida, productos, notas } = parsed.data
+    const { clienteId, negocioId, canal, cadaNDias, proxGeneracion: proxGeneracionInput, horaPreferida, productos, notas } = parsed.data
+
+    // Q4: contexto determinista — negocio si viene negocioId, si no cliente.
+    const contexto: { clienteId: string; negocioId: null } | { clienteId: null; negocioId: string } =
+      negocioId ? { clienteId: null, negocioId } : { clienteId: clienteId as string, negocioId: null }
 
     const proxGeneracion = proxGeneracionInput
       ? new Date(proxGeneracionInput)
@@ -136,7 +157,7 @@ export async function POST(request: NextRequest) {
     // fila recién creada → 409 con mensaje específico.
     const plantilla = await prisma.$transaction(async (tx) => {
       const existente = await tx.plantillaRecurrente.findUnique({
-        where: { clienteId },
+        where: negocioId ? { negocioId } : { clienteId: clienteId as string },
       })
       if (existente) {
         throw new Error('PLANTILLA_YA_EXISTE')
@@ -144,7 +165,8 @@ export async function POST(request: NextRequest) {
 
       const nuevaPlantilla = await tx.plantillaRecurrente.create({
         data: {
-          clienteId,
+          clienteId: contexto.clienteId,
+          negocioId: contexto.negocioId,
           canal,
           cadaNDias,
           horaPreferida: horaPreferida ?? null,
@@ -154,6 +176,7 @@ export async function POST(request: NextRequest) {
         },
         include: {
           cliente: { select: { id: true, nombre: true, telefono: true } },
+          negocio: { select: { id: true, nombre: true } },
           productos: true,
         },
       })
@@ -183,7 +206,7 @@ export async function POST(request: NextRequest) {
       entidad: 'PlantillaRecurrente',
       registroId: plantilla.id,
       accion: 'CREATE',
-      datos: { clienteId, cadaNDias },
+      datos: { contexto: negocioId ? `negocio:${negocioId}` : `cliente:${clienteId}`, cadaNDias },
       usuarioId: (authResult.user as { id: string }).id,
     })
 
@@ -193,10 +216,10 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     // FIX F-26a: mapear error thrown desde la tx
     if (error instanceof Error && error.message === 'PLANTILLA_YA_EXISTE') {
-      return apiError('El cliente ya tiene una plantilla recurrente', 409)
+      return apiError('Este cliente o negocio ya tiene un pedido habitual', 409)
     }
     if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002') {
-      return apiError('El cliente ya tiene una plantilla recurrente', 409)
+      return apiError('Este cliente o negocio ya tiene un pedido habitual', 409)
     }
     logger.error({ err: error instanceof Error ? error.message : 'Unknown' }, 'Error creating plantilla recurrente:')
     return apiError('Error al crear plantilla recurrente', 500)
@@ -206,7 +229,7 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   const authResult = await requireAuth()
   if (authResult instanceof Response) return authResult
-  const roleCheck = await requireRole([ROLES.ADMIN, ROLES.CONTADOR], authResult)
+  const roleCheck = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE, ROLES.CONTADOR], authResult)
   if (roleCheck instanceof Response) return roleCheck
 
   try {

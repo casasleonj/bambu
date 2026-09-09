@@ -68,10 +68,11 @@ export const navSections: NavSection[] = [
     title: 'Ventas',
     items: [
       { href: '/clientes', label: 'Clientes', icon: 'users', requiredPermission: 'view:clientes' },
-      { href: '/pedidos', label: 'Pedidos', icon: 'package', requiredPermission: 'view:pedidos', subItems: [
-        { href: '/pedidos', label: 'Únicos', icon: 'package', requiredPermission: 'view:pedidos' },
-        { href: '/recurrentes', label: 'Recurrentes', icon: 'repeat', requiredPermission: 'view:recurrentes' }
-      ]},
+      // Fase 8: "Recurrente" deja de ser una categoría de nav (blueprint §6.1,
+      // gate G2). `/recurrentes` sigue alcanzable por deep-link (retiro en
+      // Fase 10); la recurrencia se opera desde el Pedido Hub ("esto se
+      // repite" / "Ajustar" desde el peek / "Generar recurrentes de hoy").
+      { href: '/pedidos', label: 'Pedidos', icon: 'package', requiredPermission: 'view:pedidos' },
       { href: '/productos', label: 'Productos', icon: 'tag', requiredPermission: 'view:productos' },
       { href: '/casos', label: 'Incidencias', icon: 'shield', requiredPermission: 'view:casos' },
     ]

@@ -121,7 +121,7 @@ Read-only. Se resuelve por `clienteId`/`negocioId` del pedido (misma regla que e
 
 ## 3. Slices
 
-### F8-0 — contrato cliente/negocio + roles + nav + peek read-only
+### F8-0 — contrato cliente/negocio + roles + nav + peek read-only ✅ IMPLEMENTADO
 **Prerrequisito:** `entrega-suficiencia-plan.md` F-ENTREGA-0 (autoridad de dominio) mergeado o en el mismo tren.
 **Archivos:**
 - `src/lib/validators.ts` (`RecurrenteCreateSchema`) — aceptar `clienteId` **XOR** `negocioId` (`.refine` exactamente uno). `RecurrenteUpdateSchema` sin cambios (opera por `id`).

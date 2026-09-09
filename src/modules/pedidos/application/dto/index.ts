@@ -250,6 +250,20 @@ export interface PedidoPeekExtras {
     gpsLng: number | null
     fotoUrl: string | null
   } | null
+  /**
+   * "Pedido habitual" del contexto de este pedido (Fase 8 F8-0). Resuelto por
+   * la regla Q4: negocio si `pedido.negocioId`, si no cliente. `null` si el
+   * contexto no tiene plantilla. Solo lectura — la palabra "plantilla" no se
+   * expone en la UI.
+   */
+  recurrencia: {
+    id: string
+    cadaNDias: number
+    canal: string
+    activo: boolean
+    proximaFecha: string | null
+    productos: Array<{ producto: string; cantidad: number }>
+  } | null
 }
 
 export interface EntregarPedidoResult {
