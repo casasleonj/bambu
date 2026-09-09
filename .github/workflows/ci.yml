@@ -360,7 +360,20 @@ jobs:
         run: npx playwright install chromium
 
       - name: Install Playwright system dependencies
-        run: npx playwright install-deps chromium
+        # `install-deps` corre `apt-get update` internamente. La imagen de
+        # `ubuntu-latest` trae pre-configurado el APT source de Google Chrome
+        # (`dl.google.com/linux/chrome-stable`), que periódicamente sirve un
+        # índice con `Hash Sum mismatch` y hace fallar TODO el `apt-get update`
+        # (visto 2026-09-09: 3 corridas seguidas de CI muertas en este step).
+        # Playwright usa su propio chromium descargado, no el Chrome del
+        # sistema — el source de Google es irrelevante acá. Se remueve antes
+        # de `install-deps` para que un incidente del CDN de Google no tumbe
+        # el pipeline. Las libs de chromium (libnss3, libatk, …) vienen de los
+        # repos de Ubuntu, no de Google.
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list \
+                     /etc/apt/sources.list.d/google-chrome.sources
+          npx playwright install-deps chromium
 
       - name: Run Playwright tests (shard ${{ matrix.shard }})
         run: npx playwright test --shard=${{ matrix.shard }}/${{ strategy.job-total }} --reporter=html
