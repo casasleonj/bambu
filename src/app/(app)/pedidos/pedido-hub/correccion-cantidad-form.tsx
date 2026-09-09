@@ -41,9 +41,13 @@ export function CorreccionCantidadForm({
   // aplicar solo — sin setState en efecto (React Compiler / set-state-in-effect).
   const [commitGuard, setCommitGuard] = useState<{ sig: string; guard: AjusteGuardCode } | null>(null)
   const [offlineMsg, setOfflineMsg] = useState(false)
+  // F9-iii: 409 sin guard reconocido = conflicto de concurrencia. Atado a la
+  // firma de inputs que lo produjo (mismo patrón que `commitGuard`).
+  const [commitConflicto, setCommitConflicto] = useState<string | null>(null)
   const a = useAjusteCantidad(pedido.id, onMutado)
 
   const sig = `${producto}:${cantidadNueva}`
+  const conflicto = commitConflicto === sig
 
   function cambiarProducto(p: string) {
     setProducto(p)
@@ -65,12 +69,14 @@ export function CorreccionCantidadForm({
     !a.confirmando &&
     motivo.trim().length > 0 &&
     (a.proyeccion?.puedeCorregir ?? false) &&
-    !guard
+    !guard &&
+    !conflicto
 
   const confirmar = async () => {
     const r = await a.confirmar({ producto, cantidadNueva, motivo: motivo.trim() })
     if (r.offline) setOfflineMsg(true)
     if (r.guard) setCommitGuard({ sig, guard: r.guard })
+    if (r.conflicto) setCommitConflicto(sig)
   }
 
   return (
@@ -144,7 +150,15 @@ export function CorreccionCantidadForm({
         </div>
       )}
 
-      {a.error && !guard && <p className="mt-2 text-[11px] text-amber-700" data-testid="correccion-error">{a.error}</p>}
+      {conflicto && !guard && (
+        <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px]" data-testid="correccion-conflicto" role="status">
+          <p className="text-amber-900">El estado de este pedido en el servidor ya no coincide con lo que ves acá. Revisá el estado actual antes de reintentar.</p>
+          <button type="button" onClick={onMutado} data-testid="correccion-ver-estado" className="mt-1 text-blue-600 hover:underline">
+            Ver estado actual →
+          </button>
+        </div>
+      )}
+      {a.error && !guard && !conflicto && <p className="mt-2 text-[11px] text-amber-700" data-testid="correccion-error">{a.error}</p>}
       {offlineMsg && <p className="mt-2 text-[11px] text-blue-700" data-testid="correccion-offline">Sin conexión — la corrección se aplicará al recuperar la red.</p>}
 
       <div className="mt-2 flex items-center justify-between">

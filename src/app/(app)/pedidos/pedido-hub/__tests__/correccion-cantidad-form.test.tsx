@@ -78,13 +78,34 @@ describe('CorreccionCantidadForm — G11 rama A (Fase 6-i)', () => {
     expect(onIrANuevaDemanda).toHaveBeenCalledOnce()
   })
 
-  it('guard devuelto por el commit (409) → muestra el mensaje del guard, no aplica', async () => {
+  it('F9-iii: 409 SIN guard reconocido → recovery ("Ver estado actual"), no el mensaje crudo, confirmar bloqueado', async () => {
+    frMock.mockResolvedValue({ status: 'error', statusCode: 409, error: 'ESTADO_CAMBIO: el pedido fue modificado' })
+    const onMutado = vi.fn()
+    render(<CorreccionCantidadForm pedido={pedido()} onCancel={vi.fn()} onMutado={onMutado} onIrANuevaDemanda={vi.fn()} />)
+    await waitFor(() => expect(screen.getByTestId('ajuste-impacto')).toBeInTheDocument())
+    fireEvent.change(screen.getByTestId('correccion-motivo'), { target: { value: 'bajar' } })
+    await waitFor(() => expect(screen.getByTestId('correccion-confirmar')).toBeEnabled())
+    fireEvent.click(screen.getByTestId('correccion-confirmar'))
+    await waitFor(() => expect(screen.getByTestId('correccion-conflicto')).toBeInTheDocument())
+    expect(screen.queryByTestId('correccion-error')).not.toBeInTheDocument()
+    expect(screen.getByTestId('correccion-confirmar')).toBeDisabled()
+    fireEvent.click(screen.getByTestId('correccion-ver-estado'))
+    expect(onMutado).toHaveBeenCalledTimes(1)
+  })
+
+  it('guard devuelto por el commit (409) → muestra el mensaje del guard, no aplica, NO auto-convierte', async () => {
     frMock.mockResolvedValue({ status: 'error', statusCode: 409, error: 'CORRECCION_GENERARIA_SOBREPAGO: ...' })
-    render(<CorreccionCantidadForm pedido={pedido()} onCancel={vi.fn()} onMutado={vi.fn()} onIrANuevaDemanda={vi.fn()} />)
+    const onMutado = vi.fn(); const onIrANuevaDemanda = vi.fn()
+    render(<CorreccionCantidadForm pedido={pedido()} onCancel={vi.fn()} onMutado={onMutado} onIrANuevaDemanda={onIrANuevaDemanda} />)
     await waitFor(() => expect(screen.getByTestId('ajuste-impacto')).toBeInTheDocument())
     fireEvent.change(screen.getByTestId('correccion-motivo'), { target: { value: 'bajar' } })
     await waitFor(() => expect(screen.getByTestId('correccion-confirmar')).toBeEnabled())
     fireEvent.click(screen.getByTestId('correccion-confirmar'))
     await waitFor(() => expect(screen.getByTestId('correccion-guard-CORRECCION_GENERARIA_SOBREPAGO')).toBeInTheDocument())
+    // NO se aplicó, NO se convirtió automáticamente en nueva demanda / venta libre / otra operación
+    expect(onMutado).not.toHaveBeenCalled()
+    expect(onIrANuevaDemanda).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('correccion-conflicto')).not.toBeInTheDocument()   // guard ≠ conflicto
+    expect(frMock).toHaveBeenCalledTimes(1)   // sin auto-retry
   })
 })

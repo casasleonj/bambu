@@ -38,8 +38,8 @@ export function clasificarN2({
   if (conflictoEnCurso) {
     return {
       naturaleza: 'conflicto',
-      titulo: 'Conflicto al gestionar el pendiente',
-      detalle: 'El estado cambió mientras gestionabas. Actualizá y volvé a intentar.',
+      titulo: 'Conflicto de estado al gestionar el pendiente',
+      detalle: 'El estado en el servidor ya no coincide con lo que ves. Revisá el estado actual antes de reintentar.',
       tono: 'ambar',
     }
   }

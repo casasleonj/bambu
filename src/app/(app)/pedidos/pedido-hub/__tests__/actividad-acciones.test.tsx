@@ -66,6 +66,29 @@ describe('ActividadAcciones — liberar (F5-iii, P3)', () => {
     await waitFor(() => expect(onMutado).toHaveBeenCalled())
     expect(fetchMock.mock.calls.some((c) => String(c[0]).endsWith('/liberar'))).toBe(true)
   })
+
+  it('F9-iii: commit 409 ACTIVIDAD_NO_MODIFICABLE → recovery, no éxito, onConflicto disparado', async () => {
+    fetchMock.mockImplementation(async (url: string, init?: { body?: string }) => {
+      if (url.includes('/preview')) {
+        const body = init?.body ? JSON.parse(init.body) : {}
+        return { ok: true, json: async () => (body.accion === 'liberar' ? projLiberar() : projCambiarModo()) }
+      }
+      return { ok: false, status: 409, json: async () => ({ error: { message: 'ACTIVIDAD_NO_MODIFICABLE: ya está cancelada' } }) }
+    })
+    const onMutado = vi.fn(); const onConflicto = vi.fn()
+    render(<ActividadAcciones pedidoId="p1" actividadId="a1" modoActual="DOMICILIO" accion="liberar" onCancel={vi.fn()} onMutado={onMutado} onConflicto={onConflicto} />)
+    await waitFor(() => expect(screen.getByTestId('n2-impacto')).toBeInTheDocument())
+    fireEvent.change(screen.getByTestId('liberar-motivo'), { target: { value: 'motivo x' } })
+    fireEvent.click(screen.getByTestId('actividad-confirmar'))
+
+    await waitFor(() => expect(screen.getByTestId('actividad-conflicto')).toBeInTheDocument())
+    expect(onConflicto).toHaveBeenCalled()
+    expect(onMutado).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('actividad-error')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('actividad-ver-estado'))
+    expect(onMutado).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('ActividadAcciones — cambiar modo (F5-iii, P3)', () => {

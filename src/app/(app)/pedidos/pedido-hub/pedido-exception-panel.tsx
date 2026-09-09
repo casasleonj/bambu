@@ -57,6 +57,12 @@ export function PedidoExceptionPanel({
 }: PedidoExceptionPanelProps) {
   const [gestionando, setGestionando] = useState<{ producto: string; remanente: number } | null>(null)
   const [actividadEnAccion, setActividadEnAccion] = useState<{ id: string; modo: 'PUNTO' | 'DOMICILIO' | null; accion: 'cambiar-modo' | 'liberar' } | null>(null)
+  // F9-iii: un 409 de concurrencia en cualquiera de los sub-flujos N2 marca el
+  // panel como 'conflicto' (clasificarN2). Distinto de un 409 de regla de
+  // negocio, que conserva su mensaje contextual (P5). El prop
+  // `conflictoEnCurso` (externo) también lo activa.
+  const [conflictoLocal, setConflictoLocal] = useState(false)
+  const enConflicto = Boolean(conflictoEnCurso) || conflictoLocal
   const pendiente = layer2.pendienteN2
   const remanentes = remanentePorProducto(pedido)
   const pedidoCerrado = ESTADOS_CERRADOS.includes(pedido.estadoEntrega)
@@ -71,7 +77,7 @@ export function PedidoExceptionPanel({
       pendienteN2: pendiente,
       estadoEntregaPedido: pedido.estadoEntrega,
       casosAbiertos: layer2.casosAbiertos,
-      conflictoEnCurso,
+      conflictoEnCurso: enConflicto,
     })
     const tonoClase =
       c.tono === 'rojo' ? 'border-red-200 bg-red-50' :
@@ -119,7 +125,8 @@ export function PedidoExceptionPanel({
                       modoActual={actividadEnAccion.modo}
                       accion={actividadEnAccion.accion}
                       onCancel={() => setActividadEnAccion(null)}
-                      onMutado={() => { setActividadEnAccion(null); onMutado() }}
+                      onMutado={() => { setActividadEnAccion(null); setConflictoLocal(false); onMutado() }}
+                      onConflicto={() => setConflictoLocal(true)}
                     />
                   )}
                 </div>
@@ -152,7 +159,8 @@ export function PedidoExceptionPanel({
           producto={gestionando.producto}
           remanente={gestionando.remanente}
           onCancel={() => setGestionando(null)}
-          onMutado={() => { setGestionando(null); onMutado() }}
+          onMutado={() => { setGestionando(null); setConflictoLocal(false); onMutado() }}
+          onConflicto={() => setConflictoLocal(true)}
         />
       )}
 

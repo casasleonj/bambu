@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { usePeek } from '../use-peek'
-import { __resetPeekCache } from '../peek-cache'
+import { __resetPeekCache, invalidatePeek } from '../peek-cache'
 import type { Pedido } from '../types'
 
 const p = (id: string): Pedido => ({
@@ -46,6 +46,26 @@ describe('usePeek', () => {
     expect((fetch as ReturnType<typeof vi.fn>)).toHaveBeenCalledTimes(1)
   })
 
+  it('F9-iii recovery: invalidatePeek + re-open → re-fetch de la capa 2 (estado actual del servidor)', async () => {
+    // 1ª carga: el servidor devuelve un estado; 2ª carga (tras invalidar):
+    // devuelve OTRO estado — el peek debe reflejar el nuevo.
+    let call = 0
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const id = String(url).split('/').pop()
+      call += 1
+      return { ok: true, json: async () => ({ success: true, pedido: { id, pendienteN2: null, embarqueResumen: null, pedidosVinculados: [], casosAbiertos: [], marker: `estado-${call}` } }) }
+    }))
+    const { result } = renderHook(() => usePeek(list))
+    act(() => result.current.open(list[0]))
+    await waitFor(() => expect((result.current.layer2 as unknown as { marker: string })?.marker).toBe('estado-1'))
+
+    // "Ver estado actual": invalidar el cache + volver a abrir el mismo pedido
+    act(() => { invalidatePeek('p1') })
+    act(() => result.current.open(list[0]))
+    await waitFor(() => expect((result.current.layer2 as unknown as { marker: string })?.marker).toBe('estado-2'))
+    expect((fetch as ReturnType<typeof vi.fn>)).toHaveBeenCalledTimes(2)   // recarga real, no cache
+  })
+
   it('nav("next")/nav("prev") recorre la lista y trae la capa 2 de cada uno', async () => {
     const { result } = renderHook(() => usePeek(list))
     act(() => result.current.open(list[0]))
@@ -55,6 +75,36 @@ describe('usePeek', () => {
     await waitFor(() => expect((result.current.layer2 as unknown as { marker: string })?.marker).toBe('layer2-p2'))
     act(() => result.current.nav('prev'))
     expect(result.current.activeId).toBe('p1')
+  })
+
+  it('F9-iv ↑/↓: un fetch de capa 2 que resuelve TARDE (tras navegar) se descarta', async () => {
+    __resetPeekCache()
+    const resolvers = new Map<string, (v: unknown) => void>()
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      const id = String(url).split('/').pop() as string
+      return new Promise((resolve) => {
+        resolvers.set(id, (pedido) => resolve({ ok: true, json: async () => ({ success: true, pedido }) }))
+      })
+    }))
+
+    const { result } = renderHook(() => usePeek(list))
+    act(() => result.current.open(list[0]))          // pide p1 (queda colgado)
+    act(() => result.current.nav('next'))            // navega a p2 (pide p2)
+    expect(result.current.activeId).toBe('p2')
+
+    await act(async () => {
+      // p2 responde primero
+      resolvers.get('p2')!({ id: 'p2', pendienteN2: null, embarqueResumen: null, pedidosVinculados: [], casosAbiertos: [], marker: 'p2' })
+    })
+    await waitFor(() => expect((result.current.layer2 as unknown as { marker: string })?.marker).toBe('p2'))
+
+    await act(async () => {
+      // p1 responde DESPUÉS — debe descartarse (el usuario ya está en p2)
+      resolvers.get('p1')!({ id: 'p1', pendienteN2: null, embarqueResumen: null, pedidosVinculados: [], casosAbiertos: [], marker: 'p1-STALE' })
+    })
+    // el peek sigue mostrando p2, nunca el resultado stale de p1
+    expect((result.current.layer2 as unknown as { marker: string })?.marker).toBe('p2')
+    expect(result.current.activeId).toBe('p2')
   })
 
   it('nav no se sale de los límites de la lista', () => {

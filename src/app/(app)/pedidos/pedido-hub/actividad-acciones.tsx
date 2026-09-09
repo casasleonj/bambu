@@ -13,6 +13,8 @@ export interface ActividadAccionesProps {
   accion: 'cambiar-modo' | 'liberar'
   onCancel: () => void
   onMutado: () => void
+  /** el commit devolvió un 409 de concurrencia (estado cambió) — F9-iii, P5.A. */
+  onConflicto?: () => void
 }
 
 /**
@@ -21,12 +23,13 @@ export interface ActividadAccionesProps {
  * (read-only) antes de decidir; `liberar` exige motivo (min 1).
  */
 export function ActividadAcciones({
-  pedidoId, actividadId, modoActual, accion, onCancel, onMutado,
+  pedidoId, actividadId, modoActual, accion, onCancel, onMutado, onConflicto,
 }: ActividadAccionesProps) {
   const otro: Modo = modoActual === 'PUNTO' ? 'DOMICILIO' : 'PUNTO'
   const [modoDestino, setModoDestino] = useState<Modo>(otro)
   const [motivo, setMotivo] = useState('')
   const [offlineMsg, setOfflineMsg] = useState(false)
+  const [conflicto, setConflicto] = useState(false)
   const g = useGestionPendiente(pedidoId, onMutado)
 
   useEffect(() => {
@@ -41,13 +44,14 @@ export function ActividadAcciones({
   const permitido = accion === 'liberar'
     ? (g.proyeccion?.allowedActions.includes('liberar') ?? false)
     : (g.proyeccion?.allowedActions.includes('cambiar-modo') ?? false)
-  const puedeConfirmar = !g.confirmando && permitido && (accion !== 'liberar' || motivo.trim().length > 0)
+  const puedeConfirmar = !g.confirmando && !conflicto && permitido && (accion !== 'liberar' || motivo.trim().length > 0)
 
   const confirmar = async () => {
     const r = accion === 'liberar'
       ? await g.confirmarLiberar({ actividadId, motivo: motivo.trim() })
       : await g.confirmarCambioModo({ actividadId, modoDestino })
     if (r.offline) setOfflineMsg(true)
+    if (r.conflicto) { setConflicto(true); onConflicto?.() }
   }
 
   return (
@@ -64,7 +68,7 @@ export function ActividadAcciones({
               <button
                 key={m}
                 type="button"
-                onClick={() => setModoDestino(m)}
+                onClick={() => { setConflicto(false); setModoDestino(m) }}
                 data-testid={`actividad-modo-${m}`}
                 className={`rounded border px-2 py-0.5 ${modoDestino === m ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-600'}`}
               >
@@ -77,7 +81,16 @@ export function ActividadAcciones({
 
       {g.proyectando && <p className="mt-1.5 text-gray-400" data-testid="actividad-proyectando">Calculando impacto…</p>}
       {g.proyeccion && !g.proyectando && <div className="mt-1.5"><N2Impacto proyeccion={g.proyeccion} /></div>}
-      {g.error && <p className="mt-1.5 text-amber-700" data-testid="actividad-error">{g.error}</p>}
+      {conflicto ? (
+        <div className="mt-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5" data-testid="actividad-conflicto" role="status">
+          <p className="text-amber-900">El estado de esta actividad en el servidor ya no coincide con lo que ves acá. Revisá el estado actual antes de reintentar.</p>
+          <button type="button" onClick={onMutado} data-testid="actividad-ver-estado" className="mt-1 text-blue-600 hover:underline">
+            Ver estado actual →
+          </button>
+        </div>
+      ) : g.error ? (
+        <p className="mt-1.5 text-amber-700" data-testid="actividad-error">{g.error}</p>
+      ) : null}
       {offlineMsg && <p className="mt-1.5 text-blue-700" data-testid="actividad-offline">Sin conexión — se aplicará al recuperar la red.</p>}
 
       {accion === 'liberar' && (
@@ -85,7 +98,7 @@ export function ActividadAcciones({
           Motivo (obligatorio)
           <textarea
             value={motivo}
-            onChange={(e) => setMotivo(e.target.value)}
+            onChange={(e) => { setConflicto(false); setMotivo(e.target.value) }}
             rows={2}
             data-testid="liberar-motivo"
             className="mt-0.5 w-full rounded border border-gray-300 px-2 py-1"

@@ -32,6 +32,11 @@ interface PedidoHubProps {
   pedidos: Pedido[]
   counts: PedidoHubCounts
   loading: boolean
+  /** Fase 9 F9-i: una actualización está en vuelo mientras YA hay datos en
+   *  pantalla (refetch manual, polling, realtime). Distinto de `loading`
+   *  (carga inicial). Solo dispara un indicador sutil "Actualizando…" — no
+   *  bloquea, no reemplaza la lista. Se ignora si el usuario está offline. */
+  refetching?: boolean
   error: string | null
   userRole: string | null
   /** ejecutar la acción destacada (mapea a las mutaciones existentes de pedidos-client). */
@@ -58,7 +63,7 @@ function useViewport(): 'desktop' | 'mobile' {
 }
 
 export function PedidoHub({
-  pedidos, counts, loading, error, userRole, onAccion, onNuevaOperacion, dateFilterSlot, onRetry, onRefetch,
+  pedidos, counts, loading, refetching = false, error, userRole, onAccion, onNuevaOperacion, dateFilterSlot, onRetry, onRefetch,
 }: PedidoHubProps) {
   const isOnline = useOnlineStatus()
   const viewport = useViewport()
@@ -136,6 +141,13 @@ export function PedidoHub({
 
   const offlineConDatos = !isOnline && pedidos.length > 0
   const errorSinDatos = error && pedidos.length === 0
+  // F9-i: "Actualizando…" solo mientras hay datos y conexión — nunca durante la
+  // carga inicial (skeleton) ni offline (ahí manda el badge de sin conexión).
+  const mostrarActualizando = refetching && isOnline && !(loading && pedidos.length === 0)
+  // F9-ii: la última obtención falló pero YA hay datos → la lista se conserva
+  // (nunca EmptyState) y solo se ofrece "No se pudo actualizar · Reintentar".
+  // Si hay un reintento en curso, manda "Actualizando…".
+  const errorConDatos = Boolean(error) && pedidos.length > 0 && !mostrarActualizando
 
   const listNode = errorSinDatos ? (
     <EmptyState title="No se pudieron cargar las operaciones" description={error ?? undefined} actionLabel={onRetry ? 'Reintentar' : undefined} onAction={onRetry} />
@@ -182,6 +194,22 @@ export function PedidoHub({
         {offlineConDatos && (
           <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800" data-testid="pedido-hub-offline">
             Sin conexión — se actualiza al reconectar
+          </span>
+        )}
+        {mostrarActualizando && (
+          <span className="inline-flex items-center gap-1 text-xs text-gray-400" data-testid="pedido-hub-actualizando" aria-live="polite">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-gray-400" />
+            Actualizando…
+          </span>
+        )}
+        {errorConDatos && (
+          <span className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-800" data-testid="pedido-hub-error-datos" role="status">
+            No se pudo actualizar
+            {onRetry && (
+              <button type="button" onClick={onRetry} className="font-semibold underline hover:no-underline">
+                Reintentar
+              </button>
+            )}
           </span>
         )}
       </div>

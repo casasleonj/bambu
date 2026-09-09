@@ -24,11 +24,97 @@ describe('FIX Bug 6: usePedidos ignora resultados de requests stale', () => {
     // Cada estado mutante debe estar guardado por isCurrent()
     expect(source).toMatch(/if\s*\(\s*!isCurrent\(\)\)\s*return[\s\S]*setPedidos/)
     expect(source).toMatch(/if\s*\(\s*!isCurrent\(\)\)\s*return[\s\S]*setError/)
-    expect(source).toMatch(/if\s*\(\s*isCurrent\(\)\)\s*setLoading\(\s*false\s*\)/)
+    expect(source).toMatch(/if\s*\(\s*isCurrent\(\)\)\s*\{[\s\S]*?setLoading\(\s*false\s*\)/)
   })
 
   it('FIX: limpia error explicitamente en el camino de exito', () => {
     expect(source).toMatch(/setError\(\s*null\s*\)/)
+  })
+
+  it('F9-i: el finally guardado por isCurrent también resetea refetching (no lo pisa un stale)', () => {
+    expect(source).toMatch(/if\s*\(\s*isCurrent\(\)\)\s*\{[\s\S]*?setRefetching\(\s*false\s*\)/)
+  })
+})
+
+// Fase 9 F9-i (docs/pedidos/fase9-hardening-estados-plan.md): `loading` es la
+// carga inicial (todavía no hay respuesta utilizable); `refetching` es una
+// actualización posterior mientras YA existen datos. Son estados distintos:
+// durante un refetch la lista se conserva, no hay skeleton, `loading=false`,
+// `refetching=true`. No se introduce ningún estado nuevo de dominio del Pedido.
+describe('F9-i: usePedidos expone `refetching` separado de `loading`', () => {
+  let resolvers: Array<(body: unknown) => void>
+  let fetchMock: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    resolvers = []
+    fetchMock = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          resolvers.push((body) => resolve({ json: () => Promise.resolve(body) }))
+        }),
+    )
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
+  })
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('criterios 1-2: primera carga sin datos → loading=true/refetching=false; cargada → ambos false', async () => {
+    const { result } = renderHook(() => usePedidos({ scope: 'fiados' }, { all: true }))
+
+    expect(result.current.loading).toBe(true)
+    expect(result.current.refetching).toBe(false)
+
+    await act(async () => {
+      resolvers[0]({ success: true, pedidos: [{ id: 'p1' }], total: 1 })
+    })
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    expect(result.current.refetching).toBe(false)
+    expect(result.current.hasLoadedOnce).toBe(true)
+  })
+
+  it('criterios 3-6: refetch con datos → loading=false, refetching=true, lista visible; al resolver refetching=false', async () => {
+    const { result } = renderHook(() => usePedidos({ scope: 'fiados' }, { all: true }))
+    await act(async () => {
+      resolvers[0]({ success: true, pedidos: [{ id: 'p1' }], total: 1 })
+    })
+    await waitFor(() => expect(result.current.hasLoadedOnce).toBe(true))
+
+    act(() => {
+      void result.current.refetch()
+    })
+
+    await waitFor(() => expect(result.current.refetching).toBe(true))
+    expect(result.current.loading).toBe(false)
+    expect(result.current.pedidos).toHaveLength(1)
+
+    await act(async () => {
+      resolvers[1]({ success: true, pedidos: [{ id: 'p1' }, { id: 'p2' }], total: 2 })
+    })
+    await waitFor(() => expect(result.current.refetching).toBe(false))
+    expect(result.current.pedidos).toHaveLength(2)
+    expect(result.current.loading).toBe(false)
+  })
+
+  it('criterio 7: refetch fallido → refetching=false, datos previos intactos, error expuesto (para F9-ii)', async () => {
+    const { result } = renderHook(() => usePedidos({ scope: 'fiados' }, { all: true }))
+    await act(async () => {
+      resolvers[0]({ success: true, pedidos: [{ id: 'p1' }], total: 1 })
+    })
+    await waitFor(() => expect(result.current.hasLoadedOnce).toBe(true))
+
+    act(() => {
+      void result.current.refetch()
+    })
+    await waitFor(() => expect(result.current.refetching).toBe(true))
+
+    await act(async () => {
+      resolvers[1]({ success: false, error: { message: 'boom' } })
+    })
+    await waitFor(() => expect(result.current.refetching).toBe(false))
+
+    expect(result.current.error).toBe('boom')
+    expect(result.current.pedidos).toHaveLength(1)
+    expect(result.current.loading).toBe(false)
   })
 })
 
