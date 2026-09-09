@@ -10,7 +10,7 @@ import { ROLES } from '@/lib/constants'
 import { logger } from '@/lib/logger'
 import { apiSuccess, apiError } from '@/lib/api-response'
 
-const RecurrenteCreateSchema = z.object({
+export const RecurrenteCreateSchema = z.object({
   // Fase 8 (Q4): la recurrencia pertenece a UN contexto comercial concreto —
   // `clienteId` XOR `negocioId`. Regla determinista, sin fallback silencioso:
   // si el Pedido tiene negocio → contexto = Negocio; si no → Cliente.

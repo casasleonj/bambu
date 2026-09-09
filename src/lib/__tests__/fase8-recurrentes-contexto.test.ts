@@ -7,6 +7,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'fs'
 import { join } from 'path'
+import { RecurrenteCreateSchema } from '@/app/api/recurrentes/route'
 
 const navSrc = readFileSync(join(process.cwd(), 'src/app/(app)/nav-data.tsx'), 'utf-8')
 const recRoute = readFileSync(join(process.cwd(), 'src/app/api/recurrentes/route.ts'), 'utf-8')
@@ -76,5 +77,25 @@ describe('F8-0 — contrato cliente/negocio (Q4): regla determinista única', ()
     expect(get).toMatch(/searchParams\.get\('clienteId'\)/)
     expect(get).toMatch(/searchParams\.get\('negocioId'\)/)
     expect(get).toMatch(/negocioId\s*\)\s*where\.negocioId|where\.negocioId\s*=/)
+  })
+})
+
+describe('F8-0 — RecurrenteCreateSchema behavioral (XOR cliente/negocio)', () => {
+  const productos = { pacaAgua: 3 }
+
+  it('acepta solo clienteId', () => {
+    expect(RecurrenteCreateSchema.safeParse({ clienteId: 'c1', productos }).success).toBe(true)
+  })
+  it('acepta solo negocioId', () => {
+    expect(RecurrenteCreateSchema.safeParse({ negocioId: 'n1', productos }).success).toBe(true)
+  })
+  it('rechaza ambos', () => {
+    expect(RecurrenteCreateSchema.safeParse({ clienteId: 'c1', negocioId: 'n1', productos }).success).toBe(false)
+  })
+  it('rechaza ninguno', () => {
+    expect(RecurrenteCreateSchema.safeParse({ productos }).success).toBe(false)
+  })
+  it('sigue exigiendo >=3 productos', () => {
+    expect(RecurrenteCreateSchema.safeParse({ clienteId: 'c1', productos: { pacaAgua: 2 } }).success).toBe(false)
   })
 })

@@ -141,13 +141,15 @@ Read-only. Se resuelve por `clienteId`/`negocioId` del pedido (misma regla que e
 - **Corrección semántica (revisión del equipo F8-i):** "Solo habituales" = el **Pedido ES realmente recurrente**, no "el contexto tiene recurrencia activa". Relación canónica del dominio: `Pedido.origen = 'RECURRENTE'` (lo setea `generarPedidosRecurrentes` junto con `recurrenteBatchId`). `buildWhere`: `if (filter.conRecurrencia) where.origen = 'RECURRENTE'` — **sin `where.OR`** (no colisiona con OR de otros filtros), interseca vía los campos AND'd. Un pedido histórico normal de un cliente que hoy tiene recurrencia **NO** aparece. Un pedido recurrente cuya plantilla luego se pausó **SÍ** aparece (fue habitual).
 - Tests: `peek-recurrencia.test.tsx` (5) · `PrismaPedidoRepository.test.ts` (origen RECURRENTE, sin OR) · **`listar-pedidos-recurrencia.test.ts` (8 integración funcional)**: contexto-con-recurrencia ≠ pedido-recurrente, composición con canal/clienteId, negocio, plantilla pausada.
 
-### F8-ii — "esto se repite" en el workspace (reemplaza `/recurrentes/nuevo`)
+### F8-ii — "esto se repite" en el workspace (reemplaza `/recurrentes/nuevo`) ✅ IMPLEMENTADO
 **Archivos:**
 - `PedidosWorkspace` / `pedidos-client` — **tras** un commit exitoso (transacción separada, Q5) de un pedido con contexto real (cliente o negocio) y ≥3 productos: propuesta "¿Guardar como pedido habitual de {contexto}?" → mini-form (`cada N días`, default 7; canal heredado) → confirmar → `POST /api/recurrentes` con el **contexto resuelto** (§1bis).
 - **Fallo de la recurrencia ≠ fallo del pedido** (Q5): el pedido ya está creado; si el `POST /api/recurrentes` falla → toast de error + "Reintentar", **nunca** revertir/recrear el pedido.
 - **409 (ya existe)**: NO auto-`PUT`. Mostrar "Este {contexto} ya tiene un pedido habitual" + acción explícita "Revisar el habitual" (lleva al peek/ajuste). El usuario decide.
 - Gate por rol (ADMIN/ASISTENTE) y `NEXT_PUBLIC_PEDIDOS_V2`. Nunca la palabra "plantilla".
 - Tests: unit (propuesta aparece solo post-commit con contexto real + ≥3 prod; no crea sin confirmar; fallo recurrente no toca el pedido; 409 → acción explícita, no PUT automático).
+
+**Implementado:** `esto-se-repite.tsx` (`EstoSeRepite`, modal aparte tras el commit — 4 estados: form / ok / ya-existe / error). Body a `POST /api/recurrentes`: `{ canal, cadaNDias, productos: {pacaAgua,...} }` + `negocioId` **o** `clienteId` según `contexto.tipo`. offline → se trata como ok (encolado). 409 → "ya tiene un pedido habitual" + "Revisar el habitual" (`router.push('/recurrentes')`) — **1 sola llamada, sin auto-PUT**. error → "el pedido no se vio afectado" + "Reintentar". `pedidos-client`: `setProponerHabitual(...)` **después** de `crearPedido` (`if (!result) return` primero), gate `hubMode && clienteId!==CONSUMIDOR_FINAL && Σcantidades>=3 && (ADMIN|ASISTENTE)`, contexto Q4 (`data.negocioId ? negocio : cliente`). 13 unit (10 componente + 3 wiring source-check) + 5 schema behavioral XOR (`RecurrenteCreateSchema` exportado). Nunca "plantilla".
 
 ### F8-iii — "Ajustar" desde el peek (reemplaza `/recurrentes/[id]/editar`)
 **Archivos:**
