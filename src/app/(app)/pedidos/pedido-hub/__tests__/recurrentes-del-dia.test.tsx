@@ -61,7 +61,7 @@ describe('RecurrentesDelDia (F8-iv)', () => {
   })
 
   it('generar → POST /api/pedidos/recurrentes con decisiones + offlineId; toast con generados/saltados', async () => {
-    fetchMock.mockImplementation(async (url: string, init?: { method?: string }) => {
+    fetchMock.mockImplementation(async (_url: string, init?: { method?: string }) => {
       if (init?.method === 'POST') return { json: async () => ({ success: true, generados: 1, saltados: 0 }) }
       return { json: async () => ({ success: true, preview: [item()] }) }
     })
