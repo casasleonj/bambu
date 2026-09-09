@@ -22,6 +22,7 @@ export class ListarPedidosUseCase {
       canal: input.canal,
       tipo: input.tipo,
       scope: input.scope,
+      conRecurrencia: input.conRecurrencia,
     }
 
     // Cuando all=true, el caller (cache-driven UI) puede pedir un pageSize

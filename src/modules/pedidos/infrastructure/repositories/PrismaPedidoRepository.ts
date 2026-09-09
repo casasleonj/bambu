@@ -241,6 +241,14 @@ export class PrismaPedidoRepository implements IPedidoRepository {
       if (filter.desde) (where.fecha as Record<string, Date>).gte = filter.desde
       if (filter.hasta) (where.fecha as Record<string, Date>).lt = filter.hasta
     }
+    // F8-i: faceta "con recurrencia" — el contexto del pedido (cliente O
+    // negocio) tiene una PlantillaRecurrente activa.
+    if (filter?.conRecurrencia) {
+      where.OR = [
+        { cliente: { plantillaRecurrente: { activo: true } } },
+        { negocio: { plantillaRecurrente: { activo: true } } },
+      ]
+    }
     return where
   }
 }

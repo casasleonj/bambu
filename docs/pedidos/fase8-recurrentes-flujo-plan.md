@@ -134,7 +134,7 @@ Read-only. Se resuelve por `clienteId`/`negocioId` del pedido (misma regla que e
 
 **Criterio:** una sola semántica cliente/negocio en creación, lectura, peek y generación. ASISTENTE opera recurrencia desde el backend. "pausar" nunca borra.
 
-### F8-i — indicador + faceta en el Hub
+### F8-i — indicador + faceta en el Hub ✅ IMPLEMENTADO
 **Archivos:**
 - `peek-relaciones.tsx` / un `PeekRecurrencia` — "Pedido habitual: {resumen} · cada {N} días · [Ajustar]" cuando `data.recurrencia`. Si `!activo` → "Habitual pausado".
 - Hub: faceta/filtro "con recurrencia" (query param) — `pedidos-client` + la query de la lista.

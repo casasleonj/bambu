@@ -33,3 +33,11 @@ describe('PrismaPedidoRepository: filtro de canal (G6)', () => {
     expect(methodSection).toMatch(/abonos:/)
   })
 })
+
+describe('PrismaPedidoRepository: faceta "con recurrencia" (F8-i)', () => {
+  it('buildWhere filtra por contexto cliente O negocio con PlantillaRecurrente activa', () => {
+    expect(source).toMatch(/filter\?\.conRecurrencia/)
+    expect(source).toMatch(/cliente:\s*\{\s*plantillaRecurrente:\s*\{\s*activo:\s*true\s*\}\s*\}/)
+    expect(source).toMatch(/negocio:\s*\{\s*plantillaRecurrente:\s*\{\s*activo:\s*true\s*\}\s*\}/)
+  })
+})
