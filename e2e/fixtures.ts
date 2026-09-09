@@ -61,6 +61,31 @@ const LOGIN_TIMEOUT = BASE.startsWith('http://localhost') ? 15000 : 60000
 
 type Role = 'admin' | 'asistente' | 'contador' | 'repartidor'
 
+// ─── Cleanup de páginas de sharedLoginAs ─────────────────────────────────────
+//
+// `sharedLoginAs(browser)` hace `browser.newPage()` — una página + contexto
+// nuevos que Playwright NO cierra automáticamente (solo cierra los fixtures
+// `page`/`context` built-in). Los specs del Hub lo llaman POR TEST, así que
+// sin esto cada test filtra un contexto por el resto del run del worker
+// (workers:1, serial). Para el test N°30+ hay ~30 Chromium contexts vivos en
+// un runner de 2 vCPU que además corre Postgres/Redis/Next — presión de
+// memoria que degrada hydration/render (doble-mount transitorio, timeouts).
+//
+// Este `afterEach` se registra al importar `test` desde este módulo, así que
+// aplica a TODOS los specs. Playwright corre los afterEach en orden inverso
+// de registro: como este módulo se importa primero, su hook corre ÚLTIMO
+// (después de cualquier afterEach del propio spec, que todavía puede usar la
+// página). Los specs de `sharedPageLogin` (patrón beforeAll + afterAll →
+// p.close()) no pasan por acá.
+const _sharedLoginPages = new Set<Page>()
+
+test.afterEach(async () => {
+  for (const p of _sharedLoginPages) {
+    await p.close().catch(() => {})
+  }
+  _sharedLoginPages.clear()
+})
+
 const ROLE_CREDENTIALS: Record<Role, { user: string; pass: string }> = {
   admin: { user: 'admin', pass: 'admin123' },
   asistente: { user: 'asistente', pass: 'asist123' },
@@ -331,9 +356,11 @@ export async function loginAs(page: Page, role: Role) {
   await handleBaseCaja(page)
 }
 
-/** Role-aware shared page login. */
+/** Role-aware shared page login. La página se cierra automáticamente al
+ *  terminar el test (ver `_sharedLoginPages` / afterEach arriba). */
 export async function sharedLoginAs(browser: { newPage: () => Promise<Page> }, role: Role) {
   const page = await browser.newPage()
+  _sharedLoginPages.add(page)
   await page.context().clearCookies()
   // El banner PWA "Instalar aplicación" (fixed bottom-0, z-40) intercepta
   // clicks sobre el FAB / elementos inferiores. addInitScript corre antes de
