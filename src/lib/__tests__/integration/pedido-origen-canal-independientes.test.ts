@@ -18,6 +18,7 @@ import { PrismaPagoRepository } from '@/modules/pedidos/infrastructure/repositor
 import { PrismaClienteRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaClienteRepository'
 import { PrismaPricingAdapter } from '@/modules/pedidos/infrastructure/repositories/PrismaPricingAdapter'
 import { PrismaTransactionManager } from '@/modules/pedidos/infrastructure/transactions/PrismaTransactionManager'
+import { resolverCoordsDeLink } from '@/lib/geo/resolver-coords-de-link'
 
 describe('CrearPedidoUseCase — origen y canal son independientes (G6/ventaRapida→origen)', () => {
   let useCase: CrearPedidoUseCase
@@ -40,6 +41,7 @@ describe('CrearPedidoUseCase — origen y canal son independientes (G6/ventaRapi
       new PrismaClienteRepository(),
       new PrismaPricingAdapter(),
       new PrismaTransactionManager(),
+      resolverCoordsDeLink,
     )
   })
 

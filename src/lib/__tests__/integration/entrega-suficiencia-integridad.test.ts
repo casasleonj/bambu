@@ -42,12 +42,14 @@ function crear() {
   return new CrearPedidoUseCase(
     pedidoRepo, new PrismaFacturaRepository(), new PrismaPagoRepository(),
     clienteRepo, new PrismaPricingAdapter(), new PrismaTransactionManager(),
+    resolverCoordsDeLink,
   )
 }
 function actualizar() {
   return new ActualizarPedidoUseCase(
     pedidoRepo, new PrismaFacturaRepository(), clienteRepo,
     new PrismaPricingAdapter(), new PrismaTransactionManager(),
+    resolverCoordsDeLink,
   )
 }
 
@@ -168,5 +170,103 @@ describe('F-ENTREGA-0 — suficiencia de entrega (Preview ↔ Commit, misma auto
     await expect(
       actualizar().execute({ pedidoId: pedido.id, items: ITEMS, direccionEntrega: '', barrioEntrega: '', usuarioId: adminId }),
     ).rejects.toThrow('ENTREGA_INSUFICIENTE')
+  })
+
+  // ── BUG DE PRODUCCIÓN + BRECHA PLAN↔CÓDIGO: el commit no resolvía
+  // `linkUbicacion → coords` en vivo, así que un cliente con solo un link
+  // (sin coords backfilleadas) pasaba el preview pero era rechazado en
+  // POST/PUT. `resolverCoordsDeLink` corre ahora fuera del lock (Crear y
+  // Actualizar), igual que en Preview. `resolverEntrega` sigue siendo la
+  // autoridad única — no hay regla nueva. Links directos (`/@lat,lng`) se
+  // parsean sin HTTP → tests deterministas.
+  const LINK_RESOLUBLE = 'https://www.google.com/maps/@4.6510,-74.0540,17z'
+  const LINK_ROTO = 'https://www.google.com/maps/place/Tienda-sin-coordenadas'
+
+  it('link resoluble + sin dirección/barrio/coords → preview y commit COINCIDEN (SUFICIENTE, crea)', async () => {
+    const c = await testPrisma.cliente.create({
+      data: {
+        nombre: 'Solo link', telefono: uniqueId('t'),
+        direccion: null, barrio: null, lat: null, lng: null,
+        linkUbicacion: LINK_RESOLUBLE, activo: true,
+      },
+    })
+
+    const p = await preview().execute({ clienteId: c.id, canal: 'DOMICILIO', items: ITEMS, actorId: adminId })
+    expect(p.entrega?.estado).toBe('SUFICIENTE_COMPLEMENTARIA_FALTANTE')
+    expect(p.entrega?.via).toBe('GEO')
+    expect(p.permissions.canCreate).toBe(true)
+
+    const { pedido } = await crear().execute({
+      clienteId: c.id, canal: 'DOMICILIO', origen: 'PEDIDO', items: ITEMS, pagos: [],
+      createdById: adminId, createdByRole: 'ADMIN', offlineId: uniqueId('link-ok'),
+    })
+    expect(pedido.id).toBeTruthy()
+
+    // resolver el link NO debe tocar los datos maestros del Cliente.
+    const cliDespues = await testPrisma.cliente.findUniqueOrThrow({ where: { id: c.id } })
+    expect(cliDespues.lat).toBeNull()
+    expect(cliDespues.lng).toBeNull()
+    expect(cliDespues.direccion).toBeNull()
+    expect(cliDespues.barrio).toBeNull()
+  })
+
+  it('link roto + sin dirección/barrio/coords → preview INSUFICIENTE y commit rechaza (422)', async () => {
+    const c = await testPrisma.cliente.create({
+      data: {
+        nombre: 'Link roto', telefono: uniqueId('t'),
+        direccion: null, barrio: null, linkUbicacion: LINK_ROTO, activo: true,
+      },
+    })
+
+    const p = await preview().execute({ clienteId: c.id, canal: 'DOMICILIO', items: ITEMS, actorId: adminId })
+    expect(p.entrega?.estado).toBe('INSUFICIENTE')
+    expect(p.permissions.canCreate).toBe(false)
+
+    await expect(
+      crear().execute({
+        clienteId: c.id, canal: 'DOMICILIO', origen: 'PEDIDO', items: ITEMS, pagos: [],
+        createdById: adminId, createdByRole: 'ADMIN', offlineId: uniqueId('link-roto'),
+      }),
+    ).rejects.toThrow('ENTREGA_INSUFICIENTE')
+  })
+
+  it('dirección + barrio + link → crea (Vía B basta; el link no cambia el resultado)', async () => {
+    const c = await testPrisma.cliente.create({
+      data: {
+        nombre: 'Todo', telefono: uniqueId('t'),
+        direccion: 'Cra 15 # 30-20', barrio: 'Centro', linkUbicacion: LINK_RESOLUBLE, activo: true,
+      },
+    })
+    const p = await preview().execute({ clienteId: c.id, canal: 'DOMICILIO', items: ITEMS, actorId: adminId })
+    expect(p.entrega?.estado).toBe('SUFICIENTE')
+    const { pedido } = await crear().execute({
+      clienteId: c.id, canal: 'DOMICILIO', origen: 'PEDIDO', items: ITEMS, pagos: [],
+      createdById: adminId, createdByRole: 'ADMIN', offlineId: uniqueId('todo'),
+    })
+    expect(pedido.id).toBeTruthy()
+  })
+
+  it('Update mantiene la MISMA autoridad: pedido con cliente link-resoluble, vaciar el snapshot NO lo rechaza', async () => {
+    const c = await testPrisma.cliente.create({
+      data: {
+        nombre: 'Update link', telefono: uniqueId('t'),
+        direccion: null, barrio: null, linkUbicacion: LINK_RESOLUBLE, activo: true,
+      },
+    })
+    // crear con override textual para tener un pedido de partida
+    const { pedido } = await crear().execute({
+      clienteId: c.id, canal: 'DOMICILIO', origen: 'PEDIDO', items: ITEMS, pagos: [],
+      direccionEntrega: 'Obra temporal Cra 1', barrioEntrega: 'X',
+      createdById: adminId, createdByRole: 'ADMIN', offlineId: uniqueId('upd-link'),
+    })
+    // vaciar el snapshot: la Vía A (link del cliente) debe sostener la suficiencia
+    const res = await actualizar().execute({
+      pedidoId: pedido.id, items: ITEMS, direccionEntrega: '', barrioEntrega: '', usuarioId: adminId,
+    })
+    expect(res.pedido.id).toBe(pedido.id)
+    // sin mutar los datos maestros
+    const cli = await testPrisma.cliente.findUniqueOrThrow({ where: { id: c.id } })
+    expect(cli.lat).toBeNull()
+    expect(cli.linkUbicacion).toBe(LINK_RESOLUBLE)
   })
 })

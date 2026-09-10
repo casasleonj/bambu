@@ -38,6 +38,7 @@ export const crearPedidoUseCase = new CrearPedidoUseCase(
   clienteRepo,
   pricingAdapter,
   txManager,
+  resolverCoordsDeLink,
 )
 
 export const listarPedidosUseCase = new ListarPedidosUseCase(pedidoRepo)
@@ -69,6 +70,7 @@ export const actualizarPedidoUseCase = new ActualizarPedidoUseCase(
   clienteRepo,
   pricingAdapter,
   txManager,
+  resolverCoordsDeLink,
 )
 
 export const getFiadoStatusUseCase = new GetFiadoStatusUseCase(pedidoRepo, clienteRepo)

@@ -715,15 +715,16 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
       toast.error('Nombre y teléfono son obligatorios')
       return
     }
-    if (canal === 'DOMICILIO') {
-      if (clienteSeleccionado && (!editDireccion || !editBarrio)) {
-        toast.error('Dirección y barrio son obligatorios para envío a domicilio')
-        return
-      }
-      if (mostrarNuevo && (!nuevoCliente.direccion || !nuevoCliente.barrio)) {
-        toast.error('Dirección y barrio son obligatorios para envío a domicilio')
-        return
-      }
+    // Suficiencia de la información de entrega: la autoridad es el dominio
+    // (`resolverEntrega`, re-validado en POST /api/pedidos → 422
+    // ENTREGA_INSUFICIENTE con mensaje accionable). Este form NO re-implementa
+    // la regla ni exige "dirección + barrio": un cliente/negocio con ubicación
+    // utilizable (coords o link resoluble) ya es suficiente. Única excepción —
+    // el alta de cliente nuevo desde acá no tiene campo de ubicación, así que
+    // pide una dirección escrita (Vía B); el barrio sigue siendo complementario.
+    if (canal === 'DOMICILIO' && mostrarNuevo && !nuevoCliente.direccion) {
+      toast.error('Escribe una dirección para el envío a domicilio del cliente nuevo')
+      return
     }
 
     setSubmitting(true)

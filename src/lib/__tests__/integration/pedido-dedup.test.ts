@@ -22,6 +22,7 @@ import { PrismaPagoRepository } from '@/modules/pedidos/infrastructure/repositor
 import { PrismaClienteRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaClienteRepository'
 import { PrismaPricingAdapter } from '@/modules/pedidos/infrastructure/repositories/PrismaPricingAdapter'
 import { PrismaTransactionManager } from '@/modules/pedidos/infrastructure/transactions/PrismaTransactionManager'
+import { resolverCoordsDeLink } from '@/lib/geo/resolver-coords-de-link'
 
 describe('CrearPedidoUseCase — dedup por offlineId', () => {
   let useCase: CrearPedidoUseCase
@@ -59,6 +60,7 @@ describe('CrearPedidoUseCase — dedup por offlineId', () => {
       new PrismaClienteRepository(),
       new PrismaPricingAdapter(),
       new PrismaTransactionManager(),
+      resolverCoordsDeLink,
     )
   })
 
