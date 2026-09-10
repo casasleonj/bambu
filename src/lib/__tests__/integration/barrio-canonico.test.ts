@@ -5,9 +5,16 @@
 //
 // NOTA: no ejecutado en el sandbox de esta sesión (sin Postgres/Docker
 // disponible) — requiere `docker compose up -d` local o el runner de CI.
+//
+// FIX (visto en CI): `instanceof PrismaClientKnownRequestError` no es
+// confiable bajo este entorno vitest+jsdom (mismo motivo documentado en
+// setup.ts sobre "@/lib/prisma crea un ciclo en jsdom" — dos resoluciones
+// de módulo del runtime de Prisma no son el mismo constructor). Todos los
+// demás tests de integración de este repo ya evitan `instanceof` para este
+// caso y matchean el mensaje/código como string (ver abono-idempotencia.test.ts,
+// cierre-idempotencia.test.ts) — seguimos esa misma convención probada.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { testPrisma, resetAndSeed, disconnect, uniqueId, createTestCliente } from './setup'
-import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library'
 import {
   crearBarrio,
   renombrarBarrio,
@@ -28,8 +35,8 @@ describe('Barrio canónico — integración DB real', () => {
     const nombre = `La Esperanza ${uniqueId()}`
     await crearBarrio(nombre)
 
-    await expect(crearBarrio(`  ${nombre.toUpperCase()}  `)).rejects.toBeInstanceOf(
-      PrismaClientKnownRequestError,
+    await expect(crearBarrio(`  ${nombre.toUpperCase()}  `)).rejects.toThrow(
+      /Unique constraint failed|P2002/,
     )
   })
 
@@ -38,7 +45,7 @@ describe('Barrio canónico — integración DB real', () => {
     const barrio = await crearBarrio(nombre)
     await archivarBarrio(barrio.id)
 
-    await expect(crearBarrio(nombre)).rejects.toBeInstanceOf(PrismaClientKnownRequestError)
+    await expect(crearBarrio(nombre)).rejects.toThrow(/Unique constraint failed|P2002/)
 
     const reactivado = await reactivarBarrio(barrio.id)
     expect(reactivado.id).toBe(barrio.id)
