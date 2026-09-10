@@ -31,6 +31,7 @@ import type { ITransactionManager } from '../../infrastructure/transactions/Pris
 import type { CrearPedidoInput, CrearPedidoResult } from '../dto'
 import { PedidoDTOMapper } from '../dto/PedidoDTOMapper'
 import { pickDireccionTexto } from '@/lib/geo/pedido-direccion'
+import type { ResolverCoordsDeLink } from '@/lib/geo/resolver-coords-de-link'
 import { resolverEntrega } from '../../domain/services/entrega-suficiencia.service'
 import { EntregaInsuficienteError } from '../../domain/services/entrega-suficiencia.errors'
 import { ensureConsumidorFinalCanonical, isConsumidorFinalCanonical } from '@/lib/cliente-canonical'
@@ -45,12 +46,22 @@ export class CrearPedidoUseCase {
     private clienteRepo: IClienteRepository,
     private pricingPort: IPricingPort,
     private txManager: ITransactionManager,
+    /** `linkUbicacion → coords` server-only. Se llama FUERA del lock/tx (I/O
+     *  con redirects); el resultado se pasa a `resolverEntrega` adentro. */
+    private resolverCoordsDeLink: ResolverCoordsDeLink,
   ) {}
 
   async execute(input: CrearPedidoInput): Promise<CrearPedidoResult> {
     // Snapshot de empresa fuera del lock: lectura simple de Config,
     // no genera contención y no cambia durante la tx.
     const empresaSnapshot = await getFacturaEmpresaSnapshot()
+
+    // F-ENTREGA (docs/pedidos/entrega-suficiencia-plan.md §16): la resolución
+    // `linkUbicacion → coords` (I/O, sigue redirects) ocurre ACÁ, fuera del
+    // lock/tx — mismo patrón que PreviewPedidoUseCase. El commit vuelve a
+    // validar con `resolverEntrega` adentro (autoridad única); el preview es
+    // orientativo.
+    const coordsDeLink = await this.resolverCoordsDeLinkParaEntrega(input)
 
     // FASE 0 (ADR-CONCURRENCIA-001): lock `SECUENCIA:pedido` — la creación
     // de pedido usa getNextNumero(model:'pedido') con fallback MAX+1 (no
@@ -177,9 +188,9 @@ export class CrearPedidoUseCase {
       // 3c. Suficiencia de la información de entrega — MISMA autoridad que el
       // preview (docs/pedidos/entrega-suficiencia-plan.md §16). El commit
       // re-resuelve y valida; no confía en un preview que puede estar obsoleto.
-      // No se resuelve `linkUbicacion` en vivo acá (no hacer HTTP dentro de la
-      // tx): si un cliente solo tenía un link sin coords backfilleadas, ese
-      // caso borde se corrige cuando el backfill guarda las coords.
+      // `coordsDeLink` viene de `resolverCoordsDeLink` ejecutado FUERA del lock
+      // (arriba) — así un cliente con solo `linkUbicacion` resoluble llega a la
+      // misma suficiencia que en el preview.
       if (input.canal === 'DOMICILIO' && !isConsumidorFinalCanonical(clienteId)) {
         const negocioEntrega = input.negocioId
           ? await this.clienteRepo.findNegocioById(input.negocioId, tx)
@@ -195,6 +206,7 @@ export class CrearPedidoUseCase {
           negocio: negocioEntrega
             ? { direccion: negocioEntrega.direccion, barrio: negocioEntrega.barrio, referencia: negocioEntrega.referencia, linkUbicacion: negocioEntrega.linkUbicacion, lat: negocioEntrega.lat, lng: negocioEntrega.lng }
             : null,
+          coordsDeLink,
         })
         if (entrega.estado === 'INSUFICIENTE') {
           throw new EntregaInsuficienteError()
@@ -379,5 +391,44 @@ export class CrearPedidoUseCase {
         clienteId,
       }
     })
+  }
+
+  /**
+   * Resuelve `linkUbicacion → coords` ANTES de tomar el lock (I/O con
+   * redirects — nunca dentro de la tx). Solo se intenta si el canal es
+   * DOMICILIO, no hay coords almacenadas (negocio gana → cliente) y existe un
+   * link. Mismo criterio que `PreviewPedidoUseCase`. Es best-effort: `null`
+   * si el link está vacío/roto/no resoluble — `resolverEntrega` decide.
+   * NO escribe: no persiste las coords en Cliente/Negocio.
+   */
+  private async resolverCoordsDeLinkParaEntrega(
+    input: CrearPedidoInput,
+  ): Promise<{ lat: number; lng: number } | null> {
+    if (input.canal !== 'DOMICILIO') return null
+
+    // id efectivo del cliente: el explícito, o el dedup por teléfono si es
+    // un cliente nuevo (mismo dedup que hace `execute` dentro del lock).
+    let clienteIdEfectivo: string | undefined
+    if (input.clienteId && !isConsumidorFinalCanonical(input.clienteId)) {
+      clienteIdEfectivo = input.clienteId
+    } else if (input.clienteNuevo) {
+      const dedupe = await this.clienteRepo.findByTelefono(input.clienteNuevo.telefono)
+      clienteIdEfectivo = dedupe?.id
+    }
+
+    const [clientePre, negocioPre] = await Promise.all([
+      clienteIdEfectivo ? this.clienteRepo.findById(clienteIdEfectivo) : Promise.resolve(null),
+      input.negocioId ? this.clienteRepo.findNegocioById(input.negocioId) : Promise.resolve(null),
+    ])
+
+    const hayCoords =
+      (negocioPre?.lat != null && negocioPre?.lng != null) ||
+      (clientePre?.lat != null && clientePre?.lng != null)
+    if (hayCoords) return null
+
+    const efectivoLink = (negocioPre?.linkUbicacion ?? clientePre?.linkUbicacion) || null
+    if (!efectivoLink) return null
+
+    return this.resolverCoordsDeLink(efectivoLink)
   }
 }

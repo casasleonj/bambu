@@ -106,7 +106,7 @@ function makeUseCase(pedido: Pedido) {
     (_namespace: string, _entityKey: string, fn: (tx: TransactionClient) => Promise<unknown>) => fn(fakeTx),
   )
   txManager.executeWithLock = executeWithLock as unknown as ITransactionManager['executeWithLock']
-  const useCase = new ActualizarPedidoUseCase(pedidoRepo, facturaRepo, clienteRepo, pricingPort, txManager)
+  const useCase = new ActualizarPedidoUseCase(pedidoRepo, facturaRepo, clienteRepo, pricingPort, txManager, async () => null)
   return { useCase, pedidoRepo, facturaRepo, executeWithLock, historialCreate }
 }
 

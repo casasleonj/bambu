@@ -52,6 +52,7 @@ function makeCrearUseCase() {
     new PrismaClienteRepository(),
     new PrismaPricingAdapter(),
     new PrismaTransactionManager(),
+    resolverCoordsDeLink,
   )
 }
 
@@ -62,6 +63,7 @@ function makeActualizarUseCase() {
     new PrismaClienteRepository(),
     new PrismaPricingAdapter(),
     new PrismaTransactionManager(),
+    resolverCoordsDeLink,
   )
 }
 

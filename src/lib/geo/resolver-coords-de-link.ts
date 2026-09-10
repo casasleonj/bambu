@@ -13,6 +13,11 @@ import { expandShortMapsUrl } from './expand-short-maps-url'
  *
  * Devuelve `null` si el link está vacío, roto, ambiguo o no resoluble.
  */
+/** Firma del resolver — inyectable en los use cases (Preview/Crear/Actualizar). */
+export type ResolverCoordsDeLink = (
+  link: string | null | undefined,
+) => Promise<{ lat: number; lng: number } | null>
+
 export async function resolverCoordsDeLink(
   link: string | null | undefined,
 ): Promise<{ lat: number; lng: number } | null> {

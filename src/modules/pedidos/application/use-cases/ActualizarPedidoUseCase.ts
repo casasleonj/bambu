@@ -19,6 +19,7 @@ import type { Pedido as PedidoEntity, PedidoProps } from '../../domain/entities/
 import type { ActualizarPedidoInput } from '../dto'
 import { PedidoDTOMapper } from '../dto/PedidoDTOMapper'
 import { pickDireccionTexto } from '@/lib/geo/pedido-direccion'
+import type { ResolverCoordsDeLink } from '@/lib/geo/resolver-coords-de-link'
 import { resolverEntrega } from '../../domain/services/entrega-suficiencia.service'
 import { EntregaInsuficienteError } from '../../domain/services/entrega-suficiencia.errors'
 
@@ -78,9 +79,21 @@ export class ActualizarPedidoUseCase {
     private clienteRepo: IClienteRepository,
     private pricingPort: IPricingPort,
     private txManager: ITransactionManager,
+    /** `linkUbicacion → coords` server-only. Se llama FUERA del lock/tx; el
+     *  resultado alimenta `resolverEntrega` adentro (misma autoridad que
+     *  Crear/Preview). */
+    private resolverCoordsDeLink: ResolverCoordsDeLink,
   ) {}
 
   async execute(input: ActualizarPedidoInput) {
+    // F-ENTREGA: resolver el link a coords ANTES del lock (I/O), igual que
+    // CrearPedidoUseCase / PreviewPedidoUseCase. Solo aplica si el update
+    // toca items + el snapshot de entrega (única rama que re-valida
+    // suficiencia). El commit vuelve a validar adentro con `resolverEntrega`.
+    const coordsDeLink =
+      input.items && (input.direccionEntrega !== undefined || input.barrioEntrega !== undefined)
+        ? await this.resolverCoordsDeLinkParaEntrega(input.pedidoId)
+        : null
     // F3 (INVENTARIO §F3): `PUT /api/pedidos/[id]` mutaba hechos críticos
     // (total, factura, estado, dirección del cliente) en un `$transaction`
     // plano, sin lock — dos ediciones concurrentes del mismo pedido podían
@@ -225,6 +238,7 @@ export class ActualizarPedidoUseCase {
               negocio: negocioActual
                 ? { direccion: negocioActual.direccion, barrio: negocioActual.barrio, referencia: negocioActual.referencia, linkUbicacion: negocioActual.linkUbicacion, lat: negocioActual.lat, lng: negocioActual.lng }
                 : null,
+              coordsDeLink,
             })
             if (entrega.estado === 'INSUFICIENTE') throw new EntregaInsuficienteError()
           }
@@ -373,5 +387,33 @@ export class ActualizarPedidoUseCase {
       // Sin cambios reales → no se audita.
       return { pedido: PedidoDTOMapper.toResumen(pedido) }
     })
+  }
+
+  /**
+   * Resuelve `linkUbicacion → coords` para el pedido ANTES del lock (I/O — nunca
+   * dentro de la tx). Lee el pedido para conocer cliente/negocio/canal; si es
+   * DOMICILIO, no hay coords almacenadas y existe un link → lo resuelve.
+   * Best-effort (`null` si no aplica o no resuelve). NO persiste nada.
+   */
+  private async resolverCoordsDeLinkParaEntrega(
+    pedidoId: string,
+  ): Promise<{ lat: number; lng: number } | null> {
+    const pedido = await this.pedidoRepo.findById(PedidoId.from(pedidoId))
+    if (!pedido || pedido.canal.get() !== 'DOMICILIO' || pedido.clienteId === 'CONSUMIDOR_FINAL') {
+      return null
+    }
+    const [clientePre, negocioPre] = await Promise.all([
+      this.clienteRepo.findById(pedido.clienteId),
+      pedido.negocioId ? this.clienteRepo.findNegocioById(pedido.negocioId) : Promise.resolve(null),
+    ])
+    const hayCoords =
+      (negocioPre?.lat != null && negocioPre?.lng != null) ||
+      (clientePre?.lat != null && clientePre?.lng != null)
+    if (hayCoords) return null
+
+    const efectivoLink = (negocioPre?.linkUbicacion ?? clientePre?.linkUbicacion) || null
+    if (!efectivoLink) return null
+
+    return this.resolverCoordsDeLink(efectivoLink)
   }
 }

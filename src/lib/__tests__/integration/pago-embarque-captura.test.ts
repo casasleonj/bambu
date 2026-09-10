@@ -15,6 +15,7 @@ import { PrismaPagoRepository } from '@/modules/pedidos/infrastructure/repositor
 import { PrismaClienteRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaClienteRepository'
 import { PrismaPricingAdapter } from '@/modules/pedidos/infrastructure/repositories/PrismaPricingAdapter'
 import { PrismaTransactionManager as PedidoTxMgr } from '@/modules/pedidos/infrastructure/transactions/PrismaTransactionManager'
+import { resolverCoordsDeLink } from '@/lib/geo/resolver-coords-de-link'
 
 let adminId: string
 let clienteId: string
@@ -39,6 +40,7 @@ describe('PR-2a — Pago.embarqueId (contexto de captura)', () => {
     const useCase = new CrearPedidoUseCase(
       new PrismaPedidoRepository(), new PrismaFacturaRepository(), new PrismaPagoRepository(),
       new PrismaClienteRepository(), new PrismaPricingAdapter(), new PedidoTxMgr(),
+      resolverCoordsDeLink,
     )
     const res = await useCase.execute({
       clienteId, canal: 'DOMICILIO', items: [{ producto: 'PACA_AGUA', cantidad: 2 }],
