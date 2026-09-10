@@ -14,6 +14,8 @@ export interface Cliente {
   telefono: string
   fuente?: string
   barrio?: string
+  /** F1-BARRIO-CANONICO: null/undefined = registro legacy sin vincular. */
+  barrioId?: string | null
   linkUbicacion?: string
   direccion?: string
   referencia?: string | null
@@ -50,6 +52,7 @@ export interface Cliente {
     tipoNegocio?: string | null
     direccion?: string | null
     barrio?: string | null
+    barrioId?: string | null
     referencia?: string | null
     linkUbicacion?: string | null
     horaApertura?: string | null
@@ -184,6 +187,8 @@ export interface FormData {
   telefono: string
   fuente: string
   barrio: string
+  /** F1-BARRIO-CANONICO: seteado por BarrioSelect al vincular/crear un Barrio canónico. */
+  barrioId?: string
   direccion: string
   linkUbicacion: string
   contactos: ContactoAlternativo[]

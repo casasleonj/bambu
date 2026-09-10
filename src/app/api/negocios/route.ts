@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiList, apiError } from '@/lib/api-response'
+import { BarrioNoEncontradoError, resolverBarrioParaVinculo } from '@/lib/barrios/barrio-service'
 
 const NegocioCreateSchema = z.object({
   clienteId: z.string().min(1),
@@ -14,6 +15,9 @@ const NegocioCreateSchema = z.object({
   tipoNegocio: z.string().optional(),
   direccion: z.string().optional(),
   barrio: z.string().optional(),
+  // F1-BARRIO-CANONICO: si se envía, el server resuelve el Barrio y
+  // sincroniza `barrio` (texto legacy) con su nombre canónico.
+  barrioId: z.string().min(1).optional(),
   referencia: z.string().optional(),
   linkUbicacion: SafeUrlSchema.optional().or(z.literal('')),
   horaApertura: z.string().optional(),
@@ -71,24 +75,45 @@ export async function POST(request: NextRequest) {
       return apiError('Datos inválidos', 400, { formErrors: [formatZodError(parsed.error)] })
     }
 
-    // Verify cliente exists
-    const cliente = await prisma.cliente.findUnique({
-      where: { id: parsed.data.clienteId },
-      select: { id: true },
-    })
-    if (!cliente) {
-      return apiError('Cliente no encontrado', 404)
-    }
+    // F1-BARRIO-CANONICO (fix revisión pre-merge): verificar el Cliente,
+    // resolver el Barrio y crear el Negocio DENTRO de la misma transacción
+    // — antes la resolución (`resolverBarrioParaVinculo` sin tx) ocurría
+    // como operación separada del `negocio.create` posterior, dejando una
+    // ventana donde un rename concurrente del Barrio podía producir un
+    // Negocio con `barrioId` correcto pero `barrio` desincronizado. Mismo
+    // patrón ya usado en PUT /api/negocios.
+    const negocio = await prisma.$transaction(async (tx) => {
+      const cliente = await tx.cliente.findUnique({
+        where: { id: parsed.data.clienteId },
+        select: { id: true },
+      })
+      if (!cliente) throw new Error('CLIENTE_NOT_FOUND')
 
-    const negocio = await prisma.negocio.create({
-      data: {
-        ...parsed.data,
-        createdById: authResult.user?.id,
-      },
-      include: {
-        cliente: { select: { id: true, nombre: true, apellido: true } },
-        ruta: { select: { id: true, nombre: true } },
-      },
+      // F1-BARRIO-CANONICO: si llega barrioId, resuelve el Barrio y
+      // sincroniza el string legacy `barrio` con su nombre canónico.
+      let barrioLegacy = parsed.data.barrio
+      if (parsed.data.barrioId) {
+        let barrioCanonico
+        try {
+          barrioCanonico = await resolverBarrioParaVinculo(parsed.data.barrioId, tx)
+        } catch (err) {
+          if (err instanceof BarrioNoEncontradoError) throw new Error('BARRIO_NOT_FOUND')
+          throw err
+        }
+        barrioLegacy = barrioCanonico.nombre
+      }
+
+      return tx.negocio.create({
+        data: {
+          ...parsed.data,
+          barrio: barrioLegacy,
+          createdById: authResult.user?.id,
+        },
+        include: {
+          cliente: { select: { id: true, nombre: true, apellido: true } },
+          ruta: { select: { id: true, nombre: true } },
+        },
+      })
     })
 
     logAudit({
@@ -100,7 +125,11 @@ export async function POST(request: NextRequest) {
     })
 
     return apiSuccess({ negocio, message: 'Negocio creado exitosamente' })
-  } catch (_error) {
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === 'CLIENTE_NOT_FOUND') return apiError('Cliente no encontrado', 404)
+      if (error.message === 'BARRIO_NOT_FOUND') return apiError('El barrio seleccionado no existe', 400)
+    }
     return apiError('Error al crear negocio', 500)
   }
 }
@@ -131,12 +160,31 @@ export async function PUT(request: NextRequest) {
     // Ahora: prisma.$transaction con row lock + updateMany con
     // condición sobre updatedAt. Si el row fue modificado,
     // count=0 → 409 con mensaje específico.
+    let vinculoAudit: { barrioId: string; nombreBarrio: string } | null = null
+
     const result = await prisma.$transaction(async (tx) => {
       const existing = await tx.negocio.findUnique({
         where: { id },
-        select: { updatedAt: true },
+        select: { updatedAt: true, barrioId: true },
       })
       if (!existing) throw new Error('NEGOCIO_NOT_FOUND')
+
+      // F1-BARRIO-CANONICO: si llega barrioId, resuelve el Barrio y
+      // sincroniza el string legacy `barrio`. Si el negocio no tenía
+      // barrioId antes, es una vinculación explícita (auditada aparte).
+      if (parsed.data.barrioId) {
+        let barrioCanonico
+        try {
+          barrioCanonico = await resolverBarrioParaVinculo(parsed.data.barrioId, tx)
+        } catch (err) {
+          if (err instanceof BarrioNoEncontradoError) throw new Error('BARRIO_NOT_FOUND')
+          throw err
+        }
+        parsed.data.barrio = barrioCanonico.nombre
+        if (!existing.barrioId) {
+          vinculoAudit = { barrioId: barrioCanonico.id, nombreBarrio: barrioCanonico.nombre }
+        }
+      }
 
       const updateResult = await tx.negocio.updateMany({
         where: { id, updatedAt: existing.updatedAt },
@@ -165,12 +213,25 @@ export async function PUT(request: NextRequest) {
       usuarioId: authResult.user?.id,
     })
 
+    if (vinculoAudit) {
+      logAudit({
+        entidad: 'Negocio',
+        registroId: id,
+        accion: 'UPDATE',
+        datos: { vinculoBarrio: vinculoAudit },
+        usuarioId: authResult.user?.id,
+      })
+    }
+
     return apiSuccess({ negocio: result, message: 'Negocio actualizado exitosamente' })
   } catch (error) {
     // FIX F-35b: mapear errores thrown desde la tx
     if (error instanceof Error) {
       if (error.message === 'NEGOCIO_NOT_FOUND') {
         return apiError('Negocio no encontrado', 404)
+      }
+      if (error.message === 'BARRIO_NOT_FOUND') {
+        return apiError('El barrio seleccionado no existe', 400)
       }
       if (error.message === 'NEGOCIO_MODIFICADO_POR_OTRO_ADMIN') {
         return apiError('El negocio fue modificado por otro admin. Recarga y vuelve a intentar.', 409)

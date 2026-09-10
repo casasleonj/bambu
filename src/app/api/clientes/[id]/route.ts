@@ -9,6 +9,7 @@ import { logAudit } from '@/lib/audit'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 import { publishRealtimeEvent } from '@/lib/realtime'
+import { BarrioNoEncontradoError, resolverBarrioParaVinculo } from '@/lib/barrios/barrio-service'
 
 // Extrae info util del error de Prisma/PostgreSQL para logging.
 // Devuelve: { pgCode, pgMessage, tableName, httpStatus, summary }.
@@ -94,6 +95,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
             tipoNegocio: true,
             direccion: true,
             barrio: true,
+            barrioId: true,
             referencia: true,
             linkUbicacion: true,
             horaApertura: true,
@@ -216,47 +218,87 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return apiError(formatZodError(parsed.error), 400)
     }
 
+    // F1-BARRIO-CANONICO (fix revisión pre-merge): resolver el Barrio y
+    // persistir barrioId+barrio DENTRO de la misma transacción que el
+    // update — antes la resolución (`prisma.barrio.findUnique`) ocurría
+    // como una operación separada, fuera de cualquier transacción, con una
+    // ventana abierta hasta el `updateMany` posterior. Un rename concurrente
+    // del Barrio en esa ventana podía dejar `barrioId` apuntando al Barrio
+    // correcto pero `barrio` con un nombre que ya no correspondía —
+    // violando el contrato de consistencia dual-write de F1. Mismo patrón
+    // ya usado en PUT /api/negocios.
+    let vinculoAudit: { barrioId: string; nombreBarrio: string } | null = null
+    let huboUpdate = false
+
     // FIX F-N20 (hallazgo 26): optimistic locking con updatedAt.
     // Antes: prisma.cliente.update directo SIN tx ni check de updatedAt.
-    // Ahora: leer updatedAt, updateMany con condición atómica.
-    const existing = await prisma.cliente.findUnique({
-      where: { id, activo: true },
-      select: { updatedAt: true },
-    })
-    if (!existing) return apiError('Not found', 404)
+    // Ahora: leer updatedAt, updateMany con condición atómica — todo
+    // dentro de la misma transacción que la resolución de Barrio.
+    const cliente = await prisma.$transaction(async (tx) => {
+      const existing = await tx.cliente.findUnique({
+        where: { id, activo: true },
+        select: { updatedAt: true, barrioId: true },
+      })
+      if (!existing) throw new Error('CLIENTE_NOT_FOUND')
 
-    if (Object.keys(parsed.data).length === 0) {
-      // No hay cambios de cliente: re-leer y devolver estado actual.
-      const cliente = await prisma.cliente.findUnique({
+      // F1-BARRIO-CANONICO: si llega barrioId, resuelve el Barrio y
+      // sincroniza el string legacy `barrio` con su nombre canónico. Un
+      // barrioId inválido nunca se acepta en silencio. Si el cliente NO
+      // tenía barrioId antes (registro legacy), esto es una "vinculación"
+      // explícita — se audita como su propio evento además del UPDATE
+      // genérico de abajo.
+      if (parsed.data.barrioId) {
+        let barrioCanonico
+        try {
+          barrioCanonico = await resolverBarrioParaVinculo(parsed.data.barrioId, tx)
+        } catch (err) {
+          if (err instanceof BarrioNoEncontradoError) throw new Error('BARRIO_NOT_FOUND')
+          throw err
+        }
+        parsed.data.barrio = barrioCanonico.nombre
+        if (!existing.barrioId) {
+          vinculoAudit = { barrioId: barrioCanonico.id, nombreBarrio: barrioCanonico.nombre }
+        }
+      }
+
+      if (Object.keys(parsed.data).length === 0) {
+        // No hay cambios de cliente: re-leer y devolver estado actual.
+        // huboUpdate queda false → se salta el audit/realtime de abajo,
+        // igual que el comportamiento original.
+        return tx.cliente.findUnique({
+          where: { id },
+          include: { contactos: { orderBy: { nombre: 'asc' } } },
+        })
+      }
+
+      const updateResult = await tx.cliente.updateMany({
+        where: {
+          id,
+          activo: true,
+          updatedAt: existing.updatedAt,
+        },
+        data: parsed.data,
+      })
+
+      if (updateResult.count === 0) {
+        throw new Error('CLIENTE_MODIFICADO_POR_OTRO_USUARIO')
+      }
+      huboUpdate = true
+
+      // Re-leer para devolver el estado final
+      return tx.cliente.findUnique({
         where: { id },
         include: { contactos: { orderBy: { nombre: 'asc' } } },
       })
-      if (!cliente) return apiError('Not found', 404)
+    })
+
+    if (!cliente) return apiError('Not found', 404)
+
+    if (!huboUpdate) {
+      // Mismo comportamiento que antes del fix: si no había cambios,
+      // devolver el estado actual sin generar ruido de auditoría/realtime.
       return apiSuccess({ cliente })
     }
-
-    const updateResult = await prisma.cliente.updateMany({
-      where: {
-        id,
-        activo: true,
-        updatedAt: existing.updatedAt,
-      },
-      data: parsed.data,
-    })
-
-    if (updateResult.count === 0) {
-      return apiError(
-        'El cliente fue modificado por otro usuario. Recarga y vuelve a intentar.',
-        409,
-      )
-    }
-
-    // Re-leer para devolver el estado final
-    const cliente = await prisma.cliente.findUnique({
-      where: { id },
-      include: { contactos: { orderBy: { nombre: 'asc' } } },
-    })
-    if (!cliente) return apiError('Not found', 404)
 
     logAudit({
       entidad: 'Cliente',
@@ -269,10 +311,34 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     })
 
+    // F1-BARRIO-CANONICO: vinculación explícita de un registro legacy
+    // (barrio!=null, barrioId=null) a su Barrio canónico — evento propio,
+    // distinto del UPDATE genérico de arriba, para que quede trazable en
+    // el historial quién/cuándo vinculó cada cliente.
+    if (vinculoAudit) {
+      logAudit({
+        entidad: 'Cliente',
+        registroId: cliente.id,
+        accion: 'UPDATE',
+        datos: { vinculoBarrio: vinculoAudit },
+        usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+      }).catch(() => {})
+    }
+
     publishRealtimeEvent('cliente.updated', cliente.id).catch(() => {})
 
     return apiSuccess({ cliente })
   } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === 'CLIENTE_NOT_FOUND') return apiError('Not found', 404)
+      if (error.message === 'BARRIO_NOT_FOUND') return apiError('El barrio seleccionado no existe', 400)
+      if (error.message === 'CLIENTE_MODIFICADO_POR_OTRO_USUARIO') {
+        return apiError(
+          'El cliente fue modificado por otro usuario. Recarga y vuelve a intentar.',
+          409,
+        )
+      }
+    }
     if (error && typeof error === 'object' && 'code' in error && (error as { code: string }).code === 'P2025') {
       return apiError('Not found', 404)
     }

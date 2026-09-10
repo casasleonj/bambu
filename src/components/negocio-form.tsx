@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Modal } from '@/components/modal'
 import { InfoBanner } from '@/components/tooltip'
 import { TipoNegocioSelect } from '@/components/tipo-negocio-select'
+import { BarrioSelect, type BarrioOption } from '@/components/barrio-select'
 import { CoordsPreview } from '@/components/coords-preview'
 
 const TIPOS_NEGOCIO: string[] = [
@@ -17,6 +18,8 @@ interface NegocioFormData {
   tipoNegocio: string
   direccion: string
   barrio: string
+  /** F1-BARRIO-CANONICO: seteado por BarrioSelect al vincular/crear un Barrio canónico. */
+  barrioId?: string
   referencia: string
   linkUbicacion: string
   horaApertura: string
@@ -28,6 +31,7 @@ const emptyFormData: NegocioFormData = {
   tipoNegocio: '',
   direccion: '',
   barrio: '',
+  barrioId: undefined,
   referencia: '',
   linkUbicacion: '',
   horaApertura: '',
@@ -45,6 +49,7 @@ interface NegocioFormProps {
     tipoNegocio: string | null
     direccion: string | null
     barrio: string | null
+    barrioId?: string | null
     referencia: string | null
     linkUbicacion: string | null
     horaApertura: string | null
@@ -67,6 +72,7 @@ export function NegocioForm({
           tipoNegocio: editData.tipoNegocio || '',
           direccion: editData.direccion || '',
           barrio: editData.barrio || '',
+          barrioId: editData.barrioId || undefined,
           referencia: editData.referencia || '',
           linkUbicacion: editData.linkUbicacion || '',
           horaApertura: editData.horaApertura || '',
@@ -98,6 +104,7 @@ export function NegocioForm({
         tipoNegocio: formData.tipoNegocio || undefined,
         direccion: formData.direccion.trim() || undefined,
         barrio: formData.barrio.trim() || undefined,
+        barrioId: formData.barrioId || undefined,
         referencia: formData.referencia.trim() || undefined,
         linkUbicacion: formData.linkUbicacion.trim() || undefined,
         horaApertura: formData.horaApertura || undefined,
@@ -197,12 +204,14 @@ export function NegocioForm({
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Barrio / Zona</label>
-            <input
-              type="text"
-              value={formData.barrio}
-              onChange={(e) => setFormData({ ...formData, barrio: e.target.value })}
-              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Barrio</label>
+            <BarrioSelect
+              value={formData.barrioId ? { id: formData.barrioId, nombre: formData.barrio } : null}
+              legacyNombre={!formData.barrioId ? formData.barrio || undefined : undefined}
+              onSelect={(barrio: BarrioOption) =>
+                setFormData({ ...formData, barrio: barrio.nombre, barrioId: barrio.id })
+              }
+              onManualChange={(v) => setFormData({ ...formData, barrio: v })}
               placeholder="Ej: Centro"
             />
           </div>

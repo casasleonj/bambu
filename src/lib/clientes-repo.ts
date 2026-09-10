@@ -140,7 +140,7 @@ async function fetchPrismaList({ where, pagination }: { where: Record<string, un
           orderBy: { nombre: 'asc' },
           select: {
             id: true, nombre: true, tipoNegocio: true, direccion: true,
-            barrio: true, referencia: true, linkUbicacion: true,
+            barrio: true, barrioId: true, referencia: true, linkUbicacion: true,
           },
         },
         plantillaRecurrente: true,
@@ -179,6 +179,8 @@ interface ClienteSearchRawRow {
   telefono: string
   direccion: string | null
   barrio: string | null
+  // F1-BARRIO-CANONICO: null si el registro es legacy (sin vincular).
+  barrioId: string | null
   notas: string | null
   fuente: string | null
   frecuencia: string
@@ -272,7 +274,7 @@ async function fetchSearchRaw({
   const [clientesRaw, totalRaw] = await Promise.all([
     prisma.$queryRaw<ClienteSearchRawRow[]>`
       SELECT DISTINCT ON (c.id)
-        c.id, c.nombre, c.apellido, c.telefono, c.direccion, c.barrio,
+        c.id, c.nombre, c.apellido, c.telefono, c.direccion, c.barrio, c."barrioId",
         c.notas, c.fuente, c.frecuencia,
         c."cadaNDias", c."ultEntrega", c."proxEntrega", c."habAgua", c."habHielo",
         c."habBotellon", c."habBolsaAgua", c."habBolsaHielo", c.verificado,
@@ -315,7 +317,7 @@ async function fetchSearchRaw({
   const [negociosMap, countsMap] = await Promise.all([
     prisma.negocio.findMany({
       where: { clienteId: { in: clienteIds }, activo: true },
-      select: { id: true, nombre: true, tipoNegocio: true, direccion: true, barrio: true, referencia: true, linkUbicacion: true, clienteId: true },
+      select: { id: true, nombre: true, tipoNegocio: true, direccion: true, barrio: true, barrioId: true, referencia: true, linkUbicacion: true, clienteId: true },
     }).then(negs => {
       const map = new Map<string, (typeof negs)[number][]>()
       for (const n of negs) {
