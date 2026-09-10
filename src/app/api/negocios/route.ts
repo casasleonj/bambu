@@ -75,40 +75,45 @@ export async function POST(request: NextRequest) {
       return apiError('Datos inválidos', 400, { formErrors: [formatZodError(parsed.error)] })
     }
 
-    // Verify cliente exists
-    const cliente = await prisma.cliente.findUnique({
-      where: { id: parsed.data.clienteId },
-      select: { id: true },
-    })
-    if (!cliente) {
-      return apiError('Cliente no encontrado', 404)
-    }
+    // F1-BARRIO-CANONICO (fix revisión pre-merge): verificar el Cliente,
+    // resolver el Barrio y crear el Negocio DENTRO de la misma transacción
+    // — antes la resolución (`resolverBarrioParaVinculo` sin tx) ocurría
+    // como operación separada del `negocio.create` posterior, dejando una
+    // ventana donde un rename concurrente del Barrio podía producir un
+    // Negocio con `barrioId` correcto pero `barrio` desincronizado. Mismo
+    // patrón ya usado en PUT /api/negocios.
+    const negocio = await prisma.$transaction(async (tx) => {
+      const cliente = await tx.cliente.findUnique({
+        where: { id: parsed.data.clienteId },
+        select: { id: true },
+      })
+      if (!cliente) throw new Error('CLIENTE_NOT_FOUND')
 
-    // F1-BARRIO-CANONICO: si llega barrioId, resuelve el Barrio y sincroniza
-    // el string legacy `barrio` con su nombre canónico.
-    let barrioLegacy = parsed.data.barrio
-    if (parsed.data.barrioId) {
-      try {
-        const barrioCanonico = await resolverBarrioParaVinculo(parsed.data.barrioId)
-        barrioLegacy = barrioCanonico.nombre
-      } catch (error) {
-        if (error instanceof BarrioNoEncontradoError) {
-          return apiError('El barrio seleccionado no existe', 400)
+      // F1-BARRIO-CANONICO: si llega barrioId, resuelve el Barrio y
+      // sincroniza el string legacy `barrio` con su nombre canónico.
+      let barrioLegacy = parsed.data.barrio
+      if (parsed.data.barrioId) {
+        let barrioCanonico
+        try {
+          barrioCanonico = await resolverBarrioParaVinculo(parsed.data.barrioId, tx)
+        } catch (err) {
+          if (err instanceof BarrioNoEncontradoError) throw new Error('BARRIO_NOT_FOUND')
+          throw err
         }
-        throw error
+        barrioLegacy = barrioCanonico.nombre
       }
-    }
 
-    const negocio = await prisma.negocio.create({
-      data: {
-        ...parsed.data,
-        barrio: barrioLegacy,
-        createdById: authResult.user?.id,
-      },
-      include: {
-        cliente: { select: { id: true, nombre: true, apellido: true } },
-        ruta: { select: { id: true, nombre: true } },
-      },
+      return tx.negocio.create({
+        data: {
+          ...parsed.data,
+          barrio: barrioLegacy,
+          createdById: authResult.user?.id,
+        },
+        include: {
+          cliente: { select: { id: true, nombre: true, apellido: true } },
+          ruta: { select: { id: true, nombre: true } },
+        },
+      })
     })
 
     logAudit({
@@ -120,7 +125,11 @@ export async function POST(request: NextRequest) {
     })
 
     return apiSuccess({ negocio, message: 'Negocio creado exitosamente' })
-  } catch (_error) {
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === 'CLIENTE_NOT_FOUND') return apiError('Cliente no encontrado', 404)
+      if (error.message === 'BARRIO_NOT_FOUND') return apiError('El barrio seleccionado no existe', 400)
+    }
     return apiError('Error al crear negocio', 500)
   }
 }

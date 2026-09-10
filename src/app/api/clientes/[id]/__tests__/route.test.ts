@@ -20,8 +20,9 @@ describe('F-N20: clientes PUT usa optimistic locking con updatedAt', () => {
     // F1-BARRIO-CANONICO agregó `barrioId: true` al mismo select (para
     // distinguir vínculo nuevo de re-confirmación) — el select ya no es
     // solo { updatedAt: true }, así que el match no exige que sea el único
-    // campo.
-    expect(putSource).toMatch(/prisma\.cliente\.findUnique\(\s*\{[\s\S]+?where:\s*\{\s*id,\s*activo:\s*true\s*\}[\s\S]+?select:\s*\{\s*updatedAt:\s*true/)
+    // campo. Fix de concurrencia pre-merge: todo el flujo (incl. este
+    // findUnique) corre DENTRO de prisma.$transaction, vía `tx`.
+    expect(putSource).toMatch(/tx\.cliente\.findUnique\(\s*\{[\s\S]+?where:\s*\{\s*id,\s*activo:\s*true\s*\}[\s\S]+?select:\s*\{\s*updatedAt:\s*true/)
   })
 
   it('FIX: el PUT usa updateMany con condición sobre updatedAt', () => {
@@ -36,7 +37,19 @@ describe('F-N20: clientes PUT usa optimistic locking con updatedAt', () => {
   })
 
   it('FIX: re-leer el cliente post-updateMany para devolver estado final', () => {
-    expect(putSource).toMatch(/prisma\.cliente\.findUnique\(\s*\{\s*where:\s*\{\s*id/)
+    expect(putSource).toMatch(/tx\.cliente\.findUnique\(\s*\{\s*where:\s*\{\s*id/)
+  })
+
+  it('F1-CONCURRENCIA (fix revisión pre-merge): resolver Barrio y persistir el update ocurren en LA MISMA transacción', () => {
+    // Antes: prisma.barrio.findUnique (sin tx) seguido, en una operación
+    // separada, de prisma.cliente.updateMany — ventana abierta a un rename
+    // concurrente del Barrio entre ambas. Ahora todo corre dentro de un
+    // único prisma.$transaction, y la resolución usa el cliente `tx`.
+    expect(putSource).toMatch(/prisma\.\$transaction\s*\(\s*async\s*\(\s*tx\s*\)\s*=>/)
+    expect(putSource).toMatch(/resolverBarrioParaVinculo\s*\(\s*parsed\.data\.barrioId,\s*tx\s*\)/)
+    // La resolución debe pasar por resolverBarrioParaVinculo(..., tx), no
+    // por un findUnique suelto fuera de la tx (fuera de un comentario).
+    expect(putSource).not.toMatch(/[^(`]await\s+prisma\.barrio\.findUnique/)
   })
 })
 

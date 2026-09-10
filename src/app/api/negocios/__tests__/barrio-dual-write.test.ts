@@ -11,8 +11,8 @@ const postSource = source.substring(postStart, putStart)
 const putSource = source.substring(putStart)
 
 describe('POST /api/negocios — dual-write barrioId', () => {
-  it('resuelve el Barrio vía resolverBarrioParaVinculo antes de crear', () => {
-    expect(postSource).toMatch(/resolverBarrioParaVinculo\s*\(\s*parsed\.data\.barrioId\s*\)/)
+  it('resuelve el Barrio vía resolverBarrioParaVinculo DENTRO de la transacción (tx)', () => {
+    expect(postSource).toMatch(/resolverBarrioParaVinculo\s*\(\s*parsed\.data\.barrioId,\s*tx\s*\)/)
   })
 
   it('un barrioId inexistente devuelve 400, no crea el negocio', () => {
@@ -22,6 +22,15 @@ describe('POST /api/negocios — dual-write barrioId', () => {
   it('sincroniza el string legacy barrio con el nombre canónico', () => {
     expect(postSource).toMatch(/barrioLegacy\s*=\s*barrioCanonico\.nombre/)
     expect(postSource).toMatch(/barrio:\s*barrioLegacy/)
+  })
+
+  it('F1-CONCURRENCIA (fix revisión pre-merge): verificar cliente + resolver Barrio + crear negocio en LA MISMA transacción', () => {
+    // Antes: resolverBarrioParaVinculo (sin tx) seguido, en una operación
+    // separada, de prisma.negocio.create — ventana abierta a un rename
+    // concurrente del Barrio entre ambas.
+    expect(postSource).toMatch(/prisma\.\$transaction\s*\(\s*async\s*\(\s*tx\s*\)\s*=>/)
+    expect(postSource).toMatch(/tx\.cliente\.findUnique/)
+    expect(postSource).toMatch(/tx\.negocio\.create/)
   })
 })
 
