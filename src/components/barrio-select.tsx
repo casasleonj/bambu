@@ -25,6 +25,14 @@ interface BarrioSelectProps {
   /** Texto legacy actual (Cliente/Negocio.barrio) — se muestra cuando `value` es null. */
   legacyNombre?: string
   onSelect: (barrio: BarrioOption) => void
+  /**
+   * Edición directa del string legacy (sin pasar por el catálogo canónico).
+   * Requerido para no romper el flujo existente: un registro legacy
+   * (barrio!=null, barrioId=null) debe seguir siendo editable como texto
+   * libre, igual que antes de F1 — "vincular" es una acción aparte, no
+   * obligatoria.
+   */
+  onManualChange: (value: string) => void
   placeholder?: string
 }
 
@@ -35,7 +43,7 @@ interface BarrioSelectProps {
  * vuelve a validar la unicidad (409 si otro usuario lo creó primero); este
  * componente nunca asume que su propia búsqueda previa es suficiente.
  */
-export function BarrioSelect({ value, legacyNombre, onSelect, placeholder = 'Buscar barrio...' }: BarrioSelectProps) {
+export function BarrioSelect({ value, legacyNombre, onSelect, onManualChange, placeholder = 'Buscar barrio...' }: BarrioSelectProps) {
   const [modoVinculo, setModoVinculo] = useState(false)
   const [query, setQuery] = useState('')
   const [isOpen, setIsOpen] = useState(false)
@@ -138,20 +146,29 @@ export function BarrioSelect({ value, legacyNombre, onSelect, placeholder = 'Bus
     )
   }
 
-  // Estado "legacy sin vincular": hay texto libre pero no barrioId.
-  if (!modoVinculo && legacyNombre) {
+  // Estado "legacy sin vincular": hay texto libre pero no barrioId. Se
+  // mantiene EDITABLE como texto libre (no rompe el flujo pre-F1: vincular
+  // a un Barrio canónico es una acción aparte, no obligatoria — ver ALS
+  // §5 "Registros legacy").
+  if (!modoVinculo && legacyNombre !== undefined) {
     return (
       <div className="space-y-1.5">
-        <div className="px-3 py-2.5 border border-amber-200 bg-amber-50 rounded-lg text-sm text-amber-900">
-          Barrio actual (sin vincular): <span className="font-medium">{legacyNombre}</span>
-        </div>
-        <button
-          type="button"
-          onClick={() => { setModoVinculo(true); setIsOpen(true); setQuery(legacyNombre) }}
-          className="text-xs text-blue-600 hover:text-blue-800 font-medium underline"
-        >
-          Vincular a barrio canónico
-        </button>
+        <input
+          type="text"
+          value={legacyNombre}
+          onChange={(e) => onManualChange(e.target.value)}
+          placeholder={placeholder}
+          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+        />
+        {legacyNombre && (
+          <button
+            type="button"
+            onClick={() => { setModoVinculo(true); setIsOpen(true); setQuery(legacyNombre) }}
+            className="text-xs text-blue-600 hover:text-blue-800 font-medium underline"
+          >
+            Vincular a barrio canónico
+          </button>
+        )}
       </div>
     )
   }

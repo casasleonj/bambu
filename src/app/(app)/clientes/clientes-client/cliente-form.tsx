@@ -254,6 +254,7 @@ export function ClienteForm({
                 onSelect={(barrio: BarrioOption) =>
                   onFormDataChange({ ...formData, barrio: barrio.nombre, barrioId: barrio.id })
                 }
+                onManualChange={(v) => onFormDataChange({ ...formData, barrio: v })}
                 placeholder="Ej: Centro, Las Flores"
               />
             </div>

@@ -211,6 +211,7 @@ export function NegocioForm({
               onSelect={(barrio: BarrioOption) =>
                 setFormData({ ...formData, barrio: barrio.nombre, barrioId: barrio.id })
               }
+              onManualChange={(v) => setFormData({ ...formData, barrio: v })}
               placeholder="Ej: Centro"
             />
           </div>
