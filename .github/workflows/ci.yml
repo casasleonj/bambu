@@ -8,14 +8,20 @@ on:
     branches:
       - main
   workflow_dispatch:
-  # Soak temporal del Pedido Hub V2 (Fase 10). Cada 4h dispara SOLO el job
+  # Soak temporal del Pedido Hub V2 (Fase 10). Cada 3h dispara SOLO el job
   # `e2e-hub` (los demás jobs se saltan vía `if: github.event_name !=
   # 'schedule'`). El objetivo es medir estabilidad sostenida en el tiempo,
   # independiente del ritmo de merges. Criterio de salida: >=72h + >=18
   # ejecuciones programadas verdes (0 failed / 0 flaky / sin retries).
   # Se elimina junto con el job `e2e-hub` en F10b.
+  #
+  # Minuto :23 (no :00) y cada 3h (no 4h): GitHub Actions descarta/retrasa
+  # los cron al tope de la hora bajo carga — las corridas de 00:00Z y 04:00Z
+  # del intento a `0 */4` no dispararon (total_count=0). :23 evita el minuto
+  # congestionado; */3 da 24 ticks en 72h → margen para drops residuales sin
+  # estirar el soak (el gate real es >=72h + >=18 verdes).
   schedule:
-    - cron: '0 */4 * * *'
+    - cron: '23 */3 * * *'
 
 concurrency:
   # `github.event_name` en el grupo: una corrida programada (soak) y una
@@ -440,7 +446,7 @@ jobs:
   # e2e-hub — soak del Pedido Hub V2 (Fase 10-C).
   #
   # Se ejecuta en push a `main` y en cada PR (validación de cambios) Y cada
-  # 4h por `schedule` (soak temporal — mide estabilidad sostenida sin
+  # 3h (:23) por `schedule` (soak temporal — mide estabilidad sostenida sin
   # depender del ritmo de merges). Es el ÚNICO job que corre en el cron: los
   # demás llevan `if: github.event_name != 'schedule'`.
   #
