@@ -12,6 +12,8 @@ export interface NegocioDetail {
   tipoNegocio: string | null
   direccion: string | null
   barrio: string | null
+  /** F1-BARRIO-CANONICO: null = negocio legacy sin vincular. */
+  barrioId?: string | null
   referencia: string | null
   linkUbicacion: string | null
   horaApertura: string | null

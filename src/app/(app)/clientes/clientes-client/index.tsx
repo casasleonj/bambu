@@ -451,6 +451,7 @@ export default function ClientesClient({
     telefono: '',
     fuente: '',
     barrio: '',
+    barrioId: undefined,
     direccion: '',
     linkUbicacion: '',
     contactos: [],
@@ -479,7 +480,7 @@ export default function ClientesClient({
   // Guard contra respuestas stale de fetchClientes en paginación (clics rápidos).
   const pageSeqRef = useRef(0)
   const [negocioFormOpen, setNegocioFormOpen] = useState(false)
-  const [negocioEditData, setNegocioEditData] = useState<{ id: string; nombre: string; tipoNegocio: string | null; direccion: string | null; barrio: string | null; referencia: string | null; linkUbicacion: string | null; horaApertura: string | null; rutaId: string | null } | null>(null)
+  const [negocioEditData, setNegocioEditData] = useState<{ id: string; nombre: string; tipoNegocio: string | null; direccion: string | null; barrio: string | null; barrioId?: string | null; referencia: string | null; linkUbicacion: string | null; horaApertura: string | null; rutaId: string | null } | null>(null)
   const [viewNegocioData, setViewNegocioData] = useState<NegocioDetail | null>(null)
   const [showNegocioDetail, setShowNegocioDetail] = useState(false)
 
@@ -877,6 +878,7 @@ export default function ClientesClient({
       telefono: '',
       fuente: '',
       barrio: '',
+      barrioId: undefined,
       direccion: '',
       linkUbicacion: '',
       contactos: [],
@@ -905,6 +907,7 @@ export default function ClientesClient({
       telefono: selectedCliente.telefono,
       fuente: selectedCliente.fuente || '',
       barrio: selectedCliente.barrio || '',
+      barrioId: selectedCliente.barrioId || undefined,
       direccion: selectedCliente.direccion || '',
       linkUbicacion: selectedCliente.linkUbicacion || '',
       contactos: selectedCliente.contactos || [],
@@ -1131,6 +1134,7 @@ export default function ClientesClient({
               telefono: updatedCliente.telefono,
               fuente: updatedCliente.fuente,
               barrio: updatedCliente.barrio,
+              barrioId: updatedCliente.barrioId,
               direccion: updatedCliente.direccion,
               linkUbicacion: updatedCliente.linkUbicacion,
               preciosEspeciales: updatedCliente.preciosEspeciales,
@@ -1348,6 +1352,7 @@ export default function ClientesClient({
       tipoNegocio: neg.tipoNegocio,
       direccion: neg.direccion,
       barrio: neg.barrio,
+      barrioId: neg.barrioId,
       referencia: neg.referencia || null,
       linkUbicacion: neg.linkUbicacion || null,
       horaApertura: neg.horaApertura || null,
@@ -2183,6 +2188,7 @@ export default function ClientesClient({
                                           tipoNegocio: neg.tipoNegocio,
                                           direccion: neg.direccion,
                                           barrio: neg.barrio,
+                                          barrioId: neg.barrioId,
                                           referencia: neg.referencia || null,
                                           linkUbicacion: neg.linkUbicacion || null,
                                           horaApertura: neg.horaApertura || null,

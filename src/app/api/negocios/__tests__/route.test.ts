@@ -23,7 +23,9 @@ describe('F-35b: negocios PUT usa optimistic locking con updatedAt', () => {
   })
 
   it('FIX: el findUnique para updatedAt está DENTRO de tx', () => {
-    expect(putSource).toMatch(/tx\.negocio\.findUnique\(\s*\{[\s\S]+?select:\s*\{\s*updatedAt:\s*true\s*\}/)
+    // F1-BARRIO-CANONICO agregó `barrioId: true` al mismo select (para
+    // distinguir vínculo nuevo de re-confirmación) — ya no es el único campo.
+    expect(putSource).toMatch(/tx\.negocio\.findUnique\(\s*\{[\s\S]+?select:\s*\{\s*updatedAt:\s*true/)
   })
 
   it('FIX: el updateMany usa condición sobre updatedAt (optimistic lock)', () => {

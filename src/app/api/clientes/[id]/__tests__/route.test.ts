@@ -17,7 +17,11 @@ describe('F-N20: clientes PUT usa optimistic locking con updatedAt', () => {
   const putSource = source.substring(putStart, patchStart)
 
   it('FIX: el PUT hace findUnique para obtener updatedAt ANTES del update', () => {
-    expect(putSource).toMatch(/prisma\.cliente\.findUnique\(\s*\{[\s\S]+?where:\s*\{\s*id,\s*activo:\s*true\s*\}[\s\S]+?select:\s*\{\s*updatedAt:\s*true\s*\}/)
+    // F1-BARRIO-CANONICO agregó `barrioId: true` al mismo select (para
+    // distinguir vínculo nuevo de re-confirmación) — el select ya no es
+    // solo { updatedAt: true }, así que el match no exige que sea el único
+    // campo.
+    expect(putSource).toMatch(/prisma\.cliente\.findUnique\(\s*\{[\s\S]+?where:\s*\{\s*id,\s*activo:\s*true\s*\}[\s\S]+?select:\s*\{\s*updatedAt:\s*true/)
   })
 
   it('FIX: el PUT usa updateMany con condición sobre updatedAt', () => {

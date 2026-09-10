@@ -378,6 +378,11 @@ export const ClienteCreateSchema = z.object({
     z.string().max(100).optional()
   ),
   barrio: z.string().max(100).optional(),
+  // F1-BARRIO-CANONICO: si se envía, el server resuelve el Barrio y
+  // sincroniza `barrio` (texto legacy) con su nombre canónico — ver
+  // src/lib/barrios/barrio-service.ts. `barrio` arriba sigue aceptándose
+  // solo para compatibilidad con clientes que aún no migraron al selector.
+  barrioId: z.string().min(1).optional(),
   direccion: z.string().max(200).optional(),
   referencia: z.string().max(200).optional(),
   linkUbicacion: SafeUrlSchema.optional().nullable(),
@@ -406,6 +411,26 @@ export const ClienteUpdateSchema = ClienteCreateSchema.omit({
   activo: z.boolean().optional(),
   updatedAt: z.string().datetime().optional(),
 }).strict();
+
+// ====================
+// BARRIO CANÓNICO (F1 — ALS Barrio/Zona, ajuste aprobado)
+// ====================
+
+export const BarrioCreateSchema = z.object({
+  nombre: z.string().trim().min(1, 'Nombre requerido').max(100),
+});
+
+/**
+ * PATCH /api/barrios/[id] — cubre rename, archivado y reactivación.
+ * Todos los campos opcionales pero al menos uno debe estar presente.
+ */
+export const BarrioUpdateSchema = z.object({
+  nombre: z.string().trim().min(1, 'Nombre requerido').max(100).optional(),
+  activo: z.boolean().optional(),
+}).refine(
+  (data) => data.nombre !== undefined || data.activo !== undefined,
+  { message: 'Debe enviar al menos un campo a actualizar' },
+);
 
 // ====================
 // ABONO / GASTO / INSUMO / COMPRA / PRODUCCION / NOMINA / CIERRE

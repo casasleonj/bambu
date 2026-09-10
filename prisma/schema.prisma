@@ -352,13 +352,19 @@ model Cliente {
   createdById String?
   createdBy   User?   @relation("ClienteCreador", fields: [createdById], references: [id])
 
-  nombre        String
-  apellido      String?
-  telefono      String
-  direccion     String?
-  barrio        String?
-  referencia    String?
-  linkUbicacion String?
+  nombre         String
+  apellido       String?
+  telefono       String
+  direccion      String?
+  // LEGACY (F1-BARRIO-CANONICO): texto libre. Cuando barrioId != null, este
+  // campo es solo una representación de compatibilidad sincronizada con
+  // Barrio.nombre — la identidad canónica es barrioId. Se mantiene para no
+  // romper consumidores que aún leen el string (planner, route-analysis.ts).
+  barrio         String?
+  barrioId       String?
+  barrioCanonico Barrio? @relation("ClienteBarrio", fields: [barrioId], references: [id], onDelete: SetNull)
+  referencia     String?
+  linkUbicacion  String?
 
   // Geo coords — Bloque 1 (Ruta por Cercanía).
   // Backfilled desde linkUbicacion parseado, o desde mediana de
@@ -458,6 +464,7 @@ model Cliente {
   @@index([telefono])
   @@index([activo])
   @@index([barrio])
+  @@index([barrioId])
   @@index([frecuencia])
   @@index([proxEntrega])
   @@index([verificado])
@@ -484,12 +491,17 @@ model Negocio {
   clienteId String
   cliente   Cliente @relation(fields: [clienteId], references: [id])
 
-  nombre        String
-  tipoNegocio   String?
-  direccion     String? // si null, fallback a cliente.direccion
-  barrio        String? // si null, fallback a cliente.barrio
-  referencia    String?
-  linkUbicacion String?
+  nombre         String
+  tipoNegocio    String?
+  direccion      String? // si null, fallback a cliente.direccion
+  // LEGACY (F1-BARRIO-CANONICO): si null, fallback a cliente.barrio. Cuando
+  // barrioId != null, este campo es solo representación de compatibilidad
+  // sincronizada con Barrio.nombre — la identidad canónica es barrioId.
+  barrio         String?
+  barrioId       String?
+  barrioCanonico Barrio? @relation("NegocioBarrio", fields: [barrioId], references: [id], onDelete: SetNull)
+  referencia     String?
+  linkUbicacion  String?
 
   // Geo coords — Bloque 1. Misma semántica que Cliente.lat/lng.
   // Si Negocio tiene coords propias, gana sobre Cliente. Si no, fallback a Cliente.
@@ -529,6 +541,37 @@ model Negocio {
   @@index([rutaId])
   @@index([activo])
   @@index([barrio])
+  @@index([barrioId])
+}
+
+// ====================
+// BARRIO CANÓNICO (F1 — ALS Barrio/Zona §3.1, §4)
+// ====================
+//
+// Identidad territorial canónica. Cliente/Negocio la referencian vía
+// barrioId, manteniendo su string legacy `barrio` como representación de
+// compatibilidad sincronizada (ver comentarios en Cliente/Negocio).
+//
+// Fuera de alcance de F1 (fases futuras del ALS): Zona, ZonaBarrio (M:N),
+// Municipio, Pedido.barrioId, integración con el planificador y con
+// route-analysis.ts. Este modelo es intencionalmente mínimo.
+model Barrio {
+  id                String  @id @default(cuid())
+  nombre            String
+  nombreNormalizado String
+  activo            Boolean @default(true)
+
+  clientes Cliente[] @relation("ClienteBarrio")
+  negocios Negocio[] @relation("NegocioBarrio")
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
+
+  // Unicidad global por nombre normalizado (independiente de `activo`):
+  // un Barrio archivado no puede "liberar" su nombre para que se cree un
+  // duplicado — debe reactivarse en su lugar (regla R1/R10 del ALS).
+  @@unique([nombreNormalizado])
+  @@index([activo])
 }
 
 // ====================
@@ -707,9 +750,9 @@ model Pedido {
   /// herencia de cantidad/pago — es un Pedido completo con su propio ciclo
   /// de vida). `onDelete: Restrict` preserva la trazabilidad: nunca se puede
   /// borrar el Pedido original mientras exista un relacionado apuntándolo.
-  pedidoOrigenId       String?
-  pedidoOrigen         Pedido?  @relation("PedidoRelacionado", fields: [pedidoOrigenId], references: [id], onDelete: Restrict)
-  pedidosRelacionados  Pedido[] @relation("PedidoRelacionado")
+  pedidoOrigenId      String?
+  pedidoOrigen        Pedido?  @relation("PedidoRelacionado", fields: [pedidoOrigenId], references: [id], onDelete: Restrict)
+  pedidosRelacionados Pedido[] @relation("PedidoRelacionado")
 
   tipo  String @default("ENVIO")
   canal String @default("DOMICILIO")
@@ -994,12 +1037,12 @@ model Embarque {
   ordenVisita  Json?
   optimizadoEn DateTime?
 
-  pedidos       Pedido[]          @relation("PedidoEmbarqueActual")
-  pedidosOrigen Pedido[]          @relation("PedidoEmbarqueOrigen")
-  pagos         Pago[]            @relation("PagoEmbarque") // ADR-PAGO-EMBARQUE-CAPTURA-001
+  pedidos       Pedido[]           @relation("PedidoEmbarqueActual")
+  pedidosOrigen Pedido[]           @relation("PedidoEmbarqueOrigen")
+  pagos         Pago[]             @relation("PagoEmbarque") // ADR-PAGO-EMBARQUE-CAPTURA-001
   gpsTracks     GpsTrack[]
   productos     EmbarqueProducto[]
-  gastos    Gasto[]
+  gastos        Gasto[]
 
   // FASE 2 (ledger físico)
   cargas        EmbarqueCarga[]
@@ -1256,7 +1299,7 @@ model PedidoCantidadAjuste {
   delta            Int
   motivo           String
   autorizadoPorId  String
-  autorizadoPor    User   @relation("AjusteAutorizador", fields: [autorizadoPorId], references: [id], onDelete: Restrict)
+  autorizadoPor    User     @relation("AjusteAutorizador", fields: [autorizadoPorId], references: [id], onDelete: Restrict)
   // N2 (AGUA_BAMBU_N2_ALS_v2.0.md §2.2): monto del diferencial económico
   // aplicado por este ajuste. Null si el ajuste es puramente de cantidad, sin
   // diferencial. Positivo = cargo adicional al Pedido; negativo = crédito a
@@ -1669,22 +1712,22 @@ model Abono {
 /// `ReceivableEntry` tipo `REVERSION`. `montoRevertido` siempre > 0 (es una
 /// reversión, no un abono negativo — `chk_abono_monto_pos` lo prohíbe).
 model CorreccionAbono {
-  id             String  @id @default(cuid())
-  numero         String  @unique // COR-00000
-  abonoId        String
-  abono          Abono   @relation(fields: [abonoId], references: [id], onDelete: Restrict)
-  tipo           String // MONTO | CLIENTE | FACTURA | NO_RECIBIDO
-  montoRevertido Decimal @db.Decimal(10, 2)
-  motivo         String  @db.Text
-  autorizadoPorId String
-  autorizadoPor   User   @relation("CorreccionAbonoAutorizador", fields: [autorizadoPorId], references: [id], onDelete: Restrict)
+  id                   String              @id @default(cuid())
+  numero               String              @unique // COR-00000
+  abonoId              String
+  abono                Abono               @relation(fields: [abonoId], references: [id], onDelete: Restrict)
+  tipo                 String // MONTO | CLIENTE | FACTURA | NO_RECIBIDO
+  montoRevertido       Decimal             @db.Decimal(10, 2)
+  motivo               String              @db.Text
+  autorizadoPorId      String
+  autorizadoPor        User                @relation("CorreccionAbonoAutorizador", fields: [autorizadoPorId], references: [id], onDelete: Restrict)
   /// Si tipo = NO_RECIBIDO (D.7): investigación vía ResponsibilityCase PAGO_NO_CONFIRMADO.
   /// `SetNull` — la corrección es un hecho histórico que sobrevive al caso.
   responsibilityCaseId String?
   responsibilityCase   ResponsibilityCase? @relation(fields: [responsibilityCaseId], references: [id], onDelete: SetNull)
   /// Idempotencia offline-first (dedup real por DB, no solo por el lock).
-  correccionOfflineId  String? @unique
-  createdAt      DateTime @default(now()) @db.Timestamptz()
+  correccionOfflineId  String?             @unique
+  createdAt            DateTime            @default(now()) @db.Timestamptz()
 
   @@index([abonoId])
   @@index([responsibilityCaseId])

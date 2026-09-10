@@ -66,10 +66,22 @@ export async function POST(request: NextRequest) {
     const result = await Promise.race([
       executeSerializableWithRetry<
         | { kind: 'existing'; cliente: { id: string; nombre: string; telefono: string; offlineId: string | null; clienteId: string } }
-        | { kind: 'created'; cliente: { id: string; nombre: string; telefono: string; clienteId: string } }
+        | { kind: 'created'; cliente: { id: string; nombre: string; telefono: string; clienteId: string; barrioId: string | null } }
         | { kind: 'duplicate_phone'; existingNombre: string }
+        | { kind: 'barrio_not_found' }
       >(
         async (tx) => {
+        // F1-BARRIO-CANONICO: si llega barrioId, resuelve el Barrio DENTRO
+        // de la misma transacción y sincroniza el string legacy `barrio`
+        // con su nombre canónico. Un barrioId inválido nunca se acepta en
+        // silencio.
+        let barrioLegacy = parsed.data.barrio
+        if (parsed.data.barrioId) {
+          const barrioCanonico = await tx.barrio.findUnique({ where: { id: parsed.data.barrioId } })
+          if (!barrioCanonico) return { kind: 'barrio_not_found' as const }
+          barrioLegacy = barrioCanonico.nombre
+        }
+
         // 1. Dedup por offlineId
         if (parsed.data.offlineId) {
           const existente = await tx.cliente.findUnique({
@@ -107,7 +119,8 @@ export async function POST(request: NextRequest) {
             apellido: parsed.data.apellido,
             telefono: parsed.data.telefono,
             fuente: parsed.data.fuente,
-            barrio: parsed.data.barrio,
+            barrio: barrioLegacy,
+            barrioId: parsed.data.barrioId ?? null,
             direccion: parsed.data.direccion,
             linkUbicacion: parsed.data.linkUbicacion ?? null,
             referencia: parsed.data.referencia ?? null,
@@ -123,6 +136,7 @@ export async function POST(request: NextRequest) {
             telefono: true,
             fuente: true,
             barrio: true,
+            barrioId: true,
             direccion: true,
             linkUbicacion: true,
             preciosEspeciales: true,
@@ -140,6 +154,10 @@ export async function POST(request: NextRequest) {
     timeoutPromise,
   ])
 
+    if (result.kind === 'barrio_not_found') {
+      return apiError('El barrio seleccionado no existe', 400)
+    }
+
     if (result.kind === 'duplicate_phone') {
       return apiError('Ya existe un cliente con ese teléfono', 409, {
         formErrors: [`El teléfono ya está registrado en "${result.existingNombre}"`],
@@ -155,7 +173,11 @@ export async function POST(request: NextRequest) {
       entidad: 'Cliente',
       registroId: result.cliente.id,
       accion: 'CREATE',
-      datos: { nombre: result.cliente.nombre, telefono: result.cliente.telefono },
+      datos: {
+        nombre: result.cliente.nombre,
+        telefono: result.cliente.telefono,
+        ...(result.cliente.barrioId ? { barrioId: result.cliente.barrioId } : {}),
+      },
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     }).catch(() => {})
 

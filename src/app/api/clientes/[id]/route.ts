@@ -94,6 +94,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
             tipoNegocio: true,
             direccion: true,
             barrio: true,
+            barrioId: true,
             referencia: true,
             linkUbicacion: true,
             horaApertura: true,
@@ -221,9 +222,24 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     // Ahora: leer updatedAt, updateMany con condición atómica.
     const existing = await prisma.cliente.findUnique({
       where: { id, activo: true },
-      select: { updatedAt: true },
+      select: { updatedAt: true, barrioId: true },
     })
     if (!existing) return apiError('Not found', 404)
+
+    // F1-BARRIO-CANONICO: si llega barrioId, resuelve el Barrio y sincroniza
+    // el string legacy `barrio` con su nombre canónico. Un barrioId inválido
+    // nunca se acepta en silencio (404). Si el cliente NO tenía barrioId
+    // antes (registro legacy), esto es una "vinculación" explícita — se
+    // audita como su propio evento además del UPDATE genérico de abajo.
+    let vinculoAudit: { barrioId: string; nombreBarrio: string } | null = null
+    if (parsed.data.barrioId) {
+      const barrioCanonico = await prisma.barrio.findUnique({ where: { id: parsed.data.barrioId } })
+      if (!barrioCanonico) return apiError('El barrio seleccionado no existe', 400)
+      parsed.data.barrio = barrioCanonico.nombre
+      if (!existing.barrioId) {
+        vinculoAudit = { barrioId: barrioCanonico.id, nombreBarrio: barrioCanonico.nombre }
+      }
+    }
 
     if (Object.keys(parsed.data).length === 0) {
       // No hay cambios de cliente: re-leer y devolver estado actual.
@@ -268,6 +284,20 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       datos: parsed.data,
       usuarioId: (authResult.user as { id?: string } | undefined)?.id,
     })
+
+    // F1-BARRIO-CANONICO: vinculación explícita de un registro legacy
+    // (barrio!=null, barrioId=null) a su Barrio canónico — evento propio,
+    // distinto del UPDATE genérico de arriba, para que quede trazable en
+    // el historial quién/cuándo vinculó cada cliente.
+    if (vinculoAudit) {
+      logAudit({
+        entidad: 'Cliente',
+        registroId: cliente.id,
+        accion: 'UPDATE',
+        datos: { vinculoBarrio: vinculoAudit },
+        usuarioId: (authResult.user as { id?: string } | undefined)?.id,
+      }).catch(() => {})
+    }
 
     publishRealtimeEvent('cliente.updated', cliente.id).catch(() => {})
 
