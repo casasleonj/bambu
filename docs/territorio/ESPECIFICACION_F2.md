@@ -41,15 +41,22 @@ antes de tocar código.
 > `Pedido.barrioEntrega`. Clasificar: frecuencia, municipio, variantes,
 > equivalencias, valores vacíos, valores sospechosos."
 
-- **Estado: PENDIENTE.** No ejecutado. Requiere una consulta de solo lectura
-  contra producción (accesible vía Supabase MCP en esta sesión, sin necesidad de
-  herramienta nueva) para generar el inventario real antes de diseñar el
-  matching — el matching no debe diseñarse sobre datos hipotéticos.
+- **Estado: EJECUTADO** (evidencia de producción / estado técnico actual, **no
+  es una decisión de producto**) — ver `docs/territorio/M1_INVENTARIO_BARRIO.md`.
+  Solo lectura contra producción, cero escrituras. Hallazgo clave: la cifra
+  inicial "231 con valor" en `Cliente.barrio` incluía 105 registros que son
+  solo espacios en blanco tras `trim` — el valor real utilizable es 126. 52
+  nombres normalizados distintos en total, 23 ya resueltos por normalización
+  determinista, ~9 familias ambiguas que no deben auto-fusionarse (ver
+  ejemplos "tesoro/altos del tesoro" y "gaitana/gaitán", donde alta similaridad
+  textual no implica el mismo barrio), 1 valor de ruido evidente. Cero `Barrio`
+  y cero `barrioId` existen hoy en producción — F1 parte de una pizarra limpia.
 - **BRECHA PLAN ↔ CÓDIGO:** el plan pide clasificar "por municipio". Municipio
   no existe como entidad ni como concepto en el código (decisión ya tomada en
   F1, ver traceability). Ese eje de clasificación es **OBSOLETO** y se omite del
   inventario; el resto de los ejes (frecuencia, variantes, equivalencias,
-  vacíos, sospechosos) sigue aplicando sin cambios.
+  vacíos, sospechosos) sigue aplicando sin cambios — y ya están cubiertos en
+  `M1_INVENTARIO_BARRIO.md`.
 
 ### M2 — Normalización
 
@@ -135,7 +142,7 @@ antes de tocar código.
 
 | Ítem (Plan Técnico §6) | Categoría |
 |---|---|
-| M1 — Inventario (ejes no-municipio) | PENDIENTE |
+| M1 — Inventario (ejes no-municipio) | EJECUTADO — evidencia, no decisión (ver `M1_INVENTARIO_BARRIO.md`) |
 | M1 — Clasificación "por municipio" | OBSOLETO |
 | M2 — Normalización determinista | IMPLEMENTADO EN MAIN |
 | M3 — Tabla de equivalencia | PENDIENTE (diseño abierto, ver PROPUESTA) |
@@ -162,7 +169,8 @@ antes de tocar código.
 
 ## Próximo paso
 
-Con esta especificación aceptada, el siguiente paso (todavía sin código) es la
-**Ronda 1** real del protocolo de investigación para las dos propuestas
-abiertas (M3: modelo de persistencia de equivalencias; M4: script vs. UI de
-revisión), apoyada en el inventario real de M1 una vez ejecutado — no antes.
+M1 ya se ejecutó (`M1_INVENTARIO_BARRIO.md`) — evidencia de producción, sin
+decisiones tomadas. El siguiente paso (todavía sin código) es la **Ronda 1**
+real del protocolo de investigación para las dos propuestas abiertas (M3:
+modelo de persistencia de equivalencias; M4: script vs. UI de revisión),
+apoyada en esa evidencia real en vez de datos hipotéticos.
