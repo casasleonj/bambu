@@ -57,32 +57,53 @@ jobs:
   # documental, hay que sumarla a mano a ALLOWED_PREFIXES/ALLOWED_FILES más
   # abajo — nunca reemplazar esto por un patrón `*.md` genérico.
   #
-  # Solo aplica al evento `pull_request` (necesita un base/head real que
-  # comparar). `push`/`workflow_dispatch` a `main` y `schedule` (soak)
-  # siempre corren el E2E completo sin evaluar esta lógica — no hay "diff
-  # de PR" que clasificar y main es la fuente de verdad del baseline.
+  # Este job SIEMPRE corre (sin `if:` a nivel de job), en todos los eventos
+  # — incluido `schedule`. Corrección 2026-09-13: una versión anterior tenía
+  # `if: github.event_name != 'schedule'` acá, lo que lo saltaba en el cron
+  # del soak. Un job downstream con `needs: detect-changes` se salta por
+  # defecto si el job del que depende se saltó (salvo que su propio `if` lo
+  # anule explícitamente) — así que ese `if` dejaba `needs.detect-changes.
+  # outputs.e2e_required` vacío en `schedule`, contradiciendo el propósito
+  # de esta clasificación. La lógica interna del step de abajo YA maneja
+  # `schedule`/`push`/`workflow_dispatch` correctamente (primer `if` del
+  # script: cualquier evento que no sea `pull_request` fuerza
+  # `e2e_required=true` de inmediato) — el job solo necesitaba dejar de
+  # saltarse a sí mismo para que esa rama se ejecutara. Sin esto, no hace
+  # falta ninguna clasificación adicional ni una excepción nueva: es la
+  # misma lógica de siempre, ahora sin el `if` que la desactivaba.
+  #
+  # Solo el bloque de `pull_request` de abajo evalúa el diff real (necesita
+  # un base/head que comparar). Para `push`/`workflow_dispatch`/`schedule`
+  # este job corre igual (es barato, ~8s) pero siempre resuelve
+  # `e2e_required=true` sin mirar ningún diff — no hay "diff de PR" que
+  # clasificar y `main` es la fuente de verdad del baseline.
   #
   # ADVERTENCIA para quien toque branch protection: NINGÚN "E2E (n/8)"
   # individual (ni el job `e2e` como grupo) debe marcarse como required
-  # status check en `main` mientras este skip exista. Si el job se salta
-  # (matrix completo con `if:` en false), los nombres de check
-  # "E2E (1/8)".."E2E (8/8)" nunca se generan en absoluto — ni siquiera como
-  # "skipped" — porque la matriz nunca se expande. Un required check
-  # configurado contra esos nombres exactos dejaría cualquier PR docs-only
-  # colgado esperando un status que nunca llega (comportamiento documentado:
-  # github.com/actions/runner/issues/952). Verificado el 2026-09-13 que hoy
-  # NINGÚN "E2E (n/8)" es required (PR #249, 8/8 en rojo, mergeable_state
-  # quedó en "unstable" — no "blocked" — que es exactamente la semántica de
-  # "check no-requerido en rojo" de la API de GitHub). Si en el futuro se
-  # necesita que el E2E sea un gate obligatorio, hace falta un job-resumen
-  # que corra siempre (incluso cuando el matrix se salta) y reporte un único
-  # nombre de check estable — no marcar los legs del matrix individuales.
+  # status check en `main` mientras este skip exista. Regla general
+  # documentada por GitHub: un job saltado vía `if:` se reporta como
+  # "skipped" y cuenta como "Success" para checks requeridos — así que en
+  # principio un required check sobre un job saltado no bloquea el merge.
+  # Pero con un job de **matrix** (como `e2e`), si se salta antes de
+  # expandirse, los nombres de check individuales ("E2E (1/8)".."E2E (8/8)")
+  # ni siquiera llegan a generarse como "skipped" — no existen en absoluto
+  # para ese commit. Un required check configurado contra esos nombres
+  # exactos dejaría cualquier PR docs-only colgado esperando un status que
+  # nunca llega (comportamiento documentado: github.com/actions/runner/
+  # issues/952). La política real, más simple, es la de arriba: ningún
+  # "E2E (n/8)" individual debe ser required mientras este skip exista.
+  # Verificado el 2026-09-13 que hoy NINGÚN "E2E (n/8)" es required (PR #249,
+  # 8/8 en rojo, `mergeable_state` quedó en "unstable" — no "blocked" — que
+  # es la semántica documentada de "check no-requerido en rojo" de la API de
+  # GitHub, no un required check incumplido). Si en el futuro se necesita
+  # que el E2E sea un gate obligatorio, hace falta un job-resumen que corra
+  # siempre (incluso cuando el matrix se salta) y reporte un único nombre de
+  # check estable — no marcar los legs del matrix individuales.
   # ───────────────────────────────────────────────────────────────────────────
   detect-changes:
     name: Detect change scope (docs-only vs. executable)
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    if: github.event_name != 'schedule'
     outputs:
       e2e_required: ${{ steps.classify.outputs.e2e_required }}
 
@@ -345,9 +366,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     needs: detect-changes
-    # Suite legacy (V2 OFF). El cron cada 4h es solo para el soak del Hub.
-    # `detect-changes.outputs.e2e_required` implementa la política de
-    # skip para PRs docs-only — ver el comentario extenso en ese job.
+    # Suite legacy (V2 OFF). `github.event_name != 'schedule'` es la
+    # exclusión ORIGINAL de este job (previa a la política de skip
+    # docs-only, sin relación con ella): el cron de 3h es exclusivamente el
+    # soak de `e2e-hub` (más abajo) — la suite legacy de 8 shards nunca
+    # corrió en `schedule`, para no pagar el costo completo de Playwright
+    # cada 3h además del soak dedicado. `detect-changes.outputs.e2e_required`
+    # es la política de skip para PRs docs-only — ver el comentario extenso
+    # en ese job — y ahora es fiable en todo evento (2026-09-13: se corrigió
+    # que `detect-changes` se saltaba a sí mismo en `schedule`, lo que
+    # hubiera dejado este `needs.detect-changes.outputs...` vacío ahí; no
+    # cambia nada en la práctica porque el `!= 'schedule'` de la izquierda ya
+    # excluía `schedule` de todas formas, pero antes del fix dependía de dos
+    # condiciones redundantes en vez de una sola fuente de verdad fiable).
     if: github.event_name != 'schedule' && needs.detect-changes.outputs.e2e_required == 'true'
     strategy:
       fail-fast: false
