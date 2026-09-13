@@ -31,6 +31,118 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # ───────────────────────────────────────────────────────────────────────────
+  # detect-changes — política de CI por tipo de cambio (aprobada por el
+  # equipo, 2026-09-13 — decisión de infraestructura independiente de
+  # TERRITORIO-F2). El E2E completo (8 shards) es costoso (~15-25 min cada
+  # uno) y no aporta señal cuando el diff no puede afectar comportamiento
+  # ejecutable. Validado empíricamente contra 6 PRs históricos 100%
+  # documentales (#153, #193, #202, #204, #234, #236): en los 6,
+  # Type check+Tests/Lint/Integration pasaron y el E2E completo falló 8/8 —
+  # mismo patrón crónico de infra ya documentado en Known Issues #20/#25,
+  # nunca una regresión real atribuible al contenido.
+  #
+  # REGLA — allowlist explícita, NUNCA por extensión (un ".md" no es
+  # automáticamente seguro; un archivo de config/workflow/contrato con esa
+  # extensión SÍ debe forzar E2E):
+  #   - docs/**    → cualquier archivo bajo este directorio
+  #   - AGENTS.md  → instrucciones del agente, revisado explícitamente
+  # Todo lo demás fuerza e2e_required=true SIN EXCEPCIÓN, incluida
+  # cualquier otra ruta .md en la raíz del repo no listada acá a mano
+  # (README.md, CLAUDE.md, *_REPORT.md, plan-maestro-*.md, etc. — auditados
+  # el 2026-09-13, sin referencias desde src/**/scripts/**/config, pero
+  # deliberadamente NO incluidos en esta iteración: la regla del equipo es
+  # "clasificar explícitamente antes de incluir", no "incluir por defecto
+  # porque parece inofensivo"). Si se agrega una nueva ruta puramente
+  # documental, hay que sumarla a mano a ALLOWED_PREFIXES/ALLOWED_FILES más
+  # abajo — nunca reemplazar esto por un patrón `*.md` genérico.
+  #
+  # Solo aplica al evento `pull_request` (necesita un base/head real que
+  # comparar). `push`/`workflow_dispatch` a `main` y `schedule` (soak)
+  # siempre corren el E2E completo sin evaluar esta lógica — no hay "diff
+  # de PR" que clasificar y main es la fuente de verdad del baseline.
+  #
+  # ADVERTENCIA para quien toque branch protection: NINGÚN "E2E (n/8)"
+  # individual (ni el job `e2e` como grupo) debe marcarse como required
+  # status check en `main` mientras este skip exista. Si el job se salta
+  # (matrix completo con `if:` en false), los nombres de check
+  # "E2E (1/8)".."E2E (8/8)" nunca se generan en absoluto — ni siquiera como
+  # "skipped" — porque la matriz nunca se expande. Un required check
+  # configurado contra esos nombres exactos dejaría cualquier PR docs-only
+  # colgado esperando un status que nunca llega (comportamiento documentado:
+  # github.com/actions/runner/issues/952). Verificado el 2026-09-13 que hoy
+  # NINGÚN "E2E (n/8)" es required (PR #249, 8/8 en rojo, mergeable_state
+  # quedó en "unstable" — no "blocked" — que es exactamente la semántica de
+  # "check no-requerido en rojo" de la API de GitHub). Si en el futuro se
+  # necesita que el E2E sea un gate obligatorio, hace falta un job-resumen
+  # que corra siempre (incluso cuando el matrix se salta) y reporte un único
+  # nombre de check estable — no marcar los legs del matrix individuales.
+  # ───────────────────────────────────────────────────────────────────────────
+  detect-changes:
+    name: Detect change scope (docs-only vs. executable)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event_name != 'schedule'
+    outputs:
+      e2e_required: ${{ steps.classify.outputs.e2e_required }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Classify diff (docs-only vs. requires E2E)
+        id: classify
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "e2e_required=true" >> "$GITHUB_OUTPUT"
+            echo "No es un pull_request (evento: ${{ github.event_name }}) — el E2E completo siempre corre."
+            exit 0
+          fi
+
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          CHANGED_FILES=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+
+          echo "Archivos modificados en este PR (base $BASE_SHA -> head $HEAD_SHA):"
+          echo "$CHANGED_FILES"
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "e2e_required=true" >> "$GITHUB_OUTPUT"
+            echo "No se pudo calcular el diff (vacío) — el E2E completo corre por seguridad."
+            exit 0
+          fi
+
+          ALLOWED_PREFIXES=("docs/")
+          ALLOWED_FILES=("AGENTS.md")
+
+          OUTSIDE_ALLOWLIST=""
+          while IFS= read -r file; do
+            [ -z "$file" ] && continue
+            MATCHED="false"
+            for prefix in "${ALLOWED_PREFIXES[@]}"; do
+              case "$file" in
+                "$prefix"*) MATCHED="true" ;;
+              esac
+            done
+            for allowed in "${ALLOWED_FILES[@]}"; do
+              [ "$file" = "$allowed" ] && MATCHED="true"
+            done
+            if [ "$MATCHED" = "false" ]; then
+              OUTSIDE_ALLOWLIST="$OUTSIDE_ALLOWLIST$file"$'\n'
+            fi
+          done <<< "$CHANGED_FILES"
+
+          if [ -n "$OUTSIDE_ALLOWLIST" ]; then
+            echo "e2e_required=true" >> "$GITHUB_OUTPUT"
+            echo "Archivos fuera del allowlist docs-only (fuerzan E2E completo):"
+            echo "$OUTSIDE_ALLOWLIST"
+          else
+            echo "e2e_required=false" >> "$GITHUB_OUTPUT"
+            echo "Todo el diff cae dentro del allowlist docs-only (docs/**, AGENTS.md) — E2E completo omitido."
+          fi
+
   quality:
     name: Type check + Tests
     runs-on: ubuntu-latest
@@ -232,8 +344,11 @@ jobs:
     name: E2E (${{ matrix.shard }}/${{ strategy.job-total }})
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    needs: detect-changes
     # Suite legacy (V2 OFF). El cron cada 4h es solo para el soak del Hub.
-    if: github.event_name != 'schedule'
+    # `detect-changes.outputs.e2e_required` implementa la política de
+    # skip para PRs docs-only — ver el comentario extenso en ese job.
+    if: github.event_name != 'schedule' && needs.detect-changes.outputs.e2e_required == 'true'
     strategy:
       fail-fast: false
       matrix:
