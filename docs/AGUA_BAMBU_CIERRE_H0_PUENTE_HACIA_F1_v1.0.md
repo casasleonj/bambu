@@ -1,12 +1,12 @@
 # AGUA BAMBÚ — CIERRE DE H0.5–H0.8: TRAZABILIDAD HACIA EL PLAN MAESTRO (F0→F8)
 
-**Versión:** 1.0
-**Fecha:** 2026-09-13
-**Responde a:** aclaración explícita del equipo — H0.5–H0.8 son gates técnicos internos de preparación, no una iniciativa paralela al Plan Maestro Consolidado v3.1. Este documento cierra ese hilo y establece la trazabilidad pedida antes de avanzar a F1.
+**Versión:** 1.1
+**Fecha:** 2026-09-13 (corrección de fuente el mismo día — ver nota abajo)
+**Responde a:** aclaración explícita del equipo — H0.5–H0.8 son trabajo técnico auxiliar de preparación/verificación, subordinado al Plan Maestro v1.0, no una iniciativa paralela ni una nueva arquitectura. Este documento cierra ese hilo y establece la trazabilidad pedida antes de avanzar a F1.
 
-**Nota de fuente:** no tengo acceso local al "Plan Maestro Consolidado v3.1 (12/09/2026)" — no existe en `docs/` de este repo. La descripción de F1 usada acá viene literalmente de este mensaje del equipo, y coincide verbatim con la sección §61 del `AGUA_BAMBU_PLAN_MAESTRO_INTEGRIDAD_COMERCIAL_v1.0.md` original ("F1 — Autoridad de crédito: consolidar cálculo; exposición monetaria; paridad Preview/Commit"). Si la v3.1 define F2–F8 con matices que no aparecen en ese v1.0 ni en este mensaje, este documento no los cubre — no los invento.
+**Nota de fuente (corregida):** no existe un "Plan Maestro Consolidado v3.1" separado — el equipo confirmó que los documentos base son, únicamente, `AGUA_BAMBU_PLAN_MAESTRO_INTEGRIDAD_COMERCIAL_v1.0.md` y `AGUA_BAMBU_ALS_INTEGRIDAD_COMERCIAL_v1.0.als`, ambos ya revisados desde el inicio de este trabajo. La secuencia F0→F8 y la descripción de F1 usadas en este documento vienen directamente de la sección §61 de ese Plan Maestro v1.0 ("F1 — Autoridad de crédito: consolidar cálculo; exposición monetaria; paridad Preview/Commit"), sin ninguna fuente adicional. La v1.0 anterior de este documento dejaba abierta la duda sobre una "v3.1" — queda resuelta: es el mismo v1.0.
 
-**Este documento no es H0.9.** Es el cierre del puente H0.x, no una extensión de la etapa de análisis.
+**Este documento no es H0.9.** Es el cierre del puente H0.x, no una extensión de la etapa de análisis. H0.5–H0.8 no son un proyecto de "bloqueos" — son la brecha técnica de `cliente.bloqueado`/crédito resuelta *dentro* del modelo de Crédito/Fiado que el Plan Maestro v1.0 ya define, tal como el equipo lo precisó.
 
 ---
 
