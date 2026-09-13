@@ -62,6 +62,10 @@ vi.mock('@/lib/auth-check', () => ({
 vi.mock('@/lib/config', () => ({
   getConfigBool: (...args: unknown[]) => mockGetConfigBool(...args),
   getConfig: async () => null, // METODOS_REQUIEREN_CONFIRMACION → default del ADR
+  // F1: GetFiadoStatusUseCase (autoridad de crédito compartida) usa
+  // getConfigInt para el límite de fiados global — sin config seedeada,
+  // cae al defaultValue que le pasa el caller (LIMITE_FIADOS_DEFAULT).
+  getConfigInt: async (_clave: string, defaultValue = 0) => defaultValue,
 }))
 vi.mock('@/lib/storage', () => ({
   uploadBase64Foto: (...args: unknown[]) => mockUploadBase64Foto(...args),

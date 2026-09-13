@@ -7,8 +7,11 @@ import { withAdvisoryLock, acquireAdvisoryLockTx } from '@/lib/locks'
 import { getNextNumero } from '@/lib/sequence'
 import { resolverPreciosPedido, type Canal, type ProductCode } from '@/lib/pricing'
 import type { MetodoPago } from '@prisma/client'
-import { calcularEstadoPago, puedeFiar, puedeCrearPedido, resolverLimiteFiados } from '@/lib/pedido-utils'
+import { calcularEstadoPago, puedeFiar } from '@/lib/pedido-utils'
 import { normalizarPagos } from '@/modules/pedidos/domain/services/pagos-calculator.service'
+import { GetFiadoStatusUseCase } from '@/modules/pedidos/application/use-cases/GetFiadoStatusUseCase'
+import { PrismaPedidoRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaPedidoRepository'
+import { PrismaClienteRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaClienteRepository'
 import { buildPedidoLegacyFields } from '@/lib/pedido-legacy'
 import { logAudit } from '@/lib/audit'
 import { ROLES, CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
@@ -24,6 +27,14 @@ import { incrementMetric } from '@/lib/metrics'
 import { registrarReceivableEntry } from '@/lib/receivable-entry'
 import { datosConfirmacionInicial, parseMetodosRequierenConfirmacion } from '@/lib/pago-confirmacion'
 import { OrigenPedido, EstadoEntrega } from '@prisma/client'
+
+// F1 (Autoridad de Crédito, docs/AGUA_BAMBU_F1_DISENO_TECNICO_AUTORIDAD_CREDITO_v1.0.md):
+// esta ruta vive fuera del composition root del módulo `pedidos` (usa `tx`
+// crudo, no repos inyectados) — se instancia directo en vez de crear una
+// fábrica solo por estética de arquitectura (decisión explícita del
+// equipo). Los repos Prisma son stateless (tx se pasa por-llamada), así
+// que una única instancia a nivel de módulo es segura de reutilizar.
+const fiadoAuthority = new GetFiadoStatusUseCase(new PrismaPedidoRepository(), new PrismaClienteRepository())
 
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth()
@@ -179,30 +190,21 @@ export async function POST(request: NextRequest) {
       // estadoPago PROYECTADO con el estado real: prepago + entrega pendiente → ANTICIPADO (G5.1).
       const estadoPago = calcularEstadoPago(total, totalPagadoAplicado, estadoEntregaFinal)
 
-      // 6b. Verificar límite de fiados si el pedido va a quedar con saldo.
-      // FIX C-FIADOS-1: solo pedidos ENTREGADOS con saldo > 0 cuentan.
-      if (!esAnonimo && cliente && puedeFiar(cliente, esAnonimo) && totalPagado < total) {
-        const pedidosPendientes = await tx.pedido.findMany({
-          where: {
-            clienteId: cliente.id,
-            estadoEntrega: 'ENTREGADO',
-            saldo: { gt: 0 },
-            estadoPago: { notIn: ['PAGADO', 'ANTICIPADO', 'ANULADO'] },
-          },
-          orderBy: { numero: 'asc' },
-          select: { id: true, numero: true, saldo: true },
+      // 6b. F1 (Autoridad de Crédito): consulta de pendientes + decisión
+      // consolidadas en GetFiadoStatusUseCase — MISMA autoridad que usan
+      // PreviewPedidoUseCase y CrearPedidoUseCase. Antes esta ruta
+      // reimplementaba a mano tanto la consulta (tx.pedido.findMany, igual
+      // a PrismaPedidoRepository.findPendingByCliente) como la decisión
+      // (puedeCrearPedido). `puedeFiar` (arriba) sigue siendo un guard
+      // propio de esta ruta, no duplicado en ningún otro lado.
+      if (!esAnonimo && cliente && puedeFiar(cliente, esAnonimo)) {
+        const fiadoStatus = await fiadoAuthority.execute({
+          clienteId: cliente.id,
+          operacion: { total, totalPagado: totalPagadoAplicado },
+          tx,
         })
-
-        const configLimite = await tx.config.findUnique({ where: { clave: 'LIMITE_PEDIDOS_FIADOS_DEFAULT' } })
-        const limiteFiados = resolverLimiteFiados(cliente, configLimite?.valor ?? null)
-
-        const errorDeuda = puedeCrearPedido(
-          cliente,
-          pedidosPendientes.map((p) => ({ id: p.id, numero: p.numero, saldo: Number(p.saldo) })),
-          limiteFiados,
-        )
-        if (errorDeuda) {
-          throw new Error(`CLIENTE_DEBE: ${errorDeuda}`)
+        if (fiadoStatus.errorDeuda) {
+          throw new Error(`CLIENTE_DEBE: ${fiadoStatus.errorDeuda}`)
         }
       }
 
