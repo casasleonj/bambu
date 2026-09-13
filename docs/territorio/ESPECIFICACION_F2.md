@@ -46,11 +46,15 @@ antes de tocar código.
   Solo lectura contra producción, cero escrituras. Hallazgo clave: la cifra
   inicial "231 con valor" en `Cliente.barrio` incluía 105 registros que son
   solo espacios en blanco tras `trim` — el valor real utilizable es 126. 52
-  nombres normalizados distintos en total, 23 ya resueltos por normalización
-  determinista, ~9 familias ambiguas que no deben auto-fusionarse (ver
+  nombres normalizados distintos en total, clasificados en 4 categorías
+  reales (corregido tras revisión — ver `M1_INVENTARIO_BARRIO.md` §6): 13 ya
+  resueltos por normalización determinista sin ambigüedad cruzada, 16
+  candidatos de grafía única que requieren validación humana liviana, 22
+  valores agrupados en 10 familias ambiguas que no deben auto-fusionarse (ver
   ejemplos "tesoro/altos del tesoro" y "gaitana/gaitán", donde alta similaridad
-  textual no implica el mismo barrio), 1 valor de ruido evidente. Cero `Barrio`
-  y cero `barrioId` existen hoy en producción — F1 parte de una pizarra limpia.
+  textual no implica el mismo barrio), y 1 valor de ruido evidente. Cero
+  `Barrio` y cero `barrioId` existen hoy en producción — F1 parte de una
+  pizarra limpia.
 - **BRECHA PLAN ↔ CÓDIGO:** el plan pide clasificar "por municipio". Municipio
   no existe como entidad ni como concepto en el código (decisión ya tomada en
   F1, ver traceability). Ese eje de clasificación es **OBSOLETO** y se omite del

@@ -77,17 +77,26 @@ totales sumando `Cliente` + `Negocio` + `Pedido`.
 | `5 de diciembre` | "5 de Diciembre "×1 (C) · "5 de diciembre"×1 (N) | 2 |
 | `aida quintero` | "Aida Quintero"×1 (C) · "aida quintero"×1 (N) | 2 |
 
-Valores únicos sin variantes de escritura (una sola fuente, una sola grafía) —
-se vuelven candidatos directos a `Barrio` nuevo, sin conflicto de matching,
-pero como aparecen una sola vez conviene una revisión humana ligera antes de
-darlos por buenos (podrían ser errores de tipeo aislados, no necesariamente
-ruido): `15 de noviembre`, `20 de marzo`, `altos del tesoro`, `el carmen`,
-`el estadio`, `el libano`, `la antillana`, `la gaitana`, `la victoria`,
-`las margaritas 2`, `libano`, `los laureles`, `margarita 1`, `margaritas`,
-`palmeras`, `primero de mayo`, `santa rita`, `urbanizacion don emerito`,
+Valores únicos sin variantes de escritura (una sola fuente, una sola grafía):
+28 nombres. **Importante — corregido tras revisión:** un valor único NO
+equivale automáticamente a un `Barrio` válido; "sin variante detectada" no es
+lo mismo que "confirmado". De estos 28, **12 en realidad pertenecen a una de
+las familias ambiguas de la sección 3** (comparten posible barrio con otro
+nombre normalizado distinto) y no deben tratarse aquí como independientes:
+`altos del tesoro`, `la antillana`, `la gaitana`, `las margaritas 2`,
+`libano`, `los laureles`, `margarita 1`, `margaritas`, `palmeras`,
+`el libano`, `gaitan` (N), `mercado publico` (N) — ver §3 para su
+clasificación real.
+
+Los **16 restantes no tienen ninguna ambigüedad cruzada conocida** y son los
+únicos que caen en la categoría "candidato que requiere validación liviana"
+(podrían ser barrios reales confirmados por una sola revisión humana, o
+errores de tipeo aislados — no se asume ninguna de las dos cosas sin esa
+revisión): `15 de noviembre`, `20 de marzo`, `el carmen`, `el estadio`,
+`la victoria`, `primero de mayo`, `santa rita`, `urbanizacion don emerito`,
 `villa mafe`, `villa olimpica`, `machique` (N), `15 diciembre` (N),
-`barrio las delicias` (N), `gaitan` (N), `mercado publico` (N),
-`nueva esperanza` (N), `san martin` (N), `san vicente` (N).
+`barrio las delicias` (N), `nueva esperanza` (N), `san martin` (N),
+`san vicente` (N).
 
 ## 3. Casos ambiguos — familias que probablemente son el mismo barrio real pero NO normalizan igual
 
@@ -143,21 +152,36 @@ real de `Pedido.barrioEntrega` no es calidad de dato sino **cobertura**: 197 de
 
 ## 6. Resumen cuantitativo
 
-- **52 nombres normalizados distintos** en total (`Cliente` + `Negocio`;
-  `Pedido` no aporta ninguno nuevo).
-- **23 clusters** ya resueltos por normalización determinista (variantes de
-  mayúsculas/acentos/espacios de un mismo nombre) — cero ambigüedad.
-- **28 valores** que aparecen con una sola grafía (posibles `Barrio` directos,
-  con revisión humana ligera recomendada antes de crear cada uno).
-- **~9 familias ambiguas** (≈20 valores) que requieren decisión humana
-  explícita antes de cualquier fusión — no son matcheables por normalización
-  ni deberían auto-fusionarse solo por similaridad textual alta (el caso
-  "gaitana/gaitán" y "tesoro/altos del tesoro" muestran que la similaridad
-  alta puede ser engañosa).
-- **1 valor** es ruido evidente, no un barrio.
+**Corrección (revisión posterior a la primera versión de este documento):**
+la clasificación original de esta sección aproximaba "~9 familias ambiguas
+(≈20 valores)" y presentaba los 28 valores de grafía única como si fueran
+casi automáticamente válidos. Ambas cosas eran imprecisas. La partición
+correcta de los 52 nombres normalizados en **4 categorías reales**, sin
+solapamiento, es:
+
+| Categoría | Definición | Nombres | Ejemplos |
+|---|---|---|---|
+| A. Equivalencia determinista | ≥2 grafías distintas que ya normalizan al mismo valor, y ese valor no comparte ambigüedad con ningún otro nombre normalizado — no requiere ninguna decisión, solo vincular registros existentes | **13** | `centro`, `san jose`, `instituto`, `martinez barbosa`, `camilo torres`, `alfonso avila`, `tiburon`, `fatima`, `la pista`, `las flores`, `villa eduardo`, `5 de diciembre`, `aida quintero` |
+| B. Candidato que requiere validación | grafía única, sin ambigüedad cruzada — no es un barrio confirmado solo por aparecer una vez; necesita revisión humana liviana antes de crear el `Barrio` | **16** | `15 de noviembre`, `el carmen`, `santa rita`, `villa mafe`, `san martin`, `san vicente`, ... (lista completa en §2) |
+| C. Familia ambigua | 2+ nombres normalizados distintos que probablemente refieren al mismo barrio real, pero difieren en algo más que mayúsculas/acentos/espacios (artículo, sufijo, numeración) — **exige decisión explícita de fusión o separación por familia**, nunca automática | **22** (agrupados en **10 familias**) | `antillana`/`la antillana`; `el tesoro`/`altos del tesoro`; `la gaitana`/`gaitan` |
+| D. No representa un Barrio | ruido evidente, no es un nombre de barrio | **1** | `"Droguería fama YyY ubica en el romboy de la 25"` |
+
+13 + 16 + 22 + 1 = **52**. ✓ (verificado por conteo exhaustivo de cada fila de
+§2 y §3 contra esta partición; ver Apéndice para los valores crudos).
+
 - **105 registros de `Cliente`** tienen `barrio` efectivamente vacío (solo
   espacios) pese a no ser `NULL` — deben excluirse de cualquier matching, no
   tratarse como "sin dato limpio".
+
+**Regla explícita que corrige la ambigüedad original:** ni la categoría A ni
+la B autorizan una fusión entre nombres normalizados distintos — A y B
+producen, cada una, **un `Barrio` por nombre normalizado**, sin excepción.
+Solo la categoría C decide si dos o más nombres normalizados se convierten en
+el mismo `Barrio`, y esa decisión es exclusivamente humana, registrada con su
+evidencia (Ronda 2 de M3/M4, ver `RONDA1_M3_M4_PROPUESTA.md`). El caso
+"gaitana/gaitán" y "tesoro/altos del tesoro" (alta similaridad textual, muy
+probablemente barrios distintos) es la evidencia concreta de por qué la
+categoría C no puede resolverse por similaridad automática.
 
 Ningún número de esta sección es una meta ni una decisión de diseño — es el
 conteo real sobre el que la Ronda 1 de M3/M4 debe apoyarse.
