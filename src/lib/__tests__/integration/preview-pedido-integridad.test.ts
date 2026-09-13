@@ -45,14 +45,17 @@ function makePreviewUseCase() {
 }
 
 function makeCrearUseCase() {
+  const pedidoRepo = new PrismaPedidoRepository()
+  const clienteRepo = new PrismaClienteRepository()
   return new CrearPedidoUseCase(
-    new PrismaPedidoRepository(),
+    pedidoRepo,
     new PrismaFacturaRepository(),
     new PrismaPagoRepository(),
-    new PrismaClienteRepository(),
+    clienteRepo,
     new PrismaPricingAdapter(),
     new PrismaTransactionManager(),
     resolverCoordsDeLink,
+    new GetFiadoStatusUseCase(pedidoRepo, clienteRepo),
   )
 }
 

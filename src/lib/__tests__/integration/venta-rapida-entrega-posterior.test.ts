@@ -6,7 +6,17 @@
 //      cantEntrega = 0, cantPedido intacto.
 //   2. venta rápida + entregado:true (o ausente) → ENTREGADO + PAGADO (histórico).
 //   3. entregado:false NO afecta a un pedido normal (ya nace PENDIENTE).
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest'
+
+// F1 (Autoridad de Crédito): CrearPedidoUseCase ahora usa GetFiadoStatusUseCase
+// → getConfigInt → getConfig, que envuelve la query en unstable_cache — eso
+// requiere un incrementalCache que solo existe dentro de un request de Next
+// ("Invariant: incrementalCache missing"). Mismo mock que ya usan
+// preview-pedido-integridad.test.ts / entrega-suficiencia-integridad.test.ts.
+vi.mock('next/cache', () => ({
+  unstable_cache: (fn: (...args: unknown[]) => unknown) => fn,
+  revalidateTag: vi.fn(),
+}))
 import { testPrisma, resetAndSeed, disconnect, uniqueId } from './setup'
 import { CrearPedidoUseCase } from '@/modules/pedidos/application/use-cases/CrearPedidoUseCase'
 import { PrismaPedidoRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaPedidoRepository'
@@ -16,6 +26,7 @@ import { PrismaClienteRepository } from '@/modules/pedidos/infrastructure/reposi
 import { PrismaPricingAdapter } from '@/modules/pedidos/infrastructure/repositories/PrismaPricingAdapter'
 import { PrismaTransactionManager } from '@/modules/pedidos/infrastructure/transactions/PrismaTransactionManager'
 import { resolverCoordsDeLink } from '@/lib/geo/resolver-coords-de-link'
+import { GetFiadoStatusUseCase } from '@/modules/pedidos/application/use-cases/GetFiadoStatusUseCase'
 
 describe('CrearPedidoUseCase — venta rápida con entrega posterior', () => {
   let useCase: CrearPedidoUseCase
@@ -55,6 +66,7 @@ describe('CrearPedidoUseCase — venta rápida con entrega posterior', () => {
       new PrismaPricingAdapter(),
       new PrismaTransactionManager(),
       resolverCoordsDeLink,
+      new GetFiadoStatusUseCase(new PrismaPedidoRepository(), new PrismaClienteRepository()),
     )
   })
 

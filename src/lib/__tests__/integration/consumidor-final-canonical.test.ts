@@ -21,6 +21,7 @@ import { PrismaClienteRepository } from '@/modules/pedidos/infrastructure/reposi
 import { PrismaPricingAdapter } from '@/modules/pedidos/infrastructure/repositories/PrismaPricingAdapter'
 import { PrismaTransactionManager } from '@/modules/pedidos/infrastructure/transactions/PrismaTransactionManager'
 import { resolverCoordsDeLink } from '@/lib/geo/resolver-coords-de-link'
+import { GetFiadoStatusUseCase } from '@/modules/pedidos/application/use-cases/GetFiadoStatusUseCase'
 
 describe('CrearPedidoUseCase — cliente canónico CONSUMIDOR_FINAL', () => {
   let useCase: CrearPedidoUseCase
@@ -45,6 +46,7 @@ describe('CrearPedidoUseCase — cliente canónico CONSUMIDOR_FINAL', () => {
       new PrismaPricingAdapter(),
       new PrismaTransactionManager(),
       resolverCoordsDeLink,
+      new GetFiadoStatusUseCase(new PrismaPedidoRepository(), new PrismaClienteRepository()),
     )
   })
 

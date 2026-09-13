@@ -31,6 +31,11 @@ const clienteRepo = new PrismaClienteRepository()
 const pricingAdapter = new PrismaPricingAdapter()
 const notaCreditoRepo = new PrismaNotaCreditoRepository()
 
+// F1 (Autoridad de Crédito): se construye ANTES de crearPedidoUseCase
+// porque ahora es una dependencia suya — misma instancia que consume
+// previewPedidoUseCase más abajo.
+export const getFiadoStatusUseCase = new GetFiadoStatusUseCase(pedidoRepo, clienteRepo)
+
 export const crearPedidoUseCase = new CrearPedidoUseCase(
   pedidoRepo,
   facturaRepo,
@@ -39,6 +44,7 @@ export const crearPedidoUseCase = new CrearPedidoUseCase(
   pricingAdapter,
   txManager,
   resolverCoordsDeLink,
+  getFiadoStatusUseCase,
 )
 
 export const listarPedidosUseCase = new ListarPedidosUseCase(pedidoRepo)
@@ -72,8 +78,6 @@ export const actualizarPedidoUseCase = new ActualizarPedidoUseCase(
   txManager,
   resolverCoordsDeLink,
 )
-
-export const getFiadoStatusUseCase = new GetFiadoStatusUseCase(pedidoRepo, clienteRepo)
 
 export const previewPedidoUseCase = new PreviewPedidoUseCase({
   pricingPort: pricingAdapter,

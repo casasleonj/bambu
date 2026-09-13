@@ -24,8 +24,8 @@ import type { IFacturaRepository } from '../../domain/repositories/IFacturaRepos
 import type { IPagoRepository } from '../../domain/repositories/IPagoRepository'
 import type { IClienteRepository } from '../../domain/repositories/IClienteRepository'
 import type { IPricingPort } from '../../domain/repositories/IPricingPort'
-import { puedeCrearPedido, resolverLimiteFiados } from '../../domain/services/pedido-validation.service'
 import { normalizarPagos } from '../../domain/services/pagos-calculator.service'
+import { GetFiadoStatusUseCase } from './GetFiadoStatusUseCase'
 import { leerMetodosRequierenConfirmacion } from '@/lib/pago-confirmacion'
 import type { ITransactionManager } from '../../infrastructure/transactions/PrismaTransactionManager'
 import type { CrearPedidoInput, CrearPedidoResult } from '../dto'
@@ -49,6 +49,8 @@ export class CrearPedidoUseCase {
     /** `linkUbicacion → coords` server-only. Se llama FUERA del lock/tx (I/O
      *  con redirects); el resultado se pasa a `resolverEntrega` adentro. */
     private resolverCoordsDeLink: ResolverCoordsDeLink,
+    /** F1: Autoridad de Crédito — misma instancia que usa PreviewPedidoUseCase. */
+    private getFiadoStatusUseCase: GetFiadoStatusUseCase,
   ) {}
 
   async execute(input: CrearPedidoInput): Promise<CrearPedidoResult> {
@@ -265,30 +267,19 @@ export class CrearPedidoUseCase {
       // Cubre venta rápida con entrega posterior (estadoEntrega = PENDIENTE).
       const estadoPago = EstadoPagoVO.proyectar(total, totalPagado, estadoEntrega.get())
 
-      // 6. Validate credit limit — solo si el pedido va a quedar con saldo
-      // pendiente (fiado real). Un pedido pagado de contado (o cubierto por
-      // saldo a favor, ver montoCredito arriba) no debe bloquearse por el
-      // límite de fiados histórico del cliente: bloquear ventas ya pagadas
-      // contradice el propósito del límite (evitar más deuda) y rompe Venta
-      // Rápida ("paga en el momento") para clientes que ya están al límite.
-      // Mismo criterio que /api/pedidos/venta-libre. Se evalúa acá (no antes
-      // de calcular totalPagado) porque recién en este punto se sabe si el
-      // pedido quedará fiado.
-      if (totalPagado < total) {
-        const pedidosPendientes = await this.pedidoRepo.findPendingByCliente(clienteId, tx)
-        const configLimite = await tx.config.findUnique({
-          where: { clave: 'LIMITE_PEDIDOS_FIADOS_DEFAULT' },
-          select: { valor: true },
-        })
-        const limite = resolverLimiteFiados(cliente ?? {}, configLimite?.valor ?? null)
-        const errorDeuda = puedeCrearPedido(
-          { id: clienteId, bloqueado: cliente?.bloqueado ?? false, verificado: cliente?.verificado ?? false, creadoPorRol: cliente?.creadoPorRol || '' },
-          pedidosPendientes,
-          limite,
-        )
-        if (errorDeuda) {
-          throw new Error(`CLIENTE_DEBE: ${errorDeuda}`)
-        }
+      // 6. F1 (Autoridad de Crédito, docs/AGUA_BAMBU_F1_DISENO_TECNICO_AUTORIDAD_CREDITO_v1.0.md):
+      // consulta de pendientes + decisión consolidadas en GetFiadoStatusUseCase
+      // — MISMA autoridad que usan PreviewPedidoUseCase y venta-libre. El
+      // guard "solo bloquea si el pedido va a quedar con saldo pendiente"
+      // vive ahora DENTRO de la autoridad, no acá. Se evalúa en este punto
+      // (no antes) porque recién acá se conoce `totalPagado`.
+      const fiadoStatus = await this.getFiadoStatusUseCase.execute({
+        clienteId,
+        operacion: { total, totalPagado },
+        tx,
+      })
+      if (fiadoStatus.errorDeuda) {
+        throw new Error(`CLIENTE_DEBE: ${fiadoStatus.errorDeuda}`)
       }
 
       // FIX Fase 2 §3.4: si hay excedente sobre el saldo restante, se acredita al cliente

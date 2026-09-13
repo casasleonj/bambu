@@ -32,7 +32,7 @@ function makeDeps(): PreviewPedidoDeps {
       findMany: vi.fn().mockResolvedValue([]),
     } as never,
     getFiadoStatusUseCase: {
-      execute: vi.fn().mockResolvedValue({ count: 0, limite: 2, nivel: 'ok', pedidos: [] }),
+      execute: vi.fn().mockResolvedValue({ count: 0, limite: 2, nivel: 'ok', pedidos: [], outstandingAmount: 0, status: 'OK', errorDeuda: null }),
     } as never,
     getPrecioMinimos: vi.fn().mockResolvedValue([]),
     resolverCoordsDeLink: vi.fn().mockResolvedValue(null),
@@ -121,6 +121,8 @@ describe('PreviewPedidoUseCase — permissions + warnings', () => {
     const deps = makeDeps()
     ;(deps.getFiadoStatusUseCase.execute as ReturnType<typeof vi.fn>).mockResolvedValue({
       count: 2, limite: 2, nivel: 'limite', pedidos: [{ id: 'a', numero: 1, saldo: 100 }, { id: 'b', numero: 2, saldo: 200 }],
+      outstandingAmount: 300, status: 'AT_LIMIT',
+      errorDeuda: 'Cliente tiene 2 pedidos fiados (límite: 2). Pague primero para crear más.',
     })
     const r = await new PreviewPedidoUseCase(deps).execute({ clienteId: 'c1', items: [{ producto: 'PACA_AGUA', cantidad: 1 }], actorId: 'u1' })
     expect(r.permissions.canCreate).toBe(false)
@@ -133,6 +135,10 @@ describe('PreviewPedidoUseCase — permissions + warnings', () => {
     ;(deps.clienteRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: 'c1', nombre: 'X', apellido: null, telefono: '3001112233', direccion: 'Calle 1', barrio: 'Centro',
       bloqueado: true, verificado: true, creadoPorRol: 'ADMIN', limitePedidosFiados: null, preciosEspeciales: null,
+    })
+    ;(deps.getFiadoStatusUseCase.execute as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 0, limite: 2, nivel: 'ok', pedidos: [], outstandingAmount: 0, status: 'OK',
+      errorDeuda: 'Cliente bloqueado por deuda vencida. Pague primero.',
     })
     const r = await new PreviewPedidoUseCase(deps).execute({ clienteId: 'c1', items: [{ producto: 'PACA_AGUA', cantidad: 1 }], actorId: 'u1' })
     expect(r.permissions.canCreate).toBe(false)
@@ -152,6 +158,11 @@ describe('PreviewPedidoUseCase — permissions + warnings', () => {
     expect(r.permissions.canCreate).toBe(true)
     expect(r.warnings.some(w => w.code === 'FIADO_SOBRE_LIMITE')).toBe(false)
     expect(r.allowedActions).toContain('crear')
+    // F1: la decisión pasa por la autoridad real (GetFiadoStatusUseCase),
+    // Preview no reimplementa el guard totalPagado<total — se lo delega.
+    expect(deps.getFiadoStatusUseCase.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ clienteId: 'c1', operacion: { total: 27000, totalPagado: 27000 } }),
+    )
   })
 
   it('FIX preview-commit-credito: cliente bloqueado pero pedido pagado de contado → NO bloquea', async () => {
