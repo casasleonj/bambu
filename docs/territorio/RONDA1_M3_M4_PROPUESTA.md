@@ -1,14 +1,19 @@
 # TERRITORIO-F2 — Ronda 1/2: persistencia de equivalencias (M3) y mecanismo de backfill (M4)
 
-- Estado: PROPUESTA (revisión 2) — pendiente de aprobación explícita del
+- Estado: PROPUESTA (revisión 3) — pendiente de aprobación formal del
   equipo. Sin código todavía.
 - Fecha: 2026-09-13 (revisión de la propuesta original del 2026-09-13, tras
-  feedback del equipo con 7 garantías adicionales requeridas)
+  feedback del equipo con 7 garantías adicionales requeridas, y una tercera
+  ronda con 3 ajustes puntuales sobre esa revisión)
 - Fuente: `docs/territorio/ESPECIFICACION_F2.md` (dos decisiones abiertas) +
   `docs/territorio/M1_INVENTARIO_BARRIO.md` (evidencia real de producción,
   corregida en esta misma fecha — ver su propia nota de corrección en §6)
 - Gate: no se escribe código de TERRITORIO-F2 hasta que el equipo apruebe
-  esta revisión o pida otra alternativa.
+  esta revisión o pida otra alternativa. El equipo ya confirmó que la
+  **dirección arquitectónica está convergida** (JSON versionado + script
+  one-off + dry-run + ejecución transaccional + idempotencia + constraint DB
+  como autoridad + legacy intacto + conflictos explícitos) — no reabrir ese
+  diseño; los 3 ajustes de esta revisión son puntuales, no un rediseño.
 
 ## Qué cambió respecto a la propuesta original
 
@@ -34,6 +39,32 @@ revisión). Los ejemplos de fusión de la propuesta original (`antillana`/
 `la antillana`, `el tesoro`/`altos del tesoro`, etc.) **siguen sin
 decidirse** — se usan aquí solo como ejemplos de formato, nunca como
 decisiones territoriales tomadas por similitud textual.
+
+## Qué cambió en esta revisión (3 ajustes puntuales, ronda 3)
+
+El equipo confirmó que la revisión 2 convergió la dirección arquitectónica
+correcta y pidió únicamente estos 3 ajustes antes de dar la aprobación
+formal — no una reapertura del diseño:
+
+1. **Separar "ledger de decisiones" de "reporte/evidencia de ejecución".**
+   El ledger de M3 sigue teniendo una entrada por `valorNormalizado` (52, no
+   177) — eso no cambia. Lo que cambia es el nombre y el alcance: ya no se
+   llama "ledger por registro", porque el ledger nunca tuvo una entrada por
+   `Cliente`/`Negocio`. Se agrega una sección nueva (ver "Reporte de
+   ejecución") que especifica el detalle por registro que el script debe
+   producir como evidencia — eso es responsabilidad del reporte, no del
+   ledger.
+2. **`FUSIONAR_EN` a un solo salto, sin cadenas.** La validación ahora exige
+   que `fusionarEn` apunte directamente a una entrada con
+   `decision: CREAR_BARRIO` o `decision: MANTENER_SEPARADO` — nunca a otra
+   entrada `FUSIONAR_EN`. Se prohíben explícitamente las cadenas
+   (`A → B → C`) y los ciclos.
+3. **Modelo transaccional explícito.** Se aclara que cada entrada del
+   ledger se procesa en su propia transacción atómica — un fallo en una
+   entrada hace rollback solo de esa entrada, se marca `ERROR` en el reporte,
+   y el proceso continúa con las demás. Una segunda ejecución retoma el
+   trabajo pendiente (incluidas las entradas `ERROR`) de forma segura e
+   idempotente.
 
 ## Ronda 1 — Descubrimiento (sin cambios respecto a la propuesta original)
 
@@ -103,14 +134,24 @@ resuelve automáticamente, porque ahí no hay ninguna ambigüedad de nombre que
 decidir — es exactamente el mismo caso que M5 (dual-read) ya resuelve hoy
 para variantes de mayúsculas/acentos.
 
-### Decisión M3: ledger auditable por registro (sin tabla nueva)
+### Decisión M3: ledger de decisiones por valor normalizado (sin tabla nueva)
+
+**Corrección de nombre (ajuste 1 de la ronda 3):** este archivo es un
+**ledger de decisiones**, no un "ledger por registro" — nunca tuvo, ni debe
+tener, una entrada por cada uno de los 177 `Cliente`/`Negocio`. Registra la
+decisión humana sobre cada uno de los **52 `valorNormalizado`** (13 A + 16 B
++ 22 C + 1 D). El detalle de qué registro concreto fue afectado por esa
+decisión — trazabilidad de ejecución, no de decisión — vive en el **reporte
+de ejecución** que el script produce al correr (ver la subsección
+siguiente), nunca en este JSON.
 
 **Se mantiene la decisión de no crear ningún modelo Prisma nuevo** — el
 razonamiento de escala de la propuesta original sigue aplicando (38 valores
-a revisar, no un flujo recurrente). Lo que cambia es la forma del archivo:
-en vez de 3 arreglos planos (`fusionar`/`mantenerSeparados`/`descartar`),
+a revisar, no un flujo recurrente). Lo que cambia respecto a la propuesta
+original es la forma del archivo: en vez de 3 arreglos planos
+(`fusionar`/`mantenerSeparados`/`descartar`),
 `scripts/backfill-barrio-canonico.decisiones.json` es un **ledger**: un
-arreglo con una entrada por cada uno de los 52 nombres normalizados,
+arreglo con una entrada por cada uno de los 52 nombres normalizados (no 177),
 generado a partir de `M1_INVENTARIO_BARRIO.md` y editado a mano por el
 equipo para registrar cada decisión con su evidencia.
 
@@ -122,7 +163,7 @@ interface DecisionLedgerEntry {
   fuentes: ('CLIENTE' | 'NEGOCIO' | 'PEDIDO')[]   // de dónde viene, evidencia de M1 §5
   n: number                          // cantidad de registros que usan este valor (de M1)
   decision: 'CREAR_BARRIO' | 'FUSIONAR_EN' | 'MANTENER_SEPARADO' | 'DESCARTAR' | 'PENDIENTE_DECISION'
-  fusionarEn: string | null          // si decision=FUSIONAR_EN, el valorNormalizado del Barrio destino (debe existir como otra entrada del ledger con decision CREAR_BARRIO o MANTENER_SEPARADO)
+  fusionarEn: string | null          // si decision=FUSIONAR_EN, el valorNormalizado de OTRA entrada cuya propia decision sea CREAR_BARRIO o MANTENER_SEPARADO — un solo salto, nunca otra entrada FUSIONAR_EN (sin cadenas A→B→C, sin ciclos)
   barrioCanonico: string | null      // nombre legible a usar en Barrio.nombre (ej. "La Antillana"); null mientras esté PENDIENTE_DECISION
   razon: string                      // evidencia/justificación humana, obligatoria si decision != PENDIENTE_DECISION
   estado: 'RESUELTO' | 'PENDIENTE'
@@ -216,11 +257,47 @@ ejecutar, en modo dry-run y en modo real):
   `M1_INVENTARIO_BARRIO.md` (Apéndice) — ninguna de más, ninguna de menos.
 - Ninguna entrada con `decision: "PENDIENTE_DECISION"` puede procesarse — el
   script las reporta como pendientes y no crea ni vincula nada para ellas.
-- `FUSIONAR_EN` debe apuntar a un `valorNormalizado` que exista en el mismo
-  ledger con `decision` distinta de `PENDIENTE_DECISION`/`DESCARTAR` — un
-  ciclo o una referencia rota es un error de validación, no se ejecuta nada.
+- **`FUSIONAR_EN` a un solo salto (ajuste 2 de la ronda 3):** el
+  `valorNormalizado` referenciado en `fusionarEn` debe existir en el ledger y
+  su propia entrada debe tener `decision: "CREAR_BARRIO"` o
+  `decision: "MANTENER_SEPARADO"` — nunca `decision: "FUSIONAR_EN"`. Una
+  cadena (`A.fusionarEn = "B"` con `B.decision = "FUSIONAR_EN"`) o un ciclo
+  (`A.fusionarEn = "B"` y `B.fusionarEn = "A"`, incluido el caso trivial de
+  una entrada que se referencia a sí misma) es un error de validación —no se
+  ejecuta nada—. Esto garantiza que el `Barrio` destino de toda fusión existe
+  y se resuelve en un único paso, sin tener que recorrer una cadena en tiempo
+  de ejecución.
 - Toda entrada con `decision` distinta de `PENDIENTE_DECISION` requiere
   `razon` no vacía.
+
+### Reporte de ejecución (evidencia por registro — ajuste 1 de la ronda 3)
+
+El ledger de M3 decide **por valor normalizado** (52 entradas). Pero cada
+ejecución real del script (y también el `--dry-run`) debe producir,
+además del resumen agregado (ver formato de reporte más abajo), un **log de
+ejecución por registro** que permita reconstruir exactamente qué
+`Cliente`/`Negocio` concreto fue afectado y cómo:
+
+```ts
+interface ExecutionLogEntry {
+  entidad: 'CLIENTE' | 'NEGOCIO'
+  registroId: string                 // Cliente.id / Negocio.id
+  valorLegacyOriginal: string        // Cliente.barrio / Negocio.barrio tal cual está hoy — nunca se modifica, solo se registra
+  valorNormalizado: string           // enlaza esta fila con su entrada en el ledger de decisiones
+  barrioIdAnterior: string | null    // valor de barrioId antes de correr el script
+  barrioIdResultante: string | null  // valor después — igual al anterior si no hubo cambio (no-op, conflicto, pendiente, descartado)
+  resultado: 'VINCULADO' | 'YA_CORRECTO' | 'CONFLICTO' | 'PENDIENTE_DECISION' | 'DESCARTADO' | 'ERROR'
+  detalleError?: string              // solo presente si resultado = 'ERROR'
+}
+```
+
+Este log (uno por registro procesado, de los 177 del universo de M1 — 126
+`Cliente` + 51 `Negocio`) es la evidencia que el checklist del gate de F2
+(punto 5, "ejecución real sin pérdida") usa para verificar que ningún
+registro queda sin contabilizar. El ledger de decisiones (52 entradas) y el
+log de ejecución (hasta 177 entradas) son artefactos distintos con
+propósitos distintos: uno registra **qué se decidió** por nombre, el otro
+registra **qué pasó** por registro.
 
 ### Garantía de no-destrucción (categoría D y `PENDIENTE_DECISION`)
 
@@ -262,6 +339,7 @@ Registros a vincular:       <N>  (Cliente: <n>, Negocio: <n>)
 Registros que quedan sin barrioId (PENDIENTE_DECISION): <N>  — detalle por valor
 Registros que quedan sin barrioId (DESCARTAR):          <N>  — detalle por valor
 CONFLICTOS detectados:       <N>  — detalle: registro, barrioId actual, barrioId esperado por el ledger
+ERRORES (solo modo real):    <N>  — detalle por entrada: valorNormalizado, mensaje de error (siempre 0 en dry-run, que no escribe nada)
 Anomalías:                    <N>  — ej. valorNormalizado del ledger que ya no existe en producción (dato cambió entre M1 y la ejecución)
 
 Ledger inválido / bloqueante: <lista de errores de validación, si los hay>
@@ -270,7 +348,31 @@ Ledger inválido / bloqueante: <lista de errores de validación, si los hay>
 Ningún registro se modifica en este modo. El reporte es el criterio de
 aprobación final del equipo antes de correr el modo real.
 
-#### Modo real (dentro de una transacción por lote, no una sola transacción gigante)
+#### Modelo transaccional (ajuste 3 de la ronda 3)
+
+Antes de detallar los pasos del modo real, se deja explícito el modelo de
+transacciones, porque determina cómo se interpreta cada resultado del log de
+ejecución:
+
+- **Una transacción atómica por entrada del ledger** (por `valorNormalizado`,
+  no por registro individual ni una única transacción para las 52). Esa
+  transacción crea el `Barrio` (si corresponde) y vincula todos los
+  `Cliente`/`Negocio` asociados a ese valor.
+- **No existe una transacción global para toda la corrida.** Si la
+  transacción de una entrada falla (error de base de datos, timeout, lo que
+  sea), hace **rollback únicamente de esa entrada** — el `Barrio` no queda a
+  medio crear ni los registros a medio vincular — y esa entrada se marca
+  `ERROR` en el log de ejecución (`ExecutionLogEntry.resultado = 'ERROR'` con
+  `detalleError`). El script **continúa** con las demás entradas del ledger;
+  un fallo puntual no aborta la corrida completa.
+- **Una ejecución posterior retoma el trabajo de forma segura e
+  idempotente**: las entradas ya resueltas en una corrida anterior (`Barrio`
+  ya creado, registros ya vinculados) se detectan como "ya correcto" y no se
+  reprocesan (ver idempotencia más abajo); las entradas que quedaron en
+  `ERROR` se reintentan igual que si nunca se hubieran procesado — no hace
+  falta ninguna acción manual de limpieza entre corridas.
+
+#### Modo real
 
 1. Valida el ledger (reglas de la sección anterior) — si falla, no ejecuta
    nada.
@@ -286,9 +388,10 @@ aprobación final del equipo antes de correr el modo real.
    condición de carrera real (dos ejecuciones concurrentes, o una ejecución
    parcial previa, podrían intercalarse entre el `SELECT` y el `INSERT`); la
    constraint de base de datos es la única fuente de verdad atómica.
-3. Para cada entrada `FUSIONAR_EN`: resuelve el `Barrio` destino (ya creado
-   en el paso 2 para la entrada apuntada) y vincula los registros de este
-   valor a ese `Barrio`.
+3. Para cada entrada `FUSIONAR_EN`: resuelve el `Barrio` destino, que por la
+   regla de validación (ajuste 2) es siempre una entrada `CREAR_BARRIO` o
+   `MANTENER_SEPARADO` ya creada en el paso 2 — un solo salto, nunca una
+   cadena — y vincula los registros de este valor a ese `Barrio`.
 4. Para cada entrada `MANTENER_SEPARADO`: crea su propio `Barrio` (paso 2) y
    vincula solo sus propios registros.
 5. **Antes de escribir `barrioId` en cada registro (`Cliente`/`Negocio`),
@@ -309,14 +412,16 @@ aprobación final del equipo antes de correr el modo real.
 7. **Idempotencia real:** correr el script una segunda vez sobre el mismo
    ledger y el mismo estado de base de datos produce el reporte "0 Barrios
    nuevos, 0 registros vinculados nuevos, N ya correctos, 0 conflictos
-   nuevos" — nunca duplica un `Barrio` (por la constraint) ni reescribe un
-   `barrioId` ya aplicado (por el chequeo del paso 5).
-8. Cada `Barrio` se crea y sus registros relacionados se vinculan dentro de
-   una única transacción de Prisma por *entrada del ledger* (no una
-   transacción para las 52 — un fallo en una entrada no debe abortar las
-   demás; se reporta como fallo puntual).
-9. Imprime el mismo formato de reporte que el `--dry-run`, pero con los
-   cambios ya aplicados — nunca aplica cambios en silencio.
+   nuevos, 0 errores nuevos" — nunca duplica un `Barrio` (por la constraint)
+   ni reescribe un `barrioId` ya aplicado (por el chequeo del paso 5). Las
+   entradas que quedaron en `ERROR` en la corrida anterior se reintentan
+   automáticamente (ver "Modelo transaccional").
+8. Cada entrada del ledger se procesa en su propia transacción atómica (ver
+   "Modelo transaccional" arriba) — un fallo puntual se marca `ERROR` y no
+   aborta el resto de la corrida.
+9. Imprime el mismo formato de reporte que el `--dry-run` (agregado por
+   categoría, más el log de ejecución por registro de la sección anterior),
+   pero con los cambios ya aplicados — nunca aplica cambios en silencio.
 
 ### Consistencia con `ADR-TERRITORIO-001`
 
@@ -346,19 +451,20 @@ afirmadas):
 4. **Dry-run limpio**: el reporte de `--dry-run` sobre producción, ejecutado
    justo antes del modo real, no muestra "Ledger inválido" ni anomalías sin
    explicar.
-5. **Ejecución real sin pérdida**: el reporte del modo real muestra
-   `registros vinculados + registros pendientes + registros descartados +
-   registros ya correctos + conflictos = 177` (el total de M1) — ninguna
-   fila del universo de M1 desaparece sin quedar contabilizada en alguna
-   categoría del reporte.
-6. **Cero conflictos silenciosos**: si el reporte muestra algún
-   `CONFLICTO`, queda documentado (en el PR o en un doc de seguimiento) con
-   la resolución manual tomada — el gate no se cierra con conflictos sin
-   resolver ni ignorados.
+5. **Ejecución real sin pérdida**: la suma de resultados del log de ejecución
+   (`VINCULADO + YA_CORRECTO + CONFLICTO + PENDIENTE_DECISION + DESCARTADO +
+   ERROR = 177`, el total de M1: 126 `Cliente` + 51 `Negocio`) — ninguna fila
+   del universo de M1 desaparece sin quedar contabilizada en algún resultado
+   del log.
+6. **Cero conflictos ni errores silenciosos**: si el log de ejecución muestra
+   algún `CONFLICTO`, queda documentado (en el PR o en un doc de seguimiento)
+   con la resolución manual tomada; si muestra algún `ERROR`, se corrige la
+   causa y se re-ejecuta el script hasta que esa entrada quede resuelta — el
+   gate no se cierra con conflictos ni errores sin resolver ni ignorados.
 7. **Idempotencia demostrada**: correr el script una segunda vez sobre el
    estado post-ejecución produce un reporte con 0 creaciones, 0 vinculaciones
-   nuevas y 0 conflictos nuevos — adjuntado como evidencia (output del
-   comando) en el PR de M4.
+   nuevas, 0 conflictos nuevos y 0 errores nuevos — adjuntado como evidencia
+   (output del comando) en el PR de M4.
 
 Este checklist reemplaza el ítem "PENDIENTE de definir" que
 `ESPECIFICACION_F2.md` (M4, "Gate del plan") dejaba abierto.
@@ -374,9 +480,17 @@ Este checklist reemplaza el ítem "PENDIENTE de definir" que
 
 ## Pedido de aprobación
 
-¿Aprueban esta revisión (4 categorías formalizadas, ledger auditable en vez
-de 3 arreglos planos, garantía de no-destrucción explícita, estado
-`CONFLICTO`, `--dry-run` obligatorio con reporte fijo, ejecución basada
-solo en la constraint de unicidad, y el checklist de 7 puntos para el gate)
-para que TERRITORIO-F2 pase a implementación? Si prefieren otro ajuste,
-avisen antes de que se escriba código.
+Esta es la revisión 3, con los 3 ajustes puntuales pedidos sobre la
+revisión 2 ya incorporados: (1) el ledger de M3 queda explícitamente
+separado del reporte/log de ejecución por registro; (2) `FUSIONAR_EN` exige
+un destino directo (`CREAR_BARRIO`/`MANTENER_SEPARADO`), sin cadenas ni
+ciclos; (3) el modelo transaccional queda explícito — una transacción
+atómica por entrada del ledger, rollback solo de la entrada que falla,
+estado `ERROR` reintentable en la siguiente corrida. La dirección
+arquitectónica de fondo (JSON versionado + script one-off + dry-run +
+ejecución transaccional + idempotencia + constraint DB como autoridad +
+legacy intacto + conflictos explícitos) no cambió.
+
+¿Aprueban esta revisión para que TERRITORIO-F2 pase a implementación? Si no
+hay más objeciones, esto queda como la base aprobada para escribir
+`scripts/backfill-barrio-canonico.ts`.
