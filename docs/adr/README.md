@@ -31,19 +31,46 @@ Gate de aprobación: [`GATE-APROBACION.md`](./GATE-APROBACION.md) (§21).
 
 ---
 
-## Rutas + Planificador de Distribución (dominio nuevo — **Propuesta**, gate F0/F1)
+## Rutas + Planificador de Distribución (dominio nuevo — **Aceptado**, gate F0/F1)
 
 Base: `docs/rutas/INVENTARIO_CAPACIDADES_DISTRIBUCION.md` (F0) + Plan Técnico v4.
-Estos ADRs **no están aceptados** — son propuestas para el sign-off del PO.
+Los 6 ADRs están **Aceptados** (decisión delegada al asistente por el PO, 2026-08-30;
+revisables en cualquier momento) e implementados vía PR #144.
+Corrección 2026-09-12: este epígrafe decía "Propuesta — no están aceptados", en
+contradicción con el `Estado: Aceptado` de cada archivo individual desde su fecha
+de creación. Era una inconsistencia de índice, no de contenido.
 
 | ADR | Decide | Fase |
 |---|---|---|
 | `ADR-PLANIFICADOR-001` | representación del plan, persistencia, sync/async, estados, contrato HTTP | F1 → F2 |
 | `ADR-PLANIFICADOR-002` | elegibilidad de pedido, trazabilidad Plan↔Pedido (ref por ID, no FK), cardinalidad | F1 → F2 |
 | `ADR-PLANIFICADOR-003` | contrato Planificador → Embarques (materialización; `/api/embarques/auto` **deprecado**; fallo parcial) | F1 (P0) |
-| `ADR-PLANIFICADOR-004` | modelo geográfico, calidad de ubicación, proximidad de barrios, backfill | F1 → F2 |
+| `ADR-PLANIFICADOR-004` | modelo geográfico, calidad de ubicación, proximidad de barrios, backfill — **parcialmente supersedido**, ver `ADR-TERRITORIO-001` | F1 → F2 |
 | `ADR-PLANIFICADOR-005` | replanificación, estabilidad, versionado, concurrencia, conflicto offline | F1 → F2/F3 |
 | `ADR-PLANIFICADOR-006` | `PlanActividad` (ENTREGA/COBRO/RECOGIDA) en schema; MVP solo ENTREGA; cobros = epic siguiente | F1 |
 
 ADRs prerequisito nombrados (se abren al arrancar el epic de cobros, no ahora):
 `ADR-EMBARQUES-ACTIVIDAD-PLAN`, `ADR-PLANIFICADOR-CARTERA`.
+
+Nota: la numeración de fases de este epic (F0, F1, F2...) es independiente de la
+numeración de fases del ALS Barrio/Zona (ver abajo). No mezclar "F2" de un epic
+con "F2" del otro — usar el prefijo del dominio al referirse a una fase.
+
+---
+
+## Territorio — Barrio canónico + Zona (dominio nuevo — **Aceptado**, F1 implementada)
+
+Base: ALS "Barrio canónico + Zona territorial + Clientes + Distribución/Rutas" v1.0
+(2026-09-09) + Plan Técnico Barrio/Zona v1.0 (2026-09-09), preservados en
+`docs/territorio/`. Fases propias del ALS Barrio/Zona: F0 (baseline/ADRs) → F1
+(Barrio canónico) → F2 (migración segura) → F3 (Zona) → ... → F9 (verificación
+final) — **distintas** de las fases del epic Planificador de arriba.
+
+| ADR | Decide | Fase |
+|---|---|---|
+| `ADR-TERRITORIO-001` | reconciliación con `ADR-PLANIFICADOR-004`: Barrio es identidad territorial, no geometría; qué reglas geográficas de `ADR-PLANIFICADOR-004` siguen vigentes | F1 (implementada vía PR #248) |
+
+F2 (migración segura, matching/backfill legacy) está especificada pero **no
+implementada** — ver `docs/territorio/ESPECIFICACION_F2.md` para el detalle
+clasificado (confirmado / implementado / obsoleto / reconciliado / propuesta /
+pendiente) y las brechas plan ↔ código registradas.
