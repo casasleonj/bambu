@@ -1,18 +1,25 @@
 /**
- * GetFiadoStatusUseCase.
+ * GetFiadoStatusUseCase — Autoridad de Crédito (F1).
  *
- * Returns the current "fiado" (credit) status for a customer:
- * count of pending delivered orders with balance, effective limit,
- * and derived UI level ('ok' | 'cerca' | 'limite').
+ * ÚNICA autoridad de crédito del sistema: consulta de pedidos pendientes +
+ * cálculo de exposición (conteo y monetaria) + decisión de elegibilidad.
+ * Preview (PreviewPedidoUseCase), Commit (CrearPedidoUseCase) y Venta
+ * Libre (venta-libre/route.ts) llaman a esta MISMA clase — ninguno debe
+ * volver a implementar su propia consulta de pedidos pendientes ni su
+ * propia llamada a `puedeCrearPedido`.
+ *
+ * Ver docs/AGUA_BAMBU_F1_DISENO_TECNICO_AUTORIDAD_CREDITO_v1.0.md.
  */
 
 import { CANONICAL_CONSUMIDOR_FINAL_ID, LIMITE_FIADOS_DEFAULT } from '@/lib/constants'
 import { getConfigInt } from '@/lib/config'
 import type { IPedidoRepository } from '../../domain/repositories/IPedidoRepository'
 import type { IClienteRepository } from '../../domain/repositories/IClienteRepository'
+import type { TransactionClient } from '../../infrastructure/transactions/PrismaTransactionManager'
 import {
   resolverLimiteFiados,
   getEstadoFiados,
+  puedeCrearPedido,
 } from '../../domain/services/pedido-validation.service'
 import type { FiadoStatus } from '../../domain/types'
 
@@ -25,6 +32,15 @@ export class ClienteNotFoundError extends Error {
 
 export interface GetFiadoStatusInput {
   clienteId: string
+  /**
+   * F1: operación concreta a evaluar (total/totalPagado del Pedido en
+   * creación). Si se omite, se devuelve solo el estado actual del cliente
+   * (uso: UI/consulta, sin decisión de bloqueo). Si se incluye y deja
+   * saldo pendiente (`total > totalPagado`), se evalúa `errorDeuda`.
+   */
+  operacion?: { total: number; totalPagado: number }
+  /** F1: para correr dentro de la transacción del caller (Commit/venta-libre). */
+  tx?: TransactionClient
 }
 
 export class GetFiadoStatusUseCase {
@@ -34,20 +50,23 @@ export class GetFiadoStatusUseCase {
   ) {}
 
   async execute(input: GetFiadoStatusInput): Promise<FiadoStatus> {
-    const { clienteId } = input
+    const { clienteId, operacion, tx } = input
 
     // Anonymous sales never have a fiado limit.
     if (clienteId === CANONICAL_CONSUMIDOR_FINAL_ID) {
-      return { count: 0, limite: 0, nivel: 'ok', pedidos: [] }
+      return {
+        count: 0, limite: 0, nivel: 'ok', pedidos: [],
+        outstandingAmount: 0, status: 'NOT_APPLICABLE', errorDeuda: null,
+      }
     }
 
-    const cliente = await this.clienteRepo.findById(clienteId)
+    const cliente = await this.clienteRepo.findById(clienteId, tx)
     if (!cliente) {
       throw new ClienteNotFoundError(clienteId)
     }
 
     const [pedidosPendientes, limiteGlobal] = await Promise.all([
-      this.pedidoRepo.findPendingByCliente(clienteId),
+      this.pedidoRepo.findPendingByCliente(clienteId, tx),
       getConfigInt('LIMITE_PEDIDOS_FIADOS_DEFAULT', LIMITE_FIADOS_DEFAULT),
     ])
 
@@ -57,13 +76,45 @@ export class GetFiadoStatusUseCase {
       LIMITE_FIADOS_DEFAULT,
     )
 
-    const { nivel } = getEstadoFiados(pedidosPendientes, limite)
+    const { count, nivel } = getEstadoFiados(pedidosPendientes, limite)
+    const outstandingAmount = pedidosPendientes.reduce((sum, p) => sum + p.saldo, 0)
+    // F1: AT_LIMIT vs OVER_LIMIT es más granular que `nivel` (que colapsa
+    // ambos en 'limite' con `>=`) — no cambia el criterio de bloqueo.
+    const status: FiadoStatus['status'] =
+      count > limite ? 'OVER_LIMIT' : count === limite ? 'AT_LIMIT' : 'OK'
+
+    let operationOutstanding: number | undefined
+    let projectedOpenCount: number | undefined
+    let projectedOutstandingAmount: number | undefined
+    let errorDeuda: string | null = null
+
+    if (operacion) {
+      operationOutstanding = Math.max(0, operacion.total - operacion.totalPagado)
+      projectedOpenCount = count + (operationOutstanding > 0 ? 1 : 0)
+      projectedOutstandingAmount = outstandingAmount + operationOutstanding
+
+      // Mismo guard que ya existía en Commit/venta-libre: el límite de
+      // fiados solo frena la operación si va a quedar con saldo pendiente.
+      if (operationOutstanding > 0) {
+        errorDeuda = puedeCrearPedido(
+          { id: clienteId, bloqueado: cliente.bloqueado, verificado: cliente.verificado, creadoPorRol: cliente.creadoPorRol },
+          pedidosPendientes,
+          limite,
+        )
+      }
+    }
 
     return {
-      count: pedidosPendientes.length,
+      count,
       limite,
       nivel,
       pedidos: pedidosPendientes,
+      outstandingAmount,
+      operationOutstanding,
+      projectedOpenCount,
+      projectedOutstandingAmount,
+      status,
+      errorDeuda,
     }
   }
 }

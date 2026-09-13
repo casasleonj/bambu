@@ -79,7 +79,7 @@ describe('PedidoContextPanel', () => {
       <PedidoContextPanel
         {...baseProps({
           clienteSeleccionado: { id: 'c1', nombre: 'María', telefono: '3001234567' },
-          fiadosStatus: { nivel: 'ok', count: 0, limite: 3, pedidos: [] },
+          fiadosStatus: { nivel: 'ok', count: 0, limite: 3, pedidos: [], outstandingAmount: 0, status: 'OK', errorDeuda: null },
         })}
       />,
     )
@@ -89,7 +89,7 @@ describe('PedidoContextPanel', () => {
       <PedidoContextPanel
         {...baseProps({
           clienteSeleccionado: { id: 'c1', nombre: 'María', telefono: '3001234567' },
-          fiadosStatus: { nivel: 'limite', count: 3, limite: 3, pedidos: [] },
+          fiadosStatus: { nivel: 'limite', count: 3, limite: 3, pedidos: [], outstandingAmount: 0, status: 'AT_LIMIT', errorDeuda: null },
         })}
       />,
     )
