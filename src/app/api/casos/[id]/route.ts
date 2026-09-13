@@ -281,9 +281,15 @@ export async function PATCH(
  *   - DISPUTA_ABIERTA → pedido.disputaAbierta = false
  *   - CLIENTE_BLOQUEADO → requiere Pago, luego pedido.estadoPago = PAGADO
  *   - PROMESA_PROXIMA_VENCER → requiere Pago, luego pedido.estadoPago = PAGADO
- *   - FIADO_REcurrente → cliente.bloqueado = true
  *
  * Tipos NO auto-resolubles (admin debe actuar manualmente):
+ *   - FIADO_REcurrente: decisión de producto (docs/AGUA_BAMBU_INTEGRIDAD_COMERCIAL_CONVERGENCIA_v1.0.md
+ *     §1) — una señal de Caso ya NO autoriza ni retira elegibilidad
+ *     crediticia (antes hacía `cliente.bloqueado = true` acá mismo). La
+ *     elegibilidad crediticia le corresponde a la autoridad de crédito, no
+ *     a la resolución de un caso de alerta. El admin puede bloquear al
+ *     cliente manualmente (PATCH /api/clientes/[id]) si corresponde, pero
+ *     ya no es un efecto automático de "resolver" este caso.
  *   - RECLAMACIONES_MULTIPLES, RECLAMACION_ACTIVA: contador puede ser legitimo
  *   - PRECIO_POR_DEBAJO_TABLA: admin debe revisar y corregir manualmente
  *   - DESCUENTO_NO_JUSTIFICADO: admin debe adjuntar evidencia
@@ -352,15 +358,6 @@ async function aplicarAccionCorrectiva(
               pedido.estadoEntrega,
             ),
           },
-        })
-        return { ok: true }
-      }
-
-      case 'FIADO_REcurrente': {
-        if (!clienteId) return { ok: false, error: 'Caso sin clienteId', status: 400 }
-        await prisma.cliente.update({
-          where: { id: clienteId },
-          data: { bloqueado: true },
         })
         return { ok: true }
       }
