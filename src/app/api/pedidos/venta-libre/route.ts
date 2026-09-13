@@ -8,6 +8,7 @@ import { getNextNumero } from '@/lib/sequence'
 import { resolverPreciosPedido, type Canal, type ProductCode } from '@/lib/pricing'
 import type { MetodoPago } from '@prisma/client'
 import { calcularEstadoPago, puedeFiar, puedeCrearPedido, resolverLimiteFiados } from '@/lib/pedido-utils'
+import { normalizarPagos } from '@/modules/pedidos/domain/services/pagos-calculator.service'
 import { buildPedidoLegacyFields } from '@/lib/pedido-legacy'
 import { logAudit } from '@/lib/audit'
 import { ROLES, CANONICAL_CONSUMIDOR_FINAL_ID } from '@/lib/constants'
@@ -157,6 +158,15 @@ export async function POST(request: NextRequest) {
 
       const total = preciosResueltos.reduce((sum, pr) => sum + pr.subtotal, 0)
 
+      // FIX venta-libre-sobrepago: `totalPagado` (arriba) es la suma cruda de
+      // los pagos capturados y puede superar `total` (el cliente paga con un
+      // billete grande). Sin normalizar, `Pedido.saldo`/`totalPagado` violaban
+      // los constraints `chk_pedido_saldo_nonneg`/`chk_pedido_montopagado_le_total`
+      // (500 de Postgres). `normalizarPagos` acota lo aplicado al pedido y separa
+      // el excedente — mismo patrón ya usado en `CrearPedidoUseCase`.
+      const { pagosAplicados, excedente } = normalizarPagos(pagosData, total)
+      const totalPagadoAplicado = pagosAplicados.reduce((sum, p) => sum + p.monto, 0)
+
       // 6. Validar pagos según tipo de cliente
       if (esAnonimo || (cliente && !puedeFiar(cliente, esAnonimo))) {
         if (totalPagado < total) {
@@ -167,7 +177,7 @@ export async function POST(request: NextRequest) {
       // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: la entrega define el estado.
       const estadoEntregaFinal = entregarAhora ? EstadoEntrega.ENTREGADO : EstadoEntrega.PENDIENTE
       // estadoPago PROYECTADO con el estado real: prepago + entrega pendiente → ANTICIPADO (G5.1).
-      const estadoPago = calcularEstadoPago(total, totalPagado, estadoEntregaFinal)
+      const estadoPago = calcularEstadoPago(total, totalPagadoAplicado, estadoEntregaFinal)
 
       // 6b. Verificar límite de fiados si el pedido va a quedar con saldo.
       // FIX C-FIADOS-1: solo pedidos ENTREGADOS con saldo > 0 cuentan.
@@ -238,8 +248,8 @@ export async function POST(request: NextRequest) {
           embarqueId: entregarAhora ? embarqueId : null,
           embarqueOrigenId: embarqueId,
           total,
-          totalPagado,
-          saldo: total - totalPagado,
+          totalPagado: totalPagadoAplicado,
+          saldo: total - totalPagadoAplicado,
           obs: obs || (entregarAhora ? 'Venta libre en ruta' : 'Venta libre en ruta (entrega posterior)'),
           fotoEntrega: entregarAhora ? (fotoUrl || null) : null,
           gpsLat: gpsLat || null,
@@ -267,7 +277,7 @@ export async function POST(request: NextRequest) {
       // ADR-PAGO-REPORTADO-CONFIRMADO-001: un pago digital cobrado en ruta
       // nace REPORTADO (el escritorio verifica que el dinero entró); efectivo
       // nace CONFIRMADO (custodia física → cierre de embarque).
-      for (const pago of pagosData) {
+      for (const pago of pagosAplicados) {
         await tx.pago.create({
           data: {
             pedidoId: pedido.id,
@@ -281,15 +291,29 @@ export async function POST(request: NextRequest) {
         })
       }
 
+      // FIX venta-libre-sobrepago: excedente sobre `total` (ej. pago con billete
+      // grande) se acredita como saldo a favor del cliente de la venta — mismo
+      // criterio que `CrearPedidoUseCase`. Nota: si `clienteFinalId` es el
+      // canónico `CONSUMIDOR_FINAL` (venta anónima), el crédito queda en esa
+      // cuenta compartida; es el mismo comportamiento ya existente en
+      // `CrearPedidoUseCase` hoy, no una regla nueva de esta corrección — sigue
+      // registrado como brecha aparte en `docs/AGUA_BAMBU_INTEGRIDAD_COMERCIAL_CONVERGENCIA_v1.0.md` §3.
+      if (excedente > 0) {
+        await tx.cliente.update({
+          where: { id: clienteFinalId },
+          data: { saldoFavor: { increment: excedente } },
+        })
+      }
+
       // FASE FINAL (ADR-MONETARIO-001, §12): proyección de auditoría de los pagos.
-      if (totalPagado > 0) {
+      if (totalPagadoAplicado > 0) {
         await registrarReceivableEntry(tx, {
           pedidoId: pedido.id,
           clienteId: clienteFinalId,
           tipo: 'PAGO',
-          monto: totalPagado,
-          saldoResultante: total - totalPagado,
-          totalPagadoResultante: totalPagado,
+          monto: totalPagadoAplicado,
+          saldoResultante: total - totalPagadoAplicado,
+          totalPagadoResultante: totalPagadoAplicado,
           offlineId,
         })
       }
@@ -311,9 +335,9 @@ export async function POST(request: NextRequest) {
           pedidoId: pedido.id,
           subtotal: total,
           total,
-          saldo: total - totalPagado,
-          montoPagado: totalPagado,
-          estado: totalPagado >= total ? 'PAGADA' : (totalPagado > 0 ? 'PARCIAL' : 'EMITIDA'),
+          saldo: total - totalPagadoAplicado,
+          montoPagado: totalPagadoAplicado,
+          estado: totalPagadoAplicado >= total ? 'PAGADA' : (totalPagadoAplicado > 0 ? 'PARCIAL' : 'EMITIDA'),
           ...empresaSnapshot,
         },
       })
