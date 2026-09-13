@@ -137,9 +137,32 @@ export type TipoEntrega = 'COMPLETO' | 'PARCIAL' | 'NO_ENTREGADO'
 
 export type FiadoStatusNivel = 'ok' | 'cerca' | 'limite'
 
+/**
+ * F1 (Autoridad de Crédito, docs/AGUA_BAMBU_F1_DISENO_TECNICO_AUTORIDAD_CREDITO_v1.0.md):
+ * distingue AT_LIMIT (count === limite) de OVER_LIMIT (count > limite) —
+ * antes ambos colapsaban en `nivel: 'limite'`. Es una derivación más
+ * granular del mismo dato (count/limite), NO cambia el criterio de
+ * bloqueo (que sigue siendo `count >= limite`, sin modificar).
+ */
+export type FiadoStatusResultado = 'OK' | 'AT_LIMIT' | 'OVER_LIMIT' | 'NOT_APPLICABLE'
+
 export interface FiadoStatus {
   count: number
   limite: number
   nivel: FiadoStatusNivel
   pedidos: Array<{ id: string; numero: number; saldo: number }>
+  /** F1: exposición monetaria actual — suma de `pedidos[].saldo`. Informativo, no bloquea. */
+  outstandingAmount: number
+  /** F1: solo presentes si se evaluó una operación concreta (`operacion` en el input). */
+  operationOutstanding?: number
+  projectedOpenCount?: number
+  projectedOutstandingAmount?: number
+  status: FiadoStatusResultado
+  /**
+   * F1: decisión consolidada (antes vivía duplicada en Commit/venta-libre
+   * vía `puedeCrearPedido` inline). `null` si el cliente puede continuar;
+   * mensaje de error si no. Solo se evalúa cuando `operacion` deja saldo
+   * pendiente (mismo guard `totalPagado < total` ya vigente).
+   */
+  errorDeuda: string | null
 }

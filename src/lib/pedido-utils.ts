@@ -24,7 +24,13 @@ import {
   type BadgeInfo,
 } from '@/modules/pedidos/domain/services/pedido-transitions.service'
 import { EstadoPagoVO } from '@/modules/pedidos/domain/value-objects/EstadoPago'
-import { resolverLimiteFiados } from '@/modules/pedidos/domain/services/pedido-validation.service'
+import {
+  resolverLimiteFiados,
+  puedeCrearPedido as puedeCrearPedidoDominio,
+  puedeFiar,
+  getEstadoFiados,
+  getAlertaPedidoDia,
+} from '@/modules/pedidos/domain/services/pedido-validation.service'
 import type { EstadoPago } from '@prisma/client'
 import { LIMITE_FIADOS_DEFAULT } from './constants'
 
@@ -43,6 +49,13 @@ export {
   getBadgeOrigen,
   // FIX MEDIUM (C-VAL-7): límite de fiados con fallback consistente (dominio).
   resolverLimiteFiados,
+  // FIX consolidacion-credito (docs/AGUA_BAMBU_INTEGRIDAD_COMERCIAL_CONVERGENCIA_v1.0.md
+  // §1): antes eran copias byte-a-byte de pedido-validation.service.ts —
+  // riesgo de que una corrección se aplique a una copia y no a la otra.
+  // Firma idéntica a la del dominio, re-export directo.
+  puedeFiar,
+  getEstadoFiados,
+  getAlertaPedidoDia,
 }
 export type { BadgeInfo }
 
@@ -98,12 +111,19 @@ export function getBadgeLegacy(estado: string): { label: string; className: stri
 }
 
 // ====================
-// VALIDACIONES DE NEGOCIO (fiados / alertas — sin equivalente en el dominio)
+// VALIDACIONES DE NEGOCIO (fiados / alertas — delegan al dominio)
 // ====================
 
 /**
  * Verifica si un cliente puede crear nuevos pedidos.
  * Retorna null si puede, o un string con el mensaje de error.
+ *
+ * FIX consolidacion-credito: delega en `pedido-validation.service.ts`. Firma
+ * legacy más angosta (`{ bloqueado, id }`) porque algunos callers legacy no
+ * tienen el Cliente completo a mano; la función del dominio no usa
+ * `verificado`/`creadoPorRol` en esta regla (solo bloqueado/id/pendientes/
+ * límite) — completar esos dos campos con un valor dummy es seguro y no
+ * cambia el resultado.
  */
 export function puedeCrearPedido(
   cliente: {
@@ -113,65 +133,9 @@ export function puedeCrearPedido(
   pedidosPendientes: Array<{ id: string; numero: number; saldo: number }>,
   limite: number = LIMITE_FIADOS_DEFAULT,
 ): string | null {
-  // Ventas anónimas (CONSUMIDOR_FINAL) nunca se bloquean por deudas previas
-  if (cliente.id === 'CONSUMIDOR_FINAL') return null
-
-  if (cliente.bloqueado) {
-    return 'Cliente bloqueado por deuda vencida. Pague primero.'
-  }
-
-  if (pedidosPendientes.length >= limite) {
-    return `Cliente tiene ${pedidosPendientes.length} pedidos fiados (límite: ${limite}). Pague primero para crear más.`
-  }
-
-  return null
-}
-
-/**
- * Retorna el estado de fiados de un cliente para mostrar en UI.
- */
-export function getEstadoFiados(
-  pedidosPendientes: Array<{ id: string; numero: number; saldo: number }>,
-  limite: number = LIMITE_FIADOS_DEFAULT,
-): { count: number; limite: number; porcentaje: number; nivel: 'ok' | 'cerca' | 'limite' } {
-  const count = pedidosPendientes.length
-  const porcentaje = limite > 0 ? (count / limite) * 100 : 100
-  let nivel: 'ok' | 'cerca' | 'limite' = 'ok'
-  if (count >= limite) nivel = 'limite'
-  else if (porcentaje >= 60) nivel = 'cerca'
-  return { count, limite, porcentaje, nivel }
-}
-
-/**
- * Alerta por múltiples pedidos del mismo día.
- */
-export function getAlertaPedidoDia(
-  countPedidosHoy: number,
-): { tipo: 'ninguna' | 'amarilla' | 'roja'; mensaje: string } {
-  if (countPedidosHoy >= 3) {
-    return { tipo: 'roja', mensaje: `${countPedidosHoy} pedidos hoy` }
-  }
-  if (countPedidosHoy >= 2) {
-    return { tipo: 'amarilla', mensaje: '2do pedido hoy' }
-  }
-  return { tipo: 'ninguna', mensaje: '' }
-}
-
-/**
- * Determina si un repartidor puede fiar a un cliente.
- */
-export function puedeFiar(
-  cliente: {
-    verificado: boolean
-    creadoPorRol: string
-    id: string
-  },
-  esAnonimo: boolean,
-): boolean {
-  if (esAnonimo) return false
-  if (cliente.verificado) return true
-  // Cliente creado por admin/asistente pero no verificado = puede fiar con precaución
-  if (cliente.creadoPorRol === 'ADMIN' || cliente.creadoPorRol === 'ASISTENTE') return true
-  // Cliente creado por repartidor y no verificado = NO fiar
-  return false
+  return puedeCrearPedidoDominio(
+    { ...cliente, verificado: false, creadoPorRol: '' },
+    pedidosPendientes,
+    limite,
+  )
 }

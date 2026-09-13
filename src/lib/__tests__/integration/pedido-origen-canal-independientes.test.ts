@@ -9,7 +9,17 @@
 // 'VENTA_RAPIDA' + canal: 'DOMICILIO' → pedido válido").
 //
 // Cubre las 4 combinaciones origen × canal que el PO pidió explícitamente.
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest'
+
+// F1 (Autoridad de Crédito): CrearPedidoUseCase ahora usa GetFiadoStatusUseCase
+// → getConfigInt → getConfig, que envuelve la query en unstable_cache — eso
+// requiere un incrementalCache que solo existe dentro de un request de Next
+// ("Invariant: incrementalCache missing"). Mismo mock que ya usan
+// preview-pedido-integridad.test.ts / entrega-suficiencia-integridad.test.ts.
+vi.mock('next/cache', () => ({
+  unstable_cache: (fn: (...args: unknown[]) => unknown) => fn,
+  revalidateTag: vi.fn(),
+}))
 import { testPrisma, resetAndSeed, disconnect, uniqueId, getAdminUser, createTestCliente } from './setup'
 import { CrearPedidoUseCase } from '@/modules/pedidos/application/use-cases/CrearPedidoUseCase'
 import { PrismaPedidoRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaPedidoRepository'
@@ -19,6 +29,7 @@ import { PrismaClienteRepository } from '@/modules/pedidos/infrastructure/reposi
 import { PrismaPricingAdapter } from '@/modules/pedidos/infrastructure/repositories/PrismaPricingAdapter'
 import { PrismaTransactionManager } from '@/modules/pedidos/infrastructure/transactions/PrismaTransactionManager'
 import { resolverCoordsDeLink } from '@/lib/geo/resolver-coords-de-link'
+import { GetFiadoStatusUseCase } from '@/modules/pedidos/application/use-cases/GetFiadoStatusUseCase'
 
 describe('CrearPedidoUseCase — origen y canal son independientes (G6/ventaRapida→origen)', () => {
   let useCase: CrearPedidoUseCase
@@ -42,6 +53,7 @@ describe('CrearPedidoUseCase — origen y canal son independientes (G6/ventaRapi
       new PrismaPricingAdapter(),
       new PrismaTransactionManager(),
       resolverCoordsDeLink,
+      new GetFiadoStatusUseCase(new PrismaPedidoRepository(), new PrismaClienteRepository()),
     )
   })
 

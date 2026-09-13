@@ -1,7 +1,17 @@
 // @tests PR-2a — ADR-PAGO-EMBARQUE-CAPTURA-001: los pagos capturados en una
 // misión llevan `Pago.embarqueId`; los de fuera de misión quedan `null`.
 // (PR-2a NO cambia la conciliación del cierre — solo puebla el campo.)
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
+
+// F1 (Autoridad de Crédito): CrearPedidoUseCase ahora usa GetFiadoStatusUseCase
+// → getConfigInt → getConfig, que envuelve la query en unstable_cache — eso
+// requiere un incrementalCache que solo existe dentro de un request de Next
+// ("Invariant: incrementalCache missing"). Mismo mock que ya usan
+// preview-pedido-integridad.test.ts / entrega-suficiencia-integridad.test.ts.
+vi.mock('next/cache', () => ({
+  unstable_cache: (fn: (...args: unknown[]) => unknown) => fn,
+  revalidateTag: vi.fn(),
+}))
 import { testPrisma, resetAndSeed, disconnect, getAdminUser } from './setup'
 import { CerrarEmbarqueUseCase } from '@/modules/embarques/application/use-cases/CerrarEmbarqueUseCase'
 import { PrismaEmbarqueRepository } from '@/modules/embarques/infrastructure/repositories/PrismaEmbarqueRepository'
@@ -15,6 +25,7 @@ import { PrismaPagoRepository } from '@/modules/pedidos/infrastructure/repositor
 import { PrismaClienteRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaClienteRepository'
 import { PrismaPricingAdapter } from '@/modules/pedidos/infrastructure/repositories/PrismaPricingAdapter'
 import { PrismaTransactionManager as PedidoTxMgr } from '@/modules/pedidos/infrastructure/transactions/PrismaTransactionManager'
+import { GetFiadoStatusUseCase } from '@/modules/pedidos/application/use-cases/GetFiadoStatusUseCase'
 import { resolverCoordsDeLink } from '@/lib/geo/resolver-coords-de-link'
 
 let adminId: string
@@ -41,6 +52,7 @@ describe('PR-2a — Pago.embarqueId (contexto de captura)', () => {
       new PrismaPedidoRepository(), new PrismaFacturaRepository(), new PrismaPagoRepository(),
       new PrismaClienteRepository(), new PrismaPricingAdapter(), new PedidoTxMgr(),
       resolverCoordsDeLink,
+      new GetFiadoStatusUseCase(new PrismaPedidoRepository(), new PrismaClienteRepository()),
     )
     const res = await useCase.execute({
       clienteId, canal: 'DOMICILIO', items: [{ producto: 'PACA_AGUA', cantidad: 2 }],

@@ -6,7 +6,17 @@
 // trazabilidad. NO es un mecanismo de "pedido-hijo": el nuevo Pedido tiene
 // su propio ciclo de vida completo (numero, items, pagos, factura propios),
 // no hereda nada del original.
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
+
+// F1 (Autoridad de Crédito): CrearPedidoUseCase ahora usa GetFiadoStatusUseCase
+// → getConfigInt → getConfig, que envuelve la query en unstable_cache — eso
+// requiere un incrementalCache que solo existe dentro de un request de Next
+// ("Invariant: incrementalCache missing"). Mismo mock que ya usan
+// preview-pedido-integridad.test.ts / entrega-suficiencia-integridad.test.ts.
+vi.mock('next/cache', () => ({
+  unstable_cache: (fn: (...args: unknown[]) => unknown) => fn,
+  revalidateTag: vi.fn(),
+}))
 import { testPrisma, resetAndSeed, disconnect, getAdminUser, createTestCliente, uniqueId } from './setup'
 import { CrearPedidoUseCase } from '@/modules/pedidos/application/use-cases/CrearPedidoUseCase'
 import { PrismaPedidoRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaPedidoRepository'
@@ -16,6 +26,7 @@ import { PrismaClienteRepository } from '@/modules/pedidos/infrastructure/reposi
 import { PrismaPricingAdapter } from '@/modules/pedidos/infrastructure/repositories/PrismaPricingAdapter'
 import { PrismaTransactionManager } from '@/modules/pedidos/infrastructure/transactions/PrismaTransactionManager'
 import { resolverCoordsDeLink } from '@/lib/geo/resolver-coords-de-link'
+import { GetFiadoStatusUseCase } from '@/modules/pedidos/application/use-cases/GetFiadoStatusUseCase'
 
 function buildUseCase() {
   return new CrearPedidoUseCase(
@@ -26,6 +37,7 @@ function buildUseCase() {
     new PrismaPricingAdapter(),
     new PrismaTransactionManager(),
     resolverCoordsDeLink,
+    new GetFiadoStatusUseCase(new PrismaPedidoRepository(), new PrismaClienteRepository()),
   )
 }
 

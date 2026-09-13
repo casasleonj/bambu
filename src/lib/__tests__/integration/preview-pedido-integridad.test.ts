@@ -45,14 +45,17 @@ function makePreviewUseCase() {
 }
 
 function makeCrearUseCase() {
+  const pedidoRepo = new PrismaPedidoRepository()
+  const clienteRepo = new PrismaClienteRepository()
   return new CrearPedidoUseCase(
-    new PrismaPedidoRepository(),
+    pedidoRepo,
     new PrismaFacturaRepository(),
     new PrismaPagoRepository(),
-    new PrismaClienteRepository(),
+    clienteRepo,
     new PrismaPricingAdapter(),
     new PrismaTransactionManager(),
     resolverCoordsDeLink,
+    new GetFiadoStatusUseCase(pedidoRepo, clienteRepo),
   )
 }
 
@@ -190,6 +193,57 @@ describe('preview — read-only comportamental + integridad vs commit', () => {
         await testPrisma.pedidoItem.deleteMany({ where: { pedidoId: createdId } })
         await testPrisma.pedido.delete({ where: { id: createdId } })
       }
+    }
+  })
+
+  it('(d) F1 — crédito: Preview y Commit COINCIDEN en bloquear la misma operación cuando el cliente está en el límite de fiados (misma autoridad, no solo mismo mock)', async () => {
+    const cliente = await testPrisma.cliente.create({
+      data: {
+        nombre: 'Test Cliente CreditoLimite',
+        telefono: `3${Math.floor(Math.random() * 1e9).toString().padStart(9, '0')}`,
+        direccion: 'Calle Test', barrio: 'Test', activo: true, limitePedidosFiados: 1,
+      },
+    })
+    let primerPedidoId: string | undefined
+    try {
+      // Primer pedido: venta rápida ENTREGADA sin pago → fiado real abierto,
+      // ocupa el único cupo del límite (limitePedidosFiados: 1).
+      const primero = await makeCrearUseCase().execute({
+        clienteId: cliente.id, canal: 'PUNTO', origen: 'VENTA_RAPIDA',
+        items: [{ producto: 'PACA_AGUA', cantidad: 1 }],
+        pagos: [],
+        createdById: adminId, createdByRole: 'ADMIN',
+        offlineId: `credito-limite-1-${Date.now()}`,
+      })
+      primerPedidoId = primero.pedido.id
+      expect(Number(primero.pedido.saldo)).toBeGreaterThan(0)
+
+      const inputSegundo = {
+        clienteId: cliente.id, canal: 'PUNTO' as const, origen: 'PEDIDO' as const,
+        items: [{ producto: 'PACA_AGUA' as const, cantidad: 1 }],
+        pagos: [], actorId: adminId,
+      }
+
+      // Preview: el cliente ya tiene 1 fiado abierto == límite → bloquea.
+      const preview = await makePreviewUseCase().execute(inputSegundo)
+      expect(preview.permissions.canCreate).toBe(false)
+      expect(preview.warnings.some(w => w.code === 'FIADO_SOBRE_LIMITE')).toBe(true)
+
+      // Commit: la MISMA operación, evaluada por la MISMA autoridad, debe
+      // rechazarse con el mismo motivo — no "casualmente" el mismo
+      // resultado, sino la autoridad real ejecutándose en ambos caminos.
+      await expect(makeCrearUseCase().execute({
+        ...inputSegundo, createdById: adminId, createdByRole: 'ADMIN',
+        offlineId: `credito-limite-2-${Date.now()}`,
+      })).rejects.toThrow(/CLIENTE_DEBE/)
+    } finally {
+      if (primerPedidoId) {
+        await testPrisma.pedidoItem.deleteMany({ where: { pedidoId: primerPedidoId } })
+        const fact = await testPrisma.factura.findFirst({ where: { pedidoId: primerPedidoId }, select: { id: true } })
+        if (fact) await testPrisma.factura.delete({ where: { id: fact.id } })
+        await testPrisma.pedido.delete({ where: { id: primerPedidoId } })
+      }
+      await testPrisma.cliente.delete({ where: { id: cliente.id } })
     }
   })
 

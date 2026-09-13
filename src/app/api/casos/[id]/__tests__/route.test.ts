@@ -117,8 +117,11 @@ describe('commit 3.2: auto-resolver con ?aplicarSolucion=true', () => {
     expect(source).toMatch(/case\s+['"]PROMESA_PROXIMA_VENCER['"][\s\S]*?PAGO_REQUERIDO/)
   })
 
-  it('FIX: FIADO_REcurrente → cliente.bloqueado = true', () => {
-    expect(source).toMatch(/case\s+['"]FIADO_REcurrente['"][\s\S]*?bloqueado:\s*true/)
+  it('FIX consolidacion-credito: FIADO_REcurrente ya NO auto-resuelve mutando cliente.bloqueado', () => {
+    // decisión de producto (docs/AGUA_BAMBU_INTEGRIDAD_COMERCIAL_CONVERGENCIA_v1.0.md
+    // §1): una señal de Caso no autoriza ni retira elegibilidad crediticia.
+    expect(source).not.toMatch(/case\s+['"]FIADO_REcurrente['"]/)
+    expect(source).not.toMatch(/cliente\.update[\s\S]{0,80}bloqueado:\s*true/)
   })
 
   it('FIX: tipos NO auto-resolubles retornan AUTO_RESOLVER_NO_APLICA', () => {

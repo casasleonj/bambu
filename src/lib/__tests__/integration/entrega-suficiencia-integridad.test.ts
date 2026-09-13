@@ -43,6 +43,7 @@ function crear() {
     pedidoRepo, new PrismaFacturaRepository(), new PrismaPagoRepository(),
     clienteRepo, new PrismaPricingAdapter(), new PrismaTransactionManager(),
     resolverCoordsDeLink,
+    new GetFiadoStatusUseCase(pedidoRepo, clienteRepo),
   )
 }
 function actualizar() {

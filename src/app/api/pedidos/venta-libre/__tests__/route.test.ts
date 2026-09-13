@@ -27,6 +27,7 @@ const mockPrismaEmbarque = {
 }
 const mockPrismaCliente = {
   findUnique: vi.fn(),
+  update: vi.fn(),
 }
 const mockPrismaTrabajador = {
   findFirst: vi.fn(),
@@ -61,6 +62,10 @@ vi.mock('@/lib/auth-check', () => ({
 vi.mock('@/lib/config', () => ({
   getConfigBool: (...args: unknown[]) => mockGetConfigBool(...args),
   getConfig: async () => null, // METODOS_REQUIEREN_CONFIRMACION → default del ADR
+  // F1: GetFiadoStatusUseCase (autoridad de crédito compartida) usa
+  // getConfigInt para el límite de fiados global — sin config seedeada,
+  // cae al defaultValue que le pasa el caller (LIMITE_FIADOS_DEFAULT).
+  getConfigInt: async (_clave: string, defaultValue = 0) => defaultValue,
 }))
 vi.mock('@/lib/storage', () => ({
   uploadBase64Foto: (...args: unknown[]) => mockUploadBase64Foto(...args),
@@ -179,6 +184,7 @@ describe('POST /api/pedidos/venta-libre — BLOQUEAR_PRECIOS_REPARTIDOR', () => 
     mockIsBase64Image.mockReset()
     mockPrismaEmbarque.findUnique.mockReset()
     mockPrismaCliente.findUnique.mockReset()
+    mockPrismaCliente.update.mockReset()
     mockPrismaPedido.findUnique.mockReset()
     mockPrismaPedido.create.mockReset()
     mockPrismaTrabajador.findFirst.mockReset()
@@ -218,6 +224,7 @@ describe('POST /api/pedidos/venta-libre — BLOQUEAR_PRECIOS_REPARTIDOR', () => 
       { clave: 'empresa_email', valor: 'contacto@aguabambu.com' },
     ])
     mockPrismaPedido.create.mockResolvedValue({ id: 'p-new', numero: 100 })
+    mockPrismaCliente.update.mockResolvedValue({})
   })
 
   describe('when BLOQUEAR is ON', () => {
@@ -439,6 +446,51 @@ describe('POST /api/pedidos/venta-libre — BLOQUEAR_PRECIOS_REPARTIDOR', () => 
       const data = mockPrismaPedido.create.mock.calls[0][0].data
       expect(data.estadoEntrega).toBe('ENTREGADO')
       expect(data.embarqueId).toBe('emb1')
+    })
+  })
+
+  describe('FIX venta-libre-sobrepago: pago > total no debe violar constraints de DB', () => {
+    beforeEach(() => {
+      mockAuth.mockResolvedValue({ user: { id: 'u-asis', role: 'ASISTENTE' } })
+      mockPrismaEmbarque.findUnique.mockResolvedValue({
+        id: 'emb1',
+        estado: 'ABIERTO',
+        trabajadorId: 't1',
+        trabajador: { user: null },
+      })
+    })
+
+    it('cliente paga con billete grande: Pedido queda saldo=0/totalPagado=total, excedente va a saldoFavor', async () => {
+      const res = await POST(makeRequest({
+        ...validBody,
+        pagos: [{ metodo: 'EFECTIVO', monto: 20000 }], // total resuelto = 13000
+      }))
+      expect(res.status).toBe(201)
+
+      const pedidoData = mockPrismaPedido.create.mock.calls[0][0].data
+      expect(pedidoData.totalPagado).toBe(13000)
+      expect(pedidoData.saldo).toBe(0) // nunca negativo — antes violaba chk_pedido_saldo_nonneg
+
+      // El Pago creado queda acotado al total, no al monto crudo recibido.
+      expect(mockPrismaPago.create).toHaveBeenCalledTimes(1)
+      expect(mockPrismaPago.create.mock.calls[0][0].data.monto).toBe(13000)
+
+      // El excedente ($7.000) se acredita como saldo a favor del cliente de la venta.
+      expect(mockPrismaCliente.update).toHaveBeenCalledWith({
+        where: { id: 'c1' },
+        data: { saldoFavor: { increment: 7000 } },
+      })
+
+      const facturaData = mockPrismaFactura.create.mock.calls[0][0].data
+      expect(facturaData.montoPagado).toBe(13000)
+      expect(facturaData.saldo).toBe(0)
+      expect(facturaData.estado).toBe('PAGADA')
+    })
+
+    it('pago exacto: no se llama a cliente.update (sin excedente)', async () => {
+      const res = await POST(makeRequest(validBody)) // pagos = 13000, total = 13000
+      expect(res.status).toBe(201)
+      expect(mockPrismaCliente.update).not.toHaveBeenCalled()
     })
   })
 })

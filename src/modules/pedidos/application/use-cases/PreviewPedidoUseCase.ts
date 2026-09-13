@@ -130,20 +130,30 @@ export class PreviewPedidoUseCase {
     const warnings: PreviewPedidoResult['warnings'] = []
     let canCreate = true
 
-    if (!esAnonimo && cliente.bloqueado) {
-      canCreate = false
-      warnings.push({ code: 'CLIENTE_BLOQUEADO', message: 'Cliente bloqueado por deuda vencida. Pague primero.' })
-    }
-
     // El límite de fiados es un guard de ALTA — editar un pedido existente no
-    // crea un nuevo fiado, así que no aplica en modo edición.
-    if (!esAnonimo && !cliente.bloqueado && !esEdicion) {
-      const fiado = await this.deps.getFiadoStatusUseCase.execute({ clienteId: input.clienteId })
-      if (fiado.count >= fiado.limite) {
+    // crea un nuevo fiado, así que no aplica en modo edición. El bloqueo por
+    // cliente.bloqueado sí se conserva en edición: es un chequeo local (el
+    // dato ya está cargado), no requiere la autoridad de crédito.
+    if (esEdicion) {
+      if (!esAnonimo && cliente.bloqueado && totalPagado < total) {
+        canCreate = false
+        warnings.push({ code: 'CLIENTE_BLOQUEADO', message: 'Cliente bloqueado por deuda vencida. Pague primero.' })
+      }
+    } else if (!esAnonimo) {
+      // F1 (Autoridad de Crédito): misma autoridad que usan CrearPedidoUseCase
+      // y venta-libre — mismo guard `totalPagado < total` ya vigente, ahora
+      // evaluado DENTRO de GetFiadoStatusUseCase en vez de acá. `errorDeuda`
+      // es la única fuente de la decisión; `cliente.bloqueado` solo elige
+      // qué código de warning mostrar (bloqueado vs límite), no decide nada.
+      const fiado = await this.deps.getFiadoStatusUseCase.execute({
+        clienteId: input.clienteId,
+        operacion: { total, totalPagado },
+      })
+      if (fiado.errorDeuda) {
         canCreate = false
         warnings.push({
-          code: 'FIADO_SOBRE_LIMITE',
-          message: `Cliente tiene ${fiado.count} pedidos fiados (límite: ${fiado.limite}). Pague primero para crear más.`,
+          code: cliente.bloqueado ? 'CLIENTE_BLOQUEADO' : 'FIADO_SOBRE_LIMITE',
+          message: fiado.errorDeuda,
         })
       }
     }
