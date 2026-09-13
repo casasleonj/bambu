@@ -139,6 +139,37 @@ describe('PreviewPedidoUseCase — permissions + warnings', () => {
     expect(r.warnings.some(w => w.code === 'CLIENTE_BLOQUEADO')).toBe(true)
   })
 
+  it('FIX preview-commit-credito: fiado sobre el límite pero pedido pagado de contado → NO bloquea (mismo criterio que CrearPedidoUseCase)', async () => {
+    const deps = makeDeps()
+    ;(deps.getFiadoStatusUseCase.execute as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 2, limite: 2, nivel: 'limite', pedidos: [{ id: 'a', numero: 1, saldo: 100 }, { id: 'b', numero: 2, saldo: 200 }],
+    })
+    const r = await new PreviewPedidoUseCase(deps).execute({
+      clienteId: 'c1', canal: 'DOMICILIO', entregado: true,
+      items: [{ producto: 'PACA_AGUA', cantidad: 10 }],
+      pagos: [{ metodo: 'EFECTIVO', monto: 27000 }], actorId: 'u1',
+    })
+    expect(r.permissions.canCreate).toBe(true)
+    expect(r.warnings.some(w => w.code === 'FIADO_SOBRE_LIMITE')).toBe(false)
+    expect(r.allowedActions).toContain('crear')
+  })
+
+  it('FIX preview-commit-credito: cliente bloqueado pero pedido pagado de contado → NO bloquea', async () => {
+    const deps = makeDeps()
+    ;(deps.clienteRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'c1', nombre: 'X', apellido: null, telefono: '3001112233', direccion: 'Calle 1', barrio: 'Centro',
+      bloqueado: true, verificado: true, creadoPorRol: 'ADMIN', limitePedidosFiados: null, preciosEspeciales: null,
+    })
+    const r = await new PreviewPedidoUseCase(deps).execute({
+      clienteId: 'c1', canal: 'DOMICILIO', entregado: true,
+      items: [{ producto: 'PACA_AGUA', cantidad: 10 }],
+      pagos: [{ metodo: 'EFECTIVO', monto: 27000 }], actorId: 'u1',
+    })
+    expect(r.permissions.canCreate).toBe(true)
+    expect(r.warnings.some(w => w.code === 'CLIENTE_BLOQUEADO')).toBe(false)
+    expect(r.allowedActions).toContain('crear')
+  })
+
   it('DOMICILIO sin dirección NI ubicación → ENTREGA_INSUFICIENTE, bloquea (suficiencia de entrega)', async () => {
     const deps = makeDeps()
     ;(deps.clienteRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue({

@@ -130,14 +130,22 @@ export class PreviewPedidoUseCase {
     const warnings: PreviewPedidoResult['warnings'] = []
     let canCreate = true
 
-    if (!esAnonimo && cliente.bloqueado) {
+    // FIX preview-commit-credito: igual que CrearPedidoUseCase/venta-libre
+    // (ver fiado-limite-solo-si-queda-saldo.test.ts), el límite/bloqueo de
+    // fiados solo debe frenar la operación si va a quedar con saldo
+    // pendiente. Un pedido pagado de contado no genera deuda nueva —
+    // bloquearlo contradice el propósito del límite. Antes Preview lo
+    // chequeaba sin este guard: rechazaba (canCreate=false) operaciones que
+    // Commit sí permitía, dejando al usuario sin poder avanzar aunque el
+    // pago fuera completo.
+    if (!esAnonimo && cliente.bloqueado && totalPagado < total) {
       canCreate = false
       warnings.push({ code: 'CLIENTE_BLOQUEADO', message: 'Cliente bloqueado por deuda vencida. Pague primero.' })
     }
 
     // El límite de fiados es un guard de ALTA — editar un pedido existente no
     // crea un nuevo fiado, así que no aplica en modo edición.
-    if (!esAnonimo && !cliente.bloqueado && !esEdicion) {
+    if (!esAnonimo && !cliente.bloqueado && !esEdicion && totalPagado < total) {
       const fiado = await this.deps.getFiadoStatusUseCase.execute({ clienteId: input.clienteId })
       if (fiado.count >= fiado.limite) {
         canCreate = false
