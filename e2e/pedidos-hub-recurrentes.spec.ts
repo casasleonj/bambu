@@ -60,6 +60,19 @@ test.describe('F8 — recurrentes en el Hub (API)', () => {
   })
 })
 
+// F8-iv: `generarPedidosRecurrentes` (src/lib/recurrentes.ts:456-464) hace
+// auto-fix de domingo — si `proxGeneracion` cae en domingo, la reprograma al
+// lunes siguiente y SALTA la generación (sin crear pedido), sin importar la
+// `decision` recibida. Un `proxGeneracion` fijo a "ayer" (`Date.now() -
+// 86400000`) cae en domingo cada vez que el test corre en lunes, haciendo que
+// el POST no genere ningún pedido y el polling de abajo agote sus 10s. Se
+// reproduce de forma determinística (no es flake): ver soak e2e-hub, runs de
+// 2026-09-14 (lunes) 05:08Z y 13:03Z, ambos con el mismo `Received: 0`.
+function proxGeneracionDeAyerNoDomingo(): Date {
+  const ayer = new Date(Date.now() - 86400000)
+  return ayer.getDay() === 0 ? new Date(Date.now() - 2 * 86400000) : ayer
+}
+
 test.describe('F8 — recurrentes en el Hub (UI, NEXT_PUBLIC_PEDIDOS_V2)', () => {
   test.skip(!HUB_ON, 'requiere NEXT_PUBLIC_PEDIDOS_V2=true + webServer fresco')
 
@@ -85,7 +98,7 @@ test.describe('F8 — recurrentes en el Hub (UI, NEXT_PUBLIC_PEDIDOS_V2)', () =>
     // recurrencia con proxGeneracion en el pasado → aparece en el preview de hoy
     const rec = await apiPost(page, '/api/recurrentes', {
       clienteId: cliente.id, canal: 'DOMICILIO', cadaNDias: 7, productos: { pacaAgua: 20 },
-      proxGeneracion: new Date(Date.now() - 86400000).toISOString(),
+      proxGeneracion: proxGeneracionDeAyerNoDomingo().toISOString(),
     })
     expect(rec.status()).toBe(201)
 
