@@ -222,16 +222,20 @@ enum ImportDecision {
 // ====================
 
 model User {
-  id                 String     @id @default(cuid())
-  username           String     @unique
-  password           String
-  nombre             String     @default("")
-  apellido           String     @default("")
-  rol                RolUsuario @default(ASISTENTE)
-  activo             Boolean    @default(true)
-  mustChangePassword Boolean    @default(false)
-  createdAt          DateTime   @default(now()) @db.Timestamptz()
-  updatedAt          DateTime   @updatedAt @db.Timestamptz()
+  id                             String     @id @default(cuid())
+  username                       String     @unique
+  password                       String
+  nombre                         String     @default("")
+  apellido                       String     @default("")
+  rol                            RolUsuario @default(ASISTENTE)
+  activo                         Boolean    @default(true)
+  mustChangePassword             Boolean    @default(false)
+  // F2 (Excepciones de Crédito, Plan Maestro §11): capacidad explícita por
+  // usuario, deliberadamente independiente de `rol` — "ser ADMIN no debe
+  // ser la única definición conceptual de autoridad".
+  puedeAutorizarExcepcionCredito Boolean    @default(false)
+  createdAt                      DateTime   @default(now()) @db.Timestamptz()
+  updatedAt                      DateTime   @updatedAt @db.Timestamptz()
 
   trabajador Trabajador?
 
@@ -286,6 +290,11 @@ model User {
 
   // Session tracking for concurrent device limits (NOT NextAuth adapter Session table)
   sesionesActivas SesionActiva[]
+
+  // F2 (Excepciones de Crédito)
+  excepcionesCreditoSolicitadas PedidoExcepcionCredito[] @relation("ExcepcionCreditoSolicitante")
+  excepcionesCreditoAutorizadas PedidoExcepcionCredito[] @relation("ExcepcionCreditoAutorizador")
+  excepcionesCreditoRechazadas  PedidoExcepcionCredito[] @relation("ExcepcionCreditoRechazador")
 }
 
 // ====================
@@ -455,6 +464,9 @@ model Cliente {
 
   // FASE 6 (responsabilidad): contexto alternativo sin embarque activo.
   responsibilityCases ResponsibilityCase[]
+
+  // F2 (Excepciones de Crédito)
+  excepcionesCredito PedidoExcepcionCredito[]
 
   createdAt DateTime @default(now()) @db.Timestamptz()
   updatedAt DateTime @updatedAt @db.Timestamptz()
@@ -859,6 +871,10 @@ model Pedido {
   notasCredito NotaCredito[]
   abonos       Abono[]
   casos        Caso[]        @relation("CasoPedido")
+
+  // F2 (Excepciones de Crédito): 1:1 — la excepción se consume UNA sola vez,
+  // atómicamente, al crear el Pedido (ver PedidoExcepcionCredito.pedidoId @unique).
+  excepcionCredito PedidoExcepcionCredito?
 
   // FASE 2 (ledger físico)
   sustituciones Sustitucion[]
@@ -1453,6 +1469,79 @@ model ResponsibilityCase {
 
   @@index([embarqueId])
   @@index([trabajadorId])
+  @@index([clienteId])
+  @@index([estado])
+}
+
+// ====================
+// EXCEPCIÓN DE CRÉDITO (FASE 2 de Integridad Comercial — Plan Maestro §61 F2,
+// ALS §10-§15)
+// ====================
+//
+// Autorización puntual para UNA operación concreta cuando la Autoridad de
+// Crédito (GetFiadoStatusUseCase, F1) determina que el cliente está en o
+// sobre el límite de fiados. No aumenta el límite del cliente, no crea un
+// permiso permanente, no se reutiliza — se consume UNA sola vez, atómicamente,
+// al momento en que el Pedido real se crea (pedidoId pasa de null a un valor
+// concreto en la misma transacción de creación; @unique impide una segunda
+// asignación). `Caso` NUNCA es autoridad financiera — esta entidad es la
+// única vía formal de excepción, separada de Caso a propósito (ver
+// docs/AGUA_BAMBU_INTEGRIDAD_COMERCIAL_CONVERGENCIA_v1.0.md).
+
+enum PedidoExcepcionCreditoEstado {
+  PENDIENTE
+  AUTORIZADA
+  RECHAZADA
+}
+
+model PedidoExcepcionCredito {
+  id String @id @default(cuid())
+
+  // Se asigna atómicamente al consumir la excepción (ver nota arriba). Antes
+  // de eso, la excepción existe para un cliente/operación en evaluación que
+  // todavía no se persistió como Pedido (Preview la valida sin consumirla).
+  pedidoId String? @unique
+  pedido   Pedido? @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
+
+  clienteId String
+  cliente   Cliente @relation(fields: [clienteId], references: [id])
+
+  estado PedidoExcepcionCreditoEstado @default(PENDIENTE)
+
+  motivoSolicitud String
+  notaSolicitud   String?
+  solicitadoPorId String
+  solicitadoPor   User     @relation("ExcepcionCreditoSolicitante", fields: [solicitadoPorId], references: [id])
+  solicitadoAt    DateTime @default(now()) @db.Timestamptz()
+
+  // Snapshot (ALS §10.1) tomado de GetFiadoStatusUseCase al momento de
+  // solicitar — NUNCA se recalcula. La revalidación (ALS §12/§15) compara
+  // esto contra el estado ACTUAL en el momento de resolver, sin modificar
+  // el snapshot original.
+  limiteSnapshot         Int
+  fiadosAbiertosSnapshot Int
+  saldoFiadoSnapshot     Decimal @db.Decimal(10, 2)
+  operacionSaldoSnapshot Decimal @db.Decimal(10, 2)
+  fiadosDespuesSnapshot  Int
+  saldoDespuesSnapshot   Decimal @db.Decimal(10, 2)
+
+  autorizadoPorId  String?
+  autorizadoPor    User?     @relation("ExcepcionCreditoAutorizador", fields: [autorizadoPorId], references: [id], onDelete: SetNull)
+  autorizadoAt     DateTime? @db.Timestamptz()
+  notaAutorizacion String?
+
+  rechazadoPorId String?
+  rechazadoPor   User?     @relation("ExcepcionCreditoRechazador", fields: [rechazadoPorId], references: [id], onDelete: SetNull)
+  rechazadoAt    DateTime? @db.Timestamptz()
+  notaRechazo    String?
+
+  // Idempotencia de la SOLICITUD (offline-first, mismo patrón que el resto
+  // de mutaciones críticas — AGENTS.md "Idempotencia").
+  offlineId String? @unique
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
+
   @@index([clienteId])
   @@index([estado])
 }
@@ -2122,6 +2211,9 @@ enum NotificationEventType {
   GASTO_CREADO
   COMPRA_CREADA
   CASO_ALTA
+  // F2 (Excepciones de Crédito)
+  EXCEPCION_CREDITO_SOLICITADA
+  EXCEPCION_CREDITO_RESUELTA
 }
 
 model NotificationRule {

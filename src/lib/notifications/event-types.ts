@@ -5,7 +5,7 @@ export { NotificationEventType }
 export interface NotificationEventMeta {
   label: string
   description: string
-  group: 'Clientes' | 'Pedidos' | 'Cierre' | 'Gastos/Compras' | 'Antifraude'
+  group: 'Clientes' | 'Pedidos' | 'Cierre' | 'Gastos/Compras' | 'Antifraude' | 'Crédito'
   /** Solo true para el caso genuinamente urgente (antifraude ALTA). */
   persistent: boolean
 }
@@ -76,5 +76,18 @@ export const NOTIFICATION_EVENT_META: Record<NotificationEventType, Notification
     persistent: true,
     label: 'Alerta antifraude (ALTA)',
     description: 'El sistema detectó un caso de severidad ALTA que requiere atención inmediata.',
+  },
+  // F2 (Excepciones de Crédito)
+  EXCEPCION_CREDITO_SOLICITADA: {
+    group: 'Crédito',
+    persistent: false,
+    label: 'Excepción de crédito solicitada',
+    description: 'Un cliente sobre el límite de fiados necesita autorización para continuar la operación.',
+  },
+  EXCEPCION_CREDITO_RESUELTA: {
+    group: 'Crédito',
+    persistent: false,
+    label: 'Excepción de crédito resuelta',
+    description: 'Una solicitud de excepción de crédito fue autorizada o rechazada.',
   },
 }
