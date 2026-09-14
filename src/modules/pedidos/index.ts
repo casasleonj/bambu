@@ -14,6 +14,8 @@ export {
   actualizarPedidoUseCase,
   getFiadoStatusUseCase,
   previewPedidoUseCase,
+  solicitarExcepcionCreditoUseCase,
+  resolverExcepcionCreditoUseCase,
   ClienteNotFoundError,
   PedidoDTOMapper,
 } from './application'

@@ -129,6 +129,7 @@ export class PreviewPedidoUseCase {
     // ── Permissions + warnings ──
     const warnings: PreviewPedidoResult['warnings'] = []
     let canCreate = true
+    let excepcionAplicada: PreviewPedidoResult['excepcionAplicada']
 
     // El límite de fiados es un guard de ALTA — editar un pedido existente no
     // crea un nuevo fiado, así que no aplica en modo edición. El bloqueo por
@@ -148,6 +149,7 @@ export class PreviewPedidoUseCase {
       const fiado = await this.deps.getFiadoStatusUseCase.execute({
         clienteId: input.clienteId,
         operacion: { total, totalPagado },
+        excepcionId: input.excepcionId,
       })
       if (fiado.errorDeuda) {
         canCreate = false
@@ -155,6 +157,9 @@ export class PreviewPedidoUseCase {
           code: cliente.bloqueado ? 'CLIENTE_BLOQUEADO' : 'FIADO_SOBRE_LIMITE',
           message: fiado.errorDeuda,
         })
+      } else if (fiado.excepcionAplicada) {
+        // F2: no se reinterpreta — se repropaga tal cual lo resolvió la autoridad.
+        excepcionAplicada = fiado.excepcionAplicada
       }
     }
 
@@ -276,6 +281,7 @@ export class PreviewPedidoUseCase {
       allowedActions,
       warnings,
       riskSignals,
+      excepcionAplicada,
       entrega,
       requiresAuthorization: false,
       auditPreview: {

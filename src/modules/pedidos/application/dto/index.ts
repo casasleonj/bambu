@@ -3,7 +3,7 @@
  */
 
 import type { ProductCode } from '@/shared/domain'
-import type { Canal, OrigenPedido, PagoData } from '../../domain/types'
+import type { Canal, OrigenPedido, PagoData, FiadoStatus } from '../../domain/types'
 import type { EntregaResuelta } from '../../domain/services/entrega-suficiencia.service'
 
 export type { EntregaResuelta }
@@ -56,6 +56,13 @@ export interface CrearPedidoInput {
   createdByRole?: string
   // Offline-first: id generado por el cliente para dedup al reenviar
   offlineId?: string
+  /**
+   * F2 (Excepciones de Crédito): id de una `PedidoExcepcionCredito`
+   * AUTORIZADA que el caller afirma tener para esta operación. Se valida
+   * (solo lectura) dentro de `GetFiadoStatusUseCase` y, si es válida, se
+   * consume atómicamente (una sola vez) al crear el Pedido.
+   */
+  excepcionId?: string
 }
 
 export interface ActualizarPedidoInput {
@@ -220,6 +227,8 @@ export interface CrearPedidoResult {
   clienteId: string
   // FIX F-N10: indica si la creación fue dedup'd (pedido ya existía por offlineId)
   deduped?: boolean
+  /** F2: id de la `PedidoExcepcionCredito` consumida por este Pedido, si aplicó una. */
+  excepcionCreditoConsumida?: string
 }
 
 // ─── Peek (Fase 4b del Hub) — datos de la capa 2 del peek contextual ─────────
@@ -297,6 +306,8 @@ export interface PreviewPedidoInput {
   pedidoId?: string
   /** userId de la sesión — lo inyecta la route, no viene del body. */
   actorId: string
+  /** F2 (Excepciones de Crédito): ver `CrearPedidoInput.excepcionId`. */
+  excepcionId?: string
 }
 
 export interface PreviewCalculationItem {
@@ -334,6 +345,13 @@ export interface PreviewPedidoResult {
   allowedActions: Array<'crear' | 'crear-y-enviar-a-ruta' | 'actualizar'>
   warnings: Array<{ code: string; message: string; field?: string }>
   riskSignals: Array<{ tipo: string; severidad: 'BAJA' | 'MEDIA' | 'ALTA'; detalle: string }>
+  /**
+   * F2: mismo campo que expone `GetFiadoStatusUseCase` — el preview lo
+   * repropaga tal cual, no lo reinterpreta. Presente solo si se pasó
+   * `excepcionId` y la excepción resultó válida (por eso `errorDeuda` viene
+   * `null` y `canCreate` no se bloqueó por límite de fiados).
+   */
+  excepcionAplicada?: FiadoStatus['excepcionAplicada']
   /**
    * Suficiencia de la información de entrega (docs/pedidos/entrega-suficiencia-plan.md).
    * `PreviewPedidoUseCase` SIEMPRE la emite; opcional en el tipo solo para no

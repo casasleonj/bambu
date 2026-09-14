@@ -276,6 +276,7 @@ export class CrearPedidoUseCase {
       const fiadoStatus = await this.getFiadoStatusUseCase.execute({
         clienteId,
         operacion: { total, totalPagado },
+        excepcionId: input.excepcionId,
         tx,
       })
       if (fiadoStatus.errorDeuda) {
@@ -327,6 +328,24 @@ export class CrearPedidoUseCase {
         { pedidoId: saved.id.get(), numero: saved.numero, clienteId, total, offlineId: input.offlineId ?? null },
         'Pedido created'
       )
+
+      // 7b. F2 (Excepciones de Crédito): consumo atómico, una sola vez. El
+      // WHERE incluye `pedidoId: null` — si otra tx ya la consumió entre la
+      // validación (arriba, solo lectura) y este punto, el UPDATE afecta 0
+      // filas y esta creación de Pedido se aborta (misma tx, todo revierte).
+      // No puede reutilizarse: Pedido A y Pedido B nunca pueden consumir la
+      // misma excepción.
+      let excepcionCreditoConsumida: string | undefined
+      if (fiadoStatus.excepcionAplicada) {
+        const consumo = await tx.pedidoExcepcionCredito.updateMany({
+          where: { id: fiadoStatus.excepcionAplicada.id, pedidoId: null },
+          data: { pedidoId: saved.id.get() },
+        })
+        if (consumo.count === 0) {
+          throw new Error('EXCEPCION_CREDITO_YA_CONSUMIDA')
+        }
+        excepcionCreditoConsumida = fiadoStatus.excepcionAplicada.id
+      }
 
       // 8. Persist pagos
       if (pagosNormalizados.length > 0) {
@@ -380,6 +399,7 @@ export class CrearPedidoUseCase {
       return {
         pedido: PedidoDTOMapper.toResumen(saved),
         clienteId,
+        excepcionCreditoConsumida,
       }
     })
   }
