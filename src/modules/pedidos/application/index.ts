@@ -20,6 +20,8 @@ import { CancelarPedidoUseCase } from './use-cases/CancelarPedidoUseCase'
 import { ActualizarPedidoUseCase } from './use-cases/ActualizarPedidoUseCase'
 import { GetFiadoStatusUseCase, ClienteNotFoundError } from './use-cases/GetFiadoStatusUseCase'
 import { PreviewPedidoUseCase } from './use-cases/PreviewPedidoUseCase'
+import { SolicitarExcepcionCreditoUseCase } from './use-cases/SolicitarExcepcionCreditoUseCase'
+import { ResolverExcepcionCreditoUseCase } from './use-cases/ResolverExcepcionCreditoUseCase'
 import { getPrecioMinimos } from '@/lib/pricing'
 import { resolverCoordsDeLink } from '@/lib/geo/resolver-coords-de-link'
 
@@ -87,6 +89,11 @@ export const previewPedidoUseCase = new PreviewPedidoUseCase({
   getPrecioMinimos,
   resolverCoordsDeLink,
 })
+
+// F2 (Excepciones de Crédito): ambas reutilizan la MISMA autoridad de F1
+// (revalidación/snapshot), no reimplementan la consulta de crédito.
+export const solicitarExcepcionCreditoUseCase = new SolicitarExcepcionCreditoUseCase(getFiadoStatusUseCase)
+export const resolverExcepcionCreditoUseCase = new ResolverExcepcionCreditoUseCase(getFiadoStatusUseCase)
 
 export { PedidoDTOMapper } from './dto/PedidoDTOMapper'
 export type * from './dto'
