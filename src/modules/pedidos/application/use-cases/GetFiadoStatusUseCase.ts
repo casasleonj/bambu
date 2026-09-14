@@ -13,6 +13,7 @@
 
 import { CANONICAL_CONSUMIDOR_FINAL_ID, LIMITE_FIADOS_DEFAULT } from '@/lib/constants'
 import { getConfigInt } from '@/lib/config'
+import { prisma } from '@/lib/prisma'
 import type { IPedidoRepository } from '../../domain/repositories/IPedidoRepository'
 import type { IClienteRepository } from '../../domain/repositories/IClienteRepository'
 import type { TransactionClient } from '../../infrastructure/transactions/PrismaTransactionManager'
@@ -39,6 +40,15 @@ export interface GetFiadoStatusInput {
    * saldo pendiente (`total > totalPagado`), se evalúa `errorDeuda`.
    */
   operacion?: { total: number; totalPagado: number }
+  /**
+   * F2 (Excepciones de Crédito): id de una `PedidoExcepcionCredito` que el
+   * caller afirma tener para esta operación. Se VALIDA acá (solo lectura:
+   * pertenece al mismo cliente, está AUTORIZADA, no fue consumida todavía)
+   * y, si es válida, suprime `errorDeuda` — nunca marca la excepción como
+   * consumida. El consumo (una sola vez) lo hace el commit real, atómico,
+   * en su propia transacción — ver docs/AGUA_BAMBU_F2_MAPA_Y_DISENO_EXCEPCIONES_CREDITO_v1.0.md.
+   */
+  excepcionId?: string
   /** F1: para correr dentro de la transacción del caller (Commit/venta-libre). */
   tx?: TransactionClient
 }
@@ -50,7 +60,7 @@ export class GetFiadoStatusUseCase {
   ) {}
 
   async execute(input: GetFiadoStatusInput): Promise<FiadoStatus> {
-    const { clienteId, operacion, tx } = input
+    const { clienteId, operacion, excepcionId, tx } = input
 
     // Anonymous sales never have a fiado limit.
     if (clienteId === CANONICAL_CONSUMIDOR_FINAL_ID) {
@@ -87,6 +97,7 @@ export class GetFiadoStatusUseCase {
     let projectedOpenCount: number | undefined
     let projectedOutstandingAmount: number | undefined
     let errorDeuda: string | null = null
+    let excepcionAplicada: FiadoStatus['excepcionAplicada']
 
     if (operacion) {
       operationOutstanding = Math.max(0, operacion.total - operacion.totalPagado)
@@ -101,6 +112,28 @@ export class GetFiadoStatusUseCase {
           pedidosPendientes,
           limite,
         )
+
+        // F2: una excepción autorizada, válida para ESTE cliente y sin
+        // consumir todavía, suprime el bloqueo — SOLO lectura, no se marca
+        // como usada acá (eso es responsabilidad exclusiva del commit real).
+        if (errorDeuda && excepcionId) {
+          const client = tx ?? prisma
+          const excepcion = await client.pedidoExcepcionCredito.findUnique({ where: { id: excepcionId } })
+          if (
+            excepcion &&
+            excepcion.clienteId === clienteId &&
+            excepcion.estado === 'AUTORIZADA' &&
+            excepcion.pedidoId === null &&
+            excepcion.autorizadoPorId
+          ) {
+            errorDeuda = null
+            excepcionAplicada = {
+              id: excepcion.id,
+              motivoSolicitud: excepcion.motivoSolicitud,
+              autorizadoPorId: excepcion.autorizadoPorId,
+            }
+          }
+        }
       }
     }
 
@@ -115,6 +148,7 @@ export class GetFiadoStatusUseCase {
       projectedOutstandingAmount,
       status,
       errorDeuda,
+      excepcionAplicada,
     }
   }
 }

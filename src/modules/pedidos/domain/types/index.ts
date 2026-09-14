@@ -165,4 +165,15 @@ export interface FiadoStatus {
    * pendiente (mismo guard `totalPagado < total` ya vigente).
    */
   errorDeuda: string | null
+  /**
+   * F2 (Excepciones de Crédito): presente SOLO si se pasó `excepcionId` en
+   * el input Y la excepción es válida para este cliente (AUTORIZADA, no
+   * consumida todavía — `pedidoId` aún null). Cuando está presente,
+   * `errorDeuda` ya viene en `null` — los consumidores no vuelven a
+   * interpretar la excepción por su cuenta, solo leen este resultado.
+   * Esto es de SOLO LECTURA: no marca la excepción como consumida — eso
+   * lo hace el propio commit, atómicamente, en la misma transacción en la
+   * que crea el Pedido (ver SolicitarExcepcionCreditoUseCase / diseño F2).
+   */
+  excepcionAplicada?: { id: string; motivoSolicitud: string; autorizadoPorId: string }
 }
