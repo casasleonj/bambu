@@ -22,7 +22,8 @@ tabla nueva, sin UI, script one-off) pero exigió 7 garantías concretas antes
 de pasar a implementación. Esta revisión las incorpora todas:
 
 1. Clasificación real en 4 categorías (no "sin variante = casi válido").
-2. El archivo de M3 pasa de 3 arreglos planos a un **ledger auditable por
+2. El archivo de M3 pasa de 3 arreglos planos a un **ledger auditable de
+   decisiones por valor normalizado, separado del reporte de ejecución por
    registro**.
 3. Garantía explícita de no-destrucción para los valores que no se vinculan.
 4. Estado `CONFLICTO` en el script — nunca reasignación silenciosa.
