@@ -111,6 +111,8 @@ export const PedidoCreateSchema = z.object({
     direccion: z.string().min(1),
     barrio: z.string().min(1),
   }).optional(),
+  // F2 (Excepciones de Crédito): ver VentaLibreSchema.excepcionId.
+  excepcionId: z.string().optional(),
 });
 
 // ====================
@@ -143,6 +145,8 @@ export const PreviewPedidoSchema = z.object({
   pedidoOrigenId: z.string().optional(),
   /** modo edición: preview de un PUT declarativo sobre un pedido existente. */
   pedidoId: z.string().trim().min(1).optional(),
+  // F2 (Excepciones de Crédito): ver VentaLibreSchema.excepcionId.
+  excepcionId: z.string().optional(),
 });
 
 // ====================
@@ -239,6 +243,10 @@ export const VentaLibreSchema = z.object({
     direccion: z.string().max(200).optional(),
     barrio: z.string().max(100).optional(),
   }).optional(),
+  // F2 (Excepciones de Crédito): id de una PedidoExcepcionCredito AUTORIZADA
+  // que el caller afirma tener para esta operación puntual. Se valida (y se
+  // consume, una sola vez) del lado del servidor — ver GetFiadoStatusUseCase.
+  excepcionId: z.string().optional(),
 }).superRefine((data, ctx) => {
   // "Entregar ahora" exige foto (contrato histórico); "entregar después" no.
   if (data.entregado !== false && (!data.fotoEntrega || data.fotoEntrega.length === 0)) {

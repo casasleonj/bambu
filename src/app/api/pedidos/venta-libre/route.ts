@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
       return apiError(formatZodError(parsed.error), 400)
     }
 
-    const { clienteId, items, pagos, embarqueId, obs, fotoEntrega, gpsLat, gpsLng, offlineId } = parsed.data
+    const { clienteId, items, pagos, embarqueId, obs, fotoEntrega, gpsLat, gpsLng, offlineId, excepcionId } = parsed.data
 
     // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: "entregar ahora" vs "después". Gate
     // por flag durante el rollout: con el flag OFF, `entregado` se ignora.
@@ -197,14 +197,19 @@ export async function POST(request: NextRequest) {
       // a PrismaPedidoRepository.findPendingByCliente) como la decisión
       // (puedeCrearPedido). `puedeFiar` (arriba) sigue siendo un guard
       // propio de esta ruta, no duplicado en ningún otro lado.
+      let excepcionCreditoAplicada: string | undefined
       if (!esAnonimo && cliente && puedeFiar(cliente, esAnonimo)) {
         const fiadoStatus = await fiadoAuthority.execute({
           clienteId: cliente.id,
           operacion: { total, totalPagado: totalPagadoAplicado },
+          excepcionId,
           tx,
         })
         if (fiadoStatus.errorDeuda) {
           throw new Error(`CLIENTE_DEBE: ${fiadoStatus.errorDeuda}`)
+        }
+        if (fiadoStatus.excepcionAplicada) {
+          excepcionCreditoAplicada = fiadoStatus.excepcionAplicada.id
         }
       }
 
@@ -274,6 +279,18 @@ export async function POST(request: NextRequest) {
         },
         include: { items: true },
       })
+
+      // 8b. F2 (Excepciones de Crédito): consumo atómico, una sola vez —
+      // mismo mecanismo que CrearPedidoUseCase (WHERE pedidoId: null).
+      if (excepcionCreditoAplicada) {
+        const consumo = await tx.pedidoExcepcionCredito.updateMany({
+          where: { id: excepcionCreditoAplicada, pedidoId: null },
+          data: { pedidoId: pedido.id },
+        })
+        if (consumo.count === 0) {
+          throw new Error('EXCEPCION_CREDITO_YA_CONSUMIDA')
+        }
+      }
 
       // 9. Crear pagos
       // ADR-PAGO-REPORTADO-CONFIRMADO-001: un pago digital cobrado en ruta
@@ -366,6 +383,7 @@ export async function POST(request: NextRequest) {
       if (error.message === 'CLIENTE_NOT_FOUND') return apiError('Cliente no encontrado', 404)
       if (error.message === 'PAGO_COMPLETO_OBLIGATORIO') return apiError('Cliente no verificado/anónimo debe pagar completo', 400)
       if (error.message.startsWith('CLIENTE_DEBE:')) return apiError(error.message.replace('CLIENTE_DEBE: ', ''), 400)
+      if (error.message === 'EXCEPCION_CREDITO_YA_CONSUMIDA') return apiError('La excepción de crédito ya fue utilizada por otro pedido', 409)
     }
     logger.error({ err: error instanceof Error ? error.stack || error.message : 'Unknown' }, 'Error creando venta libre:')
     return apiError('Error creando venta libre')

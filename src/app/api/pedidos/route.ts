@@ -262,6 +262,7 @@ export async function POST(request: NextRequest) {
       entregado,
       pedidoOrigenId,
       offlineId,
+      excepcionId,
     } = parsed.data
 
     // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: el toggle "entregar después" de la
@@ -318,6 +319,7 @@ export async function POST(request: NextRequest) {
       entregado: entregadoInput,
       pedidoOrigenId,
       offlineId,
+      excepcionId,
       clienteNuevo: clienteNuevo ? {
         nombre: clienteNuevo.nombre,
         apellido: clienteNuevo.apellido,
@@ -387,6 +389,7 @@ export async function POST(request: NextRequest) {
       if (error.message.startsWith('CLIENTE_DEBE:')) return apiError(error.message.replace('CLIENTE_DEBE: ', ''), 400)
       if (error.message === 'SIN_PRODUCTOS') return apiError('Agrega al menos un producto', 400)
       if (error.message === 'PEDIDO_ORIGEN_NOT_FOUND') return apiError('El pedido de origen no existe', 404)
+      if (error.message === 'EXCEPCION_CREDITO_YA_CONSUMIDA') return apiError('La excepción de crédito ya fue utilizada por otro pedido', 409)
       if (error.name === 'EntregaInsuficienteError') {
         return apiError('Necesitamos información para localizar el domicilio: una dirección escrita o una ubicación.', 422, { code: 'ENTREGA_INSUFICIENTE' })
       }
