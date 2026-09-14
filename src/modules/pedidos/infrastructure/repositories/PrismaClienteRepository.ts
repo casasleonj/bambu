@@ -104,13 +104,31 @@ export class PrismaClienteRepository implements IClienteRepository {
     // de la tx, igual que el resto de las auditorías de este repo).
     const previo = await client.cliente.findUnique({
       where: { id },
-      select: { direccion: true, barrio: true },
+      select: { direccion: true, barrio: true, barrioId: true },
     })
+
+    const nuevoBarrio = barrio || null
+    // F1-BARRIO-CANONICO (fix hallazgo cross-módulo, flujo Pedidos): este
+    // checkbox de "actualizar cliente" solo captura `barrio` como texto
+    // libre -- a diferencia de PUT /api/clientes/[id], nunca tuvo un
+    // barrioId resuelto (vía selector) para ofrecer acá. Dejar `barrioId`
+    // intacto cuando el texto legacy cambia dejaría el FK apuntando a un
+    // Barrio que ya no corresponde a lo que dice `Cliente.barrio` -- una
+    // inconsistencia dual-write silenciosa, peor que no tener vínculo.
+    // Nunca se asigna un barrioId nuevo por heurística acá (violaría la
+    // regla de "no fusionar por similitud de texto" de TERRITORIO-F2); solo
+    // se limpia el vínculo existente cuando deja de corresponder al texto
+    // nuevo. Re-vincular a un Barrio canónico sigue siendo una acción
+    // explícita, disponible en el form de Cliente.
+    const barrioIdSigueValido = previo?.barrioId != null && nuevoBarrio === previo.barrio
+    const debeLimpiarBarrioId = previo?.barrioId != null && !barrioIdSigueValido
+
     await client.cliente.update({
       where: { id },
       data: {
         direccion,
-        barrio: barrio || null,
+        barrio: nuevoBarrio,
+        ...(debeLimpiarBarrioId ? { barrioId: null } : {}),
       } as unknown as Parameters<typeof client.cliente.update>[0]['data'],
     })
     logAudit({
@@ -119,11 +137,12 @@ export class PrismaClienteRepository implements IClienteRepository {
       accion: 'UPDATE',
       datos: {
         direccion,
-        barrio: barrio || null,
+        barrio: nuevoBarrio,
         direccionAnterior: previo?.direccion ?? null,
         barrioAnterior: previo?.barrio ?? null,
         origen: 'pedido',
         pedidoId: meta?.pedidoId,
+        ...(debeLimpiarBarrioId ? { barrioIdDesvinculado: previo!.barrioId } : {}),
       },
       usuarioId: meta?.usuarioId ?? null,
     })
