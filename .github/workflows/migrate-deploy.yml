@@ -73,8 +73,15 @@ jobs:
       - name: Generate Prisma Client
         run: npx prisma generate
 
-      - name: Check pending migrations
-        run: npx prisma migrate status
+      # `prisma migrate status` sale con código 1 cuando SÍ hay migraciones
+      # pendientes — es su comportamiento normal, no un error (literalmente
+      # así se detecta "hay algo para aplicar"). Como paso bloqueante ANTES
+      # de "Apply pending migrations" esto hacía fallar el job en el caso
+      # exitoso real (migraciones nuevas por aplicar), nunca llegaba a
+      # aplicarlas. Se deja como diagnóstico informativo (`|| true`); quien
+      # decide si hay un problema real es el paso siguiente.
+      - name: Check pending migrations (informativo, no bloqueante)
+        run: npx prisma migrate status || true
 
       - name: Apply pending migrations
         run: npx prisma migrate deploy
