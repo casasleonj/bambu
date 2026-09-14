@@ -32,23 +32,59 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # FIX 2026-09-14: DATABASE_URL/DIRECT_URL nunca existieron como secrets
+      # de GitHub (ni a nivel repo ni del entorno Production) — este job
+      # fallaba en "Check pending migrations" con P1012 ("DIRECT_URL resolvió
+      # a un string vacío") desde que existe. Consecuencia real: la migración
+      # de F2 (PedidoExcepcionCredito, User.puedeAutorizarExcepcionCredito)
+      # nunca se aplicó a Supabase, y el login de producción se rompió para
+      # TODOS los usuarios (prisma.user.findUnique() sin `select` pedía una
+      # columna inexistente). Fix: en vez de duplicar las credenciales de la
+      # base como secrets separados (riesgo de desincronización — exactamente
+      # lo que pasó), este job las trae en vivo desde Vercel (única fuente de
+      # verdad) con `vercel env pull`, autenticado con un VERCEL_TOKEN.
+      - name: Install Vercel CLI
+        run: npm i -g vercel@latest
+
+      - name: Pull production env vars from Vercel
+        run: vercel env pull --environment=production --token="$VERCEL_TOKEN" --yes .env.vercel-production
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          # .vercel/project.json está en .gitignore (convención estándar de
+          # Vercel CLI, nunca se comitea) — el runner de CI no tiene con qué
+          # "linkear" el proyecto sin esto. projectId/orgId NO son secretos
+          # (son identificadores, no credenciales), por eso van en claro acá
+          # en vez de como secret.
+          VERCEL_ORG_ID: team_Ml9rVX2uWgNn2OJ8cZe9pTWD
+          VERCEL_PROJECT_ID: prj_NzjF7gJ1CFYYHOhfAhE5mK7CxpPr
+
+      - name: Export DATABASE_URL/DIRECT_URL to job env
+        run: |
+          {
+            echo "DATABASE_URL<<EOF"
+            grep '^DATABASE_URL=' .env.vercel-production | sed -E 's/^DATABASE_URL=//; s/^"(.*)"$/\1/'
+            echo "EOF"
+            echo "DIRECT_URL<<EOF"
+            grep '^DIRECT_URL=' .env.vercel-production | sed -E 's/^DIRECT_URL=//; s/^"(.*)"$/\1/'
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+          rm -f .env.vercel-production
+
       - name: Generate Prisma Client
         run: npx prisma generate
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          DIRECT_URL: ${{ secrets.DIRECT_URL }}
 
-      - name: Check pending migrations
-        run: npx prisma migrate status
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+      # `prisma migrate status` sale con código 1 cuando SÍ hay migraciones
+      # pendientes — es su comportamiento normal, no un error (literalmente
+      # así se detecta "hay algo para aplicar"). Como paso bloqueante ANTES
+      # de "Apply pending migrations" esto hacía fallar el job en el caso
+      # exitoso real (migraciones nuevas por aplicar), nunca llegaba a
+      # aplicarlas. Se deja como diagnóstico informativo (`|| true`); quien
+      # decide si hay un problema real es el paso siguiente.
+      - name: Check pending migrations (informativo, no bloqueante)
+        run: npx prisma migrate status || true
 
       - name: Apply pending migrations
         run: npx prisma migrate deploy
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          DIRECT_URL: ${{ secrets.DIRECT_URL }}
 
   # Optional: uncomment and configure if you want GitHub Actions to also trigger
   # the Vercel deployment instead of relying solely on Vercel's Git integration.
