@@ -50,6 +50,13 @@ jobs:
         run: vercel env pull --environment=production --token="$VERCEL_TOKEN" --yes .env.vercel-production
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          # .vercel/project.json está en .gitignore (convención estándar de
+          # Vercel CLI, nunca se comitea) — el runner de CI no tiene con qué
+          # "linkear" el proyecto sin esto. projectId/orgId NO son secretos
+          # (son identificadores, no credenciales), por eso van en claro acá
+          # en vez de como secret.
+          VERCEL_ORG_ID: team_Ml9rVX2uWgNn2OJ8cZe9pTWD
+          VERCEL_PROJECT_ID: prj_NzjF7gJ1CFYYHOhfAhE5mK7CxpPr
 
       - name: Export DATABASE_URL/DIRECT_URL to job env
         run: |
