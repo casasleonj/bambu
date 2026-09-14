@@ -13,11 +13,17 @@ const mockClienteUpdateMany = vi.fn()
 const mockBarrioFindUnique = vi.fn()
 const mockLogAudit = vi.fn().mockResolvedValue(undefined)
 const mockPublishRealtimeEvent = vi.fn().mockResolvedValue(undefined)
+// F3 (Impacto en Demanda): el PUT ahora evalúa impacto cuando direccion/barrio
+// cambian — por defecto sin pedidos pendientes afectados (retorno vacío),
+// así el use case no llega a necesitar pedidoImpactoUbicacion.createMany.
+const mockPedidoFindMany = vi.fn().mockResolvedValue([])
 
 vi.mock('@/lib/auth-check', () => ({
   requireAuth: vi.fn().mockResolvedValue({ user: { id: 'user_1', role: 'ADMIN' } }),
   requireRole: vi.fn().mockResolvedValue({ user: { id: 'user_1', role: 'ADMIN' } }),
 }))
+
+vi.mock('@/lib/notifications/notify-event', () => ({ notifyEvent: vi.fn().mockResolvedValue(undefined) }))
 
 vi.mock('@/lib/prisma', () => ({
   prisma: {
@@ -25,6 +31,7 @@ vi.mock('@/lib/prisma', () => ({
       fn({
         cliente: { findUnique: mockClienteFindUnique, updateMany: mockClienteUpdateMany },
         barrio: { findUnique: mockBarrioFindUnique },
+        pedido: { findMany: mockPedidoFindMany },
       }),
   },
 }))

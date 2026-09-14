@@ -6,6 +6,9 @@ import { prisma } from '@/lib/prisma'
 import { logAudit } from '@/lib/audit'
 import type { IClienteRepository, ClienteBasico, NegocioBasico } from '../../domain/repositories/IClienteRepository'
 import type { TransactionClient } from '../transactions/PrismaTransactionManager'
+import { EvaluarImpactoUbicacionUseCase } from '../../application/use-cases/EvaluarImpactoUbicacionUseCase'
+
+const evaluarImpactoUbicacion = new EvaluarImpactoUbicacionUseCase()
 
 export class PrismaClienteRepository implements IClienteRepository {
   async findById(id: string, tx?: TransactionClient): Promise<ClienteBasico | null> {
@@ -104,26 +107,50 @@ export class PrismaClienteRepository implements IClienteRepository {
     // de la tx, igual que el resto de las auditorías de este repo).
     const previo = await client.cliente.findUnique({
       where: { id },
-      select: { direccion: true, barrio: true },
+      select: { direccion: true, barrio: true, barrioId: true },
     })
+    const barrioNuevo = barrio || null
+    const barrioCambio = barrioNuevo !== (previo?.barrio ?? null)
+    // F3 (Impacto en Demanda, decisión 4 del equipo): este flujo NUNCA tuvo
+    // ni tiene forma de recibir un barrioId explícito (solo texto libre) —
+    // a diferencia de PUT /api/clientes/[id]. Si el texto de barrio cambia
+    // y el cliente ya tenía un barrioId vinculado, ese vínculo puede quedar
+    // apuntando a un Barrio que ya no corresponde. No se inventa matching:
+    // se desvincula explícitamente en vez de adivinar uno nuevo.
     await client.cliente.update({
       where: { id },
       data: {
         direccion,
-        barrio: barrio || null,
+        barrio: barrioNuevo,
+        ...(barrioCambio && previo?.barrioId ? { barrioId: null } : {}),
       } as unknown as Parameters<typeof client.cliente.update>[0]['data'],
     })
+
+    // F3 (Impacto en Demanda): señal informativa para Pedidos pendientes que
+    // todavía dependían de esta dirección — nunca bloquea ni revierte el
+    // update de arriba.
+    await evaluarImpactoUbicacion.execute({
+      origenTipo: 'CLIENTE',
+      origenId: id,
+      direccionAnterior: previo?.direccion ?? null,
+      barrioAnterior: previo?.barrio ?? null,
+      direccionNueva: direccion,
+      barrioNueva: barrioNuevo,
+      tx: client,
+    })
+
     logAudit({
       entidad: 'Cliente',
       registroId: id,
       accion: 'UPDATE',
       datos: {
         direccion,
-        barrio: barrio || null,
+        barrio: barrioNuevo,
         direccionAnterior: previo?.direccion ?? null,
         barrioAnterior: previo?.barrio ?? null,
         origen: 'pedido',
         pedidoId: meta?.pedidoId,
+        ...(barrioCambio && previo?.barrioId ? { barrioIdDesvinculado: previo.barrioId } : {}),
       },
       usuarioId: meta?.usuarioId ?? null,
     })

@@ -10,6 +10,9 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { BarrioNoEncontradoError, resolverBarrioParaVinculo } from '@/lib/barrios/barrio-service'
+import { EvaluarImpactoUbicacionUseCase } from '@/modules/pedidos/application/use-cases/EvaluarImpactoUbicacionUseCase'
+
+const evaluarImpactoUbicacion = new EvaluarImpactoUbicacionUseCase()
 
 // Extrae info util del error de Prisma/PostgreSQL para logging.
 // Devuelve: { pgCode, pgMessage, tableName, httpStatus, summary }.
@@ -237,7 +240,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const cliente = await prisma.$transaction(async (tx) => {
       const existing = await tx.cliente.findUnique({
         where: { id, activo: true },
-        select: { updatedAt: true, barrioId: true },
+        select: { updatedAt: true, barrioId: true, direccion: true, barrio: true },
       })
       if (!existing) throw new Error('CLIENTE_NOT_FOUND')
 
@@ -284,6 +287,22 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         throw new Error('CLIENTE_MODIFICADO_POR_OTRO_USUARIO')
       }
       huboUpdate = true
+
+      // F3 (Impacto en Demanda): señal informativa para Pedidos pendientes
+      // que todavía dependían de esta dirección — nunca bloquea ni revierte
+      // el update de arriba. Solo evalúa si direccion/barrio estaban en el
+      // diff enviado (si no, ninguno de los dos cambió).
+      if ('direccion' in parsed.data || 'barrio' in parsed.data) {
+        await evaluarImpactoUbicacion.execute({
+          origenTipo: 'CLIENTE',
+          origenId: id,
+          direccionAnterior: existing.direccion,
+          barrioAnterior: existing.barrio,
+          direccionNueva: (parsed.data.direccion as string | undefined) ?? existing.direccion,
+          barrioNueva: (parsed.data.barrio as string | undefined) ?? existing.barrio,
+          tx,
+        })
+      }
 
       // Re-leer para devolver el estado final
       return tx.cliente.findUnique({
