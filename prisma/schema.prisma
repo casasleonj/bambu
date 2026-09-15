@@ -298,6 +298,9 @@ model User {
 
   // F3 (Impacto en Demanda por cambio de ubicación)
   impactosUbicacionRevisados PedidoImpactoUbicacion[] @relation("ImpactoUbicacionRevisor")
+
+  // F4 (Cumplimiento — reprogramación de remanente)
+  obligacionesReprogramadas ObligacionPendienteReprogramacion[]
 }
 
 // ====================
@@ -1273,16 +1276,46 @@ model ObligacionPendiente {
   cantidadAsignada Int              @default(0)
   estado           ObligacionEstado @default(ABIERTA)
 
+  // F4 (Plan Maestro §61, "reprogramación"): fecha prevista de cumplimiento
+  // del remanente — mutable exclusivamente vía ReprogramarObligacionPendienteUseCase.
+  // No asigna a un plan/ruta (eso es responsabilidad del Planificador).
+  fechaObjetivo DateTime? @db.Timestamptz()
+
   createdAt DateTime @default(now()) @db.Timestamptz()
   updatedAt DateTime @updatedAt @db.Timestamptz()
   offlineId String?  @unique
 
-  actividades Actividad[]
-  ajustes     PedidoCantidadAjuste[]
+  actividades      Actividad[]
+  ajustes          PedidoCantidadAjuste[]
+  reprogramaciones ObligacionPendienteReprogramacion[]
 
   @@index([pedidoId])
   @@index([clienteId])
   @@index([producto])
+}
+
+// F4 (Plan Maestro §61, "reprogramación"): historial append-only de cambios
+// de fecha objetivo de un remanente — cada reprogramación es su propio hecho
+// auditable, nunca se pisa ni se deduplica (mismo criterio ya usado en F3).
+// Deliberadamente sin "revisadoAt": la señal de revisión (fecha vencida,
+// reprogramaciones repetidas) se deriva en vivo, no se persiste un estado
+// propio de "atendida".
+model ObligacionPendienteReprogramacion {
+  id           String              @id @default(cuid())
+  obligacionId String
+  obligacion   ObligacionPendiente @relation(fields: [obligacionId], references: [id], onDelete: Cascade)
+
+  fechaAnterior DateTime? @db.Timestamptz()
+  fechaNueva    DateTime  @db.Timestamptz()
+  motivo        String?
+
+  reprogramadoPorId String
+  reprogramadoPor   User     @relation(fields: [reprogramadoPorId], references: [id])
+  reprogramadoAt    DateTime @default(now()) @db.Timestamptz()
+
+  offlineId String? @unique
+
+  @@index([obligacionId])
 }
 
 model Actividad {
