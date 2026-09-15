@@ -1,9 +1,11 @@
 # AGUA BAMBÚ — F5: DIAGNÓSTICO RECARGA (Plan Maestro → código)
 
-**Versión:** 1.1
+**Versión:** 2.0
 **Fecha:** 2026-09-15
 
-**v1.1**: segunda pasada pedida por el equipo, exclusivamente sobre los 4 PENDIENTES de §5 — rastreados contra Plan Maestro, ALS, ADRs, conversaciones históricas (todos los transcripts de sesiones previas de este proyecto) y código actual. Resultado consolidado en §6, al final del documento. Regla arquitectónica reafirmada por el equipo (RECARGA = nueva `EmbarqueCarga` dentro del Embarque existente; identidad del Embarque intacta hasta cierre; nunca Embarque nuevo/hijo/operación duplicada) — ya reflejada en §3/§4, sin cambios.
+**v1.1**: segunda pasada pedida por el equipo, exclusivamente sobre los 4 PENDIENTES de §5 — rastreados contra Plan Maestro, ALS, ADRs, conversaciones históricas (todos los transcripts de sesiones previas de este proyecto) y código actual. Resultado consolidado en §6. Regla arquitectónica reafirmada por el equipo (RECARGA = nueva `EmbarqueCarga` dentro del Embarque existente; identidad del Embarque intacta hasta cierre; nunca Embarque nuevo/hijo/operación duplicada) — ya reflejada en §3/§4, sin cambios.
+
+**v2.0**: el equipo cerró los 4 PENDIENTES como propuesta de convergencia (5 reglas concretas) y pidió el diseño técnico mínimo de los 14 puntos, demostrando primero que cada regla es implementable sobre el modelo actual y señalando explícitamente cualquier punto que sí requiera ajustar el modelo. Ver §7 (verificación regla por regla, incluye el único punto real de fricción encontrado — cómputo de "disponible en vivo" — con evidencia, no suposición) y §8 (los 14 puntos). **Sigue sin escribirse ningún código.**
 **Responde a:** decisión de producto del equipo — el modelo de RECARGA queda definido (1..N cargas por Embarque, la recarga permanece dentro del mismo Embarque, genera `EmbarqueMovimiento.RECARGA` vinculado por `cargaId`, nunca crea otro Embarque, la conciliación trabaja sobre el conjunto completo, el repartidor solicita pero no autoriza). Se pidió auditoría exhaustiva de `main` (sin asumir ausencia), diagnóstico HECHO/DECISIÓN/BRECHA/PROPUESTA/PENDIENTE, y **cero código hasta demostrar la brecha exacta**.
 
 **Respuesta directa a la pregunta concreta del equipo:**
@@ -192,3 +194,100 @@ Una sola rama `feat/f5-recarga-embarque` desde `main`, con al menos 2 commits se
 **Ninguno de los 4 PENDIENTES estaba ya resuelto en una fuente existente.** No se encontró ninguna decisión previa que esta segunda pasada estuviera en riesgo de "volver a convertir en pregunta" — la búsqueda fue exhaustiva y negativa en las 6 fuentes distintas listadas arriba, no una omisión de la primera pasada. Los 4 requieren respuesta explícita del equipo/negocio antes de definir el cambio mínimo de aplicación de RECARGA. El PENDIENTE 3, aunque técnicamente sin fuente escrita, tiene una respuesta físicamente obligada (capacidad del vehículo es acumulada, no por-carga) que recomiendo confirmar por trámite, no por ambigüedad real.
 
 **Ningún código escrito en esta pasada.** Esperando las 4 respuestas antes de retomar la definición del cambio mínimo de aplicación (§4), que puede variar significativamente en tamaño según la respuesta al PENDIENTE 2 en particular.
+
+---
+
+## 7. Verificación regla por regla contra el modelo actual (v2.0)
+
+El equipo pidió demostrar, antes de escribir código, que cada una de las 5 reglas de convergencia es implementable sobre el modelo actual — y señalar explícitamente cualquier punto donde de verdad haga falta modificarlo.
+
+### Regla 1 — RECARGA continúa el Embarque original (nunca Embarque nuevo/hijo)
+
+**Implementable sin cambios de modelo.** Ya verificado en §1.2: `EmbarqueCarga.embarqueId` no tiene `@@unique` — el schema ya permite 1..N `EmbarqueCarga` por `Embarque`. Un nuevo caso de uso que reciba un `embarqueId` existente y le agregue una `EmbarqueCarga` más no requiere ninguna migración.
+
+### Regla 2 — INICIAL vs RECARGA explícito, sin depender solo de `createdAt`
+
+**Implementable sin campo nuevo en `EmbarqueCarga`.** El modelo actual ya tiene el mecanismo correcto en otro lugar: `EmbarqueMovimiento.tipo` (`CARGA` o `RECARGA`) + `EmbarqueMovimiento.cargaId` (FK a la `EmbarqueCarga` que originó ese movimiento, activado en PR #262 para `CARGA`). Si cada `EmbarqueCarga` nace siempre junto con **exactamente un** `EmbarqueMovimiento` de tipo `CARGA` (la primera) o `RECARGA` (las siguientes) con `cargaId` apuntándose a sí misma, entonces la pregunta "¿esta carga fue inicial o una recarga?" se responde con una consulta explícita (`EmbarqueMovimiento.findUnique({where:{cargaId, tipo:{in:['CARGA','RECARGA']}}})`), **nunca por orden cronológico** — el campo `tipo` es el marcador explícito que pide el equipo, ya persistido en una columna real, solo que en la tabla del movimiento en vez de en `EmbarqueCarga` misma. No hace falta un campo nuevo en `EmbarqueCarga`.
+
+**Único matiz a confirmar, no a decidir yo**: esto asume que TODA `EmbarqueCarga` (incluida la inicial, ya creada por `CrearEmbarqueUseCase` desde PR #262) sigue este invariante 1:1 con su movimiento. Ya es así desde PR #262 — sin cambios adicionales.
+
+### Regla 3 — Solicitar ≠ registrar, sin entidad nueva compleja
+
+**Implementable reutilizando el sistema de notificaciones existente, sin entidad nueva.** Precedente directo ya construido en el propio repo para el mismo patrón exacto ("un actor con menos autoridad señala una necesidad; un actor con más autoridad la resuelve"): `NotificationEventType.EXCEPCION_CREDITO_SOLICITADA`/`_RESUELTA` (F2, `schema.prisma:2296-2297`) — 2 valores de enum, migración aditiva, cero entidad de negocio nueva. Propuesta: agregar `EMBARQUE_RECARGA_SOLICITADA` al mismo enum; el `REPARTIDOR` dispara un evento (`notifyEvent()`, ya existe) con `embarqueId`/producto/cantidad estimada en el payload; `ADMIN`/`ASISTENTE` lo ven en su feed de notificaciones existente y ejecutan la operación real (el caso de uso de §8.1) por su cuenta. **No hay una "solicitud" persistida como entidad de negocio propia** — el registro de que se pidió vive en el log de notificaciones, ya auditado por el sistema existente. Si el equipo necesitara más adelante una bandeja de "solicitudes pendientes" con estado propio, sería una entidad nueva — pero no hay evidencia hoy de que se necesite, y el equipo pidió explícitamente no crearla sin necesidad demostrada.
+
+### Regla 4 — Capacidad = disponible en el vehículo AHORA, no acumulado histórico
+
+**Implementable, pero con un punto real de fricción que hay que señalar, no ocultar.** "Disponible" = `capacidadKg`/`MAX_UNIDADES` − (todo lo cargado hasta ahora en este Embarque − todo lo que ya salió del vehículo hasta ahora). Las dos mitades de esa resta tienen autoridades distintas y **ya existentes**, ninguna nueva:
+
+- **Lo cargado**: suma de `EmbarqueCargaProducto.cantidad` de todas las `EmbarqueCarga` de este `embarqueId` — disponible en tiempo real hoy mismo (se escribe en el momento de cada `CrearEmbarqueUseCase`/futura recarga).
+- **Lo que ya salió**: aquí está el matiz. Verificado en el código: `EmbarqueMovimiento{tipo:ENTREGA|VENTA_RUTA|RETORNO}` **solo se escribe al CERRAR el embarque** (`RegistrarMovimientosCierre`, invocado únicamente desde `CerrarEmbarqueUseCase`) — **excepto `BOTELLON`**, que sí se escribe en vivo vía `POST /api/embarques/[id]/botellones` (`botellones.service.ts`, contrato §16, movimientos separados de recogida/entrega). Para los otros 4 productos (`PACA_AGUA`, `PACA_HIELO`, `BOLSA_AGUA`, `BOLSA_HIELO`), `EmbarqueMovimiento` **no tiene ningún hecho de salida hasta que el embarque cierra** — sumar solo `EmbarqueMovimiento` para "lo que ya salió" subestimaría las salidas reales durante una misión activa, y por lo tanto sobreestimaría la capacidad disponible.
+  - **La autoridad real de "cuánto se ha entregado" ya existe y es otra**: `Pedido`/`PedidoItem.cantEntrega` (exactamente la misma autoridad que usa `CierreEmbarqueService.calcularDiscrepancia()` para "entregadas", solo que ahí se recibe como parámetro ya armado por el wizard de cierre, no por una consulta en vivo). Para RECARGA, la validación mid-misión necesita sumar `PedidoItem.cantEntrega` de los pedidos de este embarque **en el momento de la solicitud**, no esperar al cierre.
+  - **Esto NO es crear una segunda fuente de verdad** — es usar la ÚNICA fuente de verdad de entregas (`Pedido`) que ya existe, en vez de leer `EmbarqueMovimiento` (que, para 4 de 5 productos, todavía no tiene el dato mid-misión porque su escritura está diseñada para ocurrir solo al cierre). Combinar `EmbarqueCargaProducto` (autoridad de cargas) + `Pedido`/`PedidoItem` (autoridad de entregas) + `EmbarqueMovimiento` de botellón (autoridad de recogida/entrega de botellón) es leer 3 autoridades ya existentes, no inventar una cuarta.
+  - **Límite honesto a declarar, no a esconder**: si un `Pedido` fue entregado PARCIALMENTE y luego `Pedido.embarqueId` se liberó a `null` (comportamiento ya establecido de PR-1/F4, "libera `embarqueId` en parcial"), una consulta `WHERE embarqueId = X` en el momento de la recarga **ya no vería ese pedido** — la porción entregada de ese pedido no contaría como "salida" en el cálculo de disponibilidad en vivo. Es un caso de borde real, no hipotético. Impacto: la disponibilidad en vivo podría estar **ligeramente sobreestimada** en ese caso específico (nunca subestimada) — un falso positivo de "hay espacio", nunca un falso negativo. No afecta la conciliación final del cierre (que sí usa la lista completa de pedidos del wizard) ni ningún dato comercial/financiero — solo podría permitir una recarga que en la práctica deja el vehículo con un poco menos de margen del calculado. **Señalado explícitamente para que el equipo decida si es aceptable como aproximación de una validación no bloqueante para la integridad de datos, o si requiere tratamiento aparte** — no lo decido yo.
+
+### Regla 5 — RECARGA válida después de entregas parciales
+
+**Se cumple automáticamente si la Regla 4 se implementa correctamente.** No requiere ningún caso especial: si "disponible" se recalcula en vivo (capacidad − cargado + salido) en cada solicitud de recarga, una recarga después de entregas parciales simplemente ve más "disponible" que antes de esas entregas — es el comportamiento natural de la fórmula, no una rama de código aparte.
+
+---
+
+## 8. Diseño técnico mínimo — los 14 puntos (NO implementado)
+
+### 8.1 Caso de uso
+`RegistrarRecargaEmbarqueUseCase` — nuevo archivo, mismo patrón y mismas dependencias de dominio que `CrearEmbarqueUseCase` (reutiliza `EmbarqueValidationService`, no lo duplica). Recibe `embarqueId`, `carga: Record<ProductCode, number>` (cantidad de la recarga, no el total), `actorId`, `offlineId?`.
+
+### 8.2 Endpoint
+`POST /api/embarques/[id]/recarga`. Reutiliza el patrón de `botellones/route.ts` (auth + rol + `requireOwnership` para `REPARTIDOR`).
+
+### 8.3 Permisos
+**Ejecutar la recarga real (escribir `EmbarqueCarga`/movimiento)**: `ADMIN`/`ASISTENTE` únicamente — cumple explícitamente el límite del equipo ("no debe adquirir permisos para resolver discrepancias o autorizar operaciones que no le corresponden"). **Solicitar** (Regla 3): `REPARTIDOR` puede disparar el evento de notificación, sin escribir nada del ledger.
+
+### 8.4 Validación de estado del Embarque
+`estado` debe ser `ABIERTO` o `EN_RUTA`. Si es `CERRADO`/`CANCELADO`, se rechaza explícitamente (ese caso ya es "nuevo Embarque", cubierto por `CrearEmbarqueUseCase` + `findByTrabajadorAndFecha`, sin tocarlo).
+
+### 8.5 Validación de capacidad física disponible
+Fórmula de la Regla 4 (§7): `capacidadKg`/`MAX_UNIDADES` del Embarque menos (suma de `EmbarqueCargaProducto` de todas sus `EmbarqueCarga`) más (suma de salidas: `PedidoItem.cantEntrega` de pedidos `WHERE embarqueId=X` + `EmbarqueMovimiento{ENTREGA/RETORNO}` de botellón). Rechaza si la recarga solicitada excedería la capacidad disponible resultante. Reutiliza `EmbarqueValidationService.validarCapacidadPeso`/`validarMaxUnidades` pasándoles la `Carga` ya neta (disponible), sin modificar esos métodos.
+
+### 8.6 Creación de `EmbarqueCarga`
+Un `tx.embarqueCarga.create({ data: { embarqueId, availabilityBasis, ... } })` — mismo shape que el bloque ya existente en `CrearEmbarqueUseCase`, apuntando al `embarqueId` recibido en vez de a uno recién creado.
+
+### 8.7 Creación de `EmbarqueCargaProducto`
+Igual que 8.6, un `create` anidado por producto con `cantidad > 0` — mismo patrón exacto, sin cambios de forma.
+
+### 8.8 `EmbarqueMovimiento.RECARGA`
+Un `create` por producto con `cantidad > 0`, `tipo:'RECARGA'`, `destino:'VEHICULO'` — mismo patrón exacto que el dual-write de `CARGA` en PR #262, cambiando únicamente el literal del tipo.
+
+### 8.9 `cargaId`
+Cada `EmbarqueMovimiento{RECARGA}` se auto-referencia a la `EmbarqueCarga` recién creada en 8.6 — mismo patrón que PR #262. Resuelve también la Regla 2 (marcador INICIAL/RECARGA vía `tipo`, ver §7).
+
+### 8.10 Trazabilidad/custodia
+`logAudit` con actor, `embarqueId`, cantidad, disponible-antes/después (mismo patrón que el resto de escrituras del ledger). `origen`/`destino` del movimiento siguen el vocabulario `CUSTODIAS` ya existente (`ledger-fisico.service.ts`) — sin inventar valores nuevos.
+
+### 8.11 Idempotencia / offline / reintentos
+`offlineId` único en `EmbarqueCarga` (dedup antes de crear, mismo patrón que `CrearEmbarqueUseCase.ts:39-44`) — un retry con el mismo `offlineId` devuelve el resultado existente, no duplica. Lock `EMBARQUE_CARGA:{trabajadorId}:{fecha}` — mismo namespace y mismo agregado de concurrencia que `CrearEmbarqueUseCase`, serializa recargas concurrentes del mismo trabajador/día sin sobreconsumo de capacidad.
+
+### 8.12 Integración con conciliación
+`EmbarqueProducto.cargadas` se **incrementa** (`update` con `increment`, nunca `create`) para el `embarqueId`+producto ya existente — el `@@unique([embarqueId, producto])` ya fuerza esto estructuralmente. `CierreEmbarqueService.calcularDiscrepancia()` **no se toca**: sigue leyendo `EmbarqueProducto`/`Carga` tal cual, y como esos valores ya reflejan el acumulado (inicial + recargas) gracias al incremento, la conciliación final sigue siendo correcta sin ningún cambio de su propio código — cumple "no modificar la conciliación sin demostrar incompatibilidad" (no hay incompatibilidad: el incremento la alimenta correctamente).
+
+### 8.13 UI mínima necesaria
+- Vista de detalle de Embarque (`ledger-client`): ya tiene el tipo `RECARGA` soportado en `movimiento-timeline.tsx`/`types.ts` — sin cambios de esa parte.
+- Acción de "solicitar recarga" para `REPARTIDOR` en `/repartidor` (dispara el evento de notificación de 8.3, sin formulario de cantidades — la cantidad exacta la determina quien ejecuta).
+- Formulario de "registrar recarga" para `ADMIN`/`ASISTENTE` (cantidad por producto, mismo patrón visual que el formulario de creación de embarque, mostrando la capacidad disponible calculada por 8.5 antes de confirmar).
+
+### 8.14 Tests
+- **Unitarios**: cómputo de "disponible" (Regla 4) con distintas combinaciones de cargas/entregas/botellón.
+- **Integración** (Postgres real): recarga exitosa → `EmbarqueCarga`+`EmbarqueCargaProducto`+`EmbarqueMovimiento{RECARGA,cargaId}` correctos; `EmbarqueProducto.cargadas` incrementado (no duplicado, respeta `@@unique`); rechazo si `CERRADO`/`CANCELADO`; rechazo si excede capacidad disponible; concurrencia (2 recargas simultáneas se serializan sin sobreconsumo); recarga válida después de entrega parcial (Regla 5); `REPARTIDOR` no puede ejecutar el endpoint de registro (403); conciliación (`calcularDiscrepancia()`) da el mismo resultado correcto con carga inicial + N recargas; no regresión de `embarque-recarga.test.ts` (2+ viajes/día con el previo `CERRADO`, sigue intacto).
+- **E2E**: flujo completo `ADMIN` registra recarga sobre un Embarque `EN_RUTA` con entregas ya hechas → aparece en el timeline del ledger como `RECARGA` con su `cargaId`. **Nota sobre el soak (Fase 10, Hub V2)**: este flujo vive enteramente en `src/modules/embarques/`/`src/app/(app)/embarques/`, fuera de `pedido-hub/` y del flag `NEXT_PUBLIC_PEDIDOS_V2` — el job `e2e-hub` del soak solo corre 5 specs explícitamente listadas (`pedidos-hub*`, `pedidos-entrega-suficiencia`, `pedidos-g11`, `pedidos-peek-riesgo`), ninguna de embarques. Un E2E nuevo de recarga entra al job legacy `e2e` (8 shards, ya con su propio baseline de flakiness conocido) — **no toca ni resetea el contador del soak**, siempre que no se modifique `.github/workflows/ci.yml`.
+
+---
+
+## Restricciones — verificación explícita, una por una
+
+- **No tocar `CrearEmbarqueUseCase`**: cumplido — el nuevo caso de uso es un archivo separado; `CrearEmbarqueUseCase` sigue intacto, sigue siendo la única vía para "nuevo Embarque".
+- **No crear Embarques hijos**: cumplido — no existe ningún concepto de jerarquía Embarque-padre/hijo en esta propuesta, la `EmbarqueCarga` nueva cuelga del mismo `embarqueId`.
+- **No modificar la conciliación sin demostrar incompatibilidad**: verificado en §8.12 — no hay incompatibilidad, el incremento la alimenta correctamente sin tocar su código.
+- **No crear una segunda fuente de verdad**: verificado en §7 Regla 4 — se combinan 3 autoridades ya existentes (`EmbarqueCargaProducto`, `Pedido`/`PedidoItem`, `EmbarqueMovimiento` de botellón), ninguna nueva.
+- **No refactorizar Embarques en general**: cumplido — cero cambios a `CierreEmbarqueService`, `EmbarqueTransitionsService`, rutas de envío/cancelación, etc.
+- **No implementar reglas adicionales no justificadas**: la única pieza no 100% especificada por el equipo (el límite de aproximación de la Regla 4 con pedidos ya desasignados) se señaló explícitamente como punto a decidir, no se resolvió inventando una regla nueva.
+
+**Sigue sin escribirse ningún código.** A la espera de que el equipo confirme (a) el límite de aproximación señalado en la Regla 4, y (b) que el diseño de los 14 puntos puede pasar a implementación.
