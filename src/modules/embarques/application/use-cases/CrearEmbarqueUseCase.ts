@@ -131,7 +131,7 @@ export class CrearEmbarqueUseCase {
       // FASE 8 (dual-write, ADR-STOCK-001 / ADR-FISICO-001): registrar la carga
       // en el ledger físico. EmbarqueCargaProducto.cantidad es el HECHO FÍSICO
       // de la carga; availabilityBasis es metadata de validación (§10), NO stock.
-      await tx.embarqueCarga.create({
+      const embarqueCarga = await tx.embarqueCarga.create({
         data: {
           embarqueId: embarque.id.value,
           // No inventar vehículo histórico (§15): el vehículo real no se
@@ -149,6 +149,32 @@ export class CrearEmbarqueUseCase {
           },
         },
       })
+
+      // F5 (convergencia CARGA/RECARGA v1.1): ADR-FISICO-001 define `CARGA`
+      // como uno de los 10 TipoMovimiento del ledger físico ("+ custodia del
+      // vehículo/carga"); ADR-STOCK-001 dice explícitamente que el hecho de
+      // carga debe quedar reflejado "posteriormente" en ese ledger, además
+      // de `EmbarqueCargaProducto` (que sigue siendo el HECHO FÍSICO — esto
+      // es un espejo, nunca una segunda fuente). Granularidad (un movimiento
+      // por producto) y `cargaId` (auto-referenciado a esta misma carga)
+      // verificados contra evidencia estructural independiente del cierre:
+      // ver docs/AGUA_BAMBU_F5_CONVERGENCIA_CARGA_RECARGA_v1.0.md §4.
+      // `calcularDiscrepancia()`/la conciliación de control siguen leyendo
+      // exclusivamente `EmbarqueProducto`/`Carga` — esto no las toca.
+      for (const [producto, cantidad] of Object.entries(input.carga)) {
+        if (cantidad > 0) {
+          await tx.embarqueMovimiento.create({
+            data: {
+              embarqueId: embarque.id.value,
+              cargaId: embarqueCarga.id,
+              tipo: 'CARGA',
+              producto,
+              cantidad,
+              destino: 'VEHICULO',
+            },
+          })
+        }
+      }
 
       // Re-fetch embarque with productos
       const embarqueConProductos = await this.embarqueRepo.findById(embarque.id.value, tx)
