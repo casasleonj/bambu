@@ -152,6 +152,7 @@ export async function POST(
 
     const result = await entregarPedidoUseCase.execute({
       pedidoId: id,
+      actorId: user?.id,
       itemsEntregados: entregas,
       pagos: pagosInput,
       embarqueId,

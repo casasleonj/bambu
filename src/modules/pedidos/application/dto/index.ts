@@ -86,6 +86,8 @@ export interface ActualizarPedidoInput {
 
 export interface EntregarPedidoInput {
   pedidoId: string
+  /** Actor que ejecuta la entrega — propagado a logAudit de la reconexión N2 (obligacion-guard). */
+  actorId?: string
   itemsEntregados: Array<{ producto: ProductCode; cantidad: number }>
   pagos?: PagoData[]
   // ADR-PAGO-EMBARQUE-CAPTURA-001: embarque de captura del cobro. Obligatorio

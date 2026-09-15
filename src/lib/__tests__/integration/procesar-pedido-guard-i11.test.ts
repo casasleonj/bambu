@@ -71,37 +71,43 @@ describe('N2 — guard I-11 en el cierre de embarque (procesar-pedido.service.ts
 
   afterAll(async () => { await disconnect() })
 
-  it('rechaza el cierre PARCIAL si invade cantidad bajo gestión activa', async () => {
+  it('reconexión I-11: el cierre PARCIAL que invade cantidad bajo gestión activa se aplica al cumplimiento de la Obligación, no se rechaza', async () => {
     const emb = await crearEmbarque()
     const pedido = await crearPedidoConBotellonesPendientes(emb.id)
 
     // Gestionar 3 de los 4 pendientes (quedan 1 libre: 10 - 6 - 3 = 1).
-    await new GestionarPendienteUseCase().execute({
+    const { obligacionId, actividadId } = await new GestionarPendienteUseCase().execute({
       pedidoId: pedido.id, producto: 'BOTELLON', cantidad: 3, modoInicial: 'PUNTO', usuarioId: adminId,
     })
 
-    // El cierre intenta entregar 4 más (invade las 3 reservadas) → rechaza.
-    await expect(
-      buildCierre().execute({
-        id: emb.id,
-        pedidos: [{
-          pedidoId: pedido.id,
-          entregado: 'PARCIAL',
-          productosEntregados: { cPacaAguaEnt: 0, cPacaHieloEnt: 0, cBotellonFabEnt: 4, cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0 },
-          pagos: [],
-        }],
-        gastos: [],
-        dineroEntregado: 0,
-      }),
-    ).rejects.toThrow('SOBREPOSICION_CON_OBLIGACION_ACTIVA')
+    // El cierre entrega 4 más: 1 cae en zona ordinaria, 3 en zona reservada
+    // — ya NO se rechaza, se aplican como cumplimiento de la Obligación
+    // (decisión del equipo, F4). 6+4=10 → Pedido ENTREGADO.
+    const result = await buildCierre().execute({
+      id: emb.id,
+      pedidos: [{
+        pedidoId: pedido.id,
+        entregado: 'PARCIAL',
+        productosEntregados: { cPacaAguaEnt: 0, cPacaHieloEnt: 0, cBotellonFabEnt: 4, cBotellonDomEnt: 0, cBolsaAguaEnt: 0, cBolsaHieloEnt: 0 },
+        pagos: [],
+      }],
+      gastos: [],
+      dineroEntregado: 0,
+    })
+    expect(result.caja).toBeDefined()
 
-    // La ObligacionPendiente/Actividad no se tocaron por el intento fallido.
-    // cantidadAsignada=3 (no 0): la Actividad creada por GestionarPendienteUseCase
-    // reclama la cantidad completa de inmediato (fix de cantidadAsignada, ver
-    // GestionarPendienteUseCase.ts) — el intento fallido de cierre no la altera.
-    const obligacion = await testPrisma.obligacionPendiente.findFirstOrThrow({ where: { pedidoId: pedido.id } })
-    expect(obligacion.cantidadAsignada).toBe(3)
-    expect(obligacion.cantidadCumplida).toBe(0)
+    const p = await testPrisma.pedido.findUniqueOrThrow({ where: { id: pedido.id } })
+    expect(p.cBotellonFabEnt).toBe(10) // 6 + 4 — el Pedido sigue siendo la autoridad de cumplimiento
+    expect(p.estadoEntrega).toBe('ENTREGADO')
+
+    const obligacion = await testPrisma.obligacionPendiente.findUniqueOrThrow({ where: { id: obligacionId } })
+    expect(obligacion.cantidadCumplida).toBe(3)
+    expect(obligacion.cantidadAsignada).toBe(0)
+    expect(obligacion.estado).toBe('CUMPLIDA')
+
+    const actividad = await testPrisma.actividad.findUniqueOrThrow({ where: { id: actividadId } })
+    expect(actividad.cantidadCumplida).toBe(3)
+    expect(actividad.estado).toBe('CUMPLIDA')
   })
 
   it('permite el cierre PARCIAL de la cantidad que SÍ está libre (fuera de la gestión activa)', async () => {

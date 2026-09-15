@@ -8,7 +8,9 @@
  *
  * Responsabilidades:
  * - Procesar pedido ENTREGADO (actualizar cantidades, precios, factura)
- * - Procesar pedido PARCIAL (crear pedido hijo con faltantes)
+ * - Procesar pedido PARCIAL (acumula lo entregado sobre el MISMO pedido,
+ *   queda PENDIENTE y replanificable — PR-1 retiró la creación de pedido
+ *   hijo, ver comentario al final del archivo)
  * - Procesar pedido NO_ENTREGADO (reasignar a nuevo embarque o dejar pendiente)
  * - Actualizar PedidoItems
  * - Loggear cambios de precio en historial
@@ -26,7 +28,7 @@
 import { EstadoEmbarque } from '@prisma/client'
 import { calcularEstadoPago } from '@/lib/pedido-utils'
 import { datosConfirmacionInicial, leerMetodosRequierenConfirmacion } from '@/lib/pago-confirmacion'
-import { validarSinSobreposicionConObligacionActiva, type EntregaAValidar } from '@/lib/obligacion-guard'
+import { aplicarEntregaConObligacion, type EntregaAValidar } from '@/lib/obligacion-guard'
 import type { CerrarEmbarqueInput } from '../../application/dto'
 import type { MetodoPago } from '@prisma/client'
 
@@ -171,18 +173,20 @@ export class ProcesarPedidoService {
       return this.procesarNoEntregado(client, pedido, cuadre, pedidosActualizados)
     }
 
-    // Guard I-11 (N2, AGUA_BAMBU_N2_ALS_v2.0.md §3.4bis): ni PARCIAL ni
-    // COMPLETO pueden entregar cantidad que ya está bajo gestión de una
-    // ObligacionPendiente ABIERTA — evita doble cumplimiento físico (una vez
-    // por el cierre de embarque, otra por el cumplimiento de la Actividad que
-    // la tiene reservada). `client` acá es `TxOrPrisma` (tipado laxo por
-    // diseño del service, ver comentario del tipo arriba); el modelo real
-    // sigue siendo el mismo Prisma.TransactionClient que usa el resto del
-    // cierre, así que el cast es seguro.
-    await validarSinSobreposicionConObligacionActiva(
-      client as unknown as Parameters<typeof validarSinSobreposicionConObligacionActiva>[0],
+    // Reconexión N2 (I-11, AGUA_BAMBU_N2_ALS_v2.0.md §3.4bis): la porción de
+    // esta entrega (PARCIAL o COMPLETO) que cae en zona reservada por una
+    // ObligacionPendiente ABIERTA se aplica a su cumplimiento (acotada a su
+    // pendiente real) en vez de rechazarse — evita doble cumplimiento físico
+    // sin bloquear el cumplimiento legítimo del remanente gestionado.
+    // `client` acá es `TxOrPrisma` (tipado laxo por diseño del service, ver
+    // comentario del tipo arriba); el modelo real sigue siendo el mismo
+    // Prisma.TransactionClient que usa el resto del cierre, así que el cast
+    // es seguro.
+    await aplicarEntregaConObligacion(
+      client as unknown as Parameters<typeof aplicarEntregaConObligacion>[0],
       pedido.id,
       construirEntregasAValidar(pedido, entProd),
+      userId,
     )
 
     // PARCIAL (PR-1, integridad de entrega parcial): entrega interina que NO
