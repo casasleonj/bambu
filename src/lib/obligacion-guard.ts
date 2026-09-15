@@ -55,6 +55,13 @@ export class EntregaSuperaLoAsignadoError extends Error {
   }
 }
 
+export class ObligacionActividadDesincronizadaError extends Error {
+  constructor(public readonly producto: string) {
+    super(`OBLIGACION_ACTIVIDAD_DESINCRONIZADA: el producto ${producto} tiene cantidadAsignada suficiente en la ObligacionPendiente, pero sus Actividades ASIGNADA/EN_PROGRESO no tienen capacidad real para absorberlo — no se acredita cumplimiento a la Obligación por una cantidad que no quedó aplicada a ninguna Actividad concreta`)
+    this.name = 'ObligacionActividadDesincronizadaError'
+  }
+}
+
 export interface EntregaAValidar {
   producto: string
   /** `PedidoItem.cantPedido` de ese producto. */
@@ -150,11 +157,24 @@ export async function aplicarEntregaConObligacion(
     // `cantidad` antes de pasar a la siguiente. Caso común (una sola
     // Actividad = toda la obligación, creada por GestionarPendienteUseCase):
     // un solo ciclo.
+    //
+    // Plan primero, escritura después: se calcula qué le corresponde a cada
+    // Actividad SIN escribir nada todavía. `cantidadAsignada` de la
+    // Obligación *debería* reflejar exactamente la capacidad real disponible
+    // en sus Actividades ASIGNADA/EN_PROGRESO (así lo mantienen
+    // GestionarPendienteUseCase/AsignarActividadUseCase/LiberarActividadUseCase),
+    // pero esta función nunca CONFÍA ciegamente en ese contador agregado — lo
+    // verifica contra la capacidad real antes de acreditar nada. Si el plan
+    // no logra colocar el total (`restante > 0`), hay una desincronización
+    // entre el contador y las Actividades concretas: se rechaza el intento
+    // completo (nada se escribe) en vez de acreditar a la Obligación una
+    // cantidad que no quedó aplicada a ninguna Actividad real.
     const actividadesAbiertas = await tx.actividad.findMany({
       where: { obligacionId: obligacion.id, estado: { in: ['ASIGNADA', 'EN_PROGRESO'] } },
       orderBy: { createdAt: 'asc' },
     })
 
+    const planActividades: Array<{ id: string; nuevaCantidadCumplida: number; nuevoEstado: typeof actividadesAbiertas[number]['estado'] }> = []
     let restante = aplicarAObligacion
     for (const actividad of actividadesAbiertas) {
       if (restante <= 0) break
@@ -162,19 +182,31 @@ export async function aplicarEntregaConObligacion(
       if (puedeAbsorber <= 0) continue
       const aplicarAActividad = Math.min(restante, puedeAbsorber)
       const nuevaCantidadCumplida = actividad.cantidadCumplida + aplicarAActividad
-      await tx.actividad.update({
-        where: { id: actividad.id },
-        data: {
-          cantidadCumplida: nuevaCantidadCumplida,
-          estado: nuevaCantidadCumplida >= actividad.cantidad ? 'CUMPLIDA' : actividad.estado,
-        },
+      planActividades.push({
+        id: actividad.id,
+        nuevaCantidadCumplida,
+        nuevoEstado: nuevaCantidadCumplida >= actividad.cantidad ? 'CUMPLIDA' : actividad.estado,
       })
       restante -= aplicarAActividad
+    }
+
+    if (restante > 0) {
+      throw new ObligacionActividadDesincronizadaError(e.producto)
+    }
+
+    for (const plan of planActividades) {
+      await tx.actividad.update({
+        where: { id: plan.id },
+        data: { cantidadCumplida: plan.nuevaCantidadCumplida, estado: plan.nuevoEstado },
+      })
     }
 
     // Invariante (contrato §7, chk_obligacion_no_sobreconsumo): cumplida +
     // asignada <= original. Cumplir mueve unidades de "asignada" a
     // "cumplida" — la suma no cambia, nunca se libera capacidad de más.
+    // `aplicarAObligacion` ya quedó demostrado arriba como exactamente lo
+    // que las Actividades reales absorbieron (restante === 0) — la
+    // Obligación y sus Actividades nunca pueden quedar descuadradas.
     const nuevaCantidadCumplidaObligacion = obligacion.cantidadCumplida + aplicarAObligacion
     const nuevaCantidadAsignadaObligacion = Math.max(0, obligacion.cantidadAsignada - aplicarAObligacion)
     const obligacionCumplida = nuevaCantidadCumplidaObligacion >= obligacion.cantidadOriginal

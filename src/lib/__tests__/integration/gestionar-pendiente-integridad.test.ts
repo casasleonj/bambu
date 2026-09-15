@@ -230,7 +230,7 @@ describe('N2 — GestionarPendienteUseCase', () => {
 
   it('reconexión I-11: cumplimiento fraccionado — varias entregas parciales acumulan hasta cerrar la Obligación', async () => {
     const pedido = await crearPedidoConBotellonesPendientes(0, 10, 'EN_RUTA') // 10 pendientes
-    const { obligacionId } = await new GestionarPendienteUseCase().execute({
+    const { obligacionId, actividadId } = await new GestionarPendienteUseCase().execute({
       pedidoId: pedido.id, producto: 'BOTELLON', cantidad: 8, modoInicial: 'DOMICILIO', usuarioId: adminId,
     })
     // limiteOrdinario = 10 - 8 = 2 (ya se entregaron 0).
@@ -240,22 +240,34 @@ describe('N2 — GestionarPendienteUseCase', () => {
     // nuevo embarque/ruta antes del siguiente intento.
     const reasignarARuta = () => testPrisma.pedido.update({ where: { id: pedido.id }, data: { estadoEntrega: 'EN_RUTA', estado: 'EN_RUTA' } })
 
+    // Integridad Obligación↔Actividad (revisión del equipo, PR #258 ronda 3):
+    // en CADA paso de una entrega fragmentada, cantidadCumplida de la
+    // Obligación debe coincidir EXACTAMENTE con lo acumulado en su(s)
+    // Actividad(es) — nunca puede la Obligación "avanzar" más de lo que sus
+    // Actividades concretas realmente absorbieron.
+    const assertIntegridad = async () => {
+      const obligacionActual = await testPrisma.obligacionPendiente.findUniqueOrThrow({ where: { id: obligacionId } })
+      const actividadActual = await testPrisma.actividad.findUniqueOrThrow({ where: { id: actividadId } })
+      expect(actividadActual.cantidadCumplida).toBe(obligacionActual.cantidadCumplida)
+      return obligacionActual
+    }
+
     // Entrega 1: 1 unidad — toda ordinaria, no toca la Obligación todavía.
     await buildEntregarUseCase().execute({ pedidoId: pedido.id, itemsEntregados: [{ producto: 'BOTELLON', cantidad: 1 }], pagos: [] })
-    let obligacion = await testPrisma.obligacionPendiente.findUniqueOrThrow({ where: { id: obligacionId } })
+    let obligacion = await assertIntegridad()
     expect(obligacion.cantidadCumplida).toBe(0)
 
     // Entrega 2: 3 unidades — 1 ordinaria (completa el límite de 2) + 2 hacia la Obligación.
     await reasignarARuta()
     await buildEntregarUseCase().execute({ pedidoId: pedido.id, itemsEntregados: [{ producto: 'BOTELLON', cantidad: 3 }], pagos: [] })
-    obligacion = await testPrisma.obligacionPendiente.findUniqueOrThrow({ where: { id: obligacionId } })
+    obligacion = await assertIntegridad()
     expect(obligacion.cantidadCumplida).toBe(2)
     expect(obligacion.estado).toBe('ABIERTA')
 
     // Entrega 3: 3 unidades más, todas hacia la Obligación (2/8 → 5/8).
     await reasignarARuta()
     await buildEntregarUseCase().execute({ pedidoId: pedido.id, itemsEntregados: [{ producto: 'BOTELLON', cantidad: 3 }], pagos: [] })
-    obligacion = await testPrisma.obligacionPendiente.findUniqueOrThrow({ where: { id: obligacionId } })
+    obligacion = await assertIntegridad()
     expect(obligacion.cantidadCumplida).toBe(5)
     expect(obligacion.estado).toBe('ABIERTA')
 
@@ -263,7 +275,7 @@ describe('N2 — GestionarPendienteUseCase', () => {
     await reasignarARuta()
     const res = await buildEntregarUseCase().execute({ pedidoId: pedido.id, itemsEntregados: [{ producto: 'BOTELLON', cantidad: 3 }], pagos: [] })
     expect(res.pedido.estadoEntrega).toBe('ENTREGADO')
-    obligacion = await testPrisma.obligacionPendiente.findUniqueOrThrow({ where: { id: obligacionId } })
+    obligacion = await assertIntegridad()
     expect(obligacion.cantidadCumplida).toBe(8)
     expect(obligacion.estado).toBe('CUMPLIDA')
   })

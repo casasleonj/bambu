@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { testPrisma, resetAndSeed, disconnect, createTestCliente, getAdminUser, getRepartidorUser } from './setup'
 import { prisma } from '@/lib/prisma'
-import { aplicarEntregaConObligacion, EntregaExcedePendienteTotalError, EntregaSuperaLoAsignadoError } from '@/lib/obligacion-guard'
+import { aplicarEntregaConObligacion, EntregaExcedePendienteTotalError, EntregaSuperaLoAsignadoError, ObligacionActividadDesincronizadaError } from '@/lib/obligacion-guard'
 import { AsignarActividadUseCase } from '@/modules/embarques/application/use-cases/AsignarActividadUseCase'
 import { CambiarModoActividadUseCase } from '@/modules/embarques/application/use-cases/CambiarModoActividadUseCase'
 import { LiberarActividadUseCase } from '@/modules/embarques/application/use-cases/LiberarActividadUseCase'
@@ -61,6 +61,18 @@ async function crearPedidoConObligacion(opts: {
     },
   })
   return { pedido, obligacion, actividad }
+}
+
+/**
+ * Integridad Obligación↔Actividades (revisión del equipo, PR #258 ronda 3):
+ * `ObligacionPendiente.cantidadCumplida` debe coincidir SIEMPRE con la suma
+ * de `Actividad.cantidadCumplida` de todas sus Actividades — nunca puede la
+ * Obligación acreditarse cumplimiento que no quedó reflejado en ninguna
+ * Actividad concreta.
+ */
+async function sumaCantidadCumplidaActividades(obligacionId: string) {
+  const actividades = await testPrisma.actividad.findMany({ where: { obligacionId } })
+  return actividades.reduce((sum, a) => sum + a.cantidadCumplida, 0)
 }
 
 describe('Reconexión I-11 — aplicarEntregaConObligacion (integración, Postgres real)', () => {
@@ -122,6 +134,8 @@ describe('Reconexión I-11 — aplicarEntregaConObligacion (integración, Postgr
     expect(obligacionFinal.cantidadCumplida).toBe(4)
     expect(obligacionFinal.cantidadAsignada).toBe(0)
     expect(obligacionFinal.estado).toBe('CUMPLIDA')
+    // Integridad Obligación↔Actividades: nunca descuadradas.
+    expect(await sumaCantidadCumplidaActividades(obligacion.id)).toBe(obligacionFinal.cantidadCumplida)
   })
 
   it('concurrencia: dos aplicaciones simultáneas sobre la misma Obligación se serializan (lock OBLIGACION), sin sobreconsumo', async () => {
@@ -151,6 +165,8 @@ describe('Reconexión I-11 — aplicarEntregaConObligacion (integración, Postgr
     expect(obligacionFinal.estado).toBe('CUMPLIDA')
     // Invariante nunca violado, ni siquiera transitoriamente de forma persistida.
     expect(obligacionFinal.cantidadCumplida + obligacionFinal.cantidadAsignada).toBeLessThanOrEqual(obligacionFinal.cantidadOriginal)
+    // Integridad Obligación↔Actividades: nunca descuadradas, ni bajo concurrencia.
+    expect(await sumaCantidadCumplidaActividades(obligacion.id)).toBe(obligacionFinal.cantidadCumplida)
   })
 
   it('escenario exacto de revisión: original=10, cumplida=4, asignada=2 → una entrega de 4 NO puede convertir cantidad no asignada en cumplimiento', async () => {
@@ -214,6 +230,41 @@ describe('Reconexión I-11 — aplicarEntregaConObligacion (integración, Postgr
     const segundaActividad = await testPrisma.actividad.findUniqueOrThrow({ where: { id: segundaActividadId } })
     expect(segundaActividad.cantidadCumplida).toBe(0)
     expect(segundaActividad.estado).toBe('ASIGNADA')
+    // Integridad Obligación↔Actividades: 8 (original) + 0 (segunda) === 8.
+    expect(await sumaCantidadCumplidaActividades(obligacion.id)).toBe(obligacionFinal.cantidadCumplida)
+  })
+
+  it('desincronización defensiva: cantidadAsignada de la Obligación excede la capacidad real de sus Actividades → rechaza sin acreditar nada', async () => {
+    // Bajo los casos de uso normales (GestionarPendienteUseCase,
+    // AsignarActividadUseCase, LiberarActividadUseCase), `cantidadAsignada`
+    // de la Obligación SIEMPRE coincide con la capacidad real disponible en
+    // sus Actividades ASIGNADA/EN_PROGRESO — nunca deberían poder
+    // desincronizarse. Este test simula directamente (bypass de esos casos
+    // de uso) ese escenario para probar que `aplicarEntregaConObligacion`
+    // NUNCA confía ciegamente en el contador agregado: valida la capacidad
+    // real antes de acreditar cumplimiento.
+    const { pedido, obligacion, actividad } = await crearPedidoConObligacion({
+      cantPedido: 20, cantEntrega: 10, cantidadOriginalObligacion: 10, cantidadAsignadaObligacion: 5,
+    })
+    // La Obligación "dice" tener 5 unidades asignadas, pero su única
+    // Actividad real solo tiene capacidad para 3 — desincronización directa.
+    await testPrisma.actividad.update({ where: { id: actividad.id }, data: { cantidad: 3 } })
+
+    await expect(
+      prisma.$transaction(tx =>
+        aplicarEntregaConObligacion(tx, pedido.id, [{ producto: 'BOTELLON', cantPedido: 20, cantEntregaActual: 10, cantidadAEntregar: 5 }]),
+      ),
+    ).rejects.toThrow(ObligacionActividadDesincronizadaError)
+
+    // Nada se escribió — ni la Obligación ni la Actividad cambiaron. No se
+    // acredita silenciosamente una cantidad que no quedó aplicada a ninguna
+    // Actividad real.
+    const obligacionSinCambios = await testPrisma.obligacionPendiente.findUniqueOrThrow({ where: { id: obligacion.id } })
+    expect(obligacionSinCambios.cantidadCumplida).toBe(0)
+    expect(obligacionSinCambios.cantidadAsignada).toBe(5)
+    const actividadSinCambios = await testPrisma.actividad.findUniqueOrThrow({ where: { id: actividad.id } })
+    expect(actividadSinCambios.cantidadCumplida).toBe(0)
+    expect(await sumaCantidadCumplidaActividades(obligacion.id)).toBe(obligacionSinCambios.cantidadCumplida)
   })
 
   it('sin deadlock: EntregarPedidoUseCase (lock PEDIDO→OBLIGACION) concurrente con CambiarModoActividadUseCase (lock OBLIGACION solo) sobre la misma Obligación', async () => {
@@ -241,6 +292,7 @@ describe('Reconexión I-11 — aplicarEntregaConObligacion (integración, Postgr
     const actividadFinal = await testPrisma.actividad.findUniqueOrThrow({ where: { id: actividad.id } })
     expect(actividadFinal.modo).toBe('DOMICILIO')
     expect(actividadFinal.cantidadCumplida).toBe(4)
+    expect(await sumaCantidadCumplidaActividades(obligacion.id)).toBe(obligacionFinal.cantidadCumplida)
   })
 
   it('revalida el estado DESPUÉS del lock: entrega concurrente con liberar-actividad nunca acredita cumplimiento a una Obligación que ya no está ABIERTA', async () => {
@@ -278,6 +330,7 @@ describe('Reconexión I-11 — aplicarEntregaConObligacion (integración, Postgr
     const obligacionFinal = await testPrisma.obligacionPendiente.findUniqueOrThrow({ where: { id: obligacion.id } })
     // Invariante universal, sin importar quién ganó la carrera del lock.
     expect(obligacionFinal.cantidadCumplida + obligacionFinal.cantidadAsignada).toBeLessThanOrEqual(obligacionFinal.cantidadOriginal)
+    expect(await sumaCantidadCumplidaActividades(obligacion.id)).toBe(obligacionFinal.cantidadCumplida)
     if (obligacionFinal.estado === 'ANULADA') {
       // liberar ganó y corrió primero, o su commit quedó visible para la
       // re-lectura de entrega bajo el lock — en ambos casos, cero crédito.
