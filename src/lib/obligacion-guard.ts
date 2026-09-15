@@ -112,6 +112,16 @@ export async function aplicarEntregaConObligacion(
     // Re-lectura FRESCA bajo el lock — cantidadCumplida/cantidadAsignada
     // pudieron cambiar entre el findMany de arriba (fuera del lock) y este punto.
     const obligacion = await tx.obligacionPendiente.findUniqueOrThrow({ where: { id: activa.id } })
+
+    // Revalidar estado DESPUÉS de la re-lectura bajo el lock (no solo antes
+    // de adquirirlo): otra operación (cambiar-modo, liberar, o esta misma
+    // función desde otra entrega/hilo) pudo haber CUMPLIDA/ANULADA esta
+    // obligación mientras esta llamada esperaba el lock. Si ya no está
+    // ABIERTA, no hay cumplimiento legítimo que aplicar — se salta esta
+    // obligación (el Pedido sigue siendo la autoridad de cuánto se
+    // entregó, sin cambios; esta porción simplemente no se refleja en N2).
+    if (obligacion.estado !== 'ABIERTA') continue
+
     const obligacionPendienteRestante = obligacion.cantidadOriginal - obligacion.cantidadCumplida
 
     if (haciaObligacion > obligacionPendienteRestante) {

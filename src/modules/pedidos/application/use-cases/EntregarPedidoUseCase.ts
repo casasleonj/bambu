@@ -91,7 +91,7 @@ export class EntregarPedidoUseCase {
       // vez de rechazarse — el Pedido sigue siendo la única autoridad de
       // cuánto se entregó (sin cambios abajo); esto solo espeja la porción
       // correspondiente en la obligación gestionada.
-      await aplicarEntregaConObligacion(tx, input.pedidoId, entregasClampeadas)
+      await aplicarEntregaConObligacion(tx, input.pedidoId, entregasClampeadas, input.actorId)
 
       pedido.entregar(
         entregasClampeadas.map(e => ({ producto: e.producto, cantidad: e.cantidadAEntregar })),

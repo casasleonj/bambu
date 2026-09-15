@@ -10,6 +10,7 @@ import { prisma } from '@/lib/prisma'
 import { aplicarEntregaConObligacion, EntregaExcedePendienteTotalError, EntregaSuperaLoAsignadoError } from '@/lib/obligacion-guard'
 import { AsignarActividadUseCase } from '@/modules/embarques/application/use-cases/AsignarActividadUseCase'
 import { CambiarModoActividadUseCase } from '@/modules/embarques/application/use-cases/CambiarModoActividadUseCase'
+import { LiberarActividadUseCase } from '@/modules/embarques/application/use-cases/LiberarActividadUseCase'
 import { EntregarPedidoUseCase } from '@/modules/pedidos/application/use-cases/EntregarPedidoUseCase'
 import { PrismaPedidoRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaPedidoRepository'
 import { PrismaFacturaRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaFacturaRepository'
@@ -240,5 +241,57 @@ describe('Reconexión I-11 — aplicarEntregaConObligacion (integración, Postgr
     const actividadFinal = await testPrisma.actividad.findUniqueOrThrow({ where: { id: actividad.id } })
     expect(actividadFinal.modo).toBe('DOMICILIO')
     expect(actividadFinal.cantidadCumplida).toBe(4)
+  })
+
+  it('revalida el estado DESPUÉS del lock: entrega concurrente con liberar-actividad nunca acredita cumplimiento a una Obligación que ya no está ABIERTA', async () => {
+    // Ambas operaciones adquieren OBLIGACION:{id} de forma independiente
+    // (EntregarPedidoUseCase vía aplicarEntregaConObligacion,
+    // LiberarActividadUseCase vía withAdvisoryLock) — el lock serializa,
+    // pero cuál gana la carrera es no determinístico. El punto del fix es
+    // que AMBOS desenlaces posibles queden seguros: si liberar corre
+    // primero y anula la Obligación (única Actividad, sin cumplimiento
+    // previo), la re-lectura DENTRO del lock de aplicarEntregaConObligacion
+    // debe ver 'ANULADA' y saltarse el crédito — nunca debe aplicar
+    // cumplimiento a una Obligación que ya no está ABIERTA, sin importar
+    // que la lectura ANTERIOR al lock (el findMany inicial) la haya visto
+    // ABIERTA. Si entrega corre primero, la Actividad queda CUMPLIDA y
+    // liberar debe rechazar (ACTIVIDAD_NO_MODIFICABLE) — no hay tercer
+    // desenlace posible.
+    const { pedido, obligacion, actividad } = await crearPedidoConObligacion({
+      cantPedido: 20, cantEntrega: 10, cantidadOriginalObligacion: 10,
+    })
+    await testPrisma.pedido.update({ where: { id: pedido.id }, data: { estadoEntrega: 'EN_RUTA', estado: 'EN_RUTA' } })
+
+    const entregaPromise = buildEntregarUseCase().execute({
+      pedidoId: pedido.id, itemsEntregados: [{ producto: 'BOTELLON', cantidad: 10 }], pagos: [], actorId: adminId,
+    })
+    const liberarPromise = new LiberarActividadUseCase()
+      .execute({ actividadId: actividad.id, motivo: 'carrera de prueba', actorId: adminId })
+      .catch((err: Error) => ({ error: err }))
+
+    const [entregaRes, liberarRes] = await Promise.all([entregaPromise, liberarPromise])
+
+    // La entrega SIEMPRE tiene éxito — el guard nunca debe hacer fallar la
+    // entrega completa por esta carrera (Pedido es autoridad separada).
+    expect(entregaRes.deduped).toBeFalsy()
+
+    const obligacionFinal = await testPrisma.obligacionPendiente.findUniqueOrThrow({ where: { id: obligacion.id } })
+    // Invariante universal, sin importar quién ganó la carrera del lock.
+    expect(obligacionFinal.cantidadCumplida + obligacionFinal.cantidadAsignada).toBeLessThanOrEqual(obligacionFinal.cantidadOriginal)
+    if (obligacionFinal.estado === 'ANULADA') {
+      // liberar ganó y corrió primero, o su commit quedó visible para la
+      // re-lectura de entrega bajo el lock — en ambos casos, cero crédito.
+      expect(obligacionFinal.cantidadCumplida).toBe(0)
+      expect('error' in liberarRes ? undefined : liberarRes.obligacionAnulada).toBe(true)
+    } else {
+      // entrega ganó (o su commit quedó visible para la re-lectura de
+      // liberar) — la Actividad quedó CUMPLIDA, liberar debe rechazar.
+      expect(obligacionFinal.estado).toBe('CUMPLIDA')
+      expect(obligacionFinal.cantidadCumplida).toBe(10)
+      expect('error' in liberarRes).toBe(true)
+      if ('error' in liberarRes) {
+        expect(liberarRes.error.message).toContain('ACTIVIDAD_NO_MODIFICABLE')
+      }
+    }
   })
 })
