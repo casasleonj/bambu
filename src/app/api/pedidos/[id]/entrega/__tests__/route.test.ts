@@ -76,9 +76,9 @@ describe('F-N7: la route sigue trabajando (no rompe backward compat)', () => {
 })
 
 describe('Fase 2 GPS: validación y persistencia de GPS en entrega', () => {
-  it('la route lee REQUIERE_GPS_PARA_ENTREGA y PERMITIR_ENTREGA_SIN_GPS_CON_JUSTIFICACION', () => {
-    expect(routeSource).toMatch(/REQUIERE_GPS_PARA_ENTREGA/)
-    expect(routeSource).toMatch(/PERMITIR_ENTREGA_SIN_GPS_CON_JUSTIFICACION/)
+  it('la route lee requerirGpsParaEntrega y permitirEntregaSinGpsConJustificacion (mismas claves que seed.ts y el cliente)', () => {
+    expect(routeSource).toMatch(/getConfigBool\(['"]requerirGpsParaEntrega['"]/)
+    expect(routeSource).toMatch(/getConfigBool\(['"]permitirEntregaSinGpsConJustificacion['"]/)
   })
 
   it('la route devuelve 400 si se requiere GPS y no hay coords ni justificación', () => {
