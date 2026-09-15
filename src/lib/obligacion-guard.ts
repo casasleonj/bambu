@@ -48,6 +48,13 @@ export class EntregaExcedePendienteTotalError extends Error {
   }
 }
 
+export class EntregaSuperaLoAsignadoError extends Error {
+  constructor(public readonly producto: string) {
+    super(`ENTREGA_SUPERA_LO_ASIGNADO: el producto ${producto} invade una porción de la ObligacionPendiente que todavía no está asignada a ninguna Actividad concreta — asigne esa cantidad primero (AsignarActividadUseCase) antes de poder cumplirla`)
+    this.name = 'EntregaSuperaLoAsignadoError'
+  }
+}
+
 export interface EntregaAValidar {
   producto: string
   /** `PedidoItem.cantPedido` de ese producto. */
@@ -102,17 +109,31 @@ export async function aplicarEntregaConObligacion(
     // cambiar-modo/liberar/reprogramar concurrentes sobre esta misma obligación.
     await acquireAdvisoryLockTx(tx, 'OBLIGACION', activa.id)
 
-    // Re-lectura FRESCA bajo el lock — cantidadCumplida pudo cambiar entre
-    // el findMany de arriba (fuera del lock) y este punto.
+    // Re-lectura FRESCA bajo el lock — cantidadCumplida/cantidadAsignada
+    // pudieron cambiar entre el findMany de arriba (fuera del lock) y este punto.
     const obligacion = await tx.obligacionPendiente.findUniqueOrThrow({ where: { id: activa.id } })
     const obligacionPendienteRestante = obligacion.cantidadOriginal - obligacion.cantidadCumplida
 
     if (haciaObligacion > obligacionPendienteRestante) {
+      // Ni la vía ordinaria ni la obligación tienen esa cantidad, en total —
+      // dato mal capturado, no un caso legítimo.
       throw new EntregaExcedePendienteTotalError(e.producto)
     }
 
-    const aplicarAObligacion = Math.min(haciaObligacion, obligacionPendienteRestante)
-    if (aplicarAObligacion <= 0) continue
+    // No basta con que la desigualdad "cumplida+asignada<=original" se
+    // mantenga — solo se puede "cumplir" cantidad que YA fue explícitamente
+    // asignada a una Actividad concreta (AsignarActividadUseCase). La porción
+    // reservada por la Obligación que todavía no tiene Actividad asignada
+    // (original - cumplida - asignada) NO tiene ningún camino de cumplimiento
+    // legítimo hoy — convertirla en "cumplida" sin una Actividad real detrás
+    // inventaría un hecho que N2 nunca decidió. Se rechaza explícitamente en
+    // vez de aplicar silenciosamente una cantidad menor (eso dejaría el
+    // Pedido y la Obligación con relatos distintos de "cuánto se entregó").
+    if (haciaObligacion > obligacion.cantidadAsignada) {
+      throw new EntregaSuperaLoAsignadoError(e.producto)
+    }
+
+    const aplicarAObligacion = haciaObligacion
 
     // Distribuir sobre las Actividades abiertas (ASIGNADA/EN_PROGRESO) de
     // esta obligación, en orden de creación — llena cada una hasta su propio

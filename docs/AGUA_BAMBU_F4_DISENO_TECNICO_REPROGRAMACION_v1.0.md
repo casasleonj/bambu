@@ -114,7 +114,7 @@ Nunca importa ni llama nada de `src/modules/planificador/` — mismo criterio de
 
 ## 4. Endpoint
 
-`PATCH /api/embarques/obligaciones/[id]/reprogramar` (mismo patrón thin-controller que `cambiar-modo`/`liberar`):
+`POST /api/obligaciones/[id]/reprogramar` (mismo patrón thin-controller y mismo verbo que `POST /api/obligaciones/[id]/asignar`, `POST /api/actividades/[id]/cambiar-modo`, `POST /api/actividades/[id]/liberar`):
 - `requireRole([ROLES.ADMIN, ROLES.ASISTENTE])` — mismos permisos que el resto de gestión de pendientes, sin nivel nuevo.
 - Body: `{ fechaNueva: string (ISO), motivo?: string, offlineId?: string }`.
 - Errores: `OBLIGACION_NOT_FOUND` → 404, `OBLIGACION_NO_REPROGRAMABLE` → 409.

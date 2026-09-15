@@ -7,7 +7,18 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { testPrisma, resetAndSeed, disconnect, createTestCliente, getAdminUser, getRepartidorUser } from './setup'
 import { prisma } from '@/lib/prisma'
-import { aplicarEntregaConObligacion, EntregaExcedePendienteTotalError } from '@/lib/obligacion-guard'
+import { aplicarEntregaConObligacion, EntregaExcedePendienteTotalError, EntregaSuperaLoAsignadoError } from '@/lib/obligacion-guard'
+import { AsignarActividadUseCase } from '@/modules/embarques/application/use-cases/AsignarActividadUseCase'
+import { CambiarModoActividadUseCase } from '@/modules/embarques/application/use-cases/CambiarModoActividadUseCase'
+import { EntregarPedidoUseCase } from '@/modules/pedidos/application/use-cases/EntregarPedidoUseCase'
+import { PrismaPedidoRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaPedidoRepository'
+import { PrismaFacturaRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaFacturaRepository'
+import { PrismaPagoRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaPagoRepository'
+import { PrismaTransactionManager } from '@/modules/pedidos/infrastructure/transactions/PrismaTransactionManager'
+
+function buildEntregarUseCase() {
+  return new EntregarPedidoUseCase(new PrismaPedidoRepository(), new PrismaFacturaRepository(), new PrismaPagoRepository(), new PrismaTransactionManager())
+}
 
 let adminId: string
 let repartidorId: string
@@ -139,5 +150,95 @@ describe('Reconexión I-11 — aplicarEntregaConObligacion (integración, Postgr
     expect(obligacionFinal.estado).toBe('CUMPLIDA')
     // Invariante nunca violado, ni siquiera transitoriamente de forma persistida.
     expect(obligacionFinal.cantidadCumplida + obligacionFinal.cantidadAsignada).toBeLessThanOrEqual(obligacionFinal.cantidadOriginal)
+  })
+
+  it('escenario exacto de revisión: original=10, cumplida=4, asignada=2 → una entrega de 4 NO puede convertir cantidad no asignada en cumplimiento', async () => {
+    // pendiente real = 10-4 = 6, pero solo 2 de esas 6 están efectivamente
+    // comprometidas con una Actividad concreta — las otras 4 son "reservadas
+    // por la Obligación" pero sin ningún camino de cumplimiento legítimo hoy.
+    const { pedido, obligacion, actividad } = await crearPedidoConObligacion({
+      cantPedido: 20, cantEntrega: 10, cantidadOriginalObligacion: 10, cantidadCumplidaObligacion: 4, cantidadAsignadaObligacion: 2,
+    })
+    // limiteOrdinario = 20-10=10, disponibleOrdinario tras 10 entregadas = 0
+    // → una entrega de 4 cae ENTERA en zona reservada (haciaObligacion=4),
+    // que supera lo asignado (2) aunque NO supere el pendiente total (6).
+
+    await expect(
+      prisma.$transaction(tx =>
+        aplicarEntregaConObligacion(tx, pedido.id, [{ producto: 'BOTELLON', cantPedido: 20, cantEntregaActual: 10, cantidadAEntregar: 4 }]),
+      ),
+    ).rejects.toThrow(EntregaSuperaLoAsignadoError)
+
+    // Nada se modificó — el rechazo es atómico y no aplicó ni siquiera la
+    // porción de 2 que SÍ estaba asignada (evita relatos distintos entre
+    // "cuánto dice el Pedido que entregó" y "cuánto dice N2 que cumplió").
+    const obligacionSinCambios = await testPrisma.obligacionPendiente.findUniqueOrThrow({ where: { id: obligacion.id } })
+    expect(obligacionSinCambios.cantidadCumplida).toBe(4)
+    expect(obligacionSinCambios.cantidadAsignada).toBe(2)
+    const actividadSinCambios = await testPrisma.actividad.findUniqueOrThrow({ where: { id: actividad.id } })
+    expect(actividadSinCambios.cantidadCumplida).toBe(4)
+  })
+
+  it('tras asignar explícitamente la cantidad faltante (AsignarActividadUseCase), la misma entrega ya se aplica correctamente', async () => {
+    const { pedido, obligacion, actividad } = await crearPedidoConObligacion({
+      cantPedido: 20, cantEntrega: 10, cantidadOriginalObligacion: 10, cantidadCumplidaObligacion: 4, cantidadAsignadaObligacion: 2,
+    })
+    // Se asignan las 4 unidades restantes (10-4-2=4 "disponibles" en la
+    // obligación) a una segunda Actividad concreta — acción explícita, no inferida.
+    const { actividadId: segundaActividadId } = await new AsignarActividadUseCase().execute({
+      obligacionId: obligacion.id, producto: 'BOTELLON', cantidad: 4,
+    })
+
+    const resultados = await prisma.$transaction(tx =>
+      aplicarEntregaConObligacion(tx, pedido.id, [{ producto: 'BOTELLON', cantPedido: 20, cantEntregaActual: 10, cantidadAEntregar: 4 }]),
+    )
+    // 4 (ya cumplidas antes) + 4 (esta entrega) = 8 de 10 — todavía no cierra
+    // la Obligación (la Actividad original todavía tiene 2 de margen sin
+    // asignar respecto al original de la obligación).
+    expect(resultados[0]?.aplicado).toBe(4)
+    expect(resultados[0]?.obligacionCumplida).toBe(false)
+
+    const obligacionFinal = await testPrisma.obligacionPendiente.findUniqueOrThrow({ where: { id: obligacion.id } })
+    expect(obligacionFinal.cantidadCumplida).toBe(8)
+    expect(obligacionFinal.estado).toBe('ABIERTA')
+    // La distribución es FIFO por createdAt entre las Actividades ABIERTAS
+    // de la obligación (sin caso especial para "la última asignada") — la
+    // Actividad original (cantidad=10, cumplida=4) todavía tenía margen
+    // (10-4=6) suficiente para absorber toda esta entrega de 4 antes de
+    // llegar a la segunda. La segunda Actividad queda intacta, disponible
+    // para una futura entrega.
+    const actividadOriginalFinal = await testPrisma.actividad.findUniqueOrThrow({ where: { id: actividad.id } })
+    expect(actividadOriginalFinal.cantidadCumplida).toBe(8)
+    expect(actividadOriginalFinal.estado).toBe('ASIGNADA')
+    const segundaActividad = await testPrisma.actividad.findUniqueOrThrow({ where: { id: segundaActividadId } })
+    expect(segundaActividad.cantidadCumplida).toBe(0)
+    expect(segundaActividad.estado).toBe('ASIGNADA')
+  })
+
+  it('sin deadlock: EntregarPedidoUseCase (lock PEDIDO→OBLIGACION) concurrente con CambiarModoActividadUseCase (lock OBLIGACION solo) sobre la misma Obligación', async () => {
+    const { pedido, obligacion, actividad } = await crearPedidoConObligacion({
+      cantPedido: 20, cantEntrega: 10, cantidadOriginalObligacion: 10,
+    })
+    // limiteOrdinario=10, disponibleOrdinario tras 10 entregadas=0 → toda
+    // entrega cae en zona reservada.
+    await testPrisma.pedido.update({ where: { id: pedido.id }, data: { estadoEntrega: 'EN_RUTA', estado: 'EN_RUTA' } })
+
+    // Dos operaciones que adquieren OBLIGACION:{id} en órdenes de lock
+    // distintos (PEDIDO→OBLIGACION vs. OBLIGACION solo) — si hubiera un
+    // ciclo de espera posible, esto colgaría (el test tiene su propio
+    // timeout de vitest, así que un deadlock real haría FALLAR el test por
+    // timeout, no pasar silenciosamente).
+    const [entregaRes] = await Promise.all([
+      buildEntregarUseCase().execute({ pedidoId: pedido.id, itemsEntregados: [{ producto: 'BOTELLON', cantidad: 4 }], pagos: [] }),
+      new CambiarModoActividadUseCase().execute({ actividadId: actividad.id, modoDestino: 'DOMICILIO', actorId: adminId }),
+    ])
+
+    expect(entregaRes.deduped).toBeFalsy()
+    const obligacionFinal = await testPrisma.obligacionPendiente.findUniqueOrThrow({ where: { id: obligacion.id } })
+    // Ambas operaciones se aplicaron — el lock serializa, no corrompe.
+    expect(obligacionFinal.cantidadCumplida).toBe(4)
+    const actividadFinal = await testPrisma.actividad.findUniqueOrThrow({ where: { id: actividad.id } })
+    expect(actividadFinal.modo).toBe('DOMICILIO')
+    expect(actividadFinal.cantidadCumplida).toBe(4)
   })
 })
