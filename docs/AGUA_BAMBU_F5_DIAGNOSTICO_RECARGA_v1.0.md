@@ -1,7 +1,9 @@
 # AGUA BAMBÚ — F5: DIAGNÓSTICO RECARGA (Plan Maestro → código)
 
-**Versión:** 2.0
+**Versión:** 2.1
 **Fecha:** 2026-09-15
+
+**v2.1**: el equipo rechazó correctamente el framing de v2.0 ("solo sobreestima ligeramente") y pidió cerrar la fricción de la Regla 4 con rigor: trazar 7 escenarios concretos y determinar, con evidencia, si el modelo actual puede garantizar que nunca se supera la capacidad física. **Veredicto: NO puede garantizarse hoy — y no es un caso raro, es el comportamiento estructural de TODA entrega parcial.** Ver §9 (evidencia de código exacta, los 7 escenarios trazados) y §10 (la única modificación mínima identificada, con la arquitectura exacta que toca). Sigue sin escribirse ningún código.
 
 **v1.1**: segunda pasada pedida por el equipo, exclusivamente sobre los 4 PENDIENTES de §5 — rastreados contra Plan Maestro, ALS, ADRs, conversaciones históricas (todos los transcripts de sesiones previas de este proyecto) y código actual. Resultado consolidado en §6. Regla arquitectónica reafirmada por el equipo (RECARGA = nueva `EmbarqueCarga` dentro del Embarque existente; identidad del Embarque intacta hasta cierre; nunca Embarque nuevo/hijo/operación duplicada) — ya reflejada en §3/§4, sin cambios.
 
@@ -291,3 +293,76 @@ Cada `EmbarqueMovimiento{RECARGA}` se auto-referencia a la `EmbarqueCarga` reci�
 - **No implementar reglas adicionales no justificadas**: la única pieza no 100% especificada por el equipo (el límite de aproximación de la Regla 4 con pedidos ya desasignados) se señaló explícitamente como punto a decidir, no se resolvió inventando una regla nueva.
 
 **Sigue sin escribirse ningún código.** A la espera de que el equipo confirme (a) el límite de aproximación señalado en la Regla 4, y (b) que el diseño de los 14 puntos puede pasar a implementación.
+
+---
+
+## 9. Regla 4 revisitada — evidencia de código exacta, no aproximación (v2.1)
+
+### 9.1 — El hallazgo central: `Pedido.embarqueId` se pierde EN EL MISMO INSTANTE de toda entrega parcial, no en un caso raro
+
+Código exacto, ambos caminos de entrega:
+
+- `src/modules/pedidos/domain/entities/Pedido.ts:201` — dentro de `entregar()`: `embarqueId: completo ? this.props.embarqueId : undefined`. Comentario en la línea anterior: *"Una entrega parcial deja el pedido re-planificable: se desasigna del embarque"*.
+- `src/modules/embarques/domain/services/procesar-pedido.service.ts:486` — mismo patrón exacto en el camino de cierre: `embarqueId: completo ? pedido.embarqueId : null`.
+
+Esto significa: **no es una condición que ocurra "a veces" o "en un caso de borde"** — es la regla incondicional para el 100% de las entregas parciales, por diseño explícito de PR-1/F4 (re-planificabilidad del remanente). Dado que F4 (Cumplimiento) existe precisamente porque las entregas parciales son un caso de negocio frecuente y esperado (no excepcional), la pérdida del vínculo `embarqueId` tampoco es excepcional.
+
+### 9.2 — Verificado: no existe ningún otro rastro inmutable de "esta cantidad salió bajo el embarque X"
+
+- `Pago.embarqueId` (ADR-PAGO-EMBARQUE-CAPTURA-001) es inmutable, pero **solo existe cuando hay cobro** (`validators.ts:189-190`, `tieneCobro`) — una entrega sin pago asociado no genera ningún `Pago`, y por tanto ningún rastro.
+- `logAudit` en `EntregarPedidoUseCase` (`EntregarPedidoUseCase.ts:166-176`) registra `{accion:'ENTREGA', estadoEntrega, estadoPago, parcial}` — **sin `embarqueId` ni cantidades por producto**. El `Historial` no permite reconstruir "cuánto salió de qué embarque" para este evento.
+- `EmbarqueProducto` (`schema.prisma:1107-1120`) tiene `cargadas/devueltas/cambios/rotas` — **no tiene una columna `entregadas`**. Lo que `calcularDiscrepancia()` llama "entregadas" es un parámetro calculado en vivo por el wizard de cierre a partir de `Pedido`/`PedidoItem` en ESE momento — nunca se persiste incrementalmente durante la misión.
+
+**Conclusión de 9.1+9.2**: no hay ningún dato en el modelo actual, en ningún lugar, que permita reconstruir con precisión "cuánto ha salido físicamente de este Embarque hasta ahora" una vez que una entrega parcial ocurrió. No es una limitación de la consulta que yo proponía en v2.0 — es una ausencia real del dato mismo.
+
+### 9.3 — Los 7 escenarios, trazados con la evidencia de 9.1-9.2
+
+Fixture común: Embarque `EMB-1`, capacidad 60, carga inicial `EmbarqueCargaProducto=60`.
+
+1. **Carga inicial sin entregas**: disponible = 60 − 0 = 60. **Exacto** — no hay ninguna entrega que rastrear todavía, no se activa el hallazgo.
+
+2. **Entrega parcial**: Pedido A (cantPedido=20) entrega 15 de 20. En el MISMO evento, `Pedido A.embarqueId` pasa a `undefined` (9.1). Una consulta `WHERE embarqueId=EMB-1` inmediatamente después **ya no ve al Pedido A**. Disponible calculado = 60 − 0 = **60 (incorrecto)**. Disponible real = 60 − 15 = **45**. **BRECHA CONFIRMADA, en el segundo escenario más simple posible — no en un caso de borde.**
+
+3. **Múltiples entregas**: Pedidos A, B, C con entregas parciales (cada uno se desasigna al momento de su propia entrega) + Pedido D con entrega completa (mantiene `embarqueId`). La consulta solo capturaría a D — la subestimación de "salido" crece con cada entrega parcial adicional, sin límite.
+
+4. **Entrega parcial + desasignación**: no son dos eventos separados — es el mismo evento atómico (9.1). El escenario 2 ya lo cubre exactamente.
+
+5. **Recarga posterior**: si se solicita una recarga después de los escenarios 2-3, "disponible" calculado por consulta en vivo estaría inflado — permitiría cargar por encima de lo que el vehículo realmente tiene espacio, exactamente el riesgo que el equipo señaló.
+
+6. **Recarga + nuevas entregas**: la recarga en sí se registra correctamente (`EmbarqueCargaProducto`, tiempo real, sin brecha). Entregas posteriores completas mantienen el cálculo correcto; entregas posteriores parciales reintroducen el mismo error de 9.1 sobre la nueva base.
+
+7. **Garantía de que nunca se supera la capacidad física**: **NO puede garantizarse con el modelo actual.** El error de subestimación de "salido" (y por tanto de sobreestimación de "disponible") es sistemático y acumulativo con cada entrega parcial — no un margen fijo ni pequeño. Rechazo explícito de mi propio framing de v2.0 ("solo sobreestima ligeramente, nunca subestima") — la magnitud del error no está acotada por el modelo, depende de cuántas entregas parciales hayan ocurrido.
+
+---
+
+## 10. Modificación mínima necesaria (v2.1) — identificada, NO implementada
+
+**No existe ninguna forma de calcular "disponible" con garantía a partir de datos que el modelo actual ya persiste de forma confiable — hace falta un cambio de modelo real, aditivo y acotado.**
+
+### 10.1 — Qué se agrega
+
+Una sola columna nueva: `EmbarqueProducto.entregadas Int @default(0)` — mismo modelo que ya existe (`cargadas`/`devueltas`/`cambios`/`rotas`), mismo espíritu: un agregado físico **a nivel de Embarque**, no una autoridad de "cuánto le corresponde a un Pedido" (eso sigue siendo, sin ninguna ambigüedad, `Pedido`/`PedidoItem.cantEntrega` — no se toca, no se relee, no se referencia desde ningún flujo comercial).
+
+### 10.2 — Cuándo se escribe
+
+Un único `tx.embarqueProducto.update({ where: { embarqueId_producto: {...} }, data: { entregadas: { increment: cantidad } } })` por producto, **en la misma transacción** donde hoy `Pedido.entregar()`/`procesarEntregaParcial` ya deciden nulear `embarqueId` — es decir, en el único instante en que el hecho físico ("esto acaba de salir del vehículo") todavía se conoce con certeza, antes de que se pierda. Se incrementa siempre (entrega completa o parcial), nunca condicionalmente — así el contador nunca depende de si `embarqueId` sobrevive o no.
+
+### 10.3 — Qué arquitectura/decisión existente toca, exactamente
+
+- **`EntregarPedidoUseCase.ts`** (F4/PR-1): se le agrega UNA llamada adicional de escritura, en el mismo punto donde ya escribe el resultado de `pedido.entregar()`. **No cambia ninguna decisión de PR-1** — `Pedido.embarqueId` se sigue neuleando exactamente igual, `total`/`totalPagado` siguen intactos, la re-planificabilidad del remanente no cambia en absoluto.
+- **`procesar-pedido.service.ts`** (mismo patrón, rama `procesarEntregaParcial`/completa embebida en cierre): mismo tipo de llamada adicional.
+- **`CierreEmbarqueService`/`calcularDiscrepancia()`: CERO cambios.** La nueva columna `entregadas` no la lee ni la escribe la conciliación — sigue exactamente como está, recibiendo su parámetro calculado por el wizard tal como siempre. Esto cumple explícitamente "no modificar la conciliación sin demostrar incompatibilidad": no hay incompatibilidad porque no hay ninguna intersección de código.
+- **Migración**: aditiva, un `Int @default(0)`, sin backfill necesario (los Embarques ya cerrados no necesitan este dato — solo importa para Embarques `ABIERTO`/`EN_RUTA` futuros, que empezarán en 0 correctamente).
+
+### 10.4 — Por qué esto NO es una segunda fuente de verdad ni un ledger paralelo
+
+- **No es segunda fuente de verdad de "cuánto se entregó a un Pedido"**: esa pregunta la sigue respondiendo únicamente `PedidoItem.cantEntrega`. `EmbarqueProducto.entregadas` responde una pregunta distinta y hoy sin respuesta: "cuánto ha salido de ESTE VEHÍCULO en total", igual que `cargadas` responde "cuánto entró en total" — ambas son agregados del Embarque, nunca del Pedido.
+- **No es un ledger paralelo**: no es una tabla nueva, no registra eventos individuales, no compite con `EmbarqueMovimiento` — es un contador agregado en una tabla que YA existe y YA cumple este rol para los otros 3 hechos físicos del Embarque (cargado/devuelto/cambiado/roto). Es el mismo patrón, aplicado al único hecho físico que le faltaba.
+- **No "adelanta el ledger de movimientos"**: deliberadamente NO se propone escribir `EmbarqueMovimiento{ENTREGA}` en vivo para todos los productos (que sí sería adelantar el ledger, y sí generaría doble conteo con `RegistrarMovimientosCierre` al cierre, forzando a tocar esa pieza — evaluado y descartado explícitamente por esto). La columna nueva vive fuera del ledger físico por completo.
+
+### 10.5 — Qué NO se resuelve con este cambio (transparencia, no promesa de más de lo que da)
+
+- Sigue sin existir un registro POR EVENTO de "esta entrega específica salió bajo este embarque" — solo un agregado corriente. Suficiente para el chequeo de capacidad de RECARGA (que solo necesita el total, no el detalle por evento), pero no serviría, por ejemplo, para una auditoría forense de "qué pasó exactamente en la entrega de las 3pm" — eso seguiría sin tener ese nivel de detalle, igual que hoy.
+- Requiere que TODOS los callers de entrega (`EntregarPedidoUseCase`, `procesar-pedido.service.ts`, y cualquier futuro camino de entrega) incrementen la columna consistentemente — un tercer camino de entrega que se agregue en el futuro sin este incremento reintroduciría el hueco silenciosamente. Es un costo de mantenimiento real, no gratuito.
+
+**Sigue sin escribirse ningún código.** Este documento identifica la modificación exacta pero espera aprobación explícita antes de tocar `EntregarPedidoUseCase.ts`/`procesar-pedido.service.ts`/el schema.
