@@ -1,10 +1,12 @@
 # AGUA BAMBÚ — F5: CONVERGENCIA CARGA / RECARGA
 
-**Versión:** 1.0
+**Versión:** 1.1
 **Fecha:** 2026-09-15
 **Responde a:** revisión del equipo sobre el mapa de brechas de F5 — pidieron NO asumir que "está fuera del ledger" significa automáticamente que hay que incorporarlo, y exigieron el mismo estándar de convergencia usado en F1-F4 antes de tocar código: hallazgo → evidencia → autoridad → impacto → decisión existente → clasificación → brecha → criterio de éxito → cambio mínimo.
 
 **Resultado adelantado**: la investigación profunda **desarma el hallazgo original en 3 hallazgos distintos**, cada uno con una naturaleza diferente — ninguno es "bug funcional activo" (a diferencia del GPS, PR #259). Además, corrige una sobre-estimación en el mapa de brechas original (§1 de este documento). **Cero implementación en este documento.**
+
+**v1.1 (misma fecha)**: el equipo revisó v1.0 y pidió 2 correcciones/verificaciones antes de habilitar implementación: (1) no describir A como si la *decisión* estuviera pendiente — ya está aprobada y congelada, lo pendiente es la implementación y su prioridad; (2) verificar la granularidad exacta que exige el contrato del ledger (¿un movimiento por producto, o uno solo con detalle?) sin deducirlo únicamente del código de cierre actual; y (3) trazar `cargaId` a fondo antes de decidir si C es un campo muerto independiente o si es, en realidad, el consumidor que A estaba esperando. Ver §4 — ambas verificaciones están resueltas ahí con evidencia estructural (schema/CHECK/Zod/validador de dominio), no por inferencia del comportamiento del cierre. Sección §1 corregida en consecuencia.
 
 ---
 
@@ -47,22 +49,22 @@ Y esa conciliación de control **sí existe y corre en producción hoy**: `Cierr
 **¿Divergencia inventario físico vs ejecución comercial?** No — `EmbarqueMovimiento` nunca fue autoridad de nada que afecte Pedido/Obligación/dinero (confirmado en F4: sin `pedidoId`). La ejecución comercial no depende de este ledger en ningún punto.
 
 ### Decisión existente
-Ninguna decisión de producto pendiente — `ADR-FISICO-001` (Aceptado, congelado) YA define `CARGA` con su efecto. Lo que falta es la implementación de esa decisión ya tomada, no una decisión nueva.
+**La decisión YA existe y está aprobada y congelada** (`ADR-FISICO-001`, Estado: "Aceptado (congelado)") — no hay ninguna decisión de producto pendiente aquí. `ADR-STOCK-001` (también congelado) refuerza esto: establece explícitamente que el hecho de carga debe quedar reflejado "posteriormente" en el ledger físico. **Lo único pendiente es la implementación de esa decisión ya tomada, y la prioridad que el equipo le dé dentro de F5** — no una brecha de producto, una brecha de ejecución.
 
 ### Clasificación
-**Funcionalidad incompleta respecto a una decisión ya aprobada** (no bug activo, no modelo huérfano, no decisión de producto pendiente). El comentario del código que afirma falsamente haber cumplido el dual-write es, en sí, un hallazgo menor de higiene documental.
+**Brecha de implementación respecto a una decisión ya aprobada y congelada** (no bug activo hoy, no modelo huérfano, no decisión de producto pendiente — la decisión está tomada). El comentario del código que afirma falsamente haber cumplido el dual-write es, en sí, un hallazgo menor de higiene documental, no la brecha principal.
 
 ### Brecha
-Real pero de **impacto bajo hoy** (nada consume el dato faltante para ninguna decisión de negocio activa) y **acotada a auditoría/visibilidad futura**, no a integridad financiera.
+Real y confirmada. El impacto observable hoy es bajo (nada consume el dato faltante para ninguna decisión de negocio activa) y está acotado a auditoría/visibilidad — pero eso describe el **impacto actual**, no el **estatus de la decisión**, que es firme. La prioridad de cuándo cerrarla dentro de F5 queda a criterio del equipo, no de este documento.
 
-### Criterio de éxito (si el equipo decide implementarlo)
-- Cada `CrearEmbarqueUseCase.execute()` produce, además de `EmbarqueCarga`, un `EmbarqueMovimiento{tipo:'CARGA', cargaId: <el recién creado>}` por producto con `cantidad > 0` — un espejo del mismo hecho, nunca una segunda fuente.
+### Criterio de éxito (verificación de granularidad en §4.1; C ya incluido — ver §4.2)
+- Cada `CrearEmbarqueUseCase.execute()` produce, además de `EmbarqueCarga`, **un `EmbarqueMovimiento{tipo:'CARGA'}` por producto con `cantidad > 0`** (granularidad confirmada por evidencia estructural en §4.1, no por el código de cierre) — con `cargaId` apuntando a la `EmbarqueCarga` recién creada (cierra también el Hallazgo C, ver §4.2). Un espejo del mismo hecho, nunca una segunda fuente.
 - `calcularDiscrepancia()`/la conciliación de control (§0) **no cambia** — sigue leyendo `EmbarqueProducto`/`Carga`, no `EmbarqueMovimiento`.
 - El timeline de movimientos (`ledger-client`) muestra la carga inicial sin cambios de contrato en la UI (el tipo `CARGA` ya está soportado ahí).
 - Test de integración que confirme: (a) el movimiento se crea con el `cargaId` correcto, (b) la conciliación de control produce el mismo resultado con o sin el movimiento (no son la misma fuente).
 
-### Cambio mínimo propuesto (NO implementado)
-Un solo `tx.embarqueMovimiento.create(...)` adicional dentro de `CrearEmbarqueUseCase.execute()`, en el mismo bloque donde ya se crea `EmbarqueCarga` (líneas 132-149), usando el `id` de la carga recién creada como `cargaId`. Cero cambios a `EmbarqueCarga`, `EmbarqueProducto`, `CierreEmbarqueService`, ni a ningún consumidor existente.
+### Cambio mínimo propuesto — **verificado en §4, listo para implementación**
+Un solo `tx.embarqueMovimiento.create(...)` **por producto con `cantidad > 0`** dentro de `CrearEmbarqueUseCase.execute()`, en el mismo bloque donde ya se crea `EmbarqueCarga` (líneas 132-149), usando el `id` de la carga recién creada como `cargaId`. Cero cambios a `EmbarqueCarga`, `EmbarqueProducto`, `CierreEmbarqueService`, ni a ningún consumidor existente.
 
 ---
 
@@ -97,38 +99,44 @@ Si la respuesta es "no existe reabastecimiento mid-misión": extender el cambio 
 
 ---
 
-## 3. Hallazgo C — `EmbarqueMovimiento.cargaId` nunca se setea (colateral, no estaba en el mapa original)
+## 3. Hallazgo C — `EmbarqueMovimiento.cargaId` — reclasificado en v1.1, ver §4.2
 
-### Evidencia
-- `schema.prisma` — `EmbarqueMovimiento.cargaId String?` (FK opcional a `EmbarqueCarga`, `onDelete: SetNull`) es el único campo que permitiría enlazar un movimiento a su carga de origen.
-- `registrar-movimientos-cierre.service.ts:87-124` — los 3 `client.embarqueMovimiento.create(...)` (ENTREGA/VENTA_RUTA/RETORNO) nunca incluyen `cargaId` en el `data`.
-- `movimientos/route.ts` — el `MovimientoSchema` (Zod) que valida el body de `POST /api/embarques/[id]/movimientos` no incluye `cargaId` como campo aceptado — ni siquiera es posible enviarlo desde ese endpoint.
-- `CrearRecoveryDecisionUseCase.ts:113-123` (el único otro caller real de `embarqueMovimiento.create`) tampoco lo setea.
-
-### Autoridad / impacto
-`cargaId` es, hoy, una columna sin ningún escritor — un campo muerto adicional (`String?`, no bloquea nada al quedar `null`). Refuerza el Hallazgo A: aunque se implementara el cambio mínimo propuesto ahí, los movimientos POSTERIORES a la carga (entrega/venta_ruta/retorno/ajustes) seguirían sin enlazarse a qué `EmbarqueCarga` los originó — solo la nueva entrada `CARGA` misma tendría `cargaId` poblado (apuntándose a sí misma/su propia carga).
-
-### Decisión existente
-Ninguna — el campo existe en el schema desde `ADR-FISICO-001`/FASE 2 pero ningún documento explica por qué ningún caller lo usa.
-
-### Clasificación
-**Funcionalidad incompleta** (campo de schema sin wiring), de menor severidad que el Hallazgo A porque no bloquea ninguna lectura existente.
-
-### Brecha
-Real, menor, cosmética hasta que exista algún consumidor que necesite "a qué carga pertenece este movimiento" (hoy nadie lo necesita, porque `EmbarqueMovimiento` no tiene ningún consumidor de reconciliación, §0).
-
-### Cambio mínimo propuesto (NO implementado)
-Ninguno urgente — mencionado para que el equipo decida si vale la pena poblar `cargaId` en `registrar-movimientos-cierre.service.ts` (requeriría resolver primero cuál `EmbarqueCarga` corresponde cuando un Embarque tiene una sola carga de origen — hoy siempre es 1:1, así que sería trivial, pero es una decisión de alcance del equipo, no mía).
+**v1.0 lo trató como campo muerto independiente. El equipo pidió verificar antes de asumir eso — ver §4.2 para el análisis completo.** Resumen del resultado: `cargaId` no tiene semántica contractual documentada en ningún ADR, no tiene ningún lector hoy, y el único escritor que le daría sentido es exactamente el movimiento `CARGA` propuesto en el Hallazgo A (auto-referencia: el movimiento apunta a la `EmbarqueCarga` que lo originó). **C no es un hallazgo independiente — es parte de A.** No se propone ningún cambio separado para C.
 
 ---
 
-## Resumen para decisión del equipo
+## 4. Verificación adicional pedida por el equipo (v1.1)
 
-| Hallazgo | Clasificación | ¿Bug activo? | ¿Doble conteo/divergencia detectada? | Acción propuesta |
-|---|---|---|---|---|
-| A — `CARGA` sin `EmbarqueMovimiento` | Funcionalidad incompleta vs. decisión ya aprobada (`ADR-FISICO-001`) | No | No (riesgo solo prospectivo, con guardrail propuesto) | Espejo de 1 `create`, sin tocar nada más — condicionado a aprobación |
-| B — `RECARGA` sin flujo real | Diferencia modelo conceptual vs. implementación (no brecha per se) | No | No — no hay dato que reconciliar | Pregunta al equipo antes de cualquier cambio |
-| C — `cargaId` sin escritor | Funcionalidad incompleta, menor | No | No | Sin urgencia, mencionado para registro |
-| (Corrección) Conciliación cruzada | Ya existe, diseño de 2 capas intencional (`ADR-STOCK-001`) | — | — | Ninguna — no es brecha |
+### 4.1 — Granularidad del contrato: ¿un `EmbarqueMovimiento` por producto, o uno solo con detalle?
 
-**Ningún cambio de este documento se implementa sin aprobación explícita.** Los cambios mínimos propuestos para A y C son de una sola línea/bloque cada uno, no tocan `EmbarqueCarga`, `EmbarqueProducto`, `CierreEmbarqueService`, ni ningún consumidor existente — pero quedan condicionados a que el equipo confirme que valen la pena para el impacto (bajo, de auditoría) que tienen hoy.
+**Limitación de partida, dicha explícitamente**: el documento "contrato técnico §8, §9" que citan `ADR-FISICO-001`/`ADR-STOCK-001` como fuente es anterior a esta sesión (los ADRs están fechados 2026-08-16) y no está disponible localmente — no aparece en `docs/` del repo ni en ninguno de los archivos subidos a esta sesión. No voy a fingir haberlo leído. La respuesta que sigue **no se apoya en ese texto ni en el comportamiento del cierre actual** (que el equipo pidió explícitamente no usar como única fuente) — se apoya en evidencia estructural independiente, de 4 capas distintas que coinciden entre sí:
+
+1. **El modelo mismo no admite otra cosa.** `EmbarqueMovimiento.producto` es `String` (singular) y `.cantidad` es `Int` (singular) — no hay un campo de detalle (JSON, tabla hija, array) en absoluto. Comparar con `EmbarqueCarga`, que SÍ tiene una relación `productos: EmbarqueCargaProducto[]` dedicada para representar "una carga con varios productos". `EmbarqueMovimiento` nunca recibió ese mismo patrón — estructuralmente, cada fila representa un solo producto. Un "movimiento único con detalle de productos" no cabe en el modelo actual sin agregar una tabla hija nueva (cambio de schema, fuera de "cambio mínimo").
+2. **El CHECK constraint es por fila, singular.** `chk_embarque_movimiento_cantidad_pos` valida `"cantidad" > 0` sobre una sola columna de una sola fila — no hay ningún mecanismo de validación a nivel de "conjunto de productos de un movimiento".
+3. **El endpoint genérico que sí implementa "contrato §8" para otros tipos usa la misma forma.** `POST /api/embarques/[id]/movimientos` (`movimientos/route.ts:59-63`, comentario cita "contrato §8" explícitamente) tiene `MovimientoSchema` con `producto: z.string().min(1)` y `cantidad: z.number().int().positive()` — singular. Esto es independiente del servicio de cierre: es la forma que el propio contrato le dio a la API para REEMPAQUE/DESCARTE/CUSTODY_TRANSFER/AJUSTE_AUTORIZADO.
+4. **El validador de dominio (la implementación más directa y pura de "contrato §8, §9") usa la misma forma.** `validarMovimientoFisico` (`ledger-fisico.service.ts:39-44`, comentario cita el contrato explícitamente) recibe `MovimientoFisicoInput` con `producto: string`/`cantidad: number` singulares — es la función que valida CUALQUIER movimiento, de cualquier tipo, y nunca contempló una lista de productos.
+
+**Conclusión**: la unidad es **un `EmbarqueMovimiento` por producto**, confirmado por 4 capas independientes del sistema (schema, CHECK, API, validador de dominio) que preceden y son ajenas al servicio de cierre — no una deducción de "porque así lo hace el cierre hoy". El cambio mínimo propuesto para A (un `create` por producto con `cantidad > 0`) es la única forma compatible con el contrato tal como está implementado en todo el resto del sistema.
+
+### 4.2 — `cargaId`: trazado completo `EmbarqueMovimiento → cargaId → EmbarqueCarga → EmbarqueCargaProducto`
+
+- **Semántica contractual documentada**: **ninguna, en ningún ADR.** Ni `ADR-FISICO-001` ni `ADR-STOCK-001` ni `ADR-CUSTODIA-001` mencionan `cargaId` por nombre — ni en las tablas de tipos, ni en las invariantes, ni en "estado de implementación". El bloque de comentario del schema que antecede a `EmbarqueCarga`/`EmbarqueMovimiento` (`schema.prisma:1122-1131`) explica `availabilityBasis` y `EmbarqueCargaProducto.cantidad` en detalle, pero no dice una palabra sobre `cargaId`. Es un campo de implementación del schema, no una decisión narrada en ningún ADR — lo cual es distinto de "no tiene semántica": el NOMBRE + la relación bidireccional (`EmbarqueCarga.movimientos EmbarqueMovimiento[]`) + el índice dedicado (`@@index([cargaId])`) + `onDelete: SetNull` (integridad blanda, no bloqueante) son, en conjunto, evidencia de diseño intencional para "trazar de qué carga viene un movimiento", aunque nunca se escribió en prosa.
+- **¿La relación es la prevista por el ADR?** No puedo confirmarlo con cita textual (el ADR no la menciona), pero SÍ puedo confirmar que es **consistente** con el propósito general del ledger físico ("custodia inequívoca", `ADR-FISICO-001:35`) — saber de qué carga salió un movimiento es exactamente ese tipo de trazabilidad.
+- **¿Debe poblarse solo para CARGA/RECARGA o también otros?** Estructuralmente el campo es `String?` en TODOS los tipos, sin restricción — pero la utilidad real depende de la cardinalidad `Embarque↔EmbarqueCarga`, que **hoy es siempre 1:1** (`tx.embarqueCarga.create` se llama exactamente una vez por `Embarque`, únicamente desde `CrearEmbarqueUseCase`, confirmado por grep exhaustivo — ver Hallazgo B). Con cardinalidad 1:1, `cargaId` en un movimiento `ENTREGA`/`RETORNO`/etc. sería **100% redundante con `embarqueId`** (ya resuelve a la única `EmbarqueCarga` existente sin ambigüedad) — no aporta información nueva. Solo tendría valor real si un `Embarque` pudiera tener múltiples `EmbarqueCarga` algún día (lo cual no existe hoy, y sería exactamente el "reabastecimiento mid-misión" que el Hallazgo B dejó como pregunta abierta, no como algo implementado). **Conclusión: poblarlo únicamente en el movimiento `CARGA` mismo (auto-referencia a la carga que lo originó) es both necesario y suficiente hoy — poblarlo en ENTREGA/RETORNO/etc. sería trabajo sin beneficio observable mientras la cardinalidad siga siendo 1:1.**
+- **¿Existen lecturas actuales que dependan de ella?** No. Verificado por grep: `cargaId` solo aparece como declaración de tipo en el frontend (`ledger-client/types.ts:16`), nunca leído condicionalmente en ningún componente, nunca usado en un `where`/`include` de Prisma en ningún query de la aplicación. El GET de movimientos SÍ lo devuelve en el payload (por ser columna escalar sin `select` explícito), pero siempre `null` hoy — sin consumidor.
+- **¿Índice/relación con propósito de integridad o auditoría?** Sí — el índice dedicado y el `onDelete: SetNull` (en vez de `Cascade`/`Restrict`) son coherentes con un propósito de auditoría/trazabilidad: permite reconstruir "todos los movimientos que salieron de esta carga" sin que borrar una carga (si algún día fuera posible) invalide el movimiento histórico. Es infraestructura de auditoría construida y nunca activada, no infraestructura sin propósito.
+
+**Conclusión de C**: confirmado exactamente lo que planteó el equipo — el único escritor que faltaba es la implementación de A. El movimiento `CARGA` (Hallazgo A) puede y debe fijar `cargaId` a la `EmbarqueCarga` que lo originó (auto-referencia, mismo `create`, mismo bloque de código). Ningún otro movimiento necesita `cargaId` poblado mientras la cardinalidad `Embarque↔EmbarqueCarga` sea 1:1 — así que el cambio mínimo de A, con `cargaId` incluido, cierra C por completo sin trabajo adicional.
+
+---
+
+## Resumen para decisión del equipo (v1.1)
+
+| Hallazgo | Clasificación | Decisión de producto | ¿Bug activo? | ¿Doble conteo/divergencia? | Acción propuesta |
+|---|---|---|---|---|---|
+| A — `CARGA` sin `EmbarqueMovimiento` (incluye C, fusionado) | **Brecha de implementación de una decisión YA aprobada y congelada** (`ADR-FISICO-001`/`ADR-STOCK-001`) | Ya tomada — no pendiente | No | No — riesgo solo prospectivo, con guardrail explícito en §1 | Dual-write transaccional: 1 `create` por producto + `cargaId` auto-referenciado, mismo bloque de `CrearEmbarqueUseCase`. **Verificado en §4 — no altera ninguna autoridad existente.** |
+| B — `RECARGA` sin flujo real | Diferencia modelo conceptual vs. implementación | **Pendiente — requiere que el negocio confirme si existe "reabastecer un Embarque abierto/en ruta"** | No | No — no hay dato que reconciliar | No implementar. Pregunta explícita en §2, sin proponer código. |
+| C — `cargaId` sin escritor | Fusionado en A (§4.2) — no es un hallazgo independiente | — | — | — | Se cierra automáticamente al implementar A, sin trabajo adicional. |
+| (Corrección) Conciliación cruzada | Ya existe, diseño de 2 capas intencional (`ADR-STOCK-001`) | — | — | — | Ninguna — no es brecha. |
+
+**Con la verificación de §4 completa, A queda lista para implementación** (dual-write transaccional, un `create` por producto con `cargaId` auto-referenciado, sin tocar `EmbarqueCarga`/`EmbarqueProducto`/`CierreEmbarqueService`/ninguna autoridad existente) — sujeta a que el equipo confirme que quiere priorizarla dentro de F5 ahora. B sigue sin implementarse, a la espera de la decisión de negocio.
