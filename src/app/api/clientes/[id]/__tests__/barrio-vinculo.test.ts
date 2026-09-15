@@ -33,6 +33,6 @@ describe('PUT /api/clientes/[id] — vinculación a Barrio canónico', () => {
   })
 
   it('lee barrioId existente ANTES del update (para distinguir vínculo nuevo de re-confirmación)', () => {
-    expect(putSource).toMatch(/select:\s*\{\s*updatedAt:\s*true,\s*barrioId:\s*true\s*\}/)
+    expect(putSource).toMatch(/select:\s*\{\s*updatedAt:\s*true,\s*barrioId:\s*true/)
   })
 })

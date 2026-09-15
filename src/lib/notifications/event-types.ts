@@ -90,4 +90,11 @@ export const NOTIFICATION_EVENT_META: Record<NotificationEventType, Notification
     label: 'Excepción de crédito resuelta',
     description: 'Una solicitud de excepción de crédito fue autorizada o rechazada.',
   },
+  // F3 (Impacto en Demanda)
+  PEDIDO_UBICACION_DESACTUALIZADA: {
+    group: 'Pedidos',
+    persistent: false,
+    label: 'Pedidos con dirección desactualizada',
+    description: 'Cambió la dirección/barrio de un cliente o negocio y hay pedidos pendientes que dependían de la ubicación anterior.',
+  },
 }

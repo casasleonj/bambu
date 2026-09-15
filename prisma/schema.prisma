@@ -295,6 +295,9 @@ model User {
   excepcionesCreditoSolicitadas PedidoExcepcionCredito[] @relation("ExcepcionCreditoSolicitante")
   excepcionesCreditoAutorizadas PedidoExcepcionCredito[] @relation("ExcepcionCreditoAutorizador")
   excepcionesCreditoRechazadas  PedidoExcepcionCredito[] @relation("ExcepcionCreditoRechazador")
+
+  // F3 (Impacto en Demanda por cambio de ubicación)
+  impactosUbicacionRevisados PedidoImpactoUbicacion[] @relation("ImpactoUbicacionRevisor")
 }
 
 // ====================
@@ -875,6 +878,11 @@ model Pedido {
   // F2 (Excepciones de Crédito): 1:1 — la excepción se consume UNA sola vez,
   // atómicamente, al crear el Pedido (ver PedidoExcepcionCredito.pedidoId @unique).
   excepcionCredito PedidoExcepcionCredito?
+
+  // F3 (Impacto en Demanda): 1:N — cada cambio de dirección/barrio del
+  // Cliente/Negocio mientras este Pedido está pendiente genera su propia
+  // fila (no se deduplica ni se pisa, ver PedidoImpactoUbicacion).
+  impactosUbicacion PedidoImpactoUbicacion[]
 
   // FASE 2 (ledger físico)
   sustituciones Sustitucion[]
@@ -1547,6 +1555,46 @@ model PedidoExcepcionCredito {
 }
 
 // ====================
+// F3 — IMPACTO EN DEMANDA (cambio de ubicación maestra)
+// ====================
+//
+// Señal informativa, no bloqueante (docs/AGUA_BAMBU_F3_DISENO_TECNICO_IMPACTO_UBICACION_v1.0.md):
+// cuando cambia direccion/barrio de un Cliente/Negocio y existen Pedidos
+// pendientes (estadoEntrega PENDIENTE/EN_RUTA) sin snapshot propio
+// (direccionEntrega/barrioEntrega null — todavía dependen de la resolución
+// en vivo), se registra una fila por Pedido afectado. Nunca muta el Pedido,
+// nunca lo cancela, nunca crea otro, nunca toca el planificador. Deliberadamente
+// SIN pedidoId @unique: cada cambio real es un hecho propio, no se deduplica.
+
+model PedidoImpactoUbicacion {
+  id       String @id @default(cuid())
+  pedidoId String
+  pedido   Pedido @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+
+  // Trazabilidad de qué disparó la señal — 'CLIENTE' | 'NEGOCIO'.
+  origenTipo String
+  origenId   String
+
+  direccionAnterior String?
+  barrioAnterior    String?
+  direccionNueva    String?
+  barrioNueva       String?
+
+  detectadoAt DateTime @default(now()) @db.Timestamptz()
+
+  revisadoPorId String?
+  revisadoPor   User?     @relation("ImpactoUbicacionRevisor", fields: [revisadoPorId], references: [id], onDelete: SetNull)
+  revisadoAt    DateTime? @db.Timestamptz()
+  notaRevision  String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
+
+  @@index([pedidoId])
+  @@index([revisadoAt])
+}
+
+// ====================
 // PROMOCIÓN (FASE 8 — ADR-PROMOCION-001 / ADR-AUTORIZACION-REGALOS-001, §17)
 // ====================
 //
@@ -2214,6 +2262,8 @@ enum NotificationEventType {
   // F2 (Excepciones de Crédito)
   EXCEPCION_CREDITO_SOLICITADA
   EXCEPCION_CREDITO_RESUELTA
+  // F3 (Impacto en Demanda)
+  PEDIDO_UBICACION_DESACTUALIZADA
 }
 
 model NotificationRule {

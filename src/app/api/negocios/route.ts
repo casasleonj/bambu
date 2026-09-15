@@ -8,6 +8,9 @@ import { logAudit } from '@/lib/audit'
 import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiList, apiError } from '@/lib/api-response'
 import { BarrioNoEncontradoError, resolverBarrioParaVinculo } from '@/lib/barrios/barrio-service'
+import { EvaluarImpactoUbicacionUseCase } from '@/modules/pedidos/application/use-cases/EvaluarImpactoUbicacionUseCase'
+
+const evaluarImpactoUbicacion = new EvaluarImpactoUbicacionUseCase()
 
 const NegocioCreateSchema = z.object({
   clienteId: z.string().min(1),
@@ -165,7 +168,7 @@ export async function PUT(request: NextRequest) {
     const result = await prisma.$transaction(async (tx) => {
       const existing = await tx.negocio.findUnique({
         where: { id },
-        select: { updatedAt: true, barrioId: true },
+        select: { updatedAt: true, barrioId: true, direccion: true, barrio: true },
       })
       if (!existing) throw new Error('NEGOCIO_NOT_FOUND')
 
@@ -192,6 +195,21 @@ export async function PUT(request: NextRequest) {
       })
       if (updateResult.count === 0) {
         throw new Error('NEGOCIO_MODIFICADO_POR_OTRO_ADMIN')
+      }
+
+      // F3 (Impacto en Demanda): señal informativa para Pedidos pendientes
+      // que todavía dependían de esta dirección — nunca bloquea ni revierte
+      // el update de arriba.
+      if ('direccion' in parsed.data || 'barrio' in parsed.data) {
+        await evaluarImpactoUbicacion.execute({
+          origenTipo: 'NEGOCIO',
+          origenId: id,
+          direccionAnterior: existing.direccion,
+          barrioAnterior: existing.barrio,
+          direccionNueva: (parsed.data.direccion as string | undefined) ?? existing.direccion,
+          barrioNueva: (parsed.data.barrio as string | undefined) ?? existing.barrio,
+          tx,
+        })
       }
 
       return tx.negocio.findUnique({
