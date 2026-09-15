@@ -1,0 +1,752 @@
+[
+  {
+    "valorNormalizado": "5 de diciembre",
+    "categoria": "A_DETERMINISTA",
+    "familiaId": null,
+    "fuentes": [
+      "CLIENTE",
+      "NEGOCIO"
+    ],
+    "n": 2,
+    "decision": "CREAR_BARRIO",
+    "fusionarEn": null,
+    "barrioCanonico": "5 de Diciembre",
+    "razon": "Categoria A -- variantes ya normalizadas al mismo valor por normalizeName, sin ambiguedad cruzada con ningun otro nombre normalizado (M1_INVENTARIO_BARRIO.md SS2, SS6). Vinculacion mecanica, sin decision territorial pendiente.",
+    "estado": "RESUELTO"
+  },
+  {
+    "valorNormalizado": "aida quintero",
+    "categoria": "A_DETERMINISTA",
+    "familiaId": null,
+    "fuentes": [
+      "CLIENTE",
+      "NEGOCIO"
+    ],
+    "n": 2,
+    "decision": "CREAR_BARRIO",
+    "fusionarEn": null,
+    "barrioCanonico": "Aida Quintero",
+    "razon": "Categoria A -- variantes ya normalizadas al mismo valor por normalizeName, sin ambiguedad cruzada con ningun otro nombre normalizado (M1_INVENTARIO_BARRIO.md SS2, SS6). Vinculacion mecanica, sin decision territorial pendiente.",
+    "estado": "RESUELTO"
+  },
+  {
+    "valorNormalizado": "alfonso avila",
+    "categoria": "A_DETERMINISTA",
+    "familiaId": null,
+    "fuentes": [
+      "CLIENTE",
+      "NEGOCIO"
+    ],
+    "n": 3,
+    "decision": "CREAR_BARRIO",
+    "fusionarEn": null,
+    "barrioCanonico": "Alfonso Avila",
+    "razon": "Categoria A -- variantes ya normalizadas al mismo valor por normalizeName, sin ambiguedad cruzada con ningun otro nombre normalizado (M1_INVENTARIO_BARRIO.md SS2, SS6). Vinculacion mecanica, sin decision territorial pendiente.",
+    "estado": "RESUELTO"
+  },
+  {
+    "valorNormalizado": "camilo torres",
+    "categoria": "A_DETERMINISTA",
+    "familiaId": null,
+    "fuentes": [
+      "CLIENTE",
+      "NEGOCIO"
+    ],
+    "n": 6,
+    "decision": "CREAR_BARRIO",
+    "fusionarEn": null,
+    "barrioCanonico": "Camilo Torres",
+    "razon": "Categoria A -- variantes ya normalizadas al mismo valor por normalizeName, sin ambiguedad cruzada con ningun otro nombre normalizado (M1_INVENTARIO_BARRIO.md SS2, SS6). Vinculacion mecanica, sin decision territorial pendiente.",
+    "estado": "RESUELTO"
+  },
+  {
+    "valorNormalizado": "centro",
+    "categoria": "A_DETERMINISTA",
+    "familiaId": null,
+    "fuentes": [
+      "CLIENTE",
+      "NEGOCIO"
+    ],
+    "n": 60,
+    "decision": "CREAR_BARRIO",
+    "fusionarEn": null,
+    "barrioCanonico": "Centro",
+    "razon": "Categoria A -- variantes ya normalizadas al mismo valor por normalizeName, sin ambiguedad cruzada con ningun otro nombre normalizado (M1_INVENTARIO_BARRIO.md SS2, SS6). Vinculacion mecanica, sin decision territorial pendiente.",
+    "estado": "RESUELTO"
+  },
+  {
+    "valorNormalizado": "fatima",
+    "categoria": "A_DETERMINISTA",
+    "familiaId": null,
+    "fuentes": [
+      "CLIENTE",
+      "NEGOCIO"
+    ],
+    "n": 2,
+    "decision": "CREAR_BARRIO",
+    "fusionarEn": null,
+    "barrioCanonico": "Fatima",
+    "razon": "Categoria A -- variantes ya normalizadas al mismo valor por normalizeName, sin ambiguedad cruzada con ningun otro nombre normalizado (M1_INVENTARIO_BARRIO.md SS2, SS6). Vinculacion mecanica, sin decision territorial pendiente.",
+    "estado": "RESUELTO"
+  },
+  {
+    "valorNormalizado": "instituto",
+    "categoria": "A_DETERMINISTA",
+    "familiaId": null,
+    "fuentes": [
+      "CLIENTE",
+      "NEGOCIO",
+      "PEDIDO"
+    ],
+    "n": 8,
+    "decision": "CREAR_BARRIO",
+    "fusionarEn": null,
+    "barrioCanonico": "Instituto",
+    "razon": "Categoria A -- variantes ya normalizadas al mismo valor por normalizeName, sin ambiguedad cruzada con ningun otro nombre normalizado (M1_INVENTARIO_BARRIO.md SS2, SS6). Vinculacion mecanica, sin decision territorial pendiente.",
+    "estado": "RESUELTO"
+  },
+  {
+    "valorNormalizado": "la pista",
+    "categoria": "A_DETERMINISTA",
+    "familiaId": null,
+    "fuentes": [
+      "CLIENTE",
+      "NEGOCIO"
+    ],
+    "n": 2,
+    "decision": "CREAR_BARRIO",
+    "fusionarEn": null,
+    "barrioCanonico": "La Pista",
+    "razon": "Categoria A -- variantes ya normalizadas al mismo valor por normalizeName, sin ambiguedad cruzada con ningun otro nombre normalizado (M1_INVENTARIO_BARRIO.md SS2, SS6). Vinculacion mecanica, sin decision territorial pendiente.",
+    "estado": "RESUELTO"
+  },
+  {
+    "valorNormalizado": "las flores",
+    "categoria": "A_DETERMINISTA",
+    "familiaId": null,
+    "fuentes": [
+      "CLIENTE",
+      "NEGOCIO"
+    ],
+    "n": 2,
+    "decision": "CREAR_BARRIO",
+    "fusionarEn": null,
+    "barrioCanonico": "Las Flores",
+    "razon": "Categoria A -- variantes ya normalizadas al mismo valor por normalizeName, sin ambiguedad cruzada con ningun otro nombre normalizado (M1_INVENTARIO_BARRIO.md SS2, SS6). Vinculacion mecanica, sin decision territorial pendiente.",
+    "estado": "RESUELTO"
+  },
+  {
+    "valorNormalizado": "martinez barbosa",
+    "categoria": "A_DETERMINISTA",
+    "familiaId": null,
+    "fuentes": [
+      "CLIENTE",
+      "NEGOCIO"
+    ],
+    "n": 8,
+    "decision": "CREAR_BARRIO",
+    "fusionarEn": null,
+    "barrioCanonico": "Martinez Barbosa",
+    "razon": "Categoria A -- variantes ya normalizadas al mismo valor por normalizeName, sin ambiguedad cruzada con ningun otro nombre normalizado (M1_INVENTARIO_BARRIO.md SS2, SS6). Vinculacion mecanica, sin decision territorial pendiente.",
+    "estado": "RESUELTO"
+  },
+  {
+    "valorNormalizado": "san jose",
+    "categoria": "A_DETERMINISTA",
+    "familiaId": null,
+    "fuentes": [
+      "CLIENTE",
+      "NEGOCIO"
+    ],
+    "n": 12,
+    "decision": "CREAR_BARRIO",
+    "fusionarEn": null,
+    "barrioCanonico": "San Jose",
+    "razon": "Categoria A -- variantes ya normalizadas al mismo valor por normalizeName, sin ambiguedad cruzada con ningun otro nombre normalizado (M1_INVENTARIO_BARRIO.md SS2, SS6). Vinculacion mecanica, sin decision territorial pendiente.",
+    "estado": "RESUELTO"
+  },
+  {
+    "valorNormalizado": "tiburon",
+    "categoria": "A_DETERMINISTA",
+    "familiaId": null,
+    "fuentes": [
+      "CLIENTE",
+      "NEGOCIO"
+    ],
+    "n": 3,
+    "decision": "CREAR_BARRIO",
+    "fusionarEn": null,
+    "barrioCanonico": "Tiburon",
+    "razon": "Categoria A -- variantes ya normalizadas al mismo valor por normalizeName, sin ambiguedad cruzada con ningun otro nombre normalizado (M1_INVENTARIO_BARRIO.md SS2, SS6). Vinculacion mecanica, sin decision territorial pendiente.",
+    "estado": "RESUELTO"
+  },
+  {
+    "valorNormalizado": "villa eduardo",
+    "categoria": "A_DETERMINISTA",
+    "familiaId": null,
+    "fuentes": [
+      "CLIENTE",
+      "NEGOCIO"
+    ],
+    "n": 2,
+    "decision": "CREAR_BARRIO",
+    "fusionarEn": null,
+    "barrioCanonico": "Villa Eduardo",
+    "razon": "Categoria A -- variantes ya normalizadas al mismo valor por normalizeName, sin ambiguedad cruzada con ningun otro nombre normalizado (M1_INVENTARIO_BARRIO.md SS2, SS6). Vinculacion mecanica, sin decision territorial pendiente.",
+    "estado": "RESUELTO"
+  },
+  {
+    "valorNormalizado": "15 de noviembre",
+    "categoria": "B_VALIDACION",
+    "familiaId": null,
+    "fuentes": [
+      "CLIENTE"
+    ],
+    "n": 1,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "15 diciembre",
+    "categoria": "B_VALIDACION",
+    "familiaId": null,
+    "fuentes": [
+      "NEGOCIO"
+    ],
+    "n": 1,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "20 de marzo",
+    "categoria": "B_VALIDACION",
+    "familiaId": null,
+    "fuentes": [
+      "CLIENTE"
+    ],
+    "n": 1,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "barrio las delicias",
+    "categoria": "B_VALIDACION",
+    "familiaId": null,
+    "fuentes": [
+      "NEGOCIO"
+    ],
+    "n": 1,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "el carmen",
+    "categoria": "B_VALIDACION",
+    "familiaId": null,
+    "fuentes": [
+      "CLIENTE"
+    ],
+    "n": 1,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "el estadio",
+    "categoria": "B_VALIDACION",
+    "familiaId": null,
+    "fuentes": [
+      "CLIENTE"
+    ],
+    "n": 1,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "la victoria",
+    "categoria": "B_VALIDACION",
+    "familiaId": null,
+    "fuentes": [
+      "CLIENTE"
+    ],
+    "n": 1,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "machique",
+    "categoria": "B_VALIDACION",
+    "familiaId": null,
+    "fuentes": [
+      "NEGOCIO"
+    ],
+    "n": 2,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "nueva esperanza",
+    "categoria": "B_VALIDACION",
+    "familiaId": null,
+    "fuentes": [
+      "NEGOCIO"
+    ],
+    "n": 1,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "primero de mayo",
+    "categoria": "B_VALIDACION",
+    "familiaId": null,
+    "fuentes": [
+      "CLIENTE"
+    ],
+    "n": 1,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "san martin",
+    "categoria": "B_VALIDACION",
+    "familiaId": null,
+    "fuentes": [
+      "NEGOCIO"
+    ],
+    "n": 1,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "san vicente",
+    "categoria": "B_VALIDACION",
+    "familiaId": null,
+    "fuentes": [
+      "NEGOCIO"
+    ],
+    "n": 1,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "santa rita",
+    "categoria": "B_VALIDACION",
+    "familiaId": null,
+    "fuentes": [
+      "CLIENTE"
+    ],
+    "n": 1,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "urbanizacion don emerito",
+    "categoria": "B_VALIDACION",
+    "familiaId": null,
+    "fuentes": [
+      "CLIENTE"
+    ],
+    "n": 1,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "villa mafe",
+    "categoria": "B_VALIDACION",
+    "familiaId": null,
+    "fuentes": [
+      "CLIENTE"
+    ],
+    "n": 1,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "villa olimpica",
+    "categoria": "B_VALIDACION",
+    "familiaId": null,
+    "fuentes": [
+      "CLIENTE"
+    ],
+    "n": 1,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "antillana",
+    "categoria": "C_FAMILIA",
+    "familiaId": "familia-antillana",
+    "fuentes": [
+      "CLIENTE",
+      "NEGOCIO"
+    ],
+    "n": 10,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "la antillana",
+    "categoria": "C_FAMILIA",
+    "familiaId": "familia-antillana",
+    "fuentes": [
+      "CLIENTE"
+    ],
+    "n": 1,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "gaitan",
+    "categoria": "C_FAMILIA",
+    "familiaId": "familia-gaitana",
+    "fuentes": [
+      "NEGOCIO"
+    ],
+    "n": 1,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "la gaitana",
+    "categoria": "C_FAMILIA",
+    "familiaId": "familia-gaitana",
+    "fuentes": [
+      "CLIENTE"
+    ],
+    "n": 1,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "laureles",
+    "categoria": "C_FAMILIA",
+    "familiaId": "familia-laureles",
+    "fuentes": [
+      "CLIENTE",
+      "NEGOCIO"
+    ],
+    "n": 4,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "los laureles",
+    "categoria": "C_FAMILIA",
+    "familiaId": "familia-laureles",
+    "fuentes": [
+      "CLIENTE"
+    ],
+    "n": 1,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "el libano",
+    "categoria": "C_FAMILIA",
+    "familiaId": "familia-libano",
+    "fuentes": [
+      "CLIENTE"
+    ],
+    "n": 1,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "libano",
+    "categoria": "C_FAMILIA",
+    "familiaId": "familia-libano",
+    "fuentes": [
+      "CLIENTE"
+    ],
+    "n": 1,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "las margaritas 2",
+    "categoria": "C_FAMILIA",
+    "familiaId": "familia-margaritas",
+    "fuentes": [
+      "CLIENTE"
+    ],
+    "n": 1,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "margarita 1",
+    "categoria": "C_FAMILIA",
+    "familiaId": "familia-margaritas",
+    "fuentes": [
+      "CLIENTE"
+    ],
+    "n": 1,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "margaritas",
+    "categoria": "C_FAMILIA",
+    "familiaId": "familia-margaritas",
+    "fuentes": [
+      "CLIENTE"
+    ],
+    "n": 1,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "margaritas 2",
+    "categoria": "C_FAMILIA",
+    "familiaId": "familia-margaritas",
+    "fuentes": [
+      "CLIENTE"
+    ],
+    "n": 2,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "mercado",
+    "categoria": "C_FAMILIA",
+    "familiaId": "familia-mercado",
+    "fuentes": [
+      "CLIENTE",
+      "NEGOCIO"
+    ],
+    "n": 3,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "mercado publico",
+    "categoria": "C_FAMILIA",
+    "familiaId": "familia-mercado",
+    "fuentes": [
+      "NEGOCIO"
+    ],
+    "n": 1,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "las palmeras",
+    "categoria": "C_FAMILIA",
+    "familiaId": "familia-palmeras",
+    "fuentes": [
+      "CLIENTE",
+      "NEGOCIO"
+    ],
+    "n": 5,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "palmeras",
+    "categoria": "C_FAMILIA",
+    "familiaId": "familia-palmeras",
+    "fuentes": [
+      "CLIENTE"
+    ],
+    "n": 1,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "el socorro",
+    "categoria": "C_FAMILIA",
+    "familiaId": "familia-socorro",
+    "fuentes": [
+      "CLIENTE",
+      "NEGOCIO"
+    ],
+    "n": 2,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "socorro",
+    "categoria": "C_FAMILIA",
+    "familiaId": "familia-socorro",
+    "fuentes": [
+      "CLIENTE"
+    ],
+    "n": 2,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "altos del tesoro",
+    "categoria": "C_FAMILIA",
+    "familiaId": "familia-tesoro",
+    "fuentes": [
+      "CLIENTE"
+    ],
+    "n": 1,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "el tesoro",
+    "categoria": "C_FAMILIA",
+    "familiaId": "familia-tesoro",
+    "fuentes": [
+      "CLIENTE",
+      "NEGOCIO"
+    ],
+    "n": 4,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "la variante",
+    "categoria": "C_FAMILIA",
+    "familiaId": "familia-variante",
+    "fuentes": [
+      "CLIENTE",
+      "NEGOCIO"
+    ],
+    "n": 2,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "variante",
+    "categoria": "C_FAMILIA",
+    "familiaId": "familia-variante",
+    "fuentes": [
+      "CLIENTE",
+      "NEGOCIO"
+    ],
+    "n": 2,
+    "decision": "PENDIENTE_DECISION",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "",
+    "estado": "PENDIENTE"
+  },
+  {
+    "valorNormalizado": "drogueria fama yyy ubica en el romboy de la 25",
+    "categoria": "D_DESCARTAR",
+    "familiaId": null,
+    "fuentes": [
+      "CLIENTE"
+    ],
+    "n": 1,
+    "decision": "DESCARTAR",
+    "fusionarEn": null,
+    "barrioCanonico": null,
+    "razon": "Categoria D -- ruido evidente (descripcion de negocio + referencia de ubicacion, no un nombre de barrio), confirmado en M1_INVENTARIO_BARRIO.md SS4. Se descarta sin modificar el valor legacy.",
+    "estado": "RESUELTO"
+  }
+]
