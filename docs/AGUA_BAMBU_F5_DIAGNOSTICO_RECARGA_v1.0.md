@@ -1,7 +1,9 @@
 # AGUA BAMBÚ — F5: DIAGNÓSTICO RECARGA (Plan Maestro → código)
 
-**Versión:** 1.0
+**Versión:** 1.1
 **Fecha:** 2026-09-15
+
+**v1.1**: segunda pasada pedida por el equipo, exclusivamente sobre los 4 PENDIENTES de §5 — rastreados contra Plan Maestro, ALS, ADRs, conversaciones históricas (todos los transcripts de sesiones previas de este proyecto) y código actual. Resultado consolidado en §6, al final del documento. Regla arquitectónica reafirmada por el equipo (RECARGA = nueva `EmbarqueCarga` dentro del Embarque existente; identidad del Embarque intacta hasta cierre; nunca Embarque nuevo/hijo/operación duplicada) — ya reflejada en §3/§4, sin cambios.
 **Responde a:** decisión de producto del equipo — el modelo de RECARGA queda definido (1..N cargas por Embarque, la recarga permanece dentro del mismo Embarque, genera `EmbarqueMovimiento.RECARGA` vinculado por `cargaId`, nunca crea otro Embarque, la conciliación trabaja sobre el conjunto completo, el repartidor solicita pero no autoriza). Se pidió auditoría exhaustiva de `main` (sin asumir ausencia), diagnóstico HECHO/DECISIÓN/BRECHA/PROPUESTA/PENDIENTE, y **cero código hasta demostrar la brecha exacta**.
 
 **Respuesta directa a la pregunta concreta del equipo:**
@@ -147,4 +149,46 @@ Una sola rama `feat/f5-recarga-embarque` desde `main`, con al menos 2 commits se
 
 ---
 
-**No se ha escrito ningún código todavía.** Este documento espera resolución de los 4 puntos PENDIENTES (§5) antes de proponer una PR de implementación real — en particular el mecanismo de "solicitar" (PENDIENTE #2), que cambia significativamente el tamaño del cambio mínimo si requiere una entidad de solicitud rastreada en vez de un simple gate de permisos.
+## 6. Segunda pasada — resolución de los 4 PENDIENTES (v1.1)
+
+**Fuentes rastreadas para cada punto**: (a) `AGUA_BAMBU_PLAN_MAESTRO_INTEGRIDAD_COMERCIAL_v1.0.md` completo (el documento base de F0-F8, incluida su §30 "Conservación física" y §29 "Custodia" — las únicas secciones que mencionan `RECARGA`); (b) `AGUA_BAMBU_ALS_INTEGRIDAD_COMERCIAL_v1.0.als` completo (§27-28, mismas secciones homólogas); (c) los 3 ADRs de la Fase 2 del ledger físico (`ADR-FISICO-001`, `ADR-STOCK-001`, `ADR-CUSTODIA-001`); (d) **todos** los transcripts de sesiones previas de este proyecto (`~/.claude/projects/.../*.jsonl`, todas las conversaciones históricas indexadas, no solo esta); (e) el mensaje literal del equipo que introdujo la decisión de RECARGA en esta conversación; (f) el código actual (ya cubierto en §0-§1).
+
+**Metodología de búsqueda negativa** (para no reportar "no encontrado" por una búsqueda floja): en las fuentes históricas (d) se buscaron combinaciones específicas más allá de la palabra suelta "recarga" — `solicitar+recarga`, `SolicitudRecarga`, `repartidor+recarga`, `carga+INICIAL`, `capacidad+acumulad`, `entrega parcial+recarga` — en ambas direcciones de cercanía textual, sobre cada archivo de transcript individualmente. Cero coincidencias en cualquier sesión distinta a la actual.
+
+### PENDIENTE 1 — ¿La marca `INICIAL` necesita un campo explícito o es derivable?
+
+**NO RESUELTO — requiere decisión de negocio.**
+
+- Plan Maestro §30 y ALS §28 solo listan `CARGA`/`RECARGA` como dos tipos de movimiento distintos dentro de la enumeración de 10 — ninguno de los dos documentos define un atributo `INICIAL` en `EmbarqueCarga`, ni dice si la distinción "primera carga = INICIAL" debe persistirse como dato o si es puramente derivable por orden cronológico.
+- El propio mensaje del equipo que introdujo esta decisión dice literalmente "la carga inicial es `INICIAL`" — pero no especifica si eso es una propiedad que el sistema debe **almacenar explícitamente** (ej. un campo `origen: 'INICIAL'|'RECARGA'` en `EmbarqueCarga`) o una **etiqueta conceptual** que ya se cumple con el hecho de que existe un tipo de movimiento `CARGA` (para la primera) distinto de `RECARGA` (para las siguientes) — en cuyo caso ya queda resuelto por el propio `TipoMovimiento` del `EmbarqueMovimiento` asociado, sin necesidad de un campo nuevo en `EmbarqueCarga`.
+- Cero mención en cualquier transcript histórico de este proyecto.
+- **No lo resuelvo por conveniencia técnica** (sería fácil asumir "ya alcanza con el tipo de movimiento" porque es el camino más barato) — es una lectura razonable pero no está confirmada por ninguna fuente, así que queda como pregunta explícita.
+
+### PENDIENTE 2 — Mecanismo exacto de "solicitar" (repartidor solicita, no autoriza)
+
+**NO RESUELTO — requiere decisión de negocio.**
+
+- Ninguna fuente (Plan Maestro, ALS, ADRs, transcripts históricos) menciona un mecanismo de "solicitud" para movimientos físicos en absoluto. El patrón de "solicitud rastreada con estado pendiente→resuelta por otro actor" **sí existe en el código actual** para otros dominios (`RecoveryDecision`, y el patrón de excepciones de crédito `PedidoExcepcionCredito` de F2) — pero ningún ADR ni el Plan Maestro dice que RECARGA deba seguir ese mismo patrón. Citar la existencia de un patrón similar en otro dominio como "la respuesta" sería precisamente la "conveniencia técnica" que el equipo pidió no usar para resolver esto — lo señalo como precedente disponible, no como fuente que decide.
+- El mensaje del equipo dice "el repartidor puede solicitar una recarga, pero no debe adquirir permisos para resolver discrepancias o autorizar operaciones que no le corresponden" — esto establece un **límite** (qué NO puede hacer el repartidor) pero no especifica el mecanismo positivo (cómo se registra/rastrea la solicitud, si la ve un ADMIN en una bandeja, si es una llamada/mensaje fuera del sistema, etc.).
+- Cero mención en cualquier transcript histórico.
+
+### PENDIENTE 3 — ¿El tope de capacidad aplica sobre el acumulado del día (inicial + recargas)?
+
+**NO RESUELTO — requiere decisión de negocio**, aunque con una inclinación fuerte de la evidencia disponible.
+
+- Ni el Plan Maestro ni el ALS ni ningún ADR mencionan explícitamente cómo debe comportarse `MAX_UNIDADES`/la capacidad de peso frente a múltiples cargas del mismo Embarque — porque, como confirma §1, esos documentos nunca desarrollan RECARGA más allá de nombrarla en la lista de 10 tipos.
+- Lo que SÍ hay es una **invariante física obvia y no ambigua** (no es una zona gris de negocio, es física del mundo real): un vehículo tiene una capacidad de peso/unidades fija en todo momento, sin importar cuántas veces se recargue — `EmbarqueValidationService.validarCapacidadPeso`/`validarMaxUnidades` (`embarque-validation.service.ts`) ya reciben `capacidadKg` como un límite del **vehículo**, no de "una carga individual". Validar solo la recarga aislada permitiría que la suma de varias recargas exceda la capacidad física real del vehículo — eso contradice la realidad física que el propio ledger existe para registrar con precisión (`ADR-FISICO-001`: "custodia es inequívoca").
+- **Distingo esto de los otros 3 PENDIENTES**: no es una decisión de negocio en el sentido de "el negocio podría preferir A o B" — es una restricción física que no admite una alternativa de producto razonable (no existe una versión del negocio donde "está bien exceder la capacidad física del vehículo"). Aun así, lo dejo formalmente como **NO RESUELTO POR FUENTE ESCRITA** (ninguna fuente lo dice con esas palabras) en vez de asumirlo como "obvio" — el equipo pidió explícitamente no resolver por conveniencia técnica, y aunque la física no es "conveniencia", prefiero que quede confirmado en vez de asumido.
+
+### PENDIENTE 4 — ¿Es válido recargar después de que ya hubo entregas/ventas parciales del cargamento inicial?
+
+**NO RESUELTO — requiere decisión de negocio.**
+
+- Ninguna fuente lo cubre. Es, de los 4, el que más genuinamente depende de cómo opera el negocio en la práctica (¿un repartidor típico recarga a mitad de ruta con entregas ya hechas, o siempre recarga antes de salir/entre viajes con el vehículo vacío?) — no hay ninguna restricción física ni lógica que fuerce una única respuesta razonable, a diferencia del PENDIENTE 3.
+- Cero mención en cualquier transcript histórico.
+
+### Conclusión de la segunda pasada
+
+**Ninguno de los 4 PENDIENTES estaba ya resuelto en una fuente existente.** No se encontró ninguna decisión previa que esta segunda pasada estuviera en riesgo de "volver a convertir en pregunta" — la búsqueda fue exhaustiva y negativa en las 6 fuentes distintas listadas arriba, no una omisión de la primera pasada. Los 4 requieren respuesta explícita del equipo/negocio antes de definir el cambio mínimo de aplicación de RECARGA. El PENDIENTE 3, aunque técnicamente sin fuente escrita, tiene una respuesta físicamente obligada (capacidad del vehículo es acumulada, no por-carga) que recomiendo confirmar por trámite, no por ambigüedad real.
+
+**Ningún código escrito en esta pasada.** Esperando las 4 respuestas antes de retomar la definición del cambio mínimo de aplicación (§4), que puede variar significativamente en tamaño según la respuesta al PENDIENTE 2 en particular.
