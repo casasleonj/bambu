@@ -64,8 +64,14 @@ describe('validarLedger — ledger real del repo', () => {
     const raw = readFileSync(join(process.cwd(), 'scripts/backfill-barrio-canonico.decisiones.json'), 'utf-8')
     const entries: DecisionLedgerEntry[] = JSON.parse(raw)
     expect(tienePendientes(entries)).toBe(true)
+    // Tras el cruce con el Diccionario Territorial Codazzi V2 (evidencia externa)
+    // + el criterio explícito del equipo de "homologar sin reemplazar", se
+    // resolvieron 20 de las 38 entradas originales (6 categoría B + 14 categoría
+    // C). Quedan 18 sin evidencia suficiente: 10 categoría B + 8 categoría C
+    // (familias gaitana, libano, mercado — sin evidencia externa ni instrucción
+    // explícita del equipo, no se inventa su resolución).
     const pendientes = entries.filter((e) => e.decision === 'PENDIENTE_DECISION')
-    expect(pendientes).toHaveLength(38) // 16 categoría B + 22 categoría C
+    expect(pendientes).toHaveLength(18)
   })
 
   it('las categorías A y D del ledger real vienen resueltas (no requieren decisión humana)', () => {

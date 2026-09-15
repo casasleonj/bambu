@@ -259,11 +259,11 @@
       "CLIENTE"
     ],
     "n": 1,
-    "decision": "PENDIENTE_DECISION",
+    "decision": "CREAR_BARRIO",
     "fusionarEn": null,
-    "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "barrioCanonico": "El Carmen",
+    "razon": "Evidencia externa (Diccionario Territorial Codazzi V2 aportado por el equipo, seccion 23): 3 anclas independientes -- Carrera 16 entre Calles 7 y 4 (prensa local 2024), Calle 4 x Carrera 4 (directorio comercial), Carrera 16 x Calle 5 (Afinia 2025). Texto legacy 'el carmen' se conserva sin modificar; solo se agrega barrioId (criterio del equipo: homologar sin reemplazar).",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "el estadio",
@@ -329,11 +329,11 @@
       "CLIENTE"
     ],
     "n": 1,
-    "decision": "PENDIENTE_DECISION",
+    "decision": "CREAR_BARRIO",
     "fusionarEn": null,
-    "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "barrioCanonico": "El 1 de Mayo",
+    "razon": "Evidencia externa (Diccionario Territorial Codazzi V2, ANC-018 / seccion 21): directorio comercial ubica Carrera 13 x Calle 8 como 'El 1 de Mayo'. Texto legacy 'primero de mayo' se conserva sin modificar (criterio del equipo: la forma escrita por el usuario nunca se reemplaza, solo se homologa al canonico).",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "san martin",
@@ -343,11 +343,11 @@
       "NEGOCIO"
     ],
     "n": 1,
-    "decision": "PENDIENTE_DECISION",
+    "decision": "CREAR_BARRIO",
     "fusionarEn": null,
-    "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "barrioCanonico": "San Martin",
+    "razon": "PROPUESTA -- confirmar con el equipo. Evidencia externa (Diccionario Territorial Codazzi V2, seccion 25): 2 anclas Afinia consistentes (Calle 10A x Cra 18, Calle 10 x Cra 22), pero el propio documento aclara que San Martin NO figura en el listado municipal oficial de 62 barrios ('no convertir en barrio oficial'). Se crea igual como barrio operativo del sistema, siguiendo el mismo precedente ya aplicado a 'Instituto' y 'Tiburon' (tambien fuera del listado oficial pero con uso real consistente). Si el equipo prefiere no operacionalizarlo todavia, revertir a PENDIENTE_DECISION antes de correr el modo real.",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "san vicente",
@@ -357,11 +357,11 @@
       "NEGOCIO"
     ],
     "n": 1,
-    "decision": "PENDIENTE_DECISION",
+    "decision": "CREAR_BARRIO",
     "fusionarEn": null,
-    "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "barrioCanonico": "San Vicente",
+    "razon": "Evidencia externa (Diccionario Territorial Codazzi V2, ANC-008 / seccion 16): Afinia ubica Calle 15 x Carrera 10 como Barrio San Vicente. Texto legacy 'san vicente' se conserva sin modificar.",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "santa rita",
@@ -371,11 +371,11 @@
       "CLIENTE"
     ],
     "n": 1,
-    "decision": "PENDIENTE_DECISION",
+    "decision": "CREAR_BARRIO",
     "fusionarEn": null,
-    "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "barrioCanonico": "Santa Rita",
+    "razon": "Evidencia externa (Diccionario Territorial Codazzi V2, ANC-009/010/011 / seccion 15): Afinia documenta 3 anclas independientes (Calle 11 x Cra 13, Calle 14 x Cra 10, Calle 13 x Cra 13). Texto legacy 'santa rita' se conserva sin modificar.",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "urbanizacion don emerito",
@@ -385,11 +385,11 @@
       "CLIENTE"
     ],
     "n": 1,
-    "decision": "PENDIENTE_DECISION",
+    "decision": "CREAR_BARRIO",
     "fusionarEn": null,
-    "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "barrioCanonico": "Don Emerito",
+    "razon": "Evidencia externa mas fuerte de todo el cruce (Diccionario Territorial Codazzi V2, secciones 10.3 y 27): licencia urbanistica municipal, matricula, referencia catastral, coordenadas de vertices proyectadas MAGNA-SIRGAS (P2 ~10.0254353,-73.2383563), linderos documentados (Calle 5 / Carrera 16 / Carrera 14E). Texto legacy 'urbanizacion don emerito' se conserva sin modificar.",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "villa mafe",
@@ -428,11 +428,11 @@
       "NEGOCIO"
     ],
     "n": 10,
-    "decision": "PENDIENTE_DECISION",
+    "decision": "CREAR_BARRIO",
     "fusionarEn": null,
-    "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "barrioCanonico": "Antillana",
+    "razon": "Decision explicita del equipo (criterio de homologacion sin reemplazo): 'Antillana' y 'La Antillana' son variantes del mismo nombre base (diferencia de articulo). Uso real consistente (n=10, mayoria de la familia). No existen en produccion valores separados 'Antillana 1'/'Antillana 2' pendientes de decision -- si aparecieran en el futuro, se tratarian como referencias especificas dentro del texto legacy, sin crear una subdivision automatica.",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "la antillana",
@@ -442,11 +442,11 @@
       "CLIENTE"
     ],
     "n": 1,
-    "decision": "PENDIENTE_DECISION",
-    "fusionarEn": null,
+    "decision": "FUSIONAR_EN",
+    "fusionarEn": "antillana",
     "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "razon": "Variante de articulo de 'antillana' (mismo nombre base, decision explicita del equipo). Texto legacy 'la antillana' se conserva sin modificar -- solo se vincula al mismo Barrio canonico 'Antillana'.",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "gaitan",
@@ -485,11 +485,11 @@
       "NEGOCIO"
     ],
     "n": 4,
-    "decision": "PENDIENTE_DECISION",
+    "decision": "CREAR_BARRIO",
     "fusionarEn": null,
-    "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "barrioCanonico": "Los Laureles",
+    "razon": "Evidencia externa (Diccionario Territorial Codazzi V2, ANC-019 / seccion 22): directorio comercial ubica Calle 25 x Carrera 10 como 'Los Laureles'. 'laureles' y 'los laureles' son variante de articulo del mismo nombre base (mismo ancla). Mayoria de uso (n=4) se toma como destino de la fusion.",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "los laureles",
@@ -499,11 +499,11 @@
       "CLIENTE"
     ],
     "n": 1,
-    "decision": "PENDIENTE_DECISION",
-    "fusionarEn": null,
+    "decision": "FUSIONAR_EN",
+    "fusionarEn": "laureles",
     "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "razon": "Variante de articulo de 'laureles' (mismo ancla: Calle 25 x Cra 10). Texto legacy 'los laureles' se conserva sin modificar.",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "el libano",
@@ -541,11 +541,11 @@
       "CLIENTE"
     ],
     "n": 1,
-    "decision": "PENDIENTE_DECISION",
-    "fusionarEn": null,
+    "decision": "FUSIONAR_EN",
+    "fusionarEn": "margaritas",
     "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "razon": "Decision explicita del equipo (ejemplo 1 de su mensaje de criterio): territorio canonico = 'Las Margaritas'. El texto legacy 'las margaritas 2' se conserva sin modificar -- la referencia especifica a '2' NO se pierde, vive en Cliente.barrio/Negocio.barrio, que este script nunca toca. No se crea una subdivision 'Margaritas 2' como Barrio separado porque no hay evidencia de que sea un sector geografico distinto y no una simple numeracion informal.",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "margarita 1",
@@ -555,11 +555,11 @@
       "CLIENTE"
     ],
     "n": 1,
-    "decision": "PENDIENTE_DECISION",
-    "fusionarEn": null,
+    "decision": "FUSIONAR_EN",
+    "fusionarEn": "margaritas",
     "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "razon": "Decision explicita del equipo (ejemplo 1 de su mensaje de criterio): territorio canonico = 'Las Margaritas'. Texto legacy 'margarita 1' se conserva sin modificar.",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "margaritas",
@@ -569,11 +569,11 @@
       "CLIENTE"
     ],
     "n": 1,
-    "decision": "PENDIENTE_DECISION",
+    "decision": "CREAR_BARRIO",
     "fusionarEn": null,
-    "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "barrioCanonico": "Las Margaritas",
+    "razon": "Decision explicita del equipo (ejemplo 1 de su mensaje de criterio): 'Las Margaritas' es el territorio canonico; los valores numerados (Margaritas 1/2) son referencias mas especificas dentro de la Direccion, no subdivisiones administrativas separadas, salvo que exista evidencia puntual de lo contrario (no la hay hoy).",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "margaritas 2",
@@ -583,11 +583,11 @@
       "CLIENTE"
     ],
     "n": 2,
-    "decision": "PENDIENTE_DECISION",
-    "fusionarEn": null,
+    "decision": "FUSIONAR_EN",
+    "fusionarEn": "margaritas",
     "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "razon": "Decision explicita del equipo (ejemplo 1 de su mensaje de criterio): territorio canonico = 'Las Margaritas'. Texto legacy 'margaritas 2' se conserva sin modificar -- la referencia a '2' no se pierde ni se convierte en un Barrio separado sin evidencia de que sea un sector geografico real distinto.",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "mercado",
@@ -627,11 +627,11 @@
       "NEGOCIO"
     ],
     "n": 5,
-    "decision": "PENDIENTE_DECISION",
+    "decision": "CREAR_BARRIO",
     "fusionarEn": null,
-    "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "barrioCanonico": "Las Palmeras",
+    "razon": "Evidencia externa (Diccionario Territorial Codazzi V2, ANC-001/002 / seccion 14): Policia Nacional (nov. 2025) documenta 2 anclas independientes (Calle 25 x Cra 15, Calle 22 x Cra 15) para 'Las Palmeras'. Mayoria de uso (n=5) se toma como destino de la fusion.",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "palmeras",
@@ -641,11 +641,11 @@
       "CLIENTE"
     ],
     "n": 1,
-    "decision": "PENDIENTE_DECISION",
-    "fusionarEn": null,
+    "decision": "FUSIONAR_EN",
+    "fusionarEn": "las palmeras",
     "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "razon": "Variante de articulo de 'las palmeras' (mismas anclas Policia 2025). Texto legacy 'palmeras' se conserva sin modificar.",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "el socorro",
@@ -684,11 +684,11 @@
       "CLIENTE"
     ],
     "n": 1,
-    "decision": "PENDIENTE_DECISION",
+    "decision": "MANTENER_SEPARADO",
     "fusionarEn": null,
-    "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "barrioCanonico": "Altos del Tesoro",
+    "razon": "Evidencia externa (Diccionario Territorial Codazzi V2, ANC-033 / seccion 31, matriz de relaciones): el propio documento indica explicitamente 'No igualar automaticamente a El Tesoro'. Urbanizacion geolocalizada distinta, confianza media, con anclas propias diferentes a las 3 anclas de El Tesoro.",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "el tesoro",
@@ -699,11 +699,11 @@
       "NEGOCIO"
     ],
     "n": 4,
-    "decision": "PENDIENTE_DECISION",
+    "decision": "MANTENER_SEPARADO",
     "fusionarEn": null,
-    "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "barrioCanonico": "El Tesoro",
+    "razon": "Evidencia externa (Diccionario Territorial Codazzi V2, seccion 13): 3 anclas independientes (Calle 26 entre Cra 17A-18 / Superservicios 2024; Calle 31 x Cra 18 / Afinia; Calle 25 x Cra 16 / directorio comercial). Se mantiene separado de 'Altos del Tesoro' por indicacion explicita del documento fuente.",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "la variante",
@@ -714,11 +714,11 @@
       "NEGOCIO"
     ],
     "n": 2,
-    "decision": "PENDIENTE_DECISION",
+    "decision": "DESCARTAR",
     "fusionarEn": null,
     "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "razon": "Decision explicita del equipo (ejemplo 3 de su mensaje de criterio): 'La Variante' es la forma coloquial de referirse a la Carrera 30 (referencia vial local, no un barrio). Se descarta la vinculacion a Barrio -- el texto legacy 'la variante' NO se modifica ni se elimina, permanece intacto en Cliente.barrio/Negocio.barrio para seguir usandose como referencia de ubicacion.",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "variante",
@@ -729,11 +729,11 @@
       "NEGOCIO"
     ],
     "n": 2,
-    "decision": "PENDIENTE_DECISION",
+    "decision": "DESCARTAR",
     "fusionarEn": null,
     "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "razon": "Decision explicita del equipo (ejemplo 3 de su mensaje de criterio): referencia vial local a la Carrera 30, no un barrio. Se descarta la vinculacion a Barrio; el texto legacy 'variante' permanece intacto.",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "drogueria fama yyy ubica en el romboy de la 25",
