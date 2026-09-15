@@ -7,6 +7,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { testPrisma, resetAndSeed, disconnect, createTestCliente, getAdminUser } from './setup'
 import { GestionarPendienteUseCase } from '@/modules/embarques/application/use-cases/GestionarPendienteUseCase'
+import { CambiarModoActividadUseCase } from '@/modules/embarques/application/use-cases/CambiarModoActividadUseCase'
 import { ProyectarGestionPendienteUseCase } from '@/modules/embarques/application/use-cases/ProyectarGestionPendienteUseCase'
 import { EntregarPedidoUseCase } from '@/modules/pedidos/application/use-cases/EntregarPedidoUseCase'
 import { PrismaPedidoRepository } from '@/modules/pedidos/infrastructure/repositories/PrismaPedidoRepository'
@@ -197,32 +198,116 @@ describe('N2 — GestionarPendienteUseCase', () => {
     expect(await testPrisma.obligacionPendiente.count({ where: { pedidoId: pedido.id } })).toBe(1)
   })
 
-  it('guard I-11: la entrega ordinaria no puede invadir cantidad bajo gestión activa', async () => {
+  it('reconexión I-11: la entrega que invade zona reservada se aplica al cumplimiento de la Obligación/Actividad, no se rechaza', async () => {
     const pedido = await crearPedidoConBotellonesPendientes(6, 10, 'EN_RUTA') // 4 pendientes
     // Gestionar 3 de los 4 pendientes.
-    await new GestionarPendienteUseCase().execute({
+    const { obligacionId, actividadId } = await new GestionarPendienteUseCase().execute({
       pedidoId: pedido.id, producto: 'BOTELLON', cantidad: 3, modoInicial: 'PUNTO', usuarioId: adminId,
     })
 
-    // El flujo ordinario intenta entregar las 4 unidades pendientes (como si
-    // no supiera de la gestión activa) — debe rechazar, porque solo queda
-    // 1 unidad fuera de la Obligación (10 - 3 reservadas - 6 ya entregadas = 1).
-    await expect(
-      buildEntregarUseCase().execute({
-        pedidoId: pedido.id,
-        itemsEntregados: [{ producto: 'BOTELLON', cantidad: 4 }],
-        pagos: [],
-      }),
-    ).rejects.toThrow('SOBREPOSICION_CON_OBLIGACION_ACTIVA')
-
-    // Pero SÍ puede entregar la unidad que queda libre (10 - 3 - 6 = 1).
+    // El flujo ordinario entrega las 4 unidades pendientes de una sola vez:
+    // 1 cae en zona ordinaria (10 - 3 reservadas - 6 ya entregadas = 1), las
+    // otras 3 caen en zona reservada por la Obligación — ya NO se rechaza,
+    // se aplican como su cumplimiento (decisión del equipo, F4).
     const res = await buildEntregarUseCase().execute({
       pedidoId: pedido.id,
-      itemsEntregados: [{ producto: 'BOTELLON', cantidad: 1 }],
+      itemsEntregados: [{ producto: 'BOTELLON', cantidad: 4 }],
       pagos: [],
     })
     expect(res.deduped).toBeFalsy()
+    // El Pedido es la única autoridad de cumplimiento: 6+4=10 → ENTREGADO.
+    expect(res.pedido.estadoEntrega).toBe('ENTREGADO')
+
+    const obligacion = await testPrisma.obligacionPendiente.findUniqueOrThrow({ where: { id: obligacionId } })
+    expect(obligacion.cantidadCumplida).toBe(3)
+    expect(obligacion.cantidadAsignada).toBe(0)
+    expect(obligacion.estado).toBe('CUMPLIDA')
+
+    const actividad = await testPrisma.actividad.findUniqueOrThrow({ where: { id: actividadId } })
+    expect(actividad.cantidadCumplida).toBe(3)
+    expect(actividad.estado).toBe('CUMPLIDA')
   })
+
+  it('reconexión I-11: cumplimiento fraccionado — varias entregas parciales acumulan hasta cerrar la Obligación', async () => {
+    const pedido = await crearPedidoConBotellonesPendientes(0, 10, 'EN_RUTA') // 10 pendientes
+    const { obligacionId } = await new GestionarPendienteUseCase().execute({
+      pedidoId: pedido.id, producto: 'BOTELLON', cantidad: 8, modoInicial: 'DOMICILIO', usuarioId: adminId,
+    })
+    // limiteOrdinario = 10 - 8 = 2 (ya se entregaron 0).
+
+    // Cada entrega parcial deja el Pedido PENDIENTE (re-planificable, mismo
+    // criterio que `procesarEntregaParcial`) — simula la reasignación a un
+    // nuevo embarque/ruta antes del siguiente intento.
+    const reasignarARuta = () => testPrisma.pedido.update({ where: { id: pedido.id }, data: { estadoEntrega: 'EN_RUTA', estado: 'EN_RUTA' } })
+
+    // Entrega 1: 1 unidad — toda ordinaria, no toca la Obligación todavía.
+    await buildEntregarUseCase().execute({ pedidoId: pedido.id, itemsEntregados: [{ producto: 'BOTELLON', cantidad: 1 }], pagos: [] })
+    let obligacion = await testPrisma.obligacionPendiente.findUniqueOrThrow({ where: { id: obligacionId } })
+    expect(obligacion.cantidadCumplida).toBe(0)
+
+    // Entrega 2: 3 unidades — 1 ordinaria (completa el límite de 2) + 2 hacia la Obligación.
+    await reasignarARuta()
+    await buildEntregarUseCase().execute({ pedidoId: pedido.id, itemsEntregados: [{ producto: 'BOTELLON', cantidad: 3 }], pagos: [] })
+    obligacion = await testPrisma.obligacionPendiente.findUniqueOrThrow({ where: { id: obligacionId } })
+    expect(obligacion.cantidadCumplida).toBe(2)
+    expect(obligacion.estado).toBe('ABIERTA')
+
+    // Entrega 3: 3 unidades más, todas hacia la Obligación (2/8 → 5/8).
+    await reasignarARuta()
+    await buildEntregarUseCase().execute({ pedidoId: pedido.id, itemsEntregados: [{ producto: 'BOTELLON', cantidad: 3 }], pagos: [] })
+    obligacion = await testPrisma.obligacionPendiente.findUniqueOrThrow({ where: { id: obligacionId } })
+    expect(obligacion.cantidadCumplida).toBe(5)
+    expect(obligacion.estado).toBe('ABIERTA')
+
+    // Entrega 4: las últimas 3 → completa la Obligación (8/8) y el Pedido (10/10).
+    await reasignarARuta()
+    const res = await buildEntregarUseCase().execute({ pedidoId: pedido.id, itemsEntregados: [{ producto: 'BOTELLON', cantidad: 3 }], pagos: [] })
+    expect(res.pedido.estadoEntrega).toBe('ENTREGADO')
+    obligacion = await testPrisma.obligacionPendiente.findUniqueOrThrow({ where: { id: obligacionId } })
+    expect(obligacion.cantidadCumplida).toBe(8)
+    expect(obligacion.estado).toBe('CUMPLIDA')
+  })
+
+  it('reconexión I-11: PUNTO parcial → más PUNTO → cliente cambia a DOMICILIO a mitad de camino → cierra igual', async () => {
+    // Pedido 10, 0 entregadas. Gestionar 6 en modo PUNTO.
+    const pedido = await crearPedidoConBotellonesPendientes(0, 10, 'EN_RUTA')
+    const { obligacionId, actividadId } = await new GestionarPendienteUseCase().execute({
+      pedidoId: pedido.id, producto: 'BOTELLON', cantidad: 6, modoInicial: 'PUNTO', usuarioId: adminId,
+    })
+    // limiteOrdinario = 10 - 6 = 4.
+
+    // 4 unidades ordinarias (canal PUNTO original del pedido, sin tocar la Obligación).
+    await buildEntregarUseCase().execute({ pedidoId: pedido.id, itemsEntregados: [{ producto: 'BOTELLON', cantidad: 4 }], pagos: [] })
+    let obligacion = await testPrisma.obligacionPendiente.findUniqueOrThrow({ where: { id: obligacionId } })
+    expect(obligacion.cantidadCumplida).toBe(0)
+
+    // 2 unidades más — ya caen en zona reservada, avanzan la Obligación (aún en modo PUNTO).
+    await testPrisma.pedido.update({ where: { id: pedido.id }, data: { estadoEntrega: 'EN_RUTA', estado: 'EN_RUTA' } })
+    await buildEntregarUseCase().execute({ pedidoId: pedido.id, itemsEntregados: [{ producto: 'BOTELLON', cantidad: 2 }], pagos: [] })
+    obligacion = await testPrisma.obligacionPendiente.findUniqueOrThrow({ where: { id: obligacionId } })
+    expect(obligacion.cantidadCumplida).toBe(2)
+    expect(obligacion.estado).toBe('ABIERTA')
+
+    // El cliente decide DOMICILIO para lo que queda — cambia el modo de la
+    // MISMA Actividad, que ya tiene cumplimiento parcial. No crea nada nuevo.
+    await new CambiarModoActividadUseCase().execute({
+      actividadId, modoDestino: 'DOMICILIO', actorId: adminId,
+    })
+    const actividadTrasCambio = await testPrisma.actividad.findUniqueOrThrow({ where: { id: actividadId } })
+    expect(actividadTrasCambio.modo).toBe('DOMICILIO')
+    expect(actividadTrasCambio.cantidadCumplida).toBe(2) // el cambio de modo no toca lo ya cumplido
+
+    // Las últimas 4 (las 6 reservadas - 2 ya cumplidas) cierran la Obligación y el Pedido.
+    await testPrisma.pedido.update({ where: { id: pedido.id }, data: { estadoEntrega: 'EN_RUTA', estado: 'EN_RUTA' } })
+    const res = await buildEntregarUseCase().execute({ pedidoId: pedido.id, itemsEntregados: [{ producto: 'BOTELLON', cantidad: 4 }], pagos: [] })
+    expect(res.pedido.estadoEntrega).toBe('ENTREGADO')
+    obligacion = await testPrisma.obligacionPendiente.findUniqueOrThrow({ where: { id: obligacionId } })
+    expect(obligacion.cantidadCumplida).toBe(6)
+    expect(obligacion.estado).toBe('CUMPLIDA')
+    const actividadFinal = await testPrisma.actividad.findUniqueOrThrow({ where: { id: actividadId } })
+    expect(actividadFinal.estado).toBe('CUMPLIDA')
+  })
+
 })
 
 describe('N2 — ProyectarGestionPendienteUseCase (Fase 5-0, proyección read-only)', () => {

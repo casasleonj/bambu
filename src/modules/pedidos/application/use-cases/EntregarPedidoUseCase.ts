@@ -10,7 +10,7 @@ import type { IPagoRepository } from '../../domain/repositories/IPagoRepository'
 import type { ITransactionManager } from '../../infrastructure/transactions/PrismaTransactionManager'
 import { registrarReceivableEntry } from '@/lib/receivable-entry'
 import { leerMetodosRequierenConfirmacion } from '@/lib/pago-confirmacion'
-import { validarSinSobreposicionConObligacionActiva } from '@/lib/obligacion-guard'
+import { aplicarEntregaConObligacion } from '@/lib/obligacion-guard'
 import type { EntregarPedidoInput, EntregarPedidoResult } from '../dto'
 import { PedidoDTOMapper } from '../dto/PedidoDTOMapper'
 
@@ -85,10 +85,13 @@ export class EntregarPedidoUseCase {
         }
       })
 
-      // Guard I-11 (N2, AGUA_BAMBU_N2_ALS_v2.0.md §3.4bis): no entregar por la
-      // vía ordinaria cantidad que ya está bajo gestión de una
-      // ObligacionPendiente ABIERTA (evita doble cumplimiento físico).
-      await validarSinSobreposicionConObligacionActiva(tx, input.pedidoId, entregasClampeadas)
+      // Reconexión N2 (I-11, AGUA_BAMBU_N2_ALS_v2.0.md §3.4bis): la porción
+      // de esta entrega que cae en zona reservada por una ObligacionPendiente
+      // ABIERTA se aplica a su cumplimiento (acotada a su pendiente real) en
+      // vez de rechazarse — el Pedido sigue siendo la única autoridad de
+      // cuánto se entregó (sin cambios abajo); esto solo espeja la porción
+      // correspondiente en la obligación gestionada.
+      await aplicarEntregaConObligacion(tx, input.pedidoId, entregasClampeadas)
 
       pedido.entregar(
         entregasClampeadas.map(e => ({ producto: e.producto, cantidad: e.cantidadAEntregar })),
