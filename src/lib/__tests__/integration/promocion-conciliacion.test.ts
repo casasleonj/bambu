@@ -50,6 +50,27 @@ async function crearEmbarqueConCarga(cargadas: number) {
   return { trabajador, embarque }
 }
 
+async function crearEmbarqueConDosProductos(cargadasAgua: number, cargadasHielo: number) {
+  const trabajador = await testPrisma.trabajador.create({
+    data: { nombre: `Promo Multi ${Date.now()}`, rol: 'REPARTIDOR', usaMoto: true },
+  })
+  const embarque = await testPrisma.embarque.create({
+    data: {
+      trabajadorId: trabajador.id,
+      fecha: new Date(),
+      estado: 'EN_RUTA',
+      baseDinero: 0,
+      productos: {
+        create: [
+          { producto: 'PACA_AGUA', cargadas: cargadasAgua, devueltas: 0, cambios: 0, rotas: 0 },
+          { producto: 'PACA_HIELO', cargadas: cargadasHielo, devueltas: 0, cambios: 0, rotas: 0 },
+        ],
+      },
+    },
+  })
+  return { trabajador, embarque }
+}
+
 describe('F5 P0 — PROMOCIÓN no debe generar discrepancia falsa en el cierre', () => {
   beforeAll(async () => {
     await resetAndSeed()
@@ -92,5 +113,53 @@ describe('F5 P0 — PROMOCIÓN no debe generar discrepancia falsa en el cierre',
     const result = await buildUseCase().execute({ id: embarque.id, pedidos: [], dineroEntregado: 0 })
 
     expect(result.discrepanciaTotal).toBe(10)
+  })
+
+  // F5 P0, ronda 2 — blindar la AGREGACIÓN del ledger físico, no solo el
+  // caso de un único movimiento.
+  it('múltiples movimientos PROMOCION del mismo producto se ACUMULAN (no se pisa el último)', async () => {
+    const { embarque } = await crearEmbarqueConCarga(10)
+    // Dos movimientos separados, mismo producto — simula 2 promociones
+    // distintas durante la misión, no una sola operación.
+    await testPrisma.embarqueMovimiento.create({
+      data: { embarqueId: embarque.id, tipo: 'PROMOCION', producto: 'PACA_AGUA', cantidad: 3, origen: 'VEHICULO', destino: 'CLIENTE' },
+    })
+    await testPrisma.embarqueMovimiento.create({
+      data: { embarqueId: embarque.id, tipo: 'PROMOCION', producto: 'PACA_AGUA', cantidad: 4, origen: 'VEHICULO', destino: 'CLIENTE' },
+    })
+
+    const result = await buildUseCase().execute({ id: embarque.id, pedidos: [], dineroEntregado: 0 })
+
+    // 10 cargadas - (3+4) acumulado = 3. Si la agregación estuviera rota
+    // (ej. `=` en vez de `+=`, o solo lee el último movimiento) el resultado
+    // sería 6 (10-4) o 7 (10-3), nunca 3 — el valor exacto distingue
+    // "acumula" de "pisa".
+    expect(result.discrepanciaTotal).toBe(3)
+  })
+
+  it('promociones simultáneas de productos DISTINTOS nunca se mezclan entre sí', async () => {
+    const { embarque } = await crearEmbarqueConDosProductos(10, 10)
+    // PACA_AGUA: promoción cubre exactamente lo cargado (discrepancia 0).
+    // PACA_HIELO: promoción cubre solo una parte (discrepancia real de 7).
+    await testPrisma.embarqueMovimiento.create({
+      data: { embarqueId: embarque.id, tipo: 'PROMOCION', producto: 'PACA_AGUA', cantidad: 10, origen: 'VEHICULO', destino: 'CLIENTE' },
+    })
+    await testPrisma.embarqueMovimiento.create({
+      data: { embarqueId: embarque.id, tipo: 'PROMOCION', producto: 'PACA_HIELO', cantidad: 3, origen: 'VEHICULO', destino: 'CLIENTE' },
+    })
+
+    const result = await buildUseCase().execute({ id: embarque.id, pedidos: [], dineroEntregado: 0 })
+
+    // Correcto (aislado por producto): discrepancia_AGUA=0 + discrepancia_HIELO=7 = 7.
+    // Si las cantidades se mezclaran entre productos (ej. las 13 unidades
+    // combinadas se restaran de un solo producto, o el filtro por `producto`
+    // se ignorara), el total NO daría 7 — daría otro número (ej. 13 si toda
+    // la promoción se le atribuye solo a PACA_AGUA dejando PACA_HIELO sin
+    // explicar). El valor exacto 7 solo es posible si cada movimiento se
+    // restó del producto que realmente le corresponde.
+    expect(result.discrepanciaTotal).toBe(7)
+    const casos = await testPrisma.responsibilityCase.findMany({ where: { embarqueId: embarque.id } })
+    expect(casos).toHaveLength(1)
+    expect(casos[0]?.tipo).toBe('DISCREPANCIA_INVENTARIO')
   })
 })
