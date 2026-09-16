@@ -1,8 +1,10 @@
 # AGUA BAMBÚ — F5: CONVERGENCIA DE SEMÁNTICA FÍSICA (CARGA/RECARGA/RETORNO/CAMBIO/PROMOCIÓN/RECOVERY)
 
-**Versión:** 1.0
+**Versión:** 2.0
 **Fecha:** 2026-09-15
-**Responde a:** mensaje del equipo con la semántica operativa completa de Agua Bambú (11 secciones conceptuales) y 16 puntos de revisión explícitos. Instrucción explícita: no convertir esto en refactorización — primero clasificar cada punto (ya existe / parcial / incorrecto / brecha real / solo documentación / requiere cambio de código / requiere decisión adicional), con evidencia archivo:línea. **Cero implementación en este documento.**
+**Responde a:** mensaje del equipo con la semántica operativa completa de Agua Bambú (11 secciones conceptuales) y 16 puntos de revisión explícitos. Instrucción explícita: no convertir esto en refactorización — primero clasificar cada punto (ya existe / parcial / incorrecto / brecha real / solo documentación / requiere cambio de código / requiere decisión adicional), con evidencia archivo:línea.
+
+**v2.0**: el equipo corrigió v1.0 — varios puntos que quedaron marcados "requiere decisión de negocio" ya estaban decididos por el equipo en el mismo mensaje que originó este documento; no debían volver a presentarse como pregunta. Tabla y resumen actualizados: cada punto ahora distingue explícitamente **DECISIÓN** (semántica de negocio, ya cerrada, no se reabre) de **BRECHA PLAN ↔ CÓDIGO** (que esa decisión no está implementada) — son dos cosas distintas y no deben colapsarse. Se agrega plan de priorización P0/P1/P2 y checklist de implementación (§11 del mensaje del equipo). El P0 (`PROMOCIÓN`) se implementa en un PR separado, enlazado al final de este documento una vez abierto.
 
 ---
 
@@ -16,26 +18,26 @@ Esto se señala aquí porque la sección 6/13 del mensaje del equipo lo pedía e
 
 ---
 
-## Tabla de clasificación — los 16 puntos
+## Tabla de clasificación — los 16 puntos (v2.0: DECISIÓN separada de BRECHA)
 
-| # | Punto | Clasificación | Evidencia resumida |
-|---|---|---|---|
-| 1 | CARGA dual-write al ledger físico | **Diseñado, no en `main`** | PR #262 (abierto, sin mergear) implementa exactamente esto. En `main` hoy, `CrearEmbarqueUseCase` solo escribe `EmbarqueCarga`, no `EmbarqueMovimiento`. |
-| 2 | RECARGA dentro del mismo Embarque | **Brecha real — diseño listo, sin implementar** | PR #264 (diagnóstico + diseño técnico completo). Confirmado exhaustivamente: cero código hoy. |
-| 3 | Solicitud y ejecución de RECARGA | **Diseño ya alineado con el nuevo requisito** | PR #264 §7 Regla 3 ya propone: `REPARTIDOR` puede disparar notificación (solicitar); `ADMIN`/`ASISTENTE` ejecutan directo sin depender de una solicitud previa — cumple "no necesariamente tienen que ser tres personas diferentes". |
-| 4 | Permisos repartidor/admin/asistente para intervenir | **Ya diseñado, no en `main`** | Mismo diseño de PR #264 §8.3. Precedente ya construido y funcionando para el mismo patrón: `Sustitucion` (ADMIN/ASISTENTE únicamente, repartidor sin acceso) y `RecoveryDecision` (mismo patrón). |
-| 5 | Capacidad física disponible tras RECARGA | **Brecha real, confirmada — requiere cambio de código (ver corrección de naming abajo)** | PR #264 §9-§10: `Pedido.embarqueId` se pierde en toda entrega parcial (`Pedido.ts:201`), sin ningún otro rastro inmutable. Columna propuesta debe **renombrarse** — ver §A de este documento. |
-| 6 | Capacidad física ≠ pedidos asignados ≠ venta libre | **Brecha real, más amplia de lo que F5 había cubierto** | Ver §B — no son magnitudes separadas hoy; el único control es peso agregado de pedidos vs capacidad del vehículo, desconectado de `EmbarqueProducto.cargadas`. |
-| 7 | Incorporar/asignar nuevos pedidos a Embarque activo | **YA EXISTE — sin brecha** | `POST /api/pedidos/[id]/enviar` y `PUT /api/embarques/[id]` YA permiten asignar pedidos a un Embarque `ABIERTO`/`EN_RUTA` (`enviar/route.ts:115-117`, `[id]/route.ts:177-184`, comentario explícito "*En EN_RUTA solo se permite asignar/quitar pedidos*"). No requiere ningún cambio para RECARGA. |
-| 8 | RETORNO y sus razones/condiciones | **Brecha real de modelo + un hallazgo de terminología ya confusa en producción** | Ver §C. `metadata` (Json libre) usado de 3 formas distintas sin contrato; el RETORNO del cierre (el más frecuente) no lleva motivo en absoluto. |
-| 9 | FILTRADA → REEMPAQUE → INVENTARIO | **Brecha real — no existe ningún flujo, ni conexión entre movimientos** | `REEMPAQUE` es un movimiento manual aislado, sin FK a un RETORNO previo, sin ningún efecto sobre disponibilidad/stock (`grep` sin resultados en `src/modules`/`src/lib`). |
-| 10 | DEVUELTA → INVENTARIO | **Parcial / terminología ya confusa** | La UI del wizard de cierre etiqueta la columna de `rotas` como **"Filtradas"** (`cerrar-client/index.tsx:738,782,1043`) — el propio sistema ya mezcla "rotas" y "filtradas" como si fueran lo mismo, exactamente lo que el equipo pide separar. `devueltas` (columna separada) sí es conceptualmente correcta (producto que no se vendió, no defectuoso) pero no tiene ninguna ruta de vuelta "a inventario disponible" rastreable — solo resta en la fórmula de discrepancia. |
-| 11 | DAÑADA → REEMPAQUE o MERMA según resultado | **Brecha real — sin regla de sistema** | Confirmado: la elección REEMPAQUE vs DESCARTE es 100% manual del usuario en la UI, sin ninguna validación cruzada ni condición de "recuperable" en el código (`ledger-fisico.service.ts` no tiene esa regla). |
-| 12 | CAMBIO → inspección → inventario/merma | **Brecha real de modelo, confirmada** | `Sustitucion` no separa cantidad reclamada de cantidad repuesta (un solo campo `cantidad`, `validators.ts:664`), es atómico en un solo paso (`route.ts:116-160`), y no existe ningún estado "PENDIENTE DE INSPECCIÓN" en ningún modelo. |
-| 13 | PROMOCIÓN como salida física diferenciada | **YA EXISTE el registro físico — INCORRECTO en la conciliación (bug activo, ver arriba)** | Ver el hallazgo principal de este documento. |
-| 14 | RECOVERY como resolución de discrepancia | **YA EXISTE, alineado con el requisito — con un matiz menor** | `RecoveryDecision` (`schema.prisma:1382-1415`) captura `actorId`, `authorizedById`, `reason`, `resultado` (APLICADA/PARCIAL/RECHAZADA), `cantidad`/`cantidadAplicada`, vinculado a `sourceEvent`/`pedidoOrigen`/`pedidoDestino`. Cumple explícitamente "no modificar retroactivamente, no inventar venta/entrega, no borrar la discrepancia" (ya verificado en trabajo previo de esta sesión). Matiz: `actorId` conflates "quién detectó" y "quién decidió" en un solo campo — no hay campo separado para "quién solicitó/reportó" cuando es distinto de quién resuelve. |
-| 15 | Conciliación y cierre | **Parcial — respeta la mayoría de la semántica, falla en PROMOCIÓN (bug) y no integra el ledger físico para capacidad** | `calcularDiscrepancia()` sí distingue `devueltas`/`cambios`/`rotas` como términos separados (no los trata como "ventas") — eso está bien hecho. Falla en `PROMOCION` (bug arriba) y nunca lee `EmbarqueMovimiento` para nada (sigue siendo 100% legacy `EmbarqueProducto`+`Pedido`). |
-| 16 | Offline/replay/concurrencia/idempotencia | **YA EXISTE, patrón consistente** | `offlineId` + dedup-dentro-del-lock ya es el patrón uniforme en `CrearEmbarqueUseCase`, `Sustitucion`, `RecoveryDecision`, `botellones` — cualquier operación nueva (RECARGA incluida) debe seguir el mismo patrón, ya establecido, sin inventar uno nuevo. |
+| # | Punto | DECISIÓN (semántica, cerrada por el equipo) | BRECHA PLAN ↔ CÓDIGO | Prioridad |
+|---|---|---|---|---|
+| 1 | CARGA dual-write al ledger físico | CARGA es un movimiento del ledger físico con efecto propio (`ADR-FISICO-001`) — cerrado desde F5 v1.0 | Diseñado en PR #262 (sin mergear). `main` hoy solo escribe `EmbarqueCarga`, no `EmbarqueMovimiento` | P1 |
+| 2 | RECARGA dentro del mismo Embarque | **CERRADA**: RECARGA ocurre dentro del mismo Embarque, nunca crea otro Embarque ni Embarque hijo | Diseño técnico completo en PR #264. Cero código en `main` | P1 |
+| 3 | Solicitar ≠ Ejecutar RECARGA | **CERRADA**: no son obligatoriamente personas distintas; `ADMIN`/`ASISTENTE` pueden ejecutar directo sin depender de una solicitud previa del repartidor | Ya reflejado en el diseño de PR #264 §7 Regla 3 — sin brecha de diseño, falta implementar junto con el punto 2 | P1 |
+| 4 | Permisos repartidor/admin/asistente | **CERRADA**: mismo patrón que `Sustitucion`/`RecoveryDecision` (ADMIN/ASISTENTE ejecutan, repartidor no autoriza) | Diseñado, no implementado (PR #264 §8.3) | P1 |
+| 5 | Capacidad física disponible tras RECARGA | **CERRADA**: la capacidad es del vehículo en el momento, no un acumulado histórico; `EmbarqueProducto.entregadas` NO debe usarse como contador universal — necesita nombre y alcance propios, puramente físicos (§A) | `Pedido.embarqueId` se pierde en toda entrega parcial (`Pedido.ts:201`), sin otro rastro inmutable — confirmado, sin implementar | P1 |
+| 6 | Capacidad física ≠ pedidos asignados ≠ venta libre | **CERRADA**: son 3 conceptos distintos que deben mantenerse separados; una recarga aumenta (A) sin crear (B) automáticamente | Confirmado en §B: hoy no son magnitudes separadas — el único control es peso agregado de pedidos vs capacidad del vehículo, desconectado de `EmbarqueProducto.cargadas`; venta libre no valida capacidad en absoluto | P1 |
+| 7 | Incorporar pedidos a Embarque activo | **CERRADA, y ya implementada** — no se toca | **Sin brecha.** `POST /api/pedidos/[id]/enviar` y `PUT /api/embarques/[id]` ya lo permiten (`enviar/route.ts:115-117`, `[id]/route.ts:177-184`) | — |
+| 8 | RETORNO = hecho físico; DEVUELTA/FILTRADA/DAÑADA = motivo | **CERRADA**: son conceptos distintos — RETORNO es el hecho, el motivo determina qué pasa después. No deben tratarse como sinónimos | `EmbarqueMovimiento.metadata` usado de 3 formas inconsistentes sin contrato (§C); el RETORNO del cierre (el más frecuente) no lleva motivo en absoluto | P1 |
+| 9 | FILTRADA → RETORNO → REEMPAQUE → INVENTARIO | **CERRADA**: flujo de negocio explícito; una filtrada NO es automáticamente merma | No existe ningún flujo ni conexión entre movimientos — `REEMPAQUE` es un movimiento manual aislado, sin FK a un RETORNO previo, sin efecto sobre disponibilidad | P1 |
+| 10 | DEVUELTA → INVENTARIO directo (comercializable, no defectuosa) | **CERRADA** | La UI del wizard de cierre etiqueta la columna de `rotas` como **"Filtradas"** (`cerrar-client/index.tsx:738,782,1043`) — el propio sistema ya mezcla los dos conceptos que la decisión pide separar. Esta etiqueta es, en sí misma, una brecha (no solo un matiz de redacción) | P1 (lógica) / P2 (UI) |
+| 11 | DAÑADA/ROTA → REEMPAQUE si recuperable, MERMA/DESCARTE si no | **CERRADA** | Confirmado: la elección REEMPAQUE vs DESCARTE es 100% manual del usuario, sin ninguna regla de sistema que la condicione | P1 |
+| 12 | CAMBIO: cantidad reclamada ≠ cantidad repuesta; disposición diferida (PENDIENTE DE INSPECCIÓN); decide el responsable de administración, no el repartidor | **CERRADA** | `Sustitucion` no separa cantidad reclamada de repuesta (un solo campo `cantidad`), es atómico en un solo paso, sin ningún estado "PENDIENTE DE INSPECCIÓN" en ningún modelo | P1 |
+| 13 | PROMOCIÓN: sale físicamente, consume disponibilidad, no es venta ordinaria, NO debe aparecer como faltante | **CERRADA** | **BUG/DEFECTO DE INTEGRIDAD, no solo brecha de alcance.** Confirmado con código: la conciliación no la contempla, genera discrepancia falsa y puede disparar `ResponsibilityCase` contra alguien sin causa real | **P0** |
+| 14 | RECOVERY ≠ devolución; resuelve una discrepancia sin borrarla ni reinterpretarla | **CERRADA** | **Sin brecha real** — `RecoveryDecision` ya satisface esto (actor/autorizador/motivo/resultado/cantidad/cantidadAplicada, vínculo a `sourceEvent`/pedidos). Reutilizar tal cual, no rediseñar | — |
+| 15 | Conciliación: `CARGA + RECARGA − ENTREGA − VENTA_RUTA − PROMOCION + RETORNOS + RECOVERY ± otros`, sin mezclar con `Pedido.entregadas` | **CERRADA** | Hoy es parcial: `devueltas`/`cambios`/`rotas` sí están correctamente separados de "venta"; falla en `PROMOCION` (P0) y nunca integra `EmbarqueMovimiento`/`RecoveryDecision` para nada | P0 (Promoción) / P1 (resto) |
+| 16 | Offline/idempotencia/concurrencia: todo cambio nuevo debe seguir el patrón ya establecido | **CERRADA** — patrón ya decidido en todo el repo | **Sin brecha** — `offlineId` + dedup-dentro-del-lock es uniforme (`CrearEmbarqueUseCase`, `Sustitucion`, `RecoveryDecision`, `botellones`); cualquier PR nuevo debe seguirlo, no inventar uno propio | — (checklist, ver §11) |
 
 ---
 
@@ -73,12 +75,36 @@ El modelo `Retorno` (con su campo `motivo` documentado en comentario: `EMPAQUE_R
 
 ---
 
-## Resumen de qué requiere qué (sin diseñar todavía)
+## Plan de priorización (§11 del mensaje del equipo)
 
-- **Solo documentación / higiene de nombres** (bajo costo, sin cambio de comportamiento): corregir la etiqueta UI "Filtradas" → "Rotas" (o separar el campo si se decide distinguirlas de verdad, ver siguiente punto) en `cerrar-client/index.tsx:738,782,1043`.
-- **Requiere decisión de negocio antes de cualquier código**: si DEVUELTA/FILTRADA/DAÑADA deben ser 3 motivos reales y distinguibles en el `Retorno`/`EmbarqueMovimiento.metadata` (con un contrato de valores, no JSON libre), o si por ahora basta con que "rotas" siga significando ambas cosas como hasta hoy. Ídem para CAMBIO (¿se necesita de verdad el estado PENDIENTE DE INSPECCIÓN, o el flujo atómico actual es aceptable para el volumen real del negocio?). Ídem para si la brecha de capacidad de §B entra a F5.
-- **Brecha real que sí requiere cambio de código, ya diagnosticada y aislada**: el bug de `PROMOCION` en la conciliación (hallazgo principal) — independiente de RECARGA, no bloquea F5 pero es un defecto activo que el equipo puede priorizar aparte.
-- **Ya diseñado, esperando aprobación para implementar**: RECARGA completa (PR #264), con el ajuste de naming de §A.
-- **Ya existe, sin ninguna acción necesaria**: asignar pedidos a un Embarque activo (punto 7), RECOVERY (punto 14), offline/idempotencia (punto 16).
+**P0 — corregir antes que cualquier otra cosa:**
+- `PROMOCIÓN` en la conciliación (punto 13/15). Bug de integridad activo, aislado, sin dependencia de RECARGA ni de ningún otro punto de este documento.
 
-**Cero código escrito en este documento.** A la espera de que el equipo decida, punto por punto, cuáles de estas brechas entran a F5 y cuáles quedan registradas para después.
+**P1 — implementación de las decisiones ya cerradas:**
+- CARGA → ledger físico (punto 1, PR #262).
+- RECARGA dentro del mismo Embarque + solicitar≠ejecutar + permisos (puntos 2-4, PR #264).
+- Capacidad física tras RECARGA, con el naming corregido de §A (punto 5).
+- Capacidad física / pedidos asignados / venta libre como magnitudes separadas (punto 6, §B).
+- RETORNO con motivo explícito + FILTRADA/DAÑADA → REEMPAQUE → INVENTARIO (puntos 8-11, §C).
+- CAMBIO con cantidad reclamada≠repuesta + estado de inspección pendiente (punto 12).
+- Conciliación física completa (`CARGA+RECARGA−ENTREGA−VENTA_RUTA−PROMOCION+RETORNOS+RECOVERY`), sin mezclar con `Pedido.entregadas` (punto 15).
+
+**P2 — hardening de UX/UI, terminología, estados, visualización** (una vez P0/P1 estén resueltos en el modelo/lógica):
+- Corregir la etiqueta "Filtradas" en `cerrar-client/index.tsx` para que refleje el motivo real, no el nombre de columna legacy.
+- Cualquier ajuste visual/de copy derivado de las nuevas distinciones (motivo de retorno, estado de inspección, etc.).
+
+## Checklist obligatorio para cada PR de implementación (§11)
+
+Cada cambio de este dominio debe demostrar, explícitamente en su descripción:
+1. Qué DECISIÓN de este documento implementa (cita la fila de la tabla).
+2. Qué BRECHA PLAN↔CÓDIGO corrige (evidencia file:line del estado anterior).
+3. Qué NO modifica (autoridades/flujos que se mantienen intactos — `Pedido`/`PedidoItem` como autoridad comercial, `CierreEmbarqueService` salvo donde el propio punto lo autorice explícitamente, etc.).
+4. Pruebas (unitarias + integración contra Postgres real, mismo estándar de todo F1-F5 hasta ahora).
+5. Idempotencia (`offlineId`, mismo patrón ya establecido).
+6. Concurrencia (locks existentes reutilizados, sin inventar mecanismos nuevos).
+7. Comportamiento offline, cuando aplique.
+8. Trazabilidad/auditoría (`logAudit`, mismo patrón).
+
+Sin refactor general. Sin segunda fuente de verdad. Sin convertir una discrepancia legítima en responsabilidad automática. "El sistema prepara; la persona decide; el backend protege; la auditoría conserva."
+
+**Estado de implementación de este documento**: el P0 (`PROMOCIÓN`) se aborda en un PR separado — se referencia aquí en cuanto se abra. El resto (P1/P2) sigue sin código, a la espera de que el equipo confirme el orden dentro de P1.
