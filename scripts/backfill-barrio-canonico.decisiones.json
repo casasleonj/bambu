@@ -203,11 +203,11 @@
       "CLIENTE"
     ],
     "n": 1,
-    "decision": "PENDIENTE_DECISION",
+    "decision": "CREAR_BARRIO",
     "fusionarEn": null,
-    "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "barrioCanonico": "El 15 de Noviembre",
+    "razon": "Decision explicita del equipo: es el barrio 'El 15 de Noviembre'. Texto legacy '15 de noviembre' se conserva sin modificar (criterio de homologar sin reemplazar).",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "15 diciembre",
@@ -217,11 +217,11 @@
       "NEGOCIO"
     ],
     "n": 1,
-    "decision": "PENDIENTE_DECISION",
+    "decision": "DESCARTAR",
     "fusionarEn": null,
     "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "razon": "Decision explicita del equipo: existe como referencia/localizacion usada por la gente, no se convierte artificialmente en barrio. Se conserva como parte de la Direccion -- el texto legacy '15 diciembre' permanece intacto, sin vincular a Barrio.",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "20 de marzo",
@@ -231,11 +231,11 @@
       "CLIENTE"
     ],
     "n": 1,
-    "decision": "PENDIENTE_DECISION",
+    "decision": "DESCARTAR",
     "fusionarEn": null,
     "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "razon": "Decision explicita del equipo: es una referencia valida utilizada para ubicar personas/lugares, no se inventa que sea un barrio. Se conserva como parte de la Direccion -- el texto legacy '20 de marzo' permanece intacto, sin vincular a Barrio.",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "barrio las delicias",
@@ -245,11 +245,11 @@
       "NEGOCIO"
     ],
     "n": 1,
-    "decision": "PENDIENTE_DECISION",
+    "decision": "CREAR_BARRIO",
     "fusionarEn": null,
-    "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "barrioCanonico": "Las Delicias",
+    "razon": "Decision explicita del equipo: es 'Las Delicias'. Texto legacy 'barrio las delicias' se conserva sin modificar.",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "el carmen",
@@ -273,11 +273,11 @@
       "CLIENTE"
     ],
     "n": 1,
-    "decision": "PENDIENTE_DECISION",
+    "decision": "CREAR_BARRIO",
     "fusionarEn": null,
-    "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "barrioCanonico": "El Estadio",
+    "razon": "Decision explicita del equipo: es el barrio 'El Estadio'. Texto legacy 'el estadio' se conserva sin modificar.",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "la victoria",
@@ -287,11 +287,11 @@
       "CLIENTE"
     ],
     "n": 1,
-    "decision": "PENDIENTE_DECISION",
+    "decision": "CREAR_BARRIO",
     "fusionarEn": null,
-    "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "barrioCanonico": "La Victoria",
+    "razon": "Decision explicita del equipo: es el barrio 'La Victoria'. Texto legacy 'la victoria' se conserva sin modificar.",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "machique",
@@ -301,11 +301,11 @@
       "NEGOCIO"
     ],
     "n": 2,
-    "decision": "PENDIENTE_DECISION",
+    "decision": "CREAR_BARRIO",
     "fusionarEn": null,
-    "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "barrioCanonico": "Machiques",
+    "razon": "Decision explicita del equipo: 'Machique' corresponde a 'Machiques' -- se homologa la variante escrita al nombre canonico. Texto legacy 'machique' se conserva sin modificar.",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "nueva esperanza",
@@ -315,11 +315,11 @@
       "NEGOCIO"
     ],
     "n": 1,
-    "decision": "PENDIENTE_DECISION",
+    "decision": "CREAR_BARRIO",
     "fusionarEn": null,
-    "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "barrioCanonico": "Nueva Esperanza",
+    "razon": "Decision explicita del equipo: es el barrio 'Nueva Esperanza'. Texto legacy 'nueva esperanza' se conserva sin modificar.",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "primero de mayo",
@@ -399,11 +399,11 @@
       "CLIENTE"
     ],
     "n": 1,
-    "decision": "PENDIENTE_DECISION",
+    "decision": "DESCARTAR",
     "fusionarEn": null,
     "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "razon": "Decision explicita del equipo: es una unidad residencial/conjunto (ej. 'Villa Mafe, casa 12'), no se convierte en barrio. Se conserva como referencia dentro de la Direccion -- el texto legacy 'villa mafe' permanece intacto, sin vincular a Barrio.",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "villa olimpica",
@@ -413,11 +413,11 @@
       "CLIENTE"
     ],
     "n": 1,
-    "decision": "PENDIENTE_DECISION",
+    "decision": "DESCARTAR",
     "fusionarEn": null,
     "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "razon": "Decision explicita del equipo: es una referencia deportiva/equipamiento de la zona, no se convierte en barrio. Se conserva como referencia dentro de la Direccion -- el texto legacy 'villa olimpica' permanece intacto, sin vincular a Barrio.",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "antillana",
@@ -456,11 +456,11 @@
       "NEGOCIO"
     ],
     "n": 1,
-    "decision": "PENDIENTE_DECISION",
-    "fusionarEn": null,
+    "decision": "FUSIONAR_EN",
+    "fusionarEn": "la gaitana",
     "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "razon": "Decision explicita del equipo: 'Gaitan' se relaciona con el nombre canonico 'La Gaitana'. Texto legacy 'gaitan' se conserva sin modificar.",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "la gaitana",
@@ -470,11 +470,11 @@
       "CLIENTE"
     ],
     "n": 1,
-    "decision": "PENDIENTE_DECISION",
+    "decision": "CREAR_BARRIO",
     "fusionarEn": null,
-    "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "barrioCanonico": "La Gaitana",
+    "razon": "Decision explicita del equipo: 'La Gaitana' es el nombre canonico. Texto legacy 'la gaitana' se conserva sin modificar.",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "laureles",
@@ -513,11 +513,11 @@
       "CLIENTE"
     ],
     "n": 1,
-    "decision": "PENDIENTE_DECISION",
+    "decision": "CREAR_BARRIO",
     "fusionarEn": null,
-    "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "barrioCanonico": "El Libano",
+    "razon": "Decision explicita del equipo: es el mismo barrio, nombre canonico 'El Libano'. Texto legacy 'el libano' se conserva sin modificar.",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "libano",
@@ -527,11 +527,11 @@
       "CLIENTE"
     ],
     "n": 1,
-    "decision": "PENDIENTE_DECISION",
-    "fusionarEn": null,
+    "decision": "FUSIONAR_EN",
+    "fusionarEn": "el libano",
     "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "razon": "Decision explicita del equipo: 'Libano' -> 'El Libano', es el mismo barrio. Texto legacy 'libano' se conserva sin modificar.",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "las margaritas 2",
@@ -598,11 +598,11 @@
       "NEGOCIO"
     ],
     "n": 3,
-    "decision": "PENDIENTE_DECISION",
-    "fusionarEn": null,
+    "decision": "FUSIONAR_EN",
+    "fusionarEn": "mercado publico",
     "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "razon": "Decision explicita del equipo: en el uso local, 'Mercado' y 'Mercado Publico' hacen referencia al mismo lugar -- no se crean dos territorios distintos. Texto legacy 'mercado' se conserva sin modificar.",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "mercado publico",
@@ -612,11 +612,11 @@
       "NEGOCIO"
     ],
     "n": 1,
-    "decision": "PENDIENTE_DECISION",
+    "decision": "CREAR_BARRIO",
     "fusionarEn": null,
-    "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "barrioCanonico": "Mercado Publico",
+    "razon": "Decision explicita del equipo: 'Mercado Publico' es el nombre canonico que agrupa tambien a 'Mercado'. Texto legacy 'mercado publico' se conserva sin modificar.",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "las palmeras",
@@ -656,11 +656,11 @@
       "NEGOCIO"
     ],
     "n": 2,
-    "decision": "PENDIENTE_DECISION",
+    "decision": "CREAR_BARRIO",
     "fusionarEn": null,
-    "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "barrioCanonico": "El Socorro",
+    "razon": "Decision explicita del equipo: es el mismo barrio, nombre canonico 'El Socorro'. Texto legacy 'el socorro' se conserva sin modificar.",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "socorro",
@@ -670,11 +670,11 @@
       "CLIENTE"
     ],
     "n": 2,
-    "decision": "PENDIENTE_DECISION",
-    "fusionarEn": null,
+    "decision": "FUSIONAR_EN",
+    "fusionarEn": "el socorro",
     "barrioCanonico": null,
-    "razon": "",
-    "estado": "PENDIENTE"
+    "razon": "Decision explicita del equipo: 'Socorro' -> 'El Socorro', es el mismo barrio. Texto legacy 'socorro' se conserva sin modificar.",
+    "estado": "RESUELTO"
   },
   {
     "valorNormalizado": "altos del tesoro",
