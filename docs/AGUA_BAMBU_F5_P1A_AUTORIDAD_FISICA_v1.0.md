@@ -1,8 +1,10 @@
 # AGUA BAMBÚ — F5 P1-A: AUTORIDAD FÍSICA (CARGA/RECARGA/SALIDAS/RETORNO/REEMPAQUE/DESCARTE)
 
-**Versión:** 1.0
+**Versión:** 1.1
 **Fecha:** 2026-09-16
 **Responde a:** reordenamiento del equipo — antes de implementar RECARGA como funcionalidad aislada, cerrar la semántica y trazabilidad de la autoridad física sobre la que va a operar (P1-A), siguiendo el orden P1-A → P1-B → P1-C → ... → P1-F. Instrucción explícita: *"No necesariamente debemos crear un nuevo TipoMovimiento para cada una; primero debemos verificar cuál es el modelo técnico mínimo compatible con el dominio existente."* **Cero código en este documento** — es diseño, siguiendo el mismo patrón usado en F1-F4 (mapa de brechas → diseño → revisión del equipo → implementación).
+
+**v1.1**: el equipo cerró las 2 preguntas que v1.0 había dejado abiertas — `DEVUELTA` es un valor explícito de `motivo` (nunca `null`), y sí hace falta una `disposicion` explícita sobre `Retorno` (`PENDIENTE`/`DISPONIBLE`/`DESCARTADO`, un solo campo nuevo, sin entidad adicional). **P1-A queda cerrado según el equipo — "no implementaría todavía nada adicional en este PR".** Siguiente paso: diseñar P1-B (capacidad física, incluyendo cómo se calculan las `SALIDAS` en tiempo real sin duplicar los movimientos del cierre).
 
 ---
 
@@ -56,7 +58,7 @@ Confirmado en PR #266 (investigación previa): cero escritores reales, solo un t
 
 1. **Cierre de embarque**: hoy `registrar-movimientos-cierre.service.ts` agrega `devueltas + rotas` en un solo `EmbarqueMovimiento{RETORNO}` por producto, sin metadata (confirmado en PR #266 §C). Propuesta: mantener el `EmbarqueMovimiento{RETORNO}` agregado tal cual (no tocar la conciliación existente, cumple "no modificar la conciliación sin necesidad"), pero **crear además, en la misma transacción, una fila `Retorno` por cada componente no-cero** (`devueltas` → `motivo` que represente "no vendido, comercializable" — ver nota de vocabulario abajo; `rotas` → `motivo` que represente el defecto), cada una vinculada vía `movimientoId` al movimiento agregado. Esto separa por primera vez DEVUELTA de FILTRADA/DAÑADA sin tocar la aritmética de conciliación ya cerrada (P0).
 2. **Endpoint de `Sustitucion`**: ya escribe `metadata:{motivo:'DEFECTUOSA'}` en el `EmbarqueMovimiento` de recepción (`ledger-fisico.service.ts:88`) — migrar esto a también crear una fila `Retorno` (mismo `motivo`, vinculada al mismo movimiento) unifica el lugar donde se consulta "motivo de un retorno", en vez de tener el dato repartido entre `metadata` JSON libre y el modelo dedicado.
-3. **Vocabulario de `motivo`**: hoy es `String?` libre. Cambio mínimo: no migrar a un `enum` de Prisma (requiere migración de tipo, mayor superficie) — basta con una validación de aplicación (Zod / `validarMovimientoFisico`-style) contra una lista cerrada de valores, mismo patrón ya usado para `AJUSTE_AUTORIZADO.metadata.effect` (`'INCREASE'|'DECREASE'`, validado en código + CHECK constraint, sin ser un enum de columna). Lista propuesta a partir del comentario ya existente: `DEVUELTA` (o el valor que el equipo prefiera para "no vendido, comercializable" — el comentario actual no lo incluye explícitamente, es un hueco de vocabulario a cerrar), `PACA_FILTRADA`, `DEFECTUOSA` (daño/rota), `EMPAQUE_ROTO`, `CLIENTE_RECHAZA`. **Pregunta abierta para el equipo, no resuelta aquí**: ¿"DEVUELTA" necesita su propio valor de motivo, o la AUSENCIA de motivo (campo `null`) ya representa "sin defecto, simplemente no vendido"? Ambas lecturas son razonables; no se decide unilateralmente.
+3. **Vocabulario de `motivo` — CERRADO por el equipo.** `DEVUELTA` es un valor explícito, nunca `null` — "ya diferenciamos operacionalmente DEVUELTA de FILTRADA, DEFECTUOSA/DAÑADA, etc." Lista de motivo (aplicación, no enum de columna — mismo patrón que `AJUSTE_AUTORIZADO.metadata.effect`, sin migración de tipo): `DEVUELTA`, `PACA_FILTRADA`, `DEFECTUOSA` (daño/rota), `EMPAQUE_ROTO`, `CLIENTE_RECHAZA`. `motivo` deja de ser opcional en la práctica para toda `Retorno` creada por el wiring nuevo (siempre se conoce al momento de la captura — la UI del wizard ya distingue `devueltas` de `rotas` como campos separados, ver §UI abajo).
 4. **UI del wizard de cierre**: corrige la etiqueta "Filtradas" (hoy sobre el campo `rotas`, confirmado en PR #266) — con `Retorno.motivo` activado, la UI ya tendría un lugar real donde capturar la distinción FILTRADA vs DAÑADA si el equipo decide que el simple contador `rotas` no es suficiente granularidad. **Esto es un cambio de P1-D (RETORNO/REEMPAQUE) o P2 (UI), no de este documento** — aquí solo se deja preparado el modelo que lo haría posible.
 
 ---
@@ -71,29 +73,42 @@ Confirmado en PR #266 (investigación previa): cero escritores reales, solo un t
 
 **Una sola columna nueva**, mismo patrón exacto que `EmbarqueMovimiento.cargaId` (ya activado en PR #262 para vincular `CARGA` a su `EmbarqueCarga` de origen): agregar `EmbarqueMovimiento.retornoId String?` (FK opcional a `Retorno`, `onDelete: SetNull` — mismo estilo que `cargaId`). Un movimiento `REEMPAQUE` (o, en el caso irrecuperable, `DESCARTE`) que procesa una `Retorno` existente fija `retornoId` a esa fila. Esto es lo mínimo que permite reconstruir la cadena `FILTRADA → RETORNO → REEMPAQUE → disponible` (o `→ DESCARTE`) por consulta directa, sin inventar una entidad puente nueva (no se repite el patrón de `Sustitucion`, que sí necesitó una entidad puente porque conecta DOS movimientos activos simultáneos — aquí es una relación simple 1-a-N: una `Retorno` puede dar lugar a un `REEMPAQUE` posterior, no dos hechos físicos simultáneos).
 
-### Qué NO se decide en este documento
+### Disposición — CERRADO por el equipo, resuelto sobre `Retorno` con el mínimo cambio
 
-- **Si "disponible de nuevo" debe reflejarse en algún contador de stock físico** (ej. sumarse de vuelta a la capacidad disponible de P1-B) — el ADR dice que `REEMPAQUE` es "neutro en cantidad total; puede reclasificar", lo que sugiere que NO debe restar de `SALIDAS` (nunca salió definitivamente) ni sumar a `CARGA`/`RECARGA` (no es una recarga real) — simplemente dejó de estar en estado "defectuoso pendiente" y pasa a "vendible", un estado que hoy no existe como tal en ningún lado. Si el equipo decide que esto necesita un estado explícito (ej. `Retorno.disposicion: 'PENDIENTE'|'REEMPACADO'|'DESCARTADO'`), es un campo adicional sobre el mismo modelo `Retorno` — no una entidad nueva — pero es una decisión de negocio (¿se necesita ese estado explícito, o basta con que exista el movimiento `REEMPAQUE` vinculado como evidencia de que ya se resolvió?) que no se toma aquí.
-- **Quién decide REEMPAQUE vs DESCARTE** — confirmado en PR #266 que hoy es 100% manual sin ninguna regla de sistema. Este documento no propone automatizar esa decisión (sería inventar una regla de negocio no pedida) — solo asegura que, decida quien decida, quede trazado hacia su `Retorno` de origen.
+El equipo confirmó: sí hace falta distinguir explícitamente **pendiente / disponible / descartado** — no basta con inferirlo permanentemente de la cadena de movimientos. Separación de 3 capas, reafirmada:
+```
+RETORNO      = qué hecho físico ocurrió       (ya existe, TipoMovimiento)
+motivo       = por qué regresó                (Retorno.motivo, §3, cerrado)
+disposición  = qué terminó ocurriendo         (nuevo campo, esta sección)
+```
+
+**Modelo técnico mínimo**: un solo campo nuevo, `Retorno.disposicion String @default("PENDIENTE")` — sin entidad nueva, sin enum de columna (misma validación de aplicación que `motivo`). Tres valores: `PENDIENTE` | `DISPONIBLE` | `DESCARTADO`. No se agrega un 4º valor "REEMPACADO" separado — el ejemplo del equipo (`FILTRADA → REEMPACADO → DISPONIBLE`) queda representado por **`disposicion='DISPONIBLE'` + `retornoId` de un `EmbarqueMovimiento{REEMPAQUE}` apuntando a esta fila** (la FK de §4 ya es la evidencia de *cómo* se llegó a disponible; `disposicion` solo responde la pregunta terminal *puede usarse o no*).
+
+**Transiciones, sin ambigüedad de escritor:**
+- Al crear la `Retorno`: si `motivo='DEVUELTA'` (nunca fue defectuosa), `disposicion` se fija a `'DISPONIBLE'` en el mismo `create` — no necesita inspección, coherente con "producto que salió y no se vendió, sigue comercializable" (Plan Maestro, sección DEVUELTA). Para cualquier otro `motivo` (`PACA_FILTRADA`/`DEFECTUOSA`/`EMPAQUE_ROTO`/`CLIENTE_RECHAZA`), `disposicion` nace `'PENDIENTE'` — default de la columna, sin decisión todavía.
+- Un `EmbarqueMovimiento{REEMPAQUE, retornoId}` posterior → `UPDATE Retorno SET disposicion='DISPONIBLE' WHERE id=retornoId`. **Confirmado explícitamente por el equipo: REEMPAQUE no crea una carga nueva ni suma unidades a ningún contador de inventario** — es una operación interna que solo cambia `disposicion` de una fila ya existente. No toca `EmbarqueCarga`/`EmbarqueCargaProducto`/`EmbarqueProducto`, no interactúa con `SALIDAS` (P1-B) en ninguna dirección.
+- Un `EmbarqueMovimiento{DESCARTE, retornoId}` posterior (reempaque fallido, o irrecuperable desde el inicio) → `UPDATE Retorno SET disposicion='DESCARTADO' WHERE id=retornoId`.
+
+**Quién decide REEMPAQUE vs DESCARTE**: sigue sin automatizarse (confirmado en PR #266: 100% manual, sin regla de sistema) — este documento no inventa esa regla, solo asegura que la decisión, la tome quien la tome, quede trazada.
 
 ---
 
-## 5. DESCARTE — sin cambios de modelo; comparte una pregunta con P1-E (CAMBIO)
+## 5. DESCARTE — sin cambios de modelo adicionales
 
-`DESCARTE` ya existe como `TipoMovimiento` completo, con efecto claro ("salida definitiva", `ADR-FISICO-001:24`) y caller real vía el endpoint manual. No requiere ningún cambio de modelo. Con la FK de §4 (`retornoId`), un `DESCARTE` que resulta de un `REEMPAQUE` fallido también queda trazable a su origen, igual que un `REEMPAQUE` exitoso.
+`DESCARTE` ya existe como `TipoMovimiento` completo, con efecto claro ("salida definitiva", `ADR-FISICO-001:24`) y caller real vía el endpoint manual. Con la FK de §4 (`retornoId`) y el campo `disposicion` de §4bis, un `DESCARTE` que resulta de un `REEMPAQUE` fallido ya queda completamente trazable y resuelto (`disposicion='DESCARTADO'`) sin necesitar nada adicional.
 
-**Pregunta compartida con P1-E, señalada aquí para que el equipo la resuelva una sola vez**: tanto "FILTRADA/DAÑADA pendiente de decidir si es recuperable" (este documento) como "CAMBIO pendiente de inspección" (P1-E) describen el mismo patrón general — *"producto recibido, disposición todavía no determinada, alguien con autoridad decide después."* Si el equipo quiere un mecanismo único de "pendiente de disposición" reutilizable entre ambos casos, es una decisión de diseño que vale la pena tomar UNA vez, no dos veces por separado en P1-D y P1-E. No se propone la forma de ese mecanismo aquí — se deja como pregunta explícita antes de diseñar P1-D/P1-E en detalle.
+La pregunta que este documento había dejado compartida con P1-E ("mecanismo único de pendiente de disposición") **queda resuelta para el caso de RETORNO** con el campo `disposicion` de §4bis. Si P1-E (CAMBIO) puede reutilizar el mismo patrón (un campo `disposicion` análogo sobre la entidad que corresponda a CAMBIO) es algo a confirmar cuando se diseñe P1-E en detalle — no se fuerza la reutilización aquí, pero el precedente queda documentado.
 
 ---
 
 ## Resumen — qué queda cerrado en P1-A y qué se hereda
 
-| Concepto | Modelo técnico mínimo | ¿Requiere migración? | Hereda a |
+| Concepto | Modelo técnico mínimo | ¿Requiere migración? | Estado |
 |---|---|---|---|
-| CARGA/RECARGA | Sin cambios sobre PR #262/#264 | No (ya diseñado) | P1-C |
-| SALIDAS | Semántica cerrada (físico puro, nunca `Pedido.entregadas`) | No en P1-A | Mecanismo de escritura en vivo → **P1-B** |
-| RETORNO | Activar `Retorno.motivo` ya existente, vinculado por `movimientoId` | No (campo ya existe) | Vocabulario final de `motivo` → equipo; UI → P1-D/P2 |
-| REEMPAQUE | Nueva FK `EmbarqueMovimiento.retornoId` (mismo patrón que `cargaId`) | Sí, aditiva, sin backfill | Estado "disposición" (si se decide) → equipo |
-| DESCARTE | Sin cambios | No | Comparte pregunta de "pendiente de disposición" con P1-E |
+| CARGA/RECARGA | Sin cambios sobre PR #262/#264 | No (ya diseñado) | Reordenado a P1-C |
+| SALIDAS | Semántica cerrada (físico puro, nunca `Pedido.entregadas`) | No en P1-A | Mecanismo de escritura en vivo → **hereda a P1-B** |
+| RETORNO | `Retorno.motivo` activado, vocabulario cerrado (`DEVUELTA` explícito, nunca `null`) | No (campo ya existe) | **CERRADO** |
+| REEMPAQUE / disposición | Nueva FK `EmbarqueMovimiento.retornoId` + nuevo campo `Retorno.disposicion` (`PENDIENTE`/`DISPONIBLE`/`DESCARTADO`) | Sí, aditiva, sin backfill, mismo patrón que `cargaId` | **CERRADO** — REEMPAQUE confirmado neutro (no crea carga ni suma unidades) |
+| DESCARTE | Sin cambios adicionales — resuelto vía `retornoId`+`disposicion` | No | **CERRADO** |
 
-**Ningún código en este documento.** Dos preguntas explícitas quedan para el equipo antes de implementar P1-A: (1) vocabulario final de `motivo` para DEVUELTA (§3.3), (2) si se necesita un estado de "disposición" explícito o basta con la trazabilidad de movimientos (§4, §5). El resto del modelo mínimo puede implementarse sin más decisiones pendientes.
+**P1-A cerrado según el equipo. Ningún código implementado todavía en este PR** — el modelo mínimo queda documentado, listo para implementarse cuando el equipo lo autorice explícitamente (probablemente junto con P1-D, que es donde estos campos se ejercitan por primera vez). Siguiente paso: diseño de **P1-B** (capacidad física — separar producto bajo custodia / pedidos asignados / venta libre / cumplimiento comercial, y resolver el mecanismo de `SALIDAS` en tiempo real sin duplicar los movimientos del cierre).
