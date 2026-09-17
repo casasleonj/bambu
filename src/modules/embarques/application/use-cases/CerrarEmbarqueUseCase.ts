@@ -164,7 +164,9 @@ export class CerrarEmbarqueUseCase {
       )
 
       // 5. Reconcile products
-      const { totalDiscrepancia, discrepanciasPorProducto } = this.conciliarProductos(
+      const { totalDiscrepancia, discrepanciasPorProducto } = await this.conciliarProductos(
+        client,
+        input.id,
         embarque,
         pedidosRaw,
         input.ventasLibres ?? [],
@@ -327,12 +329,14 @@ export class CerrarEmbarqueUseCase {
    * Kept in the use case because it translates Prisma-shaped raw pedidos
    * into the domain value objects the service expects.
    */
-  private conciliarProductos(
+  private async conciliarProductos(
+    client: TxOrPrisma,
+    embarqueId: string,
     embarque: { productos: Array<{ producto: string; cargadas: number }> },
     pedidosRaw: PedidoRawInput[],
     ventasLibres: CerrarEmbarqueInput['ventasLibres'],
     productosRetorno: CerrarEmbarqueInput['productosRetorno'],
-  ): { totalDiscrepancia: number; discrepanciasPorProducto: Array<{ producto: string; discrepancia: number }> } {
+  ): Promise<{ totalDiscrepancia: number; discrepanciasPorProducto: Array<{ producto: string; discrepancia: number }> }> {
     // 1. Construir Carga VO desde embarque.productos
     const cargaMap: Record<string, number> = {
       PACA_AGUA: 0, PACA_HIELO: 0, BOTELLON: 0, BOLSA_AGUA: 0, BOLSA_HIELO: 0,
@@ -351,12 +355,15 @@ export class CerrarEmbarqueUseCase {
     })
 
     // 2. Agregar entregas: pedidos + ventas libres
-    const productosEntregados: Record<ProductCode, { entregadas: number; devueltas: number; cambios: number; rotas: number }> = {
-      PACA_AGUA: { entregadas: 0, devueltas: 0, cambios: 0, rotas: 0 },
-      PACA_HIELO: { entregadas: 0, devueltas: 0, cambios: 0, rotas: 0 },
-      BOTELLON: { entregadas: 0, devueltas: 0, cambios: 0, rotas: 0 },
-      BOLSA_AGUA: { entregadas: 0, devueltas: 0, cambios: 0, rotas: 0 },
-      BOLSA_HIELO: { entregadas: 0, devueltas: 0, cambios: 0, rotas: 0 },
+    const productosEntregados: Record<
+      ProductCode,
+      { entregadas: number; devueltas: number; cambios: number; rotas: number; promociones: number }
+    > = {
+      PACA_AGUA: { entregadas: 0, devueltas: 0, cambios: 0, rotas: 0, promociones: 0 },
+      PACA_HIELO: { entregadas: 0, devueltas: 0, cambios: 0, rotas: 0, promociones: 0 },
+      BOTELLON: { entregadas: 0, devueltas: 0, cambios: 0, rotas: 0, promociones: 0 },
+      BOLSA_AGUA: { entregadas: 0, devueltas: 0, cambios: 0, rotas: 0, promociones: 0 },
+      BOLSA_HIELO: { entregadas: 0, devueltas: 0, cambios: 0, rotas: 0, promociones: 0 },
     }
 
     for (const p of pedidosRaw) {
@@ -382,6 +389,23 @@ export class CerrarEmbarqueUseCase {
         pe.devueltas += pr.devueltas
         pe.rotas += pr.rotas
         pe.cambios += pr.cambios
+      }
+    }
+
+    // 3b. F5 (convergencia semántica física, P0 — bug de integridad):
+    // PROMOCION sale físicamente del vehículo (EmbarqueMovimiento, ver
+    // POST /api/promociones) pero NUNCA fue `entregadas` de un Pedido —
+    // sin este término, cada promoción aparecía como faltante y podía
+    // disparar un ResponsibilityCase sin causa real. Se lee directo del
+    // ledger físico (única fuente de este hecho), nunca de Pedido — no
+    // se mezcla con `entregadas` (cumplimiento comercial).
+    const promoMovimientos = await client.embarqueMovimiento.findMany({
+      where: { embarqueId, tipo: 'PROMOCION' },
+      select: { producto: true, cantidad: true },
+    })
+    for (const mov of promoMovimientos) {
+      if (mov.producto in productosEntregados) {
+        productosEntregados[mov.producto as ProductCode].promociones += mov.cantidad
       }
     }
 
