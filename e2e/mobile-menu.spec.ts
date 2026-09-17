@@ -81,7 +81,11 @@ test.describe('Drawer (menu lateral) mobile', () => {
     await page.waitForLoadState('domcontentloaded')
     await page.waitForTimeout(500)
 
-    const hamburger = page.getByRole('button', { name: /men[uú]/i })
+    // Regex acotado: /men[uú]/i también matcheaba "Opciones del menú"
+    // (sidebar.tsx:517), que aparece en el DOM cuando el drawer está abierto
+    // → strict mode violation en el 2º tap. El hamburger del header es
+    // "Abrir menú" en mobile (header.tsx:108). Mismo scope que openSidebarIfMobile.
+    const hamburger = page.getByRole('button', { name: /abrir men[uú]/i })
     const aside = page.getByRole('complementary', { name: /navegaci[oó]n principal/i })
 
     // Inicial: cerrado.

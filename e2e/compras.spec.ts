@@ -64,6 +64,10 @@ test.describe('Compras', () => {
   })
 
   test('validacion: sin proveedor', async ({ page }) => {
+    // El form (compras-client) deshabilita "Guardar" mientras falte
+    // proveedor/insumo/cantidad/monto — .click() sobre un botón disabled
+    // cuelga hasta el timeout (30s) esperando que se habilite. La
+    // validación observable es justamente que el botón siga disabled.
     await loginAs(page, 'admin')
     await goto(page, '/compras')
 
@@ -72,14 +76,8 @@ test.describe('Compras', () => {
 
     await page.locator('#compra-proveedor').selectOption('')
 
-    await page.locator('button:has-text("Guardar")').click()
-    await page.waitForTimeout(1000)
-
-    const toastEl = page.locator('[data-sonner-toast]')
-    const form = page.locator('h3:has-text("Registrar Compra")')
-    const toastVisible = await toastEl.isVisible({ timeout: 3000 }).catch(() => false)
-    const formVisible = await form.isVisible({ timeout: 3000 }).catch(() => false)
-    expect(toastVisible || formVisible).toBeTruthy()
+    await expect(page.locator('button:has-text("Guardar")')).toBeDisabled()
+    await expect(page.locator('h3:has-text("Registrar Compra")')).toBeVisible()
   })
 
   test('validacion: sin insumo', async ({ page }) => {
@@ -91,14 +89,8 @@ test.describe('Compras', () => {
 
     await page.locator('#compra-insumo').selectOption('')
 
-    await page.locator('button:has-text("Guardar")').click()
-    await page.waitForTimeout(1000)
-
-    const toastEl = page.locator('[data-sonner-toast]')
-    const form = page.locator('h3:has-text("Registrar Compra")')
-    const toastVisible = await toastEl.isVisible({ timeout: 3000 }).catch(() => false)
-    const formVisible = await form.isVisible({ timeout: 3000 }).catch(() => false)
-    expect(toastVisible || formVisible).toBeTruthy()
+    await expect(page.locator('button:has-text("Guardar")')).toBeDisabled()
+    await expect(page.locator('h3:has-text("Registrar Compra")')).toBeVisible()
   })
 
   test('API crear compra', async ({ page }) => {

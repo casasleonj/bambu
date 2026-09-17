@@ -79,6 +79,27 @@ describe('F-N3: logAudit fuera de la tx (fire-and-forget)', () => {
   })
 })
 
+describe('Timeout guard (AGENTS.md #20): no dejar setTimeout huérfano', () => {
+  const postSection = source.split('export async function POST')[1] || ''
+
+  it('el timeoutPromise se arma DESPUÉS del early-return de validación', () => {
+    const validationIdx = postSection.indexOf('Datos invalidos')
+    const timeoutIdx = postSection.indexOf('new Promise<never>')
+    expect(validationIdx).toBeGreaterThan(-1)
+    expect(timeoutIdx).toBeGreaterThan(-1)
+    // El return 400 aparece antes en el flujo que la creación del timer.
+    expect(timeoutIdx).toBeGreaterThan(validationIdx)
+  })
+
+  it('el setTimeout guarda su handle en timeoutId', () => {
+    expect(postSection).toMatch(/timeoutId\s*=\s*setTimeout\(/)
+  })
+
+  it('el POST limpia el timer en un bloque finally', () => {
+    expect(postSection).toMatch(/\}\s*finally\s*\{[\s\S]*?clearTimeout\(timeoutId\)/)
+  })
+})
+
 describe('F-N3: el GET NO usa Serializable (no es necesario, es read-only)', () => {
   it('el GET no usa executeSerializableWithRetry', () => {
     const getSection = source.split('export async function GET')[1]?.split('export async function POST')[0] || ''

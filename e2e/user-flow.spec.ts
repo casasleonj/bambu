@@ -74,13 +74,19 @@ test.describe('Flujo completo de usuario', () => {
     await page.fill('input[type="password"]', 'admin123')
     await page.click('button:has-text("Ingresar")')
     await page.waitForURL(/.*dashboard/, { timeout: 30000 })
-    await page.waitForLoadState('networkidle', { timeout: 15000 })
+    // `networkidle` no dispara nunca con SSE (/api/realtime) + polling de
+    // SessionProvider; usamos domcontentloaded + un respiro para que la
+    // hidratación y los errores de consola afloren (mismo patrón que el
+    // helper goto() de fixtures.ts).
+    await page.waitForLoadState('domcontentloaded')
+    await page.waitForTimeout(1000)
 
     // Navegar por páginas clave
     const pages = ['/pedidos', '/clientes', '/facturas', '/cierre', '/productos']
     for (const path of pages) {
       await page.goto(`${BASE_URL}${path}`)
-      await page.waitForLoadState('networkidle', { timeout: 10000 })
+      await page.waitForLoadState('domcontentloaded')
+      await page.waitForTimeout(1000)
     }
 
     expect(consoleErrors).toHaveLength(0)
