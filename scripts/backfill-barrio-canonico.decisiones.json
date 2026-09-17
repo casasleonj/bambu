@@ -346,7 +346,7 @@
     "decision": "CREAR_BARRIO",
     "fusionarEn": null,
     "barrioCanonico": "San Martin",
-    "razon": "PROPUESTA -- confirmar con el equipo. Evidencia externa (Diccionario Territorial Codazzi V2, seccion 25): 2 anclas Afinia consistentes (Calle 10A x Cra 18, Calle 10 x Cra 22), pero el propio documento aclara que San Martin NO figura en el listado municipal oficial de 62 barrios ('no convertir en barrio oficial'). Se crea igual como barrio operativo del sistema, siguiendo el mismo precedente ya aplicado a 'Instituto' y 'Tiburon' (tambien fuera del listado oficial pero con uso real consistente). Si el equipo prefiere no operacionalizarlo todavia, revertir a PENDIENTE_DECISION antes de correr el modo real.",
+    "razon": "Confirmado explicitamente por el equipo: crear el barrio. Evidencia externa (Diccionario Territorial Codazzi V2, seccion 25): 2 anclas Afinia consistentes (Calle 10A x Cra 18, Calle 10 x Cra 22); el documento aclara que San Martin no figura en el listado municipal oficial de 62 barrios, pero se opera igual como barrio del sistema, mismo precedente ya aplicado a 'Instituto' y 'Tiburon' (tambien fuera del listado oficial pero con uso real consistente).",
     "estado": "RESUELTO"
   },
   {
@@ -747,6 +747,20 @@
     "fusionarEn": null,
     "barrioCanonico": null,
     "razon": "Categoria D -- ruido evidente (descripcion de negocio + referencia de ubicacion, no un nombre de barrio), confirmado en M1_INVENTARIO_BARRIO.md SS4. Se descarta sin modificar el valor legacy.",
+    "estado": "RESUELTO"
+  },
+  {
+    "valorNormalizado": "divina pastora",
+    "categoria": "B_VALIDACION",
+    "familiaId": null,
+    "fuentes": [
+      "CLIENTE"
+    ],
+    "n": 1,
+    "decision": "CREAR_BARRIO",
+    "fusionarEn": null,
+    "barrioCanonico": "Divina Pastora",
+    "razon": "Decision explicita del equipo: tambien es un barrio real, se crea. Adenda post-M1 -- valor detectado en produccion (consulta de solo lectura a Supabase) despues de cerrado M1_INVENTARIO_BARRIO.md; no pertenece al inventario original de 52 valores de ese documento (que permanece sin editar). Ver M1_REFERENCIA en src/lib/barrios/backfill-ledger.ts, bloque 'Adenda post-M1', para la evidencia de categoria/fuentes/n.",
     "estado": "RESUELTO"
   }
 ]

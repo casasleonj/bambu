@@ -52,27 +52,29 @@ function reemplazar(entries: DecisionLedgerEntry[], valorNormalizado: string, ca
 }
 
 describe('validarLedger — ledger real del repo', () => {
-  it('scripts/backfill-barrio-canonico.decisiones.json tiene exactamente 52 entradas y pasa la validación estructural', () => {
+  it('scripts/backfill-barrio-canonico.decisiones.json tiene exactamente 53 entradas y pasa la validación estructural', () => {
     const raw = readFileSync(join(process.cwd(), 'scripts/backfill-barrio-canonico.decisiones.json'), 'utf-8')
     const entries: DecisionLedgerEntry[] = JSON.parse(raw)
-    expect(entries).toHaveLength(52)
+    expect(entries).toHaveLength(53)
     const errores = validarLedger(entries)
     expect(errores).toEqual([])
   })
 
-  it('el ledger real ya no tiene entradas PENDIENTE_DECISION — las 52 quedaron resueltas', () => {
+  it('el ledger real ya no tiene entradas PENDIENTE_DECISION — las 53 quedaron resueltas', () => {
     const raw = readFileSync(join(process.cwd(), 'scripts/backfill-barrio-canonico.decisiones.json'), 'utf-8')
     const entries: DecisionLedgerEntry[] = JSON.parse(raw)
     // Ronda 1 (PR #260): 20/38 resueltas con el Diccionario Territorial Codazzi V2
     // + el criterio explícito del equipo de "homologar sin reemplazar".
-    // Ronda 2 (este cambio): las 18 restantes se resolvieron con instrucción
+    // Ronda 2 (PR #270): las 18 restantes se resolvieron con instrucción
     // explícita del equipo — 10 categoría B (varias CREAR_BARRIO, varias
     // DESCARTAR por ser referencias de ubicación/residenciales/deportivas, no
     // barrios) + 8 categoría C en 4 familias (gaitana, libano, mercado, socorro
     // — mismo patrón de fusión por variante de artículo ya usado con Antillana).
-    // Nota: "divina pastora" (detectado en producción, fuera de las 52 entradas
-    // de M1) NO se agrega acá — M1 es evidencia histórica inmutable; ese caso
-    // queda como trabajo futuro fuera de este ledger.
+    // Ronda 3 (este cambio): "san martin" pasa de propuesta a confirmado por
+    // el equipo (mismo CREAR_BARRIO, razón actualizada); se agrega la entrada
+    // 53 "divina pastora" como Adenda post-M1 (ver M1_REFERENCIA en
+    // backfill-ledger.ts) — detectada en producción fuera de las 52 entradas
+    // originales de M1_INVENTARIO_BARRIO.md, que permanece sin editar.
     expect(tienePendientes(entries)).toBe(false)
     const pendientes = entries.filter((e) => e.decision === 'PENDIENTE_DECISION')
     expect(pendientes).toHaveLength(0)
