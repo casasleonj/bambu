@@ -77,10 +77,18 @@ export async function POST(
       }
     }
 
-    // Rule: REQUIERE_GPS_PARA_ENTREGA
+    // Rule: requerirGpsParaEntrega
     // If GPS is required, the delivery must include coordinates OR a justification.
-    const requerirGps = await getConfigBool('REQUIERE_GPS_PARA_ENTREGA', false)
-    const permitirSinGpsConJustificacion = await getConfigBool('PERMITIR_ENTREGA_SIN_GPS_CON_JUSTIFICACION', false)
+    // FIX (F5, mapa de brechas de Ejecución física): estas 2 claves estaban
+    // desincronizadas con lo que sembraba `prisma/seed.ts` y leía el cliente
+    // (`pedidos-client/index.tsx`) — ambos usan camelCase. El servidor leía
+    // SCREAMING_SNAKE_CASE, claves que nunca se sembraban, y `getConfigBool`
+    // compara la clave exacta (sin normalizar) — el requisito de GPS nunca
+    // se hacía cumplir de verdad server-side pese a que la UI lo mostraba
+    // como obligatorio. Alineado a las claves reales (mismas que el seed y
+    // el cliente), sin necesidad de migrar datos en producción.
+    const requerirGps = await getConfigBool('requerirGpsParaEntrega', false)
+    const permitirSinGpsConJustificacion = await getConfigBool('permitirEntregaSinGpsConJustificacion', false)
     if (requerirGps) {
       const tieneGps = typeof gpsLat === 'number' && typeof gpsLng === 'number'
       const tieneJustificacion = typeof gpsJustificacion === 'string' && gpsJustificacion.trim().length > 0
