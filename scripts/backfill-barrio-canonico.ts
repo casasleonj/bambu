@@ -232,8 +232,17 @@ async function procesarEntrada(
 
       if (entry.decision === 'FUSIONAR_EN') {
         const destino = resolverDestinoFusion(entry, porValor)
+        // La identidad real de un Barrio es `nombreNormalizado` del NOMBRE
+        // CANÓNICO que se va a crear/reusar (`crearBarrio`/`crearOEncontrarBarrio`
+        // solo conocen ese nombre) -- nunca el `valorNormalizado` de la
+        // entrada del ledger, que es el texto legacy tal cual aparece en
+        // producción y puede diferir del canónico (ej. "laureles" -> "Los
+        // Laureles"). Buscar por `valorNormalizado` subestimaba CONFLICTOS
+        // cuando un Barrio ya existía con ese texto legacy como nombre
+        // (creado a mano vía UI antes de correr el backfill).
+        const nombreNormalizadoDestino = normalizeBarrioNombre(destino.barrioCanonico!)
         if (dryRun) {
-          const existente = await tx.barrio.findUnique({ where: { nombreNormalizado: destino.valorNormalizado } })
+          const existente = await tx.barrio.findUnique({ where: { nombreNormalizado: nombreNormalizadoDestino } })
           barrioId = existente?.id ?? `(pendiente-crear:${destino.barrioCanonico})`
         } else {
           const barrio = await crearOEncontrarBarrio(destino.barrioCanonico!, tx)
@@ -241,8 +250,9 @@ async function procesarEntrada(
         }
       } else {
         // CREAR_BARRIO o MANTENER_SEPARADO: este valor tiene su propio Barrio.
+        const nombreNormalizadoDestino = normalizeBarrioNombre(entry.barrioCanonico!)
         if (dryRun) {
-          const existente = await tx.barrio.findUnique({ where: { nombreNormalizado: entry.valorNormalizado } })
+          const existente = await tx.barrio.findUnique({ where: { nombreNormalizado: nombreNormalizadoDestino } })
           if (existente) {
             barrioId = existente.id
           } else {
@@ -250,7 +260,7 @@ async function procesarEntrada(
             barrioCreadoAhora = true
           }
         } else {
-          const antes = await tx.barrio.findUnique({ where: { nombreNormalizado: entry.valorNormalizado } })
+          const antes = await tx.barrio.findUnique({ where: { nombreNormalizado: nombreNormalizadoDestino } })
           const barrio = await crearOEncontrarBarrio(entry.barrioCanonico!, tx)
           barrioId = barrio.id
           barrioCreadoAhora = !antes
