@@ -302,7 +302,8 @@ function imprimirReporte(
   totalEntradas: number,
 ) {
   console.log(`=== BACKFILL BARRIO CANÓNICO — ${dryRun ? 'DRY RUN' : 'MODO REAL'} ===`)
-  console.log(`Ledger: ${totalEntradas - ledgerValidacion.length >= 0 ? totalEntradas : '?'}/52 entradas ${ledgerValidacion.length === 0 ? 'válidas' : 'con errores'}`)
+  const entradasEsperadas = Object.keys(M1_REFERENCIA).length
+  console.log(`Ledger: ${totalEntradas - ledgerValidacion.length >= 0 ? totalEntradas : '?'}/${entradasEsperadas} entradas ${ledgerValidacion.length === 0 ? 'válidas' : 'con errores'}`)
   console.log('')
   console.log(
     'Nota: "M1" es la fotografía histórica de docs/territorio/M1_INVENTARIO_BARRIO.md — evidencia ' +
