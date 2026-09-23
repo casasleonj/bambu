@@ -17,7 +17,7 @@
 | F10-3 integridad preview↔commit | ✅ | Ninguno |
 | F10-4 permisos | ✅ (test comportamental nuevo) | Ninguno |
 | F10-5 auditoría | ✅ paridad · ⚠️ BRECHA pre-existente (sin antes/después) | Ninguno para activar; brecha registrada |
-| F10-6 sin regresión con flag ON | ✅ fuera de `/pedidos` · ver §F10-6 | Ninguno para activar (fallos nuevos = specs atados a UI legacy → F10b) |
+| F10-6 sin regresión con flag ON | ✅ 0 regresiones fuera de `/pedidos` · 🟡 cobertura E2E parcial de la UI del Hub (riesgo residual declarado) | Ninguno técnico. Aceptar el riesgo residual con mitigación en el soak es decisión de ustedes |
 | F10-7 VENTA_LIBRE / repartidor | ✅ no es decisión abierta para activar | Pendiente acotado para F10b (§F10-7) |
 | F10-8 rollback probado | 🟡 mecánica Preview ✅ + funcional local ✅ · smoke autenticado en Preview pendiente | Smoke **read-only** en Preview por alguien con credencial real (Preview usa la BD de producción, §F10-8) |
 
@@ -71,9 +71,48 @@
 ## F10-6 — Sin regresión con el flag ON
 
 - **Método:** nuevo input `pedidos_v2` en `workflow_dispatch` (`ci.yml`, sin efecto en push/PR/schedule) para correr la **matriz `e2e` completa (8 shards) con el Hub ON**. Corrida: run `35798488906` (commit `1de3d05` = `main` `46fa027` + solo `ci.yml`). Baseline: run `35797682006` de `main` @ `46fa027` (flag OFF). Comparación test por test (spec + título), no por conteo.
-- **Resultado:** ver tabla (se completa con los 8 shards).
 
-<!-- F10-6-TABLA -->
+**Shards que terminaron en CI (1, 2, 4, 5, 6, 8)** — fallidos/flaky/"did not run":
+
+| Shard | Baseline `main` (OFF) | Hub ON | Nuevos con ON |
+|---|---|---|---|
+| 1 | 12 / 0 / 14 | 13 / 0 / 14 | `abonos` ×1 |
+| 2 | 23 / 2 / 17 | 25 / 3 / 17 | `full-user-day` 6 y 7 · flaky `facturas` |
+| 4 | 9 / 1 / 5 | 11 / 1 / 5 | `abonos` (mobile) · `session-expiry` |
+| 5 | 14 / 0 / 24 | 14 / 0 / 24 | — |
+| 6 | 26 / 0 / 22 | 28 / 3 / 22 | `full-user-day` 6 y 7 (mobile) · 3 flaky |
+| 8 | 9 / 2 / 5 | 10 / 1 / 5 | `session-expiry` (mobile: flaky en baseline → falla) |
+
+"Did not run" es idéntico en los 6 shards, así que los fallos nuevos no ocultan otros por cascada.
+
+**Clasificación de cada fallo nuevo (error real leído del log):**
+
+| Test | Causa | Clase |
+|---|---|---|
+| `full-user-day` 6 "Crear pedido con pago" | busca `locator('form')…input[placeholder*="Buscar"]`. El workspace no es un `<form>` por diseño (G1) | selector de UI legacy |
+| `full-user-day` 7 "Filtrar pedidos por estado" | busca el botón de filtro "PENDIENTE" de las tabs legacy | selector de UI legacy |
+| `abonos` "register abono and cancel abono" | crea el pedido previo por `getByTestId('submit-pedido')` (form legacy) | selector de UI legacy |
+| `session-expiry` "auth:expired event redirects" | espera el texto "Lista de Pedidos" del header legacy | selector de UI legacy |
+| flaky `embarques-fixes`, `embarques-mission-detail`, `fiado-status-ui` | `strict mode violation: resolved to 2 elements` → copia transitoria de SSR con streaming (documentada en `fixtures.ts → appMain`). La misma firma aparece 22 veces en los logs del baseline; `fiado-status-ui` ya es flaky en `main` | ruido de infra pre-existente |
+| flaky `facturas › page loads` | heading no visible en 5 s, pasa en el reintento. `/facturas` no lee el flag (solo `pedidos/loading.tsx` y `pedidos-client` llaman `pedidosV2Enabled`) | timing |
+
+**Shards 3 y 7: cancelados** por el `timeout-minutes: 60` del job (23:40 → 00:40Z) sin resumen. `--list` con el flag ON muestra que concentran las suites de UI legacy de `/pedidos` (`pedidos-all-contexts` 54, `pedidos` 16, `pedidos-filtros-funcionales` 12, +10 archivos `pedidos-*` menores), cuyos tests con el Hub ON agotan su timeout ×3 intentos. Para no dejar sin evidencia el resto de esos shards, los corrí **en local contra el build Hub ON**:
+
+| Subconjunto (shards 3/7) | Resultado | vs baseline CI |
+|---|---|---|
+| no-`/pedidos` en chromium (16 archivos, 119 tests) | 99 ✅ · 5 ❌ · 4 flaky | los 5 ❌ y los 4 flaky **ya fallan en el baseline** (`nomina` "crear nomina…", 3× `productos-comprehensive`, `opt-in-toast`), salvo 1: `precios-especiales` "Venta Rápida PUNTO", que abre la venta rápida por el FAB/form legacy |
+| <!-- MOBILE-NONPEDIDOS --> | | |
+| specs del Hub en **chromium-mobile** (nunca corridos con el flag ON: `e2e-hub` solo corre desktop) | 24 ✅ · 6 ❌ en la primera corrida → en frío los 2 E2E nuevos de F10-2 pasan (el fallo era el rate limit local de 300 req/min) · quedan **4 ❌ con una sola causa**: los tests esperan `peek-desktop` y en móvil el componente es `peek-mobile` (`peek-panel.tsx:69`) | supuesto de desktop en el test |
+
+- **Precios especiales con el Hub ON:** verificado directo. Preview (lo que muestra el workspace) y commit aplican el precio especial igual: PUNTO 2000 / DOMICILIO 2500, `precioOrigen: cliente`.
+- **Peek y G11 en móvil (viewport iPhone 13):** peek abre sin navegar, muestra el pedido y la acción destacada, cierra con ✕. "Cambiar cantidades" → 2 opciones, sin venta libre → el form de corrección exige motivo. Todo funciona.
+- **Observación UX (pre-existente, no del Hub):** en iOS el banner PWA "Instalar aplicación" (fijo abajo, `z-40`) tapa la parte inferior de la hoja del peek móvil, donde está "Cambiar cantidades…", hasta que el usuario lo cierra. Conviene verlo en el soak.
+
+**Veredicto F10-6:**
+- ✅ **Fuera de `/pedidos`: 0 regresiones** con el Hub ON (8 shards: 6 en CI + subconjunto no-`/pedidos` de 3/7 en local).
+- ✅ **Hub:** su suite pasa en desktop (CI + local) y en móvil salvo 4 tests con una aserción solo-desktop. El comportamiento que prueban se verificó a mano en móvil.
+- ⚠️ **Riesgo residual declarado (no es regresión):** ~115 tests de UI legacy de `/pedidos` (más `abonos`, `full-user-day`, `session-expiry`, `precios-especiales`) no aplican al Hub. Varias conductas que cubren tienen cobertura E2E **parcial o nula** en el Hub: filtros funcionales, detalle de factura, saldo pendiente no entregado, edición en tiempo real, display de negocio. Su backend es el mismo y está cubierto por unit/integración, pero la UI del Hub para esos casos no tiene E2E. Mitigación propuesta: la sesión guiada del soak (ver abajo) + migrar esos specs en F10b.
+
 
 - **Otros jobs de la misma corrida:** Type check + Tests ✅ · Lint ✅ · E2E Hub (V2 ON) ✅ · Integration (non-blocking) ❌ 1/55: `pedido-dedup.test.ts` (P2028), que también falla en el baseline de `main` (documentado en #258).
 - **Local:** `npx tsc --noEmit` limpio · `npm run test` 343 archivos / **3395 tests** verdes · eslint limpio en archivos tocados.
