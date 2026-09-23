@@ -101,7 +101,7 @@
 | Subconjunto (shards 3/7) | Resultado | vs baseline CI |
 |---|---|---|
 | no-`/pedidos` en chromium (16 archivos, 119 tests) | 99 ✅ · 5 ❌ · 4 flaky | los 5 ❌ y los 4 flaky **ya fallan en el baseline** (`nomina` "crear nomina…", 3× `productos-comprehensive`, `opt-in-toast`), salvo 1: `precios-especiales` "Venta Rápida PUNTO", que abre la venta rápida por el FAB/form legacy |
-| <!-- MOBILE-NONPEDIDOS --> | | |
+| no-`/pedidos` en chromium-mobile (mismos 16 archivos) | 72 ✅ · 5 ❌ · 34 "did not run" | los 5 ❌ **ya fallan en el baseline** (`nomina`, `produccion` "carga inicial…", 3× `productos-comprehensive`). Los "did not run" son la cascada del describe serial de `produccion` tras su primer fallo, igual que en `main` |
 | specs del Hub en **chromium-mobile** (nunca corridos con el flag ON: `e2e-hub` solo corre desktop) | 24 ✅ · 6 ❌ en la primera corrida → en frío los 2 E2E nuevos de F10-2 pasan (el fallo era el rate limit local de 300 req/min) · quedan **4 ❌ con una sola causa**: los tests esperan `peek-desktop` y en móvil el componente es `peek-mobile` (`peek-panel.tsx:69`) | supuesto de desktop en el test |
 
 - **Precios especiales con el Hub ON:** verificado directo. Preview (lo que muestra el workspace) y commit aplican el precio especial igual: PUNTO 2000 / DOMICILIO 2500, `precioOrigen: cliente`.
