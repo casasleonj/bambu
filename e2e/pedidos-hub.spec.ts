@@ -273,8 +273,11 @@ test.describe('flag OFF: la UI de tabs sigue funcionando', () => {
 
   test('tabs Pedidos/Fiados/Alertas visibles, sin pedido-hub', async ({ browser }) => {
     const page = await sharedLoginAs(browser, 'admin')
+    // Scoped a <main> (ver NOTA de cabecera): sin esto, la copia transitoria
+    // del streaming SSR hace que `tab-hoy` resuelva a 2 elementos (strict mode).
+    const app = appMain(page)
     await page.goto(`${BASE}/pedidos`)
-    await expect(page.getByTestId('tab-hoy')).toBeVisible()
-    await expect(page.getByTestId('pedido-hub')).toHaveCount(0)
+    await expect(app.getByTestId('tab-hoy')).toBeVisible()
+    await expect(app.getByTestId('pedido-hub')).toHaveCount(0)
   })
 })

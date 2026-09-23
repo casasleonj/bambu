@@ -27,7 +27,7 @@
 | **F10-7** VENTA_LIBRE / repartidor | ✅ **cerrado**: decisión existente recuperada | 🟡 retirar los consumidores legacy restantes + extraer dependencias runtime del workspace | §F10-7 |
 | **F10-8** rollback probado | 🟡 mecánica ON→OFF en Preview ✅ + persistencia local ✅ · **falta el smoke autenticado read-only en Preview** | 🟡 ídem + observación durante el soak | smoke read-only (§F10-8) + eliminar la variable temporal de Preview |
 
-> **Hallazgo fuera de alcance:** bug preexistente **B-1**. `/pedidos?atrasados=true` y `?enRiesgo=true` (links "Verlos" y "Ver y asignar" del dashboard) se quedan en skeleton **con y sin el Hub**. Muy probablemente afecta hoy a producción. Ticket aparte, ver §F10-6.
+> **Hallazgo fuera de alcance:** bug preexistente **B-1**. `/pedidos?atrasados=true` y `?enRiesgo=true` (links "Verlos" y "Ver y asignar" del dashboard) se quedan en skeleton **con y sin el Hub**. Muy probablemente afecta hoy a producción. Ticket [#273](https://github.com/casasleonj/bambu/issues/273), ver §F10-6.
 
 
 ---
@@ -151,7 +151,7 @@ Método: los 90 tests de los 9 specs de UI de `/pedidos` corridos en local contr
 
 ### Bug preexistente encontrado (fuera del alcance de F10a)
 
-- **B-1 — `/pedidos?atrasados=true` y `?enRiesgo=true` se quedan en skeleton.** Son los destinos de los links "Verlos" y "Ver y asignar" del banner del dashboard. Reproducido en local contra el build de `main` **con el flag OFF y con el flag ON**: el API responde 200 (`GET /api/pedidos?all=true&atrasados=true`), no queda ningún request colgado ni hay error de página, pero la vista no pasa del skeleton ni muestra su banner ("Mostrando solo pedidos pendientes sin asignar…"). El test `pedidos.spec.ts` "?atrasados=true abre vista autocontenida" ya falla en el baseline de CI de `main`. **No es regresión del Hub** y muy probablemente afecta hoy a producción. Merece un ticket propio; no se toca en F10a.
+- **B-1 — `/pedidos?atrasados=true` y `?enRiesgo=true` se quedan en skeleton.** Son los destinos de los links "Verlos" y "Ver y asignar" del banner del dashboard. Reproducido en local contra el build de `main` **con el flag OFF y con el flag ON**: el API responde 200 (`GET /api/pedidos?all=true&atrasados=true`), no queda ningún request colgado ni hay error de página, pero la vista no pasa del skeleton ni muestra su banner ("Mostrando solo pedidos pendientes sin asignar…"). El test `pedidos.spec.ts` "?atrasados=true abre vista autocontenida" ya falla en el baseline de CI de `main`. **No es regresión del Hub** y muy probablemente afecta hoy a producción. Ticket [#273](https://github.com/casasleonj/bambu/issues/273); no se toca en F10a.
 
 - **Otros jobs de la misma corrida:** Type check + Tests ✅ · Lint ✅ · E2E Hub (V2 ON) ✅ · Integration (non-blocking) ❌ 1/55: `pedido-dedup.test.ts` (P2028), que también falla en el baseline de `main` (documentado en #258).
 - **Local:** `npx tsc --noEmit` limpio · `npm run test` 343 archivos / **3395 tests** verdes · eslint limpio en archivos tocados.
