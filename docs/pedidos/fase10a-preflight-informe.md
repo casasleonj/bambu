@@ -10,8 +10,24 @@
 
 ## 0. Resumen
 
-| Gate | Estado | Bloqueo restante para activar Production |
-|---|---|---|
+> **Clasificación (corrección del equipo, 2026-09-23):** F10-1..F10-8 se definieron como gates para **retirar** `pedido-form-unified` (F10b). No todos bloquean una **activación controlada y reversible** (F10a). Cada gate se evalúa con dos estados:
+> - **F10a:** ¿hay evidencia suficiente para activar el Hub en Production de forma controlada, con el legacy intacto como rollback?
+> - **F10b:** ¿el gate está satisfecho bajo el criterio estricto original de retiro del legacy?
+>
+> Al terminar el soak se re-evalúa F10-1..F10-8 bajo el criterio F10b: no alcanza con "no vimos problemas", hace falta evidencia de que se puede retirar el legacy sin perder comportamiento, cobertura, auditoría ni capacidad de recuperación.
+
+| Gate | Estado F10a (activación / soak) | Estado F10b (retiro legacy) | Pendiente |
+|---|---|---|---|
+| **F10-1** flag ON en un deploy | ✅ suficiente una vez hecha la activación de Production | ⏳ solo tras el deploy real + su observación en el soak | la activación misma (post-merge) |
+| **F10-2** cobertura funcional por el workspace | ✅ suficiente para los 3 flujos alcanzables hoy | 🟡 **no completo**: el contrato exige 5 flujos. 2 **no ejercitables bajo la configuración vigente** (`NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR` OFF) | los 2 flujos condicionados siguen dentro del gate |
+| **F10-3** integridad preview↔commit | ✅ | ✅ | — |
+| **F10-4** permisos | ✅ | ✅ | — |
+| **F10-5** auditoría | ✅ paridad Hub↔legacy: la activación no introduce regresión de auditoría | 🟡 **BRECHA PLAN↔CÓDIGO preexistente**: el gate exige `PedidoAuditDiff` con antes/después y ese artefacto no existe | resolver antes de declarar F10-5 satisfecho para F10b. No se construye dentro de F10a |
+| **F10-6** sin regresión con flag ON | ✅ **APTO con mitigación**: 0 regresiones atribuibles al Hub fuera de `/pedidos`, Hub verificado en desktop y móvil | 🟡 **PENDIENTE**: no hay "suite E2E completa verde con flag ON ≥ N runs"; hay cobertura E2E del Hub faltante (inventario §F10-6) | inventario de cobertura → decidir migración/reemplazo antes de F10b · 4 tests móviles a corregir (`peek-mobile`) |
+| **F10-7** VENTA_LIBRE / repartidor | ✅ **cerrado**: decisión existente recuperada | 🟡 retirar los consumidores legacy restantes + extraer dependencias runtime del workspace | §F10-7 |
+| **F10-8** rollback probado | 🟡 mecánica ON→OFF en Preview ✅ + persistencia local ✅ · **falta el smoke autenticado read-only en Preview** | 🟡 ídem + observación durante el soak | smoke read-only (§F10-8) + eliminar la variable temporal de Preview |
+
+---|---|---|
 | F10-1 flag ON en un deploy | 🟡 Preview sí · Production no (es el paso de activación) | Activación controlada (post-merge de F10a) |
 | F10-2 cobertura funcional (workspace) | ✅ para los flujos activos en prod · N/A condicionado para 2 | Ninguno. Los 2 N/A se reabren si se enciende `NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR` |
 | F10-3 integridad preview↔commit | ✅ | Ninguno |
@@ -25,7 +41,7 @@
 
 ## F10-1 — Flag ON por defecto en un deploy
 
-- **Estado:** 🟡 Parcial por diseño.
+- **Estado F10a:** ✅ suficiente una vez se haga la activación de Production. **Estado F10b:** ⏳ verde solo tras el deploy real y su observación.
 - **Evidencia:**
   - Production (Vercel `bambu_demo_multimodelo`): `NEXT_PUBLIC_PEDIDOS_V2` **no existe** entre las variables del proyecto → prod corre con el Hub OFF. Los 6 usuarios nunca operaron el Hub.
   - Preview con Hub ON construido y servido: `dpl_6ehV8ENYw6rEMpBYbUAPaVDHYMdL` (rama `claude/soak-status-67xd9k`, variable Preview acotada a esa rama).
@@ -39,22 +55,23 @@
 | Crear `PEDIDO` | sí | ✅ | `e2e/pedidos-hub.spec.ts` "workspace (Composición C1)" (existente, 37/37 del soak CI) |
 | Crear `VENTA_RAPIDA` | sí | ✅ **nuevo** | `pedidos-hub.spec.ts` "workspace (F10-2): venta rápida…" — verifica `origen=VENTA_RAPIDA`, `clienteId=CONSUMIDOR_FINAL` en la respuesta real del POST |
 | Editar `PEDIDO` | sí | ✅ **nuevo** | `pedidos-hub.spec.ts` "workspace (F10-2 / C4): editar un PEDIDO…" — `?openPedido` → Editar → workspace modo edición → PUT 200 → `cantPedido` 3→4 persistido |
-| Editar `VENTA_RAPIDA` | **no alcanzable** | N/A | Sin `NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR` una venta rápida nace `ENTREGADO` (`CrearPedidoUseCase.ts:247`) y el detalle solo ofrece "Editar" en `PENDIENTE`. La variable no existe en Vercel |
-| Venta rápida entregar-después | **no alcanzable** | N/A | Mismo flag, OFF en prod |
+| Editar `VENTA_RAPIDA` | **no ejercitable bajo la configuración vigente** | ⛔ sin evidencia (sigue en el gate) | Sin `NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR` una venta rápida nace `ENTREGADO` (`CrearPedidoUseCase.ts:247`) y el detalle solo ofrece "Editar" en `PENDIENTE`. La variable no existe en Vercel |
+| Venta rápida entregar-después | **no ejercitable bajo la configuración vigente** | ⛔ sin evidencia (sigue en el gate) | Mismo flag, OFF en prod. Si se enciende, F10-2 exige E2E de ambos flujos por el workspace antes de F10b |
 
+- **Estado F10a:** ✅ suficiente para los 3 flujos alcanzables hoy. **Estado F10b:** 🟡 no completo — el contrato original exige los 5; los 2 condicionados no desaparecen del gate.
 - **Corrida:** local contra build de producción standalone con Hub ON: `10 passed` en frío, sin retries (`pedidos-hub.spec.ts`, chromium). CI del PR lo re-ejecuta en `e2e-hub`.
 - **Soak CI (contexto, no sustituto):** 37 corridas programadas verdes consecutivas (2026-09-14 19:52Z → 2026-09-22 21:29Z). 0 flaky en las 3 muestreadas. Las 2 fallas del 14-sep eran del test (domingo), fix `dc3d649`.
 - **Hallazgo:** con el Hub ON, `/pedidos` **todavía monta el form legacy** en 3 casos: (a) edición de pedidos `VENTA_LIBRE`/`RECURRENTE`, (b) creación con `pedidoInicial` precargado — el deep-link `?new=1&clienteId=` desde `/clientes`, (c) el fallback. Siguen funcionando igual que hoy. Son consumidores vivos a resolver en F10b.
 
 ## F10-3 — Integridad preview↔commit
 
-- **Estado:** ✅
+- **Estado F10a:** ✅ · **Estado F10b:** ✅
 - **Evidencia re-ejecutada:** `src/lib/__tests__/integration/preview-pedido-integridad.test.ts` contra Postgres real → **4/4**: (a) preview read-only con snapshots; (b) preview == pedido creado, campo a campo; (c) modo edición: `deepSnapshot` idéntico antes/después del preview y preview == pedido tras el PUT, con los `Pago` conservados exactos; (d) F1 crédito: preview y commit bloquean igual.
 - **Por qué prueba al Hub y no solo al use case:** el workspace llama `POST /api/pedidos/preview` (`use-preview.ts:68`) y entrega su commit al mismo `handlePedidoSubmit` (`pedidos-client/index.tsx:941`) → `POST /api/pedidos` / `PUT /api/pedidos/[id]`. Las rutas delegan en `crearPedidoUseCase` / `actualizarPedidoUseCase` / `previewPedidoUseCase` de `src/modules/pedidos/application/index.ts`, construidos con las mismas dependencias que usa el test.
 
 ## F10-4 — Permisos
 
-- **Estado:** ✅
+- **Estado F10a:** ✅ · **Estado F10b:** ✅
 - **Cobertura previa:** solo guardrails **estáticos** (regex sobre el fuente) para `PUT /api/pedidos/[id]` y `POST /api/pedidos/preview`. `POST /api/pedidos` no tenía ninguno.
 - **Test agregado:** `src/app/api/pedidos/__tests__/workspace-endpoints-roles.test.ts` — **15/15**, comportamental: ejecuta los 3 handlers con el `requireRole` real. REPARTIDOR/CONTADOR → 403 sin llegar al use case, ADMIN/ASISTENTE superan el gate, sin sesión → 401.
 - **Mutation check:** ampliando los roles de `preview/route.ts` a los 4, el test falla (2 casos rojos). Archivo restaurado.
@@ -63,10 +80,11 @@
 
 ## F10-5 — Auditoría
 
-- **Estado:** ✅ paridad · ⚠️ BRECHA PLAN↔CÓDIGO pre-existente.
+- **Estado F10a:** ✅ paridad Hub↔legacy — la activación no introduce regresión de auditoría.
+- **Estado F10b:** 🟡 **BRECHA PLAN↔CÓDIGO preexistente / no bloqueante F10a / pendiente antes de declarar F10-5 satisfecho para F10b.** No se construye un sistema nuevo de auditoría dentro de F10a.
 - **Test agregado:** `src/lib/__tests__/integration/pedido-edit-audit-paridad.test.ts` (Postgres real, handler real de `PUT`). La misma edición con el payload legacy y con el del workspace produce **1 fila de `Historial` por edición**, idénticas salvo `numero`, y el mismo efecto persistido (items 4→6, total, saldo, obs).
 - **Por qué hay paridad por construcción:** ambas UIs pasan por `handlePedidoSubmit`, que en edición envía solo `{items, obs, actualizarCliente, direccionEntrega, barrioEntrega}`. La auditoría la escribe `ActualizarPedidoUseCase` dentro de la transacción (F3).
-- **BRECHA registrada (no se corrige en F10a):** el `PedidoAuditDiff` "antes/después" que nombra el gate **no existe**. La fila del PUT es `datos: {numero, estado}`, sin diff. El único registro con antes/después es `PedidoCantidadAjuste` (G11, `ajustar-cantidad`). Afecta igual a legacy y Hub → no bloquea la activación, pero el gate estaba redactado sobre un artefacto inexistente.
+- **BRECHA registrada (no se corrige en F10a):** el `PedidoAuditDiff` "antes/después" que nombra el gate **no existe**. La fila del PUT es `datos: {numero, estado}`, sin diff. El único registro con antes/después es `PedidoCantidadAjuste` (G11, `ajustar-cantidad`). Afecta igual a legacy y Hub.
 
 ## F10-6 — Sin regresión con el flag ON
 
@@ -136,7 +154,8 @@ Regla de recuperación aplicada: blueprint §2.5/§8.3/§8.4, `VENTA_LIBRE_EXPER
 - Qué superficie **edita un VENTA_LIBRE o RECURRENTE existente** cuando se retire el form legacy. Las fuentes lo marcan como EVIDENCIA HISTÓRICA A RECUPERAR (EH-5: corregir una VL ya entregada preservando número/factura). Con el Hub ON el comportamiento es idéntico al actual.
 - Brechas VL ya documentadas y sin cambios: BRECHA-4 (RD-1), BRECHA-6 (RD-2), BRECHA-8. Independientes de la activación.
 
-→ **F10-7 no vuelve como PENDIENTE de negocio.** El único punto abierto es de F10b y ya está clasificado en las fuentes (EH-5).
+- **Estado F10a:** ✅ **cerrado.** Decisión existente recuperada: el Hub no crea VENTA_LIBRE; VENTA_LIBRE pertenece operacionalmente a Embarques; el repartidor trabaja en `/repartidor`; `/repartidor` no depende de `pedido-form-unified`. **No es decisión de negocio abierta para activar el Hub.**
+- **Estado F10b:** 🟡 cuestión distinta, de retiro: (1) retirar los consumidores legacy restantes — edición de VENTA_LIBRE/RECURRENTE, deep-link `?new=1&clienteId=` desde Clientes, fallback, `cliente-detail-cache.ts:154`; (2) extraer sin cambiar semántica las dependencias runtime que `pedido-workspace` importa de `pedido-form-unified`. Nada de esto se toca en F10a.
 
 ## F10-8 — Rollback probado
 
@@ -154,12 +173,24 @@ Regla de recuperación aplicada: blueprint §2.5/§8.3/§8.4, `VENTA_LIBRE_EXPER
 
 - **Procedimiento de rollback en Production:** Vercel → `NEXT_PUBLIC_PEDIDOS_V2` = `false` (o borrar) en Production → Redeploy del último deploy de producción (sin caché) → smoke. **Tiempo esperado ≈ 2–3 min** (build medido ~2 min). Cambiar solo la variable **no** alcanza: `NEXT_PUBLIC_*` se inlinea en el build.
 - **Datos:** Hub y legacy escriben por los mismos endpoints y use cases (F10-3/F10-5) → el rollback no requiere migración. La cola offline (`requestQueue`) reproduce contra las mismas URLs, así que es compatible en ambos sentidos.
-- **Pendiente:** smoke **autenticado y read-only** en Preview (login → `/pedidos` muestra Hub → rollback → `/pedidos` muestra tabs), hecho por alguien con credencial real, **sin crear ni editar**. No usé credenciales de producción.
-- **Limpieza pendiente:** la variable Preview acotada a la rama quedó en `false` (inerte = OFF). No había herramienta para borrarla, así que hay que eliminarla desde el dashboard.
+- **Estado F10a:** 🟡 hasta completar el smoke autenticado read-only en Preview. **Estado F10b:** 🟡 ídem + la observación durante el soak.
+- **Smoke autenticado read-only — PENDIENTE (requiere credencial real):** no tengo credenciales de producción y no las pruebo, porque Preview apunta a la BD real. Los deploys de Vercel son **inmutables**, así que el smoke puede hacerse sobre los dos deploys ya generados por la prueba de rollback, sin volver a tocar variables:
+  1. `https://bambudemomultimodelo-7v43tc6wb-casasleonjs-projects.vercel.app` (**Hub ON**, `dpl_6ehV8ENYw6rEMpBYbUAPaVDHYMdL`) → login → `/pedidos` → confirmar Hub: focos arriba, sin tabs "Pedidos/Fiados/Alertas" → navegar y abrir un peek (solo lectura).
+  2. `https://bambudemomultimodelo-5rd7agn7d-casasleonjs-projects.vercel.app` (**Hub OFF**, rollback, `dpl_4rg1es9VXZrKiMvm363ses37qccj`) → login (la cookie es por host) → `/pedidos` → confirmar legacy: tabs visibles.
+  3. **Prohibido durante el smoke:** crear, editar, entregar, pagar, anular, conciliar o cualquier otra escritura.
+- **Limpieza — PENDIENTE:** eliminar la variable Preview `NEXT_PUBLIC_PEDIDOS_V2` acotada a `claude/soak-status-67xd9k` (id `lvEjriBusynzbpE7`, hoy `false` = inerte). La API disponible en esta sesión permite crear y editar variables pero **no borrarlas**, así que hay que hacerlo desde el dashboard: *Settings → Environment Variables*. No debe quedar configuración experimental abandonada.
 
 ---
 
-## Ventana de soak de producción (propuesta basada en ciclos operativos)
+## Observaciones a vigilar durante el soak
+
+| # | Observación | Tipo | Bloquea F10a | Acción |
+|---|---|---|---|---|
+| O-1 | En iOS el banner PWA "Instalar aplicación" (`role=banner`, fijo abajo, `z-40`) **cubre la parte inferior de la hoja `peek-mobile`**, donde está "Cambiar cantidades…", hasta que el usuario lo cierra. Visto al probar G11 en viewport iPhone 13 | UX, preexistente (el banner ya existía; el peek móvil es nuevo) | No: el banner se puede cerrar | preguntar explícitamente en el feedback semanal · registrar incidencias · decidir antes de F10b si el peek debe reservar ese espacio |
+| O-2 | Ni el FAB legacy ni el Hub ocultan "Nueva operación" a CONTADOR (el backend responde 403) | UX, paridad | No | registrar si CONTADOR lo intenta durante el soak |
+| O-3 | Los 4 E2E móviles del Hub que esperan `peek-desktop` fallan en chromium-mobile | deuda de tests | No (comportamiento verificado a mano) | corregirlos para probar `peek-mobile` antes de F10b; la verificación manual no sustituye la automatización |
+
+## Soak de producción — criterio aprobado (híbrido)
 
 **Datos reales** (producción, solo lectura, agregados, últimos 28 días):
 
@@ -173,22 +204,27 @@ Regla de recuperación aplicada: blueprint §2.5/§8.3/§8.4, `VENTA_LIBRE_EXPER
 | Ediciones de pedido (`Historial` UPDATE) | 30 |
 | Pagos | 105 |
 | `CierreDia` registrados | 0 |
-| Plantillas recurrentes activas | 1 (cadencia por defecto `cadaNDias=7`) |
+| Plantillas recurrentes activas | 1 (`cadaNDias=7`) |
 
-**Implicación:** una ventana por calendario no ejercita los flujos del Hub. PEDIDO (~5/semana) y las ediciones (~7/semana) son poco frecuentes. G11, N2 y recurrentes tienen **volumen orgánico cero**, así que ningún número de días los cubriría.
+**Criterio (aprobado 2026-09-23). El soak cierra cuando se cumplen todas:**
+- mínimo **2 semanas operativas completas** (lun–sáb), con ≥2 lunes y ≥1 ciclo de la plantilla recurrente;
+- **≥10 PEDIDO**, **≥60 VENTA_RAPIDA**, **≥10 ediciones**, **pagos ejercitados**, medidos con consultas read-only sobre `Pedido`, `Historial` y `Pago` en la ventana;
+- **sesión guiada** para los flujos con volumen orgánico cero (G11 nueva demanda, G11 corrección de cantidad, N2 gestión de pendiente, generación de habituales).
 
-**Propuesta: el soak cierra cuando se cumplen A y B, lo que ocurra último:**
+**Reglas del soak:**
+- **No se fabrican datos en producción** para cumplir una casilla. G11, N2, habituales y corrección se ejercitan **solo sobre casos operativos legítimos** o en un **entorno de prueba seguro**. Hoy Preview no lo es porque comparte la BD de producción.
+- Un flujo que no ocurra naturalmente en las 2 semanas se registra como **"no observado en producción"**, nunca como aprobado.
+- **Evidencia temporal** (las métricas del plan §2.3 no existen): consultas read-only + Sentry + feedback e incidencias de los 6 usuarios. No se construye una plataforma de observabilidad dentro de F10a.
+- **Rollback inmediato** ante regresión crítica (pérdida o duplicación de pedido/pago, precio o saldo incorrecto, bloqueo de creación), con el procedimiento F10-8.
+- El **legacy permanece intacto** durante todo el soak: no se borra `pedido-form-unified`, no se elimina el flag, no se refactorizan sus consumidores.
 
-- **A. Ciclo operativo mínimo:** 2 semanas operativas completas (lun–sáb = 12 días con operación), que incluyan ≥2 lunes (el auto-reprogramado de domingo de recurrentes ya rompió un test una vez) y ≥1 ciclo completo de la plantilla recurrente activa (7 días).
-- **B. Cobertura verificada con datos** (consultas read-only sobre `Pedido`, `Historial`, `Pago`, `ObligacionPendiente` dentro de la ventana):
-  - volumen orgánico: ≥10 PEDIDO creados, ≥60 VENTA_RAPIDA, ≥10 ediciones, pagos registrados → alineado con ~2 semanas de la media observada;
-  - **sesión guiada** con los usuarios (ADMIN/ASISTENTE) para los flujos de volumen cero: 1× nueva demanda G11, 1× gestión de pendiente N2 (PUNTO/DOMICILIO), 1× generación de habituales, 1× corrección de cantidad G11 — con datos reales de operación y registro de quién y cuándo;
-  - 0 issues nuevos de Sentry atribuibles a `/pedidos` o a `/api/pedidos/*` sin resolver;
-  - feedback de los 6 usuarios al cierre de cada semana (qué no encontraron, qué tardó más).
-- **Rollback inmediato** si aparece una regresión crítica: pérdida o duplicación de pedido/pago, precio o saldo incorrecto, o bloqueo de creación. Se aplica el procedimiento F10-8.
-- **Observabilidad:** las métricas del plan §2.3 (`pedidos_v2_render_count`, `n2_*`, `g11_*`) **no están implementadas** (grep sin resultados). El soak se mide con las consultas de datos de arriba + Sentry. Implementarlas no es requisito para activar.
+## Secuencia siguiente
 
----
+1. PR de F10a (este cambio) → revisión → merge.
+2. Smoke autenticado read-only en Preview (§F10-8) + eliminar la variable temporal de Preview.
+3. `NEXT_PUBLIC_PEDIDOS_V2=true` en **Production** → redeploy → **smoke inmediato** de los flujos críticos.
+4. Si el smoke es correcto, **empieza oficialmente el soak**.
+5. Al terminar el soak: re-evaluar F10-1..F10-8 bajo el criterio F10b + segunda revisión de `main` ("el legacy ya no tiene consumidores necesarios"). Solo entonces se abre F10b.
 
 ## Cambios de esta fase (PR F10a-preflight)
 
