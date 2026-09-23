@@ -203,6 +203,69 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     await expect(page.getByTestId('pedidos-workspace')).toHaveCount(0) // modal cerró
     await expect(app.locator('[data-testid^="operacion-row-"]').filter({ hasText: nombreCliente })).toBeVisible()
   })
+
+  // F10a-preflight, gate F10-2 (fase-composicion-c4-edit-plan.md): los flujos
+  // activos en producción deben pasar por el workspace con el flag ON.
+  // "Editar VENTA_RAPIDA" y "entregar después" no son alcanzables hoy: sin
+  // NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR una venta rápida nace ENTREGADA
+  // (CrearPedidoUseCase) y el detalle solo ofrece "Editar" en PENDIENTE.
+  test('workspace (F10-2): venta rápida — consumidor final, el commit crea VENTA_RAPIDA', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const app = appMain(page)
+    await page.goto(`${BASE}/pedidos`)
+
+    await app.getByTestId('fab-main').click()
+    await page.getByTestId('fab-venta-rapida').click()
+    await expect(page.getByTestId('pedidos-workspace')).toBeVisible()
+    await expect(page.getByTestId('workspace-venta-rapida')).toBeVisible()
+
+    await page.getByTestId('workspace-inc-PACA_AGUA').click()
+    await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 10000 })
+
+    const creado = page.waitForResponse((r) => r.url().endsWith('/api/pedidos') && r.request().method() === 'POST')
+    await page.getByTestId('workspace-commit').click()
+    const res = await creado
+    expect(res.status()).toBeLessThan(300)
+    const body = await res.json()
+    const pedido = body.data?.pedido ?? body.pedido
+    expect(pedido.origen).toBe('VENTA_RAPIDA')
+    expect(pedido.clienteId).toBe('CONSUMIDOR_FINAL')
+    await expect(page.getByTestId('pedidos-workspace')).toHaveCount(0)
+  })
+
+  test('workspace (F10-2 / C4): editar un PEDIDO — "Guardar cambios" hace PUT y persiste la cantidad', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const nombreCli = `WS C4 ${Date.now()}`
+    const { cliente } = await createCliente(page, { nombre: nombreCli })
+    const creadoRes = await apiPost(page, '/api/pedidos', {
+      clienteId: cliente.id, canal: 'DOMICILIO', origen: 'PEDIDO',
+      items: [{ producto: 'PACA_AGUA', cantidad: 3 }],
+      offlineId: `hub-c4-${Date.now()}`,
+    })
+    const creadoBody = await creadoRes.json()
+    const pedidoId: string = (creadoBody.data?.pedido ?? creadoBody.pedido).id
+
+    await page.goto(`${BASE}/pedidos?all=true&openPedido=${pedidoId}`)
+    await page.getByRole('button', { name: /Editar/ }).click()
+    await expect(page.getByTestId('pedidos-workspace')).toBeVisible()
+    await expect(page.getByTestId('workspace-canal-fijo')).toBeVisible()
+    await expect(page.getByTestId('workspace-cant-PACA_AGUA')).toHaveValue('3')
+
+    await page.getByTestId('workspace-inc-PACA_AGUA').click()
+    await expect(page.getByTestId('workspace-cant-PACA_AGUA')).toHaveValue('4')
+    await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 10000 })
+    await expect(page.getByTestId('workspace-commit')).toContainText('Guardar cambios')
+
+    const put = page.waitForResponse((r) => r.url().endsWith(`/api/pedidos/${pedidoId}`) && r.request().method() === 'PUT')
+    await page.getByTestId('workspace-commit').click()
+    expect((await put).status()).toBe(200)
+    await expect(page.getByTestId('pedidos-workspace')).toHaveCount(0)
+
+    // GET /api/pedidos/[id] → { pedido } con items del DTO (cantPedido).
+    const detalle = await (await apiGet(page, `/api/pedidos/${pedidoId}`)).json()
+    const items = detalle.pedido.items as Array<{ producto: string; cantPedido: number }>
+    expect(items.find((i) => i.producto === 'PACA_AGUA')?.cantPedido).toBe(4)
+  })
 })
 
 test.describe('flag OFF: la UI de tabs sigue funcionando', () => {
