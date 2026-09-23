@@ -27,15 +27,8 @@
 | **F10-7** VENTA_LIBRE / repartidor | ✅ **cerrado**: decisión existente recuperada | 🟡 retirar los consumidores legacy restantes + extraer dependencias runtime del workspace | §F10-7 |
 | **F10-8** rollback probado | 🟡 mecánica ON→OFF en Preview ✅ + persistencia local ✅ · **falta el smoke autenticado read-only en Preview** | 🟡 ídem + observación durante el soak | smoke read-only (§F10-8) + eliminar la variable temporal de Preview |
 
----|---|---|
-| F10-1 flag ON en un deploy | 🟡 Preview sí · Production no (es el paso de activación) | Activación controlada (post-merge de F10a) |
-| F10-2 cobertura funcional (workspace) | ✅ para los flujos activos en prod · N/A condicionado para 2 | Ninguno. Los 2 N/A se reabren si se enciende `NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR` |
-| F10-3 integridad preview↔commit | ✅ | Ninguno |
-| F10-4 permisos | ✅ (test comportamental nuevo) | Ninguno |
-| F10-5 auditoría | ✅ paridad · ⚠️ BRECHA pre-existente (sin antes/después) | Ninguno para activar; brecha registrada |
-| F10-6 sin regresión con flag ON | ✅ 0 regresiones fuera de `/pedidos` · 🟡 cobertura E2E parcial de la UI del Hub (riesgo residual declarado) | Ninguno técnico. Aceptar el riesgo residual con mitigación en el soak es decisión de ustedes |
-| F10-7 VENTA_LIBRE / repartidor | ✅ no es decisión abierta para activar | Pendiente acotado para F10b (§F10-7) |
-| F10-8 rollback probado | 🟡 mecánica Preview ✅ + funcional local ✅ · smoke autenticado en Preview pendiente | Smoke **read-only** en Preview por alguien con credencial real (Preview usa la BD de producción, §F10-8) |
+> **Hallazgo fuera de alcance:** bug preexistente **B-1**. `/pedidos?atrasados=true` y `?enRiesgo=true` (links "Verlos" y "Ver y asignar" del dashboard) se quedan en skeleton **con y sin el Hub**. Muy probablemente afecta hoy a producción. Ticket aparte, ver §F10-6.
+
 
 ---
 
@@ -126,11 +119,39 @@
 - **Peek y G11 en móvil (viewport iPhone 13):** peek abre sin navegar, muestra el pedido y la acción destacada, cierra con ✕. "Cambiar cantidades" → 2 opciones, sin venta libre → el form de corrección exige motivo. Todo funciona.
 - **Observación UX (pre-existente, no del Hub):** en iOS el banner PWA "Instalar aplicación" (fijo abajo, `z-40`) tapa la parte inferior de la hoja del peek móvil, donde está "Cambiar cantidades…", hasta que el usuario lo cierra. Conviene verlo en el soak.
 
-**Veredicto F10-6:**
-- ✅ **Fuera de `/pedidos`: 0 regresiones** con el Hub ON (8 shards: 6 en CI + subconjunto no-`/pedidos` de 3/7 en local).
-- ✅ **Hub:** su suite pasa en desktop (CI + local) y en móvil salvo 4 tests con una aserción solo-desktop. El comportamiento que prueban se verificó a mano en móvil.
-- ⚠️ **Riesgo residual declarado (no es regresión):** ~115 tests de UI legacy de `/pedidos` (más `abonos`, `full-user-day`, `session-expiry`, `precios-especiales`) no aplican al Hub. Varias conductas que cubren tienen cobertura E2E **parcial o nula** en el Hub: filtros funcionales, detalle de factura, saldo pendiente no entregado, edición en tiempo real, display de negocio. Su backend es el mismo y está cubierto por unit/integración, pero la UI del Hub para esos casos no tiene E2E. Mitigación propuesta: la sesión guiada del soak (ver abajo) + migrar esos specs en F10b.
+**Estado F10-6:**
+- **F10a — ✅ APTO con mitigación.** 0 regresiones atribuibles al Hub fuera de `/pedidos` (8 shards: 6 en CI + subconjunto no-`/pedidos` de 3/7 en local, desktop y móvil). La suite propia del Hub pasa en desktop y en móvil, salvo 4 tests con una aserción solo-desktop cuyo comportamiento se verificó a mano.
+- **F10b — 🟡 PENDIENTE.** El contrato pide "suite E2E completa verde con flag ON ≥ N runs" y hoy hay cobertura E2E del Hub faltante (inventario abajo). Durante el soak se junta evidencia operativa; antes de F10b se decide qué pruebas se migran o reemplazan.
 
+### Inventario de cobertura: tests legacy de `/pedidos` con el Hub ON
+
+Método: los 90 tests de los 9 specs de UI de `/pedidos` corridos en local contra el build Hub ON, sin retries. Los que quedaron en "did not run" por cascada serial se re-corrieron aislados hasta que no quedó ninguno sin resultado. Clasificación con el baseline de `main` (flag OFF).
+
+| Resultado con Hub ON | Tests | Qué significa |
+|---|---|---|
+| **Pasan** (UI-agnósticos o todavía válidos) | **26** | API: filtros backend ×4, venta rápida / envío / pagar fiado / anular vía API, pedido sin pago es PENDIENTE, detalle incluye factura. UI: accesos por rol, búsqueda, `SmartDateFilter`, badges de origen y entrega, clic en fila abre detalle, deep-link con `clienteId`, touch targets, filtro default "Turno", pedido creado aparece en lista, filtrar por estado y por origen, ver detalle, repartidor ve Mi Ruta |
+| **Skip condicional** del propio test | 2 | venta rápida con sobrepago, asignar a embarque (`test.skip` por precondición) |
+| **Fallan también en `main`** (preexistentes, no del Hub) | 5 | campo `tipo` ausente en el listado de API (`tipo=ENVIO`, `tipo=PUNTO`, `tipo=ENVIO` en DOMICILIO) · `?atrasados=true` y `?enRiesgo=true` (ver bug B-1 abajo) |
+| **Fallan solo con el Hub ON** (atados a la UI legacy) | **57** | → cobertura a migrar o reemplazar, agrupada abajo |
+
+**Cobertura faltante en el Hub, por comportamiento.** C-1..C-8 suman los 57 tests; C-9 y C-10 son specs externos y E2E propios del Hub:
+
+| # | Comportamiento que cubrían los tests legacy | Tests | Dónde vive en el Hub | Cobertura E2E Hub hoy | Acción antes de F10b |
+|---|---|---|---|---|---|
+| C-1 | **Fiados:** lista, filtros, chips de periodo, empty state, expandir por cliente, **formulario de pago y métodos de pago**, filtro de días, badge de límite, búsqueda, dataset independiente de los filtros de Pedidos, hint "solo fiados de hoy", limpiar filtros, tablas desktop/mobile | 17 | foco "Esperando pago" + acción "Ver cartera" → `/cartera` | 🟡 solo el filtro por foco. **Ningún E2E navega a `/cartera`**: el registro de pago de fiado por UI queda **sin E2E** | E2E del flujo Hub → `/cartera` → registrar pago |
+| C-2 | **Alertas:** lista agregada del detector, reglas activas, filtros por severidad, empty state, escenario "2 pedidos mismo día", expandir por cliente, botones Guía / Crear caso, colores de severidad, búsqueda, tablas desktop/mobile | 13 | riesgo en el peek (`pedidos-peek-riesgo`) + foco Excepciones + `/casos` | 🟡 solo el caso por pedido en el peek. **No hay E2E de la vista agregada de alertas del detector** con el Hub | decidir si el Hub necesita vista agregada o si `/casos` la reemplaza, y cubrirla |
+| C-3 | **Shell y navegación:** 3 tabs, navegación y URL `?tab=`, badges de conteo, stats cards, layout desktop/mobile | 11 | focos (G2) + `pedido-hub-desktop/mobile` | ✅ parcial: shell, focos, responsive (`pedidos-hub.spec`) | nada de tabs; confirmar que conteos y stats de los focos tengan E2E |
+| C-4 | **Filtros UI:** panel de filtros, "Limpiar todo" (×2, incluida la regresión de race de URL), URL con filtros combinados persiste, filtros por tab | 4 | focos + rango de fecha independiente | 🟡 1 test (foco + fecha). **Sin E2E de búsqueda, limpiar ni persistencia de URL en el Hub** | E2E equivalentes en el Hub |
+| C-5 | **Detalle / estado visual:** stepper de estado, acciones según `PENDIENTE`, **nombre del cliente en el detalle**, **nombre de negocio prominente en lista y detalle**, **estado de pago visual (sin ✓ si no pagó; fiado en rojo si entregado con saldo)** | 6 | peek (capa 1/2) | 🟡 peek abre, navega y muestra acción destacada. **Sin E2E de nombre de negocio, estado de pago visual ni saldo en el Hub** | E2E del peek para negocio, estado de pago y saldo |
+| C-6 | **Edición que sobrevive a un refetch realtime** (cantidad, precio y dirección persisten tras `pedido.updated`) | 1 | workspace modo edición | 🟡 edición cubierta (F10-2), **sin el caso de refetch realtime** | E2E de edición + evento realtime |
+| C-7 | **Crear por UI:** venta rápida vía form legacy; crear fiado vía UI (`pedidos-all-contexts`) | 2 | workspace | ✅ venta rápida (F10-2) · 🟡 pedido con cliente sin pago: C1 lo crea, pero no verifica que aparezca como fiado | extender C1/C-1 |
+| C-8 | **Contexto por rol:** ADMIN/ASISTENTE ven tabs y filtros | 3 | Hub (roles) | 🟡 permisos por API (F10-4); sin E2E de UI por rol en el Hub | E2E de UI del Hub por rol (ASISTENTE, CONTADOR) |
+| C-9 | **Specs externos que crean o leen pedidos por la UI legacy:** `abonos` (crea el pedido por `submit-pedido`), `full-user-day` 6 y 7 (form y filtro "PENDIENTE"), `session-expiry` (espera "Lista de Pedidos"), `precios-especiales` (venta rápida por FAB legacy) | 5 (×2 proyectos) | — | los comportamientos de fondo (abono, expiración de sesión, precio especial) no dependen del Hub; precio especial verificado por API | cambiar su preparación a API o al workspace |
+| C-10 | **E2E del Hub en móvil** que esperan `peek-desktop` (peek en `pedidos-hub`, 2 en `pedidos-peek-riesgo`, decisión G11 en `pedidos-g11`) | 4 | `peek-mobile` | ✅ comportamiento verificado a mano (iPhone 13) | **corregirlos para probar `peek-mobile`**; la verificación manual no sustituye la automatización |
+
+### Bug preexistente encontrado (fuera del alcance de F10a)
+
+- **B-1 — `/pedidos?atrasados=true` y `?enRiesgo=true` se quedan en skeleton.** Son los destinos de los links "Verlos" y "Ver y asignar" del banner del dashboard. Reproducido en local contra el build de `main` **con el flag OFF y con el flag ON**: el API responde 200 (`GET /api/pedidos?all=true&atrasados=true`), no queda ningún request colgado ni hay error de página, pero la vista no pasa del skeleton ni muestra su banner ("Mostrando solo pedidos pendientes sin asignar…"). El test `pedidos.spec.ts` "?atrasados=true abre vista autocontenida" ya falla en el baseline de CI de `main`. **No es regresión del Hub** y muy probablemente afecta hoy a producción. Merece un ticket propio; no se toca en F10a.
 
 - **Otros jobs de la misma corrida:** Type check + Tests ✅ · Lint ✅ · E2E Hub (V2 ON) ✅ · Integration (non-blocking) ❌ 1/55: `pedido-dedup.test.ts` (P2028), que también falla en el baseline de `main` (documentado en #258).
 - **Local:** `npx tsc --noEmit` limpio · `npm run test` 343 archivos / **3395 tests** verdes · eslint limpio en archivos tocados.
