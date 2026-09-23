@@ -8,6 +8,16 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      pedidos_v2:
+        # F10a-preflight (gate F10-6): permite correr la matriz `e2e` completa
+        # (8 shards) con el Hub ON sobre cualquier ref, para comparar contra el
+        # baseline de `main` (flag OFF) en el mismo commit. Default `false`:
+        # push / pull_request / schedule no tienen `inputs` y el job `e2e`
+        # sigue construyendo y corriendo exactamente igual que antes (flag OFF).
+        description: 'Construir y correr el job e2e con NEXT_PUBLIC_PEDIDOS_V2=true'
+        type: boolean
+        default: false
   # Soak temporal del Pedido Hub V2 (Fase 10). Cada 3h dispara SOLO el job
   # `e2e-hub` (los demás jobs se saltan vía `if: github.event_name !=
   # 'schedule'`). El objetivo es medir estabilidad sostenida en el tiempo,
@@ -392,6 +402,10 @@ jobs:
       AUTH_TRUST_HOST: 'true'
       TZ: America/Bogota
       PLAYWRIGHT_TEST_BASE_URL: http://localhost:3001
+      # Vacío (= OFF) salvo `workflow_dispatch` con `pedidos_v2: true` (ver
+      # `on.workflow_dispatch.inputs`). Lo leen el build (Next.js lo inlinea)
+      # y el runner de Playwright (los `test.skip(!HUB_ON)` de los specs).
+      NEXT_PUBLIC_PEDIDOS_V2: ${{ inputs.pedidos_v2 && 'true' || '' }}
 
     steps:
       - name: Checkout repository
