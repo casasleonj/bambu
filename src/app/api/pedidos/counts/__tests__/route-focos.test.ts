@@ -30,6 +30,12 @@ describe('GET /api/pedidos/counts — focos del Hub', () => {
     expect(src).toMatch(/_sum:\s*\{\s*saldo:\s*true\s*\}/)
   })
 
+  it('O-4 (F10a): esperandoPagoCount sale del MISMO aggregate que el total (mismo alcance global)', () => {
+    expect(src).toMatch(/_count:\s*\{\s*_all:\s*true\s*\}/)
+    expect(src).toMatch(/esperandoPagoCount:\s*esperandoPagoAgg\._count\._all/)
+    expect(src).toMatch(/esperandoPagoTotal:\s*Number\(esperandoPagoAgg\._sum\.saldo/)
+  })
+
   it('pendientesN2 se cuenta sobre ObligacionPendiente ABIERTA', () => {
     expect(src).toMatch(/obligacionPendiente\.count/)
     expect(src).toMatch(/estado:\s*['"]ABIERTA['"]/)

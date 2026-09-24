@@ -22,6 +22,8 @@ export interface PedidoHubCounts {
   /** solo atrasados de días anteriores — dispara el tono ámbar del foco. */
   atrasadosCount: number
   enRutaCount: number
+  /** global (todas las fechas), mismo alcance que esperandoPagoTotal. */
+  esperandoPagoCount: number
   esperandoPagoTotal: number
   pendientesN2Count: number
   /** operaciones con excepción abierta — en 4a se deriva de la página cargada. */
@@ -96,7 +98,7 @@ export function PedidoHub({
   const focos: FocoCount[] = [
     { key: 'porPlanificar', label: 'Por planificar', value: counts.porPlanificarCount, tone: counts.atrasadosCount > 0 ? 'amber' : 'none' },
     { key: 'enRuta', label: 'En ruta', value: counts.enRutaCount, tone: 'none' },
-    { key: 'esperandoPago', label: 'Esperando pago', value: countByFoco(pedidos, focosByPedido, 'esperandoPago'), amount: counts.esperandoPagoTotal, tone: counts.esperandoPagoTotal > 0 ? 'red' : 'none' },
+    { key: 'esperandoPago', label: 'Esperando pago', value: counts.esperandoPagoCount, amount: counts.esperandoPagoTotal, tone: counts.esperandoPagoTotal > 0 ? 'red' : 'none' },
     { key: 'pendientesN2', label: 'Pendientes', value: counts.pendientesN2Count, tone: counts.pendientesN2Count > 0 ? 'amber' : 'none' },
     { key: 'excepciones', label: 'Excepciones', value: counts.excepcionesCount ?? excepcionesEnPagina, tone: (counts.excepcionesCount ?? excepcionesEnPagina) > 0 ? 'red' : 'none' },
   ]
@@ -258,12 +260,4 @@ export function PedidoHub({
       />
     </div>
   )
-}
-
-function countByFoco(
-  pedidos: Pedido[],
-  focosByPedido: Map<string, ReturnType<typeof deriveOperacion>['focos']>,
-  foco: FocoKey,
-): number {
-  return pedidos.filter((p) => focosByPedido.get(p.id)?.includes(foco)).length
 }
