@@ -83,10 +83,10 @@ De las ~30 decisiones/invariantes verificadas, **14 ya están completamente impl
 
 Gran parte de "YA EXISTE" de §2 depende de esto, así que se reporta aparte para no repetirlo en cada fila:
 
-- `NEXT_PUBLIC_PEDIDOS_V2` sigue OFF por defecto (`.env.example:52`).
-- Soak programado (`e2e-hub`, cron `23 */3 * * *`): **13/18 corridas, todas en verde**, desde 2026-09-10 08:45Z hasta 2026-09-12 20:40Z (~60h de las 72h requeridas). Verificado directamente vía `gh run list` — no es un dato de memoria desactualizada.
-- Criterio de PASS (documentado en memoria del proyecto): ≥72h **y** ≥18 corridas verdes sin retries/flaky. Falta completar ambas condiciones — está a menos de 12h y 5 corridas de cumplirse si se mantiene la racha.
-- **Ninguna fila de "YA EXISTE" de §2 requiere desarrollo nuevo — requieren que termine este soak y se active el flag.**
+- `NEXT_PUBLIC_PEDIDOS_V2` sigue OFF: la variable **no existe en Vercel Production** (verificado 2026-09-23), así que los 6 usuarios nunca operaron el Hub.
+- Soak **de CI** (`e2e-hub`, cron `23 */3 * * *`): criterio (≥72h + ≥18 verdes) cumplido. 37 corridas programadas verdes consecutivas del 2026-09-14 19:52Z al 2026-09-22 21:29Z, tras el fix `dc3d649` (#253) de las 2 fallas del 14-sep, que eran del test (domingo) y no del Hub.
+- **El soak de CI no sustituye al soak de producción de F10a.** Estado de gates F10-1..F10-8, rollback probado y ventana de soak propuesta: `docs/pedidos/fase10a-preflight-informe.md`.
+- **Ninguna fila de "YA EXISTE" de §2 requiere desarrollo nuevo — requieren la activación controlada del flag y que termine el soak de producción (F10a).**
 
 ---
 
