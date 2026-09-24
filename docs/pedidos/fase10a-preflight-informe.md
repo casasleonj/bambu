@@ -25,7 +25,7 @@
 | **F10-5** auditoría | ✅ paridad Hub↔legacy: la activación no introduce regresión de auditoría | 🟡 **BRECHA PLAN↔CÓDIGO preexistente**: el gate exige `PedidoAuditDiff` con antes/después y ese artefacto no existe | resolver antes de declarar F10-5 satisfecho para F10b. No se construye dentro de F10a |
 | **F10-6** sin regresión con flag ON | ✅ **APTO con mitigación**: 0 regresiones atribuibles al Hub fuera de `/pedidos`, Hub verificado en desktop y móvil | 🟡 **PENDIENTE**: no hay "suite E2E completa verde con flag ON ≥ N runs"; hay cobertura E2E del Hub faltante (inventario §F10-6) | inventario de cobertura → decidir migración/reemplazo antes de F10b · 4 tests móviles a corregir (`peek-mobile`) |
 | **F10-7** VENTA_LIBRE / repartidor | ✅ **cerrado**: decisión existente recuperada | 🟡 retirar los consumidores legacy restantes + extraer dependencias runtime del workspace | §F10-7 |
-| **F10-8** rollback probado | 🟡 mecánica ON→OFF en Preview ✅ + persistencia local ✅ · **falta el smoke autenticado read-only en Preview** | 🟡 ídem + observación durante el soak | smoke read-only (§F10-8) + eliminar la variable temporal de Preview |
+| **F10-8** rollback probado | ✅ mecánica ON→OFF en Preview + persistencia local + **smoke autenticado read-only en Production** (2026-09-23; en Preview no se pudo, §F10-8) + variable temporal eliminada | 🟡 observación durante el soak · rollback real en Production aún no ejercitado | §F10-8 |
 
 > **Hallazgo fuera de alcance:** bug preexistente **B-1**. `/pedidos?atrasados=true` y `?enRiesgo=true` (links "Verlos" y "Ver y asignar" del dashboard) se quedan en skeleton **con y sin el Hub**. Muy probablemente afecta hoy a producción. Ticket [#273](https://github.com/casasleonj/bambu/issues/273), ver §F10-6.
 
@@ -180,7 +180,7 @@ Regla de recuperación aplicada: blueprint §2.5/§8.3/§8.4, `VENTA_LIBRE_EXPER
 
 ## F10-8 — Rollback probado
 
-**Hallazgo previo:** existe **un solo proyecto Supabase** (`wdttkrlbpcawulaaiapj`, sin branches de datos) → los deploys de **Preview usan la base de producción**. Cualquier "gate técnico en Preview" que cree o edite datos escribe en producción, así que la verificación en Preview debe ser **read-only**.
+**Hallazgo previo:** existe **un solo proyecto Supabase** (`wdttkrlbpcawulaaiapj`, sin branches de datos) → los deploys de **Preview usan la base de producción**. Cualquier "gate técnico en Preview" que cree o edite datos escribe en producción, así que la verificación en Preview debe ser **read-only**. *(Corrección 2026-09-23: Preview apunta a ese proyecto, pero hoy **no logra conectarse**; ver "Smoke autenticado en Preview" más abajo y O-5.)*
 
 | Paso | Dónde | Resultado | Tiempo |
 |---|---|---|---|
@@ -194,12 +194,33 @@ Regla de recuperación aplicada: blueprint §2.5/§8.3/§8.4, `VENTA_LIBRE_EXPER
 
 - **Procedimiento de rollback en Production:** Vercel → `NEXT_PUBLIC_PEDIDOS_V2` = `false` (o borrar) en Production → Redeploy del último deploy de producción (sin caché) → smoke. **Tiempo esperado ≈ 2–3 min** (build medido ~2 min). Cambiar solo la variable **no** alcanza: `NEXT_PUBLIC_*` se inlinea en el build.
 - **Datos:** Hub y legacy escriben por los mismos endpoints y use cases (F10-3/F10-5) → el rollback no requiere migración. La cola offline (`requestQueue`) reproduce contra las mismas URLs, así que es compatible en ambos sentidos.
-- **Estado F10a:** 🟡 hasta completar el smoke autenticado read-only en Preview. **Estado F10b:** 🟡 ídem + la observación durante el soak.
-- **Smoke autenticado read-only — PENDIENTE (requiere credencial real):** no tengo credenciales de producción y no las pruebo, porque Preview apunta a la BD real. Los deploys de Vercel son **inmutables**, así que el smoke puede hacerse sobre los dos deploys ya generados por la prueba de rollback, sin volver a tocar variables:
-  1. `https://bambudemomultimodelo-7v43tc6wb-casasleonjs-projects.vercel.app` (**Hub ON**, `dpl_6ehV8ENYw6rEMpBYbUAPaVDHYMdL`) → login → `/pedidos` → confirmar Hub: focos arriba, sin tabs "Pedidos/Fiados/Alertas" → navegar y abrir un peek (solo lectura).
-  2. `https://bambudemomultimodelo-5rd7agn7d-casasleonjs-projects.vercel.app` (**Hub OFF**, rollback, `dpl_4rg1es9VXZrKiMvm363ses37qccj`) → login (la cookie es por host) → `/pedidos` → confirmar legacy: tabs visibles.
-  3. **Prohibido durante el smoke:** crear, editar, entregar, pagar, anular, conciliar o cualquier otra escritura.
-- **Limpieza — PENDIENTE:** eliminar la variable Preview `NEXT_PUBLIC_PEDIDOS_V2` acotada a `claude/soak-status-67xd9k` (id `lvEjriBusynzbpE7`, hoy `false` = inerte). La API disponible en esta sesión permite crear y editar variables pero **no borrarlas**, así que hay que hacerlo desde el dashboard: *Settings → Environment Variables*. No debe quedar configuración experimental abandonada.
+- **Estado F10a:** ✅ (smoke en Production, abajo). **Estado F10b:** 🟡 falta la observación durante el soak; el rollback en Production todavía no se ejecutó de verdad.
+
+### Smoke autenticado en Preview: no se pudo completar (2026-09-23)
+
+El login del deploy Hub ON de Preview quedó colgado en "Ingresando…". Log de Vercel del deploy `dpl_6ehV8ENYw6rEMpBYbUAPaVDHYMdL`: `00:17:06 UTC POST /login 504 — Vercel Runtime Timeout Error: Task timed out after 300 seconds`. El login solo consulta la BD (`authorize` → `prisma.user.findUnique`), así que **el runtime de Preview no llega a la base de datos**. Las variables `DATABASE_URL` / `DIRECT_URL` de Preview son las originales y nunca se actualizaron; las de Production se re-crearon después con el pooler de Supabase ("transaction mode with pgbouncer" / "session mode"). Hipótesis consistente con todo lo observado, **no verificada**: los valores no se descifraron. Consecuencias:
+- **Ningún deploy de Preview permite login hoy.** Es un problema preexistente, no de esta fase. Hallazgo O-5.
+- Corrige el "hallazgo previo" de arriba: Preview **apunta** al proyecto Supabase de producción, pero no logra conectarse.
+
+Por decisión del equipo (2026-09-23), el smoke se hizo **directamente en Production**, con el rollback instantáneo preparado.
+
+### Activación y smoke en Production (2026-09-23, ~19:30 Bogotá)
+
+| Paso | Resultado |
+|---|---|
+| Variable temporal de Preview `lvEjriBusynzbpE7` | **eliminada** (verificado: la consulta por la rama `claude/soak-status-67xd9k` devuelve vacío y no queda ninguna `NEXT_PUBLIC_PEDIDOS_V2` en Preview) |
+| Rollback target identificado | `dpl_6rTXfnfKfrGQtjagJrz4ZYz8nABC` (`b43rdonfg`, `main` @ `cfba4d2`, Hub OFF / legacy) |
+| `NEXT_PUBLIC_PEDIDOS_V2=true` solo en **Production** | creada `dqwoz62SlHQexlN3` (plain) |
+| Redeploy de `cfba4d2` a Production (build nuevo) | `dpl_6GLGiREtCRuxUnoynokRLwu97Fng` (`end3kmho5`) READY en **~120 s**, alias `portal.aguabambu.com` |
+| `GET portal.aguabambu.com/api/health` | 200 |
+| Login + `/pedidos` (usuario real, captura) | **Hub**: focos Por planificar / En ruta / Esperando pago / Pendientes / Excepciones, tabla Operación/Qué/Estado/Total/Acción, **sin** tabs "Pedidos/Fiados/Alertas" |
+| Abrir operación #262 | peek lateral: total $6.400, pagado $6.400, "2 Paca Agua", "Abrir detalle completo →". `GET /api/pedidos/<id>` 200 |
+| Logs del deploy (primeros ~5 min) | todas las respuestas 200 (`/pedidos`, `/api/pedidos`, `/api/pedidos/counts`, `/api/clientes`, `/api/embarques`, sesión); **0 errores** |
+| Escrituras durante el smoke | ninguna del smoke. En la misma ventana aparecen `POST /api/rutas/planes/generar` y `/replan` (201) desde `/rutas`: operación normal de un usuario, ajena a `/pedidos` |
+
+**Rollback en Production (vigente durante el soak):**
+1. **Inmediato (segundos, sin build):** Promote / Instant Rollback a `dpl_6rTXfnfKfrGQtjagJrz4ZYz8nABC`.
+2. **Definitivo:** `NEXT_PUBLIC_PEDIDOS_V2` → `false` (o borrarla) en Production → Redeploy sin caché (~2 min). Sin este paso, el próximo deploy de `main` vuelve a salir con el Hub ON.
 
 ---
 
@@ -210,6 +231,9 @@ Regla de recuperación aplicada: blueprint §2.5/§8.3/§8.4, `VENTA_LIBRE_EXPER
 | O-1 | En iOS el banner PWA "Instalar aplicación" (`role=banner`, fijo abajo, `z-40`) **cubre la parte inferior de la hoja `peek-mobile`**, donde está "Cambiar cantidades…", hasta que el usuario lo cierra. Visto al probar G11 en viewport iPhone 13 | UX, preexistente (el banner ya existía; el peek móvil es nuevo) | No: el banner se puede cerrar | preguntar explícitamente en el feedback semanal · registrar incidencias · decidir antes de F10b si el peek debe reservar ese espacio |
 | O-2 | Ni el FAB legacy ni el Hub ocultan "Nueva operación" a CONTADOR (el backend responde 403) | UX, paridad | No | registrar si CONTADOR lo intenta durante el soak |
 | O-3 | Los 4 E2E móviles del Hub que esperan `peek-desktop` fallan en chromium-mobile | deuda de tests | No (comportamiento verificado a mano) | corregirlos para probar `peek-mobile` antes de F10b; la verificación manual no sustituye la automatización |
+| O-4 | El foco **"Esperando pago"** mezcla dos alcances: el número sale de `countByFoco` sobre los pedidos **cargados en la vista** (p. ej. Turno), y el monto (`esperandoPagoTotal`, `/api/pedidos/counts`) es el saldo **global** de todos los pedidos entregados con saldo, de cualquier fecha. Se vio "0 · $101.800" en Production. "Por planificar" también es global (15) mientras la lista está filtrada | UX / coherencia de datos mostrados (los datos son correctos) | No | registrar si confunde a los usuarios · alinear el alcance de número y monto antes de F10b |
+| O-5 | **Preview no conecta a la BD**: todo login en Preview termina en 504 a los 300 s (ver §F10-8). Las `DATABASE_URL`/`DIRECT_URL` de Preview no son las del pooler que usa Production | infraestructura, preexistente | No (el smoke se hizo en Production) | corregir las variables de BD de Preview: sin eso ningún Preview sirve para probar con login |
+| O-6 | El peek muestra dos bloques grises (placeholder `peek-layer2-loading`) mientras carga `GET /api/pedidos/<id>`. En la captura del smoke se veían. La request respondió 200 | UX, latencia | No | confirmar en el feedback que el detalle termina de cargar; si queda en gris, es bug |
 
 ## Soak de producción — criterio aprobado (híbrido)
 
@@ -241,10 +265,10 @@ Regla de recuperación aplicada: blueprint §2.5/§8.3/§8.4, `VENTA_LIBRE_EXPER
 
 ## Secuencia siguiente
 
-1. PR de F10a (este cambio) → revisión → merge.
-2. Smoke autenticado read-only en Preview (§F10-8) + eliminar la variable temporal de Preview.
-3. `NEXT_PUBLIC_PEDIDOS_V2=true` en **Production** → redeploy → **smoke inmediato** de los flujos críticos.
-4. Si el smoke es correcto, **empieza oficialmente el soak**.
+1. ✅ PR de F10a (#272) → revisión → merge (`cfba4d2`).
+2. ✅ Variable temporal de Preview eliminada. ⚠️ El smoke en Preview no se pudo hacer (Preview no conecta a la BD, O-5); se hizo en Production por decisión del equipo.
+3. ✅ `NEXT_PUBLIC_PEDIDOS_V2=true` en **Production** → redeploy `dpl_6GLGiREtCRuxUnoynokRLwu97Fng` → **smoke inmediato OK** (§F10-8).
+4. ✅ **Soak iniciado el 2026-09-23 a las ~19:35 (Bogotá).** Las 2 semanas operativas completas (lun–sáb) son **2026-09-28 → 2026-10-10**; el cierre también depende de los mínimos de volumen y de la sesión guiada.
 5. Al terminar el soak: re-evaluar F10-1..F10-8 bajo el criterio F10b + segunda revisión de `main` ("el legacy ya no tiene consumidores necesarios"). Solo entonces se abre F10b.
 
 ## Cambios de esta fase (PR F10a-preflight)
