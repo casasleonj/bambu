@@ -31,7 +31,9 @@ test.describe('Session expiry client-side redirect', () => {
 
     // Navegar a página protegida
     await page.goto('/pedidos')
-    await expect(page.locator('text=Lista de Pedidos')).toBeVisible()
+    // Scoped a <main>: la copia transitoria del streaming SSR (fuera de <main>,
+    // ver appMain en fixtures.ts) hace que el texto resuelva a 2 elementos.
+    await expect(page.locator('main').locator('text=Lista de Pedidos')).toBeVisible()
 
     // Simular que un fetch recibió 401/403 y disparó el evento. Esto evita
     // esperar 60s de polling en CI.

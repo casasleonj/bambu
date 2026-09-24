@@ -10,6 +10,12 @@
  * `categoria`/`familiaId`/`fuentes`/`n` sin que quede detectado como
  * inconsistente con la evidencia de producción real.
  *
+ * `M1_REFERENCIA` incluye además una **Adenda post-M1** (1 valor, "divina
+ * pastora") con su propia evidencia (consulta de solo lectura contra
+ * producción, Supabase, no el documento M1) — ver el bloque comentado antes
+ * de esa entrada. `M1_INVENTARIO_BARRIO.md` en sí permanece sin editar: sigue
+ * documentando únicamente el inventario original de 52 valores.
+ *
  * Este módulo es puro (sin I/O, sin Prisma) para que la validación sea
  * testeable sin base de datos. `scripts/backfill-barrio-canonico.ts` es el
  * único lugar que hace I/O (leer el JSON, leer/escribir la DB).
@@ -59,9 +65,17 @@ export interface ValidationError {
  * vive acá — esto es solo la evidencia inmutable contra la que se valida el
  * ledger editable (`scripts/backfill-barrio-canonico.decisiones.json`).
  *
- * n total = 178 (126 Cliente + 51 Negocio + 1 Pedido, `instituto` es el único
- * valor que aparece en las tres fuentes) — verificado por suma exhaustiva
- * contra M1 §0/§5.
+ * n total (52 valores de M1) = 178 (126 Cliente + 51 Negocio + 1 Pedido,
+ * `instituto` es el único valor que aparece en las tres fuentes) — verificado
+ * por suma exhaustiva contra M1 §0/§5.
+ *
+ * Más abajo, tras el bloque de M1, hay una **Adenda post-M1 (1 valor,
+ * "divina pastora", n=179 total)**: detectado en producción real después de
+ * cerrado M1_INVENTARIO_BARRIO.md (no está en ese documento, que permanece
+ * sin editar). Su `categoria`/`fuentes`/`n` están verificados con una consulta
+ * de solo lectura directa a producción (Supabase, proyecto wdttkrlbpcawulaaiapj,
+ * 2026-09-17), no con el documento M1 — se documenta aparte para no mezclar
+ * ambas fuentes de evidencia.
  */
 export const M1_REFERENCIA: Record<
   string,
@@ -126,6 +140,13 @@ export const M1_REFERENCIA: Record<
 
   // Categoría D — ruido, no es un Barrio (1), M1 §4.
   'drogueria fama yyy ubica en el romboy de la 25': { categoria: 'D_DESCARTAR', familiaId: null, fuentes: ['CLIENTE'], n: 1 },
+
+  // Adenda post-M1 (1) — NO pertenece a M1_INVENTARIO_BARRIO.md (que
+  // permanece sin editar). Detectado en producción real tras cerrado M1;
+  // evidencia propia: consulta de solo lectura a Supabase (proyecto
+  // wdttkrlbpcawulaaiapj, 2026-09-17) confirma 1 ocurrencia en Cliente.barrio,
+  // 0 en Negocio.barrio. Decisión explícita del equipo: es un barrio real.
+  'divina pastora': { categoria: 'B_VALIDACION', familiaId: null, fuentes: ['CLIENTE'], n: 1 },
 }
 
 const FUENTES_VALIDAS: readonly Fuente[] = ['CLIENTE', 'NEGOCIO', 'PEDIDO']

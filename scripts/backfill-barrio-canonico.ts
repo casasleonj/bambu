@@ -147,6 +147,15 @@ async function crearOEncontrarBarrio(nombre: string, tx: Prisma.TransactionClien
 
 interface ResumenEntrada {
   valorNormalizado: string
+  // M1 = fotografía histórica de docs/territorio/M1_INVENTARIO_BARRIO.md
+  // (evidencia inmutable, nunca se recalcula). candidatosActuales = cuántos
+  // Cliente+Negocio con ese valor existen HOY en producción — el backfill
+  // opera únicamente sobre estos últimos; M1 no es una cantidad que la
+  // producción actual tenga obligación de conservar (decisión del equipo,
+  // caso "Centro": M1=60, producción actual=10, sin que eso sea una
+  // decisión territorial nueva ni un dato a "recuperar").
+  nHistoricoM1: number
+  candidatosActuales: number
   barrioCreado: boolean
   vinculados: number
   yaCorrectos: number
@@ -168,8 +177,11 @@ async function procesarEntrada(
   dryRun: boolean,
   log: ExecutionLogEntry[],
 ): Promise<ResumenEntrada> {
+  const registros = registrosPorValor.get(entry.valorNormalizado) ?? []
   const resumen: ResumenEntrada = {
     valorNormalizado: entry.valorNormalizado,
+    nHistoricoM1: M1_REFERENCIA[entry.valorNormalizado]?.n ?? 0,
+    candidatosActuales: registros.length,
     barrioCreado: false,
     vinculados: 0,
     yaCorrectos: 0,
@@ -177,7 +189,6 @@ async function procesarEntrada(
     descartados: 0,
     pendientes: 0,
   }
-  const registros = registrosPorValor.get(entry.valorNormalizado) ?? []
 
   const registrarLog = (
     r: RegistroPendiente,
@@ -221,8 +232,17 @@ async function procesarEntrada(
 
       if (entry.decision === 'FUSIONAR_EN') {
         const destino = resolverDestinoFusion(entry, porValor)
+        // La identidad real de un Barrio es `nombreNormalizado` del NOMBRE
+        // CANÓNICO que se va a crear/reusar (`crearBarrio`/`crearOEncontrarBarrio`
+        // solo conocen ese nombre) -- nunca el `valorNormalizado` de la
+        // entrada del ledger, que es el texto legacy tal cual aparece en
+        // producción y puede diferir del canónico (ej. "laureles" -> "Los
+        // Laureles"). Buscar por `valorNormalizado` subestimaba CONFLICTOS
+        // cuando un Barrio ya existía con ese texto legacy como nombre
+        // (creado a mano vía UI antes de correr el backfill).
+        const nombreNormalizadoDestino = normalizeBarrioNombre(destino.barrioCanonico!)
         if (dryRun) {
-          const existente = await tx.barrio.findUnique({ where: { nombreNormalizado: destino.valorNormalizado } })
+          const existente = await tx.barrio.findUnique({ where: { nombreNormalizado: nombreNormalizadoDestino } })
           barrioId = existente?.id ?? `(pendiente-crear:${destino.barrioCanonico})`
         } else {
           const barrio = await crearOEncontrarBarrio(destino.barrioCanonico!, tx)
@@ -230,8 +250,9 @@ async function procesarEntrada(
         }
       } else {
         // CREAR_BARRIO o MANTENER_SEPARADO: este valor tiene su propio Barrio.
+        const nombreNormalizadoDestino = normalizeBarrioNombre(entry.barrioCanonico!)
         if (dryRun) {
-          const existente = await tx.barrio.findUnique({ where: { nombreNormalizado: entry.valorNormalizado } })
+          const existente = await tx.barrio.findUnique({ where: { nombreNormalizado: nombreNormalizadoDestino } })
           if (existente) {
             barrioId = existente.id
           } else {
@@ -239,7 +260,7 @@ async function procesarEntrada(
             barrioCreadoAhora = true
           }
         } else {
-          const antes = await tx.barrio.findUnique({ where: { nombreNormalizado: entry.valorNormalizado } })
+          const antes = await tx.barrio.findUnique({ where: { nombreNormalizado: nombreNormalizadoDestino } })
           const barrio = await crearOEncontrarBarrio(entry.barrioCanonico!, tx)
           barrioId = barrio.id
           barrioCreadoAhora = !antes
@@ -291,7 +312,14 @@ function imprimirReporte(
   totalEntradas: number,
 ) {
   console.log(`=== BACKFILL BARRIO CANÓNICO — ${dryRun ? 'DRY RUN' : 'MODO REAL'} ===`)
-  console.log(`Ledger: ${totalEntradas - ledgerValidacion.length >= 0 ? totalEntradas : '?'}/52 entradas ${ledgerValidacion.length === 0 ? 'válidas' : 'con errores'}`)
+  const entradasEsperadas = Object.keys(M1_REFERENCIA).length
+  console.log(`Ledger: ${totalEntradas - ledgerValidacion.length >= 0 ? totalEntradas : '?'}/${entradasEsperadas} entradas ${ledgerValidacion.length === 0 ? 'válidas' : 'con errores'}`)
+  console.log('')
+  console.log(
+    'Nota: "M1" es la fotografía histórica de docs/territorio/M1_INVENTARIO_BARRIO.md — evidencia ' +
+      'inmutable, NO una cantidad que la producción actual deba conservar. El backfill opera ' +
+      'únicamente sobre los registros que existen HOY en Cliente/Negocio ("producción actual").',
+  )
   console.log('')
 
   const barriosACrear = resumenes.filter((r) => r.barrioCreado).length
@@ -321,6 +349,20 @@ function imprimirReporte(
   }
   console.log(`Anomalías:                    0`)
   console.log('')
+
+  console.log('Detalle por valor — M1 histórico vs. producción actual:')
+  for (const r of resumenes) {
+    const partes = [`M1 histórico=${r.nHistoricoM1}`, `producción actual=${r.candidatosActuales}`]
+    if (r.vinculados > 0) partes.push(`vinculados=${r.vinculados}`)
+    if (r.yaCorrectos > 0) partes.push(`ya correctos=${r.yaCorrectos}`)
+    if (r.conflictos > 0) partes.push(`conflictos=${r.conflictos}`)
+    if (r.descartados > 0) partes.push(`descartados=${r.descartados}`)
+    if (r.pendientes > 0) partes.push('pendiente de decisión')
+    if (r.error) partes.push('ERROR')
+    console.log(`  · ${r.valorNormalizado}: ${partes.join(', ')}`)
+  }
+  console.log('')
+
   if (ledgerValidacion.length > 0) {
     console.log('Ledger inválido / bloqueante:')
     for (const e of ledgerValidacion) {
@@ -375,12 +417,17 @@ async function main() {
 
   // Checklist del gate de F2, punto 5: cobertura total de M1 (126+51 = 177,
   // sin contar Pedido.barrioEntrega, que no forma parte del universo a
-  // vincular por este script).
+  // vincular por este script). Este número es la fotografía HISTÓRICA — no
+  // se recalcula ni se espera que la producción actual lo iguale (decisión
+  // del equipo, caso "Centro": M1 quedó fijo en 60, la producción actual hoy
+  // tiene 10, y el script trabaja únicamente con esos 10).
   const totalUniverso = Object.values(M1_REFERENCIA).reduce(
     (s, r) => s + (r.fuentes.includes('PEDIDO') ? r.n - 1 : r.n),
     0,
   )
-  console.log(`\nCobertura M1 (Cliente+Negocio, referencia): ${totalUniverso} (126 Cliente + 51 Negocio esperados)`)
+  const totalActualProduccion = resumenes.reduce((s, r) => s + r.candidatosActuales, 0)
+  console.log(`\nCobertura M1 histórica (Cliente+Negocio, fija):     ${totalUniverso} (126 Cliente + 51 Negocio en el momento de M1)`)
+  console.log(`Cobertura producción actual (Cliente+Negocio, HOY): ${totalActualProduccion}`)
 }
 
 main()
