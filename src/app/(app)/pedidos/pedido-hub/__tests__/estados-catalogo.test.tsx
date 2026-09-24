@@ -36,7 +36,7 @@ const pedido = (over: Partial<Pedido> = {}): Pedido =>
   }) as Pedido
 
 const counts = {
-  porPlanificarCount: 0, atrasadosCount: 0, enRutaCount: 0, esperandoPagoTotal: 0, pendientesN2Count: 0,
+  porPlanificarCount: 0, atrasadosCount: 0, enRutaCount: 0, esperandoPagoCount: 0, esperandoPagoTotal: 0, pendientesN2Count: 0,
 }
 const base = { counts, userRole: 'ADMIN', onAccion: vi.fn() }
 

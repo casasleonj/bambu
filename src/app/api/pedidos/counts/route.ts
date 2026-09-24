@@ -81,9 +81,11 @@ export async function GET(_request: NextRequest) {
       prisma.pedido.count({ where: { estadoEntrega: 'PENDIENTE', embarqueId: null } }),
       // Foco "En ruta" (blueprint §2.2)
       prisma.pedido.count({ where: { estadoEntrega: 'EN_RUTA' } }),
-      // Foco "Esperando pago" — $ total de saldo pendiente de pedidos entregados
+      // Foco "Esperando pago" — cantidad y $ total de saldo pendiente de
+      // pedidos entregados (mismo alcance global para ambos: O-4, F10a)
       prisma.pedido.aggregate({
         _sum: { saldo: true },
+        _count: { _all: true },
         where: {
           estadoEntrega: 'ENTREGADO',
           saldo: { gt: 0 },
@@ -135,6 +137,7 @@ export async function GET(_request: NextRequest) {
       enRiesgoCount,
       porPlanificarCount,
       enRutaCount,
+      esperandoPagoCount: esperandoPagoAgg._count._all,
       esperandoPagoTotal: Number(esperandoPagoAgg._sum.saldo ?? 0),
       pendientesN2Count,
     })
