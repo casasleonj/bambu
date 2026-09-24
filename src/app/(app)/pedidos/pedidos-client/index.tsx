@@ -385,7 +385,11 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   }, [cacheLoadedOnce, cacheActive, allPedidos, fallbackPedidosRaw, initialPedidos])
 
   const pedidos = pedidosSource
-  const hasLoadedOnce = initialPedidos !== undefined || cacheLoadedOnce
+  // Las vistas autocontenidas atrasados/enRiesgo no cargan la lista base ni
+  // reciben initialPedidos del SSR (page.tsx hace early-return): tienen su
+  // propio loading/error (usePedidos({atrasados|enRiesgo})). Sin este caso,
+  // hasLoadedOnce nunca pasaba a true y la página quedaba en el skeleton (#273).
+  const hasLoadedOnce = initialPedidos !== undefined || cacheLoadedOnce || atrasadosParam || enRiesgoParam
   const fetchError = allPedidosError || fallbackError
   const loading = !hasLoadedOnce
 
