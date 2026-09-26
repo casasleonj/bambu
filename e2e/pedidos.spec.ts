@@ -1,5 +1,8 @@
 // @tests api/embarque, api/pedido
 import {test, expect, loginAs, goto, apiPost, createTrabajador, createCliente, createPedido,  resetDatabase} from './fixtures'
+import { PrismaClient } from '@prisma/client'
+
+const prisma = new PrismaClient()
 
 test.describe('Pedidos', () => {
   test.describe.configure({ mode: 'serial' })
@@ -242,6 +245,39 @@ test.describe('Pedidos', () => {
     await expect(page.locator('button:has-text("Turno")')).toHaveCount(0)
     await volverBtn.click()
     await expect(page).not.toHaveURL(/enRiesgo=true/)
+  })
+
+  test('"Verlos" del banner, estando ya en /pedidos, abre la vista atrasados al instante', async ({ page }) => {
+    // Regresión: el link era un <Link> de Next a la misma página y
+    // pedidos-client no se enteraba del cambio de URL. La vista aparecía
+    // recién con el próximo re-render ajeno (~15 s, safety-net de
+    // loadTimeout). El timeout de 5 s de abajo falla con ese comportamiento.
+    await loginAs(page, 'admin')
+    const c = await createCliente(page)
+    const clienteId = c.cliente?.id || c.data?.id
+    expect(clienteId).toBeTruthy()
+    const creado = await createPedido(page, { clienteId, canal: 'DOMICILIO', ventaRapida: false })
+    const pedidoId = creado.data?.pedido?.id ?? creado.pedido?.id ?? creado.data?.id
+    expect(pedidoId).toBeTruthy()
+    // La API no acepta fecha custom: se backdatea directo en la DB (mismo
+    // patrón que embarques-fixes.spec.ts) para que cuente como atrasado.
+    const hace3Dias = new Date()
+    hace3Dias.setDate(hace3Dias.getDate() - 3)
+    await prisma.pedido.update({ where: { id: pedidoId }, data: { fecha: hace3Dias } })
+
+    await goto(page, '/pedidos')
+    const main = page.locator('main')
+    const verlos = main.getByTestId('banner-atrasados-sin-asignar').getByRole('link', { name: /Verlos/ })
+    await expect(verlos).toBeVisible({ timeout: 15000 })
+    await verlos.click()
+
+    await expect(page).toHaveURL(/atrasados=true/)
+    await expect(main.getByTestId('volver-pedidos-hoy')).toBeVisible({ timeout: 5000 })
+
+    // "Atrás" del navegador vuelve a la lista (el link hace push, no replace).
+    await page.goBack()
+    await expect(page).not.toHaveURL(/atrasados=true/)
+    await expect(main.getByTestId('volver-pedidos-hoy')).toHaveCount(0, { timeout: 5000 })
   })
 
   test('pedido creado aparece en lista de pedidos', async ({ page }) => {
