@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, type MouseEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { useShallowSearchParams } from '@/hooks/use-shallow-search-params'
 import Link from 'next/link'
@@ -465,6 +465,26 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
   const volverAPedidosDeHoy = useCallback(() => {
     syncUrl({ atrasados: undefined, enRiesgo: undefined })
   }, [syncUrl])
+
+  // "Verlos →" de los banners, estando ya en /pedidos: entra a la vista
+  // autocontenida con el mismo mecanismo shallow que volverAPedidosDeHoy.
+  // Con <Link> Next navegaba (RSC) a la misma página y este componente no se
+  // enteraba del cambio de URL (useShallowSearchParams lee window.location
+  // solo tras un broadcast/popstate): la vista aparecía recién con el próximo
+  // re-render ajeno, ~15 s después (safety-net de loadTimeout). `push` para
+  // que "atrás" vuelva a la lista; el href se conserva para abrir en otra
+  // pestaña (click con modificadores o botón del medio sigue el link).
+  const abrirVistaAutocontenida = useCallback(
+    (e: MouseEvent<HTMLAnchorElement>, vista: 'atrasados' | 'enRiesgo') => {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+      e.preventDefault()
+      shallowParams.set(
+        { atrasados: vista === 'atrasados' ? 'true' : undefined, enRiesgo: vista === 'enRiesgo' ? 'true' : undefined },
+        { history: 'push' },
+      )
+    },
+    [shallowParams],
+  )
 
   // Lightweight badge counts fetched independently from the full datasets.
   // This keeps the badge live without re-downloading the entire Pedidos list.
@@ -1607,9 +1627,14 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
               <span>
                 ⚠️ {atrasadosCount} pedido{atrasadosCount === 1 ? '' : 's'} de días anteriores sin
                 asignar o sin entregar — riesgo de incumplir la entrega.{' '}
-                <Link href="/pedidos?atrasados=true" className="font-semibold underline hover:no-underline">
+                <a
+                  href="/pedidos?atrasados=true"
+                  onClick={(e) => abrirVistaAutocontenida(e, 'atrasados')}
+                  className="font-semibold underline hover:no-underline"
+                  data-testid="banner-atrasados-verlos"
+                >
                   Verlos →
-                </Link>
+                </a>
               </span>
             </InfoBanner>
           </div>
@@ -1624,9 +1649,14 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
               <span>
                 🟠 {enRiesgoCount} pedido{enRiesgoCount === 1 ? '' : 's'} lleva
                 {enRiesgoCount === 1 ? '' : 'n'} demasiado tiempo sin gestionar — riesgo de olvido o de quedar sin entregar.{' '}
-                <Link href="/pedidos?enRiesgo=true" className="font-semibold underline hover:no-underline">
+                <a
+                  href="/pedidos?enRiesgo=true"
+                  onClick={(e) => abrirVistaAutocontenida(e, 'enRiesgo')}
+                  className="font-semibold underline hover:no-underline"
+                  data-testid="banner-en-riesgo-verlos"
+                >
                   Verlos →
-                </Link>
+                </a>
               </span>
             </InfoBanner>
           </div>
