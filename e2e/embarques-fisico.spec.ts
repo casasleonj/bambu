@@ -28,7 +28,11 @@ async function checkTouchTargetsIn(page: Page, containerTestId: string, minSize 
   }
 }
 
-async function setup(page: Page, actingRole: 'admin' | 'asistente' = 'admin') {
+async function setup(
+  page: Page,
+  actingRole: 'admin' | 'asistente' = 'admin',
+  opts: { sinCarga?: boolean } = {},
+) {
   // POST /api/trabajadores es ADMIN-only — la creación de datos de setup
   // siempre corre como admin, independientemente del rol que interactúe
   // luego con la UI (así el test de ASISTENTE prueba su acceso real a la
@@ -36,7 +40,16 @@ async function setup(page: Page, actingRole: 'admin' | 'asistente' = 'admin') {
   await loginAs(page, 'admin')
   const t = await createTrabajador(page)
   const trabajadorId = t.trabajador?.id || t.data?.id
-  const e = await createEmbarque(page, trabajadorId)
+  // Crear un embarque con carga > 0 escribe un EmbarqueMovimiento{CARGA} por
+  // producto (dual-write F5). `sinCarga` crea el embarque con carga 0 para
+  // los tests que necesitan partir de un ledger físico vacío.
+  const e = opts.sinCarga
+    ? await (await apiPost(page, '/api/embarques', {
+        trabajadorId,
+        horaSalida: '08:00',
+        carga: [{ producto: 'PACA_AGUA', cargadas: 0 }],
+      })).json()
+    : await createEmbarque(page, trabajadorId)
   const embarqueId = e.embarque?.id || e.data?.id
   if (actingRole !== 'admin') {
     await loginAs(page, actingRole)
@@ -54,7 +67,7 @@ test.describe('Embarques — Tab Físico — Happy path', () => {
   test.use({ storageState: { cookies: [], origins: [] } })
 
   test('SOBRANTE: registrar movimiento, resolver sobrante contra él y ver el disponible restante actualizarse', async ({ page }) => {
-    const { embarqueId } = await setup(page)
+    const { embarqueId } = await setup(page, 'admin', { sinCarga: true })
     await abrirTabFisico(page, embarqueId)
 
     await expect(page.getByText('Sin movimientos registrados todavía.')).toBeVisible()
@@ -141,7 +154,7 @@ test.describe('Embarques — Tab Físico — Happy path', () => {
   })
 
   test('Sustitución: registrar desde la UI genera RETORNO + ENTREGA (2 movimientos)', async ({ page }) => {
-    const { embarqueId } = await setup(page)
+    const { embarqueId } = await setup(page, 'admin', { sinCarga: true })
     await abrirTabFisico(page, embarqueId)
 
     await expect(page.getByText('Sin movimientos registrados todavía.')).toBeVisible()
@@ -209,12 +222,33 @@ test.describe('Embarques — Tab Físico — Validaciones de formulario', () => 
   })
 
   test('Recovery SOBRANTE en un embarque sin movimientos elegibles no permite continuar', async ({ page }) => {
-    const { embarqueId } = await setup(page)
+    const { embarqueId } = await setup(page, 'admin', { sinCarga: true })
     await abrirTabFisico(page, embarqueId)
     await page.getByTestId('nueva-recovery-decision-button').click()
     // SOBRANTE es el tipo por defecto; sin CARGA/RECARGA/CUSTODY_TRANSFER previos.
     await expect(page.getByText('No hay movimientos con unidades disponibles todavía.')).toBeVisible()
     await expect(page.getByTestId('recovery-source-select')).not.toBeVisible()
+  })})
+
+test.describe('Embarques — Tab Físico — CARGA en el ledger (dual-write F5)', () => {
+  test.use({ storageState: { cookies: [], origins: [] } })
+
+  test('crear un embarque con carga registra la CARGA en el ledger y la ofrece como origen de un SOBRANTE', async ({ page }) => {
+    // createEmbarque carga 1 PACA_AGUA → un EmbarqueMovimiento{CARGA, cantidad 1}.
+    const { embarqueId } = await setup(page)
+
+    const res = await page.request.get(`${BASE}/api/embarques/${embarqueId}/movimientos`)
+    const body = await res.json()
+    const cargas = body.movimientos.filter((m: { tipo: string }) => m.tipo === 'CARGA')
+    expect(cargas).toHaveLength(1)
+    expect(cargas[0]).toMatchObject({ producto: 'PACA_AGUA', cantidad: 1, destino: 'VEHICULO' })
+
+    await abrirTabFisico(page, embarqueId)
+    await expect(page.getByTestId('movimientos-timeline')).toContainText('Carga')
+    await expect(page.getByText('Sin movimientos registrados todavía.')).not.toBeVisible()
+
+    await page.getByTestId('nueva-recovery-decision-button').click()
+    await expect(page.getByTestId('recovery-source-select').locator('option', { hasText: 'disponible: 1 de 1' })).toHaveCount(1)
   })
 })
 
