@@ -19,6 +19,17 @@ export interface ProductoConciliacion {
   devueltas: number
   cambios: number
   rotas: number
+  /**
+   * F5 (convergencia semántica física, P0): unidades consumidas como
+   * PROMOCIÓN (ADR-FISICO-001: "consume inventario como una entrega, sin
+   * cobro") — salen físicamente del vehículo pero NUNCA fueron `entregadas`
+   * de un Pedido. Sin este término, cada promoción aparecía como faltante
+   * (discrepancia falsa) y podía disparar un ResponsibilityCase sin causa
+   * real. Es un contador físico puro — no toca ni se confunde con
+   * `Pedido.entregadas` (cumplimiento comercial), son responsabilidades
+   * distintas por diseño.
+   */
+  promociones: number
   discrepancia: number
 }
 
@@ -62,15 +73,22 @@ export class CierreEmbarqueService {
    */
   conciliarProductos(
     carga: Carga,
-    productosEntregados: Record<ProductCode, { entregadas: number; devueltas: number; cambios: number; rotas: number }>,
+    productosEntregados: Record<
+      ProductCode,
+      { entregadas: number; devueltas: number; cambios: number; rotas: number; promociones?: number }
+    >,
   ): ProductoConciliacion[] {
     const productos: ProductCode[] = ['PACA_AGUA', 'PACA_HIELO', 'BOTELLON', 'BOLSA_AGUA', 'BOLSA_HIELO']
 
     return productos.map((producto) => {
       const cargadas = carga.get(producto)
-      const entregado = productosEntregados[producto] ?? { entregadas: 0, devueltas: 0, cambios: 0, rotas: 0 }
+      const entregado = productosEntregados[producto] ?? { entregadas: 0, devueltas: 0, cambios: 0, rotas: 0, promociones: 0 }
+      const promociones = entregado.promociones ?? 0
 
-      const discrepancia = cargadas - entregado.entregadas - entregado.devueltas - entregado.cambios - entregado.rotas
+      // F5 (P0): PROMOCION resta igual que ENTREGA/VENTA_RUTA — consume
+      // inventario físico sin ser cumplimiento de Pedido (ver ProductoConciliacion.promociones).
+      const discrepancia =
+        cargadas - entregado.entregadas - entregado.devueltas - entregado.cambios - entregado.rotas - promociones
 
       return {
         producto,
@@ -79,6 +97,7 @@ export class CierreEmbarqueService {
         devueltas: entregado.devueltas,
         cambios: entregado.cambios,
         rotas: entregado.rotas,
+        promociones,
         discrepancia,
       }
     })
