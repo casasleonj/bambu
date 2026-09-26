@@ -103,8 +103,7 @@ export class PrismaClienteRepository implements IClienteRepository {
     // FIX: este UPDATE no tenía ningún registro de auditoría — un cambio de
     // dirección del cliente disparado desde el flujo de pedidos quedaba sin
     // rastro de "antes/después". Se captura el valor previo antes de
-    // sobreescribir y se audita después (logAudit es fire-and-forget, fuera
-    // de la tx, igual que el resto de las auditorías de este repo).
+    // sobreescribir y se audita después.
     const previo = await client.cliente.findUnique({
       where: { id },
       select: { direccion: true, barrio: true, barrioId: true },
@@ -139,10 +138,10 @@ export class PrismaClienteRepository implements IClienteRepository {
       tx: client,
     })
 
-    logAudit({
+    const auditEntry = {
       entidad: 'Cliente',
       registroId: id,
-      accion: 'UPDATE',
+      accion: 'UPDATE' as const,
       datos: {
         direccion,
         barrio: barrioNuevo,
@@ -153,7 +152,18 @@ export class PrismaClienteRepository implements IClienteRepository {
         ...(barrioCambio && previo?.barrioId ? { barrioIdDesvinculado: previo.barrioId } : {}),
       },
       usuarioId: meta?.usuarioId ?? null,
-    })
+    }
+    // Con `tx` (CrearPedidoUseCase bajo `SECUENCIA:pedido`, ActualizarPedidoUseCase
+    // bajo `PEDIDO:{id}`) la auditoría va en la MISMA transacción del UPDATE
+    // (ADR-CONCURRENCIA-001 FASE 1, ver `logAudit`): antes se escribía con el
+    // `prisma` global, en otra conexión y en auto-commit — si la tx hacía
+    // rollback (ej. CLIENTE_DEBE después de este update), el Historial quedaba
+    // registrando un cambio de dirección que nunca se persistió.
+    if (tx) {
+      await logAudit(auditEntry, tx)
+    } else {
+      logAudit(auditEntry)
+    }
   }
 
   async incrementarSaldoFavor(id: string, monto: number, tx?: TransactionClient): Promise<void> {

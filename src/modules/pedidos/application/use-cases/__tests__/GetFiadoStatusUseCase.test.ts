@@ -115,7 +115,7 @@ describe('GetFiadoStatusUseCase — Autoridad de Crédito (F1)', () => {
 
   it('reenvía `tx` a los repos (para correr dentro de la transacción del caller)', async () => {
     const { pedidoRepo, clienteRepo } = makeRepos()
-    const fakeTx = { marker: 'tx' } as never
+    const fakeTx = { marker: 'tx', config: { findUnique: vi.fn().mockResolvedValue(null) } } as never
     const uc = new GetFiadoStatusUseCase(pedidoRepo, clienteRepo)
     await uc.execute({ clienteId: 'c1', tx: fakeTx })
     expect((clienteRepo as { findById: ReturnType<typeof vi.fn> }).findById).toHaveBeenCalledWith('c1', fakeTx)
