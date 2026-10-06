@@ -118,9 +118,28 @@ function getPushState(
 }
 
 export function PushSettings({ variant = 'default', settingsHref }: PushSettingsProps) {
-  const [mounted] = useState(() => typeof document !== 'undefined')
+  // FIX hidratación: `mounted` debe arrancar en `false` en AMBOS lados
+  // (server y el primer render del cliente, antes de hidratar) para que
+  // produzcan el mismo HTML. `useState(() => typeof document !== 'undefined')`
+  // parecía lograr eso pero no: `document` SIEMPRE existe en el navegador,
+  // incluso durante el primer render de hidratación — así que ese
+  // initializer evaluaba a `true` en el cliente desde el primer render,
+  // mientras el server (sin `document`) lo evaluaba a `false`. Resultado:
+  // mismatch garantizado en cada carga. El patrón correcto es marcar
+  // `mounted=true` recién dentro de un `useEffect` (que solo corre en el
+  // cliente, después de hidratar).
+  const [mounted, setMounted] = useState(false)
   const { supported, permission, setPermission, subscribed, loading, recovering, error, subscribe, unsubscribe } =
     usePushSubscription()
+
+  useEffect(() => {
+    // Patrón estándar "hasMounted": el único propósito de este efecto es
+    // marcar que ya estamos en el cliente, post-hidratación — no hay forma
+    // de derivarlo durante el render sin reintroducir el mismatch que esto
+    // arregla.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true)
+  }, [])
 
   useEffect(() => {
     if (!mounted) return

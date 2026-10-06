@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
+import { renderToString } from 'react-dom/server'
 import { PushSettings } from '@/components/push-settings'
 
 vi.mock('@/hooks/use-push-subscription', () => ({
@@ -121,5 +122,44 @@ describe('PushSettings visibilitychange', () => {
     document.dispatchEvent(new Event('visibilitychange'))
 
     await waitFor(() => expect(setPermission).toHaveBeenCalledWith('granted'))
+  })
+})
+
+describe('PushSettings — sin mismatch de hidratación', () => {
+  // Regresión: `useState(() => typeof document !== 'undefined')` parecía
+  // gatear el contenido real hasta "estar en el cliente", pero `document`
+  // existe incluso durante el primer render de hidratación del cliente —
+  // solo NO existe durante el render de servidor real. `renderToString`
+  // nunca ejecuta efectos (como el server real), así que es la forma
+  // correcta de probar esto sin un entorno SSR real: si el componente
+  // depende de `typeof document` en vez de un flag que solo cambia en un
+  // efecto, este test lo detecta (mostraría el contenido real en vez del
+  // placeholder, aunque "el server" acá sea jsdom con document).
+  it('el render tipo servidor (renderToString, sin efectos) siempre muestra el placeholder, nunca el contenido real', () => {
+    mockedIsIosDevice.mockReturnValue(false)
+    mockedIsStandaloneMode.mockReturnValue(false)
+    mockPermission('granted')
+    mockPushSubscription({ permission: 'granted', subscribed: true })
+
+    const html = renderToString(<PushSettings />)
+
+    // El placeholder también dice "Notificaciones push" (mismo label,
+    // grisado) — lo que distingue al contenido real es el resto: badge de
+    // estado, texto de permiso del navegador y el botón de acción.
+    expect(html).toContain('aria-hidden="true"')
+    expect(html).not.toContain('Permiso del navegador')
+    expect(html).not.toContain('Activas')
+    expect(html).not.toContain('<button')
+  })
+
+  it('tras montar en el cliente, el contenido real reemplaza al placeholder', async () => {
+    mockedIsIosDevice.mockReturnValue(false)
+    mockedIsStandaloneMode.mockReturnValue(false)
+    mockPermission('granted')
+    mockPushSubscription({ permission: 'granted', subscribed: true })
+
+    render(<PushSettings />)
+
+    await waitFor(() => expect(screen.getByText('Notificaciones push')).toBeInTheDocument())
   })
 })
