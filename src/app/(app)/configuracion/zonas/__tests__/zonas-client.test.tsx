@@ -1,12 +1,14 @@
 // @tests ZonasClient — picker "Buscar o agregar barrio..." (F3 Zona territorial)
 //
-// Motivado por feedback real del equipo probando la demo: un término que
-// los clientes ya tienen como texto libre (ej. "Chapinero") no aparecía en
-// el picker, sin salida. Causa: el picker busca sobre el catálogo canónico
-// `Barrio` (vacío en un dev DB recién sincronizado, ver seed.ts), no sobre
-// el texto libre histórico `Cliente.barrio` — son cosas distintas a
-// propósito (ALS Barrio F1). El fix agrega "+ Crear" al picker, mismo
-// patrón que el selector de Barrio de Cliente/Negocio (`BarrioSelect`).
+// Zona consume el catálogo canónico de Barrio, NUNCA crea barrios nuevos
+// (eso vive exclusivamente en /configuracion/barrios — ver barrios-client.tsx).
+// Un "+ Crear" directo desde Zona se intentó en un primer momento pero el
+// equipo lo revirtió explícitamente: generaba duplicados/variantes
+// innecesarias del catálogo (evidencia real: "Libano" / "El Libano",
+// "Laureles" / "Los Laureles", "Primero de Mayo" / "El 1 de Mayo"). En su
+// lugar, cuando la búsqueda no encuentra nada, el picker explica dónde
+// administrar el catálogo y ofrece un link directo — nunca un mensaje
+// genérico sin salida.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import ZonasClient from '../zonas-client'
@@ -25,7 +27,7 @@ function jsonResponse(body: unknown, status = 200) {
   return { ok: status >= 200 && status < 300, status, json: async () => body }
 }
 
-describe('ZonasClient — picker de barrio: "+ Crear" al vuelo', () => {
+describe('ZonasClient — picker de barrio', () => {
   let fetchMock: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
@@ -63,18 +65,26 @@ describe('ZonasClient — picker de barrio: "+ Crear" al vuelo', () => {
     await screen.findByText('Barrios de esta zona')
   }
 
-  it('un término que los clientes ya tienen como texto libre (sin Barrio canónico) no aparece: "Sin resultados" + "+ Crear"', async () => {
+  it('un barrio que no está en el catálogo canónico: explica dónde administrarlo y ofrece un link directo, NUNCA "+ Crear"', async () => {
     await abrirZonaNorte()
 
     const input = screen.getByPlaceholderText('Buscar o agregar barrio...')
     fireEvent.change(input, { target: { value: 'Chapinero' } })
     await act(async () => { vi.advanceTimersByTime(300) })
 
-    expect(await screen.findByText('Sin resultados.')).toBeInTheDocument()
-    expect(screen.getByText('+ Crear "Chapinero"')).toBeInTheDocument()
+    expect(await screen.findByText('No encontramos este barrio en el catálogo.')).toBeInTheDocument()
+    expect(screen.getByText(/Configuración → Territorio → Barrios/)).toBeInTheDocument()
+    const link = screen.getByText('Ir al catálogo de barrios →')
+    expect(link).toBeInTheDocument()
+    expect(link.closest('a')).toHaveAttribute('href', '/configuracion/barrios')
+
+    // Nunca se ofrece crear un barrio nuevo desde acá — Zona solo consume
+    // el catálogo canónico, nunca lo escribe.
+    expect(screen.queryByText(/\+ Crear/)).not.toBeInTheDocument()
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/barrios', expect.objectContaining({ method: 'POST' }))
   })
 
-  it('"+ Crear" crea el Barrio canónico y lo agrega a la zona en el mismo paso', async () => {
+  it('seleccionar un barrio existente del catálogo lo agrega directo a la zona (sin solapamiento)', async () => {
     await abrirZonaNorte()
 
     fetchMock.mockImplementation((url: string, opts?: RequestInit) => {
@@ -88,14 +98,13 @@ describe('ZonasClient — picker de barrio: "+ Crear" al vuelo', () => {
               id: 'z1',
               nombre: 'Norte',
               activo: true,
-              barrios: [{ barrioId: 'b-new', barrio: { id: 'b-new', nombre: 'Chapinero' }, source: 'USER', otrasZonas: [] }],
+              barrios: [{ barrioId: 'b1', barrio: { id: 'b1', nombre: 'San José' }, source: 'USER', otrasZonas: [] }],
             },
           }),
         )
       }
-      if (url.startsWith('/api/barrios?') && method === 'GET') return Promise.resolve(jsonResponse({ success: true, data: [] }))
-      if (url === '/api/barrios' && method === 'POST') {
-        return Promise.resolve(jsonResponse({ success: true, barrio: { id: 'b-new', nombre: 'Chapinero' } }, 201))
+      if (url.startsWith('/api/barrios?') && method === 'GET') {
+        return Promise.resolve(jsonResponse({ success: true, data: [{ id: 'b1', nombre: 'San José' }] }))
       }
       if (url === '/api/zonas/z1/barrios' && method === 'POST') {
         return Promise.resolve(jsonResponse({ success: true, zonaBarrio: {}, overlapDetected: false, existingZones: [] }, 201))
@@ -104,89 +113,18 @@ describe('ZonasClient — picker de barrio: "+ Crear" al vuelo', () => {
     })
 
     const input = screen.getByPlaceholderText('Buscar o agregar barrio...')
-    fireEvent.change(input, { target: { value: 'Chapinero' } })
+    fireEvent.change(input, { target: { value: 'San José' } })
     await act(async () => { vi.advanceTimersByTime(300) })
 
-    fireEvent.click(await screen.findByText('+ Crear "Chapinero"'))
-
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        '/api/barrios',
-        expect.objectContaining({ method: 'POST', body: JSON.stringify({ nombre: 'Chapinero' }) }),
-      )
-    })
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        '/api/zonas/z1/barrios',
-        expect.objectContaining({ method: 'POST', body: JSON.stringify({ barrioId: 'b-new', confirmOverlap: false }) }),
-      )
-    })
-
-    // El barrio recién creado queda visible en la lista de la zona.
-    expect(await screen.findAllByText('Chapinero')).not.toHaveLength(0)
-  })
-
-  it('"+ Crear" ante 409 (el Barrio ya existía) reutiliza el existente en vez de fallar', async () => {
-    await abrirZonaNorte()
-
-    let barriosGetCalls = 0
-    fetchMock.mockImplementation((url: string, opts?: RequestInit) => {
-      const method = opts?.method ?? 'GET'
-      if (url.startsWith('/api/zonas?')) return Promise.resolve(jsonResponse({ success: true, data: INITIAL_ZONAS }))
-      if (url === '/api/zonas/z1' && method === 'GET') {
-        return Promise.resolve(jsonResponse({ success: true, zona: { id: 'z1', nombre: 'Norte', activo: true, barrios: [] } }))
-      }
-      if (url === '/api/barrios' && method === 'POST') {
-        return Promise.resolve(jsonResponse({ success: false, error: { message: 'Ya existe un barrio con ese nombre' } }, 409))
-      }
-      if (url.startsWith('/api/barrios?') && method === 'GET') {
-        barriosGetCalls++
-        // 1ra búsqueda (al escribir): sin resultados. 2da (reintento tras
-        // el 409): aparece el barrio que ya existía.
-        if (barriosGetCalls === 1) return Promise.resolve(jsonResponse({ success: true, data: [] }))
-        return Promise.resolve(jsonResponse({ success: true, data: [{ id: 'b-existente', nombre: 'Chapinero' }] }))
-      }
-      if (url === '/api/zonas/z1/barrios' && method === 'POST') {
-        return Promise.resolve(jsonResponse({ success: true, zonaBarrio: {}, overlapDetected: false, existingZones: [] }, 201))
-      }
-      return Promise.resolve(jsonResponse({ success: false }, 500))
-    })
-
-    const input = screen.getByPlaceholderText('Buscar o agregar barrio...')
-    fireEvent.change(input, { target: { value: 'Chapinero' } })
-    await act(async () => { vi.advanceTimersByTime(300) })
-
-    fireEvent.click(await screen.findByText('+ Crear "Chapinero"'))
+    fireEvent.click(await screen.findByText('San José'))
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
         '/api/zonas/z1/barrios',
-        expect.objectContaining({ method: 'POST', body: JSON.stringify({ barrioId: 'b-existente', confirmOverlap: false }) }),
+        expect.objectContaining({ method: 'POST', body: JSON.stringify({ barrioId: 'b1', confirmOverlap: false }) }),
       )
     })
-  })
-
-  it('si ya existe un match exacto en el catálogo, no se ofrece "+ Crear"', async () => {
-    await abrirZonaNorte()
-
-    fetchMock.mockImplementation((url: string, opts?: RequestInit) => {
-      const method = opts?.method ?? 'GET'
-      if (url.startsWith('/api/zonas?')) return Promise.resolve(jsonResponse({ success: true, data: INITIAL_ZONAS }))
-      if (url === '/api/zonas/z1' && method === 'GET') {
-        return Promise.resolve(jsonResponse({ success: true, zona: { id: 'z1', nombre: 'Norte', activo: true, barrios: [] } }))
-      }
-      if (url.startsWith('/api/barrios?') && method === 'GET') {
-        return Promise.resolve(jsonResponse({ success: true, data: [{ id: 'b1', nombre: 'Chapinero' }] }))
-      }
-      return Promise.resolve(jsonResponse({ success: false }, 500))
-    })
-
-    const input = screen.getByPlaceholderText('Buscar o agregar barrio...')
-    fireEvent.change(input, { target: { value: 'Chapinero' } })
-    await act(async () => { vi.advanceTimersByTime(300) })
-
-    expect(await screen.findAllByText('Chapinero')).not.toHaveLength(0)
-    expect(screen.queryByText('+ Crear "Chapinero"')).not.toBeInTheDocument()
+    expect(await screen.findAllByText('San José')).not.toHaveLength(0)
   })
 
   it('agregar un barrio refresca también el contador "X barrios" del panel izquierdo, sin recargar la página', async () => {
@@ -221,22 +159,21 @@ describe('ZonasClient — picker de barrio: "+ Crear" al vuelo', () => {
               id: 'z1',
               nombre: 'Norte',
               activo: true,
-              barrios: [{ barrioId: 'b-new', barrio: { id: 'b-new', nombre: 'Chapinero' }, source: 'USER', otrasZonas: [] }],
+              barrios: [{ barrioId: 'b1', barrio: { id: 'b1', nombre: 'San José' }, source: 'USER', otrasZonas: [] }],
             },
           }),
         )
       }
-      if (url.startsWith('/api/barrios?') && method === 'GET') return Promise.resolve(jsonResponse({ success: true, data: [] }))
-      if (url === '/api/barrios' && method === 'POST') {
-        return Promise.resolve(jsonResponse({ success: true, barrio: { id: 'b-new', nombre: 'Chapinero' } }, 201))
+      if (url.startsWith('/api/barrios?') && method === 'GET') {
+        return Promise.resolve(jsonResponse({ success: true, data: [{ id: 'b1', nombre: 'San José' }] }))
       }
       return Promise.resolve(jsonResponse({ success: false }, 500))
     })
 
     const input = screen.getByPlaceholderText('Buscar o agregar barrio...')
-    fireEvent.change(input, { target: { value: 'Chapinero' } })
+    fireEvent.change(input, { target: { value: 'San José' } })
     await act(async () => { vi.advanceTimersByTime(300) })
-    fireEvent.click(await screen.findByText('+ Crear "Chapinero"'))
+    fireEvent.click(await screen.findByText('San José'))
 
     // Sin recargar la página: el contador del panel izquierdo pasa de "0
     // barrios" a "1 barrio" solo porque el estado se refrescó.

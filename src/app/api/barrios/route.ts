@@ -10,13 +10,16 @@ import { buscarBarrios, crearBarrio } from '@/lib/barrios/barrio-service'
 import { ZodError } from 'zod'
 
 /**
- * GET /api/barrios?q=&incluirInactivos=1
+ * GET /api/barrios?q=&incluirInactivos=1&limit=
  *
- * Búsqueda para el selector canónico de Cliente/Negocio. `q` filtra por
+ * Búsqueda para el selector canónico de Cliente/Negocio/Zona. `q` filtra por
  * substring determinista sobre el nombre normalizado (sin fuzzy matching —
  * ver src/lib/barrios/barrio-service.ts). Por defecto solo devuelve barrios
  * activos; `incluirInactivos=1` los incluye (usado por la administración
- * territorial para mostrar/reactivar archivados).
+ * territorial para mostrar/reactivar archivados). `limit` es opcional
+ * (default 20, igual que antes, para no afectar a los selectores de
+ * autocomplete existentes); la administración del catálogo
+ * (`/configuracion/barrios`) pide un límite mayor para listar todo.
  */
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth()
@@ -25,9 +28,11 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const q = searchParams.get('q') ?? ''
   const incluirInactivos = searchParams.get('incluirInactivos') === '1'
+  const limitParam = Number(searchParams.get('limit'))
+  const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, 200) : undefined
 
   try {
-    const barrios = await buscarBarrios(q, { incluirInactivos })
+    const barrios = await buscarBarrios(q, { incluirInactivos, limit })
     return apiList(barrios)
   } catch {
     return apiError('Error buscando barrios', 500)
