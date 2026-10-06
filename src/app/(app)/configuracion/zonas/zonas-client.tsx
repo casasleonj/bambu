@@ -255,7 +255,10 @@ export default function ZonasClient({ initialZonas }: ZonasClientProps) {
       toast.success(`"${barrio.nombre}" agregado a la zona`)
       setBarrioQuery('')
       setOverlapPendiente(null)
-      await cargarDetalle(detalle.id)
+      // Igual que handleQuitarBarrio: refrescar también la lista de zonas
+      // (no solo el detalle) para que el contador "X barrios" del panel
+      // izquierdo se actualice sin tener que recargar la página.
+      await Promise.all([cargarDetalle(detalle.id), refetchLista(listQuery)])
     } catch {
       toast.error('Error de red agregando el barrio')
     } finally {
