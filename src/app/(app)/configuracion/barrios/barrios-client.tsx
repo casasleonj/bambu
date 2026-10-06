@@ -143,6 +143,13 @@ export default function BarriosClient({ initialBarrios }: BarriosClientProps) {
     }
   }
 
+  // El checkbox dice "Mostrar archivados" — debe filtrar a SOLO archivados,
+  // no mezclarlos con los activos. La API (`incluirInactivos=1`) trae
+  // ambos a la vez (sin ese flag, filtra a activos en el propio query);
+  // el filtro final a "solo archivados" se hace acá para no tener que
+  // introducir un tercer modo en el servicio/API solo para esta pantalla.
+  const barriosFiltrados = incluirArchivados ? barrios.filter((b) => !b.activo) : barrios
+
   return (
     <div className="p-4 space-y-6 max-w-3xl">
       <div>
@@ -181,10 +188,12 @@ export default function BarriosClient({ initialBarrios }: BarriosClientProps) {
 
       <div className="border rounded-lg divide-y">
         {loading && <div className="p-3 text-sm text-gray-400">Buscando...</div>}
-        {!loading && barrios.length === 0 && (
-          <div className="p-3 text-sm text-gray-400">Sin barrios que coincidan.</div>
+        {!loading && barriosFiltrados.length === 0 && (
+          <div className="p-3 text-sm text-gray-400">
+            {incluirArchivados ? 'Sin barrios archivados.' : 'Sin barrios que coincidan.'}
+          </div>
         )}
-        {!loading && barrios.map((barrio) => (
+        {!loading && barriosFiltrados.map((barrio) => (
           <div key={barrio.id} className="px-3 py-3 flex items-center justify-between gap-3">
             {renombrandoId === barrio.id ? (
               <div className="flex gap-2 items-center flex-1">

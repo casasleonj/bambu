@@ -144,4 +144,31 @@ describe('BarriosClient', () => {
       expect(calledUrl).toContain('incluirInactivos=1')
     })
   })
+
+  it('"Mostrar archivados" filtra a SOLO archivados, no mezcla con los activos', async () => {
+    render(<BarriosClient initialBarrios={INITIAL_BARRIOS} />)
+
+    // La API (incluirInactivos=1) devuelve activos Y archivados juntos —
+    // el componente debe quedarse solo con los archivados para mostrar,
+    // no mostrar la mezcla cruda que llega del backend.
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(
+        jsonResponse({
+          success: true,
+          data: [
+            { id: 'b1', nombre: 'El Carmen', activo: true, _count: { clientes: 3, negocios: 1 } },
+            { id: 'b2', nombre: 'La Gaitana', activo: false, _count: { clientes: 0, negocios: 0 } },
+          ],
+        }),
+      ),
+    )
+
+    fireEvent.click(screen.getByLabelText('Mostrar archivados'))
+    await act(async () => { vi.advanceTimersByTime(300) })
+
+    await waitFor(() => {
+      expect(screen.getByText('La Gaitana')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('El Carmen')).not.toBeInTheDocument()
+  })
 })
