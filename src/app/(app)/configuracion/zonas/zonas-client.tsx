@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
+import { normalizeName } from '@/lib/import/normalizer'
 
 /* ================================================================
    TYPES — en espejo de lo que devuelve zona-service.ts / las rutas API
@@ -68,6 +69,7 @@ export default function ZonasClient({ initialZonas }: ZonasClientProps) {
   const [barrioResults, setBarrioResults] = useState<BarrioOption[]>([])
   const [buscandoBarrios, setBuscandoBarrios] = useState(false)
   const [agregandoBarrioId, setAgregandoBarrioId] = useState<string | null>(null)
+  const [creandoBarrio, setCreandoBarrio] = useState(false)
   const [overlapPendiente, setOverlapPendiente] = useState<OverlapPendiente | null>(null)
   const [confirmando, setConfirmando] = useState(false)
   const [quitandoBarrioId, setQuitandoBarrioId] = useState<string | null>(null)
@@ -262,6 +264,49 @@ export default function ZonasClient({ initialZonas }: ZonasClientProps) {
     }
   }
 
+  /**
+   * Crea un Barrio canónico nuevo al vuelo y lo agrega a la zona, cuando
+   * la búsqueda no encuentra ninguno. Mismo patrón que `BarrioSelect`
+   * (selector de Cliente/Negocio): el backend es la única fuente de
+   * verdad de unicidad (P2002 -> reintenta la búsqueda antes de fallar).
+   * Esto es una acción EXPLÍCITA del ADMIN (escribe el nombre y hace clic
+   * en "+ Crear") — no es conversión automática/silenciosa de un string
+   * legacy en Barrio.
+   */
+  const handleCrearBarrio = async () => {
+    const nombre = barrioQuery.trim()
+    if (!nombre || !detalle) return
+    setCreandoBarrio(true)
+    try {
+      const res = await fetch('/api/barrios', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nombre }),
+      })
+      const data = await res.json().catch(() => ({ success: false }))
+      if (res.ok && data.success && data.barrio) {
+        await intentarAgregarBarrio(data.barrio)
+        return
+      }
+      if (res.status === 409) {
+        const retry = await fetch(`/api/barrios?q=${encodeURIComponent(nombre)}`)
+        const retryData = await retry.json().catch(() => ({ success: false }))
+        const exacto = (retryData.data as BarrioOption[] | undefined)?.find(
+          (b) => normalizeName(b.nombre) === normalizeName(nombre),
+        )
+        if (exacto) {
+          await intentarAgregarBarrio(exacto)
+          return
+        }
+      }
+      toast.error(data.error?.message || 'No se pudo crear el barrio')
+    } catch {
+      toast.error('No se pudo crear el barrio (sin conexión)')
+    } finally {
+      setCreandoBarrio(false)
+    }
+  }
+
   const handleConfirmarOverlap = async () => {
     if (!overlapPendiente) return
     setConfirmando(true)
@@ -291,6 +336,12 @@ export default function ZonasClient({ initialZonas }: ZonasClientProps) {
 
   const barriosYaEnZona = new Set(detalle?.barrios.map((b) => b.barrioId) ?? [])
   const resultadosFiltrados = barrioResults.filter((b) => !barriosYaEnZona.has(b.id))
+  const barrioQueryTrim = barrioQuery.trim()
+  // Contra TODOS los resultados (no solo los filtrados): si el barrio ya
+  // existe pero está filtrado por pertenecer a esta misma zona, no tiene
+  // sentido ofrecer "+ Crear" (chocaría con P2002 sin motivo).
+  const barrioExactMatch = barrioResults.find((b) => normalizeName(b.nombre) === normalizeName(barrioQueryTrim))
+  const showCrearBarrio = barrioQueryTrim !== '' && !barrioExactMatch && !buscandoBarrios
 
   return (
     <div className="p-4 space-y-6 max-w-5xl">
@@ -439,6 +490,16 @@ export default function ZonasClient({ initialZonas }: ZonasClientProps) {
                             {agregandoBarrioId === b.id ? 'Agregando...' : b.nombre}
                           </button>
                         ))}
+                        {showCrearBarrio && (
+                          <button
+                            type="button"
+                            onClick={handleCrearBarrio}
+                            disabled={creandoBarrio}
+                            className="w-full text-left px-3 py-2.5 text-sm text-blue-600 font-medium border-t border-gray-100 hover:bg-blue-50 transition disabled:opacity-50"
+                          >
+                            {creandoBarrio ? 'Creando...' : `+ Crear "${barrioQueryTrim}"`}
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
