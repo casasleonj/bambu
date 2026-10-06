@@ -53,6 +53,32 @@ export interface GetFiadoStatusInput {
   tx?: TransactionClient
 }
 
+const LIMITE_FIADOS_CONFIG_KEY = 'LIMITE_PEDIDOS_FIADOS_DEFAULT'
+
+/**
+ * `LIMITE_PEDIDOS_FIADOS_DEFAULT` global.
+ *
+ * Con `tx` (Commit en `CrearPedidoUseCase`, venta-libre, resolución de
+ * excepciones) se lee por la MISMA transacción — mismo precedente que
+ * `leerMetodosRequierenConfirmacion(tx)`. `getConfigInt` usa el `prisma`
+ * global: dentro de `executeWithLock('SECUENCIA', 'pedido', ...)` eso pedía
+ * una SEGUNDA conexión mientras la tx retenía el advisory lock, y con el pool
+ * ocupado por requests esperando ese mismo lock nadie avanzaba hasta el
+ * `maxWait` de Prisma (P2028). Sin `tx` (consultas de UI) se conserva
+ * `getConfigInt` y su caché.
+ *
+ * Fallback idéntico a `getConfigInt`: valor ausente, no numérico o no entero
+ * → `LIMITE_FIADOS_DEFAULT`.
+ */
+async function leerLimiteFiadosGlobal(tx?: TransactionClient): Promise<number> {
+  if (!tx) return getConfigInt(LIMITE_FIADOS_CONFIG_KEY, LIMITE_FIADOS_DEFAULT)
+  const row = await tx.config.findUnique({ where: { clave: LIMITE_FIADOS_CONFIG_KEY } })
+  if (row == null) return LIMITE_FIADOS_DEFAULT
+  const n = Number(row.valor)
+  if (Number.isNaN(n)) return LIMITE_FIADOS_DEFAULT
+  return Number.isInteger(n) ? n : LIMITE_FIADOS_DEFAULT
+}
+
 export class GetFiadoStatusUseCase {
   constructor(
     private pedidoRepo: IPedidoRepository,
@@ -77,7 +103,7 @@ export class GetFiadoStatusUseCase {
 
     const [pedidosPendientes, limiteGlobal] = await Promise.all([
       this.pedidoRepo.findPendingByCliente(clienteId, tx),
-      getConfigInt('LIMITE_PEDIDOS_FIADOS_DEFAULT', LIMITE_FIADOS_DEFAULT),
+      leerLimiteFiadosGlobal(tx),
     ])
 
     const limite = resolverLimiteFiados(

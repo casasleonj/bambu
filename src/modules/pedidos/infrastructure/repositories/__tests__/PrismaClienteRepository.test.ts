@@ -21,7 +21,7 @@ describe('PrismaClienteRepository.updateDireccion: auditoría', () => {
   })
 
   it('llama logAudit después del update con entidad Cliente', () => {
-    expect(methodSection).toMatch(/logAudit\(\{/)
+    expect(methodSection).toMatch(/logAudit\(auditEntry/)
     expect(methodSection).toMatch(/entidad:\s*['"]Cliente['"]/)
     expect(methodSection).toMatch(/accion:\s*['"]UPDATE['"]/)
   })
