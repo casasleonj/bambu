@@ -441,6 +441,39 @@ export const BarrioUpdateSchema = z.object({
 );
 
 // ====================
+// ZONA TERRITORIAL (F3 — ALS/Plan Técnico Barrio/Zona/Distribución)
+// ====================
+
+export const ZonaCreateSchema = z.object({
+  nombre: z.string().trim().min(1, 'Nombre requerido').max(100),
+});
+
+/**
+ * PATCH /api/zonas/[id] — cubre rename, archivado y reactivación. Mismo
+ * patrón que BarrioUpdateSchema.
+ */
+export const ZonaUpdateSchema = z.object({
+  nombre: z.string().trim().min(1, 'Nombre requerido').max(100).optional(),
+  activo: z.boolean().optional(),
+}).refine(
+  (data) => data.nombre !== undefined || data.activo !== undefined,
+  { message: 'Debe enviar al menos un campo a actualizar' },
+);
+
+/**
+ * POST /api/zonas/[id]/barrios — agrega un Barrio a una Zona.
+ * Deliberadamente NO acepta `source` ni `createdBy`: `source` lo fija el
+ * servidor ("USER" para esta ruta de administración) y `createdBy` sale de
+ * la sesión autenticada — ninguno de los dos es un input de cliente
+ * (instrucción explícita: el cliente no puede hacerse pasar por
+ * SYSTEM/MIGRATION ni por otro usuario).
+ */
+export const ZonaBarrioAddSchema = z.object({
+  barrioId: z.string().trim().min(1, 'barrioId requerido'),
+  confirmOverlap: z.boolean().optional(),
+});
+
+// ====================
 // ABONO / GASTO / INSUMO / COMPRA / PRODUCCION / NOMINA / CIERRE
 // ====================
 

@@ -579,8 +579,9 @@ model Barrio {
   nombreNormalizado String
   activo            Boolean @default(true)
 
-  clientes Cliente[] @relation("ClienteBarrio")
-  negocios Negocio[] @relation("NegocioBarrio")
+  clientes Cliente[]    @relation("ClienteBarrio")
+  negocios Negocio[]    @relation("NegocioBarrio")
+  zonas    ZonaBarrio[]
 
   createdAt DateTime @default(now()) @db.Timestamptz()
   updatedAt DateTime @updatedAt @db.Timestamptz()
@@ -590,6 +591,57 @@ model Barrio {
   // duplicado — debe reactivarse en su lugar (regla R1/R10 del ALS).
   @@unique([nombreNormalizado])
   @@index([activo])
+}
+
+// ====================
+// ZONA TERRITORIAL (F3 del ALS/Plan Técnico Barrio/Zona/Distribución)
+// ====================
+
+// Zona↔Barrio es M:N por diseño (ALS §3.2/§3.3, P2 — no negociable): un
+// Barrio puede pertenecer a varias Zonas ("solapamiento válido"). Zona NO
+// es frontera rígida de ruteo ni reemplaza al planificador (fuera de
+// alcance de F3-F6).
+model Zona {
+  id                String  @id @default(cuid())
+  nombre            String
+  nombreNormalizado String
+  activo            Boolean @default(true)
+
+  barrios ZonaBarrio[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
+
+  // Mismo patrón de unicidad/soft-delete que Barrio (R1/R10 del ALS).
+  @@unique([nombreNormalizado])
+  @@index([activo])
+}
+
+// Join explícito (no m:n implícito de Prisma) para poder llevar metadata de
+// procedencia por vínculo — contrato de auditoría del ALS §11: quién/cuándo/
+// origen de CADA asociación Zona-Barrio, incluidas las que crean
+// solapamiento. `source` se valida en el service/API (nunca texto arbitrario
+// aceptado del cliente); el set de valores es el del ALS aunque F3 solo
+// emita "USER".
+model ZonaBarrio {
+  zonaId String
+  zona   Zona   @relation(fields: [zonaId], references: [id])
+
+  barrioId String
+  barrio   Barrio @relation(fields: [barrioId], references: [id])
+
+  // ALS §3.3: USER | IMPORT | MIGRATION | SYSTEM | SYNC. F3 solo usa USER
+  // (la asociación admin manual); el resto queda reservado para fases/
+  // integraciones futuras (import masivo, migración, sync automático).
+  source    String  @default("USER")
+  createdBy String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
+
+  @@unique([zonaId, barrioId])
+  @@index([zonaId])
+  @@index([barrioId])
 }
 
 // ====================

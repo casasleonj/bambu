@@ -543,6 +543,54 @@ export default function ConfiguracionClient({ initialData }: ConfiguracionClient
         ))}
       </Tabs>
 
+      {/* Territorio — F1/F3 ALS/Plan Técnico Barrio/Zona/Distribución. No es
+          una entrada de nav independiente ni un tab de campos escalares:
+          es una sección de Configuración que enlaza a los dos CRUDs
+          administrativos dedicados. Separación conceptual para el usuario
+          (sin que necesite conocer la arquitectura interna):
+          - Barrios: catálogo canónico — crear, corregir, consultar.
+          - Zonas: agrupan barrios canónicos ya existentes (M:N, con
+            detección de solapamiento y confirmación explícita — no cabe
+            en el patrón de auto-save de campo por campo de arriba). */}
+      <Card data-testid="territorio-section">
+        <CardContent className="p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 7m0 13V7" />
+            </svg>
+            <h2 className="text-base font-semibold">Territorio</h2>
+          </div>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div>
+                <p className="text-sm font-medium text-gray-900">Barrios</p>
+                <p className="text-sm text-muted-foreground">Catálogo canónico — crear, corregir y consultar</p>
+              </div>
+              <Link
+                href="/configuracion/barrios"
+                data-testid="link-configuracion-barrios"
+                className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium"
+              >
+                Barrios →
+              </Link>
+            </div>
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div>
+                <p className="text-sm font-medium text-gray-900">Zonas</p>
+                <p className="text-sm text-muted-foreground">Agrupan barrios del catálogo</p>
+              </div>
+              <Link
+                href="/configuracion/zonas"
+                data-testid="link-configuracion-zonas"
+                className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium"
+              >
+                Zonas →
+              </Link>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Push notifications */}
       <Card data-testid="push-settings">
         <CardContent className="p-6">

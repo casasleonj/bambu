@@ -38,16 +38,24 @@ export async function buscarBarrioExacto(nombre: string, db: Db = prisma): Promi
   return db.barrio.findUnique({ where: { nombreNormalizado } })
 }
 
+export type BarrioConConteo = Barrio & { _count: { clientes: number; negocios: number } }
+
 /**
- * Búsqueda para el selector (autocomplete). Filtro determinista por
- * substring sobre el nombre normalizado — NO es fuzzy matching (no hay
- * scoring de similaridad ni umbral de confianza).
+ * Búsqueda para el selector (autocomplete) y para la administración del
+ * catálogo. Filtro determinista por substring sobre el nombre normalizado
+ * — NO es fuzzy matching (no hay scoring de similaridad ni umbral de
+ * confianza).
+ *
+ * Incluye el conteo de Cliente/Negocio vinculados (`_count`) — útil para
+ * que un ADMIN distinga, al administrar el catálogo, un Barrio con
+ * registros reales de uno vacío/candidato a duplicado (la detección y el
+ * saneamiento de duplicados en sí son trabajo aparte, no de este módulo).
  */
 export async function buscarBarrios(
   query: string,
   opts: { incluirInactivos?: boolean; limit?: number } = {},
   db: Db = prisma,
-): Promise<Barrio[]> {
+): Promise<BarrioConConteo[]> {
   const { incluirInactivos = false, limit = 20 } = opts
   const nombreNormalizado = normalizeBarrioNombre(query)
 
@@ -56,6 +64,7 @@ export async function buscarBarrios(
       ...(incluirInactivos ? {} : { activo: true }),
       ...(nombreNormalizado ? { nombreNormalizado: { contains: nombreNormalizado } } : {}),
     },
+    include: { _count: { select: { clientes: true, negocios: true } } },
     orderBy: { nombre: 'asc' },
     take: limit,
   })
