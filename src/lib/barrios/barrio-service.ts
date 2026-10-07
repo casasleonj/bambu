@@ -38,13 +38,27 @@ export async function buscarBarrioExacto(nombre: string, db: Db = prisma): Promi
   return db.barrio.findUnique({ where: { nombreNormalizado } })
 }
 
-export type BarrioConConteo = Barrio & { _count: { clientes: number; negocios: number } }
+export type BarrioConConteo = Barrio & {
+  _count: { clientes: number; negocios: number }
+  /** Texto de un BarrioAlias que matcheó el query (F4) — p.ej. "Antillana". */
+  aliasCoincidente?: string
+  /** Textos de BarrioReferencia que matchearon el query (F4) — p.ej. ["Antillana 2"]. */
+  referenciasCoincidentes?: string[]
+}
 
 /**
  * Búsqueda para el selector (autocomplete) y para la administración del
- * catálogo. Filtro determinista por substring sobre el nombre normalizado
- * — NO es fuzzy matching (no hay scoring de similaridad ni umbral de
- * confianza).
+ * catálogo. Filtro determinista por substring — NO es fuzzy matching (no
+ * hay scoring de similaridad ni umbral de confianza).
+ *
+ * F4: el substring busca también sobre BarrioAlias/BarrioReferencia
+ * (`buscarBarrios("antill")` encuentra "La Antillana" por su alias
+ * "Antillana" o sus referencias "Antillana 1"/"Antillana 2"), consolidado
+ * por Barrio — un Barrio aparece UNA sola vez aunque matchee por varias
+ * fuentes a la vez (lo garantiza el filtro relacional `some`, sin join
+ * manual). `aliasCoincidente`/`referenciasCoincidentes` llevan el texto que
+ * matcheó, para que la UI explique "Coincide con: X" sin que el caller
+ * tenga que re-normalizar ni adivinar.
  *
  * Incluye el conteo de Cliente/Negocio vinculados (`_count`) — útil para
  * que un ADMIN distinga, al administrar el catálogo, un Barrio con
@@ -59,15 +73,38 @@ export async function buscarBarrios(
   const { incluirInactivos = false, limit = 20 } = opts
   const nombreNormalizado = normalizeBarrioNombre(query)
 
-  return db.barrio.findMany({
+  if (!nombreNormalizado) {
+    return db.barrio.findMany({
+      where: incluirInactivos ? {} : { activo: true },
+      include: { _count: { select: { clientes: true, negocios: true } } },
+      orderBy: { nombre: 'asc' },
+      take: limit,
+    })
+  }
+
+  const barrios = await db.barrio.findMany({
     where: {
       ...(incluirInactivos ? {} : { activo: true }),
-      ...(nombreNormalizado ? { nombreNormalizado: { contains: nombreNormalizado } } : {}),
+      OR: [
+        { nombreNormalizado: { contains: nombreNormalizado } },
+        { aliases: { some: { textoNormalizado: { contains: nombreNormalizado } } } },
+        { referencias: { some: { textoNormalizado: { contains: nombreNormalizado } } } },
+      ],
     },
-    include: { _count: { select: { clientes: true, negocios: true } } },
+    include: {
+      _count: { select: { clientes: true, negocios: true } },
+      aliases: { where: { textoNormalizado: { contains: nombreNormalizado } }, select: { texto: true } },
+      referencias: { where: { textoNormalizado: { contains: nombreNormalizado } }, select: { texto: true } },
+    },
     orderBy: { nombre: 'asc' },
     take: limit,
   })
+
+  return barrios.map(({ aliases, referencias, ...resto }) => ({
+    ...resto,
+    ...(aliases.length ? { aliasCoincidente: aliases[0].texto } : {}),
+    ...(referencias.length ? { referenciasCoincidentes: referencias.map((r) => r.texto) } : {}),
+  }))
 }
 
 /**

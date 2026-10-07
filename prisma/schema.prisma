@@ -583,6 +583,9 @@ model Barrio {
   negocios Negocio[]    @relation("NegocioBarrio")
   zonas    ZonaBarrio[]
 
+  aliases     BarrioAlias[]
+  referencias BarrioReferencia[]
+
   createdAt DateTime @default(now()) @db.Timestamptz()
   updatedAt DateTime @updatedAt @db.Timestamptz()
 
@@ -642,6 +645,70 @@ model ZonaBarrio {
   @@unique([zonaId, barrioId])
   @@index([zonaId])
   @@index([barrioId])
+}
+
+// ====================
+// BARRIO: ALIAS Y REFERENCIAS TERRITORIALES (F4 — equipo, revisión 2026-10-07)
+// ====================
+//
+// PROPUESTA DE ESTA FASE, no una taxonomía heredada del ALS/Plan Técnico: la
+// documentación histórica establece Barrio canónico, equivalencias,
+// sugerencias, valores ambiguos y dirección/referencia como señal
+// territorial, pero no fija "ALIAS | REFERENCIA" como estructura formal.
+// Es la mínima estructura suficiente para los casos confirmados (La
+// Antillana / Antillana / Antillana 1 / Antillana 2). No modela sector,
+// urbanización, vía, equipamiento, corredor ni punto de interés — eso es
+// otra fase si la evidencia territorial algún día lo exige.
+//
+// Dos tablas en vez de una con enum + índice único condicionado: Prisma
+// (pineado en 6.19.3) no soporta índices únicos parciales (`@@unique(...,
+// where: ...)`) — esa sintaxis recién llegó como preview feature en Prisma
+// 7.4.0 (feb 2026), fuera de alcance (regla de versiones pineadas, major
+// bump). Aplicar el índice parcial solo vía SQL crudo es inseguro en este
+// repo: `db push` (Known Issue #12, flujo de dev de este proyecto) intenta
+// reconciliar la DB contra lo declarado en schema.prisma y puede dropear
+// constraints no representados ahí. Separar en dos modelos nativos evita el
+// problema de raíz, sin SQL no representable.
+//
+// Semántica (regla fundamental): "Alias identifica. Referencia ayuda a
+// ubicar. Un texto que termina apuntando a más de un Barrio nunca se
+// resuelve automáticamente."
+
+// Alias: otro nombre que IDENTIFICA al mismo Barrio (ej. "Antillana" = "La
+// Antillana"). Unicidad GLOBAL — misma garantía que Barrio.nombreNormalizado.
+// Crear un Alias es bloqueo duro contra: nombre canónico de otro Barrio,
+// otro Alias (constraint de DB), o una Referencia de otro Barrio (chequeo de
+// servicio) — nunca confirmable, a diferencia del solapamiento de Zona.
+model BarrioAlias {
+  id               String  @id @default(cuid())
+  barrioId         String
+  barrio           Barrio  @relation(fields: [barrioId], references: [id], onDelete: Cascade)
+  texto            String
+  textoNormalizado String
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+
+  @@unique([textoNormalizado])
+  @@index([barrioId])
+}
+
+// Referencia: ayuda a ubicar DENTRO del Barrio (ej. "Antillana 2"), pero no
+// identifica globalmente al Barrio. NO es única entre Barrios distintos —
+// dos Barrios pueden compartir legítimamente una referencia territorial
+// (ej. futuro "La Cancha"). La ambigüedad resultante la resuelve
+// `resolverBarrioPorTexto()` devolviendo AMBIGUO, nunca eligiendo en
+// silencio. Solo se evita el duplicado exacto dentro del MISMO Barrio.
+model BarrioReferencia {
+  id               String  @id @default(cuid())
+  barrioId         String
+  barrio           Barrio  @relation(fields: [barrioId], references: [id], onDelete: Cascade)
+  texto            String
+  textoNormalizado String
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+
+  @@unique([barrioId, textoNormalizado])
+  @@index([textoNormalizado])
 }
 
 // ====================
