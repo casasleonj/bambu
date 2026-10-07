@@ -76,9 +76,14 @@ describe('F-N7: la route sigue trabajando (no rompe backward compat)', () => {
 })
 
 describe('Fase 2 GPS: validación y persistencia de GPS en entrega', () => {
-  it('la route lee REQUIERE_GPS_PARA_ENTREGA y PERMITIR_ENTREGA_SIN_GPS_CON_JUSTIFICACION', () => {
-    expect(routeSource).toMatch(/REQUIERE_GPS_PARA_ENTREGA/)
-    expect(routeSource).toMatch(/PERMITIR_ENTREGA_SIN_GPS_CON_JUSTIFICACION/)
+  it('la route lee las claves canónicas camelCase (seed + UI), no las UPPER_SNAKE legacy', () => {
+    // FIX (PR #259): las claves UPPER_SNAKE nunca existen en Config (seed y
+    // UI usan camelCase) — ver entrega-gps-config-keys.test.ts para el
+    // comportamiento real contra Postgres.
+    expect(routeSource).toMatch(/getConfigBool\(['"]requerirGpsParaEntrega['"]/)
+    expect(routeSource).toMatch(/getConfigBool\(['"]permitirEntregaSinGpsConJustificacion['"]/)
+    expect(routeSource).not.toMatch(/REQUIERE_GPS_PARA_ENTREGA/)
+    expect(routeSource).not.toMatch(/PERMITIR_ENTREGA_SIN_GPS_CON_JUSTIFICACION/)
   })
 
   it('la route devuelve 400 si se requiere GPS y no hay coords ni justificación', () => {
