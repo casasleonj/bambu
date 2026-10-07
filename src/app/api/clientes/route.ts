@@ -42,15 +42,13 @@ export async function POST(request: NextRequest) {
   const roleCheck = await requireRole([ROLES.ADMIN, ROLES.ASISTENTE], authResult)
   if (roleCheck instanceof Response) return roleCheck
 
-  // FIX: timeout global de 25s para el POST. Si la DB no responde
-  // (Supabase pausada, cold start severo, o conexión colgada), la función
-  // devuelve 500 inmediato en lugar de colgar hasta el timeout de Vercel
-  // (10s en Hobby, 60s en Pro). Esto evita que el cliente se quede
-  // esperando indefinidamente sin respuesta.
-  const TIMEOUT_MS = 25_000
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error('DB_TIMEOUT')), TIMEOUT_MS)
-  })
+  // FIX (hallazgo histórico PR #140): el timeout se creaba ANTES de validar
+  // el body. Una request inválida respondía 400 de inmediato, pero el timer
+  // de 25s seguía vivo y disparaba su reject() más tarde sobre una promesa
+  // que ya nadie esperaba — unhandledRejection: DB_TIMEOUT. Un timeout
+  // pertenece al trabajo que protege: ahora se crea DESPUÉS de validar, y
+  // se cancela siempre en el `finally`.
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
 
   try {
     const body = await request.json()
@@ -58,6 +56,15 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) {
       return apiError('Datos invalidos', 400, { formErrors: [formatZodError(parsed.error)] })
     }
+
+    // FIX: timeout global de 25s para la operación de DB. Si la DB no
+    // responde (Supabase pausada, cold start severo, o conexión colgada),
+    // la función devuelve 500 inmediato en lugar de colgar hasta el
+    // timeout de Vercel (10s en Hobby, 60s en Pro).
+    const TIMEOUT_MS = 25_000
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error('DB_TIMEOUT')), TIMEOUT_MS)
+    })
 
     // FIX F-N3: dedup por offlineId + dedup por teléfono + create corren
     // dentro de una transacción Serializable. Antes eran 3 operaciones
@@ -199,5 +206,10 @@ export async function POST(request: NextRequest) {
       return apiError('La base de datos tardó demasiado en responder. Reintentá en unos minutos.', 500)
     }
     return apiError('Error creando cliente')
+  } finally {
+    // El timer solo existe si llegamos a crearlo (body válido). Cancelarlo
+    // siempre evita que dispare su reject() después de que la request ya
+    // terminó — la causa del unhandledRejection: DB_TIMEOUT tardío.
+    clearTimeout(timeoutId)
   }
 }
