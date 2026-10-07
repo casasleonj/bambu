@@ -1,5 +1,5 @@
 // @tests productos comprehensive - UI + API + Roles + Mobile + Edge cases
-import {test, expect, BASE, goto, apiPost, apiGet, apiPut, apiDelete, resetTestDatabase, waitForToast, setMobileViewport, checkHorizontalOverflow, loginAs, sharedPageLogin} from './fixtures'
+import {test, expect, BASE, goto, apiPost, apiGet, apiPut, apiPatch, apiDelete, resetTestDatabase, waitForToast, setMobileViewport, checkHorizontalOverflow, loginAs, sharedPageLogin} from './fixtures'
 import type { Page } from '@playwright/test'
 
 test.describe('Productos - Comprehensive', () => {
@@ -38,11 +38,15 @@ test.describe('Productos - Comprehensive', () => {
       expect(errorMsg).toContain('permisos')
     })
 
-    test('ASISTENTE puede ver productos pero NO editar via API', async ({ page }) => {
+    test('ASISTENTE no tiene view:productos — GET y PUT devuelven 403', async ({ page }) => {
+      // FIX (R3, hallazgo histórico PR #129): ASISTENTE NO tiene el permiso
+      // 'view:productos' en src/lib/permissions.ts (solo ADMIN y CONTADOR lo
+      // tienen). GET /api/productos usa requirePermission('view:productos'),
+      // así que ASISTENTE recibe 403, no 200. El test viejo asumía 200 —
+      // comportamiento correcto existente ≠ test antiguo → se corrige el test.
       await loginAs(page, 'asistente')
-      // GET - should work
       const getRes = await apiGet(page, '/api/productos')
-      expect(getRes.status()).toBe(200)
+      expect(getRes.status()).toBe(403)
       // PUT - should return 403 for ASISTENTE
       const putRes = await apiPut(page, '/api/productos', {
         productoId: 'test-id',
@@ -340,6 +344,12 @@ test.describe('Productos - Comprehensive', () => {
     test('discrepancy warning aparece cuando precioBase difiere >30% del primer tier', async () => {
       // Reset DB to ensure fresh state
       resetTestDatabase()
+      // FIX (R3, hallazgo histórico PR #129): resetTestDatabase() trunca
+      // SesionActiva (ver Known Issue #20 de AGENTS.md) — invalida la
+      // sesión de la `p` compartida de este describe (sharedPageLogin en
+      // beforeAll, serial). Sin re-loguear, el siguiente goto() cae al
+      // login y el body text check de más abajo nunca ve /productos.
+      await loginAs(p, 'admin')
       await goto(p, '/productos')
 
       // Check for discrepancy warning using text content
@@ -396,8 +406,29 @@ test.describe('Productos - Comprehensive', () => {
     })
 
     test('crear tier sin cantMax (sin limite)', async ({ page }) => {
-      await goto(page, '/productos')
+      // FIX (R3, hallazgo histórico PR #129): los 5 productos seed tienen
+      // cobertura completa desde cantMin=1 hasta el infinito (ver
+      // prisma/seed.ts PRECIOS_VOLUMEN — todos terminan en un tier con
+      // cantMax=null). Cualquier tier nuevo, acotado o "sin límite", se
+      // solapa con ese tier abierto y el servidor lo rechaza
+      // (RANGO_SOLAPADO, ver POST /api/precios). El test viejo lo
+      // enmascaraba revisando el toast solo "si estaba visible" — nunca
+      // ejercitaba de verdad el happy path. Para probarlo hace falta abrir
+      // el hueco primero: borrar (soft-delete) el tier abierto existente.
+      const prodRes = await apiGet(page, '/api/productos')
+      const prodBody = await prodRes.json()
+      const productos = prodBody.productos as Array<{
+        id: string
+        codigo: string
+        precios: Array<{ id: string; cantMin: number; cantMax: number | null }>
+      }>
+      const producto = productos[0]
+      const tierAbierto = producto.precios.find((t) => t.cantMax === null)
+      expect(tierAbierto).toBeTruthy()
+      const delRes = await apiDelete(page, `/api/precios/${tierAbierto!.id}`)
+      expect(delRes.status()).toBe(200)
 
+      await goto(page, '/productos')
       await page.keyboard.press('Escape')
 
       const addBtn = page.locator('[data-testid^="add-range-btn-"]').first()
@@ -405,16 +436,22 @@ test.describe('Productos - Comprehensive', () => {
       await addBtn.click()
       await page.waitForTimeout(500)
 
-      await page.locator('[data-testid="modal-cant-min"]').fill('999')
+      // FIX (mutation-check reveló un segundo bug en este mismo fix):
+      // usar el MISMO cantMin del tier recién soft-deleted choca con el
+      // guard de "tier inactivo con mismo cantMin" (POST /api/precios) —
+      // la UI abre un confirm() de browser para forzar el reemplazo, que
+      // Playwright descarta por defecto sin un dialog handler, así que
+      // nunca llega a crear el tier. El hueco abierto por el delete es
+      // [cantMin, infinito) completo (era el único tier del producto), así
+      // que cualquier cantMin >= el original sirve para probar el happy
+      // path "sin límite" sin tocar esa colisión.
+      const cantMinNuevo = tierAbierto!.cantMin + 50000
+      await page.locator('[data-testid="modal-cant-min"]').fill(String(cantMinNuevo))
       await page.locator('[data-testid="modal-precio"]').fill('1000')
 
       await page.locator('[data-testid="modal-save"]').click()
 
-      await page.waitForTimeout(2000)
-      const toastVisible = await page.locator('[data-sonner-toast]').first().isVisible().catch(() => false)
-      if (toastVisible) {
-        await waitForToast(page, 'Rango agregado')
-      }
+      await waitForToast(page, 'Rango agregado')
 
       await page.keyboard.press('Escape')
     })
@@ -486,7 +523,16 @@ test.describe('Productos - Comprehensive', () => {
 
       await precioBaseInput.fill('7000')
       await precioBaseInput.blur()
-      await page.waitForTimeout(1000)
+
+      // FIX (R3, hallazgo histórico PR #129): cambiar precioBase siempre
+      // dispara GET /api/precios/impacto antes de guardar (productos-client/
+      // index.tsx: updateProductoConfig) y el modal de impacto se abre
+      // SIEMPRE que la respuesta sea ok (el objeto `impacto` nunca es null),
+      // sin importar si hay clientes/pedidos realmente afectados. El save
+      // real solo ocurre al click en "Confirmar cambio" — blur() solo no basta.
+      const confirmarBtn = page.getByRole('button', { name: 'Confirmar cambio' })
+      await expect(confirmarBtn).toBeVisible({ timeout: 5000 })
+      await confirmarBtn.click()
 
       await waitForToast(page, 'Configuración actualizada')
     })
@@ -502,6 +548,14 @@ test.describe('Productos - Comprehensive', () => {
       }
 
       const deleteBtn = pacaAguaCard.locator('[data-testid^="tier-delete-"]').first()
+      // FIX (R3, hallazgo histórico PR #129): capturar el id del tier ANTES
+      // de borrarlo — el testid lo codifica (`tier-delete-${precio.id}`,
+      // ver productos-client/index.tsx) — para poder restaurar ESE mismo
+      // registro después, en vez de crear uno nuevo.
+      const deleteTestId = await deleteBtn.getAttribute('data-testid')
+      const tierId = deleteTestId?.replace('tier-delete-', '')
+      expect(tierId).toBeTruthy()
+
       await deleteBtn.click()
       await page.waitForTimeout(300)
       const confirmBtn = page.locator('button:has-text("Confirmar")')
@@ -514,18 +568,15 @@ test.describe('Productos - Comprehensive', () => {
       const afterDelete = await pacaAguaCard.locator('table tbody tr').count()
       expect(afterDelete).toBe(initialCount - 1)
 
-      const prodRes = await apiGet(page, '/api/productos')
-      const prodBody = await prodRes.json()
-      const pacaAgua = (prodBody.productos as Array<{ id: string; codigo: string; precios?: unknown[] }> | undefined)?.find((p2) => p2.codigo === 'PACA_AGUA')
-      if (pacaAgua) {
-        await apiPost(page, '/api/precios', {
-          productoId: pacaAgua.id,
-          cantMin: 1,
-          cantMax: 4,
-          precio: 2800,
-        })
-        await page.waitForTimeout(500)
-      }
+      // FIX (R3, hallazgo histórico PR #129): "restaurar" significa revertir
+      // el soft-delete del MISMO registro vía PATCH /api/precios/[id]/restore
+      // (activo: false → true, ver src/app/api/precios/[id]/restore/route.ts),
+      // no crear un tier nuevo con POST /api/precios. Antes este test nunca
+      // ejercitaba el endpoint de restore real — pasaba por coincidencia de
+      // conteo, no porque el ciclo completo funcionara.
+      const restoreRes = await apiPatch(page, `/api/precios/${tierId}/restore`, {})
+      expect(restoreRes.status()).toBe(200)
+      await page.waitForTimeout(500)
 
       await goto(page, '/productos')
       const afterRestore = await pacaAguaCard.locator('table tbody tr').count()
