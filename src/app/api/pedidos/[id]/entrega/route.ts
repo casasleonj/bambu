@@ -77,10 +77,14 @@ export async function POST(
       }
     }
 
-    // Rule: REQUIERE_GPS_PARA_ENTREGA
+    // Rule: requerirGpsParaEntrega
     // If GPS is required, the delivery must include coordinates OR a justification.
-    const requerirGps = await getConfigBool('REQUIERE_GPS_PARA_ENTREGA', false)
-    const permitirSinGpsConJustificacion = await getConfigBool('PERMITIR_ENTREGA_SIN_GPS_CON_JUSTIFICACION', false)
+    // FIX (hallazgo histórico PR #259): seed y UI usan las claves camelCase
+    // `requerirGpsParaEntrega` / `permitirEntregaSinGpsConJustificacion`.
+    // Antes esta route leía UPPER_SNAKE, claves que nunca existen en Config,
+    // así que el gate quedaba siempre en `false` sin importar la configuración real.
+    const requerirGps = await getConfigBool('requerirGpsParaEntrega', false)
+    const permitirSinGpsConJustificacion = await getConfigBool('permitirEntregaSinGpsConJustificacion', false)
     if (requerirGps) {
       const tieneGps = typeof gpsLat === 'number' && typeof gpsLng === 'number'
       const tieneJustificacion = typeof gpsJustificacion === 'string' && gpsJustificacion.trim().length > 0
