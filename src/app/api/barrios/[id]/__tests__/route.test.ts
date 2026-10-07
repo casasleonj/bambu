@@ -1,10 +1,26 @@
 // @tests /api/barrios/[id] — F1 Barrio canónico (PATCH: rename/archivar/reactivar)
+// y F4 (GET: detalle con alias/referencias completos para Cliente/Negocio).
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 
 const routePath = join(process.cwd(), 'src/app/api/barrios/[id]/route.ts')
 const source = readFileSync(routePath, 'utf-8')
+
+describe('GET /api/barrios/[id] — estructura', () => {
+  it('exporta una función GET, requiere auth (sin restricción de rol — lectura)', () => {
+    expect(source).toMatch(/export\s+async\s+function\s+GET\s*\(/)
+  })
+
+  it('incluye aliases y referencias completos (no filtrados), no solo coincidencias', () => {
+    expect(source).toMatch(/aliases:\s*\{\s*select:/)
+    expect(source).toMatch(/referencias:\s*\{\s*select:/)
+  })
+
+  it('404 si el barrio no existe', () => {
+    expect(source).toMatch(/if\s*\(\s*!barrio\s*\)\s*return\s*apiError\(\s*'Barrio no encontrado',\s*404\s*\)/)
+  })
+})
 
 describe('PATCH /api/barrios/[id] — estructura', () => {
   it('exporta una función PATCH', () => {

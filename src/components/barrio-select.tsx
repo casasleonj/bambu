@@ -6,6 +6,12 @@ import { normalizeName } from '@/lib/import/normalizer'
 export interface BarrioOption {
   id: string
   nombre: string
+  /** true si está archivado — para avisar cuando el vínculo ya existente apunta a un Barrio inactivo. */
+  activo?: boolean
+  // F4: contexto de por qué apareció en la búsqueda cuando matcheó por un
+  // alias/referencia territorial en vez del nombre canónico.
+  aliasCoincidente?: string
+  referenciasCoincidentes?: string[]
 }
 
 interface BarriosSearchResponse {
@@ -134,6 +140,9 @@ export function BarrioSelect({ value, legacyNombre, onSelect, onManualChange, pl
       <div className="flex items-center gap-2">
         <span className="flex-1 px-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-gray-50 text-gray-700">
           {value.nombre}
+          {value.activo === false && (
+            <span className="ml-2 text-xs font-medium text-amber-700">(archivado)</span>
+          )}
         </span>
         <button
           type="button"
@@ -195,16 +204,22 @@ export function BarrioSelect({ value, legacyNombre, onSelect, onManualChange, pl
           {!loading && results.length === 0 && query === '' && (
             <div className="px-3 py-2.5 text-sm text-gray-400">Escribe para buscar...</div>
           )}
-          {!loading && results.map((barrio) => (
-            <button
-              key={barrio.id}
-              type="button"
-              onClick={() => handleSelect(barrio)}
-              className="w-full text-left px-3 py-2.5 text-sm border-b last:border-b-0 border-gray-100 text-gray-700 hover:bg-gray-50 transition"
-            >
-              {barrio.nombre}
-            </button>
-          ))}
+          {!loading && results.map((barrio) => {
+            const coincideCon = barrio.aliasCoincidente ?? barrio.referenciasCoincidentes?.[0]
+            return (
+              <button
+                key={barrio.id}
+                type="button"
+                onClick={() => handleSelect(barrio)}
+                className="w-full text-left px-3 py-2.5 text-sm border-b last:border-b-0 border-gray-100 text-gray-700 hover:bg-gray-50 transition"
+              >
+                {barrio.nombre}
+                {coincideCon && (
+                  <span className="block text-xs text-gray-400">Coincide con: {coincideCon}</span>
+                )}
+              </button>
+            )
+          })}
           {showCrear && (
             <button
               type="button"

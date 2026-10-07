@@ -5,6 +5,7 @@ import { Modal } from '@/components/modal'
 import { InfoBanner } from '@/components/tooltip'
 import { TipoNegocioSelect } from '@/components/tipo-negocio-select'
 import { BarrioSelect, type BarrioOption } from '@/components/barrio-select'
+import { BarrioReferenciasChips } from '@/components/barrio-referencias-chips'
 import { CoordsPreview } from '@/components/coords-preview'
 
 const TIPOS_NEGOCIO: string[] = [
@@ -213,6 +214,11 @@ export function NegocioForm({
               }
               onManualChange={(v) => setFormData({ ...formData, barrio: v })}
               placeholder="Ej: Centro"
+            />
+            <BarrioReferenciasChips
+              barrioId={formData.barrioId || null}
+              direccion={formData.direccion}
+              onInsertarEnDireccion={(nuevaDireccion) => setFormData({ ...formData, direccion: nuevaDireccion })}
             />
           </div>
           <div>
