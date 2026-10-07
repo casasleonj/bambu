@@ -436,7 +436,17 @@ test.describe('Productos - Comprehensive', () => {
       await addBtn.click()
       await page.waitForTimeout(500)
 
-      await page.locator('[data-testid="modal-cant-min"]').fill(String(tierAbierto!.cantMin))
+      // FIX (mutation-check reveló un segundo bug en este mismo fix):
+      // usar el MISMO cantMin del tier recién soft-deleted choca con el
+      // guard de "tier inactivo con mismo cantMin" (POST /api/precios) —
+      // la UI abre un confirm() de browser para forzar el reemplazo, que
+      // Playwright descarta por defecto sin un dialog handler, así que
+      // nunca llega a crear el tier. El hueco abierto por el delete es
+      // [cantMin, infinito) completo (era el único tier del producto), así
+      // que cualquier cantMin >= el original sirve para probar el happy
+      // path "sin límite" sin tocar esa colisión.
+      const cantMinNuevo = tierAbierto!.cantMin + 50000
+      await page.locator('[data-testid="modal-cant-min"]').fill(String(cantMinNuevo))
       await page.locator('[data-testid="modal-precio"]').fill('1000')
 
       await page.locator('[data-testid="modal-save"]').click()
