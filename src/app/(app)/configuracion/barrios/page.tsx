@@ -21,7 +21,14 @@ import BarriosClient from './barrios-client'
 export default async function BarriosPage() {
   const barrios = await prisma.barrio.findMany({
     where: { activo: true },
-    include: { _count: { select: { clientes: true, negocios: true } } },
+    include: {
+      _count: { select: { clientes: true, negocios: true } },
+      // F4: listas completas de alias/referencias — ver comentario del
+      // componente para la semántica exacta ("también se conoce como" vs
+      // "referencias comunes").
+      aliases: { select: { id: true, texto: true }, orderBy: { texto: 'asc' } },
+      referencias: { select: { id: true, texto: true }, orderBy: { texto: 'asc' } },
+    },
     orderBy: { nombre: 'asc' },
   })
 

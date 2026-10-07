@@ -38,12 +38,18 @@ export async function buscarBarrioExacto(nombre: string, db: Db = prisma): Promi
   return db.barrio.findUnique({ where: { nombreNormalizado } })
 }
 
+export type BarrioAliasLite = { id: string; texto: string }
+export type BarrioReferenciaLite = { id: string; texto: string }
+
 export type BarrioConConteo = Barrio & {
   _count: { clientes: number; negocios: number }
   /** Texto de un BarrioAlias que matcheó el query (F4) — p.ej. "Antillana". */
   aliasCoincidente?: string
   /** Textos de BarrioReferencia que matchearon el query (F4) — p.ej. ["Antillana 2"]. */
   referenciasCoincidentes?: string[]
+  /** Listas COMPLETAS (no filtradas por query) — solo con `incluirRelaciones: true`. */
+  aliases?: BarrioAliasLite[]
+  referencias?: BarrioReferenciaLite[]
 }
 
 /**
@@ -56,9 +62,17 @@ export type BarrioConConteo = Barrio & {
  * "Antillana" o sus referencias "Antillana 1"/"Antillana 2"), consolidado
  * por Barrio — un Barrio aparece UNA sola vez aunque matchee por varias
  * fuentes a la vez (lo garantiza el filtro relacional `some`, sin join
- * manual). `aliasCoincidente`/`referenciasCoincidentes` llevan el texto que
- * matcheó, para que la UI explique "Coincide con: X" sin que el caller
- * tenga que re-normalizar ni adivinar.
+ * manual).
+ *
+ * Dos modos de salida:
+ *  - por defecto (picker de Cliente/Negocio/Zona): `aliasCoincidente`/
+ *    `referenciasCoincidentes` llevan solo el TEXTO que matcheó el query,
+ *    para "Coincide con: X" — liviano, sin ids.
+ *  - `incluirRelaciones: true` (administración de Barrios): `aliases`/
+ *    `referencias` llevan las listas COMPLETAS (con id, para poder
+ *    eliminar), sin importar si hay query activo — así la pantalla de
+ *    Configuración → Territorio → Barrios siempre muestra "También se
+ *    conoce como" / "Referencias comunes" completos, no solo lo buscado.
  *
  * Incluye el conteo de Cliente/Negocio vinculados (`_count`) — útil para
  * que un ADMIN distinga, al administrar el catálogo, un Barrio con
@@ -67,15 +81,41 @@ export type BarrioConConteo = Barrio & {
  */
 export async function buscarBarrios(
   query: string,
-  opts: { incluirInactivos?: boolean; limit?: number } = {},
+  opts: { incluirInactivos?: boolean; limit?: number; incluirRelaciones?: boolean } = {},
   db: Db = prisma,
 ): Promise<BarrioConConteo[]> {
-  const { incluirInactivos = false, limit = 20 } = opts
+  const { incluirInactivos = false, limit = 20, incluirRelaciones = false } = opts
   const nombreNormalizado = normalizeBarrioNombre(query)
+
+  const where: Prisma.BarrioWhereInput = {
+    ...(incluirInactivos ? {} : { activo: true }),
+    ...(nombreNormalizado
+      ? {
+          OR: [
+            { nombreNormalizado: { contains: nombreNormalizado } },
+            { aliases: { some: { textoNormalizado: { contains: nombreNormalizado } } } },
+            { referencias: { some: { textoNormalizado: { contains: nombreNormalizado } } } },
+          ],
+        }
+      : {}),
+  }
+
+  if (incluirRelaciones) {
+    return db.barrio.findMany({
+      where,
+      include: {
+        _count: { select: { clientes: true, negocios: true } },
+        aliases: { select: { id: true, texto: true }, orderBy: { texto: 'asc' } },
+        referencias: { select: { id: true, texto: true }, orderBy: { texto: 'asc' } },
+      },
+      orderBy: { nombre: 'asc' },
+      take: limit,
+    })
+  }
 
   if (!nombreNormalizado) {
     return db.barrio.findMany({
-      where: incluirInactivos ? {} : { activo: true },
+      where,
       include: { _count: { select: { clientes: true, negocios: true } } },
       orderBy: { nombre: 'asc' },
       take: limit,
@@ -83,14 +123,7 @@ export async function buscarBarrios(
   }
 
   const barrios = await db.barrio.findMany({
-    where: {
-      ...(incluirInactivos ? {} : { activo: true }),
-      OR: [
-        { nombreNormalizado: { contains: nombreNormalizado } },
-        { aliases: { some: { textoNormalizado: { contains: nombreNormalizado } } } },
-        { referencias: { some: { textoNormalizado: { contains: nombreNormalizado } } } },
-      ],
-    },
+    where,
     include: {
       _count: { select: { clientes: true, negocios: true } },
       aliases: { where: { textoNormalizado: { contains: nombreNormalizado } }, select: { texto: true } },
