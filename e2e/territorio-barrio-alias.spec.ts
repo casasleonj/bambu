@@ -189,9 +189,16 @@ test.describe('F4 — Barrio: alias y referencias territoriales', () => {
 
     // Verificación de fondo: el Negocio quedó con barrioId del canónico (nunca
     // crea un Barrio nuevo a partir del texto buscado).
-    const detalleRes = await apiGet(p, `/api/clientes/${cliente.id}`)
-    const detalle = await detalleRes.json()
-    const negocio = detalle.cliente.negocios[0]
+    // El modal se cierra antes de que el POST del negocio sea visible en el
+    // GET del cliente (carrera observada en arranque en frío): se espera con
+    // poll en vez de leer una sola vez.
+    const leerNegocio = async () => {
+      const detalleRes = await apiGet(p, `/api/clientes/${cliente.id}`)
+      const detalle = await detalleRes.json()
+      return detalle.cliente?.negocios?.[0] ?? null
+    }
+    await expect.poll(leerNegocio, { timeout: 10000, intervals: [250, 500, 1000] }).not.toBeNull()
+    const negocio = await leerNegocio()
     expect(negocio.barrioId).toBe(barrioAntillanaId)
     expect(negocio.direccion).toBe('Antillana 1, Antillana 2, Local 3')
   })
