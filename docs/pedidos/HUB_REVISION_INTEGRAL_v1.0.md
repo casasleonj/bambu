@@ -312,3 +312,29 @@ Las 14 maquetas pedidas (móvil + escritorio) se producen **después** de D1, po
 ### 10.4 Pendiente relacionado (otro hallazgo histórico)
 
 La clienta tiene un pedido de julio con `totalPagado > 0` y **sin fila `Pago`**, anterior al Hub. Se incluye en la misma conciliación, como R1/R2 según la evidencia.
+
+---
+
+## 11. Segundo incidente P0, anterior al Hub: el `Pago` subregistra el efectivo de las ventas anónimas
+
+**Hallazgo (2026-10-08, solo lectura):** de las ventas a `CONSUMIDOR_FINAL` en estado `PAGADO` (206 ventas, $1.964.500), las filas `Pago` suman solo **$1.378.300**. **Faltan $586.200** en el registro de pagos, repartidos en 160 ventas entre el **2026-07-24** y el **2026-09-23** (último día antes del Hub). En 95 la diferencia es exactamente $4.100 y 55 no tienen ningún `Pago`. `Pedido.estadoPago` y `totalPagado` dicen pagado; lo que falla es la fila `Pago`, que es la que alimenta caja y cierres.
+
+**Mecanismo (verificado en datos + código):**
+
+1. Desde el pedido #71 (24/07), cada venta anónima tiene un `Pago` igual a `total − X`, con X constante (primero $3.700, después $4.100).
+2. `CrearPedidoUseCase` aplica el saldo a favor del cliente **antes** de normalizar los pagos (`getSaldoFavor` → `aplicarSaldoFavor`) y **acredita el excedente** al cliente (`incrementarSaldoFavor`). Con `CONSUMIDOR_FINAL` esto produce un ciclo:
+   - una venta registra un monto recibido mayor al total (el billete, es decir el **cambio**) → el excedente queda como "saldo a favor" de Consumidor Final;
+   - la venta siguiente consume ese saldo como crédito, así que su `Pago` se registra por `total − X`;
+   - el pago completo vuelve a generar el mismo excedente → el saldo se repone;
+   - se repite en cada venta.
+3. **Causa raíz:** el cambio entregado al cliente se modela como saldo a favor de un cliente anónimo. `Consumidor Final` no puede tener saldo a favor: no hay a quién devolverlo ni de quién reclamarlo.
+
+**Impacto:** cualquier reporte de caja o ingresos que sume `Pago` subestima el efectivo real en ~$586.200 para ese período. Los estados de los pedidos son correctos.
+
+**Corrección propuesta (entra en el PR P0, junto con la zona Dinero):**
+
+- Backend: con `CONSUMIDOR_FINAL` **no** se aplica ni se acredita saldo a favor. El excedente sobre el total es **cambio** y no se persiste como crédito.
+- UI: distinguir dinero recibido, cambio y dinero aplicado (el pedido del equipo, §4.4 de su mensaje). El `Pago` registra el dinero **aplicado**.
+- Test de regresión: dos ventas anónimas seguidas con billete mayor al total → cada `Pago` = total y el saldo a favor de CF = 0.
+
+**Regularización histórica de este segundo incidente:** necesita su propio procedimiento y aprobación (no se mezcla con las 57). Se presentará con la misma estructura del §10.
