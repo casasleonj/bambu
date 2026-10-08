@@ -5,7 +5,7 @@
 // inserta en Dirección solo por acción explícita (nunca automático, nunca
 // duplica, nunca sobrescribe), Zona persiste solo barrioId, y el bloqueo
 // duro de Alias contra otro Barrio.
-import { test, expect, apiPost, apiGet, goto, sharedPageLogin, resetDatabase } from './fixtures'
+import { test, expect, apiPost, apiGet, goto, sharedPageLogin, resetDatabase, createCliente } from './fixtures'
 import type { Page } from '@playwright/test'
 
 test.describe('F4 — Barrio: alias y referencias territoriales', () => {
@@ -13,6 +13,7 @@ test.describe('F4 — Barrio: alias y referencias territoriales', () => {
 
   let p: Page
   let barrioAntillanaId: string
+  let nombreZonaUno: string
 
   test.beforeAll(async ({ browser }) => {
     resetDatabase()
@@ -140,10 +141,64 @@ test.describe('F4 — Barrio: alias y referencias territoriales', () => {
     await expect(p.getByText('La Antillana')).toHaveCount(1)
   })
 
+  test('Negocio: buscar "Antillana 2" encuentra La Antillana y muestra las referencias', async () => {
+    const { cliente } = await createCliente(p, { nombre: `F4 Cliente Negocio ${Date.now() % 100000}` })
+    await goto(p, `/clientes?openCliente=${cliente.id}`)
+    await expect(p.getByRole('heading', { name: cliente.nombre })).toBeVisible()
+
+    await p.getByRole('button', { name: 'Agregar' }).first().click()
+    await p.locator('input[placeholder="Ej: Restaurante El Sabor"]').fill('Tienda F4 Test')
+
+    const barrioInput = p.locator('input[placeholder="Ej: Centro"]')
+    await barrioInput.fill('Antillana 2')
+
+    // Mismo motivo que en Cliente/Zona: el botón del resultado concatena
+    // nombre + "Coincide con: X" en el mismo elemento, sin exact:true.
+    const resultado = p.getByText('La Antillana')
+    await expect(resultado).toBeVisible({ timeout: 5000 })
+    await expect(p.getByText('Coincide con: Antillana 2')).toBeVisible()
+    await resultado.click()
+
+    // Tras seleccionar, aparecen las referencias del Barrio como chips —
+    // mismo componente compartido que en Cliente (BarrioReferenciasChips).
+    await expect(p.getByText('También se conoce como')).toBeVisible()
+    await expect(p.getByText('Referencias comunes — toca una para agregarla a Dirección')).toBeVisible()
+    await expect(p.getByRole('button', { name: 'Antillana 1', exact: true })).toBeVisible()
+    await expect(p.getByRole('button', { name: 'Antillana 2', exact: true })).toBeVisible()
+
+    const direccion = p.locator('textarea[placeholder="Calle, número, referencias..."]')
+    await expect(direccion).toHaveValue('')
+
+    // El chip llena Dirección vacía (mismo contrato que en Cliente).
+    await p.getByRole('button', { name: 'Antillana 2', exact: true }).click()
+    await expect(direccion).toHaveValue('Antillana 2')
+
+    // Ya hay contenido → el próximo chip antepone, preserva lo existente.
+    await direccion.fill('Antillana 2, Local 3')
+    await p.getByRole('button', { name: 'Antillana 1', exact: true }).click()
+    await expect(direccion).toHaveValue('Antillana 1, Antillana 2, Local 3')
+
+    // Pulsar de nuevo una referencia ya presente no duplica.
+    await expect(p.getByRole('button', { name: 'Antillana 1', exact: true })).toBeDisabled()
+    await expect(direccion).toHaveValue('Antillana 1, Antillana 2, Local 3')
+
+    await p.getByRole('button', { name: /Crear negocio/ }).click()
+    await expect(p.getByRole('button', { name: /Crear negocio/ })).toBeHidden({ timeout: 5000 })
+
+    // Verificación de fondo: el Negocio quedó con barrioId del canónico (nunca
+    // crea un Barrio nuevo a partir del texto buscado).
+    const detalleRes = await apiGet(p, `/api/clientes/${cliente.id}`)
+    const detalle = await detalleRes.json()
+    const negocio = detalle.cliente.negocios[0]
+    expect(negocio.barrioId).toBe(barrioAntillanaId)
+    expect(negocio.direccion).toBe('Antillana 1, Antillana 2, Local 3')
+  })
+
   test('Zona: el picker muestra "Coincide con" y persiste solo barrioId del canónico', async () => {
     await goto(p, '/configuracion/zonas')
 
     const nombreZona = `F4 Zona ${Date.now() % 100000}`
+    nombreZonaUno = nombreZona
     await p.getByPlaceholder('Nombre de la nueva zona').fill(nombreZona)
     await p.getByRole('button', { name: '+ Nueva' }).click()
 
@@ -172,6 +227,54 @@ test.describe('F4 — Barrio: alias y referencias territoriales', () => {
     expect(detalle.barrios).toHaveLength(1)
     expect(detalle.barrios[0].barrioId).toBe(barrioAntillanaId)
     expect(detalle.barrios[0].barrio.nombre).toBe('La Antillana')
+  })
+
+  test('Zona: agregar un Barrio resuelto por referencia a una SEGUNDA zona sigue exigiendo confirmación explícita de solapamiento', async () => {
+    // Gate del equipo (punto 5): F4 (resolución por alias/referencia) no
+    // debe debilitar el contrato de solapamiento de F3/#279 — el backend
+    // SIEMPRE recalcula el solapamiento contra `barrioId`, sin importar si
+    // la UI llegó a ese barrioId buscando por el nombre canónico o por una
+    // referencia territorial.
+    await goto(p, '/configuracion/zonas')
+
+    const nombreZonaDos = `F4 Zona Dos ${Date.now() % 100000}`
+    await p.getByPlaceholder('Nombre de la nueva zona').fill(nombreZonaDos)
+    await p.getByRole('button', { name: '+ Nueva' }).click()
+    await expect(p.getByText('Barrios de esta zona')).toBeVisible({ timeout: 5000 })
+
+    const barrioInput = p.getByPlaceholder('Buscar o agregar barrio...')
+    await barrioInput.fill('Antillana 1')
+    const resultado = p.getByText('La Antillana')
+    await expect(resultado).toBeVisible({ timeout: 5000 })
+    await resultado.click()
+
+    // Solapamiento detectado (La Antillana ya está en "F4 Zona ..."): el
+    // modal de confirmación aparece, y el barrio NO queda agregado todavía.
+    const modal = p.getByTestId('overlap-confirm-modal')
+    await expect(modal).toBeVisible({ timeout: 5000 })
+    await expect(modal.getByText('Barrio compartido')).toBeVisible()
+    await expect(modal.getByText(`"La Antillana" ya pertenece a Zona ${nombreZonaUno}.`)).toBeVisible()
+
+    await modal.getByRole('button', { name: `Agregar también a Zona ${nombreZonaDos}` }).click()
+    await expect(modal).toBeHidden({ timeout: 5000 })
+    await expect(p.getByText('La Antillana', { exact: true })).toBeVisible({ timeout: 5000 })
+
+    // Verificación de fondo: ahora pertenece a AMBAS zonas (no se movió de la
+    // primera, no se creó ni duplicó ningún Barrio) — compartido, no
+    // reemplazado.
+    const zonaDosRes = await apiGet(p, `/api/zonas?q=${encodeURIComponent(nombreZonaDos)}`)
+    const zonaDosId = (await zonaDosRes.json()).data[0].id
+    const detalleDosRes = await apiGet(p, `/api/zonas/${zonaDosId}`)
+    const detalleDos = (await detalleDosRes.json()).zona
+    expect(detalleDos.barrios).toHaveLength(1)
+    expect(detalleDos.barrios[0].barrioId).toBe(barrioAntillanaId)
+
+    const zonaUnoRes = await apiGet(p, `/api/zonas?q=${encodeURIComponent(nombreZonaUno)}`)
+    const zonaUnoId = (await zonaUnoRes.json()).data[0].id
+    const detalleUnoRes = await apiGet(p, `/api/zonas/${zonaUnoId}`)
+    const detalleUno = (await detalleUnoRes.json()).zona
+    expect(detalleUno.barrios).toHaveLength(1)
+    expect(detalleUno.barrios[0].barrioId).toBe(barrioAntillanaId)
   })
 
   test('Verificación de fondo: el Cliente creado quedó con barrioId del canónico y Dirección correcta', async () => {

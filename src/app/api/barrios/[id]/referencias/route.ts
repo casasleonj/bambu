@@ -1,10 +1,11 @@
 import { NextRequest } from 'next/server'
-import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library'
 import { requireAuth, requireRole } from '@/lib/auth-check'
 import { BarrioReferenciaCreateSchema } from '@/lib/validators'
 import { ROLES } from '@/lib/constants'
 import { apiSuccess, apiError } from '@/lib/api-response'
 import { formatZodError } from '@/lib/utils'
+import { logger } from '@/lib/logger'
+import { prismaErrorCode } from '@/lib/prisma-errors'
 import { BarrioNoEncontradoError } from '@/lib/barrios/barrio-service'
 import { ReferenciaRedundanteError, crearReferencia } from '@/lib/barrios/referencia-service'
 import { ZodError } from 'zod'
@@ -20,6 +21,10 @@ import { ZodError } from 'zod'
  * nombre/alias/referencia). El duplicado exacto dentro del mismo Barrio lo
  * resuelve la unique constraint de DB (`@@unique([barrioId,
  * textoNormalizado])`, P2002 → 409).
+ *
+ * El código P2002 se detecta por duck-typing (`prismaErrorCode`), no por
+ * `instanceof` — ver el comentario de ese helper para el bug real que motivó
+ * el cambio (equipo, 2026-10-07).
  */
 export async function POST(
   request: NextRequest,
@@ -51,9 +56,10 @@ export async function POST(
     if (error instanceof ReferenciaRedundanteError) {
       return apiError(error.message, 409)
     }
-    if (error instanceof PrismaClientKnownRequestError && error.code === 'P2002') {
+    if (prismaErrorCode(error) === 'P2002') {
       return apiError('Esa referencia ya está registrada para este barrio', 409)
     }
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown', barrioId }, 'Error creando referencia de barrio')
     return apiError('Error creando la referencia')
   }
 }
