@@ -387,6 +387,9 @@ export async function POST(request: NextRequest) {
     if (error instanceof Error) {
       if (error.message === 'CLIENTE_NOT_FOUND') return apiError('Cliente no encontrado', 404)
       if (error.message.startsWith('CLIENTE_DEBE:')) return apiError(error.message.replace('CLIENTE_DEBE: ', ''), 400)
+      if (error.message === 'DEUDOR_REQUERIDO') {
+        return apiError('La venta deja saldo pendiente: registra el pago completo o identifica al cliente que queda debiendo.', 422, { code: 'DEUDOR_REQUERIDO' })
+      }
       if (error.message === 'SIN_PRODUCTOS') return apiError('Agrega al menos un producto', 400)
       if (error.message === 'PEDIDO_ORIGEN_NOT_FOUND') return apiError('El pedido de origen no existe', 404)
       if (error.message === 'EXCEPCION_CREDITO_YA_CONSUMIDA') return apiError('La excepción de crédito ya fue utilizada por otro pedido', 409)

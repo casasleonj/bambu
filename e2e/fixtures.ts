@@ -698,12 +698,21 @@ export async function createPedido(page: Page, data?: Partial<{
   if ((data?.pacaAgua ?? 1) > 0) items.push({ producto: 'PACA_AGUA', cantidad: data?.pacaAgua ?? 1 })
   if ((data?.pacaHielo ?? 0) > 0) items.push({ producto: 'PACA_HIELO', cantidad: data?.pacaHielo ?? 0 })
   if (items.length === 0) items.push({ producto: 'PACA_AGUA', cantidad: 1 })
+  const clienteId = data?.clienteId || 'CONSUMIDOR_FINAL'
+  // Una venta anónima no puede quedar con saldo (DEUDOR_REQUERIDO): sin
+  // pago explícito se paga completa en efectivo. El excedente sobre el total
+  // es cambio y no se persiste (HUB_REVISION_INTEGRAL §11).
+  const pagos = data?.pagoMetodo
+    ? [{ metodo: data.pagoMetodo, monto: data.pagoMonto ?? 5000 }]
+    : clienteId === 'CONSUMIDOR_FINAL'
+      ? [{ metodo: 'EFECTIVO', monto: 1_000_000 }]
+      : []
   const res = await apiPost(page, '/api/pedidos', {
-    clienteId: data?.clienteId || 'CONSUMIDOR_FINAL',
+    clienteId,
     canal: data?.canal || 'PUNTO',
     ventaRapida: data?.ventaRapida ?? true,
     items,
-    pagos: data?.pagoMetodo ? [{ metodo: data.pagoMetodo, monto: data.pagoMonto ?? 5000 }] : [],
+    pagos,
   })
   return res.json()
 }
