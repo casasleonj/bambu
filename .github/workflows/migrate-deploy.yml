@@ -46,8 +46,26 @@ jobs:
       - name: Install Vercel CLI
         run: npm i -g vercel@latest
 
+      # DIAGNÓSTICO 2026-10-08: "Could not retrieve Project Settings" en el
+      # paso siguiente es el mensaje genérico que la CLI de Vercel da tanto
+      # para un VERCEL_TOKEN vencido/revocado como para uno que no pertenece
+      # al team de VERCEL_ORG_ID (confirmado contra el código fuente de la
+      # CLI — setup-and-link.ts — y la referencia de errores de Vercel,
+      # "Scope Not Accessible"). VERCEL_ORG_ID/VERCEL_PROJECT_ID ya están
+      # verificados correctos contra la API real del proyecto, así que si
+      # este paso falla o resuelve a otra cuenta/team, la causa es el
+      # secret, no la lógica del job.
+      - name: Verificar credenciales de Vercel (diagnóstico)
+        run: vercel whoami --token="$VERCEL_TOKEN" --format json
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
       - name: Pull production env vars from Vercel
-        run: vercel env pull --environment=production --token="$VERCEL_TOKEN" --yes .env.vercel-production
+        run: |
+          vercel env pull --environment=production --token="$VERCEL_TOKEN" --yes .env.vercel-production || {
+            echo "::error::vercel env pull falló. Comparar la cuenta/team que mostró 'vercel whoami' en el paso anterior contra VERCEL_ORG_ID=$VERCEL_ORG_ID. Si no coincide, o whoami también falló: VERCEL_TOKEN está vencido/revocado o no es miembro de ese team. Generar uno nuevo en https://vercel.com/account/tokens (cuenta con acceso al team) y actualizarlo en Settings -> Secrets and variables -> Actions -> VERCEL_TOKEN de este repo."
+            exit 1
+          }
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           # .vercel/project.json está en .gitignore (convención estándar de
