@@ -1,0 +1,19 @@
+[
+  { "pedidoId": "cmtw1w0s30001l104tysf2t4e", "numero": 170, "total": 10000, "pago": "YA_PAGADO" },
+  { "pedidoId": "cmtw2rd360001l404vtqs163r", "numero": 172, "total": 60000, "pago": "YA_PAGADO" },
+  { "pedidoId": "cmtyky1nf0001lb047qou6rg0", "numero": 179, "total": 25000, "pago": "EFECTIVO_TOTAL" },
+  { "pedidoId": "cmtyl2wn60002l704gqfcmbz1", "numero": 180, "total": 25000, "pago": "EFECTIVO_TOTAL" },
+  { "pedidoId": "cmtyl3gwq0008l704yiscutdp", "numero": 181, "total": 10800, "pago": "EFECTIVO_TOTAL" },
+  { "pedidoId": "cmtyl9lrf000el7046u4acnch", "numero": 182, "total": 100000, "pago": "EFECTIVO_TOTAL" },
+  { "pedidoId": "cmtylblec0007lb047jo6xsdn", "numero": 183, "total": 25000, "pago": "EFECTIVO_TOTAL" },
+  { "pedidoId": "cmtym02xk000kl704h9icrpjw", "numero": 184, "total": 25000, "pago": "EFECTIVO_TOTAL" },
+  { "pedidoId": "cmtym1n430002l8049pdk8t0y", "numero": 185, "total": 25000, "pago": "EFECTIVO_TOTAL" },
+  { "pedidoId": "cmu1r0qjd0001gm0aoqcybpab", "numero": 200, "total": 6600, "pago": "YA_PAGADO" },
+  { "pedidoId": "cmu4k0jvy0001jy046dnyyy1l", "numero": 219, "total": 3200, "pago": "YA_PAGADO" },
+  { "pedidoId": "cmu4lnro90001jv047ujx6e1d", "numero": 220, "total": 4400, "pago": "EFECTIVO_TOTAL" },
+  { "pedidoId": "cmu5sy2dm0001l604huoikxm2", "numero": 222, "total": 2200, "pago": "YA_PAGADO" },
+  { "pedidoId": "cmubnw9810001l204gn6b1hs1", "numero": 247, "total": 3200, "pago": "EFECTIVO_TOTAL" },
+  { "pedidoId": "cmueswnu50001ig04ufl4s9vy", "numero": 85, "total": 50000, "pago": "EFECTIVO_TOTAL" },
+  { "pedidoId": "cmuiixncg0001jv0462ufghne", "numero": 86, "total": 50000, "pago": "EFECTIVO_TOTAL" },
+  { "pedidoId": "cmuzukst80008k406g0guqq2b", "numero": 323, "total": 50000, "pago": "EFECTIVO_TOTAL" }
+]
