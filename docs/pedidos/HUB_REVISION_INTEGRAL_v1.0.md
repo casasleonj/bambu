@@ -20,6 +20,8 @@
 | 5 | ALS UX + decisiones posteriores | ✅ | `AGUA_BAMBU_PEDIDOS_UX_ARCHITECTURE_LEVEL_SPECIFICATION_v1.0.als.md`, `03-blueprint-experiencia-hub.md`, `PEDIDOS_PENDIENTES_DECISION_PO_v1.0.md`, `VENTA_LIBRE_EXPERIENCIA_HUB_v1.0.md` |
 | 6 | Código de `main` | ✅ | `a4e97fc2` |
 
+> **Actualización v1.1 (b):** el v3.1 tampoco está en el historial de esta sesión de Claude Code (revisados todos los mensajes y adjuntos). En la raíz del repo existe `plan-maestro-v11.1-equipo-desarrollo.md`, pero su alcance es embarques, ledgers, cartera y conciliación, no el plan comercial v3.1. Se usa como fuente complementaria.
+>
 > **Actualización v1.1:** el equipo confirma que el Plan Maestro Consolidado v3.1 está en los archivos del Proyecto Agua Bambú. Esa ubicación **no es accesible desde este entorno**: se buscó en el repo, en el historial de la sesión y en Google Drive, sin resultado. Las afirmaciones del equipo sobre su contenido se toman como DECIDIDAS donde el equipo las cita explícitamente (p. ej. que la regularización post-entrega existe como principio, §5). El resto queda marcado **NO VERIFICADO contra v3.1** hasta poder leerlo. Pedido: adjuntar el v3.1 (y el Contexto Maestro íntegro) a la sesión o al repo privado.
 
 Convención de clasificación usada en todo el documento:
@@ -74,7 +76,8 @@ Convención de clasificación usada en todo el documento:
 ### 1.2 Confirmación del negocio (2026-10-08) y hallazgos de conciliación
 
 - **Negocio:** las 57 operaciones se pagaron, **excepto las de una clienta identificada**.
-- **Hallazgo:** en el sistema, **ninguna** de las 57 está a nombre de esa clienta. Todas son `CONSUMIDOR_FINAL`, porque la venta rápida del Hub no permitía elegir cliente (B-05). Hay candidatas por patrón de compra, pero **la operación debe confirmar** cuáles son.
+- **Hallazgo:** en el sistema, **ninguna** de las 57 está a nombre de esa clienta. Todas son `CONSUMIDOR_FINAL`, porque la venta rápida del Hub no permitía elegir cliente (B-05).
+- **Identificación confirmada por el negocio (08/10):** son las ventas a precio $2.000 por paca: **4 ventas, $220.000**. Las otras **53 se pagaron: $401.900**. Siguen abiertos, solo para esas 4: si hubo algún abono, y el posible doble conteo del punto siguiente.
 - **Posible doble conteo:** la clienta tiene un pedido anterior **pagado por anticipado y no entregado**, y una de las 57 coincide exactamente en producto, cantidad y monto con él. Si fue la entrega de lo ya pagado, no es una venta nueva y no se le registra pago.
 - **Posibles duplicados por doble clic:** 2 pares de ventas con el mismo minuto y los mismos ítems.
 - **Evidencia de caja en el sistema: ninguna.** No hay `Pago`, `Abono`, `Gasto` ni `CierreDia` en la ventana (nunca se ha registrado un `CierreDia`). El medio de pago solo puede salir de evidencia externa: la hoja de control del negocio, extractos Nequi/Daviplata/banco, el conteo de caja.
