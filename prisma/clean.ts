@@ -140,6 +140,12 @@ async function clean() {
     'Ruta',
     'Trabajador',
     'Cliente',
+    // F4: catálogo canónico de Barrio. Es padre de Cliente/Negocio, así que el
+    // CASCADE desde Cliente no lo alcanza; sin esto el spec territorio-barrio-alias
+    // no es re-ejecutable (POST /api/barrios → 409 por nombre duplicado).
+    'BarrioReferencia',
+    'BarrioAlias',
+    'Barrio',
     'Proveedor',
     'Insumo',
     'Producto',

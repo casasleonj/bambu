@@ -153,8 +153,10 @@ test.describe('F4 — Barrio: alias y referencias territoriales', () => {
     await barrioInput.fill('Antillana 2')
 
     // Mismo motivo que en Cliente/Zona: el botón del resultado concatena
-    // nombre + "Coincide con: X" en el mismo elemento, sin exact:true.
-    const resultado = p.getByText('La Antillana')
+    // nombre + "Coincide con: X" en el mismo elemento. Se acota al botón del
+    // dropdown: la lista de clientes detrás del modal también muestra "La
+    // Antillana" (cliente creado en tests previos) y getByText violaría strict mode.
+    const resultado = p.getByRole('button', { name: /La Antillana.*Coincide con/ })
     await expect(resultado).toBeVisible({ timeout: 5000 })
     await expect(p.getByText('Coincide con: Antillana 2')).toBeVisible()
     await resultado.click()
