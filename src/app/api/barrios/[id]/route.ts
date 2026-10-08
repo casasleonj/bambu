@@ -17,6 +17,39 @@ import { ZodError } from 'zod'
 import type { Barrio } from '@prisma/client'
 
 /**
+ * GET /api/barrios/[id]
+ *
+ * Detalle de un Barrio con sus alias/referencias COMPLETOS (F4) — usado por
+ * Cliente/Negocio para mostrar "También se conoce como" / "Referencias
+ * comunes" del Barrio ya seleccionado, sin depender de que el texto
+ * buscado siga vigente (a diferencia de `buscarBarrios`, que solo expone
+ * las coincidencias del query activo).
+ */
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const authResult = await requireAuth()
+  if (authResult instanceof Response) return authResult
+
+  const { id } = await params
+
+  try {
+    const barrio = await prisma.barrio.findUnique({
+      where: { id },
+      include: {
+        aliases: { select: { id: true, texto: true }, orderBy: { texto: 'asc' } },
+        referencias: { select: { id: true, texto: true }, orderBy: { texto: 'asc' } },
+      },
+    })
+    if (!barrio) return apiError('Barrio no encontrado', 404)
+    return apiSuccess({ barrio })
+  } catch {
+    return apiError('Error consultando el barrio')
+  }
+}
+
+/**
  * PATCH /api/barrios/[id]
  *
  * Cubre las tres mutaciones de F1: rename, archivado y reactivación.

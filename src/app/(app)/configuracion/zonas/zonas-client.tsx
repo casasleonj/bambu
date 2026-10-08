@@ -23,6 +23,13 @@ interface ZonaResumen {
 interface BarrioOption {
   id: string
   nombre: string
+  // F4: contexto de por qué apareció en la búsqueda cuando matcheó por un
+  // alias/referencia territorial en vez del nombre canónico — nunca se
+  // persiste, solo se muestra ("Coincide con: X"). Zona siempre recibe
+  // barrioId del Barrio canónico (ver intentarAgregarBarrio), nunca el
+  // texto buscado.
+  aliasCoincidente?: string
+  referenciasCoincidentes?: string[]
 }
 
 interface BarrioEnZona {
@@ -447,17 +454,33 @@ export default function ZonasClient({ initialZonas }: ZonasClientProps) {
                             </Link>
                           </div>
                         )}
-                        {!buscandoBarrios && resultadosFiltrados.map((b) => (
-                          <button
-                            key={b.id}
-                            type="button"
-                            disabled={agregandoBarrioId === b.id}
-                            onClick={() => intentarAgregarBarrio(b)}
-                            className="w-full text-left px-3 py-2.5 text-sm border-b last:border-b-0 border-gray-100 text-gray-700 hover:bg-gray-50 transition disabled:opacity-50"
-                          >
-                            {agregandoBarrioId === b.id ? 'Agregando...' : b.nombre}
-                          </button>
-                        ))}
+                        {!buscandoBarrios && resultadosFiltrados.map((b) => {
+                          // F4: si el match vino por un alias/referencia (no
+                          // por el nombre canónico), se explica de qué texto
+                          // vino — Zona sigue recibiendo barrioId del
+                          // canónico (intentarAgregarBarrio), nunca el texto.
+                          const coincideCon = b.aliasCoincidente ?? b.referenciasCoincidentes?.[0]
+                          return (
+                            <button
+                              key={b.id}
+                              type="button"
+                              disabled={agregandoBarrioId === b.id}
+                              onClick={() => intentarAgregarBarrio(b)}
+                              className="w-full text-left px-3 py-2.5 text-sm border-b last:border-b-0 border-gray-100 text-gray-700 hover:bg-gray-50 transition disabled:opacity-50"
+                            >
+                              {agregandoBarrioId === b.id ? (
+                                'Agregando...'
+                              ) : (
+                                <>
+                                  {b.nombre}
+                                  {coincideCon && (
+                                    <span className="block text-xs text-gray-400">Coincide con: {coincideCon}</span>
+                                  )}
+                                </>
+                              )}
+                            </button>
+                          )
+                        })}
                       </div>
                     )}
                   </div>

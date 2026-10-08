@@ -13,6 +13,7 @@ import { InfoBanner } from '@/components/tooltip'
 
 import { TipoNegocioSelect } from '@/components/tipo-negocio-select'
 import { BarrioSelect, type BarrioOption } from '@/components/barrio-select'
+import { BarrioReferenciasChips } from '@/components/barrio-referencias-chips'
 import { CoordsPreview } from '@/components/coords-preview'
 import { TelefonoInput } from '@/components/telefono-input'
 
@@ -256,6 +257,11 @@ export function ClienteForm({
                 }
                 onManualChange={(v) => onFormDataChange({ ...formData, barrio: v })}
                 placeholder="Ej: Centro, Las Flores"
+              />
+              <BarrioReferenciasChips
+                barrioId={formData.barrioId || null}
+                direccion={formData.direccion}
+                onInsertarEnDireccion={(nuevaDireccion) => onFormDataChange({ ...formData, direccion: nuevaDireccion })}
               />
             </div>
 

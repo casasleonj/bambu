@@ -474,6 +474,29 @@ export const ZonaBarrioAddSchema = z.object({
 });
 
 // ====================
+// BARRIO: ALIAS Y REFERENCIAS TERRITORIALES (F4 — fase separada de F1/F3)
+// ====================
+
+/**
+ * POST /api/barrios/[id]/alias — bloqueo duro (409) si el texto ya
+ * identifica a OTRO Barrio (nombre canónico, otro alias, o una referencia
+ * de otro Barrio). Sub-recurso separado de `referencias` (no hay campo
+ * `tipo` en ningún payload — el split de tabla BarrioAlias/BarrioReferencia
+ * ya resuelve la distinción, la URL la hace explícita sin enum).
+ */
+export const BarrioAliasCreateSchema = z.object({
+  texto: z.string().trim().min(1, 'Texto requerido').max(100),
+});
+
+/**
+ * POST /api/barrios/[id]/referencias — compartible entre Barrios (nunca
+ * bloquea contra otro Barrio), solo rechaza redundancia dentro del mismo.
+ */
+export const BarrioReferenciaCreateSchema = z.object({
+  texto: z.string().trim().min(1, 'Texto requerido').max(100),
+});
+
+// ====================
 // ABONO / GASTO / INSUMO / COMPRA / PRODUCCION / NOMINA / CIERRE
 // ====================
 

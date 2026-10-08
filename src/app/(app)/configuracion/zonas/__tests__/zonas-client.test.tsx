@@ -182,4 +182,46 @@ describe('ZonasClient — picker de barrio', () => {
     })
     expect(screen.queryByText('0 barrios · Activa')).not.toBeInTheDocument()
   })
+
+  it('F4: buscar un texto que matchea por alias/referencia muestra el barrio canónico con "Coincide con: X", y agrega barrioId del canónico (nunca el texto buscado)', async () => {
+    await abrirZonaNorte()
+
+    fetchMock.mockImplementation((url: string, opts?: RequestInit) => {
+      const method = opts?.method ?? 'GET'
+      if (url.startsWith('/api/zonas?')) return Promise.resolve(jsonResponse({ success: true, data: INITIAL_ZONAS }))
+      if (url === '/api/zonas/z1' && method === 'GET') {
+        return Promise.resolve(jsonResponse({ success: true, zona: { id: 'z1', nombre: 'Norte', activo: true, barrios: [] } }))
+      }
+      if (url.startsWith('/api/barrios?') && method === 'GET') {
+        return Promise.resolve(
+          jsonResponse({
+            success: true,
+            data: [{ id: 'b1', nombre: 'La Antillana', referenciasCoincidentes: ['Antillana 2'] }],
+          }),
+        )
+      }
+      if (url === '/api/zonas/z1/barrios' && method === 'POST') {
+        return Promise.resolve(jsonResponse({ success: true, zonaBarrio: {}, overlapDetected: false, existingZones: [] }, 201))
+      }
+      return Promise.resolve(jsonResponse({ success: false }, 500))
+    })
+
+    const input = screen.getByPlaceholderText('Buscar o agregar barrio...')
+    fireEvent.change(input, { target: { value: 'Antillana 2' } })
+    await act(async () => { vi.advanceTimersByTime(300) })
+
+    expect(await screen.findByText('La Antillana')).toBeInTheDocument()
+    expect(screen.getByText('Coincide con: Antillana 2')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('La Antillana'))
+
+    await waitFor(() => {
+      // El barrioId que viaja es el del Barrio canónico (b1) — nunca el
+      // texto buscado ("Antillana 2"), ni se toca ningún otro campo.
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/zonas/z1/barrios',
+        expect.objectContaining({ method: 'POST', body: JSON.stringify({ barrioId: 'b1', confirmOverlap: false }) }),
+      )
+    })
+  })
 })

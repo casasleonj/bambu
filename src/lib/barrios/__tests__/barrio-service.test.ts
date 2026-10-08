@@ -31,6 +31,7 @@ import {
 } from '../barrio-service'
 
 const FAKE_BARRIO = { id: 'b1', nombre: 'La Esperanza', nombreNormalizado: 'la esperanza', activo: true }
+const FAKE_BARRIO_CON_RELACIONES = { ...FAKE_BARRIO, aliases: [], referencias: [] }
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -54,7 +55,7 @@ describe('buscarBarrioExacto', () => {
 
 describe('buscarBarrios', () => {
   it('filtra por activo=true por defecto', async () => {
-    mockPrisma.barrio.findMany.mockResolvedValue([FAKE_BARRIO])
+    mockPrisma.barrio.findMany.mockResolvedValue([FAKE_BARRIO_CON_RELACIONES])
     await buscarBarrios('esper')
     expect(mockPrisma.barrio.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -74,7 +75,39 @@ describe('buscarBarrios', () => {
     mockPrisma.barrio.findMany.mockResolvedValue([])
     await buscarBarrios('Esperanza')
     const where = mockPrisma.barrio.findMany.mock.calls[0][0].where
-    expect(where.nombreNormalizado).toEqual({ contains: 'esperanza' })
+    expect(where.OR).toContainEqual({ nombreNormalizado: { contains: 'esperanza' } })
+  })
+
+  it('F4: también busca por substring sobre BarrioAlias y BarrioReferencia, consolidado por barrio', async () => {
+    mockPrisma.barrio.findMany.mockResolvedValue([])
+    await buscarBarrios('antill')
+    const call = mockPrisma.barrio.findMany.mock.calls[0][0]
+    expect(call.where.OR).toContainEqual({
+      aliases: { some: { textoNormalizado: { contains: 'antill' } } },
+    })
+    expect(call.where.OR).toContainEqual({
+      referencias: { some: { textoNormalizado: { contains: 'antill' } } },
+    })
+    expect(call.include.aliases).toEqual({
+      where: { textoNormalizado: { contains: 'antill' } },
+      select: { texto: true },
+    })
+  })
+
+  it('F4: consolida por barrio — un Barrio que matchea por nombre+alias+referencia aparece una sola vez, con el contexto de qué coincidió', async () => {
+    mockPrisma.barrio.findMany.mockResolvedValue([
+      {
+        ...FAKE_BARRIO,
+        aliases: [{ texto: 'Antillana' }],
+        referencias: [{ texto: 'Antillana 1' }, { texto: 'Antillana 2' }],
+      },
+    ])
+    const resultado = await buscarBarrios('antill')
+    expect(resultado).toHaveLength(1)
+    expect(resultado[0].aliasCoincidente).toBe('Antillana')
+    expect(resultado[0].referenciasCoincidentes).toEqual(['Antillana 1', 'Antillana 2'])
+    expect(resultado[0]).not.toHaveProperty('aliases')
+    expect(resultado[0]).not.toHaveProperty('referencias')
   })
 
   it('con query vacía no agrega filtro de nombre (lista todos)', async () => {
