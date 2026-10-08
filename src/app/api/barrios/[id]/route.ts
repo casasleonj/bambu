@@ -12,7 +12,8 @@ import {
   reactivarBarrio,
   renombrarBarrio,
 } from '@/lib/barrios/barrio-service'
-import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library'
+import { prismaErrorCode } from '@/lib/prisma-errors'
+import { logger } from '@/lib/logger'
 import { ZodError } from 'zod'
 import type { Barrio } from '@prisma/client'
 
@@ -116,9 +117,14 @@ export async function PATCH(
     if (error instanceof BarrioNoEncontradoError) {
       return apiError('Barrio no encontrado', 404)
     }
-    if (error instanceof PrismaClientKnownRequestError && error.code === 'P2002') {
+    // P2002 se detecta por duck-typing (`prismaErrorCode`), no por
+    // `instanceof` — el error del motor de Prisma y la clase importada
+    // acá pueden venir de copias distintas del módulo runtime (mismo bug
+    // ya corregido en las rutas de alias/referencias, ver prisma-errors.ts).
+    if (prismaErrorCode(error) === 'P2002') {
       return apiError('Ya existe un barrio con ese nombre', 409)
     }
+    logger.error({ err: error instanceof Error ? error.message : 'Unknown', barrioId: id }, 'Error actualizando barrio')
     return apiError('Error actualizando barrio')
   }
 }
