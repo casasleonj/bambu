@@ -9,6 +9,7 @@ import { PedidoProposal } from './pedido-proposal'
 import { PedidoReview } from './pedido-review'
 import { PedidoCommitBar } from './pedido-commit-bar'
 import { WorkspaceEntrega } from './workspace-entrega'
+import { WorkspaceDinero } from './workspace-dinero'
 import { PedidoItemEditor, type PedidoItemEditorItem } from '@/components/pedido-form-unified/pedido-item-editor'
 import { PedidoContextPanel, type NuevoClienteForm } from '@/components/pedido-form-unified/pedido-context-panel'
 import { resolveActualizarCliente } from '@/components/pedido-form-unified/resolve-actualizar-cliente'
@@ -128,7 +129,9 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
           barrioEntrega: (pedidoInicial.negocioId ? pedidoInicial.negocioBarrio : pedidoInicial.clienteBarrio) ?? '',
         }
       : intent === 'venta-rapida'
-        ? { ...EMPTY_DRAFT, origen: 'VENTA_RAPIDA' as const, clienteId: 'CONSUMIDOR_FINAL', ...initialDraft }
+        // venta rápida = entrega inmediata: el preview proyecta lo mismo que el
+        // commit (ENTREGADO), así el estado de pago mostrado coincide.
+        ? { ...EMPTY_DRAFT, origen: 'VENTA_RAPIDA' as const, clienteId: 'CONSUMIDOR_FINAL', entregado: true, ...initialDraft }
         : { ...EMPTY_DRAFT, origen: 'PEDIDO' as const, ...initialDraft },
     initWorkspace,
   )
@@ -310,7 +313,8 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
       preciosManuales: Object.fromEntries(
         state.draft.items.filter((i) => i.precioManual).map((i) => [i.producto, i.precioManual as number]),
       ),
-      pagos: state.draft.pagos,
+      // solo el dinero APLICADO (recibido/cambio son ayuda de caja, no se envían).
+      pagos: state.draft.pagos.filter((p) => p.monto > 0),
       // el motivo de revisión (flujo de acción sensible) se persiste en obs
       // hasta que el commit acepte un campo dedicado (política PENDIENTE DE NEGOCIO).
       obs: state.reviewMotivo
@@ -468,6 +472,21 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
           <p className="mt-1 text-xs text-amber-700" data-testid="workspace-error">{state.error.message}</p>
         )}
       </section>
+
+      {/* ── Zona: Dinero (P0 — HUB_REVISION_INTEGRAL). En edición el PUT
+          conserva los pagos existentes; el cobro posterior va por pagar-fiado. ── */}
+      {!modoEdicion && (
+        <WorkspaceDinero
+          total={calc?.total ?? null}
+          saldoProyectado={calc?.saldoProyectado ?? null}
+          pagos={state.draft.pagos}
+          pagoCompleto={state.draft.pagoCompleto ?? null}
+          esAnonima={state.draft.clienteId === 'CONSUMIDOR_FINAL' && !(mostrarNuevo && nuevoCliente.nombre.trim())}
+          disabled={state.phase === 'COMMITTING' || state.phase === 'COMMITTED'}
+          onPagarCompleto={(metodo) => dispatch({ type: 'PAGAR_COMPLETO', metodo })}
+          onSetPagos={(pagos) => dispatch({ type: 'SET_PAGOS', pagos })}
+        />
+      )}
 
       {/* ── Zona: Señales de riesgo (blueprint §5.3) ── */}
       <PedidoRiskSignals

@@ -24,6 +24,12 @@ export interface DraftPedido {
   origen: 'PEDIDO' | 'VENTA_RAPIDA'
   items: DraftItem[]
   pagos: DraftPago[]
+  /**
+   * "Pagar completo" con este método: el pago **sigue al total** que calcula
+   * el backend (si cambian cantidades o precios, se re-sincroniza al llegar
+   * el preview). `null`/ausente = el usuario armó los pagos a mano.
+   */
+  pagoCompleto?: DraftPago['metodo'] | null
   entregado?: boolean
   obs?: string
   direccionEntrega?: string
@@ -81,6 +87,8 @@ export type WorkspaceAction =
   | { type: 'SET_ITEM_PRECIO_MANUAL'; producto: ProductoCodigo; precioManual: number | undefined }
   | { type: 'CONFIRMAR_PRECIO_BAJO'; producto: ProductoCodigo }
   | { type: 'SET_PAGOS'; pagos: DraftPago[] }
+  /** cobra el total completo con un método (sigue al total del preview). */
+  | { type: 'PAGAR_COMPLETO'; metodo: DraftPago['metodo'] }
   | { type: 'SET_ENTREGADO'; entregado: boolean }
   | { type: 'SET_OBS'; obs: string }
   | { type: 'SET_DIRECCION'; direccion: string; barrio: string }

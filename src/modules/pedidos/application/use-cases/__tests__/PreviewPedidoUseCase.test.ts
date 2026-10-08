@@ -228,6 +228,34 @@ describe('PreviewPedidoUseCase — permissions + warnings', () => {
     expect(r.warnings.some(w => w.code === 'FIADO_SOBRE_LIMITE')).toBe(false)
     expect(deps.getFiadoStatusUseCase.execute).not.toHaveBeenCalled()
   })
+
+  // P0 (HUB_REVISION_INTEGRAL §1/§11): una venta anónima no puede dejar saldo
+  // y el cambio no se proyecta como saldo a favor del canónico.
+  const consumidorFinal = {
+    id: CANONICAL_CONSUMIDOR_FINAL_ID, nombre: 'Consumidor Final', apellido: null, telefono: '', direccion: null, barrio: null,
+    bloqueado: false, verificado: true, creadoPorRol: 'ADMIN', limitePedidosFiados: null, preciosEspeciales: null,
+  }
+
+  it('CONSUMIDOR_FINAL sin pago → DEUDOR_REQUERIDO, sin acción crear', async () => {
+    const deps = makeDeps()
+    ;(deps.clienteRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(consumidorFinal)
+    const r = await new PreviewPedidoUseCase(deps).execute({ clienteId: CANONICAL_CONSUMIDOR_FINAL_ID, canal: 'PUNTO', items: [{ producto: 'PACA_AGUA', cantidad: 1 }], actorId: 'u1' })
+    expect(r.warnings.some(w => w.code === 'DEUDOR_REQUERIDO')).toBe(true)
+    expect(r.allowedActions).not.toContain('crear')
+  })
+
+  it('CONSUMIDOR_FINAL pagado con billete mayor → crea, sin saldo a favor proyectado', async () => {
+    const deps = makeDeps()
+    ;(deps.clienteRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(consumidorFinal)
+    const r = await new PreviewPedidoUseCase(deps).execute({
+      clienteId: CANONICAL_CONSUMIDOR_FINAL_ID, canal: 'PUNTO', origen: 'VENTA_RAPIDA', entregado: true,
+      items: [{ producto: 'PACA_AGUA', cantidad: 1 }], pagos: [{ metodo: 'EFECTIVO', monto: 50_000 }], actorId: 'u1',
+    })
+    expect(r.warnings.some(w => w.code === 'DEUDOR_REQUERIDO')).toBe(false)
+    expect(r.allowedActions).toContain('crear')
+    expect(r.calculation.saldoProyectado).toBe(0)
+    expect(r.calculation.saldoFavorProyectado).toBe(0)
+  })
 })
 
 describe('PreviewPedidoUseCase — riskSignals', () => {
