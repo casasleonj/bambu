@@ -1,7 +1,8 @@
 # Revisión integral del Pedido Hub — decisiones, paridad e integridad
 
-- **Versión:** 1.0 — 2026-10-08
-- **Estado:** DIAGNÓSTICO + PLAN PARA APROBACIÓN. Sin cambios de código.
+- **Versión:** 1.1 — 2026-10-08. La v1.1 incorpora la respuesta del equipo ("Resolución integral del Hub de Pedidos"), la confirmación del negocio sobre las 57 operaciones y la contención ejecutada.
+- **Estado:** contención P0 **ejecutada**. El procedimiento de regularización histórica (§10) espera aprobación. Las correcciones de código siguen el plan §6.
+- **Datos sensibles:** el repositorio es **público**. Este documento solo tiene cifras agregadas y números de pedido. La matriz con nombres de clientes y usuarios se entregó aparte al equipo y **no** se versiona.
 - **Origen:** solicitud del equipo "Revisión integral del nuevo Hub de Pedidos" (2026-10-08).
 - **Base de código revisada:** `main` @ `a4e97fc2`.
 - **Datos de producción:** consultas de solo lectura y agregadas (Supabase), 2026-10-08.
@@ -19,7 +20,7 @@
 | 5 | ALS UX + decisiones posteriores | ✅ | `AGUA_BAMBU_PEDIDOS_UX_ARCHITECTURE_LEVEL_SPECIFICATION_v1.0.als.md`, `03-blueprint-experiencia-hub.md`, `PEDIDOS_PENDIENTES_DECISION_PO_v1.0.md`, `VENTA_LIBRE_EXPERIENCIA_HUB_v1.0.md` |
 | 6 | Código de `main` | ✅ | `a4e97fc2` |
 
-> **Acción para el equipo:** si las versiones v1.1 / v3.1 / v1 existen fuera del repo, compartirlas. Donde contradigan algo de este documento, ganan ellas, y el punto se corrige.
+> **Actualización v1.1:** el equipo confirma que el Plan Maestro Consolidado v3.1 está en los archivos del Proyecto Agua Bambú. Esa ubicación **no es accesible desde este entorno**: se buscó en el repo, en el historial de la sesión y en Google Drive, sin resultado. Las afirmaciones del equipo sobre su contenido se toman como DECIDIDAS donde el equipo las cita explícitamente (p. ej. que la regularización post-entrega existe como principio, §5). El resto queda marcado **NO VERIFICADO contra v3.1** hasta poder leerlo. Pedido: adjuntar el v3.1 (y el Contexto Maestro íntegro) a la sesión o al repo privado.
 
 Convención de clasificación usada en todo el documento:
 
@@ -52,7 +53,32 @@ Convención de clasificación usada en todo el documento:
 
 **Regla del soak (`fase10a-preflight-informe.md`, "Reglas del soak") — DECIDIDO:** "Rollback inmediato ante regresión crítica (… precio o saldo incorrecto …)". **El caso cumple el criterio.** Recomendación: `NEXT_PUBLIC_PEDIDOS_V2=false` en Production + redeploy de `main` actual. No conviene promover el deploy legacy del 23/09, porque se perderían #277–#285.
 
-**Datos históricos:** no se corrige nada sin conciliación. Ver §6, P0-4.
+**Datos históricos:** no se corrige nada sin conciliación. Ver §6, P0-4, y §10.
+
+### 1.1 Contención ejecutada (2026-10-08)
+
+| Verificación previa | Resultado |
+|---|---|
+| `main` actual | `5ac19f3a` (#286). Igual al deploy de Production vigente `dpl_BPWroRFaCw42quVc8zCcWVftmt47` |
+| Flag | `NEXT_PUBLIC_PEDIDOS_V2="true"` (Production, id `dqwoz62SlHQexlN3`). Se lee como `=== 'true'` (`src/lib/flags.ts:15`) |
+| Legacy sobre ese mismo commit | Build local de `5ac19f3a` con el flag OFF + Postgres local. E2E: venta rápida legacy → "Pagar completo" → "Cobrar". En BD: `Pago` creado (1), monto = total, `estadoPago = PAGADO`, saldo 0. **PASA** |
+| Compatibilidad con cambios posteriores | Se redesplegó el **mismo** commit `5ac19f3a`, no el deploy del 23/09; #277–#286 se conservan |
+
+| Acción | Detalle |
+|---|---|
+| Flag | `NEXT_PUBLIC_PEDIDOS_V2 = "false"` en Production, con comentario de contención |
+| Redeploy | `dpl_7PVDLdT8GKDsk83NhBSfGNFatxWu` (commit `5ac19f3a`), creado **después** del cambio del flag. `READY`, servido en `portal.aguabambu.com` |
+| Prueba controlada posterior | Pendiente de evidencia: verificación read-only de las primeras ventas **reales** posteriores al deploy (`Pago` y `estadoPago`). No se fabrican ventas en producción |
+| Reactivación | Solo después del fix P0 (§6) y con un soak nuevo |
+
+### 1.2 Confirmación del negocio (2026-10-08) y hallazgos de conciliación
+
+- **Negocio:** las 57 operaciones se pagaron, **excepto las de una clienta identificada**.
+- **Hallazgo:** en el sistema, **ninguna** de las 57 está a nombre de esa clienta. Todas son `CONSUMIDOR_FINAL`, porque la venta rápida del Hub no permitía elegir cliente (B-05). Hay candidatas por patrón de compra, pero **la operación debe confirmar** cuáles son.
+- **Posible doble conteo:** la clienta tiene un pedido anterior **pagado por anticipado y no entregado**, y una de las 57 coincide exactamente en producto, cantidad y monto con él. Si fue la entrega de lo ya pagado, no es una venta nueva y no se le registra pago.
+- **Posibles duplicados por doble clic:** 2 pares de ventas con el mismo minuto y los mismos ítems.
+- **Evidencia de caja en el sistema: ninguna.** No hay `Pago`, `Abono`, `Gasto` ni `CierreDia` en la ventana (nunca se ha registrado un `CierreDia`). El medio de pago solo puede salir de evidencia externa: la hoja de control del negocio, extractos Nequi/Daviplata/banco, el conteo de caja.
+- **Brecha de auditoría preexistente:** `Pedido.createdById` está vacío en todos los pedidos desde septiembre (antes y después del Hub). El usuario que registró cada venta solo consta en `Historial`.
 
 ---
 
@@ -209,7 +235,17 @@ Cada ítem es una rama y un PR, en orden y entrando a `main` antes del siguiente
 
 ---
 
-## 7. Decisiones que necesita el equipo
+## 7. Decisiones — estado tras la respuesta del equipo (v1.1)
+
+| # | Tema | Resolución |
+|---|---|---|
+| D1 | Origen comercial | **DECIDIDO, se mantiene D-OC4** (PO 06/09, PR #205): sin cliente real → `VENTA_RAPIDA`; con cliente real → `PEDIDO`. La experiencia de captura rápida aplica a ambos; el origen persistido lo determina el sistema |
+| D2 | Contención | **EJECUTADA** (§1.1) |
+| D3 | Regularización post-entrega | **DECIDIDO como principio** (Plan Maestro v3.1, según el equipo). Queda por definir la **implementación técnica** y su integración con F2 (diseño a presentar) |
+| D4 | Promo / regalo / descuento | Revisar los ADRs (ADR-PROMOCION-001, ADR-AUTORIZACION-REGALOS-001: DECIDIDO a nivel dominio). La UI de Pedidos sigue sin decisión; no se clasifica como regresión; no se inventan umbrales (D-P6 PENDIENTE) |
+| D5 | Las 57 | Negocio: pagadas salvo las de una clienta. **Falta identificar** cuáles son, más los pares duplicados y el posible doble conteo (§1.2) |
+
+### 7.0 Texto original de v1.0 (se conserva)
 
 | # | Pregunta | Opciones | Por qué no se infiere |
 |---|---|---|---|
@@ -233,3 +269,43 @@ Las 14 maquetas pedidas (móvil + escritorio) se producen **después** de D1, po
 - Los reportes de ventas y de caja del 24/09 al 06/10 están subestimados en dinero cobrado.
 - El soak de F10a no es válido como evidencia de cierre; hay que repetirlo.
 - Fuentes v1.1/v3.1 no disponibles: alguna decisión puede estar más actualizada fuera del repo.
+
+---
+
+## 10. Procedimiento de regularización histórica — PARA APROBACIÓN
+
+**No se ejecuta nada en producción sin la autorización explícita del equipo para cada lote.** Ninguna actualización masiva a `PAGADO`.
+
+### 10.1 Insumos que debe entregar el negocio
+
+1. Cuáles de las 57 son de la clienta identificada (por número de pedido). Para cada una: fiada completa, abono parcial (monto y medio) o pagada.
+2. Respuesta sobre el posible doble conteo: ¿fue la entrega de un pedido ya pagado o una compra nueva?
+3. Los 2 pares sospechosos: ¿dos clientes o doble clic?
+4. Evidencia del medio de pago por día: hoja de control del negocio (si se usó en la ventana), extractos Nequi/Daviplata/banco, conteo de caja.
+
+### 10.2 Clasificación de cada venta
+
+| Clase | Condición | Tratamiento propuesto |
+|---|---|---|
+| **R1 — Pagada con medio demostrado** | negocio confirma el pago + evidencia del medio | crear un `Pago` por cada medio y monto demostrado |
+| **R2 — Pagada sin medio demostrado** | negocio confirma el pago, sin evidencia del medio | **no se inventa el medio.** El equipo decide: (a) `EFECTIVO` como declaración del negocio, marcado en la auditoría como "medio declarado sin comprobante", o (b) dejarla abierta hasta tener evidencia |
+| **R3 — Venta de la clienta** | identificada por la operación | corrección de identidad auditada (`clienteId` CF → clienta, con motivo), y luego, según el caso, fiado real con el saldo íntegro, abono parcial (`Pago` por lo abonado) o pagada (R1/R2) |
+| **R4 — Doble conteo** | era la entrega de un pedido ya pagado | anular la venta duplicada (con motivo) y registrar la entrega del pedido original. Sin `Pago` nuevo |
+| **R5 — Duplicado por doble clic** | confirmado por la operación | anular una de las dos (con motivo). Sin `Pago` |
+
+### 10.3 Mecanismo técnico
+
+`POST /api/pedidos/pagar-fiado` **no sirve**: aplica pagos por cliente en orden FIFO, no a un pedido concreto, y sobre `CONSUMIDOR_FINAL` repartiría el dinero entre ventas arbitrarias. Se propone un **script dedicado**:
+
+- **Entrada:** un CSV aprobado, una fila por venta, con `pedidoNumero, clase, metodo, monto, evidencia, clienteIdDestino?`.
+- **Dry-run obligatorio:** imprime antes y después de cada pedido (`totalPagado`, `saldo`, `estadoPago`, factura) sin escribir. El equipo aprueba el dry-run.
+- **Transacción por pedido** con lock `CARTERA:{clienteId}`. Usa la misma lógica de dominio que el commit: `EstadoPagoVO.proyectar` y la sincronización de `Factura`. Nunca escribe `estadoPago` a mano.
+- **Idempotencia:** `Pago.offlineId = 'regul-hub-2026-10:<pedidoId>:<n>'`. Re-ejecutar no duplica.
+- **Fecha:** `Pago.createdAt` = fecha de la venta original (el hecho), con la fecha real de la regularización en la auditoría.
+- **Auditoría:** `logAudit` por pedido (actor, motivo "regularización incidente Hub", evidencia, antes/después), más un `Historial` UPDATE.
+- **Caja:** el script **no** crea `CierreDia`. Los cierres de esos días no existen; si el equipo quiere reconstruirlos es una decisión aparte, para no fabricar cierres.
+- **Verificación posterior:** saldo de CF = 0 para las ventas regularizadas, cuadre por día contra la evidencia, y cartera de la clienta = histórico + fiado confirmado.
+
+### 10.4 Pendiente relacionado (otro hallazgo histórico)
+
+La clienta tiene un pedido de julio con `totalPagado > 0` y **sin fila `Pago`**, anterior al Hub. Se incluye en la misma conciliación, como R1/R2 según la evidencia.
