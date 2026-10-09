@@ -21,6 +21,11 @@ async function dragHandleAbove(page: Page, sourceHandle: Locator, targetHandle: 
   await page.mouse.up()
 }
 
+/** Handle de arrastre del link del menú con ese href. */
+function handleDe(page: Page, href: string): Locator {
+  return page.locator(`a[href="${href}"] [data-testid="drag-handle"]`).filter({ visible: true }).first()
+}
+
 test.describe('Menú reorganizable', () => {
   test.setTimeout(60000)
 
@@ -52,10 +57,10 @@ test.describe('Menú reorganizable', () => {
     const handles = page.locator('[data-testid="drag-handle"]')
     await expect(handles.first()).toBeVisible({ timeout: 10000 })
 
-    // Orden inicial: [Dashboard(top), section:Ventas, Clientes, Pedidos, Productos, Incidencias, ...]
     // Mover "Productos" arriba de "Clientes" (ambos son links dentro de Ventas).
-    // Productos es el 5to handle (Dashboard, section:Ventas, Clientes, Pedidos, Productos).
-    await dragHandleAbove(page, handles.nth(4), handles.nth(2))
+    // Los handles se ubican por su link, no por posición: el contenido de la
+    // sección depende de flags (p. ej. "Pedidos habituales" con el Hub OFF).
+    await dragHandleAbove(page, handleDe(page, '/productos'), handleDe(page, '/clientes'))
 
     // Salir del modo edición.
     const doneBtn = page.getByTestId('sidebar-menu-done')
@@ -108,7 +113,7 @@ test.describe('Menú reorganizable', () => {
     await expect(page.getByTestId('sidebar-menu-done')).toBeVisible({ timeout: 10000 })
     const handles = page.locator('[data-testid="drag-handle"]')
     await expect(handles.first()).toBeVisible({ timeout: 10000 })
-    await dragHandleAbove(page, handles.nth(4), handles.nth(2))
+    await dragHandleAbove(page, handleDe(page, '/productos'), handleDe(page, '/clientes'))
 
     // Salir y verificar que el orden cambió.
     await page.getByTestId('sidebar-menu-done').click()

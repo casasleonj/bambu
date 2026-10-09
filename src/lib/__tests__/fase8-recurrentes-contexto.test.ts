@@ -20,8 +20,10 @@ describe('F8-0 — nav (G2)', () => {
     expect(navSrc).not.toMatch(/label: 'Únicos'/)
   })
 
-  it('/recurrentes ya no está en el nav como destino', () => {
-    expect(navSrc).not.toMatch(/href: '\/recurrentes'/)
+  it('Hub ON: Fase 8 usa el Hub; Hub OFF: ruta legacy queda accesible', () => {
+    expect(navSrc).toMatch(/pedidosV2Enabled\(\)\s*\?\s*\[\]/)
+    expect(navSrc).toContain("href: '/recurrentes'")
+    expect(navSrc).toContain("href: '/recurrentes', label: 'Pedidos habituales', icon: 'repeat', requiredPermission: 'view:recurrentes'")
   })
 })
 
