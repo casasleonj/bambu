@@ -81,3 +81,13 @@ Una única función nueva, pura y de solo lectura (sin side effects, sin escritu
 | (D) | Sin cambios — límite reafirmado | No |
 
 **Con esto, P1-B queda sin ninguna brecha de schema pendiente** — el trabajo de implementación es enteramente una función de dominio nueva, sin tocar nada existente. Listo para que el equipo confirme antes de pasar a P1-C (RECARGA), que es el primer y único consumidor previsto de esta función.
+
+---
+
+## Addendum (2026-10-10) — hueco encontrado en la tabla de SALIDAS en vivo: CAMBIO/Sustitución no está contemplado
+
+La tabla de la sección "La pregunta central heredada de P1-A" lista los componentes de SALIDAS en vivo (`PROMOCION`, `BOTELLON`, `DESCARTE`/`CUSTODY_TRANSFER`, `ENTREGA`/`VENTA_RUTA` de los 4 productos vía `Pedido`/`PedidoItem`) pero **no incluye CAMBIO (Sustitución)**. Evidencia: `construirMovimientosSustitucion()` (`src/modules/embarques/domain/services/ledger-fisico.service.ts:77-98`) escribe un `EmbarqueMovimiento{tipo:'ENTREGA', origen:'VEHICULO', destino:'CLIENTE'}` **en tiempo real** (vía `sustituciones/route.ts:128`), sin tocar `Pedido`/`PedidoItem` en ningún punto del endpoint. La premisa de la tabla ("`EmbarqueMovimiento` está vacío para estos 4 productos hasta el cierre, por eso se usa `Pedido`/`PedidoItem`") es falsa específicamente para CAMBIO — y como `Pedido`/`PedidoItem` tampoco lo registra, la salida física de una Sustitución quedaría sin contar en ninguna de las dos fuentes.
+
+**Corrección mínima propuesta (sin cambio de schema, sin reabrir ninguna decisión de negocio)**: la fórmula de `(A)` para los 4 productos debe sumar `Pedido`/`PedidoItem.cantEntrega` **más** `EmbarqueMovimiento{tipo IN ('ENTREGA','VENTA_RUTA')}` ya existentes en vivo — hoy esas dos fuentes son disjuntas antes del cierre (las entregas de Pedido normales no escriben ahí hasta cerrar; lo único que sí escribe `ENTREGA` en vivo para estos productos es CAMBIO), así que sumarlas no duplica nada.
+
+**Estado**: pendiente de que el equipo confirme esta corrección antes de implementar `calcularDisponibilidadFisica()` en P1-C — no implementado todavía, cero código escrito.
