@@ -135,7 +135,7 @@ Técnicas E2E:
 
 | Riesgo | Impacto | Mitigación actual | Próximo paso |
 |---|---|---|---|
-| Dispositivos compartidos: cola offline no etiquetada con `userId` | Un usuario distinto podría sync ventas de otro o recibir 403/DLQ | Server-side dedup y verificación de embarque | Post-M7: agregar `userId` a `requestQueue` items y saltar items de otro usuario |
+| Dispositivos compartidos: cola offline no etiquetada con `userId` | Un usuario distinto podría sync ventas de otro o recibir 403/DLQ | Server-side dedup y verificación de embarque | Post-M7: agregar `userId` a `requestQueue` items y saltar items de otro usuario — **confirmado sin implementar (2026-10-10, auditoría general, ver `AGENTS.md` Known Issue #27): `src/lib/db/offline.ts` sigue sin campo `userId` en el schema Dexie de `requestQueue`.** |
 | Embarque cerrado antes del sync | Venta libre va a DLQ y no se recupera | Es regla de negocio: venta libre requiere embarque abierto | UX: mostrar claramente `syncStatus='conflict'` con mensaje explicativo |
 | Mutex solo en memoria (no cross-tab) | Dos tabs pueden sync simultáneamente | Raro para 6 usuarios; server-side dedup cubre | Aceptado para M7 |
 

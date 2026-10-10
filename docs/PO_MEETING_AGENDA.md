@@ -188,3 +188,20 @@ Cuando un administrador resetea la contraseña de alguien en `src/app/api/users/
 | 4 | | |
 | 5 | | |
 | 6 | | |
+
+---
+
+## Verificación técnica (2026-10-10, sin respuesta del PO todavía — esta reunión nunca se registró como realizada)
+
+Esta agenda nunca se marcó como completada (la tabla de arriba sigue vacía). Una auditoría general de documentación vs. código (ver `AGENTS.md` Known Issue #27) reverificó cada pregunta contra el estado real del código hoy:
+
+| # | Estado del código hoy | Evidencia |
+|---|---|---|
+| 1 | ✅ **Ya corregido** (fix "C-4") — `baseDinero` sí se incluye en `efectivoReal` | `src/modules/embarques/domain/services/cierre-embarque.service.ts:159-183` |
+| 2 | ❌ **Sigue sin resolver** — `CIERRE_HUECO` sigue bloqueando si `diffDays > 1` | `src/app/api/cierre/route.ts:561-566` |
+| 3 | ❌ **Sigue sin resolver — bug activo** — el test sigue desactivado a propósito, no hay forma de anular una venta rápida pagada y no entregada | `e2e/ciclo-cancelacion.spec.ts:45,154` |
+| 4 | ❌ **Sigue sin resolver** — `netoCaja` sigue restando `comisiones`/`salarios` sin confirmar si se pagan en efectivo o transferencia | `src/app/api/cierre/route.ts:642` |
+| 5 | ✅ **Ya corregido** — cambiar contraseña ya exige la actual | `src/app/api/auth/force-password-change/route.ts:20,41` |
+| 6 | ✅ **Ya corregido** (fix "C-11") — ya usa `crypto.randomInt`, no `Math.random()` | `src/app/api/users/[id]/reset-password/route.ts:10-13` |
+
+**Pendiente real de negocio, sin inventar respuesta**: las preguntas 2, 3 y 4 siguen necesitando que el PO decida — esta verificación solo confirma que el código no cambió desde que se escribió la agenda, no responde por el PO. La #3 es la de mayor riesgo (reputacional/dinero, cliente sin devolución posible).

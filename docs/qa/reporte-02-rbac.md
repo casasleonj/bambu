@@ -8,6 +8,8 @@
 
 Se verificaron 9 findings de RBAC/seguridad reportados en la exploración inicial. De ellos, **5 se confirmaron como bugs reales**, 4 fueron falsos positivos (el código ya tenía role checks o permisos). Además se identificó **1 nuevo finding de XSS** no reportado en la exploración inicial.
 
+**Reverificado 2026-10-10** (auditoría general de documentación vs. código, ver `AGENTS.md` Known Issue #27): los findings #6 (`DescuentoRepartidor.motivo` sin validar, sin endpoint de persistencia encontrado) y #7 (loop de redirección `EMPACADOR`/`ENTUBADOR`) siguen marcados **PENDIENTE** más abajo y se confirmó que ningún commit posterior los tocó — siguen abiertos hoy, sin cambios desde que se escribió este reporte.
+
 ## Estado de los Findings
 
 | ID | Descripción original | Estado | Notas |
