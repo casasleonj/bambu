@@ -9,6 +9,7 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 import { logAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
 import { registrarReceivableEntry, detectarDivergencia, registrarDivergencia } from '@/lib/receivable-entry'
+import { calcularEstadoPago } from '@/lib/pedido-utils'
 
 export async function GET(request: NextRequest) {
   // FIX CRITICAL (C-SEC-2): Only ADMIN/CONTADOR can read abonos
@@ -77,7 +78,7 @@ export async function POST(request: NextRequest) {
       // mercancía que nunca salió de bodega.
       const pedido = await tx.pedido.findUnique({
         where: { id: factura.pedidoId },
-        select: { estadoEntrega: true },
+        select: { estadoEntrega: true, total: true, totalPagado: true },
       })
       if (!pedido) {
         throw new Error('PEDIDO_NOT_FOUND')
@@ -129,12 +130,16 @@ export async function POST(request: NextRequest) {
         })
       }
 
-      // Sincronizar Pedido.saldo con Factura.saldo
+      // Sincronizar Pedido.saldo con Factura.saldo, y su estadoPago (misma
+      // proyección que pagar-fiado). Sin estadoPago, el CHECK
+      // chk_pedido_estadopago_proyectado rechazaba el UPDATE → 500.
+      const nuevoTotalPagado = Number(pedido.totalPagado) + monto
       await tx.pedido.update({
         where: { id: factura.pedidoId },
         data: {
           saldo: updatedFactura.saldo,
-          totalPagado: { increment: monto },
+          totalPagado: nuevoTotalPagado,
+          estadoPago: calcularEstadoPago(Number(pedido.total), nuevoTotalPagado, pedido.estadoEntrega),
         },
       })
 
