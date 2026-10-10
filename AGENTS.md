@@ -144,6 +144,7 @@ vercel --prod
   - Feature flag: `NEXT_PUBLIC_USE_RESILIENT_FETCH=false` for rollback to direct `fetch`
 - `ResilientResult<T>` — discriminated union: `{ status: 'ok' | 'offline' | 'error', data?, error? }`
 - **Server-side dedup via `offlineId`** (client generates `crypto.randomUUID()`):
+  - **Crear pedido: la clave es por BORRADOR, no por envío** (plan de integridad v1.2 §5.B, incidente #285/#286). `PedidosWorkspace` y `PedidoFormUnified` generan la clave al montarse (cada apertura del modal es un borrador nuevo) y la reusan en cada reintento; `useCrearPedido` la usa si viene en `payload.offlineId`. Si el guardado falla, el workspace sale de `COMMITTING` (`COMMIT_ERROR`) para reintentar el mismo borrador en vez de obligar a abrir uno nuevo. Una respuesta `deduped` se muestra como "Esta venta ya estaba registrada (#N)".
   - `Pedido.offlineId` (@unique) — POST `/api/pedidos`, `/api/pedidos/[id]/anular`, `/entrega`, `/enviar`
   - `Pago.offlineId` (indexed, NOT unique) — POST `/api/pedidos/pagar-fiado` (rebuilds `pagosAplicados` summary from existing Pagos with same offlineId)
   - `Pedido.recurrenteBatchId` (indexed, NOT unique) — POST `/api/pedidos/recurrentes` (returns existing set)

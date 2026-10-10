@@ -36,7 +36,7 @@ describe('useCrearPedido', () => {
       await result.current.create(payload)
     })
 
-    expect(onSuccess).toHaveBeenCalledWith({ pedido: { id: 'p1' }, clienteId: 'cliente-1' })
+    expect(onSuccess).toHaveBeenCalledWith({ pedido: { id: 'p1' }, clienteId: 'cliente-1', deduped: false })
   })
 
   it('llama onOffline con el localId y el payload original cuando fetchResilient encola offline (bug Aponte, pero para pedidos)', async () => {
@@ -90,5 +90,40 @@ describe('useCrearPedido', () => {
         await result.current.create(payload)
       }),
     ).resolves.not.toThrow()
+  })
+
+  describe('clave de idempotencia por borrador (plan integridad §5.B)', () => {
+    it('reusa el offlineId del borrador en cada envío, en vez de generar uno por llamada', async () => {
+      fetchResilientMock
+        .mockResolvedValueOnce({ status: 'error', statusCode: 500, error: 'Error interno' })
+        .mockResolvedValueOnce({ status: 'ok', statusCode: 200, data: { success: true, pedido: { id: 'p1', numero: 285 }, deduped: true } })
+      const { result } = renderHook(() => useCrearPedido())
+
+      await act(async () => { await result.current.create({ ...payload, offlineId: 'clave-borrador' }) })
+      await act(async () => { await result.current.create({ ...payload, offlineId: 'clave-borrador' }) })
+
+      const claves = fetchResilientMock.mock.calls.map((c) => (c[1].body as { offlineId: string }).offlineId)
+      expect(claves).toEqual(['clave-borrador', 'clave-borrador'])
+    })
+
+    it('expone deduped cuando el servidor devolvió el pedido ya existente', async () => {
+      fetchResilientMock.mockResolvedValueOnce({
+        status: 'ok', statusCode: 200, data: { success: true, pedido: { id: 'p1', numero: 285 }, deduped: true },
+      })
+      const { result } = renderHook(() => useCrearPedido())
+      let r: unknown
+      await act(async () => { r = await result.current.create({ ...payload, offlineId: 'k' }) })
+      expect(r).toEqual({ pedido: { id: 'p1', numero: 285 }, clienteId: 'cliente-1', deduped: true })
+    })
+
+    it('sin offlineId del borrador genera una clave por llamada (compatibilidad)', async () => {
+      fetchResilientMock.mockResolvedValue({ status: 'ok', statusCode: 201, data: { success: true, pedido: { id: 'p' } } })
+      const { result } = renderHook(() => useCrearPedido())
+      await act(async () => { await result.current.create(payload) })
+      await act(async () => { await result.current.create(payload) })
+      const [a, b] = fetchResilientMock.mock.calls.map((c) => (c[1].body as { offlineId: string }).offlineId)
+      expect(a).toBeTruthy()
+      expect(a).not.toBe(b)
+    })
   })
 })

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { generateUUID } from '@/lib/uuid'
 import { toast } from 'sonner'
 import { DEFAULT_PRICES, PRODUCTO_INFO, getProductosForCanal } from '@/lib/prices'
 import { METODOS_PAGO, METODO_PAGO_ICONS } from '@/lib/metodos-pago'
@@ -59,7 +60,7 @@ export interface PedidoInicial {
 export interface PedidoFormUnifiedProps {
   contexto: 'PUNTO' | 'DOMICILIO'
   clientes: Cliente[]
-  onSubmit: (data: PedidoUnifiedData) => void
+  onSubmit: (data: PedidoUnifiedData) => void | Promise<boolean>
   onClose?: () => void
   pedidoInicial?: PedidoInicial
 }
@@ -104,6 +105,8 @@ export interface PedidoUnifiedData {
   pedidoId?: string
   /** G11.B — "nueva demanda": este Pedido nace de una operación existente. */
   pedidoOrigenId?: string
+  /** Clave de idempotencia del borrador (creación). Ver `use-crear-pedido`. */
+  offlineId?: string
 }
 
 // ADR-VENTA-RUTA-ENTREGA-POSTERIOR-001: el toggle "entregar después" de la
@@ -144,6 +147,9 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
   const [modoPagoActivo, setModoPagoActivo] = useState<string | null>(null)
   const [montoInput, setMontoInput] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  // Clave de idempotencia del borrador (plan de integridad v1.2 §5.B): se reusa
+  // si el usuario vuelve a enviar este mismo formulario tras un error.
+  const [claveBorrador] = useState(generateUUID)
   const [preciosResueltos, setPreciosResueltos] = useState<Record<string, number>>({})
   const [preciosOrigen, setPreciosOrigen] = useState<Record<string, string>>({})
   const [tablaPrecios, setTablaPrecios] = useState<Record<string, Tier[]>>({})
@@ -780,6 +786,7 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
           : undefined,
       isEdit: !!pedidoInicial?.id,
       pedidoId: pedidoInicial?.id,
+      offlineId: pedidoInicial?.id ? undefined : claveBorrador,
     }
 
     await onSubmit(data)
