@@ -792,8 +792,22 @@ export function PedidoFormUnified({ contexto, clientes, onSubmit, pedidoInicial 
     <form onSubmit={handleSubmit} className="lg:grid lg:grid-cols-[1fr_360px] lg:gap-6 h-full">
       {/* COLUMNA IZQUIERDA */}
       <div className="space-y-4 overflow-y-auto lg:max-h-[calc(90vh-2rem)] pr-1">
-        {/* Canal toggle (solo si contexto lo permite) */}
-        {contexto === 'PUNTO' && (
+        {/* Edición: el canal comercial es histórico e inmutable (ADR-PEDIDO-ORIGEN-CANAL-001).
+            Ofrecer el toggle aquí prometía un cambio que el servidor no guarda. */}
+        {pedidoInicial?.id && (
+          <div data-testid="canal-fijo-edicion" className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
+            <div className="font-medium text-gray-800">
+              {canal === 'PUNTO' ? '🏪 Punto de Venta' : '🚚 Domicilio'}
+              <span className="ml-2 text-xs font-normal text-gray-500">(canal registrado)</span>
+            </div>
+            <p className="mt-0.5 text-xs text-gray-500">
+              El canal no se cambia al editar. Si se registró por error, o si cambió cómo se entrega, pida la corrección formal a un administrador.
+            </p>
+          </div>
+        )}
+
+        {/* Canal toggle (solo si contexto lo permite y se está CREANDO) */}
+        {contexto === 'PUNTO' && !pedidoInicial?.id && (
           <div className="flex bg-gray-100 rounded-lg p-1">
             <button
               type="button"

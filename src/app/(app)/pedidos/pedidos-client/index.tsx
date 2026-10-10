@@ -975,13 +975,26 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
           signal: AbortSignal.timeout(8_000),
           body: JSON.stringify({
             items: data.items,
-            obs: data.obs,
+            // Se envía solo si cambió: '' significa "borrar la observación", y
+            // mandarlo sin que el usuario lo haya tocado la borraría.
+            obs: (data.obs ?? '') === (pedidoEditando?.obs ?? '') ? undefined : (data.obs ?? ''),
             actualizarCliente: data.actualizarCliente,
             direccionEntrega: data.direccionEntrega,
             barrioEntrega: data.barrioEntrega,
           }),
         })
+        const payload = await res.json().catch(() => null) as
+          | { aplicado?: { campos: string[]; sinCambios: boolean }; error?: { message?: string; formErrors?: string[]; fieldErrors?: Record<string, string[]>; code?: string } }
+          | null
         if (res.ok) {
+          // Contrato PR-1: el servidor informa qué se aplicó. Sin `aplicado`
+          // (servidor anterior) no se puede afirmar que algo se guardó.
+          const aplicado = payload?.aplicado
+          if (!aplicado) {
+            toast.warning('No se pudo confirmar qué se guardó. Recarga el pedido para verificar.')
+            refreshPedidos()
+            return
+          }
           setShowModal(false)
           setShowVentaRapida(false)
           setPedidoInicial(undefined)
@@ -989,10 +1002,11 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
           setShowDetailModal(false)
           refreshPedidos()
           fetchClientes()
-          toast.success('Pedido actualizado')
+          if (aplicado.sinCambios) toast.info('Sin cambios: el pedido ya tenía esos valores')
+          else toast.success(`Pedido actualizado (${aplicado.campos.join(', ')})`)
         } else {
-          const err = await res.json()
-          toast.error(err.error?.message || err.error?.formErrors?.[0] || 'Error al guardar')
+          const campo = payload?.error?.fieldErrors ? Object.values(payload.error.fieldErrors)[0]?.[0] : undefined
+          toast.error(campo || payload?.error?.message || payload?.error?.formErrors?.[0] || 'Error al guardar')
         }
       } else {
         // Create uses the hook

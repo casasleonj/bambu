@@ -37,7 +37,11 @@ import type { IPricingPort } from '../../../domain/repositories/IPricingPort'
 import type { ITransactionManager, TransactionClient } from '../../../infrastructure/transactions/PrismaTransactionManager'
 import type { ActualizarPedidoInput } from '../../dto'
 
-function makePedido(estadoEntrega: EstadoEntrega, id = 'ped_1'): Pedido {
+function makePedido(
+  estadoEntrega: EstadoEntrega,
+  id = 'ped_1',
+  extra: Partial<Parameters<typeof Pedido.create>[0]> = {},
+): Pedido {
   return Pedido.create({
     id: PedidoId.from(id),
     numero: 1,
@@ -51,6 +55,7 @@ function makePedido(estadoEntrega: EstadoEntrega, id = 'ped_1'): Pedido {
     totalPagado: Money.fromDecimal(0),
     pagos: [],
     fecha: new Date('2026-06-30T10:00:00Z'),
+    ...extra,
   })
 }
 
@@ -76,7 +81,7 @@ function makeUseCase(pedido: Pedido) {
     anularByPedidoId: vi.fn(),
   }
   const clienteRepo: IClienteRepository = {
-    findById: vi.fn(),
+    findById: vi.fn().mockResolvedValue({ id: 'cli_1', nombre: 'Cli', direccion: 'Calle 1', barrio: 'Centro', telefono: '300' }),
     findByTelefono: vi.fn(),
     create: vi.fn(),
     updateDireccion: vi.fn(),
@@ -88,9 +93,13 @@ function makeUseCase(pedido: Pedido) {
   const preciosResueltos: ItemPedidoResuelto[] = [
     { producto: 'PACA_AGUA' as ProductCode, cantidad: 2, precio: 10000, subtotal: 20000, origen: 'base' },
   ]
+  void preciosResueltos
   const pricingPort: IPricingPort = {
     loadPricingContext: vi.fn().mockResolvedValue({}),
-    resolverPrecios: vi.fn().mockResolvedValue(preciosResueltos),
+    // Precio vigente de hoy: 12000 (distinto del histórico 10000 del pedido de prueba).
+    resolverPrecios: vi.fn().mockImplementation(async (items: Array<{ codigo: ProductCode; cantidad: number }>) =>
+      items.map((i) => ({ producto: i.codigo, cantidad: i.cantidad, precio: 12000, subtotal: 12000 * i.cantidad, origen: 'base' })),
+    ),
   }
   // F3: el use case ahora corre bajo `PEDIDO:{id}` y audita con `tx` —
   // el fakeTx necesita un `historial.create` (patrón de EntregarPedidoUseCase.test).
@@ -107,7 +116,7 @@ function makeUseCase(pedido: Pedido) {
   )
   txManager.executeWithLock = executeWithLock as unknown as ITransactionManager['executeWithLock']
   const useCase = new ActualizarPedidoUseCase(pedidoRepo, facturaRepo, clienteRepo, pricingPort, txManager, async () => null)
-  return { useCase, pedidoRepo, facturaRepo, executeWithLock, historialCreate }
+  return { useCase, pedidoRepo, facturaRepo, clienteRepo, pricingPort, executeWithLock, historialCreate }
 }
 
 describe('ActualizarPedidoUseCase — bypass de G11 vía PUT (hallazgo antifraude 2026-09-06)', () => {
@@ -187,12 +196,13 @@ describe('ActualizarPedidoUseCase — bypass de G11 vía PUT (hallazgo antifraud
 
     const result = await useCase.execute({
       pedidoId: 'ped_1',
-      items: [{ producto: 'PACA_AGUA' as ProductCode, cantidad: 2 }],
+      items: [{ producto: 'PACA_AGUA' as ProductCode, cantidad: 3 }],
       usuarioId: 'user_1',
     })
 
     expect(pedidoRepo.update).toHaveBeenCalledTimes(1)
     expect(result.pedido.estadoEntrega).toBe('PENDIENTE')
+    expect(result.aplicado).toEqual({ campos: ['items'], sinCambios: false })
   })
 })
 
@@ -220,7 +230,7 @@ describe('ActualizarPedidoUseCase — validación de transición de estado', () 
     const input: ActualizarPedidoInput = {
       pedidoId: 'ped_1',
       estadoEntrega: 'PENDIENTE', // EN_RUTA -> PENDIENTE está permitido
-      items: [{ producto: 'PACA_AGUA' as ProductCode, cantidad: 2 }],
+      items: [{ producto: 'PACA_AGUA' as ProductCode, cantidad: 3 }],
       usuarioId: 'user_1',
     }
 
@@ -342,5 +352,152 @@ describe('ActualizarPedidoUseCase — reconstrucción correcta en transiciones s
 
     expect(pedidoRepo.update).toHaveBeenCalledTimes(1)
     expect(result.pedido.estadoEntrega).toBe('CANCELADO')
+  })
+})
+
+describe('ActualizarPedidoUseCase — contrato PR-1 (comportamiento, repos mockeados)', () => {
+  it('reenviar las mismas líneas NO re-precifica ni toca el total (precio histórico 10000, vigente 12000)', async () => {
+    const pedido = makePedido('PENDIENTE')
+    const { useCase, pedidoRepo, pricingPort } = makeUseCase(pedido)
+
+    const r = await useCase.execute({
+      pedidoId: 'ped_1', items: [{ producto: 'PACA_AGUA' as ProductCode, cantidad: 2 }], usuarioId: 'u',
+    })
+
+    expect(r.aplicado).toEqual({ campos: [], sinCambios: true })
+    expect(pricingPort.resolverPrecios).not.toHaveBeenCalled()
+    expect(pedidoRepo.update).not.toHaveBeenCalled()
+  })
+
+  it('una línea NUEVA se precifica; la existente conserva su precio histórico', async () => {
+    const pedido = makePedido('PENDIENTE')
+    const { useCase, pedidoRepo, pricingPort } = makeUseCase(pedido)
+
+    await useCase.execute({
+      pedidoId: 'ped_1',
+      items: [{ producto: 'PACA_AGUA' as ProductCode, cantidad: 2 }, { producto: 'PACA_HIELO' as ProductCode, cantidad: 1 }],
+      usuarioId: 'u',
+    })
+
+    const resolvedItems = (pricingPort.resolverPrecios as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(resolvedItems.map((i: { codigo: string }) => i.codigo)).toEqual(['PACA_HIELO'])
+    const guardado = (pedidoRepo.update as ReturnType<typeof vi.fn>).mock.calls[0][0] as Pedido
+    expect(guardado.items.find((i) => i.producto === 'PACA_AGUA')!.precio.toDecimal()).toBe(10000)
+    expect(guardado.total.toDecimal()).toBe(20000 + 12000)
+  })
+
+  it('total nuevo < totalPagado → TotalMenorAPagadoError con el impacto y sin persistir', async () => {
+    const pedido = makePedido('PENDIENTE', 'ped_1', { totalPagado: Money.fromDecimal(15000), estadoPago: EstadoPagoVO.from('PARCIAL') })
+    const { useCase, pedidoRepo } = makeUseCase(pedido)
+
+    await expect(
+      useCase.execute({ pedidoId: 'ped_1', items: [{ producto: 'PACA_AGUA' as ProductCode, cantidad: 1 }], usuarioId: 'u' }),
+    ).rejects.toMatchObject({ name: 'TotalMenorAPagadoError', impacto: { totalAnterior: 20000, totalNuevo: 12000, totalPagado: 15000, diferencia: 3000 } })
+    expect(pedidoRepo.update).not.toHaveBeenCalled()
+  })
+
+  it('conserva las claves de idempotencia y overrides al editar (toProps completo)', async () => {
+    const pedido = makePedido('PENDIENTE', 'ped_1', {
+      entregaOfflineId: 'e1', anulacionOfflineId: 'a1', cancelacionOfflineId: 'c1', offlineId: 'o1',
+      adminOverrideNota: 'n', adminOverrideBy: 'adm', gpsAccuracy: 5, gpsJustificacion: 'j', entregadoConGps: false,
+    })
+    const { useCase, pedidoRepo } = makeUseCase(pedido)
+
+    await useCase.execute({ pedidoId: 'ped_1', obs: 'x', usuarioId: 'u' })
+
+    const guardado = (pedidoRepo.update as ReturnType<typeof vi.fn>).mock.calls[0][0] as Pedido
+    expect(guardado.entregaOfflineId).toBe('e1')
+    expect(guardado.anulacionOfflineId).toBe('a1')
+    expect(guardado.cancelacionOfflineId).toBe('c1')
+    expect(guardado.offlineId).toBe('o1')
+    expect(guardado.adminOverrideNota).toBe('n')
+    expect(guardado.gpsAccuracy).toBe(5)
+    expect(guardado.entregadoConGps).toBe(false)
+  })
+
+  it('obs "" limpia la observación; obs idéntica no cuenta como cambio', async () => {
+    const pedido = makePedido('PENDIENTE', 'ped_1', { obs: 'vieja' })
+    const a = makeUseCase(pedido)
+    const r1 = await a.useCase.execute({ pedidoId: 'ped_1', obs: '', usuarioId: 'u' })
+    expect(r1.pedido.obs).toBeFalsy()
+    expect(r1.aplicado.campos).toEqual(['obs'])
+
+    const b = makeUseCase(makePedido('PENDIENTE', 'ped_1', { obs: 'igual' }))
+    const r2 = await b.useCase.execute({ pedidoId: 'ped_1', obs: 'igual', usuarioId: 'u' })
+    expect(r2.aplicado.sinCambios).toBe(true)
+    expect(b.pedidoRepo.update).not.toHaveBeenCalled()
+  })
+
+  it('auditoría con campos/antes/después, una sola vez', async () => {
+    const { useCase, historialCreate } = makeUseCase(makePedido('PENDIENTE', 'ped_1', { obs: 'antes' }))
+    await useCase.execute({ pedidoId: 'ped_1', obs: 'despues', usuarioId: 'u' })
+    expect(historialCreate).toHaveBeenCalledTimes(1)
+    const datos = JSON.parse(historialCreate.mock.calls[0][0].data.datos)
+    expect(datos.campos).toEqual(['obs'])
+    expect(datos.antes).toEqual({ obs: 'antes' })
+    expect(datos.despues).toEqual({ obs: 'despues' })
+  })
+
+  describe('dirección de entrega', () => {
+    it('por defecto (solo items) preserva el snapshot existente del pedido', async () => {
+      const pedido = makePedido('PENDIENTE', 'ped_1', { direccionEntrega: 'Snapshot 9', barrioEntrega: 'B9' })
+      const { useCase, pedidoRepo } = makeUseCase(pedido)
+      await useCase.execute({ pedidoId: 'ped_1', items: [{ producto: 'PACA_AGUA' as ProductCode, cantidad: 3 }], usuarioId: 'u' })
+      const g = (pedidoRepo.update as ReturnType<typeof vi.fn>).mock.calls[0][0] as Pedido
+      expect(g.direccionEntrega).toBe('Snapshot 9')
+      expect(g.barrioEntrega).toBe('B9')
+    })
+
+    it('solo se recalcula si el body trae dirección/barrio explícitos (!== undefined)', async () => {
+      const { useCase, clienteRepo } = makeUseCase(makePedido('PENDIENTE', 'ped_1', { direccionEntrega: 'S' }))
+      await useCase.execute({ pedidoId: 'ped_1', obs: 'x', usuarioId: 'u' })
+      expect(clienteRepo.findById).not.toHaveBeenCalled()
+    })
+
+    it('si el texto coincide con la dirección resuelta, limpia el snapshot', async () => {
+      const pedido = makePedido('PENDIENTE', 'ped_1', { direccionEntrega: 'Otra', barrioEntrega: 'OtroB' })
+      const { useCase, pedidoRepo } = makeUseCase(pedido)
+      await useCase.execute({ pedidoId: 'ped_1', direccionEntrega: 'Calle 1', barrioEntrega: 'Centro', usuarioId: 'u' })
+      const g = (pedidoRepo.update as ReturnType<typeof vi.fn>).mock.calls[0][0] as Pedido
+      expect(g.direccionEntrega).toBeUndefined()
+      expect(g.barrioEntrega).toBeUndefined()
+    })
+
+    it('edición PARCIAL: enviar solo el barrio conserva la dirección efectiva actual', async () => {
+      const pedido = makePedido('PENDIENTE', 'ped_1', { direccionEntrega: 'Snapshot 9', barrioEntrega: 'B9' })
+      const { useCase, pedidoRepo } = makeUseCase(pedido)
+      await useCase.execute({ pedidoId: 'ped_1', barrioEntrega: 'Nuevo', usuarioId: 'u' })
+      const g = (pedidoRepo.update as ReturnType<typeof vi.fn>).mock.calls[0][0] as Pedido
+      expect(g.direccionEntrega).toBe('Snapshot 9')
+      expect(g.barrioEntrega).toBe('Nuevo')
+    })
+
+    it('pedido ENTREGADO: dirección → PedidoCerradoError sin persistir', async () => {
+      const { useCase, pedidoRepo } = makeUseCase(makePedido('ENTREGADO'))
+      await expect(
+        useCase.execute({ pedidoId: 'ped_1', direccionEntrega: 'X', usuarioId: 'u' }),
+      ).rejects.toMatchObject({ name: 'PedidoCerradoError' })
+      expect(pedidoRepo.update).not.toHaveBeenCalled()
+    })
+
+    it('actualizarCliente NUNCA se aplica si el pedido va a un negocio/sucursal', async () => {
+      const pedido = makePedido('PENDIENTE', 'ped_1', { negocioId: 'neg_1' })
+      const { useCase, clienteRepo } = makeUseCase(pedido)
+      ;(clienteRepo.findNegocioById as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'neg_1', direccion: 'Dir negocio', barrio: 'B', lat: null, lng: null })
+      await useCase.execute({
+        pedidoId: 'ped_1', direccionEntrega: 'Dir negocio 2', actualizarCliente: { direccion: 'D', barrio: 'B' }, usuarioId: 'u',
+      })
+      expect(clienteRepo.updateDireccion).not.toHaveBeenCalled()
+    })
+
+    it('actualizarCliente con cambio real sí actualiza al cliente (no negocio) y queda auditado', async () => {
+      const { useCase, clienteRepo, historialCreate } = makeUseCase(makePedido('PENDIENTE'))
+      const r = await useCase.execute({
+        pedidoId: 'ped_1', actualizarCliente: { direccion: 'Calle Nueva 5', barrio: 'Norte' }, usuarioId: 'u',
+      })
+      expect(clienteRepo.updateDireccion).toHaveBeenCalledTimes(1)
+      expect(r.aplicado.campos).toContain('actualizarCliente')
+      expect(JSON.parse(historialCreate.mock.calls[0][0].data.datos).despues.actualizarCliente.direccion).toBe('Calle Nueva 5')
+    })
   })
 })

@@ -236,3 +236,58 @@ describe('Pedido.entregar() — PR-1: integridad de entrega parcial', () => {
     expect(Number(pedido.saldo.toDecimal())).toBe(0)
   })
 })
+
+describe('Pedido.toProps — copia COMPLETA (fuente única para reconstruir el agregado)', () => {
+  it('devuelve cada clave de PedidoProps; una prop nueva obliga a actualizar este test (satisfies Required)', () => {
+    const completo = {
+      id: PedidoId.from('p1'),
+      numero: 7,
+      clienteId: 'c1',
+      negocioId: 'n1',
+      embarqueId: 'e1',
+      canal: CanalVO.from('DOMICILIO'),
+      origen: OrigenPedidoVO.from('PEDIDO'),
+      estadoEntrega: EstadoEntregaVO.from('PENDIENTE'),
+      estadoPago: EstadoPagoVO.from('PENDIENTE'),
+      items: [new PedidoItem('PACA_AGUA', 1, Money.fromDecimal(1000), 'base', 0)],
+      total: Money.fromDecimal(1000),
+      totalPagado: Money.fromDecimal(0),
+      pagos: [],
+      fecha: new Date('2026-01-01T00:00:00Z'),
+      fechaEntrega: new Date('2026-01-02T00:00:00Z'),
+      obs: 'o',
+      idOrigen: 'io',
+      fotoEntrega: 'f',
+      gpsLat: 1,
+      gpsLng: 2,
+      gpsAccuracy: 3,
+      gpsJustificacion: 'j',
+      entregadoConGps: false,
+      entregadoAt: new Date('2026-01-03T00:00:00Z'),
+      codigoVisita: 'cv',
+      direccionEntrega: 'd',
+      barrioEntrega: 'b',
+      adminOverrideNota: 'an',
+      adminOverrideBy: 'ab',
+      adminOverrideAt: new Date('2026-01-04T00:00:00Z'),
+      offlineId: 'of',
+      entregaOfflineId: 'eo',
+      anulacionOfflineId: 'ao',
+      cancelacionOfflineId: 'co',
+      createdById: 'cb',
+    } satisfies Required<Parameters<typeof Pedido.create>[0]>
+
+    const props = Pedido.create(completo).toProps()
+    expect(Object.keys(props).sort()).toEqual(Object.keys(completo).sort())
+    for (const [k, v] of Object.entries(completo)) {
+      expect(props[k as keyof typeof props], `toProps perdió ${k}`).toEqual(v)
+    }
+  })
+
+  it('es una copia: mutar los arreglos devueltos no altera el agregado', () => {
+    const p = makePedido()
+    const props = p.toProps()
+    props.items.push(new PedidoItem('PACA_HIELO', 1, Money.fromDecimal(1), 'base', 0))
+    expect(p.items).toHaveLength(1)
+  })
+})

@@ -18,12 +18,6 @@ const crearPath = join(
 )
 const crearSource = readFileSync(crearPath, 'utf-8')
 
-const actualizarPath = join(
-  process.cwd(),
-  'src/modules/pedidos/application/use-cases/ActualizarPedidoUseCase.ts',
-)
-const actualizarSource = readFileSync(actualizarPath, 'utf-8')
-
 describe('CrearPedidoUseCase: snapshot de dirección puntual', () => {
   it('importa pickDireccionTexto (regla única, no lógica duplicada)', () => {
     expect(crearSource).toMatch(/import \{ pickDireccionTexto \} from '@\/lib\/geo\/pedido-direccion'/)
@@ -75,46 +69,7 @@ describe('CrearPedidoUseCase: snapshot de dirección puntual', () => {
   })
 })
 
-describe('ActualizarPedidoUseCase: snapshot de dirección puntual', () => {
-  it('importa pickDireccionTexto', () => {
-    expect(actualizarSource).toMatch(/import \{ pickDireccionTexto \} from '@\/lib\/geo\/pedido-direccion'/)
-  })
-
-  it('por defecto preserva el snapshot existente (no lo borra en cada edición de items)', () => {
-    const idx = actualizarSource.indexOf('let direccionEntregaSnapshot')
-    const line = actualizarSource.slice(idx, actualizarSource.indexOf('\n', idx))
-    expect(line).toMatch(/=\s*pedido\.direccionEntrega/)
-    const idx2 = actualizarSource.indexOf('let barrioEntregaSnapshot')
-    const line2 = actualizarSource.slice(idx2, actualizarSource.indexOf('\n', idx2))
-    expect(line2).toMatch(/=\s*pedido\.barrioEntrega/)
-  })
-
-  it('solo recalcula si el body trae direccionEntrega o barrioEntrega explícitamente (!== undefined, no solo truthy)', () => {
-    expect(actualizarSource).toMatch(
-      /if \(input\.direccionEntrega !== undefined \|\| input\.barrioEntrega !== undefined\) \{/,
-    )
-  })
-
-  it('considera un actualizarCliente pendiente en el mismo request al resolver (no compara contra el cliente stale)', () => {
-    const idx = actualizarSource.indexOf('const aplicaraActualizarCliente')
-    expect(idx).toBeGreaterThan(-1)
-    const block = actualizarSource.slice(idx, idx + 400)
-    expect(block).toMatch(/input\.actualizarCliente && !pedido\.negocioId/)
-    expect(block).toMatch(/clienteParaResolucion/)
-  })
-
-  it('si el texto coincide con la dirección resuelta, limpia el snapshot (undefined) en vez de dejar el viejo', () => {
-    const idx = actualizarSource.indexOf('direccionEntregaSnapshot = input.direccionEntrega')
-    const elseIdx = actualizarSource.indexOf('} else {', idx)
-    const block = actualizarSource.slice(elseIdx, elseIdx + 150)
-    expect(block).toMatch(/direccionEntregaSnapshot = undefined/)
-    expect(block).toMatch(/barrioEntregaSnapshot = undefined/)
-  })
-
-  it('el snapshot se pasa al Pedido.create reconstruido en la rama de edición de items', () => {
-    const idx = actualizarSource.indexOf('const updatedPedido = Pedido.create({')
-    const block = actualizarSource.slice(idx, actualizarSource.indexOf('})', idx))
-    expect(block).toMatch(/direccionEntrega:\s*direccionEntregaSnapshot/)
-    expect(block).toMatch(/barrioEntrega:\s*barrioEntregaSnapshot/)
-  })
-})
+// ActualizarPedidoUseCase: su contrato de snapshot (preservar, recalcular solo si
+// viene explícito, limpiar si coincide, edición parcial, cerrado) se verifica por
+// COMPORTAMIENTO en ActualizarPedidoUseCase.test.ts y contra Postgres en
+// integration/pedido-put-contrato.test.ts — ya no por regex sobre el código fuente.

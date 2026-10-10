@@ -12,10 +12,10 @@
 // (legacy: pedido-form-unified/index.tsx; workspace: pedido-workspace/index.tsx
 // y su test "modo edición").
 //
-// Hallazgo registrado (no se corrige acá): el registro de auditoría de un PUT
-// es genérico — `datos: { numero, estado }` — sin antes/después. El
-// `PedidoAuditDiff` que nombra el gate no existe en el código; la paridad se
-// cumple igual porque la fila no depende de la UI de origen.
+// PR-1 (incidente Pedidos/edición): la fila de auditoría de un PUT ahora lleva
+// `campos`, `antes` y `después` además de `{ numero, estado }` (compat con los
+// lectores existentes). La paridad entre UIs se sigue cumpliendo porque la
+// fila no depende de la UI de origen.
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { NextRequest } from 'next/server'
@@ -125,11 +125,13 @@ describe('F10-5 — auditoría de edición: workspace == legacy (PUT real, Postg
     const workspaceNorm = normalizar(rowsWorkspace[0], pedidoWorkspace.numero)
 
     expect(workspaceNorm).toEqual(legacyNorm)
-    // Forma real hoy (hallazgo, ver cabecera): genérica, sin antes/después.
-    expect(legacyNorm).toEqual({
+    // Forma actual: compat (`numero`, `estado`) + campos/antes/después.
+    expect(legacyNorm).toMatchObject({
       entidad: 'Pedido', accion: 'UPDATE', usuarioId: adminId,
-      datos: { numero: '<numero>', estado: 'PENDIENTE' },
+      datos: { numero: '<numero>', estado: 'PENDIENTE', campos: ['items', 'obs'] },
     })
+    expect((legacyNorm.datos as Record<string, any>).antes.obs).toBeNull() // eslint-disable-line @typescript-eslint/no-explicit-any
+    expect((legacyNorm.datos as Record<string, any>).despues.obs).toBe('urgente') // eslint-disable-line @typescript-eslint/no-explicit-any
 
     // Y el efecto sobre el pedido es idéntico.
     const [a, b] = await Promise.all([

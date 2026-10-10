@@ -98,6 +98,19 @@ export class Pedido {
   get anulacionOfflineId(): string | undefined { return this.props.anulacionOfflineId }
   get cancelacionOfflineId(): string | undefined { return this.props.cancelacionOfflineId }
 
+  /**
+   * Copia PLANA y COMPLETA de las props del agregado. Es la ÚNICA forma de
+   * reconstruir un Pedido modificado (`Pedido.create({ ...pedido.toProps(), x })`):
+   * un spread de la instancia no copia nada (todo vive en `props`) y una lista
+   * manual de campos se desincroniza al agregar columnas — ese fue el origen
+   * de que una edición borrara `entregaOfflineId`/`anulacionOfflineId`/
+   * `cancelacionOfflineId` (claves de idempotencia). Un test exige que cada
+   * clave de `PedidoProps` sobreviva.
+   */
+  toProps(): PedidoProps {
+    return { ...this.props, items: [...this.props.items], pagos: [...this.props.pagos] }
+  }
+
   // ── Business Rules ─────────────────────────────────────────────────────
 
   puedeEntregar(): boolean {

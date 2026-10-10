@@ -393,7 +393,7 @@ export function PedidosWorkspace({ clientes, intent, initialDraft, pedidoInicial
             viene del pedido origen y ya se muestra en el banner. */}
         {modoEdicion ? (
           <p className="text-xs text-gray-400" data-testid="workspace-canal-fijo">
-            {state.draft.canal === 'DOMICILIO' ? '🚚 Domicilio' : '🏪 Punto'} · no se puede cambiar al editar
+            {state.draft.canal === 'DOMICILIO' ? '🚚 Domicilio' : '🏪 Punto'} · el canal no se cambia al editar; si fue un error de registro o cambió la entrega, pida la corrección formal a un administrador
           </p>
         ) : esNuevaDemanda ? null : (
           <div className="flex gap-2">
