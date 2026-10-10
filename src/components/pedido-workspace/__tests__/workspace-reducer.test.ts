@@ -136,3 +136,55 @@ describe('workspaceReducer — máquina de UI adaptativa', () => {
     expect(canCommit(s)).toBe(false)
   })
 })
+
+// P0 (docs/pedidos/HUB_REVISION_INTEGRAL_v1.0.md): el Hub enviaba `pagos: []`
+// siempre. "Pagar completo" debe producir un pago real que siga al total que
+// calcula el backend.
+describe('workspaceReducer — cobro (P0)', () => {
+  const conItems = () => {
+    let s = workspaceReducer(s0(), { type: 'SET_CLIENTE', clienteId: 'CONSUMIDOR_FINAL' })
+    s = workspaceReducer(s, { type: 'SET_ITEM_CANTIDAD', producto: 'PACA_AGUA', cantidad: 3 })
+    return s
+  }
+
+  it('PAGAR_COMPLETO con preview → un pago por el total del backend', () => {
+    let s = workspaceReducer(conItems(), { type: 'PREVIEW_RECEIVED', preview: previewOk() })
+    s = workspaceReducer(s, { type: 'PAGAR_COMPLETO', metodo: 'EFECTIVO' })
+    expect(s.draft.pagos).toEqual([{ metodo: 'EFECTIVO', monto: 27000 }])
+    expect(s.draft.pagoCompleto).toBe('EFECTIVO')
+    // cambió el draft → el preview anterior ya no vale
+    expect(s.preview).toBeNull()
+  })
+
+  it('PAGAR_COMPLETO antes del preview → se completa al llegar el total', () => {
+    let s = workspaceReducer(conItems(), { type: 'PAGAR_COMPLETO', metodo: 'NEQUI' })
+    expect(s.draft.pagos).toEqual([])
+    s = workspaceReducer(s, { type: 'PREVIEW_RECEIVED', preview: previewOk() })
+    expect(s.draft.pagos).toEqual([{ metodo: 'NEQUI', monto: 27000 }])
+    expect(s.phase).toBe('DRAFTING') // espera el preview con el pago correcto
+    expect(s.preview).toBeNull()
+  })
+
+  it('si cambia el total, el pago completo lo sigue; con el pago ya alineado el preview se acepta', () => {
+    let s = workspaceReducer(conItems(), { type: 'PREVIEW_RECEIVED', preview: previewOk() })
+    s = workspaceReducer(s, { type: 'PAGAR_COMPLETO', metodo: 'EFECTIVO' })
+    s = workspaceReducer(s, { type: 'SET_ITEM_CANTIDAD', producto: 'PACA_AGUA', cantidad: 4 })
+    const total36 = previewOk({ calculation: { ...previewOk().calculation, total: 36000 } })
+    s = workspaceReducer(s, { type: 'PREVIEW_RECEIVED', preview: total36 })
+    expect(s.draft.pagos).toEqual([{ metodo: 'EFECTIVO', monto: 36000 }])
+    expect(s.preview).toBeNull()
+    s = workspaceReducer(s, { type: 'PREVIEW_RECEIVED', preview: total36 })
+    expect(s.phase).toBe('PREVIEW_READY')
+    expect(s.preview?.calculation.total).toBe(36000)
+  })
+
+  it('SET_PAGOS manual deja de seguir al total', () => {
+    let s = workspaceReducer(conItems(), { type: 'PREVIEW_RECEIVED', preview: previewOk() })
+    s = workspaceReducer(s, { type: 'PAGAR_COMPLETO', metodo: 'EFECTIVO' })
+    s = workspaceReducer(s, { type: 'SET_PAGOS', pagos: [{ metodo: 'EFECTIVO', monto: 10000 }] })
+    expect(s.draft.pagoCompleto).toBeNull()
+    s = workspaceReducer(s, { type: 'PREVIEW_RECEIVED', preview: previewOk() })
+    expect(s.draft.pagos).toEqual([{ metodo: 'EFECTIVO', monto: 10000 }])
+    expect(s.phase).toBe('PREVIEW_READY')
+  })
+})

@@ -250,10 +250,19 @@ export class CrearPedidoUseCase {
         : EstadoEntregaVO.create('PENDIENTE')
       const total = preciosResueltos.reduce((sum, pr) => sum + pr.subtotal, 0)
 
+      // P0 (docs/pedidos/HUB_REVISION_INTEGRAL_v1.0.md §11): CONSUMIDOR_FINAL
+      // es ausencia de cliente real — no tiene a quién devolverle ni de quién
+      // cobrarle un saldo a favor. Antes, el excedente de una venta anónima
+      // (el cambio del billete) se acreditaba al canónico y la venta siguiente
+      // lo consumía como crédito: su `Pago` quedaba por `total − cambio`
+      // aunque se cobró completo. Para el canónico ni se aplica ni se acredita
+      // saldo a favor; el excedente es cambio entregado y no se persiste.
+      const esConsumidorFinal = isConsumidorFinalCanonical(clienteId)
+
       // FIX Fase 2 §3.4: aplicar saldo a favor disponible del cliente
       // antes de calcular lo que falta pagar. Si saldoFavor cubre
       // parcialmente el pedido, se acredita esa parte.
-      const saldoFavorDisponible = await this.clienteRepo.getSaldoFavor(clienteId, tx)
+      const saldoFavorDisponible = esConsumidorFinal ? 0 : await this.clienteRepo.getSaldoFavor(clienteId, tx)
       const montoCredito = Math.min(saldoFavorDisponible, total)
       if (montoCredito > 0) {
         await this.clienteRepo.aplicarSaldoFavor(clienteId, montoCredito, tx)
@@ -266,6 +275,16 @@ export class CrearPedidoUseCase {
       // G5.1: un pedido pagado completo pero aún no entregado → ANTICIPADO.
       // Cubre venta rápida con entrega posterior (estadoEntrega = PENDIENTE).
       const estadoPago = EstadoPagoVO.proyectar(total, totalPagado, estadoEntrega.get())
+
+      // P0 (HUB_REVISION_INTEGRAL §1/§5): una operación que deja saldo
+      // pendiente necesita un deudor identificado. El legacy lo impedía solo
+      // en la UI (`requiereCliente`); el Hub no lo replicó y nada lo sostenía
+      // en el servidor (ALS A6: UI guidance ≠ security). `CONSUMIDOR_FINAL`
+      // queda fuera del límite de fiados (F1) — esto no lo cambia: no es un
+      // límite, es que la deuda no puede quedar a cargo de nadie.
+      if (esConsumidorFinal && totalPagado < total) {
+        throw new Error('DEUDOR_REQUERIDO')
+      }
 
       // 6. F1 (Autoridad de Crédito, docs/AGUA_BAMBU_F1_DISENO_TECNICO_AUTORIDAD_CREDITO_v1.0.md):
       // consulta de pendientes + decisión consolidadas en GetFiadoStatusUseCase
@@ -284,7 +303,8 @@ export class CrearPedidoUseCase {
       }
 
       // FIX Fase 2 §3.4: si hay excedente sobre el saldo restante, se acredita al cliente
-      if (excedente > 0) {
+      // (CONSUMIDOR_FINAL: el excedente es cambio entregado — ver arriba.)
+      if (excedente > 0 && !esConsumidorFinal) {
         await this.clienteRepo.incrementarSaldoFavor(clienteId, excedente, tx)
       }
 

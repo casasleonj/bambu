@@ -107,9 +107,8 @@ export async function POST(request: NextRequest) {
     }
 
     // FASE 0 (ADR-CONCURRENCIA-001): lock `SECUENCIA:pedido` (paridad con el
-    // resto de creadores de pedidos). La venta libre usa autoincrement para
-    // Pedido.numero, pero comparte serialización con CrearPedido (MAX+1) para
-    // no introducir colisiones de numeración.
+    // resto de creadores de pedidos). `Pedido.numero` sale de la misma
+    // secuencia que CrearPedido (`getNextNumero`, ver más abajo).
     const result = await withAdvisoryLock('SECUENCIA', 'pedido', async (tx) => {
       // 1. Verificar embarque existe y está abierto
       const embarque = await tx.embarque.findUnique({
@@ -240,8 +239,13 @@ export async function POST(request: NextRequest) {
         canal as Canal,
       )
 
+      // Incidente 2026-10-08: sin `numero` explícito Prisma usa el DEFAULT
+      // legacy "Pedido_numero_seq", distinto de `pedido_numero_seq`, y
+      // reutiliza números ya existentes. Misma secuencia que CrearPedido.
+      const numero = await getNextNumero(tx, { model: 'pedido' })
       const pedido = await tx.pedido.create({
         data: {
+          numero,
           clienteId: clienteFinalId,
           createdById: authResult.user?.id,
           canal,

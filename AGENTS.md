@@ -485,6 +485,19 @@ Actualizaciones en vivo entre sesiones/usuarios para cambios en clientes, pedido
       - **Fix**: los "Verlos →" del banner hacen `shallowParams.set({ atrasados|enRiesgo: 'true' }, { history: 'push' })`, el mismo mecanismo shallow que `volverAPedidosDeHoy`. Se mantiene el `<a href>` para abrir en otra pestaña (click con modificadores o botón del medio). Resultado: vista visible en ~70 ms. Los links del **dashboard** siguen siendo `<Link>`: son otra ruta, hay montaje nuevo y funcionan.
       - **Validación**: `e2e/pedidos.spec.ts` "Verlos" del banner, estando ya en /pedidos, abre la vista atrasados al instante exige la vista en <5 s y que "atrás" vuelva a la lista; falla con el código anterior (mutation check) y pasa con el fix, con el flag ON y OFF.
       - **Anti-patrón a evitar**: en una página que maneja su URL con `useShallowSearchParams`, **nunca** usar `<Link>`/`router.push` hacia la misma ruta solo para cambiar query params. Usar `shallowParams.set(...)`; si no, el componente no se entera del cambio.
+   28. **Ventas anónimas sin `Pago` persistido + cambio convertido en saldo a favor (P0, resuelto en código 2026-10-08)**. Detalle en `docs/pedidos/HUB_REVISION_INTEGRAL_v1.0.md` §1 y §11.
+      - **Incidente A (Hub, 23/09–06/10)**: el workspace del Hub no tenía zona de cobro (`pagos: []` siempre) y el servidor aceptaba saldo a cargo de `CONSUMIDOR_FINAL`. 57 ventas quedaron `ENTREGADO` + `PENDIENTE` sin `Pago`. Contención: `NEXT_PUBLIC_PEDIDOS_V2=false` en Production.
+      - **Incidente B (legacy, desde 24/07)**: el cambio de una venta anónima se acreditaba como `saldoFavor` del canónico y la venta siguiente lo consumía como crédito. Su `Pago` quedaba por `total − cambio` aunque se cobró completo.
+      - **Fix**:
+        - `CrearPedidoUseCase` no aplica ni acredita saldo a favor para `CONSUMIDOR_FINAL`: el excedente es cambio y no se persiste.
+        - Lanza `DEUDOR_REQUERIDO` (422) si una venta anónima deja saldo. `PreviewPedidoUseCase` lo refleja como warning y sin `crear`.
+        - El Hub tiene zona Dinero (`workspace-dinero.tsx`): pagar completo (sigue al total del preview), pago combinado, y recibido/cambio/aplicado. Solo el aplicado viaja como `pagos[]`.
+      - **Validación**:
+        - `consumidor-final-cobro-integridad.test.ts`: integración Postgres; con el código anterior fallan 4/5.
+        - E2E `pedidos-hub.spec.ts` "(P0)": verifica `Pago`, `estadoPago` y `saldoFavor` **en la base de datos**, no solo la respuesta HTTP.
+      - **Anti-patrón a evitar**:
+        - Una regla de dinero o crédito que vive solo en la UI (ALS A6).
+        - Un E2E de venta que no mire la base de datos: el test F10-2 pasaba con el bug activo.
 
 ---
 

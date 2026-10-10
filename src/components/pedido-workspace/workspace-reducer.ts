@@ -119,7 +119,18 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
         precioBajoConfirmado: { ...state.precioBajoConfirmado, [action.producto]: true },
       }
     case 'SET_PAGOS':
-      return afterDraftChange(state, { ...state.draft, pagos: action.pagos })
+      // edición manual de pagos: deja de seguir al total.
+      return afterDraftChange(state, { ...state.draft, pagos: action.pagos, pagoCompleto: null })
+    case 'PAGAR_COMPLETO': {
+      // El total lo calcula el backend; si ya hay preview se usa, si no se
+      // completa al llegar (PREVIEW_RECEIVED). El reducer no calcula precios.
+      const total = state.preview?.calculation.total ?? 0
+      return afterDraftChange(state, {
+        ...state.draft,
+        pagoCompleto: action.metodo,
+        pagos: total > 0 ? [{ metodo: action.metodo, monto: total }] : [],
+      })
+    }
     case 'SET_ENTREGADO':
       return afterDraftChange(state, { ...state.draft, entregado: action.entregado })
     case 'SET_OBS':
@@ -138,6 +149,24 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
     case 'PREVIEW_PENDING':
       return { ...state, previewPending: true }
     case 'PREVIEW_RECEIVED': {
+      // "Pagar completo": si el total del backend cambió, el pago lo sigue.
+      // Re-sincronizar invalida este preview y dispara uno nuevo con el pago
+      // correcto (el total no depende de los pagos, así que converge en una
+      // vuelta). Nunca se confirma con un pago desactualizado.
+      const metodoCompleto = state.draft.pagoCompleto
+      if (metodoCompleto) {
+        const total = action.preview.calculation.total
+        const sincronizado =
+          state.draft.pagos.length === 1 &&
+          state.draft.pagos[0].metodo === metodoCompleto &&
+          state.draft.pagos[0].monto === total
+        if (!sincronizado && total > 0) {
+          return {
+            ...afterDraftChange(state, { ...state.draft, pagos: [{ metodo: metodoCompleto, monto: total }] }),
+            previewPending: false,
+          }
+        }
+      }
       // Solo aplica si seguimos en un estado que espera preview.
       if (state.phase !== 'DRAFTING' && state.phase !== 'PREVIEW_READY' && state.phase !== 'REVIEW_REQUIRED') {
         return { ...state, previewPending: false, preview: action.preview }

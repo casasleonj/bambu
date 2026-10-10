@@ -18,6 +18,9 @@
 // entonces la hidratación ya terminó.
 
 import { test, expect, apiPost, apiGet, createCliente, BASE, sharedLoginAs, appMain } from './fixtures'
+import { PrismaClient } from '@prisma/client'
+
+const prisma = new PrismaClient()
 
 const HUB_ON = process.env.NEXT_PUBLIC_PEDIDOS_V2 === 'true'
 
@@ -209,7 +212,10 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
   // "Editar VENTA_RAPIDA" y "entregar después" no son alcanzables hoy: sin
   // NEXT_PUBLIC_VENTA_RUTA_ENTREGA_POSTERIOR una venta rápida nace ENTREGADA
   // (CrearPedidoUseCase) y el detalle solo ofrece "Editar" en PENDIENTE.
-  test('workspace (F10-2): venta rápida — consumidor final, el commit crea VENTA_RAPIDA', async ({ browser }) => {
+  // P0 (docs/pedidos/HUB_REVISION_INTEGRAL_v1.0.md): esta prueba pasaba
+  // mientras el Hub creaba ventas SIN Pago — solo miraba la respuesta HTTP.
+  // Ahora verifica el resultado económico real en la base de datos.
+  test('workspace (P0): venta rápida pagada en efectivo — Pago persistido, PAGADO, saldo 0', async ({ browser }) => {
     const page = await sharedLoginAs(browser, 'admin')
     const app = appMain(page)
     await page.goto(`${BASE}/pedidos`)
@@ -219,7 +225,21 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     await expect(page.getByTestId('pedidos-workspace')).toBeVisible()
     await expect(page.getByTestId('workspace-venta-rapida')).toBeVisible()
 
+    // el saldo a favor de CONSUMIDOR_FINAL no debe moverse con ninguna venta
+    // (antes el cambio se acreditaba ahí — HUB_REVISION_INTEGRAL §11).
+    const cfAntes = Number((await prisma.cliente.findUniqueOrThrow({ where: { id: 'CONSUMIDOR_FINAL' } })).saldoFavor)
+
     await page.getByTestId('workspace-inc-PACA_AGUA').click()
+    await page.getByTestId('workspace-inc-PACA_AGUA').click()
+    // sin cobro: la venta anónima no se puede confirmar (DEUDOR_REQUERIDO)
+    await expect(page.getByTestId('dinero-deudor-requerido')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByTestId('workspace-commit')).toBeDisabled()
+
+    await page.getByTestId('dinero-pagar-completo-EFECTIVO').click()
+    await expect(page.getByTestId('dinero-saldo')).toHaveText('Pagado', { timeout: 10000 })
+    // recibido/cambio es ayuda de caja: no cambia lo aplicado
+    await page.getByTestId('dinero-recibido').fill('20000')
+    await expect(page.getByTestId('dinero-cambio')).toBeVisible()
     await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 10000 })
 
     const creado = page.waitForResponse((r) => r.url().endsWith('/api/pedidos') && r.request().method() === 'POST')
@@ -227,10 +247,53 @@ test.describe('Pedido Hub (NEXT_PUBLIC_PEDIDOS_V2)', () => {
     const res = await creado
     expect(res.status()).toBeLessThan(300)
     const body = await res.json()
-    const pedido = body.data?.pedido ?? body.pedido
-    expect(pedido.origen).toBe('VENTA_RAPIDA')
-    expect(pedido.clienteId).toBe('CONSUMIDOR_FINAL')
+    const pedidoId = (body.data?.pedido ?? body.pedido).id as string
     await expect(page.getByTestId('pedidos-workspace')).toHaveCount(0)
+
+    const enBD = await prisma.pedido.findUniqueOrThrow({ where: { id: pedidoId }, include: { pagos: true } })
+    const total = Number(enBD.total)
+    expect(enBD.origen).toBe('VENTA_RAPIDA')
+    expect(enBD.clienteId).toBe('CONSUMIDOR_FINAL')
+    expect(enBD.estadoEntrega).toBe('ENTREGADO')
+    expect(enBD.estadoPago).toBe('PAGADO')
+    expect(Number(enBD.saldo)).toBe(0)
+    expect(enBD.pagos).toHaveLength(1)
+    expect(enBD.pagos[0].metodo).toBe('EFECTIVO')
+    // se persiste lo APLICADO (= total), no el billete recibido
+    expect(Number(enBD.pagos[0].monto)).toBe(total)
+    const cf = await prisma.cliente.findUniqueOrThrow({ where: { id: 'CONSUMIDOR_FINAL' } })
+    expect(Number(cf.saldoFavor)).toBe(cfAntes)
+  })
+
+  test('workspace (P0): venta rápida con pago combinado — un Pago por método', async ({ browser }) => {
+    const page = await sharedLoginAs(browser, 'admin')
+    const app = appMain(page)
+    await page.goto(`${BASE}/pedidos`)
+
+    await app.getByTestId('fab-main').click()
+    await page.getByTestId('fab-venta-rapida').click()
+    await page.getByTestId('workspace-inc-PACA_AGUA').click()
+    await page.getByTestId('workspace-inc-PACA_AGUA').click()
+    await page.getByTestId('dinero-pagar-completo-NEQUI').click()
+    await expect(page.getByTestId('dinero-saldo')).toHaveText('Pagado', { timeout: 10000 })
+
+    // partir el cobro: 1000 en efectivo, el resto por Nequi
+    const total = Number(await page.getByTestId('dinero-pago-monto-0').inputValue())
+    await page.getByTestId('dinero-pago-monto-0').fill(String(total - 1000))
+    await page.getByTestId('dinero-agregar-EFECTIVO').click()
+    await expect(page.getByTestId('dinero-pago-monto-1')).toHaveValue('1000')
+    await expect(page.getByTestId('dinero-saldo')).toHaveText('Pagado', { timeout: 10000 })
+    await expect(page.getByTestId('workspace-commit')).toBeEnabled({ timeout: 10000 })
+
+    const creado = page.waitForResponse((r) => r.url().endsWith('/api/pedidos') && r.request().method() === 'POST')
+    await page.getByTestId('workspace-commit').click()
+    const body = await (await creado).json()
+    const pedidoId = (body.data?.pedido ?? body.pedido).id as string
+
+    const enBD = await prisma.pedido.findUniqueOrThrow({ where: { id: pedidoId }, include: { pagos: true } })
+    expect(enBD.estadoPago).toBe('PAGADO')
+    expect(enBD.pagos.map((p) => p.metodo).sort()).toEqual(['EFECTIVO', 'NEQUI'])
+    expect(enBD.pagos.reduce((s, p) => s + Number(p.monto), 0)).toBe(Number(enBD.total))
   })
 
   test('workspace (F10-2 / C4): editar un PEDIDO — "Guardar cambios" hace PUT y persiste la cantidad', async ({ browser }) => {

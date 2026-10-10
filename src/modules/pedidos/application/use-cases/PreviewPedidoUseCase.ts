@@ -113,7 +113,9 @@ export class PreviewPedidoUseCase {
       total,
     )
     const totalPagado = esEdicion ? totalPagadoBase : pagosAplicados.reduce((s, p) => s + p.monto, 0)
-    const saldoFavorProyectado = esEdicion ? 0 : excedente
+    // CONSUMIDOR_FINAL no acumula saldo a favor: el excedente es cambio
+    // entregado (paridad con CrearPedidoUseCase, HUB_REVISION_INTEGRAL §11).
+    const saldoFavorProyectado = esEdicion || esAnonimo ? 0 : excedente
     // Edición: el estadoEntrega no cambia — se proyecta el estadoPago contra el
     // actual (igual que ActualizarPedidoUseCase). Creación: PENDIENTE/ENTREGADO.
     const estadoEntregaProyectado = (esEdicion && estadoEntregaExistente
@@ -140,7 +142,18 @@ export class PreviewPedidoUseCase {
         canCreate = false
         warnings.push({ code: 'CLIENTE_BLOQUEADO', message: 'Cliente bloqueado por deuda vencida. Pague primero.' })
       }
-    } else if (!esAnonimo) {
+    } else if (esAnonimo) {
+      // P0 (HUB_REVISION_INTEGRAL §1/§5): saldo pendiente exige deudor
+      // identificado — misma regla que CrearPedidoUseCase (DEUDOR_REQUERIDO).
+      if (totalPagado < total) {
+        canCreate = false
+        warnings.push({
+          code: 'DEUDOR_REQUERIDO',
+          message: 'Falta registrar el pago. Para dejar saldo pendiente, identifica al cliente que queda debiendo.',
+          field: 'pagos',
+        })
+      }
+    } else {
       // F1 (Autoridad de Crédito): misma autoridad que usan CrearPedidoUseCase
       // y venta-libre — mismo guard `totalPagado < total` ya vigente, ahora
       // evaluado DENTRO de GetFiadoStatusUseCase en vez de acá. `errorDeuda`
