@@ -1,5 +1,7 @@
 # N2 · Retiro en punto · Rectificación de canal — diseño v0.1 (BORRADOR PARA APROBACIÓN)
 
+> **DOCUMENTACIÓN NO APROBADA — FUERA DEL ALCANCE DE PR-1.** Borrador para revisión independiente. No autoriza migraciones ni implementación; PR-1 no depende de este documento.
+
 - **Estado:** borrador. **No hay migraciones escritas ni código** de nada de lo que sigue. Es la Ronda 2 de la Iteración 3 del incidente "Pedidos: edición / modalidad de entrega / cierre" (ver `INCIDENTE_CANAL_EDICION_EVIDENCIA_v1.md`).
 - **Fecha:** 2026-10-10. **No reabre** ninguna decisión aprobada (`ADR-PEDIDO-ORIGEN-CANAL-001`, `ADR-OBLIGACION-001`, `ADR-ACTIVIDAD-001`, N2 ALS v2.0, `ADR-PAGO-EMBARQUE-CAPTURA-001`, `ADR-COMUNICACIONES-001`).
 - **Alcance:** resolver las contradicciones de cardinalidad, modo, cantidades y autorización **antes** de escribir migraciones; definir retiro y rectificación sobre ese terreno ya consistente.

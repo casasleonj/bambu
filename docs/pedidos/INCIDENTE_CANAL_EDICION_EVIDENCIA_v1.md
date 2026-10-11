@@ -1,5 +1,7 @@
 # Incidente "Pedidos: edición / modalidad de entrega / cierre" — ledger de evidencia y aprobaciones
 
+> **DOCUMENTACIÓN NO APROBADA — FUERA DEL ALCANCE DE PR-1.** Borrador para revisión independiente. No autoriza migraciones ni implementación; PR-1 no depende de este documento.
+
 Registro por etapa del Protocolo de Investigación (`.opencode/prompts/protocolo.txt`). Su propósito es que cada ciclo tenga **evidencia propia y aprobación propia**; una tabla resumen no acredita un ciclo.
 
 **Estado honesto del protocolo (2026-10-10):** el protocolo exige 3 iteraciones R1→R2→R3, con aprobación tras cada R2. Hasta hoy hubo **dos presentaciones de R2** (con aprobación parcial cada una) y **un R3 parcial** (PR-1). La **Iteración 3** se completa solo cuando el equipo apruebe la entrega de esta fecha (PR-1 + diseño N2/retiro) y se verifique en navegador, PostgreSQL y producción tras el merge. **El incidente NO está cerrado.**
@@ -90,3 +92,35 @@ Registro por etapa del Protocolo de Investigación (`.opencode/prompts/protocolo
 PUNTO/PEDIDO, `PENDIENTE`, `ANTICIPADO`; 2 × BOTELLON × $7.500; `Pago` EFECTIVO $15.000 `CONFIRMADO`, `embarqueId` nulo; factura FAC-00335 `PAGADA`; creado por un ADMIN el 09-oct 21:38 UTC; tres `UPDATE` del 10-oct (20:15, 20:25:45, 20:25:53) de otro ADMIN, todos con `{estado:"PENDIENTE"}`. **El historial previo a PR-1 no guarda antes/después**, por lo que de esos tres `UPDATE` solo se puede afirmar que el estado de entrega era `PENDIENTE`; no que ningún otro campo permaneciera igual. Estado actual y coherencia: total = pagado = factura.
 
 **No se modificó ni se modificará nada de #331 hasta confirmar con el personal cómo debía entregarse.** No se crean embarques ni se tocan pagos.
+
+---
+
+## Revisión de PR-1 — cinco bloqueos (2026-10-11)
+
+Cada bloqueo se reprodujo con una prueba **antes** de corregir (`integration/pedido-put-bloqueos-pr1.test.ts`: 19 de 27 fallaban contra el código de `ca96137`).
+
+| # | Hallazgo del revisor | Reproducción (código anterior) | Causa raíz | Corrección | Prueba |
+|---|---|---|---|---|---|
+| 1 | `ENTREGADO` + `obs`/dirección declaraba campos aplicados sin persistirlos | `PUT {estado:'ENTREGADO', obs}` → 200, `aplicado.campos=['estadoEntrega','obs']`, `obs` nulo en BD | La entidad que se guardaba se construía **antes** de procesar obs/dirección | Una sola construcción al final con todo ya aplicado + guardia final (`EdicionNoPersistidaError`) que revierte si lo guardado difiere de lo declarado; y se elimina la rama ENTREGADO del caso de uso | `Bloqueo 1` (invariante «declarado == persistido» sobre 4 combinaciones) + unitaria de la guardia |
+| 2 | El PUT ejecutaba entrega/cancelación/anulación/envío/no-entrega/volver a pendiente | `PUT {estado:'CANCELADO'}` → 200 sin nota de crédito ni anulación de factura; ídem `EN_RUTA`, `NO_ENTREGADO`, `ENTREGADO` | `estadoEntrega` se aplicaba por la ruta genérica | **Todo** cambio de estado → 409 `OPERACION_ESPECIALIZADA` con la vía correcta. «Volver a pendiente» pasa a `DELETE /api/embarques/[id]/pedidos/[pedidoId]` (ya existía: libera, audita, notifica al repartidor); «Marcar entregado» de la UI pasa por `POST /entrega` (cantidades, GPS, N2, factura) | `Bloqueo 2` (5 destinos × origen, obligación N2 abierta, vía especializada operativa) + E2E Hub ON/OFF |
+| 3 | La edición informativa enviaba `items` y el servidor la rechazaba con entregas/cierre | PUT con ítems idénticos sobre pedido parcial → 409 `CANTIDAD_YA_ENTREGADA` | Guardas evaluadas por presencia de `items`, no por cambio real | Regla única `lib/pedido-edicion-items.ts` usada por cliente **y** servidor: el formulario solo envía `items` si cambiaron; el servidor solo aplica guardas ante un cambio real; sin nada que pedir no hay llamada («Sin cambios») | `Bloqueo 3` + unitarias + E2E parcial Hub ON/OFF |
+| 4 | Sin unicidad de `(pedido, producto)` | `POST` con producto repetido → 201 con dos líneas | Nada lo impedía en borde ni caso de uso | Rechazo en `PedidoCreateSchema`, esquema de preview y `PedidoUpdateSchema` (400) y en el caso de uso (`LineasDuplicadasError`); un pedido que **ya** tuviera duplicados falla cerrado al editar ítems (409 `LINEAS_DUPLICADAS`); `repo.update` empareja por coincidencia exacta y luego por producto: cada línea conserva id y autorización. **Producción: 0 pedidos con líneas duplicadas** (consulta de solo lectura 2026-10-10). El índice único en BD **no** se agrega aquí (migración: queda como follow-up aprobable) | `Bloqueo 4` (crear, editar, duplicado preexistente, cancelar con duplicados) |
+| 5 | Diferencial N2 perdido/recalculado al editar | Pedido PUNTO + gestión DOMICILIO (total sube por el diferencial); PUT de cantidades → 200 y el total vuelve a Σ ítems | `total = Σ ítems` ignora los diferenciales que N2 suma sobre `Pedido.total` | Si el pedido tiene obligación N2 o un ajuste con diferencial ≠ 0 y se piden cambios de cantidad → 409 `PEDIDO_CON_N2_USE_AJUSTAR_CANTIDAD`; información sigue permitida; reenviar lo mismo no bloquea | `Bloqueo 5` (precondición, bloqueo, información permitida, sin cambio) |
+
+### Auditoría de rutas alternativas (escritores de `Pedido`, `PedidoItem` y `Factura`)
+
+Búsqueda: `grep -rnE "(pedido|pedidoItem|factura)\.(update|updateMany|create|createMany|delete|deleteMany|upsert)" src` excluyendo pruebas.
+
+| Escritor | Qué toca | Consecuencias que cubre |
+|---|---|---|
+| `EntregarPedidoUseCase` (`POST /entrega`) | cantidades, estado, pagos | factura, N2 (I-11), GPS/foto |
+| `Cancelar`/`AnularPedidoUseCase` | estado, pagos | factura anulada, nota de crédito, reversión |
+| `AjustarPedidoCantidadUseCase` (`ajustar-cantidad`) | ítem, total | N2, diferencial, factura |
+| `procesar-pedido.service` (cierre de embarque) | ítems, estado, factura | trazabilidad física, caja |
+| `aplicar-diferencial-economico` (N2) | total, saldo, factura | `PedidoCantidadAjuste` |
+| `pedidos/[id]/enviar`, `embarques/[id]/enviar`, `embarques` POST/PUT, `embarques/[id]/pedidos/[pedidoId]`, `MaterializarPlan` | asignación y estado logístico | capacidad, notificación, auditoría |
+| `abonos`, `pagar-fiado`, `cartera/abonos/[id]/corregir`, cron `vencimiento-promesas`, `casos/[id]`, `resolver-disputa` | pago/estadoPago/disputa | factura, receivable, auditoría |
+| `lib/recurrentes.ts` (consolidación) | cancela pedidos viejos | rama `APLICAR_CREDITO` con NC + saldo a favor + factura anulada; **observación fuera de PR-1:** la rama `CON_PENDIENTES` solo marca `CANCELADO` y crea la NC (no anula la factura ni pone `estadoPago=ANULADO`) — no se modificó, queda para revisión |
+| **`PUT /api/pedidos/[id]` (PR-1)** | `obs`, dirección, líneas | **ya no cambia estado**; líneas: total + factura alineados, no baja de lo cobrado, bloqueado con N2/duplicados |
+
+Los únicos escritores de `PedidoItem` son el repositorio (entrega/cancelación/anulación/edición), el cierre de embarque y `ajustar-cantidad`; los de `Factura`, los de la tabla anterior. No hay otra ruta que edite líneas o importes sin pasar por una de esas operaciones.
