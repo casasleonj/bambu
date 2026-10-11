@@ -31,14 +31,24 @@ import type { IClienteRepository } from '../../domain/repositories/IClienteRepos
 import type { IPricingPort } from '../../domain/repositories/IPricingPort'
 import type { ITransactionManager } from '../../infrastructure/transactions/PrismaTransactionManager'
 import { PedidoItem } from '../../domain/entities/PedidoItem'
+import type { ProductCode } from '@/shared/domain'
 import { Pedido } from '../../domain/entities/Pedido'
 import type { ActualizarPedidoInput } from '../dto'
 import { PedidoDTOMapper } from '../dto/PedidoDTOMapper'
 import { pickDireccionTexto } from '@/lib/geo/pedido-direccion'
+import { lineaSinCambio as lineaSinCambioPlana } from '@/lib/pedido-edicion-items'
 import type { ResolverCoordsDeLink } from '@/lib/geo/resolver-coords-de-link'
 import { resolverEntrega } from '../../domain/services/entrega-suficiencia.service'
 import { EntregaInsuficienteError } from '../../domain/services/entrega-suficiencia.errors'
-import { PedidoCerradoError, TotalMenorAPagadoError } from '../../domain/services/pedido-edicion.errors'
+import {
+  EdicionEconomicaN2Error,
+  EdicionNoPersistidaError,
+  LineasDuplicadasError,
+  OperacionEspecializadaError,
+  PedidoCerradoError,
+  TotalMenorAPagadoError,
+  VIA_OPERACION_ESPECIALIZADA,
+} from '../../domain/services/pedido-edicion.errors'
 
 const ESTADOS_CERRADOS = ['ENTREGADO', 'CANCELADO', 'ANULADO']
 
@@ -53,6 +63,16 @@ const snapshotLineas = (items: readonly PedidoItem[]): LineaSnapshot[] =>
   items
     .map((i) => ({ producto: i.producto as string, cantidad: i.cantPedido, precio: i.precio.toDecimal(), precioOrigen: i.precioOrigen }))
     .sort((a, b) => a.producto.localeCompare(b.producto))
+
+type LineaSolicitada = { producto: ProductCode; cantidad: number; precioManual?: number }
+
+/** Adaptador al dominio de la regla compartida (`lib/pedido-edicion-items`, misma que usa el formulario). */
+function lineaSinCambio(previo: PedidoItem | undefined, i: LineaSolicitada): boolean {
+  return lineaSinCambioPlana(
+    previo ? { cantidad: previo.cantPedido, precio: previo.precio.toDecimal(), precioOrigen: previo.precioOrigen } : undefined,
+    i,
+  )
+}
 
 export class ActualizarPedidoUseCase {
   constructor(
@@ -80,21 +100,29 @@ export class ActualizarPedidoUseCase {
 
       const estadoActual = pedido.estadoEntrega.get()
       const cerrado = ESTADOS_CERRADOS.includes(estadoActual)
-      const hayItems = Boolean(input.items && input.items.length > 0)
       const tocaClienteDir = Boolean(input.actualizarCliente)
 
+      // ── ESTADO: este caso de uso NO cambia el estado de entrega ────────────
+      // Entregar, cancelar, anular, enviar, no-entregar y volver a pendiente
+      // (quitar del embarque) tienen su operación especializada: factura/nota
+      // de crédito, pagos, trazabilidad física del embarque, notificación al
+      // repartidor y reconexión N2. Aquí solo se edita información y líneas.
+      if (input.estadoEntrega && input.estadoEntrega !== estadoActual) {
+        const destino = EstadoEntregaVO.from(input.estadoEntrega).get()
+        throw new OperacionEspecializadaError(
+          destino,
+          VIA_OPERACION_ESPECIALIZADA[destino] ?? 'Use la operación especializada.',
+        )
+      }
+
       // Pedido cerrado: la información de entrega es historia. (obs sí: se
-      // audita con antes/después.) Items/cantidades: ver AjustarPedidoCantidad.
-      if (cerrado && hayItems) throw new Error('PEDIDO_CERRADO_USE_AJUSTAR_CANTIDAD')
+      // audita con antes/después.)
       if (cerrado && (tocaDireccion || tocaClienteDir)) {
         throw new PedidoCerradoError(estadoActual, [
           ...(input.direccionEntrega !== undefined ? ['direccionEntrega'] : []),
           ...(input.barrioEntrega !== undefined ? ['barrioEntrega'] : []),
           ...(tocaClienteDir ? ['actualizarCliente'] : []),
         ])
-      }
-      if (hayItems && pedido.items.some((i) => i.cantEntrega > 0)) {
-        throw new Error('CANTIDAD_YA_ENTREGADA_USE_AJUSTAR_CANTIDAD')
       }
 
       const props = pedido.toProps()
@@ -108,78 +136,74 @@ export class ActualizarPedidoUseCase {
       }
       const totalAnterior = pedido.total.toDecimal()
       const totalPagado = pedido.totalPagado.toDecimal()
-      let estadoFinal = estadoActual
       let totalCambio = false
-      let entidadEntregada: Pedido | null = null
-
-      // ── ESTADO (validación; la proyección de pago va al final) ─────────────
-      let nuevoEstado: EstadoEntregaVO | null = null
-      if (input.estadoEntrega && input.estadoEntrega !== estadoActual) {
-        nuevoEstado = EstadoEntregaVO.from(input.estadoEntrega)
-        if (!pedido.estadoEntrega.canTransitionTo(nuevoEstado)) {
-          throw new Error(`Transición inválida: ${estadoActual} → ${nuevoEstado.get()}`)
-        }
-      }
 
       // ── ECONÓMICA: items ───────────────────────────────────────────────────
-      if (hayItems) {
-        const solicitados = input.items!.filter((i) => i.cantidad > 0)
+      if (input.items && input.items.length > 0) {
+        const solicitados = input.items.filter((i) => i.cantidad > 0)
+        const productos = solicitados.map((i) => i.producto as string)
+        const repetidos = productos.filter((p, idx) => productos.indexOf(p) !== idx)
+        if (repetidos.length > 0) throw new LineasDuplicadasError([...new Set(repetidos)])
+
         const previoPorProducto = new Map(pedido.items.map((i) => [i.producto as string, i]))
-        // Una línea idéntica (mismo producto y cantidad, sin precio manual) NO
-        // se re-precifica: conserva precio y origen históricos.
-        const aResolver = solicitados.filter((i) => {
-          const previo = previoPorProducto.get(i.producto)
-          return !(previo && previo.cantPedido === i.cantidad && !i.precioManual)
-        })
+        const hayCambioDeclarado =
+          solicitados.length !== pedido.items.length ||
+          solicitados.some((i) => !lineaSinCambio(previoPorProducto.get(i.producto), i))
 
-        const resueltos = aResolver.length === 0
-          ? []
-          : await this.pricingPort.resolverPrecios(
-              aResolver.map((i) => ({ codigo: i.producto, cantidad: i.cantidad, precioManual: i.precioManual })),
-              pedido.canal.get(),
-              await this.pricingPort.loadPricingContext(
-                pedido.clienteId, pedido.negocioId, aResolver.map((i) => i.producto), tx,
-              ),
-            )
-        const resueltoPorProducto = new Map(resueltos.map((r) => [r.producto as string, r]))
+        // Las guardas de cantidades/N2 aplican SOLO si de verdad se pide cambiar
+        // líneas: reenviar lo mismo (lo que hace el formulario al editar una
+        // nota) no puede quedar bloqueado por entregas, cierre o N2.
+        if (hayCambioDeclarado) {
+          if (cerrado) throw new Error('PEDIDO_CERRADO_USE_AJUSTAR_CANTIDAD')
+          if (pedido.items.some((i) => i.cantEntrega > 0)) throw new Error('CANTIDAD_YA_ENTREGADA_USE_AJUSTAR_CANTIDAD')
 
-        const nuevosItems = solicitados.map((i) => {
-          const r = resueltoPorProducto.get(i.producto)
-          if (r) return new PedidoItem(r.producto, r.cantidad, Money.fromDecimal(r.precio), r.origen, 0)
-          const previo = previoPorProducto.get(i.producto)!
-          return new PedidoItem(previo.producto, previo.cantPedido, previo.precio, previo.precioOrigen, 0)
-        })
+          const productosActuales = pedido.items.map((i) => i.producto as string)
+          const duplicadosActuales = productosActuales.filter((p, idx) => productosActuales.indexOf(p) !== idx)
+          if (duplicadosActuales.length > 0) throw new LineasDuplicadasError([...new Set(duplicadosActuales)])
 
-        const nuevoTotal = nuevosItems.reduce((sum, i) => sum + i.subtotalPedido.toDecimal(), 0)
-        const lineasAntes = snapshotLineas(pedido.items)
-        const lineasDespues = snapshotLineas(nuevosItems)
-        if (JSON.stringify(lineasAntes) !== JSON.stringify(lineasDespues)) {
-          // Dinero ya cobrado: no se decide aquí devolverlo ni absorberlo.
-          if (nuevoTotal < totalPagado) {
-            throw new TotalMenorAPagadoError({
-              totalAnterior, totalNuevo: nuevoTotal, totalPagado, diferencia: totalPagado - nuevoTotal,
-            })
+          // Diferencial N2 ya aplicado: Pedido.total = Σ ítems + diferenciales.
+          // Recalcular desde los ítems lo borraría (o lo duplicaría al revertirlo).
+          const [obligaciones, ajustesConDiferencial] = await Promise.all([
+            tx.obligacionPendiente.count({ where: { pedidoId: input.pedidoId } }),
+            tx.pedidoCantidadAjuste.count({ where: { pedidoId: input.pedidoId, montoDiferencial: { not: 0 } } }),
+          ])
+          if (obligaciones > 0 || ajustesConDiferencial > 0) throw new EdicionEconomicaN2Error()
+
+          const aResolver = solicitados.filter((i) => !lineaSinCambio(previoPorProducto.get(i.producto), i))
+          const resueltos = aResolver.length === 0
+            ? []
+            : await this.pricingPort.resolverPrecios(
+                aResolver.map((i) => ({ codigo: i.producto, cantidad: i.cantidad, precioManual: i.precioManual })),
+                pedido.canal.get(),
+                await this.pricingPort.loadPricingContext(
+                  pedido.clienteId, pedido.negocioId, aResolver.map((i) => i.producto), tx,
+                ),
+              )
+          const resueltoPorProducto = new Map(resueltos.map((r) => [r.producto as string, r]))
+
+          const nuevosItems = solicitados.map((i) => {
+            const r = resueltoPorProducto.get(i.producto)
+            if (r) return new PedidoItem(r.producto, r.cantidad, Money.fromDecimal(r.precio), r.origen, 0)
+            const previo = previoPorProducto.get(i.producto)!
+            return new PedidoItem(previo.producto, previo.cantPedido, previo.precio, previo.precioOrigen, 0)
+          })
+
+          const nuevoTotal = nuevosItems.reduce((sum, i) => sum + i.subtotalPedido.toDecimal(), 0)
+          const lineasAntes = snapshotLineas(pedido.items)
+          const lineasDespues = snapshotLineas(nuevosItems)
+          if (JSON.stringify(lineasAntes) !== JSON.stringify(lineasDespues)) {
+            // Dinero ya cobrado: no se decide aquí devolverlo ni absorberlo.
+            if (nuevoTotal < totalPagado) {
+              throw new TotalMenorAPagadoError({
+                totalAnterior, totalNuevo: nuevoTotal, totalPagado, diferencia: totalPagado - nuevoTotal,
+              })
+            }
+            props.items = nuevosItems
+            props.total = Money.fromDecimal(nuevoTotal)
+            totalCambio = nuevoTotal !== totalAnterior
+            registrar('items', { items: lineasAntes, total: totalAnterior }, { items: lineasDespues, total: nuevoTotal })
           }
-          props.items = nuevosItems
-          props.total = Money.fromDecimal(nuevoTotal)
-          totalCambio = nuevoTotal !== totalAnterior
-          registrar('items', { items: lineasAntes, total: totalAnterior }, { items: lineasDespues, total: nuevoTotal })
         }
-      }
-
-      // ── ESTADO: aplicar ────────────────────────────────────────────────────
-      if (nuevoEstado) {
-        if (nuevoEstado.get() === 'ENTREGADO') {
-          // Entrega total sin ítems: entregar lo que falte de cada línea. Reusa
-          // la regla del dominio (acumulativa) sobre el agregado ya editado.
-          const entidad = Pedido.create(props)
-          entidad.entregar(entidad.items.map((i) => ({ producto: i.producto, cantidad: Math.max(0, i.cantPedido - i.cantEntrega) })))
-          entidadEntregada = entidad
-        } else {
-          props.estadoEntrega = nuevoEstado
-        }
-        estadoFinal = nuevoEstado.get()
-        registrar('estadoEntrega', estadoActual, estadoFinal)
       }
 
       // ── INFORMACIÓN: obs ───────────────────────────────────────────────────
@@ -259,22 +283,25 @@ export class ActualizarPedidoUseCase {
         return { pedido: PedidoDTOMapper.toResumen(pedido), aplicado: { campos: [], sinCambios: true } }
       }
 
-      // ── Persistir una sola vez ─────────────────────────────────────────────
-      let aGuardar: Pedido
-      if (entidadEntregada) {
-        aGuardar = entidadEntregada
-      } else {
+      // ── Persistir UNA vez, con TODOS los cambios ya aplicados a `props` ────
+      // (La entidad se construye recién ahora: construirla antes de procesar
+      // obs/dirección fue la causa del falso éxito reportado en la revisión.)
+      if (props.total.toDecimal() !== totalAnterior) {
         // G5.1: proyección de pago desde el estado final y el total vigente.
-        if (hayItems || nuevoEstado) {
-          props.estadoPago = EstadoPagoVO.proyectar(props.total.toDecimal(), totalPagado, estadoFinal)
-        }
-        aGuardar = Pedido.create(props)
+        props.estadoPago = EstadoPagoVO.proyectar(props.total.toDecimal(), totalPagado, props.estadoEntrega.get())
       }
-      const saved = await this.pedidoRepo.update(aGuardar, tx)
+      const saved = await this.pedidoRepo.update(Pedido.create(props), tx)
 
-      // Factura alineada con el pedido si el total cambió, o si la entrega
-      // completa recalculó el saldo.
-      if (totalCambio || entidadEntregada) {
+      // Guardia final: nada se declara aplicado si no quedó persistido.
+      const noPersistidos: string[] = []
+      if (campos.includes('obs') && (saved.obs || '') !== (props.obs || '')) noPersistidos.push('obs')
+      if (campos.includes('direccionEntrega') && (saved.direccionEntrega ?? null) !== (props.direccionEntrega ?? null)) noPersistidos.push('direccionEntrega')
+      if (campos.includes('barrioEntrega') && (saved.barrioEntrega ?? null) !== (props.barrioEntrega ?? null)) noPersistidos.push('barrioEntrega')
+      if (campos.includes('items') && JSON.stringify(snapshotLineas(saved.items)) !== JSON.stringify(snapshotLineas(props.items))) noPersistidos.push('items')
+      if (noPersistidos.length > 0) throw new EdicionNoPersistidaError(noPersistidos)
+
+      // Factura alineada con el pedido si el total cambió.
+      if (totalCambio) {
         const factura = await this.facturaRepo.findByPedidoId(saved.id.get(), tx)
         if (factura) {
           const saldo = Math.max(0, saved.total.toDecimal() - totalPagado)

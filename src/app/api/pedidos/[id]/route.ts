@@ -16,7 +16,14 @@ import { PedidoDTOMapper } from '@/modules/pedidos/application/dto/PedidoDTOMapp
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { pickDireccionTexto } from '@/lib/geo/pedido-direccion'
 import { clasificarCamposPut } from '@/lib/pedido-put-contrato'
-import { PedidoCerradoError, TotalMenorAPagadoError } from '@/modules/pedidos/domain/services/pedido-edicion.errors'
+import {
+  EdicionEconomicaN2Error,
+  EdicionNoPersistidaError,
+  LineasDuplicadasError,
+  OperacionEspecializadaError,
+  PedidoCerradoError,
+  TotalMenorAPagadoError,
+} from '@/modules/pedidos/domain/services/pedido-edicion.errors'
 
 function getUserFromSession(authResult: unknown) {
   return { id: (authResult as { user?: { id?: string } })?.user?.id || '', role: (authResult as { user?: { role?: string } })?.user?.role }
@@ -269,10 +276,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return apiError('Pedido no encontrado', 404)
     }
     if (error instanceof Error && error.message === 'PEDIDO_CERRADO_USE_AJUSTAR_CANTIDAD') {
-      return apiError('El pedido ya está cerrado (entregado/cancelado/anulado) — use el flujo de corrección de cantidad', 409)
+      return apiError('El pedido ya está cerrado (entregado/cancelado/anulado) — use el flujo de corrección de cantidad', 409, { code: 'PEDIDO_CERRADO_USE_AJUSTAR_CANTIDAD' })
     }
     if (error instanceof Error && error.message === 'CANTIDAD_YA_ENTREGADA_USE_AJUSTAR_CANTIDAD') {
-      return apiError('Ya se entregó cantidad de este pedido — use el flujo de corrección de cantidad', 409)
+      return apiError('Ya se entregó cantidad de este pedido — use el flujo de corrección de cantidad', 409, { code: 'CANTIDAD_YA_ENTREGADA_USE_AJUSTAR_CANTIDAD' })
     }
     if (error instanceof Error && error.name === 'EntregaInsuficienteError') {
       return apiError('Necesitamos información para localizar el domicilio: una dirección escrita o una ubicación.', 422, { code: 'ENTREGA_INSUFICIENTE' })
@@ -291,6 +298,31 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         409,
         { code: 'TOTAL_MENOR_A_PAGADO', impacto: { totalAnterior, totalNuevo, totalPagado, diferencia } },
       )
+    }
+    if (error instanceof OperacionEspecializadaError) {
+      return apiError(
+        `Este endpoint no ejecuta el cambio a ${error.destino}. ${error.via}`,
+        409,
+        { code: 'OPERACION_ESPECIALIZADA', fieldErrors: { estado: [error.via] } },
+      )
+    }
+    if (error instanceof EdicionEconomicaN2Error) {
+      return apiError(
+        'Este pedido tiene gestión N2 o un diferencial ya aplicado: sus cantidades se corrigen con «Corregir cantidad» (ajustar-cantidad), no editando. No se guardó ningún cambio.',
+        409,
+        { code: 'PEDIDO_CON_N2_USE_AJUSTAR_CANTIDAD' },
+      )
+    }
+    if (error instanceof LineasDuplicadasError) {
+      return apiError(
+        `El pedido tiene el mismo producto en más de una línea (${error.productos.join(', ')}). Una línea por producto: corrija los datos antes de editar. No se guardó ningún cambio.`,
+        409,
+        { code: 'LINEAS_DUPLICADAS' },
+      )
+    }
+    if (error instanceof EdicionNoPersistidaError) {
+      logger.error({ campos: error.campos, pedidoId: id }, 'Edición de pedido no persistida (revertida)')
+      return apiError('La edición no se pudo guardar completa y se revirtió. Intente de nuevo.', 500, { code: 'EDICION_NO_PERSISTIDA' })
     }
     if (error instanceof Error && error.message.startsWith('Transición inválida')) {
       return apiError(error.message, 409, { code: 'TRANSICION_INVALIDA' })

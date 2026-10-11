@@ -43,6 +43,17 @@ export const EstadoPagoSchema = z.enum(['PENDIENTE', 'PARCIAL', 'PAGADO', 'ANTIC
 // PEDIDO ITEM (nuevo)
 // ====================
 
+/** Una línea por producto: las cantidades legacy, la entrega y N2 identifican la línea por producto. */
+export const itemsSinProductosDuplicados = (items: Array<{ producto: string }>, ctx: z.RefinementCtx) => {
+  const vistos = new Set<string>()
+  for (const [idx, it] of items.entries()) {
+    if (vistos.has(it.producto)) {
+      ctx.addIssue({ code: 'custom', path: [idx, 'producto'], message: `Producto duplicado: ${it.producto}. Use una sola línea por producto.` })
+    }
+    vistos.add(it.producto)
+  }
+}
+
 export const PedidoItemSchema = z.object({
   producto: z.enum(['PACA_AGUA', 'PACA_HIELO', 'BOTELLON', 'BOLSA_AGUA', 'BOLSA_HIELO']),
   cantidad: z.coerce.number().int().min(0),
@@ -65,7 +76,7 @@ export const PedidoCreateSchema = z.object({
   negocioId: z.string().trim().min(1).optional(),
   canal: z.enum(['PUNTO', 'DOMICILIO']).optional().default('DOMICILIO'),
   origen: OrigenPedidoSchema.optional().default('PEDIDO'),
-  items: z.array(PedidoItemSchema).min(1, 'Agrega al menos un producto'),
+  items: z.array(PedidoItemSchema).min(1, 'Agrega al menos un producto').superRefine(itemsSinProductosDuplicados),
   preciosManuales: z.record(z.string(), z.number().min(0, 'Precio manual no puede ser negativo')).optional(),
   pagos: z.array(
     z.object({
@@ -131,7 +142,7 @@ export const PreviewPedidoSchema = z.object({
   negocioId: z.string().trim().min(1).optional(),
   canal: z.enum(['PUNTO', 'DOMICILIO']).optional().default('DOMICILIO'),
   origen: z.enum(['PEDIDO', 'VENTA_RAPIDA']).optional().default('PEDIDO'),
-  items: z.array(PedidoItemSchema).min(1, 'Agrega al menos un producto'),
+  items: z.array(PedidoItemSchema).min(1, 'Agrega al menos un producto').superRefine(itemsSinProductosDuplicados),
   pagos: z.array(
     z.object({
       metodo: z.enum(['EFECTIVO', 'TRANSFERENCIA', 'NEQUI', 'DAVIPLATA', 'BONO']),
@@ -336,7 +347,7 @@ export const PedidoUpdateSchema = z.object({
   // Snapshot de dirección puntual del pedido — ver PedidoCreateSchema.
   direccionEntrega: z.string().max(200).optional(),
   barrioEntrega: z.string().max(100).optional(),
-  items: z.array(PedidoItemSchema).optional(),
+  items: z.array(PedidoItemSchema).superRefine(itemsSinProductosDuplicados).optional(),
   // Offline-first: dedup si la request se encola y se reintenta
   offlineId: z.string().optional(),
 })

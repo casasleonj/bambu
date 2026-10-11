@@ -167,8 +167,17 @@ export class PrismaPedidoRepository implements IPedidoRepository {
     const existentes = await client.pedidoItem.findMany({ where: { pedidoId } })
     const usados = new Set<string>()
     const crear: Array<Record<string, unknown>> = []
-    for (const nuevo of PedidoMapper.toPrismaItemsCreate(pedido)) {
-      const previo = existentes.find((e) => !usados.has(e.id) && e.producto === nuevo.producto)
+    const nuevos = PedidoMapper.toPrismaItemsCreate(pedido)
+    // Identidad de línea = producto. Si (estado inválido) hubiera líneas
+    // repetidas, se empareja primero la que coincide EXACTO (cantidad/precio) y
+    // luego cualquiera libre del mismo producto: cada fila existente conserva su
+    // id y sus marcas de autorización; nunca se mezclan ni se pierden líneas.
+    const emparejar = (nuevo: Record<string, unknown>) =>
+      existentes.find((e) => !usados.has(e.id) && e.producto === nuevo.producto &&
+        e.cantPedido === nuevo.cantPedido && Number(e.precio) === Number(nuevo.precio)) ??
+      existentes.find((e) => !usados.has(e.id) && e.producto === nuevo.producto)
+    for (const nuevo of nuevos) {
+      const previo = emparejar(nuevo)
       if (!previo) {
         crear.push(nuevo)
         continue

@@ -104,8 +104,12 @@ function makeUseCase(pedido: Pedido) {
   // F3: el use case ahora corre bajo `PEDIDO:{id}` y audita con `tx` —
   // el fakeTx necesita un `historial.create` (patrón de EntregarPedidoUseCase.test).
   const historialCreate = vi.fn().mockResolvedValue({})
+  const obligacionCount = vi.fn().mockResolvedValue(0)
+  const ajusteCount = vi.fn().mockResolvedValue(0)
   const fakeTx = {
     historial: { create: historialCreate },
+    obligacionPendiente: { count: obligacionCount },
+    pedidoCantidadAjuste: { count: ajusteCount },
   } as unknown as TransactionClient
   const txManager: ITransactionManager = {
     execute: (fn) => fn(fakeTx),
@@ -116,7 +120,7 @@ function makeUseCase(pedido: Pedido) {
   )
   txManager.executeWithLock = executeWithLock as unknown as ITransactionManager['executeWithLock']
   const useCase = new ActualizarPedidoUseCase(pedidoRepo, facturaRepo, clienteRepo, pricingPort, txManager, async () => null)
-  return { useCase, pedidoRepo, facturaRepo, clienteRepo, pricingPort, executeWithLock, historialCreate }
+  return { useCase, pedidoRepo, facturaRepo, clienteRepo, pricingPort, executeWithLock, historialCreate, obligacionCount, ajusteCount }
 }
 
 describe('ActualizarPedidoUseCase — bypass de G11 vía PUT (hallazgo antifraude 2026-09-06)', () => {
@@ -218,26 +222,9 @@ describe('ActualizarPedidoUseCase — validación de transición de estado', () 
       usuarioId: 'user_1',
     }
 
-    await expect(useCase.execute(input)).rejects.toThrow(/Transición inválida/)
+    await expect(useCase.execute(input)).rejects.toMatchObject({ name: 'OperacionEspecializadaError' })
 
     expect(pedidoRepo.update).not.toHaveBeenCalled()
-  })
-
-  it('permite una transición válida cuando el body incluye items (no regresión)', async () => {
-    const pedido = makePedido('EN_RUTA')
-    const { useCase, pedidoRepo } = makeUseCase(pedido)
-
-    const input: ActualizarPedidoInput = {
-      pedidoId: 'ped_1',
-      estadoEntrega: 'PENDIENTE', // EN_RUTA -> PENDIENTE está permitido
-      items: [{ producto: 'PACA_AGUA' as ProductCode, cantidad: 3 }],
-      usuarioId: 'user_1',
-    }
-
-    const result = await useCase.execute(input)
-
-    expect(pedidoRepo.update).toHaveBeenCalledTimes(1)
-    expect(result.pedido.estadoEntrega).toBe('PENDIENTE')
   })
 
   it('F3: corre bajo el lock PEDIDO:{id} (no un $transaction plano)', async () => {
@@ -263,15 +250,6 @@ describe('ActualizarPedidoUseCase — validación de transición de estado', () 
     expect(JSON.parse(arg.datos)._casoId).toBe('caso_9')
   })
 
-  it('F3 (review): audita en la rama de transición de estado (antes no auditaba)', async () => {
-    const pedido = makePedido('EN_RUTA')
-    const { useCase, historialCreate } = makeUseCase(pedido)
-
-    await useCase.execute({ pedidoId: 'ped_1', estadoEntrega: 'PENDIENTE', usuarioId: 'user_1' })
-
-    expect(historialCreate).toHaveBeenCalledTimes(1)
-  })
-
   it('F3 (review): NO audita si no hubo cambios', async () => {
     const pedido = makePedido('PENDIENTE')
     const { useCase, historialCreate } = makeUseCase(pedido)
@@ -282,44 +260,33 @@ describe('ActualizarPedidoUseCase — validación de transición de estado', () 
   })
 })
 
-describe('ActualizarPedidoUseCase — persistencia de la transición a ENTREGADO sin items', () => {
-  it('BAMBU-LOG-017: persiste el pedido cuando estado=ENTREGADO se envía sin items', async () => {
-    const pedido = makePedido('EN_RUTA')
-    const { useCase, pedidoRepo } = makeUseCase(pedido)
+describe('ActualizarPedidoUseCase — NINGÚN cambio de estado se ejecuta por esta vía (PR-1, bloqueo 2)', () => {
+  it.each([
+    ['ENTREGADO', 'EN_RUTA'],
+    ['CANCELADO', 'PENDIENTE'],
+    ['EN_RUTA', 'PENDIENTE'],
+    ['NO_ENTREGADO', 'EN_RUTA'],
+    ['ANULADO', 'ENTREGADO'],
+    ['PENDIENTE', 'EN_RUTA'],
+  ] as const)('%s desde %s → OperacionEspecializadaError, sin persistir ni auditar (BAMBU-LOG-017 ya no aplica: la entrega es EntregarPedidoUseCase)', async (destino, origen) => {
+    const { useCase, pedidoRepo, historialCreate } = makeUseCase(makePedido(origen))
+    await expect(
+      useCase.execute({ pedidoId: 'ped_1', estadoEntrega: destino, obs: 'combinada', usuarioId: 'u' }),
+    ).rejects.toMatchObject({ name: 'OperacionEspecializadaError', destino })
+    expect(pedidoRepo.update).not.toHaveBeenCalled()
+    expect(historialCreate).not.toHaveBeenCalled()
+  })
 
-    const input: ActualizarPedidoInput = {
-      pedidoId: 'ped_1',
-      estadoEntrega: 'ENTREGADO',
-      usuarioId: 'user_1',
-    }
-
-    const result = await useCase.execute(input)
-
-    expect(pedidoRepo.update).toHaveBeenCalledTimes(1)
-    expect(result.pedido.estadoEntrega).toBe('ENTREGADO')
-    expect(result.pedido.entregadoAt).not.toBeNull()
+  it('la guardia final impide declarar como aplicado algo que el repositorio no devolvió persistido', async () => {
+    const { useCase, pedidoRepo } = makeUseCase(makePedido('PENDIENTE'))
+    ;(pedidoRepo.update as ReturnType<typeof vi.fn>).mockImplementation(async (p: Pedido) => Pedido.create({ ...p.toProps(), obs: undefined }))
+    await expect(
+      useCase.execute({ pedidoId: 'ped_1', obs: 'se pierde', usuarioId: 'u' }),
+    ).rejects.toMatchObject({ name: 'EdicionNoPersistidaError' })
   })
 })
 
 describe('ActualizarPedidoUseCase — reconstrucción correcta en transiciones simples y edición de obs', () => {
-  it('BAMBU-LOG-018: EN_RUTA -> PENDIENTE (sin items) no lanza y persiste el pedido completo', async () => {
-    const pedido = makePedido('EN_RUTA')
-    const { useCase, pedidoRepo } = makeUseCase(pedido)
-
-    const input: ActualizarPedidoInput = {
-      pedidoId: 'ped_1',
-      estadoEntrega: 'PENDIENTE',
-      usuarioId: 'user_1',
-    }
-
-    const result = await useCase.execute(input)
-
-    expect(pedidoRepo.update).toHaveBeenCalledTimes(1)
-    expect(result.pedido.estadoEntrega).toBe('PENDIENTE')
-    expect(result.pedido.clienteId).toBe('cli_1')
-    expect(result.pedido.items.length).toBe(1)
-  })
-
   it('BAMBU-LOG-018: editar solo obs (sin items, sin estado) no lanza y preserva el resto del pedido', async () => {
     const pedido = makePedido('PENDIENTE')
     const { useCase, pedidoRepo } = makeUseCase(pedido)
@@ -336,22 +303,6 @@ describe('ActualizarPedidoUseCase — reconstrucción correcta en transiciones s
     expect(result.pedido.obs).toBe('Nueva observación')
     expect(result.pedido.clienteId).toBe('cli_1')
     expect(result.pedido.total).toBe(20000)
-  })
-
-  it('PENDIENTE -> CANCELADO (sin items) no lanza y persiste correctamente', async () => {
-    const pedido = makePedido('PENDIENTE')
-    const { useCase, pedidoRepo } = makeUseCase(pedido)
-
-    const input: ActualizarPedidoInput = {
-      pedidoId: 'ped_1',
-      estadoEntrega: 'CANCELADO',
-      usuarioId: 'user_1',
-    }
-
-    const result = await useCase.execute(input)
-
-    expect(pedidoRepo.update).toHaveBeenCalledTimes(1)
-    expect(result.pedido.estadoEntrega).toBe('CANCELADO')
   })
 })
 
@@ -499,5 +450,69 @@ describe('ActualizarPedidoUseCase — contrato PR-1 (comportamiento, repos mocke
       expect(r.aplicado.campos).toContain('actualizarCliente')
       expect(JSON.parse(historialCreate.mock.calls[0][0].data.datos).despues.actualizarCliente.direccion).toBe('Calle Nueva 5')
     })
+  })
+})
+
+describe('ActualizarPedidoUseCase — guardas de ítems solo ante un cambio real (PR-1, bloqueos 3-5)', () => {
+  const mismos = [{ producto: 'PACA_AGUA' as ProductCode, cantidad: 2 }]
+
+  it('pedido con entrega parcial + ítems idénticos + obs → aplica obs (no CANTIDAD_YA_ENTREGADA)', async () => {
+    const pedido = makePedido('PENDIENTE', 'ped_1', { items: [new PedidoItem('PACA_AGUA' as ProductCode, 2, Money.fromDecimal(10000), 'base', 1)] })
+    const { useCase } = makeUseCase(pedido)
+    const r = await useCase.execute({ pedidoId: 'ped_1', items: mismos, obs: 'nota', usuarioId: 'u' })
+    expect(r.aplicado.campos).toEqual(['obs'])
+  })
+
+  it('pedido con entrega parcial + cantidad distinta → CANTIDAD_YA_ENTREGADA_USE_AJUSTAR_CANTIDAD', async () => {
+    const pedido = makePedido('PENDIENTE', 'ped_1', { items: [new PedidoItem('PACA_AGUA' as ProductCode, 2, Money.fromDecimal(10000), 'base', 1)] })
+    const { useCase, pedidoRepo } = makeUseCase(pedido)
+    await expect(useCase.execute({ pedidoId: 'ped_1', items: [{ producto: 'PACA_AGUA' as ProductCode, cantidad: 3 }], usuarioId: 'u' }))
+      .rejects.toThrow('CANTIDAD_YA_ENTREGADA_USE_AJUSTAR_CANTIDAD')
+    expect(pedidoRepo.update).not.toHaveBeenCalled()
+  })
+
+  it('precio manual repetido de una línea manual NO cuenta como cambio', async () => {
+    const pedido = makePedido('PENDIENTE', 'ped_1', { items: [new PedidoItem('PACA_AGUA' as ProductCode, 2, Money.fromDecimal(9000), 'manual', 0)], total: Money.fromDecimal(18000) })
+    const { useCase, pricingPort } = makeUseCase(pedido)
+    const r = await useCase.execute({ pedidoId: 'ped_1', items: [{ producto: 'PACA_AGUA' as ProductCode, cantidad: 2, precioManual: 9000 }], usuarioId: 'u' })
+    expect(r.aplicado.sinCambios).toBe(true)
+    expect(pricingPort.resolverPrecios).not.toHaveBeenCalled()
+  })
+
+  it('producto repetido en la petición → LineasDuplicadasError', async () => {
+    const { useCase, pedidoRepo } = makeUseCase(makePedido('PENDIENTE'))
+    await expect(useCase.execute({ pedidoId: 'ped_1', usuarioId: 'u', items: [
+      { producto: 'PACA_AGUA' as ProductCode, cantidad: 1 }, { producto: 'PACA_AGUA' as ProductCode, cantidad: 2 },
+    ] })).rejects.toMatchObject({ name: 'LineasDuplicadasError' })
+    expect(pedidoRepo.update).not.toHaveBeenCalled()
+  })
+
+  it('pedido que YA tiene líneas duplicadas → editar ítems falla cerrado', async () => {
+    const dup = makePedido('PENDIENTE', 'ped_1', { items: [
+      new PedidoItem('PACA_AGUA' as ProductCode, 2, Money.fromDecimal(10000), 'base', 0),
+      new PedidoItem('PACA_AGUA' as ProductCode, 1, Money.fromDecimal(10000), 'base', 0),
+    ] })
+    const { useCase } = makeUseCase(dup)
+    await expect(useCase.execute({ pedidoId: 'ped_1', usuarioId: 'u', items: [{ producto: 'PACA_AGUA' as ProductCode, cantidad: 5 }] }))
+      .rejects.toMatchObject({ name: 'LineasDuplicadasError' })
+  })
+
+  it.each([['obligación N2', 'obligacionCount'], ['diferencial ya aplicado', 'ajusteCount']] as const)(
+    'cambio de cantidades con %s → EdicionEconomicaN2Error (el total incluye el diferencial)',
+    async (_n, cual) => {
+      const h = makeUseCase(makePedido('PENDIENTE'))
+      h[cual].mockResolvedValue(1)
+      await expect(h.useCase.execute({ pedidoId: 'ped_1', usuarioId: 'u', items: [{ producto: 'PACA_AGUA' as ProductCode, cantidad: 3 }] }))
+        .rejects.toMatchObject({ name: 'EdicionEconomicaN2Error' })
+      expect(h.pedidoRepo.update).not.toHaveBeenCalled()
+    },
+  )
+
+  it('con N2 activo, reenviar las mismas cantidades NO lo bloquea y no consulta nada', async () => {
+    const h = makeUseCase(makePedido('PENDIENTE'))
+    h.obligacionCount.mockResolvedValue(1)
+    const r = await h.useCase.execute({ pedidoId: 'ped_1', usuarioId: 'u', items: mismos, obs: 'x' })
+    expect(r.aplicado.campos).toEqual(['obs'])
+    expect(h.obligacionCount).not.toHaveBeenCalled()
   })
 })

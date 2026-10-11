@@ -306,13 +306,16 @@ describe('PR-1 — contrato PUT /api/pedidos/[id] (Postgres real)', () => {
     expect(r.body.aplicado.campos).toEqual(['obs'])
   })
 
-  it('estadoEntrega (campo nuevo) es alias de estado; si ambos difieren → 422', async () => {
+  it('estado y estadoEntrega son el mismo cambio: ambos se rechazan igual; si difieren → 422', async () => {
     const id = await crearPedidoPoblado()
     const bad = await put(id, { estado: 'EN_RUTA', estadoEntrega: 'CANCELADO' })
     expect(bad.status).toBe(422)
-    const r = await put(id, { estadoEntrega: 'CANCELADO' })
-    expect(r.status).toBe(200)
-    expect((await fila(id)).estadoEntrega).toBe('CANCELADO')
+    for (const campo of ['estado', 'estadoEntrega']) {
+      const r = await put(id, { [campo]: 'CANCELADO' })
+      expect(r.status).toBe(409)
+      expect(r.body.error.code).toBe('OPERACION_ESPECIALIZADA')
+    }
+    expect((await fila(id)).estadoEntrega).toBe('PENDIENTE')
   })
 
   // ── 5. Sin cambios ────────────────────────────────────────────────────────
@@ -407,13 +410,11 @@ describe('PR-1 — contrato PUT /api/pedidos/[id] (Postgres real)', () => {
   })
 
   // ── 7. Estado ─────────────────────────────────────────────────────────────
-  it('cambio de estado (PENDIENTE→CANCELADO) conserva claves de idempotencia, GPS y overrides', async () => {
+  it('pedir el MISMO estado que ya tiene no es un cambio (no se rechaza ni se escribe)', async () => {
     const id = await crearPedidoPoblado()
-    const antes = await fila(id)
-    const r = await put(id, { estado: 'CANCELADO' })
+    const r = await put(id, { estado: 'PENDIENTE', obs: 'con estado repetido' })
     expect(r.status).toBe(200)
-    expect(r.body.aplicado.campos).toEqual(['estadoEntrega'])
-    await expectConservadas(antes, await fila(id))
+    expect(r.body.aplicado.campos).toEqual(['obs'])
   })
 
   it('EN_RUTA: editar obs conserva embarqueId', async () => {
