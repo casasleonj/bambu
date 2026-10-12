@@ -888,6 +888,9 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     }
   }, [activeTab, shallowParams, syncUrl])
 
+  // true si el último envío de creación quedó encolado offline (lo marca
+  // `onOffline`, que corre antes de que `crearPedido` devuelva null).
+  const envioEncoladoRef = useRef(false)
   const { create: crearPedido } = useCrearPedido({
     onSuccess: () => {
       setShowModal(false)
@@ -903,6 +906,7 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
       fetchClientes()
     },
     onOffline: ({ localId, payload }) => {
+      envioEncoladoRef.current = true
       // Antes: el modal se quedaba abierto con el botón reactivado, sin
       // ninguna fila visible en la lista — el usuario asumía que el pedido
       // no se guardó y podía reenviar el mismo form (pedido duplicado real,
@@ -963,7 +967,12 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
     },
   })
 
-  async function handlePedidoSubmit(data: PedidoUnifiedData) {
+  /**
+   * `true` = el pedido quedó guardado (creado, deduplicado o encolado offline);
+   * `false` = no se guardó y el formulario debe permitir reintentar el MISMO
+   * borrador (misma clave de idempotencia, ver `use-crear-pedido`).
+   */
+  async function handlePedidoSubmit(data: PedidoUnifiedData): Promise<boolean> {
     try {
       const isEdit = data.isEdit && data.pedidoId
       if (isEdit) {
@@ -990,18 +999,20 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
           refreshPedidos()
           fetchClientes()
           toast.success('Pedido actualizado')
-        } else {
-          const err = await res.json()
-          toast.error(err.error?.message || err.error?.formErrors?.[0] || 'Error al guardar')
+          return true
         }
+        const err = await res.json()
+        toast.error(err.error?.message || err.error?.formErrors?.[0] || 'Error al guardar')
+        return false
       } else {
         // Create uses the hook
         // PedidoUnifiedData.clienteId es opcional (venta rápida sin cliente
         // aún no valida contra CONSUMIDOR_FINAL en el tipo del form), pero
         // CrearPedidoPayload lo exige -- el servidor resuelve/crea el
         // canónico si falta (ver CrearPedidoUseCase lookup-or-create).
+        envioEncoladoRef.current = false
         const result = await crearPedido(data as unknown as CrearPedidoPayload)
-        if (!result) return
+        if (!result) return envioEncoladoRef.current // null: error u offline (encolado)
         setShowModal(false)
         setShowVentaRapida(false)
         setPedidoInicial(undefined)
@@ -1031,11 +1042,19 @@ export function PedidosClient({ initialPedidos }: PedidosClientProps = {}) {
             ? (data.pagos?.length === 0 ? 'Venta registrada — entrega pendiente' : 'Venta cobrada — entrega pendiente')
             : (data.pagos?.length === 0 ? 'Venta registrada (pendiente)' : 'Venta cobrada')
           : 'Pedido creado exitosamente'
-        toast.success(msg)
+        if (result.deduped) {
+          // Reintento de un envío que sí había llegado: es el MISMO pedido.
+          const numero = (result.pedido as { numero?: number } | null)?.numero
+          toast.info(numero != null ? `Esta venta ya estaba registrada (#${numero}). No se duplicó.` : 'Esta venta ya estaba registrada. No se duplicó.')
+        } else {
+          toast.success(msg)
+        }
+        return true
       }
     } catch (error) {
       console.error('Error saving pedido:', error)
       toast.error('Error al guardar')
+      return false
     }
   }
 
