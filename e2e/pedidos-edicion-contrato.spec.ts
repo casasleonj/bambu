@@ -330,12 +330,13 @@ test.describe('Transiciones críticas: ni el PUT ni la UI las ejecutan por atajo
       })
     })
     await page.goto(`${BASE}/pedidos?all=true&openPedido=${pedidoId}`)
-    const entregaReq = page.waitForRequest((r) => r.url().endsWith(`/api/pedidos/${pedidoId}/entrega`) && r.method() === 'POST')
+    const entregaRes = page.waitForResponse((r) => r.url().endsWith(`/api/pedidos/${pedidoId}/entrega`) && r.request().method() === 'POST')
     await page.getByRole('button', { name: /Marcar Entregado/ }).click()
     // La captura de GPS es parte de la entrega especializada (antes el PUT la saltaba).
     await expect(page.getByText('GPS capturado')).toBeVisible({ timeout: 20000 })
     await page.getByTestId('gps-confirmar').click()
-    await entregaReq
+    const respuesta = await entregaRes
+    expect(respuesta.status(), `POST /entrega -> ${await respuesta.text()}`).toBeLessThan(300)
     await expect.poll(async () => (await prisma.pedido.findUniqueOrThrow({ where: { id: pedidoId } })).estadoEntrega, { timeout: 15000 }).toBe('ENTREGADO')
     const fila = await prisma.pedido.findUniqueOrThrow({ where: { id: pedidoId }, include: { items: true } })
     expect(fila.items[0].cantEntrega).toBe(2)
