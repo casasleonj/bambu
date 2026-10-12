@@ -330,6 +330,14 @@ test.describe('Transiciones críticas: ni el PUT ni la UI las ejecutan por atajo
         },
       })
     })
+    // El servidor puede seguir viendo REQUIERE_FOTO_ENTREGA=true unos segundos (la Config se cachea y
+    // la invalidación es diferida): se adjunta una foto mínima para que el spec no dependa de eso.
+    await page.route(`**/api/pedidos/${pedidoId}/entrega`, async (route) => {
+      const original = route.request().postDataJSON() as Record<string, unknown>
+      await route.continue({
+        postData: JSON.stringify({ ...original, fotoEntrega: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' }),
+      })
+    })
     await page.goto(`${BASE}/pedidos?all=true&openPedido=${pedidoId}`)
     const entregaRes = page.waitForResponse((r) => r.url().endsWith(`/api/pedidos/${pedidoId}/entrega`) && r.request().method() === 'POST')
     await page.getByRole('button', { name: /Marcar Entregado/ }).click()
